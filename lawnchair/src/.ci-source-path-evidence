@@ -1,0 +1,5 @@
+Validation-only marker for Issue #8 source-path CI evidence.
+
+This branch and its pull request must not be merged. The file exists only to
+prove that a change under the Android source subtree starts the style and
+GitHub Debug APK jobs in the fork-native workflow.
