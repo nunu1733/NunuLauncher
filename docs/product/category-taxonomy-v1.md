@@ -96,7 +96,7 @@
 | S2 | Android `ApplicationInfo.category` | システム | 開発者が AndroidManifest で指定した category | `ApplicationInfo.category` |
 | S3 | Package name rule | 静的 rule | package name の known list 一致 | 出荷時同梱の rule file |
 | S4 | Intent action/category | 静的 rule | 特定の intent を handle する app | `PackageManager.queryIntentActivities` |
-| S5 | System/Google flag | 分類 signal | System app または Google app か | `isSystemApp()`, `com.google.` prefix |
+| S5 | System/Google flag | 分類 signal | System app または Google app か | `isSystemApp()`, `com.google.` prefix（S5a/S5b の順で評価、§3.2 参照） |
 | S6 | Default | fallback | どの signal も一致しない場合 | 常に `OTHER` |
 
 ### 3.2 優先順位
@@ -109,8 +109,9 @@ Signal は **S1 > S2 > S3 > S4 > S5 > S6** の順に評価する。上位の sig
 | 2 | S2: Android `appCategory` | `ApplicationInfo.category` が `CATEGORY_UNDEFINED` 以外の場合、§2 の対応表から taxonomy ID を導出する。 |
 | 3 | S3: Package name rule | 出荷時同梱の known list で package name が一致する場合、その category を採用する。 |
 | 4 | S4: Intent action/category | 特定の intent action/category を handle する app の場合、対応する category を採用する。 |
-| 5 | S5: System/Google flag | System app は `OTHER`、Google app (`com.google.` prefix) は `TOOLS` を default とする（§5.1 の暫定対処）。 |
-| 6 (最低) | S6: Default | 全 signal が一致しない場合、`OTHER` を割り当てる。 |
+| 5a | S5a: Google app flag | package name が `com.google.` で始まる場合、`TOOLS` を default とする（§5.1 の暫定対処）。 |
+| 5b | S5b: System app flag | S5a が不該当で `isSystemApp()` が真の場合、`OTHER` を割り当てる。 |
+| 6 (最低) | S6: Default | S5a/S5b ともに不該当の場合、`OTHER` を割り当てる。 |
 
 ### 3.3 決定性の保証
 
@@ -145,8 +146,11 @@ Signal は **S1 > S2 > S3 > S4 > S5 > S6** の順に評価する。上位の sig
 
 - Lawnchair の `categorizeAppsWithSystemAndGoogle` は、System app と Google app を独立した category として扱う。
 - 本 taxonomy ではこれらを独立した category とせず、通常の signal 評価の一部として扱う。
-- System app は S5 で `OTHER` を default とし、S2-S4 の signal が一致すればその category に分類される。
-- Google app は S5 で `TOOLS` を default とする。これは Google の提供する app が多岐にわたるため、暫定的な対処である。
+- S5 は S5a と S5b の 2 段階で決定的に評価する:
+  1. **S5a**: package name が `com.google.` で始まる場合、`TOOLS` を割り当てる。Google app が同時に system app であっても S5a が優先される。
+  2. **S5b**: S5a が不該当で `isSystemApp()` が真の場合、`OTHER` を割り当てる。
+- これにより、Google app かつ system app（例: `com.google.android.dialer`）の tie-break は常に S5a → `TOOLS` に確定する。
+- S2-S4 の signal が一致すれば、S5 より上位のためその category に分類される。
 
 ### 5.2 将来の拡張
 
@@ -174,6 +178,19 @@ Signal は **S1 > S2 > S3 > S4 > S5 > S6** の順に評価する。上位の sig
 - Override は指定された package + profile の組み合わせに対してのみ有効。
 - 同一 package の別 profile には影響しない。
 - Override が適用された item は、diagnostic に「user override」と記録する。
+
+### 6.4 データ取扱い（NFR-008）
+
+Category override の保存データに関する取扱いを次の通り定義する。
+
+| 項目 | 規定 |
+|---|---|
+| 保存対象 | package name、profile serial、category ID、設定日時、変更前 category ID |
+| 保存先 | 端末内の local storage のみ。外部送信しない。 |
+| 外部送信 | 常に **default off**。将来の機能で送信を追加する場合、明示的な user opt-in と privacy review（Issue #16）を必須とする。 |
+| 保持期間 | ユーザーが override を解除するか、対象 app をアンインストールするまで。 |
+| バックアップ | Lawnchair backup（ZIP）に含まれる可能性がある。restore 先で profile serial が変化する場合は §8.1 に従い再評価する。 |
+| Diagnostic への露出 | package name は生のままで local diagnostic へ記録するが、user-visible 表示では必要に応じて mask する（Issue #16 で具体化）。 |
 
 ## 7. Explainability
 
@@ -226,14 +243,14 @@ D-008 の提案: **Android category を signal の 1 つとし、project taxonom
 | C-04 | `com.google.android.youtube` (appCategory=VIDEO) | S2 → `VIDEO` |
 | C-05 | `com.unknown.app` (appCategory=UNDEFINED, no rule match) | S6 → `OTHER` |
 | C-06 | `com.unknown.app` (user override → `TOOLS`) | S1 → `TOOLS` |
-| C-07 | `com.google.android.dialer` (appCategory=UNDEFINED) | S5 → `TOOLS`（暫定） |
-| C-08 | `com.android.settings` (system app, appCategory=UNDEFINED) | S5 → `OTHER` |
+| C-07 | `com.google.android.dialer` (appCategory=UNDEFINED, Google app) | S5a → `TOOLS`（暫定） |
+| C-08 | `com.android.settings` (system app, appCategory=UNDEFINED, Google app ではない) | S5b → `OTHER` |
 | C-09 | 同一 package が personal/work 両方に存在 | profile ごとに独立して category 割当 |
 | C-10 | 複数の S3 rule が一致（`com.example.app` → GAME と TOOLS） | 辞書順で最初の `GAME` を採用 |
 | C-11 | User override 設定後、解除 | 再評価で S2 以降の結果を採用 |
 | C-12 | Hybrid app（appCategory=GAME かつ user override → SOCIAL） | S1 → `SOCIAL` |
 | C-13 | `com.google.android.apps.maps` (appCategory=MAPS) | S2 → `MAPS` |
-| C-14 | `com.netflix.mediaclient` (appCategory=UNDEFINED) | S3/S4 の一致がなければ S5 → `TOOLS`（暫定） |
+| C-14 | `com.netflix.mediaclient` (appCategory=UNDEFINED, system app ではない, Google app ではない) | S6 → `OTHER` |
 | C-15 | 全 app の category 割当結果 | 全 app が 34 category のいずれかに割り当てられる（`OTHER` も含む） |
 
 ## 11. 未決定事項と後続 Issue への制約
@@ -242,18 +259,18 @@ D-008 の提案: **Android category を signal の 1 つとし、project taxonom
 |---|---|
 | Flowerpot の採否 | 本 taxonomy は Flowerpot と独立。Flowerpot を S3 の rule source として採用するかは D-009 で判断する。 |
 | S3 rule file の形式 | package rule の出荷時同梱形式は別 Issue で決定する。Flowerpot の asset file 形式を参考にする。 |
-| S5 の System/Google 暫定対処 | 現状は暫定値。本格的な対処は別 Issue で検討する。 |
+| S5a/S5b の System/Google 暫定対処 | 現状は暫定値（S5a Google → `TOOLS`, S5b system → `OTHER`）。本格的な対処は別 Issue で検討する。 |
 | Usage signal の統合 | FR-013 の対応時に S1-S6 の優先順位を見直す可能性がある。 |
 | 外部 LLM 分類器 | FR-014 の対応時に、S1 と同等以上の優先順位で統合するか検討する。 |
 
 ## 12. 根拠
 
-全ての source 参照は baseline commit `505dbc40e6154c05158b5d0271c45f6a885a411b` に固定する。
+全ての source 参照は baseline commit `505dbc40e6154c05158b5d0271c45f6a885a411b` に固定する。確認日: 2026-08-09。
 
-- `Flowerpot.kt` — rule-based categorization engine、32 asset categories
-- `AppCategorizationUtils.kt` — System/Google/Other 3-way split
-- `CodeRules.kt` — `isGame`, `category` code rules
-- `ApplicationInfo.java` — `category` field（Android SDK）
-- `LauncherSettings.java` — `Favorites` table item types
-- `LawndeckManager.kt` — Deck category usage、`findFolderByCategory`
-- `device_profiles.xml` — grid options（reference）
+- [Flowerpot.kt](https://github.com/LawnchairLauncher/lawnchair/blob/505dbc40e6154c05158b5d0271c45f6a885a411b/lawnchair/src/app/lawnchair/flowerpot/Flowerpot.kt) — rule-based categorization engine、32 asset categories
+- [AppCategorizationUtils.kt](https://github.com/LawnchairLauncher/lawnchair/blob/505dbc40e6154c05158b5d0271c45f6a885a411b/lawnchair/src/app/lawnchair/util/AppCategorizationUtils.kt) — System/Google/Other 3-way split
+- [CodeRules.kt](https://github.com/LawnchairLauncher/lawnchair/blob/505dbc40e6154c05158b5d0271c45f6a885a411b/lawnchair/src/app/lawnchair/flowerpot/CodeRules.kt) — `isGame`, `category` code rules
+- [ApplicationInfo](https://developer.android.com/reference/android/content/pm/ApplicationInfo#category) — `category` field（Android SDK）。確認日: 2026-08-09。
+- [LauncherSettings.java](https://github.com/LawnchairLauncher/lawnchair/blob/505dbc40e6154c05158b5d0271c45f6a885a411b/src/com/android/launcher3/LauncherSettings.java) — `Favorites` table item types
+- [LawndeckManager.kt](https://github.com/LawnchairLauncher/lawnchair/blob/505dbc40e6154c05158b5d0271c45f6a885a411b/lawnchair/src/app/lawnchair/deck/LawndeckManager.kt) — Deck category usage、`findFolderByCategory`
+- [device_profiles.xml](https://github.com/LawnchairLauncher/lawnchair/blob/505dbc40e6154c05158b5d0271c45f6a885a411b/lawnchair/res/xml/device_profiles.xml) — grid options（reference）
