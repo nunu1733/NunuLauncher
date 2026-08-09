@@ -1,5 +1,11 @@
 name: Release update
 
+# Fork policy (Issue #8): this workflow publishes a GitHub Release and posts to
+# Telegram, both of which mutate externally visible state and rely on
+# upstream-only secrets. NunuLauncher cuts releases through a separate, reviewed
+# process, so every job is guarded to the upstream owner. The workflow stays
+# dispatch-only so a fork run cannot trigger it accidentally.
+
 on:
   workflow_dispatch:
     inputs:
@@ -20,10 +26,15 @@ on:
         type: string
         required: true
 
+permissions:
+  contents: read
+
 jobs:
   build-release-apk:
     runs-on: ubuntu-latest
+    if: github.repository_owner == 'LawnchairLauncher'
     permissions:
+      contents: read
       id-token: write
       attestations: write
     steps:
@@ -65,6 +76,7 @@ jobs:
   publish-github-release:
     runs-on: ubuntu-latest
     needs: build-release-apk
+    if: github.repository_owner == 'LawnchairLauncher'
     permissions:
       contents: write
     steps:
@@ -87,6 +99,7 @@ jobs:
   publish-telegram-update-post:
     runs-on: ubuntu-latest
     needs: build-release-apk
+    if: github.repository_owner == 'LawnchairLauncher'
     steps:
       - uses: actions/checkout@v6
       - name: Download artifact

@@ -1,9 +1,16 @@
 name: Close low effort issues
 
+# Fork policy (Issue #8): automatic issue closing is an upstream community
+# maintenance behaviour. NunuLauncher triages issues manually, so the
+# `issues: opened` trigger is removed and the job runs only on manual dispatch.
+# The upstream logic is preserved verbatim so re-enabling it on a future
+# upstream sync is a one-line trigger change.
+
 on:
-  issues:
-    types:
-      - opened
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   check_issue_quality:
@@ -34,6 +41,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: check_issue_quality
     if: ${{ needs.check_issue_quality.outputs.IS_LOW_EFFORT == 'true' }}
+    permissions:
+      issues: write
     steps:
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

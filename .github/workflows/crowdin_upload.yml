@@ -1,9 +1,16 @@
 name: Crowdin Upload
 
+# Fork policy (Issue #8): the upstream `push` trigger uploaded source strings to
+# Crowdin on every push to a dev branch. NunuLauncher does not push to Crowdin,
+# so the trigger is removed; the job is kept for an explicit manual run on the
+# upstream owner only. On this fork the owner guard below ends the workflow
+# immediately.
+
 on:
-  push:
-    branches:
-      - '*-dev'
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
 

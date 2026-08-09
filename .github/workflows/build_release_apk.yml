@@ -1,12 +1,22 @@
 name: Build release APK
 
+# Fork policy (Issue #8): manual release APK build is useful on the fork for
+# local verification, so the workflow_dispatch trigger is retained. Signing
+# secrets are only available to the upstream owner; the fork build runs
+# unsigned, which is why the upstream workflow uses continue-on-error.
+
 on:
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build-release-apk:
     runs-on: ubuntu-latest
     continue-on-error: true
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
         with:
@@ -35,4 +45,4 @@ jobs:
         with:
           name: Release APK
           path: build/outputs/*
-          
+          retention-days: 7
