@@ -106,7 +106,7 @@ Signal は **S1 > S2 > S3 > S4 > S5 > S6** の順に評価する。上位の sig
 | 優先順位 | Signal | 決定方法 |
 |---|---|---|
 | 1 (最高) | S1: User override | ユーザーが明示的に指定した category を常に採用する。override がない場合は S2 へ進む。 |
-| 2 | S2: Android `appCategory` | `ApplicationInfo.category` が `CATEGORY_UNDEFINED` 以外の場合、§2 の対応表から taxonomy ID を導出する。 |
+| 2 | S2: Android `appCategory` | `ApplicationInfo.category` が `CATEGORY_UNDEFINED` 以外で、かつ §2 の対応表にある値の場合に taxonomy ID を導出する。対応表外の値は diagnostic に記録し、S3 へ進む。 |
 | 3 | S3: Package name rule | 出荷時同梱の known list で package name が一致する場合、その category を採用する。 |
 | 4 | S4: Intent action/category | 特定の intent action/category を handle する app の場合、対応する category を採用する。 |
 | 5a | S5a: Google app flag | package name が `com.google.` で始まる場合、`TOOLS` を default とする（§5.1 の暫定対処）。 |
@@ -137,8 +137,8 @@ Signal は **S1 > S2 > S3 > S4 > S5 > S6** の順に評価する。上位の sig
 ### 4.4 未定義 category の fallback
 
 - どの signal も category を確定できない場合、`OTHER` を割り当てる。
-- `OTHER` に割り当てられた item は、planner において folder 化の対象外とする（単体配置のみ）。
 - Diagnostic には「未分類（OTHER）」とその理由を記録する。
+- `OTHER` を含む category の配置・folder 化は本 taxonomy の対象外とし、layout strategy（Issue #5）と planner integration（Issue #10）で定義する。
 
 ## 5. System / Google 分類の扱い
 
@@ -219,10 +219,10 @@ Category override の保存データに関する取扱いを次の通り定義�
 - 同一 package 名でも profile が異なれば別の category を持てる。
 - Category 割当の結果は profile の識別子と共に記録する。
 
-### 8.2 Cross-profile の禁止
+### 8.2 Planner との境界
 
-- 異なる profile の app を同一の category の folder に混在させない。
-- Planner は profile ごとに category 割当を独立に評価する。
+- 本 taxonomy は profile ごとの category assignment だけを定義し、folder 化や配置は定義しない。
+- profile をまたぐ folder 化を含む planner の制約は layout strategy（Issue #5）および planner integration（Issue #10）で定義する。
 
 ## 9. D-008 の提案
 
@@ -252,6 +252,7 @@ D-008 の提案: **Android category を signal の 1 つとし、project taxonom
 | C-13 | `com.google.android.apps.maps` (appCategory=MAPS) | S2 → `MAPS` |
 | C-14 | `com.netflix.mediaclient` (appCategory=UNDEFINED, system app ではない, Google app ではない) | S6 → `OTHER` |
 | C-15 | 全 app の category 割当結果 | 全 app が 34 category のいずれかに割り当てられる（`OTHER` も含む） |
+| C-16 | `com.example.futurecategory` (appCategory=未対応値、S3-S5 不一致) | S2 は diagnostic に未対応値を記録して S3 へ進み、S6 → `OTHER` |
 
 ## 11. 未決定事項と後続 Issue への制約
 
