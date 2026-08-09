@@ -17,7 +17,7 @@
 - workspace page の決定方法と占有領域の計算
 - grid 列数・行数と device profile からの導出
 - folder 内 grid の決定方法
-- Dock の slot 管理
+- Dock の保存規則（既定で保持）
 - locked placement の占有領域保持
 - 決定性を保証する tie-break 規則
 - overflow と未配置 item の扱い
@@ -30,6 +30,7 @@
 - 整理ルールの file format（Issue #10 の一部）
 - Lock の永続化（Issue #23）
 - 空 folder の削除（Issue #24）
+- Dock item の移動・追加・退避（明示的 Dock action は別 mode とし、本戦略では定義しない）
 
 ## 2. Device profile からの region 導出
 
@@ -55,20 +56,22 @@ DeviceProfile {
 | Container | Region 導出 |
 |---|---|
 | WORKSPACE_PAGE | 全 grid cell: `(0, 0)` から `(columns - 1, rows - 1)`。D-003 の対象外 item の占有領域を除く。 |
-| DOCK | 1次元 slot: `[0, hotseatSlots - 1]`。rank が slot 位置を表す。 |
+| DOCK | 1次元 slot: `[0, hotseatSlots - 1]`。rank が slot 位置を表す。既定で保持し、本戦略では移動しない。 |
 | FOLDER | 動的 grid: `folderMaxColumns × folderMaxRows` を上限とし、item 数から `FolderGridOrganizer` と同等の規則で列数・行数を決定する。 |
 
 ### 2.3 占有領域の表現
 
-各 placement は次の矩形で表現される。`cell` は左上座標、`span` は占有セル数。
+各 placement は次の矩形で表現される。`cell` は左上座標、`span` は占有セル数。座標 `(x, y)` は `x` が列、`y` が行を表す。
 
 ```text
 OccupiedRegion {
     container: ContainerRef
-    cell: (x, y)
-    span: (width, height)
+    cell: (x, y)         // 左上セル座標
+    span: (width, height) // 占有セル数
 }
 ```
+
+配置の有効性条件: `x >= 0 && y >= 0 && x + width <= columns && y + height <= rows`。これを満たさない placement は in-bounds invariant（NFR-002）に反し、plan を reject する。
 
 locked placement は full region を占有制約として保持する。preserved item も同様に占有領域として扱うが、planner は移動を試みない。
 
@@ -85,36 +88,39 @@ snapshot は現在の ordered page set を保持する。planner は次を決定
 
 ### 3.1 全体整理の流れ
 
-1. **占有領域の収集**: locked placement、preserved item、widget の占有領域を固定する。
-2. **移動対象の分類**: move 対象 item を category（未実装の場合は category なし）で grouping する。
-3. **Dock 配置**: Dock の move 対象 item を既存 slot の空きまたは新規 slot へ配置する。
-4. **Folder 配置**: category が 2 件以上の item を folder 化して配置する。
-5. **単体配置**: 残りの move 対象 item を workspace page へ配置する。
-6. **Overflow 処理**: 全 item が入り切らない場合の処理（§6）。
+1. **占有領域の収集**: locked placement、preserved item、widget、Dock item の占有領域を固定する。
+2. **移動対象の分類**: move 対象 item を category と profile で grouping する。category 信号がない場合は folder 化せず全て単体配置とする（§3.3）。
+3. **Folder 配置**: 同一 profile 内で同一 category の 2 件以上の item を folder 化して配置する。
+4. **単体配置**: 残りの move 対象 item を workspace page へ配置する。
+5. **Overflow 処理**: 全 item が入り切らない場合の処理（§6）。
+
+Dock は既定で保持する。Issue #3 §3.2 に従い、Dock item の rank は明示的 Dock action（将来の mode）でのみ変更する。本 layout strategy v1 は Dock action を定義せず、Dock の全 slot を固定の占有制約として扱う。
 
 ### 3.2 配置優先順位
 
 次に従って配置を試行する。各段階で占用領域を更新する。
 
 1. Locked placement（移動不可、占有領域を確保）
-2. Preserved item（移動不可、占有領域を確保）
-3. Widget（移動不可、占有領域を確保）
-4. Dock item（Dock slot 内でのみ移動可能）
-5. Folder（workspace 上の block として移動）
-6. 単体 app/deep shortcut（空き cell へ配置）
+2. Preserved item — widget、app pair、legacy shortcut（移動不可、占有領域を確保）
+3. Dock item（既定で保持、占有領域を確保）
+4. Folder（workspace 上の 1 block として移動）
+5. 単体 app/deep shortcut（空き cell へ配置）
 
 ### 3.3 Folder 配置
 
-- 同一 category の 2 件以上の item を 1 つの folder にまとめる。
-- Folder 自体の span は `FolderGridOrganizer` の計算結果に基づく（folder 内 grid の列数 × 行数から最小の workspace span を導出）。
-- Folder の中身は folder 内 grid に従って配置する。子 item の workspace 上の座標は folder の cell からの相対位置とする。
-- 単体 item は folder 化しない。
+Folder の配置は Issue #3 §3.2 の規則に従う。
 
-### 3.4 Dock 配置
+- top-level folder は workspace 上の 1 つの placement unit として移動する。
+- folder の子 item の配置は **保持する**。planner は子 item の folder 内座標を変更しない。
+- folder 自体の workspace 上の cell と span は、folder の現在の表示 span を維持する。
+- 同一 profile 内で同一 category の 2 件以上の move 対象 item がある場合、新規 folder を作成できる。
+- **profile をまたぐ folder 化は行わない。** profile identity は Issue #3 §3.5 に従い、異なる profile の item を同一 folder へ混入しない。
+- **category 信号がない場合は folder 化を行わない。** 全ての move 対象 item を単体配置する。category 信号の有無は snapshot の分類結果（Issue #6）で決まる。
+- 単体 item（category に 1 件のみ、または category なし）は folder 化しない。
 
-- 既存の Dock item は rank 順に slot を占有する。
-- 新規に Dock へ配置する item は、空き slot または末尾に追加する。
-- Dock の capacity 超過時は、Dock に収まらない item を workspace へ移動する。
+### 3.4 Dock の取扱い
+
+Dock item は既定で **保持** する。Issue #3 §3.2 に従い、Dock app の rank は明示的 Dock action のみで変更する。本 layout strategy v1 では Dock action を入力として定義しないため、全 Dock slot は固定の占有制約となる。planner は Dock slot へ新規に item を追加せず、workspace から Dock へ退避させない。
 
 ## 4. 決定性の保証
 
@@ -125,9 +131,8 @@ snapshot は現在の ordered page set を保持する。planner は次を決定
 1. **Page 優先順位**: 小さい screen ID を持つ page を優先する。
 2. **Cell 探索順序**: 左上から右下へ走査する（`y` 優先: `(0,0) → (1,0) → ... → (columns-1, 0) → (0,1) → ...`）。これは baseline `GridOccupancy.findVacantCell` の走査順序と一致する。
 3. **同一 category 内の順序**: package name の辞書順（locale 非依存の ASCII 比較）で整列する。
-4. **Folder 内の順序**: 上記と同様、package name の辞書順。
-5. **Dock slot 順序**: 小さい rank から順に割り当てる。
-6. **新規 page 追加時**: 新しい page は既存の最大 screen ID + 1 を割り当てる。
+4. **Folder 内の順序**: 上記と同様、package name の辞書順。ただし folder 内配置は保持が既定であるため、新規 folder 作成時のみ適用する。
+5. **新規 page 追加時**: 新しい page は既存の最大 screen ID + 1 を割り当てる。
 
 ### 4.2 同一 page 内の fill 戦略
 
@@ -138,7 +143,7 @@ snapshot は現在の ordered page set を保持する。planner は次を決定
 ### 4.3 入力の canonicalization
 
 - 入力 snapshot の page 順序は screen ID の昇順とする。
-- 入力 item の順序は `_id` の昇順とする。
+- 入力 item の順序は opaque な organizer instance ID の昇順とする。organizer instance ID は snapshot capture 時に各配置アイテムへ割り当てられる opaque な識別子であり、DB row ID や platform 型を公開しない（DESIGN.md §4.1）。
 - 以上により、同じ snapshot から常に同じ plan が生成される。
 
 ## 5. Locked placement の取扱い
@@ -155,7 +160,7 @@ snapshot は現在の ordered page set を保持する。planner は次を決定
 | Lock 対象 | 占有領域 |
 |---|---|
 | 単体 app/shortcut | `cell (x, y)` の `span (1, 1)` |
-| Folder | Folder の cell と span、および子 item の全占有領域 |
+| Folder | Folder の cell と span。子 item の配置は保持する（Issue #3 §3.2） |
 | Widget | Widget の cell と span（`spanX × spanY`） |
 | App pair | App pair の cell と span |
 | Dock item | Dock の該当 slot（rank 位置） |
@@ -164,11 +169,11 @@ snapshot は現在の ordered page set を保持する。planner は次を決定
 
 ### 6.1 Overflow の定義
 
-全 move 対象 item を既存 page + 新規 page に配置しても収まらない場合を overflow とする。
+全 move 対象 item を既存 page + 新規 page に配置しても収まらない場合を overflow とする。Dock slot は固定であり、overflow 解消に利用しない。
 
 ### 6.2 Overflow 時の振る舞い
 
-| 状況 | 振る舞い |
+| 状況 | 挙動 |
 |---|---|
 | 新規 page 追加で収まる | 新規 page を追加して配置する。追加 page 数に上限は設けない（NFR-006 の budget 内で処理する）。 |
 | 新規 page 追加でも収まらない | Reject し、plan を作成しない。Diagnostic に「capacity 不足」と未配置 item 数を記録する。 |
@@ -181,26 +186,42 @@ snapshot は現在の ordered page set を保持する。planner は次を決定
 
 ## 7. Phone/Tablet/Grid/Orientation の例
 
+各例で `(x, y)` は `x` = 列、`y` = 行を表す。grid は `columns × rows` で、有効 cell は `(0, 0)` から `(columns-1, rows-1)` まで。
+
 ### 7.1 Phone portrait (4×5 grid, 4 hotseat)
 
 ```text
 Input:
   DeviceProfile: columns=4, rows=5, hotseatSlots=4
-  Move items: 12 apps (同一 category なし)
-  Preserved: 2 widgets (span 2×2, 4×1)
-  Locked: 1 app at cell (0, 4)
+  Move items: 10 apps (同一 category なし → 全て単体配置)
+  Preserved: 2 widgets (span 2×2 at (0,0), span 4×1 at (0,2))
+  Dock: 2 apps (rank 0, 1) → 保持、占有領域として固定
+  Locked: 1 app at cell (3, 4)
+
+Grid layout (4 columns × 5 rows):
+  Row 0: [W1] [W1] [..] [..]
+  Row 1: [W1] [W1] [..] [..]
+  Row 2: [W2] [W2] [W2] [W2]
+  Row 3: [..] [..] [..] [..]
+  Row 4: [..] [..] [..] [L ]
+
+  W1 = widget 1 (span 2×2 at (0,0))
+  W2 = widget 2 (span 4×1 at (0,2))
+  L  = locked app (at (3,4))
 
 Process:
-  1. Locked app at (0, 4) → 占有領域固定
-  2. Widget 1 at (0, 0) span 2×2 → 占有領域固定
-  3. Widget 2 at (2, 0) span 4×1 → 占有領域固定
-  4. 12 apps を空き cell へ配置
-     - 空き領域: (0,2)-(3,4) の 3行×4列 = 12 cell → 全 item 配置可能
-     - 1 page で完了
+  1. Dock apps (rank 0, 1) → 保持、固定
+  2. Widget 1 at (0,0) span 2×2 → 占有領域固定
+  3. Widget 2 at (0,2) span 4×1 → 占有領域固定
+  4. Locked app at (3,4) → 占有領域固定
+  5. 10 apps を空き cell へ配置
+     - 空き cell: (2,0),(3,0),(2,1),(3,1),(0,3),(1,3),(2,3),(3,3),(0,4),(1,4),(2,4) = 11 cell
+     - 10 apps < 11 cell → 全 item 配置可能
+     - 左上から fill: (2,0),(3,0),(2,1),(3,1),(0,3),(1,3),(2,3),(3,3),(0,4),(1,4)
 
 Output:
-  Page 1: 12 apps + 2 widgets + 1 locked app
-  Dock: 未変更（Dock item なし）
+  Page 1: 10 apps + 2 widgets + 1 locked app (15 cell 使用)
+  Dock: 2 apps（変更なし）
 ```
 
 ### 7.2 Phone landscape (4×3 grid, 4 hotseat)
@@ -208,23 +229,32 @@ Output:
 ```text
 Input:
   DeviceProfile: columns=4, rows=3, hotseatSlots=4
-  Move items: 12 apps
-  Preserved: 2 widgets (span 2×2, 4×1)
-  Locked: 1 app at cell (0, 2)
+  Move items: 10 apps (同一 category なし → 全て単体配置)
+  Preserved: 1 widget (span 2×2 at (0,0))
+  Dock: 2 apps (rank 0, 1) → 保持
+  Locked: 1 app at cell (3, 2)
+
+Grid layout (4 columns × 3 rows):
+  Row 0: [W ] [W ] [..] [..]
+  Row 1: [W ] [W ] [..] [..]
+  Row 2: [..] [..] [..] [L ]
+
+  W = widget (span 2×2 at (0,0))
+  L = locked app (at (3,2))
 
 Process:
-  1. Locked app at (0, 2) → 占有領域固定
-  2. Widget 1 at (0, 0) span 2×2 → 占有領域固定
-  3. Widget 2 at (2, 0) span 4×1 → 占有領域固定
-  4. 12 apps を空き cell へ配置
-     - 空き領域: Widget 2 の下 (2,1)-(3,2) の 2行×2列 = 4 cell
-     - 不足: 8 cell → 新規 page 追加
-     - Page 2: 全12 column × 3 row = 12 cell → 全 item 配置可能
+  1. Dock apps (rank 0, 1) → 保持、固定
+  2. Widget at (0,0) span 2×2 → 占有領域固定
+  3. Locked app at (3,2) → 占有領域固定
+  4. 10 apps を空き cell へ配置
+     - Page 1 空き cell: (2,0),(3,0),(2,1),(3,1),(0,2),(1,2) = 6 cell
+     - 6 apps を Page 1 へ配置、4 apps 不足 → 新規 page 追加
+     - Page 2 (4×3 = 12 cell): 4 apps を配置
 
 Output:
-  Page 1: 4 apps + 2 widgets + 1 locked app
-  Page 2: 8 apps
-  Dock: 未変更
+  Page 1: 6 apps + 1 widget + 1 locked app (8 cell 使用)
+  Page 2: 4 apps
+  Dock: 2 apps（変更なし）
 ```
 
 ### 7.3 Tablet (6×5 grid, 6 hotseat)
@@ -232,17 +262,19 @@ Output:
 ```text
 Input:
   DeviceProfile: columns=6, rows=5, hotseatSlots=6
-  Move items: 20 apps
+  Move items: 20 apps (同一 category なし → 全て単体配置)
   Preserved: なし
+  Dock: 4 apps (rank 0-3) → 保持
   Locked: なし
 
 Process:
-  1. 全 20 apps を 1 page の 6×5 = 30 cell へ配置
-  2. 左上から fill: 20 cell 使用、10 cell 空き
+  1. Dock apps (rank 0-3) → 保持、固定
+  2. 全 20 apps を 1 page の 6×5 = 30 cell へ配置
+  3. 左上から fill: 20 cell 使用、10 cell 空き
 
 Output:
   Page 1: 20 apps
-  Dock: 未変更
+  Dock: 4 apps（変更なし）
 ```
 
 ### 7.4 Folder 化を含む例
@@ -250,39 +282,62 @@ Output:
 ```text
 Input:
   DeviceProfile: columns=4, rows=5, hotseatSlots=4
-  Move items: 15 apps (category A: 3, category B: 5, その他: 7)
+  Move items: 15 apps
+    Category A: 3 apps (同一 profile)
+    Category B: 5 apps (同一 profile)
+    Category なし: 7 apps
   Preserved: なし
+  Dock: なし
   Locked: なし
 
 Process:
-  1. Category A (3 apps) → folder 化: folder (span 2×2 推奨)
-  2. Category B (5 apps) → folder 化: folder (span 3×2 推奨)
-  3. その他 7 apps → 単体配置
+  1. Category A (3 apps, 同一 profile) → folder 化: folder A (span 1×1)
+  2. Category B (5 apps, 同一 profile) → folder 化: folder B (span 1×1)
+     ※ 子 item の配置は保持、folder 内 grid は FolderGridOrganizer と同等の規則
+  3. Category なし 7 apps → 単体配置
   4. 合計: 2 folder + 7 apps = 9 placement → 1 page の 4×5 = 20 cell に収まる
+  5. 左上から fill:
+     (0,0)=folder A, (1,0)=folder B,
+     (2,0)=app1, (3,0)=app2,
+     (0,1)=app3, (1,1)=app4, (2,1)=app5, (3,1)=app6, (0,2)=app7
 
 Output:
-  Page 1: Folder A (3 apps), Folder B (5 apps), 7 apps
-  Dock: 未変更
+  Page 1: 2 folders + 7 apps (9 cell 使用)
+  Dock: 変更なし
 ```
 
-### 7.5 Dock 超過
+### 7.5 Widget と locked placement の混在例
 
 ```text
 Input:
-  DeviceProfile: columns=4, rows=5, hotseatSlots=4
-  Move items: 6 apps (全て Dock 対象)
-  Preserved Dock items: 2 apps (rank 0, 1)
-  Locked: なし
+  DeviceProfile: columns=5, rows=5, hotseatSlots=5
+  Move items: 8 apps (同一 category なし → 全て単体配置)
+  Preserved: 1 widget (span 3×2 at (0,0))
+  Dock: 3 apps (rank 0-2) → 保持
+  Locked: 1 app at cell (4, 4)
+
+Grid layout (5 columns × 5 rows):
+  Row 0: [W ] [W ] [W ] [..] [..]
+  Row 1: [W ] [W ] [W ] [..] [..]
+  Row 2: [..] [..] [..] [..] [..]
+  Row 3: [..] [..] [..] [..] [..]
+  Row 4: [..] [..] [..] [..] [L ]
+
+  W = widget (span 3×2 at (0,0))
+  L = locked app (at (4,4))
 
 Process:
-  1. Dock 既存: 2 items (rank 0, 1) → 占有 slot 0, 1
-  2. Dock 空き: slot 2, 3
-  3. 新規 Dock 配置: 2 items → slot 2, 3
-  4. 残り 4 items → workspace へ配置（Dock 超過分）
+  1. Dock apps (rank 0-2) → 保持、固定
+  2. Widget at (0,0) span 3×2 → 占有領域固定
+  3. Locked app at (4,4) → 占有領域固定
+  4. 8 apps を空き cell へ配置
+     - 空き cell: (3,0),(4,0),(3,1),(4,1) + Row 2-3 全 10 cell + (0,4),(1,4),(2,4),(3,4) = 18 cell
+     - 8 apps < 18 cell → 全 item 配置可能
+     - 左上から fill: (3,0),(4,0),(3,1),(4,1),(0,2),(1,2),(2,2),(3,2)
 
 Output:
-  Page 1: 4 apps (Dock 超過分)
-  Dock: 2 preserved + 2 new = 4 items
+  Page 1: 8 apps + 1 widget + 1 locked app (14 cell 使用)
+  Dock: 3 apps（変更なし）
 ```
 
 ## 8. 冪等性の例
@@ -331,6 +386,7 @@ D-007 の提案: **device profile から region を導出し、固定 row 前提
 - Fill 戦略は左上から右下への走査を default とする。
 - Tie-break は package name 辞書順（ASCII 比較）で決定する。
 - Overflow 時は新規 page 追加を試行し、それでも収まらない場合は reject する。
+- Dock は既定で保持し、明示的 Dock action のみが変更を許される。
 
 ## 10. 代表的な fixture
 
@@ -341,10 +397,10 @@ D-007 の提案: **device profile から region を導出し、固定 row 前提
 | L-03 | 複数 page の app | 各 page を左上から fill、page 間で item が移動しない |
 | L-04 | Widget 混在 | Widget の占有領域を避けて app を配置 |
 | L-05 | Locked placement 混在 | Locked 領域を避けて配置、locked 領域内に配置しない |
-| L-06 | Folder 混在 | Folder を block として移動、子 item は folder 内 grid に従う |
-| L-07 | Dock item 混在 | Dock の slot を保持、超過分は workspace へ |
+| L-06 | Folder 混在 | Folder を 1 block として移動、子 item は保持 |
+| L-07 | Dock item 混在 | Dock の slot を全て保持、workspace item は Dock へ退避しない |
 | L-08 | Full grid（capacity 不足） | Reject、diagnostic に未配置 item 数を記録 |
-| L-09 | 複数 category の folder 化 | 2 件以上の category を folder 化、単体は folder 化しない |
+| L-09 | 複数 category の folder 化 | 同一 profile 内の 2 件以上の同一 category を folder 化、単体は folder 化しない |
 | L-10 | Portrait → Landscape 変更 | Device profile 変更後は stale、再 capture が必要 |
 | L-11 | 冪等性: 既に整列済み | 空の差分 |
 | L-12 | 決定性: 同一入力を 2 回 | 同一の plan |
@@ -352,29 +408,32 @@ D-007 の提案: **device profile から region を導出し、固定 row 前提
 | L-14 | Phone landscape 4×3 | §7.2 の例 |
 | L-15 | Tablet 6×5 | §7.3 の例 |
 | L-16 | Folder 化を含む | §7.4 の例 |
-| L-17 | Dock 超過 | §7.5 の例 |
+| L-17 | Widget と locked placement の混在 | §7.5 の例 |
+| L-18 | Category 信号なし | 全 move 対象を単体配置、folder 化なし |
+| L-19 | Cross-profile 同一 category | profile ごとに独立して folder 化、cross-profile folder なし |
 
 ## 11. 未決定事項と後続 Issue への制約
 
 | 項目 | 制約 / open point |
 |---|---|
-| Category 分類 | category が未実装の場合、全部の move 対象を同一 category として扱う（Issue #6 で解決） |
-| Folder 内 grid の決定 | `FolderGridOrganizer` の規則と同等とする。詳細は planner 実装（Issue #12）で具体化する |
-| 新規 page の上限 | 明示的な上限を設けない。NFR-006 の budget 内で処理する（Issue #15） |
-| Empty folder の削除 | Issue #24 の決定を待つ。本戦略では空 folder を保持する |
-| Lock の永続化 | Issue #23 の決定を待つ。本戦略では lock の振る舞いのみ定義する |
-| Rule との統合 | 整理ルールの file format が決定後（Issue #10 の一部）、本戦略の規則を rule として表現可能にする |
+| Category 信号の有無 | category 信号がない場合は folder 化を行わず全て単体配置する。category 信号の供給は Issue #6 で解決する。 |
+| Folder 内 grid の決定 | `FolderGridOrganizer` の規則と同等とする。詳細は planner 実装（Issue #12）で具体化する。ただし既存 folder の子 item 配置は保持する。 |
+| 新規 page の上限 | 明示的な上限を設けない。NFR-006 の budget 内で処理する（Issue #15）。 |
+| Empty folder の削除 | Issue #24 の決定を待つ。本戦略では空 folder を保持する。 |
+| Lock の永続化 | Issue #23 の決定を待つ。本戦略では lock の振る舞いのみ定義する。 |
+| Dock action | 明示的 Dock action（rank 変更、workspace 退避等）は別 mode として本戦略では定義しない。将来の Issue で入力 mode を定義する。 |
+| Rule との統合 | 整理ルールの file format が決定後（Issue #10 の一部）、本戦略の規則を rule として表現可能にする。 |
 
 ## 12. 根拠
 
-全ての source 参照は baseline commit `505dbc40e6154c05158b5d0271c45f6a885a411b` に固定する。
+全ての source 参照は baseline commit `505dbc40e6154c05158b5d0271c45f6a885a411b` に固定する。確認日: 2026-08-09。
 
-- `DeviceProfile.java` — cell 計算、workspace/hotseat/folder の grid 定義
-- `InvariantDeviceProfile.java` — `numRows`, `numColumns`, `numFolderRows`, `numFolderColumns`, `numShownHotseatIcons`
-- `GridOccupancy.java` — `findVacantCell` の走査順序
-- `CellLayout.java` — `findNearestVacantArea`、`mCountX`/`mCountY`
-- `FolderGridOrganizer.java` — `calculateGridSize`、`getPosForRank`
-- `WorkspaceItemSpaceFinder.java` — `findSpaceForItem` の page 管理
-- `LauncherSettings.java` — `Favorites` table の container/screen/cell/span 定義
-- `WorkspaceLayoutManager.java` — screen ID 管理
-- `device_profiles.xml` — grid option の定義
+- [DeviceProfile.java](https://github.com/LawnchairLauncher/lawnchair/blob/505dbc40e6154c05158b5d0271c45f6a885a411b/src/com/android/launcher3/DeviceProfile.java) — cell 計算、workspace/hotseat/folder の grid 定義
+- [InvariantDeviceProfile.java](https://github.com/LawnchairLauncher/lawnchair/blob/505dbc40e6154c05158b5d0271c45f6a885a411b/src/com/android/launcher3/InvariantDeviceProfile.java) — `numRows`, `numColumns`, `numFolderRows`, `numFolderColumns`, `numShownHotseatIcons`
+- [GridOccupancy.java](https://github.com/LawnchairLauncher/lawnchair/blob/505dbc40e6154c05158b5d0271c45f6a885a411b/src/com/android/launcher3/GridOccupancy.java) — `findVacantCell` の走査順序
+- [CellLayout.java](https://github.com/LawnchairLauncher/lawnchair/blob/505dbc40e6154c05158b5d0271c45f6a885a411b/src/com/android/launcher3/CellLayout.java) — `findNearestVacantArea`、`mCountX`/`mCountY`
+- [FolderGridOrganizer.java](https://github.com/LawnchairLauncher/lawnchair/blob/505dbc40e6154c05158b5d0271c45f6a885a411b/src/com/android/launcher3/folder/FolderGridOrganizer.java) — `calculateGridSize`、`getPosForRank`
+- [WorkspaceItemSpaceFinder.java](https://github.com/LawnchairLauncher/lawnchair/blob/505dbc40e6154c05158b5d0271c45f6a885a411b/src/com/android/launcher3/model/WorkspaceItemSpaceFinder.java) — `findSpaceForItem` の page 管理
+- [LauncherSettings.java](https://github.com/LawnchairLauncher/lawnchair/blob/505dbc40e6154c05158b5d0271c45f6a885a411b/src/com/android/launcher3/LauncherSettings.java) — `Favorites` table の container/screen/cell/span 定義
+- [WorkspaceLayoutManager.java](https://github.com/LawnchairLauncher/lawnchair/blob/505dbc40e6154c05158b5d0271c45f6a885a411b/src/com/android/launcher3/WorkspaceLayoutManager.java) — screen ID 管理
+- [device_profiles.xml](https://github.com/LawnchairLauncher/lawnchair/blob/505dbc40e6154c05158b5d0271c45f6a885a411b/lawnchair/res/xml/device_profiles.xml) — grid option の定義
