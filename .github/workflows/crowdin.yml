@@ -1,11 +1,14 @@
 name: Crowdin Synchronization
 
+# Fork policy (Issue #8): manual dispatch only, and the job runs solely on the
+# upstream owner. NunuLauncher never synchronizes with Crowdin automatically.
+
 on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+  pull-requests: read
 
 jobs:
 

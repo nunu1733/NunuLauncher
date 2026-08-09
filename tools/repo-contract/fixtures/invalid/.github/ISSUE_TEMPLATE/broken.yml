@@ -1,0 +1,7 @@
+name: Broken form
+description: A form with a structural YAML error that smoke and full parse catch
+body
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened

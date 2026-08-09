@@ -1,68 +1,101 @@
 name: CI
 
+# Fork-native CI for NunuLauncher.
+#
+# This workflow supersedes the upstream Lawnchair ci.yml for this fork (see
+# Issue #8 for the inventory and keep/disable policy). Differences from upstream:
+#   - The Telegram notification, nightly release, and Crowdin auto-merge jobs
+#     are removed: they require upstream-only secrets and mutate releases, so
+#     they must never run on the fork.
+#   - Only assembleLawnWithQuickstepGithubDebug is built; the nightly/play
+#     variants are deferred to a dedicated release evaluation Issue.
+#   - A validate-repo-contract job runs on every push/PR, including docs-only
+#     changes, so broken internal links and invalid Issue forms fail CI.
+#   - Permissions are declared per-job at least privilege.
+#
+# Upstream sync note: when merging a newer Lawnchair revision, reconcile this
+# file against the upstream ci.yml deliberately rather than overwriting it.
+
 on:
   push:
     branches:
+      - main
       - '*-dev'
-    paths-ignore:
-      - '.idea/**'
-      - '.gitattributes'
-      - '.github/**.json'
-      - '.gitignore'
-      - '.gitmodules'
-      - '**.md'
-      - 'LICENSE'
-      - 'NOTICE'
   pull_request:
-    paths-ignore:
-      - '.idea/**'
-      - '.gitattributes'
-      - '.github/**.json'
-      - '.gitignore'
-      - '.gitmodules'
-      - '**.md'
-      - 'LICENSE'
-      - 'NOTICE'
   workflow_dispatch:
   workflow_call:
 
+# Cancel superseded runs on the same ref so fast PR iteration does not queue
+# redundant builds.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
-  build-debug-apk:
-    strategy:
-      matrix:
-        build-variant: [ assembleLawnWithQuickstepNightlyRelease, assembleLawnWithQuickstepGithubDebug, assembleLawnWithQuickstepPlayDebug ]
+  # Paths filter decides which downstream jobs are worth running. Keeping it in
+  # one job lets every later job gate on a single output and avoids re-evaluating
+  # path globs in each if-condition.
+  changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      source: ${{ steps.filter.outputs.source }}
     steps:
       - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v4.0.3
+        id: filter
         with:
-          submodules: true
-      - uses: actions/setup-java@v5
-        with:
-          distribution: 'zulu'
-          java-version: 21
-      - uses: gradle/actions/setup-gradle@v5
-        with:
-          cache-encryption-key: Da25KUVSE5jbGds2zXmfXw==
-      - name: Write sign info
-        if: github.repository_owner == 'LawnchairLauncher'
-        run: |
-          if [ ! -z "${{ secrets.KEYSTORE }}" ]; then
-            echo storePassword='${{ secrets.KEYSTORE_PASSWORD }}' >> keystore.properties
-            echo keyAlias='${{ secrets.KEY_ALIAS }}' >> keystore.properties
-            echo keyPassword='${{ secrets.KEY_PASSWORD }}' >> keystore.properties
-            echo storeFile='${{ github.workspace }}/key.jks' >> keystore.properties
-            echo ${{ secrets.KEYSTORE }} | base64 --decode > ${{ github.workspace }}/key.jks
-          fi
-      - name: Build APK
-        run: ./gradlew ${{ matrix.build-variant }}
-      - name: Upload artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ matrix.build-variant }}
-          path: build/outputs/apk/**/*.apk
+          # The source filter combines a broad include with exclusions. The
+          # default `some` would let `**` win by itself, so use v4's explicit
+          # include-match-with-no-exclusion predicate.
+          predicate-quantifier: some-with-excludes
+          filters: |
+            source:
+              # Treat every non-documentation/tooling path as source. A broad
+              # include is intentional: Lawnchair has source-bearing modules
+              # outside lawnchair/, quickstep/, and src/.
+              - '**'
+              - '!**/*.md'
+              - '!docs/**'
+              - '!specs/**'
+              - '!.github/**'
+              - '!tools/repo-contract/**'
+              - '!LICENSE*'
+              - '!NOTICE*'
 
-  check-style:
+  # Always run: the repository contract (internal links, Issue forms, required
+  # files) is cheap and must gate every change, including docs-only PRs.
+  validate-repo-contract:
+    needs: changes
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - name: Install PyYAML for full Issue-form parsing
+        run: python -m pip install --disable-pip-version-check --no-input 'PyYAML==6.0.3'
+      - name: Validate repository contracts
+        run: python3 tools/repo-contract/validate_repo_contract.py
+      - name: Validator self-tests
+        run: python3 tools/repo-contract/test_validate_repo_contract.py
+
+  # Source-only: style check. Skipped for docs-only PRs so they do not spin up
+  # a Gradle daemon.
+  check-style:
+    needs: changes
+    if: ${{ needs.changes.outputs.source == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
         with:
@@ -74,60 +107,48 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
       - run: ./gradlew spotlessCheck
 
-  send-notifications:
+  # Source-only: build the GitHub Debug APK. This is the one variant the fork
+  # validates on every source PR; release/nightly variants belong to a future
+  # release-evaluation Issue, not to per-PR CI.
+  build-debug-apk:
+    needs: changes
+    if: ${{ needs.changes.outputs.source == 'true' }}
     runs-on: ubuntu-latest
-    if: github.repository_owner == 'LawnchairLauncher'
-    needs: build-debug-apk
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
         with:
           submodules: true
-          fetch-depth: 0
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-java@v5
         with:
-          python-version: '3.x'
-      - name: Install Python packages
-        run: |
-          python -m pip install --upgrade pip
-          pip install gitpython requests
-      - name: Download artifact
-        uses: actions/download-artifact@v7
+          distribution: 'zulu'
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Build GitHub Debug APK
+        run: ./gradlew assembleLawnWithQuickstepGithubDebug
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
         with:
-          pattern: assembleLawnWith*
-          merge-multiple: true
-          path: artifacts/debug-apk
-      - name: Send notifications
-        run: python ci.py
-        env:
-          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_CI_BOT_TOKEN }}
-          TELEGRAM_CI_CHANNEL_ID: ${{ secrets.TELEGRAM_CI_CHANNEL_ID }}
-          TELEGRAM_TEAM_GROUP_ID: ${{ secrets.NOTIFY_CHANNEL_ID }}
-          ARTIFACT_DIRECTORY: artifacts/debug-apk
-          GITHUB_REF: ${{ github.ref }}
-          ACTION: internal_notifications
+          name: assembleLawnWithQuickstepGithubDebug
+          path: build/outputs/apk/**/*.apk
+          retention-days: 7
 
-  crowdin-auto-merge:
-    runs-on: ubuntu-latest
-    if: github.event.pull_request.user.login == 'lawnchair-bot' && github.event.pull_request.title == 'New Crowdin translations by Github Action'
-    needs: build-debug-apk
-    steps:
-      - env:
-          GH_TOKEN: ${{ secrets.LAWNCHAIR_BOT_TOKEN }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-        run: |
-          gh pr comment $PR_URL --body "No issues found, auto-merging the Crowdin pull request."
-          gh pr merge $PR_URL --auto --squash --delete-branch
-
-  # Status check that is required in branch protection rules.
+  # Required status check: aggregates the jobs above so branch protection has a
+  # single gate. Jobs that were skipped (e.g. style on a docs PR) count as
+  # success; only actual failures fail the gate.
   final-status:
     needs:
-      - build-debug-apk
+      - changes
+      - validate-repo-contract
       - check-style
-    runs-on: ubuntu-slim
+      - build-debug-apk
+    runs-on: ubuntu-latest
     if: always()
+    permissions:
+      contents: read
     steps:
-      - name: Check
+      - name: Check required jobs
         run: |
           results=$(tr -d '\n' <<< '${{ toJSON(needs.*.result) }}')
           if ! grep -q -v -E '(failure|cancelled)' <<< "$results"; then
@@ -135,26 +156,3 @@ jobs:
             exit 1
           fi
           echo "All required jobs completed successfully."
-
-  nightly-release:
-    runs-on: ubuntu-latest
-    if: github.repository_owner == 'LawnchairLauncher' && github.event_name == 'push' && github.ref == 'refs/heads/15-dev'
-    needs: final-status
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v7
-        with:
-          name: assembleLawnWithQuickstepNightlyRelease
-      # Note the # and () symbols are not supported in GitHub Release filenames, even manually
-      - name: Export APK_NAME for later use
-        run: echo "APK_NAME=Lawnchair.Debug.${{ github.ref_name }}.Nightly-CI_${{ github.run_number }}-$(echo ${{ github.sha }} | cut -c1-7).apk" >> $GITHUB_ENV
-      - name: Rename .apk file
-        run: mv "./lawnWithQuickstepNightly/release/"*.apk "./$APK_NAME"
-      - name: Delete release if exist then create release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release view "nightly" && gh release delete "nightly" -y --cleanup-tag
-          gh release create "nightly" "./$APK_NAME" -p -t "Lawnchair Nightly" --generate-notes

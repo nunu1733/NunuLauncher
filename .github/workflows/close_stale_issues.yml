@@ -1,11 +1,24 @@
 name: Close stale issues and PRs
+
+# Fork policy (Issue #8): the upstream schedule trigger is intentionally
+# commented out and NunuLauncher keeps stale management manual. The job retains
+# its configuration so a maintainer can dispatch it explicitly if ever needed,
+# but it will not run on a schedule.
+
 on:
 #  schedule:
 #    - cron: 0 0 * * *
   workflow_dispatch:
+
+permissions:
+  contents: read
+
 jobs:
   stale:
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
     steps:
       - uses: actions/stale@v10
         with:
