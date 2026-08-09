@@ -1,0 +1,59 @@
+name: Bug
+description: Report a reproducible difference between expected and actual behavior
+title: "[Bug]: "
+labels:
+  - "type: bug"
+body:
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: Include the user-visible result and any diagnostic ID or log that is safe to share.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: Link the spec or requirement that defines the expectation.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Use synthetic data where possible. Never attach private home-layout or usage data without redaction.
+      placeholder: |
+        1. Given ...
+        2. When ...
+        3. Then ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: NunuLauncher commit/build, upstream baseline, Android version, device profile, grid, user/profile type.
+    validations:
+      required: true
+  - type: dropdown
+    id: data_safety
+    attributes:
+      label: Layout data impact
+      options:
+        - No persistent layout change
+        - Incorrect but recoverable layout change
+        - Recovery failed or data may be lost
+        - Unknown
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Screenshots, redacted logs, fixture, plan hash, or failing test.
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround or recovery attempted
+      description: State whether recovery was run and its result.

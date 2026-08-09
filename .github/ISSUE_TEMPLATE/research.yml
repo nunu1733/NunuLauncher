@@ -1,0 +1,52 @@
+name: Research or decision
+description: Resolve one bounded product, architecture, or upstream question
+title: "[Research]: "
+labels:
+  - "type: research"
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question to resolve
+      description: Ask one decision-relevant question.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Why it matters now
+      description: Link blocked Issues, requirements, and current evidence.
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options or hypotheses
+      description: List real alternatives without assuming the conclusion.
+  - type: textarea
+    id: method
+    attributes:
+      label: Investigation method
+      description: Source inspection, prototype, fixture, benchmark, device matrix, or primary-source research.
+    validations:
+      required: true
+  - type: textarea
+    id: exit
+    attributes:
+      label: Exit artifact and criteria
+      description: Define the repository document, recommendation, evidence, and downstream updates required to close.
+    validations:
+      required: true
+  - type: input
+    id: decision
+    attributes:
+      label: Decision ID
+      description: For example D-002. Leave blank for technical discovery without a product decision.
+  - type: checkboxes
+    id: adr_check
+    attributes:
+      label: ADR check
+      options:
+        - label: The result is costly to reverse
+        - label: The reason would be surprising from code alone
+        - label: Real trade-offs and alternatives exist
