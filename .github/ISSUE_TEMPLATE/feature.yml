@@ -1,0 +1,85 @@
+name: Feature
+description: Specify and deliver one observable product outcome
+title: "[Feature]: "
+labels:
+  - "type: feature"
+  - "status: needs-spec"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A feature starts with this Issue and uses a repository spec as the behavioral source of truth.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Who is affected, in what situation, and what is difficult today?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: Describe one observable outcome, without prescribing class names.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: List included behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-goals
+      description: State what this Issue intentionally will not deliver.
+    validations:
+      required: true
+  - type: input
+    id: requirements
+    attributes:
+      label: Requirement IDs
+      description: For example FR-005, NFR-001, D-004.
+      placeholder: "FR-___, NFR-___"
+    validations:
+      required: true
+  - type: input
+    id: spec
+    attributes:
+      label: Spec path
+      description: Use specs/<issue-number>-<slug>/spec.md after the Issue number exists.
+      placeholder: "specs/123-short-slug/spec.md"
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Exit criteria
+      description: What evidence allows this Issue to close?
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and blockers
+      description: Link prerequisite Issues and list unresolved decisions.
+  - type: checkboxes
+    id: risks
+    attributes:
+      label: Risk areas
+      options:
+        - label: Layout data or recovery
+        - label: Database or rule migration
+        - label: Privacy, permission, or external network
+        - label: Lawnchair/Launcher3 upstream patch
+        - label: Accessibility or localization
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase
+      options:
+        - foundation
+        - mvp
+        - later
+    validations:
+      required: true

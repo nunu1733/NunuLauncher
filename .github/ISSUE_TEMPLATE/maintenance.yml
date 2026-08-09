@@ -1,0 +1,45 @@
+name: Documentation or maintenance
+description: Make a bounded non-feature change
+title: "[Maintenance]: "
+labels:
+  - "type: maintenance"
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Change type
+      options:
+        - Documentation
+        - Tooling or CI
+        - Dependency maintenance
+        - Repository housekeeping
+    validations:
+      required: true
+  - type: textarea
+    id: need
+    attributes:
+      label: Why this change is needed
+      description: Identify the current problem, stale source, or maintenance risk.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and non-goals
+      description: Define the bounded change and confirm that product behavior is not being changed.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Completion evidence
+      description: List syntax checks, link checks, build/test commands, or review evidence.
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Feature check
+      options:
+        - label: This Issue does not change observable product behavior; otherwise use the Feature form and create a spec.
+          required: true

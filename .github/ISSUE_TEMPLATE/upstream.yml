@@ -1,0 +1,54 @@
+name: Upstream integration
+description: Pin, audit, or synchronize Lawnchair upstream changes
+title: "[Upstream]: "
+labels:
+  - "type: upstream"
+body:
+  - type: textarea
+    id: range
+    attributes:
+      label: Upstream baseline or range
+      description: Record exact repository, branch/tag where relevant, and immutable commit SHA(s).
+      placeholder: "Lawnchair 505dbc4..abcdef0"
+    validations:
+      required: true
+  - type: textarea
+    id: purpose
+    attributes:
+      label: Purpose
+      description: Explain why this pin, audit, or synchronization is needed now.
+    validations:
+      required: true
+  - type: textarea
+    id: affected
+    attributes:
+      label: Sensitive upstream areas
+      description: Note changes to model events, schema, backup/restore, Deck layout, build toolchain, permissions, or UI integration.
+    validations:
+      required: true
+  - type: textarea
+    id: conflicts
+    attributes:
+      label: NunuLauncher patch conflicts
+      description: List project patches that may be replaced, adapted, or removed.
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification matrix
+      description: List build, upstream tests, planner/application contracts, migration, backup/restore, and device smoke tests.
+    validations:
+      required: true
+  - type: textarea
+    id: rollback
+    attributes:
+      label: Rollback plan
+      description: State how the repository and user data return to the prior supported baseline.
+    validations:
+      required: true
+  - type: textarea
+    id: exit
+    attributes:
+      label: Exit criteria
+      description: Define the evidence and documentation updates required to close this Issue.
+    validations:
+      required: true
