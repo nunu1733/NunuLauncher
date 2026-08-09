@@ -2,7 +2,7 @@
 
 > Status: Proposed
 > Updated: 2026-08-09
-> Scope: Lawnchair source import前の目標設計。正確なsource pathとplatform seamは基準commit導入後に再検証する。
+> Scope: 目標設計。baselineは `v15.0.0-beta3.0` のcommit `505dbc40e6154c05158b5d0271c45f6a885a411b` に固定済み。正確なsource pathとplatform seamはDeck layoutの評価と関連decisionで確定する。
 
 ## 1. Design goals
 
@@ -20,10 +20,10 @@
 - `app.lawnchair.deck.LawndeckManager` と `AddFoldersWithItemsTask` が既に存在し、全アプリのfolder分類、layout切替時のDB複製、新規アプリのfolder追加を行う。
 - package追加は `ModelLauncherCallbacks.onPackageAdded` から `PackageUpdatedTask(OP_ADD)` へ渡る。初期案の `PackageInstalledTask` というhook pointは15系に存在しない。
 - Lawnchairの手動バックアップはXMLではない。DB・設定・Protobuf metadata等を含むZIPである。
+- NunuLauncherは [Lawnchairのfork](https://github.com/nunu1733/NunuLauncher) であり、`main` のproduct baselineは `v15.0.0-beta3.0` のcommit `505dbc40e6154c05158b5d0271c45f6a885a411b` である。
 
 ### Not yet confirmed
 
-- 採用する正確なLawnchair revisionと、NunuLauncher用forkの履歴。
 - 既存Deck layoutを置換、refactor、または段階的に拡張するか。
 - 対象集合、ロックの伝播、trigger、配置戦略、rule file形式。
 - 15系から16系へ追従する時期と互換方針。
@@ -185,11 +185,10 @@ package数をこの図に合わせること自体を目的にしない。interfa
 
 実装を開始する前に、少なくとも次をIssueで解決する。
 
-1. forkと基準commit
-2. 既存Deck layoutのreuse/refactor/replace
-3. 対象集合と既存itemの保持規則
-4. trigger、確認、recoveryのUX
-5. lock対象とfolder内への伝播
-6. grid非依存の配置policy v1
-7. category taxonomyと分類source
-8. 整理ルールのfile formatとversioning
+1. 既存Deck layoutのreuse/refactor/replace
+2. 対象集合と既存itemの保持規則
+3. trigger、確認、recoveryのUX
+4. lock対象とfolder内への伝播
+5. grid非依存の配置policy v1
+6. category taxonomyと分類source
+7. 整理ルールのfile formatとversioning
