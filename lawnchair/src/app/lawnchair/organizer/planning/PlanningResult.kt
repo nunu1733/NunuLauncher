@@ -55,6 +55,7 @@ enum class PreserveReason {
     LEGACY_SHORTCUT,
     NON_TARGET,
     STRUCTURAL,
+    ALREADY_CANONICAL,
 }
 
 sealed interface PlacementTarget {
