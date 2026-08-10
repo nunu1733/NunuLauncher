@@ -1,9 +1,11 @@
 package app.lawnchair.organizer.planning.harness
 
 import app.lawnchair.organizer.planning.AppPairId
+import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.CapturedItem
 import app.lawnchair.organizer.planning.CapturedPlacement
 import app.lawnchair.organizer.planning.Disposition
+import app.lawnchair.organizer.planning.ExistingRole
 import app.lawnchair.organizer.planning.FolderId
 import app.lawnchair.organizer.planning.FolderRef
 import app.lawnchair.organizer.planning.GridCell
@@ -21,6 +23,7 @@ import app.lawnchair.organizer.planning.PlacementTarget
 import app.lawnchair.organizer.planning.Planned
 import app.lawnchair.organizer.planning.PlannedPlacement
 import app.lawnchair.organizer.planning.PlanningResult
+import app.lawnchair.organizer.planning.PreserveReason
 import app.lawnchair.organizer.planning.Rejected
 import app.lawnchair.organizer.planning.Warning
 
@@ -403,9 +406,43 @@ internal object Oracle {
         }
         val planned = replan.outcome as? Planned
             ?: return echoFindings + finding(ContractCheck.IDEMPOTENCE, FindingSubject.None, "Materialized full result replanned as a rejected outcome")
+        val capturedById = input.snapshot.items.associateBy { it.id }
+        val rolesById = input.targets.existing.associate { it.item to it.role }
+        val placementsById = planned.placements.groupBy { it.item }
+
+        fun expectedReason(item: CapturedItem): PreserveReason = when {
+            item.locked -> PreserveReason.LOCKED
+            item.availability != Availability.AVAILABLE -> PreserveReason.UNAVAILABLE_TARGET
+            item.placement is CapturedPlacement.Dock -> PreserveReason.DOCK
+            item.kind == ItemKind.APPWIDGET || item.kind == ItemKind.CUSTOM_APPWIDGET -> PreserveReason.WIDGET
+            item.kind == ItemKind.APP_PAIR || item.placement is CapturedPlacement.AppPairMember -> PreserveReason.APP_PAIR
+            item.kind == ItemKind.SHORTCUT_LEGACY -> PreserveReason.LEGACY_SHORTCUT
+            rolesById[item.id] == ExistingRole.Preserved -> PreserveReason.NON_TARGET
+            item.placement is CapturedPlacement.FolderMember -> PreserveReason.STRUCTURAL
+            else -> PreserveReason.ALREADY_CANONICAL
+        }
+
         return echoFindings + buildList {
-            planned.placements.filter { it.disposition is Disposition.Moved }.forEach {
-                add(finding(ContractCheck.IDEMPOTENCE, FindingSubject.Item(it.item), "Replan moved an item"))
+            input.snapshot.items.forEach { captured ->
+                val matches = placementsById[captured.id].orEmpty()
+                if (matches.size != 1) {
+                    add(finding(ContractCheck.IDEMPOTENCE, FindingSubject.Item(captured.id), "Replan must return exactly one placement for each materialized item"))
+                    return@forEach
+                }
+                val placement = matches.single()
+                if (placement.disposition is Disposition.Moved) {
+                    add(finding(ContractCheck.IDEMPOTENCE, FindingSubject.Item(placement.item), "Replan moved an item"))
+                }
+                if (captured.placement.toOutputTarget() != placement.target) {
+                    add(finding(ContractCheck.IDEMPOTENCE, FindingSubject.Item(placement.item), "Replan changed an item target"))
+                }
+                val expected = expectedReason(captured)
+                if (placement.disposition != Disposition.Preserved(expected)) {
+                    add(finding(ContractCheck.IDEMPOTENCE, FindingSubject.Item(placement.item), "Replan item did not use expected preserve reason $expected"))
+                }
+            }
+            planned.placements.filter { it.item !in capturedById }.forEach {
+                add(finding(ContractCheck.IDEMPOTENCE, FindingSubject.Item(it.item), "Replan returned an unknown item"))
             }
             planned.newPages.forEach {
                 add(finding(ContractCheck.IDEMPOTENCE, FindingSubject.NewPage(it.ordinal), "Replan created a page"))

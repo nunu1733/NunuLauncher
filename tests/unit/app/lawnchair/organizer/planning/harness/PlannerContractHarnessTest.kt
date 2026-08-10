@@ -1332,7 +1332,7 @@ class PlannerContractHarnessTest {
         val materialized = (PostPlanMaterializer.materialize(input, first.outcome as Planned) as MaterializationResult.Success).input
         val replan = plannedResult(
             placements = listOf(
-                PlannedPlacement(itemA.id, Disposition.Preserved(PreserveReason.NON_TARGET), workspaceTarget()),
+                PlannedPlacement(itemA.id, Disposition.Preserved(PreserveReason.ALREADY_CANONICAL), workspaceTarget()),
             ),
         ).copy(revision = materialized.snapshot.revision)
         val planner = ScriptedPlanner(mapOf(input to listOf(first), materialized to listOf(replan)))
@@ -1345,6 +1345,88 @@ class PlannerContractHarnessTest {
             ),
         )
         assertTrue(report.isSuccess)
+    }
+
+    @Test
+    fun idempotenceRejectsNonTargetReasonForCanonicalMovableItem() {
+        val input = minimalInput(items = listOf(itemA))
+        val first = plannedResult(
+            placements = listOf(
+                PlannedPlacement(itemA.id, Disposition.Moved(PlacementCode.SINGLE_PLACEMENT), workspaceTarget()),
+            ),
+        )
+        val materialized = (PostPlanMaterializer.materialize(input, first.outcome as Planned) as MaterializationResult.Success).input
+        val replan = plannedResult(
+            placements = listOf(
+                PlannedPlacement(itemA.id, Disposition.Preserved(PreserveReason.NON_TARGET), workspaceTarget()),
+            ),
+        ).copy(revision = materialized.snapshot.revision)
+        val planner = ScriptedPlanner(mapOf(input to listOf(first), materialized to listOf(replan)))
+        val report = PlannerContractHarness(planner).verify(
+            PlannerFixture(
+                FixtureId("idempotence-wrong-reason"),
+                input,
+                FixtureExpectation(ExpectedOutcome.Planned()),
+                setOf(ContractCheck.IDEMPOTENCE),
+            ),
+        )
+        assertTrue(report.violations.any { it.message.contains("ALREADY_CANONICAL") })
+    }
+
+    @Test
+    fun idempotenceRejectsAlreadyCanonicalReasonWhenLockedReasonHasPrecedence() {
+        val locked = itemA.copy(locked = true)
+        val input = minimalInput(items = listOf(locked))
+        val first = plannedResult(
+            placements = listOf(
+                PlannedPlacement(locked.id, Disposition.Preserved(PreserveReason.LOCKED), workspaceTarget()),
+            ),
+        )
+        val materialized = (PostPlanMaterializer.materialize(input, first.outcome as Planned) as MaterializationResult.Success).input
+        val replan = plannedResult(
+            placements = listOf(
+                PlannedPlacement(locked.id, Disposition.Preserved(PreserveReason.ALREADY_CANONICAL), workspaceTarget()),
+            ),
+        ).copy(revision = materialized.snapshot.revision)
+        val planner = ScriptedPlanner(mapOf(input to listOf(first), materialized to listOf(replan)))
+        val report = PlannerContractHarness(planner).verify(
+            PlannerFixture(
+                FixtureId("idempotence-higher-reason"),
+                input,
+                FixtureExpectation(ExpectedOutcome.Planned()),
+                setOf(ContractCheck.IDEMPOTENCE),
+            ),
+        )
+        assertTrue(report.violations.any { it.message.contains("LOCKED") })
+    }
+
+    @Test
+    fun idempotenceRejectsMissingAndDuplicatePlacements() {
+        val itemB = itemA.copy(
+            id = ItemId("app.b"),
+            target = TargetKey.AppKey(ComponentKey("com.example.b"), p0),
+            placement = CapturedPlacement.Workspace(PageRef(PageId("p0")), GridCell(1, 0), GridSpan(1, 1)),
+        )
+        val input = minimalInput(items = listOf(itemA, itemB))
+        val first = plannedResult(
+            placements = listOf(
+                PlannedPlacement(itemA.id, Disposition.Moved(PlacementCode.SINGLE_PLACEMENT), workspaceTarget()),
+                PlannedPlacement(itemB.id, Disposition.Moved(PlacementCode.SINGLE_PLACEMENT), workspaceTarget(cell = GridCell(1, 0))),
+            ),
+        )
+        val materialized = (PostPlanMaterializer.materialize(input, first.outcome as Planned) as MaterializationResult.Success).input
+        val duplicate = PlannedPlacement(itemA.id, Disposition.Preserved(PreserveReason.ALREADY_CANONICAL), workspaceTarget())
+        val replan = plannedResult(placements = listOf(duplicate, duplicate)).copy(revision = materialized.snapshot.revision)
+        val planner = ScriptedPlanner(mapOf(input to listOf(first), materialized to listOf(replan)))
+        val report = PlannerContractHarness(planner).verify(
+            PlannerFixture(
+                FixtureId("idempotence-cardinality"),
+                input,
+                FixtureExpectation(ExpectedOutcome.Planned()),
+                setOf(ContractCheck.IDEMPOTENCE),
+            ),
+        )
+        assertEquals(2, report.violations.count { it.message.contains("exactly one placement") })
     }
 
     @Test
