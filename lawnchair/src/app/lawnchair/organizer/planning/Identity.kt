@@ -128,12 +128,36 @@ data class AppWidgetId(val value: Int) : Comparable<AppWidgetId> {
     override fun compareTo(other: AppWidgetId): Int = value.compareTo(other.value)
 }
 
-data class PageOrder(val value: Int) : Comparable<PageOrder> {
+data class PageOrder(val value: String) : Comparable<PageOrder> {
     init {
-        require(value >= 0)
+        require(value.isNotEmpty())
+        require(value.all { it in '0'..'9' })
+        require(value == "0" || value.first() != '0')
     }
 
-    override fun compareTo(other: PageOrder): Int = value.compareTo(other.value)
+    constructor(value: Int) : this(value.toString())
+
+    override fun compareTo(other: PageOrder): Int = value.length.compareTo(other.value.length).takeIf { it != 0 }
+        ?: value.compareTo(other.value)
+
+    operator fun plus(increment: Int): PageOrder {
+        require(increment >= 0)
+        if (increment == 0) return this
+
+        var sourceIndex = value.lastIndex
+        var remainingIncrement = increment
+        var carry = 0
+        val reversed = StringBuilder(maxOf(value.length, increment.toString().length) + 1)
+        while (sourceIndex >= 0 || remainingIncrement > 0 || carry > 0) {
+            val sourceDigit = if (sourceIndex >= 0) value[sourceIndex--] - '0' else 0
+            val incrementDigit = remainingIncrement % 10
+            remainingIncrement /= 10
+            val sum = sourceDigit + incrementDigit + carry
+            reversed.append(('0'.code + (sum % 10)).toChar())
+            carry = sum / 10
+        }
+        return PageOrder(reversed.reverse().toString())
+    }
 }
 
 data class NewPageOrdinal(val value: Int) : Comparable<NewPageOrdinal> {

@@ -91,7 +91,7 @@ programming identifiers, not domain vocabulary:
 | `ItemId` | non-empty `String` | `ItemInfo`, DB `_id` |
 | `ProfileId` | non-empty `String` | `UserHandle`, raw serial |
 | `PageId` | non-empty `String` | persistent screen ID |
-| `PageOrder` | non-negative `Int` | screen ID |
+| `PageOrder` | canonical non-negative decimal `String`; `Int` convenience constructor | screen ID |
 | `NewPageOrdinal` | non-negative `Int` | persistent screen ID |
 | `FolderId` | non-empty `String` | `FolderInfo`, DB `_id` |
 | `NewFolderOrdinal` | non-negative `Int` | persistent `_id` |
@@ -103,12 +103,15 @@ programming identifiers, not domain vocabulary:
 | `ComponentKey` / `PackageName` / `ShortcutId` | non-empty `String` | Android `ComponentName` or package object |
 | `AppWidgetId` | `Int` | `AppWidgetProviderInfo` |
 
-Every text-backed handle has a public constructor taking its backing `String`,
+Every text-backed opaque handle has a public constructor taking its backing `String`,
 uses exact value equality, and performs no Unicode normalization, case folding,
 or locale transform. Its canonical order is unsigned lexicographic comparison
 of the exact UTF-8 bytes; when one byte sequence is a prefix, the shorter sorts
-first. Integer codes use signed numeric order. `PageOrder` and plan-local
-ordinals use natural non-negative numeric order and reject negative construction.
+first. Integer codes use signed numeric order. `PageOrder` accepts a canonical
+unsigned decimal string of arbitrary length or a non-negative `Int`, compares by
+numeric value, and supports overflow-free addition of a non-negative `Int`.
+Leading zeros, signs, whitespace, and empty text are rejected. Plan-local
+ordinals use natural non-negative `Int` order and reject negative construction.
 Captured (`PageId`, `FolderId`, `AppPairId`) and plan-created
 (`NewPageOrdinal`, `NewFolderOrdinal`) identities are distinct public types.
 
@@ -909,6 +912,8 @@ Issue #10 uses a small representative suite, not the downstream harness:
 
 ## Change history
 
+- 2026-08-10: Issue #33 makes `PageOrder` an unbounded canonical decimal
+  domain value so a new page after any captured order remains constructible.
 - 2026-08-10: Issue #31 adds the lowest-priority
   `ALREADY_CANONICAL` preservation reason so an idempotent full replan can
   represent an unchanged `ExistingRole.Movable` item without misusing
