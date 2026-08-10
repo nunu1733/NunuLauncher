@@ -301,7 +301,7 @@ by V-21.
 | Evidence | Exact adopted result |
 |---|---|
 | L-13, portrait 4×5 | Preserve widget spans `(0,0,2×2)` and `(0,2,4×1)`, locked `(3,4)`, and Dock ranks 0/1. Place ten singletons at `(2,0),(3,0),(2,1),(3,1),(0,3),(1,3),(2,3),(3,3),(0,4),(1,4)` on the captured page; no new page. |
-| L-14, landscape 4×3 | Preserve widget `(0,0,2×2)`, locked `(3,2)`, and Dock ranks 0/1. Place the first six singletons at `(2,0),(3,0),(2,1),(3,1),(0,2),(1,2)` on the captured page. Put the remaining four at `(0,0),(1,0),(2,0),(3,0)` on `NewPageOrdinal(0)`. |
+| L-14, landscape 4×3 | Preserve widget `(0,0,2×2)`, locked `(3,2)`, and Dock ranks 0/1. Place the first seven singletons at `(2,0),(3,0),(2,1),(3,1),(0,2),(1,2),(2,2)` on the captured page. Put the remaining three at `(0,0),(1,0),(2,0)` on `NewPageOrdinal(0)`. |
 | L-15, tablet 6×5 | Preserve Dock ranks 0–3 and place 20 singletons in the first 20 row-major cells of the captured page; ten cells remain free and no page is added. |
 | L-16, folders | Three members of the first `(ProfileId, CategoryId)` group form folder 0, five members of the second form folder 1, and seven fallback items remain singletons. Place folders at `(0,0),(1,0)` and the singletons at `(2,0),(3,0),(0,1),(1,1),(2,1),(3,1),(0,2)` on the captured 4×5 page. |
 | L-17, widget + lock | Preserve widget `(0,0,3×2)`, locked `(4,4)`, and Dock ranks 0–2. Place eight singletons at `(3,0),(4,0),(3,1),(4,1),(0,2),(1,2),(2,2),(3,2)` on the captured 5×5 page. |
