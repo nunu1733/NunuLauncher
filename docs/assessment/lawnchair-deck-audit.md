@@ -6,6 +6,9 @@
 > Baseline: Lawnchair `v15.0.0-beta3.0` / commit `505dbc40e6154c05158b5d0271c45f6a885a411b`（audit開始時のNunuLauncher `main` は `40e437943c5de7f4d35f9baf4823efc294cb0530`。product sourceはbaselineと同一）
 > Requirements: FR-001, FR-004, FR-005, NFR-001, NFR-002, NFR-010
 > Decisions: D-001（基準revision）, D-002（Deck layoutの扱い）
+> Resolution: D-002 was subsequently accepted as **replace** by
+> [ADR-0002](../adr/0002-replace-deck-layout.md); statements below that call it
+> pending describe the audit-time state.
 
 ## 1. Question and scope
 

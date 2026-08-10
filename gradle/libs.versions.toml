@@ -13,6 +13,7 @@ dagger = "2.59"
 libsu = "6.0.0"
 refine = "4.4.0"
 exifinterface = "1.3.6"
+junit4 = "4.13.2"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -124,6 +125,7 @@ xdrop-fuzzywuzzy = "me.xdrop:fuzzywuzzy:1.4.0"
 errorprone-annotations = "com.google.errorprone:error_prone_annotations:2.46.0"
 composeRules = "io.nlopez.compose.rules:ktlint:0.5.3"
 androidx-exifinterface = { group = "androidx.exifinterface", name = "exifinterface", version.ref = "exifinterface" }
+junit4 = { module = "junit:junit", version.ref = "junit4" }
 
 [bundles]
 accompanist = ["accompanist-adaptive", "accompanist-drawablepainter", "accompanist-permissions"]
