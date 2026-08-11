@@ -221,9 +221,9 @@ Evidence: `LauncherSettings.java:303`, `LoaderCursor.java:171-177`,
 ## 4. D-006: locked placement behavior
 
 This proposal treats a lock as a placement constraint, not merely an item flag.
-Its persistence/ownership and migration decision is tracked by
-[Issue #23](https://github.com/nunu1733/NunuLauncher/issues/23). Until that
-issue is accepted, this section defines behavior only, not storage.
+[ADR-0004](../adr/0004-organizer-lock-persistence.md) owns its persistence and
+migration decision. If lock truth is unknown or unreadable, organization fails
+closed until the user reviews it; absence is never interpreted as unlocked.
 
 | Case | Required behavior |
 |---|---|

@@ -160,7 +160,9 @@ profile identity change を含む plan は reject であり書き込まない。
 overwrite/replacement、lock change は generic confirmation で承認されない。これらは
 accepted owner policy による explicitly eligible plan action、item-level reason/effect
 preview、必要な separate confirmation を全て満たす場合だけ可能であり、それ以外は
-reject/no write とする。lock persistence は [Issue #23](https://github.com/nunu1733/NunuLauncher/issues/23)、
+reject/no write とする。lock persistence は
+[ADR-0004](../adr/0004-organizer-lock-persistence.md)、lock authoring/reviewは
+[Issue #38](https://github.com/nunu1733/NunuLauncher/issues/38)に従う。
 empty-folder deletion は [Issue #24](https://github.com/nunu1733/NunuLauncher/issues/24)
 の decision を待つ。
 

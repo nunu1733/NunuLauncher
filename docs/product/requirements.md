@@ -60,7 +60,7 @@
 | D-003 | 対象集合 | defaultで既存home itemを保持し、drawer全アプリ追加は明示的modeに分ける | FR-002, planner |
 | D-004 | trigger | 手動、onboarding提案、新規app増分を別policyにする | FR-006〜009 |
 | D-005 | safe UX | recoveryをFoundation、preview/confirmationをMVPに置く | apply/UI |
-| D-006 | lock semantics | itemではなくplacement constraintとして定義し、folder/Dock/grid変更を明記 | FR-003 |
+| D-006 | lock semantics | itemではなくplacement constraintとして定義し、folder/Dock/grid変更を明記。storageは[ADR-0004](../adr/0004-organizer-lock-persistence.md)で決定。 | FR-003 |
 | D-007 | layout strategy v1 | fixed rowではなくdevice profileからregionを導出する | planner |
 | D-008 | category taxonomy | Android categoryをsignalの1つとし、project taxonomyを独立定義する | FR-010〜011 |
 | D-009 | rule format | typed model/version/migrationを先に決め、XML/JSONは比較後に選ぶ | FR-012 |
