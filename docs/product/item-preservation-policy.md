@@ -1,6 +1,7 @@
 # Item Preservation Policy
 
-> Status: Proposed (research output of Issue #3; open follow-ups: [Issue #24](https://github.com/nunu1733/NunuLauncher/issues/24) empty-folder policy, [ADR-0004](../adr/0004-organizer-lock-persistence.md) lock storage)
+> Status: Proposed (research output of Issue #3)
+> Related: [Issue #24](https://github.com/nunu1733/NunuLauncher/issues/24) empty-folder policy, [ADR-0004](../adr/0004-organizer-lock-persistence.md) lock storage
 > Reviewed: 2026-08-09
 > Baseline: Lawnchair `v15.0.0-beta3.0` / commit `505dbc40e6154c05158b5d0271c45f6a885a411b`
 > Requirements: FR-002, FR-003, FR-008, NFR-002, NFR-007, NFR-012
