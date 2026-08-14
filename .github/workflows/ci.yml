@@ -134,6 +134,39 @@ jobs:
           path: build/outputs/apk/**/*.apk
           retention-days: 7
 
+  # Source-only: run the organizer JVM unit/contract/property suite. This is
+  # the same supported test surface as local development (see PRs #36/#47 and
+  # docs/engineering/quality-strategy.md); no separate test seam exists here.
+  # The --tests filter covers app.lawnchair.organizer.planning.* and the pure
+  # application tests, so new tests under that package tree join this gate
+  # automatically. Instrumentation tests are out of scope (Issue #14 tracks
+  # them).
+  organizer-unit-tests:
+    needs: changes
+    if: ${{ needs.changes.outputs.source == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Run organizer unit tests
+        run: ./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: organizer-unit-test-reports
+          path: build/reports/tests/**/classes/**
+          retention-days: 7
+          if-no-files-found: ignore
+
   # Required status check: aggregates the jobs above so branch protection has a
   # single gate. Jobs that were skipped (e.g. style on a docs PR) count as
   # success; only actual failures fail the gate.
@@ -142,6 +175,7 @@ jobs:
       - changes
       - validate-repo-contract
       - check-style
+      - organizer-unit-tests
       - build-debug-apk
     runs-on: ubuntu-latest
     if: always()
