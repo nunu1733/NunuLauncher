@@ -1,7 +1,7 @@
 # NunuLauncher System Design
 
 > Status: Proposed
-> Updated: 2026-08-14
+> Updated: 2026-08-15
 > Scope: 目標設計。baselineは `v15.0.0-beta3.0` のcommit `505dbc40e6154c05158b5d0271c45f6a885a411b` に固定済み。Deck layoutは[ADR-0002](./docs/adr/0002-replace-deck-layout.md)でreplaceを採用した。正確なplatform seamは関連Issueで確定する。
 
 ## 1. Design goals
@@ -94,6 +94,10 @@ Lawnchair/Launcher3のeventとmodelをproject固有moduleへ接続するadapter�
 
 15系の調査対象は、既存 `app.lawnchair.deck`、`ModelLauncherCallbacks`、`PackageUpdatedTask`、`ModelWriter`、`ModelDbController`、backup/restore実装である。既存Deck layoutと競合する二重hookは作らない。
 
+### 4.5 Organizer Diagnostics module
+
+organizer runのphase遷移を、個人情報を含まないtyped recordとしてapp-privateなjournalへ追記するmoduleである。journal、logcat出力、userが開始するexportの3つだけをsinkとして公開し、network transportは持たない。field集合、redaction、retention、export、logcatの契約は [docs/engineering/organizer-diagnostics.md](./docs/engineering/organizer-diagnostics.md) を正本とする。
+
 ## 5. Core invariants
 
 planと適用結果は以下を常に満たす。
@@ -138,6 +142,7 @@ stateDiagram-v2
 - lock stateは各Launcher layout DBの`favorites`行が専用のtri-state columnで所有する。transaction、backup/restore、schema migration、grid migration、未知状態のfail-closed規則は[ADR-0004](./docs/adr/0004-organizer-lock-persistence.md)を正本とする。
 - planはrevisionを持つ一時artifactであり、古いsnapshotへ適用できない。
 - recovery pointは一般的なexport backupと分け、アプリ内で原子的に復旧できる。storageは[ADR-0003](./docs/adr/0003-organizer-recovery-point-storage.md)で決定済みである。
+- organizer runのdiagnostic record（run journal）はapp-privateかつlocal-onlyであり、backup対象外とする。契約の正本は [docs/engineering/organizer-diagnostics.md](./docs/engineering/organizer-diagnostics.md) である。
 
 ## 8. Error model
 
@@ -162,6 +167,7 @@ signalがないことは原則として失敗ではない。頻度情報がな�
 lawnchair/src/app/lawnchair/organizer/
 ├── planning/       # pure domain model and planning implementation
 ├── application/    # validated plan application and recovery
+├── diagnostics/    # privacy-safe run journal, logcat, and export
 ├── rules/          # typed rules, validation, migration and file I/O
 ├── integration/    # Lawnchair/Launcher3 adapters and triggers
 └── ui/             # preview, confirmation, result and recovery UI

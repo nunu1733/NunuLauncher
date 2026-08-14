@@ -215,8 +215,10 @@ current phase and safe cancel semantics.
 ## 7. Privacy-safe diagnostic summary
 
 NFR-011 events contain only privacy-safe run ID, trigger, phase transition,
-outcome/error category, summary counts, and recovery result. Issue #16 owns
-typed fields, redaction, local retention, export, and logcat behavior.
+outcome/error category, summary counts, and recovery result. Typed fields,
+redaction, local retention, export, and logcat behavior are owned by
+[organizer-diagnostics](../engineering/organizer-diagnostics.md)
+([Issue #16](https://github.com/nunu1733/NunuLauncher/issues/16)).
 
 | Field | Allowed | Not recorded by default |
 |---|---|---|
