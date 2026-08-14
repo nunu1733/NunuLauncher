@@ -7,7 +7,7 @@
 - PR: https://github.com/nunu1733/NunuLauncher/pull/<PR number>
 - Head SHA: <auditが対象とする40桁commit>
 - CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/<run id>
-- Criteria: <specs/<n>-<slug>/spec.md または docs/adr/*.md への参照と要件ID>
+- Criteria: <specs/<n>-<slug>/spec.md または docs/adr/*.md への参照と要件ID（例: FR-1、NFR-2、ADR-0003）>
 
 ## Scope
 

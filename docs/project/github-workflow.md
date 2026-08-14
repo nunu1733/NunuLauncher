@@ -113,16 +113,20 @@ PRが次のいずれかに当たる場合に適用する。`high-risk-gate` work
    - `Head SHA`: auditが対象とする40桁commit。
    - `CI run`: そのcommit上で成功したCI workflow runへのlink。
    - `Criteria`: 対象spec (`specs/<n>-<slug>/spec.md`) またはADR (`docs/adr/*.md`) の受入条件への参照と要件ID。
-   - 本文に、対象diffのscope、受入条件ごとの確認結果、実行したtest表面（正確なcommand）、findingsを残す。
+   - 本文に、対象diffのscope、受入条件ごとの確認結果、実行したtest表面（正確なcommand）、findingsを残す。これらのsectionはgateが存在・非空・commandの存在を機械検証する。
 
 ### gateの機械検証と非バイパス性
 
 `.github/workflows/high-risk-gate.yml` が `tools/repo-contract/validate_high_risk_evidence.py` を使って次を検証する。1つでも満たさない場合、`High-risk gate / high-risk-evidence` checkが赤くなる。
 
 - PRが高リスクでない場合は即座にpassする（低リスクPRへの追加負担は数秒のjobのみ）。
-- audit記録が `docs/assessment/pr-<PR番号>-<slug>.md` に存在し、同名の競合記録がなく、必須fieldを満たすこと。
+- audit記録が `docs/assessment/pr-<PR番号>-<slug>.md` に存在し、同名の競合記録がなく、必須field（Auditor、Audit date、Head SHA、CI run、Criteria）を満たすこと。
+- Criteriaがspec (`specs/<n>-<slug>/spec.md`) またはADR (`docs/adr/*.md`) への参照と要件ID（FR-x / NFR-x / AC-x / ADR-xxxx）を含むこと。
+- 必須section（Scope、Criteria check、Executed test surface、Findings）が存在し、空でないこと。Executed test surfaceには具体的なcommand（`./gradlew`、`python3` 等）を含むこと。「test通過」だけの記載では通らない。
 - `Head SHA` がPR履歴内に存在すること。PR headと一致するか、それ以降の変更が `docs/` 配下のみであること。audit確定後にコードを変えた場合は再auditが必要になる。
 - 参照されたCI runがGitHub APIで照合され、このrepositoryの当該commit上で `ci.yml` が成功完了していること。
+
+高リスクpath一覧は本節の適用条件と `validate_high_risk_evidence.py` とで一致させる。同一覧の整合性はself-test（`DocConsistencyTests`）が検証するため、片方だけを更新するとCIがfailする。
 
 よって、PR本文に「test通過・review済み」と記載を追加するだけではこのgateを満たせない。実装PR本体をどう編集しても、成功したCI runという外部記録と、形式を満たしたaudit fileの両方が必要である。
 
@@ -134,7 +138,7 @@ PRが次のいずれかに当たる場合に適用する。`high-risk-gate` work
 
 ### 既存の高リスクIssueへの適用
 
-- #38、#52、#55 はいずれも `risk: layout-data` を持つ。実装PRはこのgateを通る。auditの `Criteria` には各Issueのaccepted specの受入条件を要件ID付きで参照する。#55 は `risk: privacy` も併せて明記する。
+- #38、#52、#55、#57 はいずれもrisk label（`risk: layout-data`、#57は `risk: migration` も）を持つ。実装PRはこのgateを通る。auditの `Criteria` には各Issueのaccepted spec・ADRの受入条件を要件ID（FR-x / NFR-x / ADR-xxxx）付きで参照する。#55 は `risk: privacy` も併せて明記する。
 - このgateは #41 のorganizer CI gateの上に作られている。test seamを増やさず、CI runの実行結果そのものを証拠として再利用する。
 
 ### 動作実証（Issue #43受入、2026-08-14）

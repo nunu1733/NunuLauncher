@@ -72,13 +72,26 @@ _AUDIT_DATE_RE = re.compile(
 _HEAD_SHA_RE = re.compile(
     _FIELD_PREFIX + r"Head SHA:\s*([0-9a-f]{40})\s*$", re.MULTILINE
 )
-_CI_RUN_LINE_RE = re.compile(
-    _FIELD_PREFIX + r"CI run:\s*(.+)$", re.MULTILINE
-)
+_CI_RUN_LINE_RE = re.compile(_FIELD_PREFIX + r"CI run:\s*(.+)$", re.MULTILINE)
 _RUN_URL_RE = re.compile(
     r"^https?://github\.com/([^/]+)/([^/]+)/actions/runs/(\d+)/?"
 )
 _CRITERIA_RE = re.compile(r"(specs/[\w.-]+/spec\.md|docs/adr/[\w.-]+\.md)")
+# Requirement identifiers used by specs and ADRs (FR-1, NFR-2, AC-3, ADR-0004).
+_REQUIREMENT_ID_RE = re.compile(r"\b(?:FR|NFR|AC)-\d+\b|\bADR-\d{4}\b")
+# A concrete executed command: a gradle/python/gh/adb/git invocation, so prose
+# like "tests pass" cannot satisfy the executed-test-surface requirement.
+_COMMAND_LINE_RE = re.compile(r"(?:\./gradlew|\bpython3\b|\bgh \b|\badb \b|\bgit )")
+
+# Required, non-empty sections. These make the audit an audit rather than a
+# five-line form: what was reviewed, per-criteria results, the exact executed
+# commands, and what was found.
+_REQUIRED_SECTIONS: Tuple[str, ...] = (
+    "Scope",
+    "Criteria check",
+    "Executed test surface",
+    "Findings",
+)
 
 
 # --- High-risk classification ------------------------------------------------
@@ -147,8 +160,27 @@ def find_audit_file(root: Path, pr_number: int) -> Tuple[Optional[Path], Optiona
     return matches[0], None
 
 
+def _section_text(text: str, name: str) -> Optional[str]:
+    """Return the body of ``## name`` up to the next heading, or None."""
+
+    lines = text.splitlines()
+    start = None
+    for index, line in enumerate(lines):
+        if line.strip() == f"## {name}":
+            start = index + 1
+            break
+    if start is None:
+        return None
+    body: List[str] = []
+    for line in lines[start:]:
+        if line.startswith("#"):
+            break
+        body.append(line)
+    return "\n".join(body).strip()
+
+
 def parse_audit(path: Path) -> AuditDocument:
-    """Parse the machine-checked fields of an audit record."""
+    """Parse the machine-checked fields and substance of an audit record."""
 
     text = path.read_text(encoding="utf-8")
     doc = AuditDocument(path=path)
@@ -183,6 +215,24 @@ def parse_audit(path: Path) -> AuditDocument:
         doc.findings.append(
             "no spec/ADR criteria reference (expected specs/<n>-<slug>/spec.md "
             "or docs/adr/*.md)"
+        )
+    elif not _REQUIREMENT_ID_RE.search(text):
+        doc.findings.append(
+            "criteria reference lacks requirement IDs (expected e.g. FR-1, "
+            "NFR-2, or ADR-0003 alongside the spec/ADR path)"
+        )
+
+    for section in _REQUIRED_SECTIONS:
+        body = _section_text(text, section)
+        if body is None:
+            doc.findings.append(f"missing required section '## {section}'")
+        elif not body:
+            doc.findings.append(f"required section '## {section}' is empty")
+    executed = _section_text(text, "Executed test surface")
+    if executed and not _COMMAND_LINE_RE.search(executed):
+        doc.findings.append(
+            "executed test surface lacks concrete commands (expected e.g. a "
+            "./gradlew or python3 invocation, not just a pass claim)"
         )
     return doc
 

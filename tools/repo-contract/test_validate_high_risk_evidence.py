@@ -15,6 +15,7 @@ wrappers exercised end to end by the workflow's PR demonstrations.
 
 from __future__ import annotations
 
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,6 +23,7 @@ from pathlib import Path
 import validate_high_risk_evidence as gate
 
 REPO = "nunu1733/NunuLauncher"
+WORKFLOW_DOC = Path(__file__).resolve().parents[2] / "docs" / "project" / "github-workflow.md"
 
 VALID_AUDIT = """# High-risk audit: PR #47 demo
 
@@ -38,6 +40,11 @@ docs/adr/0003-organizer-recovery-point-storage.md
 ## Scope
 
 Covered the transactional writer and correlated reload path.
+
+## Criteria check
+
+specs/13-safe-layout-application/spec.md FR-1 (transactional apply or rollback)
+checked against the diff; ADR-0003 recovery-point requirements confirmed.
 
 ## Executed test surface
 
@@ -194,14 +201,124 @@ class ParseAuditTests(unittest.TestCase):
         self.assertTrue(any("Auditor" in f for f in doc.findings))
         self.assertTrue(any("Audit date" in f for f in doc.findings))
 
+    # The criteria/ID checks scan the whole document (IDs may live in the
+    # Criteria check section), so these tests must scrub both the field line
+    # and the body references.
+    _CRITERIA_BODY = (
+        "specs/13-safe-layout-application/spec.md FR-1 (transactional apply or rollback)\n"
+        "checked against the diff; ADR-0003 recovery-point requirements confirmed."
+    )
+
     def test_missing_criteria_reference_is_flagged(self) -> None:
-        doc = self._parse(VALID_AUDIT.replace(
+        text = VALID_AUDIT.replace(
             "- Criteria: specs/13-safe-layout-application/spec.md FR-1, "
             "docs/adr/0003-organizer-recovery-point-storage.md\n",
             "- Criteria: FR-1\n",
-        ))
+        ).replace(self._CRITERIA_BODY, "checked against the diff.")
+        doc = self._parse(text)
         self.assertTrue(any("criteria" in f for f in doc.findings))
         self.assertEqual(doc.criteria_refs, [])
+
+    def test_criteria_without_requirement_ids_is_flagged(self) -> None:
+        text = VALID_AUDIT.replace(
+            "- Criteria: specs/13-safe-layout-application/spec.md FR-1, "
+            "docs/adr/0003-organizer-recovery-point-storage.md\n",
+            "- Criteria: specs/13-safe-layout-application/spec.md（受入条件全体）\n",
+        ).replace(self._CRITERIA_BODY, "受入条件全体を確認した。")
+        doc = self._parse(text)
+        self.assertTrue(any("requirement IDs" in f for f in doc.findings))
+
+    def test_missing_required_section_is_flagged(self) -> None:
+        doc = self._parse(VALID_AUDIT.replace("## Findings\n", "## Results\n"))
+        self.assertTrue(
+            any("## Findings" in f for f in doc.findings),
+            f"missing Findings section must be flagged: {doc.findings}",
+        )
+
+    def test_empty_required_section_is_flagged(self) -> None:
+        text = VALID_AUDIT.replace(
+            "## Scope\n\nCovered the transactional writer and correlated reload path.\n",
+            "## Scope\n\n## Criteria check\n",
+        )
+        doc = self._parse(text)
+        self.assertTrue(any("'## Scope' is empty" in f for f in doc.findings))
+
+    def test_executed_surface_without_concrete_commands_is_flagged(self) -> None:
+        doc = self._parse(VALID_AUDIT.replace(
+            "./gradlew testLawnWithQuickstepGithubDebugUnitTest "
+            "--tests 'app.lawnchair.organizer.*' -> pass",
+            "unit tests -> pass",
+        ))
+        self.assertTrue(any("concrete commands" in f for f in doc.findings))
+
+    def test_form_only_audit_cannot_pass(self) -> None:
+        # The core Issue #43 requirement: a five-line audit with a valid CI
+        # URL but no scope/results/commands/findings must not pass.
+        form_only = "\n".join(
+            [
+                "# High-risk audit: PR #47 demo",
+                "> Audit date: 2026-08-14",
+                "",
+                "- Auditor: independent session",
+                f"- Head SHA: {'a' * 40}",
+                f"- CI run: https://github.com/{REPO}/actions/runs/1234567890",
+                "- Criteria: specs/13-safe-layout-application/spec.md",
+                "",
+                "## Scope",
+                "## Criteria check",
+                "## Executed test surface",
+                "## Findings",
+                "",
+            ]
+        )
+        doc = self._parse(form_only)
+        self.assertTrue(len(doc.findings) >= 5, doc.findings)
+        # All four required sections are empty headers, not an audit.
+        self.assertEqual(
+            sum(1 for f in doc.findings if "is empty" in f), 4, doc.findings
+        )
+        # The criteria reference carries no requirement IDs either.
+        self.assertTrue(any("requirement IDs" in f for f in doc.findings))
+
+
+class DocConsistencyTests(unittest.TestCase):
+    """The high-risk path list must not drift between code and the guide.
+
+    github-workflow.md documents the trigger paths in prose and the validator
+    enforces them in code (Issue #43 review finding). Instead of a second
+    data source, this test parses the guide's list and requires set equality
+    with the validator constants, so adding a path in one place forces the
+    other to follow.
+    """
+
+    def test_doc_path_list_matches_validator(self) -> None:
+        text = WORKFLOW_DOC.read_text(encoding="utf-8")
+        match = re.search(r"^### 適用条件$(.*?)^### ", text, re.MULTILINE | re.DOTALL)
+        self.assertIsNotNone(match, "github-workflow.md must keep a 適用条件 section")
+        tokens = re.findall(r"`([^`]+)`", match.group(1))
+        # Only production paths are listed as triggers; labels and module
+        # shorthand (e.g. organizer/planning) are filtered by root.
+        doc_prefixes = set()
+        doc_files = set()
+        for token in tokens:
+            if not token.startswith(("lawnchair/src/", "src/")):
+                continue
+            if token.endswith("/**"):
+                doc_prefixes.add(token[: -len("/**")] + "/")
+            else:
+                doc_files.add(token)
+        self.assertEqual(
+            doc_prefixes,
+            set(gate.HIGH_RISK_PATH_PREFIXES),
+            "path prefixes in github-workflow.md must match the validator; "
+            "update both together",
+        )
+        self.assertEqual(
+            doc_files,
+            set(gate.HIGH_RISK_PATH_FILES),
+            "exact file paths in github-workflow.md must match the validator; "
+            "update both together",
+        )
 
 
 class ParseRunUrlTests(unittest.TestCase):
