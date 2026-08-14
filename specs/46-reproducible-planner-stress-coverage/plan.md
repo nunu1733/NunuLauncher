@@ -105,8 +105,10 @@ working tree.
   as expected, confirming that the planner properties reach the selected Test
   task and that out-of-range cases are rejected.
 - Workflow YAML validation, repository-contract validation and its self-tests,
-  and `git diff --check` passed. No Actions URL is recorded because this
-  branch has not been pushed and the workflow has not run remotely.
+  and `git diff --check` passed.
+- The remote manual workflow completed successfully: 8/8 matrix jobs passed,
+  covering all 4,096 cases, with a 4m43s workflow wall time. Evidence:
+  [Planner stress run 31778797192](https://github.com/nunu1733/NunuLauncher/actions/runs/31778797192).
 
 ## Rollback and stop conditions
 
