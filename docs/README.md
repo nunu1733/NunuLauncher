@@ -16,7 +16,7 @@
 | [assessment/initial-design-review.md](./assessment/initial-design-review.md) | 初期案の問題と根拠は何か | 原則固定。再調査は別文書にする |
 | `assessment/pr-<n>-<slug>.md`（形式は [assessment/_template.md](./assessment/_template.md)） | 高リスクPRの独立audit証拠は何か | `risk: layout-data` / `risk: migration` PRのmerge前。手順は [project/github-workflow.md](./project/github-workflow.md) |
 | [project/github-workflow.md](./project/github-workflow.md) | Issue/spec/PRをどう流すか | 開発processが変わるとき |
-| [project/seed-backlog.md](./project/seed-backlog.md) | 最初にどのIssueを作るか | GitHub Issue作成時に番号を追記する |
+| [project/seed-backlog.md](./project/seed-backlog.md) | 起票済みIssueへのnavigationと未起票提案 | Issueの起票・close時に更新する |
 | [engineering/upstream-strategy.md](./engineering/upstream-strategy.md) | Lawnchair上流とどう同期するか | baseや同期方針が変わるとき |
 | [engineering/building.md](./engineering/building.md) | どのtoolchainとcommandで検証するか | baseline/toolchain/commandが変わるとき |
 | [engineering/quality-strategy.md](./engineering/quality-strategy.md) | 何をどう検証するか | test/CI方針が変わるとき |

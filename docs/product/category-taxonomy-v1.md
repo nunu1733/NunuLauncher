@@ -1,6 +1,6 @@
 # Category Taxonomy v1
 
-> Status: Proposed (research output of Issue #6)
+> Status: Accepted (research output of Issue #6, accepted with its closure)
 > Reviewed: 2026-08-09
 > Baseline: Lawnchair `v15.0.0-beta3.0` / commit `505dbc40e6154c05158b5d0271c45f6a885a411b`
 > Requirements: FR-010, FR-011, FR-015, NFR-003, NFR-005, NFR-008
