@@ -96,6 +96,7 @@ PRが次のいずれかに当たる場合に適用する。`high-risk-gate` work
    - `src/com/android/launcher3/model/LayoutWriteCoordinator.java`
    - `src/com/android/launcher3/model/ModelWriter.java`
    - `src/com/android/launcher3/model/ModelDbController.java`
+   - `src/com/android/launcher3/model/DatabaseHelper.java` （`onUpgrade` を持つschema upgrader）
    - `src/com/android/launcher3/model/GridSizeMigrationUtil.java`
    - `lawnchair/src/app/lawnchair/backup/**`
    - `lawnchair/src/app/lawnchair/deck/**`

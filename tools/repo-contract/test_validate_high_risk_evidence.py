@@ -72,6 +72,9 @@ class ClassifyPrTests(unittest.TestCase):
             "src/com/android/launcher3/provider/RestoreDbTask.java",
             "lawnchair/src/app/lawnchair/backup/LawnchairBackup.kt",
             "lawnchair/src/app/lawnchair/deck/LawndeckManager.kt",
+            # DatabaseHelper owns onUpgrade: a schema migration change without
+            # a risk label must still be caught (fourth-review P1 finding).
+            "src/com/android/launcher3/model/DatabaseHelper.java",
             "src/com/android/launcher3/model/GridSizeMigrationUtil.java",
             "src/com/android/launcher3/model/LayoutWriteCoordinator.java",
             "src/com/android/launcher3/model/ModelWriter.java",
@@ -406,6 +409,30 @@ class CriteriaSubstanceTests(unittest.TestCase):
         # Specs write FR-004; the audit may cite FR-4 for the same criterion.
         problems = gate.verify_criteria_substance(REPO_ROOT, [(self.SPEC_13, ["FR-4"])])
         self.assertEqual(problems, [])
+
+    def test_requirement_id_must_match_as_a_whole_token(self) -> None:
+        # A document that only defines FR-0040 must not satisfy a citation of
+        # FR-004; substring matching is not enough (fourth-review P1 finding).
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            spec = root / "specs" / "42-demo"
+            spec.mkdir(parents=True)
+            (spec / "spec.md").write_text(
+                "---\nstatus: accepted\n---\n\n# Demo\n\nAC-1 demo\n\nFR-0040 only\n",
+                encoding="utf-8",
+            )
+            problems = gate.verify_criteria_substance(
+                root, [("specs/42-demo/spec.md", ["FR-004"])]
+            )
+        self.assertTrue(any("FR-004" in p for p in problems))
+        self.assertFalse(any("FR-0040" in p for p in problems))
+
+    def test_id_defined_as_exact_token_passes(self) -> None:
+        self.assertTrue(gate._id_defined("FR-004", "criteria FR-004 holds"))
+        self.assertTrue(gate._id_defined("FR-004", "- FR-004"))
+        self.assertFalse(gate._id_defined("FR-004", "FR-0040 only"))
+        self.assertFalse(gate._id_defined("FR-004", "XFR-004 typo"))
+        self.assertFalse(gate._id_defined("AC-1", "AC-12 only"))
 
 
 class CiRunsVerificationTests(unittest.TestCase):

@@ -54,6 +54,7 @@ HIGH_RISK_PATH_FILES: Tuple[str, ...] = (
     "src/com/android/launcher3/model/LayoutWriteCoordinator.java",
     "src/com/android/launcher3/model/ModelWriter.java",
     "src/com/android/launcher3/model/ModelDbController.java",
+    "src/com/android/launcher3/model/DatabaseHelper.java",
     "src/com/android/launcher3/model/GridSizeMigrationUtil.java",
 )
 
@@ -317,6 +318,18 @@ def _id_variants(requirement_id: str) -> Tuple[str, ...]:
     return (requirement_id,)
 
 
+def _id_defined(requirement_id: str, text: str) -> bool:
+    """Match the requirement ID as a whole token, never as a substring.
+
+    ``FR-004`` must not match a document that only defines ``FR-0040``, so
+    the ID is anchored: no alphanumeric or hyphen before it, and no digit
+    after it.
+    """
+
+    pattern = rf"(?<![\w-]){re.escape(requirement_id)}(?!\d)"
+    return re.search(pattern, text) is not None
+
+
 def verify_criteria_substance(
     root: Path, criteria_entries: Sequence[Tuple[str, Sequence[str]]]
 ) -> List[str]:
@@ -364,7 +377,7 @@ def verify_criteria_substance(
                     )
                 continue
             variants = _id_variants(requirement_id)
-            if not any(v in texts[rel] for v in variants):
+            if not any(_id_defined(v, texts[rel]) for v in variants):
                 problems.append(
                     f"requirement ID {requirement_id} is not defined in {rel!r} "
                     "(check the ID against that document's acceptance criteria)"
