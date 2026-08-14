@@ -1,6 +1,8 @@
 package app.lawnchair.organizer.planning
 
-internal class DeterministicOrganizationPlanner : OrganizationPlanner {
+internal class DeterministicOrganizationPlanner(
+    private val allocationFault: AllocationFault = AllocationFault.NONE,
+) : OrganizationPlanner {
 
     override fun plan(input: OrganizationInput): PlanningResult {
         val validationResult = PlanningValidation.validate(input)
@@ -28,7 +30,7 @@ internal class DeterministicOrganizationPlanner : OrganizationPlanner {
                     input.taxonomy,
                 )
 
-                val placement = PlanningPlacement.place(input, classification)
+                val placement = PlanningPlacement.place(input, classification, allocationFault)
 
                 PlanningResultCanonicalization.assemble(input, classification, placement)
             }
