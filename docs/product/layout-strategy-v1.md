@@ -1,6 +1,6 @@
 # Layout Strategy v1
 
-> Status: Proposed (research output of Issue #5)
+> Status: Proposed (research output of Issue #5; the accepted planner contract is [spec 12](../../specs/12-deterministic-full-layout-planner-v1/spec.md))
 > Reviewed: 2026-08-09
 > Baseline: Lawnchair `v15.0.0-beta3.0` / commit `505dbc40e6154c05158b5d0271c45f6a885a411b`
 > Requirements: FR-001, FR-003, FR-015, NFR-002, NFR-003, NFR-004, NFR-006, NFR-007

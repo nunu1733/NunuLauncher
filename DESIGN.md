@@ -1,7 +1,7 @@
 # NunuLauncher System Design
 
 > Status: Proposed
-> Updated: 2026-08-09
+> Updated: 2026-08-14
 > Scope: 目標設計。baselineは `v15.0.0-beta3.0` のcommit `505dbc40e6154c05158b5d0271c45f6a885a411b` に固定済み。Deck layoutは[ADR-0002](./docs/adr/0002-replace-deck-layout.md)でreplaceを採用した。正確なplatform seamは関連Issueで確定する。
 
 ## 1. Design goals
@@ -22,12 +22,9 @@
 - Lawnchairの手動バックアップはXMLではない。DB・設定・Protobuf metadata等を含むZIPである。
 - NunuLauncherは [Lawnchairのfork](https://github.com/nunu1733/NunuLauncher) であり、`main` のproduct baselineは `v15.0.0-beta3.0` のcommit `505dbc40e6154c05158b5d0271c45f6a885a411b` である。
 
-### Not yet confirmed
+### Design gate status
 
-- 対象集合、ロックの伝播、trigger、配置戦略、rule file形式。
-- 15系から16系へ追従する時期と互換方針。
-
-未確認事項を実装で固定しない。対応するIssueは [docs/project/seed-backlog.md](./docs/project/seed-backlog.md) に定義する。
+設計gateとその正本の対応は [§11 のDesign gates表](#11-design-gates) を参照する。承認状態は各正本の記載に従い、本書では管理しない。研究提案は `docs/product/` 、ADRと `specs/` 、未起票提案は [docs/project/seed-backlog.md](./docs/project/seed-backlog.md) を正本とする。未承認の判断を実装で固定しない。
 
 ## 3. System context
 
@@ -132,7 +129,7 @@ stateDiagram-v2
     Recovered --> [*]
 ```
 
-自動triggerであってもこの状態遷移を短絡しない。全体整理を無確認で行えるか、新規アプリだけを自動適用するかは別々のpolicyとしてspecで定義する。
+自動triggerであってもこの状態遷移を短絡しない。全体整理を無確認で行えるか、新規アプリだけを自動適用するかは別々のpolicyとして [docs/product/organization-run-ux.md](./docs/product/organization-run-ux.md) が提案し [Issue #4](https://github.com/nunu1733/NunuLauncher/issues/4) が追跡する。適用と復旧の契約は [spec 13](./specs/13-safe-layout-application/spec.md) が正本である。増分配置は [Issue #55](https://github.com/nunu1733/NunuLauncher/issues/55) で追跡する。
 
 ## 7. Data ownership and persistence
 
@@ -140,7 +137,7 @@ stateDiagram-v2
 - 整理ルール、category override、recovery metadataにはownershipとmigration方針を別途定義する。
 - lock stateは各Launcher layout DBの`favorites`行が専用のtri-state columnで所有する。transaction、backup/restore、schema migration、grid migration、未知状態のfail-closed規則は[ADR-0004](./docs/adr/0004-organizer-lock-persistence.md)を正本とする。
 - planはrevisionを持つ一時artifactであり、古いsnapshotへ適用できない。
-- recovery pointは一般的なexport backupと分け、アプリ内で原子的に復旧できる形式を選ぶ。
+- recovery pointは一般的なexport backupと分け、アプリ内で原子的に復旧できる。storageは[ADR-0003](./docs/adr/0003-organizer-recovery-point-storage.md)で決定済みである。
 
 ## 8. Error model
 
@@ -159,7 +156,7 @@ signalがないことは原則として失敗ではない。頻度情報がな�
 
 ## 9. Target source layout
 
-[ADR-0002](./docs/adr/0002-replace-deck-layout.md)に従い、Deck layoutと並行する新規runtime hookは追加せず、organizerを次の論理構成で新設する。
+[ADR-0002](./docs/adr/0002-replace-deck-layout.md)に従い、Deck layoutと並行する新規runtime hookは追加せず、organizerを次の論理構成で新設する。既存Deck runtimeの退役とpreference移行は [Issue #56](https://github.com/nunu1733/NunuLauncher/issues/56) / [Issue #57](https://github.com/nunu1733/NunuLauncher/issues/57) で追跡する。
 
 ```text
 lawnchair/src/app/lawnchair/organizer/
@@ -182,13 +179,17 @@ package数をこの図に合わせること自体を目的にしない。interfa
 
 詳細は [docs/engineering/quality-strategy.md](./docs/engineering/quality-strategy.md) を参照する。
 
-## 11. Open design gates
+## 11. Design gates
 
-実装を開始する前に、少なくとも次をIssueで解決する。
+設計gateとその正本の対応は次の表の通りである。承認状態は各正本の記載に従い、本書では管理しない。
 
-1. 対象集合と既存itemの保持規則
-2. trigger、確認、recoveryのUX
-3. lock対象とfolder内への伝播
-4. grid非依存の配置policy v1
-5. category taxonomyと分類source
-6. 整理ルールのfile formatとversioning
+| Gate | Source of truth |
+|---|---|
+| 1. 対象集合と既存itemの保持規則 | planner契約の対象membership、保持優先、disposition: [spec 10](./specs/10-pure-organization-planning/spec.md)、[spec 12](./specs/12-deterministic-full-layout-planner-v1/spec.md)。platform capture policyの提案: [Issue #3](https://github.com/nunu1733/NunuLauncher/issues/3) / [item-preservation-policy](./docs/product/item-preservation-policy.md) |
+| 2. trigger、確認、recoveryのUX | 適用と復旧の契約: [spec 13](./specs/13-safe-layout-application/spec.md)、[ADR-0003](./docs/adr/0003-organizer-recovery-point-storage.md)。triggerと確認のUX提案: [Issue #4](https://github.com/nunu1733/NunuLauncher/issues/4) / [organization-run-ux](./docs/product/organization-run-ux.md) |
+| 3. lock対象とfolder内への伝播 | [ADR-0004](./docs/adr/0004-organizer-lock-persistence.md) / [Issue #23](https://github.com/nunu1733/NunuLauncher/issues/23) |
+| 4. grid非依存の配置policy v1 | [spec 12](./specs/12-deterministic-full-layout-planner-v1/spec.md) (元提案: [Issue #5](https://github.com/nunu1733/NunuLauncher/issues/5) / [layout-strategy-v1](./docs/product/layout-strategy-v1.md)) |
+| 5. category taxonomyと分類source | planner側のtaxonomy契約、signal source、category resolution: [spec 10](./specs/10-pure-organization-planning/spec.md)、[spec 12](./specs/12-deterministic-full-layout-planner-v1/spec.md)。adapter側の分類source提案: [Issue #6](https://github.com/nunu1733/NunuLauncher/issues/6) / [category-taxonomy-v1](./docs/product/category-taxonomy-v1.md) |
+| 6. 整理ルールのfile formatとversioning | 正本なし (D-009)。未起票proposalは [docs/project/seed-backlog.md](./docs/project/seed-backlog.md) を参照 |
+
+正本が存在しない、または正本が提案どまりの判断を実装で固定しない。gateの変更は、正本となるADR/spec/Issue側から行う。

@@ -18,7 +18,7 @@ bootstrapは [Issue #1](https://github.com/nunu1733/NunuLauncher/issues/1) で�
 6. [docs/product/requirements.md](./docs/product/requirements.md) — 要件ID、未決定事項、品質要件
 7. [CONTEXT.md](./CONTEXT.md) — ドメイン用語
 8. [DESIGN.md](./DESIGN.md) — 目標アーキテクチャ
-9. [docs/project/seed-backlog.md](./docs/project/seed-backlog.md) — 最初に作るGitHub Issue候補
+9. [docs/project/seed-backlog.md](./docs/project/seed-backlog.md) — 起票済みIssueへのnavigationと未起票提案
 10. [docs/engineering/building.md](./docs/engineering/building.md) — 検証済みtoolchainとbuild手順
 
 ## Quick build
