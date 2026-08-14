@@ -204,32 +204,48 @@ class ParseAuditTests(unittest.TestCase):
         self.assertTrue(any("Auditor" in f for f in doc.findings))
         self.assertTrue(any("Audit date" in f for f in doc.findings))
 
-    # The criteria/ID checks scan the whole document (IDs may live in the
-    # Criteria check section), so these tests must scrub both the field line
-    # and the body references.
-    _CRITERIA_BODY = (
-        "specs/13-safe-layout-application/spec.md FR-004 (transactional apply or rollback)\n"
-        "checked against the diff; ADR-0003 recovery-point requirements confirmed."
+    # The criteria machine-checks read only 'Criteria:' lines, so these tests
+    # rewrite that line directly; prose elsewhere in the audit is irrelevant.
+    _CRITERIA_LINE = (
+        "- Criteria: specs/13-safe-layout-application/spec.md FR-004, "
+        "docs/adr/0003-organizer-recovery-point-storage.md ADR-0003\n"
     )
 
     def test_missing_criteria_reference_is_flagged(self) -> None:
-        text = VALID_AUDIT.replace(
-            "- Criteria: specs/13-safe-layout-application/spec.md FR-004, "
-            "docs/adr/0003-organizer-recovery-point-storage.md ADR-0003\n",
-            "- Criteria: FR-004\n",
-        ).replace(self._CRITERIA_BODY, "checked against the diff.")
-        doc = self._parse(text)
+        doc = self._parse(VALID_AUDIT.replace(self._CRITERIA_LINE, "- Criteria: FR-004\n"))
         self.assertTrue(any("criteria" in f for f in doc.findings))
         self.assertEqual(doc.criteria_refs, [])
 
-    def test_criteria_without_requirement_ids_is_flagged(self) -> None:
-        text = VALID_AUDIT.replace(
-            "- Criteria: specs/13-safe-layout-application/spec.md FR-004, "
-            "docs/adr/0003-organizer-recovery-point-storage.md ADR-0003\n",
+    def test_criteria_line_without_requirement_ids_is_flagged(self) -> None:
+        doc = self._parse(VALID_AUDIT.replace(
+            self._CRITERIA_LINE,
             "- Criteria: specs/13-safe-layout-application/spec.md（受入条件全体）\n",
-        ).replace(self._CRITERIA_BODY, "受入条件全体を確認した。")
-        doc = self._parse(text)
+        ))
         self.assertTrue(any("requirement IDs" in f for f in doc.findings))
+
+    def test_criteria_ids_from_body_prose_do_not_count(self) -> None:
+        # IDs and doc paths mentioned only in Scope/Findings prose must not
+        # satisfy the criteria requirement (third-review P1 finding).
+        doc = self._parse(VALID_AUDIT.replace(self._CRITERIA_LINE, "- Criteria: （なし）\n"))
+        self.assertTrue(any("criteria" in f for f in doc.findings))
+        self.assertEqual(doc.criteria_refs, [])
+
+    def test_id_before_document_reference_is_flagged(self) -> None:
+        doc = self._parse(VALID_AUDIT.replace(
+            self._CRITERIA_LINE,
+            "- Criteria: FR-004 specs/13-safe-layout-application/spec.md\n",
+        ))
+        self.assertTrue(any("appears before" in f for f in doc.findings))
+
+    def test_criteria_pairs_keep_line_ordering(self) -> None:
+        doc = self._parse(VALID_AUDIT)
+        self.assertEqual(
+            doc.criteria_entries,
+            [
+                ("specs/13-safe-layout-application/spec.md", ["FR-004"]),
+                ("docs/adr/0003-organizer-recovery-point-storage.md", ["ADR-0003"]),
+            ],
+        )
 
     def test_missing_required_section_is_flagged(self) -> None:
         doc = self._parse(VALID_AUDIT.replace("## Findings\n", "## Results\n"))
@@ -327,25 +343,28 @@ class DocConsistencyTests(unittest.TestCase):
 class CriteriaSubstanceTests(unittest.TestCase):
     """verify_criteria_substance must check the referenced documents.
 
-    The referenced spec/ADR has to exist, be accepted, and actually define the
-    cited requirement IDs — otherwise any path-shaped string plus a made-up ID
-    would pass the gate (second-review P1 finding).
+    Each (document, IDs) pair comes from a 'Criteria:' line with the IDs bound
+    to the document they were cited with: the document has to exist, be
+    accepted, and define those exact IDs. Cross-document ID mix-ups and IDs
+    smuggled from prose must both fail (third-review P1 finding).
     """
 
     SPEC_13 = "specs/13-safe-layout-application/spec.md"
     ADR_0003 = "docs/adr/0003-organizer-recovery-point-storage.md"
 
-    def test_real_accepted_refs_and_real_ids_pass(self) -> None:
+    def test_real_accepted_refs_with_correctly_paired_ids_pass(self) -> None:
         problems = gate.verify_criteria_substance(
             REPO_ROOT,
-            [self.SPEC_13, self.ADR_0003],
-            ["FR-004", "AC-1", "ADR-0003"],
+            [
+                (self.SPEC_13, ["FR-004", "AC-1"]),
+                (self.ADR_0003, ["ADR-0003"]),
+            ],
         )
         self.assertEqual(problems, [], f"real accepted criteria flagged: {problems}")
 
     def test_nonexistent_reference_is_flagged(self) -> None:
         problems = gate.verify_criteria_substance(
-            REPO_ROOT, ["specs/99-does-not-exist/spec.md"], []
+            REPO_ROOT, [("specs/99-does-not-exist/spec.md", ["FR-004"])]
         )
         self.assertTrue(any("does not exist" in p for p in problems))
 
@@ -359,47 +378,57 @@ class CriteriaSubstanceTests(unittest.TestCase):
                 encoding="utf-8",
             )
             problems = gate.verify_criteria_substance(
-                root, ["specs/42-demo/spec.md"], []
+                root, [("specs/42-demo/spec.md", ["AC-1"])]
             )
         self.assertTrue(any("status" in p for p in problems))
 
     def test_invented_requirement_id_is_flagged(self) -> None:
         # FR-999 is not defined anywhere in spec 13; the gate must reject it
         # instead of trusting the audit's prose.
-        problems = gate.verify_criteria_substance(
-            REPO_ROOT, [self.SPEC_13], ["FR-999"]
-        )
+        problems = gate.verify_criteria_substance(REPO_ROOT, [(self.SPEC_13, ["FR-999"])])
         self.assertTrue(any("FR-999" in p for p in problems))
+
+    def test_id_cited_with_wrong_document_is_flagged(self) -> None:
+        # FR-004 is defined in spec 13, not in ADR-0003; citing it with the
+        # ADR must fail even though both documents exist and are accepted.
+        problems = gate.verify_criteria_substance(REPO_ROOT, [(self.ADR_0003, ["FR-004"])])
+        self.assertTrue(any("FR-004" in p and "is not defined in" in p for p in problems))
+
+    def test_adr_id_cited_with_wrong_document_is_flagged(self) -> None:
+        problems = gate.verify_criteria_substance(REPO_ROOT, [(self.SPEC_13, ["ADR-0003"])])
+        self.assertTrue(any("ADR-0003" in p and "belongs to" in p for p in problems))
+
+    def test_document_without_ids_is_flagged(self) -> None:
+        problems = gate.verify_criteria_substance(REPO_ROOT, [(self.SPEC_13, [])])
+        self.assertTrue(any("lists no requirement IDs" in p for p in problems))
 
     def test_zero_padded_id_variant_is_accepted(self) -> None:
         # Specs write FR-004; the audit may cite FR-4 for the same criterion.
-        problems = gate.verify_criteria_substance(REPO_ROOT, [self.SPEC_13], ["FR-4"])
+        problems = gate.verify_criteria_substance(REPO_ROOT, [(self.SPEC_13, ["FR-4"])])
         self.assertEqual(problems, [])
-
-    def test_adr_id_requires_matching_referenced_adr(self) -> None:
-        problems = gate.verify_criteria_substance(
-            REPO_ROOT, [self.SPEC_13], ["ADR-0004"]
-        )
-        self.assertTrue(any("ADR-0004" in p for p in problems))
 
 
 class CiRunsVerificationTests(unittest.TestCase):
     """verify_ci_runs must require this PR's merge gate, not any green run.
 
-    Mocked gh_api responses: a push run, a foreign-branch run, and a run whose
-    source jobs were skipped must all be rejected; only a pull_request run of
-    ci.yml on the audited SHA and head ref with final-status green and the
-    source jobs executed qualifies (second-review P1 finding).
+    Mocked gh_api responses: a push run, a run GitHub does not associate with
+    this PR (another PR on the same ref and commit), a foreign-branch run, and
+    a run whose source jobs were skipped must all be rejected; only a
+    pull_request run of ci.yml that GitHub associates with this PR, on the
+    audited SHA and head ref, with final-status green and the source jobs
+    executed qualifies (second/third-review P1 findings).
     """
 
     AUDIT_SHA = "0" * 40
     HEAD_REF = "feature-branch"
+    PR_NUMBER = 47
 
     def _run(self, **overrides: object) -> dict:
         run = {
             "head_sha": self.AUDIT_SHA,
             "head_branch": self.HEAD_REF,
             "event": "pull_request",
+            "pull_requests": [{"number": self.PR_NUMBER}],
             "path": ".github/workflows/ci.yml",
             "status": "completed",
             "conclusion": "success",
@@ -426,7 +455,9 @@ class CiRunsVerificationTests(unittest.TestCase):
             return run
 
         with unittest.mock.patch.object(gate, "gh_api", side_effect=fake_gh_api):
-            return gate.verify_ci_runs([1], self.AUDIT_SHA, REPO, self.HEAD_REF)
+            return gate.verify_ci_runs(
+                [1], self.AUDIT_SHA, REPO, self.HEAD_REF, self.PR_NUMBER
+            )
 
     def test_qualifying_merge_gate_run_passes(self) -> None:
         problems = self._verify(self._run(), self._jobs())
@@ -440,6 +471,18 @@ class CiRunsVerificationTests(unittest.TestCase):
     def test_dispatch_run_is_rejected(self) -> None:
         problems = self._verify(self._run(event="workflow_dispatch"), self._jobs())
         self.assertTrue(any("merge gate" in p for p in problems))
+
+    def test_run_of_another_pr_is_rejected(self) -> None:
+        # Same branch and commit, but GitHub associates the run with a
+        # different PR: it cannot serve as this PR's merge-gate evidence.
+        problems = self._verify(
+            self._run(pull_requests=[{"number": 99}]), self._jobs()
+        )
+        self.assertTrue(any("not associated with PR #47" in p for p in problems))
+
+    def test_run_without_pr_association_is_rejected(self) -> None:
+        problems = self._verify(self._run(pull_requests=[]), self._jobs())
+        self.assertTrue(any("no pull request" in p for p in problems))
 
     def test_foreign_branch_run_is_rejected(self) -> None:
         problems = self._verify(

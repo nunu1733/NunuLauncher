@@ -77,7 +77,11 @@ _RUN_URL_RE = re.compile(
     r"^https?://github\.com/([^/]+)/([^/]+)/actions/runs/(\d+)/?"
 )
 _CRITERIA_RE = re.compile(r"(specs/[\w.-]+/spec\.md|docs/adr/[\w.-]+\.md)")
-# Requirement identifiers used by specs and ADRs (FR-1, NFR-2, AC-3, ADR-0004).
+# The machine-checked criteria come only from 'Criteria:' lines, so prose in
+# Scope/Findings cannot satisfy (or smuggle) criteria references.
+_CRITERIA_LINE_RE = re.compile(_FIELD_PREFIX + r"Criteria:\s*(.*)$", re.MULTILINE)
+# Requirement identifiers used by specs and ADRs (FR-004, NFR-001, AC-3,
+# ADR-0004).
 _REQUIREMENT_ID_RE = re.compile(r"\b(?:FR|NFR|AC)-\d+\b|\bADR-\d{4}\b")
 # A concrete executed command: a gradle/python/gh/adb/git invocation, so prose
 # like "tests pass" cannot satisfy the executed-test-surface requirement.
@@ -128,8 +132,12 @@ class AuditDocument:
     audit_date: Optional[str] = None
     head_sha: Optional[str] = None
     ci_run_urls: List[str] = field(default_factory=list)
+    # (spec/ADR path, requirement IDs cited with that path) pairs, read only
+    # from 'Criteria:' lines in document order. An ID belongs to the nearest
+    # preceding document reference on the same line, so misattributed IDs are
+    # detectable.
+    criteria_entries: List[Tuple[str, List[str]]] = field(default_factory=list)
     criteria_refs: List[str] = field(default_factory=list)
-    requirement_ids: List[str] = field(default_factory=list)
     findings: List[str] = field(default_factory=list)
 
 
@@ -211,17 +219,45 @@ def parse_audit(path: Path) -> AuditDocument:
     if not doc.ci_run_urls:
         doc.findings.append("missing 'CI run:' line with an Actions run URL")
 
-    doc.criteria_refs = _CRITERIA_RE.findall(text)
-    doc.requirement_ids = _REQUIREMENT_ID_RE.findall(text)
-    if not doc.criteria_refs:
-        doc.findings.append(
-            "no spec/ADR criteria reference (expected specs/<n>-<slug>/spec.md "
-            "or docs/adr/*.md)"
+    # Criteria are parsed only from 'Criteria:' lines, and each requirement
+    # ID is bound to the nearest preceding document reference on that line.
+    saw_criteria_line = False
+    for line_match in _CRITERIA_LINE_RE.finditer(text):
+        saw_criteria_line = True
+        content = line_match.group(1)
+        tokens = sorted(
+            [(m.start(), "doc", m.group(1)) for m in _CRITERIA_RE.finditer(content)]
+            + [(m.start(), "id", m.group(0)) for m in _REQUIREMENT_ID_RE.finditer(content)],
+            key=lambda token: token[0],
         )
-    elif not _REQUIREMENT_ID_RE.search(text):
+        current: Optional[List[str]] = None
+        for _, kind, value in tokens:
+            if kind == "doc":
+                doc.criteria_refs.append(value)
+                current = []
+                doc.criteria_entries.append((value, current))
+            elif current is None:
+                doc.findings.append(
+                    f"requirement ID {value} on a 'Criteria:' line appears before "
+                    "any spec/ADR reference; cite it after the document it belongs to"
+                )
+            else:
+                current.append(value)
+
+    if not saw_criteria_line:
         doc.findings.append(
-            "criteria reference lacks requirement IDs (expected e.g. FR-1, "
-            "NFR-2, or ADR-0003 alongside the spec/ADR path)"
+            "missing 'Criteria:' line (expected specs/<n>-<slug>/spec.md and "
+            "docs/adr/*.md references with requirement IDs)"
+        )
+    elif not doc.criteria_refs:
+        doc.findings.append(
+            "no spec/ADR criteria reference on the 'Criteria:' line (expected "
+            "specs/<n>-<slug>/spec.md or docs/adr/*.md)"
+        )
+    elif not any(ids for _, ids in doc.criteria_entries):
+        doc.findings.append(
+            "criteria reference lacks requirement IDs (expected e.g. FR-004, "
+            "NFR-002, or ADR-0003 alongside each spec/ADR reference)"
         )
 
     for section in _REQUIRED_SECTIONS:
@@ -282,47 +318,57 @@ def _id_variants(requirement_id: str) -> Tuple[str, ...]:
 
 
 def verify_criteria_substance(
-    root: Path, criteria_refs: Sequence[str], requirement_ids: Sequence[str]
+    root: Path, criteria_entries: Sequence[Tuple[str, Sequence[str]]]
 ) -> List[str]:
     """Verify criteria references against the repository's actual documents.
 
-    Checks that every referenced spec/ADR exists, is accepted (or
-    implemented), and that every requirement ID cited by the audit is really
-    defined in one of the referenced documents. This is what turns a
-    criteria line from prose into verifiable evidence.
+    Each entry is a ``(spec/ADR path, requirement IDs)`` pair parsed from a
+    'Criteria:' line, where the IDs were cited with that document. Checks that
+    the document exists, is accepted (or implemented), and that every ID cited
+    with it is really defined in that document — so IDs cannot be smuggled in
+    from Scope/Findings prose, and an ID cited next to the wrong document is
+    rejected. This is what turns a criteria line from prose into verifiable
+    evidence.
     """
 
     problems: List[str] = []
-    texts: List[str] = []
-    for rel in criteria_refs:
+    texts: dict = {}
+    for rel, ids in criteria_entries:
         path = root / rel
         if not path.is_file():
-            problems.append(f"criteria reference {rel!r} does not exist in the repository")
-            continue
-        text = path.read_text(encoding="utf-8")
-        texts.append(text)
-        status = _frontmatter_status(text)
-        if status not in _ACCEPTED_STATUSES:
             problems.append(
-                f"criteria reference {rel!r} has status {status!r}; "
-                f"expected one of {sorted(_ACCEPTED_STATUSES)}"
+                f"criteria reference {rel!r} does not exist in the repository"
             )
-
-    for requirement_id in requirement_ids:
-        if requirement_id.startswith("ADR-"):
-            number = requirement_id.partition("-")[2]
-            if not any(ref.startswith(f"docs/adr/{number}-") for ref in criteria_refs):
+            continue
+        if rel not in texts:
+            text = path.read_text(encoding="utf-8")
+            texts[rel] = text
+            status = _frontmatter_status(text)
+            if status not in _ACCEPTED_STATUSES:
                 problems.append(
-                    f"requirement ID {requirement_id} has no matching referenced ADR "
-                    f"(expected docs/adr/{number}-*.md)"
+                    f"criteria reference {rel!r} has status {status!r}; "
+                    f"expected one of {sorted(_ACCEPTED_STATUSES)}"
                 )
-            continue
-        variants = _id_variants(requirement_id)
-        if not any(any(v in text for v in variants) for text in texts):
+        if not ids:
             problems.append(
-                f"requirement ID {requirement_id} is not defined in any referenced "
-                "spec/ADR (check the ID against the spec's acceptance criteria)"
+                f"'Criteria:' reference {rel!r} lists no requirement IDs"
             )
+            continue
+        for requirement_id in ids:
+            if requirement_id.startswith("ADR-"):
+                number = requirement_id.partition("-")[2]
+                if not rel.startswith(f"docs/adr/{number}-"):
+                    problems.append(
+                        f"{requirement_id} is cited with {rel!r}, but belongs to "
+                        f"docs/adr/{number}-*.md; cite it with its own document"
+                    )
+                continue
+            variants = _id_variants(requirement_id)
+            if not any(v in texts[rel] for v in variants):
+                problems.append(
+                    f"requirement ID {requirement_id} is not defined in {rel!r} "
+                    "(check the ID against that document's acceptance criteria)"
+                )
     return problems
 
 
@@ -410,17 +456,19 @@ def _verify_run_jobs(repo: str, run_id: int) -> List[str]:
 
 
 def verify_ci_runs(
-    run_ids: Sequence[int], audit_sha: str, repo: str, head_ref: str
+    run_ids: Sequence[int], audit_sha: str, repo: str, head_ref: str, pr_number: int
 ) -> List[str]:
     """Verify referenced runs against the GitHub API.
 
     Passes only when at least one referenced run is a successful
-    ``pull_request``-triggered CI workflow run on this PR's head ref and the
+    ``pull_request``-triggered CI workflow run that GitHub itself associates
+    with this PR (``pull_requests[].number``) on this PR's head ref and the
     audited commit, whose ``final-status`` merge gate passed with the source
     jobs (organizer unit tests, style, build) actually executed. Push runs,
-    manual dispatches, and runs that skipped the source jobs do not qualify:
-    this is the part the PR author cannot satisfy by writing prose — the run
-    must exist in GitHub's records as this PR's merge gate.
+    manual dispatches, another PR's run on the same branch and commit, and
+    runs that skipped the source jobs do not qualify: this is the part the PR
+    author cannot satisfy by writing prose — the run must exist in GitHub's
+    records as this PR's merge gate.
     """
 
     problems: List[str] = []
@@ -441,6 +489,15 @@ def verify_ci_runs(
             problems.append(
                 f"CI run {run_id} was triggered by {run.get('event')!r}, not by "
                 "the pull request merge gate"
+            )
+            continue
+        associated = [pr.get("number") for pr in run.get("pull_requests") or []]
+        if pr_number not in associated:
+            problems.append(
+                f"CI run {run_id} is not associated with PR #{pr_number} "
+                f"(GitHub associates it with {associated or 'no pull request'}); "
+                "another PR's run on the same ref cannot serve as this PR's "
+                "merge-gate evidence"
             )
             continue
         if head_ref and run.get("head_branch") != head_ref:
@@ -466,9 +523,9 @@ def verify_ci_runs(
     if not qualified:
         problems.append(
             "no referenced Actions run qualifies: expected a successful "
-            f"pull_request run of {CI_WORKFLOW_PATH} on this PR's head ref and "
-            "the audited commit, with 'final-status' green and the source jobs "
-            "(organizer unit tests included) executed"
+            f"pull_request run of {CI_WORKFLOW_PATH} associated with this PR, on "
+            "this PR's head ref and the audited commit, with 'final-status' "
+            "green and the source jobs (organizer unit tests included) executed"
         )
     return problems
 
@@ -559,9 +616,7 @@ def run_gate(repo: str, pr_number: int, head_sha: str, root: Path) -> int:
 
     audit = parse_audit(audit_path)
     problems = list(audit.findings)
-    problems.extend(
-        verify_criteria_substance(root, audit.criteria_refs, audit.requirement_ids)
-    )
+    problems.extend(verify_criteria_substance(root, audit.criteria_entries))
 
     if audit.head_sha is not None:
         if audit.head_sha == head_sha:
@@ -588,7 +643,9 @@ def run_gate(repo: str, pr_number: int, head_sha: str, root: Path) -> int:
                 run_ids.append(run_id)
         if run_ids:
             head_ref = fetch_head_ref(repo, pr_number)
-            problems.extend(verify_ci_runs(run_ids, audit.head_sha, repo, head_ref))
+            problems.extend(
+                verify_ci_runs(run_ids, audit.head_sha, repo, head_ref, pr_number)
+            )
 
     if problems:
         print(f"FAIL: high-risk evidence gate ({audit_path.relative_to(root)}):")
