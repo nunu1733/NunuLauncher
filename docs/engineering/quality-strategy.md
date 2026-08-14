@@ -1,7 +1,7 @@
 # Quality Strategy
 
 > Status: Proposed
-> Updated: 2026-08-14 (organizer unit-test CI gate added, Issue #41)
+> Updated: 2026-08-14 (high-risk independent-evidence gate added, Issue #43; organizer unit-test CI gate added, Issue #41)
 
 ## Quality order
 
@@ -116,6 +116,14 @@ Issue #41 で organizer JVM test gateをCIに追加した。`.github/workflows/c
 - この `--tests` filterは `app.lawnchair.organizer.planning.*`（contract/property test）と純粋な `application` JVM testの両方を含み、同package treeへ追加された新testは自動的にこのgateに加わる。
 - jobは `final-status` 集約に接続されており、test失敗はmergeをblockする。docs/spec-only PRではpath filterによりskipされ、repository contract検証のみ走る。
 - 実行結果の正本はGitHub Actionsの当該run URLとする（PR本文に記録する）。instrumentation test（Issue #14）とemulator実行はこのgateの対象外である。
+
+## High-risk independent-evidence gate
+
+Issue #43 で、`risk: layout-data` / `risk: migration` labelまたは高リスクpath変更を持つPRに対する独立エビデンスgateを追加した。`.github/workflows/high-risk-gate.yml` が `tools/repo-contract/validate_high_risk_evidence.py` を実行し、`docs/assessment/pr-<PR番号>-<slug>.md` のaudit記録（Head SHA、CI run link、spec/ADR criteria）をGitHub APIと照合する。第二のtest seamは作らず、このgateは #41 のCI runの実行結果そのものを証拠として検証する。適用条件、audit形式、運用の正本は [github-workflow.md](../project/github-workflow.md) とする。validatorのself-testは `validate-repo-contract` job内で毎回実行される。
+
+```bash
+python3 tools/repo-contract/test_validate_high_risk_evidence.py
+```
 
 ## Repository contract gates
 
