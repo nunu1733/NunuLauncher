@@ -163,9 +163,13 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: organizer-unit-test-reports
-          path: build/reports/tests/**/classes/**
+          # AGP writes HTML reports under build/reports/tests/<task>/ and JUnit
+          # XML under build/test-results/<task>/; there is no classes/ level.
+          path: |
+            build/reports/tests/testLawnWithQuickstepGithubDebugUnitTest/**
+            build/test-results/testLawnWithQuickstepGithubDebugUnitTest/**/*.xml
           retention-days: 7
-          if-no-files-found: ignore
+          if-no-files-found: error
 
   # Required status check: aggregates the jobs above so branch protection has a
   # single gate. Jobs that were skipped (e.g. style on a docs PR) count as
