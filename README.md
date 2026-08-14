@@ -6,7 +6,7 @@
 
 GitHub repositoryは [nunu1733/NunuLauncher](https://github.com/nunu1733/NunuLauncher) です。Lawnchairのfork ancestryを保持し、projectの `main` は `v15.0.0-beta3.0` のcommit `505dbc40e6154c05158b5d0271c45f6a885a411b` をbaselineとして固定しています。
 
-bootstrapは [Issue #1](https://github.com/nunu1733/NunuLauncher/issues/1) で完走し、PR [#7](https://github.com/nunu1733/NunuLauncher/pull/7) がmergeされました。2026-08-09にJDK 21、Android SDK 36.1、Build Tools 36.1.0でformat checkとGitHub debug APK buildを再現済みです。2026-08-14時点で、Foundationのplanning seam ([#10](https://github.com/nunu1733/NunuLauncher/issues/10)〜[#12](https://github.com/nunu1733/NunuLauncher/issues/12))、safe application/recovery ([#13](https://github.com/nunu1733/NunuLauncher/issues/13)/[#14](https://github.com/nunu1733/NunuLauncher/issues/14))、lock persistence ([ADR-0004](./docs/adr/0004-organizer-lock-persistence.md)) はmerge済みで、主要設計判断はIssues/specs/ADRsで確定済みです。Issue graphと次の作業は [docs/project/seed-backlog.md](./docs/project/seed-backlog.md) で追跡します。
+bootstrapは [Issue #1](https://github.com/nunu1733/NunuLauncher/issues/1) で完走し、PR [#7](https://github.com/nunu1733/NunuLauncher/pull/7) がmergeされました。2026-08-09にJDK 21、Android SDK 36.1、Build Tools 36.1.0でformat checkとGitHub debug APK buildを再現済みです。Issue graphと次の作業は [docs/project/seed-backlog.md](./docs/project/seed-backlog.md) で追跡します。
 
 ## 読み始める場所
 

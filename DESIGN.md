@@ -1,8 +1,8 @@
 # NunuLauncher System Design
 
-> Status: Accepted
+> Status: Proposed
 > Updated: 2026-08-14
-> Scope: 目標設計。baselineは `v15.0.0-beta3.0` のcommit `505dbc40e6154c05158b5d0271c45f6a885a411b` に固定済み。Deck layoutは[ADR-0002](./docs/adr/0002-replace-deck-layout.md)でreplaceを採用した。planning/applicationのFoundation実装はmerge済み。未実装範囲の進捗は各GitHub Issueが正本である。
+> Scope: 目標設計。baselineは `v15.0.0-beta3.0` のcommit `505dbc40e6154c05158b5d0271c45f6a885a411b` に固定済み。Deck layoutは[ADR-0002](./docs/adr/0002-replace-deck-layout.md)でreplaceを採用した。正確なplatform seamは関連Issueで確定する。
 
 ## 1. Design goals
 
@@ -22,25 +22,9 @@
 - Lawnchairの手動バックアップはXMLではない。DB・設定・Protobuf metadata等を含むZIPである。
 - NunuLauncherは [Lawnchairのfork](https://github.com/nunu1733/NunuLauncher) であり、`main` のproduct baselineは `v15.0.0-beta3.0` のcommit `505dbc40e6154c05158b5d0271c45f6a885a411b` である。
 
-### Resolved by accepted Issues, specs, and ADRs
+### Design gate status
 
-Foundation設計gateのうち次は確定済みである。詳細は各正本を参照し、本書へ複製しない。
-
-- 対象集合と既存itemの保持規則: [Issue #3](https://github.com/nunu1733/NunuLauncher/issues/3) / [docs/product/item-preservation-policy.md](./docs/product/item-preservation-policy.md)
-- trigger、確認、recoveryのUX: [Issue #4](https://github.com/nunu1733/NunuLauncher/issues/4) / [docs/product/organization-run-ux.md](./docs/product/organization-run-ux.md)
-- 配置戦略v1: [Issue #5](https://github.com/nunu1733/NunuLauncher/issues/5) / [docs/product/layout-strategy-v1.md](./docs/product/layout-strategy-v1.md)
-- category taxonomyと分類source: [Issue #6](https://github.com/nunu1733/NunuLauncher/issues/6) / [docs/product/category-taxonomy-v1.md](./docs/product/category-taxonomy-v1.md)
-- lock維持のstorage: [Issue #23](https://github.com/nunu1733/NunuLauncher/issues/23) / [ADR-0004](./docs/adr/0004-organizer-lock-persistence.md)
-- safe applicationとrecovery point: [spec 13](./specs/13-safe-layout-application/spec.md) / [ADR-0003](./docs/adr/0003-organizer-recovery-point-storage.md)
-
-### Not yet confirmed
-
-- 整理ルールのfile形式とversioning (D-009)。未起票の提案は [docs/project/seed-backlog.md](./docs/project/seed-backlog.md) で追跡する。
-- empty-folderの保持・削除policy: [Issue #24](https://github.com/nunu1733/NunuLauncher/issues/24)
-- organizerの性能budget: [Issue #15](https://github.com/nunu1733/NunuLauncher/issues/15)、diagnosticsとobservability: [Issue #16](https://github.com/nunu1733/NunuLauncher/issues/16)
-- 15系から16系へ追従する時期と互換方針。
-
-未確認事項を実装で固定しない。対応するIssueは [docs/project/seed-backlog.md](./docs/project/seed-backlog.md) で追跡する。
+設計gateの承認状態は [§11 のDesign gates表](#11-design-gates) で一元管理する。研究提案は `docs/product/` 、承認済み判断はADRと `specs/` 、未起票提案は [docs/project/seed-backlog.md](./docs/project/seed-backlog.md) を正本とする。未承認の判断を実装で固定しない。
 
 ## 3. System context
 
@@ -145,7 +129,7 @@ stateDiagram-v2
     Recovered --> [*]
 ```
 
-自動triggerであってもこの状態遷移を短絡しない。triggerと確認のpolicyは [docs/product/organization-run-ux.md](./docs/product/organization-run-ux.md) が正本であり、v1はfull/incrementalともpreviewと明示的確認を必須とし、自動適用を採用しない。増分配置の実装は [Issue #55](https://github.com/nunu1733/NunuLauncher/issues/55) が所有する。
+自動triggerであってもこの状態遷移を短絡しない。全体整理を無確認で行えるか、新規アプリだけを自動適用するかは別々のpolicyとして [docs/product/organization-run-ux.md](./docs/product/organization-run-ux.md) が提案し [Issue #4](https://github.com/nunu1733/NunuLauncher/issues/4) が追跡する。適用と復旧の契約は [spec 13](./specs/13-safe-layout-application/spec.md) が正本である。増分配置は [Issue #55](https://github.com/nunu1733/NunuLauncher/issues/55) で追跡する。
 
 ## 7. Data ownership and persistence
 
@@ -197,15 +181,15 @@ package数をこの図に合わせること自体を目的にしない。interfa
 
 ## 11. Design gates
 
-Foundation設計gateの帰結は次の通りである。詳細は各正本を参照し、本書へ複製しない。
+設計gateの状態はこの表で一元管理する。「承認済み」とできるのは、ADRまたは受入済みspecに明示的な承認記録がある判断だけである。研究文書は承認されるまで提案である。
 
 | Gate | Status | Source of truth |
 |---|---|---|
-| 1. 対象集合と既存itemの保持規則 | 解決済み | [Issue #3](https://github.com/nunu1733/NunuLauncher/issues/3) / [item-preservation-policy](./docs/product/item-preservation-policy.md) |
-| 2. trigger、確認、recoveryのUX | 解決済み | [Issue #4](https://github.com/nunu1733/NunuLauncher/issues/4) / [organization-run-ux](./docs/product/organization-run-ux.md)。v1は自動適用不採用 |
-| 3. lock対象とfolder内への伝播 | 解決済み | [ADR-0004](./docs/adr/0004-organizer-lock-persistence.md) / [Issue #23](https://github.com/nunu1733/NunuLauncher/issues/23)。authoringとUNKNOWN reviewは [Issue #38](https://github.com/nunu1733/NunuLauncher/issues/38) |
-| 4. grid非依存の配置policy v1 | 解決済み | [Issue #5](https://github.com/nunu1733/NunuLauncher/issues/5) / [layout-strategy-v1](./docs/product/layout-strategy-v1.md)。実装は [Issue #12](https://github.com/nunu1733/NunuLauncher/issues/12) |
-| 5. category taxonomyと分類source | 解決済み | [Issue #6](https://github.com/nunu1733/NunuLauncher/issues/6) / [category-taxonomy-v1](./docs/product/category-taxonomy-v1.md) |
+| 1. 対象集合と既存itemの保持規則 | 提案済み・承認待ち | [Issue #3](https://github.com/nunu1733/NunuLauncher/issues/3) / [item-preservation-policy](./docs/product/item-preservation-policy.md) |
+| 2. trigger、確認、recoveryのUX | 提案済み・承認待ち。ただし適用と復旧の契約は別途承認済み | 提案: [Issue #4](https://github.com/nunu1733/NunuLauncher/issues/4) / [organization-run-ux](./docs/product/organization-run-ux.md)。契約: [spec 13](./specs/13-safe-layout-application/spec.md)、[ADR-0003](./docs/adr/0003-organizer-recovery-point-storage.md) |
+| 3. lock対象とfolder内への伝播 | 承認済み (storageとfail-closed規則) | [ADR-0004](./docs/adr/0004-organizer-lock-persistence.md) / [Issue #23](https://github.com/nunu1733/NunuLauncher/issues/23) |
+| 4. grid非依存の配置policy v1 | 承認済み (planner v1契約の範囲) | [spec 12](./specs/12-deterministic-full-layout-planner-v1/spec.md)。元提案: [Issue #5](https://github.com/nunu1733/NunuLauncher/issues/5) / [layout-strategy-v1](./docs/product/layout-strategy-v1.md) |
+| 5. category taxonomyと分類source | 提案済み・承認待ち | [Issue #6](https://github.com/nunu1733/NunuLauncher/issues/6) / [category-taxonomy-v1](./docs/product/category-taxonomy-v1.md) |
 | 6. 整理ルールのfile formatとversioning | 未解決 | D-009。未起票proposalは [docs/project/seed-backlog.md](./docs/project/seed-backlog.md) |
 
-未解決のgateを実装で固定しない。解決済みgateの変更は、正本となるIssue/spec/ADR側から行う。
+承認待ちおよび未解決のgateを実装で固定しない。承認済みgateの変更は、正本となるADR/spec側から行う。
