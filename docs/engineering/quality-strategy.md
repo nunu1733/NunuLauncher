@@ -1,7 +1,7 @@
 # Quality Strategy
 
 > Status: Proposed
-> Updated: 2026-08-09 (repository contract gates added, Issue #8)
+> Updated: 2026-08-14 (organizer unit-test CI gate added, Issue #41)
 
 ## Quality order
 
@@ -104,6 +104,18 @@ budget未決定の間も計測値はPRに残し、regression比較可能にす�
 - risk label付きPRでのtargeted emulator test。
 
 compile以降のcommand名はsource導入後に確定する。
+
+## Organizer unit-test CI gate
+
+Issue #41 で organizer JVM test gateをCIに追加した。`.github/workflows/ci.yml` の `organizer-unit-tests` jobが、local開発で使うのと同一のtest surfaceをsource PRで実行する。第二のtest seamは作らない。
+
+```bash
+./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'
+```
+
+- この `--tests` filterは `app.lawnchair.organizer.planning.*`（contract/property test）と純粋な `application` JVM testの両方を含み、同package treeへ追加された新testは自動的にこのgateに加わる。
+- jobは `final-status` 集約に接続されており、test失敗はmergeをblockする。docs/spec-only PRではpath filterによりskipされ、repository contract検証のみ走る。
+- 実行結果の正本はGitHub Actionsの当該run URLとする（PR本文に記録する）。instrumentation test（Issue #14）とemulator実行はこのgateの対象外である。
 
 ## Repository contract gates
 

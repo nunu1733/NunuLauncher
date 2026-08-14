@@ -2,7 +2,7 @@
 
 > Status: Verified
 > Baseline: `505dbc40e6154c05158b5d0271c45f6a885a411b`
-> Verified: 2026-08-09
+> Verified: 2026-08-14
 
 ## Required toolchain
 
@@ -51,8 +51,11 @@ build-tools;36.1.0
 
 ```bash
 ./gradlew spotlessCheck
+./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'
 ./gradlew assembleLawnWithQuickstepGithubDebug
 ```
+
+organizer unit test commandは `.github/workflows/ci.yml` の `organizer-unit-tests` job（Issue #41）がsource PRで同じsurfaceを実行する。localでの詳細は [quality-strategy.md](./quality-strategy.md) を参照する。
 
 ## Planner generated-property runs
 
@@ -114,6 +117,8 @@ macOS 26.5.2 arm64、Homebrew OpenJDK 21.0.12、Android command-line tools環境
 | `./gradlew --version` | Gradle 9.3.0 / JVM 21.0.12 |
 | `./gradlew spotlessCheck` | `BUILD SUCCESSFUL` in 1m 39s |
 | `./gradlew assembleLawnWithQuickstepGithubDebug` | `BUILD SUCCESSFUL` in 3m 22s |
+
+organizer unit test commandは2026-08-14に同じ環境で確認した（`BUILD SUCCESSFUL` in 3m 5s、377 tests / 0 failures、Issue #41）。
 
 生成物 `Lawnchair.15.Dev.(505dbc4).github.debug.apk` の検証時SHA-256は `197dc5e826d8107a6dfc8f253f26d409a1e36152c71d9e31ab643a84e2fa6404` だった。APKはbuild artifactでありcommitしない。
 
