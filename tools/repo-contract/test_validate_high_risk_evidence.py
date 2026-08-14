@@ -75,6 +75,11 @@ class ClassifyPrTests(unittest.TestCase):
             # DatabaseHelper owns onUpgrade: a schema migration change without
             # a risk label must still be caught (fourth-review P1 finding).
             "src/com/android/launcher3/model/DatabaseHelper.java",
+            # Remaining Issue #44 writer-inventory files: DB rename/migration,
+            # backup restore, and bootstrap layout writes (fifth-review P1).
+            "lawnchair/src/app/lawnchair/LawnchairApp.kt",
+            "src/com/android/launcher3/LauncherBackupAgent.java",
+            "src/com/android/launcher3/AutoInstallsLayout.java",
             "src/com/android/launcher3/model/GridSizeMigrationUtil.java",
             "src/com/android/launcher3/model/LayoutWriteCoordinator.java",
             "src/com/android/launcher3/model/ModelWriter.java",
@@ -430,9 +435,15 @@ class CriteriaSubstanceTests(unittest.TestCase):
     def test_id_defined_as_exact_token_passes(self) -> None:
         self.assertTrue(gate._id_defined("FR-004", "criteria FR-004 holds"))
         self.assertTrue(gate._id_defined("FR-004", "- FR-004"))
+        self.assertTrue(gate._id_defined("FR-004", "FR-004/FR-005 both"))
         self.assertFalse(gate._id_defined("FR-004", "FR-0040 only"))
         self.assertFalse(gate._id_defined("FR-004", "XFR-004 typo"))
         self.assertFalse(gate._id_defined("AC-1", "AC-12 only"))
+        # Trailing letters, underscores, and hyphens extend the token: they
+        # must not satisfy a citation of the bare ID (fifth-review P1).
+        self.assertFalse(gate._id_defined("FR-004", "FR-004foo only"))
+        self.assertFalse(gate._id_defined("FR-004", "FR-004_more only"))
+        self.assertFalse(gate._id_defined("FR-004", "FR-004-extra only"))
 
 
 class CiRunsVerificationTests(unittest.TestCase):

@@ -49,13 +49,20 @@ HIGH_RISK_PATH_PREFIXES: Tuple[str, ...] = (
     "lawnchair/src/app/lawnchair/deck/",
 )
 
+# Exact files from the Issue #44 runtime writer inventory: DB rename/migration
+# (LawnchairApp, LauncherBackupAgent), bootstrap layout writes
+# (AutoInstallsLayout), schema upgrade (DatabaseHelper), and the remaining
+# persisted-layout writers.
 HIGH_RISK_PATH_FILES: Tuple[str, ...] = (
     "src/com/android/launcher3/LauncherProvider.java",
+    "src/com/android/launcher3/LauncherBackupAgent.java",
+    "src/com/android/launcher3/AutoInstallsLayout.java",
     "src/com/android/launcher3/model/LayoutWriteCoordinator.java",
     "src/com/android/launcher3/model/ModelWriter.java",
     "src/com/android/launcher3/model/ModelDbController.java",
     "src/com/android/launcher3/model/DatabaseHelper.java",
     "src/com/android/launcher3/model/GridSizeMigrationUtil.java",
+    "lawnchair/src/app/lawnchair/LawnchairApp.kt",
 )
 
 AUDIT_DIR = "docs/assessment"
@@ -321,12 +328,12 @@ def _id_variants(requirement_id: str) -> Tuple[str, ...]:
 def _id_defined(requirement_id: str, text: str) -> bool:
     """Match the requirement ID as a whole token, never as a substring.
 
-    ``FR-004`` must not match a document that only defines ``FR-0040``, so
-    the ID is anchored: no alphanumeric or hyphen before it, and no digit
-    after it.
+    ``FR-004`` must not match a document that only defines ``FR-0040``,
+    ``FR-004foo``, ``FR-004_more``, or ``FR-004-extra``, so the ID is
+    anchored: no alphanumeric, underscore, or hyphen on either side.
     """
 
-    pattern = rf"(?<![\w-]){re.escape(requirement_id)}(?!\d)"
+    pattern = rf"(?<![\w-]){re.escape(requirement_id)}(?![\w-])"
     return re.search(pattern, text) is not None
 
 

@@ -92,12 +92,15 @@ PRが次のいずれかに当たる場合に適用する。`high-risk-gate` work
 2. PRが次の高リスクpathを変更している（label付け漏れの保険。根拠はIssue #44のruntime writer inventory）。
    - `lawnchair/src/app/lawnchair/organizer/application/**` （layout適用・recovery・store）
    - `src/com/android/launcher3/LauncherProvider.java`
+   - `src/com/android/launcher3/LauncherBackupAgent.java` （backup restore時のDB rename/migration）
+   - `src/com/android/launcher3/AutoInstallsLayout.java` （初期layout書込み）
    - `src/com/android/launcher3/provider/**` （restore・DB生成）
    - `src/com/android/launcher3/model/LayoutWriteCoordinator.java`
    - `src/com/android/launcher3/model/ModelWriter.java`
    - `src/com/android/launcher3/model/ModelDbController.java`
    - `src/com/android/launcher3/model/DatabaseHelper.java` （`onUpgrade` を持つschema upgrader）
    - `src/com/android/launcher3/model/GridSizeMigrationUtil.java`
+   - `lawnchair/src/app/lawnchair/LawnchairApp.kt` （runtime DB rename/migration）
    - `lawnchair/src/app/lawnchair/backup/**`
    - `lawnchair/src/app/lawnchair/deck/**`
 
