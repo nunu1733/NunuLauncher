@@ -1,5 +1,10 @@
 package app.lawnchair.organizer.planning
 
+internal enum class AllocationFault {
+    NONE,
+    FAIL_ALLOCATION,
+}
+
 internal data class PlacementOutput(
     val placements: List<PlannedPlacement>,
     val newPages: List<NewPage>,
@@ -12,6 +17,7 @@ internal object PlanningPlacement {
     fun place(
         input: OrganizationInput,
         classification: ClassificationOutput,
+        allocationFault: AllocationFault = AllocationFault.NONE,
     ): PlacementOutput {
         val rolesById = input.targets.existing.associate { it.item to it.role }
         val pageOrderMap = input.snapshot.pages.associate { it.id to it.order }
@@ -19,7 +25,12 @@ internal object PlanningPlacement {
             compareBy({ it.order }, { it.id }),
         )
         val maxCapturedOrder = input.snapshot.pages.maxOfOrNull { it.order }
-        val allocator = Allocator(input.snapshot.device, capturedPagesSorted, maxCapturedOrder)
+        val allocator = Allocator(
+            input.snapshot.device,
+            capturedPagesSorted,
+            maxCapturedOrder,
+            allocationFault,
+        )
         val isIncremental = input.runMode == RunMode.IncrementalPlacement
 
         for (item in input.snapshot.items) {
@@ -177,7 +188,9 @@ internal object PlanningPlacement {
 
             for (unit in ordered) {
                 val allocated = allocator.allocatePreferred(unit.span, unit.preferredPage)
-                val (pageRef, cell) = allocated ?: continue
+                val (pageRef, cell) = allocated ?: error(
+                    "Validated item ${unit.itemId} could not be allocated",
+                )
 
                 allocator.markOccupied(pageRef, cell, unit.span)
 
@@ -334,7 +347,9 @@ internal object PlanningPlacement {
 
         for (unit in sortedIncUnits) {
             val allocated = allocator.allocateCapturedThenNew(unit.span)
-            val (pageRef, cell) = allocated ?: continue
+            val (pageRef, cell) = allocated ?: error(
+                "Validated item ${unit.sortItem} could not be allocated",
+            )
 
             allocator.markOccupied(pageRef, cell, unit.span)
 
@@ -500,6 +515,7 @@ private class Allocator(
     val device: DeviceCapabilities,
     val capturedPages: List<Page>,
     val maxCapturedOrder: PageOrder?,
+    private val allocationFault: AllocationFault,
 ) {
     private val occupancy = mutableMapOf<PageTargetRef, MutableList<Rect>>()
     private val newPages = mutableListOf<NewPage>()
@@ -511,6 +527,8 @@ private class Allocator(
     }
 
     fun allocatePreferred(span: GridSpan, preferredPage: PageRef): Pair<PageTargetRef, GridCell>? {
+        if (allocationFault == AllocationFault.FAIL_ALLOCATION) return null
+
         val occupied = occupancy[preferredPage] ?: emptyList()
         val cell = findRowMajorFirstFit(occupied, device.columns, device.rows, span)
         if (cell != null) return preferredPage to cell
@@ -518,6 +536,8 @@ private class Allocator(
     }
 
     fun allocateCapturedThenNew(span: GridSpan): Pair<PageTargetRef, GridCell>? {
+        if (allocationFault == AllocationFault.FAIL_ALLOCATION) return null
+
         for (page in capturedPages) {
             val ref: PageTargetRef = PageRef(page.id)
             val occupied = occupancy[ref] ?: emptyList()
@@ -527,7 +547,7 @@ private class Allocator(
         return allocateOnNewPages(span)
     }
 
-    private fun allocateOnNewPages(span: GridSpan): Pair<PageTargetRef, GridCell>? {
+    private fun allocateOnNewPages(span: GridSpan): Pair<PageTargetRef, GridCell> {
         for (np in newPages) {
             val ref: PageTargetRef = NewPageRef(np.ordinal)
             val occupied = occupancy[ref] ?: emptyList()
@@ -536,11 +556,15 @@ private class Allocator(
         }
         val ordinal = NewPageOrdinal(newPages.size)
         val order = nextNewPageOrder
-        nextNewPageOrder = nextNewPageOrder + 1
-        newPages += NewPage(ordinal, order)
-        val ref: PageTargetRef = NewPageRef(ordinal)
         val cell = findRowMajorFirstFit(emptyList(), device.columns, device.rows, span)
-        return if (cell != null) ref to cell else null
+            ?: error(
+                "Validated placement span ${span.width}x${span.height} does not fit " +
+                    "an empty ${device.columns}x${device.rows} page",
+            )
+        newPages += NewPage(ordinal, order)
+        nextNewPageOrder = nextNewPageOrder + 1
+        val ref: PageTargetRef = NewPageRef(ordinal)
+        return ref to cell
     }
 
     fun buildNewPages(): List<NewPage> = newPages.toList()
