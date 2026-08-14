@@ -176,23 +176,28 @@ builderはentropy源として`java.util.Random(seed)`だけを使い、次の順
 1. **kind配分**: `f = floor(0.10N)`、`w = floor(0.05N)`、`s = floor(0.05N)`
    (N = totalItems)、`a = N - f - w - s`。kind列
    `[App×a, Folder×f, Widget×w, Shortcut×s]`を作り、`Random`でshuffleする。
-2. **dock**: shuffle後のkind列順で最初の`columns`個のAppをdockへ配置する
+2. **profile割当 (P2のみ、membershipより先)**: kind列の**末尾**から
+   `floor(0.2 × a)`個のAppをwork profileとし、残りのAppと他kind全てを
+   personal profileとする。P1では全itemをpersonalとする。
+3. **dock**: kind列順で最初の`columns`個の**personal** Appをdockへ配置する
    (dock slot 0から順に)。dock itemはworkspace cellを消費しない。
-3. **folder membership**: Folderそれぞれに、kind列順で未使用のAppを3つずつ
-   memberとして割り当てる (dock分を除く)。memberはworkspaceに個別配置しない。
-4. **widget span**: kind列順でj番目 (0-based) のWidgetは`j`が偶数なら2×2、
+4. **folder membership**: Folderはすべてpersonalとし、Folderそれぞれに
+   kind列順で未使用の**personal** Appを3つずつmemberとして割り当てる
+   (dock分を除く)。memberはworkspaceに個別配置しない。
+   folderとmemberは常に同一profileであり、work profileのAppはloose item
+   としてのみ存在する。これによりspec 10の`SAME_PROFILE_ONLY`に反する
+   入力を生成しない。
+5. **widget span**: kind列順でj番目 (0-based) のWidgetは`j`が偶数なら2×2、
    奇数なら1×1とする。
-5. **page数の導出**: workspace配置cell数
+6. **page数の導出**: workspace配置cell数
    `P = (a - 3f) + f + s + (w + 3×ceil(w/2))`、
    `PW = ceil((P - columns) / floor(0.8 × rows × columns))`。
    導出値が§4.2の表と一致しない場合はbuilderのbugである。
-6. **page分散**: dock/memberを除いたworkspace item列を、順序を保ったまま
+7. **page分散**: dock/memberを除いたworkspace item列を、順序を保ったまま
    PW個の連続区分へ分割する。区分sizeはできるだけ等分し、余りは前側の区分へ
    1つずつ配る。各区分を担当pageのcell (0,0)からrow-majorのfirst-fitで
    配置する。spanの関係で担当pageに収まらないitemは次pageの空きcellへ
    移す (最終pageの溢れはworkload構築errorとする)。
-7. **profile (P2のみ)**: kind列の**末尾**から`floor(0.2 × a)`個のAppを
-   work profileとする (dock/memberを含む)。
 8. **locked**: workspaceに配置されたitemのうち、配置順で最初の
    `floor(0.05 × N)`個をlocked placementとする。
 9. **分類signal**: category、confidence、frequency signalは
@@ -222,7 +227,7 @@ phaseごとに次を測る。UI-threadとend-to-endは必ず分離して報告�
 | phase duration | phase境界間のwall time。JVM seamでは操作呼び出し前後、on-deviceではjournal timestamp差 | 全phase |
 | UI-thread block | run window内のmain-threadの連続busy時間の最大値と16ms超の回数 | on-device全phase |
 | frame | run window内のjank frame率とdropped frame数 | on-device (R-EMU-1では相対値のみ) |
-| memory | run前後のRSS差とrun中のpeak。採取手順は§6.6で固定する | 全phase |
+| memory | phase別PSS差とrun中のpeak PSS (on-device。`dumpsys meminfo`のTOTAL PSS)、またはheap使用量 (R-JVM-1)。採取手順は§6.6で固定する | 全phase |
 | DB write | Launcher DB write transaction数とstatement数、recovery DB transaction数 | checkpoint/apply/recovery |
 | recovery size | recovery recordの永続化byte数 | checkpoint |
 | determinism guard | 計測中に同一入力から同一planが得られることを再確認 (benchmarkが結果を破壊していないことの証明) | plan |
@@ -277,20 +282,22 @@ journalを使わない。on-device測定では次を守る。
   incremental proposal等の自動trigger) を発生させない。自動triggerを無効化
   し、測定操作以外のorganizer起動を行わない。
 - benchmark harnessは各iteration (1 run) のterminal event到達直後に、
-  そのrunのjournal eventを読み出して計測artifact (§4.4の保存先) へ
-  書き出す。次のiterationを開始する前に完了させる。
+  **journal slice全体** (測定window内の全event。対象run以外のrunのeventを
+  含む) を読み出して計測artifact (§4.4の保存先) へ書き出す。
+  次のiterationを開始する前に完了させる。
 - 読み出し時の検査は2段で行う。`journalSequence`はjournal全体の連番であり
-  run単位の連番ではないため、他runの介在が正当な欠落として現れる。
-  1. **journal全体のslice検査**: 測定windowの最初と最後の`journalSequence`
-     を記録し、読み出したslice内でsequenceが連続していることを確認する。
-     隙間がある場合、その隙間が他runのevent (runId不一致) に全て帰属する
-     ことを確認する。帰属しない隙間があればjournal書き込み欠落として
-     iterationを無効にする。
-  2. **runのphase完備検査**: 対象runのevent列が、期待される必須phase順序
-     ([organizer-diagnostics](./organizer-diagnostics.md) §4。例:
-     `RUN_STARTED`→`CAPTURED`→`PLANNED`→`USER_CONFIRMED`→`CHECKPOINTED`→
-     `APPLY_COMMITTED`→`APPLY_VERIFIED`) から1つも欠落していないことを
-     確認する。欠落があればそのiterationを無効とし、再実行する。
+  run単位の連番ではない。
+  1. **journal全体のslice検査**: 読み出したslice**全体**で
+     `journalSequence`が連続していることを確認する。slice全体に隙間が
+     あれば、runIdに関係なくjournal書き込み欠落であるため、そのiterationを
+     無効にする。隙間がない場合のみ、runIdで対象runのeventを抽出する。
+     排他実行 (前項) に反して他runのeventが介在していても、連続性が
+     保たれていれば抽出時に除外するのみでよい。
+  2. **runのphase完備検査**: 抽出した対象runのevent列が、期待される必須
+     phase順序 ([organizer-diagnostics](./organizer-diagnostics.md) §4。例:
+     `RUN_STARTED`→`CAPTURED`→`PLANNED`→`PREVIEWED`→`USER_CONFIRMED`→
+     `CHECKPOINTED`→`APPLY_COMMITTED`→`APPLY_VERIFIED`) から1つも欠落して
+     いないことを確認する。欠落があればそのiterationを無効とし、再実行する。
 - terminal eventに到達しないrun (crash等) は試行として記録するが、
   duration統計には含めない。
 - 上記により、journalのretentionがn = 100/300の収集に影響しない
@@ -299,22 +306,32 @@ journalを使わない。on-device測定では次を守る。
 
 ### 6.6 memory採取手順
 
-`dumpsys meminfo`は瞬間値であるため、次の手順でphase境界値とrun中peakを
-採取する。
+`dumpsys meminfo`は瞬間値であり、journal eventの読み出しはrun終了後に
+行われるため遡及採取はできない。そこでrunとは独立に動く並行samplerを
+使い、事後的にphase境界へ対応付ける。
 
-- **phase境界値**: 各phase境界 (journal eventの時点) ごとに
-  `dumpsys meminfo <package>`を1回採取し、`TOTAL PSS`を記録する。
-  phase別RSS差 = 境界値の差とする。
-- **run中peak**: run window中に250ms間隔で`dumpsys meminfo`を定期採取し、
-  最大値をpeakとする。採取は別host process (adb shell) から行い、
-  計測対象processに負荷を加えない。
+- **並行sampler**: run開始前から終了後まで、host側から250ms間隔で
+  `dumpsys meminfo <package>`を採取する。各sampleには採取時刻
+  (hostのwall clock) を付与する。benchmark harnessはrun windowの開始・
+  終了も同じhost時計で記録する。採取は別host process (adb shell) から
+  行い、計測対象processに負荷を加えない。
+- **phase境界との対応付け**: run終了後に、§6.5で読み出したjournal sliceの
+  `recordedAtWallMillis`とsampler sampleの時刻を突き合わせる。各phase境界に
+  対して、境界の直前と直後のsampleを境界値とし、phase別PSS差はその差分で
+  算出する。境界から±125ms (sampling間隔の半分) 以内にsampleがない場合は
+  その境界を欠測として報告し、補間しない。
+- **run中peak**: run window内のsampleの最大値とする。
+- **用語**: on-device memory metricの取得値は`dumpsys meminfo`の
+  `TOTAL PSS`であり、本書では**PSS**とだけ呼ぶ。RSSという名称は使わない
+  (§5、§9.1のmetric名もこれに合わせる)。
 - **既知の限界**: 定期採取の間 (250ms) に発生した短期のpeakは観測されない。
   この粒度は暫定扱いとし、in-processの`Debug.getMemoryInfo` sampler
   (100ms間隔、benchmark harness内thread) を将来hookとして§10に置く。
   harness実装時に粒度要件が上がった場合はこちらへ切り替える。
-- R-JVM-1では同様にphase境界でGC実行後のheap使用量
-  (`Runtime`のtotal/used) を記録し、別threadによる同間隔の定期採取で
-  peakを取る。JVM値はon-device値との比較対象にしない (§2.2)。
+- R-JVM-1では、harnessがphase境界を同期的に把握できるため、境界でGC実行後
+  のheap使用量 (`Runtime`のtotal/committed/used) を直接記録し、別threadに
+  よる同間隔の定期採取でpeakを取る。JVM値はon-device値との比較対象に
+  しない (§2.2)。
 
 ## 7. Sample size rationale
 
@@ -396,7 +413,7 @@ n = 565以上を要件として明示する。
 | end-to-end (USER_CONFIRMED→APPLY_VERIFIED) | — | 5000ms | 確認後5秒以内の完了をUX上の要求と仮定。provisional |
 | UI-thread単一連続block | ≤16ms (目標) | 50ms (上限) | 60fpsのframe budget由来。provisional |
 | frame jank率 (run window) | — | 5% | R-EMU-1では相対比較のみ。provisional |
-| 追加peak RSS | — | 50MB | 想定workload (M) のsnapshot+plan+recovery dataサイズに対する暫定余裕。provisional |
+| 追加peak PSS (on-device) | — | 50MB | 想定workload (M) のsnapshot+plan+recovery dataサイズに対する暫定余裕。provisional |
 | recovery record size | — | 10MB | 同上。provisional |
 
 「—」はp50を暫定として固定しないものであり、測定後にp95と併せて固定する。
@@ -476,3 +493,8 @@ automation分離基準 (§11)。
   §7の5%検出sample数を誤りからn ≥ 565に修正。§6.5の連続性検査を
   journal全体slice検査とphase完備検査の2段に変更し排他実行を追加。
   §6.6にmemory採取手順を新設した。
+- 2026-08-15: 第3回review対応。P2 workloadのprofile割当をmembershipより先
+  に行い、folderとmemberの同一profileを保証 (SAME_PROFILE_ONLY整合)。
+  §6.5のslice検査を「全体export→連続性確認→runId抽出」の順に修正し、
+  必須phase順序へ`PREVIEWED`を追加。§6.6を並行samplerと事後のphase境界
+  対応付けに改め、metric名をRSSからPSSへ統一した。
