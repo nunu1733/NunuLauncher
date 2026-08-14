@@ -106,7 +106,7 @@ PRが次のいずれかに当たる場合に適用する。`high-risk-gate` work
 
 適用PRは、merge前に次の両方を揃える。
 
-1. **独立実行CI証拠**: 検証対象commit上でCI merge gate（`CI / final-status`。Issue #41のorganizer unit test gateを含む）が実際に成功していること。agentの報告ではなく、GitHub Actionsの実行結果そのものを指す。
+1. **独立実行CI証拠**: 検証対象commit上で、このPRの `pull_request` eventによるCI merge gate（`CI / final-status`。Issue #41のorganizer unit test gateを含むsource job）が実際に成功していること。agentの報告ではなく、GitHub Actionsの実行結果そのものを指す。source jobをskipしたdocs-only runは証拠にならない。
 2. **独立audit記録**: `docs/assessment/pr-<PR番号>-<slug>.md` を、形式は `docs/assessment/_template.md` に従って追加する。機械検証対象の必須fieldは次の通り。
    - `Auditor`: 実装を行っていない作業主体。solo保守では独立sessionである旨を明記する。
    - `Audit date`: 実施日。
@@ -121,10 +121,10 @@ PRが次のいずれかに当たる場合に適用する。`high-risk-gate` work
 
 - PRが高リスクでない場合は即座にpassする（低リスクPRへの追加負担は数秒のjobのみ）。
 - audit記録が `docs/assessment/pr-<PR番号>-<slug>.md` に存在し、同名の競合記録がなく、必須field（Auditor、Audit date、Head SHA、CI run、Criteria）を満たすこと。
-- Criteriaがspec (`specs/<n>-<slug>/spec.md`) またはADR (`docs/adr/*.md`) への参照と要件ID（FR-x / NFR-x / AC-x / ADR-xxxx）を含むこと。
+- Criteriaがspec (`specs/<n>-<slug>/spec.md`) またはADR (`docs/adr/*.md`) への参照と要件ID（FR-x / NFR-x / AC-x / ADR-xxxx）を含むこと。さらに、参照先がrepository内に実在し、statusが `accepted`（または `implemented`）であり、引用された要件IDが参照先に定義されていることを検証する。存在しないfile、draft/proposed/superseded、実在しないIDは拒否される。
 - 必須section（Scope、Criteria check、Executed test surface、Findings）が存在し、空でないこと。Executed test surfaceには具体的なcommand（`./gradlew`、`python3` 等）を含むこと。「test通過」だけの記載では通らない。
 - `Head SHA` がPR履歴内に存在すること。PR headと一致するか、それ以降の変更が `docs/` 配下のみであること。audit確定後にコードを変えた場合は再auditが必要になる。
-- 参照されたCI runがGitHub APIで照合され、このrepositoryの当該commit上で `ci.yml` が成功完了していること。
+- 参照されたCI runがGitHub APIで照合され、このPRの `pull_request` eventによる `ci.yml` runであり、検証対象commit・head branchが一致し、`final-status` が成功、かつsource job（`organizer-unit-tests`、`check-style`、`build-debug-apk`）がskipなしに成功実行されていること。pushやworkflow_dispatchによるrun、docs-only差分でsource jobをskipしたrunは証拠にならない。
 
 高リスクpath一覧は本節の適用条件と `validate_high_risk_evidence.py` とで一致させる。同一覧の整合性はself-test（`DocConsistencyTests`）が検証するため、片方だけを更新するとCIがfailする。
 

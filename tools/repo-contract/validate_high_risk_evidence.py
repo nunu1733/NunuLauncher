@@ -129,6 +129,7 @@ class AuditDocument:
     head_sha: Optional[str] = None
     ci_run_urls: List[str] = field(default_factory=list)
     criteria_refs: List[str] = field(default_factory=list)
+    requirement_ids: List[str] = field(default_factory=list)
     findings: List[str] = field(default_factory=list)
 
 
@@ -211,6 +212,7 @@ def parse_audit(path: Path) -> AuditDocument:
         doc.findings.append("missing 'CI run:' line with an Actions run URL")
 
     doc.criteria_refs = _CRITERIA_RE.findall(text)
+    doc.requirement_ids = _REQUIREMENT_ID_RE.findall(text)
     if not doc.criteria_refs:
         doc.findings.append(
             "no spec/ADR criteria reference (expected specs/<n>-<slug>/spec.md "
@@ -246,6 +248,82 @@ def parse_run_url(url: str, repo: str) -> Optional[int]:
     if f"{match.group(1)}/{match.group(2)}".lower() != repo.lower():
         return None
     return int(match.group(3))
+
+
+# --- Criteria substance verification ------------------------------------------
+
+# A referenced spec/ADR must be accepted (or already implemented) for the audit
+# to count as evidence against its acceptance criteria. Draft, proposed, and
+# superseded documents are not merge gates.
+_ACCEPTED_STATUSES = frozenset({"accepted", "implemented"})
+
+
+def _frontmatter_status(text: str) -> Optional[str]:
+    """Return the ``status:`` value from a document's YAML frontmatter."""
+
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return None
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        if line.startswith("status:"):
+            return line.partition(":")[2].strip()
+    return None
+
+
+def _id_variants(requirement_id: str) -> Tuple[str, ...]:
+    """Accept both ``FR-4`` and the zero-padded ``FR-004`` specs use."""
+
+    kind, _, number = requirement_id.partition("-")
+    if kind in ("FR", "NFR", "AC") and number.isdigit():
+        return (requirement_id, f"{kind}-{int(number):03d}")
+    return (requirement_id,)
+
+
+def verify_criteria_substance(
+    root: Path, criteria_refs: Sequence[str], requirement_ids: Sequence[str]
+) -> List[str]:
+    """Verify criteria references against the repository's actual documents.
+
+    Checks that every referenced spec/ADR exists, is accepted (or
+    implemented), and that every requirement ID cited by the audit is really
+    defined in one of the referenced documents. This is what turns a
+    criteria line from prose into verifiable evidence.
+    """
+
+    problems: List[str] = []
+    texts: List[str] = []
+    for rel in criteria_refs:
+        path = root / rel
+        if not path.is_file():
+            problems.append(f"criteria reference {rel!r} does not exist in the repository")
+            continue
+        text = path.read_text(encoding="utf-8")
+        texts.append(text)
+        status = _frontmatter_status(text)
+        if status not in _ACCEPTED_STATUSES:
+            problems.append(
+                f"criteria reference {rel!r} has status {status!r}; "
+                f"expected one of {sorted(_ACCEPTED_STATUSES)}"
+            )
+
+    for requirement_id in requirement_ids:
+        if requirement_id.startswith("ADR-"):
+            number = requirement_id.partition("-")[2]
+            if not any(ref.startswith(f"docs/adr/{number}-") for ref in criteria_refs):
+                problems.append(
+                    f"requirement ID {requirement_id} has no matching referenced ADR "
+                    f"(expected docs/adr/{number}-*.md)"
+                )
+            continue
+        variants = _id_variants(requirement_id)
+        if not any(any(v in text for v in variants) for text in texts):
+            problems.append(
+                f"requirement ID {requirement_id} is not defined in any referenced "
+                "spec/ADR (check the ID against the spec's acceptance criteria)"
+            )
+    return problems
 
 
 # --- Git lineage and GitHub API verification ---------------------------------
@@ -291,14 +369,58 @@ def gh_api(repo: str, endpoint: str) -> dict:
     return json.loads(proc.stdout)
 
 
+# The merge-gate aggregation job and the source jobs whose execution the
+# high-risk evidence depends on (Issue #41's organizer test gate included). A
+# run that skipped these — e.g. a docs-only diff — is not merge-gate evidence
+# for a high-risk PR.
+FINAL_STATUS_JOB = "final-status"
+REQUIRED_SOURCE_JOBS: Tuple[str, ...] = (
+    "organizer-unit-tests",
+    "check-style",
+    "build-debug-apk",
+)
+
+
+def _verify_run_jobs(repo: str, run_id: int) -> List[str]:
+    """Check that the run's merge gate passed with source jobs executed."""
+
+    try:
+        payload = gh_api(repo, f"actions/runs/{run_id}/jobs")
+    except (RuntimeError, json.JSONDecodeError) as exc:
+        return [f"cannot list jobs of CI run {run_id}: {exc}"]
+    conclusions = {
+        job.get("name"): job.get("conclusion") for job in payload.get("jobs", [])
+    }
+    if conclusions.get(FINAL_STATUS_JOB) != "success":
+        return [
+            f"CI run {run_id} does not show a successful '{FINAL_STATUS_JOB}' "
+            "merge gate on the audited commit"
+        ]
+    not_executed = [
+        name for name in REQUIRED_SOURCE_JOBS if conclusions.get(name) != "success"
+    ]
+    if not_executed:
+        return [
+            f"CI run {run_id} did not execute source job(s) "
+            f"({', '.join(not_executed)}); a docs-only or skipped-source run is "
+            "not merge-gate evidence for a high-risk PR — reference a run where "
+            "the organizer test gate executed"
+        ]
+    return []
+
+
 def verify_ci_runs(
-    run_ids: Sequence[int], audit_sha: str, repo: str
+    run_ids: Sequence[int], audit_sha: str, repo: str, head_ref: str
 ) -> List[str]:
     """Verify referenced runs against the GitHub API.
 
-    Passes only when at least one referenced run is a completed, successful
-    ``CI`` workflow run on the audited commit. This is the part the PR author
-    cannot satisfy by writing prose: the run must exist in GitHub's records.
+    Passes only when at least one referenced run is a successful
+    ``pull_request``-triggered CI workflow run on this PR's head ref and the
+    audited commit, whose ``final-status`` merge gate passed with the source
+    jobs (organizer unit tests, style, build) actually executed. Push runs,
+    manual dispatches, and runs that skipped the source jobs do not qualify:
+    this is the part the PR author cannot satisfy by writing prose — the run
+    must exist in GitHub's records as this PR's merge gate.
     """
 
     problems: List[str] = []
@@ -315,16 +437,38 @@ def verify_ci_runs(
                 f"commit {audit_sha}"
             )
             continue
+        if run.get("event") != "pull_request":
+            problems.append(
+                f"CI run {run_id} was triggered by {run.get('event')!r}, not by "
+                "the pull request merge gate"
+            )
+            continue
+        if head_ref and run.get("head_branch") != head_ref:
+            problems.append(
+                f"CI run {run_id} ran on branch {run.get('head_branch')!r}, not "
+                f"this PR's head ref {head_ref!r}"
+            )
+            continue
         if (
-            run.get("path") == CI_WORKFLOW_PATH
-            and run.get("status") == "completed"
-            and run.get("conclusion") == "success"
+            run.get("path") != CI_WORKFLOW_PATH
+            or run.get("status") != "completed"
+            or run.get("conclusion") != "success"
         ):
+            problems.append(
+                f"CI run {run_id} is not a completed, successful "
+                f"{CI_WORKFLOW_PATH} run on the audited commit"
+            )
+            continue
+        job_problems = _verify_run_jobs(repo, run_id)
+        problems.extend(job_problems)
+        if not job_problems:
             qualified = True
     if not qualified:
         problems.append(
-            "no referenced Actions run is a completed, successful CI workflow "
-            f"run ({CI_WORKFLOW_PATH}) on the audited commit"
+            "no referenced Actions run qualifies: expected a successful "
+            f"pull_request run of {CI_WORKFLOW_PATH} on this PR's head ref and "
+            "the audited commit, with 'final-status' green and the source jobs "
+            "(organizer unit tests included) executed"
         )
     return problems
 
@@ -359,16 +503,36 @@ def fetch_changed_files(repo: str, pr_number: int) -> List[str]:
     return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
 
 
+def fetch_head_ref(repo: str, pr_number: int) -> str:
+    proc = subprocess.run(
+        [
+            "gh", "pr", "view", str(pr_number), "--repo", repo,
+            "--json", "headRefName", "--jq", ".headRefName",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"gh pr view failed: {proc.stderr.strip()}")
+    return proc.stdout.strip()
+
+
 def _remediation(pr_number: int) -> str:
     return (
         "To satisfy the high-risk independent-evidence gate "
         "(docs/project/github-workflow.md):\n"
-        f"  1. Ensure CI / final-status is green on the audited commit.\n"
+        f"  1. Ensure CI is green on the audited commit as this PR's merge gate "
+        "(pull_request run with final-status green and organizer unit tests, "
+        "style, and build executed — a docs-only/skipped-source run does not "
+        "count).\n"
         f"  2. Add {AUDIT_DIR}/pr-{pr_number}-<slug>.md using "
         f"{AUDIT_TEMPLATE} as the form.\n"
         "  3. Fill Auditor, Audit date, Head SHA (the commit the audit "
-        "covers), CI run (a successful CI run on that commit), and the "
-        "spec/ADR criteria checked.\n"
+        "covers), CI run (that PR merge-gate run), and the spec/ADR criteria "
+        "checked — the referenced documents must exist and be accepted, and "
+        "every cited requirement ID (FR-x/NFR-x/AC-x/ADR-xxxx) must be defined "
+        "in them.\n"
         "  4. If code changes after the audit, only docs-only commits may "
         "follow; otherwise re-audit against the new head."
     )
@@ -395,6 +559,9 @@ def run_gate(repo: str, pr_number: int, head_sha: str, root: Path) -> int:
 
     audit = parse_audit(audit_path)
     problems = list(audit.findings)
+    problems.extend(
+        verify_criteria_substance(root, audit.criteria_refs, audit.requirement_ids)
+    )
 
     if audit.head_sha is not None:
         if audit.head_sha == head_sha:
@@ -420,7 +587,8 @@ def run_gate(repo: str, pr_number: int, head_sha: str, root: Path) -> int:
             else:
                 run_ids.append(run_id)
         if run_ids:
-            problems.extend(verify_ci_runs(run_ids, audit.head_sha, repo))
+            head_ref = fetch_head_ref(repo, pr_number)
+            problems.extend(verify_ci_runs(run_ids, audit.head_sha, repo, head_ref))
 
     if problems:
         print(f"FAIL: high-risk evidence gate ({audit_path.relative_to(root)}):")

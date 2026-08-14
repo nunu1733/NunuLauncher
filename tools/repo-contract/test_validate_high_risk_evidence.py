@@ -18,12 +18,15 @@ from __future__ import annotations
 import re
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
+from typing import List
 
 import validate_high_risk_evidence as gate
 
 REPO = "nunu1733/NunuLauncher"
-WORKFLOW_DOC = Path(__file__).resolve().parents[2] / "docs" / "project" / "github-workflow.md"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+WORKFLOW_DOC = REPO_ROOT / "docs" / "project" / "github-workflow.md"
 
 VALID_AUDIT = """# High-risk audit: PR #47 demo
 
@@ -34,8 +37,8 @@ VALID_AUDIT = """# High-risk audit: PR #47 demo
 - PR: https://github.com/nunu1733/NunuLauncher/pull/47
 - Head SHA: 0123456789abcdef0123456789abcdef01234567
 - CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/1234567890
-- Criteria: specs/13-safe-layout-application/spec.md FR-1, \
-docs/adr/0003-organizer-recovery-point-storage.md
+- Criteria: specs/13-safe-layout-application/spec.md FR-004, \
+docs/adr/0003-organizer-recovery-point-storage.md ADR-0003
 
 ## Scope
 
@@ -43,7 +46,7 @@ Covered the transactional writer and correlated reload path.
 
 ## Criteria check
 
-specs/13-safe-layout-application/spec.md FR-1 (transactional apply or rollback)
+specs/13-safe-layout-application/spec.md FR-004 (transactional apply or rollback)
 checked against the diff; ADR-0003 recovery-point requirements confirmed.
 
 ## Executed test surface
@@ -205,15 +208,15 @@ class ParseAuditTests(unittest.TestCase):
     # Criteria check section), so these tests must scrub both the field line
     # and the body references.
     _CRITERIA_BODY = (
-        "specs/13-safe-layout-application/spec.md FR-1 (transactional apply or rollback)\n"
+        "specs/13-safe-layout-application/spec.md FR-004 (transactional apply or rollback)\n"
         "checked against the diff; ADR-0003 recovery-point requirements confirmed."
     )
 
     def test_missing_criteria_reference_is_flagged(self) -> None:
         text = VALID_AUDIT.replace(
-            "- Criteria: specs/13-safe-layout-application/spec.md FR-1, "
-            "docs/adr/0003-organizer-recovery-point-storage.md\n",
-            "- Criteria: FR-1\n",
+            "- Criteria: specs/13-safe-layout-application/spec.md FR-004, "
+            "docs/adr/0003-organizer-recovery-point-storage.md ADR-0003\n",
+            "- Criteria: FR-004\n",
         ).replace(self._CRITERIA_BODY, "checked against the diff.")
         doc = self._parse(text)
         self.assertTrue(any("criteria" in f for f in doc.findings))
@@ -221,8 +224,8 @@ class ParseAuditTests(unittest.TestCase):
 
     def test_criteria_without_requirement_ids_is_flagged(self) -> None:
         text = VALID_AUDIT.replace(
-            "- Criteria: specs/13-safe-layout-application/spec.md FR-1, "
-            "docs/adr/0003-organizer-recovery-point-storage.md\n",
+            "- Criteria: specs/13-safe-layout-application/spec.md FR-004, "
+            "docs/adr/0003-organizer-recovery-point-storage.md ADR-0003\n",
             "- Criteria: specs/13-safe-layout-application/spec.md（受入条件全体）\n",
         ).replace(self._CRITERIA_BODY, "受入条件全体を確認した。")
         doc = self._parse(text)
@@ -319,6 +322,143 @@ class DocConsistencyTests(unittest.TestCase):
             "exact file paths in github-workflow.md must match the validator; "
             "update both together",
         )
+
+
+class CriteriaSubstanceTests(unittest.TestCase):
+    """verify_criteria_substance must check the referenced documents.
+
+    The referenced spec/ADR has to exist, be accepted, and actually define the
+    cited requirement IDs — otherwise any path-shaped string plus a made-up ID
+    would pass the gate (second-review P1 finding).
+    """
+
+    SPEC_13 = "specs/13-safe-layout-application/spec.md"
+    ADR_0003 = "docs/adr/0003-organizer-recovery-point-storage.md"
+
+    def test_real_accepted_refs_and_real_ids_pass(self) -> None:
+        problems = gate.verify_criteria_substance(
+            REPO_ROOT,
+            [self.SPEC_13, self.ADR_0003],
+            ["FR-004", "AC-1", "ADR-0003"],
+        )
+        self.assertEqual(problems, [], f"real accepted criteria flagged: {problems}")
+
+    def test_nonexistent_reference_is_flagged(self) -> None:
+        problems = gate.verify_criteria_substance(
+            REPO_ROOT, ["specs/99-does-not-exist/spec.md"], []
+        )
+        self.assertTrue(any("does not exist" in p for p in problems))
+
+    def test_draft_reference_is_flagged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            spec = root / "specs" / "42-demo"
+            spec.mkdir(parents=True)
+            (spec / "spec.md").write_text(
+                "---\nstatus: draft\n---\n\n# Demo\n\nAC-1 demo\n",
+                encoding="utf-8",
+            )
+            problems = gate.verify_criteria_substance(
+                root, ["specs/42-demo/spec.md"], []
+            )
+        self.assertTrue(any("status" in p for p in problems))
+
+    def test_invented_requirement_id_is_flagged(self) -> None:
+        # FR-999 is not defined anywhere in spec 13; the gate must reject it
+        # instead of trusting the audit's prose.
+        problems = gate.verify_criteria_substance(
+            REPO_ROOT, [self.SPEC_13], ["FR-999"]
+        )
+        self.assertTrue(any("FR-999" in p for p in problems))
+
+    def test_zero_padded_id_variant_is_accepted(self) -> None:
+        # Specs write FR-004; the audit may cite FR-4 for the same criterion.
+        problems = gate.verify_criteria_substance(REPO_ROOT, [self.SPEC_13], ["FR-4"])
+        self.assertEqual(problems, [])
+
+    def test_adr_id_requires_matching_referenced_adr(self) -> None:
+        problems = gate.verify_criteria_substance(
+            REPO_ROOT, [self.SPEC_13], ["ADR-0004"]
+        )
+        self.assertTrue(any("ADR-0004" in p for p in problems))
+
+
+class CiRunsVerificationTests(unittest.TestCase):
+    """verify_ci_runs must require this PR's merge gate, not any green run.
+
+    Mocked gh_api responses: a push run, a foreign-branch run, and a run whose
+    source jobs were skipped must all be rejected; only a pull_request run of
+    ci.yml on the audited SHA and head ref with final-status green and the
+    source jobs executed qualifies (second-review P1 finding).
+    """
+
+    AUDIT_SHA = "0" * 40
+    HEAD_REF = "feature-branch"
+
+    def _run(self, **overrides: object) -> dict:
+        run = {
+            "head_sha": self.AUDIT_SHA,
+            "head_branch": self.HEAD_REF,
+            "event": "pull_request",
+            "path": ".github/workflows/ci.yml",
+            "status": "completed",
+            "conclusion": "success",
+        }
+        run.update(overrides)
+        return run
+
+    def _jobs(self, organizer: str = "success") -> dict:
+        return {
+            "jobs": [
+                {"name": "changes", "conclusion": "success"},
+                {"name": "check-style", "conclusion": "success"},
+                {"name": "build-debug-apk", "conclusion": "success"},
+                {"name": "organizer-unit-tests", "conclusion": organizer},
+                {"name": "validate-repo-contract", "conclusion": "success"},
+                {"name": "final-status", "conclusion": "success"},
+            ]
+        }
+
+    def _verify(self, run: dict, jobs: dict) -> List[str]:
+        def fake_gh_api(repo: str, endpoint: str) -> dict:
+            if endpoint.endswith("/jobs"):
+                return jobs
+            return run
+
+        with unittest.mock.patch.object(gate, "gh_api", side_effect=fake_gh_api):
+            return gate.verify_ci_runs([1], self.AUDIT_SHA, REPO, self.HEAD_REF)
+
+    def test_qualifying_merge_gate_run_passes(self) -> None:
+        problems = self._verify(self._run(), self._jobs())
+        self.assertEqual(problems, [], f"qualifying run rejected: {problems}")
+
+    def test_push_triggered_run_is_rejected(self) -> None:
+        problems = self._verify(self._run(event="push"), self._jobs())
+        self.assertTrue(any("pull request merge gate" in p for p in problems))
+        self.assertTrue(problems)
+
+    def test_dispatch_run_is_rejected(self) -> None:
+        problems = self._verify(self._run(event="workflow_dispatch"), self._jobs())
+        self.assertTrue(any("merge gate" in p for p in problems))
+
+    def test_foreign_branch_run_is_rejected(self) -> None:
+        problems = self._verify(
+            self._run(head_branch="other-branch"), self._jobs()
+        )
+        self.assertTrue(any("other-branch" in p for p in problems))
+
+    def test_run_with_skipped_source_jobs_is_rejected(self) -> None:
+        # A docs-only CI run skips organizer tests; it must not count as
+        # merge-gate evidence for a high-risk PR.
+        problems = self._verify(self._run(), self._jobs(organizer="skipped"))
+        self.assertTrue(any("source job" in p for p in problems))
+        self.assertTrue(any("not merge-gate evidence" in p for p in problems))
+
+    def test_run_without_green_final_status_is_rejected(self) -> None:
+        jobs = self._jobs()
+        jobs["jobs"][-1]["conclusion"] = "failure"
+        problems = self._verify(self._run(), jobs)
+        self.assertTrue(any("final-status" in p for p in problems))
 
 
 class ParseRunUrlTests(unittest.TestCase):
