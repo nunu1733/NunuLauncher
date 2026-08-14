@@ -89,8 +89,11 @@ _CRITERIA_RE = re.compile(r"(specs/[\w.-]+/spec\.md|docs/adr/[\w.-]+\.md)")
 # Scope/Findings cannot satisfy (or smuggle) criteria references.
 _CRITERIA_LINE_RE = re.compile(_FIELD_PREFIX + r"Criteria:\s*(.*)$", re.MULTILINE)
 # Requirement identifiers used by specs and ADRs (FR-004, NFR-001, AC-3,
-# ADR-0004).
-_REQUIREMENT_ID_RE = re.compile(r"\b(?:FR|NFR|AC)-\d+\b|\bADR-\d{4}\b")
+# ADR-0004).  A citation must be a whole token: a malformed value such as
+# ``FR-004-extra`` must not be silently parsed as a citation of ``FR-004``.
+_REQUIREMENT_ID_RE = re.compile(
+    r"(?<![A-Za-z0-9_-])(?:(?:FR|NFR|AC)-\d+|ADR-\d{4})(?![A-Za-z0-9_-])"
+)
 # A concrete executed command: a gradle/python/gh/adb/git invocation, so prose
 # like "tests pass" cannot satisfy the executed-test-surface requirement.
 _COMMAND_LINE_RE = re.compile(r"(?:\./gradlew|\bpython3\b|\bgh \b|\badb \b|\bgit )")
@@ -451,7 +454,10 @@ def _verify_run_jobs(repo: str, run_id: int) -> List[str]:
     """Check that the run's merge gate passed with source jobs executed."""
 
     try:
-        payload = gh_api(repo, f"actions/runs/{run_id}/jobs")
+        # GitHub defaults this endpoint to 30 jobs. Requesting 100 prevents a
+        # legitimate final-status or required source job later in the run from
+        # being missed by this evidence check.
+        payload = gh_api(repo, f"actions/runs/{run_id}/jobs?per_page=100")
     except (RuntimeError, json.JSONDecodeError) as exc:
         return [f"cannot list jobs of CI run {run_id}: {exc}"]
     conclusions = {

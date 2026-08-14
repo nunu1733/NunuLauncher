@@ -231,6 +231,25 @@ class ParseAuditTests(unittest.TestCase):
         ))
         self.assertTrue(any("requirement IDs" in f for f in doc.findings))
 
+    def test_malformed_criteria_ids_cannot_be_partially_parsed_or_verified(self) -> None:
+        # Token boundaries must apply while parsing the audit too. Otherwise a
+        # malformed citation such as FR-004-extra is silently reduced to
+        # FR-004, which happens to be defined by the real spec and would pass
+        # the later substance check.
+        spec = "specs/13-safe-layout-application/spec.md"
+        for malformed_id in ("FR-004foo", "FR-004_more", "FR-004-extra"):
+            with self.subTest(malformed_id=malformed_id):
+                doc = self._parse(VALID_AUDIT.replace(
+                    self._CRITERIA_LINE,
+                    f"- Criteria: {spec} {malformed_id}\n",
+                ))
+                self.assertEqual(doc.criteria_entries, [(spec, [])])
+                self.assertTrue(any("requirement IDs" in f for f in doc.findings))
+                problems = gate.verify_criteria_substance(
+                    REPO_ROOT, doc.criteria_entries
+                )
+                self.assertTrue(any("lists no requirement IDs" in p for p in problems))
+
     def test_criteria_ids_from_body_prose_do_not_count(self) -> None:
         # IDs and doc paths mentioned only in Scope/Findings prose must not
         # satisfy the criteria requirement (third-review P1 finding).
@@ -486,9 +505,13 @@ class CiRunsVerificationTests(unittest.TestCase):
             ]
         }
 
-    def _verify(self, run: dict, jobs: dict) -> List[str]:
+    def _verify(
+        self, run: dict, jobs: dict, endpoints: List[str] | None = None
+    ) -> List[str]:
         def fake_gh_api(repo: str, endpoint: str) -> dict:
-            if endpoint.endswith("/jobs"):
+            if endpoints is not None:
+                endpoints.append(endpoint)
+            if endpoint.startswith("actions/runs/1/jobs"):
                 return jobs
             return run
 
@@ -540,6 +563,24 @@ class CiRunsVerificationTests(unittest.TestCase):
         jobs["jobs"][-1]["conclusion"] = "failure"
         problems = self._verify(self._run(), jobs)
         self.assertTrue(any("final-status" in p for p in problems))
+
+    def test_jobs_after_default_first_page_are_retrieved(self) -> None:
+        # The API's default page is 30 jobs. Keep every required job after 30
+        # unrelated jobs to ensure the verifier asks for a page large enough
+        # to evaluate a busy CI run rather than rejecting valid evidence.
+        jobs = {
+            "jobs": [
+                *[
+                    {"name": f"unrelated-{number}", "conclusion": "success"}
+                    for number in range(30)
+                ],
+                *self._jobs()["jobs"],
+            ]
+        }
+        endpoints: List[str] = []
+        problems = self._verify(self._run(), jobs, endpoints)
+        self.assertEqual(problems, [], f"later CI jobs were missed: {problems}")
+        self.assertIn("actions/runs/1/jobs?per_page=100", endpoints)
 
 
 class ParseRunUrlTests(unittest.TestCase):
