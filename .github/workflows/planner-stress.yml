@@ -1,0 +1,58 @@
+name: Planner stress
+
+# The normal CI workflow keeps a bounded deterministic property corpus. This
+# workflow deliberately explores a larger fixed corpus outside pull-request
+# presubmit; see Issue #46 and the engineering build guide.
+on:
+  schedule:
+    - cron: '30 18 * * 0'
+  workflow_dispatch:
+
+concurrency:
+  group: planner-stress-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  generated-property-matrix:
+    name: Seed ${{ matrix.seed }} (${{ matrix.count }} cases)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - seed: '1314213461'
+            count: 512
+          - seed: '0'
+            count: 512
+          - seed: '1'
+            count: 512
+          - seed: '42'
+            count: 512
+          - seed: '20260814'
+            count: 512
+          - seed: '8675309'
+            count: 512
+          - seed: '2147483647'
+            count: 512
+          - seed: '-2147483648'
+            count: 512
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Run generated planner properties
+        run: >-
+          ./gradlew testLawnWithQuickstepGithubDebugUnitTest
+          --tests '*PlannerGeneratedPropertyTest*'
+          -Dplanner.seed=${{ matrix.seed }}
+          -Dplanner.count=${{ matrix.count }}

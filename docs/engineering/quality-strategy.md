@@ -24,6 +24,14 @@
 - determinism tests: locale、timezone、thread schedulingに依存しない。
 - convergence tests: incremental後とfull organizationの不要な振動がない。
 
+The normal source-PR property gate remains the deterministic 64-case corpus
+from `SyntheticFixtureGenerator.DEFAULT_SEED`. Issue #46 additionally runs a
+separate scheduled/manual matrix of eight fixed seeds × 512 cases (4,096
+generated cases total) in `.github/workflows/planner-stress.yml`. That matrix
+is exploration evidence rather than a per-PR merge gate; failures still carry
+the seed, count, and zero-based case needed for local reproduction through the
+same `PlannerGeneratedPropertyTest` seam.
+
 ### Layout Application interface
 
 test databaseをproduction DB adapterの代替として使い、interface経由で検証する。

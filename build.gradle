@@ -1,5 +1,6 @@
 import app.cash.licensee.SpdxId
 import com.android.build.gradle.api.AndroidBasePlugin
+import org.gradle.api.tasks.testing.Test
 import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
@@ -82,6 +83,18 @@ allprojects {
         compilerOptions {
             jvmDefault = JvmDefaultMode.ENABLE
             jvmTarget = JvmTarget.fromTarget(libs.versions.jdkRelease.get())
+        }
+    }
+
+    // Keep generated planner runs reproducible when Gradle reuses test outputs.
+    // Issue #46 treats these test-only properties as part of the Test task input.
+    tasks.withType(Test).matching { it.name == "testLawnWithQuickstepGithubDebugUnitTest" }.configureEach {
+        ["planner.seed", "planner.case", "planner.count"].each { propertyName ->
+            def propertyValue = providers.systemProperty(propertyName)
+            inputs.property(propertyName, propertyValue.orElse(""))
+            if (propertyValue.isPresent()) {
+                systemProperty(propertyName, propertyValue.get())
+            }
         }
     }
 
