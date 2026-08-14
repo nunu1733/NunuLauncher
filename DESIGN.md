@@ -24,7 +24,7 @@
 
 ### Design gate status
 
-設計gateの承認状態は [§11 のDesign gates表](#11-design-gates) で一元管理する。研究提案は `docs/product/` 、承認済み判断はADRと `specs/` 、未起票提案は [docs/project/seed-backlog.md](./docs/project/seed-backlog.md) を正本とする。未承認の判断を実装で固定しない。
+設計gateとその正本の対応は [§11 のDesign gates表](#11-design-gates) を参照する。承認状態は各正本の記載に従い、本書では管理しない。研究提案は `docs/product/` 、ADRと `specs/` 、未起票提案は [docs/project/seed-backlog.md](./docs/project/seed-backlog.md) を正本とする。未承認の判断を実装で固定しない。
 
 ## 3. System context
 
@@ -181,15 +181,15 @@ package数をこの図に合わせること自体を目的にしない。interfa
 
 ## 11. Design gates
 
-設計gateの状態はこの表で一元管理する。「承認済み」とできるのは、ADRまたは受入済みspecに明示的な承認記録がある判断だけである。研究文書は承認されるまで提案である。
+設計gateとその正本の対応は次の表の通りである。承認状態は各正本の記載に従い、本書では管理しない。
 
-| Gate | Status | Source of truth |
-|---|---|---|
-| 1. 対象集合と既存itemの保持規則 | 提案済み・承認待ち | [Issue #3](https://github.com/nunu1733/NunuLauncher/issues/3) / [item-preservation-policy](./docs/product/item-preservation-policy.md) |
-| 2. trigger、確認、recoveryのUX | 提案済み・承認待ち。ただし適用と復旧の契約は別途承認済み | 提案: [Issue #4](https://github.com/nunu1733/NunuLauncher/issues/4) / [organization-run-ux](./docs/product/organization-run-ux.md)。契約: [spec 13](./specs/13-safe-layout-application/spec.md)、[ADR-0003](./docs/adr/0003-organizer-recovery-point-storage.md) |
-| 3. lock対象とfolder内への伝播 | 承認済み (storageとfail-closed規則) | [ADR-0004](./docs/adr/0004-organizer-lock-persistence.md) / [Issue #23](https://github.com/nunu1733/NunuLauncher/issues/23) |
-| 4. grid非依存の配置policy v1 | 承認済み (planner v1契約の範囲) | [spec 12](./specs/12-deterministic-full-layout-planner-v1/spec.md)。元提案: [Issue #5](https://github.com/nunu1733/NunuLauncher/issues/5) / [layout-strategy-v1](./docs/product/layout-strategy-v1.md) |
-| 5. category taxonomyと分類source | 提案済み・承認待ち | [Issue #6](https://github.com/nunu1733/NunuLauncher/issues/6) / [category-taxonomy-v1](./docs/product/category-taxonomy-v1.md) |
-| 6. 整理ルールのfile formatとversioning | 未解決 | D-009。未起票proposalは [docs/project/seed-backlog.md](./docs/project/seed-backlog.md) |
+| Gate | Source of truth |
+|---|---|
+| 1. 対象集合と既存itemの保持規則 | planner契約の対象membership、保持優先、disposition: [spec 10](./specs/10-pure-organization-planning/spec.md)、[spec 12](./specs/12-deterministic-full-layout-planner-v1/spec.md)。platform capture policyの提案: [Issue #3](https://github.com/nunu1733/NunuLauncher/issues/3) / [item-preservation-policy](./docs/product/item-preservation-policy.md) |
+| 2. trigger、確認、recoveryのUX | 適用と復旧の契約: [spec 13](./specs/13-safe-layout-application/spec.md)、[ADR-0003](./docs/adr/0003-organizer-recovery-point-storage.md)。triggerと確認のUX提案: [Issue #4](https://github.com/nunu1733/NunuLauncher/issues/4) / [organization-run-ux](./docs/product/organization-run-ux.md) |
+| 3. lock対象とfolder内への伝播 | [ADR-0004](./docs/adr/0004-organizer-lock-persistence.md) / [Issue #23](https://github.com/nunu1733/NunuLauncher/issues/23) |
+| 4. grid非依存の配置policy v1 | [spec 12](./specs/12-deterministic-full-layout-planner-v1/spec.md) (元提案: [Issue #5](https://github.com/nunu1733/NunuLauncher/issues/5) / [layout-strategy-v1](./docs/product/layout-strategy-v1.md)) |
+| 5. category taxonomyと分類source | planner側のtaxonomy契約、signal source、category resolution: [spec 10](./specs/10-pure-organization-planning/spec.md)、[spec 12](./specs/12-deterministic-full-layout-planner-v1/spec.md)。adapter側の分類source提案: [Issue #6](https://github.com/nunu1733/NunuLauncher/issues/6) / [category-taxonomy-v1](./docs/product/category-taxonomy-v1.md) |
+| 6. 整理ルールのfile formatとversioning | 正本なし (D-009)。未起票proposalは [docs/project/seed-backlog.md](./docs/project/seed-backlog.md) を参照 |
 
-承認待ちおよび未解決のgateを実装で固定しない。承認済みgateの変更は、正本となるADR/spec側から行う。
+正本が存在しない、または正本が提案どまりの判断を実装で固定しない。gateの変更は、正本となるADR/spec/Issue側から行う。
