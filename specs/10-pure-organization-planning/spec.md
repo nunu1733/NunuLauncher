@@ -903,8 +903,10 @@ Issue #10 uses a small representative suite, not the downstream harness:
   preserve determinism/offline.
 - **Deletion disposition:** absent in v1; requires accepted rule + recovery +
   migration.
-- **Empty-folder deletion ([Issue
-  #24](https://github.com/nunu1733/NunuLauncher/issues/24)):** v1 preserves.
+- **Empty-folder deletion:** v1 preserves; the decided policy and future
+  explicit-deletion eligibility are owned by
+  [empty-folder policy](../../docs/product/empty-folder-policy.md)
+  ([Issue #24](https://github.com/nunu1733/NunuLauncher/issues/24)).
 - **Lock persistence:** ADR-0004 owns storage; this planning seam remains
   behavior-only and consumes typed lock state.
 - **Rule file format:** seam requires typed `RuleSemantics` + `TaxonomyContract`;
@@ -912,6 +914,8 @@ Issue #10 uses a small representative suite, not the downstream harness:
 
 ## Change history
 
+- 2026-08-15: Recorded the Issue #24 empty-folder decision reference in open
+  questions; no contract, type, or behavior change.
 - 2026-08-10: Issue #33 makes `PageOrder` an unbounded canonical decimal
   domain value so a new page after any captured order remains constructible.
 - 2026-08-10: Issue #31 adds the lowest-priority
