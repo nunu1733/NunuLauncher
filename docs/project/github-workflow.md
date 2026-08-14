@@ -137,6 +137,11 @@ PRが次のいずれかに当たる場合に適用する。`high-risk-gate` work
 - #38、#52、#55 はいずれも `risk: layout-data` を持つ。実装PRはこのgateを通る。auditの `Criteria` には各Issueのaccepted specの受入条件を要件ID付きで参照する。#55 は `risk: privacy` も併せて明記する。
 - このgateは #41 のorganizer CI gateの上に作られている。test seamを増やさず、CI runの実行結果そのものを証拠として再利用する。
 
+### 動作実証（Issue #43受入、2026-08-14）
+
+- 低リスク経路: [PR #63](https://github.com/nunu1733/NunuLauncher/pull/63)（docs/toolingのみ）はauditなしで [gateがpass](https://github.com/nunu1733/NunuLauncher/actions/runs/31801071856)。
+- 高リスク経路: 検証専用の [PR #64](https://github.com/nunu1733/NunuLauncher/pull/64)（close済み・非merge）に `risk: layout-data` labelを付与すると [gateがfail](https://github.com/nunu1733/NunuLauncher/actions/runs/31801210644)（audit記録欠如）し、`docs/assessment/pr-64-gate-demo.md` の追加（Head SHA・docs-only delta・[成功CI run参照](https://github.com/nunu1733/NunuLauncher/actions/runs/31801159754)）で [pass](https://github.com/nunu1733/NunuLauncher/actions/runs/31801306031) した。
+
 ## Recommended labels
 
 GitHub repository作成後に以下を登録する。状態はProject boardと二重管理せず、どちらを正本にするかrepository設定時に決める。
