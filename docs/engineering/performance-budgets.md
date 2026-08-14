@@ -225,7 +225,7 @@ phaseごとに次を測る。UI-threadとend-to-endは必ず分離して報告�
 | Metric | 定義 | 対象 |
 |---|---|---|
 | phase duration | phase境界間のwall time。JVM seamでは操作呼び出し前後、on-deviceではjournal timestamp差 | 全phase |
-| UI-thread block | run window内のmain-threadの連続busy時間の最大値と16ms超の回数 | on-device全phase |
+| UI-thread block | run window内のmain-threadにおける**message dispatch 1回の継続時間** (dispatch開始〜終了) の最大値と、16msを超えたdispatchの回数。取得方法は§6.7 | on-device全phase |
 | frame | run window内のjank frame率とdropped frame数 | on-device (R-EMU-1では相対値のみ) |
 | memory | phase別PSS差とrun中のpeak PSS (on-device。`dumpsys meminfo`のTOTAL PSS)、またはheap使用量 (R-JVM-1)。採取手順は§6.6で固定する | 全phase |
 | DB write | Launcher DB write transaction数とstatement数、recovery DB transaction数 | checkpoint/apply/recovery |
@@ -310,17 +310,26 @@ journalを使わない。on-device測定では次を守る。
 行われるため遡及採取はできない。そこでrunとは独立に動く並行samplerを
 使い、事後的にphase境界へ対応付ける。
 
-- **並行sampler**: run開始前から終了後まで、host側から250ms間隔で
-  `dumpsys meminfo <package>`を採取する。各sampleには採取時刻
-  (hostのwall clock) を付与する。benchmark harnessはrun windowの開始・
-  終了も同じhost時計で記録する。採取は別host process (adb shell) から
+- **並行sampler**: run開始前から終了後まで、250ms間隔で
+  `dumpsys meminfo <package>`を採取する。採取は別process (adb shell) から
   行い、計測対象processに負荷を加えない。
-- **phase境界との対応付け**: run終了後に、§6.5で読み出したjournal sliceの
-  `recordedAtWallMillis`とsampler sampleの時刻を突き合わせる。各phase境界に
-  対して、境界の直前と直後のsampleを境界値とし、phase別PSS差はその差分で
-  算出する。境界から±125ms (sampling間隔の半分) 以内にsampleがない場合は
-  その境界を欠測として報告し、補間しない。
-- **run中peak**: run window内のsampleの最大値とする。
+- **時刻は同一clock domain (device wall clock) で取る**: sample時刻は
+  host時計ではなく、同一の`adb shell`呼び出し内で`dumpsys`の直後に
+  `date +%s%3N`を実行してdevice wall clock millisを記録する。journalの
+  `recordedAtWallMillis`も同じdevice clockであるため、offset・drift補正を
+ 必要としない。`dumpsys`完了から`date`実行までの遅延 (数ms) は一定とみなし、
+  補正しない。run windowの開始・終了もjournal eventのtimestampで定義する
+  (§6.5のslice)。host時計は照合に使わない。
+- **境界値の選択規則**: phase境界b (journal eventのtimestamp `t_b`) に対し、
+  境界値 `V(b)` は「`t_b`に最も近いsample」のPSSとする。距離が等しい
+  (tie) 場合は**時刻が早い方**を採る。`|t_sample - t_b| > 250ms`
+  (sampling間隔1回分) の場合は境界値なしとし、その境界を欠測として報告して
+  補間しない。
+- **phase別PSS差**: phase P (入力境界`b_in`、出力境界`b_out`) について
+  `delta(P) = V(b_out) - V(b_in)` とする。両端の境界値が揃わないphaseの
+  deltaは報告しない。
+- **run中peak**: run window (最初のevent timestampから最後のevent timestamp
+  まで) 内のsampleの最大値とする。peakは境界値の有無に依存しない。
 - **用語**: on-device memory metricの取得値は`dumpsys meminfo`の
   `TOTAL PSS`であり、本書では**PSS**とだけ呼ぶ。RSSという名称は使わない
   (§5、§9.1のmetric名もこれに合わせる)。
@@ -332,6 +341,22 @@ journalを使わない。on-device測定では次を守る。
   のheap使用量 (`Runtime`のtotal/committed/used) を直接記録し、別threadに
   よる同間隔の定期採取でpeakを取る。JVM値はon-device値との比較対象に
   しない (§2.2)。
+
+### 6.7 UI-thread block取得手順
+
+§5のUI-thread block metric (message dispatch継続時間) は、次のいずれかで
+取得する。両方取得した場合は併記し、不一致を調査する。
+
+- **Looper dispatch計測 (主)**: benchmark harnessがmain looperのmessage
+  logging (dispatch開始/終了のpair) をrun window中に記録し、
+  `dispatch終了 - dispatch開始` をdispatch継続時間とする。max blockと
+  16ms超回数はこの値から算出する。organizer UI実装のrun flowに組み込む。
+- **Perfetto / atrace (副)**: main threadのsched sliceをtraceから読み、
+  dispatch継続時間の分布と突き合わせる。R-EMU-1のgoogle_apis imageは
+  `adb root`が使えるため、system traceが取得できる。
+
+StrictModeはdisk/network違反の検出のみに使い、CPU busy時間やdispatch
+継続時間の測定には使わない (測れないものを測ろうとしない)。
 
 ## 7. Sample size rationale
 
@@ -433,7 +458,7 @@ n = 300の実施を要件とする。
 5. 現行budgetに対するregression flagが発生し、budget側の根拠が失効したとき。
 
 budgetの変更は本書の更新として行い、PRで根拠となる測定にリンクする。
-無通告での変更・測定な引き上げをしない。
+無通告での変更・測定なしの引き上げをしない。
 
 ## 10. Unmeasurable phases and future hooks
 
@@ -441,7 +466,7 @@ budgetの変更は本書の更新として行い、PRで根拠となる測定に
 |---|---|
 | snapshot capture (on-device) | integration snapshot adapterの実装Issue ([DESIGN](../../DESIGN.md) §4.4)。phase境界はjournal timestamp |
 | bind / model reload (A7) | model load generation完了待ちをprotocolが返す時点で計測可能になる |
-| UI-thread block / frame (on-device) | organizer UI実装後にStrictMode (penalty系detect) とChoreographer/JankStatsをrun windowに適用 |
+| UI-thread block / frame (on-device) | organizer UI実装後、§6.7のLooper dispatch計測 (主) とPerfetto/atrace (副) をrun windowに適用。frame系はChoreographer/JankStats。StrictModeは違反検出のみでmetric取得には使わない |
 | 実SQLite recovery store / Launcher DB transaction | model write adapter・production DB adapterの統合後、instrumentation計測として追加 |
 | in-process memory peak sampler (§6.6) | benchmark harness実装時に`Debug.getMemoryInfo`の100ms samplerとして追加。250msの`dumpsys meminfo`定期採取より細かいpeakが必要になった場合の切り替え先 |
 | grid変更・migrationとの相互作用 | grid migrationを扱うIssueで別途matrixを定義する |
@@ -498,3 +523,9 @@ automation分離基準 (§11)。
   §6.5のslice検査を「全体export→連続性確認→runId抽出」の順に修正し、
   必須phase順序へ`PREVIEWED`を追加。§6.6を並行samplerと事後のphase境界
   対応付けに改め、metric名をRSSからPSSへ統一した。
+- 2026-08-15: 第4回review対応。memory sampleの時刻を同一`adb shell`呼び出し
+  内のdevice wall clockで記録し、host-device間のoffset/drift補正を不要化。
+  境界値の選択 (最近接sample・tieは早い方・許容250ms) とphase別delta式
+  `V(b_out) - V(b_in)`を固定。UI-thread block metricをmessage dispatch
+  継続時間と定義し直し、§6.7にLooper dispatch計測とPerfetto/atraceの取得
+  手順を新設 (StrictModeはmetric取得に使わない)。
