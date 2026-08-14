@@ -12,6 +12,7 @@ import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings
 import com.android.launcher3.model.ItemInstallQueue
+import com.android.launcher3.model.LayoutWriteCoordinator
 import com.android.launcher3.model.ModelDbController
 import com.android.launcher3.model.data.AppInfo
 import com.android.launcher3.model.data.FolderInfo
@@ -59,17 +60,23 @@ class LawndeckManager(private val context: Context) {
     }
 
     private fun createBackup(suffix: String) = runCatching {
-        getDatabaseFiles(suffix).apply {
-            db.copyTo(backupDb, overwrite = true)
-            if (journal.exists()) journal.copyTo(backupJournal, overwrite = true)
-        }
+        LayoutWriteCoordinator.getInstance()
+            .acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.DECK_FILE_RESTORE).use {
+                getDatabaseFiles(suffix).apply {
+                    db.copyTo(backupDb, overwrite = true)
+                    if (journal.exists()) journal.copyTo(backupJournal, overwrite = true)
+                }
+            }
     }.onFailure { Log.e("LawndeckManager", "Failed to create backup: $suffix", it) }
 
     private fun restoreBackup(suffix: String) = runCatching {
-        getDatabaseFiles(suffix).apply {
-            backupDb.copyTo(db, overwrite = true)
-            if (backupJournal.exists()) backupJournal.copyTo(journal, overwrite = true)
-        }
+        LayoutWriteCoordinator.getInstance()
+            .acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.DECK_FILE_RESTORE).use {
+                getDatabaseFiles(suffix).apply {
+                    backupDb.copyTo(db, overwrite = true)
+                    if (backupJournal.exists()) backupJournal.copyTo(journal, overwrite = true)
+                }
+            }
         postRestoreActions()
     }.onFailure { Log.e("LawndeckManager", "Failed to restore backup: $suffix", it) }
 

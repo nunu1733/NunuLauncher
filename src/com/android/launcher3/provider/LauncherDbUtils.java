@@ -35,9 +35,12 @@ import android.os.Process;
 import android.os.UserManager;
 import android.text.TextUtils;
 
+import androidx.annotation.Nullable;
+
 import com.android.launcher3.LauncherAppState;
 import com.android.launcher3.LauncherSettings.Favorites;
 import com.android.launcher3.Utilities;
+import com.android.launcher3.model.LayoutWriteCoordinator;
 import com.android.launcher3.model.LoaderCursor;
 import com.android.launcher3.model.UserManagerState;
 import com.android.launcher3.pm.PinRequestHelper;
@@ -200,9 +203,20 @@ public class LauncherDbUtils {
      */
     public static class SQLiteTransaction implements AutoCloseable {
         private final SQLiteDatabase mDb;
+        @Nullable
+        private final LayoutWriteCoordinator.Lease mLease;
 
         public SQLiteTransaction(SQLiteDatabase db) {
             mDb = db;
+            mLease = null;
+            db.beginTransaction();
+        }
+
+        // Issue #14: lease-owning transaction; close() releases the lease after endTransaction()
+        // so the lease lifetime equals the transaction lifetime including close exceptions.
+        public SQLiteTransaction(SQLiteDatabase db, @Nullable LayoutWriteCoordinator.Lease lease) {
+            mDb = db;
+            mLease = lease;
             db.beginTransaction();
         }
 
@@ -212,7 +226,13 @@ public class LauncherDbUtils {
 
         @Override
         public void close() {
-            mDb.endTransaction();
+            try {
+                mDb.endTransaction();
+            } finally {
+                if (mLease != null) {
+                    mLease.close();
+                }
+            }
         }
 
         public SQLiteDatabase getDb() {

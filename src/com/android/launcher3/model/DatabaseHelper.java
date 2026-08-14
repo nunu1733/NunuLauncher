@@ -72,7 +72,7 @@ public class DatabaseHelper extends NoLocaleSQLiteHelper implements
      * When increasing the scheme version, ensure that downgrade_schema.json is
      * updated
      */
-    public static final int SCHEMA_VERSION = 32;
+    public static final int SCHEMA_VERSION = 33;
     private static final String TAG = "DatabaseHelper";
     private static final boolean LOGD = false;
 
@@ -281,6 +281,13 @@ public class DatabaseHelper extends NoLocaleSQLiteHelper implements
             }
             // Fall through
             case 32: {
+                // Issue #14: ADR-0004 — non-wiping organizer lock column migration; throws on failure so the framework transaction rolls back.
+                db.execSQL("ALTER TABLE favorites ADD COLUMN " + LauncherSettings.Favorites.ORGANIZER_LOCK_STATE
+                        + " INTEGER NOT NULL DEFAULT 1;");
+                db.execSQL("UPDATE favorites SET " + LauncherSettings.Favorites.ORGANIZER_LOCK_STATE + " = 0;");
+            }
+            // Fall through
+            case 33: {
                 // DB Upgraded successfully
                 return;
             }
@@ -466,6 +473,11 @@ public class DatabaseHelper extends NoLocaleSQLiteHelper implements
         }
         mMaxItemId += 1;
         return mMaxItemId;
+    }
+
+    // Issue #14: Reinitialize the max-ID cache from committed rows after organizer transaction classification.
+    public void refreshMaxItemIdFromCommittedRows() {
+        mMaxItemId = initializeMaxItemId(getWritableDatabase());
     }
 
     /**

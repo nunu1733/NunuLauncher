@@ -398,8 +398,10 @@ public class LauncherModel implements InstallSessionTracker.Callback {
                     MAIN_EXECUTOR.execute(cb::clearPendingBinds);
                 }
 
+                final OrganizerReloadRequest organizerToken = mOrganizerReloadToken;
                 BaseLauncherBinder launcherBinder = new BaseLauncherBinder(
-                        mApp, mBgDataModel, mBgAllAppsList, callbacksList);
+                        mApp, mBgDataModel, mBgAllAppsList, callbacksList,
+                        () -> completeOrganizerReload(organizerToken));
                 if (bindDirectly) {
                     // Divide the set of loaded items into those that we are binding synchronously,
                     // and everything else that is to be bound normally (asynchronously).
@@ -416,7 +418,8 @@ public class LauncherModel implements InstallSessionTracker.Callback {
                 } else {
                     stopLoader();
                     mLoaderTask = new LoaderTask(
-                            mApp, mBgAllAppsList, mBgDataModel, mModelDelegate, launcherBinder);
+                            mApp, mBgAllAppsList, mBgDataModel, mModelDelegate, launcherBinder,
+                            organizerToken == null ? 0L : organizerToken.organizerLeaseToken);
 
                     // Always post the loader task, instead of running directly
                     // (even on same thread) so that we exit any nested synchronized blocks
@@ -438,9 +441,66 @@ public class LauncherModel implements InstallSessionTracker.Callback {
             mLoaderTask = null;
             if (oldTask != null) {
                 oldTask.stopLocked();
+                cancelOrganizerReload();
                 return true;
             }
             return false;
+        }
+    }
+
+    // Issue #14: package-private bridge for correlated reload.
+    // Sets a per-model organizer reload token that the exact loader task's
+    // bind-complete path signals; supersession/cancellation unsets it.
+    private OrganizerReloadRequest mOrganizerReloadToken;
+
+    void forceReloadForOrganizer(long requestId, long organizerLeaseToken, @NonNull Runnable completed,
+            @NonNull Runnable cancelled) {
+        OrganizerReloadRequest token = new OrganizerReloadRequest(
+                requestId, organizerLeaseToken, completed, cancelled);
+        if (!hasCallbacks()) {
+            token.cancelled.run();
+            return;
+        }
+        synchronized (mLock) {
+            stopLoader();
+            mOrganizerReloadToken = token;
+            mModelLoaded = false;
+        }
+        startLoader();
+    }
+
+    // Issue #14: only the token captured by the exact binder completes the request.
+    private void completeOrganizerReload(
+            OrganizerReloadRequest token) {
+        if (token == null) return;
+        synchronized (mLock) {
+            if (mOrganizerReloadToken != token) return;
+            mOrganizerReloadToken = null;
+        }
+        token.completed.run();
+    }
+
+    private void cancelOrganizerReload() {
+        OrganizerReloadRequest token;
+        synchronized (mLock) {
+            token = mOrganizerReloadToken;
+            mOrganizerReloadToken = null;
+        }
+        if (token != null) token.cancelled.run();
+    }
+
+    private static final class OrganizerReloadRequest {
+        final long requestId;
+        final long organizerLeaseToken;
+        final Runnable completed;
+        final Runnable cancelled;
+
+        OrganizerReloadRequest(long requestId, long organizerLeaseToken, Runnable completed,
+                Runnable cancelled) {
+            this.requestId = requestId;
+            this.organizerLeaseToken = organizerLeaseToken;
+            this.completed = completed;
+            this.cancelled = cancelled;
         }
     }
 

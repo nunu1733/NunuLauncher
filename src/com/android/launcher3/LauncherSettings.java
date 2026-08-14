@@ -353,6 +353,9 @@ public class LauncherSettings {
          */
         public static final String APPWIDGET_SOURCE = "appWidgetSource";
 
+        // Issue #14: ADR-0004 tri-state organizer lock column. 0=UNKNOWN, 1=UNLOCKED, 2=LOCKED.
+        public static final String ORGANIZER_LOCK_STATE = "organizerLockState";
+
         public static void addTableToDb(SQLiteDatabase db, long myProfileId, boolean optional) {
             addTableToDb(db, myProfileId, optional, TABLE_NAME);
         }
@@ -386,6 +389,8 @@ public class LauncherSettings {
             columnsToTypes.put(RANK, "INTEGER NOT NULL DEFAULT 0");
             columnsToTypes.put(OPTIONS, "INTEGER NOT NULL DEFAULT 0");
             columnsToTypes.put(APPWIDGET_SOURCE, "INTEGER NOT NULL DEFAULT -1");
+            // Issue #14: ADR-0004 — default 1 (UNLOCKED) so fresh rows are explicit and usable.
+            columnsToTypes.put(ORGANIZER_LOCK_STATE, "INTEGER NOT NULL DEFAULT 1");
             return columnsToTypes;
         }
 

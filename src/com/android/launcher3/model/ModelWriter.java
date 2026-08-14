@@ -549,7 +549,14 @@ public class ModelWriter {
         }
 
         public final void executeOnModelThread() {
-            MODEL_EXECUTOR.execute(this);
+            // Issue #14: gate through coordinator; tokenless runnables defer when organizer
+            // lease is active so they never block the exact reload task.
+            LayoutWriteCoordinator coord = LayoutWriteCoordinator.getInstance();
+            coord.runOrDefer(
+                    LayoutWriteCoordinator.OwnerKind.MODEL_WRITER,
+                    /* token= */ 0L,
+                    /* exactOrganizerToken= */ false,
+                    () -> MODEL_EXECUTOR.execute(this));
         }
 
         public abstract void runImpl();

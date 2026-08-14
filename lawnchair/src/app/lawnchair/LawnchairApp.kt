@@ -25,6 +25,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import androidx.compose.foundation.layout.Spacer
@@ -38,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import app.lawnchair.backup.LawnchairBackup
 import app.lawnchair.flowerpot.Flowerpot
+import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.ui.ModalBottomSheetContent
 import app.lawnchair.ui.preferences.destinations.openAppInfo
@@ -52,8 +54,12 @@ import com.android.launcher3.Utilities
 import com.android.quickstep.RecentsActivity
 import com.android.systemui.shared.system.QuickStepContract
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
 
 class LawnchairApp : Application() {
+    lateinit var layoutApplicationModule: LayoutApplicationModule
+        private set
     private val compatible = Build.VERSION.SDK_INT in BuildConfig.QUICKSTEP_MIN_SDK..BuildConfig.QUICKSTEP_MAX_SDK
     private val isRecentsComponent: Boolean by unsafeLazy { checkRecentsComponent() }
     private val recentsEnabled: Boolean get() = compatible && isRecentsComponent
@@ -95,6 +101,8 @@ class LawnchairApp : Application() {
 
     fun onLauncherAppStateCreated() {
         registerActivityLifecycleCallbacks(activityHandler)
+        // Issue #14: make restart reconciliation reachable before organizer requests are accepted.
+        layoutApplicationModule = LayoutApplicationModule.production(this)
     }
 
     fun restart(recreateLauncher: Boolean = true) {
@@ -158,6 +166,7 @@ class LawnchairApp : Application() {
     private val activityHandler = object : ActivityLifecycleCallbacks {
         private val activities = HashSet<Activity>()
         private var foregroundActivity: Activity? = null
+        private val organizerReconciliationStarted = AtomicBoolean(false)
 
         fun finishAll() {
             HashSet(activities).forEach { it.finish() }
@@ -167,6 +176,26 @@ class LawnchairApp : Application() {
 
         override fun onActivityResumed(activity: Activity) {
             foregroundActivity = activity
+            if (activity is Launcher && organizerReconciliationStarted.compareAndSet(false, true)) {
+                thread(name = "organizer-startup-reconciliation") {
+                    val model = com.android.launcher3.LauncherAppState.getInstance(this@LawnchairApp).model
+                    val deadline = SystemClock.elapsedRealtime() + ORGANIZER_MODEL_LOAD_TIMEOUT_MS
+                    while (!model.isModelLoaded && SystemClock.elapsedRealtime() < deadline) {
+                        try {
+                            Thread.sleep(50)
+                        } catch (_: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                            break
+                        }
+                    }
+                    if (!model.isModelLoaded) {
+                        Log.e(TAG, "Organizer startup reconciliation began without a completed model load")
+                        layoutApplicationModule.failStartupReconciliation()
+                        return@thread
+                    }
+                    layoutApplicationModule.reconcileAtStart()
+                }
+            }
         }
 
         override fun onActivityStarted(activity: Activity) {}
@@ -222,6 +251,7 @@ class LawnchairApp : Application() {
 
     companion object {
         private const val TAG = "LawnchairApp"
+        private const val ORGANIZER_MODEL_LOAD_TIMEOUT_MS = 30_000L
 
         @JvmStatic
         lateinit var instance: LawnchairApp

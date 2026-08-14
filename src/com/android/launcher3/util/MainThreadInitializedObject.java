@@ -58,6 +58,9 @@ public class MainThreadInitializedObject<T extends SafeCloseable> {
         if (mValue == null) {
             if (Looper.myLooper() == Looper.getMainLooper()) {
                 mValue = TraceHelper.allowIpcs("main.thread.object", () -> mProvider.get(app));
+                // Issue #14: run the post-construction hook only after the value is published,
+                // allowing startup reconciliation to retrieve the initialized LauncherAppState.
+                onPostInit(context);
             } else {
                 try {
                     return MAIN_EXECUTOR.submit(() -> get(context)).get();

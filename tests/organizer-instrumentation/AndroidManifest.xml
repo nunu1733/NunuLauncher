@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Issue #14 Stage B step 6: dedicated instrumentation source set for organizer
+  schema/recovery/process-death tests. Targets the GitHub debug application.
+  Adds no library; uses the platform android.test.InstrumentationTestRunner.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+
+    <instrumentation
+        android:name="androidx.test.runner.AndroidJUnitRunner"
+        android:targetPackage="app.lawnchair.debug"
+        android:label="Organizer recovery instrumentation tests" />
+
+    <application android:debuggable="true">
+        <uses-library android:name="android.test.runner" />
+    </application>
+</manifest>

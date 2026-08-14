@@ -65,6 +65,7 @@ import com.android.launcher3.backuprestore.LauncherRestoreEventLogger;
 import com.android.launcher3.backuprestore.LauncherRestoreEventLogger.RestoreError;
 import com.android.launcher3.logging.FileLog;
 import com.android.launcher3.model.DeviceGridState;
+import com.android.launcher3.model.LayoutWriteCoordinator;
 import com.android.launcher3.model.LoaderTask;
 import com.android.launcher3.model.ModelDbController;
 import com.android.launcher3.model.data.AppInfo;
@@ -201,7 +202,11 @@ public class RestoreDbTask {
     public static boolean performRestore(Context context, ModelDbController controller) {
         SQLiteDatabase db = controller.getDb();
         FileLog.d(TAG, "performRestore: starting restore from db");
-        try (SQLiteTransaction t = new SQLiteTransaction(db)) {
+        // Issue #14: hold one outer reentrant RESTORE lease around the full restore;
+        // surviving lock-state rows travel with the profile remap inside sanitizeDB.
+        LayoutWriteCoordinator.Lease lease = LayoutWriteCoordinator.getInstance()
+                .acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.RESTORE);
+        try (SQLiteTransaction t = new SQLiteTransaction(db, lease)) {
             RestoreDbTask task = new RestoreDbTask();
             BackupManager backupManager = new BackupManager(context);
             LauncherRestoreEventLogger restoreEventLogger = LauncherRestoreEventLogger.Companion.newInstance(context);

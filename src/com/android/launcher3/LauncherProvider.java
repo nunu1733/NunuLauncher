@@ -33,11 +33,14 @@ import android.text.TextUtils;
 import android.util.Log;
 
 import com.android.launcher3.LauncherSettings.Favorites;
+import com.android.launcher3.model.LayoutWriteCoordinator;
 import com.android.launcher3.model.ModelDbController;
 import com.android.launcher3.widget.LauncherWidgetHolder;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.function.ToIntFunction;
 
 public class LauncherProvider extends ContentProvider {
@@ -147,20 +150,42 @@ public class LauncherProvider extends ContentProvider {
         return executeControllerTask(c -> c.update(args.table, values, args.where, args.args));
     }
 
+    // Issue #14: MODEL_EXECUTOR gate through the coordinator so tokenless provider
+    // work defers when an organizer lease is active; the Binder thread waits on the
+    // operation future but MODEL_EXECUTOR never blocks.
     private int executeControllerTask(ToIntFunction<ModelDbController> task) {
         if (Binder.getCallingPid() == Process.myPid()) {
             throw new IllegalArgumentException("Same process should call model directly");
         }
         try {
-            return MODEL_EXECUTOR.submit(() -> {
-                LauncherModel model = LauncherAppState.getInstance(getContext()).getModel();
-                int count = task.applyAsInt(model.getModelDbController());
-                if (count > 0) {
-                    MAIN_EXECUTOR.submit(model::forceReload);
-                }
-                return count;
-            }).get();
-        } catch (Exception e) {
+            CompletableFuture<Integer> future = LayoutWriteCoordinator.getInstance()
+                    .runOrDeferWithOperationFuture(
+                            LayoutWriteCoordinator.OwnerKind.MODEL_WRITER,
+                            /* token= */ 0L,
+                            /* exactOrganizerToken= */ false,
+                            () -> {
+                                try {
+                                    return MODEL_EXECUTOR.submit(() -> {
+                                        LauncherModel model = LauncherAppState.getInstance(getContext()).getModel();
+                                        int count = task.applyAsInt(model.getModelDbController());
+                                        if (count > 0) {
+                                            MAIN_EXECUTOR.submit(model::forceReload);
+                                        }
+                                        return count;
+                                    }).get();
+                                } catch (InterruptedException e) {
+                                    Thread.currentThread().interrupt();
+                                    throw new IllegalStateException(e);
+                                } catch (ExecutionException e) {
+                                    throw new IllegalStateException(
+                                            e.getCause() != null ? e.getCause() : e);
+                                }
+                            });
+            return future.get();
+        } catch (ExecutionException e) {
+            throw new IllegalStateException(e.getCause() != null ? e.getCause() : e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             throw new IllegalStateException(e);
         }
     }
