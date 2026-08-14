@@ -20,6 +20,7 @@
 | [engineering/upstream-strategy.md](./engineering/upstream-strategy.md) | Lawnchair上流とどう同期するか | baseや同期方針が変わるとき |
 | [engineering/building.md](./engineering/building.md) | どのtoolchainとcommandで検証するか | baseline/toolchain/commandが変わるとき |
 | [engineering/quality-strategy.md](./engineering/quality-strategy.md) | 何をどう検証するか | test/CI方針が変わるとき |
+| [engineering/organizer-diagnostics.md](./engineering/organizer-diagnostics.md) | organizer runのdiagnosticのfield・redaction・保持・出力はどう決まるか | diagnostics契約が変わるとき |
 | [adr/](./adr/) | 変更しにくい判断をなぜ行ったか | 判断時。日々の進捗では更新しない |
 | [specs/](../specs/) | あるIssueの観測可能な振る舞いは何か | 受入条件が変わるとき |
 
