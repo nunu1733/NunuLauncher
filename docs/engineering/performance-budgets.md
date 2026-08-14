@@ -103,40 +103,47 @@ on-device計測のphase境界timestampは、diagnostics journalの
 |---|---|---|
 | grid | G1 = 5×4 (portrait)、G2 = 6×5、G3 = 4×4 | G1はR-EMU-1のdefault。G2/G3は設定可能な代表的な密度の上下 |
 | item数 | S = 40、M = 120、L = 300、XL = 600 | Mを実ユーザーの典型的な範囲と仮定した暫定値。S/L/XLは外挿確認用 |
-| page数 | PW2 / PW4 / PW8 / PW15 (workspace page数) | item数と独立にpage構成を固定する。folder・widget span・lock配置は同じitem数でも占有率を変えるため、page数を明示的な軸とする (S=PW2、M=PW4、L=PW8、XL=PW15を標準組合せとする) |
+| page数 | PW = ceil(workspace配置cell数 / floor(0.8 × rows × columns)) | folder・widget span・lock配置は同じitem数でも占有率を変えるため、page数を独立軸とする。値は§4.3の割当algorithmから一意に導出する (占有率を80%以下に抑える) |
 | profile | P1 = personal only、P2 = personal + work | P1をbaseline。P2はM cellのみで開始する |
-| mix | app 80%、folder 10% (3メンバ)、widget 5% (span 1–2)、shortcut 5%、locked 5% | item type網羅とfree space断片化を同時に与える暫定mix |
+| mix | item kind配分: folder 10%、widget 5%、shortcut 5%、app = 残り (約80%、端数込み)。lockedはkindではなく**直交属性**として配置済みitemの5%に付与 | item type網羅とfree space断片化を同時に与える暫定mix |
 
-標準matrixは P1 × {G1,G2,G3} × {S,M,L,XL} × 標準page数の12 cell、追加で
-P2 × G1 × M × PW4 の1 cellとする。reference cell (budget固定・regression基準に
-使う) は **M × G1 × P1 × PW4** とする。dockは全cellで満杯 (gridのcolumn数分)
-とし、folderは配置後のworkspace占有率に1 itemとして数える。
+標準matrixは P1 × {G1,G2,G3} × {S,M,L,XL} × 導出PW の12 cell、追加で
+P2 × G1 × M の1 cellとする。reference cell (budget固定・regression基準に
+使う) は **M × G1 × P1 × PW6** とする。
 
 ### 4.2 Cell定義と再現
 
 cellは次の順で番号を振り、seedを固定する。workload builder (§4.3) は
 cell番号とこの表だけから同一入力を再構築できなければならない。
+PWは§4.3の割当algorithmが他の軸から導出する値であり、builderは導出結果が
+この表と一致することをtestで検証する。
 
-| Cell index | 軸 | seed |
-|---|---|---|
-| 0 | G1 × S × P1 × PW2 | 0x4E554E55 |
-| 1 | G1 × M × P1 × PW4 | 0x4E554E56 |
-| 2 | G1 × L × P1 × PW8 | 0x4E554E57 |
-| 3 | G1 × XL × P1 × PW15 | 0x4E554E58 |
-| 4–7 | G2 × {S,M,L,XL} × P1 × 標準PW | 0x4E554E59–0x4E554E5C |
-| 8–11 | G3 × {S,M,L,XL} × P1 × 標準PW | 0x4E554E5D–0x4E554E60 |
-| 12 | G1 × M × P2 × PW4 | 0x4E554E61 |
+| Cell index | 軸 | PW | seed |
+|---|---|---|---|
+| 0 | G1 × S × P1 | 2 | 0x4E554E55 |
+| 1 | G1 × M × P1 | 6 | 0x4E554E56 |
+| 2 | G1 × L × P1 | 15 | 0x4E554E57 |
+| 3 | G1 × XL × P1 | 29 | 0x4E554E58 |
+| 4 | G2 × S × P1 | 2 | 0x4E554E59 |
+| 5 | G2 × M × P1 | 4 | 0x4E554E5A |
+| 6 | G2 × L × P1 | 10 | 0x4E554E5B |
+| 7 | G2 × XL × P1 | 20 | 0x4E554E5C |
+| 8 | G3 × S × P1 | 3 | 0x4E554E5D |
+| 9 | G3 × M × P1 | 8 | 0x4E554E5E |
+| 10 | G3 × L × P1 | 20 | 0x4E554E5F |
+| 11 | G3 × XL × P1 | 39 | 0x4E554E60 |
+| 12 | G1 × M × P2 | 6 | 0x4E554E61 |
 
 `0x4E554E55` は `SyntheticFixtureGenerator.DEFAULT_SEED` と同じ値をcell 0に
-充て、以降は軸の並び順に従って1ずつ増やす。seedは32bit範囲で一意である。
+充て、以降はcell indexに従って1ずつ増やす。seedは32bit範囲で一意である。
 
 ### 4.3 再現可能な実行recipe
 
 workloadの再現には2階層がある。
 
-**Layer A — 合成corpusの再生 (現時点で実行可能)。**
-seedとcase数を固定したsynthetic corpusの生成・検証は、既存のunit-test seamが
-`planner.seed` / `planner.count` を受け付けるため、次で再現できる
+**Layer A — seedと合成corpus生成機構の再生検証 (現時点で実行可能)。**
+既存のunit-test seamは`planner.seed` / `planner.count`を受け付けるため、
+次で決定的な合成corpusの生成とplanner契約検証を再現できる
 ([building](./building.md) §Planner generated-property runsと同じ仕組み)。
 
 ```bash
@@ -146,8 +153,9 @@ seedとcase数を固定したsynthetic corpusの生成・検証は、既存のun
   -Dplanner.count=64
 ```
 
-このcommandは決定的な合成dataの生成とplanner契約の検証を実行する。
-timing収集は行わない。
+このcommandは**cellのworkloadそのものではなく**、cell seedを使う合成data
+生成機構 (決定性、合成identity、planner契約) の再生検証である。
+cell定義からの`OrganizationInput`再構築はLayer Bが担う。
 
 **Layer B — cell単位のworkload構築と測定 (benchmark実装Issue)。**
 §4.2のcell表から`OrganizationInput`への変換は、workload builderが次の入力を
@@ -156,19 +164,45 @@ timing収集は行わない。
 ```text
 WorkloadBuilder.build(
     seed: Long,            // §4.2のcell seed
-    columns: Int, rows: Int, hotseatSlots: Int,   // grid軸
-    workspacePages: Int,   // page軸
+    columns: Int, rows: Int,   // grid軸。dock slot数 = columns
     totalItems: Int,       // item数軸
     profileCount: Int,     // 1 = P1、2 = P2
-) -> OrganizationInput
+) -> OrganizationInput     // workspace page数は下記algorithmが導出する
 ```
 
-builderの内部規則: §4.1のmix比率でitem kindを配分し (端数はappへ切り上げ)、
-配置はseedを`java.util.Random`へ渡した決定的な順序で行う。合成identityは
-`SyntheticFixtureGenerator` (spec 11 harness) と同じ方針 (合成package名・
-component名・ID) とし、実端末のlayout・実在package名を入力に使わない。
-builderの実装とtiming収集commandはbenchmark実装Issue (§11) が持つ。
-本書はcell定義と入力変換の契約を固定する。
+builderはentropy源として`java.util.Random(seed)`だけを使い、次の順で消費する。
+各stepは決定的であり、同じseedから異なる入力を生成しない。
+
+1. **kind配分**: `f = floor(0.10N)`、`w = floor(0.05N)`、`s = floor(0.05N)`
+   (N = totalItems)、`a = N - f - w - s`。kind列
+   `[App×a, Folder×f, Widget×w, Shortcut×s]`を作り、`Random`でshuffleする。
+2. **dock**: shuffle後のkind列順で最初の`columns`個のAppをdockへ配置する
+   (dock slot 0から順に)。dock itemはworkspace cellを消費しない。
+3. **folder membership**: Folderそれぞれに、kind列順で未使用のAppを3つずつ
+   memberとして割り当てる (dock分を除く)。memberはworkspaceに個別配置しない。
+4. **widget span**: kind列順でj番目 (0-based) のWidgetは`j`が偶数なら2×2、
+   奇数なら1×1とする。
+5. **page数の導出**: workspace配置cell数
+   `P = (a - 3f) + f + s + (w + 3×ceil(w/2))`、
+   `PW = ceil((P - columns) / floor(0.8 × rows × columns))`。
+   導出値が§4.2の表と一致しない場合はbuilderのbugである。
+6. **page分散**: dock/memberを除いたworkspace item列を、順序を保ったまま
+   PW個の連続区分へ分割する。区分sizeはできるだけ等分し、余りは前側の区分へ
+   1つずつ配る。各区分を担当pageのcell (0,0)からrow-majorのfirst-fitで
+   配置する。spanの関係で担当pageに収まらないitemは次pageの空きcellへ
+   移す (最終pageの溢れはworkload構築errorとする)。
+7. **profile (P2のみ)**: kind列の**末尾**から`floor(0.2 × a)`個のAppを
+   work profileとする (dock/memberを含む)。
+8. **locked**: workspaceに配置されたitemのうち、配置順で最初の
+   `floor(0.05 × N)`個をlocked placementとする。
+9. **分類signal**: category、confidence、frequency signalは
+   `SyntheticFixtureGenerator`と同じ合成規則で、以降の`Random`消費として
+   生成する。
+
+合成identityは`SyntheticFixtureGenerator` (spec 11 harness) と同じ方針
+(合成package名・component名・ID) とし、実端末のlayout・実在package名を
+入力に使わない。builderの実装、この契約への一致検証test、timing収集commandは
+benchmark実装Issue (§11) が持つ。本書はcell定義と入力変換の契約を固定する。
 
 ### 4.4 privacy
 
@@ -188,7 +222,7 @@ phaseごとに次を測る。UI-threadとend-to-endは必ず分離して報告�
 | phase duration | phase境界間のwall time。JVM seamでは操作呼び出し前後、on-deviceではjournal timestamp差 | 全phase |
 | UI-thread block | run window内のmain-threadの連続busy時間の最大値と16ms超の回数 | on-device全phase |
 | frame | run window内のjank frame率とdropped frame数 | on-device (R-EMU-1では相対値のみ) |
-| memory | run前後のRSS差とrun中のpeak (emulator: `dumpsys meminfo`) | 全phase |
+| memory | run前後のRSS差とrun中のpeak。採取手順は§6.6で固定する | 全phase |
 | DB write | Launcher DB write transaction数とstatement数、recovery DB transaction数 | checkpoint/apply/recovery |
 | recovery size | recovery recordの永続化byte数 | checkpoint |
 | determinism guard | 計測中に同一入力から同一planが得られることを再確認 (benchmarkが結果を破壊していないことの証明) | plan |
@@ -239,17 +273,48 @@ journal ([organizer-diagnostics](./organizer-diagnostics.md) §8) は
 10 run / 7日 / 512 KiBで削除される。したがってsampleの保存先として
 journalを使わない。on-device測定では次を守る。
 
+- **排他実行**: 測定中は他のorganizer run (onboarding proposal、
+  incremental proposal等の自動trigger) を発生させない。自動triggerを無効化
+  し、測定操作以外のorganizer起動を行わない。
 - benchmark harnessは各iteration (1 run) のterminal event到達直後に、
   そのrunのjournal eventを読み出して計測artifact (§4.4の保存先) へ
   書き出す。次のiterationを開始する前に完了させる。
-- 読み出し時、runの`journalSequence`が`RUN_STARTED`からterminal eventまで
-  連続していることを検査する。欠落があればそのiterationを無効とし、
-  再実行する。
+- 読み出し時の検査は2段で行う。`journalSequence`はjournal全体の連番であり
+  run単位の連番ではないため、他runの介在が正当な欠落として現れる。
+  1. **journal全体のslice検査**: 測定windowの最初と最後の`journalSequence`
+     を記録し、読み出したslice内でsequenceが連続していることを確認する。
+     隙間がある場合、その隙間が他runのevent (runId不一致) に全て帰属する
+     ことを確認する。帰属しない隙間があればjournal書き込み欠落として
+     iterationを無効にする。
+  2. **runのphase完備検査**: 対象runのevent列が、期待される必須phase順序
+     ([organizer-diagnostics](./organizer-diagnostics.md) §4。例:
+     `RUN_STARTED`→`CAPTURED`→`PLANNED`→`USER_CONFIRMED`→`CHECKPOINTED`→
+     `APPLY_COMMITTED`→`APPLY_VERIFIED`) から1つも欠落していないことを
+     確認する。欠落があればそのiterationを無効とし、再実行する。
 - terminal eventに到達しないrun (crash等) は試行として記録するが、
   duration統計には含めない。
 - 上記により、journalのretentionがn = 100/300の収集に影響しない
   (直近10 run分より前のeventは削除済みでも、計測artifactに全sampleが
   存在する)。
+
+### 6.6 memory採取手順
+
+`dumpsys meminfo`は瞬間値であるため、次の手順でphase境界値とrun中peakを
+採取する。
+
+- **phase境界値**: 各phase境界 (journal eventの時点) ごとに
+  `dumpsys meminfo <package>`を1回採取し、`TOTAL PSS`を記録する。
+  phase別RSS差 = 境界値の差とする。
+- **run中peak**: run window中に250ms間隔で`dumpsys meminfo`を定期採取し、
+  最大値をpeakとする。採取は別host process (adb shell) から行い、
+  計測対象processに負荷を加えない。
+- **既知の限界**: 定期採取の間 (250ms) に発生した短期のpeakは観測されない。
+  この粒度は暫定扱いとし、in-processの`Debug.getMemoryInfo` sampler
+  (100ms間隔、benchmark harness内thread) を将来hookとして§10に置く。
+  harness実装時に粒度要件が上がった場合はこちらへ切り替える。
+- R-JVM-1では同様にphase境界でGC実行後のheap使用量
+  (`Runtime`のtotal/used) を記録し、別threadによる同間隔の定期採取で
+  peakを取る。JVM値はon-device値との比較対象にしない (§2.2)。
 
 ## 7. Sample size rationale
 
@@ -295,8 +360,10 @@ two-sample normal近似、CV = 0.30の場合):
 | 10% | 141 |
 | 20% | 35 |
 
-n = 100はCV = 0.30のとき約12%以上の差を検出できる。5%精度が必要な場合は
-variance削減 (warmup増加、host負荷除去) かn = 141以上を要件として明示する。
+n = 100はCV = 0.30のとき約12%以上の差を検出できる。10%の差を検出するには
+n ≥ 141、5%の差を検出するにはn ≥ 565が必要である。5%精度が必要な場合は、
+variance削減 (warmup増加、host負荷除去) でCVを下げるか、そのcellに限って
+n = 565以上を要件として明示する。
 
 ## 8. Regression comparison method
 
@@ -318,7 +385,7 @@ variance削減 (warmup増加、host負荷除去) かn = 141以上を要件とし
 
 全行が**provisional**である。2026-08-15時点でon-device測定が存在しないため、
 数値は実測能力ではなくUX要件から導いた上限値である。cellはreference cell
-(M = 120 items × G1 = 5×4 × P1)。
+(M = 120 items × G1 = 5×4 × P1 × PW6)。
 
 | Metric | p50 | p95 | 根拠とstatus |
 |---|---|---|---|
@@ -359,6 +426,7 @@ budgetの変更は本書の更新として行い、PRで根拠となる測定に
 | bind / model reload (A7) | model load generation完了待ちをprotocolが返す時点で計測可能になる |
 | UI-thread block / frame (on-device) | organizer UI実装後にStrictMode (penalty系detect) とChoreographer/JankStatsをrun windowに適用 |
 | 実SQLite recovery store / Launcher DB transaction | model write adapter・production DB adapterの統合後、instrumentation計測として追加 |
+| in-process memory peak sampler (§6.6) | benchmark harness実装時に`Debug.getMemoryInfo`の100ms samplerとして追加。250msの`dumpsys meminfo`定期採取より細かいpeakが必要になった場合の切り替え先 |
 | grid変更・migrationとの相互作用 | grid migrationを扱うIssueで別途matrixを定義する |
 
 benchmark harness実装Issueは、これらのhookが実装済みかどうかを測定対象の
@@ -401,3 +469,10 @@ automation分離基準 (§11)。
 - 2026-08-15: review対応。実装状態と実行結果をPR #68へ分離し、文書は
   seam要件のみに固定。page軸、固定seedとcell表、Layer A/Bの再現recipe、
   journal retention非依存のsample取得規則 (§6.5)、統計計算の閉形式を追加した。
+- 2026-08-15: 再review対応。Layer Aをcorpus再生検証と明示し、Layer Bの生成
+  algorithmを決定的に固定 (kind配分・dock・folder membership・widget span・
+  page導出式・page分散・profile・locked・signalの消費順)。mix比率の合計を
+  100%に修正しlockedを直交属性化、PWを導出値としてcell表へ固定した。
+  §7の5%検出sample数を誤りからn ≥ 565に修正。§6.5の連続性検査を
+  journal全体slice検査とphase完備検査の2段に変更し排他実行を追加。
+  §6.6にmemory採取手順を新設した。
