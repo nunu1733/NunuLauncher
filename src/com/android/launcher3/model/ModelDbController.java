@@ -53,6 +53,7 @@ import android.util.Base64;
 import android.util.Log;
 import android.util.Xml;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.WorkerThread;
 
@@ -177,14 +178,15 @@ public class ModelDbController {
     @WorkerThread
     public int insert(String table, ContentValues initialValues) {
         createDbIfNotExists();
-
-        SQLiteDatabase db = mOpenHelper.getWritableDatabase();
-        addModifiedTime(initialValues);
-        int rowId = mOpenHelper.dbInsertAndCheck(db, table, initialValues);
-        if (rowId >= 0) {
-            onAddOrDeleteOp(db);
+        try (LayoutWriteCoordinator.Lease ignored = acquireMutationLease()) {
+            SQLiteDatabase db = mOpenHelper.getWritableDatabase();
+            addModifiedTime(initialValues);
+            int rowId = mOpenHelper.dbInsertAndCheck(db, table, initialValues);
+            if (rowId >= 0) {
+                onAddOrDeleteOp(db);
+            }
+            return rowId;
         }
-        return rowId;
     }
 
     /**
@@ -193,13 +195,14 @@ public class ModelDbController {
     @WorkerThread
     public int delete(String table, String selection, String[] selectionArgs) {
         createDbIfNotExists();
-        SQLiteDatabase db = mOpenHelper.getWritableDatabase();
-
-        int count = db.delete(table, selection, selectionArgs);
-        if (count > 0) {
-            onAddOrDeleteOp(db);
+        try (LayoutWriteCoordinator.Lease ignored = acquireMutationLease()) {
+            SQLiteDatabase db = mOpenHelper.getWritableDatabase();
+            int count = db.delete(table, selection, selectionArgs);
+            if (count > 0) {
+                onAddOrDeleteOp(db);
+            }
+            return count;
         }
-        return count;
     }
 
     /**
@@ -210,10 +213,11 @@ public class ModelDbController {
             String selection, String[] selectionArgs) {
         createDbIfNotExists();
 
-        addModifiedTime(values);
-        SQLiteDatabase db = mOpenHelper.getWritableDatabase();
-        int count = db.update(table, values, selection, selectionArgs);
-        return count;
+        try (LayoutWriteCoordinator.Lease ignored = acquireMutationLease()) {
+            addModifiedTime(values);
+            SQLiteDatabase db = mOpenHelper.getWritableDatabase();
+            return db.update(table, values, selection, selectionArgs);
+        }
     }
 
     /**
@@ -249,8 +253,10 @@ public class ModelDbController {
     @WorkerThread
     public void createEmptyDB() {
         createDbIfNotExists();
-        mOpenHelper.createEmptyDB(mOpenHelper.getWritableDatabase());
-        LauncherPrefs.get(mContext).putSync(getEmptyDbCreatedKey().to(true));
+        try (LayoutWriteCoordinator.Lease ignored = acquireMutationLease()) {
+            mOpenHelper.createEmptyDB(mOpenHelper.getWritableDatabase());
+            LauncherPrefs.get(mContext).putSync(getEmptyDbCreatedKey().to(true));
+        }
     }
 
     /**
@@ -260,7 +266,9 @@ public class ModelDbController {
     @WorkerThread
     public void removeGhostWidgets() {
         createDbIfNotExists();
-        mOpenHelper.removeGhostWidgets(mOpenHelper.getWritableDatabase());
+        try (LayoutWriteCoordinator.Lease ignored = acquireMutationLease()) {
+            mOpenHelper.removeGhostWidgets(mOpenHelper.getWritableDatabase());
+        }
     }
 
     /**
@@ -269,7 +277,47 @@ public class ModelDbController {
     @WorkerThread
     public SQLiteTransaction newTransaction() {
         createDbIfNotExists();
-        return new SQLiteTransaction(mOpenHelper.getWritableDatabase());
+        // Issue #14: hold the coordinator lease through the transaction close/endTransaction.
+        return new SQLiteTransaction(mOpenHelper.getWritableDatabase(),
+                getCoordinatorLease());
+    }
+
+    // Issue #14: organizer re-entry requires the exact outer capability token.
+    public SQLiteTransaction newTransaction(long organizerToken) {
+        createDbIfNotExists();
+        LayoutWriteCoordinator.Lease lease = LayoutWriteCoordinator.getInstance()
+                .tryAcquireOrganizerLease(organizerToken);
+        if (lease == null) {
+            throw new IllegalStateException("Organizer transaction lacks its exact writer lease");
+        }
+        return new SQLiteTransaction(mOpenHelper.getWritableDatabase(), lease);
+    }
+
+    // Issue #14: acquire the coordinator lease for organizer transactions;
+    // the lease is held only through close() — it does not block MODEL_EXECUTOR.
+    @Nullable
+    private LayoutWriteCoordinator.Lease getCoordinatorLease() {
+        LayoutWriteCoordinator coordinator = LayoutWriteCoordinator.getInstance();
+        // Issue #14: the exact correlated loader holds a scoped organizer capability. Its
+        // cleanup mutations must not block MODEL_EXECUTOR behind the outer organizer lease.
+        LayoutWriteCoordinator.Lease organizerLease = coordinator.tryAcquireOrganizerCapability(
+                currentOrganizerToken());
+        if (organizerLease != null) {
+            return organizerLease;
+        }
+        return coordinator.acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.MODEL_WRITER);
+    }
+
+    private long currentOrganizerToken() {
+        // A nonmatching value intentionally falls through to ordinary serialization.
+        // The coordinator validates the thread-scoped capability before returning a lease.
+        return LayoutWriteCoordinator.getInstance().getActiveOrganizerToken();
+    }
+
+    // Issue #14: central gate for auto-transaction insert/update/delete calls.
+    @NonNull
+    private LayoutWriteCoordinator.Lease acquireMutationLease() {
+        return getCoordinatorLease();
     }
 
     /**
@@ -377,6 +425,12 @@ public class ModelDbController {
         return mOpenHelper.getWritableDatabase();
     }
 
+    // Issue #14: refresh allocator state only after the organizer classifies the transaction.
+    public void refreshMaxItemIdFromCommittedRows() {
+        createDbIfNotExists();
+        mOpenHelper.refreshMaxItemIdFromCommittedRows();
+    }
+
     private void onAddOrDeleteOp(SQLiteDatabase db) {
         mOpenHelper.onAddOrDeleteOp(db);
     }
@@ -391,7 +445,7 @@ public class ModelDbController {
         createDbIfNotExists();
 
         SQLiteDatabase db = mOpenHelper.getWritableDatabase();
-        try (SQLiteTransaction t = new SQLiteTransaction(db)) {
+        try (SQLiteTransaction t = new SQLiteTransaction(db, acquireMutationLease())) {
             // Select folders whose id do not match any container value.
             String selection = LauncherSettings.Favorites.ITEM_TYPE + " = "
                     + LauncherSettings.Favorites.ITEM_TYPE_FOLDER + " AND "
@@ -423,7 +477,7 @@ public class ModelDbController {
         createDbIfNotExists();
 
         SQLiteDatabase db = mOpenHelper.getWritableDatabase();
-        try (SQLiteTransaction t = new SQLiteTransaction(db)) {
+        try (SQLiteTransaction t = new SQLiteTransaction(db, acquireMutationLease())) {
             // Select all entries with ITEM_TYPE = ITEM_TYPE_APP_PAIR whose id does not
             // appear
             // exactly twice in the CONTAINER column.
@@ -456,7 +510,7 @@ public class ModelDbController {
         createDbIfNotExists();
 
         SQLiteDatabase db = mOpenHelper.getWritableDatabase();
-        try (SQLiteTransaction t = new SQLiteTransaction(db)) {
+        try (SQLiteTransaction t = new SQLiteTransaction(db, acquireMutationLease())) {
             // Select all entries whose container id does not appear in the database.
             String selection = CONTAINER + " >= 0"
                     + " AND " + CONTAINER + " NOT IN"

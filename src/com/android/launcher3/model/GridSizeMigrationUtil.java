@@ -121,14 +121,31 @@ public class GridSizeMigrationUtil {
         if (!needsToMigrate(srcDeviceState, destDeviceState)) {
             return true;
         }
+        // Issue #14: cover both fast and general direct-SQLite migration paths.
+        try (LayoutWriteCoordinator.Lease ignored = LayoutWriteCoordinator.getInstance()
+                .acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.GRID_MIGRATION)) {
+            return migrateGridUnderLease(context, srcDeviceState, destDeviceState, target, source);
+        }
+    }
 
+    private static boolean migrateGridUnderLease(
+            @NonNull Context context,
+            @NonNull DeviceGridState srcDeviceState,
+            @NonNull DeviceGridState destDeviceState,
+            @NonNull DatabaseHelper target,
+            @NonNull SQLiteDatabase source) {
+        // Issue #14: normalize both active/inactive grids before any positional or explicit copy.
+        ensureOrganizerLockColumn(source);
+        ensureOrganizerLockColumn(target.getWritableDatabase());
         if (Flags.enableGridMigrationFix()
                 && srcDeviceState.getColumns().equals(destDeviceState.getColumns())
                 && srcDeviceState.getRows() < destDeviceState.getRows()) {
-            // Only use this strategy when comparing the previous grid to the new grid and
-            // the
-            // columns are the same and the destination has more rows
-            copyTable(source, TABLE_NAME, target.getWritableDatabase(), TABLE_NAME, context);
+            try (SQLiteTransaction t = new SQLiteTransaction(target.getWritableDatabase())) {
+                copyTable(source, TABLE_NAME, t.getDb(), TABLE_NAME, context);
+                // Issue #14: ADR-0004 — all migrated rows are UNKNOWN; organizer remains fail-closed.
+                markOrganizerLocksUnknown(t.getDb());
+                t.commit();
+            }
             destDeviceState.writeToPrefs(context);
             return true;
         }
@@ -143,20 +160,49 @@ public class GridSizeMigrationUtil {
             Point targetSize = new Point(destDeviceState.getColumns(), destDeviceState.getRows());
             migrate(target, srcReader, destReader, destDeviceState.getNumHotseat(),
                     targetSize, srcDeviceState, destDeviceState);
+            // Issue #14: ADR-0004 — target-wide UNKNOWN marking inside the same migration transaction.
+            markOrganizerLocksUnknown(t.getDb());
             dropTable(t.getDb(), TMP_TABLE);
             t.commit();
+            // Issue #14: write destination prefs only after migration succeeds.
+            destDeviceState.writeToPrefs(context);
             return true;
         } catch (Exception e) {
             Log.e(TAG, "Error during grid migration", e);
-
             return false;
         } finally {
             Log.v(TAG, "Workspace migration completed in "
                     + (System.currentTimeMillis() - migrationStartTime));
-
-            // Save current configuration, so that the migration does not run again.
-            destDeviceState.writeToPrefs(context);
         }
+    }
+
+    @VisibleForTesting
+    public static void ensureOrganizerLockColumn(SQLiteDatabase db) {
+        boolean found = false;
+        try (android.database.Cursor cursor = db.rawQuery("PRAGMA table_info(favorites)", null)) {
+            int nameIndex = cursor.getColumnIndexOrThrow("name");
+            while (cursor.moveToNext()) {
+                if (LauncherSettings.Favorites.ORGANIZER_LOCK_STATE.equals(
+                        cursor.getString(nameIndex))) {
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (!found) {
+            db.execSQL("ALTER TABLE favorites ADD COLUMN "
+                    + LauncherSettings.Favorites.ORGANIZER_LOCK_STATE
+                    + " INTEGER NOT NULL DEFAULT 0");
+        }
+        db.execSQL("UPDATE favorites SET "
+                + LauncherSettings.Favorites.ORGANIZER_LOCK_STATE + " = 0");
+    }
+
+    /** Production migration primitive, exposed so instrumentation exercises the real SQL path. */
+    @VisibleForTesting
+    public static void markOrganizerLocksUnknown(SQLiteDatabase db) {
+        db.execSQL("UPDATE favorites SET "
+                + LauncherSettings.Favorites.ORGANIZER_LOCK_STATE + " = 0");
     }
 
     public static boolean migrate(

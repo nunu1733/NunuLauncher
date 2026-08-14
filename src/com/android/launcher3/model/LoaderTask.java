@@ -158,16 +158,33 @@ public class LoaderTask implements Runnable {
     private final Set<PackageUserKey> mPendingPackages = new HashSet<>();
     private boolean mItemsDeleted = false;
     private String mDbName;
+    // Issue #14: only the exact organizer-requested loader carries this capability.
+    private final long mOrganizerLeaseToken;
 
     public LoaderTask(@NonNull LauncherAppState app, AllAppsList bgAllAppsList, BgDataModel bgModel,
             ModelDelegate modelDelegate, @NonNull BaseLauncherBinder launcherBinder) {
-        this(app, bgAllAppsList, bgModel, modelDelegate, launcherBinder, new UserManagerState());
+        this(app, bgAllAppsList, bgModel, modelDelegate, launcherBinder, 0L);
+    }
+
+    /** Issue #14: creates the one exact loader which may use an organizer lease capability. */
+    public LoaderTask(@NonNull LauncherAppState app, AllAppsList bgAllAppsList, BgDataModel bgModel,
+            ModelDelegate modelDelegate, @NonNull BaseLauncherBinder launcherBinder,
+            long organizerLeaseToken) {
+        this(app, bgAllAppsList, bgModel, modelDelegate, launcherBinder, new UserManagerState(),
+                organizerLeaseToken);
     }
 
     @VisibleForTesting
     LoaderTask(@NonNull LauncherAppState app, AllAppsList bgAllAppsList, BgDataModel bgModel,
             ModelDelegate modelDelegate, @NonNull BaseLauncherBinder launcherBinder,
             UserManagerState userManagerState) {
+        this(app, bgAllAppsList, bgModel, modelDelegate, launcherBinder, userManagerState, 0L);
+    }
+
+    @VisibleForTesting
+    LoaderTask(@NonNull LauncherAppState app, AllAppsList bgAllAppsList, BgDataModel bgModel,
+            ModelDelegate modelDelegate, @NonNull BaseLauncherBinder launcherBinder,
+            UserManagerState userManagerState, long organizerLeaseToken) {
         mApp = app;
         mBgAllAppsList = bgAllAppsList;
         mBgDataModel = bgModel;
@@ -181,6 +198,7 @@ public class LoaderTask implements Runnable {
         mIconCache = mApp.getIconCache();
         mUserManagerState = userManagerState;
         mInstallingPkgsCached = null;
+        mOrganizerLeaseToken = organizerLeaseToken;
     }
 
     protected synchronized void waitForIdle() {
@@ -228,6 +246,18 @@ public class LoaderTask implements Runnable {
     }
 
     public void run() {
+        // Issue #14: tokenless loaders defer rather than blocking MODEL_EXECUTOR behind the
+        // organizer. The correlated loader installs its exact logical capability for all
+        // nested ModelDbController cleanup writes.
+        LayoutWriteCoordinator coordinator = LayoutWriteCoordinator.getInstance();
+        coordinator.runOrDefer(
+                LayoutWriteCoordinator.OwnerKind.MODEL_WRITER,
+                mOrganizerLeaseToken,
+                mOrganizerLeaseToken != 0L,
+                this::runInternal);
+    }
+
+    private void runInternal() {
         synchronized (this) {
             // Skip fast if we are already stopped.
             if (mStopped) {
@@ -254,7 +284,10 @@ public class LoaderTask implements Runnable {
             // different
             // from the main db as defined in the invariant device profile.
             // (e.g. both grid preview and minimal device mode uses a different db)
-            if (Objects.equals(mApp.getInvariantDeviceProfile().dbFile, mDbName)) {
+            // Issue #14: organizer-requested reloads skip sanitize to keep the DB
+            // immutable between checkpoint and post-apply/recovery verification.
+            if (Objects.equals(mApp.getInvariantDeviceProfile().dbFile, mDbName)
+                    && mOrganizerLeaseToken == 0L) {
                 verifyNotStopped();
                 sanitizeFolders(mItemsDeleted);
                 sanitizeAppPairs();

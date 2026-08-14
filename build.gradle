@@ -163,6 +163,7 @@ android {
         buildConfigField "String", "MAJOR_VERSION", "\"${majorVersion}\""
         buildConfigField "String", "COMMIT_HASH", "\"${buildCommit}\""
         buildConfigField "boolean", "ENABLE_AUTO_INSTALLS_LAYOUT", "false"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         manifestPlaceholders.quickstepMinSdk = quickstepMinSdk
         manifestPlaceholders.quickstepMaxSdk = quickstepMaxSdk
@@ -350,6 +351,11 @@ android {
         test {
             java.srcDirs = ['tests/unit']
         }
+
+        androidTest {
+            java.srcDirs = ['tests/organizer-instrumentation']
+            manifest.srcFile 'tests/organizer-instrumentation/AndroidManifest.xml'
+        }
     }
 }
 
@@ -363,6 +369,8 @@ composeCompiler {
 addFrameworkJar('framework-15.jar')
 
 dependencies {
+    androidTestImplementation libs.androidx.junit
+    androidTestImplementation libs.androidx.espresso.core
     implementation projects.iconloaderlib
     implementation projects.searchuilib
     implementation projects.animationlib

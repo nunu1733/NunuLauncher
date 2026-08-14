@@ -83,16 +83,26 @@ public class BaseLauncherBinder {
     private final AllAppsList mBgAllAppsList;
 
     final Callbacks[] mCallbacksList;
+    @NonNull
+    private final Runnable mOrganizerBindComplete;
 
     private int mMyBindingId;
 
     public BaseLauncherBinder(LauncherAppState app, BgDataModel dataModel,
             AllAppsList allAppsList, Callbacks[] callbacksList) {
+        this(app, dataModel, allAppsList, callbacksList, () -> { });
+    }
+
+    // Issue #14: exact LoaderTask bind-completion callback.
+    public BaseLauncherBinder(LauncherAppState app, BgDataModel dataModel,
+            AllAppsList allAppsList, Callbacks[] callbacksList,
+            @NonNull Runnable organizerBindComplete) {
         mUiExecutor = MAIN_EXECUTOR;
         mApp = app;
         mBgDataModel = dataModel;
         mBgAllAppsList = allAppsList;
         mCallbacksList = callbacksList;
+        mOrganizerBindComplete = organizerBindComplete;
     }
 
     /**
@@ -361,6 +371,7 @@ public class BaseLauncherBinder {
             Executor pendingExecutor = pendingTasks::add;
 
             RunnableList onCompleteSignal = new RunnableList();
+            onCompleteSignal.add(mOrganizerBindComplete);
 
             if (enableWorkspaceInflation() && inflater != null) {
                 MODEL_EXECUTOR.execute(() ->  {
@@ -512,6 +523,7 @@ public class BaseLauncherBinder {
                 MODEL_EXECUTOR.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
 
                 RunnableList onCompleteSignal = new RunnableList();
+                onCompleteSignal.add(mOrganizerBindComplete);
                 onCompleteSignal.executeAllAndDestroy();
                 c.onInitialBindComplete(mCurrentScreenIds, new RunnableList(), onCompleteSignal,
                         workspaceItemCount, isBindSync);
