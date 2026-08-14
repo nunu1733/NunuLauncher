@@ -4,6 +4,7 @@
 > Updated: 2026-08-15
 > Baseline: Lawnchair `v15.0.0-beta3.0` / commit `505dbc40e6154c05158b5d0271c45f6a885a411b`
 > Requirements: NFR-006
+> Research evidence (対象commit・確認日・統計計算script・実行結果): [PR #68](https://github.com/nunu1733/NunuLauncher/pull/68)
 > Related: [android-emulator-smoke-baseline](../assessment/android-emulator-smoke-baseline.md) (reference emulator profile),
 > [organizer-diagnostics](./organizer-diagnostics.md) (phase timestamp共用),
 > [spec 12](../../specs/12-deterministic-full-layout-planner-v1/spec.md) (planner),
@@ -68,27 +69,31 @@ Host:    計測時のhost OS・CPU・JDKを結果に必ず記録する (§6.1)
 JVM計測値はhost依存である。R-JVM-1とR-EMU-1、そして異なるhost間の値を
 直接比較しない。比較は同じ環境class内に限る (§8)。
 
-## 3. Measured phases and measurability
+## 3. Measured phases and measurement seams
 
 organizer run のphase ([organizer-diagnostics](./organizer-diagnostics.md) §4、
-[spec 13](../../specs/13-safe-layout-application/spec.md) A0–A8) ごとの測定可否。
-「現在地」は2026-08-15時点 (planner #12・application #14実装済み、
-integration/UI未実装) である。
+[spec 13](../../specs/13-safe-layout-application/spec.md) A0–A8) ごとに、
+どのseamが実装されたときにどの計測面で測定可能になるかを固定する。
+各seamの実装の現在状態はIssue/PRが正本であり ([AGENTS](../../AGENTS.md)
+「正本の分担」)、本書には持たない。research時点の実装状態の調査結果は
+PR #68に記録する。
 
-| Phase | seam / 実装状態 | 現在の測定可否 | 測定面 |
-|---|---|---|---|
-| snapshot capture | integration snapshot adapter 未実装 ([DESIGN](../../DESIGN.md) §4.4) | **測定不能** | 将来: adapter実装後にon-device計測。JVM側は`OrganizationInput`構築コストの代理測定のみ |
-| plan | `OrganizationPlanner.plan` 実装済み (pure JVM) | **測定可能** | R-JVM-1のunit-test seam。emulator上はinstrumentation後に追加 |
-| checkpoint (A4) | recovery store実装済み (#14) | JVM test seamのみ測定可能 | `FakeRecoveryStore`等のtest doubleを使ったprotocol timing。実SQLite on-deviceは測定不能 |
-| apply transaction (A5–A6) | apply protocol実装済み (#14) | JVM test seamのみ測定可能 | test DB / fake writer経由。本物Launcher DB transactionはmodel write adapter未統合のため測定不能 |
-| bind / model reload (A7前半) | model load request未実装 | **測定不能** | 将来: model load generation完了待ちの時間をon-deviceで測定 |
-| verify (A7–A8) | protocol内verifyは実装済み、DB recaptureはadapter依存 | JVM seamのみ測定可能 | on-device再読込を含むverifyは測定不能 |
-| UI-thread block / frame | organizer UI未実装 | **測定不能** | 将来hookは§10 |
+| Phase | 測定に必要なseam | 計測面 |
+|---|---|---|
+| snapshot capture | integration snapshot adapter ([DESIGN](../../DESIGN.md) §4.4) | adapter実装後にon-device計測。JVM側は`OrganizationInput`構築コストの代理測定のみ |
+| plan | `OrganizationPlanner.plan` (pure JVM) | R-JVM-1のunit-test seam。emulator上はinstrumentation後に追加 |
+| checkpoint (A4) | apply protocol + recovery store (productionまたはtest double) | test doubleを使ったJVM protocol timing、production store統合後にon-device計測 |
+| apply transaction (A5–A6) | apply protocol + layout writer | test DB / fake writer経由のJVM protocol timing。本物Launcher DB transactionはmodel write adapter統合後にon-device計測 |
+| bind / model reload (A7前半) | model load request/generation待ち | 実装後にon-deviceで測定 |
+| verify (A7–A8) | apply protocolのverify + DB recapture adapter | JVM seamはprotocol実装直後から、on-device再読込を含むverifyはadapter統合後 |
+| UI-thread block / frame | organizer UI (preview/confirm/result) | UI実装後にon-device計測。hookは§10 |
 
 on-device計測のphase境界timestampは、diagnostics journalの
 `recordedAtWallMillis` ([organizer-diagnostics](./organizer-diagnostics.md) §14の
 共用取り決め) をdata sourceとして再利用する。benchmark harnessは
-第二のphase計測経路を作らない。
+第二のphase計測経路を作らない。journalは時刻源であってsampleの保存先では
+なく、retention (10 run / 7日 / 512 KiB) に依存しない取得規則は§6.5で
+定義する。
 
 ## 4. Workload matrix
 
@@ -98,22 +103,80 @@ on-device計測のphase境界timestampは、diagnostics journalの
 |---|---|---|
 | grid | G1 = 5×4 (portrait)、G2 = 6×5、G3 = 4×4 | G1はR-EMU-1のdefault。G2/G3は設定可能な代表的な密度の上下 |
 | item数 | S = 40、M = 120、L = 300、XL = 600 | Mを実ユーザーの典型的な範囲と仮定した暫定値。S/L/XLは外挿確認用 |
+| page数 | PW2 / PW4 / PW8 / PW15 (workspace page数) | item数と独立にpage構成を固定する。folder・widget span・lock配置は同じitem数でも占有率を変えるため、page数を明示的な軸とする (S=PW2、M=PW4、L=PW8、XL=PW15を標準組合せとする) |
 | profile | P1 = personal only、P2 = personal + work | P1をbaseline。P2はM cellのみで開始する |
 | mix | app 80%、folder 10% (3メンバ)、widget 5% (span 1–2)、shortcut 5%、locked 5% | item type網羅とfree space断片化を同時に与える暫定mix |
 
-標準matrixは P1 × {G1,G2,G3} × {S,M,L,XL} の12 cell、追加で P2 × G1 × M の
-1 cellとする。reference cell (budget固定・regression基準に使う) は
-**M × G1 × P1** とする。
+標準matrixは P1 × {G1,G2,G3} × {S,M,L,XL} × 標準page数の12 cell、追加で
+P2 × G1 × M × PW4 の1 cellとする。reference cell (budget固定・regression基準に
+使う) は **M × G1 × P1 × PW4** とする。dockは全cellで満杯 (gridのcolumn数分)
+とし、folderは配置後のworkspace占有率に1 itemとして数える。
 
-### 4.2 synthetic dataとprivacy
+### 4.2 Cell定義と再現
 
-- workloadは全てsynthetic identityで生成する。`SyntheticFixtureGenerator`
-  (spec 11 harness) と同じ方針 (合成package名・component名・ID) をbench側でも
-  維持し、実端末のlayout・実在package名を入力に使わない。
-- 生成はseededかつ決定的とし、seedとgenerator版を結果に記録して再現可能にする。
+cellは次の順で番号を振り、seedを固定する。workload builder (§4.3) は
+cell番号とこの表だけから同一入力を再構築できなければならない。
+
+| Cell index | 軸 | seed |
+|---|---|---|
+| 0 | G1 × S × P1 × PW2 | 0x4E554E55 |
+| 1 | G1 × M × P1 × PW4 | 0x4E554E56 |
+| 2 | G1 × L × P1 × PW8 | 0x4E554E57 |
+| 3 | G1 × XL × P1 × PW15 | 0x4E554E58 |
+| 4–7 | G2 × {S,M,L,XL} × P1 × 標準PW | 0x4E554E59–0x4E554E5C |
+| 8–11 | G3 × {S,M,L,XL} × P1 × 標準PW | 0x4E554E5D–0x4E554E60 |
+| 12 | G1 × M × P2 × PW4 | 0x4E554E61 |
+
+`0x4E554E55` は `SyntheticFixtureGenerator.DEFAULT_SEED` と同じ値をcell 0に
+充て、以降は軸の並び順に従って1ずつ増やす。seedは32bit範囲で一意である。
+
+### 4.3 再現可能な実行recipe
+
+workloadの再現には2階層がある。
+
+**Layer A — 合成corpusの再生 (現時点で実行可能)。**
+seedとcase数を固定したsynthetic corpusの生成・検証は、既存のunit-test seamが
+`planner.seed` / `planner.count` を受け付けるため、次で再現できる
+([building](./building.md) §Planner generated-property runsと同じ仕組み)。
+
+```bash
+./gradlew testLawnWithQuickstepGithubDebugUnitTest \
+  --tests '*PlannerGeneratedPropertyTest*' \
+  -Dplanner.seed=<cell seed> \
+  -Dplanner.count=64
+```
+
+このcommandは決定的な合成dataの生成とplanner契約の検証を実行する。
+timing収集は行わない。
+
+**Layer B — cell単位のworkload構築と測定 (benchmark実装Issue)。**
+§4.2のcell表から`OrganizationInput`への変換は、workload builderが次の入力を
+そのまま受け取ることとして定義する。
+
+```text
+WorkloadBuilder.build(
+    seed: Long,            // §4.2のcell seed
+    columns: Int, rows: Int, hotseatSlots: Int,   // grid軸
+    workspacePages: Int,   // page軸
+    totalItems: Int,       // item数軸
+    profileCount: Int,     // 1 = P1、2 = P2
+) -> OrganizationInput
+```
+
+builderの内部規則: §4.1のmix比率でitem kindを配分し (端数はappへ切り上げ)、
+配置はseedを`java.util.Random`へ渡した決定的な順序で行う。合成identityは
+`SyntheticFixtureGenerator` (spec 11 harness) と同じ方針 (合成package名・
+component名・ID) とし、実端末のlayout・実在package名を入力に使わない。
+builderの実装とtiming収集commandはbenchmark実装Issue (§11) が持つ。
+本書はcell定義と入力変換の契約を固定する。
+
+### 4.4 privacy
+
 - 計測結果artifactに含めてよいのは、timing・件数・環境metadataのみ。
   [organizer-diagnostics](./organizer-diagnostics.md) §7のNever分類
   (package名、座標、内容由来ID等) は計測結果にも適用する。
+- 計測結果の保存先はPR本文またはdocs/assessment/であり、journalや
+  layout DBに測定記録を書き戻さない。
 
 ## 5. Metrics
 
@@ -170,10 +233,47 @@ workload seed、generator版、cell定義
 - cellのCV > 0.5の場合、結果に要再測定のflagを付け、そのcellの値でbudgetや
   regression判定を行わない。
 
+### 6.5 journal retentionと無関係なsample取得
+
+journal ([organizer-diagnostics](./organizer-diagnostics.md) §8) は
+10 run / 7日 / 512 KiBで削除される。したがってsampleの保存先として
+journalを使わない。on-device測定では次を守る。
+
+- benchmark harnessは各iteration (1 run) のterminal event到達直後に、
+  そのrunのjournal eventを読み出して計測artifact (§4.4の保存先) へ
+  書き出す。次のiterationを開始する前に完了させる。
+- 読み出し時、runの`journalSequence`が`RUN_STARTED`からterminal eventまで
+  連続していることを検査する。欠落があればそのiterationを無効とし、
+  再実行する。
+- terminal eventに到達しないrun (crash等) は試行として記録するが、
+  duration統計には含めない。
+- 上記により、journalのretentionがn = 100/300の収集に影響しない
+  (直近10 run分より前のeventは削除済みでも、計測artifactに全sampleが
+  存在する)。
+
 ## 7. Sample size rationale
 
-order statisticによるp95推定の被覆確率
-(P(X_(k) ≤ x_q)、k = ceil(0.95n)、二項分布で計算):
+order statisticによるp95推定の被覆確率は、次の閉形式で任意のnについて
+再計算できる。
+
+```text
+P(X_(k) ≤ x_q) = 1 - F_Bin(n, q)(k - 1)     # k = ceil(0.95n)
+```
+
+```python
+from math import comb
+
+def coverage(n, q):
+    k = -(-95 * n // 100)  # ceil(0.95n)
+    return 1 - sum(comb(n, i) * q**i * (1 - q)**(n - i) for i in range(k))
+```
+
+regression検出の必要sample数はtwo-sample normal近似
+`n = 2 (z_{α/2} + z_β)^2 CV^2 / δ^2` (α = 0.05、power = 0.80) で計算する。
+本書の数値表はこの手順で計算した。計算scriptの実行記録と結果の根拠は
+PR #68のresearch evidenceに置く。
+
+採用時点で計算した値:
 
 | n | k | P(est ≤ x_0.90) | P(est ≤ x_0.95) | P(est ≤ x_0.99) |
 |---|---|---|---|---|
@@ -282,9 +382,9 @@ Gradle依存追加 (JMH等) はbenchmark Issueのspecで判断する。budgetが
 | Issue #15受入条件 | 本書の根拠 |
 |---|---|
 | Big-Oだけで合否を決めない | §8「測定値に対して行う」、§1 out of scope |
-| synthetic dataで再現できる | §4.2 (seeded生成、合成identity)、§6.1 (seed記録) |
+| synthetic dataで再現できる | §4.2–§4.3 (cell表、固定seed、Layer A/B recipe)、§6.1 (seed記録) |
 | machine/device metadataを結果に含める | §6.1 (記録なしは無効) |
-| planner/apply未実装phaseも測定不能箇所と将来hookを明記 | §3現在地、§10 |
+| planner/apply未実装phaseも測定不能箇所と将来hookを明記 | §3 (seam要件)、§10。research時点の実装状態はPR #68 |
 | UI threadとend-to-end latencyを分離する | §5 (別metric、独立報告) |
 | budgetは根拠または明示的provisional statusを持つ | §9.1 (全行provisional + 根拠)、§9.2 (見直し条件) |
 
@@ -293,40 +393,11 @@ reference環境と再現command参照 (§2)、workload matrix (§4)、phase別me
 warmup/sample/統計/regression方法 (§6–§8)、暫定budgetと見直し条件 (§9)、
 automation分離基準 (§11)。
 
-## 13. Verification of this research
-
-Issue #15のAgent execution contractに挙げた検証の実施結果。
-
-### 13.1 測定command dry run
-
-R-JVM-1の測定面となるorganizer unit-test seamが現時点で実行可能なことを確認した。
-
-```bash
-./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.planning.*'
-```
-
-結果 (2026-08-15、darwin arm64 / OpenJDK 21): `BUILD SUCCESSFUL in 36s`。
-benchmark harness未実装のため、これは測定面の実行可能性確認 (dry run) であり、
-数値の収集ではない。
-
-### 13.2 sample計算
-
-§7の被覆確率・MDE表を二項分布とtwo-sample normal近似で計算した
-(host上のpython3、scriptは再現可能な閉形式)。
-
-### 13.3 privacy-safe fixture確認
-
-`SyntheticFixtureGenerator` (tests/unit/.../planning/harness/) が合成identity
-(`component.shared.<index>` 等) のみを生成し、実在package名・URL・実端末dataを
-含まないことを確認した。bench側workload (§4.2) も同じ規約に従う。
-
-### 13.4 link検証
-
-`python3 tools/repo-contract/validate_repo_contract.py` を本PRで実行する
-(結果はPRに記録する)。
-
 ## Change history
 
 - 2026-08-15: Issue #15のresearch成果物として初版。reference環境、測定可否の
   現在地、workload matrix、metric、統計法、暫定budgetと見直し条件、
   automation分離基準を定義した。
+- 2026-08-15: review対応。実装状態と実行結果をPR #68へ分離し、文書は
+  seam要件のみに固定。page軸、固定seedとcell表、Layer A/Bの再現recipe、
+  journal retention非依存のsample取得規則 (§6.5)、統計計算の閉形式を追加した。
