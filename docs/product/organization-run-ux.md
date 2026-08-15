@@ -235,14 +235,15 @@ redaction, local retention, export, and logcat behavior are owned by
 External transport is out of scope and default off. Developer diagnostics do not
 replace user-facing explanations.
 
-## 8. Coverage for later UI tests
+## 8. Coverage for baseline and future UI tests
 
 | Scenario | Acceptance evidence |
 |---|---|
 | manual full | explicit start → preview → confirm; stale checkpoint does not write; recovery action after success. |
 | onboarding | non-blocking; skip/defer mutate nothing; accepted route still previews/confirms. |
-| package event | new install proposes; update/restore/reinstall/ambiguous does not auto-place. |
-| launcher activity candidates | package/profile から launchable target が 0 件、または複数で一意に解決できなければ incremental proposal/placement を行わず、manual flow を許可する。 |
+| package event (current baseline) | Every package event, including a USER session with a unique current target, produces no incremental proposal or placement; manual organization remains available. |
+| package event (future only) | A future accepted product decision/spec that provides authoritative install history may test proposal → preview → explicit confirmation; that proposal path is not an acceptance condition for the current baseline. |
+| launcher activity candidates (current baseline) | package/profile から launchable target が 0 件、または複数で一意に解決できなくても、または一意でもprior absenceが証明できなくても、incremental proposal/placementを行わず、manual flowを許可する。 |
 | diff/warning/unplaced | counts, reason, and destructive effect visible; empty diff writes nothing. |
 | cancel/recreation | no partial state claimed; retry recaptures; atomic interval is safe. |
 | failure/recovery | checkpoint/apply/verify/recovery failures have distinct messages and safe next action. |
