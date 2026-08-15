@@ -126,9 +126,9 @@ stateDiagram-v2
 
 v1 は auto-incremental を許可しない。Issue #54の調査では、現baselineに過去install履歴を
 権威的に得るsourceがなく、reinstall除外を証明できないため、package eventによるincremental
-eligibility自体を有効化しない。証拠比較とnegative decisionは
-[package-provenance](../engineering/package-provenance.md) と
-[ADR-0005](../adr/0005-fresh-install-presence-evidence.md) を正本とする。
+eligibility自体を有効化しない。証拠比較は
+[package-provenance](../engineering/package-provenance.md)、negative decisionの判断・理由は
+[ADR-0005](../adr/0005-fresh-install-presence-evidence.md)のみを正本とする。
 将来のproduct decisionがauthoritative historyとrace/crash protocolを承認し、#52/#57の
 依存成果物が揃うまでは、package eventはproposal/confirmationへ進まず、manual flowだけを
 利用可能とする。
