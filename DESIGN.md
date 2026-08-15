@@ -102,11 +102,15 @@ organizer runのphase遷移を、個人情報を含まないtyped recordとし�
 
 [ADR-0006](./docs/adr/0006-retire-deck-runtime.md) と
 [Issue #57 spec](./specs/57-deck-runtime-retirement/spec.md) に従い、
-`LawnchairApp` は各processのapp startupで内部Deck retirement migration seamを1回呼ぶ。
+`LawnchairApp` はdefault launcher processのapp startupでのみ内部Deck retirement
+migration seamを1回呼ぶ。process identityはcurrent process nameとapplicationの
+default process nameの一致で判定し、`:bugReport`等のsecondary processはmigrationを
+呼ばず、retirement preference storeやartifact cleanupを開かない。
 public organizer APIは追加しない。active Launcher DBはauthorityのままであり、
 artifact cleanupより先にatomically normalizeする。normalizationまたはdeleteの
-failureはDBを変更せず、後続の各process startでretryする。old Lawnchair backupの
-restoreはrestartを伴うため、同じseamへ再入する。replacement package hookは持たない。
+failureはDBを変更せず、後続のdefault launcher process startでretryする。old
+Lawnchair backupのrestoreはdefault processのrestartを伴うため、同じseamへ再入する。
+replacement package hookは持たない。
 
 production phase observerはinternal default no-opである。instrumentationは
 `Application.onCreate` 前にobserverをinstallしてnormalization-before-cleanupを
@@ -196,7 +200,7 @@ package数をこの図に合わせること自体を目的にしない。interfa
 - Property tests: overlap、bounds、conservation、lock、determinism、idempotenceを多数の生成layoutで検証する。
 - Application contract tests: test DBでtransaction、failure injection、rollback、stale revisionを検証する。
 - Upstream integration tests: package event、model reload、backup/restore、grid migration、process restartを検証する。
-- Startup migration integration tests: app-start normalization/cleanup ordering、old-backup restore後のrestart、failure retry、real APK upgrade/downgrade evidenceを検証する。
+- Startup migration integration tests: default processのapp-start normalization/cleanup ordering、secondary processの非実行、old-backup restore後のrestart、failure retry、real APK upgrade/downgrade evidenceを検証する。
 - UI tests: preview/confirmation/recoveryとaccessibilityを検証する。
 
 詳細は [docs/engineering/quality-strategy.md](./docs/engineering/quality-strategy.md) を参照する。

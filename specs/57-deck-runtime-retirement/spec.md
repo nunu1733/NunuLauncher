@@ -27,6 +27,8 @@ inert without restoring a prior Deck snapshot.
 - Normalize the two historical Deck preference tombstones to `false` atomically
   before historical-file cleanup.
 - Preserve the current swipe-up gesture and add-icon-to-home values.
+- Run retirement migration only in the default Launcher process; secondary
+  processes do not normalize preferences or clean artifacts.
 - Remove Deck runtime behavior, UI, drag/delete behavior, package placement, and
   Deck labels.
 - Keep normal package handling, App Drawer access, gesture choices, and baseline
@@ -70,6 +72,13 @@ When the application starts again
 Then the active Launcher database is unchanged
 And the failed operation is retryable without activating Deck behavior.
 
+### Scenario: secondary process starts
+
+Given a non-default process such as the bug-report uploader starts
+When its `Application` is created
+Then Deck retirement migration does not run
+And it does not open the retirement preference store or touch historical artifacts.
+
 ### Scenario: old Lawnchair backup restore
 
 Given an old Lawnchair backup restores a database and old Deck preferences
@@ -110,6 +119,7 @@ Then this is an unsupported boundary with no retirement safety promise.
 | Inconsistent preference/artifact state | The active layout remains authoritative and unchanged. | Both are `false` together after successful initialization. | Both remain unchanged. | Only recognized historical files are inert cleanup candidates; no artifact selects a restore path. | A failed operation leaves the active layout unchanged and is retryable. |
 | Interrupted normalization or cleanup | The active layout remains authoritative and unchanged. | They are both `false` only after successful normalization; no partial state selects restoration. | Both remain unchanged. | Cleanup does not begin before normalization; an interrupted delete leaves the exact artifact inert. | The next initialization retries the incomplete operation. |
 | Old backup restored | The restored database becomes the current active layout. | Both are `false` together after the next successful initialization. | Both use the restored current values without retirement changes. | Historical files are never restored; cleanup is considered only after normalization. | A failed operation leaves the restored active layout unchanged and is retryable. |
+| Secondary process start | The active layout is not read or changed by retirement migration. | No retirement preference read or write occurs. | No related value is opened or changed. | No artifact scan or cleanup occurs. | The process continues without running migration. |
 
 ## Backup, restore, upgrade, downgrade, rollback, and failure matrix
 
@@ -171,6 +181,8 @@ collection behavior.
 - [ ] AC-008: Rollback before cleanup is evidenced as best effort; cleanup-complete
   downgrade is evidenced without a restoration promise; old-binary or old-backup
   use before new-version initialization is recorded as unsupported.
+- [ ] AC-009: Only the default Launcher process runs retirement migration;
+  secondary processes do not open its preference or cleanup surfaces.
 
 ## Test oracle
 
@@ -184,6 +196,7 @@ collection behavior.
 | AC-006 | Backup/restore integration evidence covers the old-backup-restored matrix row. |
 | AC-007 | Fixture registration test and package-path regression prove the stated scope. |
 | AC-008 | Release and emulator evidence covers every downgrade, rollback, and support classification in the lifecycle matrix. |
+| AC-009 | A secondary-process instrumentation test proves migration, preference access, and artifact cleanup are not entered. |
 
 ## Open questions
 
@@ -193,3 +206,4 @@ None within this accepted behavior contract.
 
 - 2026-08-15: Draft created for #57 from Issue #56 assessment and ADR-0006.
 - 2026-08-15: Accepted after Issue #56 migration decision and source inventory review.
+- 2026-08-16: Restricted retirement migration to the default Launcher process.
