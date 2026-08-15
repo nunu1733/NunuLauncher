@@ -1,6 +1,6 @@
 # Empty-Folder Policy
 
-> Status: Proposed (decision record for Issue #24; acceptance tracked in PR #69 review)
+> Status: Accepted (decision record for Issue #24; accepted through PR #69 review)
 > Behavior contract: [spec 24](../../specs/24-empty-folder-policy/spec.md)
 > Related: [item-preservation-policy](item-preservation-policy.md) classification, [ADR-0004](../adr/0004-organizer-lock-persistence.md) lock storage, [spec 13](../../specs/13-safe-layout-application/spec.md) safe application
 > Reviewed: 2026-08-15
@@ -107,3 +107,5 @@ mechanism.
 - 2026-08-15: Second review revision: removed the remaining restatement of
   spec 24 behavior from §§2–3; the decision record now states only the
   decisions and their rationale.
+- 2026-08-15: Accepted — reviews passed with no open findings; status set
+  to `Accepted` for the PR #69 merge.

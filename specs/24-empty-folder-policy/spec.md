@@ -1,6 +1,6 @@
 ---
 issue: "#24"
-status: proposed
+status: accepted
 requirements:
   - FR-002
   - FR-003
@@ -181,3 +181,6 @@ and intentionally not decided here.
   correlation; naming the affected folder is gated on a spec 10 revision
   adding item-correlated reject detail. M-16 keeps item correlation
   through V-06 `ItemParam`.
+- 2026-08-15: Accepted — Standards and Spec reviews passed with no open
+  findings after the third revision; status set to `accepted` for the
+  PR #69 merge.
