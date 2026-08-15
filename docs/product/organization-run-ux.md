@@ -92,9 +92,9 @@ OP_UNAVAILABLE etc. Callback 名だけでは genuinely new install を証明し�
 
 | Event assessment | Required UX behavior |
 |---|---|
-| (a) event 前の persisted package+profile presence observation が target の不在を示し、(b) trustworthy install/session provenance が completed fresh install を示して update/replacing/device restore/reinstall を除外し、(c) package+profile から launchable target が一意に解決でき、全証拠が current で矛盾しない | incremental **proposal** を表示できる。preview + explicit confirmation が必須。 |
-| update、replacing、availability return、restore、reinstall、existing target 再検出 | 新規配置しない。必要なら既存 item を保持した情報だけを非侵襲的に示す。 |
-| package/user/profile 未解決、quiet/locked、launcher activity が 0 件、または一意に解決できない複数 activity、duplicate target、event 由来が曖昧、または上記 presence/provenance/target evidence が missing/stale/contradictory/process-death で失われた | ambiguous と分類し、配置しない。user は後で manual flow を開始できる。 |
+| 現baselineのpackage event（session reasonがUSER、current targetが一意でも、event前の権威あるinstall履歴がない） | `Ambiguous(PRIOR_ABSENCE_UNPROVEN)`。incremental proposal/placementを開始しない。manual flowは利用可能。 |
+| update、replacing、availability return、restore、reinstall、existing target再検出 | 新規配置しない。必要なら既存 item を保持した情報だけを非侵襲的に示す。 |
+| package/user/profile未解決、quiet/locked、launcher activityが0件、または一意に解決できない複数activity、duplicate target、event由来が曖昧、presence/provenance/target evidenceがmissing/stale/contradictory/process-deathで失われた | ambiguous と分類し、配置しない。user は後で manual flow を開始できる。 |
 | remove/unavailable/suspend | incremental placement を開始しない。既存 layout は preservation policy に従う。 |
 
 ```mermaid
@@ -102,9 +102,10 @@ stateDiagram-v2
     [*] --> PackageEvent
     PackageEvent --> Classify: retain package and profile context
     Classify --> NoPlacement: update/restore/reinstall/remove/ambiguous
-    Classify --> IncrementalProposal: unambiguous new install
+    Classify --> NoPlacement: prior absence unproven
+    NoPlacement --> ManualFlow: user starts manual organization
     IncrementalProposal --> Dismissed
-    IncrementalProposal --> Capture: review
+    IncrementalProposal --> Capture: future approved provenance only
     Capture --> Plan: incremental scope
     Plan --> Rejected: invalid or impossible
     Plan --> Preview
@@ -123,15 +124,14 @@ stateDiagram-v2
     Recovering --> RecoveryFailed: recovery failure
 ```
 
-v1 は auto-incremental を許可しない。provenance 判定は fail-closed である。
-証拠比較と研究結果は [package-provenance](../engineering/package-provenance.md)、
-観測可能なincremental behaviorと受入条件は
-[#55 spec](../../specs/55-convergent-incremental-placement/spec.md)、
-presence storeの高コストな選択は
+v1 は auto-incremental を許可しない。Issue #54の調査では、現baselineに過去install履歴を
+権威的に得るsourceがなく、reinstall除外を証明できないため、package eventによるincremental
+eligibility自体を有効化しない。証拠比較とnegative decisionは
+[package-provenance](../engineering/package-provenance.md) と
 [ADR-0005](../adr/0005-fresh-install-presence-evidence.md) を正本とする。
-別 decision が将来 auto policy を提案する場合も、上の両証拠、complete な
-state/failure/recovery UX、Issue #13 の accepted criteria を満たすまでは
-proposal/confirmation から外せない。
+将来のproduct decisionがauthoritative historyとrace/crash protocolを承認し、#52/#57の
+依存成果物が揃うまでは、package eventはproposal/confirmationへ進まず、manual flowだけを
+利用可能とする。
 
 ## 3. D-005: preview, confirmation, and recovery proposal
 

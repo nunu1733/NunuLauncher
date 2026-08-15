@@ -21,7 +21,7 @@
 | [engineering/building.md](./engineering/building.md) | どのtoolchainとcommandで検証するか | baseline/toolchain/commandが変わるとき |
 | [engineering/quality-strategy.md](./engineering/quality-strategy.md) | 何をどう検証するか | test/CI方針が変わるとき |
 | [engineering/organizer-diagnostics.md](./engineering/organizer-diagnostics.md) | organizer runのdiagnosticのfield・redaction・保持・出力はどう決まるか | diagnostics契約が変わるとき |
-| [engineering/package-provenance.md](./engineering/package-provenance.md) | package eventの証拠源比較と分類判断は何か | Issue #54のsource evidenceが変わるとき |
+| [engineering/package-provenance.md](./engineering/package-provenance.md) | package eventの証拠源比較とincremental無効化判断は何か | Issue #54のsource evidence/decisionが変わるとき |
 | [engineering/performance-budgets.md](./engineering/performance-budgets.md) | organizerの性能をどう測り、暫定budgetをどう運用するか | 測定環境・budget・matrixが変わるとき |
 | [adr/](./adr/) | 変更しにくい判断をなぜ行ったか | 判断時。日々の進捗では更新しない |
 | [specs/](../specs/) | あるIssueの観測可能な振る舞いは何か | 受入条件が変わるとき |

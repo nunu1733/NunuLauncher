@@ -2,85 +2,89 @@
 status: accepted
 ---
 
-# Require a coverage-backed app-private presence store for fresh-install proposals
+# Do not enable incremental fresh-install eligibility without authoritative history
 
 ## Decision
 
-Incremental placement may produce a fresh-install proposal only when a persisted,
-completed profile inventory proves that the package was absent before the install
-provenance event and a continuity barrier remains valid until that event.
+The baseline does not enable an incremental fresh-install proposal path.
 
-The presence store is a separate app-private file owned by the organizer integration
-module. It stores only schema version, profile identity, and package membership. It is
-not part of the Launcher layout DB, recovery DB, Lawnchair ZIP backup, or Android full
-backup. The store is append/update-only for observed package membership; package
-remove/unavailable events do not erase membership. A profile removal erases that
-profile's membership.
+A package/profile event may be classified as a candidate only if a future accepted
+product decision provides an authoritative install-history source that proves the
+package was absent before the event. A current inventory, an ever-seen set,
+`SessionInfo.getInstallReason() == INSTALL_REASON_USER`, `firstInstallTime`, or a
+unique current launchable activity is not sufficient to prove that absence.
 
-A missing, corrupt, unreadable, unknown-version, or continuity-invalid store is not
-replaced with an empty valid store for eligibility decisions. It invalidates the
-coverage barrier and returns `PRESENCE_MEMORY_FAILED`; no incremental proposal or
-layout mutation is allowed until a complete inventory successfully rebuilds the
-barrier. An empty store is therefore a valid result only after a successful complete
-inventory, not after recovery from an error.
+Until that source and its event-correlation protocol are approved and implemented,
+all package-event incremental placement remains disabled. Update, restore, reinstall,
+availability, ambiguous, missing, stale, corrupt, and contradictory paths produce no
+proposal. Manual organization remains available.
+
+No presence store, classifier interface, SessionCommitReceiver bridge, schema/migration,
+or callback/session atomic-consume protocol is selected by this ADR. Those choices are
+blocked on the product decision and on the dependency conditions in Issues #52 and #57.
 
 ## Context
 
 Issue #54 compared the baseline package callbacks, PackageInstaller session evidence,
-launchable activity resolution, install timestamps, and model state. The comparison
-found that callback names, `SessionInfo` reason, and install timestamps cannot by
-themselves distinguish a fresh install from an uninstall/reinstall that the launcher
-never observed. Treating an ever-seen miss as proof of prior absence would violate the
-fail-closed contract in Issue #4 and permit an unobserved reinstall to produce a
-proposal.
+launchable activity resolution, install timestamps, and model state. The baseline
+provides evidence about the current install event but no authoritative history for
+installs that happened before the launcher observed them.
 
-The selected provenance event is the successful, non-replacing
-`ACTION_SESSION_COMMITTED` broadcast delivered to the default home. The session
-contains the package, installing user, install reason, and unarchival state. It does
-not provide the install history needed to prove prior absence, so the organizer needs
-its own coverage-backed memory.
+Counterexample:
 
-This choice meets the ADR threshold: changing the store boundary or allowing a
-missing store to become empty changes safety, privacy, migration, and backup behavior.
+1. X is installed while the launcher has no usable history coverage.
+2. X is uninstalled before the launcher observes it.
+3. A first inventory is created and records X absent.
+4. X is reinstalled by a USER session and has one current launchable target.
 
-## Alternatives rejected
+Every currently available candidate signal now looks like a fresh install, although
+X is a reinstall. Therefore a current inventory cannot be treated as prior-absence
+proof. A fail-closed implementation must reject this case rather than expose a
+proposal requiring the user to detect the mistake.
 
-| Alternative | Why rejected |
+The two existing event inputs also have no accepted atomic protocol. `ModelLauncherCallbacks`
+updates model state while `SessionCommitReceiver` receives session provenance. Ordering,
+correlation, generation ownership, atomic membership/provenance consumption, replay,
+crash recovery, and durable-write failure behavior are not defined by the baseline.
+Combining them before those decisions are accepted could either consume a new install
+as already present or reuse stale absence after a failed write.
+
+This ADR meets the threshold because enabling or disabling eligibility changes safety,
+privacy, public seam, persistence, and migration behavior, and multiple alternatives
+were considered.
+
+## Alternatives considered
+
+| Alternative | Decision |
 |---|---|
-| No persistence; infer from `onPackageAdded` | The callback also covers restore/setup/policy installs and cannot distinguish an unobserved reinstall. |
-| Ever-seen set without inventory coverage | A missing entry is not evidence that the package was absent before the event. It permits the P1 false positive this ADR forbids. |
-| Store presence in the Launcher layout DB | The layout DB is included by baseline backup allowlists; package inventory would violate the required backup/privacy boundary and couple provenance corruption to layout state. |
-| Store presence in the recovery DB | Recovery DB ownership is limited to recovery records by ADR-0003; provenance loss or corruption must not affect recovery. |
-| Clear corrupt/unknown data and continue | An empty replacement falsely represents “known absent” and can classify an existing package as fresh. |
-| Time-based eviction or arbitrary FIFO cap | Deleting old membership recreates the reinstall false-positive path. Retention is profile-lifecycle based, not time based. |
+| Infer fresh install from `onPackageAdded` | Rejected: restore/setup/policy installs and reinstall can produce the same callback. |
+| Use `SESSION_COMMITTED` + USER reason | Rejected as sufficient proof: it describes the current successful non-replacing install, not prior install history. |
+| Use current inventory/ever-seen absence | Rejected: the counterexample above creates a false prior-absence claim. |
+| Use install timestamps | Rejected: reinstall can receive fresh-looking timestamps and the normal launcher seam is not authoritative across profiles. |
+| Add an app-private presence store now | Rejected as sufficient: without a trusted initial history/coverage origin, the store cannot solve pre-store reinstall. It may be reconsidered only with an authoritative source. |
+| Combine callbacks and session receiver now | Rejected until ordering, correlation, generation, atomic consume/update, crash, replay, and write-failure rules are accepted. |
+| Treat false positives as confirmation-UI risk | Rejected: this contradicts Issue #4's fail-closed contract and reinstall exclusion. |
+| Manual organization only for current baseline | Selected interim behavior: safe false negatives, no package-event layout mutation. |
 
 ## Consequences
 
-- A first install that occurs while the launcher has no valid inventory coverage is a
-  safe false negative: it gets no incremental proposal until a later supported event
-  can be assessed. It is never treated as a fresh install merely because the store is
-  empty or missing.
-- Store corruption is isolated from layout and recovery. The integration module must
-  expose a typed failure to the classifier and must not silently repair eligibility.
-- The file has an independent schema version. Future unknown versions are read-only
-  for the running app and invalidate coverage; migration is a #55 implementation-plan
-  concern and must rebuild/verify the complete inventory before eligibility resumes.
-- Package names and profile identity are sensitive local inventory data. They remain
-  app-private, are excluded from diagnostics/export/telemetry, and are not copied into
-  recovery records.
-- The exact file encoding, atomic write mechanism, and test adapter are implementation
-  details of #55 `plan.md`; they must preserve this ownership and failure contract.
+- #55 cannot begin its implementation/specification stage while #52 and #57 remain
+  open and while the authoritative-history product decision is unresolved.
+- A future product decision must define the source boundary, retention/privacy,
+  profile isolation, event correlation, generation ownership, atomic consume/update,
+  crash/restart replay, and failure injection before creating a spec or plan.
+- No new permission, storage file, manifest receiver, public classifier, or package-event
+  hook is added by this ADR.
+- The research result is intentionally a blocker, not an implementation shortcut.
 
-## Verification obligations
+## Verification obligations for the future decision
 
-The #55 spec and plan must prove:
+Before incremental eligibility can be enabled, its accepted spec must demonstrate:
 
-- complete inventory creates a valid coverage barrier and records absent/present
-  package membership per profile;
-- process death, reboot, listener gaps, profile availability changes, store repair,
-  and unknown schema invalidate the barrier;
-- corrupt/unknown-version/read failures return `PRESENCE_MEMORY_FAILED` and do not
-  produce a proposal;
-- package removal preserves historical membership, while profile removal erases it;
-- both Lawnchair ZIP and Android full backup exclude the store;
-- no package/profile/layout identity enters organizer diagnostics or export.
+- a trusted history origin covering installs before launcher observation;
+- prior absence per package/profile, including the counterexample above;
+- deterministic correlation between session provenance and package callbacks;
+- one generation owner and atomic consume/update semantics;
+- crash/restart/replay and durable-write failure behavior that never reuses stale absence;
+- profile isolation, privacy retention, backup behavior, and no raw identity diagnostics;
+- no proposal for missing, stale, contradictory, corrupt, or unavailable evidence.
