@@ -241,9 +241,10 @@ replace user-facing explanations.
 |---|---|
 | manual full | explicit start → preview → confirm; stale checkpoint does not write; recovery action after success. |
 | onboarding | non-blocking; skip/defer mutate nothing; accepted route still previews/confirms. |
-| package event (current baseline) | Every package event, including a USER session with a unique current target, produces no incremental proposal or placement; manual organization remains available. |
+| package event — new organizer path (current baseline) | Every package event, including a USER session with a unique current target, produces no **new organizer** incremental proposal or placement; manual organization remains available. |
+| package event — legacy Deck (until #57) | Deck is a separate legacy runtime path and may still call `addNewlyInstalledApp` while enabled. This is not evidence for, nor a permitted implementation of, the new organizer path. Device-wide zero-placement verification begins only after #57 removes that hook. |
 | package event (future only) | A future accepted product decision/spec that provides authoritative install history may test proposal → preview → explicit confirmation; that proposal path is not an acceptance condition for the current baseline. |
-| launcher activity candidates (current baseline) | package/profile から launchable target が 0 件、または複数で一意に解決できなくても、または一意でもprior absenceが証明できなくても、incremental proposal/placementを行わず、manual flowを許可する。 |
+| launcher activity candidates (current baseline) | package/profile から launchable target が 0 件、または複数で一意に解決できなくても、または一意でもprior absenceが証明できなくても、新organizer経路ではincremental proposal/placementを行わず、manual flowを許可する。 |
 | diff/warning/unplaced | counts, reason, and destructive effect visible; empty diff writes nothing. |
 | cancel/recreation | no partial state claimed; retry recaptures; atomic interval is safe. |
 | failure/recovery | checkpoint/apply/verify/recovery failures have distinct messages and safe next action. |
