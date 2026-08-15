@@ -352,7 +352,14 @@ journalを使わない。on-device測定では次を守る。
   `delta(P) = V(b_out) - V(b_in)` とする。両端の境界値が揃わないphaseの
   deltaは報告しない。
 - **run中peak**: run window (最初のevent timestampから最後のevent timestamp
-  まで) 内のsampleの最大値とする。peakは境界値の有無に依存しない。
+  まで) 内のsampleの最大値 (`runPeak`) とする。peakは境界値の有無に依存
+  しない。
+- **追加peak PSS (budget判定値)**: budget (§9.1) の「追加peak PSS」は
+  `addedPeak = runPeak - baseline`で判定する。baselineは、`RUN_STARTED`の
+  timestampから遡って**5秒間のpre-run window**内の有効sampleの**median**
+  とする。pre-run window内の有効sampleが5件未満の場合、baselineを算出
+  せず、そのiterationのaddedPeakを欠測として報告する (絶対peak
+  `runPeak`は常に報告する)。
 - **用語**: on-device memory metricの取得値は`dumpsys meminfo`の
   `TOTAL PSS`であり、本書では**PSS**とだけ呼ぶ。RSSという名称は使わない
   (§5、§9.1のmetric名もこれに合わせる)。
@@ -451,9 +458,27 @@ n = 565以上を要件として明示する。
 - baselineは、直近の受領済み測定table (docs/assessment/配下の計測記録) とする。
   比較は**同じ環境class・同じcell**に限る。R-JVM-1とR-EMU-1、host間の
   cross比較をしない。
-- regression flag条件: 新p95 / 旧p95 > 1.25、かつbootstrap (1000 resample) の
-  percentile区間が重ならないこと。両方満たした場合のみ調査必須とする。
-  mean比は補助指標として併記する。
+- regression flag条件: **新p95 / 旧p95 > 1.25**、かつ**両群のp95に対する
+  90% bootstrap percentile区間が重ならない**こと。両方満たした場合のみ
+  調査必須とする。mean比は補助指標として併記する。
+- **bootstrap手順 (判定を再現可能にする固定parameter)**:
+
+  ```text
+  対象    : 旧・新それぞれの、§6.5/§6.6で無効化されていないiterationの
+            測定値のみ。無効iterationは除外し、除外件数を結果に記録する。
+            有効nがどちらかの群で30未満の場合はbootstrap判定を行わず、
+            要再測定として記述統計のみ報告する。
+  統計量  : resampleごとにp95を計算。p95は§6.4と同じorder statistic
+            (k = ceil(0.95n)、補間なし) を使う。
+  resample: iid復元抽出。回数1000。RNGは java.util.Random(0x4E554E55L)。
+            消費順は b = 1..1000 の各回で「旧群のn_old個 → 新群のn_new個」
+            の順に一様乱数でindexを選ぶ。
+  区間    : 各群の1000個のbootstrap p95を昇順に並べ、50番目と950番目の
+            値を90% percentile区間 [下限, 上限] とする。
+  判定    : 区間が重ならない = 旧上限 < 新下限、または新上限 < 旧下限。
+  ```
+
+  同じ2群のsampleからは同じ判定が得られる。
 - budget未確定・測定不能phaseも、計測値が存在するならPRに値を残し
   比較可能にする ([quality-strategy](./quality-strategy.md) §Performance
   measurementの既存取り決め)。
