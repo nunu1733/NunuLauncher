@@ -124,9 +124,11 @@ stateDiagram-v2
 ```
 
 v1 は auto-incremental を許可しない。provenance 判定は fail-closed である。
-証拠源・event 分類・最小限の presence state の決定は
-[package-provenance](../engineering/package-provenance.md)
-（[Issue #54](https://github.com/nunu1733/NunuLauncher/issues/54)）が正本である。
+証拠比較と研究結果は [package-provenance](../engineering/package-provenance.md)、
+観測可能なincremental behaviorと受入条件は
+[#55 spec](../../specs/55-convergent-incremental-placement/spec.md)、
+presence storeの高コストな選択は
+[ADR-0005](../adr/0005-fresh-install-presence-evidence.md) を正本とする。
 別 decision が将来 auto policy を提案する場合も、上の両証拠、complete な
 state/failure/recovery UX、Issue #13 の accepted criteria を満たすまでは
 proposal/confirmation から外せない。
