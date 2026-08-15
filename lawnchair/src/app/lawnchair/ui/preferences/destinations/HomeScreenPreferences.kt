@@ -44,6 +44,7 @@ import app.lawnchair.ui.preferences.components.layout.ExpandAndShrink
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
 import app.lawnchair.ui.preferences.navigation.HomeScreenGrid
+import app.lawnchair.ui.preferences.navigation.HomeScreenPlacementLocks
 import app.lawnchair.util.collectAsStateBlocking
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.R
@@ -152,6 +153,12 @@ fun HomeScreenPreferences(
                 label = stringResource(id = R.string.home_screen_grid),
                 destination = HomeScreenGrid,
                 subtitle = stringResource(id = R.string.x_by_y, columns, rows),
+            )
+            // Issue #38: placement lock management and unknown-state review.
+            NavigationActionPreference(
+                label = stringResource(id = R.string.organizer_lock_screen_title),
+                destination = HomeScreenPlacementLocks,
+                subtitle = stringResource(id = R.string.organizer_lock_screen_summary),
             )
             SwitchPreference(
                 adapter = lockHomeScreenAdapter,

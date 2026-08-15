@@ -384,6 +384,10 @@ addFrameworkJar('framework-15.jar')
 dependencies {
     androidTestImplementation libs.androidx.junit
     androidTestImplementation libs.androidx.espresso.core
+    // Issue #38: Compose UI semantics tests for the placement lock screen.
+    androidTestImplementation platform(libs.compose.bom)
+    androidTestImplementation libs.compose.ui.test
+    debugImplementation libs.compose.ui.test.manifest
     implementation projects.iconloaderlib
     implementation projects.searchuilib
     implementation projects.animationlib
