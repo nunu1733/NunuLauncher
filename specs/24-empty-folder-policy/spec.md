@@ -91,8 +91,8 @@ is revised and this spec's gate is accepted.
 | M-12 | Empty folder in the Dock (HOTSEAT) | Same rules; the Dock rank is the placement; preserved rank/slot by default, eligible under the gate identically. |
 | M-13 | App-pair parent with zero or malformed members | Not an empty-folder case; structural preflight rejection per [item-preservation-policy §5.2](../../docs/product/item-preservation-policy.md). |
 | M-14 | Recovery of a run that deleted empty folders (future) | Spec 13 recovery is row-accounted and revision-bound: restoring re-inserts the exact checkpoint folder rows; conflicts with later user changes require a fresh recovery preview, never a blind restore. |
-| M-15 | Malformed folder row | Whole-run preflight reject before any plan or write; DB unchanged. Not an empty folder; never deletable. Rejection surfaces through the existing typed results: spec 10 `Invalid` with the matching `RejectionReason` and `DiagnosticParam` (V-02 `INVALID_CONTAINER` + `ContainerCodeParam`, V-04 `BOUNDS_VIOLATION` + span/rank param, V-05 `OVERLAP`), or spec 13 `INVALID_PLAN` / `EXACT_PRECONDITION_FAILED` at the apply boundary. User-facing and developer diagnostics follow the [organizer-diagnostics §2 layering](../../docs/engineering/organizer-diagnostics.md): the reject UI builds its explanation (affected folder, problem category, nothing-changed, retry/exit) from the typed result plus its own captured-inventory context, never from the journal; the journal records only the typed error category and counts — item params, coordinates, and row identity are excluded per its §7. Owning contracts: capture boundary and preflight rules of [item-preservation-policy §5.2](../../docs/product/item-preservation-policy.md), spec 10 V-rules, spec 13 preconditions. The current spec 10 types are sufficient for this; any future surface needing richer typed reject detail requires a spec 10 revision as a downstream gate. |
-| M-16 | Dangling reference (child row targets a non-captured folder id) | Whole-run preflight reject with DB unchanged, surfaced as spec 10 V-06 `DANGLING_REFERENCE` with `ItemParam`; never treated as an empty folder or as deletable residue. The same diagnostic layering as M-15 applies. Owning contract: [item-preservation-policy §5.2](../../docs/product/item-preservation-policy.md). |
+| M-15 | Malformed folder row | Whole-run preflight reject before any plan or write; DB unchanged. Not an empty folder; never deletable. Rejection surfaces through the existing typed results: spec 10 `Invalid` with the matching `RejectionReason` (V-02 `INVALID_CONTAINER` + `ContainerCodeParam`, V-04 `BOUNDS_VIOLATION` + span/rank param, V-05 `OVERLAP`), or spec 13 `INVALID_PLAN` / `EXACT_PRECONDITION_FAILED` at the apply boundary. Per the [organizer-diagnostics §2 layering](../../docs/engineering/organizer-diagnostics.md), the v1 user-facing reject explanation is **layout-level**: defect category, affected-item count where the result provides one, nothing-changed, retry/exit — V-02/V-04/V-05 carry no item correlation and multiple rows can share the same defect, so no surface may claim to name the affected folder from these results; the explanation never reads the journal. The journal records only the typed error category and counts per its §7. Owning contracts: capture boundary and preflight rules of [item-preservation-policy §5.2](../../docs/product/item-preservation-policy.md), spec 10 V-rules, spec 13 preconditions. **Downstream gate:** naming the affected folder in a malformed-folder reject surface requires a spec 10 revision that adds item-correlated reject detail to V-02/V-04/V-05 (or an equivalent typed field), accepted before implementation. |
+| M-16 | Dangling reference (child row targets a non-captured folder id) | Whole-run preflight reject with DB unchanged, surfaced as spec 10 V-06 `DANGLING_REFERENCE` with `ItemParam`; never treated as an empty folder or as deletable residue. Because V-06 carries `ItemParam`, the user-facing explanation may identify the affected item through that param; the journal stays category/count-only per the same layering. Owning contract: [item-preservation-policy §5.2](../../docs/product/item-preservation-policy.md). |
 
 Baseline evidence for the external paths referenced by M-05–M-10 is fixed at
 baseline commit `505dbc40e6154c05158b5d0271c45f6a885a411b` in
@@ -142,7 +142,11 @@ holds. Until an accepted revision of spec 13 adds the required typed
 - **Planner specs [10](../10-pure-organization-planning/spec.md) and
   [12](../12-deterministic-full-layout-planner-v1/spec.md):** v1 preserves;
   any deletion enters only as explicit per-folder plan actions under E1–E7
-  through an accepted spec change.
+  through an accepted spec change. Per M-15, an item-correlated
+  reject-detail revision of spec 10 (V-02/V-04/V-05 or an equivalent typed
+  field) is the downstream gate for naming the affected folder in a
+  malformed-folder reject surface; v1 explanations for those rejections are
+  layout-level.
 - **[organization-run-ux](../../docs/product/organization-run-ux.md):**
   §4.1 destructive effects and §6 accessibility apply to every
   empty-folder surface; EF-1–EF-3 and EF-8–EF-9 constrain it.
@@ -172,3 +176,8 @@ and intentionally not decided here.
   (typed category and counts only, per organizer-diagnostics §2/§7), and
   name a spec 10 revision as the downstream gate should richer typed reject
   detail ever be needed.
+- 2026-08-15: Third review revision: the M-15 user-facing explanation is
+  weakened to layout-level because V-02/V-04/V-05 carry no item
+  correlation; naming the affected folder is gated on a spec 10 revision
+  adding item-correlated reject detail. M-16 keeps item correlation
+  through V-06 `ItemParam`.
