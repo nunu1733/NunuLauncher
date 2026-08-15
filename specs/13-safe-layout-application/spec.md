@@ -520,14 +520,13 @@ The invariants themselves remain authoritative in `DESIGN.md` §5.
 
 - ADR-0004 defines capture, revision, checkpoint, and restore semantics for lock
   state; Issue #14 must implement them with the complete resource manifest.
-- Issue #24's empty-folder policy is decided in
-  [docs/product/empty-folder-policy.md](../../docs/product/empty-folder-policy.md):
-  apply v1 still has no delete action. A future organizer deletion requires a
-  revision of this contract adding a typed `Delete` action with an exact
-  expected-row precondition (including `UNLOCKED` lock state and zero
-  children), checkpoint and row-accounted recovery, post-apply absence
-  verification, and a count-only diagnostic field. It does not block explicit
-  row-accounted recovery.
+- Empty-folder behavior is owned by
+  [spec 24](../24-empty-folder-policy/spec.md) (Issue #24). Apply v1 has no
+  delete action; a future revision of this contract must add the typed
+  `Delete` action with the exact preconditions and row-accounted recovery
+  that spec's gate requires. Diagnostics field encoding stays with the
+  organizer-diagnostics contract; this seam only exposes typed action
+  results. Explicit row-accounted recovery is not blocked by spec 24.
 - Issue #16 owns diagnostic field encoding, retention, and export.
 
 ## Open questions
@@ -565,5 +564,7 @@ Source observations are fixed to
   result semantics are unchanged; acceptance awaits renewed Spec/Standards review.
 - 2026-08-11: Re-accepted the clarified public contract after renewed Spec and
   Standards review passed; Stage B may implement only these closed shapes.
-- 2026-08-15: Recorded the Issue #24 empty-folder decision reference in
-  downstream gates; no v1 behavior, result, or lifecycle change.
+- 2026-08-15: Recorded the Issue #24 empty-folder reference in downstream
+  gates (behavior owned by spec 24; diagnostics encoding remains with the
+  organizer-diagnostics contract); no v1 behavior, result, or lifecycle
+  change.
