@@ -88,7 +88,7 @@ version付き整理ルールの読込、validation、migration、exportを担当
 Lawnchair/Launcher3のeventとmodelをproject固有moduleへ接続するadapter群である。
 
 - snapshot adapter: platform modelをdomain snapshotへ変換する。
-- package event adapter: package追加とupdateを区別し、user/profileを保持する。
+- package event adapter: package追加とupdateを区別し、user/profileを保持する。fresh-install provenanceの証拠源、event分類、presence memoryの契約は [package-provenance](./docs/engineering/package-provenance.md) を正本とする。
 - model write adapter: validated planをLauncher model threadとDB transactionへ渡す。
 - UI adapter: 手動run、onboarding、確認、結果、復旧を表示する。
 
@@ -143,6 +143,7 @@ stateDiagram-v2
 - planはrevisionを持つ一時artifactであり、古いsnapshotへ適用できない。
 - recovery pointは一般的なexport backupと分け、アプリ内で原子的に復旧できる。storageは[ADR-0003](./docs/adr/0003-organizer-recovery-point-storage.md)で決定済みである。
 - organizer runのdiagnostic record（run journal）はapp-privateかつlocal-onlyであり、backup対象外とする。契約の正本は [docs/engineering/organizer-diagnostics.md](./docs/engineering/organizer-diagnostics.md) である。
+- incremental配置判定用のpackage presence memoryは、fresh-install provenance契約が定義するapp-privateな永続storeである。追記のみ、backup対象外、diagnostic出力禁止。正本は [docs/engineering/package-provenance.md](./docs/engineering/package-provenance.md) である。
 
 ## 8. Error model
 

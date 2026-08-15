@@ -123,10 +123,13 @@ stateDiagram-v2
     Recovering --> RecoveryFailed: recovery failure
 ```
 
-v1 は auto-incremental を許可しない。provenance 判定は fail-closed であり、証拠を
-保存する storage/API は選ばない。別 decision が将来 auto policy を提案する場合も、
-上の両証拠、complete な state/failure/recovery UX、Issue #13 の accepted criteria を
-満たすまでは proposal/confirmation から外せない。
+v1 は auto-incremental を許可しない。provenance 判定は fail-closed である。
+証拠源・event 分類・最小限の presence state の決定は
+[package-provenance](../engineering/package-provenance.md)
+（[Issue #54](https://github.com/nunu1733/NunuLauncher/issues/54)）が正本である。
+別 decision が将来 auto policy を提案する場合も、上の両証拠、complete な
+state/failure/recovery UX、Issue #13 の accepted criteria を満たすまでは
+proposal/confirmation から外せない。
 
 ## 3. D-005: preview, confirmation, and recovery proposal
 
