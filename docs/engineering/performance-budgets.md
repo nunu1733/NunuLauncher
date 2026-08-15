@@ -322,8 +322,9 @@ journalを使わない。on-device測定では次を守る。
 使い、事後的にphase境界へ対応付ける。
 
 - **並行sampler**: run開始前から終了後まで、host側timerが250ms間隔
-  (fixed-rate) で採取を開始する。前回の採取がまだ完了している場合はその
-  tickをskipしてmissとして記録し、遅延を次以降に持ち越さない。採取は
+  (fixed-rate) で採取を開始する。tick時点で前回の採取が**まだ完了して
+  いない**場合はそのtickをskipしてmissとして記録し、遅延を次以降に
+  持ち越さない (完了している場合は常に採取する)。採取は
   別process (adb shell) から行い、計測対象processに負荷を加えない。
 - **1 sampleの採り方 (bracket + midpoint)**: 1回の`adb shell`呼び出し内で
   次を実行し、sample時刻 = `(t0 + t1) / 2` (midpoint) とする。
@@ -533,8 +534,3 @@ automation分離基準 (§10)。
   seam要件と将来hook、workload matrix (page軸・固定seed・決定的workload
   builder契約)、metric、統計法、暫定budgetと見直し条件、automation分離基準
   を定義した。
-- 2026-08-15: PR #68のreviewで測定の再現性と恒久文書の分割を調整した
-  (決定的生成契約、memory採取のdevice wall clock / bracket / overrun規則、
-  UI-thread blockのmonotonic clockとdispatch包含規則、journal slice検査、
-  PSS用語、統計訂正、実装状態・実行結果・review経緯のPR集約)。
-  review経緯の詳細はPR #68を正本とする。
