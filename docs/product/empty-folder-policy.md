@@ -24,25 +24,20 @@ restated here.
 
 ### 2.1 Default: preserve, never auto-delete
 
-An empty folder in the captured inventory is accounted as a **preserved**
-item: it keeps its exact captured placement, acts as an occupied constraint,
-is not a move target, and is never deleted by the run. This holds for every
-run mode and profile. No organizer run deletes an empty folder implicitly;
-a folder emptied for any reason outside an approved explicit deletion stays
-preserved until a later capture classifies it again.
+The decision: an empty folder is **preserved by default**, and no organizer
+run deletes one implicitly. The observable preserve behavior — placement,
+occupancy, diagnostics, and its uniformity across run modes and profiles —
+is owned by [spec 24](../../specs/24-empty-folder-policy/spec.md)
+(M-01, M-06) and is not restated here.
 
 ### 2.2 Explicit deletion: a gated future capability
 
-The organizer may delete an empty folder only as an explicit plan action
-under the closed conditions of the
-[explicit-deletion gate](../../specs/24-empty-folder-policy/spec.md)
-(E1–E7: valid captured empty folder, `UNLOCKED` lock state, per-run user
-opt-in, per-folder enumerated actions, item-level preview with separate
-destructive confirmation, the full spec 13 checkpoint/transaction/recovery
-ordering, conservation accounting, count-only diagnostics). The accepted
-apply contract has no delete action, so v1 offers nothing and the gate
-becomes implementable only after an accepted spec 13 revision. Until then
-no surface may offer or perform such a deletion.
+The decision: deletion is possible only as an **explicit plan action** under
+the closed gate owned by
+[spec 24](../../specs/24-empty-folder-policy/spec.md) (E1–E7). The accepted
+apply contract ([spec 13](../../specs/13-safe-layout-application/spec.md))
+has no delete action, so v1 offers nothing and the gate becomes
+implementable only after an accepted spec 13 revision.
 
 ### 2.3 Rejected alternatives and rationale
 
@@ -89,20 +84,11 @@ in three of these files):
 | Grid migration | A folder with zero children fails migration validity ("Folder is empty") and is removed as an invalid entry. | `GridSizeMigrationUtil.java:507-510,527-532,611-614,631-640` |
 | Restore profile cleanup | Rows of profiles that could not be restored are deleted; a surviving parent may thereby become empty. | `RestoreDbTask.java:262-278` |
 
-The organizer does not call, wait for, or extend these paths. Their effects
-are external mutations relative to a run, classified per
-[item-preservation-policy §5.1/§5.3](item-preservation-policy.md) and
-spec 24 M-05–M-10:
-
-- Effect **before** capture: the absent row is simply not part of that
-  run's inventory; the run never claims it was preserved or deleted.
-- Effect **after** capture: the revision no longer matches; the run is
-  stale and rejects or recaptures before any organizer write. It must not
-  relabel the external disappearance as a plan deletion, free the occupied
-  space from it, or create a recovery point for the unapplicable plan.
-- A failed baseline cleanup (for example the swallowed sanitation
-  exception) leaves an empty folder that the organizer preserves and
-  diagnoses; it never "finishes" baseline cleanup on its own.
+The decision: the organizer does not call, wait for, or extend these paths,
+and never finishes a failed baseline cleanup on its own. Their effects are
+external mutations relative to a run; the absent-vs-stale classification is
+owned by [spec 24](../../specs/24-empty-folder-policy/spec.md) (M-05–M-10)
+on top of [item-preservation-policy §5.1/§5.3](item-preservation-policy.md).
 
 Mutual exclusion between an organizer apply and concurrent baseline writers
 (loader, model writer, sanitation) is the operational gate that
@@ -118,3 +104,6 @@ mechanism.
   the observable behavior, reject branch, gate conditions, and acceptance
   criteria into [spec 24](../../specs/24-empty-folder-policy/spec.md);
   this document remains the decision rationale and evidence record.
+- 2026-08-15: Second review revision: removed the remaining restatement of
+  spec 24 behavior from §§2–3; the decision record now states only the
+  decisions and their rationale.
