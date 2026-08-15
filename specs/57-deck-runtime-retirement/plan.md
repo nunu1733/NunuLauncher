@@ -38,7 +38,10 @@ verification for the accepted spec.
 ### Modules and interfaces
 
 There is no new public seam. Production startup and Android-context tests invoke
-the same internal `DeckRetirementMigration` entry point. `PreferenceManager2`
+the same internal `DeckRetirementMigration` entry point only after confirming the
+current process name equals the application's default process name. Secondary
+processes, including `:bugReport`, return before constructing migration or opening
+its preference and cleanup surfaces. `PreferenceManager2`
 removes the live public `deckLayout` and `showDeckLayout` properties and reader
 surface, retains private/internal ownership of the persisted tombstone keys, and
 exposes one internal operation that atomically normalizes both to `false` for the
@@ -46,8 +49,9 @@ migration owner.
 
 ### Data flow
 
-Startup enters `DeckRetirementMigration`, which calls internal normalization and
-cleanup phases sequentially in production. `DeckRetirementPhaseObserver` is an
+Default-process startup enters `DeckRetirementMigration`, which calls internal
+normalization and cleanup phases sequentially in production. Secondary-process
+startup exits before migration composition. `DeckRetirementPhaseObserver` is an
 internal seam with a production default no-op. Normalization performs one atomic
 DataStore edit for both tombstones without writing `swipeUpGesture` or
 `addIconToHome`. A failed edit stops before cleanup. On success, cleanup derives
@@ -147,7 +151,7 @@ reconstruction of unknown preference values, and a replacement package hook.
 | `lawnchair/src/app/lawnchair/deck/AddFoldersWithItemsTask.kt` | Remove the Deck-only folder-writing task. |
 | `lawnchair/src/app/lawnchair/preferences2/PreferenceManager2.kt` | Remove live `deckLayout` and `showDeckLayout` properties; retain `enable_lawn_deck` and `show_deck_layout` as private/internal persisted-false tombstones; add the one internal atomic normalization operation. |
 | `lawnchair/src/app/lawnchair/migration/DeckRetirementMigration.kt` | Add the sole startup normalization and post-success exact-cleanup owner. |
-| `lawnchair/src/app/lawnchair/LawnchairApp.kt` | Invoke the migration at application startup. |
+| `lawnchair/src/app/lawnchair/LawnchairApp.kt` | Compare current/default process identity and invoke migration only at default-process application startup. |
 | `DESIGN.md` | Update the permanent architecture authority for the internal startup migration, no-op observer, retry, target layout, and verification contract. |
 | `lawnchair/src/app/lawnchair/ui/preferences/components/HomeLayoutPreferences.kt` | Remove Deck control, manager construction, loading UI, and Deck preference side effects; retain unrelated home-layout UI. |
 | `lawnchair/src/app/lawnchair/ui/preferences/destinations/HomeScreenPreferences.kt` | Remove Deck visibility/read gates; retain ordinary home-screen settings. |
@@ -168,6 +172,7 @@ reconstruction of unknown preference values, and a replacement package hook.
 | `tools/deck-retirement-backup-restore-smoke.sh` | Add as the host orchestrator for AC-006 real archive creation, APK transition, actual restore, restart, and evidence archive. |
 | `tests/organizer-instrumentation/app/lawnchair/migration/DeckRetirementTestRunner.kt` | Add the androidTest runner that installs the nonce observer before `Application.onCreate`. |
 | `tests/organizer-instrumentation/AndroidManifest.xml` | Register `DeckRetirementTestRunner` as the androidTest runner; do not add production controls. |
+| `tests/organizer-instrumentation/app/lawnchair/migration/DeckRetirementProcessIsolationInstrumentationTest.kt` | Prove secondary processes do not compose or run retirement migration. |
 | `tests/organizer-instrumentation/app/lawnchair/migration/DeckRetirementOldTargetCompatInstrumentationTest.kt` | Add reflection-only old-target preflight, synthetic seeding/capture, and old `LawnchairBackup.create` invocation without references to new migration APIs. |
 | `tests/organizer-instrumentation/app/lawnchair/migration/DeckRetirementBackupRestoreInstrumentationTest.kt` | Add typed new-target package/version verification and actual `readInfoAndPreview`/`restore` invocation. |
 | `cache/logs/deck-retirement-backup/<nonce>.lawnchairbackup` | Retain as the exact archive subpath under the existing `cache-path path="logs"` provider coverage; use target `LawnchairApp.getUriForFile` with no production provider expansion. |
@@ -211,6 +216,7 @@ Write each RED test before production changes, then make it GREEN.
 | DRR-EV-012 | AC-008 | Host: `tools/deck-retirement-downgrade-smoke.sh --scenario pre-initialization-old-binary` | Records the unsupported old-binary boundary with real APK ordering and no false pass. |
 | DRR-EV-013 | AC-008 | Host: `tools/deck-retirement-downgrade-smoke.sh --scenario pre-initialization-old-backup` | Records the unsupported old-backup boundary with real archive, restore, restart, APK ordering, and no false pass. |
 | DRR-RED-012 / GREEN-012 | AC-008 | androidTest runner/fixture: `DeckRetirementTestRunner.kt` and `DeckRetirementDowngradeFixtureInstrumentationTest.kt` | The runner installs the observer before real `Application.onCreate`; the fixture prepares/captures typed state and validates the nonce pause handshake only. |
+| DRR-RED-013 / GREEN-013 | AC-009 | Instrumentation: `tests/organizer-instrumentation/app/lawnchair/migration/DeckRetirementProcessIsolationInstrumentationTest.kt` | `secondaryProcessDoesNotEnterRetirementMigration` starts the `:bugReport` process and proves no migration marker, preference open, or artifact scan occurs. |
 
 ## Real-APK downgrade smoke orchestration
 
@@ -453,6 +459,7 @@ EMULATOR_CREATED=0
 
 device_reachable() { adb -s "$SERIAL" get-state 2>/dev/null | tr -d '\r' | rg -qx device; }
 force_stop_if_reachable() { device_reachable || return 0; adb -s "$SERIAL" shell am force-stop app.lawnchair.debug || true; adb -s "$SERIAL" shell am force-stop app.lawnchair.debug.test || true; }
+deinit_rollback_submodules() { test "$WORKTREE_CREATED" -eq 1 || return 0; git -C "$ROLLBACK_WORKTREE" submodule deinit --all; }
 run_bounded() {
   local LOG="$1" TIMEOUT_SECONDS="$2" STATUS NOW DEADLINE
   shift 2
@@ -493,7 +500,7 @@ cleanup() {
   if test -n "$ACTIVE_CHILD_PID" && kill -0 "$ACTIVE_CHILD_PID" 2>/dev/null; then kill -TERM "$ACTIVE_CHILD_PID" 2>/dev/null || true; sleep 1; kill -KILL "$ACTIVE_CHILD_PID" 2>/dev/null || true; wait "$ACTIVE_CHILD_PID" 2>/dev/null || true; fi
   force_stop_if_reachable
   if test "$EMULATOR_CREATED" -eq 1 && test -n "$EMULATOR_PID"; then adb -s "$SERIAL" emu kill 2>/dev/null || true; kill -TERM "$EMULATOR_PID" 2>/dev/null || true; sleep 1; kill -KILL "$EMULATOR_PID" 2>/dev/null || true; wait "$EMULATOR_PID" 2>/dev/null || true; EMULATOR_PID=""; EMULATOR_CREATED=0; fi
-  if test "$WORKTREE_CREATED" -eq 1; then git worktree remove "$ROLLBACK_WORKTREE" || CLEANUP_STATUS=1; WORKTREE_CREATED=0; fi
+  if test "$WORKTREE_CREATED" -eq 1; then deinit_rollback_submodules || CLEANUP_STATUS=1; git worktree remove "$ROLLBACK_WORKTREE" || CLEANUP_STATUS=1; WORKTREE_CREATED=0; fi
   if test -n "$ROLLBACK_TEMP_ROOT"; then rmdir "$ROLLBACK_TEMP_ROOT" 2>/dev/null || CLEANUP_STATUS=1; fi
   if test "$ORIGINAL_STATUS" -ne 0; then exit "$ORIGINAL_STATUS"; fi
   test "$CLEANUP_STATUS" -eq 0 || exit 125
@@ -533,7 +540,7 @@ mkdir -p "$EVIDENCE_DIR/instrumentation"
 emulator -avd "$AVD_NAME" -port "$EMULATOR_PORT" -wipe-data -no-snapshot -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect >"$EVIDENCE_DIR/instrumentation/emulator.log" 2>&1 & EMULATOR_PID=$!; EMULATOR_CREATED=1
 wait_for_boot
 ./gradlew --no-daemon --no-parallel installLawnWithQuickstepGithubDebug installLawnWithQuickstepGithubDebugAndroidTest
-run_instrument "$EVIDENCE_DIR/instrumentation/default.log" 'MODE_READY mode=default typed=true' -e deck_retirement_target_mode default -e class 'app.lawnchair.migration.DeckRetirementMigrationInstrumentationTest,app.lawnchair.ui.preferences.DeckRetirementPreferencesInstrumentationTest,com.android.launcher3.DeckRetirementDeleteRegressionTest,com.android.launcher3.DeckRetirementPackageRegressionTest' app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner
+run_instrument "$EVIDENCE_DIR/instrumentation/default.log" 'MODE_READY mode=default typed=true' -e deck_retirement_target_mode default -e class 'app.lawnchair.migration.DeckRetirementMigrationInstrumentationTest,app.lawnchair.migration.DeckRetirementProcessIsolationInstrumentationTest,app.lawnchair.ui.preferences.DeckRetirementPreferencesInstrumentationTest,com.android.launcher3.DeckRetirementDeleteRegressionTest,com.android.launcher3.DeckRetirementPackageRegressionTest' app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner
 adb -s "$SERIAL" shell am force-stop app.lawnchair.debug
 adb -s "$SERIAL" shell am force-stop app.lawnchair.debug.test
 adb -s "$SERIAL" emu kill
@@ -547,6 +554,7 @@ adb -s "$SERIAL" shell am force-stop app.lawnchair.debug.test
 adb -s "$SERIAL" emu kill
 wait "$EMULATOR_PID"; EMULATOR_PID=""; EMULATOR_CREATED=0
 for SCENARIO in rollback-before-cleanup downgrade-after-cleanup pre-initialization-old-binary pre-initialization-old-backup; do mkdir -p "$EVIDENCE_DIR/$SCENARIO"; emulator -avd "$AVD_NAME" -port "$EMULATOR_PORT" -wipe-data -no-snapshot -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect >"$EVIDENCE_DIR/$SCENARIO/emulator.log" 2>&1 & EMULATOR_PID=$!; EMULATOR_CREATED=1; wait_for_boot; run_bounded "$EVIDENCE_DIR/$SCENARIO/host.log" 900 tools/deck-retirement-downgrade-smoke.sh --scenario "$SCENARIO" --serial "$SERIAL" --pre-retirement-apk "$PRE_RETIREMENT_APK" --retirement-apk "$RETIREMENT_APK" --test-apk "$TEST_APK" --evidence-dir "$EVIDENCE_DIR/$SCENARIO" --pre-retirement-record-url "$PRE_RETIREMENT_RECORD_URL"; force_stop_if_reachable; adb -s "$SERIAL" emu kill; wait "$EMULATOR_PID"; EMULATOR_PID=""; EMULATOR_CREATED=0; done
+deinit_rollback_submodules
 git worktree remove "$ROLLBACK_WORKTREE"; WORKTREE_CREATED=0
 python3 tools/repo-contract/validate_repo_contract.py
 python3 tools/repo-contract/test_validate_repo_contract.py
@@ -564,7 +572,9 @@ The outer EXIT/INT/TERM trap preserves the original failure status; it kills a l
 owned child, force-stops only when the selected device is reachable, terminates and
 waits only the emulator PID it started, removes only the exact owned rollback
 worktree with non-force `git worktree remove`, then removes an empty owned temp
-root. It returns 125 only when cleanup is the sole failure. Per-phase teardown
+root. Before either normal or trap-driven removal it runs non-force
+`git submodule deinit --all` inside the owned rollback worktree so initialized
+submodules do not block removal. It returns 125 only when cleanup is the sole failure. Per-phase teardown
 clears child/emulator/worktree ownership flags after normal cleanup. It never
 removes `EVIDENCE_DIR`; evidence remains owned by the invoking operator for
 independent review.
@@ -593,6 +603,7 @@ accepted spec, ADR-0006, the executed test surfaces, and CI link.
 - [ ] Run all four downgrade scenarios on separately wiped AVD boots.
 - [ ] Verify normalization, cleanup, retry, restore, rollback, and downgrade evidence.
 - [ ] Verify bounded child timeout, authenticated baseline comment, exact APK resolution, and idempotent trap evidence.
+- [ ] Verify default-process-only migration and secondary-process non-entry evidence.
 - [ ] Run repository validation, formatter, builds, tests, and `git diff --check`.
 - [ ] Record PR and independent high-risk evidence.
 - [ ] Tear down worktrees, emulators, package processes, and retain owned evidence archives.
