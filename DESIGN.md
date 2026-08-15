@@ -88,7 +88,7 @@ version付き整理ルールの読込、validation、migration、exportを担当
 Lawnchair/Launcher3のeventとmodelをproject固有moduleへ接続するadapter群である。
 
 - snapshot adapter: platform modelをdomain snapshotへ変換する。
-- package event adapter: package追加とupdateを区別し、user/profileを保持する。fresh-install provenanceの証拠比較と現時点のnegative decisionは [package-provenance](./docs/engineering/package-provenance.md) を正本とする。incremental classifier、session bridge、presence storeのpublic seamは未決定であり、承認済みproduct decision/specなしに追加しない。
+- package event adapter: package追加とupdateを区別し、user/profileを保持する。fresh-install provenanceの証拠比較は [package-provenance](./docs/engineering/package-provenance.md) を正本とする。incremental eligibilityを無効化する判断と理由は [ADR-0005](./docs/adr/0005-fresh-install-presence-evidence.md) を唯一の正本とし、incremental classifier、session bridge、presence storeのpublic seamは承認済みproduct decision/specなしに追加しない。
 - model write adapter: validated planをLauncher model threadとDB transactionへ渡す。
 - UI adapter: 手動run、onboarding、確認、結果、復旧を表示する。
 
@@ -143,7 +143,7 @@ stateDiagram-v2
 - planはrevisionを持つ一時artifactであり、古いsnapshotへ適用できない。
 - recovery pointは一般的なexport backupと分け、アプリ内で原子的に復旧できる。storageは[ADR-0003](./docs/adr/0003-organizer-recovery-point-storage.md)で決定済みである。
 - organizer runのdiagnostic record（run journal）はapp-privateかつlocal-onlyであり、backup対象外とする。契約の正本は [docs/engineering/organizer-diagnostics.md](./docs/engineering/organizer-diagnostics.md) である。
-- incremental配置判定用のpackage presence memoryは、現時点では選択・永続化しない。過去install履歴を権威的に得るsourceとevent correlationが承認されるまで、package eventによるincremental eligibilityは無効である。判断の正本は [ADR-0005](./docs/adr/0005-fresh-install-presence-evidence.md) と [package-provenance](./docs/engineering/package-provenance.md) である。
+- incremental配置判定用のpackage presence memoryは、現時点では選択・永続化しない。過去install履歴を権威的に得るsourceとevent correlationが承認されるまで、package eventによるincremental eligibilityは無効である。判断・理由の正本は [ADR-0005](./docs/adr/0005-fresh-install-presence-evidence.md) であり、[package-provenance](./docs/engineering/package-provenance.md) はsource comparisonのみを所有する。
 
 ## 8. Error model
 

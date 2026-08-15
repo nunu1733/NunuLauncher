@@ -32,9 +32,10 @@ missing、unknown、corrupt、stale、contradictory evidenceはすべてno propo
 - race、generation、crash、atomic consume/updateの規則を定義しないまま、2つのevent入力を組み合わせる実装も行わない。
 - 将来のincremental featureは、権威ある履歴sourceまたは変更されたproduct requirementを先行decision Issueで確定する。
 
-本書はIssue #54のsource comparisonとnegative decisionを正本とする。incremental featureの
-観測可能なbehavior/specは、#55が再起票・再承認された場合にそのspecが所有する。module/interface
-ownership、実装順序、migration、rollbackは未決定であり、承認済みspecなしに作成しない。
+本書はIssue #54で確認したsource comparisonと観測事実だけを所有する。incremental eligibilityを
+無効化する判断とその理由の正本は[ADR-0005](../adr/0005-fresh-install-presence-evidence.md)である。
+観測可能なincremental behavior/spec、module/interface ownership、実装順序、migration、rollbackは、
+将来のproduct decisionと承認済みspecが成立するまで作成しない。
 
 ## 2. Baseline evidence inventory
 
@@ -135,19 +136,25 @@ AOSPの`PackageInfo.firstInstallTime`/`lastUpdateTime`はupdateとreinstallを�
 したがってcurrent inventoryのabsenceはevent前のabsenceではなく、`FreshInstall`の根拠にならない。
 このcounterexampleを除外できる権威sourceが提供されるか、要件を変更するproduct decisionが必要である。
 
-### 4.2 Callback/session race boundary
+### 4.2 Process, reboot, profile, and restore behavior
+
+現baselineではincremental eligibilityが無効なため、次の全てのpackage eventは、証拠が一見揃って
+見えても`no proposal`である。layout mutationはなく、manual organizationだけが利用可能である。
+
+| 状況 | 分類・挙動 |
+|---|---|
+| process death中にinstall、再起動後に`SESSION_COMMITTED`/package callbackを受信 | `Ambiguous(PRIOR_ABSENCE_UNPROVEN)`、no proposal。process deathを跨ぐ履歴coverageは存在しない |
+| reboot後のpackage event、restore/setupのevent burst | `Ambiguous`または`NotNew`、no proposal。rebootはFreshInstallの根拠にならない |
+| profile追加、削除、quiet/locked/hidden状態変更後のevent | `Ambiguous`または`NotNew`、no proposal。profile identityの変更はprior absenceを無効化する |
+| device restore後のpackage event | `NotNew(RESTORE)`または証拠不足による`Ambiguous`、no proposal |
+| storeを採用しない現行decision | presence storeのownership、lifecycle、retention、versioning、migration、backup/restoreは**N/A**。保存・復旧・削除・version gateを実装しない |
+| package remove/unavailable/suspend/availability return | `NotNew`、no proposal。既存layoutの扱いはpreservation policyに従う |
 
 `ModelLauncherCallbacks`と`SessionCommitReceiver`は現在別のplatform entry pointであり、baselineに
-両者をatomicにconsume/updateする共有generationやtransactionはない。次の規則を承認しないまま、
-両入力を組み合わせるclassifier/bridgeを実装してはならない。
-
-- callbackとsessionのordering、同一installへのcorrelation key、generation owner
-- membership updateとprovenance consumeのatomic commit順序
-- crash/restart途中のreplay、duplicate、lost eventの扱い
-- durable write failure時に古いabsenceを再利用しないfail-closed条件
-
-これらは将来のproduct decisionでeligibilityが再開され、#52/#57の依存成果物が揃った後に、承認済み
-specとplanで定義する。
+両者をatomicにconsume/updateする共有generationやtransactionはない。ordering、correlation key、
+generation owner、crash/replay、durable-write failureの規則を承認しないまま、両入力を組み合わせる
+classifier/bridgeを実装してはならない。これらは将来のproduct decisionでeligibilityが再開され、
+#52/#57の依存成果物が揃った後に、承認済みspecとplanで定義する。
 
 ## 5. Privacy and diagnostics boundary
 
@@ -174,8 +181,8 @@ package、component、user/profile serial、session id、layout coordinate、rul
 
 - source pathはbaseline commit `505dbc40e6154c05158b5d0271c45f6a885a411b`で突合した。
 - AOSP根拠は固定commit URLで確認した（確認日 2026-08-15）。
-- Issue #54のexit artifacts（evidence comparison、classification matrix、process/profile/restore behavior、
-  target uniqueness、failure behavior、downstream blocker）は本書でcoverageする。
+- Issue #54のexit artifacts（evidence comparison、classification matrix、process/reboot/profile/restore
+  behavior、target uniqueness、failure behavior、store lifecycle N/A、downstream blocker）は本書でcoverageする。
 - 2026-08-15: Issue #54 research outputとして初版。
 - 2026-08-15: review指摘により、current inventoryをprior absenceと扱わず、incremental eligibilityを
   現baselineでは無効化。#55の未承認spec/planと未確定のstore/bridge decisionを撤回した。
