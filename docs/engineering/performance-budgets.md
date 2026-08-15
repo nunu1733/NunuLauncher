@@ -19,15 +19,15 @@ p50/p95 budget を定義する (NFR-006)。本書は測定protocolと暫定budge
 **In scope**
 
 - reference計測環境と再現commandの参照 (§2)。
-- 測定対象phaseと、現時点の測定可否・将来hook (§3)。
+- 測定対象phaseのseam要件と将来hook (§3)。
 - workload matrixとsynthetic data生成方針 (§4)。
 - phase別metric (§5) と測定手順・統計法 (§6–§7)。
 - regression比較方法 (§8) と暫定budget (§9)。
-- CI/benchmark automationを別Issueに分離する基準 (§11)。
+- CI/benchmark automationを別Issueに分離する基準 (§10)。
 
 **Out of scope**
 
-- benchmark harness実装とCI組み込み。判定基準 (§11) を満たした時点で別Issueにする。
+- benchmark harness実装とCI組み込み。判定基準 (§10) を満たした時点で別Issueにする。
 - telemetry。計測結果の収集・送信は[organizer-diagnostics](./organizer-diagnostics.md) §12の
   default-off境界の外に出ない。
 - planner/applyの実装変更、Gradle依存追加。本Issueでは行わない。
@@ -59,7 +59,7 @@ emulatorの環境を追加し、budgetを見直す (§9.2)。
 
 planning moduleはAndroid frameworkに依存しないため、JVM上で直接測定できる。
 測定面は既存のorganizer unit-test seamと同一のtest source setを使う
-(benchmark harnessを別途作るまでの暫定測定面。§11)。
+(benchmark harnessを別途作るまでの暫定測定面。§10)。
 
 ```text
 JDK:     OpenJDK 21 (building.mdの環境)
@@ -78,15 +78,26 @@ organizer run のphase ([organizer-diagnostics](./organizer-diagnostics.md) §4�
 「正本の分担」)、本書には持たない。research時点の実装状態の調査結果は
 PR #68に記録する。
 
-| Phase | 測定に必要なseam | 計測面 |
-|---|---|---|
-| snapshot capture | integration snapshot adapter ([DESIGN](../../DESIGN.md) §4.4) | adapter実装後にon-device計測。JVM側は`OrganizationInput`構築コストの代理測定のみ |
-| plan | `OrganizationPlanner.plan` (pure JVM) | R-JVM-1のunit-test seam。emulator上はinstrumentation後に追加 |
-| checkpoint (A4) | apply protocol + recovery store (productionまたはtest double) | test doubleを使ったJVM protocol timing、production store統合後にon-device計測 |
-| apply transaction (A5–A6) | apply protocol + layout writer | test DB / fake writer経由のJVM protocol timing。本物Launcher DB transactionはmodel write adapter統合後にon-device計測 |
-| bind / model reload (A7前半) | model load request/generation待ち | 実装後にon-deviceで測定 |
-| verify (A7–A8) | apply protocolのverify + DB recapture adapter | JVM seamはprotocol実装直後から、on-device再読込を含むverifyはadapter統合後 |
-| UI-thread block / frame | organizer UI (preview/confirm/result) | UI実装後にon-device計測。hookは§10 |
+| Phase | 測定に必要なseam | 計測面 | 将来hook (seam実装後に追加する計測面) |
+|---|---|---|---|
+| snapshot capture | integration snapshot adapter ([DESIGN](../../DESIGN.md) §4.4) | adapter実装後にon-device計測。JVM側は`OrganizationInput`構築コストの代理測定のみ | adapterの実装Issue。phase境界はjournal timestamp |
+| plan | `OrganizationPlanner.plan` (pure JVM) | R-JVM-1のunit-test seam | emulator上の計測はinstrumentation実装後に追加 |
+| checkpoint (A4) | apply protocol + recovery store (productionまたはtest double) | test doubleを使ったJVM protocol timing | 実SQLite recovery store統合後にon-device計測 |
+| apply transaction (A5–A6) | apply protocol + layout writer | test DB / fake writer経由のJVM protocol timing | model write adapter・production DB adapter統合後、本物Launcher DB transactionをon-device計測 |
+| bind / model reload (A7前半) | model load request/generation待ち | 実装後にon-deviceで測定 | model load generation完了待ちをprotocolが返す時点 |
+| verify (A7–A8) | apply protocolのverify + DB recapture adapter | JVM seamはprotocol実装直後から | on-device再読込を含むverifyはDB recapture adapter統合後 |
+| UI-thread block / frame | organizer UI (preview/confirm/result) | UI実装後にon-device計測 | §6.7のLooper dispatch計測 (主) とPerfetto (副)。frame系はChoreographer/JankStats。StrictModeは違反検出のみでmetric取得には使わない |
+
+phaseに紐づかない追加hook:
+
+- in-process memory peak sampler (§6.6): benchmark harness実装時に
+  `Debug.getMemoryInfo`の100ms samplerとして追加。250msの`dumpsys meminfo`
+  定期採取より細かいpeakが必要になった場合の切り替え先。
+- grid変更・migrationとの相互作用: grid migrationを扱うIssueで別途matrixを
+  定義する。
+
+benchmark harness実装Issueは、これらのhookが実装済みかどうかを測定対象の
+前提として明記し、測定可能phaseの追加を本表へ反映する。
 
 on-device計測のphase境界timestampは、diagnostics journalの
 `recordedAtWallMillis` ([organizer-diagnostics](./organizer-diagnostics.md) §14の
@@ -207,7 +218,7 @@ builderはentropy源として`java.util.Random(seed)`だけを使い、次の順
 合成identityは`SyntheticFixtureGenerator` (spec 11 harness) と同じ方針
 (合成package名・component名・ID) とし、実端末のlayout・実在package名を
 入力に使わない。builderの実装、この契約への一致検証test、timing収集commandは
-benchmark実装Issue (§11) が持つ。本書はcell定義と入力変換の契約を固定する。
+benchmark実装Issue (§10) が持つ。本書はcell定義と入力変換の契約を固定する。
 
 ### 4.4 privacy
 
@@ -310,21 +321,32 @@ journalを使わない。on-device測定では次を守る。
 行われるため遡及採取はできない。そこでrunとは独立に動く並行samplerを
 使い、事後的にphase境界へ対応付ける。
 
-- **並行sampler**: run開始前から終了後まで、250ms間隔で
-  `dumpsys meminfo <package>`を採取する。採取は別process (adb shell) から
-  行い、計測対象processに負荷を加えない。
-- **時刻は同一clock domain (device wall clock) で取る**: sample時刻は
-  host時計ではなく、同一の`adb shell`呼び出し内で`dumpsys`の直後に
-  `date +%s%3N`を実行してdevice wall clock millisを記録する。journalの
-  `recordedAtWallMillis`も同じdevice clockであるため、offset・drift補正を
- 必要としない。`dumpsys`完了から`date`実行までの遅延 (数ms) は一定とみなし、
-  補正しない。run windowの開始・終了もjournal eventのtimestampで定義する
-  (§6.5のslice)。host時計は照合に使わない。
+- **並行sampler**: run開始前から終了後まで、host側timerが250ms間隔
+  (fixed-rate) で採取を開始する。前回の採取がまだ完了している場合はその
+  tickをskipしてmissとして記録し、遅延を次以降に持ち越さない。採取は
+  別process (adb shell) から行い、計測対象processに負荷を加えない。
+- **1 sampleの採り方 (bracket + midpoint)**: 1回の`adb shell`呼び出し内で
+  次を実行し、sample時刻 = `(t0 + t1) / 2` (midpoint) とする。
+  `dumpsys`の実行時間が可変のため、実行後に時刻を取る方式は観測点から
+  ずれる。値は出力の`TOTAL PSS`行を使う。
+
+  ```sh
+  t0=$(date +%s%3N); dumpsys meminfo <package>; t1=$(date +%s%3N); echo $t0 $t1
+  ```
+
+- **時刻は同一clock domain (device wall clock) で取る**: `date +%s%3N`は
+  deviceのtoybox dateであり、journalの`recordedAtWallMillis`と同じdevice
+  wall clock (millis) を出力する。R-EMU-1 (AVD `nunu_smoke_api35`、
+  API 35 google_apis) で13桁ms出力および対象packageの`dumpsys meminfo`
+  所要24–44msを実測確認した (2026-08-15、PR #68にtranscript)。
+  host時計は照合に使わない。
+- **取得時間上限 (overrun) と欠測**: `t1 - t0 > 1000ms`のsampleは破棄して
+  欠測として記録する (参考: 同環境の`system`など重いprocessでは305–1239ms
+  を観測しており、上限は対象packageの通常所要の20倍超を異常とみなす線)。
 - **境界値の選択規則**: phase境界b (journal eventのtimestamp `t_b`) に対し、
   境界値 `V(b)` は「`t_b`に最も近いsample」のPSSとする。距離が等しい
-  (tie) 場合は**時刻が早い方**を採る。`|t_sample - t_b| > 250ms`
-  (sampling間隔1回分) の場合は境界値なしとし、その境界を欠測として報告して
-  補間しない。
+  (tie) 場合は**時刻が早い方**を採る。`|t_sample - t_b| > 500ms`の場合は
+  境界値なしとし、その境界を欠測として報告して補間しない。
 - **phase別PSS差**: phase P (入力境界`b_in`、出力境界`b_out`) について
   `delta(P) = V(b_out) - V(b_in)` とする。両端の境界値が揃わないphaseの
   deltaは報告しない。
@@ -335,7 +357,7 @@ journalを使わない。on-device測定では次を守る。
   (§5、§9.1のmetric名もこれに合わせる)。
 - **既知の限界**: 定期採取の間 (250ms) に発生した短期のpeakは観測されない。
   この粒度は暫定扱いとし、in-processの`Debug.getMemoryInfo` sampler
-  (100ms間隔、benchmark harness内thread) を将来hookとして§10に置く。
+  (100ms間隔、benchmark harness内thread) を将来hookとして§3に置く。
   harness実装時に粒度要件が上がった場合はこちらへ切り替える。
 - R-JVM-1では、harnessがphase境界を同期的に把握できるため、境界でGC実行後
   のheap使用量 (`Runtime`のtotal/committed/used) を直接記録し、別threadに
@@ -344,16 +366,32 @@ journalを使わない。on-device測定では次を守る。
 
 ### 6.7 UI-thread block取得手順
 
-§5のUI-thread block metric (message dispatch継続時間) は、次のいずれかで
-取得する。両方取得した場合は併記し、不一致を調査する。
+§5のUI-thread block metric (message dispatch 1回の継続時間) は、次の
+いずれかで取得する。両方取得した場合は併記し、不一致を調査する。
 
 - **Looper dispatch計測 (主)**: benchmark harnessがmain looperのmessage
-  logging (dispatch開始/終了のpair) をrun window中に記録し、
-  `dispatch終了 - dispatch開始` をdispatch継続時間とする。max blockと
-  16ms超回数はこの値から算出する。organizer UI実装のrun flowに組み込む。
-- **Perfetto / atrace (副)**: main threadのsched sliceをtraceから読み、
-  dispatch継続時間の分布と突き合わせる。R-EMU-1のgoogle_apis imageは
-  `adb root`が使えるため、system traceが取得できる。
+  logging (dispatch開始/終了のpair) をrun中に記録する。開始・終了の
+  timestampは**`SystemClock.elapsedRealtimeNanos()` (monotonic)** で採り、
+  継続時間 = 終了 − 開始とする (同一monotonic clock内の差分のため補正不要)。
+  max blockと16ms超回数はこの値から算出する。organizer UI実装のrun flowに
+  組み込む。
+- **wall/monotonic anchor**: journalのphase境界はwall clock
+  (`recordedAtWallMillis`) であり、dispatch記録はmonotonic clockである。
+  harnessはrun開始 (`RUN_STARTED` event発行点) とterminal event発行点の
+  両方で `System.currentTimeMillis()` と `elapsedRealtimeNanos()` を
+  同時に読んでanchor pairを作る。run windowの境界は**開始点のanchor**で
+  monotonicへ変換する。2つのanchor間のwall/monotonic差のずれが50msを
+  超える場合は、run中に時計が補正されたとしてiterationを無効にする。
+- **境界を跨ぐdispatchの包含規則**: dispatchの**開始時刻 (monotonic)**
+  がmonotonic run window内にある場合のみ、そのdispatchをrun windowに
+  含める。window開始より前に始まりwindow内で終わるdispatchは除外し、
+  除外件数を結果に報告する。
+- **Perfetto / atrace (副)**: Looper dispatchの開始・終了をtrace section
+  (track event / `Trace` section) として記録し、dispatch継続時間は
+  **sectionの区間**から復元する。main threadのsched sliceは1 dispatchが
+  複数sliceへ分割され得るため、継続時間の復元には使わず、dispatch区間内の
+  CPU実行・待機の分析のみに使う。R-EMU-1のgoogle_apis imageは`adb root`
+  が使えるため、system traceが取得できる。
 
 StrictModeはdisk/network違反の検出のみに使い、CPU busy時間やdispatch
 継続時間の測定には使わない (測れないものを測ろうとしない)。
@@ -460,21 +498,7 @@ n = 300の実施を要件とする。
 budgetの変更は本書の更新として行い、PRで根拠となる測定にリンクする。
 無通告での変更・測定なしの引き上げをしない。
 
-## 10. Unmeasurable phases and future hooks
-
-| 測定不能項目 | 将来hook |
-|---|---|
-| snapshot capture (on-device) | integration snapshot adapterの実装Issue ([DESIGN](../../DESIGN.md) §4.4)。phase境界はjournal timestamp |
-| bind / model reload (A7) | model load generation完了待ちをprotocolが返す時点で計測可能になる |
-| UI-thread block / frame (on-device) | organizer UI実装後、§6.7のLooper dispatch計測 (主) とPerfetto/atrace (副) をrun windowに適用。frame系はChoreographer/JankStats。StrictModeは違反検出のみでmetric取得には使わない |
-| 実SQLite recovery store / Launcher DB transaction | model write adapter・production DB adapterの統合後、instrumentation計測として追加 |
-| in-process memory peak sampler (§6.6) | benchmark harness実装時に`Debug.getMemoryInfo`の100ms samplerとして追加。250msの`dumpsys meminfo`定期採取より細かいpeakが必要になった場合の切り替え先 |
-| grid変更・migrationとの相互作用 | grid migrationを扱うIssueで別途matrixを定義する |
-
-benchmark harness実装Issueは、これらのhookが実装済みかどうかを測定対象の
-前提として明記し、測定可能phaseの追加を本表へ反映する。
-
-## 11. CI/benchmark automationの分離基準
+## 10. CI/benchmark automationの分離基準
 
 benchmark実装・CI自動化は本Issueでは行わない。次のいずれかが成立した時点で
 専用Issueを起票して移行する。
@@ -487,45 +511,30 @@ benchmark実装・CI自動化は本Issueでは行わない。次のいずれか�
 Gradle依存追加 (JMH等) はbenchmark Issueのspecで判断する。budgetがprovisional
 の間、benchmarkをmerge gateにしない。
 
-## 12. Acceptance criteria mapping
+## 11. Acceptance criteria mapping
 
 | Issue #15受入条件 | 本書の根拠 |
 |---|---|
 | Big-Oだけで合否を決めない | §8「測定値に対して行う」、§1 out of scope |
 | synthetic dataで再現できる | §4.2–§4.3 (cell表、固定seed、Layer A/B recipe)、§6.1 (seed記録) |
 | machine/device metadataを結果に含める | §6.1 (記録なしは無効) |
-| planner/apply未実装phaseも測定不能箇所と将来hookを明記 | §3 (seam要件)、§10。research時点の実装状態はPR #68 |
+| planner/apply未実装phaseも測定不能箇所と将来hookを明記 | §3 (seam要件と将来hook)。research時点の実装状態はPR #68 |
 | UI threadとend-to-end latencyを分離する | §5 (別metric、独立報告) |
 | budgetは根拠または明示的provisional statusを持つ | §9.1 (全行provisional + 根拠)、§9.2 (見直し条件) |
 
 Deliverable対応: 本書自体が`docs/engineering/performance-budgets.md`、
 reference環境と再現command参照 (§2)、workload matrix (§4)、phase別metric (§5)、
 warmup/sample/統計/regression方法 (§6–§8)、暫定budgetと見直し条件 (§9)、
-automation分離基準 (§11)。
+automation分離基準 (§10)。
 
 ## Change history
 
-- 2026-08-15: Issue #15のresearch成果物として初版。reference環境、測定可否の
-  現在地、workload matrix、metric、統計法、暫定budgetと見直し条件、
-  automation分離基準を定義した。
-- 2026-08-15: review対応。実装状態と実行結果をPR #68へ分離し、文書は
-  seam要件のみに固定。page軸、固定seedとcell表、Layer A/Bの再現recipe、
-  journal retention非依存のsample取得規則 (§6.5)、統計計算の閉形式を追加した。
-- 2026-08-15: 再review対応。Layer Aをcorpus再生検証と明示し、Layer Bの生成
-  algorithmを決定的に固定 (kind配分・dock・folder membership・widget span・
-  page導出式・page分散・profile・locked・signalの消費順)。mix比率の合計を
-  100%に修正しlockedを直交属性化、PWを導出値としてcell表へ固定した。
-  §7の5%検出sample数を誤りからn ≥ 565に修正。§6.5の連続性検査を
-  journal全体slice検査とphase完備検査の2段に変更し排他実行を追加。
-  §6.6にmemory採取手順を新設した。
-- 2026-08-15: 第3回review対応。P2 workloadのprofile割当をmembershipより先
-  に行い、folderとmemberの同一profileを保証 (SAME_PROFILE_ONLY整合)。
-  §6.5のslice検査を「全体export→連続性確認→runId抽出」の順に修正し、
-  必須phase順序へ`PREVIEWED`を追加。§6.6を並行samplerと事後のphase境界
-  対応付けに改め、metric名をRSSからPSSへ統一した。
-- 2026-08-15: 第4回review対応。memory sampleの時刻を同一`adb shell`呼び出し
-  内のdevice wall clockで記録し、host-device間のoffset/drift補正を不要化。
-  境界値の選択 (最近接sample・tieは早い方・許容250ms) とphase別delta式
-  `V(b_out) - V(b_in)`を固定。UI-thread block metricをmessage dispatch
-  継続時間と定義し直し、§6.7にLooper dispatch計測とPerfetto/atraceの取得
-  手順を新設 (StrictModeはmetric取得に使わない)。
+- 2026-08-15: Issue #15のresearch成果物として初版。reference環境、phase毎の
+  seam要件と将来hook、workload matrix (page軸・固定seed・決定的workload
+  builder契約)、metric、統計法、暫定budgetと見直し条件、automation分離基準
+  を定義した。
+- 2026-08-15: PR #68のreviewで測定の再現性と恒久文書の分割を調整した
+  (決定的生成契約、memory採取のdevice wall clock / bracket / overrun規則、
+  UI-thread blockのmonotonic clockとdispatch包含規則、journal slice検査、
+  PSS用語、統計訂正、実装状態・実行結果・review経緯のPR集約)。
+  review経緯の詳細はPR #68を正本とする。
