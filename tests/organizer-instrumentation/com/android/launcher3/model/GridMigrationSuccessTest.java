@@ -48,10 +48,7 @@ public class GridMigrationSuccessTest {
 
         GridMigrationTestSupport.assertTargetIsUnknown(context, TARGET_DB);
         assertFalse(GridMigrationTestSupport.tableExists(fixture.controller.getDb(), Favorites.TMP_TABLE));
-        GridMigrationTestSupport.assertJournal(
-                GridMigrationTestSupport.journal(context, TARGET_DB),
-                GridMigrationJournal.Phase.FINALIZED, TARGET_DB, SOURCE_DB,
-                new DeviceGridState(context));
+        GridMigrationTestSupport.assertRecoveryMetadataAbsent(context, TARGET_DB);
     }
 
     @Test
@@ -63,10 +60,7 @@ public class GridMigrationSuccessTest {
         assertTrue(fixture.controller.isTargetPublished());
         assertFalse(fixture.runtime.executed(GridMigrationOperation.PLACEMENT));
         GridMigrationTestSupport.assertTargetIsUnknown(context, TARGET_DB);
-        GridMigrationTestSupport.assertJournal(
-                GridMigrationTestSupport.journal(context, TARGET_DB),
-                GridMigrationJournal.Phase.FINALIZED, TARGET_DB, SOURCE_DB,
-                new DeviceGridState(context));
+        GridMigrationTestSupport.assertRecoveryMetadataAbsent(context, TARGET_DB);
     }
 
     @Test

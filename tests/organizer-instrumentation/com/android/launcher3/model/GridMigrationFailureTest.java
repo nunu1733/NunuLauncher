@@ -105,6 +105,7 @@ public class GridMigrationFailureTest {
 
         GridMigrationTestSupport.assertGridState(sourceState, new DeviceGridState(context));
         assertFalse(GridMigrationTestSupport.journal(context, TARGET_DB).exists());
+        assertTrue(fixture.controller.generateNewItemId() > 2);
     }
 
     @Test
@@ -175,8 +176,7 @@ public class GridMigrationFailureTest {
 
         assertEquals(TARGET_DB, fresh.controller.publishedHelper().getDatabaseName());
         GridMigrationTestSupport.assertTargetIsUnknown(context, TARGET_DB);
-        GridMigrationTestSupport.assertJournal(GridMigrationTestSupport.journal(context, TARGET_DB),
-                GridMigrationJournal.Phase.FINALIZED, TARGET_DB, SOURCE_DB, destination);
+        GridMigrationTestSupport.assertRecoveryMetadataAbsent(context, TARGET_DB);
     }
 
     @Test
@@ -214,13 +214,16 @@ public class GridMigrationFailureTest {
     @Test
     public void finalizedCleanupFailureLeavesMetadataForRetry() {
         Fixture fixture = fixture();
-        fixture.controller.tryMigrateDB(null);
         fixture.runtime.failAfterDelegate(GridMigrationOperation.TARGET_DELETE);
+
         fixture.controller.tryMigrateDB(null);
 
         assertTrue(fixture.runtime.executed(GridMigrationOperation.TARGET_DELETE));
         GridMigrationTestSupport.assertTargetIsUnknown(context, TARGET_DB);
         GridMigrationTestSupport.assertRecoveryMetadataPresent(context, TARGET_DB);
+        GridMigrationTestSupport.assertJournal(GridMigrationTestSupport.journal(context, TARGET_DB),
+                GridMigrationJournal.Phase.FINALIZED, TARGET_DB, SOURCE_DB,
+                new DeviceGridState(context));
 
         fixture.controller.tryMigrateDB(null);
         GridMigrationTestSupport.assertRecoveryMetadataAbsent(context, TARGET_DB);
