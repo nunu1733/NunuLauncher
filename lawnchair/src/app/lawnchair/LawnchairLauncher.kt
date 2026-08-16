@@ -50,6 +50,7 @@ import app.lawnchair.root.RootNotAvailableException
 import app.lawnchair.theme.ThemeProvider
 import app.lawnchair.ui.popup.LauncherOptionsPopup
 import app.lawnchair.ui.popup.LawnchairShortcut
+import app.lawnchair.ui.popup.OrganizerLockShortcut
 import app.lawnchair.util.getThemedIconPacksInstalled
 import app.lawnchair.util.unsafeLazy
 import app.lawnchair.views.LawnchairFloatingSurfaceView
@@ -263,7 +264,11 @@ class LawnchairLauncher : QuickstepLauncher() {
         super.getSupportedShortcuts(),
         Stream.concat(
             Stream.of(LawnchairShortcut.UNINSTALL, LawnchairShortcut.CUSTOMIZE),
-            if (LawnchairApp.isRecentsEnabled) Stream.of(LawnchairShortcut.PAUSE_APPS) else Stream.empty(),
+            Stream.concat(
+                if (LawnchairApp.isRecentsEnabled) Stream.of(LawnchairShortcut.PAUSE_APPS) else Stream.empty(),
+                // Issue #38: placement lock authoring for shortcut-capable rows.
+                Stream.of(OrganizerLockShortcut.PLACEMENT_LOCK),
+            ),
         ),
     )
 

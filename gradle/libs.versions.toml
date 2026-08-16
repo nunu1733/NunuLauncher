@@ -63,6 +63,8 @@ compose-material3-windowSizeClass = { module = "androidx.compose.material3:mater
 compose-runtime-livedata = { module = "androidx.compose.runtime:runtime-livedata" }
 compose-ui = { module = "androidx.compose.ui:ui" }
 compose-ui-google-fonts = { module = "androidx.compose.ui:ui-text-google-fonts" }
+compose-ui-test = { module = "androidx.compose.ui:ui-test-junit4" }
+compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 compose-ui-util = { module = "androidx.compose.ui:ui-util" }

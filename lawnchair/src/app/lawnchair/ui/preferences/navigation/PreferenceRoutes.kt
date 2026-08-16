@@ -91,6 +91,10 @@ data object HomeScreenGrid : PreferenceRoute
 @Serializable
 data object HomeScreenPopupEditor : PreferenceRoute
 
+// Issue #38: placement lock management and unknown-state review.
+@Serializable
+data object HomeScreenPlacementLocks : PreferenceRoute
+
 // Dock section routes
 @Serializable
 data object DockSearchProvider : PreferenceRoute
