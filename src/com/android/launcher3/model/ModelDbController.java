@@ -85,6 +85,8 @@ import com.android.launcher3.widget.LauncherWidgetHolder;
 
 import org.xmlpull.v1.XmlPullParser;
 
+import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringReader;
 
@@ -105,9 +107,15 @@ public class ModelDbController {
     protected DatabaseHelper mOpenHelper;
 
     private final Context mContext;
+    private final GridMigrationRuntime mGridMigrationRuntime;
 
     public ModelDbController(Context context) {
+        this(context, GridMigrationRuntime.DIRECT);
+    }
+
+    ModelDbController(Context context, GridMigrationRuntime gridMigrationRuntime) {
         mContext = context;
+        mGridMigrationRuntime = gridMigrationRuntime;
     }
 
     private synchronized void createDbIfNotExists() {
@@ -153,6 +161,14 @@ public class ModelDbController {
 
         databaseHelper.initIds();
         return databaseHelper;
+    }
+
+    protected String getMigrationTargetDatabaseName(InvariantDeviceProfile idp) {
+        return idp.dbFile;
+    }
+
+    protected DeviceGridState getMigrationDestinationState(InvariantDeviceProfile idp) {
+        return new DeviceGridState(idp);
     }
 
     /**
@@ -330,67 +346,439 @@ public class ModelDbController {
                 mOpenHelper.getReadableDatabase(), Favorites.HYBRID_HOTSEAT_BACKUP_TABLE);
     }
 
-    /**
-     * Migrates the DB if needed. If the migration failed, it clears the DB.
-     */
     public void tryMigrateDB(@Nullable LauncherRestoreEventLogger restoreEventLogger) {
 
         if (!migrateGridIfNeeded()) {
             if (restoreEventLogger != null) {
                 sendMetricsForFailedMigration(restoreEventLogger, getDb());
             }
-            FileLog.d(TAG, "Migration failed: resetting launcher database");
-            createEmptyDB();
-            LauncherPrefs.get(mContext).putSync(
-                    getEmptyDbCreatedKey(mOpenHelper.getDatabaseName()).to(true));
-
-            // Write the grid state to avoid another migration
-            new DeviceGridState(LauncherAppState.getIDP(mContext)).writeToPrefs(mContext);
+            FileLog.d(TAG, "Migration failed: retaining launcher database");
         }
     }
 
-    /**
-     * Migrates the DB if needed, and returns false if the migration failed
-     * and DB needs to be cleared.
-     * 
-     * @return true if migration was success or ignored, false if migration failed
-     *         and the DB should be reset.
-     */
     private boolean migrateGridIfNeeded() {
         createDbIfNotExists();
+        Reconciliation activeReconciliation;
+        try {
+            activeReconciliation = reconcileActiveDatabaseJournal();
+        } catch (RuntimeException recoveryFailure) {
+            FileLog.e(TAG, "Grid migration recovery remains pending", recoveryFailure);
+            return false;
+        }
+        if (activeReconciliation == Reconciliation.COMPLETED) {
+            return true;
+        }
+        if (activeReconciliation == Reconciliation.FAILED) {
+            return false;
+        }
         if (LauncherPrefs.get(mContext).get(getEmptyDbCreatedKey())) {
             // If we have already create a new DB, ignore migration
             Log.d(TAG, "migrateGridIfNeeded: new DB already created, skipping migration");
             return false;
         }
         InvariantDeviceProfile idp = LauncherAppState.getIDP(mContext);
-        if (!GridSizeMigrationUtil.needsToMigrate(mContext, idp)) {
+        DeviceGridState destinationState = getMigrationDestinationState(idp);
+        DeviceGridState sourceState = new DeviceGridState(mContext);
+        if (destinationState.isCompatible(sourceState)) {
             Log.d(TAG, "migrateGridIfNeeded: no grid migration needed");
             return true;
         }
-        String targetDbName = new DeviceGridState(idp).getDbFile();
+        String targetDbName = getMigrationTargetDatabaseName(idp);
         if (TextUtils.equals(targetDbName, mOpenHelper.getDatabaseName())) {
             Log.e(TAG, "migrateGridIfNeeded: target db is same as current: " + targetDbName);
             return false;
         }
-        DatabaseHelper oldHelper = mOpenHelper;
-        mOpenHelper = (mContext instanceof SandboxContext) ? oldHelper
-                : createDatabaseHelper(true /* forMigration */);
-        try {
-            // This is the current grid we have, given by the mContext
-            DeviceGridState srcDeviceState = new DeviceGridState(mContext);
-            // This is the state we want to migrate to that is given by the idp
-            DeviceGridState destDeviceState = new DeviceGridState(idp);
-            return GridSizeMigrationUtil.migrateGridIfNeeded(mContext, srcDeviceState,
-                    destDeviceState, mOpenHelper, oldHelper.getWritableDatabase());
-        } catch (Exception e) {
-            FileLog.e(TAG, "Failed to migrate grid", e);
-            return false;
-        } finally {
-            if (mOpenHelper != oldHelper) {
-                oldHelper.close();
+        DatabaseHelper sourceHelper = mOpenHelper;
+        try (LayoutWriteCoordinator.Lease ignored = LayoutWriteCoordinator.getInstance()
+                .acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.GRID_MIGRATION)) {
+            DatabaseHelper targetHelper = null;
+            try {
+                targetHelper = (mContext instanceof SandboxContext) ? sourceHelper
+                        : createDatabaseHelper(true /* forMigration */);
+                if (targetHelper == sourceHelper) {
+                    return false;
+                }
+                SQLiteDatabase sourceDatabase = sourceHelper.getWritableDatabase();
+                SQLiteDatabase targetDatabase = targetHelper.getWritableDatabase();
+                targetHelper.refreshMaxItemIdFromCommittedRows();
+                if (sameDatabase(sourceDatabase, targetDatabase)) {
+                    targetHelper.close();
+                    return false;
+                }
+
+                GridMigrationJournal.Entry existingJournal = GridMigrationJournal.read(targetDatabase);
+                if (existingJournal.exists()) {
+                    Reconciliation reconciliation;
+                    try {
+                        reconciliation = reconcileDurableJournal(
+                                sourceHelper, targetHelper, existingJournal);
+                    } catch (RuntimeException recoveryFailure) {
+                        FileLog.e(TAG, "Grid migration recovery remains pending", recoveryFailure);
+                        return false;
+                    }
+                    if (reconciliation == Reconciliation.COMPLETED) {
+                        return true;
+                    }
+                    if (reconciliation == Reconciliation.FAILED) {
+                        return false;
+                    }
+                }
+
+                boolean attached = false;
+                SQLiteTransaction transaction = null;
+                RuntimeException initialFailure = null;
+                try {
+                    targetDatabase.execSQL("ATTACH DATABASE ? AS from_db",
+                            new Object[] { sourceDatabase.getPath() });
+                    attached = true;
+                    transaction = new SQLiteTransaction(targetDatabase);
+                    SQLiteTransaction initialTransaction = transaction;
+                    mGridMigrationRuntime.execute(GridMigrationOperation.BACKUP_SNAPSHOT,
+                            () -> LauncherDbUtils.copyTable(targetDatabase, Favorites.TABLE_NAME,
+                                    targetDatabase, GridMigrationJournal.BACKUP_TABLE, mContext));
+                    mGridMigrationRuntime.execute(GridMigrationOperation.JOURNAL_WRITE,
+                            () -> GridMigrationJournal.create(targetDatabase, targetDbName,
+                                    sourceHelper.getDatabaseName(), sourceState, destinationState));
+                    GridSizeMigrationUtil.migrateGridInTransaction(
+                            mContext, sourceState, destinationState, targetHelper, targetDatabase,
+                            mGridMigrationRuntime.enableGridMigrationFix(), mGridMigrationRuntime);
+                    mGridMigrationRuntime.execute(GridMigrationOperation.JOURNAL_WRITE,
+                            () -> GridMigrationJournal.setPhase(targetDatabase,
+                                    GridMigrationJournal.Phase.MIGRATED_PENDING_FINALIZATION));
+                    initialTransaction.commit();
+                    mGridMigrationRuntime.execute(
+                            GridMigrationOperation.TRANSACTION_CLOSE, initialTransaction::close);
+                    transaction = null;
+                } catch (RuntimeException migrationFailure) {
+                    if (transaction != null && targetDatabase.inTransaction()) {
+                        transaction.close();
+                    }
+                    initialFailure = migrationFailure;
+                } finally {
+                    if (attached) {
+                        try {
+                            mGridMigrationRuntime.execute(GridMigrationOperation.SOURCE_DETACH,
+                                    () -> targetDatabase.execSQL("DETACH DATABASE from_db"));
+                        } catch (RuntimeException detachFailure) {
+                            if (initialFailure == null) {
+                                initialFailure = detachFailure;
+                            } else {
+                                initialFailure.addSuppressed(detachFailure);
+                            }
+                        }
+                    }
+                }
+
+                if (initialFailure != null) {
+                    GridMigrationJournal.Entry persisted = GridMigrationJournal.read(targetDatabase);
+                    if (persisted.exists()
+                            && persisted.phase()
+                                    == GridMigrationJournal.Phase.MIGRATED_PENDING_FINALIZATION) {
+                        return compensateAndRestore(
+                                sourceHelper, targetHelper, persisted, initialFailure);
+                    }
+                    FileLog.e(TAG, "Failed initial grid migration transaction", initialFailure);
+                    return false;
+                }
+
+                targetHelper.refreshMaxItemIdFromCommittedRows();
+                return finalizeMigration(sourceHelper, targetHelper,
+                        GridMigrationJournal.read(targetDatabase));
+            } catch (Exception e) {
+                FileLog.e(TAG, "Failed to migrate grid", e);
+                publishFreshSource(sourceHelper, sourceHelper.getDatabaseName());
+                if (targetHelper != null
+                        && GridMigrationJournal.read(targetHelper.getWritableDatabase()).exists()) {
+                    FileLog.e(TAG, "Grid migration recovery remains pending", e);
+                }
+                return false;
             }
         }
+    }
+
+    private Reconciliation reconcileActiveDatabaseJournal() {
+        SQLiteDatabase activeDatabase = mOpenHelper.getWritableDatabase();
+        GridMigrationJournal.Entry journal = GridMigrationJournal.read(activeDatabase);
+        if (!journal.exists()) {
+            return Reconciliation.CONTINUE;
+        }
+        DatabaseHelper targetHelper = mOpenHelper;
+        try (LayoutWriteCoordinator.Lease ignored = LayoutWriteCoordinator.getInstance()
+                .acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.GRID_MIGRATION)) {
+            DatabaseHelper sourceHelper = journal.phase() == GridMigrationJournal.Phase.FINALIZED
+                    ? null : openJournalSource(journal.sourceDatabaseName());
+            return reconcileDurableJournal(sourceHelper, targetHelper, journal);
+        }
+    }
+
+    private boolean finalizeMigration(DatabaseHelper sourceHelper, DatabaseHelper targetHelper,
+            GridMigrationJournal.Entry journal) {
+        mOpenHelper = targetHelper;
+        try {
+            mGridMigrationRuntime.execute(
+                    GridMigrationOperation.SOURCE_HELPER_CLOSE, sourceHelper::close);
+            requireGridPreferences(GridMigrationOperation.DESTINATION_PREF_WRITE,
+                    journal.destinationPreferences());
+            setJournalPhase(targetHelper.getWritableDatabase(), GridMigrationJournal.Phase.FINALIZED);
+            return true;
+        } catch (RuntimeException finalizationFailure) {
+            return compensateAndRestore(
+                    sourceHelper, targetHelper, journal, finalizationFailure);
+        }
+    }
+
+    private boolean compensateAndRestore(DatabaseHelper sourceHelper, DatabaseHelper targetHelper,
+            GridMigrationJournal.Entry journal, RuntimeException failure) {
+        publishFreshSource(sourceHelper, journal.sourceDatabaseName());
+        boolean preferencesRestored = false;
+        try {
+            preferencesRestored = commitGridPreferences(GridMigrationOperation.SOURCE_PREF_WRITE,
+                    journal.sourcePreferences());
+        } catch (RuntimeException preferenceFailure) {
+            failure.addSuppressed(preferenceFailure);
+        }
+        boolean targetRestored = restoreTarget(targetHelper, journal, preferencesRestored);
+        if (!preferencesRestored && targetRestored) {
+            setJournalPhase(targetHelper.getWritableDatabase(),
+                    GridMigrationJournal.Phase.RESTORE_FAILED);
+        }
+        FileLog.e(TAG, "Grid migration finalization failed", failure);
+        return false;
+    }
+
+    private boolean restoreTarget(DatabaseHelper targetHelper, GridMigrationJournal.Entry journal,
+            boolean deleteMetadataOnSuccess) {
+        SQLiteDatabase targetDatabase = targetHelper.getWritableDatabase();
+        setJournalPhase(targetDatabase, GridMigrationJournal.Phase.RESTORE_PENDING);
+        try {
+            mGridMigrationRuntime.execute(GridMigrationOperation.TARGET_RESTORE, () -> {
+                try (SQLiteTransaction transaction = new SQLiteTransaction(targetDatabase)) {
+                    LauncherDbUtils.copyTable(targetDatabase, GridMigrationJournal.BACKUP_TABLE,
+                            targetDatabase, Favorites.TABLE_NAME, mContext);
+                    GridMigrationJournal.verifyRestoredFavorites(targetDatabase, journal);
+                    transaction.commit();
+                }
+                targetHelper.refreshMaxItemIdFromCommittedRows();
+            });
+        } catch (RuntimeException restoreFailure) {
+            setJournalPhase(targetDatabase, GridMigrationJournal.Phase.RESTORE_FAILED);
+            FileLog.e(TAG, "Failed to restore grid migration target", restoreFailure);
+            return false;
+        }
+        return !deleteMetadataOnSuccess || deleteRestoredMetadata(targetDatabase);
+    }
+
+    private boolean deleteRestoredMetadata(SQLiteDatabase targetDatabase) {
+        try {
+            try (SQLiteTransaction transaction = new SQLiteTransaction(targetDatabase)) {
+                mGridMigrationRuntime.execute(GridMigrationOperation.TARGET_DELETE, () -> {
+                    LauncherDbUtils.dropTable(targetDatabase, GridMigrationJournal.BACKUP_TABLE);
+                    GridMigrationJournal.delete(targetDatabase);
+                });
+                transaction.commit();
+            }
+            return true;
+        } catch (RuntimeException cleanupFailure) {
+            setJournalPhase(targetDatabase, GridMigrationJournal.Phase.RESTORE_FAILED);
+            FileLog.e(TAG, "Failed to delete restored grid migration metadata", cleanupFailure);
+            return false;
+        }
+    }
+
+    private void cleanupFinalizedMetadata(SQLiteDatabase targetDatabase) {
+        try (SQLiteTransaction transaction = new SQLiteTransaction(targetDatabase)) {
+            mGridMigrationRuntime.execute(GridMigrationOperation.TARGET_DELETE, () -> {
+                LauncherDbUtils.dropTable(targetDatabase, GridMigrationJournal.BACKUP_TABLE);
+                GridMigrationJournal.delete(targetDatabase);
+            });
+            transaction.commit();
+        }
+    }
+
+    private void setJournalPhase(SQLiteDatabase targetDatabase,
+            GridMigrationJournal.Phase phase) {
+        mGridMigrationRuntime.execute(GridMigrationOperation.JOURNAL_WRITE, () -> {
+            try (SQLiteTransaction transaction = new SQLiteTransaction(targetDatabase)) {
+                GridMigrationJournal.setPhase(targetDatabase, phase);
+                transaction.commit();
+            }
+        });
+    }
+
+    private Reconciliation reconcileDurableJournal(@Nullable DatabaseHelper sourceHelper,
+            DatabaseHelper targetHelper, GridMigrationJournal.Entry journal) {
+        switch (journal.phase()) {
+            case MIGRATED_PENDING_FINALIZATION: {
+                PendingAuthority authority = pendingAuthority(journal);
+                if (authority == PendingAuthority.DESTINATION
+                        && isPendingTargetValid(targetHelper, journal)) {
+                    return finalizeMigration(sourceHelper, targetHelper, journal)
+                            ? Reconciliation.COMPLETED : Reconciliation.FAILED;
+                }
+                restoreSourceAuthority(sourceHelper, targetHelper, journal);
+                return Reconciliation.FAILED;
+            }
+            case RESTORE_PENDING:
+            case RESTORE_FAILED:
+                restoreSourceAuthority(sourceHelper, targetHelper, journal);
+                return Reconciliation.FAILED;
+            case FINALIZED: {
+                SQLiteDatabase targetDatabase = targetHelper.getWritableDatabase();
+                validateFinalizedTarget(targetHelper, journal);
+                requireGridPreferences(GridMigrationOperation.DESTINATION_PREF_WRITE,
+                        journal.destinationPreferences());
+                mOpenHelper = targetHelper;
+                if (sourceHelper != null && sourceHelper != targetHelper) {
+                    mGridMigrationRuntime.execute(
+                            GridMigrationOperation.SOURCE_HELPER_CLOSE, sourceHelper::close);
+                }
+                cleanupFinalizedMetadata(targetDatabase);
+                return Reconciliation.COMPLETED;
+            }
+            case TARGET_OLD:
+            default:
+                throw new IllegalStateException("Transaction-local grid migration phase is durable");
+        }
+    }
+
+    private void restoreSourceAuthority(@Nullable DatabaseHelper sourceHelper,
+            DatabaseHelper targetHelper, GridMigrationJournal.Entry journal) {
+        publishFreshSource(sourceHelper, journal.sourceDatabaseName());
+        boolean preferencesRestored = false;
+        RuntimeException preferenceFailure = null;
+        try {
+            preferencesRestored = commitGridPreferences(
+                    GridMigrationOperation.SOURCE_PREF_WRITE, journal.sourcePreferences());
+        } catch (RuntimeException failure) {
+            preferenceFailure = failure;
+        }
+        boolean targetRestored = restoreTarget(targetHelper, journal, preferencesRestored);
+        if (!preferencesRestored && targetRestored) {
+            setJournalPhase(targetHelper.getWritableDatabase(),
+                    GridMigrationJournal.Phase.RESTORE_FAILED);
+        }
+        if (preferenceFailure != null) {
+            throw preferenceFailure;
+        }
+    }
+
+    private DatabaseHelper publishFreshSource(@Nullable DatabaseHelper sourceHelper,
+            String sourceDatabaseName) {
+        if (sourceHelper != null) {
+            sourceHelper.close();
+        }
+        DatabaseHelper reopened = new DatabaseHelper(mContext, sourceDatabaseName,
+                this::getSerialNumberForUser, () -> { });
+        reopened.getWritableDatabase();
+        mOpenHelper = reopened;
+        return reopened;
+    }
+
+    private DatabaseHelper openJournalSource(String sourceDatabaseName) {
+        DatabaseHelper sourceHelper = new DatabaseHelper(mContext, sourceDatabaseName,
+                this::getSerialNumberForUser, () -> { });
+        sourceHelper.refreshMaxItemIdFromCommittedRows();
+        return sourceHelper;
+    }
+
+    private boolean writeGridPreferences(DeviceGridState state) {
+        boolean committed = mGridMigrationRuntime.writeGridPreferences(state,
+                () -> LauncherPrefs.get(mContext).putSync(
+                        LauncherPrefs.WORKSPACE_SIZE.to(
+                                state.getColumns() + "," + state.getRows()),
+                        LauncherPrefs.HOTSEAT_COUNT.to(state.getNumHotseat()),
+                        LauncherPrefs.DEVICE_TYPE.to(state.getDeviceType()),
+                        LauncherPrefs.DB_FILE.to(state.getDbFile())));
+        boolean matchesReadback = sameGridState(state, new DeviceGridState(mContext));
+        return committed && matchesReadback;
+    }
+
+    private boolean commitGridPreferences(GridMigrationOperation operation, DeviceGridState state) {
+        boolean[] committed = {false};
+        mGridMigrationRuntime.execute(operation,
+                () -> committed[0] = writeGridPreferences(state));
+        return committed[0];
+    }
+
+    private void requireGridPreferences(GridMigrationOperation operation, DeviceGridState state) {
+        if (!commitGridPreferences(operation, state)) {
+            throw new IllegalStateException("Grid migration preferences did not commit and read back");
+        }
+    }
+
+    private static boolean sameDatabase(SQLiteDatabase first, SQLiteDatabase second)
+            throws IOException {
+        return new File(first.getPath()).getCanonicalFile().equals(
+                new File(second.getPath()).getCanonicalFile());
+    }
+
+    private static boolean sameGridState(DeviceGridState first, DeviceGridState second) {
+        return first.getColumns().equals(second.getColumns())
+                && first.getRows().equals(second.getRows())
+                && first.getNumHotseat() == second.getNumHotseat()
+                && first.getDeviceType() == second.getDeviceType()
+                && TextUtils.equals(first.getDbFile(), second.getDbFile());
+    }
+
+    private PendingAuthority pendingAuthority(GridMigrationJournal.Entry journal) {
+        DeviceGridState current = new DeviceGridState(mContext);
+        if (sameGridState(current, journal.sourcePreferences())) {
+            return PendingAuthority.SOURCE;
+        }
+        if (sameGridState(current, journal.destinationPreferences())) {
+            return PendingAuthority.DESTINATION;
+        }
+        return PendingAuthority.UNKNOWN;
+    }
+
+    private static boolean isPendingTargetValid(DatabaseHelper targetHelper,
+            GridMigrationJournal.Entry journal) {
+        try {
+            validateMigratedTarget(targetHelper, journal);
+            return true;
+        } catch (RuntimeException invalidTarget) {
+            FileLog.e(TAG, "Grid migration target validation failed", invalidTarget);
+            return false;
+        }
+    }
+
+    private static void validateFinalizedTarget(DatabaseHelper targetHelper,
+            GridMigrationJournal.Entry journal) {
+        validateMigratedTarget(targetHelper, journal);
+    }
+
+    private static void validateMigratedTarget(DatabaseHelper targetHelper,
+            GridMigrationJournal.Entry journal) {
+        SQLiteDatabase targetDatabase = targetHelper.getWritableDatabase();
+        if (!TextUtils.equals(targetHelper.getDatabaseName(), journal.targetDatabaseName())
+                || !TextUtils.equals(journal.destinationPreferences().getDbFile(),
+                        journal.targetDatabaseName())
+                || !tableExists(targetDatabase, Favorites.TABLE_NAME)
+                || !tableExists(targetDatabase, GridMigrationJournal.BACKUP_TABLE)
+                || tableExists(targetDatabase, Favorites.TMP_TABLE)) {
+            throw new IllegalStateException("Grid migration target identity is invalid");
+        }
+        GridMigrationJournal.verifyBackup(targetDatabase, journal);
+        try (Cursor cursor = targetDatabase.rawQuery(
+                "SELECT COUNT(*), COALESCE(SUM(CASE WHEN organizerLockState = 0 THEN 0 ELSE 1 END), 0)"
+                        + " FROM " + Favorites.TABLE_NAME,
+                null)) {
+            if (!cursor.moveToFirst() || cursor.getInt(1) != 0) {
+                throw new IllegalStateException("Grid migration target is not entirely UNKNOWN");
+            }
+        }
+    }
+
+    private enum PendingAuthority {
+        SOURCE,
+        DESTINATION,
+        UNKNOWN
+    }
+
+    private enum Reconciliation {
+        CONTINUE,
+        COMPLETED,
+        FAILED
     }
 
     /**
