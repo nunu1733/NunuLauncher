@@ -146,6 +146,10 @@ public class ModelDbController {
 
         DatabaseHelper databaseHelper = new DatabaseHelper(mContext, dbName,
                 this::getSerialNumberForUser, onEmptyDbCreateCallback);
+        return initializeDatabaseHelper(databaseHelper);
+    }
+
+    private DatabaseHelper initializeDatabaseHelper(DatabaseHelper databaseHelper) {
         // Table creation sometimes fails silently, which leads to a crash loop.
         // This way, we will try to create a table every time after crash, so the device
         // would eventually be able to recover.
@@ -519,7 +523,14 @@ public class ModelDbController {
                     GridMigrationOperation.SOURCE_HELPER_CLOSE, sourceHelper::close);
             requireGridPreferences(GridMigrationOperation.DESTINATION_PREF_WRITE,
                     journal.destinationPreferences());
-            setJournalPhase(targetHelper.getWritableDatabase(), GridMigrationJournal.Phase.FINALIZED);
+            SQLiteDatabase targetDatabase = targetHelper.getWritableDatabase();
+            setJournalPhase(targetDatabase, GridMigrationJournal.Phase.FINALIZED);
+            validateFinalizedTarget(targetHelper, journal);
+            try {
+                cleanupFinalizedMetadata(targetDatabase);
+            } catch (RuntimeException cleanupFailure) {
+                FileLog.e(TAG, "Failed to clean finalized grid migration metadata", cleanupFailure);
+            }
             return true;
         } catch (RuntimeException finalizationFailure) {
             return compensateAndRestore(
@@ -667,9 +678,8 @@ public class ModelDbController {
         if (sourceHelper != null) {
             sourceHelper.close();
         }
-        DatabaseHelper reopened = new DatabaseHelper(mContext, sourceDatabaseName,
-                this::getSerialNumberForUser, () -> { });
-        reopened.getWritableDatabase();
+        DatabaseHelper reopened = initializeDatabaseHelper(new DatabaseHelper(
+                mContext, sourceDatabaseName, this::getSerialNumberForUser, () -> { }));
         mOpenHelper = reopened;
         return reopened;
     }
