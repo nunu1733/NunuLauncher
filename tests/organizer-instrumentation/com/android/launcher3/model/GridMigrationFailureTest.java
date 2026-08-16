@@ -3,6 +3,7 @@ package com.android.launcher3.model;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -227,6 +228,67 @@ public class GridMigrationFailureTest {
 
         fixture.controller.tryMigrateDB(null);
         GridMigrationTestSupport.assertRecoveryMetadataAbsent(context, TARGET_DB);
+    }
+
+    @Test
+    public void finalizedCleanupFailureWithCorruptBackupRestoresSourceAuthorityOnFreshEntry() {
+        Fixture fixture = fixtureWithPreexistingTarget();
+        fixture.runtime.failAfterDelegate(GridMigrationOperation.TARGET_DELETE);
+
+        fixture.controller.tryMigrateDB(null);
+
+        GridMigrationTestSupport.assertJournal(GridMigrationTestSupport.journal(context, TARGET_DB),
+                GridMigrationJournal.Phase.FINALIZED, TARGET_DB, SOURCE_DB,
+                new DeviceGridState(context));
+        GridMigrationTestSupport.assertRecoveryMetadataPresent(context, TARGET_DB);
+        try (DatabaseHelper target = GridMigrationTestSupport.open(context, TARGET_DB)) {
+            GridMigrationTestSupport.mutateBackupFavorite(target.getWritableDatabase(), 50);
+        }
+        Fixture fresh = freshFixture(new DeviceGridState(context), false);
+
+        fresh.controller.tryMigrateDB(null);
+
+        assertEquals(SOURCE_DB, fresh.controller.publishedHelper().getDatabaseName());
+        GridMigrationTestSupport.assertGridState(sourceState, new DeviceGridState(context));
+        GridMigrationTestSupport.assertJournal(GridMigrationTestSupport.journal(context, TARGET_DB),
+                GridMigrationJournal.Phase.RESTORE_FAILED, TARGET_DB, SOURCE_DB, sourceState);
+        GridMigrationTestSupport.assertRecoveryMetadataPresent(context, TARGET_DB);
+    }
+
+    @Test
+    public void finalizedValidationWithMissingSourceAbortsBeforeTargetCanBeUsed() {
+        Fixture fixture = fixtureWithPreexistingTarget();
+        fixture.runtime.failAfterDelegate(GridMigrationOperation.TARGET_DELETE);
+
+        fixture.controller.tryMigrateDB(null);
+
+        try (DatabaseHelper target = GridMigrationTestSupport.open(context, TARGET_DB)) {
+            GridMigrationTestSupport.mutateBackupFavorite(target.getWritableDatabase(), 50);
+        }
+        GridMigrationTestSupport.deleteDatabase(context, SOURCE_DB);
+        Fixture fresh = freshFixture(new DeviceGridState(context), false);
+
+        try {
+            fresh.controller.tryMigrateDB(null);
+            fail("Missing finalized source must abort instead of publishing the target");
+        } catch (RuntimeException expected) {
+            assertNull(fresh.controller.publishedHelper());
+        }
+    }
+
+    @Test
+    public void finalizedJournalWithTargetAsSourceAbortsActiveTargetMigration() {
+        DeviceGridState destination = new DeviceGridState(
+                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB);
+        GridMigrationTestSupport.createDurablePhaseFixture(context, TARGET_DB, TARGET_DB,
+                sourceState, destination, GridMigrationJournal.Phase.FINALIZED);
+        Fixture active = freshFixture(destination, false);
+
+        try {
+            active.controller.tryMigrateDB(null);
+            fail("A finalized journal whose source is the target must abort");
+        } catch (RuntimeException expected) {
+        }
     }
 
     @Test

@@ -365,6 +365,8 @@ public class ModelDbController {
         Reconciliation activeReconciliation;
         try {
             activeReconciliation = reconcileActiveDatabaseJournal();
+        } catch (GridMigrationRecoveryPendingException recoveryPending) {
+            throw recoveryPending;
         } catch (RuntimeException recoveryFailure) {
             FileLog.e(TAG, "Grid migration recovery remains pending", recoveryFailure);
             return false;
@@ -635,9 +637,37 @@ public class ModelDbController {
                 return Reconciliation.FAILED;
             case FINALIZED: {
                 SQLiteDatabase targetDatabase = targetHelper.getWritableDatabase();
-                validateFinalizedTarget(targetHelper, journal);
-                requireGridPreferences(GridMigrationOperation.DESTINATION_PREF_WRITE,
-                        journal.destinationPreferences());
+                try {
+                    validateFinalizedTarget(targetHelper, journal);
+                    requireGridPreferences(GridMigrationOperation.DESTINATION_PREF_WRITE,
+                            journal.destinationPreferences());
+                } catch (RuntimeException finalizedAuthorityReconciliationFailure) {
+                    FileLog.e(TAG, "Grid migration finalized authority reconciliation failed",
+                            finalizedAuthorityReconciliationFailure);
+                    try {
+                        DatabaseHelper recoverySource = validateFinalizedJournalSource(
+                                sourceHelper, targetHelper, journal);
+                        restoreSourceAuthority(recoverySource, targetHelper, journal);
+                        return Reconciliation.FAILED;
+                    } catch (RuntimeException recoveryFailure) {
+                        if (mOpenHelper != targetHelper) {
+                            throw recoveryFailure;
+                        }
+                        try {
+                            targetHelper.close();
+                        } catch (RuntimeException quarantineFailure) {
+                            recoveryFailure.addSuppressed(quarantineFailure);
+                        } finally {
+                            mOpenHelper = null;
+                        }
+                        GridMigrationRecoveryPendingException recoveryPending =
+                                new GridMigrationRecoveryPendingException(
+                                        "Grid migration finalized authority recovery is pending",
+                                        finalizedAuthorityReconciliationFailure);
+                        recoveryPending.addSuppressed(recoveryFailure);
+                        throw recoveryPending;
+                    }
+                }
                 mOpenHelper = targetHelper;
                 if (sourceHelper != null && sourceHelper != targetHelper) {
                     mGridMigrationRuntime.execute(
@@ -687,8 +717,49 @@ public class ModelDbController {
     private DatabaseHelper openJournalSource(String sourceDatabaseName) {
         DatabaseHelper sourceHelper = new DatabaseHelper(mContext, sourceDatabaseName,
                 this::getSerialNumberForUser, () -> { });
-        sourceHelper.refreshMaxItemIdFromCommittedRows();
-        return sourceHelper;
+        try {
+            sourceHelper.refreshMaxItemIdFromCommittedRows();
+            return sourceHelper;
+        } catch (RuntimeException openFailure) {
+            try {
+                sourceHelper.close();
+            } catch (RuntimeException closeFailure) {
+                openFailure.addSuppressed(closeFailure);
+            }
+            throw openFailure;
+        }
+    }
+
+    private DatabaseHelper validateFinalizedJournalSource(@Nullable DatabaseHelper sourceHelper,
+            DatabaseHelper targetHelper, GridMigrationJournal.Entry journal) {
+        String sourceDatabaseName = journal.sourceDatabaseName();
+        if (TextUtils.isEmpty(sourceDatabaseName)
+                || !TextUtils.equals(sourceDatabaseName, journal.sourcePreferences().getDbFile())) {
+            throw new IllegalStateException("Finalized grid migration source name does not match"
+                    + " source preferences");
+        }
+        try {
+            File sourceFile = mContext.getDatabasePath(sourceDatabaseName).getCanonicalFile();
+            File targetFile = new File(targetHelper.getWritableDatabase().getPath())
+                    .getCanonicalFile();
+            if (!sourceFile.getParentFile().equals(targetFile.getParentFile())
+                    || sourceFile.equals(targetFile) || !sourceFile.isFile()) {
+                throw new IllegalStateException("Finalized grid migration source is invalid");
+            }
+            if (sourceHelper != null) {
+                if (!TextUtils.equals(sourceDatabaseName, sourceHelper.getDatabaseName())
+                        || !sourceFile.equals(new File(sourceHelper.getWritableDatabase().getPath())
+                                .getCanonicalFile())) {
+                    throw new IllegalStateException(
+                            "Finalized grid migration source helper does not match journal");
+                }
+                return sourceHelper;
+            }
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to validate finalized grid migration source",
+                    exception);
+        }
+        return openJournalSource(sourceDatabaseName);
     }
 
     private boolean writeGridPreferences(DeviceGridState state) {
@@ -783,6 +854,12 @@ public class ModelDbController {
         SOURCE,
         DESTINATION,
         UNKNOWN
+    }
+
+    private static final class GridMigrationRecoveryPendingException extends RuntimeException {
+        GridMigrationRecoveryPendingException(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 
     private enum Reconciliation {
