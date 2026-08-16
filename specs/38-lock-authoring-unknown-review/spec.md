@@ -1,6 +1,6 @@
 ---
 issue: "#38"
-status: accepted
+status: implemented
 requirements:
   - FR-003
   - FR-004
