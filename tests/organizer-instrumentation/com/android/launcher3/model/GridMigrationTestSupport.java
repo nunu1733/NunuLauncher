@@ -17,6 +17,9 @@ import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.LauncherSettings.Favorites;
 import com.android.launcher3.provider.LauncherDbUtils;
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -80,6 +83,16 @@ public final class GridMigrationTestSupport {
         new File(database.getPath() + "-journal").delete();
         new File(database.getPath() + "-wal").delete();
         new File(database.getPath() + "-shm").delete();
+    }
+
+    static void corruptDatabase(Context context, String databaseName) {
+        deleteDatabase(context, databaseName);
+        try (FileOutputStream output = new FileOutputStream(
+                context.getDatabasePath(databaseName))) {
+            output.write("issue 59 corrupt database".getBytes(StandardCharsets.UTF_8));
+        } catch (IOException exception) {
+            throw new RuntimeException(exception);
+        }
     }
 
     static void assertDatabaseArtifactsAbsent(Context context, String databaseName) {

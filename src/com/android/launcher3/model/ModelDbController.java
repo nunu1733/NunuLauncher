@@ -362,14 +362,14 @@ public class ModelDbController {
 
     private boolean migrateGridIfNeeded() {
         createDbIfNotExists();
+        DatabaseHelper activeHelper = mOpenHelper;
         Reconciliation activeReconciliation;
         try {
             activeReconciliation = reconcileActiveDatabaseJournal();
         } catch (GridMigrationRecoveryPendingException recoveryPending) {
             throw recoveryPending;
         } catch (RuntimeException recoveryFailure) {
-            FileLog.e(TAG, "Grid migration recovery remains pending", recoveryFailure);
-            return false;
+            throw failClosedActiveRecovery(activeHelper, recoveryFailure);
         }
         if (activeReconciliation == Reconciliation.COMPLETED) {
             return true;
@@ -418,7 +418,15 @@ public class ModelDbController {
                     try {
                         reconciliation = reconcileDurableJournal(
                                 sourceHelper, targetHelper, existingJournal);
+                    } catch (GridMigrationRecoveryPendingException recoveryPending) {
+                        throw recoveryPending;
                     } catch (RuntimeException recoveryFailure) {
+                        // Issue #59: if recovery swapped the active helper mid-failure, the
+                        // published helper is not trusted for normal loading and the failure
+                        // must escape instead of becoming a boolean migration failure.
+                        if (mOpenHelper != sourceHelper) {
+                            throw recoveryFailure;
+                        }
                         FileLog.e(TAG, "Grid migration recovery remains pending", recoveryFailure);
                         return false;
                     }
@@ -502,6 +510,26 @@ public class ModelDbController {
         }
     }
 
+    // Issue #59: unresolved active-database recovery fails closed; the untrusted active helper is
+    // quarantined unless recovery already republished a proven source.
+    private RuntimeException failClosedActiveRecovery(DatabaseHelper activeHelper,
+            RuntimeException recoveryFailure) {
+        if (mOpenHelper != activeHelper) {
+            return recoveryFailure;
+        }
+        try {
+            activeHelper.close();
+        } catch (RuntimeException quarantineFailure) {
+            recoveryFailure.addSuppressed(quarantineFailure);
+        } finally {
+            mOpenHelper = null;
+        }
+        GridMigrationRecoveryPendingException recoveryPending =
+                new GridMigrationRecoveryPendingException(
+                        "Grid migration recovery remains pending", recoveryFailure);
+        return recoveryPending;
+    }
+
     private Reconciliation reconcileActiveDatabaseJournal() {
         SQLiteDatabase activeDatabase = mOpenHelper.getWritableDatabase();
         GridMigrationJournal.Entry journal = GridMigrationJournal.read(activeDatabase);
@@ -511,8 +539,13 @@ public class ModelDbController {
         DatabaseHelper targetHelper = mOpenHelper;
         try (LayoutWriteCoordinator.Lease ignored = LayoutWriteCoordinator.getInstance()
                 .acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.GRID_MIGRATION)) {
-            DatabaseHelper sourceHelper = journal.phase() == GridMigrationJournal.Phase.FINALIZED
-                    ? null : openJournalSource(journal.sourceDatabaseName());
+            DatabaseHelper sourceHelper = null;
+            if (journal.phase() != GridMigrationJournal.Phase.FINALIZED) {
+                // Issue #59: validate the recorded source before opening a writable helper so a
+                // missing or mispointed source cannot be recreated as an empty database.
+                validatedJournalSourceFile(journal, targetHelper);
+                sourceHelper = openJournalSource(journal.sourceDatabaseName());
+            }
             return reconcileDurableJournal(sourceHelper, targetHelper, journal);
         }
     }
@@ -542,6 +575,9 @@ public class ModelDbController {
 
     private boolean compensateAndRestore(DatabaseHelper sourceHelper, DatabaseHelper targetHelper,
             GridMigrationJournal.Entry journal, RuntimeException failure) {
+        // Issue #59: compensation may only republish a proven journal source, never a
+        // manufactured empty database.
+        validatedJournalSourceFile(journal, targetHelper);
         publishFreshSource(sourceHelper, journal.sourceDatabaseName());
         boolean preferencesRestored = false;
         try {
@@ -673,7 +709,14 @@ public class ModelDbController {
                     mGridMigrationRuntime.execute(
                             GridMigrationOperation.SOURCE_HELPER_CLOSE, sourceHelper::close);
                 }
-                cleanupFinalizedMetadata(targetDatabase);
+                // Issue #59: the target is already validated here, so cleanup failure only
+                // leaves FINALIZED metadata for a later retry and stays non-fatal.
+                try {
+                    cleanupFinalizedMetadata(targetDatabase);
+                } catch (RuntimeException cleanupFailure) {
+                    FileLog.e(TAG, "Failed to clean finalized grid migration metadata",
+                            cleanupFailure);
+                }
                 return Reconciliation.COMPLETED;
             }
             case TARGET_OLD:
@@ -684,6 +727,8 @@ public class ModelDbController {
 
     private void restoreSourceAuthority(@Nullable DatabaseHelper sourceHelper,
             DatabaseHelper targetHelper, GridMigrationJournal.Entry journal) {
+        // Issue #59: source authority may only be republished from a proven journal source.
+        validatedJournalSourceFile(journal, targetHelper);
         publishFreshSource(sourceHelper, journal.sourceDatabaseName());
         boolean preferencesRestored = false;
         RuntimeException preferenceFailure = null;
@@ -733,19 +778,8 @@ public class ModelDbController {
     private DatabaseHelper validateFinalizedJournalSource(@Nullable DatabaseHelper sourceHelper,
             DatabaseHelper targetHelper, GridMigrationJournal.Entry journal) {
         String sourceDatabaseName = journal.sourceDatabaseName();
-        if (TextUtils.isEmpty(sourceDatabaseName)
-                || !TextUtils.equals(sourceDatabaseName, journal.sourcePreferences().getDbFile())) {
-            throw new IllegalStateException("Finalized grid migration source name does not match"
-                    + " source preferences");
-        }
+        File sourceFile = validatedJournalSourceFile(journal, targetHelper);
         try {
-            File sourceFile = mContext.getDatabasePath(sourceDatabaseName).getCanonicalFile();
-            File targetFile = new File(targetHelper.getWritableDatabase().getPath())
-                    .getCanonicalFile();
-            if (!sourceFile.getParentFile().equals(targetFile.getParentFile())
-                    || sourceFile.equals(targetFile) || !sourceFile.isFile()) {
-                throw new IllegalStateException("Finalized grid migration source is invalid");
-            }
             if (sourceHelper != null) {
                 if (!TextUtils.equals(sourceDatabaseName, sourceHelper.getDatabaseName())
                         || !sourceFile.equals(new File(sourceHelper.getWritableDatabase().getPath())
@@ -760,6 +794,30 @@ public class ModelDbController {
                     exception);
         }
         return openJournalSource(sourceDatabaseName);
+    }
+
+    // Issue #59: recovery must never construct or publish an empty source database, so the
+    // journal source is identity/path/existence validated before any writable helper opens it.
+    private File validatedJournalSourceFile(GridMigrationJournal.Entry journal,
+            DatabaseHelper targetHelper) {
+        String sourceDatabaseName = journal.sourceDatabaseName();
+        if (TextUtils.isEmpty(sourceDatabaseName)
+                || !TextUtils.equals(sourceDatabaseName, journal.sourcePreferences().getDbFile())) {
+            throw new IllegalStateException(
+                    "Grid migration source name does not match source preferences");
+        }
+        try {
+            File sourceFile = mContext.getDatabasePath(sourceDatabaseName).getCanonicalFile();
+            File targetFile = new File(targetHelper.getWritableDatabase().getPath())
+                    .getCanonicalFile();
+            if (!sourceFile.getParentFile().equals(targetFile.getParentFile())
+                    || sourceFile.equals(targetFile) || !sourceFile.isFile()) {
+                throw new IllegalStateException("Grid migration source is invalid");
+            }
+            return sourceFile;
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to validate grid migration source", exception);
+        }
     }
 
     private boolean writeGridPreferences(DeviceGridState state) {

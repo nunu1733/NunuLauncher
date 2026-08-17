@@ -292,6 +292,91 @@ public class GridMigrationFailureTest {
     }
 
     @Test
+    public void restoreFailedJournalWithMissingSourceFailsClosedWithoutCreatingSource() {
+        DeviceGridState destination = new DeviceGridState(
+                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB);
+        GridMigrationTestSupport.createDurablePhaseFixture(context, TARGET_DB, SOURCE_DB,
+                sourceState, destination, GridMigrationJournal.Phase.RESTORE_FAILED);
+        GridMigrationTestSupport.deleteDatabase(context, SOURCE_DB);
+        Fixture fresh = freshFixture(destination, false);
+
+        try {
+            fresh.controller.tryMigrateDB(null);
+            fail("A missing durable-recovery source must fail closed");
+        } catch (RuntimeException expected) {
+            assertNull(fresh.controller.publishedHelper());
+        }
+
+        GridMigrationTestSupport.assertDatabaseArtifactsAbsent(context, SOURCE_DB);
+        GridMigrationTestSupport.assertJournal(GridMigrationTestSupport.journal(context, TARGET_DB),
+                GridMigrationJournal.Phase.RESTORE_FAILED, TARGET_DB, SOURCE_DB, sourceState);
+    }
+
+    @Test
+    public void pendingJournalWithTargetAsSourceFailsClosed() {
+        DeviceGridState destination = new DeviceGridState(
+                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB);
+        GridMigrationTestSupport.createDurablePhaseFixture(context, TARGET_DB, TARGET_DB,
+                sourceState, destination,
+                GridMigrationJournal.Phase.MIGRATED_PENDING_FINALIZATION);
+        Fixture fresh = freshFixture(destination, false);
+
+        try {
+            fresh.controller.tryMigrateDB(null);
+            fail("A non-finalized journal whose source is the target must fail closed");
+        } catch (RuntimeException expected) {
+            assertNull(fresh.controller.publishedHelper());
+        }
+
+        GridMigrationTestSupport.assertJournal(GridMigrationTestSupport.journal(context, TARGET_DB),
+                GridMigrationJournal.Phase.MIGRATED_PENDING_FINALIZATION, TARGET_DB, TARGET_DB,
+                sourceState);
+    }
+
+    @Test
+    public void restorePendingJournalWithCorruptSourceFailsClosedAndQuarantinesActiveHelper() {
+        DeviceGridState destination = new DeviceGridState(
+                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB);
+        GridMigrationTestSupport.createDurablePhaseFixture(context, TARGET_DB, SOURCE_DB,
+                sourceState, destination, GridMigrationJournal.Phase.RESTORE_PENDING);
+        GridMigrationTestSupport.corruptDatabase(context, SOURCE_DB);
+        Fixture fresh = freshFixture(destination, false);
+
+        try {
+            fresh.controller.tryMigrateDB(null);
+            fail("An unreadable durable-recovery source must fail closed");
+        } catch (RuntimeException expected) {
+            assertNull(fresh.controller.publishedHelper());
+        }
+
+        GridMigrationTestSupport.assertJournal(GridMigrationTestSupport.journal(context, TARGET_DB),
+                GridMigrationJournal.Phase.RESTORE_PENDING, TARGET_DB, SOURCE_DB, sourceState);
+    }
+
+    @Test
+    public void restoreFailedPreferenceFailureAfterSourcePublicationFailsClosed() {
+        try (DatabaseHelper source = GridMigrationTestSupport.open(context, SOURCE_DB)) {
+            GridMigrationTestSupport.seedSource(source.getWritableDatabase());
+        }
+        DeviceGridState destination = new DeviceGridState(
+                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB);
+        GridMigrationTestSupport.createDurablePhaseFixture(context, TARGET_DB, SOURCE_DB,
+                sourceState, destination, GridMigrationJournal.Phase.RESTORE_FAILED);
+        Fixture fresh = freshFixture(destination, false);
+        fresh.runtime.failBeforeDelegate(GridMigrationOperation.SOURCE_PREF_WRITE);
+
+        try {
+            fresh.controller.tryMigrateDB(null);
+            fail("A preference failure after source publication must fail closed");
+        } catch (RuntimeException expected) {
+            assertEquals(SOURCE_DB, fresh.controller.publishedHelper().getDatabaseName());
+        }
+
+        GridMigrationTestSupport.assertJournal(GridMigrationTestSupport.journal(context, TARGET_DB),
+                GridMigrationJournal.Phase.RESTORE_FAILED, TARGET_DB, SOURCE_DB, sourceState);
+    }
+
+    @Test
     public void restoreFailureDoesNotClaimRollback() {
         Fixture fixture = fixtureWithPreexistingTarget();
         fixture.runtime.failAfterDelegate(GridMigrationOperation.TARGET_RESTORE);
