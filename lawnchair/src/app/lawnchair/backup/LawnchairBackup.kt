@@ -78,17 +78,19 @@ class LawnchairBackup(
                 wallpaperManager.setBitmap(BitmapFactory.decodeStream(it))
             }
         }
-        // Issue #14: serialize the raw directory replacement with every Launcher writer.
-        // RestoreDbTask takes its own RESTORE lease after this raw-file lease is released.
+        // Issue #58: one BACKUP_RESTORE lease spans quiesce, helper close, raw directory
+        // replacement, file/prefs writes, fresh ModelDbController + reentrant performRestore,
+        // and the correlated reload.
         LayoutWriteCoordinator.getInstance()
             .acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.BACKUP_RESTORE).use {
+                RestoreDbTask.prepareForRawFileRestore(context)
                 context.getDatabasePath(LAUNCHER_DB_FILE_NAME).parentFile?.deleteRecursively()
                 DeviceGridState(info.gridState).writeToPrefs(context, true)
                 readZip(handlers)
+                val dbController = ModelDbController(context)
+                RestoreDbTask.performRestore(context, dbController)
+                RestoreDbTask.reloadAfterRestore(context)
             }
-
-        val dbController = ModelDbController(context)
-        RestoreDbTask.performRestore(context, dbController)
     }
 
     private suspend fun readZip(handlers: Map<String, suspend (InputStream) -> Unit>) {

@@ -70,14 +70,23 @@ class LawndeckManager(private val context: Context) {
     }.onFailure { Log.e("LawndeckManager", "Failed to create backup: $suffix", it) }
 
     private fun restoreBackup(suffix: String) = runCatching {
+        // Issue #58: one DECK_FILE_RESTORE lease spans quiesce, helper close, DB/journal
+        // copy, reentrant performRestore and the correlated reload. The process restart
+        // remains only as the baseline fallback when the organizer application is absent
+        // (no model to reload).
         LayoutWriteCoordinator.getInstance()
             .acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.DECK_FILE_RESTORE).use {
+                RestoreDbTask.prepareForRawFileRestore(context)
                 getDatabaseFiles(suffix).apply {
                     backupDb.copyTo(db, overwrite = true)
                     if (backupJournal.exists()) backupJournal.copyTo(journal, overwrite = true)
                 }
+                ModelDbController(context).let { RestoreDbTask.performRestore(context, it) }
+                RestoreDbTask.reloadAfterRestore(context)
             }
-        postRestoreActions()
+        if (LauncherAppState.INSTANCE.getNoCreate() == null) {
+            restartLauncher(context)
+        }
     }.onFailure { Log.e("LawndeckManager", "Failed to restore backup: $suffix", it) }
 
     private fun getDatabaseFiles(suffix: String): DatabaseFiles {
@@ -92,11 +101,6 @@ class LawndeckManager(private val context: Context) {
     }
 
     private fun backupExists(suffix: String): Boolean = getDatabaseFiles(suffix).backupDb.exists()
-
-    private fun postRestoreActions() {
-        ModelDbController(context).let { RestoreDbTask.performRestore(context, it) }
-        restartLauncher(context)
-    }
 
     private fun addAllAppsToWorkspace(
         onProgress: ((String) -> Unit)?,

@@ -15,6 +15,7 @@ import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.LauncherSettings.Favorites
 import com.android.launcher3.model.DatabaseHelper
 import com.android.launcher3.model.DeviceGridState
+import com.android.launcher3.model.LayoutWriteCoordinator
 import com.android.launcher3.model.ModelDbController
 import com.android.launcher3.pm.UserCache
 import com.android.launcher3.provider.RestoreDbTask
@@ -148,47 +149,56 @@ class NovaBackupConverter(
         tempDir.mkdirs()
 
         try {
-            extractFromZip(uri, tempDir, setOf(NOVA_DB))
+            // Issue #58: one BACKUP_RESTORE lease spans quiesce, helper close, staging,
+            // IDp/prefs writes, restored.db copy, reentrant performRestore and the
+            // correlated reload.
+            LayoutWriteCoordinator.getInstance()
+                .acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.BACKUP_RESTORE).use {
+                    RestoreDbTask.prepareForRawFileRestore(context)
 
-            val novaDbFile = File(tempDir, NOVA_DB)
-            require(novaDbFile.exists()) { "Missing $NOVA_DB" }
+                    extractFromZip(uri, tempDir, setOf(NOVA_DB))
 
-            val smartspaceEnabled = PreferenceManager2.getInstance(context)
-                .enableSmartspace.firstBlocking()
+                    val novaDbFile = File(tempDir, NOVA_DB)
+                    require(novaDbFile.exists()) { "Missing $NOVA_DB" }
 
-            val stagedDbFile = File(tempDir, NOVA_WORKSPACE_DB)
-            val importedDeepShortcuts = createRestoredDb(novaDbFile, stagedDbFile, info, smartspaceEnabled)
+                    val smartspaceEnabled = PreferenceManager2.getInstance(context)
+                        .enableSmartspace.firstBlocking()
 
-            val columns = info.columns
-            val rows = if (smartspaceEnabled && info.rows != null) info.rows + 1 else info.rows
-            val hotseatCount = info.hotseatCount
-            if (columns != null && rows != null && hotseatCount != null) {
-                val gridInfo = DeviceProfileOverrides.DBGridInfo(
-                    numHotseatColumns = hotseatCount,
-                    numRows = rows,
-                    numColumns = columns,
-                )
-                val gridState = DeviceGridState(
-                    columns,
-                    rows,
-                    hotseatCount,
-                    InvariantDeviceProfile.TYPE_PHONE,
-                    gridInfo.dbFile,
-                )
-                gridState.writeToPrefs(context, true)
-                gridState.writeToPrefs(context)
-                InvariantDeviceProfile.INSTANCE.get(context).dbFile = gridInfo.dbFile
-            }
-            writeGridToLawnchairPrefs(info, smartspaceEnabled)
+                    val stagedDbFile = File(tempDir, NOVA_WORKSPACE_DB)
+                    val importedDeepShortcuts = createRestoredDb(novaDbFile, stagedDbFile, info, smartspaceEnabled)
 
-            val restoredDbFile = context.getDatabasePath(LawnchairBackup.RESTORED_DB_FILE_NAME)
-            restoredDbFile.parentFile?.mkdirs()
-            stagedDbFile.copyTo(restoredDbFile, overwrite = true)
+                    val columns = info.columns
+                    val rows = if (smartspaceEnabled && info.rows != null) info.rows + 1 else info.rows
+                    val hotseatCount = info.hotseatCount
+                    if (columns != null && rows != null && hotseatCount != null) {
+                        val gridInfo = DeviceProfileOverrides.DBGridInfo(
+                            numHotseatColumns = hotseatCount,
+                            numRows = rows,
+                            numColumns = columns,
+                        )
+                        val gridState = DeviceGridState(
+                            columns,
+                            rows,
+                            hotseatCount,
+                            InvariantDeviceProfile.TYPE_PHONE,
+                            gridInfo.dbFile,
+                        )
+                        gridState.writeToPrefs(context, true)
+                        gridState.writeToPrefs(context)
+                        InvariantDeviceProfile.INSTANCE.get(context).dbFile = gridInfo.dbFile
+                    }
+                    writeGridToLawnchairPrefs(info, smartspaceEnabled)
 
-            val dbController = ModelDbController(context)
-            RestoreDbTask.performRestore(context, dbController)
+                    val restoredDbFile = context.getDatabasePath(LawnchairBackup.RESTORED_DB_FILE_NAME)
+                    restoredDbFile.parentFile?.mkdirs()
+                    stagedDbFile.copyTo(restoredDbFile, overwrite = true)
 
-            pinImportedDeepShortcuts(importedDeepShortcuts)
+                    val dbController = ModelDbController(context)
+                    RestoreDbTask.performRestore(context, dbController)
+                    RestoreDbTask.reloadAfterRestore(context)
+
+                    pinImportedDeepShortcuts(importedDeepShortcuts)
+                }
         } finally {
             tempDir.deleteRecursively()
         }

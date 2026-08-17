@@ -107,6 +107,33 @@ public final class LayoutWriteCoordinator {
         return null;
     }
 
+    // Issue #58: RESTORE, BACKUP_RESTORE and DECK_FILE_RESTORE form one reentrancy family so a
+    // thread holding any restore lease can enter RestoreDbTask.performRestore without
+    // self-deadlocking. Exclusion against every other kind is unchanged.
+    public static boolean isRestoreFamily(@NonNull OwnerKind kind) {
+        return kind == OwnerKind.RESTORE
+                || kind == OwnerKind.BACKUP_RESTORE
+                || kind == OwnerKind.DECK_FILE_RESTORE;
+    }
+
+    /**
+     * Reentrant acquisition for the restore family (Issue #58). Succeeds when the
+     * current lease is any restore kind ({@code RESTORE}, {@code BACKUP_RESTORE}
+     * or {@code DECK_FILE_RESTORE}) held by the calling thread; the returned view
+     * keeps the outer kind and token so only the outermost lease unlocks.
+     */
+    @Nullable
+    public Lease tryReenterRestoreFamily() {
+        synchronized (lock) {
+            Holder h = current;
+            if (h != null && h.thread == Thread.currentThread() && isRestoreFamily(h.kind)) {
+                h.recursionCount += 1;
+                return new LeaseImpl(h.kind, h.token);
+            }
+        }
+        return null;
+    }
+
     /**
      * Reentrant acquisition of the current lease by the owning thread with the
      * exact token. Used by the organizer protocol to re-enter its own lease
@@ -188,10 +215,11 @@ public final class LayoutWriteCoordinator {
     }
 
     /**
-     * Run [runnable] under the coordinator's MODEL_EXECUTOR gate. If the
-     * organizer lease is held and the runnable is tokenless, it is appended to
-     * the FIFO and the executor returns immediately. The exact-token holder
-     * bypasses the queue.
+     * Run [runnable] under the coordinator's MODEL_EXECUTOR gate. If any lease is
+     * held and the runnable is tokenless, it is appended to the FIFO and the
+     * executor returns immediately (Issue #58: restore-family leases now defer
+     * tokenless model work exactly like organizer leases). The exact-token
+     * holder bypasses the queue.
      */
     public void runOrDefer(
         @NonNull OwnerKind kind,
@@ -202,7 +230,7 @@ public final class LayoutWriteCoordinator {
         boolean installOrganizerCapability = false;
         synchronized (lock) {
             Holder h = current;
-            if (h != null && h.kind == OwnerKind.ORGANIZER && !exactOrganizerToken) {
+            if (h != null && !exactOrganizerToken) {
                 deferred.addLast(new DeferredRunnable() {
                     @Override
                     public void runWithOperationFuture() {
@@ -239,10 +267,10 @@ public final class LayoutWriteCoordinator {
 
     /**
      * Variant of {@link #runOrDefer} for LauncherProvider's synchronous Binder
-     * contract. The supplier runs either immediately or after organizer lease
-     * release; the returned future completes with its result or the caught
-     * exception. Binder threads may wait on this future; MODEL_EXECUTOR never
-     * blocks.
+     * contract. The supplier runs either immediately or after any lease release
+     * (Issue #58: restore-family leases defer provider writes too); the returned
+     * future completes with its result or the caught exception. Binder threads
+     * may wait on this future; MODEL_EXECUTOR never blocks.
      */
     @NonNull
     public <T> CompletableFuture<T> runOrDeferWithOperationFuture(
@@ -254,7 +282,7 @@ public final class LayoutWriteCoordinator {
         CompletableFuture<T> future = new CompletableFuture<>();
         synchronized (lock) {
             Holder h = current;
-            if (h != null && h.kind == OwnerKind.ORGANIZER && !exactOrganizerToken) {
+            if (h != null && !exactOrganizerToken) {
                 deferred.addLast(() -> {
                     try {
                         future.complete(supplier.get());
