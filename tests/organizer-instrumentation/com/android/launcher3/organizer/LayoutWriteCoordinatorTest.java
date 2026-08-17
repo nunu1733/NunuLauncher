@@ -62,7 +62,7 @@ public class LayoutWriteCoordinatorTest {
         assertTrue(tokenlessRan.get());
     }
 
-    // --- ER-03 FIFO exactly-once tests (Issue #60) ---
+    // --- AC-03 FIFO exactly-once tests (Issue #60) ---
 
     @Test
     public void deferredFifoOrderAcrossMultipleLeases() {

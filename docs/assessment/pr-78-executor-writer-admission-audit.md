@@ -7,7 +7,7 @@
 - PR: https://github.com/nunu1733/NunuLauncher/pull/78
 - Head SHA: 6ea58851564731869a05ec88c4f30c9faf9ef18d
 - CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32042763454 (merge gate on the audited head SHA; `final-status`, `organizer-unit-tests`, `check-style`, `build-debug-apk`, `validate-repo-contract` all success; verified via `gh run view`)
-- Criteria: specs/60-executor-writer-admission-audit/spec.md (`status: implemented` at this head) ER-01..ER-07, and Issue #60 "Outcome" requirements
+- Criteria: specs/60-executor-writer-admission-audit/spec.md (`status: implemented` at this head) AC-01..AC-07, and Issue #60 "Outcome" requirements
 
 ## Scope
 
@@ -29,7 +29,7 @@ appended), `specs/60-executor-writer-admission-audit/spec.md` and
 
 Code-level verification (read from the diff/files, not the PR body):
 
-- **Fix (ER-03)**: `LayoutWriteCoordinator.release()` lines 343-350 wraps each
+- **Fix (AC-03)**: `LayoutWriteCoordinator.release()` lines 343-350 wraps each
   deferred callback in an individual try/catch catching `Throwable`. The
   `while (!toRun.isEmpty())` loop removes the first entry, runs it within a
   try/catch, and continues to the next regardless of outcome. The previous
@@ -40,7 +40,7 @@ Code-level verification (read from the diff/files, not the PR body):
   is a safety net for `runOrDefer` callbacks (which have no inner try/catch)
   vs `runOrDeferWithOperationFuture` futures (which already complete
   exceptionally via their own inner try/catch).
-- **Writer-inventory scanner (ER-02)**: `validate_writer_inventory.py` scans
+- **Writer-inventory scanner (AC-02)**: `validate_writer_inventory.py` scans
   source files in `src/` and `lawnchair/src/` (excluding test directories)
   for 4 pattern categories: favorites SQL string literals, DB operations on
   `TABLE_NAME`, `ModelDbController` mutation calls, and raw DB file
@@ -54,7 +54,7 @@ Code-level verification (read from the diff/files, not the PR body):
 
 ## Criteria check
 
-- **ER-01 (writer inventory)**: PASS. The scanner's `ALLOWLIST` dict enumerates
+- **AC-01 (writer inventory)**: PASS. The scanner's `ALLOWLIST` dict enumerates
   18 unique files with pattern-kind and lease-kind/documentation reason for
   each entry. I spot-checked 8 entries against actual source:
   `RestoreDbTask.java` (favorites-sql confirmed at lines 452-454, db-file-delete
@@ -73,7 +73,7 @@ Code-level verification (read from the diff/files, not the PR body):
   `ModelDbController.java` (favorites-db confirmed at lines 1016, 1049, 1079).
   All 8 entries have correct lease kind and reason matching the actual source.
 
-- **ER-02 (executable allowlist)**: PASS. `python3 tools/repo-contract/
+- **AC-02 (executable allowlist)**: PASS. `python3 tools/repo-contract/
   validate_writer_inventory.py` reports PASS on the current tree: 18 writer
   files verified (1025 source files scanned, 0 errors, 0 warnings). The
   scanner is wired into CI `validate-repo-contract` job (`.github/workflows/
@@ -88,7 +88,7 @@ Code-level verification (read from the diff/files, not the PR body):
   where `TABLE_NAME` is a variable resolving to `favorites`); this is a
   known limitation of the heuristic approach (see G1).
 
-- **ER-03 (FIFO exactly-once)**: PASS. Defect fix confirmed: each deferred
+- **AC-03 (FIFO exactly-once)**: PASS. Defect fix confirmed: each deferred
   callback runs in an isolated try/catch. Tests read line-by-line:
   `deferredFifoOrderAcrossMultipleLeases` asserts FIFO [1,2,3,4] across two
   lease cycles and `pendingDeferredCount() == 0` after each release;
@@ -103,7 +103,7 @@ Code-level verification (read from the diff/files, not the PR body):
   `lease.close()` during the drain loop does not double-run entries (all 3
   ran exactly once, pending=0).
 
-- **ER-04 (reload supersession)**: PASS. `OrganizerReloadSupersessionTest.java`
+- **AC-04 (reload supersession)**: PASS. `OrganizerReloadSupersessionTest.java`
   read line-by-line:
   `singleRequestCompletesWithOutcomeCompleted` asserts COMPLETED for a single
   request;
@@ -119,7 +119,7 @@ Code-level verification (read from the diff/files, not the PR body):
   sequential requests each receive COMPLETED independently (no cross-request
   signal leakage).
 
-- **ER-05 (Binder future)**: PASS. `BinderOperationFutureTest.java` read
+- **AC-05 (Binder future)**: PASS. `BinderOperationFutureTest.java` read
   line-by-line:
   `deferredCallbackRunsOnReleasingThreadNotModelExecutor` simulates a Binder
   thread calling `runOrDeferWithOperationFuture` with a supplier that does
@@ -134,7 +134,7 @@ Code-level verification (read from the diff/files, not the PR body):
   when on the looper thread) that makes the self-wait hazard impossible at
   the executor level even hypothetically.
 
-- **ER-06 (nested transaction)**: PASS. `NestedTransactionTest.java` read
+- **AC-06 (nested transaction)**: PASS. `NestedTransactionTest.java` read
   line-by-line:
   `outerAndInnerTransactionCommitAsOneUnit` asserts both outer and inner
   writes persist after commit (savepoint semantics);
@@ -150,7 +150,7 @@ Code-level verification (read from the diff/files, not the PR body):
   inner exception propagates, the lease stays held, and the outer close
   releases it.
 
-- **ER-07 (restart evidence)**: PASS with notes. The requirement acknowledges
+- **AC-07 (restart evidence)**: PASS with notes. The requirement acknowledges
   that device-level process death/restart is not fully testable in this
   environment. The assessment documents:
   - Real 10-second TIMEOUT path (`OrganizerModelReloadAdapter.TIMEOUT_MILLIS`,
@@ -210,12 +210,12 @@ by this audit).
    execution (Issue #14). The 4 new test files (976 lines) were compiled
    locally and in CI androidTest compilation surfaces but not executed on a
    device or emulator in this audit. The unit test portion of
-   `LayoutWriteCoordinatorTest` (the ER-03 tests) is technically runnable as
+   `LayoutWriteCoordinatorTest` (the AC-03 tests) is technically runnable as
    unit tests but lives in the instrumentation test source set; the existing
    `LayoutWriteCoordinatorTest` class was already there pre-PR in the same
    location.
 
-3. **[Low] G3 — Device-level process death/restart untested.** ER-07
+3. **[Low] G3 — Device-level process death/restart untested.** AC-07
    acknowledges this gap. No test simulates process death mid-deferred-FIFO,
    mid-raw-file-restore, or with an active recovery lifecycle. The
    `forceReloadForOrganizer` "no callbacks" path (LauncherModel.java lines

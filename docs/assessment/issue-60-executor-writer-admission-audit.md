@@ -45,15 +45,15 @@ The assessment used:
 
 | #60 Sequence | Classification | Evidence |
 |---|---|---|
-| Writer inventory (ER-01) | **CONFIRMED** | 18 allowlisted files with lease-kind reason; see inventory table below |
-| Executable allowlist (ER-02) | **CONFIRMED** | `tools/repo-contract/validate_writer_inventory.py` passes on current tree; wired into CI `validate-repo-contract` job (`.github/workflows/ci.yml` lines 92-93) |
-| FIFO exactly-once / throwing callback (ER-03) | **CONFIRMED** (defect FIXED) | `LayoutWriteCoordinator.release()` lines 318-351: per-entry try/catch (lines 343-350) prevents a throwing callback from aborting later entries. Tests: `LayoutWriteCoordinatorTest.java` lines 67-185 |
-| Reload supersession (ER-04) | **CONFIRMED** | `OrganizerReloadSupersessionTest.java` lines 86-290: A-then-B supersession, stale completion rejection, cancellation terminal exactly once, exactly-one-terminal per request |
-| Binder future self-wait (ER-05) | **DISPROVEN** | `BinderOperationFutureTest.java` lines 58-221: deferred callback runs on releasing thread, not MODEL_EXECUTOR; MODEL_EXECUTOR is never blocked during deferral; `LooperExecutor.execute()` (lines 43-48) inline optimization prevents self-deadlock even hypothetically |
-| Nested SQLiteTransaction (ER-06) | **CONFIRMED** | `NestedTransactionTest.java` lines 80-221: outer+inner commit as one unit; inner close-without-commit rolls back inner only; lease held until outer close; reentrant inner close does not release outer; inner exception propagates and outer close releases lease |
-| Process death/restart (ER-07) | **UNSUPPORTED** (see below) | Protocol-level `RestartReconcilerTest` exists; device-level kill/restart with active helper, deferred FIFO, or raw-file restore is not tested. Real 10s TIMEOUT path is not injectable (`OrganizerModelReloadAdapter.TIMEOUT_MILLIS` = 10_000L, line 25). Instrumentation runtime execution is compile-only per Issue #14 |
+| Writer inventory (AC-01) | **CONFIRMED** | 18 allowlisted files with lease-kind reason; see inventory table below |
+| Executable allowlist (AC-02) | **CONFIRMED** | `tools/repo-contract/validate_writer_inventory.py` passes on current tree; wired into CI `validate-repo-contract` job (`.github/workflows/ci.yml` lines 92-93) |
+| FIFO exactly-once / throwing callback (AC-03) | **CONFIRMED** (defect FIXED) | `LayoutWriteCoordinator.release()` lines 318-351: per-entry try/catch (lines 343-350) prevents a throwing callback from aborting later entries. Tests: `LayoutWriteCoordinatorTest.java` lines 67-185 |
+| Reload supersession (AC-04) | **CONFIRMED** | `OrganizerReloadSupersessionTest.java` lines 86-290: A-then-B supersession, stale completion rejection, cancellation terminal exactly once, exactly-one-terminal per request |
+| Binder future self-wait (AC-05) | **DISPROVEN** | `BinderOperationFutureTest.java` lines 58-221: deferred callback runs on releasing thread, not MODEL_EXECUTOR; MODEL_EXECUTOR is never blocked during deferral; `LooperExecutor.execute()` (lines 43-48) inline optimization prevents self-deadlock even hypothetically |
+| Nested SQLiteTransaction (AC-06) | **CONFIRMED** | `NestedTransactionTest.java` lines 80-221: outer+inner commit as one unit; inner close-without-commit rolls back inner only; lease held until outer close; reentrant inner close does not release outer; inner exception propagates and outer close releases lease |
+| Process death/restart (AC-07) | **UNSUPPORTED** (see below) | Protocol-level `RestartReconcilerTest` exists; device-level kill/restart with active helper, deferred FIFO, or raw-file restore is not tested. Real 10s TIMEOUT path is not injectable (`OrganizerModelReloadAdapter.TIMEOUT_MILLIS` = 10_000L, line 25). Instrumentation runtime execution is compile-only per Issue #14 |
 
-## Writer inventory (ER-01)
+## Writer inventory (AC-01)
 
 Every runtime `favorites`/DB-file writer path with its lease kind or
 documented lifecycle reason, reproduced from the executable allowlist in
@@ -82,7 +82,7 @@ documented lifecycle reason, reproduced from the executable allowlist in
 | `src/com/android/launcher3/InvariantDeviceProfile.java` | db-file-delete | Grid migration |
 | `src/com/android/launcher3/model/ModelDbController.java` | favorites-db | Self-mutations (deleteEmptyFolders, etc.) |
 
-## Defect fix: FIFO exception isolation (ER-03)
+## Defect fix: FIFO exception isolation (AC-03)
 
 ### Finding
 
@@ -132,9 +132,9 @@ net for any remaining path including `Error` subclasses.
   (lines 161-185): reentrant close during the drain loop does not double-run
   entries.
 
-## Unsupported items (ER-07)
+## Unsupported items (AC-07)
 
-The following sequences from the ER-07 requirement are recorded as
+The following sequences from the AC-07 requirement are recorded as
 unsupported with exact source evidence and a tracking note:
 
 1. **Real 10-second TIMEOUT path.** `OrganizerModelReloadAdapter.TIMEOUT_MILLIS`
@@ -178,7 +178,7 @@ CI run link: *pending (not yet pushed/merged)*
 
 ## Conclusion
 
-**All ER-01 through ER-07 requirements are met.** Every sequence listed in
+**All AC-01 through AC-07 requirements are met.** Every sequence listed in
 Issue #60 is recorded as confirmed, disproven, or unsupported, each with a
 deterministic test or exact source evidence. The confirmed FIFO defect
 (throwing callback skipping later entries) is fixed with per-entry exception

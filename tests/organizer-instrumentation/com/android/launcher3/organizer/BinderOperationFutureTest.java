@@ -1,5 +1,5 @@
-// Issue #60 ER-05: Binder operation-future self-wait.
-// Spec 60 Section "ER-05 Binder future".
+// Issue #60 AC-05: Binder operation-future self-wait.
+// Spec 60 Section "AC-05 Binder future".
 // Models the LauncherProvider.executeControllerTask pattern (lines 156-191)
 // at the coordinator seam.
 package com.android.launcher3.organizer;
@@ -26,7 +26,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 /**
- * ER-05: The Binder operation-future sequence is proven not to self-wait on
+ * AC-05: The Binder operation-future sequence is proven not to self-wait on
  * {@link com.android.launcher3.util.Executors#MODEL_EXECUTOR}, including
  * release from the deferred-callback thread.
  *
@@ -58,7 +58,7 @@ public class BinderOperationFutureTest {
     @Test
     public void deferredCallbackRunsOnReleasingThreadNotModelExecutor()
             throws Exception {
-        // ER-05: the deferred callback from runOrDeferWithOperationFuture
+        // AC-05: the deferred callback from runOrDeferWithOperationFuture
         // runs on the thread that releases the lease, not on MODEL_EXECUTOR.
         AtomicReference<Thread> callbackThread = new AtomicReference<>();
         AtomicReference<CompletableFuture<Integer>> operationFuture =
@@ -146,7 +146,7 @@ public class BinderOperationFutureTest {
 
     @Test
     public void modelExecutorNotBlockedByOrganizerLease() throws Exception {
-        // ER-05: while an organizer lease is held, tokenless operation
+        // AC-05: while an organizer lease is held, tokenless operation
         // futures are deferred but MODEL_EXECUTOR is never blocked.
         // A task submitted to MODEL_EXECUTOR during the deferred window
         // must execute immediately.
@@ -186,7 +186,7 @@ public class BinderOperationFutureTest {
 
     @Test
     public void looperExecutorInlineOptimizationPreventsSelfDeadlock() {
-        // ER-05 (supplementary): LooperExecutor.execute() runs a task inline
+        // AC-05 (supplementary): LooperExecutor.execute() runs a task inline
         // when the current thread is the executor's looper thread.  This
         // means even if a deferred callback hypothetically ran on
         // MODEL_EXECUTOR, the inner submit().get() would not deadlock

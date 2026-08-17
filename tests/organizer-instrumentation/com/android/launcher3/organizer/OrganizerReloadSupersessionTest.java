@@ -30,14 +30,14 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Instrumentation tests for ER-04 reload supersession.
+ * Instrumentation tests for AC-04 reload supersession.
  *
  * <p>Covers A-then-B supersession, stale completion rejection, cancellation,
  * and exactly-one-terminal-signal per request, using the public seams
  * ({@link LauncherModel} reload lifecycle + {@link OrganizerModelReloadAdapter}
  * {@link OrganizerModelReloadAdapter.Outcome}).
  *
- * <p>See spec: specs/60-executor-writer-admission-audit/spec.md §ER-04.
+ * <p>See spec: specs/60-executor-writer-admission-audit/spec.md §AC-04.
  *
  * <p><b>Unsupported paths (source-evidence-only):</b>
  * <ul>

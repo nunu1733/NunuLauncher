@@ -1,5 +1,5 @@
-// Issue #60 ER-06: nested/reentrant SQLiteTransaction through ModelDbController.
-// Spec 60 Section "ER-06 nested transaction".
+// Issue #60 AC-06: nested/reentrant SQLiteTransaction through ModelDbController.
+// Spec 60 Section "AC-06 nested transaction".
 package com.android.launcher3.organizer;
 
 import static org.junit.Assert.assertEquals;
@@ -29,7 +29,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 /**
- * ER-06: Nested/reentrant {@link SQLiteTransaction} through {@link
+ * AC-06: Nested/reentrant {@link SQLiteTransaction} through {@link
  * ModelDbController}.
  *
  * <p>SQLite's built-in transaction nesting (beginTransaction/endTransaction) is
@@ -45,7 +45,7 @@ import org.junit.runner.RunWith;
  * savepoint, preserving the parent transaction's writes. The parent can
  * then commit or roll back independently ("savepoint semantics").
  *
- * <p>ER-06 acceptance: (1) outer+inner commit as one unit, (2) inner
+ * <p>AC-06 acceptance: (1) outer+inner commit as one unit, (2) inner
  * failure does not commit inner writes while the outer preserves its own
  * scope, (3) the coordinator lease is held until the outer close, (4) an
  * exception inside the inner propagates and the outer close still releases
@@ -79,7 +79,7 @@ public class NestedTransactionTest {
 
     @Test
     public void outerAndInnerTransactionCommitAsOneUnit() {
-        // ER-06: outer+inner commit persists both writes.
+        // AC-06: outer+inner commit persists both writes.
         SQLiteDatabase db = mController.getDb();
         final long idA = 9001;
         final long idB = 9002;
@@ -97,7 +97,7 @@ public class NestedTransactionTest {
 
     @Test
     public void innerCloseWithoutCommitRollsBackInnerWrites() {
-        // ER-06: a nested transaction closed without commit rolls back its
+        // AC-06: a nested transaction closed without commit rolls back its
         // own writes (savepoint rollback) while the outer transaction's
         // writes are unaffected and can still commit.
         SQLiteDatabase db = mController.getDb();
@@ -120,7 +120,7 @@ public class NestedTransactionTest {
 
     @Test
     public void leaseHeldUntilOuterClose() {
-        // ER-06: the coordinator lease is held until the outer transaction
+        // AC-06: the coordinator lease is held until the outer transaction
         // close; inner close (plain, no lease) does not release it.
         LayoutWriteCoordinator coordinator = LayoutWriteCoordinator.getInstance();
         SQLiteDatabase db = mController.getDb();
@@ -150,7 +150,7 @@ public class NestedTransactionTest {
 
     @Test
     public void reentrantLeaseInnerCloseDoesNotReleaseOuterLease() {
-        // ER-06: inner close on a reentrant lease decrements the recursion
+        // AC-06: inner close on a reentrant lease decrements the recursion
         // count but does not release the outer lease. The coordinator lock
         // stays held (recursionCount 2->1) until the outer close (1->0).
         LayoutWriteCoordinator coordinator = LayoutWriteCoordinator.getInstance();
@@ -193,7 +193,7 @@ public class NestedTransactionTest {
 
     @Test
     public void exceptionInsideInnerPropagatesAndOuterCloseReleasesLease() {
-        // ER-06: an exception thrown inside the inner transaction propagates
+        // AC-06: an exception thrown inside the inner transaction propagates
         // to the caller; the outer close still releases the coordinator
         // lease.
         LayoutWriteCoordinator coordinator = LayoutWriteCoordinator.getInstance();
