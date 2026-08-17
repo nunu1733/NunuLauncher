@@ -5,13 +5,13 @@
 
 - Auditor: Implementation-session-independent audit session (solo-maintenance independent re-execution)
 - PR: https://github.com/nunu1733/NunuLauncher/pull/78
-- Head SHA: 6ea58851564731869a05ec88c4f30c9faf9ef18d
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32042763454 (merge gate on the audited head SHA; `final-status`, `organizer-unit-tests`, `check-style`, `build-debug-apk`, `validate-repo-contract` all success; verified via `gh run view`)
+- Head SHA: e5aa78951ed9ea45a667eccdb3e4c0c8c95b121a
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32044541454 (merge gate on the audited head SHA; `final-status`, `organizer-unit-tests`, `check-style`, `build-debug-apk`, `validate-repo-contract` all success; verified via `gh run view`)
 - Criteria: specs/60-executor-writer-admission-audit/spec.md (`status: implemented` at this head) AC-01..AC-07, and Issue #60 "Outcome" requirements
 
 ## Scope
 
-Audited the complete `main..6ea5885156` diff:
+Audited the complete `main..e5aa78951e` diff:
 11 files, +1801/-1. Production surface: `LayoutWriteCoordinator.java`
 (per-entry exception isolation in `release()` deferred drain, 9 lines changed).
 Test surface: 4 instrumentation test files (222+128+273+353 = 976 lines new)
@@ -163,7 +163,7 @@ Code-level verification (read from the diff/files, not the PR body):
 
 ## Executed test surface
 
-Independent local re-runs against `6ea5885156` (JDK 21.0.12 homebrew,
+Independent local re-runs against `6ea5885156` (functionally identical to the final head `e5aa78951e`, which only renames requirement IDs ER-xx to AC-xx in comments and docs) (JDK 21.0.12 homebrew,
 ANDROID_HOME=/opt/homebrew/share/android-commandline-tools):
 
 ```text
@@ -238,7 +238,7 @@ by this audit).
    claims to an error or adding a `--strict` mode.
 
 Process note: the `High-risk gate` workflow run 32042763375 on head
-`6ea5885156` fails solely because this audit record was not yet committed. After
+`e5aa78951e` fails solely because this audit record update was not yet committed. After
 this record lands (docs-only commit), the gate should pass with no further
 code changes; any subsequent code change requires a fresh audit on the new
 head.
