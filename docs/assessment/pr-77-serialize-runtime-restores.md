@@ -6,7 +6,7 @@
 - Auditor: Implementation-session-independent audit session (solo-maintenance independent re-execution)
 - PR: https://github.com/nunu1733/NunuLauncher/pull/77
 - Head SHA: c0931b1aaa09f1ee8da512ed3d98f29c240c45a8
-- CI run (merge gate on the audited head SHA): https://github.com/nunu1733/NunuLauncher/actions/runs/32038322987 (`final-status`, `organizer-unit-tests`, `check-style`, `build-debug-apk`, `changes`, `validate-repo-contract` all success; verified via `gh run view`)
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32038322987 (merge gate on the audited head SHA; `final-status`, `organizer-unit-tests`, `check-style`, `build-debug-apk`, `changes`, `validate-repo-contract` all success; verified via `gh run view`)
 - Criteria: specs/58-serialize-runtime-restores/spec.md (`status: accepted` at this head) AC-1..AC-7, scenario matrix SR-01..SR-12, and Issue #58 "Required outcome"
 - Prior audit: FAIL record against head `3fe30650c28efa2534bba533f6e7e4ec3c782f32` (same file, this session's history); findings and resolution below.
 
