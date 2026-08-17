@@ -215,11 +215,12 @@ public final class LayoutWriteCoordinator {
     }
 
     /**
-     * Run [runnable] under the coordinator's MODEL_EXECUTOR gate. If any lease is
-     * held and the runnable is tokenless, it is appended to the FIFO and the
-     * executor returns immediately (Issue #58: restore-family leases now defer
-     * tokenless model work exactly like organizer leases). The exact-token
-     * holder bypasses the queue.
+     * Run [runnable] under the coordinator's MODEL_EXECUTOR gate. If an
+     * organizer or restore-family lease is held and the runnable is tokenless,
+     * it is appended to the FIFO and the executor returns immediately. Baseline
+     * {@link OwnerKind#MODEL_WRITER} and {@link OwnerKind#GRID_MIGRATION}
+     * leases do not defer tokenless work, preserving baseline executor
+     * semantics. The exact-token holder bypasses the queue.
      */
     public void runOrDefer(
         @NonNull OwnerKind kind,
@@ -230,7 +231,7 @@ public final class LayoutWriteCoordinator {
         boolean installOrganizerCapability = false;
         synchronized (lock) {
             Holder h = current;
-            if (h != null && !exactOrganizerToken) {
+            if (h != null && !exactOrganizerToken && defersTokenlessWork(h)) {
                 deferred.addLast(new DeferredRunnable() {
                     @Override
                     public void runWithOperationFuture() {
@@ -265,12 +266,19 @@ public final class LayoutWriteCoordinator {
         }
     }
 
+    // Issue #58 audit: only organizer and restore-family leases defer tokenless work.
+    // GRID_MIGRATION and MODEL_WRITER leases must not change executor deferral semantics.
+    private static boolean defersTokenlessWork(@NonNull Holder h) {
+        return h.kind == OwnerKind.ORGANIZER || isRestoreFamily(h.kind);
+    }
+
     /**
      * Variant of {@link #runOrDefer} for LauncherProvider's synchronous Binder
-     * contract. The supplier runs either immediately or after any lease release
-     * (Issue #58: restore-family leases defer provider writes too); the returned
-     * future completes with its result or the caught exception. Binder threads
-     * may wait on this future; MODEL_EXECUTOR never blocks.
+     * contract. The supplier runs immediately unless an organizer or
+     * restore-family lease is held, in which case it runs after that lease's
+     * release; the returned future completes with its result or the caught
+     * exception. Binder threads may wait on this future; MODEL_EXECUTOR never
+     * blocks.
      */
     @NonNull
     public <T> CompletableFuture<T> runOrDeferWithOperationFuture(
@@ -282,7 +290,7 @@ public final class LayoutWriteCoordinator {
         CompletableFuture<T> future = new CompletableFuture<>();
         synchronized (lock) {
             Holder h = current;
-            if (h != null && !exactOrganizerToken) {
+            if (h != null && !exactOrganizerToken && defersTokenlessWork(h)) {
                 deferred.addLast(() -> {
                     try {
                         future.complete(supplier.get());

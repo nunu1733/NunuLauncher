@@ -50,6 +50,7 @@ import android.util.LongSparseArray;
 import android.util.SparseLongArray;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 import androidx.annotation.WorkerThread;
 
@@ -245,7 +246,16 @@ public class RestoreDbTask {
      * Callers must hold a restore-family coordinator lease.
      */
     public static void prepareForRawFileRestore(Context context) {
-        LauncherAppState app = LauncherAppState.INSTANCE.getNoCreate();
+        prepareForRawFileRestore(context, LauncherAppState.INSTANCE.getNoCreate());
+    }
+
+    /**
+     * Issue #58: nullable-app overload so the baseline fallback (organizer
+     * application absent) is directly testable: the whole quiesce is a no-op
+     * when [app] is null.
+     */
+    @VisibleForTesting
+    public static void prepareForRawFileRestore(Context context, @Nullable LauncherAppState app) {
         if (app == null) {
             return;
         }
@@ -260,7 +270,16 @@ public class RestoreDbTask {
      * otherwise (baseline fallback). Callers hold the same restore-family lease.
      */
     public static void reloadAfterRestore(Context context) {
-        LauncherAppState app = LauncherAppState.INSTANCE.getNoCreate();
+        reloadAfterRestore(LauncherAppState.INSTANCE.getNoCreate());
+    }
+
+    /**
+     * Issue #58: nullable-app overload so the baseline fallback (organizer
+     * application absent) is directly testable: the reload is a no-op when
+     * [app] is null.
+     */
+    @VisibleForTesting
+    public static void reloadAfterRestore(@Nullable LauncherAppState app) {
         if (app == null) {
             return;
         }

@@ -1,6 +1,6 @@
 ---
 issue: "#58"
-status: draft
+status: accepted
 updated: 2026-08-17
 ---
 

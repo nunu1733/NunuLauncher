@@ -1,6 +1,6 @@
 ---
 issue: "#58"
-status: draft
+status: accepted
 requirements: []
 updated: 2026-08-17
 ---
@@ -164,3 +164,4 @@ Fixed to baseline `505dbc40e6154c05158b5d0271c45f6a885a411b` plus current main
 ## Change history
 
 - 2026-08-17: Drafted for Issue #58.
+- 2026-08-17: Accepted after independent audit; restricted runOrDefer deferral to organizer/restore-family leases and added AC-4/5/6 test evidence.
