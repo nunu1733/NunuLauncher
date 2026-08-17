@@ -50,6 +50,7 @@ import android.util.LongSparseArray;
 import android.util.SparseLongArray;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 import androidx.annotation.WorkerThread;
 
@@ -57,6 +58,7 @@ import com.android.launcher3.Flags;
 import com.android.launcher3.InvariantDeviceProfile;
 import com.android.launcher3.LauncherAppState;
 import com.android.launcher3.LauncherFiles;
+import com.android.launcher3.LauncherModel;
 import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.LauncherSettings;
 import com.android.launcher3.LauncherSettings.Favorites;
@@ -200,24 +202,88 @@ public class RestoreDbTask {
     }
 
     public static boolean performRestore(Context context, ModelDbController controller) {
-        SQLiteDatabase db = controller.getDb();
-        FileLog.d(TAG, "performRestore: starting restore from db");
-        // Issue #14: hold one outer reentrant RESTORE lease around the full restore;
-        // surviving lock-state rows travel with the profile remap inside sanitizeDB.
-        LayoutWriteCoordinator.Lease lease = LayoutWriteCoordinator.getInstance()
-                .acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.RESTORE);
-        try (SQLiteTransaction t = new SQLiteTransaction(db, lease)) {
-            RestoreDbTask task = new RestoreDbTask();
-            BackupManager backupManager = new BackupManager(context);
-            LauncherRestoreEventLogger restoreEventLogger = LauncherRestoreEventLogger.Companion.newInstance(context);
-            task.sanitizeDB(context, controller, db, backupManager, restoreEventLogger);
-            task.restoreAppWidgetIdsIfExists(context, controller, restoreEventLogger);
-            t.commit();
-            return true;
-        } catch (Exception e) {
-            FileLog.e(TAG, "Failed to verify db", e);
-            return false;
+        // Issue #58: acquire the lease BEFORE controller.getDb(): getDb may create, rename
+        // or copy DB files through createDatabaseHelper. When the calling thread already
+        // holds a restore-family lease (BACKUP_RESTORE / DECK_FILE_RESTORE), reenter it
+        // instead of blocking (which would self-deadlock).
+        LayoutWriteCoordinator coordinator = LayoutWriteCoordinator.getInstance();
+        LayoutWriteCoordinator.Lease acquired = coordinator.tryReenterRestoreFamily();
+        if (acquired == null) {
+            // Issue #14: hold one outer reentrant RESTORE lease around the full restore;
+            // surviving lock-state rows travel with the profile remap inside sanitizeDB.
+            acquired = coordinator.acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.RESTORE);
         }
+        final LayoutWriteCoordinator.Lease lease = acquired;
+        try (lease) {
+            SQLiteDatabase db = controller.getDb();
+            FileLog.d(TAG, "performRestore: starting restore from db");
+            // The transaction holds a nested same-kind/token view of the outer lease. The
+            // view is a separate try-with resource so a transaction construction failure
+            // cannot leak a recursion count and wedge the coordinator.
+            try (LayoutWriteCoordinator.Lease transactionLease =
+                    coordinator.tryReenter(lease.kind(), lease.token())) {
+                try (SQLiteTransaction t = new SQLiteTransaction(db)) {
+                    RestoreDbTask task = new RestoreDbTask();
+                    BackupManager backupManager = new BackupManager(context);
+                    LauncherRestoreEventLogger restoreEventLogger = LauncherRestoreEventLogger.Companion.newInstance(context);
+                    task.sanitizeDB(context, controller, db, backupManager, restoreEventLogger);
+                    task.restoreAppWidgetIdsIfExists(context, controller, restoreEventLogger);
+                    t.commit();
+                    return true;
+                } catch (Exception e) {
+                    FileLog.e(TAG, "Failed to verify db", e);
+                    return false;
+                }
+            }
+        }
+    }
+
+    /**
+     * Issue #58: quiesce the model before raw DB file replacement. Stops the running
+     * loader and closes the active DB helper through the ModelDbController seam so raw
+     * file deletion/copy happens with no open handle. No-op when the organizer
+     * application is absent (baseline fallback: no model, no helper to close).
+     * Callers must hold a restore-family coordinator lease.
+     */
+    public static void prepareForRawFileRestore(Context context) {
+        prepareForRawFileRestore(context, LauncherAppState.INSTANCE.getNoCreate());
+    }
+
+    /**
+     * Issue #58: nullable-app overload so the baseline fallback (organizer
+     * application absent) is directly testable: the whole quiesce is a no-op
+     * when [app] is null.
+     */
+    @VisibleForTesting
+    public static void prepareForRawFileRestore(Context context, @Nullable LauncherAppState app) {
+        if (app == null) {
+            return;
+        }
+        LauncherModel model = app.getModel();
+        model.quiesceForRestore();
+        model.getModelDbController().closeActiveHelperForRestore();
+    }
+
+    /**
+     * Issue #58: correlated reload after restore sanitization. Replaces process restarts
+     * as the reopen mechanism when the organizer application is available; no-op
+     * otherwise (baseline fallback). Callers hold the same restore-family lease.
+     */
+    public static void reloadAfterRestore(Context context) {
+        reloadAfterRestore(LauncherAppState.INSTANCE.getNoCreate());
+    }
+
+    /**
+     * Issue #58: nullable-app overload so the baseline fallback (organizer
+     * application absent) is directly testable: the reload is a no-op when
+     * [app] is null.
+     */
+    @VisibleForTesting
+    public static void reloadAfterRestore(@Nullable LauncherAppState app) {
+        if (app == null) {
+            return;
+        }
+        app.getModel().forceReload();
     }
 
     /**
