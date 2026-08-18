@@ -155,9 +155,6 @@ ALLOWLIST: Dict[str, List[Tuple[str, str]]] = {
     "lawnchair/src/app/lawnchair/backup/LawnchairBackup.kt": [
         ("db-file-recursive", "Backup: deleteRecursively on launcher DB directory"),
     ],
-    "lawnchair/src/app/lawnchair/deck/LawndeckManager.kt": [
-        ("db-file-copy", "Lawndeck: copyTo for DB backup/restore"),
-    ],
     "src/com/android/launcher3/LauncherBackupAgent.java": [
         ("db-file-delete",
          "Backup agent: destination.delete() on obsolete backup file"),

@@ -70,8 +70,18 @@ class DeckRetirementProcessIsolationInstrumentationTest {
         artifactFile.parentFile?.mkdirs()
         artifactFile.writeText("deck-retirement-process-isolation-probe")
         try {
-            startBugReportProcess(context, bugReportService!!)
-            waitForBugReportProcess(context)
+            val startOutput = startBugReportProcess(context, bugReportService!!)
+            assertTrue(
+                "am start-foreground-service must succeed without errors, got: $startOutput",
+                !startOutput.contains("Error", ignoreCase = true),
+            )
+            val processSeen = waitForBugReportProcess(context)
+            assertTrue(
+                "The :bugReport secondary process must be positively observed running " +
+                    "before asserting isolation; without observing it, the artifact " +
+                    "assertion proves nothing (AC-009).",
+                processSeen,
+            )
 
             assertTrue(
                 "Recognized artifact must remain after secondary process start: $artifactName",
@@ -109,22 +119,33 @@ class DeckRetirementProcessIsolationInstrumentationTest {
      * background startService call from the instrumentation process, while
      * the shell identity starts the component and forces the secondary
      * process (and its Application.onCreate) to be created.
+     *
+     * Returns the shell command output; callers must treat a reported start
+     * error as a failed precondition rather than silently proceeding.
      */
-    private fun startBugReportProcess(context: Context, serviceInfo: android.content.pm.ServiceInfo) {
+    private fun startBugReportProcess(
+        context: Context,
+        serviceInfo: android.content.pm.ServiceInfo,
+    ): String {
         val component = android.content.ComponentName(context.packageName, serviceInfo.name)
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
         val parcelFileDescriptor = automation.executeShellCommand(
             "am start-foreground-service -n ${component.flattenToString()}",
         )
-        parcelFileDescriptor?.use { pfd ->
+        return parcelFileDescriptor?.use { pfd ->
             java.io.FileInputStream(pfd.fileDescriptor).use { input ->
                 input.readBytes().decodeToString()
             }
-        }
+        } ?: ""
     }
 
-    /** Waits bounded until the `:bugReport` process exists (or times out inertly). */
-    private fun waitForBugReportProcess(context: Context) {
+    /**
+     * Waits bounded until the `:bugReport` process is observed running.
+     * Returns true only if the secondary process was positively observed;
+     * a timeout returns false so the caller can fail the test (AC-009
+     * requires proof under an actually-running secondary process).
+     */
+    private fun waitForBugReportProcess(context: Context): Boolean {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
         val suffix = ":bugReport"
         val deadline = System.currentTimeMillis() + PROCESS_WAIT_TIMEOUT_MS
@@ -134,12 +155,11 @@ class DeckRetirementProcessIsolationInstrumentationTest {
                 // Give the secondary Application.onCreate a moment to (not) run
                 // its retirement migration before asserting the artifact state.
                 Thread.sleep(PROCESS_SETTLE_MS)
-                return
+                return true
             }
             Thread.sleep(PROCESS_POLL_INTERVAL_MS)
         }
-        // The service may legitimately have run and stopped before observation;
-        // the artifact assertion still proves no cleanup ran in it.
+        return false
     }
 
     private companion object {

@@ -168,20 +168,22 @@ class LawnchairApp : Application() {
     }
 
     /**
-     * Returns true if the current process is the default (main) launcher process.
-     * On API 28+ uses [Application.getProcessName]; on API 26-27 falls back to
-     * reading /proc/self/cmdline.
+     * Returns true only if the current process is positively identified as the
+     * default (main) launcher process. On API 28+ uses [Application.getProcessName];
+     * on API 26-27 reads /proc/self/cmdline. If the process name cannot be
+     * determined, returns false (fail-closed) so a secondary process never runs
+     * the retirement migration.
      */
     private fun isDefaultProcess(): Boolean {
-        val currentProcessName = if (Build.VERSION.SDK_INT >= 28) {
-            getProcessName()
-        } else {
-            try {
+        val currentProcessName = try {
+            if (Build.VERSION.SDK_INT >= 28) {
+                getProcessName()
+            } else {
                 File("/proc/self/cmdline").readText().trimEnd('\u0000').trim()
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to read process name, defaulting to main process", e)
-                packageName
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to determine process name, assuming non-default process", e)
+            return false
         }
         return currentProcessName == packageName
     }
