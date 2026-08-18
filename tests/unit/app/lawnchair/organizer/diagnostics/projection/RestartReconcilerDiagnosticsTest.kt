@@ -78,6 +78,29 @@ class RestartReconcilerDiagnosticsTest {
         )
     }
 
+    @Test
+    fun silentPruneAfterAdvanceReportsAdvancedLifecycleNotPreReconciliationFallback() {
+        // APPLYING at PRE_STATE is advanced to READY and then pruned. A buggy
+        // emitter that falls back to the pre-reconciliation record lifecycle
+        // (readRecord() == null after prune) would report APPLYING here.
+        seedReady()
+        assertTrue(store.advance(pointId, LifecycleState.APPLYING))
+        val summary = reconciler.reconcileAll()
+        assertEquals(RestartReconciler.ReconciliationSummary.Clean, summary)
+
+        val event = recordedEvents.singleOrNull()
+        assertNotNull("Silent prune must still emit RESTART_RECONCILED", event)
+        assertEquals(PhaseCode.RESTART_RECONCILED, event!!.phase)
+        // The fake store exposes a live record view, so priorLifecycle reflects
+        // the advance; the contract-relevant assertion is the resulting state.
+        assertEquals(
+            "resultingLifecycle must be post-reconciliation READY, not an APPLYING-era fallback",
+            RecoveryLifecycle.READY,
+            event.reconciliation?.resultingLifecycle,
+        )
+        assertTrue("Record must actually be pruned", store.readRecord(pointId) == null)
+    }
+
     private fun seedReady(): CapturedSnapshot {
         val capture = writer.captureCurrent(CaptureId("restart-diagnostics"))
         val result = store.checkpoint(
