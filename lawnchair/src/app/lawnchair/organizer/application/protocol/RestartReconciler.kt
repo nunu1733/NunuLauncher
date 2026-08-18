@@ -8,12 +8,16 @@ import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.AuthoritativeState
 import app.lawnchair.organizer.application.public.RecoveryFailure
 import app.lawnchair.organizer.application.public.RecoveryResult
+import app.lawnchair.organizer.diagnostics.DiagnosticsPort
+import app.lawnchair.organizer.diagnostics.model.RunEvent
+import app.lawnchair.organizer.diagnostics.projection.ReconciliationProjection
 
 /** Executes restart reconciliation; lifecycle classification alone is never treated as work. */
 class RestartReconciler(
     private val writer: LayoutWriterPort,
     private val store: RecoveryStorePort,
     private val faults: FaultInjector,
+    private val diagnosticsPort: DiagnosticsPort = DiagnosticsPort.NOOP,
 ) {
     sealed interface ReconciliationSummary {
         data object Clean : ReconciliationSummary
@@ -48,7 +52,12 @@ class RestartReconciler(
         val surfaced = buildList {
             store.listNonFinalRecords().forEach { record ->
                 faults.restartBoundary(FaultInjector.RestartPhase.BEFORE_RECONCILE)
-                reconcileOne(record)?.let(::add)
+                val result = reconcileOne(record)
+                // Emit RESTART_RECONCILED for each reconciled record
+                if (result != null) {
+                    emitReconciledEvent(record, result)
+                }
+                result?.let(::add)
                 faults.restartBoundary(FaultInjector.RestartPhase.AFTER_RECONCILE)
             }
         }
@@ -56,6 +65,48 @@ class RestartReconciler(
             return ReconciliationSummary.Failed
         }
         return if (surfaced.isEmpty()) ReconciliationSummary.Clean else ReconciliationSummary.Resolved(surfaced)
+    }
+
+    private fun emitReconciledEvent(
+        record: RecoveryStorePort.StoredRecord,
+        result: ReconciliationPublicResult,
+    ) {
+        try {
+            val classification = classify(record)
+            val resultingLifecycle = resultingLifecycleFor(result, record)
+            val event = ReconciliationProjection.project(
+                subjectRunId = record.runId,
+                priorLifecycle = record.lifecycle,
+                classification = classification,
+                resultingLifecycle = resultingLifecycle,
+                journalSequence = 0L,
+            )
+            diagnosticsPort.emit(event)
+        } catch (_: Exception) {
+            // Fail-open
+        }
+    }
+
+    private fun resultingLifecycleFor(
+        result: ReconciliationPublicResult,
+        record: RecoveryStorePort.StoredRecord,
+    ): LifecycleState = when (result) {
+        is ReconciliationPublicResult.SilentPrune -> LifecycleState.READY
+
+        is ReconciliationPublicResult.SilentAdvance -> record.lifecycle
+
+        is ReconciliationPublicResult.ResumeApply -> when (result.outcome) {
+            is ApplyResult.Applied -> LifecycleState.VERIFIED
+            is ApplyResult.RolledBack -> LifecycleState.READY
+            else -> LifecycleState.CORRUPT
+        }
+
+        is ReconciliationPublicResult.ResumeRecovery -> when (result.outcome) {
+            is RecoveryResult.Restored -> LifecycleState.RESTORED
+            else -> record.lifecycle
+        }
+
+        is ReconciliationPublicResult.Unresolved -> LifecycleState.CORRUPT
     }
 
     private fun reconcileOne(record: RecoveryStorePort.StoredRecord): ReconciliationPublicResult? {

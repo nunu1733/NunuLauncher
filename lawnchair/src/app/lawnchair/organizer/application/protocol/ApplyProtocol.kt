@@ -11,6 +11,12 @@ import app.lawnchair.organizer.application.public.RecoveryFailure
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
+import app.lawnchair.organizer.diagnostics.DiagnosticsPort
+import app.lawnchair.organizer.diagnostics.model.ApplyStage
+import app.lawnchair.organizer.diagnostics.model.ApplySummary
+import app.lawnchair.organizer.diagnostics.model.PhaseCode
+import app.lawnchair.organizer.diagnostics.model.RunEvent
+import app.lawnchair.organizer.diagnostics.projection.ApplyProjection
 
 /** Implements the accepted A0-A8 apply protocol while holding one outer writer lease. */
 class ApplyProtocol(
@@ -20,12 +26,24 @@ class ApplyProtocol(
     private val operationIds: OperationIdSource,
     private val faults: FaultInjector,
     private val mutex: RunMutex,
+    private val diagnosticsPort: DiagnosticsPort = DiagnosticsPort.NOOP,
 ) {
     fun apply(plan: ValidatedLayoutPlan): ApplyResult {
         val runId = operationIds.newRunId()
-        if (!mutex.tryAcquire(runId)) return ApplyResult.ConcurrentRun
+        if (!mutex.tryAcquire(runId)) {
+            emitSafely(
+                RunEvent(
+                    journalSequence = 0L,
+                    phase = PhaseCode.CONCURRENT_RUN_REJECTED,
+                ),
+            )
+            return ApplyResult.ConcurrentRun
+        }
         return try {
-            applyWithRunMutex(runId, plan)
+            val result = applyWithRunMutex(runId, plan)
+            // Emit terminal event for the apply result
+            emitTerminalApplyEvent(result, plan)
+            result
         } finally {
             mutex.release(runId)
         }
@@ -116,6 +134,23 @@ class ApplyProtocol(
         )
         if (!marked) return ApplyResult.Rejected(runId, PreWriteRejection.RECOVERY_STORE_UNAVAILABLE)
         faults.afterRecoveryLifecycleCommit(FaultInjector.RecoveryLifecyclePhase.APPLYING, pointId)
+
+        // Emit CHECKPOINTED after A4 checkpoint creation
+        emitSafely(
+            ApplyProjection.projectCheckpointed(
+                runId = runId.value,
+                pointId = pointId.value,
+                journalSequence = 0L,
+            ),
+        )
+
+        // Emit APPLY_COMMITTED after A6 commit (markApplying)
+        emitSafely(
+            ApplyProjection.projectCommitted(
+                runId = runId.value,
+                journalSequence = 0L,
+            ),
+        )
 
         val outcome = try {
             writer.applyWriteSet(lease, writeSet, pointId, faults)
@@ -376,6 +411,60 @@ class ApplyProtocol(
             if (modelVerified) AuthoritativeState.REVIEWED_CURRENT_DB_AND_MODEL else AuthoritativeState.REVIEWED_CURRENT_DB_MODEL_UNVERIFIED
 
         AuthoritativeClass.NEITHER -> AuthoritativeState.UNKNOWN
+    }
+
+    private fun emitTerminalApplyEvent(result: ApplyResult, plan: ValidatedLayoutPlan) {
+        val preserveCount = plan.actions.count { it is ApplyAction.Preserve }
+        val updateCount = plan.actions.count { it is ApplyAction.Update }
+        val insertCount = plan.actions.count { it is ApplyAction.Insert }
+        val summary = ApplySummary(
+            preserveActionCount = preserveCount,
+            updateActionCount = updateCount,
+            insertActionCount = insertCount,
+        )
+        val applyStage = applyStageForResult(result)
+        val event = ApplyProjection.project(result, journalSequence = 0L, applyStage = applyStage, applySummary = summary)
+        emitSafely(event)
+    }
+
+    private fun applyStageForResult(result: ApplyResult): ApplyStage? = when (result) {
+        is ApplyResult.NoChanges -> ApplyStage.A2
+
+        is ApplyResult.Applied -> ApplyStage.A8
+
+        is ApplyResult.Rejected -> when (result.reason) {
+            PreWriteRejection.INVALID_PLAN,
+            PreWriteRejection.STALE_REVISION,
+            PreWriteRejection.EXACT_PRECONDITION_FAILED,
+            PreWriteRejection.LOCK_STATE_UNAVAILABLE,
+            PreWriteRejection.IDENTITY_EXHAUSTED,
+            -> ApplyStage.A2
+
+            PreWriteRejection.CHECKPOINT_CREATE_FAILED,
+            PreWriteRejection.CHECKPOINT_VALIDATE_FAILED,
+            PreWriteRejection.RECOVERY_STORE_UNAVAILABLE,
+            -> ApplyStage.A4
+
+            PreWriteRejection.WRITER_BUSY -> ApplyStage.A0
+        }
+
+        is ApplyResult.RolledBack -> ApplyStage.A6
+
+        is ApplyResult.Recovered -> ApplyStage.A7
+
+        is ApplyResult.Unresolved -> ApplyStage.A6
+
+        is ApplyResult.RecoveryFailed -> ApplyStage.A7
+
+        is ApplyResult.ConcurrentRun -> ApplyStage.A0
+    }
+
+    private fun emitSafely(event: RunEvent) {
+        try {
+            diagnosticsPort.emit(event)
+        } catch (_: Exception) {
+            // Fail-open: diagnostics failure does not affect the organizer operation
+        }
     }
 
     private companion object {
