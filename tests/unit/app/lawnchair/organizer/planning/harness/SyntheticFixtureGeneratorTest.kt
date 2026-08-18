@@ -327,6 +327,14 @@ class SyntheticFixtureGeneratorTest {
     }
 
     @Test
+    fun deckOutputCompatibilityFixtureIsRegistered() {
+        val fixture = ExampleCorpus.allExamples[FixtureId("deck-output-compatibility")]
+        assertNotNull("deck-output-compatibility fixture must be registered in ExampleCorpus.allExamples", fixture)
+        assertEquals(FixtureId("deck-output-compatibility"), fixture!!.id)
+        assertNotNull(fixture.input)
+    }
+
+    @Test
     fun exampleCorpusUsesCompleteTargetPartitions() {
         ExampleCorpus.allExamples.values.forEach { fixture ->
             val captured = fixture.input.snapshot.items.map { it.id }.toSet()

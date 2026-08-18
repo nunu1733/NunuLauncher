@@ -170,8 +170,7 @@
     <string name="always_reload_icons_warning">Entraînera le rechargement régulier des icônes, il n\'est pas nécessaire de l\'activer si le pack d\'icônes n\'est pas mis à jour régulièrement</string>
     <string name="icon_swipe_gestures">Gestes de balayage des icônes</string>
     <string name="icon_swipe_gestures_description">Effectuez des actions en balayant les icônes vers la gauche ou vers la droite</string>
-    <string name="show_deck_layout">Disposition Deck</string>
-    <string name="show_deck_layout_description">Affichez une option de disposition permettant de masquer le tiroir des applis et d\'ajouter automatiquement les nouvelles applis à l\'écran d\'accueil</string>
+
     <string name="material_expressive_label">Material 3 Expressive</string>
     <string name="material_expressive_description">Activez les modifications Material 3 Expressive dans l\'espace de travail</string>
     <string name="experimental_folder_shape_modify_label">Forme de dossier personnalisable</string>
@@ -496,9 +495,7 @@
     <string name="wallpaper_blur">Flouter le fond d\'écran (expérimental)</string>
     <string name="wallpaper_background_blur">Intensité du flou</string>
     <string name="wallpaper_background_blur_factor">Seuil factoriel</string>
-    <string name="home_lawn_deck_label">Deck</string>
-    <string name="home_lawn_deck_label_beta">Deck (bêta)</string>
-    <string name="home_lawn_deck_description">Accédez à vos applications sans effort avec Deck, l\'expérience sans tiroir d\'applis ultime, conçue pour une organisation simple et fluide de votre écran d\'accueil</string>
+
     <string name="auto_add_shortcuts_label">Ajouter les nouvelles applis à l\'écran d\'accueil</string>
     <string name="minus_one_enable">Afficher le flux</string>
     <string name="minus_one_unavailable">Aucune appli de flux installée</string>

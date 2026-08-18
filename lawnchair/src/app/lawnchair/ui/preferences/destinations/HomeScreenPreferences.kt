@@ -33,7 +33,6 @@ import app.lawnchair.theme.color.ColorMode
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.components.FeedPreference
 import app.lawnchair.ui.preferences.components.GestureHandlerPreference
-import app.lawnchair.ui.preferences.components.HomeLayoutSettings
 import app.lawnchair.ui.preferences.components.NavigationActionPreference
 import app.lawnchair.ui.preferences.components.OverlayHandlerPreference
 import app.lawnchair.ui.preferences.components.controls.ClickablePreference
@@ -69,25 +68,17 @@ fun HomeScreenPreferences(
         modifier = modifier,
     ) {
         val lockHomeScreenAdapter = prefs2.lockHomeScreen.getAdapter()
-        val showDeckLayout = prefs2.showDeckLayout.getAdapter().state.value
         val context = LocalContext.current
-
-        if (showDeckLayout) {
-            HomeLayoutSettings()
-        }
 
         PreferenceGroup(heading = stringResource(id = R.string.general_label)) {
             val addIconToHomeAdapter = prefs.addIconToHome.getAdapter()
-            val isDeckLayoutAdapter = prefs2.deckLayout.getAdapter()
-            ExpandAndShrink(visible = !isDeckLayoutAdapter.state.value) {
-                SwitchPreference(
-                    checked = (!lockHomeScreenAdapter.state.value && addIconToHomeAdapter.state.value) || isDeckLayoutAdapter.state.value,
-                    onCheckedChange = addIconToHomeAdapter::onChange,
-                    label = stringResource(id = R.string.auto_add_shortcuts_label),
-                    description = if (lockHomeScreenAdapter.state.value) stringResource(id = R.string.home_screen_locked) else null,
-                    enabled = lockHomeScreenAdapter.state.value.not(),
-                )
-            }
+            SwitchPreference(
+                checked = !lockHomeScreenAdapter.state.value && addIconToHomeAdapter.state.value,
+                onCheckedChange = addIconToHomeAdapter::onChange,
+                label = stringResource(id = R.string.auto_add_shortcuts_label),
+                description = if (lockHomeScreenAdapter.state.value) stringResource(id = R.string.home_screen_locked) else null,
+                enabled = lockHomeScreenAdapter.state.value.not(),
+            )
             GestureHandlerPreference(
                 adapter = prefs2.doubleTapGestureHandler.getAdapter(),
                 label = stringResource(id = R.string.gesture_double_tap),

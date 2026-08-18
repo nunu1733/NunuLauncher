@@ -170,8 +170,7 @@
     <string name="always_reload_icons_warning">Will cause icon to reload regularly, this is not required if icon pack doesn\'t update regularly</string>
     <string name="icon_swipe_gestures">아이콘 스와이프 제스처</string>
     <string name="icon_swipe_gestures_description">홈 화면을 움직이는 대신 아이콘을 왼쪽이나 오른쪽으로 스와이프 할때 액션을 실행합니다</string>
-    <string name="show_deck_layout">독 레이아웃</string>
-    <string name="show_deck_layout_description">앱 서랍을 가리고 홈 화면에 새 앱을 자동으로 추가하는 레이아웃 옵션을 표시합니다</string>
+
     <string name="material_expressive_label">Material 3 Expressive</string>
     <string name="material_expressive_description">Enable Material 3 Expressive changes in workspace</string>
     <string name="gesturenavcontract_label">GestureNavContract API</string>
@@ -480,9 +479,7 @@
     <string name="wallpaper_blur">배경화면 흐림 효과 (실험적 기능)</string>
     <string name="wallpaper_background_blur">흐림 강도</string>
     <string name="wallpaper_background_blur_factor">인자 임계값</string>
-    <string name="home_lawn_deck_label">덱</string>
-    <string name="home_lawn_deck_label_beta">덱 (베타)</string>
-    <string name="home_lawn_deck_description">간편함과 자연스러운 구성을 위해 설계된 궁극의 서랍 없는 환경인 독을 사용하여 손쉽게 애플리케이션에 액세스 할 수 있습니다</string>
+
     <string name="auto_add_shortcuts_label">홈 화면에 새로운 앱 바로가기 추가</string>
     <string name="minus_one_enable">피드 활성화</string>
     <string name="minus_one_unavailable">설치된 피드 앱이 없습니다.</string>

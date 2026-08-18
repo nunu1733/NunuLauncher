@@ -92,7 +92,7 @@ public class RestoreLeaseSerializationTest {
         AtomicBoolean modelTaskRan = new AtomicBoolean(false);
         CompletableFuture<Integer> providerFuture;
         LayoutWriteCoordinator.Lease lease =
-                mCoordinator.acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.DECK_FILE_RESTORE);
+                mCoordinator.acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.BACKUP_RESTORE);
         try {
             mCoordinator.runOrDefer(
                     LayoutWriteCoordinator.OwnerKind.MODEL_WRITER,

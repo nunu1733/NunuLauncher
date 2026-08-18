@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import app.lawnchair.backup.LawnchairBackup
 import app.lawnchair.flowerpot.Flowerpot
+import app.lawnchair.migration.DeckRetirementMigration
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.ui.ModalBottomSheetContent
@@ -71,6 +72,9 @@ class LawnchairApp : Application() {
         super.onCreate()
         instance = this
         QuickStepContract.sRecentsDisabled = !recentsEnabled
+        if (isDefaultProcess()) {
+            DeckRetirementMigration.run(this)
+        }
         Flowerpot.Manager.getInstance(this)
     }
 
@@ -161,6 +165,27 @@ class LawnchairApp : Application() {
             return fallback
         }
         return res.getBoolean(resId)
+    }
+
+    /**
+     * Returns true only if the current process is positively identified as the
+     * default (main) launcher process. On API 28+ uses [Application.getProcessName];
+     * on API 26-27 reads /proc/self/cmdline. If the process name cannot be
+     * determined, returns false (fail-closed) so a secondary process never runs
+     * the retirement migration.
+     */
+    private fun isDefaultProcess(): Boolean {
+        val currentProcessName = try {
+            if (Build.VERSION.SDK_INT >= 28) {
+                getProcessName()
+            } else {
+                File("/proc/self/cmdline").readText().trimEnd('\u0000').trim()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to determine process name, assuming non-default process", e)
+            return false
+        }
+        return currentProcessName == packageName
     }
 
     private val activityHandler = object : ActivityLifecycleCallbacks {

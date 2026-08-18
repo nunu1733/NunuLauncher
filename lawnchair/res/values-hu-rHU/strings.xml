@@ -170,8 +170,7 @@
     <string name="always_reload_icons_warning">Will cause icon to reload regularly, this is not required if icon pack doesn\'t update regularly</string>
     <string name="icon_swipe_gestures">Vezérlés az ikonon való csúsztatással</string>
     <string name="icon_swipe_gestures_description">Képernyőmozgatás helyett végrehajthat műveleteket az ikonon való jobbra vagy balra csúsztatással</string>
-    <string name="show_deck_layout">Deck layout</string>
-    <string name="show_deck_layout_description">Show a layout option to hide the app drawer and automatically add new apps to the home screen</string>
+
     <string name="material_expressive_label">Material 3 Expressive</string>
     <string name="material_expressive_description">Enable Material 3 Expressive changes in workspace</string>
     <string name="gesturenavcontract_label">GestureNavContract API</string>
@@ -480,9 +479,7 @@
     <string name="wallpaper_blur">Homályos háttérkép (kísérleti)</string>
     <string name="wallpaper_background_blur">A homályosítás erőssége</string>
     <string name="wallpaper_background_blur_factor">Küszöbtényező</string>
-    <string name="home_lawn_deck_label">Pakli</string>
-    <string name="home_lawn_deck_label_beta">Pakli (kísérleti)</string>
-    <string name="home_lawn_deck_description">Könnyedén hozzáférhet alkalmazásaihoz a Pakli segítségével, amely alkalmazásfiók nélküli élmény, az egyszerűségre és a zökkenőmentes rendszerezésre tervezték</string>
+
     <string name="auto_add_shortcuts_label">Új alkalmazás hozzáadása a Kezdőképernyőhöz</string>
     <string name="minus_one_enable">Látható Hírfolyam</string>
     <string name="minus_one_unavailable">Nincs hírfolyam-alkalmazás telepítve</string>

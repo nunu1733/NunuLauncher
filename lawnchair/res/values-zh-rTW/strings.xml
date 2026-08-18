@@ -170,8 +170,7 @@
     <string name="always_reload_icons_warning">Will cause icon to reload regularly, this is not required if icon pack doesn\'t update regularly</string>
     <string name="icon_swipe_gestures">滑動圖示手勢</string>
     <string name="icon_swipe_gestures_description">配置於圖示上向左/右滑動時的動作以取代移動主畫面</string>
-    <string name="show_deck_layout">平面模式</string>
-    <string name="show_deck_layout_description">顯示版面選項以隱藏應用程式抽屜並自動將項目加到主畫面</string>
+
     <string name="material_expressive_label">Material 3 Expressive</string>
     <string name="material_expressive_description">Enable Material 3 Expressive changes in workspace</string>
     <string name="gesturenavcontract_label">GestureNavContract API</string>
@@ -480,9 +479,7 @@
     <string name="wallpaper_blur">模糊桌布 (實驗性)</string>
     <string name="wallpaper_background_blur">模糊強度</string>
     <string name="wallpaper_background_blur_factor">係數閥值</string>
-    <string name="home_lawn_deck_label">平面</string>
-    <string name="home_lawn_deck_label_beta">平面 (測試版)</string>
-    <string name="home_lawn_deck_description">透過平面模式輕鬆存取您的應用程式，旨在簡約設計與無縫管理的絕佳無抽屜體驗</string>
+
     <string name="auto_add_shortcuts_label">新增新應用程式至主畫面</string>
     <string name="minus_one_enable">顯示訂閱</string>
     <string name="minus_one_unavailable">尚未安裝訂閱應用程式</string>

@@ -170,8 +170,7 @@
     <string name="always_reload_icons_warning">Will cause icon to reload regularly, this is not required if icon pack doesn\'t update regularly</string>
     <string name="icon_swipe_gestures">アイコンのスワイプジェスチャー</string>
     <string name="icon_swipe_gestures_description">アイコンを左右にスワイプした時にホーム画面の移動の代わりにアクションを実行します</string>
-    <string name="show_deck_layout">ドックのレイアウト</string>
-    <string name="show_deck_layout_description">アプリドロワーを非表示にし、自動的に新しいアプリをホーム画面に追加するためのレイアウトオプションを表示します</string>
+
     <string name="material_expressive_label">Material 3 Expressive</string>
     <string name="material_expressive_description">ワークスペースでMaterial 3 Expressive の変更を有効にします。</string>
     <string name="experimental_folder_shape_modify_label">カスタマイズ可能なフォルダーの形状　
@@ -498,9 +497,7 @@
     <string name="wallpaper_blur">ぼやけた壁紙（実験的な機能）</string>
     <string name="wallpaper_background_blur">ぼかしの強さ</string>
     <string name="wallpaper_background_blur_factor">因子のしきい値</string>
-    <string name="home_lawn_deck_label">ドック</string>
-    <string name="home_lawn_deck_label_beta">ドック(ベータ版)</string>
-    <string name="home_lawn_deck_description">シンプルでシームレスな組織のために設計された究極のドロワーレスなエクスペリエンスであるデッキで、アプリケーションに簡単にアクセスできます</string>
+
     <string name="auto_add_shortcuts_label">ホーム画面に新しいアプリを追加</string>
     <string name="minus_one_enable">フィードを表示</string>
     <string name="minus_one_unavailable">フィードアプリがインストールされていません</string>

@@ -170,8 +170,7 @@
     <string name="always_reload_icons_warning">Dapat menyebabkan ikon untuk memuat ulang secara berkala, ini tidak diperlukan apabila pak ikon tidak update secara berkala</string>
     <string name="icon_swipe_gestures">Gerakan menggeser ikon</string>
     <string name="icon_swipe_gestures_description">Lakukan tindakan saat menggeser ke kiri atau kanan pada ikon alih-alih memindahkan layar beranda</string>
-    <string name="show_deck_layout">Tata letak dek</string>
-    <string name="show_deck_layout_description">Tampilkan opsi tata letak untuk menyembunyikan laci aplikasi dan secara otomatis menambahkan aplikasi baru ke layar beranda</string>
+
     <string name="material_expressive_label">Material 3 Ekspresif</string>
     <string name="material_expressive_description">Aktifkan perubahan Material 3 Ekspresif pada ruang kerja</string>
     <string name="gesturenavcontract_label">API GestureNavContract</string>
@@ -480,9 +479,7 @@
     <string name="wallpaper_blur">Wallpaper samar (eksperimental)</string>
     <string name="wallpaper_background_blur">Intensitas blur</string>
     <string name="wallpaper_background_blur_factor">Ambang batas faktor</string>
-    <string name="home_lawn_deck_label">Dek</string>
-    <string name="home_lawn_deck_label_beta">Dek (Beta)</string>
-    <string name="home_lawn_deck_description">Akses aplikasi Anda dengan mudah dengan Deck, pengalaman tanpa laci terbaik yang dirancang untuk kesederhanaan dan pengaturan yang mulus</string>
+
     <string name="auto_add_shortcuts_label">Tambahkan apli baru ke layar beranda</string>
     <string name="minus_one_enable">Tampilkan umpan</string>
     <string name="minus_one_unavailable">Tidak ada aplikasi feed yang terpasang</string>

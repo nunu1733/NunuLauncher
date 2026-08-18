@@ -170,8 +170,7 @@
     <string name="always_reload_icons_warning">Will cause icon to reload regularly, this is not required if icon pack doesn\'t update regularly</string>
     <string name="icon_swipe_gestures">Gestos de deslizamento de ícones</string>
     <string name="icon_swipe_gestures_description">Realizar ações ao deslizar para a esquerda ou à direita dos ícones em vez de mover para a tela inicial</string>
-    <string name="show_deck_layout">Layout do deck</string>
-    <string name="show_deck_layout_description">Mostrar uma opção de layout para ocultar a gaveta de aplicativos e adicionar automaticamente novos aplicativos à tela inicial</string>
+
     <string name="material_expressive_label">Material 3 expressivo</string>
     <string name="material_expressive_description">Ativar alterações expressivas do Material 3 no espaço de trabalho</string>
     <string name="gesturenavcontract_label">GestureNavContract Api</string>
@@ -480,9 +479,7 @@
     <string name="wallpaper_blur">Desfoque no papel de parede (experimental)</string>
     <string name="wallpaper_background_blur">Intensidade do desfoque</string>
     <string name="wallpaper_background_blur_factor">Limite de fator</string>
-    <string name="home_lawn_deck_label">Deck</string>
-    <string name="home_lawn_deck_label_beta">Deck (Beta)</string>
-    <string name="home_lawn_deck_description">Acesse todos os seus aplicativos com a Deck, a melhor experiência sem qualquer gaveta de aplicativos, projetada para ser simples e prática</string>
+
     <string name="auto_add_shortcuts_label">Adicionar novos aplicativos à tela inicial</string>
     <string name="minus_one_enable">Mostrar o feed</string>
     <string name="minus_one_unavailable">Nenhum aplicativo de feed instalado</string>

@@ -170,8 +170,7 @@
     <string name="always_reload_icons_warning">Θα προκαλέσει την τακτική επαναφόρτωση του εικονιδίου, αυτό δεν απαιτείται εάν το πακέτο εικονιδίων δεν ενημερώνεται τακτικά</string>
     <string name="icon_swipe_gestures">Χειρονομίες σάρωσης εικονιδίων</string>
     <string name="icon_swipe_gestures_description">Εκτελέστε ενέργειες όταν σύρετε αριστερά ή δεξιά στα εικονίδια αντί να μετακινείτε την αρχική οθόνη</string>
-    <string name="show_deck_layout">Διάταξη τράπουλας</string>
-    <string name="show_deck_layout_description">Εμφάνιση μιας επιλογής διάταξης για την απόκρυψη του συρταριού εφαρμογών και την αυτόματη προσθήκη νέων εφαρμογών στην αρχική οθόνη</string>
+
     <string name="material_expressive_label">Σχεδιασμός Material 3 Expressive</string>
     <string name="material_expressive_description">Ενεργοποίηση αλλαγών σχεδιασμού Material 3 Expressive στο χώρο εργασίας</string>
     <string name="experimental_folder_shape_modify_label">Προσαρμόσιμο σχήμα φακέλου</string>
@@ -496,9 +495,7 @@
     <string name="wallpaper_blur">Θόλωμα ταπετσαρίας (πειραματικό)</string>
     <string name="wallpaper_background_blur">Ένταση θολώματος</string>
     <string name="wallpaper_background_blur_factor">Όριο παράγοντα</string>
-    <string name="home_lawn_deck_label">Ενιαία</string>
-    <string name="home_lawn_deck_label_beta">Ενιαία (Beta)</string>
-    <string name="home_lawn_deck_description">Αποκτήστε εύκολη πρόσβαση στις εφαρμογές σας με την Ενιαία διάταξη, την απόλυτη εμπειρία χωρίς συρτάρι εφαρμογών, σχεδιασμένη για απλότητα και απρόσκοπτη οργάνωση</string>
+
     <string name="auto_add_shortcuts_label">Προσθήκη νέων εφαρμογών στην αρχική οθόνη</string>
     <string name="minus_one_enable">Εμφάνιση ροής</string>
     <string name="minus_one_unavailable">Δεν υπάρχουν εγκατεστημένες εφαρμογές ροής</string>

@@ -170,8 +170,7 @@
     <string name="always_reload_icons_warning">Will cause icon to reload regularly, this is not required if icon pack doesn\'t update regularly</string>
     <string name="icon_swipe_gestures">Ikoonide nipsamisliigutused</string>
     <string name="icon_swipe_gestures_description">Toimingute tegemiseks nipsa ikoonil paremale või vasakule, mitte avakuva liigutades</string>
-    <string name="show_deck_layout">Doki paigutus</string>
-    <string name="show_deck_layout_description">Rakenduste sahtli peitmiseks ja uute rakenduste automaatseks lisamiseks avakuvale kuva paigutuse valik</string>
+
     <string name="material_expressive_label">Material 3 Expressive</string>
     <string name="material_expressive_description">Enable Material 3 Expressive changes in workspace</string>
     <string name="gesturenavcontract_label">GestureNavContract API</string>
@@ -480,9 +479,7 @@
     <string name="wallpaper_blur">Hägusta taustapilt (katseline)</string>
     <string name="wallpaper_background_blur">Hägususe aste</string>
     <string name="wallpaper_background_blur_factor">Hägususteguri piirang</string>
-    <string name="home_lawn_deck_label">Rakenduste tekk</string>
-    <string name="home_lawn_deck_label_beta">Rakenduste tekk (beeta)</string>
-    <string name="home_lawn_deck_description">Vahetu juurdepääs rakendustele teki abil. Rakenduste menüü puudub, eesmärgiks lihtsus ja sujuv kasutus</string>
+
     <string name="auto_add_shortcuts_label">Lisa uued rakendused avakuvale</string>
     <string name="minus_one_enable">Kuva uudistevoog</string>
     <string name="minus_one_unavailable">Uudistevoo rakendusi pole paigaldatud</string>

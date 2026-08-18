@@ -170,8 +170,7 @@
     <string name="always_reload_icons_warning">Will cause icon to reload regularly, this is not required if icon pack doesn\'t update regularly</string>
     <string name="icon_swipe_gestures">Gesto de deslizar no ícone</string>
     <string name="icon_swipe_gestures_description">Fazer uma ação quando faz um gesto para a esquerda ou direita sobre um ícone em vez de o mover para o ecrã principal</string>
-    <string name="show_deck_layout">Ambiente do Deck</string>
-    <string name="show_deck_layout_description">Show a layout option to hide the app drawer and automatically add new apps to the home screen</string>
+
     <string name="material_expressive_label">Material 3 Expressive</string>
     <string name="material_expressive_description">Enable Material 3 Expressive changes in workspace</string>
     <string name="gesturenavcontract_label">GestureNavContract API</string>
@@ -481,9 +480,7 @@ Transparentes</string>
     <string name="wallpaper_blur">Desfocar o papel de parede (experimental)</string>
     <string name="wallpaper_background_blur">Intensidade do desfoque</string>
     <string name="wallpaper_background_blur_factor">Limite do fator</string>
-    <string name="home_lawn_deck_label">Deck</string>
-    <string name="home_lawn_deck_label_beta">Deck (Beta)</string>
-    <string name="home_lawn_deck_description">Effortlessly access your applications with Deck, the ultimate drawerless experience designed for simplicity and seamless organization</string>
+
     <string name="auto_add_shortcuts_label">Adicionar novas aplicações ao ecrã principal</string>
     <string name="minus_one_enable">Mostrar feed</string>
     <string name="minus_one_unavailable">Sem aplicações de feed instaladas</string>

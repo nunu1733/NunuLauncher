@@ -55,7 +55,6 @@ public final class LayoutWriteCoordinator {
         GRID_MIGRATION,
         RESTORE,
         BACKUP_RESTORE,
-        DECK_FILE_RESTORE,
     }
 
     public interface Lease extends AutoCloseable {
@@ -107,19 +106,18 @@ public final class LayoutWriteCoordinator {
         return null;
     }
 
-    // Issue #58: RESTORE, BACKUP_RESTORE and DECK_FILE_RESTORE form one reentrancy family so a
+    // Issue #58: RESTORE and BACKUP_RESTORE form one reentrancy family so a
     // thread holding any restore lease can enter RestoreDbTask.performRestore without
     // self-deadlocking. Exclusion against every other kind is unchanged.
     public static boolean isRestoreFamily(@NonNull OwnerKind kind) {
         return kind == OwnerKind.RESTORE
-                || kind == OwnerKind.BACKUP_RESTORE
-                || kind == OwnerKind.DECK_FILE_RESTORE;
+                || kind == OwnerKind.BACKUP_RESTORE;
     }
 
     /**
      * Reentrant acquisition for the restore family (Issue #58). Succeeds when the
-     * current lease is any restore kind ({@code RESTORE}, {@code BACKUP_RESTORE}
-     * or {@code DECK_FILE_RESTORE}) held by the calling thread; the returned view
+     * current lease is any restore kind ({@code RESTORE} or {@code BACKUP_RESTORE})
+     * held by the calling thread; the returned view
      * keeps the outer kind and token so only the outermost lease unlocks.
      */
     @Nullable

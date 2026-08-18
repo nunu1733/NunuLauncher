@@ -89,6 +89,8 @@ jobs:
         run: python3 tools/repo-contract/test_validate_repo_contract.py
       - name: High-risk gate self-tests
         run: python3 tools/repo-contract/test_validate_high_risk_evidence.py
+      - name: Validate Deck retirement repo contract
+        run: python3 tools/repo-contract/test_validate_deck_retirement.py
       - name: Writer inventory scan
         run: python3 tools/repo-contract/validate_writer_inventory.py
 

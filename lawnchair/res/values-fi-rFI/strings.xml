@@ -170,8 +170,7 @@
     <string name="always_reload_icons_warning">Will cause icon to reload regularly, this is not required if icon pack doesn\'t update regularly</string>
     <string name="icon_swipe_gestures">Kuvakkeiden pyyhkäisyliikkeet</string>
     <string name="icon_swipe_gestures_description">Suorita toimintoja kuvakkeita oikealle tai vasemmalle pyyhkäisemällä aloitusnäytön siirtämisen sijaan</string>
-    <string name="show_deck_layout">Telakan asettelu</string>
-    <string name="show_deck_layout_description">Näytä asetus sovellusvalikon piilottamiseksi ja sovellusten automaattisen aloitusnäyttöön lisäämiseksi</string>
+
     <string name="material_expressive_label">Material 3 Expressive</string>
     <string name="material_expressive_description">Enable Material 3 Expressive changes in workspace</string>
     <string name="gesturenavcontract_label">GestureNavContract API</string>
@@ -480,9 +479,7 @@
     <string name="wallpaper_blur">Sumenna taustakuva (kokeellinen)</string>
     <string name="wallpaper_background_blur">Sumennuksen vahvuus</string>
     <string name="wallpaper_background_blur_factor">Tekijän kynnysarvo</string>
-    <string name="home_lawn_deck_label">Pakkanäkymä</string>
-    <string name="home_lawn_deck_label_beta">Pakka (Beta)</string>
-    <string name="home_lawn_deck_description">Avaa sovelluksesi vaivattomasti Pakalla, ultimaattisella sovellusnäkymättömällä tilalla, joka on suunniteltu yksinkertaisuus ja helppo organisointi mielessä</string>
+
     <string name="auto_add_shortcuts_label">Lisää uusia sovelluksia aloitusnäyttöön</string>
     <string name="minus_one_enable">Näytä syöte</string>
     <string name="minus_one_unavailable">Syötteen tarjoavia sovelluksia ei ole asennettu</string>
