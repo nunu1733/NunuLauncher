@@ -7,7 +7,7 @@
 - PR: https://github.com/nunu1733/NunuLauncher/pull/82
 - Head SHA: 8c6b92c48f60007123c04cc0b520555f7750345a
 - CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32145008969 (merge gate on the audited head SHA; `changes`, `check-style`, `validate-repo-contract`, `organizer-unit-tests`, `build-debug-apk`, `final-status` all success)
-- Criteria: specs/67-organizer-diagnostics/spec.md (`status: accepted`) AC-67-01 through AC-67-14
+- Criteria: specs/67-organizer-diagnostics/spec.md — FR-015, NFR-008, NFR-011 (acceptance criteria AC-67-01 through AC-67-14 verified individually below)
 
 ## Scope
 
@@ -67,6 +67,8 @@ New Python contract validation:
 - `tools/repo-contract/test_validate_diagnostics_contract.py` (4 self-tests)
 
 ## Criteria check
+
+Per-acceptance-criterion verification against FR-015, NFR-008, NFR-011 (specs/67-organizer-diagnostics/spec.md, `status: accepted`). All 14 acceptance criteria PASS; details per criterion follow.
 
 ### AC-67-01 — Closed schema: production and test diagnostics values can serialize only the accepted RunEvent field set and closed enum/code values; no free-form payload field or debug-only extension exists.
 
