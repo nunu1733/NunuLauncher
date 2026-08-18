@@ -5,14 +5,20 @@
 
 - Auditor: Implementation-session-independent audit session (solo-maintenance independent re-execution)
 - PR: https://github.com/nunu1733/NunuLauncher/pull/79
-- Head SHA: 83763aaee4baccec5f2011c1550161bcb8dfbda7
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32092140699 (merge gate on the audited head SHA; `changes`, `check-style` passed; `organizer-unit-tests`, `build-debug-apk` in progress; `validate-repo-contract` reported failure solely due to missing audit record — verified locally with all validators passing)
+- Head SHA: bb6d6b841de40718abbc7abd6b33cb83b788a508
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32125231122 (merge gate on the audited head SHA; `changes`, `check-style`, `organizer-unit-tests`, `build-debug-apk`, `validate-repo-contract`, `final-status` all success)
 - Criteria: specs/57-deck-runtime-retirement/spec.md (`status: accepted`) AC-001 through AC-009
 
 ## Scope
 
-Audited the complete `origin/main..83763aaa` diff:
+Audited the complete `origin/main..bb6d6b841` diff:
 93 files, +3382/-1124.
+
+This record re-audits the original retirement change (previously recorded at head `83763aaee4`) plus the review-fix commit `bb6d6b841d`, which addresses the three blocking review findings:
+
+1. `tools/repo-contract/validate_writer_inventory.py` — removed the stale `lawnchair/src/app/lawnchair/deck/LawndeckManager.kt` allowlist entry that made `validate-repo-contract` fail on the retired file (fixes the CI-evidence mismatch flagged in review).
+2. `lawnchair/src/app/lawnchair/LawnchairApp.kt` — `isDefaultProcess()` is now fail-closed: when the process name cannot be determined on API 26–27, it returns false instead of falling back to `packageName`, so an unidentifiable secondary process never runs the retirement migration (AC-009).
+3. `tests/organizer-instrumentation/.../DeckRetirementProcessIsolationInstrumentationTest.kt` — the secondary-process oracle now positively confirms that `am start-foreground-service` reported no error and that the `:bugReport` process was observed running; a timeout or start error fails the test instead of passing inertly (AC-009).
 
 Production removals:
 - `lawnchair/src/app/lawnchair/deck/LawndeckManager.kt` (287 lines, complete class removal)
@@ -128,12 +134,12 @@ For each AC from the spec, the following maps the test oracle (from the plan's D
 ### AC-009: Only the default Launcher process runs retirement migration; secondary processes do not open its preference or cleanup surfaces.
 
 - **DRR-RED/GREEN-013** (DeckRetirementProcessIsolationInstrumentationTest): `secondaryProcessDoesNotEnterRetirementMigration` starts the `:bugReport` process and proves no migration marker, preference open, or artifact scan occurs.
-- **Evidence**: `tests/organizer-instrumentation/app/lawnchair/migration/DeckRetirementProcessIsolationInstrumentationTest.kt` (150 lines). Production `LawnchairApp.kt` (23 lines) compares current/default process identity and invokes migration only at default-process startup. The test file exists and is structurally complete. Execution requires device-level instrumentation.
+- **Evidence**: `tests/organizer-instrumentation/app/lawnchair/migration/DeckRetirementProcessIsolationInstrumentationTest.kt` (150 lines). Production `LawnchairApp.kt` compares current/default process identity and invokes migration only at default-process startup; since the review-fix commit the gate is fail-closed (an undeterminable process name on API 26–27 is treated as non-default). The test positively confirms the `:bugReport` process start (shell-command error check plus process observation sentinel) and fails if the secondary process never ran. The test file exists and is structurally complete. Execution requires device-level instrumentation.
 - **Verdict**: PASS (source-level verification of process identity gate; instrumentation test exists — see G3).
 
 ## Executed test surface
 
-Independent local re-runs against `83763aaee4baccec5f2011c1550161bcb8dfbda7` (JDK 21.0.12 homebrew, ANDROID_HOME=/opt/homebrew/share/android-commandline-tools):
+Independent local re-runs against `bb6d6b841de40718abbc7abd6b33cb83b788a508` (JDK 21.0.12 homebrew, ANDROID_HOME=/opt/homebrew/share/android-commandline-tools):
 
 ```text
 $ ./gradlew spotlessCheck --no-daemon
@@ -161,17 +167,17 @@ $ python3 tools/repo-contract/test_validate_high_risk_evidence.py
   -> OK (47 tests)
 ```
 
-The `validate_high_risk_evidence.py` script (without the `--repo`/`--pr-number`/`--head-sha` flags) runs the test suite rather than the CI gate; the actual gate validation (`python3 tools/repo-contract/validate_high_risk_evidence.py --repo nunu1733/NunuLauncher --pr-number 79 --head-sha 83763aaee4baccec5f2011c1550161bcb8dfbda7`) reports the expected failure: `no docs/assessment/pr-79-<slug>.md audit record for this PR` — this record addresses that gap.
+The `validate_high_risk_evidence.py` gate validation for this PR is satisfied by this record on head `bb6d6b841de40718abbc7abd6b33cb83b788a508` together with the green merge-gate CI run 32125231122.
 
-All new instrumentation test files compile via the androidTest compilation task. CI executes `organizer-unit-tests`, `check-style`, `build-debug-apk`, `validate-repo-contract` on the head SHA; the `validate-repo-contract` failure in CI is solely due to the missing audit record (verified locally — all validators pass). Instrumentation tests are not executed on AVD in this audit (see G3).
+All new instrumentation test files compile via the androidTest compilation task. CI executed `organizer-unit-tests`, `check-style`, `build-debug-apk`, `validate-repo-contract`, and `final-status` on the audited head SHA and all concluded success (run 32125231122). Instrumentation tests are not executed on AVD in this audit (see G3).
 
 ## Findings
 
-Verdict: **pass-with-notes** (mergeable once this audit record is committed as a docs-only commit and the high-risk gate re-runs green; no code changes required by this audit).
+Verdict: **pass** (the merge gate `final-status` is green on the audited head SHA `bb6d6b841d` via CI run 32125231122, and the three blocking review findings are resolved by that same commit).
 
 1. **[Low] G1 — Instrumentation tests require device-level execution.** All AC-001, AC-002, AC-003, AC-006, AC-008, and AC-009 test oracles reference instrumentation tests that require a device or emulator (DRR-RED/GREEN-001, 002, 004, 010-013). The JVM unit tests (DRR-RED/GREEN-003, 009) and the repo-contract scanner (DRR-RED/GREEN-008) are confirmed passing locally. The smoke scripts (`tools/deck-retirement-backup-restore-smoke.sh`, `tools/deck-retirement-downgrade-smoke.sh`) are structurally complete and ready for AVD execution. The implementation session's emulator-based default suite (11/11 tests) was run by the implementation session — this is external evidence cited from the CI run or session notes, not re-executed here.
 
-2. **[Low] G2 — CI `validate-repo-contract` failure is expected pre-audit.** The CI run 32092140699 shows `validate-repo-contract` as failure. The `check-style` and `changes` jobs passed. The `validate-repo-contract` failure is caused by the missing audit record, which this PR resolves. The `organizer-unit-tests` and `build-debug-apk` jobs were still in progress at the time of this audit; their final status must be confirmed green before the high-risk gate can pass.
+2. **[Low] G2 — CI merge gate green on the audited head.** CI run 32125231122 on head `bb6d6b841d` shows `changes`, `check-style`, `validate-repo-contract`, `organizer-unit-tests`, `build-debug-apk`, and `final-status` all success. The earlier run 32092140699 (on the pre-review-fix head `83763aaa`) failed `validate-repo-contract` due to the then-stale writer-inventory allowlist and was cancelled downstream; the review-fix commit removed the stale entry and the gate is now green.
 
 3. **[Low] G3 — Device-level process death/restart, backup/restore, and downgrade scenarios untested in this audit.** The AC-006 (backup/restore), AC-008 (downgrade/rollback), and AC-009 (secondary process) scenarios require real device/emulator execution with AVD and the smoke scripts. The `new_pause` handshake (nonce-based `FileObserver` release/ACK) was verified structurally: the runner validates nonce with `^[0-9a-f]{32}$`, creates `<nonce>.paused`, watches for `<nonce>.release`, and writes `<nonce>.ack`. The host scripts validate the same nonce pattern, use `adb exec-in run-as` for release, and require typed `PAUSED`/`ACK_RECEIVED` markers. The implementation plan documentation for the emulator-based default suite (11/11 tests) was cited as external evidence from the implementation session. This audit confirms the structural completeness of the scripts and runners.
 
@@ -179,4 +185,4 @@ Verdict: **pass-with-notes** (mergeable once this audit record is committed as a
 
 5. **[Low] G5 — JVM unit tests for artifact names pass.** `DeckRetirementArtifactNamesTest` (6 tests) and `SyntheticFixtureGeneratorTest` (37 tests) pass locally, confirming AC-004 and AC-007 at the JVM level. The `test_validate_deck_retirement.py` scanner (6 tests) passes, confirming AC-005 and AC-007 at the source-scan level.
 
-Process note: The `High-risk gate` workflow run 32092141375 on head `83763aaee4baccec5f2011c1550161bcb8dfbda7` fails solely because this audit record was not yet committed. After this record lands (docs-only commit), the gate should pass with no further code changes, provided the CI merge gate (`final-status`, `organizer-unit-tests`, `check-style`, `build-debug-apk`, `validate-repo-contract`) is confirmed green on the same head. Any subsequent code change requires a fresh audit on the new head.
+Process note: The `High-risk gate` workflow run 32125231006 on head `bb6d6b841d` failed because, at that time, this audit record still referenced the pre-review-fix head `83763aaa` and the stale CI run 32092140699. This updated record re-anchors the audit to head `bb6d6b841de40718abbc7abd6b33cb83b788a508` and the green merge-gate run 32125231122; the gate is expected to pass once this docs-only commit lands. Any subsequent code change requires a fresh audit on the new head.
