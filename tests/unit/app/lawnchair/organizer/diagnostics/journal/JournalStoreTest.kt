@@ -146,6 +146,31 @@ class JournalStoreTest {
     }
 
     @Test
+    fun postAppendRetentionPrunesTo10ResolvedRuns() {
+        // Create a store with a fixed clock so events are not pruned by age
+        val fixedClock = { 1_000_000_000_000L }
+        val store = createStore(tempDir.root, fixedClock)
+        store.open()
+        // Append 11 resolved runs, each with 2 events (RUN_STARTED + APPLY_VERIFIED)
+        // Each run has a unique 32-hex runId
+        for (i in 1L..11L) {
+            val rid = java.lang.String.format("%032d", java.lang.Long.valueOf(i))
+            store.append(RunEvent(journalSequence = 0L, phase = PhaseCode.RUN_STARTED, runId = rid))
+            store.append(RunEvent(journalSequence = 0L, phase = PhaseCode.APPLY_VERIFIED, runId = rid))
+        }
+        // After 11 runs, the store should have pruned to 10 (oldest 1 removed)
+        val events = store.readAllEvents()
+        val runIds = events.mapNotNull { it.runId }.distinct()
+        assertEquals("Must have at most 10 resolved runs after post-append retention", 10, runIds.size)
+        // The oldest run (run-1) should have been pruned
+        assertFalse("Oldest run must be pruned", runIds.contains(java.lang.String.format("%032d", java.lang.Long.valueOf(1L))))
+        // The newest run (run-11) should be present
+        assertTrue("Newest run must be retained", runIds.contains(java.lang.String.format("%032d", java.lang.Long.valueOf(11L))))
+        // Total events should be 20 (10 runs * 2 events each)
+        assertEquals(20, events.size)
+    }
+
+    @Test
     fun emptyJournalAfterOpen() {
         val store = createStore(tempDir.root)
         store.open()

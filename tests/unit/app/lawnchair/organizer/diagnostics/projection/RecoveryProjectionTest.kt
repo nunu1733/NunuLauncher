@@ -31,10 +31,14 @@ class RecoveryProjectionTest {
     @Test
     fun notRestorableProjection() {
         val result = RecoveryResult.NotRestorable(pointId, RecoveryRejection.MISSING)
-        val event = RecoveryProjection.project(result, 2L, pointId = pointId.value)
+        val event = RecoveryProjection.project(result, 2L, pointId = pointId.value, pointOriginRunId = "5f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c")
         assertEquals(PhaseCode.RECOVERY_REJECTED, event.phase)
         assertEquals(ErrorFamily.RECOVERY_REJECTION, event.error?.family)
         assertEquals("MISSING", event.error?.code)
+        // pointOriginRunId must be preserved on terminal events
+        assertNotNull("RecoveryContext must be present on NotRestorable", event.recovery)
+        assertEquals(pointId.value, event.recovery?.pointId)
+        assertEquals("5f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c", event.recovery?.pointOriginRunId)
     }
 
     @Test
@@ -44,26 +48,38 @@ class RecoveryProjectionTest {
             RecoveryFailure.WRITE_FAILED,
             AuthoritativeState.UNKNOWN,
         )
-        val event = RecoveryProjection.project(result, 3L, pointId = pointId.value)
+        val event = RecoveryProjection.project(result, 3L, pointId = pointId.value, pointOriginRunId = "5f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c")
         assertEquals(PhaseCode.RECOVERY_FAILED, event.phase)
         assertEquals(ErrorFamily.RECOVERY_FAILURE, event.error?.family)
         assertEquals("WRITE_FAILED", event.error?.code)
+        // pointOriginRunId must be preserved on terminal events
+        assertNotNull("RecoveryContext must be present on RestoreFailed", event.recovery)
+        assertEquals(pointId.value, event.recovery?.pointId)
+        assertEquals("5f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c", event.recovery?.pointOriginRunId)
     }
 
     @Test
     fun writerBusyProjection() {
         val result = RecoveryResult.WriterBusy
-        val event = RecoveryProjection.project(result, 4L)
+        val event = RecoveryProjection.project(result, 4L, pointId = pointId.value, pointOriginRunId = "5f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c")
         assertEquals(PhaseCode.RECOVERY_WRITER_BUSY, event.phase)
         assertEquals(ErrorFamily.WRITER_BUSY, event.error?.family)
+        // pointOriginRunId must be preserved on terminal events
+        assertNotNull("RecoveryContext must be present on WriterBusy", event.recovery)
+        assertEquals(pointId.value, event.recovery?.pointId)
+        assertEquals("5f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c", event.recovery?.pointOriginRunId)
     }
 
     @Test
     fun concurrentRunProjection() {
         val result = RecoveryResult.ConcurrentRun
-        val event = RecoveryProjection.project(result, 5L)
+        val event = RecoveryProjection.project(result, 5L, pointId = pointId.value, pointOriginRunId = "5f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c")
         assertEquals(PhaseCode.RECOVERY_CONCURRENT, event.phase)
         assertEquals(ErrorFamily.CONCURRENT, event.error?.family)
+        // pointOriginRunId must be preserved on terminal events
+        assertNotNull("RecoveryContext must be present on ConcurrentRun", event.recovery)
+        assertEquals(pointId.value, event.recovery?.pointId)
+        assertEquals("5f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c", event.recovery?.pointOriginRunId)
     }
 
     @Test

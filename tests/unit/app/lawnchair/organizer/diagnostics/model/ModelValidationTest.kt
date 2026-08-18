@@ -261,4 +261,119 @@ class ModelValidationTest {
             confidenceCounts = mapOf("EXPLICIT" to 1, "RULE" to 5, "FALLBACK" to 2),
         )
     }
+
+    // --- Correlation ID validation ---
+
+    @Test
+    fun runEventRejectsUppercaseRunId() {
+        assertThrows(IllegalArgumentException::class.java) {
+            RunEvent(
+                journalSequence = 1L,
+                phase = PhaseCode.CAPTURED,
+                runId = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            )
+        }
+    }
+
+    @Test
+    fun runEventRejectsShortRunId() {
+        assertThrows(IllegalArgumentException::class.java) {
+            RunEvent(
+                journalSequence = 1L,
+                phase = PhaseCode.CAPTURED,
+                runId = "short",
+            )
+        }
+    }
+
+    @Test
+    fun runEventRejectsNonHexRunId() {
+        assertThrows(IllegalArgumentException::class.java) {
+            RunEvent(
+                journalSequence = 1L,
+                phase = PhaseCode.CAPTURED,
+                runId = "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+            )
+        }
+    }
+
+    @Test
+    fun runEventAllowsNullRunId() {
+        RunEvent(journalSequence = 1L, phase = PhaseCode.CAPTURED, runId = null)
+    }
+
+    @Test
+    fun runEventRejectsUppercasePointId() {
+        assertThrows(IllegalArgumentException::class.java) {
+            RunEvent(
+                journalSequence = 1L,
+                phase = PhaseCode.CAPTURED,
+                pointId = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            )
+        }
+    }
+
+    @Test
+    fun runEventAllowsNullPointId() {
+        RunEvent(journalSequence = 1L, phase = PhaseCode.CAPTURED, pointId = null)
+    }
+
+    @Test
+    fun recoveryContextRejectsUppercasePointId() {
+        assertThrows(IllegalArgumentException::class.java) {
+            RecoveryContext(pointId = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+        }
+    }
+
+    @Test
+    fun recoveryContextRejectsShortPointOriginRunId() {
+        assertThrows(IllegalArgumentException::class.java) {
+            RecoveryContext(
+                pointId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                pointOriginRunId = "short",
+            )
+        }
+    }
+
+    @Test
+    fun recoveryContextAllowsNullPointOriginRunId() {
+        RecoveryContext(
+            pointId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            pointOriginRunId = null,
+        )
+    }
+
+    @Test
+    fun reconciliationContextRejectsUppercaseSubjectRunId() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ReconciliationContext(
+                subjectRunId = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                priorLifecycle = RecoveryLifecycle.VERIFIED,
+                classification = ReconciliationClassification.INTENDED_POST_STATE,
+                resultingLifecycle = RecoveryLifecycle.VERIFIED,
+            )
+        }
+    }
+
+    @Test
+    fun reconciliationContextRejectsShortSubjectRunId() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ReconciliationContext(
+                subjectRunId = "short",
+                priorLifecycle = RecoveryLifecycle.VERIFIED,
+                classification = ReconciliationClassification.INTENDED_POST_STATE,
+                resultingLifecycle = RecoveryLifecycle.VERIFIED,
+            )
+        }
+    }
+
+    @Test
+    fun reconciliationContextAllowsValidSubjectRunId() {
+        ReconciliationContext(
+            subjectRunId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            priorLifecycle = RecoveryLifecycle.VERIFIED,
+            classification = ReconciliationClassification.INTENDED_POST_STATE,
+            resultingLifecycle = RecoveryLifecycle.VERIFIED,
+        )
+    }
 }

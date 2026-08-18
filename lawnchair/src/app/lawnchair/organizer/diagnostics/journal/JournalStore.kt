@@ -21,8 +21,8 @@ import java.io.RandomAccessFile
  * - Each event is serialized as a single JSON line.
  * - Lines are separated by '\n'.
  * - The journal is fsynced after each append for durability.
- * - Retention is evaluated before each append and prunes eligible
- *   runs from the oldest eligible first.
+ * - Retention is evaluated after each append (post-append) so the just-appended
+ *   event is included in the evaluation, ensuring limits are satisfied after every append.
  *
  * Thread safety: [append] is synchronized because emission may happen
  * outside the RunMutex (e.g. from the journal port lambda).

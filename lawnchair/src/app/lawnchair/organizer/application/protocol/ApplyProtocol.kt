@@ -35,6 +35,7 @@ class ApplyProtocol(
     fun apply(plan: ValidatedLayoutPlan, runId: RunId? = null): ApplyResult {
         // Reset per-invocation execution context so no state leaks between runs
         terminalApplyStage = null
+        terminalPointId = null
         val actualRunId = runId ?: operationIds.newRunId()
         if (!mutex.tryAcquire(actualRunId)) {
             emitSafely(
@@ -498,12 +499,12 @@ class ApplyProtocol(
         // Use the tracked detection stage (A5 for PreconditionFailed, A2 for A2 rejections,
         // etc.) with fallback to the static mapping.
         val applyStage = terminalApplyStage ?: applyStageForResult(result)
-        // Extract pointId from the result for events after CHECKPOINTED (P1.4)
-        val pointId = pointIdFromResult(result)
-        val event = ApplyProjection.project(result, journalSequence = 0L, applyStage = applyStage, applySummary = summary)
-        // Thread pointId into the terminal event so correlation is preserved
-        val eventWithPointId = if (pointId != null && event.pointId == null) event.copy(pointId = pointId) else event
-        emitSafely(eventWithPointId)
+        // Use tracked terminalPointId (set at each post-checkpoint exit path) with fallback
+        // to result extraction. This ensures RolledBack and post-checkpoint Rejected events
+        // carry the checkpoint's RecoveryPointId.
+        val pointId = terminalPointId ?: pointIdFromResult(result)
+        val event = ApplyProjection.project(result, journalSequence = 0L, applyStage = applyStage, applySummary = summary, pointId = pointId)
+        emitSafely(event)
     }
 
     private fun pointIdFromResult(result: ApplyResult): String? = when (result) {
