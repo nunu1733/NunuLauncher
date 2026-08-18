@@ -109,7 +109,7 @@ class JournalStoreTest {
         val dir = tempDir.root
         val journalFile = File(dir, "organizer_diagnostics.journal")
         // Write garbage to the journal file
-        journalFile.parentFile.mkdirs()
+        journalFile.parentFile?.mkdirs()
         journalFile.writeText("garbage data that is not valid JSON\n")
 
         val store = createStore(dir)

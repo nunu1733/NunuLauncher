@@ -125,9 +125,32 @@ class PlanningProjectionTest {
                 warnings = emptyList(),
             ),
         )
-        val event = PlanningProjection.project(result, 52L)
+        val event = PlanningProjection.project(result, 52L, capturedItemCount = 10, candidateItemCount = 1)
         assertEquals(PhaseCode.PLANNING_IMPOSSIBLE, event.phase)
         assertNotNull(event.planSummary)
+        assertEquals(10, event.planSummary?.capturedItemCount)
+        assertEquals(1, event.planSummary?.candidateItemCount)
+        assertEquals(1, event.planSummary?.unplacedCount)
+        assertEquals(1, event.planSummary?.unplacedByReason?.get("EXCEEDS_GRID_DIMENSIONS"))
+    }
+
+    @Test
+    fun planningImpossibleParityWithD03() {
+        // D-03: capturedItemCount and candidateItemCount must round-trip
+        val result = PlanningResult(
+            revision = dummyRevision,
+            ruleVersion = dummyRuleVersion,
+            taxonomyVersion = dummyTaxonomyVersion,
+            outcome = Rejected.Impossible(
+                unplaced = listOf(
+                    UnplacedItem(ItemId("item1"), GridSpan(1, 1), UnplacedReason.EXCEEDS_GRID_DIMENSIONS),
+                ),
+                warnings = emptyList(),
+            ),
+        )
+        val event = PlanningProjection.project(result, 52L, capturedItemCount = 10, candidateItemCount = 1)
+        assertEquals(10, event.planSummary?.capturedItemCount)
+        assertEquals(1, event.planSummary?.candidateItemCount)
         assertEquals(1, event.planSummary?.unplacedCount)
         assertEquals(1, event.planSummary?.unplacedByReason?.get("EXCEEDS_GRID_DIMENSIONS"))
     }

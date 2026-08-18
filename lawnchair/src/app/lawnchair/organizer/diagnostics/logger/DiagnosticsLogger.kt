@@ -46,6 +46,12 @@ class DiagnosticsLogger(
     )
 
     /**
+     * Returns the logcat level that would be used for the given event:
+     * "WARN" for terminal failures, "DEBUG" otherwise.
+     */
+    fun levelFor(event: RunEvent): String = if (event.phase in terminalFailurePhases) "WARN" else "DEBUG"
+
+    /**
      * Log an event to logcat.
      *
      * Must be called only after the event has been successfully
