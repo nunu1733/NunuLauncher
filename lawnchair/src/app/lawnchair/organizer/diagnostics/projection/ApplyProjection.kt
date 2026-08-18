@@ -32,11 +32,13 @@ object ApplyProjection {
         journalSequence: Long,
         applyStage: ApplyStage? = null,
         applySummary: ApplySummary? = null,
+        pointId: String? = null,
     ): RunEvent {
         val base = RunEvent(
             journalSequence = journalSequence,
             phase = PhaseCode.RUN_STARTED, // placeholder, overridden by copy()
             runId = runIdFromResult(result),
+            pointId = pointId ?: pointIdFromResult(result),
         )
 
         return when (result) {
@@ -153,6 +155,7 @@ object ApplyProjection {
     @JvmStatic
     fun projectCommitted(
         runId: String?,
+        pointId: String?,
         journalSequence: Long,
     ): RunEvent {
         return RunEvent(
@@ -160,7 +163,16 @@ object ApplyProjection {
             phase = PhaseCode.APPLY_COMMITTED,
             applyStage = ApplyStage.A6,
             runId = runId,
+            pointId = pointId,
         )
+    }
+
+    private fun pointIdFromResult(result: ApplyResult): String? = when (result) {
+        is ApplyResult.Applied -> result.pointId.value
+        is ApplyResult.Recovered -> result.pointId.value
+        is ApplyResult.Unresolved -> result.pointId.value
+        is ApplyResult.RecoveryFailed -> result.pointId.value
+        else -> null
     }
 
     private fun runIdFromResult(result: ApplyResult): String? = when (result) {

@@ -36,8 +36,14 @@ data class ErrorEntry(
         require(code.all { it.isUpperCase() || it == '_' || it.isDigit() } || code == "UNMAPPED") {
             "ErrorEntry.code must be an enum constant name or 'UNMAPPED', got '$code'"
         }
+        require(additionalCodes.size <= 8) {
+            "ErrorEntry.additionalCodes must have at most 8 entries, got ${additionalCodes.size}"
+        }
         additionalCodes.forEach { c ->
             require(c.isNotBlank()) { "ErrorEntry.additionalCodes entries must not be blank" }
+            require(c.all { it.isUpperCase() || it == '_' || it.isDigit() }) {
+                "ErrorEntry.additionalCodes entries must be enum constant names, got '$c'"
+            }
         }
     }
 }

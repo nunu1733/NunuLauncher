@@ -76,7 +76,7 @@ class JournalStore(
             // Run retention before appending (lazy evaluation)
             runRetention()
 
-            val seq = sequence.next()
+            val seq = sequence.next() ?: return false
             val now = clock()
             val eventWithSeq = event.copy(
                 journalSequence = seq,
@@ -151,20 +151,26 @@ class JournalStore(
             val lines = journalFile.readLines()
             val events = mutableListOf<RunEvent>()
             val sizes = mutableMapOf<Long, Long>()
+            var decodeFailed = false
             for (line in lines) {
                 if (line.isBlank()) continue
                 try {
                     val event = RunEventSerializer.decode(line.toByteArray(Charsets.UTF_8))
                     events.add(event)
-                    sizes[event.journalSequence] = (line.toByteArray(Charsets.UTF_8).size + 1).toLong() // +1 for newline
+                    sizes[event.journalSequence] = (line.toByteArray(Charsets.UTF_8).size + 1).toLong()
                 } catch (_: Exception) {
-                    // Skip unparseable line
+                    // Any decode failure resets the journal (per spec corruption-isolation scenario)
+                    decodeFailed = true
+                    break
                 }
+            }
+            if (decodeFailed) {
+                resetJournal()
+                return
             }
             cachedEvents = events
             eventByteSizes = sizes.toMutableMap()
         } catch (_: Exception) {
-            // Corrupt journal — reset
             resetJournal()
         }
     }

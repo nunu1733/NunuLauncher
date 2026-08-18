@@ -52,21 +52,20 @@ class JournalSequence(
 
     /**
      * Allocate and persist the next sequence value.
-     * Returns the new value (strictly greater than any previous).
-     * Does NOT advance the counter if the file write fails (no sequence
-     * number consumed).
+     * Returns the new value on success, or null on write failure (so the
+     * caller can abort the append rather than persisting a duplicate seq).
      */
-    fun next(): Long {
+    fun next(): Long? {
         val next = current + 1L
         try {
             seqFile.writeText(next.toString())
             current = next
+            return next
         } catch (_: Exception) {
-            // Fail-open: if the sequence file write fails, we don't advance
-            // the counter so no sequence number is consumed
-            return current
+            // Write failure: do NOT advance the counter, return null so
+            // the caller (JournalStore.append) can fail the append.
+            return null
         }
-        return next
     }
 
     /** Reset the sequence to 1 (e.g. after journal corruption). */

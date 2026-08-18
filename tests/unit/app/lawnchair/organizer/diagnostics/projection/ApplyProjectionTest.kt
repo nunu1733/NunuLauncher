@@ -99,10 +99,12 @@ class ApplyProjectionTest {
     fun committedProjection() {
         val event = ApplyProjection.projectCommitted(
             runId = runId.value,
+            pointId = pointId.value,
             journalSequence = 8L,
         )
         assertEquals(PhaseCode.APPLY_COMMITTED, event.phase)
         assertEquals(ApplyStage.A6, event.applyStage)
+        assertEquals(pointId.value, event.pointId)
         assertEquals(runId.value, event.runId)
     }
 }

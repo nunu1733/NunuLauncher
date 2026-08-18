@@ -53,11 +53,16 @@ class RestartReconciler(
             store.listNonFinalRecords().forEach { record ->
                 faults.restartBoundary(FaultInjector.RestartPhase.BEFORE_RECONCILE)
                 val result = reconcileOne(record)
-                // Emit RESTART_RECONCILED for each reconciled record
+                // Emit RESTART_RECONCILED for every reconciled record (including
+                // silent advance/prune cases that returned null before).
                 if (result != null) {
                     emitReconciledEvent(record, result)
+                    add(result)
+                } else {
+                    // Null result means a silent advance/prune — still emit a
+                    // RESTART_RECONCILED event with the actual resulting lifecycle.
+                    emitReconciledEventFromRecord(record)
                 }
-                result?.let(::add)
                 faults.restartBoundary(FaultInjector.RestartPhase.AFTER_RECONCILE)
             }
         }
@@ -65,6 +70,23 @@ class RestartReconciler(
             return ReconciliationSummary.Failed
         }
         return if (surfaced.isEmpty()) ReconciliationSummary.Clean else ReconciliationSummary.Resolved(surfaced)
+    }
+
+    private fun emitReconciledEventFromRecord(record: RecoveryStorePort.StoredRecord) {
+        try {
+            val classification = classify(record)
+            val resultingLifecycle = store.readRecord(record.pointId)?.lifecycle ?: record.lifecycle
+            val event = ReconciliationProjection.project(
+                subjectRunId = record.runId,
+                priorLifecycle = record.lifecycle,
+                classification = classification,
+                resultingLifecycle = resultingLifecycle,
+                journalSequence = 0L,
+            )
+            diagnosticsPort.emit(event)
+        } catch (_: Exception) {
+            // Fail-open
+        }
     }
 
     private fun emitReconciledEvent(

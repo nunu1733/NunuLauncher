@@ -25,7 +25,7 @@ class JournalSequenceTest {
     fun sequenceIsMonotonic() {
         val seq = JournalSequence(File(tempDir.root, "journal_seq"))
         seq.open()
-        val values = (1..10).map { seq.next() }
+        val values = (1..10).map { seq.next()!! }
         for (i in 1 until values.size) {
             assertTrue("Sequence must be strictly increasing", values[i] > values[i - 1])
         }
@@ -59,7 +59,7 @@ class JournalSequenceTest {
         val seq = JournalSequence(file)
         seq.open()
         assertEquals(0L, seq.currentValue())
-        val next = seq.next()
+        val next = seq.next()!!
         assertEquals(1L, next)
     }
 
@@ -69,7 +69,7 @@ class JournalSequenceTest {
         val seq = JournalSequence(file)
         seq.open()
         assertEquals(0L, seq.currentValue())
-        assertEquals(1L, seq.next())
+        assertEquals(1L, seq.next()!!)
     }
 
     @Test
@@ -78,8 +78,8 @@ class JournalSequenceTest {
         val file = File(tempDir.root, "journal_seq")
         val seq = JournalSequence(file)
         seq.open()
-        seq.next() // 1
-        seq.next() // 2
+        seq.next()!! // 1
+        seq.next()!! // 2
         assertEquals(2L, seq.currentValue())
 
         // Delete the seq file (simulating loss)
@@ -107,14 +107,14 @@ class JournalSequenceTest {
         seq.open()
         val before = seq.currentValue()
         val result = seq.next()
-        // If the write failed (platform-dependent), the counter must not advance.
+        // If the write failed (platform-dependent), next() returns null and counter does not advance.
         // If the write succeeded (some platforms allow writes despite setWritable(false)),
-        // the counter advances. In either case, the method does not throw.
-        assertTrue("next() must not throw", true)
-        // If the file was not written, counter stays at before
-        if (!file.exists() || file.length() == 0L) {
-            // Write likely failed
-            assertEquals("Counter must not advance on write failure", before, result)
+        // next() returns the new value. In either case, the method does not throw.
+        // Verify that the counter never goes backwards and no exception is thrown.
+        if (result == null) {
+            assertEquals("Counter must not advance on write failure", before, seq.currentValue())
+        } else {
+            assertTrue("Counter must advance on write success", result > before)
         }
     }
 
@@ -123,8 +123,8 @@ class JournalSequenceTest {
         val file = File(tempDir.root, "journal_seq")
         val seq = JournalSequence(file)
         seq.open()
-        seq.next() // 1
-        seq.next() // 2
+        seq.next()!! // 1
+        seq.next()!! // 2
         // Even if we change system time, sequence is unaffected
         assertEquals(2L, seq.currentValue())
     }

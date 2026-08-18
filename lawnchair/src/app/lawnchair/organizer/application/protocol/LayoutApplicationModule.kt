@@ -15,11 +15,6 @@ import app.lawnchair.organizer.diagnostics.DiagnosticsPort
 import app.lawnchair.organizer.diagnostics.journal.JournalSequence
 import app.lawnchair.organizer.diagnostics.journal.JournalStore
 import app.lawnchair.organizer.diagnostics.logger.DiagnosticsLogger
-import app.lawnchair.organizer.diagnostics.model.PhaseCode
-import app.lawnchair.organizer.diagnostics.model.RunEvent
-import app.lawnchair.organizer.diagnostics.model.RunMode
-import app.lawnchair.organizer.diagnostics.model.RunVersions
-import app.lawnchair.organizer.diagnostics.model.Trigger
 import com.android.launcher3.LauncherAppState
 import java.io.File
 import java.security.SecureRandom
@@ -61,26 +56,12 @@ class LayoutApplicationModule(
             )
         },
     ) {
+        // RUN_STARTED emission is owned by future orchestrators
+        // (#52 manual full, #53 onboarding, #55 incremental) which have
+        // the full contract context (trigger, runMode, deviceProfile,
+        // recoveryFormatVersion). Keep runId for apply-event correlation.
         val runId = operationIds.newRunId()
-        emitRunStarted(runId, plan)
         applyProtocol.apply(plan, runId)
-    }
-
-    private fun emitRunStarted(runId: RunId, plan: ValidatedLayoutPlan) {
-        try {
-            val event = RunEvent(
-                journalSequence = 0L,
-                phase = PhaseCode.RUN_STARTED,
-                runId = runId.value,
-                versions = RunVersions(
-                    ruleVersion = plan.ruleVersion.value,
-                    taxonomyVersion = plan.taxonomyVersion.value,
-                ),
-            )
-            diagnosticsPort.emit(event)
-        } catch (_: Exception) {
-            // Fail-open
-        }
     }
 
     fun recover(request: RecoveryRequest): RecoveryResult = readinessGate.runWhenReady(

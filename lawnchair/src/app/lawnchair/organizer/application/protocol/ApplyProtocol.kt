@@ -28,6 +28,9 @@ class ApplyProtocol(
     private val mutex: RunMutex,
     private val diagnosticsPort: DiagnosticsPort = DiagnosticsPort.NOOP,
 ) {
+    /** Tracks the detection stage of the current apply path for terminal emission. */
+    private var terminalApplyStage: ApplyStage? = null
+
     fun apply(plan: ValidatedLayoutPlan, runId: RunId? = null): ApplyResult {
         val actualRunId = runId ?: operationIds.newRunId()
         if (!mutex.tryAcquire(actualRunId)) {
@@ -51,15 +54,23 @@ class ApplyProtocol(
     }
 
     private fun applyWithRunMutex(runId: RunId, plan: ValidatedLayoutPlan): ApplyResult {
-        validatePlan(plan)?.let { return ApplyResult.Rejected(runId, it) }
+        validatePlan(plan)?.let {
+            terminalApplyStage = ApplyStage.A2
+            return ApplyResult.Rejected(runId, it)
+        }
         if (store.availability() != RecoveryStorePort.StoreAvailability.READY) {
+            terminalApplyStage = ApplyStage.A2
             return ApplyResult.Rejected(runId, PreWriteRejection.RECOVERY_STORE_UNAVAILABLE)
         }
         if (faults.serializationContention()) {
+            terminalApplyStage = ApplyStage.A0
             return ApplyResult.Rejected(runId, PreWriteRejection.WRITER_BUSY)
         }
         val lease = writer.tryAcquireLease(WriterKind.ORGANIZER, leaseToken(runId))
-            ?: return ApplyResult.Rejected(runId, PreWriteRejection.WRITER_BUSY)
+            ?: run {
+                terminalApplyStage = ApplyStage.A0
+                return ApplyResult.Rejected(runId, PreWriteRejection.WRITER_BUSY)
+            }
         return try {
             applyWithOuterLease(runId, plan, lease)
         } finally {
@@ -76,50 +87,76 @@ class ApplyProtocol(
     ): ApplyResult {
         val capture = writer.captureCurrent(CaptureId(runId.value))
         when {
-            lockStateUnavailable(capture) ->
+            lockStateUnavailable(capture) -> {
+                terminalApplyStage = ApplyStage.A2
                 return ApplyResult.Rejected(runId, PreWriteRejection.LOCK_STATE_UNAVAILABLE)
+            }
 
-            capture.revision != plan.sourceRevision ->
+            capture.revision != plan.sourceRevision -> {
+                terminalApplyStage = ApplyStage.A2
                 return ApplyResult.Rejected(runId, PreWriteRejection.STALE_REVISION)
+            }
 
-            capture.layoutState != plan.sourceState ->
+            capture.layoutState != plan.sourceState -> {
+                terminalApplyStage = ApplyStage.A2
                 return ApplyResult.Rejected(runId, PreWriteRejection.EXACT_PRECONDITION_FAILED)
+            }
 
-            isNoChange(plan) -> return ApplyResult.NoChanges(runId)
+            isNoChange(plan) -> {
+                terminalApplyStage = ApplyStage.A2
+                return ApplyResult.NoChanges(runId)
+            }
         }
 
         val writeSet = when (val prepared = writer.prepareApplyWriteSet(capture, plan)) {
             is WriteSetPreparation.Ready -> prepared.writeSet
 
-            WriteSetPreparation.InvalidPlan ->
+            WriteSetPreparation.InvalidPlan -> {
+                terminalApplyStage = ApplyStage.A2
                 return ApplyResult.Rejected(runId, PreWriteRejection.INVALID_PLAN)
+            }
 
-            WriteSetPreparation.IdentityExhausted ->
+            WriteSetPreparation.IdentityExhausted -> {
+                terminalApplyStage = ApplyStage.A2
                 return ApplyResult.Rejected(runId, PreWriteRejection.IDENTITY_EXHAUSTED)
+            }
 
-            WriteSetPreparation.ContextMismatch ->
+            WriteSetPreparation.ContextMismatch -> {
+                terminalApplyStage = ApplyStage.A2
                 return ApplyResult.Rejected(runId, PreWriteRejection.STALE_REVISION)
+            }
         }
         if (writeSet.intendedState != plan.intendedState) {
+            terminalApplyStage = ApplyStage.A2
             return ApplyResult.Rejected(runId, PreWriteRejection.INVALID_PLAN)
         }
 
         if (faults.recoveryStoreWriteFailure()) {
+            terminalApplyStage = ApplyStage.A4
             return ApplyResult.Rejected(runId, PreWriteRejection.CHECKPOINT_CREATE_FAILED)
         }
         val (pointId, checkpoint) = createCheckpoint(runId, capture, writeSet)
-            ?: return ApplyResult.Rejected(runId, PreWriteRejection.CHECKPOINT_CREATE_FAILED)
+            ?: run {
+                terminalApplyStage = ApplyStage.A4
+                return ApplyResult.Rejected(runId, PreWriteRejection.CHECKPOINT_CREATE_FAILED)
+            }
         when (checkpoint) {
             RecoveryStorePort.CheckpointResult.PointIdCollision,
             RecoveryStorePort.CheckpointResult.CreateFailed,
-            ->
+            -> {
+                terminalApplyStage = ApplyStage.A4
                 return ApplyResult.Rejected(runId, PreWriteRejection.CHECKPOINT_CREATE_FAILED)
+            }
 
-            RecoveryStorePort.CheckpointResult.ValidateFailed ->
+            RecoveryStorePort.CheckpointResult.ValidateFailed -> {
+                terminalApplyStage = ApplyStage.A4
                 return ApplyResult.Rejected(runId, PreWriteRejection.CHECKPOINT_VALIDATE_FAILED)
+            }
 
-            RecoveryStorePort.CheckpointResult.StoreUnavailable ->
+            RecoveryStorePort.CheckpointResult.StoreUnavailable -> {
+                terminalApplyStage = ApplyStage.A4
                 return ApplyResult.Rejected(runId, PreWriteRejection.RECOVERY_STORE_UNAVAILABLE)
+            }
 
             is RecoveryStorePort.CheckpointResult.Ready -> {
                 // Emit CHECKPOINTED right after the checkpoint Ready result (A4)
@@ -190,6 +227,7 @@ class ApplyProtocol(
             // mutation committed. The Launcher DB is unchanged. Per spec §A5, the
             // unused checkpoint is pruned; if cleanup is interrupted, it is left
             // READY for restart reconciliation to complete later.
+            terminalApplyStage = ApplyStage.A5
             if (!store.advance(pointId, LifecycleState.READY) || !store.pruneUnused(pointId)) {
                 return ApplyResult.Unresolved(
                     runId,
@@ -208,6 +246,7 @@ class ApplyProtocol(
         val intendedDigest = digestOfIntended(writeSet)
         return when (writer.classifyAuthoritativeState(pre.digest, intendedDigest, null, null)) {
             AuthoritativeClass.PRE_STATE -> {
+                terminalApplyStage = ApplyStage.A6
                 if (!store.advance(pointId, LifecycleState.READY) || !store.pruneUnused(pointId)) {
                     ApplyResult.Unresolved(
                         runId,
@@ -240,12 +279,14 @@ class ApplyProtocol(
         lease: LeaseHandle,
     ): ApplyResult {
         if (!store.advance(pointId, LifecycleState.COMMITTED_UNVERIFIED)) {
+            terminalApplyStage = ApplyStage.A7
             return automaticRecovery(runId, pointId, ApplyFailure.RECOVERY_STORE_FAILED, lease)
         }
         // Emit APPLY_COMMITTED after COMMITTED_UNVERIFIED mark succeeds (A6)
         emitSafely(
             ApplyProjection.projectCommitted(
                 runId = runId.value,
+                pointId = pointId.value,
                 journalSequence = 0L,
             ),
         )
@@ -257,6 +298,7 @@ class ApplyProtocol(
             FaultInjector.ReloadDirective.SUPERSEDE -> ReloadResult.Superseded
         }
         if (reload != ReloadResult.Completed) {
+            terminalApplyStage = ApplyStage.A7
             return automaticRecovery(runId, pointId, ApplyFailure.MODEL_RELOAD_FAILED, lease)
         }
         faults.beforeIndependentDbRecapture()
@@ -264,10 +306,15 @@ class ApplyProtocol(
         faults.afterVerification()
         val exactDb = db.layoutState == writeSet.intendedState &&
             db.manifest == writeSet.intendedManifest
-        if (!exactDb) return automaticRecovery(runId, pointId, ApplyFailure.VERIFICATION_FAILED, lease)
+        if (!exactDb) {
+            terminalApplyStage = ApplyStage.A7
+            return automaticRecovery(runId, pointId, ApplyFailure.VERIFICATION_FAILED, lease)
+        }
         if (!store.advance(pointId, LifecycleState.VERIFIED)) {
+            terminalApplyStage = ApplyStage.A8
             return automaticRecovery(runId, pointId, ApplyFailure.RECOVERY_STORE_FAILED, lease)
         }
+        terminalApplyStage = ApplyStage.A8
         return ApplyResult.Applied(runId, pointId)
     }
 
@@ -278,35 +325,39 @@ class ApplyProtocol(
         lease: LeaseHandle,
     ): ApplyResult {
         val stored = store.readRecord(pointId)
-            ?: return ApplyResult.Unresolved(runId, pointId, applyFailure, AuthoritativeState.UNKNOWN)
+            ?: run {
+                terminalApplyStage = ApplyStage.A7
+                return ApplyResult.Unresolved(runId, pointId, applyFailure, AuthoritativeState.UNKNOWN)
+            }
         val reviewed = writer.recaptureDb()
         val recoverySet = when (val prepared = writer.prepareRecoveryWriteSet(stored.preManifest, reviewed)) {
             is WriteSetPreparation.Ready -> prepared.writeSet
 
-            WriteSetPreparation.ContextMismatch -> return ApplyResult.RecoveryFailed(
-                runId,
-                pointId,
-                applyFailure,
-                RecoveryFailure.WRITE_FAILED,
-                AuthoritativeState.REVIEWED_CURRENT_DB_MODEL_UNVERIFIED,
-            )
+            WriteSetPreparation.ContextMismatch -> {
+                terminalApplyStage = ApplyStage.A7
+                return ApplyResult.RecoveryFailed(
+                    runId,
+                    pointId,
+                    applyFailure,
+                    RecoveryFailure.WRITE_FAILED,
+                    AuthoritativeState.REVIEWED_CURRENT_DB_MODEL_UNVERIFIED,
+                )
+            }
 
-            else -> return ApplyResult.RecoveryFailed(
-                runId,
-                pointId,
-                applyFailure,
-                RecoveryFailure.WRITE_FAILED,
-                AuthoritativeState.UNKNOWN,
-            )
+            else -> {
+                terminalApplyStage = ApplyStage.A7
+                return ApplyResult.RecoveryFailed(
+                    runId,
+                    pointId,
+                    applyFailure,
+                    RecoveryFailure.WRITE_FAILED,
+                    AuthoritativeState.UNKNOWN,
+                )
+            }
         }
         faults.beforeRecoveryLifecycleCommit(FaultInjector.RecoveryLifecyclePhase.RESTORING, pointId)
-        if (!store.markRestoring(
-                pointId,
-                reviewed.manifest,
-                reviewed.digest,
-                recoverySet.actionSetDigest,
-            )
-        ) {
+        if (!store.markRestoring(pointId, reviewed.manifest, reviewed.digest, recoverySet.actionSetDigest)) {
+            terminalApplyStage = ApplyStage.A7
             return ApplyResult.RecoveryFailed(
                 runId,
                 pointId,
@@ -327,14 +378,13 @@ class ApplyProtocol(
             recoveryTargetDigest = stored.preDigest,
             reviewedCurrentDigest = reviewed.digest,
         )
-        if (classification != AuthoritativeClass.PRE_STATE &&
-            classification != AuthoritativeClass.RECOVERY_TARGET
-        ) {
+        if (classification != AuthoritativeClass.PRE_STATE && classification != AuthoritativeClass.RECOVERY_TARGET) {
             val recoveryFailure = if (outcome is ApplyTxOutcome.Failed) {
                 RecoveryFailure.WRITE_FAILED
             } else {
                 RecoveryFailure.COMMIT_OUTCOME_UNKNOWN
             }
+            terminalApplyStage = ApplyStage.A7
             return ApplyResult.RecoveryFailed(
                 runId,
                 pointId,
@@ -344,6 +394,7 @@ class ApplyProtocol(
             )
         }
         if (writer.requestCorrelatedReload(lease) != ReloadResult.Completed) {
+            terminalApplyStage = ApplyStage.A7
             return ApplyResult.RecoveryFailed(
                 runId,
                 pointId,
@@ -354,6 +405,7 @@ class ApplyProtocol(
         }
         val verified = writer.recaptureDb().manifest == stored.preManifest
         if (!verified) {
+            terminalApplyStage = ApplyStage.A7
             return ApplyResult.RecoveryFailed(
                 runId,
                 pointId,
@@ -363,6 +415,7 @@ class ApplyProtocol(
             )
         }
         if (!store.advance(pointId, LifecycleState.RESTORED)) {
+            terminalApplyStage = ApplyStage.A7
             return ApplyResult.RecoveryFailed(
                 runId,
                 pointId,
@@ -371,6 +424,7 @@ class ApplyProtocol(
                 AuthoritativeState.PRE_APPLY_DB_AND_MODEL,
             )
         }
+        terminalApplyStage = ApplyStage.A7
         return ApplyResult.Recovered(runId, pointId, applyFailure)
     }
 
@@ -422,9 +476,35 @@ class ApplyProtocol(
             updateActionCount = updateCount,
             insertActionCount = insertCount,
         )
-        val applyStage = applyStageForResult(result)
+        // Use the tracked detection stage (A5 for PreconditionFailed, A2 for A2 rejections,
+        // etc.) with fallback to the static mapping.
+        val applyStage = terminalApplyStage ?: applyStageForResult(result)
+        // Extract pointId from the result for events after CHECKPOINTED (P1.4)
+        val pointId = pointIdFromResult(result)
         val event = ApplyProjection.project(result, journalSequence = 0L, applyStage = applyStage, applySummary = summary)
-        emitSafely(event)
+        // Thread pointId into the terminal event so correlation is preserved
+        val eventWithPointId = if (pointId != null && event.pointId == null) event.copy(pointId = pointId) else event
+        emitSafely(eventWithPointId)
+    }
+
+    private fun pointIdFromResult(result: ApplyResult): String? = when (result) {
+        is ApplyResult.Applied -> result.pointId.value
+
+        is ApplyResult.Rejected -> null
+
+        // Rejections before checkpoint have no pointId
+        is ApplyResult.RolledBack -> null
+
+        // RolledBack from A5 has pointId but the checkpoint is pruned
+        is ApplyResult.Recovered -> result.pointId.value
+
+        is ApplyResult.Unresolved -> result.pointId.value
+
+        is ApplyResult.RecoveryFailed -> result.pointId.value
+
+        is ApplyResult.NoChanges -> null
+
+        is ApplyResult.ConcurrentRun -> null
     }
 
     private fun applyStageForResult(result: ApplyResult): ApplyStage? = when (result) {
