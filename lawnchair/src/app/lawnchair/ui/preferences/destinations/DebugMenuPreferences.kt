@@ -20,6 +20,7 @@ import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
 import app.lawnchair.ui.preferences.data.liveinfo.liveInformationManager
 import app.lawnchair.ui.preferences.data.liveinfo.model.LiveInformation
 import app.lawnchair.ui.preferences.navigation.FeatureFlags
+import app.lawnchair.ui.preferences.navigation.OrganizerDiagnosticsExport
 import com.patrykmichalik.opto.domain.Preference
 import kotlinx.coroutines.runBlocking
 
@@ -64,6 +65,13 @@ fun DebugMenuPreferences(
                             liveInfoManager.liveInformation.set(LiveInformation())
                             liveInfoManager.dismissedAnnouncementIds.set(emptySet())
                         }
+                    },
+                )
+                ClickablePreference(
+                    label = "Export organizer diagnostics",
+                    subtitle = "Export organizer diagnostic journal to a file",
+                    onClick = {
+                        navController.navigate(OrganizerDiagnosticsExport)
                     },
                 )
             }
