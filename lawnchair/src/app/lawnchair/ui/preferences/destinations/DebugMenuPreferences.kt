@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.datastore.preferences.core.Preferences
+import app.lawnchair.organizer.diagnostics.export.OrganizerDiagnosticsExportPreference
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.preferences.getAdapter
 import app.lawnchair.preferences.preferenceManager
@@ -20,7 +21,6 @@ import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
 import app.lawnchair.ui.preferences.data.liveinfo.liveInformationManager
 import app.lawnchair.ui.preferences.data.liveinfo.model.LiveInformation
 import app.lawnchair.ui.preferences.navigation.FeatureFlags
-import app.lawnchair.ui.preferences.navigation.OrganizerDiagnosticsExport
 import com.patrykmichalik.opto.domain.Preference
 import kotlinx.coroutines.runBlocking
 
@@ -67,13 +67,7 @@ fun DebugMenuPreferences(
                         }
                     },
                 )
-                ClickablePreference(
-                    label = "Export organizer diagnostics",
-                    subtitle = "Export organizer diagnostic journal to a file",
-                    onClick = {
-                        navController.navigate(OrganizerDiagnosticsExport)
-                    },
-                )
+                OrganizerDiagnosticsExportPreference()
             }
 
             PreferenceGroup(heading = "Debug flags") {

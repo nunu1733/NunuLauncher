@@ -14,7 +14,6 @@ import androidx.navigation.toRoute
 import app.lawnchair.backup.ui.CreateBackupScreen
 import app.lawnchair.backup.ui.restoreBackupGraph
 import app.lawnchair.backup.ui.restoreNovaBackupGraph
-import app.lawnchair.organizer.diagnostics.export.OrganizerDiagnosticsExportPreference
 import app.lawnchair.preferences.BasePreferenceManager
 import app.lawnchair.preferences.preferenceManager
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
@@ -173,10 +172,6 @@ fun PreferenceNavigation(
         }
 
         composable<CreateBackup> { CreateBackupScreen(viewModel()) }
-
-        composable<OrganizerDiagnosticsExport> {
-            OrganizerDiagnosticsExportPreference()
-        }
 
         restoreBackupGraph()
         restoreNovaBackupGraph()

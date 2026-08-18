@@ -48,6 +48,7 @@ fun OrganizerDiagnosticsExportPreference() {
                     Toast.LENGTH_SHORT,
                 ).show()
             } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
                 // Write failure — journal remains intact, no network fallback
                 Toast.makeText(
                     context,
