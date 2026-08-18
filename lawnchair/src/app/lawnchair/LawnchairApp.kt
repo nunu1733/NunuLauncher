@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import app.lawnchair.backup.LawnchairBackup
 import app.lawnchair.flowerpot.Flowerpot
+import app.lawnchair.migration.DeckRetirementMigration
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.ui.ModalBottomSheetContent
@@ -71,6 +72,9 @@ class LawnchairApp : Application() {
         super.onCreate()
         instance = this
         QuickStepContract.sRecentsDisabled = !recentsEnabled
+        if (isDefaultProcess()) {
+            DeckRetirementMigration.run(this)
+        }
         Flowerpot.Manager.getInstance(this)
     }
 
@@ -161,6 +165,25 @@ class LawnchairApp : Application() {
             return fallback
         }
         return res.getBoolean(resId)
+    }
+
+    /**
+     * Returns true if the current process is the default (main) launcher process.
+     * On API 28+ uses [Application.getProcessName]; on API 26-27 falls back to
+     * reading /proc/self/cmdline.
+     */
+    private fun isDefaultProcess(): Boolean {
+        val currentProcessName = if (Build.VERSION.SDK_INT >= 28) {
+            getProcessName()
+        } else {
+            try {
+                File("/proc/self/cmdline").readText().trimEnd('\u0000').trim()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to read process name, defaulting to main process", e)
+                packageName
+            }
+        }
+        return currentProcessName == packageName
     }
 
     private val activityHandler = object : ActivityLifecycleCallbacks {

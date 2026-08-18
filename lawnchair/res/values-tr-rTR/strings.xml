@@ -170,8 +170,7 @@
     <string name="always_reload_icons_warning">Will cause icon to reload regularly, this is not required if icon pack doesn\'t update regularly</string>
     <string name="icon_swipe_gestures">Simge kaydırma hareketleri</string>
     <string name="icon_swipe_gestures_description">Ana ekranda kaydırmak yerine simgeleri sola ya da sağa kaydırarak işlemler yap</string>
-    <string name="show_deck_layout">Deck düzeni</string>
-    <string name="show_deck_layout_description">Uygulama çekmecesini gizle ve yeni uygulamaları ana ekrana ekle seçeneğini göster</string>
+
     <string name="material_expressive_label">Material 3 Expressive</string>
     <string name="material_expressive_description">Enable Material 3 Expressive changes in workspace</string>
     <string name="gesturenavcontract_label">GestureNavContract API</string>
@@ -480,9 +479,7 @@
     <string name="wallpaper_blur">Duvar kağıdı bulanıklaştırma (deneysel)</string>
     <string name="wallpaper_background_blur">Bulanıklaştırma yoğunluğu</string>
     <string name="wallpaper_background_blur_factor">Bulanıklık faktörü eşiği</string>
-    <string name="home_lawn_deck_label">Deck</string>
-    <string name="home_lawn_deck_label_beta">Deck (Beta)</string>
-    <string name="home_lawn_deck_description">Deck ile uygulamalarınıza zahmetsizce erişin; sadelik ve kusursuz düzen için tasarlanmış en iyi çekmecesiz deneyimi yaşayın</string>
+
     <string name="auto_add_shortcuts_label">Ana ekrana yeni uylulamaları ekle</string>
     <string name="minus_one_enable">Akışı göster</string>
     <string name="minus_one_unavailable">Bir akış uygulaması yüklü değil</string>

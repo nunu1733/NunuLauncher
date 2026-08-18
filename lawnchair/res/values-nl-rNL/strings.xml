@@ -170,8 +170,7 @@
     <string name="always_reload_icons_warning">Zorgt ervoor dat pictogram regelmatig wordt herladen, dit is niet vereist als pictogrampakket niet regelmatig wordt bijgewerkt</string>
     <string name="icon_swipe_gestures">Pictogram veeggebaren</string>
     <string name="icon_swipe_gestures_description">Acties uitvoeren bij het naar links of rechts vegen op pictogrammen in plaats van het startscherm te verplaatsen</string>
-    <string name="show_deck_layout">Opmaak van het dek</string>
-    <string name="show_deck_layout_description">De optie Opmaak weergeven om de app-lade te verbergen en nieuwe apps automatisch toe te voegen aan het startscherm</string>
+
     <string name="material_expressive_label">Material 3 Expressief</string>
     <string name="material_expressive_description">Material 3 Expressief inschakelen wijzigt de werkruimte</string>
     <string name="gesturenavcontract_label">GestureNavContract-API</string>
@@ -480,9 +479,7 @@
     <string name="wallpaper_blur">Achtergrond vervagen (experimenteel)</string>
     <string name="wallpaper_background_blur">Intensiteit van vervaging</string>
     <string name="wallpaper_background_blur_factor">Factor-drempelwaarde</string>
-    <string name="home_lawn_deck_label">Dek</string>
-    <string name="home_lawn_deck_label_beta">Dek (bèta)</string>
-    <string name="home_lawn_deck_description">Moeiteloos toegang tot je applicaties met Dek, de ultieme ervaring zonder app-lade, ontworpen voor eenvoud en naadloze organisatie</string>
+
     <string name="auto_add_shortcuts_label">Nieuwe apps toevoegen aan startscherm</string>
     <string name="minus_one_enable">Feed weergeven</string>
     <string name="minus_one_unavailable">Geen feed apps geïnstalleerd</string>

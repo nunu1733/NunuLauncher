@@ -43,10 +43,8 @@ import app.lawnchair.LawnchairApp
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.backup.ui.restoreBackupOpener
 import app.lawnchair.backup.ui.restoreNovaBackupOpener
-import app.lawnchair.preferences.getAdapter
 import app.lawnchair.preferences.observeAsState
 import app.lawnchair.preferences.preferenceManager
-import app.lawnchair.preferences2.preferenceManager2
 import app.lawnchair.ui.OverflowMenu
 import app.lawnchair.ui.preferences.LocalNavController
 import app.lawnchair.ui.preferences.components.AnnouncementPreference
@@ -88,7 +86,6 @@ fun PreferencesDashboard(
 ) {
     val context = LocalContext.current
     SyncLiveInformation()
-    val pref2 = preferenceManager2()
 
     PreferenceLayout(
         label = stringResource(id = R.string.settings),
@@ -142,16 +139,13 @@ fun PreferencesDashboard(
                 isSelected = currentRoute is Dock,
             )
 
-            val deckLayout = pref2.deckLayout.getAdapter()
-            if (!deckLayout.state.value) {
-                PreferenceCategory(
-                    label = stringResource(R.string.app_drawer_label),
-                    description = stringResource(R.string.app_drawer_description),
-                    iconResource = R.drawable.ic_app_drawer,
-                    onNavigate = { onNavigate(AppDrawer) },
-                    isSelected = currentRoute is AppDrawer,
-                )
-            }
+            PreferenceCategory(
+                label = stringResource(R.string.app_drawer_label),
+                description = stringResource(R.string.app_drawer_description),
+                iconResource = R.drawable.ic_app_drawer,
+                onNavigate = { onNavigate(AppDrawer) },
+                isSelected = currentRoute is AppDrawer,
+            )
 
             PreferenceCategory(
                 label = stringResource(R.string.search_bar_label),

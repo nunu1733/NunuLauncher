@@ -170,8 +170,7 @@
     <string name="always_reload_icons_warning">Will cause icon to reload regularly, this is not required if icon pack doesn\'t update regularly</string>
     <string name="icon_swipe_gestures">حرکات کشیدن آیکون</string>
     <string name="icon_swipe_gestures_description">انجام اقدامات هنگام کشیدن انگشت به چپ یا راست روی آیکون‌ها به جای حرکت دادن صفحه اصلی</string>
-    <string name="show_deck_layout">چیدمان عرشه</string>
-    <string name="show_deck_layout_description">نمایش گزینه طرح‌بندی برای مخفی کردن کشوی برنامه‌ها و افزودن خودکار برنامه‌های جدید به صفحه اصلی</string>
+
     <string name="material_expressive_label">Material 3 Expressive</string>
     <string name="material_expressive_description">Enable Material 3 Expressive changes in workspace</string>
     <string name="gesturenavcontract_label">GestureNavContract API</string>
@@ -480,9 +479,7 @@
     <string name="wallpaper_blur">تاری تصویر‌زمینه (آزمایشی)</string>
     <string name="wallpaper_background_blur">شدت تاری</string>
     <string name="wallpaper_background_blur_factor">آستانه عامل</string>
-    <string name="home_lawn_deck_label">عرشه</string>
-    <string name="home_lawn_deck_label_beta">عرشه (بتا)</string>
-    <string name="home_lawn_deck_description">با عرشه به برنامه‌های خود دسترسی داشته باشید، تجربه نهایی بدون کشو که برای سادگی و سازماندهی یکپارچه طراحی شده</string>
+
     <string name="auto_add_shortcuts_label">افزودن برنامه‌های جدید به صفحه‌اصلی</string>
     <string name="minus_one_enable">نمایش خبر</string>
     <string name="minus_one_unavailable">هیچ اخباری نصب نشده</string>

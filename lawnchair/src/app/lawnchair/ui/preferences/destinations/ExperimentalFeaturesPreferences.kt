@@ -69,11 +69,6 @@ fun ExperimentalFeaturesPreferences(
                 label = stringResource(R.string.icon_swipe_gestures),
                 description = stringResource(R.string.icon_swipe_gestures_description),
             )
-            SwitchPreference(
-                adapter = prefs2.showDeckLayout.getAdapter(),
-                label = stringResource(R.string.show_deck_layout),
-                description = stringResource(R.string.show_deck_layout_description),
-            )
 
             val context = LocalContext.current
             val enableWallpaperBlur = prefs.enableWallpaperBlur.getAdapter()

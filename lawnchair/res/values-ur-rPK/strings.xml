@@ -170,8 +170,7 @@
     <string name="always_reload_icons_warning">Will cause icon to reload regularly, this is not required if icon pack doesn\'t update regularly</string>
     <string name="icon_swipe_gestures">Icon swipe gestures</string>
     <string name="icon_swipe_gestures_description">Perform actions when swiping left or right on icons instead of moving the home screen</string>
-    <string name="show_deck_layout">Deck layout</string>
-    <string name="show_deck_layout_description">Show a layout option to hide the app drawer and automatically add new apps to the home screen</string>
+
     <string name="material_expressive_label">Material 3 Expressive</string>
     <string name="material_expressive_description">Enable Material 3 Expressive changes in workspace</string>
     <string name="gesturenavcontract_label">GestureNavContract API</string>
@@ -480,9 +479,7 @@
     <string name="wallpaper_blur">بلر وال پیپر (تجرباتی)</string>
     <string name="wallpaper_background_blur">دھندلا پن کی شدت</string>
     <string name="wallpaper_background_blur_factor">فیکٹر کی حد</string>
-    <string name="home_lawn_deck_label">ڈیک</string>
-    <string name="home_lawn_deck_label_beta">ڈیک (بیٹا)</string>
-    <string name="home_lawn_deck_description">آسانی کے ساتھ اپنی ایپلی کیشنز تک رسائی حاصل کریں ڈیک کے ساتھ، حتمی دراز کا تجربہ جو سادگی اور ہموار تنظیم کے لیے ڈیزائن کیا گیا ہے۔</string>
+
     <string name="auto_add_shortcuts_label">ہوم اسکرین پر نئی ایپس شامل کریں۔</string>
     <string name="minus_one_enable">فیڈ دکھائیں۔</string>
     <string name="minus_one_unavailable">کوئی فیڈ ایپس انسٹال نہیں ہیں۔</string>

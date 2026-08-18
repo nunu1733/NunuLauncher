@@ -204,7 +204,7 @@ public class RestoreDbTask {
     public static boolean performRestore(Context context, ModelDbController controller) {
         // Issue #58: acquire the lease BEFORE controller.getDb(): getDb may create, rename
         // or copy DB files through createDatabaseHelper. When the calling thread already
-        // holds a restore-family lease (BACKUP_RESTORE / DECK_FILE_RESTORE), reenter it
+        // holds a restore-family lease (BACKUP_RESTORE), reenter it
         // instead of blocking (which would self-deadlock).
         LayoutWriteCoordinator coordinator = LayoutWriteCoordinator.getInstance();
         LayoutWriteCoordinator.Lease acquired = coordinator.tryReenterRestoreFamily();

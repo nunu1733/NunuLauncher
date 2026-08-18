@@ -102,7 +102,7 @@ run_fault_phase() {
     adb_cmd shell am instrument -w -e class "$TEST_CLASS" \
         -e organizerFaultPhase "$phase" \
         -e organizerMode "FAULT_INJECTION" \
-        "$TEST_PACKAGE/androidx.test.runner.AndroidJUnitRunner" >"$output_file" 2>&1 &
+        "$TEST_PACKAGE/app.lawnchair.migration.DeckRetirementTestRunner" >"$output_file" 2>&1 &
     local instrument_pid=$!
 
     echo "Waiting for readiness marker $READINESS_TAG phase=$phase..."
@@ -137,7 +137,7 @@ run_verify_only() {
     output="$(adb_cmd shell am instrument -w -e class "$TEST_CLASS" \
         -e organizerFaultPhase "$phase" \
         -e organizerMode "VERIFY_ONLY" \
-        "$TEST_PACKAGE/androidx.test.runner.AndroidJUnitRunner")"
+        "$TEST_PACKAGE/app.lawnchair.migration.DeckRetirementTestRunner")"
     printf '%s\n' "$output" > "$verify_file"
     printf '%s\n' "$output"
     grep -q "OK (1 test)" "$verify_file"

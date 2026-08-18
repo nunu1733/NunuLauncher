@@ -170,8 +170,7 @@
     <string name="always_reload_icons_warning">Will cause icon to reload regularly, this is not required if icon pack doesn\'t update regularly</string>
     <string name="icon_swipe_gestures">Gestos al deslizar el dedo sobre iconos</string>
     <string name="icon_swipe_gestures_description">Realiza acciones al deslizar a la izquierda o derecha en los iconos en lugar de mover la pantalla de inicio</string>
-    <string name="show_deck_layout">Diseño de colección</string>
-    <string name="show_deck_layout_description">Mostrar una opción de diseño para ocultar el cajón de aplicaciones y agregar automáticamente nuevas aplicaciones a la pantalla de inicio</string>
+
     <string name="material_expressive_label">Material 3 Expressive</string>
     <string name="material_expressive_description">Enable Material 3 Expressive changes in workspace</string>
     <string name="gesturenavcontract_label">GestureNavContract API</string>
@@ -480,9 +479,7 @@
     <string name="wallpaper_blur">Desenfocar fondo de pantalla (experimental)</string>
     <string name="wallpaper_background_blur">Intensidad del desenfoque</string>
     <string name="wallpaper_background_blur_factor">Cantidad de desenfoque</string>
-    <string name="home_lawn_deck_label">Superficie</string>
-    <string name="home_lawn_deck_label_beta"></string>
-    <string name="home_lawn_deck_description">Accede a tus aplicaciones de forma sencilla con el modo superficie, un modo simple y organizado sin una bandeja de aplicaciones</string>
+
     <string name="auto_add_shortcuts_label">Añadir nuevas aplicaciones a la pantalla de inicio</string>
     <string name="minus_one_enable">Mostrar canal de contenido</string>
     <string name="minus_one_unavailable">No hay ninguna aplicación proveedora de contenido instalada</string>
