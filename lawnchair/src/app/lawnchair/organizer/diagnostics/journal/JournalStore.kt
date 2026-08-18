@@ -24,8 +24,8 @@ import java.io.RandomAccessFile
  * - Retention is evaluated before each append and prunes eligible
  *   runs from the oldest eligible first.
  *
- * Thread safety: NOT thread-safe. Caller must ensure single-threaded
- * access at the organizer level.
+ * Thread safety: [append] is synchronized because emission may happen
+ * outside the RunMutex (e.g. from the journal port lambda).
  */
 class JournalStore(
     private val journalFile: File,
@@ -33,7 +33,6 @@ class JournalStore(
     private val clock: () -> Long = { System.currentTimeMillis() },
 ) {
     private var opened: Boolean = false
-    private var raf: RandomAccessFile? = null
     private var cachedEvents: List<RunEvent> = emptyList()
     private var eventByteSizes: MutableMap<Long, Long> = mutableMapOf()
 
@@ -48,6 +47,10 @@ class JournalStore(
             }
             // Read back existing events
             reloadEvents()
+            // Reconcile sequence with the max journalSequence among retained events
+            // so that if the seq file was lost, we recover from the journal.
+            val maxSeq = cachedEvents.maxOfOrNull { it.journalSequence } ?: 0L
+            sequence.reconcile(maxSeq)
             opened = true
         } catch (_: Exception) {
             // Fail-open: if open fails, the store is still usable
@@ -58,13 +61,6 @@ class JournalStore(
 
     /** Close the journal store. */
     fun close() {
-        if (!opened) return
-        try {
-            raf?.close()
-        } catch (_: Exception) {
-            // Fail-open
-        }
-        raf = null
         opened = false
     }
 
@@ -73,6 +69,7 @@ class JournalStore(
      *
      * @return true if the event was successfully persisted, false on failure.
      */
+    @Synchronized
     fun append(event: RunEvent): Boolean {
         if (!opened) open()
         return try {
@@ -80,7 +77,11 @@ class JournalStore(
             runRetention()
 
             val seq = sequence.next()
-            val eventWithSeq = event.copy(journalSequence = seq)
+            val now = clock()
+            val eventWithSeq = event.copy(
+                journalSequence = seq,
+                recordedAtWallMillis = if (event.recordedAtWallMillis == 0L) now else event.recordedAtWallMillis,
+            )
             val line = RunEventSerializer.encodeToString(eventWithSeq) + "\n"
             val bytes = line.toByteArray(Charsets.UTF_8)
 
@@ -172,12 +173,16 @@ class JournalStore(
         if (cachedEvents.isEmpty()) return
         val now = clock()
         val result = RetentionPolicy.evaluate(cachedEvents, eventByteSizes, now)
-        if (result.pruneRunIds.isEmpty()) return
-        pruneRuns(result.pruneRunIds)
+        if (result.pruneRunIds.isEmpty() && result.pruneOrphanedSequences.isEmpty()) return
+        pruneRuns(result.pruneRunIds, result.pruneOrphanedSequences)
     }
 
-    private fun pruneRuns(runIds: Set<String>) {
-        val remaining = cachedEvents.filter { it.runId == null || it.runId !in runIds }
+    private fun pruneRuns(runIds: Set<String>, orphanedSequences: Set<Long> = emptySet()) {
+        val remaining = cachedEvents.filter { event ->
+            val runIdMatch = event.runId != null && event.runId in runIds
+            val seqMatch = event.journalSequence in orphanedSequences
+            !runIdMatch && !seqMatch
+        }
         if (remaining.size == cachedEvents.size) return
         rewriteJournal(remaining)
     }
@@ -191,7 +196,16 @@ class JournalStore(
                     writer.write(line)
                 }
             }
-            tempFile.renameTo(journalFile)
+            if (!tempFile.renameTo(journalFile)) {
+                // renameTo failed (e.g. cross-filesystem); try copy-and-delete
+                try {
+                    journalFile.copyFrom(tempFile)
+                    tempFile.delete()
+                } catch (_: Exception) {
+                    tempFile.delete()
+                    return // Keep old journal cache consistent
+                }
+            }
             cachedEvents = events
             eventByteSizes.clear()
             // Recompute byte sizes
@@ -201,6 +215,14 @@ class JournalStore(
             }
         } catch (_: Exception) {
             // Fail-open: if rewrite fails, we keep the old journal
+        }
+    }
+
+    private fun File.copyFrom(source: File) {
+        source.inputStream().use { input ->
+            this.outputStream().use { output ->
+                input.copyTo(output)
+            }
         }
     }
 

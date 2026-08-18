@@ -63,7 +63,7 @@ class LayoutApplicationModule(
     ) {
         val runId = operationIds.newRunId()
         emitRunStarted(runId, plan)
-        applyProtocol.apply(plan)
+        applyProtocol.apply(plan, runId)
     }
 
     private fun emitRunStarted(runId: RunId, plan: ValidatedLayoutPlan) {
@@ -73,8 +73,8 @@ class LayoutApplicationModule(
                 phase = PhaseCode.RUN_STARTED,
                 runId = runId.value,
                 versions = RunVersions(
-                    ruleVersion = plan.ruleVersion?.value ?: "",
-                    taxonomyVersion = plan.taxonomyVersion?.value ?: "",
+                    ruleVersion = plan.ruleVersion.value,
+                    taxonomyVersion = plan.taxonomyVersion.value,
                 ),
             )
             diagnosticsPort.emit(event)
@@ -97,7 +97,25 @@ class LayoutApplicationModule(
         },
     ) {
         emitRecoveryRequested(request)
-        recoveryProtocol.recover(request)
+        val result = recoveryProtocol.recover(request)
+        emitRecoveryResult(result, request)
+        result
+    }
+
+    private fun emitRecoveryResult(result: RecoveryResult, request: RecoveryRequest) {
+        try {
+            val record = store.readRecord(request.pointId)
+            val pointOriginRunId = record?.runId?.value
+            val event = app.lawnchair.organizer.diagnostics.projection.RecoveryProjection.project(
+                result = result,
+                journalSequence = 0L,
+                pointId = request.pointId.value,
+                pointOriginRunId = pointOriginRunId,
+            )
+            diagnosticsPort.emit(event)
+        } catch (_: Exception) {
+            // Fail-open
+        }
     }
 
     private fun emitRecoveryRequested(request: RecoveryRequest) {
@@ -145,7 +163,7 @@ class LayoutApplicationModule(
             val seqFile = File(diagnosticsDir, "journal_seq")
             val journalSequence = JournalSequence(seqFile)
             val journalStore = JournalStore(journalFile, journalSequence, clock::nowMillis)
-            val diagnosticsLogger = DiagnosticsLogger()
+            val diagnosticsLogger = DiagnosticsLogger(isReleaseBuild = !com.android.launcher3.BuildConfig.DEBUG)
             val diagnosticsPort = DiagnosticsPort { event ->
                 val persisted = journalStore.append(event)
                 if (persisted) {

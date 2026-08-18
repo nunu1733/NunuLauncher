@@ -35,19 +35,37 @@ class JournalSequence(
     }
 
     /**
+     * Reconcile the sequence value with a known high-water mark from the
+     * journal (e.g. the max journalSequence among retained events). This
+     * ensures the sequence is never lower than what was actually written.
+     */
+    fun reconcile(journalMaxSequence: Long) {
+        if (journalMaxSequence > current) {
+            current = journalMaxSequence
+            try {
+                seqFile.writeText(current.toString())
+            } catch (_: Exception) {
+                // Fail-open
+            }
+        }
+    }
+
+    /**
      * Allocate and persist the next sequence value.
      * Returns the new value (strictly greater than any previous).
+     * Does NOT advance the counter if the file write fails (no sequence
+     * number consumed).
      */
     fun next(): Long {
         val next = current + 1L
         try {
             seqFile.writeText(next.toString())
+            current = next
         } catch (_: Exception) {
-            // Fail-open: if the sequence file write fails, we still
-            // return the next value. The journal append will also fail
-            // and the caller will handle it.
+            // Fail-open: if the sequence file write fails, we don't advance
+            // the counter so no sequence number is consumed
+            return current
         }
-        current = next
         return next
     }
 

@@ -26,23 +26,23 @@ class DiagnosticsLogger(
         const val TAG: String = "OrganizerDiag"
     }
 
-    /** Terminal phase codes that should be WARN level. */
+    /**
+     * Terminal failure phases: contract §10 restricts WARN to
+     * `*_REJECTED`, `*_FAILED`, `*_ROLLED_BACK`, `*_UNRESOLVED`.
+     * Phases like APPLY_NO_CHANGES, USER_CANCELLED, PLANNING_IMPOSSIBLE,
+     * APPLY_RECOVERED, RECOVERY_WRITER_BUSY, RECOVERY_CONCURRENT are
+     * NOT failures and are not included.
+     */
     private val terminalFailurePhases: Set<PhaseCode> = setOf(
         PhaseCode.PLANNING_REJECTED,
-        PhaseCode.PLANNING_IMPOSSIBLE,
-        PhaseCode.USER_CANCELLED,
         PhaseCode.CHECKPOINT_REJECTED,
-        PhaseCode.APPLY_NO_CHANGES,
         PhaseCode.APPLY_REJECTED,
         PhaseCode.CONCURRENT_RUN_REJECTED,
-        PhaseCode.APPLY_ROLLED_BACK,
-        PhaseCode.APPLY_RECOVERED,
-        PhaseCode.APPLY_UNRESOLVED,
-        PhaseCode.APPLY_RECOVERY_FAILED,
         PhaseCode.RECOVERY_REJECTED,
         PhaseCode.RECOVERY_FAILED,
-        PhaseCode.RECOVERY_WRITER_BUSY,
-        PhaseCode.RECOVERY_CONCURRENT,
+        PhaseCode.APPLY_RECOVERY_FAILED,
+        PhaseCode.APPLY_ROLLED_BACK,
+        PhaseCode.APPLY_UNRESOLVED,
     )
 
     /**
@@ -69,7 +69,7 @@ class DiagnosticsLogger(
         }
     }
 
-    private fun format(event: RunEvent): String {
+    fun format(event: RunEvent): String {
         val parts = mutableListOf<String>()
 
         // runId (if present)

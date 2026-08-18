@@ -76,8 +76,14 @@ class RetentionPolicyTest {
         // Make each event 100 KiB, total 1000 KiB > 512 KiB
         val sizes = events.associate { it.journalSequence to 100_000L }
         val result = RetentionPolicy.evaluate(events, sizes, now)
-        // At least some runs should be pruned
+        // At least some runs should be pruned (oldest first)
         assertTrue(result.pruneRunIds.isNotEmpty())
+        // Oldest runs (run-1, run-2) should be pruned first (FIFO order)
+        assertTrue("Oldest run must be pruned first", result.pruneRunIds.contains("run-1"))
+        // Post-cap: remaining should be <= 5 runs (since 5 * 100 KiB = 500 KiB < 512 KiB)
+        val remainingRuns = events.filter { it.runId !in result.pruneRunIds }
+        val remainingBytes = remainingRuns.sumOf { sizes[it.journalSequence] ?: 0L }
+        assertTrue("Remaining bytes must be <= MAX_SIZE_BYTES", remainingBytes <= RetentionPolicy.MAX_SIZE_BYTES)
     }
 
     @Test
@@ -107,8 +113,14 @@ class RetentionPolicyTest {
         val sizes = byteSizes(events)
         val result = RetentionPolicy.evaluate(events, sizes, now)
         // "resolved-run" is no longer protected (it has RESTART_RECONCILED)
-        // but it's the only eligible run, so it may or may not be pruned
-        // depending on limits
+        assertFalse(
+            "Run with RESTART_RECONCILED must not be protected",
+            RetentionPolicy.isRunProtected(events.filter { it.runId == "resolved-run" }),
+        )
+        // The run is resolved and eligible for pruning
+        // other-run is also resolved, so both are eligible
+        // Neither should be protected
+        assertFalse(result.pruneRunIds.contains("resolved-run") && result.pruneRunIds.size > 1)
     }
 
     @Test

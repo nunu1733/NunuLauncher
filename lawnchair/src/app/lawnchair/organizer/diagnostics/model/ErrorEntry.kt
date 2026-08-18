@@ -30,4 +30,14 @@ data class ErrorEntry(
     val code: String,
     val reasonTotal: Int? = null,
     val additionalCodes: List<String> = emptyList(),
-)
+) {
+    init {
+        require(code.isNotBlank()) { "ErrorEntry.code must not be blank" }
+        require(code.all { it.isUpperCase() || it == '_' || it.isDigit() } || code == "UNMAPPED") {
+            "ErrorEntry.code must be an enum constant name or 'UNMAPPED', got '$code'"
+        }
+        additionalCodes.forEach { c ->
+            require(c.isNotBlank()) { "ErrorEntry.additionalCodes entries must not be blank" }
+        }
+    }
+}

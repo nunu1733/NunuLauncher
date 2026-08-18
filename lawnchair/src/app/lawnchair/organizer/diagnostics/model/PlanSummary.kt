@@ -21,4 +21,27 @@ data class PlanSummary(
     val unplacedByReason: Map<String, Int> = emptyMap(),
     val warningByCode: Map<String, Int> = emptyMap(),
     val confidenceCounts: Map<String, Int> = emptyMap(),
-)
+) {
+    init {
+        preservedByReason.keys.forEach { k ->
+            require(k.all { it.isUpperCase() || it == '_' || it.isDigit() }) {
+                "PlanSummary.preservedByReason keys must be enum constant names, got '$k'"
+            }
+        }
+        unplacedByReason.keys.forEach { k ->
+            require(k.all { it.isUpperCase() || it == '_' || it.isDigit() }) {
+                "PlanSummary.unplacedByReason keys must be enum constant names, got '$k'"
+            }
+        }
+        warningByCode.keys.forEach { k ->
+            require(k.all { it.isUpperCase() || it == '_' || it.isDigit() }) {
+                "PlanSummary.warningByCode keys must be enum constant names, got '$k'"
+            }
+        }
+        confidenceCounts.keys.forEach { k ->
+            require(k.all { it.isUpperCase() || it == '_' || it.isDigit() }) {
+                "PlanSummary.confidenceCounts keys must be enum constant names, got '$k'"
+            }
+        }
+    }
+}

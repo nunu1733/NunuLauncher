@@ -4,6 +4,7 @@ import app.lawnchair.organizer.diagnostics.journal.RunEventSerializer
 import app.lawnchair.organizer.diagnostics.model.PhaseCode
 import app.lawnchair.organizer.diagnostics.model.RunEvent
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -94,10 +95,20 @@ class DiagnosticsContractTest {
                 insertActionCount = 0,
             ),
         )
-        // The logger format produces: "phase=APPLY_VERIFIED preserveActions=10 updateActions=5 insertActions=0"
-        // We can't capture the actual log output in a unit test, but we can verify
-        // the logger doesn't throw when processing events with approved fields
         val logger = app.lawnchair.organizer.diagnostics.logger.DiagnosticsLogger()
-        logger.log(event)
+        val formatted = logger.format(event)
+        // Verify the rendered output contains only approved fields
+        assertTrue(formatted.contains("phase=APPLY_VERIFIED"))
+        assertTrue(formatted.contains("preserveActions=10"))
+        assertTrue(formatted.contains("updateActions=5"))
+        assertTrue(formatted.contains("insertActions=0"))
+        // Verify D-09 forbidden strings are absent
+        val d09Forbidden = listOf(
+            "packageName", "com.example", "component", "MainActivity",
+            "profileSerial", "cell", "folderTitle", "rules", "category", "revision", "message", "SQLException", "items",
+        )
+        for (f in d09Forbidden) {
+            assertFalse("Forbidden string '$f' must not appear in logcat format", formatted.contains(f))
+        }
     }
 }

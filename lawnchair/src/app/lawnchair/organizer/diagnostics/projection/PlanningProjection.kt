@@ -49,7 +49,7 @@ object PlanningProjection {
         return when (val outcome = result.outcome) {
             is Planned -> projectPlanned(baseEvent, outcome, capturedItemCount, candidateItemCount)
             is Rejected.Invalid -> projectInvalid(baseEvent, outcome)
-            is Rejected.Impossible -> projectImpossible(baseEvent, outcome)
+            is Rejected.Impossible -> projectImpossible(baseEvent, outcome, capturedItemCount, candidateItemCount)
         }
     }
 
@@ -63,12 +63,6 @@ object PlanningProjection {
         val movedCount = placements.count { it.disposition is app.lawnchair.organizer.planning.Disposition.Moved }
         val preservedCount = placements.count { it.disposition is app.lawnchair.organizer.planning.Disposition.Preserved }
         val preservedByReason = placements
-            .filterIsInstance<app.lawnchair.organizer.planning.Disposition.Preserved>()
-            .groupBy { it.reason.name }
-            .mapValues { it.value.size }
-        // The above is incorrect — we need to filter the disposition, not the whole placement.
-        // Let me fix this.
-        val preservedByReasonCorrect = placements
             .mapNotNull { p ->
                 val disp = p.disposition
                 if (disp is app.lawnchair.organizer.planning.Disposition.Preserved) disp.reason.name else null
@@ -94,7 +88,7 @@ object PlanningProjection {
                 candidateItemCount = candidateItemCount,
                 movedCount = movedCount,
                 preservedCount = preservedCount,
-                preservedByReason = preservedByReasonCorrect,
+                preservedByReason = preservedByReason,
                 newFolderCount = planned.newFolders.size,
                 newPageCount = planned.newPages.size,
                 unplacedCount = unplacedCount,
@@ -122,7 +116,12 @@ object PlanningProjection {
         )
     }
 
-    private fun projectImpossible(base: RunEvent, impossible: Rejected.Impossible): RunEvent {
+    private fun projectImpossible(
+        base: RunEvent,
+        impossible: Rejected.Impossible,
+        capturedItemCount: Int = 0,
+        candidateItemCount: Int = 0,
+    ): RunEvent {
         val unplaced = impossible.unplaced
         val unplacedByReason = unplaced
             .map { it.reason.name }
@@ -136,6 +135,8 @@ object PlanningProjection {
         return base.copy(
             phase = PhaseCode.PLANNING_IMPOSSIBLE,
             planSummary = PlanSummary(
+                capturedItemCount = capturedItemCount,
+                candidateItemCount = candidateItemCount,
                 unplacedCount = unplaced.size,
                 unplacedByReason = unplacedByReason,
                 warningByCode = warningByCode,

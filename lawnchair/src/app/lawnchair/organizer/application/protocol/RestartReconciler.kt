@@ -73,7 +73,9 @@ class RestartReconciler(
     ) {
         try {
             val classification = classify(record)
-            val resultingLifecycle = resultingLifecycleFor(result, record)
+            // Read the actual resulting lifecycle from the store after reconciliation
+            val resultingLifecycle = store.readRecord(record.pointId)?.lifecycle
+                ?: resultingLifecycleFor(result, record)
             val event = ReconciliationProjection.project(
                 subjectRunId = record.runId,
                 priorLifecycle = record.lifecycle,
@@ -87,6 +89,10 @@ class RestartReconciler(
         }
     }
 
+    /**
+     * Best-effort approximation of the resulting lifecycle when the store
+     * record is no longer available. This is a contract-approved fallback.
+     */
     private fun resultingLifecycleFor(
         result: ReconciliationPublicResult,
         record: RecoveryStorePort.StoredRecord,

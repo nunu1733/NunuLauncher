@@ -15,9 +15,14 @@ import app.lawnchair.organizer.diagnostics.model.RunEvent
  * - Max 7 days for eligible history.
  * - Max 512 KiB for eligible history.
  *
- * Protected runs: those whose last event is one of the unresolved
- * lifecycle phases (APPLYING/COMMITTED_UNVERIFIED/RESTORING) or
- * whose recovery lifecycle is in an unresolved state.
+ * Protected runs: those whose recovery lifecycle is still in an unresolved
+ * state (APPLYING / COMMITTED_UNVERIFIED / RESTORING per contract §8). At
+ * the diagnosis event level, a run is protected if it has a phase that
+ * indicates an unresolved lifecycle (APPLY_COMMITTED -> COMMITTED_UNVERIFIED)
+ * and does NOT have a terminal event or RESTART_RECONCILED event.
+ *
+ * Orphaned events (no runId) are never protected. They are pruned under
+ * the age and size caps (oldest first) to keep the journal bounded.
  *
  * "Eligible" means resolved (has a terminal event or RESTART_RECONCILED)
  * and not protected.
@@ -54,12 +59,13 @@ object RetentionPolicy {
         PhaseCode.RECOVERY_CONCURRENT,
     )
 
-    /** Phases that indicate an unresolved run. */
-    private val UNRESOLVED_PHASES: Set<PhaseCode> = setOf(
+    /**
+     * Phases that indicate an unresolved recovery lifecycle
+     * (APPLYING / COMMITTED_UNVERIFIED / RESTORING per contract §8).
+     * APPLY_COMMITTED is the diagnosis projection of COMMITTED_UNVERIFIED.
+     */
+    private val UNRESOLVED_LIFECYCLE_PHASES: Set<PhaseCode> = setOf(
         PhaseCode.APPLY_COMMITTED,
-        PhaseCode.APPLY_RECOVERED,
-        PhaseCode.APPLY_UNRESOLVED,
-        PhaseCode.APPLY_RECOVERY_FAILED,
     )
 
     /**
@@ -75,7 +81,11 @@ object RetentionPolicy {
         val earliestWallMillis: Long get() = events.minOf { it.recordedAtWallMillis }
         val hasTerminalEvent: Boolean get() = events.any { it.phase in TERMINAL_PHASES }
         val hasReconciledEvent: Boolean get() = events.any { it.phase == PhaseCode.RESTART_RECONCILED }
-        val isProtected: Boolean get() = !hasTerminalEvent && !hasReconciledEvent
+
+        /** Protected: has unresolved lifecycle indicator and no terminal/reconciled resolution. */
+        val isProtected: Boolean get() =
+            events.any { it.phase in UNRESOLVED_LIFECYCLE_PHASES } &&
+                !hasTerminalEvent && !hasReconciledEvent
         val isResolved: Boolean get() = hasTerminalEvent || hasReconciledEvent
     }
 
@@ -85,6 +95,8 @@ object RetentionPolicy {
     data class RetentionResult(
         /** The run IDs to prune (oldest eligible first). */
         val pruneRunIds: Set<String>,
+        /** Journal sequences of orphaned events to prune. */
+        val pruneOrphanedSequences: Set<Long> = emptySet(),
         /** Whether the journal is now within all limits. */
         val withinLimits: Boolean,
     )
@@ -102,7 +114,7 @@ object RetentionPolicy {
         eventByteSizes: Map<Long, Long>,
         nowMillis: Long,
     ): RetentionResult {
-        // Group events by runId (events without runId are orphaned — prune first)
+        // Group events by runId (events without runId are orphaned)
         val orphanedEvents = events.filter { it.runId == null }
         val runGroups = events.filter { it.runId != null }.groupBy { it.runId!! }
 
@@ -114,12 +126,13 @@ object RetentionPolicy {
         val eligible = histories.filter { it.isResolved && !it.isProtected }
         val protected = histories.filter { it.isProtected }
 
-        // We need to keep protected runs regardless of limits.
         // Sort eligible runs by earliest sequence (oldest first) for FIFO pruning.
         val sortedEligible = eligible.sortedBy { it.earliestSequence }
 
         var toPrune = mutableSetOf<String>()
         var remainingEligible: List<RunHistory> = sortedEligible
+        var orphanedToPrune = mutableSetOf<Long>()
+        var remainingOrphaned = orphanedEvents.sortedBy { it.journalSequence }
 
         // 1. Cap by number of resolved runs: keep at most MAX_RESOLVED_RUNS
         val totalResolved = eligible.size
@@ -136,10 +149,15 @@ object RetentionPolicy {
         toPrune.addAll(oldRuns.map { it.runId })
         remainingEligible = remainingEligible.filter { it.runId !in toPrune }
 
+        // Prune orphaned events older than MAX_AGE_MS
+        val oldOrphaned = remainingOrphaned.filter { it.recordedAtWallMillis > 0L && it.recordedAtWallMillis < ageThreshold }
+        orphanedToPrune.addAll(oldOrphaned.map { it.journalSequence })
+        remainingOrphaned = remainingOrphaned.filter { it.journalSequence !in orphanedToPrune }
+
         // 3. Cap by size: total remaining bytes must not exceed MAX_SIZE_BYTES
         val remainingEligibleBytes = remainingEligible.sumOf { it.totalBytes }
         val protectedBytes = protected.sumOf { it.totalBytes }
-        val orphanedBytes = orphanedEvents.sumOf { eventByteSizes[it.journalSequence] ?: 0L }
+        val orphanedBytes = remainingOrphaned.sumOf { eventByteSizes[it.journalSequence] ?: 0L }
         val totalBytes = remainingEligibleBytes + protectedBytes + orphanedBytes
         if (totalBytes > MAX_SIZE_BYTES) {
             // Prune eligible runs from oldest until under limit
@@ -151,21 +169,31 @@ object RetentionPolicy {
                 prunedBytes += run.totalBytes
                 remainingEligible = remainingEligible.filter { it.runId != run.runId }
             }
+            // If still over limit, prune orphaned events from oldest
+            if (prunedBytes < excessBytes) {
+                for (orphan in remainingOrphaned.sortedBy { it.journalSequence }) {
+                    if (prunedBytes >= excessBytes) break
+                    orphanedToPrune.add(orphan.journalSequence)
+                    prunedBytes += eventByteSizes[orphan.journalSequence] ?: 0L
+                }
+            }
         }
 
         return RetentionResult(
             pruneRunIds = toPrune,
+            pruneOrphanedSequences = orphanedToPrune,
             withinLimits = toPrune.isEmpty() || (remainingEligible.size + protected.size <= MAX_RESOLVED_RUNS),
         )
     }
 
     /**
      * Determine if a run is protected based on the diagnostics event data.
-     * A run is protected if it has events with APPLYING/COMMITTED_UNVERIFIED/RESTORING
-     * lifecycle state and no terminal or RESTART_RECONCILED event.
+     * A run is protected if it has events with an unresolved lifecycle phase
+     * (APPLY_COMMITTED -> COMMITTED_UNVERIFIED) and no terminal or
+     * RESTART_RECONCILED event.
      */
     fun isRunProtected(events: List<RunEvent>): Boolean {
-        val hasUnresolvedPhase = events.any { it.phase in UNRESOLVED_PHASES }
+        val hasUnresolvedPhase = events.any { it.phase in UNRESOLVED_LIFECYCLE_PHASES }
         val hasTerminal = events.any { it.phase in TERMINAL_PHASES }
         val hasReconciled = events.any { it.phase == PhaseCode.RESTART_RECONCILED }
         return hasUnresolvedPhase && !hasTerminal && !hasReconciled

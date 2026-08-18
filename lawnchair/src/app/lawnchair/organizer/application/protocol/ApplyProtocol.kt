@@ -28,24 +28,25 @@ class ApplyProtocol(
     private val mutex: RunMutex,
     private val diagnosticsPort: DiagnosticsPort = DiagnosticsPort.NOOP,
 ) {
-    fun apply(plan: ValidatedLayoutPlan): ApplyResult {
-        val runId = operationIds.newRunId()
-        if (!mutex.tryAcquire(runId)) {
+    fun apply(plan: ValidatedLayoutPlan, runId: RunId? = null): ApplyResult {
+        val actualRunId = runId ?: operationIds.newRunId()
+        if (!mutex.tryAcquire(actualRunId)) {
             emitSafely(
                 RunEvent(
                     journalSequence = 0L,
                     phase = PhaseCode.CONCURRENT_RUN_REJECTED,
+                    runId = actualRunId.value,
                 ),
             )
             return ApplyResult.ConcurrentRun
         }
         return try {
-            val result = applyWithRunMutex(runId, plan)
+            val result = applyWithRunMutex(actualRunId, plan)
             // Emit terminal event for the apply result
             emitTerminalApplyEvent(result, plan)
             result
         } finally {
-            mutex.release(runId)
+            mutex.release(actualRunId)
         }
     }
 
@@ -120,7 +121,16 @@ class ApplyProtocol(
             RecoveryStorePort.CheckpointResult.StoreUnavailable ->
                 return ApplyResult.Rejected(runId, PreWriteRejection.RECOVERY_STORE_UNAVAILABLE)
 
-            is RecoveryStorePort.CheckpointResult.Ready -> Unit
+            is RecoveryStorePort.CheckpointResult.Ready -> {
+                // Emit CHECKPOINTED right after the checkpoint Ready result (A4)
+                emitSafely(
+                    ApplyProjection.projectCheckpointed(
+                        runId = runId.value,
+                        pointId = pointId.value,
+                        journalSequence = 0L,
+                    ),
+                )
+            }
         }
 
         faults.beforeRecoveryLifecycleCommit(FaultInjector.RecoveryLifecyclePhase.APPLYING, pointId)
@@ -134,23 +144,6 @@ class ApplyProtocol(
         )
         if (!marked) return ApplyResult.Rejected(runId, PreWriteRejection.RECOVERY_STORE_UNAVAILABLE)
         faults.afterRecoveryLifecycleCommit(FaultInjector.RecoveryLifecyclePhase.APPLYING, pointId)
-
-        // Emit CHECKPOINTED after A4 checkpoint creation
-        emitSafely(
-            ApplyProjection.projectCheckpointed(
-                runId = runId.value,
-                pointId = pointId.value,
-                journalSequence = 0L,
-            ),
-        )
-
-        // Emit APPLY_COMMITTED after A6 commit (markApplying)
-        emitSafely(
-            ApplyProjection.projectCommitted(
-                runId = runId.value,
-                journalSequence = 0L,
-            ),
-        )
 
         val outcome = try {
             writer.applyWriteSet(lease, writeSet, pointId, faults)
@@ -249,6 +242,13 @@ class ApplyProtocol(
         if (!store.advance(pointId, LifecycleState.COMMITTED_UNVERIFIED)) {
             return automaticRecovery(runId, pointId, ApplyFailure.RECOVERY_STORE_FAILED, lease)
         }
+        // Emit APPLY_COMMITTED after COMMITTED_UNVERIFIED mark succeeds (A6)
+        emitSafely(
+            ApplyProjection.projectCommitted(
+                runId = runId.value,
+                journalSequence = 0L,
+            ),
+        )
         faults.beforeModelReloadRequest()
         val requested = writer.requestCorrelatedReload(lease)
         val reload = when (faults.afterCorrelatedGenerationWait()) {
@@ -438,11 +438,11 @@ class ApplyProtocol(
             PreWriteRejection.EXACT_PRECONDITION_FAILED,
             PreWriteRejection.LOCK_STATE_UNAVAILABLE,
             PreWriteRejection.IDENTITY_EXHAUSTED,
+            PreWriteRejection.RECOVERY_STORE_UNAVAILABLE,
             -> ApplyStage.A2
 
             PreWriteRejection.CHECKPOINT_CREATE_FAILED,
             PreWriteRejection.CHECKPOINT_VALIDATE_FAILED,
-            PreWriteRejection.RECOVERY_STORE_UNAVAILABLE,
             -> ApplyStage.A4
 
             PreWriteRejection.WRITER_BUSY -> ApplyStage.A0

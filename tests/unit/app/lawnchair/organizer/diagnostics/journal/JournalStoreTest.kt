@@ -83,15 +83,25 @@ class JournalStoreTest {
 
     @Test
     fun wallClockRollbackDoesNotAffectOrdering() {
-        val fixedClock = { 1_000_000L } // fixed time
-        val store = createStore(tempDir.root, fixedClock)
+        // Simulate wall clock rolling backward: second event has earlier timestamp
+        var clockValue = 1_000_000L
+        val clock = { clockValue }
+        val store = createStore(tempDir.root, clock)
         store.open()
         store.append(event(phase = PhaseCode.RUN_STARTED))
+        // Roll clock backward
+        clockValue = 500_000L
         store.append(event(phase = PhaseCode.CAPTURED))
         val events = store.readAllEvents()
-        // Even though wall clock is the same, sequence numbers differ
-        assertTrue(events[1].journalSequence > events[0].journalSequence)
-        assertEquals(events[0].recordedAtWallMillis, events[1].recordedAtWallMillis)
+        // Ordering is determined by journalSequence, not wall clock
+        assertTrue("Sequence must be strictly increasing", events[1].journalSequence > events[0].journalSequence)
+        // Wall clock rolled back between events
+        assertTrue("Second event must have different timestamp", events[0].recordedAtWallMillis != events[1].recordedAtWallMillis)
+        // The first event has the later timestamp due to clock rollback
+        assertTrue(
+            "First event timestamp must be > second due to clock rollback",
+            events[0].recordedAtWallMillis > events[1].recordedAtWallMillis,
+        )
     }
 
     @Test
