@@ -154,22 +154,38 @@ run_bounded() {
   return "$STATUS"
 }
 
+# Single-quote a value for the on-device shell (Bash 3.2 compatible).
+shell_quote() {
+  printf "'%s'" "${1//\'/\'\\\'\'}"
+}
+
+# Build an "am instrument ..." command string with every argument quoted for
+# the device shell so version names containing parentheses survive the hop.
+build_instrument_command() {
+  local CMD="am instrument -r -w" a
+  for a in "$@"; do
+    CMD="$CMD $(shell_quote "$a")"
+  done
+  printf '%s' "$CMD"
+}
+
 # run_instrument from plan §"Commands and high-risk evidence". The typed
 # mode-ready marker is emitted by the runner through logcat (System.out /
 # DeckRetirementTestRunner tags), so the logcat buffer is cleared before the
 # run and verified after it; the exact success code and failure patterns are
 # verified against the normalized instrument log.
 run_instrument() {
-  local LOG="$1" MARKER="$2" NORMALIZED STATUS MARKER_LOG
+  local LOG="$1" MARKER="$2" NORMALIZED STATUS MARKER_LOG INSTR_CMD
   shift 2
   device_reachable || { echo 'device not reachable' >&2; return 1; }
+  INSTR_CMD="$(build_instrument_command "$@")"
   adb -s "$SERIAL" logcat -c 2>/dev/null || true
-  if run_bounded "$LOG" 180 adb -s "$SERIAL" shell am instrument -r -w "$@"; then STATUS=0; else STATUS=$?; fi
+  if run_bounded "$LOG" 180 adb -s "$SERIAL" shell "$INSTR_CMD"; then STATUS=0; else STATUS=$?; fi
   NORMALIZED="${LOG%.log}.normalized.log"
   tr -d '\r' <"$LOG" >"$NORMALIZED"
   MARKER_LOG="${LOG%.log}.marker.log"
   adb -s "$SERIAL" logcat -d -v tag 2>/dev/null | tr -d '\r' |
-    sed -n -e 's/^DeckRetirementTestRunner: //p' -e 's/^System\.out: //p' >"$MARKER_LOG"
+    sed -n -e 's/^[IWEF]\/DeckRetirementTestRunner: //p' -e 's/^[IWEF]\/System\.out: //p' >"$MARKER_LOG"
   test "$STATUS" -eq 0 || return "$STATUS"
   rg -F -x "$MARKER" "$MARKER_LOG"
   rg -F -x 'INSTRUMENTATION_CODE: -1' "$NORMALIZED"
@@ -256,8 +272,12 @@ capture_evidence_entry() {
     echo ""
 
     # DB digest
-    echo "--- DB digest ---"
-    adb -s "$SERIAL" exec-out run-as "$DEBUG_PACKAGE" cat databases/launcher.db 2>/dev/null | $SHA_CMD || echo "DB unavailable"
+    echo "--- DB digests (all active grid databases) ---"
+    local DB_NAME
+    for DB_NAME in $(adb -s "$SERIAL" shell run-as "$DEBUG_PACKAGE" ls databases/ 2>/dev/null | tr -d '\r' | grep -E '\.db$' | grep -vE '^(bk_|lawndeck_)'); do
+      printf '%s ' "$DB_NAME"
+      adb -s "$SERIAL" exec-out run-as "$DEBUG_PACKAGE" cat "databases/$DB_NAME" 2>/dev/null | $SHA_CMD || echo "unavailable"
+    done
     echo ""
 
     # Artifact presence
@@ -356,6 +376,16 @@ main() {
   OLD_APK_SHA="$(verify_apk_sha "$PRE_RETIREMENT_APK" "$DEVICE_APK_PATH")"
   echo "APK SHA verified: $OLD_APK_SHA"
 
+  # ---- Phase 3.5: Launch HOME under the old APK ----
+  # The old target must create its workspace database so the archive and the
+  # pre-archive canonical digest describe a real layout.
+  echo "=== Launching HOME under old APK ==="
+  adb -s "$SERIAL" shell am start -n "${DEBUG_PACKAGE}/app.lawnchair.LawnchairLauncher" >/dev/null
+  sleep 8
+  adb -s "$SERIAL" shell am force-stop "$DEBUG_PACKAGE"
+  sleep 2
+  echo "Old HOME launched and stopped."
+
   # ---- Phase 4: Generate nonce ----
   echo "=== Generating nonce ==="
   NONCE="$(generate_nonce)"
@@ -372,8 +402,17 @@ main() {
     -e deck_retirement_nonce "$NONCE" \
     -e class "${OLD_COMPAT_CLASS}#seedAndCreateBackup" \
     "$TEST_RUNNER"
-  rg -F -x 'OK (1 test)' "$OLD_COMPAT_LOG"
+  rg -F -x 'OK (1 test)' "${OLD_COMPAT_LOG%.log}.normalized.log"
   echo "Backup created under old APK."
+
+  # Extract the pre-archive canonical digest emitted by the old target.
+  OLD_COMPAT_MARKER_LOG="${OLD_COMPAT_LOG%.log}.marker.log"
+  PRE_ARCHIVE_DIGEST="$(sed -n "s/^PRE_ARCHIVE_DIGEST nonce=${NONCE} digest=\([0-9a-f]*\) typed=true$/\1/p" "$OLD_COMPAT_MARKER_LOG" | head -1)"
+  [[ "$PRE_ARCHIVE_DIGEST" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "ERROR: PRE_ARCHIVE_DIGEST missing or invalid: $PRE_ARCHIVE_DIGEST" >&2
+    exit 1
+  }
+  echo "Pre-archive canonical digest: $PRE_ARCHIVE_DIGEST"
 
   # ---- Phase 6: Pull archive ----
   echo "=== Pulling archive ==="
@@ -423,9 +462,13 @@ main() {
   NEW_TYPED_LOG="$EVIDENCE_DIR/create_distinct_layout.log"
   run_instrument "$NEW_TYPED_LOG" 'NEW_TYPED_READY typed=true' \
     -e deck_retirement_target_mode new_typed \
+    -e deck_retirement_nonce "$NONCE" \
+    -e expected_target_version_code "$NEW_VERSION_CODE" \
+    -e expected_target_version_name "$NEW_VERSION_NAME" \
+    -e expected_target_apk_path "$NEW_DEVICE_APK_PATH" \
     -e class "${NEW_TYPED_CLASS}#createDistinctLayout" \
     "$TEST_RUNNER"
-  rg -F -x 'OK (1 test)' "$NEW_TYPED_LOG"
+  rg -F -x 'OK (1 test)' "${NEW_TYPED_LOG%.log}.normalized.log"
   echo "Distinct layout created."
 
   # ---- Phase 12: Capture pre-restore evidence ----
@@ -433,8 +476,34 @@ main() {
 
   # ---- Phase 13: Reinject archive ----
   echo "=== Reinjecting archive ==="
-  adb -s "$SERIAL" exec-in run-as "$DEBUG_PACKAGE" sh -c \
-    'mkdir -p cache/logs/deck-retirement-backup && cat > cache/logs/deck-retirement-backup/'"$NONCE"'.lawnchairbackup' < "$ARCHIVE_FILE"
+  local TMP_PATH="/data/local/tmp/${NONCE}.lawnchairbackup"
+  local PIPE_CMD="mkdir -p cache/logs/deck-retirement-backup && cat > cache/logs/deck-retirement-backup/${NONCE}.lawnchairbackup"
+  local QUOTED_CMD
+  QUOTED_CMD="$(shell_quote "$PIPE_CMD")"
+
+  adb -s "$SERIAL" push "$ARCHIVE_FILE" "$TMP_PATH" >/dev/null 2>&1 || {
+    echo "ERROR: Failed to push archive to device" >&2
+    exit 1
+  }
+  adb -s "$SERIAL" shell run-as "$DEBUG_PACKAGE" mkdir -p cache/logs/deck-retirement-backup || {
+    echo "ERROR: Failed to create backup dir on device" >&2
+    exit 1
+  }
+
+  set +e
+  adb -s "$SERIAL" shell "cat ${TMP_PATH} | run-as ${DEBUG_PACKAGE} sh -c ${QUOTED_CMD}"
+  local PIPE_STATUS=$?
+  set -e
+  test "$PIPE_STATUS" -eq 0 || {
+    echo "ERROR: Failed to pipe archive into app data dir (status $PIPE_STATUS)" >&2
+    exit 1
+  }
+
+  adb -s "$SERIAL" shell rm -f "$TMP_PATH" 2>/dev/null || true
+  if ! adb -s "$SERIAL" shell run-as "$DEBUG_PACKAGE" test -f "cache/logs/deck-retirement-backup/${NONCE}.lawnchairbackup" 2>/dev/null; then
+    echo "ERROR: Archive file missing on device after reinject" >&2
+    exit 1
+  fi
   echo "Archive reinjected."
 
   # ---- Phase 14: Run restore ----
@@ -443,16 +512,20 @@ main() {
   run_instrument "$RESTORE_LOG" 'NEW_TYPED_READY typed=true' \
     -e deck_retirement_target_mode new_typed \
     -e deck_retirement_nonce "$NONCE" \
+    -e expected_target_version_code "$NEW_VERSION_CODE" \
+    -e expected_target_version_name "$NEW_VERSION_NAME" \
+    -e expected_target_apk_path "$NEW_DEVICE_APK_PATH" \
+    -e expected_archive_digest "$PRE_ARCHIVE_DIGEST" \
     -e class "${NEW_TYPED_CLASS}#restoreAndCapture" \
     "$TEST_RUNNER"
-  rg -F -x 'OK (1 test)' "$RESTORE_LOG"
+  rg -F -x 'OK (1 test)' "${RESTORE_LOG%.log}.normalized.log"
   echo "Restore completed."
 
   # ---- Phase 15: Force-stop, relaunch HOME ----
   echo "=== Force-stopping and relaunching HOME ==="
   adb -s "$SERIAL" shell am force-stop "$DEBUG_PACKAGE"
   sleep 2
-  adb -s "$SERIAL" shell am start -n "${DEBUG_PACKAGE}/com.android.launcher3.Launcher" >/dev/null
+  adb -s "$SERIAL" shell am start -n "${DEBUG_PACKAGE}/app.lawnchair.LawnchairLauncher" >/dev/null
   sleep 5
   echo "HOME launched."
 
@@ -461,9 +534,13 @@ main() {
   RESTART_LOG="$EVIDENCE_DIR/capture_after_restart.log"
   run_instrument "$RESTART_LOG" 'NEW_TYPED_READY typed=true' \
     -e deck_retirement_target_mode new_typed \
+    -e deck_retirement_nonce "$NONCE" \
+    -e expected_target_version_code "$NEW_VERSION_CODE" \
+    -e expected_target_version_name "$NEW_VERSION_NAME" \
+    -e expected_target_apk_path "$NEW_DEVICE_APK_PATH" \
     -e class "${NEW_TYPED_CLASS}#captureAfterRestart" \
     "$TEST_RUNNER"
-  rg -F -x 'OK (1 test)' "$RESTART_LOG"
+  rg -F -x 'OK (1 test)' "${RESTART_LOG%.log}.normalized.log"
   echo "Post-restart capture completed."
 
   # ---- Phase 17: Capture final evidence ----

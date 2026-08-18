@@ -70,10 +70,11 @@ class DeckRetirementDowngradeFixtureInstrumentationTest {
     }
 
     private fun computeFavoritesDigest(context: Context): String {
-        val dbPath = context.getDatabasePath("launcher.db")
+        val dbFile = com.android.launcher3.InvariantDeviceProfile.INSTANCE.get(context).dbFile
+        val dbPath = context.getDatabasePath(dbFile)
         if (!dbPath.exists()) return "NO_DB"
 
-        val db = SQLiteDatabase.openDatabase(dbPath.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+        val db = SQLiteDatabase.openDatabase(dbPath.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
         try {
             val digest = MessageDigest.getInstance("SHA-256")
             val cursor = db.rawQuery("SELECT * FROM favorites ORDER BY _id", null)

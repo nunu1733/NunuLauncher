@@ -181,17 +181,33 @@ run_bounded() {
 }
 
 # Exact run_instrument from plan SS"Commands and high-risk evidence"
+# Single-quote a value for the on-device shell (Bash 3.2 compatible).
+shell_quote() {
+  printf "'%s'" "${1//\'/\'\\\'\'}"
+}
+
+# Build an "am instrument ..." command string with every argument quoted for
+# the device shell so version names containing parentheses survive the hop.
+build_instrument_command() {
+  local CMD="am instrument -r -w" a
+  for a in "$@"; do
+    CMD="$CMD $(shell_quote "$a")"
+  done
+  printf '%s' "$CMD"
+}
+
 run_instrument() {
-  local LOG="$1" MARKER="$2" NORMALIZED STATUS MARKER_LOG
+  local LOG="$1" MARKER="$2" NORMALIZED STATUS MARKER_LOG INSTR_CMD
   shift 2
   device_reachable || { echo 'device not reachable' >&2; return 1; }
+  INSTR_CMD="$(build_instrument_command "$@")"
   adb -s "$SERIAL" logcat -c 2>/dev/null || true
-  if run_bounded "$LOG" 180 adb -s "$SERIAL" shell am instrument -r -w "$@"; then STATUS=0; else STATUS=$?; fi
+  if run_bounded "$LOG" 180 adb -s "$SERIAL" shell "$INSTR_CMD"; then STATUS=0; else STATUS=$?; fi
   NORMALIZED="${LOG%.log}.normalized.log"
   tr -d '\r' <"$LOG" >"$NORMALIZED"
   MARKER_LOG="${LOG%.log}.marker.log"
   adb -s "$SERIAL" logcat -d -v tag 2>/dev/null | tr -d '\r' |
-    sed -n -e 's/^DeckRetirementTestRunner: //p' -e 's/^System\.out: //p' >"$MARKER_LOG"
+    sed -n -e 's/^[IWEF]\/DeckRetirementTestRunner: //p' -e 's/^[IWEF]\/System\.out: //p' >"$MARKER_LOG"
   test "$STATUS" -eq 0 || return "$STATUS"
   rg -F -x "$MARKER" "$MARKER_LOG"
   rg -F -x 'INSTRUMENTATION_CODE: -1' "$NORMALIZED"
@@ -251,10 +267,11 @@ run_pause_phase() {
 
   local PAUSED_MARKER="PAUSED phase=AFTER_NORMALIZATION_BEFORE_CLEANUP nonce=${NONCE} typed=true"
   local DEADLINE=$(( $(date +%s) + TIMEOUT ))
-  local FOUND_PAUSED=0
+  local FOUND_PAUSED=0 INSTR_CMD
 
+  INSTR_CMD="$(build_instrument_command "$@")"
   adb -s "$SERIAL" logcat -c 2>/dev/null || true
-  adb -s "$SERIAL" shell am instrument -r -w "$@" >"$LOG" 2>&1 &
+  adb -s "$SERIAL" shell "$INSTR_CMD" >"$LOG" 2>&1 &
   ACTIVE_CHILD_PID=$!
 
   while kill -0 "$ACTIVE_CHILD_PID" 2>/dev/null; do
@@ -329,7 +346,7 @@ run_pause_phase() {
 # for typed markers, so exact full-line matching works.
 dump_typed_logcat_lines() {
   adb -s "$SERIAL" logcat -d -v tag 2>/dev/null | tr -d '\r' |
-    sed -n -e 's/^DeckRetirementTestRunner: //p' -e 's/^System\.out: //p'
+    sed -n -e 's/^[IWEF]\/DeckRetirementTestRunner: //p' -e 's/^[IWEF]\/System\.out: //p'
 }
 
 # Capture evidence digest and metadata into evidence dir
@@ -353,8 +370,12 @@ capture_evidence_entry() {
     $SHA_CMD "$RETIREMENT_APK" 2>/dev/null || echo "unavailable"
     echo ""
 
-    echo "--- DB digest ---"
-    adb -s "$SERIAL" exec-out run-as "$DEBUG_PACKAGE" cat databases/launcher.db 2>/dev/null | $SHA_CMD || echo "DB unavailable"
+    echo "--- DB digests (all active grid databases) ---"
+    local DB_NAME
+    for DB_NAME in $(adb -s "$SERIAL" shell run-as "$DEBUG_PACKAGE" ls databases/ 2>/dev/null | tr -d '\r' | grep -E '\.db$' | grep -vE '^(bk_|lawndeck_)'); do
+      printf '%s ' "$DB_NAME"
+      adb -s "$SERIAL" exec-out run-as "$DEBUG_PACKAGE" cat "databases/$DB_NAME" 2>/dev/null | $SHA_CMD || echo "unavailable"
+    done
     echo ""
 
     echo "--- Historical artifact presence ---"
@@ -510,14 +531,15 @@ run_old_compat_seed() {
     -e expected_target_version_code "$OLD_VERSION_CODE" \
     -e expected_target_version_name "$OLD_VERSION_NAME" \
     -e expected_target_apk_path "$DEVICE_APK_PATH" \
+    -e deck_retirement_nonce "$NONCE" \
     -e class "${OLD_COMPAT_CLASS}#${ACTION}" \
     "$TEST_RUNNER"
-  rg -F -x 'OK (1 test)' "$OLD_COMPAT_LOG"
+  rg -F -x 'OK (1 test)' "${OLD_COMPAT_LOG%.log}.normalized.log"
 }
 
 # Launch HOME
 launch_home() {
-  adb -s "$SERIAL" shell am start -n "${DEBUG_PACKAGE}/com.android.launcher3.Launcher" >/dev/null
+  adb -s "$SERIAL" shell am start -n "${DEBUG_PACKAGE}/app.lawnchair.LawnchairLauncher" >/dev/null
   sleep 3
 }
 
@@ -525,6 +547,9 @@ launch_home() {
 
 scenario_rollback_before_cleanup() {
   echo "=== Scenario: rollback-before-cleanup ==="
+  # Scenario-wide nonce for old_compat and new-target evidence.
+  NONCE="$(generate_nonce)"
+  echo "Scenario nonce: $NONCE"
   local DEVICE_APK_PATH
 
   # 1. Install old APK + test APK, verify
@@ -538,9 +563,6 @@ scenario_rollback_before_cleanup() {
   # 3. Install retirement APK
   install_retirement_and_verify
 
-  # 4. Generate nonce for pause
-  NONCE="$(generate_nonce)"
-  echo "Nonce: $NONCE"
 
   # 5. Run new_pause mode, wait for PAUSED
   echo "=== Running new_pause mode ==="
@@ -576,6 +598,9 @@ scenario_rollback_before_cleanup() {
 
 scenario_downgrade_after_cleanup() {
   echo "=== Scenario: downgrade-after-cleanup ==="
+  # Scenario-wide nonce for old_compat and new-target evidence.
+  NONCE="$(generate_nonce)"
+  echo "Scenario nonce: $NONCE"
   local DEVICE_APK_PATH
 
   # 1. Install old APK + test APK, verify
@@ -597,11 +622,17 @@ scenario_downgrade_after_cleanup() {
   # 5. Verify cleanup completed via new_typed capture
   echo "=== Verifying cleanup completed ==="
   local NEW_TYPED_LOG="$EVIDENCE_DIR/verify-cleanup.log"
+  local NEW_DEVICE_APK_PATH
+  NEW_DEVICE_APK_PATH="$(get_device_apk_path)"
   run_instrument "$NEW_TYPED_LOG" 'NEW_TYPED_READY typed=true' \
     -e deck_retirement_target_mode new_typed \
+    -e deck_retirement_nonce "$NONCE" \
+    -e expected_target_version_code "$NEW_VERSION_CODE" \
+    -e expected_target_version_name "$NEW_VERSION_NAME" \
+    -e expected_target_apk_path "$NEW_DEVICE_APK_PATH" \
     -e class "${NEW_TYPED_CLASS}#captureAfterRestart" \
     "$TEST_RUNNER"
-  rg -F -x 'OK (1 test)' "$NEW_TYPED_LOG"
+  rg -F -x 'OK (1 test)' "${NEW_TYPED_LOG%.log}.normalized.log"
   echo "Cleanup verified."
 
   # 6. Capture evidence after cleanup
@@ -626,6 +657,9 @@ scenario_downgrade_after_cleanup() {
 
 scenario_pre_initialization_old_binary() {
   echo "=== Scenario: pre-initialization-old-binary ==="
+  # Scenario-wide nonce for old_compat and new-target evidence.
+  NONCE="$(generate_nonce)"
+  echo "Scenario nonce: $NONCE"
   local DEVICE_APK_PATH
   local SUPPORTED_MARKER=0
 
@@ -673,6 +707,9 @@ scenario_pre_initialization_old_binary() {
 
 scenario_pre_initialization_old_backup() {
   echo "=== Scenario: pre-initialization-old-backup ==="
+  # Scenario-wide nonce for old_compat and new-target evidence.
+  NONCE="$(generate_nonce)"
+  echo "Scenario nonce: $NONCE"
   local DEVICE_APK_PATH
   local SUPPORTED_MARKER=0
 
@@ -681,8 +718,6 @@ scenario_pre_initialization_old_backup() {
   DEVICE_APK_PATH="$(get_device_apk_path)"
 
   # 2. Generate nonce for backup
-  NONCE="$(generate_nonce)"
-  echo "Nonce: $NONCE"
 
   # 3. Create backup under old binary via old_compat
   echo "=== Creating backup under old binary ==="

@@ -68,6 +68,7 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -802,6 +803,21 @@ class PreferenceManager2 private constructor(private val context: Context) :
             true
         } catch (e: Exception) {
             Log.w(TAG, "Failed to normalize deck tombstones", e)
+            false
+        }
+    }
+
+    /**
+     * Returns true only when both retired Deck tombstones currently read as
+     * false. Instrumentation evidence uses this to prove paired normalization
+     * after startup or an old-backup restore; production never calls it.
+     */
+    internal suspend fun areDeckTombstonesNormalized(): Boolean {
+        return try {
+            val prefs = preferencesDataStore.data.first()
+            prefs[deckLayoutTombstoneKey] == false && prefs[showDeckLayoutTombstoneKey] == false
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to read deck tombstones", e)
             false
         }
     }
