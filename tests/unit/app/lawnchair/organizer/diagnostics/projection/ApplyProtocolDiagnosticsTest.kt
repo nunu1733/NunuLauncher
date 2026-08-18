@@ -177,4 +177,65 @@ class ApplyProtocolDiagnosticsTest {
         // The terminal event should have applyStage=A2
         assertEquals(ApplyStage.A2, terminal!!.applyStage)
     }
+
+    @Test
+    fun crossRunStageLeakage() {
+        val protocol = createProtocol()
+        // Run 1 completes fully: terminal event is APPLY_VERIFIED at A8.
+        val run1 = protocol.apply(mutatingPlan())
+        assertTrue(run1 is ApplyResult.Applied)
+        val run1Terminal = recordedEvents.last()
+        assertEquals(PhaseCode.APPLY_VERIFIED, run1Terminal.phase)
+        assertEquals(ApplyStage.A8, run1Terminal.applyStage)
+
+        // Run 2 is rejected pre-checkpoint: its terminal stage must be A2,
+        // not leaked A8 from run 1.
+        store.storeAvailability = app.lawnchair.organizer.application.protocol.RecoveryStorePort.StoreAvailability.READ_FAILED
+        val run2 = protocol.apply(mutatingPlan())
+        assertTrue(run2 is ApplyResult.Rejected)
+        val run2Terminal = recordedEvents.last()
+        assertEquals(PhaseCode.APPLY_REJECTED, run2Terminal.phase)
+        assertEquals("Run 2 stage must be the detection stage, not leaked from run 1", ApplyStage.A2, run2Terminal.applyStage)
+    }
+
+    @Test
+    fun markApplyingFailureTerminalCarriesA4AndCheckpointPointId() {
+        store.markApplyingFails = true
+        val protocol = createProtocol()
+        val result = protocol.apply(mutatingPlan())
+        assertTrue("Expected Rejected, got $result", result is ApplyResult.Rejected)
+        assertEquals(
+            app.lawnchair.organizer.application.public.PreWriteRejection.RECOVERY_STORE_UNAVAILABLE,
+            (result as ApplyResult.Rejected).reason,
+        )
+
+        val terminal = recordedEvents.lastOrNull()
+        assertNotNull("Terminal event must be emitted", terminal)
+        assertEquals("Post-checkpoint markApplying failure is detected at A4", ApplyStage.A4, terminal!!.applyStage)
+        assertEquals(
+            "Terminal event must carry the checkpoint's pointId",
+            store.checkpointPointIds.single().value,
+            terminal.pointId,
+        )
+    }
+
+    @Test
+    fun rollbackTerminalCarriesCheckpointPointId() {
+        writer.nextTxOutcome = app.lawnchair.organizer.application.protocol.ApplyTxOutcome.Failed(
+            IllegalStateException("write failed"),
+        )
+        val protocol = createProtocol()
+        val result = protocol.apply(mutatingPlan())
+        assertTrue("Expected RolledBack, got $result", result is ApplyResult.RolledBack)
+
+        val terminal = recordedEvents.lastOrNull()
+        assertNotNull("Terminal event must be emitted", terminal)
+        assertEquals(PhaseCode.APPLY_ROLLED_BACK, terminal!!.phase)
+        assertEquals(ApplyStage.A6, terminal.applyStage)
+        assertEquals(
+            "APPLY_ROLLED_BACK must correlate to the checkpoint's pointId",
+            store.checkpointPointIds.single().value,
+            terminal.pointId,
+        )
+    }
 }

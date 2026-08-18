@@ -32,15 +32,25 @@ class RetentionPolicyTest {
 
     @Test
     fun keepUpTo10ResolvedRuns() {
-        val events = (1L..12L).flatMap { seq ->
+        // 12 resolved runs, each a RUN_STARTED + APPLY_VERIFIED pair sharing one runId.
+        val events = (1L..12L).flatMap { run ->
+            val runId = java.lang.String.format("%032x", run)
             listOf(
-                event(seq * 10 + 1, PhaseCode.RUN_STARTED, "00000000000000000000000000000000"),
-                event(seq * 10 + 2, PhaseCode.APPLY_VERIFIED, "00000000000000000000000000000000"),
+                event(run * 10 + 1, PhaseCode.RUN_STARTED, runId),
+                event(run * 10 + 2, PhaseCode.APPLY_VERIFIED, runId),
             )
         }
         val result = RetentionPolicy.evaluate(events, byteSizes(events), now)
-        // The actual runId values depend on the seq parameter
-        assertTrue("Oldest runs must be pruned first", result.pruneRunIds.isNotEmpty())
+        assertEquals(
+            "Exactly the two oldest runs must be pruned",
+            setOf(
+                java.lang.String.format("%032x", 1L),
+                java.lang.String.format("%032x", 2L),
+            ),
+            result.pruneRunIds.toSet(),
+        )
+        val remaining = events.filter { it.runId !in result.pruneRunIds }
+        assertEquals("10 resolved runs must remain", 10, remaining.mapNotNull { it.runId }.distinct().size)
     }
 
     @Test
