@@ -1,6 +1,6 @@
 ---
 issue: "#67"
-status: draft
+status: accepted
 requirements:
   - FR-015
   - NFR-008
@@ -49,6 +49,11 @@ no telemetry or network transport.
   semantics.
 - Typed projection from the existing planning, application, and recovery result
   contracts into `RunEvent`; the public planner/application types do not change.
+- Diagnostics-owned value types that do not exist yet in the codebase and are
+  created by this Issue inside the diagnostics module or at its boundary:
+  the `ApplyStage` (A0–A8) enum, `PlanSummary`, and `ApplySummary`. They are
+  derived projections of existing lifecycle control flow and result data, and
+  adding them must not alter the public Issue #10/#13 result types.
 - Application/recovery attachment points needed to record `applyStage`,
   checkpoint/application terminal outcomes, and `RESTART_RECONCILED` at the
   existing Issue #13 lifecycle seams.
@@ -91,8 +96,8 @@ not duplicate the complete field/enumeration tables already accepted in
 - diagnostics contract §§3–6 are the exact field, phase, error, and summary
   vocabulary consumed by this spec;
 - §7 is the maximum data classification allowed on every output surface;
-- §§8–12 define the retention, export, logcat, restart, and no-telemetry
-  boundaries exercised here;
+- §8 local retention, §9 export, §10 logcat, §11 restart correlation, and §12
+  network/telemetry boundaries are exercised here;
 - §13 D-01–D-10 are the representative serialization corpus.
 
 If implementation requires a field not present in that accepted contract, the
@@ -336,7 +341,9 @@ pointer/touch interaction.
 ## Data and state
 
 - The journal is an app-private resource owned by organizer diagnostics and is
-  separate from the Issue #13 recovery database and Launcher layout DB.
+  separate from the Issue #13 recovery database and Launcher layout DB. It lives
+  under the app-private storage directory (e.g. `context.filesDir`-based path)
+  and is not named in the Lawnchair backup allowlist.
 - Journal schema version 1 uses the accepted `RunEvent` schema. A later schema
   requires an explicit compatibility/migration decision; silent reinterpretation
   is not allowed.
@@ -484,3 +491,7 @@ or data contract above.
 
 - 2026-08-18: Draft created for #67 from the accepted Issue #16 organizer
   diagnostics contract; clarified post-#60 event-attachment ownership.
+- 2026-08-18: Review follow-ups: scoped creation of the diagnostics-owned
+  `ApplyStage`/`PlanSummary`/`ApplySummary` projection types, clarified the
+  contract section references and the app-private journal location. Status
+  moved to accepted.
