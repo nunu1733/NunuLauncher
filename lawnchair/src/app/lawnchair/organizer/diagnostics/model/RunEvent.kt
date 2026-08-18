@@ -39,12 +39,18 @@ data class DeviceProfileSummary(
 
 /**
  * Recovery context from the diagnostics contract §4.3.
+ * pointId and pointOriginRunId must be canonical 32 lowercase hex or null.
  */
 @Serializable
 data class RecoveryContext(
     val pointId: String,
     val pointOriginRunId: String? = null,
-)
+) {
+    init {
+        validateCorrelationId(pointId, "RecoveryContext.pointId")
+        pointOriginRunId?.let { validateCorrelationId(it, "RecoveryContext.pointOriginRunId") }
+    }
+}
 
 /**
  * RecoveryLifecycle — the set of lifecycle states used in reconciliation
@@ -85,6 +91,7 @@ enum class ReconciliationClassification {
 
 /**
  * Reconciliation context from the diagnostics contract §11.
+ * subjectRunId must be canonical 32 lowercase hex.
  */
 @Serializable
 data class ReconciliationContext(
@@ -92,7 +99,11 @@ data class ReconciliationContext(
     val priorLifecycle: RecoveryLifecycle,
     val classification: ReconciliationClassification,
     val resultingLifecycle: RecoveryLifecycle,
-)
+) {
+    init {
+        validateCorrelationId(subjectRunId, "ReconciliationContext.subjectRunId")
+    }
+}
 
 /**
  * Top-level RunEvent — the single diagnostic event type.
@@ -103,6 +114,8 @@ data class ReconciliationContext(
  * Contract §3 defines the full field set. Correlation fields
  * (runId, trigger, runMode, pointId) are at the top level for
  * JSON flatness matching the D-01–D-08 fixtures.
+ *
+ * runId and pointId must be canonical 32 lowercase hex or null.
  */
 @Serializable
 data class RunEvent(
@@ -124,4 +137,9 @@ data class RunEvent(
     val reconciliation: ReconciliationContext? = null,
     val versions: RunVersions? = null,
     val deviceProfile: DeviceProfileSummary? = null,
-)
+) {
+    init {
+        runId?.let { validateCorrelationId(it, "RunEvent.runId") }
+        pointId?.let { validateCorrelationId(it, "RunEvent.pointId") }
+    }
+}

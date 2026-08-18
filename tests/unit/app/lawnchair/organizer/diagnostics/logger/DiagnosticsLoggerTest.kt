@@ -81,8 +81,8 @@ class DiagnosticsLoggerTest {
 
     @Test
     fun formatIncludesRunId() {
-        val formatted = DiagnosticsLogger().format(event(runId = "test-run"))
-        assertTrue(formatted.contains("run=test-run"))
+        val formatted = DiagnosticsLogger().format(event(runId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+        assertTrue(formatted.contains("run=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
         assertTrue(formatted.contains("phase=CAPTURED"))
     }
 
@@ -112,14 +112,14 @@ class DiagnosticsLoggerTest {
             event(
                 phase = PhaseCode.RESTART_RECONCILED,
                 reconciliation = ReconciliationContext(
-                    "run-id",
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                     RecoveryLifecycle.COMMITTED_UNVERIFIED,
                     ReconciliationClassification.INTENDED_POST_STATE,
                     RecoveryLifecycle.VERIFIED,
                 ),
             ),
         )
-        assertTrue(formatted.contains("subjectRun=run-id"))
+        assertTrue(formatted.contains("subjectRun=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
         assertTrue(formatted.contains("priorLifecycle=COMMITTED_UNVERIFIED"))
         assertTrue(formatted.contains("classification=INTENDED_POST_STATE"))
         assertTrue(formatted.contains("resultLifecycle=VERIFIED"))
@@ -127,7 +127,7 @@ class DiagnosticsLoggerTest {
 
     @Test
     fun formatDoesNotContainNeverClassifiedValues() {
-        val formatted = DiagnosticsLogger().format(event(runId = "valid-run-id", applySummary = ApplySummary(10, 5, 0)))
+        val formatted = DiagnosticsLogger().format(event(runId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", applySummary = ApplySummary(10, 5, 0)))
         val forbidden = listOf(
             "packageName", "com.example", "component", "MainActivity",
             "profileSerial", "cell", "folderTitle", "rules", "category", "revision", "message", "SQLException", "items",

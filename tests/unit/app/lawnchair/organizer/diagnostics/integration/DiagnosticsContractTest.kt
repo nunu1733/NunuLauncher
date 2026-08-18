@@ -38,7 +38,7 @@ class DiagnosticsContractTest {
             RunEvent(journalSequence = 3L, phase = PhaseCode.PLANNED, planSummary = app.lawnchair.organizer.diagnostics.model.PlanSummary(capturedItemCount = 10)),
             RunEvent(journalSequence = 4L, phase = PhaseCode.APPLY_REJECTED, applyStage = app.lawnchair.organizer.diagnostics.model.ApplyStage.A2, error = app.lawnchair.organizer.diagnostics.model.ErrorEntry(family = app.lawnchair.organizer.diagnostics.model.ErrorFamily.PRE_WRITE_REJECTED, code = "STALE_REVISION")),
             RunEvent(journalSequence = 5L, phase = PhaseCode.RECOVERY_REQUESTED, recovery = app.lawnchair.organizer.diagnostics.model.RecoveryContext(pointId = "9c2e1234567890abcdef1234567890ab")),
-            RunEvent(journalSequence = 6L, phase = PhaseCode.RESTART_RECONCILED, reconciliation = app.lawnchair.organizer.diagnostics.model.ReconciliationContext(subjectRunId = "run-id", priorLifecycle = app.lawnchair.organizer.diagnostics.model.RecoveryLifecycle.COMMITTED_UNVERIFIED, classification = app.lawnchair.organizer.diagnostics.model.ReconciliationClassification.INTENDED_POST_STATE, resultingLifecycle = app.lawnchair.organizer.diagnostics.model.RecoveryLifecycle.VERIFIED)),
+            RunEvent(journalSequence = 6L, phase = PhaseCode.RESTART_RECONCILED, reconciliation = app.lawnchair.organizer.diagnostics.model.ReconciliationContext(subjectRunId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", priorLifecycle = app.lawnchair.organizer.diagnostics.model.RecoveryLifecycle.COMMITTED_UNVERIFIED, classification = app.lawnchair.organizer.diagnostics.model.ReconciliationClassification.INTENDED_POST_STATE, resultingLifecycle = app.lawnchair.organizer.diagnostics.model.RecoveryLifecycle.VERIFIED)),
         )
 
         for (event in events) {

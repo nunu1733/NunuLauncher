@@ -28,7 +28,7 @@ class JournalStoreTest {
         return JournalStore(journalFile, seq, clock)
     }
 
-    private fun event(seq: Long = 0L, phase: PhaseCode = PhaseCode.CAPTURED, runId: String? = "test-run"): RunEvent = RunEvent(journalSequence = seq, phase = phase, runId = runId)
+    private fun event(seq: Long = 0L, phase: PhaseCode = PhaseCode.CAPTURED, runId: String? = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"): RunEvent = RunEvent(journalSequence = seq, phase = phase, runId = runId)
 
     @Test
     fun appendAndReadBack() {

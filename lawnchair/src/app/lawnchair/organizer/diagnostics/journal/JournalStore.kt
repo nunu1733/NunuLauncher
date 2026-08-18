@@ -73,9 +73,6 @@ class JournalStore(
     fun append(event: RunEvent): Boolean {
         if (!opened) open()
         return try {
-            // Run retention before appending (lazy evaluation)
-            runRetention()
-
             val seq = sequence.next() ?: return false
             val now = clock()
             val eventWithSeq = event.copy(
@@ -97,6 +94,11 @@ class JournalStore(
             // Update cache
             cachedEvents = cachedEvents + eventWithSeq
             eventByteSizes[seq] = bytes.size.toLong()
+
+            // Post-append lazy retention: evaluate after the append so that the
+            // just-appended event is included in the evaluation. This ensures the
+            // journal satisfies all limits after every append.
+            runRetention()
 
             true
         } catch (_: Exception) {

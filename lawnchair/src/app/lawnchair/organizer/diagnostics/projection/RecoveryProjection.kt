@@ -51,6 +51,7 @@ object RecoveryProjection {
                     family = ErrorFamily.RECOVERY_REJECTION,
                     code = result.reason.name,
                 ),
+                recovery = if (pointId != null) RecoveryContext(pointId, pointOriginRunId) else null,
             )
 
             is RecoveryResult.RestoreFailed -> base.copy(
@@ -59,6 +60,7 @@ object RecoveryProjection {
                     family = ErrorFamily.RECOVERY_FAILURE,
                     code = result.failure.name,
                 ),
+                recovery = if (pointId != null) RecoveryContext(pointId, pointOriginRunId) else null,
             )
 
             is RecoveryResult.WriterBusy -> base.copy(
@@ -67,6 +69,7 @@ object RecoveryProjection {
                     family = ErrorFamily.WRITER_BUSY,
                     code = "WRITER_BUSY",
                 ),
+                recovery = if (pointId != null) RecoveryContext(pointId, pointOriginRunId) else null,
             )
 
             is RecoveryResult.ConcurrentRun -> base.copy(
@@ -75,6 +78,7 @@ object RecoveryProjection {
                     family = ErrorFamily.CONCURRENT,
                     code = "CONCURRENT_RUN",
                 ),
+                recovery = if (pointId != null) RecoveryContext(pointId, pointOriginRunId) else null,
             )
         }
     }
