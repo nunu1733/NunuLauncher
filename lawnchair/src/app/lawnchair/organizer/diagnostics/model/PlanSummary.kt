@@ -1,12 +1,17 @@
 package app.lawnchair.organizer.diagnostics.model
 
+import app.lawnchair.organizer.planning.Confidence
+import app.lawnchair.organizer.planning.PreserveReason
+import app.lawnchair.organizer.planning.UnplacedReason
+import app.lawnchair.organizer.planning.WarningCode
 import kotlinx.serialization.Serializable
 
 /**
  * Plan summary from the diagnostics contract §6.1.
  *
  * Maps use String keys (enum constant names) to avoid requiring
- * @Serializable on the source planning enums.
+ * @Serializable on the source planning enums. Keys are validated
+ * against the actual enum entries at construction.
  */
 @Serializable
 data class PlanSummary(
@@ -46,32 +51,14 @@ data class PlanSummary(
     }
 
     companion object {
-        // Closed sets from the accepted diagnostics contract §6.1
-        // PreserveReason enum: LOCKED, UNAVAILABLE_TARGET, DOCK, WIDGET, APP_PAIR,
-        //   LEGACY_SHORTCUT, NON_TARGET, STRUCTURAL, ALREADY_CANONICAL
-        private val PRESERVED_BY_REASON_VALUES: Set<String> = setOf(
-            "LOCKED", "UNAVAILABLE_TARGET", "DOCK", "WIDGET", "APP_PAIR",
-            "LEGACY_SHORTCUT", "NON_TARGET", "STRUCTURAL", "ALREADY_CANONICAL",
-        )
-
-        // UnplacedReason enum: EXCEEDS_GRID_DIMENSIONS, TARGET_UNAVAILABLE
-        private val UNPLACED_BY_REASON_VALUES: Set<String> = setOf(
-            "EXCEEDS_GRID_DIMENSIONS",
-            "TARGET_UNAVAILABLE",
-        )
-
-        // WarningCode enum: LEGACY_SHORTCUT_REVIEW, FALLBACK_CATEGORY, UNAVAILABLE_PRESERVED
-        private val WARNING_BY_CODE_VALUES: Set<String> = setOf(
-            "LEGACY_SHORTCUT_REVIEW",
-            "FALLBACK_CATEGORY",
-            "UNAVAILABLE_PRESERVED",
-        )
-
-        // Confidence enum: EXPLICIT, RULE, FALLBACK
-        private val CONFIDENCE_COUNTS_VALUES: Set<String> = setOf(
-            "EXPLICIT",
-            "RULE",
-            "FALLBACK",
-        )
+        // Derived from the real enum entries so they can never drift.
+        private val PRESERVED_BY_REASON_VALUES: Set<String> =
+            PreserveReason.entries.map { it.name }.toSet()
+        private val UNPLACED_BY_REASON_VALUES: Set<String> =
+            UnplacedReason.entries.map { it.name }.toSet()
+        private val WARNING_BY_CODE_VALUES: Set<String> =
+            WarningCode.entries.map { it.name }.toSet()
+        private val CONFIDENCE_COUNTS_VALUES: Set<String> =
+            Confidence.entries.map { it.name }.toSet()
     }
 }
