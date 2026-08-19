@@ -11,6 +11,7 @@ import app.lawnchair.organizer.planning.TargetSet
 import app.lawnchair.organizer.rules.ClassificationPolicy
 import app.lawnchair.organizer.rules.PolicyBundleIdentity
 import app.lawnchair.organizer.rules.PolicyInputIdentity
+import app.lawnchair.organizer.rules.PolicySourceKind
 
 data class InputProvenance(
     val revision: RevisionId,
@@ -33,14 +34,36 @@ sealed interface OrganizationInputComposition {
     ) : OrganizationInputComposition
 }
 
+/**
+ * Typed, non-write handoff consumed by #52. Source/identity semantics must be
+ * taken from this type, never reconstructed by parsing [CompositionDiagnostic].
+ */
 sealed interface InputReadinessReason {
-    data object SourceUnavailable : InputReadinessReason
-    data object SourceUnreadable : InputReadinessReason
-    data object UnsupportedVersion : InputReadinessReason
-    data object IncompatiblePolicyBundle : InputReadinessReason
-    data object InconsistentPolicyRead : InputReadinessReason
-    data object ContradictorySource : InputReadinessReason
-    data object InvalidCanonicalCapture : InputReadinessReason
+    data class SourceUnavailable(val source: PolicySourceKind) : InputReadinessReason
+    data class SourceUnreadable(val source: PolicySourceKind) : InputReadinessReason
+    data class UnsupportedVersion(
+        val source: PolicySourceKind,
+        val actual: PolicyInputIdentity?,
+    ) : InputReadinessReason
+    data class IncompatiblePolicyBundle(
+        val rules: PolicyInputIdentity,
+        val taxonomy: PolicyInputIdentity,
+        val signals: PolicyInputIdentity,
+        val targets: PolicyInputIdentity,
+        val policyBundle: PolicyBundleIdentity,
+    ) : InputReadinessReason
+    data class InconsistentPolicyRead(
+        val expected: PolicyBundleIdentity,
+        val observed: PolicyBundleIdentity,
+    ) : InputReadinessReason
+    data class ContradictorySource(val source: PolicySourceKind) : InputReadinessReason
+    data class InvalidCanonicalCapture(val category: CaptureFailureCategory) : InputReadinessReason
+}
+
+enum class CaptureFailureCategory {
+    CAPTURE_UNAVAILABLE,
+    UNREPRESENTABLE_LAYOUT,
+    UNKNOWN_LOCK,
 }
 
 /** Deliberately opaque: no package, profile, component, item, or layout identity. */

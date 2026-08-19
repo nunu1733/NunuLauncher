@@ -79,37 +79,110 @@ class DefaultOrganizationInputComposer(
 ) : OrganizationInputComposer {
     override fun composeFullOrganization(): OrganizationInputComposition {
         val capture = (captureSource.capture() as? CanonicalCaptureReadResult.Ready)?.snapshot
-            ?: return notReady(InputReadinessReason.InvalidCanonicalCapture, "capture-invalid")
+            ?: return notReady(
+                InputReadinessReason.InvalidCanonicalCapture(CaptureFailureCategory.CAPTURE_UNAVAILABLE),
+                "capture-invalid",
+            )
+        if (capture.layoutState.items.any { it.lockState == OrganizerLockState.UNKNOWN }) {
+            return notReady(
+                InputReadinessReason.InvalidCanonicalCapture(CaptureFailureCategory.UNKNOWN_LOCK),
+                "capture-unknown-lock",
+            )
+        }
         val mapped = mapLayout(capture.layoutState, capture.revision)
-            ?: return notReady(InputReadinessReason.InvalidCanonicalCapture, "capture-unrepresentable")
+            ?: return notReady(
+                InputReadinessReason.InvalidCanonicalCapture(CaptureFailureCategory.UNREPRESENTABLE_LAYOUT),
+                "capture-unrepresentable",
+            )
         val bundle = when (val read = bundleSource.readActive()) {
             is BundleReadResult.Ready -> read.bundle
-
-            BundleReadResult.Missing -> return notReady(InputReadinessReason.SourceUnavailable, "bundle-missing")
-
-            BundleReadResult.Corrupt -> return notReady(InputReadinessReason.SourceUnreadable, "bundle-corrupt")
-
+            BundleReadResult.Missing -> return notReady(
+                InputReadinessReason.SourceUnavailable(PolicySourceKind.ORGANIZER_POLICY_BUNDLE),
+                "bundle-missing",
+            )
+            BundleReadResult.Corrupt -> return notReady(
+                InputReadinessReason.SourceUnreadable(PolicySourceKind.ORGANIZER_POLICY_BUNDLE),
+                "bundle-corrupt",
+            )
             is BundleReadResult.UnsupportedVersion -> return notReady(
-                InputReadinessReason.UnsupportedVersion,
+                InputReadinessReason.UnsupportedVersion(
+                    PolicySourceKind.ORGANIZER_POLICY_BUNDLE,
+                    read.identity?.let { policyIdentity(PolicySourceKind.ORGANIZER_POLICY_BUNDLE, it.semanticVersion, it.sha256) },
+                ),
                 "bundle-unsupported",
                 read.identity?.sha256,
             )
         }
-        bundle.validate()?.let { return notReady(InputReadinessReason.IncompatiblePolicyBundle, "bundle-invalid", bundle.identity.sha256) }
-        val requests = mapped.items.mapNotNull(::evidenceRequest).sortedWith(compareBy({ it.profile.value }, { it.packageName.value }, { it.item.value }))
+        bundle.validate()?.let {
+            return notReady(incompatibleBundleReason(bundle), "bundle-invalid", bundle.identity.sha256)
+        }
+        val requests = mapped.items.mapNotNull(::evidenceRequest)
+            .sortedWith(compareBy({ it.profile.value }, { it.packageName.value }, { it.item.value }))
+        var expectedCut: app.lawnchair.organizer.rules.PolicyBundleIdentity? = null
+        var observedCut: app.lawnchair.organizer.rules.PolicyBundleIdentity? = null
         repeat(MAX_DYNAMIC_ATTEMPTS) {
-            val firstOverrides = readOverrides(mapped.profiles) ?: return notReady(InputReadinessReason.SourceUnreadable, "override-unreadable")
-            val firstEvidence = readEvidence(requests, bundle.classification) ?: return notReady(InputReadinessReason.SourceUnreadable, "evidence-unreadable")
-            val secondOverrides = readOverrides(mapped.profiles) ?: return notReady(InputReadinessReason.SourceUnreadable, "override-unreadable")
-            val secondEvidence = readEvidence(requests, bundle.classification) ?: return notReady(InputReadinessReason.SourceUnreadable, "evidence-unreadable")
-            if (firstOverrides.identity != secondOverrides.identity || firstEvidence.identity != secondEvidence.identity) return@repeat
+            val firstOverrides = when (val read = overrides.read(mapped.profiles)) {
+                is OverrideSnapshotReadResult.Ready -> read.snapshot
+                OverrideSnapshotReadResult.Unreadable -> return notReady(
+                    InputReadinessReason.SourceUnreadable(PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT),
+                    "override-unreadable",
+                )
+                OverrideSnapshotReadResult.UnsupportedSchema -> return notReady(
+                    InputReadinessReason.UnsupportedVersion(PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT, null),
+                    "override-unsupported-schema",
+                )
+            }
+            val firstEvidence = when (val read = platformEvidence.read(requests, bundle.classification)) {
+                is PlatformEvidenceReadResult.Ready -> read.evidence
+                PlatformEvidenceReadResult.Unreadable -> return notReady(
+                    InputReadinessReason.SourceUnreadable(PolicySourceKind.PLATFORM_CLASSIFICATION_EVIDENCE),
+                    "evidence-unreadable",
+                )
+            }
+            val secondOverrides = when (val read = overrides.read(mapped.profiles)) {
+                is OverrideSnapshotReadResult.Ready -> read.snapshot
+                OverrideSnapshotReadResult.Unreadable -> return notReady(
+                    InputReadinessReason.SourceUnreadable(PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT),
+                    "override-unreadable",
+                )
+                OverrideSnapshotReadResult.UnsupportedSchema -> return notReady(
+                    InputReadinessReason.UnsupportedVersion(PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT, null),
+                    "override-unsupported-schema",
+                )
+            }
+            val secondEvidence = when (val read = platformEvidence.read(requests, bundle.classification)) {
+                is PlatformEvidenceReadResult.Ready -> read.evidence
+                PlatformEvidenceReadResult.Unreadable -> return notReady(
+                    InputReadinessReason.SourceUnreadable(PolicySourceKind.PLATFORM_CLASSIFICATION_EVIDENCE),
+                    "evidence-unreadable",
+                )
+            }
+            val firstCut = dynamicCutIdentity(bundle, firstOverrides.identity, firstEvidence.identity)
+            val secondCut = dynamicCutIdentity(bundle, secondOverrides.identity, secondEvidence.identity)
+            if (firstCut != secondCut) {
+                expectedCut = firstCut
+                observedCut = secondCut
+                return@repeat
+            }
             if (firstOverrides.assignments.values.any { it !in bundle.taxonomy.allowedCategories }) {
-                return notReady(InputReadinessReason.ContradictorySource, "override-category-invalid", bundle.identity.sha256)
+                return notReady(
+                    InputReadinessReason.ContradictorySource(PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT),
+                    "override-category-invalid",
+                    bundle.identity.sha256,
+                )
             }
             val signals = materializeSignals(mapped.items, bundle, firstOverrides, firstEvidence)
-                ?: return notReady(InputReadinessReason.ContradictorySource, "signal-contradiction", bundle.identity.sha256)
+                ?: return notReady(
+                    InputReadinessReason.ContradictorySource(PolicySourceKind.MATERIALIZED_CLASSIFICATION_SIGNALS),
+                    "signal-contradiction",
+                    bundle.identity.sha256,
+                )
             val targets = (targetMaterializer.materialize(mapped.items, bundle.fullOrganizationTargets) as? TargetMaterializationResult.Ready)?.value
-                ?: return notReady(InputReadinessReason.ContradictorySource, "target-partition", bundle.identity.sha256)
+                ?: return notReady(
+                    InputReadinessReason.ContradictorySource(PolicySourceKind.MATERIALIZED_FULL_TARGET_SET),
+                    "target-partition",
+                    bundle.identity.sha256,
+                )
             val rulesIdentity = policyIdentity(PolicySourceKind.ORGANIZER_POLICY_BUNDLE, bundle.rules.version.value, bundle.identity.sha256)
             val taxonomyIdentity = policyIdentity(PolicySourceKind.ORGANIZER_POLICY_BUNDLE, bundle.taxonomy.version.value, bundle.identity.sha256)
             return OrganizationInputComposition.Ready(
@@ -117,20 +190,11 @@ class DefaultOrganizationInputComposer(
                 InputProvenance(capture.revision, rulesIdentity, taxonomyIdentity, signals.identity, targets.identity, bundle.identity),
             )
         }
-        return notReady(InputReadinessReason.InconsistentPolicyRead, "dynamic-cut-unstable", bundle.identity.sha256)
-    }
-
-    private fun readOverrides(profiles: Set<ProfileId>): CategoryOverrideSnapshot? = when (val result = overrides.read(profiles)) {
-        is OverrideSnapshotReadResult.Ready -> result.snapshot
-        OverrideSnapshotReadResult.Unreadable, OverrideSnapshotReadResult.UnsupportedSchema -> null
-    }
-
-    private fun readEvidence(
-        requests: List<ClassificationEvidenceRequest>,
-        policy: app.lawnchair.organizer.rules.ClassificationPolicy,
-    ): PlatformClassificationEvidence? = when (val result = platformEvidence.read(requests, policy)) {
-        is PlatformEvidenceReadResult.Ready -> result.evidence
-        PlatformEvidenceReadResult.Unreadable -> null
+        return notReady(
+            InputReadinessReason.InconsistentPolicyRead(checkNotNull(expectedCut), checkNotNull(observedCut)),
+            "dynamic-cut-unstable",
+            observedCut?.sha256,
+        )
     }
 
     private fun materializeSignals(
@@ -275,6 +339,23 @@ class DefaultOrganizationInputComposer(
     )
 
     private fun policyIdentity(source: PolicySourceKind, version: String, digest: String) = PolicyInputIdentity(source, version, digest)
+
+    private fun incompatibleBundleReason(bundle: OrganizerPolicyBundle) = InputReadinessReason.IncompatiblePolicyBundle(
+        rules = policyIdentity(PolicySourceKind.ORGANIZER_POLICY_BUNDLE, bundle.rules.version.value, bundle.identity.sha256),
+        taxonomy = policyIdentity(PolicySourceKind.ORGANIZER_POLICY_BUNDLE, bundle.taxonomy.version.value, bundle.identity.sha256),
+        signals = policyIdentity(PolicySourceKind.MATERIALIZED_CLASSIFICATION_SIGNALS, bundle.classification.version, bundle.identity.sha256),
+        targets = policyIdentity(PolicySourceKind.MATERIALIZED_FULL_TARGET_SET, bundle.fullOrganizationTargets.version, bundle.identity.sha256),
+        policyBundle = bundle.identity,
+    )
+
+    private fun dynamicCutIdentity(
+        bundle: OrganizerPolicyBundle,
+        overrides: PolicyInputIdentity,
+        evidence: PolicyInputIdentity,
+    ) = app.lawnchair.organizer.rules.PolicyBundleIdentity(
+        bundle.identity.semanticVersion,
+        sha256Canonical("${bundle.identity.sha256}\n${overrides.sha256}\n${evidence.sha256}"),
+    )
 
     private fun notReady(reason: InputReadinessReason, code: String, digest: String? = null) = OrganizationInputComposition.NotReady(
         reason,
