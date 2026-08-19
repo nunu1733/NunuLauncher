@@ -154,9 +154,17 @@ The implementation is read-only with respect to layout and recovery data. If the
 - [x] Minimal production implementation completed through the existing planner/application seams.
 - [x] Override schema-v1/readability, unknown/newer-schema fail-closed, and all non-write failure paths verified.
 - [x] Full relevant verification completed.
-- [ ] PR evidence, CI result, and any remaining risks recorded.
+- [x] PR evidence, CI result, and remaining independent-audit risk recorded.
 
 ## Verification record
+
+### 2026-08-19 — Production instrumentation evidence (PR #88)
+
+The focused Android instrumentation class `ProductionOrganizationInputInstrumentationTest` executes through `ProductionOrganizationInputComposer`, `LauncherLayoutAdapter`, and the Android platform-evidence adapter. It covers canonical capture-to-planner mapping for page/device/profile/availability/lock, `QUIET`/`LOCKED_PRIVATE_SPACE`/`DISABLED`/unavailable handling, `UNKNOWN` lock and unrepresentable capture typed rejection with only `captureCurrent` invoked on a capture-only writer, and same-package cross-profile evidence rejection rather than fallback.
+
+The CI job `organizer-instrumentation-tests` runs this class on an API 35 Google APIs x86_64 emulator and is required by `final-status`. It passed at implementation head `29ee8a751f06a03a100e4b7dc5174dce55d7687e` in [CI run 32255722317](https://github.com/nunu1733/NunuLauncher/actions/runs/32255722317). The same run passed `check-style`, `organizer-unit-tests`, `build-debug-apk`, `validate-repo-contract`, and `final-status`.
+
+**Remaining merge condition:** the high-risk evidence gate remains intentionally unresolved until a distinct reviewer/audit session publishes an accepted follow-up audit for the latest production/test head. This implementation session does not self-certify that audit.
 
 | Check | Result | Evidence / limitation |
 |---|---|---|
