@@ -357,4 +357,78 @@ class ApplyProtocolDiagnosticsTest {
         )
         assertNotNull("Run A terminal event must have a pointId", runATerminal.pointId)
     }
+
+    /**
+     * Variant with the defect actually reproducible: both runs share ONE
+     * ApplyProtocol instance (matching the production wiring), and run A
+     * terminates on a path where the tracked context is load-bearing —
+     * markApplying failure must report the tracked A5 stage and the
+     * checkpoint's pointId, whereas the static fallbacks would produce A2 and
+     * a null pointId for Rejected(RECOVERY_STORE_UNAVAILABLE). Under the
+     * pre-fix instance-field implementation, run B's apply() entry reset
+     * wiped run A's context, degrading the terminal event to those fallbacks.
+     */
+    @Test
+    fun concurrentApplyOnSharedInstanceKeepsLoadBearingContext() {
+        val mutex = RunMutex()
+        val blockLatch = CountDownLatch(1)
+        val resumeLatch = CountDownLatch(1)
+        val blockingFaults = object : FaultInjector by faults {
+            override fun beforeRecoveryLifecycleCommit(
+                phase: FaultInjector.RecoveryLifecyclePhase,
+                pointId: RecoveryPointId,
+            ) {
+                if (phase == FaultInjector.RecoveryLifecyclePhase.APPLYING) {
+                    blockLatch.countDown()
+                    resumeLatch.await(5, TimeUnit.SECONDS)
+                }
+                faults.beforeRecoveryLifecycleCommit(phase, pointId)
+            }
+        }
+
+        val runAIds = FixedOperationIdSource(
+            runIds = listOf("111111111111111111111111111111aa"),
+            pointIds = listOf("222222222222222222222222222222aa"),
+        )
+        recordedEvents = mutableListOf()
+        val port = DiagnosticsPort { event -> recordedEvents.add(event) }
+        // Single shared instance, as production wiring uses.
+        val protocol = ApplyProtocol(writer, store, FakeClock, runAIds, blockingFaults, mutex, port)
+
+        val plan = mutatingPlan()
+        var runAResult: ApplyResult? = null
+        val runAThread = Thread {
+            runAResult = protocol.apply(plan)
+        }
+        runAThread.start()
+        assertTrue("Run A must reach the pause hook", blockLatch.await(5, TimeUnit.SECONDS))
+        assertNotNull("RunMutex must be held by Run A", mutex.currentHolder())
+
+        // Run B on the SAME instance: rejected ConcurrentRun, but its apply()
+        // entry must not wipe run A's diagnostic context.
+        val runBResult = protocol.apply(plan)
+        assertTrue("Run B must be ConcurrentRun, got $runBResult", runBResult is ApplyResult.ConcurrentRun)
+
+        // Make run A's resumption terminate on the markApplying-failure path,
+        // where the tracked A5 stage and checkpoint pointId are load-bearing.
+        store.markApplyingFails = true
+        resumeLatch.countDown()
+        runAThread.join(5_000)
+
+        assertNotNull("Run A must complete", runAResult)
+        assertTrue("Run A must be Rejected, got $runAResult", runAResult is ApplyResult.Rejected)
+
+        val runATerminal = recordedEvents.lastOrNull { it.phase == PhaseCode.APPLY_REJECTED }
+        assertNotNull("Run A must emit an APPLY_REJECTED terminal event", runATerminal)
+        assertEquals(
+            "Tracked A5 stage must survive run B's apply() entry (fallback would be A2)",
+            ApplyStage.A5,
+            runATerminal!!.applyStage,
+        )
+        assertEquals(
+            "Checkpoint pointId must survive run B's apply() entry (fallback would be null)",
+            store.checkpointPointIds.single().value,
+            runATerminal.pointId,
+        )
+    }
 }
