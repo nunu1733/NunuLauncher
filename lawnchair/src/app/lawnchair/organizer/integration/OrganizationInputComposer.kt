@@ -96,14 +96,17 @@ class DefaultOrganizationInputComposer(
             )
         val bundle = when (val read = bundleSource.readActive()) {
             is BundleReadResult.Ready -> read.bundle
+
             BundleReadResult.Missing -> return notReady(
                 InputReadinessReason.SourceUnavailable(PolicySourceKind.ORGANIZER_POLICY_BUNDLE),
                 "bundle-missing",
             )
+
             BundleReadResult.Corrupt -> return notReady(
                 InputReadinessReason.SourceUnreadable(PolicySourceKind.ORGANIZER_POLICY_BUNDLE),
                 "bundle-corrupt",
             )
+
             is BundleReadResult.UnsupportedVersion -> return notReady(
                 InputReadinessReason.UnsupportedVersion(
                     PolicySourceKind.ORGANIZER_POLICY_BUNDLE,
@@ -123,10 +126,12 @@ class DefaultOrganizationInputComposer(
         repeat(MAX_DYNAMIC_ATTEMPTS) {
             val firstOverrides = when (val read = overrides.read(mapped.profiles)) {
                 is OverrideSnapshotReadResult.Ready -> read.snapshot
+
                 OverrideSnapshotReadResult.Unreadable -> return notReady(
                     InputReadinessReason.SourceUnreadable(PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT),
                     "override-unreadable",
                 )
+
                 OverrideSnapshotReadResult.UnsupportedSchema -> return notReady(
                     InputReadinessReason.UnsupportedVersion(PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT, null),
                     "override-unsupported-schema",
@@ -134,6 +139,7 @@ class DefaultOrganizationInputComposer(
             }
             val firstEvidence = when (val read = platformEvidence.read(requests, bundle.classification)) {
                 is PlatformEvidenceReadResult.Ready -> read.evidence
+
                 PlatformEvidenceReadResult.Unreadable -> return notReady(
                     InputReadinessReason.SourceUnreadable(PolicySourceKind.PLATFORM_CLASSIFICATION_EVIDENCE),
                     "evidence-unreadable",
@@ -141,10 +147,12 @@ class DefaultOrganizationInputComposer(
             }
             val secondOverrides = when (val read = overrides.read(mapped.profiles)) {
                 is OverrideSnapshotReadResult.Ready -> read.snapshot
+
                 OverrideSnapshotReadResult.Unreadable -> return notReady(
                     InputReadinessReason.SourceUnreadable(PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT),
                     "override-unreadable",
                 )
+
                 OverrideSnapshotReadResult.UnsupportedSchema -> return notReady(
                     InputReadinessReason.UnsupportedVersion(PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT, null),
                     "override-unsupported-schema",
@@ -152,6 +160,7 @@ class DefaultOrganizationInputComposer(
             }
             val secondEvidence = when (val read = platformEvidence.read(requests, bundle.classification)) {
                 is PlatformEvidenceReadResult.Ready -> read.evidence
+
                 PlatformEvidenceReadResult.Unreadable -> return notReady(
                     InputReadinessReason.SourceUnreadable(PolicySourceKind.PLATFORM_CLASSIFICATION_EVIDENCE),
                     "evidence-unreadable",
