@@ -15,6 +15,7 @@ import app.lawnchair.organizer.diagnostics.DiagnosticsPort
 import app.lawnchair.organizer.diagnostics.journal.JournalSequence
 import app.lawnchair.organizer.diagnostics.journal.JournalStore
 import app.lawnchair.organizer.diagnostics.logger.DiagnosticsLogger
+import app.lawnchair.organizer.diagnostics.model.RunEvent
 import com.android.launcher3.LauncherAppState
 import java.io.File
 import java.security.SecureRandom
@@ -35,7 +36,7 @@ class LayoutApplicationModule(
     private val clock: Clock,
     private val operationIds: OperationIdSource,
     private val faults: FaultInjector = FaultInjector.NOOP,
-    private val diagnosticsPort: DiagnosticsPort = DiagnosticsPort.NOOP,
+    diagnosticsPort: DiagnosticsPort = DiagnosticsPort.NOOP,
 ) {
 
     private val mutex: RunMutex = RunMutex()
@@ -43,6 +44,9 @@ class LayoutApplicationModule(
     private val recoveryProtocol: RecoveryProtocol = RecoveryProtocol(writer, store, clock, operationIds, faults, mutex)
     private val restartReconciler: RestartReconciler = RestartReconciler(writer, store, faults, diagnosticsPort)
     val readinessGate: ReadinessGate = ReadinessGate()
+
+    /** The diagnostics port, available for export (e.g. debug menu). */
+    val diagnostics: DiagnosticsPort = diagnosticsPort
 
     fun apply(plan: ValidatedLayoutPlan): ApplyResult = readinessGate.runWhenReady(
         unavailable = { state ->
@@ -93,7 +97,7 @@ class LayoutApplicationModule(
                 pointId = request.pointId.value,
                 pointOriginRunId = pointOriginRunId,
             )
-            diagnosticsPort.emit(event)
+            diagnostics.emit(event)
         } catch (_: Exception) {
             // Fail-open
         }
@@ -108,7 +112,7 @@ class LayoutApplicationModule(
                 pointOriginRunId = pointOriginRunId,
                 journalSequence = 0L,
             )
-            diagnosticsPort.emit(event)
+            diagnostics.emit(event)
         } catch (_: Exception) {
             // Fail-open
         }
@@ -145,11 +149,14 @@ class LayoutApplicationModule(
             val journalSequence = JournalSequence(seqFile)
             val journalStore = JournalStore(journalFile, journalSequence, clock::nowMillis)
             val diagnosticsLogger = DiagnosticsLogger(isReleaseBuild = !com.android.launcher3.BuildConfig.DEBUG)
-            val diagnosticsPort = DiagnosticsPort { event ->
-                val persisted = journalStore.append(event)
-                if (persisted) {
-                    diagnosticsLogger.log(event)
+            val diagnosticsPort = object : DiagnosticsPort {
+                override fun emit(event: RunEvent) {
+                    val persisted = journalStore.append(event)
+                    if (persisted) {
+                        diagnosticsLogger.log(event)
+                    }
                 }
+                override fun snapshot(): List<RunEvent> = journalStore.snapshot()
             }
             // Open the journal store eagerly so it's ready for use
             try {

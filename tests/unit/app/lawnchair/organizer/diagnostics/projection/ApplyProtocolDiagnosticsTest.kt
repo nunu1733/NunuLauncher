@@ -43,7 +43,12 @@ class ApplyProtocolDiagnosticsTest {
 
     private fun createProtocol(mutex: RunMutex = RunMutex()): ApplyProtocol {
         recordedEvents = mutableListOf()
-        val port = DiagnosticsPort { event -> recordedEvents.add(event) }
+        val port = object : DiagnosticsPort {
+            override fun emit(event: RunEvent) {
+                recordedEvents.add(event)
+            }
+            override fun snapshot(): List<RunEvent> = emptyList()
+        }
         val ids = FixedOperationIdSource()
         return ApplyProtocol(writer, store, FakeClock, ids, faults, mutex, port)
     }
@@ -54,7 +59,12 @@ class ApplyProtocolDiagnosticsTest {
         ids: FixedOperationIdSource = FixedOperationIdSource(),
     ): ApplyProtocol {
         recordedEvents = mutableListOf()
-        val port = DiagnosticsPort { event -> recordedEvents.add(event) }
+        val port = object : DiagnosticsPort {
+            override fun emit(event: RunEvent) {
+                recordedEvents.add(event)
+            }
+            override fun snapshot(): List<RunEvent> = emptyList()
+        }
         return ApplyProtocol(writer, store, FakeClock, ids, customFaults, mutex, port)
     }
 
@@ -308,7 +318,12 @@ class ApplyProtocolDiagnosticsTest {
             pointIds = listOf("444444444444444444444444444444bb"),
         )
         val runBRecordedEvents = mutableListOf<RunEvent>()
-        val runBPort = DiagnosticsPort { event -> runBRecordedEvents.add(event) }
+        val runBPort = object : DiagnosticsPort {
+            override fun emit(event: RunEvent) {
+                runBRecordedEvents.add(event)
+            }
+            override fun snapshot(): List<RunEvent> = emptyList()
+        }
         val protocolB = ApplyProtocol(writer, store, FakeClock, runBIds, faults, mutex, runBPort)
 
         val runBResult = protocolB.apply(plan)
@@ -391,7 +406,12 @@ class ApplyProtocolDiagnosticsTest {
             pointIds = listOf("222222222222222222222222222222aa"),
         )
         recordedEvents = mutableListOf()
-        val port = DiagnosticsPort { event -> recordedEvents.add(event) }
+        val port = object : DiagnosticsPort {
+            override fun emit(event: RunEvent) {
+                recordedEvents.add(event)
+            }
+            override fun snapshot(): List<RunEvent> = emptyList()
+        }
         // Single shared instance, as production wiring uses.
         val protocol = ApplyProtocol(writer, store, FakeClock, runAIds, blockingFaults, mutex, port)
 

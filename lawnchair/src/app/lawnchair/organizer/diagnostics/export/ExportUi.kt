@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import app.lawnchair.organizer.diagnostics.DiagnosticsPort
 import app.lawnchair.ui.preferences.components.controls.ClickablePreference
 import com.android.launcher3.R
 import kotlinx.coroutines.Dispatchers
@@ -24,7 +25,7 @@ import kotlinx.coroutines.withContext
  * with TalkBack/keyboard/switch navigation.
  */
 @Composable
-fun OrganizerDiagnosticsExportPreference() {
+fun OrganizerDiagnosticsExportPreference(diagnosticsPort: DiagnosticsPort) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -40,7 +41,7 @@ fun OrganizerDiagnosticsExportPreference() {
         scope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    ExportWriter.writeToUri(context, uri)
+                    ExportWriter.writeToUri(context, diagnosticsPort, uri)
                 }
                 Toast.makeText(
                     context,

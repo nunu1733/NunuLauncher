@@ -87,6 +87,7 @@ class RestartReconciler(
                 classification = classification,
                 resultingLifecycle = resultingLifecycle,
                 journalSequence = 0L,
+                pointId = record.pointId.value,
             )
             diagnosticsPort.emit(event)
         } catch (_: Exception) {

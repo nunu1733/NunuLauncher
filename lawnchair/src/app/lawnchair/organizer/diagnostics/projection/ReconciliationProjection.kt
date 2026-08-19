@@ -22,6 +22,10 @@ object ReconciliationProjection {
      * @param classification the authoritative digest classification.
      * @param resultingLifecycle the lifecycle state after reconciliation.
      * @param journalSequence the next journal sequence number.
+     * @param pointId optional recovery point ID for the reconciled record.
+     *   When set, allows the retention policy to resolve in-flight recovery
+     *   protection for this point (RESTART_RECONCILED resolves the recovery
+     *   state without a separate terminal RECOVERY_* event).
      * @return the projected [RunEvent].
      */
     @JvmStatic
@@ -31,11 +35,13 @@ object ReconciliationProjection {
         classification: AuthoritativeClass,
         resultingLifecycle: LifecycleState,
         journalSequence: Long,
+        pointId: String? = null,
     ): RunEvent {
         return RunEvent(
             journalSequence = journalSequence,
             phase = PhaseCode.RESTART_RECONCILED,
             runId = subjectRunId.value,
+            pointId = pointId,
             reconciliation = ReconciliationContext(
                 subjectRunId = subjectRunId.value,
                 priorLifecycle = mapLifecycle(priorLifecycle),

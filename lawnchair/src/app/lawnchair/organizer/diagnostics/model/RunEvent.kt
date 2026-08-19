@@ -18,7 +18,8 @@ enum class RunMode {
 /**
  * Versions carried on RUN_STARTED events. Identifiers only, no content.
  * Each version identifier must be non-blank, at most 32 characters, and
- * contain only [A-Za-z0-9._-].
+ * contain only [A-Za-z0-9_-] (dots excluded to prevent package/component
+ * identity strings from being carried as version identifiers).
  */
 @Serializable
 data class RunVersions(

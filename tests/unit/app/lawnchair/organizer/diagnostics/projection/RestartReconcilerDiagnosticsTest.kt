@@ -39,7 +39,12 @@ class RestartReconcilerDiagnosticsTest {
         writer = FakeLayoutWriter(CanonicalFixtures.state(items = listOf(CanonicalFixtures.appItem())))
         store = FakeRecoveryStore(FakeClock::nowMillis)
         recordedEvents = mutableListOf()
-        val port = DiagnosticsPort { event -> recordedEvents.add(event) }
+        val port = object : DiagnosticsPort {
+            override fun emit(event: RunEvent) {
+                recordedEvents.add(event)
+            }
+            override fun snapshot(): List<RunEvent> = emptyList()
+        }
         reconciler = RestartReconciler(writer, store, RecordingFaultInjector(), port)
     }
 

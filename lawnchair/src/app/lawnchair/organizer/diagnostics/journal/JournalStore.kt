@@ -258,6 +258,10 @@ class JournalStore(
                 // renameTo failed (e.g. cross-filesystem); try copy-and-delete
                 try {
                     journalFile.copyFrom(tempFile)
+                    // (a.2) Sync the destination file after copy so that the
+                    // replacement bytes are durable. The temp file's earlier
+                    // fsync only covers the source, not the destination.
+                    syncHook.syncFile(journalFile)
                     tempFile.delete()
                 } catch (_: Exception) {
                     tempFile.delete()

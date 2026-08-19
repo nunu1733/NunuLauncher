@@ -4,6 +4,7 @@ import app.lawnchair.organizer.diagnostics.journal.RunEventSerializer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -291,5 +292,28 @@ class RunEventSerializationTest {
         assertFalse("RunEvent must not have a 'notes' field", fields.contains("notes"))
         assertFalse("RunEvent must not have a 'description' field", fields.contains("description"))
         assertFalse("RunEvent must not have a 'debug' field", fields.contains("debug"))
+    }
+
+    /** Decode must reject schemaVersion != 1 (fail-closed schema). */
+    @Test
+    fun decodeRejectsSchemaVersion2() {
+        val event = RunEvent(journalSequence = 1L, phase = PhaseCode.CAPTURED)
+        val json = RunEventSerializer.encodeToString(event)
+        val tampered = json.replace("\"schemaVersion\":1", "\"schemaVersion\":2")
+        assertThrows(IllegalArgumentException::class.java) {
+            RunEventSerializer.decode(tampered.toByteArray(Charsets.UTF_8))
+        }
+    }
+
+    /** Decode must reject unknown keys (fail-closed schema). */
+    @Test
+    fun decodeRejectsUnknownKeys() {
+        val event = RunEvent(journalSequence = 1L, phase = PhaseCode.CAPTURED)
+        val json = RunEventSerializer.encodeToString(event)
+        // Insert an unknown key before the closing brace
+        val tampered = json.replace("}", ",\"unknownField\":\"value\"}")
+        assertThrows(Exception::class.java) {
+            RunEventSerializer.decode(tampered.toByteArray(Charsets.UTF_8))
+        }
     }
 }

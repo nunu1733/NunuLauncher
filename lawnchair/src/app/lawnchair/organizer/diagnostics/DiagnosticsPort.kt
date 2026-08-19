@@ -9,16 +9,27 @@ import app.lawnchair.organizer.diagnostics.model.RunEvent
  * Implementations are responsible for:
  * - Persisting events to the journal.
  * - Rendering persisted events to logcat.
+ * - Providing a stable snapshot of the journal for export.
  *
  * The port is fail-open: an implementation must catch and swallow
  * its own exceptions so that diagnostics failure does not affect
  * the organizer operation.
  */
-fun interface DiagnosticsPort {
+interface DiagnosticsPort {
     fun emit(event: RunEvent)
+
+    /**
+     * Return a stable, point-in-time snapshot of all persisted events.
+     * The snapshot must be consistent with the live journal (mutual
+     * exclusion with concurrent [emit] calls).
+     */
+    fun snapshot(): List<RunEvent>
 
     companion object {
         /** No-op implementation for fail-open default wiring. */
-        val NOOP = DiagnosticsPort {}
+        val NOOP = object : DiagnosticsPort {
+            override fun emit(event: RunEvent) = Unit
+            override fun snapshot(): List<RunEvent> = emptyList()
+        }
     }
 }

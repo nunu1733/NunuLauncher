@@ -125,18 +125,31 @@ object RetentionPolicy {
     /**
      * Compute the set of event sequences that are protected because they
      * belong to an in-flight recovery operation (RECOVERY_REQUESTED without
-     * a terminal recovery event for the same pointId).
+     * a terminal recovery event for the same pointId). Protection is also
+     * resolved by a RESTART_RECONCILED event that carries the same pointId,
+     * since restart reconciliation resolves the recovery state without a
+     * separate terminal RECOVERY_* event.
      */
     private fun protectedRecoverySequences(events: List<RunEvent>): Set<Long> {
         val recoveryEvents = events.filter { it.recovery != null }
         if (recoveryEvents.isEmpty()) return emptySet()
 
+        // Collect the set of pointIds that have been resolved by a
+        // RESTART_RECONCILED event. This handles the case where a
+        // recovery point is resolved by restart reconciliation
+        // rather than a terminal RECOVERY_* event.
+        val restartedPointIds = events
+            .filter { it.phase == PhaseCode.RESTART_RECONCILED && it.pointId != null }
+            .map { it.pointId!! }
+            .toSet()
+
         // Group by pointId to find terminal vs in-flight
         val byPointId = recoveryEvents.groupBy { it.recovery!!.pointId }
         val protectedSequences = mutableSetOf<Long>()
-        for ((_, group) in byPointId) {
+        for ((pointId, group) in byPointId) {
             val hasTerminal = group.any { it.phase in TERMINAL_RECOVERY_PHASES }
-            if (!hasTerminal) {
+            val resolvedByRestart = pointId in restartedPointIds
+            if (!hasTerminal && !resolvedByRestart) {
                 // All events in this group are in-flight and protected
                 protectedSequences.addAll(group.map { it.journalSequence })
             }

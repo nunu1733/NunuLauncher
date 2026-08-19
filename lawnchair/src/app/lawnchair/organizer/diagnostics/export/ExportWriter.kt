@@ -2,14 +2,12 @@ package app.lawnchair.organizer.diagnostics.export
 
 import android.content.Context
 import android.net.Uri
-import app.lawnchair.organizer.diagnostics.journal.JournalSequence
-import app.lawnchair.organizer.diagnostics.journal.JournalStore
+import app.lawnchair.organizer.diagnostics.DiagnosticsPort
 import app.lawnchair.organizer.diagnostics.journal.RunEventSerializer
 import app.lawnchair.organizer.diagnostics.model.DeviceProfileSummary
 import app.lawnchair.organizer.diagnostics.model.PhaseCode
 import app.lawnchair.organizer.diagnostics.model.RunEvent
 import com.android.launcher3.BuildConfig
-import java.io.File
 import java.io.OutputStream
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.Serializable
@@ -34,7 +32,7 @@ object ExportWriter {
 
     private val exportJson: Json = Json {
         encodeDefaults = false
-        ignoreUnknownKeys = true
+        ignoreUnknownKeys = false
     }
 
     /**
@@ -103,27 +101,20 @@ object ExportWriter {
     }
 
     /**
-     * Read all events from the journal using a stable [JournalStore.snapshot].
+     * Read all events from the journal using the live [DiagnosticsPort.snapshot].
      *
-     * Obtains a point-in-time snapshot under the store's synchronization so
-     * that export cannot race with concurrent appends or retention rewrites.
+     * Delegates to the production [DiagnosticsPort] so that the snapshot is
+     * obtained under the same synchronization as concurrent [DiagnosticsPort.emit]
+     * calls. Export does not mutate or prune the journal.
      *
-     * @param context Application context for resolving [Context.filesDir].
+     * @param diagnosticsPort The live diagnostics port (production instance).
      * @return List of events in ascending journal sequence order, or empty
-     *   list if the journal file does not exist or cannot be read.
+     *   list if the journal is empty or unavailable.
      */
     @JvmStatic
-    fun readJournalEvents(context: Context): List<RunEvent> {
-        val journalFile = getJournalFile(context)
-        if (!journalFile.exists() || journalFile.length() == 0L) {
-            return emptyList()
-        }
-        val diagnosticsDir = journalFile.parentFile!!
-        val seqFile = File(diagnosticsDir, "journal_seq")
-        val journalSequence = JournalSequence(seqFile)
-        val journalStore = JournalStore(journalFile, journalSequence)
+    fun readJournalEvents(diagnosticsPort: DiagnosticsPort): List<RunEvent> {
         return try {
-            journalStore.snapshot()
+            diagnosticsPort.snapshot()
         } catch (_: Exception) {
             emptyList()
         }
@@ -132,10 +123,11 @@ object ExportWriter {
     /**
      * Write the journal export to a content [Uri] via SAF.
      *
-     * Reads events from the standard journal file, then writes the export
-     * to the URI. The journal is not mutated.
+     * Reads events from the live [DiagnosticsPort] snapshot, then writes the
+     * export to the URI. The journal is not mutated.
      *
      * @param context Application context.
+     * @param diagnosticsPort The live diagnostics port for stable snapshot.
      * @param uri The content URI to write to (from SAF CreateDocument or
      *   similar).
      * @throws java.io.IOException if writing fails.
@@ -143,18 +135,10 @@ object ExportWriter {
      */
     @JvmStatic
     @Throws(java.io.IOException::class)
-    fun writeToUri(context: Context, uri: Uri) {
-        val events = readJournalEvents(context)
+    fun writeToUri(context: Context, diagnosticsPort: DiagnosticsPort, uri: Uri) {
+        val events = readJournalEvents(diagnosticsPort)
         context.contentResolver.openOutputStream(uri)?.use { outputStream ->
             write(events, outputStream)
         } ?: throw java.io.FileNotFoundException("Cannot open output stream for $uri")
-    }
-
-    /**
-     * Get the standard journal file path for the given context.
-     */
-    internal fun getJournalFile(context: Context): File {
-        val diagnosticsDir = File(context.filesDir, "organizer_diagnostics")
-        return File(diagnosticsDir, "organizer_diagnostics.journal")
     }
 }

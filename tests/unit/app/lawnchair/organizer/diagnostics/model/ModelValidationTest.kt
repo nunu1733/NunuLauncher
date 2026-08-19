@@ -381,8 +381,8 @@ class ModelValidationTest {
 
     @Test
     fun runVersionsAllowsValidIdentifiers() {
-        RunVersions(ruleVersion = "v1.0", taxonomyVersion = "t_2024", recoveryFormatVersion = "rf-1")
-        RunVersions(ruleVersion = "1", taxonomyVersion = "A", recoveryFormatVersion = "a.b-c_d")
+        RunVersions(ruleVersion = "v1_0", taxonomyVersion = "t_2024", recoveryFormatVersion = "rf-1")
+        RunVersions(ruleVersion = "1", taxonomyVersion = "A", recoveryFormatVersion = "a-b-c_d")
     }
 
     @Test
@@ -393,7 +393,7 @@ class ModelValidationTest {
     @Test
     fun runVersionsRejectsBlankVersion() {
         // Empty string is allowed as default, but blank (whitespace) is not
-        // The regex [A-Za-z0-9._-]{1,32} requires at least one char for non-empty
+        // The regex [A-Za-z0-9_-]{1,32} requires at least one char for non-empty
         assertThrows(IllegalArgumentException::class.java) {
             RunVersions(ruleVersion = "  ")
         }
@@ -410,13 +410,20 @@ class ModelValidationTest {
     @Test
     fun runVersionsRejectsOddCharsetVersion() {
         assertThrows(IllegalArgumentException::class.java) {
-            RunVersions(ruleVersion = "v1.0 with spaces")
+            RunVersions(ruleVersion = "v1_0 with spaces")
         }
         assertThrows(IllegalArgumentException::class.java) {
             RunVersions(taxonomyVersion = "v1/0")
         }
         assertThrows(IllegalArgumentException::class.java) {
             RunVersions(recoveryFormatVersion = "v1@0")
+        }
+        // Dots are not allowed — prevents package names like "com.example.private"
+        assertThrows(IllegalArgumentException::class.java) {
+            RunVersions(ruleVersion = "v1.0")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            RunVersions(ruleVersion = "com.example.private")
         }
     }
 

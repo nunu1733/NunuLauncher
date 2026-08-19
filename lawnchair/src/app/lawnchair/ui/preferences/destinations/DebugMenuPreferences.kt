@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.datastore.preferences.core.Preferences
+import app.lawnchair.LawnchairApp
 import app.lawnchair.organizer.diagnostics.export.OrganizerDiagnosticsExportPreference
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.preferences.getAdapter
@@ -67,7 +68,7 @@ fun DebugMenuPreferences(
                         }
                     },
                 )
-                OrganizerDiagnosticsExportPreference()
+                OrganizerDiagnosticsExportPreference(LawnchairApp.instance.layoutApplicationModule.diagnostics)
             }
 
             PreferenceGroup(heading = "Debug flags") {

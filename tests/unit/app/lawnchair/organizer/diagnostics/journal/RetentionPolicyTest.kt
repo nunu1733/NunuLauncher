@@ -311,4 +311,57 @@ class RetentionPolicyTest {
         assertTrue("Resolved RECOVERY_REQUESTED for point B must be pruned", result.pruneOrphanedSequences.contains(2L))
         assertTrue("Resolved RECOVERY_RESTORED for point B must be pruned", result.pruneOrphanedSequences.contains(3L))
     }
+
+    // --- RESTART_RECONCILED resolves recovery point protection (Item 2) ---
+
+    @Test
+    fun recoveryRequestedWithRestartReconciledIsNotProtected() {
+        // RECOVERY_REQUESTED with pointId X, followed by RESTART_RECONCILED
+        // with the same pointId — the RECOVERY_REQUESTED should be prunable
+        // because RESTART_RECONCILED resolves the in-flight recovery.
+        val old = now - 10L * 24L * 60L * 60L * 1000L // 10 days ago
+        val events = listOf(
+            recoveryEvent(1, PhaseCode.RECOVERY_REQUESTED, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", wallMillis = old),
+            RunEvent(
+                journalSequence = 2L,
+                recordedAtWallMillis = old,
+                phase = PhaseCode.RESTART_RECONCILED,
+                runId = "11111111111111111111111111111111",
+                pointId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            ),
+            event(3, PhaseCode.APPLY_VERIFIED, "00000000000000000000000000000002", now),
+        )
+        val result = RetentionPolicy.evaluate(events, byteSizes(events), now)
+        // The RECOVERY_REQUESTED should be prunable by age since RESTART_RECONCILED
+        // resolves the protection for the same pointId
+        assertTrue(
+            "RECOVERY_REQUESTED must be pruned when RESTART_RECONCILED resolves the point",
+            result.pruneOrphanedSequences.contains(1L),
+        )
+    }
+
+    @Test
+    fun recoveryRequestedWithoutMatchingRestartReconciledRemainsProtected() {
+        // RECOVERY_REQUESTED with pointId X, RESTART_RECONCILED with different
+        // pointId Y — the RECOVERY_REQUESTED for X remains protected.
+        val old = now - 10L * 24L * 60L * 60L * 1000L // 10 days ago
+        val events = listOf(
+            recoveryEvent(1, PhaseCode.RECOVERY_REQUESTED, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", wallMillis = old),
+            RunEvent(
+                journalSequence = 2L,
+                recordedAtWallMillis = old,
+                phase = PhaseCode.RESTART_RECONCILED,
+                runId = "11111111111111111111111111111111",
+                pointId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", // different point
+            ),
+            event(3, PhaseCode.APPLY_VERIFIED, "00000000000000000000000000000002", now),
+        )
+        val result = RetentionPolicy.evaluate(events, byteSizes(events), now)
+        // The RECOVERY_REQUESTED for point A must remain protected
+        // because the RESTART_RECONCILED resolves a different point
+        assertFalse(
+            "RECOVERY_REQUESTED must remain protected when RESTART_RECONCILED is for a different point",
+            result.pruneOrphanedSequences.contains(1L),
+        )
+    }
 }
