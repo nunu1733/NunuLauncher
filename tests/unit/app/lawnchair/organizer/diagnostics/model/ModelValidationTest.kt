@@ -380,14 +380,33 @@ class ModelValidationTest {
     // --- RunVersions: version identifier validation (Item 5) ---
 
     @Test
-    fun runVersionsAllowsValidIdentifiers() {
-        RunVersions(ruleVersion = "v1_0", taxonomyVersion = "t_2024", recoveryFormatVersion = "rf-1")
-        RunVersions(ruleVersion = "1", taxonomyVersion = "A", recoveryFormatVersion = "a-b-c_d")
+    fun runVersionsAllowsApprovedIdentifiers() {
+        RunVersions.create(ruleVersion = "1", taxonomyVersion = "1", recoveryFormatVersion = "1")
+        RunVersions.create(ruleVersion = "v1_0", taxonomyVersion = "t_2024", recoveryFormatVersion = "rf-1")
+        RunVersions.create(ruleVersion = "1", taxonomyVersion = "A", recoveryFormatVersion = "a-b-c_d")
     }
 
     @Test
     fun runVersionsAllowsEmptyDefaults() {
-        RunVersions() // All defaults are empty strings, which are allowed
+        RunVersions.create() // All defaults are empty strings, which are allowed
+    }
+
+    @Test
+    fun runVersionsRejectsNonApprovedIdentifier() {
+        // Non-approved identifiers are rejected at construction,
+        // even if they match the charset regex.
+        assertThrows(IllegalArgumentException::class.java) {
+            RunVersions.create(ruleVersion = "MainActivity")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            RunVersions.create(ruleVersion = "secretToken")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            RunVersions.create(taxonomyVersion = "profileSerial")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            RunVersions.create(recoveryFormatVersion = "privateUserId")
+        }
     }
 
     @Test
@@ -395,7 +414,7 @@ class ModelValidationTest {
         // Empty string is allowed as default, but blank (whitespace) is not
         // The regex [A-Za-z0-9_-]{1,32} requires at least one char for non-empty
         assertThrows(IllegalArgumentException::class.java) {
-            RunVersions(ruleVersion = "  ")
+            RunVersions.create(ruleVersion = "  ")
         }
     }
 
@@ -403,28 +422,43 @@ class ModelValidationTest {
     fun runVersionsRejectsOversizedVersion() {
         val tooLong = "a".repeat(33)
         assertThrows(IllegalArgumentException::class.java) {
-            RunVersions(ruleVersion = tooLong)
+            RunVersions.create(ruleVersion = tooLong)
         }
     }
 
     @Test
-    fun runVersionsRejectsOddCharsetVersion() {
+    fun runVersionsRejectsApprovedButOddCharsetVersion() {
+        // Approved values pass charset validation. Non-approved values
+        // are rejected by the allowlist before charset check.
+        // This test verifies the allowlist is the primary gate.
         assertThrows(IllegalArgumentException::class.java) {
-            RunVersions(ruleVersion = "v1_0 with spaces")
+            RunVersions.create(ruleVersion = "v1.0") // dot not allowed in charset
         }
         assertThrows(IllegalArgumentException::class.java) {
-            RunVersions(taxonomyVersion = "v1/0")
+            RunVersions.create(ruleVersion = "com.example.private")
         }
+    }
+
+    // --- RunEvent: schemaVersion fail-closed at construction ---
+
+    @Test
+    fun runEventRejectsSchemaVersion2() {
         assertThrows(IllegalArgumentException::class.java) {
-            RunVersions(recoveryFormatVersion = "v1@0")
+            RunEvent(
+                schemaVersion = 2,
+                journalSequence = 1L,
+                phase = PhaseCode.CAPTURED,
+            )
         }
-        // Dots are not allowed — prevents package names like "com.example.private"
-        assertThrows(IllegalArgumentException::class.java) {
-            RunVersions(ruleVersion = "v1.0")
-        }
-        assertThrows(IllegalArgumentException::class.java) {
-            RunVersions(ruleVersion = "com.example.private")
-        }
+    }
+
+    @Test
+    fun runEventAcceptsSchemaVersion1() {
+        RunEvent(
+            schemaVersion = 1,
+            journalSequence = 1L,
+            phase = PhaseCode.CAPTURED,
+        )
     }
 
     // --- DeviceProfileSummary: orientation is a closed enum (Item 5) ---

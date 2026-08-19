@@ -97,29 +97,34 @@ class RestartReconciler(
 
     /**
      * Determines the actual post-reconciliation lifecycle from the result.
-     * This is authoritative because the store was already advanced by
-     * reconcileOne before the result was created.
+     * The store is the authoritative source for the current lifecycle state
+     * after reconciliation; when the record is still present, its lifecycle
+     * reflects exactly what advance/transition operations persisted. For
+     * SilentPrune the record is gone, so READY is the correct fallback.
      */
     private fun resultingLifecycleFor(
         result: ReconciliationPublicResult,
         record: RecoveryStorePort.StoredRecord,
-    ): LifecycleState = when (result) {
-        is ReconciliationPublicResult.SilentPrune -> LifecycleState.READY
+    ): LifecycleState {
+        val actual = store.readRecord(record.pointId)?.lifecycle
+        return actual ?: when (result) {
+            is ReconciliationPublicResult.SilentPrune -> LifecycleState.READY
 
-        is ReconciliationPublicResult.SilentAdvance -> record.lifecycle
+            is ReconciliationPublicResult.SilentAdvance -> record.lifecycle
 
-        is ReconciliationPublicResult.ResumeApply -> when (result.outcome) {
-            is ApplyResult.Applied -> LifecycleState.VERIFIED
-            is ApplyResult.RolledBack -> LifecycleState.READY
-            else -> LifecycleState.CORRUPT
+            is ReconciliationPublicResult.ResumeApply -> when (result.outcome) {
+                is ApplyResult.Applied -> LifecycleState.VERIFIED
+                is ApplyResult.RolledBack -> LifecycleState.READY
+                else -> LifecycleState.CORRUPT
+            }
+
+            is ReconciliationPublicResult.ResumeRecovery -> when (result.outcome) {
+                is RecoveryResult.Restored -> LifecycleState.RESTORED
+                else -> record.lifecycle
+            }
+
+            is ReconciliationPublicResult.Unresolved -> LifecycleState.CORRUPT
         }
-
-        is ReconciliationPublicResult.ResumeRecovery -> when (result.outcome) {
-            is RecoveryResult.Restored -> LifecycleState.RESTORED
-            else -> record.lifecycle
-        }
-
-        is ReconciliationPublicResult.Unresolved -> LifecycleState.CORRUPT
     }
 
     private fun reconcileOne(record: RecoveryStorePort.StoredRecord): ReconciliationPublicResult {

@@ -121,6 +121,34 @@ class RestartReconcilerDiagnosticsTest {
         )
     }
 
+    @Test
+    fun unresolvedReconciledEmitsActualStoreStateNotCorrupt() {
+        // Seed a COMMITTED_UNVERIFIED record, then force lease failure so
+        // reconcileOne returns Unresolved without advancing the store.
+        // resultingLifecycle must reflect the actual (unchanged) store state
+        // (COMMITTED_UNVERIFIED), not the CORRUPT derivation fallback.
+        seedReady()
+        assertTrue(store.advance(pointId, LifecycleState.APPLYING))
+        assertTrue(store.advance(pointId, LifecycleState.COMMITTED_UNVERIFIED))
+        writer.refuseLease = true
+        val summary = reconciler.reconcileAll()
+        assertTrue(summary.hasUnresolvedFailures())
+
+        val event = recordedEvents.singleOrNull()
+        assertNotNull("Unresolved reconciliation must emit RESTART_RECONCILED", event)
+        assertEquals(PhaseCode.RESTART_RECONCILED, event!!.phase)
+        assertEquals(
+            "resultingLifecycle must be the actual store state (COMMITTED_UNVERIFIED), not CORRUPT",
+            RecoveryLifecycle.COMMITTED_UNVERIFIED,
+            event.reconciliation?.resultingLifecycle,
+        )
+        assertEquals(
+            "RESTART_RECONCILED must carry the record's pointId for retention correlation",
+            pointId.value,
+            event.pointId,
+        )
+    }
+
     private fun seedReady(): CapturedSnapshot {
         val capture = writer.captureCurrent(CaptureId("restart-diagnostics"))
         val result = store.checkpoint(

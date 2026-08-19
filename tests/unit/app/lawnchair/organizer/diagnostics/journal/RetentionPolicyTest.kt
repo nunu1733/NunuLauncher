@@ -1,7 +1,10 @@
 package app.lawnchair.organizer.diagnostics.journal
 
 import app.lawnchair.organizer.diagnostics.model.PhaseCode
+import app.lawnchair.organizer.diagnostics.model.ReconciliationClassification
+import app.lawnchair.organizer.diagnostics.model.ReconciliationContext
 import app.lawnchair.organizer.diagnostics.model.RecoveryContext
+import app.lawnchair.organizer.diagnostics.model.RecoveryLifecycle
 import app.lawnchair.organizer.diagnostics.model.RunEvent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -120,10 +123,23 @@ class RetentionPolicyTest {
 
     @Test
     fun unresolvedRunWithRestartReconciledIsResolved() {
+        // A RESTART_RECONCILED with a resolved resultingLifecycle releases
+        // run-level protection. The reconciliation context must be present
+        // and carry a resolved lifecycle (e.g. VERIFIED).
         val events = listOf(
             event(1, PhaseCode.RUN_STARTED, "00000000000000000000000000000096"),
             event(2, PhaseCode.APPLY_COMMITTED, "00000000000000000000000000000096"),
-            event(3, PhaseCode.RESTART_RECONCILED, "00000000000000000000000000000096"),
+            RunEvent(
+                journalSequence = 3L,
+                phase = PhaseCode.RESTART_RECONCILED,
+                runId = "00000000000000000000000000000096",
+                reconciliation = ReconciliationContext(
+                    subjectRunId = "00000000000000000000000000000096",
+                    priorLifecycle = RecoveryLifecycle.COMMITTED_UNVERIFIED,
+                    classification = ReconciliationClassification.INTENDED_POST_STATE,
+                    resultingLifecycle = RecoveryLifecycle.VERIFIED,
+                ),
+            ),
             event(4, PhaseCode.APPLY_VERIFIED, "00000000000000000000000000000095"),
         )
         assertFalse(RetentionPolicy.isRunProtected(events.filter { it.runId == "00000000000000000000000000000096" }))
@@ -198,7 +214,17 @@ class RetentionPolicyTest {
                 listOf(
                     event(1, PhaseCode.RUN_STARTED, "00000000000000000000000000000094"),
                     event(2, PhaseCode.APPLY_COMMITTED, "00000000000000000000000000000094"),
-                    event(3, PhaseCode.RESTART_RECONCILED, "00000000000000000000000000000094"),
+                    RunEvent(
+                        journalSequence = 3L,
+                        phase = PhaseCode.RESTART_RECONCILED,
+                        runId = "00000000000000000000000000000094",
+                        reconciliation = ReconciliationContext(
+                            subjectRunId = "00000000000000000000000000000094",
+                            priorLifecycle = RecoveryLifecycle.COMMITTED_UNVERIFIED,
+                            classification = ReconciliationClassification.INTENDED_POST_STATE,
+                            resultingLifecycle = RecoveryLifecycle.VERIFIED,
+                        ),
+                    ),
                 ),
             ),
         )
@@ -317,8 +343,9 @@ class RetentionPolicyTest {
     @Test
     fun recoveryRequestedWithRestartReconciledIsNotProtected() {
         // RECOVERY_REQUESTED with pointId X, followed by RESTART_RECONCILED
-        // with the same pointId — the RECOVERY_REQUESTED should be prunable
-        // because RESTART_RECONCILED resolves the in-flight recovery.
+        // with the same pointId and a resolved resultingLifecycle —
+        // the RECOVERY_REQUESTED should be prunable because a resolving
+        // RESTART_RECONCILED resolves the in-flight recovery.
         val old = now - 10L * 24L * 60L * 60L * 1000L // 10 days ago
         val events = listOf(
             recoveryEvent(1, PhaseCode.RECOVERY_REQUESTED, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", wallMillis = old),
@@ -328,6 +355,12 @@ class RetentionPolicyTest {
                 phase = PhaseCode.RESTART_RECONCILED,
                 runId = "11111111111111111111111111111111",
                 pointId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                reconciliation = ReconciliationContext(
+                    subjectRunId = "11111111111111111111111111111111",
+                    priorLifecycle = RecoveryLifecycle.RESTORING,
+                    classification = ReconciliationClassification.RECOVERY_TARGET_STATE,
+                    resultingLifecycle = RecoveryLifecycle.RESTORED,
+                ),
             ),
             event(3, PhaseCode.APPLY_VERIFIED, "00000000000000000000000000000002", now),
         )
@@ -343,7 +376,8 @@ class RetentionPolicyTest {
     @Test
     fun recoveryRequestedWithoutMatchingRestartReconciledRemainsProtected() {
         // RECOVERY_REQUESTED with pointId X, RESTART_RECONCILED with different
-        // pointId Y — the RECOVERY_REQUESTED for X remains protected.
+        // pointId Y — the RECOVERY_REQUESTED for X remains protected even
+        // though the RESTART_RECONCILED has a resolved resultingLifecycle.
         val old = now - 10L * 24L * 60L * 60L * 1000L // 10 days ago
         val events = listOf(
             recoveryEvent(1, PhaseCode.RECOVERY_REQUESTED, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", wallMillis = old),
@@ -353,6 +387,12 @@ class RetentionPolicyTest {
                 phase = PhaseCode.RESTART_RECONCILED,
                 runId = "11111111111111111111111111111111",
                 pointId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", // different point
+                reconciliation = ReconciliationContext(
+                    subjectRunId = "11111111111111111111111111111111",
+                    priorLifecycle = RecoveryLifecycle.RESTORING,
+                    classification = ReconciliationClassification.RECOVERY_TARGET_STATE,
+                    resultingLifecycle = RecoveryLifecycle.RESTORED,
+                ),
             ),
             event(3, PhaseCode.APPLY_VERIFIED, "00000000000000000000000000000002", now),
         )
@@ -361,6 +401,90 @@ class RetentionPolicyTest {
         // because the RESTART_RECONCILED resolves a different point
         assertFalse(
             "RECOVERY_REQUESTED must remain protected when RESTART_RECONCILED is for a different point",
+            result.pruneOrphanedSequences.contains(1L),
+        )
+    }
+
+    // --- RESTART_RECONCILED with unresolved resultingLifecycle must NOT release protection ---
+
+    @Test
+    fun recoveryRequestedWithUnresolvedRestartReconciledRemainsProtected() {
+        // RECOVERY_REQUESTED with pointId X, followed by RESTART_RECONCILED
+        // with the same pointId but a NON-resolved resultingLifecycle (e.g.
+        // APPLYING — reconciliation did not actually advance the state).
+        // Protection must remain because the recovery state is still in-flight.
+        val old = now - 10L * 24L * 60L * 60L * 1000L // 10 days ago
+        val events = listOf(
+            recoveryEvent(1, PhaseCode.RECOVERY_REQUESTED, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", wallMillis = old),
+            RunEvent(
+                journalSequence = 2L,
+                recordedAtWallMillis = old,
+                phase = PhaseCode.RESTART_RECONCILED,
+                runId = "11111111111111111111111111111111",
+                pointId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // same pointId
+                reconciliation = ReconciliationContext(
+                    subjectRunId = "11111111111111111111111111111111",
+                    priorLifecycle = RecoveryLifecycle.APPLYING,
+                    classification = ReconciliationClassification.NEITHER_RECOGNIZED,
+                    resultingLifecycle = RecoveryLifecycle.APPLYING, // unresolved
+                ),
+            ),
+            event(3, PhaseCode.APPLY_VERIFIED, "00000000000000000000000000000002", now),
+        )
+        val result = RetentionPolicy.evaluate(events, byteSizes(events), now)
+        assertFalse(
+            "RECOVERY_REQUESTED must remain protected when RESTART_RECONCILED has unresolved resultingLifecycle",
+            result.pruneOrphanedSequences.contains(1L),
+        )
+    }
+
+    @Test
+    fun isRunProtectedTrueForUnresolvedReconciled() {
+        // When RESTART_RECONCILED has a non-resolved resultingLifecycle,
+        // the run is still protected.
+        assertTrue(
+            RetentionPolicy.isRunProtected(
+                listOf(
+                    event(1, PhaseCode.RUN_STARTED, "00000000000000000000000000000094"),
+                    event(2, PhaseCode.APPLY_COMMITTED, "00000000000000000000000000000094"),
+                    RunEvent(
+                        journalSequence = 3L,
+                        phase = PhaseCode.RESTART_RECONCILED,
+                        runId = "00000000000000000000000000000094",
+                        reconciliation = ReconciliationContext(
+                            subjectRunId = "00000000000000000000000000000094",
+                            priorLifecycle = RecoveryLifecycle.COMMITTED_UNVERIFIED,
+                            classification = ReconciliationClassification.NEITHER_RECOGNIZED,
+                            resultingLifecycle = RecoveryLifecycle.COMMITTED_UNVERIFIED, // unresolved
+                        ),
+                    ),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun unreconciledRestartReconciledWithoutContextDoesNotResolve() {
+        // A RESTART_RECONCILED without reconciliation context (missing
+        // resultingLifecycle) is non-resolving — protection remains.
+        // Also covers RESTART_RECONCILED without pointId, which is
+        // irrelevant for recovery-point protection.
+        val old = now - 10L * 24L * 60L * 60L * 1000L
+        val events = listOf(
+            recoveryEvent(1, PhaseCode.RECOVERY_REQUESTED, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", wallMillis = old),
+            RunEvent(
+                journalSequence = 2L,
+                recordedAtWallMillis = old,
+                phase = PhaseCode.RESTART_RECONCILED,
+                runId = "11111111111111111111111111111111",
+                pointId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                // no reconciliation context
+            ),
+            event(3, PhaseCode.APPLY_VERIFIED, "00000000000000000000000000000002", now),
+        )
+        val result = RetentionPolicy.evaluate(events, byteSizes(events), now)
+        assertFalse(
+            "RECOVERY_REQUESTED must remain protected when RESTART_RECONCILED has no reconciliation context",
             result.pruneOrphanedSequences.contains(1L),
         )
     }

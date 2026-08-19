@@ -21,7 +21,7 @@ class RunEventSerializationTest {
             runId = "5f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c",
             trigger = Trigger.MANUAL_FULL,
             runMode = RunMode.FULL_ORGANIZATION,
-            versions = RunVersions(ruleVersion = "1", taxonomyVersion = "1"),
+            versions = RunVersions.create(ruleVersion = "1", taxonomyVersion = "1"),
             deviceProfile = DeviceProfileSummary(columns = 5, rows = 6, hotseatSlots = 5, orientation = Orientation.PORTRAIT),
         )
         val json = RunEventSerializer.encodeToString(event)
@@ -272,7 +272,7 @@ class RunEventSerializationTest {
         assertFalse(text.contains("message"))
     }
 
-    /** Schema version is always 1. */
+    /** Schema version is always 1. schemaVersion != 1 is rejected at construction. */
     @Test
     fun schemaVersionIsAlways1() {
         val event = RunEvent(
@@ -281,6 +281,18 @@ class RunEventSerializationTest {
         )
         val json = RunEventSerializer.encodeToString(event)
         assertTrue(json.contains("\"schemaVersion\":1"))
+    }
+
+    /** RunEvent construction rejects schemaVersion != 1 (fail-closed encode boundary). */
+    @Test
+    fun schemaVersion2RejectedAtConstruction() {
+        assertThrows(IllegalArgumentException::class.java) {
+            RunEvent(
+                schemaVersion = 2,
+                journalSequence = 1L,
+                phase = PhaseCode.CAPTURED,
+            )
+        }
     }
 
     /** No free-form string fields exist. */

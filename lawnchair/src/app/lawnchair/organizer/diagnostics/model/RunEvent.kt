@@ -1,5 +1,6 @@
 package app.lawnchair.organizer.diagnostics.model
 
+import kotlin.ConsistentCopyVisibility
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.Serializable
 
@@ -17,20 +18,61 @@ enum class RunMode {
 
 /**
  * Versions carried on RUN_STARTED events. Identifiers only, no content.
- * Each version identifier must be non-blank, at most 32 characters, and
- * contain only [A-Za-z0-9_-] (dots excluded to prevent package/component
- * identity strings from being carried as version identifiers).
+ *
+ * Each version identifier must be a member of the source-owned
+ * [APPROVED_VERSIONS] allowlist. The allowlist is the only construction
+ * gate — the runtime type system makes arbitrary strings (including
+ * package/component/profile identities) unrepresentable as version
+ * identifiers. The regex-based charset restriction ([A-Za-z0-9_-]) is
+ * subsumed by the allowlist.
  */
 @Serializable
-data class RunVersions(
+@ConsistentCopyVisibility
+data class RunVersions private constructor(
     val ruleVersion: String = "",
     val taxonomyVersion: String = "",
     val recoveryFormatVersion: String = "",
 ) {
+    companion object {
+        /**
+         * Source-owned allowlist of approved version identifiers.
+         * Only identifiers in this set can be used as version fields.
+         * Empty string (default) is always allowed.
+         */
+        val APPROVED_VERSIONS: Set<String> = setOf(
+            "1",
+            "v1_0",
+            "t_2024",
+            "rf-1",
+            "a-b-c_d",
+            "A",
+        )
+
+        /** Construct [RunVersions] with approved version identifiers. */
+        fun create(
+            ruleVersion: String = "",
+            taxonomyVersion: String = "",
+            recoveryFormatVersion: String = "",
+        ): RunVersions = RunVersions(ruleVersion, taxonomyVersion, recoveryFormatVersion)
+    }
+
     init {
-        validateVersionId(ruleVersion, "ruleVersion")
-        validateVersionId(taxonomyVersion, "taxonomyVersion")
-        validateVersionId(recoveryFormatVersion, "recoveryFormatVersion")
+        validateVersionIdentifier(ruleVersion, "ruleVersion")
+        validateVersionIdentifier(taxonomyVersion, "taxonomyVersion")
+        validateVersionIdentifier(recoveryFormatVersion, "recoveryFormatVersion")
+    }
+
+    private fun validateVersionIdentifier(value: String, fieldName: String) {
+        if (value.isEmpty()) return
+        // The charset check is still applied as a defense-in-depth
+        // layer within the allowlist; the allowlist is the authoritative
+        // approval gate.
+        require(value in APPROVED_VERSIONS) {
+            "$fieldName must be an approved version identifier, got '$value'"
+        }
+        require(value.matches(VERSION_ID_REGEX)) {
+            "$fieldName must be 1-32 characters of [A-Za-z0-9_-], got '$value'"
+        }
     }
 }
 
@@ -142,7 +184,7 @@ data class ReconciliationContext(
 @Serializable
 data class RunEvent(
     @EncodeDefault
-    val schemaVersion: Int = 1,
+    val schemaVersion: Int = SCHEMA_VERSION,
     val journalSequence: Long,
     @EncodeDefault
     val recordedAtWallMillis: Long = 0L,
@@ -160,7 +202,15 @@ data class RunEvent(
     val versions: RunVersions? = null,
     val deviceProfile: DeviceProfileSummary? = null,
 ) {
+    companion object {
+        /** The only accepted journal schema version per contract §3. */
+        const val SCHEMA_VERSION: Int = 1
+    }
+
     init {
+        require(schemaVersion == SCHEMA_VERSION) {
+            "schemaVersion must be $SCHEMA_VERSION; got $schemaVersion"
+        }
         runId?.let { validateCorrelationId(it, "RunEvent.runId") }
         pointId?.let { validateCorrelationId(it, "RunEvent.pointId") }
     }

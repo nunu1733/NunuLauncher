@@ -43,7 +43,7 @@ class ExportWriterTest {
                 runId = "5f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c",
                 trigger = Trigger.MANUAL_FULL,
                 runMode = RunMode.FULL_ORGANIZATION,
-                versions = RunVersions(ruleVersion = "1", taxonomyVersion = "1"),
+                versions = RunVersions.create(ruleVersion = "1", taxonomyVersion = "1"),
                 deviceProfile = DeviceProfileSummary(columns = 5, rows = 6, hotseatSlots = 5, orientation = Orientation.PORTRAIT),
             ),
             RunEvent(journalSequence = 42L, phase = PhaseCode.CAPTURED),
@@ -157,7 +157,7 @@ class ExportWriterTest {
                 runId = "5f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c",
                 trigger = Trigger.MANUAL_FULL,
                 runMode = RunMode.FULL_ORGANIZATION,
-                versions = RunVersions(ruleVersion = "1", taxonomyVersion = "1"),
+                versions = RunVersions.create(ruleVersion = "1", taxonomyVersion = "1"),
                 deviceProfile = DeviceProfileSummary(columns = 5, rows = 6, hotseatSlots = 5, orientation = Orientation.PORTRAIT),
             ),
             RunEvent(

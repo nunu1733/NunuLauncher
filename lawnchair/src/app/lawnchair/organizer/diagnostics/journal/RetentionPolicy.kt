@@ -1,6 +1,7 @@
 package app.lawnchair.organizer.diagnostics.journal
 
 import app.lawnchair.organizer.diagnostics.model.PhaseCode
+import app.lawnchair.organizer.diagnostics.model.RecoveryLifecycle
 import app.lawnchair.organizer.diagnostics.model.RunEvent
 
 /**
@@ -90,6 +91,29 @@ object RetentionPolicy {
     )
 
     /**
+     * Resulting lifecycles from a RESTART_RECONCILED reconciliation
+     * that indicate the recovery/run state has actually reached a
+     * terminal or decision state. Only reconciliations whose
+     * resultingLifecycle falls in this set are treated as resolving
+     * the protected state.
+     *
+     * Non-resolved (still in-flight) lifecycles are the same set
+     * protected by the contract §8: APPLYING, COMMITTED_UNVERIFIED,
+     * RESTORING. CREATING is included as resolved because it only
+     * appears as a pre-reconciliation input and is never a resulting
+     * lifecycle.
+     */
+    private val RESOLVED_RESULTING_LIFECYCLES: Set<RecoveryLifecycle> = setOf(
+        RecoveryLifecycle.CREATING,
+        RecoveryLifecycle.READY,
+        RecoveryLifecycle.VERIFIED,
+        RecoveryLifecycle.RESTORED,
+        RecoveryLifecycle.CORRUPT,
+        RecoveryLifecycle.EXPIRED,
+        RecoveryLifecycle.INCOMPATIBLE,
+    )
+
+    /**
      * A run history: the events belonging to a single run,
      * identified by their shared runId.
      */
@@ -101,13 +125,23 @@ object RetentionPolicy {
         val earliestSequence: Long get() = events.minOf { it.journalSequence }
         val earliestWallMillis: Long get() = events.minOf { it.recordedAtWallMillis }
         val hasTerminalEvent: Boolean get() = events.any { it.phase in TERMINAL_PHASES }
-        val hasReconciledEvent: Boolean get() = events.any { it.phase == PhaseCode.RESTART_RECONCILED }
 
-        /** Protected: has unresolved lifecycle indicator and no terminal/reconciled resolution. */
+        /**
+         * Whether the run has a RESTART_RECONCILED event whose
+         * reconciliation context carries a resolved resulting lifecycle.
+         * An unresolved reconciliation (e.g. lease failure, format
+         * mismatch) does not resolve the protected state.
+         */
+        val hasResolvingReconciledEvent: Boolean get() = events.any {
+            it.phase == PhaseCode.RESTART_RECONCILED &&
+                it.reconciliation?.resultingLifecycle in RESOLVED_RESULTING_LIFECYCLES
+        }
+
+        /** Protected: has unresolved lifecycle indicator and no terminal/resolving-reconciled resolution. */
         val isProtected: Boolean get() =
             events.any { it.phase in UNRESOLVED_LIFECYCLE_PHASES } &&
-                !hasTerminalEvent && !hasReconciledEvent
-        val isResolved: Boolean get() = hasTerminalEvent || hasReconciledEvent
+                !hasTerminalEvent && !hasResolvingReconciledEvent
+        val isResolved: Boolean get() = hasTerminalEvent || hasResolvingReconciledEvent
     }
 
     /**
@@ -126,20 +160,29 @@ object RetentionPolicy {
      * Compute the set of event sequences that are protected because they
      * belong to an in-flight recovery operation (RECOVERY_REQUESTED without
      * a terminal recovery event for the same pointId). Protection is also
-     * resolved by a RESTART_RECONCILED event that carries the same pointId,
+     * resolved by a RESTART_RECONCILED event that carries the same pointId
+     * **and** whose reconciliation context has a resolved resultingLifecycle,
      * since restart reconciliation resolves the recovery state without a
-     * separate terminal RECOVERY_* event.
+     * separate terminal RECOVERY_* event. An unresolved reconciliation
+     * (e.g. lease failure, format mismatch) does not release protection.
      */
     private fun protectedRecoverySequences(events: List<RunEvent>): Set<Long> {
         val recoveryEvents = events.filter { it.recovery != null }
         if (recoveryEvents.isEmpty()) return emptySet()
 
         // Collect the set of pointIds that have been resolved by a
-        // RESTART_RECONCILED event. This handles the case where a
-        // recovery point is resolved by restart reconciliation
-        // rather than a terminal RECOVERY_* event.
+        // RESTART_RECONCILED event whose reconciliation context carries
+        // a resolved resulting lifecycle. This handles the case where a
+        // recovery point is resolved by restart reconciliation rather than
+        // a terminal RECOVERY_* event. An unresolved reconciliation (no
+        // reconciliation context, or resultingLifecycle still in-flight)
+        // does not release protection.
         val restartedPointIds = events
-            .filter { it.phase == PhaseCode.RESTART_RECONCILED && it.pointId != null }
+            .filter {
+                it.phase == PhaseCode.RESTART_RECONCILED &&
+                    it.pointId != null &&
+                    it.reconciliation?.resultingLifecycle in RESOLVED_RESULTING_LIFECYCLES
+            }
             .map { it.pointId!! }
             .toSet()
 
@@ -265,12 +308,15 @@ object RetentionPolicy {
      * Determine if a run is protected based on the diagnostics event data.
      * A run is protected if it has events with an unresolved lifecycle phase
      * (APPLY_COMMITTED -> COMMITTED_UNVERIFIED) and no terminal or
-     * RESTART_RECONCILED event.
+     * resolving RESTART_RECONCILED event.
      */
     fun isRunProtected(events: List<RunEvent>): Boolean {
         val hasUnresolvedPhase = events.any { it.phase in UNRESOLVED_LIFECYCLE_PHASES }
         val hasTerminal = events.any { it.phase in TERMINAL_PHASES }
-        val hasReconciled = events.any { it.phase == PhaseCode.RESTART_RECONCILED }
+        val hasReconciled = events.any {
+            it.phase == PhaseCode.RESTART_RECONCILED &&
+                it.reconciliation?.resultingLifecycle in RESOLVED_RESULTING_LIFECYCLES
+        }
         return hasUnresolvedPhase && !hasTerminal && !hasReconciled
     }
 }
