@@ -1,13 +1,14 @@
 # High-risk audit: PR #88 feat(issue-83): compose production organization input
 
-> Status: accepted
+> Status: superseded — independent follow-up audit required for review-remediation head
 > Audit date: 2026-08-19
 
 - Auditor: Implementation-session-independent audit session (solo-maintenance independent re-execution)
 - PR: https://github.com/nunu1733/NunuLauncher/pull/88
-- Head SHA: be54f68d8d7dbd533142c8831461addc350586a2
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32247950231 (merge gate, final-status pass)
-- High-risk gate run: https://github.com/nunu1733/NunuLauncher/actions/runs/32247955527 (expected fail until this audit record is committed)
+- Historical audited Head SHA: be54f68d8d7dbd533142c8831461addc350586a2
+- Current review-remediation Head SHA: 6f81f928716efa6d16c784bd0b12705fce93d2cd
+- Current CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32251591095 (merge gate, final-status pass)
+- High-risk gate run: pending a new independent audit of the current review-remediation head
 - Criteria: specs/83-production-organization-input-sources/spec.md (AC-1, AC-2, AC-3, AC-4, AC-5, AC-6, AC-7, AC-8); docs/adr/0007-authoritative-organization-policy-sources.md (ADR-0007). The implementation plan restates the same acceptance criteria with its verification matrix.
 
 ## Scope
@@ -163,23 +164,25 @@ High-risk gate run https://github.com/nunu1733/NunuLauncher/actions/runs/3224795
 
 ## Findings
 
-- **F1 (INFO) — InputReadinessReason simplified from spec**
+> **Follow-up status (2026-08-19):** Commits `19fc653` and `6f81f92` are production/test changes after the historical audit head. The original audit must not be used as independent evidence for the current head. CI on the current head is green, but a reviewer or separate audit session must issue a new independent assessment before merge.
 
-The spec defines `InputReadinessReason` variants with typed payload fields (e.g., `SourceUnavailable(val source: PolicySource)`, `UnsupportedVersion(val source: PolicySource, val actual: PolicyInputIdentity?)`). The implementation uses `data object` singletons without payload fields, carrying detail through `CompositionDiagnostic` instead. The diagnostic codes (e.g., `"bundle-missing"`, `"override-unreadable"`) are stable strings that the #52 coordinator can use for user-facing messages. This is a reasonable simplification that does not weaken the fail-closed guarantee.
+- **F1 (RESOLVED) — InputReadinessReason simplified from spec**
 
-**Severity**: Informational. No behavioral change.
+The review-remediation implementation restores source/identity/cut payloads directly on `InputReadinessReason`. `CompositionDiagnostic` remains opaque and is no longer the source of readiness semantics. The new focused matrix asserts bundle source, unsupported bundle identity, override unsupported schema, platform evidence source, contradictory source, and dynamic expected/observed cuts.
 
-- **F2 (INFO) — Override UnsupportedSchema folded into SourceUnreadable**
+**Resolution evidence**: `19fc653` focused unit tests and CI `organizer-unit-tests` on the current head.
 
-The `CategoryOverrideSnapshotSource` distinguishes `Unreadable` (corruption/I/O) from `UnsupportedSchema` (schema version != 1), but the composer maps both to `InputReadinessReason.SourceUnreadable` with the same diagnostic code `"override-unreadable"`. The spec envisioned `UnsupportedVersion` as a separate reason, but the current `InputReadinessReason.UnsupportedVersion` is used exclusively for bundle version mismatches. The behavior is still fail-closed and non-write; the distinction is recoverable from the diagnostic code if needed in the future.
+- **F2 (RESOLVED) — Override UnsupportedSchema folded into SourceUnreadable**
 
-**Severity**: Informational. No behavioral change.
+`CategoryOverrideSnapshotSource.UnsupportedSchema` now maps to `InputReadinessReason.UnsupportedVersion(CATEGORY_OVERRIDE_SNAPSHOT, null)`, while corruption/I/O maps to `SourceUnreadable(CATEGORY_OVERRIDE_SNAPSHOT)`. The caller need not parse a diagnostic code to distinguish the recovery semantics.
 
-- **F3 (INFO) — Test coverage is focused but minimal**
+**Resolution evidence**: `OrganizationInputComposerTest.bundleAndDynamicSourceFailuresRemainTypedWithoutDiagnosticParsing`.
 
-The test suite has 3 tests covering: bundle identity/validation (1 test), capture-fail-closed-before-policy-read (1 test), and target partition precedence (1 test). The plan.md calls for additional tests (AC-2 stability/retry, AC-4 complete partition matrix, AC-5 failure injection, AC-7 determinism) that are not yet present. The composer logic is well-structured for testability (all dependencies injected via constructor), and the existing tests verify the most critical fail-closed paths. The plan.md indicates these additional tests as "focused JVM tests" and "targeted instrumentation" — they should be added before merging if the PR is labeled `risk: layout-data`.
+- **F3 (RESOLVED) — Test coverage is focused but minimal**
 
-**Severity**: Low. The 3 existing tests pass and cover the most safety-critical paths. Additional tests per the plan would strengthen the evidence but are not blocking for the core fail-closed behavior.
+The focused suite now covers normal `Ready` composition/provenance, S1>S2>S5/profile isolation, source failure payloads, incompatible and contradictory policy, A/E1/B/E2 retry-success and retry-rejection, unknown lock, device/page/profile/availability propagation, deterministic equality, and target structural/widget/app-pair/legacy/unknown/unsupported cases.
+
+**Resolution evidence**: `OrganizationInputComposerTest` and `FullTargetSetMaterializerTest` on `19fc653`; current-head CI `organizer-unit-tests` passes.
 
 - **F4 (PASS) — No implicit defaults confirmed**
 
@@ -206,6 +209,4 @@ The entire change set is read-only with respect to layout data, recovery storage
 
 ## Audit verdict
 
-**PASS** — The implementation satisfies all acceptance criteria AC-1 through AC-8. All failure paths are fail-closed with typed `NotReady` results. No implicit defaults, no Launcher DB writes, no recovery writes, no UI integration, no planner public type modifications, and the S1 override source is schema-v1 read-only with no migration writer. Local verification (unit tests, spotless, debug build, repo contract) and CI merge gate (`final-status` pass) all succeed. The three informational findings (F1-F3) do not affect the fail-closed safety guarantees.
-
-The high-risk gate will pass once this audit record is committed to the PR branch.
+**SUPERSEDED — re-audit required.** The historical assessment above applies only to `be54f68`. The review-remediation changes at `19fc653` / `6f81f92` address F1–F3 and have a successful current-head CI merge gate, but they are production/test changes after the audited SHA. A reviewer or a distinct audit session must independently assess the current head and publish a new accepted audit record before merge. The high-risk gate must remain the final enforcement point for that requirement.
