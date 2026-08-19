@@ -156,6 +156,14 @@ The implementation is read-only with respect to layout and recovery data. If the
 - [ ] Full relevant verification completed.
 - [ ] PR evidence, CI result, and any remaining risks recorded.
 
+## Verification record
+
+| Check | Result | Evidence / limitation |
+|---|---|---|
+| Repository contract | **Passed** | `python3 tools/repo-contract/validate_repo_contract.py` and `python3 tools/repo-contract/test_validate_repo_contract.py` completed successfully on the implementation worktree. |
+| Gradle project configuration | **Passed** | `./gradlew projects --no-configuration-cache` completed after initializing the required source submodule and framework prebuilts. |
+| Focused JVM unit tests | **Blocked in sandbox** | `testLawnWithQuickstepGithubDebugUnitTest` cannot resolve an Android SDK because no SDK platform (`android.jar`) is present and neither `ANDROID_HOME` nor `sdk.dir` is configured. No source/test failure has been observed; rerun the exact focused test command in CI or an Android-SDK-equipped checkout before merge. |
+
 ## References
 
 [1]: https://github.com/nunu1733/NunuLauncher/blob/main/specs/10-pure-organization-planning/spec.md "Spec #10 — Pure planner contract"
