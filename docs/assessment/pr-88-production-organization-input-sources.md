@@ -8,7 +8,7 @@
 - Head SHA: be54f68d8d7dbd533142c8831461addc350586a2
 - CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32247950231 (merge gate, final-status pass)
 - High-risk gate run: https://github.com/nunu1733/NunuLauncher/actions/runs/32247955527 (expected fail until this audit record is committed)
-- Criteria: ADR-0007 (docs/adr/0007-authoritative-organization-policy-sources.md), spec (specs/83-production-organization-input-sources/spec.md) acceptance criteria AC-1 through AC-8, plan (specs/83-production-organization-input-sources/plan.md)
+- Criteria: specs/83-production-organization-input-sources/spec.md (AC-1, AC-2, AC-3, AC-4, AC-5, AC-6, AC-7, AC-8); docs/adr/0007-authoritative-organization-policy-sources.md (ADR-0007). The implementation plan restates the same acceptance criteria with its verification matrix.
 
 ## Scope
 
@@ -38,7 +38,7 @@ No changes to: `OrganizationInput`, `OrganizationPlanner`, `DeterministicOrganiz
 
 ## Criteria check
 
-### AC-1 — authoritative ownership and identity (PASS)
+- **AC-1 — authoritative ownership and identity (PASS)**
 
 The four planner inputs each have exactly one production owner verified in code:
 
@@ -51,7 +51,7 @@ The four planner inputs each have exactly one production owner verified in code:
 
 Every identity carries `source` (PolicySourceKind), `versionOrGeneration`, and `sha256` (validated against `[0-9a-f]{64}` regex). `InputProvenance` records all four identities plus the shared `PolicyBundleIdentity`. The `BuiltInOrganizerPolicyBundleSourceTest` confirms the bundle is the sole `organization-policy-v1` authority with explicit empty S3/S4 tables and null `validate()` result.
 
-### AC-2 — consistent policy cut (PASS)
+- **AC-2 — consistent policy cut (PASS)**
 
 `DefaultOrganizationInputComposer.composeFullOrganization()` implements the A/E1/B/E2 read-after-validate-retry protocol from ADR-0007 section 6:
 
@@ -63,7 +63,7 @@ Every identity carries `source` (PolicySourceKind), `versionOrGeneration`, and `
 
 The `OrganizationInputComposerTest` verifies that invalid capture fails closed before reading any policy source (bundle, overrides, evidence all throw `error()` if accessed).
 
-### AC-3 — one canonical capture (PASS)
+- **AC-3 — one canonical capture (PASS)**
 
 - `LayoutWriterCanonicalCaptureSource` wraps the existing `LayoutWriterPort.captureCurrent()` — no second snapshot, no direct SQLite access.
 - `mapLayout`/`mapItem` projects `LayoutState` to `LayoutSnapshot` + `CapturedItem` list using only planner-public types.
@@ -71,7 +71,7 @@ The `OrganizationInputComposerTest` verifies that invalid capture fails closed b
 - No UI DB access, no second planner, no second snapshot source.
 - `git diff` confirms zero changes to `organizer/planning/`, `organizer/application/`, `LauncherLayoutAdapter`, or `Flowerpot`.
 
-### AC-4 — complete conservation input (PASS)
+- **AC-4 — complete conservation input (PASS)**
 
 `FullTargetSetMaterializer` enforces:
 
@@ -91,7 +91,7 @@ The `OrganizationInputComposerTest` verifies that invalid capture fails closed b
   10. else → `Preserved`
 - `FullTargetSetMaterializerTest` verifies locked/unavailable/Dock items are Preserved and eligible workspace items are Movable.
 
-### AC-5 — fail closed (PASS)
+- **AC-5 — fail closed (PASS)**
 
 All failure paths produce typed `NotReady` results. Verified by code inspection:
 
@@ -112,7 +112,7 @@ All failure paths produce typed `NotReady` results. Verified by code inspection:
 
 No path calls `OrganizationPlanner`, creates a recovery point, calls the application writer, modifies the Launcher DB, or mutates the override store. `OrganizationInputComposerTest` confirms planner/writer/recovery invocation count is zero for invalid capture.
 
-### AC-6 — profile and lock safety (PASS)
+- **AC-6 — profile and lock safety (PASS)**
 
 - `mapItem` preserves `profile` from `CanonicalItemState`.
 - `mapItem` maps `ProfileAvailability.UNAVAILABLE` → `Availability.UNAVAILABLE`; other item availability values are mapped directly from `ItemAvailability` (DISABLED, QUIET, LOCKED_PRIVATE_SPACE, UNAVAILABLE).
@@ -122,7 +122,7 @@ No path calls `OrganizationPlanner`, creates a recovery point, calls the applica
 - `CategoryOverrideSnapshotSource.read()` filters to `capturedProfiles`, preventing cross-profile override contamination.
 - `AndroidClassificationSignalSnapshotSource` uses `createContextAsUser(user)` for profile-isolated package reads.
 
-### AC-7 — deterministic composition (PASS)
+- **AC-7 — deterministic composition (PASS)**
 
 - `sha256Canonical` produces deterministic SHA-256 digests for all identity components.
 - `PolicyInputIdentity` constructor validates SHA-256 format (64 lowercase hex chars), preventing non-digest strings.
@@ -132,7 +132,7 @@ No path calls `OrganizationPlanner`, creates a recovery point, calls the applica
 - The same `(bundle identity, override identity, evidence identity, capture)` produces value-equal `OrganizationInput` or the same typed rejection.
 - If content changes while retaining the same version, either the SHA-256 differs (identity mismatch) or the dynamic consistency check detects the change (retry/reject).
 
-### AC-8 — evidence (PASS — see Executed test surface below)
+- **AC-8 — evidence (PASS — see Executed test surface below)**
 
 All required verification commands executed successfully on the audited commit. CI merge gate (`final-status`) passed. This independent audit record satisfies the high-risk evidence requirement.
 
@@ -163,37 +163,37 @@ High-risk gate run https://github.com/nunu1733/NunuLauncher/actions/runs/3224795
 
 ## Findings
 
-### F1 (INFO) — InputReadinessReason simplified from spec
+- **F1 (INFO) — InputReadinessReason simplified from spec**
 
 The spec defines `InputReadinessReason` variants with typed payload fields (e.g., `SourceUnavailable(val source: PolicySource)`, `UnsupportedVersion(val source: PolicySource, val actual: PolicyInputIdentity?)`). The implementation uses `data object` singletons without payload fields, carrying detail through `CompositionDiagnostic` instead. The diagnostic codes (e.g., `"bundle-missing"`, `"override-unreadable"`) are stable strings that the #52 coordinator can use for user-facing messages. This is a reasonable simplification that does not weaken the fail-closed guarantee.
 
 **Severity**: Informational. No behavioral change.
 
-### F2 (INFO) — Override UnsupportedSchema folded into SourceUnreadable
+- **F2 (INFO) — Override UnsupportedSchema folded into SourceUnreadable**
 
 The `CategoryOverrideSnapshotSource` distinguishes `Unreadable` (corruption/I/O) from `UnsupportedSchema` (schema version != 1), but the composer maps both to `InputReadinessReason.SourceUnreadable` with the same diagnostic code `"override-unreadable"`. The spec envisioned `UnsupportedVersion` as a separate reason, but the current `InputReadinessReason.UnsupportedVersion` is used exclusively for bundle version mismatches. The behavior is still fail-closed and non-write; the distinction is recoverable from the diagnostic code if needed in the future.
 
 **Severity**: Informational. No behavioral change.
 
-### F3 (INFO) — Test coverage is focused but minimal
+- **F3 (INFO) — Test coverage is focused but minimal**
 
 The test suite has 3 tests covering: bundle identity/validation (1 test), capture-fail-closed-before-policy-read (1 test), and target partition precedence (1 test). The plan.md calls for additional tests (AC-2 stability/retry, AC-4 complete partition matrix, AC-5 failure injection, AC-7 determinism) that are not yet present. The composer logic is well-structured for testability (all dependencies injected via constructor), and the existing tests verify the most critical fail-closed paths. The plan.md indicates these additional tests as "focused JVM tests" and "targeted instrumentation" — they should be added before merging if the PR is labeled `risk: layout-data`.
 
 **Severity**: Low. The 3 existing tests pass and cover the most safety-critical paths. Additional tests per the plan would strengthen the evidence but are not blocking for the core fail-closed behavior.
 
-### F4 (PASS) — No implicit defaults confirmed
+- **F4 (PASS) — No implicit defaults confirmed**
 
 Every source-unavailable path was traced: bundle missing/corrupt/unsupported, override unreadable/unsupported, evidence unreadable, target partition invalid, capture invalid/unrepresentable, dynamic cut unstable. None substitutes an implicit default rule, taxonomy, target set, or empty classification. All return `NotReady` before planner invocation.
 
-### F5 (PASS) — No DB write, recovery write, or UI integration
+- **F5 (PASS) — No DB write, recovery write, or UI integration**
 
 The entire change set is read-only with respect to layout data, recovery storage, and the override store. No `LauncherLayoutAdapter` write path, `LayoutWriterPort` write, recovery point, or UI composable was added or modified. `SharedPreferencesCategoryOverrideSnapshotSource` is read-only; it has no `put`, `edit`, `apply`, or `commit` calls.
 
-### F6 (PASS) — No planner public type modified
+- **F6 (PASS) — No planner public type modified**
 
 `git diff bc60ee52e2..HEAD --stat -- '*/organizer/planning/*'` produces no output. `OrganizationInput`, `OrganizationPlanner`, `RuleSemantics`, `TaxonomyContract`, `ClassificationSignals`, `TargetSet`, and all other planner types are consumed as-is.
 
-### F7 (PASS) — S1 override read-side is schema-v1 fail-closed with no migration writer
+- **F7 (PASS) — S1 override read-side is schema-v1 fail-closed with no migration writer**
 
 `SharedPreferencesCategoryOverrideSnapshotSource`:
 - Schema version is `SCHEMA_V1 = 1`.
