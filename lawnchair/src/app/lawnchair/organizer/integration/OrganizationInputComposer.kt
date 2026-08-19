@@ -13,8 +13,8 @@ import app.lawnchair.organizer.application.public.PlacementState
 import app.lawnchair.organizer.application.public.ProfileAvailability
 import app.lawnchair.organizer.application.public.StructureState
 import app.lawnchair.organizer.planning.AppPairId
-import app.lawnchair.organizer.planning.AppPairMetadata
 import app.lawnchair.organizer.planning.AppPairMember
+import app.lawnchair.organizer.planning.AppPairMetadata
 import app.lawnchair.organizer.planning.AppPairRef
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.CapturedItem
@@ -84,8 +84,11 @@ class DefaultOrganizationInputComposer(
             ?: return notReady(InputReadinessReason.InvalidCanonicalCapture, "capture-unrepresentable")
         val bundle = when (val read = bundleSource.readActive()) {
             is BundleReadResult.Ready -> read.bundle
+
             BundleReadResult.Missing -> return notReady(InputReadinessReason.SourceUnavailable, "bundle-missing")
+
             BundleReadResult.Corrupt -> return notReady(InputReadinessReason.SourceUnreadable, "bundle-corrupt")
+
             is BundleReadResult.UnsupportedVersion -> return notReady(
                 InputReadinessReason.UnsupportedVersion,
                 "bundle-unsupported",
@@ -194,15 +197,19 @@ class DefaultOrganizationInputComposer(
                 val page = (value.page as? ApplicationPageRef.PersistentPage)?.pageId ?: return null
                 CapturedPlacement.Workspace(PageRef(page), value.cell, value.span)
             }
+
             is PlacementState.Dock -> CapturedPlacement.Dock(value.rank)
+
             is PlacementState.FolderChild -> {
                 val folder = (value.parent as? ApplicationItemRef.PersistentItem)?.itemId ?: return null
                 CapturedPlacement.FolderMember(FolderRef(FolderId(folder.value)), value.rank)
             }
+
             is PlacementState.AppPairChild -> {
                 val pair = (value.parent as? ApplicationItemRef.PersistentItem)?.itemId ?: return null
                 CapturedPlacement.AppPairMember(AppPairRef(AppPairId(pair.value)))
             }
+
             is PlacementState.UnsupportedContainer -> return null
         }
         val kind = when (val value = item.kind) {
@@ -215,17 +222,23 @@ class DefaultOrganizationInputComposer(
             CanonicalItemKind.AppPair -> ItemKind.APP_PAIR
             is CanonicalItemKind.Unknown -> return null
         }
-        val availability = if (profileAvailability == ProfileAvailability.UNAVAILABLE) Availability.UNAVAILABLE else when (item.itemAvailability) {
-            ItemAvailability.AVAILABLE -> Availability.AVAILABLE
-            ItemAvailability.DISABLED -> Availability.DISABLED
-            ItemAvailability.QUIET -> Availability.QUIET
-            ItemAvailability.LOCKED_PRIVATE_SPACE -> Availability.LOCKED_PRIVATE_SPACE
-            ItemAvailability.UNAVAILABLE -> Availability.UNAVAILABLE
+        val availability = if (profileAvailability == ProfileAvailability.UNAVAILABLE) {
+            Availability.UNAVAILABLE
+        } else {
+            when (item.itemAvailability) {
+                ItemAvailability.AVAILABLE -> Availability.AVAILABLE
+                ItemAvailability.DISABLED -> Availability.DISABLED
+                ItemAvailability.QUIET -> Availability.QUIET
+                ItemAvailability.LOCKED_PRIVATE_SPACE -> Availability.LOCKED_PRIVATE_SPACE
+                ItemAvailability.UNAVAILABLE -> Availability.UNAVAILABLE
+            }
         }
         val structure = item.structure
         val members = when (structure) {
             StructureState.Plain -> emptyList()
+
             is StructureState.FolderMembers -> structure.members.map { (it.item as? ApplicationItemRef.PersistentItem)?.itemId ?: return null }
+
             is StructureState.AppPairMembers -> listOfNotNull(
                 (structure.first as? ApplicationItemRef.PersistentItem)?.itemId,
                 (structure.second as? ApplicationItemRef.PersistentItem)?.itemId,
@@ -248,7 +261,11 @@ class DefaultOrganizationInputComposer(
     }
 
     private fun app.lawnchair.organizer.application.public.DeviceCapabilities.toPlanner() = DeviceCapabilities(
-        columns, rows, hotseatSlots, folderMaxColumns, folderMaxRows,
+        columns,
+        rows,
+        hotseatSlots,
+        folderMaxColumns,
+        folderMaxRows,
         when (orientation) {
             app.lawnchair.organizer.application.public.DeviceOrientation.PORTRAIT -> app.lawnchair.organizer.planning.Orientation.PORTRAIT
             app.lawnchair.organizer.application.public.DeviceOrientation.LANDSCAPE -> app.lawnchair.organizer.planning.Orientation.LANDSCAPE

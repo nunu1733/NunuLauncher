@@ -16,8 +16,7 @@ class OrganizationInputComposerTest {
                 override fun readActive(): BundleReadResult = error("bundle must not be read")
             },
             overrides = object : CategoryOverrideSnapshotSource {
-                override fun read(capturedProfiles: Set<app.lawnchair.organizer.planning.ProfileId>): OverrideSnapshotReadResult =
-                    error("overrides must not be read")
+                override fun read(capturedProfiles: Set<app.lawnchair.organizer.planning.ProfileId>): OverrideSnapshotReadResult = error("overrides must not be read")
             },
             platformEvidence = object : ClassificationSignalSnapshotSource {
                 override fun read(

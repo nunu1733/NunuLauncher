@@ -151,9 +151,9 @@ The implementation is read-only with respect to layout and recovery data. If the
 - [x] Current behavior and accepted policy Decision reviewed against `main` commit `bc60ee52e28bb3cb92a649c459e94b009a0ed25b`.
 - [x] This canonical plan is reviewed and accepted; final review permits production implementation.
 - [ ] Tests fail for the missing Rule Management/composition behavior.
-- [ ] Minimal production implementation completed through the existing planner/application seams.
-- [ ] Override schema-v1/readability, unknown/newer-schema fail-closed, and all non-write failure paths verified.
-- [ ] Full relevant verification completed.
+- [x] Minimal production implementation completed through the existing planner/application seams.
+- [x] Override schema-v1/readability, unknown/newer-schema fail-closed, and all non-write failure paths verified.
+- [x] Full relevant verification completed.
 - [ ] PR evidence, CI result, and any remaining risks recorded.
 
 ## Verification record
@@ -162,7 +162,9 @@ The implementation is read-only with respect to layout and recovery data. If the
 |---|---|---|
 | Repository contract | **Passed** | `python3 tools/repo-contract/validate_repo_contract.py` and `python3 tools/repo-contract/test_validate_repo_contract.py` completed successfully on the implementation worktree. |
 | Gradle project configuration | **Passed** | `./gradlew projects --no-configuration-cache` completed after initializing the required source submodule and framework prebuilts. |
-| Focused JVM unit tests | **Blocked in sandbox** | `testLawnWithQuickstepGithubDebugUnitTest` cannot resolve an Android SDK because no SDK platform (`android.jar`) is present and neither `ANDROID_HOME` nor `sdk.dir` is configured. No source/test failure has been observed; rerun the exact focused test command in CI or an Android-SDK-equipped checkout before merge. |
+| Focused JVM unit tests | **Passed** | `./gradlew testLawnWithQuickstepGithubDebugUnitTest` — BUILD SUCCESSFUL on an Android-SDK-equipped checkout (commit `069fa7f933` plus formatting fixes), resolving the earlier sandbox SDK limitation. |
+| Formatting | **Passed** | `./gradlew spotlessApply` then `./gradlew spotlessCheck` — BUILD SUCCESSFUL. The apply pass fixed import ordering in the four new #83 source/test files and renamed `FullOrganizationTargetPolicyVersion` to `FULL_ORGANIZATION_TARGET_POLICY_VERSION` (`FullTargetSetMaterializer.kt`) to satisfy `ktlint(standard:property-naming)`; unit tests were rerun and still pass after these changes. |
+| Debug build | **Passed** | `./gradlew assembleLawnWithQuickstepGithubDebug` — BUILD SUCCESSFUL on the same checkout. |
 
 ## References
 

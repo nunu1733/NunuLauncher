@@ -40,8 +40,10 @@ object BuiltInOrganizerPolicyBundleSource : OrganizerPolicyBundleSource {
             append(";taxonomy=").append(categories.joinToString(",") { it.value })
             append(";fallback=").append(OrganizerPolicyBundle.OTHER.value)
             append(";classification=").append(classification.version)
-            append(";android=").append(classification.androidCategoryMapping.entries.sortedBy { it.key }
-                .joinToString(",") { "${it.key}:${it.value.value}" })
+            append(";android=").append(
+                classification.androidCategoryMapping.entries.sortedBy { it.key }
+                    .joinToString(",") { "${it.key}:${it.value.value}" },
+            )
             append(";s3=").append(classification.packageRules)
             append(";s4=").append(classification.intentRules)
             append(";target=").append(targets.version)

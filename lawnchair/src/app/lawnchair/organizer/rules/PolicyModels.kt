@@ -70,7 +70,7 @@ data class OrganizerPolicyBundle(
             return BundleReadResult.Corrupt
         }
         if ((classification.androidCategoryMapping.values + classification.googleCategory + classification.systemCategory)
-            .any { it !in taxonomy.allowedCategories }
+                .any { it !in taxonomy.allowedCategories }
         ) {
             return BundleReadResult.Corrupt
         }
