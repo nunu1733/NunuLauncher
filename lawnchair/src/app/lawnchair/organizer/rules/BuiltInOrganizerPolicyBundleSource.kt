@@ -35,29 +35,21 @@ object BuiltInOrganizerPolicyBundleSource : OrganizerPolicyBundleSource {
             systemCategory = OrganizerPolicyBundle.OTHER,
         )
         val targets = FullOrganizationTargetPolicy(OrganizerPolicyBundle.TARGET_VERSION)
-        val canonical = buildString {
-            append("rules=").append(OrganizerPolicyBundle.RULE_VERSION.value)
-            append(";taxonomy=").append(categories.joinToString(",") { it.value })
-            append(";fallback=").append(OrganizerPolicyBundle.OTHER.value)
-            append(";classification=").append(classification.version)
-            append(";android=").append(
-                classification.androidCategoryMapping.entries.sortedBy { it.key }
-                    .joinToString(",") { "${it.key}:${it.value.value}" },
-            )
-            append(";s3=").append(classification.packageRules)
-            append(";s4=").append(classification.intentRules)
-            append(";target=").append(targets.version)
-        }
-        OrganizerPolicyBundle(
-            identity = PolicyBundleIdentity("organization-policy-v1", sha256Canonical(canonical)),
-            rules = v1RuleSemantics(),
-            taxonomy = app.lawnchair.organizer.planning.TaxonomyContract(
-                version = OrganizerPolicyBundle.TAXONOMY_VERSION,
-                allowedCategories = categories,
-                fallbackCategory = OrganizerPolicyBundle.OTHER,
-            ),
+        val rules = v1RuleSemantics()
+        val taxonomy = app.lawnchair.organizer.planning.TaxonomyContract(
+            version = OrganizerPolicyBundle.TAXONOMY_VERSION,
+            allowedCategories = categories,
+            fallbackCategory = OrganizerPolicyBundle.OTHER,
+        )
+        val provisional = OrganizerPolicyBundle(
+            identity = PolicyBundleIdentity(OrganizerPolicyBundle.POLICY_BUNDLE_VERSION, sha256Canonical("provisional")),
+            rules = rules,
+            taxonomy = taxonomy,
             classification = classification,
             fullOrganizationTargets = targets,
+        )
+        provisional.copy(
+            identity = PolicyBundleIdentity(OrganizerPolicyBundle.POLICY_BUNDLE_VERSION, provisional.canonicalDigest()),
         )
     }
 

@@ -59,11 +59,50 @@ data class OrganizerPolicyBundle(
     val classification: ClassificationPolicy,
     val fullOrganizationTargets: FullOrganizationTargetPolicy,
 ) {
+    /**
+     * Canonical, complete representation of every identity-bearing v1 policy
+     * projection. Do not add bundle semantics without extending this format.
+     */
+    fun canonicalRepresentation(): String = buildString {
+        append("bundle=").append(identity.semanticVersion)
+        append(";rule.version=").append(rules.version.value)
+        append(";rule.folder.minGroupSize=").append(rules.folderPolicy.minGroupSize)
+        append(";rule.folder.profileScope=").append(rules.folderPolicy.newFolderProfileScope.name)
+        append(";rule.dock=").append(rules.dockPolicy.name)
+        append(";rule.overflow=").append(rules.overflowPolicy.name)
+        append(";rule.fallback=").append(rules.fallbackCategoryPolicy.name)
+        append(";rule.ordering=").append(rules.orderingPolicy.name)
+        append(";taxonomy.version=").append(taxonomy.version.value)
+        append(";taxonomy.categories=").append(taxonomy.allowedCategories.joinToString(",") { it.value })
+        append(";taxonomy.fallback=").append(taxonomy.fallbackCategory.value)
+        append(";classification.version=").append(classification.version)
+        append(";classification.android=").append(
+            classification.androidCategoryMapping.entries.sortedBy { it.key }
+                .joinToString(",") { "${it.key}:${it.value.value}" },
+        )
+        append(";classification.package=").append(
+            classification.packageRules.entries.sortedBy { it.key }
+                .joinToString(",") { "${it.key}:${it.value.value}" },
+        )
+        append(";classification.intent=").append(
+            classification.intentRules.entries.sortedBy { it.key }
+                .joinToString(",") { "${it.key}:${it.value.value}" },
+        )
+        append(";classification.google=").append(classification.googleCategory.value)
+        append(";classification.system=").append(classification.systemCategory.value)
+        append(";target.version=").append(fullOrganizationTargets.version)
+    }
+
+    fun canonicalDigest(): String = sha256Canonical(canonicalRepresentation())
+
     fun validate(): BundleReadResult? {
-        if (rules.version != RULE_VERSION || taxonomy.version != TAXONOMY_VERSION) {
+        if (identity.semanticVersion != POLICY_BUNDLE_VERSION || rules.version != RULE_VERSION || taxonomy.version != TAXONOMY_VERSION ||
+            classification.version != CLASSIFICATION_VERSION || fullOrganizationTargets.version != TARGET_VERSION
+        ) {
             return BundleReadResult.UnsupportedVersion(identity)
         }
-        if (taxonomy.allowedCategories != taxonomy.allowedCategories.sorted()) {
+        if (identity.sha256 != canonicalDigest()) return BundleReadResult.Corrupt
+        if (taxonomy.allowedCategories != taxonomy.allowedCategories.sorted() || taxonomy.allowedCategories.distinct().size != taxonomy.allowedCategories.size) {
             return BundleReadResult.Corrupt
         }
         if (taxonomy.fallbackCategory != OTHER || OTHER !in taxonomy.allowedCategories) {
@@ -74,16 +113,15 @@ data class OrganizerPolicyBundle(
         ) {
             return BundleReadResult.Corrupt
         }
+        // ADR-0007 fixes S3/S4 as explicit immutable empty v1 tables.
         if (classification.packageRules.isNotEmpty() || classification.intentRules.isNotEmpty()) {
             return BundleReadResult.Corrupt
-        }
-        if (classification.version != CLASSIFICATION_VERSION || fullOrganizationTargets.version != TARGET_VERSION) {
-            return BundleReadResult.UnsupportedVersion(identity)
         }
         return null
     }
 
     companion object {
+        const val POLICY_BUNDLE_VERSION = "organization-policy-v1"
         val RULE_VERSION = RuleVersion("v1")
         val TAXONOMY_VERSION = TaxonomyVersion("v1")
         const val CLASSIFICATION_VERSION = "classification-v1"
