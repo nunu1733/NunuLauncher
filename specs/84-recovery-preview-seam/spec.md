@@ -1,6 +1,6 @@
 ---
 issue: "#84"
-status: draft
+status: accepted
 requirements:
   - FR-004
   - FR-005
@@ -233,6 +233,7 @@ None. Stage A decides that inspection self-captures current context under non-bl
 - 2026-08-19: Drafted for Issue #84 Stage A; production implementation is explicitly blocked pending spec/plan acceptance.
 - 2026-08-19: Changes-requested revision: removed the unowned pre-captured context, made the existing writer lease explicitly non-blocking/capture-only, kept `RecoveryRequest` internal during confirmation delegation, and closed read-only expiry/confirm-time retention semantics.
 - 2026-08-19: P0 revision: requires confirmation to share the existing application-level recovery behavior, including readiness/reconciliation and requested/terminal diagnostics; direct `RecoveryProtocol` invocation is prohibited.
+- 2026-08-19: Stage A accepted by the Issue #84 owner; Stage B may begin only within this specification and plan.
 
 ## References
 

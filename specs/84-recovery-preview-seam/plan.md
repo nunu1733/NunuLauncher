@@ -2,7 +2,7 @@
 
 > Issue: #84
 > Spec: [spec.md](./spec.md)
-> Status: draft — **Stage A only. No production implementation may begin until this spec and plan are accepted.**
+> Status: accepted — Stage A accepted on 2026-08-19; Stage B must remain within this plan and its stop conditions.
 
 ## Current evidence
 
@@ -135,7 +135,7 @@ A high-risk implementation PR must carry the `risk: layout-data` label. Before m
 
 ## Execution checklist
 
-- [ ] Stage A review accepts both `spec.md` and `plan.md`; no production code, tests, schema, or build file changes are made before that decision.
+- [x] Stage A review accepted `spec.md` and `plan.md` on 2026-08-19; Stage B may now begin within the accepted scope.
 - [ ] Refresh `main`, Issue #52 working spec, Spec 13, ADR-0003, and diagnostics contract against the accepted documentation commit.
 - [ ] Add failing public-shape and protocol no-write/retention tests before production code.
 - [ ] Add preview values, self-capturing protocol, shared application-boundary confirmation handling, read-only tombstone adapter, and recovery retention preflight using the defined boundaries.
