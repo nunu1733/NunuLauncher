@@ -1,6 +1,6 @@
 ---
 issue: "#83"
-status: proposed
+status: accepted
 requirements:
   - FR-002
   - FR-003
@@ -18,7 +18,7 @@ updated: 2026-08-19
 
 # 手動全体整理向けProduction OrganizationInput供給境界
 
-> **Stage A判定:** `proposed / blocked`。本仕様は、Issue #83が要求するproduction input-composition境界を定義するためのレビュー稿である。既存の正本を調査した結果、`RuleSemantics`、`TaxonomyContract`、`ClassificationSignals`、および全体整理時の`TargetSet`について、受諾済みの単一production owner、immutable identity/version、cross-source consistency契約が揃っていない。そのため本稿は**実装着手を許可しない**。この未決定事項を解消するDecision Issue [#86](https://github.com/nunu1733/NunuLauncher/issues/86) を起票済みであり、その受諾後にここで定義する境界を`accepted`に変更する。[1] [2]
+> **Stage A判定:** `accepted`。Decision Issue [#86](https://github.com/nunu1733/NunuLauncher/issues/86) の受諾とADR-0007により、4つのplanner policy inputについて単一production owner、immutable identity、cross-source consistency、failure/migration semanticsが確定した。本仕様はその受諾済みDecisionをIssue #83の実装境界・観測可能な振る舞い・受入条件へ適用する。**production implementationは、同じディレクトリの正本`plan.md`がレビュー・受諾された後にのみ開始する。** [1] [2] [13]
 
 ## Problem
 
@@ -30,7 +30,7 @@ Issue #52の手動全体整理は、既存の純粋な`OrganizationPlanner`へ�
 
 ## Outcome
 
-前提Decisionが受諾された後、手動全体整理の呼出側はUI DBへ直接アクセスせず、production composition seamにfresh canonical captureを要求する。その結果は、完全かつ互換な`OrganizationInput`を返す`Ready`、または原因を識別できるtyped non-write resultのいずれかである。`Ready`に含まれる`OrganizationInput`は、既存の`OrganizationPlanner`の公開型を変更せずに使用でき、入力のrevision、rule version、taxonomy version、target membership、profile/device/lock状態を同一captureに束縛する。[3] [5] [7]
+手動全体整理の呼出側はUI DBへ直接アクセスせず、production composition seamにfresh canonical captureを要求する。その結果は、完全かつ互換な`OrganizationInput`を返す`Ready`、または原因を識別できるtyped non-write resultのいずれかである。`Ready`は、既存の`OrganizationPlanner`の公開型を変更せず、capture revisionと4 policy input（rules/taxonomy/signals/targets）のimmutable identity、`OrganizerPolicyBundle`のidentity、profile/device/lock状態を同じ安定したcutへ束縛する。[3] [5] [13]
 
 > **安全原則:** 必須sourceが存在しない、読めない、unsupported、incompatible、または相互に矛盾する場合、composition seamはplannerを呼ばず、書込みを開始せず、空のrule・taxonomy・signal・target setを代入しない。これはplannerの「入力を勝手に補正しない」という契約およびlayout safety規約に従う。[2] [4]
 
@@ -46,7 +46,7 @@ Issue #52の手動全体整理は、既存の純粋な`OrganizationPlanner`へ�
 
 ## Non-goals
 
-本Issueはplanner algorithm、planner公開型、layout application/recovery mutation、UI、onboarding、package-event incremental placementを変更しない。また、Launcher DBの`favorites`を直接書き込まず、recovery pointを作成せず、rule format、taxonomy内容、package/intent rule、override persistence、network/LLM/usage signalを新規に選定しない。[1] [3] [7]
+本Issueはplanner algorithm、planner公開型、layout application/recovery mutation、UI、onboarding、package-event incremental placementを変更しない。また、Launcher DBの`favorites`を直接書き込まず、recovery pointを作成せず、ADR-0007で受諾されたv1 bundle/override contractを越えるrule format、taxonomy内容、package/intent rule、override persistence、network/LLM/usage signalを新規に選定しない。[1] [3] [13]
 
 既存Flowerpotは、asset rulesをUI/runtime app listへ適用するlegacy分類実装である。現状ではorganizerの`CategoryId`、`TaxonomyVersion`、`SignalSource`、profile単位のoverride、planner互換性を所有しないため、本仕様でauthoritative sourceとして採用しない。採用の可否はDecisionで明示的に決める。[7] [8]
 
@@ -63,17 +63,17 @@ Issue #52の手動全体整理は、既存の純粋な`OrganizationPlanner`へ�
 | `LayoutSnapshot`、revision、pages、device、items | Issue #14 application capture。`LayoutWriterPort.captureCurrent`と`LauncherLayoutAdapter` | **confirmed**。canonical `LayoutState`、manifest、revisionを一括取得する | application capture adapter。compositionはread-only consumer | 利用可能 |
 | lock state | canonical itemの`OrganizerLockState`、ADR-0004の`favorites.organizerLockState` | **confirmed**。`UNKNOWN`/unreadableはfail-closed | application capture adapter。別のlock sourceを追加しない | 利用可能 |
 | profile / item availability | canonical itemとprofile state | **confirmed**。profileはcapture時の値であり、availabilityを保持する | application capture adapter | 利用可能 |
-| `RuleSemantics` | Rule Managementは設計上の責務のみ。file format/version ownerは正本なし | **unresolved** | accepted Rule Management owner、immutable identity（source/version or generation/content digest）、migration/read failure契約 | **Blocker** |
-| `TaxonomyContract` | taxonomy v1文書は`Proposed`。versionのruntime ownerなし | **unresolved** | accepted taxonomy owner、immutable category集合、fallback、identity/version、ruleとのbinding | **Blocker** |
-| `ClassificationSignals` | S1–S6はproposal。override persistence、S3/S4 source、profile lookupのproduction契約なし | **unresolved** | accepted signal-source owner群、profile scope、immutable identity/version、failure契約 | **Blocker** |
-| `TargetSet` | #3の既存layout-only policyとmove/preserve表は`Proposed`。full-run membership owner未受諾 | **unresolved** | accepted membership policy owner、complete partition、immutable identity/version | **Blocker** |
-| 4 policy inputの整合断面 | 個別sourceを読むatomicity/generation/fence/retryの正本なし | **unresolved** | atomic policy bundle、shared generation/fence token、またはread-after-validate-retryの受諾済み方式 | **Blocker** |
+| `RuleSemantics` | Rule Management `OrganizerPolicyBundle.rules` | **accepted**。`organization-policy-v1`のimmutable built-in bundleから`RuleVersion("v1")`を直接投影 | `app.lawnchair.organizer.rules` | 実装可能 |
+| `TaxonomyContract` | Rule Management `OrganizerPolicyBundle.taxonomy` | **accepted**。同bundleから`TaxonomyVersion("v1")`、34 category、fallback `OTHER`を直接投影 | `app.lawnchair.organizer.rules` | 実装可能 |
+| `ClassificationSignals` | 同bundleのclassification policy、Rule Management `CategoryOverrideStore`、integration `ClassificationSignalSnapshotSource` | **accepted**。S1はprofile-scoped override、S2/S5はstable platform evidence、S3/S4はbundle内の明示的empty table | Rule Managementが唯一のpolicy owner。integrationはadapter | 実装可能 |
+| `TargetSet` | Rule Management `OrganizerPolicyBundle.fullOrganizationTargets`を#83 composition boundaryでmaterialize | **accepted**。canonical captureの全itemをexactly-once partition、additionsは明示的empty | Rule Management policy + #83 materializer | 実装可能 |
+| 4 policy inputの整合断面 | immutable built-in bundle + dynamic snapshot validation | **accepted**。override/platform evidenceを前後2回読取り、全attemptを1回だけretry。2回目も不安定なら`InconsistentPolicyRead` | #83 composition boundary | 実装可能 |
 
-`LayoutSnapshot`等のconfirmed contextは、application/recoveryが既にcanonical stateを取得してrevisionへ束縛する設計と一致する。一方、`DESIGN.md`はrule/category overrideのownershipを未定義とし、taxonomy文書自体も`Proposed`である。この差異をimplementationで都合よく解釈してはならない。[5] [6] [7]
+`LayoutSnapshot`等のconfirmed contextは、application/recoveryが既にcanonical stateを取得してrevisionへ束縛する設計と一致する。ADR-0007は`DESIGN.md`とtaxonomy proposalに残っていたpolicy owner/identity/migrationの判断を、manual `FullOrganization` v1に限って解消した。実装はADRで明示されたbuilt-in bundleとtyped local override snapshot以外をpolicy sourceにしてはならない。[5] [6] [7] [13]
 
-## Proposed composition contract
+## Accepted composition contract
 
-前提Decisionが受諾された後、`organizer/integration`内に次のinternal seamを置く。これはStage Aの設計契約であり、現時点で新規production APIを作成しない。
+`organizer/integration`内に次のinternal seamを置く。Rule Managementの`OrganizerPolicyBundle`と`CategoryOverrideStore`はpolicy authorityであり、integrationはfresh canonical captureとplatform evidenceを読み取り、ADR-0007の安定性プロトコルに従ってplanner inputへmaterializeするadapterである。新規production APIの実装は正本`plan.md`受諾後に開始する。[13]
 
 ```kotlin
 internal interface OrganizationInputComposer {
@@ -101,7 +101,7 @@ internal data class InputProvenance(
     val policyBundle: PolicyBundleIdentity,
 )
 
-/** Proposed identity shape; the accepted owner defines its exact value objects. */
+/** ADR-0007: source kind + semantic version or generation + SHA-256 content digest. */
 internal data class PolicyInputIdentity(
     val source: PolicySource,
     val semanticVersionOrGeneration: String,
@@ -138,26 +138,26 @@ internal sealed interface InputReadinessReason {
 
 ### Required ports and dependency direction
 
-CompositionはUIからDBへ到達してはならない。UI/coordinatorは`OrganizationInputComposer`だけに依存し、composerは以下のread-only portを通じて情報を得る。platform/DB typeはportの内部に閉じ込め、plannerには既存のdomain型だけを渡す。[3] [5]
+CompositionはUIからDBへ到達してはならない。#52はplanner-input policyについて`OrganizationInputComposer`にだけ依存し、既存planner/application/diagnostics seamをorchestrationする。composerは以下のread-only portを通じて情報を得る。platform/DB typeはportの内部に閉じ込め、plannerには既存のdomain型だけを渡す。[3] [5] [13]
 
 | Port responsibility | Input / output | Required guarantee |
 |---|---|---|
 | `CanonicalCapturePort` | fresh capture → canonical state + revision | 同一capture内のpage、device、profile、item、lock、availabilityを返す。DB/UI型を公開しない |
-| `RuleSemanticsSource` | accepted rule contract → `RuleSemantics` + compatibility metadata | sourceのabsence/read error/version incompatibilityを値で返す。default ruleを生成しない |
-| `TaxonomySource` | accepted taxonomy contract → `TaxonomyContract` + compatibility metadata | category集合・fallback・versionをimmutableに供給する。rule versionから推測しない |
-| `ClassificationSignalSource` | capture context + accepted policy → `ClassificationSignals` | profile scopeを保持し、未利用sourceを捏造しない。signalなしはplannerのS6規則に委ねる |
-| `FullTargetSetSource` | canonical captured inventory + accepted policy → complete `TargetSet` | 全captured itemを一度だけpartitionし、out-of-scope itemを削除・脱落させない |
+| `OrganizerPolicyBundleSource` | active immutable built-in bundle → rules/taxonomy/classification policy/target policy + `PolicyBundleIdentity` | `organization-policy-v1`を唯一のpolicy authorityとして返す。digest検証・supported version/bindingの失敗は値で返す |
+| `CategoryOverrideSnapshotSource` | captured profiles → profile-scoped S1 snapshot + schema/generation/digest | defined empty generation-0は正常値。corrupt/I/O/unsupported/contradictory duplicateはfail-closed |
+| `ClassificationSignalSnapshotSource` | capture + bundle policy + stable override snapshot → platform evidence + canonical digest | S2/S5 read failureをabsenceに丸めない。S3/S4の明示的empty table、正常なno-observationだけがabsence |
+| `FullTargetSetMaterializer` | canonical captured inventory + bundle target policy → complete `TargetSet` + membership digest | 全captured itemを一度だけpartitionし、out-of-scope itemを削除・脱落させない。`additions`は明示的empty |
 
 `ClassificationSignals`にentryがないことは、受諾済みのtaxonomy/ruleが存在する場合にはplannerのS6 fallbackとして扱える。しかし、taxonomyまたはsignal sourceそのものがunavailableであることは、空集合を渡す根拠にならない。この区別をcomposition層で強制する。[3] [4]
 
 ## Data flow and safety conditions
 
-1. Composerはapplication capture portからfresh canonical captureを一度だけ取得する。captureが失敗、構造不正、lock `UNKNOWN`、profile/contextが読めない場合は`NotReady`を返す。
-2. Composerはaccepted ownerが定義した**一つの整合断面**からrule、taxonomy、signal、target policyを読む。各入力はsource、immutable version/generation、content digestを返し、4入力は共通のbundle consistency tokenを共有する。
-3. Composerはread後にbundle identityを再検証する。ownerがatomic policy bundleを提供しない場合は、accepted Decisionで定めるread-after-validate-retryを実行する。bounded retry後もtoken/digestが変化する場合は`NotReady(InconsistentPolicyRead)`を返し、mixed snapshotを使用しない。
-4. Composerはrule/taxonomy/signal/target policyのbindingを検証する。sourceのread failure、unsupported version、互換性不一致、矛盾、または未定義のownershipを検出したら`NotReady`を返す。
-5. Composerはcaptureを`LayoutSnapshot`へlosslessに射影し、full-run `TargetSet`でcapture内の全itemを完全partitionする。captured itemがtarget集合から抜けることは不正である。
-6. Composerは`OrganizationInput(..., runMode = FullOrganization)`を構成して`Ready`を返す。planner呼出し後、#52はechoされたrevisionをapplication apply seamへ渡し、適用側が再検証する。
+1. Composerはapplication capture portからfresh canonical captureを一度だけ取得する。captureが失敗、構造不正、lock `UNKNOWN`、profile/contextが読めない場合は`NotReady(InvalidCanonicalCapture)`を返す。
+2. ComposerはRule Managementのactive immutable `OrganizerPolicyBundle`を読み、そのsource kind、`organization-policy-v1`、SHA-256 digestから`PolicyBundleIdentity`を検証する。rules/taxonomyはbundleから直接投影し、`RuleVersion("v1")`と`TaxonomyVersion("v1")`のbindingを検証する。
+3. 一つのdynamic attemptで、composerはprofile-scoped override snapshot **A**、canonicalized platform evidence **E1**、override snapshot **B**、同じevidence **E2**の順に読む。A/B identity、E1/E2 digest、bundle identityが等しいときだけcutはstableである。
+4. stableでなければcomposerはattempt全体を破棄して一回だけ再試行する。二回目も不安定なら`NotReady(InconsistentPolicyRead)`を返し、mixed snapshotを使用しない。source read failure、unsupported version、invalid binding、contradictory evidence/category、incomplete partitionもtyped non-write resultにする。
+5. Composerはcaptureを`LayoutSnapshot`へlosslessに射影し、`full-target-v1`でcapture内の全itemを完全partitionする。captured itemがtarget集合から抜けることは不正であり、`additions`は明示的emptyである。
+6. Composerは`OrganizationInput(..., runMode = FullOrganization)`を構成し、4 input identity、bundle/cut identity、capture revisionをprovenanceに添えて`Ready`を返す。planner呼出し後、#52はechoされたrevisionをapplication apply seamへ渡し、適用側が再検証する。[13]
 
 ```mermaid
 flowchart LR
@@ -194,9 +194,9 @@ canonical captureが`favorites`を現在layoutの正本として扱い、row、p
 
 ### Target membership requirements
 
-full organizationでは、target policyはcapture済みhome-layout itemだけを対象にするか、別のaccepted policyにより明示されなければならない。いずれの場合も`TargetSet.existing`は全captured itemをちょうど一度だけ`Movable`または`Preserved`に分類する。`Preserved`は削除や無視を意味せず、occupied-spaceとconservationのconstraintである。[3] [4] [11]
+`full-target-v1`では、`TargetSet.additions`は明示的emptyであり、`TargetSet.existing`はcanonical captureの全itemをちょうど一度だけ`Movable`または`Preserved`に分類する。`Preserved`は削除や無視を意味せず、occupied-spaceとconservationのconstraintである。[3] [4] [13]
 
-profile、quiet mode、private space、disabled/unavailable target、lock、widget、Dock、app pair、legacy shortcut、structurally opaque itemの扱いは、既存のaccepted policyとplanner validationに従う。compositionは分類結果を便利なdefaultで置換してはならない。特に、private/quiet profileを対象から脱落させたり、unknown lockを`false`として扱ったりしてはならない。[4] [10] [11]
+classification precedenceは、(1) `locked = true`、(2) `Availability != AVAILABLE`、(3) Dock、(4) folder/app-pair structural member、(5) `APPWIDGET`、`CUSTOM_APPWIDGET`、`APP_PAIR`、`SHORTCUT_LEGACY`を`Preserved`とする。availableかつunlockedのtop-level workspace `APPLICATION`、`DEEP_SHORTCUT`、`FOLDER`だけが`Movable`であり、その他の有効なcaptured itemは`Preserved`である。unknown item kind、unsupported container、dangling/contradictory reference、invalid placement、unknown lock truth、表現不能profile/contextは`Preserved`に丸めず`NotReady`にする。private/quiet profileを対象から落としたり、unknown lockを`false`としたりしてはならない。[10] [13]
 
 ## Behavior scenarios
 
@@ -283,24 +283,24 @@ Composer自体はUIを持たない。#52は`NotReady`を利用して、ユーザ
 | AC-7 | reordered equal fixtureと**同一immutable bundle identity**のrepeat composeがvalue-equalであること。同一version/generationでcontentが変化するfixtureはreject/retryとなること |
 | AC-8 | `spotlessCheck`、organizer JVM tests、debug build、repository-contract、CI `final-status`、independent audit record |
 
-## Open questions / blocking decision
+## Decision resolution and implementation gate
 
-以下は`accepted`時点で空でなければならないblocking questionである。どれかを実装中に決めてはならない。
+Decision Issue [#86](https://github.com/nunu1733/NunuLauncher/issues/86) はclosedであり、ADR-0007が4 inputのowner、immutable identity、consistent policy cut、failure/migration/rollback、profile/target membershipを受諾済みとしている。したがって、以前のD-83-01からD-83-05はすべて解消済みである。[13]
 
-| ID | 未決定事項 | なぜIssue #83で選べないか | 必要なDecision output |
-|---|---|---|---|
-| D-83-01 | Rule Managementのproduction owner、file/asset source、supported `RuleVersion`、migrationとread failure | 設計書は責務だけを示し、format/versioningは正本なし | owner module、source format/identity、version compatibility、migration/rollback、offline/privacy |
-| D-83-02 | Taxonomy v1のaccepted status、`TaxonomyVersion`のowner、ruleとのbinding | taxonomy文書は`Proposed`で、runtime ownerがない | immutable category contract、version、binding rule、unsupported behavior |
-| D-83-03 | S1–S5 signalのowner、override persistence、S3/S4 source、profile lookup/read failure | taxonomy文書はproposalであり、Flowerpotはtyped organizer sourceではない | source precedence、profile isolation、availability、diagnostic/redaction、immutable identity/version binding |
-| D-83-04 | full organizationの`TargetSet` membership owner | #3のfull-layout-only/move-preserve policyはproposalで、未受諾 | complete partition table、out-of-scope preservation、unknown/invalid handling、lock/availability precedence、immutable identity |
-| D-83-05 | 4 policy inputを読む同一整合断面 | source間のatomicity、generation/fence、read中更新時の扱いが未定義 | atomic policy bundle、shared consistency token、又はread-after-validate-retry、bounded retry/reject semantics |
+| Former blocker | Accepted resolution | Implementation guard |
+|---|---|---|
+| Rule/taxonomy owner | Rule Managementのimmutable built-in `OrganizerPolicyBundle`が`v1` projectionsを所有 | bundle digest、supported binding、category setを検証する |
+| Signal source | Rule Management override snapshot + integration-owned platform evidence adapter。S3/S4は明示的empty | missing sourceをempty observationへ変換しない |
+| Target membership | `full-target-v1`のexactly-once partition、explicit empty additions | unknown/invalid captureはpreserveではなくrejectする |
+| Cross-source cut | immutable bundle + A/E1/B/E2 dynamic read + maximum one retry | 二回目も不安定なら`InconsistentPolicyRead` |
 
-**Required stop action:** このレビューで上記が未解消であることを確認したため、Issue #83のproduction implementationは開始しない。stop conditionに従い、owner Decision Issue [#86](https://github.com/nunu1733/NunuLauncher/issues/86) を起票済みである。当該Decisionが`accepted`になるまで#83を`status: blocked`として維持し、その後にspecを`accepted`化してから正本`plan.md`を作成する。[1] [2] [13]
+**Implementation gate:** 本仕様は`accepted`である。production implementationは正本`plan.md`のレビュー・受諾までは開始しない。実装中にADR-0007と矛盾するplatform/source limitationを発見した場合は、codeで都合よく解釈せず、Issue #83をblockしてfollow-up Decisionを作成する。[2] [13]
 
 ## Change history
 
 - 2026-08-19: Issue #83のStage Aレビュー用`proposed`仕様を作成。既存application captureは再利用可能だが、policy source ownership/versioningが未受諾であるためproduction implementationをblockした。
 - 2026-08-19: レビュー指摘を反映。4 policy inputのimmutable identity/content digest、cross-source consistency cut、read中更新時のretry/reject、deterministic test oracleを追加し、owning Decision Issue #86を起票した。
+- 2026-08-19: Decision #86のclosedおよびADR-0007のacceptedを反映し、statusを`accepted`へ更新。owner/source、v1 target partition、A/E1/B/E2 retry protocol、non-write failureを確定した。正本`plan.md`はレビュー待ちである。
 
 ## References
 

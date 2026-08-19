@@ -2,22 +2,11 @@
 
 > Issue: [#83](https://github.com/nunu1733/NunuLauncher/issues/83)
 > Related spec: [spec.md](./spec.md)
-> Status: **proposed / blocked — awaiting Decision Issue [#86](https://github.com/nunu1733/NunuLauncher/issues/86) acceptance**
+> Status: **superseded — historical Stage A review record**
+> Superseded by: [accepted spec.md](./spec.md), [proposed canonical plan.md](./plan.md), and [ADR-0007](../../docs/adr/0007-authoritative-organization-policy-sources.md)
 > Review baseline: `main` observed 2026-08-19
 
-## Review purpose and approval gate
-
-この文書は、Issue #83の**Stage Aレビュー用の実行計画**である。リポジトリ規約は、機能specを先に承認し、その後に正本の`plan.md`を作成する順序を要求している。そのため、このファイルは未承認specに対する`plan.md`ではなく、承認対象・blocker・実装順序を明確にするreview artifactとする。[1]
-
-現時点では、canonical layout captureを再利用する実装可能性は確認できた。しかし、plannerのpolicy入力について受諾済みのproduction owner/sourceとversion互換性契約が存在しない。したがって、ここにあるproduction stepsは**Decision受諾後にのみ**`specs/83-production-organization-input-sources/plan.md`へ移し、実装する。Stage Aでproduction source、DB schema、UI、planner公開型、network/permissionを変更しない。[2] [3]
-
-| Gate | 必須条件 | 現在 | 次の操作 |
-|---|---|---|---|
-| G0: Stage A review | `spec.md`のowner matrixとblockerをレビューする | **提出済み** | ユーザー/maintainerがreviewする |
-| G1: Decision acceptance | 4 policy inputのowner・immutable identity/content digest・cross-source consistency・failure semanticsを受諾する | **未達** | 起票済みDecision Issue [#86](https://github.com/nunu1733/NunuLauncher/issues/86) をacceptする |
-| G2: Spec acceptance | `spec.md`のopen questionsを0にし`accepted`とする | **未達** | #83 specを更新してacceptする |
-| G3: Canonical plan | `plan.md`を作成し、source path・migration・test matrixを確定する | **未達** | G2後に作成・reviewする |
-| G4: Production implementation | 最小のvertical sliceを実装する | **禁止** | G3 acceptance後のみ開始 |
+> **Historical record:** Decision #86 was accepted and ADR-0007 merged on `main` after this review was written. The previous blockers are resolved in the accepted `spec.md`; the current approval gate is the review/acceptance of canonical `plan.md`. This document is retained only to preserve Stage A evidence and review history. It is not an implementation plan and must not override the current spec, plan, or ADR.[1] [3]
 
 ## Current evidence
 
