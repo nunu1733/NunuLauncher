@@ -141,7 +141,17 @@ interface RecoveryStorePort {
 
     fun availability(): StoreAvailability
 
+    /**
+     * Existing maintenance-capable lookup. Recovery-store implementations may
+     * purge expired tombstones while serving this path.
+     */
     fun readTombstone(pointId: RecoveryPointId): Tombstone?
+
+    /**
+     * Read one tombstone without retention cleanup, transaction writes, or
+     * lifecycle mutation. Used only by preview and recovery preflight.
+     */
+    fun readTombstoneForInspection(pointId: RecoveryPointId): Tombstone?
 
     fun checkpoint(payload: CheckpointPayload): CheckpointResult
 

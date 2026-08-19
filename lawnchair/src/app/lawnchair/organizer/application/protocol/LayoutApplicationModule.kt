@@ -5,6 +5,9 @@ import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.PreWriteRejection
 import app.lawnchair.organizer.application.public.RecoveryPointId
+import app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation
+import app.lawnchair.organizer.application.public.RecoveryPreviewResult
+import app.lawnchair.organizer.application.public.RecoveryPreviewUnavailable
 import app.lawnchair.organizer.application.public.RecoveryRejection
 import app.lawnchair.organizer.application.public.RecoveryRequest
 import app.lawnchair.organizer.application.public.RecoveryResult
@@ -42,6 +45,14 @@ class LayoutApplicationModule(
     private val mutex: RunMutex = RunMutex()
     private val applyProtocol: ApplyProtocol = ApplyProtocol(writer, store, clock, operationIds, faults, mutex, diagnosticsPort)
     private val recoveryProtocol: RecoveryProtocol = RecoveryProtocol(writer, store, clock, operationIds, faults, mutex)
+    private val recoveryPreviewProtocol: RecoveryPreviewProtocol = RecoveryPreviewProtocol(
+        writer,
+        store,
+        clock,
+        operationIds,
+        faults,
+        mutex,
+    )
     private val restartReconciler: RestartReconciler = RestartReconciler(writer, store, faults, diagnosticsPort)
     val readinessGate: ReadinessGate = ReadinessGate()
 
@@ -68,7 +79,39 @@ class LayoutApplicationModule(
         applyProtocol.apply(plan, runId)
     }
 
-    fun recover(request: RecoveryRequest): RecoveryResult = readinessGate.runWhenReady(
+    /**
+     * Existing public mutation entry. All explicit recovery, including an
+     * accepted preview confirmation, uses [recoverWithApplicationBehavior].
+     */
+    fun recover(request: RecoveryRequest): RecoveryResult = recoverWithApplicationBehavior(request)
+
+    /**
+     * Read-only application-owned inspection. It is silent diagnostically and
+     * never enters the recovery mutation protocol.
+     */
+    fun inspectRecovery(pointId: RecoveryPointId): RecoveryPreviewResult = readinessGate.runWhenReady(
+        unavailable = { state ->
+            RecoveryPreviewResult.Unavailable(
+                pointId,
+                if (state == ReadinessGate.State.FAILED) {
+                    RecoveryPreviewUnavailable.RECOVERY_STORE_UNAVAILABLE
+                } else {
+                    RecoveryPreviewUnavailable.RECONCILIATION_PENDING
+                },
+            )
+        },
+    ) {
+        recoveryPreviewProtocol.inspect(pointId)
+    }
+
+    /**
+     * Application-boundary confirmation entry for an opaque preview
+     * capability. It deliberately returns only [RecoveryResult] and shares
+     * all readiness and diagnostics behavior with public [recover].
+     */
+    internal fun confirmRecoveryPreview(confirmation: RecoveryPreviewConfirmation): RecoveryResult = recoverWithApplicationBehavior(confirmation.recoveryRequest())
+
+    private fun recoverWithApplicationBehavior(request: RecoveryRequest): RecoveryResult = readinessGate.runWhenReady(
         unavailable = { state ->
             if (state == ReadinessGate.State.FAILED) {
                 RecoveryResult.RestoreFailed(

@@ -383,30 +383,45 @@ class RecoveryStore(
         db.beginTransaction()
         return try {
             purgeExpiredTombstones(db, now)
-            val cursor = db.query(
-                RecoveryDbSchema.TABLE_RECOVERY_TOMBSTONES,
-                arrayOf("reason", "expires_at_ms"),
-                "point_id = ?",
-                arrayOf(pointId.value),
-                null,
-                null,
-                null,
-            )
-            val result = cursor.use {
-                if (!it.moveToFirst()) {
-                    null
-                } else {
-                    RecoveryStorePort.Tombstone(
-                        pointId,
-                        tombstoneReasonFromCanonicalInt(it.getInt(0)),
-                        it.getLong(1),
-                    )
-                }
-            }
-            db.setTransactionSuccessful()
-            result
+            queryTombstone(db, pointId).also { db.setTransactionSuccessful() }
         } finally {
             db.endTransaction()
+        }
+    }
+
+    /**
+     * Inspection/preflight lookup deliberately avoids lazy tombstone cleanup.
+     * It uses a readable database and one SELECT, without a transaction or
+     * lifecycle/store write.
+     */
+    override fun readTombstoneForInspection(pointId: RecoveryPointId): RecoveryStorePort.Tombstone? {
+        if (availability() != RecoveryStorePort.StoreAvailability.READY) return null
+        return queryTombstone(helper.readableDatabase, pointId)
+    }
+
+    private fun queryTombstone(
+        db: SQLiteDatabase,
+        pointId: RecoveryPointId,
+    ): RecoveryStorePort.Tombstone? {
+        val cursor = db.query(
+            RecoveryDbSchema.TABLE_RECOVERY_TOMBSTONES,
+            arrayOf("reason", "expires_at_ms"),
+            "point_id = ?",
+            arrayOf(pointId.value),
+            null,
+            null,
+            null,
+        )
+        return cursor.use {
+            if (!it.moveToFirst()) {
+                null
+            } else {
+                RecoveryStorePort.Tombstone(
+                    pointId,
+                    tombstoneReasonFromCanonicalInt(it.getInt(0)),
+                    it.getLong(1),
+                )
+            }
         }
     }
 
