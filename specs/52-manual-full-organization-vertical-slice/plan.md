@@ -2,17 +2,17 @@
 
 > Issue: [#52](https://github.com/nunu1733/NunuLauncher/issues/52)
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: accepted
 > Updated: 2026-08-19
 > Risk: `layout-data`
 
 ## Preconditions and implementation stop conditions
 
-This plan is executable only after [spec.md](./spec.md) is accepted. The implementation branch starts from the commit on `main` containing the accepted artifacts for Issues #12, #13/#14, #16/#67, #24, #38, #43, and #44. The existing Issue #52 blockers are closed at planning time, but the implementation must recheck that their accepted outputs—not merely their Issue state—are present in the target commit.
+This plan is executable only after [spec.md](./spec.md) is accepted. The implementation branch starts from the commit on `main` containing the accepted artifacts for Issues #12, #13/#14, #16/#67, #24, #38, #43, #44, [#83](https://github.com/nunu1733/NunuLauncher/issues/83), and [#84](https://github.com/nunu1733/NunuLauncher/issues/84). The existing Issue #52 blockers are closed at planning time, but the implementation must recheck that their accepted outputs—not merely their Issue state—are present in the target commit.
 
-Before production code is written, the implementer must locate and test the production composition for the accepted versioned `RuleSemantics`, `TaxonomyContract`, `ClassificationSignals`, and full target membership. These values cannot be guessed, hard-coded in the UI, or reconstructed from a parallel policy. The production capture path must be able to construct the same canonical state used by application/recovery and expose the complete planner input. If no such owner/source exists, stop this issue and open the owning rule/integration follow-up. Do not add a second planner, a UI-only snapshot, or a default policy as a workaround.
+Before production code is written, the implementer must locate and test the production composition for the accepted versioned `RuleSemantics`, `TaxonomyContract`, `ClassificationSignals`, and full target membership supplied by [#83](https://github.com/nunu1733/NunuLauncher/issues/83). These values cannot be guessed, hard-coded in the UI, or reconstructed from a parallel policy. The production capture path must be able to construct the same canonical state used by application/recovery and expose the complete planner input. If no such owner/source exists, stop this issue and open the owning rule/integration follow-up. Do not add a second planner, a UI-only snapshot, or a default policy as a workaround.
 
-Before implementing the explicit recovery preview, the implementer must also identify an accepted read-only application/recovery seam that can determine the revision-bound recovery preview/restorability information required by the UX contract without exposing `RecoveryStorePort` or recovery payloads to the UI/coordinator. If the accepted contracts provide only `recover(RecoveryRequest)` and no such inspection capability, stop this issue and open the owning application/recovery contract follow-up. Do not read the recovery store directly or add an implicit recovery-inspection contract inside Issue #52.
+Before implementing the explicit recovery preview, the implementer must also identify the accepted read-only application/recovery seam delivered by [#84](https://github.com/nunu1733/NunuLauncher/issues/84), which determines the revision-bound recovery preview/restorability information required by the UX contract without exposing `RecoveryStorePort` or recovery payloads to the UI/coordinator. If the accepted contracts provide only `recover(RecoveryRequest)` and no such inspection capability, stop this issue and open the owning application/recovery contract follow-up. Do not read the recovery store directly or add an implicit recovery-inspection contract inside Issue #52.
 
 The implementation must also stop and open the owning contract follow-up if the required UI behavior cannot be represented by existing `PlanningResult`, `ValidatedLayoutPlan`, `ApplyResult`, or `RecoveryResult` types. In particular, do not widen a result type, introduce deletion, mutate lock state, or add an application/recovery mutation path implicitly.
 
