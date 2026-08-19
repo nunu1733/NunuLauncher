@@ -5,13 +5,13 @@
 
 - Auditor: Implementation-session-independent audit session (solo-maintenance independent re-execution)
 - PR: https://github.com/nunu1733/NunuLauncher/pull/82
-- Head SHA: 76c616b5c19e9a9c83c7cd76fc266113f975ea59
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32213700481
+- Head SHA: 80cc117f4f73eb7a90fc854b0e674b9a5d075165
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32219503523
 - Criteria: specs/67-organizer-diagnostics/spec.md — FR-015, NFR-008, NFR-011 (acceptance criteria AC-67-01 through AC-67-14 verified individually below)
 
 ## Scope
 
-Audited the complete `origin/main..5427118148` diff, including previous fix commits and the fourth-review commit `5427118148`.
+Audited the complete `origin/main..80cc117f4f` diff, including previous fix commits and the sixth-review commits `dca7967e3e` (retention classification fix) and `80cc117f4f` (incomplete-run retention tests).
 
 New production files in `lawnchair/src/app/lawnchair/organizer/diagnostics/`:
 
@@ -25,8 +25,8 @@ New production files in `lawnchair/src/app/lawnchair/organizer/diagnostics/`:
 - `model/CorrelationId.kt` — shared 32-char lowercase hex correlation ID validation regex and helper
 - `journal/JournalSequence.kt` — durable monotonic sequence with fail-closed null-on-write-failure
 - `journal/JournalStore.kt` — append-only journal with post-append lazy retention, corruption reset, fail-open append, SyncHook fsync ordering, stable snapshot()
-- `journal/RunEventSerializer.kt` — JSON codec (encodeDefaults=false, ignoreUnknownKeys=true)
-- `journal/RetentionPolicy.kt` — 10-run, 7-day, 512 KiB caps with unresolved-run protection and in-flight recovery-event protection
+- `journal/RunEventSerializer.kt` — JSON codec (encodeDefaults=false, ignoreUnknownKeys=false, fail-closed decode validating schemaVersion==1)
+- `journal/RetentionPolicy.kt` — 10-resolved-run, 7-day, 512 KiB caps; only unresolved (APPLY_COMMITTED without terminal/resolving reconciliation) runs and in-flight recovery histories are protected; incomplete non-protected runs are age/size prunable and count toward the 512 KiB budget
 - `projection/PlanningProjection.kt` — PlanningResult -> RunEvent projection
 - `projection/ApplyProjection.kt` — ApplyResult -> RunEvent projection
 - `projection/ReconciliationProjection.kt` — Lifecycle reconciliation -> RunEvent projection
@@ -42,22 +42,23 @@ Modified production files:
 - `lawnchair/src/app/lawnchair/organizer/application/protocol/LayoutApplicationModule.kt` — production wiring of journal store, diagnostics port, logcat; no RUN_STARTED emission (handoff to #52/#53/#55)
 - `lawnchair/src/app/lawnchair/organizer/application/protocol/RestartReconciler.kt` — diagnosticsPort injection, RESTART_RECONCILED emitted for every reconciled record including silent advance/prune; SilentPrune/SilentAdvance as explicit internal outcomes; no store re-read for resultingLifecycle
 
-New test files (18 files, 183 tests total):
+New test files (19 files, 201 tests total):
 
-- `tests/unit/app/lawnchair/organizer/diagnostics/model/RunEventSerializationTest.kt` (15 tests)
-- `tests/unit/app/lawnchair/organizer/diagnostics/model/ModelValidationTest.kt` (51 tests — includes 25 correlation ID validation tests + 6 version-identifier/orientation validation tests)
+- `tests/unit/app/lawnchair/organizer/diagnostics/model/RunEventSerializationTest.kt` (18 tests — includes schemaVersion2RejectedAtConstruction)
+- `tests/unit/app/lawnchair/organizer/diagnostics/model/ModelValidationTest.kt` (54 tests — includes 25 correlation ID validation tests, 6 version-identifier/orientation validation tests, schemaVersion construction, and RunVersions allowlist validation tests)
 - `tests/unit/app/lawnchair/organizer/diagnostics/model/ApplyStageTest.kt` (2 tests)
 - `tests/unit/app/lawnchair/organizer/diagnostics/journal/JournalSequenceTest.kt` (8 tests)
-- `tests/unit/app/lawnchair/organizer/diagnostics/journal/JournalStoreTest.kt` (10 tests — includes retentionRewriteSyncsTempFileThenDirectoryAfterRename)
-- `tests/unit/app/lawnchair/organizer/diagnostics/journal/RetentionPolicyTest.kt` (21 tests — includes 5 new in-flight recovery protection tests)
+- `tests/unit/app/lawnchair/organizer/diagnostics/journal/JournalStoreTest.kt` (11 tests — includes retentionRewriteSyncsTempFileThenDirectoryAfterRename, retentionRewriteSyncsJournalFileAfterCopyFallback)
+- `tests/unit/app/lawnchair/organizer/diagnostics/journal/RetentionPolicyTest.kt` (26 tests — includes 5 in-flight recovery protection tests and resolved-resultingLifecycle reconciliation-release tests)
+- `tests/unit/app/lawnchair/organizer/diagnostics/journal/RetentionIncompleteRunTest.kt` (3 tests — new: incomplete non-protected run retention regression)
 - `tests/unit/app/lawnchair/organizer/diagnostics/logger/DiagnosticsLoggerTest.kt` (10 tests)
-- `tests/unit/app/lawnchair/organizer/diagnostics/export/ExportWriterTest.kt` (12 tests — includes d10UnsortedSnapshotProducesAscendingExport)
+- `tests/unit/app/lawnchair/organizer/diagnostics/export/ExportWriterTest.kt` (14 tests — includes d10UnsortedSnapshotProducesAscendingExport)
 - `tests/unit/app/lawnchair/organizer/diagnostics/projection/PlanningProjectionTest.kt` (6 tests)
 - `tests/unit/app/lawnchair/organizer/diagnostics/projection/ApplyProjectionTest.kt` (8 tests)
 - `tests/unit/app/lawnchair/organizer/diagnostics/projection/ApplyProtocolDiagnosticsTest.kt` (11 tests — includes concurrentApplyDoesNotDestroyActiveRunDiagnosticContext, concurrentApplyOnSharedInstanceKeepsLoadBearingContext, and updated markApplyingFailureTerminalCarriesA5AndCheckpointPointId)
 - `tests/unit/app/lawnchair/organizer/diagnostics/projection/ReconciliationProjectionTest.kt` (3 tests)
 - `tests/unit/app/lawnchair/organizer/diagnostics/projection/RecoveryProjectionTest.kt` (6 tests — updated to verify pointOriginRunId on all terminal events)
-- `tests/unit/app/lawnchair/organizer/diagnostics/projection/RestartReconcilerDiagnosticsTest.kt` (3 tests — new: silentPruneEmitsRestartReconciledWithPostReconciliationLifecycle, silentAdvanceEmitsRestartReconciledWithPostReconciliationLifecycle, silentPruneAfterAdvanceReportsAdvancedLifecycleNotPreReconciliationFallback)
+- `tests/unit/app/lawnchair/organizer/diagnostics/projection/RestartReconcilerDiagnosticsTest.kt` (4 tests — includes silentPruneEmitsRestartReconciledWithPostReconciliationLifecycle, silentAdvanceEmitsRestartReconciledWithPostReconciliationLifecycle, silentPruneAfterAdvanceReportsAdvancedLifecycleNotPreReconciliationFallback, unresolvedReconciledEmitsActualStoreStateNotCorrupt)
 - `tests/unit/app/lawnchair/organizer/diagnostics/integration/DiagnosticsContractTest.kt` (4 tests)
 - `tests/unit/app/lawnchair/organizer/diagnostics/integration/DiagnosticsFailOpenTest.kt` (7 tests)
 - `tests/unit/app/lawnchair/organizer/diagnostics/integration/BackupExclusionTest.kt` (3 tests)
@@ -76,13 +77,13 @@ Per-acceptance-criterion verification against FR-015, NFR-008, NFR-011 (specs/67
 
 - **Test oracle**: JVM compile/value-construction + serializer field-closure tests.
 - **Evidence**: `RunEvent` has no `message`, `notes`, `description`, or `debug` field (verified by `noFreeFormTextField` test). `ErrorEntry` construction requires codes from `validCodesForFamily()` which derives from the real source enums (RejectionCode, UnplacedReason, PreWriteRejection, ApplyFailure, RecoveryRejection, RecoveryFailure) — `UNMAPPED` is the only non-enum-string allowed. `PlanSummary` map keys are validated against PreserveReason/UnplacedReason/WarningCode/Confidence enum entries. `PhaseCode` is a closed enum with exactly the contract-defined values. `ApplyStage` is exactly A0–A8. Serialization uses `encodeDefaults=false` so only populated fields appear. D-01–D-10 round-trip tests pass. Correlation IDs (runId, pointId, subjectRunId, pointOriginRunId) are validated as 32-char lowercase hex via `CorrelationId.kt` in `init` blocks of `RunEvent`, `RecoveryContext`, `ReconciliationContext`.
-- **Verdict**: PASS (51 ModelValidationTest + 2 ApplyStageTest + 15 RunEventSerializationTest all pass, 0 failures).
+- **Verdict**: PASS (54 ModelValidationTest + 2 ApplyStageTest + 18 RunEventSerializationTest all pass, 0 failures).
 
 ### AC-67-02 — Durable ordering: append/reopen/restart tests prove strictly increasing durable journalSequence, event order independent of wall-clock rollback, and app-private persistence.
 
 - **Test oracle**: Journal store JVM/instrumented reopen and restart tests with wall-clock rollback fixture.
 - **Evidence**: `JournalSequenceTest` proves monotonic increase (`sequenceIsMonotonic`), survival across reopen (`sequenceSurvivesReopen`), corruption reset (`sequenceResetsOnCorruption`), independence from wall clock (`sequenceDoesNotDependOnWallClock`), and seq-file loss recovery (`seqFileLostJournalIntactReconcile`). `JournalStoreTest` proves append + read-back (`appendAndReadBack`), multiple events (`appendMultipleEvents`), sequence survival across reopen (`sequenceSurvivesReopen`), wall-clock rollback does not affect ordering (`wallClockRollbackDoesNotAffectOrdering`). Journal is under `context.filesDir/organizer_diagnostics/` (app-private).
-- **Verdict**: PASS (8 JournalSequenceTest + 10 JournalStoreTest all pass, 0 failures).
+- **Verdict**: PASS (8 JournalSequenceTest + 11 JournalStoreTest all pass, 0 failures).
 
 ### AC-67-03 — Complete typed projection: contract tests enumerate every current Issue #10 planning rejection/result and Issue #13 application/recovery result used by diagnostics and verify the accepted phase/error/summary projection, including D-01–D-08 and UNMAPPED handling.
 
@@ -105,8 +106,8 @@ Per-acceptance-criterion verification against FR-015, NFR-008, NFR-011 (specs/67
 ### AC-67-06 — Retention: lifecycle tests prove lazy whole-run FIFO pruning for 10-run, 7-day, and 512 KiB limits and prove unresolved APPLYING/COMMITTED_UNVERIFIED/RESTORING history is retained until resolution even when a cap would otherwise be exceeded.
 
 - **Test oracle**: Deterministic clock/size journal lifecycle tests covering each cap independently and unresolved precedence/resolution.
-- **Evidence**: `RetentionPolicyTest` proves 10-run cap (`keepUpTo10ResolvedRuns`), 7-day age cap (`keepOnlyRecentRuns`), 512 KiB size cap (`pruneOldestWhenExceedingSizeLimit`), unresolved APPLY_COMMITTED protection (`unresolvedRunWithApplyCommittedIsProtected`), APPLY_UNRESOLVED/APPLY_RECOVERY_FAILED/APPLY_RECOVERED are not protected (`terminalFailureApplyUnresolvedIsNotProtected`, `terminalFailureApplyRecoveryFailedIsNotProtected`, `terminalFailureApplyRecoveredIsNotProtected`), RESTART_RECONCILED resolves protection (`unresolvedRunWithRestartReconciledIsResolved`), orphaned events pruned by age (`orphanedEventsPrunedByAge`) and size overflow (`orphanedEventsPrunedBySizeOverflow`), orphaned events are not protected (`orphanedEventsAreNotProtected`), all caps respected (`retentionRespectsAllCaps`), `isRunProtected` detection (`isRunProtectedDetectsUnresolved`, `isRunProtectedFalseForResolved`, `isRunProtectedFalseForReconciled`, `isRunProtectedFalseForTerminalFailurePhases`), in-flight recovery protection (`recoveryRequestedWithoutTerminalSurvivesAgePruning`, `recoveryRequestedWithoutTerminalSurvivesSizePruning`), terminal recovery event makes pointId prunable (`recoveryRequestedWithTerminalIsPrunable`, `recoveryRequestedWithTerminalIsPrunableBySize`), mixed pointId protection (`recoveryRequestedForDifferentPointIdsMixedProtection`). `JournalStoreTest.postAppendRetentionPrunesTo10ResolvedRuns` and `retentionRewriteSyncsTempFileThenDirectoryAfterRename` prove post-append retention and sync ordering.
-- **Verdict**: PASS (21 RetentionPolicyTest + 2 JournalStoreTest retention-related tests all pass, 0 failures).
+- **Evidence**: `RetentionPolicyTest` proves 10-run cap (`keepUpTo10ResolvedRuns`), 7-day age cap (`keepOnlyRecentRuns`), 512 KiB size cap (`pruneOldestWhenExceedingSizeLimit`), unresolved APPLY_COMMITTED protection (`unresolvedRunWithApplyCommittedIsProtected`), APPLY_UNRESOLVED/APPLY_RECOVERY_FAILED/APPLY_RECOVERED are not protected (`terminalFailureApplyUnresolvedIsNotProtected`, `terminalFailureApplyRecoveryFailedIsNotProtected`, `terminalFailureApplyRecoveredIsNotProtected`), RESTART_RECONCILED resolves protection (`unresolvedRunWithRestartReconciledIsResolved`), orphaned events pruned by age (`orphanedEventsPrunedByAge`) and size overflow (`orphanedEventsPrunedBySizeOverflow`), orphaned events are not protected (`orphanedEventsAreNotProtected`), all caps respected (`retentionRespectsAllCaps`), `isRunProtected` detection (`isRunProtectedDetectsUnresolved`, `isRunProtectedFalseForResolved`, `isRunProtectedFalseForReconciled`, `isRunProtectedFalseForTerminalFailurePhases`), in-flight recovery protection (`recoveryRequestedWithoutTerminalSurvivesAgePruning`, `recoveryRequestedWithoutTerminalSurvivesSizePruning`), terminal recovery event makes pointId prunable (`recoveryRequestedWithTerminalIsPrunable`, `recoveryRequestedWithTerminalIsPrunableBySize`), mixed pointId protection (`recoveryRequestedForDifferentPointIdsMixedProtection`). `RetentionIncompleteRunTest` proves incomplete non-protected runs are retention-prunable: an 8-day-old RUN_STARTED-only run is prunable by age (`oldRunStartedOnlyRunIsPrunableByAge`), a CHECKPOINTED-only READY run is not misclassified as protected recovery history (`checkpointedReadyRunIsNotTreatedAsProtectedRecoveryHistory`), and incomplete non-protected run bytes count toward the 512 KiB cap and are pruned before protected history (`incompleteRunBytesCountTowardSizeCapAndArePrunedBeforeProtectedHistory`). `JournalStoreTest.postAppendRetentionPrunesTo10ResolvedRuns` and `retentionRewriteSyncsTempFileThenDirectoryAfterRename` prove post-append retention and sync ordering.
+- **Verdict**: PASS (26 RetentionPolicyTest + 3 RetentionIncompleteRunTest + 2 JournalStoreTest retention-related tests all pass, 0 failures).
 
 ### AC-67-07 — Diagnostic fail-open/isolation: injected write/corruption and logger failures do not change planner/application results, do not mutate layout/recovery state, and do not produce a less-redacted fallback path.
 
@@ -124,7 +125,7 @@ Per-acceptance-criterion verification against FR-015, NFR-008, NFR-011 (specs/67
 
 - **Test oracle**: Export writer test for D-10 ordering/field parity and cancellation/write-failure integration test.
 - **Evidence**: `ExportWriterTest` proves D-10 header shape (`d10HeaderShape`), ascending sequence order (`d10AscendingSequenceOrder`), unsorted input produces ascending export (`d10UnsortedSnapshotProducesAscendingExport`), field parity with input events (`d10FieldParity`), no extra fields in export (`d10NoExtraFieldsInExport`), events match journal field set (`d10EventsMatchJournalFieldSet`), write failure does not mutate journal (`d10WriteFailureLeavesJournalIntact`), cancellation is isolated (`d10CancellationIsolated`), empty journal export produces header only (`d10EmptyJournalExport`), device profile in header (`d10DeviceProfileInHeader`, `d10DeviceProfileFromRunStarted`), header schema version is 1 (`d10HeaderSchemaVersionIs1`).
-- **Verdict**: PASS (12 ExportWriterTest all pass, 0 failures).
+- **Verdict**: PASS (14 ExportWriterTest all pass, 0 failures).
 
 ### AC-67-10 — Single redacted logcat sink: debug/release tests prove one organizer diagnostics tag, DEBUG for ordinary debug phase transitions, WARN for accepted terminal failures, release failure-only behavior, and log output only after successful journal persistence.
 
@@ -153,23 +154,24 @@ Per-acceptance-criterion verification against FR-015, NFR-008, NFR-011 (specs/67
 ### AC-67-14 — Project verification: organizer unit/contract tests, formatting, debug build, applicable UI/instrumentation evidence, repository contract validation, and exact commands/results are recorded in the implementation PR.
 
 - **Test oracle**: Standard repository CI/local verification recorded in the implementation PR.
-- **Evidence**: All 183 organizer diagnostics unit tests pass (0 failures, 0 errors). `spotlessCheck` passes. `assembleLawnWithQuickstepGithubDebug` passes. CI run 32202877240 shows `changes`, `check-style`, `validate-repo-contract`, `organizer-unit-tests`, `build-debug-apk`, `final-status` all success. Python contract validation (`validate_diagnostics_contract.py`, `test_validate_diagnostics_contract.py`) passes. See "Executed test surface" section below for commands and results.
-- **Verdict**: PASS (verified locally and via CI run 32202877240).
+- **Evidence**: All 201 organizer diagnostics unit tests pass (0 failures, 0 errors; 624 tests across the full `app.lawnchair.organizer.*` scope). `spotlessCheck` passes. `assembleLawnWithQuickstepGithubDebug` passes. CI run 32219503523 shows `changes`, `check-style`, `validate-repo-contract`, `organizer-unit-tests`, `build-debug-apk`, `final-status` all success. Python contract validation (`validate_diagnostics_contract.py`, `test_validate_diagnostics_contract.py`) passes. See "Executed test surface" section below for commands and results.
+- **Verdict**: PASS (verified locally and via CI run 32219503523).
 
 ## Executed test surface
 
-Independent local re-runs against `5427118148b3e559c557c75e5e3e06e18857e3c7` (JDK 21.0.12 homebrew, ANDROID_HOME=/opt/homebrew/share/android-commandline-tools):
+Independent local re-runs against `80cc117f4f73eb7a90fc854b0e674b9a5d075165` (JDK 21.0.12 homebrew, ANDROID_HOME=/opt/homebrew/share/android-commandline-tools):
 
 ```text
 $ ./gradlew spotlessCheck --no-daemon
-  -> BUILD SUCCESSFUL in 5s (5 actionable tasks: 5 up-to-date)
+  -> BUILD SUCCESSFUL in 7s (5 actionable tasks: 2 executed, 3 up-to-date)
 
 $ ./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*' --no-daemon
-  -> BUILD SUCCESSFUL in 39s (386 actionable tasks: 17 executed, 3 from cache, 366 up-to-date)
-  -> Diagnostics unit test results: all tests pass, 0 failures, 0 errors
+  -> BUILD SUCCESSFUL in 47s (386 actionable tasks: 17 executed, 369 up-to-date)
+  -> app.lawnchair.organizer.diagnostics.*: 201 tests, 0 failures, 0 errors, 0 skipped
+  -> app.lawnchair.organizer.* (total): 624 tests, 0 failures, 0 errors, 0 skipped
 
 $ ./gradlew assembleLawnWithQuickstepGithubDebug --no-daemon
-  -> BUILD SUCCESSFUL in 12s (445 actionable tasks: 4 executed, 441 up-to-date)
+  -> BUILD SUCCESSFUL in 19s (445 actionable tasks: 4 executed, 441 up-to-date)
 
 $ python3 tools/repo-contract/validate_diagnostics_contract.py
   -> PASS: No AC-67-12 contract violations found.
@@ -212,11 +214,11 @@ The third-review fixes were addressed by three code commits (a9e0d20db3, 0ad34e1
 
 ## Findings
 
-Verdict: **pass** (the merge gate `final-status` is green on the final head SHA `9221ec21f1` via CI run 32202877240, and all 14 ACs are verified).
+Verdict: **pass** (the merge gate `final-status` is green on the final head SHA `80cc117f4f` via CI run 32219503523, and all 14 ACs are verified).
 
-1. **[Low] G1 — All 183 JVM unit tests pass locally.** `spotlessCheck`, `assembleLawnWithQuickstepGithubDebug`, `validate_diagnostics_contract.py`, and `test_validate_diagnostics_contract.py` all pass locally. The CI run 32202877240 shows `organizer-unit-tests` (4m17s, success), `check-style` (1m0s, success), `build-debug-apk` (4m39s, success), `validate-repo-contract` (23s, success), and `final-status` (4s, success). All source jobs ran without skip.
+1. **[Low] G1 — All 201 diagnostics JVM unit tests pass locally (624 organizer-scope total).** `spotlessCheck`, `assembleLawnWithQuickstepGithubDebug`, `validate_diagnostics_contract.py`, and `test_validate_diagnostics_contract.py` all pass locally. The CI run 32219503523 shows `organizer-unit-tests` (4m30s, success), `check-style` (52s, success), `build-debug-apk` (4m40s, success), `validate-repo-contract` (19s, success), and `final-status` (success). All source jobs ran without skip.
 
-2. **[Low] G2 — CI merge gate green on the final head.** CI run 32202877240 on head `9221ec21f1` shows `changes`, `check-style`, `validate-repo-contract`, `organizer-unit-tests`, `build-debug-apk`, and `final-status` all success. The `high-risk-evidence` check (run 32202877005) failed because this re-audit record did not yet exist — this is the expected behavior, and the gate will pass once this docs-only commit lands.
+2. **[Low] G2 — CI merge gate green on the final head.** CI run 32219503523 on head `80cc117f4f` shows `changes`, `check-style`, `validate-repo-contract`, `organizer-unit-tests`, `build-debug-apk`, and `final-status` all success. The `high-risk-evidence` check (run 32219503527) failed because this re-audit record still anchored the previous code head — this is the expected behavior, and the gate will pass once this docs-only commit lands.
 
 3. **[Low] G3 — AC-67-13 (accessible export action) verified structurally only.** The `OrganizerDiagnosticsExportPreference` composable uses standard `ClickablePreference` with `stringResource` for localized labels, which provides the same accessibility semantics as all other Lawnchair Settings controls. Device-level TalkBack, keyboard navigation, and font-scale testing are not executed in this audit. The implementation is structurally correct and follows the same pattern as other accessible preferences in the codebase.
 
@@ -234,7 +236,7 @@ Verdict: **pass** (the merge gate `final-status` is green on the final head SHA 
    - `RESTART_RECONCILED` does not unprotect in-flight recovery pointId groups. Only terminal recovery events (RECOVERY_RESTORED, RECOVERY_FAILED, RECOVERY_REJECTED, RECOVERY_WRITER_BUSY, RECOVERY_CONCURRENT) resolve recovery protection.
    - Never-pruned non-protected unresolved runs (e.g., APPLY_COMMITTED without terminal) are not protected by the in-flight recovery mechanism. They are protected by run-level unresolved protection, not by pointId-based recovery protection.
 
-Process note: The `High-risk gate` workflow run 32202877005 on head `9221ec21f1` failed because this re-audit record did not exist at that time. This updated record anchors the audit to head `9221ec21f145b01876120f27da79055697616b47` and the green merge-gate run 32202877240; the gate is expected to pass once this docs-only commit lands.
+Process note: The `High-risk gate` workflow run 32219503527 on code head `80cc117f4f` failed because this record still anchored the previous head at that time. This updated record anchors the audit to head `80cc117f4f73eb7a90fc854b0e674b9a5d075165` and the green merge-gate run 32219503523; the gate is expected to pass once this docs-only commit lands.
 
 ## Spot-verification of fourth-review fixes (items 1-5)
 
@@ -260,9 +262,20 @@ The fifth-review fixes were addressed by a single code commit (`76c616b5c1`) aft
 
 (3) **P1-3 RunVersions closed boundary with allowlist**: `RunVersions` constructor is now private; construction is via `RunVersions.create()` factory. `APPROVED_VERSIONS` source-owned allowlist gates non-empty version identifiers. Non-approved strings (MainActivity, secretToken, profileSerial, privateUserId) are rejected at construction. `@ConsistentCopyVisibility` annotation suppresses the private-constructor copy-visibility warning. All existing tests updated to use `RunVersions.create()`. New tests: `runVersionsAllowsApprovedIdentifiers`, `runVersionsRejectsNonApprovedIdentifier`. PASS.
 
+## Spot-verification of sixth-review fixes (items 1-2)
+
+The sixth-review fixes were addressed by code commit `dca7967e3e` (retention classification) and test commit `80cc117f4f` (incomplete-run retention regression) after the previous re-audit head `76c616b5c1`. Each item is verified below against the actual code on the final head `80cc117f4f`.
+
+(1) **P1 incomplete non-protected runs are retention-prunable**: `RetentionPolicy.evaluate()` now partitions run histories into exactly two classes: `protected` (`isProtected` — APPLY_COMMITTED without a terminal phase or a resolving RESTART_RECONCILED) and `nonProtected` (everything else, including resolved runs and incomplete runs such as RUN_STARTED/USER_CONFIRMED/CHECKPOINTED-only process-death histories). The unclassified third bucket no longer exists. The 7-day age cap prunes any non-protected run whose earliest event predates the threshold, including incomplete runs; the 512 KiB size cap now counts all retained bytes (`protectedBytes + protectedRecoveryBytes + nonProtectedOrphanBytes + nonProtectedRunBytes`) and prunes non-protected runs oldest-first, then non-protected orphaned events; the 10-run cap remains resolved-run-only exactly as the accepted spec defines ("at most the most recent 10 resolved run histories"), so incomplete runs are bounded by the age and size caps instead of the count cap. Protection semantics are unchanged from the fifth review: unresolved APPLY_COMMITTED runs and in-flight recovery histories (RECOVERY_REQUESTED without a terminal recovery event, released only by a same-pointId RESTART_RECONCILED with resolved resultingLifecycle) are never pruning candidates — `isProtected`, `isRunProtected`, `UNRESOLVED_LIFECYCLE_PHASES`, and `RESOLVED_RESULTING_LIFECYCLES` are character-for-character identical to pre-fix, and `JournalStore` consumes `pruneRunIds`/`pruneOrphanedSequences` unchanged. All three reviewer-required regression tests are present in `RetentionIncompleteRunTest` with discriminating oracles (each fails on the pre-fix classification): `oldRunStartedOnlyRunIsPrunableByAge`, `checkpointedReadyRunIsNotTreatedAsProtectedRecoveryHistory`, `incompleteRunBytesCountTowardSizeCapAndArePrunedBeforeProtectedHistory`. The unchanged `RetentionPolicyTest` (26 tests) passes identically under the new classification. PASS.
+
+(2) **P2 stale audit-record statements corrected**: the Scope section now anchors to the `origin/main..80cc117f4f` diff, the serializer description states `ignoreUnknownKeys=false` with fail-closed decode, the RetentionPolicy description reflects the protected/non-protected partition, and test file/test counts are refreshed to the current head (19 files, 201 diagnostics tests). PASS.
+
+Observation (non-blocking): the spec retention NFR phrases the pruning target as "eligible history" without pinning eligible = non-protected including incomplete runs; the implemented interpretation is the broader one the sixth review required. A one-line spec clarification can be tracked separately; no code change is needed.
+
 ## Change history
 
 - 2026-08-18: Initial audit record created for head `8c6b92c48f` (CI run 32145008969).
 - 2026-08-18: **Re-audit** after code commits `25efa335e3` (address PR #82 re-review findings), `dc9ec3e87b` (complete PR #82 re-review fixes with tests), `6717caebfe` (cover re-review fix behaviors with revert-detecting tests), `7f04de31da` (add applying-seeded silent-prune reconciliation variant). Updated head to `7f04de31da` (CI run 32151985849). Re-review fixes verified: (a) silent restart reconciliation emits RESTART_RECONCILED with post-reconciliation resultingLifecycle and SilentPrune/SilentAdvance explicit outcomes, (b) terminalApplyStage/terminalPointId per-invocation reset with no cross-run leakage, markApplying failure -> A4, (c) pointId carried on RolledBack and post-checkpoint Rejected terminal events, (d) correlation IDs validated as 32-char lowercase hex, (e) RecoveryContext with pointOriginRunId on all recovery terminal events, (f) post-append retention enforcing caps after every append. Revert-detecting tests confirm each fix.
 - 2026-08-19: **Re-audit** at final head `5427118148` after fourth-review fix commit `5427118148`. Verified: (1) Export snapshot uses live JournalStore via DiagnosticsPort.snapshot() with mutual exclusion, (2) RESTART_RECONCILED resolves recovery point protection via pointId correlation, (3) copy fallback durability with syncFile on journalFile, (4) serializer fail-closed: ignoreUnknownKeys=false + schemaVersion==1 validation, (5) version identifiers reject dots to prevent package/component identity strings. All 5 fixes have revert-detecting tests.
 - 2026-08-19: **Re-audit** at final head `76c616b5c1` after fifth-review fix commit `76c616b5c1`. Verified: (1) RESTART_RECONCILED release requires resolved resultingLifecycle; RestartReconciler reads actual store state for accurate emission; unresolved reconciliation retains protection, (2) RunEvent schemaVersion fail-closed at construction, (3) RunVersions private constructor + source-owned APPROVED_VERSIONS allowlist. All 3 fixes have revert-detecting tests. CI run 32213700481 (final-status green), high-risk gate re-triggered by this docs-only commit.
+- 2026-08-19: **Re-audit** at final head `80cc117f4f` after sixth-review fix commit `dca7967e3e` (retain only unresolved recovery histories) and test commit `80cc117f4f` (RetentionIncompleteRunTest). Verified: (1) retention now partitions runs into protected/non-protected only — incomplete non-protected runs are age-prunable, count toward the 512 KiB budget, and are size-pruned before protected history, while unresolved APPLY_COMMITTED runs and in-flight recovery histories remain protected and the 10-run cap stays resolved-only per spec; all three reviewer-required regression tests are present with discriminating oracles, (2) stale audit-record statements (scope diff range, serializer codec, retention description, test counts) corrected. Independent local re-runs: spotlessCheck, 624 organizer unit tests (0 failures), assembleLawnWithQuickstepGithubDebug, both repo-contract validators — all pass. CI run 32219503523 (final-status green); high-risk gate re-triggered by this docs-only commit.
