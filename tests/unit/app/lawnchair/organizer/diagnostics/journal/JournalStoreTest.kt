@@ -241,17 +241,10 @@ class JournalStoreTest {
     }
 
     @Test
-    fun retentionRewriteSyncsJournalFileAfterCopyFallback() {
-        // Verify that the copy fallback path in rewriteJournal() calls
-        // syncFile on the journal file after copyFrom. On the happy path
-        // (renameTo succeeds), only syncDirectory is called on the journal.
-        // The copy fallback path adds syncFile(journalFile) after copyFrom.
-        //
-        // We can't force renameTo() to fail on JVM, so we verify the full
-        // sync sequence: syncFile(temp) then syncDirectory(journal).
-        // The copy fallback syncFile(journalFile) is tested by code review
-        // and the test structure ensures the SyncHook is injected and
-        // recording; the code path is exercised by retention triggering.
+    fun retentionRewriteCopyFallbackSyncsJournalFile() {
+        // Force renameTo() to fail so the copy fallback is exercised.
+        // The test verifies that syncFile is called on the journal file
+        // after the copy, maintaining the durability guarantee.
         val syncCalls = mutableListOf<String>()
         val fullHook = object : SyncHook {
             override fun syncFile(file: File) {
@@ -261,13 +254,15 @@ class JournalStoreTest {
                 syncCalls.add("syncDir:${file.name}")
             }
         }
+        // renameHook always returns false, forcing the copy-and-delete path
+        val renameHook: (File, File) -> Boolean = { _, _ -> false }
 
         val dir = tempDir.root
         val journalFile = File(dir, "organizer_diagnostics.journal")
         val seqFile = File(dir, "journal_seq")
         val seq = JournalSequence(seqFile)
         val fixedClock = { 1_000_000_000_000L }
-        val store = JournalStore(journalFile, seq, fixedClock, fullHook)
+        val store = JournalStore(journalFile, seq, fixedClock, fullHook, renameHook)
         store.open()
 
         // Append 11 resolved runs to trigger retention.
@@ -281,14 +276,20 @@ class JournalStoreTest {
         val tempSyncCalls = syncCalls.filter { it.startsWith("syncFile:") && it.endsWith(".tmp") }
         assertTrue("syncFile must be called on temp file during retention", tempSyncCalls.isNotEmpty())
 
-        // Verify syncDirectory is called on the journal file
-        val dirSyncCalls = syncCalls.filter { it.startsWith("syncDir:") && it.endsWith(".journal") }
-        assertTrue("syncDir must be called on journal file during retention", dirSyncCalls.isNotEmpty())
+        // Verify syncFile is called on the journal file (copy fallback path)
+        val journalSyncCalls = syncCalls.filter { it.startsWith("syncFile:") && it.endsWith(".journal") }
+        assertTrue(
+            "syncFile must be called on journal file in copy fallback path: $syncCalls",
+            journalSyncCalls.isNotEmpty(),
+        )
 
-        // Verify the temp file sync happens before the directory sync
+        // Verify temp sync happens before journal sync
         val tempIdx = syncCalls.indexOfFirst { it.startsWith("syncFile:") && it.endsWith(".tmp") }
-        val dirIdx = syncCalls.indexOfFirst { it.startsWith("syncDir:") && it.endsWith(".journal") }
-        assertTrue("syncFile (temp) must happen before syncDir (journal): $syncCalls", tempIdx < dirIdx)
+        val journalIdx = syncCalls.indexOfFirst { it.startsWith("syncFile:") && it.endsWith(".journal") }
+        assertTrue(
+            "syncFile (temp) must happen before syncFile (journal) in copy fallback: $syncCalls",
+            tempIdx < journalIdx,
+        )
 
         // Verify the store is within limits
         val events = store.readAllEvents()

@@ -66,6 +66,7 @@ class JournalStore(
     private val sequence: JournalSequence,
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val syncHook: SyncHook = SyncHook.PRODUCTION,
+    private val renameHook: (File, File) -> Boolean = { src, dst -> src.renameTo(dst) },
 ) {
     private var opened: Boolean = false
     private var cachedEvents: List<RunEvent> = emptyList()
@@ -253,7 +254,7 @@ class JournalStore(
             // durably persisted. This maintains the durability guarantee that
             // the just-synced append event originally had.
             syncHook.syncFile(tempFile)
-            val renamed = tempFile.renameTo(journalFile)
+            val renamed = renameHook(tempFile, journalFile)
             if (!renamed) {
                 // renameTo failed (e.g. cross-filesystem); try copy-and-delete
                 try {

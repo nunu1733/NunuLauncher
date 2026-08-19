@@ -62,6 +62,11 @@ class RestartReconcilerDiagnosticsTest {
             RecoveryLifecycle.READY,
             event.reconciliation?.resultingLifecycle,
         )
+        assertEquals(
+            "RESTART_RECONCILED must carry the record's pointId for retention correlation",
+            pointId.value,
+            event.pointId,
+        )
     }
 
     @Test
@@ -80,6 +85,11 @@ class RestartReconcilerDiagnosticsTest {
             "Resulting lifecycle must be the advanced state (VERIFIED), not an earlier pre-reconciliation state",
             RecoveryLifecycle.VERIFIED,
             event.reconciliation?.resultingLifecycle,
+        )
+        assertEquals(
+            "RESTART_RECONCILED must carry the record's pointId for retention correlation",
+            pointId.value,
+            event.pointId,
         )
     }
 
@@ -104,6 +114,11 @@ class RestartReconcilerDiagnosticsTest {
             event.reconciliation?.resultingLifecycle,
         )
         assertTrue("Record must actually be pruned", store.readRecord(pointId) == null)
+        assertEquals(
+            "RESTART_RECONCILED must carry the record's pointId for retention correlation",
+            pointId.value,
+            event.pointId,
+        )
     }
 
     private fun seedReady(): CapturedSnapshot {

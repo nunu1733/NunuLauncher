@@ -1,5 +1,6 @@
 package app.lawnchair.organizer.diagnostics.export
 
+import app.lawnchair.organizer.diagnostics.DiagnosticsPort
 import app.lawnchair.organizer.diagnostics.journal.RunEventSerializer
 import app.lawnchair.organizer.diagnostics.model.ApplyStage
 import app.lawnchair.organizer.diagnostics.model.ApplySummary
@@ -437,5 +438,31 @@ class ExportWriterTest {
             "Header must have journalSchemaVersion=1",
             headerLine.contains("\"journalSchemaVersion\":1"),
         )
+    }
+
+    // --- readJournalEvents delegates to DiagnosticsPort.snapshot (P1-1) ---
+
+    @Test
+    fun readJournalEventsDelegatesToDiagnosticsPortSnapshot() {
+        val expectedEvents = listOf(
+            RunEvent(journalSequence = 1L, phase = PhaseCode.CAPTURED),
+            RunEvent(journalSequence = 2L, phase = PhaseCode.PLANNED),
+        )
+        val port = object : DiagnosticsPort {
+            override fun emit(event: RunEvent) = Unit
+            override fun snapshot(): List<RunEvent> = expectedEvents
+        }
+        val result = ExportWriter.readJournalEvents(port)
+        assertEquals("readJournalEvents must return the port's snapshot", expectedEvents, result)
+    }
+
+    @Test
+    fun readJournalEventsReturnsEmptyOnSnapshotException() {
+        val port = object : DiagnosticsPort {
+            override fun emit(event: RunEvent) = Unit
+            override fun snapshot(): List<RunEvent> = throw RuntimeException("simulated failure")
+        }
+        val result = ExportWriter.readJournalEvents(port)
+        assertTrue("readJournalEvents must return empty list on snapshot failure", result.isEmpty())
     }
 }
