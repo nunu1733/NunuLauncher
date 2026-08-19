@@ -5,8 +5,8 @@
 
 - Auditor: Implementation-session-independent audit session (solo-maintenance independent re-execution)
 - PR: https://github.com/nunu1733/NunuLauncher/pull/82
-- Head SHA: 5427118148b3e559c557c75e5e3e06e18857e3c7
-- CI run: (local verification; CI push pending)
+- Head SHA: 76c616b5c19e9a9c83c7cd76fc266113f975ea59
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32213700481
 - Criteria: specs/67-organizer-diagnostics/spec.md — FR-015, NFR-008, NFR-011 (acceptance criteria AC-67-01 through AC-67-14 verified individually below)
 
 ## Scope
@@ -250,8 +250,19 @@ The fourth-review fixes were addressed by a single code commit (`5427118148`) af
 
 (5) **Version identifiers reject dots**: `VERSION_ID_REGEX` changed from `[A-Za-z0-9._-]` to `[A-Za-z0-9_-]` (dots excluded). `RunVersions` KDoc updated. Updated tests: `runVersionsAllowsValidIdentifiers` uses dot-free identifiers, `runVersionsRejectsOddCharsetVersion` includes dot rejection (`v1.0`, `com.example.private`). PASS.
 
+## Spot-verification of fifth-review fixes (items 1-3)
+
+The fifth-review fixes were addressed by a single code commit (`76c616b5c1`) after the previous re-audit head `050fedd3c2`. Each item is verified below against the actual code on the final head.
+
+(1) **P1-1 RESTART_RECONCILED release requires resolved resultingLifecycle; RestartReconciler accurate store-state emission**: `RetentionPolicy` now has `RESOLVED_RESULTING_LIFECYCLES` set (CREATING, READY, VERIFIED, RESTORED, CORRUPT, EXPIRED, INCOMPATIBLE — excludes the §8-protected APPLYING, COMMITTED_UNVERIFIED, RESTORING). `protectedRecoverySequences()` filters RESTART_RECONCILED events by `reconciliation?.resultingLifecycle in RESOLVED_RESULTING_LIFECYCLES`. `RunHistory` uses `hasResolvingReconciledEvent` (not bare `hasReconciledEvent`). `isRunProtected` uses the same resultingLifecycle check. `RestartReconciler.resultingLifecycleFor()` reads `store.readRecord(record.pointId)?.lifecycle` first, falling back to derivation only when the record is gone (SilentPrune). Format-mismatch and lease-failure `Unresolved` now report the unchanged in-flight state (protection retained); checksum-invalid `Unresolved` reports CORRUPT only because the store was actually advanced. New regression tests: `recoveryRequestedWithUnresolvedRestartReconciledRemainsProtected` (same pointId, unresolved resultingLifecycle → protection remains), `isRunProtectedTrueForUnresolvedReconciled` (unresolved reconciled run remains protected), `unreconciledRestartReconciledWithoutContextDoesNotResolve` (no reconciliation context → non-resolving). Existing tests updated with explicit reconciliation contexts carrying resolved resultingLifecycles. `RestartReconcilerDiagnosticsTest` now includes `unresolvedReconciledEmitsActualStoreStateNotCorrupt` (lease failure → COMMITTED_UNVERIFIED, not CORRUPT). PASS.
+
+(2) **P1-2 schemaVersion fail-closed at construction**: `RunEvent` init block now requires `schemaVersion == SCHEMA_VERSION` (companion constant = 1). `RunEvent(schemaVersion=2, ...)` throws `IllegalArgumentException` at construction — cannot be serialized or appended to journal. Existing `schemaVersionIsAlways1` test still passes. New tests: `schemaVersion2RejectedAtConstruction` (RunEventSerializationTest), `runEventRejectsSchemaVersion2` (ModelValidationTest). PASS.
+
+(3) **P1-3 RunVersions closed boundary with allowlist**: `RunVersions` constructor is now private; construction is via `RunVersions.create()` factory. `APPROVED_VERSIONS` source-owned allowlist gates non-empty version identifiers. Non-approved strings (MainActivity, secretToken, profileSerial, privateUserId) are rejected at construction. `@ConsistentCopyVisibility` annotation suppresses the private-constructor copy-visibility warning. All existing tests updated to use `RunVersions.create()`. New tests: `runVersionsAllowsApprovedIdentifiers`, `runVersionsRejectsNonApprovedIdentifier`. PASS.
+
 ## Change history
 
 - 2026-08-18: Initial audit record created for head `8c6b92c48f` (CI run 32145008969).
 - 2026-08-18: **Re-audit** after code commits `25efa335e3` (address PR #82 re-review findings), `dc9ec3e87b` (complete PR #82 re-review fixes with tests), `6717caebfe` (cover re-review fix behaviors with revert-detecting tests), `7f04de31da` (add applying-seeded silent-prune reconciliation variant). Updated head to `7f04de31da` (CI run 32151985849). Re-review fixes verified: (a) silent restart reconciliation emits RESTART_RECONCILED with post-reconciliation resultingLifecycle and SilentPrune/SilentAdvance explicit outcomes, (b) terminalApplyStage/terminalPointId per-invocation reset with no cross-run leakage, markApplying failure -> A4, (c) pointId carried on RolledBack and post-checkpoint Rejected terminal events, (d) correlation IDs validated as 32-char lowercase hex, (e) RecoveryContext with pointOriginRunId on all recovery terminal events, (f) post-append retention enforcing caps after every append. Revert-detecting tests confirm each fix.
 - 2026-08-19: **Re-audit** at final head `5427118148` after fourth-review fix commit `5427118148`. Verified: (1) Export snapshot uses live JournalStore via DiagnosticsPort.snapshot() with mutual exclusion, (2) RESTART_RECONCILED resolves recovery point protection via pointId correlation, (3) copy fallback durability with syncFile on journalFile, (4) serializer fail-closed: ignoreUnknownKeys=false + schemaVersion==1 validation, (5) version identifiers reject dots to prevent package/component identity strings. All 5 fixes have revert-detecting tests.
+- 2026-08-19: **Re-audit** at final head `76c616b5c1` after fifth-review fix commit `76c616b5c1`. Verified: (1) RESTART_RECONCILED release requires resolved resultingLifecycle; RestartReconciler reads actual store state for accurate emission; unresolved reconciliation retains protection, (2) RunEvent schemaVersion fail-closed at construction, (3) RunVersions private constructor + source-owned APPROVED_VERSIONS allowlist. All 3 fixes have revert-detecting tests. CI run 32213700481 (final-status green), high-risk gate re-triggered by this docs-only commit.
