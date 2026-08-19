@@ -3,7 +3,7 @@
 > Issue: [#83](https://github.com/nunu1733/NunuLauncher/issues/83)
 > Spec: [spec.md](./spec.md)
 > Decision: [ADR-0007](../../docs/adr/0007-authoritative-organization-policy-sources.md)
-> Status: **accepted — production implementation authorized by Issue #83 final review on 2026-08-19**
+> Status: **implemented — all Issue #83 acceptance evidence and the independent high-risk audit accepted on 2026-08-19**
 > Baseline: `bc60ee52e28bb3cb92a649c459e94b009a0ed25b` (`main`, 2026-08-19)
 
 ## Current evidence
@@ -12,7 +12,7 @@
 
 ADR-0007 is merged on `main` through PR #87 and resolves the policy-source Decision. For manual `FullOrganization` v1, Rule Management owns a single immutable built-in `OrganizerPolicyBundle` under `app.lawnchair.organizer.rules`; `ClassificationSignals` additionally materializes a profile-scoped Rule Management override snapshot and stable platform evidence. The #83 integration boundary is the adapter and is not a second policy owner.[3] [4]
 
-The current source tree contains the planning and application modules but no production `organizer/rules` or `organizer/integration` implementation. Existing `Flowerpot` is explicitly excluded as a v1 source. Therefore the implementation must add the smallest typed Rule Management and integration seams without changing planner public types, UI code, Launcher DB writes, recovery logic, or Flowerpot.[3] [5]
+The implemented source tree contains typed production `organizer/rules` and `organizer/integration` seams while preserving the planning and application boundaries. Existing `Flowerpot` remains explicitly excluded as a v1 source. The completed implementation adds no planner public-type, UI, Launcher DB write, recovery-logic, or Flowerpot change.[3] [5]
 
 | Confirmed current seam | Implementation consequence |
 |---|---|
@@ -36,7 +36,7 @@ The plan deliberately separates the **one policy authority** from the **one comp
 | `organizer/planning` | No production-code change intended. | Existing `OrganizationPlanner.plan(OrganizationInput)` | Planner remains free of Android/platform/storage/provenance types. |
 | `organizer/application` | No write/recovery behavior change intended. | Existing canonical capture port | Snapshot/revision/lock/profile authority remains application-owned. |
 
-The concrete source names may be adjusted to follow local Kotlin naming conventions during implementation, but the ownership and dependency direction above are fixed. No UI or coordinator may construct rules, taxonomy, signals, targets, fallback values, or a policy identity directly.[3] [4]
+The implemented source names follow the local Kotlin conventions while preserving the fixed ownership and dependency direction above. No UI or coordinator constructs rules, taxonomy, signals, targets, fallback values, or a policy identity directly.[3] [4]
 
 ### Data flow
 
@@ -108,10 +108,10 @@ sequenceDiagram
 | `lawnchair/src/app/lawnchair/organizer/integration/FullTargetSetMaterializer.kt` | Add the fixed v1 precedence table, explicit no additions, exact partition and canonical membership digest. | Enforces conservation and makes accepted target policy executable at one seam. |
 | `tests/unit/app/lawnchair/organizer/rules/` | Add bundle, taxonomy, identity/digest, override snapshot, unknown/newer-schema fail-closed, redaction, and contract fixtures. | Tests Rule Management through the same typed ports used in production. |
 | `tests/unit/app/lawnchair/organizer/integration/` | Add composer, stability/retry, target partition, profile/lock/availability, no-write, deterministic-equivalence, and planner-seam tests. | Verifies all #83 behavior before any application or UI integration. |
-| `tests/organizer-instrumentation/app/lawnchair/organizer/integration/` | Add targeted real-adapter capture/evidence tests, including work/quiet/private profiles and unavailable targets. | Confirms production mapping without leaking Android types to planning. |
+| `tests/organizer-instrumentation/app/lawnchair/organizer/integration/` | Added targeted real-adapter capture/evidence tests for quiet/private/disabled/unavailable states and same-package valid-versus-unresolvable profile isolation. | Confirms production mapping without leaking Android types to planning. |
 | `specs/83-production-organization-input-sources/{spec.md,plan.md}` | Update status/history/traceability and record executed evidence after implementation. | Keeps Issue/spec/plan as the production work’s source of truth. |
 
-No change is planned for `OrganizationInput`、`OrganizationPlanner`、`DeterministicOrganizationPlanner`、`LauncherLayoutAdapter` write paths、recovery storage、Flowerpot、#52 UI, or the Launcher DB schema unless an implementation-discovered contradiction requires a new documented decision.
+No change was made to `OrganizationInput`、`OrganizationPlanner`、`DeterministicOrganizationPlanner`、`LauncherLayoutAdapter` write paths、recovery storage、Flowerpot、#52 UI, or the Launcher DB schema. A future contradiction requires a new documented decision.
 
 ## Migration and recovery
 
@@ -138,23 +138,23 @@ The implementation is read-only with respect to layout and recovery data. If the
 
 ## Documentation updates
 
-- [x] `spec.md` status/history updated to reflect ADR-0007 acceptance.
-- [ ] `spec.md` updated to `implemented` only after all #83 acceptance criteria and evidence are complete.
-- [x] `CONTEXT.md` unchanged; the accepted design uses existing domain language.
-- [ ] `DESIGN.md` updated only if production interface structure differs materially from its accepted module boundaries.
-- [x] ADR-0007 is the accepted high-cost decision; no new ADR is planned by this implementation.
-- [ ] `AGENTS.md` unchanged unless a new verified mandatory command is discovered.
-- [ ] `plan.md` updated with actual test commands/results and remaining risks in the implementation PR.
+- [x] `spec.md` status/history updated to reflect ADR-0007 acceptance and completed implementation.
+- [x] `spec.md` updated to `implemented` after all #83 acceptance criteria and evidence completed.
+- [x] `CONTEXT.md` unchanged; the implemented design uses existing domain language.
+- [x] `DESIGN.md` unchanged; production interfaces match the accepted module boundaries.
+- [x] ADR-0007 is the accepted high-cost decision; no new ADR was required.
+- [x] `AGENTS.md` unchanged; the required instrumentation gate is implemented in CI without adding a project workflow rule.
+- [x] `plan.md` records actual test commands/results and accepted independent-audit evidence.
 
 ## Execution checklist
 
 - [x] Current behavior and accepted policy Decision reviewed against `main` commit `bc60ee52e28bb3cb92a649c459e94b009a0ed25b`.
 - [x] This canonical plan is reviewed and accepted; final review permits production implementation.
-- [ ] Tests fail for the missing Rule Management/composition behavior.
+- [x] Focused tests cover the former missing Rule Management/composition behavior.
 - [x] Minimal production implementation completed through the existing planner/application seams.
 - [x] Override schema-v1/readability, unknown/newer-schema fail-closed, and all non-write failure paths verified.
 - [x] Full relevant verification completed.
-- [x] PR evidence, CI result, and remaining independent-audit risk recorded.
+- [x] PR evidence, CI result, and accepted independent-audit evidence recorded.
 
 ## Verification record
 
@@ -164,7 +164,7 @@ The focused Android instrumentation class `ProductionOrganizationInputInstrument
 
 The CI job `organizer-instrumentation-tests` runs this class on an API 35 Google APIs x86_64 emulator and is required by `final-status`. It passed at implementation head `29ee8a751f06a03a100e4b7dc5174dce55d7687e` in [CI run 32255722317](https://github.com/nunu1733/NunuLauncher/actions/runs/32255722317). The same run passed `check-style`, `organizer-unit-tests`, `build-debug-apk`, `validate-repo-contract`, and `final-status`.
 
-**Remaining merge condition:** the high-risk evidence gate remains intentionally unresolved until a distinct reviewer/audit session publishes an accepted follow-up audit for the latest production/test head. This implementation session does not self-certify that audit.
+**Completion evidence:** a distinct implementation-session-independent audit accepted the latest production/test head and recorded the passing merge-gate CI run in [`docs/assessment/pr-88-production-organization-input-sources.md`](../../docs/assessment/pr-88-production-organization-input-sources.md). The high-risk evidence gate is now satisfied.
 
 | Check | Result | Evidence / limitation |
 |---|---|---|
@@ -173,6 +173,7 @@ The CI job `organizer-instrumentation-tests` runs this class on an API 35 Google
 | Focused JVM unit tests | **Passed** | `./gradlew testLawnWithQuickstepGithubDebugUnitTest` — BUILD SUCCESSFUL on an Android-SDK-equipped checkout (commit `069fa7f933` plus formatting fixes), resolving the earlier sandbox SDK limitation. |
 | Formatting | **Passed** | `./gradlew spotlessApply` then `./gradlew spotlessCheck` — BUILD SUCCESSFUL. The apply pass fixed import ordering in the four new #83 source/test files and renamed `FullOrganizationTargetPolicyVersion` to `FULL_ORGANIZATION_TARGET_POLICY_VERSION` (`FullTargetSetMaterializer.kt`) to satisfy `ktlint(standard:property-naming)`; unit tests were rerun and still pass after these changes. |
 | Debug build | **Passed** | `./gradlew assembleLawnWithQuickstepGithubDebug` — BUILD SUCCESSFUL on the same checkout. |
+| Independent high-risk audit | **Accepted** | [`pr-88-production-organization-input-sources.md`](../../docs/assessment/pr-88-production-organization-input-sources.md) audited head `34e09cfb99bae19d6d229d4b5f5c88244636694c` with merge-gate CI run 32256520745. |
 
 ## References
 

@@ -1,6 +1,6 @@
 ---
 issue: "#83"
-status: accepted
+status: implemented
 requirements:
   - FR-002
   - FR-003
@@ -18,7 +18,7 @@ updated: 2026-08-19
 
 # 手動全体整理向けProduction OrganizationInput供給境界
 
-> **Stage A判定:** `accepted`。Decision Issue [#86](https://github.com/nunu1733/NunuLauncher/issues/86) の受諾とADR-0007により、4つのplanner policy inputについて単一production owner、immutable identity、cross-source consistency、failure/migration semanticsが確定した。本仕様はその受諾済みDecisionをIssue #83の実装境界・観測可能な振る舞い・受入条件へ適用する。**production implementationは、同じディレクトリの正本`plan.md`がレビュー・受諾された後にのみ開始する。** [1] [2] [13]
+> **実装完了判定:** Decision Issue [#86](https://github.com/nunu1733/NunuLauncher/issues/86) の受諾、ADR-0007、受諾済み正本`plan.md`に基づき、4つのplanner policy inputを合成するproduction seamを実装した。focused JVM/instrumentation evidence、CI `final-status`、および独立high-risk auditの受諾により、本仕様の受入条件は完了している。 [1] [2] [13] [14]
 
 ## Problem
 
@@ -42,7 +42,7 @@ Issue #52の手動全体整理は、既存の純粋な`OrganizationPlanner`へ�
 | Policy composition | rule、taxonomy、classification signal、target membershipをowner portから取得し、互換性を検証する順序 | 各owner/sourceがDecisionで受諾されていること |
 | Failure handoff | #52がUI-local fallbackなしで扱えるtyped non-write result | user-facing文言と診断情報を分離すること |
 | Context safety | profile、quiet/private/unavailable、lock、device、page、revisionをcapture内で保存すること | current layoutの正本はLauncher DBのままとすること |
-| Verification design | composition unit/contract/integrationのtest oracleと高リスク証拠 | spec受諾後にcanonical `plan.md`で実行順を確定すること |
+| Verification design | composition unit/contract/integrationのtest oracleと高リスク証拠 | focused unit/instrumentation、CI、独立auditで受入条件を実証すること |
 
 ## Non-goals
 
@@ -73,7 +73,7 @@ Issue #52の手動全体整理は、既存の純粋な`OrganizationPlanner`へ�
 
 ## Accepted composition contract
 
-`organizer/integration`内に次のinternal seamを置く。Rule Managementの`OrganizerPolicyBundle`と`CategoryOverrideStore`はpolicy authorityであり、integrationはfresh canonical captureとplatform evidenceを読み取り、ADR-0007の安定性プロトコルに従ってplanner inputへmaterializeするadapterである。新規production APIの実装は正本`plan.md`受諾後に開始する。[13]
+`organizer/integration`内に次のinternal seamを置く。Rule Managementの`OrganizerPolicyBundle`と`CategoryOverrideStore`はpolicy authorityであり、integrationはfresh canonical captureとplatform evidenceを読み取り、ADR-0007の安定性プロトコルに従ってplanner inputへmaterializeするadapterである。このproduction seamは受諾済み正本`plan.md`に従って実装・検証済みである。[13] [14]
 
 ```kotlin
 internal interface OrganizationInputComposer {
@@ -253,7 +253,7 @@ Composerはread-onlyであり、Planner inputまたはpolicy dataを永続化し
 
 ## Permissions, privacy, and security
 
-**None（Stage A）。** 本仕様はpermission、network、telemetry、外部分類、usage data collectionを追加しない。production実装もaccepted sourceがlocal-onlyであることを前提とし、raw package name、profile serial、row IDをuser-facing messageへ露出しない。診断は既存のprivacy-safe diagnostics契約に従う。[7] [9]
+**None。** 本仕様はpermission、network、telemetry、外部分類、usage data collectionを追加しない。production実装はaccepted sourceがlocal-onlyであることを前提とし、raw package name、profile serial、row IDをuser-facing messageへ露出しない。診断は既存のprivacy-safe diagnostics契約に従う。[7] [9]
 
 ## Accessibility and localization
 
@@ -261,14 +261,14 @@ Composer自体はUIを持たない。#52は`NotReady`を利用して、ユーザ
 
 ## Acceptance criteria
 
-- [ ] **AC-1 — authoritative ownership and identity:** accepted spec/planが`RuleSemantics`、`TaxonomyContract`、`ClassificationSignals`、full-run `TargetSet`の各々について、一つのproduction owner/source、immutable identity（source/version or generation/content digest）、compatibility rule、read failureを明記する。
-- [ ] **AC-2 — consistent policy cut:** accepted owner contractが4 policy inputを読むatomic policy bundle、shared generation/fence token、又はread-after-validate-retryを定義する。composerはmixed snapshotを`Ready`にできない。
-- [ ] **AC-3 — one canonical capture:** accepted implementationは既存application capture seamからfresh inputを構成し、UI DB access、second planner、second snapshot sourceを持たない。
-- [ ] **AC-4 — complete conservation input:** full-run target membershipは全captured itemを一度だけpartitionし、out-of-scope/quiet/private/unavailable/locked itemを無説明に脱落させない。
-- [ ] **AC-5 — fail closed:** mandatory policy/capture sourceのmissing、unreadable、unsupported、incompatible、contradictory、policy read中のconsistency mismatch、unknown lock、unrepresentable itemはtyped non-write resultとなり、planner/write/recovery pointを開始しない。
-- [ ] **AC-6 — profile and lock safety:** profile identity、availability、device context、lockをcanonical captureから保持し、unknown lockやunavailable profileをimplicit defaultに変換しない。
-- [ ] **AC-7 — deterministic composition:** value-equivalent captureと**同一immutable policy bundle identity**はvalue-equivalent `OrganizationInput`又は同じtyped rejectionを返す。同一version/generationが異なるcontentを指してはならない。
-- [ ] **AC-8 — evidence:** focused unit/contract/integration tests、repository-contract、format、relevant organizer unit tests、debug buildの結果を記録する。layout-dataリスクのPRではindependent auditとsuccessful CI merge gateを揃える。[2] [12]
+- [x] **AC-1 — authoritative ownership and identity:** accepted spec/planが`RuleSemantics`、`TaxonomyContract`、`ClassificationSignals`、full-run `TargetSet`の各々について、一つのproduction owner/source、immutable identity（source/version or generation/content digest）、compatibility rule、read failureを明記する。
+- [x] **AC-2 — consistent policy cut:** accepted owner contractが4 policy inputを読むatomic policy bundle、shared generation/fence token、又はread-after-validate-retryを定義する。composerはmixed snapshotを`Ready`にできない。
+- [x] **AC-3 — one canonical capture:** accepted implementationは既存application capture seamからfresh inputを構成し、UI DB access、second planner、second snapshot sourceを持たない。
+- [x] **AC-4 — complete conservation input:** full-run target membershipは全captured itemを一度だけpartitionし、out-of-scope/quiet/private/unavailable/locked itemを無説明に脱落させない。
+- [x] **AC-5 — fail closed:** mandatory policy/capture sourceのmissing、unreadable、unsupported、incompatible、contradictory、policy read中のconsistency mismatch、unknown lock、unrepresentable itemはtyped non-write resultとなり、planner/write/recovery pointを開始しない。
+- [x] **AC-6 — profile and lock safety:** profile identity、availability、device context、lockをcanonical captureから保持し、unknown lockやunavailable profileをimplicit defaultに変換しない。
+- [x] **AC-7 — deterministic composition:** value-equivalent captureと**同一immutable policy bundle identity**はvalue-equivalent `OrganizationInput`又は同じtyped rejectionを返す。同一version/generationが異なるcontentを指してはならない。
+- [x] **AC-8 — evidence:** focused unit/contract/integration tests、repository-contract、format、relevant organizer unit tests、debug buildの結果を記録する。layout-dataリスクのPRではindependent auditとsuccessful CI merge gateを揃える。[2] [12]
 
 ## Test oracle
 
@@ -277,30 +277,31 @@ Composer自体はUIを持たない。#52は`NotReady`を利用して、ユーザ
 | AC-1 | 4 ownerのcontract test。各source identity（source/version or generation/content digest）をprovenance/diagnosticから追跡できること、およびaccepted Decision/ADR/specリンク |
 | AC-2 | atomic bundle/shared fence又はread-after-validate-retryのcontract test。read中のgeneration/digest変更ではretry又は`InconsistentPolicyRead`となり、mixed inputを返さないこと |
 | AC-3 | production adapter instrumentationで`captureCurrent`経由のfresh captureを確認。UI/SQLite型がcomposer public surfaceにない静的shape test |
-| AC-4 | target partition fixture: normal、Dock、widget、folder、app pair、legacy、lock、quiet/private/unavailable、same package across profiles |
+| AC-4 | target partition fixture: normal、Dock、widget、folder、app pair、legacy、lock、quiet/private/unavailable。同一packageのprofile evidenceは、valid current profileとunresolvable profile serialを組み合わせ、profile identityを越えてfallbackしないことを検証する。 |
 | AC-5 | source failure/identity mismatch matrix unit test。各`NotReady`でplanner/writer invocation countが0であること |
 | AC-6 | canonical capture→planner input mapping testとreal DB instrumentation。unknown lock/read failureはno-write |
 | AC-7 | reordered equal fixtureと**同一immutable bundle identity**のrepeat composeがvalue-equalであること。同一version/generationでcontentが変化するfixtureはreject/retryとなること |
 | AC-8 | `spotlessCheck`、organizer JVM tests、debug build、repository-contract、CI `final-status`、independent audit record |
 
-## Decision resolution and implementation gate
+## Decision resolution and completed implementation
 
 Decision Issue [#86](https://github.com/nunu1733/NunuLauncher/issues/86) はclosedであり、ADR-0007が4 inputのowner、immutable identity、consistent policy cut、failure/migration/rollback、profile/target membershipを受諾済みとしている。したがって、以前のD-83-01からD-83-05はすべて解消済みである。[13]
 
-| Former blocker | Accepted resolution | Implementation guard |
+| Former blocker | Accepted resolution | Implemented verification |
 |---|---|---|
 | Rule/taxonomy owner | Rule Managementのimmutable built-in `OrganizerPolicyBundle`が`v1` projectionsを所有 | bundle digest、supported binding、category setを検証する |
 | Signal source | Rule Management override snapshot + integration-owned platform evidence adapter。S3/S4は明示的empty | missing sourceをempty observationへ変換しない |
 | Target membership | `full-target-v1`のexactly-once partition、explicit empty additions | unknown/invalid captureはpreserveではなくrejectする |
 | Cross-source cut | immutable bundle + A/E1/B/E2 dynamic read + maximum one retry | 二回目も不安定なら`InconsistentPolicyRead` |
 
-**Implementation gate:** 本仕様は`accepted`である。production implementationは正本`plan.md`のレビュー・受諾までは開始しない。実装中にADR-0007と矛盾するplatform/source limitationを発見した場合は、codeで都合よく解釈せず、Issue #83をblockしてfollow-up Decisionを作成する。[2] [13]
+**Completion state:** 本仕様は`implemented`である。production implementationは受諾済み正本`plan.md`に従って完了し、focused unit/instrumentation evidence、CI `final-status`、独立high-risk auditにより検証済みである。以後ADR-0007と矛盾するplatform/source limitationを発見した場合は、codeで都合よく解釈せず、#52以降の利用をblockしてfollow-up Decisionを作成する。[2] [13] [14]
 
 ## Change history
 
 - 2026-08-19: Issue #83のStage Aレビュー用`proposed`仕様を作成。既存application captureは再利用可能だが、policy source ownership/versioningが未受諾であるためproduction implementationをblockした。
 - 2026-08-19: レビュー指摘を反映。4 policy inputのimmutable identity/content digest、cross-source consistency cut、read中更新時のretry/reject、deterministic test oracleを追加し、owning Decision Issue #86を起票した。
 - 2026-08-19: Decision #86のclosedおよびADR-0007のacceptedを反映し、statusを`accepted`へ更新。owner/source、v1 target partition、A/E1/B/E2 retry protocol、non-write failureを確定した。正本`plan.md`はレビュー待ちである。
+- 2026-08-19: production Rule Management/integration seam、focused JVM tests、production instrumentation、required CI gateを実装し、独立high-risk auditを受諾した。statusを`implemented`へ更新し、AC-1〜AC-8を完了と記録した。[14]
 
 ## References
 
@@ -317,3 +318,4 @@ Decision Issue [#86](https://github.com/nunu1733/NunuLauncher/issues/86) はclos
 [11]: https://github.com/nunu1733/NunuLauncher/blob/main/docs/product/item-preservation-policy.md "Item preservation policy — Proposed research"
 [12]: https://github.com/nunu1733/NunuLauncher/blob/main/docs/engineering/quality-strategy.md "Quality strategy — High-risk independent evidence"
 [13]: https://github.com/nunu1733/NunuLauncher/issues/86 "Issue #86 — Authoritative versioned policy sources decision"
+[14]: https://github.com/nunu1733/NunuLauncher/blob/issue-83-stage-a-input-sources/docs/assessment/pr-88-production-organization-input-sources.md "PR #88 — Accepted independent high-risk audit"
