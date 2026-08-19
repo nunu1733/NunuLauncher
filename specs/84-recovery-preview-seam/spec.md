@@ -24,7 +24,7 @@ updated: 2026-08-19
 
 Layout Application module は、**一つの read-only inspection seam** である `inspectRecovery(pointId: RecoveryPointId)` を提供する。この operation 自身が non-blocking writer serialization lease を取得して current revision を内部 capture し、型付けされた restorable / non-restorable / unavailable / busy / concurrent の結果を返す。成功結果は confirmation capability を含むが、layout revision、recovery record、manifest、DB row、payload、item identity を UI-facing code へ公開しない。
 
-confirmation capability は application 内部でのみ消費され、その場で既存の `RecoveryRequest(pointId, expectedCurrentRevision)` を生成して、**変更しない** `recover(RecoveryRequest)` へ delegation する。変換後の request は coordinator/UI へ返さない。したがって preview は recovery を認可せず、確認時の `recover` は従来どおり current revision、retention、完全な precondition を再検証する。
+confirmation capability は application 内部でのみ消費され、その場で既存の `RecoveryRequest(pointId, expectedCurrentRevision)` を生成して、**変更しない LayoutApplicationModule の application-level recovery behavior** へ delegation する。変換後の request は coordinator/UI へ返さない。この behavior は public `recover(RecoveryRequest)` と同じ readiness/reconciliation gate、`RECOVERY_REQUESTED`、`RecoveryProtocol.recover`、terminal recovery diagnostics を所有する。したがって preview は recovery を認可せず、確認時の recovery は従来どおり current revision、retention、完全な precondition を再検証する。
 
 > **Recovery preview** とは、明示的 recovery の前に recovery point と、operation 自身が writer serialization 下で取得した current context を read-only に照合し、復旧を試行できる条件と安全なユーザー向け要約だけを返す application operation である。これは backup、undo、または recovery の実行ではない。
 
@@ -64,7 +64,7 @@ RecoveryPreviewConfirmation
 
 `inspectRecovery` does **not** accept a caller-issued context. `LayoutWriterPort.captureCurrent()` requires a freshly acquired lease, and no accepted preview-capture seam exists outside the application module. The operation therefore acquires the existing organizer serialization lease non-blockingly, performs the authoritative capture itself, and returns `WriterBusy` if it cannot do so.
 
-A `Restorable` result carries `RecoveryPreviewConfirmation`. The capability may be retained by the UI only as an opaque value until explicit confirmation; it must not be serialized, logged, reconstructed, or inspected. The internal application confirmation adapter consumes it immediately, creates the existing `RecoveryRequest`, invokes the unchanged `recover(RecoveryRequest)`, and returns only `RecoveryResult` to the outside caller. The `RecoveryRequest` and its raw expected revision never leave the application boundary through this preview path.
+A `Restorable` result carries `RecoveryPreviewConfirmation`. The capability may be retained by the UI only as an opaque value until explicit confirmation; it must not be serialized, logged, reconstructed, or inspected. `LayoutApplicationModule` consumes it internally, creates the existing `RecoveryRequest` in local scope, and invokes the same private application-level recovery behavior used by public `recover(RecoveryRequest)`. That behavior reapplies readiness/reconciliation gating, emits `RECOVERY_REQUESTED`, runs `RecoveryProtocol.recover`, emits the matching terminal recovery diagnostic, and returns only `RecoveryResult` to the outside caller. The `RecoveryRequest` and its raw expected revision never leave the application boundary through this preview path.
 
 ### Result surface
 
@@ -180,9 +180,9 @@ Given a prior `Restorable` result and its opaque confirmation capability,
 
 When the user explicitly confirms after the 24-hour retention boundary or after the layout/context changes,
 
-Then the internal adapter consumes the capability and delegates directly to unchanged `recover(RecoveryRequest)` without exposing that request,
+Then `LayoutApplicationModule` consumes the capability and uses the same private application-level recovery behavior as public `recover(RecoveryRequest)`, without exposing the locally constructed request,
 
-And `RecoveryProtocol` re-evaluates retention and current revision/preconditions, returning `NotRestorable(EXPIRED)` or `NotRestorable(STALE_REVISION)` without lifecycle or layout mutation as applicable.
+And that behavior re-applies readiness/reconciliation and existing requested/terminal recovery diagnostics before `RecoveryProtocol` re-evaluates retention and current revision/preconditions, returning `NotRestorable(EXPIRED)` or `NotRestorable(STALE_REVISION)` without lifecycle or layout mutation as applicable.
 
 ## Data and state
 
@@ -207,7 +207,7 @@ None. This feature introduces no permission, network transport, telemetry, exter
 | RP-AC-03 | Missing, expired live record, expired tombstone, corrupt, incompatible, already-restored, unresolved, store-unavailable, writer-busy, concurrent, and lock-unavailable cases return their specified non-write typed result. |
 | RP-AC-04 | Inspection performs zero recovery-store/lifecycle writes, retention/prune operations, layout writes, model reloads, recovery authorizations, and diagnostic emissions on every result path. |
 | RP-AC-05 | Public/UI-facing values cannot access `RecoveryStorePort`, `StoredRecord`, manifest, DB row, payload, digest, raw `RevisionId`, item/profile identity, or a mutable writer/lease capability; confirmation delegation never returns `RecoveryRequest`. |
-| RP-AC-06 | A preview confirmation remains conditional: internal delegation to existing `recover(RecoveryRequest)` re-evaluates retention and rechecks current revision/exact preconditions after explicit confirmation, rejecting expired or stale state without mutation. |
+| RP-AC-06 | A preview confirmation remains conditional: the same private application-level recovery behavior used by public `recover(RecoveryRequest)` re-applies readiness/reconciliation and existing recovery diagnostics, then re-evaluates retention and rechecks current revision/exact preconditions after explicit confirmation, rejecting expired or stale state without mutation. |
 | RP-AC-07 | Inspection non-blockingly acquires the existing writer serialization lease solely for one authoritative capture, then releases it; it never waits, queues, transfers, or uses that lease for a write/reload/store lifecycle operation. |
 | RP-AC-08 | Repository-contract checks, focused JVM/contract tests, formatting, and the debug build appropriate to changed source pass and are recorded before the implementation PR is proposed. |
 
@@ -220,18 +220,19 @@ None. This feature introduces no permission, network transport, telemetry, exter
 | RP-AC-03 | Parameterized JVM matrix over record/tombstone retention ages, store availability, lifecycle, checksum/format, lock availability, mutex, and writer-lease fixtures. |
 | RP-AC-04 | Fake writer/store/diagnostics counters and production-adapter integration evidence assert no calls to write, reload, lifecycle, cleanup, or diagnostics surfaces for every matrix row. |
 | RP-AC-05 | Public API/source-boundary test rejects Android/SQLite/internal recovery-store imports and forbidden public fields/accessors; negative serialization/reflection tests verify confirmation reveals no revision/payload and confirmation never returns `RecoveryRequest`. |
-| RP-AC-06 | Confirmation-handoff tests cross the retention cutoff and change every revision dimension after `Restorable`, then observe the existing recovery protocol’s typed expiry/stale rejection with zero committed writes. |
+| RP-AC-06 | Confirmation-handoff tests cross the retention cutoff and change every revision dimension after `Restorable`, then observe the shared application-level recovery behavior’s requested/terminal diagnostics and typed expiry/stale rejection with zero committed writes. |
 | RP-AC-07 | Held `RunMutex` and refused external lease fixtures assert immediate `Concurrent` / `WriterBusy`; capture-only counter assertions prove lease scope and release. |
 | RP-AC-08 | Repository validator/self-tests, organizer JVM test filter, `spotlessCheck`, and documented debug assembly output are attached to the implementation PR. |
 
 ## Open questions
 
-None. Stage A decides that inspection self-captures current context under non-blocking writer serialization, keeps the revision inside an opaque confirmation capability, and delegates confirmation internally to unchanged `recover(RecoveryRequest)`. It also decides that preview and confirmation both enforce the accepted retention deadline without a cleanup write. If implementation shows that this cannot be expressed without exposing a raw revision or adding a public mutation protocol, Stage B must stop and open the owning application-contract follow-up rather than weakening this boundary.
+None. Stage A decides that inspection self-captures current context under non-blocking writer serialization, keeps the revision inside an opaque confirmation capability, and routes confirmation through the same private application-level recovery behavior used by unchanged public `recover(RecoveryRequest)`. It also decides that preview and confirmation both enforce the accepted retention deadline without a cleanup write. If implementation shows that this cannot be expressed without exposing a raw revision, bypassing readiness/diagnostics, or adding a public mutation protocol, Stage B must stop and open the owning application-contract follow-up rather than weakening this boundary.
 
 ## Change history
 
 - 2026-08-19: Drafted for Issue #84 Stage A; production implementation is explicitly blocked pending spec/plan acceptance.
 - 2026-08-19: Changes-requested revision: removed the unowned pre-captured context, made the existing writer lease explicitly non-blocking/capture-only, kept `RecoveryRequest` internal during confirmation delegation, and closed read-only expiry/confirm-time retention semantics.
+- 2026-08-19: P0 revision: requires confirmation to share the existing application-level recovery behavior, including readiness/reconciliation and requested/terminal diagnostics; direct `RecoveryProtocol` invocation is prohibited.
 
 ## References
 
