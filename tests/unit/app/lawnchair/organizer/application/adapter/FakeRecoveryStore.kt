@@ -36,8 +36,11 @@ class FakeRecoveryStore(
     var retentionOutcome: RecoveryStorePort.RetentionOutcome = RecoveryStorePort.RetentionOutcome.Applied
     var maintenanceTombstoneReads: Int = 0
         private set
+    var inspectionRecordReads: Int = 0
+        private set
     var inspectionTombstoneReads: Int = 0
         private set
+    var inspectionReadFails: Boolean = false
     var markRestoringCalls: Int = 0
         private set
     var advanceCalls: Int = 0
@@ -54,9 +57,26 @@ class FakeRecoveryStore(
         return tombstones[pointId.value]
     }
 
-    override fun readTombstoneForInspection(pointId: RecoveryPointId): RecoveryStorePort.Tombstone? {
+    override fun readRecordForInspection(
+        pointId: RecoveryPointId,
+    ): RecoveryStorePort.InspectionRead<RecoveryStorePort.StoredRecord> {
+        inspectionRecordReads += 1
+        return if (inspectionReadFails) {
+            RecoveryStorePort.InspectionRead.Unavailable
+        } else {
+            RecoveryStorePort.InspectionRead.Value(records[pointId.value]?.asStored())
+        }
+    }
+
+    override fun readTombstoneForInspection(
+        pointId: RecoveryPointId,
+    ): RecoveryStorePort.InspectionRead<RecoveryStorePort.Tombstone> {
         inspectionTombstoneReads += 1
-        return tombstones[pointId.value]
+        return if (inspectionReadFails) {
+            RecoveryStorePort.InspectionRead.Unavailable
+        } else {
+            RecoveryStorePort.InspectionRead.Value(tombstones[pointId.value])
+        }
     }
 
     override fun checkpoint(payload: RecoveryStorePort.CheckpointPayload): RecoveryStorePort.CheckpointResult {
@@ -235,7 +255,9 @@ class FakeRecoveryStore(
         pruneUnusedFails = false
         retentionOutcome = RecoveryStorePort.RetentionOutcome.Applied
         maintenanceTombstoneReads = 0
+        inspectionRecordReads = 0
         inspectionTombstoneReads = 0
+        inspectionReadFails = false
         markRestoringCalls = 0
         advanceCalls = 0
         pruneUnusedCalls = 0

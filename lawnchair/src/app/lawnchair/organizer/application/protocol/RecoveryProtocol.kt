@@ -44,8 +44,11 @@ class RecoveryProtocol(
 
             RecoveryStorePort.StoreAvailability.READY -> Unit
         }
-        val stored = store.readRecord(request.pointId)
-            ?: return RecoveryResult.NotRestorable(request.pointId, tombstoneRejection(request.pointId))
+        val stored = try {
+            store.readRecord(request.pointId)
+        } catch (_: RuntimeException) {
+            return recoveryStoreFailure(request.pointId)
+        } ?: return tombstoneResult(request.pointId)
         preflight(stored)?.let { return RecoveryResult.NotRestorable(request.pointId, it) }
         if (faults.serializationContention()) return RecoveryResult.WriterBusy
         val lease = writer.tryAcquireLease(WriterKind.ORGANIZER, runId.value.hashCode().toLong())
@@ -57,17 +60,32 @@ class RecoveryProtocol(
         }
     }
 
-    private fun tombstoneRejection(pointId: app.lawnchair.organizer.application.public.RecoveryPointId): RecoveryRejection {
-        val tombstone = store.readTombstoneForInspection(pointId) ?: return RecoveryRejection.MISSING
-        if (tombstone.expiresAtMs <= clock.nowMillis()) return RecoveryRejection.MISSING
-        return when (tombstone.reason) {
+    private fun tombstoneResult(pointId: app.lawnchair.organizer.application.public.RecoveryPointId): RecoveryResult {
+        val tombstone = when (val read = store.readTombstoneForInspection(pointId)) {
+            is RecoveryStorePort.InspectionRead.Value ->
+                read.value
+                    ?: return RecoveryResult.NotRestorable(pointId, RecoveryRejection.MISSING)
+
+            RecoveryStorePort.InspectionRead.Unavailable -> return recoveryStoreFailure(pointId)
+        }
+        if (tombstone.expiresAtMs <= clock.nowMillis()) {
+            return RecoveryResult.NotRestorable(pointId, RecoveryRejection.MISSING)
+        }
+        val rejection = when (tombstone.reason) {
             RecoveryStorePort.TombstoneReason.EXPIRED -> RecoveryRejection.EXPIRED
             RecoveryStorePort.TombstoneReason.CORRUPT -> RecoveryRejection.CORRUPT
             RecoveryStorePort.TombstoneReason.INCOMPATIBLE_VERSION -> RecoveryRejection.INCOMPATIBLE_VERSION
             RecoveryStorePort.TombstoneReason.ALREADY_RESTORED -> RecoveryRejection.ALREADY_RESTORED
             RecoveryStorePort.TombstoneReason.PRUNED_UNUSED -> RecoveryRejection.MISSING
         }
+        return RecoveryResult.NotRestorable(pointId, rejection)
     }
+
+    private fun recoveryStoreFailure(pointId: app.lawnchair.organizer.application.public.RecoveryPointId): RecoveryResult = RecoveryResult.RestoreFailed(
+        pointId,
+        RecoveryFailure.RECOVERY_STORE_FAILED,
+        AuthoritativeState.UNKNOWN,
+    )
 
     private fun recoverWithOuterLease(
         request: RecoveryRequest,

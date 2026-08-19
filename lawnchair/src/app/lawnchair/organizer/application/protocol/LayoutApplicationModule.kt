@@ -19,6 +19,7 @@ import app.lawnchair.organizer.diagnostics.journal.JournalSequence
 import app.lawnchair.organizer.diagnostics.journal.JournalStore
 import app.lawnchair.organizer.diagnostics.logger.DiagnosticsLogger
 import app.lawnchair.organizer.diagnostics.model.RunEvent
+import app.lawnchair.organizer.planning.RevisionId
 import com.android.launcher3.LauncherAppState
 import java.io.File
 import java.security.SecureRandom
@@ -43,6 +44,9 @@ class LayoutApplicationModule(
 ) {
 
     private val mutex: RunMutex = RunMutex()
+    private val confirmationRandom: SecureRandom = SecureRandom()
+    private val pendingPreviewConfirmations: java.util.IdentityHashMap<RecoveryPreviewConfirmation, PendingPreviewConfirmation> =
+        java.util.IdentityHashMap()
     private val applyProtocol: ApplyProtocol = ApplyProtocol(writer, store, clock, operationIds, faults, mutex, diagnosticsPort)
     private val recoveryProtocol: RecoveryProtocol = RecoveryProtocol(writer, store, clock, operationIds, faults, mutex)
     private val recoveryPreviewProtocol: RecoveryPreviewProtocol = RecoveryPreviewProtocol(
@@ -52,6 +56,7 @@ class LayoutApplicationModule(
         operationIds,
         faults,
         mutex,
+        confirmationIssuer = ::issuePreviewConfirmation,
     )
     private val restartReconciler: RestartReconciler = RestartReconciler(writer, store, faults, diagnosticsPort)
     val readinessGate: ReadinessGate = ReadinessGate()
@@ -109,7 +114,34 @@ class LayoutApplicationModule(
      * capability. It deliberately returns only [RecoveryResult] and shares
      * all readiness and diagnostics behavior with public [recover].
      */
-    internal fun confirmRecoveryPreview(confirmation: RecoveryPreviewConfirmation): RecoveryResult = recoverWithApplicationBehavior(confirmation.recoveryRequest())
+    internal fun confirmRecoveryPreview(
+        pointId: RecoveryPointId,
+        confirmation: RecoveryPreviewConfirmation,
+    ): RecoveryResult {
+        val request = consumePreviewConfirmation(pointId, confirmation)
+            ?: return RecoveryResult.NotRestorable(pointId, RecoveryRejection.MISSING)
+        return recoverWithApplicationBehavior(request)
+    }
+
+    @Synchronized
+    private fun issuePreviewConfirmation(
+        pointId: RecoveryPointId,
+        expectedCurrentRevision: RevisionId,
+    ): RecoveryPreviewConfirmation {
+        val token = ByteArray(PREVIEW_CONFIRMATION_TOKEN_BYTES)
+        confirmationRandom.nextBytes(token)
+        val confirmation = RecoveryPreviewConfirmation.issue(token)
+        pendingPreviewConfirmations[confirmation] = PendingPreviewConfirmation(pointId, expectedCurrentRevision)
+        return confirmation
+    }
+
+    @Synchronized
+    private fun consumePreviewConfirmation(
+        pointId: RecoveryPointId,
+        confirmation: RecoveryPreviewConfirmation,
+    ): RecoveryRequest? = pendingPreviewConfirmations.remove(confirmation)
+        ?.takeIf { pending -> pending.pointId == pointId }
+        ?.let { pending -> RecoveryRequest(pending.pointId, pending.expectedCurrentRevision) }
 
     private fun recoverWithApplicationBehavior(request: RecoveryRequest): RecoveryResult = readinessGate.runWhenReady(
         unavailable = { state ->
@@ -171,7 +203,14 @@ class LayoutApplicationModule(
         readinessGate.failBeforeReconciliation()
     }
 
+    private data class PendingPreviewConfirmation(
+        val pointId: RecoveryPointId,
+        val expectedCurrentRevision: RevisionId,
+    )
+
     companion object {
+        private const val PREVIEW_CONFIRMATION_TOKEN_BYTES: Int = 32
+
         fun defaultOperationIdSource(): OperationIdSource = SecureRandomOperationIdSource()
 
         /** Issue #14 production composition; this is the only Android construction path. */

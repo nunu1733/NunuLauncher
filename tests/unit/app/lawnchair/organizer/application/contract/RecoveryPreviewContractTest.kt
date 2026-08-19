@@ -1,11 +1,16 @@
 package app.lawnchair.organizer.application.contract
 
 import app.lawnchair.organizer.application.public.RecoveryPointId
+import app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation
 import app.lawnchair.organizer.application.public.RecoveryPreviewEffect
 import app.lawnchair.organizer.application.public.RecoveryPreviewRejection
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
 import app.lawnchair.organizer.application.public.RecoveryPreviewSummary
 import app.lawnchair.organizer.application.public.RecoveryPreviewUnavailable
+import app.lawnchair.organizer.application.public.RecoveryRequest
+import app.lawnchair.organizer.planning.RevisionId
+import java.io.Serializable
+import java.lang.reflect.Modifier
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -57,6 +62,26 @@ class RecoveryPreviewContractTest {
                 RecoveryPreviewUnavailable.RECOVERY_STORE_UNAVAILABLE,
             ),
             RecoveryPreviewUnavailable.entries.toSet(),
+        )
+    }
+
+    @Test
+    fun confirmationIsPrivateTokenOnlyAndDoesNotExposeRecoveryInputs() {
+        val confirmationClass = RecoveryPreviewConfirmation::class.java
+
+        assertTrue(confirmationClass.declaredConstructors.all { Modifier.isPrivate(it.modifiers) })
+        assertFalse(Serializable::class.java.isAssignableFrom(confirmationClass))
+        assertFalse(
+            confirmationClass.declaredFields.any { field ->
+                field.type == RevisionId::class.java ||
+                    field.type == RecoveryRequest::class.java ||
+                    field.type == RecoveryPointId::class.java
+            },
+        )
+        assertFalse(
+            confirmationClass.declaredMethods.any { method ->
+                method.returnType == RevisionId::class.java || method.returnType == RecoveryRequest::class.java
+            },
         )
     }
 

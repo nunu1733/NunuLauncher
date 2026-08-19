@@ -148,10 +148,18 @@ interface RecoveryStorePort {
     fun readTombstone(pointId: RecoveryPointId): Tombstone?
 
     /**
-     * Read one tombstone without retention cleanup, transaction writes, or
-     * lifecycle mutation. Used only by preview and recovery preflight.
+     * Read one persisted recovery record without opening a new recovery DB,
+     * invoking SQLiteOpenHelper, retention cleanup, transaction writes, or
+     * lifecycle mutation. Used only by preview inspection.
      */
-    fun readTombstoneForInspection(pointId: RecoveryPointId): Tombstone?
+    fun readRecordForInspection(pointId: RecoveryPointId): InspectionRead<StoredRecord>
+
+    /**
+     * Read one tombstone without opening a new recovery DB, retention cleanup,
+     * transaction writes, or lifecycle mutation. Used by preview and recovery
+     * preflight.
+     */
+    fun readTombstoneForInspection(pointId: RecoveryPointId): InspectionRead<Tombstone>
 
     fun checkpoint(payload: CheckpointPayload): CheckpointResult
 
@@ -183,6 +191,12 @@ interface RecoveryStorePort {
     fun runRetention(nowMillis: Long): RetentionOutcome
 
     enum class StoreAvailability { READY, INCOMPATIBLE_VERSION, READ_FAILED }
+
+    /** Closed outcome of a no-create inspection read. */
+    sealed interface InspectionRead<out T> {
+        data class Value<T>(val value: T?) : InspectionRead<T>
+        data object Unavailable : InspectionRead<Nothing>
+    }
 
     enum class TombstoneReason {
         CORRUPT,

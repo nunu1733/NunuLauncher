@@ -9,6 +9,7 @@ import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.lifecycle.RetentionPolicy
 import app.lawnchair.organizer.application.public.OrganizerLockState
 import app.lawnchair.organizer.application.public.RecoveryPointId
+import app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation
 import app.lawnchair.organizer.application.public.RecoveryPreviewEffect
 import app.lawnchair.organizer.application.public.RecoveryPreviewRejection
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
@@ -43,7 +44,15 @@ class RecoveryPreviewProtocolTest {
         store = FakeRecoveryStore { FakeClock.nowMillis() }
         faults = RecordingFaultInjector()
         mutex = RunMutex()
-        protocol = RecoveryPreviewProtocol(writer, store, FakeClock, FixedOperationIdSource(), faults, mutex)
+        protocol = RecoveryPreviewProtocol(
+            writer,
+            store,
+            FakeClock,
+            FixedOperationIdSource(),
+            faults,
+            mutex,
+            confirmationIssuer = { _, _ -> RecoveryPreviewConfirmation.issue(ByteArray(32)) },
+        )
     }
 
     @Test
@@ -100,6 +109,59 @@ class RecoveryPreviewProtocolTest {
     }
 
     @Test
+    fun checksumFormatAndFinalLifecycleMatrixReturnsClosedRejectionsWithoutCapture() {
+        val cases = listOf(
+            MatrixCase(LifecycleState.VERIFIED, false, 1, RecoveryPreviewRejection.CORRUPT),
+            MatrixCase(LifecycleState.VERIFIED, true, 99, RecoveryPreviewRejection.INCOMPATIBLE_VERSION),
+            MatrixCase(LifecycleState.RESTORED, true, 1, RecoveryPreviewRejection.ALREADY_RESTORED),
+            MatrixCase(LifecycleState.EXPIRED, true, 1, RecoveryPreviewRejection.EXPIRED),
+            MatrixCase(LifecycleState.CORRUPT, true, 1, RecoveryPreviewRejection.CORRUPT),
+            MatrixCase(LifecycleState.INCOMPATIBLE, true, 1, RecoveryPreviewRejection.INCOMPATIBLE_VERSION),
+        )
+
+        cases.forEachIndexed { index, case ->
+            store.clear()
+            seedRecord(
+                lifecycle = case.lifecycle,
+                checksumValid = case.checksumValid,
+                formatVersion = case.formatVersion,
+            )
+
+            val result = protocol.inspect(pointId)
+
+            assertEquals("case $index: ${case.lifecycle}", RecoveryPreviewResult.NotRestorable(pointId, case.expected), result)
+            assertEquals("case $index: ${case.lifecycle}", 0, writer.capturedSnapshots)
+            assertNoInspectionMutation()
+        }
+    }
+
+    @Test
+    fun retainedTombstoneReasonsMapToClosedPreviewMatrixWithoutMutation() {
+        val expectedByReason = mapOf(
+            RecoveryStorePort.TombstoneReason.EXPIRED to RecoveryPreviewRejection.EXPIRED,
+            RecoveryStorePort.TombstoneReason.CORRUPT to RecoveryPreviewRejection.CORRUPT,
+            RecoveryStorePort.TombstoneReason.INCOMPATIBLE_VERSION to RecoveryPreviewRejection.INCOMPATIBLE_VERSION,
+            RecoveryStorePort.TombstoneReason.ALREADY_RESTORED to RecoveryPreviewRejection.ALREADY_RESTORED,
+            RecoveryStorePort.TombstoneReason.PRUNED_UNUSED to RecoveryPreviewRejection.MISSING,
+        )
+
+        expectedByReason.forEach { (reason, expected) ->
+            store.clear()
+            store.seedTombstone(
+                RecoveryStorePort.Tombstone(
+                    pointId,
+                    reason,
+                    FakeClock.nowMillis() + RetentionPolicy.TOMBSTONE_RETENTION_MILLIS,
+                ),
+            )
+
+            assertEquals(RecoveryPreviewResult.NotRestorable(pointId, expected), protocol.inspect(pointId))
+            assertEquals(0, writer.capturedSnapshots)
+            assertNoInspectionMutation()
+        }
+    }
+
+    @Test
     fun activeLifecycleReturnsUnresolvedWithoutCaptureOrMutation() {
         seedRecord(LifecycleState.APPLYING)
 
@@ -129,6 +191,22 @@ class RecoveryPreviewProtocolTest {
     }
 
     @Test
+    fun inspectionQueryFailureReturnsUnavailableWithoutStoreOrWriterMutation() {
+        store.inspectionReadFails = true
+
+        val result = protocol.inspect(pointId)
+
+        assertEquals(
+            RecoveryPreviewResult.Unavailable(pointId, RecoveryPreviewUnavailable.RECOVERY_STORE_UNAVAILABLE),
+            result,
+        )
+        assertEquals(1, store.inspectionRecordReads)
+        assertEquals(0, store.inspectionTombstoneReads)
+        assertEquals(0, writer.capturedSnapshots)
+        assertNoInspectionMutation()
+    }
+
+    @Test
     fun writerContentionReturnsBusyWithoutCaptureOrMutation() {
         seedRecord(LifecycleState.VERIFIED)
         writer.refuseLease = true
@@ -149,6 +227,7 @@ class RecoveryPreviewProtocolTest {
 
         assertEquals(RecoveryPreviewResult.Concurrent, result)
         assertEquals(0, writer.capturedSnapshots)
+        assertEquals(0, store.inspectionRecordReads)
         assertEquals(0, store.inspectionTombstoneReads)
         assertNoInspectionMutation()
     }
@@ -172,6 +251,13 @@ class RecoveryPreviewProtocolTest {
         assertNoInspectionMutation()
     }
 
+    private data class MatrixCase(
+        val lifecycle: LifecycleState,
+        val checksumValid: Boolean,
+        val formatVersion: Int,
+        val expected: RecoveryPreviewRejection,
+    )
+
     private fun assertNoInspectionMutation() {
         assertEquals(0, store.checkpointPointIds.size)
         assertEquals(0, store.markRestoringCalls)
@@ -187,6 +273,8 @@ class RecoveryPreviewProtocolTest {
         lifecycle: LifecycleState,
         createdAtMs: Long = FakeClock.nowMillis(),
         updatedAtMs: Long = FakeClock.nowMillis(),
+        checksumValid: Boolean = true,
+        formatVersion: Int = 1,
     ) {
         val state = writer.currentState()
         val manifest = PersistenceManifest(
@@ -218,8 +306,8 @@ class RecoveryPreviewProtocolTest {
                 override val recoveryActionDigest: ByteArray? = null
                 override val itemCount: Int = 0
                 override val resourceCount: Int = 0
-                override val checksumValid: Boolean = true
-                override val formatVersion: Int = 1
+                override val checksumValid: Boolean = checksumValid
+                override val formatVersion: Int = formatVersion
             },
         )
     }

@@ -7,7 +7,10 @@ import app.lawnchair.organizer.application.canonical.CanonicalFixtures
 import app.lawnchair.organizer.application.canonical.PersistenceManifest
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.lifecycle.RetentionPolicy
+import app.lawnchair.organizer.application.public.AuthoritativeState
+import app.lawnchair.organizer.application.public.RecoveryFailure
 import app.lawnchair.organizer.application.public.RecoveryPointId
+import app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
 import app.lawnchair.organizer.application.public.RecoveryRejection
 import app.lawnchair.organizer.application.public.RecoveryResult
@@ -61,7 +64,7 @@ class LayoutApplicationModuleRecoveryEntryTest {
         assertEquals(emptyList<RunEvent>(), diagnostics.snapshot())
 
         FakeClock.advance(RetentionPolicy.RETENTION_MILLIS + 1L)
-        val result = module.confirmRecoveryPreview(confirmation)
+        val result = module.confirmRecoveryPreview(pointId, confirmation)
 
         assertEquals(RecoveryResult.NotRestorable(pointId, RecoveryRejection.EXPIRED), result)
         assertEquals(
@@ -72,6 +75,67 @@ class LayoutApplicationModuleRecoveryEntryTest {
         assertEquals(0, writer.appliedWriteSets)
         assertEquals(0, writer.reloadCount)
         assertEquals(0, store.markRestoringCalls)
+    }
+
+    @Test
+    fun confirmationIsOneShotAndReadinessIsRecheckedAfterPreview() {
+        val preview = module.inspectRecovery(pointId) as RecoveryPreviewResult.Restorable
+
+        module.failStartupReconciliation()
+        val first = module.confirmRecoveryPreview(pointId, preview.confirmation)
+        val second = module.confirmRecoveryPreview(pointId, preview.confirmation)
+
+        assertEquals(
+            RecoveryResult.RestoreFailed(
+                pointId,
+                RecoveryFailure.RECOVERY_STORE_FAILED,
+                AuthoritativeState.UNKNOWN,
+            ),
+            first,
+        )
+        assertEquals(RecoveryResult.NotRestorable(pointId, RecoveryRejection.MISSING), second)
+        assertEquals(1, writer.capturedSnapshots)
+        assertEquals(0, writer.appliedWriteSets)
+        assertEquals(emptyList<RunEvent>(), diagnostics.snapshot())
+    }
+
+    @Test
+    fun unregisteredConfirmationCannotEnterRecovery() {
+        val forged = RecoveryPreviewConfirmation.issue(ByteArray(32))
+
+        val result = module.confirmRecoveryPreview(pointId, forged)
+
+        assertEquals(RecoveryResult.NotRestorable(pointId, RecoveryRejection.MISSING), result)
+        assertEquals(0, writer.capturedSnapshots)
+        assertEquals(0, writer.appliedWriteSets)
+        assertEquals(emptyList<RunEvent>(), diagnostics.snapshot())
+    }
+
+    @Test
+    fun everyPersistedRevisionDimensionMakesPreviewConfirmationStale() {
+        RevisionRaceDimensions.all.forEach { dimension ->
+            setUp()
+            writer.setCurrentState(dimension.source)
+            seedVerifiedRecord()
+            val preview = module.inspectRecovery(pointId) as RecoveryPreviewResult.Restorable
+            writer.setCurrentState(dimension.mutated)
+
+            val result = module.confirmRecoveryPreview(pointId, preview.confirmation)
+
+            assertEquals(
+                dimension.name,
+                RecoveryResult.NotRestorable(pointId, RecoveryRejection.STALE_REVISION),
+                result,
+            )
+            assertEquals(dimension.name, 0, writer.appliedWriteSets)
+            assertEquals(dimension.name, 0, writer.reloadCount)
+            assertEquals(dimension.name, 0, store.markRestoringCalls)
+            assertEquals(
+                dimension.name,
+                listOf(PhaseCode.RECOVERY_REQUESTED, PhaseCode.RECOVERY_REJECTED),
+                diagnostics.snapshot().map { it.phase },
+            )
+        }
     }
 
     private fun seedVerifiedRecord() {

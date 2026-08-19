@@ -1,7 +1,5 @@
 package app.lawnchair.organizer.application.public
 
-import app.lawnchair.organizer.planning.RevisionId
-
 /**
  * Closed, read-only recovery-preview result surface.
  *
@@ -59,19 +57,19 @@ enum class RecoveryPreviewUnavailable {
 }
 
 /**
- * Opaque in-memory capability emitted only for a fresh successful preview.
+ * Opaque in-memory, one-shot-capable handle emitted for a fresh successful
+ * preview. The random token has no recovery semantics by itself: the private
+ * application registry owns the point/revision binding and consumes it before
+ * delegation to the existing recovery application behavior.
  *
- * Its constructor and all recovery inputs are internal. The UI/coordinator may
- * hold this value until explicit confirmation but cannot read or reconstruct
- * the request revision that the application boundary passes to recovery.
+ * The constructor is private, and this type deliberately exposes no point ID,
+ * revision, [RecoveryRequest], serialization contract, or conversion method.
  */
-class RecoveryPreviewConfirmation internal constructor(
-    private val pointId: RecoveryPointId,
-    private val expectedCurrentRevision: RevisionId,
+class RecoveryPreviewConfirmation private constructor(
+    @Suppress("unused") private val opaqueToken: ByteArray,
 ) {
-    /**
-     * Internal-only conversion used by the application boundary at explicit
-     * confirmation time. The constructed request never crosses that boundary.
-     */
-    internal fun recoveryRequest(): RecoveryRequest = RecoveryRequest(pointId, expectedCurrentRevision)
+    companion object {
+        /** Issued only by the application-owned pending-confirmation registry. */
+        internal fun issue(opaqueToken: ByteArray): RecoveryPreviewConfirmation = RecoveryPreviewConfirmation(opaqueToken.copyOf())
+    }
 }

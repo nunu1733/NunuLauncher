@@ -60,6 +60,37 @@ class RecoveryStore(
     }
 
     /**
+     * Run one query against an already-existing recovery database without ever
+     * invoking [RecoveryDbHelper]. `CreateNew` is a legitimate absent result:
+     * it must not cause SQLiteOpenHelper.onCreate/onConfigure or WAL setup.
+     */
+    private fun <T> inspectExistingDatabase(
+        query: (SQLiteDatabase) -> T?,
+    ): RecoveryStorePort.InspectionRead<T> = when (probeVersion()) {
+        RecoveryDbVersionGate.VersionDecision.CreateNew ->
+            RecoveryStorePort.InspectionRead.Value(null)
+
+        is RecoveryDbVersionGate.VersionDecision.OpenExisting -> try {
+            val db = SQLiteDatabase.openDatabase(
+                versionGateFile.absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READONLY,
+            )
+            try {
+                RecoveryStorePort.InspectionRead.Value(query(db))
+            } finally {
+                db.close()
+            }
+        } catch (_: RuntimeException) {
+            RecoveryStorePort.InspectionRead.Unavailable
+        }
+
+        is RecoveryDbVersionGate.VersionDecision.Incompatible,
+        is RecoveryDbVersionGate.VersionDecision.ReadFailed,
+        -> RecoveryStorePort.InspectionRead.Unavailable
+    }
+
+    /**
      * Insert a new recovery record with lifecycle `CREATING`, then advance to
      * `READY`. The insert and the lifecycle transition are each one
      * transaction. Returns the persisted [StoredRecord] after read-back
@@ -294,6 +325,12 @@ class RecoveryStore(
         return outcome
     }
 
+    override fun readRecordForInspection(
+        pointId: RecoveryPointId,
+    ): RecoveryStorePort.InspectionRead<StoredRecord> = inspectExistingDatabase { db ->
+        readEncoded(db, pointId)?.let(::storedFromEncoded)
+    }
+
     override fun readRecord(pointId: RecoveryPointId): StoredRecord? {
         if (availability() != RecoveryStorePort.StoreAvailability.READY) return null
         val db = helper.readableDatabase
@@ -390,13 +427,14 @@ class RecoveryStore(
     }
 
     /**
-     * Inspection/preflight lookup deliberately avoids lazy tombstone cleanup.
-     * It uses a readable database and one SELECT, without a transaction or
-     * lifecycle/store write.
+     * Inspection/preflight lookup deliberately avoids lazy cleanup and the
+     * helper's create/configure path. Existing files are queried with an
+     * explicit `OPEN_READONLY` handle; a missing DB is an absent result.
      */
-    override fun readTombstoneForInspection(pointId: RecoveryPointId): RecoveryStorePort.Tombstone? {
-        if (availability() != RecoveryStorePort.StoreAvailability.READY) return null
-        return queryTombstone(helper.readableDatabase, pointId)
+    override fun readTombstoneForInspection(
+        pointId: RecoveryPointId,
+    ): RecoveryStorePort.InspectionRead<RecoveryStorePort.Tombstone> = inspectExistingDatabase { db ->
+        queryTombstone(db, pointId)
     }
 
     private fun queryTombstone(

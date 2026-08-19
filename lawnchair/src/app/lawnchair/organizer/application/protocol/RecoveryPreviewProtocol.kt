@@ -10,6 +10,7 @@ import app.lawnchair.organizer.application.public.RecoveryPreviewRejection
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
 import app.lawnchair.organizer.application.public.RecoveryPreviewSummary
 import app.lawnchair.organizer.application.public.RecoveryPreviewUnavailable
+import app.lawnchair.organizer.planning.RevisionId
 
 /**
  * Read-only, revision-bound recovery inspection.
@@ -28,6 +29,7 @@ class RecoveryPreviewProtocol(
     private val operationIds: OperationIdSource,
     private val faults: FaultInjector,
     private val mutex: RunMutex,
+    private val confirmationIssuer: (RecoveryPointId, RevisionId) -> RecoveryPreviewConfirmation,
 ) {
 
     fun inspect(pointId: RecoveryPointId): RecoveryPreviewResult {
@@ -57,8 +59,16 @@ class RecoveryPreviewProtocol(
             RecoveryStorePort.StoreAvailability.READY -> Unit
         }
 
-        val stored = store.readRecord(pointId)
-            ?: return tombstoneResult(pointId)
+        val stored = when (val read = store.readRecordForInspection(pointId)) {
+            is RecoveryStorePort.InspectionRead.Value -> read.value ?: return tombstoneResult(pointId)
+
+            RecoveryStorePort.InspectionRead.Unavailable -> {
+                return RecoveryPreviewResult.Unavailable(
+                    pointId,
+                    RecoveryPreviewUnavailable.RECOVERY_STORE_UNAVAILABLE,
+                )
+            }
+        }
         preflight(stored)?.let { return RecoveryPreviewResult.NotRestorable(pointId, it) }
 
         if (faults.serializationContention()) return RecoveryPreviewResult.WriterBusy
@@ -74,7 +84,7 @@ class RecoveryPreviewProtocol(
                 RecoveryPreviewResult.Restorable(
                     pointId = pointId,
                     summary = RecoveryPreviewSummary(),
-                    confirmation = RecoveryPreviewConfirmation(pointId, current.revision),
+                    confirmation = confirmationIssuer(pointId, current.revision),
                 )
             }
         } finally {
@@ -83,8 +93,18 @@ class RecoveryPreviewProtocol(
     }
 
     private fun tombstoneResult(pointId: RecoveryPointId): RecoveryPreviewResult {
-        val tombstone = store.readTombstoneForInspection(pointId)
-            ?: return RecoveryPreviewResult.NotRestorable(pointId, RecoveryPreviewRejection.MISSING)
+        val tombstone = when (val read = store.readTombstoneForInspection(pointId)) {
+            is RecoveryStorePort.InspectionRead.Value ->
+                read.value
+                    ?: return RecoveryPreviewResult.NotRestorable(pointId, RecoveryPreviewRejection.MISSING)
+
+            RecoveryStorePort.InspectionRead.Unavailable -> {
+                return RecoveryPreviewResult.Unavailable(
+                    pointId,
+                    RecoveryPreviewUnavailable.RECOVERY_STORE_UNAVAILABLE,
+                )
+            }
+        }
         if (tombstone.expiresAtMs <= clock.nowMillis()) {
             return RecoveryPreviewResult.NotRestorable(pointId, RecoveryPreviewRejection.MISSING)
         }
