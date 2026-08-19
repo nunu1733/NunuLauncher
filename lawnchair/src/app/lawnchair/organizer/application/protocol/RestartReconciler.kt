@@ -8,12 +8,16 @@ import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.AuthoritativeState
 import app.lawnchair.organizer.application.public.RecoveryFailure
 import app.lawnchair.organizer.application.public.RecoveryResult
+import app.lawnchair.organizer.diagnostics.DiagnosticsPort
+import app.lawnchair.organizer.diagnostics.model.RunEvent
+import app.lawnchair.organizer.diagnostics.projection.ReconciliationProjection
 
 /** Executes restart reconciliation; lifecycle classification alone is never treated as work. */
 class RestartReconciler(
     private val writer: LayoutWriterPort,
     private val store: RecoveryStorePort,
     private val faults: FaultInjector,
+    private val diagnosticsPort: DiagnosticsPort = DiagnosticsPort.NOOP,
 ) {
     sealed interface ReconciliationSummary {
         data object Clean : ReconciliationSummary
@@ -48,7 +52,17 @@ class RestartReconciler(
         val surfaced = buildList {
             store.listNonFinalRecords().forEach { record ->
                 faults.restartBoundary(FaultInjector.RestartPhase.BEFORE_RECONCILE)
-                reconcileOne(record)?.let(::add)
+                // reconcileOne never returns null — every record gets a result
+                val result = reconcileOne(record)
+                emitReconciledEvent(record, result)
+                // Only add non-silent results to the public surfaced list.
+                // SilentPrune/SilentAdvance are internal outcomes that don't
+                // need to be surfaced to the public seam.
+                if (result !is ReconciliationPublicResult.SilentPrune &&
+                    result !is ReconciliationPublicResult.SilentAdvance
+                ) {
+                    add(result)
+                }
                 faults.restartBoundary(FaultInjector.RestartPhase.AFTER_RECONCILE)
             }
         }
@@ -58,7 +72,62 @@ class RestartReconciler(
         return if (surfaced.isEmpty()) ReconciliationSummary.Clean else ReconciliationSummary.Resolved(surfaced)
     }
 
-    private fun reconcileOne(record: RecoveryStorePort.StoredRecord): ReconciliationPublicResult? {
+    private fun emitReconciledEvent(
+        record: RecoveryStorePort.StoredRecord,
+        result: ReconciliationPublicResult,
+    ) {
+        try {
+            val classification = classify(record)
+            // Use the result directly to determine the actual resulting lifecycle
+            // (no store re-read that could return null after prune).
+            val resultingLifecycle = resultingLifecycleFor(result, record)
+            val event = ReconciliationProjection.project(
+                subjectRunId = record.runId,
+                priorLifecycle = record.lifecycle,
+                classification = classification,
+                resultingLifecycle = resultingLifecycle,
+                journalSequence = 0L,
+                pointId = record.pointId.value,
+            )
+            diagnosticsPort.emit(event)
+        } catch (_: Exception) {
+            // Fail-open
+        }
+    }
+
+    /**
+     * Determines the actual post-reconciliation lifecycle from the result.
+     * The store is the authoritative source for the current lifecycle state
+     * after reconciliation; when the record is still present, its lifecycle
+     * reflects exactly what advance/transition operations persisted. For
+     * SilentPrune the record is gone, so READY is the correct fallback.
+     */
+    private fun resultingLifecycleFor(
+        result: ReconciliationPublicResult,
+        record: RecoveryStorePort.StoredRecord,
+    ): LifecycleState {
+        val actual = store.readRecord(record.pointId)?.lifecycle
+        return actual ?: when (result) {
+            is ReconciliationPublicResult.SilentPrune -> LifecycleState.READY
+
+            is ReconciliationPublicResult.SilentAdvance -> record.lifecycle
+
+            is ReconciliationPublicResult.ResumeApply -> when (result.outcome) {
+                is ApplyResult.Applied -> LifecycleState.VERIFIED
+                is ApplyResult.RolledBack -> LifecycleState.READY
+                else -> LifecycleState.CORRUPT
+            }
+
+            is ReconciliationPublicResult.ResumeRecovery -> when (result.outcome) {
+                is RecoveryResult.Restored -> LifecycleState.RESTORED
+                else -> record.lifecycle
+            }
+
+            is ReconciliationPublicResult.Unresolved -> LifecycleState.CORRUPT
+        }
+    }
+
+    private fun reconcileOne(record: RecoveryStorePort.StoredRecord): ReconciliationPublicResult {
         if (!record.checksumValid) {
             store.advance(record.pointId, LifecycleState.CORRUPT)
             return unresolved(record, ApplyFailure.RECOVERY_STORE_FAILED)
@@ -78,7 +147,7 @@ class RestartReconciler(
     private fun reconcileWithLease(
         record: RecoveryStorePort.StoredRecord,
         lease: LeaseHandle,
-    ): ReconciliationPublicResult? {
+    ): ReconciliationPublicResult {
         val authoritative = classify(record)
         return when (record.lifecycle) {
             LifecycleState.CREATING -> when (authoritative) {
@@ -88,7 +157,7 @@ class RestartReconciler(
                     ) {
                         unresolved(record, ApplyFailure.RECOVERY_STORE_FAILED)
                     } else {
-                        null
+                        ReconciliationPublicResult.SilentPrune
                     }
                 }
 
@@ -102,7 +171,7 @@ class RestartReconciler(
                 if (!store.pruneUnused(record.pointId)) {
                     unresolved(record, ApplyFailure.RECOVERY_STORE_FAILED)
                 } else {
-                    null
+                    ReconciliationPublicResult.SilentPrune
                 }
             } else {
                 unresolved(record, ApplyFailure.COMMIT_OUTCOME_UNKNOWN)
@@ -115,7 +184,7 @@ class RestartReconciler(
                     ) {
                         unresolved(record, ApplyFailure.RECOVERY_STORE_FAILED)
                     } else {
-                        null
+                        ReconciliationPublicResult.SilentPrune
                     }
                 }
 
@@ -147,9 +216,9 @@ class RestartReconciler(
                 else -> recover(record, lease, ApplyFailure.COMMIT_OUTCOME_UNKNOWN)
             }
 
-            LifecycleState.VERIFIED -> null
+            LifecycleState.VERIFIED -> ReconciliationPublicResult.SilentAdvance
 
-            else -> null
+            else -> ReconciliationPublicResult.SilentAdvance
         }
     }
 
