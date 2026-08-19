@@ -78,11 +78,12 @@ class ExportWriterTest {
 
     @Test
     fun d10AscendingSequenceOrder() {
-        // Create events in a non-sequential order to test that output preserves input order
+        // Create events in a non-ascending order; write() must sort them
+        // so the exported output is always in ascending journalSequence.
         val events = listOf(
+            RunEvent(journalSequence = 30L, phase = PhaseCode.PLANNED),
             RunEvent(journalSequence = 10L, phase = PhaseCode.RUN_STARTED),
             RunEvent(journalSequence = 20L, phase = PhaseCode.CAPTURED),
-            RunEvent(journalSequence = 30L, phase = PhaseCode.PLANNED),
         )
 
         val output = ByteArrayOutputStream()
@@ -102,6 +103,47 @@ class ExportWriterTest {
                 )
             }
         }
+    }
+
+    @Test
+    fun d10UnsortedSnapshotProducesAscendingExport() {
+        // Feed a clearly scrambled input to prove that write() sorts by
+        // journalSequence regardless of input order. This is the scenario
+        // that would fail if write() merely echoed input order.
+        val events = listOf(
+            RunEvent(journalSequence = 50L, phase = PhaseCode.APPLY_VERIFIED),
+            RunEvent(journalSequence = 10L, phase = PhaseCode.RUN_STARTED),
+            RunEvent(journalSequence = 30L, phase = PhaseCode.PLANNED),
+            RunEvent(journalSequence = 20L, phase = PhaseCode.CAPTURED),
+            RunEvent(journalSequence = 40L, phase = PhaseCode.APPLY_COMMITTED),
+        )
+
+        val output = ByteArrayOutputStream()
+        ExportWriter.write(events, output)
+        val text = output.toString(Charsets.UTF_8)
+
+        val lines = text.lines().filter { it.isNotBlank() }
+        // Skip header (line 0)
+        val exportedEvents = (1 until lines.size).map { i ->
+            RunEventSerializer.decode(lines[i].toByteArray())
+        }
+
+        // Verify ascending order
+        for (i in 1 until exportedEvents.size) {
+            assertTrue(
+                "Events must be in ascending journalSequence order: " +
+                    "${exportedEvents[i - 1].journalSequence} before ${exportedEvents[i].journalSequence}",
+                exportedEvents[i - 1].journalSequence < exportedEvents[i].journalSequence,
+            )
+        }
+
+        // Verify all expected sequences are present
+        val expectedSequences = listOf(10L, 20L, 30L, 40L, 50L)
+        assertEquals(
+            "All expected sequences must be present in order",
+            expectedSequences,
+            exportedEvents.map { it.journalSequence },
+        )
     }
 
     @Test

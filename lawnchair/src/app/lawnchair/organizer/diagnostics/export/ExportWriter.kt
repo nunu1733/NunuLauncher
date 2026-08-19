@@ -2,6 +2,8 @@ package app.lawnchair.organizer.diagnostics.export
 
 import android.content.Context
 import android.net.Uri
+import app.lawnchair.organizer.diagnostics.journal.JournalSequence
+import app.lawnchair.organizer.diagnostics.journal.JournalStore
 import app.lawnchair.organizer.diagnostics.journal.RunEventSerializer
 import app.lawnchair.organizer.diagnostics.model.DeviceProfileSummary
 import app.lawnchair.organizer.diagnostics.model.PhaseCode
@@ -59,8 +61,10 @@ object ExportWriter {
     /**
      * Write the journal export to [outputStream].
      *
-     * @param events All journal events in ascending sequence order (typically
-     *   from [app.lawnchair.organizer.diagnostics.journal.JournalStore.readAllEvents]).
+     * Events are sorted by [RunEvent.journalSequence] ascending before
+     * serialization, so callers are not required to supply pre-sorted input.
+     *
+     * @param events All journal events (any order; will be sorted).
      * @param outputStream The writable destination (e.g. a SAF content URI
      *   opened via [android.content.ContentResolver.openOutputStream]).
      * @param deviceProfile An optional device profile to include in the header.
@@ -88,8 +92,9 @@ object ExportWriter {
             val headerLine = exportJson.encodeToString(ExportLine(header = header)) + "\n"
             writer.write(headerLine)
 
-            // Write each event in ascending sequence order
-            for (event in events) {
+            // Write each event in ascending journalSequence order.
+            // Sort here so callers are not required to supply pre-sorted input.
+            for (event in events.sortedBy { it.journalSequence }) {
                 val line = RunEventSerializer.encodeToString(event) + "\n"
                 writer.write(line)
             }
@@ -98,7 +103,10 @@ object ExportWriter {
     }
 
     /**
-     * Read all events from the journal file at the standard diagnostics path.
+     * Read all events from the journal using a stable [JournalStore.snapshot].
+     *
+     * Obtains a point-in-time snapshot under the store's synchronization so
+     * that export cannot race with concurrent appends or retention rewrites.
      *
      * @param context Application context for resolving [Context.filesDir].
      * @return List of events in ascending journal sequence order, or empty
@@ -110,18 +118,12 @@ object ExportWriter {
         if (!journalFile.exists() || journalFile.length() == 0L) {
             return emptyList()
         }
+        val diagnosticsDir = journalFile.parentFile!!
+        val seqFile = File(diagnosticsDir, "journal_seq")
+        val journalSequence = JournalSequence(seqFile)
+        val journalStore = JournalStore(journalFile, journalSequence)
         return try {
-            journalFile.readLines().mapNotNull { line ->
-                if (line.isBlank()) {
-                    null
-                } else {
-                    try {
-                        RunEventSerializer.decode(line.toByteArray(Charsets.UTF_8))
-                    } catch (_: Exception) {
-                        null
-                    }
-                }
-            }
+            journalStore.snapshot()
         } catch (_: Exception) {
             emptyList()
         }
