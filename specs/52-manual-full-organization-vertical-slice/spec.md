@@ -1,6 +1,6 @@
 ---
 issue: "#52"
-status: draft
+status: accepted
 requirements:
   - FR-002
   - FR-003
@@ -44,7 +44,7 @@ A user can open the Home Screen settings, explicitly choose to organize the home
 
 ## Dependencies and readiness
 
-This specification depends on the accepted planner behavior in [spec 12](../12-deterministic-full-layout-planner-v1/spec.md), safe application/recovery behavior in [spec 13](../13-safe-layout-application/spec.md), empty-folder policy in [spec 24](../24-empty-folder-policy/spec.md), lock review in [spec 38](../38-lock-authoring-unknown-review/spec.md), and the diagnostics contract in [organizer diagnostics](../../docs/engineering/organizer-diagnostics.md). The organization-run UX contract, ADR-0003, and ADR-0004 remain governing sources for run/recovery flow, recovery storage, and lock semantics.
+This specification depends on the accepted planner behavior in [spec 12](../12-deterministic-full-layout-planner-v1/spec.md), safe application/recovery behavior in [spec 13](../13-safe-layout-application/spec.md), empty-folder policy in [spec 24](../24-empty-folder-policy/spec.md), lock review in [spec 38](../38-lock-authoring-unknown-review/spec.md), the diagnostics contract in [organizer diagnostics](../../docs/engineering/organizer-diagnostics.md), the production planner-input composition from [Issue #83](https://github.com/nunu1733/NunuLauncher/issues/83), and the read-only recovery-preview seam from [Issue #84](https://github.com/nunu1733/NunuLauncher/issues/84). The organization-run UX contract, ADR-0003, and ADR-0004 remain governing sources for run/recovery flow, recovery storage, and lock semantics.
 
 Implementation may begin only when the following are true on `main`: the dependencies identified by Issue #52 are closed and their accepted artifacts are present; the production source for the versioned rules, taxonomy, and classification signals can construct the already accepted `OrganizationInput`; and the run can use the canonical capture representation needed by the application module. If any of these conditions is not true, implementation must stop and open the owning contract or integration follow-up. This feature must not invent default rules, classification policy, a UI-specific snapshot, or a parallel writer.
 
@@ -203,4 +203,6 @@ Implementation is delivered in one high-risk feature PR that closes Issue #52 af
 - [Spec 38: lock authoring and unknown-state review](../38-lock-authoring-unknown-review/spec.md)
 - [Organization run UX contract](../../docs/product/organization-run-ux.md)
 - [Organizer diagnostics contract](../../docs/engineering/organizer-diagnostics.md)
+- [Issue #83: production OrganizationInput source composition](https://github.com/nunu1733/NunuLauncher/issues/83)
+- [Issue #84: read-only revision-bound recovery preview](https://github.com/nunu1733/NunuLauncher/issues/84)
 - [GitHub workflow and high-risk evidence gate](../../docs/project/github-workflow.md)
