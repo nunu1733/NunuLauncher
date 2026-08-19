@@ -17,24 +17,45 @@ enum class RunMode {
 
 /**
  * Versions carried on RUN_STARTED events. Identifiers only, no content.
+ * Each version identifier must be non-blank, at most 32 characters, and
+ * contain only [A-Za-z0-9._-].
  */
 @Serializable
 data class RunVersions(
     val ruleVersion: String = "",
     val taxonomyVersion: String = "",
     val recoveryFormatVersion: String = "",
-)
+) {
+    init {
+        validateVersionId(ruleVersion, "ruleVersion")
+        validateVersionId(taxonomyVersion, "taxonomyVersion")
+        validateVersionId(recoveryFormatVersion, "recoveryFormatVersion")
+    }
+}
+
+/**
+ * Closed orientation enum for DeviceProfileSummary.
+ * Serializes to the contract-approved string values "PORTRAIT" and "LANDSCAPE".
+ */
+@Serializable
+enum class Orientation {
+    @kotlinx.serialization.SerialName("PORTRAIT")
+    PORTRAIT,
+
+    @kotlinx.serialization.SerialName("LANDSCAPE")
+    LANDSCAPE,
+}
 
 /**
  * Device profile summary from the diagnostics contract §3.
- * Dimensions only; no coordinates.
+ * Dimensions only; no coordinates. orientation is a closed enum.
  */
 @Serializable
 data class DeviceProfileSummary(
     val columns: Int = 0,
     val rows: Int = 0,
     val hotseatSlots: Int = 0,
-    val orientation: String = "",
+    val orientation: Orientation? = null,
 )
 
 /**

@@ -376,4 +376,56 @@ class ModelValidationTest {
             resultingLifecycle = RecoveryLifecycle.VERIFIED,
         )
     }
+
+    // --- RunVersions: version identifier validation (Item 5) ---
+
+    @Test
+    fun runVersionsAllowsValidIdentifiers() {
+        RunVersions(ruleVersion = "v1.0", taxonomyVersion = "t_2024", recoveryFormatVersion = "rf-1")
+        RunVersions(ruleVersion = "1", taxonomyVersion = "A", recoveryFormatVersion = "a.b-c_d")
+    }
+
+    @Test
+    fun runVersionsAllowsEmptyDefaults() {
+        RunVersions() // All defaults are empty strings, which are allowed
+    }
+
+    @Test
+    fun runVersionsRejectsBlankVersion() {
+        // Empty string is allowed as default, but blank (whitespace) is not
+        // The regex [A-Za-z0-9._-]{1,32} requires at least one char for non-empty
+        assertThrows(IllegalArgumentException::class.java) {
+            RunVersions(ruleVersion = "  ")
+        }
+    }
+
+    @Test
+    fun runVersionsRejectsOversizedVersion() {
+        val tooLong = "a".repeat(33)
+        assertThrows(IllegalArgumentException::class.java) {
+            RunVersions(ruleVersion = tooLong)
+        }
+    }
+
+    @Test
+    fun runVersionsRejectsOddCharsetVersion() {
+        assertThrows(IllegalArgumentException::class.java) {
+            RunVersions(ruleVersion = "v1.0 with spaces")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            RunVersions(taxonomyVersion = "v1/0")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            RunVersions(recoveryFormatVersion = "v1@0")
+        }
+    }
+
+    // --- DeviceProfileSummary: orientation is a closed enum (Item 5) ---
+
+    @Test
+    fun deviceProfileSummaryAllowsKnownOrientations() {
+        DeviceProfileSummary(orientation = Orientation.PORTRAIT)
+        DeviceProfileSummary(orientation = Orientation.LANDSCAPE)
+        DeviceProfileSummary(orientation = null) // null is allowed
+    }
 }

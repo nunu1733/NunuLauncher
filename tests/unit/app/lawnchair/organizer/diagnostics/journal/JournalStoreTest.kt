@@ -192,4 +192,51 @@ class JournalStoreTest {
         val result = store.append(event(phase = PhaseCode.RUN_STARTED))
         assertFalse(result)
     }
+
+    @Test
+    fun retentionRewriteSyncsTempFileThenDirectoryAfterRename() {
+        // Use a recording SyncHook to assert the correct ordering:
+        // write-temp -> sync-temp -> rename -> sync-dir.
+        val syncCalls = mutableListOf<String>()
+        val fullHook = object : SyncHook {
+            override fun syncFile(file: File) {
+                syncCalls.add("syncFile:${file.name}")
+            }
+            override fun syncDirectory(file: File) {
+                syncCalls.add("syncDir:${file.name}")
+            }
+        }
+
+        val dir = tempDir.root
+        val journalFile = File(dir, "organizer_diagnostics.journal")
+        val seqFile = File(dir, "journal_seq")
+        val seq = JournalSequence(seqFile)
+        val fixedClock = { 1_000_000_000_000L }
+        val store = JournalStore(journalFile, seq, fixedClock, fullHook)
+        store.open()
+
+        // Append 11 resolved runs to trigger count-based retention (>10).
+        // Each run: RUN_STARTED + APPLY_VERIFIED.
+        for (i in 1L..11L) {
+            val rid = java.lang.String.format("%032d", java.lang.Long.valueOf(i))
+            store.append(RunEvent(journalSequence = 0L, phase = PhaseCode.RUN_STARTED, runId = rid))
+            store.append(RunEvent(journalSequence = 0L, phase = PhaseCode.APPLY_VERIFIED, runId = rid))
+        }
+
+        // The 11th append should have triggered retention, which rewrites the journal.
+        // Verify sync ordering: syncFile (temp) before syncDir (journal).
+        val syncFileIdx = syncCalls.indexOfFirst { it.startsWith("syncFile:") && it.endsWith(".tmp") }
+        val syncDirIdx = syncCalls.indexOfFirst { it.startsWith("syncDir:") && it.endsWith(".journal") }
+        assertTrue("syncFile must be called on temp file during retention", syncFileIdx >= 0)
+        assertTrue("syncDir must be called on journal file during retention", syncDirIdx >= 0)
+        assertTrue(
+            "syncFile (temp) must happen before syncDir (journal): $syncCalls",
+            syncFileIdx < syncDirIdx,
+        )
+
+        // Verify that the events are still within limits
+        val events = store.readAllEvents()
+        val runIds = events.mapNotNull { it.runId }.distinct()
+        assertEquals("Must have at most 10 resolved runs after retention", 10, runIds.size)
+    }
 }

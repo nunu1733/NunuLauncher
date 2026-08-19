@@ -1,6 +1,7 @@
 package app.lawnchair.organizer.diagnostics.journal
 
 import app.lawnchair.organizer.diagnostics.model.PhaseCode
+import app.lawnchair.organizer.diagnostics.model.RecoveryContext
 import app.lawnchair.organizer.diagnostics.model.RunEvent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -212,5 +213,102 @@ class RetentionPolicyTest {
                 RetentionPolicy.isRunProtected(listOf(event(1, PhaseCode.RUN_STARTED, "00000000000000000000000000000094"), event(2, phase, "00000000000000000000000000000094"))),
             )
         }
+    }
+
+    // --- In-flight recovery protection (Item 4) ---
+
+    private fun recoveryEvent(
+        seq: Long,
+        phase: PhaseCode,
+        pointId: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        originRunId: String? = "11111111111111111111111111111111",
+        wallMillis: Long = now,
+    ): RunEvent = RunEvent(
+        journalSequence = seq,
+        recordedAtWallMillis = wallMillis,
+        phase = phase,
+        runId = null,
+        recovery = RecoveryContext(pointId = pointId, pointOriginRunId = originRunId),
+    )
+
+    @Test
+    fun recoveryRequestedWithoutTerminalSurvivesAgePruning() {
+        // Old RECOVERY_REQUESTED without a terminal recovery event must survive 7-day age pruning.
+        val old = now - 10L * 24L * 60L * 60L * 1000L // 10 days ago
+        val events = listOf(
+            recoveryEvent(1, PhaseCode.RECOVERY_REQUESTED, "cccccccccccccccccccccccccccccccc", wallMillis = old),
+            event(2, PhaseCode.APPLY_VERIFIED, "00000000000000000000000000000002", now), // recent resolved
+        )
+        val result = RetentionPolicy.evaluate(events, byteSizes(events), now)
+        // The old RECOVERY_REQUESTED must NOT be pruned (no terminal for that pointId)
+        assertFalse("In-flight RECOVERY_REQUESTED must not be pruned by age", result.pruneOrphanedSequences.contains(1L))
+        assertEquals("Only the resolved run should be eligible, not pruned", emptySet<String>(), result.pruneRunIds)
+    }
+
+    @Test
+    fun recoveryRequestedWithoutTerminalSurvivesSizePruning() {
+        // RECOVERY_REQUESTED without terminal must survive size-based pruning.
+        // Create a single RECOVERY_REQUESTED that is 600 KiB (over the 512 KiB limit).
+        val events = listOf(
+            recoveryEvent(1, PhaseCode.RECOVERY_REQUESTED, "cccccccccccccccccccccccccccccccc"),
+        )
+        val sizes = mapOf(1L to 600_000L) // 600 KiB > 512 KiB
+        val result = RetentionPolicy.evaluate(events, sizes, now)
+        // In-flight RECOVERY_REQUESTED must NOT be pruned even though it exceeds the size cap
+        assertFalse("In-flight RECOVERY_REQUESTED must not be pruned by size", result.pruneOrphanedSequences.contains(1L))
+    }
+
+    @Test
+    fun recoveryRequestedWithTerminalIsPrunable() {
+        // RECOVERY_REQUESTED with a terminal RECOVERY_RESTORED for the same pointId is prunable.
+        val old = now - 10L * 24L * 60L * 60L * 1000L // 10 days ago
+        val events = listOf(
+            recoveryEvent(1, PhaseCode.RECOVERY_REQUESTED, "cccccccccccccccccccccccccccccccc", wallMillis = old),
+            recoveryEvent(2, PhaseCode.RECOVERY_RESTORED, "cccccccccccccccccccccccccccccccc", wallMillis = old),
+            event(3, PhaseCode.APPLY_VERIFIED, "00000000000000000000000000000002", now),
+        )
+        val result = RetentionPolicy.evaluate(events, byteSizes(events), now)
+        // Both old recovery events should be pruned by age (they have a terminal)
+        assertTrue("Old RECOVERY_REQUESTED with terminal must be pruned by age", result.pruneOrphanedSequences.contains(1L))
+        assertTrue("Old RECOVERY_RESTORED must be pruned by age", result.pruneOrphanedSequences.contains(2L))
+    }
+
+    @Test
+    fun recoveryRequestedWithTerminalIsPrunableBySize() {
+        // RECOVERY_REQUESTED with terminal RECOVERY_FAILED is prunable by size.
+        // Both events are 300 KiB each = 600 KiB total, exceeding the 512 KiB cap.
+        // The oldest (seq 1) is pruned first, bringing the total under the cap.
+        val events = listOf(
+            recoveryEvent(1, PhaseCode.RECOVERY_REQUESTED, "cccccccccccccccccccccccccccccccc"),
+            recoveryEvent(2, PhaseCode.RECOVERY_FAILED, "cccccccccccccccccccccccccccccccc"),
+        )
+        val sizes = mapOf(1L to 300_000L, 2L to 300_000L) // 600 KiB total > 512 KiB
+        val result = RetentionPolicy.evaluate(events, sizes, now)
+        // Since both are resolved (have terminal), they are prunable.
+        // The oldest (seq 1) is pruned to bring size under the cap.
+        assertTrue("Oldest resolved recovery event must be pruned by size", result.pruneOrphanedSequences.contains(1L))
+        // seq 2 may or may not be pruned depending on how much space is needed.
+        // After pruning seq 1 (300 KiB), remaining is 300 KiB < 512 KiB, so seq 2 stays.
+        assertFalse("Newer resolved recovery event stays under cap", result.pruneOrphanedSequences.contains(2L))
+    }
+
+    @Test
+    fun recoveryRequestedForDifferentPointIdsMixedProtection() {
+        // One pointId has terminal, another doesn't. Only the unresolved one is protected.
+        val old = now - 10L * 24L * 60L * 60L * 1000L
+        val events = listOf(
+            // Point A: in-flight (no terminal) — protected
+            recoveryEvent(1, PhaseCode.RECOVERY_REQUESTED, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1", wallMillis = old),
+            // Point B: resolved (has terminal) — prunable
+            recoveryEvent(2, PhaseCode.RECOVERY_REQUESTED, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", wallMillis = old),
+            recoveryEvent(3, PhaseCode.RECOVERY_RESTORED, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", wallMillis = old),
+            event(4, PhaseCode.APPLY_VERIFIED, "00000000000000000000000000000002", now),
+        )
+        val result = RetentionPolicy.evaluate(events, byteSizes(events), now)
+        // Point A: not pruned (protected)
+        assertFalse("In-flight RECOVERY_REQUESTED for point A must not be pruned", result.pruneOrphanedSequences.contains(1L))
+        // Point B: pruned by age (resolved)
+        assertTrue("Resolved RECOVERY_REQUESTED for point B must be pruned", result.pruneOrphanedSequences.contains(2L))
+        assertTrue("Resolved RECOVERY_RESTORED for point B must be pruned", result.pruneOrphanedSequences.contains(3L))
     }
 }

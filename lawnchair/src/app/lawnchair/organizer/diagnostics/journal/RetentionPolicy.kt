@@ -21,8 +21,16 @@ import app.lawnchair.organizer.diagnostics.model.RunEvent
  * indicates an unresolved lifecycle (APPLY_COMMITTED -> COMMITTED_UNVERIFIED)
  * and does NOT have a terminal event or RESTART_RECONCILED event.
  *
- * Orphaned events (no runId) are never protected. They are pruned under
- * the age and size caps (oldest first) to keep the journal bounded.
+ * Protected in-flight recovery events: events with a RecoveryContext whose
+ * pointId has no terminal resolution event (RECOVERY_RESTORED /
+ * RECOVERY_FAILED / RECOVERY_REJECTED / RECOVERY_WRITER_BUSY /
+ * RECOVERY_CONCURRENT) must survive age/size pruning. These events carry
+ * runId=null and are correlated by their recovery.pointId. Once a terminal
+ * resolution event exists for that pointId, they become prunable.
+ *
+ * Orphaned events (no runId) are never protected by run-level protection.
+ * They are pruned under the age and size caps (oldest first) to keep the
+ * journal bounded, except for protected in-flight recovery events.
  *
  * "Eligible" means resolved (has a terminal event or RESTART_RECONCILED)
  * and not protected.
@@ -55,6 +63,19 @@ object RetentionPolicy {
         PhaseCode.RECOVERY_REJECTED,
         PhaseCode.RECOVERY_RESTORED,
         PhaseCode.RECOVERY_FAILED,
+        PhaseCode.RECOVERY_WRITER_BUSY,
+        PhaseCode.RECOVERY_CONCURRENT,
+    )
+
+    /**
+     * Terminal recovery phases: these mark a recovery point as resolved.
+     * In-flight recovery events (RECOVERY_REQUESTED) are protected when
+     * no terminal recovery event exists for the same pointId.
+     */
+    private val TERMINAL_RECOVERY_PHASES: Set<PhaseCode> = setOf(
+        PhaseCode.RECOVERY_RESTORED,
+        PhaseCode.RECOVERY_FAILED,
+        PhaseCode.RECOVERY_REJECTED,
         PhaseCode.RECOVERY_WRITER_BUSY,
         PhaseCode.RECOVERY_CONCURRENT,
     )
@@ -102,6 +123,28 @@ object RetentionPolicy {
     )
 
     /**
+     * Compute the set of event sequences that are protected because they
+     * belong to an in-flight recovery operation (RECOVERY_REQUESTED without
+     * a terminal recovery event for the same pointId).
+     */
+    private fun protectedRecoverySequences(events: List<RunEvent>): Set<Long> {
+        val recoveryEvents = events.filter { it.recovery != null }
+        if (recoveryEvents.isEmpty()) return emptySet()
+
+        // Group by pointId to find terminal vs in-flight
+        val byPointId = recoveryEvents.groupBy { it.recovery!!.pointId }
+        val protectedSequences = mutableSetOf<Long>()
+        for ((_, group) in byPointId) {
+            val hasTerminal = group.any { it.phase in TERMINAL_RECOVERY_PHASES }
+            if (!hasTerminal) {
+                // All events in this group are in-flight and protected
+                protectedSequences.addAll(group.map { it.journalSequence })
+            }
+        }
+        return protectedSequences
+    }
+
+    /**
      * Evaluate which runs to prune given the current journal state.
      *
      * @param events all events currently in the journal, in sequence order.
@@ -114,6 +157,9 @@ object RetentionPolicy {
         eventByteSizes: Map<Long, Long>,
         nowMillis: Long,
     ): RetentionResult {
+        // Identify in-flight recovery events that are protected
+        val protectedRecoverySeqs = protectedRecoverySequences(events)
+
         // Group events by runId (events without runId are orphaned)
         val orphanedEvents = events.filter { it.runId == null }
         val runGroups = events.filter { it.runId != null }.groupBy { it.runId!! }
@@ -143,22 +189,34 @@ object RetentionPolicy {
             remainingEligible = remainingEligible.drop(excess)
         }
 
-        // 2. Cap by age: keep events within MAX_AGE_MS
+        // 2. Cap by age: keep events within MAX_AGE_MS.
+        // Protected recovery events are excluded from age-based pruning.
         val ageThreshold = nowMillis - MAX_AGE_MS
         val oldRuns = remainingEligible.filter { it.earliestWallMillis > 0L && it.earliestWallMillis < ageThreshold }
         toPrune.addAll(oldRuns.map { it.runId })
         remainingEligible = remainingEligible.filter { it.runId !in toPrune }
 
-        // Prune orphaned events older than MAX_AGE_MS
-        val oldOrphaned = remainingOrphaned.filter { it.recordedAtWallMillis > 0L && it.recordedAtWallMillis < ageThreshold }
+        // Prune orphaned events older than MAX_AGE_MS, except protected recovery events
+        val oldOrphaned = remainingOrphaned.filter {
+            it.recordedAtWallMillis > 0L &&
+                it.recordedAtWallMillis < ageThreshold &&
+                it.journalSequence !in protectedRecoverySeqs
+        }
         orphanedToPrune.addAll(oldOrphaned.map { it.journalSequence })
         remainingOrphaned = remainingOrphaned.filter { it.journalSequence !in orphanedToPrune }
 
-        // 3. Cap by size: total remaining bytes must not exceed MAX_SIZE_BYTES
+        // 3. Cap by size: total remaining bytes must not exceed MAX_SIZE_BYTES.
+        // Protected recovery events are excluded from the size calculation
+        // for pruning purposes (they are not counted against the cap).
         val remainingEligibleBytes = remainingEligible.sumOf { it.totalBytes }
         val protectedBytes = protected.sumOf { it.totalBytes }
-        val orphanedBytes = remainingOrphaned.sumOf { eventByteSizes[it.journalSequence] ?: 0L }
-        val totalBytes = remainingEligibleBytes + protectedBytes + orphanedBytes
+        val orphanedBytes = remainingOrphaned
+            .filter { it.journalSequence !in protectedRecoverySeqs }
+            .sumOf { eventByteSizes[it.journalSequence] ?: 0L }
+        val protectedRecoveryBytes = remainingOrphaned
+            .filter { it.journalSequence in protectedRecoverySeqs }
+            .sumOf { eventByteSizes[it.journalSequence] ?: 0L }
+        val totalBytes = remainingEligibleBytes + protectedBytes + orphanedBytes + protectedRecoveryBytes
         if (totalBytes > MAX_SIZE_BYTES) {
             // Prune eligible runs from oldest until under limit
             val excessBytes = totalBytes - MAX_SIZE_BYTES
@@ -169,9 +227,13 @@ object RetentionPolicy {
                 prunedBytes += run.totalBytes
                 remainingEligible = remainingEligible.filter { it.runId != run.runId }
             }
-            // If still over limit, prune orphaned events from oldest
+            // If still over limit, prune non-protected orphaned events from oldest
             if (prunedBytes < excessBytes) {
-                for (orphan in remainingOrphaned.sortedBy { it.journalSequence }) {
+                for (
+                orphan in remainingOrphaned
+                    .filter { it.journalSequence !in protectedRecoverySeqs }
+                    .sortedBy { it.journalSequence }
+                ) {
                     if (prunedBytes >= excessBytes) break
                     orphanedToPrune.add(orphan.journalSequence)
                     prunedBytes += eventByteSizes[orphan.journalSequence] ?: 0L

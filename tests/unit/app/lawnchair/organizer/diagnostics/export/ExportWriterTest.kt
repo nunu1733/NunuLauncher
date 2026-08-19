@@ -6,6 +6,7 @@ import app.lawnchair.organizer.diagnostics.model.ApplySummary
 import app.lawnchair.organizer.diagnostics.model.DeviceProfileSummary
 import app.lawnchair.organizer.diagnostics.model.ErrorEntry
 import app.lawnchair.organizer.diagnostics.model.ErrorFamily
+import app.lawnchair.organizer.diagnostics.model.Orientation
 import app.lawnchair.organizer.diagnostics.model.PhaseCode
 import app.lawnchair.organizer.diagnostics.model.PlanSummary
 import app.lawnchair.organizer.diagnostics.model.RunEvent
@@ -42,7 +43,7 @@ class ExportWriterTest {
                 trigger = Trigger.MANUAL_FULL,
                 runMode = RunMode.FULL_ORGANIZATION,
                 versions = RunVersions(ruleVersion = "1", taxonomyVersion = "1"),
-                deviceProfile = DeviceProfileSummary(columns = 5, rows = 6, hotseatSlots = 5, orientation = "PORTRAIT"),
+                deviceProfile = DeviceProfileSummary(columns = 5, rows = 6, hotseatSlots = 5, orientation = Orientation.PORTRAIT),
             ),
             RunEvent(journalSequence = 42L, phase = PhaseCode.CAPTURED),
         )
@@ -114,7 +115,7 @@ class ExportWriterTest {
                 trigger = Trigger.MANUAL_FULL,
                 runMode = RunMode.FULL_ORGANIZATION,
                 versions = RunVersions(ruleVersion = "1", taxonomyVersion = "1"),
-                deviceProfile = DeviceProfileSummary(columns = 5, rows = 6, hotseatSlots = 5, orientation = "PORTRAIT"),
+                deviceProfile = DeviceProfileSummary(columns = 5, rows = 6, hotseatSlots = 5, orientation = Orientation.PORTRAIT),
             ),
             RunEvent(
                 journalSequence = 43L,
@@ -334,7 +335,7 @@ class ExportWriterTest {
 
     @Test
     fun d10DeviceProfileInHeader() {
-        val profile = DeviceProfileSummary(columns = 5, rows = 6, hotseatSlots = 5, orientation = "PORTRAIT")
+        val profile = DeviceProfileSummary(columns = 5, rows = 6, hotseatSlots = 5, orientation = Orientation.PORTRAIT)
         val events = listOf(
             RunEvent(journalSequence = 1L, phase = PhaseCode.CAPTURED),
         )
@@ -356,7 +357,7 @@ class ExportWriterTest {
     fun d10DeviceProfileFromRunStarted() {
         // When no deviceProfile is explicitly provided, it should be extracted
         // from the last RUN_STARTED event
-        val profile = DeviceProfileSummary(columns = 5, rows = 6, hotseatSlots = 5, orientation = "PORTRAIT")
+        val profile = DeviceProfileSummary(columns = 5, rows = 6, hotseatSlots = 5, orientation = Orientation.PORTRAIT)
         val events = listOf(
             RunEvent(
                 journalSequence = 1L,

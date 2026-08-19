@@ -21,7 +21,7 @@ class RunEventSerializationTest {
             trigger = Trigger.MANUAL_FULL,
             runMode = RunMode.FULL_ORGANIZATION,
             versions = RunVersions(ruleVersion = "1", taxonomyVersion = "1"),
-            deviceProfile = DeviceProfileSummary(columns = 5, rows = 6, hotseatSlots = 5, orientation = "PORTRAIT"),
+            deviceProfile = DeviceProfileSummary(columns = 5, rows = 6, hotseatSlots = 5, orientation = Orientation.PORTRAIT),
         )
         val json = RunEventSerializer.encodeToString(event)
         val decoded = RunEventSerializer.decode(json.toByteArray())

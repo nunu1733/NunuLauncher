@@ -5,11 +5,13 @@ import app.lawnchair.organizer.application.adapter.FakeLayoutWriter
 import app.lawnchair.organizer.application.adapter.FakeRecoveryStore
 import app.lawnchair.organizer.application.canonical.CanonicalFixtures
 import app.lawnchair.organizer.application.protocol.ApplyProtocol
+import app.lawnchair.organizer.application.protocol.FaultInjector
 import app.lawnchair.organizer.application.protocol.FixedOperationIdSource
 import app.lawnchair.organizer.application.protocol.RecordingFaultInjector
 import app.lawnchair.organizer.application.protocol.RunMutex
 import app.lawnchair.organizer.application.public.ApplyAction
 import app.lawnchair.organizer.application.public.ApplyResult
+import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.diagnostics.DiagnosticsPort
 import app.lawnchair.organizer.diagnostics.model.ApplyStage
@@ -18,6 +20,8 @@ import app.lawnchair.organizer.diagnostics.model.RunEvent
 import app.lawnchair.organizer.planning.GridCell
 import app.lawnchair.organizer.planning.RuleVersion
 import app.lawnchair.organizer.planning.TaxonomyVersion
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -42,6 +46,16 @@ class ApplyProtocolDiagnosticsTest {
         val port = DiagnosticsPort { event -> recordedEvents.add(event) }
         val ids = FixedOperationIdSource()
         return ApplyProtocol(writer, store, FakeClock, ids, faults, mutex, port)
+    }
+
+    private fun createProtocolWithFaults(
+        mutex: RunMutex,
+        customFaults: FaultInjector,
+        ids: FixedOperationIdSource = FixedOperationIdSource(),
+    ): ApplyProtocol {
+        recordedEvents = mutableListOf()
+        val port = DiagnosticsPort { event -> recordedEvents.add(event) }
+        return ApplyProtocol(writer, store, FakeClock, ids, customFaults, mutex, port)
     }
 
     @Before
@@ -199,7 +213,7 @@ class ApplyProtocolDiagnosticsTest {
     }
 
     @Test
-    fun markApplyingFailureTerminalCarriesA4AndCheckpointPointId() {
+    fun markApplyingFailureTerminalCarriesA5AndCheckpointPointId() {
         store.markApplyingFails = true
         val protocol = createProtocol()
         val result = protocol.apply(mutatingPlan())
@@ -211,7 +225,7 @@ class ApplyProtocolDiagnosticsTest {
 
         val terminal = recordedEvents.lastOrNull()
         assertNotNull("Terminal event must be emitted", terminal)
-        assertEquals("Post-checkpoint markApplying failure is detected at A4", ApplyStage.A4, terminal!!.applyStage)
+        assertEquals("Post-checkpoint markApplying failure is detected at A5", ApplyStage.A5, terminal!!.applyStage)
         assertEquals(
             "Terminal event must carry the checkpoint's pointId",
             store.checkpointPointIds.single().value,
@@ -237,5 +251,110 @@ class ApplyProtocolDiagnosticsTest {
             store.checkpointPointIds.single().value,
             terminal.pointId,
         )
+    }
+
+    /**
+     * Item 1 interleaving test: concurrent apply() must not destroy the active
+     * run's diagnostic context. Run A is paused mid-flight (holds RunMutex,
+     * before markApplying). Run B calls apply() and gets ConcurrentRun.
+     * Run A then completes, and its terminal event must still carry the correct
+     * stage and pointId.
+     */
+    @Test
+    fun concurrentApplyDoesNotDestroyActiveRunDiagnosticContext() {
+        val mutex = RunMutex()
+        // BlockingFaultInjector: Run A pauses at beforeRecoveryLifecycleCommit(APPLYING),
+        // allowing Run B to attempt apply(). Run A resumes after Run B is rejected.
+        val blockLatch = CountDownLatch(1)
+        val resumeLatch = CountDownLatch(1)
+        val blockingFaults = object : FaultInjector by faults {
+            override fun beforeRecoveryLifecycleCommit(
+                phase: FaultInjector.RecoveryLifecyclePhase,
+                pointId: RecoveryPointId,
+            ) {
+                if (phase == FaultInjector.RecoveryLifecyclePhase.APPLYING) {
+                    // Signal that Run A is paused so Run B can attempt apply()
+                    blockLatch.countDown()
+                    // Wait for Run B to be rejected before resuming Run A
+                    resumeLatch.await(5, TimeUnit.SECONDS)
+                }
+                faults.beforeRecoveryLifecycleCommit(phase, pointId)
+            }
+        }
+
+        val runAIds = FixedOperationIdSource(
+            runIds = listOf("111111111111111111111111111111aa"),
+            pointIds = listOf("222222222222222222222222222222aa"),
+        )
+        val protocolA = createProtocolWithFaults(mutex, blockingFaults, runAIds)
+
+        // Run A in a background thread
+        val plan = mutatingPlan()
+        var runAResult: ApplyResult? = null
+        val runAThread = Thread {
+            runAResult = protocolA.apply(plan)
+        }
+        runAThread.start()
+
+        // Wait for Run A to pause at the blocking hook
+        assertTrue("Run A must reach the pause hook", blockLatch.await(5, TimeUnit.SECONDS))
+
+        // Verify Run A is still inside apply() and holds the mutex
+        assertNotNull("RunMutex must be held by Run A", mutex.currentHolder())
+
+        // Run B: a different protocol instance on the same mutex, trying to apply
+        val runBIds = FixedOperationIdSource(
+            runIds = listOf("333333333333333333333333333333bb"),
+            pointIds = listOf("444444444444444444444444444444bb"),
+        )
+        val runBRecordedEvents = mutableListOf<RunEvent>()
+        val runBPort = DiagnosticsPort { event -> runBRecordedEvents.add(event) }
+        val protocolB = ApplyProtocol(writer, store, FakeClock, runBIds, faults, mutex, runBPort)
+
+        val runBResult = protocolB.apply(plan)
+        assertTrue("Run B must be ConcurrentRun, got $runBResult", runBResult is ApplyResult.ConcurrentRun)
+
+        val runBConcurrent = runBRecordedEvents.firstOrNull { it.phase == PhaseCode.CONCURRENT_RUN_REJECTED }
+        assertNotNull("Run B must emit CONCURRENT_RUN_REJECTED", runBConcurrent)
+        assertNotNull("Run B CONCURRENT_RUN_REJECTED must carry a runId", runBConcurrent!!.runId)
+
+        // Verify Run B did NOT emit any event that belongs to Run A's context
+        val runBEventPhases = runBRecordedEvents.map { it.phase }.toSet()
+        assertTrue("Run B must not emit CHECKPOINTED", PhaseCode.CHECKPOINTED !in runBEventPhases)
+        assertTrue("Run B must not emit APPLY_COMMITTED", PhaseCode.APPLY_COMMITTED !in runBEventPhases)
+        assertTrue("Run B must not emit APPLY_VERIFIED", PhaseCode.APPLY_VERIFIED !in runBEventPhases)
+
+        // Resume Run A
+        resumeLatch.countDown()
+        runAThread.join(5_000)
+
+        assertNotNull("Run A must complete", runAResult)
+        assertTrue("Run A must be Applied, got $runAResult", runAResult is ApplyResult.Applied)
+
+        // Run A's terminal event must carry the correct stage and pointId
+        val runATerminal = recordedEvents.lastOrNull()
+        assertNotNull("Run A must emit a terminal event", runATerminal)
+        val runAApplied = runAResult as ApplyResult.Applied
+        assertEquals(
+            "Run A terminal event must be APPLY_VERIFIED",
+            PhaseCode.APPLY_VERIFIED,
+            runATerminal!!.phase,
+        )
+        assertEquals(
+            "Run A terminal event must carry A8 stage",
+            ApplyStage.A8,
+            runATerminal.applyStage,
+        )
+        assertEquals(
+            "Run A terminal event must carry the correct runId",
+            runAApplied.runId.value,
+            runATerminal.runId,
+        )
+        assertEquals(
+            "Run A terminal event must carry the correct pointId",
+            runAApplied.pointId.value,
+            runATerminal.pointId,
+        )
+        assertNotNull("Run A terminal event must have a pointId", runATerminal.pointId)
     }
 }

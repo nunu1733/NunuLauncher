@@ -5,6 +5,40 @@ import java.io.File
 import java.io.RandomAccessFile
 
 /**
+ * Injectable hook for sync operations during retention rewrite, so tests
+ * can assert the correct ordering: write-temp -> sync-temp -> rename -> sync-dir.
+ */
+interface SyncHook {
+    /** Sync the file descriptor of [file]. */
+    fun syncFile(file: File)
+
+    /** Sync the parent directory of [file] (best-effort; may not be available on all
+     *  platforms). */
+    fun syncDirectory(file: File)
+
+    companion object {
+        /** Production hook: fsync via RandomAccessFile fd.sync(). */
+        val PRODUCTION: SyncHook = object : SyncHook {
+            override fun syncFile(file: File) {
+                if (!file.exists()) return
+                RandomAccessFile(file, "rw").use { it.fd.sync() }
+            }
+
+            override fun syncDirectory(file: File) {
+                val dir = file.parentFile ?: return
+                if (!dir.exists()) return
+                try {
+                    RandomAccessFile(dir, "r").use { it.fd.sync() }
+                } catch (_: Exception) {
+                    // Best-effort: directory sync is not available on all platforms.
+                    // The file-level sync is the primary durability guarantee.
+                }
+            }
+        }
+    }
+}
+
+/**
  * Append-only journal store for diagnostic RunEvents.
  *
  * The journal is an app-private file with line-delimited JSON records
@@ -31,6 +65,7 @@ class JournalStore(
     private val journalFile: File,
     private val sequence: JournalSequence,
     private val clock: () -> Long = { System.currentTimeMillis() },
+    private val syncHook: SyncHook = SyncHook.PRODUCTION,
 ) {
     private var opened: Boolean = false
     private var cachedEvents: List<RunEvent> = emptyList()
@@ -105,6 +140,16 @@ class JournalStore(
             // Fail-open: diagnostics failure does not fail the organizer run
             false
         }
+    }
+
+    /**
+     * Return a stable immutable snapshot of the current cached events
+     * under the same lock/serialization guarantees as [append].
+     */
+    @Synchronized
+    fun snapshot(): List<RunEvent> {
+        if (!opened) open()
+        return cachedEvents.toList()
     }
 
     /**
@@ -204,7 +249,12 @@ class JournalStore(
                     writer.write(line)
                 }
             }
-            if (!tempFile.renameTo(journalFile)) {
+            // (a) Sync the temp file before rename so the replacement file is
+            // durably persisted. This maintains the durability guarantee that
+            // the just-synced append event originally had.
+            syncHook.syncFile(tempFile)
+            val renamed = tempFile.renameTo(journalFile)
+            if (!renamed) {
                 // renameTo failed (e.g. cross-filesystem); try copy-and-delete
                 try {
                     journalFile.copyFrom(tempFile)
@@ -214,6 +264,10 @@ class JournalStore(
                     return // Keep old journal cache consistent
                 }
             }
+            // (b) Sync the parent directory after rename so the new journal
+            // file name is committed to directory metadata. Best-effort;
+            // directory fd sync is not available on all platforms.
+            syncHook.syncDirectory(journalFile)
             cachedEvents = events
             eventByteSizes.clear()
             // Recompute byte sizes
