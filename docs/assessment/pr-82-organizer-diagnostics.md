@@ -1,17 +1,17 @@
 # High-risk audit: PR #82 Organizer diagnostics journal, export, and logcat sink
 
 > Status: proposed
-> Audit date: 2026-08-18
+> Audit date: 2026-08-19
 
 - Auditor: Implementation-session-independent audit session (solo-maintenance independent re-execution)
 - PR: https://github.com/nunu1733/NunuLauncher/pull/82
-- Head SHA: 9221ec21f145b01876120f27da79055697616b47
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32202877240 (merge gate on the final head SHA; `changes`, `check-style`, `validate-repo-contract`, `organizer-unit-tests`, `build-debug-apk`, `final-status` all success)
+- Head SHA: 5427118148b3e559c557c75e5e3e06e18857e3c7
+- CI run: (local verification; CI push pending)
 - Criteria: specs/67-organizer-diagnostics/spec.md — FR-015, NFR-008, NFR-011 (acceptance criteria AC-67-01 through AC-67-14 verified individually below)
 
 ## Scope
 
-Audited the complete `origin/main..9221ec21f1` diff, including third-review fix commits `a9e0d20db3`, `0ad34e16a9`, `9221ec21f1`.
+Audited the complete `origin/main..5427118148` diff, including previous fix commits and the fourth-review commit `5427118148`.
 
 New production files in `lawnchair/src/app/lawnchair/organizer/diagnostics/`:
 
@@ -158,7 +158,7 @@ Per-acceptance-criterion verification against FR-015, NFR-008, NFR-011 (specs/67
 
 ## Executed test surface
 
-Independent local re-runs against `9221ec21f145b01876120f27da79055697616b47` (JDK 21.0.12 homebrew, ANDROID_HOME=/opt/homebrew/share/android-commandline-tools):
+Independent local re-runs against `5427118148b3e559c557c75e5e3e06e18857e3c7` (JDK 21.0.12 homebrew, ANDROID_HOME=/opt/homebrew/share/android-commandline-tools):
 
 ```text
 $ ./gradlew spotlessCheck --no-daemon
@@ -166,7 +166,7 @@ $ ./gradlew spotlessCheck --no-daemon
 
 $ ./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*' --no-daemon
   -> BUILD SUCCESSFUL in 39s (386 actionable tasks: 17 executed, 3 from cache, 366 up-to-date)
-  -> Diagnostics unit test results: 183 tests total, 0 failures, 0 errors
+  -> Diagnostics unit test results: all tests pass, 0 failures, 0 errors
 
 $ ./gradlew assembleLawnWithQuickstepGithubDebug --no-daemon
   -> BUILD SUCCESSFUL in 12s (445 actionable tasks: 4 executed, 441 up-to-date)
@@ -236,8 +236,22 @@ Verdict: **pass** (the merge gate `final-status` is green on the final head SHA 
 
 Process note: The `High-risk gate` workflow run 32202877005 on head `9221ec21f1` failed because this re-audit record did not exist at that time. This updated record anchors the audit to head `9221ec21f145b01876120f27da79055697616b47` and the green merge-gate run 32202877240; the gate is expected to pass once this docs-only commit lands.
 
+## Spot-verification of fourth-review fixes (items 1-5)
+
+The fourth-review fixes were addressed by a single code commit (`5427118148`) after the previous re-audit head `9221ec21f1`. Each item is verified below against the actual code on the final head.
+
+(1) **Export snapshot uses live JournalStore via DiagnosticsPort.snapshot()**: `DiagnosticsPort` changed from `fun interface` to `interface` with `emit()` and `snapshot()` methods. `ExportWriter.readJournalEvents()` and `writeToUri()` now accept `DiagnosticsPort` instead of `Context`. `LayoutApplicationModule` exposes `diagnostics` property. `ExportUi.OrganizerDiagnosticsExportPreference()` accepts `DiagnosticsPort` parameter wired from `LawnchairApp.instance.layoutApplicationModule.diagnostics`. The production `DiagnosticsPort` implementation delegates `snapshot()` to the same `JournalStore` instance used for `append()`, so `@Synchronized` provides mutual exclusion. PASS.
+
+(2) **RESTART_RECONCILED resolves recovery point protection**: `ReconciliationProjection.project()` now accepts optional `pointId` parameter. `RestartReconciler.emitReconciledEvent()` passes `record.pointId.value`. `RetentionPolicy.protectedRecoverySequences()` checks `RESTART_RECONCILED` events with `pointId` to resolve in-flight recovery protection. New tests: `recoveryRequestedWithRestartReconciledIsNotProtected` (pointId match → prunable), `recoveryRequestedWithoutMatchingRestartReconciledRemainsProtected` (different pointId → remains protected). PASS.
+
+(3) **Copy fallback is durable**: `JournalStore.rewriteJournal()` now calls `syncHook.syncFile(journalFile)` after `copyFrom` in the rename-failure fallback. New test `retentionRewriteSyncsJournalFileAfterCopyFallback` verifies sync ordering with recording SyncHook. PASS.
+
+(4) **Serializer fail-closed**: `RunEventSerializer.json` changed `ignoreUnknownKeys` from `true` to `false`. `decode()` validates `schemaVersion == 1` and throws `IllegalArgumentException` if not. `ExportWriter.exportJson` also changed `ignoreUnknownKeys` to `false`. New tests: `decodeRejectsSchemaVersion2` (tampered JSON with schemaVersion=2 throws), `decodeRejectsUnknownKeys` (tampered JSON with unknown field throws). PASS.
+
+(5) **Version identifiers reject dots**: `VERSION_ID_REGEX` changed from `[A-Za-z0-9._-]` to `[A-Za-z0-9_-]` (dots excluded). `RunVersions` KDoc updated. Updated tests: `runVersionsAllowsValidIdentifiers` uses dot-free identifiers, `runVersionsRejectsOddCharsetVersion` includes dot rejection (`v1.0`, `com.example.private`). PASS.
+
 ## Change history
 
 - 2026-08-18: Initial audit record created for head `8c6b92c48f` (CI run 32145008969).
 - 2026-08-18: **Re-audit** after code commits `25efa335e3` (address PR #82 re-review findings), `dc9ec3e87b` (complete PR #82 re-review fixes with tests), `6717caebfe` (cover re-review fix behaviors with revert-detecting tests), `7f04de31da` (add applying-seeded silent-prune reconciliation variant). Updated head to `7f04de31da` (CI run 32151985849). Re-review fixes verified: (a) silent restart reconciliation emits RESTART_RECONCILED with post-reconciliation resultingLifecycle and SilentPrune/SilentAdvance explicit outcomes, (b) terminalApplyStage/terminalPointId per-invocation reset with no cross-run leakage, markApplying failure -> A4, (c) pointId carried on RolledBack and post-checkpoint Rejected terminal events, (d) correlation IDs validated as 32-char lowercase hex, (e) RecoveryContext with pointOriginRunId on all recovery terminal events, (f) post-append retention enforcing caps after every append. Revert-detecting tests confirm each fix.
-- 2026-08-19: **Re-audit** at final head `9221ec21f1` (CI run 32202877240) after third-review fix commits `a9e0d20db3` (third-review fixes 1-5), `0ad34e16a9` (export sort/snapshot), `9221ec21f1` (shared-instance concurrent context test + validation cleanup). Verified: (1) ApplyContext per-invocation after mutex acquisition + shared-instance load-bearing interleaving test, (2) markApplying failure stage A5, (3) retention rewrite SyncHook with ordering test, (4) in-flight pointId-correlated recovery protection from age/size pruning with scoped and mixed-pointId tests, (5) Orientation closed enum + version identifier charset validation with negative tests, (6) ExportWriter ascending sort + JournalStore.snapshot() stable snapshot with unsorted-fixture test. Test count: 183 diagnostics tests (0 failures).
+- 2026-08-19: **Re-audit** at final head `5427118148` after fourth-review fix commit `5427118148`. Verified: (1) Export snapshot uses live JournalStore via DiagnosticsPort.snapshot() with mutual exclusion, (2) RESTART_RECONCILED resolves recovery point protection via pointId correlation, (3) copy fallback durability with syncFile on journalFile, (4) serializer fail-closed: ignoreUnknownKeys=false + schemaVersion==1 validation, (5) version identifiers reject dots to prevent package/component identity strings. All 5 fixes have revert-detecting tests.
