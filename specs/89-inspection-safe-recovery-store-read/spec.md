@@ -20,88 +20,105 @@ updated: 2026-08-19
 
 Issue #84 must inspect a recovery point before explicit confirmation without writing the recovery store, its SQLite sidecars, the Launcher database, lifecycle state, or diagnostics. Its paused implementation correctly avoids `SQLiteOpenHelper` for absent databases, but its version probe and inspection query still open an existing recovery store through Android `SQLiteDatabase.OPEN_READONLY`.
 
-The production recovery store enables WAL. SQLite documents that a read-only WAL connection is supported only when readable `-wal` and `-shm` sidecars already exist, the containing directory permits their creation, or the connection is immutable. Therefore SQL read-only access is not a portable physical no-write guarantee for the recovery main database and its sidecars.[1] The Android public database bridge maps its public open flags to read-write, create, or read-only native flags; it does not provide an application-level `SQLITE_OPEN_URI` path required to rely on SQLite URI parameters such as `immutable=1`.[2] [3]
+The production recovery store enables WAL. SQLite documents that a read-only WAL connection is supported only when readable `-wal` and `-shm` sidecars already exist, the containing directory permits their creation, or the connection is immutable. SQL read-only access is therefore not a portable physical no-write guarantee for the recovery main database and its sidecars.[1] The Android public database bridge maps its public open flags to read-write, create, or read-only native flags; it does not provide an application-level `SQLITE_OPEN_URI` path required to rely on SQLite URI parameters such as `immutable=1`.[2] [3]
 
-The accepted #84 contract, especially RP-AC-04, is not weakened. A valid production-created WAL recovery database must either be inspected without opening the live SQLite store or inspection must fail closed before touching it. This specification selects the former strategy and keeps the latter as its required fallback.
+The accepted #84 contract, especially RP-AC-04, is not weakened. A valid production-created WAL recovery database must either be inspected without opening the live SQLite store or inspection must fail closed before touching it. This specification selects the former strategy and makes every uncertain relationship between the authoritative database and a derived snapshot unavailable.
 
 ## Outcome and decision
 
-Recovery storage will own a **durable, app-private, SQLite-free inspection snapshot**. Writers publish a complete, validated projection after recovery-store state changes. The #84 inspection path reads only that immutable projection and never opens the recovery database, its `-wal`, or its `-shm` file.
+Recovery storage will own a **durable, app-private, SQLite-free inspection snapshot** and a private **generation/health fence**. A writer first invalidates the fence, completes its existing authoritative mutation and read-back validation, then publishes a complete snapshot and marks the same generation valid. The #84 inspection path reads only a snapshot whose generation is valid in that fence; it never opens the recovery database, its `-wal`, or its `-shm` file.
 
 > An **inspection snapshot** is a complete, non-authoritative, app-private projection of recovery-point and tombstone metadata sufficient to classify one requested recovery point without reading SQLite. It contains no manifest, payload, revision, digest, layout identity, row encoding, or diagnostic payload. It is not a backup, recovery point, mutation log, or a new public application contract.
 
-The live recovery database remains authoritative for checkpoint creation, lifecycle mutation, retention, restart reconciliation, and confirmation-time recovery. A snapshot result never authorizes recovery. Explicit confirmation continues through the unchanged application-level recovery behavior from #84 and Spec 13, which reopens the authoritative store, rechecks readiness, retention, revision, and exact preconditions before any lifecycle or layout mutation.
+The live recovery database remains authoritative for checkpoint creation, lifecycle mutation, retention, restart reconciliation, and confirmation-time recovery. A snapshot result never authorizes recovery. Explicit confirmation continues through the unchanged application-level recovery behavior from #84 and Spec 13, which reopens the authoritative store and rechecks readiness, retention, revision, and exact preconditions before any lifecycle or layout mutation.
 
 | Decision | Normative consequence |
 |---|---|
-| **Selected strategy:** writer-published inspection snapshot | Inspection opens no recovery SQLite file; it reads one validated immutable snapshot file only. |
-| Live recovery database remains authoritative | A stale snapshot may provide a point-in-time preliminary result, but confirmation must revalidate against the live store and can reject without mutation. |
+| **Selected strategy:** writer-published inspection snapshot | Inspection opens no recovery SQLite file; it reads one validated final snapshot only. |
+| **Generation/health fence** | A snapshot can classify successfully only while the private fence is `VALID(generation)` and the decoded final envelope carries that exact generation. |
+| **No stale success** | Once a writer starts, the fence is `DIRTY`; the shared `RunMutex` makes inspection `Concurrent` rather than allowing a prior snapshot to produce a successful preview. |
+| Live recovery database remains authoritative | Snapshot trust is recreated only after authoritative validation. Confirmation still revalidates the live store before mutation. |
 | No bundled/native SQLite reader | The change introduces no JNI library, ABI matrix, SQLite release stream, or native security-update obligation. |
 | No Android URI/immutable assumption | `file:...?immutable=1` is not passed through Android public `SQLiteDatabase` as a supported application contract. |
-| Fail closed on snapshot uncertainty | Missing, invalid, incomplete, incompatible, unpublished, unreadable, or untrusted snapshots return the existing typed store-unavailable outcome without opening SQLite. |
+| Fail closed on uncertainty | Unknown, dirty, missing, invalid, incomplete, unreadable, unpublished, or untrusted snapshots return typed store-unavailable without opening SQLite. |
 
 ## Scope
 
-This specification owns the recovery-storage strategy required by #84. It includes the snapshot envelope, publication and startup-rehydration rules, inspection read boundary, supported environment, failure mapping, migration/rollback/backup behavior, diagnostics/privacy boundaries, concurrency semantics, and the physical no-write oracle.
+This specification owns the recovery-storage strategy required by #84. It includes the snapshot envelope, generation/health fence, writer publication and startup rehydration rules, inspection read boundary, supported environment, failure mapping, migration/rollback/backup behavior, diagnostics/privacy boundaries, concurrency semantics, and the physical no-write oracle.
 
 The scope is intentionally below the #84 application seam. It does not change `LayoutApplicationModule` public mutation contracts, the #84 closed preview result types, `RecoveryRequest`, `RecoveryResult`, recovery lifecycle semantics, retention policy, writer lease ownership, or Launcher layout application. The storage owner may add private types and focused tests only as described in the accepted implementation plan.
 
-## Supported environment and file set
+## Supported environment and publication primitive
 
-The selected inspection reader is supported on every Android/API level supported by the app because it does not depend on Android SQLite URI parsing or platform SQLite behavior. The snapshot format is decoded by project-owned Kotlin code and is stored under app-private `Context.noBackupFilesDir`; it is never readable from UI/coordinator code or external storage.
+The inspection reader is supported in Lawnchair's declared Android API range, **API 26 through API 35**, compiled against API 36.1, when it runs in the app's default single launcher process and uses the app-private internal directory returned by `Context.noBackupFilesDir`.[4] This strategy does not support a second application process, shared/external storage, user-selected directories, or a filesystem abstraction that bypasses `Context.noBackupFilesDir`. The existing `RunMutex` is the required mutual-exclusion mechanism; Android `AtomicFile` explicitly does not provide locking.[5]
 
-The physical no-write invariant covers every existing or newly created file in the following closed set for each invocation of #84 inspection:
+Publication uses exactly `android.util.AtomicFile(File(snapshotDirectory, "recovery-inspection.v1"))`. `snapshotDirectory` is created once below `noBackupFilesDir`; `AtomicFile` creates its `.new` companion in that same directory, writes and syncs file contents, and renames the completed file to the base file on `finishWrite()`.[5] The named file set is the base file plus writer-only `.new` and any legacy `.bak` companion recognized by `AtomicFile`; Stage B must not invent a second staging directory, cross-directory move, `Files.move`, copy-and-delete fallback, or raw `renameTo` path.
 
-| File family | Covered files | Inspection requirement |
-|---|---|---|
-| Authoritative recovery SQLite store | `organizer_recovery.db` (main database) | Must not be opened, created, renamed, truncated, deleted, or otherwise changed. |
-| SQLite WAL sidecars | `organizer_recovery.db-wal` and `organizer_recovery.db-shm` | Must not be opened for write, created, removed, renamed, resized, or otherwise changed. |
-| Inspection snapshot | the single published `recovery-inspection.v1` file | May be opened read-only only; its bytes, size, and modification/change timestamps must remain unchanged. |
-| Snapshot publication companions | all writer-owned pending, temporary, replacement, or backup names in the dedicated snapshot directory | Must not be created, removed, renamed, or changed by inspection. |
+Parent-directory durability is **not** a prerequisite for a `VALID` fence transition. The public `AtomicFile` contract promises a completely written and synced file before rename, but does not specify an app-portable parent-directory `fsync` guarantee.[5] The strategy deliberately does not infer crash-persistent directory metadata from an unavailable portability guarantee. A process death, app restart, or any uncertain publication leaves the in-memory fence `UNKNOWN`, so an on-disk final file—even if checksum-valid—is unusable until startup reconciliation validates the authoritative recovery store and republishes it. Failure of `startWrite`, write, `finishWrite`, final-file validation, or any required local filesystem operation is a publication failure and leaves the fence `DIRTY`/unavailable; there is no best-effort success path.
 
-The file set includes non-existence. A missing sidecar or snapshot companion before inspection must remain missing after it. The snapshot directory is dedicated to this strategy so its full inventory is an executable part of the oracle, rather than an unbounded filesystem search.
+| Environment or primitive condition | Required behavior |
+|---|---|
+| API 26–35, default app process, private no-backup directory, same-directory `AtomicFile` | Supported. The normal publication and inspection contracts apply. |
+| Restart, process death, power-loss recovery, or unobserved filesystem durability state | The new process starts `UNKNOWN`; it must reconcile and rebuild before inspection can classify any point. |
+| A second process or an external/shared/user-selected filesystem path | Unsupported. Do not publish or inspect; return typed unavailable and record no snapshot success. |
+| `AtomicFile` write/finish/validation failure or non-regular final file | Publication failure; keep the fence unavailable, and do not use a prior final snapshot. |
 
 ## Snapshot data and compatibility
 
-The snapshot is a versioned binary envelope with a deterministic canonical encoding and an integrity checksum over the complete envelope. Its internal schema is private to recovery storage. A valid envelope contains only the following projection:
+The snapshot is a versioned binary envelope with deterministic canonical encoding and an integrity checksum over the complete envelope. Its internal schema is private to recovery storage. A valid envelope contains only the following projection:
 
 | Projection field | Purpose | Explicitly excluded |
 |---|---|---|
-| snapshot format version and recovery-store format compatibility value | Reject unsupported readers and stores before inspection classification. | SQLite page data, schema DDL, or a database copy. |
-| publication epoch and publication time | Identify one complete point-in-time projection for internal diagnostics/tests. | Any value returned to UI/coordinator. |
+| snapshot envelope format and private runtime generation | Identify one complete in-process publication and reject an envelope that is not trusted by the current fence. | SQLite page data, schema DDL, or a database copy. |
+| authoritative recovery-store format compatibility value | Distinguish a trusted projection of an incompatible recovery record/store from an unreadable snapshot. | Any SQLite page, schema, or version-probe result exposed to UI. |
 | recovery point ID, lifecycle, creation/update time, checksum-valid classification, and record-format classification | Classify missing, expired, corrupt, incompatible, unresolved, restorable, and already-restored outcomes. | Manifest, raw row data, revision, digest, payload, item, package, profile, coordinate, or title. |
 | tombstone point ID, typed reason, expiry time, and compatibility value | Return precise retained tombstone outcomes without lazy cleanup. | Tombstone payload, database row, or SQL exception text. |
-| whole-envelope checksum and strict length/count bounds | Detect partial, corrupted, oversized, or incompatible snapshot input. | Any automatic repair or silent fallback to SQLite. |
+| whole-envelope checksum and strict length/count bounds | Detect partial, corrupted, oversized, or non-canonical snapshot input. | Any automatic repair or silent fallback to SQLite. |
 
-A snapshot with an unsupported future snapshot format or incompatible recovery-store format maps to #84's `NotRestorable(INCOMPATIBLE_VERSION)`. A missing file, invalid magic/version combination, bad checksum, incomplete write, duplicate or non-canonical point ID, unsupported old encoding, unreadable file, invalid bounded length/count, or unexpected I/O maps to `Unavailable(RECOVERY_STORE_UNAVAILABLE)`. None of these paths may open the recovery database or attempt snapshot repair.
+A malformed, truncated, checksum-invalid, unreadable, oversized, duplicate/non-canonical, unsupported-old, or future/unknown **snapshot envelope** is not trusted and maps to `Unavailable(RECOVERY_STORE_UNAVAILABLE)`. A trusted envelope may map to `NotRestorable(INCOMPATIBLE_VERSION)` only when its validated projection explicitly states that the authoritative recovery-store format or selected record format is incompatible. Snapshot-codec incompatibility must never be represented as recovery-point incompatibility.
 
-Logical retention remains unchanged. The inspection protocol evaluates `RetentionPolicy.actionFor()` with its injected `Clock` over snapshot timestamps. An expired `VERIFIED` record returns `NotRestorable(EXPIRED)` and a tombstone whose retention deadline has passed returns `NotRestorable(MISSING)` without editing either the snapshot or the live store.
+Logical retention remains unchanged. The inspection protocol evaluates `RetentionPolicy.actionFor()` with its injected `Clock` over trusted snapshot timestamps. An expired `VERIFIED` record returns `NotRestorable(EXPIRED)` and a tombstone whose retention deadline has passed returns `NotRestorable(MISSING)` without editing either the snapshot or the live store.
+
+## Generation and health fence
+
+`InspectionSnapshotFence` is a private storage/application collaboration; it is never exposed through `RecoveryStorePort`, preview results, UI, diagnostics, or a persistence record. Its generation is an in-process, strictly increasing value. It does not attempt to survive restart because survival would make an old snapshot appear authoritative without reopening and validating the live store.
+
+| Fence state | Entry condition | Inspection behavior | Exit condition |
+|---|---|---|---|
+| `UNKNOWN` | New process, no successful reconciliation, or a reset after an untrusted condition. | `Unavailable(RECOVERY_STORE_UNAVAILABLE)`; the snapshot file is not parsed as a success source. | Startup reconciliation successfully validates the authoritative store and publishes a current snapshot. |
+| `DIRTY(generation)` | Before any operation that can mutate the authoritative recovery store, and after any post-commit publication failure. | No successful classification. A concurrent inspection cannot acquire `RunMutex`; any later inspection is unavailable. | Only full authoritative validation plus successful final-snapshot publication for the same generation. |
+| `VALID(generation)` | Existing mutation-specific read-back/reconciliation validation succeeded, `AtomicFile.finishWrite()` succeeded, the final envelope revalidates, and envelope generation equals the fence generation. | The sole state permitted to classify from the snapshot. | Next writer begins and atomically marks `DIRTY(nextGeneration)`. |
+| `INCOMPATIBLE` | Legal startup/writer validation establishes that the authoritative recovery-store format is incompatible. | `NotRestorable(INCOMPATIBLE_VERSION)` without reading SQLite during inspection. | A new compatible process/reconciliation establishes `VALID`; otherwise remain unavailable/incompatible. |
+
+Every recovery-store mutation path—checkpoint creation, lifecycle advance, `markApplying`, `markRestoring`, pruning/tombstoning, retention, and restart reconciliation—must participate in the fence while holding the shared module `RunMutex`. The writer marks `DIRTY(nextGeneration)` before it can touch authoritative state. It may mark `VALID(nextGeneration)` only after both the mutation's established authoritative trust point and successful snapshot publication have completed. `DIRTY` is the runtime snapshot-health invalidation contract that the startup-only `ReadinessGate` does not currently represent: ordinary checkpoint/lifecycle/retention mutation entry points reject before touching SQLite while it is dirty. Only the internal reconciliation rehydration path may replace a dirty/unknown fence with a valid generation.
+
+For `checkpoint()`, one generation covers the whole `CREATING → READY` sequence. A snapshot created after the intermediate `CREATING` transaction is never valid for inspection; the fence becomes valid only after the required `READY` close/reopen read-back succeeds. For lifecycle changes that already use `updateRecord()` read-back, snapshot projection occurs after that close/reopen validation. Retention, tombstone, and prune paths must add an equivalent close/reopen projection read-back before publication; transaction success alone is insufficient.
+
+If an authoritative transaction commits but the snapshot cannot be published or revalidated, the fence stays `DIRTY`. The old final snapshot may remain on disk but it is unusable: a later inspection reads `Unavailable`, never `MISSING`, a stale rejection, or a restorable result from it. The fence itself is the runtime health latch: it is checked under `RunMutex` by preview and every ordinary recovery-store mutation entry, so it closes the transition race even though `ReadinessGate` only models startup. The only route back to success is the internal reconciliation rehydration path, which revalidates the live store and publishes a new matching generation; an ordinary later apply/recover/retention operation cannot heal dirty state.
 
 ## Publication, startup, and authority
 
-Recovery storage publishes the snapshot only while it owns the existing recovery-store writer path and the same serializer that protects lifecycle changes. Publication is never initiated by inspection, UI, coordinator, a background task, or diagnostics.
+Recovery storage publishes only while it owns the existing recovery-store writer path and the same shared `RunMutex` that protects apply, recover, preview, and restart reconciliation. Publication is never initiated by inspection, UI, coordinator, a background task, or diagnostics.
 
-For each successful recovery-store transaction that creates, changes, removes, or tombstones a recovery point, the writer derives a complete post-transaction inspection projection, encodes and validates it in memory, writes it to a uniquely named pending file in the dedicated no-backup directory, and ensures that pending bytes are durable before committing the recovery-store transaction. Only after the live transaction succeeds may the writer atomically replace the published file with the validated pending file. A failed database transaction discards the pending file and leaves the previously published snapshot untouched.
+For an operation generation, the writer derives a complete post-validation inspection projection in memory, validates canonical ordering, bounds, and checksum, and uses `AtomicFile.startWrite()`/`finishWrite()` to publish the final file. A failed authoritative transaction calls `failWrite()` and does not mark the fence valid. A post-commit publication failure preserves the authoritative database for reconciliation, keeps the fence dirty, and must not be compensated by deleting or rolling back a committed recovery record outside the established recovery protocol.
 
-A process death or publication failure after a successful database commit may leave an older published snapshot or no published snapshot. This is safe but unavailable-or-stale, never authoritative: the next completed startup reconciliation rebuilds and validates the snapshot while it already has legal access to the live store. Until that work succeeds, the readiness gate remains closed for inspection and #84 returns its existing typed unavailable result. The system must not mark a new snapshot as published before both its integrity check and atomic replacement succeed.
-
-The writer path must treat a post-commit snapshot-publication failure as a recovery-store availability failure for the operation that required publication, preserve the authoritative database for reconciliation, emit only the existing writer/recovery diagnostics permitted by current contracts, and never claim an inspection-capable point. It must not compensate by deleting or rolling back a committed recovery record outside the established recovery protocol.
+At process construction the fence is `UNKNOWN`, regardless of the existence, timestamp, generation, or checksum of a final snapshot file. `LayoutApplicationModule.reconcileAtStart()` must run the existing legal recovery reconciliation and retention work, then rebuild, validate, and publish a snapshot while still reconciling. It transitions the fence to `VALID` only after this succeeds. If authoritative recovery storage is absent/corrupt/unreadable, or validation/publish fails, readiness is failed and preview is unavailable. A checksum-valid residual snapshot must never produce a successful preview in those cases. If the legal authoritative availability check instead establishes a compatible-to-report but unsupported recovery-store format, reconciliation records private `INCOMPATIBLE` without parsing any residual snapshot and permits #84's existing typed `NotRestorable(INCOMPATIBLE_VERSION)` path; apply/recover remain protected by their ordinary authoritative store availability checks and cannot write.
 
 ## Inspection and concurrency semantics
 
-The #84 read-only protocol retains its existing readiness gate, `RunMutex`, and non-blocking writer lease for one authoritative Launcher current-state capture. Its I2 recovery-store read is replaced by one private `readInspectionProjection(pointId)` call. That call performs only bounded read/parse/validate work on the final snapshot file.
+The #84 read-only protocol retains its readiness gate, `RunMutex`, and non-blocking writer lease for one authoritative Launcher current-state capture. Its I2 recovery-store read is replaced by one private `readInspectionProjection(pointId)` call. That call checks `VALID(generation)` while holding `RunMutex`, reads and validates the final snapshot, verifies the identical envelope generation before classification, and performs bounded read/parse/validate work only.
 
-A snapshot is immutable after publication. An inspection that observes a concurrent atomic replacement may see either the prior complete snapshot or the next complete snapshot, never a partial file. It does not wait for a recovery writer and it does not acquire a storage-mutation lease. If the existing #84 `RunMutex` or capture-only writer lease is contended, #84 preserves its specified `Concurrent` or `WriterBusy` result before any recovery authorization. If snapshot publication is in progress but a complete prior snapshot exists, inspection may read that prior point-in-time projection; confirmation remains conditionally safe because it revalidates the authoritative store. If no complete published snapshot is available, inspection fails closed as unavailable.
+All application-managed writer/apply/recover/reconciliation paths acquire the same `RunMutex` before setting the fence dirty or mutating recovery storage. An inspection that races such an operation fails `Concurrent` at mutex acquisition; it never reads a previous snapshot. An inspection that runs after a committed publication failure observes `DIRTY` and returns `Unavailable(RECOVERY_STORE_UNAVAILABLE)`. A `WriterBusy` result remains reserved for #84's later capture-only Launcher writer lease contention after a valid snapshot classification.
 
 | Situation | Inspection behavior | Persistent effect |
 |---|---|---|
-| Valid published snapshot and valid unexpired record | Classify from snapshot, then use #84's existing capture-only lease behavior. | None. |
-| Writer is publishing a replacement; prior final snapshot exists | Read one complete old or new snapshot without waiting. | None. |
-| Writer is publishing and no valid final snapshot exists | `Unavailable(RECOVERY_STORE_UNAVAILABLE)`. | None. |
-| #84 module mutex is held | Existing `Concurrent`. | None. |
+| `VALID(generation)` and valid unexpired record | Classify from the matching snapshot, then run the existing capture-only lease behavior. | None. |
+| Apply/recover/reconciliation/publication writer holds `RunMutex` | Existing `Concurrent`. | None. |
+| A writer has committed but snapshot publication/read-back failed | `Unavailable(RECOVERY_STORE_UNAVAILABLE)`. | None during inspection; runtime health remains latched dirty. |
+| `UNKNOWN` at startup or after a process restart | `Unavailable(RECOVERY_STORE_UNAVAILABLE)` or existing reconciliation-pending result before protocol entry. | None. |
+| `INCOMPATIBLE` from authoritative validation | `NotRestorable(INCOMPATIBLE_VERSION)`. | None. |
+| Snapshot envelope missing, corrupt, partial, unreadable, unsupported, or generation-mismatched | `Unavailable(RECOVERY_STORE_UNAVAILABLE)`. | None. |
 | #84 capture-only writer lease is held | Existing `WriterBusy`. | None. |
-| Snapshot is missing, corrupt, partial, unreadable, or unsupported old encoding | `Unavailable(RECOVERY_STORE_UNAVAILABLE)`. | None. |
-| Snapshot shows a point that changed after publication | Return its valid point-in-time classification; confirmation rechecks live state and may reject. | None during inspection. |
 
 Inspection must not call `SQLiteDatabase`, `SQLiteOpenHelper`, `RecoveryDbVersionGate.probe()`, `checkpoint`, lifecycle transition methods, retention/prune methods, writer snapshot publication, model reload, layout mutation, recovery authorization, or diagnostics projection. This restriction applies equally to successful, missing, invalid, unsupported, busy, concurrent, and exception paths.
 
@@ -109,17 +126,17 @@ Inspection must not call `SQLiteDatabase`, `SQLiteOpenHelper`, `RecoveryDbVersio
 
 ### Valid production-created WAL store with sidecars present
 
-Given a recovery point created through the production recovery writer, a valid published snapshot, and an existing recovery database with readable `-wal` and `-shm` sidecars,
+Given a recovery point created through the production recovery writer, a fence at `VALID(generation)`, a matching valid snapshot, and an existing recovery database with readable `-wal` and `-shm` sidecars,
 
 When #84 inspects the point,
 
-Then it classifies only the snapshot and performs the existing non-blocking current-layout capture protocol,
+Then it classifies only the matching snapshot and performs the existing non-blocking current-layout capture protocol,
 
 And the main database, `-wal`, `-shm`, snapshot final file, and snapshot-directory inventory remain physically unchanged.
 
 ### Valid production-created WAL store in closed state
 
-Given a recovery point created through the production recovery writer, a valid published snapshot, a valid closed WAL-mode main database, and absent sidecars,
+Given a recovery point created through the production recovery writer, a `VALID(generation)` matching snapshot, a valid closed WAL-mode main database, and absent sidecars,
 
 When #84 inspects the point,
 
@@ -127,39 +144,49 @@ Then it reads only the snapshot and produces its closed preview result,
 
 And no `-wal` or `-shm` file is created and no authoritative recovery file is touched.
 
-### Snapshot unavailable or invalid
+### Post-commit snapshot publication failure
 
-Given that the snapshot is absent, incomplete, corrupted, unreadable, exceeds a bound, has an unsupported old encoding, or fails its checksum,
+Given that an authoritative lifecycle transaction has passed its required database commit but snapshot publication or final-file validation fails,
+
+When #84 inspection runs after the writer releases `RunMutex`,
+
+Then the fence is `DIRTY` and it returns `Unavailable(RECOVERY_STORE_UNAVAILABLE)`, even if an older checksum-valid final snapshot contains or omits the requested point,
+
+And only successful reconciliation plus republish may restore `VALID`.
+
+### Snapshot unavailable, invalid, or format-unknown
+
+Given that the snapshot is absent, incomplete, corrupted, unreadable, exceeds a bound, has an unsupported encoding, fails its checksum, or does not match the current fence generation,
 
 When #84 inspection runs,
 
 Then it returns `Unavailable(RECOVERY_STORE_UNAVAILABLE)` without trying the live database, repairing the snapshot, invoking `SQLiteOpenHelper`, or emitting a diagnostic event.
 
-### Snapshot is stale while a writer is active
+### Residual valid snapshot but authoritative store absent, corrupt, or incompatible
 
-Given a writer has committed a lifecycle change after the current final snapshot but before it can publish a replacement,
+Given an application restart with a checksum-valid snapshot file left from an earlier process but the authoritative recovery database is absent, corrupt, unreadable, or incompatible,
 
-When #84 inspection reads the last complete snapshot,
+When startup reconciliation runs,
 
-Then it may return only the point-in-time classification represented by that snapshot and never treats it as recovery authorization,
+Then it does not set `VALID` from that residual file; absent/corrupt/unreadable storage returns typed unavailable and a verified authoritative incompatibility returns typed incompatible-version,
 
-And explicit confirmation re-enters the established application-level recovery routine and revalidates the authoritative store, readiness, retention, current revision, and exact preconditions before any mutation.
+And #84 inspection cannot produce a success preview from the residual snapshot.
 
-### Startup after interrupted publication
+### Writer concurrency
 
-Given the recovery database commit completed but snapshot publication was interrupted or failed,
+Given an application-managed apply, recover, or reconciliation writer begins,
 
-When the application starts,
+When #84 inspection races it,
 
-Then startup reconciliation rebuilds the snapshot only while the recovery store is legally opened and serialized,
+Then the writer already owns `RunMutex` and inspection returns `Concurrent` without reading a prior snapshot,
 
-And inspection remains unavailable until that rebuild validates and publishes a complete snapshot; no Launcher layout state changes merely because a snapshot is missing.
+And when the writer completes, inspection can classify only a newly published matching generation or returns unavailable.
 
 ## Migration, downgrade, rollback, backup, and recovery
 
-The strategy adds a no-backup derived artifact and does not alter the recovery database schema, recovery record codec, lifecycle values, retention durations, Launcher schema, backup format, or public recovery contracts. Existing compatible recovery records are reprojected during startup reconciliation after upgrade; while the initial projection is absent, inspection fails closed. A newer or incompatible snapshot is never decoded by an older app and is ignored rather than repaired or opened as SQLite.
+The strategy adds a no-backup derived artifact and does not alter the recovery database schema, recovery record codec, lifecycle values, retention durations, Launcher schema, backup format, or public recovery contracts. Existing compatible recovery records are reprojected during startup reconciliation after upgrade; while the initial projection is absent or the fence is unknown, inspection fails closed. An unsupported snapshot encoding is unavailable, not a claim that the recovery point is incompatible.
 
-The existing recovery database is excluded from Lawnchair ZIP and Android full backup by ADR-0003. The snapshot is additionally outside the existing `res/xml/backupscheme.xml` allowlist and resides in the no-backup directory. Backup or restore therefore does not create a valid inspection snapshot by itself. After a restore, inspection is unavailable until ordinary startup reconciliation has a compatible authoritative recovery store from which to build the projection. This does not change backup semantics or write the Launcher layout.
+The existing recovery database is excluded from Lawnchair ZIP and Android full backup by ADR-0003. The snapshot is additionally outside the existing `res/xml/backupscheme.xml` allowlist and resides in the no-backup directory. Backup or restore therefore does not create a trusted inspection snapshot. After a restore, inspection is unavailable until ordinary startup reconciliation has a compatible authoritative recovery store from which to build a matching projection. This does not change backup semantics or write the Launcher layout.
 
 A rollback that removes this strategy leaves the live recovery database and Launcher layout untouched. It may leave an ignored snapshot artifact, which a later compatible writer may replace during normal reconciliation. No downgrade or rollback path may make an inspection attempt delete, migrate, or modify the authoritative store.
 
@@ -173,30 +200,34 @@ Inspection remains diagnostics-silent and creates no synthetic recovery lifecycl
 
 | AC | Acceptance criterion |
 |---|---|
-| IS-AC-01 | `spec.md` and `plan.md` select the app-private inspection-snapshot strategy; #84 stays within its existing application-owned preview and confirmation contracts. |
-| IS-AC-02 | Every #84 inspection result reads only a bounded, validated final snapshot and does not invoke Android SQLite, `SQLiteOpenHelper`, `RecoveryDbVersionGate`, a live-store query, lifecycle/retention action, layout mutation, model reload, recovery authorization, or diagnostics projection. |
-| IS-AC-03 | A production-created valid WAL recovery store with `-wal` and `-shm` present is inspectable through a valid snapshot with zero physical change to the main DB, both sidecars, final snapshot, and every snapshot companion file. |
-| IS-AC-04 | A production-created valid closed WAL recovery store with sidecars absent is inspectable through a valid snapshot without creating either sidecar or modifying any covered file. |
-| IS-AC-05 | The physical oracle records pre/post existence, SHA-256 digest or byte content, size, and defined modification/change timestamps for every covered file, plus a complete inventory of the dedicated snapshot directory. Any difference fails the test. |
-| IS-AC-06 | Missing, invalid, truncated, checksum-invalid, unreadable, oversized, unpublished, or unsupported-old snapshot input maps to typed unavailable before live storage is touched; unsupported future snapshot/recovery formats map to typed incompatible-version. |
-| IS-AC-07 | Snapshot publication is complete, canonical, integrity-checked, atomic-final-file only, and writer-owned. Crash or publish failure leaves an older snapshot or no snapshot and makes inspection stale-safe or unavailable; it never publishes a partial projection. |
-| IS-AC-08 | Visibility under a concurrent writer is explicit: inspection reads one complete immutable snapshot without waiting, returns existing busy/concurrent results for #84 serialization contention, and confirmation revalidates the authoritative store before mutation. |
-| IS-AC-09 | Snapshot migration, app upgrade/downgrade, startup rehydration, backup/restore, and rollback preserve the existing recovery/Launcher contracts. No snapshot condition changes the Launcher layout; unsupported or unrebuildable state fails closed. |
-| IS-AC-10 | Snapshot contents and public values do not expose a manifest, payload, row, revision, digest, item/profile identity, raw exception, or recovery internals. Inspection emits no recovery lifecycle diagnostic. |
-| IS-AC-11 | Focused JVM and Android instrumentation evidence, repository checks, formatting, debug build, `CI / final-status`, and an independent high-risk audit are completed on the final implementation head before merge. |
-| IS-AC-12 | #84 may resume only after the accepted strategy is implemented and IS-AC-03 through IS-AC-08 physical and behavioral evidence is available for the exact integration head. |
+| IS-AC-01 | `spec.md` and `plan.md` select the app-private inspection-snapshot strategy, retain #84's application-owned preview/confirmation contracts, and state the private `UNKNOWN`/`DIRTY`/`VALID(generation)`/`INCOMPATIBLE` fence. |
+| IS-AC-02 | Every #84 inspection result reads only a bounded, validated final snapshot whose generation equals `VALID(generation)` and does not invoke Android SQLite, `SQLiteOpenHelper`, `RecoveryDbVersionGate`, a live-store query, lifecycle/retention action, layout mutation, model reload, recovery authorization, or diagnostics projection. |
+| IS-AC-03 | Every recovery-store mutation marks the fence dirty before authoritative work, and only an established mutation-specific close/reopen/read-back validation plus successful final snapshot publication can establish `VALID(generation)`. While dirty/unknown, ordinary mutation entries reject before SQLite; only reconciliation rehydration may establish a new valid generation. |
+| IS-AC-04 | A post-commit publication/read-back failure remains dirty and returns typed unavailable; no previous snapshot can yield `MISSING`, a restorable result, or another successful classification before reconciliation republishes. |
+| IS-AC-05 | A production-created valid WAL recovery store with `-wal` and `-shm` present is inspectable through a valid matching snapshot with zero physical change to the main DB, both sidecars, final snapshot, and every snapshot companion file. |
+| IS-AC-06 | A production-created valid closed WAL recovery store with sidecars absent is inspectable through a valid matching snapshot without creating either sidecar or modifying any covered file. |
+| IS-AC-07 | Publication uses `AtomicFile` in one `noBackupFilesDir` subdirectory with its documented `.new`/final protocol, has no cross-directory/copy fallback, and treats unsupported process/filesystem conditions or any publication failure as unavailable. Process restart starts unknown and requires rehydration; parent-directory durability is not assumed. |
+| IS-AC-08 | Snapshot-envelope parse/codec incompatibility maps to typed unavailable. Only a trusted projection that explicitly represents authoritative recovery/record incompatibility maps to `NotRestorable(INCOMPATIBLE_VERSION)`. |
+| IS-AC-09 | Shared `RunMutex` serializes inspection with apply, recover, publication, and reconciliation: concurrent writer inspection is `Concurrent`, never a stale successful preview; capture-lease contention remains `WriterBusy`. |
+| IS-AC-10 | Residual checksum-valid snapshots cannot produce a successful preview when startup authoritative storage is absent, corrupt, unreadable, or incompatible. Reconciliation must validate/rebuild before opening the success path; verified authoritative incompatibility uses the existing typed incompatible path without decoding the residual snapshot. |
+| IS-AC-11 | The physical oracle records pre/post existence, SHA-256 digest or byte content, size, and defined modification/change timestamps for every covered file, plus a complete inventory of the dedicated snapshot directory. Any difference fails the test. |
+| IS-AC-12 | Snapshot migration, app upgrade/downgrade, startup rehydration, backup/restore, and rollback preserve the existing recovery/Launcher contracts. No snapshot condition changes the Launcher layout; unsupported or unrebuildable state fails closed. |
+| IS-AC-13 | Snapshot contents and public values do not expose a manifest, payload, row, revision, digest, item/profile identity, raw exception, or recovery internals. Inspection emits no recovery lifecycle diagnostic. |
+| IS-AC-14 | Focused JVM and Android instrumentation evidence, repository checks, formatting, debug build, `CI / final-status`, and an independent high-risk audit are completed on the final implementation head before merge. |
+| IS-AC-15 | #84 may resume only after the accepted strategy is implemented and IS-AC-02 through IS-AC-11 physical and behavioral evidence is available for the exact integration head. |
 
 ## Test oracle
 
-The physical oracle is authoritative for IS-AC-03 through IS-AC-05. Instrumentation seeds the store only through the production writer, never by raw file construction. For each covered regular file, the harness captures `{exists, regular-file type, byte length, SHA-256, stat modification time, stat change time}` immediately before and immediately after one inspection. For a missing file it records `{exists=false}`. It also captures the complete sorted inventory of the dedicated snapshot directory, including all final and temporary names. The primary verdict is exact equality of existence, type, digest, length, and inventory; timestamp equality is an additional invariant where the device filesystem reports the field. Read-access time is deliberately excluded because an ordinary read may update it.
+The physical oracle is authoritative for IS-AC-05, IS-AC-06, and IS-AC-11. Instrumentation seeds the store only through the production recovery writer, never by raw file construction. For each covered regular file, the harness captures `{exists, regular-file type, byte length, SHA-256, stat modification time, stat change time}` immediately before and immediately after one inspection. For a missing file it records `{exists=false}`. It also captures the complete sorted inventory of the dedicated snapshot directory, including final, `.new`, and legacy `.bak` names. The primary verdict is exact equality of existence, type, digest, length, and inventory; timestamp equality is an additional invariant where the device filesystem reports the field. Read-access time is deliberately excluded because an ordinary read may update it.
 
 | Test surface | Required cases |
 |---|---|
-| Pure snapshot codec and publication tests | canonical encode/decode, bounded length/count, checksum, duplicate-ID rejection, unknown format, truncated bytes, pending-file failure, atomic replacement, and no partial final file. |
-| Recovery-storage contract tests | every recovery lifecycle/tombstone mutation publishes the corresponding complete projection; post-commit publish failure keeps live DB recoverable and inspection unavailable-or-stale; startup reconciliation rebuilds the projection before inspection readiness. |
-| #84 preview protocol tests | valid projection, missing record, retained tombstones, expired point, corrupt/incompatible/unresolved state, snapshot unavailable, `Concurrent`, `WriterBusy`, stale confirmation, and confirmation-time authoritative revalidation. |
-| Production Android instrumentation | production-created valid WAL store with sidecars present; valid closed store with sidecars absent; absent store; invalid store; invalid/unpublished/incompatible snapshot; concurrent writer/publication behavior; exact physical oracle on all covered files. |
-| Upgrade/downgrade/backup tests | no-backup placement, restore with no snapshot, snapshot rebuild from compatible recovery store, incompatible snapshot fail-closed, and rollback without Launcher-layout mutation. |
+| Pure snapshot codec and fence tests | canonical encode/decode, bounds, checksum, duplicate-ID rejection, generation match/mismatch, unknown envelope encoding, trusted authoritative-format incompatibility, and no public raw value. |
+| Publication tests | `AtomicFile` same-directory final/`.new` behavior, write/finish failure, final revalidation, dirty latch, no stale success, no partial final file, and restart starts unknown. |
+| Recovery-storage contract tests | every lifecycle/tombstone mutation participates in the fence; checkpoint becomes valid only after `READY` read-back; lifecycle/retention/prune publish only after authoritative validation; post-commit failure is dirty; ordinary mutations reject while dirty; startup reconciliation alone rebuilds before readiness. |
+| #84 preview protocol tests | valid projection, missing record, retained tombstones, expired point, corrupt/incompatible/unresolved state, snapshot unavailable, dirty state, generation mismatch, `Concurrent`, `WriterBusy`, stale confirmation, and confirmation-time authoritative revalidation. |
+| Production Android instrumentation | production-created WAL store with sidecars present; valid closed store with sidecars absent; residual valid snapshot with authoritative DB absent/corrupt/incompatible; invalid/unpublished snapshot; concurrent writer/publication; exact physical oracle on all covered files. |
+| Upgrade/downgrade/backup tests | no-backup placement, restore with no trusted snapshot, snapshot rebuild from compatible recovery store, snapshot-codec incompatibility unavailable, authoritative incompatibility result, and rollback without Launcher-layout mutation. |
 
 ## Non-goals
 
@@ -206,15 +237,16 @@ This issue does not implement #52 UI/orchestration, expose `RecoveryStorePort` o
 
 Stage B must stop and return to the owning storage/application contract rather than weaken this specification if any of the following occurs:
 
-- a complete inspection projection cannot be published atomically without exposing a partial file or requiring inspection to open SQLite;
-- recovery storage cannot rebuild the projection during its existing legal writer/reconciliation path without a new public mutation contract;
-- snapshot publication failure cannot be represented as unavailable-or-stale while preserving existing recovery reconciliation semantics;
-- supporting a required Android environment would require an unreviewed native dependency, a new public recovery/store contract, or raw state leakage across the Layout Application boundary;
+- a complete inspection projection cannot be published through the named `AtomicFile` primitive without exposing a partial file or requiring inspection to open SQLite;
+- recovery storage cannot keep the fence dirty across every uncertain authoritative mutation/publication result, or cannot rebuild a valid generation during legal reconciliation;
+- a required runtime/restart path would need to treat an older or residual snapshot as a successful source;
+- supporting a required Android environment would require a second process, unreviewed native dependency, unsupported filesystem primitive, new public recovery/store contract, or raw state leakage across the Layout Application boundary;
 - the physical instrumentation oracle detects any covered recovery, sidecar, snapshot, or companion-file change during inspection; or
 - Spec 13, ADR-0003, the accepted #84 artifact, or the organizer diagnostics contract conflicts with the resulting behavior.
 
 ## Change history
 
+- 2026-08-19: Revised after Stage A review. Added generation/health fencing, eliminated stale snapshot success, fixed `AtomicFile`/API/process scope, separated snapshot-codec and authoritative-format mapping, and bound publication to authoritative read-back validation.
 - 2026-08-19: Drafted for #89 Stage A. Selected a writer-published, no-backup, SQLite-free inspection snapshot; production behavior remains unchanged pending review and acceptance.
 
 ## References
@@ -222,11 +254,12 @@ Stage B must stop and return to the owning storage/application contract rather t
 [1]: https://www.sqlite.org/wal.html "SQLite: Write-Ahead Logging — read-only WAL conditions"
 [2]: https://www.sqlite.org/uri.html "SQLite: URI filenames and immutable connections"
 [3]: https://android.googlesource.com/platform/frameworks/base/+/master/core/jni/android_database_SQLiteConnection.cpp "AOSP SQLiteConnection JNI bridge"
-[4]: https://android.googlesource.com/platform/external/sqlite/+/master/dist/Android.bp "AOSP Android SQLite build configuration"
-[5]: https://github.com/nunu1733/NunuLauncher/issues/89 "Issue #89"
-[6]: https://github.com/nunu1733/NunuLauncher/issues/84#issuecomment-5342953676 "Issue #84 Stage B P0 response"
-[7]: ../../AGENTS.md "Repository rules"
-[8]: ../13-safe-layout-application/spec.md "Spec 13: safe layout application and recovery"
-[9]: https://github.com/nunu1733/NunuLauncher/blob/issue-84-recovery-preview-seam/specs/84-recovery-preview-seam/spec.md "Issue #84 accepted working specification"
-[10]: ../../docs/adr/0003-organizer-recovery-point-storage.md "ADR-0003: separate private recovery database"
-[11]: ../../docs/engineering/quality-strategy.md "Quality strategy"
+[4]: ../../build.gradle "NunuLauncher Android SDK support configuration"
+[5]: https://developer.android.com/reference/android/util/AtomicFile "Android AtomicFile API reference"
+[6]: https://github.com/nunu1733/NunuLauncher/issues/89 "Issue #89"
+[7]: https://github.com/nunu1733/NunuLauncher/issues/84#issuecomment-5342953676 "Issue #84 Stage B P0 response"
+[8]: ../../AGENTS.md "Repository rules"
+[9]: ../13-safe-layout-application/spec.md "Spec 13: safe layout application and recovery"
+[10]: https://github.com/nunu1733/NunuLauncher/blob/issue-84-recovery-preview-seam/specs/84-recovery-preview-seam/spec.md "Issue #84 accepted working specification"
+[11]: ../../docs/adr/0003-organizer-recovery-point-storage.md "ADR-0003: separate private recovery database"
+[12]: ../../docs/engineering/quality-strategy.md "Quality strategy"
