@@ -1,10 +1,12 @@
 package app.lawnchair.organizer.application.store
 
 import android.content.Context
+import android.system.Os
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.lawnchair.organizer.application.canonical.PersistenceManifest
 import app.lawnchair.organizer.application.protocol.RecoveryStorePort
+import app.lawnchair.organizer.application.protocol.RunMutex
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.planning.RevisionId
@@ -46,7 +48,7 @@ class RecoveryStoreInspectionInstrumentationTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         deleteRecoveryDatabaseArtifacts(context)
         val store = RecoveryStore(context) { 1_000L }
-        assertTrue(store.withReconciliationScope { store.rebuildInspectionSnapshotForReconciliation() })
+        prepareForMutation(store)
         val payload = RecoveryStorePort.CheckpointPayload(
             pointId = pointId,
             runId = RunId("abcdef0123456789abcdef0123456789"),
@@ -59,6 +61,8 @@ class RecoveryStoreInspectionInstrumentationTest {
         )
         assertTrue(store.checkpoint(payload) is RecoveryStorePort.CheckpointResult.Ready)
         val dbFile = recoveryDatabaseFile(context)
+        assertFalse(File("${dbFile.absolutePath}-wal").exists())
+        assertFalse(File("${dbFile.absolutePath}-shm").exists())
         val before = physicalState(context, dbFile)
 
         val result = store.readInspectionProjection(pointId)
@@ -72,7 +76,7 @@ class RecoveryStoreInspectionInstrumentationTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         deleteRecoveryDatabaseArtifacts(context)
         val store = RecoveryStore(context) { 1_000L }
-        assertTrue(store.withReconciliationScope { store.rebuildInspectionSnapshotForReconciliation() })
+        prepareForMutation(store)
         val helper = RecoveryDbHelper(context)
         helper.writableDatabase
         assertTrue(
@@ -102,6 +106,46 @@ class RecoveryStoreInspectionInstrumentationTest {
     }
 
     @Test
+    fun residualValidSnapshotWithMissingMainDatabaseFailsStartupWithoutCreatingRecoveryStore() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        deleteRecoveryDatabaseArtifacts(context)
+        val original = RecoveryStore(context) { 1_000L }
+        prepareForMutation(original)
+        assertTrue(original.checkpoint(checkpointPayload()) is RecoveryStorePort.CheckpointResult.Ready)
+        val dbFile = recoveryDatabaseFile(context)
+        val snapshotBefore = physicalState(context, dbFile).filter { it.name.startsWith("snapshot") }
+        assertTrue(dbFile.delete())
+        File("${dbFile.absolutePath}-wal").delete()
+        File("${dbFile.absolutePath}-shm").delete()
+        File("${dbFile.absolutePath}-journal").delete()
+
+        val restarted = RecoveryStore(context) { 2_000L }
+        assertFalse(rebuildAtStartup(restarted))
+        assertFalse(dbFile.exists())
+        assertEquals(snapshotBefore, physicalState(context, dbFile).filter { it.name.startsWith("snapshot") })
+        assertEquals(RecoveryStorePort.InspectionProjectionRead.Unavailable, restarted.readInspectionProjection(pointId))
+    }
+
+    @Test
+    fun residualSnapshotWithCorruptMainDatabaseFailsStartupWithoutRepairOrClassificationSuccess() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        deleteRecoveryDatabaseArtifacts(context)
+        val original = RecoveryStore(context) { 1_000L }
+        prepareForMutation(original)
+        assertTrue(original.checkpoint(checkpointPayload()) is RecoveryStorePort.CheckpointResult.Ready)
+        val dbFile = recoveryDatabaseFile(context)
+        val snapshotBefore = physicalState(context, dbFile).filter { it.name.startsWith("snapshot") }
+        dbFile.writeText("not a sqlite database")
+        File("${dbFile.absolutePath}-wal").delete()
+        File("${dbFile.absolutePath}-shm").delete()
+
+        val restarted = RecoveryStore(context) { 2_000L }
+        assertFalse(rebuildAtStartup(restarted))
+        assertEquals(snapshotBefore, physicalState(context, dbFile).filter { it.name.startsWith("snapshot") })
+        assertEquals(RecoveryStorePort.InspectionProjectionRead.Unavailable, restarted.readInspectionProjection(pointId))
+    }
+
+    @Test
     fun invalidExistingDatabaseInspectionReturnsUnavailableWithoutHelperRepairOrWrite() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         deleteRecoveryDatabaseArtifacts(context)
@@ -111,6 +155,8 @@ class RecoveryStoreInspectionInstrumentationTest {
         val sizeBefore = dbFile.length()
         val store = RecoveryStore(context) { 1_000L }
 
+        assertEquals(RecoveryStorePort.InspectionProjectionRead.Unavailable, store.readInspectionProjection(pointId))
+        assertFalse(rebuildAtStartup(store))
         assertEquals(RecoveryStorePort.InspectionProjectionRead.Unavailable, store.readInspectionProjection(pointId))
         assertTrue(dbFile.exists())
         assertTrue(dbFile.length() == sizeBefore)
@@ -125,22 +171,80 @@ class RecoveryStoreInspectionInstrumentationTest {
     private fun snapshotDirectory(context: Context): File =
         File(context.applicationContext.noBackupFilesDir, RecoveryInspectionSnapshotReader.DIRECTORY_NAME)
 
-    private fun physicalState(context: Context, dbFile: File): List<Pair<String, String>> = buildList {
+    private fun prepareForMutation(store: RecoveryStore) {
+        assertTrue(rebuildAtStartup(store))
+    }
+
+    private fun rebuildAtStartup(store: RecoveryStore): Boolean {
+        val mutex = RunMutex()
+        val runId = RunId("dddddddddddddddddddddddddddddddd")
+        assertTrue(mutex.tryAcquire(runId))
+        val lease = requireNotNull(mutex.issueReconciliationLease(runId))
+        val issuer = requireNotNull(store.bindReconciliationIssuer(mutex))
+        val session = requireNotNull(issuer.openSession(lease))
+        return try {
+            session.rebuildInspectionSnapshot()
+        } finally {
+            session.close()
+            mutex.release(runId)
+        }
+    }
+
+    private fun checkpointPayload(): RecoveryStorePort.CheckpointPayload = RecoveryStorePort.CheckpointPayload(
+        pointId = pointId,
+        runId = RunId("abcdef0123456789abcdef0123456789"),
+        preManifest = PersistenceManifest(1, 33, 0, emptyList(), emptyList(), 0L),
+        preRevision = RevisionId("revision"),
+        preDigest = ByteArray(32),
+        applyActionDigest = ByteArray(32),
+        itemCount = 0,
+        resourceCount = 0,
+    )
+
+    private data class PhysicalFileState(
+        val name: String,
+        val exists: Boolean,
+        val regularFile: Boolean,
+        val length: Long?,
+        val sha256: String?,
+        val modifiedAtMs: Long?,
+        val changedAtSeconds: Long?,
+    )
+
+    /** Complete closed-file-set inventory; atime is intentionally excluded. */
+    private fun physicalState(context: Context, dbFile: File): List<PhysicalFileState> = buildList {
         listOf(
             dbFile,
             File("${dbFile.absolutePath}-wal"),
             File("${dbFile.absolutePath}-shm"),
-        ).forEach { file -> if (file.isFile) add(file.name to fileDigest(file)) }
-        snapshotDirectory(context).listFiles()?.sortedBy { it.name }?.forEach { file ->
-            if (file.isFile) add("snapshot/${file.name}" to fileDigest(file))
+            File("${dbFile.absolutePath}-journal"),
+        ).forEach { file -> add(fileState(file.name, file)) }
+        val snapshot = snapshotDirectory(context)
+        add(fileState("snapshot-directory", snapshot))
+        snapshot.listFiles()?.sortedBy { it.name }?.forEach { file ->
+            add(fileState("snapshot/${file.name}", file))
         }
     }
 
-    private fun fileDigest(file: File): String = buildString {
-        append(file.length())
-        append(':')
-        append(MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) })
+    private fun fileState(name: String, file: File): PhysicalFileState {
+        if (!file.exists()) return PhysicalFileState(name, false, false, null, null, null, null)
+        val regular = file.isFile
+        val stat = runCatching { Os.stat(file.absolutePath) }.getOrNull()
+        return PhysicalFileState(
+            name = name,
+            exists = true,
+            regularFile = regular,
+            length = if (regular) file.length() else null,
+            sha256 = if (regular) fileDigest(file) else null,
+            modifiedAtMs = file.lastModified(),
+            changedAtSeconds = stat?.st_ctime,
+        )
     }
+
+    private fun fileDigest(file: File): String =
+        MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { byte ->
+            "%02x".format(byte.toInt() and 0xff)
+        }
 
     private fun deleteRecoveryDatabaseArtifacts(context: Context) {
         val dbFile = recoveryDatabaseFile(context)

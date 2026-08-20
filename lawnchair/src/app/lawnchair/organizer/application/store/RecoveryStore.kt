@@ -8,7 +8,10 @@ import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.lifecycle.LifecycleTransitions
 import app.lawnchair.organizer.application.lifecycle.RetentionPolicy
 import app.lawnchair.organizer.application.protocol.RecoveryStorePort
+import app.lawnchair.organizer.application.protocol.RecoveryStoreReconciliationIssuer
 import app.lawnchair.organizer.application.protocol.RecoveryStoreReconciliationPort
+import app.lawnchair.organizer.application.protocol.RecoveryStoreReconciliationSession
+import app.lawnchair.organizer.application.protocol.RunMutex
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.planning.RevisionId
@@ -48,7 +51,7 @@ class RecoveryStore(
         context.applicationContext.getDatabasePath(RecoveryDbSchema.FILE_NAME)
     private val snapshotFence = InspectionSnapshotFence()
     private val snapshotPublisher = RecoveryInspectionSnapshotPublisher(context.applicationContext)
-    private val reconciliationScope = ThreadLocal.withInitial { false }
+    private var reconciliationMutex: RunMutex? = null
 
     fun probeVersion(): RecoveryDbVersionGate.VersionDecision = RecoveryDbVersionGate.probe(versionGateFile)
 
@@ -62,6 +65,22 @@ class RecoveryStore(
 
         is RecoveryDbVersionGate.VersionDecision.ReadFailed ->
             RecoveryStorePort.StoreAvailability.READ_FAILED
+    }
+
+    /** Startup-only availability: classify on-disk artifacts before any SQLite open. */
+    private fun startupAvailability(): RecoveryStorePort.StoreAvailability = when (
+        RecoveryStartupStorageClassifier.classify(
+            versionGateFile,
+            snapshotPublisher.directoryForStartupInventory(),
+        )
+    ) {
+        RecoveryStartupStorageClassifier.State.Pristine -> RecoveryStorePort.StoreAvailability.READY
+        RecoveryStartupStorageClassifier.State.Existing -> availability()
+        RecoveryStartupStorageClassifier.State.SuspiciousAbsence,
+        RecoveryStartupStorageClassifier.State.ZeroLengthMain,
+        RecoveryStartupStorageClassifier.State.InvalidMain,
+        RecoveryStartupStorageClassifier.State.UnreadableInventory,
+        -> RecoveryStorePort.StoreAvailability.READ_FAILED
     }
 
     /**
@@ -89,31 +108,23 @@ class RecoveryStore(
         -> RecoveryStorePort.InspectionProjectionRead.Unavailable
     }
 
-    override fun <T> withReconciliationScope(block: () -> T): T {
-        check(!reconciliationScope.get()) { "nested reconciliation scope" }
-        reconciliationScope.set(true)
-        return try {
-            block()
-        } finally {
-            reconciliationScope.remove()
-        }
+    @Synchronized
+    override fun bindReconciliationIssuer(
+        mutex: RunMutex,
+    ): RecoveryStoreReconciliationIssuer? {
+        val bound = reconciliationMutex
+        if (bound != null && bound !== mutex) return null
+        reconciliationMutex = mutex
+        return ReconciliationIssuer(mutex)
     }
 
-    override fun rebuildInspectionSnapshotForReconciliation(): Boolean = when (availability()) {
-        RecoveryStorePort.StoreAvailability.INCOMPATIBLE_VERSION -> {
-            snapshotFence.markIncompatible()
-            false
-        }
-
-        RecoveryStorePort.StoreAvailability.READ_FAILED -> {
-            snapshotFence.markUnknown()
-            false
-        }
-
-        RecoveryStorePort.StoreAvailability.READY -> {
-            val mutation = snapshotFence.beginReconciliationMutation()
-            publishCurrentProjection(mutation)
-        }
+    private inner class ReconciliationIssuer(
+        private val mutex: RunMutex,
+    ) : RecoveryStoreReconciliationIssuer {
+        override fun openSession(
+            lease: RunMutex.ReconciliationLease,
+        ): RecoveryStoreReconciliationSession? =
+            if (lease.isActiveFor(mutex)) ReconciliationSession(lease, mutex) else null
     }
 
     /**
@@ -308,8 +319,21 @@ class RecoveryStore(
     ): Boolean {
         if (availability() != RecoveryStorePort.StoreAvailability.READY) return false
         val mutation = beginSnapshotMutation() ?: return false
+        return completeOrdinaryMutation(
+            mutation,
+            markRestoringRaw(pointId, reviewedManifest, reviewedDigest, recoveryActionDigest),
+        )
+    }
+
+    private fun markRestoringRaw(
+        pointId: RecoveryPointId,
+        reviewedManifest: PersistenceManifest,
+        reviewedDigest: ByteArray,
+        recoveryActionDigest: ByteArray,
+    ): Boolean {
+        if (availability() != RecoveryStorePort.StoreAvailability.READY) return false
         val reviewedBytes = RecoveryRecordCodec.encodeManifest(reviewedManifest)
-        val updated = updateRecord(pointId, RecoveryStoreFaultPort.Phase.RESTORING) { current ->
+        return updateRecord(pointId, RecoveryStoreFaultPort.Phase.RESTORING) { current ->
             if (current.lifecycle != LifecycleState.RESTORING &&
                 !LifecycleTransitions.isLegal(current.lifecycle, LifecycleState.RESTORING)
             ) {
@@ -328,7 +352,6 @@ class RecoveryStore(
                 recoveryActionDigest = recoveryActionDigest,
             )
         }
-        return completeOrdinaryMutation(mutation, updated)
     }
 
     /**
@@ -590,11 +613,91 @@ class RecoveryStore(
         return readback != null && validateRecord(readback.encoded)
     }
 
-    private fun beginSnapshotMutation(): InspectionSnapshotFence.Mutation? = if (reconciliationScope.get()) {
-        snapshotFence.beginReconciliationMutation()
-    } else {
-        snapshotFence.beginOrdinaryMutation()
+    private inner class ReconciliationSession(
+        private val lease: RunMutex.ReconciliationLease,
+        private val mutex: RunMutex,
+    ) : RecoveryStoreReconciliationSession {
+        private var closed: Boolean = false
+
+        override fun isActive(): Boolean = !closed && lease.isActiveFor(mutex)
+
+        override fun availability(): RecoveryStorePort.StoreAvailability =
+            if (isActive()) startupAvailability() else RecoveryStorePort.StoreAvailability.READ_FAILED
+
+        override fun listNonFinalRecords(): List<RecoveryStorePort.StoredRecord>? =
+            if (isActive()) this@RecoveryStore.listNonFinalRecords() else null
+
+        override fun readRecord(pointId: RecoveryPointId): RecoveryStorePort.StoredRecord? =
+            if (isActive()) this@RecoveryStore.readRecord(pointId) else null
+
+        override fun advance(pointId: RecoveryPointId, next: LifecycleState): Boolean =
+            reconcileMutation { advanceRaw(pointId, next) }
+
+        override fun markRestoring(
+            pointId: RecoveryPointId,
+            reviewedManifest: PersistenceManifest,
+            reviewedDigest: ByteArray,
+            recoveryActionDigest: ByteArray,
+        ): Boolean = reconcileMutation {
+            markRestoringRaw(pointId, reviewedManifest, reviewedDigest, recoveryActionDigest)
+        }
+
+        override fun pruneUnused(pointId: RecoveryPointId): Boolean =
+            reconcileMutation { pruneUnusedRaw(pointId) }
+
+        override fun runRetention(nowMillis: Long): RecoveryStorePort.RetentionOutcome {
+            if (!isActive()) return RecoveryStorePort.RetentionOutcome.StoreUnavailable
+            val mutation = beginReconciliationMutation(this)
+                ?: return RecoveryStorePort.RetentionOutcome.StoreUnavailable
+            val records = listRetentionRecords(includeFinal = true).filter {
+                RetentionPolicy.actionFor(it, nowMillis) !is RetentionPolicy.RetentionAction.Keep
+            }
+            val result = applyEvictions(records, nowMillis)
+            return if (result == RecoveryStorePort.RetentionOutcome.Applied && publishCurrentProjection(mutation)) {
+                result
+            } else {
+                snapshotFence.finish(mutation, InspectionSnapshotFence.MutationOutcome.OUTCOME_UNCERTAIN)
+                if (result == RecoveryStorePort.RetentionOutcome.StoreUnavailable) result else RecoveryStorePort.RetentionOutcome.Failed
+            }
+        }
+
+        override fun rebuildInspectionSnapshot(): Boolean {
+            if (!isActive()) return false
+            return when (startupAvailability()) {
+                RecoveryStorePort.StoreAvailability.INCOMPATIBLE_VERSION -> {
+                    snapshotFence.markIncompatible()
+                    false
+                }
+
+                RecoveryStorePort.StoreAvailability.READ_FAILED -> {
+                    snapshotFence.markUnknown()
+                    false
+                }
+
+                RecoveryStorePort.StoreAvailability.READY -> {
+                    val mutation = beginReconciliationMutation(this) ?: return false
+                    publishCurrentProjection(mutation)
+                }
+            }
+        }
+
+        override fun close() {
+            closed = true
+        }
+
+        private fun reconcileMutation(block: () -> Boolean): Boolean {
+            if (!isActive()) return false
+            val mutation = beginReconciliationMutation(this) ?: return false
+            val committedAndValidated = block()
+            return completeOrdinaryMutation(mutation, committedAndValidated)
+        }
     }
+
+    private fun beginSnapshotMutation(): InspectionSnapshotFence.Mutation? =
+        snapshotFence.beginOrdinaryMutation()
+
+    private fun beginReconciliationMutation(session: ReconciliationSession): InspectionSnapshotFence.Mutation? =
+        if (session.isActive()) snapshotFence.beginReconciliationMutation() else null
 
     private fun completeOrdinaryMutation(
         mutation: InspectionSnapshotFence.Mutation,

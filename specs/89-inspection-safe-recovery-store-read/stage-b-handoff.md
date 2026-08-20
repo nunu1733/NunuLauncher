@@ -4,7 +4,7 @@
 >
 > Stage A status: **Accepted**
 >
-> Implementation head: [`09d0f290fd`](https://github.com/nunu1733/NunuLauncher/commit/09d0f290fd)
+> Initial implementation head: [`09d0f290fd`](https://github.com/nunu1733/NunuLauncher/commit/09d0f290fd). The post-test review remediation head is recorded in Issue #89 after commit and push.
 >
 > Baseline: [`9733d59450`](https://github.com/nunu1733/NunuLauncher/commit/9733d59450) — #89 stacked on the accepted #84 preview seam
 >
@@ -21,8 +21,9 @@ The implementation removes the #84 inspection-time live SQLite query path. Previ
 | Inspection read | `RecoveryInspectionSnapshotReader.kt` accepts only exactly one final regular file. Missing, `.new`, `.bak`, unexpected entries, malformed content, I/O, and size-bound failures are unavailable and do not trigger cleanup. |
 | Stale-snapshot prevention | `InspectionSnapshotFence.kt` provides `UNKNOWN`, `DIRTY`, `VALID(generation)`, and `INCOMPATIBLE` states. Ordinary mutation invalidates before writer work; only successful publication of the same generation restores `VALID`. Point-ID collision is handled as proven-no-commit. |
 | Mutation coverage | `checkpoint`, lifecycle advance, `markApplying`, `markRestoring`, retention, and unused-point pruning flow through the fence/publication path. `readTombstone` no longer performs lazy purge writes. |
-| Startup path | `LayoutApplicationModule` serializes reconciliation with the concrete shared mutex. `RestartReconciler` receives the reconciliation-only store port; existing compatible storage rebuilds a projection and known incompatible storage maps to a typed reconciliation outcome. |
-| Source boundary | Ordinary apply/recover/preview protocols receive `RunMutexPort`, never the concrete `RunMutex` or reconciliation store port. `RecoveryStorePort` exposes only projection read; rebuild and scope methods are confined to `RecoveryStoreReconciliationPort`. |
+| Startup path | `RecoveryStartupStorageClassifier` inventories main DB, sidecars, and snapshot directory before any SQLite open. Only absent main DB with absent/empty snapshot directory is pristine; zero-length, invalid, unreadable, or residual-artifact states fail closed. |
+| Reconciliation authority | `LayoutApplicationModule` binds the exact concrete `RunMutex` once to an opaque issuer. The issuer creates a method-scoped session only for its active lease; every session call rechecks lease identity and rejects closed, released, or foreign-mutex capability use before store work. |
+| Source boundary | Ordinary apply/recover/preview protocols receive `RunMutexPort`, never the concrete `RunMutex`, issuer, or reconciliation session. `RecoveryStorePort` exposes only ordinary operations/projection read; privileged startup work is available only through `RecoveryStoreReconciliationSession`. |
 | #84 integration | `RecoveryPreviewProtocol` reads the typed snapshot projection under the existing mutex-first sequence. The former inspection-only record/tombstone SQLite pair was removed. |
 
 ## Added or updated verification sources
@@ -33,9 +34,11 @@ These sources are present but **have not been executed in this environment**.
 |---|---|
 | `tests/unit/.../store/RecoveryInspectionSnapshotTest.kt` | Codec round trip and checksum rejection, companion inventory no-cleanup, fence no-commit rollback and uncertain-dirty behavior. |
 | `tests/unit/.../protocol/RecoveryPreviewProtocolTest.kt` | Snapshot projection outcome and no-mutation preview regression coverage. |
-| `tests/organizer-instrumentation/.../RecoveryStoreInspectionInstrumentationTest.kt` | Missing/invalid-store fail-closed behavior; production-created checkpoint physical state; WAL sidecars-present no-write oracle. |
-| `tests/organizer-instrumentation/.../RecoveryStoreLifecycleTest.kt` | Explicit startup rehydration before production writer lifecycle fixtures. |
-| `tests/unit/.../protocol/RestartReconcilerTest.kt` and `.../RestartReconcilerDiagnosticsTest.kt` | Explicit reconciliation-only port injection. |
+| `tests/organizer-instrumentation/.../RecoveryStoreInspectionInstrumentationTest.kt` | Missing/corrupt/residual-store fail-closed behavior; production-created checkpoint physical state; explicit WAL sidecars-present and sidecars-absent no-write oracle; full file/inventory timestamp evidence. |
+| `tests/organizer-instrumentation/.../RecoveryStoreLifecycleTest.kt` | Explicit lease-bound startup rehydration before production writer lifecycle fixtures. |
+| `tests/unit/.../store/RecoveryStartupStorageClassifierTest.kt` | Pristine versus residual sidecar/snapshot, zero-length, and invalid-main classification before SQLite open. |
+| `tests/unit/.../protocol/RecoveryStoreReconciliationSessionTest.kt` | Closed/released/foreign-mutex session rejection and one-mutex issuer binding. |
+| `tests/unit/.../protocol/RestartReconcilerTest.kt` and `.../RestartReconcilerDiagnosticsTest.kt` | Method-scoped reconciliation session injection. |
 
 ## Required delegated validation
 
@@ -49,6 +52,8 @@ python3 tools/repo-contract/test_validate_repo_contract.py
 # Focused JVM coverage
 ./gradlew testLawnWithQuickstepGithubDebugUnitTest \
   --tests 'app.lawnchair.organizer.application.store.RecoveryInspectionSnapshotTest' \
+  --tests 'app.lawnchair.organizer.application.store.RecoveryStartupStorageClassifierTest' \
+  --tests 'app.lawnchair.organizer.application.protocol.RecoveryStoreReconciliationSessionTest' \
   --tests 'app.lawnchair.organizer.application.protocol.RecoveryPreviewProtocolTest' \
   --tests 'app.lawnchair.organizer.application.protocol.RestartReconcilerTest' \
   --tests 'app.lawnchair.organizer.diagnostics.projection.RestartReconcilerDiagnosticsTest'
@@ -63,7 +68,7 @@ python3 tools/repo-contract/test_validate_repo_contract.py
   -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.application.store.RecoveryStoreInspectionInstrumentationTest
 ```
 
-The instrumentation report must include the device image, API level, ABI, APK revision, and before/after inventory for the main recovery DB, `-wal`, `-shm`, final snapshot, and snapshot-directory entries. API 26 and API 35 both remain required under the accepted plan.
+The instrumentation report must include the device image, API level, ABI, APK revision, and before/after complete inventory for the main recovery DB, `-wal`, `-shm`, `-journal`, final snapshot, and snapshot-directory entries. For each covered path, record existence, type, length, SHA-256, mtime, and ctime where the device exposes it; atime is excluded. API 26 and API 35 both remain required under the accepted plan.
 
 ## Environment note
 

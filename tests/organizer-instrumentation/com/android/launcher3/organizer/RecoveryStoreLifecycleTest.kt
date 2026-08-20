@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.lawnchair.organizer.application.canonical.PersistenceManifest
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.protocol.RecoveryStorePort
+import app.lawnchair.organizer.application.protocol.RunMutex
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.store.RecoveryDbSchema
@@ -574,7 +575,18 @@ class RecoveryStoreLifecycleTest {
     }
 
     private fun prepareForMutation(store: RecoveryStore) {
-        assertTrue(store.withReconciliationScope { store.rebuildInspectionSnapshotForReconciliation() })
+        val mutex = RunMutex()
+        val runId = RunId("cccccccccccccccccccccccccccccccc")
+        assertTrue(mutex.tryAcquire(runId))
+        val lease = requireNotNull(mutex.issueReconciliationLease(runId))
+        val issuer = requireNotNull(store.bindReconciliationIssuer(mutex))
+        val session = requireNotNull(issuer.openSession(lease))
+        try {
+            assertTrue(session.rebuildInspectionSnapshot())
+        } finally {
+            session.close()
+            mutex.release(runId)
+        }
     }
 
     private fun checkpointedStore(): Triple<Context, RecoveryStore, RecoveryPointId> {

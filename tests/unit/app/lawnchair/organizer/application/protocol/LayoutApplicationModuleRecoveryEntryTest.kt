@@ -34,7 +34,7 @@ class LayoutApplicationModuleRecoveryEntryTest {
     private lateinit var writer: FakeLayoutWriter
     private lateinit var store: FakeRecoveryStore
     private lateinit var diagnostics: RecordingDiagnostics
-    private lateinit var module: LayoutApplicationModule
+    private lateinit var module: LayoutApplicationModule<FakeRecoveryStore>
     private val pointId = RecoveryPointId("22222222222222222222222222222222")
     private val runId = RunId("11111111111111111111111111111111")
 

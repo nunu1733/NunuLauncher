@@ -41,6 +41,8 @@ internal class RecoveryInspectionSnapshotPublisher(context: Context) {
 
     fun reader(): RecoveryInspectionSnapshotReader = reader
 
+    fun directoryForStartupInventory(): File = snapshotDirectory
+
     private fun ensureDirectory(): Boolean = try {
         when {
             snapshotDirectory.isDirectory -> true

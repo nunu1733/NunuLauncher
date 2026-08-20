@@ -5,7 +5,10 @@ import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.lifecycle.LifecycleTransitions
 import app.lawnchair.organizer.application.lifecycle.RetentionPolicy
 import app.lawnchair.organizer.application.protocol.RecoveryStorePort
+import app.lawnchair.organizer.application.protocol.RecoveryStoreReconciliationIssuer
 import app.lawnchair.organizer.application.protocol.RecoveryStoreReconciliationPort
+import app.lawnchair.organizer.application.protocol.RecoveryStoreReconciliationSession
+import app.lawnchair.organizer.application.protocol.RunMutex
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.planning.RevisionId
@@ -25,6 +28,7 @@ class FakeRecoveryStore(
 
     private val records: ConcurrentHashMap<String, MutableRecord> = ConcurrentHashMap()
     private val tombstones: ConcurrentHashMap<String, RecoveryStorePort.Tombstone> = ConcurrentHashMap()
+    private var reconciliationMutex: RunMutex? = null
 
     var storeAvailability: RecoveryStorePort.StoreAvailability = RecoveryStorePort.StoreAvailability.READY
     var checkpointCreateFails: Boolean = false
@@ -97,9 +101,68 @@ class FakeRecoveryStore(
         return RecoveryStorePort.InspectionProjectionRead.Value(RecoveryStorePort.InspectionProjection.Missing)
     }
 
-    override fun rebuildInspectionSnapshotForReconciliation(): Boolean = snapshotRebuildSucceeds
+    override fun bindReconciliationIssuer(
+        mutex: RunMutex,
+    ): RecoveryStoreReconciliationIssuer? {
+        val bound = reconciliationMutex
+        if (bound != null && bound !== mutex) return null
+        reconciliationMutex = mutex
+        return FakeReconciliationIssuer(mutex)
+    }
 
-    override fun <T> withReconciliationScope(block: () -> T): T = block()
+    private inner class FakeReconciliationIssuer(
+        private val mutex: RunMutex,
+    ) : RecoveryStoreReconciliationIssuer {
+        override fun openSession(
+            lease: RunMutex.ReconciliationLease,
+        ): RecoveryStoreReconciliationSession? =
+            if (lease.isActiveFor(mutex)) FakeReconciliationSession(lease, mutex) else null
+    }
+
+    private inner class FakeReconciliationSession(
+        private val lease: RunMutex.ReconciliationLease,
+        private val mutex: RunMutex,
+    ) : RecoveryStoreReconciliationSession {
+        private var closed: Boolean = false
+
+        override fun isActive(): Boolean = !closed && lease.isActiveFor(mutex)
+
+        override fun availability(): RecoveryStorePort.StoreAvailability =
+            if (isActive()) this@FakeRecoveryStore.availability() else RecoveryStorePort.StoreAvailability.READ_FAILED
+
+        override fun listNonFinalRecords(): List<RecoveryStorePort.StoredRecord>? =
+            if (isActive()) this@FakeRecoveryStore.listNonFinalRecords() else null
+
+        override fun readRecord(pointId: RecoveryPointId): RecoveryStorePort.StoredRecord? =
+            if (isActive()) this@FakeRecoveryStore.readRecord(pointId) else null
+
+        override fun advance(pointId: RecoveryPointId, next: LifecycleState): Boolean =
+            isActive() && this@FakeRecoveryStore.advance(pointId, next)
+
+        override fun markRestoring(
+            pointId: RecoveryPointId,
+            reviewedManifest: PersistenceManifest,
+            reviewedDigest: ByteArray,
+            recoveryActionDigest: ByteArray,
+        ): Boolean = isActive() && this@FakeRecoveryStore.markRestoring(
+            pointId,
+            reviewedManifest,
+            reviewedDigest,
+            recoveryActionDigest,
+        )
+
+        override fun pruneUnused(pointId: RecoveryPointId): Boolean =
+            isActive() && this@FakeRecoveryStore.pruneUnused(pointId)
+
+        override fun runRetention(nowMillis: Long): RecoveryStorePort.RetentionOutcome =
+            if (isActive()) this@FakeRecoveryStore.runRetention(nowMillis) else RecoveryStorePort.RetentionOutcome.StoreUnavailable
+
+        override fun rebuildInspectionSnapshot(): Boolean = isActive() && snapshotRebuildSucceeds
+
+        override fun close() {
+            closed = true
+        }
+    }
 
     override fun checkpoint(payload: RecoveryStorePort.CheckpointPayload): RecoveryStorePort.CheckpointResult {
         checkpointPointIds += payload.pointId

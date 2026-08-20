@@ -9,7 +9,9 @@ import app.lawnchair.organizer.application.protocol.CaptureId
 import app.lawnchair.organizer.application.protocol.CapturedSnapshot
 import app.lawnchair.organizer.application.protocol.RecordingFaultInjector
 import app.lawnchair.organizer.application.protocol.RecoveryStorePort
+import app.lawnchair.organizer.application.protocol.RecoveryStoreReconciliationSession
 import app.lawnchair.organizer.application.protocol.RestartReconciler
+import app.lawnchair.organizer.application.protocol.RunMutex
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.diagnostics.DiagnosticsPort
@@ -19,6 +21,7 @@ import app.lawnchair.organizer.diagnostics.model.RunEvent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 
@@ -32,6 +35,9 @@ class RestartReconcilerDiagnosticsTest {
     private lateinit var store: FakeRecoveryStore
     private lateinit var recordedEvents: MutableList<RunEvent>
     private lateinit var reconciler: RestartReconciler
+    private lateinit var mutex: RunMutex
+    private lateinit var session: RecoveryStoreReconciliationSession
+    private val reconciliationRunId = RunId("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
     private val pointId = RecoveryPointId("33333333333333333333333333333333")
 
     @Before
@@ -45,13 +51,24 @@ class RestartReconcilerDiagnosticsTest {
             }
             override fun snapshot(): List<RunEvent> = emptyList()
         }
-        reconciler = RestartReconciler(writer, store, store, RecordingFaultInjector(), port)
+        mutex = RunMutex()
+        assertTrue(mutex.tryAcquire(reconciliationRunId))
+        val lease = requireNotNull(mutex.issueReconciliationLease(reconciliationRunId))
+        val issuer = requireNotNull(store.bindReconciliationIssuer(mutex))
+        session = requireNotNull(issuer.openSession(lease))
+        reconciler = RestartReconciler(writer, RecordingFaultInjector(), port)
+    }
+
+    @After
+    fun tearDown() {
+        session.close()
+        mutex.release(reconciliationRunId)
     }
 
     @Test
     fun silentPruneEmitsRestartReconciledWithPostReconciliationLifecycle() {
         seedReady()
-        val summary = reconciler.reconcileAll()
+        val summary = reconciler.reconcileAll(session)
         assertEquals(RestartReconciler.ReconciliationSummary.Clean, summary)
 
         val event = recordedEvents.singleOrNull()
@@ -75,7 +92,7 @@ class RestartReconcilerDiagnosticsTest {
         assertTrue(store.advance(pointId, LifecycleState.APPLYING))
         assertTrue(store.advance(pointId, LifecycleState.COMMITTED_UNVERIFIED))
         assertTrue(store.advance(pointId, LifecycleState.VERIFIED))
-        val summary = reconciler.reconcileAll()
+        val summary = reconciler.reconcileAll(session)
         assertEquals(RestartReconciler.ReconciliationSummary.Clean, summary)
 
         val event = recordedEvents.singleOrNull()
@@ -100,7 +117,7 @@ class RestartReconcilerDiagnosticsTest {
         // (readRecord() == null after prune) would report APPLYING here.
         seedReady()
         assertTrue(store.advance(pointId, LifecycleState.APPLYING))
-        val summary = reconciler.reconcileAll()
+        val summary = reconciler.reconcileAll(session)
         assertEquals(RestartReconciler.ReconciliationSummary.Clean, summary)
 
         val event = recordedEvents.singleOrNull()
@@ -131,7 +148,7 @@ class RestartReconcilerDiagnosticsTest {
         assertTrue(store.advance(pointId, LifecycleState.APPLYING))
         assertTrue(store.advance(pointId, LifecycleState.COMMITTED_UNVERIFIED))
         writer.refuseLease = true
-        val summary = reconciler.reconcileAll()
+        val summary = reconciler.reconcileAll(session)
         assertTrue(summary.hasUnresolvedFailures())
 
         val event = recordedEvents.singleOrNull()

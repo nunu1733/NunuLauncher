@@ -274,12 +274,42 @@ interface RecoveryStorePort {
     }
 }
 
-/** Internal reconciliation-only seam; ordinary protocols never receive this port. */
+/** Internal reconciliation-only issuer; ordinary protocols never receive this port. */
 internal interface RecoveryStoreReconciliationPort {
-    fun <T> withReconciliationScope(block: () -> T): T
+    /** One-time binding performed by the composition root that owns [RunMutex]. */
+    fun bindReconciliationIssuer(
+        mutex: RunMutex,
+    ): RecoveryStoreReconciliationIssuer?
+}
 
-    /** Startup-only authoritative rehydration of the derived inspection snapshot. */
-    fun rebuildInspectionSnapshotForReconciliation(): Boolean
+/** Opaque issuer retained only by the composition root. */
+internal interface RecoveryStoreReconciliationIssuer {
+    fun openSession(
+        lease: RunMutex.ReconciliationLease,
+    ): RecoveryStoreReconciliationSession?
+}
+
+/**
+ * Opaque, method-scoped capability for legal startup reconciliation work.
+ * Implementations must reject every call after [close] or when the exact
+ * module-owned [RunMutex.ReconciliationLease] is no longer active.
+ */
+internal interface RecoveryStoreReconciliationSession : AutoCloseable {
+    fun isActive(): Boolean
+    fun availability(): RecoveryStorePort.StoreAvailability
+    fun listNonFinalRecords(): List<RecoveryStorePort.StoredRecord>?
+    fun readRecord(pointId: RecoveryPointId): RecoveryStorePort.StoredRecord?
+    fun advance(pointId: RecoveryPointId, next: LifecycleState): Boolean
+    fun markRestoring(
+        pointId: RecoveryPointId,
+        reviewedManifest: PersistenceManifest,
+        reviewedDigest: ByteArray,
+        recoveryActionDigest: ByteArray,
+    ): Boolean
+    fun pruneUnused(pointId: RecoveryPointId): Boolean
+    fun runRetention(nowMillis: Long): RecoveryStorePort.RetentionOutcome
+    fun rebuildInspectionSnapshot(): Boolean
+    override fun close()
 }
 
 /** Internal port: clock for retention and timestamps. */
@@ -386,7 +416,18 @@ interface RunMutexPort {
 }
 
 class RunMutex : RunMutexPort {
+    internal class ReconciliationLease private constructor(
+        private val mutex: RunMutex,
+        private val runId: RunId,
+    ) {
+        internal fun isActive(): Boolean = mutex.isLeaseActive(runId, this)
+
+        internal fun isActiveFor(expectedMutex: RunMutex): Boolean =
+            mutex === expectedMutex && mutex.isLeaseActive(runId, this)
+    }
+
     private var holder: RunId? = null
+    private var reconciliationLease: ReconciliationLease? = null
 
     @Synchronized
     override fun tryAcquire(runId: RunId): Boolean {
@@ -397,8 +438,22 @@ class RunMutex : RunMutexPort {
 
     @Synchronized
     override fun release(runId: RunId) {
-        if (holder == runId) holder = null
+        if (holder == runId) {
+            holder = null
+            reconciliationLease = null
+        }
     }
+
+    /** Available only to the composition root that owns the concrete mutex. */
+    @Synchronized
+    internal fun issueReconciliationLease(runId: RunId): ReconciliationLease? {
+        if (holder != runId || reconciliationLease != null) return null
+        return ReconciliationLease(this, runId).also { reconciliationLease = it }
+    }
+
+    @Synchronized
+    private fun isLeaseActive(runId: RunId, lease: ReconciliationLease): Boolean =
+        holder == runId && reconciliationLease === lease
 
     @Synchronized
     fun currentHolder(): RunId? = holder

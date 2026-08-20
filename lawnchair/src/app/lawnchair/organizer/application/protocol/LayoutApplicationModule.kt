@@ -34,20 +34,21 @@ import java.security.SecureRandom
  *
  * Issue #14 Stage B step 4 (shape); Step 5 wires production adapters.
  */
-class LayoutApplicationModule(
+internal class LayoutApplicationModule<S>(
     private val writer: LayoutWriterPort,
-    private val store: RecoveryStorePort,
+    private val store: S,
     private val clock: Clock,
     private val operationIds: OperationIdSource,
     private val faults: FaultInjector = FaultInjector.NOOP,
     diagnosticsPort: DiagnosticsPort = DiagnosticsPort.NOOP,
-) {
+) where S : RecoveryStorePort, S : RecoveryStoreReconciliationPort {
 
     private val mutex: RunMutex = RunMutex()
     private val ordinaryMutex: RunMutexPort = mutex
-    private val reconciliationStore: RecoveryStoreReconciliationPort =
-        requireNotNull(store as? RecoveryStoreReconciliationPort) {
-            "Recovery store must provide the private startup reconciliation seam"
+    private val reconciliationStore: RecoveryStoreReconciliationPort = store
+    private val reconciliationIssuer: RecoveryStoreReconciliationIssuer =
+        requireNotNull(reconciliationStore.bindReconciliationIssuer(mutex)) {
+            "Recovery store is already bound to a different reconciliation mutex"
         }
     private val confirmationRandom: SecureRandom = SecureRandom()
     private val pendingPreviewConfirmations: java.util.IdentityHashMap<RecoveryPreviewConfirmation, PendingPreviewConfirmation> =
@@ -65,8 +66,6 @@ class LayoutApplicationModule(
     )
     private val restartReconciler: RestartReconciler = RestartReconciler(
         writer,
-        store,
-        reconciliationStore,
         faults,
         diagnosticsPort,
     )
@@ -207,13 +206,24 @@ class LayoutApplicationModule(
     internal fun reconcileAtStart(): RestartReconciler.ReconciliationSummary {
         val runId = operationIds.newRunId()
         if (!mutex.tryAcquire(runId)) return RestartReconciler.ReconciliationSummary.Failed
+        val lease = mutex.issueReconciliationLease(runId)
+            ?: run {
+                mutex.release(runId)
+                return RestartReconciler.ReconciliationSummary.Failed
+            }
+        val session = reconciliationIssuer.openSession(lease)
+            ?: run {
+                mutex.release(runId)
+                return RestartReconciler.ReconciliationSummary.Failed
+            }
         return try {
             readinessGate.reconcile(
-                block = { reconciliationStore.withReconciliationScope { restartReconciler.reconcileAll() } },
+                block = { restartReconciler.reconcileAll(session) },
                 succeeded = { summary -> !summary.hasUnresolvedFailures() },
                 failed = { RestartReconciler.ReconciliationSummary.Failed },
             )
         } finally {
+            session.close()
             mutex.release(runId)
         }
     }
@@ -234,13 +244,13 @@ class LayoutApplicationModule(
 
         /** Issue #14 production composition; this is the only Android construction path. */
         @JvmStatic
-        fun production(context: Context): LayoutApplicationModule = production(context, LauncherAppState.getInstance(context.applicationContext))
+        fun production(context: Context): LayoutApplicationModule<RecoveryStore> = production(context, LauncherAppState.getInstance(context.applicationContext))
 
         @JvmStatic
         fun production(
             context: Context,
             launcher: LauncherAppState,
-        ): LayoutApplicationModule {
+        ): LayoutApplicationModule<RecoveryStore> {
             val appContext = context.applicationContext
             val clock = SystemClock()
             val diagnosticsDir = File(appContext.filesDir, "organizer_diagnostics")
@@ -265,13 +275,14 @@ class LayoutApplicationModule(
             } catch (_: Exception) {
                 // Fail-open
             }
+            val recoveryStore = RecoveryStore(appContext, clock::nowMillis)
             val module = LayoutApplicationModule(
                 writer = LauncherLayoutAdapter(
                     appContext,
                     launcher.model.modelDbController,
                     launcher.model,
                 ),
-                store = RecoveryStore(appContext, clock::nowMillis),
+                store = recoveryStore,
                 clock = clock,
                 operationIds = defaultOperationIdSource(),
                 diagnosticsPort = diagnosticsPort,
