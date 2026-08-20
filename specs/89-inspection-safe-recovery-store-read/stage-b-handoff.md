@@ -4,7 +4,7 @@
 >
 > Stage A status: **Accepted**
 >
-> Initial implementation head: [`09d0f290fd`](https://github.com/nunu1733/NunuLauncher/commit/09d0f290fd). Post-test review remediation head: [`084d97ef5f`](https://github.com/nunu1733/NunuLauncher/commit/084d97ef5f).
+> Initial implementation head: [`09d0f290fd`](https://github.com/nunu1733/NunuLauncher/commit/09d0f290fd). First post-test review remediation head: [`084d97ef5f`](https://github.com/nunu1733/NunuLauncher/commit/084d97ef5f). Current re-review remediation head: [`7c140632d0`](https://github.com/nunu1733/NunuLauncher/commit/7c140632d0).
 >
 > Baseline: [`9733d59450`](https://github.com/nunu1733/NunuLauncher/commit/9733d59450) — #89 stacked on the accepted #84 preview seam
 >
@@ -34,7 +34,7 @@ These sources are present but **have not been executed in this environment**.
 |---|---|
 | `tests/unit/.../store/RecoveryInspectionSnapshotTest.kt` | Codec round trip and checksum rejection, companion inventory no-cleanup, fence no-commit rollback and uncertain-dirty behavior. |
 | `tests/unit/.../protocol/RecoveryPreviewProtocolTest.kt` | Snapshot projection outcome and no-mutation preview regression coverage. |
-| `tests/organizer-instrumentation/.../RecoveryStoreInspectionInstrumentationTest.kt` | Missing/corrupt/residual-store fail-closed behavior; production-created checkpoint physical state; explicit WAL sidecars-present and sidecars-absent no-write oracle; full file/inventory timestamp evidence. |
+| `tests/organizer-instrumentation/.../RecoveryStoreInspectionInstrumentationTest.kt` | Ordinary mutation rejects before version probe while `UNKNOWN`/`DIRTY`; legal mutation-start availability failure remains dirty; missing/corrupt/incompatible/residual-store fail-closed behavior; invalid final snapshot and `.new`/`.bak`/unexpected-entry no-cleanup; blocked-writer inspection; production-created checkpoint/WAL sidecars-present and sidecars-absent physical oracle with full file/inventory timestamp evidence. |
 | `tests/organizer-instrumentation/.../RecoveryStoreLifecycleTest.kt` | Explicit lease-bound startup rehydration before production writer lifecycle fixtures. |
 | `tests/unit/.../store/RecoveryStartupStorageClassifierTest.kt` | Pristine versus residual sidecar/snapshot, zero-length, and invalid-main classification before SQLite open. |
 | `tests/unit/.../protocol/RecoveryStoreReconciliationSessionTest.kt` | Closed/released/foreign-mutex session rejection and one-mutex issuer binding. |
@@ -63,7 +63,7 @@ python3 tools/repo-contract/test_validate_repo_contract.py
 ./gradlew testLawnWithQuickstepGithubDebugUnitTest
 ./gradlew assembleLawnWithQuickstepGithubDebug
 
-# Physical no-write instrumentation matrix, separately on API 26 and API 35
+# Ordinary-mutation fence ordering and physical no-write instrumentation matrix, separately on API 26 and API 35
 ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.application.store.RecoveryStoreInspectionInstrumentationTest
 ```
