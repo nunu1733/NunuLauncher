@@ -45,6 +45,23 @@ class RecoveryStartupStorageClassifierTest {
     }
 
     @Test
+    fun nonSqliteRegularMainFileIsNeverClassifiedAsExisting() {
+        val root = Files.createTempDirectory("recovery-startup").toFile()
+        try {
+            val main = File(root, RecoveryDbSchema.FILE_NAME)
+            val snapshot = File(root, RecoveryInspectionSnapshotReader.DIRECTORY_NAME)
+            main.writeText("not a sqlite database")
+
+            assertEquals(
+                RecoveryStartupStorageClassifier.State.InvalidMain,
+                RecoveryStartupStorageClassifier.classify(main, snapshot),
+            )
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun zeroLengthAndNonRegularMainFileAreNeverPristine() {
         val root = Files.createTempDirectory("recovery-startup").toFile()
         try {

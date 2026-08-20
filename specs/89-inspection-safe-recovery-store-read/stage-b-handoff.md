@@ -61,7 +61,7 @@ ANDROID_SERIAL=emulator-5558 ./gradlew connectedLawnWithQuickstepGithubDebugAndr
   -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.application.store.RecoveryInspectionSnapshotPublicationInstrumentationTest
 ```
 
-The physical no-write oracle (`RecoveryStoreInspectionInstrumentationTest`) passed all four tests on `api35-test` (API 35, `arm64-v8a`) and `api26-test` (API 26, `arm64-v8a`). The new deterministic publication-failure class passed both tests on those same API 35 and API 26 devices. It also passed on `nunu_qpr2_api36_1` (API 36, `arm64-v8a`); that API 36 run is supplementary and is not used as matrix evidence.
+The physical no-write oracle (`RecoveryStoreInspectionInstrumentationTest`) passed all twelve tests on `api35-test` (API 35, `arm64-v8a`) and `api26-test` (API 26, `arm64-v8a`) after the final integrated head was rebuilt. This includes the closed-store sidecar assertion and invalid-main fail-closed path: the writer-owned helper now closes after snapshot projection, and the startup classifier rejects a non-SQLite regular file from its fixed header before any SQLite open. The deterministic publication-failure class passed both tests on those same API 35 and API 26 devices. It also passed on `nunu_qpr2_api36_1` (API 36, `arm64-v8a`); that API 36 run is supplementary and is not used as matrix evidence.
 
 ## Required delegated validation
 

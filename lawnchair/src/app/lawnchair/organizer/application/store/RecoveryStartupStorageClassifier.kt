@@ -8,6 +8,8 @@ import java.io.File
  * partial storage that must fail closed.
  */
 internal object RecoveryStartupStorageClassifier {
+    private val SQLITE_HEADER = "SQLite format 3\u0000".toByteArray(Charsets.US_ASCII)
+
     sealed interface State {
         data object Pristine : State
         data object Existing : State
@@ -25,6 +27,7 @@ internal object RecoveryStartupStorageClassifier {
             return when {
                 !mainDatabase.isFile -> State.InvalidMain
                 mainDatabase.length() == 0L -> State.ZeroLengthMain
+                !hasSqliteHeader(mainDatabase) -> State.InvalidMain
                 else -> State.Existing
             }
         }
@@ -41,4 +44,12 @@ internal object RecoveryStartupStorageClassifier {
         val entries = snapshotDirectory.listFiles() ?: return State.UnreadableInventory
         return if (entries.isEmpty()) State.Pristine else State.SuspiciousAbsence
     }
+
+    /** Read only the fixed SQLite file header; any I/O uncertainty fails closed. */
+    private fun hasSqliteHeader(file: File): Boolean = runCatching {
+        file.inputStream().use { input ->
+            val header = ByteArray(SQLITE_HEADER.size)
+            input.read(header) == SQLITE_HEADER.size && header.contentEquals(SQLITE_HEADER)
+        }
+    }.getOrDefault(false)
 }

@@ -982,6 +982,11 @@ internal class RecoveryStore(
     } catch (_: RuntimeException) {
         snapshotFence.finish(mutation, InspectionSnapshotFence.MutationOutcome.OUTCOME_UNCERTAIN)
         false
+    } finally {
+        // The snapshot is complete before the fence becomes valid. Closing the
+        // writer-owned helper prevents a closed-store publication from leaving
+        // WAL sidecars behind for the subsequent inspection physical oracle.
+        helper.close()
     }
 
     private fun android.database.Cursor.getBlobOrNull(column: String): ByteArray? {
