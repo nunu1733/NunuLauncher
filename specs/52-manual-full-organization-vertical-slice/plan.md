@@ -3,7 +3,7 @@
 > Issue: [#52](https://github.com/nunu1733/NunuLauncher/issues/52)
 > Spec: [spec.md](./spec.md)
 > Status: accepted
-> Updated: 2026-08-19
+> Updated: 2026-08-20
 > Risk: `layout-data`
 
 ## Preconditions and implementation stop conditions
@@ -22,8 +22,8 @@ The implementation must also stop and open the owning contract follow-up if the 
 |---|---|
 | Planner seam | `lawnchair/src/app/lawnchair/organizer/planning/OrganizationPlanner.kt` exposes only `plan(input: OrganizationInput): PlanningResult`. `OrganizationInput` is the canonical input and includes snapshot, rules, taxonomy, signals, target set, and run mode. Manual orchestration calls this seam; it must not duplicate planner logic. |
 | Planner result | `PlanningResult` already distinguishes `Planned`, `Rejected.Invalid`, and `Rejected.Impossible`, and exposes dispositions, reasons, warnings, and unplaced items. The preview projects these typed values to localized UI text. |
-| Application seam | `LayoutApplicationModule` is the production composition root for `apply(ValidatedLayoutPlan)` and `recover(RecoveryRequest)`. Its `ReadinessGate` and application protocol already serialize, checkpoint, transact, reload, verify, reconcile, and recover. UI/coordinator code must not access `favorites`, the writer, or recovery store. |
-| Canonical capture | `LauncherLayoutAdapter.capture()` and `RowManifestCodec.capture()` produce `CapturedSnapshot`, complete canonical layout state, persistence manifest, profile inventory, device capabilities, revision, and classification digest. The manual capture adapter reuses this canonical representation and does not invent row/DB models in the planner or UI. |
+| Application seam | `LayoutApplicationModule` is the production composition root for `apply(ValidatedLayoutPlan)`, `inspectRecovery(pointId)`, and recovery confirmation. Its `ReadinessGate` and application protocol already serialize, checkpoint, transact, reload, verify, reconcile, preview, and recover. UI/coordinator code must not access `favorites`, the writer, recovery store, raw revision, or `RecoveryRequest`. |
+| Canonical capture and policy composition | `ProductionOrganizationInputComposer` from #83 constructs a fresh full-organization input through canonical capture, the accepted built-in policy bundle, override snapshot, platform evidence, and complete target materialization. `LayoutApplicationModule` keeps the writer private and exposes only narrow internal manual-run façade methods. |
 | Apply outcome contract | `ApplyResult` already exposes `NoChanges`, `Applied`, `Rejected`, `RolledBack`, `Recovered`, `Unresolved`, `RecoveryFailed`, and `ConcurrentRun`; `RecoveryResult` exposes the matching explicit recovery outcomes. The result UI maps these existing closed variants directly. |
 | Diagnostic seam | `DiagnosticsPort` is available and fail-open. `ApplyProtocol` already projects `CHECKPOINTED`, apply, verification, and automatic recovery events. `LayoutApplicationModule.apply` currently creates its own run ID, while `ApplyProtocol` accepts one; the coordinator requires a non-public correlation handoff so its `RUN_STARTED` through `USER_CONFIRMED` events share the application run ID. |
 | Preference/UI seam | `PreferenceRoutes.kt`, `PreferenceNavigation.kt`, and `HomeScreenPreferences.kt` use typed Compose destinations. Issue #38's `HomeScreenPlacementLocks` and `PlacementLockPreferences` establish the nearby entry/route/screen pattern. |
@@ -87,13 +87,13 @@ After process recreation, the coordinator must derive user-visible state only fr
 
 ### 5. Recovery surface
 
-On `Applied`, the UI offers an explicit recovery action for the returned point only while an accepted read-only application/recovery inspection reports the point as previewable/restorable for the newly captured current revision. That inspection supplies only the typed effect/restorability information required by the UX contract; the UI/coordinator never reads `RecoveryStorePort` or a recovery payload. After explicit confirmation, the coordinator constructs `RecoveryRequest(pointId, expectedCurrentRevision)` and invokes only `LayoutApplicationModule.recover`. It maps every `RecoveryResult` variant directly. If the required read-only inspection seam is absent, implementation stops and files the owning contract follow-up rather than substituting a generic point-ID preview or a raw store read.
+On `Applied`, the UI offers an explicit recovery action for the returned point only while accepted read-only `inspectRecovery` reports the point as previewable/restorable for the newly captured current revision. That inspection supplies only the typed effect/restorability information required by the UX contract; the UI/coordinator never reads `RecoveryStorePort`, a recovery payload, a raw revision, or a `RecoveryRequest`. After explicit confirmation, the coordinator passes the opaque one-shot capability to `LayoutApplicationModule.confirmRecoveryPreview`; the application module creates the private request and reuses the existing recovery behavior. It maps every `RecoveryResult` variant directly. If the required read-only inspection seam is absent, implementation stops and files the owning contract follow-up rather than substituting a generic point-ID preview or a raw store read.
 
 ## Implementation sequence
 
 1. **Confirm the target commit, input-source ownership, and recovery-inspection seam.** Re-read Issue #52 and its comments, this accepted spec, the accepted planner/application/diagnostics/empty-folder/lock artifacts, and `git status`. Identify the production owner of rules, taxonomy, signals, and target membership, and verify that an accepted read-only recovery inspection can support the revision-bound preview without exposing recovery storage. If either owner/seam is absent or not accepted, create the blocking follow-up and stop.
 
-2. **Write seam-level tests before UI implementation.** Add fake capture/input, fake planner, fake application façade, and recording diagnostics fixtures. Test the state-machine table below before adding production adapters or Compose. Include a test that the same `RunId` flows from manual start through the application protocol event projections.
+2. **Write seam-level tests before UI implementation.** Add fake input composition, fake planner, fake application façade, and recording diagnostics fixtures. Test the state-machine table below before adding production wiring or Compose. Include a test that the same `RunId` flows from manual start through the application protocol event projections.
 
 3. **Implement canonical capture and materialization.** Add the manual capture/input adapter and `ValidatedLayoutPlan` materializer. Reuse the canonical state/revision path; test profile/device/lock/page/item preservation, full target membership, no planner Android types, and no v1 delete action. Use the accepted source owner for rules/taxonomy/signals rather than encoding policy in the adapter.
 

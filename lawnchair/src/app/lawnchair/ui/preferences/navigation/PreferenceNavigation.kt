@@ -41,6 +41,7 @@ import app.lawnchair.ui.preferences.destinations.IconPackPreferences
 import app.lawnchair.ui.preferences.destinations.IconPickerPreference
 import app.lawnchair.ui.preferences.destinations.IconShapePreference
 import app.lawnchair.ui.preferences.destinations.LauncherPopupPreference
+import app.lawnchair.ui.preferences.destinations.ManualOrganizationPreferences
 import app.lawnchair.ui.preferences.destinations.PickAppForGesture
 import app.lawnchair.ui.preferences.destinations.PlacementLockPreferences
 import app.lawnchair.ui.preferences.destinations.PreferencesDashboard
@@ -110,6 +111,7 @@ fun PreferenceNavigation(
         composable<HomeScreenGrid> { HomeScreenGridPreferences() }
         composable<HomeScreenPopupEditor> { LauncherPopupPreference() }
         composable<HomeScreenPlacementLocks> { PlacementLockPreferences() }
+        composable<HomeScreenManualOrganization> { ManualOrganizationPreferences() }
 
         composable<Dock> { DockPreferences() }
         composable<DockSearchProvider> { SearchProviderPreferences() }

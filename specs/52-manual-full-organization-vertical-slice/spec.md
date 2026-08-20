@@ -16,7 +16,7 @@ requirements:
   - NFR-011
 risk:
   - layout-data
-updated: 2026-08-19
+updated: 2026-08-20
 ---
 
 # Manual full-organization vertical slice
@@ -40,7 +40,7 @@ A user can open the Home Screen settings, explicitly choose to organize the home
 | Planning | `OrganizationPlanner` | The existing deterministic planner is the only full-organization planner. |
 | Preview and confirmation | Organizer UI | Counts, reasons, warnings, unplaced items, lock/profile constraints, and safe actions are visible before any write. |
 | Apply and automatic recovery | Layout Application module | A verified checkpoint, serialized transaction, reload, and verification are used without UI-side DB/recovery mutation. |
-| Result and explicit recovery | Organizer UI plus `recover(RecoveryRequest)` | No success is displayed before verification; recovery remains revision-bound and result-specific. |
+| Result and explicit recovery | Organizer UI plus application-owned `inspectRecovery` / opaque confirmation | No success is displayed before verification; recovery remains revision-bound and result-specific without exposing a `RecoveryRequest`. |
 
 ## Dependencies and readiness
 
@@ -75,7 +75,7 @@ The coordinator materializes a `ValidatedLayoutPlan` only from the exact `Organi
 |---|---|---|
 | Planning | `OrganizationPlanner.plan(OrganizationInput)` | A UI-only planner, heuristic, or planner input that omits canonical capture fields. |
 | Layout writes | `LayoutApplicationModule.apply(ValidatedLayoutPlan)` | Writing `favorites`, using `ModelWriter`, or opening a database transaction from UI/coordinator code. |
-| Recovery | `LayoutApplicationModule.recover(RecoveryRequest)` | Raw DB copy, backup restore as undo, recovery-store access from UI, or a bare point-ID restore. |
+| Recovery | `LayoutApplicationModule.inspectRecovery` plus its opaque confirmation handoff | Raw DB copy, backup restore as undo, recovery-store access from UI, a caller-constructed `RecoveryRequest`, or a bare point-ID restore. |
 | Lock state | Accepted lock/application operations | Toggling lock state as part of generic confirmation or applying when lock state is unavailable. |
 | User explanations | Planner/application typed result values and localized mappings | Reading the diagnostics journal to construct UI text. |
 | Developer diagnostics | `DiagnosticsPort` projections | Raw exception text, item identity, package/component, profile identifier, coordinates, rule contents, or recovery payloads. |
@@ -95,7 +95,7 @@ The following event sequence is required when the corresponding transition occur
 | User confirms or cancels before apply | `USER_CONFIRMED` or `USER_CANCELLED` | Cancellation is terminal and writes nothing. |
 | Checkpoint onward | Existing application projections | `CHECKPOINTED`, apply, rollback/recovery, and verification events are emitted by the application protocol with the same run ID. |
 
-Explicit recovery is not a new organization run. It uses the existing recovery projections keyed by recovery point, after the UI has captured and displayed the revision required for `RecoveryRequest`.
+Explicit recovery is not a new organization run. It uses the existing recovery projections keyed by recovery point. The UI first requests the accepted read-only `inspectRecovery` preview and passes its opaque one-shot confirmation back to the application module after explicit user consent; only the application module constructs the private `RecoveryRequest`.
 
 ## Observable behavior
 
@@ -125,7 +125,7 @@ After confirmation, the UI displays phase-aware progress. A dismissal/back/cance
 
 ### Result and recovery
 
-The result surface maps all accepted `ApplyResult` variants to distinct, localized user-visible outcomes. It never claims success merely because the transaction was attempted or committed. A verified success displays applied/preserved/unplaced summary counts, warnings, the manual trigger, and a recovery action while the point remains restorable. The recovery action first presents a revision-bound recovery preview and then calls the accepted `recover(RecoveryRequest)` seam after explicit confirmation.
+The result surface maps all accepted `ApplyResult` variants to distinct, localized user-visible outcomes. It never claims success merely because the transaction was attempted or committed. A verified success displays applied/preserved/unplaced summary counts, warnings, the manual trigger, and a recovery action while the point remains restorable. The recovery action first presents the accepted revision-bound read-only preview and then passes its opaque confirmation to the application-owned confirmation handoff after explicit consent; UI/coordinator code never constructs or receives a `RecoveryRequest`.
 
 | Application outcome | Required manual-run UI behavior |
 |---|---|
@@ -158,7 +158,7 @@ Process recreation must not cause a blind plan replay, a blind apply, or a false
 | MFO-08 | Transaction rolls back | No layout change remains; result is rollback, not recovery/success. |
 | MFO-09 | Commit, reload, or verification becomes uncertain or fails | Existing application recovery protocol runs; UI distinguishes recovered, unresolved, and recovery-failed outcomes. |
 | MFO-10 | Verified apply succeeds | Verified result and revision-bound recovery action are shown. |
-| MFO-11 | User requests recovery after success | Recovery preview uses current revision; only an explicitly confirmed `RecoveryRequest` is submitted. |
+| MFO-11 | User requests recovery after success | Recovery preview uses current revision; only the application module consumes the explicitly confirmed opaque capability and constructs its private recovery request. |
 | MFO-12 | Recovery point is stale/expired/corrupt/busy or recovery fails | No blind write; exact typed result and safe next action are shown. |
 | MFO-13 | Process dies before/after checkpoint or around commit | No automatic replay; application reconciliation determines the durable state before new operations. |
 | MFO-14 | Empty folder, locked placement, widget, app pair, unavailable profile, or unplaced item is present | Preview reflects the accepted typed preservation/constraint behavior; v1 offers no deletion or lock mutation. |
