@@ -28,17 +28,40 @@ The implementation removes the #84 inspection-time live SQLite query path. Previ
 
 ## Added or updated verification sources
 
-These sources are present but **have not been executed in this environment**.
-
 | Source | Intended evidence |
 |---|---|
 | `tests/unit/.../store/RecoveryInspectionSnapshotTest.kt` | Codec round trip and checksum rejection, companion inventory no-cleanup, fence no-commit rollback and uncertain-dirty behavior. |
+| `tests/organizer-instrumentation/.../store/RecoveryInspectionSnapshotPublicationInstrumentationTest.kt` | Deterministic writer-side `write`, `finishWrite`, and post-`finishWrite` final revalidation failures through a narrow internal AtomicFile seam. It verifies `failWrite()` cleanup for throw paths, final `.new` removal, dirty latch behavior, rejection of a stale old final under `DIRTY`, and rejection of a truncated final file. |
 | `tests/unit/.../protocol/RecoveryPreviewProtocolTest.kt` | Snapshot projection outcome and no-mutation preview regression coverage. |
 | `tests/organizer-instrumentation/.../RecoveryStoreInspectionInstrumentationTest.kt` | Ordinary mutation rejects before version probe while `UNKNOWN`/`DIRTY`; legal mutation-start availability failure remains dirty; missing/corrupt/incompatible/residual-store fail-closed behavior; invalid final snapshot and `.new`/`.bak`/unexpected-entry no-cleanup; blocked-writer inspection; production-created checkpoint/WAL sidecars-present and sidecars-absent physical oracle with full file/inventory timestamp evidence. |
 | `tests/organizer-instrumentation/.../RecoveryStoreLifecycleTest.kt` | Explicit lease-bound startup rehydration before production writer lifecycle fixtures. |
 | `tests/unit/.../store/RecoveryStartupStorageClassifierTest.kt` | Pristine versus residual sidecar/snapshot, zero-length, and invalid-main classification before SQLite open. |
 | `tests/unit/.../protocol/RecoveryStoreReconciliationSessionTest.kt` | Closed/released/foreign-mutex session rejection and one-mutex issuer binding. |
 | `tests/unit/.../protocol/RestartReconcilerTest.kt` and `.../RestartReconcilerDiagnosticsTest.kt` | Method-scoped reconciliation session injection. |
+
+## Local execution evidence
+
+The following checks passed on the current working tree after the publication-failure regression was added:
+
+```text
+./gradlew compileLawnWithQuickstepGithubDebugKotlin compileLawnWithQuickstepGithubDebugAndroidTestKotlin
+./gradlew spotlessCheck
+./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'
+./gradlew testLawnWithQuickstepGithubDebugUnitTest
+./gradlew assembleLawnWithQuickstepGithubDebug
+
+ANDROID_SERIAL=emulator-5556 ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest \\
+  -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.application.store.RecoveryStoreInspectionInstrumentationTest
+ANDROID_SERIAL=emulator-5558 ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest \\
+  -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.application.store.RecoveryStoreInspectionInstrumentationTest
+
+ANDROID_SERIAL=emulator-5556 ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest \\
+  -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.application.store.RecoveryInspectionSnapshotPublicationInstrumentationTest
+ANDROID_SERIAL=emulator-5558 ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest \\
+  -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.application.store.RecoveryInspectionSnapshotPublicationInstrumentationTest
+```
+
+The physical no-write oracle (`RecoveryStoreInspectionInstrumentationTest`) passed all four tests on `api35-test` (API 35, `arm64-v8a`) and `api26-test` (API 26, `arm64-v8a`). The new deterministic publication-failure class passed both tests on those same API 35 and API 26 devices. It also passed on `nunu_qpr2_api36_1` (API 36, `arm64-v8a`); that API 36 run is supplementary and is not used as matrix evidence.
 
 ## Required delegated validation
 
@@ -72,8 +95,8 @@ The instrumentation report must include the device image, API level, ABI, APK re
 
 ## Environment note
 
-No Gradle test was executed in this sandbox. The build stopped before configuration because `com.gradle:develocity-gradle-plugin:4.3.1` could not be downloaded from the official plugin repository after three timed-out Gradle attempts; a direct official artifact retrieval also timed out. This is an environment/network limitation, not passing evidence.
+The earlier delegated sandbox could not obtain `com.gradle:develocity-gradle-plugin:4.3.1`, but the connected development environment subsequently completed the local checks and the API 26/API 35 physical oracle recorded above. Local results do not replace the GitHub Actions `final-status` or the independent audit.
 
 ## Completion rule
 
-Do not mark Stage B implemented or resume final #84 acceptance until the delegated environment has supplied successful focused and broad build/test evidence, the API 26/API 35 physical oracle, formatting, build, CI final status, and the independent audit record required by `AGENTS.md`.
+Do not mark Stage B implemented or resume final #84 acceptance until the successful focused and broad build/test evidence, API 26/API 35 physical oracle, formatting, and build recorded above are reproduced by CI as `final-status`, and the independent audit record required by `AGENTS.md` is completed.
