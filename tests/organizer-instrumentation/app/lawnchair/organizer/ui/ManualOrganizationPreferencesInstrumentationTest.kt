@@ -1,9 +1,15 @@
 package app.lawnchair.organizer.ui
 
 import android.content.Context
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.core.app.ApplicationProvider
@@ -120,6 +126,86 @@ class ManualOrganizationPreferencesInstrumentationTest {
     }
 
     @Test
+    fun previewHeadingRestoresFocusAndCancelReturnsFocusToStartAction() {
+        val application = FakeApplication()
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { planningResult() },
+        )
+        runner.start()
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsFocused()
+
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).performClick()
+        composeRule.waitUntil(5_000) { runner.state == ManualOrganizationRun.State.Cancelled }
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_start)).assertIsFocused()
+    }
+
+    @Test
+    fun previewRemainsReadableAtTwoHundredPercentFontScale() {
+        val application = FakeApplication()
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { planningResult() },
+        )
+        runner.start()
+
+        composeRule.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 2f)) {
+                LawnchairTheme {
+                    ManualOrganizationPreferences(run = runner)
+                }
+            }
+        }
+
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_moved_single_placement, 1),
+        ).assertIsDisplayed()
+    }
+
+    @Test
+    fun unresolvedResultOffersDiagnosticsInsteadOfStartingAnotherRun() {
+        val application = FakeApplication().apply {
+            applyResult = ApplyResult.Unresolved(
+                RunId(RUN_ID),
+                RecoveryPointId(POINT_ID),
+                app.lawnchair.organizer.application.public.ApplyFailure.COMMIT_OUTCOME_UNKNOWN,
+                app.lawnchair.organizer.application.public.AuthoritativeState.UNKNOWN,
+            )
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { planningResult() },
+        )
+        runner.start()
+        runner.confirm()
+        var diagnosticsOpened = false
+
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(
+                    run = runner,
+                    onOpenDiagnostics = { diagnosticsOpened = true },
+                )
+            }
+        }
+
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_apply_unresolved)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_open_diagnostics)).performClick()
+        assertEquals(true, diagnosticsOpened)
+        composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_start_again)).assertCountEquals(0)
+    }
+
+    @Test
     fun recreationLikeRecompositionRetainsPreviewWithoutReplayingWrite() {
         val application = FakeApplication()
         val runner = ManualOrganizationRun(
@@ -149,6 +235,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
     private class FakeApplication : ManualOrganizationApplication {
         override val diagnostics = RecordingDiagnostics()
         var applyCalls = 0
+        var applyResult: ApplyResult = ApplyResult.Applied(RunId(RUN_ID), RecoveryPointId(POINT_ID))
 
         override fun newRunId() = RunId(RUN_ID)
 
@@ -179,7 +266,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
 
         override fun apply(plan: ValidatedLayoutPlan, runId: RunId): ApplyResult {
             applyCalls++
-            return ApplyResult.Applied(runId, RecoveryPointId(POINT_ID))
+            return applyResult
         }
 
         override fun inspectRecovery(pointId: RecoveryPointId): RecoveryPreviewResult = RecoveryPreviewResult.NotRestorable(

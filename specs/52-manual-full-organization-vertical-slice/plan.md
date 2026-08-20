@@ -199,6 +199,19 @@ This follow-up is not a claim of merge readiness. PR-triggered CI, connected ins
 
 This local evidence does not replace the required PR-triggered CI, connected instrumentation, or independent high-risk audit. Do not change the specification status to `implemented` until those release-gate requirements are satisfied.
 
+## Re-review follow-up — 2026-08-20
+
+The latest Issue #52 re-review identified one high-priority lifecycle gap and two medium UI gaps. The manual screen now registers a phase-safe Back callback and disposes through the same coordinator dismissal path; dismissal cancels before application admission and delegates navigation only after the coordinator has removed the cancellable operation. `Unresolved`, `RecoveryFailed`, and explicit recovery `RestoreFailed` terminal surfaces no longer offer a blind new-run action and instead provide the diagnostics/support navigation path. State headings and progress announcements use explicit focus targets, and the Compose fixture covers focus restoration and a 200% font-scale presentation.
+
+| Command or surface | Result | Evidence / limitation |
+|---|---|---|
+| `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.ui.ManualOrganizationRunTest'` | Passed | Dismissal before application admission cancels without writing and emits `USER_CANCELLED`; existing coordinator cases remain green. |
+| `./gradlew assembleLawnWithQuickstepGithubDebugAndroidTest` | Passed | Android-test source, including focus/font-scale and unresolved-result UI tests, compiled successfully. |
+| `./gradlew spotlessCheck` and `git diff --check` | Passed | Full formatting and whitespace checks completed successfully. |
+| Connected instrumentation | Not run | `adb` is unavailable on the local host; focus, Back navigation, font-scale, and process-recreation behavior still require a connected API 36.1 device/emulator. |
+
+The release-gate items from the re-review remain open: connected API 36.1 execution, process recreation/reconciliation evidence, keyboard/switch traversal evidence, UI screenshots/video, PR-triggered `CI / final-status`, and the independent `risk: layout-data` audit. The implementation remains not merge-ready until those artifacts exist on the final PR head.
+
 ## High-risk evidence and rollout
 
 This implementation closes a `risk: layout-data` Issue and may touch the organizer application protocol. Before merge, it therefore requires the independent-evidence process in [GitHub workflow](../../docs/project/github-workflow.md):

@@ -111,7 +111,11 @@ fun PreferenceNavigation(
         composable<HomeScreenGrid> { HomeScreenGridPreferences() }
         composable<HomeScreenPopupEditor> { LauncherPopupPreference() }
         composable<HomeScreenPlacementLocks> { PlacementLockPreferences() }
-        composable<HomeScreenManualOrganization> { ManualOrganizationPreferences() }
+        composable<HomeScreenManualOrganization> {
+            ManualOrganizationPreferences(
+                onOpenDiagnostics = { navController.navigate(DebugMenu) },
+            )
+        }
 
         composable<Dock> { DockPreferences() }
         composable<DockSearchProvider> { SearchProviderPreferences() }

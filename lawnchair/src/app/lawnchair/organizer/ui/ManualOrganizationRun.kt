@@ -383,7 +383,7 @@ class ManualOrganizationRun internal constructor(
     }
 
     fun dismiss() {
-        synchronized(lock) {
+        val operation = synchronized(lock) {
             val operation = activeOperation
             if (operation?.applicationAdmitted?.get() == true) return
             operation?.cancelled?.set(true)
@@ -391,6 +391,18 @@ class ManualOrganizationRun internal constructor(
             pending = null
             pendingRecovery = null
             stateHolder.value = State.Idle
+            operation
+        }
+        operation?.let {
+            emit(
+                RunEvent(
+                    journalSequence = 0L,
+                    runId = it.runId.value,
+                    trigger = Trigger.MANUAL_FULL,
+                    runMode = RunMode.FULL_ORGANIZATION,
+                    phase = PhaseCode.USER_CANCELLED,
+                ),
+            )
         }
     }
 

@@ -317,6 +317,29 @@ class ManualOrganizationRunTest {
     }
 
     @Test
+    fun dismissBeforeApplicationAdmissionCancelsAndEmitsUserCancellation() {
+        val application = FakeApplication(readyInput())
+        val materializeStarted = CountDownLatch(1)
+        val releaseMaterialize = CountDownLatch(1)
+        application.materializeStarted = materializeStarted
+        application.materializeRelease = releaseMaterialize
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        runner.start()
+
+        val worker = thread(start = true) { runner.confirm() }
+        assertTrue(materializeStarted.await(5, TimeUnit.SECONDS))
+
+        runner.dismiss()
+
+        assertEquals(ManualOrganizationRun.State.Idle, runner.state)
+        assertEquals(1, application.events.count { it.phase == app.lawnchair.organizer.diagnostics.model.PhaseCode.USER_CANCELLED })
+        releaseMaterialize.countDown()
+        worker.join(5_000)
+        assertFalse(worker.isAlive)
+        assertEquals(0, application.applyCalls)
+    }
+
+    @Test
     fun cancellationAfterApplicationAdmissionDoesNotInterruptAtomicApply() {
         val application = FakeApplication(readyInput())
         val applyStarted = CountDownLatch(1)

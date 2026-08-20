@@ -1016,6 +1016,9 @@
     <string name="manual_organization_apply_recovered">The attempted organization could not finish. Your previous layout was restored.</string>
     <string name="manual_organization_apply_unresolved">The current layout could not be verified. Do not make another organization change yet.</string>
     <string name="manual_organization_apply_recovery_failed">Automatic recovery could not be verified. Do not make another organization change yet.</string>
+    <string name="manual_organization_safe_terminal">The current layout needs a safety review. Do not start another organization run yet.</string>
+    <string name="manual_organization_open_diagnostics">Open organizer diagnostics</string>
+    <string name="manual_organization_open_diagnostics_summary">Export privacy-safe details for support before making another change.</string>
     <string name="manual_organization_apply_concurrent">Another layout operation is in progress. Try again later.</string>
     <string name="manual_organization_recovery">Restore the previous layout</string>
     <string name="manual_organization_recovery_inspecting">Checking whether the previous layout can be restored safely…</string>
