@@ -95,7 +95,9 @@ class RecoveryStore(
         )
     ) {
         RecoveryStartupStorageClassifier.State.Pristine -> RecoveryStorePort.StoreAvailability.READY
+
         RecoveryStartupStorageClassifier.State.Existing -> availability()
+
         RecoveryStartupStorageClassifier.State.SuspiciousAbsence,
         RecoveryStartupStorageClassifier.State.ZeroLengthMain,
         RecoveryStartupStorageClassifier.State.InvalidMain,
@@ -143,8 +145,7 @@ class RecoveryStore(
     ) : RecoveryStoreReconciliationIssuer {
         override fun openSession(
             lease: RunMutex.ReconciliationLease,
-        ): RecoveryStoreReconciliationSession? =
-            if (lease.isActiveFor(mutex)) ReconciliationSession(lease, mutex) else null
+        ): RecoveryStoreReconciliationSession? = if (lease.isActiveFor(mutex)) ReconciliationSession(lease, mutex) else null
     }
 
     /**
@@ -631,17 +632,13 @@ class RecoveryStore(
 
         override fun isActive(): Boolean = !closed && lease.isActiveFor(mutex)
 
-        override fun availability(): RecoveryStorePort.StoreAvailability =
-            if (isActive()) startupAvailability() else RecoveryStorePort.StoreAvailability.READ_FAILED
+        override fun availability(): RecoveryStorePort.StoreAvailability = if (isActive()) startupAvailability() else RecoveryStorePort.StoreAvailability.READ_FAILED
 
-        override fun listNonFinalRecords(): List<RecoveryStorePort.StoredRecord>? =
-            if (isActive()) this@RecoveryStore.listNonFinalRecords() else null
+        override fun listNonFinalRecords(): List<RecoveryStorePort.StoredRecord>? = if (isActive()) this@RecoveryStore.listNonFinalRecords() else null
 
-        override fun readRecord(pointId: RecoveryPointId): RecoveryStorePort.StoredRecord? =
-            if (isActive()) this@RecoveryStore.readRecord(pointId) else null
+        override fun readRecord(pointId: RecoveryPointId): RecoveryStorePort.StoredRecord? = if (isActive()) this@RecoveryStore.readRecord(pointId) else null
 
-        override fun advance(pointId: RecoveryPointId, next: LifecycleState): Boolean =
-            reconcileMutation { advanceRaw(pointId, next) }
+        override fun advance(pointId: RecoveryPointId, next: LifecycleState): Boolean = reconcileMutation { advanceRaw(pointId, next) }
 
         override fun markRestoring(
             pointId: RecoveryPointId,
@@ -652,8 +649,7 @@ class RecoveryStore(
             markRestoringRaw(pointId, reviewedManifest, reviewedDigest, recoveryActionDigest)
         }
 
-        override fun pruneUnused(pointId: RecoveryPointId): Boolean =
-            reconcileMutation { pruneUnusedRaw(pointId) }
+        override fun pruneUnused(pointId: RecoveryPointId): Boolean = reconcileMutation { pruneUnusedRaw(pointId) }
 
         override fun runRetention(nowMillis: Long): RecoveryStorePort.RetentionOutcome {
             if (!isActive()) return RecoveryStorePort.RetentionOutcome.StoreUnavailable
@@ -719,8 +715,7 @@ class RecoveryStore(
         }
     }
 
-    private fun beginReconciliationMutation(session: ReconciliationSession): InspectionSnapshotFence.Mutation? =
-        if (session.isActive()) snapshotFence.beginReconciliationMutation() else null
+    private fun beginReconciliationMutation(session: ReconciliationSession): InspectionSnapshotFence.Mutation? = if (session.isActive()) snapshotFence.beginReconciliationMutation() else null
 
     private fun completeOrdinaryMutation(
         mutation: InspectionSnapshotFence.Mutation,

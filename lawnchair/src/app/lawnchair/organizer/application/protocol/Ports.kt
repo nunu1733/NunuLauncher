@@ -422,8 +422,7 @@ class RunMutex : RunMutexPort {
     ) {
         internal fun isActive(): Boolean = mutex.isLeaseActive(runId, this)
 
-        internal fun isActiveFor(expectedMutex: RunMutex): Boolean =
-            mutex === expectedMutex && mutex.isLeaseActive(runId, this)
+        internal fun isActiveFor(expectedMutex: RunMutex): Boolean = mutex === expectedMutex && mutex.isLeaseActive(runId, this)
     }
 
     private var holder: RunId? = null
@@ -452,8 +451,7 @@ class RunMutex : RunMutexPort {
     }
 
     @Synchronized
-    private fun isLeaseActive(runId: RunId, lease: ReconciliationLease): Boolean =
-        holder == runId && reconciliationLease === lease
+    private fun isLeaseActive(runId: RunId, lease: ReconciliationLease): Boolean = holder == runId && reconciliationLease === lease
 
     @Synchronized
     fun currentHolder(): RunId? = holder

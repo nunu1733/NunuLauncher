@@ -115,8 +115,7 @@ class FakeRecoveryStore(
     ) : RecoveryStoreReconciliationIssuer {
         override fun openSession(
             lease: RunMutex.ReconciliationLease,
-        ): RecoveryStoreReconciliationSession? =
-            if (lease.isActiveFor(mutex)) FakeReconciliationSession(lease, mutex) else null
+        ): RecoveryStoreReconciliationSession? = if (lease.isActiveFor(mutex)) FakeReconciliationSession(lease, mutex) else null
     }
 
     private inner class FakeReconciliationSession(
@@ -127,17 +126,13 @@ class FakeRecoveryStore(
 
         override fun isActive(): Boolean = !closed && lease.isActiveFor(mutex)
 
-        override fun availability(): RecoveryStorePort.StoreAvailability =
-            if (isActive()) this@FakeRecoveryStore.availability() else RecoveryStorePort.StoreAvailability.READ_FAILED
+        override fun availability(): RecoveryStorePort.StoreAvailability = if (isActive()) this@FakeRecoveryStore.availability() else RecoveryStorePort.StoreAvailability.READ_FAILED
 
-        override fun listNonFinalRecords(): List<RecoveryStorePort.StoredRecord>? =
-            if (isActive()) this@FakeRecoveryStore.listNonFinalRecords() else null
+        override fun listNonFinalRecords(): List<RecoveryStorePort.StoredRecord>? = if (isActive()) this@FakeRecoveryStore.listNonFinalRecords() else null
 
-        override fun readRecord(pointId: RecoveryPointId): RecoveryStorePort.StoredRecord? =
-            if (isActive()) this@FakeRecoveryStore.readRecord(pointId) else null
+        override fun readRecord(pointId: RecoveryPointId): RecoveryStorePort.StoredRecord? = if (isActive()) this@FakeRecoveryStore.readRecord(pointId) else null
 
-        override fun advance(pointId: RecoveryPointId, next: LifecycleState): Boolean =
-            isActive() && this@FakeRecoveryStore.advance(pointId, next)
+        override fun advance(pointId: RecoveryPointId, next: LifecycleState): Boolean = isActive() && this@FakeRecoveryStore.advance(pointId, next)
 
         override fun markRestoring(
             pointId: RecoveryPointId,
@@ -151,11 +146,9 @@ class FakeRecoveryStore(
             recoveryActionDigest,
         )
 
-        override fun pruneUnused(pointId: RecoveryPointId): Boolean =
-            isActive() && this@FakeRecoveryStore.pruneUnused(pointId)
+        override fun pruneUnused(pointId: RecoveryPointId): Boolean = isActive() && this@FakeRecoveryStore.pruneUnused(pointId)
 
-        override fun runRetention(nowMillis: Long): RecoveryStorePort.RetentionOutcome =
-            if (isActive()) this@FakeRecoveryStore.runRetention(nowMillis) else RecoveryStorePort.RetentionOutcome.StoreUnavailable
+        override fun runRetention(nowMillis: Long): RecoveryStorePort.RetentionOutcome = if (isActive()) this@FakeRecoveryStore.runRetention(nowMillis) else RecoveryStorePort.RetentionOutcome.StoreUnavailable
 
         override fun rebuildInspectionSnapshot(): Boolean = isActive() && snapshotRebuildSucceeds
 
