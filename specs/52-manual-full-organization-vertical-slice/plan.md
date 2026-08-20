@@ -167,7 +167,7 @@ python3 tools/repo-contract/test_validate_repo_contract.py
 
 The connected execution is local evidence. The high-risk merge gate additionally requires a successful **PR-triggered** `CI / final-status` run on the audited head commit, including non-skipped `organizer-unit-tests`, `check-style`, and `build-debug-apk` source jobs.
 
-## Local verification evidence — 2026-08-20
+## Baseline local verification evidence — 2026-08-20
 
 The following evidence was recorded on local macOS host `mskdf4.local` after checking out the Issue 52 branch at `ce372e981dff6d3adc547554021727f7499dc56a`. The machine used Homebrew OpenJDK 21 and successfully compiled the root Kotlin and unit-test sources that could not be completed under the prior sandbox memory limit. The worktree remained clean after every command.
 
@@ -178,8 +178,24 @@ The following evidence was recorded on local macOS host `mskdf4.local` after che
 | `./gradlew assembleLawnWithQuickstepGithubDebug` | Passed | Debug APK build completed successfully. |
 | `python3 tools/repo-contract/validate_repo_contract.py` and `python3 tools/repo-contract/test_validate_repo_contract.py` | Passed | Repository contract validation and its self-test completed successfully. |
 | `./gradlew spotlessKotlinCheck` and `git diff --check` | Passed | Kotlin formatting and whitespace checks completed successfully. |
-| `./gradlew spotlessCheck` | Not completed | Local Gradle failed `:spotlessJava` because it detected existing implicit dependencies on `compatLib` tasks. This was a task dependency validation failure, not a source-format finding; `spotlessKotlinCheck` succeeded. |
+| `./gradlew spotlessCheck` | Not completed at baseline | Local Gradle failed `:spotlessJava` because it detected existing implicit dependencies on `compatLib` tasks. This was a task dependency validation failure, not a source-format finding; `spotlessKotlinCheck` succeeded. |
 | Connected instrumentation | Not run | `adb` was unavailable on the local host, so no verified API 36.1 device/emulator was available. |
+
+## Review follow-up implementation and verification — 2026-08-20
+
+The review follow-up keeps the existing #83 production composer and #84 opaque recovery-preview boundary. The coordinator now exposes a lifecycle-observable `StateFlow`, projects typed planning reasons/warnings/unplaced items and safe scope/constraint counts into both preview and result state, enforces cancellation before application admission, preserves the last verified apply result when a recovery preview is cancelled, and retains all application result families for localized UI mapping. The Compose surface renders capture/planning/applying/recovery-inspection progress and has fixture-based UI evidence for preview, no-write cancellation, and recreation-like recomposition. Raw item/profile identities, database rows, recovery-store records, and recovery requests remain outside the UI seam.
+
+| Command or surface | Result | Evidence / limitation |
+|---|---|---|
+| `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.ui.ManualOrganizationRunTest'` | Passed | Coordinator projection, invalid/impossible planning, stale materialization, cancellation admission boundary, all `ApplyResult` families, and recovery-preview cancellation tests. |
+| `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` | Passed | Organizer JVM unit-test surface completed successfully. |
+| `./gradlew assembleLawnWithQuickstepGithubDebug` | Passed | Debug APK compiled successfully. |
+| `./gradlew assembleLawnWithQuickstepGithubDebugAndroidTest` | Passed | Android-test artifact, including `ManualOrganizationPreferencesInstrumentationTest`, compiled successfully. |
+| `./gradlew spotlessCheck` and `git diff --check` | Passed | Full Spotless and whitespace checks completed successfully. |
+| Repository contract validator and self-test | Passed | `python3 tools/repo-contract/validate_repo_contract.py` and `python3 tools/repo-contract/test_validate_repo_contract.py`. |
+| Connected instrumentation | Not run | `adb` was not available on the local host; a connected API 36.1 device/emulator is still required. |
+
+This follow-up is not a claim of merge readiness. PR-triggered CI, connected instrumentation, UI screenshots/video, and the independent high-risk audit remain required by the layout-data merge gate.
 
 This local evidence does not replace the required PR-triggered CI, connected instrumentation, or independent high-risk audit. Do not change the specification status to `implemented` until those release-gate requirements are satisfied.
 

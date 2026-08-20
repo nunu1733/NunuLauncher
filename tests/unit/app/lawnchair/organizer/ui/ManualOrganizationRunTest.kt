@@ -7,6 +7,7 @@ import app.lawnchair.organizer.application.public.LayoutState
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
+import app.lawnchair.organizer.application.public.RecoveryPreviewSummary
 import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
@@ -37,6 +38,9 @@ import app.lawnchair.organizer.planning.PlacementTarget
 import app.lawnchair.organizer.planning.Planned
 import app.lawnchair.organizer.planning.PlannedPlacement
 import app.lawnchair.organizer.planning.PlanningResult
+import app.lawnchair.organizer.planning.PreserveReason
+import app.lawnchair.organizer.planning.RejectionCode
+import app.lawnchair.organizer.planning.RejectionReason
 import app.lawnchair.organizer.planning.RevisionId
 import app.lawnchair.organizer.planning.RuleSemantics
 import app.lawnchair.organizer.planning.RuleVersion
@@ -44,10 +48,18 @@ import app.lawnchair.organizer.planning.RunMode
 import app.lawnchair.organizer.planning.TargetSet
 import app.lawnchair.organizer.planning.TaxonomyContract
 import app.lawnchair.organizer.planning.TaxonomyVersion
+import app.lawnchair.organizer.planning.UnplacedItem
+import app.lawnchair.organizer.planning.UnplacedReason
+import app.lawnchair.organizer.planning.Warning
+import app.lawnchair.organizer.planning.WarningCode
 import app.lawnchair.organizer.rules.PolicyBundleIdentity
 import app.lawnchair.organizer.rules.PolicyInputIdentity
 import app.lawnchair.organizer.rules.PolicySourceKind
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -128,6 +140,224 @@ class ManualOrganizationRunTest {
         )
     }
 
+    @Test
+    fun previewAndResultRetainTypedReasonConstraintAndScopeProjection() {
+        val application = FakeApplication(readyInput())
+        val planned = Planned(
+            placements = listOf(
+                placement("moved", Disposition.Moved(PlacementCode.SINGLE_PLACEMENT)),
+                placement("locked", Disposition.Preserved(PreserveReason.LOCKED)),
+                placement("widget", Disposition.Preserved(PreserveReason.WIDGET)),
+                placement("canonical", Disposition.Preserved(PreserveReason.ALREADY_CANONICAL)),
+            ),
+            newPages = emptyList(),
+            newFolders = emptyList(),
+            categories = emptyList(),
+            warnings = listOf(Warning(WarningCode.FALLBACK_CATEGORY, emptyList())),
+        )
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(planned) })
+
+        runner.start()
+
+        val summary = (runner.state as ManualOrganizationRun.State.Preview).summary
+        assertEquals(mapOf(PlacementCode.SINGLE_PLACEMENT to 1), summary.movedByReason)
+        assertEquals(
+            mapOf(
+                PreserveReason.LOCKED to 1,
+                PreserveReason.WIDGET to 1,
+                PreserveReason.ALREADY_CANONICAL to 1,
+            ),
+            summary.preservedByReason,
+        )
+        assertEquals(mapOf(WarningCode.FALLBACK_CATEGORY to 1), summary.warningCounts)
+        assertEquals(0, summary.unplacedByReason.size)
+        assertEquals(0, summary.scope.targetCount)
+        assertEquals(4, summary.scope.columns)
+        assertEquals(0, summary.constraints.lockedCount)
+    }
+
+    @Test
+    fun impossiblePlanningRetainsUnplacedReasonProjection() {
+        val application = FakeApplication(readyInput())
+        val impossible = app.lawnchair.organizer.planning.Rejected.Impossible(
+            unplaced = listOf(
+                UnplacedItem(
+                    item = app.lawnchair.organizer.planning.ItemId("unplaced"),
+                    requiredSpan = app.lawnchair.organizer.planning.GridSpan(5, 5),
+                    reason = UnplacedReason.EXCEEDS_GRID_DIMENSIONS,
+                ),
+            ),
+            warnings = emptyList(),
+        )
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(impossible) })
+
+        runner.start()
+
+        val state = runner.state as ManualOrganizationRun.State.PlanningRejected
+        assertEquals(ManualOrganizationRun.PlanningFailureKind.IMPOSSIBLE, state.kind)
+        assertEquals(mapOf(UnplacedReason.EXCEEDS_GRID_DIMENSIONS to 1), state.summary.unplacedByReason)
+        assertEquals(0, application.applyCalls)
+    }
+
+    @Test
+    fun invalidPlanningRetainsMajorRejectionReasonProjection() {
+        val application = FakeApplication(readyInput())
+        val invalid = app.lawnchair.organizer.planning.Rejected.Invalid(
+            reasons = listOf(RejectionReason(RejectionCode.TARGET_PROFILE_MISMATCH, emptyList())),
+            warnings = listOf(Warning(WarningCode.UNAVAILABLE_PRESERVED, emptyList())),
+        )
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(invalid) })
+
+        runner.start()
+
+        val state = runner.state as ManualOrganizationRun.State.PlanningRejected
+        assertEquals(mapOf(RejectionCode.TARGET_PROFILE_MISMATCH to 1), state.summary.rejectedByReason)
+        assertEquals(mapOf(WarningCode.UNAVAILABLE_PRESERVED to 1), state.summary.warningCounts)
+        assertEquals(0, application.applyCalls)
+    }
+
+    @Test
+    fun staleMaterializationIsVisibleAndNeverReachesApplicationWriter() {
+        val application = FakeApplication(readyInput())
+        application.materializeOverride = { _, _ -> OrganizationPlanMaterializer.Result.Invalid }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start()
+        runner.confirm()
+
+        assertEquals(ManualOrganizationRun.State.Stale, runner.state)
+        assertEquals(0, application.applyCalls)
+        assertEquals(app.lawnchair.organizer.diagnostics.model.PhaseCode.APPLY_REJECTED, application.events.last().phase)
+    }
+
+    @Test
+    fun everyApplyResultFamilyIsRetainedWithTheVerifiedPlanSummary() {
+        val results = listOf<ApplyResult>(
+            ApplyResult.NoChanges(RunId(RUN_ID)),
+            ApplyResult.Applied(RunId(RUN_ID), RecoveryPointId(POINT_ID)),
+            ApplyResult.Rejected(RunId(RUN_ID), app.lawnchair.organizer.application.public.PreWriteRejection.INVALID_PLAN),
+            ApplyResult.RolledBack(RunId(RUN_ID), app.lawnchair.organizer.application.public.ApplyFailure.WRITE_FAILED),
+            ApplyResult.Recovered(RunId(RUN_ID), RecoveryPointId(POINT_ID), app.lawnchair.organizer.application.public.ApplyFailure.VERIFICATION_FAILED),
+            ApplyResult.Unresolved(
+                RunId(RUN_ID),
+                RecoveryPointId(POINT_ID),
+                app.lawnchair.organizer.application.public.ApplyFailure.COMMIT_OUTCOME_UNKNOWN,
+                app.lawnchair.organizer.application.public.AuthoritativeState.UNKNOWN,
+            ),
+            ApplyResult.RecoveryFailed(
+                RunId(RUN_ID),
+                RecoveryPointId(POINT_ID),
+                app.lawnchair.organizer.application.public.ApplyFailure.RECOVERY_STORE_FAILED,
+                app.lawnchair.organizer.application.public.RecoveryFailure.RECOVERY_STORE_FAILED,
+                app.lawnchair.organizer.application.public.AuthoritativeState.UNKNOWN,
+            ),
+            ApplyResult.ConcurrentRun,
+        )
+
+        results.forEach { expected ->
+            val application = FakeApplication(readyInput())
+            application.applyResult = expected
+            val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+            runner.start()
+            runner.confirm()
+
+            if (expected is ApplyResult.NoChanges) {
+                assertEquals(ManualOrganizationRun.State.NoChanges, runner.state)
+            } else {
+                val state = runner.state as ManualOrganizationRun.State.Applied
+                assertEquals(expected, state.result)
+                assertEquals(1, state.summary.movedCount)
+            }
+        }
+    }
+
+    @Test
+    fun cancellationDuringCaptureIsObservableAndCannotApplyAfterCaptureReturns() {
+        val application = FakeApplication(readyInput())
+        val captureStarted = CountDownLatch(1)
+        val releaseCapture = CountDownLatch(1)
+        application.composeStarted = captureStarted
+        application.composeRelease = releaseCapture
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { error("planner must not run") })
+
+        val worker = thread(start = true) { runner.start() }
+        assertTrue(captureStarted.await(5, TimeUnit.SECONDS))
+        assertEquals(ManualOrganizationRun.State.Capturing, runner.state)
+
+        runner.cancel()
+        assertEquals(ManualOrganizationRun.State.Cancelled, runner.state)
+        releaseCapture.countDown()
+        worker.join(5_000)
+        assertFalse(worker.isAlive)
+        assertEquals(0, application.applyCalls)
+    }
+
+    @Test
+    fun cancellationBeforeApplicationAdmissionPreventsApply() {
+        val application = FakeApplication(readyInput())
+        val planned = movingPlan()
+        val materializeStarted = CountDownLatch(1)
+        val releaseMaterialize = CountDownLatch(1)
+        application.materializeStarted = materializeStarted
+        application.materializeRelease = releaseMaterialize
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(planned) })
+        runner.start()
+
+        val worker = thread(start = true) { runner.confirm() }
+        assertTrue(materializeStarted.await(5, TimeUnit.SECONDS))
+        assertEquals(ManualOrganizationRun.State.Applying, runner.state)
+
+        runner.cancel()
+        assertEquals(ManualOrganizationRun.State.Cancelled, runner.state)
+        releaseMaterialize.countDown()
+        worker.join(5_000)
+        assertFalse(worker.isAlive)
+        assertEquals(0, application.applyCalls)
+    }
+
+    @Test
+    fun cancellationAfterApplicationAdmissionDoesNotInterruptAtomicApply() {
+        val application = FakeApplication(readyInput())
+        val applyStarted = CountDownLatch(1)
+        val releaseApply = CountDownLatch(1)
+        application.applyStarted = applyStarted
+        application.applyRelease = releaseApply
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        runner.start()
+
+        val worker = thread(start = true) { runner.confirm() }
+        assertTrue(applyStarted.await(5, TimeUnit.SECONDS))
+        runner.cancel()
+        assertEquals(ManualOrganizationRun.State.Applying, runner.state)
+        releaseApply.countDown()
+        worker.join(5_000)
+        assertFalse(worker.isAlive)
+        assertTrue(runner.state is ManualOrganizationRun.State.Applied)
+        assertEquals(1, application.applyCalls)
+    }
+
+    @Test
+    fun cancellingRecoveryPreviewRestoresVerifiedApplySummaryAndActionSurface() {
+        val application = FakeApplication(readyInput())
+        application.recoveryPreview = RecoveryPreviewResult.Restorable(
+            pointId = RecoveryPointId(POINT_ID),
+            summary = RecoveryPreviewSummary(),
+            confirmation = RecoveryPreviewConfirmation.issue(byteArrayOf(1)),
+        )
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        runner.start()
+        runner.confirm()
+        val applied = runner.state as ManualOrganizationRun.State.Applied
+
+        runner.beginRecoveryPreview()
+        assertTrue(runner.state is ManualOrganizationRun.State.RecoveryPreview)
+        runner.cancelRecoveryPreview()
+
+        assertEquals(applied, runner.state)
+        assertEquals(applied.summary, (runner.state as ManualOrganizationRun.State.Applied).summary)
+    }
+
     private fun readyInput() = OrganizationInputComposition.Ready(
         input = input(),
         provenance = InputProvenance(
@@ -170,6 +400,27 @@ class ManualOrganizationRunTest {
         outcome = outcome,
     )
 
+    private fun movingPlan() = Planned(
+        placements = listOf(placement("item", Disposition.Moved(PlacementCode.SINGLE_PLACEMENT))),
+        newPages = emptyList(),
+        newFolders = emptyList(),
+        categories = emptyList(),
+        warnings = emptyList(),
+    )
+
+    private fun placement(
+        item: String,
+        disposition: Disposition,
+    ) = PlannedPlacement(
+        item = app.lawnchair.organizer.planning.ItemId(item),
+        disposition = disposition,
+        target = PlacementTarget.WorkspaceTarget(
+            PageRef(PageId("page")),
+            app.lawnchair.organizer.planning.GridCell(0, 0),
+            app.lawnchair.organizer.planning.GridSpan(1, 1),
+        ),
+    )
+
     private class FakeApplication(
         var composition: OrganizationInputComposition,
     ) : ManualOrganizationApplication {
@@ -179,12 +430,30 @@ class ManualOrganizationRunTest {
         var materializeCalls = 0
         var applyCalls = 0
         var appliedRunId: RunId? = null
+        var composeStarted: CountDownLatch? = null
+        var composeRelease: CountDownLatch? = null
+        var materializeStarted: CountDownLatch? = null
+        var materializeRelease: CountDownLatch? = null
+        var applyStarted: CountDownLatch? = null
+        var applyRelease: CountDownLatch? = null
+        var materializeOverride: ((OrganizationInput, PlanningResult) -> OrganizationPlanMaterializer.Result)? = null
+        var applyResult: ApplyResult = ApplyResult.Applied(RunId(RUN_ID), RecoveryPointId(POINT_ID))
+        var recoveryPreview: RecoveryPreviewResult = RecoveryPreviewResult.NotRestorable(
+            RecoveryPointId(POINT_ID),
+            app.lawnchair.organizer.application.public.RecoveryPreviewRejection.MISSING,
+        )
 
         override fun newRunId() = RunId(RUN_ID)
-        override fun composeFullOrganization() = composition
+        override fun composeFullOrganization(): OrganizationInputComposition {
+            composeStarted?.countDown()
+            composeRelease?.await(5, TimeUnit.SECONDS)
+            return composition
+        }
         override fun materialize(input: OrganizationInput, result: PlanningResult): OrganizationPlanMaterializer.Result {
             materializeCalls++
-            return OrganizationPlanMaterializer.Result.Ready(
+            materializeStarted?.countDown()
+            materializeRelease?.await(5, TimeUnit.SECONDS)
+            return materializeOverride?.invoke(input, result) ?: OrganizationPlanMaterializer.Result.Ready(
                 ValidatedLayoutPlan(
                     sourceRevision = input.snapshot.revision,
                     sourceState = LayoutState(emptyList(), emptyList(), DeviceCapabilities(4, 5, 5, 3, 4, app.lawnchair.organizer.application.public.DeviceOrientation.PORTRAIT), emptyList()),
@@ -201,13 +470,12 @@ class ManualOrganizationRunTest {
         override fun apply(plan: ValidatedLayoutPlan, runId: RunId): ApplyResult {
             applyCalls++
             appliedRunId = runId
-            return ApplyResult.Applied(runId, RecoveryPointId(POINT_ID))
+            applyStarted?.countDown()
+            applyRelease?.await(5, TimeUnit.SECONDS)
+            return applyResult
         }
 
-        override fun inspectRecovery(pointId: RecoveryPointId): RecoveryPreviewResult = RecoveryPreviewResult.NotRestorable(
-            pointId,
-            app.lawnchair.organizer.application.public.RecoveryPreviewRejection.MISSING,
-        )
+        override fun inspectRecovery(pointId: RecoveryPointId): RecoveryPreviewResult = recoveryPreview
 
         override fun confirmRecovery(pointId: RecoveryPointId, confirmation: RecoveryPreviewConfirmation): RecoveryResult = RecoveryResult.NotRestorable(pointId, app.lawnchair.organizer.application.public.RecoveryRejection.MISSING)
     }
