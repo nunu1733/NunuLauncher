@@ -95,6 +95,10 @@ data object HomeScreenPopupEditor : PreferenceRoute
 @Serializable
 data object HomeScreenPlacementLocks : PreferenceRoute
 
+// Issue #52: explicit manual full organization.
+@Serializable
+data object HomeScreenManualOrganization : PreferenceRoute
+
 // Dock section routes
 @Serializable
 data object DockSearchProvider : PreferenceRoute

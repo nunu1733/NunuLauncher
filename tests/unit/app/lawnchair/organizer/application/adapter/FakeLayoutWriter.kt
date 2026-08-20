@@ -44,6 +44,7 @@ class FakeLayoutWriter(
     var refuseLease: Boolean = false
     var nextTxOutcome: ApplyTxOutcome = ApplyTxOutcome.Committed
     var reloadResult: ReloadResult = ReloadResult.Completed
+    var materializedIntendedStateOverride: ((LayoutState) -> LayoutState)? = null
     var onApplyA5Reread: (() -> Unit)? = null
 
     var capturedSnapshots: Int = 0
@@ -83,12 +84,13 @@ class FakeLayoutWriter(
         capture: CapturedSnapshot,
         plan: ValidatedLayoutPlan,
     ): WriteSetPreparation {
-        val intendedManifest = manifestFor(plan.intendedState)
-        knownStates += plan.intendedState
+        val intendedState = materializedIntendedStateOverride?.invoke(plan.intendedState) ?: plan.intendedState
+        val intendedManifest = manifestFor(intendedState)
+        knownStates += intendedState
         return WriteSetPreparation.Ready(
             MaterializedWriteSet(
                 actions = plan.actions,
-                intendedState = plan.intendedState,
+                intendedState = intendedState,
                 intendedManifest = intendedManifest,
                 actionSetDigest = RevisionCalculator.actionSetDigestOf(plan.actions),
                 sourceRevision = capture.revision,

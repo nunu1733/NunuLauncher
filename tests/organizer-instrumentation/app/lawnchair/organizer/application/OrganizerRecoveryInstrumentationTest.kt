@@ -17,6 +17,7 @@ import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.protocol.CaptureId
 import app.lawnchair.organizer.application.protocol.FaultInjector
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
+import app.lawnchair.organizer.application.protocol.RestartReconciler
 import app.lawnchair.organizer.application.protocol.SecureRandomOperationIdSource
 import app.lawnchair.organizer.application.protocol.SystemClock
 import app.lawnchair.organizer.application.public.ApplyAction
@@ -24,6 +25,8 @@ import app.lawnchair.organizer.application.public.OrganizerLockState
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.application.store.RecoveryStore
+import app.lawnchair.organizer.ui.ManualOrganizationRun
+import app.lawnchair.organizer.ui.ProductionManualOrganizationApplication
 import app.lawnchair.organizer.planning.RuleVersion
 import app.lawnchair.organizer.planning.TaxonomyVersion
 import com.android.launcher3.LauncherAppState
@@ -147,6 +150,18 @@ class OrganizerRecoveryInstrumentationTest {
         }
         check(launcher.model.isModelLoaded) { "Launcher model did not load for restart verification" }
         (context.applicationContext as LawnchairApp).layoutApplicationModule.reconcileAtStart()
+        val manualModule = LayoutApplicationModule.production(context, launcher)
+        assertEquals(RestartReconciler.ReconciliationSummary.Clean, manualModule.reconcileAtStart())
+        val manualRun = ManualOrganizationRun(
+            ProductionManualOrganizationApplication(
+                context,
+                manualModule,
+            ),
+        )
+        manualRun.start()
+        check(manualRun.state !is ManualOrganizationRun.State.InputUnavailable) {
+            "Manual operation remained blocked after restart reconciliation: ${manualRun.state}"
+        }
         val rawId = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_POINT_ID, null)
         requireNotNull(rawId) { "Fault run did not persist a recovery point id" }
@@ -171,8 +186,15 @@ class OrganizerRecoveryInstrumentationTest {
             "RESTORING" -> assertEquals(LifecycleState.RESTORED, record?.lifecycle)
             else -> error("Unknown phase $phase")
         }
-        Log.i(TAG, "VERIFIED phase=$phase lifecycle=${record?.lifecycle ?: "PRUNED"} typed=true")
-        reportToHost("VERIFIED phase=$phase lifecycle=${record?.lifecycle ?: "PRUNED"} typed=true")
+        Log.i(
+            TAG,
+            "VERIFIED phase=$phase lifecycle=${record?.lifecycle ?: "PRUNED"} " +
+                "manualState=${manualRun.state} typed=true",
+        )
+        reportToHost(
+            "VERIFIED phase=$phase lifecycle=${record?.lifecycle ?: "PRUNED"} " +
+                "manualState=${manualRun.state} typed=true",
+        )
         assertTrue(record == null || record.checksumValid)
         scenario.close()
     }
