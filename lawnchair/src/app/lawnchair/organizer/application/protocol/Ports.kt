@@ -4,6 +4,8 @@ import app.lawnchair.organizer.application.actions.RecoveryAction
 import app.lawnchair.organizer.application.canonical.PersistenceManifest
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.lifecycle.LifecycleTransitions
+import app.lawnchair.organizer.application.public.ApplicationItemRef
+import app.lawnchair.organizer.application.public.ApplicationPageRef
 import app.lawnchair.organizer.application.public.ApplyAction
 import app.lawnchair.organizer.application.public.LayoutState
 import app.lawnchair.organizer.application.public.PreWriteRejection
@@ -93,6 +95,17 @@ data class CapturedSnapshot(
     val digest: ByteArray,
 )
 
+/**
+ * The only identity changes permitted while materializing a plan: planned
+ * item/page references become newly allocated persistent references. The
+ * application protocol validates the complete state after applying this map;
+ * writers cannot weaken that invariant with a copied plan-state mirror.
+ */
+data class MaterializationIdentityMapping(
+    val items: Map<ApplicationItemRef, ApplicationItemRef.PersistentItem> = emptyMap(),
+    val pages: Map<ApplicationPageRef.PlannedPage, ApplicationPageRef.PersistentPage> = emptyMap(),
+)
+
 /** Materialized row-accounted write-set produced from actions. */
 data class MaterializedWriteSet(
     val actions: List<ApplyAction>,
@@ -102,12 +115,7 @@ data class MaterializedWriteSet(
     val recoveryActions: List<RecoveryAction> = emptyList(),
     /** Revision of the source snapshot against which the A5 reread validates. */
     val sourceRevision: RevisionId,
-    /**
-     * The plan state before integration-side IDs are resolved. Production
-     * writers populate this when [intendedState] contains persistent IDs for
-     * planned items; recovery write-sets leave it absent.
-     */
-    val planIntendedState: LayoutState? = null,
+    val identityMapping: MaterializationIdentityMapping = MaterializationIdentityMapping(),
 )
 
 sealed interface WriteSetPreparation {

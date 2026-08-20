@@ -15,6 +15,7 @@ import app.lawnchair.organizer.application.protocol.CapturedSnapshot
 import app.lawnchair.organizer.application.protocol.FaultInjector
 import app.lawnchair.organizer.application.protocol.LayoutWriterPort
 import app.lawnchair.organizer.application.protocol.LeaseHandle
+import app.lawnchair.organizer.application.protocol.MaterializationIdentityMapping
 import app.lawnchair.organizer.application.protocol.MaterializedWriteSet
 import app.lawnchair.organizer.application.protocol.ReloadResult
 import app.lawnchair.organizer.application.protocol.WriteSetPreparation
@@ -191,7 +192,10 @@ internal class LauncherLayoutAdapter(
                 intendedManifest,
                 RevisionCalculator.actionSetDigestOf(plan.actions),
                 sourceRevision = capture.revision,
-                planIntendedState = plan.intendedState,
+                identityMapping = MaterializationIdentityMapping(
+                    items = plannedIds.mapValues { (_, id) -> ApplicationItemRef.PersistentItem(ItemId(id.toString())) },
+                    pages = plannedPages.mapValues { (_, id) -> ApplicationPageRef.PersistentPage(PageId(id.toString())) },
+                ),
             ),
         )
     }

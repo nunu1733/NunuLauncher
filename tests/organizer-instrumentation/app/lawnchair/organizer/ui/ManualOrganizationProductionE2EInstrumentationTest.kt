@@ -18,6 +18,8 @@ import app.lawnchair.organizer.application.public.OrganizerLockState
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
 import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.application.store.RecoveryDbSchema
+import app.lawnchair.organizer.application.store.RecoveryInspectionSnapshotReader
+import app.lawnchair.organizer.integration.InputReadinessReason
 import app.lawnchair.organizer.planning.ItemId
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings.Favorites
@@ -30,6 +32,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -63,7 +66,7 @@ class ManualOrganizationProductionE2EInstrumentationTest {
         originalRows = snapshotFavorites()
         overridePreferences = context.getSharedPreferences(OVERRIDE_STORE, Context.MODE_PRIVATE)
         originalOverrides = overridePreferences.all
-        context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+        clearRecoveryStoreArtifacts()
 
         val serial = UserCache.INSTANCE.get(context).getSerialNumberForUser(Process.myUserHandle())
         check(
@@ -112,7 +115,7 @@ class ManualOrganizationProductionE2EInstrumentationTest {
                     launcher.model.removeCallbacks(modelCallbacks)
                 }
             }
-            context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+            clearRecoveryStoreArtifacts()
         }
     }
 
@@ -185,8 +188,32 @@ class ManualOrganizationProductionE2EInstrumentationTest {
     }
 
     @Test
+    fun manualActionWaitsForStartupReconciliationBeforeAcceptingCapture() {
+        val module = LayoutApplicationModule.production(context, launcher)
+        val run = ManualOrganizationRun(ProductionManualOrganizationApplication(context, module))
+
+        run.start()
+
+        val blocked = run.state as? ManualOrganizationRun.State.InputUnavailable
+            ?: error("Manual action was accepted before startup reconciliation: ${run.state}")
+        assertEquals(InputReadinessReason.ReconciliationPending, blocked.reason)
+        assertEquals(2, snapshotFavorites().size)
+
+        assertEquals(
+            app.lawnchair.organizer.application.protocol.RestartReconciler.ReconciliationSummary.Clean,
+            module.reconcileAtStart(),
+        )
+        run.start()
+        assertTrue(run.state is ManualOrganizationRun.State.Preview)
+    }
+
+    @Test
     fun staleProductionConfirmationDoesNotWrite() {
         val module = LayoutApplicationModule.production(context, launcher)
+        assertEquals(
+            app.lawnchair.organizer.application.protocol.RestartReconciler.ReconciliationSummary.Clean,
+            module.reconcileAtStart(),
+        )
         val run = ManualOrganizationRun(ProductionManualOrganizationApplication(context, module))
 
         run.start()
@@ -245,6 +272,16 @@ class ManualOrganizationProductionE2EInstrumentationTest {
                 put(Favorites.ORGANIZER_LOCK_STATE, OrganizerLockState.UNLOCKED.ordinal)
             },
         )
+    }
+
+    private fun clearRecoveryStoreArtifacts() {
+        context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+        val snapshotDirectory = File(
+            context.noBackupFilesDir,
+            RecoveryInspectionSnapshotReader.DIRECTORY_NAME,
+        )
+        snapshotDirectory.listFiles()?.forEach { check(it.delete()) { "Unable to delete ${it.name}" } }
+        if (snapshotDirectory.exists()) check(snapshotDirectory.delete()) { "Unable to delete $snapshotDirectory" }
     }
 
     private fun snapshotFavorites(): List<ContentValues> {

@@ -39,6 +39,8 @@ sealed interface OrganizationInputComposition {
  * taken from this type, never reconstructed by parsing [CompositionDiagnostic].
  */
 sealed interface InputReadinessReason {
+    data object ReconciliationPending : InputReadinessReason
+    data object ReconciliationFailed : InputReadinessReason
     data class SourceUnavailable(val source: PolicySourceKind) : InputReadinessReason
     data class SourceUnreadable(val source: PolicySourceKind) : InputReadinessReason
     data class UnsupportedVersion(

@@ -247,6 +247,27 @@ This implementation closes a `risk: layout-data` Issue and may touch the organiz
 
 The PR includes UI screenshots/video for the manual start, preview, confirmation, success, stale, and recovery/failure surfaces. On merge, update `spec.md` and this plan to `implemented` only when the Issue exit criteria, accepted-spec criteria, CI, instrumentation evidence, and independent audit are complete.
 
+## PR review follow-up — startup readiness and materialization invariant — 2026-08-20
+
+PR #94 review follow-up closes the remaining lifecycle and protocol-boundary findings.
+
+- `LayoutApplicationModule.composeManualFullOrganizationInput` now uses the existing `ReadinessGate` and returns typed `ReconciliationPending` or `ReconciliationFailed` input-unavailability reasons until startup reconciliation succeeds. The production E2E covers the ordering of a fresh module, blocked manual start, successful reconciliation, and a subsequent fresh capture.
+- `MaterializedWriteSet` now carries an explicit planned-item/page to persistent-item/page identity mapping. `MaterializedStateValidator` is owned by the application protocol and accepts only that mapping plus the Launcher schema's omission of unreferenced empty pages; any other materialized-state drift is rejected as `INVALID_PLAN` before checkpoint or Launcher mutation. The unit suite includes a negative non-identity-drift regression test.
+- The production E2E fixture removes both the recovery SQLite database and its inspection snapshot inventory. This preserves the recovery store's intentional fail-closed behavior while isolating each API 36.1 test.
+
+| Command or surface | Result | Evidence |
+|---|---|---|
+| `./gradlew spotlessCheck --console=plain` | Passed | Full Spotless check passed after the review follow-up formatting. |
+| `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.application.protocol.ApplyProtocolTest' --tests 'app.lawnchair.organizer.application.protocol.ReadinessGateTest' --console=plain` | Passed | Application protocol and readiness regression surface completed successfully, including the `INVALID_PLAN` materialization-drift test. |
+| `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*' --console=plain` | Passed | Complete organizer JVM unit-test surface completed successfully. |
+| `python3 tools/repo-contract/validate_repo_contract.py` and `python3 tools/repo-contract/test_validate_repo_contract.py` | Passed | Repository contract validation and its 11-test self-test completed successfully. |
+| `./gradlew assembleLawnWithQuickstepGithubDebug assembleLawnWithQuickstepGithubDebugAndroidTest --console=plain` | Passed | Debug APK and Android-test APK artifacts compiled successfully. |
+| `ANDROID_SDK_ROOT=/opt/homebrew/share/android-commandlinetools PATH=/opt/homebrew/share/android-commandlinetools/platform-tools:$PATH ./gradlew -PandroidSerialNumber=emulator-5554 connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationProductionE2EInstrumentationTest --console=plain` | Passed | Android SDK Platform 36.1 / Build Tools 36.1.0 emulator `nunu_qpr2_api36_1`; 3 tests, 0 failures. The initial run exposed stale inspection artifacts in test cleanup; the isolated rerun passed after cleanup was corrected. |
+| `ANDROID_SDK_ROOT=/opt/homebrew/share/android-commandlinetools PATH=/opt/homebrew/share/android-commandlinetools/platform-tools:$PATH ./gradlew -PandroidSerialNumber=emulator-5554 connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest --console=plain` | Passed | API 36.1 emulator; 9 tests, 0 skipped, 0 failures, including accessibility, focus, font-scale, and safe-terminal UI coverage. |
+| `ANDROID_SDK_ROOT=/opt/homebrew/share/android-commandlinetools PATH=/opt/homebrew/share/android-commandlinetools/platform-tools:$PATH ./tools/organizer-recovery-smoke.sh --serial emulator-5554` | Passed | API 36.1 process-death smoke completed all four phases: READY and AROUND_COMMIT were PRUNED, COMMITTED_UNVERIFIED became VERIFIED, and RESTORING became RESTORED. |
+
+The final PR head still requires the PR-triggered `CI / final-status` result and a fresh independent high-risk audit record whose Head SHA and CI URL match that exact head.
+
 ## References
 
 - [Issue #52](https://github.com/nunu1733/NunuLauncher/issues/52)

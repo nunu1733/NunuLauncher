@@ -17,6 +17,7 @@ import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.protocol.CaptureId
 import app.lawnchair.organizer.application.protocol.FaultInjector
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
+import app.lawnchair.organizer.application.protocol.RestartReconciler
 import app.lawnchair.organizer.application.protocol.SecureRandomOperationIdSource
 import app.lawnchair.organizer.application.protocol.SystemClock
 import app.lawnchair.organizer.application.public.ApplyAction
@@ -149,10 +150,12 @@ class OrganizerRecoveryInstrumentationTest {
         }
         check(launcher.model.isModelLoaded) { "Launcher model did not load for restart verification" }
         (context.applicationContext as LawnchairApp).layoutApplicationModule.reconcileAtStart()
+        val manualModule = LayoutApplicationModule.production(context, launcher)
+        assertEquals(RestartReconciler.ReconciliationSummary.Clean, manualModule.reconcileAtStart())
         val manualRun = ManualOrganizationRun(
             ProductionManualOrganizationApplication(
                 context,
-                LayoutApplicationModule.production(context, launcher),
+                manualModule,
             ),
         )
         manualRun.start()

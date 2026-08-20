@@ -20,6 +20,8 @@ import app.lawnchair.organizer.diagnostics.journal.JournalSequence
 import app.lawnchair.organizer.diagnostics.journal.JournalStore
 import app.lawnchair.organizer.diagnostics.logger.DiagnosticsLogger
 import app.lawnchair.organizer.diagnostics.model.RunEvent
+import app.lawnchair.organizer.integration.CompositionDiagnostic
+import app.lawnchair.organizer.integration.InputReadinessReason
 import app.lawnchair.organizer.integration.OrganizationInputComposition
 import app.lawnchair.organizer.integration.ProductionOrganizationInputComposer
 import app.lawnchair.organizer.planning.OrganizationInput
@@ -101,8 +103,24 @@ internal class LayoutApplicationModule<S>(
         applyProtocol.apply(plan, runId)
     }
 
-    /** Internal, policy-owned composition for a fresh manual full-organization input. */
-    internal fun composeManualFullOrganizationInput(context: Context): OrganizationInputComposition = ProductionOrganizationInputComposer(context.applicationContext, writer).composeFullOrganization()
+    /**
+     * Internal, policy-owned composition for a fresh manual full-organization
+     * input. Capture is itself a new manual action, so it is fail-closed until
+     * startup reconciliation has reached a terminal state.
+     */
+    internal fun composeManualFullOrganizationInput(context: Context): OrganizationInputComposition = readinessGate.runWhenReady(
+        unavailable = { state ->
+            val failed = state == ReadinessGate.State.FAILED
+            OrganizationInputComposition.NotReady(
+                reason = if (failed) InputReadinessReason.ReconciliationFailed else InputReadinessReason.ReconciliationPending,
+                diagnostic = CompositionDiagnostic(
+                    code = if (failed) "reconciliation-failed" else "reconciliation-pending",
+                ),
+            )
+        },
+    ) {
+        ProductionOrganizationInputComposer(context.applicationContext, writer).composeFullOrganization()
+    }
 
     /**
      * Captures the current canonical state only to materialize the exact planner
