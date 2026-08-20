@@ -45,7 +45,7 @@ class RestartReconcilerDiagnosticsTest {
             }
             override fun snapshot(): List<RunEvent> = emptyList()
         }
-        reconciler = RestartReconciler(writer, store, RecordingFaultInjector(), port)
+        reconciler = RestartReconciler(writer, store, store, RecordingFaultInjector(), port)
     }
 
     @Test

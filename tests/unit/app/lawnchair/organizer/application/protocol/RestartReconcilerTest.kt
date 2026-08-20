@@ -25,7 +25,7 @@ class RestartReconcilerTest {
     fun setUp() {
         writer = FakeLayoutWriter(CanonicalFixtures.state(items = listOf(CanonicalFixtures.appItem())))
         store = FakeRecoveryStore(FakeClock::nowMillis)
-        reconciler = RestartReconciler(writer, store, RecordingFaultInjector())
+        reconciler = RestartReconciler(writer, store, store, RecordingFaultInjector())
     }
 
     @Test

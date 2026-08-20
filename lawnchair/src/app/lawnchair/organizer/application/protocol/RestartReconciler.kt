@@ -16,6 +16,10 @@ import app.lawnchair.organizer.diagnostics.projection.ReconciliationProjection
 class RestartReconciler(
     private val writer: LayoutWriterPort,
     private val store: RecoveryStorePort,
+    private val reconciliationStore: RecoveryStoreReconciliationPort =
+        requireNotNull(store as? RecoveryStoreReconciliationPort) {
+            "Recovery store must provide the private startup reconciliation seam"
+        },
     private val faults: FaultInjector,
     private val diagnosticsPort: DiagnosticsPort = DiagnosticsPort.NOOP,
 ) {
@@ -54,7 +58,7 @@ class RestartReconciler(
     fun reconcileAll(): ReconciliationSummary {
         when (store.availability()) {
             RecoveryStorePort.StoreAvailability.INCOMPATIBLE_VERSION -> {
-                store.rebuildInspectionSnapshotForReconciliation()
+                reconciliationStore.rebuildInspectionSnapshotForReconciliation()
                 return ReconciliationSummary.Incompatible
             }
 
@@ -81,7 +85,7 @@ class RestartReconciler(
         if (store.runRetention(System.currentTimeMillis()) != RecoveryStorePort.RetentionOutcome.Applied) {
             return ReconciliationSummary.Failed
         }
-        if (!store.rebuildInspectionSnapshotForReconciliation()) {
+        if (!reconciliationStore.rebuildInspectionSnapshotForReconciliation()) {
             return ReconciliationSummary.Failed
         }
         return if (surfaced.isEmpty()) ReconciliationSummary.Clean else ReconciliationSummary.Resolved(surfaced)

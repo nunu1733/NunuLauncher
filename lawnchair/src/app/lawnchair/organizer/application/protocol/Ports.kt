@@ -154,9 +154,6 @@ interface RecoveryStorePort {
      */
     fun readInspectionProjection(pointId: RecoveryPointId): InspectionProjectionRead
 
-    /** Startup-only authoritative rehydration of the derived inspection snapshot. */
-    fun rebuildInspectionSnapshotForReconciliation(): Boolean
-
     fun checkpoint(payload: CheckpointPayload): CheckpointResult
 
     fun markApplying(
@@ -280,6 +277,9 @@ interface RecoveryStorePort {
 /** Internal reconciliation-only seam; ordinary protocols never receive this port. */
 internal interface RecoveryStoreReconciliationPort {
     fun <T> withReconciliationScope(block: () -> T): T
+
+    /** Startup-only authoritative rehydration of the derived inspection snapshot. */
+    fun rebuildInspectionSnapshotForReconciliation(): Boolean
 }
 
 /** Internal port: clock for retention and timestamps. */

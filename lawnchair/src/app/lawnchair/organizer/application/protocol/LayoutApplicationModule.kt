@@ -63,7 +63,13 @@ class LayoutApplicationModule(
         ordinaryMutex,
         confirmationIssuer = ::issuePreviewConfirmation,
     )
-    private val restartReconciler: RestartReconciler = RestartReconciler(writer, store, faults, diagnosticsPort)
+    private val restartReconciler: RestartReconciler = RestartReconciler(
+        writer,
+        store,
+        reconciliationStore,
+        faults,
+        diagnosticsPort,
+    )
     val readinessGate: ReadinessGate = ReadinessGate()
 
     /** The diagnostics port, available for export (e.g. debug menu). */

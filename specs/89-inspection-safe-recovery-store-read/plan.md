@@ -2,7 +2,7 @@
 
 > Issue: #89
 > Spec: [spec.md](./spec.md)
-> Status: draft — Stage A decision document. Do not change production recovery behavior until this specification and plan are reviewed and accepted.
+> Status: Stage A **accepted**. Stage B implementation is at `09d0f290fd`; test execution and test-driven remediation are delegated to a separate environment. See [stage-b-handoff.md](./stage-b-handoff.md).
 
 ## Purpose and handoff
 
@@ -239,6 +239,7 @@ Stop and return to the owning contract if any of the following occurs:
 
 ## Change history
 
+- 2026-08-20: Stage A accepted. Stacked accepted #84 preview seam and implemented the initial Stage B snapshot/fence/direct-reader/reconciliation integration at `09d0f290fd`. Added [Stage B handoff](./stage-b-handoff.md); Gradle test execution is delegated because this sandbox could not retrieve `develocity-gradle-plugin:4.3.1`.
 - 2026-08-20: Revised after final Stage A re-review. Added pristine fresh-install initialization vs suspicious absence, replaced the cross-file private-constructor assumption with active exact-`RunMutex` lease identity enforcement, and narrowed proven-no-commit to committed logical-state change.
 - 2026-08-20: Revised after additional review. Added collision rollback/retry, direct-final reader, companion fail-closed handling, and `RunMutexPort` boundary.
 - 2026-08-20: Revised after re-review. Fixed publication protocol to pinned AndroidX and added scoped reconciliation capability.
