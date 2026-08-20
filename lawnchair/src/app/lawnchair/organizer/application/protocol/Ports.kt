@@ -102,6 +102,12 @@ data class MaterializedWriteSet(
     val recoveryActions: List<RecoveryAction> = emptyList(),
     /** Revision of the source snapshot against which the A5 reread validates. */
     val sourceRevision: RevisionId,
+    /**
+     * The plan state before integration-side IDs are resolved. Production
+     * writers populate this when [intendedState] contains persistent IDs for
+     * planned items; recovery write-sets leave it absent.
+     */
+    val planIntendedState: LayoutState? = null,
 )
 
 sealed interface WriteSetPreparation {

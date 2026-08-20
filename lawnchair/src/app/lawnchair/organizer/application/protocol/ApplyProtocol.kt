@@ -140,7 +140,9 @@ class ApplyProtocol(
                 return ApplyResult.Rejected(runId, PreWriteRejection.STALE_REVISION)
             }
         }
-        if (writeSet.intendedState != plan.intendedState) {
+        if (writeSet.planIntendedState?.let { it != plan.intendedState }
+            ?: (writeSet.intendedState != plan.intendedState)
+        ) {
             ctx.terminalApplyStage = ApplyStage.A2
             return ApplyResult.Rejected(runId, PreWriteRejection.INVALID_PLAN)
         }

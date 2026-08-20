@@ -348,7 +348,10 @@ private fun FocusTargetText(
         text = text,
         modifier = Modifier
             .focusRequester(focusRequester)
-            .focusable(),
+            .focusable()
+            .semantics {
+                liveRegion = LiveRegionMode.Polite
+            },
     )
 }
 

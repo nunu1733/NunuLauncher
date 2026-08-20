@@ -25,25 +25,30 @@ import app.lawnchair.organizer.application.public.ApplyAction
 import app.lawnchair.organizer.application.public.CanonicalItemState
 import app.lawnchair.organizer.application.public.DeviceCapabilities
 import app.lawnchair.organizer.application.public.DeviceOrientation
+import app.lawnchair.organizer.application.public.LayoutState
 import app.lawnchair.organizer.application.public.OptionalBytes
 import app.lawnchair.organizer.application.public.OptionalText
 import app.lawnchair.organizer.application.public.PlacementState
 import app.lawnchair.organizer.application.public.PreWriteRejection
 import app.lawnchair.organizer.application.public.ProfileAvailability
 import app.lawnchair.organizer.application.public.ProfileState
+import app.lawnchair.organizer.application.public.RankedMember
 import app.lawnchair.organizer.application.public.RecoveryPointId
+import app.lawnchair.organizer.application.public.StructureState
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.application.public.WidgetState
 import app.lawnchair.organizer.application.revision.RevisionCalculator
 import app.lawnchair.organizer.planning.AppWidgetId
 import app.lawnchair.organizer.planning.ComponentKey
 import app.lawnchair.organizer.planning.ContainerCode
+import app.lawnchair.organizer.planning.FolderId
 import app.lawnchair.organizer.planning.GridCell
 import app.lawnchair.organizer.planning.GridSpan
 import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.KindCode
 import app.lawnchair.organizer.planning.PageId
 import app.lawnchair.organizer.planning.ProfileId
+import app.lawnchair.organizer.planning.TargetKey
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.LauncherModel
 import com.android.launcher3.LauncherSettings.Favorites
@@ -136,23 +141,41 @@ internal class LauncherLayoutAdapter(
             .sortedBy { it.ordinal.value }.forEachIndexed { index, ref -> plannedPages[ref] = maxPage + index + 1L }
         val rows = mutableListOf<PersistentRow>()
         try {
+            // Allocate every planned item before materializing rows. A folder child
+            // can precede its planned folder in the canonical item order, so IDs
+            // must not depend on the order in which rowFor happens to be called.
+            for (item in plan.intendedState.items) {
+                if (item.ref !is ApplicationItemRef.PersistentItem) {
+                    if (nextId == Long.MAX_VALUE) return WriteSetPreparation.IdentityExhausted
+                    nextId += 1L
+                    plannedIds[item.ref] = nextId
+                }
+            }
             for (item in plan.intendedState.items) {
                 val base = when (val ref = item.ref) {
                     is ApplicationItemRef.PersistentItem -> current[ref.itemId]
                         ?: return WriteSetPreparation.InvalidPlan
 
-                    else -> {
-                        if (nextId == Long.MAX_VALUE) return WriteSetPreparation.IdentityExhausted
-                        nextId += 1L
-                        plannedIds[ref] = nextId
-                        null
-                    }
+                    else -> null
                 }
                 rows += rowFor(item, base, plannedIds, plannedPages)
             }
         } catch (_: IllegalArgumentException) {
             return WriteSetPreparation.InvalidPlan
         }
+        val resolvedState = plan.intendedState.resolvePersistentReferences(plannedIds, plannedPages)
+        // Launcher schema 33 has no persistent empty-page table. The DB
+        // capture therefore reports only pages still referenced by desktop
+        // rows, so the post-apply canonical state must use that same inventory.
+        val referencedPages = rows.asSequence()
+            .filter { it.containerCode.value == Favorites.CONTAINER_DESKTOP }
+            .mapNotNull { it.screenId }
+            .toSet()
+        val materializedState = resolvedState.copy(
+            pages = resolvedState.pages.filter { page ->
+                (page.ref as? ApplicationPageRef.PersistentPage)?.pageId in referencedPages
+            },
+        )
         val intendedManifest = PersistenceManifest(
             capture.manifest.formatVersion,
             capture.manifest.schemaVersion,
@@ -164,10 +187,11 @@ internal class LauncherLayoutAdapter(
         return WriteSetPreparation.Ready(
             MaterializedWriteSet(
                 plan.actions,
-                plan.intendedState,
+                materializedState,
                 intendedManifest,
                 RevisionCalculator.actionSetDigestOf(plan.actions),
                 sourceRevision = capture.revision,
+                planIntendedState = plan.intendedState,
             ),
         )
     }
@@ -366,6 +390,65 @@ internal class LauncherLayoutAdapter(
 
 private fun WriterKind.bridge() = LayoutWriteCoordinator.OwnerKind.valueOf(name)
 private fun LayoutWriteCoordinator.OwnerKind.port() = WriterKind.valueOf(name)
+
+private fun LayoutState.resolvePersistentReferences(
+    plannedIds: Map<ApplicationItemRef, Long>,
+    plannedPages: Map<ApplicationPageRef.PlannedPage, Long>,
+): LayoutState {
+    fun itemRef(ref: ApplicationItemRef): ApplicationItemRef = when (ref) {
+        is ApplicationItemRef.PersistentItem -> ref
+        else -> ApplicationItemRef.PersistentItem(ItemId(requireNotNull(plannedIds[ref]).toString()))
+    }
+
+    fun pageRef(ref: ApplicationPageRef): ApplicationPageRef = when (ref) {
+        is ApplicationPageRef.PersistentPage -> ref
+
+        is ApplicationPageRef.PlannedPage -> ApplicationPageRef.PersistentPage(
+            PageId(requireNotNull(plannedPages[ref]).toString()),
+        )
+    }
+
+    fun placement(placement: PlacementState): PlacementState = when (placement) {
+        is PlacementState.Workspace -> placement.copy(page = pageRef(placement.page))
+        is PlacementState.FolderChild -> placement.copy(parent = itemRef(placement.parent))
+        is PlacementState.AppPairChild -> placement.copy(parent = itemRef(placement.parent))
+        is PlacementState.Dock, is PlacementState.UnsupportedContainer -> placement
+    }
+
+    fun structure(structure: StructureState): StructureState = when (structure) {
+        StructureState.Plain -> structure
+
+        is StructureState.FolderMembers -> structure.copy(
+            members = structure.members.map { RankedMember(itemRef(it.item), it.rank) },
+        )
+
+        is StructureState.AppPairMembers -> structure.copy(
+            first = itemRef(structure.first),
+            second = itemRef(structure.second),
+        )
+    }
+
+    fun targetKey(ref: ApplicationItemRef, target: TargetKey): TargetKey = when {
+        ref is ApplicationItemRef.PlannedFolder && target is TargetKey.FolderKey ->
+            TargetKey.FolderKey(FolderId(requireNotNull(plannedIds[ref]).toString()))
+
+        else -> target
+    }
+
+    return copy(
+        pages = pages.map { it.copy(ref = pageRef(it.ref)) },
+        items = items.map { item ->
+            val resolvedRef = itemRef(item.ref)
+            item.copy(
+                ref = resolvedRef,
+                targetKey = targetKey(item.ref, item.targetKey),
+                placement = placement(item.placement),
+                structure = structure(item.structure),
+            )
+        },
+    )
+}
+
 private fun rowFor(
     item: CanonicalItemState,
     base: PersistentRow?,
@@ -453,8 +536,10 @@ private fun rowFor(
         widget?.appWidgetId, widget?.provider,
         (item.icon as? OptionalBytes.Present)?.value?.asByteArray(),
         (item.title as? OptionalText.Present)?.value, (item.intent as? OptionalText.Present)?.value,
-        widget?.restored?.value ?: base?.restored, widget?.options?.value ?: base?.options,
-        widget?.source?.value ?: base?.appWidgetSource, item.modified.value, item.lockState,
+        widget?.restored?.value ?: base?.restored ?: 0,
+        widget?.options?.value ?: base?.options ?: 0,
+        widget?.source?.value ?: base?.appWidgetSource ?: -1,
+        item.modified.value, item.lockState,
         cell, span,
     )
 }

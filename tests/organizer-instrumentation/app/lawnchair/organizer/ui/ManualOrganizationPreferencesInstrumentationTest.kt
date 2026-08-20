@@ -1,6 +1,9 @@
 package app.lawnchair.organizer.ui
 
 import android.content.Context
+import android.graphics.Bitmap
+import java.io.File
+import java.io.FileOutputStream
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -9,12 +12,20 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assert
+import androidx.activity.OnBackPressedDispatcher
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.platform.app.InstrumentationRegistry
 import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.DeviceCapabilities
@@ -188,6 +199,98 @@ class ManualOrganizationPreferencesInstrumentationTest {
     }
 
     @Test
+    fun previewControlsExposeBackAndAssistiveTechnologySemantics() {
+        val application = FakeApplication()
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { planningResult() },
+        )
+        runner.start()
+        var dispatcher: OnBackPressedDispatcher? = null
+        composeRule.setContent {
+            dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview))
+            .assert(
+                SemanticsMatcher.expectValue(
+                    SemanticsProperties.LiveRegion,
+                    LiveRegionMode.Polite,
+                ),
+            )
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm))
+            .assertHasClickAction()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel))
+            .assertHasClickAction()
+
+        composeRule.runOnIdle {
+            checkNotNull(dispatcher).onBackPressed()
+        }
+        composeRule.waitUntil(5_000) { runner.state == ManualOrganizationRun.State.Cancelled }
+    }
+
+    @Test
+    fun capturesManualOrganizationReviewSurfaces() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication()
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        val displayedRun = mutableStateOf(runner)
+
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = displayedRun.value)
+            }
+        }
+        captureReviewScreenshot(context, "start")
+
+        runner.start()
+        composeRule.waitForIdle()
+        captureReviewScreenshot(context, "preview-confirm")
+
+        runner.confirm()
+        composeRule.waitForIdle()
+        captureReviewScreenshot(context, "success")
+
+        val staleApplication = FakeApplication().apply { materializationInvalid = true }
+        val staleRunner = ManualOrganizationRun(
+            staleApplication,
+            OrganizationPlanner { planningResult() },
+        )
+        composeRule.runOnIdle {
+            displayedRun.value = staleRunner
+        }
+        composeRule.waitForIdle()
+        staleRunner.start()
+        staleRunner.confirm()
+        composeRule.waitForIdle()
+        captureReviewScreenshot(context, "stale")
+
+        val recoveryApplication = FakeApplication().apply {
+            applyResult = ApplyResult.Unresolved(
+                RunId(RUN_ID),
+                RecoveryPointId(POINT_ID),
+                app.lawnchair.organizer.application.public.ApplyFailure.COMMIT_OUTCOME_UNKNOWN,
+                app.lawnchair.organizer.application.public.AuthoritativeState.UNKNOWN,
+            )
+        }
+        val recoveryRunner = ManualOrganizationRun(
+            recoveryApplication,
+            OrganizationPlanner { planningResult() },
+        )
+        recoveryRunner.start()
+        recoveryRunner.confirm()
+        composeRule.runOnIdle {
+            displayedRun.value = recoveryRunner
+        }
+        composeRule.waitForIdle()
+        captureReviewScreenshot(context, "recovery-failure")
+    }
+
+    @Test
     fun unresolvedResultOffersDiagnosticsInsteadOfStartingAnotherRun() {
         val application = FakeApplication().apply {
             applyResult = ApplyResult.Unresolved(
@@ -273,6 +376,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         override val diagnostics = RecordingDiagnostics()
         var applyCalls = 0
         var applyResult: ApplyResult = ApplyResult.Applied(RunId(RUN_ID), RecoveryPointId(POINT_ID))
+        var materializationInvalid = false
 
         override fun newRunId() = RunId(RUN_ID)
 
@@ -288,7 +392,9 @@ class ManualOrganizationPreferencesInstrumentationTest {
             ),
         )
 
-        override fun materialize(input: OrganizationInput, result: PlanningResult): OrganizationPlanMaterializer.Result = OrganizationPlanMaterializer.Result.Ready(
+        override fun materialize(input: OrganizationInput, result: PlanningResult): OrganizationPlanMaterializer.Result {
+            if (materializationInvalid) return OrganizationPlanMaterializer.Result.Invalid
+            return OrganizationPlanMaterializer.Result.Ready(
             ValidatedLayoutPlan(
                 sourceRevision = input.snapshot.revision,
                 sourceState = emptyLayoutState(),
@@ -299,7 +405,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
                 ruleVersion = input.rules.version,
                 taxonomyVersion = input.taxonomy.version,
             ),
-        )
+            )
+        }
 
         override fun apply(plan: ValidatedLayoutPlan, runId: RunId): ApplyResult {
             applyCalls++
@@ -344,6 +451,18 @@ class ManualOrganizationPreferencesInstrumentationTest {
             warnings = listOf(Warning(WarningCode.FALLBACK_CATEGORY, emptyList())),
         ),
     )
+
+    private fun captureReviewScreenshot(context: Context, name: String) {
+        composeRule.waitForIdle()
+        val directory = requireNotNull(context.getExternalFilesDir("issue52-ui-evidence"))
+        check(directory.mkdirs() || directory.isDirectory)
+        val screenshot = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+        check(
+            FileOutputStream(File(directory, "$name.png")).use { output ->
+                screenshot.compress(Bitmap.CompressFormat.PNG, 100, output)
+            },
+        )
+    }
 
     private companion object {
         const val RUN_ID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
