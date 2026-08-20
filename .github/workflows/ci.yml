@@ -225,8 +225,7 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           script: |
-            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest \
-              -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationProductionE2EInstrumentationTest,app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest
+            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationProductionE2EInstrumentationTest,app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest
             mkdir -p build/issue52-ui-evidence
             adb pull /sdcard/Pictures/Issue52-ui-evidence build/issue52-ui-evidence
       - name: Upload instrumentation reports on failure
