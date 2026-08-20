@@ -2,7 +2,7 @@ package app.lawnchair.organizer.application.protocol
 
 import app.lawnchair.organizer.application.lifecycle.LifecycleReconciler
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
-import app.lawnchair.organizer.application.lifecycle.LifecycleTransitions
+import app.lawnchair.organizer.application.lifecycle.RetentionPolicy
 import app.lawnchair.organizer.application.public.AuthoritativeState
 import app.lawnchair.organizer.application.public.OrganizerLockState
 import app.lawnchair.organizer.application.public.RecoveryFailure
@@ -18,7 +18,7 @@ class RecoveryProtocol(
     private val clock: Clock,
     private val operationIds: OperationIdSource,
     private val faults: FaultInjector,
-    private val mutex: RunMutex,
+    private val mutex: RunMutexPort,
 ) {
     fun recover(request: RecoveryRequest): RecoveryResult {
         val runId = operationIds.newRunId()
@@ -44,8 +44,11 @@ class RecoveryProtocol(
 
             RecoveryStorePort.StoreAvailability.READY -> Unit
         }
-        val stored = store.readRecord(request.pointId)
-            ?: return RecoveryResult.NotRestorable(request.pointId, tombstoneRejection(request.pointId))
+        val stored = try {
+            store.readRecord(request.pointId)
+        } catch (_: RuntimeException) {
+            return recoveryStoreFailure(request.pointId)
+        } ?: return tombstoneResult(request.pointId)
         preflight(stored)?.let { return RecoveryResult.NotRestorable(request.pointId, it) }
         if (faults.serializationContention()) return RecoveryResult.WriterBusy
         val lease = writer.tryAcquireLease(WriterKind.ORGANIZER, runId.value.hashCode().toLong())
@@ -57,13 +60,30 @@ class RecoveryProtocol(
         }
     }
 
-    private fun tombstoneRejection(pointId: app.lawnchair.organizer.application.public.RecoveryPointId): RecoveryRejection = when (store.readTombstone(pointId)?.reason) {
-        RecoveryStorePort.TombstoneReason.EXPIRED -> RecoveryRejection.EXPIRED
-        RecoveryStorePort.TombstoneReason.CORRUPT -> RecoveryRejection.CORRUPT
-        RecoveryStorePort.TombstoneReason.INCOMPATIBLE_VERSION -> RecoveryRejection.INCOMPATIBLE_VERSION
-        RecoveryStorePort.TombstoneReason.ALREADY_RESTORED -> RecoveryRejection.ALREADY_RESTORED
-        RecoveryStorePort.TombstoneReason.PRUNED_UNUSED, null -> RecoveryRejection.MISSING
+    private fun tombstoneResult(pointId: app.lawnchair.organizer.application.public.RecoveryPointId): RecoveryResult {
+        val tombstone = try {
+            store.readTombstone(pointId)
+        } catch (_: RuntimeException) {
+            return recoveryStoreFailure(pointId)
+        } ?: return RecoveryResult.NotRestorable(pointId, RecoveryRejection.MISSING)
+        if (tombstone.expiresAtMs <= clock.nowMillis()) {
+            return RecoveryResult.NotRestorable(pointId, RecoveryRejection.MISSING)
+        }
+        val rejection = when (tombstone.reason) {
+            RecoveryStorePort.TombstoneReason.EXPIRED -> RecoveryRejection.EXPIRED
+            RecoveryStorePort.TombstoneReason.CORRUPT -> RecoveryRejection.CORRUPT
+            RecoveryStorePort.TombstoneReason.INCOMPATIBLE_VERSION -> RecoveryRejection.INCOMPATIBLE_VERSION
+            RecoveryStorePort.TombstoneReason.ALREADY_RESTORED -> RecoveryRejection.ALREADY_RESTORED
+            RecoveryStorePort.TombstoneReason.PRUNED_UNUSED -> RecoveryRejection.MISSING
+        }
+        return RecoveryResult.NotRestorable(pointId, rejection)
     }
+
+    private fun recoveryStoreFailure(pointId: app.lawnchair.organizer.application.public.RecoveryPointId): RecoveryResult = RecoveryResult.RestoreFailed(
+        pointId,
+        RecoveryFailure.RECOVERY_STORE_FAILED,
+        AuthoritativeState.UNKNOWN,
+    )
 
     private fun recoverWithOuterLease(
         request: RecoveryRequest,
@@ -178,13 +198,31 @@ class RecoveryProtocol(
         if (stored.formatVersion != LifecycleReconciler.SUPPORTED_FORMAT) {
             return RecoveryRejection.INCOMPATIBLE_VERSION
         }
-        if (stored.lifecycle == LifecycleState.RESTORED) return RecoveryRejection.ALREADY_RESTORED
-        if (LifecycleTransitions.isRestorable(stored.lifecycle)) return null
         return when (stored.lifecycle) {
-            LifecycleState.EXPIRED -> RecoveryRejection.EXPIRED
-            LifecycleState.CORRUPT -> RecoveryRejection.CORRUPT
-            LifecycleState.INCOMPATIBLE -> RecoveryRejection.INCOMPATIBLE_VERSION
+            LifecycleState.VERIFIED -> when (RetentionPolicy.actionFor(stored.retentionRecord(), clock.nowMillis())) {
+                is RetentionPolicy.RetentionAction.Expire -> RecoveryRejection.EXPIRED
+                else -> null
+            }
+
+            LifecycleState.RESTORED -> finalRejection(stored, RecoveryRejection.ALREADY_RESTORED)
+
+            LifecycleState.EXPIRED -> finalRejection(stored, RecoveryRejection.EXPIRED)
+
+            LifecycleState.CORRUPT -> finalRejection(stored, RecoveryRejection.CORRUPT)
+
+            LifecycleState.INCOMPATIBLE -> finalRejection(stored, RecoveryRejection.INCOMPATIBLE_VERSION)
+
             else -> RecoveryRejection.MISSING
         }
     }
+
+    private fun finalRejection(
+        stored: RecoveryStorePort.StoredRecord,
+        retainedReason: RecoveryRejection,
+    ): RecoveryRejection = when (RetentionPolicy.actionFor(stored.retentionRecord(), clock.nowMillis())) {
+        is RetentionPolicy.RetentionAction.Tombstone -> RecoveryRejection.MISSING
+        else -> retainedReason
+    }
+
+    private fun RecoveryStorePort.StoredRecord.retentionRecord(): RetentionPolicy.RetentionRecord = RetentionPolicy.RetentionRecord(pointId, lifecycle, createdAtMs, updatedAtMs)
 }

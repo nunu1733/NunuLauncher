@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.lawnchair.organizer.application.canonical.PersistenceManifest
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.protocol.RecoveryStorePort
+import app.lawnchair.organizer.application.protocol.RunMutex
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.store.RecoveryDbSchema
@@ -37,6 +38,7 @@ class RecoveryStoreLifecycleTest {
         val digest = ByteArray(32)
         val empty = PersistenceManifest(1, 33, 0, emptyList(), emptyList(), 0L)
         val first = RecoveryStore(context) { 1000L }
+        prepareForMutation(first)
         val result = first.checkpoint(
             RecoveryStorePort.CheckpointPayload(
                 pointId,
@@ -84,6 +86,7 @@ class RecoveryStoreLifecycleTest {
         context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
         var now = 1_000L
         val store = RecoveryStore(context) { now }
+        prepareForMutation(store)
         val pointId = RecoveryPointId("1123456789abcdef0123456789abcdef")
         val digest = ByteArray(32)
         val empty = PersistenceManifest(1, 33, 0, emptyList(), emptyList(), 0L)
@@ -126,6 +129,7 @@ class RecoveryStoreLifecycleTest {
         // The store is already closed by the helper inside checkpointedStore();
         // open a new one to verify the persisted APPLYING state.
         val reopened = RecoveryStore(context) { 3000L }
+        prepareForMutation(reopened)
         assertTrue(reopened.advance(pointId, LifecycleState.APPLYING))
         val rechecked = RecoveryStore(context) { 4000L }
         assertEquals(LifecycleState.APPLYING, rechecked.readRecord(pointId)?.lifecycle)
@@ -160,6 +164,7 @@ class RecoveryStoreLifecycleTest {
         val empty = PersistenceManifest(1, 33, 0, emptyList(), emptyList(), 0L)
         // Need to first advance to a state that allows RESTORING.
         val store = RecoveryStore(context) { 2000L }
+        prepareForMutation(store)
         assertTrue(store.advance(pointId, LifecycleState.APPLYING))
         assertTrue(store.markRestoring(pointId, empty, digest, digest))
         val reopened = RecoveryStore(context) { 3000L }
@@ -173,6 +178,7 @@ class RecoveryStoreLifecycleTest {
         val digest = ByteArray(32)
         val empty = PersistenceManifest(1, 33, 0, emptyList(), emptyList(), 0L)
         val store = RecoveryStore(context) { 2000L }
+        prepareForMutation(store)
         assertTrue(store.advance(pointId, LifecycleState.APPLYING))
         assertTrue(store.markRestoring(pointId, empty, digest, digest))
         assertTrue(store.advance(pointId, LifecycleState.RESTORED))
@@ -193,6 +199,7 @@ class RecoveryStoreLifecycleTest {
                 { 1000L },
                 ThrowingFaultPort(case.phase, FaultTiming.BEFORE),
             )
+            prepareForMutation(store)
             val pointId = case.setup(store)
             val result = case.action(store, pointId)
             assertEquals("${case.name} result", case.expectedResult, result)
@@ -218,6 +225,7 @@ class RecoveryStoreLifecycleTest {
                 { 1000L },
                 ThrowingFaultPort(case.phase, FaultTiming.AFTER),
             )
+            prepareForMutation(store)
             val pointId = case.setup(store)
             val result = case.action(store, pointId)
             assertEquals("${case.name} result", case.expectedResult, result)
@@ -566,10 +574,26 @@ class RecoveryStoreLifecycleTest {
         return pointId
     }
 
+    private fun prepareForMutation(store: RecoveryStore) {
+        val mutex = RunMutex()
+        val runId = RunId("cccccccccccccccccccccccccccccccc")
+        assertTrue(mutex.tryAcquire(runId))
+        val lease = requireNotNull(mutex.issueReconciliationLease(runId))
+        val issuer = requireNotNull(store.bindReconciliationIssuer(mutex))
+        val session = requireNotNull(issuer.openSession(lease))
+        try {
+            assertTrue(session.rebuildInspectionSnapshot())
+        } finally {
+            session.close()
+            mutex.release(runId)
+        }
+    }
+
     private fun checkpointedStore(): Triple<Context, RecoveryStore, RecoveryPointId> {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
         val store = RecoveryStore(context) { 1000L }
+        prepareForMutation(store)
         val pointId = RecoveryPointId("fedcba0987654321fedcba0987654321")
         val digest = ByteArray(32)
         val empty = PersistenceManifest(1, 33, 0, emptyList(), emptyList(), 0L)
