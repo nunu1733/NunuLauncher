@@ -212,6 +212,18 @@ The latest Issue #52 re-review identified one high-priority lifecycle gap and tw
 
 The release-gate items from the re-review remain open: connected API 36.1 execution, process recreation/reconciliation evidence, keyboard/switch traversal evidence, UI screenshots/video, PR-triggered `CI / final-status`, and the independent `risk: layout-data` audit. The implementation remains not merge-ready until those artifacts exist on the final PR head.
 
+## API 36.1 connected verification follow-up — 2026-08-20
+
+The API 36.1 validation environment was provisioned with Android SDK Platform 36.1, Build Tools 36.1.0, platform-tools 37.0.1, and the `nunu_qpr2_api36_1` arm64 emulator. The targeted Issue #52 Compose surface was executed on serial `emulator-5554` after fixing API 36.1 lifecycle-sensitive test setup and delayed initial focus acquisition.
+
+| Command or surface | Result | Evidence / limitation |
+|---|---|---|
+| `./gradlew spotlessCheck --console=plain` | Passed | Full formatting check completed successfully after the follow-up changes. |
+| `./gradlew -PandroidSerialNumber=emulator-5554 connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest --console=plain` | Passed | API 36.1 emulator `nunu_qpr2_api36_1(AVD) - 16`; 6 tests, 0 skipped, 0 failures. |
+| Initial API 36.1 targeted run | Fixed and superseded | It exposed two test-lifecycle assumptions and an initial-focus timing issue. The test now models recomposition without disposing an active run, and the screen requests focus after the first frame. |
+
+This evidence covers the Issue #52 Compose preview, cancellation, focus restoration, 200% font scale, safe-terminal navigation, unresolved-result handling, and recomposition/no-write fixture on API 36.1. It does not by itself prove real Back navigation, process death/reconciliation, keyboard/switch traversal, or the complete DB/application failure-injection matrix; those remain separate release-gate evidence surfaces. The final PR head still requires PR-triggered `CI / final-status` and a fresh independent audit record whose Head SHA matches that head.
+
 ## Re-review follow-up: dismissal boundary — 2026-08-20
 
 Issue comment `5353881937` identified that screen disposal could erase a verified terminal result and that Back remained navigable after application admission. The coordinator now returns a typed `DismissalOutcome`: active pre-admission work becomes `Cancelled`, an admitted atomic application returns `ApplicationInProgress` without navigation, and a terminal/no-active state returns `NoActiveOperation` without clearing its result. The Back callback consumes Back while application is in progress and delegates only when navigation is safe. The instrumentation fixture also disposes and recreates the screen after diagnostics navigation to verify that an `Unresolved` safe terminal remains visible.

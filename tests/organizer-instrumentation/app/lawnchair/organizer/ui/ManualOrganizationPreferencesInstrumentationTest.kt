@@ -1,7 +1,9 @@
 package app.lawnchair.organizer.ui
 
 import android.content.Context
+import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.assertIsDisplayed
@@ -140,11 +142,25 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
 
         val context = ApplicationProvider.getApplicationContext<Context>()
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsFocused()
+        composeRule.waitUntil(5_000) {
+            try {
+                composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsFocused()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+        }
 
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).performClick()
         composeRule.waitUntil(5_000) { runner.state == ManualOrganizationRun.State.Cancelled }
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_start)).assertIsFocused()
+        composeRule.waitUntil(5_000) {
+            try {
+                composeRule.onNodeWithText(context.getString(R.string.manual_organization_start)).assertIsFocused()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+        }
     }
 
     @Test
@@ -188,13 +204,19 @@ class ManualOrganizationPreferencesInstrumentationTest {
         runner.start()
         runner.confirm()
         var diagnosticsOpened = false
+        val showScreen = mutableStateOf(true)
 
         composeRule.setContent {
             LawnchairTheme {
-                ManualOrganizationPreferences(
-                    run = runner,
-                    onOpenDiagnostics = { diagnosticsOpened = true },
-                )
+                if (showScreen.value) {
+                    ManualOrganizationPreferences(
+                        run = runner,
+                        onOpenDiagnostics = {
+                            diagnosticsOpened = true
+                            showScreen.value = false
+                        },
+                    )
+                }
             }
         }
 
@@ -204,18 +226,17 @@ class ManualOrganizationPreferencesInstrumentationTest {
         assertEquals(true, diagnosticsOpened)
 
         // Diagnostics navigation disposes this screen; recreating it must retain the safe terminal state.
-        composeRule.setContent { }
-        composeRule.setContent {
-            LawnchairTheme {
-                ManualOrganizationPreferences(run = runner)
-            }
+        composeRule.waitUntil(5_000) { !showScreen.value }
+        composeRule.runOnIdle {
+            showScreen.value = true
         }
+        composeRule.waitForIdle()
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_apply_unresolved)).assertIsDisplayed()
         composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_start_again)).assertCountEquals(0)
     }
 
     @Test
-    fun recreationLikeRecompositionRetainsPreviewWithoutReplayingWrite() {
+    fun recompositionRetainsPreviewWithoutReplayingWrite() {
         val application = FakeApplication()
         val runner = ManualOrganizationRun(
             application,
@@ -223,20 +244,27 @@ class ManualOrganizationPreferencesInstrumentationTest {
         )
         runner.start()
         val context = ApplicationProvider.getApplicationContext<Context>()
+        val showRecomposedContent = mutableStateOf(false)
 
         composeRule.setContent {
             LawnchairTheme {
+                if (showRecomposedContent.value) {
+                    Text("recomposed")
+                }
                 ManualOrganizationPreferences(run = runner)
             }
         }
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsDisplayed()
 
-        // The coordinator is the retained owner; rebuilding the screen must not replay the plan.
-        composeRule.setContent {
-            LawnchairTheme {
-                ManualOrganizationPreferences(run = runner)
-            }
+        // Recomposition must not replay the plan or perform a write.
+        composeRule.runOnIdle {
+            showRecomposedContent.value = true
         }
+        composeRule.waitForIdle()
+        composeRule.runOnIdle {
+            showRecomposedContent.value = false
+        }
+        composeRule.waitForIdle()
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsDisplayed()
         assertEquals(0, application.applyCalls)
     }
