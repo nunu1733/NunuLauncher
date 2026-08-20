@@ -1,9 +1,9 @@
 package app.lawnchair.organizer.ui
 
 import android.content.Context
+import android.content.ContentValues
 import android.graphics.Bitmap
-import java.io.File
-import java.io.FileOutputStream
+import android.provider.MediaStore
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -454,14 +454,30 @@ class ManualOrganizationPreferencesInstrumentationTest {
 
     private fun captureReviewScreenshot(context: Context, name: String) {
         composeRule.waitForIdle()
-        val directory = requireNotNull(context.getExternalFilesDir("issue52-ui-evidence"))
-        check(directory.mkdirs() || directory.isDirectory)
         val screenshot = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
-        check(
-            FileOutputStream(File(directory, "$name.png")).use { output ->
-                screenshot.compress(Bitmap.CompressFormat.PNG, 100, output)
-            },
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, "$name.png")
+            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Issue52-ui-evidence")
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val resolver = context.contentResolver
+        val uri = requireNotNull(
+            resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values),
         )
+        try {
+            check(
+                resolver.openOutputStream(uri).use { output ->
+                    output != null && screenshot.compress(Bitmap.CompressFormat.PNG, 100, output)
+                },
+            )
+            values.clear()
+            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+        } catch (error: Throwable) {
+            resolver.delete(uri, null, null)
+            throw error
+        }
     }
 
     private companion object {

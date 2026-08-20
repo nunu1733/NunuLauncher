@@ -215,6 +215,20 @@ jobs:
           script: >-
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
             -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.integration.ProductionOrganizationInputInstrumentationTest
+      - name: Run Issue 52 manual organization instrumentation
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: |
+            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest \
+              -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationProductionE2EInstrumentationTest,app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest
+            mkdir -p build/issue52-ui-evidence
+            adb pull /sdcard/Pictures/Issue52-ui-evidence build/issue52-ui-evidence
       - name: Upload instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
@@ -223,6 +237,14 @@ jobs:
           path: |
             build/reports/androidTests/connected/**
             build/outputs/androidTest-results/**
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Upload Issue 52 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: issue52-ui-evidence
+          path: build/issue52-ui-evidence/**
           retention-days: 7
           if-no-files-found: warn
 
