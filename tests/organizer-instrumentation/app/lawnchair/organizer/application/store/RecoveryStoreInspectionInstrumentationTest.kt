@@ -5,6 +5,7 @@ import android.system.Os
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.lawnchair.organizer.application.canonical.PersistenceManifest
+import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.protocol.RecoveryStorePort
 import app.lawnchair.organizer.application.protocol.RunMutex
 import app.lawnchair.organizer.application.public.RecoveryPointId
@@ -12,6 +13,8 @@ import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.planning.RevisionId
 import java.io.File
 import java.security.MessageDigest
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -25,6 +28,11 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class RecoveryStoreInspectionInstrumentationTest {
+
+    @After
+    fun tearDown() {
+        deleteRecoveryDatabaseArtifacts(ApplicationProvider.getApplicationContext())
+    }
 
     private val pointId = RecoveryPointId("22222222222222222222222222222222")
 
@@ -146,6 +154,151 @@ class RecoveryStoreInspectionInstrumentationTest {
     }
 
     @Test
+    fun invalidUnpublishedSnapshotInspectionReturnsUnavailableWithoutArtifactCleanup() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        deleteRecoveryDatabaseArtifacts(context)
+        val store = RecoveryStore(context) { 1_000L }
+        prepareForMutation(store)
+        assertTrue(store.checkpoint(checkpointPayload()) is RecoveryStorePort.CheckpointResult.Ready)
+        val dbFile = recoveryDatabaseFile(context)
+        val finalSnapshot = File(snapshotDirectory(context), RecoveryInspectionSnapshotReader.FINAL_FILE_NAME)
+        finalSnapshot.writeText("invalid unpublished snapshot")
+        val before = physicalState(context, dbFile)
+
+        assertEquals(RecoveryStorePort.InspectionProjectionRead.Unavailable, store.readInspectionProjection(pointId))
+        assertEquals(before, physicalState(context, dbFile))
+    }
+
+    @Test
+    fun snapshotNewBakAndUnexpectedEntriesReturnUnavailableWithoutCleanup() {
+        listOf("recovery-inspection.v1.new", "recovery-inspection.v1.bak", "unexpected-entry").forEach { artifactName ->
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            deleteRecoveryDatabaseArtifacts(context)
+            val store = RecoveryStore(context) { 1_000L }
+            prepareForMutation(store)
+            assertTrue(store.checkpoint(checkpointPayload()) is RecoveryStorePort.CheckpointResult.Ready)
+            val dbFile = recoveryDatabaseFile(context)
+            File(snapshotDirectory(context), artifactName).writeText("unpublished")
+            val before = physicalState(context, dbFile)
+
+            assertEquals(RecoveryStorePort.InspectionProjectionRead.Unavailable, store.readInspectionProjection(pointId))
+            assertEquals(before, physicalState(context, dbFile))
+        }
+    }
+
+    @Test
+    fun residualSnapshotWithIncompatibleAuthoritativeDatabaseReportsIncompatibleWithoutInspectionWrite() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        deleteRecoveryDatabaseArtifacts(context)
+        val original = RecoveryStore(context) { 1_000L }
+        prepareForMutation(original)
+        assertTrue(original.checkpoint(checkpointPayload()) is RecoveryStorePort.CheckpointResult.Ready)
+        val helper = RecoveryDbHelper(context)
+        try {
+            helper.writableDatabase.execSQL("PRAGMA user_version = 999")
+        } finally {
+            helper.close()
+        }
+        val restarted = RecoveryStore(context) { 2_000L }
+        assertFalse(rebuildAtStartup(restarted))
+        val dbFile = recoveryDatabaseFile(context)
+        val before = physicalState(context, dbFile)
+
+        assertEquals(RecoveryStorePort.InspectionProjectionRead.Incompatible, restarted.readInspectionProjection(pointId))
+        assertEquals(before, physicalState(context, dbFile))
+    }
+
+    @Test
+    fun inspectionDuringBlockedWriterIsUnavailableAndDoesNotTouchFiles() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        deleteRecoveryDatabaseArtifacts(context)
+        val writerReachedCommit = CountDownLatch(1)
+        val releaseWriter = CountDownLatch(1)
+        var blockCheckpoint = false
+        val store = RecoveryStore(
+            context,
+            { 1_000L },
+            object : RecoveryStoreFaultPort {
+                override fun beforeCommit(phase: RecoveryStoreFaultPort.Phase, pointId: RecoveryPointId) {
+                    if (blockCheckpoint && phase == RecoveryStoreFaultPort.Phase.CREATING) {
+                        writerReachedCommit.countDown()
+                        check(releaseWriter.await(10, TimeUnit.SECONDS)) { "writer release timed out" }
+                    }
+                }
+
+                override fun afterCommit(phase: RecoveryStoreFaultPort.Phase, pointId: RecoveryPointId) = Unit
+            },
+        )
+        prepareForMutation(store)
+        blockCheckpoint = true
+        var writerResult: RecoveryStorePort.CheckpointResult? = null
+        val writer = Thread { writerResult = store.checkpoint(checkpointPayload()) }
+        writer.start()
+        assertTrue(writerReachedCommit.await(10, TimeUnit.SECONDS))
+        val before = physicalState(context, recoveryDatabaseFile(context))
+
+        assertEquals(RecoveryStorePort.InspectionProjectionRead.Unavailable, store.readInspectionProjection(pointId))
+        assertEquals(before, physicalState(context, recoveryDatabaseFile(context)))
+
+        releaseWriter.countDown()
+        writer.join(10_000L)
+        assertFalse(writer.isAlive)
+        assertTrue(writerResult is RecoveryStorePort.CheckpointResult.Ready)
+    }
+
+    @Test
+    fun unknownFenceOrdinaryMutationsRejectBeforeVersionProbe() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        deleteRecoveryDatabaseArtifacts(context)
+        var probeCalls = 0
+        val store = RecoveryStore(context, { 1_000L }) {
+            probeCalls += 1
+            error("ordinary mutation reached version probe while fence was unknown")
+        }
+        val manifest = PersistenceManifest(1, 33, 0, emptyList(), emptyList(), 0L)
+
+        assertEquals(RecoveryStorePort.CheckpointResult.StoreUnavailable, store.checkpoint(checkpointPayload()))
+        assertFalse(store.markApplying(pointId, manifest, ByteArray(32), ByteArray(32), 0, 0))
+        assertFalse(store.advance(pointId, LifecycleState.APPLYING))
+        assertFalse(store.markRestoring(pointId, manifest, ByteArray(32), ByteArray(32)))
+        assertEquals(RecoveryStorePort.RetentionOutcome.StoreUnavailable, store.runRetention(1_000L))
+        assertFalse(store.pruneUnused(pointId))
+        assertEquals(0, probeCalls)
+    }
+
+    @Test
+    fun availabilityFailureAfterLegalMutationStartStaysDirtyAndNextMutationSkipsVersionProbe() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        deleteRecoveryDatabaseArtifacts(context)
+        var probeCalls = 0
+        var failVersionProbe = false
+        val store = RecoveryStore(context, { 1_000L }) { file ->
+            probeCalls += 1
+            if (failVersionProbe) {
+                RecoveryDbVersionGate.VersionDecision.ReadFailed(
+                    IllegalStateException("simulated authoritative availability failure"),
+                )
+            } else {
+                RecoveryDbVersionGate.probe(file)
+            }
+        }
+        prepareForMutation(store)
+        assertTrue(store.checkpoint(checkpointPayload()) is RecoveryStorePort.CheckpointResult.Ready)
+        assertTrue(store.readInspectionProjection(pointId) is RecoveryStorePort.InspectionProjectionRead.Value)
+
+        failVersionProbe = true
+        assertFalse(store.advance(pointId, LifecycleState.APPLYING))
+        assertEquals(RecoveryStorePort.InspectionProjectionRead.Unavailable, store.readInspectionProjection(pointId))
+
+        probeCalls = 0
+        assertEquals(
+            RecoveryStorePort.CheckpointResult.StoreUnavailable,
+            store.checkpoint(checkpointPayload(RecoveryPointId("33333333333333333333333333333333"))),
+        )
+        assertEquals(0, probeCalls)
+    }
+
+    @Test
     fun invalidExistingDatabaseInspectionReturnsUnavailableWithoutHelperRepairOrWrite() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         deleteRecoveryDatabaseArtifacts(context)
@@ -190,7 +343,9 @@ class RecoveryStoreInspectionInstrumentationTest {
         }
     }
 
-    private fun checkpointPayload(): RecoveryStorePort.CheckpointPayload = RecoveryStorePort.CheckpointPayload(
+    private fun checkpointPayload(
+        pointId: RecoveryPointId = this.pointId,
+    ): RecoveryStorePort.CheckpointPayload = RecoveryStorePort.CheckpointPayload(
         pointId = pointId,
         runId = RunId("abcdef0123456789abcdef0123456789"),
         preManifest = PersistenceManifest(1, 33, 0, emptyList(), emptyList(), 0L),

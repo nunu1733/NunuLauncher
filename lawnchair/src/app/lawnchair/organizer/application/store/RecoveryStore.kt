@@ -33,6 +33,7 @@ class RecoveryStore(
     RecoveryStoreReconciliationPort {
 
     private var faultPort: RecoveryStoreFaultPort = RecoveryStoreFaultPort.NOOP
+    private var versionProbe: (java.io.File) -> RecoveryDbVersionGate.VersionDecision = RecoveryDbVersionGate::probe
 
     /**
      * Test-only constructor that injects a local fault port. Production code
@@ -46,6 +47,25 @@ class RecoveryStore(
         this.faultPort = faultPort
     }
 
+    /** Test-only constructor for asserting pre-probe fail-closed ordering. */
+    constructor(
+        context: Context,
+        clock: () -> Long,
+        versionProbe: (java.io.File) -> RecoveryDbVersionGate.VersionDecision,
+    ) : this(context, clock) {
+        this.versionProbe = versionProbe
+    }
+
+    /** Test-only constructor combining probe observation with commit fault injection. */
+    constructor(
+        context: Context,
+        clock: () -> Long,
+        faultPort: RecoveryStoreFaultPort,
+        versionProbe: (java.io.File) -> RecoveryDbVersionGate.VersionDecision,
+    ) : this(context, clock, versionProbe) {
+        this.faultPort = faultPort
+    }
+
     private val helper: RecoveryDbHelper = RecoveryDbHelper(context.applicationContext)
     private val versionGateFile: java.io.File =
         context.applicationContext.getDatabasePath(RecoveryDbSchema.FILE_NAME)
@@ -53,7 +73,7 @@ class RecoveryStore(
     private val snapshotPublisher = RecoveryInspectionSnapshotPublisher(context.applicationContext)
     private var reconciliationMutex: RunMutex? = null
 
-    fun probeVersion(): RecoveryDbVersionGate.VersionDecision = RecoveryDbVersionGate.probe(versionGateFile)
+    fun probeVersion(): RecoveryDbVersionGate.VersionDecision = versionProbe(versionGateFile)
 
     override fun availability(): RecoveryStorePort.StoreAvailability = when (probeVersion()) {
         RecoveryDbVersionGate.VersionDecision.CreateNew,
@@ -136,10 +156,7 @@ class RecoveryStore(
     override fun checkpoint(
         payload: RecoveryStorePort.CheckpointPayload,
     ): RecoveryStorePort.CheckpointResult {
-        if (availability() != RecoveryStorePort.StoreAvailability.READY) {
-            return RecoveryStorePort.CheckpointResult.StoreUnavailable
-        }
-        val mutation = beginSnapshotMutation()
+        val mutation = beginReadyOrdinaryMutation()
             ?: return RecoveryStorePort.CheckpointResult.StoreUnavailable
         val now = clock()
         val preManifestBytes = RecoveryRecordCodec.encodeManifest(payload.preManifest)
@@ -259,8 +276,7 @@ class RecoveryStore(
         itemCount: Int,
         resourceCount: Int,
     ): Boolean {
-        if (availability() != RecoveryStorePort.StoreAvailability.READY) return false
-        val mutation = beginSnapshotMutation() ?: return false
+        val mutation = beginReadyOrdinaryMutation() ?: return false
         val intendedBytes = RecoveryRecordCodec.encodeManifest(intendedManifest)
         val updated = updateRecord(pointId, RecoveryStoreFaultPort.Phase.APPLYING) { current ->
             if (!LifecycleTransitions.isLegal(current.lifecycle, LifecycleState.APPLYING)) return@updateRecord null
@@ -284,8 +300,7 @@ class RecoveryStore(
      * illegal, or the update failed.
      */
     override fun advance(pointId: RecoveryPointId, next: LifecycleState): Boolean {
-        if (availability() != RecoveryStorePort.StoreAvailability.READY) return false
-        val mutation = beginSnapshotMutation() ?: return false
+        val mutation = beginReadyOrdinaryMutation() ?: return false
         val advanced = advanceRaw(pointId, next)
         return if (advanced && publishCurrentProjection(mutation)) {
             true
@@ -317,8 +332,7 @@ class RecoveryStore(
         reviewedDigest: ByteArray,
         recoveryActionDigest: ByteArray,
     ): Boolean {
-        if (availability() != RecoveryStorePort.StoreAvailability.READY) return false
-        val mutation = beginSnapshotMutation() ?: return false
+        val mutation = beginReadyOrdinaryMutation() ?: return false
         return completeOrdinaryMutation(
             mutation,
             markRestoringRaw(pointId, reviewedManifest, reviewedDigest, recoveryActionDigest),
@@ -359,10 +373,7 @@ class RecoveryStore(
      * Caller must wrap this in a single recovery DB transaction.
      */
     override fun runRetention(nowMillis: Long): RecoveryStorePort.RetentionOutcome {
-        if (availability() != RecoveryStorePort.StoreAvailability.READY) {
-            return RecoveryStorePort.RetentionOutcome.StoreUnavailable
-        }
-        val mutation = beginSnapshotMutation()
+        val mutation = beginReadyOrdinaryMutation()
             ?: return RecoveryStorePort.RetentionOutcome.StoreUnavailable
         val toEvict = listRetentionRecords(includeFinal = true).filter {
             RetentionPolicy.actionFor(it, nowMillis) !is RetentionPolicy.RetentionAction.Keep
@@ -462,8 +473,7 @@ class RecoveryStore(
     }
 
     override fun pruneUnused(pointId: RecoveryPointId): Boolean {
-        if (availability() != RecoveryStorePort.StoreAvailability.READY) return false
-        val mutation = beginSnapshotMutation() ?: return false
+        val mutation = beginReadyOrdinaryMutation() ?: return false
         return completeOrdinaryMutation(mutation, pruneUnusedRaw(pointId))
     }
 
@@ -693,8 +703,21 @@ class RecoveryStore(
         }
     }
 
-    private fun beginSnapshotMutation(): InspectionSnapshotFence.Mutation? =
-        snapshotFence.beginOrdinaryMutation()
+    /**
+     * Ordinary callers may mutate only from an already trusted projection. The
+     * fence becomes DIRTY before any authoritative availability/version probe
+     * can open SQLite. A later failed probe is uncertain and therefore may not
+     * revive the previous VALID generation.
+     */
+    private fun beginReadyOrdinaryMutation(): InspectionSnapshotFence.Mutation? {
+        val mutation = snapshotFence.beginOrdinaryMutation() ?: return null
+        return if (availability() == RecoveryStorePort.StoreAvailability.READY) {
+            mutation
+        } else {
+            snapshotFence.finish(mutation, InspectionSnapshotFence.MutationOutcome.OUTCOME_UNCERTAIN)
+            null
+        }
+    }
 
     private fun beginReconciliationMutation(session: ReconciliationSession): InspectionSnapshotFence.Mutation? =
         if (session.isActive()) snapshotFence.beginReconciliationMutation() else null
