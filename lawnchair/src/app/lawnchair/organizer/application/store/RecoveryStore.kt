@@ -26,7 +26,7 @@ import app.lawnchair.organizer.planning.RevisionId
  *
  * Issue #14 Stage B step 3.
  */
-class RecoveryStore(
+internal class RecoveryStore(
     context: Context,
     private val clock: () -> Long,
 ) : RecoveryStorePort,

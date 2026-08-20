@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * Issue #14 Stage B step 4.
  */
-class FakeRecoveryStore(
+internal class FakeRecoveryStore(
     private val clock: () -> Long = { System.currentTimeMillis() },
 ) : RecoveryStorePort,
     RecoveryStoreReconciliationPort {

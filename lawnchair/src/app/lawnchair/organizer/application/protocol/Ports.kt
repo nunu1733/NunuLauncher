@@ -416,7 +416,7 @@ interface RunMutexPort {
 }
 
 class RunMutex : RunMutexPort {
-    internal class ReconciliationLease private constructor(
+    internal class ReconciliationLease internal constructor(
         private val mutex: RunMutex,
         private val runId: RunId,
     ) {

@@ -199,12 +199,12 @@ class ReadinessGateTest {
 
     @Test
     fun reconciliationExceptionFailsClosedAndRemainsRetryable() {
-        seedReady()
         module = newModule(object : FaultInjector by FaultInjector.NOOP {
             override fun restartBoundary(phase: FaultInjector.RestartPhase): FaultInjector.RestartDirective {
                 error("injected restart failure")
             }
         })
+        seedReady()
 
         assertEquals(RestartReconciler.ReconciliationSummary.Failed, module.reconcileAtStart())
         assertEquals(ReadinessGate.State.FAILED, module.readinessGate.state)
@@ -260,13 +260,16 @@ class ReadinessGateTest {
         )
     }
 
-    private fun newModule(faults: FaultInjector): LayoutApplicationModule<FakeRecoveryStore> = LayoutApplicationModule(
-        writer,
-        store,
-        FakeClock,
-        FixedOperationIdSource(),
-        faults,
-    )
+    private fun newModule(faults: FaultInjector): LayoutApplicationModule<FakeRecoveryStore> {
+        store = FakeRecoveryStore { FakeClock.nowMillis() }
+        return LayoutApplicationModule(
+            writer,
+            store,
+            FakeClock,
+            FixedOperationIdSource(),
+            faults,
+        )
+    }
 
     private fun noChangePlan(): ValidatedLayoutPlan {
         val capture = writer.captureCurrent(CaptureId("nochange"))
