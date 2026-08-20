@@ -110,6 +110,12 @@ class ManualOrganizationRun internal constructor(
     private val application: ManualOrganizationApplication,
     private val planner: OrganizationPlanner = DeterministicOrganizationPlanner(),
 ) {
+    enum class DismissalOutcome {
+        CancelledAndMayNavigate,
+        NoActiveOperation,
+        ApplicationInProgress,
+    }
+
     sealed interface State {
         data object Idle : State
         data object Capturing : State
@@ -382,18 +388,23 @@ class ManualOrganizationRun internal constructor(
         }
     }
 
-    fun dismiss() {
+    fun dismiss(): DismissalOutcome {
         val operation = synchronized(lock) {
             val operation = activeOperation
-            if (operation?.applicationAdmitted?.get() == true) return
-            operation?.cancelled?.set(true)
+            if (operation?.applicationAdmitted?.get() == true) {
+                return@synchronized DismissalOutcome.ApplicationInProgress to null
+            }
+            if (operation == null) {
+                return@synchronized DismissalOutcome.NoActiveOperation to null
+            }
+            operation.cancelled.set(true)
             activeOperation = null
             pending = null
             pendingRecovery = null
-            stateHolder.value = State.Idle
-            operation
+            stateHolder.value = State.Cancelled
+            DismissalOutcome.CancelledAndMayNavigate to operation
         }
-        operation?.let {
+        operation.second?.let {
             emit(
                 RunEvent(
                     journalSequence = 0L,
@@ -404,6 +415,7 @@ class ManualOrganizationRun internal constructor(
                 ),
             )
         }
+        return operation.first
     }
 
     private fun beginOperation(): Operation? = synchronized(lock) {

@@ -284,10 +284,17 @@ private fun ManualOrganizationBackHandler(coordinator: ManualOrganizationRun) {
     val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     val callbackRef = remember { mutableStateOf<OnBackPressedCallback?>(null) }
     val onBack = rememberUpdatedState {
-        coordinator.dismiss()
-        callbackRef.value?.isEnabled = false
-        dispatcher?.onBackPressed()
-        callbackRef.value?.isEnabled = true
+        when (coordinator.dismiss()) {
+            ManualOrganizationRun.DismissalOutcome.ApplicationInProgress -> Unit
+
+            ManualOrganizationRun.DismissalOutcome.CancelledAndMayNavigate,
+            ManualOrganizationRun.DismissalOutcome.NoActiveOperation,
+            -> {
+                callbackRef.value?.isEnabled = false
+                dispatcher?.onBackPressed()
+                callbackRef.value?.isEnabled = true
+            }
+        }
     }
     val callback = remember(dispatcher) {
         object : OnBackPressedCallback(true) {

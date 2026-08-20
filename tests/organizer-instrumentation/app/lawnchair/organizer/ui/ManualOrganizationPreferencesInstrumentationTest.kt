@@ -202,6 +202,15 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_apply_unresolved)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_open_diagnostics)).performClick()
         assertEquals(true, diagnosticsOpened)
+
+        // Diagnostics navigation disposes this screen; recreating it must retain the safe terminal state.
+        composeRule.setContent { }
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_apply_unresolved)).assertIsDisplayed()
         composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_start_again)).assertCountEquals(0)
     }
 

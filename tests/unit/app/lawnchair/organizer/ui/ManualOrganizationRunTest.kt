@@ -331,12 +331,46 @@ class ManualOrganizationRunTest {
 
         runner.dismiss()
 
-        assertEquals(ManualOrganizationRun.State.Idle, runner.state)
+        assertEquals(ManualOrganizationRun.State.Cancelled, runner.state)
         assertEquals(1, application.events.count { it.phase == app.lawnchair.organizer.diagnostics.model.PhaseCode.USER_CANCELLED })
         releaseMaterialize.countDown()
         worker.join(5_000)
         assertFalse(worker.isAlive)
         assertEquals(0, application.applyCalls)
+    }
+
+    @Test
+    fun dismissDoesNotClearVerifiedTerminalState() {
+        val application = FakeApplication(readyInput())
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start()
+        runner.confirm()
+        val applied = runner.state
+
+        assertEquals(ManualOrganizationRun.DismissalOutcome.NoActiveOperation, runner.dismiss())
+        assertEquals(applied, runner.state)
+    }
+
+    @Test
+    fun dismissAfterApplicationAdmissionSuppressesNavigationAndPreservesApplyingState() {
+        val application = FakeApplication(readyInput())
+        val applyStarted = CountDownLatch(1)
+        val releaseApply = CountDownLatch(1)
+        application.applyStarted = applyStarted
+        application.applyRelease = releaseApply
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        runner.start()
+
+        val worker = thread(start = true) { runner.confirm() }
+        assertTrue(applyStarted.await(5, TimeUnit.SECONDS))
+
+        assertEquals(ManualOrganizationRun.DismissalOutcome.ApplicationInProgress, runner.dismiss())
+        assertEquals(ManualOrganizationRun.State.Applying, runner.state)
+        releaseApply.countDown()
+        worker.join(5_000)
+        assertFalse(worker.isAlive)
+        assertTrue(runner.state is ManualOrganizationRun.State.Applied)
     }
 
     @Test

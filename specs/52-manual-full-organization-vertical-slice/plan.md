@@ -212,6 +212,18 @@ The latest Issue #52 re-review identified one high-priority lifecycle gap and tw
 
 The release-gate items from the re-review remain open: connected API 36.1 execution, process recreation/reconciliation evidence, keyboard/switch traversal evidence, UI screenshots/video, PR-triggered `CI / final-status`, and the independent `risk: layout-data` audit. The implementation remains not merge-ready until those artifacts exist on the final PR head.
 
+## Re-review follow-up: dismissal boundary — 2026-08-20
+
+Issue comment `5353881937` identified that screen disposal could erase a verified terminal result and that Back remained navigable after application admission. The coordinator now returns a typed `DismissalOutcome`: active pre-admission work becomes `Cancelled`, an admitted atomic application returns `ApplicationInProgress` without navigation, and a terminal/no-active state returns `NoActiveOperation` without clearing its result. The Back callback consumes Back while application is in progress and delegates only when navigation is safe. The instrumentation fixture also disposes and recreates the screen after diagnostics navigation to verify that an `Unresolved` safe terminal remains visible.
+
+| Command or surface | Result | Evidence / limitation |
+|---|---|---|
+| `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.ui.ManualOrganizationRunTest' --console=plain` | Passed | 15 tests, including terminal-state retention, pre-admission cancellation, and Back suppression during admitted application. |
+| `./gradlew assembleLawnWithQuickstepGithubDebugAndroidTest --console=plain` | Passed | Android-test artifact compiled after adding the disposal/recreation regression coverage. |
+| Connected instrumentation | Not run | `adb` is unavailable on the local host; real Back navigation and API 36.1 execution remain unverified. |
+
+The PR-triggered CI/final-status gate, connected instrumentation, UI screenshots/video, process recreation/reconciliation evidence, and independent high-risk audit remain open.
+
 ## High-risk evidence and rollout
 
 This implementation closes a `risk: layout-data` Issue and may touch the organizer application protocol. Before merge, it therefore requires the independent-evidence process in [GitHub workflow](../../docs/project/github-workflow.md):
