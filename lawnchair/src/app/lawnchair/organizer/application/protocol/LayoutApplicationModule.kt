@@ -204,7 +204,7 @@ class LayoutApplicationModule(
         }
     }
 
-    fun reconcileAtStart(): RestartReconciler.ReconciliationSummary {
+    internal fun reconcileAtStart(): RestartReconciler.ReconciliationSummary {
         val runId = operationIds.newRunId()
         if (!mutex.tryAcquire(runId)) return RestartReconciler.ReconciliationSummary.Failed
         return try {

@@ -128,6 +128,7 @@ class RecoveryStoreLifecycleTest {
         // The store is already closed by the helper inside checkpointedStore();
         // open a new one to verify the persisted APPLYING state.
         val reopened = RecoveryStore(context) { 3000L }
+        prepareForMutation(reopened)
         assertTrue(reopened.advance(pointId, LifecycleState.APPLYING))
         val rechecked = RecoveryStore(context) { 4000L }
         assertEquals(LifecycleState.APPLYING, rechecked.readRecord(pointId)?.lifecycle)
@@ -162,6 +163,7 @@ class RecoveryStoreLifecycleTest {
         val empty = PersistenceManifest(1, 33, 0, emptyList(), emptyList(), 0L)
         // Need to first advance to a state that allows RESTORING.
         val store = RecoveryStore(context) { 2000L }
+        prepareForMutation(store)
         assertTrue(store.advance(pointId, LifecycleState.APPLYING))
         assertTrue(store.markRestoring(pointId, empty, digest, digest))
         val reopened = RecoveryStore(context) { 3000L }
@@ -175,6 +177,7 @@ class RecoveryStoreLifecycleTest {
         val digest = ByteArray(32)
         val empty = PersistenceManifest(1, 33, 0, emptyList(), emptyList(), 0L)
         val store = RecoveryStore(context) { 2000L }
+        prepareForMutation(store)
         assertTrue(store.advance(pointId, LifecycleState.APPLYING))
         assertTrue(store.markRestoring(pointId, empty, digest, digest))
         assertTrue(store.advance(pointId, LifecycleState.RESTORED))

@@ -26,7 +26,8 @@ import app.lawnchair.organizer.planning.RevisionId
 class RecoveryStore(
     context: Context,
     private val clock: () -> Long,
-) : RecoveryStorePort, RecoveryStoreReconciliationPort {
+) : RecoveryStorePort,
+    RecoveryStoreReconciliationPort {
 
     private var faultPort: RecoveryStoreFaultPort = RecoveryStoreFaultPort.NOOP
 
@@ -82,6 +83,7 @@ class RecoveryStore(
         }
 
         InspectionSnapshotFence.State.INCOMPATIBLE -> RecoveryStorePort.InspectionProjectionRead.Incompatible
+
         InspectionSnapshotFence.State.UNKNOWN,
         is InspectionSnapshotFence.State.DIRTY,
         -> RecoveryStorePort.InspectionProjectionRead.Unavailable

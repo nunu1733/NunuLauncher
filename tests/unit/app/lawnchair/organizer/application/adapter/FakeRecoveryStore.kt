@@ -20,7 +20,8 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class FakeRecoveryStore(
     private val clock: () -> Long = { System.currentTimeMillis() },
-) : RecoveryStorePort, RecoveryStoreReconciliationPort {
+) : RecoveryStorePort,
+    RecoveryStoreReconciliationPort {
 
     private val records: ConcurrentHashMap<String, MutableRecord> = ConcurrentHashMap()
     private val tombstones: ConcurrentHashMap<String, RecoveryStorePort.Tombstone> = ConcurrentHashMap()

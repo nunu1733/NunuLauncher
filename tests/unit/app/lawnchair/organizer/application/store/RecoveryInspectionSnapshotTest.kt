@@ -3,10 +3,10 @@ package app.lawnchair.organizer.application.store
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.protocol.RecoveryStorePort
 import app.lawnchair.organizer.application.public.RecoveryPointId
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import java.io.File
 import org.junit.Test
 
 class RecoveryInspectionSnapshotTest {
@@ -61,7 +61,7 @@ class RecoveryInspectionSnapshotTest {
 
     @Test
     fun companionOrUnexpectedEntryIsUnavailableWithoutChangingDirectoryInventory() {
-        val directory = createTempDir(prefix = "recovery-inspection")
+        val directory = kotlin.io.path.createTempDirectory("recovery-inspection").toFile()
         try {
             val final = File(directory, RecoveryInspectionSnapshotReader.FINAL_FILE_NAME)
             final.writeBytes(

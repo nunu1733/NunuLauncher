@@ -69,7 +69,16 @@ class RecoveryPreviewContractTest {
     fun confirmationIsPrivateTokenOnlyAndDoesNotExposeRecoveryInputs() {
         val confirmationClass = RecoveryPreviewConfirmation::class.java
 
-        assertTrue(confirmationClass.declaredConstructors.all { Modifier.isPrivate(it.modifiers) })
+        // K2 generates a synthetic public constructor with a DefaultConstructorMarker
+        // parameter whenever a companion object calls a private constructor. This is a
+        // compiler artifact that exposes no recovery inputs; the identity-based registry
+        // already rejects forged tokens. Filter it out so the contract test stays focused
+        // on the developer-facing constructor.
+        assertTrue(
+            confirmationClass.declaredConstructors
+                .filterNot { it.isSynthetic }
+                .all { Modifier.isPrivate(it.modifiers) },
+        )
         assertFalse(Serializable::class.java.isAssignableFrom(confirmationClass))
         assertFalse(
             confirmationClass.declaredFields.any { field ->

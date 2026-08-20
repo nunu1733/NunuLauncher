@@ -34,20 +34,19 @@ internal data class RecoveryInspectionSnapshot(
     fun tombstone(pointId: RecoveryPointId): Tombstone? = tombstones.firstOrNull { it.pointId == pointId }
 }
 
-internal fun RecoveryInspectionSnapshot.project(pointId: RecoveryPointId): RecoveryStorePort.InspectionProjection =
-    record(pointId)?.let {
-        RecoveryStorePort.InspectionProjection.Record(
-            pointId = it.pointId,
-            lifecycle = it.lifecycle,
-            createdAtMs = it.createdAtMs,
-            updatedAtMs = it.updatedAtMs,
-            checksumValid = it.checksumValid,
-            formatVersion = it.formatVersion,
-        )
-    } ?: tombstone(pointId)?.let {
-        RecoveryStorePort.InspectionProjection.Tombstone(
-            pointId = it.pointId,
-            reason = it.reason,
-            expiresAtMs = it.expiresAtMs,
-        )
-    } ?: RecoveryStorePort.InspectionProjection.Missing
+internal fun RecoveryInspectionSnapshot.project(pointId: RecoveryPointId): RecoveryStorePort.InspectionProjection = record(pointId)?.let {
+    RecoveryStorePort.InspectionProjection.Record(
+        pointId = it.pointId,
+        lifecycle = it.lifecycle,
+        createdAtMs = it.createdAtMs,
+        updatedAtMs = it.updatedAtMs,
+        checksumValid = it.checksumValid,
+        formatVersion = it.formatVersion,
+    )
+} ?: tombstone(pointId)?.let {
+    RecoveryStorePort.InspectionProjection.Tombstone(
+        pointId = it.pointId,
+        reason = it.reason,
+        expiresAtMs = it.expiresAtMs,
+    )
+} ?: RecoveryStorePort.InspectionProjection.Missing

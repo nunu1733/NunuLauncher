@@ -13,7 +13,7 @@ import app.lawnchair.organizer.diagnostics.model.RunEvent
 import app.lawnchair.organizer.diagnostics.projection.ReconciliationProjection
 
 /** Executes restart reconciliation; lifecycle classification alone is never treated as work. */
-class RestartReconciler(
+internal class RestartReconciler(
     private val writer: LayoutWriterPort,
     private val store: RecoveryStorePort,
     private val reconciliationStore: RecoveryStoreReconciliationPort =
@@ -63,6 +63,7 @@ class RestartReconciler(
             }
 
             RecoveryStorePort.StoreAvailability.READ_FAILED -> return ReconciliationSummary.Failed
+
             RecoveryStorePort.StoreAvailability.READY -> Unit
         }
         val surfaced = buildList {
