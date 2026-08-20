@@ -184,6 +184,35 @@ class ManualOrganizationProductionE2EInstrumentationTest {
             .layoutState)
     }
 
+    @Test
+    fun staleProductionConfirmationDoesNotWrite() {
+        val module = LayoutApplicationModule.production(context, launcher)
+        val run = ManualOrganizationRun(ProductionManualOrganizationApplication(context, module))
+
+        run.start()
+        assertTrue(run.state is ManualOrganizationRun.State.Preview)
+
+        val beforeMutation = snapshotFavorites()
+        val rowId = requireNotNull(beforeMutation.first().getAsLong(Favorites._ID))
+        val updatedRows = launcher.model.modelDbController.db.update(
+            Favorites.TABLE_NAME,
+            ContentValues().apply { put(Favorites.MODIFIED, 9_999_999L) },
+            "${Favorites._ID}=?",
+            arrayOf(rowId.toString()),
+        )
+        assertEquals(1, updatedRows)
+        val expectedAfterMutation = snapshotFavorites()
+
+        run.confirm()
+
+        assertEquals(ManualOrganizationRun.State.Stale, run.state)
+        assertEquals(
+            "Stale confirmation must not apply a second Launcher write",
+            expectedAfterMutation,
+            snapshotFavorites(),
+        )
+    }
+
     private fun insertFixtureRow(db: android.database.sqlite.SQLiteDatabase, screen: Int, title: String) {
         val id = launcher.model.modelDbController.generateNewItemId()
         val intent = Intent(Intent.ACTION_MAIN)
