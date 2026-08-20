@@ -167,6 +167,22 @@ python3 tools/repo-contract/test_validate_repo_contract.py
 
 The connected execution is local evidence. The high-risk merge gate additionally requires a successful **PR-triggered** `CI / final-status` run on the audited head commit, including non-skipped `organizer-unit-tests`, `check-style`, and `build-debug-apk` source jobs.
 
+## Local verification evidence — 2026-08-20
+
+The following evidence was recorded on local macOS host `mskdf4.local` after checking out the Issue 52 branch at `ce372e981dff6d3adc547554021727f7499dc56a`. The machine used Homebrew OpenJDK 21 and successfully compiled the root Kotlin and unit-test sources that could not be completed under the prior sandbox memory limit. The worktree remained clean after every command.
+
+| Command or surface | Result | Evidence / limitation |
+|---|---|---|
+| `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.ui.ManualOrganizationRunTest'` | Passed | 3 tests, 0 failures, 0 errors: unavailable input remains non-writing; empty plans are non-writing; confirmation preserves one run ID through diagnostics and apply. |
+| `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` | Passed | The organizer JVM unit-test surface completed successfully. |
+| `./gradlew assembleLawnWithQuickstepGithubDebug` | Passed | Debug APK build completed successfully. |
+| `python3 tools/repo-contract/validate_repo_contract.py` and `python3 tools/repo-contract/test_validate_repo_contract.py` | Passed | Repository contract validation and its self-test completed successfully. |
+| `./gradlew spotlessKotlinCheck` and `git diff --check` | Passed | Kotlin formatting and whitespace checks completed successfully. |
+| `./gradlew spotlessCheck` | Not completed | Local Gradle failed `:spotlessJava` because it detected existing implicit dependencies on `compatLib` tasks. This was a task dependency validation failure, not a source-format finding; `spotlessKotlinCheck` succeeded. |
+| Connected instrumentation | Not run | `adb` was unavailable on the local host, so no verified API 36.1 device/emulator was available. |
+
+This local evidence does not replace the required PR-triggered CI, connected instrumentation, or independent high-risk audit. Do not change the specification status to `implemented` until those release-gate requirements are satisfied.
+
 ## High-risk evidence and rollout
 
 This implementation closes a `risk: layout-data` Issue and may touch the organizer application protocol. Before merge, it therefore requires the independent-evidence process in [GitHub workflow](../../docs/project/github-workflow.md):
