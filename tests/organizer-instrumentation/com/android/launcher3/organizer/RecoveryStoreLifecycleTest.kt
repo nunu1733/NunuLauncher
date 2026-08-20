@@ -37,6 +37,7 @@ class RecoveryStoreLifecycleTest {
         val digest = ByteArray(32)
         val empty = PersistenceManifest(1, 33, 0, emptyList(), emptyList(), 0L)
         val first = RecoveryStore(context) { 1000L }
+        prepareForMutation(first)
         val result = first.checkpoint(
             RecoveryStorePort.CheckpointPayload(
                 pointId,
@@ -84,6 +85,7 @@ class RecoveryStoreLifecycleTest {
         context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
         var now = 1_000L
         val store = RecoveryStore(context) { now }
+        prepareForMutation(store)
         val pointId = RecoveryPointId("1123456789abcdef0123456789abcdef")
         val digest = ByteArray(32)
         val empty = PersistenceManifest(1, 33, 0, emptyList(), emptyList(), 0L)
@@ -193,6 +195,7 @@ class RecoveryStoreLifecycleTest {
                 { 1000L },
                 ThrowingFaultPort(case.phase, FaultTiming.BEFORE),
             )
+            prepareForMutation(store)
             val pointId = case.setup(store)
             val result = case.action(store, pointId)
             assertEquals("${case.name} result", case.expectedResult, result)
@@ -218,6 +221,7 @@ class RecoveryStoreLifecycleTest {
                 { 1000L },
                 ThrowingFaultPort(case.phase, FaultTiming.AFTER),
             )
+            prepareForMutation(store)
             val pointId = case.setup(store)
             val result = case.action(store, pointId)
             assertEquals("${case.name} result", case.expectedResult, result)
@@ -566,10 +570,15 @@ class RecoveryStoreLifecycleTest {
         return pointId
     }
 
+    private fun prepareForMutation(store: RecoveryStore) {
+        assertTrue(store.withReconciliationScope { store.rebuildInspectionSnapshotForReconciliation() })
+    }
+
     private fun checkpointedStore(): Triple<Context, RecoveryStore, RecoveryPointId> {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
         val store = RecoveryStore(context) { 1000L }
+        prepareForMutation(store)
         val pointId = RecoveryPointId("fedcba0987654321fedcba0987654321")
         val digest = ByteArray(32)
         val empty = PersistenceManifest(1, 33, 0, emptyList(), emptyList(), 0L)

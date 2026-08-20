@@ -44,18 +44,23 @@ class LayoutApplicationModule(
 ) {
 
     private val mutex: RunMutex = RunMutex()
+    private val ordinaryMutex: RunMutexPort = mutex
+    private val reconciliationStore: RecoveryStoreReconciliationPort =
+        requireNotNull(store as? RecoveryStoreReconciliationPort) {
+            "Recovery store must provide the private startup reconciliation seam"
+        }
     private val confirmationRandom: SecureRandom = SecureRandom()
     private val pendingPreviewConfirmations: java.util.IdentityHashMap<RecoveryPreviewConfirmation, PendingPreviewConfirmation> =
         java.util.IdentityHashMap()
-    private val applyProtocol: ApplyProtocol = ApplyProtocol(writer, store, clock, operationIds, faults, mutex, diagnosticsPort)
-    private val recoveryProtocol: RecoveryProtocol = RecoveryProtocol(writer, store, clock, operationIds, faults, mutex)
+    private val applyProtocol: ApplyProtocol = ApplyProtocol(writer, store, clock, operationIds, faults, ordinaryMutex, diagnosticsPort)
+    private val recoveryProtocol: RecoveryProtocol = RecoveryProtocol(writer, store, clock, operationIds, faults, ordinaryMutex)
     private val recoveryPreviewProtocol: RecoveryPreviewProtocol = RecoveryPreviewProtocol(
         writer,
         store,
         clock,
         operationIds,
         faults,
-        mutex,
+        ordinaryMutex,
         confirmationIssuer = ::issuePreviewConfirmation,
     )
     private val restartReconciler: RestartReconciler = RestartReconciler(writer, store, faults, diagnosticsPort)
@@ -193,11 +198,19 @@ class LayoutApplicationModule(
         }
     }
 
-    fun reconcileAtStart(): RestartReconciler.ReconciliationSummary = readinessGate.reconcile(
-        block = restartReconciler::reconcileAll,
-        succeeded = { summary -> !summary.hasUnresolvedFailures() },
-        failed = { RestartReconciler.ReconciliationSummary.Failed },
-    )
+    fun reconcileAtStart(): RestartReconciler.ReconciliationSummary {
+        val runId = operationIds.newRunId()
+        if (!mutex.tryAcquire(runId)) return RestartReconciler.ReconciliationSummary.Failed
+        return try {
+            readinessGate.reconcile(
+                block = { reconciliationStore.withReconciliationScope { restartReconciler.reconcileAll() } },
+                succeeded = { summary -> !summary.hasUnresolvedFailures() },
+                failed = { RestartReconciler.ReconciliationSummary.Failed },
+            )
+        } finally {
+            mutex.release(runId)
+        }
+    }
 
     fun failStartupReconciliation() {
         readinessGate.failBeforeReconciliation()

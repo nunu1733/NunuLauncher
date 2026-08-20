@@ -28,7 +28,7 @@ class RecoveryPreviewProtocol(
     private val clock: Clock,
     private val operationIds: OperationIdSource,
     private val faults: FaultInjector,
-    private val mutex: RunMutex,
+    private val mutex: RunMutexPort,
     private val confirmationIssuer: (RecoveryPointId, RevisionId) -> RecoveryPreviewConfirmation,
 ) {
 
@@ -46,30 +46,32 @@ class RecoveryPreviewProtocol(
         pointId: RecoveryPointId,
         runId: app.lawnchair.organizer.application.public.RunId,
     ): RecoveryPreviewResult {
-        when (store.availability()) {
-            RecoveryStorePort.StoreAvailability.INCOMPATIBLE_VERSION ->
+        when (val read = store.readInspectionProjection(pointId)) {
+            is RecoveryStorePort.InspectionProjectionRead.Value -> when (val projection = read.projection) {
+                is RecoveryStorePort.InspectionProjection.Record -> {
+                    preflight(projection)?.let { return RecoveryPreviewResult.NotRestorable(pointId, it) }
+                }
+
+                is RecoveryStorePort.InspectionProjection.Tombstone -> {
+                    return tombstoneResult(pointId, projection)
+                }
+
+                RecoveryStorePort.InspectionProjection.Missing -> {
+                    return RecoveryPreviewResult.NotRestorable(pointId, RecoveryPreviewRejection.MISSING)
+                }
+            }
+
+            RecoveryStorePort.InspectionProjectionRead.Incompatible -> {
                 return RecoveryPreviewResult.NotRestorable(pointId, RecoveryPreviewRejection.INCOMPATIBLE_VERSION)
+            }
 
-            RecoveryStorePort.StoreAvailability.READ_FAILED ->
-                return RecoveryPreviewResult.Unavailable(
-                    pointId,
-                    RecoveryPreviewUnavailable.RECOVERY_STORE_UNAVAILABLE,
-                )
-
-            RecoveryStorePort.StoreAvailability.READY -> Unit
-        }
-
-        val stored = when (val read = store.readRecordForInspection(pointId)) {
-            is RecoveryStorePort.InspectionRead.Value -> read.value ?: return tombstoneResult(pointId)
-
-            RecoveryStorePort.InspectionRead.Unavailable -> {
+            RecoveryStorePort.InspectionProjectionRead.Unavailable -> {
                 return RecoveryPreviewResult.Unavailable(
                     pointId,
                     RecoveryPreviewUnavailable.RECOVERY_STORE_UNAVAILABLE,
                 )
             }
         }
-        preflight(stored)?.let { return RecoveryPreviewResult.NotRestorable(pointId, it) }
 
         if (faults.serializationContention()) return RecoveryPreviewResult.WriterBusy
         val lease = writer.tryAcquireLease(WriterKind.ORGANIZER, runId.value.hashCode().toLong())
@@ -92,19 +94,10 @@ class RecoveryPreviewProtocol(
         }
     }
 
-    private fun tombstoneResult(pointId: RecoveryPointId): RecoveryPreviewResult {
-        val tombstone = when (val read = store.readTombstoneForInspection(pointId)) {
-            is RecoveryStorePort.InspectionRead.Value ->
-                read.value
-                    ?: return RecoveryPreviewResult.NotRestorable(pointId, RecoveryPreviewRejection.MISSING)
-
-            RecoveryStorePort.InspectionRead.Unavailable -> {
-                return RecoveryPreviewResult.Unavailable(
-                    pointId,
-                    RecoveryPreviewUnavailable.RECOVERY_STORE_UNAVAILABLE,
-                )
-            }
-        }
+    private fun tombstoneResult(
+        pointId: RecoveryPointId,
+        tombstone: RecoveryStorePort.InspectionProjection.Tombstone,
+    ): RecoveryPreviewResult {
         if (tombstone.expiresAtMs <= clock.nowMillis()) {
             return RecoveryPreviewResult.NotRestorable(pointId, RecoveryPreviewRejection.MISSING)
         }
@@ -118,7 +111,7 @@ class RecoveryPreviewProtocol(
         return RecoveryPreviewResult.NotRestorable(pointId, reason)
     }
 
-    private fun preflight(stored: RecoveryStorePort.StoredRecord): RecoveryPreviewRejection? {
+    private fun preflight(stored: RecoveryStorePort.InspectionProjection.Record): RecoveryPreviewRejection? {
         if (!stored.checksumValid) return RecoveryPreviewRejection.CORRUPT
         if (stored.formatVersion != LifecycleReconciler.SUPPORTED_FORMAT) {
             return RecoveryPreviewRejection.INCOMPATIBLE_VERSION
@@ -147,12 +140,12 @@ class RecoveryPreviewProtocol(
     }
 
     private fun finalRejection(
-        stored: RecoveryStorePort.StoredRecord,
+        stored: RecoveryStorePort.InspectionProjection.Record,
         retainedReason: RecoveryPreviewRejection,
     ): RecoveryPreviewRejection = when (RetentionPolicy.actionFor(stored.retentionRecord(), clock.nowMillis())) {
         is RetentionPolicy.RetentionAction.Tombstone -> RecoveryPreviewRejection.MISSING
         else -> retainedReason
     }
 
-    private fun RecoveryStorePort.StoredRecord.retentionRecord(): RetentionPolicy.RetentionRecord = RetentionPolicy.RetentionRecord(pointId, lifecycle, createdAtMs, updatedAtMs)
+    private fun RecoveryStorePort.InspectionProjection.Record.retentionRecord(): RetentionPolicy.RetentionRecord = RetentionPolicy.RetentionRecord(pointId, lifecycle, createdAtMs, updatedAtMs)
 }

@@ -8,6 +8,7 @@ import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.lifecycle.LifecycleTransitions
 import app.lawnchair.organizer.application.lifecycle.RetentionPolicy
 import app.lawnchair.organizer.application.protocol.RecoveryStorePort
+import app.lawnchair.organizer.application.protocol.RecoveryStoreReconciliationPort
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.planning.RevisionId
@@ -25,7 +26,7 @@ import app.lawnchair.organizer.planning.RevisionId
 class RecoveryStore(
     context: Context,
     private val clock: () -> Long,
-) : RecoveryStorePort {
+) : RecoveryStorePort, RecoveryStoreReconciliationPort {
 
     private var faultPort: RecoveryStoreFaultPort = RecoveryStoreFaultPort.NOOP
 
@@ -44,6 +45,9 @@ class RecoveryStore(
     private val helper: RecoveryDbHelper = RecoveryDbHelper(context.applicationContext)
     private val versionGateFile: java.io.File =
         context.applicationContext.getDatabasePath(RecoveryDbSchema.FILE_NAME)
+    private val snapshotFence = InspectionSnapshotFence()
+    private val snapshotPublisher = RecoveryInspectionSnapshotPublisher(context.applicationContext)
+    private val reconciliationScope = ThreadLocal.withInitial { false }
 
     fun probeVersion(): RecoveryDbVersionGate.VersionDecision = RecoveryDbVersionGate.probe(versionGateFile)
 
@@ -60,34 +64,54 @@ class RecoveryStore(
     }
 
     /**
-     * Run one query against an already-existing recovery database without ever
-     * invoking [RecoveryDbHelper]. `CreateNew` is a legitimate absent result:
-     * it must not cause SQLiteOpenHelper.onCreate/onConfigure or WAL setup.
+     * #89 inspection boundary: never probe/open SQLite here. A process-local
+     * valid fence and matching final snapshot are both required before the
+     * direct reader may classify one point.
      */
-    private fun <T> inspectExistingDatabase(
-        query: (SQLiteDatabase) -> T?,
-    ): RecoveryStorePort.InspectionRead<T> = when (probeVersion()) {
-        RecoveryDbVersionGate.VersionDecision.CreateNew ->
-            RecoveryStorePort.InspectionRead.Value(null)
-
-        is RecoveryDbVersionGate.VersionDecision.OpenExisting -> try {
-            val db = SQLiteDatabase.openDatabase(
-                versionGateFile.absolutePath,
-                null,
-                SQLiteDatabase.OPEN_READONLY,
-            )
-            try {
-                RecoveryStorePort.InspectionRead.Value(query(db))
-            } finally {
-                db.close()
+    override fun readInspectionProjection(
+        pointId: RecoveryPointId,
+    ): RecoveryStorePort.InspectionProjectionRead = when (val state = snapshotFence.state()) {
+        is InspectionSnapshotFence.State.VALID -> {
+            val snapshot = snapshotPublisher.reader().read()
+                ?: return RecoveryStorePort.InspectionProjectionRead.Unavailable
+            if (snapshot.generation != state.generation) {
+                RecoveryStorePort.InspectionProjectionRead.Unavailable
+            } else {
+                RecoveryStorePort.InspectionProjectionRead.Value(snapshot.project(pointId))
             }
-        } catch (_: RuntimeException) {
-            RecoveryStorePort.InspectionRead.Unavailable
         }
 
-        is RecoveryDbVersionGate.VersionDecision.Incompatible,
-        is RecoveryDbVersionGate.VersionDecision.ReadFailed,
-        -> RecoveryStorePort.InspectionRead.Unavailable
+        InspectionSnapshotFence.State.INCOMPATIBLE -> RecoveryStorePort.InspectionProjectionRead.Incompatible
+        InspectionSnapshotFence.State.UNKNOWN,
+        is InspectionSnapshotFence.State.DIRTY,
+        -> RecoveryStorePort.InspectionProjectionRead.Unavailable
+    }
+
+    override fun <T> withReconciliationScope(block: () -> T): T {
+        check(!reconciliationScope.get()) { "nested reconciliation scope" }
+        reconciliationScope.set(true)
+        return try {
+            block()
+        } finally {
+            reconciliationScope.remove()
+        }
+    }
+
+    override fun rebuildInspectionSnapshotForReconciliation(): Boolean = when (availability()) {
+        RecoveryStorePort.StoreAvailability.INCOMPATIBLE_VERSION -> {
+            snapshotFence.markIncompatible()
+            false
+        }
+
+        RecoveryStorePort.StoreAvailability.READ_FAILED -> {
+            snapshotFence.markUnknown()
+            false
+        }
+
+        RecoveryStorePort.StoreAvailability.READY -> {
+            val mutation = snapshotFence.beginReconciliationMutation()
+            publishCurrentProjection(mutation)
+        }
     }
 
     /**
@@ -102,6 +126,8 @@ class RecoveryStore(
         if (availability() != RecoveryStorePort.StoreAvailability.READY) {
             return RecoveryStorePort.CheckpointResult.StoreUnavailable
         }
+        val mutation = beginSnapshotMutation()
+            ?: return RecoveryStorePort.CheckpointResult.StoreUnavailable
         val now = clock()
         val preManifestBytes = RecoveryRecordCodec.encodeManifest(payload.preManifest)
         val encoded = RecoveryRecordCodec.Encoded(
@@ -126,7 +152,7 @@ class RecoveryStore(
         )
         val withChecksum = encoded.copy(payloadChecksum = RecoveryRecordCodec.computePayloadChecksum(encoded))
 
-        return run {
+        val result = run {
             try {
                 val db = helper.writableDatabase
                 db.beginTransaction()
@@ -167,7 +193,7 @@ class RecoveryStore(
                     return@run RecoveryStorePort.CheckpointResult.ValidateFailed
                 }
 
-                if (!advance(payload.pointId, LifecycleState.READY)) {
+                if (!advanceRaw(payload.pointId, LifecycleState.READY)) {
                     return@run RecoveryStorePort.CheckpointResult.CreateFailed
                 }
                 val readyReadback = readRecord(payload.pointId)
@@ -186,6 +212,26 @@ class RecoveryStore(
                 RecoveryStorePort.CheckpointResult.CreateFailed
             }
         }
+        return when (result) {
+            is RecoveryStorePort.CheckpointResult.Ready -> if (publishCurrentProjection(mutation)) {
+                result
+            } else {
+                RecoveryStorePort.CheckpointResult.ValidateFailed
+            }
+
+            RecoveryStorePort.CheckpointResult.PointIdCollision -> {
+                snapshotFence.finish(mutation, InspectionSnapshotFence.MutationOutcome.PROVEN_NO_COMMIT)
+                result
+            }
+
+            RecoveryStorePort.CheckpointResult.CreateFailed,
+            RecoveryStorePort.CheckpointResult.ValidateFailed,
+            RecoveryStorePort.CheckpointResult.StoreUnavailable,
+            -> {
+                snapshotFence.finish(mutation, InspectionSnapshotFence.MutationOutcome.OUTCOME_UNCERTAIN)
+                result
+            }
+        }
     }
 
     /**
@@ -201,8 +247,9 @@ class RecoveryStore(
         resourceCount: Int,
     ): Boolean {
         if (availability() != RecoveryStorePort.StoreAvailability.READY) return false
+        val mutation = beginSnapshotMutation() ?: return false
         val intendedBytes = RecoveryRecordCodec.encodeManifest(intendedManifest)
-        return updateRecord(pointId, RecoveryStoreFaultPort.Phase.APPLYING) { current ->
+        val updated = updateRecord(pointId, RecoveryStoreFaultPort.Phase.APPLYING) { current ->
             if (!LifecycleTransitions.isLegal(current.lifecycle, LifecycleState.APPLYING)) return@updateRecord null
             current.copy(
                 updatedAtMs = clock(),
@@ -215,6 +262,7 @@ class RecoveryStore(
                 resourceCount = resourceCount,
             )
         }
+        return completeOrdinaryMutation(mutation, updated)
     }
 
     /**
@@ -223,6 +271,18 @@ class RecoveryStore(
      * illegal, or the update failed.
      */
     override fun advance(pointId: RecoveryPointId, next: LifecycleState): Boolean {
+        if (availability() != RecoveryStorePort.StoreAvailability.READY) return false
+        val mutation = beginSnapshotMutation() ?: return false
+        val advanced = advanceRaw(pointId, next)
+        return if (advanced && publishCurrentProjection(mutation)) {
+            true
+        } else {
+            snapshotFence.finish(mutation, InspectionSnapshotFence.MutationOutcome.OUTCOME_UNCERTAIN)
+            false
+        }
+    }
+
+    private fun advanceRaw(pointId: RecoveryPointId, next: LifecycleState): Boolean {
         if (availability() != RecoveryStorePort.StoreAvailability.READY) return false
         return updateRecord(pointId, next.toFaultPhase()) { current ->
             if (!LifecycleTransitions.isLegal(current.lifecycle, next)) return@updateRecord null
@@ -245,8 +305,9 @@ class RecoveryStore(
         recoveryActionDigest: ByteArray,
     ): Boolean {
         if (availability() != RecoveryStorePort.StoreAvailability.READY) return false
+        val mutation = beginSnapshotMutation() ?: return false
         val reviewedBytes = RecoveryRecordCodec.encodeManifest(reviewedManifest)
-        return updateRecord(pointId, RecoveryStoreFaultPort.Phase.RESTORING) { current ->
+        val updated = updateRecord(pointId, RecoveryStoreFaultPort.Phase.RESTORING) { current ->
             if (current.lifecycle != LifecycleState.RESTORING &&
                 !LifecycleTransitions.isLegal(current.lifecycle, LifecycleState.RESTORING)
             ) {
@@ -265,6 +326,7 @@ class RecoveryStore(
                 recoveryActionDigest = recoveryActionDigest,
             )
         }
+        return completeOrdinaryMutation(mutation, updated)
     }
 
     /**
@@ -275,10 +337,18 @@ class RecoveryStore(
         if (availability() != RecoveryStorePort.StoreAvailability.READY) {
             return RecoveryStorePort.RetentionOutcome.StoreUnavailable
         }
+        val mutation = beginSnapshotMutation()
+            ?: return RecoveryStorePort.RetentionOutcome.StoreUnavailable
         val toEvict = listRetentionRecords(includeFinal = true).filter {
             RetentionPolicy.actionFor(it, nowMillis) !is RetentionPolicy.RetentionAction.Keep
         }
-        return applyEvictions(toEvict, nowMillis)
+        val result = applyEvictions(toEvict, nowMillis)
+        return if (result == RecoveryStorePort.RetentionOutcome.Applied && publishCurrentProjection(mutation)) {
+            result
+        } else {
+            snapshotFence.finish(mutation, InspectionSnapshotFence.MutationOutcome.OUTCOME_UNCERTAIN)
+            if (result == RecoveryStorePort.RetentionOutcome.StoreUnavailable) result else RecoveryStorePort.RetentionOutcome.Failed
+        }
     }
 
     private fun applyEvictions(
@@ -325,12 +395,6 @@ class RecoveryStore(
         return outcome
     }
 
-    override fun readRecordForInspection(
-        pointId: RecoveryPointId,
-    ): RecoveryStorePort.InspectionRead<StoredRecord> = inspectExistingDatabase { db ->
-        readEncoded(db, pointId)?.let(::storedFromEncoded)
-    }
-
     override fun readRecord(pointId: RecoveryPointId): StoredRecord? {
         if (availability() != RecoveryStorePort.StoreAvailability.READY) return null
         val db = helper.readableDatabase
@@ -372,8 +436,13 @@ class RecoveryStore(
         return out
     }
 
-    override fun pruneUnused(pointId: RecoveryPointId): Boolean = try {
+    override fun pruneUnused(pointId: RecoveryPointId): Boolean {
         if (availability() != RecoveryStorePort.StoreAvailability.READY) return false
+        val mutation = beginSnapshotMutation() ?: return false
+        return completeOrdinaryMutation(mutation, pruneUnusedRaw(pointId))
+    }
+
+    private fun pruneUnusedRaw(pointId: RecoveryPointId): Boolean = try {
         val db = helper.writableDatabase
         var committed = false
         db.beginTransaction()
@@ -415,26 +484,7 @@ class RecoveryStore(
 
     override fun readTombstone(pointId: RecoveryPointId): RecoveryStorePort.Tombstone? {
         if (availability() != RecoveryStorePort.StoreAvailability.READY) return null
-        val db = helper.writableDatabase
-        val now = clock()
-        db.beginTransaction()
-        return try {
-            purgeExpiredTombstones(db, now)
-            queryTombstone(db, pointId).also { db.setTransactionSuccessful() }
-        } finally {
-            db.endTransaction()
-        }
-    }
-
-    /**
-     * Inspection/preflight lookup deliberately avoids lazy cleanup and the
-     * helper's create/configure path. Existing files are queried with an
-     * explicit `OPEN_READONLY` handle; a missing DB is an absent result.
-     */
-    override fun readTombstoneForInspection(
-        pointId: RecoveryPointId,
-    ): RecoveryStorePort.InspectionRead<RecoveryStorePort.Tombstone> = inspectExistingDatabase { db ->
-        queryTombstone(db, pointId)
+        return queryTombstone(helper.readableDatabase, pointId)
     }
 
     private fun queryTombstone(
@@ -536,6 +586,22 @@ class RecoveryStore(
             null
         }
         return readback != null && validateRecord(readback.encoded)
+    }
+
+    private fun beginSnapshotMutation(): InspectionSnapshotFence.Mutation? = if (reconciliationScope.get()) {
+        snapshotFence.beginReconciliationMutation()
+    } else {
+        snapshotFence.beginOrdinaryMutation()
+    }
+
+    private fun completeOrdinaryMutation(
+        mutation: InspectionSnapshotFence.Mutation,
+        committedAndValidated: Boolean,
+    ): Boolean = if (committedAndValidated && publishCurrentProjection(mutation)) {
+        true
+    } else {
+        snapshotFence.finish(mutation, InspectionSnapshotFence.MutationOutcome.OUTCOME_UNCERTAIN)
+        false
     }
 
     private fun writeMutableRecordColumns(
@@ -731,6 +797,68 @@ class RecoveryStore(
         4 -> RecoveryStorePort.TombstoneReason.EXPIRED
         5 -> RecoveryStorePort.TombstoneReason.PRUNED_UNUSED
         else -> throw IllegalArgumentException("Unknown tombstone reason: $value")
+    }
+
+    /** Build the full derived projection only from the authoritative DB writer path. */
+    private fun publishCurrentProjection(mutation: InspectionSnapshotFence.Mutation): Boolean = try {
+        // A complete close/reopen precedes every derived publication so the
+        // snapshot is built only from a durable authoritative read-back.
+        helper.close()
+        val db = helper.readableDatabase
+        val records = ArrayList<RecoveryInspectionSnapshot.Record>()
+        db.query(
+            RecoveryDbSchema.TABLE_RECOVERY_POINTS,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "point_id ASC",
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val encoded = cursorToEncoded(cursor)
+                records += RecoveryInspectionSnapshot.Record(
+                    pointId = encoded.pointId,
+                    lifecycle = encoded.lifecycle,
+                    createdAtMs = encoded.createdAtMs,
+                    updatedAtMs = encoded.updatedAtMs,
+                    checksumValid = validateRecord(encoded),
+                    formatVersion = encoded.formatVersion,
+                )
+            }
+        }
+        val tombstones = ArrayList<RecoveryInspectionSnapshot.Tombstone>()
+        db.query(
+            RecoveryDbSchema.TABLE_RECOVERY_TOMBSTONES,
+            arrayOf("point_id", "reason", "expires_at_ms"),
+            null,
+            null,
+            null,
+            null,
+            "point_id ASC",
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                tombstones += RecoveryInspectionSnapshot.Tombstone(
+                    pointId = RecoveryPointId(cursor.getString(0)),
+                    reason = tombstoneReasonFromCanonicalInt(cursor.getInt(1)),
+                    expiresAtMs = cursor.getLong(2),
+                )
+            }
+        }
+        val snapshot = RecoveryInspectionSnapshot(
+            generation = mutation.candidateGeneration,
+            records = records,
+            tombstones = tombstones,
+        )
+        if (snapshotPublisher.publish(snapshot) && snapshotFence.markValid(mutation, snapshot.generation)) {
+            true
+        } else {
+            snapshotFence.finish(mutation, InspectionSnapshotFence.MutationOutcome.OUTCOME_UNCERTAIN)
+            false
+        }
+    } catch (_: RuntimeException) {
+        snapshotFence.finish(mutation, InspectionSnapshotFence.MutationOutcome.OUTCOME_UNCERTAIN)
+        false
     }
 
     private fun android.database.Cursor.getBlobOrNull(column: String): ByteArray? {

@@ -24,12 +24,15 @@ class RestartReconciler(
         data class Resolved(
             val publicResults: List<ReconciliationPublicResult>,
         ) : ReconciliationSummary
+        data object Incompatible : ReconciliationSummary
         data object Failed : ReconciliationSummary
 
         fun hasUnresolvedFailures(): Boolean = when (this) {
             Failed -> true
 
-            Clean -> false
+            Clean,
+            Incompatible,
+            -> false
 
             is Resolved -> publicResults.any { result ->
                 when (result) {
@@ -49,6 +52,15 @@ class RestartReconciler(
     }
 
     fun reconcileAll(): ReconciliationSummary {
+        when (store.availability()) {
+            RecoveryStorePort.StoreAvailability.INCOMPATIBLE_VERSION -> {
+                store.rebuildInspectionSnapshotForReconciliation()
+                return ReconciliationSummary.Incompatible
+            }
+
+            RecoveryStorePort.StoreAvailability.READ_FAILED -> return ReconciliationSummary.Failed
+            RecoveryStorePort.StoreAvailability.READY -> Unit
+        }
         val surfaced = buildList {
             store.listNonFinalRecords().forEach { record ->
                 faults.restartBoundary(FaultInjector.RestartPhase.BEFORE_RECONCILE)
@@ -67,6 +79,9 @@ class RestartReconciler(
             }
         }
         if (store.runRetention(System.currentTimeMillis()) != RecoveryStorePort.RetentionOutcome.Applied) {
+            return ReconciliationSummary.Failed
+        }
+        if (!store.rebuildInspectionSnapshotForReconciliation()) {
             return ReconciliationSummary.Failed
         }
         return if (surfaced.isEmpty()) ReconciliationSummary.Clean else ReconciliationSummary.Resolved(surfaced)

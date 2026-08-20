@@ -18,7 +18,7 @@ class RecoveryProtocol(
     private val clock: Clock,
     private val operationIds: OperationIdSource,
     private val faults: FaultInjector,
-    private val mutex: RunMutex,
+    private val mutex: RunMutexPort,
 ) {
     fun recover(request: RecoveryRequest): RecoveryResult {
         val runId = operationIds.newRunId()
@@ -61,13 +61,11 @@ class RecoveryProtocol(
     }
 
     private fun tombstoneResult(pointId: app.lawnchair.organizer.application.public.RecoveryPointId): RecoveryResult {
-        val tombstone = when (val read = store.readTombstoneForInspection(pointId)) {
-            is RecoveryStorePort.InspectionRead.Value ->
-                read.value
-                    ?: return RecoveryResult.NotRestorable(pointId, RecoveryRejection.MISSING)
-
-            RecoveryStorePort.InspectionRead.Unavailable -> return recoveryStoreFailure(pointId)
-        }
+        val tombstone = try {
+            store.readTombstone(pointId)
+        } catch (_: RuntimeException) {
+            return recoveryStoreFailure(pointId)
+        } ?: return RecoveryResult.NotRestorable(pointId, RecoveryRejection.MISSING)
         if (tombstone.expiresAtMs <= clock.nowMillis()) {
             return RecoveryResult.NotRestorable(pointId, RecoveryRejection.MISSING)
         }

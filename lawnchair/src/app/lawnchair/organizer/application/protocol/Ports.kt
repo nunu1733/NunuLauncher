@@ -148,18 +148,14 @@ interface RecoveryStorePort {
     fun readTombstone(pointId: RecoveryPointId): Tombstone?
 
     /**
-     * Read one persisted recovery record without opening a new recovery DB,
-     * invoking SQLiteOpenHelper, retention cleanup, transaction writes, or
-     * lifecycle mutation. Used only by preview inspection.
+     * Read one snapshot projection without opening SQLite, invoking
+     * SQLiteOpenHelper/version probing, retention cleanup, transaction writes,
+     * or lifecycle mutation. Used only by recovery preview inspection.
      */
-    fun readRecordForInspection(pointId: RecoveryPointId): InspectionRead<StoredRecord>
+    fun readInspectionProjection(pointId: RecoveryPointId): InspectionProjectionRead
 
-    /**
-     * Read one tombstone without opening a new recovery DB, retention cleanup,
-     * transaction writes, or lifecycle mutation. Used by preview and recovery
-     * preflight.
-     */
-    fun readTombstoneForInspection(pointId: RecoveryPointId): InspectionRead<Tombstone>
+    /** Startup-only authoritative rehydration of the derived inspection snapshot. */
+    fun rebuildInspectionSnapshotForReconciliation(): Boolean
 
     fun checkpoint(payload: CheckpointPayload): CheckpointResult
 
@@ -192,10 +188,31 @@ interface RecoveryStorePort {
 
     enum class StoreAvailability { READY, INCOMPATIBLE_VERSION, READ_FAILED }
 
-    /** Closed outcome of a no-create inspection read. */
-    sealed interface InspectionRead<out T> {
-        data class Value<T>(val value: T?) : InspectionRead<T>
-        data object Unavailable : InspectionRead<Nothing>
+    /** Closed result of the SQLite-free inspection snapshot seam. */
+    sealed interface InspectionProjectionRead {
+        data class Value(val projection: InspectionProjection) : InspectionProjectionRead
+        data object Unavailable : InspectionProjectionRead
+        data object Incompatible : InspectionProjectionRead
+    }
+
+    /** Minimal derived metadata needed by #84 classification; no payload data. */
+    sealed interface InspectionProjection {
+        data class Record(
+            val pointId: RecoveryPointId,
+            val lifecycle: LifecycleState,
+            val createdAtMs: Long,
+            val updatedAtMs: Long,
+            val checksumValid: Boolean,
+            val formatVersion: Int,
+        ) : InspectionProjection
+
+        data class Tombstone(
+            val pointId: RecoveryPointId,
+            val reason: TombstoneReason,
+            val expiresAtMs: Long,
+        ) : InspectionProjection
+
+        data object Missing : InspectionProjection
     }
 
     enum class TombstoneReason {
@@ -258,6 +275,11 @@ interface RecoveryStorePort {
         val checksumValid: Boolean
         val formatVersion: Int
     }
+}
+
+/** Internal reconciliation-only seam; ordinary protocols never receive this port. */
+internal interface RecoveryStoreReconciliationPort {
+    fun <T> withReconciliationScope(block: () -> T): T
 }
 
 /** Internal port: clock for retention and timestamps. */
@@ -358,18 +380,23 @@ interface FaultInjector {
  *
  * Issue #14 Stage B step 4 (A0).
  */
-class RunMutex {
+interface RunMutexPort {
+    fun tryAcquire(runId: RunId): Boolean
+    fun release(runId: RunId)
+}
+
+class RunMutex : RunMutexPort {
     private var holder: RunId? = null
 
     @Synchronized
-    fun tryAcquire(runId: RunId): Boolean {
+    override fun tryAcquire(runId: RunId): Boolean {
         if (holder != null) return false
         holder = runId
         return true
     }
 
     @Synchronized
-    fun release(runId: RunId) {
+    override fun release(runId: RunId) {
         if (holder == runId) holder = null
     }
 

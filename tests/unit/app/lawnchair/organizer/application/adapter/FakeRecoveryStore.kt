@@ -5,6 +5,7 @@ import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.lifecycle.LifecycleTransitions
 import app.lawnchair.organizer.application.lifecycle.RetentionPolicy
 import app.lawnchair.organizer.application.protocol.RecoveryStorePort
+import app.lawnchair.organizer.application.protocol.RecoveryStoreReconciliationPort
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.planning.RevisionId
@@ -19,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class FakeRecoveryStore(
     private val clock: () -> Long = { System.currentTimeMillis() },
-) : RecoveryStorePort {
+) : RecoveryStorePort, RecoveryStoreReconciliationPort {
 
     private val records: ConcurrentHashMap<String, MutableRecord> = ConcurrentHashMap()
     private val tombstones: ConcurrentHashMap<String, RecoveryStorePort.Tombstone> = ConcurrentHashMap()
@@ -36,9 +37,7 @@ class FakeRecoveryStore(
     var retentionOutcome: RecoveryStorePort.RetentionOutcome = RecoveryStorePort.RetentionOutcome.Applied
     var maintenanceTombstoneReads: Int = 0
         private set
-    var inspectionRecordReads: Int = 0
-        private set
-    var inspectionTombstoneReads: Int = 0
+    var inspectionProjectionReads: Int = 0
         private set
     var inspectionReadFails: Boolean = false
     var markRestoringCalls: Int = 0
@@ -57,27 +56,49 @@ class FakeRecoveryStore(
         return tombstones[pointId.value]
     }
 
-    override fun readRecordForInspection(
+    var snapshotRebuildSucceeds: Boolean = true
+
+    override fun readInspectionProjection(
         pointId: RecoveryPointId,
-    ): RecoveryStorePort.InspectionRead<RecoveryStorePort.StoredRecord> {
-        inspectionRecordReads += 1
-        return if (inspectionReadFails) {
-            RecoveryStorePort.InspectionRead.Unavailable
-        } else {
-            RecoveryStorePort.InspectionRead.Value(records[pointId.value]?.asStored())
+    ): RecoveryStorePort.InspectionProjectionRead {
+        inspectionProjectionReads += 1
+        when (storeAvailability) {
+            RecoveryStorePort.StoreAvailability.INCOMPATIBLE_VERSION ->
+                return RecoveryStorePort.InspectionProjectionRead.Incompatible
+
+            RecoveryStorePort.StoreAvailability.READ_FAILED ->
+                return RecoveryStorePort.InspectionProjectionRead.Unavailable
+
+            RecoveryStorePort.StoreAvailability.READY -> Unit
         }
+        if (inspectionReadFails) return RecoveryStorePort.InspectionProjectionRead.Unavailable
+        records[pointId.value]?.let { record ->
+            return RecoveryStorePort.InspectionProjectionRead.Value(
+                RecoveryStorePort.InspectionProjection.Record(
+                    pointId = record.pointId,
+                    lifecycle = record.lifecycle,
+                    createdAtMs = record.createdAtMs,
+                    updatedAtMs = record.updatedAtMs,
+                    checksumValid = record.checksumValid,
+                    formatVersion = record.formatVersion,
+                ),
+            )
+        }
+        tombstones[pointId.value]?.let { tombstone ->
+            return RecoveryStorePort.InspectionProjectionRead.Value(
+                RecoveryStorePort.InspectionProjection.Tombstone(
+                    pointId = tombstone.pointId,
+                    reason = tombstone.reason,
+                    expiresAtMs = tombstone.expiresAtMs,
+                ),
+            )
+        }
+        return RecoveryStorePort.InspectionProjectionRead.Value(RecoveryStorePort.InspectionProjection.Missing)
     }
 
-    override fun readTombstoneForInspection(
-        pointId: RecoveryPointId,
-    ): RecoveryStorePort.InspectionRead<RecoveryStorePort.Tombstone> {
-        inspectionTombstoneReads += 1
-        return if (inspectionReadFails) {
-            RecoveryStorePort.InspectionRead.Unavailable
-        } else {
-            RecoveryStorePort.InspectionRead.Value(tombstones[pointId.value])
-        }
-    }
+    override fun rebuildInspectionSnapshotForReconciliation(): Boolean = snapshotRebuildSucceeds
+
+    override fun <T> withReconciliationScope(block: () -> T): T = block()
 
     override fun checkpoint(payload: RecoveryStorePort.CheckpointPayload): RecoveryStorePort.CheckpointResult {
         checkpointPointIds += payload.pointId
@@ -255,9 +276,9 @@ class FakeRecoveryStore(
         pruneUnusedFails = false
         retentionOutcome = RecoveryStorePort.RetentionOutcome.Applied
         maintenanceTombstoneReads = 0
-        inspectionRecordReads = 0
-        inspectionTombstoneReads = 0
+        inspectionProjectionReads = 0
         inspectionReadFails = false
+        snapshotRebuildSucceeds = true
         markRestoringCalls = 0
         advanceCalls = 0
         pruneUnusedCalls = 0

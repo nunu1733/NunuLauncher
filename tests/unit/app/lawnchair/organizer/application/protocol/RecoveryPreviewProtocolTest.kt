@@ -102,7 +102,7 @@ class RecoveryPreviewProtocolTest {
             RecoveryPreviewResult.NotRestorable(pointId, RecoveryPreviewRejection.MISSING),
             result,
         )
-        assertEquals(1, store.inspectionTombstoneReads)
+        assertEquals(1, store.inspectionProjectionReads)
         assertEquals(0, store.maintenanceTombstoneReads)
         assertEquals(0, writer.capturedSnapshots)
         assertNoInspectionMutation()
@@ -177,7 +177,7 @@ class RecoveryPreviewProtocolTest {
 
     @Test
     fun readFailureReturnsUnavailableWithoutStoreOrWriterMutation() {
-        store.storeAvailability = RecoveryStorePort.StoreAvailability.READ_FAILED
+        store.inspectionReadFails = true
 
         val result = protocol.inspect(pointId)
 
@@ -185,7 +185,7 @@ class RecoveryPreviewProtocolTest {
             RecoveryPreviewResult.Unavailable(pointId, RecoveryPreviewUnavailable.RECOVERY_STORE_UNAVAILABLE),
             result,
         )
-        assertEquals(0, store.inspectionTombstoneReads)
+        assertEquals(1, store.inspectionProjectionReads)
         assertEquals(0, writer.capturedSnapshots)
         assertNoInspectionMutation()
     }
@@ -200,8 +200,7 @@ class RecoveryPreviewProtocolTest {
             RecoveryPreviewResult.Unavailable(pointId, RecoveryPreviewUnavailable.RECOVERY_STORE_UNAVAILABLE),
             result,
         )
-        assertEquals(1, store.inspectionRecordReads)
-        assertEquals(0, store.inspectionTombstoneReads)
+        assertEquals(1, store.inspectionProjectionReads)
         assertEquals(0, writer.capturedSnapshots)
         assertNoInspectionMutation()
     }
@@ -227,8 +226,7 @@ class RecoveryPreviewProtocolTest {
 
         assertEquals(RecoveryPreviewResult.Concurrent, result)
         assertEquals(0, writer.capturedSnapshots)
-        assertEquals(0, store.inspectionRecordReads)
-        assertEquals(0, store.inspectionTombstoneReads)
+        assertEquals(0, store.inspectionProjectionReads)
         assertNoInspectionMutation()
     }
 
