@@ -2,7 +2,7 @@
 
 > Issue: #84
 > Spec: [spec.md](./spec.md)
-> Status: accepted — Stage A accepted on 2026-08-19. The storage dependency is satisfied by implemented #89 / PR #90; Stage B must consume that merged seam and remain within this plan and its stop conditions.
+> Status: implemented — Stage A was accepted on 2026-08-19. Stage B consumed the merged #89 / PR #90 storage seam and was merged through #84 / PR #92 on 2026-08-20. The final CI and independent high-risk audit evidence are recorded below.
 
 ## Current evidence
 
@@ -125,8 +125,8 @@ A high-risk implementation PR must carry the `risk: layout-data` label. Before m
 
 ## Documentation updates
 
-- [ ] Mark `specs/84-recovery-preview-seam/spec.md` and `plan.md` as `accepted` only after the requested Stage A review accepts both.
-- [ ] Link the accepted spec/plan and exact handoff in Issue #84; remove `status: needs-spec` only through the repository’s normal issue workflow.
+- [x] Mark `specs/84-recovery-preview-seam/spec.md` and `plan.md` as `accepted` only after the requested Stage A review accepts both.
+- [x] Link the accepted spec/plan and exact handoff in Issue #84; remove `status: needs-spec` only through the repository’s normal issue workflow.
 - [ ] Do **not** change `CONTEXT.md`: no domain-language meaning changes.
 - [ ] Do **not** change `DESIGN.md`: #84 remains inside the existing Layout Application boundary.
 - [ ] Do **not** create/update an ADR unless implementation hits a decision that meets the ADR threshold.
@@ -137,12 +137,16 @@ A high-risk implementation PR must carry the `risk: layout-data` label. Before m
 
 - [x] Stage A review accepted `spec.md` and `plan.md` on 2026-08-19; Stage B may now begin within the accepted scope.
 - [x] Refresh `main`, Issue #52 working spec, Spec 13, ADR-0003, and diagnostics contract against the merged #89 documentation/implementation baseline before #84 production work resumes.
-- [ ] Add failing public-shape and protocol no-write/retention tests before production code.
-- [ ] Add preview values, self-capturing protocol, shared application-boundary confirmation handling, read-only tombstone adapter, and recovery retention preflight using the defined boundaries.
-- [ ] Prove full result/no-side-effect/retention/TOCTOU matrix through existing fake ports and focused production adapter evidence.
-- [ ] Run relevant unit, formatting, repository-contract, and debug-build checks; record exact versions/results in the PR.
-- [ ] Have an independent session repeat prescribed evidence on the PR head and write the required high-risk audit record.
-- [ ] Record accepted result types, confirmation capability lifecycle, expiry/stale TOCTOU evidence, no-write evidence, and #52 resumption condition in the Issue/PR handoff.
+- [x] Add failing public-shape and protocol no-write/retention tests before production code.
+- [x] Add preview values, self-capturing protocol, shared application-boundary confirmation handling, read-only tombstone adapter, and recovery retention preflight using the defined boundaries.
+- [x] Prove full result/no-side-effect/retention/TOCTOU matrix through existing fake ports and focused production adapter evidence.
+- [x] Run relevant unit, formatting, repository-contract, and debug-build checks; record exact versions/results in the PR.
+- [x] Have an independent session repeat prescribed evidence on the PR head and write the required high-risk audit record.
+- [x] Record accepted result types, confirmation capability lifecycle, expiry/stale TOCTOU evidence, no-write evidence, and #52 resumption condition in the Issue/PR handoff.
+
+## Completion evidence
+
+Issue #84 implementation merged through [PR #92](https://github.com/nunu1733/NunuLauncher/pull/92) at `a6bf5024e88f7659a48009ed83725fdf0baacb4c`; `CI / final-status` and `high-risk-evidence` both succeeded. The independent audit is [`docs/assessment/pr-92-recovery-preview-seam.md`](../../docs/assessment/pr-92-recovery-preview-seam.md). The remaining dependent work is Issue #52: before its production implementation resumes, update its working spec/plan to consume the implemented `RecoveryPreviewResult`, `RecoveryPreviewConfirmation`, `inspectRecovery(pointId)`, and `confirmRecoveryPreview(pointId, confirmation)` application handoff.
 
 ## Stop conditions
 

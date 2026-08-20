@@ -1,6 +1,6 @@
 ---
 issue: "#84"
-status: accepted
+status: implemented
 requirements:
   - FR-004
   - FR-005
@@ -11,7 +11,7 @@ requirements:
   - NFR-011
 risk:
   - layout-data
-updated: 2026-08-19
+updated: 2026-08-20
 ---
 
 # Read-only revision-bound recovery preview
@@ -235,6 +235,7 @@ None. Stage A decides that inspection self-captures current context under non-bl
 - 2026-08-19: P0 revision: requires confirmation to share the existing application-level recovery behavior, including readiness/reconciliation and requested/terminal diagnostics; direct `RecoveryProtocol` invocation is prohibited.
 - 2026-08-20: The #89 inspection-safe storage strategy was implemented and merged through [PR #90](https://github.com/nunu1733/NunuLauncher/pull/90), with required CI, API 26/API 35 physical evidence, and independent audit. I2 now consumes that SQLite-free fenced projection seam; confirmation remains an authoritative recovery operation and is unchanged.
 - 2026-08-19: Stage A accepted by the Issue #84 owner; Stage B may begin only within this specification and plan.
+- 2026-08-20: Stage B completed and merged through [PR #92](https://github.com/nunu1733/NunuLauncher/pull/92) at merge commit `a6bf5024e88f7659a48009ed83725fdf0baacb4c`. The PR-associated `CI / final-status` and `high-risk-evidence` gates succeeded, and the required independent audit is recorded in [`docs/assessment/pr-92-recovery-preview-seam.md`](../../docs/assessment/pr-92-recovery-preview-seam.md). Issue #84 is closed.
 
 ## References
 
