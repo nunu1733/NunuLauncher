@@ -4,7 +4,7 @@
 >
 > Stage A status: **Accepted**
 >
-> Initial implementation head: [`09d0f290fd`](https://github.com/nunu1733/NunuLauncher/commit/09d0f290fd). The post-test review remediation head is recorded in Issue #89 after commit and push.
+> Initial implementation head: [`09d0f290fd`](https://github.com/nunu1733/NunuLauncher/commit/09d0f290fd). Post-test review remediation head: [`084d97ef5f`](https://github.com/nunu1733/NunuLauncher/commit/084d97ef5f).
 >
 > Baseline: [`9733d59450`](https://github.com/nunu1733/NunuLauncher/commit/9733d59450) — #89 stacked on the accepted #84 preview seam
 >
