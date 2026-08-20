@@ -3,6 +3,7 @@ package app.lawnchair.organizer.ui
 import android.content.Context
 import android.content.ContentValues
 import android.graphics.Bitmap
+import android.view.KeyEvent
 import android.provider.MediaStore
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
@@ -196,6 +197,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_moved_single_placement, 1),
         ).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).assertIsDisplayed()
     }
 
     @Test
@@ -231,6 +234,56 @@ class ManualOrganizationPreferencesInstrumentationTest {
             checkNotNull(dispatcher).onBackPressed()
         }
         composeRule.waitUntil(5_000) { runner.state == ManualOrganizationRun.State.Cancelled }
+    }
+
+    @Test
+    fun keyboardAndSwitchStyleTraversalReachesReviewActions() {
+        val application = FakeApplication()
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { planningResult() },
+        )
+        runner.start()
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        composeRule.waitUntil(5_000) {
+            try {
+                composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsFocused()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+        }
+
+        fun sendKey(keyCode: Int) {
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            automation.executeShellCommand("input keyevent $keyCode").close()
+        }
+
+        sendKey(KeyEvent.KEYCODE_DPAD_DOWN)
+        composeRule.waitUntil(5_000) {
+            try {
+                composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm)).assertIsFocused()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+        }
+
+        sendKey(KeyEvent.KEYCODE_TAB)
+        composeRule.waitUntil(5_000) {
+            try {
+                composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).assertIsFocused()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+        }
     }
 
     @Test
