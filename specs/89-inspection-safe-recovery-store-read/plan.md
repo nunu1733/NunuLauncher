@@ -2,7 +2,7 @@
 
 > Issue: #89
 > Spec: [spec.md](./spec.md)
-> Status: Stage A **accepted**. Stage B implementation is at `09d0f290fd`; test execution and test-driven remediation are delegated to a separate environment. See [stage-b-handoff.md](./stage-b-handoff.md).
+> Status: **implemented**. Stage B merged through [PR #90](https://github.com/nunu1733/NunuLauncher/pull/90) after CI `final-status`, the required API 26/API 35 physical-oracle evidence, and an independent high-risk audit. See [stage-b-handoff.md](./stage-b-handoff.md) and [`docs/assessment/pr-90-inspection-safe-recovery-store-read.md`](../../docs/assessment/pr-90-inspection-safe-recovery-store-read.md).
 
 ## Purpose and handoff
 
@@ -239,6 +239,7 @@ Stop and return to the owning contract if any of the following occurs:
 
 ## Change history
 
+- 2026-08-20: Implemented and merged through [PR #90](https://github.com/nunu1733/NunuLauncher/pull/90) at `4adb0411d8ee193836702cb90e0f49d0157d5185`. The final implementation passed `CI / final-status`, API 26/API 35 physical-oracle instrumentation, and the independent audit at [`docs/assessment/pr-90-inspection-safe-recovery-store-read.md`](../../docs/assessment/pr-90-inspection-safe-recovery-store-read.md). #84 may now replace its obsolete live-`OPEN_READONLY` I2 contract with this merged seam.
 - 2026-08-20: Stage A accepted. Stacked accepted #84 preview seam and implemented the initial Stage B snapshot/fence/direct-reader/reconciliation integration at `09d0f290fd`. Added [Stage B handoff](./stage-b-handoff.md); Gradle test execution is delegated because this sandbox could not retrieve `develocity-gradle-plugin:4.3.1`.
 - 2026-08-20: Revised after final Stage A re-review. Added pristine fresh-install initialization vs suspicious absence, replaced the cross-file private-constructor assumption with active exact-`RunMutex` lease identity enforcement, and narrowed proven-no-commit to committed logical-state change.
 - 2026-08-20: Revised after additional review. Added collision rollback/retry, direct-final reader, companion fail-closed handling, and `RunMutexPort` boundary.
