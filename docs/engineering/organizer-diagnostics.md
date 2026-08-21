@@ -478,7 +478,7 @@ non-containment を検証する。
 | 変更 | 内容 | 実装先 |
 |---|---|---|
 | diagnostics module 新設 | `RunEvent` 型群、journal store（retention §8）、logger port、export writer、§13 fixture test | 新規Feature Issue（本Issueのmerge後に起票する） |
-| run flow への組込み | 各phase 遷移でのevent 発行。§4 のphase とUX state machine の対応 | [#52](https://github.com/nunu1733/NunuLauncher/issues/52)（manual full）、[#53](https://github.com/nunu1733/NunuLauncher/issues/53)（onboarding）、[#55](https://github.com/nunu1733/NunuLauncher/issues/55)（incremental） |
+| run flow への組込み | 各phase 遷移でのevent 発行。§4 のphase とUX state machine の対応 | [#52](https://github.com/nunu1733/NunuLauncher/issues/52)（manual full）、[#53](https://github.com/nunu1733/NunuLauncher/issues/53)（onboarding）。package-event incrementalは[Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85)によりMVP外であり、Later capabilityを再開する新しいfeature Issueが必要である。 |
 | applyStage の記録 | A0–A8 の各段階でstage を付けたevent | [#60](https://github.com/nunu1733/NunuLauncher/issues/60)（executor audit follow-up） |
 | restart reconciliation event | `RESTART_RECONCILED` の発行 | #60 およびdiagnostics 実装Issue |
 | export UI | 「診断データを書き出す」操作とSAF 出力 | diagnostics 実装Issue |
