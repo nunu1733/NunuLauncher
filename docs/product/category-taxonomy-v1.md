@@ -172,6 +172,8 @@ No other authoring, persistence, diagnostic, retention, backup, or restore behav
 
 ## 7. Explainability
 
+> **Normative-status note:** The item-level diagnostic fields and raw examples in this research section are superseded for Organizer v1 by [Organizer Diagnostics and Observability Contract](../engineering/organizer-diagnostics.md). Default journal, logcat, and export diagnostics must not contain raw `CategoryId`, package, profile, signal detail, or user-override state. This section remains only a research explanation of classification concepts; user-facing typed reasons and privacy-safe aggregate diagnostics follow their accepted owners.
+
 ### 7.1 分類理由の記録
 
 各 item の category 割当に対して、次の情報を diagnostic として記録する。
