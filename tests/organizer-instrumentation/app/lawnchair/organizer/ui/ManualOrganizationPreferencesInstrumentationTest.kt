@@ -293,8 +293,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
 
         fun sendKey(keyCode: Int) {
-            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
-            automation.executeShellCommand("input keyevent $keyCode").close()
+            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(keyCode)
         }
 
         sendKey(KeyEvent.KEYCODE_DPAD_DOWN)

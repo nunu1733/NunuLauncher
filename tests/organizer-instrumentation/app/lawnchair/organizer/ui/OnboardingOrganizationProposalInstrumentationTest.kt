@@ -51,7 +51,9 @@ class OnboardingOrganizationProposalInstrumentationTest {
             val launcher = awaitResumedLauncher()
             lateinit var proposal: OrganizationOnboardingProposal.OrganizationOnboardingProposalView
             lateinit var content: OrganizationOnboardingProposalContent
+            lateinit var focusBeforeOpen: View
             instrumentation.runOnMainSync {
+                focusBeforeOpen = launcher.currentFocus ?: launcher.workspace
                 proposal = OrganizationOnboardingProposal.OrganizationOnboardingProposalView(
                     launcher,
                     OrganizationOnboardingProposalController(store),
@@ -60,6 +62,9 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 content = proposal.getChildAt(0) as OrganizationOnboardingProposalContent
             }
             awaitVisibleProposalActions(launcher, content)
+            awaitInputFocus({ content.title }, "proposal title")
+            dispatchLauncherKey(launcher, KeyEvent.KEYCODE_DPAD_DOWN)
+            awaitAnyInputFocus(content.laterButton, content.skipButton, content.reviewButton)
             instrumentation.runOnMainSync {
                 val viewport = Rect()
                 assertTrue(launcher.dragLayer.getGlobalVisibleRect(viewport))
@@ -81,6 +86,7 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 assertFalse(proposal.isOpen)
                 assertEquals(OrganizationOnboardingProposalOutcome.DEFERRED, store.value)
             }
+            awaitInputFocus({ focusBeforeOpen }, "pre-proposal focus target")
         } finally {
             runShellCommand("settings put system font_scale $originalFontScale")
             proposalPrefs.put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, originalProposalOutcome)
@@ -359,6 +365,32 @@ class OnboardingOrganizationProposalInstrumentationTest {
         }
     }
 
+    private fun awaitInputFocus(viewProvider: () -> View, description: String) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        repeat(50) {
+            var focused = false
+            instrumentation.runOnMainSync {
+                focused = viewProvider().hasFocus()
+            }
+            if (focused) return
+            SystemClock.sleep(100)
+        }
+        error("$description did not receive input focus")
+    }
+
+    private fun awaitAnyInputFocus(vararg views: View) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        repeat(50) {
+            var focused = false
+            instrumentation.runOnMainSync {
+                focused = views.any(View::hasFocus)
+            }
+            if (focused) return
+            SystemClock.sleep(100)
+        }
+        error("No proposal action received input focus after DPAD traversal")
+    }
+
     private fun awaitWindowFocus(viewProvider: () -> View) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         repeat(50) {
@@ -474,6 +506,13 @@ class OnboardingOrganizationProposalInstrumentationTest {
 
     private fun runShellCommand(command: String) {
         InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command).close()
+    }
+
+    private fun dispatchLauncherKey(launcher: LawnchairLauncher, keyCode: Int) {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            launcher.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+            launcher.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+        }
     }
 
     private fun sendKey(keyCode: Int) {

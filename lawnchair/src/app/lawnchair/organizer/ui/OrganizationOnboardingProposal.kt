@@ -159,6 +159,26 @@ internal class OrganizationOnboardingProposalContent(
         addView(laterButton)
         addView(skipButton)
         addView(reviewButton)
+        configureKeyboardTraversal()
+    }
+
+    private fun configureKeyboardTraversal() {
+        title.id = View.generateViewId()
+        laterButton.id = View.generateViewId()
+        skipButton.id = View.generateViewId()
+        reviewButton.id = View.generateViewId()
+
+        title.nextFocusDownId = laterButton.id
+        title.nextFocusForwardId = laterButton.id
+        laterButton.nextFocusUpId = title.id
+        laterButton.nextFocusDownId = skipButton.id
+        laterButton.nextFocusForwardId = skipButton.id
+        skipButton.nextFocusUpId = laterButton.id
+        skipButton.nextFocusDownId = reviewButton.id
+        skipButton.nextFocusForwardId = reviewButton.id
+        reviewButton.nextFocusUpId = skipButton.id
+        reviewButton.nextFocusDownId = laterButton.id
+        reviewButton.nextFocusForwardId = laterButton.id
     }
 
     private fun actionButton(
@@ -290,6 +310,12 @@ internal class OrganizationOnboardingProposal(
                     marginEnd = dp(16)
                 },
             )
+            // Accessibility announcement alone does not assign ordinary keyboard focus. Request the
+            // proposal's declared initial target after attachment so DPAD and switch users enter
+            // the popup deterministically; handleClose restores the pre-open target.
+            launcher.dragLayer.post {
+                if (isAttachedToWindow) getAccessibilityInitialFocusView().requestFocus()
+            }
             announceAccessibilityChanges()
         }
 
@@ -305,6 +331,38 @@ internal class OrganizationOnboardingProposal(
 
         /** Back-handler selection must not dismiss the proposal before Back is committed. */
         override fun canHandleBack(): Boolean = true
+
+        override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+            if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                val content = getChildAt(0) as OrganizationOnboardingProposalContent
+                val focused = findFocus()
+                val next = when (event.keyCode) {
+                    android.view.KeyEvent.KEYCODE_DPAD_DOWN,
+                    android.view.KeyEvent.KEYCODE_TAB,
+                    -> when (focused) {
+                        content.title -> content.laterButton
+                        content.laterButton -> content.skipButton
+                        content.skipButton -> content.reviewButton
+                        content.reviewButton -> content.laterButton
+                        else -> null
+                    }
+
+                    android.view.KeyEvent.KEYCODE_DPAD_UP -> when (focused) {
+                        content.laterButton -> content.title
+                        content.skipButton -> content.laterButton
+                        content.reviewButton -> content.skipButton
+                        else -> null
+                    }
+
+                    else -> null
+                }
+                if (next != null) {
+                    next.requestFocus()
+                    return true
+                }
+            }
+            return super.dispatchKeyEvent(event)
+        }
 
         override fun onControllerInterceptTouchEvent(ev: MotionEvent): Boolean = false
 
