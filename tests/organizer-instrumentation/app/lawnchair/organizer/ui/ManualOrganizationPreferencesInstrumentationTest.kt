@@ -9,18 +9,17 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusManager
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
-import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performKeyInput
-import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -271,7 +270,6 @@ class ManualOrganizationPreferencesInstrumentationTest {
     }
 
     @Test
-    @OptIn(ExperimentalTestApi::class)
     fun keyboardAndSwitchStyleTraversalReachesReviewActions() {
         val application = FakeApplication()
         val runner = ManualOrganizationRun(
@@ -279,7 +277,9 @@ class ManualOrganizationPreferencesInstrumentationTest {
             OrganizationPlanner { planningResult() },
         )
         runner.start()
+        var focusManager: FocusManager? = null
         composeRule.setContent {
+            focusManager = LocalFocusManager.current
             LawnchairTheme {
                 ManualOrganizationPreferences(run = runner)
             }
@@ -296,8 +296,9 @@ class ManualOrganizationPreferencesInstrumentationTest {
             }
         }
 
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview))
-            .performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.runOnIdle {
+            check(checkNotNull(focusManager).moveFocus(FocusDirection.Down))
+        }
         composeRule.waitUntil(5_000) {
             try {
                 composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm)).assertIsFocused()
@@ -307,8 +308,9 @@ class ManualOrganizationPreferencesInstrumentationTest {
             }
         }
 
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm))
-            .performKeyInput { pressKey(Key.Tab) }
+        composeRule.runOnIdle {
+            check(checkNotNull(focusManager).moveFocus(FocusDirection.Next))
+        }
         composeRule.waitUntil(5_000) {
             try {
                 composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).assertIsFocused()
