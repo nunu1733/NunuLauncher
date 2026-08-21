@@ -388,6 +388,8 @@ internal class OrganizationOnboardingProposal(
         private fun beginReview() {
             if (reviewInFlight) return
             reviewInFlight = true
+            val reviewButton = (getChildAt(0) as OrganizationOnboardingProposalContent).reviewButton
+            reviewButton.isEnabled = false
             launcher.lifecycleScope.launch {
                 val outcome = withContext(Dispatchers.IO) {
                     controller.review(admitReview)
@@ -403,6 +405,7 @@ internal class OrganizationOnboardingProposal(
                     )
                 } else {
                     reviewInFlight = false
+                    reviewButton.isEnabled = true
                 }
             }
         }

@@ -177,6 +177,7 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 content.reviewButton.performClick()
             }
             awaitAdmissionCount(admissionCount, 1)
+            awaitReviewActionEnabled(content)
             instrumentation.runOnMainSync {
                 assertTrue(proposal.isOpen)
             }
@@ -405,6 +406,19 @@ class OnboardingOrganizationProposalInstrumentationTest {
             SystemClock.sleep(100)
         }
         error("Expected $expected onboarding review admissions, got ${admissionCount.get()}")
+    }
+
+    private fun awaitReviewActionEnabled(content: OrganizationOnboardingProposalContent) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        repeat(50) {
+            var enabled = false
+            instrumentation.runOnMainSync {
+                enabled = content.reviewButton.isEnabled
+            }
+            if (enabled) return
+            SystemClock.sleep(100)
+        }
+        error("Onboarding review action did not become enabled after admission completed")
     }
 
     private fun awaitProductionProposal(
