@@ -45,6 +45,7 @@ jobs:
       pull-requests: read
     outputs:
       source: ${{ steps.filter.outputs.source }}
+      ci: ${{ steps.filter.outputs.ci }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v4.0.3
@@ -67,6 +68,11 @@ jobs:
               - '!tools/repo-contract/**'
               - '!LICENSE*'
               - '!NOTICE*'
+            ci:
+              # CI configuration must exercise the same source jobs it changes;
+              # otherwise workflow-only Pull Requests can skip the very gates
+              # whose orchestration and commands they modify.
+              - '.github/workflows/**'
 
   # Always run: the repository contract (internal links, Issue forms, required
   # files) is cheap and must gate every change, including docs-only PRs.
@@ -102,7 +108,7 @@ jobs:
   # a Gradle daemon.
   check-style:
     needs: changes
-    if: ${{ needs.changes.outputs.source == 'true' }}
+    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -122,7 +128,7 @@ jobs:
   # release-evaluation Issue, not to per-PR CI.
   build-debug-apk:
     needs: changes
-    if: ${{ needs.changes.outputs.source == 'true' }}
+    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -151,7 +157,7 @@ jobs:
   # independently below on an emulator.
   organizer-unit-tests:
     needs: changes
-    if: ${{ needs.changes.outputs.source == 'true' }}
+    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -179,12 +185,12 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-  # Focused Android instrumentation evidence for the production OrganizationInput
-  # seam. This keeps real-adapter capture, profile isolation, availability/lock,
-  # and no-write rejection evidence executable instead of documenting it only.
-  organizer-instrumentation-tests:
+  # Keep each focused suite in an independent emulator job. This preserves the
+  # clean-state evidence required by Issues #52/#53 while removing the former
+  # serial critical path; the jobs start together after the shared changes gate.
+  organizer-instrumentation-api35-tests:
     needs: changes
-    if: ${{ needs.changes.outputs.source == 'true' }}
+    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 50
     permissions:
@@ -215,11 +221,41 @@ jobs:
           script: >-
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
             -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.integration.ProductionOrganizationInputInstrumentationTest
-      # API 36 system images are the emulator counterpart of the repository's
-      # Android SDK Platform 36.1 validation baseline. The Issue #52 tests own
-      # database-heavy fixture state, so run their reused review/E2E coverage in
-      # a clean API 36 emulator rather than sharing an instrumentation process
-      # with the onboarding suite.
+      - name: Upload API 35 instrumentation reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: organizer-instrumentation-api35-reports
+          path: |
+            build/reports/androidTests/connected/**
+            build/outputs/androidTest-results/**
+          retention-days: 7
+          if-no-files-found: warn
+
+  # Issue #52 owns database-heavy fixtures and layout-data evidence. It receives
+  # a dedicated clean API 36 emulator rather than sharing target state or an
+  # instrumentation process with the onboarding suite.
+  organizer-instrumentation-issue52-tests:
+    needs: changes
+    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
       - name: Run Issue 52 manual organization instrumentation (API 36 / Platform 36.1)
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -233,23 +269,11 @@ jobs:
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationProductionE2EInstrumentationTest,app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest
             mkdir -p build/issue52-ui-evidence
             adb pull /sdcard/Pictures/Issue52-ui-evidence build/issue52-ui-evidence
-      - name: Run Issue 53 onboarding proposal instrumentation (API 36 / Platform 36.1)
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 36
-          target: google_apis
-          arch: x86_64
-          profile: pixel_7_pro
-          disable-animations: true
-          emulator-boot-timeout: 900
-          script: >-
-            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
-            -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest
-      - name: Upload instrumentation reports on failure
+      - name: Upload Issue 52 instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: organizer-instrumentation-reports
+          name: organizer-instrumentation-issue52-reports
           path: |
             build/reports/androidTests/connected/**
             build/outputs/androidTest-results/**
@@ -264,6 +288,53 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+  # Issue #53 needs a fresh API 36 Launcher process and persistent state so the
+  # proposal lifecycle, accessibility, recreation, and review-admission tests
+  # remain independent from the database-heavy Issue #52 fixture.
+  organizer-instrumentation-issue53-tests:
+    needs: changes
+    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run Issue 53 onboarding proposal instrumentation (API 36 / Platform 36.1)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: >-
+            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
+            -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest
+      - name: Upload Issue 53 instrumentation reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: organizer-instrumentation-issue53-reports
+          path: |
+            build/reports/androidTests/connected/**
+            build/outputs/androidTest-results/**
+          retention-days: 7
+          if-no-files-found: warn
+
   # Required status check: aggregates the jobs above so branch protection has a
   # single gate. Jobs that were skipped (e.g. style on a docs PR) count as
   # success; only actual failures fail the gate.
@@ -273,7 +344,9 @@ jobs:
       - validate-repo-contract
       - check-style
       - organizer-unit-tests
-      - organizer-instrumentation-tests
+      - organizer-instrumentation-api35-tests
+      - organizer-instrumentation-issue52-tests
+      - organizer-instrumentation-issue53-tests
       - build-debug-apk
     runs-on: ubuntu-latest
     if: always()

@@ -112,6 +112,14 @@ Issue #41 で organizer JVM test gateをCIに追加した。`.github/workflows/c
 - jobは `final-status` 集約に接続されており、test失敗はmergeをblockする。docs/spec-only PRではpath filterによりskipされ、repository contract検証のみ走る。
 - 実行結果の正本はGitHub Actionsの当該run URLとする（PR本文に記録する）。instrumentation test（Issue #14）とemulator実行はこのgateの対象外である。
 
+## Organizer connected-test CI gate
+
+Issue #83、#52、#53 の production/Launcher-host evidence は `.github/workflows/ci.yml` の独立した focused instrumentation job が source-changing PR で実行する。これらは `final-status` の required evidence であり、JVM gate の代替ではない。API 35 の #83 evidence と API 36 の #52/#53 evidence の責務、baseline、状態隔離、変更候補の判断は [ci-test-portfolio.md](./ci-test-portfolio.md) を正本とする。
+
+Issue #52 と #53 は同じ API 36 emulator または target application state を共有しない。独立 job による clean emulator を各 suite に与え、source-changing PR の critical path から直列 emulator provisioning を除く。database-heavy fixture state、class-filtered Gradle invocation、coverage ownership は統合しない。
+
+`.github/workflows/**` を変更する PR は、source-path filter が false でも同じ build、JVM、connected-test jobs を実行する。workflow-only change がその変更対象の gate を skip したまま merge されることを許可しない。
+
 ## High-risk independent-evidence gate
 
 Issue #43 で、`risk: layout-data` / `risk: migration` labelまたは高リスクpath変更を持つPRに対する独立エビデンスgateを追加した。`.github/workflows/high-risk-gate.yml` が `tools/repo-contract/validate_high_risk_evidence.py` を実行し、`docs/assessment/pr-<PR番号>-<slug>.md` のaudit記録（Head SHA、CI run link、spec/ADR criteria）をGitHub APIと照合する。第二のtest seamは作らず、このgateは #41 のCI runの実行結果そのものを証拠として検証する。適用条件、audit形式、運用の正本は [github-workflow.md](../project/github-workflow.md) とする。validatorのself-testは `validate-repo-contract` job内で毎回実行される。
