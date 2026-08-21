@@ -9,6 +9,7 @@ import android.provider.Settings
 import android.view.KeyEvent
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -18,10 +19,14 @@ import app.lawnchair.LawnchairLauncher
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.ui.preferences.PreferenceActivity
 import com.android.launcher3.AbstractFloatingView
+import com.android.launcher3.LauncherPrefs
+import com.android.launcher3.util.OnboardingPrefs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
@@ -31,8 +36,11 @@ class OnboardingOrganizationProposalInstrumentationTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val originalFontScale = Settings.System.getFloat(context.contentResolver, Settings.System.FONT_SCALE, 1f)
+        val proposalPrefs = LauncherPrefs.get(context)
+        val originalProposalOutcome = proposalPrefs.get(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME)
         val store = FakeStore()
         try {
+            proposalPrefs.put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, OrganizationOnboardingProposalOutcome.SKIPPED.name)
             runShellCommand("settings put system font_scale $TWO_HUNDRED_PERCENT_FONT_SCALE")
             runShellCommand(
                 "am start -n ${ComponentName(context, LawnchairLauncher::class.java).flattenToString()} " +
@@ -42,11 +50,6 @@ class OnboardingOrganizationProposalInstrumentationTest {
             lateinit var proposal: OrganizationOnboardingProposal.OrganizationOnboardingProposalView
             lateinit var content: OrganizationOnboardingProposalContent
             instrumentation.runOnMainSync {
-                AbstractFloatingView.closeOpenViews(
-                    launcher,
-                    false,
-                    AbstractFloatingView.TYPE_ON_BOARD_POPUP,
-                )
                 proposal = OrganizationOnboardingProposal.OrganizationOnboardingProposalView(
                     launcher,
                     OrganizationOnboardingProposalController(store),
@@ -58,6 +61,8 @@ class OnboardingOrganizationProposalInstrumentationTest {
             instrumentation.runOnMainSync {
                 val viewport = Rect()
                 assertTrue(launcher.dragLayer.getGlobalVisibleRect(viewport))
+                assertEquals(TWO_HUNDRED_PERCENT_FONT_SCALE, launcher.resources.configuration.fontScale)
+                assertEquals(TWO_HUNDRED_PERCENT_FONT_SCALE, proposal.resources.configuration.fontScale)
                 listOf(content.laterButton, content.skipButton, content.reviewButton).forEach { button ->
                     val bounds = Rect()
                     assertTrue(button.getGlobalVisibleRect(bounds))
@@ -81,6 +86,92 @@ class OnboardingOrganizationProposalInstrumentationTest {
             }
         } finally {
             runShellCommand("settings put system font_scale $originalFontScale")
+            proposalPrefs.put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, originalProposalOutcome)
+        }
+    }
+
+    @Test
+    fun productionOwnerDefersBindWhilePausedThenShowsAndRoutesReviewAfterResume() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val proposalPrefs = LauncherPrefs.get(context)
+        val originalProposalOutcome = proposalPrefs.get(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME)
+        val reviewOutcome = AtomicReference<ManualOrganizationRun.StartOutcome>(ManualOrganizationRun.StartOutcome.Busy)
+        val admissionCount = AtomicInteger()
+        try {
+            // Prevent the launcher-owned singleton owner from claiming the shared process slot.
+            proposalPrefs.put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, OrganizationOnboardingProposalOutcome.SKIPPED.name)
+            startLauncher(context)
+            val launcher = awaitResumedLauncher()
+            lateinit var owner: OrganizationOnboardingProposal
+            instrumentation.runOnMainSync {
+                owner = OrganizationOnboardingProposal(
+                    launcher = launcher,
+                    controller = OrganizationOnboardingProposalController(
+                        OrganizationOnboardingProposal.LauncherProposalStore(
+                            launcher,
+                            OrganizationOnboardingInstallProvenance.FRESH_INSTALL,
+                        ),
+                        OrganizationOnboardingProposalProcessState(),
+                    ),
+                    admitReview = {
+                        admissionCount.incrementAndGet()
+                        reviewOutcome.get()
+                    },
+                    isWorkspaceReady = { true },
+                )
+            }
+
+            startPreferenceActivity(context)
+            awaitResumedPreferenceActivity()
+            instrumentation.runOnMainSync {
+                owner.onLauncherResumed()
+                owner.onInitialWorkspaceBound()
+                assertFalse(
+                    AbstractFloatingView.getTopOpenView(launcher) is
+                        OrganizationOnboardingProposal.OrganizationOnboardingProposalView,
+                )
+            }
+
+            proposalPrefs.put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, "")
+            sendKey(KeyEvent.KEYCODE_BACK)
+            val resumedLauncher = awaitResumedLauncher()
+            assertTrue(launcher === resumedLauncher)
+            lateinit var proposal: OrganizationOnboardingProposal.OrganizationOnboardingProposalView
+            instrumentation.runOnMainSync {
+                assertTrue(launcher.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+                assertFalse(
+                    AbstractFloatingView.getTopOpenView(launcher) is
+                        OrganizationOnboardingProposal.OrganizationOnboardingProposalView,
+                )
+                AbstractFloatingView.closeOpenViews(launcher, false, AbstractFloatingView.TYPE_ALL)
+                assertEquals(null, AbstractFloatingView.getTopOpenView(launcher))
+                owner.onLauncherResumed()
+            }
+            proposal = awaitProductionProposal(launcher)
+            lateinit var content: OrganizationOnboardingProposalContent
+            instrumentation.runOnMainSync {
+                content = proposal.getChildAt(0) as OrganizationOnboardingProposalContent
+                content.reviewButton.performClick()
+            }
+            awaitAdmissionCount(admissionCount, 1)
+            instrumentation.runOnMainSync {
+                assertTrue(proposal.isOpen)
+            }
+            assertEquals("", proposalPrefs.get(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME))
+
+            reviewOutcome.set(ManualOrganizationRun.StartOutcome.Started(RunId(RUN_ID)))
+            instrumentation.runOnMainSync {
+                content.reviewButton.performClick()
+            }
+            awaitAdmissionCount(admissionCount, 2)
+            awaitResumedPreferenceActivity()
+            assertEquals(
+                OrganizationOnboardingProposalOutcome.REVIEWED.name,
+                proposalPrefs.get(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME),
+            )
+        } finally {
+            proposalPrefs.put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, originalProposalOutcome)
         }
     }
 
@@ -235,6 +326,30 @@ class OnboardingOrganizationProposalInstrumentationTest {
         }
     }
 
+    private fun awaitAdmissionCount(admissionCount: AtomicInteger, expected: Int) {
+        repeat(50) {
+            if (admissionCount.get() == expected) return
+            SystemClock.sleep(100)
+        }
+        error("Expected $expected onboarding review admissions, got ${admissionCount.get()}")
+    }
+
+    private fun awaitProductionProposal(
+        launcher: LawnchairLauncher,
+    ): OrganizationOnboardingProposal.OrganizationOnboardingProposalView {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        repeat(50) {
+            var proposal: OrganizationOnboardingProposal.OrganizationOnboardingProposalView? = null
+            instrumentation.runOnMainSync {
+                proposal = AbstractFloatingView.getTopOpenView(launcher) as?
+                    OrganizationOnboardingProposal.OrganizationOnboardingProposalView
+            }
+            proposal?.let { return it }
+            SystemClock.sleep(100)
+        }
+        error("Organization onboarding proposal was not shown through its production owner")
+    }
+
     private fun awaitVisibleProposalActions(
         launcher: LawnchairLauncher,
         content: OrganizationOnboardingProposalContent,
@@ -259,6 +374,22 @@ class OnboardingOrganizationProposalInstrumentationTest {
         error("Organization onboarding proposal actions did not reach the launcher viewport")
     }
 
+    private fun awaitResumedPreferenceActivity(): PreferenceActivity {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        repeat(50) {
+            var candidate: PreferenceActivity? = null
+            instrumentation.runOnMainSync {
+                candidate = ActivityLifecycleMonitorRegistry.getInstance()
+                    .getActivitiesInStage(Stage.RESUMED)
+                    .filterIsInstance<PreferenceActivity>()
+                    .singleOrNull()
+            }
+            candidate?.let { return it }
+            SystemClock.sleep(100)
+        }
+        error("PreferenceActivity did not resume after onboarding review admission")
+    }
+
     private fun awaitResumedLauncher(): LawnchairLauncher {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         repeat(120) {
@@ -273,6 +404,17 @@ class OnboardingOrganizationProposalInstrumentationTest {
             SystemClock.sleep(100)
         }
         error("LawnchairLauncher did not reach RESUMED after HOME launch")
+    }
+
+    private fun startLauncher(context: android.content.Context) {
+        runShellCommand(
+            "am start -n ${ComponentName(context, LawnchairLauncher::class.java).flattenToString()} " +
+                "-a ${Intent.ACTION_MAIN} -c ${Intent.CATEGORY_HOME}",
+        )
+    }
+
+    private fun startPreferenceActivity(context: android.content.Context) {
+        runShellCommand("am start -n ${ComponentName(context, PreferenceActivity::class.java).flattenToString()}")
     }
 
     private fun runShellCommand(command: String) {

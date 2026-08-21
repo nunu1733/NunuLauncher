@@ -11,6 +11,7 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.organizer.diagnostics.model.Trigger
@@ -181,6 +182,10 @@ internal class OrganizationOnboardingProposal(
         LauncherProposalStore(launcher),
         processState,
     ),
+    private val admitReview: () -> ManualOrganizationRun.StartOutcome = {
+        ManualOrganizationModule.get(launcher).start(Trigger.ONBOARDING_PROPOSAL)
+    },
+    private val isWorkspaceReady: () -> Boolean = { !launcher.isWorkspaceLoading },
 ) {
     private var resumed = false
     private var initialWorkspaceBound = false
@@ -200,17 +205,23 @@ internal class OrganizationOnboardingProposal(
     }
 
     private fun showIfReady() {
-        if (!resumed || !initialWorkspaceBound || launcher.isWorkspaceLoading) return
+        if (
+            !resumed ||
+            !launcher.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) ||
+            !initialWorkspaceBound ||
+            !isWorkspaceReady()
+        ) {
+            return
+        }
         if (AbstractFloatingView.getTopOpenView(launcher) != null) return
         if (!controller.claimPresentation()) return
-        OrganizationOnboardingProposalView(launcher, controller).show()
+        OrganizationOnboardingProposalView(launcher, controller, admitReview).show()
     }
 
-    private class LauncherProposalStore(
+    internal class LauncherProposalStore(
         private val launcher: LawnchairLauncher,
+        private val installProvenance: OrganizationOnboardingInstallProvenance = classifyInstallProvenance(launcher),
     ) : OrganizationOnboardingProposalStore {
-        private val installProvenance = classifyInstallProvenance(launcher)
-
         override fun provenance(): OrganizationOnboardingInstallProvenance = installProvenance
 
         override fun outcome(): OrganizationOnboardingProposalOutcome? = LauncherPrefs.get(launcher).get(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME)
@@ -220,24 +231,14 @@ internal class OrganizationOnboardingProposal(
         override fun record(outcome: OrganizationOnboardingProposalOutcome) {
             LauncherPrefs.get(launcher).put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, outcome.name)
         }
-
-        private fun classifyInstallProvenance(launcher: LawnchairLauncher): OrganizationOnboardingInstallProvenance {
-            val prefs = LauncherPrefs.get(launcher)
-            val packageInfo = runCatching {
-                @Suppress("DEPRECATION")
-                launcher.packageManager.getPackageInfo(launcher.packageName, 0)
-            }.getOrNull()
-            return classifyOrganizationOnboardingInstallProvenance(
-                restorePending = RestoreDbTask.isPending(launcher) || prefs.get(LauncherPrefs.IS_FIRST_LOAD_AFTER_RESTORE),
-                firstInstallTime = packageInfo?.firstInstallTime,
-                lastUpdateTime = packageInfo?.lastUpdateTime,
-            )
-        }
     }
 
     internal class OrganizationOnboardingProposalView(
         private val launcher: LawnchairLauncher,
         private val controller: OrganizationOnboardingProposalController,
+        private val admitReview: () -> ManualOrganizationRun.StartOutcome = {
+            ManualOrganizationModule.get(launcher).start(Trigger.ONBOARDING_PROPOSAL)
+        },
     ) : AbstractFloatingView(launcher, null) {
         private var resolved = false
         private var reviewInFlight = false
@@ -327,9 +328,7 @@ internal class OrganizationOnboardingProposal(
             reviewInFlight = true
             launcher.lifecycleScope.launch {
                 val outcome = withContext(Dispatchers.IO) {
-                    controller.review {
-                        ManualOrganizationModule.get(launcher).start(Trigger.ONBOARDING_PROPOSAL)
-                    }
+                    controller.review(admitReview)
                 }
                 if (outcome is ManualOrganizationRun.StartOutcome.Started) {
                     resolved = true
@@ -351,5 +350,18 @@ internal class OrganizationOnboardingProposal(
 
     private companion object {
         val processState = OrganizationOnboardingProposalProcessState()
+
+        fun classifyInstallProvenance(launcher: LawnchairLauncher): OrganizationOnboardingInstallProvenance {
+            val prefs = LauncherPrefs.get(launcher)
+            val packageInfo = runCatching {
+                @Suppress("DEPRECATION")
+                launcher.packageManager.getPackageInfo(launcher.packageName, 0)
+            }.getOrNull()
+            return classifyOrganizationOnboardingInstallProvenance(
+                restorePending = RestoreDbTask.isPending(launcher) || prefs.get(LauncherPrefs.IS_FIRST_LOAD_AFTER_RESTORE),
+                firstInstallTime = packageInfo?.firstInstallTime,
+                lastUpdateTime = packageInfo?.lastUpdateTime,
+            )
+        }
     }
 }
