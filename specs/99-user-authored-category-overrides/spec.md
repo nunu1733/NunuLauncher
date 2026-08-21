@@ -1,6 +1,6 @@
 ---
 issue: "#99"
-status: proposed
+status: accepted
 requirements:
   - FR-010
   - FR-011
@@ -16,7 +16,7 @@ updated: 2026-08-22
 
 # User-authored category overrides for Organizer v1
 
-> **Status:** Proposed Stage A specification. Production behavior is blocked until this specification and its companion `plan.md` are reviewed and accepted by Issue [#99][1].
+> **Status:** Accepted Stage A specification. Issue [#99][1] has accepted this specification and its companion `plan.md` as the binding contract for Stage B. Production behavior must remain within the stated scope and stop conditions.
 
 ## Problem and outcome
 

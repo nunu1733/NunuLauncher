@@ -1,13 +1,13 @@
 ---
 issue: "#99"
-status: proposed
+status: accepted
 spec: ./spec.md
 updated: 2026-08-22
 ---
 
 # Implementation plan — User-authored category overrides for Organizer v1
 
-> **Stage A gate:** This plan is proposed. Stage B production work begins only after Issue [#99][1] records acceptance of both this plan and `spec.md`. This document plans a minimal vertical slice that preserves the accepted #83 composition seam and does not authorize planner, layout-application, or recovery-contract changes. [2] [3]
+> **Stage A gate:** This plan and its companion `spec.md` are accepted by Issue [#99][1] as the binding Stage B contract. This document plans a minimal vertical slice that preserves the accepted #83 composition seam and does not authorize planner, layout-application, or recovery-contract changes. [2] [3]
 
 ## Baseline and design decisions
 
