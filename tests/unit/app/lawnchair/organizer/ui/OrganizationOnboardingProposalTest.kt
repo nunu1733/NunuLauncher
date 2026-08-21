@@ -41,6 +41,42 @@ class OrganizationOnboardingProposalTest {
     }
 
     @Test
+    fun productionProvenanceClassifierFailsClosedForRestoreUpgradeAndUnknownEvidence() {
+        assertEquals(
+            OrganizationOnboardingInstallProvenance.FRESH_INSTALL,
+            classifyOrganizationOnboardingInstallProvenance(
+                restorePending = false,
+                firstInstallTime = 10L,
+                lastUpdateTime = 10L,
+            ),
+        )
+        assertEquals(
+            OrganizationOnboardingInstallProvenance.RESTORE,
+            classifyOrganizationOnboardingInstallProvenance(
+                restorePending = true,
+                firstInstallTime = 10L,
+                lastUpdateTime = 10L,
+            ),
+        )
+        assertEquals(
+            OrganizationOnboardingInstallProvenance.UPGRADE,
+            classifyOrganizationOnboardingInstallProvenance(
+                restorePending = false,
+                firstInstallTime = 10L,
+                lastUpdateTime = 11L,
+            ),
+        )
+        assertEquals(
+            OrganizationOnboardingInstallProvenance.UNKNOWN,
+            classifyOrganizationOnboardingInstallProvenance(
+                restorePending = false,
+                firstInstallTime = null,
+                lastUpdateTime = null,
+            ),
+        )
+    }
+
+    @Test
     fun upgradeRestoreAndUnknownProvenanceFailClosedWhenOutcomeIsMissing() {
         listOf(
             OrganizationOnboardingInstallProvenance.UPGRADE,

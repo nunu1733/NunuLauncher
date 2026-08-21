@@ -3,6 +3,7 @@ package app.lawnchair.organizer.ui
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.util.Pair
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -41,6 +42,19 @@ internal enum class OrganizationOnboardingInstallProvenance {
     UPGRADE,
     RESTORE,
     UNKNOWN,
+}
+
+internal fun classifyOrganizationOnboardingInstallProvenance(
+    restorePending: Boolean,
+    firstInstallTime: Long?,
+    lastUpdateTime: Long?,
+): OrganizationOnboardingInstallProvenance = when {
+    restorePending -> OrganizationOnboardingInstallProvenance.RESTORE
+    firstInstallTime == null || lastUpdateTime == null -> OrganizationOnboardingInstallProvenance.UNKNOWN
+    firstInstallTime <= 0L || lastUpdateTime <= 0L -> OrganizationOnboardingInstallProvenance.UNKNOWN
+    lastUpdateTime == firstInstallTime -> OrganizationOnboardingInstallProvenance.FRESH_INSTALL
+    lastUpdateTime > firstInstallTime -> OrganizationOnboardingInstallProvenance.UPGRADE
+    else -> OrganizationOnboardingInstallProvenance.UNKNOWN
 }
 
 internal interface OrganizationOnboardingProposalStore {
@@ -164,33 +178,31 @@ internal class OrganizationOnboardingProposal(
 
         private fun classifyInstallProvenance(launcher: LawnchairLauncher): OrganizationOnboardingInstallProvenance {
             val prefs = LauncherPrefs.get(launcher)
-            if (RestoreDbTask.isPending(launcher) || prefs.get(LauncherPrefs.IS_FIRST_LOAD_AFTER_RESTORE)) {
-                return OrganizationOnboardingInstallProvenance.RESTORE
-            }
             val packageInfo = runCatching {
                 @Suppress("DEPRECATION")
                 launcher.packageManager.getPackageInfo(launcher.packageName, 0)
-            }.getOrNull() ?: return OrganizationOnboardingInstallProvenance.UNKNOWN
-            return when {
-                packageInfo.firstInstallTime <= 0L || packageInfo.lastUpdateTime <= 0L -> OrganizationOnboardingInstallProvenance.UNKNOWN
-                packageInfo.lastUpdateTime == packageInfo.firstInstallTime -> OrganizationOnboardingInstallProvenance.FRESH_INSTALL
-                packageInfo.lastUpdateTime > packageInfo.firstInstallTime -> OrganizationOnboardingInstallProvenance.UPGRADE
-                else -> OrganizationOnboardingInstallProvenance.UNKNOWN
-            }
+            }.getOrNull()
+            return classifyOrganizationOnboardingInstallProvenance(
+                restorePending = RestoreDbTask.isPending(launcher) || prefs.get(LauncherPrefs.IS_FIRST_LOAD_AFTER_RESTORE),
+                firstInstallTime = packageInfo?.firstInstallTime,
+                lastUpdateTime = packageInfo?.lastUpdateTime,
+            )
         }
     }
 
-    private class OrganizationOnboardingProposalView(
+    internal class OrganizationOnboardingProposalView(
         private val launcher: LawnchairLauncher,
         private val controller: OrganizationOnboardingProposalController,
     ) : AbstractFloatingView(launcher, null) {
         private var resolved = false
         private var reviewInFlight = false
+        private var focusBeforeOpen: View? = null
 
         init {
             orientation = VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            contentDescription = context.getString(R.string.organization_onboarding_proposal_title)
             isFocusable = true
             setPadding(dp(20), dp(16), dp(20), dp(16))
             background = GradientDrawable().apply {
@@ -243,6 +255,7 @@ internal class OrganizationOnboardingProposal(
         }
 
         fun show() {
+            focusBeforeOpen = launcher.currentFocus ?: launcher.workspace
             launcher.dragLayer.addView(
                 this,
                 FrameLayout.LayoutParams(
@@ -268,20 +281,24 @@ internal class OrganizationOnboardingProposal(
             mIsOpen = false
         }
 
-        override fun canHandleBack(): Boolean {
-            close(false)
-            return false
-        }
+        /** Back-handler selection must not dismiss the proposal before Back is committed. */
+        override fun canHandleBack(): Boolean = true
 
         override fun onControllerInterceptTouchEvent(ev: MotionEvent): Boolean = false
 
         override fun handleClose(animate: Boolean) {
             if (!resolved) controller.defer()
             launcher.dragLayer.removeView(this)
-            launcher.dragLayer.requestFocus()
+            val focusTarget = focusBeforeOpen?.takeIf(View::isAttachedToWindow) ?: launcher.workspace
+            launcher.dragLayer.post { focusTarget.requestFocus() }
         }
 
         override fun isOfType(type: Int): Boolean = (type and TYPE_ON_BOARD_POPUP) != 0
+
+        override fun getAccessibilityTarget(): Pair<View, String> = Pair.create(
+            this,
+            context.getString(R.string.organization_onboarding_proposal_title),
+        )
 
         override fun getAccessibilityInitialFocusView(): View = getChildAt(0)
 

@@ -47,6 +47,26 @@ class OnboardingOrganizationProposalInstrumentationTest {
         assertEquals(OrganizationOnboardingProposalOutcome.REVIEWED, store.value)
     }
 
+    @Test
+    fun productionProvenanceBoundaryFailsClosedOutsideFreshInstall() {
+        assertEquals(
+            OrganizationOnboardingInstallProvenance.FRESH_INSTALL,
+            classifyOrganizationOnboardingInstallProvenance(false, 1L, 1L),
+        )
+        assertEquals(
+            OrganizationOnboardingInstallProvenance.RESTORE,
+            classifyOrganizationOnboardingInstallProvenance(true, 1L, 1L),
+        )
+        assertEquals(
+            OrganizationOnboardingInstallProvenance.UPGRADE,
+            classifyOrganizationOnboardingInstallProvenance(false, 1L, 2L),
+        )
+        assertEquals(
+            OrganizationOnboardingInstallProvenance.UNKNOWN,
+            classifyOrganizationOnboardingInstallProvenance(false, null, null),
+        )
+    }
+
     private class FakeStore : OrganizationOnboardingProposalStore {
         var value: OrganizationOnboardingProposalOutcome? = null
 
