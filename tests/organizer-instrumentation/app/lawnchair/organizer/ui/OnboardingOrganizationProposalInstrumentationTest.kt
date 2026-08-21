@@ -489,7 +489,8 @@ class OnboardingOrganizationProposalInstrumentationTest {
                     ?.takeIf { launcher ->
                         !launcher.isFinishing &&
                             !launcher.isDestroyed &&
-                            launcher.hasWindowFocus() &&
+                            launcher.dragLayer.isAttachedToWindow &&
+                            launcher.dragLayer.isLaidOut &&
                             (expectedFontScale == null ||
                                 launcher.resources.configuration.fontScale == expectedFontScale)
                     }
@@ -498,7 +499,7 @@ class OnboardingOrganizationProposalInstrumentationTest {
             SystemClock.sleep(100)
         }
         error(
-            "LawnchairLauncher did not reach a focused RESUMED state" +
+            "LawnchairLauncher did not reach an attached, laid-out RESUMED state" +
                 (expectedFontScale?.let { " with fontScale=$it" } ?: "") +
                 " after HOME launch",
         )
