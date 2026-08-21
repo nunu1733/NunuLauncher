@@ -77,4 +77,11 @@ object OnboardingPrefs {
     val HOTSEAT_LONGPRESS_TIP_SEEN = backedUpItem("launcher.hotseat_longpress_tip_seen", false)
 
     @JvmField val TASKBAR_SEARCH_EDU_SEEN = backedUpItem("launcher.taskbar_search_edu_seen", false)
+
+    /**
+     * The explicit outcome of the organization onboarding proposal. This is onboarding-only
+     * state: it never represents or authorizes an organization run or a layout mutation.
+     */
+    @JvmField
+    val ORGANIZATION_PROPOSAL_OUTCOME = backedUpItem("launcher.organization_proposal_outcome", "")
 }

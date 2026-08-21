@@ -154,7 +154,7 @@ fun HomeScreenPreferences(
             )
             NavigationActionPreference(
                 label = stringResource(id = R.string.manual_organization_title),
-                destination = HomeScreenManualOrganization,
+                destination = HomeScreenManualOrganization(),
                 subtitle = stringResource(id = R.string.manual_organization_summary),
             )
             SwitchPreference(

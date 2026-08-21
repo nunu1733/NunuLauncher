@@ -1,0 +1,330 @@
+package app.lawnchair.organizer.ui
+
+import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
+import android.widget.Button
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.lifecycle.lifecycleScope
+import app.lawnchair.LawnchairLauncher
+import app.lawnchair.organizer.diagnostics.model.Trigger
+import app.lawnchair.ui.preferences.PreferenceActivity
+import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
+import app.lawnchair.ui.preferences.navigation.OrganizationEntry
+import com.android.launcher3.AbstractFloatingView
+import com.android.launcher3.LauncherPrefs
+import com.android.launcher3.R
+import com.android.launcher3.provider.RestoreDbTask
+import com.android.launcher3.util.OnboardingPrefs
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/**
+ * The only persisted state owned by the organization proposal. None of these choices starts an
+ * organization run or represents preview/confirmation authority.
+ */
+internal enum class OrganizationOnboardingProposalOutcome {
+    SKIPPED,
+    DEFERRED,
+    REVIEWED,
+}
+
+/** Provenance must be known before a missing proposal outcome may be considered eligible. */
+internal enum class OrganizationOnboardingInstallProvenance {
+    FRESH_INSTALL,
+    UPGRADE,
+    RESTORE,
+    UNKNOWN,
+}
+
+internal interface OrganizationOnboardingProposalStore {
+    fun provenance(): OrganizationOnboardingInstallProvenance
+
+    fun outcome(): OrganizationOnboardingProposalOutcome?
+
+    fun record(outcome: OrganizationOnboardingProposalOutcome)
+}
+
+/** Process-local state intentionally disappears on a qualifying cold start. */
+internal class OrganizationOnboardingProposalProcessState {
+    private var presentationClaimed = false
+
+    fun isSuppressed(): Boolean = presentationClaimed
+
+    fun claimPresentation(): Boolean {
+        if (presentationClaimed) return false
+        presentationClaimed = true
+        return true
+    }
+
+    fun suppressForProcess() {
+        presentationClaimed = true
+    }
+}
+
+internal class OrganizationOnboardingProposalController(
+    private val store: OrganizationOnboardingProposalStore,
+    private val processState: OrganizationOnboardingProposalProcessState = OrganizationOnboardingProposalProcessState(),
+) {
+    fun isEligible(): Boolean = when (store.outcome()) {
+        OrganizationOnboardingProposalOutcome.SKIPPED,
+        OrganizationOnboardingProposalOutcome.REVIEWED,
+        -> false
+
+        OrganizationOnboardingProposalOutcome.DEFERRED,
+        null,
+        -> store.provenance() == OrganizationOnboardingInstallProvenance.FRESH_INSTALL && !processState.isSuppressed()
+    }
+
+    /** Captures the launcher-owned provenance before the model lifecycle may clear restore flags. */
+    fun captureProvenance() {
+        store.provenance()
+    }
+
+    /** Marks this process as shown before a view is added, preventing duplicate presentation. */
+    fun claimPresentation(): Boolean = isEligible() && processState.claimPresentation()
+
+    fun skip() {
+        store.record(OrganizationOnboardingProposalOutcome.SKIPPED)
+    }
+
+    fun defer() {
+        processState.suppressForProcess()
+        store.record(OrganizationOnboardingProposalOutcome.DEFERRED)
+    }
+
+    /**
+     * Starts the shared coordinator before marking the proposal reviewed or opening its screen.
+     * A busy coordinator remains untouched and the proposal stays actionable.
+     */
+    fun review(admit: () -> ManualOrganizationRun.StartOutcome): ManualOrganizationRun.StartOutcome {
+        val outcome = admit()
+        if (outcome is ManualOrganizationRun.StartOutcome.Started) {
+            store.record(OrganizationOnboardingProposalOutcome.REVIEWED)
+        }
+        return outcome
+    }
+}
+
+/**
+ * Launcher-owned proposal host. Construction is safe from onCreate, but presentation is allowed
+ * only after both the launcher resume and initial workspace-binding callbacks have fired.
+ */
+internal class OrganizationOnboardingProposal(
+    private val launcher: LawnchairLauncher,
+    private val controller: OrganizationOnboardingProposalController = OrganizationOnboardingProposalController(
+        LauncherProposalStore(launcher),
+        processState,
+    ),
+) {
+    private var resumed = false
+    private var initialWorkspaceBound = false
+
+    fun captureProvenance() {
+        controller.captureProvenance()
+    }
+
+    fun onLauncherResumed() {
+        resumed = true
+        showIfReady()
+    }
+
+    fun onInitialWorkspaceBound() {
+        initialWorkspaceBound = true
+        showIfReady()
+    }
+
+    private fun showIfReady() {
+        if (!resumed || !initialWorkspaceBound || launcher.isWorkspaceLoading) return
+        if (AbstractFloatingView.getTopOpenView(launcher) != null) return
+        if (!controller.claimPresentation()) return
+        OrganizationOnboardingProposalView(launcher, controller).show()
+    }
+
+    private class LauncherProposalStore(
+        private val launcher: LawnchairLauncher,
+    ) : OrganizationOnboardingProposalStore {
+        private val installProvenance = classifyInstallProvenance(launcher)
+
+        override fun provenance(): OrganizationOnboardingInstallProvenance = installProvenance
+
+        override fun outcome(): OrganizationOnboardingProposalOutcome? = LauncherPrefs.get(launcher).get(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME)
+            .takeIf { it.isNotEmpty() }
+            ?.let { value -> OrganizationOnboardingProposalOutcome.entries.firstOrNull { it.name == value } }
+
+        override fun record(outcome: OrganizationOnboardingProposalOutcome) {
+            LauncherPrefs.get(launcher).put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, outcome.name)
+        }
+
+        private fun classifyInstallProvenance(launcher: LawnchairLauncher): OrganizationOnboardingInstallProvenance {
+            val prefs = LauncherPrefs.get(launcher)
+            if (RestoreDbTask.isPending(launcher) || prefs.get(LauncherPrefs.IS_FIRST_LOAD_AFTER_RESTORE)) {
+                return OrganizationOnboardingInstallProvenance.RESTORE
+            }
+            val packageInfo = runCatching {
+                @Suppress("DEPRECATION")
+                launcher.packageManager.getPackageInfo(launcher.packageName, 0)
+            }.getOrNull() ?: return OrganizationOnboardingInstallProvenance.UNKNOWN
+            return when {
+                packageInfo.firstInstallTime <= 0L || packageInfo.lastUpdateTime <= 0L -> OrganizationOnboardingInstallProvenance.UNKNOWN
+                packageInfo.lastUpdateTime == packageInfo.firstInstallTime -> OrganizationOnboardingInstallProvenance.FRESH_INSTALL
+                packageInfo.lastUpdateTime > packageInfo.firstInstallTime -> OrganizationOnboardingInstallProvenance.UPGRADE
+                else -> OrganizationOnboardingInstallProvenance.UNKNOWN
+            }
+        }
+    }
+
+    private class OrganizationOnboardingProposalView(
+        private val launcher: LawnchairLauncher,
+        private val controller: OrganizationOnboardingProposalController,
+    ) : AbstractFloatingView(launcher, null) {
+        private var resolved = false
+        private var reviewInFlight = false
+
+        init {
+            orientation = VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            isFocusable = true
+            setPadding(dp(20), dp(16), dp(20), dp(16))
+            background = GradientDrawable().apply {
+                setColor(Color.WHITE)
+                cornerRadius = dp(24).toFloat()
+            }
+            elevation = dp(8).toFloat()
+
+            addView(
+                TextView(context).apply {
+                    setText(R.string.organization_onboarding_proposal_title)
+                    textSize = 20f
+                    setTextColor(Color.BLACK)
+                    isFocusable = true
+                },
+            )
+            addView(
+                TextView(context).apply {
+                    setText(R.string.organization_onboarding_proposal_summary)
+                    setTextColor(Color.DKGRAY)
+                    setPadding(0, dp(8), 0, dp(12))
+                },
+            )
+            addView(
+                LinearLayout(context).apply {
+                    orientation = VERTICAL
+                    gravity = Gravity.END
+
+                    addView(
+                        actionButton(R.string.organization_onboarding_proposal_defer) {
+                            resolved = true
+                            controller.defer()
+                            close(false)
+                        },
+                    )
+                    addView(
+                        actionButton(R.string.organization_onboarding_proposal_skip) {
+                            resolved = true
+                            controller.skip()
+                            close(false)
+                        },
+                    )
+                    addView(
+                        actionButton(R.string.organization_onboarding_proposal_review) {
+                            beginReview()
+                        },
+                    )
+                },
+            )
+        }
+
+        fun show() {
+            launcher.dragLayer.addView(
+                this,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM,
+                ).apply {
+                    bottomMargin = dp(32)
+                    marginStart = dp(16)
+                    marginEnd = dp(16)
+                },
+            )
+            announceAccessibilityChanges()
+        }
+
+        override fun onAttachedToWindow() {
+            super.onAttachedToWindow()
+            mIsOpen = true
+        }
+
+        override fun onDetachedFromWindow() {
+            super.onDetachedFromWindow()
+            mIsOpen = false
+        }
+
+        override fun canHandleBack(): Boolean {
+            close(false)
+            return false
+        }
+
+        override fun onControllerInterceptTouchEvent(ev: MotionEvent): Boolean = false
+
+        override fun handleClose(animate: Boolean) {
+            if (!resolved) controller.defer()
+            launcher.dragLayer.removeView(this)
+            launcher.dragLayer.requestFocus()
+        }
+
+        override fun isOfType(type: Int): Boolean = (type and TYPE_ON_BOARD_POPUP) != 0
+
+        override fun getAccessibilityInitialFocusView(): View = getChildAt(0)
+
+        private fun beginReview() {
+            if (reviewInFlight) return
+            reviewInFlight = true
+            launcher.lifecycleScope.launch {
+                val outcome = withContext(Dispatchers.IO) {
+                    controller.review {
+                        ManualOrganizationModule.get(launcher).start(Trigger.ONBOARDING_PROPOSAL)
+                    }
+                }
+                if (outcome is ManualOrganizationRun.StartOutcome.Started) {
+                    resolved = true
+                    close(false)
+                    launcher.startActivity(
+                        PreferenceActivity.createIntent(
+                            launcher,
+                            HomeScreenManualOrganization(OrganizationEntry.ONBOARDING),
+                        ),
+                    )
+                } else {
+                    reviewInFlight = false
+                }
+            }
+        }
+
+        private fun actionButton(
+            textId: Int,
+            onClick: () -> Unit,
+        ) = Button(context).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            )
+            setText(textId)
+            setOnClickListener { onClick() }
+        }
+
+        private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+    }
+
+    private companion object {
+        val processState = OrganizationOnboardingProposalProcessState()
+    }
+}

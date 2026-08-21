@@ -39,6 +39,7 @@ import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.diagnostics.DiagnosticsPort
 import app.lawnchair.organizer.diagnostics.model.RunEvent
+import app.lawnchair.organizer.diagnostics.model.Trigger
 import app.lawnchair.organizer.integration.InputProvenance
 import app.lawnchair.organizer.integration.OrganizationInputComposition
 import app.lawnchair.organizer.planning.ClassificationSignals
@@ -117,6 +118,33 @@ class ManualOrganizationPreferencesInstrumentationTest {
             context.getString(R.string.manual_organization_warning_fallback_category, 1),
         ).assertIsDisplayed()
         assertEquals(0, application.applyCalls)
+    }
+
+    @Test
+    fun onboardingTriggerUsesTheSameReviewSurfaceWithoutWritingBeforeConfirmation() {
+        val application = FakeApplication()
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { planningResult() },
+        )
+        runner.start(Trigger.ONBOARDING_PROPOSAL)
+
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(
+                    run = runner,
+                    trigger = Trigger.ONBOARDING_PROPOSAL,
+                )
+            }
+        }
+
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsDisplayed()
+        assertEquals(0, application.applyCalls)
+        assertEquals(
+            setOf(Trigger.ONBOARDING_PROPOSAL),
+            application.diagnostics.events.mapNotNull { it.trigger }.toSet(),
+        )
     }
 
     @Test
@@ -478,8 +506,13 @@ class ManualOrganizationPreferencesInstrumentationTest {
     }
 
     private class RecordingDiagnostics : DiagnosticsPort {
-        override fun emit(event: RunEvent) = Unit
-        override fun snapshot(): List<RunEvent> = emptyList()
+        val events = mutableListOf<RunEvent>()
+
+        override fun emit(event: RunEvent) {
+            events += event
+        }
+
+        override fun snapshot(): List<RunEvent> = events
     }
 
     private fun planningResult() = PlanningResult(

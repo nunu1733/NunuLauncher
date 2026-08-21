@@ -1,5 +1,6 @@
 package app.lawnchair.ui.preferences.navigation
 
+import app.lawnchair.organizer.diagnostics.model.Trigger
 import app.lawnchair.ui.preferences.components.search.SearchProviderId
 import app.lawnchair.ui.preferences.destinations.SearchRoute
 import kotlinx.serialization.Serializable
@@ -95,9 +96,23 @@ data object HomeScreenPopupEditor : PreferenceRoute
 @Serializable
 data object HomeScreenPlacementLocks : PreferenceRoute
 
-// Issue #52: explicit manual full organization.
+// Issues #52/#53: persist only the stable caller context, never run state or write authority.
 @Serializable
-data object HomeScreenManualOrganization : PreferenceRoute
+enum class OrganizationEntry {
+    MANUAL,
+    ONBOARDING,
+}
+
+@Serializable
+data class HomeScreenManualOrganization(
+    val entry: OrganizationEntry = OrganizationEntry.MANUAL,
+) : PreferenceRoute {
+    val trigger: Trigger
+        get() = when (entry) {
+            OrganizationEntry.MANUAL -> Trigger.MANUAL_FULL
+            OrganizationEntry.ONBOARDING -> Trigger.ONBOARDING_PROPOSAL
+        }
+}
 
 // Dock section routes
 @Serializable
