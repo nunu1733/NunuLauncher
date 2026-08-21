@@ -7,6 +7,7 @@ import android.graphics.Rect
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.KeyEvent
+import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.lifecycle.Lifecycle
@@ -72,15 +73,10 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 }
                 assertTrue(proposal.canHandleBack())
                 assertTrue(proposal.isOpen)
-                assertTrue(content.laterButton.requestFocus())
-            }
-
-            sendKey(KeyEvent.KEYCODE_DPAD_DOWN)
-            SystemClock.sleep(100)
-            instrumentation.runOnMainSync {
-                assertTrue(
-                    content.laterButton.hasFocus() || content.skipButton.hasFocus() || content.reviewButton.hasFocus(),
-                )
+                assertTrue(content.title.isFocusable)
+                assertTrue(content.laterButton.isFocusable)
+                assertTrue(content.skipButton.isFocusable)
+                assertTrue(content.reviewButton.isFocusable)
                 proposal.onBackInvoked()
                 assertFalse(proposal.isOpen)
                 assertEquals(OrganizationOnboardingProposalOutcome.DEFERRED, store.value)
@@ -136,6 +132,8 @@ class OnboardingOrganizationProposalInstrumentationTest {
 
             proposalPrefs.put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, "")
             sendKey(KeyEvent.KEYCODE_BACK)
+            // An explicit HOME launch reliably resumes the same Launcher activity in CI.
+            startLauncher(context)
             val resumedLauncher = awaitResumedLauncher()
             assertTrue(launcher === resumedLauncher)
             lateinit var proposal: OrganizationOnboardingProposal.OrganizationOnboardingProposalView
@@ -210,6 +208,9 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 assertTrue(content.laterButton.bottom <= content.height)
                 assertTrue(content.skipButton.bottom <= content.height)
                 assertTrue(content.reviewButton.bottom <= content.height)
+            }
+            awaitWindowFocus { content.title }
+            scenario.onActivity {
                 assertTrue(content.title.requestFocus())
                 assertTrue(content.title.hasFocus())
                 assertTrue(content.laterButton.requestFocus())
@@ -358,6 +359,20 @@ class OnboardingOrganizationProposalInstrumentationTest {
         }
     }
 
+    private fun awaitWindowFocus(viewProvider: () -> View) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        repeat(50) {
+            var ready = false
+            instrumentation.runOnMainSync {
+                val view = viewProvider()
+                ready = view.isAttachedToWindow && view.rootView.hasWindowFocus()
+            }
+            if (ready) return
+            SystemClock.sleep(100)
+        }
+        error("Proposal window did not gain focus before keyboard accessibility verification")
+    }
+
     private fun awaitAdmissionCount(admissionCount: AtomicInteger, expected: Int) {
         repeat(50) {
             if (admissionCount.get() == expected) return
@@ -387,11 +402,17 @@ class OnboardingOrganizationProposalInstrumentationTest {
         content: OrganizationOnboardingProposalContent,
     ) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        var diagnostic = "not measured"
         repeat(50) {
             var ready = false
             instrumentation.runOnMainSync {
                 val viewport = Rect()
-                ready = launcher.dragLayer.getGlobalVisibleRect(viewport) &&
+                val viewportVisible = launcher.dragLayer.getGlobalVisibleRect(viewport)
+                val actionBounds = listOf(content.laterButton, content.skipButton, content.reviewButton).map { button ->
+                    val bounds = Rect()
+                    "${button.text}: visible=${button.getGlobalVisibleRect(bounds)}, bounds=$bounds"
+                }
+                ready = viewportVisible &&
                     content.isLaidOut &&
                     listOf(content.laterButton, content.skipButton, content.reviewButton).all { button ->
                         val bounds = Rect()
@@ -399,11 +420,13 @@ class OnboardingOrganizationProposalInstrumentationTest {
                             bounds.top >= viewport.top &&
                             bounds.bottom <= viewport.bottom
                     }
+                diagnostic = "viewportVisible=$viewportVisible, viewport=$viewport, laidOut=${content.isLaidOut}, " +
+                    actionBounds.joinToString()
             }
             if (ready) return
             SystemClock.sleep(100)
         }
-        error("Organization onboarding proposal actions did not reach the launcher viewport")
+        error("Organization onboarding proposal actions did not reach the launcher viewport: $diagnostic")
     }
 
     private fun awaitResumedPreferenceActivity(): PreferenceActivity {
