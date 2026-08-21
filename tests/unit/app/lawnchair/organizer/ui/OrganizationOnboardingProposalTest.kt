@@ -77,6 +77,19 @@ class OrganizationOnboardingProposalTest {
     }
 
     @Test
+    fun restoreSnapshotRemainsFailClosedAfterTheLoaderConsumesTransientMarkers() {
+        assertEquals(
+            OrganizationOnboardingInstallProvenance.RESTORE,
+            classifyOrganizationOnboardingInstallProvenance(
+                restorePending = false,
+                firstInstallTime = 10L,
+                lastUpdateTime = 10L,
+                restoreSnapshot = true,
+            ),
+        )
+    }
+
+    @Test
     fun upgradeRestoreAndUnknownProvenanceFailClosedWhenOutcomeIsMissing() {
         listOf(
             OrganizationOnboardingInstallProvenance.UPGRADE,

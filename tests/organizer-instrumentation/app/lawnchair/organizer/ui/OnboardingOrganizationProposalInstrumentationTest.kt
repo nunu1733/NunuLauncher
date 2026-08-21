@@ -20,6 +20,7 @@ import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.ui.preferences.PreferenceActivity
 import com.android.launcher3.AbstractFloatingView
 import com.android.launcher3.LauncherPrefs
+import com.android.launcher3.provider.RestoreDbTask
 import com.android.launcher3.util.OnboardingPrefs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -277,6 +278,37 @@ class OnboardingOrganizationProposalInstrumentationTest {
 
         assertEquals(ManualOrganizationRun.StartOutcome.Started(RunId(RUN_ID)), outcome)
         assertEquals(OrganizationOnboardingProposalOutcome.REVIEWED, store.value)
+    }
+
+    @Test
+    fun restoreSnapshotRemainsFailClosedAfterTheLoaderConsumesTransientMarkers() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val prefs = LauncherPrefs.get(context)
+        try {
+            prefs.removeSync(LauncherPrefs.RESTORE_DEVICE)
+            prefs.putSync(LauncherPrefs.IS_FIRST_LOAD_AFTER_RESTORE.to(false))
+            prefs.putSync(OnboardingPrefs.ORGANIZATION_PROPOSAL_RESTORE_SEEN.to(false))
+
+            RestoreDbTask.setPending(context)
+
+            assertTrue(prefs.get(OnboardingPrefs.ORGANIZATION_PROPOSAL_RESTORE_SEEN))
+            // Mirror the loader's one-shot marker consumption before proposal eligibility runs.
+            prefs.removeSync(LauncherPrefs.RESTORE_DEVICE)
+            prefs.putSync(LauncherPrefs.IS_FIRST_LOAD_AFTER_RESTORE.to(false))
+            assertEquals(
+                OrganizationOnboardingInstallProvenance.RESTORE,
+                classifyOrganizationOnboardingInstallProvenance(
+                    restorePending = false,
+                    firstInstallTime = 1L,
+                    lastUpdateTime = 1L,
+                    restoreSnapshot = prefs.get(OnboardingPrefs.ORGANIZATION_PROPOSAL_RESTORE_SEEN),
+                ),
+            )
+        } finally {
+            prefs.removeSync(LauncherPrefs.RESTORE_DEVICE)
+            prefs.putSync(LauncherPrefs.IS_FIRST_LOAD_AFTER_RESTORE.to(false))
+            prefs.putSync(OnboardingPrefs.ORGANIZATION_PROPOSAL_RESTORE_SEEN.to(false))
+        }
     }
 
     @Test

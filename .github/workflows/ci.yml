@@ -186,7 +186,7 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.source == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     permissions:
       contents: read
     steps:
@@ -228,6 +228,22 @@ jobs:
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationProductionE2EInstrumentationTest,app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest
             mkdir -p build/issue52-ui-evidence
             adb pull /sdcard/Pictures/Issue52-ui-evidence build/issue52-ui-evidence
+      # API 36 system images are the emulator counterpart of the repository's
+      # Android SDK Platform 36.1 validation baseline. Keep this proposal surface
+      # separate from Issue #52 so its acceptance evidence cannot be skipped by a
+      # narrow class filter.
+      - name: Run Issue 53 onboarding proposal instrumentation (API 36 / Platform 36.1)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: >-
+            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
+            -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest
       - name: Upload instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6

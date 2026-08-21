@@ -18,6 +18,7 @@ package com.android.launcher3.util
 import android.content.Context
 import com.android.launcher3.LauncherPrefs
 import com.android.launcher3.LauncherPrefs.Companion.backedUpItem
+import com.android.launcher3.provider.RestoreDbTask
 
 /** Stores and retrieves onboarding-related data via SharedPreferences. */
 object OnboardingPrefs {
@@ -84,4 +85,16 @@ object OnboardingPrefs {
      */
     @JvmField
     val ORGANIZATION_PROPOSAL_OUTCOME = backedUpItem("launcher.organization_proposal_outcome", "")
+
+    /**
+     * Set synchronously by [RestoreDbTask.setPending] before model loading can consume transient
+     * restore markers. It intentionally persists for this restored installation and is never
+     * restored from backup, so onboarding eligibility remains fail-closed after the loader clears
+     * its one-shot restore state.
+     */
+    @JvmField
+    val ORGANIZATION_PROPOSAL_RESTORE_SEEN = LauncherPrefs.nonRestorableItem(
+        "launcher.organization_proposal_restore_seen",
+        false,
+    )
 }

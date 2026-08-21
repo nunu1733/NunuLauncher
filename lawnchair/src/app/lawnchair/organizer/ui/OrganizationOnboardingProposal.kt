@@ -49,8 +49,9 @@ internal fun classifyOrganizationOnboardingInstallProvenance(
     restorePending: Boolean,
     firstInstallTime: Long?,
     lastUpdateTime: Long?,
+    restoreSnapshot: Boolean = false,
 ): OrganizationOnboardingInstallProvenance = when {
-    restorePending -> OrganizationOnboardingInstallProvenance.RESTORE
+    restorePending || restoreSnapshot -> OrganizationOnboardingInstallProvenance.RESTORE
     firstInstallTime == null || lastUpdateTime == null -> OrganizationOnboardingInstallProvenance.UNKNOWN
     firstInstallTime <= 0L || lastUpdateTime <= 0L -> OrganizationOnboardingInstallProvenance.UNKNOWN
     lastUpdateTime == firstInstallTime -> OrganizationOnboardingInstallProvenance.FRESH_INSTALL
@@ -361,6 +362,7 @@ internal class OrganizationOnboardingProposal(
                 restorePending = RestoreDbTask.isPending(launcher) || prefs.get(LauncherPrefs.IS_FIRST_LOAD_AFTER_RESTORE),
                 firstInstallTime = packageInfo?.firstInstallTime,
                 lastUpdateTime = packageInfo?.lastUpdateTime,
+                restoreSnapshot = prefs.get(OnboardingPrefs.ORGANIZATION_PROPOSAL_RESTORE_SEEN),
             )
         }
     }

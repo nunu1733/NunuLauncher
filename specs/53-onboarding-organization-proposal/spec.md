@@ -1,3 +1,19 @@
+---
+issue: "#53"
+status: accepted
+requirements:
+  - FR-006
+  - FR-007
+  - FR-015
+  - NFR-001
+  - NFR-005
+  - NFR-009
+  - NFR-011
+risk:
+  - layout-data
+updated: 2026-08-21
+---
+
 # Specification: Issue #53 Onboarding Organization Proposal
 
 - **Status:** Accepted
