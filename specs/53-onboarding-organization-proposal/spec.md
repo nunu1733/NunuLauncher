@@ -1,8 +1,8 @@
 # Specification: Issue #53 Onboarding Organization Proposal
 
-- **Status:** Proposed — review-ready
+- **Status:** Accepted
 - **Issue:** #53
-- **Stage:** A
+- **Stage:** B — implementation
 - **Risk:** `risk: layout-data`
 - **Procurement decision:** NO NEW DEPENDENCY
 - **Requirements:** `FR-006`, `FR-007`, `FR-015`; `NFR-001`, `NFR-005`, `NFR-009`, `NFR-011`
@@ -52,10 +52,9 @@ No second planner, application protocol, preview flow, recovery flow, or organiz
 Issue #53 uses a bounded onboarding-proposal state owned outside the organizer layout/application data model:
 
 ```text
-UNSEEN
-  -> SKIPPED
-  -> DEFERRED
-  -> REVIEWED
+UNSEEN -> SKIPPED
+       -> DEFERRED
+       -> REVIEWED
 ```
 
 These are mutually exclusive persisted proposal outcomes; implementation may use different names but must preserve the behavior below.
@@ -321,4 +320,4 @@ Because #53 is `risk: layout-data`, the implementation PR must also satisfy:
 
 ## 11. Approval gate
 
-This specification is **Proposed — review-ready**. Acceptance-criterion IDs remain provisional until the repository's explicit spec approval step is performed. Implementation must not begin from this document as though it were accepted.
+This specification is **Accepted**. AC-001 through AC-008 are frozen for Stage B implementation. Production implementation may begin under the paired approved plan and remains subject to its explicit stop conditions and the repository high-risk evidence gate.
