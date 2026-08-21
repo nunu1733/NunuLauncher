@@ -296,29 +296,22 @@ class ManualOrganizationPreferencesInstrumentationTest {
             }
         }
 
-        composeRule.runOnIdle {
-            check(checkNotNull(focusManager).moveFocus(FocusDirection.Next))
-        }
-        composeRule.waitUntil(5_000) {
-            try {
-                composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm)).assertIsFocused()
-                true
-            } catch (_: AssertionError) {
-                false
+        fun moveFocusUntil(target: String) {
+            repeat(4) {
+                try {
+                    composeRule.onNodeWithText(target).assertIsFocused()
+                    return
+                } catch (_: AssertionError) {
+                    composeRule.runOnIdle {
+                        check(checkNotNull(focusManager).moveFocus(FocusDirection.Next))
+                    }
+                }
             }
+            composeRule.onNodeWithText(target).assertIsFocused()
         }
 
-        composeRule.runOnIdle {
-            check(checkNotNull(focusManager).moveFocus(FocusDirection.Next))
-        }
-        composeRule.waitUntil(5_000) {
-            try {
-                composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).assertIsFocused()
-                true
-            } catch (_: AssertionError) {
-                false
-            }
-        }
+        moveFocusUntil(context.getString(R.string.manual_organization_confirm))
+        moveFocusUntil(context.getString(R.string.manual_organization_cancel))
     }
 
     @Test
