@@ -1,6 +1,6 @@
 # CI Test Portfolio and Runtime Baseline
 
-> Status: Implemented pending post-change CI measurement
+> Status: Implemented
 > Scope: Issue #96 source-changing pull-request CI
 > Updated: 2026-08-21
 
@@ -53,18 +53,19 @@ Issue #83、#52、#53 の focused connected suite を、共通の `changes` gate
 | test/check の削除 | 実施しない | 同じ failure mode を適切な layer で検出する、明示的で reviewable な coverage equivalence。 |
 | 共有 emulator / 異なる class filter の Gradle invocation 統合 | 実施しない | Android Test Orchestrator 等により、suite 間の deterministic isolation と failure attribution を実証する設計。 |
 
-## Post-change measurement protocol
+## Post-change measurement result
 
-この変更を含む PR の成功した `pull_request` event CI run を、同じ source-changing 条件の基準 run と比較する。report には次を記録する。
+PR #97 の `pull_request` event CI は commit `c4a0727276db40634b7fc3d4f6f7d364b3da2d37` で成功した。workflow は `2026-08-21T14:09:01Z` から `2026-08-21T14:18:03Z` までの **9分02秒** で完了した。これは `.github/workflows/ci.yml` を含む CI configuration change であり、`ci` path filter により build、JVM、3つの focused connected-test job の全てが skip されずに成功した。[7]
 
-| Metric | Method | 成功判定 |
-|---|---|---|
-| Critical-path wall time | workflow start から `final-status` 完了まで | 基準の15分14秒を下回ること。 |
-| Connected critical path | 3つの focused instrumentation job のうち最長の開始から完了まで | 基準の14分33秒を下回ること。 |
-| Total runner work | 全 job の wall time 合計 | job parallelism による見かけの短縮と区別して併記する。 |
-| Coverage/isolation | required jobs と各 focused class の結果 | #83、#52、#53 の全 evidence が success であり、各 suite が独立 job で実行されること。CI workflow-only PR でもこれらの jobs が skip されないこと。 |
+| Metric | PR #95 baseline | PR #97 result | Difference | 判定 |
+|---|---:|---:|---:|---|
+| Critical-path wall time | 15分14秒 | **9分02秒** | **6分12秒短縮（40.7%）** | Pass |
+| Connected critical path | 14分33秒 | **8分37秒**（Issue #52） | **5分56秒短縮（40.7%）** | Pass |
+| Total runner work | 24分20秒 | 33分10秒 | **8分50秒増加（36.3%）** | wall-clock 改善と引き換えに増加。明示的に受容し、追加最適化の対象とする。 |
+| Required focused evidence | #83 API 35、#52 API 36、#53 API 36 | 3つの独立 job がすべて success | coverage 削除なし | Pass |
+| State isolation | 単一 job 内で順次実行 | clean emulator を持つ別 job | #52/#53 の process・target state を非共有 | Pass |
 
-初回の post-change run が成功しただけでは API 35 consolidation、artifact reuse、path-filter narrowing、または test removal を正当化しない。これらは各々に上記の追加 evidence を必要とする。
+この結果は critical path の material reduction を示す一方、emulator/job を3つに分けたことで total runner work は増えている。したがって、API 35 consolidation、artifact reuse、path-filter narrowing、または test removal をこの結果だけで正当化しない。これらは各々に追加の coverage/isolation evidence を必要とする。
 
 ## References
 
@@ -74,3 +75,4 @@ Issue #83、#52、#53 の focused connected suite を、共通の `changes` gate
 [4]: ../../specs/83-production-organization-input-sources/plan.md "Issue #83 plan — API 35 production input evidence"
 [5]: ../../specs/52-manual-full-organization-vertical-slice/plan.md "Issue #52 plan — high-risk connected evidence and fixture restoration"
 [6]: ../../specs/53-onboarding-organization-proposal/plan.md "Issue #53 plan — onboarding isolation and connected acceptance evidence"
+[7]: https://github.com/nunu1733/NunuLauncher/actions/runs/32490574667 "PR #97 successful CI run — post-change measurement"
