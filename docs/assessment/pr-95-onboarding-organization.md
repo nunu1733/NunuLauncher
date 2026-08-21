@@ -5,60 +5,54 @@
 
 - Auditor: Independent re-audit session separate from the implementation/review-fix sessions (solo-maintenance audit)
 - PR: https://github.com/nunu1733/NunuLauncher/pull/95
-- Head SHA: 846d8c1ddd0956fd35aaf7eb59f078c9752477eb
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32449382110
+- Head SHA: 1ebcd1f65772715aef00121aa72127f93b5f9e1a
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32451234916
 - Criteria: specs/53-onboarding-organization-proposal/spec.md — FR-006, FR-007, FR-015, NFR-001, NFR-005, NFR-009, NFR-011, AC-001, AC-002, AC-003, AC-004, AC-005, AC-006, AC-007, AC-008; specs/52-manual-full-organization-vertical-slice/spec.md — FR-006, FR-015, NFR-001, NFR-005, NFR-009, NFR-011
 
 ## Scope
 
-This independent re-audit covers the complete current Issue #53 implementation through `846d8c1ddd0956fd35aaf7eb59f078c9752477eb` and rechecks the blockers from the previous assessment: restore-provenance ordering, repository criteria metadata, and the approved API-36.1 connected-test matrix. The review inspected the implementation/source boundaries, deterministic test design, current CI workflow configuration, live pull-request Actions results, and the uploaded instrumentation failure report.
+This independent re-audit covers the complete `main..1ebcd1f65772715aef00121aa72127f93b5f9e1a` Issue #53 implementation diff and specifically rechecks the blockers from the prior assessment. Since the prior audit commit `d9b43be6d9d707f8ff1615cf7d163832ed695d2d`, the implementation branch contains one additional non-documentation commit, `1ebcd1f65772715aef00121aa72127f93b5f9e1a` (`test(onboarding): stabilize launcher host evidence`), changing only `tests/organizer-instrumentation/app/lawnchair/organizer/ui/OnboardingOrganizationProposalInstrumentationTest.kt`.
 
-No production implementation file is changed by this audit. This record is the audit-session repository change, committed after the audited implementation SHA.
+The audit therefore retains the previously inspected production-safety conclusions for restore provenance, proposal state, Review-to-`ONBOARDING_PROPOSAL` admission, busy-run isolation, reuse of the Issue #52 preview/confirmation/write authority, retry/recreation isolation, offline behavior, and repository metadata, while independently reviewing whether the new test stabilization closes the API-36.1 failures without weakening the accepted accessibility contract. No production implementation file is changed by this audit; this record is the audit-session repository change.
 
 ## Criteria check
 
-- **AC-001 / FR-007 — PASS at source/test-design level; previous blocker resolved.** Restore provenance is synchronously snapshotted from the restore entry path into `ORGANIZATION_PROPOSAL_RESTORE_SEEN`, a `LauncherPrefs.nonRestorableItem`, before transient restore markers may be consumed by launcher model loading. The classifier checks restore markers/snapshot before fresh-install package-time classification and remains fail-closed for restore, upgrade, and unknown provenance. The connected source includes deterministic coverage for consuming the transient markers after the durable snapshot has been established.
-- **AC-002 — PASS at source/unit boundary.** Skip, defer, and Back resolve only onboarding proposal state/process suppression. They do not admit a new organizer run or authorize layout writes.
-- **AC-003 / AC-005 — PASS at source/unit boundary; connected evidence is not qualifying.** Review continues through the shared Issue #52 coordinator with `Trigger.ONBOARDING_PROPOSAL`; Busy leaves the proposal actionable and does not replace/relabel an active run; successful admission uses a fresh run. The required production-owner connected case is present but is one of the current API-36 suite failures, so this behavior does not yet have qualifying current-head connected evidence.
-- **AC-004 / FR-006 / NFR-001 / NFR-005 — PASS at inspected architecture boundary.** The onboarding proposal does not directly materialize or apply layout changes. Review routes into the shared Issue #52 preview/confirmation surface, and the existing safe writer/recovery boundary remains the write authority.
-- **AC-006 — PASS at source/unit boundary; connected evidence is not qualifying.** Navigation serializes onboarding entry context rather than run ID, preview capability, checkpoint, or write authority. Fresh actions re-enter through the shared coordinator. The production owner/navigation connected case currently fails before completing the required lifecycle/resume path.
-- **AC-007 / NFR-009 / NFR-011 — PASS at inspected architecture boundary.** No new network dependency or alternate layout-write/recovery authority was introduced.
-- **AC-008 — FAIL.** The workflow configuration now matches the approved connected matrix: Issue #52 `ManualOrganizationProductionE2EInstrumentationTest` + `ManualOrganizationPreferencesInstrumentationTest` run on API 36 / Platform 36.1, and Issue #53 `OnboardingOrganizationProposalInstrumentationTest` also runs on API 36 / Platform 36.1. The Issue #52 matrix passed, but the required Issue #53 suite failed 3 of 8 tests. Therefore the current implementation head does not have green required connected evidence or a qualifying successful pull-request CI run.
-- **High-risk evidence metadata — PASS.** `specs/53-onboarding-organization-proposal/spec.md` now carries YAML frontmatter with `status: accepted`, and repository-contract validation passes.
+- **AC-001 / FR-007 — PASS for fresh-install/restore/lifecycle safety, but accessibility portion remains blocked.** The previously audited non-restorable restore snapshot and current-lifecycle admission remain unchanged by the latest test-only commit. However AC-001 also requires accessible proposal actions, and the accepted accessibility contract requires deterministic focus and keyboard/switch access. The latest real-Launcher test no longer verifies actual input focus or DPAD traversal after presentation.
+- **AC-002 — PASS at source/test boundary.** Skip/defer/Back remain proposal-only state transitions and do not start an organizer run, mutate layout/organizer-owned state, or emit organizer run-journal events.
+- **AC-003 / AC-005 — PASS at inspected source boundary; current connected run is incomplete.** Review still uses the shared Issue #52 coordinator with `Trigger.ONBOARDING_PROPOSAL`, `Busy` remains isolated, and successful admission starts a fresh run before navigation. The current CI never reached the Issue #53 connected step because the preceding Issue #52 API-36.1 regression step failed.
+- **AC-004 / FR-006 / NFR-001 — PASS at inspected architecture boundary; current required CI evidence is red.** Onboarding still has no independent planner/materializer/apply path; write authorization remains the reused Issue #52 explicit preview confirmation path. The required connected regression job did not pass on the current head.
+- **AC-006 — PASS at inspected source boundary; current connected evidence is incomplete.** Navigation continues to retain entry context only and does not serialize run ID, preview authorization, checkpoint, or write capability. Current-head CI did not execute the subsequent Issue #53 recreation/cross-entry suite because Issue #52 connected regression failed first.
+- **AC-007 / NFR-005 / NFR-011 — PASS at inspected architecture boundary.** No network dependency, alternate writer/recovery authority, or trigger-correlation fork was introduced by the latest test-only change.
+- **NFR-009 / accessibility — FAIL.** The accepted specification requires meaningful/deterministic focus, keyboard/switch access, and meaningful focus return; the required QA scenario explicitly calls for deterministic focus and keyboard/switch traversal, and the approved plan requires keyboard/DPAD/switch traversal to every proposal action. Production `OrganizationOnboardingProposalView.show()` records the pre-open focus, attaches the floating view, and calls `announceAccessibilityChanges()`, while `getAccessibilityInitialFocusView()` returns the title. `AbstractFloatingView.announceAccessibilityChanges()` requests Android accessibility focus when accessibility is enabled; it does not establish ordinary keyboard/input focus. The latest real-Launcher 200%-font test removed `laterButton.requestFocus()` and the DPAD key/traversal assertion, replacing them with `isFocusable` property assertions. The isolated `PreferenceActivity` content test now waits for window focus and then explicitly forces `title.requestFocus()` / `laterButton.requestFocus()`, which proves those views can accept focus when a test grants it, but does not prove the real launcher-owned popup establishes deterministic input focus or supports real-host traversal from its actual presentation state.
+- **AC-008 — FAIL.** Current PR-event CI run 32451234916 is not successful. Repository contract, style, organizer unit tests, debug APK build, and Issue #83 production-seam instrumentation passed. The Issue #52 API 36 / Platform 36.1 step failed 1 of 13 tests: `ManualOrganizationPreferencesInstrumentationTest.keyboardAndSwitchStyleTraversalReachesReviewActions` timed out after 5000 ms. Because that step failed, the Issue #53 API-36.1 connected step was skipped and `final-status` failed. Independently, the latest Issue #53 stabilization weakens the real-host keyboard/DPAD assertion described above, so a future green rerun of the current tests alone would not close the accessibility finding.
+- **High-risk evidence metadata — PASS, audit freshness updated by this record.** Issue #53 retains YAML frontmatter `status: accepted`, and current `validate-repo-contract` passes. The previous high-risk gate correctly rejected the stale audit after the new test commit. This assessment updates the audited implementation SHA and CI reference and also places substantive text directly under `## Findings` so the high-risk validator does not interpret the section as empty.
 
 ## Executed test surface
 
-CI run `32449382110` on audited implementation SHA `846d8c1ddd0956fd35aaf7eb59f078c9752477eb` completed with:
+The independent re-audit inspected the one-commit delta after the prior audit, the current onboarding connected test source, the production `OrganizationOnboardingProposalView` focus behavior, `AbstractFloatingView` accessibility-focus behavior, the accepted Issue #53 specification and approved plan, the current audit record contract, and live PR-event Actions for implementation SHA `1ebcd1f65772715aef00121aa72127f93b5f9e1a`.
 
-- repository contract validation and validator self-tests: **PASS**;
-- organizer unit tests: **PASS**;
+CI run 32451234916 completed with:
+
+- repository-contract validation and self-tests: **PASS**;
 - `./gradlew spotlessCheck`: **PASS**;
+- organizer unit tests: **PASS**;
 - GitHub Debug APK build: **PASS**;
-- Issue #83 production-seam instrumentation, API 35: **PASS**;
-- Issue #52 `ManualOrganizationProductionE2EInstrumentationTest` + `ManualOrganizationPreferencesInstrumentationTest`, API 36 / Platform 36.1: **PASS**;
-- Issue #53 `OnboardingOrganizationProposalInstrumentationTest`, API 36 / Platform 36.1: **FAIL** (8 tests, 3 failures);
+- Issue #83 production-seam instrumentation: **PASS**;
+- Issue #52 `ManualOrganizationProductionE2EInstrumentationTest` + `ManualOrganizationPreferencesInstrumentationTest` on API 36 / Platform 36.1: **FAIL** — 13 tests executed, 1 failure in `keyboardAndSwitchStyleTraversalReachesReviewActions` due `ComposeTimeoutException` after 5000 ms;
+- Issue #53 `OnboardingOrganizationProposalInstrumentationTest` on API 36 / Platform 36.1: **SKIPPED** because the prior connected step failed;
+- `organizer-instrumentation-tests`: **FAIL**;
 - `final-status`: **FAIL**.
 
-The uploaded `organizer-instrumentation-reports` artifact identifies these Issue #53 failures:
-
-1. `realLauncherFloatingHostKeepsAllActionsWithinViewportAtTwoHundredPercentFontScale` — assertion failure at the `laterButton.requestFocus()` check.
-2. `realProposalContentKeepsAllActionsReachableAtTwoHundredPercentFontScale` — assertion failure at the `title.requestFocus()` check.
-3. `productionOwnerDefersBindWhilePausedThenShowsAndRoutesReviewAfterResume` — `LawnchairLauncher did not reach RESUMED after HOME launch` from `awaitResumedLauncher()` after returning from `PreferenceActivity`.
-
-The artifact establishes the failing assertions/time-out, but this audit does not infer a single root cause from those symptoms alone. Whether the correction belongs in production behavior, test synchronization/focus setup, or both must be established by the implementation/fix session and then revalidated on the same required API-36.1 surface.
+The preceding assessment had observed the same Issue #52 API-36.1 surface pass on an earlier implementation SHA, so this run alone does not establish whether the current Issue #52 timeout is deterministic or flaky. That distinction does not change the audit verdict: the current implementation SHA has no completed successful qualifying PR-event CI run, and the independent accessibility finding is separate from that run failure.
 
 ## Findings
 
-### Resolved since the previous audit
+The re-audit found two current blockers: the current-head required connected/`final-status` CI is red, and the latest test stabilization weakens the accepted real-launcher keyboard-focus evidence rather than demonstrating the required behavior.
 
-1. **Restore provenance ordering is resolved at the inspected source boundary.** The synchronous, non-restorable restore snapshot removes the previous dependency on racing transient loader flags and has deterministic coverage in the connected test source.
-2. **Issue #53 criteria metadata is repository-compatible.** The accepted spec exposes `status: accepted` in YAML frontmatter and repository-contract validation is green.
-3. **The API-36.1 connected matrix configuration is now complete.** The previously missing Issue #52 API-36.1 review/E2E execution is present and passed in the audited run; the Issue #53 suite is also actually executed on API 36.
+1. **High / Blocker — real Launcher deterministic keyboard focus and traversal are not demonstrated (AC-001, AC-008, NFR-009).** The accepted spec/plan requires deterministic/meaningful focus plus keyboard/DPAD/switch traversal. Production popup opening establishes accessibility focus only through `announceAccessibilityChanges()` and does not explicitly move ordinary input focus into the proposal. The latest real-host test removes the failing input-focus request and DPAD traversal assertion and checks only `isFocusable`; the remaining isolated-content test manually grants focus in `PreferenceActivity`. This is insufficient evidence for the accepted real-host contract and can mask an actual keyboard/switch usability gap. Establish deterministic meaningful input focus in the production launcher-owned proposal (without regressing accessibility/touch behavior), retain meaningful focus restoration on close, and exercise actual real-Launcher keyboard/DPAD traversal to proposal actions on API 36.1 without relying solely on property checks or a test-forced isolated focus state.
+2. **High / Blocker — current qualifying CI is not successful (AC-008).** Run 32451234916 fails `organizer-instrumentation-tests` and `final-status`. The Issue #52 API-36.1 regression step times out in `ManualOrganizationPreferencesInstrumentationTest.keyboardAndSwitchStyleTraversalReachesReviewActions`; the Issue #53 connected suite is therefore skipped. Diagnose/stabilize the connected keyboard/switch regression as appropriate and obtain a completed successful PR-event CI run on the resulting implementation head.
+3. **Informational — the production-owner lifecycle stabilization is directionally reasonable but was not exercised in this run.** Explicitly relaunching HOME before waiting for the same `LawnchairLauncher` to resume removes an assumption that Back from `PreferenceActivity` alone resumes HOME. The current CI did not reach the Issue #53 suite, so this head has no execution evidence for that changed case yet.
+4. **Informational — waiting for real window focus before explicit `requestFocus()` is a reasonable synchronization improvement for the isolated content test, but it is not a substitute for real-host focus ownership.** It can stabilize the isolated focus API call while leaving the production launcher popup's initial input-focus behavior unverified.
+5. **Informational — prior safety blockers remain resolved.** Restore-provenance ordering, accepted-spec YAML metadata, and the API-36.1 workflow matrix remain fixed; the latest implementation delta is test-only.
 
-### High / Blocker — required Issue #53 API-36.1 connected suite is red
-
-The configuration/evidence-selection gap is fixed, but the required current-head Issue #53 connected suite itself is not green: 3 of 8 tests fail, including two 200%-font-scale focusability checks and the production-owner lifecycle/navigation case. This falls directly within AC-008 and also prevents the high-risk evidence contract from accepting CI run `32449382110`, because `organizer-instrumentation-tests` and `final-status` are failed.
-
-Required remediation: diagnose and correct the three Issue #53 API-36.1 failures without weakening the accepted accessibility/lifecycle criteria, obtain a completed successful pull-request `CI / final-status` on the resulting implementation head, then perform another independent audit against that head.
-
-**Verdict: NO-GO.** Do not mark PR #95 ready for review or merge on this assessment.
+**Verdict: NO-GO.** Do not mark PR #95 ready for merge on this assessment. Fix or explicitly satisfy the accepted real-launcher focus/traversal contract with behavioral API-36.1 evidence, obtain a fresh successful PR-event CI run including Issue #52 and Issue #53 connected suites plus `final-status`, and then perform another independent audit against that implementation head.
