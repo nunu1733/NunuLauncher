@@ -54,8 +54,21 @@ class BackupExclusionTest {
         )
     }
 
+    @Test
+    fun categoryOverrideStoreNotInBackupSchemeXml() {
+        val schemeFile = File("res/xml/backupscheme.xml")
+        org.junit.Assume.assumeTrue("backupscheme.xml must exist", schemeFile.exists())
+
+        val content = schemeFile.readText(Charsets.UTF_8)
+
+        assertFalse(
+            "organizer_category_overrides must not appear in backup scheme",
+            content.contains("organizer_category_overrides"),
+        )
+    }
+
     /**
-     * Verify that the diagnostics journal file is NOT included in the
+     * Verify that the journal file is NOT included in the
      * LawnchairBackup.getFiles() return set.
      *
      * This test reads the source of LawnchairBackup.getFiles() to verify
@@ -80,6 +93,17 @@ class BackupExclusionTest {
         assertFalse(
             "LawnchairBackup must not include organizer_diagnostics",
             content.contains("organizer_diagnostics"),
+        )
+    }
+
+    @Test
+    fun categoryOverrideStoreNotInLawnchairBackupFiles() {
+        val sourceFile = File("lawnchair/src/app/lawnchair/backup/LawnchairBackup.kt")
+        org.junit.Assume.assumeTrue("LawnchairBackup.kt must exist", sourceFile.exists())
+
+        assertFalse(
+            "LawnchairBackup must not include organizer_category_overrides",
+            sourceFile.readText(Charsets.UTF_8).contains("organizer_category_overrides"),
         )
     }
 

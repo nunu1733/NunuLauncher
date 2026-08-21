@@ -96,6 +96,10 @@ data object HomeScreenPopupEditor : PreferenceRoute
 @Serializable
 data object HomeScreenPlacementLocks : PreferenceRoute
 
+// Issue #99: route carries no app/profile identity or write authorization.
+@Serializable
+data object HomeScreenCategoryOverrides : PreferenceRoute
+
 // Issues #52/#53: persist only the stable caller context, never run state or write authority.
 @Serializable
 enum class OrganizationEntry {

@@ -188,6 +188,7 @@ class ManualOrganizationRun internal constructor(
     private var pending: PendingPlan? = null
     private var appliedPoint: RecoveryPointId? = null
     private var pendingRecovery: RecoveryPreviewResult.Restorable? = null
+    private var recoveryLease: OrganizationOperationLease.Token? = null
     private var lastVerifiedApply: State.Applied? = null
 
     fun start(trigger: Trigger = Trigger.MANUAL_FULL): StartOutcome {
@@ -286,6 +287,7 @@ class ManualOrganizationRun internal constructor(
             stateHolder.value = State.Cancelled
             candidate
         }
+        operation.lease.close()
         emit(
             RunEvent(
                 journalSequence = 0L,
@@ -324,7 +326,10 @@ class ManualOrganizationRun internal constructor(
                 stateHolder.value = State.Stale
                 true
             }
-            if (stale) emitStaleRejection(operation)
+            if (stale) {
+                operation.lease.close()
+                emitStaleRejection(operation)
+            }
             return
         }
         val admitted = synchronized(lock) {
@@ -359,28 +364,50 @@ class ManualOrganizationRun internal constructor(
             }
             stateHolder.value = nextState
         }
+        operation.lease.close()
     }
 
     fun beginRecoveryPreview() {
-        val (point, previous) = synchronized(lock) {
-            val current = lastVerifiedApply ?: return
-            val pointId = appliedPoint ?: return
-            stateHolder.value = State.InspectingRecovery
-            pointId to current
+        val lease = OrganizationOperationLease.tryAcquire(OrganizationOperationLease.Kind.RECOVERY) ?: return
+        val request = synchronized(lock) {
+            val current = lastVerifiedApply
+            val pointId = appliedPoint
+            if (current == null || pointId == null || activeOperation != null || recoveryLease != null) {
+                null
+            } else {
+                recoveryLease = lease
+                stateHolder.value = State.InspectingRecovery
+                pointId to current
+            }
         }
+        if (request == null) {
+            lease.close()
+            return
+        }
+        val (point, previous) = request
         val preview = application.inspectRecovery(point)
-        synchronized(lock) {
-            if (lastVerifiedApply !== previous || state !is State.InspectingRecovery) return
-            pendingRecovery = preview as? RecoveryPreviewResult.Restorable
-            stateHolder.value = State.RecoveryPreview(preview)
+        val updated = synchronized(lock) {
+            if (lastVerifiedApply !== previous || state !is State.InspectingRecovery) {
+                false
+            } else {
+                pendingRecovery = preview as? RecoveryPreviewResult.Restorable
+                stateHolder.value = State.RecoveryPreview(preview)
+                true
+            }
+        }
+        if (!updated) {
+            val abandoned = synchronized(lock) { recoveryLease.also { recoveryLease = null } }
+            abandoned?.close()
         }
     }
 
     fun cancelRecoveryPreview() {
-        synchronized(lock) {
+        val lease = synchronized(lock) {
             pendingRecovery = null
             stateHolder.value = lastVerifiedApply ?: State.Idle
+            recoveryLease.also { recoveryLease = null }
         }
+        lease?.close()
     }
 
     fun confirmRecovery() {
@@ -391,12 +418,27 @@ class ManualOrganizationRun internal constructor(
             current
         }
         val result = application.confirmRecovery(preview.pointId, preview.confirmation)
-        synchronized(lock) {
+        val lease = synchronized(lock) {
             if (state is State.Recovering) stateHolder.value = State.RecoveryResultState(result)
+            recoveryLease.also { recoveryLease = null }
         }
+        lease?.close()
     }
 
     fun dismiss(): DismissalOutcome {
+        val recovery = synchronized(lock) {
+            if (activeOperation == null && recoveryLease != null) {
+                pendingRecovery = null
+                stateHolder.value = lastVerifiedApply ?: State.Idle
+                recoveryLease.also { recoveryLease = null }
+            } else {
+                null
+            }
+        }
+        if (recovery != null) {
+            recovery.close()
+            return DismissalOutcome.CancelledAndMayNavigate
+        }
         val operation = synchronized(lock) {
             val operation = activeOperation
             if (operation?.applicationAdmitted?.get() == true) {
@@ -412,6 +454,7 @@ class ManualOrganizationRun internal constructor(
             stateHolder.value = State.Cancelled
             DismissalOutcome.CancelledAndMayNavigate to operation
         }
+        operation.second?.lease?.close()
         operation.second?.let {
             emit(
                 RunEvent(
@@ -426,16 +469,22 @@ class ManualOrganizationRun internal constructor(
         return operation.first
     }
 
-    private fun beginOperation(trigger: Trigger): Operation? = synchronized(lock) {
-        if (activeOperation != null) return@synchronized null
-        val operation = Operation(application.newRunId(), trigger)
-        activeOperation = operation
-        pending = null
-        pendingRecovery = null
-        appliedPoint = null
-        lastVerifiedApply = null
-        stateHolder.value = State.Capturing
-        operation
+    private fun beginOperation(trigger: Trigger): Operation? {
+        val lease = OrganizationOperationLease.tryAcquire(OrganizationOperationLease.Kind.RUN) ?: return null
+        return synchronized(lock) {
+            if (activeOperation != null || recoveryLease != null) {
+                lease.close()
+                return@synchronized null
+            }
+            val operation = Operation(application.newRunId(), trigger, lease)
+            activeOperation = operation
+            pending = null
+            pendingRecovery = null
+            appliedPoint = null
+            lastVerifiedApply = null
+            stateHolder.value = State.Capturing
+            operation
+        }
     }
 
     private fun isActive(operation: Operation): Boolean = synchronized(lock) { isActiveLocked(operation) }
@@ -449,12 +498,17 @@ class ManualOrganizationRun internal constructor(
     }
 
     private fun finish(operation: Operation, nextState: State) {
-        synchronized(lock) {
-            if (!isActiveLocked(operation)) return
-            activeOperation = null
-            pending = null
-            stateHolder.value = nextState
+        val completed = synchronized(lock) {
+            if (!isActiveLocked(operation)) {
+                false
+            } else {
+                activeOperation = null
+                pending = null
+                stateHolder.value = nextState
+                true
+            }
         }
+        if (completed) operation.lease.close()
     }
 
     private fun PlanningResult.summary(input: OrganizationInput): Summary {
@@ -570,6 +624,7 @@ class ManualOrganizationRun internal constructor(
     private data class Operation(
         val runId: RunId,
         val trigger: Trigger,
+        val lease: OrganizationOperationLease.Token,
         val cancelled: AtomicBoolean = AtomicBoolean(false),
         val applicationAdmitted: AtomicBoolean = AtomicBoolean(false),
     )
