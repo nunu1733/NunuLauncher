@@ -297,7 +297,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
 
         composeRule.runOnIdle {
-            check(checkNotNull(focusManager).moveFocus(FocusDirection.Down))
+            check(checkNotNull(focusManager).moveFocus(FocusDirection.Next))
         }
         composeRule.waitUntil(5_000) {
             try {
