@@ -3,21 +3,24 @@ package app.lawnchair.organizer.ui
 import android.content.Context
 import android.content.ContentValues
 import android.graphics.Bitmap
-import android.view.KeyEvent
 import android.provider.MediaStore
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -268,6 +271,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
     }
 
     @Test
+    @OptIn(ExperimentalTestApi::class)
     fun keyboardAndSwitchStyleTraversalReachesReviewActions() {
         val application = FakeApplication()
         val runner = ManualOrganizationRun(
@@ -292,12 +296,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
             }
         }
 
-        fun sendKey(keyCode: Int) {
-            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
-            automation.executeShellCommand("input keyevent $keyCode").close()
-        }
-
-        sendKey(KeyEvent.KEYCODE_DPAD_DOWN)
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview))
+            .performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.waitUntil(5_000) {
             try {
                 composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm)).assertIsFocused()
@@ -307,7 +307,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
             }
         }
 
-        sendKey(KeyEvent.KEYCODE_TAB)
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm))
+            .performKeyInput { pressKey(Key.Tab) }
         composeRule.waitUntil(5_000) {
             try {
                 composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).assertIsFocused()
