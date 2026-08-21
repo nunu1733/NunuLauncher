@@ -140,6 +140,7 @@ internal class OrganizationOnboardingProposalContent(
         textSize = 20f
         setTextColor(Color.BLACK)
         isFocusable = true
+        isFocusableInTouchMode = true
     }
     val laterButton = actionButton(R.string.organization_onboarding_proposal_defer, onLater)
     val skipButton = actionButton(R.string.organization_onboarding_proposal_skip, onSkip)
@@ -187,6 +188,7 @@ internal class OrganizationOnboardingProposalContent(
     ) = Button(context).apply {
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
         setText(textId)
+        isFocusableInTouchMode = true
         setOnClickListener { onClick() }
     }
 
@@ -271,6 +273,7 @@ internal class OrganizationOnboardingProposal(
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             contentDescription = context.getString(R.string.organization_onboarding_proposal_title)
             isFocusable = true
+            isFocusableInTouchMode = true
             setPadding(dp(20), dp(16), dp(20), dp(16))
             background = GradientDrawable().apply {
                 setColor(Color.WHITE)
