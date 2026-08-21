@@ -48,7 +48,16 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 "am start -n ${ComponentName(context, LawnchairLauncher::class.java).flattenToString()} " +
                     "-a ${Intent.ACTION_MAIN} -c ${Intent.CATEGORY_HOME}",
             )
-            val launcher = awaitResumedLauncher(expectedFontScale = TWO_HUNDRED_PERCENT_FONT_SCALE)
+            val launcherBeforeRecreation = awaitResumedLauncher(
+                expectedFontScale = TWO_HUNDRED_PERCENT_FONT_SCALE,
+            )
+            instrumentation.runOnMainSync {
+                launcherBeforeRecreation.recreate()
+            }
+            val launcher = awaitResumedLauncher(
+                expectedFontScale = TWO_HUNDRED_PERCENT_FONT_SCALE,
+                excluding = launcherBeforeRecreation,
+            )
             lateinit var proposal: OrganizationOnboardingProposal.OrganizationOnboardingProposalView
             lateinit var content: OrganizationOnboardingProposalContent
             lateinit var focusBeforeOpen: View
@@ -462,7 +471,10 @@ class OnboardingOrganizationProposalInstrumentationTest {
         error("PreferenceActivity did not resume after onboarding review admission")
     }
 
-    private fun awaitResumedLauncher(expectedFontScale: Float? = null): LawnchairLauncher {
+    private fun awaitResumedLauncher(
+        expectedFontScale: Float? = null,
+        excluding: LawnchairLauncher? = null,
+    ): LawnchairLauncher {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         repeat(120) {
             var candidate: LawnchairLauncher? = null
@@ -472,7 +484,8 @@ class OnboardingOrganizationProposalInstrumentationTest {
                     .filterIsInstance<LawnchairLauncher>()
                     .singleOrNull()
                     ?.takeIf { launcher ->
-                        !launcher.isFinishing &&
+                        launcher !== excluding &&
+                            !launcher.isFinishing &&
                             !launcher.isDestroyed &&
                             launcher.dragLayer.isAttachedToWindow &&
                             launcher.dragLayer.isLaidOut &&
