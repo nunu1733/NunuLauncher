@@ -44,7 +44,6 @@ class OnboardingOrganizationProposalInstrumentationTest {
         try {
             proposalPrefs.put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, OrganizationOnboardingProposalOutcome.SKIPPED.name)
             runShellCommand("settings put system font_scale $TWO_HUNDRED_PERCENT_FONT_SCALE")
-            instrumentation.waitForIdleSync()
             runShellCommand(
                 "am start -n ${ComponentName(context, LawnchairLauncher::class.java).flattenToString()} " +
                     "-a ${Intent.ACTION_MAIN} -c ${Intent.CATEGORY_HOME}",
@@ -90,7 +89,6 @@ class OnboardingOrganizationProposalInstrumentationTest {
             awaitInputFocus({ focusBeforeOpen }, "pre-proposal focus target")
         } finally {
             runShellCommand("settings put system font_scale $originalFontScale")
-            instrumentation.waitForIdleSync()
             proposalPrefs.put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, originalProposalOutcome)
         }
     }
