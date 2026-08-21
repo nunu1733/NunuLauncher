@@ -204,7 +204,6 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: Run Issue 83 production seam instrumentation
-        if: ${{ false }} # Temporary PR #95 focused diagnosis; restore before merge.
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -222,7 +221,6 @@ jobs:
       # a clean API 36 emulator rather than sharing an instrumentation process
       # with the onboarding suite.
       - name: Run Issue 52 manual organization instrumentation (API 36 / Platform 36.1)
-        if: ${{ false }} # Temporary PR #95 focused diagnosis; restore before merge.
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 36
@@ -246,7 +244,7 @@ jobs:
           emulator-boot-timeout: 900
           script: >-
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
-            -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest#productionOwnerDefersBindWhilePausedThenShowsAndRoutesReviewAfterResume
+            -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest
       - name: Upload instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
