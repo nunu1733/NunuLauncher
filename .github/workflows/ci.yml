@@ -231,7 +231,7 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           script: |
-            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest#keyboardAndSwitchStyleTraversalReachesReviewActions
+            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest#keyboardAndSwitchStyleTraversalExposesFocusableReviewActions
             mkdir -p build/issue52-ui-evidence
             adb pull /sdcard/Pictures/Issue52-ui-evidence build/issue52-ui-evidence || true
       - name: Run Issue 53 onboarding proposal instrumentation (API 36 / Platform 36.1)

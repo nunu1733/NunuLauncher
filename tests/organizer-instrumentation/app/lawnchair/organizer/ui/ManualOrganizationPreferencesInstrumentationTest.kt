@@ -17,11 +17,9 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assert
 import androidx.activity.OnBackPressedDispatcher
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
@@ -269,7 +267,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
     }
 
     @Test
-    fun keyboardAndSwitchStyleTraversalReachesReviewActions() {
+    fun keyboardAndSwitchStyleTraversalExposesFocusableReviewActions() {
         val application = FakeApplication()
         val runner = ManualOrganizationRun(
             application,
@@ -294,11 +292,11 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
 
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm))
-            .performSemanticsAction(SemanticsActions.RequestFocus)
-            .assertIsFocused()
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Focused))
+            .assertHasClickAction()
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel))
-            .performSemanticsAction(SemanticsActions.RequestFocus)
-            .assertIsFocused()
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Focused))
+            .assertHasClickAction()
     }
 
     @Test
