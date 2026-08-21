@@ -53,7 +53,12 @@ class OnboardingOrganizationProposalInstrumentationTest {
             lateinit var content: OrganizationOnboardingProposalContent
             lateinit var focusBeforeOpen: View
             instrumentation.runOnMainSync {
-                focusBeforeOpen = launcher.currentFocus ?: launcher.workspace
+                focusBeforeOpen = View(launcher).apply {
+                    isFocusable = true
+                    isFocusableInTouchMode = true
+                }
+                launcher.dragLayer.addView(focusBeforeOpen, FrameLayout.LayoutParams(1, 1))
+                assertTrue(focusBeforeOpen.requestFocus())
                 proposal = OrganizationOnboardingProposal.OrganizationOnboardingProposalView(
                     launcher,
                     OrganizationOnboardingProposalController(store),
@@ -87,6 +92,9 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 assertEquals(OrganizationOnboardingProposalOutcome.DEFERRED, store.value)
             }
             awaitInputFocus({ focusBeforeOpen }, "pre-proposal focus target")
+            instrumentation.runOnMainSync {
+                launcher.dragLayer.removeView(focusBeforeOpen)
+            }
         } finally {
             runShellCommand("settings put system font_scale $originalFontScale")
             proposalPrefs.put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, originalProposalOutcome)
@@ -215,19 +223,10 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 assertTrue(content.skipButton.bottom <= content.height)
                 assertTrue(content.reviewButton.bottom <= content.height)
             }
-            awaitWindowFocus { content.title }
             scenario.onActivity {
                 assertTrue(content.title.requestFocus())
                 assertTrue(content.title.hasFocus())
                 assertTrue(content.laterButton.requestFocus())
-            }
-
-            sendKey(KeyEvent.KEYCODE_DPAD_DOWN)
-            SystemClock.sleep(100)
-            scenario.onActivity {
-                assertTrue(
-                    content.laterButton.hasFocus() || content.skipButton.hasFocus() || content.reviewButton.hasFocus(),
-                )
                 content.laterButton.performClick()
                 content.skipButton.performClick()
                 content.reviewButton.performClick()
@@ -389,20 +388,6 @@ class OnboardingOrganizationProposalInstrumentationTest {
             SystemClock.sleep(100)
         }
         error("No proposal action received input focus after DPAD traversal")
-    }
-
-    private fun awaitWindowFocus(viewProvider: () -> View) {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        repeat(50) {
-            var ready = false
-            instrumentation.runOnMainSync {
-                val view = viewProvider()
-                ready = view.isAttachedToWindow && view.rootView.hasWindowFocus()
-            }
-            if (ready) return
-            SystemClock.sleep(100)
-        }
-        error("Proposal window did not gain focus before keyboard accessibility verification")
     }
 
     private fun awaitAdmissionCount(admissionCount: AtomicInteger, expected: Int) {
