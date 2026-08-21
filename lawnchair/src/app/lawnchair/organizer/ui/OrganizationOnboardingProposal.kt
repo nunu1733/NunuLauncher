@@ -126,6 +126,51 @@ internal class OrganizationOnboardingProposalController(
     }
 }
 
+/** The real proposal content shared by the Launcher floating host and connected UI tests. */
+internal class OrganizationOnboardingProposalContent(
+    context: android.content.Context,
+    onLater: () -> Unit,
+    onSkip: () -> Unit,
+    onReview: () -> Unit,
+) : LinearLayout(context) {
+    val title = TextView(context).apply {
+        setText(R.string.organization_onboarding_proposal_title)
+        textSize = 20f
+        setTextColor(Color.BLACK)
+        isFocusable = true
+    }
+    val laterButton = actionButton(R.string.organization_onboarding_proposal_defer, onLater)
+    val skipButton = actionButton(R.string.organization_onboarding_proposal_skip, onSkip)
+    val reviewButton = actionButton(R.string.organization_onboarding_proposal_review, onReview)
+
+    init {
+        orientation = VERTICAL
+        gravity = Gravity.END
+        addView(title)
+        addView(
+            TextView(context).apply {
+                setText(R.string.organization_onboarding_proposal_summary)
+                setTextColor(Color.DKGRAY)
+                setPadding(0, dp(8), 0, dp(12))
+            },
+        )
+        addView(laterButton)
+        addView(skipButton)
+        addView(reviewButton)
+    }
+
+    private fun actionButton(
+        textId: Int,
+        onClick: () -> Unit,
+    ) = Button(context).apply {
+        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+        setText(textId)
+        setOnClickListener { onClick() }
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+}
+
 /**
  * Launcher-owned proposal host. Construction is safe from onCreate, but presentation is allowed
  * only after both the launcher resume and initial workspace-binding callbacks have fired.
@@ -212,45 +257,20 @@ internal class OrganizationOnboardingProposal(
             elevation = dp(8).toFloat()
 
             addView(
-                TextView(context).apply {
-                    setText(R.string.organization_onboarding_proposal_title)
-                    textSize = 20f
-                    setTextColor(Color.BLACK)
-                    isFocusable = true
-                },
-            )
-            addView(
-                TextView(context).apply {
-                    setText(R.string.organization_onboarding_proposal_summary)
-                    setTextColor(Color.DKGRAY)
-                    setPadding(0, dp(8), 0, dp(12))
-                },
-            )
-            addView(
-                LinearLayout(context).apply {
-                    orientation = VERTICAL
-                    gravity = Gravity.END
-
-                    addView(
-                        actionButton(R.string.organization_onboarding_proposal_defer) {
-                            resolved = true
-                            controller.defer()
-                            close(false)
-                        },
-                    )
-                    addView(
-                        actionButton(R.string.organization_onboarding_proposal_skip) {
-                            resolved = true
-                            controller.skip()
-                            close(false)
-                        },
-                    )
-                    addView(
-                        actionButton(R.string.organization_onboarding_proposal_review) {
-                            beginReview()
-                        },
-                    )
-                },
+                OrganizationOnboardingProposalContent(
+                    context = context,
+                    onLater = {
+                        resolved = true
+                        controller.defer()
+                        close(false)
+                    },
+                    onSkip = {
+                        resolved = true
+                        controller.skip()
+                        close(false)
+                    },
+                    onReview = ::beginReview,
+                ),
             )
         }
 
@@ -300,7 +320,7 @@ internal class OrganizationOnboardingProposal(
             context.getString(R.string.organization_onboarding_proposal_title),
         )
 
-        override fun getAccessibilityInitialFocusView(): View = getChildAt(0)
+        override fun getAccessibilityInitialFocusView(): View = (getChildAt(0) as OrganizationOnboardingProposalContent).title
 
         private fun beginReview() {
             if (reviewInFlight) return
@@ -324,18 +344,6 @@ internal class OrganizationOnboardingProposal(
                     reviewInFlight = false
                 }
             }
-        }
-
-        private fun actionButton(
-            textId: Int,
-            onClick: () -> Unit,
-        ) = Button(context).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            )
-            setText(textId)
-            setOnClickListener { onClick() }
         }
 
         private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
