@@ -1,10 +1,10 @@
 # Plan: Issue #53 Onboarding Organization Proposal
 
-- **Status:** Draft — blocked on spec acceptance
+- **Status:** Approved — implementation-ready
 - **Issue:** #53
-- **Stage:** A
-- **Spec:** `specs/53-onboarding-organization-proposal/spec.md` (Proposed — review-ready)
-- **Implementation start:** NOT AUTHORIZED until the spec is accepted per `AGENTS.md`
+- **Stage:** B — implementation
+- **Spec:** `specs/53-onboarding-organization-proposal/spec.md` (Accepted)
+- **Implementation start:** AUTHORIZED under the accepted spec and this plan
 - **Primary risk:** `risk: layout-data`
 - **Baseline:** `main` after Issue #52 merge (`836ccff7d90bf9df3538f8f08acb0353e407a6b3`)
 
@@ -43,6 +43,8 @@ The Stage A ownership decisions are intentionally fixed rather than deferred to 
 | Organization execution | Existing Issue #52 `ManualOrganizationRun` state machine and application seams only. |
 | Review destination | Existing preferences navigation / `ManualOrganizationPreferences` surface. |
 | Write authorization | Existing Issue #52 preview confirmation capability only; nothing in onboarding state is authorization. |
+
+Current baseline already exposes restore provenance before launcher-ready presentation: `RestoreDbTask.setPending()` sets `RESTORE_DEVICE` and `IS_FIRST_LOAD_AFTER_RESTORE`, and `LoaderTask` clears `IS_FIRST_LOAD_AFTER_RESTORE` only after model load completes. The implementation may capture that restore evidence in the narrow proposal controller/store before UI presentation, but must not display or start a run from the pre-UI lifecycle. Upgrade/fresh-install classification must likewise use reliable platform/package evidence and remain fail-closed when contradictory or unavailable.
 
 If no reliable fresh-install-vs-upgrade/restore classification can be established from accepted/current platform state, stop and record the missing owner contract. Do **not** use “proposal preference missing” as the eligibility predicate.
 
@@ -456,7 +458,7 @@ The underlying Issue #52 workflow remains intact, so rollback does not require l
 
 ## 14. Suggested commit sequence
 
-After spec acceptance and explicit implementation authorization:
+Stage B implementation sequence:
 
 1. `feat(onboarding): add bounded proposal eligibility state`
 2. `refactor(organizer): parameterize full-run start context`
@@ -481,4 +483,4 @@ Stop implementation and record the blocker if:
 
 ## 16. Approval gate
 
-This plan remains **Draft** because the paired spec is **Proposed — review-ready**. It is a planning artifact only. Production implementation starts only after the project performs the explicit spec-approval step and freezes the acceptance criteria.
+This plan is **Approved — implementation-ready** against the accepted Issue #53 specification. Stage B production implementation may begin. Any stop condition above returns the Issue to design/review rather than allowing an implementation-local policy decision.
