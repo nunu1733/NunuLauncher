@@ -215,10 +215,15 @@ jobs:
           script: >-
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
             -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.integration.ProductionOrganizationInputInstrumentationTest
-      - name: Run Issue 52 manual organization instrumentation
+      # API 36 system images are the emulator counterpart of the repository's
+      # Android SDK Platform 36.1 validation baseline. The Issue #52 tests own
+      # database-heavy fixture state, so run their reused review/E2E coverage in
+      # a clean API 36 emulator rather than sharing an instrumentation process
+      # with the onboarding suite.
+      - name: Run Issue 52 manual organization instrumentation (API 36 / Platform 36.1)
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 36
           target: google_apis
           arch: x86_64
           profile: pixel_7_pro
@@ -228,10 +233,6 @@ jobs:
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationProductionE2EInstrumentationTest,app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest
             mkdir -p build/issue52-ui-evidence
             adb pull /sdcard/Pictures/Issue52-ui-evidence build/issue52-ui-evidence
-      # API 36 system images are the emulator counterpart of the repository's
-      # Android SDK Platform 36.1 validation baseline. Keep this proposal surface
-      # separate from Issue #52 so its acceptance evidence cannot be skipped by a
-      # narrow class filter.
       - name: Run Issue 53 onboarding proposal instrumentation (API 36 / Platform 36.1)
         uses: reactivecircus/android-emulator-runner@v2
         with:

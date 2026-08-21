@@ -107,7 +107,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
 
         val context = ApplicationProvider.getApplicationContext<Context>()
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsDisplayed()
+        awaitPreview(runner, context)
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_scope, 0, 0, 1),
         ).assertIsDisplayed()
@@ -139,7 +139,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
 
         val context = ApplicationProvider.getApplicationContext<Context>()
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsDisplayed()
+        awaitPreview(runner, context)
         assertEquals(0, application.applyCalls)
         assertEquals(
             setOf(Trigger.ONBOARDING_PROPOSAL),
@@ -162,6 +162,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
 
         val context = ApplicationProvider.getApplicationContext<Context>()
+        awaitPreview(runner, context)
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).performClick()
         composeRule.waitUntil(5_000) { runner.state == ManualOrganizationRun.State.Cancelled }
         assertEquals(0, application.applyCalls)
@@ -182,6 +183,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
 
         val context = ApplicationProvider.getApplicationContext<Context>()
+        awaitPreview(runner, context)
         composeRule.waitUntil(5_000) {
             try {
                 composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsFocused()
@@ -221,7 +223,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
 
         val context = ApplicationProvider.getApplicationContext<Context>()
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsDisplayed()
+        awaitPreview(runner, context)
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_moved_single_placement, 1),
         ).assertIsDisplayed()
@@ -246,6 +248,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
 
         val context = ApplicationProvider.getApplicationContext<Context>()
+        awaitPreview(runner, context)
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview))
             .assert(
                 SemanticsMatcher.expectValue(
@@ -279,6 +282,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
 
         val context = ApplicationProvider.getApplicationContext<Context>()
+        awaitPreview(runner, context)
         composeRule.waitUntil(5_000) {
             try {
                 composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsFocused()
@@ -329,7 +333,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         captureReviewScreenshot(context, "start")
 
         runner.start()
-        composeRule.waitForIdle()
+        awaitPreview(runner, context)
         captureReviewScreenshot(context, "preview-confirm")
 
         runner.confirm()
@@ -346,8 +350,9 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
         composeRule.waitForIdle()
         staleRunner.start()
+        awaitPreview(staleRunner, context)
         staleRunner.confirm()
-        composeRule.waitForIdle()
+        composeRule.waitUntil(5_000) { staleRunner.state == ManualOrganizationRun.State.Stale }
         captureReviewScreenshot(context, "stale")
 
         val recoveryApplication = FakeApplication().apply {
@@ -362,12 +367,16 @@ class ManualOrganizationPreferencesInstrumentationTest {
             recoveryApplication,
             OrganizationPlanner { planningResult() },
         )
-        recoveryRunner.start()
-        recoveryRunner.confirm()
         composeRule.runOnIdle {
             displayedRun.value = recoveryRunner
         }
         composeRule.waitForIdle()
+        recoveryRunner.start()
+        awaitPreview(recoveryRunner, context)
+        recoveryRunner.confirm()
+        composeRule.waitUntil(5_000) {
+            (recoveryRunner.state as? ManualOrganizationRun.State.Applied)?.result is ApplyResult.Unresolved
+        }
         captureReviewScreenshot(context, "recovery-failure")
     }
 
@@ -386,7 +395,11 @@ class ManualOrganizationPreferencesInstrumentationTest {
             OrganizationPlanner { planningResult() },
         )
         runner.start()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Preview }
         runner.confirm()
+        composeRule.waitUntil(5_000) {
+            (runner.state as? ManualOrganizationRun.State.Applied)?.result is ApplyResult.Unresolved
+        }
         var diagnosticsOpened = false
         val showScreen = mutableStateOf(true)
 
@@ -438,7 +451,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
                 ManualOrganizationPreferences(run = runner)
             }
         }
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsDisplayed()
+        awaitPreview(runner, context)
 
         // Recomposition must not replay the plan or perform a write.
         composeRule.runOnIdle {
@@ -449,7 +462,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
             showRecomposedContent.value = false
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsDisplayed()
+        awaitPreview(runner, context)
         assertEquals(0, application.applyCalls)
     }
 
@@ -537,6 +550,11 @@ class ManualOrganizationPreferencesInstrumentationTest {
             warnings = listOf(Warning(WarningCode.FALLBACK_CATEGORY, emptyList())),
         ),
     )
+
+    private fun awaitPreview(runner: ManualOrganizationRun, context: Context) {
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Preview }
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsDisplayed()
+    }
 
     private fun captureReviewScreenshot(context: Context, name: String) {
         composeRule.waitForIdle()
