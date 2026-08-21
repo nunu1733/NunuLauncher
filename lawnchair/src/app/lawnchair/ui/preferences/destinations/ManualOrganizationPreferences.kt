@@ -25,6 +25,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
 import app.lawnchair.organizer.application.public.RecoveryResult
+import app.lawnchair.organizer.diagnostics.model.Trigger
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.PlacementCode
 import app.lawnchair.organizer.planning.PreserveReason
@@ -47,6 +48,7 @@ import kotlinx.coroutines.withContext
 fun ManualOrganizationPreferences(
     modifier: Modifier = Modifier,
     run: ManualOrganizationRun? = null,
+    trigger: Trigger = Trigger.MANUAL_FULL,
     onOpenDiagnostics: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
@@ -84,7 +86,7 @@ fun ManualOrganizationPreferences(
                     ClickablePreference(
                         label = stringResource(R.string.manual_organization_start),
                         modifier = Modifier.focusRequester(focusRequester).focusable(),
-                        onClick = { execute(coordinator::start) },
+                        onClick = { execute { coordinator.start(trigger) } },
                     )
                 }
 
@@ -103,7 +105,7 @@ fun ManualOrganizationPreferences(
                     )
                     ClickablePreference(
                         label = stringResource(R.string.manual_organization_retry),
-                        onClick = { execute(coordinator::start) },
+                        onClick = { execute { coordinator.start(trigger) } },
                     )
                 }
 
@@ -124,7 +126,7 @@ fun ManualOrganizationPreferences(
                     item {
                         ClickablePreference(
                             label = stringResource(R.string.manual_organization_retry),
-                            onClick = { execute(coordinator::start) },
+                            onClick = { execute { coordinator.start(trigger) } },
                         )
                     }
                 }
@@ -136,7 +138,7 @@ fun ManualOrganizationPreferences(
                     )
                     ClickablePreference(
                         label = stringResource(R.string.manual_organization_start_again),
-                        onClick = { execute(coordinator::start) },
+                        onClick = { execute { coordinator.start(trigger) } },
                     )
                 }
 
@@ -177,7 +179,7 @@ fun ManualOrganizationPreferences(
                     )
                     ClickablePreference(
                         label = stringResource(R.string.manual_organization_recapture),
-                        onClick = { execute(coordinator::start) },
+                        onClick = { execute { coordinator.start(trigger) } },
                     )
                 }
 
@@ -212,7 +214,7 @@ fun ManualOrganizationPreferences(
                         item {
                             ClickablePreference(
                                 label = stringResource(R.string.manual_organization_start_again),
-                                onClick = { execute(coordinator::start) },
+                                onClick = { execute { coordinator.start(trigger) } },
                             )
                         }
                     }
@@ -271,7 +273,7 @@ fun ManualOrganizationPreferences(
                         item {
                             ClickablePreference(
                                 label = stringResource(R.string.manual_organization_start_again),
-                                onClick = { execute(coordinator::start) },
+                                onClick = { execute { coordinator.start(trigger) } },
                             )
                         }
                     }
