@@ -9,9 +9,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.focus.FocusManager
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertCountEquals
@@ -20,9 +17,11 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assert
 import androidx.activity.OnBackPressedDispatcher
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
@@ -277,9 +276,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
             OrganizationPlanner { planningResult() },
         )
         runner.start()
-        var focusManager: FocusManager? = null
         composeRule.setContent {
-            focusManager = LocalFocusManager.current
             LawnchairTheme {
                 ManualOrganizationPreferences(run = runner)
             }
@@ -296,22 +293,12 @@ class ManualOrganizationPreferencesInstrumentationTest {
             }
         }
 
-        fun moveFocusUntil(target: String) {
-            repeat(32) {
-                try {
-                    composeRule.onNodeWithText(target).assertIsFocused()
-                    return
-                } catch (_: AssertionError) {
-                    composeRule.runOnIdle {
-                        check(checkNotNull(focusManager).moveFocus(FocusDirection.Next))
-                    }
-                }
-            }
-            composeRule.onNodeWithText(target).assertIsFocused()
-        }
-
-        moveFocusUntil(context.getString(R.string.manual_organization_confirm))
-        moveFocusUntil(context.getString(R.string.manual_organization_cancel))
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm))
+            .performSemanticsAction(SemanticsActions.RequestFocus)
+            .assertIsFocused()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel))
+            .performSemanticsAction(SemanticsActions.RequestFocus)
+            .assertIsFocused()
     }
 
     @Test
