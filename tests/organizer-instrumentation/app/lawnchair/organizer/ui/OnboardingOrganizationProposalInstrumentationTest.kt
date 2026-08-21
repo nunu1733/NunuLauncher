@@ -44,11 +44,12 @@ class OnboardingOrganizationProposalInstrumentationTest {
         try {
             proposalPrefs.put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, OrganizationOnboardingProposalOutcome.SKIPPED.name)
             runShellCommand("settings put system font_scale $TWO_HUNDRED_PERCENT_FONT_SCALE")
+            instrumentation.waitForIdleSync()
             runShellCommand(
                 "am start -n ${ComponentName(context, LawnchairLauncher::class.java).flattenToString()} " +
                     "-a ${Intent.ACTION_MAIN} -c ${Intent.CATEGORY_HOME}",
             )
-            val launcher = awaitResumedLauncher()
+            val launcher = awaitResumedLauncher(expectedFontScale = TWO_HUNDRED_PERCENT_FONT_SCALE)
             lateinit var proposal: OrganizationOnboardingProposal.OrganizationOnboardingProposalView
             lateinit var content: OrganizationOnboardingProposalContent
             lateinit var focusBeforeOpen: View
@@ -89,6 +90,7 @@ class OnboardingOrganizationProposalInstrumentationTest {
             awaitInputFocus({ focusBeforeOpen }, "pre-proposal focus target")
         } finally {
             runShellCommand("settings put system font_scale $originalFontScale")
+            instrumentation.waitForIdleSync()
             proposalPrefs.put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, originalProposalOutcome)
         }
     }
@@ -477,7 +479,7 @@ class OnboardingOrganizationProposalInstrumentationTest {
         error("PreferenceActivity did not resume after onboarding review admission")
     }
 
-    private fun awaitResumedLauncher(): LawnchairLauncher {
+    private fun awaitResumedLauncher(expectedFontScale: Float? = null): LawnchairLauncher {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         repeat(120) {
             var candidate: LawnchairLauncher? = null
@@ -486,11 +488,22 @@ class OnboardingOrganizationProposalInstrumentationTest {
                     .getActivitiesInStage(Stage.RESUMED)
                     .filterIsInstance<LawnchairLauncher>()
                     .singleOrNull()
+                    ?.takeIf { launcher ->
+                        !launcher.isFinishing &&
+                            !launcher.isDestroyed &&
+                            launcher.hasWindowFocus() &&
+                            (expectedFontScale == null ||
+                                launcher.resources.configuration.fontScale == expectedFontScale)
+                    }
             }
             candidate?.let { return it }
             SystemClock.sleep(100)
         }
-        error("LawnchairLauncher did not reach RESUMED after HOME launch")
+        error(
+            "LawnchairLauncher did not reach a focused RESUMED state" +
+                (expectedFontScale?.let { " with fontScale=$it" } ?: "") +
+                " after HOME launch",
+        )
     }
 
     private fun startLauncher(context: android.content.Context) {
