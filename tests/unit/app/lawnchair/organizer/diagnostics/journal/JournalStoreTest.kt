@@ -194,6 +194,13 @@ class JournalStoreTest {
     }
 
     @Test
+    fun productionDirectorySyncUsesReadOnlyFileChannel() {
+        // FileChannel can force directory metadata on Android/Linux and host macOS.
+        // RandomAccessFile(directory, "r") is a no-op/failure on host macOS.
+        SyncHook.forceDirectoryMetadata(tempDir.root)
+    }
+
+    @Test
     fun retentionRewriteSyncsTempFileThenDirectoryAfterRename() {
         // Use a recording SyncHook to assert the correct ordering:
         // write-temp -> sync-temp -> rename -> sync-dir.

@@ -293,8 +293,12 @@ ADR またはspec の承認を必要とする。
   超過時は最古のrun から削除する。
 - **未解決run の保護**: 対応するrecovery record が`APPLYING` /
   `COMMITTED_UNVERIFIED` / `RESTORING` のrun のevent は、解決
-  （`RESTART_RECONCILED` またはterminal event の追記）まで削除しない。
-  これはspec 13 の「cleanup はunresolved point を消さない」規則との整合である。
+  （terminal event、または**解決済み** `resultingLifecycle` を持つ
+  `RESTART_RECONCILED` の追記）まで削除しない。`RESTART_RECONCILED` が
+  in-flight lifecycleを報告する場合は保護を解除しない。recovery操作の
+  pointId単位の保護も同じ条件で、同一pointIdのterminal recovery eventまたは
+  解決済みreconciliationによってのみ解除する。これはspec 13 の「cleanup は
+  unresolved point を消さない」規則との整合である。
 - 削除は追記時のlazy 実行とし、alarm や常駐thread を使わない。
 - journal store の破損はjournal を初期化して新規作成する。layout、recovery、
   設定へ影響しない。journal はfail-open（診断不能になってもrun を止めない）とし、
@@ -311,6 +315,10 @@ ADR またはspec の承認を必要とする。
 - 出力内容はjournal の`RunEvent` 列にheader（app version、journal schemaVersion、
   export 時刻、`DeviceProfileSummary`）を付けたもののみ。**journal に存在しない
   追加field をexport 時に付与しない**。verbose mode やdebug-only 拡張は作らない。
+  export はlive journalの安定snapshotを読むだけで、reset・prune・appendを実行しない。
+  journal破損が初期化時に検出された場合は§8の隔離・新規journal作成が先に完了するため、
+  exportはその空のpost-reset snapshotを出力する。この隔離はexport固有の副作用ではなく、
+  diagnostics storeのfail-openな破損処理である。
 - 形式はmachine-readable な行区切りJSON（§13 のfixture 形式）とし、
   §7 の分類をそのまま満たす。user が第三者へ共有する選択をした場合も、
   含まれる情報は本契約のfield 集合に等しい。

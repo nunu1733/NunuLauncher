@@ -3,6 +3,8 @@ package app.lawnchair.organizer.diagnostics.journal
 import app.lawnchair.organizer.diagnostics.model.RunEvent
 import java.io.File
 import java.io.RandomAccessFile
+import java.nio.channels.FileChannel
+import java.nio.file.StandardOpenOption
 
 /**
  * Injectable hook for sync operations during retention rewrite, so tests
@@ -17,6 +19,17 @@ interface SyncHook {
     fun syncDirectory(file: File)
 
     companion object {
+        /**
+         * Force the directory metadata through a read-only file channel. This works on
+         * Android/Linux and host macOS JVMs, unlike opening a directory with
+         * [RandomAccessFile].
+         */
+        internal fun forceDirectoryMetadata(directory: File) {
+            FileChannel.open(directory.toPath(), StandardOpenOption.READ).use { channel ->
+                channel.force(true)
+            }
+        }
+
         /** Production hook: fsync via RandomAccessFile fd.sync(). */
         val PRODUCTION: SyncHook = object : SyncHook {
             override fun syncFile(file: File) {
@@ -28,7 +41,7 @@ interface SyncHook {
                 val dir = file.parentFile ?: return
                 if (!dir.exists()) return
                 try {
-                    RandomAccessFile(dir, "r").use { it.fd.sync() }
+                    forceDirectoryMetadata(dir)
                 } catch (_: Exception) {
                     // Best-effort: directory sync is not available on all platforms.
                     // The file-level sync is the primary durability guarantee.
