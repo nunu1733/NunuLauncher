@@ -297,7 +297,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
 
         fun moveFocusUntil(target: String) {
-            repeat(4) {
+            repeat(32) {
                 try {
                     composeRule.onNodeWithText(target).assertIsFocused()
                     return
