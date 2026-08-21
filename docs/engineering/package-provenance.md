@@ -1,9 +1,9 @@
 # Fresh-Install Provenance and Package-Event Classification
 
 > Status: Accepted (research output of [Issue #54](https://github.com/nunu1733/NunuLauncher/issues/54))
-> Updated: 2026-08-15
+> Updated: 2026-08-21
 > Baseline: Lawnchair `v15.0.0-beta3.0` / commit `505dbc40e6154c05158b5d0271c45f6a885a411b`
-> Requirements: FR-008, FR-009, FR-015; NFR-005, NFR-007, NFR-008, NFR-011
+> Requirements: FR-008, FR-009 (Later/deferred by [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85)), FR-015; NFR-005, NFR-007, NFR-008, NFR-011
 > Decision gates: D-004 (trigger policy)
 
 ## 1. Research outcome
@@ -15,8 +15,9 @@ provenance、(c) package+profileから一意なlaunchable targetが揃った場�
 Issue #54の調査結果は、baselineで(a)を証明する権威ある履歴sourceが存在しない、である。
 `LauncherApps` callback、`SessionInfo`、`PackageInfo` timestamp、current inventoryのどれも、
 launcherが観測する前に発生したinstall→uninstall→reinstallを除外できない。従って、現baselineで
-`FreshInstall`を生成するincremental eligibilityは**有効化しない**。完全なprior absenceと
-reinstall除外を証明できる新しい権威source、または要件を変更するproduct decisionが承認されるまで、
+`FreshInstall`を生成するincremental eligibilityは**有効化しない**。
+[Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85)は要件変更のOption Bを選択し、
+FR-008/FR-009のpackage-event incremental placementをMVP外のLater/deferred capabilityとした。
 package eventはproposalを出さず、manual organizationだけを利用可能にする。
 
 `ever-seen` setの欠落、current inventoryでの不在、空store、session reason `USER`、
@@ -30,12 +31,12 @@ missing、unknown、corrupt、stale、contradictory evidenceはすべてno propo
 - current inventoryをpresence memoryとして保存しても、inventory作成前のreinstallは除外できない。
 - したがって、永続store、public classifier、SessionCommitReceiverとModelLauncherCallbacksの複合bridge、schema/migrationを本Issueで選択・実装しない。
 - race、generation、crash、atomic consume/updateの規則を定義しないまま、2つのevent入力を組み合わせる実装も行わない。
-- 将来のincremental featureは、権威ある履歴sourceまたは変更されたproduct requirementを先行decision Issueで確定する。
+- package-event incremental placementは[Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85)によりMVP外である。将来の再開は、権威ある履歴sourceと変更されたproduct requirementを新しいdecision Issueで確定してから行う。
 
 本書はIssue #54で確認したsource comparisonと観測事実だけを所有する。incremental eligibilityを
 無効化する判断とその理由の正本は[ADR-0005](../adr/0005-fresh-install-presence-evidence.md)である。
 観測可能なincremental behavior/spec、module/interface ownership、実装順序、migration、rollbackは、
-将来のproduct decisionと承認済みspecが成立するまで作成しない。
+MVPでは作成しない。将来のLater capabilityとして再開する場合は、新しいproduct decisionと承認済みspecが必要である。
 
 ## 2. Baseline evidence inventory
 
@@ -52,8 +53,8 @@ missing、unknown、corrupt、stale、contradictory evidenceはすべてno propo
 | `src/com/android/launcher3/model/ItemInstallQueue.java:286-318` | `getActivityList(pkg,user).get(0)`を使う既存queue | first-item tie-breakはunique target ruleではない |
 | `src/com/android/launcher3/util/PackageManagerHelper.java:201` | `LauncherApps.getActivityList(pkg,user)`の既存利用 | current targetの解決だけで、prior absenceを証明しない |
 
-既存Deckの`PackageUpdatedTask.java:456-472`のpackage-event organization hookは#57のretirement対象であり、
-#55が再開される場合も二重のorganizer hookを追加してはならない。
+既存Deckの`PackageUpdatedTask.java:456-472`のpackage-event organization hookは#57 / PR #79でretireされ、
+replacement hookは存在しない。Later capabilityとしてincremental placementを再開する場合も二重のorganizer hookを追加してはならない。
 
 ## 3. Fixed platform findings
 
@@ -134,7 +135,7 @@ AOSPの`PackageInfo.firstInstallTime`/`lastUpdateTime`はupdateとreinstallを�
 5. current inventory、USER reason、unique targetは揃うが、Xが過去に存在した事実は失われている。
 
 したがってcurrent inventoryのabsenceはevent前のabsenceではなく、`FreshInstall`の根拠にならない。
-このcounterexampleを除外できる権威sourceが提供されるか、要件を変更するproduct decisionが必要である。
+[Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85)は要件を変更するOption Bを選択し、この能力をMVP外へdeferした。
 
 ### 4.2 Process, reboot, profile, and restore behavior
 
@@ -153,8 +154,8 @@ AOSPの`PackageInfo.firstInstallTime`/`lastUpdateTime`はupdateとreinstallを�
 `ModelLauncherCallbacks`と`SessionCommitReceiver`は現在別のplatform entry pointであり、baselineに
 両者をatomicにconsume/updateする共有generationやtransactionはない。ordering、correlation key、
 generation owner、crash/replay、durable-write failureの規則を承認しないまま、両入力を組み合わせる
-classifier/bridgeを実装してはならない。これらは将来のproduct decisionでeligibilityが再開され、
-#52/#57の依存成果物が揃った後に、承認済みspecとplanで定義する。
+classifier/bridgeを実装してはならない。これらはMVPでは定義しない。Later capabilityとして再開する場合は、
+新しいproduct decision、承認済みspec、planで定義する。
 
 ## 5. Privacy and diagnostics boundary
 
@@ -163,19 +164,22 @@ package、component、user/profile serial、session id、layout coordinate、rul
 出力しない。package eventがambiguous/not-newの場合はorganization runを開始しない。manual flowは
 常に利用可能で、auto-incrementalは有効化しない。
 
-## 6. Handoff and unblock
+## 6. Handoff and deferred capability
 
-現時点のhandoffは#55の実装開始ではない。#55は#54、#52、#57がclosedでaccepted outputがmainに
-入るまでblockedであり、#52/#57がOPENの状態でspec/planを確定しない。
+[Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85) selected Option B. FR-008/FR-009
+package-event incremental placement is outside the MVP, and #55 is to be closed as not planned/deferred
+once this scope decision is merged on `main`. No #55 spec, plan, production package-event organizer code,
+presence store, classifier, session bridge, replacement hook, permission, telemetry, or migration is authorized.
 
-必要な次の判断は、次のどちらかを独立したproduct decision Issueで承認することである。
+The current handoff is therefore **no proposal from package events** and **manual organization remains
+available**. The accepted reinstall counterexample and all fail-closed classifications remain unchanged.
+Confirmation UI does not permit a false-positive fresh-install classification.
 
-1. **Authoritative historyを導入する**: launcherが観測する前のpackage/profile install履歴を取得でき、
-   prior absence、race、crash、atomic consume/updateを検証可能にするplatform/source boundaryを定義する。
-2. **要件を変更する**: reinstall除外を保証できない環境ではincremental proposalをMVPから外し、manual
-   organizationのみとする。false positiveを確認UIで許容するだけの変更は、#4のfail-closed契約と矛盾するため採用しない。
-
-#55へは「現時点no proposal」「未観測reinstallを許容しない」「spec/planは未作成」という状態だけをhandoffする。
+A later capability may be reconsidered only through a new bounded product-decision issue that first defines
+an authoritative pre-observation package/profile history source; profile lifecycle and retention boundaries;
+callback/session ordering, correlation, generation ownership, atomic consume/update, crash/replay, and
+durable-write-failure behavior; and exact no-proposal behavior for unavailable, stale, corrupt, missing, or
+contradictory evidence. Only after that decision is accepted may a separate feature issue create a spec and plan.
 
 ## 7. Verification and change history
 
@@ -186,3 +190,6 @@ package、component、user/profile serial、session id、layout coordinate、rul
 - 2026-08-15: Issue #54 research outputとして初版。
 - 2026-08-15: review指摘により、current inventoryをprior absenceと扱わず、incremental eligibilityを
   現baselineでは無効化。#55の未承認spec/planと未確定のstore/bridge decisionを撤回した。
+- 2026-08-21: [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85) selected Option B. The
+  negative technical conclusion is unchanged; FR-008/FR-009 package-event incremental placement is deferred
+  outside the MVP and #55 has no implementation handoff.

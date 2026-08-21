@@ -1,7 +1,7 @@
 # Product Requirements
 
 > Status: Draft — 各要件はGitHub Issueとspecで承認されるまで実装の確定入力ではない。
-> Updated: 2026-08-09
+> Updated: 2026-08-21
 
 ## Functional requirements
 
@@ -14,8 +14,8 @@
 | FR-005 | Foundation | proposed | staleでない検証済みplanだけを原子的に適用し、適用後に再検証する |
 | FR-006 | MVP | proposed | 明示的なユーザー操作から全体整理を開始し、差分・警告・未配置itemを確認できる |
 | FR-007 | MVP | proposed | onboardingで整理を提案できるが、既存layoutの無確認な全体変更を行わない |
-| FR-008 | MVP | proposed | 新しいlaunchable appをuser/profile identityを保ったまま増分配置できる |
-| FR-009 | MVP | proposed | 増分配置はfull organizationと収束し、update/restoreを新規installと誤認しない |
+| FR-008 | Later | deferred by [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85) | 新しいlaunchable appをuser/profile identityを保ったまま増分配置できる。package eventによるincremental placementはMVP外であり、将来のaccepted product decisionとspecが必要である。 |
+| FR-009 | Later | deferred by [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85) | 増分配置はfull organizationと収束し、update/restoreを新規installと誤認しない。FR-008と不可分のためMVP外とする。 |
 | FR-010 | MVP | proposed | ユーザーがカテゴリ割当をoverrideでき、推定より優先される |
 | FR-011 | MVP | proposed | Android application category等のlocal signalとdeterministic fallbackで分類できる |
 | FR-012 | Later | proposed | version付き整理ルールをvalidation付きでimport/exportできる |
@@ -58,7 +58,7 @@
 | D-001 | 基準revision | 15 Beta 3を候補に再現buildと既存機能を評価し、commit SHAで固定 | 全実装 |
 | D-002 | Deck layoutの扱い | replaceを採用。既存Deckのruntime除去は別Issueで扱う（[ADR-0002](../adr/0002-replace-deck-layout.md)） | architecture |
 | D-003 | 対象集合 | defaultで既存home itemを保持し、drawer全アプリ追加は明示的modeに分ける | FR-002, planner |
-| D-004 | trigger | 手動、onboarding提案、新規app増分を別policyにする | FR-006〜009 |
+| D-004 | trigger | 手動、onboarding提案、package event増分を別policyにする。package eventによるincremental placementは[Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85)のOption BによりMVP外へdeferredとする。 | FR-006〜009 |
 | D-005 | safe UX | recoveryをFoundation、preview/confirmationをMVPに置く | apply/UI |
 | D-006 | lock semantics | itemではなくplacement constraintとして定義し、folder/Dock/grid変更を明記。storageは[ADR-0004](../adr/0004-organizer-lock-persistence.md)で決定。 | FR-003 |
 | D-007 | layout strategy v1 | fixed rowではなくdevice profileからregionを導出する | planner |
@@ -67,6 +67,10 @@
 | D-010 | usage access | optionalとし、拒否時のdeterministic fallbackを必須にする | FR-013 |
 | D-011 | external LLM | privacy/threat modelとoffline behavior承認後まで導入しない | FR-014 |
 | D-012 | UI framework | 既存画面のconventionを優先し、Compose/Viewを画面ごとに判断 | UI work |
+
+## Decision history
+
+- 2026-08-21: [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85) selected Option B. FR-008 and FR-009 move from MVP to Later/deferred; the current package-event behavior remains fail-closed and produces no incremental proposal.
 
 ## Traceability rule
 
