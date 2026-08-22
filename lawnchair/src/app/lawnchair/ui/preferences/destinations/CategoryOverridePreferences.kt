@@ -151,6 +151,12 @@ internal fun CategoryOverridePreferences(
                                                 reload()
                                             }
 
+                                            is CategoryOverrideAuthoringResult.NoChange -> {
+                                                message = R.string.organizer_category_override_no_change
+                                                selectedApp = null
+                                                reload()
+                                            }
+
                                             CategoryOverrideAuthoringResult.OrganizationRunActive -> {
                                                 message = R.string.organizer_category_override_busy
                                                 selectedApp = null

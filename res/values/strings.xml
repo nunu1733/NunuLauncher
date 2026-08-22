@@ -510,6 +510,7 @@
     <string name="organizer_category_override_save">Save category override</string>
     <string name="organizer_category_override_cancel">Back to app list</string>
     <string name="organizer_category_override_saved">Category override saved.</string>
+    <string name="organizer_category_override_no_change">No change was needed. The existing category override remains.</string>
     <string name="organizer_category_override_busy">Organization is active. Finish it before editing categories.</string>
     <string name="organizer_category_override_unavailable">This app or profile is no longer available. Reload the list and try again.</string>
     <string name="organizer_category_override_unavailable_store">Category overrides are unavailable. No change was saved.</string>

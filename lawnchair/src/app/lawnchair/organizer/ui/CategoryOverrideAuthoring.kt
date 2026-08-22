@@ -18,6 +18,7 @@ import app.lawnchair.organizer.rules.CategoryOverrideStoredIdentity
 import app.lawnchair.organizer.rules.CategoryOverrideStoredReadResult
 import app.lawnchair.organizer.rules.CategoryOverrideWriteResult
 import app.lawnchair.organizer.rules.OrganizerPolicyBundleSource
+import app.lawnchair.organizer.rules.PolicyInputIdentity
 import com.android.launcher3.pm.UserCache
 
 /** Product-safe profile discriminator; the serial-based ProfileId remains persistence-only. */
@@ -39,7 +40,14 @@ internal fun interface CategoryOverrideAppInventory {
 
 internal sealed interface CategoryOverrideAuthoringResult {
     data class Loaded(val apps: List<CategoryOverrideApp>) : CategoryOverrideAuthoringResult
-    data class Saved(val stored: CategoryOverrideStoredIdentity) : CategoryOverrideAuthoringResult
+    data class Saved(
+        val stored: CategoryOverrideStoredIdentity,
+        val verificationVisible: PolicyInputIdentity,
+    ) : CategoryOverrideAuthoringResult
+    data class NoChange(
+        val stored: CategoryOverrideStoredIdentity,
+        val verificationVisible: PolicyInputIdentity,
+    ) : CategoryOverrideAuthoringResult
     data object TargetUnavailable : CategoryOverrideAuthoringResult
     data object OrganizationRunActive : CategoryOverrideAuthoringResult
     data object StoreUnreadable : CategoryOverrideAuthoringResult
@@ -75,12 +83,20 @@ internal class CategoryOverrideAuthoringCoordinator internal constructor(
     }
 
     fun load(): CategoryOverrideAuthoringResult {
-        if (categories() == null) return CategoryOverrideAuthoringResult.TaxonomyUnavailable
+        val allowedCategories = categories()?.toSet() ?: return CategoryOverrideAuthoringResult.TaxonomyUnavailable
         val available = inventory.availableApps()
         val overrides = when (val stored = store.readStored()) {
-            is CategoryOverrideStoredReadResult.Ready -> stored.snapshot.assignments
+            is CategoryOverrideStoredReadResult.Ready -> {
+                if (stored.snapshot.assignments.values.any { it !in allowedCategories }) {
+                    return CategoryOverrideAuthoringResult.StoreUnreadable
+                }
+                stored.snapshot.assignments
+            }
+
             CategoryOverrideStoredReadResult.Unreadable -> return CategoryOverrideAuthoringResult.StoreUnreadable
+
             CategoryOverrideStoredReadResult.UnsupportedSchema -> return CategoryOverrideAuthoringResult.UnsupportedSchema
+
             CategoryOverrideStoredReadResult.MigrationBarrierUncertain -> return CategoryOverrideAuthoringResult.MigrationBarrierUncertain
         }
         return CategoryOverrideAuthoringResult.Loaded(
@@ -89,14 +105,22 @@ internal class CategoryOverrideAuthoringCoordinator internal constructor(
     }
 
     fun save(target: CategoryOverrideApp, category: CategoryId?): CategoryOverrideAuthoringResult {
-        if (categories() == null) return CategoryOverrideAuthoringResult.TaxonomyUnavailable
+        val allowedCategories = categories()?.toSet() ?: return CategoryOverrideAuthoringResult.TaxonomyUnavailable
         val lease = OrganizationOperationLease.tryAcquire(OrganizationOperationLease.Kind.AUTHORING)
             ?: return CategoryOverrideAuthoringResult.OrganizationRunActive
         return try {
             val expected = when (val stored = store.readStored()) {
-                is CategoryOverrideStoredReadResult.Ready -> stored.snapshot.identity
+                is CategoryOverrideStoredReadResult.Ready -> {
+                    if (stored.snapshot.assignments.values.any { it !in allowedCategories }) {
+                        return CategoryOverrideAuthoringResult.StoreUnreadable
+                    }
+                    stored.snapshot.identity
+                }
+
                 CategoryOverrideStoredReadResult.Unreadable -> return CategoryOverrideAuthoringResult.StoreUnreadable
+
                 CategoryOverrideStoredReadResult.UnsupportedSchema -> return CategoryOverrideAuthoringResult.UnsupportedSchema
+
                 CategoryOverrideStoredReadResult.MigrationBarrierUncertain -> return CategoryOverrideAuthoringResult.MigrationBarrierUncertain
             }
             // Take one final platform snapshot immediately before dispatching the mutation.
@@ -107,8 +131,8 @@ internal class CategoryOverrideAuthoringCoordinator internal constructor(
             val request = category?.let { CategoryOverrideMutation.Set(current.key, it) }
                 ?: CategoryOverrideMutation.Remove(current.key)
             when (val result = store.mutate(request, expected, finalInventory.mapTo(linkedSetOf()) { it.key.profile })) {
-                is CategoryOverrideWriteResult.Committed -> CategoryOverrideAuthoringResult.Saved(result.stored)
-                is CategoryOverrideWriteResult.NoChange -> CategoryOverrideAuthoringResult.Saved(result.stored)
+                is CategoryOverrideWriteResult.Committed -> CategoryOverrideAuthoringResult.Saved(result.stored, result.verificationVisible)
+                is CategoryOverrideWriteResult.NoChange -> CategoryOverrideAuthoringResult.NoChange(result.stored, result.verificationVisible)
                 CategoryOverrideWriteResult.InvalidCategory -> CategoryOverrideAuthoringResult.InvalidCategory
                 CategoryOverrideWriteResult.TaxonomyUnavailable -> CategoryOverrideAuthoringResult.TaxonomyUnavailable
                 CategoryOverrideWriteResult.StoreUnreadable -> CategoryOverrideAuthoringResult.StoreUnreadable

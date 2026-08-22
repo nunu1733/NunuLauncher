@@ -48,6 +48,35 @@ class CategoryOverrideAuthoringCoordinatorTest {
     }
 
     @Test
+    fun sameRequestReturnsNoChangeWithoutAdvancingGeneration() {
+        val target = app("com.example.same", "0", CategoryOverrideProfile.PERSONAL)
+        val store = InMemoryStore()
+        val coordinator = coordinator(store) { listOf(target) }
+
+        assertTrue(coordinator.save(target, CategoryId("GAME")) is CategoryOverrideAuthoringResult.Saved)
+        val committedGeneration = store.snapshot.identity.generation
+        val result = coordinator.save(target, CategoryId("GAME"))
+
+        assertTrue(result is CategoryOverrideAuthoringResult.NoChange)
+        assertEquals(committedGeneration, store.snapshot.identity.generation)
+        assertEquals(1, store.commitCount)
+        assertEquals(store.snapshot.identity, (result as CategoryOverrideAuthoringResult.NoChange).stored)
+    }
+
+    @Test
+    fun unsupportedStoredCategoryFailsClosedBeforeItReachesTheEditor() {
+        val target = app("com.example.invalid", "0", CategoryOverrideProfile.PERSONAL)
+        val store = InMemoryStore().apply {
+            seed(mapOf(target.key to CategoryId("UNKNOWN")))
+        }
+
+        assertEquals(
+            CategoryOverrideAuthoringResult.StoreUnreadable,
+            coordinator(store) { listOf(target) }.load(),
+        )
+    }
+
+    @Test
     fun targetThatTransitionsFromPresentToUnavailableBeforeMutationDoesNotWrite() {
         val target = app("com.example.removed", "0", CategoryOverrideProfile.PERSONAL)
         val store = InMemoryStore()
@@ -92,6 +121,12 @@ class CategoryOverrideAuthoringCoordinatorTest {
         var assignments: Map<CategoryOverrideKey, CategoryId> = emptyMap()
         var snapshot = nextSnapshot(0L, assignments)
         val requests = mutableListOf<CategoryOverrideMutation>()
+        var commitCount = 0
+
+        fun seed(entries: Map<CategoryOverrideKey, CategoryId>) {
+            assignments = entries
+            snapshot = nextSnapshot(0L, entries)
+        }
 
         override fun readStored(): CategoryOverrideStoredReadResult = CategoryOverrideStoredReadResult.Ready(snapshot)
 
@@ -122,12 +157,25 @@ class CategoryOverrideAuthoringCoordinatorTest {
         ): CategoryOverrideWriteResult {
             requests += request
             val next = assignments.toMutableMap()
-            when (request) {
-                is CategoryOverrideMutation.Set -> next[request.key] = request.category
-                is CategoryOverrideMutation.Remove -> next.remove(request.key)
+            val changed = when (request) {
+                is CategoryOverrideMutation.Set -> if (next[request.key] == request.category) {
+                    false
+                } else {
+                    next[request.key] = request.category
+                    true
+                }
+
+                is CategoryOverrideMutation.Remove -> next.remove(request.key) != null
+            }
+            if (!changed) {
+                return CategoryOverrideWriteResult.NoChange(
+                    snapshot.identity,
+                    (read(verificationProfiles) as OverrideSnapshotReadResult.Ready).snapshot.identity,
+                )
             }
             assignments = next
             snapshot = nextSnapshot(snapshot.identity.generation + 1L, assignments)
+            commitCount += 1
             return CategoryOverrideWriteResult.Committed(
                 snapshot.identity,
                 (read(verificationProfiles) as OverrideSnapshotReadResult.Ready).snapshot.identity,
