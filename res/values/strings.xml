@@ -549,4 +549,9 @@
     <string name="organizer_category_travel">Travel &amp; Local</string>
     <string name="organizer_category_video">Video</string>
     <string name="organizer_category_weather">Weather</string>
+    <string name="organizer_category_override_profile_personal">Personal</string>
+    <string name="organizer_category_override_profile_work">Work profile</string>
+    <string name="organizer_category_override_unnamed_app">Unnamed app</string>
+    <string name="organizer_category_override_automatic_description">No explicit override is stored. A future fresh organization run uses automatic classification.</string>
+    <string name="organizer_category_override_category_description">Use %1$s as the explicit category.</string>
 </resources>

@@ -8,6 +8,7 @@ import app.lawnchair.organizer.planning.PackageName
 import app.lawnchair.organizer.planning.ProfileId
 import java.io.File
 import java.io.FileInputStream
+import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.IOException
 
@@ -253,14 +254,18 @@ internal class CategoryOverrideAtomicAccess internal constructor(
 
     private fun readAtomicStoredLocked(): CategoryOverrideStoredReadResult = readAtomicStoredIfPresentLocked() ?: CategoryOverrideStoredReadResult.Unreadable
 
-    /** null means physical absence, which is valid only before atomic authority. */
+    /**
+     * The AtomicFile wrapper alone decides absence and interrupted-write recovery.
+     * A `.new` file is never inspected or treated as an independent candidate.
+     */
     private fun readAtomicStoredIfPresentLocked(): CategoryOverrideStoredReadResult? = try {
-        if (!atomicFile.exists()) return null
         atomicFile.openRead().use { input ->
             CategoryOverrideFullStoreCodec.decode(input.readBytes())
                 ?.let { CategoryOverrideStoredReadResult.Ready(it) }
                 ?: CategoryOverrideStoredReadResult.Unreadable
         }
+    } catch (_: FileNotFoundException) {
+        null
     } catch (_: IOException) {
         CategoryOverrideStoredReadResult.Unreadable
     } catch (_: SecurityException) {
@@ -350,7 +355,6 @@ internal class AtomicFileCategoryOverrideStore(
 }
 
 internal interface CategoryOverrideAtomicFile {
-    fun exists(): Boolean
     fun openRead(): FileInputStream
     fun startWrite(): FileOutputStream
     fun finishWrite(stream: FileOutputStream)
@@ -361,9 +365,7 @@ private class AndroidxCategoryOverrideAtomicFile(
     finalFile: File,
 ) : CategoryOverrideAtomicFile {
     private val atomicFile = AtomicFile(finalFile)
-    private val baseFile = finalFile
 
-    override fun exists(): Boolean = baseFile.exists()
     override fun openRead(): FileInputStream = atomicFile.openRead()
     override fun startWrite(): FileOutputStream = atomicFile.startWrite()
     override fun finishWrite(stream: FileOutputStream) = atomicFile.finishWrite(stream)

@@ -38,12 +38,41 @@ class CategoryOverrideAtomicAccessTest {
 
             assertTrue(result is CategoryOverrideWriteResult.Committed)
             assertEquals(2, preferences.getInt("schema", -1))
+            assertEquals(
+                OverrideSnapshotReadResult.UnsupportedSchema,
+                SharedPreferencesCategoryOverrideSnapshotSource(preferences).read(setOf(ProfileId("0"))),
+            )
             val visible = access.readVisible(setOf(ProfileId("0"))) as OverrideSnapshotReadResult.Ready
             assertEquals(
                 mapOf(CategoryOverrideKey(PackageName("com.personal"), ProfileId("0")) to CategoryId("GAME")),
                 visible.snapshot.assignments,
             )
             assertFalse(visible.snapshot.identity.versionOrGeneration.isBlank())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun interruptedPendingWriteIsDiscardedBeforeTheFinalSnapshotIsRead() {
+        val directory = Files.createTempDirectory("override-recovery").toFile()
+        try {
+            val key = CategoryOverrideKey(PackageName("com.personal"), ProfileId("0"))
+            val assignments = mapOf(key to CategoryId("SOCIAL"))
+            val stored = CategoryOverrideStoredSnapshot(
+                CategoryOverrideStoredIdentity(1, 3L, sha256Canonical("com.personal|0|SOCIAL")),
+                assignments,
+            )
+            val atomic = TestAtomicFile(File(directory, "snapshot-v1")).apply {
+                seedFinal(CategoryOverrideFullStoreCodec.encode(stored))
+                leaveInterruptedWrite("not-a-snapshot".toByteArray())
+            }
+            val preferences = FakePreferences().apply { putInitial("schema", 2) }
+
+            val read = CategoryOverrideAtomicAccess(atomic, preferences).readStored()
+
+            assertEquals(CategoryOverrideStoredReadResult.Ready(stored), read)
+            assertFalse(atomic.hasPendingWrite())
         } finally {
             directory.deleteRecursively()
         }
@@ -80,8 +109,13 @@ class CategoryOverrideAtomicAccessTest {
     ) : CategoryOverrideAtomicFile {
         private val pending = File(finalFile.parentFile, "${finalFile.name}.new")
 
-        override fun exists(): Boolean = finalFile.exists()
-        override fun openRead(): FileInputStream = FileInputStream(finalFile)
+        override fun openRead(): FileInputStream {
+            // AndroidX AtomicFile.openRead() recovers from an interrupted pending write
+            // before exposing the committed base file to readers.
+            if (pending.exists()) pending.delete()
+            return FileInputStream(finalFile)
+        }
+
         override fun startWrite(): FileOutputStream = FileOutputStream(pending)
         override fun finishWrite(stream: FileOutputStream) {
             stream.close()
@@ -91,6 +125,16 @@ class CategoryOverrideAtomicAccessTest {
             stream.close()
             pending.delete()
         }
+
+        fun seedFinal(bytes: ByteArray) {
+            finalFile.writeBytes(bytes)
+        }
+
+        fun leaveInterruptedWrite(bytes: ByteArray) {
+            pending.writeBytes(bytes)
+        }
+
+        fun hasPendingWrite(): Boolean = pending.exists()
     }
 
     private class FakePreferences(

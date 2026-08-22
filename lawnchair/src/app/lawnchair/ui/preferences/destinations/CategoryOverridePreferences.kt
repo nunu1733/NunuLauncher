@@ -1,6 +1,9 @@
 package app.lawnchair.ui.preferences.destinations
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -15,17 +18,23 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 import app.lawnchair.organizer.planning.CategoryId
 import app.lawnchair.organizer.ui.CategoryOverrideApp
 import app.lawnchair.organizer.ui.CategoryOverrideAuthoringCoordinator
 import app.lawnchair.organizer.ui.CategoryOverrideAuthoringResult
+import app.lawnchair.organizer.ui.CategoryOverrideCategoryPresentations
+import app.lawnchair.organizer.ui.CategoryOverrideProfile
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.components.controls.ClickablePreference
 import app.lawnchair.ui.preferences.components.layout.PreferenceLazyColumn
 import app.lawnchair.ui.preferences.components.layout.PreferenceScaffold
+import app.lawnchair.ui.preferences.components.layout.PreferenceTemplate
 import com.android.launcher3.R
+import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -40,7 +49,7 @@ internal fun CategoryOverridePreferences(
     val authoring = coordinator ?: remember { CategoryOverrideAuthoringCoordinator(context) }
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
-    val categories = remember { authoring.categories().orEmpty() }
+    var categoryOptions by remember { mutableStateOf<List<CategoryId>?>(null) }
     var loadResult by remember { mutableStateOf<CategoryOverrideAuthoringResult?>(null) }
     var selectedApp by remember { mutableStateOf<CategoryOverrideApp?>(null) }
     var pendingCategory by remember { mutableStateOf<CategoryId?>(null) }
@@ -48,12 +57,20 @@ internal fun CategoryOverridePreferences(
 
     fun reload() {
         scope.launch {
-            val result = withContext(Dispatchers.IO) { authoring.load() }
-            loadResult = result
+            val options = withContext(Dispatchers.IO) { authoring.categories() }
+            categoryOptions = options
+            loadResult = if (options == null) {
+                CategoryOverrideAuthoringResult.TaxonomyUnavailable
+            } else {
+                withContext(Dispatchers.IO) { authoring.load() }
+            }
         }
     }
 
     LaunchedEffect(Unit) { reload() }
+    LaunchedEffect(selectedApp, message) {
+        if (selectedApp == null) focusRequester.requestFocus()
+    }
 
     PreferenceScaffold(
         label = stringResource(R.string.organizer_category_overrides_title),
@@ -79,12 +96,8 @@ internal fun CategoryOverridePreferences(
                     if (app == null) {
                         result.apps.forEach { candidate ->
                             item(key = "${candidate.key.profile.value}:${candidate.key.packageName.value}") {
-                                val state = candidate.assignedCategory?.let { categoryDisplayName(it) }
-                                ClickablePreference(
-                                    label = candidate.label,
-                                    subtitle = candidate.assignedCategory?.let {
-                                        stringResource(R.string.organizer_category_override_explicit, state ?: it.value)
-                                    } ?: stringResource(R.string.organizer_category_override_automatic),
+                                OverrideAppPreference(
+                                    app = candidate,
                                     onClick = {
                                         selectedApp = candidate
                                         pendingCategory = candidate.assignedCategory
@@ -94,34 +107,30 @@ internal fun CategoryOverridePreferences(
                             }
                         }
                     } else {
-                        item {
-                            Text(
-                                text = app.label,
-                                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                            )
-                        }
+                        item { SelectedOverrideAppHeader(app) }
                         item {
                             Text(
                                 text = pendingCategory?.let {
-                                    stringResource(R.string.organizer_category_override_explicit, categoryDisplayName(it))
+                                    stringResource(
+                                        R.string.organizer_category_override_explicit,
+                                        categoryLabel(it),
+                                    )
                                 } ?: stringResource(R.string.organizer_category_override_automatic),
                             )
                         }
                         item {
                             ClickablePreference(
                                 label = stringResource(R.string.organizer_category_override_use_automatic),
+                                subtitle = stringResource(R.string.organizer_category_override_automatic_description),
                                 onClick = { pendingCategory = null },
                             )
                         }
-                        categories.forEach { category ->
+                        categoryOptions.orEmpty().forEach { category ->
                             item(key = category.value) {
+                                val presentation = CategoryOverrideCategoryPresentations.forCategory(category)
                                 ClickablePreference(
-                                    label = categoryDisplayName(category),
-                                    subtitle = if (pendingCategory == category) {
-                                        stringResource(R.string.organizer_category_override_choose)
-                                    } else {
-                                        null
-                                    },
+                                    label = stringResource(presentation.labelRes),
+                                    subtitle = stringResource(presentation.descriptionRes, stringResource(presentation.labelRes)),
                                     onClick = { pendingCategory = category },
                                 )
                             }
@@ -141,11 +150,23 @@ internal fun CategoryOverridePreferences(
                                                 reload()
                                             }
 
-                                            CategoryOverrideAuthoringResult.OrganizationRunActive -> message = R.string.organizer_category_override_busy
+                                            CategoryOverrideAuthoringResult.OrganizationRunActive -> {
+                                                message = R.string.organizer_category_override_busy
+                                                selectedApp = null
+                                                reload()
+                                            }
 
-                                            CategoryOverrideAuthoringResult.TargetUnavailable -> message = R.string.organizer_category_override_unavailable
+                                            CategoryOverrideAuthoringResult.TargetUnavailable -> {
+                                                message = R.string.organizer_category_override_unavailable
+                                                selectedApp = null
+                                                reload()
+                                            }
 
-                                            CategoryOverrideAuthoringResult.Conflict -> message = R.string.organizer_category_override_conflict
+                                            CategoryOverrideAuthoringResult.Conflict -> {
+                                                message = R.string.organizer_category_override_conflict
+                                                selectedApp = null
+                                                reload()
+                                            }
 
                                             CategoryOverrideAuthoringResult.InvalidCategory,
                                             CategoryOverrideAuthoringResult.TaxonomyUnavailable,
@@ -154,7 +175,11 @@ internal fun CategoryOverridePreferences(
                                             CategoryOverrideAuthoringResult.MigrationBarrierUncertain,
                                             CategoryOverrideAuthoringResult.WriteFailed,
                                             CategoryOverrideAuthoringResult.VerificationFailed,
-                                            -> message = R.string.organizer_category_override_failed
+                                            -> {
+                                                message = R.string.organizer_category_override_failed
+                                                selectedApp = null
+                                                reload()
+                                            }
 
                                             is CategoryOverrideAuthoringResult.Loaded -> error("load result is not a save result")
                                         }
@@ -167,6 +192,7 @@ internal fun CategoryOverridePreferences(
                                 label = stringResource(R.string.organizer_category_override_cancel),
                                 onClick = {
                                     selectedApp = null
+                                    pendingCategory = null
                                     message = null
                                 },
                             )
@@ -181,6 +207,7 @@ internal fun CategoryOverridePreferences(
                             CategoryOverrideAuthoringResult.Conflict -> stringResource(R.string.organizer_category_override_conflict)
                             else -> stringResource(R.string.organizer_category_override_unavailable_store)
                         },
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                     )
                 }
             }
@@ -189,42 +216,65 @@ internal fun CategoryOverridePreferences(
 }
 
 @Composable
-private fun categoryDisplayName(category: CategoryId): String = stringResource(
-    when (category.value) {
-        "ART" -> R.string.organizer_category_art
-        "AUTO" -> R.string.organizer_category_auto
-        "BEAUTY" -> R.string.organizer_category_beauty
-        "BOOKS" -> R.string.organizer_category_books
-        "BUSINESS" -> R.string.organizer_category_business
-        "COMICS" -> R.string.organizer_category_comics
-        "COMMUNICATION" -> R.string.organizer_category_communication
-        "DATING" -> R.string.organizer_category_dating
-        "EDUCATION" -> R.string.organizer_category_education
-        "ENTERTAINMENT" -> R.string.organizer_category_entertainment
-        "EVENTS" -> R.string.organizer_category_events
-        "FINANCE" -> R.string.organizer_category_finance
-        "FOOD" -> R.string.organizer_category_food
-        "GAME" -> R.string.organizer_category_game
-        "HEALTH" -> R.string.organizer_category_health
-        "HOUSE" -> R.string.organizer_category_house
-        "LIBRARIES" -> R.string.organizer_category_libraries
-        "LIFESTYLE" -> R.string.organizer_category_lifestyle
-        "MAPS" -> R.string.organizer_category_maps
-        "MEDICAL" -> R.string.organizer_category_medical
-        "MUSIC" -> R.string.organizer_category_music
-        "NEWS" -> R.string.organizer_category_news
-        "OTHER" -> R.string.organizer_category_other
-        "PARENTING" -> R.string.organizer_category_parenting
-        "PERSONALIZATION" -> R.string.organizer_category_personalization
-        "PHOTOGRAPHY" -> R.string.organizer_category_photography
-        "PRODUCTIVITY" -> R.string.organizer_category_productivity
-        "SHOPPING" -> R.string.organizer_category_shopping
-        "SOCIAL" -> R.string.organizer_category_social
-        "SPORTS" -> R.string.organizer_category_sports
-        "TOOLS" -> R.string.organizer_category_tools
-        "TRAVEL" -> R.string.organizer_category_travel
-        "VIDEO" -> R.string.organizer_category_video
-        "WEATHER" -> R.string.organizer_category_weather
-        else -> R.string.organizer_category_override_unavailable_store
+private fun OverrideAppPreference(
+    app: CategoryOverrideApp,
+    onClick: () -> Unit,
+) {
+    val label = appLabel(app)
+    val profile = profileLabel(app.profile)
+    val state = app.assignedCategory?.let {
+        stringResource(R.string.organizer_category_override_explicit, categoryLabel(it))
+    } ?: stringResource(R.string.organizer_category_override_automatic)
+    PreferenceTemplate(
+        title = { Text(label) },
+        description = { Text("$profile · $state") },
+        startWidget = app.icon?.let { icon ->
+            {
+                Image(
+                    painter = rememberDrawablePainter(icon),
+                    contentDescription = null,
+                    modifier = Modifier.size(30.dp),
+                )
+            }
+        },
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = "$label, $profile, $state" },
+        verticalPadding = 12.dp,
+    )
+}
+
+@Composable
+private fun SelectedOverrideAppHeader(app: CategoryOverrideApp) {
+    val label = appLabel(app)
+    val profile = profileLabel(app.profile)
+    PreferenceTemplate(
+        title = { Text(label) },
+        description = { Text(profile) },
+        startWidget = app.icon?.let { icon ->
+            {
+                Image(
+                    painter = rememberDrawablePainter(icon),
+                    contentDescription = null,
+                    modifier = Modifier.size(30.dp),
+                )
+            }
+        },
+        modifier = Modifier.semantics { contentDescription = "$label, $profile" },
+        verticalPadding = 12.dp,
+    )
+}
+
+@Composable
+private fun appLabel(app: CategoryOverrideApp): String = app.label ?: stringResource(R.string.organizer_category_override_unnamed_app)
+
+@Composable
+private fun profileLabel(profile: CategoryOverrideProfile): String = stringResource(
+    when (profile) {
+        CategoryOverrideProfile.PERSONAL -> R.string.organizer_category_override_profile_personal
+        CategoryOverrideProfile.WORK -> R.string.organizer_category_override_profile_work
     },
 )
+
+@Composable
+private fun categoryLabel(category: CategoryId): String = stringResource(CategoryOverrideCategoryPresentations.forCategory(category).labelRes)
