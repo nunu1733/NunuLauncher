@@ -220,7 +220,12 @@ jobs:
           emulator-boot-timeout: 900
           script: |
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.integration.ProductionOrganizationInputInstrumentationTest,app.lawnchair.organizer.rules.CategoryOverrideAtomicFileInstrumentationTest
-            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.rules.CategoryOverrideAtomicFileRestartWriterInstrumentationTest
+            ./gradlew installLawnWithQuickstepGithubDebug installLawnWithQuickstepGithubDebugAndroidTest
+            adb shell am force-stop app.lawnchair.debug.test
+            adb shell am force-stop app.lawnchair.debug
+            writer_result=$(adb shell am instrument -w -r -e class app.lawnchair.organizer.rules.CategoryOverrideAtomicFileRestartWriterInstrumentationTest app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner)
+            printf '%s\n' "$writer_result"
+            grep -q 'INSTRUMENTATION_CODE: 0' <<< "$writer_result"
             adb shell am force-stop app.lawnchair.debug.test
             adb shell am force-stop app.lawnchair.debug
             reader_result=$(adb shell am instrument -w -r -e class app.lawnchair.organizer.rules.CategoryOverrideAtomicFileRestartReaderInstrumentationTest app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner)
