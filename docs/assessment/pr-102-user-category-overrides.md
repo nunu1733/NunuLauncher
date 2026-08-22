@@ -1,69 +1,73 @@
 # High-risk audit: PR #102 User-authored category overrides
 
-> Status: proposed
+> Status: accepted
 > Audit date: 2026-08-22
 
-- Auditor: Pascal (independent Standards subagent) and Euler (independent Spec subagent); both were read-only, non-implementing audit agents commissioned after the implementation changes.
+- Auditor: Archimedes (independent Luna audit worker; read-only, non-implementing, and instructed not to create child agents or threads)
 - PR: https://github.com/nunu1733/NunuLauncher/pull/102
-- Head SHA: b1f282f1c6d70244ce42b9397120dd14fc9a0072
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32565866781
+- Head SHA: acf2df869d74d7807b88f7f6305796143bb40d72
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32574746879
 - Criteria: specs/99-user-authored-category-overrides/spec.md — AC-2, AC-3, AC-4, AC-5, AC-6, AC-6a, AC-7, AC-8, AC-9, AC-10, AC-11.
 
 ## Scope
 
-This audit covers the Stage B implementation of Issue #99. The production diff adds a profile-scoped category-override authoring destination, the Rule Management AtomicFile-backed complete-snapshot store and legacy authority barrier, the canonical UserCache serial-to-`ProfileId` mapper shared with canonical capture, and the process-local organization-operation lease. It also wires the already-established `OrganizationInputComposer` production seam to the compatible snapshot source, preserves the #83 filtered composer-visible identity contract, excludes the private store from backup, and adds the Issue #99 connected-device evidence job.
+This audit covers the final Stage B implementation for Issue #99 at the exact head above. It reviewed the profile-scoped category-override preference entry, validated policy-category presentation, canonical `UserCache` profile mapping, authoring revalidation, complete-snapshot `AtomicFile` persistence and migration barrier, filtered composer-visible identity, the shared organization-operation lease, and the production organization-input composition seam.
 
-The review specifically examined the high-risk persistence and coordination surface under `lawnchair/src/app/lawnchair/organizer/application/**`, along with the authoring/store/UI seams that can influence later fresh organization composition. It did not identify a direct layout writer, planner invocation, recovery-point creation, or layout-apply capability exposed to authoring.
+The high-risk persistence review included AndroidX `AtomicFile` interrupted-publication recovery, a writer-to-force-stop-to-fresh-reader instrumentation sequence, legacy `SharedPreferences` behavior after migration, read/write serialization, failure injection, and fresh composition after authoring. The audit also confirmed that authoring cannot invoke the planner, layout database writer, recovery-point creation, or apply path.
 
 ## Criteria check
 
 | Accepted criterion | Independent check | Result |
 |---|---|---|
-| AC-2, AC-3, AC-5 | The Home Screen preference route exposes profile-aware authoring. `CategoryOverrideAuthoringCoordinator` obtains active-v1 categories from the policy bundle; the presentation mapping is separately exhaustive. The editor distinguishes explicit `OTHER` from absent/automatic, supports set/change/remove, and now fails closed on an invalid stored category. | Pass for implementation behavior |
-| AC-4 | `CanonicalProfileId.kt` is shared by the capture adapter and authoring inventory path. The connected test asserts the production capture uses that common mapper, and the coordinator re-resolves the inventory immediately before mutation. | Pass for covered behavior; the full production authoring-to-composer handoff remains only partially evidenced |
-| AC-6, AC-6a, AC-7 | `CategoryOverrideStore` uses complete-snapshot AtomicFile publication and recovery-aware reads behind its access boundary. It preserves separate stored and composer-visible identities, gates mutation on durable legacy `schema = 2`, rejects uncertain migration, and the compatibility reader fails closed for unsupported/corrupt data. The typed `NoChange` and verification-visible results are retained. | Implementation checks pass; the failure-injection and concurrency evidence matrix is incomplete |
-| AC-8, AC-9 | `OrganizationOperationGate` is acquired around authoring mutation while the production manual/onboarding run path uses the same singleton. The tests exercise bidirectional admission exclusion. The authoring flow is limited to S1 persistence and refresh; no planner, layout writer, recovery, or apply path is called. | Pass |
-| AC-10 | The Compose destination provides localized profile/state text, semantic labels, minimum row height, cancel/save focus restoration, and 200% font-scale evidence. The revised test uses keyboard input mode, scroll semantics, and actionable controls rather than a production focus workaround. | Pass for checked cases |
-| AC-11 | Focused unit tests cover codec/atomic migration-recovery, authoring set-change-remove and availability race handling, presentation coverage, operation leases, and backup exclusion. However, the full production authoring-to-AtomicFile-to-fresh-composition path and the required failure-injection/concurrency matrix are not yet proven. | Follow-up required; not complete |
+| AC-2 | One Home Screen preference destination exposes the validated v1 policy categories, with an exhaustive presentation mapping. | Pass |
+| AC-3 | Authoring supports set, change, and remove; explicit `OTHER` remains distinct from absent/automatic classification. | Pass |
+| AC-4 | Capture and authoring share the canonical `UserCache` serial-to-`ProfileId` mapping, preserve profile isolation, and re-resolve inventory immediately before mutation. | Pass |
+| AC-5 | Invalid or stale policy categories fail closed while valid `OTHER` remains authorable. | Pass |
+| AC-6 | Complete generations publish through AndroidX `AtomicFile`; unit evidence covers start/write/sync/finish and post-finish verification failures, shared-mutex concurrency, and interrupted recovery. API 35 evidence runs the writer and reader in separate instrumentation processes and reads only the recovered committed generation. | Pass |
+| AC-6a | Migration durably closes the legacy authority barrier at schema 2; a fresh legacy `SharedPreferences` reader returns `UnsupportedSchema` after process restart. | Pass |
+| AC-7 | The #83 filtered composer-visible identity is preserved, and corrupt or newer-schema states fail closed. | Pass |
+| AC-8 | RUN, RECOVERY, and AUTHORING share one operation lease; admission conflicts and exception paths release the lease without overlapping work. | Pass |
+| AC-9 | Authoring ends after S1 persistence and refresh and has no route to planning, layout writes, recovery-point creation, or apply. | Pass |
+| AC-10 | The dedicated API 36 UI suite covers semantics, keyboard interaction, touch targets, focus restoration, and 200% font scale. | Pass |
+| AC-11 | Unit, API 35 production/restart, and API 36 UI suites cover the accepted success, failure, migration, concurrency, compatibility, accessibility, and fresh-composition surfaces. The linked source CI run and `final-status` succeeded on the audited SHA. | Pass |
 
 ## Executed test surface
 
-The independent verification used the following commands and results on the audited worktree. The connected-device suite and merge gate are evidenced by the linked `pull_request` GitHub Actions run on the audited implementation SHA.
+The independent audit verified that the linked `pull_request` CI run executed and passed the following commands on `acf2df869d74d7807b88f7f6305796143bb40d72`:
 
 ```bash
-./gradlew --no-daemon spotlessCheck
-# Result: BUILD SUCCESSFUL
+./gradlew spotlessCheck
+./gradlew assembleLawnWithQuickstepGithubDebug
+./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'
 
-git diff --check
-# Result: no whitespace errors
+./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.integration.ProductionOrganizationInputInstrumentationTest,app.lawnchair.organizer.rules.CategoryOverrideAtomicFileInstrumentationTest
+./gradlew installLawnWithQuickstepGithubDebug installLawnWithQuickstepGithubDebugAndroidTest
+adb shell am instrument -w -r \
+  -e class app.lawnchair.organizer.rules.CategoryOverrideAtomicFileRestartWriterInstrumentationTest \
+  app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner
+adb shell am force-stop app.lawnchair.debug.test
+adb shell am force-stop app.lawnchair.debug
+adb shell am instrument -w -r \
+  -e class app.lawnchair.organizer.rules.CategoryOverrideAtomicFileRestartReaderInstrumentationTest \
+  app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner
 
-./gradlew --no-daemon testLawnWithQuickstepGithubDebugUnitTest \
-  --tests 'app.lawnchair.organizer.*'
-# Result: BUILD SUCCESSFUL
-
-./gradlew --no-daemon compileLawnWithQuickstepGithubDebugAndroidTestKotlin
-# Result: BUILD SUCCESSFUL
+./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.CategoryOverridePreferencesInstrumentationTest
 
 python3 tools/repo-contract/validate_repo_contract.py
 python3 tools/repo-contract/test_validate_repo_contract.py
-# Result: repository contract validation succeeded
-
-# GitHub Actions pull_request evidence
-# https://github.com/nunu1733/NunuLauncher/actions/runs/32565866781
-# Result: check-style, build-debug-apk, organizer-unit-tests,
-#         organizer-instrumentation-issue99-tests, the other organizer
-#         instrumentation jobs, validate-repo-contract, and final-status
-#         all succeeded.
+python3 tools/repo-contract/test_validate_high_risk_evidence.py
 ```
+
+The run completed successfully, including `organizer-unit-tests`, `check-style`, `build-debug-apk`, `organizer-instrumentation-api35-tests`, `organizer-instrumentation-issue99-tests`, the Issue #52/#53 regression jobs, `validate-repo-contract`, and `final-status`.
 
 ## Findings
 
-1. The previous high-risk audit referenced an older implementation SHA and CI run. This record is a re-audit against `b1f282f1c6d70244ce42b9397120dd14fc9a0072`; the older evidence is not reused.
+1. No implementation, specification, or repository-standards blocker was found at the audited SHA.
 
-2. The previous implementation findings are resolved: the production DPAD workaround was removed and the test enters keyboard input mode; unsupported stored category values fail closed before authoring; a typed `NoChange` result preserves the existing generation; and the committed stored and verification-visible identities are retained separately.
+2. The earlier audit findings are resolved. The final evidence uses the AndroidX implementation rather than a fake atomic adapter, exercises the complete failure matrix and production composer concurrency, proves migration incompatibility to a fresh legacy reader, and runs the restart reader in a distinct instrumentation process after force-stop.
 
-3. AC-6/AC-11 evidence remains incomplete. `CategoryOverrideAtomicAccessTest` does not yet provide the full failure-injected `startWrite`/write/`finishWrite` matrix, post-finish verification-failure proof, and concurrent read/write proof required by the accepted spec.
+3. The preceding high-risk-gate failures were caused by the old audit record referencing `b1f282f1c6d70244ce42b9397120dd14fc9a0072` and an obsolete CI run. This record supersedes that evidence with the exact final source SHA and successful source CI run above.
 
-4. AC-11 evidence remains incomplete for the fresh-run path. The current fresh-run fixture composes from a hand-written committed source; it does not yet prove the complete production sequence of authoring mutation through `AtomicFile` followed by a fresh manual/onboarding composition.
-
-The findings above are follow-up work, not an authorization to weaken the accepted specification. The PR should remain Draft until the missing evidence is added and this independent audit is rerun. Any later non-document implementation change requires a new audit and a new successful `pull_request` CI run.
+4. Any later non-document change requires a new independent audit and a new successful `pull_request` CI run.
