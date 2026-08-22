@@ -92,10 +92,11 @@ internal class LauncherLayoutAdapter(
             "UserManager unavailable; canonical profile availability cannot be captured"
         }
         val profiles = (userCache.userProfiles + Process.myUserHandle()).distinct().map { user ->
-            val serial = userCache.getSerialNumberForUser(user)
-            require(serial >= 0L) { "User profile has no stable serial" }
+            val profileId = requireNotNull(canonicalProfileId(userCache, user)) {
+                "User profile has no stable serial"
+            }
             ProfileState(
-                ProfileId(serial.toString()),
+                profileId,
                 if (userManager.isUserUnlocked(user) && !userManager.isQuietModeEnabled(user)) {
                     ProfileAvailability.AVAILABLE
                 } else {
