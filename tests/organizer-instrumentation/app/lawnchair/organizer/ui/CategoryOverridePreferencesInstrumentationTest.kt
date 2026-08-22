@@ -3,17 +3,23 @@ package app.lawnchair.organizer.ui
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.keyDown
+import androidx.compose.ui.test.keyUp
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
@@ -38,11 +44,13 @@ import app.lawnchair.organizer.rules.sha256Canonical
 import app.lawnchair.ui.preferences.destinations.CategoryOverridePreferences
 import app.lawnchair.ui.theme.LawnchairTheme
 import com.android.launcher3.R
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
+@OptIn(ExperimentalTestApi::class)
 class CategoryOverridePreferencesInstrumentationTest {
     @get:Rule
     val composeRule = createComposeRule()
@@ -144,13 +152,161 @@ class CategoryOverridePreferencesInstrumentationTest {
         }
     }
 
-    private fun coordinator(label: String = "Example"): CategoryOverrideAuthoringCoordinator {
+    @Test
+    fun keyboardDpadNavigatesToProfileRowAndActivatesEditor() {
+        val coordinator = coordinator()
+        composeRule.setContent {
+            LawnchairTheme {
+                CategoryOverridePreferences(coordinator = coordinator)
+            }
+        }
+
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Example").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.waitUntil(5_000) {
+            try {
+                composeRule.onNodeWithText(context.getString(R.string.organizer_category_overrides_summary)).assertIsFocused()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+        }
+        composeRule.onRoot().performKeyInput {
+            keyDown(Key.DirectionDown)
+            keyUp(Key.DirectionDown)
+        }
+        composeRule.onNodeWithContentDescription(
+            "Example, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
+        ).assertIsFocused()
+        composeRule.onRoot().performKeyInput {
+            keyDown(Key.DirectionCenter)
+            keyUp(Key.DirectionCenter)
+        }
+        composeRule.onNode(hasScrollAction()).performScrollToNode(
+            hasText(context.getString(R.string.organizer_category_override_use_automatic)),
+        )
+        composeRule.onNodeWithText(context.getString(R.string.organizer_category_override_use_automatic)).assertIsDisplayed()
+    }
+
+    @Test
+    fun switchEquivalentSemanticsActivationOpensEditor() {
+        val coordinator = coordinator()
+        composeRule.setContent {
+            LawnchairTheme {
+                CategoryOverridePreferences(coordinator = coordinator)
+            }
+        }
+
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Example").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithContentDescription(
+            "Example, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
+        ).assertHasClickAction().performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.onNode(hasScrollAction()).performScrollToNode(
+            hasText(context.getString(R.string.organizer_category_override_use_automatic)),
+        )
+        composeRule.onNodeWithText(context.getString(R.string.organizer_category_override_use_automatic)).assertIsDisplayed()
+    }
+
+    @Test
+    fun appRowMeetsMinimumFortyEightDpTouchTarget() {
+        val coordinator = coordinator()
+        composeRule.setContent {
+            LawnchairTheme {
+                CategoryOverridePreferences(coordinator = coordinator)
+            }
+        }
+
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val appRow = composeRule.onNodeWithContentDescription(
+            "Example, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
+        )
+        composeRule.waitUntil(5_000) {
+            appRow.fetchSemanticsNodes().isNotEmpty()
+        }
+        val height = appRow.fetchSemanticsNode().boundsInRoot.height
+        val minimumHeight = with(composeRule.density) { 48.dp.toPx() }
+        assertTrue("Category override app row must provide a 48dp touch target", height >= minimumHeight)
+    }
+
+    @Test
+    fun targetUnavailableReturnsToFreshDestinationAndRestoresFocus() {
+        val personal = app("0", CategoryOverrideProfile.PERSONAL, "Example")
+        var inventoryReads = 0
+        val coordinator = coordinator(
+            inventory = CategoryOverrideAppInventory {
+                inventoryReads += 1
+                if (inventoryReads == 1) listOf(personal) else emptyList()
+            },
+        )
+        composeRule.setContent {
+            LawnchairTheme {
+                CategoryOverridePreferences(coordinator = coordinator)
+            }
+        }
+
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Example").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithContentDescription(
+            "Example, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
+        ).performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.onNode(hasScrollAction()).performScrollToNode(
+            hasText(context.getString(R.string.organizer_category_override_save)),
+        )
+        composeRule.onNodeWithText(context.getString(R.string.organizer_category_override_save))
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.waitUntil(5_000) {
+            try {
+                composeRule.onNodeWithText(context.getString(R.string.organizer_category_override_unavailable)).assertIsFocused()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+        }
+    }
+
+    @Test
+    fun longestLocalizedCategoryPresentationLabelRemainsReachableAtTwoHundredPercentFontScale() {
+        val coordinator = coordinator()
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val longestLabel = requireNotNull(coordinator.categories())
+            .map { CategoryOverrideCategoryPresentations.forCategory(it).labelRes }
+            .map(context::getString)
+            .maxBy(String::length)
+        composeRule.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 2f)) {
+                LawnchairTheme {
+                    CategoryOverridePreferences(coordinator = coordinator)
+                }
+            }
+        }
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Example").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithContentDescription(
+            "Example, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
+        ).performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(longestLabel))
+        composeRule.onNodeWithText(longestLabel).assertIsDisplayed()
+    }
+
+    private fun coordinator(
+        label: String = "Example",
+        inventory: CategoryOverrideAppInventory? = null,
+    ): CategoryOverrideAuthoringCoordinator {
         val personal = app("0", CategoryOverrideProfile.PERSONAL, label)
         val work = app("10", CategoryOverrideProfile.WORK, label)
         return CategoryOverrideAuthoringCoordinator(
             TestStore(),
             BuiltInOrganizerPolicyBundleSource,
-            CategoryOverrideAppInventory { listOf(personal, work) },
+            inventory ?: CategoryOverrideAppInventory { listOf(personal, work) },
         )
     }
 
