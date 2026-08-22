@@ -48,12 +48,15 @@ class CategoryOverrideAuthoringCoordinatorTest {
     }
 
     @Test
-    fun unavailableTargetDoesNotInvokeStoreMutationOrAdvanceGeneration() {
+    fun targetThatTransitionsFromPresentToUnavailableBeforeMutationDoesNotWrite() {
         val target = app("com.example.removed", "0", CategoryOverrideProfile.PERSONAL)
         val store = InMemoryStore()
-        val coordinator = coordinator(store) { emptyList() }
+        val snapshots = ArrayDeque(listOf(listOf(target), emptyList()))
+        // The target was selected from the destination's earlier inventory load.
+        val selected = snapshots.removeFirst().single()
+        val coordinator = coordinator(store) { snapshots.removeFirst() }
 
-        assertEquals(CategoryOverrideAuthoringResult.TargetUnavailable, coordinator.save(target, CategoryId("SOCIAL")))
+        assertEquals(CategoryOverrideAuthoringResult.TargetUnavailable, coordinator.save(selected, CategoryId("SOCIAL")))
         assertTrue(store.requests.isEmpty())
         assertEquals(0L, store.snapshot.identity.generation)
     }

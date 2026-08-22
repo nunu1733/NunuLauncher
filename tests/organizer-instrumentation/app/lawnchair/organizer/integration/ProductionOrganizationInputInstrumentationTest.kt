@@ -9,6 +9,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
+import app.lawnchair.organizer.application.adapter.canonicalProfileId
 import app.lawnchair.organizer.application.protocol.CaptureId
 import app.lawnchair.organizer.application.protocol.CapturedSnapshot
 import app.lawnchair.organizer.application.protocol.LayoutWriterPort
@@ -55,6 +56,16 @@ class ProductionOrganizationInputInstrumentationTest {
     fun tearDown() {
         restoreFavorites(originalRows)
         launcher.model.forceReload()
+    }
+
+    @Test
+    fun productionCaptureUsesTheSharedUserCacheProfileIdMapper() {
+        val userCache = UserCache.INSTANCE.get(context)
+        val expected = checkNotNull(canonicalProfileId(userCache, Process.myUserHandle()))
+
+        val capture = realWriter().captureCurrent(CaptureId("shared-profile-id"))
+
+        assertTrue(capture.layoutState.profiles.any { it.id == expected })
     }
 
     @Test

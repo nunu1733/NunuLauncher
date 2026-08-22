@@ -3,8 +3,8 @@ package app.lawnchair.organizer.ui
 import android.content.Context
 import android.graphics.drawable.Drawable
 import android.os.Process
-import android.os.UserHandle
 import android.os.UserManager
+import app.lawnchair.organizer.application.adapter.canonicalProfileId
 import app.lawnchair.organizer.planning.CategoryId
 import app.lawnchair.organizer.planning.PackageName
 import app.lawnchair.organizer.planning.ProfileId
@@ -93,17 +93,20 @@ internal class CategoryOverrideAuthoringCoordinator internal constructor(
         val lease = OrganizationOperationLease.tryAcquire(OrganizationOperationLease.Kind.AUTHORING)
             ?: return CategoryOverrideAuthoringResult.OrganizationRunActive
         return try {
-            val current = inventory.availableApps().firstOrNull { it.key == target.key }
-                ?: return CategoryOverrideAuthoringResult.TargetUnavailable
             val expected = when (val stored = store.readStored()) {
                 is CategoryOverrideStoredReadResult.Ready -> stored.snapshot.identity
                 CategoryOverrideStoredReadResult.Unreadable -> return CategoryOverrideAuthoringResult.StoreUnreadable
                 CategoryOverrideStoredReadResult.UnsupportedSchema -> return CategoryOverrideAuthoringResult.UnsupportedSchema
                 CategoryOverrideStoredReadResult.MigrationBarrierUncertain -> return CategoryOverrideAuthoringResult.MigrationBarrierUncertain
             }
+            // Take one final platform snapshot immediately before dispatching the mutation.
+            // The target and verification profile set must describe that same availability cut.
+            val finalInventory = inventory.availableApps()
+            val current = finalInventory.firstOrNull { it.key == target.key }
+                ?: return CategoryOverrideAuthoringResult.TargetUnavailable
             val request = category?.let { CategoryOverrideMutation.Set(current.key, it) }
                 ?: CategoryOverrideMutation.Remove(current.key)
-            when (val result = store.mutate(request, expected, inventory.availableApps().mapTo(linkedSetOf()) { it.key.profile })) {
+            when (val result = store.mutate(request, expected, finalInventory.mapTo(linkedSetOf()) { it.key.profile })) {
                 is CategoryOverrideWriteResult.Committed -> CategoryOverrideAuthoringResult.Saved(result.stored)
                 is CategoryOverrideWriteResult.NoChange -> CategoryOverrideAuthoringResult.Saved(result.stored)
                 CategoryOverrideWriteResult.InvalidCategory -> CategoryOverrideAuthoringResult.InvalidCategory
@@ -134,7 +137,7 @@ private class AndroidCategoryOverrideAppInventory(
         val currentUser = Process.myUserHandle()
         val users = (userCache.userProfiles + currentUser).distinct()
         return users.flatMap { user ->
-            val profile = profileId(user) ?: return@flatMap emptyList()
+            val profile = canonicalProfileId(userCache, user) ?: return@flatMap emptyList()
             if (!userManager.isUserUnlocked(user) || userManager.isQuietModeEnabled(user)) return@flatMap emptyList()
             launcherApps.getActivityList(null, user).map { activity ->
                 CategoryOverrideApp(
@@ -148,11 +151,5 @@ private class AndroidCategoryOverrideAppInventory(
         }.distinctBy { it.key }.sortedWith(
             compareBy<CategoryOverrideApp>({ it.profile }, { it.label.orEmpty() }, { it.key.packageName.value }),
         )
-    }
-
-    private fun profileId(user: UserHandle): ProfileId? = try {
-        userCache.getSerialNumberForUser(user).takeIf { it >= 0L }?.let { ProfileId(it.toString()) }
-    } catch (_: RuntimeException) {
-        null
     }
 }

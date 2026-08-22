@@ -68,6 +68,33 @@ class CategoryOverridePreferencesInstrumentationTest {
     }
 
     @Test
+    fun cancelRestoresFocusAndLongAppLabelRemainsReachableAtTwoHundredPercentFontScale() {
+        val longLabel = "A very long localized application label that must remain reachable in category overrides"
+        composeRule.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 2f)) {
+                LawnchairTheme {
+                    CategoryOverridePreferences(coordinator = coordinator(label = longLabel))
+                }
+            }
+        }
+
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(longLabel).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(longLabel).assertIsDisplayed().performClick()
+        composeRule.onNodeWithText(context.getString(R.string.organizer_category_override_cancel)).assertHasClickAction().performClick()
+        composeRule.waitUntil(5_000) {
+            try {
+                composeRule.onNodeWithText(context.getString(R.string.organizer_category_overrides_summary)).assertIsFocused()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+        }
+    }
+
+    @Test
     fun editorIsReadableAtTwoHundredPercentFontScaleAndRestoresFocusAfterSave() {
         val coordinator = coordinator()
         composeRule.setContent {
@@ -95,9 +122,9 @@ class CategoryOverridePreferencesInstrumentationTest {
         }
     }
 
-    private fun coordinator(): CategoryOverrideAuthoringCoordinator {
-        val personal = app("0", CategoryOverrideProfile.PERSONAL)
-        val work = app("10", CategoryOverrideProfile.WORK)
+    private fun coordinator(label: String = "Example"): CategoryOverrideAuthoringCoordinator {
+        val personal = app("0", CategoryOverrideProfile.PERSONAL, label)
+        val work = app("10", CategoryOverrideProfile.WORK, label)
         return CategoryOverrideAuthoringCoordinator(
             TestStore(),
             BuiltInOrganizerPolicyBundleSource,
@@ -105,9 +132,9 @@ class CategoryOverridePreferencesInstrumentationTest {
         )
     }
 
-    private fun app(profileId: String, profile: CategoryOverrideProfile) = CategoryOverrideApp(
+    private fun app(profileId: String, profile: CategoryOverrideProfile, label: String) = CategoryOverrideApp(
         key = CategoryOverrideKey(PackageName("com.example.same"), ProfileId(profileId)),
-        label = "Example",
+        label = label,
         profile = profile,
         icon = null,
         assignedCategory = null,

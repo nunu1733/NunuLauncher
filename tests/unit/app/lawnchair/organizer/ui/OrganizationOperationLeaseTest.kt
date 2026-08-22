@@ -6,16 +6,20 @@ import org.junit.Test
 
 class OrganizationOperationLeaseTest {
     @Test
-    fun authoringAndRunShareOneAdmissionDomainUntilTheLeaseIsClosed() {
-        val authoring = OrganizationOperationLease.tryAcquire(OrganizationOperationLease.Kind.AUTHORING)
-        assertNotNull(authoring)
-
-        assertNull(OrganizationOperationLease.tryAcquire(OrganizationOperationLease.Kind.RUN))
-        authoring?.close()
-
-        val run = OrganizationOperationLease.tryAcquire(OrganizationOperationLease.Kind.RUN)
-        assertNotNull(run)
-        assertNull(OrganizationOperationLease.tryAcquire(OrganizationOperationLease.Kind.RECOVERY))
-        run?.close()
+    fun everyAdmissionKindBlocksEveryOtherKindUntilItsLeaseIsClosed() {
+        OrganizationOperationLease.Kind.entries.forEach { heldKind ->
+            val held = OrganizationOperationLease.tryAcquire(heldKind)
+            assertNotNull("$heldKind should be admitted when idle", held)
+            try {
+                OrganizationOperationLease.Kind.entries.forEach { contenderKind ->
+                    assertNull(
+                        "$heldKind should block $contenderKind",
+                        OrganizationOperationLease.tryAcquire(contenderKind),
+                    )
+                }
+            } finally {
+                held?.close()
+            }
+        }
     }
 }

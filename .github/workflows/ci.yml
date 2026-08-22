@@ -288,6 +288,53 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+  # Issue #99 owns profile-safe authoring UI evidence. It runs on an independent
+  # clean emulator so semantics, focus, font-scale, and mutation interactions are
+  # verified rather than only compiled alongside the other Organizer suites.
+  organizer-instrumentation-issue99-tests:
+    needs: changes
+    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run Issue 99 category override instrumentation (API 36 / Platform 36.1)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: >-
+            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
+            -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.CategoryOverridePreferencesInstrumentationTest
+      - name: Upload Issue 99 instrumentation reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: organizer-instrumentation-issue99-reports
+          path: |
+            build/reports/androidTests/connected/**
+            build/outputs/androidTest-results/**
+          retention-days: 7
+          if-no-files-found: warn
+
   # Issue #53 needs a fresh API 36 Launcher process and persistent state so the
   # proposal lifecycle, accessibility, recreation, and review-admission tests
   # remain independent from the database-heavy Issue #52 fixture.
@@ -346,6 +393,7 @@ jobs:
       - organizer-unit-tests
       - organizer-instrumentation-api35-tests
       - organizer-instrumentation-issue52-tests
+      - organizer-instrumentation-issue99-tests
       - organizer-instrumentation-issue53-tests
       - build-debug-apk
     runs-on: ubuntu-latest
