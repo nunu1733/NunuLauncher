@@ -46,7 +46,8 @@ class CategoryOverrideAtomicAccessTest {
                 putInitial("generation", 0L)
                 putInitial("entries", "com.personal|0|SOCIAL\ncom.work|10|TOOLS")
             }
-            val access = CategoryOverrideAtomicAccess(TestAtomicFile(File(directory, "snapshot-v1")), preferences)
+            val atomic = TestAtomicFile(File(directory, "snapshot-v1"))
+            val access = CategoryOverrideAtomicAccess(atomic, preferences)
             val expected = (access.readStored() as CategoryOverrideStoredReadResult.Ready).snapshot.identity
 
             val result = access.mutate(
@@ -71,6 +72,21 @@ class CategoryOverrideAtomicAccessTest {
                 visible.snapshot.assignments,
             )
             assertFalse(visible.snapshot.identity.versionOrGeneration.isBlank())
+
+            val restartedAccess = CategoryOverrideAtomicAccess(atomic, preferences)
+            val restarted = restartedAccess.readStored() as CategoryOverrideStoredReadResult.Ready
+            assertEquals(visible.snapshot.generation, restarted.snapshot.identity.generation)
+            assertEquals(
+                mapOf(
+                    CategoryOverrideKey(PackageName("com.personal"), ProfileId("0")) to CategoryId("GAME"),
+                    CategoryOverrideKey(PackageName("com.work"), ProfileId("10")) to CategoryId("TOOLS"),
+                ),
+                restarted.snapshot.assignments,
+            )
+            assertEquals(
+                OverrideSnapshotReadResult.UnsupportedSchema,
+                SharedPreferencesCategoryOverrideSnapshotSource(preferences).read(setOf(ProfileId("0"))),
+            )
         } finally {
             directory.deleteRecursively()
         }
@@ -170,6 +186,8 @@ class CategoryOverrideAtomicAccessTest {
                 OverrideSnapshotReadResult.Unreadable,
                 access.readVisible(setOf(ProfileId("0"))),
             )
+            val restartedAccess = CategoryOverrideAtomicAccess(atomic, preferences)
+            assertEquals(CategoryOverrideStoredReadResult.Unreadable, restartedAccess.readStored())
         } finally {
             directory.deleteRecursively()
         }
@@ -226,7 +244,9 @@ class CategoryOverrideAtomicAccessTest {
     fun authoringMutationThroughAtomicStoreFeedsFreshCompositionsAsS1() {
         val directory = Files.createTempDirectory("override-composition").toFile()
         try {
-            val targetKey = CategoryOverrideKey(PackageName("com.example.override"), ProfileId("personal"))
+            // Production UserCache serials are persisted as decimal ProfileIds.
+            val canonicalPersonalProfile = ProfileId("0")
+            val targetKey = CategoryOverrideKey(PackageName("com.example.override"), canonicalPersonalProfile)
             val target = CategoryOverrideApp(
                 key = targetKey,
                 label = "Override",
@@ -254,13 +274,14 @@ class CategoryOverrideAtomicAccessTest {
                 items = listOf(
                     CanonicalFixtures.appItem(
                         itemId = "override",
-                        profile = "personal",
+                        profile = canonicalPersonalProfile.value,
                         target = TargetKey.AppKey(
                             ComponentKey("com.example.override/.Main"),
-                            ProfileId("personal"),
+                            canonicalPersonalProfile,
                         ),
                     ),
                 ),
+                profiles = listOf(CanonicalFixtures.profile(canonicalPersonalProfile.value)),
             )
             fun composeFresh() = DefaultOrganizationInputComposer(
                 captureSource = CanonicalCaptureSource {
@@ -332,6 +353,8 @@ class CategoryOverrideAtomicAccessTest {
             assertEquals(prior.assignments, visible.snapshot.assignments)
             assertEquals(prior.identity.generation, visible.snapshot.generation)
             assertFalse(atomic.hasPendingWrite())
+            val restarted = CategoryOverrideAtomicAccess(atomic, FakePreferences().apply { putInitial("schema", 2) })
+            assertEquals(prior, (restarted.readStored() as CategoryOverrideStoredReadResult.Ready).snapshot)
         } finally {
             directory.deleteRecursively()
         }

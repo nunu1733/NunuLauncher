@@ -3,8 +3,10 @@ package app.lawnchair.organizer.integration
 import android.content.ComponentName
 import android.content.ContentValues
 import android.content.Intent
+import android.content.SharedPreferences
 import android.database.Cursor
 import android.os.Process
+import android.content.pm.LauncherApps
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.lawnchair.LawnchairLauncher
@@ -18,14 +20,22 @@ import app.lawnchair.organizer.application.public.OrganizerLockState
 import app.lawnchair.organizer.application.public.ProfileAvailability
 import app.lawnchair.organizer.application.public.PlacementState
 import app.lawnchair.organizer.planning.Availability
+import app.lawnchair.organizer.planning.CategoryId
 import app.lawnchair.organizer.planning.ContainerCode
 import app.lawnchair.organizer.planning.ExistingRole
 import app.lawnchair.organizer.planning.ItemId
+import app.lawnchair.organizer.planning.PackageName
 import app.lawnchair.organizer.planning.ProfileId
+import app.lawnchair.organizer.planning.SignalSource
+import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
+import app.lawnchair.organizer.rules.CategoryOverrideKey
+import app.lawnchair.organizer.ui.CategoryOverrideAuthoringCoordinator
+import app.lawnchair.organizer.ui.CategoryOverrideAuthoringResult
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings.Favorites
 import com.android.launcher3.pm.UserCache
+import java.io.File
 import java.lang.reflect.Proxy
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -44,18 +54,32 @@ class ProductionOrganizationInputInstrumentationTest {
     private lateinit var context: android.content.Context
     private lateinit var launcher: LauncherAppState
     private var originalRows: List<ContentValues> = emptyList()
+    private lateinit var overridePreferences: SharedPreferences
+    private lateinit var overrideFiles: List<File>
+    private var originalOverrideValues: Map<String, Any?> = emptyMap()
+    private var originalOverrideFiles: Map<String, ByteArray> = emptyMap()
 
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         launcher = LauncherAppState.getInstance(context)
         originalRows = snapshotFavorites()
+        overridePreferences = context.getSharedPreferences(OVERRIDE_PREFERENCES_NAME, android.content.Context.MODE_PRIVATE)
+        val overrideBase = File(context.noBackupFilesDir, "$OVERRIDE_DIRECTORY_NAME/$OVERRIDE_FILE_NAME")
+        overrideFiles = listOf(overrideBase, File("${overrideBase.path}.new"), File("${overrideBase.path}.bak"))
+        originalOverrideValues = overridePreferences.all.mapValues { it.value }
+        originalOverrideFiles = overrideFiles.filter { it.exists() }.associate { it.path to it.readBytes() }
+        clearOverrideStorage()
     }
 
     @After
     fun tearDown() {
-        restoreFavorites(originalRows)
-        launcher.model.forceReload()
+        try {
+            restoreOverrideStorage()
+        } finally {
+            restoreFavorites(originalRows)
+            launcher.model.forceReload()
+        }
     }
 
     @Test
@@ -66,6 +90,43 @@ class ProductionOrganizationInputInstrumentationTest {
         val capture = realWriter().captureCurrent(CaptureId("shared-profile-id"))
 
         assertTrue(capture.layoutState.profiles.any { it.id == expected })
+    }
+
+    @Test
+    fun productionAuthoringAtomicStoreFeedsFreshComposerWithCanonicalProfileKey() {
+        val user = Process.myUserHandle()
+        val userCache = UserCache.INSTANCE.get(context)
+        val profile = checkNotNull(canonicalProfileId(userCache, user))
+        val launcherApps = checkNotNull(context.getSystemService(LauncherApps::class.java))
+        val activity = launcherApps.getActivityList(null, user).firstOrNull()
+            ?: error("API 35 test emulator must expose a launchable activity")
+        val targetKey = CategoryOverrideKey(PackageName(activity.componentName.packageName), profile)
+        val coordinator = CategoryOverrideAuthoringCoordinator(context)
+        val loaded = coordinator.load() as? CategoryOverrideAuthoringResult.Loaded
+            ?: error("production category override inventory must be available")
+        val target = loaded.apps.firstOrNull { it.key == targetKey }
+            ?: error("production inventory must expose the selected canonical app/profile")
+        val itemId = insertLauncherRow(
+            lock = OrganizerLockState.UNLOCKED,
+            component = activity.componentName,
+            profileSerial = userCache.getSerialNumberForUser(user),
+        )
+
+        assertTrue(coordinator.save(target, CategoryId("OTHER")) is CategoryOverrideAuthoringResult.Saved)
+
+        val writer = realWriter()
+        val capture = writer.captureCurrent(CaptureId("category-override-production-path"))
+        val capturedItem = capture.layoutState.items.single { it.ref.itemId() == itemId }
+        val capturedTarget = capturedItem.targetKey as TargetKey.AppKey
+        assertEquals(targetKey.profile, capturedTarget.profile)
+        assertEquals(targetKey.packageName.value, capturedTarget.component.value.substringBefore('/'))
+
+        val result = ProductionOrganizationInputComposer(context, writer).composeFullOrganization()
+        assertTrue(result is OrganizationInputComposition.Ready)
+        val ready = result as OrganizationInputComposition.Ready
+        val signal = ready.input.signals.entries.single { it.item == itemId }
+        assertEquals(SignalSource.S1, signal.source)
+        assertEquals(CategoryId("OTHER"), signal.candidate)
     }
 
     @Test
@@ -197,12 +258,16 @@ class ProductionOrganizationInputInstrumentationTest {
 
     private fun realWriter() = LauncherLayoutAdapter(context, launcher.model.modelDbController, launcher.model)
 
-    private fun insertLauncherRow(lock: OrganizerLockState): ItemId {
+    private fun insertLauncherRow(
+        lock: OrganizerLockState,
+        component: ComponentName = ComponentName(context.packageName, LawnchairLauncher::class.java.name),
+        profileSerial: Long = UserCache.INSTANCE.get(context).getSerialNumberForUser(Process.myUserHandle()),
+    ): ItemId {
         val id = launcher.model.modelDbController.generateNewItemId()
         val itemId = ItemId(id.toString())
         val intent = Intent(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_LAUNCHER)
-            .setComponent(ComponentName(context.packageName, LawnchairLauncher::class.java.name))
+            .setComponent(component)
         launcher.model.modelDbController.db.insertOrThrow(
             Favorites.TABLE_NAME,
             null,
@@ -220,7 +285,7 @@ class ProductionOrganizationInputInstrumentationTest {
                 put(Favorites.APPWIDGET_ID, -1)
                 put(Favorites.MODIFIED, 1_000L)
                 put(Favorites.RESTORED, 0)
-                put(Favorites.PROFILE_ID, UserCache.INSTANCE.get(context).getSerialNumberForUser(Process.myUserHandle()))
+                put(Favorites.PROFILE_ID, profileSerial)
                 put(Favorites.RANK, 0)
                 put(Favorites.OPTIONS, 0)
                 put(Favorites.APPWIDGET_SOURCE, -1)
@@ -282,5 +347,38 @@ class ProductionOrganizationInputInstrumentationTest {
                 Cursor.FIELD_TYPE_BLOB -> values.put(columns[index], cursor.getBlob(index))
             }
         }
+    }
+
+    private fun clearOverrideStorage() {
+        overridePreferences.edit().clear().commit()
+        overrideFiles.forEach { it.delete() }
+    }
+
+    private fun restoreOverrideStorage() {
+        overridePreferences.edit().clear().commit()
+        val editor = overridePreferences.edit()
+        originalOverrideValues.forEach { (key, value) ->
+            when (value) {
+                is Boolean -> editor.putBoolean(key, value)
+                is Float -> editor.putFloat(key, value)
+                is Int -> editor.putInt(key, value)
+                is Long -> editor.putLong(key, value)
+                is String -> editor.putString(key, value)
+                is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toMutableSet())
+            }
+        }
+        check(editor.commit()) { "failed to restore category override preferences" }
+        overrideFiles.forEach { it.delete() }
+        originalOverrideFiles.forEach { (path, bytes) ->
+            val file = File(path)
+            file.parentFile?.mkdirs()
+            file.writeBytes(bytes)
+        }
+    }
+
+    private companion object {
+        const val OVERRIDE_PREFERENCES_NAME = "organizer_category_overrides"
+        const val OVERRIDE_DIRECTORY_NAME = "organizer_category_overrides"
+        const val OVERRIDE_FILE_NAME = "snapshot-v1"
     }
 }
