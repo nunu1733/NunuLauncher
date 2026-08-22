@@ -16,7 +16,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
@@ -164,17 +163,20 @@ class CategoryOverridePreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText("Example").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText(context.getString(R.string.organizer_category_overrides_summary))
-            .requestFocus()
-            .assertIsFocused()
-        composeRule.onRoot().performKeyInput {
+        val summary = composeRule.onNodeWithText(
+            context.getString(R.string.organizer_category_overrides_summary),
+        )
+        summary.requestFocus().assertIsFocused()
+        summary.performKeyInput {
             keyDown(Key.DirectionDown)
             keyUp(Key.DirectionDown)
         }
         composeRule.onNodeWithContentDescription(
             "Example, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
         ).assertIsFocused()
-        composeRule.onRoot().performKeyInput {
+        composeRule.onNodeWithContentDescription(
+            "Example, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
+        ).performKeyInput {
             keyDown(Key.DirectionCenter)
             keyUp(Key.DirectionCenter)
         }
