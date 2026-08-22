@@ -1,7 +1,7 @@
 # Organization Run UX Contract
 
-> Status: Proposed (research output of Issue #4; the applied safe-apply contract is [spec 13](../../specs/13-safe-layout-application/spec.md))
-> Reviewed: 2026-08-21
+> Status: Implemented for manual/onboarding MVP; package-event incremental placement is Later/deferred
+> Reviewed: 2026-08-23
 > Baseline: Lawnchair `v15.0.0-beta3.0` / commit `505dbc40e6154c05158b5d0271c45f6a885a411b`
 > Requirements: FR-004, FR-006, FR-007, FR-008, FR-009, NFR-001, NFR-009, NFR-011
 > Decision gates: D-004 (trigger), D-005 (safe UX)
