@@ -20,6 +20,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -163,14 +164,9 @@ class CategoryOverridePreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText("Example").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.waitUntil(5_000) {
-            try {
-                composeRule.onNodeWithText(context.getString(R.string.organizer_category_overrides_summary)).assertIsFocused()
-                true
-            } catch (_: AssertionError) {
-                false
-            }
-        }
+        composeRule.onNodeWithText(context.getString(R.string.organizer_category_overrides_summary))
+            .requestFocus()
+            .assertIsFocused()
         composeRule.onRoot().performKeyInput {
             keyDown(Key.DirectionDown)
             keyUp(Key.DirectionDown)
