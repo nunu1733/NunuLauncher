@@ -14,9 +14,14 @@ interface SyncHook {
     /** Sync the file descriptor of [file]. */
     fun syncFile(file: File)
 
-    /** Sync the parent directory of [file] (best-effort; may not be available on all
-     *  platforms). */
-    fun syncDirectory(file: File)
+    /**
+     * Sync the parent directory of [file] (best-effort; may not be available on all
+     * platforms).
+     *
+     * @return true when the directory metadata sync completed, false when the
+     *         platform does not support it or the directory is unavailable.
+     */
+    fun syncDirectory(file: File): Boolean
 
     companion object {
         /**
@@ -37,14 +42,16 @@ interface SyncHook {
                 RandomAccessFile(file, "rw").use { it.fd.sync() }
             }
 
-            override fun syncDirectory(file: File) {
-                val dir = file.parentFile ?: return
-                if (!dir.exists()) return
+            override fun syncDirectory(file: File): Boolean {
+                val dir = file.parentFile ?: return false
+                if (!dir.exists()) return false
                 try {
                     forceDirectoryMetadata(dir)
+                    return true
                 } catch (_: Exception) {
                     // Best-effort: directory sync is not available on all platforms.
                     // The file-level sync is the primary durability guarantee.
+                    return false
                 }
             }
         }

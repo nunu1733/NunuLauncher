@@ -197,7 +197,11 @@ class JournalStoreTest {
     fun productionDirectorySyncUsesReadOnlyFileChannel() {
         // FileChannel can force directory metadata on Android/Linux and host macOS.
         // RandomAccessFile(directory, "r") is a no-op/failure on host macOS.
-        SyncHook.forceDirectoryMetadata(tempDir.root)
+        val journalFile = File(tempDir.root, "organizer_diagnostics.journal")
+        assertTrue(
+            "Production directory sync must complete through the FileChannel implementation",
+            SyncHook.PRODUCTION.syncDirectory(journalFile),
+        )
     }
 
     @Test
@@ -209,8 +213,9 @@ class JournalStoreTest {
             override fun syncFile(file: File) {
                 syncCalls.add("syncFile:${file.name}")
             }
-            override fun syncDirectory(file: File) {
+            override fun syncDirectory(file: File): Boolean {
                 syncCalls.add("syncDir:${file.name}")
+                return true
             }
         }
 
@@ -257,8 +262,9 @@ class JournalStoreTest {
             override fun syncFile(file: File) {
                 syncCalls.add("syncFile:${file.name}")
             }
-            override fun syncDirectory(file: File) {
+            override fun syncDirectory(file: File): Boolean {
                 syncCalls.add("syncDir:${file.name}")
+                return true
             }
         }
         // renameHook always returns false, forcing the copy-and-delete path
