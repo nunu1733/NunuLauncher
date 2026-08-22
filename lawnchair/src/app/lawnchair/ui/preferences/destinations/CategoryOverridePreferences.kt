@@ -240,8 +240,8 @@ private fun OverrideAppPreference(
         },
         modifier = Modifier
             .heightIn(min = 48.dp)
-            .focusable()
             .clickable(onClick = onClick)
+            .focusable()
             .semantics { contentDescription = "$label, $profile, $state" },
         verticalPadding = 12.dp,
     )
