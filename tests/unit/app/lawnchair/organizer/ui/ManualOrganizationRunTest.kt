@@ -110,12 +110,13 @@ class ManualOrganizationRunTest {
         assertThrowsIllegalState { runner.confirm() }
         assertEquals(ManualOrganizationRun.State.Cancelled, runner.state)
 
-        val admitted = ManualOrganizationRun(
+        val admittedRunner = ManualOrganizationRun(
             FakeApplication(readyInput()),
             planner = OrganizationPlanner { planningResult(movingPlan()) },
             operationGate = OrganizationOperationLease,
-        ).start()
-        assertTrue(admitted is ManualOrganizationRun.StartOutcome.Started)
+        )
+        assertTrue(admittedRunner.start() is ManualOrganizationRun.StartOutcome.Started)
+        admittedRunner.cancel()
     }
 
     @Test

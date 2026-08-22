@@ -193,12 +193,29 @@ class CategoryOverrideAtomicFileRestartWriterInstrumentationTest {
         directory.deleteRecursively()
         check(directory.mkdirs()) { "Unable to create ${directory.absolutePath}" }
         val preferences = context.getSharedPreferences(RESTART_PREFERENCES, Context.MODE_PRIVATE)
-        check(preferences.edit().clear().putInt(RESTART_SCHEMA_KEY, RESTART_ATOMIC_AUTHORITY_SCHEMA).commit())
+        val oldKey = key("com.example.old")
+        check(
+            preferences.edit()
+                .clear()
+                .putInt(RESTART_SCHEMA_KEY, 1)
+                .putLong(RESTART_GENERATION_KEY, 0L)
+                .putString(RESTART_ENTRIES_KEY, "${oldKey.packageName.value}|${oldKey.profile.value}|SOCIAL")
+                .commit(),
+        )
         val finalFile = File(directory, RESTART_FINAL_FILE_NAME)
-        val initial = restartSnapshot(3L, key("com.example.old"), CategoryId("SOCIAL"))
-        val next = restartSnapshot(4L, key("com.example.new"), CategoryId("GAME"))
+        val access = CategoryOverrideAtomicAccess(RestartAtomicFile(finalFile), preferences)
+        val expected = (access.readStored() as CategoryOverrideStoredReadResult.Ready).snapshot.identity
+        val migrated = access.mutate(
+            request = CategoryOverrideMutation.Set(oldKey, CategoryId("GAME")),
+            expected = expected,
+            verificationProfiles = setOf(oldKey.profile),
+            allowedCategories = setOf(CategoryId("GAME"), CategoryId("SOCIAL")),
+        )
+        check(migrated is CategoryOverrideWriteResult.Committed)
+        val initial = restartSnapshot(1L, oldKey, CategoryId("GAME"))
+        check((access.readStored() as CategoryOverrideStoredReadResult.Ready).snapshot == initial)
+        val next = restartSnapshot(2L, key("com.example.new"), CategoryId("GAME"))
         val atomic = RestartAtomicFile(finalFile)
-        writeRestartSnapshot(atomic, initial)
 
         val interrupted = atomic.startWrite()
         atomic.write(interrupted, CategoryOverrideFullStoreCodec.encode(next))
@@ -227,9 +244,13 @@ class CategoryOverrideAtomicFileRestartReaderInstrumentationTest {
 
         assertEquals(
             CategoryOverrideStoredReadResult.Ready(
-                restartSnapshot(3L, key("com.example.old"), CategoryId("SOCIAL")),
+                restartSnapshot(1L, key("com.example.old"), CategoryId("GAME")),
             ),
             access.readStored(),
+        )
+        assertEquals(
+            OverrideSnapshotReadResult.UnsupportedSchema,
+            SharedPreferencesCategoryOverrideSnapshotSource(preferences).read(setOf(ProfileId("0"))),
         )
         directory.deleteRecursively()
         preferences.edit().clear().commit()
@@ -251,19 +272,6 @@ private fun restartSnapshot(
     mapOf(key to category),
 )
 
-private fun writeRestartSnapshot(atomic: RestartAtomicFile, snapshot: CategoryOverrideStoredSnapshot) {
-    var stream: FileOutputStream? = null
-    try {
-        stream = atomic.startWrite()
-        atomic.write(stream, CategoryOverrideFullStoreCodec.encode(snapshot))
-        atomic.sync(stream)
-        atomic.finishWrite(stream)
-        stream = null
-    } finally {
-        stream?.let(atomic::failWrite)
-    }
-}
-
 private class RestartAtomicFile(finalFile: File) : CategoryOverrideAtomicFile {
     private val atomicFile = AtomicFile(finalFile)
 
@@ -279,5 +287,6 @@ private const val RESTART_DIRECTORY = "category-override-atomic-restart"
 private const val RESTART_PREFERENCES = "category-override-atomic-restart"
 private const val RESTART_PID_FILE = "writer.pid"
 private const val RESTART_SCHEMA_KEY = "schema"
-private const val RESTART_ATOMIC_AUTHORITY_SCHEMA = 2
+private const val RESTART_GENERATION_KEY = "generation"
+private const val RESTART_ENTRIES_KEY = "entries"
 private const val RESTART_FINAL_FILE_NAME = "snapshot-v1"
