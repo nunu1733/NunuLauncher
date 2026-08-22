@@ -19,6 +19,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.printToLog
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.core.app.ApplicationProvider
@@ -171,6 +172,7 @@ class CategoryOverridePreferencesInstrumentationTest {
             keyDown(Key.DirectionDown)
             keyUp(Key.DirectionDown)
         }
+        composeRule.onRoot().printToLog("CategoryOverrideDpadFocus")
         composeRule.onNodeWithContentDescription(
             "Example, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
         ).assertIsFocused()
