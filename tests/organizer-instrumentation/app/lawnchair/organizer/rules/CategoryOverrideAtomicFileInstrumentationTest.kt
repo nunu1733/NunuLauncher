@@ -224,7 +224,9 @@ class CategoryOverrideAtomicFileRestartWriterInstrumentationTest {
         atomic.sync(interrupted)
         interrupted.close()
         File(directory, RESTART_PID_FILE).writeText(Process.myPid().toString())
-        check(File("${finalFile.path}.bak").exists())
+        val backup = File("${finalFile.path}.bak")
+        check(finalFile.renameTo(backup))
+        check(backup.exists())
         check(File("${finalFile.path}.new").exists())
     }
 }
