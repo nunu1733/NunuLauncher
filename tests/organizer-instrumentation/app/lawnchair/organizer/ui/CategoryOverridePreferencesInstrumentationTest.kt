@@ -87,6 +87,11 @@ class CategoryOverridePreferencesInstrumentationTest {
         composeRule.onNodeWithContentDescription(
             "$longLabel, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
         ).assertIsDisplayed().performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.organizer_category_override_cancel),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText(context.getString(R.string.organizer_category_override_cancel)).assertHasClickAction().performClick()
         composeRule.waitUntil(5_000) {
             try {
@@ -116,8 +121,18 @@ class CategoryOverridePreferencesInstrumentationTest {
         composeRule.onNodeWithContentDescription(
             "Example, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
         ).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.organizer_category_game),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText(context.getString(R.string.organizer_category_game))
             .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.organizer_category_override_save),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText(context.getString(R.string.organizer_category_override_save))
             .performSemanticsAction(SemanticsActions.OnClick)
         composeRule.waitUntil(5_000) {
