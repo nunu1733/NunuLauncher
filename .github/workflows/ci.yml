@@ -223,14 +223,14 @@ jobs:
             ./gradlew installLawnWithQuickstepGithubDebug installLawnWithQuickstepGithubDebugAndroidTest
             adb shell am force-stop app.lawnchair.debug.test
             adb shell am force-stop app.lawnchair.debug
-            writer_result=$(adb shell am instrument -w -r -e class app.lawnchair.organizer.rules.CategoryOverrideAtomicFileRestartWriterInstrumentationTest app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner)
-            printf '%s\n' "$writer_result"
-            grep -q 'INSTRUMENTATION_CODE: 0' <<< "$writer_result"
+            adb shell am instrument -w -r -e class app.lawnchair.organizer.rules.CategoryOverrideAtomicFileRestartWriterInstrumentationTest app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner | tee /tmp/category-override-restart-writer.txt
+            grep -q 'OK (1 test)' /tmp/category-override-restart-writer.txt
+            grep -q 'INSTRUMENTATION_CODE: -1' /tmp/category-override-restart-writer.txt
             adb shell am force-stop app.lawnchair.debug.test
             adb shell am force-stop app.lawnchair.debug
-            reader_result=$(adb shell am instrument -w -r -e class app.lawnchair.organizer.rules.CategoryOverrideAtomicFileRestartReaderInstrumentationTest app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner)
-            printf '%s\n' "$reader_result"
-            grep -q 'INSTRUMENTATION_CODE: 0' <<< "$reader_result"
+            adb shell am instrument -w -r -e class app.lawnchair.organizer.rules.CategoryOverrideAtomicFileRestartReaderInstrumentationTest app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner | tee /tmp/category-override-restart-reader.txt
+            grep -q 'OK (1 test)' /tmp/category-override-restart-reader.txt
+            grep -q 'INSTRUMENTATION_CODE: -1' /tmp/category-override-restart-reader.txt
       - name: Upload API 35 instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
