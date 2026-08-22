@@ -84,7 +84,7 @@ class CategoryOverridePreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText(longLabel).fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onAllNodesWithText(longLabel).onFirst().assertIsDisplayed().performClick()
+        composeRule.onAllNodesWithText(longLabel)[0].assertIsDisplayed().performClick()
         composeRule.onNodeWithText(context.getString(R.string.organizer_category_override_cancel)).assertHasClickAction().performClick()
         composeRule.waitUntil(5_000) {
             try {
@@ -111,7 +111,7 @@ class CategoryOverridePreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText("Example").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onAllNodesWithText("Example").onFirst().performClick()
+        composeRule.onAllNodesWithText("Example")[0].performClick()
         composeRule.onNodeWithText(context.getString(R.string.organizer_category_game))
             .performSemanticsAction(SemanticsActions.OnClick)
         composeRule.onNodeWithText(context.getString(R.string.organizer_category_override_save))
