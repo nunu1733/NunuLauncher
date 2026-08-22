@@ -16,11 +16,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -55,7 +50,6 @@ internal fun CategoryOverridePreferences(
     val authoring = coordinator ?: remember { CategoryOverrideAuthoringCoordinator(context) }
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
-    val firstAppFocusRequester = remember { FocusRequester() }
     var categoryOptions by remember { mutableStateOf<List<CategoryId>?>(null) }
     var loadResult by remember { mutableStateOf<CategoryOverrideAuthoringResult?>(null) }
     var selectedApp by remember { mutableStateOf<CategoryOverrideApp?>(null) }
@@ -92,19 +86,6 @@ internal fun CategoryOverridePreferences(
                     modifier = Modifier
                         .focusRequester(focusRequester)
                         .focusable()
-                        .onKeyEvent { event ->
-                            if (
-                                event.type == KeyEventType.KeyDown &&
-                                event.key == Key.DirectionDown &&
-                                selectedApp == null &&
-                                loadResult is CategoryOverrideAuthoringResult.Loaded
-                            ) {
-                                firstAppFocusRequester.requestFocus()
-                                true
-                            } else {
-                                false
-                            }
-                        }
                         .semantics { liveRegion = LiveRegionMode.Polite },
                 )
             }
@@ -114,15 +95,10 @@ internal fun CategoryOverridePreferences(
                 is CategoryOverrideAuthoringResult.Loaded -> {
                     val app = selectedApp
                     if (app == null) {
-                        result.apps.forEachIndexed { index, candidate ->
+                        result.apps.forEach { candidate ->
                             item(key = "${candidate.key.profile.value}:${candidate.key.packageName.value}") {
                                 OverrideAppPreference(
                                     app = candidate,
-                                    modifier = if (index == 0) {
-                                        Modifier.focusRequester(firstAppFocusRequester)
-                                    } else {
-                                        Modifier
-                                    },
                                     onClick = {
                                         selectedApp = candidate
                                         pendingCategory = candidate.assignedCategory

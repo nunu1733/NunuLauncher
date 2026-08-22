@@ -4,7 +4,10 @@ import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.input.InputMode
+import androidx.compose.ui.input.InputModeManager
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertHasClickAction
@@ -154,7 +157,9 @@ class CategoryOverridePreferencesInstrumentationTest {
     @Test
     fun keyboardDpadNavigatesToProfileRowAndActivatesEditor() {
         val coordinator = coordinator()
+        var inputModeManager: InputModeManager? = null
         composeRule.setContent {
+            inputModeManager = LocalInputModeManager.current
             LawnchairTheme {
                 CategoryOverridePreferences(coordinator = coordinator)
             }
@@ -163,6 +168,9 @@ class CategoryOverridePreferencesInstrumentationTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText("Example").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.runOnIdle {
+            requireNotNull(inputModeManager).requestInputMode(InputMode.Keyboard)
         }
         val summary = composeRule.onNodeWithText(
             context.getString(R.string.organizer_category_overrides_summary),
