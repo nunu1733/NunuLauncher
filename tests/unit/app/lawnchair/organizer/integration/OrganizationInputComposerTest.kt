@@ -72,6 +72,28 @@ class OrganizationInputComposerTest {
     }
 
     @Test
+    fun freshManualAndOnboardingCompositionsConsumeCommittedS1Overrides() {
+        val state = CanonicalFixtures.state(
+            items = listOf(app("override", "personal", "com.example.override/.Main")),
+        )
+        val source = CommittedOverrideSource().apply {
+            commit(CategoryOverrideKey(app.lawnchair.organizer.planning.PackageName("com.example.override"), ProfileId("personal")), CategoryId("OTHER"))
+        }
+        val platform = evidence(s2 = mapOf(ItemId("override") to CategoryId("GAME")))
+
+        val manual = composer(state, source, SequenceEvidence(platform, platform)).composeFullOrganization()
+        val onboarding = composer(state, source, SequenceEvidence(platform, platform)).composeFullOrganization()
+
+        listOf(manual, onboarding).forEach { composition ->
+            val ready = composition as OrganizationInputComposition.Ready
+            assertEquals(
+                listOf("override:S1:OTHER"),
+                ready.input.signals.entries.map { "${it.item.value}:${it.source.name}:${it.candidate.value}" },
+            )
+        }
+    }
+
+    @Test
     fun bundleAndDynamicSourceFailuresRemainTypedWithoutDiagnosticParsing() {
         val state = CanonicalFixtures.state(items = listOf(app("a", "personal", "com.example.a/.Main")))
         val missing = composer(state, SequenceOverrides(), SequenceEvidence(), bundle = BundleReadResult.Missing).composeFullOrganization()
@@ -260,6 +282,29 @@ class OrganizationInputComposerTest {
     )
 
     private fun digest(char: Char) = char.toString().repeat(64)
+
+    private class CommittedOverrideSource : CategoryOverrideSnapshotSource {
+        private var assignments: Map<CategoryOverrideKey, CategoryId> = emptyMap()
+        private var generation = 0L
+
+        fun commit(key: CategoryOverrideKey, category: CategoryId) {
+            assignments = assignments + (key to category)
+            generation += 1L
+        }
+
+        override fun read(capturedProfiles: Set<ProfileId>): OverrideSnapshotReadResult = OverrideSnapshotReadResult.Ready(
+            CategoryOverrideSnapshot(
+                schemaVersion = 1,
+                generation = generation,
+                assignments = assignments.filterKeys { it.profile in capturedProfiles },
+                identity = PolicyInputIdentity(
+                    PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT,
+                    "schema-1-generation-$generation",
+                    "f".repeat(64),
+                ),
+            ),
+        )
+    }
 
     private class SequenceOverrides(
         private vararg val snapshots: CategoryOverrideSnapshot,
