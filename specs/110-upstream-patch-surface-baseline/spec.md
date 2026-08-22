@@ -29,8 +29,8 @@ writer-admission scan. [1]
 
 ## Scope
 
-- Define the counted production source paths, changed-line measurement, and
-  explicit exclusions.
+- Define the counted production paths, including base resources, schemas,
+  manifests, and changed-line measurement, plus explicit exclusions.
 - Record an exact upstream commit, exact main commit, expected totals, bridge
   responsibility groups, and ownership evidence in one machine-readable file.
 - Provide a standard-library-only, no-network command that reproduces the
@@ -84,8 +84,9 @@ change receives Issue-owned review instead of an automatic quality verdict.
 
 ### Scenario: Encounter an unowned production bridge
 
-Given a changed production Java or Kotlin source path is neither a
-project-owned addition nor listed in exactly one bridge group
+Given a changed non-excluded repository path, including a base resource or
+schema, is neither a project-owned addition nor listed in exactly one bridge
+group
 
 When the measurement runs
 
@@ -125,11 +126,15 @@ no user-facing Android UI.
 
 ## Acceptance criteria
 
-- [x] AC-1: The metric, counted source roots, line measurement, and exclusions
-  are explicit in an accepted assessment and machine-readable inventory.
+- [x] AC-1: The metric, all-path classification, line measurement, and explicit
+  exclusions are documented in an accepted assessment and machine-readable
+  inventory.
 - [x] AC-2: An exact upstream commit and exact main commit have a baseline that
-  lists every counted path in exactly one bridge responsibility group and
-  reports totals.
+  lists every counted path, including base resources and schemas, in exactly one
+  bridge responsibility group and reports totals.
+- [x] AC-2a: Exact reproduction verifies the recorded target, counted path-set,
+  each group path-set and totals, project-owned totals, and explicit-exclusion
+  totals; matching grand totals alone is insufficient.
 - [x] AC-3: A standard-library-only command reproduces the exact baseline from
   local Git data without network access.
 - [x] AC-4: Candidate comparison detects invalid ancestry, unowned bridges, and
@@ -145,8 +150,8 @@ no user-facing Android UI.
 | AC | Evidence |
 |---|---|
 | AC-1, AC-2 | `docs/assessment/upstream-patch-surface-baseline.md` and `upstream-patch-surface-baseline.json` |
-| AC-3 | `python3 tools/repo-contract/measure_upstream_patch_surface.py --verify` |
-| AC-4 | `python3 tools/repo-contract/test_measure_upstream_patch_surface.py` plus the tool's `--enforce-baseline` path |
+| AC-3 | `python3 tools/repo-contract/measure_upstream_patch_surface.py --verify`, also required by `validate-repo-contract` CI |
+| AC-4 | `python3 tools/repo-contract/test_measure_upstream_patch_surface.py` plus the tool's `--enforce-baseline` path; tests cover unowned path, invalid ancestry, and exit semantics |
 | AC-5 | Assessment references to [upstream strategy][1], [DESIGN][2], Deck retirement, and writer audit |
 | AC-6 | Successful `--verify` result with complete bridge ownership |
 

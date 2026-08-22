@@ -5,15 +5,42 @@
   "upstream_commit": "505dbc40e6154c05158b5d0271c45f6a885a411b",
   "main_commit": "4ec0eb3dc692eadf108c512df5de3cb1607cf1f5",
   "metric": {
-    "counted_paths": "Changed production .java/.kt paths under src/, lawnchair/src/, and quickstep/src/ that either existed at upstream_commit or are explicitly assigned to a bridge group.",
-    "counted_lines": "The additions and deletions reported by git diff --no-renames --numstat upstream_commit..target for counted paths.",
+    "counted_paths": "Every changed repository path in git diff --no-renames upstream_commit..target except an explicit non-production exclusion or a new project-owned addition. Each remaining path must be assigned to exactly one bridge group.",
+    "counted_lines": "The additions and deletions reported by git diff --no-renames --numstat upstream_commit..target for counted paths, including production source, base resources, schemas, manifests, and other non-excluded upstream/bridge paths.",
     "comparison_rule": "Growth is a positive delta in counted files, additions, or deletions. It requires review and an Issue-owned rationale; it is not a quality score or an automatic regression verdict."
   },
   "exclusions": [
-    "Documentation, specifications, assessments, workflows, repository-contract tooling, generated files, vendored files, and tests are not production upstream patch surface.",
+    "Documentation, specifications, assessments, workflows, repository-contract tooling, test sources, test-only build configuration, generated files, vendored files, and localized resource churn are not production upstream patch surface.",
     "New production modules under project_owned_addition_prefixes are reported separately and do not enter the counted metric.",
-    "A new production file outside project_owned_addition_prefixes must be assigned to an explicit bridge group before the measurement can pass."
+    "Base resources, schemas, manifests, and every other non-excluded path must be assigned to an explicit bridge group before the measurement can pass.",
+    "A localized Lawnchair values-* resource is excluded only as translation churn; the base values/ resource remains counted."
   ],
+  "explicit_exclusions": {
+    "prefixes": [
+      ".github/",
+      ".idea/",
+      "docs/",
+      "specs/",
+      "tests/",
+      "tools/",
+      "res/values-",
+      "lawnchair/res/values-"
+    ],
+    "suffixes": [
+      ".md",
+      ".png",
+      ".jpg",
+      ".webp",
+      ".svg",
+      ".yml",
+      ".yaml"
+    ],
+    "paths": [
+      ".gitignore",
+      "build.gradle",
+      "gradle/libs.versions.toml"
+    ]
+  },
   "project_owned_addition_prefixes": [
     "lawnchair/src/app/lawnchair/organizer/",
     "lawnchair/src/app/lawnchair/migration/"
@@ -60,10 +87,12 @@
         "specs/99-category-override-authoring/spec.md"
       ],
       "paths": [
+        "lawnchair/res/values/strings.xml",
         "lawnchair/src/app/lawnchair/ui/popup/OrganizerLockShortcut.kt",
         "lawnchair/src/app/lawnchair/ui/preferences/destinations/CategoryOverridePreferences.kt",
         "lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt",
         "lawnchair/src/app/lawnchair/ui/preferences/destinations/PlacementLockPreferences.kt",
+        "res/values/strings.xml",
         "src/com/android/launcher3/model/BaseLauncherBinder.java"
       ]
     },
@@ -96,6 +125,7 @@
         "docs/assessment/issue-60-executor-writer-admission-audit.md"
       ],
       "paths": [
+        "res/raw/downgrade_schema.json",
         "src/com/android/launcher3/LauncherSettings.java",
         "src/com/android/launcher3/model/DatabaseHelper.java",
         "src/com/android/launcher3/model/FavoritesTableDigest.java",
@@ -109,8 +139,43 @@
     }
   ],
   "expected_measurement": {
-    "counted_files": 42,
-    "counted_additions": 3673,
-    "counted_deletions": 977
+    "counted_files": 45,
+    "counted_additions": 3908,
+    "counted_deletions": 987,
+    "counted_paths_sha256": "937f2b0f3daefcbf87715e0105a3dc1aec2ac8985fb25951ee6234df80194e36",
+    "project_owned_files": 91,
+    "project_owned_additions": 15898,
+    "project_owned_deletions": 0,
+    "project_owned_paths_sha256": "d12e4bf1d65f1c1646dbccd9752f5c835f9d28b69b6cda6a8079805d1c00a100",
+    "excluded_files": 300,
+    "excluded_additions": 54985,
+    "excluded_deletions": 684,
+    "excluded_paths_sha256": "68f0107a04e391fa2d98229f40f3e0363117d551428f0451b5df9553cc26abfa",
+    "groups": {
+      "deck-retirement": {
+        "files": 20,
+        "additions": 284,
+        "deletions": 853,
+        "paths_sha256": "3f68fcbdba6182596817bcec19c8327c2f23cda9ee51a69499b7d2017a89616a"
+      },
+      "layout-schema-and-recovery": {
+        "files": 10,
+        "additions": 629,
+        "deletions": 54,
+        "paths_sha256": "d957852396056746cd87000f23d4b0e8d90e5e5ddfc77b6af17770038dfaf874"
+      },
+      "model-reload-and-transaction-gates": {
+        "files": 8,
+        "additions": 1320,
+        "deletions": 71,
+        "paths_sha256": "7a86bf7ecb43d4b5ae47c2cba0f6302d149f401c315f74a6f661c03f96e2653c"
+      },
+      "organizer-ui-and-lock-authoring": {
+        "files": 7,
+        "additions": 1675,
+        "deletions": 9,
+        "paths_sha256": "ff6f3d4b03a3267ea26d033f5ca539bfc521f849c9591d6c2934943d4d14be5b"
+      }
+    }
   }
 }

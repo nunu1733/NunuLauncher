@@ -16,10 +16,11 @@ precedent for source-boundary checks, but it deliberately inventories only
 
 The Issue #110 baseline is captured at upstream
 `505dbc40e6154c05158b5d0271c45f6a885a411b` and main
-`4ec0eb3dc692eadf108c512df5de3cb1607cf1f5`. The captured metric reports 42
-counted upstream/bridge files, 3,673 additions, and 977 deletions; 91
-project-owned additions are reported separately. The exact paths, group
-ownership, and totals are recorded in the machine-readable baseline file.
+`4ec0eb3dc692eadf108c512df5de3cb1607cf1f5`. The captured metric reports 45
+counted upstream/bridge files, 3,908 additions, and 987 deletions; 91
+project-owned additions and 300 explicitly excluded non-production paths are
+reported separately. The exact path sets, group ownership, and totals are
+recorded in the machine-readable baseline file.
 
 ## Design
 
@@ -27,26 +28,30 @@ ownership, and totals are recorded in the machine-readable baseline file.
 
 | Area | Interface / responsibility | Boundary kept out of the tool |
 |---|---|---|
-| `measure_upstream_patch_surface.py` | Read local Git diff and classify each changed production Java/Kotlin path | No Android build, network request, worktree mutation, or product-runtime behavior |
+| `measure_upstream_patch_surface.py` | Read local Git diff and classify every changed path through explicit exclusions, project ownership, and bridge responsibility | No Android build, network request, worktree mutation, or product-runtime behavior |
 | `upstream-patch-surface-baseline.json` | Own the exact commits, path groups, exclusions, and expected numeric totals | No duplicated architectural rationale or release verdict |
 | `upstream-patch-surface-baseline.md` | Explain the metric, comparison policy, and links to evidence | No duplicated Deck/writer/design audit |
 | Tool regression test | Fix aggregation, ownership, and growth semantics | No second production measurement seam |
 
-The tool counts a path that existed at the selected upstream commit, or a new
-file outside a project-owned prefix that is explicitly assigned to one bridge
-group. It separately reports additions under the project-owned organizer and
-migration prefixes. Every other changed production path requires exactly one
-bridge responsibility. This avoids hiding a widened bridge while preserving the
-design's intended deep modules. [2]
+The tool begins with every changed repository path. It removes only explicit
+non-production exclusions, then counts a path that existed at the selected
+upstream commit, or a new file outside a project-owned prefix that is explicitly
+assigned to one bridge group. Base resources, schemas, manifests, and other
+non-excluded files therefore cannot be skipped by a source-extension allowlist.
+The tool separately reports additions under the project-owned organizer and
+migration prefixes. Every other changed path requires exactly one bridge
+responsibility. This avoids hiding a widened bridge while preserving the design's
+intended deep modules. [2]
 
 ### Data flow
 
 The tool resolves the local upstream and target commits, verifies that upstream
 is an ancestor of target, and reads `git diff --no-renames` name-status and
-numstat output for the defined source roots. It classifies paths using the
-checked-in inventory, aggregates counts by responsibility, prints the report,
-and compares totals to the accepted baseline. Invalid ancestry or unowned paths
-fails immediately; `--verify` fails for any baseline difference and
+numstat output for every changed path. It classifies paths using the checked-in
+inventory, aggregates counts by responsibility, prints the report, and compares
+totals to the accepted baseline. Invalid ancestry or unowned paths fail
+immediately; `--verify` fails for any exact baseline difference, including path
+set, group assignment, project-owned totals, and explicit-exclusion totals; and
 `--enforce-baseline` fails for positive counted growth.
 
 ### Alternatives rejected
@@ -63,7 +68,7 @@ fails immediately; `--verify` fails for any baseline difference and
 | Area | Intended change | Why here |
 |---|---|---|
 | `tools/repo-contract/measure_upstream_patch_surface.py` | Add offline measurement, ownership validation, and candidate comparison | Repository-contract tooling already hosts deterministic source-boundary checks. [3] |
-| `tools/repo-contract/test_measure_upstream_patch_surface.py` | Add regression tests for source selection, aggregation, growth, and duplicate ownership | Protect the metric from silent classification drift. |
+| `tools/repo-contract/test_measure_upstream_patch_surface.py` | Add regression tests for resource/schema classification, exact baseline, ownership, ancestry, and exit semantics | Protect the metric from silent classification drift. |
 | `docs/assessment/upstream-patch-surface-baseline.json` | Add exact baseline commits, path groups, exclusions, and expected totals | One machine-readable source of truth for the numerical inventory. |
 | `docs/assessment/upstream-patch-surface-baseline.md` | Add accepted methodology, baseline table, and review procedure | NFR-010 evidence and maintainer instructions. |
 | `docs/engineering/upstream-strategy.md` | Link the accepted measurement from sync policy | Preserve the existing policy as the architectural source of truth. |
@@ -86,6 +91,7 @@ baseline update remains a reviewed documentation/tooling change.
 | AC-3, AC-6 | Exact local baseline regeneration with complete ownership | `python3 tools/repo-contract/measure_upstream_patch_surface.py --verify` |
 | AC-4 | Regression tests of aggregation, ownership, and growth rule | `python3 tools/repo-contract/test_measure_upstream_patch_surface.py` |
 | Existing repository contract | Link/syntax and project-file validation | `python3 tools/repo-contract/validate_repo_contract.py` |
+| Repository-contract CI integration | Tool test and exact baseline regeneration run in `validate-repo-contract` | `.github/workflows/ci.yml` |
 | Existing repository contract self-test | Validator regression suite | `python3 tools/repo-contract/test_validate_repo_contract.py` |
 | Whitespace | No malformed patch whitespace | `git diff --check` |
 

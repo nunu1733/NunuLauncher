@@ -23,20 +23,23 @@ one accepted comparison point without restating those documents.
 
 ## Metric and exclusions
 
-The counted patch surface is the set of changed production `.java` and `.kt`
-paths under `src/`, `lawnchair/src/`, and `quickstep/src/` between the fixed
-upstream commit and a target commit. A path is counted when it existed in the
-upstream commit, or when a newly added file outside a project-owned module is
-explicitly assigned to a bridge-responsibility group. For every counted path,
-the measurement reports Git's no-rename additions and deletions.
+The measurement begins with **every path** in `git diff --no-renames` between the
+fixed upstream commit and a target commit. It then removes only the explicit
+non-production exclusions recorded in the machine-readable inventory: documents,
+specifications, workflows, repository tooling, tests, generated/vendor churn,
+and localized `values-*` resource churn. A base resource, schema, manifest, or
+other non-excluded path is counted when it existed upstream, or when a newly
+added file outside a project-owned module is explicitly assigned to one
+bridge-responsibility group. For every counted path, the measurement reports
+Git's no-rename additions and deletions.
 
 | Category | Treatment | Rationale |
 |---|---|---|
-| Existing Lawnchair/Launcher3 source path | Counted and assigned to one bridge group | It is a direct upstream-file patch subject to rebase/conflict cost. |
+| Existing Lawnchair/Launcher3 production path, including base resources and schemas | Counted and assigned to one bridge group | It is a direct upstream-file patch subject to rebase/conflict cost. |
 | New bridge file outside a project-owned prefix | Counted and assigned to one bridge group | The bridge is project-specific but extends an upstream-owned source area. |
 | New `lawnchair/src/app/lawnchair/organizer/` or `migration/` source file | Reported separately; not counted | These are the deep project-owned modules intended by the design. [2] |
-| Tests, documents, specs, assessments, workflows, repository tooling, generated files, and vendored files | Excluded | They do not constitute production upstream patch surface. |
-| A changed production source path with no bridge owner | Measurement failure | An unowned bridge must be split to an owning Issue before it can be accepted. |
+| Tests, documents, specs, assessments, workflows, repository tooling, generated/vendor churn, and localized `lawnchair/res/values-*` resources | Explicitly excluded and reported separately | They are not production upstream patch surface; the base `values/strings.xml` remains counted. |
+| A changed non-excluded path with no bridge owner | Measurement failure | An unowned bridge must be split to an owning Issue before it can be accepted. |
 
 The machine-readable inventory is
 [`upstream-patch-surface-baseline.json`](./upstream-patch-surface-baseline.json).
@@ -45,18 +48,20 @@ explains the policy and links the existing architectural evidence.
 
 ## Accepted baseline
 
-The offline measurement at the exact commits above found **42 counted
-upstream/bridge files**, with **3,673 additions** and **977 deletions**. It also
-reports **91 excluded project-owned source additions** with 15,898 additions,
-which are deliberately visible but not folded into the metric.
+The offline measurement at the exact commits above found **45 counted
+upstream/bridge files**, with **3,908 additions** and **987 deletions**. It also
+reports **91 excluded project-owned source additions** with 15,898 additions and
+**300 explicitly excluded non-production paths** with 54,985 additions and 684
+deletions. Both excluded categories are deliberately visible but are not folded
+into the metric.
 
 | Bridge responsibility | Counted files | Additions | Deletions | Supporting evidence |
 |---|---:|---:|---:|---|
 | Deck retirement | 20 | 284 | 853 | [ADR-0006][3], [retirement assessment][4] |
-| Organizer UI and lock authoring | 5 | 1,447 | 0 | [design seams][2] and accepted specs #38/#52/#99 |
+| Organizer UI and lock authoring, including base resources | 7 | 1,675 | 9 | [design seams][2] and accepted specs #38/#52/#99 |
 | Model reload and transaction gates | 8 | 1,320 | 71 | [writer admission audit][5] and its executable writer inventory |
-| Layout schema and recovery | 9 | 622 | 53 | [ADR-0003][6], [ADR-0004][7], and [writer admission audit][5] |
-| **Total counted surface** | **42** | **3,673** | **977** | Machine-readable inventory |
+| Layout schema and recovery, including downgrade schema | 10 | 629 | 54 | [ADR-0003][6], [ADR-0004][7], and [writer admission audit][5] |
+| **Total counted surface** | **45** | **3,908** | **987** | Machine-readable inventory |
 
 The retained Deck evidence identifies the historical package-event and artifact
 paths that were removed or constrained; the current bridge inventory therefore
@@ -84,11 +89,14 @@ python3 tools/repo-contract/measure_upstream_patch_surface.py \
 ```
 
 The final command first rejects a candidate upstream commit that is not an
-ancestor of the target. It then fails for a changed production path that lacks
+ancestor of the target. It then fails for a changed non-excluded path that lacks
 a bridge owner, or when counted files, additions, or deletions grow beyond this
-accepted baseline. A smaller or equal total passes the mechanical comparison,
-but reviewers must still examine responsibility changes, deletions, and any
-semantic safety impact.
+accepted baseline. `--verify` additionally requires the exact recorded target,
+path-set digest, per-group path-set digest and metrics, project-owned totals, and
+explicit-exclusion totals; equal grand totals cannot mask path or responsibility
+substitution. A smaller or equal candidate total passes the mechanical
+comparison, but reviewers must still examine responsibility changes, deletions,
+and any semantic safety impact.
 
 ## Rebase and organizer-PR review procedure
 
