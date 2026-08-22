@@ -12,6 +12,8 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.lawnchair.organizer.planning.CategoryId
@@ -82,7 +84,7 @@ class CategoryOverridePreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText(longLabel).fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText(longLabel).assertIsDisplayed().performClick()
+        composeRule.onAllNodesWithText(longLabel).onFirst().assertIsDisplayed().performClick()
         composeRule.onNodeWithText(context.getString(R.string.organizer_category_override_cancel)).assertHasClickAction().performClick()
         composeRule.waitUntil(5_000) {
             try {
@@ -109,9 +111,11 @@ class CategoryOverridePreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText("Example").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText("Example").performClick()
-        composeRule.onNodeWithText(context.getString(R.string.organizer_category_game)).assertIsDisplayed().performClick()
-        composeRule.onNodeWithText(context.getString(R.string.organizer_category_override_save)).assertIsDisplayed().performClick()
+        composeRule.onAllNodesWithText("Example").onFirst().performClick()
+        composeRule.onNodeWithText(context.getString(R.string.organizer_category_game))
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.onNodeWithText(context.getString(R.string.organizer_category_override_save))
+            .performSemanticsAction(SemanticsActions.OnClick)
         composeRule.waitUntil(5_000) {
             try {
                 composeRule.onNodeWithText(context.getString(R.string.organizer_category_override_saved)).assertIsFocused()
