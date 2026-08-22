@@ -63,8 +63,10 @@ class CategoryOverrideAtomicFileInstrumentationTest {
         writer.write(interrupted, CategoryOverrideFullStoreCodec.encode(next))
         writer.sync(interrupted)
         interrupted.close()
-        assertTrue(File("${finalFile.path}.bak").exists())
         assertTrue(File("${finalFile.path}.new").exists())
+        val backup = File("${finalFile.path}.bak")
+        assertTrue(finalFile.renameTo(backup))
+        assertTrue(backup.exists())
 
         val restarted = CategoryOverrideAtomicAccess(AndroidxAtomicFile(finalFile), preferences)
         assertEquals(
