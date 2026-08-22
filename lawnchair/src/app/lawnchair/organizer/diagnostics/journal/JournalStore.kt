@@ -3,6 +3,8 @@ package app.lawnchair.organizer.diagnostics.journal
 import app.lawnchair.organizer.diagnostics.model.RunEvent
 import java.io.File
 import java.io.RandomAccessFile
+import java.nio.channels.FileChannel
+import java.nio.file.StandardOpenOption
 
 /**
  * Injectable hook for sync operations during retention rewrite, so tests
@@ -12,11 +14,27 @@ interface SyncHook {
     /** Sync the file descriptor of [file]. */
     fun syncFile(file: File)
 
-    /** Sync the parent directory of [file] (best-effort; may not be available on all
-     *  platforms). */
-    fun syncDirectory(file: File)
+    /**
+     * Sync the parent directory of [file] (best-effort; may not be available on all
+     * platforms).
+     *
+     * @return true when the directory metadata sync completed, false when the
+     *         platform does not support it or the directory is unavailable.
+     */
+    fun syncDirectory(file: File): Boolean
 
     companion object {
+        /**
+         * Force the directory metadata through a read-only file channel. This works on
+         * Android/Linux and host macOS JVMs, unlike opening a directory with
+         * [RandomAccessFile].
+         */
+        internal fun forceDirectoryMetadata(directory: File) {
+            FileChannel.open(directory.toPath(), StandardOpenOption.READ).use { channel ->
+                channel.force(true)
+            }
+        }
+
         /** Production hook: fsync via RandomAccessFile fd.sync(). */
         val PRODUCTION: SyncHook = object : SyncHook {
             override fun syncFile(file: File) {
@@ -24,14 +42,16 @@ interface SyncHook {
                 RandomAccessFile(file, "rw").use { it.fd.sync() }
             }
 
-            override fun syncDirectory(file: File) {
-                val dir = file.parentFile ?: return
-                if (!dir.exists()) return
+            override fun syncDirectory(file: File): Boolean {
+                val dir = file.parentFile ?: return false
+                if (!dir.exists()) return false
                 try {
-                    RandomAccessFile(dir, "r").use { it.fd.sync() }
+                    forceDirectoryMetadata(dir)
+                    return true
                 } catch (_: Exception) {
                     // Best-effort: directory sync is not available on all platforms.
                     // The file-level sync is the primary durability guarantee.
+                    return false
                 }
             }
         }
