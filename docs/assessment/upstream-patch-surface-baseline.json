@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "status": "accepted",
+  "captured_on": "2026-08-23",
+  "upstream_commit": "505dbc40e6154c05158b5d0271c45f6a885a411b",
+  "main_commit": "4ec0eb3dc692eadf108c512df5de3cb1607cf1f5",
+  "metric": {
+    "counted_paths": "Changed production .java/.kt paths under src/, lawnchair/src/, and quickstep/src/ that either existed at upstream_commit or are explicitly assigned to a bridge group.",
+    "counted_lines": "The additions and deletions reported by git diff --no-renames --numstat upstream_commit..target for counted paths.",
+    "comparison_rule": "Growth is a positive delta in counted files, additions, or deletions. It requires review and an Issue-owned rationale; it is not a quality score or an automatic regression verdict."
+  },
+  "exclusions": [
+    "Documentation, specifications, assessments, workflows, repository-contract tooling, generated files, vendored files, and tests are not production upstream patch surface.",
+    "New production modules under project_owned_addition_prefixes are reported separately and do not enter the counted metric.",
+    "A new production file outside project_owned_addition_prefixes must be assigned to an explicit bridge group before the measurement can pass."
+  ],
+  "project_owned_addition_prefixes": [
+    "lawnchair/src/app/lawnchair/organizer/",
+    "lawnchair/src/app/lawnchair/migration/"
+  ],
+  "bridge_groups": [
+    {
+      "id": "deck-retirement",
+      "responsibility": "Retire the historical Deck runtime and normalize its bounded artifacts without restoring a historical layout.",
+      "evidence": [
+        "docs/adr/0006-retire-deck-runtime.md",
+        "docs/assessment/issue-56-deck-runtime-retirement.md",
+        "specs/57-deck-runtime-retirement/spec.md"
+      ],
+      "paths": [
+        "lawnchair/src/app/lawnchair/LawnchairApp.kt",
+        "lawnchair/src/app/lawnchair/LawnchairLauncher.kt",
+        "lawnchair/src/app/lawnchair/backup/LawnchairBackup.kt",
+        "lawnchair/src/app/lawnchair/backup/NovaBackupConverter.kt",
+        "lawnchair/src/app/lawnchair/deck/AddFoldersWithItemsTask.kt",
+        "lawnchair/src/app/lawnchair/deck/LawndeckManager.kt",
+        "lawnchair/src/app/lawnchair/preferences2/PreferenceManager2.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/GestureHandlerPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/HomeLayoutPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/DebugMenuPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/ExperimentalFeaturesPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/HomeScreenPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/PreferencesDashboard.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/navigation/PreferenceNavigation.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/navigation/PreferenceRoutes.kt",
+        "src/com/android/launcher3/DeleteDropTarget.java",
+        "src/com/android/launcher3/LauncherPrefs.kt",
+        "src/com/android/launcher3/dragndrop/DragController.java",
+        "src/com/android/launcher3/model/PackageUpdatedTask.java",
+        "src/com/android/launcher3/util/OnboardingPrefs.kt"
+      ]
+    },
+    {
+      "id": "organizer-ui-and-lock-authoring",
+      "responsibility": "Expose manual organizer, category override, and placement-lock controls through Lawnchair UI seams.",
+      "evidence": [
+        "DESIGN.md",
+        "specs/38-placement-lock-authoring/spec.md",
+        "specs/52-manual-full-organization-vertical-slice/spec.md",
+        "specs/99-category-override-authoring/spec.md"
+      ],
+      "paths": [
+        "lawnchair/src/app/lawnchair/ui/popup/OrganizerLockShortcut.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/CategoryOverridePreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/PlacementLockPreferences.kt",
+        "src/com/android/launcher3/model/BaseLauncherBinder.java"
+      ]
+    },
+    {
+      "id": "model-reload-and-transaction-gates",
+      "responsibility": "Bridge organizer writes, model reload, and serialized layout mutation through minimal Launcher3 ownership seams.",
+      "evidence": [
+        "DESIGN.md",
+        "docs/assessment/issue-60-executor-writer-admission-audit.md",
+        "tools/repo-contract/validate_writer_inventory.py"
+      ],
+      "paths": [
+        "lawnchair/src/com/android/launcher3/OrganizerModelReloadAdapter.java",
+        "src/com/android/launcher3/LauncherModel.java",
+        "src/com/android/launcher3/LauncherProvider.java",
+        "src/com/android/launcher3/model/LayoutWriteCoordinator.java",
+        "src/com/android/launcher3/model/LoaderTask.java",
+        "src/com/android/launcher3/model/ModelDbController.java",
+        "src/com/android/launcher3/model/ModelWriter.java",
+        "src/com/android/launcher3/util/MainThreadInitializedObject.java"
+      ]
+    },
+    {
+      "id": "layout-schema-and-recovery",
+      "responsibility": "Preserve organizer lock state and recovery invariants across Launcher database schema, restore, and migration paths.",
+      "evidence": [
+        "DESIGN.md",
+        "docs/adr/0003-organizer-recovery-point-storage.md",
+        "docs/adr/0004-organizer-lock-persistence.md",
+        "docs/assessment/issue-60-executor-writer-admission-audit.md"
+      ],
+      "paths": [
+        "src/com/android/launcher3/LauncherSettings.java",
+        "src/com/android/launcher3/model/DatabaseHelper.java",
+        "src/com/android/launcher3/model/FavoritesTableDigest.java",
+        "src/com/android/launcher3/model/GridMigrationJournal.java",
+        "src/com/android/launcher3/model/GridMigrationOperation.java",
+        "src/com/android/launcher3/model/GridMigrationRuntime.java",
+        "src/com/android/launcher3/model/GridSizeMigrationUtil.java",
+        "src/com/android/launcher3/provider/LauncherDbUtils.java",
+        "src/com/android/launcher3/provider/RestoreDbTask.java"
+      ]
+    }
+  ],
+  "expected_measurement": {
+    "counted_files": 42,
+    "counted_additions": 3673,
+    "counted_deletions": 977
+  }
+}
