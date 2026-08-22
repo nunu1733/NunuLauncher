@@ -221,6 +221,7 @@ jobs:
           script: |
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.integration.ProductionOrganizationInputInstrumentationTest,app.lawnchair.organizer.rules.CategoryOverrideAtomicFileInstrumentationTest
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.rules.CategoryOverrideAtomicFileRestartWriterInstrumentationTest
+            adb shell am force-stop app.lawnchair.debug.test
             adb shell am force-stop app.lawnchair.debug
             reader_result=$(adb shell am instrument -w -r -e class app.lawnchair.organizer.rules.CategoryOverrideAtomicFileRestartReaderInstrumentationTest app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner)
             printf '%s\n' "$reader_result"
