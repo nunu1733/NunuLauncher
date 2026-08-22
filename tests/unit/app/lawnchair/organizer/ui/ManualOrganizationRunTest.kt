@@ -62,9 +62,62 @@ import kotlin.concurrent.thread
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class ManualOrganizationRunTest {
+    @Test
+    fun exceptionDuringCompositionReleasesTheOrganizationOperationLease() {
+        val application = FakeApplication(readyInput()).apply {
+            composeOverride = { error("composition failure") }
+        }
+        val runner = ManualOrganizationRun(
+            application = application,
+            planner = OrganizationPlanner { error("planner must not run") },
+            operationGate = OrganizationOperationLease,
+        )
+
+        assertThrowsIllegalState { runner.start() }
+        assertEquals(ManualOrganizationRun.State.Cancelled, runner.state)
+
+        val admitted = ManualOrganizationRun(
+            FakeApplication(
+                OrganizationInputComposition.NotReady(
+                    InputReadinessReason.InvalidCanonicalCapture(
+                        app.lawnchair.organizer.integration.CaptureFailureCategory.CAPTURE_UNAVAILABLE,
+                    ),
+                    CompositionDiagnostic("capture-unavailable"),
+                ),
+            ),
+            planner = OrganizationPlanner { error("planner must not run") },
+            operationGate = OrganizationOperationLease,
+        ).start()
+        assertTrue(admitted is ManualOrganizationRun.StartOutcome.Started)
+    }
+
+    @Test
+    fun exceptionDuringConfirmationReleasesTheOrganizationOperationLease() {
+        val application = FakeApplication(readyInput()).apply {
+            materializeOverride = { _, _ -> error("materialization failure") }
+        }
+        val runner = ManualOrganizationRun(
+            application = application,
+            planner = OrganizationPlanner { planningResult(movingPlan()) },
+            operationGate = OrganizationOperationLease,
+        )
+
+        runner.start()
+        assertThrowsIllegalState { runner.confirm() }
+        assertEquals(ManualOrganizationRun.State.Cancelled, runner.state)
+
+        val admitted = ManualOrganizationRun(
+            FakeApplication(readyInput()),
+            planner = OrganizationPlanner { planningResult(movingPlan()) },
+            operationGate = OrganizationOperationLease,
+        ).start()
+        assertTrue(admitted is ManualOrganizationRun.StartOutcome.Started)
+    }
+
     @Test
     fun unavailableInputStopsBeforePlannerOrApplicationWrite() {
         val application = FakeApplication(
@@ -608,6 +661,7 @@ class ManualOrganizationRunTest {
         var applyStarted: CountDownLatch? = null
         var applyRelease: CountDownLatch? = null
         var materializeOverride: ((OrganizationInput, PlanningResult) -> OrganizationPlanMaterializer.Result)? = null
+        var composeOverride: (() -> OrganizationInputComposition)? = null
         var applyResult: ApplyResult = ApplyResult.Applied(RunId(RUN_ID), RecoveryPointId(POINT_ID))
         var recoveryPreview: RecoveryPreviewResult = RecoveryPreviewResult.NotRestorable(
             RecoveryPointId(POINT_ID),
@@ -618,7 +672,7 @@ class ManualOrganizationRunTest {
         override fun composeFullOrganization(): OrganizationInputComposition {
             composeStarted?.countDown()
             composeRelease?.await(5, TimeUnit.SECONDS)
-            return composition
+            return composeOverride?.invoke() ?: composition
         }
         override fun materialize(input: OrganizationInput, result: PlanningResult): OrganizationPlanMaterializer.Result {
             materializeCalls++
@@ -649,6 +703,15 @@ class ManualOrganizationRunTest {
         override fun inspectRecovery(pointId: RecoveryPointId): RecoveryPreviewResult = recoveryPreview
 
         override fun confirmRecovery(pointId: RecoveryPointId, confirmation: RecoveryPreviewConfirmation): RecoveryResult = RecoveryResult.NotRestorable(pointId, app.lawnchair.organizer.application.public.RecoveryRejection.MISSING)
+    }
+
+    private fun assertThrowsIllegalState(block: () -> Unit) {
+        try {
+            block()
+            fail("expected IllegalStateException")
+        } catch (_: IllegalStateException) {
+            // Expected.
+        }
     }
 
     private class RecordingDiagnostics : DiagnosticsPort {

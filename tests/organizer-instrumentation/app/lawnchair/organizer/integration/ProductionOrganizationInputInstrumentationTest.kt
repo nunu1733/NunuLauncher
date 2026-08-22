@@ -30,6 +30,8 @@ import app.lawnchair.organizer.planning.SignalSource
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
 import app.lawnchair.organizer.rules.CategoryOverrideKey
+import app.lawnchair.organizer.rules.CategoryOverrideStoreModule
+import app.lawnchair.organizer.rules.CategoryOverrideStoredReadResult
 import app.lawnchair.organizer.ui.CategoryOverrideAuthoringCoordinator
 import app.lawnchair.organizer.ui.CategoryOverrideAuthoringResult
 import com.android.launcher3.LauncherAppState
@@ -37,6 +39,8 @@ import com.android.launcher3.LauncherSettings.Favorites
 import com.android.launcher3.pm.UserCache
 import java.io.File
 import java.lang.reflect.Proxy
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -127,6 +131,60 @@ class ProductionOrganizationInputInstrumentationTest {
         val signal = ready.input.signals.entries.single { it.item == itemId }
         assertEquals(SignalSource.S1, signal.source)
         assertEquals(CategoryId("OTHER"), signal.candidate)
+    }
+
+    @Test
+    fun productionComposerReadsOnlyCompleteGenerationsWhileAuthoringWrites() {
+        val user = Process.myUserHandle()
+        val userCache = UserCache.INSTANCE.get(context)
+        val profile = checkNotNull(canonicalProfileId(userCache, user))
+        val launcherApps = checkNotNull(context.getSystemService(LauncherApps::class.java))
+        val activity = launcherApps.getActivityList(null, user).firstOrNull()
+            ?: error("API 35 test emulator must expose a launchable activity")
+        val coordinator = CategoryOverrideAuthoringCoordinator(context)
+        val loaded = coordinator.load() as? CategoryOverrideAuthoringResult.Loaded
+            ?: error("production category override inventory must be available")
+        val targetKey = CategoryOverrideKey(PackageName(activity.componentName.packageName), profile)
+        val target = loaded.apps.firstOrNull { it.key == targetKey }
+            ?: error("production inventory must expose the selected canonical app/profile")
+        val itemId = insertLauncherRow(
+            lock = OrganizerLockState.UNLOCKED,
+            component = activity.componentName,
+            profileSerial = userCache.getSerialNumberForUser(user),
+        )
+        val allowed = setOf(CategoryId("GAME"), CategoryId("OTHER"))
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val writes = executor.submit {
+                repeat(8) { index ->
+                    val category = if (index % 2 == 0) CategoryId("OTHER") else CategoryId("GAME")
+                    val result = coordinator.save(target, category)
+                    assertTrue(
+                        "authoring write $index failed: $result",
+                        result is CategoryOverrideAuthoringResult.Saved || result is CategoryOverrideAuthoringResult.NoChange,
+                    )
+                }
+            }
+            val reads = executor.submit {
+                repeat(8) {
+                    val result = ProductionOrganizationInputComposer(context, realWriter()).composeFullOrganization()
+                    assertTrue(result is OrganizationInputComposition.Ready)
+                    val ready = result as OrganizationInputComposition.Ready
+                    ready.input.signals.entries
+                        .firstOrNull { it.item == itemId }
+                        ?.takeIf { it.source == SignalSource.S1 }
+                        ?.let { signal ->
+                            assertTrue("composer observed a partial/invalid generation", signal.candidate in allowed)
+                        }
+                }
+            }
+            writes.get(30, TimeUnit.SECONDS)
+            reads.get(30, TimeUnit.SECONDS)
+        } finally {
+            executor.shutdownNow()
+        }
+
+        assertTrue(CategoryOverrideStoreModule.get(context).readStored() is CategoryOverrideStoredReadResult.Ready)
     }
 
     @Test
