@@ -13,8 +13,6 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.keyDown
-import androidx.compose.ui.test.keyUp
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -226,7 +224,12 @@ class CategoryOverridePreferencesInstrumentationTest {
             "Example, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
         )
         composeRule.waitUntil(5_000) {
-            appRow.fetchSemanticsNodes().isNotEmpty()
+            try {
+                appRow.fetchSemanticsNode()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
         }
         val height = appRow.fetchSemanticsNode().boundsInRoot.height
         val minimumHeight = with(composeRule.density) { 48.dp.toPx() }
