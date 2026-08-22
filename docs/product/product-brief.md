@@ -1,7 +1,7 @@
 # Product Brief
 
-> Status: Draft
-> Updated: 2026-08-21
+> Status: Accepted for the organizer MVP; Later capabilities remain deferred
+> Updated: 2026-08-23
 
 ## Vision
 
@@ -22,7 +22,7 @@
 
 ## Value proposition
 
-NunuLauncherは、ローカルrule、ユーザーoverride、ロック配置を使い、変更前に説明可能なplanを作る。新規アプリにも同じruleを適用し、必要なら直前の状態へ戻せる。
+NunuLauncherは、ローカルrule、ユーザーoverride、ロック配置を使い、変更前に説明可能なplanを作る。MVPでは手動runまたはonboardingからreviewして適用し、必要なら直前の状態へ戻せる。新規アプリへのpackage-event増分配置はLaterである。
 
 ## Product principles
 
