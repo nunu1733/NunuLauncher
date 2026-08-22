@@ -276,8 +276,8 @@ internal class CategoryOverrideAtomicAccess internal constructor(
         var stream: FileOutputStream? = null
         return try {
             stream = atomicFile.startWrite()
-            stream.write(CategoryOverrideFullStoreCodec.encode(snapshot))
-            stream.fd.sync()
+            atomicFile.write(stream, CategoryOverrideFullStoreCodec.encode(snapshot))
+            atomicFile.sync(stream)
             atomicFile.finishWrite(stream)
             stream = null
             val verified = (readAtomicStoredIfPresentLocked() as? CategoryOverrideStoredReadResult.Ready)?.snapshot
@@ -357,6 +357,8 @@ internal class AtomicFileCategoryOverrideStore(
 internal interface CategoryOverrideAtomicFile {
     fun openRead(): FileInputStream
     fun startWrite(): FileOutputStream
+    fun write(stream: FileOutputStream, bytes: ByteArray)
+    fun sync(stream: FileOutputStream)
     fun finishWrite(stream: FileOutputStream)
     fun failWrite(stream: FileOutputStream)
 }
@@ -368,6 +370,8 @@ private class AndroidxCategoryOverrideAtomicFile(
 
     override fun openRead(): FileInputStream = atomicFile.openRead()
     override fun startWrite(): FileOutputStream = atomicFile.startWrite()
+    override fun write(stream: FileOutputStream, bytes: ByteArray) = stream.write(bytes)
+    override fun sync(stream: FileOutputStream) = stream.fd.sync()
     override fun finishWrite(stream: FileOutputStream) = atomicFile.finishWrite(stream)
     override fun failWrite(stream: FileOutputStream) = atomicFile.failWrite(stream)
 }

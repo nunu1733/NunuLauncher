@@ -1,13 +1,36 @@
 package app.lawnchair.organizer.rules
 
 import android.content.SharedPreferences
+import app.lawnchair.organizer.application.adapter.FakeLayoutWriter
+import app.lawnchair.organizer.application.canonical.CanonicalFixtures
+import app.lawnchair.organizer.application.protocol.CaptureId
+import app.lawnchair.organizer.integration.CanonicalCaptureReadResult
+import app.lawnchair.organizer.integration.CanonicalCaptureSource
+import app.lawnchair.organizer.integration.ClassificationEvidenceRequest
+import app.lawnchair.organizer.integration.ClassificationSignalSnapshotSource
+import app.lawnchair.organizer.integration.DefaultOrganizationInputComposer
+import app.lawnchair.organizer.integration.OrganizationInputComposition
+import app.lawnchair.organizer.integration.PlatformClassificationEvidence
+import app.lawnchair.organizer.integration.PlatformEvidenceReadResult
 import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.ComponentKey
+import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.PackageName
 import app.lawnchair.organizer.planning.ProfileId
+import app.lawnchair.organizer.planning.TargetKey
+import app.lawnchair.organizer.ui.CategoryOverrideApp
+import app.lawnchair.organizer.ui.CategoryOverrideAppInventory
+import app.lawnchair.organizer.ui.CategoryOverrideAuthoringCoordinator
+import app.lawnchair.organizer.ui.CategoryOverrideAuthoringResult
+import app.lawnchair.organizer.ui.CategoryOverrideProfile
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.IOException
 import java.nio.file.Files
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -104,22 +127,266 @@ class CategoryOverrideAtomicAccessTest {
         }
     }
 
+    @Test
+    fun startWriteFailureKeepsThePriorSnapshotAuthoritative() = assertWriteFailure(FailurePoint.START_WRITE)
+
+    @Test
+    fun writeFailureKeepsThePriorSnapshotAuthoritative() = assertWriteFailure(FailurePoint.WRITE)
+
+    @Test
+    fun syncFailureKeepsThePriorSnapshotAuthoritative() = assertWriteFailure(FailurePoint.SYNC)
+
+    @Test
+    fun finishWriteFailureKeepsThePriorSnapshotAuthoritative() = assertWriteFailure(FailurePoint.FINISH_WRITE)
+
+    @Test
+    fun postFinishVerificationFailureIsTypedAndNeverReady() {
+        val directory = Files.createTempDirectory("override-verification").toFile()
+        try {
+            val key = CategoryOverrideKey(PackageName("com.example.old"), ProfileId("0"))
+            val prior = storedSnapshot(key, CategoryId("SOCIAL"))
+            val atomic = TestAtomicFile(File(directory, "snapshot-v1")).apply {
+                seedFinal(CategoryOverrideFullStoreCodec.encode(prior))
+                corruptAfterFinish = true
+            }
+            val preferences = FakePreferences().apply { putInitial("schema", 2) }
+            val access = CategoryOverrideAtomicAccess(atomic, preferences)
+            val expected = (access.readStored() as CategoryOverrideStoredReadResult.Ready).snapshot.identity
+
+            val result = access.mutate(
+                request = CategoryOverrideMutation.Set(
+                    CategoryOverrideKey(PackageName("com.example.new"), ProfileId("0")),
+                    CategoryId("GAME"),
+                ),
+                expected = expected,
+                verificationProfiles = setOf(ProfileId("0")),
+                allowedCategories = setOf(CategoryId("GAME"), CategoryId("SOCIAL")),
+            )
+
+            // Per the accepted contract, post-finish corruption is fail-closed rather than auto-repaired.
+            assertEquals(CategoryOverrideWriteResult.VerificationFailed, result)
+            assertEquals(CategoryOverrideStoredReadResult.Unreadable, access.readStored())
+            assertEquals(
+                OverrideSnapshotReadResult.Unreadable,
+                access.readVisible(setOf(ProfileId("0"))),
+            )
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun concurrentReadWaitsForPublicationAndSeesOneCompleteSnapshot() {
+        val directory = Files.createTempDirectory("override-concurrency").toFile()
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val key = CategoryOverrideKey(PackageName("com.example.old"), ProfileId("0"))
+            val prior = storedSnapshot(key, CategoryId("SOCIAL"))
+            val nextKey = CategoryOverrideKey(PackageName("com.example.new"), ProfileId("0"))
+            val atomic = TestAtomicFile(File(directory, "snapshot-v1")).apply {
+                seedFinal(CategoryOverrideFullStoreCodec.encode(prior))
+            }
+            val preferences = FakePreferences().apply { putInitial("schema", 2) }
+            val access = CategoryOverrideAtomicAccess(atomic, preferences)
+            val expected = (access.readStored() as CategoryOverrideStoredReadResult.Ready).snapshot.identity
+            val finishEntered = CountDownLatch(1)
+            val releaseFinish = CountDownLatch(1)
+            val observedRead = CountDownLatch(1)
+            atomic.blockFinish(finishEntered, releaseFinish)
+
+            val writer = executor.submit<CategoryOverrideWriteResult> {
+                access.mutate(
+                    request = CategoryOverrideMutation.Set(nextKey, CategoryId("GAME")),
+                    expected = expected,
+                    verificationProfiles = setOf(ProfileId("0")),
+                    allowedCategories = setOf(CategoryId("GAME"), CategoryId("SOCIAL")),
+                )
+            }
+            assertTrue(finishEntered.await(1, TimeUnit.SECONDS))
+            atomic.observeNextRead(observedRead)
+
+            val reader = executor.submit<CategoryOverrideStoredReadResult> { access.readStored() }
+            assertFalse(observedRead.await(100, TimeUnit.MILLISECONDS))
+
+            releaseFinish.countDown()
+            assertEquals(CategoryOverrideWriteResult.Committed::class, writer.get(1, TimeUnit.SECONDS)::class)
+            val read = reader.get(1, TimeUnit.SECONDS) as CategoryOverrideStoredReadResult.Ready
+            assertEquals(
+                mapOf(key to CategoryId("SOCIAL"), nextKey to CategoryId("GAME")),
+                read.snapshot.assignments,
+            )
+            assertEquals(1L, read.snapshot.identity.generation)
+        } finally {
+            executor.shutdownNow()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun authoringMutationThroughAtomicStoreFeedsFreshCompositionsAsS1() {
+        val directory = Files.createTempDirectory("override-composition").toFile()
+        try {
+            val targetKey = CategoryOverrideKey(PackageName("com.example.override"), ProfileId("personal"))
+            val target = CategoryOverrideApp(
+                key = targetKey,
+                label = "Override",
+                profile = CategoryOverrideProfile.PERSONAL,
+                icon = null,
+                assignedCategory = null,
+            )
+            val preferences = FakePreferences().apply {
+                putInitial("schema", 1)
+                putInitial("generation", 0L)
+                putInitial("entries", "")
+            }
+            val access = CategoryOverrideAtomicAccess(TestAtomicFile(File(directory, "snapshot-v1")), preferences)
+            val store = AtomicFileCategoryOverrideStore(access, BuiltInOrganizerPolicyBundleSource)
+            val authoring = CategoryOverrideAuthoringCoordinator(
+                store = store,
+                bundleSource = BuiltInOrganizerPolicyBundleSource,
+                inventory = CategoryOverrideAppInventory { listOf(target) },
+            )
+
+            assertTrue(authoring.save(target, CategoryId("OTHER")) is CategoryOverrideAuthoringResult.Saved)
+            assertEquals(2, preferences.getInt("schema", -1))
+
+            val state = CanonicalFixtures.state(
+                items = listOf(
+                    CanonicalFixtures.appItem(
+                        itemId = "override",
+                        profile = "personal",
+                        target = TargetKey.AppKey(
+                            ComponentKey("com.example.override/.Main"),
+                            ProfileId("personal"),
+                        ),
+                    ),
+                ),
+            )
+            fun composeFresh() = DefaultOrganizationInputComposer(
+                captureSource = CanonicalCaptureSource {
+                    CanonicalCaptureReadResult.Ready(
+                        FakeLayoutWriter(state).captureCurrent(CaptureId("fresh-composition")),
+                    )
+                },
+                bundleSource = BuiltInOrganizerPolicyBundleSource,
+                overrides = AtomicFileCategoryOverrideSnapshotSource(access),
+                platformEvidence = object : ClassificationSignalSnapshotSource {
+                    override fun read(
+                        requests: List<ClassificationEvidenceRequest>,
+                        policy: ClassificationPolicy,
+                    ) = PlatformEvidenceReadResult.Ready(
+                        PlatformClassificationEvidence(
+                            s2 = mapOf(ItemId("override") to CategoryId("GAME")),
+                            s5 = emptyMap(),
+                            identity = PolicyInputIdentity(
+                                PolicySourceKind.PLATFORM_CLASSIFICATION_EVIDENCE,
+                                "test",
+                                "b".repeat(64),
+                            ),
+                        ),
+                    )
+                },
+            ).composeFullOrganization()
+
+            listOf(composeFresh(), composeFresh()).forEach { composition ->
+                val ready = composition as OrganizationInputComposition.Ready
+                assertEquals(
+                    listOf("override:S1:OTHER"),
+                    ready.input.signals.entries.map { "${it.item.value}:${it.source.name}:${it.candidate.value}" },
+                )
+            }
+            val stored = access.readStored() as CategoryOverrideStoredReadResult.Ready
+            assertEquals(CategoryId("OTHER"), stored.snapshot.assignments[targetKey])
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    private fun assertWriteFailure(failurePoint: FailurePoint) {
+        val directory = Files.createTempDirectory("override-write-failure").toFile()
+        try {
+            val key = CategoryOverrideKey(PackageName("com.example.old"), ProfileId("0"))
+            val prior = storedSnapshot(key, CategoryId("SOCIAL"))
+            val atomic = TestAtomicFile(File(directory, "snapshot-v1")).apply {
+                seedFinal(CategoryOverrideFullStoreCodec.encode(prior))
+                failure = failurePoint
+            }
+            val preferences = FakePreferences().apply { putInitial("schema", 2) }
+            val access = CategoryOverrideAtomicAccess(atomic, preferences)
+            val expected = (access.readStored() as CategoryOverrideStoredReadResult.Ready).snapshot.identity
+
+            val result = access.mutate(
+                request = CategoryOverrideMutation.Set(
+                    CategoryOverrideKey(PackageName("com.example.new"), ProfileId("0")),
+                    CategoryId("GAME"),
+                ),
+                expected = expected,
+                verificationProfiles = setOf(ProfileId("0")),
+                allowedCategories = setOf(CategoryId("GAME"), CategoryId("SOCIAL")),
+            )
+
+            assertEquals(CategoryOverrideWriteResult.WriteFailed, result)
+            val read = access.readStored() as CategoryOverrideStoredReadResult.Ready
+            assertEquals(prior, read.snapshot)
+            val visible = access.readVisible(setOf(ProfileId("0"))) as OverrideSnapshotReadResult.Ready
+            assertEquals(prior.assignments, visible.snapshot.assignments)
+            assertEquals(prior.identity.generation, visible.snapshot.generation)
+            assertFalse(atomic.hasPendingWrite())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    private fun storedSnapshot(
+        key: CategoryOverrideKey,
+        category: CategoryId,
+    ) = CategoryOverrideStoredSnapshot(
+        CategoryOverrideStoredIdentity(1, 0L, sha256Canonical("${key.packageName.value}|${key.profile.value}|${category.value}")),
+        mapOf(key to category),
+    )
+
+    private enum class FailurePoint { START_WRITE, WRITE, SYNC, FINISH_WRITE }
+
     private class TestAtomicFile(
         private val finalFile: File,
     ) : CategoryOverrideAtomicFile {
         private val pending = File(finalFile.parentFile, "${finalFile.name}.new")
+        var failure: FailurePoint? = null
+        var corruptAfterFinish = false
+        private var finishEntered: CountDownLatch? = null
+        private var releaseFinish: CountDownLatch? = null
+        private var observedRead: CountDownLatch? = null
 
         override fun openRead(): FileInputStream {
+            observedRead?.countDown()
             // AndroidX AtomicFile.openRead() recovers from an interrupted pending write
             // before exposing the committed base file to readers.
             if (pending.exists()) pending.delete()
             return FileInputStream(finalFile)
         }
 
-        override fun startWrite(): FileOutputStream = FileOutputStream(pending)
+        override fun startWrite(): FileOutputStream {
+            if (failure == FailurePoint.START_WRITE) throw IOException("startWrite failure")
+            return FileOutputStream(pending)
+        }
+
+        override fun write(stream: FileOutputStream, bytes: ByteArray) {
+            if (failure == FailurePoint.WRITE) throw IOException("write failure")
+            stream.write(bytes)
+        }
+
+        override fun sync(stream: FileOutputStream) {
+            if (failure == FailurePoint.SYNC) throw IOException("sync failure")
+            stream.fd.sync()
+        }
+
         override fun finishWrite(stream: FileOutputStream) {
+            finishEntered?.countDown()
+            releaseFinish?.await()
+            if (failure == FailurePoint.FINISH_WRITE) throw IOException("finishWrite failure")
             stream.close()
             Files.move(pending.toPath(), finalFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            if (corruptAfterFinish) finalFile.writeBytes("corrupt".toByteArray())
         }
         override fun failWrite(stream: FileOutputStream) {
             stream.close()
@@ -135,6 +402,15 @@ class CategoryOverrideAtomicAccessTest {
         }
 
         fun hasPendingWrite(): Boolean = pending.exists()
+
+        fun blockFinish(entered: CountDownLatch, release: CountDownLatch) {
+            finishEntered = entered
+            releaseFinish = release
+        }
+
+        fun observeNextRead(observed: CountDownLatch) {
+            observedRead = observed
+        }
     }
 
     private class FakePreferences(
