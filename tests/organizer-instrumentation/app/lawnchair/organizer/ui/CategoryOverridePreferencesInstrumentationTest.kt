@@ -172,7 +172,7 @@ class CategoryOverridePreferencesInstrumentationTest {
             keyDown(Key.DirectionDown)
             keyUp(Key.DirectionDown)
         }
-        composeRule.onRoot().printToLog("CategoryOverrideDpadFocus")
+        composeRule.onNode(hasScrollAction()).printToLog("CategoryOverrideDpadFocus")
         composeRule.onNodeWithContentDescription(
             "Example, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
         ).assertIsFocused()
