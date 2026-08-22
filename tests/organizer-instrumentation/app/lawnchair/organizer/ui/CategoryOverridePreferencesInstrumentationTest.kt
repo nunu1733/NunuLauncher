@@ -7,11 +7,14 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.core.app.ApplicationProvider
@@ -87,11 +90,9 @@ class CategoryOverridePreferencesInstrumentationTest {
         composeRule.onNodeWithContentDescription(
             "$longLabel, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
         ).assertIsDisplayed().performSemanticsAction(SemanticsActions.OnClick)
-        composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithText(
-                context.getString(R.string.organizer_category_override_cancel),
-            ).fetchSemanticsNodes().isNotEmpty()
-        }
+        composeRule.onNode(hasScrollAction()).performScrollToNode(
+            hasText(context.getString(R.string.organizer_category_override_cancel)),
+        )
         composeRule.onNodeWithText(context.getString(R.string.organizer_category_override_cancel))
             .assertHasClickAction()
             .performSemanticsAction(SemanticsActions.OnClick)
@@ -123,18 +124,14 @@ class CategoryOverridePreferencesInstrumentationTest {
         composeRule.onNodeWithContentDescription(
             "Example, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
         ).performSemanticsAction(SemanticsActions.OnClick)
-        composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithText(
-                context.getString(R.string.organizer_category_game),
-            ).fetchSemanticsNodes().isNotEmpty()
-        }
+        composeRule.onNode(hasScrollAction()).performScrollToNode(
+            hasText(context.getString(R.string.organizer_category_game)),
+        )
         composeRule.onNodeWithText(context.getString(R.string.organizer_category_game))
             .performSemanticsAction(SemanticsActions.OnClick)
-        composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithText(
-                context.getString(R.string.organizer_category_override_save),
-            ).fetchSemanticsNodes().isNotEmpty()
-        }
+        composeRule.onNode(hasScrollAction()).performScrollToNode(
+            hasText(context.getString(R.string.organizer_category_override_save)),
+        )
         composeRule.onNodeWithText(context.getString(R.string.organizer_category_override_save))
             .performSemanticsAction(SemanticsActions.OnClick)
         composeRule.waitUntil(5_000) {
