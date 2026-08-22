@@ -95,7 +95,7 @@ internal object ManualOrganizationModule {
             context.applicationContext,
             (context.applicationContext as LawnchairApp).layoutApplicationModule,
         ).let { application ->
-            ManualOrganizationRun(application).also { instance = it }
+            ManualOrganizationRun(application, operationGate = OrganizationOperationLease).also { instance = it }
         }
     }
 }
@@ -109,6 +109,7 @@ internal object ManualOrganizationModule {
 class ManualOrganizationRun internal constructor(
     private val application: ManualOrganizationApplication,
     private val planner: OrganizationPlanner = DeterministicOrganizationPlanner(),
+    private val operationGate: OrganizationOperationGate = NoopOrganizationOperationGate,
 ) {
     enum class DismissalOutcome {
         CancelledAndMayNavigate,
@@ -188,7 +189,7 @@ class ManualOrganizationRun internal constructor(
     private var pending: PendingPlan? = null
     private var appliedPoint: RecoveryPointId? = null
     private var pendingRecovery: RecoveryPreviewResult.Restorable? = null
-    private var recoveryLease: OrganizationOperationLease.Token? = null
+    private var recoveryLease: AutoCloseable? = null
     private var lastVerifiedApply: State.Applied? = null
 
     fun start(trigger: Trigger = Trigger.MANUAL_FULL): StartOutcome {
@@ -368,7 +369,7 @@ class ManualOrganizationRun internal constructor(
     }
 
     fun beginRecoveryPreview() {
-        val lease = OrganizationOperationLease.tryAcquire(OrganizationOperationLease.Kind.RECOVERY) ?: return
+        val lease = operationGate.tryAcquire(OrganizationOperationLease.Kind.RECOVERY) ?: return
         val request = synchronized(lock) {
             val current = lastVerifiedApply
             val pointId = appliedPoint
@@ -470,7 +471,7 @@ class ManualOrganizationRun internal constructor(
     }
 
     private fun beginOperation(trigger: Trigger): Operation? {
-        val lease = OrganizationOperationLease.tryAcquire(OrganizationOperationLease.Kind.RUN) ?: return null
+        val lease = operationGate.tryAcquire(OrganizationOperationLease.Kind.RUN) ?: return null
         return synchronized(lock) {
             if (activeOperation != null || recoveryLease != null) {
                 lease.close()
@@ -624,7 +625,7 @@ class ManualOrganizationRun internal constructor(
     private data class Operation(
         val runId: RunId,
         val trigger: Trigger,
-        val lease: OrganizationOperationLease.Token,
+        val lease: AutoCloseable,
         val cancelled: AtomicBoolean = AtomicBoolean(false),
         val applicationAdmitted: AtomicBoolean = AtomicBoolean(false),
     )

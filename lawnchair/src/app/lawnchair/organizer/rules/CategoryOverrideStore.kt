@@ -412,7 +412,7 @@ internal object CategoryOverrideFullStoreCodec {
         val entriesMarker = "$HEADER_ENTRIES\n"
         val markerIndex = text.indexOf(entriesMarker)
         if (markerIndex < 0 || !text.endsWith('\n') || text.indexOf(entriesMarker, markerIndex + entriesMarker.length) >= 0) return null
-        val header = text.substring(0, markerIndex).split('\n')
+        val header = text.substring(0, markerIndex).removeSuffix("\n").split('\n')
         if (header.size != 3 || header[0] != "$HEADER_SCHEMA=$SCHEMA_V1") return null
         val generationPrefix = "$HEADER_GENERATION="
         if (!header[1].startsWith(generationPrefix)) return null

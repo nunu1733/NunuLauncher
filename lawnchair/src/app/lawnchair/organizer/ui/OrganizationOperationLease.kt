@@ -1,17 +1,21 @@
 package app.lawnchair.organizer.ui
 
+/** Admission seam shared by production organization runs, recovery, and authoring. */
+internal interface OrganizationOperationGate {
+    fun tryAcquire(kind: OrganizationOperationLease.Kind): AutoCloseable?
+}
+
 /**
- * One process-local admission domain for organization runs, recovery, and
- * category-override authoring. The lease is intentionally a UI/coordinator
- * seam; Rule Management never depends on run state.
+ * One process-local admission domain for production organization runs, recovery,
+ * and category-override authoring. Rule Management never depends on run state.
  */
-internal object OrganizationOperationLease {
+internal object OrganizationOperationLease : OrganizationOperationGate {
     enum class Kind { RUN, RECOVERY, AUTHORING }
 
     private val lock = Any()
     private var active: Token? = null
 
-    fun tryAcquire(kind: Kind): Token? = synchronized(lock) {
+    override fun tryAcquire(kind: Kind): Token? = synchronized(lock) {
         if (active != null) return@synchronized null
         Token(kind).also { active = it }
     }
@@ -27,5 +31,14 @@ internal object OrganizationOperationLease {
                 closed = true
             }
         }
+    }
+}
+
+/** Keeps deterministic, directly constructed state-machine tests independent. */
+internal object NoopOrganizationOperationGate : OrganizationOperationGate {
+    override fun tryAcquire(kind: OrganizationOperationLease.Kind): AutoCloseable = Token
+
+    private object Token : AutoCloseable {
+        override fun close() = Unit
     }
 }
