@@ -222,7 +222,9 @@ jobs:
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.integration.ProductionOrganizationInputInstrumentationTest,app.lawnchair.organizer.rules.CategoryOverrideAtomicFileInstrumentationTest
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.rules.CategoryOverrideAtomicFileRestartWriterInstrumentationTest
             adb shell am force-stop app.lawnchair.debug
-            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.rules.CategoryOverrideAtomicFileRestartReaderInstrumentationTest
+            reader_result=$(adb shell am instrument -w -r -e class app.lawnchair.organizer.rules.CategoryOverrideAtomicFileRestartReaderInstrumentationTest app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner)
+            printf '%s\n' "$reader_result"
+            grep -q 'INSTRUMENTATION_CODE: 0' <<< "$reader_result"
       - name: Upload API 35 instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
