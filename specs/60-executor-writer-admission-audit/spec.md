@@ -9,7 +9,7 @@ requirements:
   - AC-05-binder-future
   - AC-06-nested-transaction
   - AC-07-restart-evidence
-updated: 2026-08-18
+updated: 2026-08-24
 ---
 
 # Executor and shared-writer admission audit follow-ups
@@ -73,8 +73,18 @@ The Binder operation-future sequence is proven not to self-wait on
 
 ### AC-06 nested transaction
 
-Nested `SQLiteTransaction` through `ModelDbController` commits/rolls back as
-one unit; inner close/failure does not release the outer lease early.
+Nested `SQLiteTransaction` through `ModelDbController` uses Android's
+whole-unit transaction contract. When every nested scope is marked successful,
+the outermost close commits all writes. When any nested scope closes without
+success, the whole unit rolls back at the outermost close, even if the outer
+scope later calls `commit()`; nested `SQLiteTransaction` does not provide
+SAVEPOINT isolation. Inner close/failure must not release the outer lease
+early.
+
+Issue #117 erratum: the original AC-06 evidence and comments incorrectly
+described inner-only rollback as savepoint isolation. The corrected contract
+applies across supported Android API levels and does not change coordinator
+lease/re-entry behavior.
 
 ### AC-07 restart evidence
 

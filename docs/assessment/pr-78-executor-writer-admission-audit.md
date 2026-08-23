@@ -1,13 +1,24 @@
 # High-risk audit: PR #78 executor and shared-writer admission audit follow-ups
 
 > Status: final (independent audit)
-> Audit date: 2026-08-18
+> Audit date: 2026-08-18; Issue #117 erratum added 2026-08-24
 
 - Auditor: Implementation-session-independent audit session (solo-maintenance independent re-execution)
 - PR: https://github.com/nunu1733/NunuLauncher/pull/78
 - Head SHA: e5aa78951ed9ea45a667eccdb3e4c0c8c95b121a
 - CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32044541454 (merge gate on the audited head SHA; `final-status`, `organizer-unit-tests`, `check-style`, `build-debug-apk`, `validate-repo-contract` all success; verified via `gh run view`)
 - Criteria: specs/60-executor-writer-admission-audit/spec.md (`status: implemented` at this head) AC-01..AC-07, and Issue #60 "Outcome" requirements
+
+## Issue #117 erratum: AC-06 transaction expectation
+
+This assessment preserves the historical result at the audited PR #78 head,
+but its AC-06 interpretation was incorrect: the then-current test asserted
+that an unsuccessful inner scope could be isolated while the outer scope
+committed. Android's `SQLiteDatabase` nested transaction contract is instead
+whole-unit atomicity: every successful scope commits together, and any
+unsuccessful child rolls back the whole unit at the outermost close. Issue
+#117 updates the test, #60 spec/assessment, and CI coverage accordingly. The
+lease lifetime and re-entry findings below remain valid and unchanged.
 
 ## Scope
 
@@ -134,12 +145,13 @@ Code-level verification (read from the diff/files, not the PR body):
   when on the looper thread) that makes the self-wait hazard impossible at
   the executor level even hypothetically.
 
-- **AC-06 (nested transaction)**: PASS. `NestedTransactionTest.java` read
-  line-by-line:
-  `outerAndInnerTransactionCommitAsOneUnit` asserts both outer and inner
-  writes persist after commit (savepoint semantics);
-  `innerCloseWithoutCommitRollsBackInnerWrites` asserts inner writes are
-  rolled back on close-without-commit while outer writes survive;
+- **AC-06 (nested transaction)**: The audited test surface was present, but
+  its rollback expectation is superseded by the Issue #117 erratum.
+  `outerAndInnerTransactionCommitAsOneUnit` correctly asserts both outer and
+  inner writes persist after all scopes succeed; the old
+  `innerCloseWithoutCommitRollsBackInnerWrites` assertion incorrectly allowed
+  outer writes to survive an unsuccessful child and is now replaced by a
+  whole-unit rollback assertion;
   `leaseHeldUntilOuterClose` asserts the coordinator lease is held until the
   outer `ModelDbController.newTransaction()` close, and another kind cannot
   acquire during the lease;
