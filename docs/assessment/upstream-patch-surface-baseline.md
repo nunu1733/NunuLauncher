@@ -2,9 +2,9 @@
 
 > Status: Accepted
 > Issue: [#110](https://github.com/nunu1733/NunuLauncher/issues/110)
-> Captured: 2026-08-23
+> Captured: 2026-08-23 (recaptured at the current main head before merge review)
 > Upstream commit: `505dbc40e6154c05158b5d0271c45f6a885a411b`
-> Main commit: `4ec0eb3dc692eadf108c512df5de3cb1607cf1f5`
+> Main commit: `79c1a7db6f1909c248f3bd22365ee9a240357ce1`
 
 ## Purpose
 
@@ -52,20 +52,30 @@ explains the policy and links the existing architectural evidence.
 
 ## Accepted baseline
 
-The offline measurement at the exact commits above found **46 counted
-upstream/bridge files**, with **3,912 additions** and **987 deletions**. It also
+The offline measurement at the exact commits above found **47 counted
+upstream/bridge files**, with **3,993 additions** and **1,017 deletions**. It also
 reports **91 excluded project-owned source additions** with 15,898 additions and
-**299 explicitly excluded non-production paths** with 54,981 additions and 684
+**309 explicitly excluded non-production paths** with 57,611 additions and 685
 deletions. Both excluded categories are deliberately visible but are not folded
 into the metric.
 
 | Bridge responsibility | Counted files | Additions | Deletions | Supporting evidence |
 |---|---:|---:|---:|---|
-| Deck retirement | 20 | 284 | 853 | [ADR-0006][3], [retirement assessment][4] |
+| Deck retirement | 20 | 288 | 853 | [ADR-0006][3], [retirement assessment][4] |
 | Organizer UI and lock authoring, including base and organizer-specific localized resources | 8 | 1,679 | 9 | [design seams][2] and accepted specs #38/#52/#99 |
-| Model reload and transaction gates | 8 | 1,320 | 71 | [writer admission audit][5] and its executable writer inventory |
-| Layout schema and recovery, including downgrade schema | 10 | 629 | 54 | [ADR-0003][6], [ADR-0004][7], and [writer admission audit][5] |
-| **Total counted surface** | **46** | **3,912** | **987** | Machine-readable inventory |
+| Model reload and transaction gates | 8 | 1,349 | 71 | [writer admission audit][5] and its executable writer inventory |
+| Layout schema and recovery, including downgrade schema and transaction ownership | 11 | 677 | 84 | [ADR-0003][6], [ADR-0004][7], [writer admission audit][5], [spec #118 audit][8] |
+| **Total counted surface** | **47** | **3,993** | **1,017** | Machine-readable inventory |
+
+This capture is a re-baseline at the current main head before the accepted
+record is consumed by #100. Its growth over the earlier `4ec0eb3dc6` capture
+(46 files, +3,912 / -987) is fully attributable to already-reviewed main merges:
+the bounded `MODEL_WRITER` re-entry fix (#114), the minified preference
+navigation fix (#121), and the deterministic SQLite migration transaction
+ownership fix (#118/#122). The last change adds
+`src/com/android/launcher3/model/DbDowngradeHelper.java` to the layout schema
+and recovery group because the downgrade now executes inside its production
+caller's transaction; no unowned bridge was introduced.
 
 The retained Deck evidence identifies the historical package-event and artifact
 paths that were removed or constrained; the current bridge inventory therefore
@@ -142,3 +152,4 @@ than being silently absorbed.
 [5]: ./issue-60-executor-writer-admission-audit.md "Issue #60 writer admission audit"
 [6]: ../adr/0003-organizer-recovery-point-storage.md "ADR-0003: Organizer recovery-point storage"
 [7]: ../adr/0004-organizer-lock-persistence.md "ADR-0004: Organizer lock persistence"
+[8]: ../../specs/118-sqlite-migration-transaction-audit/spec.md "Spec #118 SQLite migration transaction audit"

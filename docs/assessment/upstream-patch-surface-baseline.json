@@ -3,7 +3,7 @@
   "status": "accepted",
   "captured_on": "2026-08-23",
   "upstream_commit": "505dbc40e6154c05158b5d0271c45f6a885a411b",
-  "main_commit": "4ec0eb3dc692eadf108c512df5de3cb1607cf1f5",
+  "main_commit": "79c1a7db6f1909c248f3bd22365ee9a240357ce1",
   "metric": {
     "counted_paths": "Every changed repository path in git diff --no-renames upstream_commit..target except an explicit non-production exclusion or a new project-owned addition. Each remaining path must be assigned to exactly one bridge group.",
     "counted_lines": "The additions and deletions reported by git diff --no-renames --numstat upstream_commit..target for counted paths, including production source, base resources, schemas, manifests, and other non-excluded upstream/bridge paths.",
@@ -125,12 +125,14 @@
         "DESIGN.md",
         "docs/adr/0003-organizer-recovery-point-storage.md",
         "docs/adr/0004-organizer-lock-persistence.md",
-        "docs/assessment/issue-60-executor-writer-admission-audit.md"
+        "docs/assessment/issue-60-executor-writer-admission-audit.md",
+        "specs/118-sqlite-migration-transaction-audit/spec.md"
       ],
       "paths": [
         "res/raw/downgrade_schema.json",
         "src/com/android/launcher3/LauncherSettings.java",
         "src/com/android/launcher3/model/DatabaseHelper.java",
+        "src/com/android/launcher3/model/DbDowngradeHelper.java",
         "src/com/android/launcher3/model/FavoritesTableDigest.java",
         "src/com/android/launcher3/model/GridMigrationJournal.java",
         "src/com/android/launcher3/model/GridMigrationOperation.java",
@@ -142,34 +144,34 @@
     }
   ],
   "expected_measurement": {
-    "counted_files": 46,
-    "counted_additions": 3912,
-    "counted_deletions": 987,
-    "counted_paths_sha256": "d9c287b922ac2b6a5c220df0c9d6ae672d9f754c664458ed2db78a8e0887cae8",
+    "counted_files": 47,
+    "counted_additions": 3993,
+    "counted_deletions": 1017,
+    "counted_paths_sha256": "b743954a95bec97743f5f09d1dcfafe3cef0946a79274b27b7eab41c86ebdfab",
     "project_owned_files": 91,
     "project_owned_additions": 15898,
     "project_owned_deletions": 0,
     "project_owned_paths_sha256": "d12e4bf1d65f1c1646dbccd9752f5c835f9d28b69b6cda6a8079805d1c00a100",
-    "excluded_files": 299,
-    "excluded_additions": 54981,
-    "excluded_deletions": 684,
-    "excluded_paths_sha256": "4eed68254b74b379d30905799615b51f9856d2678f0b9840d21022f95049ec2a",
+    "excluded_files": 309,
+    "excluded_additions": 57611,
+    "excluded_deletions": 685,
+    "excluded_paths_sha256": "af64abd7f8f3554bfe9ab163845e51420e68ec2212d18cb8a93f36d736178a02",
     "groups": {
       "deck-retirement": {
         "files": 20,
-        "additions": 284,
+        "additions": 288,
         "deletions": 853,
         "paths_sha256": "3f68fcbdba6182596817bcec19c8327c2f23cda9ee51a69499b7d2017a89616a"
       },
       "layout-schema-and-recovery": {
-        "files": 10,
-        "additions": 629,
-        "deletions": 54,
-        "paths_sha256": "d957852396056746cd87000f23d4b0e8d90e5e5ddfc77b6af17770038dfaf874"
+        "files": 11,
+        "additions": 677,
+        "deletions": 84,
+        "paths_sha256": "cd6606755781c3f5eac65d513e346f70b4b78f6fdddd1e851de8803836600724"
       },
       "model-reload-and-transaction-gates": {
         "files": 8,
-        "additions": 1320,
+        "additions": 1349,
         "deletions": 71,
         "paths_sha256": "7a86bf7ecb43d4b5ae47c2cba0f6302d149f401c315f74a6f661c03f96e2653c"
       },

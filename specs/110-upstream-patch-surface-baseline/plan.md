@@ -16,11 +16,14 @@ precedent for source-boundary checks, but it deliberately inventories only
 
 The Issue #110 baseline is captured at upstream
 `505dbc40e6154c05158b5d0271c45f6a885a411b` and main
-`4ec0eb3dc692eadf108c512df5de3cb1607cf1f5`. The captured metric reports 46
-counted upstream/bridge files, 3,912 additions, and 987 deletions; 91
-project-owned additions and 299 explicitly excluded non-production paths are
-reported separately. The exact path sets, group ownership, and totals are
-recorded in the machine-readable baseline file.
+`79c1a7db6f1909c248f3bd22365ee9a240357ce1`, recaptured at the current main head
+before merge review. The captured metric reports 47 counted upstream/bridge
+files, 3,993 additions, and 1,017 deletions; 91 project-owned additions and 309
+explicitly excluded non-production paths are reported separately. The growth
+over the earlier `4ec0eb3dc6` capture is attributable to reviewed merges
+#114/#121/#118-#122, and `DbDowngradeHelper.java` joined the layout schema and
+recovery group through #118. The exact path sets, group ownership, and totals
+are recorded in the machine-readable baseline file.
 
 ## Design
 

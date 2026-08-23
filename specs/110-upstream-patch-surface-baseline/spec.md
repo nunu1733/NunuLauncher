@@ -188,6 +188,10 @@ overwrite this record. [1]
 - 2026-08-23: Review correction makes bridge ownership take precedence over
   broad localized-resource exclusions and defers binary handling until
   classification.
+- 2026-08-23: Baseline recaptured at main `79c1a7db6f1909c248f3bd22365ee9a240357ce1`
+  before merge review. Growth over the previous capture comes from reviewed
+  merges #114/#121/#118-#122, and `DbDowngradeHelper.java` joined the layout
+  schema and recovery bridge group through #118.
 
 ## References
 
