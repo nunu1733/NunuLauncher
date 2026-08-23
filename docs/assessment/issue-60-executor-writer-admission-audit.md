@@ -1,7 +1,7 @@
 # Issue #60: Executor and shared-writer admission audit follow-ups
 
 > Status: all ERs verified
-> Audit date: 2026-08-18
+> Audit date: 2026-08-24 (Issue #117 contract erratum)
 > Verification target: branch `issue-60-executor-writer-admission` at `3663f3157d` (merge base of PR #77)
 > Upstream/application baseline: Lawnchair v15.0.0-beta3.0, `505dbc40e6154c05158b5d0271c45f6a885a411b`
 
@@ -50,8 +50,22 @@ The assessment used:
 | FIFO exactly-once / throwing callback (AC-03) | **CONFIRMED** (defect FIXED) | `LayoutWriteCoordinator.release()` lines 318-351: per-entry try/catch (lines 343-350) prevents a throwing callback from aborting later entries. Tests: `LayoutWriteCoordinatorTest.java` lines 67-185 |
 | Reload supersession (AC-04) | **CONFIRMED** | `OrganizerReloadSupersessionTest.java` lines 86-290: A-then-B supersession, stale completion rejection, cancellation terminal exactly once, exactly-one-terminal per request |
 | Binder future self-wait (AC-05) | **DISPROVEN** | `BinderOperationFutureTest.java` lines 58-221: deferred callback runs on releasing thread, not MODEL_EXECUTOR; MODEL_EXECUTOR is never blocked during deferral; `LooperExecutor.execute()` (lines 43-48) inline optimization prevents self-deadlock even hypothetically |
-| Nested SQLiteTransaction (AC-06) | **CONFIRMED** | `NestedTransactionTest.java` lines 80-221: outer+inner commit as one unit; inner close-without-commit rolls back inner only; lease held until outer close; reentrant inner close does not release outer; inner exception propagates and outer close releases lease |
+| Nested SQLiteTransaction (AC-06) | **CONFIRMED** | `NestedTransactionTest.java`: all-success nested scopes commit as one unit; an inner close without success poisons the whole unit and rolls back both outer and inner writes even after outer `commit()`; lease held until outer close; reentrant inner close does not release outer; inner exception propagates and outer close releases lease |
 | Process death/restart (AC-07) | **UNSUPPORTED** (see below) | Protocol-level `RestartReconcilerTest` exists; device-level kill/restart with active helper, deferred FIFO, or raw-file restore is not tested. Real 10s TIMEOUT path is not injectable (`OrganizerModelReloadAdapter.TIMEOUT_MILLIS` = 10_000L, line 25). Instrumentation runtime execution is compile-only per Issue #14 |
+
+## Issue #117 erratum: nested transaction contract
+
+The original AC-06 row and its `NestedTransactionTest` evidence described
+inner-only rollback as SAVEPOINT isolation. That description was incorrect for
+the `SQLiteDatabase` API used by production. Nested scopes are one whole
+transactional unit: every successful scope commits together, while any
+unsuccessful child causes the outermost close to roll back all writes, even if
+the outer scope later calls `commit()`.
+
+Issue #117 corrects the test, javadoc, and this assessment. The coordinator
+lease/re-entry assertions remain separate and unchanged: an inner transaction
+close or exception unwinds only its lease view, and the outer lease remains held
+until the outermost close.
 
 ## Writer inventory (AC-01)
 
