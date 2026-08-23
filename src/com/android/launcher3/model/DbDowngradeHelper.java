@@ -22,7 +22,6 @@ import android.util.Log;
 import android.util.SparseArray;
 
 import com.android.launcher3.R;
-import com.android.launcher3.provider.LauncherDbUtils.SQLiteTransaction;
 import com.android.launcher3.util.IOUtils;
 
 import org.json.JSONArray;
@@ -53,6 +52,14 @@ public class DbDowngradeHelper {
         this.version = version;
     }
 
+    /**
+     * Issue #118: executes the downgrade statements directly in the caller's
+     * transaction. In production that is the framework transaction wrapping
+     * {@code DatabaseHelper.onDowngrade}; a failing statement then leaves the
+     * outer transaction commit-able so its wipe fallback persists. Callers
+     * invoking this outside a SQLiteOpenHelper callback must own their own
+     * transaction to keep the table rebuild atomic.
+     */
     public void onDowngrade(SQLiteDatabase db, int oldVersion, int newVersion) {
         ArrayList<String> allCommands = new ArrayList<>();
 
@@ -64,11 +71,8 @@ public class DbDowngradeHelper {
             Collections.addAll(allCommands, commands);
         }
 
-        try (SQLiteTransaction t = new SQLiteTransaction(db)) {
-            for (String sql : allCommands) {
-                db.execSQL(sql);
-            }
-            t.commit();
+        for (String sql : allCommands) {
+            db.execSQL(sql);
         }
     }
 

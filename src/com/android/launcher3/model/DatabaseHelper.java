@@ -172,10 +172,13 @@ public class DatabaseHelper extends NoLocaleSQLiteHelper implements
             case 12:
                 // No-op
             case 13: {
-                try (SQLiteTransaction t = new SQLiteTransaction(db)) {
+                // Issue #118: legacy migration steps run directly inside the framework
+                // transaction wrapping this callback; no nested SQLiteTransaction. A
+                // failed statement does not poison it, so the catch-and-wipe fallback
+                // below commits atomically instead of being silently rolled back.
+                try {
                     // Insert new column for holding widget provider name
                     db.execSQL("ALTER TABLE favorites ADD COLUMN appWidgetProvider TEXT;");
-                    t.commit();
                 } catch (SQLException ex) {
                     Log.e(TAG, ex.getMessage(), ex);
                     // Old version remains, which means we wipe old data
@@ -300,6 +303,9 @@ public class DatabaseHelper extends NoLocaleSQLiteHelper implements
 
     @Override
     public void onDowngrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+        // Issue #118: DbDowngradeHelper executes directly in THIS callback's
+        // framework transaction (no inner scope), so a caught recipe failure can
+        // still fall back to a wipe that commits deterministically.
         try {
             DbDowngradeHelper.parse(mContext.getFileStreamPath(DOWNGRADE_SCHEMA_FILE))
                     .onDowngrade(db, oldVersion, newVersion);
@@ -314,6 +320,10 @@ public class DatabaseHelper extends NoLocaleSQLiteHelper implements
      * Clears all the data for a fresh start.
      */
     public void createEmptyDB(SQLiteDatabase db) {
+        // Issue #118: keeps its own transaction because standalone callers invoke
+        // it outside any helper callback (restore and default-layout loading).
+        // When reached from onUpgrade/onDowngrade it is the first and only child
+        // scope of the framework transaction, so its commit is not poisoned.
         try (SQLiteTransaction t = new SQLiteTransaction(db)) {
             dropTable(db, Favorites.TABLE_NAME);
             dropTable(db, "workspaceScreens");
@@ -379,13 +389,15 @@ public class DatabaseHelper extends NoLocaleSQLiteHelper implements
      */
     @Thunk
     void convertShortcutsToLauncherActivities(SQLiteDatabase db) {
-        try (SQLiteTransaction t = new SQLiteTransaction(db);
+        // Issue #118: best-effort step without a nested SQLiteTransaction; a
+        // statement-level failure leaves the framework callback transaction
+        // commit-able, so log-and-continue stays deterministic.
+        try (Cursor c = db.query(Favorites.TABLE_NAME,
+                new String[] { Favorites._ID, Favorites.INTENT },
                 // Only consider the primary user as other users can't have a shortcut.
-                Cursor c = db.query(Favorites.TABLE_NAME,
-                        new String[] { Favorites._ID, Favorites.INTENT },
-                        "itemType=" + Favorites.ITEM_TYPE_SHORTCUT
-                                + " AND profileId=" + getDefaultUserSerial(),
-                        null, null, null, null);
+                "itemType=" + Favorites.ITEM_TYPE_SHORTCUT
+                        + " AND profileId=" + getDefaultUserSerial(),
+                null, null, null, null);
                 SQLiteStatement updateStmt = db.compileStatement("UPDATE favorites SET itemType="
                         + Favorites.ITEM_TYPE_APPLICATION + " WHERE _id=?")) {
             final int idIndex = c.getColumnIndexOrThrow(Favorites._ID);
@@ -409,7 +421,6 @@ public class DatabaseHelper extends NoLocaleSQLiteHelper implements
                 updateStmt.bindLong(1, id);
                 updateStmt.executeUpdateDelete();
             }
-            t.commit();
         } catch (SQLException ex) {
             Log.w(TAG, "Error deduping shortcuts", ex);
         }
@@ -417,26 +428,25 @@ public class DatabaseHelper extends NoLocaleSQLiteHelper implements
 
     @Thunk
     boolean updateFolderItemsRank(SQLiteDatabase db, boolean addRankColumn) {
-        try (SQLiteTransaction t = new SQLiteTransaction(db)) {
+        // Issue #118: no nested SQLiteTransaction; see the case 13 note.
+        try {
             if (addRankColumn) {
                 // Insert new column for holding rank
                 db.execSQL("ALTER TABLE favorites ADD COLUMN rank INTEGER NOT NULL DEFAULT 0;");
             }
 
             // Get a map for folder ID to folder width
-            Cursor c = db.rawQuery("SELECT container, MAX(cellX) FROM favorites"
-                    + " WHERE container IN (SELECT _id FROM favorites WHERE itemType = ?)"
-                    + " GROUP BY container;",
-                    new String[] { Integer.toString(Favorites.ITEM_TYPE_FOLDER) });
+            try (Cursor c = db.rawQuery("SELECT container, MAX(cellX) FROM favorites"
+                            + " WHERE container IN (SELECT _id FROM favorites WHERE itemType = ?)"
+                            + " GROUP BY container;",
+                    new String[] { Integer.toString(Favorites.ITEM_TYPE_FOLDER) })) {
 
-            while (c.moveToNext()) {
-                db.execSQL("UPDATE favorites SET rank=cellX+(cellY*?) WHERE "
-                        + "container=? AND cellX IS NOT NULL AND cellY IS NOT NULL;",
-                        new Object[] { c.getLong(1) + 1, c.getLong(0) });
+                while (c.moveToNext()) {
+                    db.execSQL("UPDATE favorites SET rank=cellX+(cellY*?) WHERE "
+                                    + "container=? AND cellX IS NOT NULL AND cellY IS NOT NULL;",
+                            new Object[] { c.getLong(1) + 1, c.getLong(0) });
+                }
             }
-
-            c.close();
-            t.commit();
         } catch (SQLException ex) {
             // Old version remains, which means we wipe old data
             Log.e(TAG, ex.getMessage(), ex);
@@ -446,10 +456,10 @@ public class DatabaseHelper extends NoLocaleSQLiteHelper implements
     }
 
     private boolean addIntegerColumn(SQLiteDatabase db, String columnName, long defaultValue) {
-        try (SQLiteTransaction t = new SQLiteTransaction(db)) {
+        // Issue #118: no nested SQLiteTransaction; see the case 13 note.
+        try {
             db.execSQL("ALTER TABLE favorites ADD COLUMN "
                     + columnName + " INTEGER NOT NULL DEFAULT " + defaultValue + ";");
-            t.commit();
         } catch (SQLException ex) {
             Log.e(TAG, ex.getMessage(), ex);
             return false;

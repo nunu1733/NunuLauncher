@@ -14,6 +14,7 @@ import com.android.launcher3.R;
 import com.android.launcher3.model.DatabaseHelper;
 import com.android.launcher3.model.DbDowngradeHelper;
 import com.android.launcher3.model.GridMigrationTestSupport;
+import com.android.launcher3.provider.LauncherDbUtils.SQLiteTransaction;
 import java.io.InputStream;
 import org.junit.After;
 import org.junit.Before;
@@ -155,7 +156,11 @@ public class DatabaseHelperSchema33Test {
 
     private void downgradeToSchema32() throws Exception {
         try (InputStream schema = context.getResources().openRawResource(R.raw.downgrade_schema)) {
-            DbDowngradeHelper.parse(schema.readAllBytes()).onDowngrade(db, 33, 32);
+            // Issue #118: the caller owns the downgrade transaction.
+            try (SQLiteTransaction t = new SQLiteTransaction(db)) {
+                DbDowngradeHelper.parse(schema.readAllBytes()).onDowngrade(db, 33, 32);
+                t.commit();
+            }
         }
         db.setVersion(32);
     }

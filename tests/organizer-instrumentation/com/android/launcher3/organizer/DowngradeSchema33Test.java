@@ -14,6 +14,7 @@ import com.android.launcher3.R;
 import com.android.launcher3.model.DatabaseHelper;
 import com.android.launcher3.model.DbDowngradeHelper;
 import com.android.launcher3.model.GridMigrationTestSupport;
+import com.android.launcher3.provider.LauncherDbUtils.SQLiteTransaction;
 import java.io.InputStream;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -31,7 +32,11 @@ public class DowngradeSchema33Test {
             row.put(Favorites._ID, 1); row.put(Favorites.TITLE, "kept");
             row.put(Favorites.ORGANIZER_LOCK_STATE, 2);
             db.insertOrThrow(Favorites.TABLE_NAME, null, row);
-            DbDowngradeHelper.parse(schema.readAllBytes()).onDowngrade(db, 33, 32);
+            // Issue #118: the caller owns the downgrade transaction.
+            try (SQLiteTransaction t = new SQLiteTransaction(db)) {
+                DbDowngradeHelper.parse(schema.readAllBytes()).onDowngrade(db, 33, 32);
+                t.commit();
+            }
             try (Cursor c = db.rawQuery("PRAGMA table_info(favorites)", null)) {
                 boolean lock = false;
                 while (c.moveToNext()) lock |= Favorites.ORGANIZER_LOCK_STATE.equals(c.getString(1));
