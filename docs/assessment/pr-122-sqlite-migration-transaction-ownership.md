@@ -5,14 +5,26 @@
 
 - Auditor: Independent session (separate agent context from implementing session); solo-maintenance independent re-execution
 - PR: https://github.com/nunu1733/NunuLauncher/pull/122
-- Head SHA: 2b479ae0d450aa96cb2d8f9953d23e615fff7696
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32633914951
+- Head SHA: dce32c83ae19c3cabba20dcea6e03f90dc9bcc97
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32634560825
 - Criteria: specs/118-sqlite-migration-transaction-audit/spec.md AC-1, AC-2, AC-3, AC-4, AC-5, AC-6, NFR-001, NFR-002, NFR-012; docs/adr/0004-organizer-lock-persistence.md ADR-0004
 
 ## Scope
 
-Audited the complete `main..2b479ae0d450aa96cb2d8f9953d23e615fff7696`
-diff: 10 files, +578/-34. The production surface is exactly two files:
+Re-audit against head `dce32c83ae19c3cabba20dcea6e03f90dc9bcc97`. The first
+pass of this audit pinned `2b479ae0d450aa96cb2d8f9953d23e615fff7696` with the
+`- NFR-012` spec frontmatter line still uncommitted; the gate correctly
+rejected that because commits after an audited SHA may only touch `docs/`,
+and this one-line change lives under `specs/`. The delta between the two SHAs
+is exactly one commit adding two files: this audit record and the one-line
+spec frontmatter addition (`git diff 2b479ae0d4..dce32c83ae -- src lawnchair/src
+tests .github` is empty, so every code-level statement below carries over
+unchanged; NFR-012 is now defined inside the audited head itself).
+
+Audited the complete
+`main..dce32c83ae19c3cabba20dcea6e03f90dc9bcc97` diff: 11 files, +754/-34
+(the eleventh file being this audit record). The production surface is
+exactly two files:
 `src/com/android/launcher3/model/DatabaseHelper.java` (inner
 `SQLiteTransaction` removal in `case 13`, `addIntegerColumn`,
 `updateFolderItemsRank`, `convertShortcutsToLauncherActivities`; `#118`
@@ -98,48 +110,59 @@ spec's non-goals (#117/#119/#120) and untouched here.
 
 ## Executed test surface
 
-Independent re-execution by this auditor against
-`2b479ae0d450aa96cb2d8f9953d23e615fff7696` (working tree clean except a
-pre-existing uncommitted `specs/118-*` frontmatter line owned by the
-implementing session; no code file modified):
+Independent re-execution by this auditor. First pass ran against
+`2b479ae0d450aa96cb2d8f9953d23e615fff7696` (instrumentation 10/10 green,
+`spotlessCheck` and `assembleLawnWithQuickstepGithubDebug` each successful as
+separate invocations). Because the gate rejected commits after that SHA as
+non-docs-only, this record was retargeted to the new head and the full local
+evidence was re-executed against `dce32c83ae19c3cabba20dcea6e03f90dc9bcc97`
+(clean working tree, HEAD exactly at that commit):
 
 ```text
+git diff 2b479ae0d4..dce32c83ae --stat
+  -> docs/assessment/pr-122-sqlite-migration-transaction-ownership.md (+175)
+     specs/118-sqlite-migration-transaction-audit/spec.md (+1)
+git diff 2b479ae0d4..dce32c83ae -- src lawnchair/src tests .github
+  -> empty output (zero code delta between first-audited SHA and this head)
+
 /opt/homebrew/share/android-commandline-tools/platform-tools/adb devices
   -> emulator-5554 device (AVD nunu_qpr2_api36_1 already up)
 
 ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.MigrationTransactionOwnershipTest,com.android.launcher3.organizer.DatabaseHelperSchema33Test,com.android.launcher3.organizer.DowngradeSchema33Test,com.android.launcher3.organizer.InactiveGridDbNormalizationTest"
-  -> exit 0; BUILD SUCCESSFUL in 24s; "Starting 10 tests on nunu_qpr2_api36_1(AVD) - 16" / "Finished 10 tests"
-  -> build/outputs/androidTest-results/connected/debug/flavors/lawnWithQuickstepGithub/TEST-nunu_qpr2_api36_1(AVD) - 16-_-lawnWithQuickstepGithub.xml:
+  -> exit 0; BUILD SUCCESSFUL in 20s; "Starting 10 tests on nunu_qpr2_api36_1(AVD) - 16" / "Finished 10 tests"
+  -> build/outputs/androidTest-results/connected/debug/flavors/lawnWithQuickstepGithub/TEST-nunu_qpr2_api36_1(AVD) - 16-_-lawnWithQuickstepGithub.xml
+     (testsuite timestamp 2026-08-23T10:47:41):
      tests="10" failures="0" errors="0" skipped="0"
      MigrationTransactionOwnershipTest 2, DatabaseHelperSchema33Test 6,
      DowngradeSchema33Test 1, InactiveGridDbNormalizationTest 1
 
-./gradlew spotlessCheck
-  -> exit 0; BUILD SUCCESSFUL in 1s (separate invocation)
-
-./gradlew assembleLawnWithQuickstepGithubDebug
-  -> exit 0; BUILD SUCCESSFUL in 1s, 445 tasks up-to-date from this session's
-     instrumentation build of the identical tree (separate invocation)
-
 gh run list --repo nunu1733/NunuLauncher --branch issue-118-migration-transaction-ownership --workflow CI
-  -> pull_request run 32633914951 on the audited head branch
+gh run view 32634560825 --repo nunu1733/NunuLauncher --json status,conclusion
+  -> pull_request run on head dce32c83ae19c3cabba20dcea6e03f90dc9bcc97;
+     polled to completion: status=completed, conclusion=success
 
-gh api repos/nunu1733/NunuLauncher/actions/runs/32633914951
-  -> event=pull_request, head_sha=2b479ae0d450aa96cb2d8f9953d23e615fff7696,
+gh api repos/nunu1733/NunuLauncher/actions/runs/32634560825
+  -> event=pull_request, head_sha=dce32c83ae19c3cabba20dcea6e03f90dc9bcc97,
      pull_requests=[122], conclusion=success
 
-gh api .../runs/32633914951/jobs
+gh api repos/nunu1733/NunuLauncher/actions/runs/32634560825/jobs
   -> changes, validate-repo-contract, check-style, build-debug-apk,
-     organizer-unit-tests, organizer-instrumentation-db-migration-tests (new lane),
+     organizer-unit-tests, organizer-instrumentation-db-migration-tests,
      shared-writer/api35/issue52/issue99/issue53 lanes, final-status:
      all completed success, none skipped
+
+python3 tools/repo-contract/validate_high_risk_evidence.py --repo nunu1733/NunuLauncher --pr-number 122 --head-sha dce32c83ae19c3cabba20dcea6e03f90dc9bcc97 --root /Users/nunu/Documents/work/NunuLauncher
+  -> PASS: audit covers dce32c83ae19c3cabba20dcea6e03f90dc9bcc97 with
+     independent CI evidence (specs/118-sqlite-migration-transaction-audit/
+     spec.md, docs/adr/0004-organizer-lock-persistence.md)
 ```
 
 The qualifying CI source jobs (`organizer-unit-tests`, `check-style`,
-`build-debug-apk`) and the new DB-migration emulator lane all executed on the
-audited SHA. Unlike the PR #75 audit, this audit additionally re-executed the
-full instrumentation suite locally on the API 36 AVD, so AC-4/AC-5 evidence
-rests on independent execution, not only compile verification.
+`build-debug-apk`) and the new DB-migration emulator lane all executed on this
+head. Unlike the PR #75 audit, this audit additionally re-executed the
+full instrumentation suite locally on the API 36 AVD — once per audited head —
+so AC-4/AC-5 evidence rests on independent execution, not only compile
+verification.
 
 ## Findings
 
@@ -147,16 +170,21 @@ Verdict: pass. No blocking defect found; all six ACs, both ADR-0004
 constraints, and NFR-001/NFR-002/NFR-012 are satisfied by independent code
 review plus local re-execution and qualifying CI evidence.
 
-1. This record and the `- NFR-012` line in the
-   `specs/118-sqlite-migration-transaction-audit/spec.md` frontmatter were
-   intentionally left uncommitted by this audit session per instruction. At
-   the audited HEAD the committed spec defines only NFR-001/NFR-002 in its
-   frontmatter, so the implementing session must push that one-line docs
-   change together with this audit file; otherwise the gate will reject the
-   NFR-012 citation as not defined in the referenced document. The delta after
-   the audited SHA is docs-only, which keeps this Head SHA valid per
-   github-workflow.md. Until then `High-risk gate / high-risk-evidence` is red
-   solely due to the missing audit file, which is expected at audit time.
+1. Re-audit history: the first pass of this record pinned
+   `2b479ae0d450aa96cb2d8f9953d23e615fff7696` while the `- NFR-012`
+   frontmatter line in `specs/118-sqlite-migration-transaction-audit/spec.md`
+   was still uncommitted, and the gate rejected that head because the commit
+   landing the line touches a path outside `docs/` (the validator's
+   docs-only allowance does not cover `specs/`). This record was retargeted to
+   `dce32c83ae19c3cabba20dcea6e03f90dc9bcc97`, where the spec line is inside
+   the audited head itself, so the NFR-012 citation now resolves against the
+   referenced document and no post-audit non-docs delta remains. Zero code
+   changed between the two audited SHAs; both CI merge-gate runs (32633914951,
+   32634560825) are green on their respective heads. Remaining action for the
+   implementing session: push this updated doc — a docs-only commit after the
+   audited head keeps the audit valid per github-workflow.md. Until then
+   `High-risk gate / high-risk-evidence` stays red solely due to the stale
+   committed copy of this file, which is expected at audit time.
 2. Two uncompiled upstream leftovers (`tests/src/com/android/launcher3/provider/LauncherDbUtilsTest.java:148`
    and `tests/src/com/android/launcher3/model/DbDowngradeHelperTest.java:198`)
    still invoke `DbDowngradeHelper.onDowngrade` without owning a transaction
@@ -170,6 +198,11 @@ review plus local re-execution and qualifying CI evidence.
    (try-with-resources) while removing its inner scope — behavior-neutral
    cleanup within the audited method, consistent with the spec disposition.
 4. Local `assembleLawnWithQuickstepGithubDebug` reported all tasks up-to-date
-   because this audit session's preceding instrumentation invocation had
-   already built identical inputs; both commands ran as separate invocations
-   as required, and spotlessCheck/build therefore verify this exact tree.
+   in the first pass because that session's preceding instrumentation
+   invocation had already built identical inputs; both commands ran as
+   separate invocations as required. In the re-audit pass the instrumentation
+   suite was re-executed against the new head (10/10 green) and
+   `spotlessCheck` was re-run over the updated record (BUILD SUCCESSFUL), so
+   both surfaces verify the current tree; `assemble` needed no second run
+   since no Gradle input changed between the two audited heads (verified by
+   empty diff over `src`, `lawnchair/src`, `tests`, `.github`).
