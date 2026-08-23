@@ -73,6 +73,7 @@ fresh database deterministically.
 | `DbDowngradeHelper.java` | Drop inner `SQLiteTransaction`; document caller-owned transaction | Reconcile ownership with the framework callback (AC-3) |
 | `DatabaseHelperSchema33Test`, `DowngradeSchema33Test`, `InactiveGridDbNormalizationTest` | Wrap direct downgrade calls in caller-owned transactions | Preserve atomicity under the new contract |
 | New `MigrationTransactionOwnershipTest` (organizer-instrumentation) | Three failure-injection scenarios per spec: legacy upgrade wipe persistence, first-statement downgrade failure, failure after partial recipe progress; the first two failed on `main` before the fix | AC-2/AC-4 evidence, TDD anchor |
+| Pinned rollback target `rollback32/Schema32RollbackDatabaseHelper` + `Schema32RollbackDbDowngradeHelper` + `Schema32RollbackBinaryTest` (organizer-instrumentation) | Verbatim copies of the pre-schema-33 helpers (commit `866d231ffdfe2dcc8b0e550e65ea6f1301b6674c`, renamed only) executed through real `SQLiteOpenHelper` wrapping against a seeded v33 file: successful rollback (v32 shape, rows kept) and failing recipe (non-recovery pinned) | Production-faithful AC-4 evidence for the field 33→32 path |
 | `.github/workflows/ci.yml` + `docs/engineering/ci-test-portfolio.md` | Focused lane `organizer-instrumentation-db-migration-tests` (API 36) running the schema/downgrade/migration suites; wire into `final-status`; portfolio row | The suites were compile-only in CI; #115 showed that hides real failures |
 | `specs/118-*` | Spec + this plan | Workflow requirement |
 
@@ -93,8 +94,8 @@ fresh database deterministically.
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
 | AC-1 | Spec table + code comments | review |
-| AC-2/AC-4 | New tests red on `main`, green on fix branch | `connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.MigrationTransactionOwnershipTest` (API 36 emulator) |
-| AC-3 | Downgrade scenario + updated direct callers compile/pass | same lane incl. `DatabaseHelperSchema33Test`, `DowngradeSchema33Test`, `InactiveGridDbNormalizationTest`, `com.android.launcher3.model.DatabaseHelperTest` |
+| AC-4 | New tests red on `main` (first two), green on fix branch; rollback-target replica green | same lane incl. `com.android.launcher3.organizer.rollback32.Schema32RollbackBinaryTest` (API 36 emulator) |
+| AC-3 | Downgrade scenarios + updated direct callers compile/pass | same lane incl. `DatabaseHelperSchema33Test`, `DowngradeSchema33Test`, `InactiveGridDbNormalizationTest` |
 | AC-5 | Existing fixtures green | same lane (`DatabaseHelperSchema33Test`, `DowngradeSchema33Test`, `InactiveGridDbNormalizationTest`) + JVM `testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
 | Build/lint | green | `./gradlew spotlessCheck assembleLawnWithQuickstepGithubDebug` |
 | Merge gate | CI `final-status` success on verified head; independent audit doc under `docs/assessment/` | high-risk gate (`risk: layout-data`/`risk: migration`) |

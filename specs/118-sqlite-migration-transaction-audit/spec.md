@@ -39,12 +39,21 @@ owner: migration steps execute directly inside it, failures either propagate
 historical wipe fallback — which also cleans the `temp_favorites` staging table
 the downgrade recipes use — and no path assumes a poisoned outer transaction
 can commit. Failure-injection tests prove rollback/fallback persistence for a
-legacy upgrade step and for a downgrade recipe executed by a helper built from
-this tree, including a failure after the recipe has already made progress. The
-downgrade evidence is production-faithful for any rollback executed by binaries
-built from this tree (e.g. a future schema 34→33 rollback); it cannot describe
-already-built schema-32 binaries, whose bundled pre-#118 helper this PR cannot
-modify (see Non-goals).
+legacy upgrade step and for downgrade recipes executed by a helper built from
+this tree, including a failure after the recipe has already made progress.
+
+The 33→32 downgrade path itself is evidenced against the actual schema-32
+rollback target instead of a stand-in: verbatim copies of that binary's
+`DatabaseHelper` / `DbDowngradeHelper` source (commit
+`866d231ffdfe2dcc8b0e550e65ea6f1301b6674c`, immediately before the schema-33
+bump) are pinned in the instrumentation sources and opened against a seeded
+schema-33 file through the real `SQLiteOpenHelper` wrapping. Those tests pin
+the committed version, table shape, and data outcome of the field rollback —
+including that a failing recipe leaves the file un-downgraded behind an open
+that reports success, because the bundled pre-#118 helper still owns the nested
+scope. This PR cannot modify installed artifacts, so that behavior remains as
+released and is recorded as a residual risk; deterministic recovery applies
+from the first rollback executed by binaries built after this change.
 
 ## Scope
 
@@ -58,22 +67,25 @@ modify (see Non-goals).
 - Deterministic wipe cleanup: `createEmptyDB()` additionally drops the
   `temp_favorites` staging table hardcoded in `res/raw/downgrade_schema.json`,
   so a fallback after partial recipe progress never leaks staged layout rows.
-- Failure-injection tests for at least one legacy upgrade path and for
-  downgrade recipes executed by this tree's helper (first-statement failure and
-  failure after partial progress), plus retention of the non-destructive
-  fixtures required by
+- Failure-injection tests for at least one legacy upgrade path, for downgrade
+  recipes executed by this tree's helper (first-statement failure and failure
+  after partial progress), and for the real 33→32 rollback path against the
+  pinned schema-32 rollback target replica — plus retention of the
+  non-destructive fixtures required by
   [ADR-0004](../../docs/adr/0004-organizer-lock-persistence.md) / Issue #14.
 
 ## Non-goals
 
-- Failure recovery of downgrades executed by already-built binaries that bundle
-  their own pre-#118 helper code. A field rollback from schema 33 to 32 runs on
-  such a binary, whose `DbDowngradeHelper` still owns the nested scope that a
-  failing statement poisons and whose wipe fallback therefore still rolls back
-  silently. This PR cannot modify installed artifacts; the deterministic
-  recovery proven here applies from the first rollback executed by a binary
-  built after this change (e.g. any future schema-version rollback). Recorded
-  as a residual risk on the released rollback target.
+- Fixing failure recovery inside already-built binaries that bundle their own
+  pre-#118 helper code. A field rollback from schema 33 to 32 runs on such a
+  binary, whose `DbDowngradeHelper` still owns the nested scope that a failing
+  statement poisons and whose wipe fallback therefore still rolls back
+  silently. This PR cannot modify installed artifacts; the limitation is
+  handled explicitly by pinning the behavior as AC-4 evidence — the rollback
+  target test fails if the pinned non-recovery ever drifts — and recording it
+  as a residual risk. Deterministic recovery applies from the first rollback
+  executed by a binary built after this change (e.g. any future
+  schema-version rollback).
 - No change to the schema 32→33 migration itself; it executes directly in the
   framework transaction and throws on failure (ADR-0004). This behavior must not
   regress.
@@ -154,6 +166,26 @@ version 22,
 And neither the copied layout row nor the staging/leftover tables
 (`temp_favorites`, `workspaceScreens`) survive the fallback.
 
+### Scenario: real 33→32 rollback succeeds with schema-32 table shape
+
+Given a seeded schema-33 file (one row, `organizerLockState` set) and the
+schema-33 downgrade recipe file that a field device carries,
+When the pinned schema-32 rollback target opens the database through its own
+`getWritableDatabase()`,
+Then the framework runs that binary's `onDowngrade(33, 32)`, the version
+commits at 32, the rebuilt `favorites` keeps the row in schema-32 shape, and
+the lock column is absent.
+
+### Scenario: failing recipe on the real rollback target does not recover
+
+Given the same seed plus a conflicting `temp_favorites` table blocking the
+first rebuild statement,
+When the pinned rollback target opens the database,
+Then the open reports success while the committed state stays at version 33
+with the pre-migration row, the lock column, and the staging junk intact —
+the documented non-recovery of installed binaries and the residual risk this
+PR cannot remove.
+
 ### Scenario: schema 32→33 upgrade failure still rolls back without wiping
 
 Given the existing trigger-based failure injection on a schema-32 database,
@@ -196,12 +228,15 @@ Not applicable; no UI surface.
   and then relies on the outer `SQLiteOpenHelper` transaction committing.
 - [ ] AC-3: `DbDowngradeHelper` transaction ownership is reconciled with the
   framework callback transaction; direct callers own their transaction.
-- [ ] AC-4: Failure-injection tests prove rollback/fallback persistence for at
-  least one legacy upgrade path and for a downgrade path executed by this
-  tree's helper, covering both a first-statement failure and a failure after
-  partial recipe progress. This is production-faithful for rollbacks executed
-  by binaries built from this tree; recovery inside an already-built schema-32
-  binary is out of scope (Non-goals).
+- [ ] AC-4: Failure-injection tests prove rollback/fallback behavior for at
+  least one upgrade path and the 33→32 downgrade path.
+  - The 33→32 evidence runs against the actual schema-32 rollback target:
+    verbatim source replicas of that binary's helpers pinned at commit
+    `866d231ffdfe2dcc8b0e550e65ea6f1301b6674c`, executed through the real
+    `SQLiteOpenHelper` wrapping, asserting committed version, table shape, and
+    data outcome for both the successful rollback and the failing-recipe case.
+  - Deterministic recovery on helpers built from this tree is additionally
+    covered by first-statement and partial-progress failure scenarios.
 - [ ] AC-5: Successful 32→33, fresh 33, and 33→32→33 fixtures remain
   non-destructive per ADR-0004 / Issue #14.
 - [ ] AC-6: The remaining destructive fallbacks (legacy upgrade wipe, downgrade
@@ -215,7 +250,7 @@ Not applicable; no UI surface.
 | AC-1 | Classification table in this spec; `#118` comments beside each changed site |
 | AC-2 | New `MigrationTransactionOwnershipTest` (both original poisoning scenarios fail on unmodified `main` and pass after the fix) |
 | AC-3 | Same test class, downgrade scenarios; updated ownership in the three compiled direct-caller tests |
-| AC-4 | Same test class: `legacyUpgradeFailureFallsBackToWipeThatPersists`, `downgradeStatementFailureFallsBackToWipeThatPersists`, `downgradePartialRecipeProgressStillEndsInDeterministicFreshWipe`; scope note on already-built schema-32 binaries in Non-goals |
+| AC-4 | `MigrationTransactionOwnershipTest`: `legacyUpgradeFailureFallsBackToWipeThatPersists`, `downgradeStatementFailureFallsBackToWipeThatPersists`, `downgradePartialRecipeProgressStillEndsInDeterministicFreshWipe`; plus `rollback32.Schema32RollbackBinaryTest` against the pinned schema-32 rollback target (`successful33To32RollbackReachesVersion32PreservingRows`, `failingRecipeOnRealRollbackBinaryLeavesFileUnDowngraded`) |
 | AC-5 | Existing fixtures green: `DatabaseHelperSchema33Test`, `DowngradeSchema33Test`, `InactiveGridDbNormalizationTest` (`tests/multivalentTests` and `tests/src` are upstream leftovers not wired into this repository's Gradle build, so their suites are out of merge-gate scope here) |
 | AC-6 | Justification in Scenarios section; assertions that the wiped result is deterministic |
 
@@ -236,3 +271,9 @@ Not applicable; no UI surface.
   schema-32 rollback binaries to Non-goals as a residual risk; added the
   partial-progress downgrade failure scenario and deterministic
   `temp_favorites` staging-table cleanup in the wipe fallback.
+- 2026-08-23: Revised again on PR #122 re-review. Restored AC-4's original
+  33→32 wording; added `rollback32.Schema32RollbackBinaryTest`, which pins the
+  actual schema-32 rollback target source (commit
+  `866d231ffdfe2dcc8b0e550e65ea6f1301b6674c`) and proves committed version,
+  table shape, and data outcome for the successful field rollback and its
+  non-recovering recipe-failure behavior (residual risk, kept in Non-goals).
