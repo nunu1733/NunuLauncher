@@ -1,3 +1,14 @@
+// Issue #118 (PR #122 review): production-faithful schema-32 rollback target.
+//
+// VERBATIM COPY of src/com/android/launcher3/model/DbDowngradeHelper at commit
+// 866d231ffdfe2dcc8b0e550e65ea6f1301b6674c -- the source immediately before
+// the schema-33 bump, i.e. the code a real 33->32 rollback binary bundles.
+// Renamed only to avoid a dex collision; do NOT modernize or fix anything
+// here. Schema32RollbackBinaryTest executes this replica through the real
+// SQLiteOpenHelper wrapping to pin the committed version/table-shape/data
+// outcome of the field rollback path, including its pre-#118 failure
+// semantics under the canonical nested-transaction contract.
+
 /*
  * Copyright (C) 2017 The Android Open Source Project
  *
@@ -13,7 +24,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.android.launcher3.model;
+package com.android.launcher3.organizer.rollback32;
 
 import android.content.Context;
 import android.database.sqlite.SQLiteDatabase;
@@ -22,6 +33,7 @@ import android.util.Log;
 import android.util.SparseArray;
 
 import com.android.launcher3.R;
+import com.android.launcher3.provider.LauncherDbUtils.SQLiteTransaction;
 import com.android.launcher3.util.IOUtils;
 
 import org.json.JSONArray;
@@ -38,9 +50,9 @@ import java.util.Collections;
 /**
  * Utility class to handle DB downgrade
  */
-public class DbDowngradeHelper {
+public class Schema32RollbackDbDowngradeHelper {
 
-    private static final String TAG = "DbDowngradeHelper";
+    private static final String TAG = "Schema32RollbackDbDowngradeHelper";
 
     private static final String KEY_VERSION = "version";
     private static final String KEY_DOWNGRADE_TO = "downgrade_to_";
@@ -48,18 +60,10 @@ public class DbDowngradeHelper {
     private final SparseArray<String[]> mStatements = new SparseArray<>();
     public final int version;
 
-    private DbDowngradeHelper(int version) {
+    private Schema32RollbackDbDowngradeHelper(int version) {
         this.version = version;
     }
 
-    /**
-     * Issue #118: executes the downgrade statements directly in the caller's
-     * transaction. In production that is the framework transaction wrapping
-     * {@code DatabaseHelper.onDowngrade}; a failing statement then leaves the
-     * outer transaction commit-able so its wipe fallback persists. Callers
-     * invoking this outside a SQLiteOpenHelper callback must own their own
-     * transaction to keep the table rebuild atomic.
-     */
     public void onDowngrade(SQLiteDatabase db, int oldVersion, int newVersion) {
         ArrayList<String> allCommands = new ArrayList<>();
 
@@ -71,24 +75,27 @@ public class DbDowngradeHelper {
             Collections.addAll(allCommands, commands);
         }
 
-        for (String sql : allCommands) {
-            db.execSQL(sql);
+        try (SQLiteTransaction t = new SQLiteTransaction(db)) {
+            for (String sql : allCommands) {
+                db.execSQL(sql);
+            }
+            t.commit();
         }
     }
 
     /**
      * Creates a helper from the provided file
      */
-    public static DbDowngradeHelper parse(File file) throws JSONException, IOException {
+    public static Schema32RollbackDbDowngradeHelper parse(File file) throws JSONException, IOException {
         return parse(IOUtils.toByteArray(file));
     }
 
     /**
      * Creates a helper from the provided bytes
      */
-    public static DbDowngradeHelper parse(byte[] fileData) throws JSONException {
+    public static Schema32RollbackDbDowngradeHelper parse(byte[] fileData) throws JSONException {
         JSONObject obj = new JSONObject(new String(fileData));
-        DbDowngradeHelper helper = new DbDowngradeHelper(obj.getInt(KEY_VERSION));
+        Schema32RollbackDbDowngradeHelper helper = new Schema32RollbackDbDowngradeHelper(obj.getInt(KEY_VERSION));
         for (int version = helper.version - 1; version > 0; version--) {
             if (obj.has(KEY_DOWNGRADE_TO + version)) {
                 JSONArray statements = obj.getJSONArray(KEY_DOWNGRADE_TO + version);
@@ -104,7 +111,7 @@ public class DbDowngradeHelper {
 
     public static void updateSchemaFile(File schemaFile, int expectedVersion, Context context) {
         try {
-            if (DbDowngradeHelper.parse(schemaFile).version >= expectedVersion) {
+            if (Schema32RollbackDbDowngradeHelper.parse(schemaFile).version >= expectedVersion) {
                 return;
             }
         } catch (Exception e) {

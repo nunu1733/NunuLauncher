@@ -12,6 +12,7 @@ import com.android.launcher3.model.DbDowngradeHelper;
 import com.android.launcher3.model.GridMigrationTestSupport;
 import com.android.launcher3.LauncherSettings.Favorites;
 import com.android.launcher3.R;
+import com.android.launcher3.provider.LauncherDbUtils.SQLiteTransaction;
 import java.io.File;
 import java.io.InputStream;
 import org.junit.After;
@@ -48,8 +49,12 @@ public class InactiveGridDbNormalizationTest {
                 DatabaseHelper active = new DatabaseHelper(context, activeGrid.getName(), user -> 0L, () -> { })) {
             insertFavorite(inactive.getWritableDatabase(), 1, 2);
             try (InputStream schema = context.getResources().openRawResource(R.raw.downgrade_schema)) {
-                DbDowngradeHelper.parse(schema.readAllBytes()).onDowngrade(
-                        inactive.getWritableDatabase(), 33, 32);
+                // Issue #118: the caller owns the downgrade transaction.
+                try (SQLiteTransaction t = new SQLiteTransaction(inactive.getWritableDatabase())) {
+                    DbDowngradeHelper.parse(schema.readAllBytes()).onDowngrade(
+                            inactive.getWritableDatabase(), 33, 32);
+                    t.commit();
+                }
             }
             inactive.getWritableDatabase().setVersion(32);
             insertFavorite(active.getWritableDatabase(), 1, 2);
