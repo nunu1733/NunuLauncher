@@ -94,6 +94,27 @@ Then it exits non-zero and names the path requiring ownership
 
 And it does not silently include the path in an aggregate total.
 
+### Scenario: Preserve an organizer-specific localized bridge
+
+Given a localized `values-*` path matches the broad translation-churn exclusion
+but is explicitly assigned to a bridge responsibility
+
+When the measurement runs
+
+Then the bridge assignment takes precedence and the path is counted with that
+responsibility rather than hidden by the broad exclusion.
+
+### Scenario: Encounter a binary change
+
+Given Git reports a changed path with binary `-/-` numstat values
+
+When the path is classified
+
+Then an explicitly excluded binary is reported as one excluded file with zero
+line counts
+
+And a binary path that would be counted fails with an actionable error.
+
 ### Scenario: Compare an unrelated history
 
 Given the proposed upstream commit is not an ancestor of the target
@@ -164,6 +185,9 @@ overwrite this record. [1]
 ## Change history
 
 - 2026-08-23: Accepted for #110 with the initial reproducible baseline.
+- 2026-08-23: Review correction makes bridge ownership take precedence over
+  broad localized-resource exclusions and defers binary handling until
+  classification.
 
 ## References
 

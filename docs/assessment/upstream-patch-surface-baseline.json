@@ -7,13 +7,15 @@
   "metric": {
     "counted_paths": "Every changed repository path in git diff --no-renames upstream_commit..target except an explicit non-production exclusion or a new project-owned addition. Each remaining path must be assigned to exactly one bridge group.",
     "counted_lines": "The additions and deletions reported by git diff --no-renames --numstat upstream_commit..target for counted paths, including production source, base resources, schemas, manifests, and other non-excluded upstream/bridge paths.",
+    "classification_precedence": "An explicit bridge-group path is counted before broad prefix/suffix exclusions, so an organizer-owned localized resource remains visible; otherwise explicit exclusion precedes project-owned addition.",
+    "binary_paths": "Git binary numstat records are retained through classification. An explicitly excluded binary contributes one excluded file and zero line counts; a binary path that would be counted fails the measurement.",
     "comparison_rule": "Growth is a positive delta in counted files, additions, or deletions. It requires review and an Issue-owned rationale; it is not a quality score or an automatic regression verdict."
   },
   "exclusions": [
     "Documentation, specifications, assessments, workflows, repository-contract tooling, test sources, test-only build configuration, generated files, vendored files, and localized resource churn are not production upstream patch surface.",
     "New production modules under project_owned_addition_prefixes are reported separately and do not enter the counted metric.",
     "Base resources, schemas, manifests, and every other non-excluded path must be assigned to an explicit bridge group before the measurement can pass.",
-    "A localized Lawnchair values-* resource is excluded only as translation churn; the base values/ resource remains counted."
+    "A localized Lawnchair values-* resource is excluded only as translation churn unless that exact path is assigned to a bridge group; the base values/ resource remains counted."
   ],
   "explicit_exclusions": {
     "prefixes": [
@@ -88,6 +90,7 @@
       ],
       "paths": [
         "lawnchair/res/values/strings.xml",
+        "lawnchair/res/values-ja/strings.xml",
         "lawnchair/src/app/lawnchair/ui/popup/OrganizerLockShortcut.kt",
         "lawnchair/src/app/lawnchair/ui/preferences/destinations/CategoryOverridePreferences.kt",
         "lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt",
@@ -139,18 +142,18 @@
     }
   ],
   "expected_measurement": {
-    "counted_files": 45,
-    "counted_additions": 3908,
+    "counted_files": 46,
+    "counted_additions": 3912,
     "counted_deletions": 987,
-    "counted_paths_sha256": "937f2b0f3daefcbf87715e0105a3dc1aec2ac8985fb25951ee6234df80194e36",
+    "counted_paths_sha256": "d9c287b922ac2b6a5c220df0c9d6ae672d9f754c664458ed2db78a8e0887cae8",
     "project_owned_files": 91,
     "project_owned_additions": 15898,
     "project_owned_deletions": 0,
     "project_owned_paths_sha256": "d12e4bf1d65f1c1646dbccd9752f5c835f9d28b69b6cda6a8079805d1c00a100",
-    "excluded_files": 300,
-    "excluded_additions": 54985,
+    "excluded_files": 299,
+    "excluded_additions": 54981,
     "excluded_deletions": 684,
-    "excluded_paths_sha256": "68f0107a04e391fa2d98229f40f3e0363117d551428f0451b5df9553cc26abfa",
+    "excluded_paths_sha256": "4eed68254b74b379d30905799615b51f9856d2678f0b9840d21022f95049ec2a",
     "groups": {
       "deck-retirement": {
         "files": 20,
@@ -171,10 +174,10 @@
         "paths_sha256": "7a86bf7ecb43d4b5ae47c2cba0f6302d149f401c315f74a6f661c03f96e2653c"
       },
       "organizer-ui-and-lock-authoring": {
-        "files": 7,
-        "additions": 1675,
+        "files": 8,
+        "additions": 1679,
         "deletions": 9,
-        "paths_sha256": "ff6f3d4b03a3267ea26d033f5ca539bfc521f849c9591d6c2934943d4d14be5b"
+        "paths_sha256": "91bd58512c8dc412093d80f72688c32dc7339f94bb12d0b3c6d70fb678a0b7e0"
       }
     }
   }

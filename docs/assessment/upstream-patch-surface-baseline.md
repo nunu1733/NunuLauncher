@@ -24,21 +24,25 @@ one accepted comparison point without restating those documents.
 ## Metric and exclusions
 
 The measurement begins with **every path** in `git diff --no-renames` between the
-fixed upstream commit and a target commit. It then removes only the explicit
-non-production exclusions recorded in the machine-readable inventory: documents,
-specifications, workflows, repository tooling, tests, generated/vendor churn,
-and localized `values-*` resource churn. A base resource, schema, manifest, or
-other non-excluded path is counted when it existed upstream, or when a newly
-added file outside a project-owned module is explicitly assigned to one
-bridge-responsibility group. For every counted path, the measurement reports
-Git's no-rename additions and deletions.
+fixed upstream commit and a target commit. It then applies the classification
+rules recorded in the machine-readable inventory. An exact bridge-group
+assignment takes precedence over a broad prefix/suffix exclusion, so an
+organizer-specific localized resource remains visible; otherwise explicit
+non-production exclusions cover documents, specifications, workflows,
+repository tooling, tests, generated/vendor churn, and translation churn. A
+base resource, schema, manifest, or other non-excluded path is counted when it
+existed upstream, or when a newly added file outside a project-owned module is
+explicitly assigned to one bridge-responsibility group. For every counted text
+path, the measurement reports Git's no-rename additions and deletions.
 
 | Category | Treatment | Rationale |
 |---|---|---|
 | Existing Lawnchair/Launcher3 production path, including base resources and schemas | Counted and assigned to one bridge group | It is a direct upstream-file patch subject to rebase/conflict cost. |
 | New bridge file outside a project-owned prefix | Counted and assigned to one bridge group | The bridge is project-specific but extends an upstream-owned source area. |
 | New `lawnchair/src/app/lawnchair/organizer/` or `migration/` source file | Reported separately; not counted | These are the deep project-owned modules intended by the design. [2] |
-| Tests, documents, specs, assessments, workflows, repository tooling, generated/vendor churn, and localized `lawnchair/res/values-*` resources | Explicitly excluded and reported separately | They are not production upstream patch surface; the base `values/strings.xml` remains counted. |
+| Tests, documents, specs, assessments, workflows, repository tooling, generated/vendor churn, and localized `lawnchair/res/values-*` resources without a bridge assignment | Explicitly excluded and reported separately | They are not production upstream patch surface; the base `values/strings.xml` remains counted, while an organizer-specific localized path can be listed in its bridge group. |
+| Explicitly excluded binary path | Excluded as one file with zero line counts | Git reports binary numstat as `-/-`; classification must still reach the exclusion rule. |
+| Binary path that would otherwise be counted | Measurement failure | The metric has no portable line count for a counted binary; it must be explicitly excluded or reviewed as a different metric. |
 | A changed non-excluded path with no bridge owner | Measurement failure | An unowned bridge must be split to an owning Issue before it can be accepted. |
 
 The machine-readable inventory is
@@ -48,20 +52,20 @@ explains the policy and links the existing architectural evidence.
 
 ## Accepted baseline
 
-The offline measurement at the exact commits above found **45 counted
-upstream/bridge files**, with **3,908 additions** and **987 deletions**. It also
+The offline measurement at the exact commits above found **46 counted
+upstream/bridge files**, with **3,912 additions** and **987 deletions**. It also
 reports **91 excluded project-owned source additions** with 15,898 additions and
-**300 explicitly excluded non-production paths** with 54,985 additions and 684
+**299 explicitly excluded non-production paths** with 54,981 additions and 684
 deletions. Both excluded categories are deliberately visible but are not folded
 into the metric.
 
 | Bridge responsibility | Counted files | Additions | Deletions | Supporting evidence |
 |---|---:|---:|---:|---|
 | Deck retirement | 20 | 284 | 853 | [ADR-0006][3], [retirement assessment][4] |
-| Organizer UI and lock authoring, including base resources | 7 | 1,675 | 9 | [design seams][2] and accepted specs #38/#52/#99 |
+| Organizer UI and lock authoring, including base and organizer-specific localized resources | 8 | 1,679 | 9 | [design seams][2] and accepted specs #38/#52/#99 |
 | Model reload and transaction gates | 8 | 1,320 | 71 | [writer admission audit][5] and its executable writer inventory |
 | Layout schema and recovery, including downgrade schema | 10 | 629 | 54 | [ADR-0003][6], [ADR-0004][7], and [writer admission audit][5] |
-| **Total counted surface** | **45** | **3,908** | **987** | Machine-readable inventory |
+| **Total counted surface** | **46** | **3,912** | **987** | Machine-readable inventory |
 
 The retained Deck evidence identifies the historical package-event and artifact
 paths that were removed or constrained; the current bridge inventory therefore
@@ -97,6 +101,11 @@ explicit-exclusion totals; equal grand totals cannot mask path or responsibility
 substitution. A smaller or equal candidate total passes the mechanical
 comparison, but reviewers must still examine responsibility changes, deletions,
 and any semantic safety impact.
+
+Binary changes are retained until classification. A binary path matching an
+explicit exclusion is reported as one excluded file with zero additions and
+deletions because Git does not provide line counts; a binary path in a bridge
+group fails instead of being silently counted.
 
 ## Rebase and organizer-PR review procedure
 

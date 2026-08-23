@@ -16,9 +16,9 @@ precedent for source-boundary checks, but it deliberately inventories only
 
 The Issue #110 baseline is captured at upstream
 `505dbc40e6154c05158b5d0271c45f6a885a411b` and main
-`4ec0eb3dc692eadf108c512df5de3cb1607cf1f5`. The captured metric reports 45
-counted upstream/bridge files, 3,908 additions, and 987 deletions; 91
-project-owned additions and 300 explicitly excluded non-production paths are
+`4ec0eb3dc692eadf108c512df5de3cb1607cf1f5`. The captured metric reports 46
+counted upstream/bridge files, 3,912 additions, and 987 deletions; 91
+project-owned additions and 299 explicitly excluded non-production paths are
 reported separately. The exact path sets, group ownership, and totals are
 recorded in the machine-readable baseline file.
 
@@ -33,11 +33,15 @@ recorded in the machine-readable baseline file.
 | `upstream-patch-surface-baseline.md` | Explain the metric, comparison policy, and links to evidence | No duplicated Deck/writer/design audit |
 | Tool regression test | Fix aggregation, ownership, and growth semantics | No second production measurement seam |
 
-The tool begins with every changed repository path. It removes only explicit
-non-production exclusions, then counts a path that existed at the selected
-upstream commit, or a new file outside a project-owned prefix that is explicitly
-assigned to one bridge group. Base resources, schemas, manifests, and other
-non-excluded files therefore cannot be skipped by a source-extension allowlist.
+The tool begins with every changed repository path. An exact bridge assignment
+takes precedence over broad explicit exclusions, then remaining explicit
+non-production exclusions are removed. The tool counts a path that existed at
+the selected upstream commit, or a new file outside a project-owned prefix that
+is explicitly assigned to one bridge group. Base resources, schemas, manifests,
+and other non-excluded files therefore cannot be skipped by a source-extension
+allowlist. Binary numstat records remain available through classification;
+explicitly excluded binaries are reported as files with zero line counts, while
+counted binaries fail because Git provides no line metric for them.
 The tool separately reports additions under the project-owned organizer and
 migration prefixes. Every other changed path requires exactly one bridge
 responsibility. This avoids hiding a widened bridge while preserving the design's

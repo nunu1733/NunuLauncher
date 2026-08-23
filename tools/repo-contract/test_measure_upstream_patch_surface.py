@@ -44,6 +44,69 @@ class PatchSurfaceMeasurementTest(unittest.TestCase):
         self.assertFalse(patch_surface.is_explicitly_excluded("res/raw/downgrade_schema.json", exclusions))
         self.assertFalse(patch_surface.is_explicitly_excluded("AndroidManifest.xml", exclusions))
 
+    def test_bridge_assignment_overrides_broad_localized_exclusion(self) -> None:
+        changes = [patch_surface.ChangedPath("M", "lawnchair/res/values-ja/strings.xml", 4, 0)]
+        groups = [{"id": "ui", "paths": ["lawnchair/res/values-ja/strings.xml"]}]
+        exclusions = {"prefixes": ["lawnchair/res/values-"], "suffixes": [], "paths": []}
+
+        with patch.object(patch_surface, "path_exists_at", return_value=True):
+            classified = patch_surface.classify_paths(
+                changes,
+                upstream="upstream",
+                project_owned_prefixes=(),
+                exclusions=exclusions,
+                groups=groups,
+            )
+
+        self.assertEqual("upstream-file patch", classified[0].category)
+        self.assertEqual("ui", classified[0].group_id)
+
+    def test_binary_numstat_is_retained_until_classification(self) -> None:
+        with patch.object(
+            patch_surface,
+            "run_git",
+            side_effect=["M\tdocs/evidence/screenshot.png\n", "-\t-\tdocs/evidence/screenshot.png\n"],
+        ):
+            changes = patch_surface.changed_paths("upstream", "target")
+
+        self.assertEqual(
+            [patch_surface.ChangedPath("M", "docs/evidence/screenshot.png", None, None)], changes
+        )
+
+    def test_explicitly_excluded_binary_is_counted_as_a_file_without_lines(self) -> None:
+        changes = [patch_surface.ChangedPath("M", "docs/evidence/screenshot.png", None, None)]
+        with patch.object(patch_surface, "path_exists_at", return_value=True):
+            classified = patch_surface.classify_paths(
+                changes,
+                upstream="upstream",
+                project_owned_prefixes=(),
+                exclusions={"prefixes": ["docs/"], "suffixes": [], "paths": []},
+                groups=[],
+            )
+
+        report = patch_surface.aggregate(classified, [])
+        self.assertEqual("explicit exclusion", classified[0].category)
+        self.assertEqual(
+            {"excluded_files": 1, "excluded_additions": 0, "excluded_deletions": 0},
+            {
+                key: report["totals"][key]  # type: ignore[index]
+                for key in ("excluded_files", "excluded_additions", "excluded_deletions")
+            },
+        )
+
+    def test_counted_binary_path_is_rejected_after_classification(self) -> None:
+        changes = [patch_surface.ChangedPath("M", "res/drawable/bridge.bin", None, None)]
+        groups = [{"id": "bridge", "paths": ["res/drawable/bridge.bin"]}]
+        with patch.object(patch_surface, "path_exists_at", return_value=True):
+            with self.assertRaisesRegex(patch_surface.MeasurementError, "binary"):
+                patch_surface.classify_paths(
+                    changes,
+                    upstream="upstream",
+                    project_owned_prefixes=(),
+                    exclusions={"prefixes": [], "suffixes": [], "paths": []},
+                    groups=groups,
+                )
+
     def test_resource_and_schema_paths_require_bridge_ownership(self) -> None:
         changes = [
             patch_surface.ChangedPath("M", "lawnchair/res/values/strings.xml", 7, 1),

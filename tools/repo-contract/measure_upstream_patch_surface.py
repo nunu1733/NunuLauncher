@@ -45,8 +45,13 @@ class MeasurementError(RuntimeError):
 class ChangedPath:
     status: str
     path: str
-    additions: int
-    deletions: int
+    additions: int | None
+    deletions: int | None
+
+    @property
+    def is_binary(self) -> bool:
+        """Return whether Git could not express this path as line counts."""
+        return self.additions is None or self.deletions is None
 
 
 @dataclass(frozen=True)
@@ -93,14 +98,21 @@ def ensure_ancestor(upstream: str, target: str, *, root: Path = ROOT) -> None:
         )
 
 
-def parse_numstat(raw: str) -> dict[str, tuple[int, int]]:
-    """Parse tab-delimited ``git diff --numstat`` output for text files."""
-    result: dict[str, tuple[int, int]] = {}
+def parse_numstat(raw: str) -> dict[str, tuple[int | None, int | None]]:
+    """Parse text and binary ``git diff --numstat`` records.
+
+    Git reports binary records as ``-/-``. Keep those records until path
+    classification so an explicit non-production exclusion can discard them;
+    a binary path that would otherwise be counted is rejected by
+    :func:`classify_paths` with an ownership/exclusion error.
+    """
+    result: dict[str, tuple[int | None, int | None]] = {}
     for line in raw.splitlines():
         additions, deletions, path = line.split("\t", 2)
-        if additions == "-" or deletions == "-":
-            raise MeasurementError(f"binary file is outside the metric unless explicitly excluded: {path}")
-        result[path] = (int(additions), int(deletions))
+        result[path] = (
+            None if additions == "-" else int(additions),
+            None if deletions == "-" else int(deletions),
+        )
     return result
 
 
@@ -169,10 +181,24 @@ def classify_paths(
     classified: list[ClassifiedPath] = []
     missing: list[str] = []
     for change in changes:
-        if is_explicitly_excluded(change.path, exclusions):
+        group_id = index.get(change.path)
+        # An explicit bridge assignment is stronger than a broad exclusion
+        # such as values-* translation churn. This lets the inventory retain
+        # organizer-specific localized resources while leaving unrelated
+        # translation churn explicitly excluded.
+        if group_id is None and is_explicitly_excluded(change.path, exclusions):
             classified.append(ClassifiedPath(change, "explicit exclusion", None))
             continue
         existed_upstream = path_exists_at(upstream, change.path, root=root)
+        if group_id is not None:
+            if change.is_binary:
+                raise MeasurementError(
+                    "counted bridge path is binary and must be explicitly excluded or "
+                    f"assigned a text metric: {change.path}"
+                )
+            category = "upstream-file patch" if existed_upstream else "bridge addition"
+            classified.append(ClassifiedPath(change, category, group_id))
+            continue
         project_owned_addition = (
             change.status == "A"
             and not existed_upstream
@@ -181,12 +207,7 @@ def classify_paths(
         if project_owned_addition:
             classified.append(ClassifiedPath(change, "project-owned addition", None))
             continue
-        group_id = index.get(change.path)
-        if group_id is None:
-            missing.append(change.path)
-            continue
-        category = "upstream-file patch" if existed_upstream else "bridge addition"
-        classified.append(ClassifiedPath(change, category, group_id))
+        missing.append(change.path)
     if missing:
         lines = "\n".join(f"  - {path}" for path in sorted(missing))
         raise MeasurementError(
@@ -213,23 +234,28 @@ def aggregate(classified: Iterable[ClassifiedPath], groups: Iterable[Mapping[str
     }
     for item in classified:
         change = item.change
+        # Git does not provide line counts for binary files. They can only be
+        # explicit exclusions (counted binaries are rejected above), so keep
+        # the file visible while contributing zero to line totals.
+        additions = change.additions or 0
+        deletions = change.deletions or 0
         if item.category == "explicit exclusion":
             totals["excluded_files"] += 1
-            totals["excluded_additions"] += change.additions
-            totals["excluded_deletions"] += change.deletions
+            totals["excluded_additions"] += additions
+            totals["excluded_deletions"] += deletions
             continue
         if item.category == "project-owned addition":
             totals["project_owned_files"] += 1
-            totals["project_owned_additions"] += change.additions
-            totals["project_owned_deletions"] += change.deletions
+            totals["project_owned_additions"] += additions
+            totals["project_owned_deletions"] += deletions
             continue
         group = by_group[item.group_id or ""]
         group["files"] += 1
-        group["additions"] += change.additions
-        group["deletions"] += change.deletions
+        group["additions"] += additions
+        group["deletions"] += deletions
         totals["counted_files"] += 1
-        totals["counted_additions"] += change.additions
-        totals["counted_deletions"] += change.deletions
+        totals["counted_additions"] += additions
+        totals["counted_deletions"] += deletions
     return {"totals": totals, "groups": by_group}
 
 
