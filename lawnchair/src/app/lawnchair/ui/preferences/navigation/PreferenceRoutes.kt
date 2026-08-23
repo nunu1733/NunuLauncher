@@ -1,5 +1,6 @@
 package app.lawnchair.ui.preferences.navigation
 
+import androidx.annotation.Keep
 import app.lawnchair.organizer.diagnostics.model.Trigger
 import app.lawnchair.ui.preferences.components.search.SearchProviderId
 import app.lawnchair.ui.preferences.destinations.SearchRoute
@@ -101,6 +102,9 @@ data object HomeScreenPlacementLocks : PreferenceRoute
 data object HomeScreenCategoryOverrides : PreferenceRoute
 
 // Issues #52/#53: persist only the stable caller context, never run state or write authority.
+// Issue #116: typed Navigation resolves this enum argument by its default fully qualified
+// name at runtime, so minification must not rename or remove the class identity.
+@Keep // This is refed by a Kotlin serializer, we must keep it's fully qualified name.
 @Serializable
 enum class OrganizationEntry {
     MANUAL,
