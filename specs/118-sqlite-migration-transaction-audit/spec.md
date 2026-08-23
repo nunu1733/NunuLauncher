@@ -4,6 +4,7 @@ status: accepted
 requirements:
   - NFR-001
   - NFR-002
+  - NFR-012
 updated: 2026-08-23
 ---
 
