@@ -48,7 +48,7 @@ The assessment used:
 | Writer inventory (AC-01) | **CONFIRMED** | 18 allowlisted files with lease-kind reason; see inventory table below |
 | Executable allowlist (AC-02) | **CONFIRMED** | `tools/repo-contract/validate_writer_inventory.py` passes on current tree; wired into CI `validate-repo-contract` job (`.github/workflows/ci.yml` lines 92-93) |
 | FIFO exactly-once / throwing callback (AC-03) | **CONFIRMED** (defect FIXED) | `LayoutWriteCoordinator.release()` lines 318-351: per-entry try/catch (lines 343-350) prevents a throwing callback from aborting later entries. Tests: `LayoutWriteCoordinatorTest.java` lines 67-185 |
-| Reload supersession (AC-04) | **CONFIRMED** | `OrganizerReloadSupersessionTest.java` lines 86-290: A-then-B supersession, stale completion rejection, cancellation terminal exactly once, exactly-one-terminal per request |
+| Reload supersession (AC-04) | **CONFIRMED** | `OrganizerReloadSupersessionTest.java`: Issue #119 adds a one-shot `BgDataModel.Callbacks.getPagesToBindSynchronously()` pre-completion barrier. A is held until B or regular `forceReload()` is issued, then A=`SUPERSEDED`, stale completion is rejected, and B/normal reload completion is observed without wall-clock sleeps. |
 | Binder future self-wait (AC-05) | **DISPROVEN** | `BinderOperationFutureTest.java` lines 58-221: deferred callback runs on releasing thread, not MODEL_EXECUTOR; MODEL_EXECUTOR is never blocked during deferral; `LooperExecutor.execute()` (lines 43-48) inline optimization prevents self-deadlock even hypothetically |
 | Nested SQLiteTransaction (AC-06) | **CONFIRMED** | `NestedTransactionTest.java`: all-success nested scopes commit as one unit; an inner close without success poisons the whole unit and rolls back both outer and inner writes even after outer `commit()`; lease held until outer close; reentrant inner close does not release outer; inner exception propagates and outer close releases lease |
 | Process death/restart (AC-07) | **UNSUPPORTED** (see below) | Protocol-level `RestartReconcilerTest` exists; device-level kill/restart with active helper, deferred FIFO, or raw-file restore is not tested. Real 10s TIMEOUT path is not injectable (`OrganizerModelReloadAdapter.TIMEOUT_MILLIS` = 10_000L, line 25). Instrumentation runtime execution is compile-only per Issue #14 |
@@ -168,9 +168,12 @@ unsupported with exact source evidence and a tracking note:
    471-473) is exercised by the cancellation test. Full device-level restart
    evidence is tracked for future investigation.
 
-3. **Instrumentation runtime execution.** CI compiles instrumentation tests
-   but does not execute them on a device/emulator (per Issue #14). Unit tests
-   (`testLawnWithQuickstepGithubDebugUnitTest`) run in CI and pass.
+3. **Instrumentation runtime execution (historical #60 baseline).** The
+   original #60 verification target compiled instrumentation tests only (per
+   Issue #14). The current CI portfolio now executes the shared-writer
+   coordinator suite on a clean API 36 emulator; Issue #119 adds
+   `OrganizerReloadSupersessionTest` to that existing lane rather than creating
+   a second lane.
 
 ## Verification
 
@@ -204,3 +207,32 @@ documented above.
 
 The Issue #44 assessment rows tracked in #60 are now closed out by this
 document.
+
+## Issue #119 deterministic-barrier follow-up
+
+> Follow-up date: 2026-08-24
+> Scope: test/CI/documentation only; production source and API unchanged
+
+The original AC-04 tests used `Thread.sleep(500)` to guess that request A was
+still active. The three timing assumptions were replaced by a one-shot
+`BgDataModel.Callbacks.getPagesToBindSynchronously()` callback barrier in
+`OrganizerReloadSupersessionTest`. The callback counts down an A-reached latch
+and blocks until the test explicitly releases it. `BaseLauncherBinder` reaches
+the organizer completion signal after this bind callback, so A cannot complete
+before the test issues the competing operation.
+
+The A→B and stale-completion tests submit B on a second executor worker,
+assert A=`SUPERSEDED`, release the barrier, then assert B=`COMPLETED`. The
+regular `forceReload()` cancellation test also triggers cancellation from a
+worker because the main thread is intentionally blocked by the barrier. Each
+test has bounded waits and a `finally` release plus executor shutdown, so a
+failed assertion cannot leave the instrumentation suite wedged.
+
+`finishBindingItems` is retained only by the existing model-idle helper; it is
+not used as the supersession barrier because the production organizer
+completion signal is scheduled before pending `finishBindingItems` callbacks.
+
+The existing API 36 clean-emulator
+`organizer-instrumentation-shared-writer-tests` lane now includes
+`OrganizerReloadSupersessionTest`. No new lane, production seam, or public API
+is required.
