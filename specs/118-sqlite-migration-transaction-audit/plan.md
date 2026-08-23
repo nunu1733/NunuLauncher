@@ -69,10 +69,10 @@ fresh database deterministically.
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `DatabaseHelper.java` | Remove inner scopes in case 13 / `addIntegerColumn` / `updateFolderItemsRank` / `convertShortcutsToLauncherActivities`; keep catch semantics; `#118` comments at each site and on `createEmptyDB` | Category 1/3 remediation with the framework callback as sole owner |
+| `DatabaseHelper.java` | Remove inner scopes in case 13 / `addIntegerColumn` / `updateFolderItemsRank` / `convertShortcutsToLauncherActivities`; keep catch semantics; drop `temp_favorites` in `createEmptyDB`; `#118` comments at each site | Category 1/3 remediation with the framework callback as sole owner; deterministic wipe cleanup (review P2) |
 | `DbDowngradeHelper.java` | Drop inner `SQLiteTransaction`; document caller-owned transaction | Reconcile ownership with the framework callback (AC-3) |
 | `DatabaseHelperSchema33Test`, `DowngradeSchema33Test`, `InactiveGridDbNormalizationTest` | Wrap direct downgrade calls in caller-owned transactions | Preserve atomicity under the new contract |
-| New `MigrationTransactionOwnershipTest` (organizer-instrumentation) | Two failure-injection scenarios per spec; failed on `main` first (verified) | AC-2/AC-4 evidence, TDD anchor |
+| New `MigrationTransactionOwnershipTest` (organizer-instrumentation) | Three failure-injection scenarios per spec: legacy upgrade wipe persistence, first-statement downgrade failure, failure after partial recipe progress; the first two failed on `main` before the fix | AC-2/AC-4 evidence, TDD anchor |
 | `.github/workflows/ci.yml` + `docs/engineering/ci-test-portfolio.md` | Focused lane `organizer-instrumentation-db-migration-tests` (API 36) running the schema/downgrade/migration suites; wire into `final-status`; portfolio row | The suites were compile-only in CI; #115 showed that hides real failures |
 | `specs/118-*` | Spec + this plan | Workflow requirement |
 
@@ -80,9 +80,13 @@ fresh database deterministically.
 
 - No schema or rule migration. Runtime behavior changes only on failing
   upgrade/downgrade paths, where the documented intent (wipe fallback persists;
-  32→33 rolls back) becomes actually true.
-- Release rollback (older app over newer data): unchanged recipe, now with
-  deterministic fallback persistence.
+  32→33 rolls back) becomes actually true; the wipe now also cleans the
+  `temp_favorites` staging table.
+- Release rollback (older app over newer data): recipes are unchanged. A
+  rollback executed by a binary built after this change recovers
+  deterministically; a rollback to an already-built schema-32 binary keeps that
+  binary's bundled pre-#118 behavior and is recorded as a residual risk in the
+  spec's Non-goals.
 
 ## Verification
 

@@ -4,12 +4,20 @@
 // The framework wraps onUpgrade/onDowngrade in one transaction whose nesting is
 // pure bookkeeping without SAVEPOINTs: a nested scope that ends unsuccessful
 // poisons every ancestor and forces the outermost end to roll back even after
-// setTransactionSuccessful(). Both scenarios below reproduce the historical
+// setTransactionSuccessful(). The scenarios below reproduce the historical
 // defect (catch-and-fallback silently rolls back, database left at the old
 // version while the open reports success) and pin the remediated behavior.
+//
+// Scope note (review P1): the downgrade scenarios drive this tree's helper
+// through the framework-style wrapper, which is production-faithful for any
+// rollback executed by a binary built from this tree (e.g. a future schema
+// 34->33 rollback). A rollback from 33 to 32 in the field is instead executed
+// by an already-built schema-32 binary that bundles the pre-#118 helper; that
+// binary's behavior is out of scope per the spec's non-goals.
 package com.android.launcher3.organizer;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import android.content.ContentValues;
@@ -87,7 +95,8 @@ public class MigrationTransactionOwnershipTest {
         seedFreshSchema33WithRow(11, "downgrade row");
 
         // Block the first 33->32 rebuild statement (RENAME to temp_favorites)
-        // so the recipe fails after having begun.
+        // so the recipe fails after having begun. The staged table name comes
+        // from res/raw/downgrade_schema.json and must not survive the fallback.
         try (SQLiteDatabase raw = openRaw()) {
             raw.execSQL("CREATE TABLE temp_favorites(_id INTEGER PRIMARY KEY)");
         }
@@ -110,6 +119,45 @@ public class MigrationTransactionOwnershipTest {
             assertEquals(
                     "caught downgrade failure must fall back to a persisted wipe",
                     0, countFavorites(raw));
+            assertFalse("staged migration table must not survive the wipe",
+                    tableExists(raw, "temp_favorites"));
+        } finally {
+            helper.close();
+        }
+    }
+
+    @Test
+    public void downgradePartialRecipeProgressStillEndsInDeterministicFreshWipe()
+            throws Exception {
+        // Review P2: cover a failure AFTER the recipe made progress. The
+        // 33->22 statement chain concatenates every per-version block, so
+        // blocking only the downgrade_to_27 CREATE TABLE workspaceScreens
+        // lets the 32, 31, and 28 blocks fully rebuild favorites (carrying
+        // the prior layout row) before any statement fails.
+        seedFreshSchema33WithRow(12, "partial recipe row");
+        try (SQLiteDatabase raw = openRaw()) {
+            raw.execSQL("CREATE TABLE workspaceScreens(_id INTEGER PRIMARY KEY)");
+        }
+
+        DatabaseHelper helper = new DatabaseHelper(mContext, TEST_DB, user -> 0L, () -> { });
+        try (SQLiteDatabase raw = openRaw()) {
+            raw.beginTransaction();
+            try {
+                helper.onDowngrade(raw, 33, 22);
+                raw.setVersion(22);
+                raw.setTransactionSuccessful();
+            } finally {
+                raw.endTransaction();
+            }
+
+            assertEquals(22, raw.getVersion());
+            assertEquals(
+                    "rows copied by the partial rebuild must not leak past the wipe",
+                    0, countFavorites(raw));
+            assertFalse("recipe staging table must be gone after the wipe",
+                    tableExists(raw, "temp_favorites"));
+            assertFalse("sabotaged leftover table must not survive the wipe",
+                    tableExists(raw, "workspaceScreens"));
         } finally {
             helper.close();
         }
@@ -139,6 +187,15 @@ public class MigrationTransactionOwnershipTest {
                 "SELECT COUNT(*) FROM " + Favorites.TABLE_NAME, null)) {
             c.moveToFirst();
             return c.getInt(0);
+        }
+    }
+
+    private static boolean tableExists(SQLiteDatabase db, String name) {
+        try (Cursor c = db.rawQuery(
+                "SELECT COUNT(*) FROM main.sqlite_master"
+                        + " WHERE type='table' AND name='" + name + "'", null)) {
+            c.moveToFirst();
+            return c.getInt(0) > 0;
         }
     }
 

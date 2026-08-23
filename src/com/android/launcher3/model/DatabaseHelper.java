@@ -326,6 +326,10 @@ public class DatabaseHelper extends NoLocaleSQLiteHelper implements
         // scope of the framework transaction, so its commit is not poisoned.
         try (SQLiteTransaction t = new SQLiteTransaction(db)) {
             dropTable(db, Favorites.TABLE_NAME);
+            // Issue #118: the downgrade recipes in res/raw/downgrade_schema.json
+            // stage the previous layout in temp_favorites; drop it too so a wipe
+            // after a partially executed recipe never leaks staged rows.
+            dropTable(db, "temp_favorites");
             dropTable(db, "workspaceScreens");
             onCreate(db);
             t.commit();

@@ -36,9 +36,15 @@ recorded owner classification (Issue #118 categories 1–3). Category 3 paths ar
 restructured so the framework callback transaction is the single authoritative
 owner: migration steps execute directly inside it, failures either propagate
 (deliberate ADR-0004 behavior for schema 32→33) or deterministically persist the
-historical wipe fallback, and no path assumes a poisoned outer transaction can
-commit. Failure-injection tests prove rollback/fallback persistence for a
-legacy upgrade step and for the 33→32 downgrade recipe.
+historical wipe fallback — which also cleans the `temp_favorites` staging table
+the downgrade recipes use — and no path assumes a poisoned outer transaction
+can commit. Failure-injection tests prove rollback/fallback persistence for a
+legacy upgrade step and for a downgrade recipe executed by a helper built from
+this tree, including a failure after the recipe has already made progress. The
+downgrade evidence is production-faithful for any rollback executed by binaries
+built from this tree (e.g. a future schema 34→33 rollback); it cannot describe
+already-built schema-32 binaries, whose bundled pre-#118 helper this PR cannot
+modify (see Non-goals).
 
 ## Scope
 
@@ -49,18 +55,32 @@ legacy upgrade step and for the 33→32 downgrade recipe.
 - Transaction ownership reconciliation for `DbDowngradeHelper.onDowngrade`: the
   caller owns the transaction (the framework callback transaction in
   production); direct callers wrap their own.
-- Failure-injection tests for at least one legacy upgrade path and the 33→32
-  downgrade recipe, plus retention of the non-destructive fixtures required by
+- Deterministic wipe cleanup: `createEmptyDB()` additionally drops the
+  `temp_favorites` staging table hardcoded in `res/raw/downgrade_schema.json`,
+  so a fallback after partial recipe progress never leaks staged layout rows.
+- Failure-injection tests for at least one legacy upgrade path and for
+  downgrade recipes executed by this tree's helper (first-statement failure and
+  failure after partial progress), plus retention of the non-destructive
+  fixtures required by
   [ADR-0004](../../docs/adr/0004-organizer-lock-persistence.md) / Issue #14.
 
 ## Non-goals
 
+- Failure recovery of downgrades executed by already-built binaries that bundle
+  their own pre-#118 helper code. A field rollback from schema 33 to 32 runs on
+  such a binary, whose `DbDowngradeHelper` still owns the nested scope that a
+  failing statement poisons and whose wipe fallback therefore still rolls back
+  silently. This PR cannot modify installed artifacts; the deterministic
+  recovery proven here applies from the first rollback executed by a binary
+  built after this change (e.g. any future schema-version rollback). Recorded
+  as a residual risk on the released rollback target.
 - No change to the schema 32→33 migration itself; it executes directly in the
   framework transaction and throws on failure (ADR-0004). This behavior must not
   regress.
 - No SAVEPOINT usage and no partial rollback inside a migration step.
 - No change to which conditions trigger the destructive wipe fallback; only its
-  previously broken persistence is fixed.
+  previously broken persistence is fixed, and its cleanup now covers the
+  downgrade staging table.
 - No change to `createEmptyDB()`'s own transaction: standalone callers exist
   outside any helper callback (`ModelDbController.createEmptyDB()` used by
   restore and default-layout loading).
@@ -119,7 +139,20 @@ When the framework-style wrapper opens one transaction, calls
 `onDowngrade(db, 33, 32)`, sets version 32, and marks success,
 Then the committed state contains a fresh empty current-shape `favorites`
 table, and no user row survives,
-And no partially rebuilt table state leaks through.
+And no partially rebuilt table state leaks through: the `temp_favorites`
+staging table is gone as well.
+
+### Scenario: downgrade failure after partial recipe progress leaves no staged rows
+
+Given a schema-33 database with one user row staged so that the concatenated
+33→22 recipe completes its 32, 31, and 28 blocks (rebuilding `favorites` with
+the prior row) before a blocked `CREATE TABLE workspaceScreens` fails,
+When the framework-style wrapper runs `onDowngrade(db, 33, 22)` in one
+transaction and marks success,
+Then the committed state is a fresh empty current-shape `favorites` table at
+version 22,
+And neither the copied layout row nor the staging/leftover tables
+(`temp_favorites`, `workspaceScreens`) survive the fallback.
 
 ### Scenario: schema 32→33 upgrade failure still rolls back without wiping
 
@@ -164,7 +197,11 @@ Not applicable; no UI surface.
 - [ ] AC-3: `DbDowngradeHelper` transaction ownership is reconciled with the
   framework callback transaction; direct callers own their transaction.
 - [ ] AC-4: Failure-injection tests prove rollback/fallback persistence for at
-  least one legacy upgrade path and the 33→32 downgrade path.
+  least one legacy upgrade path and for a downgrade path executed by this
+  tree's helper, covering both a first-statement failure and a failure after
+  partial recipe progress. This is production-faithful for rollbacks executed
+  by binaries built from this tree; recovery inside an already-built schema-32
+  binary is out of scope (Non-goals).
 - [ ] AC-5: Successful 32→33, fresh 33, and 33→32→33 fixtures remain
   non-destructive per ADR-0004 / Issue #14.
 - [ ] AC-6: The remaining destructive fallbacks (legacy upgrade wipe, downgrade
@@ -176,9 +213,9 @@ Not applicable; no UI surface.
 | AC | Evidence |
 |---|---|
 | AC-1 | Classification table in this spec; `#118` comments beside each changed site |
-| AC-2 | New `MigrationTransactionOwnershipTest` (both poisoning scenarios fail on unmodified `main` and pass after the fix) |
-| AC-3 | Same test class, downgrade scenario; updated ownership in the four direct-caller tests |
-| AC-4 | Same test class: `legacyUpgradeFailureFallsBackToWipeThatPersists`, `downgradeStatementFailureFallsBackToWipeThatPersists` |
+| AC-2 | New `MigrationTransactionOwnershipTest` (both original poisoning scenarios fail on unmodified `main` and pass after the fix) |
+| AC-3 | Same test class, downgrade scenarios; updated ownership in the three compiled direct-caller tests |
+| AC-4 | Same test class: `legacyUpgradeFailureFallsBackToWipeThatPersists`, `downgradeStatementFailureFallsBackToWipeThatPersists`, `downgradePartialRecipeProgressStillEndsInDeterministicFreshWipe`; scope note on already-built schema-32 binaries in Non-goals |
 | AC-5 | Existing fixtures green: `DatabaseHelperSchema33Test`, `DowngradeSchema33Test`, `InactiveGridDbNormalizationTest` (`tests/multivalentTests` and `tests/src` are upstream leftovers not wired into this repository's Gradle build, so their suites are out of merge-gate scope here) |
 | AC-6 | Justification in Scenarios section; assertions that the wiped result is deterministic |
 
@@ -194,3 +231,8 @@ Not applicable; no UI surface.
   unmodified `main` (API 36 emulator `nunu_qpr2_api36_1`: the upgrade scenario
   left the file at version 13 and the downgrade scenario at version 33 after an
   open that reported success) and passing after the remediation.
+- 2026-08-23: Revised on PR #122 review. Narrowed the downgrade claim to
+  helpers built from this tree and moved failure recovery of already-built
+  schema-32 rollback binaries to Non-goals as a residual risk; added the
+  partial-progress downgrade failure scenario and deterministic
+  `temp_favorites` staging-table cleanup in the wipe fallback.
