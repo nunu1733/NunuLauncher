@@ -9,7 +9,7 @@ import sys
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 SCRIPT = Path(__file__).with_name("measure_upstream_patch_surface.py")
 SPEC = importlib.util.spec_from_file_location("patch_surface", SCRIPT)
@@ -60,6 +60,73 @@ class PatchSurfaceMeasurementTest(unittest.TestCase):
 
         self.assertEqual("upstream-file patch", classified[0].category)
         self.assertEqual("ui", classified[0].group_id)
+
+    def test_production_capable_paths_are_not_excluded_by_pattern(self) -> None:
+        exclusions = {
+            "prefixes": [".github/", "docs/", "tests/", "tools/"],
+            "suffixes": [".md"],
+            "paths": [".gitignore"],
+        }
+
+        self.assertFalse(patch_surface.is_explicitly_excluded("res/drawable/launcher.webp", exclusions))
+        self.assertFalse(patch_surface.is_explicitly_excluded("build.gradle", exclusions))
+        self.assertFalse(patch_surface.is_explicitly_excluded("gradle/libs.versions.toml", exclusions))
+        self.assertFalse(patch_surface.is_explicitly_excluded("crowdin.yml", exclusions))
+        self.assertTrue(patch_surface.is_explicitly_excluded("docs/readme.md", exclusions))
+
+    def test_pinned_content_change_is_excluded_while_blob_matches(self) -> None:
+        changes = [patch_surface.ChangedPath("M", "build.gradle", 3, 1)]
+        pins = {"build.gradle": {"blob_sha256_git": "blob-1"}}
+        with patch.object(patch_surface, "blob_id_at", return_value="blob-1") as blob_lookup:
+            classified = patch_surface.classify_paths(
+                changes,
+                upstream="upstream",
+                project_owned_prefixes=(),
+                exclusions={"prefixes": [], "suffixes": [], "paths": []},
+                groups=[],
+                pinned_exclusions=pins,
+                target="target",
+            )
+
+        self.assertEqual("explicit exclusion", classified[0].category)
+        blob_lookup.assert_called_once_with("target", "build.gradle", root=ANY)
+
+    def test_diverging_pinned_content_requires_ownership_review(self) -> None:
+        changes = [
+            patch_surface.ChangedPath("M", "build.gradle", 3, 1),
+            patch_surface.ChangedPath("M", "gradle/libs.versions.toml", 2, 0),
+        ]
+        pins = {
+            "build.gradle": {"blob_sha256_git": "blob-1"},
+            "gradle/libs.versions.toml": {"blob_sha256_git": "catalog-1"},
+        }
+        with patch.object(patch_surface, "blob_id_at", return_value="changed-blob"):
+            with self.assertRaisesRegex(patch_surface.MeasurementError, "content-pinned") as captured:
+                patch_surface.classify_paths(
+                    changes,
+                    upstream="upstream",
+                    project_owned_prefixes=(),
+                    exclusions={"prefixes": [], "suffixes": [], "paths": []},
+                    groups=[],
+                    pinned_exclusions=pins,
+                    target="target",
+                )
+
+        message = str(captured.exception)
+        self.assertIn("build.gradle", message)
+        self.assertIn("gradle/libs.versions.toml", message)
+
+    def test_unowned_production_asset_change_fails_closed_without_pattern_exclusion(self) -> None:
+        changes = [patch_surface.ChangedPath("M", "res/drawable/launcher.webp", 0, 0)]
+        with patch.object(patch_surface, "path_exists_at", return_value=True):
+            with self.assertRaisesRegex(patch_surface.MeasurementError, "neither explicitly excluded"):
+                patch_surface.classify_paths(
+                    changes,
+                    upstream="upstream",
+                    project_owned_prefixes=(),
+                    exclusions={"prefixes": [], "suffixes": [], "paths": []},
+                    groups=[],
+                )
 
     def test_binary_numstat_is_retained_until_classification(self) -> None:
         with patch.object(
@@ -244,6 +311,7 @@ class PatchSurfaceMeasurementTest(unittest.TestCase):
             "main_commit": "main",
             "project_owned_addition_prefixes": [],
             "explicit_exclusions": {"prefixes": [], "suffixes": [], "paths": []},
+            "pinned_content_exclusions": {},
             "bridge_groups": [],
             "expected_measurement": expected,
         }

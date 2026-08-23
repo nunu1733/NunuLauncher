@@ -32,13 +32,17 @@ are recorded in the machine-readable baseline file.
 | Area | Interface / responsibility | Boundary kept out of the tool |
 |---|---|---|
 | `measure_upstream_patch_surface.py` | Read local Git diff and classify every changed path through explicit exclusions, project ownership, and bridge responsibility | No Android build, network request, worktree mutation, or product-runtime behavior |
-| `upstream-patch-surface-baseline.json` | Own the exact commits, path groups, exclusions, and expected numeric totals | No duplicated architectural rationale or release verdict |
+| `upstream-patch-surface-baseline.json` | Own the exact commits, path groups, exclusions, content pins, and expected numeric totals | No duplicated architectural rationale or release verdict |
 | `upstream-patch-surface-baseline.md` | Explain the metric, comparison policy, and links to evidence | No duplicated Deck/writer/design audit |
 | Tool regression test | Fix aggregation, ownership, and growth semantics | No second production measurement seam |
 
 The tool begins with every changed repository path. An exact bridge assignment
-takes precedence over broad explicit exclusions, then remaining explicit
-non-production exclusions are removed. The tool counts a path that existed at
+takes precedence over every exclusion, then a content-pinned known
+non-production change is honored only while the file still matches its recorded
+Git blob at the target, and remaining structural explicit non-production
+exclusions are removed. Production-capable patterns such as image/YAML suffixes
+and the Gradle build files are never excluded by pattern alone; a diverging pin
+fails closed for ownership review. The tool counts a path that existed at
 the selected upstream commit, or a new file outside a project-owned prefix that
 is explicitly assigned to one bridge group. Base resources, schemas, manifests,
 and other non-excluded files therefore cannot be skipped by a source-extension
@@ -75,7 +79,7 @@ set, group assignment, project-owned totals, and explicit-exclusion totals; and
 | Area | Intended change | Why here |
 |---|---|---|
 | `tools/repo-contract/measure_upstream_patch_surface.py` | Add offline measurement, ownership validation, and candidate comparison | Repository-contract tooling already hosts deterministic source-boundary checks. [3] |
-| `tools/repo-contract/test_measure_upstream_patch_surface.py` | Add regression tests for resource/schema classification, exact baseline, ownership, ancestry, and exit semantics | Protect the metric from silent classification drift. |
+| `tools/repo-contract/test_measure_upstream_patch_surface.py` | Add regression tests for resource/schema classification, exact baseline, ownership, content pins, ancestry, and exit semantics | Protect the metric from silent classification drift. |
 | `docs/assessment/upstream-patch-surface-baseline.json` | Add exact baseline commits, path groups, exclusions, and expected totals | One machine-readable source of truth for the numerical inventory. |
 | `docs/assessment/upstream-patch-surface-baseline.md` | Add accepted methodology, baseline table, and review procedure | NFR-010 evidence and maintainer instructions. |
 | `docs/engineering/upstream-strategy.md` | Link the accepted measurement from sync policy | Preserve the existing policy as the architectural source of truth. |

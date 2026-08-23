@@ -7,7 +7,8 @@
   "metric": {
     "counted_paths": "Every changed repository path in git diff --no-renames upstream_commit..target except an explicit non-production exclusion or a new project-owned addition. Each remaining path must be assigned to exactly one bridge group.",
     "counted_lines": "The additions and deletions reported by git diff --no-renames --numstat upstream_commit..target for counted paths, including production source, base resources, schemas, manifests, and other non-excluded upstream/bridge paths.",
-    "classification_precedence": "An explicit bridge-group path is counted before broad prefix/suffix exclusions, so an organizer-owned localized resource remains visible; otherwise explicit exclusion precedes project-owned addition.",
+    "classification_precedence": "An explicit bridge-group path is counted before every exclusion, so an organizer-owned localized resource remains visible. Next a content-pinned known non-production change is excluded only while the file still matches the recorded Git blob at the target commit; any other edit to that path fails closed for ownership review. Structural or broad explicit exclusions follow, then explicit exclusion precedes project-owned addition.",
+    "pinned_exclusion_rule": "Production-capable paths such as build configuration files are never excluded by pattern alone. A pinned path is excluded only at the recorded target content; a candidate whose pinned file diverges from that blob fails the measurement and requires Issue-owned re-review before the pin or its owning bridge is updated.",
     "binary_paths": "Git binary numstat records are retained through classification. An explicitly excluded binary contributes one excluded file and zero line counts; a binary path that would be counted fails the measurement.",
     "comparison_rule": "Growth is a positive delta in counted files, additions, or deletions. It requires review and an Issue-owned rationale; it is not a quality score or an automatic regression verdict."
   },
@@ -15,7 +16,8 @@
     "Documentation, specifications, assessments, workflows, repository-contract tooling, test sources, test-only build configuration, generated files, vendored files, and localized resource churn are not production upstream patch surface.",
     "New production modules under project_owned_addition_prefixes are reported separately and do not enter the counted metric.",
     "Base resources, schemas, manifests, and every other non-excluded path must be assigned to an explicit bridge group before the measurement can pass.",
-    "A localized Lawnchair values-* resource is excluded only as translation churn unless that exact path is assigned to a bridge group; the base values/ resource remains counted."
+    "A localized Lawnchair values-* resource is excluded only as translation churn unless that exact path is assigned to a bridge group; the base values/ resource remains counted.",
+    "Extensions and build paths that could carry a production change (images, YAML configuration, build.gradle, dependency catalogs) are never excluded by pattern alone. Known non-production changes to such paths are pinned to their exact recorded content and fail closed on divergence."
   ],
   "explicit_exclusions": {
     "prefixes": [
@@ -29,19 +31,21 @@
       "lawnchair/res/values-"
     ],
     "suffixes": [
-      ".md",
-      ".png",
-      ".jpg",
-      ".webp",
-      ".svg",
-      ".yml",
-      ".yaml"
+      ".md"
     ],
     "paths": [
-      ".gitignore",
-      "build.gradle",
-      "gradle/libs.versions.toml"
+      ".gitignore"
     ]
+  },
+  "pinned_content_exclusions": {
+    "build.gradle": {
+      "blob_sha256_git": "65827d0c56ff8ccdd4db1cbd912f2f14925f5932",
+      "reason": "Root Gradle build script differs from upstream only in test-only and tooling-only build configuration at this baseline; any further edit requires ownership review."
+    },
+    "gradle/libs.versions.toml": {
+      "blob_sha256_git": "b48958ada4f9bc42dfdb5aeea48cb4bb2ad73d30",
+      "reason": "Version catalog changes at this baseline are consumed by project-owned organizer tooling and tests only; any further edit requires ownership review per AGENTS.md dependency policy."
+    }
   },
   "project_owned_addition_prefixes": [
     "lawnchair/src/app/lawnchair/organizer/",

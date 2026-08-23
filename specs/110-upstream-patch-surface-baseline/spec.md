@@ -104,6 +104,20 @@ When the measurement runs
 Then the bridge assignment takes precedence and the path is counted with that
 responsibility rather than hidden by the broad exclusion.
 
+### Scenario: Re-review a diverging pinned build change
+
+Given a production-capable path such as the root Gradle build script or the
+dependency catalog is recorded as a content-pinned known non-production change
+
+When the measured file content no longer matches the Git blob recorded for the
+target commit
+
+Then the measurement exits non-zero and names the diverging path as requiring
+ownership review
+
+And it does not exclude or count the change until an owning Issue accepts a
+new pin or assigns a bridge responsibility.
+
 ### Scenario: Encounter a binary change
 
 Given Git reports a changed path with binary `-/-` numstat values
@@ -192,6 +206,11 @@ overwrite this record. [1]
   before merge review. Growth over the previous capture comes from reviewed
   merges #114/#121/#118-#122, and `DbDowngradeHelper.java` joined the layout
   schema and recovery bridge group through #118.
+- 2026-08-23: Review correction makes exclusion fail-closed for
+  production-capable paths. Image and YAML suffixes are no longer global
+  exclusions, and known non-production changes to `build.gradle` /
+  `gradle/libs.versions.toml` are content pins that fail on divergence instead
+  of pattern-based exclusions.
 
 ## References
 

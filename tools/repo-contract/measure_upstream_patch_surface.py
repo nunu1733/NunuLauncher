@@ -146,6 +146,19 @@ def path_exists_at(revision: str, path: str, *, root: Path = ROOT) -> bool:
     return result.returncode == 0
 
 
+def blob_id_at(revision: str, path: str, *, root: Path = ROOT) -> str | None:
+    """Return the Git blob SHA of a path's content at a local commit, or None."""
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", f"{revision}:{path}"],
+        cwd=root,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
 def is_explicitly_excluded(path: str, exclusions: Mapping[str, object]) -> bool:
     """Return whether a path matches a documented non-production exclusion."""
     exact_paths = tuple(str(value) for value in exclusions.get("paths", []))
@@ -174,31 +187,49 @@ def classify_paths(
     project_owned_prefixes: Sequence[str],
     exclusions: Mapping[str, object],
     groups: Iterable[Mapping[str, object]],
+    pinned_exclusions: Mapping[str, object] | None = None,
+    target: str = "",
     root: Path = ROOT,
 ) -> list[ClassifiedPath]:
-    """Classify all changes and fail if a non-excluded path lacks an owner."""
+    """Classify all changes and fail if a non-excluded path lacks an owner.
+
+    Classification precedence is fail-closed for production-capable paths:
+    an explicit bridge assignment outranks every exclusion; a content-pinned
+    known non-production change is honored only while the file still matches
+    the recorded Git blob at the target commit; structural and broad explicit
+    exclusions follow. Extensions and build paths that could carry production
+    changes must never be excluded by pattern alone.
+    """
     index = group_index(groups)
+    pins = {
+        path: str(value["blob_sha256_git"]) if isinstance(value, Mapping) else str(value)
+        for path, value in dict(pinned_exclusions or {}).items()
+    }
     classified: list[ClassifiedPath] = []
     missing: list[str] = []
+    diverged_pins: list[str] = []
     for change in changes:
         group_id = index.get(change.path)
-        # An explicit bridge assignment is stronger than a broad exclusion
-        # such as values-* translation churn. This lets the inventory retain
-        # organizer-specific localized resources while leaving unrelated
-        # translation churn explicitly excluded.
-        if group_id is None and is_explicitly_excluded(change.path, exclusions):
-            classified.append(ClassifiedPath(change, "explicit exclusion", None))
-            continue
-        existed_upstream = path_exists_at(upstream, change.path, root=root)
         if group_id is not None:
             if change.is_binary:
                 raise MeasurementError(
                     "counted bridge path is binary and must be explicitly excluded or "
                     f"assigned a text metric: {change.path}"
                 )
-            category = "upstream-file patch" if existed_upstream else "bridge addition"
+            category = "upstream-file patch" if path_exists_at(upstream, change.path, root=root) else "bridge addition"
             classified.append(ClassifiedPath(change, category, group_id))
             continue
+        pin = pins.get(change.path)
+        if pin is not None:
+            if target and blob_id_at(target, change.path, root=root) == str(pin):
+                classified.append(ClassifiedPath(change, "explicit exclusion", None))
+                continue
+            diverged_pins.append(change.path)
+            continue
+        if is_explicitly_excluded(change.path, exclusions):
+            classified.append(ClassifiedPath(change, "explicit exclusion", None))
+            continue
+        existed_upstream = path_exists_at(upstream, change.path, root=root)
         project_owned_addition = (
             change.status == "A"
             and not existed_upstream
@@ -208,13 +239,24 @@ def classify_paths(
             classified.append(ClassifiedPath(change, "project-owned addition", None))
             continue
         missing.append(change.path)
-    if missing:
-        lines = "\n".join(f"  - {path}" for path in sorted(missing))
-        raise MeasurementError(
-            "changed path is neither explicitly excluded, project-owned, nor assigned to a bridge responsibility:\n"
-            f"{lines}\nAdd the path to docs/assessment/upstream-patch-surface-baseline.json "
-            "with an owning bridge group, or document an explicit non-production exclusion."
-        )
+    if missing or diverged_pins:
+        lines: list[str] = []
+        if diverged_pins:
+            lines.append(
+                "content-pinned non-production change no longer matches the recorded baseline "
+                "content and requires ownership review:"
+            )
+            lines.extend(f"  - {path}" for path in sorted(diverged_pins))
+        if missing:
+            lines.append(
+                "changed path is neither explicitly excluded, project-owned, nor assigned to a bridge responsibility:"
+            )
+            lines.extend(f"  - {path}" for path in sorted(missing))
+            lines.append(
+                "Add the path to docs/assessment/upstream-patch-surface-baseline.json "
+                "with an owning bridge group, or document an explicit non-production exclusion."
+            )
+        raise MeasurementError("\n".join(lines))
     return classified
 
 
@@ -432,6 +474,7 @@ def load_baseline(path: Path) -> Mapping[str, object]:
         "main_commit",
         "project_owned_addition_prefixes",
         "explicit_exclusions",
+        "pinned_content_exclusions",
         "bridge_groups",
         "expected_measurement",
     }
@@ -474,6 +517,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             project_owned_prefixes=tuple(baseline["project_owned_addition_prefixes"]),  # type: ignore[arg-type]
             exclusions=baseline["explicit_exclusions"],  # type: ignore[arg-type]
             groups=baseline["bridge_groups"],  # type: ignore[arg-type]
+            pinned_exclusions=baseline["pinned_content_exclusions"],  # type: ignore[arg-type]
+            target=target,
         )
         report = aggregate(classified, baseline["bridge_groups"])  # type: ignore[arg-type]
         actual = expected_measurement_from(classified, report)
