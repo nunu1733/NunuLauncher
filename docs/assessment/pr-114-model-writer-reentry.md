@@ -7,7 +7,7 @@ Machine-checked fields:
 
 - Auditor: independent ZCode session (subagent), not the implementing session
 - Audit date: 2026-08-23
-- Head SHA: `74e2f593242a72dfbd6d3ae23b9d266bb83be629`
+- Head SHA: 74e2f593242a72dfbd6d3ae23b9d266bb83be629
 - CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32617773591 — verified via GitHub API `actions/runs/32617773591`: `event=pull_request`, `head_sha=74e2f593242a72dfbd6d3ae23b9d266bb83be629` (identical to `gh pr view 114 --json headRefOid`), `pull_requests=[114]`, `status=completed`, `conclusion=success`. Jobs API for this run: all 11 jobs `success`, including `organizer-instrumentation-shared-writer-tests` (`success`, executed — job step "Run shared-writer coordinator instrumentation (API 36 / Platform 36.1)" succeeded; only its `if: failure()` artifact-upload step was skipped) and `final-status`.
 - Criteria: specs/60-executor-writer-admission-audit/spec.md AC-06 ("Nested `SQLiteTransaction` through `ModelDbController` commits/rolls back as one unit; inner close/failure does not release the outer lease early"); specs/58-serialize-runtime-restores/spec.md AC-1 (one restore-family lease held across the window) and AC-3 (ordinary model/provider writes cannot enter a held window). Issue #113 has no spec directory; its own "Regression evidence / acceptance criteria" checklist items are mapped individually below against these accepted specs governing the touched coordinator seam.
 
@@ -75,7 +75,9 @@ Read directly at HEAD, not from the diff only:
   nested close/failure unwinding, and a competing-thread writer that must stay
   blocked until outer close).
 
-## Issue #113 acceptance checklist mapping
+## Criteria check
+
+Issue #113 acceptance checklist mapping (executed by this audit)
 
 Evidence marked "(my run)" below was executed by me personally on the audited head
 in the environment listed under Executed test surface.
@@ -145,7 +147,9 @@ repos/nunu1733/NunuLauncher/pulls/114` and `gh pr view`, body updated_at
 2026-08-23T04:23:53Z). Merging as-is would auto-close issue #113 while its device
 acceptance checklist is unfinished. See Finding F0.
 
-## Executed test surface (this audit)
+## Executed test surface
+
+Commands below were executed by this audit.
 
 All commands re-executed personally on head `74e2f593242a72dfbd6d3ae23b9d266bb83be629`
 (JDK 21 `/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`,
