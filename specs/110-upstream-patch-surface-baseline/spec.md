@@ -104,19 +104,34 @@ When the measurement runs
 Then the bridge assignment takes precedence and the path is counted with that
 responsibility rather than hidden by the broad exclusion.
 
-### Scenario: Re-review a diverging pinned build change
+### Scenario: Re-review a diverging pinned change
 
-Given a production-capable path such as the root Gradle build script or the
-dependency catalog is recorded as a content-pinned known non-production change
+Given a production-capable path such as the root Gradle build script, the
+dependency catalog, or a known pure translation-churn locale file is recorded as
+a content pin holding its upstream and target Git blobs
 
-When the measured file content no longer matches the Git blob recorded for the
-target commit
+When the measured content of either side no longer matches the recorded pair —
+because an organizer PR edited the file or an upstream rebase changed its
+upstream side
 
 Then the measurement exits non-zero and names the diverging path as requiring
 ownership review
 
 And it does not exclude or count the change until an owning Issue accepts a
-new pin or assigns a bridge responsibility.
+refreshed pin or assigns a bridge responsibility.
+
+### Scenario: Return a new localized production change to ownership review
+
+Given a localized `values-*` string change that is neither assigned to a bridge
+group nor covered by an accepted content pin
+
+When the measurement runs
+
+Then it exits non-zero and names the path instead of treating it as translation
+churn by locale-directory pattern
+
+And accepted pure translation churn remains excluded only through its recorded
+content pins.
 
 ### Scenario: Encounter a binary change
 
@@ -211,6 +226,13 @@ overwrite this record. [1]
   exclusions, and known non-production changes to `build.gradle` /
   `gradle/libs.versions.toml` are content pins that fail on divergence instead
   of pattern-based exclusions.
+- 2026-08-23: Review correction hardens pins against upstream rebases and
+  unowned localized patches. A pin now records the upstream AND target Git blob
+  pair, so a rebase that alters the upstream side returns the change to
+  ownership review, and locale-directory prefixes are replaced by accepted
+  content pins for known pure translation churn; new localized production
+  changes fail closed. `--refresh-pins` re-records reviewed pins after an
+  accepted comparison without changing the pinned path set.
 
 ## References
 

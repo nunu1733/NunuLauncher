@@ -195,16 +195,27 @@ def classify_paths(
 
     Classification precedence is fail-closed for production-capable paths:
     an explicit bridge assignment outranks every exclusion; a content-pinned
-    known non-production change is honored only while the file still matches
-    the recorded Git blob at the target commit; structural and broad explicit
-    exclusions follow. Extensions and build paths that could carry production
-    changes must never be excluded by pattern alone.
+    known non-production change is honored only while the path still matches
+    the recorded upstream AND target Git blobs, so an upstream rebase that
+    alters either side returns the change to ownership review; structural and
+    broad explicit exclusions follow. Extensions, build paths, and localized
+    resource directories that could carry production changes must never be
+    excluded by pattern alone.
     """
     index = group_index(groups)
-    pins = {
-        path: str(value["blob_sha256_git"]) if isinstance(value, Mapping) else str(value)
-        for path, value in dict(pinned_exclusions or {}).items()
-    }
+    pins = {}
+    for path, value in dict(pinned_exclusions or {}).items():
+        if not isinstance(value, Mapping):
+            raise MeasurementError(f"content pin must record upstream and target blobs: {path}")
+        try:
+            pins[path] = (
+                str(value["upstream_blob_sha256_git"]),
+                str(value["target_blob_sha256_git"]),
+            )
+        except KeyError as error:
+            raise MeasurementError(
+                f"content pin is missing a recorded blob SHA: {path}"
+            ) from error
     classified: list[ClassifiedPath] = []
     missing: list[str] = []
     diverged_pins: list[str] = []
@@ -221,7 +232,12 @@ def classify_paths(
             continue
         pin = pins.get(change.path)
         if pin is not None:
-            if target and blob_id_at(target, change.path, root=root) == str(pin):
+            recorded_upstream_blob, recorded_target_blob = pin
+            if (
+                target
+                and blob_id_at(upstream, change.path, root=root) == recorded_upstream_blob
+                and blob_id_at(target, change.path, root=root) == recorded_target_blob
+            ):
                 classified.append(ClassifiedPath(change, "explicit exclusion", None))
                 continue
             diverged_pins.append(change.path)
@@ -243,8 +259,8 @@ def classify_paths(
         lines: list[str] = []
         if diverged_pins:
             lines.append(
-                "content-pinned non-production change no longer matches the recorded baseline "
-                "content and requires ownership review:"
+                "content-pinned non-production change does not match the recorded upstream and "
+                "target content pair and requires ownership review:"
             )
             lines.extend(f"  - {path}" for path in sorted(diverged_pins))
         if missing:
@@ -359,6 +375,37 @@ def expected_metrics(baseline: Mapping[str, object]) -> Mapping[str, object]:
         return baseline["expected_measurement"]  # type: ignore[return-value]
     except KeyError as error:
         raise MeasurementError("baseline file has no expected_measurement section") from error
+
+
+def refresh_content_pins(
+    pins: Mapping[str, object], *, upstream: str, target: str, root: Path = ROOT
+) -> dict[str, object]:
+    """Recompute the upstream/target blob pair for each reviewed pinned path.
+
+    The pinned path set itself is never changed here: adding or removing a
+    pinned path is an ownership-review decision made in the checked-in
+    inventory. This helper only re-records the accepted content of the same
+    reviewed paths after a candidate comparison was accepted.
+    """
+    refreshed: dict[str, object] = {}
+    for path in sorted(pins):
+        upstream_blob = blob_id_at(upstream, path, root=root)
+        target_blob = blob_id_at(target, path, root=root)
+        if upstream_blob is None or target_blob is None:
+            raise MeasurementError(
+                f"pinned path does not exist at both commits: {path}"
+            )
+        reason = ""
+        if isinstance(pins[path], Mapping):
+            reason = str(pins[path].get("reason", ""))
+        entry: dict[str, object] = {
+            "upstream_blob_sha256_git": upstream_blob,
+            "target_blob_sha256_git": target_blob,
+        }
+        if reason:
+            entry["reason"] = reason
+        refreshed[path] = entry
+    return refreshed
 
 
 def exact_baseline_mismatches(
@@ -500,6 +547,12 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         action="store_true",
         help="print the exact-measurement JSON fragment for a reviewed baseline update",
     )
+    parser.add_argument(
+        "--refresh-pins",
+        action="store_true",
+        help="print the pinned_content_exclusions fragment with each reviewed path's "
+        "upstream/target blob pair recomputed at the given commits; never changes the pinned path set",
+    )
     return parser.parse_args(argv)
 
 
@@ -510,6 +563,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         upstream = require_commit(args.upstream or str(baseline["upstream_commit"]))
         target = require_commit(args.target or str(baseline["main_commit"]))
         ensure_ancestor(upstream, target)
+        if args.refresh_pins:
+            print(
+                json.dumps(
+                    refresh_content_pins(
+                        baseline["pinned_content_exclusions"],  # type: ignore[arg-type]
+                        upstream=upstream,
+                        target=target,
+                    ),
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return 0
         changes = changed_paths(upstream, target)
         classified = classify_paths(
             changes,

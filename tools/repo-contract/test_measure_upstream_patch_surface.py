@@ -9,7 +9,7 @@ import sys
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from unittest.mock import ANY, patch
+from unittest.mock import patch
 
 SCRIPT = Path(__file__).with_name("measure_upstream_patch_surface.py")
 SPEC = importlib.util.spec_from_file_location("patch_surface", SCRIPT)
@@ -74,10 +74,21 @@ class PatchSurfaceMeasurementTest(unittest.TestCase):
         self.assertFalse(patch_surface.is_explicitly_excluded("crowdin.yml", exclusions))
         self.assertTrue(patch_surface.is_explicitly_excluded("docs/readme.md", exclusions))
 
-    def test_pinned_content_change_is_excluded_while_blob_matches(self) -> None:
+    def test_pinned_content_change_is_excluded_while_blob_pair_matches(self) -> None:
         changes = [patch_surface.ChangedPath("M", "build.gradle", 3, 1)]
-        pins = {"build.gradle": {"blob_sha256_git": "blob-1"}}
-        with patch.object(patch_surface, "blob_id_at", return_value="blob-1") as blob_lookup:
+        pins = {
+            "build.gradle": {
+                "upstream_blob_sha256_git": "up-blob",
+                "target_blob_sha256_git": "target-blob",
+            }
+        }
+        with patch.object(
+            patch_surface,
+            "blob_id_at",
+            side_effect=lambda revision, path, root=None: (
+                "up-blob" if revision == "upstream" else "target-blob"
+            ),
+        ) as blob_lookup:
             classified = patch_surface.classify_paths(
                 changes,
                 upstream="upstream",
@@ -89,16 +100,44 @@ class PatchSurfaceMeasurementTest(unittest.TestCase):
             )
 
         self.assertEqual("explicit exclusion", classified[0].category)
-        blob_lookup.assert_called_once_with("target", "build.gradle", root=ANY)
+        self.assertEqual(2, blob_lookup.call_count)
 
-    def test_diverging_pinned_content_requires_ownership_review(self) -> None:
-        changes = [
-            patch_surface.ChangedPath("M", "build.gradle", 3, 1),
-            patch_surface.ChangedPath("M", "gradle/libs.versions.toml", 2, 0),
-        ]
+    def test_upstream_side_pin_divergence_requires_ownership_review(self) -> None:
+        changes = [patch_surface.ChangedPath("M", "build.gradle", 3, 1)]
         pins = {
-            "build.gradle": {"blob_sha256_git": "blob-1"},
-            "gradle/libs.versions.toml": {"blob_sha256_git": "catalog-1"},
+            "build.gradle": {
+                "upstream_blob_sha256_git": "up-blob",
+                "target_blob_sha256_git": "target-blob",
+            }
+        }
+        # A rebase moves the upstream side onto a new content revision while the
+        # candidate target still matches the recorded target blob. The measured
+        # patch is no longer the reviewed one and must not be silently excluded.
+        with patch.object(
+            patch_surface,
+            "blob_id_at",
+            side_effect=lambda revision, path, root=None: (
+                "rebased-up-blob" if revision == "upstream" else "target-blob"
+            ),
+        ):
+            with self.assertRaisesRegex(patch_surface.MeasurementError, "content-pinned"):
+                patch_surface.classify_paths(
+                    changes,
+                    upstream="upstream",
+                    project_owned_prefixes=(),
+                    exclusions={"prefixes": [], "suffixes": [], "paths": []},
+                    groups=[],
+                    pinned_exclusions=pins,
+                    target="target",
+                )
+
+    def test_target_side_pin_divergence_requires_ownership_review(self) -> None:
+        changes = [patch_surface.ChangedPath("M", "build.gradle", 3, 1)]
+        pins = {
+            "build.gradle": {
+                "upstream_blob_sha256_git": "up-blob",
+                "target_blob_sha256_git": "target-blob",
+            }
         }
         with patch.object(patch_surface, "blob_id_at", return_value="changed-blob"):
             with self.assertRaisesRegex(patch_surface.MeasurementError, "content-pinned") as captured:
@@ -112,9 +151,21 @@ class PatchSurfaceMeasurementTest(unittest.TestCase):
                     target="target",
                 )
 
-        message = str(captured.exception)
-        self.assertIn("build.gradle", message)
-        self.assertIn("gradle/libs.versions.toml", message)
+        self.assertIn("build.gradle", str(captured.exception))
+
+    def test_incomplete_pin_schema_is_rejected(self) -> None:
+        changes = [patch_surface.ChangedPath("M", "build.gradle", 3, 1)]
+        pins = {"build.gradle": {"target_blob_sha256_git": "target-blob"}}
+        with self.assertRaisesRegex(patch_surface.MeasurementError, "missing a recorded blob"):
+            patch_surface.classify_paths(
+                changes,
+                upstream="upstream",
+                project_owned_prefixes=(),
+                exclusions={"prefixes": [], "suffixes": [], "paths": []},
+                groups=[],
+                pinned_exclusions=pins,
+                target="target",
+            )
 
     def test_unowned_production_asset_change_fails_closed_without_pattern_exclusion(self) -> None:
         changes = [patch_surface.ChangedPath("M", "res/drawable/launcher.webp", 0, 0)]
@@ -127,6 +178,65 @@ class PatchSurfaceMeasurementTest(unittest.TestCase):
                     exclusions={"prefixes": [], "suffixes": [], "paths": []},
                     groups=[],
                 )
+
+    def test_unpinned_localized_change_fails_closed_without_locale_prefix_exclusion(self) -> None:
+        changes = [
+            patch_surface.ChangedPath("M", "lawnchair/res/values-fr-rFR/strings.xml", 6, 0),
+        ]
+        # No locale-directory prefix may remain in the structural exclusions;
+        # an organizer-specific translation added to a new or existing locale
+        # without a bridge group or accepted pin is an unowned production bridge.
+        exclusions = {
+            "prefixes": [".github/", "docs/", "specs/", "tests/", "tools/"],
+            "suffixes": [".md"],
+            "paths": [".gitignore"],
+        }
+        with patch.object(patch_surface, "path_exists_at", return_value=True):
+            with self.assertRaisesRegex(patch_surface.MeasurementError, "neither explicitly excluded"):
+                patch_surface.classify_paths(
+                    changes,
+                    upstream="upstream",
+                    project_owned_prefixes=(),
+                    exclusions=exclusions,
+                    groups=[],
+                )
+
+    def test_refresh_content_pins_recomputes_pairs_without_changing_the_path_set(self) -> None:
+        pins = {
+            "b.gradle": {
+                "upstream_blob_sha256_git": "old-up",
+                "target_blob_sha256_git": "old-target",
+                "reason": "tooling-only change",
+            },
+            "a.xml": {
+                "upstream_blob_sha256_git": "old-up",
+                "target_blob_sha256_git": "old-target",
+            },
+        }
+        blobs = {("new-up", "b.gradle"): "new-up", ("new-target", "b.gradle"): "new-target"}
+        with patch.object(
+            patch_surface,
+            "blob_id_at",
+            side_effect=lambda revision, path, root=None: blobs.get((revision, path), f"blob-{path}-{revision}"),
+        ):
+            refreshed = patch_surface.refresh_content_pins(pins, upstream="new-up", target="new-target")
+
+        self.assertEqual(["a.xml", "b.gradle"], list(refreshed))
+        self.assertEqual(
+            {
+                "upstream_blob_sha256_git": "blob-a.xml-new-up",
+                "target_blob_sha256_git": "blob-a.xml-new-target",
+            },
+            refreshed["a.xml"],
+        )
+        self.assertEqual("tooling-only change", refreshed["b.gradle"]["reason"])
+        self.assertEqual("new-up", refreshed["b.gradle"]["upstream_blob_sha256_git"])
+
+    def test_refresh_content_pins_rejects_a_path_missing_at_either_commit(self) -> None:
+        pins = {"gone.xml": {"upstream_blob_sha256_git": "u", "target_blob_sha256_git": "t"}}
+        with patch.object(patch_surface, "blob_id_at", return_value=None):
+            with self.assertRaisesRegex(patch_surface.MeasurementError, "does not exist at both commits"):
+                patch_surface.refresh_content_pins(pins, upstream="upstream", target="target")
 
     def test_binary_numstat_is_retained_until_classification(self) -> None:
         with patch.object(

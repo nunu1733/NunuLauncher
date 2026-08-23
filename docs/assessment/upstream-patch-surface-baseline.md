@@ -27,16 +27,18 @@ The measurement begins with **every path** in `git diff --no-renames` between th
 fixed upstream commit and a target commit. It then applies the classification
 rules recorded in the machine-readable inventory. An exact bridge-group
 assignment takes precedence over every exclusion, so an organizer-specific
-localized resource remains visible. A known non-production change to a
-production-capable path such as the root Gradle build files is excluded only as
-a **content pin**, honored while the file still matches its recorded Git blob;
-any other edit to that path fails closed for ownership review instead of being
-silently absorbed. Remaining explicit non-production exclusions are structural
-only — documentation, specification, workflow, repository-tooling, test,
-generated, and vendored trees — plus localized translation churn. A base
-resource, schema, manifest, image asset, YAML configuration, or other
-non-excluded path is counted when it existed upstream, or when a newly added
-file outside a project-owned module is explicitly assigned to one
+localized resource remains visible. Known non-production changes to
+production-capable paths — the root Gradle build files and pure upstream/Crowdin
+translation churn under localized `values-*` directories — are excluded only as
+**content pins**, honored while both sides of the patch still match their
+recorded upstream and target Git blobs. An organizer PR that edits such a file,
+or an upstream rebase that changes its upstream side, therefore fails closed for
+ownership review instead of being silently absorbed. Remaining explicit
+non-production exclusions are structural only — documentation, specification,
+workflow, repository-tooling, test, generated, and vendored trees. A base
+resource, schema, manifest, image asset, YAML configuration, localized string
+change, or other non-excluded path is counted when it existed upstream, or when
+a newly added file outside a project-owned module is explicitly assigned to one
 bridge-responsibility group. For every counted text path, the measurement
 reports Git's no-rename additions and deletions.
 
@@ -45,8 +47,8 @@ reports Git's no-rename additions and deletions.
 | Existing Lawnchair/Launcher3 production path, including base resources and schemas | Counted and assigned to one bridge group | It is a direct upstream-file patch subject to rebase/conflict cost. |
 | New bridge file outside a project-owned prefix | Counted and assigned to one bridge group | The bridge is project-specific but extends an upstream-owned source area. |
 | New `lawnchair/src/app/lawnchair/organizer/` or `migration/` source file | Reported separately; not counted | These are the deep project-owned modules intended by the design. [2] |
-| Structurally non-production trees (documents, specs, assessments, workflows, repository tooling, tests, generated/vendor churn) and localized `lawnchair/res/values-*` resources without a bridge assignment | Explicitly excluded and reported separately | They are not production upstream patch surface; the base `values/strings.xml` remains counted, while an organizer-specific localized path can be listed in its bridge group. |
-| Known non-production change to a production-capable path (root `build.gradle`, `gradle/libs.versions.toml`) | Excluded only while the file matches its recorded Git blob (content pin) | Pattern-based exclusion would hide future production patches; a diverging pinned file fails the measurement until an owning Issue reviews and re-records it. |
+| Structurally non-production trees (documents, specs, assessments, workflows, repository tooling, tests, generated/vendor churn) | Explicitly excluded and reported separately | They are not production upstream patch surface; the base `values/strings.xml` remains counted, while an organizer-specific localized path can be listed in its bridge group. |
+| Known non-production change to a production-capable path (root `build.gradle`, `gradle/libs.versions.toml`) and known pure translation churn under localized `values-*` directories | Excluded only while both sides match the recorded upstream and target Git blobs (content pin) | Pattern-based exclusion would hide future production patches: a rebase that changes the upstream side, or a new organizer-specific translation in any locale. Any divergence fails the measurement until an owning Issue reviews and re-records it. |
 | Explicitly excluded binary path | Excluded as one file with zero line counts | Git reports binary numstat as `-/-`; classification must still reach the exclusion rule. |
 | Binary path that would otherwise be counted | Measurement failure | The metric has no portable line count for a counted binary; it must be explicitly excluded or reviewed as a different metric. |
 | A changed non-excluded path with no bridge owner | Measurement failure | An unowned bridge must be split to an owning Issue before it can be accepted. |
@@ -110,14 +112,28 @@ python3 tools/repo-contract/measure_upstream_patch_surface.py \
 
 The final command first rejects a candidate upstream commit that is not an
 ancestor of the target. It then fails for a changed non-excluded path that lacks
-a bridge owner, for a content-pinned build file whose bytes no longer match the
-recorded blob at the target, or when counted files, additions, or deletions grow
-beyond this accepted baseline. `--verify` additionally requires the exact
-recorded target, path-set digest, per-group path-set digest and metrics,
-project-owned totals, and explicit-exclusion totals; equal grand totals cannot
-mask path or responsibility substitution. A smaller or equal candidate total
-passes the mechanical comparison, but reviewers must still examine responsibility
-changes, deletions, and any semantic safety impact.
+a bridge owner, for a content-pinned file whose upstream or target bytes no
+longer match the recorded pair at the measured commits, or when counted files,
+additions, or deletions grow beyond this accepted baseline. `--verify`
+additionally requires the exact recorded target, path-set digest, per-group
+path-set digest and metrics, project-owned totals, and explicit-exclusion
+totals; equal grand totals cannot mask path or responsibility substitution. A
+smaller or equal candidate total passes the mechanical comparison, but reviewers
+must still examine responsibility changes, deletions, and any semantic safety
+impact.
+
+After a candidate comparison is accepted — for example an upstream sync — the
+content of the already-reviewed pinned paths can be re-recorded mechanically:
+
+```bash
+python3 tools/repo-contract/measure_upstream_patch_surface.py \
+  --upstream <accepted-upstream-commit> --target <accepted-target-commit> --refresh-pins
+```
+
+This prints the `pinned_content_exclusions` fragment with fresh upstream/target
+blob pairs for exactly the reviewed path set; it never adds or removes pins.
+Adding, removing, or bridge-assigning a pinned path remains a manual, reviewed
+inventory edit backed by an owning Issue.
 
 Binary changes are retained until classification. A binary path matching an
 explicit exclusion is reported as one excluded file with zero additions and

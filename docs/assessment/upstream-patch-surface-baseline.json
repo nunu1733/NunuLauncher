@@ -7,17 +7,17 @@
   "metric": {
     "counted_paths": "Every changed repository path in git diff --no-renames upstream_commit..target except an explicit non-production exclusion or a new project-owned addition. Each remaining path must be assigned to exactly one bridge group.",
     "counted_lines": "The additions and deletions reported by git diff --no-renames --numstat upstream_commit..target for counted paths, including production source, base resources, schemas, manifests, and other non-excluded upstream/bridge paths.",
-    "classification_precedence": "An explicit bridge-group path is counted before every exclusion, so an organizer-owned localized resource remains visible. Next a content-pinned known non-production change is excluded only while the file still matches the recorded Git blob at the target commit; any other edit to that path fails closed for ownership review. Structural or broad explicit exclusions follow, then explicit exclusion precedes project-owned addition.",
-    "pinned_exclusion_rule": "Production-capable paths such as build configuration files are never excluded by pattern alone. A pinned path is excluded only at the recorded target content; a candidate whose pinned file diverges from that blob fails the measurement and requires Issue-owned re-review before the pin or its owning bridge is updated.",
+    "classification_precedence": "An explicit bridge-group path is counted before every exclusion, so an organizer-owned localized resource remains visible. Next a content-pinned known non-production change is excluded only while both sides still match the recorded upstream and target Git blobs, so an upstream rebase that alters either side fails closed for ownership review. Structural explicit exclusions follow, then explicit exclusion precedes project-owned addition.",
+    "pinned_exclusion_rule": "Production-capable paths such as build configuration files and localized resource directories are never excluded by pattern alone. A pinned path is excluded only at its recorded upstream AND target content pair; a candidate whose upstream blob, target blob, or both diverge fails the measurement and requires Issue-owned review before the pin is refreshed or the path joins a bridge group.",
     "binary_paths": "Git binary numstat records are retained through classification. An explicitly excluded binary contributes one excluded file and zero line counts; a binary path that would be counted fails the measurement.",
     "comparison_rule": "Growth is a positive delta in counted files, additions, or deletions. It requires review and an Issue-owned rationale; it is not a quality score or an automatic regression verdict."
   },
   "exclusions": [
-    "Documentation, specifications, assessments, workflows, repository-contract tooling, test sources, test-only build configuration, generated files, vendored files, and localized resource churn are not production upstream patch surface.",
+    "Documentation, specifications, assessments, workflows, repository-contract tooling, test sources, test-only build configuration, generated files, and vendored files are not production upstream patch surface.",
     "New production modules under project_owned_addition_prefixes are reported separately and do not enter the counted metric.",
     "Base resources, schemas, manifests, and every other non-excluded path must be assigned to an explicit bridge group before the measurement can pass.",
-    "A localized Lawnchair values-* resource is excluded only as translation churn unless that exact path is assigned to a bridge group; the base values/ resource remains counted.",
-    "Extensions and build paths that could carry a production change (images, YAML configuration, build.gradle, dependency catalogs) are never excluded by pattern alone. Known non-production changes to such paths are pinned to their exact recorded content and fail closed on divergence."
+    "Known pure translation churn under localized values-* directories is pinned to its recorded upstream/target content pair instead of being excluded by locale-directory prefix; a new localized production change therefore returns to ownership review.",
+    "Extensions, build paths, and localized resource directories that could carry a production change (images, YAML configuration, build.gradle, dependency catalogs, values-*/strings.xml) are never excluded by pattern alone. Known non-production changes to such paths are pinned to their exact recorded content pair and fail closed on divergence."
   ],
   "explicit_exclusions": {
     "prefixes": [
@@ -26,9 +26,7 @@
       "docs/",
       "specs/",
       "tests/",
-      "tools/",
-      "res/values-",
-      "lawnchair/res/values-"
+      "tools/"
     ],
     "suffixes": [
       ".md"
@@ -39,12 +37,299 @@
   },
   "pinned_content_exclusions": {
     "build.gradle": {
-      "blob_sha256_git": "65827d0c56ff8ccdd4db1cbd912f2f14925f5932",
-      "reason": "Root Gradle build script differs from upstream only in test-only and tooling-only build configuration at this baseline; any further edit requires ownership review."
+      "reason": "Root Gradle build script differs from upstream only in test-only and tooling-only build configuration at this baseline; any further edit requires ownership review.",
+      "upstream_blob_sha256_git": "fc3ef62c9a39ab792fc848752b1228011a44afb4",
+      "target_blob_sha256_git": "65827d0c56ff8ccdd4db1cbd912f2f14925f5932"
     },
     "gradle/libs.versions.toml": {
-      "blob_sha256_git": "b48958ada4f9bc42dfdb5aeea48cb4bb2ad73d30",
-      "reason": "Version catalog changes at this baseline are consumed by project-owned organizer tooling and tests only; any further edit requires ownership review per AGENTS.md dependency policy."
+      "reason": "Version catalog changes at this baseline are consumed by project-owned organizer tooling and tests only; any further edit requires ownership review per AGENTS.md dependency policy.",
+      "upstream_blob_sha256_git": "02b9dcd79cd58bcf28bdee1b06007c1831d92de7",
+      "target_blob_sha256_git": "b48958ada4f9bc42dfdb5aeea48cb4bb2ad73d30"
+    },
+    "lawnchair/res/values-af-rZA/strings.xml": {
+      "upstream_blob_sha256_git": "ee20d0016f82a44b5591fe733731520f210221dc",
+      "target_blob_sha256_git": "38e4aae518f4d8f3a70040894fe1dc40678477fa",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-am-rET/strings.xml": {
+      "upstream_blob_sha256_git": "8243d386515be264896b30a97fa0a1ef0945bbe9",
+      "target_blob_sha256_git": "8a0be7a0a89f83202b26fc98d184d2bc52622180",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-ar-rSA/strings.xml": {
+      "upstream_blob_sha256_git": "291ab35dd24b68717f6cae24236a1c8f5e63453a",
+      "target_blob_sha256_git": "44cf14c85f98b8fcac56a289b2460855ce8b6ecb",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-az-rAZ/strings.xml": {
+      "upstream_blob_sha256_git": "158398edfc11976bf55bf5c0db93b610a338d33d",
+      "target_blob_sha256_git": "0431e2b430a1c4506f6a808e5acf56e12288f2f1",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-b+sr+Latn/strings.xml": {
+      "upstream_blob_sha256_git": "3a194b2a044d1337670ea524d64b5a9267e651b7",
+      "target_blob_sha256_git": "d6b5fcbd2fce7cb2ffb89e8795822572aa5eb1e2",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-bn-rBD/strings.xml": {
+      "upstream_blob_sha256_git": "05289dbe5f9d7bd959bcc4a23a568165c4538708",
+      "target_blob_sha256_git": "2ca09b5ea738dda5272437c74bbbf929fe2733ab",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-bs-rBA/strings.xml": {
+      "upstream_blob_sha256_git": "e3db41d30ba73788068506c814aafe76af55c845",
+      "target_blob_sha256_git": "71de958123393aba183b290deac08fbc67d96b3b",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-ca-rES/strings.xml": {
+      "upstream_blob_sha256_git": "936cbea490588bb7a3e202a8d421ecd8f5a5f338",
+      "target_blob_sha256_git": "62e1a8a4522abf9feabf70cd7dd32d2d63c34bc8",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-cs-rCZ/strings.xml": {
+      "upstream_blob_sha256_git": "9c6b499c8e8dd4a7b138dd20a4d175190c31e039",
+      "target_blob_sha256_git": "1f2b72324a07fe34bbd785469b89bebe73d50df6",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-da-rDK/strings.xml": {
+      "upstream_blob_sha256_git": "677590d210b408a518fa7413022ec2d666a3bd14",
+      "target_blob_sha256_git": "b9076570631c43eee1b9f640f2027910387c2bec",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-de-rDE/strings.xml": {
+      "upstream_blob_sha256_git": "6bc1d5e67dd299e2a5e6d21944ccff941a39d434",
+      "target_blob_sha256_git": "dd22527f3dfe872d4dfc316e5054af17761fc4cd",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-el-rGR/strings.xml": {
+      "upstream_blob_sha256_git": "dc0da1ca6d8403fa1c5805678a835cd3d4ef936a",
+      "target_blob_sha256_git": "ecf18de89b1f40159771fd74e8c604c00991d852",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-en-rCA/strings.xml": {
+      "upstream_blob_sha256_git": "04a8b21b61b42bcb3a3ad0d65b08075ad037fcaf",
+      "target_blob_sha256_git": "177c34fc71c76c99977b440ba3daae300ccddb99",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-es-rES/strings.xml": {
+      "upstream_blob_sha256_git": "a8d699a3b26cfcee71de5ceaee52f89a27859e30",
+      "target_blob_sha256_git": "f026b9cc7032c9eb192cbaa016cee99d05481fb6",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-et-rEE/strings.xml": {
+      "upstream_blob_sha256_git": "b029513fcd1788f3b411042db69c84f41064d220",
+      "target_blob_sha256_git": "2b7a342cbb8db4bbfe884ee0d8b088a0bf6d1411",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-fa-rIR/strings.xml": {
+      "upstream_blob_sha256_git": "21eeb0dc34592a2838589c02679d5aa2af772ce2",
+      "target_blob_sha256_git": "500ceafcce22407cfb805656edf954b06c00aeb8",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-fi-rFI/strings.xml": {
+      "upstream_blob_sha256_git": "db2d4dff9f64e6b31b98ec0695c3940513d9d754",
+      "target_blob_sha256_git": "2fef27339ac356b49eb400294adc20001ab48cd9",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-fil-rPH/strings.xml": {
+      "upstream_blob_sha256_git": "03a1f6358b37ec62ef76282b11e8bbfd919b3140",
+      "target_blob_sha256_git": "9a2ccf610410d2f83a0e1187913bd76fbd29d7b0",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-fr-rFR/strings.xml": {
+      "upstream_blob_sha256_git": "bf924659751f0019de65f2aa3edc9c299b48975a",
+      "target_blob_sha256_git": "38dd5831724ebfc27003cd97ea1f0169ce9f792d",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-gl-rES/strings.xml": {
+      "upstream_blob_sha256_git": "23ab3016d90cfb5ed4584c610906bd194c76e94f",
+      "target_blob_sha256_git": "d6d8e4c561585e4664901f6da69ae2b70aa1975f",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-hi-rIN/strings.xml": {
+      "upstream_blob_sha256_git": "f62cbfee830fbd72fd1c7b4bd2e136a163e717d3",
+      "target_blob_sha256_git": "a73230112ca29c578c5436032486b4b1ea97a11e",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-hr-rHR/strings.xml": {
+      "upstream_blob_sha256_git": "87f91e63371110e4839c5298a3412e2186160069",
+      "target_blob_sha256_git": "b6f4919d5309f5059a2985df02570c8749fe4af8",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-hu-rHU/strings.xml": {
+      "upstream_blob_sha256_git": "fc2402e97cb7f77b762dfd6a7e209d12549e5d45",
+      "target_blob_sha256_git": "6d25fa645487e0bb579d33a79aa426ca129b7a84",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-in-rID/strings.xml": {
+      "upstream_blob_sha256_git": "1132add7bb05c8e1fbbbe4559e0a93f2aca6e8c7",
+      "target_blob_sha256_git": "000d349f65a93a6a40e2db196d8f7649a92e5eb9",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-it-rIT/strings.xml": {
+      "upstream_blob_sha256_git": "cd68c9dd7abe7e4427f580c4e255aa81356d39ac",
+      "target_blob_sha256_git": "1e0d25dc4864a5a985970b2d30ff6d406cc6a3b5",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-iw-rIL/strings.xml": {
+      "upstream_blob_sha256_git": "0787db91dc022bf459b09dafe8f0fd3d08ebcdff",
+      "target_blob_sha256_git": "fbe8692312bb1c8b1d9be17266b9e0064421a578",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-ja-rJP/strings.xml": {
+      "upstream_blob_sha256_git": "51c528c417713b83895c5b103d78acc3f03235eb",
+      "target_blob_sha256_git": "3a8ca953c14f863f7f214779cd1880e980d61714",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-ka-rGE/strings.xml": {
+      "upstream_blob_sha256_git": "4327a6f70bc881f951774dc8ec03f012a164f86d",
+      "target_blob_sha256_git": "523663414018d175ba075d97a0fc269d8c9d10da",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-kmr-rTR/strings.xml": {
+      "upstream_blob_sha256_git": "4b7959cdfac072f06211b1161c3dde7ebf6dcf2e",
+      "target_blob_sha256_git": "2646d49184d806f5c3e0940e9ebf14762f3c1562",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-ko-rKR/strings.xml": {
+      "upstream_blob_sha256_git": "0601d50013afdf29ea2e18c0f0390fa7aa791c15",
+      "target_blob_sha256_git": "1f1ac2e7286c09f646093d2a88cb9acd684d028c",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-lt-rLT/strings.xml": {
+      "upstream_blob_sha256_git": "c84a9864448c23cceaf803681dca19396d0f8f21",
+      "target_blob_sha256_git": "60469ba6b69f44142816dfd6dec1e2ab6ccccadd",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-ml-rIN/strings.xml": {
+      "upstream_blob_sha256_git": "41afdb05eeb96a43660ea279888c7658f4b6f31a",
+      "target_blob_sha256_git": "23789463681a7369a0fc5fa1d0cf781f2ae4d8c0",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-mr-rIN/strings.xml": {
+      "upstream_blob_sha256_git": "a89245e2dde05f28c1dbc2f639eab27e652fe482",
+      "target_blob_sha256_git": "3207252a62af78e81cb9fa6918d5776ebd4bf246",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-nl-rNL/strings.xml": {
+      "upstream_blob_sha256_git": "b9f079224cda13e4f1fcdf3956ffee2b43ed47cd",
+      "target_blob_sha256_git": "2e1bce82d7128a39a2ec8c10122ff37931f8079d",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-no-rNO/strings.xml": {
+      "upstream_blob_sha256_git": "aa6653aa11e7ed246fc9065b140d227bd5f371b2",
+      "target_blob_sha256_git": "f503ad2928534868c411be81e67ff8a395ff5a42",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-pl-rPL/strings.xml": {
+      "upstream_blob_sha256_git": "35df23f765f856ed08004c0df689128993df8434",
+      "target_blob_sha256_git": "534bccaaa743900cab66b95190ba3c0096ec47f0",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-pt-rBR/strings.xml": {
+      "upstream_blob_sha256_git": "15d1dd865bb2a890a468a83a0677ab35b9bea7d2",
+      "target_blob_sha256_git": "d8227a809acf880831522b7474bab66d5023d446",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-pt-rPT/strings.xml": {
+      "upstream_blob_sha256_git": "e836acb3c88643a5142db35671f38c14118a7a32",
+      "target_blob_sha256_git": "d53a17d8727497fefd8a41bc7b2c125a0f6720f0",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-ro-rRO/strings.xml": {
+      "upstream_blob_sha256_git": "f360fd89ebcb022c840a730857913050ac2c11a2",
+      "target_blob_sha256_git": "376a23298b59116d77a7db25feda3d19400575e4",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-ru-rRU/strings.xml": {
+      "upstream_blob_sha256_git": "dc44f8285b2f437659845805764dce06646c9900",
+      "target_blob_sha256_git": "afe1214f3213da18a650511e6582471e553777a8",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-sk-rSK/strings.xml": {
+      "upstream_blob_sha256_git": "623d450527b52edb18768a7d944a9d064f2e3c53",
+      "target_blob_sha256_git": "13386ca333f219a40c3af87194680626aeb50728",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-sl-rSI/strings.xml": {
+      "upstream_blob_sha256_git": "a6f01c1ef81abed0900d09162ebf00dfbb21874c",
+      "target_blob_sha256_git": "3463add3f4aa91bc3d2cc8da865931b9beb61477",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-sq-rAL/strings.xml": {
+      "upstream_blob_sha256_git": "c3ae39771da746bef450b909e4bed16d85595e84",
+      "target_blob_sha256_git": "9438cdbdd60671304f62ee49581f97a9c4ec8482",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-sr/strings.xml": {
+      "upstream_blob_sha256_git": "53ba665066c16e93dc2342d2334de64951376d31",
+      "target_blob_sha256_git": "946782aebca5c16b59d6764f4ba3f93e512773ca",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-sv-rSE/strings.xml": {
+      "upstream_blob_sha256_git": "a8c5ae0020718aecbe6027131bf400650292f9a7",
+      "target_blob_sha256_git": "2d514635f8e12b794caad788f4d24991ca5e4f8f",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-sw-rKE/strings.xml": {
+      "upstream_blob_sha256_git": "21c6b250805dcbd722d45d27a965cec0fe2fbbd3",
+      "target_blob_sha256_git": "ac8b00cb98aa1b46c816b70479b8f0f6532f1d41",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-ta-rIN/strings.xml": {
+      "upstream_blob_sha256_git": "b59b830e4811924ed094ed65b742681bc21012b0",
+      "target_blob_sha256_git": "ab836e63a94e334d9572c81c66230fb55cf590c4",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-te-rIN/strings.xml": {
+      "upstream_blob_sha256_git": "74688cfd4a8ae656a2f1a16f8df2e3091de46763",
+      "target_blob_sha256_git": "43444b5c3b52fce7e66a62098365441d16529af8",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-th-rTH/strings.xml": {
+      "upstream_blob_sha256_git": "a1dd0c05bb37686fa9ba88468c641c773f944944",
+      "target_blob_sha256_git": "3640f1895e6a791760327d3c6921a686a1c0be70",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-tr-rTR/strings.xml": {
+      "upstream_blob_sha256_git": "1d0ab7cb51ecca0dc005c330808b1d9dfe713880",
+      "target_blob_sha256_git": "9a0e11058484ff1eb56d2597dececfd974d4a25e",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-uk-rUA/strings.xml": {
+      "upstream_blob_sha256_git": "d6e51dc1c798c38b14b0ca99d557610532775336",
+      "target_blob_sha256_git": "edfb563688aeb679e1da0462342c74ad626c4e6b",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-ur-rIN/strings.xml": {
+      "upstream_blob_sha256_git": "60e3810c9d8165570fd8408cf7eb2072a32dcf10",
+      "target_blob_sha256_git": "b5f48589e938b8cb3e83c6d370190f2a3ec68ae3",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-ur-rPK/strings.xml": {
+      "upstream_blob_sha256_git": "707460a72f5e101248286a415acfc7166d8c3d14",
+      "target_blob_sha256_git": "206a5d46378d48ac2d853b337a4a13bc8709fb67",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-uz-rUZ/strings.xml": {
+      "upstream_blob_sha256_git": "c10b8f35f80e6d0f8c7bab540ed219bfc928735a",
+      "target_blob_sha256_git": "f2d3e934ca15c1d1f3014b629c3e6b2e2bb99051",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-vi-rVN/strings.xml": {
+      "upstream_blob_sha256_git": "5dc47baae257fc1e6435c34cc22d17e1034a3239",
+      "target_blob_sha256_git": "51632f7211462a13da37e9c58110e0e514893344",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-zh-rCN/strings.xml": {
+      "upstream_blob_sha256_git": "8b13d3eb3a6542be331f58c6c28c55303a4fd0dd",
+      "target_blob_sha256_git": "f95e70858590d56a3d29e7f2394384f9540e5b5e",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+    },
+    "lawnchair/res/values-zh-rTW/strings.xml": {
+      "upstream_blob_sha256_git": "95fcdb040ba030f80ef2cb22d770b69d2ff2e519",
+      "target_blob_sha256_git": "b10e482db6f4b64e163dcff6fced0cc8fbf9f658",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
     }
   },
   "project_owned_addition_prefixes": [

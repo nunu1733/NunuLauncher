@@ -38,11 +38,15 @@ are recorded in the machine-readable baseline file.
 
 The tool begins with every changed repository path. An exact bridge assignment
 takes precedence over every exclusion, then a content-pinned known
-non-production change is honored only while the file still matches its recorded
-Git blob at the target, and remaining structural explicit non-production
-exclusions are removed. Production-capable patterns such as image/YAML suffixes
-and the Gradle build files are never excluded by pattern alone; a diverging pin
-fails closed for ownership review. The tool counts a path that existed at
+non-production change is honored only while both sides still match their
+recorded upstream and target Git blobs, and remaining structural explicit
+non-production exclusions are removed. Production-capable patterns such as
+image/YAML suffixes, the Gradle build files, and locale-directory prefixes are
+never excluded by pattern alone; known pure translation churn is pinned per
+locale file, and a pin that diverges on either side fails closed for ownership
+review, so an upstream rebase cannot reuse a stale pin. `--refresh-pins`
+re-records the reviewed path set's blob pairs after an accepted comparison
+without changing which paths are pinned. The tool counts a path that existed at
 the selected upstream commit, or a new file outside a project-owned prefix that
 is explicitly assigned to one bridge group. Base resources, schemas, manifests,
 and other non-excluded files therefore cannot be skipped by a source-extension
@@ -60,8 +64,9 @@ The tool resolves the local upstream and target commits, verifies that upstream
 is an ancestor of target, and reads `git diff --no-renames` name-status and
 numstat output for every changed path. It classifies paths using the checked-in
 inventory, aggregates counts by responsibility, prints the report, and compares
-totals to the accepted baseline. Invalid ancestry or unowned paths fail
-immediately; `--verify` fails for any exact baseline difference, including path
+totals to the accepted baseline. Invalid ancestry, diverging content pins, or
+unowned paths fail immediately; `--verify` fails for any exact baseline
+difference, including path
 set, group assignment, project-owned totals, and explicit-exclusion totals; and
 `--enforce-baseline` fails for positive counted growth.
 
