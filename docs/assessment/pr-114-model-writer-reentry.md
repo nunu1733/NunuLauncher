@@ -246,3 +246,20 @@ audited head.
 6. **[Info] F5 — Harness property.** `DEADLOCK_TIMEOUT_MS = 10_000` converts a
    reintroduced self-deadlock into a bounded per-scenario failure (~10 s) instead of
    a wedged suite; acceptable regression-detection cost.
+
+## Post-audit note 2 (implementing session, 2026-08-23)
+
+Recorded after the re-audit above; auditor text is unchanged.
+
+- F0 resolved: PR body now declares `Closes #113` only after device acceptance
+  completed (verified via API).
+- F1 resolved: on-device acceptance PASSED on Pixel 9a / Android 17 (SDK 37,
+  `google/tegu/tegu:17/CP2A.260805.005/...`) with the release build of commit
+  `413f3bf48d…` (CI run 32619535055). Cold start with a real multi-item folder
+  in the workspace reached a focused+resumed window in 0.45 s (cold) / 0.40 s
+  (repeat); the folder inflated from favorites at both starts (the exact
+  `Folder.bind` deadlock path); drawer, long-press, and folder open/close all
+  verified via UI dumps; `data_app_anr` dropbox delta 0. Full evidence:
+  issue #113 verification comment (2026-08-23). This device verification was
+  performed by a separate agent session, not the implementing session.
+- F2/F4 remain open on issue #115 and #113 respectively.
