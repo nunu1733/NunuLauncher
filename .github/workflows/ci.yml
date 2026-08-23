@@ -162,8 +162,9 @@ jobs:
   # Source-only: run the organizer JVM unit/contract/property suite. The
   # --tests filter covers app.lawnchair.organizer.planning.* and the pure
   # application tests, so new tests under that package tree join this gate
-  # automatically. The focused real-adapter instrumentation seam is verified
-  # independently below on an emulator.
+  # automatically. The preference navigation retention tests (Issue #116) are
+  # listed explicitly. The focused real-adapter instrumentation seam is
+  # verified independently below on an emulator.
   organizer-unit-tests:
     needs: changes
     if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
@@ -180,7 +181,7 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v5
       - name: Run organizer unit tests
-        run: ./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'
+        run: ./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*' --tests 'app.lawnchair.ui.preferences.navigation.*'
       - name: Upload test reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
@@ -197,6 +198,105 @@ jobs:
   # Keep each focused suite in an independent emulator job. This preserves the
   # clean-state evidence required by Issues #52/#53 while removing the former
   # serial critical path; the jobs start together after the shared changes gate.
+  #
+  # Shared-writer / coordinator seam lane: the Issue #113 MODEL_WRITER
+  # self-deadlock regression and the lease admission/FIFO/Binder suites run
+  # permanently here on their own clean API 36 emulator. They exercise the
+  # model DB write seam only (isolated fixture DBs) and stay independent from
+  # the app-state-heavy UI lanes below.
+  organizer-instrumentation-shared-writer-tests:
+    needs: changes
+    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run shared-writer coordinator instrumentation (API 36 / Platform 36.1)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: >-
+            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
+            -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.ModelWriterTransactionReentryTest,com.android.launcher3.organizer.LayoutWriteCoordinatorTest,com.android.launcher3.organizer.BinderOperationFutureTest
+      - name: Upload shared-writer instrumentation reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: organizer-instrumentation-shared-writer-reports
+          path: |
+            build/reports/androidTests/connected/**
+            build/outputs/androidTest-results/**
+          retention-days: 7
+          if-no-files-found: warn
+
+  # DB migration transaction-ownership lane: the Issue #118 schema
+  # upgrade/downgrade failure-semantics suites run permanently here on their own
+  # clean API 36 emulator. #115 showed these suites were compile-only while
+  # carrying real production-semantics regressions; they use isolated fixture
+  # DBs and stay independent from the app-state-heavy UI lanes.
+  organizer-instrumentation-db-migration-tests:
+    needs: changes
+    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run DB migration ownership instrumentation (API 36 / Platform 36.1)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: >-
+            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
+            -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.MigrationTransactionOwnershipTest,com.android.launcher3.organizer.DatabaseHelperSchema33Test,com.android.launcher3.organizer.DowngradeSchema33Test,com.android.launcher3.organizer.InactiveGridDbNormalizationTest,com.android.launcher3.organizer.rollback32.Schema32RollbackBinaryTest
+      - name: Upload DB migration instrumentation reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: organizer-instrumentation-db-migration-reports
+          path: |
+            build/reports/androidTests/connected/**
+            build/outputs/androidTest-results/**
+          retention-days: 7
+          if-no-files-found: warn
+
   organizer-instrumentation-api35-tests:
     needs: changes
     if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
@@ -410,6 +510,8 @@ jobs:
       - validate-repo-contract
       - check-style
       - organizer-unit-tests
+      - organizer-instrumentation-shared-writer-tests
+      - organizer-instrumentation-db-migration-tests
       - organizer-instrumentation-api35-tests
       - organizer-instrumentation-issue52-tests
       - organizer-instrumentation-issue99-tests
