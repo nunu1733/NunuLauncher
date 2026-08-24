@@ -3,7 +3,8 @@
 > Status: In progress
 > Issue: [#108](https://github.com/nunu1733/NunuLauncher/issues/108)
 > Requirement: NFR-007
-> Verification target: `51940f3dfc4b9308f7c9e7101c2c7cda81f16da7`
+> Production baseline: `51940f3dfc4b9308f7c9e7101c2c7cda81f16da7`
+> Evidence harness: `032e38816550cf67267ae29801ee8a5230a9e745`
 > Verified: 2026-08-24
 
 ## Purpose and support boundary
@@ -15,27 +16,64 @@ second planning or application path. Every device run uses the production
 cell exercises mutation, `ManualOrganizationRun` through the production layout
 application and recovery module.
 
-The product requirement is Android API 26 through target API 35 because the
-build fixes `minSdk 26` and `targetSdk 35`. API 36.1 is additional forward
-compatibility evidence, not an expansion of the release API range. Lawnchair's
-`device_profiles.xml` declares phone, tablet, and multi-display grids. The
-organizer's accepted device input declares portrait, landscape, two-panel
-portrait, and two-panel landscape orientations. Personal, work, and private
-profiles remain distinct identities under the NFR-002 profile-isolation
-invariant.
+The build fixes `minSdk 26`, `targetSdk 35`, and `compileSdk 36.1`, but these
+values do not by themselves define a closed runtime-support range. `minSdk`
+sets the installable lower API boundary, `targetSdk` selects Android
+compatibility behavior, and `compileSdk` selects the APIs available at build
+time; `targetSdk` is not a maximum runtime API. NFR-007 instead requires the
+device/API surface supported by the adopted Lawnchair revision, but no accepted
+repository source currently closes an upper API boundary. This WIP therefore
+separates evidence from support policy: API 35 has production-input
+Launcher-host evidence; API 36/36.1 has manual, application, onboarding,
+override, and current matrix evidence; API 26 has recovery-inspection-only
+device evidence but no full organizer-host run; and API 27–34 have no justified
+equivalence mapping. No closed upper range is claimed until an accepted product
+or design source defines it.
+
+Lawnchair's `device_profiles.xml` declares phone, tablet, and multi-display
+GridOptions. The organizer's accepted device input declares portrait,
+landscape, two-panel portrait, and two-panel landscape orientations. Personal,
+work, and private profiles remain distinct identities under the NFR-002
+profile-isolation invariant.
 
 ## Compatibility matrix
 
-| Axis | Supported or verified cells | Evidence disposition |
+| Axis | Declared scope | Evidence status |
 |---|---|---|
-| API | API 26–35 supported; API 36.1 supplemental | Boundary execution at API 26 and 35; API 36.1 production runs; intermediate APIs use the min/target boundary equivalence described below. |
+| API | Installable lower boundary API 26; exact adopted-baseline runtime range not yet fixed | API 35 production-input evidence and API 36/36.1 full-flow evidence exist. API 26 has recovery-inspection-only device evidence, not a full organizer-host run. API 27–34 remain unverified; `targetSdk 35` is not treated as an upper bound. |
 | Device | phone; tablet; foldable/multi-display where the adopted Lawnchair profile selects it | Phone, Pixel Tablet, and Pixel 9 Pro Fold launcher-host execution passed. The foldable changed between phone and tablet device types when folded/unfolded. |
-| Orientation | portrait and landscape; two-panel portrait/landscape where selected by the foldable profile | Live phone/tablet/open-foldable portrait and landscape passed. The selected Pixel foldable did not expose a two-panel device profile; that cell remains unverified. |
-| Grid | declared phone 3×3, 4×5, 5×5; tablet 6×5; multi-display `practical` 4×5 | Phone 4×5→3×3 and 4×5→5×5 live changes passed fresh capture and stale/no-write tests. Tablet 6×5 and multi-display remain unverified. |
+| Orientation | portrait and landscape; two-panel portrait/landscape where selected by the foldable profile | Live phone/tablet/open-foldable portrait and landscape passed. Production capture cannot currently emit `TWO_PANEL_*`; [#130](https://github.com/nunu1733/NunuLauncher/issues/130) owns that defect. |
+| GridOption preset | `3_by_3`, `4_by_5`, `5_by_5`, `6_by_5`, and multi-display `practical` | Catalog declarations are listed separately below; they are not presented as the observed runtime dimensions. |
+| Runtime workspace dimensions | Dimensions actually reported by IDP/canonical capture for an executed host | Phone 4×5→3×3 and 4×5→5×5 live changes passed fresh capture and stale/no-write tests. Tablet 6×5 and multi-display remain unverified. |
 | Profile | personal, managed work, private | Real simultaneous-profile execution reproduced a production classification blocker; tracked by [#129](https://github.com/nunu1733/NunuLauncher/issues/129). |
 
 Cells that cannot be executed or mapped to an executed production seam are
 listed as unverified below; omission is not interpreted as support.
+
+### GridOption catalog versus runtime dimensions
+
+`device_profiles.xml` declares named GridOption presets, while
+`DeviceProfileOverrides` stores workspace rows, columns, and hotseat columns as
+independent preferences. The runtime UI permits rows and columns from 3 through
+10, optionally 3 through 20 when the extended-grid flag is enabled, and an
+independent hotseat range from 3 through 10. `getGridName()` uses a ceiling-style
+rows/columns lookup and ignores hotseat, so it is not exact preset-identity
+mapping; `setCurrentGrid()` does write the selected preset's rows, columns, and
+hotseat. Canonical capture records the resolved IDP runtime dimensions. The
+matrix therefore keeps the declared catalog and observed dimensions separate.
+
+| GridOption name | Declared dimensions | Device category |
+|---|---|---|
+| `3_by_3` | 3 columns × 3 rows | phone |
+| `4_by_5` | 4 columns × 5 rows | phone, multi-display |
+| `5_by_5` | 5 columns × 5 rows | phone, multi-display |
+| `6_by_5` | 6 columns × 5 rows | tablet |
+| `practical` | 4 columns × 5 rows, with separate two-panel specs | multi-display |
+
+Executed runtime observations were 4×5 on the clean phone, tablet, and open
+foldable hosts, followed by explicit phone transitions to 3×3 and 5×5 through
+`parseAllGridOptions()` and `setCurrentGrid()`. The GridOption name and current
+workspace dimensions are both recorded; neither is substituted for the other.
 
 ## Executed launcher-host evidence
 
@@ -81,8 +119,11 @@ The posture transition used `adb -s emulator-5564 emu fold`, followed by
 models the fold as a phone↔tablet device-type transition and never exposes
 `TYPE_MULTI_DISPLAY` or `DeviceProfile.isTwoPanels=true`; therefore it cannot
 provide the two-panel cell. The accepted domain type still declares
-`TWO_PANEL_PORTRAIT` and `TWO_PANEL_LANDSCAPE`, so this limitation is recorded
-as **unverified**, not silently reclassified as unsupported.
+`TWO_PANEL_PORTRAIT` and `TWO_PANEL_LANDSCAPE`. Source review also found that
+`LauncherLayoutAdapter.capabilities()` can emit only ordinary portrait or
+landscape even if Launcher selects a two-panel profile. [Issue #130](https://github.com/nunu1733/NunuLauncher/issues/130)
+owns the production mapping and stale/no-write regression. The cell is
+**blocked/unverified**, not silently reclassified as unsupported.
 
 The clean tablet selected a live 4×5 IDP even though the resource catalog also
 declares tablet 6×5. Explicit live 6×5 evidence remains pending and is not
@@ -109,7 +150,7 @@ The AVD ended on the original 4×5 grid and its original Favorites rows.
 
 | Required behavior | Launcher-host evidence |
 |---|---|
-| Stale plan rejection | `ManualOrganizationProductionE2EInstrumentationTest.staleProductionConfirmationDoesNotWrite` mutates the authoritative revision after preview and requires `Stale` with no second write. Grid/orientation-specific evidence is recorded in the executed-cell sections. |
+| Stale plan rejection | `ManualOrganizationProductionE2EInstrumentationTest.staleProductionConfirmationDoesNotWrite` mutates the authoritative revision after preview and requires `Stale` with no second write. Grid-specific transition evidence is recorded above; posture/orientation-transition stale/no-write evidence remains pending under #130. |
 | Lock isolation | `ProductionOrganizationInputInstrumentationTest.productionComposerMapsCanonicalCaptureAndPreservesPageDeviceProfileAvailabilityAndLock` captures a real locked Launcher row and preserves it as a `Preserved` target. |
 | Profile isolation | API 36.1 exposed personal/work/private serials 0/10/11 and canonical capture kept them distinct. Composition of valid work/private rows then failed closed because the classification adapter used a privileged cross-user `PackageManager` query. This is tracked by #129; the existing invalid-profile oracle is not promoted to valid work/private-profile evidence. |
 | No-write failure | Unknown lock and unrepresentable capture tests require only `captureCurrent` and no planner/application/recovery write; stale confirmation preserves the externally changed DB state exactly. |
@@ -143,10 +184,12 @@ unsupported product decision.
 
 ### Remaining unverified cells
 
-- API 26 full organizer-host execution and the API 26→35 boundary-equivalence
-  claim.
+- API 26 full organizer-host execution (separate recovery-inspection-only device
+  evidence exists), API 27–34 evidence/equivalence, and the exact
+  adopted-baseline API support boundary.
 - Explicit live tablet 6×5.
-- A runtime that actually selects Lawnchair `TYPE_MULTI_DISPLAY` / two-panel.
+- A runtime that actually selects Lawnchair `TYPE_MULTI_DISPLAY` / two-panel,
+  after #130 corrects production canonical orientation.
 - Valid multi-profile composition after #129.
 
 ## Reproduction environment and commands
@@ -158,6 +201,7 @@ will be recorded here after the remaining cells complete.
 
 ## Result
 
-In progress and blocked for the supported multi-profile cell by #129. The
-failure is fail-closed and produced no layout write, but NFR-007 and Issue #108
-cannot be marked complete until the valid-profile production path passes.
+In progress and blocked by #129 for the supported multi-profile cell and #130
+for canonical two-panel orientation. The profile failure is fail-closed and
+produced no layout write, but NFR-007 and Issue #108 cannot be marked complete
+until both production paths and the remaining API/grid cells pass.

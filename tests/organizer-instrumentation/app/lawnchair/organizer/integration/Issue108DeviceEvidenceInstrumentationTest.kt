@@ -76,21 +76,24 @@ class Issue108DeviceEvidenceInstrumentationTest {
         val writer = LauncherLayoutAdapter(context, launcher.model.modelDbController, launcher.model)
         val capture = writer.captureCurrent(CaptureId("issue108-host-profile"))
         val device = capture.layoutState.deviceCapabilities
+        val displayInfo = DisplayController.INSTANCE.get(context).info
+        val expectedTwoPanels = displayInfo.deviceType == InvariantDeviceProfile.TYPE_MULTI_DISPLAY
 
         assertEquals(idp.numColumns, device.columns)
         assertEquals(idp.numRows, device.rows)
         assertEquals(idp.numDatabaseHotseatIcons, device.hotseatSlots)
         assertEquals(
-            if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-                app.lawnchair.organizer.application.public.DeviceOrientation.LANDSCAPE
-            } else {
-                app.lawnchair.organizer.application.public.DeviceOrientation.PORTRAIT
+            when {
+                expectedTwoPanels && configuration.orientation == Configuration.ORIENTATION_LANDSCAPE ->
+                    app.lawnchair.organizer.application.public.DeviceOrientation.TWO_PANEL_LANDSCAPE
+                expectedTwoPanels -> app.lawnchair.organizer.application.public.DeviceOrientation.TWO_PANEL_PORTRAIT
+                configuration.orientation == Configuration.ORIENTATION_LANDSCAPE ->
+                    app.lawnchair.organizer.application.public.DeviceOrientation.LANDSCAPE
+                else -> app.lawnchair.organizer.application.public.DeviceOrientation.PORTRAIT
             },
             device.orientation,
         )
 
-        val displayInfo = DisplayController.INSTANCE.get(context).info
-        val expectedTwoPanels = displayInfo.deviceType == InvariantDeviceProfile.TYPE_MULTI_DISPLAY
         var launcherTwoPanels: Boolean? = null
         ActivityScenario.launch(LawnchairLauncher::class.java).use { scenario ->
             scenario.onActivity { activity ->
