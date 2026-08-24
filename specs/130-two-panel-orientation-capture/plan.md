@@ -53,7 +53,7 @@
 | AC-1 / AC-2 | 実multi-display runtimeでのcapture(foldable AVD等)。成立しない場合はspec Test oracle(2): 一致性検証+純粋mapping proofに限定し残余limitationを記録 | emulator + connectedAndroidTest |
 | AC-3 | instrumentation: 非two-panel hostのcaptured orientationが`Configuration.orientation`由来の`PORTRAIT` / `LANDSCAPE`と一致し、authority一致も検証 | API 35 lane |
 | AC-4 | instrumentation: `ProductionOrganizationInputComposer`出力のplanner orientation == captured値 | API 35 lane |
-| AC-5 | instrumentation: orientation O_A→O_B変化後の`apply`が`STALE_REVISION`拒否、`favorites`事前事後一致 | API 35 lane(emulator rotation制御) |
+| AC-5 | instrumentation: orientation O_A→O_B変化後の`apply`が`STALE_REVISION`拒否。適用の無書込みはplan対象行の事前事後一致+marker title不在で検証する(回転中はlauncher本体が無関係行を書込むため全表一致は要求しない) | API 35 lane(emulator rotation制御) |
 | AC-6 | PR audit記録にruntime/harness方式・一致性検証結果・残余limitationを明記 | docs/assessment |
 | AC-7 | `spotlessCheck`、organizer JVM tests、debug build、API 35/36.1 lanes、CI `final-status` | 各command / GitHub Actions |
 | AC-8 | 別sessionによる独立audit記録 | `docs/assessment/pr-<番号>-<slug>.md` |

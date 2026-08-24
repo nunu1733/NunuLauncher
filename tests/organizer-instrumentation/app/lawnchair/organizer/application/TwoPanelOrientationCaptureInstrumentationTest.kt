@@ -16,6 +16,7 @@ import app.lawnchair.LawnchairLauncher
 import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
 import app.lawnchair.organizer.application.public.ApplyAction
 import app.lawnchair.organizer.application.public.ApplyResult
+import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.DeviceOrientation
 import app.lawnchair.organizer.application.public.OptionalText
 import app.lawnchair.organizer.application.public.PreWriteRejection
@@ -29,6 +30,7 @@ import app.lawnchair.organizer.application.store.RecoveryInspectionSnapshotReade
 import app.lawnchair.organizer.application.store.RecoveryStore
 import app.lawnchair.organizer.integration.OrganizationInputComposition
 import app.lawnchair.organizer.integration.ProductionOrganizationInputComposer
+import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.RuleVersion
 import app.lawnchair.organizer.planning.TaxonomyVersion
 import com.android.launcher3.InvariantDeviceProfile
@@ -130,7 +132,7 @@ class TwoPanelOrientationCaptureInstrumentationTest {
 
     @Test
     fun orientationChangeRejectsPreChangePlanAsStaleWithoutDbWrite() {
-        ensureLauncherRow(context, launcher)
+        val plannedRowId = ensureLauncherRow(context, launcher)
         val writer = realWriter()
         val originalAccelerometer = systemSetting(Settings.System.ACCELEROMETER_ROTATION)
         val originalUserRotation = systemSetting(Settings.System.USER_ROTATION)
@@ -143,7 +145,10 @@ class TwoPanelOrientationCaptureInstrumentationTest {
 
             val capture = writer.captureCurrent(CaptureId("orientation-stale"))
             assertTrue(capture.layoutState.items.isNotEmpty())
-            val sourceItem = capture.layoutState.items.first()
+            val plannedId = ItemId(plannedRowId.toString())
+            val sourceItem = capture.layoutState.items.single {
+                (it.ref as? ApplicationItemRef.PersistentItem)?.itemId == plannedId
+            }
             val intendedItem = sourceItem.copy(title = OptionalText.Present("orientation-stale"))
             val plan = ValidatedLayoutPlan(
                 capture.revision,
@@ -180,7 +185,16 @@ class TwoPanelOrientationCaptureInstrumentationTest {
                 PreWriteRejection.STALE_REVISION,
                 (result as ApplyResult.Rejected).reason,
             )
-            assertEquals(rowsBefore, snapshotFavorites())
+            // The rejected apply must not have landed. Unrelated rows may
+            // legitimately change during rotation relayout (the launcher fills
+            // placement/modified on folder children), so no-write is asserted
+            // on the plan's own row and marker title.
+            val rowsAfter = snapshotFavorites()
+            assertTrue(rowsAfter.none { it.getAsString(Favorites.TITLE) == "orientation-stale" })
+            assertEquals(
+                rowsBefore.single { it.getAsString(Favorites._ID) == plannedRowId.toString() },
+                rowsAfter.single { it.getAsString(Favorites._ID) == plannedRowId.toString() },
+            )
         } finally {
             restoreRotation(originalAccelerometer, originalUserRotation)
         }
@@ -285,13 +299,14 @@ class TwoPanelOrientationCaptureInstrumentationTest {
         null
     }
 
+    /** Returns the _ID of an existing or freshly inserted stable launcher row. */
     private fun ensureLauncherRow(
         context: android.content.Context,
         launcher: LauncherAppState,
-    ) {
+    ): Long {
         val db = launcher.model.modelDbController.db
         db.query(Favorites.TABLE_NAME, arrayOf(Favorites._ID), null, null, null, null, null).use {
-            if (it.moveToFirst()) return
+            if (it.moveToFirst()) return it.getLong(0)
         }
         val id = launcher.model.modelDbController.generateNewItemId()
         val intent = Intent(Intent.ACTION_MAIN)
@@ -321,6 +336,7 @@ class TwoPanelOrientationCaptureInstrumentationTest {
                 put(Favorites.ORGANIZER_LOCK_STATE, 1)
             },
         )
+        return id
     }
 
     private fun snapshotFavorites(): List<ContentValues> {

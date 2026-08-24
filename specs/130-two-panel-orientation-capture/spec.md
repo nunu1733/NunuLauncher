@@ -116,7 +116,7 @@ None。UI表示は不変である。
 |---|---|
 | AC-1〜AC-3 | 純粋orientation写像のJVM unit test(4組合せ、決定的)。host evidenceは次の順で取得する。(1) 最優先: foldable AVD等の実runtimeでfold状態遷移により`TYPE_MULTI_DISPLAY`(実構築済み`DeviceProfile.isTwoPanels == true`)を成立させ、実`LauncherLayoutAdapter.captureCurrent`経由で`TWO_PANEL_PORTRAIT` / `TWO_PANEL_LANDSCAPE`を取得する。(2) 成立しない場合: captureが参照する判定入力を単独で書き替える方式は採用せず、テストhost上で「captured orientationのtwo-panel判定 == 実際に構築された`DeviceProfile.isTwoPanels`」の一致検証と純粋mapping proofのみを行い、`TWO_PANEL_*`のhost evidenceが未取得であることを残余limitationとして[Issue #108](https://github.com/nunu1733/NunuLauncher/issues/108) matrixへ明示する |
 | AC-4 | [ProductionOrganizationInputInstrumentationTest](../../tests/organizer-instrumentation/app/lawnchair/organizer/integration/ProductionOrganizationInputInstrumentationTest.kt)と同一patternで、`deviceCapabilities.orientation`のequalityを利用可能なhost(可能ならAC-1のruntime)で検証するinstrumentation |
-| AC-5 | instrumentation: captured orientation O_Aのcaptureからplan/write-setを準備し、O_B(O_A ≠ O_B)へ変化後に適用して`STALE_REVISION`拒否を確認、`favorites`行の事前事後一致を検証する |
+| AC-5 | instrumentation: captured orientation O_Aのcaptureからplan/write-setを準備し、O_B(O_A ≠ O_B)へ変化後に適用して`STALE_REVISION`拒否を確認する。適用の無書込みは、plan対象行の事前事後一致とmarker title不在で検証する(回転中はlauncher本体が無関係行の配置・modifiedを書込むため、全表一致は要求しない) |
 | AC-6 | PR audit記録へ、使用したruntime/harness方式、authority chain成立または一致性検証の結果、残余limitationを明記する |
 | AC-7 | `spotlessCheck`、`testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`、`assembleLawnWithQuickstepGithubDebug`、API 35/36.1 lane、CI `final-status` |
 | AC-8 | 別sessionによる`docs/assessment/pr-<番号>-<slug>.md` |
@@ -132,6 +132,7 @@ None。UI表示は不変である。
 - 2026-08-24: Spec review(Issue #130コメント)の指摘を反映。P1: capture対象をproduction authority chainで構築された現行`DeviceProfile.isTwoPanels`へ明確化し、等価harnessの成立条件(flagの单独書き換え禁止、chain成立または一致性検証、不成立時は純粋mapping proofに限定)をAC-6/Test oracleへ追加。P2: posture change表現をcaptured `DeviceOrientation`値が変化する遷移へ限定(Outcome/Scope/AC-5/Scenario)。
 - 2026-08-24: Maintainer acceptance。statusを`accepted`へ更新。Open questionsはnon-blockingとして実装時に解消しPRへ記録する。
 - 2026-08-24: 実装完了([PR #133](https://github.com/nunu1733/NunuLauncher/pull/133))に伴いstatusを`implemented`へ更新。production修正(`LauncherLayoutAdapter.capabilities()`の構築済み`DeviceProfile.isTwoPanels`参照+純粋写像)、JVM unit test、production seam instrumentation(AC-3/AC-4/AC-5)を追加。実two-panel runtime試行は否定的結果(DisplayControllerのposture変化によるbounds cache差し替えで両mode併存せず)であり、AC-1/AC-2はTest oracle(2)経由で充足し残余limitationを#108へ記録。独立audit記録は`docs/assessment/pr-133-two-panel-orientation-capture.md`。
+- 2026-08-24: CI実行中に、orientation変更の再layout時にlauncher本体がfolder子項目の配置・modifiedを書込むことを確認(organizer適用経路ではない)。AC-5のtest oracleを、plan対象行の一致+marker title不在による適用無書込み検証へ精緻化した(plan自体が書込みを行わないという契約は不変)。
 
 ## References
 
