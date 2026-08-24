@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.lawnchair.DeviceProfileOverrides
+import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
 import app.lawnchair.organizer.application.protocol.CaptureId
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
@@ -24,8 +25,15 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Issue #108 alternate-grid evidence through the official IDP/grid-control
- * seam. Grid changes are always restored to the pre-test option.
+ * Issue #108 alternate-grid evidence through Lawnchair's grid-control state.
+ * Grid changes are always restored to the pre-test dimensions.
+ *
+ * The preset transition is applied through the same Lawnchair preference keys
+ * that [DeviceProfileOverrides.setCurrentGrid] writes. The named-preset seam
+ * itself is broken on non-phone hosts because its preset snapshot is built
+ * before the launcher determines the device type (finding split from Issue
+ * #108), so applying dimensions directly is the only working official path
+ * here; the target preset must still be an enabled GridOption declaration.
  */
 @RunWith(AndroidJUnit4::class)
 class Issue108GridEvidenceInstrumentationTest {
@@ -34,13 +42,12 @@ class Issue108GridEvidenceInstrumentationTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val launcher = LauncherAppState.getInstance(context)
         val idp = InvariantDeviceProfile.INSTANCE.get(context)
-        val overrides = DeviceProfileOverrides.INSTANCE.get(context)
-        val originalName = overrides.getCurrentGridName()
-        val alternate = alternateGrid(context, originalName)
+        val original = currentDimensions()
+        val alternate = requestedAlternate(context, original)
         val writer = LauncherLayoutAdapter(context, launcher.model.modelDbController, launcher.model)
 
         try {
-            setGrid(context, idp, alternate.name)
+            applyPresetDimensions(context, alternate)
             awaitGrid(idp, alternate.numColumns, alternate.numRows)
 
             val capture = writer.captureCurrent(CaptureId("issue108-fresh-grid"))
@@ -52,8 +59,7 @@ class Issue108GridEvidenceInstrumentationTest {
             assertEquals(alternate.numColumns, ready.input.snapshot.device.columns)
             assertEquals(alternate.numRows, ready.input.snapshot.device.rows)
         } finally {
-            setGrid(context, idp, originalName)
-            awaitOriginalGrid(context, idp, originalName)
+            restoreDimensions(context, idp, original)
         }
     }
 
@@ -62,9 +68,8 @@ class Issue108GridEvidenceInstrumentationTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val launcher = LauncherAppState.getInstance(context)
         val idp = InvariantDeviceProfile.INSTANCE.get(context)
-        val overrides = DeviceProfileOverrides.INSTANCE.get(context)
-        val originalName = overrides.getCurrentGridName()
-        val alternate = alternateGrid(context, originalName)
+        val original = currentDimensions()
+        val alternate = requestedAlternate(context, original)
         val writer = LauncherLayoutAdapter(context, launcher.model.modelDbController, launcher.model)
         val module = LayoutApplicationModule.production(context, launcher)
         val reconciliation = module.reconcileAtStart()
@@ -73,8 +78,7 @@ class Issue108GridEvidenceInstrumentationTest {
         }
 
         try {
-            setGrid(context, idp, originalName)
-            awaitOriginalGrid(context, idp, originalName)
+            restoreDimensions(context, idp, original)
             val before = writer.captureCurrent(CaptureId("issue108-grid-plan"))
             val plan = ValidatedLayoutPlan(
                 sourceRevision = before.revision,
@@ -87,7 +91,7 @@ class Issue108GridEvidenceInstrumentationTest {
                 taxonomyVersion = TaxonomyVersion("issue108"),
             )
 
-            setGrid(context, idp, alternate.name)
+            applyPresetDimensions(context, alternate)
             awaitGrid(idp, alternate.numColumns, alternate.numRows)
             val afterGrid = writer.captureCurrent(CaptureId("issue108-grid-stale"))
             assertNotEquals("grid capabilities participate in the revision", before.revision, afterGrid.revision)
@@ -103,32 +107,61 @@ class Issue108GridEvidenceInstrumentationTest {
             )
             assertEquals(afterGrid.manifest.rowCount, afterApply.manifest.rowCount)
         } finally {
-            setGrid(context, idp, originalName)
-            awaitOriginalGrid(context, idp, originalName)
+            restoreDimensions(context, idp, original)
         }
     }
 
-    private fun setGrid(context: Context, idp: InvariantDeviceProfile, name: String) {
-        idp.setCurrentGrid(context, name)
-        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+    private data class GridDimensions(val columns: Int, val rows: Int, val hotseat: Int)
+
+    private fun currentDimensions(): GridDimensions {
+        val info = DeviceProfileOverrides.INSTANCE.get(
+            ApplicationProvider.getApplicationContext<Context>(),
+        ).getGridInfo()
+        return GridDimensions(info.numColumns, info.numRows, info.numHotseatColumns)
     }
 
-    private fun alternateGrid(context: Context, originalName: String): InvariantDeviceProfile.GridOption {
+    private fun requestedAlternate(
+        context: Context,
+        original: GridDimensions,
+    ): InvariantDeviceProfile.GridOption {
         val options = InvariantDeviceProfile.parseAllGridOptions(context)
         val requested = InstrumentationRegistry.getArguments().getString("issue108.grid")
         val alternate = if (requested == null) {
-            options.firstOrNull { it.name != originalName }
+            options.firstOrNull { it.numColumns != original.columns || it.numRows != original.rows }
         } else {
             options.firstOrNull { it.name == requested }
                 ?: error("issue108.grid=$requested is not an available grid option: ${options.map { it.name }}")
         }
-        requireNotNull(alternate) {
-            "issue108.grid=${requested ?: "<default>"} must differ from the original grid $originalName"
-        }
-        require(alternate.name != originalName) {
-            "issue108.grid=${alternate.name} must differ from the original grid $originalName"
+        checkNotNull(alternate) {
+            "no enabled grid option differs from the pre-test grid ${original.columns}x${original.rows}: " +
+                "${options.map { it.name }}"
         }
         return alternate
+    }
+
+    private fun applyPresetDimensions(
+        context: Context,
+        option: InvariantDeviceProfile.GridOption,
+    ) {
+        setWorkspaceDimensions(context, GridDimensions(option.numColumns, option.numRows, option.numHotseatIcons))
+    }
+
+    private fun restoreDimensions(
+        context: Context,
+        idp: InvariantDeviceProfile,
+        original: GridDimensions,
+    ) {
+        setWorkspaceDimensions(context, original)
+        awaitGrid(idp, original.columns, original.rows)
+    }
+
+    private fun setWorkspaceDimensions(context: Context, dimensions: GridDimensions) {
+        // Identical keys to DeviceProfileOverrides.setCurrentGrid.
+        val prefs = PreferenceManager.getInstance(context)
+        prefs.workspaceRows.set(dimensions.rows)
+        prefs.workspaceColumns.set(dimensions.columns)
+        prefs.hotseatColumns.set(dimensions.hotseat)
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
     }
 
     private fun awaitGrid(idp: InvariantDeviceProfile, columns: Int, rows: Int) {
@@ -138,10 +171,5 @@ class Issue108GridEvidenceInstrumentationTest {
             SystemClock.sleep(100)
         }
         error("IDP did not converge to requested grid ${columns}x$rows (actual ${idp.numColumns}x${idp.numRows})")
-    }
-
-    private fun awaitOriginalGrid(context: Context, idp: InvariantDeviceProfile, name: String) {
-        val option = InvariantDeviceProfile.parseAllGridOptions(context).first { it.name == name }
-        awaitGrid(idp, option.numColumns, option.numRows)
     }
 }
