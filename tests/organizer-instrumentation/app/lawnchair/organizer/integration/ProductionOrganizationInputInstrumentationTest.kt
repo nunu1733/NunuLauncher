@@ -16,13 +16,16 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
+import app.lawnchair.organizer.application.adapter.RowManifestCodec
 import app.lawnchair.organizer.application.adapter.canonicalProfileId
 import app.lawnchair.organizer.application.protocol.CaptureId
 import app.lawnchair.organizer.application.protocol.CapturedSnapshot
 import app.lawnchair.organizer.application.protocol.LayoutWriterPort
+import app.lawnchair.organizer.application.revision.RevisionCalculator
 import app.lawnchair.organizer.application.public.ItemAvailability
 import app.lawnchair.organizer.application.public.OrganizerLockState
 import app.lawnchair.organizer.application.public.ProfileAvailability
+import app.lawnchair.organizer.application.public.ProfileState
 import app.lawnchair.organizer.application.public.PlacementState
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.CategoryId
@@ -35,8 +38,14 @@ import app.lawnchair.organizer.planning.SignalSource
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
 import app.lawnchair.organizer.rules.CategoryOverrideKey
+import app.lawnchair.organizer.rules.CategoryOverrideSnapshot
+import app.lawnchair.organizer.rules.CategoryOverrideSnapshotSource
 import app.lawnchair.organizer.rules.CategoryOverrideStoreModule
 import app.lawnchair.organizer.rules.CategoryOverrideStoredReadResult
+import app.lawnchair.organizer.rules.ClassificationPolicy
+import app.lawnchair.organizer.rules.OverrideSnapshotReadResult
+import app.lawnchair.organizer.rules.PolicyInputIdentity
+import app.lawnchair.organizer.rules.PolicySourceKind
 import app.lawnchair.organizer.ui.CategoryOverrideAuthoringCoordinator
 import app.lawnchair.organizer.ui.CategoryOverrideAuthoringResult
 import com.android.launcher3.LauncherAppState
@@ -48,6 +57,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -215,9 +225,158 @@ class ProductionOrganizationInputInstrumentationTest {
         assertEquals(ExistingRole.Preserved, ready.input.targets.existing.single { it.item == expectedId }.role)
     }
 
+    /**
+     * Issue #136: the exact fresh-install default-layout row shape (Dock rows
+     * carrying their slot in SCREEN with RANK at its schema default of 0, one
+     * workspace folder with seven members, three second-page apps) must capture,
+     * compose, and partition as planner-valid input instead of collapsing into
+     * the typed zero-placement rejection.
+     */
     @Test
-    fun productionComposerPreservesQuietPrivateDisabledAndUnavailableProfileWithoutEvidenceFallback() {
-        val expectedId = insertLauncherRow(OrganizerLockState.UNLOCKED)
+    fun defaultLayoutRowsCaptureSlotsFromScreenAndComposeIntoValidPartition() {
+        val serial = UserCache.INSTANCE.get(context)
+            .getSerialNumberForUser(Process.myUserHandle()).toString()
+        val source = android.database.sqlite.SQLiteDatabase.create(null)
+        try {
+            Favorites.addTableToDb(source, 10L, false)
+            insertDefaultLayoutFixture(source, serial)
+
+            val captured = RowManifestCodec.capture(
+                source,
+                app.lawnchair.organizer.application.public.DeviceCapabilities(4, 5, 4, 4, 4, app.lawnchair.organizer.application.public.DeviceOrientation.PORTRAIT),
+                listOf(app.lawnchair.organizer.planning.PageId("0"), app.lawnchair.organizer.planning.PageId("1")),
+                listOf(ProfileState(ProfileId(serial), ProfileAvailability.AVAILABLE)),
+            )
+
+            assertEquals(15, captured.state.items.size)
+            val dockRanks = captured.state.items
+                .mapNotNull { it.placement as? PlacementState.Dock }
+                .sortedBy { it.rank }
+            assertEquals(listOf(0, 1, 2, 3), dockRanks.map { it.rank })
+            captured.manifest.rows
+                .filter { it.containerCode.value == Favorites.CONTAINER_HOTSEAT }
+                .forEach { row ->
+                    val slot = row.screenId?.value?.toIntOrNull()
+                    assertTrue("hotseat SCREEN must keep carrying its slot", slot in 0..3)
+                    assertEquals(0, row.rank)
+                }
+
+            val snapshot = CapturedSnapshot(
+                layoutState = captured.state,
+                manifest = captured.manifest,
+                revision = RevisionCalculator.revisionOf(captured.state),
+                digest = RevisionCalculator.classificationDigestOf(captured.state),
+            )
+            val composition = DefaultOrganizationInputComposer(
+                captureSource = CanonicalCaptureSource { CanonicalCaptureReadResult.Ready(snapshot) },
+                bundleSource = object : app.lawnchair.organizer.rules.OrganizerPolicyBundleSource {
+                    override fun readActive() = BuiltInOrganizerPolicyBundleSource.readActive()
+                },
+                overrides = EmptyOverrideSnapshotSource(),
+                platformEvidence = EmptyEvidenceSource(),
+            ).composeFullOrganization()
+            assertTrue("composition must be ready: $composition", composition is OrganizationInputComposition.Ready)
+            val ready = composition as OrganizationInputComposition.Ready
+
+            val partition = ready.input.targets.existing
+            assertEquals(15, partition.size)
+            val items = ready.input.snapshot.items.associateBy { it.id }
+            val folder = items.getValue(app.lawnchair.organizer.planning.ItemId("6"))
+            assertEquals(app.lawnchair.organizer.planning.ItemKind.FOLDER, folder.kind)
+            assertEquals(app.lawnchair.organizer.planning.FolderId("6"), folder.folderId)
+            assertEquals(
+                (7..13).map { app.lawnchair.organizer.planning.ItemId(it.toString()) }.sorted(),
+                folder.members.sorted(),
+            )
+            (7..13).forEach { memberId ->
+                val member = items.getValue(app.lawnchair.organizer.planning.ItemId(memberId.toString()))
+                assertNull(member.folderId)
+                assertEquals(
+                    ExistingRole.Preserved,
+                    partition.single { it.item == member.id }.role,
+                )
+            }
+        } finally {
+            source.close()
+        }
+    }
+
+    /** Row ids mirror the observed fresh-install layout: 1-4 Dock, 6 folder, 7-13 members, 14-16 page one. */
+    private fun insertDefaultLayoutFixture(db: android.database.sqlite.SQLiteDatabase, serial: String) {
+        fun appRow(
+            id: Long,
+            container: Int,
+            screen: Int?,
+            cellX: Int?,
+            cellY: Int?,
+            rank: Int,
+            title: String,
+        ) {
+            val intent = Intent(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_LAUNCHER)
+                .setComponent(ComponentName("com.example.issue136", "com.example.issue136.MainActivity"))
+            db.insertOrThrow(
+                Favorites.TABLE_NAME,
+                null,
+                ContentValues().apply {
+                    put(Favorites._ID, id)
+                    put(Favorites.TITLE, title)
+                    put(Favorites.INTENT, intent.toUri(0))
+                    put(Favorites.CONTAINER, container)
+                    if (screen != null) put(Favorites.SCREEN, screen)
+                    if (cellX != null) put(Favorites.CELLX, cellX)
+                    if (cellY != null) put(Favorites.CELLY, cellY)
+                    put(Favorites.SPANX, 1)
+                    put(Favorites.SPANY, 1)
+                    put(Favorites.ITEM_TYPE, Favorites.ITEM_TYPE_APPLICATION)
+                    put(Favorites.APPWIDGET_ID, -1)
+                    put(Favorites.MODIFIED, 1_000L)
+                    put(Favorites.RESTORED, 0)
+                    put(Favorites.PROFILE_ID, serial.toLong())
+                    put(Favorites.RANK, rank)
+                    put(Favorites.OPTIONS, 0)
+                    put(Favorites.APPWIDGET_SOURCE, -1)
+                    put(Favorites.ORGANIZER_LOCK_STATE, OrganizerLockState.UNLOCKED.ordinal)
+                },
+            )
+        }
+        for (slot in 0 until 4) {
+            appRow(slot + 1L, Favorites.CONTAINER_HOTSEAT, slot, null, null, 0, "Issue136 dock $slot")
+        }
+        // The folder itself.
+        db.insertOrThrow(
+            Favorites.TABLE_NAME,
+            null,
+            ContentValues().apply {
+                put(Favorites._ID, 6L)
+                put(Favorites.TITLE, "Issue136 folder")
+                put(Favorites.CONTAINER, Favorites.CONTAINER_DESKTOP)
+                put(Favorites.SCREEN, 0)
+                put(Favorites.CELLX, 0)
+                put(Favorites.CELLY, 4)
+                put(Favorites.SPANX, 1)
+                put(Favorites.SPANY, 1)
+                put(Favorites.ITEM_TYPE, Favorites.ITEM_TYPE_FOLDER)
+                put(Favorites.APPWIDGET_ID, -1)
+                put(Favorites.MODIFIED, 1_000L)
+                put(Favorites.RESTORED, 0)
+                put(Favorites.PROFILE_ID, serial.toLong())
+                put(Favorites.RANK, 0)
+                put(Favorites.OPTIONS, 0)
+                put(Favorites.APPWIDGET_SOURCE, -1)
+                put(Favorites.ORGANIZER_LOCK_STATE, OrganizerLockState.UNLOCKED.ordinal)
+            },
+        )
+        for ((index, id) in (7..13).withIndex()) {
+            appRow(id.toLong(), 6, null, null, null, index, "Issue136 member $id")
+        }
+        appRow(14L, Favorites.CONTAINER_DESKTOP, 1, 0, 4, 0, "Issue136 page one a")
+        appRow(15L, Favorites.CONTAINER_DESKTOP, 1, 1, 4, 0, "Issue136 page one b")
+        appRow(16L, Favorites.CONTAINER_DESKTOP, 1, 3, 4, 0, "Issue136 page one c")
+    }
+
+    @Test
+    fun productionComposerPreservesQuietPrivateDisabledAndUnavailableProfileWithoutEvidenceFallback() {        val expectedId = insertLauncherRow(OrganizerLockState.UNLOCKED)
         val capture = realWriter().captureCurrent(CaptureId("availability-base"))
         val original = capture.layoutState.items.single { it.ref.itemId() == expectedId }
         val baseProfiles = capture.layoutState.profiles
@@ -560,6 +719,38 @@ class ProductionOrganizationInputInstrumentationTest {
             file.parentFile?.mkdirs()
             file.writeBytes(bytes)
         }
+    }
+
+    private class EmptyOverrideSnapshotSource : CategoryOverrideSnapshotSource {
+        override fun read(capturedProfiles: Set<ProfileId>): OverrideSnapshotReadResult = OverrideSnapshotReadResult.Ready(
+            CategoryOverrideSnapshot(
+                schemaVersion = 1,
+                generation = 0L,
+                assignments = emptyMap(),
+                identity = PolicyInputIdentity(
+                    PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT,
+                    "schema-1-generation-0",
+                    "a".repeat(64),
+                ),
+            ),
+        )
+    }
+
+    private class EmptyEvidenceSource : ClassificationSignalSnapshotSource {
+        override fun read(
+            requests: List<ClassificationEvidenceRequest>,
+            policy: ClassificationPolicy,
+        ): PlatformEvidenceReadResult = PlatformEvidenceReadResult.Ready(
+            PlatformClassificationEvidence(
+                emptyMap(),
+                emptyMap(),
+                PolicyInputIdentity(
+                    PolicySourceKind.PLATFORM_CLASSIFICATION_EVIDENCE,
+                    "platform-evidence-v1",
+                    "b".repeat(64),
+                ),
+            ),
+        )
     }
 
     private companion object {

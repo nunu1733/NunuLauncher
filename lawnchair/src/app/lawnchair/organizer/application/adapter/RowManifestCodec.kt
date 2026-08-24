@@ -133,10 +133,19 @@ internal object RowManifestCodec {
         val cy = nullableInt(Favorites.CELLY)
         val sx = nullableInt(Favorites.SPANX)
         val sy = nullableInt(Favorites.SPANY)
+        val screenSlot = when {
+            container == Favorites.CONTAINER_DESKTOP -> PageId(requireNotNull(screen).toString())
+
+            // Hotseat rows carry their slot in SCREEN; the column is nullable, and
+            // Launcher3's loader reads NULL as slot 0 through getInt.
+            container == Favorites.CONTAINER_HOTSEAT -> PageId((screen ?: 0L).toString())
+
+            else -> null
+        }
         return PersistentRow(
             long(Favorites._ID), ItemId(long(Favorites._ID).toString()),
             ProfileId(long(Favorites.PROFILE_ID).toString()), ContainerCode(container),
-            if (container == Favorites.CONTAINER_DESKTOP) PageId(requireNotNull(screen).toString()) else null,
+            screenSlot,
             cx, cy, sx, sy, int(Favorites.RANK), KindCode(int(Favorites.ITEM_TYPE)),
             int(Favorites.APPWIDGET_ID).takeIf { it >= 0 }?.let(::AppWidgetId),
             text(Favorites.APPWIDGET_PROVIDER)?.let(::ComponentKey), blob(Favorites.ICON),
@@ -162,7 +171,12 @@ internal object RowManifestCodec {
                 requireNotNull(row.rawSpan),
             )
 
-            Favorites.CONTAINER_HOTSEAT -> PlacementState.Dock(row.rank)
+            Favorites.CONTAINER_HOTSEAT -> PlacementState.Dock(
+                // Hotseat slot authority is SCREEN (LoaderCursor.checkItemPlacement,
+                // GridSizeMigrationUtil.loadHotseatEntries). Default-layout rows
+                // leave RANK at its schema default of 0 for every entry.
+                requireNotNull(row.screenId).value.toInt(),
+            )
 
             else -> if (row.containerCode.value >= 0) {
                 val parent = ApplicationItemRef.PersistentItem(ItemId(row.containerCode.value.toString()))
