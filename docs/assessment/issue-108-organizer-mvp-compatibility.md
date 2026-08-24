@@ -48,7 +48,7 @@ update described below.
 | `b80d7a9360` | `adb shell am instrument -w -r -e class app.lawnchair.organizer.integration.Issue108DeviceEvidenceInstrumentationTest app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner` on API 36.1 Pixel 6 with simultaneous personal/work/private profiles (serials 0/10/11 running) | **PASS 2/2.** `ISSUE108_PROFILE_EVIDENCE handles=[0,10,11] serials=[0,10,11] launcherApps={0=19,10=17,11=19}`; composer returned `Ready` on a three-profile host through the #129 authorized `LauncherApps` seam. |
 | `b80d7a9360` | Same runner, `-e class ...ProductionOrganizationInputInstrumentationTest,...ui.ManualOrganizationProductionE2EInstrumentationTest` on the same host | **PASS 13/13**, including `ISSUE129_EVIDENCE profiles=0,10,11 insertedRows=3 systemPackage=true ready=true` (valid work/private classification composition without privileged cross-user access). |
 | `b80d7a9360` | Same runner, `-e class ...application.TwoPanelOrientationCaptureInstrumentationTest` on API 36 Pixel 9 Pro Fold AVD, unfolded and folded postures | **PASS 3/3** (orientation-authority match, composer preservation, portrait→landscape stale/no-write). Folded posture additionally passed `Issue108DeviceEvidenceInstrumentationTest` 2/2 (`TYPE_PHONE`, ordinary `PORTRAIT`). |
-| This PR's grid-harness update commit | Same runner, `-e class ...integration.Issue108GridEvidenceInstrumentationTest` (optionally with `-e issue108.grid <name>`) | **Phone 4×5→3×3 PASS 2/2, phone 4×5→5_by_5 PASS 2/2, tablet 4×5→6_by_5 PASS 2/2**, each including fresh capture/composer reflection and stale-rejection no-write. |
+| This PR's grid-harness update commit | Same runner, `-e class ...integration.Issue108GridEvidenceInstrumentationTest` (optionally with `-e issue108.grid <name>`) | **Phone 4×5→3×3 PASS 2/2 and phone 4×5→5_by_5 PASS 2/2** through official grid-control state. **Tablet 4×5→6_by_5 PASS 2/2 with the preset's exact dimensions applied through the preference-key seam** — this is equivalence-harness evidence for organizer safety semantics only; the production named-preset transition remains **BLOCKED / UNVERIFIED by [#134](https://github.com/nunu1733/NunuLauncher/issues/134)**. |
 
 The grid-harness evidence was executed at `e580693cad`, the test-only
 commit that updates the grid instrumentation in this PR.
@@ -64,7 +64,7 @@ instrumentation source set; production code is untouched after `534d0f32db`.
 | Device | phone; tablet; foldable/multi-display where the adopted profile selects it | Phone (Pixel 6), Pixel Tablet, Pixel 9 Pro Fold open/closed all passed Launcher-host execution through production seams. |
 | Orientation | portrait and landscape; two-panel values where selected | Live portrait/landscape transitions passed on every host. Canonical orientation now derives from the constructed `DeviceProfile.isTwoPanels` authority (#130). No available emulator exposes `TYPE_MULTI_DISPLAY`; see the two-panel limitation below. |
 | GridOption preset | `3_by_3`, `4_by_5`, `5_by_5`, `6_by_5`, `practical` (multi-display) | Catalog documented separately. Enabled-preset inventory is device-type dependent; a preset-seam defect was found and split to [#134](https://github.com/nunu1733/NunuLauncher/issues/134). |
-| Runtime workspace dimensions | Dimensions reported by IDP/canonical capture on executed hosts | Phone 4×5 default with live transitions to 3×3 and 5×5 passed. Tablet live transition to declared 6×5 passed. |
+| Runtime workspace dimensions | Dimensions reported by IDP/canonical capture on executed hosts | Phone 4×5 default with live transitions to 3×3 and 5×5 passed. Tablet 6×5: organizer safety semantics verified after applying the preset's exact dimensions; the production named-preset transition is **BLOCKED / UNVERIFIED — [#134](https://github.com/nunu1733/NunuLauncher/issues/134)**. |
 | Profile | personal, managed work, private | Simultaneous personal/work/private (serials 0/10/11) canonical capture retained all identities and valid rows composed `Ready` without privileged cross-user access (#129 verified closed). Locked-private preservation remains covered by existing typed fail-closed tests. |
 
 Cells that cannot be executed or mapped to an executed production seam are
@@ -141,20 +141,29 @@ Results at `b80d7a9360`:
 This closes the previously blocked valid multi-profile cell; #129 is
 consumed by this matrix.
 
-### API 36.1 tablet, live transition to declared 6×5
+### API 36.1 tablet, 6×5 dimension application — safety semantics verified; preset transition BLOCKED by #134
 
 Environment: `issue108_api36_pixel_tablet`, Pixel Tablet definition,
 2560×1600 at 320 dpi, `TYPE_TABLET`, default live grid 4×5/hotseat 4.
 
-Result: `Issue108GridEvidenceInstrumentationTest -e issue108.grid 6_by_5`
-PASS 2/2 — fresh production capture and composer reflected exactly
-6 columns × 5 rows, and a plan captured before the transition was rejected
-as `STALE_REVISION` with unchanged persistence rows afterwards. The
-transition applied the `6_by_5` preset's exact dimensions through the
-preference-key seam described above because the named-preset seam itself is
-broken (#134). The host durably rests on 6×5/hotseat 6 after this cell;
-restoration attempts of the previous 4×5 state are reverted at launcher
-start, recorded as part of #134's durability finding.
+**Cell status: BLOCKED / UNVERIFIED by [#134](https://github.com/nunu1733/NunuLauncher/issues/134)
+as a production-seam result.** The production named-preset transition
+(`IDP.setCurrentGrid(context, "6_by_5")`) cannot execute on this host — it
+throws `NoSuchElementException` from the frozen preset snapshot (#134) — so
+this cell does not claim production preset-transition evidence.
+
+What is verified is the narrower scope of organizer safety semantics after
+the grid dimensions change: applying the enabled `6_by_5` preset's exact
+rows/columns/hotseat through Lawnchair's own preference keys (the same keys
+`DeviceProfileOverrides.setCurrentGrid` writes and its settings UI uses),
+`Issue108GridEvidenceInstrumentationTest -e issue108.grid 6_by_5` passed 2/2
+— fresh production capture and composer reflected exactly 6 columns × 5 rows,
+and a plan captured before the change was rejected as `STALE_REVISION` with
+unchanged persistence rows afterwards. The host durably rests on 6×5/hotseat
+6 after this cell; restoration attempts of the previous 4×5 state are
+reverted at launcher start, recorded as part of #134's durability finding.
+Closing the cell as a production-seam result requires #134's fix and a
+re-run through `setCurrentGrid`.
 
 ### API 36 Pixel 9 Pro Fold, both postures, two-panel oracle suite
 
@@ -240,11 +249,30 @@ on API 36.1 hardware-class hosts.
   investigation). Covered by the authority-consistency oracle and pure
   mapping proof; real-posture capture remains unverified pending access to a
   genuine multi-display runtime.
+- **Tablet 6×5 production preset transition:** BLOCKED / UNVERIFIED —
+  [#134](https://github.com/nunu1733/NunuLauncher/issues/134). Only the
+  narrower safety-semantics scope after dimension application is verified
+  (see the tablet section above).
 - **API 26 back-to-back full-suite determinism:** timing-sensitive failures
   on constrained emulation as described above; individual surfaces pass.
-- **Tablet arbitrary-dimension durability:** governed by #134's snapshot
-  defect; the tablet cell is evidenced through the enabled `6_by_5` preset
-  only.
+
+## Split defects found during execution
+
+| Defect | Status | Effect on this matrix |
+|---|---|---|
+| [#129](https://github.com/nunu1733/NunuLauncher/issues/129) — privileged cross-user classification query failed closed for valid work/private rows | Fixed (PR #131, merged) | Multi-profile cell re-executed here through the authorized `LauncherApps` seam. |
+| [#130](https://github.com/nunu1733/NunuLauncher/issues/130) — canonical capture could not emit two-panel orientations | Fixed (PR #133, merged); real multi-display runtime remains unavailable | Two-panel cell verified via authority-consistency oracle only; real-posture capture stays a residual limitation. |
+| [#134](https://github.com/nunu1733/NunuLauncher/issues/134) — `DeviceProfileOverrides` freezes its preset snapshot before the device type is determined | Open | Tablet 6×5 cell is BLOCKED / UNVERIFIED as a production preset transition; grid harness uses the preference-key seam for the narrower semantics scope. |
+
+## Handover to #100
+
+[#100](https://github.com/nunu1733/NunuLauncher/issues/100) should treat the
+following as remaining blockers/gaps when forming its release-readiness
+verdict: the open defect #134 (tablet/multi-display grid preset seam), the
+real two-panel runtime capture gap, the unestablished API 27–34 coverage and
+the unclosed upper API boundary, and the API 26 constrained-host timing
+limitations. All other cells in the matrix are backed by Launcher-host
+execution recorded above.
 
 ## Reproduction environment and commands
 
@@ -286,12 +314,25 @@ API 26 requires `cmd package set-home-activity` instead of the role command.
 
 ## Result
 
-Executed. All organizer MVP compatibility cells claimed for the MVP are
-backed by Launcher-host execution through production seams, with four
-residual items explicitly identified above (API 27–34, real two-panel host
-capture, API 26 back-to-back determinism, tablet dimension durability under
-#134). The multi-profile and two-panel blockers that previously gated this
-matrix are closed by #129/#130 and re-verified here; the newly found grid
-preset-seam defect is tracked by #134 with its own acceptance criteria.
-[#100](https://github.com/nunu1733/NunuLauncher/issues/100) can consume this
-matrix for its release-readiness verdict.
+Executed as a compatibility-evidence task: the matrix fixes the state of
+every cell as supported, blocked, unverified, or limited, with the verified
+scope and the known gaps stated separately.
+
+Verified through Launcher-host execution on production seams: phone and
+foldable postures with live portrait/landscape transitions and stale/no-write
+safety behavior; simultaneous personal/work/private capture and composition
+after #129's fix; canonical orientation derived from the constructed
+`DeviceProfile` authority after #130's fix; live grid transitions on the
+phone; and the API 26 lower-boundary host within its recorded environment
+limits.
+
+Not claimed, and explicitly separated from the verified scope: the tablet
+6×5 **production preset transition** (BLOCKED / UNVERIFIED by the open defect
+[#134](https://github.com/nunu1733/NunuLauncher/issues/134) — only the
+post-dimension-change safety semantics are verified), real two-panel runtime
+capture, API 27–34 coverage, and back-to-back suite determinism on
+constrained API 26 emulation. Split defects #129/#130/#134 are linked in the
+table above, and the residual blockers/gaps handed to
+[#100](https://github.com/nunu1733/NunuLauncher/issues/100) are listed in the
+handover section. #100 can consume this matrix for its release-readiness
+verdict.
