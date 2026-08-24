@@ -508,9 +508,15 @@ private fun rowFor(
 
         is PlacementState.Dock -> {
             container = Favorites.CONTAINER_HOTSEAT
-            // Mirror the capture: the slot lives in SCREEN, and the original RANK
-            // column is preserved unchanged so preserved rows round-trip exactly.
-            screen = PageId(placement.rank.toString())
+            // The slot lives in SCREEN. A preserved row captured with a
+            // schema-NULL slot (read as slot 0 by the loader) must round-trip
+            // as NULL instead of an invented 0; anything else carries its
+            // explicit slot. RANK stays untouched so preserved rows are exact.
+            screen = if (base?.screenId == null && placement.rank == 0) {
+                null
+            } else {
+                PageId(placement.rank.toString())
+            }
             cell = null
             span = null
             rank = base?.rank ?: 0

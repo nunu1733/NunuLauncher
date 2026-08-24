@@ -301,6 +301,99 @@ class ProductionOrganizationInputInstrumentationTest {
         }
     }
 
+    /**
+     * Review follow-up on Issue #136: SCREEN is schema-nullable and a slot-0
+     * hotseat row may legitimately carry SCREEN=NULL. Capture must keep the raw
+     * NULL in the manifest (reading it as slot 0 only when deriving the Dock
+     * placement), and the write/recovery encoder must put NULL back instead of
+     * normalizing it to 0 behind the platform's back.
+     */
+    @Test
+    fun hotseatNullScreenRowRoundTripsExactlyThroughCaptureWriteAndRecovery() {
+        val serial = UserCache.INSTANCE.get(context)
+            .getSerialNumberForUser(Process.myUserHandle()).toString()
+        val capabilities = app.lawnchair.organizer.application.public.DeviceCapabilities(4, 5, 4, 4, 4, app.lawnchair.organizer.application.public.DeviceOrientation.PORTRAIT)
+        val source = android.database.sqlite.SQLiteDatabase.create(null)
+        try {
+            Favorites.addTableToDb(source, 10L, false)
+            insertHotseatRow(source, serial, id = 1L, screen = null)
+
+            val captured = RowManifestCodec.capture(
+                source,
+                capabilities,
+                emptyList(),
+                listOf(ProfileState(ProfileId(serial), ProfileAvailability.AVAILABLE)),
+            )
+            val row = captured.manifest.rows.single()
+            assertNull("capture must keep the raw nullable SCREEN", row.screenId)
+            assertEquals(0, row.rank)
+            val dock = captured.state.items.single().placement as PlacementState.Dock
+            assertEquals("NULL SCREEN is read as slot 0", 0, dock.rank)
+
+            // The encoder must not invent a value for the nullable column.
+            val encoded = RowManifestCodec.values(row)
+            assertTrue(encoded.containsKey(Favorites.SCREEN))
+            assertNull(encoded.get(Favorites.SCREEN))
+
+            val restored = android.database.sqlite.SQLiteDatabase.create(null)
+            try {
+                Favorites.addTableToDb(restored, 10L, false)
+                restored.insertOrThrow(Favorites.TABLE_NAME, null, encoded)
+                restored.query(Favorites.TABLE_NAME, null, null, null, null, null, null).use { cursor ->
+                    cursor.moveToFirst()
+                    assertTrue(cursor.isNull(cursor.getColumnIndexOrThrow(Favorites.SCREEN)))
+                    assertEquals(0, cursor.getInt(cursor.getColumnIndexOrThrow(Favorites.RANK)))
+                }
+                val recaptured = RowManifestCodec.capture(
+                    restored,
+                    capabilities,
+                    emptyList(),
+                    listOf(ProfileState(ProfileId(serial), ProfileAvailability.AVAILABLE)),
+                )
+                assertEquals(captured.manifest.rows, recaptured.manifest.rows)
+                assertEquals(captured.state.items, recaptured.state.items)
+            } finally {
+                restored.close()
+            }
+        } finally {
+            source.close()
+        }
+    }
+
+    /** Inserts one dock-row fixture; a null screen leaves the nullable column unset. */
+    private fun insertHotseatRow(
+        db: android.database.sqlite.SQLiteDatabase,
+        serial: String,
+        id: Long,
+        screen: Int?,
+    ) {
+        val intent = Intent(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_LAUNCHER)
+            .setComponent(ComponentName("com.example.issue136", "com.example.issue136.MainActivity"))
+        db.insertOrThrow(
+            Favorites.TABLE_NAME,
+            null,
+            ContentValues().apply {
+                put(Favorites._ID, id)
+                put(Favorites.TITLE, "Issue136 null-screen dock")
+                put(Favorites.INTENT, intent.toUri(0))
+                put(Favorites.CONTAINER, Favorites.CONTAINER_HOTSEAT)
+                if (screen != null) put(Favorites.SCREEN, screen)
+                put(Favorites.SPANX, 1)
+                put(Favorites.SPANY, 1)
+                put(Favorites.ITEM_TYPE, Favorites.ITEM_TYPE_APPLICATION)
+                put(Favorites.APPWIDGET_ID, -1)
+                put(Favorites.MODIFIED, 1_000L)
+                put(Favorites.RESTORED, 0)
+                put(Favorites.PROFILE_ID, serial.toLong())
+                put(Favorites.RANK, 0)
+                put(Favorites.OPTIONS, 0)
+                put(Favorites.APPWIDGET_SOURCE, -1)
+                put(Favorites.ORGANIZER_LOCK_STATE, OrganizerLockState.UNLOCKED.ordinal)
+            },
+        )
+    }
+
     /** Row ids mirror the observed fresh-install layout: 1-4 Dock, 6 folder, 7-13 members, 14-16 page one. */
     private fun insertDefaultLayoutFixture(db: android.database.sqlite.SQLiteDatabase, serial: String) {
         fun appRow(

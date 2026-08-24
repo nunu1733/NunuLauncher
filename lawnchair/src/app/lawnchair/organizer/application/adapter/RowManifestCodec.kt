@@ -102,7 +102,16 @@ internal object RowManifestCodec {
         put(Favorites.TITLE, row.title)
         put(Favorites.INTENT, row.intent)
         put(Favorites.CONTAINER, row.containerCode.value)
-        put(Favorites.SCREEN, row.screenId?.value?.toLongOrNull() ?: 0L)
+        // Faithful column write: a captured NULL SCREEN stays NULL instead of
+        // being normalized to 0 behind the platform's back.
+        if (row.screenId == null) {
+            putNull(Favorites.SCREEN)
+        } else {
+            put(
+                Favorites.SCREEN,
+                requireNotNull(row.screenId.value.toLongOrNull()) { "Screen id must be numeric" },
+            )
+        }
         put(Favorites.CELLX, row.cellX)
         put(Favorites.CELLY, row.cellY)
         put(Favorites.SPANX, row.spanX)
@@ -133,19 +142,17 @@ internal object RowManifestCodec {
         val cy = nullableInt(Favorites.CELLY)
         val sx = nullableInt(Favorites.SPANX)
         val sy = nullableInt(Favorites.SPANY)
-        val screenSlot = when {
+        // SCREEN is schema-nullable; the manifest keeps the raw value for every
+        // row so apply and recovery never rewrite NULL into 0. Only the desktop
+        // placement requires a page, and only its derivation may fail closed.
+        val screenId = when {
             container == Favorites.CONTAINER_DESKTOP -> PageId(requireNotNull(screen).toString())
-
-            // Hotseat rows carry their slot in SCREEN; the column is nullable, and
-            // Launcher3's loader reads NULL as slot 0 through getInt.
-            container == Favorites.CONTAINER_HOTSEAT -> PageId((screen ?: 0L).toString())
-
-            else -> null
+            else -> screen?.let { PageId(it.toString()) }
         }
         return PersistentRow(
             long(Favorites._ID), ItemId(long(Favorites._ID).toString()),
             ProfileId(long(Favorites.PROFILE_ID).toString()), ContainerCode(container),
-            screenSlot,
+            screenId,
             cx, cy, sx, sy, int(Favorites.RANK), KindCode(int(Favorites.ITEM_TYPE)),
             int(Favorites.APPWIDGET_ID).takeIf { it >= 0 }?.let(::AppWidgetId),
             text(Favorites.APPWIDGET_PROVIDER)?.let(::ComponentKey), blob(Favorites.ICON),
@@ -173,9 +180,11 @@ internal object RowManifestCodec {
 
             Favorites.CONTAINER_HOTSEAT -> PlacementState.Dock(
                 // Hotseat slot authority is SCREEN (LoaderCursor.checkItemPlacement,
-                // GridSizeMigrationUtil.loadHotseatEntries). Default-layout rows
-                // leave RANK at its schema default of 0 for every entry.
-                requireNotNull(row.screenId).value.toInt(),
+                // GridSizeMigrationUtil.loadHotseatEntries); default-layout rows
+                // leave RANK at its schema default of 0 for every entry. The raw
+                // column stays untouched in the manifest; NULL is read as slot 0
+                // exactly like the platform loader's getInt.
+                row.hotseatSlot(),
             )
 
             else -> if (row.containerCode.value >= 0) {
@@ -293,4 +302,6 @@ internal object RowManifestCodec {
     } catch (error: Exception) {
         throw IllegalArgumentException("Malformed intent for row ${row.rowId}", error)
     }
+
+    private fun PersistentRow.hotseatSlot(): Int = screenId?.value?.toIntOrNull() ?: 0
 }
