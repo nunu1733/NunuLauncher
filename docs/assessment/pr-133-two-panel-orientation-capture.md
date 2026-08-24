@@ -5,16 +5,29 @@
 
 - Auditor: independent session (general-purpose subagent; implementer was the main session)
 - PR: https://github.com/nunu1733/NunuLauncher/pull/133
-- Head SHA: d639fc735c8e06f24e8b8364cc1368fa36926609
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32701200140
+- Head SHA: d79e42ddebe9aa2c584054c0a67992f784fb7898
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32706010686
 - Criteria: specs/130-two-panel-orientation-capture/spec.md AC-1, AC-2, AC-3, AC-4, AC-5, AC-6, AC-7, AC-8
 
 ## Scope
 
-This audit covers PR #133 (`risk: layout-data`, `Closes #130`) at head
-`d639fc735c8e06f24e8b8364cc1368fa36926609` on branch
+This is a re-audit covering PR #133 (`risk: layout-data`, `Closes #130`)
+through head `d79e42ddebe9aa2c584054c0a67992f784fb7898` on branch
 `issue-130-two-panel-orientation-capture`, with a clean working tree verified
-before and after the audit. The audited diff consists of commits `a16c8ff34d`,
+at the start of the re-audit. It re-pins the record after review-driven,
+documentation-only changes: the delta over the previously audited
+`d639fc735c8e06f24e8b8364cc1368fa36926609` (CI run `32701200140`) contains
+ONLY `specs/130-two-panel-orientation-capture/spec.md` (authority-chain
+bullet aligned to the measured cache-replacement behavior) and
+`specs/130-two-panel-orientation-capture/plan.md` (status completed to
+implemented with PR/CI/audit checklist items checked), plus commit
+`6624fc148e2e` which added this audit record itself. No code, test,
+workflow, or oracle change is present in the delta, so every conclusion
+below carries over; the substance of the changed wording was independently
+re-verified against source during this re-audit (see Findings).
+
+The original audit covered head `d639fc735c8e06f24e8b8364cc1368fa36926609`,
+whose diff consists of commits `a16c8ff34d`,
 `cd83df70c1`, and `d639fc735c`, plus spec status flip `d558f4e466`:
 
 - `lawnchair/src/app/lawnchair/organizer/application/adapter/LauncherLayoutAdapter.kt`
@@ -96,14 +109,17 @@ hosts keep identical ordinals.
   the residual device limitation are recorded here and in the spec change
   history.
 - **AC-7 — pass.** All commands below succeeded locally on the audited head,
-  and GitHub Actions run `32701200140` (event=`pull_request`, PR #133,
-  head SHA = audited head, branch = `issue-130-two-panel-orientation-capture`)
-  concluded `success` with every job successful, including `final-status`,
-  `organizer-unit-tests`, `check-style`, `build-debug-apk`,
-  `validate-repo-contract`, and `organizer-instrumentation-api35-tests` whose
-  class list now includes
+  and GitHub Actions run `32706010686` (event=`pull_request`, PR #133,
+  head SHA = `d79e42ddebe9aa2c584054c0a67992f784fb7898`, branch =
+  `issue-130-two-panel-orientation-capture`, attempt 2) concluded `success`
+  with every job successful, including `final-status`, `organizer-unit-tests`,
+  `check-style`, `build-debug-apk`, `validate-repo-contract`, and
+  `organizer-instrumentation-api35-tests` whose class list now includes
   `app.lawnchair.organizer.application.TwoPanelOrientationCaptureInstrumentationTest`
-  (verified at `.github/workflows/ci.yml` line 336).
+  (verified at `.github/workflows/ci.yml` line 336). Attempt 1 of the same
+  run failed only the `organizer-instrumentation-issue53-tests` lane before a
+  rerun went fully green (see Findings); the earlier fully green run
+  `32701200140` covered the code-identical prior head `d639fc735c`.
 - **AC-8 — pass.** PR #133 carries the `risk: layout-data` label (verified via
   API) and this independent audit record provides the required evidence from a
   session that did not implement the change.
@@ -162,6 +178,52 @@ API 35 phone `api35-test`, emulator-5556 = API 36 Pixel 9 Pro Fold
 `issue108_api36_pixel_9_pro_fold`); gradle install success was confirmed via
 "Installed on 1 device." before trusting the instrument results.
 
+### Re-audit session checks (2026-08-24, head `d79e42ddeb`)
+
+Independent checks executed by the re-audit session on head
+`d79e42ddebe9aa2c584054c0a67992f784fb7898`:
+
+```text
+git status && git rev-parse HEAD && git branch --show-current
+  PASS — clean tree, HEAD d79e42ddebe9aa2c584054c0a67992f784fb7898,
+         branch issue-130-two-panel-orientation-capture
+
+git diff d639fc735c..d79e42ddeb --stat
+  PASS — docs-only delta: spec.md (+1/-1), plan.md (+4/-4), plus
+         docs/assessment/pr-133-two-panel-orientation-capture.md added by
+         commit 6624fc148e2e (this audit record itself); no code/test/
+         workflow/oracle file touched
+
+Source spot-check of the re-worded spec authority chain
+  PASS — src/com/android/launcher3/util/DisplayController.java
+         getDeviceType() (lines 522–537) returns TYPE_MULTI_DISPLAY only
+         when supportedBounds contains BOTH phone-mode and tablet-mode
+         bounds; Info constructor cache invalidation on unexpected
+         normalizedDisplayInfo REPLACES mPerDisplayBounds (clear() +
+         estimateInternalDisplayBounds refill, lines 410–427);
+         src/com/android/launcher3/util/window/WindowManagerProxy.java
+         estimateInternalDisplayBounds (lines 109–116) returns a
+         single-entry map for the current posture only
+
+gh api repos/nunu1733/NunuLauncher/actions/runs/32706010686 --jq '{head_sha, conclusion, event}'
+  PASS — head_sha=d79e42ddebe9aa2c584054c0a67992f784fb7898,
+         conclusion=success, event=pull_request
+
+gh api repos/nunu1733/NunuLauncher/actions/runs/32706010686/jobs?per_page=100 --jq '.jobs[] | "\(.name) \(.conclusion)"'
+  PASS — all 12 jobs success, including final-status, organizer-unit-tests,
+         check-style, build-debug-apk, validate-repo-contract, and all six
+         organizer-instrumentation lanes; attempt-1 job list shows ONLY
+         organizer-instrumentation-issue53-tests failure (see Findings)
+
+./gradlew spotlessCheck
+  PASS — BUILD SUCCESSFUL in 1s (run separately; see Findings)
+
+./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'
+  PASS — BUILD SUCCESSFUL in 24s (separate invocation); 60 organizer result
+         classes, totals tests="721" skipped="0" failures="0" errors="0";
+         CanonicalOrientationTest.xml tests="2" failures="0" errors="0"
+```
+
 ## Findings
 
 No blocking finding was identified. Notable observations recorded for the
@@ -202,3 +264,25 @@ merge-gate record:
   replacement semantics verified above; AC-1/AC-2 rest on Test oracle path (2)
   (authority-consistency check + pure mapping proof). The residual limitation
   stays tracked in the Issue #108 matrix per the spec.
+- **Re-audit (2026-08-24, head `d79e42ddeb`) — review-driven doc cleanup,
+  pin moved.** After the original audit, review feedback required three
+  documentation changes: (1) the PR-body AC-5 wording was aligned to the
+  refined no-write oracle, (2) the spec authority-chain contradiction was
+  resolved — it previously claimed fold transitions ACCUMULATE both modes'
+  bounds, while measured behavior is cache REPLACEMENT, which this session
+  independently re-verified against source (`DisplayController.Info`
+  constructor invalidates and refills `mPerDisplayBounds`,
+  DisplayController.java lines 410–427; `WindowManagerProxy.
+  estimateInternalDisplayBounds` returns a single-entry map,
+  WindowManagerProxy.java lines 109–116), so both modes never coexist in
+  `supportedBounds` on these emulators, and (3) plan.md status was completed
+  to implemented with its PR/CI/audit checklist items checked. The delta over
+  the previously audited head contains no code, test, workflow, or oracle
+  change, so all prior conclusions carry over unchanged. Flake observation on
+  the new pin: run `32706010686` attempt 1 failed ONLY
+  `organizer-instrumentation-issue53-tests` while every other lane succeeded;
+  the rerun went fully green — consistent with the shared-emulator flakiness
+  pattern recorded above, not a defect in this diff. The sibling `High-risk
+  gate` run `32706010629` at this head failed `high-risk-evidence` as
+  expected while this record still pinned the old head; the gate validates on
+  the commit containing this re-audit update.
