@@ -1,6 +1,6 @@
 ---
 issue: "#130"
-status: accepted
+status: implemented
 requirements:
   - NFR-002
   - NFR-007
@@ -101,14 +101,14 @@ None。UI表示は不変である。
 
 ## Acceptance criteria
 
-- [ ] **AC-1:** currentな`TYPE_MULTI_DISPLAY` / two-panel portrait hostのcaptureが`TWO_PANEL_PORTRAIT`を出力する。
-- [ ] **AC-2:** currentな`TYPE_MULTI_DISPLAY` / two-panel landscape hostのcaptureが`TWO_PANEL_LANDSCAPE`を出力する。
-- [ ] **AC-3:** phoneおよび非two-panel tablet hostは従来どおり`PORTRAIT` / `LANDSCAPE`を出力する。
-- [ ] **AC-4:** `ProductionOrganizationInputComposer`がcaptured orientationをexactにplanner入力へ保持する。
-- [ ] **AC-5:** captured `DeviceOrientation`が変化するtwo-panel/ordinary遷移またはportrait/landscape遷移はcanonical revisionへ反映され、変更前plan適用はstale拒否されLauncher DB書込みが発生しない。
-- [ ] **AC-6:** testはproduction capture seamと同じLauncher display/device-profile権威を使う。実multi-display runtimeを優先し、使用できない場合は等価harnessと残余device限界を明示する。ただし等価harnessは、captureが参照するflagだけを直接書き換えてはならない。`DisplayController.Info.getDeviceType()` → IDP → `DeviceProfile.isTwoPanels`と同じproduction authority chainを成立させるか、少なくともharness上でproduction captureのtwo-panel判定と実際に構築された`DeviceProfile.isTwoPanels`が一致することを検証する。これを実現できない場合、そのharnessは純粋mapping proofに限定し、実two-panel Launcher-host evidenceの代替とは扱わない。
-- [ ] **AC-7:** 関連organizer test、API 35/36.1 compatibility lane、formatting、build、CI `final-status`が成功する。
-- [ ] **AC-8:** 実装PRは`risk: layout-data`を持ち、独立audit evidence([github-workflow.md](../../docs/project/github-workflow.md)形式)を揃える。
+- [x] **AC-1:** currentな`TYPE_MULTI_DISPLAY` / two-panel portrait hostのcaptureが`TWO_PANEL_PORTRAIT`を出力する。(Test oracle(2)経由で充足。実two-panel runtimeは本baselineのemulatorでは成立しないため実host capture evidenceは未取得であり、残余limitationを[Issue #108](https://github.com/nunu1733/NunuLauncher/issues/108) matrixへ記録)
+- [x] **AC-2:** currentな`TYPE_MULTI_DISPLAY` / two-panel landscape hostのcaptureが`TWO_PANEL_LANDSCAPE`を出力する。(AC-1と同じoracle(2)経由の充足)
+- [x] **AC-3:** phoneおよび非two-panel tablet hostは従来どおり`PORTRAIT` / `LANDSCAPE`を出力する。
+- [x] **AC-4:** `ProductionOrganizationInputComposer`がcaptured orientationをexactにplanner入力へ保持する。
+- [x] **AC-5:** captured `DeviceOrientation`が変化するtwo-panel/ordinary遷移またはportrait/landscape遷移はcanonical revisionへ反映され、変更前plan適用はstale拒否されLauncher DB書込みが発生しない。
+- [x] **AC-6:** testはproduction capture seamと同じLauncher display/device-profile権威を使う。実multi-display runtimeを優先し、使用できない場合は等価harnessと残余device限界を明示する。ただし等価harnessは、captureが参照するflagだけを直接書き換えてはならない。`DisplayController.Info.getDeviceType()` → IDP → `DeviceProfile.isTwoPanels`と同じproduction authority chainを成立させるか、少なくともharness上でproduction captureのtwo-panel判定と実際に構築された`DeviceProfile.isTwoPanels`が一致することを検証する。これを実現できない場合、そのharnessは純粋mapping proofに限定し、実two-panel Launcher-host evidenceの代替とは扱わない。(実装は構築済み`DeviceProfile.isTwoPanels`参照+実host一致性検証を採用。flag書き換え方式は不採用)
+- [x] **AC-7:** 関連organizer test、API 35/36.1 compatibility lane、formatting、build、CI `final-status`が成功する。
+- [x] **AC-8:** 実装PRは`risk: layout-data`を持ち、独立audit evidence([github-workflow.md](../../docs/project/github-workflow.md)形式)を揃える。
 
 ## Test oracle
 
@@ -131,6 +131,7 @@ None。UI表示は不変である。
 - 2026-08-24: Issue #130のreview用`draft`仕様を作成。権威chain調査と既存test表面調査を反映。
 - 2026-08-24: Spec review(Issue #130コメント)の指摘を反映。P1: capture対象をproduction authority chainで構築された現行`DeviceProfile.isTwoPanels`へ明確化し、等価harnessの成立条件(flagの单独書き換え禁止、chain成立または一致性検証、不成立時は純粋mapping proofに限定)をAC-6/Test oracleへ追加。P2: posture change表現をcaptured `DeviceOrientation`値が変化する遷移へ限定(Outcome/Scope/AC-5/Scenario)。
 - 2026-08-24: Maintainer acceptance。statusを`accepted`へ更新。Open questionsはnon-blockingとして実装時に解消しPRへ記録する。
+- 2026-08-24: 実装完了([PR #133](https://github.com/nunu1733/NunuLauncher/pull/133))に伴いstatusを`implemented`へ更新。production修正(`LauncherLayoutAdapter.capabilities()`の構築済み`DeviceProfile.isTwoPanels`参照+純粋写像)、JVM unit test、production seam instrumentation(AC-3/AC-4/AC-5)を追加。実two-panel runtime試行は否定的結果(DisplayControllerのposture変化によるbounds cache差し替えで両mode併存せず)であり、AC-1/AC-2はTest oracle(2)経由で充足し残余limitationを#108へ記録。独立audit記録は`docs/assessment/pr-133-two-panel-orientation-capture.md`。
 
 ## References
 
