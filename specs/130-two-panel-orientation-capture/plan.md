@@ -2,7 +2,7 @@
 
 > Issue: #130
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: **implemented — all acceptance evidence, CI `final-status`, and the independent high-risk audit accepted on 2026-08-24 (PR #133)**
 
 ## Current evidence
 
@@ -76,6 +76,6 @@
 - [x] instrumentation追加とCI lane登録
 - [x] local検証(spotlessCheck / organizer JVM tests / assembleLawnWithQuickstepGithubDebug 成功)
 - [x] emulator検証: API 35 phone emulator(`api35-test`)で3 test成功(AC-3/AC-4/AC-5)。API 36 Pixel 9 Pro Fold AVDでも3 test成功。実two-panel runtime試行は否定的結果(DisplayControllerのposture変化でbounds cache差し替え、両mode併存せず)→ Test oracle(2)のlimitation記録へ
-- [ ] PR(`Closes #130`, `risk: layout-data`)
-- [ ] CI `final-status`確認
-- [ ] 独立audit
+- [x] PR(`Closes #130`, `risk: layout-data`)→ [PR #133](https://github.com/nunu1733/NunuLauncher/pull/133)
+- [x] CI `final-status`確認(run `32701200140`、head `d639fc735c`で全緑。以降のdocs-only修正commitでも最終headで全緑を維持)
+- [x] 独立audit → `docs/assessment/pr-133-two-panel-orientation-capture.md`(PASS)

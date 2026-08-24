@@ -21,7 +21,7 @@ canonical orientationを、production authority chain(`DisplayController.Info.ge
 
 ### Authority chain(調査済み事実、baseline commit `505dbc40e6154c05158b5d0271c45f6a885a411b`)
 
-- `DisplayController.Info.getDeviceType()`はsupported boundsにphone mode(< 600dp smallest)とtablet mode(>= 600dp)の両方が含まれるとき`TYPE_MULTI_DISPLAY`を返す。fold状態変化でdisplay sizeが変わるとbounds集合が蓄積されるため、両modeの併存は実foldableで発生する。
+- `DisplayController.Info.getDeviceType()`は、supported boundsにphone mode(< 600dp smallest)とtablet mode(>= 600dp)が**ともに存在する場合**に限り`TYPE_MULTI_DISPLAY`を返す。実測では本baselineのposture変化時にbounds集合は蓄積されず差し替えられるため、利用可能なemulatorで両modeが併存することはない(詳細は後段Open questionsの解消記録および[Issue #108](https://github.com/nunu1733/NunuLauncher/issues/108) matrix参照)。
 - `InvariantDeviceProfile.deviceType`がこの値を保持し、`DeviceProfile`生成時に`.setIsMultiDisplay(deviceType == TYPE_MULTI_DISPLAY)`として渡される。
 - `DeviceProfile.isTwoPanels = isMultiDisplay`であり、`mTypeIndex`は`isTwoPanels`とwindow boundsの向きで`INDEX_TWO_PANEL_*`へ分岐する。
 - したがって`deviceType == TYPE_MULTI_DISPLAY`は`isTwoPanels`の唯一の決定要因であり、`supportedProfiles`はすべて同じ`isMultiDisplay`値で構築される。
