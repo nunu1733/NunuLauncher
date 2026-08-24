@@ -4,9 +4,14 @@ import android.content.ComponentName
 import android.content.ContentValues
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.ApplicationInfo
+import android.content.pm.LauncherApps
 import android.database.Cursor
 import android.os.Process
-import android.content.pm.LauncherApps
+import android.os.SystemClock
+import android.os.UserHandle
+import android.os.UserManager
+import android.util.Log
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.lawnchair.LawnchairLauncher
@@ -46,6 +51,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import org.junit.Assume.assumeTrue
 import org.junit.runner.RunWith
 
 /**
@@ -314,6 +320,128 @@ class ProductionOrganizationInputInstrumentationTest {
         assertEquals(PlatformEvidenceReadResult.Unreadable, samePackageAcrossProfiles)
     }
 
+    @Test
+    fun productionComposerComposesEvidenceForEveryAvailableProfileWithoutPrivilegedCrossUserAccess() {
+        val userCache = UserCache.INSTANCE.get(context)
+        val userManager = checkNotNull(context.getSystemService(UserManager::class.java))
+        val launcherApps = checkNotNull(context.getSystemService(LauncherApps::class.java))
+        val policy = (BuiltInOrganizerPolicyBundleSource.readActive() as app.lawnchair.organizer.rules.BundleReadResult.Ready)
+            .bundle.classification
+        val handles = awaitProfileConvergence(userCache, userManager)
+
+        // Issue #129: one package resolvable in every accessible profile keeps the
+        // fixture valid — each inserted row then requires evidence read from its own
+        // profile through the authorized seam.
+        val accessible = handles.mapNotNull { handle ->
+            if (!userManager.isUserUnlocked(handle) || userManager.isQuietModeEnabled(handle)) return@mapNotNull null
+            val serial = userCache.getSerialNumberForUser(handle).toString()
+            launchableComponents(launcherApps, handle).takeIf { it.isNotEmpty() }?.let { ProfileFixture(serial, it) }
+        }
+        assertTrue("at least the current profile must expose launchable activities", accessible.isNotEmpty())
+        val sharedPackages = accessible.map { it.components.keys }.reduce { acc, keys -> acc.intersect(keys).toSet() }
+            .filterNot { it.startsWith("com.google.") }
+        assumeTrue("accessible profiles must share a non-Google package", sharedPackages.isNotEmpty())
+        val sharedPackage = sharedPackages.first()
+        val systemPackage = accessible.all { fixture ->
+            val info = checkNotNull(
+                launcherApps.getApplicationInfo(sharedPackage, 0, userCache.getUserForSerialNumber(fixture.serial.toLong())),
+            ) { "shared package must resolve in every accessible profile" }
+            info.flags and ApplicationInfo.FLAG_SYSTEM != 0
+        }
+
+        val insertedIds = accessible.map { fixture ->
+            insertLauncherRow(
+                lock = OrganizerLockState.UNLOCKED,
+                component = checkNotNull(fixture.components[sharedPackage]),
+                profileSerial = fixture.serial.toLong(),
+            )
+        }
+
+        val result = ProductionOrganizationInputComposer(context, realWriter()).composeFullOrganization()
+        assertTrue(
+            "composer must stay ready for valid multi-profile layouts: $result",
+            result is OrganizationInputComposition.Ready,
+        )
+        val ready = result as OrganizationInputComposition.Ready
+
+        // A row that is not AVAILABLE would be excluded from evidence requests and make
+        // this pass vacuous, so require every inserted row to have been requested.
+        insertedIds.forEach { itemId ->
+            assertEquals(Availability.AVAILABLE, ready.input.snapshot.items.single { it.id == itemId }.availability)
+        }
+        if (systemPackage) {
+            for (itemId in insertedIds) {
+                val signal = ready.input.signals.entries.single { it.item == itemId }
+                assertEquals(SignalSource.S5, signal.source)
+                assertEquals(policy.systemCategory, signal.candidate)
+            }
+        }
+        Log.i(
+            TAG,
+            "ISSUE129_EVIDENCE profiles=${accessible.joinToString(",") { it.serial }} " +
+                "insertedRows=${insertedIds.size} systemPackage=$systemPackage ready=true",
+        )
+    }
+
+    @Test
+    fun androidEvidenceFailsClosedForRealProfileMissingThePackageInsteadOfFallingBackAcrossProfiles() {
+        val userCache = UserCache.INSTANCE.get(context)
+        val userManager = checkNotNull(context.getSystemService(UserManager::class.java))
+        val launcherApps = checkNotNull(context.getSystemService(LauncherApps::class.java))
+        val policy = (BuiltInOrganizerPolicyBundleSource.readActive() as app.lawnchair.organizer.rules.BundleReadResult.Ready)
+            .bundle.classification
+        val handles = awaitProfileConvergence(userCache, userManager)
+
+        val personalPackages = launchableComponents(launcherApps, Process.myUserHandle()).keys
+        val other = handles.firstOrNull { handle ->
+            handle != Process.myUserHandle() &&
+                userManager.isUserUnlocked(handle) &&
+                !userManager.isQuietModeEnabled(handle)
+        }
+        assumeTrue("multi-profile host required for cross-profile fallback regression", other != null)
+        val confirmedOther = checkNotNull(other)
+        // getActivityList lists launchable activities only; a package can still be
+        // installed-but-hidden in the other profile. Use the authorized resolution
+        // seam itself as the setup oracle for true absence (it throws when the
+        // package is not installed for that user), then require the evidence read
+        // to fail closed instead of falling back to the current profile's copy.
+        val missingElsewhere = personalPackages.filter { pkg ->
+            try {
+                launcherApps.getApplicationInfo(pkg, 0, confirmedOther) == null
+            } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
+                true
+            }
+        }
+        assumeTrue("personal package absent from the other profile required", missingElsewhere.isNotEmpty())
+
+        val result = AndroidClassificationSignalSnapshotSource(context).read(
+            listOf(
+                ClassificationEvidenceRequest(
+                    ItemId("absent-in-other-profile"),
+                    PackageName(missingElsewhere.first()),
+                    ProfileId(userCache.getSerialNumberForUser(confirmedOther).toString()),
+                ),
+            ),
+            policy,
+        )
+        assertEquals(PlatformEvidenceReadResult.Unreadable, result)
+    }
+
+    private data class ProfileFixture(val serial: String, val components: Map<String, ComponentName>)
+
+    private fun awaitProfileConvergence(userCache: UserCache, userManager: UserManager): List<UserHandle> {
+        val handles = (userManager.userProfiles + Process.myUserHandle()).distinct()
+        val profileDeadline = SystemClock.elapsedRealtime() + 5_000L
+        while (!userCache.userProfiles.containsAll(handles) && SystemClock.elapsedRealtime() < profileDeadline) {
+            SystemClock.sleep(100)
+        }
+        assertTrue("UserCache must converge to the authoritative profile inventory", userCache.userProfiles.containsAll(handles))
+        return handles
+    }
+
+    private fun launchableComponents(launcherApps: LauncherApps, user: UserHandle): Map<String, ComponentName> =
+        launcherApps.getActivityList(null, user).associate { it.componentName.packageName to it.componentName }
+
     private fun realWriter() = LauncherLayoutAdapter(context, launcher.model.modelDbController, launcher.model)
 
     private fun insertLauncherRow(
@@ -435,6 +563,7 @@ class ProductionOrganizationInputInstrumentationTest {
     }
 
     private companion object {
+        const val TAG = "ProductionOrgInputTest"
         const val OVERRIDE_PREFERENCES_NAME = "organizer_category_overrides"
         const val OVERRIDE_DIRECTORY_NAME = "organizer_category_overrides"
         const val OVERRIDE_FILE_NAME = "snapshot-v1"
