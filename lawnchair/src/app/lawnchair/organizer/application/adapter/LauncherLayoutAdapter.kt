@@ -138,7 +138,12 @@ internal class LauncherLayoutAdapter(
         var nextId = capture.manifest.rows.maxOfOrNull { it.rowId } ?: 0L
         val plannedIds = mutableMapOf<ApplicationItemRef, Long>()
         val plannedPages = mutableMapOf<ApplicationPageRef.PlannedPage, Long>()
-        val maxPage = capture.manifest.rows.mapNotNull { it.screenId?.value?.toLongOrNull() }.maxOrNull() ?: -1L
+        // Hotseat rows also carry their slot in screenId since Issue #136; page
+        // numbering must stay scoped to committed desktop rows.
+        val maxPage = capture.manifest.rows
+            .filter { it.containerCode.value == Favorites.CONTAINER_DESKTOP }
+            .mapNotNull { it.screenId?.value?.toLongOrNull() }
+            .maxOrNull() ?: -1L
         plan.intendedState.pages.map { it.ref }.filterIsInstance<ApplicationPageRef.PlannedPage>()
             .sortedBy { it.ordinal.value }.forEachIndexed { index, ref -> plannedPages[ref] = maxPage + index + 1L }
         val rows = mutableListOf<PersistentRow>()
@@ -503,10 +508,18 @@ private fun rowFor(
 
         is PlacementState.Dock -> {
             container = Favorites.CONTAINER_HOTSEAT
-            screen = null
+            // The slot lives in SCREEN. A preserved row captured with a
+            // schema-NULL slot (read as slot 0 by the loader) must round-trip
+            // as NULL instead of an invented 0; anything else carries its
+            // explicit slot. RANK stays untouched so preserved rows are exact.
+            screen = if (base?.screenId == null && placement.rank == 0) {
+                null
+            } else {
+                PageId(placement.rank.toString())
+            }
             cell = null
             span = null
-            rank = placement.rank
+            rank = base?.rank ?: 0
         }
 
         is PlacementState.FolderChild -> {

@@ -322,12 +322,16 @@ class DefaultOrganizationInputComposer(
             val second = (it.second as? ApplicationItemRef.PersistentItem)?.itemId ?: return null
             AppPairMetadata(listOf(AppPairMember(first, it.firstStage, null), AppPairMember(second, it.secondStage, null)))
         }
+        // Planner contract: the container item itself owns its identity
+        // (folderId/appPairId). Member items stay linked only through their
+        // placement and the parent's member list; setting folderId on a member
+        // would fail KIND_TARGET_MISMATCH validation.
         return CapturedItem(
             id, item.profile, kind, item.targetKey, placement,
             locked = item.lockState == OrganizerLockState.LOCKED,
             availability = availability,
-            folderId = (placement as? CapturedPlacement.FolderMember)?.folder?.folderId,
-            appPairId = (placement as? CapturedPlacement.AppPairMember)?.pair?.appPairId,
+            folderId = if (kind == ItemKind.FOLDER) FolderId(id.value) else null,
+            appPairId = if (kind == ItemKind.APP_PAIR) AppPairId(id.value) else null,
             members = members,
             appPair = pairMetadata,
         )
