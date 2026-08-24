@@ -1,6 +1,6 @@
 ---
 issue: "#130"
-status: draft
+status: accepted
 requirements:
   - NFR-002
   - NFR-007
@@ -123,13 +123,14 @@ None。UI表示は不変である。
 
 ## Open questions
 
-- 実multi-display runtime(foldable AVDのfold状態遷移等)で`TYPE_MULTI_DISPLAY`かつ実構築済み`DeviceProfile.isTwoPanels == true`を成立させ、AC-1/AC-2のhost evidenceを取得できるか。実装時に確認し、取得できない場合はTest oracle(2)のlimitation記録へ切り替える。結果と理由をPRへ記録する(non-blocking)。
-- CI emulator上での実rotation制御が安定しない場合のlandscape cell取得方法。実装時に決定し、結果と理由をPRへ記録する(non-blocking)。
+- ~~実multi-display runtime(foldable AVDのfold状態遷移等)で`TYPE_MULTI_DISPLAY`かつ実構築済み`DeviceProfile.isTwoPanels == true`を成立させ、AC-1/AC-2のhost evidenceを取得できるか。~~ **解消済(2026-08-24、非該当確認)。** Pixel 9 Pro Fold AVD(API 36、`CLOSED` 1080x2424@390dpi ≈ 443dp / `OPENED` 2076x2152@390dpi ≈ 852dp)でfold状態遷移を実行した結果、本baselineの`DisplayController`はposture変化時に`perDisplayBounds` cacheを差し替え(FileLog `(Invalid Cache)` + `CHANGE_SUPPORTED_BOUNDS`に単一エントリ)、phone/tablet両modeの併存が発生しないため`TYPE_MULTI_DISPLAY` / `isTwoPanels == true`は実emulatorで成立しない。spec Test oracle(2)に従い、実hostでのauthority一致性検証 + 純粋mapping proofをもって証拠とし、`TWO_PANEL_*`の実host capture evidenceは未取得であることを残余limitationとして[Issue #108](https://github.com/nunu1733/NunuLauncher/issues/108) matrixへ記録する。
+- CI emulator上でのlandscape cell取得方法 → 実rotation制御(`user_rotation` + 上流`forceAllowRotationForTesting`相当hook + launcher foreground)で解消済。API 35 phone emulatorとAPI 36 foldable emulatorの両方で`PORTRAIT`→`LANDSCAPE`遷移後のstale拒否を確認した。
 
 ## Change history
 
 - 2026-08-24: Issue #130のreview用`draft`仕様を作成。権威chain調査と既存test表面調査を反映。
 - 2026-08-24: Spec review(Issue #130コメント)の指摘を反映。P1: capture対象をproduction authority chainで構築された現行`DeviceProfile.isTwoPanels`へ明確化し、等価harnessの成立条件(flagの单独書き換え禁止、chain成立または一致性検証、不成立時は純粋mapping proofに限定)をAC-6/Test oracleへ追加。P2: posture change表現をcaptured `DeviceOrientation`値が変化する遷移へ限定(Outcome/Scope/AC-5/Scenario)。
+- 2026-08-24: Maintainer acceptance。statusを`accepted`へ更新。Open questionsはnon-blockingとして実装時に解消しPRへ記録する。
 
 ## References
 

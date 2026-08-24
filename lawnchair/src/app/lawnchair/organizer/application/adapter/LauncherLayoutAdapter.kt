@@ -369,11 +369,13 @@ internal class LauncherLayoutAdapter(
 
     private fun capabilities(): DeviceCapabilities {
         val idp = InvariantDeviceProfile.INSTANCE.get(appContext)
-        val orientation = if (appContext.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-            DeviceOrientation.LANDSCAPE
-        } else {
-            DeviceOrientation.PORTRAIT
-        }
+        // Spec #130: two-panel-ness must come from the same constructed
+        // DeviceProfile authority the launcher UI uses; re-deriving it from a
+        // raw flag would let capture diverge from the actual device state.
+        val orientation = canonicalOrientation(
+            isTwoPanels = idp.getDeviceProfile(appContext).isTwoPanels,
+            configurationOrientation = appContext.resources.configuration.orientation,
+        )
         return DeviceCapabilities(
             columns = idp.numColumns,
             rows = idp.numRows,
@@ -395,6 +397,21 @@ internal class LauncherLayoutAdapter(
 
 private fun WriterKind.bridge() = LayoutWriteCoordinator.OwnerKind.valueOf(name)
 private fun LayoutWriteCoordinator.OwnerKind.port() = WriterKind.valueOf(name)
+
+internal fun canonicalOrientation(
+    isTwoPanels: Boolean,
+    configurationOrientation: Int,
+): DeviceOrientation = when {
+    isTwoPanels && configurationOrientation == Configuration.ORIENTATION_LANDSCAPE -> {
+        DeviceOrientation.TWO_PANEL_LANDSCAPE
+    }
+
+    isTwoPanels -> DeviceOrientation.TWO_PANEL_PORTRAIT
+
+    configurationOrientation == Configuration.ORIENTATION_LANDSCAPE -> DeviceOrientation.LANDSCAPE
+
+    else -> DeviceOrientation.PORTRAIT
+}
 
 private fun LayoutState.resolvePersistentReferences(
     plannedIds: Map<ApplicationItemRef, Long>,
