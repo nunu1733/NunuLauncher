@@ -68,7 +68,7 @@ investigation, but cannot be the sole final evidence.
 | Redacted durable evidence subset | [issue-132 exploratory evidence](./evidence/issue-132-exploratory-baseline.md) | Representative UI states and correlated release logcat retained in the repository. |
 | Screenshots / screen recordings | build/issue132-evidence/05329be2d7 | Local evidence root; exact artifact filenames PENDING. |
 | Relevant logcat | build/issue132-evidence/05329be2d7 | Local evidence root; exact artifact filenames PENDING. |
-| Organizer diagnostics export | build/issue132-evidence/05329be2d7; run 881a80255beee1a426cc7f516571c463 | PLANNING_REJECTED / PLANNING_INVALID.OVERLAP; reasons16. |
+| Organizer diagnostics / logcat evidence | build/issue132-evidence/05329be2d7; run 881a80255beee1a426cc7f516571c463 | PLANNING_REJECTED / PLANNING_INVALID.OVERLAP; reasons16. Export itself was unreachable and is tracked by #138. |
 | Runtime/UI state dump | PENDING | Use only when needed to explain a result; do not commit user layout or credentials. |
 | Bug Issue links | [#136](https://github.com/nunu1733/NunuLauncher/issues/136), [#137](https://github.com/nunu1733/NunuLauncher/issues/137), [#138](https://github.com/nunu1733/NunuLauncher/issues/138) | Focused owners for the planning rejection, onboarding touch activation, and release diagnostics route. |
 | CI/build artifacts | PENDING | Link exact candidate build/test artifacts where available. |
@@ -309,7 +309,7 @@ instead of creating a duplicate.
 
 ## Acceptance criteria traceability
 
-The following IDs mirror the thirteen acceptance checkboxes in Issue #132.
+The following IDs mirror the fourteen acceptance checkboxes in Issue #132.
 Unexecuted or incomplete criteria remain PENDING; criteria with a current-run
 defect or completed evidence are marked separately below.
 
@@ -327,7 +327,8 @@ defect or completed evidence are marked separately below.
 | AC-10 | At least one recovery flow is exercised through the product surface and agrees with actual HOME. | PENDING | S5 |
 | AC-11 | Remaining implemented organizer surfaces have no blocker-level integration failure. | DEFECT | S6 lock/category sub-surfaces passed; diagnostics/export lacks a supported release route ([#138](https://github.com/nunu1733/NunuLauncher/issues/138)) and recovery is blocked by #136. |
 | AC-12 | Every reproducible defect is linked to an owner Issue or split to a focused Bug Issue with evidence. | PASS | Findings linked to [#136](https://github.com/nunu1733/NunuLauncher/issues/136), [#137](https://github.com/nunu1733/NunuLauncher/issues/137), and [#138](https://github.com/nunu1733/NunuLauncher/issues/138); durable redacted evidence is repository-linked and further scenarios remain pending. |
-| AC-13 | After blocking fixes, scenarios are rerun on final release/minified candidate and #100 receives verdict/blockers. | PENDING | Final handoff |
+| AC-13 | After blocking fixes merge, the required scenarios are rerun on a final release/minified candidate before #132 closes. | PENDING | Final-candidate rerun |
+| AC-14 | #100 can consume the final dogfooding verdict and exact remaining blocker list. | PENDING | Final handoff comment/link on #100 |
 
 ## Final verdict and handoff
 
