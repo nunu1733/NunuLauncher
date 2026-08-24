@@ -336,7 +336,7 @@ class TwoPanelOrientationCaptureInstrumentationTest {
                 put(Favorites.ORGANIZER_LOCK_STATE, 1)
             },
         )
-        return id
+        return id.toLong()
     }
 
     private fun snapshotFavorites(): List<ContentValues> {
