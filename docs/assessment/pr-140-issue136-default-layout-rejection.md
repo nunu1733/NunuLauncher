@@ -1,250 +1,338 @@
 # High-risk audit: PR #140 compose ordinary default layout into planner-valid input
 
 > Status: accepted
-> Audit date: 2026-08-24
+> Audit date: 2026-08-25
 
-- Auditor: independent agent session (not the implementing session)
+- Auditor: independent agent session (not the implementing session). This
+  record is the re-audit of head `f99ff8cd5e04ab549a917a5b019bd6bcab95a720`
+  performed by a fresh independent agent session after review-driven changes;
+  the implementing session contributed none of it. The prior-session audit of
+  `7b3574f6dc92bdb45cfe334c6584bea26648cd28` (2026-08-24) is retained below as
+  clearly attributed history.
 - PR: https://github.com/nunu1733/NunuLauncher/pull/140
-- Head SHA: 7b3574f6dc92bdb45cfe334c6584bea26648cd28
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32737474547
+- Head SHA: f99ff8cd5e04ab549a917a5b019bd6bcab95a720
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/32747094320
 - Criteria: specs/83-production-organization-input-sources/spec.md FR-002, NFR-002, NFR-007, AC-3, AC-4, AC-5, AC-6; specs/12-deterministic-full-layout-planner-v1/spec.md AC-4, AC-7
 
 ## Scope
 
-PR #140 carries `risk: layout-data`, `Closes #136`, and is a single commit
-`7b3574f6dc92bdb45cfe334c6584bea26648cd28` on branch
-`issue-136-default-layout-planning-rejection`; the working tree was clean at
-the audited head. Changed files:
+PR #140 carries `risk: layout-data`, `Closes #136`, and targets branch
+`issue-136-default-layout-planning-rejection`; HEAD at this re-audit is
+`f99ff8cd5e04ab549a917a5b019bd6bcab95a720` on a clean working tree. History
+relative to the previously audited commit:
+
+- `7b3574f6dc92bdb45cfe334c6584bea26648cd28` — original fix (audited and
+  accepted 2026-08-24): hotseat slot authority moved from `RANK` to `SCREEN`
+  at capture; composer container-identity inversion fixed (`folderId`/
+  `appPairId` only on the FOLDER/APP_PAIR item itself); JVM and
+  production-seam regressions added.
+- `7462af4f9b572660ca1fba9563beab5e2f427303` — docs-only: the prior audit
+  record itself.
+- `f99ff8cd5e04ab549a917a5b019bd6bcab95a720` — review follow-up audited here:
+  "keep schema-nullable SCREEN lossless through capture and write".
+
+The incremental diff `7b3574f6dc..f99ff8cd5e` was reviewed in full by this
+session; it touches exactly three code/test files plus the prior audit record:
 
 - `lawnchair/src/app/lawnchair/organizer/application/adapter/RowManifestCodec.kt`
-  — schema-33 favorites row ↔ canonical/manifest conversion. Capture now keeps
-  hotseat `SCREEN` lossless in `PersistentRow.screenId` (NULL read as slot 0,
-  mirroring `Cursor.getInt`) for `CONTAINER_HOTSEAT` rows and derives
-  `PlacementState.Dock` from that slot instead of `RANK`; `RANK` stays a
-  passthrough column. `values()` already wrote `screenId` back to `SCREEN`, so
-  the write side needs no codec change.
+  - Capture (`Cursor.toPersistentRow`) now keeps the raw nullable `SCREEN`
+    column in `PersistentRow.screenId` for every row: desktop still fails
+    closed via `requireNotNull(screen)`, and every other container carries
+    `PageId(value)` only when the column is non-null. The previously merged
+    mapping normalized a hotseat NULL to `PageId("0")` at capture — an
+    invented value behind the platform's back; that normalization is gone.
+  - Canonical Dock derivation uses the new private
+    `PersistentRow.hotseatSlot()` (`screenId?.value?.toIntOrNull() ?: 0`);
+    NULL is interpreted as slot 0 exactly like the platform loader's
+    `Cursor.getInt`, and only at that derivation.
+  - Write (`values()`) is now faithful: `putNull(Favorites.SCREEN)` when the
+    row carries no screen; otherwise a numeric put guarded by
+    `requireNotNull(row.screenId.value.toLongOrNull())`, which fails closed
+    rather than writing a coerced value.
 - `lawnchair/src/app/lawnchair/organizer/application/adapter/LauncherLayoutAdapter.kt`
-  — `rowFor` mirrors the capture when materializing dock rows: slot into
-  `SCREEN`, original `RANK` preserved via `base?.rank ?: 0`; planned-page
-  numbering (`maxPage`) is scoped to `CONTAINER_DESKTOP` rows only, which is
-  required now that hotseat rows carry a numeric-looking `screenId`.
-- `lawnchair/src/app/lawnchair/organizer/integration/OrganizationInputComposer.kt`
-  — `mapItem` assigns `folderId`/`appPairId` only to the `FOLDER`/`APP_PAIR`
-  item itself (id-matched), never to members; members stay linked through
-  placement and the parent member list.
-- Tests: `tests/unit/app/lawnchair/organizer/integration/DefaultLayoutComposerPlannerRegressionTest.kt`
-  (new JVM composer→planner regression over the 15-item default-layout shape)
-  and `tests/organizer-instrumentation/app/lawnchair/organizer/integration/ProductionOrganizationInputInstrumentationTest.kt`
-  (new production-seam case `defaultLayoutRowsCaptureSlotsFromScreenAndComposeIntoValidPartition`
-  over real schema-33 rows; the pre-existing quiet/private/disabled/unavailable
-  case was relocated below it with its body intact, not removed).
+  — `rowFor`'s Dock branch writes `screen = null` exactly when the base row
+  was captured with a NULL slot and the plan keeps rank 0 (preserved rows stay
+  byte-exact); moved or explicitly-slotted rows write their explicit slot;
+  `RANK` remains an untouched passthrough. Page numbering (`maxPage`) and page
+  inventory (`referencedPages`) remain scoped to `CONTAINER_DESKTOP`, so
+  hotseat NULLs cannot leak into page planning.
+- `tests/organizer-instrumentation/app/lawnchair/organizer/integration/ProductionOrganizationInputInstrumentationTest.kt`
+  — new regression `hotseatNullScreenRowRoundTripsExactlyThroughCaptureWriteAndRecovery`
+  over a real schema-33 SQLite database: insert a dock row with
+  `SCREEN=NULL, RANK=0` → capture asserts the manifest keeps `screenId == null`
+  while Dock derives slot 0 → encode asserts the ContentValues contain a null
+  `SCREEN` value → insert into a restored database asserts `IS NULL` and
+  `RANK = 0` → recapture asserts manifest rows and canonical state equal the
+  original capture. The class grew from 11 to 12 `@Test` methods; the
+  pre-existing quiet/private/disabled/unavailable case remains intact.
 
-Runtime write-path relevance: `RowManifestCodec.values()` is the sole column
-writer used by `applyWriteSet`/recovery actions inside the adapter transaction;
-this change alters which columns carry dock position for preserved and planned
-dock rows (slot in `SCREEN` instead of `RANK`-only with `SCREEN` coerced to 0),
-and the composer change alters only the in-memory planner input. Verified
-independently: `lawnchair/src/app/lawnchair/organizer/planning/PlanningValidation.kt`
-has an empty diff against `origin/main` — no validation rule was weakened; no
-DB schema/migration change (`PersistenceManifest` stays format 1 / schema 33);
-no recovery-mechanism or UI change; no item drop/duplication/rewrite fallback
-was introduced.
+Losslessness conclusions independently derived from this diff:
 
-Defect mechanics were re-derived from Launcher3 authority sources at the
-audited head, not taken from the PR text: `LoaderCursor.checkItemPlacement`
-(`src/com/android/launcher3/model/LoaderCursor.java`, hotseat branch uses
-`item.screenId` as the occupied slot) and `GridSizeMigrationUtil.loadHotseatEntries`
-(`src/com/android/launcher3/model/GridSizeMigrationUtil.java`, reads
-`Favorites.SCREEN` into `DbEntry.screenId`) establish `SCREEN` as the hotseat
-slot authority. Under the pre-fix mapping: four default-layout dock rows all
-carry `RANK = 0`, so reading Dock from `RANK` yields four `Dock(0)` → the single
-`duplicateDockRank` OVERLAP reason; `mapItem` left the FOLDER item's own
-`folderId` null (1 KIND_TARGET_MISMATCH) and set `folderId` on each of the 7
-APPLICATION members (7 more mismatches = 8) while `folderParents` stayed empty,
-dangling each of the 7 members — reproducing the reported
-`PLANNING_INVALID.OVERLAP reasons=16` split (1 + 7 + 8) against the unchanged
-validator. A secondary pre-fix hazard was also confirmed in source: the old
-`rowFor` wrote preserved dock rows with `SCREEN` coerced to 0 by `values()`,
-which would have corrupted the slot authority of any applied dock layout; the
-fix makes preserved dock rows round-trip losslessly.
+- No invented values anywhere in the round trip: capture keeps the raw value,
+  derivation reads NULL→slot 0 transiently for placement semantics only, and
+  encode restores NULL. A NULL-slot preserved dock row is byte-exact through
+  capture → plan → apply/recovery encode; explicit-slot preserved rows remain
+  byte-exact as before.
+- Desktop NULL still fails closed twice: `requireNotNull(screen)` at capture
+  and `requireNotNull(row.screenId)` at Workspace placement derivation.
+- `PersistenceManifest` contract unchanged: format stays 1 / schema stays 33,
+  and `PersistentRow.screenId` was already a nullable `PageId?` with
+  null-aware equals/hashCode, so retaining NULL requires no schema or format
+  change. Recovery paths were already nullable-safe
+  (`RecoveryRecordCodec.writeNullableString/readNullableString`,
+  `RecoveryWriteSet.optionalText`), so recovery records preserve NULL too.
+- `lawnchair/src/app/lawnchair/organizer/planning/PlanningValidation.kt` has
+  an empty diff against `origin/main` at the new head (re-verified below) — no
+  validation rule was weakened. The base-fix hunks in
+  `OrganizationInputComposer.kt` did not change after the previously audited
+  commit; no DB schema/migration, recovery-mechanism, or UI change was
+  introduced by the incremental commit.
+
+Defect mechanics of the base fix (RANK→SCREEN authority; composer identity
+inversion producing the reported `PLANNING_INVALID.OVERLAP reasons=16` split
+1 + 7 + 8) were re-derived from Launcher3 authority sources
+(`LoaderCursor.checkItemPlacement`, `GridSizeMigrationUtil.loadHotseatEntries`)
+by the prior session at `7b3574f6dc` and remain valid at this head; those
+authority sources are untouched upstream code.
 
 ## Criteria check
 
-Issue #136 acceptance items, mapped to evidence (marking what this session
-re-executed vs. cites):
+Issue #136 acceptance items plus the two review blocking items, mapped to
+evidence (marking what this re-audit re-executed at the new head vs. cites):
 
-- **Isolation of the owning boundary — satisfied, independently re-derived.**
-  See Scope: the capture-side slot authority and composer contract inversion
-  were re-verified against `LoaderCursor`/`GridSizeMigrationUtil` and the
-  unchanged `checkContainerIntegrity`/`checkKindTargetMismatch` rules; target
-  composition (`full-target-v1`) needed no change, matching the PR's isolation
-  claim.
+- **Review blocker: schema-nullable SCREEN must stay lossless through capture
+  AND write, including the PersistenceManifest contract — satisfied,
+  independently verified at the new head.** See Scope for the diff-level
+  verification: capture retains the raw nullable column for every row, the
+  canonical Dock derivation interprets NULL as slot 0 via `hotseatSlot()`
+  mirroring `Cursor.getInt`, `values()` writes `putNull` faithfully with a
+  fail-closed numeric guard, `rowFor` restores a captured NULL on preserved
+  rank-0 dock rows instead of writing 0, the manifest format stays 1/33 with a
+  nullable `screenId` field, and recovery codecs already round-trip null. The
+  desktop requirement of a non-null page still fails closed, and the new
+  instrumentation regression asserts exact column preservation across
+  capture → encode → insert → recapture; it executed green in CI lane
+  `organizer-instrumentation-api35-tests` at this head.
+- **Review blocker: complete the minified-release device journey before merge
+  while keeping `Closes #136` — satisfied as implementer-reported execution,
+  with provenance caveats recorded in Findings.** The PR body reports the API
+  36 Pixel 6-class AVD journey reaching the coherent preview ("15 targets
+  across 1 profiles and 2 pages", "4 placements will move", "11 placements
+  will be preserved" Dock 4 / out-of-scope 7), Apply+Cancel offered, cancelled
+  without applying, favorites placements unchanged afterwards; screenshot kept
+  local-only per the issue evidence policy. `Closes #136` remains on the PR,
+  and the APP_PAIR snap-position gap discovered during review is tracked in a
+  separate follow-up issue (#141, verified open). This session could not
+  verify durable journey artifacts and therefore cites it as
+  implementer-reported; impact analysis in Findings concludes the residual
+  risk is low because the preview path behaves identically under the parent
+  commit stamped into the binary and this head, and the changed write path was
+  never applied on-device.
+- **Isolation of the owning boundary — satisfied, re-derived by the prior
+  session and unchanged here.** The incremental commit touches only the codec
+  write/capture fidelity and one adapter branch; target composition
+  (`full-target-v1`) needed no change.
 - **Production-seam regression reproducing before / verifying after —
-  satisfied; before-fix evidence is CITED, after-fix evidence RE-EXECUTED.**
-  The implementing session reports the new JVM regression failed pre-fix with
-  exactly `DANGLING_REFERENCE ×7 + KIND_TARGET_MISMATCH ×8`; this session did
-  not revert-and-rerun that claim, but the counts are arithmetically implied by
-  the old mapping against the unchanged validator (Scope). After the fix, the
-  regression asserts Ready composition, `Planned` over all 15 items, exact
-  partition roles, dock slots [0,1,2,3], and folder identity on the container
-  item only — re-executed green by this session (see Executed test surface).
-  The production-seam instrumentation case (real schema-33 fixture rows →
-  `RowManifestCodec.capture` → compose → partition) ran green in CI lane
-  `organizer-instrumentation-api35-tests` of the referenced run.
+  satisfied.** Pre-fix reproductions are CITED from the implementing session:
+  the JVM regression failed with exactly `DANGLING_REFERENCE ×7 +
+  KIND_TARGET_MISMATCH ×8` (arithmetically implied by the old mapping against
+  the unchanged validator), and the new NULL-screen instrumentation case
+  failed pre-fix with `capture must keep the raw nullable SCREEN expected
+  null, but was PageId(value=0)` — exactly what the removed
+  `PageId((screen ?: 0L).toString())` normalization would produce against the
+  retained `assertNull`. After-fix evidence RE-EXECUTED green by this session:
+  JVM regression fresh-timestamped in this re-audit's unit-test run, and the
+  instrumentation class ran green in the api35 CI lane at this head.
 - **Malformed/unsafe layouts remain typed fail-closed with no write —
-  satisfied.** Validation code is untouched; dock slot bounds
-  (`PlanningValidation` rejects `rank < 0 || rank >= hotseatSlots`) and the
-  duplicate dock-rank OVERLAP check now operate on SCREEN-derived slots, so a
-  genuinely malformed dock still rejects typed; unknown lock still fails
-  composition (`mapItem` returns null → `InvalidCanonicalCapture`). Existing
+  satisfied.** Validation code byte-identical (empty diff re-verified); dock
+  slot bounds and duplicate-slot OVERLAP checks operate on SCREEN-derived
+  slots as before; unknown lock still aborts composition; existing
   rejection-path organizer tests ran green unchanged in the re-executed suite.
 - **No fallback silently drops, duplicates, or rewrites unsupported items —
-  satisfied.** Conservation is asserted exactly (15 distinct items, once each)
-  in both regressions; `UnsupportedContainer` handling, lock/profile mapping,
-  and availability mapping are unchanged in source; the write side now
-  preserves original dock `RANK`/`SCREEN` instead of rewriting them.
+  satisfied.** Conservation asserted exactly (15 distinct items once each) in
+  both regressions; the write side additionally no longer normalizes NULL
+  SCREEN behind the platform's back.
 - **Relevant organizer tests, release build, formatting, `final-status` pass —
-  satisfied with one cited-only element.** Organizer unit tests (724), spotless,
-  repo-contract, and the CI merge gate (`final-status` + source jobs + all six
-  instrumentation lanes) were re-executed green by this session on the audited
-  head; the R8/minified release assembly remains implementer-reported only
-  (see Findings).
-- **`risk: layout-data` label + independent audit evidence — satisfied.** Label
-  verified via the GitHub API; this record provides the independent audit.
+  satisfied.** Organizer unit tests (724), spotless, repo-contract validators,
+  and the CI merge gate (`final-status` + source jobs + all six
+  instrumentation lanes) were re-executed green by this session at the new
+  head (attempt 2 after a single-lane flake, see Findings).
+- **`risk: layout-data` label + independent audit evidence — satisfied.**
+  Label verified via the GitHub API; this record provides the independent
+  audit for the new head.
 
-Spec criteria:
+Spec criteria (all re-checked at the new head):
 
 - **specs/83-production-organization-input-sources/spec.md AC-3 (one canonical
-  capture) — pass.** The composer still consumes exactly one application
-  capture (`CapturedSnapshot` via the capture port); no second snapshot, UI DB
-  access, or planner duplication was added; both regressions drive the
-  production seam (`FakeLayoutWriter.captureCurrent` /
-  `RowManifestCodec.capture` over a real schema database).
+  capture) — pass.** Still exactly one application capture feeding the
+  composer; the incremental commit changes only what the capture preserves,
+  not where input comes from.
 - **AC-4 (complete conservation input) — pass.** Exact-once partition of all
-  captured items asserted in both regressions; `additions` stays explicitly
-  empty; the target materializer itself is unchanged.
-- **AC-5 (fail closed) — pass.** Mandatory-source and malformed-capture
-  failure paths are unchanged; genuinely invalid layouts (overlapping dock
-  slots, out-of-range slots, broken references, kind/target mismatches)
-  continue to produce typed non-write results from the untouched validator.
+  captured items asserted in the regressions; `additions` explicitly empty.
+- **AC-5 (fail closed) — pass.** Untouched validator; desktop NULL SCREEN now
+  fails closed at capture exactly as before; genuinely malformed layouts keep
+  returning typed non-write results.
 - **AC-6 (profile and lock safety) — pass.** Profile identity/availability and
-  lock truth flow through `mapItem` unchanged except the container-identity
-  fields; `OrganizerLockState.UNKNOWN` still aborts composition instead of
-  being rounded to unlocked.
+  lock truth flow through `mapItem` unchanged; unknown lock still aborts.
 - **FR-002 (explicit full-organization target set; out-of-scope items not
-  changed) — pass,** via the conservation/partition assertions above and the
-  unchanged preservation precedence (dock and structural members Preserved).
-- **NFR-002 (integrity: conservation, bounds, overlap, container references,
-  lock, profile isolation checked around apply) — pass.** All corresponding
-  validator checks are byte-identical (empty diff), and the dock inputs feeding
-  them are now sourced from the same column the platform loader enforces.
-- **NFR-007 (compatibility across the adopted revision's supported form
-  factors/profiles/grids) — pass on source-consistency grounds:** the dock
-  representation now agrees with `LoaderCursor`/`GridSizeMigrationUtil` for the
-  supported schema-33 phone profile; no orientation-, profile-, or grid-specific
-  branching was introduced; broader device-matrix coverage remains tracked by
-  the existing compatibility efforts (#108/#132), which this record does not
-  replace.
+  changed) — pass,** via conservation/partition assertions and unchanged
+  preservation precedence.
+- **NFR-002 (integrity checks around apply) — pass.** Validator byte-identical
+  (empty diff); dock inputs sourced from the column the platform loader
+  enforces; the write path now round-trips the nullable column without
+  coercion.
+- **NFR-007 (compatibility across the supported form factors/profiles/grids)
+  — pass on source-consistency grounds:** the representation agrees with
+  `LoaderCursor`/`GridSizeMigrationUtil` for the supported schema-33 phone
+  profile; no orientation-, profile-, or grid-specific branching introduced;
+  broader device-matrix coverage remains tracked by #108/#132.
 - **specs/12-deterministic-full-layout-planner-v1/spec.md AC-4 (folder
-  grouping/partition/rank/cell correctness) — pass:** the planner returns
-  `Planned` with all 15 placements, preserved dock targets [0,1,2,3], and the
-  folder handled per policy, asserted in the re-executed JVM regression.
+  grouping/partition/rank/cell correctness) — pass:** planner returns
+  `Planned` with all 15 placements and preserved dock slots [0,1,2,3],
+  asserted in the re-executed JVM regression.
 - **specs/12 AC-7 (invalid/impossible inputs return the complete typed result)
-  — pass:** unchanged validator behavior as recorded under spec 83 AC-5; the
-  pre-fix state demonstrates the typed-rejection path firing on bad input
-  rather than crashing or mis-writing.
+  — pass:** unchanged validator behavior; pre-fix states demonstrate the
+  typed-rejection path firing on bad input rather than crashing or mis-writing.
 
 ## Executed test surface
 
-Independent checks executed by this audit session on head
-`7b3574f6dc92bdb45cfe334c6584bea26648cd28`, branch
+Block A — independent checks executed by THIS re-audit session on head
+`f99ff8cd5e04ab549a917a5b019bd6bcab95a720`, branch
 `issue-136-default-layout-planning-rejection`, clean tree:
 
 ```text
-git rev-parse HEAD && git branch --show-current && git status --porcelain
-  PASS — HEAD 7b3574f6dc92bdb45cfe334c6584bea26648cd28, correct branch, no local changes
+git rev-parse HEAD && git status && git log --oneline -3
+  PASS — HEAD f99ff8cd5e04ab549a917a5b019bd6bcab95a720, correct branch, clean tree,
+         history 7462af4f9b (docs-only) → f99ff8cd5e on top of 7b3574f6dc
+
+git diff --stat 7b3574f6dc..f99ff8cd5e
+  PASS — exactly 4 files: prior audit doc (new), RowManifestCodec.kt (+35/-15 net),
+         LauncherLayoutAdapter.kt, ProductionOrganizationInputInstrumentationTest.kt (+93);
+         full diff reviewed line by line
+
+git diff origin/main...HEAD -- lawnchair/src/app/lawnchair/organizer/planning/PlanningValidation.kt
+  PASS — empty diff (validation rules unchanged)
 
 ./gradlew spotlessCheck
-  PASS — exit 0, BUILD SUCCESSFUL in 1s (run as its own invocation; spotless tasks
-         up-to-date against the current sources)
+  PASS — exit 0, BUILD SUCCESSFUL in 2s (own invocation)
 
 ./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*' --tests 'app.lawnchair.ui.preferences.navigation.*'
-  PASS — exit 0, BUILD SUCCESSFUL in 14s (separate invocation); XML totals across
+  PASS — exit 0, BUILD SUCCESSFUL in 26s (separate invocation); XML totals across
          62 result classes in build/test-results/testLawnWithQuickstepGithubDebugUnitTest:
          tests="724" skipped="0" failures="0" errors="0";
-         TEST-app.lawnchair.organizer.integration.DefaultLayoutComposerPlannerRegressionTest.xml:
-         tests="1" failures="0" errors="0" (fresh timestamp from this run);
-         app.lawnchair.ui.preferences.navigation.PreferenceRouteRetentionTest included
+         TEST-app.lawnchair.organizer.integration.DefaultLayoutComposerPlannerRegressionTest.xml
+         fresh timestamp from this run (tests=1 failures=0 errors=0)
 
 python3 tools/repo-contract/validate_repo_contract.py
   PASS — exit 0, "repository contract OK"
 
 python3 tools/repo-contract/test_validate_repo_contract.py
-  PASS — exit 0, Ran 11 tests ... OK (negative fixtures correctly flagged)
+  PASS — exit 0, Ran 11 tests ... OK
 
 python3 tools/repo-contract/test_validate_high_risk_evidence.py
   PASS — exit 0, Ran 47 tests ... OK
 
-gh api repos/nunu1733/NunuLauncher/actions/runs/32737474547 --jq '{head_sha,event,conclusion,pull_requests}'
-  PASS — head_sha=7b3574f6dc92bdb45cfe334c6584bea26648cd28, event=pull_request,
-         conclusion=success (attempt 2), pull_requests contains 140
+gh api repos/nunu1733/NunuLauncher/actions/runs/32747094320 --jq '{head_sha,event,status,conclusion,run_attempt,head_branch,path,pull_requests}'
+  PASS — head_sha=f99ff8cd5e04ab549a917a5b019bd6bcab95a720, event=pull_request,
+         conclusion=success, run_attempt=2, head_branch matches PR, path=.github/workflows/ci.yml,
+         pull_requests=[140]
 
-gh api repos/nunu1733/NunuLauncher/actions/runs/32737474547/jobs?per_page=100 --jq '.jobs[] | "\(.name): \(.conclusion)"'
-  PASS — all 12 jobs success: changes, organizer-unit-tests, check-style,
+gh api repos/nunu1733/NunuLauncher/actions/runs/32747094320/jobs?per_page=100 --jq '.jobs[] | "\(.name): \(.conclusion)"'
+  PASS — attempt 2: all 12 jobs success — changes, organizer-unit-tests, check-style,
          build-debug-apk, validate-repo-contract, final-status, and all six
          organizer-instrumentation lanes (api35, db-migration, issue52, issue53,
-         issue99, shared-writer); the api35 lane executes
-         ProductionOrganizationInputInstrumentationTest per .github/workflows/ci.yml
+         issue99, shared-writer)
 
-git diff origin/main...HEAD -- lawnchair/src/app/lawnchair/organizer/planning/PlanningValidation.kt
-  PASS — empty diff (validation rules unchanged)
+gh api repos/nunu1733/NunuLauncher/actions/jobs/<api35 job>/logs
+  PASS — api35 lane executed ProductionOrganizationInputInstrumentationTest per
+         .github/workflows/ci.yml; BUILD SUCCESSFUL with the class listed for execution
+         ("Finished 23 tests", 0 failed); class grew 11→12 @Test methods at this head
+         (verified via git show of both heads), the added method being
+         hotseatNullScreenRowRoundTripsExactlyThroughCaptureWriteAndRecovery
+
+gh issue view 141 --repo nunu1733/NunuLauncher --json number,title,state
+  PASS — #141 "[Bug]: App pair snap position is never captured..." OPEN (follow-up tracked)
 ```
 
-Not executed by this session (per audit scope): connected/emulator tests and
-debug/release assemblies locally. Connected instrumentation evidence comes from
-the referenced CI run; the release assembly is cited from the PR description
-only (see Findings).
+Not executed locally by this session: connected/emulator tests (covered by the
+CI lanes above) and debug/release assemblies (debug assembly covered by the
+`build-debug-apk` CI job).
+
+Block B — PRIOR-SESSION evidence at `7b3574f6dc92bdb45cfe334c6584bea26648cd28`
+(audited 2026-08-24, kept attributed; not re-run here except where noted):
+spotlessCheck, the same organizer+navigation unit-test filter (724/0),
+repo-contract validators, merge-gate verification of run 32737474547 (all 12
+jobs success, attempt 2 after an issue52 lane flake), and the empty
+PlanningValidation diff were all green at that head; details in the prior
+record's Executed test surface. The base-commit defect mechanics derived there
+remain applicable because the relevant hunks did not change.
 
 ## Findings
 
-- **Attempt-1 instrumentation flake and transparent re-run.** Attempt 1 of the
-  referenced merge-gate run failed ONLY
-  `organizer-instrumentation-issue52-tests`:
-  `ManualOrganizationPreferencesInstrumentationTest.capturesManualOrganizationReviewSurfaces`
-  threw `java.lang.IndexOutOfBoundsException: Index 2, size 2` from Compose
-  foundation internals during screenshot capture. Analysis: that test stubs the
-  planner entirely (`OrganizationPlanner { planningResult() }` over a
-  `FakeApplication`), so none of the classes changed by this PR are on its code
-  path; the diff contains no UI code; the lane was green on today's `main` run.
-  Consistent with the shared-emulator/UI flakiness pattern recorded for PR
-  #133, THIS audit session requested a re-run of the failed jobs
-  (`gh run rerun 32737474547 --failed`; no code or workflow change) and
-  attempt 2 went fully green including that lane and `final-status`. The
+- **Attempt history, audited base `7b3574f6dc` (prior session, retained).**
+  Attempt 1 of run 32737474547 failed ONLY
+  `organizer-instrumentation-issue52-tests`
+  (`ManualOrganizationPreferencesInstrumentationTest.capturesManualOrganizationReviewSurfaces`,
+  `IndexOutOfBoundsException` inside Compose foundation screenshot capture);
+  that test stubs the planner entirely so none of the PR's classes are on its
+  path; a failed-job rerun went fully green. Attempt history of the referenced
+  run evidences attempt 2.
+- **Attempt-1 issue53 lane flake on the NEW head, transparent rerun (this
+  session).** Attempt 1 of the referenced run 32747094320 failed ONLY
+  `organizer-instrumentation-issue53-tests`:
+  `OnboardingOrganizationProposalInstrumentationTest.productionOwnerDefersBindWhilePausedThenShowsAndRoutesReviewAfterResume`
+  threw a bare `java.lang.AssertionError` after activity HOME/PREFERENCE
+  transitions with await-polling assertions. Analysis: that test exercises the
+  OrganizationOnboardingProposal UI/lifecycle choreography and shares no code
+  path with the classes changed by this PR (codec/adapter/composer); the lane
+  was green on the immediately preceding docs-only-head run (32741623937) and
+  on today's runs; consistent with the shared-emulator UI flakiness pattern
+  recorded for PR #133 and for the base head above. THIS session reran only
+  the failed jobs (`gh run rerun 32747094320 --failed`; no code or workflow
+  change) and attempt 2 went fully green including `final-status`. The
   referenced run link therefore evidences attempt 2; attempt 1's single-lane
-  red is recorded here for the merge-gate history.
-- **`High-risk gate / high-risk-evidence` is red until this record lands**
-  (run `32737489341`). That is the designed dependency of the gate on the audit
+  red is recorded here for merge-gate history.
+- **`High-risk gate / high-risk-evidence` is red until this updated record
+  lands** (gate run 32747094260 on the new head; likewise run 32737489341 on
+  the base head). That is the designed dependency of the gate on the audit
   file and is not counted against the PR.
-- **Evidence provenance.** Pre-fix failure reproduction
-  (`DANGLING_REFERENCE ×7 + KIND_TARGET_MISMATCH ×8`) and the local release
-  build (`assembleLawnWithQuickstepGithubRelease`) are CITED from the
-  implementing session's commit/PR description, not re-executed by this audit;
-  everything listed under Executed test surface was re-executed here. Residual
-  risk of the cited-only items is assessed low: the failure counts are implied
-  by the old mapping against the unchanged validator, and the changed code is
-  plain Kotlin mapping logic compiled and exercised by the debug CI build and
-  the full JVM/instrumentation surface.
-- **Residual: end-to-end release-journey confirmation.** The issue's "same
-  release user journey reaches a coherent preview/result" is evidenced here at
-  the composer→planner and capture→compose→partition seams; the final
-  minified-release dogfood confirmation belongs to the parent task #132 and is
-  not claimed by this record.
-- **Cosmetic, non-blocking.** Relocating the pre-existing
-  `productionComposerPreservesQuietPrivateDisabledAndUnavailableProfileWithoutEvidenceFallback`
-  case left its opening brace and first statement on one line; `spotlessCheck`
-  accepts it locally and in CI. No action required.
-- No blocking finding was identified. The verdict is **accepted**: root causes
-  match the fix, validation remains fail-closed and byte-identical, the write
-  path round-trips preserved dock rows losslessly (removing a latent
-  slot-corruption rewrite), and all machine-verifiable evidence is green on the
-  audited head.
+- **Evidence provenance.** Pre-fix failure reproductions (JVM counts and the
+  instrumentation message) and the minified-release device journey are CITED
+  from the implementing session, not re-executed by this audit; everything in
+  Executed test surface Block A was re-executed here.
+- **Release-journey provenance caveat (non-blocking, low residual risk).**
+  Durable journey artifacts do not exist (screenshot local-only per policy),
+  and `build.gradle` stamps dev-release `versionName` with
+  `git rev-parse --short=7 HEAD` at build time, while the PR body reports the
+  installed APK as versionName `15.Dev.(7462af4)` — i.e., the binary was
+  stamped at the docs-only parent commit rather than this head (most plausibly
+  built from the same working tree before committing `f99ff8cd5e`). Impact is
+  nil-to-low: default-layout dock rows carry explicit `SCREEN` slots (the
+  observed-install fixture mirrors this), so preview behavior is identical
+  under both commits, and the journey was cancelled without applying, so the
+  changed write path was never exercised on-device. Definitive coverage of the
+  NULL-lossless behavior at this exact head comes from the new instrumentation
+  regression executing green in the api35 CI lane.
+- **Minor observation: out-of-int-range hotseat SCREEN values (non-blocking).**
+  `hotseatSlot()` maps a hypothetical SCREEN value beyond Int range to slot 0
+  via `toIntOrNull()`, whereas the previously merged `String.toInt()` mapping
+  would have thrown (fail closed) and the platform loader's `getInt` wraps
+  modulo 2^32 — neither of which the new code replicates for that pathological
+  corrupt-DB edge. Unreachable through normal flows (screens are small page /
+  slot indices); recorded for completeness, no action required.
+- **Minor observation: planned dock rows at slot 0 write NULL SCREEN
+  (non-blocking).** In `rowFor`'s Dock branch a planned (base-less) row ranked
+  0 also writes NULL instead of an explicit 0. This is semantically identical
+  under the loader's getInt semantics, consistent with the no-invented-values
+  policy, and byte-exactness is only claimed for preserved rows. No action
+  required.
+- **Cosmetic, non-blocking (retained from prior audit).** Relocating the
+  pre-existing quiet/private/disabled/unavailable case left its opening brace
+  and first statement on one line; `spotlessCheck` accepts it locally and in
+  CI. No action required.
+- No blocking finding was identified. The verdict is **accepted**: the review
+  follow-up completes the NULL-lossless contract through capture, manifest,
+  derivation, write, and recovery without inventing values anywhere; validation
+  remains fail-closed and byte-identical; preserved dock rows round-trip
+  byte-exactly; and all machine-verifiable evidence is green on the audited
+  head `f99ff8cd5e04ab549a917a5b019bd6bcab95a720`.
