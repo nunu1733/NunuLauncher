@@ -4,8 +4,24 @@
 > Issue: [#108](https://github.com/nunu1733/NunuLauncher/issues/108)
 > Requirement: NFR-007
 > Production baseline: `51940f3dfc4b9308f7c9e7101c2c7cda81f16da7`
-> Evidence harness: `032e38816550cf67267ae29801ee8a5230a9e745`
 > Verified: 2026-08-24
+
+## Evidence revisions
+
+Evidence is attributed to the source revision that supplied each test harness;
+the production implementation under test remains the baseline listed above.
+
+| Evidence source revision | Exact command / surface | Result |
+|---|---|---|
+| `032e38816550cf67267ae29801ee8a5230a9e745` | `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.integration.ProductionOrganizationInputInstrumentationTest,app.lawnchair.organizer.ui.ManualOrganizationProductionE2EInstrumentationTest` | API 36.1 phone/tablet/fold-open portrait and landscape runs passed 11/11 per host/orientation. The fold-closed production invocation was invalidated before discovery and is not claimed. |
+| `032e38816550cf67267ae29801ee8a5230a9e745` | `adb -s <serial> shell am instrument -w -r -e class app.lawnchair.organizer.integration.Issue108DeviceEvidenceInstrumentationTest app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner` | Fold-closed device evidence passed 2/2; simultaneous-profile discovery retained the valid UserCache profile identities. This revision's orientation oracle expected ordinary portrait/landscape. |
+| `032e38816550cf67267ae29801ee8a5230a9e745` | `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.integration.Issue108GridEvidenceInstrumentationTest` and the same command with `-Pandroid.testInstrumentationRunnerArguments.issue108.grid=5_by_5` | Phone transitions to 3×3 and 5×5 passed 2/2 each, including stale/no-write. |
+| `8a9d1dabc34b71c1737555c61486e9349536a73e` | `adb -s emulator-5554 shell am instrument -w -r -e class app.lawnchair.organizer.integration.Issue108DeviceEvidenceInstrumentationTest app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner` | Review-adjusted oracle, including `TYPE_MULTI_DISPLAY` → `TWO_PANEL_*`, passed 2/2 on an API 36.1 phone. Only the ordinary-orientation branch executed. |
+| `8a9d1dabc34b71c1737555c61486e9349536a73e` | `./gradlew spotlessCheck --no-configuration-cache`; `./gradlew assembleLawnWithQuickstepGithubDebugAndroidTest --no-configuration-cache`; `python3 tools/repo-contract/validate_repo_contract.py`; `git diff --check` | All passed. |
+
+The second revision changes the device-orientation oracle, not production code.
+Its phone run exercises the ordinary-orientation branch; a runtime selecting
+`TYPE_MULTI_DISPLAY` remains required after #130 fixes the production mapping.
 
 ## Purpose and support boundary
 
