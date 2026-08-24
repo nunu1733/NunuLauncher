@@ -4,7 +4,8 @@
 > Issue: [#132](https://github.com/nunu1733/NunuLauncher/issues/132)
 > Parent release-readiness track: [#100](https://github.com/nunu1733/NunuLauncher/issues/100)
 > Assessment date: 2026-08-24 (exploratory release/minified run recorded)
-> Final verdict: **NOT READY**
+> Current exploratory verdict: **NOT READY**
+> Final verdict: **PENDING**
 
 This record is the evidence ledger for Issue #132. It covers user-operated
 launcher journeys on a supported emulator and/or physical device. It does not
@@ -64,11 +65,12 @@ investigation, but cannot be the sole final evidence.
 | Evidence | Path or link | Status / handling |
 |---|---|---|
 | This assessment | docs/assessment/issue-132-operator-driven-mvp-dogfooding.md | Repository source of truth for dispositions and handoff. |
+| Redacted durable evidence subset | [issue-132 exploratory evidence](./evidence/issue-132-exploratory-baseline.md) | Representative UI states and correlated release logcat retained in the repository. |
 | Screenshots / screen recordings | build/issue132-evidence/05329be2d7 | Local evidence root; exact artifact filenames PENDING. |
 | Relevant logcat | build/issue132-evidence/05329be2d7 | Local evidence root; exact artifact filenames PENDING. |
 | Organizer diagnostics export | build/issue132-evidence/05329be2d7; run 881a80255beee1a426cc7f516571c463 | PLANNING_REJECTED / PLANNING_INVALID.OVERLAP; reasons16. |
 | Runtime/UI state dump | PENDING | Use only when needed to explain a result; do not commit user layout or credentials. |
-| Bug Issue links | [#136](https://github.com/nunu1733/NunuLauncher/issues/136) | New focused Bug Issue for the S2 planning rejection. |
+| Bug Issue links | [#136](https://github.com/nunu1733/NunuLauncher/issues/136), [#137](https://github.com/nunu1733/NunuLauncher/issues/137), [#138](https://github.com/nunu1733/NunuLauncher/issues/138) | Focused owners for the planning rejection, onboarding touch activation, and release diagnostics route. |
 | CI/build artifacts | PENDING | Link exact candidate build/test artifacts where available. |
 
 Evidence must identify the run, exact build SHA, APK variant, device/API,
@@ -79,8 +81,8 @@ package lists, credentials, and unredacted diagnostics must not be committed.
 ## Required scenario matrix
 
 S1, S2, S2-R, S3, S4, and S6 have partial exploratory evidence below. S5
-remains PENDING and S6 remains INCONCLUSIVE overall; neither may be inferred
-as a full pass from the verified sub-surfaces.
+remains PENDING. S6 is DEFECT because diagnostics export has no supported
+release route; the verified lock/category sub-surfaces do not make S6 pass.
 
 | ID | Required journey | Required disposition | Evidence / defect links |
 |---|---|---|---|
@@ -90,7 +92,7 @@ as a full pass from the verified sub-surfaces.
 | S3 | Re-run/idempotence, Cancel, Back, Try again/retry, recreation, and process restart after organization. | INCONCLUSIVE | Try again fresh run observed; success/idempotence/apply lifecycle blocked by [#136](https://github.com/nunu1733/NunuLauncher/issues/136). |
 | S4 | Onboarding proposal: appearance, Skip, Later/defer, Review organization, and transition to manual organization when eligibility can be established. | DEFECT | [#137](https://github.com/nunu1733/NunuLauncher/issues/137); Review Enter reaches run b1fda06d0835fb47f0b72422740a5e22 and [#136](https://github.com/nunu1733/NunuLauncher/issues/136). |
 | S5 | Apply result and recovery through user-visible surfaces, including a representative restart/recreation where practical. | PENDING | PENDING |
-| S6 | Other implemented organizer surfaces: lock authoring/review, category override set/change/remove, diagnostics/export, retry/recovery/status. | INCONCLUSIVE | Lock and category override sub-surfaces observed; diagnostics/export was not executable through the established release UI path and recovery is blocked by #136. |
+| S6 | Other implemented organizer surfaces: lock authoring/review, category override set/change/remove, diagnostics/export, retry/recovery/status. | DEFECT | Lock and category override sub-surfaces passed; release diagnostics/export route defect is [#138](https://github.com/nunu1733/NunuLauncher/issues/138), and recovery is blocked by [#136](https://github.com/nunu1733/NunuLauncher/issues/136). |
 
 Switch Access coverage belongs to [#109](https://github.com/nunu1733/NunuLauncher/issues/109)
 and visual/localization convergence belongs to
@@ -127,7 +129,7 @@ redacted, user-safe evidence here.
 | First-run dialog behavior | No first-run dialog appeared in the initial launch; the later proposal/first-run touch defect is tracked under S4 / [#137](https://github.com/nunu1733/NunuLauncher/issues/137). |
 | Latency observations | Operator-to-UI-dump was 4.18s; uiautomator dump overhead is included, so this is only an upper bound, not a reaction-latency measurement. |
 | Crash/ANR/stall evidence | No crash/ANR log observed; completed settings Back and force-stop/HOME cold-restart paths passed. |
-| Screenshot/logcat/diagnostics links | build/issue132-evidence/05329be2d7 (local, not claimed committed). |
+| Screenshot/logcat/diagnostics links | [Redacted durable UI-state evidence](./evidence/issue-132-exploratory-baseline.md); build/issue132-evidence/05329be2d7 (local source captures). |
 | Owning Bug Issue | First-run/proposal touch behavior delegated to [#137](https://github.com/nunu1733/NunuLauncher/issues/137) |
 
 The initially reported slow or unresponsive first-run dialog is an explicit
@@ -175,7 +177,7 @@ Record layout composition without committing private data:
 | Apply/result surface | Apply was not reached because planning rejected. |
 | Actual HOME layout after apply | No apply; visible result reported Nothing changed. |
 | State/layout mutation on failure | No observed layout/state mutation. |
-| Screenshot/logcat/diagnostics links | build/issue132-evidence/05329be2d7; PLANNING_REJECTED / PLANNING_INVALID.OVERLAP / reasons16 |
+| Screenshot/logcat/diagnostics links | [Redacted durable UI-state and logcat evidence](./evidence/issue-132-exploratory-baseline.md); local source captures at build/issue132-evidence/05329be2d7 |
 | Owning Bug Issue | [#136](https://github.com/nunu1733/NunuLauncher/issues/136) |
 
 #### S2-R — 127-target reproduction target
@@ -241,7 +243,7 @@ mark this scenario INCONCLUSIVE rather than treating it as passed.
 | Transition into manual workflow | Observed through Review/Enter; downstream planning rejected with [#136](https://github.com/nunu1733/NunuLauncher/issues/136). |
 | Proposal-only layout mutation | No visible layout mutation after Later via Enter. |
 | Recreation/restart/focus behavior | Restart re-displayed the proposal; normal taps only changed focus state. |
-| Screenshot/logcat/diagnostics links | build/issue132-evidence/05329be2d7; run b1fda06d0835fb47f0b72422740a5e22 |
+| Screenshot/logcat/diagnostics links | [Redacted durable touch/focus evidence](./evidence/issue-132-exploratory-baseline.md); local source captures at build/issue132-evidence/05329be2d7; run b1fda06d0835fb47f0b72422740a5e22 |
 | Owning Bug Issue | [#137](https://github.com/nunu1733/NunuLauncher/issues/137); downstream rejection [#136](https://github.com/nunu1733/NunuLauncher/issues/136) |
 
 ### S5 — Apply result and recovery
@@ -268,23 +270,23 @@ accepted recovery and diagnostics procedures.
 
 ### S6 — Other implemented organizer surfaces
 
-**Disposition:** INCONCLUSIVE
+**Disposition:** DEFECT
 
 The lock-authoring and category-override sub-surfaces completed without a
-crash/ANR. They are not sufficient to mark S6 as a whole PASS because
-diagnostics/export was not reached through the established production release
-UI path and recovery remains blocked by #136.
+crash/ANR. They are not sufficient to mark S6 as a whole PASS. The supported
+release diagnostics/export route is absent and owned by #138; recovery remains
+blocked by #136.
 
 | Surface | Expected basic integrated behavior | Observed result | Evidence / defect link |
 |---|---|---|---|
 | Placement lock authoring/review | Operable; lock review does not unexpectedly mutate layout. | PASS sub-surface: real UI opened and showed No placements need review; default layout placements were listed. Gmail top-level placement: normal touch -> Lock -> confirm showed Placement locked / Locked; reopening -> Unlock -> confirm showed Placement unlocked / Unlocked. No crash/ANR. | build/issue132-evidence/05329be2d7/s6-placement-locks.png; build/issue132-evidence/05329be2d7/s6-lock-dialog.png |
 | Category override authoring/removal | Set/change/remove is operable and reflected in the normal flow. | PASS sub-surface: personal Calendar changed from automatic to explicit Art & Design and showed Override: Art & Design; Use automatic category removed it and showed Using automatic category. No crash/ANR. | build/issue132-evidence/05329be2d7/s6-category-overrides.png |
-| Organizer diagnostics/export | Entry, export, and user-visible status are operable with redacted evidence. | INCONCLUSIVE: production release places this under the Debug menu. App drawer search configuration delegated to Google global search, so the /lawnchairdebug toggle could not be established through normal UI. No alternate route was assumed; diagnostics/export remains unexecuted. | PENDING; configuration-path limitation recorded. |
+| Organizer diagnostics/export | Entry, export, and user-visible status are operable with redacted evidence. | DEFECT: the production release composes export only under the default-disabled Debug menu. Its `/lawnchairdebug` toggle depends on Lawnchair's own app-drawer input, while this supported configuration delegates to Google global search. The conditional apply/recovery action is not a general Settings route and was unavailable for the #136 planning rejection. | [#138](https://github.com/nunu1733/NunuLauncher/issues/138); [durable route evidence](./evidence/issue-132-exploratory-baseline.md) |
 | Retry/recovery/status surfaces | Operable; errors and recovery status are not false success. | Retry fresh-run behavior is recorded in S3. Recovery/apply remains blocked by #136; no additional recovery result is claimed. | [#136](https://github.com/nunu1733/NunuLauncher/issues/136); S3 evidence |
 
 ## Defect ledger and ownership
 
-Two reproducible findings were discovered in the exploratory run. These are not
+Three reproducible findings were discovered in the exploratory run. These are not
 root-cause determinations; the focused Bug Issues own investigation. Populate
 this ledger for every additional reproducible finding before closing the Issue.
 
@@ -292,6 +294,7 @@ this ledger for every additional reproducible finding before closing the Issue.
 |---|---|---|---|---|---|---|---|---|
 | [#136](https://github.com/nunu1733/NunuLauncher/issues/136) — manual organization terminal planning rejection | DEFECT | Blocker candidate; layout-data/release-readiness risk | SHA 05329be2d7d368a19997f981fb371a54113c7bb0; release/minified APK; Pixel 6 API 36 Android 16; portrait 4x5; 1 profile; 2 pages; 15 targets | Home settings > Home screen > Organize home layout > Review organization | Expected coherent preview/result or typed, explainable rejection; observed PLANNING_REJECTED / PLANNING_INVALID.OVERLAP, reasons16, with overlap1/broken7/item-target mismatch8 | No observed mutation; Nothing changed | [#136](https://github.com/nunu1733/NunuLauncher/issues/136) | PENDING |
 | [#137](https://github.com/nunu1733/NunuLauncher/issues/137) — onboarding proposal normal touch does not execute Later/Review | DEFECT | Blocker candidate; user-facing interaction/accessibility risk | Same release/minified candidate and Pixel 6 API 36 environment; proposal shown after cold restart | Display proposal; normal touch Later or Review; compare with Enter activation | Expected normal touch to execute the focused action; observed focused=true only until Enter, which executes immediately | Later via Enter produced no visible layout mutation; restart re-displayed proposal | [#137](https://github.com/nunu1733/NunuLauncher/issues/137) | PENDING |
+| [#138](https://github.com/nunu1733/NunuLauncher/issues/138) — supported release Settings route for diagnostics export is absent | DEFECT | Blocker candidate; release observability/support risk | Same release/minified candidate and Pixel 6 API 36 environment; Google global search configured for app drawer | Inspect normal Home settings, then enter `/lawnchairdebug` through the visible app-drawer search | Expected stable release Settings/organizer export entry; observed no normal entry, and the secret was handled by Google search instead of Lawnchair | No mutation | [#138](https://github.com/nunu1733/NunuLauncher/issues/138) | PENDING |
 
 Known context references are not findings from this run and must not be marked
 as reproduced without new evidence: [#113](https://github.com/nunu1733/NunuLauncher/issues/113),
@@ -299,7 +302,8 @@ as reproduced without new evidence: [#113](https://github.com/nunu1733/NunuLaunc
 [#129](https://github.com/nunu1733/NunuLauncher/issues/129), and
 [#130](https://github.com/nunu1733/NunuLauncher/issues/130). The current run
 also produced focused findings in [#136](https://github.com/nunu1733/NunuLauncher/issues/136)
-and [#137](https://github.com/nunu1733/NunuLauncher/issues/137).
+and [#137](https://github.com/nunu1733/NunuLauncher/issues/137), plus the release
+diagnostics route defect in [#138](https://github.com/nunu1733/NunuLauncher/issues/138).
 If a new run confirms an already-owned defect, attach the evidence to that Issue
 instead of creating a duplicate.
 
@@ -321,20 +325,26 @@ defect or completed evidence are marked separately below.
 | AC-8 | Cancel, Back, Retry/Try again, recreation/restart do not reuse stale authority. | PENDING | S3 fresh run evidence exists; success/apply lifecycle is blocked by #136. |
 | AC-9 | Onboarding Skip/Later/Review is exercised when eligible; proposal actions alone do not mutate layout. | DEFECT | S4 Review/Later touch defect tracked in [#137](https://github.com/nunu1733/NunuLauncher/issues/137); Later via Enter showed no visible mutation. |
 | AC-10 | At least one recovery flow is exercised through the product surface and agrees with actual HOME. | PENDING | S5 |
-| AC-11 | Remaining implemented organizer surfaces have no blocker-level integration failure. | PENDING | S6 lock/category sub-surfaces passed; diagnostics/export is INCONCLUSIVE and recovery is blocked by #136. |
-| AC-12 | Every reproducible defect is linked to an owner Issue or split to a focused Bug Issue with evidence. | PASS | Findings linked to [#136](https://github.com/nunu1733/NunuLauncher/issues/136) and [#137](https://github.com/nunu1733/NunuLauncher/issues/137); further scenarios pending. |
+| AC-11 | Remaining implemented organizer surfaces have no blocker-level integration failure. | DEFECT | S6 lock/category sub-surfaces passed; diagnostics/export lacks a supported release route ([#138](https://github.com/nunu1733/NunuLauncher/issues/138)) and recovery is blocked by #136. |
+| AC-12 | Every reproducible defect is linked to an owner Issue or split to a focused Bug Issue with evidence. | PASS | Findings linked to [#136](https://github.com/nunu1733/NunuLauncher/issues/136), [#137](https://github.com/nunu1733/NunuLauncher/issues/137), and [#138](https://github.com/nunu1733/NunuLauncher/issues/138); durable redacted evidence is repository-linked and further scenarios remain pending. |
 | AC-13 | After blocking fixes, scenarios are rerun on final release/minified candidate and #100 receives verdict/blockers. | PENDING | Final handoff |
 
 ## Final verdict and handoff
 
+### Current exploratory verdict
+
+NOT READY. S2 exposed the planning rejection in [#136](https://github.com/nunu1733/NunuLauncher/issues/136),
+S4 exposed the Later/Review touch-activation defect in [#137](https://github.com/nunu1733/NunuLauncher/issues/137),
+and S6 exposed the missing supported release diagnostics route in [#138](https://github.com/nunu1733/NunuLauncher/issues/138).
+S1 and S3 remain INCONCLUSIVE, and S5 remains PENDING.
+
 ### Final verdict
 
-NOT READY — this is an exploratory baseline, not the final candidate verdict.
-S2 exposed a reproducible planning rejection tracked in [#136](https://github.com/nunu1733/NunuLauncher/issues/136).
-S1 remains INCONCLUSIVE with its interaction finding delegated to [#137](https://github.com/nunu1733/NunuLauncher/issues/137),
-S3 is INCONCLUSIVE because success/idempotence/apply is blocked by [#136](https://github.com/nunu1733/NunuLauncher/issues/136),
-S4 is DEFECT, S5 remains PENDING, S6 is INCONCLUSIVE, and [#134](https://github.com/nunu1733/NunuLauncher/issues/134)
-is also a remaining blocker for the release-readiness track.
+PENDING. It will be assigned only after the #132-owned blockers are fixed and
+S1-S6 are rerun on the exact final release/minified candidate. Separately,
+[#134](https://github.com/nunu1733/NunuLauncher/issues/134) remains a parent
+release-readiness blocker owned by #108/#100; it is not a finding or owner of
+this #132 dogfooding run.
 
 At completion, use exactly one of the following and explain every limitation:
 
@@ -358,11 +368,13 @@ At completion, use exactly one of the following and explain every limitation:
 
 | Field | Value |
 |---|---|
-| Final verdict | NOT READY (exploratory baseline) |
+| Current exploratory verdict | NOT READY |
+| Final verdict | PENDING |
 | Candidate SHA / APK hash | 05329be2d7d368a19997f981fb371a54113c7bb0 / e23920ca366225cc006f3565a027e1b41cfe2ae53cfbcbd8fbd586955812eb5e |
-| Scenario summary | S1 INCONCLUSIVE; S2 DEFECT; S2-R INCONCLUSIVE; S3 INCONCLUSIVE (blocked); S4 DEFECT; S5 PENDING; S6 INCONCLUSIVE |
-| Remaining blockers | [#136](https://github.com/nunu1733/NunuLauncher/issues/136), [#137](https://github.com/nunu1733/NunuLauncher/issues/137), [#134](https://github.com/nunu1733/NunuLauncher/issues/134); S5 pending and S6 diagnostics/export/recovery evidence incomplete |
-| Linked defect Issues | [#136](https://github.com/nunu1733/NunuLauncher/issues/136), [#137](https://github.com/nunu1733/NunuLauncher/issues/137) |
+| Scenario summary | S1 INCONCLUSIVE; S2 DEFECT; S2-R INCONCLUSIVE; S3 INCONCLUSIVE (blocked); S4 DEFECT; S5 PENDING; S6 DEFECT |
+| #132 dogfooding blockers | [#136](https://github.com/nunu1733/NunuLauncher/issues/136), [#137](https://github.com/nunu1733/NunuLauncher/issues/137), [#138](https://github.com/nunu1733/NunuLauncher/issues/138); S5 and final-candidate S1-S6 rerun remain pending |
+| Parent release-readiness blocker | [#134](https://github.com/nunu1733/NunuLauncher/issues/134), owned by #108/#100 |
+| Linked defect Issues | [#136](https://github.com/nunu1733/NunuLauncher/issues/136), [#137](https://github.com/nunu1733/NunuLauncher/issues/137), [#138](https://github.com/nunu1733/NunuLauncher/issues/138) |
 | Retest commits/results | PENDING |
 | Handoff comment/link on #100 | PENDING |
 
