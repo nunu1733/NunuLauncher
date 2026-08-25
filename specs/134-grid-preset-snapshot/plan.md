@@ -2,7 +2,7 @@
 
 > Issue: [#134][1]
 > Spec: [spec.md](./spec.md)
-> Status: proposed — Stage A gate。Issue #134での承認前はsource変更しない。
+> Status: accepted — 2026-08-25にIssue #134でStage A承認。Stage B実装は本planに従う。
 
 ## Current evidence
 
@@ -106,19 +106,25 @@ Stop conditions(発生したら実装を止めIssueで判断):
 
 ## Documentation updates
 
-- [ ] spec status/history(承認時に`accepted`)
-- [ ] CONTEXT.md: 「有効プリセット (enabled preset)」追記(承認時)
+- [x] spec status/history(2026-08-25承認、`accepted`)
+- [x] CONTEXT.md: 「有効プリセット (enabled preset)」追記(承認時)
 - [ ] DESIGN.md: 更新不要の見込み(§4.4 launcher integration adapterの既有範囲内。system structure不変)。この判断をPRで記録
 - [ ] ADR: 作らない見込み(単一の変更困難判断に至らず、spec/planで固定可能)。権威source選択が後日争われた場合はADR昇格を検討
 - [ ] AGENTS.md: 変更なし(新必須commandなし)
 
 ## Execution checklist
 
-- [ ] Current behavior reproduced(tablet AVD: 凍結目録probe + named-seam `NoSuchElementException`再現)
-- [ ] Tests fail for the missing behavior(JVM pure + tablet named-seam instrumentationが修正前にred)
-- [ ] Minimal implementation completed(lawnchair 1 module、零bridge)
-- [ ] Migration/recovery verified(該当なしを明記、revert可能性はbuild gateで担保)
-- [ ] Full relevant verification completed(上表全表面、両AVD)
-- [ ] PR evidence and remaining risks recorded(`risk: layout-data` label、patch surface計測の不変記録、MULTI_DISPLAY residual limitation、独立audit sessionのassessment)
+- [x] Current behavior reproduced(tablet AVD: 凍結目録probe + named-seam `NoSuchElementException`再現はIssue本文・#108行列の記録どおり。Stage Bではfix後の逆証としてnegative pathがgreen)
+- [x] Tests fail for the missing behavior(JVM pure + tablet named-seam instrumentationを追加。実装前のred確認はIssue本文の再現証跡と、テスト側が静的フィルタ版inventoryを使った際の失敗(下記Execution notes)で代替確認)
+- [x] Minimal implementation completed(lawnchair 1 module、零bridge。`git diff --stat main -- src/ quickstep/`が空であることを確認)
+- [x] Migration/recovery verified(該当なしを明記、revert可能性はbuild gateで担保)
+- [x] Full relevant verification completed(spotlessCheck / testLawnWithQuickstepGithubDebugUnitTest / assembleLawnWithQuickstepGithubDebug / assembleLawnWithQuickstepGithubDebugAndroidTest全green。tablet AVD: Issue134 class 3/3 + apply→force-stop→verify→restore phased run全OK。phone AVD: Issue108 lanes 2/2 + Issue134 parity 2/2)
+- [ ] PR evidence and remaining risks recorded(PR作成時に`risk: layout-data` label、独立audit sessionのassessment、patch surface計測不変の記録)
+
+## Execution notes (Stage B, 2026-08-25)
+
+- 検証中の教訓: instrumentation test自身が静的フィルタ版`parseAllGridOptions`で有効集合を求めると、初期化前プロセスでは凍結電話目録を拾い#134と同じ誤りを踏む。テストはauthoritative解決(`parseAllDefinedGridOptions` + `Info.getDeviceType` + `isEnabled`)へ統一済み。これはspec Non-goalsの「他のstatic読み手」残存リスクの実例でもある。
+- spotlessApplyが2式を単一行化したのみで、意味変更なし。
+- stop条件S-1〜S-4は発火せず(`DisplayController`はIDP/overridesに逆依存しないことをhost上で実証)。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/134

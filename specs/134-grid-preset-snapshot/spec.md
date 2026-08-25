@@ -1,14 +1,14 @@
 ---
 issue: "#134"
-status: proposed
+status: accepted
 requirements: [NFR-007]
 updated: 2026-08-25
 ---
 
 # 端末種別に整合するグリッドプリセット目録
 
-> Stage A gate: 本specと同伴の[plan.md](./plan.md)がIssue [#134][1]で承認されるまで、production振る舞いは変更しない。
-> 承認時にこの2文書がStage B実装の拘束契約になる。
+> Stage A gate: 本specと同伴の[plan.md](./plan.md)は2026-08-25にIssue [#134][1]で承認された。
+> 両文書はStage B実装の拘束契約であり、実装発見が決定と矛盾する場合は暗黙の代替を導入せず停止条件として扱う。
 
 ## Problem
 
@@ -127,6 +127,7 @@ UI flow・文字列の変更なし。設定UIのグリッド一覧内容がhost�
 
 ## Change history
 
+- 2026-08-25: Issue #134上でStage A承認。`accepted`へ更新。
 - 2026-08-25: #134 Stage A向け`proposed`仕様を作成。Issue本文の観測事実と[#108 assessment](../../docs/assessment/issue-108-organizer-mvp-compatibility.md)の実行証跡を入力に、目録解決権威・単一正本原則・fail-closed契約・近似規則を固定。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/134
