@@ -43,6 +43,7 @@ import app.lawnchair.ui.preferences.destinations.IconPickerPreference
 import app.lawnchair.ui.preferences.destinations.IconShapePreference
 import app.lawnchair.ui.preferences.destinations.LauncherPopupPreference
 import app.lawnchair.ui.preferences.destinations.ManualOrganizationPreferences
+import app.lawnchair.ui.preferences.destinations.OrganizerDiagnosticsPreferences
 import app.lawnchair.ui.preferences.destinations.PickAppForGesture
 import app.lawnchair.ui.preferences.destinations.PlacementLockPreferences
 import app.lawnchair.ui.preferences.destinations.PreferencesDashboard
@@ -117,9 +118,11 @@ fun PreferenceNavigation(
             val route: HomeScreenManualOrganization = backStackEntry.toRoute()
             ManualOrganizationPreferences(
                 trigger = route.trigger,
-                onOpenDiagnostics = { navController.navigate(DebugMenu) },
+                onOpenDiagnostics = { navController.navigate(HomeScreenOrganizerDiagnostics) },
             )
         }
+        // Issue #138: supported release Settings route for diagnostics export.
+        composable<HomeScreenOrganizerDiagnostics> { OrganizerDiagnosticsPreferences() }
 
         composable<Dock> { DockPreferences() }
         composable<DockSearchProvider> { SearchProviderPreferences() }
