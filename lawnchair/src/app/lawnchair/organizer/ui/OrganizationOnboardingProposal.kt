@@ -23,6 +23,7 @@ import com.android.launcher3.LauncherPrefs
 import com.android.launcher3.R
 import com.android.launcher3.provider.RestoreDbTask
 import com.android.launcher3.util.OnboardingPrefs
+import com.android.launcher3.views.BaseDragLayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -188,7 +189,9 @@ internal class OrganizationOnboardingProposalContent(
     ) = Button(context).apply {
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
         setText(textId)
-        isFocusableInTouchMode = true
+        // Action buttons must stay out of touch mode: focusableInTouchMode turns the first tap
+        // into a focus change instead of a click (Issue #137). Keyboard traversal still reaches
+        // them because any key press ends touch mode.
         setOnClickListener { onClick() }
     }
 
@@ -301,13 +304,19 @@ internal class OrganizationOnboardingProposal(
 
         fun show() {
             focusBeforeOpen = launcher.currentFocus ?: launcher.workspace
+            // Build the params as BaseDragLayer.LayoutParams directly: dragLayer's
+            // generateLayoutParams conversion replaces plain FrameLayout.LayoutParams with
+            // defaults that drop gravity, which pinned this popup to the area under the status
+            // bar instead of the intended bottom sheet position. Insets stay enabled: the
+            // parent adds the system-bar insets to the margins, so the bottom edge keeps
+            // clearing the navigation bar.
             launcher.dragLayer.addView(
                 this,
-                FrameLayout.LayoutParams(
+                BaseDragLayer.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT,
                     FrameLayout.LayoutParams.WRAP_CONTENT,
-                    Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM,
                 ).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
                     bottomMargin = dp(32)
                     marginStart = dp(16)
                     marginEnd = dp(16)

@@ -7,8 +7,11 @@ import android.graphics.Rect
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
+import android.widget.Button
 import android.widget.FrameLayout
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
@@ -26,13 +29,26 @@ import com.android.launcher3.util.OnboardingPrefs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
+import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class OnboardingOrganizationProposalInstrumentationTest {
+    @Before
+    fun keepProductionProposalOwnerFailClosedForThisProcess() {
+        // The production singleton freezes its install provenance at first construction, which
+        // happens at the first launcher start of this process. Marking the restore snapshot
+        // before any test starts HOME keeps that singleton fail-closed (RESTORE provenance), so
+        // tests exercise their own injected-store owners instead of racing an auto-shown
+        // proposal on freshly installed debug builds.
+        LauncherPrefs.get(InstrumentationRegistry.getInstrumentation().targetContext)
+            .putSync(OnboardingPrefs.ORGANIZATION_PROPOSAL_RESTORE_SEEN.to(true))
+    }
+
     @Test
     fun realLauncherFloatingHostKeepsAllActionsWithinViewportAtTwoHundredPercentFontScale() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -77,18 +93,30 @@ class OnboardingOrganizationProposalInstrumentationTest {
             }
             awaitVisibleProposalActions(launcher, content)
             awaitInputFocus({ content.title }, "proposal title")
-            dispatchLauncherKey(launcher, KeyEvent.KEYCODE_DPAD_DOWN)
+            // Injected through the real input pipeline (not a direct activity dispatch) so the
+            // key press ends touch mode exactly like hardware DPAD input does.
+            sendKey(KeyEvent.KEYCODE_DPAD_DOWN)
             awaitAnyInputFocus(content.laterButton, content.skipButton, content.reviewButton)
             instrumentation.runOnMainSync {
                 val viewport = Rect()
                 assertTrue(launcher.dragLayer.getGlobalVisibleRect(viewport))
                 assertEquals(TWO_HUNDRED_PERCENT_FONT_SCALE, launcher.resources.configuration.fontScale)
                 assertEquals(TWO_HUNDRED_PERCENT_FONT_SCALE, proposal.resources.configuration.fontScale)
+                val safeAreaBottom = viewport.bottom - launcher.windowManager.currentWindowMetrics.windowInsets
+                    .getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+                    .bottom
                 listOf(content.laterButton, content.skipButton, content.reviewButton).forEach { button ->
                     val bounds = Rect()
                     assertTrue(button.getGlobalVisibleRect(bounds))
                     assertTrue(bounds.top >= viewport.top)
                     assertTrue(bounds.bottom <= viewport.bottom)
+                    // The popup must respect the system-bar safe area instead of relying on a
+                    // fixed margin smaller than the navigation bar inset (PR #144 review).
+                    assertTrue(
+                        "proposal action must stay above the system bar safe area " +
+                            "(bottom=${bounds.bottom}, safeAreaBottom=$safeAreaBottom)",
+                        bounds.bottom <= safeAreaBottom,
+                    )
                 }
                 assertTrue(proposal.canHandleBack())
                 assertTrue(proposal.isOpen)
@@ -108,6 +136,181 @@ class OnboardingOrganizationProposalInstrumentationTest {
             runShellCommand("settings put system font_scale $originalFontScale")
             proposalPrefs.put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, originalProposalOutcome)
         }
+    }
+
+    @Test
+    fun realTouchStreamActivatesLaterWithASingleTap() {
+        val gate = TouchActivationGate()
+        gate.show()
+        try {
+            gate.awaitInitialFocus()
+            activateByTouchesUntilResolved(gate, gate.content.laterButton, "Later")
+        } finally {
+            gate.restore()
+        }
+        assertEquals(
+            OrganizationOnboardingProposalOutcome.DEFERRED,
+            gate.store.value,
+        )
+    }
+
+    @Test
+    fun realTouchStreamActivatesSkipWithASingleTap() {
+        val gate = TouchActivationGate()
+        gate.show()
+        try {
+            gate.awaitInitialFocus()
+            activateByTouchesUntilResolved(gate, gate.content.skipButton, "Skip")
+        } finally {
+            gate.restore()
+        }
+        assertEquals(
+            OrganizationOnboardingProposalOutcome.SKIPPED,
+            gate.store.value,
+        )
+    }
+
+    /**
+     * Injects real touch streams (never `performClick()`) and records focus owners plus the
+     * DOWN/UP/CANCEL flow observed by the action buttons, so a pre-fix failure doubles as the
+     * Issue #137 Phase 0 go/no-go evidence.
+     */
+    private fun activateByTouchesUntilResolved(
+        gate: TouchActivationGate,
+        target: Button,
+        targetName: String,
+    ) {
+        var observations = ""
+        var resolvedAttempt = 0
+        for (attempt in 1..MAX_TOUCH_ACTIVATION_TAPS) {
+            val focusBefore = gate.describeFocus()
+            val geometry = gate.describeGeometry(target)
+            val injections = gate.deliveredTap(target)
+            if (gate.awaitResolvedOrRecord()) {
+                resolvedAttempt = attempt
+                break
+            }
+            observations += "[tap $attempt on $targetName] $geometry " +
+                "focusBefore=$focusBefore " +
+                "focusAfter=${gate.describeFocus()} events=${gate.touchLog.joinToString()} " +
+                "open=${gate.isOpen()} outcome=${gate.store.value} injections=$injections; "
+        }
+        assertEquals(
+            "A single ordinary touch must activate $targetName without keyboard help: $observations",
+            1,
+            resolvedAttempt,
+        )
+    }
+
+    @Test
+    fun recreatingLauncherWhileProposalIsShownLeavesNoDuplicateOrOrganizerRun() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val proposalPrefs = LauncherPrefs.get(context)
+        val originalProposalOutcome = proposalPrefs.get(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME)
+        // Production shares one companion process-presentation state across activity instances;
+        // mirroring it here exercises the real claim lifecycle across recreation.
+        val sharedProcessState = OrganizationOnboardingProposalProcessState()
+        val store = FakeStore()
+        val admissions = AtomicInteger()
+
+        fun makeOwner(launcher: LawnchairLauncher) = OrganizationOnboardingProposal(
+            launcher = launcher,
+            controller = OrganizationOnboardingProposalController(store, sharedProcessState),
+            admitReview = {
+                admissions.incrementAndGet()
+                ManualOrganizationRun.StartOutcome.Busy
+            },
+            isWorkspaceReady = { true },
+        )
+
+        try {
+            // Keep the production singleton from claiming the shared slot while this test owns it.
+            proposalPrefs.put(
+                OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME,
+                OrganizationOnboardingProposalOutcome.SKIPPED.name,
+            )
+            startLauncher(context)
+            val launcherBeforeRecreation = awaitResumedLauncher()
+            instrumentation.runOnMainSync {
+                AbstractFloatingView.closeOpenViews(launcherBeforeRecreation, false, AbstractFloatingView.TYPE_ALL)
+                val ownerBefore = makeOwner(launcherBeforeRecreation)
+                ownerBefore.onLauncherResumed()
+                ownerBefore.onInitialWorkspaceBound()
+            }
+            awaitProductionProposal(launcherBeforeRecreation)
+
+            instrumentation.runOnMainSync { launcherBeforeRecreation.recreate() }
+            val launcherAfterRecreation = awaitResumedLauncher(excluding = launcherBeforeRecreation)
+            instrumentation.runOnMainSync {
+                val ownerAfter = makeOwner(launcherAfterRecreation)
+                ownerAfter.onLauncherResumed()
+                ownerAfter.onInitialWorkspaceBound()
+                assertFalse(
+                    "recreation must not leave a duplicate or stuck proposal on the new launcher",
+                    AbstractFloatingView.getTopOpenView(launcherAfterRecreation) is
+                        OrganizationOnboardingProposal.OrganizationOnboardingProposalView,
+                )
+            }
+            assertEquals(null, store.value)
+            assertEquals(0, admissions.get())
+        } finally {
+            proposalPrefs.put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, originalProposalOutcome)
+        }
+    }
+
+    @Test
+    fun busyReviewKeepsProposalOutcomeUntouchedAndRetryableByRealTouch() {
+        val gate = TouchActivationGate()
+        gate.show()
+        try {
+            gate.awaitInitialFocus()
+            gate.deliveredTap(gate.content.reviewButton)
+            awaitAdmissionCount(gate.admissions, 1)
+            awaitReviewActionEnabled(gate.content)
+            assertTrue(gate.isOpen())
+            assertEquals(null, gate.store.value)
+
+            gate.deliveredTap(gate.content.reviewButton)
+            awaitAdmissionCount(gate.admissions, 2)
+            awaitReviewActionEnabled(gate.content)
+            assertTrue("a busy admission must keep the proposal touch-retryable", gate.isOpen())
+            assertEquals(null, gate.store.value)
+        } finally {
+            gate.restore()
+        }
+    }
+
+    @Test
+    fun realTouchStreamOnReviewAdmitsAFreshRunAndRoutesToTheReviewSurface() {
+        val gate = TouchActivationGate()
+        gate.show()
+        try {
+            gate.awaitInitialFocus()
+            gate.reviewOutcome.set(
+                ManualOrganizationRun.StartOutcome.Started(RunId(RUN_ID)),
+            )
+            gate.deliveredTap(gate.content.reviewButton)
+            awaitResumedPreferenceActivity()
+        } finally {
+            gate.restore()
+        }
+        assertEquals(
+            OrganizationOnboardingProposalOutcome.REVIEWED,
+            gate.store.value,
+        )
+        assertFalse(gate.isOpen())
+    }
+
+    @Test
+    fun skippedAndReviewedOutcomesNeverResurfaceAfterAColdStart() {
+        val store = FakeStore()
+
+        store.value = OrganizationOnboardingProposalOutcome.SKIPPED
+        assertFalse(OrganizationOnboardingProposalController(store).isEligible())
+
+        store.value = OrganizationOnboardingProposalOutcome.REVIEWED
+        assertFalse(OrganizationOnboardingProposalController(store).isEligible())
     }
 
     @Test
@@ -161,8 +364,13 @@ class OnboardingOrganizationProposalInstrumentationTest {
             assertTrue(launcher === resumedLauncher)
             lateinit var proposal: OrganizationOnboardingProposal.OrganizationOnboardingProposalView
             instrumentation.runOnMainSync {
-                assertTrue(launcher.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+                assertTrue(
+                    "launcher must be RESUMED after the HOME relaunch",
+                    launcher.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED),
+                )
                 assertFalse(
+                    "no proposal may be open before the owner resumes; open=" +
+                        AbstractFloatingView.getTopOpenView(launcher),
                     AbstractFloatingView.getTopOpenView(launcher) is
                         OrganizationOnboardingProposal.OrganizationOnboardingProposalView,
                 )
@@ -236,7 +444,8 @@ class OnboardingOrganizationProposalInstrumentationTest {
             scenario.onActivity {
                 assertTrue(content.title.requestFocus())
                 assertTrue(content.title.hasFocus())
-                assertTrue(content.laterButton.requestFocus())
+                // Action buttons no longer take programmatic focus while the device is in touch
+                // mode (Issue #137 fix); keyboard reach is covered by the DPAD traversal tests.
                 content.laterButton.performClick()
                 content.skipButton.performClick()
                 content.reviewButton.performClick()
@@ -549,6 +758,177 @@ class OnboardingOrganizationProposalInstrumentationTest {
         var review = 0
     }
 
+    /**
+     * Shows the real floating-host proposal on a resumed launcher and records the touch/focus
+     * observations required by the Issue #137 Phase 0 gate.
+     */
+    private inner class TouchActivationGate {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val store = FakeStore()
+        val touchLog: MutableList<String> = Collections.synchronizedList(mutableListOf<String>())
+        val admissions = AtomicInteger()
+        val reviewOutcome = AtomicReference<ManualOrganizationRun.StartOutcome>(
+            ManualOrganizationRun.StartOutcome.Busy,
+        )
+        lateinit var launcher: LawnchairLauncher
+            private set
+        lateinit var proposal: OrganizationOnboardingProposal.OrganizationOnboardingProposalView
+            private set
+        lateinit var content: OrganizationOnboardingProposalContent
+            private set
+
+        private lateinit var originalOutcome: String
+
+        fun show() {
+            originalOutcome = LauncherPrefs.get(instrumentation.targetContext)
+                .get(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME)
+            // Keep the production owner from claiming the shared process presentation slot.
+            LauncherPrefs.get(instrumentation.targetContext).put(
+                OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME,
+                OrganizationOnboardingProposalOutcome.SKIPPED.name,
+            )
+            startLauncher(instrumentation.targetContext)
+            launcher = awaitResumedLauncher()
+            instrumentation.runOnMainSync {
+                // Start from a clean floating-view baseline regardless of cross-test ordering.
+                AbstractFloatingView.closeOpenViews(launcher, false, AbstractFloatingView.TYPE_ALL)
+                proposal = OrganizationOnboardingProposal.OrganizationOnboardingProposalView(
+                    launcher,
+                    OrganizationOnboardingProposalController(store),
+                    admitReview = {
+                        admissions.incrementAndGet()
+                        reviewOutcome.get()
+                    },
+                )
+                content = proposal.getChildAt(0) as OrganizationOnboardingProposalContent
+                listOf(content.laterButton, content.skipButton, content.reviewButton).forEach { button ->
+                    button.setOnTouchListener { view, event ->
+                        if (touchLog.size < MAX_RECORDED_TOUCH_EVENTS) {
+                            touchLog.add("${(view as Button).text}:${touchActionName(event)}")
+                        }
+                        false
+                    }
+                }
+                proposal.show()
+            }
+            awaitVisibleProposalActions(launcher, content)
+        }
+
+        fun awaitInitialFocus() {
+            awaitInputFocus({ content.title }, "proposal title")
+        }
+
+        fun describeFocus(): String {
+            var description = "unknown"
+            instrumentation.runOnMainSync {
+                description = when (val focused = proposal.findFocus()) {
+                    null -> "none"
+                    content.title -> "title"
+                    content.laterButton -> "laterButton"
+                    content.skipButton -> "skipButton"
+                    content.reviewButton -> "reviewButton"
+                    proposal -> "proposalRoot"
+                    else -> focused.javaClass.simpleName
+                }
+            }
+            return description
+        }
+
+        fun describeGeometry(target: View): String {
+            var description = "geometry unavailable"
+            instrumentation.runOnMainSync {
+                val targetRect = Rect().also { target.getGlobalVisibleRect(it) }
+                val proposalRect = Rect().also { proposal.getGlobalVisibleRect(it) }
+                val layerOrigin = IntArray(2).also { launcher.dragLayer.getLocationOnScreen(it) }
+                    .contentToString()
+                description =
+                    "target=${targetRect}, proposal=${proposalRect}, layerOrigin=$layerOrigin, " +
+                        "attached=${target.isAttachedToWindow}"
+            }
+            return description
+        }
+
+        fun isOpen(): Boolean {
+            var open = false
+            instrumentation.runOnMainSync { open = proposal.isOpen }
+            return open
+        }
+
+        fun tapCenterOf(view: View) {
+            val location = IntArray(2)
+            var width = 0
+            var height = 0
+            var attached = false
+            instrumentation.runOnMainSync {
+                view.getLocationOnScreen(location)
+                width = view.width
+                height = view.height
+                attached = view.isAttachedToWindow
+            }
+            check(attached && width > 0 && height > 0) {
+                "cannot tap a detached or unsized view (attached=$attached, ${width}x$height); " +
+                    "the proposal surface disappeared before the touch stream"
+            }
+            val x = (location[0] + width / 2).toFloat()
+            val y = (location[1] + height / 2).toFloat()
+            val downTime = SystemClock.uptimeMillis()
+            val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0)
+            val downInjected = instrumentation.uiAutomation.injectInputEvent(down, true)
+            SystemClock.sleep(TOUCH_INJECTION_GAP_MILLIS)
+            val up = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0)
+            val upInjected = instrumentation.uiAutomation.injectInputEvent(up, true)
+            down.recycle()
+            up.recycle()
+            check(downInjected && upInjected) {
+                "real touch injection was rejected by the system (down=$downInjected, up=$upInjected)"
+            }
+        }
+
+        /**
+         * Injects a tap and retries until the touch stream is provably delivered to the view.
+         * Injections lost to launcher-startup input races never reach the window and must not
+         * count as taps; the caller's "single tap" requirement applies to delivered taps only.
+         */
+        fun deliveredTap(view: View): Int {
+            val eventsBefore = touchLog.size
+            var attempts = 0
+            while (attempts < MAX_INJECTION_ATTEMPTS_PER_TAP) {
+                attempts++
+                tapCenterOf(view)
+                val deadline = SystemClock.uptimeMillis() + DELIVERY_TIMEOUT_MILLIS
+                while (SystemClock.uptimeMillis() < deadline) {
+                    if (touchLog.size > eventsBefore) return attempts
+                    SystemClock.sleep(50)
+                }
+            }
+            error("touch injection never reached the proposal after $attempts attempts")
+        }
+
+        /** Returns true once the proposal closed; otherwise records the unresolved state. */
+        fun awaitResolvedOrRecord(): Boolean {
+            repeat(50) {
+                if (!isOpen()) return true
+                SystemClock.sleep(100)
+            }
+            return false
+        }
+
+        fun restore() {
+            LauncherPrefs.get(instrumentation.targetContext).put(
+                OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME,
+                originalOutcome,
+            )
+        }
+
+        private fun touchActionName(event: MotionEvent): String = when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> "DOWN"
+            MotionEvent.ACTION_UP -> "UP"
+            MotionEvent.ACTION_CANCEL -> "CANCEL"
+            MotionEvent.ACTION_MOVE -> "MOVE"
+            else -> "ACTION_${event.actionMasked}"
+        }
+    }
+
     private class FakeStore : OrganizationOnboardingProposalStore {
         var value: OrganizationOnboardingProposalOutcome? = null
 
@@ -564,5 +944,10 @@ class OnboardingOrganizationProposalInstrumentationTest {
     private companion object {
         const val RUN_ID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         const val TWO_HUNDRED_PERCENT_FONT_SCALE = 2f
+        const val MAX_TOUCH_ACTIVATION_TAPS = 2
+        const val MAX_RECORDED_TOUCH_EVENTS = 60
+        const val TOUCH_INJECTION_GAP_MILLIS = 60L
+        const val MAX_INJECTION_ATTEMPTS_PER_TAP = 3
+        const val DELIVERY_TIMEOUT_MILLIS = 1500L
     }
 }
