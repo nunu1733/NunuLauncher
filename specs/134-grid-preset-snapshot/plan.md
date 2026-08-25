@@ -123,6 +123,7 @@ Stop conditions(発生したら実装を止めIssueで判断):
 
 ## Execution notes (Stage B, 2026-08-25)
 
+- 実装review(2026-08-25, HEAD `48e6d406`への指摘)への対応: (1) acceptance pathを`InvariantDeviceProfile.INSTANCE.get(context).setCurrentGrid(context, name)`経由へ変更(delegate書き込み+`MAIN_EXECUTOR`でのproduction再初期化まで含む)。negative pathも同seam経由を追加。commit `95f2ab6c9b`。(2) 証跡SHAを修正 — 旧記録のbuild id `6b89df5`は実装前commitで、audit trailとして不正確だったため、`95f2ab6c9b`で全host証跡を再実行してaddendumを正しいSHAへ差し替え。
 - 検証中の教訓: instrumentation test自身が静的フィルタ版`parseAllGridOptions`で有効集合を求めると、初期化前プロセスでは凍結電話目録を拾い#134と同じ誤りを踏む。テストはauthoritative解決(`parseAllDefinedGridOptions` + `Info.getDeviceType` + `isEnabled`)へ統一済み。これはspec Non-goalsの「他のstatic読み手」残存リスクの実例でもある。
 - spotlessApplyが2式を単一行化したのみで、意味変更なし。
 - stop条件S-1〜S-4は発火せず(`DisplayController`はIDP/overridesに逆依存しないことをhost上で実証)。
