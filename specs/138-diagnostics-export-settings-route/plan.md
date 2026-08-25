@@ -2,7 +2,7 @@
 
 > Issue: [#138][1]
 > Spec: [spec.md](./spec.md)
-> Status: proposed — Stage A。Issue #138での承認後にStage B実装を行う。
+> Status: accepted — 2026-08-25にIssue #138でStage A承認。Stage B実装は本planに従う。
 
 ## Current evidence
 

@@ -1,6 +1,6 @@
 ---
 issue: "#138"
-status: proposed
+status: accepted
 requirements:
   - FR-015
   - NFR-011
@@ -9,8 +9,8 @@ updated: 2026-08-25
 
 # オーガナイザー診断exportをサポート済みrelease設定経路で到達可能にする
 
-> Stage A: 本specと同伴の[plan.md](./plan.md)はIssue [#138][1]での承認対象である。
-> 承認後、両文書はStage B実装の拘束契約となり、実装発見が決定と矛盾する場合は暗黙の代替を導入せず停止条件として扱う。
+> Stage A gate: 本specと同伴の[plan.md](./plan.md)は2026-08-25にIssue [#138][1]で承認された。
+> 両文書はStage B実装の拘束契約であり、実装発見が決定と矛盾する場合は暗黙の代替を導入せず停止条件として扱う。
 
 ## Problem
 
@@ -133,5 +133,6 @@ None are blocking. 非blocking事項:
 
 - 2026-08-25: Draft created for #138 (Stage A). Issue本文の観測事実と [issue-132-exploratory-baseline.md](../../docs/assessment/evidence/issue-132-exploratory-baseline.md) のroute/source boundary証跡を入力に作成。
 - 2026-08-25: Stage A review(P1)対応。AC-3/AC-4のtest oracleを、production `ActivityResultRegistry` 観測(#138新規instrumentation)とwriter seam分離(既存 #67 `ExportWriterTest` 再利用、再実装しない)の分担として固定。behavior・scope変更なし。
+- 2026-08-25: Issue #138上でStage A承認(P1対応後のcommit `f908a4acb9`時点)。`accepted`へ更新。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/138
