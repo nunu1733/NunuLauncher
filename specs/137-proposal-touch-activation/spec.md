@@ -1,6 +1,6 @@
 ---
 issue: "#137"
-status: accepted
+status: implemented
 requirements:
   - NFR-009
 updated: 2026-08-25
@@ -145,3 +145,4 @@ None — 新permission、外部送信、sensitive dataの扱い変更はない�
 - 2026-08-25: Draft created for #137.
 - 2026-08-25: Review対応。AC-5/oracleをPhase 0 gate所見と同期し、recreation/cold-start oracleをAC-4へ明示、Switch Access evidenceの責務境界(#109)を明記。
 - 2026-08-25: Accepted。AC-1〜AC-6を凍結しStage B実装を開始する。
+- 2026-08-25: Implemented(PR #144 merge、8f1519e873)。review対応として位置修正はinset尊重構成(`ignoreInsets`不使用)とし、safe-area oracle・owner経由recreation test・`REVIEWED` cold-startセルを追加。
