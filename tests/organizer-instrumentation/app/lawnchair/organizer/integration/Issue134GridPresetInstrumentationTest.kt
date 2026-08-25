@@ -19,7 +19,8 @@ import org.junit.runner.RunWith
 
 /**
  * Issue #134 evidence for the production named-preset seam
- * ([DeviceProfileOverrides.setCurrentGrid] via [InvariantDeviceProfile.setCurrentGrid]).
+ * ([InvariantDeviceProfile.setCurrentGrid], which delegates to
+ * [DeviceProfileOverrides.setCurrentGrid] and schedules the production re-init).
  *
  * `durableNamedPresetSwitch` supports phased execution with the instrumentation
  * argument `issue134.phase` so a driver script can prove durability across a real
@@ -54,9 +55,16 @@ class Issue134GridPresetInstrumentationTest {
         }
         assertTrue(unknown.message!!.contains("issue134_no_such_preset"))
 
+        // The production named-preset seam rejects invalid names before any
+        // preference write or re-initialization is scheduled.
+        val unknownThroughIdp = assertThrows(NoSuchElementException::class.java) {
+            InvariantDeviceProfile.INSTANCE.get(context).setCurrentGrid(context, "issue134_no_such_preset")
+        }
+        assertTrue(unknownThroughIdp.message!!.contains("issue134_no_such_preset"))
+
         if (disabledName != null) {
             val rejected = assertThrows(NoSuchElementException::class.java) {
-                overrides.setCurrentGrid(disabledName)
+                InvariantDeviceProfile.INSTANCE.get(context).setCurrentGrid(context, disabledName)
             }
             assertTrue(rejected.message!!.contains(disabledName))
             assertTrue(rejected.message!!.contains(enabledNames.joinToString(prefix = "[", postfix = "]")))
@@ -132,7 +140,7 @@ class Issue134GridPresetInstrumentationTest {
             assertEquals(TARGET_PRESET, overrides.getCurrentGridName())
         }
 
-        overrides.setCurrentGrid(TARGET_PRESET)
+        idp.setCurrentGrid(context, TARGET_PRESET)
         awaitGrid(idp, targetColumns(), targetRows())
 
         assertEquals(targetColumns(), idp.numColumns)
