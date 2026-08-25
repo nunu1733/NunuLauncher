@@ -10,6 +10,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.widget.Button
 import android.widget.FrameLayout
 import androidx.lifecycle.Lifecycle
@@ -101,11 +102,21 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 assertTrue(launcher.dragLayer.getGlobalVisibleRect(viewport))
                 assertEquals(TWO_HUNDRED_PERCENT_FONT_SCALE, launcher.resources.configuration.fontScale)
                 assertEquals(TWO_HUNDRED_PERCENT_FONT_SCALE, proposal.resources.configuration.fontScale)
+                val safeAreaBottom = viewport.bottom - launcher.windowManager.currentWindowMetrics.windowInsets
+                    .getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+                    .bottom
                 listOf(content.laterButton, content.skipButton, content.reviewButton).forEach { button ->
                     val bounds = Rect()
                     assertTrue(button.getGlobalVisibleRect(bounds))
                     assertTrue(bounds.top >= viewport.top)
                     assertTrue(bounds.bottom <= viewport.bottom)
+                    // The popup must respect the system-bar safe area instead of relying on a
+                    // fixed margin smaller than the navigation bar inset (PR #144 review).
+                    assertTrue(
+                        "proposal action must stay above the system bar safe area " +
+                            "(bottom=${bounds.bottom}, safeAreaBottom=$safeAreaBottom)",
+                        bounds.bottom <= safeAreaBottom,
+                    )
                 }
                 assertTrue(proposal.canHandleBack())
                 assertTrue(proposal.isOpen)
@@ -193,25 +204,58 @@ class OnboardingOrganizationProposalInstrumentationTest {
 
     @Test
     fun recreatingLauncherWhileProposalIsShownLeavesNoDuplicateOrOrganizerRun() {
-        val gate = TouchActivationGate()
-        gate.show()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val proposalPrefs = LauncherPrefs.get(context)
+        val originalProposalOutcome = proposalPrefs.get(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME)
+        // Production shares one companion process-presentation state across activity instances;
+        // mirroring it here exercises the real claim lifecycle across recreation.
+        val sharedProcessState = OrganizationOnboardingProposalProcessState()
+        val store = FakeStore()
+        val admissions = AtomicInteger()
+
+        fun makeOwner(launcher: LawnchairLauncher) = OrganizationOnboardingProposal(
+            launcher = launcher,
+            controller = OrganizationOnboardingProposalController(store, sharedProcessState),
+            admitReview = {
+                admissions.incrementAndGet()
+                ManualOrganizationRun.StartOutcome.Busy
+            },
+            isWorkspaceReady = { true },
+        )
+
         try {
-            gate.awaitInitialFocus()
-            val launcherBeforeRecreation = gate.launcher
-            InstrumentationRegistry.getInstrumentation().runOnMainSync {
-                launcherBeforeRecreation.recreate()
+            // Keep the production singleton from claiming the shared slot while this test owns it.
+            proposalPrefs.put(
+                OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME,
+                OrganizationOnboardingProposalOutcome.SKIPPED.name,
+            )
+            startLauncher(context)
+            val launcherBeforeRecreation = awaitResumedLauncher()
+            instrumentation.runOnMainSync {
+                AbstractFloatingView.closeOpenViews(launcherBeforeRecreation, false, AbstractFloatingView.TYPE_ALL)
+                val ownerBefore = makeOwner(launcherBeforeRecreation)
+                ownerBefore.onLauncherResumed()
+                ownerBefore.onInitialWorkspaceBound()
             }
-            awaitResumedLauncher(excluding = launcherBeforeRecreation)
-            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            awaitProductionProposal(launcherBeforeRecreation)
+
+            instrumentation.runOnMainSync { launcherBeforeRecreation.recreate() }
+            val launcherAfterRecreation = awaitResumedLauncher(excluding = launcherBeforeRecreation)
+            instrumentation.runOnMainSync {
+                val ownerAfter = makeOwner(launcherAfterRecreation)
+                ownerAfter.onLauncherResumed()
+                ownerAfter.onInitialWorkspaceBound()
                 assertFalse(
-                    AbstractFloatingView.getTopOpenView(launcherBeforeRecreation) is
+                    "recreation must not leave a duplicate or stuck proposal on the new launcher",
+                    AbstractFloatingView.getTopOpenView(launcherAfterRecreation) is
                         OrganizationOnboardingProposal.OrganizationOnboardingProposalView,
                 )
             }
-            assertEquals(null, gate.store.value)
-            assertEquals(0, gate.admissions.get())
+            assertEquals(null, store.value)
+            assertEquals(0, admissions.get())
         } finally {
-            gate.restore()
+            proposalPrefs.put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, originalProposalOutcome)
         }
     }
 

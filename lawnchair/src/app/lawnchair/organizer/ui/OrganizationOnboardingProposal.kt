@@ -305,16 +305,17 @@ internal class OrganizationOnboardingProposal(
         fun show() {
             focusBeforeOpen = launcher.currentFocus ?: launcher.workspace
             // Build the params as BaseDragLayer.LayoutParams directly: dragLayer's
-            // generateLayoutParams conversion drops gravity, and without ignoreInsets the
-            // window insets are added on top of the margins, which pinned this popup to the
-            // area under the status bar instead of the intended bottom sheet position.
+            // generateLayoutParams conversion replaces plain FrameLayout.LayoutParams with
+            // defaults that drop gravity, which pinned this popup to the area under the status
+            // bar instead of the intended bottom sheet position. Insets stay enabled: the
+            // parent adds the system-bar insets to the margins, so the bottom edge keeps
+            // clearing the navigation bar.
             launcher.dragLayer.addView(
                 this,
                 BaseDragLayer.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT,
                     FrameLayout.LayoutParams.WRAP_CONTENT,
                 ).apply {
-                    ignoreInsets = true
                     gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
                     bottomMargin = dp(32)
                     marginStart = dp(16)
