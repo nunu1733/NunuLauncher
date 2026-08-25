@@ -26,9 +26,11 @@
 - H2: gesture途中(MOVE超過等)にdrag layer/touch controllerがinterceptしてCANCEL→pressed解除。input tap程度の移動では稀だが未排除。
 - H3: clickは発火しているがhandler内で失敗 → keyboard Enter成功(同一listener経由)と矛盾するためほぼ棄却済み。Phase 0 logで最終確認するだけとする。
 
-### 最小修正の方向(confirmed factsから導出)
+### 暫定修正方針(Phase 0 gate確定まで適用しない)
 
-3 action buttonからFITMを除去し `isFocusable` を維持する。非FITM clickable buttonは最初のtapで即座にclickする(platform規約)。key入力時点でtouch modeは離脱するため、DPAD traversalにbutton側FITMは不要。touch mode中の決定的初期focus entryは、title(またはroot)のFITMによるprogrammatic requestFocusで維持する。
+3 action buttonからのFITM除去は第一仮説に基づく暫定方針であり、Phase 0 gate通過まで実施しない。根拠: FITMのfirst-tap-focus挙動は「第1tapでfocusのみ消費される」ことを確実に説明するが、Issue #137観測では一度 `focused=true` になった後の反復tapも発火していない。この部分を説明する機構(gesture間のfocus喪失主体、またはintercept-cancel等)は未確定であり、fix対象とtest seamはgate所見で確定する。
+
+暫定方針(GO時の実行内容): buttonから `isFocusableInTouchMode` を除去し `isFocusable` を維持する。非FITM clickable buttonは最初のtapで即座にclickする(platform規約)。key入力時点でtouch modeは離脱するため、DPAD traversalにbutton側FITMは不要。touch mode中の決定的初期focus entryは、title(またはroot)のFITMによるprogrammatic requestFocusで維持する。
 
 ## Design
 
@@ -52,10 +54,10 @@
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `OrganizationOnboardingProposal.kt` `actionButton()` | buttonから `isFocusableInTouchMode = true` を除去 | first-tap-focusによるclick消費の直接原因 |
+| `OrganizationOnboardingProposal.kt` `actionButton()` | buttonから `isFocusableInTouchMode = true` を除去(第一仮説におけるclick消費の主因候補。Phase 0 gateのGO判定後のみ適用) | first-tap-focusが第1tapのclickを消費する最有力説明。反復tap不発の機構は未確定のためgate確定を待つ |
 | 同 `OrganizationOnboardingProposalContent` / popup root | titleまたはrootのFITM保持可否をPhase 0所見で決定(原則titleに集約) | touch mode中の決定的初期focus entry維持 |
-| `OnboardingOrganizationProposalInstrumentationTest.kt` | 実touch gesture注入regression test追加、`performClick()` ベースのaction検証を実注入ベースへ置換・補強 | performClick依存が本バグの検知不能性の原因 |
-| 診断用log(一時的、commit残存可否はPhase 0で判断) | DOWN/UP/CANCEL/focus遷移のevent flow記録 | H1/H2/H3判別 |
+| `OnboardingOrganizationProposalInstrumentationTest.kt` | 実touch gesture注入regression test追加、`performClick()` ベースのaction検証を実注入ベースへ置換・補強(oracle seam選定はPhase 0 gate所見に従う) | performClick依存が本バグの検知不能性の原因 |
+| 診断用log(一時的、commit残存可否はPhase 0で判断) | DOWN/UP/CANCEL、tap前後のfocus owner、click listener到達有無のevent flow記録 | H1/H2/H3判別とgate判定 |
 
 Launcher3/AOSP由来source(`src/`)は変更しない。bridge要件は発生しない見込み。
 
@@ -67,21 +69,49 @@ Launcher3/AOSP由来source(`src/`)は変更しない。bridge要件は発生し�
 
 ## Execution strategy
 
-1. **Phase 0 — 再現と機構確定**: API 36.1 emulator上でdebug buildのproposalを表示し、実touch stream(`adb shell input tap` およびinstrumentation内motion injection)で不発を再現。DOWN/UP/CANCELとfocus遷移を記録しH1/H2/H3を判別。反復tapの2本目以降にclickが発火するかも併せて記録。
-2. **Phase 1 — regression test先行**: spec AC-1相当の実touch注入testを追加し、pre-fix code上でfailすることを確認して結果を残す。
-3. **Phase 2 — 最小fix**: `actionButton()` からFITM除去。Phase 0所見に応じtitle/rootのFITM配置を確定。keyboard traversal・初期focus entry・focus restorationの既存assertionを全てgreenで維持。
-4. **Phase 3 — 全surface再検証**: Skip/Later/Reviewのtouch活性化、busy retry、recreation、200% font scale、release build(minified)での手動確認を含む検証表を実施。minified release APKでの確認は今回の観測がrelease build由来であるため必須。
+1. **Phase 0 — 診断とgo/no-go gate**: API 36.1 emulator上でdebug buildのproposalを表示し、実touch stream(`adb shell input tap` およびinstrumentation内motion injection)でpre-fix不発の再現を試みる。単なる観察ではなく、以下の必須観測を揃えたうえでgate判定を行う。
+
+   必須観測:
+
+   - 第1tapおよび第2tapの直前・直後のfocus owner(view単位)。
+   - `DOWN` / `UP` / `CANCEL` のevent flow(dispatch/onTouch/interceptの別を含む)。
+   - click listenerへの到達有無。
+   - debug build(`lawnWithQuickstepGithubDebug`)でもrelease/minified観測と同じpre-fix failureが成立するか。
+
+   gate判定:
+
+   - **GO**: debug buildで同等のpre-fix failureが成立し、かつ観測が「buttonへのDOWN到達 + click不発」として暫定修正方針で説明できる場合。暫定修正方針(FITM除去中心)を実行し、debug instrumentationの実touch注入testをregression oracleとして使用してよい。
+   - **NO-GO(再現なし)**: debug buildで再現しない場合、debug instrumentation testをregression oracleに使ってはならない。oracle seamをPhase 0所見で確定する(選択肢: release/minified APKでの手動touch evidenceを主oracleとし、自動化は同一view属性構成を再現するfocused instrumentation caseに限定、等)。fix適用可否もこの所見で再判断する。
+   - **NO-GO(機構不一致)**: 観測がH2(drag layer/touch controllerによるintercept-cancel)等、暫定方針の前提外を示す場合。fix対象を実際の機構へ再特定し、spec scenarioの更新が必要なら本specを改訂してreviewへ戻す。
+
+2. **Phase 1 — regression test先行(gate GO時)**: spec AC-1相当の実touch注入testを追加し、pre-fix code上でfailすることを確認して結果を残す。gate NO-GO時は確定したoracle seamで同等のpre-fix fail evidenceを取得する。
+3. **Phase 2 — 最小fix(GO時のみ実施)**: `actionButton()` からFITM除去。Phase 0所見に応じtitle/rootのFITM配置を確定。keyboard traversal・初期focus entry・focus restorationの既存assertionを全てgreenで維持。
+4. **Phase 3 — 全surface再検証**: Skip/Later/Reviewのtouch活性化、busy retry、recreation/cold-start matrix(下表)、200% font scale、release build(minified)での手動確認を含む検証表を実施。minified release APKでの確認は今回の観測がrelease build由来であるため必須。
 
 ## Verification
 
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
-| AC-1 | 実touch注入instrumentation(3 action × 1 tap、副作用assert) | API 36.1 emulator、`connectedLawnWithQuickstepGithubDebugAndroidTest` + `-Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest` |
+| AC-1 | 実touch注入instrumentation(3 action × 1 tap、副作用assert)。gate NO-GO(再現なし)時は確定oracle seamへ読み替え | API 36.1 emulator、`connectedLawnWithQuickstepGithubDebugAndroidTest` + `-Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest`(seamはPhase 0所見で確定・記録) |
 | AC-2 | 既存keyboard/DPAD traversal case維持 + touch→key切替case | 同上 |
 | AC-3 | store outcome assert、同process再表示抑制、busy retry | 同上(unit部は `testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`) |
-| AC-4 | recreation/process再起動系既存case | 同上 |
-| AC-5 | pre-fix fail記録 | Phase 1実施ログ |
+| AC-4 | 下表のrecreation/cold-start matrix(既存caseでは不十分なため新規case追加) | 同上。process death相当で自動化が安全でないcellはrelease/minified手動evidenceへ明示 |
+| AC-5 | pre-fix fail記録(実施seamはPhase 0 gate所見に従う) | Phase 0/1実施ログ |
 | AC-6 | repository gates + CI | `./gradlew spotlessCheck`、`python3 tools/repo-contract/validate_repo_contract.py`(およびself-test)、`assembleLawnWithQuickstepGithubDebug assembleLawnWithQuickstepGithubDebugAndroidTest`、CI `final-status` |
+
+### Recreation / cold-start matrix(spec AC-4対応)
+
+現行 `OnboardingOrganizationProposalInstrumentationTest` の `recreate()` 系caseはproposal構築前のlauncher recreateとstandalone content中心であり、表示中proposalやoutcome後のcold startに対するoracleになっていない。そのため以下を明示的に整備する。
+
+| Case | Expected | Evidence surface |
+|---|---|---|
+| proposal表示中のactivity recreation | 二重表示なし(presentation claim維持)、stuck proposalなし | instrumentation(新規) |
+| `Later` 後、同一process内 | 再表示なし | instrumentation(新規/既存拡張) |
+| `Later` 後、qualifying cold start | 再表示あり得る(`DEFERRED` + process state reset) | instrumentation(process state fixture)/必要なら手動 |
+| `Skip` 後、cold start | 再表示なし(`SKIPPED`) | 同上 |
+| `Review organization` 成功後、cold start | 再表示なし(`REVIEWED`) | 同上 |
+| `Busy`(admission失敗)時 | proposal outcomeを消費せずtouch/keyboardでretryable | instrumentation(既存fake admission seam拡張) |
+| process death相当 | instrumentation内で安全に自動化できない場合はrelease/minified APKでの手動evidenceに置換し、PRへ明記 | 手動(release/minified) |
 
 手動evidenceとして、release/minified APKでのtap活性化screen recording(またはscreenshot系列)をPRへ添付する。
 
@@ -99,9 +129,9 @@ Launcher3/AOSP由来source(`src/`)は変更しない。bridge要件は発生し�
 
 ## Execution checklist
 
-- [ ] Current behavior reproduced(API 36.1、実touch stream)。
-- [ ] Tests fail for the missing behavior(pre-fix fail記録)。
+- [ ] Current behavior reproduced(API 36.1、実touch stream。debug buildでの再現可否を含むPhase 0 gate観測一式)。
+- [ ] Tests fail for the missing behavior(pre-fix fail記録。oracle seamはPhase 0 gate所見に従う)。
 - [ ] Minimal implementation completed。
 - [ ] Migration/recovery verified(該当なしを明示)。
 - [ ] Full relevant verification completed(unit/instrumentation/release build/formatting/CI)。
-- [ ] PR evidence and remaining risks recorded(command結果、touch活性化の録画/画像、H1-H3判別結果)。
+- [ ] PR evidence and remaining risks recorded(command結果、touch活性化の録画/画像、Phase 0 gate判定とH1-H3判別結果、手動置換cellの明示)。
