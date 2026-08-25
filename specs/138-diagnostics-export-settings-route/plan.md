@@ -32,7 +32,8 @@ production変更はpreferences UI配下に局所化する。organizer diagnostic
 
 - 新route object: `HomeScreenOrganizerDiagnostics : PreferenceRoute`(`PreferenceRoutes.kt`)。dashboard直結のrootではなくHomeScreenの子destinationとする。
 - 新screen composable: `OrganizerDiagnosticsPreferences`(新file、destinations package)。構成は `PreferenceLayout(label = 新title)` + explainer Text + 既存 `OrganizerDiagnosticsExportPreference(port)` のみ。developer flag・feature flag等は置かない(non-goals)。
-- diagnostics port取得: Debug menuと同一accessor `LawnchairApp.instance.layoutApplicationModule.diagnostics` を再利用。単一port・単一writerのまま(spec AC-2)。
+- diagnostics port取得: Debug menuと同一accessor `LawnchairApp.instance.layoutApplicationModule.diagnostics` を再利用。単一port・単一writerのまま(spec AC-2)。画面composableは `port: DiagnosticsPort? = null`(null時にproduction accessorへfallback)という既存pattern(`ManualOrganizationPreferences(run = null)` と同型)のみを持つ。これはtest観測用の差し替え点であり、新規interfaceやadapterは追加しない。
+- AC-3/AC-4の観測方法(review P1対応): instrumentationからは (1) androidx production契約である `LocalActivityResultRegistryOwner` をrecording `ActivityResultRegistry` で包んで提供し(`rememberLauncherForActivityResult` が消費するのはこのownerであり、`ExportUi.kt` 無変更のままlaunch意図とresult dispatchを観測できる)、(2) writer呼び出しの有無は上記port引数へ渡すrecording `DiagnosticsPort`(snapshot呼出回数を観測。writerはexport時にsnapshotを読む)で判定する。どちらも既存seam上の観測であり、production codeにtest用hookを追加しない。
 - navigation wiring: `PreferenceNavigation.kt` へ `composable<HomeScreenOrganizerDiagnostics> { OrganizerDiagnosticsPreferences() }` を追加し、`onOpenDiagnostics` lambdaを `navController.navigate(DebugMenu)` から `navController.navigate(HomeScreenOrganizerDiagnostics)` へ変更。
 - HomeScreen entry: `HomeScreenPreferences.kt` のLayout groupへ `NavigationActionPreference`(title/subtitle=新string)を追加。Manual organizationの直後を既定順とする。
 - 呼び出し側とtestが使うseam: (1) production navigation(HomeScreen → 新route)のinstrumentation、(2) 新screen composable直接のcompose test。`MainSwitchPreference` 等の内部実装は検証しない。
@@ -57,7 +58,7 @@ production変更はpreferences UI配下に局所化する。organizer diagnostic
 | `lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerDiagnosticsPreferences.kt`(新規) | 専用screen composable(title+explainer+既存export preference) | destinations packageの既存画面patternに従う |
 | `lawnchair/src/app/lawnchair/ui/preferences/destinations/HomeScreenPreferences.kt` | Layout groupへ `NavigationActionPreference` 追加 | サポート済み経路の可視入口 |
 | `lawnchair/res/values/strings.xml` + `res/values-ja/strings.xml` | 新画面title/explainerの2 string(en/ja) | repoのlocalization慣行(en + ja即時追加) |
-| `tests/organizer-instrumentation/app/lawnchair/ui/preferences/`(新規test class) | 新画面compose test(label/subtitle表示・click action・explainer)+ 安全terminal導線assertion | 既存preference系instrumentationと同module(#52/#99 harness群) |
+| `tests/organizer-instrumentation/app/lawnchair/ui/preferences/`(新規test class) | route wiring(HomeScreen entry→新route→export行表示)+ recording registryによるlaunch/cancel観測 + 安全terminal導線assertion | 既存preference系instrumentationと同module(#52/#99 harness群) |
 | spec/plan status更新、必要ならassessment evidence追記 | Stage B完了時にstatus `implemented`へ | workflow規約 |
 
 ## Migration and recovery
@@ -101,8 +102,8 @@ release operator evidence(AC-1/AC-6):
 |---|---|---|
 | AC-1 | instrumentation: HomeScreen group entry→新route遷移→export行表示assert。+ release APK上の手順evidence(redacted) | 上記instrumentation command + release AVD手動走査 |
 | AC-2 | PR差分review: 新画面が既存composable・accessor再利用、`organizer/diagnostics/**` diffゼロ確認 | PR diff |
-| AC-3 | instrumentation: compose semantics上、export行はclick actionを持ち、表示onlyではlaunchが発生しないこと(既存ExportUi構造の回帰assert) | debug instrumentation |
-| AC-4 | instrumentation/operator: cancel後の復帰+journal/layout不変。既存cancel no-op pathの回帰 | debug instrumentation + release手動走査 |
+| AC-3 | 新instrumentation: production契約のrecording `ActivityResultRegistry` 上で、画面表示・navigation中は `launch` 呼出0、export行の明示activationで `launch`=1 かつ捕捉したintentが `ACTION_CREATE_DOCUMENT`(CATEGORY_OPENABLE、type `application/jsonl`)であることをassert。`hasClickAction()` 等のsemantics assertは補助に留める | debug instrumentation(新class) |
+| AC-4 | 同instrumentation: activation後にregistryへ `RESULT_CANCELED` をdispatchし、recording `DiagnosticsPort` のsnapshot呼出増加ゼロ(writer不呼び出し)、journal file byte同一、再launch発生なしをassert。writer seam自体のcancel/write-failure分離は既存 [#67 `ExportWriterTest`](../../tests/unit/app/lawnchair/organizer/diagnostics/export/ExportWriterTest.kt) の `d10CancellationIsolated` / `d10WriteFailureLeavesJournalIntact`(JVM gate内)が所有し、本Issueで再実装しない。加えてrelease手動走査でcancel→returnのend-to-end確認 | debug instrumentation + `./gradlew testLawnWithQuickstepGithubDebugUnitTest`(#67既存case greenの維持)+ release AVD手動走査 |
 | AC-5 | instrumentation: manual organization安全terminal stateから `onOpenDiagnostics` 相当導線が新route labelへ到達すること(既存harness拡張、DebugMenu依存の旧assertがあれば修正) | debug instrumentation |
 | AC-6 | release(minified)APKでのnavigation→activation→cancel→return実走査記録(redacted UI state)をissue #138へ添付 | API 36 emulator(`nunu_qpr2_api36_1`定義相当) |
 | AC-7 | string差分(values/values-ja)+ compose semantics assertion(label/subtitleの存在とclick action) | PR diff + debug instrumentation |

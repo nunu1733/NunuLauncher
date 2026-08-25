@@ -115,8 +115,8 @@ None — 新しいpermission、外部送信、sensitive dataの扱い追加は�
 |---|---|
 | AC-1 | API 36 emulator上のrelease/minified APKでの手順evidence(redacted UI state記録)+ instrumentation assertion |
 | AC-2 | 実装PR差分(新画面が同一composable・同一port accessorを再利用し、ExportWriter/journal seamのdiffがゼロであることの確認) |
-| AC-3 | instrumentation: 表示状態ではactivity result launchが発生しないこと、明示clickでlaunch意図が生じること |
-| AC-4 | instrumentationまたはoperator evidence: cancel後の画面復帰とjournal/layout不変(既存ExportUi cancel pathの回帰含む) |
+| AC-3 | instrumentation: production契約のrecording `ActivityResultRegistry` で、表示・navigation中はlaunch呼出0、明示activationで `ACTION_CREATE_DOCUMENT` intentのlaunch=1を観測(観測方法は[plan.md](./plan.md) Design節) |
+| AC-4 | 同instrumentation: `RESULT_CANCELED` dispatch後にwriter不呼び出し(recording port観測)+journal不変。writer seam自体のcancel/write-failure分離は既存 #67 `ExportWriterTest`(JVM gate内の`d10CancellationIsolated` / `d10WriteFailureLeavesJournalIntact`)が所有。release operator evidenceでend-to-end cancel/returnを確認 |
 | AC-5 | 安全terminal経由のnavigation instrumentation(既存manual organization harnessの拡張または同等) |
 | AC-6 | release APKでの手動操作記録(navigation→activation→cancel→return)をissue/PRへredacted添付 |
 | AC-7 | string resource差分(values/values-ja)+ compose semantics assertion |
@@ -132,5 +132,6 @@ None are blocking. 非blocking事項:
 ## Change history
 
 - 2026-08-25: Draft created for #138 (Stage A). Issue本文の観測事実と [issue-132-exploratory-baseline.md](../../docs/assessment/evidence/issue-132-exploratory-baseline.md) のroute/source boundary証跡を入力に作成。
+- 2026-08-25: Stage A review(P1)対応。AC-3/AC-4のtest oracleを、production `ActivityResultRegistry` 観測(#138新規instrumentation)とwriter seam分離(既存 #67 `ExportWriterTest` 再利用、再実装しない)の分担として固定。behavior・scope変更なし。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/138
