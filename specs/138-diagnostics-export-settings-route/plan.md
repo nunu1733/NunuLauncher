@@ -129,10 +129,17 @@ Stop conditions(発生したら実装を止めIssueで判断):
 ## Execution checklist
 
 - [x] Current behavior reproduced(Issue #138本文のrelease repro + evidence docのroute/source boundary記録済み)
-- [ ] Tests fail for the missing behavior(release APK上でAC-1経路が不在であることのred確認)
-- [ ] Minimal implementation completed
-- [ ] Migration/recovery verified(該当なしを明記)
-- [ ] Full relevant verification completed
-- [ ] PR evidence and remaining risks recorded
+- [x] Tests fail for the missing behavior(release APK上でAC-1経路が不在であることはIssue本文のreproが正本。新instrumentationは実装前はcompile不可、navigation経路未実装状態でのredはIssue本文証跡で代替(#134前例))
+- [x] Minimal implementation completed(route 1件・screen composable 1件・wiring 2箇所・entry 1件・string 2件en/ja。`organizer/diagnostics/**` diffゼロ)
+- [x] Migration/recovery verified(該当なし: schema/pref/DB変更なし、PR revertで戻る)
+- [x] Full relevant verification completed(下表の結果をPRへ記録)
+- [x] PR evidence and remaining risks recorded(PR本文に結果と残留リスクを記録)
+
+## Execution notes (Stage B, 2026-08-25)
+
+- 検証結果: spotlessCheck OK。`assembleLawnWithQuickstepGithubDebug` OK。`testLawnWithQuickstepGithubDebugUnitTest` OK。`OrganizerDiagnosticsRouteInstrumentationTest` 3/3 green(emulator-5556, API 36): 表示のみではlaunch=0→明示activationで`ACTION_CREATE_DOCUMENT`(CATEGORY_OPENABLE, application/jsonl) launch=1、`RESULT_CANCELED` dispatch後にsnapshot呼出0・journal byte同一・再launchなし、HomeScreen→新route navigation成立。安全terminal regression(`ManualOrganizationPreferencesInstrumentationTest`)10/10 green。release `assembleLawnWithQuickstepGithubRelease` OK。
+- release operator walk-through(emulator-5556, `app.lawnchair` versionName `15.Dev.(5ed54a6)`, pkgFlags非DEBUGGABLE): PreferenceActivity起動→Home screen→Layout groupに「Organizer diagnostics」entry表示(Debug menu無効のまま)→遷移先でexport行表示→明示tapで`com.google.android.documentsui`のSAF CreateDocument(既定名`organizer_diagnostics.jsonl`)起動→BACK cancelで同画面へ復帰(再launch・書き込みなし)→BACKでHome screen一覧へ戻る。redacted UI stateはIssue #138へ記録。
+- 実装中の修正: (1) route objectは`PreferenceRoutes.kt`の`navigation`package所属のため`PreferenceNavigation.kt`からのimport不要(destinations誤importで1度compile error)。テスト側は`androidx.activity.result.contract.ActivityResultContract`(package階層)と`Sequence#toByteArray()`不存在を修正。(2) navigation testはproduction `Preferences.kt`と同じ`LocalNavController`/`LocalPreferenceInteractor`/`LocalIsExpandedScreen`提供が必要。(3) **S-3部分発火(test環境限定)**: `layoutApplicationModule`は`LauncherAppState`生成時に初期化されるため、instrumentation環境では`LauncherAppState.getInstance(context)`が未呼出だとport accessor参照時にcrash。production Settingsはlauncher process内で動くため実影響なし — テストが既存suiteと同様に`getInstance`で環境をmirrorして解消。production code変更不要だったため停止条件には至らない。
+- stop条件S-1/S-2/S-4は不発。R8下でもrelease経路到達性をoperator walk-throughが実証(S-1不発)。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/138
