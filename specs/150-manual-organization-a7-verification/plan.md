@@ -48,9 +48,10 @@ Confirmed existing paths and seams:
   completion. `FakeLayoutWriter.kt` needs only the smallest failure hook
   required by that test.
 - `tests/organizer-instrumentation/com/android/launcher3/organizer/OrganizerReloadSupersessionTest.java`
-  is the existing request-token/supersession surface. It must also assert the
-  transaction-completion ordering; it is concurrently edited by another
-  worker and must not be overwritten by this task.
+  is the existing request-token/supersession surface. The diagnosis branch
+  contains an intentionally-red first reproducer, but its post-return
+  `isModelLoaded` assertion is scheduling-sensitive and must be replaced by a
+  latch/barrier oracle before it can satisfy AC-150-01.
 - `tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationProductionE2EInstrumentationTest.kt`
   is the existing seeded production flow. The default-workspace evidence may
   use the Issue #150-specific instrumentation fixture, but that fixture must
@@ -65,10 +66,17 @@ Confirmed existing paths and seams:
   correlation already carry `pointOriginRunId` from the recovery record. The
   device test must prove this field survives the explicit recovery flow rather
   than adding a new journal shape.
+- Accepted spec 13 requires a canonical model snapshot from the specific reload
+  generation plus an independent DB recapture. Production currently has no
+  such model-snapshot capture/comparison; Issue #152 owns this pre-existing
+  implementation gap. #150 verifies only its causal completion boundary and
+  the existing DB-derived intended/pre-state checks, and makes no DB/model
+  convergence claim.
 
-The completion-order defect is a hypothesis until the new failing-path test
-demonstrates it. A passing test that only waits longer, retries recapture, or
-compares a restarted process is insufficient evidence.
+The completion-order defect is a hypothesis until the new deterministic
+failing-path test demonstrates it. Repeated failures of a scheduling-sensitive
+post-return assertion, a test that only waits longer, retries recapture, or
+compares a restarted process are insufficient evidence.
 
 ## Design
 
@@ -102,10 +110,11 @@ Candidate minimal bridge work is confined to the existing
    `LayoutWriteCoordinator`, and `ApplyProtocol` public shapes unchanged unless
    a focused test proves a private adapter correction is required.
 
-The verification seam remains independent: after `Completed`, the adapter
-recaptures the DB and the protocol compares the model/manifest and all
-Issue #13 invariants. No verification is changed to accept a partial model or
-to ignore a mismatch.
+The existing verification seam remains independent: after `Completed`, the
+adapter recaptures the DB and the protocol compares that DB-derived canonical
+state/manifest with the intended state. No verification is changed to accept a
+partial result or ignore a mismatch. This is not described as the missing
+specific-generation DB/model convergence tracked by Issue #152.
 
 ### Data flow
 
@@ -115,15 +124,16 @@ A6 commit
   -> request token-scoped LoaderTask
   -> LoaderTask transaction commit/close
   -> correlated Completed
-  -> independent DB/model recapture
+  -> independent DB recapture
   -> A8 VERIFIED, or existing automatic recovery
 ```
 
 Automatic recovery repeats the same sequence against the checkpoint pre-state.
 On explicit recovery, the existing revision-bound application flow emits
-`RECOVERY_REQUESTED`; after exact DB/model restore verification it emits
-`RECOVERY_RESTORED`. Both events use the point ID and the record's origin run
-ID as `pointOriginRunId`.
+`RECOVERY_REQUESTED`; after its current DB-derived restore verification it
+emits `RECOVERY_RESTORED`. Both events use the point ID and the record's origin
+run ID as `pointOriginRunId`. This evidence does not satisfy or claim the
+specific-generation model snapshot comparison owned by Issue #152.
 
 For ZIP restore, the investigation records the current `NotReady` boundary
 and its eventual diagnostic code only in the separately owned follow-up. No
@@ -142,22 +152,26 @@ composition or diagnostics code is changed as a side effect of the A7 fix.
 
 ## Change set
 
-Only implementation work after this spec is approved should touch the paths
-below. This planning task edits only `spec.md` and `plan.md`.
+Only implementation work after this spec is approved should touch production
+paths below. This diagnosis branch edits `spec.md`, `plan.md`, and an
+intentionally-red reproducer in `OrganizerReloadSupersessionTest.java`; the
+reproducer must become deterministic before the spec is accepted.
 
 | Area | Intended change | Why here |
 |---|---|---|
 | `src/com/android/launcher3/LauncherModel.java`, `src/com/android/launcher3/model/LoaderTask.java`, `src/com/android/launcher3/model/BaseLauncherBinder.java` | Move the token-scoped completion signal to the committed/closed loader boundary, preserving supersession and non-blocking behavior. | Smallest existing Launcher3 bridge where the current early signal is produced and the transaction owner is known. |
 | `lawnchair/src/com/android/launcher3/OrganizerModelReloadAdapter.java` | Change only if the failing test shows token/result handling must preserve the sharpened completion contract; no public shape or timeout-as-success change. | Existing correlation adapter is the sole production wait seam. |
-| `lawnchair/src/app/lawnchair/organizer/application/protocol/ApplyProtocol.kt` and `.../RecoveryProtocol.kt` | Normally no behavior change; add only seam-level assertions/diagnostic plumbing if required to consume the existing `Completed` contract. | A7 and recovery must remain symmetrical and Issue #13-compatible. |
+| `lawnchair/src/app/lawnchair/organizer/application/protocol/ApplyProtocol.kt` and `.../RecoveryProtocol.kt` | Normally no behavior change; add only seam-level assertions/diagnostic plumbing if required to consume the existing `Completed` contract. | A7 and recovery remain symmetrical; Issue #152 separately owns the missing part of full spec-13 convergence. |
 | `tests/unit/app/lawnchair/organizer/application/protocol/FakeLayoutWriter.kt` | Add a deterministic early-completion/recapture-mismatch fault hook if absent. | Enables a failure-path test without mocking internal production helpers. |
 | `tests/unit/app/lawnchair/organizer/application/protocol/ApplyProtocolTest.kt` | Add A7 early-completion, mismatch, recovery-reload, and no-false-success assertions through `LayoutWriterPort`. | Existing public/internal application seam is the unit oracle. |
 | `tests/organizer-instrumentation/com/android/launcher3/organizer/OrganizerReloadSupersessionTest.java` | Extend the existing token/supersession test with transaction-completion ordering. | Verifies the Launcher bridge and stale callback behavior on device. |
-| `tests/organizer-instrumentation/app/lawnchair/organizer/ui/Issue150DefaultWorkspaceApplyInstrumentationTest.kt` (if retained by its owner) | Exercise default workspace apply/recovery, wait for the causal barrier, and assert approved journal correlation. | Issue-specific device evidence; do not replace the existing seeded E2E contract. |
+| Future Issue #150 default-workspace device fixture, path chosen during implementation | Exercise default workspace apply/recovery, wait for the causal barrier, and assert approved journal correlation. | Issue-specific device evidence; do not replace the existing seeded E2E contract or claim model snapshot convergence from DB-only evidence. |
 | `docs/assessment/pr-<PR>-manual-organization-a7-verification.md` | Add independent high-risk audit record after implementation CI succeeds. | Required by `AGENTS.md`; authored by a separate session/agent. |
 
 No `specs/13`, `specs/52`, `specs/67`, `specs/83`, `ADR-0003`, database
 schema, backup allowlist, or ZIP composer path is changed by this plan.
+Issue #152 owns the spec-13 model-snapshot implementation gap; Issue #153 owns
+ZIP-restore `NotReady` diagnostic-code observability.
 
 ## Migration and recovery
 
@@ -183,9 +197,9 @@ schema, backup allowlist, or ZIP composer path is changed by this plan.
 
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
-| AC-150-01 | Reproducer test drives an early completion signal and observes transient recapture; test passes only when the completion contract is causal. | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.application.protocol.ApplyProtocolTest'` |
+| AC-150-01 | Instrumentation latches prove completion fired while commit/close is deliberately blocked; pre-fix returns before release, corrected code remains pending. Protocol tests separately drive the resulting early-completion/recapture mismatch. | Focused `OrganizerReloadSupersessionTest` instrumentation plus `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.application.protocol.ApplyProtocolTest'` |
 | AC-150-02 | Supersession/stale callback and transaction-order instrumentation; no timing sleep or retry is accepted as evidence. | `./gradlew -PandroidSerialNumber=<serial> connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.OrganizerReloadSupersessionTest` |
-| AC-150-03 | Apply/recovery failure-injection matrix, exact post/pre manifest assertions, and existing organizer unit surface. | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
+| AC-150-03 | Apply/recovery failure-injection matrix and exact DB-derived post/pre manifest assertions; Issue #152 separately owns specific-generation model snapshot convergence. | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
 | AC-150-04 | Default workspace on `nunu_qpr2_api36_1`: debug and release run, exported redacted journal, before/after `favorites` invariant comparison. | API 36.1 Pixel 6 AVD; build with `./gradlew assembleLawnWithQuickstepGithubDebug` and `./gradlew assembleLawnWithQuickstepGithubRelease`; run the approved manual/device fixture and record exact head SHA. |
 | AC-150-05 | Explicit recovery preview/confirm and event sequence with matching point ID and non-null `pointOriginRunId`. | Same API 36.1 AVD; supported Settings diagnostics export; no raw journal/row payload in evidence. |
 | AC-150-06 | Follow-up Issue/spec records the precise `NotReady` diagnostic code; shared-root discovery is documented as a stop, not patched opportunistically. | Issue link and approved diagnostic observation surface before #150 completion. |
@@ -210,8 +224,10 @@ redacted invariant result only.
 - [ ] ADR: no new ADR expected; use ADR-0003 unchanged. Create/revise one only
   if implementation introduces a high-cost persistence or cross-module choice.
 - [ ] `AGENTS.md`: no change expected; verified commands are already documented.
-- [ ] Separate ZIP-restore follow-up spec/plan: required before #150 completion,
-  with an observable diagnostic code and explicit owner.
+- [ ] Issue #153 spec/plan: required before #150 completion, with an observable
+  diagnostic code and explicit owner.
+- [ ] Issue #152 remains the explicit owner for specific-generation model
+  snapshot verification; do not claim it as #150 evidence.
 
 ## Execution checklist
 
@@ -243,7 +259,7 @@ Stop implementation and update the owning Issue/spec before changing code if:
    LoaderCursor overlap, device-profile, or policy issue rather than the A7
    completion boundary. Split that cause into a separate issue; do not mask it
    in this fix.
-5. ZIP-restore `NotReady` is found to share the A7 capture/verification root,
+5. ZIP-restore `NotReady` (Issue #153) is found to share the A7 capture/verification root,
    or the diagnostic code cannot be made observable without a contract/schema
    change. Stop, open the separately owned diagnostic-code issue/spec, and do
    not proceed under #150 until its acceptance and ownership are explicit.
@@ -251,6 +267,9 @@ Stop implementation and update the owning Issue/spec before changing code if:
    placement, leaves an unexplained item, or reports success without a stable
    post-reload verification. Preserve the evidence and return to the Issue #13
    recovery owner.
+7. The #150 completion fix requires adding or changing the specific-generation
+   model snapshot verification owned by Issue #152. Stop and resolve that
+   Issue/spec dependency instead of expanding #150 implicitly.
 
 ## High-risk merge gate
 
@@ -270,3 +289,7 @@ source change after the audit requires a new CI result and independent audit.
   the existing A7/reload seams, the causal-barrier test-first sequence, device
   and recovery-correlation evidence, no-migration rollback, ZIP `NotReady`
   split/stop conditions, and the required independent layout-data audit.
+- 2026-08-26: Review corrections record the intentionally-red diagnosis test,
+  require a deterministic latch/barrier oracle, keep completion ordering as a
+  hypothesis until that oracle fails pre-fix, and split the spec-13 model
+  snapshot gap to Issue #152 and ZIP `NotReady` diagnostics to Issue #153.

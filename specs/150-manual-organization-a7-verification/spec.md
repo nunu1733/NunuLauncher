@@ -30,17 +30,28 @@ uses the same reload path and fails its verification as well, ending in
 safe and the layout returns to the pre-apply state, but a run cannot reach
 `APPLY_VERIFIED` and the user cannot reach explicit recovery.
 
-Issue evidence narrows the defect to the completion boundary rather than a
-layout-content mismatch: the same manifest comparisons pass after a process
-restart, and the failure occurs at the existing 10-second correlated-reload
-wait. The current reload callback can be observed before the loader transaction
-and its remaining work have completed, allowing `recaptureDb()` to observe a
-transient in-process view.
+Issue evidence supports, but does not yet prove, a completion-boundary defect:
+the initial reload is classified `Completed`, its following DB recapture
+mismatches, the same manifest comparisons pass after a process restart, and
+the terminal failure occurs near the existing 10-second correlated-reload
+wait. Depending on the workspace-inflation path and thread scheduling, the
+current callback may be observed before the loader transaction and its
+remaining work have completed. AC-150-01 requires a deterministic barrier test
+before this hypothesis is accepted as the root cause; timing alone is not
+proof.
 
 The ZIP-restore-related `composeFullOrganization()` `NotReady` symptom is a
-separate observability/product problem. Its later resolution in a new process
-does not establish a shared root with A7, and the failing composition sub-check
-has no observable diagnostic code.
+separate observability/product problem tracked by
+[Issue #153](https://github.com/nunu1733/NunuLauncher/issues/153). Its later
+resolution in a new process does not establish a shared root with A7, and the
+failing composition sub-check has no observable diagnostic code.
+
+Accepted spec 13 also requires comparison of the specific reload generation's
+model snapshot with an independent DB recapture. Production currently performs
+only the DB-derived recapture/intended-state comparison. That pre-existing
+implementation gap is tracked by
+[Issue #152](https://github.com/nunu1733/NunuLauncher/issues/152); this spec does
+not claim that #150 proves DB/model convergence.
 
 ## Outcome
 
@@ -60,9 +71,11 @@ checkpoint's `pointOriginRunId`.
   Launcher model/loader bridge. The barrier must be causal; fixed delays and
   retry loops are not completion signals.
 - Add failing-path tests through the existing `LayoutWriterPort`,
-  `ApplyProtocol`, correlated-reload, and reload-supersession seams. The tests
-  must distinguish an early completion callback from a completed loader
-  transaction and must cover automatic recovery using the same barrier.
+  `ApplyProtocol`, correlated-reload, and reload-supersession seams. A
+  latch/barrier must deterministically hold loader transaction commit/close
+  incomplete after organizer completion has fired; the pre-fix request must
+  return in that state, while the corrected request must remain pending. The
+  tests must also cover automatic recovery using the same completion contract.
 - Add default-workspace device evidence on the Issue #150 environment, with
   at least one debug and one release run reaching A8/`APPLY_VERIFIED`.
 - Verify an explicit recovery preview/confirmation after a verified apply and
@@ -87,15 +100,19 @@ checkpoint's `pointOriginRunId`.
   restart as verification, fixed sleeps, or masking a mismatch by weakening
   verification.
 - Fixing ZIP-restore `NotReady` in this work. Its diagnostic-code issue must be
-  separately specified and implemented.
+  specified and implemented by Issue #153.
+- Adding the missing specific-generation model snapshot comparison required by
+  spec 13. Issue #152 owns that gap; #150 must not describe its DB-only oracle
+  as proof of DB/model convergence.
 
 ## Domain language
 
 No new product/domain term is introduced. **A7 completion barrier** is an
-internal shorthand for the existing Issue #13 requirement that correlated
-reload completion precede independent DB/model verification. **Default
-workspace evidence** means an observable run on the device configuration in
-Issue #150, not a synthetic fixture.
+internal shorthand for the causal boundary between the correlated reload and
+the existing independent DB recapture. It does not imply that the missing
+specific-generation model snapshot comparison in Issue #152 exists.
+**Default workspace evidence** means an observable run on the device
+configuration in Issue #150, not a synthetic fixture.
 
 ## Behavior scenarios
 
@@ -133,8 +150,11 @@ attempts the existing safe recovery path, and never reports `Applied` or
 Given A6 committed but post-apply verification fails
 When automatic recovery writes the checkpoint pre-state and requests reload
 Then recovery uses the same request-scoped completion barrier
-And `APPLY_RECOVERED` is returned only after pre-state DB/model verification,
-otherwise the existing truthful unresolved/recovery-failed result is returned.
+And `APPLY_RECOVERED` is returned only after the existing pre-state DB-derived
+verification, otherwise the truthful unresolved/recovery-failed result is
+returned
+And this result is not cited as evidence for Issue #152's missing model
+snapshot convergence.
 
 ### Scenario: default workspace reaches A8 on device
 
@@ -176,10 +196,12 @@ stops until the follow-up is accepted and ownership is explicit.
 - No database, recovery format, journal schema, or backup allowlist changes.
   No migration is required. A source rollback restores the prior code behavior
   without a data conversion step.
-- A7 uses the same revision, recovery point, row accounting, lock/profile,
-  bounds, reference, transaction, and post-reload invariants required by
-  [spec 13](../13-safe-layout-application/spec.md). A reload callback is not a
-  revision or commit substitute.
+- A7 preserves the existing revision, recovery point, row accounting,
+  lock/profile, bounds, reference, transaction, and DB-derived post-reload
+  checks. A reload callback is not a revision or commit substitute. The
+  specific-generation model snapshot comparison required by
+  [spec 13](../13-safe-layout-application/spec.md) is not present in production
+  and remains explicitly tracked by Issue #152.
 - The completion token is request-scoped and in-memory. Stale/superseded
   tokens are ignored; no new persistent identity or payload is introduced.
 - Explicit recovery is still a separate, revision-bound application operation.
@@ -205,14 +227,18 @@ raw user-facing exception.
 ## Acceptance criteria
 
 - [ ] **AC-150-01 — Root cause and seam regression:** The early/incomplete A7
-  completion condition is identified, with a failing-path test at the existing
-  reload/application seam that would fail under the pre-fix ordering.
+  completion condition is confirmed or falsified with a deterministic
+  latch/barrier test at the existing reload/application seam. Under the pre-fix
+  ordering, organizer completion has fired and the request returns while
+  loader transaction commit/close is deliberately blocked; scheduling alone
+  cannot make the test pass.
 - [ ] **AC-150-02 — Causal completion barrier:** A request is completed only
   after the exact loader transaction has committed/closed; supersession,
   cancellation, timeout, and stale callbacks cannot produce false success.
 - [ ] **AC-150-03 — Safe protocol behavior:** A7/A8 and automatic recovery use
-  the same barrier, preserve the existing Issue #13 safety invariants, and
-  return typed failures when the barrier cannot be proven.
+  the same barrier, preserve the existing DB/recovery safety behavior, and
+  return typed failures when the barrier cannot be proven. This criterion does
+  not claim the missing spec-13 model snapshot convergence owned by Issue #152.
 - [ ] **AC-150-04 — Default-workspace device evidence:** On the Issue #150 API
   36.1 environment, a debug and a release manual run reaches
   `APPLY_VERIFIED`/A8 with redacted evidence and no layout/recovery corruption.
@@ -221,24 +247,25 @@ raw user-facing exception.
   `RECOVERY_RESTORED`, both with the same point identity and its
   `pointOriginRunId`.
 - [ ] **AC-150-06 — ZIP-restore split:** A linked follow-up issue/spec owns the
-  ZIP-restore `NotReady` diagnostic-code observability gap. If its root is
+  ZIP-restore `NotReady` diagnostic-code observability gap (Issue #153). If its root is
   found to be shared with A7, implementation stops until that follow-up is
   accepted; #150 does not absorb an unscoped composition or diagnostics fix.
 - [ ] **AC-150-07 — Scope and high-risk evidence:** No public contract,
   diagnostics schema, permission, transport, database migration, or backup
-  behavior changes; the implementation PR passes the `risk: layout-data`
+  behavior changes; Issue #152 explicitly owns the unimplemented model snapshot
+  convergence contract; the implementation PR passes the `risk: layout-data`
   independent audit gate.
 
 ## Test oracle
 
 | AC | Evidence |
 |---|---|
-| AC-150-01 | `ApplyProtocolTest` injects an early/incomplete reload outcome through `FakeLayoutWriter`; a launcher instrumentation test controls loader completion at the existing model/binder seam. |
-| AC-150-02 | `OrganizerReloadSupersessionTest` covers token identity and stale callbacks; a completion-order test proves `model.isModelLoaded`/transaction completion precedes the adapter result and no fixed delay is used. |
+| AC-150-01 | A launcher instrumentation test uses latches/barriers to prove organizer completion has fired while loader commit/close is held incomplete; pre-fix returns and fails, corrected code remains pending until release. `ApplyProtocolTest` separately injects the resulting early/incomplete outcome through `FakeLayoutWriter`. |
+| AC-150-02 | `OrganizerReloadSupersessionTest` covers token identity and stale callbacks; a latch/barrier test proves the adapter result cannot return while transaction commit/close is held incomplete, with no fixed delay. |
 | AC-150-03 | Unit failure matrix covers A7 recapture mismatch, reload failure, recovery reload failure, and typed unresolved results; existing layout/recovery invariant tests remain green. |
 | AC-150-04 | API 36.1 `nunu_qpr2_api36_1` default-workspace debug and release runs with redacted journal and before/after invariant evidence. |
 | AC-150-05 | Device export plus journal projection assertions show `RECOVERY_REQUESTED` → `RECOVERY_RESTORED` and non-null matching `pointOriginRunId`. |
-| AC-150-06 | Linked follow-up Issue/spec and a reproducible NotReady observation that records the exact readiness diagnostic code on an approved surface. |
+| AC-150-06 | Issue #153 and its future accepted spec own a reproducible NotReady observation that records the exact readiness diagnostic code on an approved surface. |
 | AC-150-07 | `spotlessCheck`, organizer unit tests, debug build, repository-contract checks, PR `final-status`, and independent audit record. |
 
 ## Open questions
@@ -247,8 +274,9 @@ raw user-facing exception.
   binder completion bridge) is an implementation choice, but it must satisfy
   AC-150-01/02 without changing a public API. The plan names the candidate
   existing seams and a stop condition.
-- The follow-up issue number for ZIP-restore `NotReady` is not assigned while
-  this spec is proposed. It must be linked before #150 is considered complete.
+- Issue #152 owns the specific-generation model snapshot gap. If the causal
+  completion fix cannot be verified without absorbing that gap, #150 stops
+  until ownership/spec status is resolved rather than silently expanding.
 - Device evidence must use the available API 36.1 environment and record the
   exact tested commit; no unverified local command is an acceptance claim.
 
