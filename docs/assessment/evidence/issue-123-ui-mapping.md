@@ -2,7 +2,7 @@
 
 > Status: Partial（mapping確定 / capture実行はPR review時に添付）
 > Recorded: 2026-08-26
-> Spec: [specs/123-organizer-ui-convergence/spec.md](../../specs/123-organizer-ui-convergence/spec.md)（AC-1, AC-8のevidence正本）
+> Spec: [specs/123-organizer-ui-convergence/spec.md](../../../specs/123-organizer-ui-convergence/spec.md)（AC-1, AC-8のevidence正本）
 > Baseline for comparison: `505dbc40e6154c05158b5d0271c45f6a885a411b` (Lawnchair `v15.0.0-beta3.0`)
 > Implementation head: 実装PRのhead SHAをPR本文へ記録する
 
