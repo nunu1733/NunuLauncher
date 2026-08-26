@@ -129,7 +129,7 @@ None — 新しいpermission、外部送信、sensitive dataの扱い追加は�
 - [ ] **AC-2**: organizer screensが、Lawnchairに等価物が存在するspacing/typography/container/color/action表現について、説明のないstandalone表現を導入していない。残るcustom presentationは目的付きで記録されている。（issue受入2, 3）
 - [ ] **AC-3**: onboarding proposalを含む全organizer surfaceがlight/dark両appearanceでtheme整合に描画される（hardcoded `Color.WHITE/BLACK/DKGRAY` 等が除去されている）。（issue受入2の具体化）
 - [ ] **AC-4**: organizerのuser-visible文字列とaccessibility読み上げ文がすべてAndroid resource由来である。hardcoded English literalの不在に加え、Kotlin側での可視文字列・読み上げ文の構築（連結・補間・`joinToString` による文生成）が残っておらず、複合文はformat resource（`%1$s` 等）へ移行されている。参照されないorganizer stringが整理されている。（issue受入4）
-- [ ] **AC-5**: 実装MVP surfaceが要求する全Nunu固有organizer文字列（baseline差分168個中、user-visibleかつtranslatableなもの）の日本語resourceが存在し、placeholderを保持している。（issue受入5）
+- [ ] **AC-5**: 実装後の全active/user-visible/translatable Nunu organizer resource（dead resource整理・複合文format resource化後の最終name集合）に対応する日本語resourceが存在し、placeholderを保持している。（issue受入5）
 - [ ] **AC-6**: 日本語実行において、covered organizer文字列が英語fallbackしない（emulator evidence）。（issue受入6）
 - [ ] **AC-7**: `en-XA` 実行において、unintendedなraw organizer文字列が露出せず、代表画面でcritical action/textがclipping無しに使用可能である。（issue受入7）
 - [ ] **AC-8**: 代表organizer surfaceごとに、locale（default / 日本語 / `en-XA`）、appearance（light/dark）、代表的font scaleの組み合わせからなるcapture matrixがevidence文書へ明文化され、それに基づく再現可能なscreenshotまたはdevice evidenceが記録されている。全条件の完全直積までは要求しないが、default localeのbefore/reference/afterを省略してはならない。（issue受入8）
@@ -166,5 +166,6 @@ None are blocking. 非blocking事項:
 - 2026-08-26: Draft created for #123。Issue本文、baseline `505dbc40e6` とのres差分（168追加/6個ja coverage/5個未参照）、organizer UI source inventory（`lawnchair/src/app/lawnchair/organizer/ui/`、`ui/preferences/destinations/*`、`ui/popup/OrganizerLockShortcut.kt`）、既存screenshot capture前例（`ManualOrganizationPreferencesInstrumentationTest`）の調査結果を入力に作成。
 - 2026-08-26: Issue #123 review対応。P1: AC-4をhardcoded English除去から「user-visible text・accessibility読み上げ文のformat resource化」要件へ強化し、連結許容記述を撤回。P1: AC-8へdefault localeを復帰させ、surface別capture matrix明文化を要求。P2: AC-9を既存automated regression green＋既得evidenceと矛盾しないことに限定し、full Switch Access実行を #109 ownershipとして分離。Roborazziの扱いを「完了条件外の任意spike」に一本化。behavior・scopeのその他の部分は不変。
 - 2026-08-26: 2nd review対応。P1: failure scenarioから「定数として意図的に固定」の例外を削除し、固定technical identifierは `translatable="false"` resource経由のみ、runtime data（実file名・package名等の実値）のみを翻訳対象外として区別。P2: scope 3とplan changesetの「162名」固定件数を廃止し、dead resource整理・format resource化後の最終name集合被覆に定義替え（AC-5のname-set比較を正本）。minor: plan changesetのinstrumentation行へdefault locale表記を復帰。
+- 2026-08-26: 3rd review対応。AC-5から「baseline差分168個中」の固定baseline件数表現を除去し、「実装後の全active/user-visible/translatable Nunu organizer resourceの最終name集合」への日本語被覆という契約へ揃えた。scope 3 / plan changeset / test oracleとの一貫化のみで、他の変更はない。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/123
