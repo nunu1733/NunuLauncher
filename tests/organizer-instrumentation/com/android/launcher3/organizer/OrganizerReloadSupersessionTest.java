@@ -114,9 +114,8 @@ public class OrganizerReloadSupersessionTest {
     }
 
     /**
-     * Issue #150 regression: an organizer bind completion must not release
-     * {@code requestAndWait} while the exact loader transaction is still
-     * blocked before commit/close.
+     * Issue #150 adapter coverage after the deterministic completion-runnable
+     * ordering oracle in {@code OrganizerReloadCompletionOrderingTest}.
      *
      * <p>The callback is deliberately held with a latch after the existing
      * organizer bind-completion signal and before the loader can leave its
@@ -124,16 +123,12 @@ public class OrganizerReloadSupersessionTest {
      * {@code null} item inflater, so its own binder deterministically takes the
      * synchronous non-inflation path even when workspace inflation is enabled
      * for a real Launcher callback. This makes {@code model.isModelLoaded()}
-     * false without changing a feature flag or adding a production hook. On
-     * the old implementation, the organizer signal runs before
-     * {@code onInitialBindComplete}, so {@code requestAndWait} returns while
-     * this latch is held and the assertion below fails deterministically. A
-     * corrected implementation must keep the request pending until the
-     * transaction commits and closes, then complete after the latch is
-     * released.</p>
+     * false without changing a feature flag or adding a production hook. This
+     * test releases the barrier before awaiting the adapter outcome, so no
+     * timed non-return assertion is used as ordering evidence here.</p>
      */
     @Test
-    public void completedOutcomeWaitsForLoaderTransactionCommit() throws Exception {
+    public void completedOutcomeAfterTransactionBarrierRelease() throws Exception {
         var barrier = new LoaderTransactionBarrier();
         addModelCallback(barrier);
         waitForModelIdle();
@@ -146,10 +141,8 @@ public class OrganizerReloadSupersessionTest {
         try {
             var adapter = new OrganizerModelReloadAdapter(model, mainHandler);
             var outcome = new AtomicReference<OrganizerModelReloadAdapter.Outcome>();
-            var requestReturned = new CountDownLatch(1);
             Future<?> requestFuture = executor.submit(() -> {
                 outcome.set(adapter.requestAndWait(lease.token()));
-                requestReturned.countDown();
             });
 
             barrier.awaitEntered();
@@ -159,17 +152,10 @@ public class OrganizerReloadSupersessionTest {
             assertTrue(
                     "The test callback must be holding the loader before commit",
                     barrier.isHolding());
-            assertTrue(
-                    "requestAndWait unexpectedly returned while LoaderTransaction was incomplete",
-                    !requestReturned.await(1L, TimeUnit.SECONDS));
 
             barrier.release();
-            assertTrue(
-                    "requestAndWait did not return after LoaderTransaction completed",
-                    requestReturned.await(RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS));
             requestFuture.get(RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             assertEquals(OrganizerModelReloadAdapter.Outcome.COMPLETED, outcome.get());
-            assertTrue("Loader transaction must be complete before COMPLETED", model.isModelLoaded());
             barrier.assertWaitDidNotFail();
         } finally {
             barrier.release();

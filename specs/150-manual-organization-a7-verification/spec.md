@@ -73,9 +73,11 @@ checkpoint's `pointOriginRunId`.
 - Add failing-path tests through the existing `LayoutWriterPort`,
   `ApplyProtocol`, correlated-reload, and reload-supersession seams. A
   latch/barrier must deterministically hold loader transaction commit/close
-  incomplete after organizer completion has fired; the pre-fix request must
-  return in that state, while the corrected request must remain pending. The
-  tests must also cover automatic recovery using the same completion contract.
+  incomplete and inspect the existing completion runnable synchronously at
+  that boundary. The pre-fix ordering must have fired completion before the
+  barrier, while the corrected ordering must not fire it until transaction
+  commit/close. The tests must also cover automatic recovery using the same
+  completion contract.
 - Add default-workspace device evidence on the Issue #150 environment, with
   at least one debug and one release run reaching A8/`APPLY_VERIFIED`.
 - Verify an explicit recovery preview/confirmation after a verified apply and
@@ -229,9 +231,10 @@ raw user-facing exception.
 - [ ] **AC-150-01 — Root cause and seam regression:** The early/incomplete A7
   completion condition is confirmed or falsified with a deterministic
   latch/barrier test at the existing reload/application seam. Under the pre-fix
-  ordering, organizer completion has fired and the request returns while
-  loader transaction commit/close is deliberately blocked; scheduling alone
-  cannot make the test pass.
+  ordering, the existing organizer completion runnable has synchronously fired
+  when the barrier is reached while loader transaction commit/close is still
+  blocked. No assertion about how quickly a waiting thread is scheduled may be
+  used as the root-cause oracle.
 - [ ] **AC-150-02 — Causal completion barrier:** A request is completed only
   after the exact loader transaction has committed/closed; supersession,
   cancellation, timeout, and stale callbacks cannot produce false success.
@@ -260,8 +263,8 @@ raw user-facing exception.
 
 | AC | Evidence |
 |---|---|
-| AC-150-01 | A launcher instrumentation test uses latches/barriers to prove organizer completion has fired while loader commit/close is held incomplete; pre-fix returns and fails, corrected code remains pending until release. `ApplyProtocolTest` separately injects the resulting early/incomplete outcome through `FakeLayoutWriter`. |
-| AC-150-02 | `OrganizerReloadSupersessionTest` covers token identity and stale callbacks; a latch/barrier test proves the adapter result cannot return while transaction commit/close is held incomplete, with no fixed delay. |
+| AC-150-01 | A launcher instrumentation test invokes the existing organizer reload completion seam directly and inspects its completion flag when a latch/barrier holds loader commit/close incomplete. Pre-fix has fired at the barrier; corrected code has not. No timed non-return assertion is the root-cause oracle. `ApplyProtocolTest` separately injects the resulting early/incomplete outcome through `FakeLayoutWriter`. |
+| AC-150-02 | `OrganizerReloadSupersessionTest` covers token identity and stale callbacks; after the deterministic completion-order assertion, adapter completion is checked after barrier release without treating scheduler timing as ordering evidence. |
 | AC-150-03 | Unit failure matrix covers A7 recapture mismatch, reload failure, recovery reload failure, and typed unresolved results; existing layout/recovery invariant tests remain green. |
 | AC-150-04 | API 36.1 `nunu_qpr2_api36_1` default-workspace debug and release runs with redacted journal and before/after invariant evidence. |
 | AC-150-05 | Device export plus journal projection assertions show `RECOVERY_REQUESTED` → `RECOVERY_RESTORED` and non-null matching `pointOriginRunId`. |

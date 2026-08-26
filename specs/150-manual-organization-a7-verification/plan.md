@@ -48,10 +48,13 @@ Confirmed existing paths and seams:
   completion. `FakeLayoutWriter.kt` needs only the smallest failure hook
   required by that test.
 - `tests/organizer-instrumentation/com/android/launcher3/organizer/OrganizerReloadSupersessionTest.java`
-  is the existing request-token/supersession surface. The diagnosis branch
-  contains an intentionally-red first reproducer, but its post-return
-  `isModelLoaded` assertion is scheduling-sensitive and must be replaced by a
-  latch/barrier oracle before it can satisfy AC-150-01.
+  is the existing request-token/supersession surface. Its first diagnosis
+  oracle used a scheduling-sensitive post-return `isModelLoaded` assertion;
+  that oracle is now removed, while adapter coverage remains after barrier
+  release.
+- `tests/organizer-instrumentation/com/android/launcher3/OrganizerReloadCompletionOrderingTest.java`
+  is the same-package diagnosis seam for directly observing the package-private
+  completion runnable without reflection or a production API change.
 - `tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationProductionE2EInstrumentationTest.kt`
   is the existing seeded production flow. The default-workspace evidence may
   use the Issue #150-specific instrumentation fixture, but that fixture must
@@ -153,9 +156,10 @@ composition or diagnostics code is changed as a side effect of the A7 fix.
 ## Change set
 
 Only implementation work after this spec is approved should touch production
-paths below. This diagnosis branch edits `spec.md`, `plan.md`, and an
-intentionally-red reproducer in `OrganizerReloadSupersessionTest.java`; the
-reproducer must become deterministic before the spec is accepted.
+paths below. This diagnosis branch edits `spec.md`, `plan.md`, the existing
+adapter coverage in `OrganizerReloadSupersessionTest.java`, and an
+intentionally-red same-package reproducer in
+`OrganizerReloadCompletionOrderingTest.java`.
 
 | Area | Intended change | Why here |
 |---|---|---|
@@ -164,7 +168,8 @@ reproducer must become deterministic before the spec is accepted.
 | `lawnchair/src/app/lawnchair/organizer/application/protocol/ApplyProtocol.kt` and `.../RecoveryProtocol.kt` | Normally no behavior change; add only seam-level assertions/diagnostic plumbing if required to consume the existing `Completed` contract. | A7 and recovery remain symmetrical; Issue #152 separately owns the missing part of full spec-13 convergence. |
 | `tests/unit/app/lawnchair/organizer/application/protocol/FakeLayoutWriter.kt` | Add a deterministic early-completion/recapture-mismatch fault hook if absent. | Enables a failure-path test without mocking internal production helpers. |
 | `tests/unit/app/lawnchair/organizer/application/protocol/ApplyProtocolTest.kt` | Add A7 early-completion, mismatch, recovery-reload, and no-false-success assertions through `LayoutWriterPort`. | Existing public/internal application seam is the unit oracle. |
-| `tests/organizer-instrumentation/com/android/launcher3/organizer/OrganizerReloadSupersessionTest.java` | Extend the existing token/supersession test with transaction-completion ordering. | Verifies the Launcher bridge and stale callback behavior on device. |
+| `tests/organizer-instrumentation/com/android/launcher3/OrganizerReloadCompletionOrderingTest.java` | Directly observe the package-private completion runnable at a blocked loader-transaction boundary. | Deterministic root-cause oracle without reflection, timed non-return, or a production API change. |
+| `tests/organizer-instrumentation/com/android/launcher3/organizer/OrganizerReloadSupersessionTest.java` | Retain token/supersession coverage and check adapter completion after barrier release. | Verifies the adapter and stale callback behavior without using scheduler timing as ordering evidence. |
 | Future Issue #150 default-workspace device fixture, path chosen during implementation | Exercise default workspace apply/recovery, wait for the causal barrier, and assert approved journal correlation. | Issue-specific device evidence; do not replace the existing seeded E2E contract or claim model snapshot convergence from DB-only evidence. |
 | `docs/assessment/pr-<PR>-manual-organization-a7-verification.md` | Add independent high-risk audit record after implementation CI succeeds. | Required by `AGENTS.md`; authored by a separate session/agent. |
 
@@ -197,8 +202,8 @@ ZIP-restore `NotReady` diagnostic-code observability.
 
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
-| AC-150-01 | Instrumentation latches prove completion fired while commit/close is deliberately blocked; pre-fix returns before release, corrected code remains pending. Protocol tests separately drive the resulting early-completion/recapture mismatch. | Focused `OrganizerReloadSupersessionTest` instrumentation plus `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.application.protocol.ApplyProtocolTest'` |
-| AC-150-02 | Supersession/stale callback and transaction-order instrumentation; no timing sleep or retry is accepted as evidence. | `./gradlew -PandroidSerialNumber=<serial> connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.OrganizerReloadSupersessionTest` |
+| AC-150-01 | Instrumentation invokes the existing completion runnable directly and inspects its flag synchronously while latches hold commit/close incomplete: pre-fix has fired at the barrier, corrected code has not. Adapter completion after release is supplementary, not a timed root-cause oracle. Protocol tests separately drive the resulting early-completion/recapture mismatch. | Focused organizer reload completion instrumentation plus `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.application.protocol.ApplyProtocolTest'` |
+| AC-150-02 | Supersession/stale callback and transaction-order instrumentation; no timing sleep or retry is accepted as evidence. | Focused `com.android.launcher3.OrganizerReloadCompletionOrderingTest` plus `com.android.launcher3.organizer.OrganizerReloadSupersessionTest` on the connected API 36.1 device |
 | AC-150-03 | Apply/recovery failure-injection matrix and exact DB-derived post/pre manifest assertions; Issue #152 separately owns specific-generation model snapshot convergence. | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
 | AC-150-04 | Default workspace on `nunu_qpr2_api36_1`: debug and release run, exported redacted journal, before/after `favorites` invariant comparison. | API 36.1 Pixel 6 AVD; build with `./gradlew assembleLawnWithQuickstepGithubDebug` and `./gradlew assembleLawnWithQuickstepGithubRelease`; run the approved manual/device fixture and record exact head SHA. |
 | AC-150-05 | Explicit recovery preview/confirm and event sequence with matching point ID and non-null `pointOriginRunId`. | Same API 36.1 AVD; supported Settings diagnostics export; no raw journal/row payload in evidence. |
@@ -293,3 +298,7 @@ source change after the audit requires a new CI result and independent audit.
   require a deterministic latch/barrier oracle, keep completion ordering as a
   hypothesis until that oracle fails pre-fix, and split the spec-13 model
   snapshot gap to Issue #152 and ZIP `NotReady` diagnostics to Issue #153.
+- 2026-08-26: Re-review correction removes waiting-thread scheduling from the
+  root-cause oracle. The test must inspect the existing completion runnable's
+  flag synchronously at the blocked transaction boundary; adapter completion
+  is checked only after barrier release.
