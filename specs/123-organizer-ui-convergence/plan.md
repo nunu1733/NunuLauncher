@@ -86,7 +86,7 @@
 | AC-2 | mapping表 + diff review | 手動 |
 | AC-3 | dark/light capture + grep（hardcoded色消失） | API 36 emulator |
 | AC-4 | literal grep + Kotlin側文字列構築の洗い出し結果 + 複合文format resource化diff + res差分 | local（Nunu path限定grep: `Text("` への補間、`contentDescription = "` 合成、`buildString` / `joinToString`） |
-| AC-5 | name集合比較（default Nunu追加集合 ⊆ ja集合）+ placeholder確認 | local script（`git diff baseline -- values*/strings.xml` ベース） |
+| AC-5 | name-set比較: required（= active / user-visible / translatableでないものを除外したNunu organizer default resource集合）に対し `required ⊆ ja集合` + placeholder一致。固定baseline件数は使わない | local script（baseline差分と実装後res diffからname抽出し比較） |
 | AC-6 | ja locale代表flow screenshot一式 | API 36 emulator（`Settings.System.putString(locales)` or per-app locale） |
 | AC-7 | en-XA実行screenshot + pseudo展開assertion | API 36 emulator（pseudoLocalesEnabled活用） |
 | AC-8 | surface別capture matrix表 + capture手順書 + 画像 | 既存 `captureReviewScreenshot` 拡張test。matrixはdefault/ja/en-XA × light/dark × font scaleからsurfaceごとに定義 |
