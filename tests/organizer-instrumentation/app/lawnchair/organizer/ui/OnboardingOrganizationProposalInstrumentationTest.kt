@@ -96,7 +96,7 @@ class OnboardingOrganizationProposalInstrumentationTest {
             // Injected through the real input pipeline (not a direct activity dispatch) so the
             // key press ends touch mode exactly like hardware DPAD input does.
             sendKey(KeyEvent.KEYCODE_DPAD_DOWN)
-            awaitAnyInputFocus(content.laterButton, content.skipButton, content.reviewButton)
+            awaitAnyInputFocus(launcher, content.laterButton, content.skipButton, content.reviewButton)
             instrumentation.runOnMainSync {
                 val viewport = Rect()
                 assertTrue(launcher.dragLayer.getGlobalVisibleRect(viewport))
@@ -346,7 +346,7 @@ class OnboardingOrganizationProposalInstrumentationTest {
             }
 
             startPreferenceActivity(context)
-            awaitResumedPreferenceActivity()
+            val preferenceActivity = awaitResumedPreferenceActivity()
             // PreferenceActivity reaching RESUMED does not prove the launcher already paused:
             // activity transitions overlap both RESUMED states, and invoking the owner inside
             // that window legitimately shows the proposal immediately (Issue #142).
@@ -361,9 +361,10 @@ class OnboardingOrganizationProposalInstrumentationTest {
             }
 
             proposalPrefs.put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, "")
-            sendKey(KeyEvent.KEYCODE_BACK)
-            // An explicit HOME launch reliably resumes the same Launcher activity in CI.
-            startLauncher(context)
+            // Finish the preferences activity instead of pressing HOME: a queued HOME intent
+            // can land after the proposal is shown and legitimately close it through
+            // closeAllOpenViewsExcept, which made this choreography racy (Issue #142).
+            instrumentation.runOnMainSync { preferenceActivity.finish() }
             val resumedLauncher = awaitResumedLauncher()
             assertTrue(launcher === resumedLauncher)
             lateinit var proposal: OrganizationOnboardingProposal.OrganizationOnboardingProposalView
@@ -612,7 +613,7 @@ class OnboardingOrganizationProposalInstrumentationTest {
         error("$description did not receive input focus")
     }
 
-    private fun awaitAnyInputFocus(vararg views: View) {
+    private fun awaitAnyInputFocus(launcher: LawnchairLauncher, vararg views: View) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         repeat(50) {
             var focused = false
@@ -622,7 +623,34 @@ class OnboardingOrganizationProposalInstrumentationTest {
             if (focused) return
             SystemClock.sleep(100)
         }
-        error("No proposal action received input focus after DPAD traversal")
+        error(
+            "No proposal action received input focus after DPAD traversal; " +
+                describeInputEnvironment(launcher, null, views.firstOrNull()),
+        )
+    }
+
+    /**
+     * Dumps the input-relevant world state for failure diagnostics: window focus, focused view,
+     * proposal attachment/openness, target geometry, and whatever floating view is on top.
+     */
+    private fun describeInputEnvironment(
+        launcher: LawnchairLauncher,
+        proposal: OrganizationOnboardingProposal.OrganizationOnboardingProposalView?,
+        target: View?,
+    ): String {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        var description = "environment unavailable"
+        instrumentation.runOnMainSync {
+            val targetLocation = IntArray(2)
+            target?.getLocationOnScreen(targetLocation)
+            description = "launcherWindowFocus=${launcher.hasWindowFocus()}, " +
+                "activityFocus=${launcher.currentFocus}, treeFocus=${proposal?.findFocus()}, " +
+                "proposalOpen=${proposal?.isOpen}, proposalAttached=${proposal?.isAttachedToWindow}, " +
+                "targetShown=${target?.isShown}, targetLocation=${targetLocation.contentToString()}, " +
+                "targetSize=${target?.width}x${target?.height}, " +
+                "topOpenView=${AbstractFloatingView.getTopOpenView(launcher)}"
+        }
+        return description
     }
 
     private fun awaitAdmissionCount(
@@ -791,11 +819,8 @@ class OnboardingOrganizationProposalInstrumentationTest {
     }
 
     private fun startLauncher(context: android.content.Context) {
-        // -W blocks until the launch transaction completes, so the launcher has already consumed
-        // this HOME intent when this call returns. Without it, a late onNewIntent can arrive
-        // after the test shows the proposal and legitimately close it (Issue #142).
         runShellCommand(
-            "am start -W -n ${ComponentName(context, LawnchairLauncher::class.java).flattenToString()} " +
+            "am start -n ${ComponentName(context, LawnchairLauncher::class.java).flattenToString()} " +
                 "-a ${Intent.ACTION_MAIN} -c ${Intent.CATEGORY_HOME}",
         )
     }
@@ -972,7 +997,11 @@ class OnboardingOrganizationProposalInstrumentationTest {
                     SystemClock.sleep(50)
                 }
             }
-            error("touch injection never reached the proposal after $attempts attempts")
+            error(
+                "touch injection never reached the proposal after $attempts attempts; " +
+                    "events=$touchLog; " +
+                    describeInputEnvironment(launcher, proposal, view),
+            )
         }
 
         /** Returns true once the proposal closed; otherwise records the unresolved state. */
