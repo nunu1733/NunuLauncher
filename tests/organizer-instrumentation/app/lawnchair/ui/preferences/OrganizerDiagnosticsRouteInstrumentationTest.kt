@@ -36,10 +36,62 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
+import app.lawnchair.organizer.application.public.ApplyResult
+import app.lawnchair.organizer.application.public.DeviceCapabilities
+import app.lawnchair.organizer.application.public.LayoutState
+import app.lawnchair.organizer.application.public.RecoveryPointId
+import app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation
+import app.lawnchair.organizer.application.public.RecoveryPreviewResult
+import app.lawnchair.organizer.application.public.RecoveryResult
+import app.lawnchair.organizer.application.public.RunId
+import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.diagnostics.DiagnosticsPort
 import app.lawnchair.organizer.diagnostics.model.RunEvent
+import app.lawnchair.organizer.integration.InputProvenance
+import app.lawnchair.organizer.integration.OrganizationInputComposition
+import app.lawnchair.organizer.planning.ClassificationSignals
+import app.lawnchair.organizer.planning.DeviceCapabilities as PlannerDeviceCapabilities
+import app.lawnchair.organizer.planning.Disposition
+import app.lawnchair.organizer.planning.DockPolicy
+import app.lawnchair.organizer.planning.FallbackCategoryPolicy
+import app.lawnchair.organizer.planning.FolderPolicy
+import app.lawnchair.organizer.planning.GridCell
+import app.lawnchair.organizer.planning.GridSpan
+import app.lawnchair.organizer.planning.ItemId
+import app.lawnchair.organizer.planning.LayoutSnapshot
+import app.lawnchair.organizer.planning.NewFolderProfileScope
+import app.lawnchair.organizer.planning.OrganizationInput
+import app.lawnchair.organizer.planning.OrganizationPlanner
+import app.lawnchair.organizer.planning.Orientation
+import app.lawnchair.organizer.planning.OverflowPolicy
+import app.lawnchair.organizer.planning.Page
+import app.lawnchair.organizer.planning.PageId
+import app.lawnchair.organizer.planning.PageOrder
+import app.lawnchair.organizer.planning.PageRef
+import app.lawnchair.organizer.planning.PlacementCode
+import app.lawnchair.organizer.planning.PlacementTarget
+import app.lawnchair.organizer.planning.Planned
+import app.lawnchair.organizer.planning.PlannedPlacement
+import app.lawnchair.organizer.planning.PlanningResult
+import app.lawnchair.organizer.planning.RevisionId
+import app.lawnchair.organizer.planning.RuleSemantics
+import app.lawnchair.organizer.planning.RuleVersion
+import app.lawnchair.organizer.planning.RunMode
+import app.lawnchair.organizer.planning.TargetSet
+import app.lawnchair.organizer.planning.TaxonomyContract
+import app.lawnchair.organizer.planning.TaxonomyVersion
+import app.lawnchair.organizer.planning.Warning
+import app.lawnchair.organizer.planning.WarningCode
+import app.lawnchair.organizer.ui.ManualOrganizationModule
+import app.lawnchair.organizer.ui.ManualOrganizationRun
+import app.lawnchair.organizer.ui.ManualOrganizationApplication
+import app.lawnchair.organizer.rules.PolicyBundleIdentity
+import app.lawnchair.organizer.rules.PolicyInputIdentity
+import app.lawnchair.organizer.rules.PolicySourceKind
 import app.lawnchair.ui.preferences.destinations.OrganizerDiagnosticsPreferences
 import app.lawnchair.ui.preferences.navigation.HomeScreen
+import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
 import app.lawnchair.ui.preferences.navigation.PreferenceNavigation
 import app.lawnchair.ui.theme.LawnchairTheme
 import com.android.launcher3.LauncherAppState
@@ -204,5 +256,186 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             composeRule.onAllNodesWithText(exportLabel).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText(exportLabel).assertIsDisplayed()
+    }
+
+    /**
+     * Issue #138 AC-5 regression oracle: inside the production navigation
+     * graph, the safe-terminal `Open organizer diagnostics` action must land
+     * on the supported route showing the export surface. A revert of the
+     * wiring to `navigate(DebugMenu)` fails here because the export row stays
+     * hidden behind the disabled debug switch.
+     */
+    @Test
+    fun safeTerminalOpenDiagnosticsRoutesThroughProductionGraphToExportSurface() {
+        LauncherAppState.getInstance(context)
+
+        val application = FakeManualOrganizationApplication().apply {
+            applyResult = ApplyResult.Unresolved(
+                RunId(RUN_ID),
+                RecoveryPointId(POINT_ID),
+                app.lawnchair.organizer.application.public.ApplyFailure.COMMIT_OUTCOME_UNKNOWN,
+                app.lawnchair.organizer.application.public.AuthoritativeState.UNKNOWN,
+            )
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        installProcessLocalRunner(runner)
+        try {
+            composeRule.setContent {
+                LawnchairTheme {
+                    val navController = rememberNavController()
+                    CompositionLocalProvider(
+                        LocalNavController provides navController,
+                        LocalPreferenceInteractor provides PreferenceViewModel(
+                            context.applicationContext as android.app.Application,
+                        ),
+                        LocalIsExpandedScreen provides false,
+                    ) {
+                        PreferenceNavigation(
+                            navController = navController,
+                            startDestination = HomeScreenManualOrganization(),
+                        )
+                    }
+                }
+            }
+
+            composeRule.onNodeWithText(context.getString(R.string.manual_organization_start)).performClick()
+            composeRule.waitUntil(10_000) { runner.state is ManualOrganizationRun.State.Preview }
+            composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm)).performClick()
+            composeRule.waitUntil(10_000) { runner.state is ManualOrganizationRun.State.Applied }
+
+            composeRule.onNodeWithText(context.getString(R.string.manual_organization_open_diagnostics)).performClick()
+
+            val exportLabel = context.getString(R.string.organizer_diagnostics_export_label)
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(exportLabel).fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithText(exportLabel).assertIsDisplayed()
+        } finally {
+            installProcessLocalRunner(null)
+        }
+    }
+
+    /** Installs a fixture runner into the process-local holder resolved by production wiring. */
+    private fun installProcessLocalRunner(runner: ManualOrganizationRun?) {
+        val field = ManualOrganizationModule.javaClass.getDeclaredField("instance")
+        field.isAccessible = true
+        field.set(ManualOrganizationModule, runner)
+    }
+
+    private class FakeManualOrganizationApplication : ManualOrganizationApplication {
+        override val diagnostics = RecordingPort()
+        var applyResult: ApplyResult = ApplyResult.Applied(RunId(RUN_ID), RecoveryPointId(POINT_ID))
+
+        override fun newRunId() = RunId(RUN_ID)
+
+        override fun composeFullOrganization(): OrganizationInputComposition = OrganizationInputComposition.Ready(
+            input = input(),
+            provenance = InputProvenance(
+                revision = RevisionId(REVISION),
+                rules = policyIdentity(PolicySourceKind.ORGANIZER_POLICY_BUNDLE),
+                taxonomy = policyIdentity(PolicySourceKind.ORGANIZER_POLICY_BUNDLE),
+                signals = policyIdentity(PolicySourceKind.MATERIALIZED_CLASSIFICATION_SIGNALS),
+                targets = policyIdentity(PolicySourceKind.MATERIALIZED_FULL_TARGET_SET),
+                policyBundle = PolicyBundleIdentity("v1", SHA_256),
+            ),
+        )
+
+        override fun materialize(input: OrganizationInput, result: PlanningResult): OrganizationPlanMaterializer.Result =
+            OrganizationPlanMaterializer.Result.Ready(
+                ValidatedLayoutPlan(
+                    sourceRevision = input.snapshot.revision,
+                    sourceState = emptyLayoutState(),
+                    intendedState = emptyLayoutState(),
+                    actions = emptyList(),
+                    newPages = emptyList(),
+                    newFolders = emptyList(),
+                    ruleVersion = input.rules.version,
+                    taxonomyVersion = input.taxonomy.version,
+                ),
+            )
+
+        override fun apply(plan: ValidatedLayoutPlan, runId: RunId): ApplyResult = applyResult
+
+        override fun inspectRecovery(pointId: RecoveryPointId): RecoveryPreviewResult = RecoveryPreviewResult.NotRestorable(
+            pointId,
+            app.lawnchair.organizer.application.public.RecoveryPreviewRejection.MISSING,
+        )
+
+        override fun confirmRecovery(pointId: RecoveryPointId, confirmation: RecoveryPreviewConfirmation): RecoveryResult =
+            RecoveryResult.NotRestorable(
+                pointId,
+                app.lawnchair.organizer.application.public.RecoveryRejection.MISSING,
+            )
+    }
+
+    private companion object {
+        const val RUN_ID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        const val POINT_ID = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        const val REVISION = "revision"
+        const val SHA_256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+        fun planningResult() = PlanningResult(
+            revision = RevisionId(REVISION),
+            ruleVersion = RuleVersion("v1"),
+            taxonomyVersion = TaxonomyVersion("v1"),
+            outcome = Planned(
+                placements = listOf(
+                    PlannedPlacement(
+                        item = ItemId("item"),
+                        disposition = Disposition.Moved(PlacementCode.SINGLE_PLACEMENT),
+                        target = PlacementTarget.WorkspaceTarget(
+                            page = PageRef(PageId("page")),
+                            cell = GridCell(0, 0),
+                            span = GridSpan(1, 1),
+                        ),
+                    ),
+                ),
+                newPages = emptyList(),
+                newFolders = emptyList(),
+                categories = emptyList(),
+                warnings = listOf(Warning(WarningCode.FALLBACK_CATEGORY, emptyList())),
+            ),
+        )
+
+        fun input() = OrganizationInput(
+            snapshot = LayoutSnapshot(
+                revision = RevisionId(REVISION),
+                device = PlannerDeviceCapabilities(4, 5, 5, 3, 4, Orientation.PORTRAIT),
+                pages = listOf(Page(PageId("page"), PageOrder(0))),
+                items = emptyList(),
+            ),
+            rules = RuleSemantics(
+                RuleVersion("v1"),
+                FolderPolicy(2, NewFolderProfileScope.SAME_PROFILE_ONLY),
+                DockPolicy.PRESERVE,
+                OverflowPolicy.ADD_PAGES_FOR_ITEMS_THAT_FIT_EMPTY_PAGE,
+                FallbackCategoryPolicy.KEEP_AS_SINGLETON,
+                app.lawnchair.organizer.planning.OrderingPolicy.CANONICAL_V1,
+            ),
+            taxonomy = TaxonomyContract(
+                TaxonomyVersion("v1"),
+                listOf(app.lawnchair.organizer.planning.CategoryId("other")),
+                app.lawnchair.organizer.planning.CategoryId("other"),
+            ),
+            signals = ClassificationSignals(emptyList()),
+            targets = TargetSet(emptyList(), emptyList()),
+            runMode = RunMode.FullOrganization,
+        )
+
+        fun emptyLayoutState() = LayoutState(
+            pages = emptyList(),
+            profiles = emptyList(),
+            deviceCapabilities = DeviceCapabilities(
+                4,
+                5,
+                5,
+                3,
+                4,
+                app.lawnchair.organizer.application.public.DeviceOrientation.PORTRAIT,
+            ),
+            items = emptyList(),
+        )
+
+        fun policyIdentity(source: PolicySourceKind) = PolicyInputIdentity(source, "v1", SHA_256)
     }
 }
