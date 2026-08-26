@@ -11,10 +11,10 @@
 | # | Surface | 主要file | 現在の構成 | 主な差 |
 |---|---|---|---|---|
 | 1 | Manual organization（start/progress/preview/result/recovery） | `lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt` | `PreferenceScaffold` + `PreferenceLazyColumn` + `ClickablePreference`（上流component再利用済み） | status・summary行が裸 `Text`。heading/typography規約なし |
-| 2 | Placement lock管理/review画面 | `lawnchair/src/app/lawnchair/ui/preferences/destinations/PlacementLockPreferences.kt` | `PreferenceScaffold` + `PreferenceTemplate` + M3 `AlertDialog`（上流も同構成: `PermissionDialog` 等） | `StateBadge` がpadding指定の素Text。message行を `ClickablePreference` で代用 |
+| 2 | Placement lock管理/review画面 | `lawnchair/src/app/lawnchair/ui/preferences/destinations/PlacementLockPreferences.kt` | `PreferenceScaffold` + `PreferenceTemplate` + M3 `AlertDialog`（上流も同構成: `PermissionDialog` 等） | `StateBadge` がpadding指定の素Text。message行を `ClickablePreference` で代用。description/contentDescriptionをKotlin連結（`"$title, $stateLabel"`、`joinToString(" · ")`）で構築 |
 | 3 | Placement lock popup entry + dialog | `lawnchair/src/app/lawnchair/ui/popup/OrganizerLockShortcut.kt` | Launcher3 `SystemShortcut` + platform `AlertDialog.Builder` + Toast（`LawnchairShortcut.kt` と同系統） | launcher conventionに概ね整合。収束対象は最小 |
 | 4 | Onboarding proposal popup | `lawnchair/src/app/lawnchair/organizer/ui/OrganizationOnboardingProposal.kt` | hand-rolled View（`LinearLayout` + 標準 `Button`） | 背景白/文字黒/濃灰をhardcode、`GradientDrawable` 角丸24dp、dark非対応。最大の外れ値 |
-| 5 | Category override authoring | `lawnchair/src/app/lawnchair/ui/preferences/destinations/CategoryOverridePreferences.kt` | `PreferenceScaffold` + `PreferenceTemplate` + `ClickablePreference` | icon 30dp / padding 12dpの個別指定、status行が裸Text |
+| 5 | Category override authoring | `lawnchair/src/app/lawnchair/ui/preferences/destinations/CategoryOverridePreferences.kt` | `PreferenceScaffold` + `PreferenceTemplate` + `ClickablePreference` | icon 30dp / padding 12dpの個別指定、status行が裸Text、`Text("$profile · $state")` / `contentDescription = "$label, $profile, $state"` のKotlin側文構築 |
 | 6 | Organizer diagnostics/export画面 | `lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerDiagnosticsPreferences.kt` + `organizer/diagnostics/export/ExportUi.kt` | `PreferenceLayout` + 裸Text + `ClickablePreference` + Toast | description行のpresentation、Toast feedbackの統一可否 |
 | 7 | HomeScreen設定entries ×4 | `ui/preferences/destinations/HomeScreenPreferences.kt` | 上流 `NavigationActionPreference` のみ | 収束済み。変更不要のはず |
 
@@ -46,8 +46,8 @@
 |---|---|---|
 | Onboarding proposal popup | theme解決されるfloating view（Launcher3 popup系のtheme attribute利用、Lawnchair settingsのcard表現） | 色をtheme attribute解決へ移行しshape/typography/paddingをtoken化。View hostingと #137 focus traversalは温存（下記Alternatives参照） |
 | Manual organization status/summary | placement lock画面の `preferenceGroupItems(heading=)` + `PreferenceTemplate` 行構成 | 裸Text行をheading+row構成へ置換。liveRegion semanticsは保持 |
-| Placement lock StateBadge/message行 | `PreferenceTemplate.endWidget` の既存使用例（上流settings内のtext widget表現） | badge typographyを共通styleへ、message行をstatus表示の正規手段へ |
-| Category override icon/status | 上流app list系preferenceのicon size token | 個別dp値を既存dimension/styleへ置換（等価物が無ければ値を文書化） |
+| Placement lock StateBadge/message行 | `PreferenceTemplate.endWidget` の既存使用例（上流settings内のtext widget表現） | badge typographyを共通styleへ、message行をstatus表示の正規手段へ。description/contentDescriptionはformat resource化 |
+| Category override icon/status | 上流app list系preferenceのicon size token | 個別dp値を既存dimension/styleへ置換（等価物が無ければ値を文書化）。status文・contentDescriptionをformat resource化 |
 | Diagnostics description行 | 兄弟surface（placement lock）のsummary表示構成 | heading/body構成へ揃える |
 | Popup dialog / M3 dialog / Toast | 上流 `LawnchairShortcut.kt` / `PermissionDialog` 等 | 原則変更不要。判定根拠をAC-1文書に記録 |
 
@@ -63,10 +63,10 @@
 |---|---|---|
 | `organizer/ui/OrganizationOnboardingProposal.kt` | hardcoded色/shape除去、theme attribute解決、button style統一 | 最大の視覚外れ値。behavior/store keyは不変 |
 | `ui/preferences/destinations/ManualOrganizationPreferences.kt` | status/summary行のrow構成化（heading + typography） | 表示品質の収束。state machine呼び出しは不変 |
-| `ui/preferences/destinations/PlacementLockPreferences.kt` | StateBadge/message行の正規化 | 同上 |
-| `ui/preferences/destinations/CategoryOverridePreferences.kt` | dp指定のtoken置換、status行整理 | 同上 |
+| `ui/preferences/destinations/PlacementLockPreferences.kt` | StateBadge/message行の正規化、description/contentDescriptionのformat resource移行 | 同上。Kotlin連結による読み上げ文生成を解消（AC-4） |
+| `ui/preferences/destinations/CategoryOverridePreferences.kt` | dp指定のtoken置換、status行整理、`"$profile · $state"` / contentDescription合成のformat resource移行 | 同上 |
 | `ui/preferences/destinations/OrganizerDiagnosticsPreferences.kt` | description行の構成化 | 同上 |
-| `res/values/strings.xml` | dead resource整理、必要に応じ文案調整（連結の文法対応） | 正本がdefault resourceであるため |
+| `res/values/strings.xml` | dead resource整理、複合文用format resource追加（app/profile/state合成・区切り子含む）、必要に応じ文案調整 | 正本がdefault resourceであるため。localeごとの語順・区切り替えを可能にする（AC-4） |
 | `res/values-ja/strings.xml` | 162名の日本語訳追加 | localization完成が本Issueの中核成果 |
 | `tests/organizer-instrumentation/...` | screenshot/evidence capture手順のmatrix化（ja/en-XA/light/dark/font scale） | AC-6〜8の再現可能な証拠取得 |
 | `docs/assessment/evidence/issue-123-ui-mapping.md` | AC-1 mapping + before/after記録 | issue完了条件の正証明場所 |
@@ -85,22 +85,22 @@
 | AC-1 | evidence文書review | 手動（PR添付） |
 | AC-2 | mapping表 + diff review | 手動 |
 | AC-3 | dark/light capture + grep（hardcoded色消失） | API 36 emulator |
-| AC-4 | literal grep script結果 + res差分 | local（`grep -rn 'Text("' lawnchair/src/app/lawnchair/{organizer,ui}` 等をPR記録） |
+| AC-4 | literal grep + Kotlin側文字列構築の洗い出し結果 + 複合文format resource化diff + res差分 | local（Nunu path限定grep: `Text("` への補間、`contentDescription = "` 合成、`buildString` / `joinToString`） |
 | AC-5 | name集合比較（default Nunu追加集合 ⊆ ja集合）+ placeholder確認 | local script（`git diff baseline -- values*/strings.xml` ベース） |
 | AC-6 | ja locale代表flow screenshot一式 | API 36 emulator（`Settings.System.putString(locales)` or per-app locale） |
 | AC-7 | en-XA実行screenshot + pseudo展開assertion | API 36 emulator（pseudoLocalesEnabled活用） |
-| AC-8 | capture手順書 + 画像 | 既存 `captureReviewScreenshot` 拡張test |
-| AC-9 | CI green | `./gradlew spotlessCheck` / `assembleLawnWithQuickstepGithubDebug` / `testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` / organizer instrumentation lanes → `final-status` URL |
+| AC-8 | surface別capture matrix表 + capture手順書 + 画像 | 既存 `captureReviewScreenshot` 拡張test。matrixはdefault/ja/en-XA × light/dark × font scaleからsurfaceごとに定義 |
+| AC-9 | 既存automated gateのCI green（新規/fullなSwitch Access実行は行わない。#109 ownership） | `./gradlew spotlessCheck` / `assembleLawnWithQuickstepGithubDebug` / `testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` / organizer instrumentation lanes → `final-status` URL |
 | AC-10 | tooling判断記録 | PR本文 |
 | AC-11 | diff scope記述 + JVM gate無編集pass | CI run URL |
 
 実装順（縦切り）:
 
 1. **Slice A — onboarding proposal収束**（surface 4）+ light/dark evidence。behavior不変を既存 #53/#137 instrumentationで担保。
-2. **Slice B — 設定surface収束**（surfaces 1, 2, 5, 6）。surface毎にbefore/after capture。
-3. **Slice C — localization完成**（dead resource整理→ja一括追加→placeholder監査）。layout確定後に入る（issue推奨順序どおり）。
-4. **Slice D — evidence matrix整備**（ja/en-XA/light/dark/font scaleのcapture手順確立、AC-6〜8取得）。
-5. Roborazzi proofは別ブランチ/spikeで試行し、成功時のみsplit Issue起票（本体PRには含めない）。
+2. **Slice B — 設定surface収束**（surfaces 1, 2, 5, 6）。surface毎にbefore/after capture。Kotlin側の複合文構築（`"$profile · $state"`、contentDescription合成等）のformat resource移行もここで実施する。
+3. **Slice C — localization完成**（dead resource整理→ja一括追加→placeholder監査）。layout・format resource確定後に入る（issue推奨順序どおり）。
+4. **Slice D — evidence matrix整備**。default locale / ja / en-XA × light/dark × 代表font scaleについて、surfaceごとの適用組み合わせ表をevidence文書へ明文化し、それに基づきcapture手順を確立してAC-6〜8の証拠を取得する。
+5. Roborazzi spikeは本Issueの完了条件外であり、本体PRに含めない。価値が実証された場合のみ別Issueとして提案する。本Issueはinstrumentation capture拡張（既定経路）で完了判定を受ける。
 
 ## Documentation updates
 

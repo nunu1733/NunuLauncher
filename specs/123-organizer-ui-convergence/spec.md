@@ -44,10 +44,10 @@ Nunu固有オーガナイザーUIが、周辺のLawnchair 15設定/ランチャ�
    - organizer由来のdialog / banner / status message / Toast
 2. **視覚収束**: mappingに基づき、既存Lawnchair component / theme tokenでの再利用置換を行う。説明のないNunu-only表現（hardcoded色、独自shape/padding、素Text行）を除去する。dark appearance非対応箇所（onboarding proposal）をtheme解決へ移行する。
 3. **Localization completion**:
-   - Nunu固有organizer user-visible文字列をすべてresource-backedとする（Kotlin code内のhardcoded English除去）。
-   - 追加162個を含む全Nunu固有organizer文字列の日本語訳を `values-ja` へ追加する。format placeholderの保持、`translatable="false"` の意味論の尊重、文法上成立しない連結の解消を含む。
+   - organizerのuser-visible文字列とaccessibility読み上げ文をすべてAndroid resource由来とする。Kotlin code内のhardcoded English literalの除去に加え、app/profile/state等の複数部品から構築される表示文・読み上げ文（連結・補間による生成）をformat resource（`%1$s` 等）へ移行し、localeごとの語順・区切りの変更を可能にする。
+   - 追加162個を含む全Nunu固有organizer文字列の日本語訳を `values-ja` へ追加する。format placeholderの保持と `translatable="false"` の意味論の尊重を含む。
    - 参照されないorganizer string resource（5個確認済み）を整理する。
-4. **再現可能な視覚検証**: 既存のinstrumentation screenshot captureの前例（`ManualOrganizationPreferencesInstrumentationTest.captureReviewScreenshot`）を拡張し、代表surfaceについて通常locale / 日本語 / `en-XA` pseudo locale × light/dark × 代表的font scaleの証拠取得手順を確立する。Roborazzi等の新dependencyは、小規模なproofが安定性・維持コスト・CI実行時間の妥当性を実証した場合に限り採用する（採否は実装PRで判断し、証明できない場合は本specの範囲から除外してsplit Issueとする）。
+4. **再現可能な視覚検証**: 既存のinstrumentation screenshot captureの前例（`ManualOrganizationPreferencesInstrumentationTest.captureReviewScreenshot`）を拡張し、代表surfaceについてdefault locale / 日本語 / `en-XA` pseudo locale × light/dark × 代表的font scaleの証拠取得手順を確立する。これが本Issue完了判定の既定経路である。Roborazzi等の新dependencyは本Issueの完了条件外であり、任意spikeで安定性・維持コスト・CI実行時間の価値が実証された場合にのみ、別Issueとして提案する。
 
 ## Non-goals
 
@@ -119,7 +119,7 @@ None — 新しいpermission、外部送信、sensitive dataの扱い追加は�
 
 - 既存のCompose semantics testとaccessibility instrumentation（liveRegion、focus traversal、contentDescription合成）が正本であり、視覚収束はこれらを回帰させない。
 - 日本語文字列はplaceholder（`%1$s` 等）を保持し、複数形がある場合は `plurals` として扱う。現在の追加文字列に `plurals` / `translatable="false"` は存在しない。
-- 文字列連結はlocalized部品の結合（例: `" · "` 区切りのlabel合成）であっても、日本語文法として成立すること。文脈依存の語順を要求する連結を新たに導入しない。
+- 複数情報を組み合わせるdescription・contentDescription・status文は、Kotlin側の連結・補間ではなくformat resourceで構成する。区切り子と語順もresource側で制御し、単純なlabel並置以外の文構造をKotlinで生成しない。
 - TalkBack読み上げがja localeで自然であること（label + stateの合成descriptionが意味をなすこと）。
 
 ## Acceptance criteria
@@ -127,12 +127,12 @@ None — 新しいpermission、外部送信、sensitive dataの扱い追加は�
 - [ ] **AC-1**: baseline以降の全Nunu固有organizer可視surfaceがインベントリされ、各surfaceが既存Lawnchair参照patternへmappingされているか、参照不存在の理由が記録されたevidence文書が存在する。（issue受入1）
 - [ ] **AC-2**: organizer screensが、Lawnchairに等価物が存在するspacing/typography/container/color/action表現について、説明のないstandalone表現を導入していない。残るcustom presentationは目的付きで記録されている。（issue受入2, 3）
 - [ ] **AC-3**: onboarding proposalを含む全organizer surfaceがlight/dark両appearanceでtheme整合に描画される（hardcoded `Color.WHITE/BLACK/DKGRAY` 等が除去されている）。（issue受入2の具体化）
-- [ ] **AC-4**: Nunu固有organizerのuser-visible文字列がすべてAndroid resource-backedであり、organizer UI code pathに unintended なhardcoded Englishが存在しない（機械grep + reviewで検証）。参照されないorganizer stringが整理されている。（issue受入4）
+- [ ] **AC-4**: organizerのuser-visible文字列とaccessibility読み上げ文がすべてAndroid resource由来である。hardcoded English literalの不在に加え、Kotlin側での可視文字列・読み上げ文の構築（連結・補間・`joinToString` による文生成）が残っておらず、複合文はformat resource（`%1$s` 等）へ移行されている。参照されないorganizer stringが整理されている。（issue受入4）
 - [ ] **AC-5**: 実装MVP surfaceが要求する全Nunu固有organizer文字列（baseline差分168個中、user-visibleかつtranslatableなもの）の日本語resourceが存在し、placeholderを保持している。（issue受入5）
 - [ ] **AC-6**: 日本語実行において、covered organizer文字列が英語fallbackしない（emulator evidence）。（issue受入6）
 - [ ] **AC-7**: `en-XA` 実行において、unintendedなraw organizer文字列が露出せず、代表画面でcritical action/textがclipping無しに使用可能である。（issue受入7）
-- [ ] **AC-8**: 代表organizer surfaceについて、light/dark × ja/en-XA × 代表font scaleの再現可能なscreenshotまたはdevice evidenceが記録されている。（issue受入8）
-- [ ] **AC-9**: 既存のaccessibility/behavior test（JVM unit gate、organizer instrumentation lanes、#103/#109所有のa11y evidence）がすべてpassする。（issue受入9）
+- [ ] **AC-8**: 代表organizer surfaceごとに、locale（default / 日本語 / `en-XA`）、appearance（light/dark）、代表的font scaleの組み合わせからなるcapture matrixがevidence文書へ明文化され、それに基づく再現可能なscreenshotまたはdevice evidenceが記録されている。全条件の完全直積までは要求しないが、default localeのbefore/reference/afterを省略してはならない。（issue受入8）
+- [ ] **AC-9**: 既存のautomated accessibility/behavior regression test（JVM unit gate、organizer instrumentation lanes）がすべてgreenであり、既に取得済みのa11y evidenceと矛盾する挙動変化がない。新規およびfullなSwitch Access実行・実機matrix evidenceは #109 のownershipであり、本Issueの完了条件に含めない。（issue受入9）
 - [ ] **AC-10**: visual-regression dependency/toolを追加した場合、選定理由・CI/runtime cost・coverage限界・baseline更新方法がPRに記録されている。追加しない場合、その判断と既存evidence手順への集約理由が記録されている。（issue受入10）
 - [ ] **AC-11**: organizerのfunctional/safety semantics変更が本作業へ混在していない（diff scope review + 既存contract testの無編集で証明）。（issue受入11）
 
@@ -143,12 +143,12 @@ None — 新しいpermission、外部送信、sensitive dataの扱い追加は�
 | AC-1 | evidence文書（`docs/assessment/evidence/issue-123-ui-mapping.md`、surface→参照→差分→before/after） |
 | AC-2 | 同文書のmapping table + 実装PR差分review（token/component再利用の確認） |
 | AC-3 | dark/light capture（emulator）+ hardcoded色定数のdiff消失確認 |
-| AC-4 | hardcoded literal grep（`Text("` / `contentDescription = "` 等、Nunu path限定）+ string resource差分 + 未参照resource整理のdiff |
+| AC-4 | hardcoded literal grep + Nunu UI pathにおけるKotlin側文字列構築の洗い出し（`Text(` への補間、`contentDescription` 合成、`buildString` / `joinToString`）+ 複合文format resource化のdiff + 未参照resource整理のdiff |
 | AC-5 | `values-ja/strings.xml` 差分（name集合がdefault側Nunu追加集合と一致）+ placeholder保持の目視/機械確認 |
 | AC-6 | ja locale API 36 emulatorでの代表flow screenshot一式 |
 | AC-7 | `en-XA` 実行のscreenshot + instrumentation assertion（pseudo展開の有無、action到達性） |
-| AC-8 | evidence手順書（再現command列）+ 取得画像。既存 `captureReviewScreenshot` 前例の拡張 |
-| AC-9 | CI run URL（`final-status` green）+ local command結果をPR本文へ記録 |
+| AC-8 | evidence文書内のsurface別capture matrix表（default/ja/en-XA × light/dark × font scaleの適用組み合わせを明記）+ 再現command列 + 取得画像。既存 `captureReviewScreenshot` 前例の拡張 |
+| AC-9 | CI run URL（`final-status` green）+ local command結果をPR本文へ記録。#109向けの新規Switch Access実行は行わない |
 | AC-10 | PR本文のtooling判断記録（追加時はdependency diffとcost試算を添付） |
 | AC-11 | PR diff scope記述 + `app.lawnchair.organizer.*` JVM gateが無編集でpassすることのrun URL |
 
@@ -156,12 +156,13 @@ None — 新しいpermission、外部送信、sensitive dataの扱い追加は�
 
 None are blocking. 非blocking事項:
 
-1. Roborazzi採否は本spec scope 4の手順に従い実装PR内で判断する。proofが失敗した場合はsplit Issueとして扱い、AC-10は「不採用判断の記録」で充足する。
+1. Roborazziは本Issueの完了条件外である。任意spikeとして試行し、価値が実証された場合にのみ別Issueで提案する。本Issueは既存instrumentation captureの標準手順化により完了判定を受ける。
 2. ja訳の最終文言は実装PRのstring diffで確定する（承認blockerではない）。安全関連メッセージ（rollback/recovery結果）の訳は既存en文の意味論を縮退させない範囲でreviewする。
 3. placement lock popup / dialogが上流規約（platform `AlertDialog.Builder` / M3 AlertDialog）に既に整合することを踏まえ、AC-2のmappingで「変更不要」と判定する可能性がある。その場合は理由をevidence文書に記録する。
 
 ## Change history
 
 - 2026-08-26: Draft created for #123。Issue本文、baseline `505dbc40e6` とのres差分（168追加/6個ja coverage/5個未参照）、organizer UI source inventory（`lawnchair/src/app/lawnchair/organizer/ui/`、`ui/preferences/destinations/*`、`ui/popup/OrganizerLockShortcut.kt`）、既存screenshot capture前例（`ManualOrganizationPreferencesInstrumentationTest`）の調査結果を入力に作成。
+- 2026-08-26: Issue #123 review対応。P1: AC-4をhardcoded English除去から「user-visible text・accessibility読み上げ文のformat resource化」要件へ強化し、連結許容記述を撤回。P1: AC-8へdefault localeを復帰させ、surface別capture matrix明文化を要求。P2: AC-9を既存automated regression green＋既得evidenceと矛盾しないことに限定し、full Switch Access実行を #109 ownershipとして分離。Roborazziの扱いを「完了条件外の任意spike」に一本化。behavior・scopeのその他の部分は不変。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/123
