@@ -2,7 +2,7 @@
 
 > Issue: [#150](https://github.com/nunu1733/NunuLauncher/issues/150)
 > Spec: [spec.md](./spec.md)
-> Status: proposed
+> Status: accepted
 > Risk: `layout-data`
 > Evidence baseline: Issue #150 reproduction at commit `74c2156767`; repository baseline remains governed by `AGENTS.md`.
 
@@ -218,8 +218,9 @@ redacted invariant result only.
 
 ## Documentation updates
 
-- [ ] Change this spec and plan from `proposed` to `accepted` only after Issue
-  #150 owner review and the plan's open implementation details are resolved.
+- [x] Change this spec and plan from `proposed` to `accepted`: done after the
+  re-review P1 was resolved by the deterministic completion-runnable oracle in
+  commit `38d33a622a` and the owner approved moving to implementation.
 - [ ] On implementation completion, update both statuses/history to
   `implemented` only after AC-150-01 through AC-150-07, device evidence, CI,
   and the independent audit are complete.
@@ -302,3 +303,6 @@ source change after the audit requires a new CI result and independent audit.
   root-cause oracle. The test must inspect the existing completion runnable's
   flag synchronously at the blocked transaction boundary; adapter completion
   is checked only after barrier release.
+- 2026-08-26: Accepted after commit `38d33a622a` resolved the final re-review
+  P1 (synchronous completion-flag inspection at the barrier, no timing
+  oracle) and the owner approved the implementation phase.

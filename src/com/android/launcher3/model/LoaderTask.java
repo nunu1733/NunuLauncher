@@ -273,6 +273,7 @@ public class LoaderTask implements Runnable {
             restoreEventLogger = LauncherRestoreEventLogger.Companion
                     .newInstance(mApp.getContext());
         }
+        boolean transactionCommitted = false;
         try (LauncherModel.LoaderTransaction transaction = mApp.getModel().beginLoader(this)) {
 
             List<ShortcutInfo> allShortcuts = new ArrayList<>();
@@ -408,6 +409,7 @@ public class LoaderTask implements Runnable {
 
             mModelDelegate.modelLoadComplete();
             transaction.commit();
+            transactionCommitted = true;
             memoryLogger.clearLogs();
             if (mIsRestoreFromBackup) {
                 mIsRestoreFromBackup = false;
@@ -424,6 +426,13 @@ public class LoaderTask implements Runnable {
             throw e;
         }
         TraceHelper.INSTANCE.endSection();
+        if (transactionCommitted && mOrganizerLeaseToken != 0L) {
+            // Post after the transaction close and trace boundary. This keeps any token-scoped
+            // loader work already queued on MODEL_EXECUTOR ahead of the completion signal without
+            // blocking the loader thread on itself. The binder keeps request identity and
+            // LauncherModel rejects stale/superseded tokens.
+            MODEL_EXECUTOR.execute(mLauncherBinder::notifyOrganizerReloadComplete);
+        }
     }
 
     public synchronized void stopLocked() {

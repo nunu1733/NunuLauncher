@@ -1,6 +1,6 @@
 ---
 issue: "#150"
-status: proposed
+status: accepted
 requirements:
   - A7-COMPLETION-BARRIER
   - A7-FAILURE-SEAM
@@ -16,7 +16,7 @@ updated: 2026-08-26
 
 The GitHub [Issue #150](https://github.com/nunu1733/NunuLauncher/issues/150)
 and its comments are the authority for the reproduction history, device
-environment, and current progress. This proposed specification defines only
+environment, and current progress. This accepted specification defines only
 the observable correction and evidence needed to close that issue; it does not
 copy a second product contract into the repository.
 
@@ -287,3 +287,7 @@ raw user-facing exception.
 
 - 2026-08-26: Proposed for Issue #150 from the issue body, both comments, the
   PR #151 device evidence, accepted specs 13/52/67/83, and ADR-0003.
+- 2026-08-26: Accepted by the issue owner after the re-review P1 was resolved:
+  the root-cause oracle inspects the existing completion runnable's flag
+  synchronously at a latch/barrier-held loader transaction boundary with no
+  timed non-return or scheduling assertion (commit `38d33a622a`).

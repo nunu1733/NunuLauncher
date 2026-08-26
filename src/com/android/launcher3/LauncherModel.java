@@ -461,7 +461,7 @@ public class LauncherModel implements InstallSessionTracker.Callback {
 
     // Issue #14: package-private bridge for correlated reload.
     // Sets a per-model organizer reload token that the exact loader task's
-    // bind-complete path signals; supersession/cancellation unsets it.
+    // transaction-complete path signals; supersession/cancellation unsets it.
     private OrganizerReloadRequest mOrganizerReloadToken;
 
     void forceReloadForOrganizer(long requestId, long organizerLeaseToken, @NonNull Runnable completed,
@@ -480,7 +480,7 @@ public class LauncherModel implements InstallSessionTracker.Callback {
         startLoader();
     }
 
-    // Issue #14: only the token captured by the exact binder completes the request.
+    // Issue #14: only the token captured by the exact loader binder completes the request.
     private void completeOrganizerReload(
             OrganizerReloadRequest token) {
         if (token == null) return;

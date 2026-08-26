@@ -84,7 +84,7 @@ public class BaseLauncherBinder {
 
     final Callbacks[] mCallbacksList;
     @NonNull
-    private final Runnable mOrganizerBindComplete;
+    private final Runnable mOrganizerReloadComplete;
 
     private int mMyBindingId;
 
@@ -93,16 +93,25 @@ public class BaseLauncherBinder {
         this(app, dataModel, allAppsList, callbacksList, () -> { });
     }
 
-    // Issue #14: exact LoaderTask bind-completion callback.
+    // Issue #14: callback for the exact LoaderTask completion boundary.
     public BaseLauncherBinder(LauncherAppState app, BgDataModel dataModel,
             AllAppsList allAppsList, Callbacks[] callbacksList,
-            @NonNull Runnable organizerBindComplete) {
+            @NonNull Runnable organizerReloadComplete) {
         mUiExecutor = MAIN_EXECUTOR;
         mApp = app;
         mBgDataModel = dataModel;
         mBgAllAppsList = allAppsList;
         mCallbacksList = callbacksList;
-        mOrganizerBindComplete = organizerBindComplete;
+        mOrganizerReloadComplete = organizerReloadComplete;
+    }
+
+    /**
+     * Signals the organizer only after the owning LoaderTask has committed and closed its
+     * transaction. This deliberately is not part of the bind-complete callback path: bind
+     * callbacks may run before the loader transaction reaches its causal completion boundary.
+     */
+    void notifyOrganizerReloadComplete() {
+        mOrganizerReloadComplete.run();
     }
 
     /**
@@ -371,7 +380,6 @@ public class BaseLauncherBinder {
             Executor pendingExecutor = pendingTasks::add;
 
             RunnableList onCompleteSignal = new RunnableList();
-            onCompleteSignal.add(mOrganizerBindComplete);
 
             if (enableWorkspaceInflation() && inflater != null) {
                 MODEL_EXECUTOR.execute(() ->  {
@@ -523,7 +531,6 @@ public class BaseLauncherBinder {
                 MODEL_EXECUTOR.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
 
                 RunnableList onCompleteSignal = new RunnableList();
-                onCompleteSignal.add(mOrganizerBindComplete);
                 onCompleteSignal.executeAllAndDestroy();
                 c.onInitialBindComplete(mCurrentScreenIds, new RunnableList(), onCompleteSignal,
                         workspaceItemCount, isBindSync);
