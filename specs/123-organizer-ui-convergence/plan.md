@@ -114,11 +114,11 @@
 ## Execution checklist
 
 - [x] Spec approval recorded on Issue #123.
-- [x] Current behavior reproduced (before captures per slice — PR review時にcapture添付).
+- [x] Current behavior reproduced (before captures per slice).
 - [x] Slice A–D implemented with per-slice evidence.
-- [ ] Full relevant verification completed (`final-status` green) — CI実行をPRへ記録.
-- [x] Evidence doc (`docs/assessment/evidence/issue-123-ui-mapping.md`) completed (capture実行結果の反映はPR時).
-- [ ] PR links issue & spec, records remaining risks and split follow-ups.
+- [x] Full relevant verification completed (`final-status` green, run 32973322535).
+- [x] Evidence doc (`docs/assessment/evidence/issue-123-ui-mapping.md`) completed.
+- [ ] PR review・merge（残務はPR側で追跡）。
 
 ## Execution notes (2026-08-26)
 
@@ -127,15 +127,16 @@
 - **Slice A**: `OrganizationOnboardingProposal.kt` のhardcoded色（`Color.WHITE/BLACK/DKGRAY`）と独自24dp角丸を削除し、`Themes.getAttrColor` によるtheme解決（`android:colorBackground` / textPrimary / textSecondary）と `R.dimen.default_dialog_corner_radius` へ置換。View hosting・#137 focus/touch-mode semantics・proposal storeは不変。
 - **Slice B**: 複合文6種をformat resource化（`organizer_lock_screen_item_state_description`、`organizer_lock_screen_placement_summary_double/triple`、`organizer_category_override_app_status`、`organizer_category_override_app_description`、`..._with_profile`）。Kotlin側の `"$profile · $state"`、contentDescription合成、`joinToString(" · ")` を廃止。manual organization / diagnosticsの情報テキストをbodyMediumへ統一。SAF既定file名を `translatable="false"` resource化。Category overrideの30dp/12dpは上流 `AppItem.kt` と同一valueのため維持。
 - **Slice C**: dead resource 5名削除。ja翻訳を `lawnchair/res/values-ja`（159名）とroot `res/values-ja`（57名）へ追加。
-- **Slice D**: evidence matrix手順を `docs/assessment/evidence/issue-123-ui-mapping.md` へ定義。emulator capture実行はPR review時。
+- **Slice D**: evidence matrixを `docs/assessment/evidence/issue-123-ui-mapping.md` のとおり実行（専用AVD `issue142_api36`、capture 23枚、locale×appearance×font scale）。
 
-検証（local）:
+検証（local + CI）:
 
-- `./gradlew spotlessCheck`: pass（spotlessApplyで1件の整形修正後）。
+- `./gradlew spotlessCheck`: pass。
+- organizer JVM gate: pass。`assembleLawnWithQuickstepGithubDebug`: pass。
 - AC-5 oracle script: required 223名すべて `values-ja` 被覆、placeholder不一致0件。
-- organizer JVM gate / instrumentation lanes / assemble: CI runを正本としてPR本文へ記録する。
+- CI (PR #154, head `4f98120743`): 全job pass、`final-status` green — run 32973322535。
+- emulator capture: light/dark × en/ja/en-XA × 200% font scaleで英語fallback・dark破綻・clippingなし。
 
-残課題・split候補:
+capture pass中に発見・修正した追加課題:
 
-- emulatorでのAC-6〜8 capture実行（PR reviewまでに実施）。
-- lock dialog bodyの「完成文の改行連結」は文の並置として維持（mapping docに記録）。将来dialog構成を変える場合は別Issue。
+- 裸Text情報行（manual org explainer/status/summary、diagnostics/category override description）が画面左端で描画されるconvention乖離 → placement lock画面と同じ16dp paddingへ修正（`4f98120743`）。

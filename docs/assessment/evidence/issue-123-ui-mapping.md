@@ -1,10 +1,16 @@
 # Issue #123 organizer UI convergence — surface mapping and visual evidence
 
-> Status: Partial（mapping確定 / capture実行はPR review時に添付）
+> Status: Executed（2026-08-26にmapping・capture・CI検証完了）
 > Recorded: 2026-08-26
-> Spec: [specs/123-organizer-ui-convergence/spec.md](../../../specs/123-organizer-ui-convergence/spec.md)（AC-1, AC-8のevidence正本）
+> Spec: [specs/123-organizer-ui-convergence/spec.md](../../../specs/123-organizer-ui-convergence/spec.md)（AC-1, AC-6〜9のevidence正本）
 > Baseline for comparison: `505dbc40e6154c05158b5d0271c45f6a885a411b` (Lawnchair `v15.0.0-beta3.0`)
-> Implementation head: 実装PRのhead SHAをPR本文へ記録する
+> Implementation head: `4f98120743`（debug APK `Lawnchair.15.Dev.(4f98120).github.debug.apk`, `app.lawnchair.debug`）
+> Capture runtime: 専用AVD `issue142_api36`（`emulator-5654`, Android 16 / API 36, 1080x2400 @ 420dpi,
+> portrait, cold boot）。並行作業セッションの `nunu_qpr2_api36_1` インスタンスとは分離した。
+> Locale切替はper-app locale（`cmd locale set-app-locales app.lawnchair.debug`）、
+> appearanceは `cmd uimode night yes/no`、font scaleは `settings put system font_scale 2.0`。
+> onboarding popupはfresh install（uninstall→install）毎に新規provenanceで表示させた。
+> Capture 23枚はcapture実施端末の `/tmp/nunu123-captures/` に保管（local evidence、必要に応じて添付）。
 
 ## AC-1 — Surface → Lawnchair reference mapping
 
@@ -24,25 +30,36 @@
 - placement lock状態を色でなくtext badgeで示すこと: #38 の「state is always shown as text, never color alone」要件。
 - lock確認dialogのbodyが、完成した文であるlocalized部品を改行連結する構成であること（`PlacementLockPreferences.LockChangeDialog` / `OrganizerLockShortcut`）: 各部品が独立した完全文であり文法の跨りがないため、AC-4の「文構造をKotlinで生成しない」要件の対象外（文の並置）として維持。
 
-## AC-8 — Capture matrix（代表surface別）
+## AC-8 — Capture matrix（実行結果、2026-08-26）
 
-完全直積ではなく、surfaceごとの役割に応じた組み合わせを定義する。font scaleは200%（既存回帰testと同じ条件）。
+font scaleは200%（既存回帰testと同じ条件）。セル番号は `/tmp/nunu123-captures/` のcapture番号に対応。
 
-| Surface | default en light | default en dark | ja light | ja dark | en-XA light | font scale 200% |
+| Surface | default en light | default en dark | ja light | ja dark | en-XA light | font scale 200% (ja) |
 |---|---|---|---|---|---|---|
-| Onboarding proposal popup | ○ | ○ | ○ | ○ | ○ | ○ |
-| Manual organization（idle→preview→applied/recovery） | ○ | ○ | ○ | ○ | ○ | ○ |
-| Placement lock管理/review + dialog | ○ | ○ | ○ | ○ | − | ○ |
-| Category override authoring | ○ | − | ○ | − | − | − |
-| Organizer diagnostics/export | ○ | − | ○ | − | − | − |
+| Onboarding proposal popup | 01 ✓ | 08 ✓ | 10 ✓ | 15 ✓ | 17 ✓ | 19 ✓ |
+| Manual organization idle | 04 ✓ | 09 ✓ | 12 ✓ | 16 ✓ | 18 ✓ | 20 ✓ |
+| Manual organization preview | 07 ✓ | − | − | − | − | − |
+| Placement lock管理/review | 03 ✓ | − | 11 ✓ | − | − | − |
+| Category override authoring | 06 ✓ | − | 14 ✓ | − | − | − |
+| Organizer diagnostics/export | 05 ✓ | − | 13 ✓ | − | − | − |
 
-- 「−」はその検証の主リスク（翻訳fallback・dark描画・拡張clipping）が他列で担保されるため省略。
-- 取得手順: API 36 emulator（Pixel 6定義, 420dpi）＋debug APK。
-  - locale切替: `adb shell settings put system system_locales ja-JP`（en-XAはSettings appまたは `settings put system system_locales en-XA`）
-  - dark: `adb shell cmd uimode night yes/no`
-  - font scale: `adb shell settings put system font_scale 2.0`
-  - capture: 既存instrumentation capture（`ManualOrganizationPreferencesInstrumentationTest.captureReviewScreenshot` 拡張）または `adb exec-out screencap -p`
-- 取得画像と実行ログは実装PRへ添付し、本節の各セルを実行結果で更新する。
+「−」は他列で主リスクが担保されるため省略（初回定義どおり）。観察結果:
+
+- **AC-3 (light/dark)**: popup背景・文字が `?android:colorBackground`/textPrimary/textSecondary解決で、light=白系/dark=`#121212`系に正しく追従（01/08/10/15）。実装前の `Color.WHITE` 固定では成立しなかった描画である。
+- **AC-6 (ja fallbackなし)**: 10/12/11/14/13で、popup・設定画面のorganizer文言すべてが日本語resource由来。英語fallbackは観察されず。lock行の「ホーム画面 1」「フォルダ内の位置 1」、category行の「個人用 · 自動カテゴリを使用中」等のformat resource合成文も日本語で正しく描画。
+- **AC-7 (en-XA)**: 17/18で、popup・explainer・action labelを含む全organizer文言がpseudo展開され、素通しのraw文字列なし。拡張後もcritical action（「ŔéVîéŵ öŕĝåñîžåţîöñ」）が到達可能。
+- **font scale 200% (ja)**: 19でpopupの全button（後で/スキップ/整理を確認）がviewport内（UI dumpでbounds 94–986 × ≤2211 / 2400確認）。20でmanual org explainerは3行折返しになりつつ「整理を確認」actionが到達可能。
+
+### 取得手順（再現用）
+
+1. `emulator -avd issue142_api36 -port 5654 -no-window -no-snapshot`（API 36, 420dpi）
+2. `adb install -r Lawnchair.15.Dev.(4f98120).github.debug.apk`
+3. locale: `adb shell cmd locale set-app-locales app.lawnchair.debug --locales ja`（ja-JP/en-XA/en）
+4. appearance: `adb shell cmd uimode night yes|no`（appの再起動後に反映）
+5. font scale: `adb shell settings put system font_scale 2.0`
+6. popup: fresh install（uninstall→install）→ `am start -n app.lawnchair.debug/app.lawnchair.LawnchairLauncher` → 15s待機
+7. 設定画面: `am start -n app.lawnchair.debug/app.lawnchair.ui.preferences.PreferenceActivity` →「ホーム画面」→ Layout group
+8. capture: `adb exec-out screencap -p`、UI確認: `uiautomator dump`
 
 ## Localization coverage check（AC-5 oracle実行結果）
 
@@ -52,8 +69,18 @@
 - 機械確認script（name集合抽出→`required ⊆ values-ja names`、placeholder `%N$X` 一致比較）:
   required **223名**すべてja被覆、placeholder不一致**0件**。実行記録は実装PR本文へ貼付。
 
+## CI verification (AC-9)
+
+Head `4f98120743` の PR [#154](https://github.com/nunu1733/NunuLauncher/pull/154) で全job pass、
+merge gate `final-status` green（run: https://github.com/nunu1733/NunuLauncher/actions/runs/32973322535）:
+`validate-repo-contract` / `check-style` / `build-debug-apk` / `organizer-unit-tests` /
+`organizer-instrumentation-{api35,db-migration,issue52,issue53,issue99,shared-writer}-tests`。
+既存accessibility/behavior regressionはすべて無編集でpassした。
+
 ## Findings
 
 - 初回調査でroot `res/values/strings.xml` 側の #99カテゴリ文字列54名の取りこぼしが判明（spec Problem事実1を訂正済み）。
 - Category overrideの30dp/12dp指定は上流 `AppItem.kt` と同一valueであり、独自conventionではなかった（変更せず記録）。
-- capture実行はPR review時までに実施し、本docへ結果を反映する。
+- capture実行中に、manual organization / diagnostics / category override の裸Text情報行が画面左端（x=0）で描画されるconvention乖離を発見し、`4f98120743` でplacement lock画面と同じ16dp paddingへ修正した（captureは修正後のAPKで取得）。
+- per-app localeはpackage再installでクリアされるため、fresh install毎のlocale再設定が必要だった（手順書に反映済み）。
+- popup・各設定画面とも英語fallback・dark破綻・clippingは観察されなかった。
