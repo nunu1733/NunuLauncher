@@ -101,6 +101,11 @@ data object HomeScreenPlacementLocks : PreferenceRoute
 @Serializable
 data object HomeScreenCategoryOverrides : PreferenceRoute
 
+// Issue #138: supported release Settings route exposing the organizer
+// diagnostics journal export without the developer debug menu.
+@Serializable
+data object HomeScreenOrganizerDiagnostics : PreferenceRoute
+
 // Issues #52/#53: persist only the stable caller context, never run state or write authority.
 // Issue #116: typed Navigation resolves this enum argument by its default fully qualified
 // name at runtime, so minification must not rename or remove the class identity.

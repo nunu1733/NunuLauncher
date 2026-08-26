@@ -981,6 +981,9 @@
     <string name="organizer_lock_screen_placement_app_pair">In an app pair</string>
 
     <!-- Organizer diagnostics export -->
+    <!-- Issue #138: supported release Settings route for the diagnostics journal export -->
+    <string name="organizer_diagnostics_title">Organizer diagnostics</string>
+    <string name="organizer_diagnostics_description">Export the privacy-safe organizer diagnostics journal to a file for support.</string>
     <string name="organizer_diagnostics_export_label">Export organizer diagnostics</string>
     <string name="organizer_diagnostics_export_subtitle">Export organizer diagnostic journal to a file</string>
     <string name="organizer_diagnostics_export_success">Diagnostics exported successfully</string>

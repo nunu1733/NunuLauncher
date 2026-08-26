@@ -45,6 +45,7 @@ import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
 import app.lawnchair.ui.preferences.navigation.HomeScreenCategoryOverrides
 import app.lawnchair.ui.preferences.navigation.HomeScreenGrid
 import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
+import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizerDiagnostics
 import app.lawnchair.ui.preferences.navigation.HomeScreenPlacementLocks
 import app.lawnchair.util.collectAsStateBlocking
 import com.android.launcher3.LauncherAppState
@@ -157,6 +158,12 @@ fun HomeScreenPreferences(
                 label = stringResource(id = R.string.manual_organization_title),
                 destination = HomeScreenManualOrganization(),
                 subtitle = stringResource(id = R.string.manual_organization_summary),
+            )
+            // Issue #138: supported release Settings route for diagnostics export.
+            NavigationActionPreference(
+                label = stringResource(id = R.string.organizer_diagnostics_title),
+                destination = HomeScreenOrganizerDiagnostics,
+                subtitle = stringResource(id = R.string.organizer_diagnostics_description),
             )
             NavigationActionPreference(
                 label = stringResource(id = R.string.organizer_category_overrides_title),
