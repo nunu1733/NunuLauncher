@@ -26,25 +26,42 @@ so the Create action was enabled.
 
 ### Procedure (exact)
 
+Two independent samples were captured, each with its own force-stop/restart
+cycle. Times are device-local and taken from the system log
+(`ActivityManager` process boundaries), which is also what disambiguates which
+run each interruption belongs to.
+
+Sample 1 — run `dd31f7a2…`, recovery point `e0951a37…`:
+
 1. Install the debug APK, set it as HOME, launch, and verify model loading
    (no reconciliation error in logcat).
 2. Settings → Home screen → Organize home layout → **Review organization** →
-   **Apply reviewed organization** (run `dd31f7a2…`, recovery point `e0951a37…`).
-   The apply reached `APPLY_COMMITTED` (A6) and then hit the accepted terminal
-   failure `APPLY_RECOVERY_FAILED` (A7) — see [#150](https://github.com/nunu1733/NunuLauncher/issues/150).
-   The automatic recovery had accepted the `RESTORING` transition before its own
-   verification failed, leaving a real recovery record in `RESTORING`.
-3. Process interruption: `adb shell am force-stop app.lawnchair.debug`
-   (16:01:00 local; process death confirmed via empty `pidof`).
-4. Restart: `adb shell am start app.lawnchair.debug/app.lawnchair.LawnchairLauncher`
-   (16:01:02 local). Startup reconciliation ran in the new process.
-5. A second, independent sample repeated steps 2–4 for run `03bbc0…` /
-   point `2bb1cd27…` (interruption 16:01:00 was for run `dd31f7a2…`; run
-   `03bbc0…` was interrupted by the same force-stop and reconciled at
-   16:01:37 in the relaunched process).
-6. Exported the journal through Settings → Home screen → Organizer diagnostics
-   → **Export organizer diagnostics** (system `ACTION_CREATE_DOCUMENT` picker,
-   saved to Downloads, pulled over adb).
+   **Apply reviewed organization** (15:17–15:18). The apply reached
+   `APPLY_COMMITTED` (A6) and then hit the accepted terminal failure
+   `APPLY_RECOVERY_FAILED` (A7) — see
+   [#150](https://github.com/nunu1733/NunuLauncher/issues/150). The automatic
+   recovery had accepted the `RESTORING` transition before its own verification
+   failed, leaving a real recovery record in `RESTORING`.
+3. Process interruption: `adb shell am force-stop app.lawnchair.debug` —
+   `ActivityManager` logged `Force stopping app.lawnchair.debug` at
+   **15:43:15.998** and killed the run's process (pid 5933) at 15:43:16.000.
+4. Restart: `adb shell am start …LawnchairLauncher` — new process (pid 7089)
+   started **15:43:18.123** for the HOME activity; startup reconciliation ran
+   in that process and emitted `RESTART_RECONCILED` at **15:43:20.680**.
+
+Sample 2 — run `03bbc0bc…`, recovery point `2bb1cd27…`:
+
+1. Steps 1–2 repeated (run started 15:45:38, confirmed 15:46; same A7 terminal
+   failure at 15:46:29, record left `RESTORING`).
+2. Process interruption: `adb shell am force-stop app.lawnchair.debug` at
+   **16:01:00.677** (pid 7089 killed at 16:01:00.687; empty `pidof` confirmed
+   process death before relaunch).
+3. Restart: relaunch started new process (pid 7371) at **16:01:03.389**;
+   `RESTART_RECONCILED` at **16:01:37.348**.
+
+Finally, the journal was exported through Settings → Home screen → Organizer
+diagnostics → **Export organizer diagnostics** (system `ACTION_CREATE_DOCUMENT`
+picker, saved to Downloads, pulled over adb).
 
 ### Correlation evidence (exported journal, redacted)
 
@@ -121,24 +138,77 @@ search of the archive found no journal markers. Backup ZIP SHA-256:
 
 `pm clear app.lawnchair.debug` (verified `files/` gone) → launcher set as HOME
 and relaunched → Settings → ⋮ → Restore backup → selected the archive →
-**Restore**. Result:
+**Restore**. App-private file listings around the cycle (`run-as … ls -la
+files/organizer_diagnostics/`; file names, sizes, and timestamps only — no
+layout content):
+
+Before (captured 16:17, before the archive was created):
+
+```text
+total 36
+drwx------ 2 u0_a223 u0_a223 4096 2026-08-26 15:17 .
+drwxrwx--x 5 u0_a223 u0_a223 4096 2026-08-26 15:09 ..
+-rw------- 1 u0_a223 u0_a223    2 2026-08-26 16:01 journal_seq
+-rw------- 1 u0_a223 u0_a223 4549 2026-08-26 16:01 organizer_diagnostics.journal
+```
+
+with `md5sum`: `9f873c54f8e667ed3fcb7193fdbfdaa4` (journal),
+`6f4922f45568161a8cdf4ad2299f6d23` (`journal_seq`).
+
+After the restore (captured 16:27, after the post-restore launcher start):
+
+```text
+files/organizer_diagnostics:
+total 20
+drwx------ 2 u0_a223 u0_a223 4096 2026-08-26 16:18 .
+drwxrwx--x 5 u0_a223 u0_a223 4096 2026-08-26 16:18 ..
+-rw------- 1 u0_a223 u0_a223    0 2026-08-26 16:18 organizer_diagnostics.journal
+```
+
+Result:
 
 - Layout was restored: `launcher_5_4_4.db` contains the backed-up 15 favorites
   rows (restore path demonstrably executed).
-- `files/organizer_diagnostics/organizer_diagnostics.journal` exists only as a
-  fresh **0-byte** file created by the eagerly opened store; the 18 pre-backup
-  events were not restored.
+- `organizer_diagnostics.journal` exists only as a fresh **0-byte** file
+  created by the eagerly opened store (`journal_seq` is absent until the next
+  append); the 18 pre-backup events were not restored.
 
 ### Check 3 — Android backup/restore
 
 `bmgr enable true`, transport switched to `com.android.localtransport/.LocalTransport`.
-A fresh journal (4 `RUN_STARTED` events, 1024 bytes, md5 `165d736f…`) was
-created first, then `bmgr backupnow app.lawnchair.debug` (result: Success),
-`pm clear`, and `bmgr restore 1 app.lawnchair.debug` (`restoreFinished: 0`).
-Result after the post-restore launcher start:
+A fresh journal was created first (one run's first four events
+`RUN_STARTED`/`CAPTURED`/`PLANNED`/`PREVIEWED`, run `38f968cf…`; final
+pre-backup state 1024 bytes, md5 `165d736f3b6bb8081c6535b607bdb53e`), then
+`bmgr backupnow app.lawnchair.debug` (result: Success), `pm clear`, and
+`bmgr restore 1 app.lawnchair.debug` (`restoreFinished: 0`).
 
-- `files/organizer_diagnostics/` contains only a fresh **0-byte** journal; the
-  4 pre-backup events were not restored.
+Before (captured 16:52, after the journal-creating run):
+
+```text
+total 32
+drwx------ 2 u0_a223 u0_a223 4096 2026-08-26 16:33 .
+drwxrwx--x 5 u0_a223 u0_a223 4096 2026-08-26 16:46 ..
+-rw------- 1 u0_a223 u0_a223    1 2026-08-26 16:46 journal_seq
+-rw------- 1 u0_a223 u0_a223  588 2026-08-26 16:46 organizer_diagnostics.journal
+```
+
+(the final pre-backup size after one more appended run was 1024 bytes, the md5
+above; content pulled over `run-as cat` before `backupnow`)
+
+After the clean restore (captured 16:57, after the post-restore launcher
+start):
+
+```text
+total 20
+drwx------ 2 u0_a223 u0_a223 4096 2026-08-26 16:57 .
+drwxrwx--x 5 u0_a223 u0_a223 4096 2026-08-26 16:57 ..
+-rw------- 1 u0_a223 u0_a223    0 2026-08-26 16:57 organizer_diagnostics.journal
+```
+
+Result:
+
+- The pre-backup journal (4 events, md5 `165d736f…`) was **not restored**; the
+  store contains only a fresh **0-byte** journal.
 - `launcher_5_4_4.db` was restored with 15 favorites rows (restore path
   demonstrably executed).
 
@@ -149,10 +219,13 @@ launcher DB and preference files).
 ### Observation recorded during this check
 
 After the ZIP restore, `composeFullOrganization()` returned `NotReady`
-("input unavailable") on every retry and in every later process, although the
-restored layout was intact. Recorded as a related symptom in
-[#150](https://github.com/nunu1733/NunuLauncher/issues/150) (the composer's
-`NotReady` diagnostic code is not observable on-device).
+("input unavailable") on every retry across several processes and roughly 30
+minutes of attempts (including process restarts at 16:27/16:41), although the
+restored layout was intact. A later fresh process (started 16:49) could reach
+the preview again, so the condition is not permanent for the database state;
+the failing sub-check cannot be identified on-device because the composer's
+`NotReady` diagnostic code is not logged. Recorded as a related symptom in
+[#150](https://github.com/nunu1733/NunuLauncher/issues/150).
 
 ## Issue #106 — release failure-only OrganizerDiag logcat
 
