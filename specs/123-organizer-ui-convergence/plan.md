@@ -2,7 +2,7 @@
 
 > Issue: #123
 > Spec: [spec.md](./spec.md)
-> Status: draft（spec `accepted` 待ち。AGENTS.mdの手順により、承認後に実装を開始する）
+> Status: accepted — 2026-08-26にIssue #123で承認（4回のreview対応後）。本planに従い実装する。
 
 ## Current evidence
 
@@ -18,12 +18,12 @@
 | 6 | Organizer diagnostics/export画面 | `lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerDiagnosticsPreferences.kt` + `organizer/diagnostics/export/ExportUi.kt` | `PreferenceLayout` + 裸Text + `ClickablePreference` + Toast | description行のpresentation、Toast feedbackの統一可否 |
 | 7 | HomeScreen設定entries ×4 | `ui/preferences/destinations/HomeScreenPreferences.kt` | 上流 `NavigationActionPreference` のみ | 収束済み。変更不要のはず |
 
-### Localization delta（機械集計）
+### Localization delta（機械集計、実装開始時点）
 
-- baseline以降のdefault `strings.xml` 追加string: **168名**（`manual_organization_*` 94、`organizer_lock_*` 62、`organization_onboarding_*` 5、`organizer_diagnostics_*` 6、他1）。
-- `values-ja` 存在: **6名**（すべて #138 diagnostics由来）。**162名が欠落**。
+- baseline以降のdefault `strings.xml` 追加string: `lawnchair/res` **168名**、root `res`（#99カテゴリtaxonomy・override authoring）**54名**、計 **222名**。
+- `values-ja` 存在: **6名**（すべて #138 diagnostics由来）。**216名が欠落**。
 - 追加文字列に `plurals` / `translatable="false"` は0件。
-- 未参照（dead）resource: `manual_organization_warnings_present`、`organizer_lock_screen_item_lock`、`organizer_lock_screen_item_unlock`、`organizer_lock_result_reviewed`、`organizer_lock_screen_profile_unavailable` の5名。
+- 未参照（dead）resource: 5名（`manual_organization_warnings_present`、`organizer_lock_screen_item_lock`、`organizer_lock_screen_item_unlock`、`organizer_lock_result_reviewed`、`organizer_lock_screen_profile_unavailable`）。
 - 他localeファイルのbaseline差分はdeck退役による削除のみ（crowdin同期分を含む）。Nunu organizer文字列の他locale展開は0件。
 
 ### 既存検証基盤
@@ -113,9 +113,29 @@
 
 ## Execution checklist
 
-- [ ] Spec approval recorded on Issue #123.
-- [ ] Current behavior reproduced (before captures per slice).
-- [ ] Slice A–D implemented with per-slice evidence.
-- [ ] Full relevant verification completed (`final-status` green).
-- [ ] Evidence doc (`docs/assessment/evidence/issue-123-ui-mapping.md`) completed.
+- [x] Spec approval recorded on Issue #123.
+- [x] Current behavior reproduced (before captures per slice — PR review時にcapture添付).
+- [x] Slice A–D implemented with per-slice evidence.
+- [ ] Full relevant verification completed (`final-status` green) — CI実行をPRへ記録.
+- [x] Evidence doc (`docs/assessment/evidence/issue-123-ui-mapping.md`) completed (capture実行結果の反映はPR時).
 - [ ] PR links issue & spec, records remaining risks and split follow-ups.
+
+## Execution notes (2026-08-26)
+
+実装した変更:
+
+- **Slice A**: `OrganizationOnboardingProposal.kt` のhardcoded色（`Color.WHITE/BLACK/DKGRAY`）と独自24dp角丸を削除し、`Themes.getAttrColor` によるtheme解決（`android:colorBackground` / textPrimary / textSecondary）と `R.dimen.default_dialog_corner_radius` へ置換。View hosting・#137 focus/touch-mode semantics・proposal storeは不変。
+- **Slice B**: 複合文6種をformat resource化（`organizer_lock_screen_item_state_description`、`organizer_lock_screen_placement_summary_double/triple`、`organizer_category_override_app_status`、`organizer_category_override_app_description`、`..._with_profile`）。Kotlin側の `"$profile · $state"`、contentDescription合成、`joinToString(" · ")` を廃止。manual organization / diagnosticsの情報テキストをbodyMediumへ統一。SAF既定file名を `translatable="false"` resource化。Category overrideの30dp/12dpは上流 `AppItem.kt` と同一valueのため維持。
+- **Slice C**: dead resource 5名削除。ja翻訳を `lawnchair/res/values-ja`（159名）とroot `res/values-ja`（57名）へ追加。
+- **Slice D**: evidence matrix手順を `docs/assessment/evidence/issue-123-ui-mapping.md` へ定義。emulator capture実行はPR review時。
+
+検証（local）:
+
+- `./gradlew spotlessCheck`: pass（spotlessApplyで1件の整形修正後）。
+- AC-5 oracle script: required 223名すべて `values-ja` 被覆、placeholder不一致0件。
+- organizer JVM gate / instrumentation lanes / assemble: CI runを正本としてPR本文へ記録する。
+
+残課題・split候補:
+
+- emulatorでのAC-6〜8 capture実行（PR reviewまでに実施）。
+- lock dialog bodyの「完成文の改行連結」は文の並置として維持（mapping docに記録）。将来dialog構成を変える場合は別Issue。

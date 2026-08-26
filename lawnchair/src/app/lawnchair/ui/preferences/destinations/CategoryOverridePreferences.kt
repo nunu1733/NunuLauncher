@@ -233,9 +233,16 @@ private fun OverrideAppPreference(
     val state = app.assignedCategory?.let {
         stringResource(R.string.organizer_category_override_explicit, categoryLabel(it))
     } ?: stringResource(R.string.organizer_category_override_automatic)
+    val description = stringResource(R.string.organizer_category_override_app_status, profile, state)
+    val spokenDescription = stringResource(
+        R.string.organizer_category_override_app_description,
+        label,
+        profile,
+        state,
+    )
     PreferenceTemplate(
         title = { Text(label) },
-        description = { Text("$profile · $state") },
+        description = { Text(description) },
         startWidget = app.icon?.let { icon ->
             {
                 Image(
@@ -248,7 +255,7 @@ private fun OverrideAppPreference(
         modifier = modifier
             .heightIn(min = 48.dp)
             .clickable(onClick = onClick)
-            .semantics { contentDescription = "$label, $profile, $state" },
+            .semantics { contentDescription = spokenDescription },
         verticalPadding = 12.dp,
     )
 }
@@ -257,6 +264,11 @@ private fun OverrideAppPreference(
 private fun SelectedOverrideAppHeader(app: CategoryOverrideApp) {
     val label = appLabel(app)
     val profile = profileLabel(app.profile)
+    val spokenDescription = stringResource(
+        R.string.organizer_category_override_app_description_with_profile,
+        label,
+        profile,
+    )
     PreferenceTemplate(
         title = { Text(label) },
         description = { Text(profile) },
@@ -269,7 +281,7 @@ private fun SelectedOverrideAppHeader(app: CategoryOverrideApp) {
                 )
             }
         },
-        modifier = Modifier.semantics { contentDescription = "$label, $profile" },
+        modifier = Modifier.semantics { contentDescription = spokenDescription },
         verticalPadding = 12.dp,
     )
 }

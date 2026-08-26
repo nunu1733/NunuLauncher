@@ -1,5 +1,6 @@
 package app.lawnchair.ui.preferences.destinations
 
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -26,7 +27,11 @@ fun OrganizerDiagnosticsPreferences(
         backArrowVisible = !LocalIsExpandedScreen.current,
         modifier = modifier,
     ) {
-        Text(text = stringResource(id = R.string.organizer_diagnostics_description))
+        // Issue #123: match the sibling organizer screens' body text treatment.
+        Text(
+            text = stringResource(id = R.string.organizer_diagnostics_description),
+            style = MaterialTheme.typography.bodyMedium,
+        )
         OrganizerDiagnosticsExportPreference(
             diagnosticsPort = port ?: LawnchairApp.instance.layoutApplicationModule.diagnostics,
         )

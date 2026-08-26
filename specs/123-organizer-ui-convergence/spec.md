@@ -1,6 +1,6 @@
 ---
 issue: "#123"
-status: draft
+status: accepted
 requirements: []
 updated: 2026-08-26
 ---
@@ -17,7 +17,7 @@ updated: 2026-08-26
 
 確認済みの観測事実（baseline `505dbc40e6` 時点、2026-08-26確認）:
 
-1. **日本語fallback**: baseline以降に追加されたorganizer固有stringは168個あるが、`values-ja` が存在するのは #138由来の6個のみである。残り162個は日本語実行時にdefault（英語）リソースへ解決される。
+1. **日本語fallback**: baseline以降に追加されたorganizer固有stringは、`lawnchair/res` に168個、Launcher3側の `res` に54個（#99カテゴリtaxonomyとoverride authoring）の計222個ある。実装開始時点で `values-ja` を持つのは #138由来の6個のみであり、残り216個は日本語実行時にdefault（英語）リソースへ解決される。
 2. **テーマ外のonboarding proposal**: onboarding proposal popup（`OrganizationOnboardingProposalContent` / `OrganizationOnboardingProposalView`）は背景 `Color.WHITE`、title `Color.BLACK`、summary `Color.DKGRAY`、`GradientDrawable` 角丸24dp、標準 `Button` をハードコードする。dark appearanceでも白背景のままであり、周辺Lawnchair/Launcher3のfloating viewと外観が乖離する。
 3. **素のText行**: manual organization画面（`ManualOrganizationPreferences`）のstatus・preview summary行は `PreferenceLazyColumn` 内の裸 `Text` であり、近隣surfaceが持つpreference row規約（heading、typography、spacing）と揃っていない。
 4. **画面間の作法差**: diagnostics画面（`OrganizerDiagnosticsPreferences`）はdescriptionを裸 `Text` で表示し、placement lock画面のstate badgeはpadding指定の素のTextである等、surfaceごとに場当たり的なpresentationが存在する。
@@ -168,5 +168,7 @@ None are blocking. 非blocking事項:
 - 2026-08-26: 2nd review対応。P1: failure scenarioから「定数として意図的に固定」の例外を削除し、固定technical identifierは `translatable="false"` resource経由のみ、runtime data（実file名・package名等の実値）のみを翻訳対象外として区別。P2: scope 3とplan changesetの「162名」固定件数を廃止し、dead resource整理・format resource化後の最終name集合被覆に定義替え（AC-5のname-set比較を正本）。minor: plan changesetのinstrumentation行へdefault locale表記を復帰。
 - 2026-08-26: 3rd review対応。AC-5から「baseline差分168個中」の固定baseline件数表現を除去し、「実装後の全active/user-visible/translatable Nunu organizer resourceの最終name集合」への日本語被覆という契約へ揃えた。scope 3 / plan changeset / test oracleとの一貫化のみで、他の変更はない。
 - 2026-08-26: 4th review対応。AC-5のtest oracle（spec/plan両方）を検証集合定義ベースへ修正: `required = user-visibleかつtranslatableなNunu organizer default resource` を明示定義し、`required ⊆ values-ja name集合` とplaceholder一致を確認する形へ統一。`translatable="false"` 固定文言がja被覆検証から除外されることを保証。他の変更はない。
+- 2026-08-26: Issue #123上で承認（4回のreview対応後、head `5b9ad9fa`時点）。`accepted`へ更新。実装開始。
+- 2026-08-26: 実装中の調査訂正。Problem事実1の件数を修正: baseline差分は `lawnchair/res` 168個に加え、初回調査で取りこぼしたLauncher3側 `res` の54個（#99カテゴリ系）を含む計222個、ja欠落216個。AC定義は最終name集合ベースのため変更不要。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/123
