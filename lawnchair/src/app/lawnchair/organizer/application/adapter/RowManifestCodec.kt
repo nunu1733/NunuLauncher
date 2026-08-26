@@ -6,6 +6,7 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import app.lawnchair.organizer.application.canonical.PersistenceManifest
 import app.lawnchair.organizer.application.canonical.PersistentRow
+import app.lawnchair.organizer.application.public.AppPairMemberState
 import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.ApplicationPageRef
 import app.lawnchair.organizer.application.public.CanonicalItemKind
@@ -43,6 +44,7 @@ import app.lawnchair.organizer.planning.PageId
 import app.lawnchair.organizer.planning.PageOrder
 import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.planning.ShortcutId
+import app.lawnchair.organizer.planning.SnapPositionToken
 import app.lawnchair.organizer.planning.SplitStage
 import app.lawnchair.organizer.planning.TargetKey
 import com.android.launcher3.LauncherSettings.Favorites
@@ -190,10 +192,7 @@ internal object RowManifestCodec {
             else -> if (row.containerCode.value >= 0) {
                 val parent = ApplicationItemRef.PersistentItem(ItemId(row.containerCode.value.toString()))
                 if (kindById[row.containerCode.value.toLong()] == Favorites.ITEM_TYPE_APP_PAIR) {
-                    PlacementState.AppPairChild(
-                        parent,
-                        if (row.rank == 0) SplitStage.TOP_OR_LEFT else SplitStage.BOTTOM_OR_RIGHT,
-                    )
+                    PlacementState.AppPairChild(parent, row.rank.appPairStage())
                 } else {
                     PlacementState.FolderChild(parent, row.rank)
                 }
@@ -233,15 +232,33 @@ internal object RowManifestCodec {
             )
 
             CanonicalItemKind.AppPair -> {
-                require(children.size == 2 && children.map { it.rank }.toSet() == setOf(0, 1)) {
-                    "App pair must have exactly ranks 0 and 1"
-                }
+                // Issue #141 (review): member-row count and rank coherence are
+                // planner-owned validity judgments, not capture preconditions.
+                // Every child row projects losslessly in rank order; only an
+                // exactly-two-member pair whose ranks both decode inside the
+                // persisted platform encoding yields the shared snap token.
+                // Anything else carries Absent so checkMalformedAppPair rejects
+                // it typed instead of canonicalization throwing.
+                val firstRank = children.getOrNull(0)?.rank
+                val secondRank = children.getOrNull(1)?.rank
+                val firstStage = firstRank?.decodedAppPairStage()
+                val secondStage = secondRank?.decodedAppPairStage()
+                val snapPosition = if (children.size == 2) {
+                    firstRank?.decodedSnapPosition()
+                        ?.takeIf { it == secondRank?.decodedSnapPosition() }
+                        ?.takeIf { firstStage != null && secondStage != null && firstStage != secondStage }
+                        ?.let { OptionalSnapPosition.Present(SnapPositionToken(it.toString())) }
+                } else {
+                    null
+                } ?: OptionalSnapPosition.Absent
                 StructureState.AppPairMembers(
-                    ApplicationItemRef.PersistentItem(children[0].itemId),
-                    ApplicationItemRef.PersistentItem(children[1].itemId),
-                    SplitStage.TOP_OR_LEFT,
-                    SplitStage.BOTTOM_OR_RIGHT,
-                    OptionalSnapPosition.Absent,
+                    children.map { child ->
+                        AppPairMemberState(
+                            ApplicationItemRef.PersistentItem(child.itemId),
+                            child.rank.appPairStage(),
+                        )
+                    },
+                    snapPosition,
                 )
             }
 
@@ -304,4 +321,36 @@ internal object RowManifestCodec {
     }
 
     private fun PersistentRow.hotseatSlot(): Int = screenId?.value?.toIntOrNull() ?: 0
+
+    /**
+     * Issue #141: app-pair member ranks are a persisted platform format —
+     * `AppPairsController.encodeRank` packs `(splitPosition shl 16) + snapPosition`
+     * into `favorites.rank`, and SplitScreenConstants pins those values ("must not
+     * be changed -- they are persisted to user-defined app pairs"). The mirrored
+     * constants below decode that column; they are data-format facts rather than
+     * behavior imports so every flavor compiles the same projection.
+     */
+    private const val APP_PAIR_STAGE_BITS = 16
+    private const val SNAP_TO_30_70 = 0
+    private const val SNAP_TO_50_50 = 1
+    private const val SNAP_TO_70_30 = 2
+    private val PERSISTENT_SNAP_POSITIONS = setOf(SNAP_TO_30_70, SNAP_TO_50_50, SNAP_TO_70_30)
+
+    /** Stage half of an encoded member rank, or null when outside the persisted domain. */
+    private fun Int.decodedAppPairStage(): SplitStage? = when (this ushr APP_PAIR_STAGE_BITS) {
+        0 -> SplitStage.TOP_OR_LEFT
+        1 -> SplitStage.BOTTOM_OR_RIGHT
+        else -> null
+    }
+
+    /** Snap half of an encoded member rank, or null when not a persistent snap position. */
+    private fun Int.decodedSnapPosition(): Int? = (this and ((1 shl APP_PAIR_STAGE_BITS) - 1)).takeIf { it in PERSISTENT_SNAP_POSITIONS }
+
+    /**
+     * Projection stage for an app-pair child row. Out-of-domain ranks fall back to
+     * the legacy rank==0 heuristic; such rows carry no decodable snap position and
+     * are rejected as MALFORMED_APP_PAIR downstream.
+     */
+    private fun Int.appPairStage(): SplitStage = decodedAppPairStage()
+        ?: if (this == 0) SplitStage.TOP_OR_LEFT else SplitStage.BOTTOM_OR_RIGHT
 }
