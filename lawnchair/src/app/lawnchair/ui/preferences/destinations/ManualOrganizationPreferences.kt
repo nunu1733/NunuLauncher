@@ -3,6 +3,7 @@ package app.lawnchair.ui.preferences.destinations
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -23,6 +24,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
@@ -82,6 +84,7 @@ fun ManualOrganizationPreferences(
                 Text(
                     text = stringResource(R.string.manual_organization_explainer),
                     style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(16.dp),
                 )
             }
             when (val currentState = state) {
@@ -209,6 +212,7 @@ fun ManualOrganizationPreferences(
                             Text(
                                 text = stringResource(R.string.manual_organization_safe_terminal),
                                 style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(16.dp),
                             )
                         }
                         item {
@@ -271,6 +275,7 @@ fun ManualOrganizationPreferences(
                             Text(
                                 text = stringResource(R.string.manual_organization_safe_terminal),
                                 style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(16.dp),
                             )
                         }
                         item {
@@ -346,9 +351,11 @@ private fun ProgressText(
     }
     Text(
         text = stringResource(resourceId),
-        modifier = focusModifier.semantics {
-            liveRegion = LiveRegionMode.Polite
-        },
+        modifier = focusModifier
+            .padding(horizontal = 16.dp)
+            .semantics {
+                liveRegion = LiveRegionMode.Polite
+            },
     )
 }
 
@@ -362,6 +369,7 @@ private fun FocusTargetText(
         modifier = Modifier
             .focusRequester(focusRequester)
             .focusable()
+            .padding(horizontal = 16.dp)
             .semantics {
                 liveRegion = LiveRegionMode.Polite
             },
@@ -438,7 +446,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.summaryItems(
 
 @Composable
 private fun SummaryText(text: String) {
-    Text(text = text, style = MaterialTheme.typography.bodyMedium)
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.padding(horizontal = 16.dp),
+    )
 }
 
 private fun movedReasonString(reason: PlacementCode): Int = when (reason) {
