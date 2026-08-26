@@ -347,12 +347,16 @@ class OnboardingOrganizationProposalInstrumentationTest {
 
             startPreferenceActivity(context)
             awaitResumedPreferenceActivity()
+            // PreferenceActivity reaching RESUMED does not prove the launcher already paused:
+            // activity transitions overlap both RESUMED states, and invoking the owner inside
+            // that window legitimately shows the proposal immediately (Issue #142).
+            awaitLauncherBelowResumedState(launcher)
             instrumentation.runOnMainSync {
                 owner.onLauncherResumed()
                 owner.onInitialWorkspaceBound()
-                assertFalse(
-                    AbstractFloatingView.getTopOpenView(launcher) is
-                        OrganizationOnboardingProposal.OrganizationOnboardingProposalView,
+                assertNoProposalViewChild(
+                    launcher,
+                    "a launcher that surrendered RESUMED must defer the proposal bind",
                 )
             }
 
@@ -368,11 +372,12 @@ class OnboardingOrganizationProposalInstrumentationTest {
                     "launcher must be RESUMED after the HOME relaunch",
                     launcher.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED),
                 )
-                assertFalse(
-                    "no proposal may be open before the owner resumes; open=" +
-                        AbstractFloatingView.getTopOpenView(launcher),
-                    AbstractFloatingView.getTopOpenView(launcher) is
-                        OrganizationOnboardingProposal.OrganizationOnboardingProposalView,
+                // Scan children instead of open views: a floating view added but not yet
+                // attached stays invisible to getTopOpenView until onAttachedToWindow sets
+                // mIsOpen, so an open-view assert can miss it (Issue #142).
+                assertNoProposalViewChild(
+                    launcher,
+                    "no proposal may exist before the owner resumes after the HOME relaunch",
                 )
                 AbstractFloatingView.closeOpenViews(launcher, false, AbstractFloatingView.TYPE_ALL)
                 assertEquals(null, AbstractFloatingView.getTopOpenView(launcher))
@@ -384,7 +389,18 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 content = proposal.getChildAt(0) as OrganizationOnboardingProposalContent
                 content.reviewButton.performClick()
             }
-            awaitAdmissionCount(admissionCount, 1)
+            // The admission runs on a lifecycleScope coroutine that hops to Dispatchers.IO;
+            // under a loaded shared emulator that hop has stalled past a 5s window (Issue #142).
+            fun reviewPipelineDiagnostics(): String {
+                var state = "diagnostics unavailable"
+                instrumentation.runOnMainSync {
+                    state = "proposalOpen=${proposal.isOpen}, attached=${proposal.isAttachedToWindow}, " +
+                        "reviewEnabled=${content.reviewButton.isEnabled}, " +
+                        "lifecycle=${launcher.lifecycle.currentState}, launcherDestroyed=${launcher.isDestroyed}"
+                }
+                return state
+            }
+            awaitAdmissionCount(admissionCount, 1, ::reviewPipelineDiagnostics)
             awaitReviewActionEnabled(content)
             instrumentation.runOnMainSync {
                 assertTrue(proposal.isOpen)
@@ -395,7 +411,7 @@ class OnboardingOrganizationProposalInstrumentationTest {
             instrumentation.runOnMainSync {
                 content.reviewButton.performClick()
             }
-            awaitAdmissionCount(admissionCount, 2)
+            awaitAdmissionCount(admissionCount, 2, ::reviewPipelineDiagnostics)
             awaitResumedPreferenceActivity()
             assertEquals(
                 OrganizationOnboardingProposalOutcome.REVIEWED.name,
@@ -609,12 +625,19 @@ class OnboardingOrganizationProposalInstrumentationTest {
         error("No proposal action received input focus after DPAD traversal")
     }
 
-    private fun awaitAdmissionCount(admissionCount: AtomicInteger, expected: Int) {
-        repeat(50) {
+    private fun awaitAdmissionCount(
+        admissionCount: AtomicInteger,
+        expected: Int,
+        describeFailureContext: () -> String = { "" },
+    ) {
+        repeat(REVIEW_ADMISSION_ITERATIONS) {
             if (admissionCount.get() == expected) return
             SystemClock.sleep(100)
         }
-        error("Expected $expected onboarding review admissions, got ${admissionCount.get()}")
+        error(
+            "Expected $expected onboarding review admissions, got ${admissionCount.get()} " +
+                "after ${REVIEW_ADMISSION_ITERATIONS * 100}ms. ${describeFailureContext()}",
+        )
     }
 
     private fun awaitReviewActionEnabled(content: OrganizationOnboardingProposalContent) {
@@ -680,7 +703,7 @@ class OnboardingOrganizationProposalInstrumentationTest {
 
     private fun awaitResumedPreferenceActivity(): PreferenceActivity {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        repeat(50) {
+        repeat(120) {
             var candidate: PreferenceActivity? = null
             instrumentation.runOnMainSync {
                 candidate = ActivityLifecycleMonitorRegistry.getInstance()
@@ -692,6 +715,47 @@ class OnboardingOrganizationProposalInstrumentationTest {
             SystemClock.sleep(100)
         }
         error("PreferenceActivity did not resume after onboarding review admission")
+    }
+
+    /**
+     * Waits until the launcher has surrendered RESUMED to the activity in front of it. Activity
+     * transitions overlap RESUMED states, so a freshly resumed PreferenceActivity does not yet
+     * prove the launcher paused; polling the lifecycle state removes that race (Issue #142).
+     */
+    private fun awaitLauncherBelowResumedState(launcher: LawnchairLauncher) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        var state = Lifecycle.State.RESUMED
+        repeat(120) {
+            instrumentation.runOnMainSync {
+                state = launcher.lifecycle.currentState
+            }
+            if (!state.isAtLeast(Lifecycle.State.RESUMED)) return
+            SystemClock.sleep(100)
+        }
+        error(
+            "LawnchairLauncher never left the RESUMED state after PreferenceActivity came " +
+                "forward (last=$state)",
+        )
+    }
+
+    /**
+     * Asserts no proposal view exists as a drag-layer child at all. Open-view scans miss views
+     * added but not yet attached: mIsOpen flips only in onAttachedToWindow, so such strays are
+     * invisible to [AbstractFloatingView.getTopOpenView] (Issue #142).
+     */
+    private fun assertNoProposalViewChild(
+        launcher: LawnchairLauncher,
+        expectation: String,
+    ) {
+        val dragLayer = launcher.dragLayer
+        val strays = mutableListOf<String>()
+        for (index in 0 until dragLayer.childCount) {
+            val child = dragLayer.getChildAt(index)
+            if (child is OrganizationOnboardingProposal.OrganizationOnboardingProposalView) {
+                strays += "open=${child.isOpen}, attached=${child.isAttachedToWindow}"
+            }
+        }
+        assertTrue("$expectation; found proposal views: $strays", strays.isEmpty())
     }
 
     private fun awaitResumedLauncher(
@@ -727,8 +791,11 @@ class OnboardingOrganizationProposalInstrumentationTest {
     }
 
     private fun startLauncher(context: android.content.Context) {
+        // -W blocks until the launch transaction completes, so the launcher has already consumed
+        // this HOME intent when this call returns. Without it, a late onNewIntent can arrive
+        // after the test shows the proposal and legitimately close it (Issue #142).
         runShellCommand(
-            "am start -n ${ComponentName(context, LawnchairLauncher::class.java).flattenToString()} " +
+            "am start -W -n ${ComponentName(context, LawnchairLauncher::class.java).flattenToString()} " +
                 "-a ${Intent.ACTION_MAIN} -c ${Intent.CATEGORY_HOME}",
         )
     }
@@ -738,7 +805,11 @@ class OnboardingOrganizationProposalInstrumentationTest {
     }
 
     private fun runShellCommand(command: String) {
-        InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command).close()
+        // Drain the output stream before closing: it makes the command synchronous so callers
+        // observe its completed effect instead of racing the shell-side execution.
+        val descriptor = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)
+        java.io.FileInputStream(descriptor.fileDescriptor).use { stream -> stream.readBytes() }
+        descriptor.close()
     }
 
     private fun dispatchLauncherKey(launcher: LawnchairLauncher, keyCode: Int) {
@@ -949,5 +1020,11 @@ class OnboardingOrganizationProposalInstrumentationTest {
         const val TOUCH_INJECTION_GAP_MILLIS = 60L
         const val MAX_INJECTION_ATTEMPTS_PER_TAP = 3
         const val DELIVERY_TIMEOUT_MILLIS = 1500L
+
+        /**
+         * Admission waits span the click → lifecycleScope coroutine → Dispatchers.IO hop, whose
+         * tail latency under a loaded shared emulator exceeded the previous fixed 5s window.
+         */
+        const val REVIEW_ADMISSION_ITERATIONS = 150
     }
 }
