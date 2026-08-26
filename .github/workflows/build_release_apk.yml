@@ -4,6 +4,22 @@ name: Build release APK
 # local verification, so the workflow_dispatch trigger is retained. Signing
 # secrets are only available to the upstream owner; the fork build runs
 # unsigned, which is why the upstream workflow uses continue-on-error.
+#
+# Issue #146: this job builds only the GitHub release APK. The previous command
+# also requested bundleLawnWithQuickstepPlayRelease in the same Gradle
+# invocation, so org.gradle.parallel=true ran two release R8 tasks concurrently
+# inside one -Xmx4g Gradle JVM and failed with "R8: java.lang.OutOfMemoryError"
+# after ~2h41m (run 32859936031). The Play bundle is not required for fork
+# release verification; if it ever becomes needed, give it its own job or
+# workflow rather than re-adding it here.
+#
+# Issue #146 timeouts: healthy cold runs complete in roughly 16-26 minutes
+# end-to-end (runs 32583936518, 32617184610, 32619535055, 32630072130), with
+# the build step itself around 15-24 minutes. 45 minutes for the build step and
+# 60 minutes for the whole job leave headroom over that measured range while
+# still failing fast instead of silently burning hours when R8 regresses.
+# --console=plain --stacktrace keep per-task progress and failure context in
+# the Actions log so an active task is identifiable if a timeout ever fires.
 
 on:
   workflow_dispatch:
@@ -14,6 +30,7 @@ permissions:
 jobs:
   build-release-apk:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     continue-on-error: true
     permissions:
       contents: read
@@ -39,7 +56,8 @@ jobs:
             echo ${{ secrets.KEYSTORE }} | base64 --decode > ${{ github.workspace }}/key.jks
           fi
       - name: Build release APK
-        run: ./gradlew assembleLawnWithQuickstepGithubRelease bundleLawnWithQuickstepPlayRelease
+        timeout-minutes: 45
+        run: ./gradlew assembleLawnWithQuickstepGithubRelease --console=plain --stacktrace
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
