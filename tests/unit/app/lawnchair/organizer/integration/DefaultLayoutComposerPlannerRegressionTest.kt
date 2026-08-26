@@ -3,6 +3,7 @@ package app.lawnchair.organizer.integration
 import app.lawnchair.organizer.application.adapter.FakeLayoutWriter
 import app.lawnchair.organizer.application.canonical.CanonicalFixtures
 import app.lawnchair.organizer.application.protocol.CaptureId
+import app.lawnchair.organizer.application.public.AppPairMemberState
 import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.ApplicationPageRef
 import app.lawnchair.organizer.application.public.CanonicalItemKind
@@ -215,6 +216,31 @@ class DefaultLayoutComposerPlannerRegressionTest {
         assertEquals(listOf(DiagnosticParam.ItemParam(ItemId("70"))), malformed.single().params)
     }
 
+    /**
+     * Issue #141 review follow-up: an app pair whose member count is not two
+     * composes unchanged and must reach the planner's typed MALFORMED_APP_PAIR
+     * rejection — degenerate cardinality is a planner judgment, never a capture
+     * exception or silent repair.
+     */
+    @Test
+    fun appPairWithAbnormalMemberCountStaysTypedMalformed() {
+        for (memberCount in listOf(0, 1, 3)) {
+            val composition = composer(appPairLayoutWithMemberCount(memberCount)).composeFullOrganization()
+            assertTrue("$memberCount: composition stays ready: $composition", composition is OrganizationInputComposition.Ready)
+
+            val planned = DeterministicOrganizationPlanner().plan((composition as OrganizationInputComposition.Ready).input)
+            val rejected = planned.outcome as? Rejected.Invalid
+            assertNotNull("$memberCount: planner must reject", rejected)
+            val malformed = rejected!!.reasons.filter { it.code == RejectionCode.MALFORMED_APP_PAIR }
+            assertEquals("$memberCount: exactly one typed rejection", 1, malformed.size)
+            assertEquals(
+                "$memberCount: rejection names the pair",
+                listOf(DiagnosticParam.ItemParam(ItemId("70"))),
+                malformed.single().params,
+            )
+        }
+    }
+
     /** One saved app pair at cell (0,4): container row 70 plus two member rows. */
     private fun appPairLayoutState(snapPosition: OptionalSnapPosition): LayoutState = CanonicalFixtures.state(
         items = buildList {
@@ -243,6 +269,42 @@ class DefaultLayoutComposerPlannerRegressionTest {
                     target = appTarget(),
                 ).copy(placement = PlacementState.AppPairChild(ApplicationItemRef.PersistentItem(ItemId("70")), SplitStage.BOTTOM_OR_RIGHT)),
             )
+        },
+    )
+
+    /** A saved app pair at cell (0,4) with an arbitrary member-row count. */
+    private fun appPairLayoutWithMemberCount(count: Int): LayoutState = CanonicalFixtures.state(
+        items = buildList {
+            add(
+                CanonicalFixtures.appItem(
+                    itemId = "70",
+                    kind = CanonicalItemKind.AppPair,
+                    target = TargetKey.AppPairKey(AppPairId("70")),
+                    cell = GridCell(0, 4),
+                    structure = StructureState.AppPairMembers(
+                        members = (1..count).map { index ->
+                            AppPairMemberState(
+                                ApplicationItemRef.PersistentItem(ItemId((70 + index).toString())),
+                                SplitStage.TOP_OR_LEFT,
+                            )
+                        },
+                        snapPosition = OptionalSnapPosition.Absent,
+                    ),
+                ),
+            )
+            repeat(count) { index ->
+                add(
+                    CanonicalFixtures.appItem(
+                        itemId = (71 + index).toString(),
+                        target = appTarget(),
+                    ).copy(
+                        placement = PlacementState.AppPairChild(
+                            ApplicationItemRef.PersistentItem(ItemId("70")),
+                            SplitStage.TOP_OR_LEFT,
+                        ),
+                    ),
+                )
+            }
         },
     )
 

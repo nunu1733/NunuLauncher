@@ -170,13 +170,20 @@ sealed interface StructureState {
     data object Plain : StructureState
     data class FolderMembers(val members: List<RankedMember>) : StructureState
     data class AppPairMembers(
-        val first: ApplicationItemRef,
-        val second: ApplicationItemRef,
-        val firstStage: SplitStage,
-        val secondStage: SplitStage,
+        val members: List<AppPairMemberState>,
         val snapPosition: OptionalSnapPosition,
     ) : StructureState
 }
+
+/**
+ * One decoded app-pair member row, carried in persisted rank order. The list is
+ * not restricted to two entries: member-count and stage/snap coherence are
+ * planner-owned validity judgments (V-07), not capture preconditions.
+ */
+data class AppPairMemberState(
+    val item: ApplicationItemRef,
+    val stage: SplitStage,
+)
 
 data class RankedMember(val item: ApplicationItemRef, val rank: Int)
 

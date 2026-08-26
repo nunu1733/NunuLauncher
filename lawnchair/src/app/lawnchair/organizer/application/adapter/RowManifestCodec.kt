@@ -6,6 +6,7 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import app.lawnchair.organizer.application.canonical.PersistenceManifest
 import app.lawnchair.organizer.application.canonical.PersistentRow
+import app.lawnchair.organizer.application.public.AppPairMemberState
 import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.ApplicationPageRef
 import app.lawnchair.organizer.application.public.CanonicalItemKind
@@ -231,28 +232,32 @@ internal object RowManifestCodec {
             )
 
             CanonicalItemKind.AppPair -> {
-                require(children.size == 2) {
-                    "App pair must have exactly two member rows"
-                }
-                // Issue #141: the authoritative snap position is the persisted
-                // member rank itself. Both member rows must decode to one
-                // persistent snap with complementary stages; anything else stays
-                // Absent so the planner keeps rejecting the pair as
-                // MALFORMED_APP_PAIR instead of capture inventing a value.
-                val firstRank = children[0].rank
-                val secondRank = children[1].rank
-                val firstStage = firstRank.decodedAppPairStage()
-                val secondStage = secondRank.decodedAppPairStage()
-                val snapPosition = firstRank.decodedSnapPosition()
-                    ?.takeIf { it == secondRank.decodedSnapPosition() }
-                    ?.takeIf { firstStage != null && secondStage != null && firstStage != secondStage }
-                    ?.let { OptionalSnapPosition.Present(SnapPositionToken(it.toString())) }
-                    ?: OptionalSnapPosition.Absent
+                // Issue #141 (review): member-row count and rank coherence are
+                // planner-owned validity judgments, not capture preconditions.
+                // Every child row projects losslessly in rank order; only an
+                // exactly-two-member pair whose ranks both decode inside the
+                // persisted platform encoding yields the shared snap token.
+                // Anything else carries Absent so checkMalformedAppPair rejects
+                // it typed instead of canonicalization throwing.
+                val firstRank = children.getOrNull(0)?.rank
+                val secondRank = children.getOrNull(1)?.rank
+                val firstStage = firstRank?.decodedAppPairStage()
+                val secondStage = secondRank?.decodedAppPairStage()
+                val snapPosition = if (children.size == 2) {
+                    firstRank?.decodedSnapPosition()
+                        ?.takeIf { it == secondRank?.decodedSnapPosition() }
+                        ?.takeIf { firstStage != null && secondStage != null && firstStage != secondStage }
+                        ?.let { OptionalSnapPosition.Present(SnapPositionToken(it.toString())) }
+                } else {
+                    null
+                } ?: OptionalSnapPosition.Absent
                 StructureState.AppPairMembers(
-                    ApplicationItemRef.PersistentItem(children[0].itemId),
-                    ApplicationItemRef.PersistentItem(children[1].itemId),
-                    firstStage ?: SplitStage.TOP_OR_LEFT,
-                    secondStage ?: SplitStage.BOTTOM_OR_RIGHT,
+                    children.map { child ->
+                        AppPairMemberState(
+                            ApplicationItemRef.PersistentItem(child.itemId),
+                            child.rank.appPairStage(),
+                        )
+                    },
                     snapPosition,
                 )
             }

@@ -1,5 +1,6 @@
 package app.lawnchair.organizer.locks
 
+import app.lawnchair.organizer.application.public.AppPairMemberState
 import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.ApplicationPageRef
 import app.lawnchair.organizer.application.public.CanonicalItemKind
@@ -138,10 +139,16 @@ object LockFixtures {
                 profile = profile,
                 lockState = lockState,
                 structure = StructureState.AppPairMembers(
-                    first = ApplicationItemRef.PersistentItem(ItemId(first)),
-                    second = ApplicationItemRef.PersistentItem(ItemId(second)),
-                    firstStage = SplitStage.TOP_OR_LEFT,
-                    secondStage = SplitStage.BOTTOM_OR_RIGHT,
+                    members = listOf(
+                        AppPairMemberState(
+                            ApplicationItemRef.PersistentItem(ItemId(first)),
+                            SplitStage.TOP_OR_LEFT,
+                        ),
+                        AppPairMemberState(
+                            ApplicationItemRef.PersistentItem(ItemId(second)),
+                            SplitStage.BOTTOM_OR_RIGHT,
+                        ),
+                    ),
                     snapPosition = OptionalSnapPosition.Absent,
                 ),
             ),

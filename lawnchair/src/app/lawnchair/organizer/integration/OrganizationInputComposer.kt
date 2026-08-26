@@ -317,18 +317,22 @@ class DefaultOrganizationInputComposer(
             is StructureState.AppPairMembers -> emptyList()
         }
         val pairMetadata = (structure as? StructureState.AppPairMembers)?.let {
-            val first = (it.first as? ApplicationItemRef.PersistentItem)?.itemId ?: return null
-            val second = (it.second as? ApplicationItemRef.PersistentItem)?.itemId ?: return null
             // Issue #141: capture decodes the persisted member-rank encoding into
             // one shared snap token; Absent projects to null so undecodable pairs
             // keep failing typed MALFORMED_APP_PAIR validation instead of being
-            // repaired with an invented value.
+            // repaired with an invented value. Every decoded member row projects
+            // as-is — cardinality and stage/snap coherence stay planner-owned
+            // (V-07), so degenerate pairs reach the planner instead of being
+            // dropped or normalized here.
             val snapPosition = (it.snapPosition as? OptionalSnapPosition.Present)?.token
             AppPairMetadata(
-                listOf(
-                    AppPairMember(first, it.firstStage, snapPosition),
-                    AppPairMember(second, it.secondStage, snapPosition),
-                ),
+                it.members.map { member ->
+                    AppPairMember(
+                        (member.item as? ApplicationItemRef.PersistentItem)?.itemId ?: return null,
+                        member.stage,
+                        snapPosition,
+                    )
+                },
             )
         }
         // Planner contract: the container item itself owns its identity

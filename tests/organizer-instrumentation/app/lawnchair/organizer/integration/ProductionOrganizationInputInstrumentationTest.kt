@@ -397,7 +397,7 @@ class ProductionOrganizationInputInstrumentationTest {
         val source = android.database.sqlite.SQLiteDatabase.create(null)
         try {
             Favorites.addTableToDb(source, 10L, false)
-            insertAppPairFixture(source, serial, topRank = topRank, bottomRank = bottomRank)
+            insertAppPairFixture(source, serial, memberRanks = listOf(topRank, bottomRank))
 
             val captured = RowManifestCodec.capture(
                 source,
@@ -412,8 +412,10 @@ class ProductionOrganizationInputInstrumentationTest {
                 OptionalSnapPosition.Present(SnapPositionToken(snapPosition.toString())),
                 structure.snapPosition,
             )
-            assertEquals(SplitStage.TOP_OR_LEFT, structure.firstStage)
-            assertEquals(SplitStage.BOTTOM_OR_RIGHT, structure.secondStage)
+            assertEquals(
+                listOf(SplitStage.TOP_OR_LEFT, SplitStage.BOTTOM_OR_RIGHT),
+                structure.members.map { it.stage },
+            )
             // The manifest keeps the raw encoded ranks lossless.
             assertEquals(
                 setOf(topRank, bottomRank),
@@ -494,7 +496,7 @@ class ProductionOrganizationInputInstrumentationTest {
             val source = android.database.sqlite.SQLiteDatabase.create(null)
             try {
                 Favorites.addTableToDb(source, 10L, false)
-                insertAppPairFixture(source, serial, topRank = ranks.first, bottomRank = ranks.second)
+                insertAppPairFixture(source, serial, memberRanks = listOf(ranks.first, ranks.second))
 
                 val captured = RowManifestCodec.capture(
                     source,
@@ -538,12 +540,71 @@ class ProductionOrganizationInputInstrumentationTest {
         }
     }
 
-    /** Inserts one saved app pair (desktop row plus two encoded-rank members). */
+    /**
+     * Issue #141 review follow-up: an APP_PAIR row whose child-row count is not
+     * two — including zero members — must capture without throwing, project
+     * losslessly through the composer, and reach the planner's typed
+     * MALFORMED_APP_PAIR rejection instead of crashing canonicalization.
+     */
+    @Test
+    fun appPairRowWithAbnormalMemberCountStaysTypedMalformedAtThePlanner() {
+        val serial = UserCache.INSTANCE.get(context)
+            .getSerialNumberForUser(Process.myUserHandle()).toString()
+        for (memberCount in listOf(0, 1, 3)) {
+            val source = android.database.sqlite.SQLiteDatabase.create(null)
+            try {
+                Favorites.addTableToDb(source, 10L, false)
+                insertAppPairFixture(source, serial, memberRanks = (0 until memberCount).map { it })
+
+                // Capture itself must not throw on degenerate cardinality.
+                val captured = RowManifestCodec.capture(
+                    source,
+                    app.lawnchair.organizer.application.public.DeviceCapabilities(4, 5, 4, 4, 4, app.lawnchair.organizer.application.public.DeviceOrientation.PORTRAIT),
+                    listOf(app.lawnchair.organizer.planning.PageId("0")),
+                    listOf(ProfileState(ProfileId(serial), ProfileAvailability.AVAILABLE)),
+                )
+                val structure = captured.state.items
+                    .single { it.kind == CanonicalItemKind.AppPair }.structure as StructureState.AppPairMembers
+                assertEquals("$memberCount: every child row projects losslessly", memberCount, structure.members.size)
+                assertEquals("$memberCount: no snap may be invented", OptionalSnapPosition.Absent, structure.snapPosition)
+
+                val snapshot = CapturedSnapshot(
+                    layoutState = captured.state,
+                    manifest = captured.manifest,
+                    revision = RevisionCalculator.revisionOf(captured.state),
+                    digest = RevisionCalculator.classificationDigestOf(captured.state),
+                )
+                val composition = DefaultOrganizationInputComposer(
+                    captureSource = CanonicalCaptureSource { CanonicalCaptureReadResult.Ready(snapshot) },
+                    bundleSource = object : app.lawnchair.organizer.rules.OrganizerPolicyBundleSource {
+                        override fun readActive() = BuiltInOrganizerPolicyBundleSource.readActive()
+                    },
+                    overrides = EmptyOverrideSnapshotSource(),
+                    platformEvidence = EmptyEvidenceSource(),
+                ).composeFullOrganization()
+                assertTrue("$memberCount: composition stays ready", composition is OrganizationInputComposition.Ready)
+
+                val planned = DeterministicOrganizationPlanner().plan((composition as OrganizationInputComposition.Ready).input)
+                val rejected = planned.outcome as? Rejected.Invalid
+                assertNotNull("$memberCount: planner must reject", rejected)
+                val malformed = rejected!!.reasons.filter { it.code == RejectionCode.MALFORMED_APP_PAIR }
+                assertEquals("$memberCount: exactly one typed rejection", 1, malformed.size)
+                assertEquals(
+                    "$memberCount: rejection names the pair",
+                    listOf(DiagnosticParam.ItemParam(ItemId(PAIR_ROW_ID.toString()))),
+                    malformed.single().params,
+                )
+            } finally {
+                source.close()
+            }
+        }
+    }
+
+    /** Inserts one saved app pair: desktop row plus one child row per given rank. */
     private fun insertAppPairFixture(
         db: android.database.sqlite.SQLiteDatabase,
         serial: String,
-        topRank: Int,
-        bottomRank: Int,
+        memberRanks: List<Int>,
     ) {
         val intent = Intent(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_LAUNCHER)
@@ -594,8 +655,7 @@ class ProductionOrganizationInputInstrumentationTest {
                 put(Favorites.ORGANIZER_LOCK_STATE, OrganizerLockState.UNLOCKED.ordinal)
             },
         )
-        memberRow(1L, topRank)
-        memberRow(2L, bottomRank)
+        memberRanks.forEachIndexed { index, rank -> memberRow(index + 1L, rank) }
     }
 
     /** Inserts one dock-row fixture; a null screen leaves the nullable column unset. */
