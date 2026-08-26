@@ -67,8 +67,8 @@
 | `ui/preferences/destinations/CategoryOverridePreferences.kt` | dp指定のtoken置換、status行整理、`"$profile · $state"` / contentDescription合成のformat resource移行 | 同上 |
 | `ui/preferences/destinations/OrganizerDiagnosticsPreferences.kt` | description行の構成化 | 同上 |
 | `res/values/strings.xml` | dead resource整理、複合文用format resource追加（app/profile/state合成・区切り子含む）、必要に応じ文案調整 | 正本がdefault resourceであるため。localeごとの語順・区切り替えを可能にする（AC-4） |
-| `res/values-ja/strings.xml` | 162名の日本語訳追加 | localization完成が本Issueの中核成果 |
-| `tests/organizer-instrumentation/...` | screenshot/evidence capture手順のmatrix化（ja/en-XA/light/dark/font scale） | AC-6〜8の再現可能な証拠取得 |
+| `res/values-ja/strings.xml` | dead resource整理・複合文format resource追加後の、全active/user-visible/translatable Nunu organizer resourceの日本語訳被覆 | localization完成が本Issueの中核成果。件数は実装後の最終name集合で確定し、AC-5/test oracleのname-set比較を正本とする |
+| `tests/organizer-instrumentation/...` | screenshot/evidence capture手順のmatrix化（default locale/ja/en-XA × light/dark × font scale） | AC-6〜8の再現可能な証拠取得 |
 | `docs/assessment/evidence/issue-123-ui-mapping.md` | AC-1 mapping + before/after記録 | issue完了条件の正証明場所 |
 
 ## Migration and recovery

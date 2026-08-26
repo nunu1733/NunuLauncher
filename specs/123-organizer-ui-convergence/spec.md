@@ -45,7 +45,7 @@ Nunu固有オーガナイザーUIが、周辺のLawnchair 15設定/ランチャ�
 2. **視覚収束**: mappingに基づき、既存Lawnchair component / theme tokenでの再利用置換を行う。説明のないNunu-only表現（hardcoded色、独自shape/padding、素Text行）を除去する。dark appearance非対応箇所（onboarding proposal）をtheme解決へ移行する。
 3. **Localization completion**:
    - organizerのuser-visible文字列とaccessibility読み上げ文をすべてAndroid resource由来とする。Kotlin code内のhardcoded English literalの除去に加え、app/profile/state等の複数部品から構築される表示文・読み上げ文（連結・補間による生成）をformat resource（`%1$s` 等）へ移行し、localeごとの語順・区切りの変更を可能にする。
-   - 追加162個を含む全Nunu固有organizer文字列の日本語訳を `values-ja` へ追加する。format placeholderの保持と `translatable="false"` の意味論の尊重を含む。
+   - 全Nunu固有organizer文字列のうちuser-visibleかつtranslatableなものすべての日本語訳を `values-ja` へ追加する。正本はdead resource整理・複合文format resource化後の最終name集合であり、調査時点の固定件数ではない。format placeholderの保持と `translatable="false"` の意味論の尊重を含む。
    - 参照されないorganizer string resource（5個確認済み）を整理する。
 4. **再現可能な視覚検証**: 既存のinstrumentation screenshot captureの前例（`ManualOrganizationPreferencesInstrumentationTest.captureReviewScreenshot`）を拡張し、代表surfaceについてdefault locale / 日本語 / `en-XA` pseudo locale × light/dark × 代表的font scaleの証拠取得手順を確立する。これが本Issue完了判定の既定経路である。Roborazzi等の新dependencyは本Issueの完了条件外であり、任意spikeで安定性・維持コスト・CI実行時間の価値が実証された場合にのみ、別Issueとして提案する。
 
@@ -70,7 +70,7 @@ Nunu固有オーガナイザーUIが、周辺のLawnchair 15設定/ランチャ�
 Given 端末のsystem localeが日本語であり、manual organization / placement lock / category override / diagnostics / onboarding proposalのいずれかのsurfaceを開いている
 When 各surfaceのtitle、説明、状態表示、reason/warning行、action label、dialog文言を観察する
 Then 表示される文字列はすべてNunu固有organizer文字列については日本語resource由来である
-And 意図的にnon-translatableとした技術識別子（例: export file名）を除き、英語のままのorganizer文字列は存在しない
+And `translatable="false"` とした技術識別子およびruntime data（実file名等）を除き、英語のままのorganizer文字列は存在しない
 
 ### Scenario: dark appearanceでorganizer surfaceがthemeに従う
 
@@ -99,11 +99,12 @@ When 既存のunit gate（`app.lawnchair.organizer.*`）、instrumentation lane�
 Then すべての既存testがbehavior変更なしでpassする
 And run-state遷移、確認・復旧の契約、recovery point、lock判定へのdiffが存在しない
 
-### Scenario: failure — 意図的に翻訳しない識別子
+### Scenario: failure — 固定technical identifierとruntime dataの区別
 
-Given 技術識別子（例: SAF既定file名）がuser-visibleに現れる
-When その文字列が `translatable="false"` または定数として意図的に固定されている
-Then その理由がPR/evidence文書に記録されており、未着手の翻訳として誤認されない
+Given エクスポート既定file名のような技術的文言がorganizer UIに現れる
+When それがuser-visibleな固定文言である
+Then `translatable="false"` のAndroid resourceとして供給されており、Kotlin constant・literalから直接UIへ渡されていない
+And 実file名・package名のようなruntime data（そもそも固定UI文言ではない実値）のみが例外であり、その区別がPR/evidence文書に記録されて未着手の翻訳として誤認されない
 
 ## Data and state
 
@@ -164,5 +165,6 @@ None are blocking. 非blocking事項:
 
 - 2026-08-26: Draft created for #123。Issue本文、baseline `505dbc40e6` とのres差分（168追加/6個ja coverage/5個未参照）、organizer UI source inventory（`lawnchair/src/app/lawnchair/organizer/ui/`、`ui/preferences/destinations/*`、`ui/popup/OrganizerLockShortcut.kt`）、既存screenshot capture前例（`ManualOrganizationPreferencesInstrumentationTest`）の調査結果を入力に作成。
 - 2026-08-26: Issue #123 review対応。P1: AC-4をhardcoded English除去から「user-visible text・accessibility読み上げ文のformat resource化」要件へ強化し、連結許容記述を撤回。P1: AC-8へdefault localeを復帰させ、surface別capture matrix明文化を要求。P2: AC-9を既存automated regression green＋既得evidenceと矛盾しないことに限定し、full Switch Access実行を #109 ownershipとして分離。Roborazziの扱いを「完了条件外の任意spike」に一本化。behavior・scopeのその他の部分は不変。
+- 2026-08-26: 2nd review対応。P1: failure scenarioから「定数として意図的に固定」の例外を削除し、固定technical identifierは `translatable="false"` resource経由のみ、runtime data（実file名・package名等の実値）のみを翻訳対象外として区別。P2: scope 3とplan changesetの「162名」固定件数を廃止し、dead resource整理・format resource化後の最終name集合被覆に定義替え（AC-5のname-set比較を正本）。minor: plan changesetのinstrumentation行へdefault locale表記を復帰。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/123
