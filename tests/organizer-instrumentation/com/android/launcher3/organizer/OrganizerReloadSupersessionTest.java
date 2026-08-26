@@ -113,6 +113,34 @@ public class OrganizerReloadSupersessionTest {
     }
 
     /**
+     * Issue #150 regression: COMPLETED must mean the exact loader transaction
+     * has committed, not merely that workspace binding was scheduled.
+     */
+    @Test
+    public void completedOutcomeWaitsForLoaderTransactionCommit() throws Exception {
+        addDummyCallback();
+        waitForModelIdle();
+
+        var lease = LayoutWriteCoordinator.getInstance()
+                .tryAcquire(LayoutWriteCoordinator.OwnerKind.ORGANIZER);
+        assertNotNull("Must acquire organizer lease", lease);
+        try {
+            var adapter = new OrganizerModelReloadAdapter(model, mainHandler);
+            var outcome = adapter.requestAndWait(lease.token());
+
+            assertEquals(
+                    "Exact organizer reload must complete successfully",
+                    OrganizerModelReloadAdapter.Outcome.COMPLETED,
+                    outcome);
+            assertTrue(
+                    "COMPLETED must not precede LoaderTransaction.commit",
+                    model.isModelLoaded());
+        } finally {
+            lease.close();
+        }
+    }
+
+    /**
      * A-then-B supersession: B supersedes A, so A's outcome is
      * {@link OrganizerModelReloadAdapter.Outcome#SUPERSEDED} and B's
      * outcome is {@link OrganizerModelReloadAdapter.Outcome#COMPLETED}.
