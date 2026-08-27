@@ -390,7 +390,12 @@ public final class LayoutWriteCoordinator {
         boolean installOrganizerCapability = false;
         synchronized (lock) {
             Holder h = current;
-            if (h != null && !exactOrganizerToken && defersTokenlessWork(h)) {
+            boolean blockedByStableReservation = h == null
+                    && !exactOrganizerToken
+                    && kind == OwnerKind.MODEL_WRITER
+                    && hasStableModelWriterReservation();
+            if ((h != null && !exactOrganizerToken && defersTokenlessWork(h))
+                    || blockedByStableReservation) {
                 deferred.addLast(new DeferredRunnable() {
                     @Override
                     public void runWithOperationFuture() {
@@ -423,6 +428,16 @@ public final class LayoutWriteCoordinator {
                 activeOrganizerToken.set(previous);
             }
         }
+    }
+
+    @GuardedBy("lock")
+    private boolean hasStableModelWriterReservation() {
+        for (DeferredRunnable entry : deferred) {
+            if (entry instanceof ModelWriterReservation) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // Issue #58 audit: only organizer and restore-family leases defer tokenless work.

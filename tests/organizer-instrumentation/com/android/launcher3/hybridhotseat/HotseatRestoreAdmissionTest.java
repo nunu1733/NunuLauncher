@@ -229,6 +229,78 @@ public class HotseatRestoreAdmissionTest {
     }
 
     @Test
+    public void createBackupReservationBlocksMigrationPostedBeforeHolderAppears()
+            throws Exception {
+        ItemInfo migrationItem = addTestHotseatItem();
+        int backupRank = migrationItem.rank;
+        int migratedRank = backupRank + 1;
+        CountDownLatch executorReached = new CountDownLatch(1);
+        CountDownLatch releaseExecutor = new CountDownLatch(1);
+        AtomicBoolean executorWaitFailed = new AtomicBoolean();
+        MODEL_EXECUTOR.execute(() -> {
+            executorReached.countDown();
+            try {
+                if (!releaseExecutor.await(15, TimeUnit.SECONDS)) {
+                    executorWaitFailed.set(true);
+                }
+            } catch (InterruptedException e) {
+                executorWaitFailed.set(true);
+                Thread.currentThread().interrupt();
+            }
+        });
+        assertTrue("MODEL_EXECUTOR did not reach the deterministic pre-holder gate",
+                executorReached.await(15, TimeUnit.SECONDS));
+
+        LayoutWriteCoordinator coordinator = LayoutWriteCoordinator.getInstance();
+        LayoutWriteCoordinator.Lease organizer = null;
+        AtomicBoolean exactCorrelatedWorkCompleted = new AtomicBoolean();
+        try {
+            // Both writes are submitted while current is empty. The second one must see the
+            // backup reservation barrier instead of directly posting to MODEL_EXECUTOR.
+            HotseatRestoreHelper.createBackup(context);
+            migrationItem.rank = migratedRank;
+            model.getWriter(false, CellPosMapper.DEFAULT, null).moveItemInDatabase(
+                    migrationItem,
+                    migrationItem.container,
+                    migrationItem.screenId,
+                    migrationItem.cellX,
+                    migrationItem.cellY);
+            assertEquals("stable backup reservation must block later tokenless ModelWriter post", 2,
+                    coordinator.pendingDeferredCount());
+
+            organizer = coordinator.tryAcquire(LayoutWriteCoordinator.OwnerKind.ORGANIZER);
+            assertNotNull(organizer);
+            releaseExecutor.countDown();
+            awaitModelExecutor();
+            assertFalse("MODEL_EXECUTOR gate timed out", executorWaitFailed.get());
+            assertEquals("busy backup and later migration remain FIFO-ordered", 2,
+                    coordinator.pendingDeferredCount());
+            assertEquals("later migration must not execute or block before organizer release",
+                    backupRank, rankInTable(TABLE_NAME, migrationItem.id));
+
+            final LayoutWriteCoordinator.Lease exactOrganizer = organizer;
+            MODEL_EXECUTOR.submit(() -> coordinator.runOrDefer(
+                    LayoutWriteCoordinator.OwnerKind.MODEL_WRITER,
+                    exactOrganizer.token(),
+                    true,
+                    () -> exactCorrelatedWorkCompleted.set(true))).get(15, TimeUnit.SECONDS);
+            assertTrue("exact-token correlated work must progress before organizer release",
+                    exactCorrelatedWorkCompleted.get());
+        } finally {
+            releaseExecutor.countDown();
+            if (organizer != null) {
+                organizer.close();
+            }
+        }
+        awaitModelExecutor();
+
+        assertEquals("backup must retain the rank from before ModelWriter migration", backupRank,
+                rankInTable(HYBRID_HOTSEAT_BACKUP_TABLE, migrationItem.id));
+        assertEquals("migration must update Favorites only after backup completes", migratedRank,
+                rankInTable(TABLE_NAME, migrationItem.id));
+    }
+
+    @Test
     public void createBackupReservationBlocksMigrationAcrossHolderReacquisition()
             throws Exception {
         ItemInfo migrationItem = addTestHotseatItem();
