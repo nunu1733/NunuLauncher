@@ -242,9 +242,11 @@ is required.
 > Follow-up date: 2026-08-27
 > Scope: tokenless Hybrid Hotseat DB work that previously posted directly to
 > `MODEL_EXECUTOR` and could synchronously wait on an external coordinator lease
-> Implementation status: **implemented**. API 36 connected instrumentation and
-> fresh-workspace device evidence completed on 2026-08-27; remote CI and the
-> independent high-risk audit remain merge prerequisites.
+> Implementation status: **implemented**. The 2026-08-27 implementation review
+> added and resolved the `createBackup` call-time ordering requirement; API 36
+> connected instrumentation and fresh-workspace device evidence completed on the
+> rebased branch. Remote CI and the independent high-risk audit remain merge
+> prerequisites.
 
 Issue #156 found a writer path that the historical Issue #60 inventory did not
 scan: `quickstep/src/com/android/launcher3/hybridhotseat/HotseatRestoreHelper.java`.
@@ -254,14 +256,18 @@ an organizer or restore-family lease was held, the transaction's fallback
 could synchronously wait and starve the correlated organizer reload.
 
 The corrective source change preserves the single `LayoutWriteCoordinator`
-serialization seam. `HotseatRestoreHelper` now schedules its DB body through
-`runModelWriterOrDefer`. That operation makes one monitor-protected decision:
+serialization seam. `HotseatRestoreHelper` now first reserves call-time FIFO position through the
+existing tokenless `runOrDefer` path, then schedules the body through
+`runModelWriterOrDefer`. The reservation preserves `createBackup()` before the
+following Hotseat migration `ModelWriter` write whenever an organizer or
+restore-family holder already exists. Its callback only posts to
+`MODEL_EXECUTOR`; it never performs Hotseat DB work on the lease-releasing
+thread. The execution-time operation then makes one monitor-protected decision:
 it grants an outer `MODEL_WRITER` lease and runs the body, including the
 existing same-thread transaction reentry, or it appends a continuation that
-reposts the same atomic admission attempt to `MODEL_EXECUTOR`. A deferred
-callback never performs Hotseat DB work on the lease-releasing thread. This
-closes both the already-held-holder case and the race where a holder appears
-after scheduling but before the model executor begins admission.
+reposts the same atomic admission attempt to `MODEL_EXECUTOR`. This closes
+both call-time backup reordering and the race where a holder appears after
+scheduling but before the model executor begins admission.
 
 The executable inventory now scans `src`, `quickstep/src`, and
 `lawnchair/src`; its bounded `dbController` receiver pattern covers both
@@ -308,14 +314,14 @@ boundary while keeping the inventory fail-closed.
 | `spotlessCheck` | Passed when run as a standalone `--no-configuration-cache` invocation. Combining it with Android compile/instrumentation tasks triggers an unrelated Gradle implicit-dependency validation error. |
 | Organizer and full JVM suites | Passed: focused organizer gate and `testLawnWithQuickstepGithubDebugUnitTest --rerun-tasks`. |
 | Compile and APK | Passed: Android-test Java compile and `assembleLawnWithQuickstepGithubDebug`. |
-| Focused Hotseat instrumentation | Passed: 8 tests in `HotseatRestoreAdmissionTest`. |
-| Shared-writer regression | Passed: 21 tests across Hotseat, coordinator, and reload-supersession classes. |
+| Focused Hotseat instrumentation | Passed: 10 tests in `HotseatRestoreAdmissionTest` on the rebased head. The new case creates a fixture with actual `ModelWriter`, holds `ORGANIZER`, invokes `createBackup`, then submits the migration. It asserts that the backup-table rank is pre-migration while Favorites receives the migration rank. |
+| Shared-writer regression | Passed: 23 tests across Hotseat, coordinator, and reload-supersession classes on the rebased head. |
 
 For fresh-workspace evidence, the debug launcher was installed on the isolated
 emulator, its package data was cleared, and it was temporarily assigned the
 HOME role. The review displayed 15 targets over two pages. Explicit apply
-confirmation produced the `Deferring atomic MODEL_WRITER runnable; queue size=1`
-log, followed by `APPLY_RECOVERED stage=A7 err=APPLY_FAILURE.VERIFICATION_FAILED`.
+confirmation produced two `Deferring tokenless runnable` logs, followed by
+`APPLY_RECOVERED stage=A7 err=APPLY_FAILURE.VERIFICATION_FAILED`.
 After more than the ten-second starvation window, `MODEL_RELOAD_FAILED` had zero
 logcat matches and UI truthfully reported that the previous layout was restored.
 The emulator HOME role was restored to `com.google.android.apps.nexuslauncher`

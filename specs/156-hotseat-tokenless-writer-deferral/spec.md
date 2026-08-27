@@ -1,6 +1,6 @@
 ---
 issue: "#156"
-status: accepted
+status: implemented
 requirements:
   - AC-156-01-atomic-hotseat-admission
   - AC-156-02-race-safe-correlated-reload-progress
@@ -216,7 +216,7 @@ messageも変更しない。
 - [x] **AC-156-04**: coordinator競合がない場合、`createBackup` はbackup table作成とcache refreshを、`restoreBackup` は既存restoreと通常reloadを保持する。新たな例外、busy結果、public product API、schema変更を導入しない。
 - [x] **AC-156-05**: executable writer inventoryは `quickstep/src` を監査対象とし、Hotseat helperのtransaction経路を明示的なlease/admission理由とともにallowlistで管理する。inventoryの責務はwriter存在・allowlist登録の検出とし、atomic gateが除去されていないことはAC-156-01/02のfocused testが担保する。
 - [x] **AC-156-06**: fresh default workspaceでのmanual apply/recoveryのdevice evidenceは、recovery legがtokenless Hotseat taskにより10秒の `MODEL_RELOAD_FAILED` timeoutへ至らないことを示す。#155のlayout-overlap結果は別原因として併記する。
-- [ ] **AC-156-07**: `ORGANIZER` またはrestore-family leaseの下で、`createBackup()`、後続のHotseat migration `ModelWriter` write、holder解放を順に行うdeterministic regressionにおいて、backupのDB bodyは後続migration mutationより先に一度だけ実行される。backup reservation callbackはDB bodyをlease-releasing thread上でinline実行せず、実行時atomic admissionを再評価する。
+- [x] **AC-156-07**: `ORGANIZER` またはrestore-family leaseの下で、`createBackup()`、後続のHotseat migration `ModelWriter` write、holder解放を順に行うdeterministic regressionにおいて、backupのDB bodyは後続migration mutationより先に一度だけ実行される。backup reservation callbackはDB bodyをlease-releasing thread上でinline実行せず、実行時atomic admissionを再評価する。
 
 ## Test oracle
 
@@ -258,3 +258,4 @@ admission原因である場合のみ本Issueに追加する。その他のpath�
 - 2026-08-27: Re-reviewに対応。transaction seamをPlanと整合させ、outer MODEL_WRITER leaseの下で既存 `newTransaction()` のsame-thread reentryを用いること、新しい `ModelDbController` / `SQLiteTransaction` overloadを追加しないことを明記した。Reviewの受入判断によりstatusを `accepted` へ遷移した。
 - 2026-08-27: JDK 21 / Android SDK Platform 36.1 / Build Tools 36.1.0 / API 36 emulatorで、focused Hotseat suite（8 tests）とshared-writer回帰（21 tests）を実行して成功した。uncontended `createBackup`、backup tableなしの`restoreBackup`、既存backupの`restoreBackup`、atomic race、re-defer、例外release、same-thread reentry、exact-token correlated reloadのpre-release `COMPLETED` を確認した。fresh default workspaceではHotseat atomic deferral後に`MODEL_RELOAD_FAILED`を観測せず、A7 verification failureからprevious layout restoredへ進んだ。#155はOpenであり、このlayout verification failureは#156のtimeout解消と区別する。全ACを実装済みとしてstatusを `implemented` へ遷移した。
 - 2026-08-27: Implementation reviewのblocking指摘に対応。外部holder下で`createBackup`が後続Hotseat migration `ModelWriter` writeより後にFIFOへ入るordering regressionを確認した。呼出し時FIFO reservationと実行時atomic admissionを両立するAC-156-07を追加し、再検証が完了するまでstatusを `accepted` へ戻した。
+- 2026-08-27: `createBackup`を呼出し時の`runOrDefer` FIFO reservationと実行時`runModelWriterOrDefer`に分け、backup-before-migrationの順序を復元した。API 36 instrumentationで、実`ModelWriter`が書き込むFavorites rankよりbackup tableのrankが先行stateであることを確認し、focused suite（10 tests）とshared-writer suite（23 tests）を成功させた。最新`main`へのrebase後にfresh default workspaceを再検証し、tokenless deferralを観測しつつ`MODEL_RELOAD_FAILED`は0件だった。AC-156-07を含む全ACが実装済みのためstatusを `implemented` へ遷移した。

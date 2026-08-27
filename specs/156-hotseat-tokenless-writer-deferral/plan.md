@@ -307,7 +307,7 @@ retain shared-writer coordinator/reload coverage:
 
 ## Documentation updates
 
-- [x] Update this `spec.md` status/history when reviewed; update to `implemented` only after AC-156-07 is verified. Merge状態はPR merge後に記録する。
+- [x] Update this `spec.md` status/history when reviewed and implemented; AC-156-07のrebased-head検証結果を記録済み。Merge状態はPR merge後に記録する。
 - [x] Update `docs/assessment/issue-60-executor-writer-admission-audit.md` inventory table/count, atomic-admission reason, and any separately tracked non-identical finding.
 - [ ] Keep `CONTEXT.md` unchanged: no domain-language change.
 - [ ] Keep `DESIGN.md` unchanged unless implementation reveals a conflict with an existing serialization invariant.
@@ -330,9 +330,11 @@ SDK-independent checks passed on the implementation worktree before handoff:
 | `python3 tools/repo-contract/test_validate_high_risk_evidence.py` | Passed: 47 tests. |
 
 The connected environment ran the API 36 shared-writer command in this Plan, together with the
-required `spotlessCheck`, unit, assemble, and fresh-default-workspace device flows. The final
-commit SHA is recorded in the Issue/PR evidence; a successful remote CI run remains required
-before merge but does not block the local `implemented` state.
+required `spotlessCheck`, unit, assemble, and fresh-default-workspace device flows. Following
+implementation review, the branch was rebased onto latest `origin/main` and AC-156-07 was
+validated on the rebased head. The final commit SHA is recorded in the Issue/PR evidence; a
+successful remote CI run remains required before merge but does not block the local
+`implemented` state.
 
 ## Connected-environment implementation evidence (2026-08-27)
 
@@ -348,14 +350,14 @@ Issue #156 branch; the final source state is committed after these results are r
 | Full JVM regression | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --rerun-tasks` | Passed. |
 | Android test compilation | `./gradlew compileLawnWithQuickstepGithubDebugAndroidTestJavaWithJavac` | Passed. |
 | Debug APK | `./gradlew assembleLawnWithQuickstepGithubDebug` | Passed. |
-| Focused Hotseat suite | `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest` | Passed: 8 tests. This includes real uncontended `createBackup`, backup-absent `restoreBackup`, and backup-present/drop-after-use `restoreBackup`, as well as atomic race, re-defer, exception release, and exact-token reload tests. |
-| Shared-writer regression | Command at lines 267–269 | Passed: 21 tests. |
+| Focused Hotseat suite | `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest` | Passed: 10 tests on the rebased head. This includes real uncontended `createBackup`, backup-absent `restoreBackup`, backup-present/drop-after-use `restoreBackup`, atomic race, re-defer, exception release, exact-token reload, and actual ModelWriter backup-before-migration ordering. |
+| Shared-writer regression | Command at lines 293–294 | Passed: 23 tests on the rebased head. |
 | Writer inventory / contracts | `python3 tools/repo-contract/validate_writer_inventory.py`; repository-contract validator and both self-tests | Passed before connected handoff: 19 allowlisted writer files / 1,437 scanned sources / 0 errors / 0 warnings; 47 high-risk self-tests. |
 
 For fresh-workspace evidence, the debug launcher was installed on the isolated emulator,
 its package data was cleared, and it was temporarily assigned the HOME role. The initial
 review covered 15 targets over two pages; after the explicit apply confirmation, logcat
-recorded `Deferring atomic MODEL_WRITER runnable; queue size=1` and terminal
+recorded two call-time `Deferring tokenless runnable` entries and terminal
 `APPLY_RECOVERED stage=A7 err=APPLY_FAILURE.VERIFICATION_FAILED`. After more than the
 10-second starvation window, `MODEL_RELOAD_FAILED` had **zero** logcat occurrences and
 UI stated that the previous layout was restored. The original HOME role
@@ -381,13 +383,13 @@ recovery terminated without `MODEL_RELOAD_FAILED`, and the prior layout was rest
 ## Execution checklist
 
 - [ ] Empty-gate→organizer-acquired→executor-start reproducer is red on the legacy direct transaction path.
-- [x] Re-review accepted `spec.md`; implementation review added AC-156-07 and returns status to `accepted` pending its evidence.
-- [x] Atomic lease-or-defer operation grants/reenters or FIFO-registers in one coordinator critical section; prior API 36 test coverage is green.
-- [ ] `createBackup` reserves call-time FIFO order before following migration ModelWriter work, while its release callback posts rather than executes DB work.
+- [x] Re-review accepted `spec.md`; implementation review added AC-156-07, whose evidence is now complete on the rebased head.
+- [x] Atomic lease-or-defer operation grants/reenters or FIFO-registers in one coordinator critical section; final API 36 test coverage is green.
+- [x] `createBackup` reserves call-time FIFO order before following migration ModelWriter work, while its release callback posts rather than executes DB work; actual ModelWriter DB-rank assertion is green.
 - [x] Both helper methods use the one internal atomic admission route; real uncontended helper work is green.
-- [x] Race test is green post-fix and exact correlated reload completes before explicit organizer-lease release (prior API 36 instrumentation; rerun on final head).
-- [x] Uncontended, missing-table, existing-backup/drop-after-use, exception, re-defer, and exactly-once behaviors pass (prior API 36 instrumentation; rerun on final head).
+- [x] Race test is green post-fix and exact correlated reload completes before explicit organizer-lease release on the final head.
+- [x] Uncontended, missing-table, existing-backup/drop-after-use, exception, re-defer, and exactly-once behaviors pass on the final head.
 - [x] quickstep writer-inventory coverage and allowlist entry are green; the expanded scan found no non-identical additional writer.
-- [x] Focused and full relevant lint/build/unit/instrumentation checks pass on Android SDK 36.1 / Build Tools 36.1.0.
-- [x] Fresh-workspace device evidence separates #156 timeout resolution from #155 layout-overlap behavior: atomic deferral occurred and `MODEL_RELOAD_FAILED` was absent, while A7 `VERIFICATION_FAILED` restored the prior layout.
+- [x] Focused and full relevant lint/build/unit/instrumentation checks pass on Android SDK 36.1 / Build Tools 36.1.0 after rebase.
+- [x] Fresh-workspace device evidence after rebase separates #156 timeout resolution from #155 layout-overlap behavior: call-time deferral occurred and `MODEL_RELOAD_FAILED` was absent, while A7 `VERIFICATION_FAILED` restored the prior layout.
 - [ ] Independent high-risk audit, exact-head CI, and PR evidence are recorded.
