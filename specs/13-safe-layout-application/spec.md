@@ -9,7 +9,7 @@ requirements:
   - NFR-007
   - NFR-011
   - NFR-012
-updated: 2026-08-11
+updated: 2026-08-27
 ---
 
 # Safe layout application and recovery contract
@@ -90,7 +90,9 @@ The public values are closed and platform-free:
 ```text
 LayoutState(pages: List<PageState>, profiles: List<ProfileState>,
             deviceCapabilities: DeviceCapabilities,
-            items: List<CanonicalItemState>)
+            items: List<CanonicalItemState>,
+            reservedWorkspaceRegions: List<ReservedWorkspaceRegion>)
+ReservedWorkspaceRegion(page: PageRef, cell: GridCell, span: GridSpan)
 ApplicationPageRef = PersistentPage(PageId) | PlannedPage(NewPageOrdinal)
 PageState(ref: ApplicationPageRef, order: PageOrder)
 ProfileAvailability = AVAILABLE | UNAVAILABLE
@@ -174,12 +176,31 @@ write or verification changes, including:
 - workspace placement, span, rank, ordered pages, and device capabilities;
 - folder/app-pair identity, exact membership, stage, and snap metadata;
 - widget provider, widget ID, bind/restore state, and profile;
-- lock state and its ownership metadata; and
+- lock state and its ownership metadata;
+- every platform-owned reserved workspace region, including its page/cell/span;
+  and
 - the full profile inventory, including addition/removal of a profile with no
   current Favorites rows.
 
 `LauncherModel.getLastLoadId()` alone cannot meet this contract: it tracks
 loader generations, not all database or device-state mutations.
+
+### Platform-owned workspace context
+
+A capture attempt snapshots the normalized Launcher workspace page authority and
+any platform-owned workspace reservations once, before its canonical state and
+persistence manifest are constructed. The same immutable snapshot must be used
+losslessly in `LayoutState`, the capture revision, every exact precondition, and
+the manifest's Preserve-only context resource. A rowless logical first page is a
+valid page when Launcher authority supplies it; it is not represented by a
+synthetic `favorites` row. At A2/A5/A7, a changed page authority, reservation
+enabled state, page, cell, or span is stale/exact-precondition failure and causes
+no write. Reservations do not become `ApplyAction`s or persistent rows.
+
+When assigning a plan-local page identity, the adapter reserves every captured
+persistent page identity, including a rowless logical first page, before choosing
+the next deterministic unused identity. A planned page may therefore never
+collide with `Workspace.FIRST_SCREEN_ID` merely because no desktop row existed.
 
 ### Recovery input
 
@@ -262,12 +283,12 @@ in-memory plan:
 | Data | Purpose |
 |---|---|
 | Recovery format version, ID, run ID, creation time | Discovery and compatibility. |
-| Complete canonical pre-state persistence manifest | Exact restoration of every schema-33 `favorites` row, including lock state. It also deterministically records profile inventory/availability and device capabilities as externally owned, Preserve-only context. Persistent desktop page membership/order is reconstructed from rows; model-only empty pages are excluded. |
+| Complete canonical pre-state persistence manifest | Exact restoration of every schema-33 `favorites` row, including lock state. It also deterministically records profile inventory/availability, device capabilities, normalized logical page authority, and platform-owned reservations as externally owned, Preserve-only context. A rowless logical first page may be represented only by this context; no synthetic row is created. |
 | Pre-state `RevisionId` and integrity digest | Detect unchanged/rolled-back layout and checkpoint corruption. |
 | Complete intended canonical post-state or equivalent lossless write intent | Reconstruct intended placements after process death. |
 | Intended post-state digest and action-set digest | Distinguish exact post-state from an unrecognized state. |
 | During recovery, the reviewed current-state manifest/digest, complete recovery action-set digest, and prior lifecycle state | Reconcile a death or uncertain commit while `RESTORING` without relying on process memory. |
-| Row/context-resource count and checksum | Read-after-write validation. Context resources are exact precondition and verification inputs, never mutation targets. |
+| Row/context-resource count and checksum | Read-after-write validation. Context resources are exact precondition and verification inputs, never mutation targets. Recovery may accept a row-derived logical page-list difference only when the platform reservation constraints remain byte-for-byte equivalent; reservation state/geometry changes are stale. |
 | Lifecycle state | Total restart reconciliation. |
 
 Lifecycle states are:
@@ -309,6 +330,18 @@ unsupported version -> INCOMPATIBLE
 The recovery DB lifecycle update and Launcher DB commit are intentionally not a
 distributed transaction. If a process dies between them, reconciliation uses
 the authoritative Launcher state and the stored pre/post digests.
+
+#### Reservation-aware recovery format compatibility
+
+Recovery format v2 adds the opaque platform-owned workspace context required by
+Issue #155. A v1 record cannot be reinterpreted with a synthetic reservation,
+revision, or digest: any v1 store with an active, verified, or restorable point,
+or an unexpired tombstone, is read-only incompatible and causes no Launcher or
+recovery DB mutation. Only an otherwise empty v1 store after expired tombstones
+have completed retention may atomically advance its recovery DB format to v2.
+A v1 reader encountering v2 similarly treats it as incompatible through its
+read-only version gate. These decisions are independent of `favorites` schema
+and never rewrite the Launcher layout.
 
 ### Retention
 
@@ -363,8 +396,10 @@ placement checks or by an in-process mutex.
 
 New pages have no baseline database record. Their unique screen IDs are only
 referenced by committed item rows. Multiple pages/folders in one plan receive
-distinct, deterministic, in-range IDs. Failed preflight or rollback leaves no
-externally visible reservation; allocator mechanics remain private.
+distinct, deterministic, in-range IDs that do not collide with any captured
+persistent page, including a rowless logical first page. Failed preflight or
+rollback leaves no externally visible reservation; allocator mechanics remain
+private.
 
 ### Transaction outcome classification
 
@@ -413,8 +448,11 @@ Recovery is an explicit, revision-bound application operation:
    an external layout writer returns `WriterBusy`; no recovery state changes.
 3. Start a Launcher DB write transaction. Inside it, re-read the full current
    `RevisionId`; it must equal `RecoveryRequest.expectedCurrentRevision`.
-4. Compare the current canonical row/context manifest with the checkpoint. Context resources
-   must match exactly and produce Preserve-only actions; otherwise reject before `RESTORING`.
+4. Compare the current canonical row/context manifest with the checkpoint. Context
+   resources produce Preserve-only actions; immutable platform reservation
+   constraints must match exactly. A recovery write may change only the
+   row-derived logical page list needed to restore rows. Otherwise reject before
+   `RESTORING`.
    Then compute the mutable recovery write-set. Every current `favorites` row is
    explicitly preserved, updated, inserted, or deleted. Deletion is allowed
    only because the confirmed recovery request accounts for that exact current

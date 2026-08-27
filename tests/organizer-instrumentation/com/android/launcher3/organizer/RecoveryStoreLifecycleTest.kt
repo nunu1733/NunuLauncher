@@ -10,6 +10,7 @@ import app.lawnchair.organizer.application.protocol.RunMutex
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.store.RecoveryDbSchema
+import app.lawnchair.organizer.application.store.RecoveryDbVersionGate
 import app.lawnchair.organizer.application.store.RecoveryStore
 import app.lawnchair.organizer.application.store.RecoveryInspectionSnapshotReader
 import app.lawnchair.organizer.application.store.RecoveryStoreFaultPort
@@ -101,6 +102,51 @@ class RecoveryStoreLifecycleTest {
         assertTrue(store.listNonFinalRecords().isEmpty())
         assertTrue(before.contentEquals(file.readBytes()))
         context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+    }
+
+    @Test
+    fun legacyV1LifecycleMatrixRemainsIncompatibleWithoutMutation() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val lifecycles = listOf(
+            LifecycleState.CREATING,
+            LifecycleState.READY,
+            LifecycleState.APPLYING,
+            LifecycleState.COMMITTED_UNVERIFIED,
+            LifecycleState.RESTORING,
+            LifecycleState.VERIFIED,
+        )
+        lifecycles.forEachIndexed { index, lifecycle ->
+            deleteRecoveryArtifacts(context)
+            val file = context.getDatabasePath(RecoveryDbSchema.FILE_NAME)
+            createLegacyStoreWithPoint(context, lifecycle, index)
+            val before = file.readBytes()
+
+            val store = RecoveryStore(context) { 1_000L }
+
+            assertEquals("$lifecycle availability", RecoveryStorePort.StoreAvailability.INCOMPATIBLE_VERSION, store.availability())
+            assertTrue("$lifecycle legacy DB changed", before.contentEquals(file.readBytes()))
+            SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+                assertEquals(1L, android.database.DatabaseUtils.longForQuery(db, "PRAGMA user_version", null))
+                assertEquals(1L, android.database.DatabaseUtils.longForQuery(db, "SELECT COUNT(*) FROM recovery_points", null))
+            }
+        }
+    }
+
+    @Test
+    fun v2StoreIsRejectedByV1ReadOnlyGateWithoutMutation() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        deleteRecoveryArtifacts(context)
+        val store = RecoveryStore(context) { 1_000L }
+        prepareForMutation(store)
+        createCheckpointed(store)
+        val file = context.getDatabasePath(RecoveryDbSchema.FILE_NAME)
+        val before = file.readBytes()
+
+        assertEquals(
+            RecoveryDbVersionGate.VersionDecision.Incompatible(RecoveryDbSchema.FORMAT_VERSION),
+            RecoveryDbVersionGate.probeForFormat(file, 1),
+        )
+        assertTrue(before.contentEquals(file.readBytes()))
     }
 
     @Test
@@ -635,10 +681,27 @@ class RecoveryStoreLifecycleTest {
         return pointId
     }
 
+    private fun createLegacyStoreWithPoint(context: Context, lifecycle: LifecycleState, index: Int) {
+        createLegacyEmptyStore(context, tombstoneExpiresAt = null)
+        SQLiteDatabase.openDatabase(
+            context.getDatabasePath(RecoveryDbSchema.FILE_NAME).absolutePath,
+            null,
+            SQLiteDatabase.OPEN_READWRITE,
+        ).use { db ->
+            db.execSQL(
+                "INSERT INTO recovery_points (point_id, lifecycle) VALUES (?, ?)",
+                arrayOf<Any>("legacy-${index.toString().padStart(2, '0')}", lifecycle.ordinal),
+            )
+        }
+    }
+
     private fun createLegacyEmptyStore(context: Context, tombstoneExpiresAt: Long?) {
         val file = context.getDatabasePath(RecoveryDbSchema.FILE_NAME)
         SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
-            db.execSQL("CREATE TABLE recovery_points (point_id TEXT PRIMARY KEY NOT NULL)")
+            db.execSQL(
+                "CREATE TABLE recovery_points (" +
+                    "point_id TEXT PRIMARY KEY NOT NULL, lifecycle INTEGER NOT NULL)",
+            )
             db.execSQL(
                 "CREATE TABLE recovery_tombstones (" +
                     "point_id TEXT PRIMARY KEY NOT NULL, reason INTEGER NOT NULL, " +

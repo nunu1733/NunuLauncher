@@ -107,6 +107,10 @@ internal class RecoveryStore(
      * the same transaction as the PRAGMA update.
      */
     private fun migrateEmptyLegacyStore(): Boolean {
+        // A legacy point or retained tombstone must be rejected without a
+        // write-open. In particular, do not purge an expired tombstone from a
+        // v1 store that also contains an active/verified record.
+        if (!legacyStoreIsMigrationEligible()) return false
         val db = try {
             SQLiteDatabase.openDatabase(
                 versionGateFile.absolutePath,
@@ -119,11 +123,7 @@ internal class RecoveryStore(
         return try {
             db.beginTransaction()
             try {
-                db.delete(
-                    RecoveryDbSchema.TABLE_RECOVERY_TOMBSTONES,
-                    "expires_at_ms <= ?",
-                    arrayOf(clock().toString()),
-                )
+                val now = clock()
                 val points = DatabaseUtils.longForQuery(
                     db,
                     "SELECT COUNT(*) FROM ${RecoveryDbSchema.TABLE_RECOVERY_POINTS}",
@@ -131,18 +131,50 @@ internal class RecoveryStore(
                 )
                 val retainedTombstones = DatabaseUtils.longForQuery(
                     db,
-                    "SELECT COUNT(*) FROM ${RecoveryDbSchema.TABLE_RECOVERY_TOMBSTONES}",
-                    null,
+                    "SELECT COUNT(*) FROM ${RecoveryDbSchema.TABLE_RECOVERY_TOMBSTONES} WHERE expires_at_ms > ?",
+                    arrayOf(now.toString()),
                 )
-                if (points != 0L || retainedTombstones != 0L) {
-                    return false
-                }
+                if (points != 0L || retainedTombstones != 0L) return false
+                db.delete(
+                    RecoveryDbSchema.TABLE_RECOVERY_TOMBSTONES,
+                    "expires_at_ms <= ?",
+                    arrayOf(now.toString()),
+                )
                 db.execSQL("PRAGMA user_version = ${RecoveryDbSchema.FORMAT_VERSION}")
                 db.setTransactionSuccessful()
                 true
             } finally {
                 db.endTransaction()
             }
+        } catch (_: RuntimeException) {
+            false
+        } finally {
+            db.close()
+        }
+    }
+
+    private fun legacyStoreIsMigrationEligible(): Boolean {
+        val db = try {
+            SQLiteDatabase.openDatabase(
+                versionGateFile.absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READONLY,
+            )
+        } catch (_: android.database.sqlite.SQLiteException) {
+            return false
+        }
+        return try {
+            val points = DatabaseUtils.longForQuery(
+                db,
+                "SELECT COUNT(*) FROM ${RecoveryDbSchema.TABLE_RECOVERY_POINTS}",
+                null,
+            )
+            val retainedTombstones = DatabaseUtils.longForQuery(
+                db,
+                "SELECT COUNT(*) FROM ${RecoveryDbSchema.TABLE_RECOVERY_TOMBSTONES} WHERE expires_at_ms > ?",
+                arrayOf(clock().toString()),
+            )
+            points == 0L && retainedTombstones == 0L
         } catch (_: RuntimeException) {
             false
         } finally {

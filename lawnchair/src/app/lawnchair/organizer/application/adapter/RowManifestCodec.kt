@@ -145,7 +145,7 @@ internal object RowManifestCodec {
             val reservation = reservations[index]
             for (other in reservations.drop(index + 1)) {
                 require(
-                    reservation.page == other.page ||
+                    reservation.page != other.page ||
                         !rectanglesOverlap(reservation.cell, reservation.span, other.cell, other.span),
                 ) {
                     "Workspace reservations overlap"

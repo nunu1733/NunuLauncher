@@ -72,10 +72,6 @@ class ManualOrganizationProductionE2EInstrumentationTest {
         launcher = LauncherAppState.getInstance(context)
         preferenceManager = PreferenceManager2.getInstance(context)
         originalSmartspaceEnabled = preferenceManager.enableSmartspace.firstBlocking()
-        preferenceManager.enableSmartspace.setBlocking(true)
-        check(FeatureFlags.topQsbOnFirstScreenEnabled(context)) {
-            "Issue #155 E2E requires QSB on the first workspace screen"
-        }
         originalRows = snapshotFavorites()
         overridePreferences = context.getSharedPreferences(OVERRIDE_STORE, Context.MODE_PRIVATE)
         originalOverrides = overridePreferences.all
@@ -92,8 +88,18 @@ class ManualOrganizationProductionE2EInstrumentationTest {
 
         val db = launcher.model.modelDbController.db
         db.delete(Favorites.TABLE_NAME, null, null)
-        insertFixtureRow(db, 1, "Issue52 E2E A")
-        insertFixtureRow(db, 3, "Issue52 E2E B")
+        // Enable QSB only after preserving and clearing the original layout.
+        // This prevents the Loader from sanitizing a user's pre-test QSB-off
+        // first-screen row while the test preference is being changed.
+        preferenceManager.enableSmartspace.setBlocking(true)
+        check(FeatureFlags.topQsbOnFirstScreenEnabled(context)) {
+            "Issue #155 E2E requires QSB on the first workspace screen"
+        }
+        // These movable rows make page 0 the planner's preferred target. The
+        // old allocator selected (0,0); a reservation-aware plan must instead
+        // select a non-overlapping cell that survives the real A7 reload.
+        insertFixtureRow(db, 0, 1, "Issue155 E2E A")
+        insertFixtureRow(db, 0, 2, "Issue155 E2E B")
         launcher.model.modelDbController.clearEmptyDbFlag()
         // Drive the real LauncherModel loader directly. This is the same
         // production callback/reload seam used by the existing instrumentation
@@ -105,6 +111,12 @@ class ManualOrganizationProductionE2EInstrumentationTest {
     @After
     fun tearDown() {
         try {
+            // Restore the original QSB semantics before making original rows
+            // visible again. Otherwise the test's QSB-on Loader could delete
+            // a pre-test QSB-off item at the reserved first-screen cells.
+            if (::preferenceManager.isInitialized) {
+                preferenceManager.enableSmartspace.setBlocking(originalSmartspaceEnabled)
+            }
             restoreFavorites(originalRows)
             reloadAndWait()
             if (::overridePreferences.isInitialized) {
@@ -197,7 +209,17 @@ class ManualOrganizationProductionE2EInstrumentationTest {
                 },
         )
         val beforeIds = before.layoutState.items.mapNotNull { it.ref.itemId() }.toSet()
-        assertTrue(afterApply.layoutState.items.any { it.ref.itemId() !in beforeIds })
+        val insertedFolder = afterApply.layoutState.items.single { it.ref.itemId() !in beforeIds }
+        val folderPlacement = insertedFolder.placement as? PlacementState.Workspace
+            ?: error("Planner folder was not materialized on the workspace")
+        assertEquals(
+            app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage(qsbReservation.page.pageId),
+            folderPlacement.page,
+        )
+        assertTrue(
+            "The page-0 folder must be relocated away from the historical (0,0) QSB collision",
+            folderPlacement.cell.x >= qsbReservation.span.width || folderPlacement.cell.y >= qsbReservation.span.height,
+        )
 
         run.beginRecoveryPreview()
         assertTrue(run.state is ManualOrganizationRun.State.RecoveryPreview)
@@ -276,7 +298,12 @@ class ManualOrganizationProductionE2EInstrumentationTest {
         workspace.cell.y.toLong() < reservation.cell.y.toLong() + reservation.span.height.toLong() &&
         reservation.cell.y.toLong() < workspace.cell.y.toLong() + workspace.span.height.toLong()
 
-    private fun insertFixtureRow(db: android.database.sqlite.SQLiteDatabase, screen: Int, title: String) {
+    private fun insertFixtureRow(
+        db: android.database.sqlite.SQLiteDatabase,
+        screen: Int,
+        cellY: Int,
+        title: String,
+    ) {
         val id = launcher.model.modelDbController.generateNewItemId()
         val intent = Intent(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_LAUNCHER)
@@ -291,7 +318,7 @@ class ManualOrganizationProductionE2EInstrumentationTest {
                 put(Favorites.CONTAINER, Favorites.CONTAINER_DESKTOP)
                 put(Favorites.SCREEN, screen)
                 put(Favorites.CELLX, 0)
-                put(Favorites.CELLY, 0)
+                put(Favorites.CELLY, cellY)
                 put(Favorites.SPANX, 1)
                 put(Favorites.SPANY, 1)
                 put(Favorites.ITEM_TYPE, Favorites.ITEM_TYPE_APPLICATION)

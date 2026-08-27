@@ -182,14 +182,22 @@ internal class LauncherLayoutAdapter(
         var nextId = capture.manifest.rows.maxOfOrNull { it.rowId } ?: 0L
         val plannedIds = mutableMapOf<ApplicationItemRef, Long>()
         val plannedPages = mutableMapOf<ApplicationPageRef.PlannedPage, Long>()
-        // Hotseat rows also carry their slot in screenId since Issue #136; page
-        // numbering must stay scoped to committed desktop rows.
-        val maxPage = capture.manifest.rows
-            .filter { it.containerCode.value == Favorites.CONTAINER_DESKTOP }
-            .mapNotNull { it.screenId?.value?.toLongOrNull() }
-            .maxOrNull() ?: -1L
-        plan.intendedState.pages.map { it.ref }.filterIsInstance<ApplicationPageRef.PlannedPage>()
-            .sortedBy { it.ordinal.value }.forEachIndexed { index, ref -> plannedPages[ref] = maxPage + index + 1L }
+        // Hotseat rows also carry their slot in screenId since Issue #136. Page
+        // identities must be unique across both row-backed pages and logical
+        // rowless pages such as Launcher’s FIRST_SCREEN_ID (Issue #155).
+        val occupiedPageIds = capture.layoutState.pages.mapNotNull { page ->
+            (page.ref as? ApplicationPageRef.PersistentPage)?.pageId?.value?.toLongOrNull()
+        }.toMutableSet()
+        var nextPageId = (occupiedPageIds.maxOrNull() ?: -1L)
+        for (ref in plan.intendedState.pages.map { it.ref }.filterIsInstance<ApplicationPageRef.PlannedPage>()
+            .sortedBy { it.ordinal.value }) {
+            do {
+                if (nextPageId == Long.MAX_VALUE) return WriteSetPreparation.IdentityExhausted
+                nextPageId += 1L
+            } while (nextPageId in occupiedPageIds)
+            plannedPages[ref] = nextPageId
+            occupiedPageIds += nextPageId
+        }
         val rows = mutableListOf<PersistentRow>()
         try {
             // Allocate every planned item before materializing rows. A folder child
