@@ -49,11 +49,14 @@ import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.KindCode
 import app.lawnchair.organizer.planning.PageId
 import app.lawnchair.organizer.planning.ProfileId
+import app.lawnchair.organizer.planning.ReservedWorkspaceRegion
 import app.lawnchair.organizer.planning.TargetKey
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.LauncherModel
 import com.android.launcher3.LauncherSettings.Favorites
 import com.android.launcher3.OrganizerModelReloadAdapter
+import com.android.launcher3.WorkspaceLayoutManager.FIRST_SCREEN_ID
+import com.android.launcher3.config.FeatureFlags
 import com.android.launcher3.model.LayoutWriteCoordinator
 import com.android.launcher3.model.ModelDbController
 import com.android.launcher3.pm.UserCache
@@ -86,7 +89,8 @@ internal class LauncherLayoutAdapter(
     override fun recaptureDb(): CapturedSnapshot = capture()
 
     private fun capture(): CapturedSnapshot {
-        val pages = dbDesktopPageIds()
+        val context = captureWorkspaceContext()
+        val pages = dbDesktopPageIds(context.qsbEnabled)
         val userCache = UserCache.INSTANCE.get(appContext)
         val userManager = requireNotNull(appContext.getSystemService(UserManager::class.java)) {
             "UserManager unavailable; canonical profile availability cannot be captured"
@@ -104,7 +108,13 @@ internal class LauncherLayoutAdapter(
                 },
             )
         }.sortedBy { it.id }
-        val captured = RowManifestCodec.capture(controller.db, capabilities(), pages, profiles)
+        val captured = RowManifestCodec.capture(
+            db = controller.db,
+            capabilities = context.capabilities,
+            orderedPages = pages,
+            profileInventory = profiles,
+            reservedWorkspaceRegions = context.reservations,
+        )
         val revision = RevisionCalculator.revisionOf(captured.state)
         return CapturedSnapshot(
             captured.state,
@@ -114,18 +124,52 @@ internal class LauncherLayoutAdapter(
         )
     }
 
-    // Issue #14: deterministic desktop page inventory derived from committed
-    // favorites rows, ordered ascending. Model-only empty pages have no row and
-    // are therefore excluded by construction (spec "Recovery record and lifecycle").
-    private fun dbDesktopPageIds(): List<PageId> {
+    /**
+     * Issue #155: normalize the canonical page authority using the same first-screen
+     * fallback as Launcher model collection. The QSB feature value is captured before
+     * reading DB rows and is never read again within this capture attempt.
+     */
+    private fun dbDesktopPageIds(qsbEnabled: Boolean): List<PageId> {
         val sql = "SELECT DISTINCT ${Favorites.SCREEN} FROM ${Favorites.TABLE_NAME} " +
             "WHERE ${Favorites.CONTAINER} = ? ORDER BY ${Favorites.SCREEN}"
-        return controller.db.rawQuery(sql, arrayOf(Favorites.CONTAINER_DESKTOP.toString())).use { c ->
-            val pages = ArrayList<PageId>(c.count)
-            while (c.moveToNext()) pages += PageId(c.getLong(0).toString())
-            pages
-        }
+        val pages = controller.db.rawQuery(sql, arrayOf(Favorites.CONTAINER_DESKTOP.toString())).use { c ->
+            buildList {
+                while (c.moveToNext()) add(PageId(c.getLong(0).toString()))
+            }
+        }.toMutableList()
+        val firstScreen = PageId(FIRST_SCREEN_ID.toString())
+        // SQL preserves Launcher DB's numeric screen ordering. First screen is
+        // platform-authoritative and must lead whenever it is logical but rowless.
+        return buildList {
+            if (qsbEnabled || pages.isEmpty()) add(firstScreen)
+            addAll(pages.filterNot { it == firstScreen })
+        }.distinct()
     }
+
+    /** One immutable platform context shared by LayoutState and PersistenceManifest. */
+    private fun captureWorkspaceContext(): WorkspaceCaptureContext {
+        val idp = InvariantDeviceProfile.INSTANCE.get(appContext)
+        val capabilities = capabilities(idp)
+        val qsbEnabled = FeatureFlags.topQsbOnFirstScreenEnabled(appContext)
+        val reservations = if (qsbEnabled) {
+            listOf(
+                ReservedWorkspaceRegion(
+                    page = app.lawnchair.organizer.planning.PageRef(PageId(FIRST_SCREEN_ID.toString())),
+                    cell = GridCell(0, 0),
+                    span = GridSpan(idp.numSearchContainerColumns, 1),
+                ),
+            )
+        } else {
+            emptyList()
+        }
+        return WorkspaceCaptureContext(capabilities, qsbEnabled, reservations)
+    }
+
+    private data class WorkspaceCaptureContext(
+        val capabilities: DeviceCapabilities,
+        val qsbEnabled: Boolean,
+        val reservations: List<ReservedWorkspaceRegion>,
+    )
 
     override fun prepareApplyWriteSet(
         capture: CapturedSnapshot,
@@ -171,18 +215,11 @@ internal class LauncherLayoutAdapter(
             return WriteSetPreparation.InvalidPlan
         }
         val resolvedState = plan.intendedState.resolvePersistentReferences(plannedIds, plannedPages)
-        // Launcher schema 33 has no persistent empty-page table. The DB
-        // capture therefore reports only pages still referenced by desktop
-        // rows, so the post-apply canonical state must use that same inventory.
-        val referencedPages = rows.asSequence()
-            .filter { it.containerCode.value == Favorites.CONTAINER_DESKTOP }
-            .mapNotNull { it.screenId }
-            .toSet()
-        val materializedState = resolvedState.copy(
-            pages = resolvedState.pages.filter { page ->
-                (page.ref as? ApplicationPageRef.PersistentPage)?.pageId in referencedPages
-            },
-        )
+        // Issue #155: canonical capture also includes the Launcher-owned logical
+        // first page when QSB is enabled or the workspace is rowless. Keep the
+        // normalized page authority from the source/intended state rather than
+        // reducing it back to DB-backed pages after materialization.
+        val materializedState = resolvedState
         val intendedManifest = PersistenceManifest(
             capture.manifest.formatVersion,
             capture.manifest.schemaVersion,
@@ -372,8 +409,7 @@ internal class LauncherLayoutAdapter(
         }
     }
 
-    private fun capabilities(): DeviceCapabilities {
-        val idp = InvariantDeviceProfile.INSTANCE.get(appContext)
+    private fun capabilities(idp: InvariantDeviceProfile): DeviceCapabilities {
         // Spec #130: two-panel-ness must come from the same constructed
         // DeviceProfile authority the launcher UI uses; re-deriving it from a
         // raw flag would let capture diverge from the actual device state.

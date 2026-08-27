@@ -67,7 +67,7 @@ class RecoveryStoreLifecycleTest {
         context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
         val file = context.getDatabasePath(RecoveryDbSchema.FILE_NAME)
         SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
-            db.execSQL("PRAGMA user_version = 2")
+            db.execSQL("PRAGMA user_version = 3")
         }
         val before = file.readBytes()
         val store = RecoveryStore(context) { 1_000L }
@@ -78,6 +78,44 @@ class RecoveryStoreLifecycleTest {
         assertTrue(store.listNonFinalRecords().isEmpty())
         assertTrue(before.contentEquals(file.readBytes()))
         context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+    }
+
+    @Test
+    fun legacyV1StoreWithUnexpiredTombstoneRemainsIncompatibleWithoutMutation() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+        val file = context.getDatabasePath(RecoveryDbSchema.FILE_NAME)
+        createLegacyEmptyStore(context, tombstoneExpiresAt = 1_001L)
+
+        val store = RecoveryStore(context) { 1_000L }
+
+        assertEquals(RecoveryStorePort.StoreAvailability.INCOMPATIBLE_VERSION, store.availability())
+        SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            assertEquals(1L, android.database.DatabaseUtils.longForQuery(db, "PRAGMA user_version", null))
+            assertEquals(
+                1L,
+                android.database.DatabaseUtils.longForQuery(db, "SELECT COUNT(*) FROM recovery_tombstones", null),
+            )
+        }
+    }
+
+    @Test
+    fun legacyV1StoreWithOnlyExpiredTombstoneMigratesToV2() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+        val file = context.getDatabasePath(RecoveryDbSchema.FILE_NAME)
+        createLegacyEmptyStore(context, tombstoneExpiresAt = 999L)
+
+        val store = RecoveryStore(context) { 1_000L }
+
+        assertEquals(RecoveryStorePort.StoreAvailability.READY, store.availability())
+        SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            assertEquals(RecoveryDbSchema.FORMAT_VERSION.toLong(), android.database.DatabaseUtils.longForQuery(db, "PRAGMA user_version", null))
+            assertEquals(
+                0L,
+                android.database.DatabaseUtils.longForQuery(db, "SELECT COUNT(*) FROM recovery_tombstones", null),
+            )
+        }
     }
 
     @Test
@@ -572,6 +610,25 @@ class RecoveryStoreLifecycleTest {
         val pointId = createVerified(store)
         check(store.advance(pointId, LifecycleState.EXPIRED))
         return pointId
+    }
+
+    private fun createLegacyEmptyStore(context: Context, tombstoneExpiresAt: Long?) {
+        val file = context.getDatabasePath(RecoveryDbSchema.FILE_NAME)
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+            db.execSQL("CREATE TABLE recovery_points (point_id TEXT PRIMARY KEY NOT NULL)")
+            db.execSQL(
+                "CREATE TABLE recovery_tombstones (" +
+                    "point_id TEXT PRIMARY KEY NOT NULL, reason INTEGER NOT NULL, " +
+                    "format_version INTEGER NOT NULL, expires_at_ms INTEGER NOT NULL)",
+            )
+            tombstoneExpiresAt?.let { expiresAt ->
+                db.execSQL(
+                    "INSERT INTO recovery_tombstones (point_id, reason, format_version, expires_at_ms) VALUES (?, ?, ?, ?)",
+                    arrayOf("legacy-tombstone", 1, 1, expiresAt),
+                )
+            }
+            db.execSQL("PRAGMA user_version = 1")
+        }
     }
 
     private fun prepareForMutation(store: RecoveryStore) {

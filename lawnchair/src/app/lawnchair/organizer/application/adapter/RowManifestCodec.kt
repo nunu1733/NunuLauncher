@@ -43,11 +43,13 @@ import app.lawnchair.organizer.planning.PackageName
 import app.lawnchair.organizer.planning.PageId
 import app.lawnchair.organizer.planning.PageOrder
 import app.lawnchair.organizer.planning.ProfileId
+import app.lawnchair.organizer.planning.ReservedWorkspaceRegion
 import app.lawnchair.organizer.planning.ShortcutId
 import app.lawnchair.organizer.planning.SnapPositionToken
 import app.lawnchair.organizer.planning.SplitStage
 import app.lawnchair.organizer.planning.TargetKey
 import com.android.launcher3.LauncherSettings.Favorites
+import com.android.launcher3.WorkspaceLayoutManager.FIRST_SCREEN_ID
 
 /** Issue #14: the sole lossless schema-33 row/public-state conversion boundary. */
 internal object RowManifestCodec {
@@ -58,6 +60,7 @@ internal object RowManifestCodec {
         capabilities: DeviceCapabilities,
         orderedPages: List<PageId>,
         profileInventory: List<ProfileState>,
+        reservedWorkspaceRegions: List<ReservedWorkspaceRegion> = emptyList(),
     ): Capture {
         val rows = mutableListOf<PersistentRow>()
         db.query(Favorites.TABLE_NAME, null, null, null, null, null, "${Favorites._ID} ASC").use { c ->
@@ -69,7 +72,11 @@ internal object RowManifestCodec {
         require(orderedPages.toSet().containsAll(referencedPages)) {
             "Model page inventory omits a page referenced by favorites"
         }
-        val persistentPages = orderedPages.filter { it in referencedPages }
+        validateReservations(orderedPages, reservedWorkspaceRegions, rows, capabilities)
+        // Issue #155: only Launcher’s logical first page survives without a
+        // corresponding DB row. Other model-only empty pages remain outside
+        // the canonical DB capture contract.
+        val persistentPages = orderedPages.filter { it in referencedPages || it.value == FIRST_SCREEN_ID.toString() }
         val pages = persistentPages.mapIndexed { index, id ->
             PageState(ApplicationPageRef.PersistentPage(id), PageOrder(index))
         }
@@ -85,6 +92,7 @@ internal object RowManifestCodec {
             profileInventory,
             capabilities,
             rows.map { toCanonical(it, profileById.getValue(it.profileId), childrenByParent, kindById) },
+            reservedWorkspaceRegions,
         )
         return Capture(
             state,
@@ -93,11 +101,77 @@ internal object RowManifestCodec {
                 33,
                 rows.size,
                 rows,
-                ContextResourceCodec.encode(profileInventory, capabilities),
+                ContextResourceCodec.encode(
+                    profiles = profileInventory,
+                    capabilities = capabilities,
+                    pages = orderedPages,
+                    reservedWorkspaceRegions = reservedWorkspaceRegions,
+                ),
                 rows.maxOfOrNull { it.modified } ?: 0L,
             ),
         )
     }
+
+    private fun validateReservations(
+        pages: List<PageId>,
+        reservations: List<ReservedWorkspaceRegion>,
+        rows: List<PersistentRow>,
+        capabilities: DeviceCapabilities,
+    ) {
+        require(reservations.distinct().size == reservations.size) {
+            "Workspace reservations must be duplicate-free"
+        }
+        reservations.forEach { reservation ->
+            require(reservation.page.pageId in pages) {
+                "Workspace reservation references an unknown page"
+            }
+            require(reservation.span.width > 0 && reservation.span.height > 0) {
+                "Workspace reservation span must be positive"
+            }
+            require(
+                reservation.cell.x >= 0 && reservation.cell.y >= 0 &&
+                    reservation.cell.x.toLong() + reservation.span.width.toLong() <= capabilities.columns.toLong() &&
+                    reservation.cell.y.toLong() + reservation.span.height.toLong() <= capabilities.rows.toLong(),
+            ) {
+                "Workspace reservation is outside device bounds"
+            }
+        }
+        for (index in reservations.indices) {
+            val reservation = reservations[index]
+            for (other in reservations.drop(index + 1)) {
+                require(
+                    reservation.page == other.page ||
+                        !rectanglesOverlap(reservation.cell, reservation.span, other.cell, other.span),
+                ) {
+                    "Workspace reservations overlap"
+                }
+            }
+        }
+        rows.asSequence()
+            .filter { it.containerCode.value == Favorites.CONTAINER_DESKTOP }
+            .forEach { row ->
+                val page = requireNotNull(row.screenId)
+                val cell = requireNotNull(row.rawCell)
+                val span = requireNotNull(row.rawSpan)
+                require(
+                    reservations.none { reservation ->
+                        reservation.page.pageId == page && rectanglesOverlap(reservation.cell, reservation.span, cell, span)
+                    },
+                ) {
+                    "Workspace item overlaps a platform reservation"
+                }
+            }
+    }
+
+    private fun rectanglesOverlap(
+        aCell: GridCell,
+        aSpan: GridSpan,
+        bCell: GridCell,
+        bSpan: GridSpan,
+    ): Boolean = aCell.x.toLong() < bCell.x.toLong() + bSpan.width.toLong() &&
+        bCell.x.toLong() < aCell.x.toLong() + aSpan.width.toLong() &&
+        aCell.y.toLong() < bCell.y.toLong() + bSpan.height.toLong() &&
+        bCell.y.toLong() < aCell.y.toLong() + aSpan.height.toLong()
 
     fun values(row: PersistentRow): ContentValues = ContentValues().apply {
         put(Favorites._ID, row.rowId)

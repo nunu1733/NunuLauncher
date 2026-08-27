@@ -21,7 +21,9 @@ import app.lawnchair.organizer.planning.GridSpan
 import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.KindCode
 import app.lawnchair.organizer.planning.PageId
+import app.lawnchair.organizer.planning.PageRef
 import app.lawnchair.organizer.planning.ProfileId
+import app.lawnchair.organizer.planning.ReservedWorkspaceRegion
 import com.android.launcher3.LauncherSettings.Favorites
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -86,6 +88,9 @@ class RealAdapterRowMatrixInstrumentationTest {
             assertEquals(1, captured.manifest.resources.count {
                 it.kind == PersistentResourceKind.DEVICE_PROFILE
             })
+            assertEquals(1, captured.manifest.resources.count {
+                it.kind == PersistentResourceKind.WORKSPACE_RESERVATION
+            })
             captured.manifest.rows.forEach {
                 restored.insertOrThrow(Favorites.TABLE_NAME, null, RowManifestCodec.values(it))
             }
@@ -106,6 +111,32 @@ class RealAdapterRowMatrixInstrumentationTest {
         } finally {
             source.close()
             restored.close()
+        }
+    }
+
+    @Test
+    fun qsbReservationIsCapturedAsNonItemContextInStateAndManifest() {
+        val source = SQLiteDatabase.create(null)
+        try {
+            Favorites.addTableToDb(source, 10L, false)
+            val profiles = listOf(ProfileState(ProfileId("10"), ProfileAvailability.AVAILABLE))
+            val reservation = ReservedWorkspaceRegion(PageRef(PageId("0")), GridCell(0, 0), GridSpan(4, 1))
+
+            val captured = RowManifestCodec.capture(
+                source,
+                DeviceCapabilities(4, 5, 5, 4, 4, DeviceOrientation.PORTRAIT),
+                listOf(PageId("0")),
+                profiles,
+                listOf(reservation),
+            )
+
+            assertEquals(listOf(reservation), captured.state.reservedWorkspaceRegions)
+            val context = captured.manifest.resources.single { it.kind == PersistentResourceKind.WORKSPACE_RESERVATION }
+            assertTrue(context.payload.isNotEmpty())
+            assertEquals(1, captured.state.pages.size)
+            assertTrue(captured.state.items.isEmpty())
+        } finally {
+            source.close()
         }
     }
 

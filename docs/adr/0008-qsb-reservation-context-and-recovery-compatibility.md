@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 issue: "#155"
 updated: 2026-08-27
 ---

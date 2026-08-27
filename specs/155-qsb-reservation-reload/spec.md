@@ -1,6 +1,6 @@
 ---
 issue: "#155"
-status: draft
+status: accepted
 requirements:
   - FR-002
   - FR-004

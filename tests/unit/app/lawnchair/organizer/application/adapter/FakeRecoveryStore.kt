@@ -200,7 +200,7 @@ internal class FakeRecoveryStore(
             itemCount = payload.itemCount,
             resourceCount = payload.resourceCount,
             checksumValid = !checkpointValidateFails,
-            formatVersion = 1,
+            formatVersion = 2,
         )
         records[payload.pointId.value] = record
         // Advance CREATING -> READY in its own logical transaction.

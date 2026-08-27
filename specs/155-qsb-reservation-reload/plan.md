@@ -1,6 +1,6 @@
 > Issue: #155
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: accepted
 > Baseline: `main` / `7ba2194ce7`
 
 ## Current evidence
