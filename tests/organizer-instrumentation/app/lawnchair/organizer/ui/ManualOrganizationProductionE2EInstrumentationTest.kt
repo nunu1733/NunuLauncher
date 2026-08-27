@@ -14,7 +14,9 @@ import app.lawnchair.LawnchairLauncher
 import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
 import app.lawnchair.organizer.application.public.ApplyResult
+import app.lawnchair.organizer.application.public.PlacementState
 import app.lawnchair.organizer.application.public.OrganizerLockState
+import app.lawnchair.preferences2.PreferenceManager2
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
 import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.application.store.RecoveryDbSchema
@@ -25,7 +27,10 @@ import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings.Favorites
 import com.android.launcher3.model.BgDataModel
 import com.android.launcher3.pm.UserCache
+import com.android.launcher3.config.FeatureFlags
 import com.android.launcher3.util.IntSet
+import com.patrykmichalik.opto.core.firstBlocking
+import com.patrykmichalik.opto.core.setBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -50,6 +55,8 @@ class ManualOrganizationProductionE2EInstrumentationTest {
     private lateinit var context: Context
     private lateinit var launcher: LauncherAppState
     private lateinit var overridePreferences: android.content.SharedPreferences
+    private lateinit var preferenceManager: PreferenceManager2
+    private var originalSmartspaceEnabled: Boolean = false
     private var originalRows: List<ContentValues> = emptyList()
     private var originalOverrides: Map<String, *> = emptyMap<String, Any?>()
     private var reloadLatch: CountDownLatch? = null
@@ -63,6 +70,12 @@ class ManualOrganizationProductionE2EInstrumentationTest {
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         launcher = LauncherAppState.getInstance(context)
+        preferenceManager = PreferenceManager2.getInstance(context)
+        originalSmartspaceEnabled = preferenceManager.enableSmartspace.firstBlocking()
+        preferenceManager.enableSmartspace.setBlocking(true)
+        check(FeatureFlags.topQsbOnFirstScreenEnabled(context)) {
+            "Issue #155 E2E requires QSB on the first workspace screen"
+        }
         originalRows = snapshotFavorites()
         overridePreferences = context.getSharedPreferences(OVERRIDE_STORE, Context.MODE_PRIVATE)
         originalOverrides = overridePreferences.all
@@ -110,6 +123,9 @@ class ManualOrganizationProductionE2EInstrumentationTest {
                 }
             }
         } finally {
+            if (::preferenceManager.isInitialized) {
+                preferenceManager.enableSmartspace.setBlocking(originalSmartspaceEnabled)
+            }
             if (::launcher.isInitialized) {
                 InstrumentationRegistry.getInstrumentation().runOnMainSync {
                     launcher.model.removeCallbacks(modelCallbacks)
@@ -127,6 +143,7 @@ class ManualOrganizationProductionE2EInstrumentationTest {
             launcher.model,
         ).captureCurrent(app.lawnchair.organizer.application.protocol.CaptureId("issue52-before"))
         assertEquals(2, before.layoutState.items.size)
+        val qsbReservation = before.layoutState.reservedWorkspaceRegions.single()
 
         val module = LayoutApplicationModule.production(context, launcher)
         assertEquals(
@@ -168,6 +185,17 @@ class ManualOrganizationProductionE2EInstrumentationTest {
             launcher.model,
         ).captureCurrent(app.lawnchair.organizer.application.protocol.CaptureId("issue52-after-apply"))
         assertEquals(3, afterApply.layoutState.items.size)
+        assertEquals(listOf(qsbReservation), afterApply.layoutState.reservedWorkspaceRegions)
+        assertTrue(
+            "A7 reload must retain every planned workspace item outside the QSB reservation",
+            afterApply.layoutState.items
+                .mapNotNull { it.placement as? PlacementState.Workspace }
+                .none { workspace ->
+                    workspace.page == app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage(
+                        qsbReservation.page.pageId,
+                    ) && rectanglesOverlap(workspace, qsbReservation)
+                },
+        )
         val beforeIds = before.layoutState.items.mapNotNull { it.ref.itemId() }.toSet()
         assertTrue(afterApply.layoutState.items.any { it.ref.itemId() !in beforeIds })
 
@@ -239,6 +267,14 @@ class ManualOrganizationProductionE2EInstrumentationTest {
             snapshotFavorites(),
         )
     }
+
+    private fun rectanglesOverlap(
+        workspace: PlacementState.Workspace,
+        reservation: app.lawnchair.organizer.planning.ReservedWorkspaceRegion,
+    ): Boolean = workspace.cell.x.toLong() < reservation.cell.x.toLong() + reservation.span.width.toLong() &&
+        reservation.cell.x.toLong() < workspace.cell.x.toLong() + workspace.span.width.toLong() &&
+        workspace.cell.y.toLong() < reservation.cell.y.toLong() + reservation.span.height.toLong() &&
+        reservation.cell.y.toLong() < workspace.cell.y.toLong() + workspace.span.height.toLong()
 
     private fun insertFixtureRow(db: android.database.sqlite.SQLiteDatabase, screen: Int, title: String) {
         val id = launcher.model.modelDbController.generateNewItemId()

@@ -11,9 +11,11 @@ import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.store.RecoveryDbSchema
 import app.lawnchair.organizer.application.store.RecoveryStore
+import app.lawnchair.organizer.application.store.RecoveryInspectionSnapshotReader
 import app.lawnchair.organizer.application.store.RecoveryStoreFaultPort
 import app.lawnchair.organizer.planning.RevisionId
 import android.database.sqlite.SQLiteDatabase
+import java.io.File
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -27,7 +29,28 @@ import org.junit.runner.RunWith
 class RecoveryStoreLifecycleTest {
     @After
     fun cleanup() {
-        ApplicationProvider.getApplicationContext<Context>().deleteDatabase(RecoveryDbSchema.FILE_NAME)
+        deleteRecoveryArtifacts(ApplicationProvider.getApplicationContext())
+    }
+
+    private fun deleteRecoveryArtifacts(context: Context) {
+        val dbFile = context.applicationContext.getDatabasePath(RecoveryDbSchema.FILE_NAME)
+        listOf(
+            dbFile,
+            File("${dbFile.absolutePath}-journal"),
+            File("${dbFile.absolutePath}-wal"),
+            File("${dbFile.absolutePath}-shm"),
+        ).forEach { file ->
+            if (file.exists()) check(file.delete()) { "Unable to delete ${file.absolutePath}" }
+        }
+        File(
+            context.applicationContext.noBackupFilesDir,
+            RecoveryInspectionSnapshotReader.DIRECTORY_NAME,
+        ).let { directory ->
+            directory.listFiles()?.forEach { file ->
+                if (file.exists()) check(file.delete()) { "Unable to delete ${file.absolutePath}" }
+            }
+            directory.delete()
+        }
     }
 
     @Test
@@ -231,7 +254,7 @@ class RecoveryStoreLifecycleTest {
     fun preCommitFailuresReturnTypedResultAndLeaveDurableStateUnchanged() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         for (case in preCommitCases()) {
-            context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+            deleteRecoveryArtifacts(context)
             val store = RecoveryStore(
                 context,
                 { 1000L },
@@ -257,7 +280,7 @@ class RecoveryStoreLifecycleTest {
     fun postCommitAmbiguityReturnsTypedResultButDurableStateSurvives() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         for (case in postCommitCases()) {
-            context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+            deleteRecoveryArtifacts(context)
             val store = RecoveryStore(
                 context,
                 { 1000L },
@@ -624,7 +647,7 @@ class RecoveryStoreLifecycleTest {
             tombstoneExpiresAt?.let { expiresAt ->
                 db.execSQL(
                     "INSERT INTO recovery_tombstones (point_id, reason, format_version, expires_at_ms) VALUES (?, ?, ?, ?)",
-                    arrayOf("legacy-tombstone", 1, 1, expiresAt),
+                    arrayOf<Any>("legacy-tombstone", 1, 1, expiresAt),
                 )
             }
             db.execSQL("PRAGMA user_version = 1")

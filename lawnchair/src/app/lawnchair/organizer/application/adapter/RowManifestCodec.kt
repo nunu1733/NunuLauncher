@@ -72,11 +72,16 @@ internal object RowManifestCodec {
         require(orderedPages.toSet().containsAll(referencedPages)) {
             "Model page inventory omits a page referenced by favorites"
         }
-        validateReservations(orderedPages, reservedWorkspaceRegions, rows, capabilities)
-        // Issue #155: only Launcher’s logical first page survives without a
-        // corresponding DB row. Other model-only empty pages remain outside
-        // the canonical DB capture contract.
-        val persistentPages = orderedPages.filter { it in referencedPages || it.value == FIRST_SCREEN_ID.toString() }
+        // Issue #155: construct one normalized page snapshot before either
+        // canonical surface is built. A reservation retains its page even if
+        // it is otherwise rowless, so every LayoutState reservation is backed
+        // by a page and the manifest carries exactly the same page authority.
+        val persistentPages = orderedPages.filter { pageId ->
+            pageId in referencedPages ||
+                pageId.value == FIRST_SCREEN_ID.toString() ||
+                reservedWorkspaceRegions.any { it.page.pageId == pageId }
+        }.distinct()
+        validateReservations(persistentPages, reservedWorkspaceRegions, rows, capabilities)
         val pages = persistentPages.mapIndexed { index, id ->
             PageState(ApplicationPageRef.PersistentPage(id), PageOrder(index))
         }
@@ -104,7 +109,7 @@ internal object RowManifestCodec {
                 ContextResourceCodec.encode(
                     profiles = profileInventory,
                     capabilities = capabilities,
-                    pages = orderedPages,
+                    pages = persistentPages,
                     reservedWorkspaceRegions = reservedWorkspaceRegions,
                 ),
                 rows.maxOfOrNull { it.modified } ?: 0L,

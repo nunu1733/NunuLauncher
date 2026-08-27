@@ -215,17 +215,25 @@ internal class LauncherLayoutAdapter(
             return WriteSetPreparation.InvalidPlan
         }
         val resolvedState = plan.intendedState.resolvePersistentReferences(plannedIds, plannedPages)
-        // Issue #155: canonical capture also includes the Launcher-owned logical
-        // first page when QSB is enabled or the workspace is rowless. Keep the
-        // normalized page authority from the source/intended state rather than
-        // reducing it back to DB-backed pages after materialization.
-        val materializedState = resolvedState
+        // Issue #155: the post-write capture retains only row-backed pages plus
+        // the logical first screen. Apply the identical page normalization before
+        // deriving either intended canonical state or its opaque context resource.
+        val materializedState = normalizeMaterializedPages(resolvedState, rows)
+        val materializedPages = materializedState.pages.map { page ->
+            (page.ref as? ApplicationPageRef.PersistentPage)?.pageId
+                ?: error("Persistent references must be resolved before manifest creation")
+        }
         val intendedManifest = PersistenceManifest(
             capture.manifest.formatVersion,
             capture.manifest.schemaVersion,
             rows.size,
             rows.sortedBy { it.rowId },
-            capture.manifest.resources,
+            ContextResourceCodec.encode(
+                profiles = materializedState.profiles,
+                capabilities = materializedState.deviceCapabilities,
+                pages = materializedPages,
+                reservedWorkspaceRegions = materializedState.reservedWorkspaceRegions,
+            ),
             rows.maxOfOrNull { it.modified } ?: 0L,
         )
         return WriteSetPreparation.Ready(
@@ -452,6 +460,27 @@ internal fun canonicalOrientation(
     configurationOrientation == Configuration.ORIENTATION_LANDSCAPE -> DeviceOrientation.LANDSCAPE
 
     else -> DeviceOrientation.PORTRAIT
+}
+
+private fun normalizeMaterializedPages(
+    state: LayoutState,
+    rows: List<PersistentRow>,
+): LayoutState {
+    val referencedPages = rows.asSequence()
+        .filter { it.containerCode.value == Favorites.CONTAINER_DESKTOP }
+        .mapNotNull { it.screenId }
+        .toSet()
+    val reservationPages = state.reservedWorkspaceRegions.map { it.page.pageId }.toSet()
+    return state.copy(
+        pages = state.pages.filter { page ->
+            val persistent = page.ref as? ApplicationPageRef.PersistentPage
+            persistent != null && (
+                persistent.pageId in referencedPages ||
+                    persistent.pageId.value == FIRST_SCREEN_ID.toString() ||
+                    persistent.pageId in reservationPages
+                )
+        },
+    )
 }
 
 private fun LayoutState.resolvePersistentReferences(
