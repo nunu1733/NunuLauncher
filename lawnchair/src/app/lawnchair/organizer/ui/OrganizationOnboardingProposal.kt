@@ -138,8 +138,10 @@ internal class OrganizationOnboardingProposalContent(
 ) : LinearLayout(context) {
     val title = TextView(context).apply {
         setText(R.string.organization_onboarding_proposal_title)
-        textSize = 20f
-        // Issue #123: colors resolve from the activity theme so light/dark both render correctly.
+        // Issue #123: 22sp matches the M3 titleLarge TopAppBar title every Lawnchair
+        // settings screen renders; colors resolve from the activity theme so light/dark
+        // both render correctly.
+        textSize = 22f
         setTextColor(Themes.getAttrColor(context, android.R.attr.textColorPrimary))
         isFocusable = true
         isFocusableInTouchMode = true
@@ -283,7 +285,9 @@ internal class OrganizationOnboardingProposal(
                 setColor(Themes.getAttrColor(context, android.R.attr.colorBackground))
                 cornerRadius = resources.getDimensionPixelSize(R.dimen.default_dialog_corner_radius).toFloat()
             }
-            elevation = dp(8).toFloat()
+            // Issue #123: same elevation token as the launcher's own ArrowPopup so the
+            // proposal floats at the launcher's popup z-height.
+            elevation = resources.getDimension(R.dimen.deep_shortcuts_elevation)
 
             addView(
                 OrganizationOnboardingProposalContent(
