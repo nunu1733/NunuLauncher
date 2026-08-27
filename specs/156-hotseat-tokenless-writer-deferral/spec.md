@@ -1,6 +1,6 @@
 ---
 issue: "#156"
-status: accepted
+status: implemented
 requirements:
   - AC-156-01-atomic-hotseat-admission
   - AC-156-02-race-safe-correlated-reload-progress
@@ -186,12 +186,12 @@ messageも変更しない。
 
 ## Acceptance criteria
 
-- [ ] **AC-156-01**: `HotseatRestoreHelper.createBackup` と `restoreBackup` の各MODEL_EXECUTOR DB taskは、`LayoutWriteCoordinator` の同一critical sectionで、取得済みMODEL_WRITER leaseによるtransaction実行またはFIFOへのMODEL_EXECUTOR continuation登録のいずれかを完了する。tokenless helperは `acquireBlockingQuietly` を呼ばず、外部leaseをsynchronously waitしない。
-- [ ] **AC-156-02**: gate時にholder無し、executor実行直前に別threadがorganizer leaseを取得するdeterministic raceを含むinstrumentation scenarioで、helperはbusy FIFOへ退避し、exact-tokenの相関reloadがouter lease解放前に `COMPLETED` となる。sleepまたは10秒timeoutを成功oracleに使わない。
-- [ ] **AC-156-03**: deferされたHotseat continuationはholder解放後にMODEL_EXECUTORへ一度だけ再投入され、取得成功時にのみDB bodyを一度実行する。再投入とDB bodyの間に新たなholderが現れても再deferされ、task例外またはbackup table不在が後続FIFO drainを妨げない。
-- [ ] **AC-156-04**: coordinator競合がない場合、`createBackup` はbackup table作成とcache refreshを、`restoreBackup` は既存restoreと通常reloadを保持する。新たな例外、busy結果、public product API、schema変更を導入しない。
-- [ ] **AC-156-05**: executable writer inventoryは `quickstep/src` を監査対象とし、Hotseat helperのtransaction経路を明示的なlease/admission理由とともにallowlistで管理する。inventoryの責務はwriter存在・allowlist登録の検出とし、atomic gateが除去されていないことはAC-156-01/02のfocused testが担保する。
-- [ ] **AC-156-06**: fresh default workspaceでのmanual apply/recoveryのdevice evidenceは、recovery legがtokenless Hotseat taskにより10秒の `MODEL_RELOAD_FAILED` timeoutへ至らないことを示す。#155のlayout-overlap結果は別原因として併記する。
+- [x] **AC-156-01**: `HotseatRestoreHelper.createBackup` と `restoreBackup` の各MODEL_EXECUTOR DB taskは、`LayoutWriteCoordinator` の同一critical sectionで、取得済みMODEL_WRITER leaseによるtransaction実行またはFIFOへのMODEL_EXECUTOR continuation登録のいずれかを完了する。tokenless helperは `acquireBlockingQuietly` を呼ばず、外部leaseをsynchronously waitしない。
+- [x] **AC-156-02**: gate時にholder無し、executor実行直前に別threadがorganizer leaseを取得するdeterministic raceを含むinstrumentation scenarioで、helperはbusy FIFOへ退避し、exact-tokenの相関reloadがouter lease解放前に `COMPLETED` となる。sleepまたは10秒timeoutを成功oracleに使わない。
+- [x] **AC-156-03**: deferされたHotseat continuationはholder解放後にMODEL_EXECUTORへ一度だけ再投入され、取得成功時にのみDB bodyを一度実行する。再投入とDB bodyの間に新たなholderが現れても再deferされ、task例外またはbackup table不在が後続FIFO drainを妨げない。
+- [x] **AC-156-04**: coordinator競合がない場合、`createBackup` はbackup table作成とcache refreshを、`restoreBackup` は既存restoreと通常reloadを保持する。新たな例外、busy結果、public product API、schema変更を導入しない。
+- [x] **AC-156-05**: executable writer inventoryは `quickstep/src` を監査対象とし、Hotseat helperのtransaction経路を明示的なlease/admission理由とともにallowlistで管理する。inventoryの責務はwriter存在・allowlist登録の検出とし、atomic gateが除去されていないことはAC-156-01/02のfocused testが担保する。
+- [x] **AC-156-06**: fresh default workspaceでのmanual apply/recoveryのdevice evidenceは、recovery legがtokenless Hotseat taskにより10秒の `MODEL_RELOAD_FAILED` timeoutへ至らないことを示す。#155のlayout-overlap結果は別原因として併記する。
 
 ## Test oracle
 
@@ -230,3 +230,4 @@ admission原因である場合のみ本Issueに追加する。その他のpath�
 - 2026-08-27: #156用のDraftを作成。#150から分離されたexecutor starvationのみを対象化し、#155のlayout-overlap原因を非対象として明記した。
 - 2026-08-27: Reviewに対応。admission判定後raceを閉じるatomic lease-or-FIFO operation、raceを再現するdeterministic oracle、inventoryの限定責務、quickstep監査のstop conditionを追加した。
 - 2026-08-27: Re-reviewに対応。transaction seamをPlanと整合させ、outer MODEL_WRITER leaseの下で既存 `newTransaction()` のsame-thread reentryを用いること、新しい `ModelDbController` / `SQLiteTransaction` overloadを追加しないことを明記した。Reviewの受入判断によりstatusを `accepted` へ遷移した。
+- 2026-08-27: JDK 21 / Android SDK Platform 36.1 / Build Tools 36.1.0 / API 36 emulatorで、focused Hotseat suite（8 tests）とshared-writer回帰（21 tests）を実行して成功した。uncontended `createBackup`、backup tableなしの`restoreBackup`、既存backupの`restoreBackup`、atomic race、re-defer、例外release、same-thread reentry、exact-token correlated reloadのpre-release `COMPLETED` を確認した。fresh default workspaceではHotseat atomic deferral後に`MODEL_RELOAD_FAILED`を観測せず、A7 verification failureからprevious layout restoredへ進んだ。#155はOpenであり、このlayout verification failureは#156のtimeout解消と区別する。全ACを実装済みとしてstatusを `implemented` へ遷移した。

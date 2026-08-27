@@ -242,9 +242,9 @@ is required.
 > Follow-up date: 2026-08-27
 > Scope: tokenless Hybrid Hotseat DB work that previously posted directly to
 > `MODEL_EXECUTOR` and could synchronously wait on an external coordinator lease
-> Implementation status: static/source verification complete; API 36 connected
-> instrumentation and fresh-workspace device evidence remain required before
-> Issue #156 is considered implemented.
+> Implementation status: **implemented**. API 36 connected instrumentation and
+> fresh-workspace device evidence completed on 2026-08-27; remote CI and the
+> independent high-risk audit remain merge prerequisites.
 
 Issue #156 found a writer path that the historical Issue #60 inventory did not
 scan: `quickstep/src/com/android/launcher3/hybridhotseat/HotseatRestoreHelper.java`.
@@ -281,8 +281,10 @@ actual helper scheduler seam and a deterministic single-executor fixture to
 stage the order `schedule while empty → acquire ORGANIZER → begin admission`.
 It asserts FIFO deferral, exact-token correlated-loader progress before
 explicit lease release, re-deferral when a new holder appears, same-thread
-writer reentry, and finally-based release after an admitted exception. The
-existing API 36 shared-writer CI lane is extended to include this test.
+writer reentry, and finally-based release after an admitted exception. Its
+connected cases also execute the real uncontended `createBackup`, backup-absent
+`restoreBackup`, and backup-present/drop-after-use `restoreBackup` DB paths.
+The existing API 36 shared-writer CI lane is extended to include this test.
 
 ### Scope stop condition
 
@@ -295,15 +297,34 @@ be recorded with source evidence and split into its own Issue before an
 allowlist rationale or product change is added. This preserves the Issue #156
 boundary while keeping the inventory fail-closed.
 
-### Required connected-environment evidence
+### Connected-environment evidence
 
-The local sandbox does not supply Android SDK Platform 36.1 / Build Tools 36.1.0
-or an API 36 device/emulator, so connected evidence is deliberately not
-claimed here. On the connected environment, run the repository's shared-writer
-instrumentation lane with
-`com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest` included,
-then collect clean fresh-default-workspace evidence that the recovery leg no
-longer terminates in `MODEL_RELOAD_FAILED` due to Hotseat starvation. Record
-the exact head SHA, the complete commands/results, the CI run URL, the state
-of independent Issue #155, and redacted diagnostic/logcat evidence in the
-Issue #156 PR assessment before merge.
+> Verification date: 2026-08-27
+> Environment: macOS arm64, OpenJDK 21.0.12, Android SDK Platform 36.1, Build
+> Tools 36.1.0, and isolated `issue142_api36` API 36 / Android 16 emulator.
+
+| Surface | Result |
+|---|---|
+| `spotlessCheck` | Passed when run as a standalone `--no-configuration-cache` invocation. Combining it with Android compile/instrumentation tasks triggers an unrelated Gradle implicit-dependency validation error. |
+| Organizer and full JVM suites | Passed: focused organizer gate and `testLawnWithQuickstepGithubDebugUnitTest --rerun-tasks`. |
+| Compile and APK | Passed: Android-test Java compile and `assembleLawnWithQuickstepGithubDebug`. |
+| Focused Hotseat instrumentation | Passed: 8 tests in `HotseatRestoreAdmissionTest`. |
+| Shared-writer regression | Passed: 21 tests across Hotseat, coordinator, and reload-supersession classes. |
+
+For fresh-workspace evidence, the debug launcher was installed on the isolated
+emulator, its package data was cleared, and it was temporarily assigned the
+HOME role. The review displayed 15 targets over two pages. Explicit apply
+confirmation produced the `Deferring atomic MODEL_WRITER runnable; queue size=1`
+log, followed by `APPLY_RECOVERED stage=A7 err=APPLY_FAILURE.VERIFICATION_FAILED`.
+After more than the ten-second starvation window, `MODEL_RELOAD_FAILED` had zero
+logcat matches and UI truthfully reported that the previous layout was restored.
+The emulator HOME role was restored to `com.google.android.apps.nexuslauncher`
+and the debug package was absent after cleanup.
+
+[Issue #155](https://github.com/nunu1733/NunuLauncher/issues/155) was **Open**
+at the evidence point. The fresh-workspace A7 verification failure is therefore
+recorded as its separate layout-overlap result, not as a #156 regression: the
+#156 Hotseat task deferred rather than blocking and recovery did not terminate
+with `MODEL_RELOAD_FAILED`. The exact commit SHA, GitHub Actions `final-status`
+run URL, and an independent high-risk audit must be added to the eventual PR
+assessment before merge.

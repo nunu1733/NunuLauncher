@@ -1,20 +1,43 @@
 package com.android.launcher3.hybridhotseat;
 
+import static com.android.launcher3.LauncherSettings.Favorites.HYBRID_HOTSEAT_BACKUP_TABLE;
+import static com.android.launcher3.provider.LauncherDbUtils.tableExists;
+import static com.android.launcher3.util.Executors.MODEL_EXECUTOR;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-import androidx.test.ext.junit.runners.AndroidJUnit4;
+import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 
+import androidx.test.core.app.ApplicationProvider;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
+
+import com.android.launcher3.LauncherAppState;
+import com.android.launcher3.LauncherModel;
+import com.android.launcher3.OrganizerModelReloadAdapter;
+import com.android.launcher3.model.BgDataModel;
 import com.android.launcher3.model.LayoutWriteCoordinator;
+import com.android.launcher3.model.ModelDbController;
+import com.android.launcher3.provider.LauncherDbUtils.SQLiteTransaction;
 
 import java.util.ArrayDeque;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.junit.After;
+import org.junit.Assume;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -29,6 +52,126 @@ import org.junit.runner.RunWith;
  */
 @RunWith(AndroidJUnit4.class)
 public class HotseatRestoreAdmissionTest {
+
+    private Context context;
+    private ModelDbController dbController;
+    private LauncherModel model;
+    private Handler mainHandler;
+    private boolean ownsBackupTable;
+
+    @Before
+    public void setUp() throws Exception {
+        context = ApplicationProvider.getApplicationContext();
+        model = LauncherAppState.getInstance(context).getModel();
+        dbController = model.getModelDbController();
+        mainHandler = new Handler(Looper.getMainLooper());
+        Assume.assumeFalse("fixture must not overwrite an existing Hotseat backup table",
+                backupTableExists());
+        ownsBackupTable = true;
+    }
+
+    @After
+    public void tearDown() throws Exception {
+        if (ownsBackupTable) {
+            MODEL_EXECUTOR.submit(() -> {
+                try (SQLiteTransaction transaction = dbController.newTransaction()) {
+                    transaction.getDb().execSQL(
+                            "DROP TABLE IF EXISTS " + HYBRID_HOTSEAT_BACKUP_TABLE);
+                    transaction.commit();
+                    dbController.refreshHotseatRestoreTable();
+                }
+            }).get();
+        }
+    }
+
+    @Test
+    public void createBackupUsesAtomicAdmissionAndCreatesBackupTable() throws Exception {
+        HotseatRestoreHelper.createBackup(context);
+        awaitModelExecutor();
+
+        assertTrue("uncontended createBackup must preserve its table-creation semantics",
+                backupTableExists());
+    }
+
+    @Test
+    public void restoreWithoutBackupTableReturnsWithoutCreatingOne() throws Exception {
+        assertFalse(backupTableExists());
+
+        HotseatRestoreHelper.restoreBackup(context);
+        awaitModelExecutor();
+
+        assertFalse("restore without a backup table must preserve its early-return behavior",
+                backupTableExists());
+    }
+
+    @Test
+    public void restoreExistingBackupExecutesAndDropsBackupTable() throws Exception {
+        HotseatRestoreHelper.createBackup(context);
+        awaitModelExecutor();
+        assertTrue(backupTableExists());
+
+        HotseatRestoreHelper.restoreBackup(context);
+        awaitModelExecutor();
+
+        assertFalse("restore must execute its existing dropAfterUse behavior", backupTableExists());
+    }
+
+    @Test
+    public void deferredRestoreLetsExactCorrelatedReloadCompleteBeforeOrganizerRelease()
+            throws Exception {
+        CountDownLatch executorReached = new CountDownLatch(1);
+        CountDownLatch releaseExecutor = new CountDownLatch(1);
+        AtomicBoolean executorWaitFailed = new AtomicBoolean();
+        MODEL_EXECUTOR.execute(() -> {
+            executorReached.countDown();
+            try {
+                if (!releaseExecutor.await(15, TimeUnit.SECONDS)) {
+                    executorWaitFailed.set(true);
+                }
+            } catch (InterruptedException e) {
+                executorWaitFailed.set(true);
+                Thread.currentThread().interrupt();
+            }
+        });
+        assertTrue("MODEL_EXECUTOR did not reach the deterministic admission gate",
+                executorReached.await(15, TimeUnit.SECONDS));
+
+        BgDataModel.Callbacks callback = new BgDataModel.Callbacks() { };
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> model.addCallbacks(callback));
+        LayoutWriteCoordinator.Lease acquiredOrganizer = null;
+        ExecutorService reloadExecutor = null;
+        try {
+            // Queue tokenless restore while MODEL_EXECUTOR is stopped. The coordinator is empty
+            // now; ORGANIZER becomes the holder only after scheduling and before admission.
+            HotseatRestoreHelper.restoreBackup(context);
+            acquiredOrganizer = LayoutWriteCoordinator.getInstance().tryAcquire(
+                    LayoutWriteCoordinator.OwnerKind.ORGANIZER);
+            assertNotNull(acquiredOrganizer);
+            final LayoutWriteCoordinator.Lease organizer = acquiredOrganizer;
+            reloadExecutor = Executors.newSingleThreadExecutor();
+            Future<OrganizerModelReloadAdapter.Outcome> outcome = reloadExecutor.submit(() ->
+                    new OrganizerModelReloadAdapter(model, mainHandler).requestAndWait(organizer.token()));
+            releaseExecutor.countDown();
+
+            assertEquals("correlated reload must complete before the outer organizer release",
+                    OrganizerModelReloadAdapter.Outcome.COMPLETED,
+                    outcome.get(15, TimeUnit.SECONDS));
+            assertFalse("deterministic executor gate timed out", executorWaitFailed.get());
+        } finally {
+            releaseExecutor.countDown();
+            if (acquiredOrganizer != null) {
+                acquiredOrganizer.close();
+            }
+            InstrumentationRegistry.getInstrumentation().runOnMainSync(
+                    () -> model.removeCallbacks(callback));
+            if (reloadExecutor != null) {
+                reloadExecutor.shutdownNow();
+                assertTrue("reload worker did not terminate",
+                        reloadExecutor.awaitTermination(5, TimeUnit.SECONDS));
+            }
+        }
+        awaitModelExecutor();
+    }
 
     @Test
     public void atomicAdmissionDefersWhenOrganizerAppearsAfterTaskIsScheduled() {
@@ -152,6 +295,17 @@ public class HotseatRestoreAdmissionTest {
         } finally {
             outer.close();
         }
+    }
+
+    private boolean backupTableExists() throws Exception {
+        AtomicBoolean exists = new AtomicBoolean();
+        MODEL_EXECUTOR.submit(() -> exists.set(
+                tableExists(dbController.getDb(), HYBRID_HOTSEAT_BACKUP_TABLE))).get();
+        return exists.get();
+    }
+
+    private static void awaitModelExecutor() throws Exception {
+        MODEL_EXECUTOR.submit(() -> { }).get();
     }
 
     private static void scheduleAtomicHotseatWork(
