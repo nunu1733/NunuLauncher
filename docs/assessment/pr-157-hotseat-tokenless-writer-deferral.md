@@ -7,13 +7,13 @@ Machine-checked fields:
 
 - Auditor: Independent audit session, separate from the implementation session; no implementation changes made by the auditor
 - PR: https://github.com/nunu1733/NunuLauncher/pull/157
-- Head SHA: 6f90d08b4433ff0afbb0cbdb17f044e97ee985ca
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/33041438862 — verified via GitHub API as `event=pull_request`, `pull_requests=[157]`, exact audited head SHA, completed `success`; `final-status`, `organizer-unit-tests`, `check-style`, `build-debug-apk`, `validate-repo-contract`, and all connected instrumentation source jobs completed successfully.
+- Head SHA: efa9dc9e500ae08e18f487d887356539f8137d11
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/33054366590 — verified via GitHub API as `event=pull_request`, `pull_requests=[157]`, exact audited head SHA; source jobs completed except `organizer-instrumentation-api35-tests`, which failed in the unrelated existing `TwoPanelOrientationCaptureInstrumentationTest.orientationChangeRejectsPreChangePlanAsStaleWithoutDbWrite`; `final-status` consequently failed. The current High-risk gate is https://github.com/nunu1733/NunuLauncher/actions/runs/33054366615 and fails because the prior audit record covered an older head.
 - Criteria: specs/156-hotseat-tokenless-writer-deferral/spec.md AC-001 AC-002 AC-003 AC-004 AC-005 AC-006 AC-007
 
 ## Scope
 
-Audited `main...6f90d08b4433ff0afbb0cbdb17f044e97ee985ca` (8 changed files):
+Audited `main...efa9dc9e500ae08e18f487d887356539f8137d11` (9 changed files):
 
 - `quickstep/src/com/android/launcher3/hybridhotseat/HotseatRestoreHelper.java`
 - `src/com/android/launcher3/model/LayoutWriteCoordinator.java`
@@ -21,11 +21,13 @@ Audited `main...6f90d08b4433ff0afbb0cbdb17f044e97ee985ca` (8 changed files):
 - `.github/workflows/ci.yml` and `tools/repo-contract/validate_writer_inventory.py`
 - Issue #156 spec/plan and the Issue #60 writer-inventory assessment
 
-The runtime review covered call-time FIFO reservation, execution-time atomic `MODEL_WRITER`
-admission, re-deferral, same-thread transaction re-entry, exception release, exact-token
-correlated reload progress, real `ModelWriter` backup-before-migration ordering, and the
-unchanged backup/restore database semantics. No second lock, lease kind, schema, backup format,
-public API, or recovery protocol change was found.
+The runtime review covered call-time FIFO reservation even with an empty coordinator, the
+stable-reservation barrier behind every current-holder kind, head-only FIFO draining across
+holder reacquisition, execution-time atomic `MODEL_WRITER` admission, re-deferral, same-thread
+transaction re-entry, exception release, exact-token correlated reload progress, real
+`ModelWriter` backup-before-migration ordering, and unchanged backup/restore database semantics.
+No second lock, lease kind, schema, backup format, public API, or recovery protocol change was
+found.
 
 ## Criteria check
 
@@ -46,9 +48,10 @@ public API, or recovery protocol change was found.
 - [x] **AC-156-06:** The branch records fresh-workspace evidence with tokenless deferral and zero
       `MODEL_RELOAD_FAILED` occurrences after the starvation window, while separately attributing
       the A7 layout verification result to Issue #155.
-- [x] **AC-156-07:** The actual `ModelWriter` regression preserves the pre-migration rank in the
-      backup table and the post-migration rank in `Favorites`; the deterministic executor test
-      also verifies release-thread affinity.
+- [x] **AC-156-07:** The actual `ModelWriter` regressions cover holder-present, empty-gate
+      holder-appearance, holder-reacquisition, baseline `MODEL_WRITER`, and release-thread
+      affinity orderings; each preserves the pre-migration rank in the backup table and the
+      post-migration rank in `Favorites`.
 
 ## Executed test surface
 
@@ -57,34 +60,35 @@ Independent local execution on macOS arm64, JDK 21.0.12, Android SDK Platform 36
 
 - `git diff --check main...HEAD` — passed.
 - `./gradlew --no-configuration-cache spotlessCheck` — `BUILD SUCCESSFUL`.
-- `./gradlew --no-configuration-cache testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` — `BUILD SUCCESSFUL`.
-- `./gradlew --no-configuration-cache compileLawnWithQuickstepGithubDebugAndroidTestJavaWithJavac` — `BUILD SUCCESSFUL`.
+- `./gradlew --no-configuration-cache testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*' --rerun-tasks` — `BUILD SUCCESSFUL`.
 - `./gradlew --no-configuration-cache assembleLawnWithQuickstepGithubDebug` — `BUILD SUCCESSFUL`.
-- `./gradlew --no-configuration-cache connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest` — 10/10 passed.
-- `./gradlew --no-configuration-cache connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.ModelWriterTransactionReentryTest,com.android.launcher3.organizer.LayoutWriteCoordinatorTest,com.android.launcher3.organizer.BinderOperationFutureTest,com.android.launcher3.organizer.NestedTransactionTest,com.android.launcher3.organizer.OrganizerReloadSupersessionTest,com.android.launcher3.organizer.RestoreLeaseSerializationTest,com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest` — 47/47 passed.
+- `./gradlew --no-configuration-cache connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest` — 14/14 passed.
+- `./gradlew --no-configuration-cache connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.ModelWriterTransactionReentryTest,com.android.launcher3.organizer.LayoutWriteCoordinatorTest,com.android.launcher3.organizer.BinderOperationFutureTest,com.android.launcher3.organizer.NestedTransactionTest,com.android.launcher3.organizer.OrganizerReloadSupersessionTest,com.android.launcher3.organizer.RestoreLeaseSerializationTest,com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest` — 51/51 passed.
 - `python3 tools/repo-contract/validate_writer_inventory.py` — passed: 19 allowlisted writer files, 1,437 source files, 0 errors, 0 warnings.
 - `python3 tools/repo-contract/validate_repo_contract.py` — passed.
 - `python3 tools/repo-contract/test_validate_repo_contract.py` — passed.
 - `python3 tools/repo-contract/test_validate_high_risk_evidence.py` — passed: 47 tests.
 
-The qualifying PR CI run `33041438862` independently verified the exact head and completed all
-source jobs and `final-status` successfully. Its shared-writer instrumentation job ran the same
-7-class command and reported 47 tests, all successful.
+The current PR CI run `33054366590` verified the exact head and completed the relevant source
+jobs, including the shared-writer instrumentation job with 51 tests. It is not a qualifying merge
+gate because API35 had one failure and `final-status` failed. The independent local evidence above
+passes all Issue #156-specific surfaces.
 
 ## Findings
 
 No blocking runtime, data-safety, ordering, or test-coverage finding was identified on the
-audited head. The previous `createBackup` ordering blocker is resolved by call-time FIFO
-reservation plus execution-time atomic admission.
+audited head. The previous ordering blockers are resolved by call-time stable FIFO reservation,
+the reservation barrier for later tokenless `MODEL_WRITER` work, head-only draining, and
+execution-time atomic admission.
 
-Two documentation follow-ups are non-blocking for the code audit:
+Two merge prerequisites remain outside the code finding:
 
-1. The PR body and earlier Issue/spec evidence state that the shared-writer suite has 23 tests,
-   while the exact qualifying CI run and this independent run execute 47 tests. The evidence
-   count should be corrected to 47.
-2. `spec.md` currently says `status: implemented` while PR #157 and Issue #156 remain open. The
-   repository workflow defines `implemented` as the post-merge state; retain `accepted` until
-   merge, then transition it to `implemented`.
+1. The current PR CI is not merge-green: API35 has one unrelated existing test failure and
+   `final-status` is failed. A fresh exact-head successful `pull_request` CI run is required by
+   the high-risk policy.
+2. The High-risk gate currently fails because this record still needs to be committed after the
+   re-audit; after that, the gate must rerun against the current audit record and a qualifying
+   successful CI run.
 
-Conclusion: **PASS for the audited code and acceptance criteria; HighRiskGate requirements are
-satisfied once this record is committed and the gate reruns on the resulting docs-only head.**
+Conclusion: **PASS for the audited code and Issue #156 acceptance criteria; merge is BLOCKED until
+the exact-head PR CI `final-status` is successful and High-risk gate accepts this re-audit record.**
