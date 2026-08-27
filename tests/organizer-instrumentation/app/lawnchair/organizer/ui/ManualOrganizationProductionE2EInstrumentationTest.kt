@@ -12,7 +12,9 @@ import androidx.test.filters.LargeTest
 import androidx.test.platform.app.InstrumentationRegistry
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
+import app.lawnchair.organizer.application.adapter.RowManifestCodec
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
+import app.lawnchair.organizer.application.public.ApplicationPageRef
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.PlacementState
 import app.lawnchair.organizer.application.public.OrganizerLockState
@@ -22,7 +24,11 @@ import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.application.store.RecoveryDbSchema
 import app.lawnchair.organizer.application.store.RecoveryInspectionSnapshotReader
 import app.lawnchair.organizer.integration.InputReadinessReason
+import app.lawnchair.organizer.integration.OrganizationInputComposition
+import app.lawnchair.organizer.planning.DeterministicOrganizationPlanner
+import app.lawnchair.organizer.planning.GridCell
 import app.lawnchair.organizer.planning.ItemId
+import app.lawnchair.organizer.planning.Planned
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings.Favorites
 import com.android.launcher3.model.BgDataModel
@@ -33,6 +39,7 @@ import com.patrykmichalik.opto.core.firstBlocking
 import com.patrykmichalik.opto.core.setBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -235,6 +242,89 @@ class ManualOrganizationProductionE2EInstrumentationTest {
             launcher.model,
         ).captureCurrent(app.lawnchair.organizer.application.protocol.CaptureId("issue52-after-recovery"))
             .layoutState)
+    }
+
+    @Test
+    fun reservationlessLegacyTargetIsDeletedByProductionLoaderAndMismatchesManifest() {
+        val adapter = LauncherLayoutAdapter(context, launcher.model.modelDbController, launcher.model)
+        val source = adapter.captureCurrent(app.lawnchair.organizer.application.protocol.CaptureId("issue155-red-source"))
+        val reservation = source.layoutState.reservedWorkspaceRegions.single()
+        val module = LayoutApplicationModule.production(context, launcher)
+        assertEquals(
+            app.lawnchair.organizer.application.protocol.RestartReconciler.ReconciliationSummary.Clean,
+            module.reconcileAtStart(),
+        )
+        val input = (module.composeManualFullOrganizationInput(context) as? OrganizationInputComposition.Ready)?.input
+            ?: error("Production manual input was unavailable")
+        val unreserved = input.copy(
+            snapshot = input.snapshot.copy(reservedWorkspaceRegions = emptyList()),
+        )
+        val legacyPlan = DeterministicOrganizationPlanner().plan(unreserved).outcome as? Planned
+            ?: error("Reservationless legacy fixture did not plan")
+        val legacyFolder = legacyPlan.newFolders.single()
+        assertEquals(reservation.page, legacyFolder.workspacePlacement.page)
+        assertEquals(GridCell(0, 0), legacyFolder.workspacePlacement.cell)
+
+        // The current adapter intentionally rejects a reservation-overlapping
+        // target. Insert only the legacy target row here to exercise the real
+        // correlated Loader cleanup that formerly followed A6.
+        insertFixtureRow(launcher.model.modelDbController.db, 0, 0, "Issue155 legacy target")
+        val legacyIntended = RowManifestCodec.capture(
+            launcher.model.modelDbController.db,
+            source.layoutState.deviceCapabilities,
+            source.layoutState.pages.map { page ->
+                (page.ref as? ApplicationPageRef.PersistentPage)?.pageId
+                    ?: error("Legacy fixture source page was not persistent")
+            },
+            source.layoutState.profiles,
+            emptyList(),
+        ).manifest
+        assertEquals(3, legacyIntended.rowCount)
+
+        reloadAndWait()
+
+        val after = LauncherLayoutAdapter(
+            context,
+            launcher.model.modelDbController,
+            launcher.model,
+        ).recaptureDb().manifest
+        assertEquals(2, after.rowCount)
+        assertNotEquals(
+            "Loader deletion of the legacy reserved-cell target must break A7 manifest equality",
+            legacyIntended,
+            after,
+        )
+        assertEquals(source.manifest, after)
+    }
+
+    @Test
+    fun qsbDisabledRowlessFirstScreenCaptureAndPlanningRemainNoChanges() {
+        preferenceManager.enableSmartspace.setBlocking(false)
+        check(!FeatureFlags.topQsbOnFirstScreenEnabled(context)) {
+            "Issue #155 disabled control requires QSB to be disabled"
+        }
+        launcher.model.modelDbController.db.delete(Favorites.TABLE_NAME, null, null)
+        launcher.model.modelDbController.clearEmptyDbFlag()
+        reloadAndWait()
+
+        val capture = LauncherLayoutAdapter(
+            context,
+            launcher.model.modelDbController,
+            launcher.model,
+        ).captureCurrent(app.lawnchair.organizer.application.protocol.CaptureId("issue155-qsb-off-rowless"))
+        assertEquals(1, capture.layoutState.pages.size)
+        assertTrue(capture.layoutState.items.isEmpty())
+        assertTrue(capture.layoutState.reservedWorkspaceRegions.isEmpty())
+
+        val module = LayoutApplicationModule.production(context, launcher)
+        assertEquals(
+            app.lawnchair.organizer.application.protocol.RestartReconciler.ReconciliationSummary.Clean,
+            module.reconcileAtStart(),
+        )
+        val run = ManualOrganizationRun(ProductionManualOrganizationApplication(context, module))
+        run.start()
+        assertEquals(ManualOrganizationRun.State.NoChanges, run.state)
+        assertTrue(snapshotFavorites().isEmpty())
     }
 
     @Test
