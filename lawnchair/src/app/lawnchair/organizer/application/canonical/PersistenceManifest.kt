@@ -177,4 +177,7 @@ enum class PersistentResourceKind {
     WORKSPACE_SCREEN,
     DEVICE_PROFILE,
     PROFILE_INVENTORY,
+
+    /** Non-item workspace occupancy context captured from Launcher platform state (Issue #155). */
+    WORKSPACE_RESERVATION,
 }

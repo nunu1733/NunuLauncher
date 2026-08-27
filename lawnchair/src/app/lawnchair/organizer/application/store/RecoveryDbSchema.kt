@@ -2,7 +2,7 @@ package app.lawnchair.organizer.application.store
 
 /**
  * Recovery DB schema — private SQLite database `organizer_recovery.db`,
- * independent of `DatabaseHelper.SCHEMA_VERSION`. Format version 1.
+ * independent of `DatabaseHelper.SCHEMA_VERSION`. Format version 2.
  *
  * Spec §“Recovery record and lifecycle”; ADR-0003.
  *
@@ -14,7 +14,10 @@ object RecoveryDbSchema {
     const val FILE_NAME: String = "organizer_recovery.db"
 
     /** Format version persisted as `PRAGMA user_version`. */
-    const val FORMAT_VERSION: Int = 1
+    // v2 persists the Issue #155 workspace-reservation context in the recovery
+    // manifest. Legacy v1 non-empty stores must be rejected or explicitly
+    // migrated before SQLiteOpenHelper opens them.
+    const val FORMAT_VERSION: Int = 2
 
     const val TABLE_RECOVERY_POINTS: String = "recovery_points"
     const val TABLE_RECOVERY_TOMBSTONES: String = "recovery_tombstones"
@@ -26,7 +29,7 @@ object RecoveryDbSchema {
      * Order of columns is fixed: the codec computes `payload_checksum` over
      * every preceding column in this order with length prefixes.
      */
-    const val DDL_FORMAT_1: String = """
+    const val DDL_FORMAT_2: String = """
         CREATE TABLE recovery_points (
           point_id TEXT PRIMARY KEY NOT NULL,
           format_version INTEGER NOT NULL,
@@ -56,7 +59,8 @@ object RecoveryDbSchema {
           expires_at_ms INTEGER NOT NULL
         );
 
-        PRAGMA user_version = 1;
+                  PRAGMA user_version = 2;
+
     """
 
     /** Column order for checksum computation — must not be reordered. */

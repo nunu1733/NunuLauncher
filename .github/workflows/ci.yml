@@ -201,8 +201,9 @@ jobs:
   #
   # Shared-writer / coordinator seam lane: the Issue #113 MODEL_WRITER
   # self-deadlock regression, lease admission/FIFO/Binder suites, the whole-unit
-  # nested SQLiteTransaction contract, and Issue #119 reload-supersession suite
-  # run permanently here on their own clean API 36 emulator. Coordinator and
+  # nested SQLiteTransaction contract, Issue #119 reload-supersession suite, and
+  # Issue #156 Hotseat atomic-admission race suite run permanently here on their
+  # own clean API 36 emulator. Coordinator and
   # transaction cases use isolated fixture DBs; the reload case uses the real
   # Launcher model but stays independent from the UI lanes below.
   organizer-instrumentation-shared-writer-tests:
@@ -237,7 +238,7 @@ jobs:
           emulator-boot-timeout: 900
           script: >-
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
-            -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.ModelWriterTransactionReentryTest,com.android.launcher3.organizer.LayoutWriteCoordinatorTest,com.android.launcher3.organizer.BinderOperationFutureTest,com.android.launcher3.organizer.NestedTransactionTest,com.android.launcher3.OrganizerReloadCompletionOrderingTest,com.android.launcher3.organizer.OrganizerReloadSupersessionTest,com.android.launcher3.organizer.RestoreLeaseSerializationTest
+            -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.ModelWriterTransactionReentryTest,com.android.launcher3.organizer.LayoutWriteCoordinatorTest,com.android.launcher3.organizer.BinderOperationFutureTest,com.android.launcher3.organizer.NestedTransactionTest,com.android.launcher3.OrganizerReloadCompletionOrderingTest,com.android.launcher3.organizer.OrganizerReloadSupersessionTest,com.android.launcher3.organizer.RestoreLeaseSerializationTest,com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest
       - name: Upload shared-writer instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
@@ -412,6 +413,56 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+  # Issue #155 reserves the platform-owned QSB/Smartspace first-screen cells as
+  # non-item organizer context. Its regression evidence requires a clean API 36
+  # emulator: the production adapter/page-ID seam, manifest-context validation,
+  # ordinary sanitizer separation, and RecoveryStore v1/v2 lifecycle matrix all
+  # mutate or inspect independent storage and must not inherit the Issue #52 UI
+  # fixture state.
+  organizer-instrumentation-issue155-tests:
+    needs: changes
+    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run Issue 155 QSB reservation instrumentation (API 36 / Platform 36.1)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: >-
+            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
+            -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.application.ProductionPublicSeamInstrumentationTest,app.lawnchair.organizer.application.RealAdapterRowMatrixInstrumentationTest,app.lawnchair.organizer.application.SanitizerInstrumentationTest,com.android.launcher3.organizer.RecoveryStoreLifecycleTest
+      - name: Upload Issue 155 instrumentation reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: organizer-instrumentation-issue155-reports
+          path: |
+            build/reports/androidTests/connected/**
+            build/outputs/androidTest-results/**
+          retention-days: 7
+          if-no-files-found: warn
+
   # Issue #99 owns profile-safe authoring UI evidence. It runs on an independent
   # clean emulator so semantics, focus, font-scale, and mutation interactions are
   # verified rather than only compiled alongside the other Organizer suites.
@@ -519,6 +570,7 @@ jobs:
       - organizer-instrumentation-db-migration-tests
       - organizer-instrumentation-api35-tests
       - organizer-instrumentation-issue52-tests
+      - organizer-instrumentation-issue155-tests
       - organizer-instrumentation-issue99-tests
       - organizer-instrumentation-issue53-tests
       - build-debug-apk

@@ -1,7 +1,6 @@
 package app.lawnchair.organizer.ui
 
 import android.content.pm.PackageManager
-import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.util.Pair
 import android.view.Gravity
@@ -23,6 +22,7 @@ import com.android.launcher3.LauncherPrefs
 import com.android.launcher3.R
 import com.android.launcher3.provider.RestoreDbTask
 import com.android.launcher3.util.OnboardingPrefs
+import com.android.launcher3.util.Themes
 import com.android.launcher3.views.BaseDragLayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -138,8 +138,11 @@ internal class OrganizationOnboardingProposalContent(
 ) : LinearLayout(context) {
     val title = TextView(context).apply {
         setText(R.string.organization_onboarding_proposal_title)
-        textSize = 20f
-        setTextColor(Color.BLACK)
+        // Issue #123: 22sp matches the M3 titleLarge TopAppBar title every Lawnchair
+        // settings screen renders; colors resolve from the activity theme so light/dark
+        // both render correctly.
+        textSize = 22f
+        setTextColor(Themes.getAttrColor(context, android.R.attr.textColorPrimary))
         isFocusable = true
         isFocusableInTouchMode = true
     }
@@ -154,7 +157,7 @@ internal class OrganizationOnboardingProposalContent(
         addView(
             TextView(context).apply {
                 setText(R.string.organization_onboarding_proposal_summary)
-                setTextColor(Color.DKGRAY)
+                setTextColor(Themes.getAttrColor(context, android.R.attr.textColorSecondary))
                 setPadding(0, dp(8), 0, dp(12))
             },
         )
@@ -279,10 +282,12 @@ internal class OrganizationOnboardingProposal(
             isFocusableInTouchMode = true
             setPadding(dp(20), dp(16), dp(20), dp(16))
             background = GradientDrawable().apply {
-                setColor(Color.WHITE)
-                cornerRadius = dp(24).toFloat()
+                setColor(Themes.getAttrColor(context, android.R.attr.colorBackground))
+                cornerRadius = resources.getDimensionPixelSize(R.dimen.default_dialog_corner_radius).toFloat()
             }
-            elevation = dp(8).toFloat()
+            // Issue #123: same elevation token as the launcher's own ArrowPopup so the
+            // proposal floats at the launcher's popup z-height.
+            elevation = resources.getDimension(R.dimen.deep_shortcuts_elevation)
 
             addView(
                 OrganizationOnboardingProposalContent(

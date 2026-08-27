@@ -55,6 +55,11 @@ internal object OrganizationPlanMaterializer {
         }
         val planned = result.outcome as? Planned ?: return Result.Invalid
         if (ActionMaterializer.validateOrdinals(planned) !is ActionMaterializer.OrdinalValidation.Ok) return Result.Invalid
+        if (planned.placements.any { overlapsReservation(it.target, input.snapshot.reservedWorkspaceRegions) } ||
+            planned.newFolders.any { overlapsReservation(it.workspacePlacement, input.snapshot.reservedWorkspaceRegions) }
+        ) {
+            return Result.Invalid
+        }
 
         val sourceItems = sourceState.items.associateBy { (it.ref as? ApplicationItemRef.PersistentItem)?.itemId }
         if (sourceItems.size != sourceState.items.size) return Result.Invalid
@@ -139,6 +144,32 @@ internal object OrganizationPlanMaterializer {
             ),
         )
     }
+
+    private fun overlapsReservation(
+        target: PlacementTarget,
+        reservations: List<app.lawnchair.organizer.planning.ReservedWorkspaceRegion>,
+    ): Boolean {
+        val workspace = target as? PlacementTarget.WorkspaceTarget ?: return false
+        val page = workspace.page as? PageRef ?: return false
+        return reservations.any { reservation ->
+            reservation.page == page && rectanglesOverlap(
+                reservation.cell,
+                reservation.span,
+                workspace.cell,
+                workspace.span,
+            )
+        }
+    }
+
+    private fun rectanglesOverlap(
+        aCell: app.lawnchair.organizer.planning.GridCell,
+        aSpan: app.lawnchair.organizer.planning.GridSpan,
+        bCell: app.lawnchair.organizer.planning.GridCell,
+        bSpan: app.lawnchair.organizer.planning.GridSpan,
+    ): Boolean = aCell.x.toLong() < bCell.x.toLong() + bSpan.width.toLong() &&
+        bCell.x.toLong() < aCell.x.toLong() + aSpan.width.toLong() &&
+        aCell.y.toLong() < bCell.y.toLong() + bSpan.height.toLong() &&
+        bCell.y.toLong() < aCell.y.toLong() + aSpan.height.toLong()
 
     private fun placementState(
         target: PlacementTarget,

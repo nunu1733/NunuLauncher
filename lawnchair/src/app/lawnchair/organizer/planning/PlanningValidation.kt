@@ -112,6 +112,14 @@ internal object PlanningValidation {
                 )
             }
         }
+        for (reservation in input.snapshot.reservedWorkspaceRegions) {
+            if (reservation.span.width <= 0 || reservation.span.height <= 0) {
+                reasons += RejectionReason(
+                    RejectionCode.INVALID_DIMENSIONS,
+                    listOf(DiagnosticParam.SpanParam(reservation.span)),
+                )
+            }
+        }
         return reasons
     }
 
@@ -177,6 +185,14 @@ internal object PlanningValidation {
                 )
             }
         }
+        for (reservation in input.snapshot.reservedWorkspaceRegions) {
+            if (reservation.page.pageId !in pageIds) {
+                reasons += RejectionReason(
+                    RejectionCode.UNKNOWN_PAGE,
+                    listOf(DiagnosticParam.PageParam(reservation.page.pageId)),
+                )
+            }
+        }
         return reasons
     }
 
@@ -191,6 +207,15 @@ internal object PlanningValidation {
                 reasons += RejectionReason(
                     RejectionCode.BOUNDS_VIOLATION,
                     listOf(DiagnosticParam.SpanParam(ws.span)),
+                )
+            }
+        }
+        for (reservation in input.snapshot.reservedWorkspaceRegions) {
+            if (reservation.span.width <= 0 || reservation.span.height <= 0) continue
+            if (isOutOfBounds(reservation.cell, reservation.span, device)) {
+                reasons += RejectionReason(
+                    RejectionCode.BOUNDS_VIOLATION,
+                    listOf(DiagnosticParam.SpanParam(reservation.span)),
                 )
             }
         }
@@ -230,6 +255,30 @@ internal object PlanningValidation {
                     if (rectanglesOverlap(aWs.cell, aWs.span, bWs.cell, bWs.span)) {
                         hasOverlap = true
                     }
+                }
+            }
+        }
+        for (reservation in input.snapshot.reservedWorkspaceRegions) {
+            if (reservation.span.width <= 0 || reservation.span.height <= 0) continue
+            val occupants = byPage[reservation.page.pageId].orEmpty()
+            if (occupants.any { item ->
+                    val ws = item.placement as? CapturedPlacement.Workspace
+                    ws != null && rectanglesOverlap(reservation.cell, reservation.span, ws.cell, ws.span)
+                }
+            ) {
+                hasOverlap = true
+            }
+        }
+        val reservations = input.snapshot.reservedWorkspaceRegions
+        for (i in reservations.indices) {
+            for (j in i + 1 until reservations.size) {
+                val a = reservations[i]
+                val b = reservations[j]
+                if (a.page.pageId == b.page.pageId &&
+                    a.span.width > 0 && a.span.height > 0 && b.span.width > 0 && b.span.height > 0 &&
+                    rectanglesOverlap(a.cell, a.span, b.cell, b.span)
+                ) {
+                    hasOverlap = true
                 }
             }
         }
@@ -596,9 +645,15 @@ internal object PlanningValidation {
     private fun isOutOfBounds(
         workspace: CapturedPlacement.Workspace,
         device: DeviceCapabilities,
-    ): Boolean = workspace.cell.x < 0 || workspace.cell.y < 0 ||
-        workspace.cell.x.toLong() + workspace.span.width.toLong() > device.columns.toLong() ||
-        workspace.cell.y.toLong() + workspace.span.height.toLong() > device.rows.toLong()
+    ): Boolean = isOutOfBounds(workspace.cell, workspace.span, device)
+
+    private fun isOutOfBounds(
+        cell: GridCell,
+        span: GridSpan,
+        device: DeviceCapabilities,
+    ): Boolean = cell.x < 0 || cell.y < 0 ||
+        cell.x.toLong() + span.width.toLong() > device.columns.toLong() ||
+        cell.y.toLong() + span.height.toLong() > device.rows.toLong()
 }
 
 internal val rejectionReasonComparator: Comparator<RejectionReason> = Comparator { a, b ->

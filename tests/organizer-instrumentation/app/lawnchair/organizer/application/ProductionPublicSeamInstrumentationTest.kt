@@ -15,8 +15,11 @@ import app.lawnchair.organizer.application.protocol.OperationIdSource
 import app.lawnchair.organizer.application.protocol.WriteSetPreparation
 import app.lawnchair.organizer.application.protocol.SecureRandomOperationIdSource
 import app.lawnchair.organizer.application.protocol.SystemClock
+import app.lawnchair.organizer.application.public.ApplicationPageRef
 import app.lawnchair.organizer.application.public.ApplyAction
 import app.lawnchair.organizer.application.public.ApplyResult
+import app.lawnchair.organizer.application.public.PageState
+import app.lawnchair.organizer.application.public.PlacementState
 import app.lawnchair.organizer.application.public.OptionalText
 import app.lawnchair.organizer.application.public.PreWriteRejection
 import app.lawnchair.organizer.application.public.RecoveryPointId
@@ -28,13 +31,21 @@ import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.protocol.RecoveryStorePort
 import app.lawnchair.organizer.application.protocol.RestartReconciler
 import app.lawnchair.organizer.application.store.RecoveryDbSchema
+import app.lawnchair.organizer.application.store.RecoveryInspectionSnapshotReader
 import app.lawnchair.organizer.application.store.RecoveryStore
 import app.lawnchair.organizer.application.store.RecoveryStoreFaultPort
+import app.lawnchair.organizer.planning.GridCell
+import app.lawnchair.organizer.planning.GridSpan
+import app.lawnchair.organizer.planning.NewPage
+import app.lawnchair.organizer.planning.NewPageOrdinal
+import app.lawnchair.organizer.planning.PageId
+import app.lawnchair.organizer.planning.PageOrder
 import app.lawnchair.organizer.planning.RevisionId
 import app.lawnchair.organizer.planning.RuleVersion
 import app.lawnchair.organizer.planning.TaxonomyVersion
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings.Favorites
+import com.android.launcher3.WorkspaceLayoutManager.FIRST_SCREEN_ID
 import com.android.launcher3.pm.UserCache
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -44,6 +55,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import app.lawnchair.LawnchairLauncher
+import java.io.File
 
 /** Real Launcher DB/recovery-store coverage through the accepted public seam. */
 @RunWith(AndroidJUnit4::class)
@@ -58,7 +70,7 @@ class ProductionPublicSeamInstrumentationTest {
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         launcher = LauncherAppState.getInstance(context)
-        context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+        deleteRecoveryArtifacts()
         snapshotRows = snapshotFavorites()
     }
 
@@ -73,7 +85,7 @@ class ProductionPublicSeamInstrumentationTest {
                 Thread.sleep(50)
             }
         } finally {
-            context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+            deleteRecoveryArtifacts()
         }
     }
 
@@ -124,13 +136,56 @@ class ProductionPublicSeamInstrumentationTest {
     }
 
     @Test
+    fun rowlessLogicalFirstPageAllocatesPlannedPageAfterFirstScreenId() {
+        val originalRows = snapshotFavorites()
+        try {
+            launcher.model.modelDbController.db.delete(Favorites.TABLE_NAME, null, null)
+            ensureLauncherRow(context, launcher)
+            val writer = LauncherLayoutAdapter(context, launcher.model.modelDbController, launcher.model)
+            val capture = writer.captureCurrent(CaptureId("rowless-logical-first"))
+            assertEquals(
+                listOf(ApplicationPageRef.PersistentPage(PageId(FIRST_SCREEN_ID.toString()))),
+                capture.layoutState.pages.map { it.ref },
+            )
+            val sourceItem = capture.layoutState.items.single()
+            val plannedPage = ApplicationPageRef.PlannedPage(NewPageOrdinal(0))
+            val intendedItem = sourceItem.copy(
+                placement = PlacementState.Workspace(plannedPage, GridCell(0, 0), GridSpan(1, 1)),
+            )
+            val plan = ValidatedLayoutPlan(
+                capture.revision,
+                capture.layoutState,
+                capture.layoutState.copy(
+                    pages = capture.layoutState.pages + PageState(plannedPage, PageOrder(1)),
+                    items = listOf(intendedItem),
+                ),
+                listOf(ApplyAction.Update(sourceItem.ref, sourceItem, intendedItem)),
+                listOf(NewPage(NewPageOrdinal(0), PageOrder(1))),
+                emptyList(),
+                RuleVersion("rowless-page-id"),
+                TaxonomyVersion("rowless-page-id"),
+            )
+
+            val prepared = writer.prepareApplyWriteSet(capture, plan) as? WriteSetPreparation.Ready
+                ?: error("rowless logical first page could not materialize a planned page")
+            assertEquals(
+                ApplicationPageRef.PersistentPage(PageId((FIRST_SCREEN_ID + 1L).toString())),
+                prepared.writeSet.identityMapping.pages[plannedPage],
+            )
+            assertEquals(2, prepared.writeSet.intendedState.pages.distinctBy { it.ref }.size)
+        } finally {
+            restoreFavorites(originalRows)
+        }
+    }
+
+    @Test
     fun committedCreatingBoundariesReconcileThroughPublicApplyAndRestartSeams() {
         val cases = listOf(
             RecoveryStoreFaultPort.Phase.CREATING to FaultTiming.AFTER,
             RecoveryStoreFaultPort.Phase.READY to FaultTiming.BEFORE,
         )
         for ((phase, timing) in cases) {
-            context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+            deleteRecoveryArtifacts()
             ensureLauncherRow(context, launcher)
             val writer = LauncherLayoutAdapter(context, launcher.model.modelDbController, launcher.model)
             val capture = writer.captureCurrent(CaptureId("creating-$phase-$timing"))
@@ -242,6 +297,24 @@ class ProductionPublicSeamInstrumentationTest {
                 put(Favorites.ORGANIZER_LOCK_STATE, 1)
             },
         )
+    }
+
+    private fun deleteRecoveryArtifacts() {
+        val dbFile = context.getDatabasePath(RecoveryDbSchema.FILE_NAME)
+        listOf(
+            dbFile,
+            File("${dbFile.absolutePath}-journal"),
+            File("${dbFile.absolutePath}-wal"),
+            File("${dbFile.absolutePath}-shm"),
+        ).forEach { file ->
+            if (file.exists()) check(file.delete()) { "Unable to delete ${file.absolutePath}" }
+        }
+        File(context.noBackupFilesDir, RecoveryInspectionSnapshotReader.DIRECTORY_NAME).let { directory ->
+            directory.listFiles()?.forEach { file ->
+                if (file.exists()) check(file.delete()) { "Unable to delete ${file.absolutePath}" }
+            }
+            directory.delete()
+        }
     }
 
     private fun snapshotFavorites(): List<ContentValues> {

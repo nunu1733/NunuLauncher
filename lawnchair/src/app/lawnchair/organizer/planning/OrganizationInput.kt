@@ -19,11 +19,24 @@ data class LayoutSnapshot(
     val device: DeviceCapabilities,
     val pages: List<Page>,
     val items: List<CapturedItem>,
+    /** Non-item workspace cells owned by Launcher platform UI (Issue #155). */
+    val reservedWorkspaceRegions: List<ReservedWorkspaceRegion> = emptyList(),
 )
 
 data class Page(
     val id: PageId,
     val order: PageOrder,
+)
+
+/**
+ * A canonical workspace rectangle occupied by Launcher UI rather than a
+ * persisted layout item. Reservations participate in planning constraints but
+ * never in target membership or Launcher DB writes.
+ */
+data class ReservedWorkspaceRegion(
+    val page: PageRef,
+    val cell: GridCell,
+    val span: GridSpan,
 )
 
 data class DeviceCapabilities(

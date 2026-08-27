@@ -112,6 +112,11 @@ ALLOWLIST: Dict[str, List[Tuple[str, str]]] = {
         ("favorites-db",
          "Model writer: db.delete(TABLE_NAME, ...) on ModelDbController db var"),
     ],
+    "quickstep/src/com/android/launcher3/hybridhotseat/HotseatRestoreHelper.java": [
+        ("controller-call",
+         "Hybrid Hotseat backup/restore: MODEL_EXECUTOR atomic "
+         "LayoutWriteCoordinator.runModelWriterOrDefer admission"),
+    ],
     "src/com/android/launcher3/model/LoaderCursor.java": [
         ("controller-call",
          "Loader cursor: controller.delete/update during model load/restore"),
@@ -202,13 +207,13 @@ _INSERT_AND_CHECK_RE = re.compile(
 )
 
 # C: ModelDbController mutation method calls.
-# Matches controller.method(), mDbController.method(),
+# Matches controller.method(), dbController.method(), mDbController.method(),
 # .getModelDbController().method().
 # NOTE: \bdb\b is deliberately NOT included because it is too broad --
 # many utility files use "db" for a raw SQLiteDatabase, not a ModelDbController.
 # Those files are caught by the favorites-db or favorites-sql patterns instead.
 _CONTROLLER_CALL_RE = re.compile(
-    r"(?:controller\.|mDbController\.|\.getModelDbController\(\)\.)"
+    r"(?:controller\.|dbController\.|mDbController\.|\.getModelDbController\(\)\.)"
     r"(?:insert|delete|update|newTransaction|createEmptyDB"
     r"|removeGhostWidgets|deleteEmptyFolders"
     r"|deleteBadAppPairs|deleteUnparentedApps"
@@ -411,6 +416,7 @@ def main(argv: List[str] = None) -> int:
     root = Path(__file__).resolve().parent.parent.parent  # tools/../.. = repo root
     source_dirs = [
         root / "src",
+        root / "quickstep" / "src",
         root / "lawnchair" / "src",
     ]
     return run_scan(source_dirs, root)

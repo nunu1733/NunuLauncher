@@ -254,7 +254,13 @@ class DefaultOrganizationInputComposer(
         }
         val items = state.items.map { item -> mapItem(item, profiles[item.profile] ?: return null) ?: return null }
         return MappedLayout(
-            LayoutSnapshot(revision, state.deviceCapabilities.toPlanner(), pages, items),
+            LayoutSnapshot(
+                revision = revision,
+                device = state.deviceCapabilities.toPlanner(),
+                pages = pages,
+                items = items,
+                reservedWorkspaceRegions = state.reservedWorkspaceRegions,
+            ),
             items,
             profiles.keys,
         )

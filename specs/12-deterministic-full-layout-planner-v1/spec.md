@@ -14,7 +14,7 @@ requirements:
   - NFR-005
   - NFR-006
   - NFR-010
-updated: 2026-08-10
+updated: 2026-08-27
 source:
   - ../10-pure-organization-planning/spec.md
   - ../11-planner-fixture-property-harness/spec.md
@@ -199,8 +199,12 @@ each group, allocate in this order:
 2. new folders by `NewFolderOrdinal`;
 3. singleton units by `(ProfileId, CategoryId, ItemId)`.
 
-Preserved workspace regions occupy their captured cells before allocation.
-Search cells row-major (`y`, then `x`) and mark the complete rectangular span.
+Preserved workspace regions and the platform-owned
+`LayoutSnapshot.reservedWorkspaceRegions` occupy their cells before allocation.
+The latter are non-item constraints: they do not participate in grouping,
+disposition, target accounting, page creation, or output actions. Search cells
+row-major (`y`, then `x`) and mark the complete rectangular span. Every movable
+unit, existing folder unit, and new folder must avoid both occupancy sources.
 If a full-run unit cannot fit its preferred captured page, or an incremental
 unit cannot fit any captured page in `PageOrder` order, allocate it on new
 pages. New pages are reused until full before another is created.
@@ -212,7 +216,8 @@ For an incremental run, the global allocation stream is new folders by
 before creating another page. Thus the earlier unit deterministically receives
 the last captured vacancy.
 
-Existing empty pages remain and are eligible. Existing page identity/order is
+Existing empty pages, including a rowless logical first page backed only by a
+platform reservation, remain and are eligible. Existing page identity/order is
 unchanged. New pages have ordinals `0..n-1` and orders immediately following
 the greatest captured order; with no captured page, order starts at zero.
 
