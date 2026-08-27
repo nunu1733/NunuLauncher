@@ -229,6 +229,66 @@ public class HotseatRestoreAdmissionTest {
     }
 
     @Test
+    public void createBackupReservationBlocksMigrationBehindBaselineModelWriter()
+            throws Exception {
+        ItemInfo migrationItem = addTestHotseatItem();
+        int backupRank = migrationItem.rank;
+        int migratedRank = backupRank + 1;
+        CountDownLatch writerAcquired = new CountDownLatch(1);
+        CountDownLatch releaseWriter = new CountDownLatch(1);
+        AtomicBoolean priorWriterAcquired = new AtomicBoolean();
+        AtomicBoolean writerWaitFailed = new AtomicBoolean();
+        LayoutWriteCoordinator coordinator = LayoutWriteCoordinator.getInstance();
+        MODEL_EXECUTOR.execute(() -> {
+            LayoutWriteCoordinator.Lease priorWriter = coordinator.tryAcquire(
+                    LayoutWriteCoordinator.OwnerKind.MODEL_WRITER);
+            priorWriterAcquired.set(priorWriter != null);
+            writerAcquired.countDown();
+            try {
+                if (!releaseWriter.await(15, TimeUnit.SECONDS)) {
+                    writerWaitFailed.set(true);
+                }
+            } catch (InterruptedException e) {
+                writerWaitFailed.set(true);
+                Thread.currentThread().interrupt();
+            } finally {
+                if (priorWriter != null) {
+                    priorWriter.close();
+                }
+            }
+        });
+        assertTrue("MODEL_EXECUTOR did not acquire the baseline MODEL_WRITER lease",
+                writerAcquired.await(15, TimeUnit.SECONDS));
+        assertTrue("prior MODEL_WRITER must own the deterministic gate",
+                priorWriterAcquired.get());
+
+        try {
+            // The existing MODEL_EXECUTOR task owns a baseline writer lease. A call-time backup
+            // reservation must nevertheless keep a later real ModelWriter submission in FIFO;
+            // otherwise it would be posted directly and overtake the backup after this lease ends.
+            HotseatRestoreHelper.createBackup(context);
+            migrationItem.rank = migratedRank;
+            model.getWriter(false, CellPosMapper.DEFAULT, null).moveItemInDatabase(
+                    migrationItem,
+                    migrationItem.container,
+                    migrationItem.screenId,
+                    migrationItem.cellX,
+                    migrationItem.cellY);
+            assertEquals("stable backup reservation must block a later ModelWriter under a "
+                            + "different-thread baseline writer", 2, coordinator.pendingDeferredCount());
+        } finally {
+            releaseWriter.countDown();
+        }
+        awaitModelExecutor();
+
+        assertFalse("baseline MODEL_WRITER gate timed out", writerWaitFailed.get());
+        assertEquals("backup must retain the rank from before ModelWriter mutation", backupRank,
+                rankInTable(HYBRID_HOTSEAT_BACKUP_TABLE, migrationItem.id));
+        assertEquals("migration must update Favorites only after backup completes", migratedRank,
+                rankInTable(TABLE_NAME, migrationItem.id));
+    }
+
+    @Test
     public void createBackupReservationBlocksMigrationPostedBeforeHolderAppears()
             throws Exception {
         ItemInfo migrationItem = addTestHotseatItem();

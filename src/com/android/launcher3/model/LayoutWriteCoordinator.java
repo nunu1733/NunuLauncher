@@ -378,8 +378,10 @@ public final class LayoutWriteCoordinator {
      * organizer or restore-family lease is held and the runnable is tokenless,
      * it is appended to the FIFO and the executor returns immediately. Baseline
      * {@link OwnerKind#MODEL_WRITER} and {@link OwnerKind#GRID_MIGRATION}
-     * leases do not defer tokenless work, preserving baseline executor
-     * semantics. The exact-token holder bypasses the queue.
+     * leases otherwise do not defer tokenless work, preserving baseline executor
+     * semantics. A prior stable Hotseat reservation also defers a later tokenless
+     * {@link OwnerKind#MODEL_WRITER} submission while a stable reservation is pending. The
+     * exact-token holder bypasses the queue.
      */
     public void runOrDefer(
         @NonNull OwnerKind kind,
@@ -390,8 +392,12 @@ public final class LayoutWriteCoordinator {
         boolean installOrganizerCapability = false;
         synchronized (lock) {
             Holder h = current;
-            boolean blockedByStableReservation = h == null
-                    && !exactOrganizerToken
+            // Stable Hotseat reservations preserve caller-visible order for later tokenless
+            // MODEL_WRITER work. Posting that later work directly to MODEL_EXECUTOR could let
+            // it overtake the reservation after any current holder releases. This applies only
+            // to later tokenless MODEL_WRITER submissions; exact organizer capability and all
+            // other owner kinds preserve their existing behavior.
+            boolean blockedByStableReservation = !exactOrganizerToken
                     && kind == OwnerKind.MODEL_WRITER
                     && hasStableModelWriterReservation();
             if ((h != null && !exactOrganizerToken && defersTokenlessWork(h))

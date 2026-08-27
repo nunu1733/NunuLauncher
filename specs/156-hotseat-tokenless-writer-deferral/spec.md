@@ -62,7 +62,7 @@ snapshot意味論を維持する。新たなwriter lock、lease kind、公開の
 | transaction seam | atomic admissionで取得したouter MODEL_WRITER leaseの下で既存 `newTransaction()` を呼び、既存same-thread MODEL_WRITER reentryを利用する。新しい `ModelDbController` / `SQLiteTransaction` overloadは追加しない。 |
 | organizerとの進行保証 | held organizer lease、helper task、exact-token correlated LoaderTaskを組み合わせ、gate時は無leaseで直後にorganizer leaseを取得するraceでもreloadが進行することを実Launcher instrumentationで証明する。 |
 | deferred実行の保持 | busy時のhelper continuationは既存FIFO順で一度だけMODEL_EXECUTORへ再投入される。entry失敗が後続entryをwedgedにしない既存coordinator契約を維持する。 |
-| createBackupのsubmission順序 | holderの有無にかかわらず、`createBackup` が後続migration `ModelWriter` submissionより先にstable logical FIFO positionを同期予約する。empty-gate後・executor admission前にorganizer/restore-family holderが出現した場合も予約は失われない。予約callbackはMODEL_EXECUTORへatomic admissionをpostし、DB bodyをlease-releasing threadでinline実行しない。 |
+| createBackupのsubmission順序 | holderの有無にかかわらず、`createBackup` が後続migration `ModelWriter` submissionより先にstable logical FIFO positionを同期予約する。reservationがpendingの間、後続tokenless `MODEL_WRITER` submissionはcurrent holderの種別・threadにかかわらずFIFO後尾へ登録する。exact organizer capabilityは既存どおりbypassし、atomic admission内のsame-thread MODEL_WRITER reentryを維持する。予約callbackはMODEL_EXECUTORへatomic admissionをpostし、DB bodyをlease-releasing threadでinline実行しない。 |
 | writer inventory | `quickstep/src` を実行可能inventoryの対象に含め、helperのtransaction経路をallowlistへ登録する。inventoryはwriter存在・登録の検出を担い、gate構造の保証はfocused testが担う。 |
 | device evidence | fresh default workspaceで復旧legの `MODEL_RELOAD_FAILED` timeoutが解消することを、#155の独立したQSB-overlap結果と区別して確認する。 |
 
@@ -72,7 +72,7 @@ snapshot意味論を維持する。新たなwriter lock、lease kind、公開の
 - `ModelDbController.newTransaction()` の全baseline callerのblocking契約を一律に変更しない。新しいatomic operationを必要とするのは、単一の `MODEL_EXECUTOR` 上でtokenless DB workを実行するHotseat helperである。取得済みleaseを受け取る新しい `ModelDbController` / `SQLiteTransaction` overloadも追加しない。
 - #155が所有するQSB reservation/配置overlapによる初回A7不一致を変更・隠蔽しない。本Issueはrecovery reloadのstarvationを除去するものであり、単独でdefault workspaceのA8成功を主張しない。
 - recovery protocol、run journal、UI、権限、ネットワーク、Launcher DB schema、backup formatを変更しない。
-- `createBackup` より後に呼ばれたHotseat migration `ModelWriter` mutationが、呼出し時点のholder有無、またはempty-gate直後・executor admission前のholder出現にかかわらず、snapshotより先にFIFOまたはMODEL_EXECUTORで実行されるような順序変更を導入しない。
+- `createBackup` より後に呼ばれたHotseat migration `ModelWriter` mutationが、呼出し時点またはadmission前のcurrent holderの種別・threadにかかわらず、snapshotより先にFIFOまたはMODEL_EXECUTORで実行されるような順序変更を導入しない。exact organizer capabilityおよびatomic admission内のsame-thread MODEL_WRITER reentryは既存どおり許可する。
 - 実時間10秒timeoutやsleepをtest oracleにしない。latch/barrierの待機上限はtest hangのguardだけであり、合否は順序イベントとlease状態で判定する。
 - scannerで新規に見つかった別種のwriter ownership/lifecycle問題を、このIssueで無条件に修正しない。同一のtokenless MODEL_EXECUTOR blocking-admission原因だけを本Issueに含める。
 
@@ -139,13 +139,14 @@ And taskは外部leaseをsynchronously waitしない。
 Given `HotseatEduController.migrate()` が `createBackup()` を呼んだ後にHotseat itemを
 `ModelWriter.moveItemInDatabase()` で移動する
 
-And 呼出し時に `ORGANIZER` またはrestore-family leaseが保持されている、**または**呼出し後・
-backup executor admission前に別threadがそのleaseを取得する
+And 呼出し時に任意のcurrent holderが存在している、**または**呼出し後・
+backup executor admission前に別threadがholderを取得する
 
 When `createBackup()` が後続migration writer submissionより先に実行される
 
 Then coordinatorにはbackupのstable logical reservationがmigration writerより先に同期登録され、
-empty-gate後にholderが現れてもその相対順序を失わない
+pending reservationは任意のcurrent holder下でも後続tokenless MODEL_WRITER submissionをFIFO後尾へ
+登録するため、その相対順序を失わない
 
 And holder解放時、backup reservationはMODEL_EXECUTORへatomic admissionをpostするだけであり、
 DB snapshotをlease-releasing thread上で実行しない
@@ -223,7 +224,7 @@ messageも変更しない。
 - [x] **AC-156-04**: coordinator競合がない場合、`createBackup` はbackup table作成とcache refreshを、`restoreBackup` は既存restoreと通常reloadを保持する。新たな例外、busy結果、public product API、schema変更を導入しない。
 - [x] **AC-156-05**: executable writer inventoryは `quickstep/src` を監査対象とし、Hotseat helperのtransaction経路を明示的なlease/admission理由とともにallowlistで管理する。inventoryの責務はwriter存在・allowlist登録の検出とし、atomic gateが除去されていないことはAC-156-01/02のfocused testが担保する。
 - [x] **AC-156-06**: fresh default workspaceでのmanual apply/recoveryのdevice evidenceは、recovery legがtokenless Hotseat taskにより10秒の `MODEL_RELOAD_FAILED` timeoutへ至らないことを示す。#155のlayout-overlap結果は別原因として併記する。
-- [x] **AC-156-07**: `createBackup()` 呼出し時にholderがある場合、coordinator emptyでの呼出し後・backup executor admission前に別threadが`ORGANIZER` またはrestore-family leaseを取得する場合、**および**coordinator emptyでbackupと後続Hotseat migration `ModelWriter` writeがともに投稿された後に別threadがholderを取得する場合に、holder解放を順に行うdeterministic regressionで、backupのDB bodyは後続migration mutationより先に一度だけ実行される。先行stable reservationがある間、後続tokenless `MODEL_WRITER` submissionはcurrentがemptyでもそのlogical FIFO順序をbypassしない。backup reservation callbackはDB bodyをlease-releasing thread上でinline実行せず、実行時atomic admissionを再評価する。
+- [x] **AC-156-07**: `createBackup()` 呼出し時にholderがある場合、coordinator emptyでの呼出し後・backup executor admission前に別threadが`ORGANIZER` またはrestore-family leaseを取得する場合、coordinator emptyでbackupと後続Hotseat migration `ModelWriter` writeがともに投稿された後に別threadがholderを取得する場合、**および**別threadで先行baseline `MODEL_WRITER` leaseが保持されている間にbackupと後続migrationが投稿される場合に、holder解放を順に行うdeterministic regressionで、backupのDB bodyは後続migration mutationより先に一度だけ実行される。先行stable reservationがある間、後続tokenless `MODEL_WRITER` submissionは`current`のholder種別・threadにかかわらず、そのlogical FIFO順序をbypassしない。atomic admission内のsame-thread `MODEL_WRITER` reentryおよびexact organizer capabilityは既存どおり維持する。backup reservation callbackはDB bodyをlease-releasing thread上でinline実行せず、実行時atomic admissionを再評価する。
 
 ## Test oracle
 
@@ -235,7 +236,7 @@ messageも変更しない。
 | AC-156-04 | 対象helperの非競合fixture DBでbackup tableの存在、cache refresh、restore後のreload要求を観測し、既存semanticsとの差分がないことを確認する。 |
 | AC-156-05 | `python3 tools/repo-contract/validate_writer_inventory.py` の成功と、quickstep内の未allowlisted `ModelDbController` transaction callerを検出するchecker regression/self-check。atomic admissionの構造検証はこのscannerへ委譲しない。 |
 | AC-156-06 | API 36 clean emulatorでfresh installをHOMEとして実行し、supported export/logcat/thread dumpでrecovery reloadの開始・完了とterminal outcomeを記録する。成功はA8自体ではなく、timeout-starvation不在で判定する。 |
-| AC-156-07 | 外部holder下のケースに加え、empty-gateで実`createBackup`を呼んでbackup executor taskを停止し、別threadの`ORGANIZER`取得後にactual `ModelWriter.moveItemInDatabase()`をFIFOへ登録してからbackup admissionを開始する。holder解放後、backup table rankがmigration前、Favorites rankがmigration後であること、およびrelease threadでbodyが実行されないことをassertする。 |
+| AC-156-07 | 外部holder下のケースに加え、empty-gateで実`createBackup`を呼んでbackup executor taskを停止し、別threadの`ORGANIZER`取得後にactual `ModelWriter.moveItemInDatabase()`をFIFOへ登録してからbackup admissionを開始する。また、MODEL_EXECUTOR上の先行baseline `MODEL_WRITER` leaseをbarrierで保持し、その間にbackupとactual migrationを送信してreservation後尾への登録をassertする。各holder解放後、backup table rankがmigration前、Favorites rankがmigration後であること、およびrelease threadでbodyが実行されないことをassertする。 |
 
 ## Open questions
 
@@ -270,3 +271,5 @@ admission原因である場合のみ本Issueに追加する。その他のpath�
 - 2026-08-27: `LayoutWriteCoordinator`に、holder有無にかかわらずcall-time reservationを既存FIFOへ記録し、MODEL_EXECUTOR上で同一reservationをatomicにadmitまたは保持するinternal operationを追加した。empty-gate→organizer acquired→actual `ModelWriter` migration→backup admission→holder releaseのAPI 36 regressionで、backup tableはpre-migration rank、Favoritesはpost-migration rankとなることを確認した。focused Hotseat suite（11 tests）およびshared-writer suite（48 tests）、全JVM test、debug assemble、fresh default workspaceのrecovery進行確認に成功した。PR未mergeのためstatusは`accepted`を維持し、最終headには別セッションによるAuditとexact-head CIが必要である。
 - 2026-08-27: PR #157の次回reviewで、empty coordinator下で`createBackup` reservationと後続migrationがいずれもMODEL_EXECUTORへ投稿された後にholderが出現すると、後続tokenless `MODEL_WRITER` submissionが先行reservationをbypassしうるraceを確認した。AC-156-07をこのinterleavingまで拡張し、回帰実証が完了するまで未充足へ戻した。
 - 2026-08-27: `runOrDefer`を、coordinatorがemptyでも先行`ModelWriterReservation`が存在するtokenless `MODEL_WRITER` submissionをFIFO末尾へdeferする限定的ordering barrierへ拡張した。exact organizer capabilityおよび他のowner kindのempty-coordinator semanticsは変更していない。empty→backup reservation→actual `ModelWriter` migration→organizer acquire→backup admission/re-defer→exact-token correlated progress→holder releaseのAPI 36 regressionで、MODEL_EXECUTORがblockせず、backup tableがpre-migration rank、Favoritesがpost-migration rankになることを確認した。focused Hotseat suite（13 tests）、shared-writer suite（50 tests）、全JVM test、debug assembleに成功した。PR未mergeのためstatusは`accepted`を維持し、最終source headにはcode-review後の独立Auditとexact-head CIが必要である。
+- 2026-08-27: PR #157の次回reviewで、先行baseline `MODEL_WRITER` leaseが別threadで保持されている場合は、`current == null`だけを対象にしたreservation barrierを後続migrationがbypassしうると確認した。AC-156-07をdistinct baseline `MODEL_WRITER` holderのinterleavingまで拡張し、回帰実証が完了するまで未充足へ戻した。
+- 2026-08-27: pending stable reservationがある限り、後続tokenless `MODEL_WRITER` submissionをcurrent holderの種別・threadにかかわらず既存FIFO後尾へdeferする限定barrierにした。exact organizer capability、non-MODEL_WRITERの`runOrDefer`意味論、atomic admission内のsame-thread MODEL_WRITER reentryは不変である。先行baseline MODEL_WRITER leaseをMODEL_EXECUTOR上で保持してbackup→actual migrationを送信する実DB regressionを追加し、backup tableのpre-migration rankとFavoritesのpost-migration rankを確認した。最終実機検証はfocused Hotseat suite（14 tests）、shared-writer suite（51 tests）、全JVM test、debug APK assemble、Android test Java compile、Spotless、writer inventory、repository/high-risk contract self-testに成功した。PR未mergeのためstatusは`accepted`を維持し、最終source headには再レビュー後の独立Auditとexact-head CIが必要である。
