@@ -1,6 +1,6 @@
 ---
 issue: "#156"
-status: draft
+status: accepted
 requirements:
   - AC-156-01-atomic-hotseat-admission
   - AC-156-02-race-safe-correlated-reload-progress
@@ -54,7 +54,7 @@ writer leaseを実際に取得した1回だけ実行される。新たなwriter 
 |---|---|
 | atomic Hotseat admission | `HotseatRestoreHelper.createBackup` と `restoreBackup` の各MODEL_EXECUTOR taskが、transaction開始と同時にatomicなlease取得またはFIFO再投入を行う。 |
 | existing coordinatorの拡張 | `LayoutWriteCoordinator` 内に、空き時のMODEL_WRITER lease取得とbusy時のdeferred continuation登録を同一monitorで行う限定internal operationを追加する。continuationはMODEL_EXECUTORへ戻す。 |
-| transaction seam | 取得済みleaseを `ModelDbController` / `SQLiteTransaction` に渡して使用する限定internal overloadを追加し、helperがadmission後に通常の `newTransaction()` blocking pathへ落ちないようにする。 |
+| transaction seam | atomic admissionで取得したouter MODEL_WRITER leaseの下で既存 `newTransaction()` を呼び、既存same-thread MODEL_WRITER reentryを利用する。新しい `ModelDbController` / `SQLiteTransaction` overloadは追加しない。 |
 | organizerとの進行保証 | held organizer lease、helper task、exact-token correlated LoaderTaskを組み合わせ、gate時は無leaseで直後にorganizer leaseを取得するraceでもreloadが進行することを実Launcher instrumentationで証明する。 |
 | deferred実行の保持 | busy時のhelper continuationは既存FIFO順で一度だけMODEL_EXECUTORへ再投入される。entry失敗が後続entryをwedgedにしない既存coordinator契約を維持する。 |
 | writer inventory | `quickstep/src` を実行可能inventoryの対象に含め、helperのtransaction経路をallowlistへ登録する。inventoryはwriter存在・登録の検出を担い、gate構造の保証はfocused testが担う。 |
@@ -63,7 +63,7 @@ writer leaseを実際に取得した1回だけ実行される。新たなwriter 
 ## Non-goals
 
 - `LayoutWriteCoordinator` に第二のlock、new coordinator type、new lease kind、または跨thread organizer token再入を加えない。
-- `ModelDbController.newTransaction()` の全baseline callerのblocking契約を一律に変更しない。新しいatomic operationを必要とするのは、単一の `MODEL_EXECUTOR` 上でtokenless DB workを実行するHotseat helperである。
+- `ModelDbController.newTransaction()` の全baseline callerのblocking契約を一律に変更しない。新しいatomic operationを必要とするのは、単一の `MODEL_EXECUTOR` 上でtokenless DB workを実行するHotseat helperである。取得済みleaseを受け取る新しい `ModelDbController` / `SQLiteTransaction` overloadも追加しない。
 - #155が所有するQSB reservation/配置overlapによる初回A7不一致を変更・隠蔽しない。本Issueはrecovery reloadのstarvationを除去するものであり、単独でdefault workspaceのA8成功を主張しない。
 - recovery protocol、run journal、UI、権限、ネットワーク、Launcher DB schema、backup formatを変更しない。
 - 実時間10秒timeoutやsleepをtest oracleにしない。latch/barrierの待機上限はtest hangのguardだけであり、合否は順序イベントとlease状態で判定する。
@@ -168,9 +168,11 @@ And #155の未解決/解決状態に応じたlayout verification結果は、こ�
 - schema migration、ZIP/Android backup format、recovery pointの内容は変更しない。
 - Hotseat helperが操作する配置アイテムの集合や、organizerの対象集合・lock状態・
   revision不変条件は変更しない。
-- helper taskのtransactionは既存の `ModelDbController` / `SQLiteTransaction` seamを
-  継続して使用する。admissionだけをatomicにし、DB mutation、commit、rollbackの意味論を
-  変更しない。
+- helper taskはatomic admissionで取得したouter MODEL_WRITER leaseの下で既存
+  `ModelDbController.newTransaction()` を呼ぶ。既存のsame-thread MODEL_WRITER reentryが
+  inner transaction leaseを供給し、outer leaseはwrapperの `finally` で閉じる。新しい
+  transaction overloadは追加しない。admissionだけをatomicにし、DB mutation、commit、
+  rollbackの意味論を変更しない。
 
 ## Permissions, privacy, and security
 
@@ -227,3 +229,4 @@ admission原因である場合のみ本Issueに追加する。その他のpath�
 
 - 2026-08-27: #156用のDraftを作成。#150から分離されたexecutor starvationのみを対象化し、#155のlayout-overlap原因を非対象として明記した。
 - 2026-08-27: Reviewに対応。admission判定後raceを閉じるatomic lease-or-FIFO operation、raceを再現するdeterministic oracle、inventoryの限定責務、quickstep監査のstop conditionを追加した。
+- 2026-08-27: Re-reviewに対応。transaction seamをPlanと整合させ、outer MODEL_WRITER leaseの下で既存 `newTransaction()` のsame-thread reentryを用いること、新しい `ModelDbController` / `SQLiteTransaction` overloadを追加しないことを明記した。Reviewの受入判断によりstatusを `accepted` へ遷移した。

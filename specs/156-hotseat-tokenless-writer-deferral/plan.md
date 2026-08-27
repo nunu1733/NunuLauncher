@@ -2,7 +2,7 @@
 
 > Issue: #156
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: accepted
 > Baseline examined: `7ba2194ce711ce8e9a9c7abe5957919d566e26dd` (`main`, 2026-08-27)
 
 ## Current evidence
@@ -291,7 +291,7 @@ retain shared-writer coordinator/reload coverage:
 ## Execution checklist
 
 - [ ] Empty-gate→organizer-acquired→executor-start reproducer is red on the legacy direct transaction path.
-- [ ] Review accepts `spec.md`; status becomes `accepted`.
+- [x] Re-review accepts `spec.md`; status is `accepted`.
 - [ ] Atomic lease-or-defer operation grants/reenters or FIFO-registers in one coordinator critical section.
 - [ ] Both helper methods use the one internal atomic admission route.
 - [ ] Race test is green post-fix and exact correlated reload completes before explicit organizer-lease release.
