@@ -1,6 +1,8 @@
 package com.android.launcher3.hybridhotseat;
 
 import static com.android.launcher3.LauncherSettings.Favorites.HYBRID_HOTSEAT_BACKUP_TABLE;
+import static com.android.launcher3.LauncherSettings.Favorites.TABLE_NAME;
+import static com.android.launcher3.provider.LauncherDbUtils.itemIdMatch;
 import static com.android.launcher3.provider.LauncherDbUtils.tableExists;
 import static com.android.launcher3.util.Executors.MODEL_EXECUTOR;
 import static org.junit.Assert.assertEquals;
@@ -9,9 +11,14 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import android.content.ComponentName;
+import android.content.ContentValues;
 import android.content.Context;
+import android.content.Intent;
+import android.database.Cursor;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Process;
 
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -19,13 +26,21 @@ import androidx.test.platform.app.InstrumentationRegistry;
 
 import com.android.launcher3.LauncherAppState;
 import com.android.launcher3.LauncherModel;
+import com.android.launcher3.LauncherSettings.Favorites;
+import com.android.launcher3.celllayout.CellPosMapper;
 import com.android.launcher3.OrganizerModelReloadAdapter;
 import com.android.launcher3.model.BgDataModel;
 import com.android.launcher3.model.LayoutWriteCoordinator;
 import com.android.launcher3.model.ModelDbController;
+import com.android.launcher3.model.ModelWriter;
+import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.provider.LauncherDbUtils.SQLiteTransaction;
 
+import app.lawnchair.LawnchairLauncher;
+
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -57,6 +72,7 @@ public class HotseatRestoreAdmissionTest {
     private ModelDbController dbController;
     private LauncherModel model;
     private Handler mainHandler;
+    private ItemInfo seededHotseatItem;
     private boolean ownsBackupTable;
 
     @Before
@@ -72,6 +88,11 @@ public class HotseatRestoreAdmissionTest {
 
     @After
     public void tearDown() throws Exception {
+        if (seededHotseatItem != null) {
+            model.getWriter(false, CellPosMapper.DEFAULT, null).deleteItemFromDatabase(
+                    seededHotseatItem, "Issue156 test fixture cleanup");
+            awaitModelExecutor();
+        }
         if (ownsBackupTable) {
             MODEL_EXECUTOR.submit(() -> {
                 try (SQLiteTransaction transaction = dbController.newTransaction()) {
@@ -174,6 +195,82 @@ public class HotseatRestoreAdmissionTest {
     }
 
     @Test
+    public void createBackupReservationPrecedesActualModelWriterMigration() throws Exception {
+        ItemInfo migrationItem = addTestHotseatItem();
+        int backupRank = migrationItem.rank;
+        int migratedRank = backupRank + 1;
+
+        LayoutWriteCoordinator coordinator = LayoutWriteCoordinator.getInstance();
+        LayoutWriteCoordinator.Lease organizer = coordinator.tryAcquire(
+                LayoutWriteCoordinator.OwnerKind.ORGANIZER);
+        assertNotNull(organizer);
+        try {
+            HotseatRestoreHelper.createBackup(context);
+            migrationItem.rank = migratedRank;
+            ModelWriter modelWriter = model.getWriter(
+                    false, CellPosMapper.DEFAULT, null);
+            modelWriter.moveItemInDatabase(
+                    migrationItem,
+                    migrationItem.container,
+                    migrationItem.screenId,
+                    migrationItem.cellX,
+                    migrationItem.cellY);
+            assertEquals("backup reservation must enter FIFO before ModelWriter migration", 2,
+                    coordinator.pendingDeferredCount());
+        } finally {
+            organizer.close();
+        }
+        awaitModelExecutor();
+
+        assertEquals("backup must retain the rank from before ModelWriter mutation", backupRank,
+                rankInTable(HYBRID_HOTSEAT_BACKUP_TABLE, migrationItem.id));
+        assertEquals("migration must update the primary Favorites row after backup", migratedRank,
+                rankInTable(TABLE_NAME, migrationItem.id));
+    }
+
+    @Test
+    public void createBackupReservationPrecedesFollowingMigrationSubmission() {
+        LayoutWriteCoordinator coordinator = LayoutWriteCoordinator.getInstance();
+        DeterministicExecutor modelExecutor = new DeterministicExecutor();
+        List<String> executionOrder = new ArrayList<>();
+
+        LayoutWriteCoordinator.Lease organizer = coordinator.tryAcquire(
+                LayoutWriteCoordinator.OwnerKind.ORGANIZER);
+        assertNotNull(organizer);
+        try {
+            // This is the concrete helper scheduling seam used by createBackup. Its DB body is
+            // deliberately represented as an ordered event so the test can assert release-thread
+            // affinity separately from MODEL_EXECUTOR order.
+            scheduleAtomicHotseatWork(modelExecutor, () -> executionOrder.add("backup"));
+            coordinator.runOrDefer(
+                    LayoutWriteCoordinator.OwnerKind.MODEL_WRITER,
+                    0L,
+                    false,
+                    () -> modelExecutor.execute(() -> executionOrder.add("migration")));
+
+            assertEquals("backup reservation must enter FIFO before following migration", 2,
+                    coordinator.pendingDeferredCount());
+            assertEquals("neither body may run while the external holder is active", 0,
+                    executionOrder.size());
+        } finally {
+            organizer.close();
+        }
+
+        assertEquals("release callbacks may post but must not run DB bodies", 0,
+                executionOrder.size());
+        assertEquals("FIFO drain must preserve backup then migration hand-off order", 2,
+                modelExecutor.pendingTaskCount());
+        modelExecutor.runNext();
+        assertEquals("backup DB body must run first on MODEL_EXECUTOR", "backup",
+                executionOrder.get(0));
+        modelExecutor.runNext();
+        assertEquals(2, executionOrder.size());
+        assertEquals("following migration must run after backup snapshot", "migration",
+                executionOrder.get(1));
+        assertEquals(0, coordinator.pendingDeferredCount());
+    }
+
+    @Test
     public void atomicAdmissionDefersWhenOrganizerAppearsAfterTaskIsScheduled() {
         LayoutWriteCoordinator coordinator = LayoutWriteCoordinator.getInstance();
         DeterministicExecutor modelExecutor = new DeterministicExecutor();
@@ -231,8 +328,9 @@ public class HotseatRestoreAdmissionTest {
         assertNotNull(firstOrganizer);
         try {
             scheduleAtomicHotseatWork(modelExecutor, hotseatDbBodyRuns::incrementAndGet);
-            modelExecutor.runNext();
-            assertEquals(1, coordinator.pendingDeferredCount());
+            assertEquals("call-time reservation must defer before MODEL_EXECUTOR starts", 1,
+                    coordinator.pendingDeferredCount());
+            assertEquals(0, modelExecutor.pendingTaskCount());
         } finally {
             firstOrganizer.close();
         }
@@ -295,6 +393,38 @@ public class HotseatRestoreAdmissionTest {
         } finally {
             outer.close();
         }
+    }
+
+    private ItemInfo addTestHotseatItem() throws Exception {
+        var item = new com.android.launcher3.model.data.WorkspaceItemInfo();
+        item.title = "Issue156 Hotseat fixture";
+        item.user = Process.myUserHandle();
+        item.intent = new Intent(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_LAUNCHER)
+                .setComponent(new ComponentName(context, LawnchairLauncher.class));
+        model.getWriter(false, CellPosMapper.DEFAULT, null).addItemToDatabase(
+                item, Favorites.CONTAINER_HOTSEAT, 0, 0, 0);
+        awaitModelExecutor();
+        seededHotseatItem = item;
+        return item;
+    }
+
+    private int rankInTable(String tableName, int itemId) throws Exception {
+        AtomicInteger rank = new AtomicInteger(Integer.MIN_VALUE);
+        MODEL_EXECUTOR.submit(() -> {
+            try (Cursor cursor = dbController.getDb().query(
+                    tableName,
+                    new String[] {Favorites.RANK},
+                    itemIdMatch(itemId),
+                    null,
+                    null,
+                    null,
+                    null)) {
+                assertTrue("expected fixture item in " + tableName, cursor.moveToFirst());
+                rank.set(cursor.getInt(0));
+            }
+        }).get();
+        return rank.get();
     }
 
     private boolean backupTableExists() throws Exception {

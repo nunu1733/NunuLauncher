@@ -1,6 +1,6 @@
 ---
 issue: "#156"
-status: implemented
+status: accepted
 requirements:
   - AC-156-01-atomic-hotseat-admission
   - AC-156-02-race-safe-correlated-reload-progress
@@ -8,6 +8,7 @@ requirements:
   - AC-156-04-no-contention-compatibility
   - AC-156-05-writer-inventory-coverage
   - AC-156-06-device-recovery-no-starvation-timeout
+  - AC-156-07-create-backup-submission-order
 updated: 2026-08-27
 ---
 
@@ -45,7 +46,11 @@ atomicに **(a) MODEL_WRITER leaseを取得してそのleaseでtransactionを実
 したがって、helper呼出し時にleaseがある場合だけでなく、gate判定からexecutor実行までに
 leaseが取得されるraceでも、tokenless helperはqueueへ退避する。exact organizer tokenを
 持つ相関LoaderTaskは既存capabilityで進行し、helperのDB更新・通常reload意味論は
-writer leaseを実際に取得した1回だけ実行される。新たなwriter lock、lease kind、公開の
+writer leaseを実際に取得した1回だけ実行される。さらに `createBackup` は、外部の
+organizer/restore-family holderが存在するとき、DB bodyの実行を待たずに**呼出し時**にFIFO
+positionを予約する。その予約はholder解放後にMODEL_EXECUTORへatomic admissionをpostするだけで、
+DB workをlease-releasing thread上でinline実行しない。したがって後続のHotseat migration
+`ModelWriter` mutationより前のsnapshot意味論を維持する。新たなwriter lock、lease kind、公開の
 並行seamは導入しない。
 
 ## Scope
@@ -57,6 +62,7 @@ writer leaseを実際に取得した1回だけ実行される。新たなwriter 
 | transaction seam | atomic admissionで取得したouter MODEL_WRITER leaseの下で既存 `newTransaction()` を呼び、既存same-thread MODEL_WRITER reentryを利用する。新しい `ModelDbController` / `SQLiteTransaction` overloadは追加しない。 |
 | organizerとの進行保証 | held organizer lease、helper task、exact-token correlated LoaderTaskを組み合わせ、gate時は無leaseで直後にorganizer leaseを取得するraceでもreloadが進行することを実Launcher instrumentationで証明する。 |
 | deferred実行の保持 | busy時のhelper continuationは既存FIFO順で一度だけMODEL_EXECUTORへ再投入される。entry失敗が後続entryをwedgedにしない既存coordinator契約を維持する。 |
+| createBackupのsubmission順序 | organizer/restore-family holder下では、`createBackup` が後続migration `ModelWriter` submissionより先にFIFO positionを同期予約する。予約callbackはMODEL_EXECUTORへatomic admissionをpostし、DB bodyをlease-releasing threadでinline実行しない。 |
 | writer inventory | `quickstep/src` を実行可能inventoryの対象に含め、helperのtransaction経路をallowlistへ登録する。inventoryはwriter存在・登録の検出を担い、gate構造の保証はfocused testが担う。 |
 | device evidence | fresh default workspaceで復旧legの `MODEL_RELOAD_FAILED` timeoutが解消することを、#155の独立したQSB-overlap結果と区別して確認する。 |
 
@@ -66,6 +72,7 @@ writer leaseを実際に取得した1回だけ実行される。新たなwriter 
 - `ModelDbController.newTransaction()` の全baseline callerのblocking契約を一律に変更しない。新しいatomic operationを必要とするのは、単一の `MODEL_EXECUTOR` 上でtokenless DB workを実行するHotseat helperである。取得済みleaseを受け取る新しい `ModelDbController` / `SQLiteTransaction` overloadも追加しない。
 - #155が所有するQSB reservation/配置overlapによる初回A7不一致を変更・隠蔽しない。本Issueはrecovery reloadのstarvationを除去するものであり、単独でdefault workspaceのA8成功を主張しない。
 - recovery protocol、run journal、UI、権限、ネットワーク、Launcher DB schema、backup formatを変更しない。
+- `createBackup` より後に呼ばれたHotseat migration `ModelWriter` mutationが、外部holder下でsnapshotより先にFIFOまたはMODEL_EXECUTORで実行されるような順序変更を導入しない。
 - 実時間10秒timeoutやsleepをtest oracleにしない。latch/barrierの待機上限はtest hangのguardだけであり、合否は順序イベントとlease状態で判定する。
 - scannerで新規に見つかった別種のwriter ownership/lifecycle問題を、このIssueで無条件に修正しない。同一のtokenless MODEL_EXECUTOR blocking-admission原因だけを本Issueに含める。
 
@@ -121,6 +128,23 @@ And helperは取得済みleaseで既存のtransaction・commit・cache refresh�
 一度だけ実行する
 
 And taskは外部leaseをsynchronously waitしない。
+
+### Scenario: organizer holder下でのmigration前backup予約
+
+Given `HotseatEduController.migrate()` が `createBackup()` を呼んだ後にHotseat itemを
+`ModelWriter.moveItemInDatabase()` で移動する
+
+And 呼出し時に `ORGANIZER` またはrestore-family leaseが保持されている
+
+When `createBackup()` が後続migration writer submissionより先に実行される
+
+Then coordinator FIFOにはbackup reservationがmigration writerより先に同期登録される
+
+And holder解放時、backup reservationはMODEL_EXECUTORへatomic admissionをpostするだけであり、
+DB snapshotをlease-releasing thread上で実行しない
+
+And MODEL_EXECUTORではbackup DB bodyがmigration mutationより先に一度だけ実行され、snapshotは
+pre-migration stateを保持する。
 
 ### Scenario: busyとなったhelper continuationの再実行
 
@@ -192,6 +216,7 @@ messageも変更しない。
 - [x] **AC-156-04**: coordinator競合がない場合、`createBackup` はbackup table作成とcache refreshを、`restoreBackup` は既存restoreと通常reloadを保持する。新たな例外、busy結果、public product API、schema変更を導入しない。
 - [x] **AC-156-05**: executable writer inventoryは `quickstep/src` を監査対象とし、Hotseat helperのtransaction経路を明示的なlease/admission理由とともにallowlistで管理する。inventoryの責務はwriter存在・allowlist登録の検出とし、atomic gateが除去されていないことはAC-156-01/02のfocused testが担保する。
 - [x] **AC-156-06**: fresh default workspaceでのmanual apply/recoveryのdevice evidenceは、recovery legがtokenless Hotseat taskにより10秒の `MODEL_RELOAD_FAILED` timeoutへ至らないことを示す。#155のlayout-overlap結果は別原因として併記する。
+- [ ] **AC-156-07**: `ORGANIZER` またはrestore-family leaseの下で、`createBackup()`、後続のHotseat migration `ModelWriter` write、holder解放を順に行うdeterministic regressionにおいて、backupのDB bodyは後続migration mutationより先に一度だけ実行される。backup reservation callbackはDB bodyをlease-releasing thread上でinline実行せず、実行時atomic admissionを再評価する。
 
 ## Test oracle
 
@@ -203,6 +228,7 @@ messageも変更しない。
 | AC-156-04 | 対象helperの非競合fixture DBでbackup tableの存在、cache refresh、restore後のreload要求を観測し、既存semanticsとの差分がないことを確認する。 |
 | AC-156-05 | `python3 tools/repo-contract/validate_writer_inventory.py` の成功と、quickstep内の未allowlisted `ModelDbController` transaction callerを検出するchecker regression/self-check。atomic admissionの構造検証はこのscannerへ委譲しない。 |
 | AC-156-06 | API 36 clean emulatorでfresh installをHOMEとして実行し、supported export/logcat/thread dumpでrecovery reloadの開始・完了とterminal outcomeを記録する。成功はA8自体ではなく、timeout-starvation不在で判定する。 |
+| AC-156-07 | deterministic executorで外部holder下の`createBackup` reservation、後続`ModelWriter`相当mutation、holder releaseを順序制御する。DB body eventがmigration mutation eventより先であること、およびrelease threadでbodyが実行されないことをassertする。 |
 
 ## Open questions
 
@@ -231,3 +257,4 @@ admission原因である場合のみ本Issueに追加する。その他のpath�
 - 2026-08-27: Reviewに対応。admission判定後raceを閉じるatomic lease-or-FIFO operation、raceを再現するdeterministic oracle、inventoryの限定責務、quickstep監査のstop conditionを追加した。
 - 2026-08-27: Re-reviewに対応。transaction seamをPlanと整合させ、outer MODEL_WRITER leaseの下で既存 `newTransaction()` のsame-thread reentryを用いること、新しい `ModelDbController` / `SQLiteTransaction` overloadを追加しないことを明記した。Reviewの受入判断によりstatusを `accepted` へ遷移した。
 - 2026-08-27: JDK 21 / Android SDK Platform 36.1 / Build Tools 36.1.0 / API 36 emulatorで、focused Hotseat suite（8 tests）とshared-writer回帰（21 tests）を実行して成功した。uncontended `createBackup`、backup tableなしの`restoreBackup`、既存backupの`restoreBackup`、atomic race、re-defer、例外release、same-thread reentry、exact-token correlated reloadのpre-release `COMPLETED` を確認した。fresh default workspaceではHotseat atomic deferral後に`MODEL_RELOAD_FAILED`を観測せず、A7 verification failureからprevious layout restoredへ進んだ。#155はOpenであり、このlayout verification failureは#156のtimeout解消と区別する。全ACを実装済みとしてstatusを `implemented` へ遷移した。
+- 2026-08-27: Implementation reviewのblocking指摘に対応。外部holder下で`createBackup`が後続Hotseat migration `ModelWriter` writeより後にFIFOへ入るordering regressionを確認した。呼出し時FIFO reservationと実行時atomic admissionを両立するAC-156-07を追加し、再検証が完了するまでstatusを `accepted` へ戻した。

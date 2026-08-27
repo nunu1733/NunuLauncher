@@ -39,12 +39,14 @@ import java.util.concurrent.Executor;
 public class HotseatRestoreHelper {
 
     /**
-     * Schedules the Hotseat DB body on MODEL_EXECUTOR with atomic writer admission.
+     * Reserves Hotseat submission order, then schedules the DB body with atomic writer admission.
      *
-     * <p>Issue #156: the coordinator decides under one monitor whether this attempt owns a
-     * MODEL_WRITER lease or must defer. A deferred entry only reposts this admission attempt,
-     * so an organizer/restore lease that appears after scheduling cannot block MODEL_EXECUTOR
-     * in ModelDbController.newTransaction().
+     * <p>Issue #156 has two separate ordering requirements. The call-time {@code runOrDefer}
+     * reserves this helper's FIFO position before a following ModelWriter migration when an
+     * organizer or restore-family holder is already active. Its deferred callback only posts to
+     * MODEL_EXECUTOR. The execution-time operation then atomically owns MODEL_WRITER or defers
+     * again, so a holder that appears after scheduling cannot block MODEL_EXECUTOR in
+     * ModelDbController.newTransaction().
      */
     private static void executeWithAtomicModelWriterAdmission(@NonNull Runnable dbBody) {
         executeWithAtomicModelWriterAdmission(MODEL_EXECUTOR, dbBody);
@@ -53,9 +55,18 @@ public class HotseatRestoreHelper {
     @VisibleForTesting
     static void executeWithAtomicModelWriterAdmission(
             @NonNull Executor executor, @NonNull Runnable dbBody) {
+        LayoutWriteCoordinator.getInstance().runOrDefer(
+                LayoutWriteCoordinator.OwnerKind.MODEL_WRITER,
+                0L,
+                false,
+                () -> scheduleAtomicModelWriterAdmission(executor, dbBody));
+    }
+
+    private static void scheduleAtomicModelWriterAdmission(
+            @NonNull Executor executor, @NonNull Runnable dbBody) {
         executor.execute(() -> LayoutWriteCoordinator.getInstance().runModelWriterOrDefer(
                 dbBody,
-                () -> executeWithAtomicModelWriterAdmission(executor, dbBody)));
+                () -> scheduleAtomicModelWriterAdmission(executor, dbBody)));
     }
 
     /**
