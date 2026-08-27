@@ -234,6 +234,53 @@ public final class LayoutWriteCoordinator {
     }
 
     /**
+     * Runs tokenless MODEL_EXECUTOR work with an atomic MODEL_WRITER admission decision.
+     *
+     * <p>Inside one coordinator critical section, this method either grants a new or
+     * same-thread reentrant MODEL_WRITER lease to {@code admittedRunnable}, or appends
+     * {@code deferredContinuation} to the existing FIFO. The continuation must hand work
+     * back to MODEL_EXECUTOR and invoke this method again; it must not run DB work inline on
+     * the lease-releasing thread. This closes the schedule-to-transaction race for callers
+     * that cannot ever block MODEL_EXECUTOR behind an external organizer/restore holder.
+     *
+     * <p>The lease wraps the full admitted runnable, rather than only a nested transaction.
+     * Existing {@code ModelDbController.newTransaction()} then uses same-thread MODEL_WRITER
+     * reentry for its transaction-scoped lease. The outer lease is always released in
+     * {@code finally}, including an early return or a DB-open failure before the transaction
+     * is constructed.
+     */
+    public void runModelWriterOrDefer(
+            @NonNull Runnable admittedRunnable,
+            @NonNull Runnable deferredContinuation) {
+        Lease lease;
+        synchronized (lock) {
+            Holder h = current;
+            if (h == null) {
+                long token = nextToken.getAndIncrement();
+                current = new Holder(Thread.currentThread(), OwnerKind.MODEL_WRITER, token);
+                lease = new LeaseImpl(OwnerKind.MODEL_WRITER, token);
+            } else if (h.thread == Thread.currentThread() && h.kind == OwnerKind.MODEL_WRITER) {
+                h.recursionCount += 1;
+                lease = new LeaseImpl(h.kind, h.token);
+            } else {
+                deferred.addLast(new DeferredRunnable() {
+                    @Override
+                    public void runWithOperationFuture() {
+                        deferredContinuation.run();
+                    }
+                });
+                Log.d(TAG, "Deferring atomic MODEL_WRITER runnable; queue size=" + deferred.size());
+                return;
+            }
+        }
+        try {
+            admittedRunnable.run();
+        } finally {
+            lease.close();
+        }
+    }
+
+    /**
      * Run [runnable] under the coordinator's MODEL_EXECUTOR gate. If an
      * organizer or restore-family lease is held and the runnable is tokenless,
      * it is appended to the FIFO and the executor returns immediately. Baseline

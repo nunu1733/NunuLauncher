@@ -236,3 +236,74 @@ The existing API 36 clean-emulator
 `organizer-instrumentation-shared-writer-tests` lane now includes
 `OrganizerReloadSupersessionTest`. No new lane, production seam, or public API
 is required.
+
+## Issue #156 follow-up: Hybrid Hotseat atomic admission
+
+> Follow-up date: 2026-08-27
+> Scope: tokenless Hybrid Hotseat DB work that previously posted directly to
+> `MODEL_EXECUTOR` and could synchronously wait on an external coordinator lease
+> Implementation status: static/source verification complete; API 36 connected
+> instrumentation and fresh-workspace device evidence remain required before
+> Issue #156 is considered implemented.
+
+Issue #156 found a writer path that the historical Issue #60 inventory did not
+scan: `quickstep/src/com/android/launcher3/hybridhotseat/HotseatRestoreHelper.java`.
+`createBackup` and `restoreBackup` each posted tokenless
+`ModelDbController.newTransaction()` work to the single `MODEL_EXECUTOR`. When
+an organizer or restore-family lease was held, the transaction's fallback
+could synchronously wait and starve the correlated organizer reload.
+
+The corrective source change preserves the single `LayoutWriteCoordinator`
+serialization seam. `HotseatRestoreHelper` now schedules its DB body through
+`runModelWriterOrDefer`. That operation makes one monitor-protected decision:
+it grants an outer `MODEL_WRITER` lease and runs the body, including the
+existing same-thread transaction reentry, or it appends a continuation that
+reposts the same atomic admission attempt to `MODEL_EXECUTOR`. A deferred
+callback never performs Hotseat DB work on the lease-releasing thread. This
+closes both the already-held-holder case and the race where a holder appears
+after scheduling but before the model executor begins admission.
+
+The executable inventory now scans `src`, `quickstep/src`, and
+`lawnchair/src`; its bounded `dbController` receiver pattern covers both
+Hotseat transaction expressions. The current source scan passes with **19
+allowlisted writer files across 1,437 scanned source files, 0 errors, and 0
+warnings**. The one new inventory row is as follows.
+
+| File | Pattern kind(s) | Lease kind / reason |
+|---|---|---|
+| `quickstep/src/com/android/launcher3/hybridhotseat/HotseatRestoreHelper.java` | controller-call | Hybrid Hotseat backup/restore uses `MODEL_EXECUTOR` atomic `LayoutWriteCoordinator.runModelWriterOrDefer` admission. |
+
+The inventory's responsibility remains intentionally limited to identifying
+writer paths and requiring their documented allowlist registration. It cannot
+prove that an admission gate stays structurally present. The focused
+`HotseatRestoreAdmissionTest` owns that behavioral guarantee: it uses the
+actual helper scheduler seam and a deterministic single-executor fixture to
+stage the order `schedule while empty → acquire ORGANIZER → begin admission`.
+It asserts FIFO deferral, exact-token correlated-loader progress before
+explicit lease release, re-deferral when a new holder appears, same-thread
+writer reentry, and finally-based release after an admitted exception. The
+existing API 36 shared-writer CI lane is extended to include this test.
+
+### Scope stop condition
+
+The `quickstep/src` scan extension produced no writer path beyond
+`HotseatRestoreHelper`. If a subsequent scan reveals another path, Issue #156
+may change its production behavior only when inspection shows the same cause:
+tokenless DB work running on `MODEL_EXECUTOR` can synchronously wait for an
+external coordinator lease. Every other ownership or lifecycle finding must
+be recorded with source evidence and split into its own Issue before an
+allowlist rationale or product change is added. This preserves the Issue #156
+boundary while keeping the inventory fail-closed.
+
+### Required connected-environment evidence
+
+The local sandbox does not supply Android SDK Platform 36.1 / Build Tools 36.1.0
+or an API 36 device/emulator, so connected evidence is deliberately not
+claimed here. On the connected environment, run the repository's shared-writer
+instrumentation lane with
+`com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest` included,
+then collect clean fresh-default-workspace evidence that the recovery leg no
+longer terminates in `MODEL_RELOAD_FAILED` due to Hotseat starvation. Record
+the exact head SHA, the complete commands/results, the CI run URL, the state
+of independent Issue #155, and redacted diagnostic/logcat evidence in the
+Issue #156 PR assessment before merge.

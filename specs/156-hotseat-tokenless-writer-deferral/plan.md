@@ -271,12 +271,30 @@ retain shared-writer coordinator/reload coverage:
 ## Documentation updates
 
 - [ ] Update this `spec.md` status/history when reviewed, implemented, and merged.
-- [ ] Update `docs/assessment/issue-60-executor-writer-admission-audit.md` inventory table/count, atomic-admission reason, and any separately tracked non-identical finding.
+- [x] Update `docs/assessment/issue-60-executor-writer-admission-audit.md` inventory table/count, atomic-admission reason, and any separately tracked non-identical finding.
 - [ ] Keep `CONTEXT.md` unchanged: no domain-language change.
 - [ ] Keep `DESIGN.md` unchanged unless implementation reveals a conflict with an existing serialization invariant.
 - [ ] No ADR is expected: the plan applies the existing single-coordinator decision and adds no alternative architecture or public contract.
 - [ ] Keep `AGENTS.md` unchanged unless a clean-checkout/CI verification command is newly proven and becomes mandatory.
 - [ ] Link the final PR to `Closes #156` and map every AC-156 item to test/device evidence.
+
+## Static implementation evidence (2026-08-27)
+
+The implementation is deliberately not marked `implemented`: the sandbox lacks the required
+Android SDK Platform 36.1, Build Tools 36.1.0, and an API 36 emulator/device. The following
+SDK-independent checks passed on the implementation worktree before handoff:
+
+| Check | Result |
+|---|---|
+| `git diff --check` | Passed; no whitespace errors. |
+| `python3 tools/repo-contract/validate_writer_inventory.py` | Passed: 19 allowlisted writer files, 1,437 scanned source files, 0 errors, 0 warnings. |
+| `python3 tools/repo-contract/validate_repo_contract.py` | Passed. |
+| `python3 tools/repo-contract/test_validate_repo_contract.py` | Passed. |
+| `python3 tools/repo-contract/test_validate_high_risk_evidence.py` | Passed: 47 tests. |
+
+The connected environment must run the API 36 shared-writer command in this Plan, then the
+required `spotlessCheck`, unit, assemble, and fresh-default-workspace device flows. Record the
+exact commit SHA and CI run URL before changing the Spec status to `implemented`.
 
 ## Residual risks and dependencies
 
@@ -292,11 +310,11 @@ retain shared-writer coordinator/reload coverage:
 
 - [ ] Empty-gate→organizer-acquired→executor-start reproducer is red on the legacy direct transaction path.
 - [x] Re-review accepts `spec.md`; status is `accepted`.
-- [ ] Atomic lease-or-defer operation grants/reenters or FIFO-registers in one coordinator critical section.
-- [ ] Both helper methods use the one internal atomic admission route.
-- [ ] Race test is green post-fix and exact correlated reload completes before explicit organizer-lease release.
-- [ ] Uncontended, missing-table, exception, re-defer, and exactly-once behaviors pass.
-- [ ] quickstep writer-inventory coverage and allowlist entry are green; non-identical scan findings are split.
-- [ ] Focused and full relevant lint/build/unit/instrumentation checks pass.
-- [ ] Fresh-workspace device evidence separates #156 timeout resolution from #155 layout-overlap behavior.
+- [x] Atomic lease-or-defer operation grants/reenters or FIFO-registers in one coordinator critical section (source implementation complete; connected verification pending).
+- [x] Both helper methods use the one internal atomic admission route (source implementation complete; connected verification pending).
+- [ ] Race test is green post-fix and exact correlated reload completes before explicit organizer-lease release (API 36 connected instrumentation pending).
+- [ ] Uncontended, missing-table, exception, re-defer, and exactly-once behaviors pass (API 36 connected instrumentation pending).
+- [x] quickstep writer-inventory coverage and allowlist entry are green; the expanded scan found no non-identical additional writer.
+- [ ] Focused and full relevant lint/build/unit/instrumentation checks pass (Android SDK 36.1 / Build Tools 36.1.0 environment pending).
+- [ ] Fresh-workspace device evidence separates #156 timeout resolution from #155 layout-overlap behavior (connected device pending).
 - [ ] Independent high-risk audit, exact-head CI, and PR evidence are recorded.

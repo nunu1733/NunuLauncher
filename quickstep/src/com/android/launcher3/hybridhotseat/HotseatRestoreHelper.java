@@ -21,11 +21,17 @@ import static com.android.launcher3.util.Executors.MODEL_EXECUTOR;
 
 import android.content.Context;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.VisibleForTesting;
+
 import com.android.launcher3.LauncherAppState;
 import com.android.launcher3.LauncherModel;
 import com.android.launcher3.model.GridBackupTable;
+import com.android.launcher3.model.LayoutWriteCoordinator;
 import com.android.launcher3.model.ModelDbController;
 import com.android.launcher3.provider.LauncherDbUtils.SQLiteTransaction;
+
+import java.util.concurrent.Executor;
 
 /**
  * A helper class to manage migration revert restoration for hybrid hotseat
@@ -33,10 +39,30 @@ import com.android.launcher3.provider.LauncherDbUtils.SQLiteTransaction;
 public class HotseatRestoreHelper {
 
     /**
+     * Schedules the Hotseat DB body on MODEL_EXECUTOR with atomic writer admission.
+     *
+     * <p>Issue #156: the coordinator decides under one monitor whether this attempt owns a
+     * MODEL_WRITER lease or must defer. A deferred entry only reposts this admission attempt,
+     * so an organizer/restore lease that appears after scheduling cannot block MODEL_EXECUTOR
+     * in ModelDbController.newTransaction().
+     */
+    private static void executeWithAtomicModelWriterAdmission(@NonNull Runnable dbBody) {
+        executeWithAtomicModelWriterAdmission(MODEL_EXECUTOR, dbBody);
+    }
+
+    @VisibleForTesting
+    static void executeWithAtomicModelWriterAdmission(
+            @NonNull Executor executor, @NonNull Runnable dbBody) {
+        executor.execute(() -> LayoutWriteCoordinator.getInstance().runModelWriterOrDefer(
+                dbBody,
+                () -> executeWithAtomicModelWriterAdmission(executor, dbBody)));
+    }
+
+    /**
      * Creates a snapshot backup of Favorite table for future restoration use.
      */
     public static void createBackup(Context context) {
-        MODEL_EXECUTOR.execute(() -> {
+        executeWithAtomicModelWriterAdmission(() -> {
             ModelDbController dbController = LauncherAppState.getInstance(context)
                     .getModel().getModelDbController();
             try (SQLiteTransaction transaction = dbController.newTransaction()) {
@@ -52,7 +78,7 @@ public class HotseatRestoreHelper {
      * Finds and restores a previously saved snapshow of Favorites table
      */
     public static void restoreBackup(Context context) {
-        MODEL_EXECUTOR.execute(() -> {
+        executeWithAtomicModelWriterAdmission(() -> {
             LauncherModel model = LauncherAppState.getInstance(context).getModel();
             try (SQLiteTransaction transaction = model.getModelDbController().newTransaction()) {
                 if (!tableExists(transaction.getDb(), HYBRID_HOTSEAT_BACKUP_TABLE)) {
