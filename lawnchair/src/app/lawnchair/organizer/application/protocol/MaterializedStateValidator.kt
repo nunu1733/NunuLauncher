@@ -135,6 +135,10 @@ internal object MaterializedStateValidator {
                     structure = structure(item.structure),
                 )
             },
+            // Platform-owned reservations are immutable, non-item context.
+            // Identity materialization may only resolve planned references;
+            // it must not erase reservation constraints before A5/A7.
+            reservedWorkspaceRegions = state.reservedWorkspaceRegions,
         )
     }
 
@@ -142,6 +146,13 @@ internal object MaterializedStateValidator {
         val referencedPages = state.items.mapNotNull { item ->
             (item.placement as? PlacementState.Workspace)?.page
         }.toSet()
-        return state.copy(pages = state.pages.filter { it.ref in referencedPages })
+        val reservationPages = state.reservedWorkspaceRegions.map { reservation ->
+            ApplicationPageRef.PersistentPage(reservation.page.pageId)
+        }.toSet()
+        return state.copy(
+            pages = state.pages.filter { page ->
+                page.ref in referencedPages || page.ref in reservationPages
+            },
+        )
     }
 }

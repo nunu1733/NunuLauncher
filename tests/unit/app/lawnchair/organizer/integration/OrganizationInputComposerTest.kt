@@ -10,8 +10,13 @@ import app.lawnchair.organizer.application.public.ProfileAvailability
 import app.lawnchair.organizer.planning.CategoryId
 import app.lawnchair.organizer.planning.ComponentKey
 import app.lawnchair.organizer.planning.ExistingRole
+import app.lawnchair.organizer.planning.GridCell
+import app.lawnchair.organizer.planning.GridSpan
 import app.lawnchair.organizer.planning.ItemId
+import app.lawnchair.organizer.planning.PageId
+import app.lawnchair.organizer.planning.PageRef
 import app.lawnchair.organizer.planning.ProfileId
+import app.lawnchair.organizer.planning.ReservedWorkspaceRegion
 import app.lawnchair.organizer.planning.RuleVersion
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
@@ -69,6 +74,19 @@ class OrganizationInputComposerTest {
         assertEquals(PolicySourceKind.ORGANIZER_POLICY_BUNDLE, ready.provenance.taxonomy.source)
         assertEquals(PolicySourceKind.MATERIALIZED_CLASSIFICATION_SIGNALS, ready.provenance.signals.source)
         assertEquals(PolicySourceKind.MATERIALIZED_FULL_TARGET_SET, ready.provenance.targets.source)
+    }
+
+    @Test
+    fun compositionCarriesNonItemWorkspaceReservationsWithoutChangingTargetMembership() {
+        val reservation = ReservedWorkspaceRegion(PageRef(PageId("p0")), GridCell(0, 0), GridSpan(4, 1))
+        val state = CanonicalFixtures.state(
+            items = listOf(app("a", "personal", "com.example.a/.Main")),
+        ).copy(reservedWorkspaceRegions = listOf(reservation))
+
+        val ready = ready(state)
+
+        assertEquals(listOf(reservation), ready.input.snapshot.reservedWorkspaceRegions)
+        assertEquals(listOf(ItemId("a")), ready.input.targets.existing.map { it.item })
     }
 
     @Test

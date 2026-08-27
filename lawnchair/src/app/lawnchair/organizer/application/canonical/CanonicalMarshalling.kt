@@ -41,6 +41,7 @@ import app.lawnchair.organizer.planning.PackageName
 import app.lawnchair.organizer.planning.PageId
 import app.lawnchair.organizer.planning.PageOrder
 import app.lawnchair.organizer.planning.ProfileId
+import app.lawnchair.organizer.planning.ReservedWorkspaceRegion
 import app.lawnchair.organizer.planning.ShortcutId
 import app.lawnchair.organizer.planning.SnapPositionToken
 import app.lawnchair.organizer.planning.SplitStage
@@ -69,6 +70,10 @@ object CanonicalMarshalling {
         sink.int(profiles.size)
         profiles.sortedBy { it.id }.forEach { it.encode(sink) }
         deviceCapabilities.encode(sink)
+        sink.int(reservedWorkspaceRegions.size)
+        reservedWorkspaceRegions.sortedWith(
+            compareBy<ReservedWorkspaceRegion>({ it.page.pageId }, { it.cell.x }, { it.cell.y }, { it.span.width }, { it.span.height }),
+        ).forEach { it.encode(sink) }
         sink.int(items.size)
         items.sortedBy { it.ref.encodeOrderKey() }.forEach { it.encode(sink) }
     }
@@ -98,6 +103,12 @@ object CanonicalMarshalling {
         sink.int(folderMaxColumns)
         sink.int(folderMaxRows)
         sink.byte(orientation.ordinal)
+    }
+
+    private fun ReservedWorkspaceRegion.encode(sink: Digest.DigestSink) {
+        page.pageId.encode(sink)
+        cell.encode(sink)
+        span.encode(sink)
     }
 
     private fun CanonicalItemState.encode(sink: Digest.DigestSink) {
