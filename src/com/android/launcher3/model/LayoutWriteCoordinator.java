@@ -8,6 +8,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import java.util.ArrayDeque;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -277,6 +278,95 @@ public final class LayoutWriteCoordinator {
             admittedRunnable.run();
         } finally {
             lease.close();
+        }
+    }
+
+    /**
+     * Reserves call-time FIFO order for tokenless MODEL_EXECUTOR work, then executes it with
+     * atomic MODEL_WRITER admission.
+     *
+     * <p>The reservation is deliberately recorded even when {@code current} is null. A later
+     * organizer or restore-family holder can therefore not let a following ModelWriter submission
+     * overtake work that was already accepted by MODEL_EXECUTOR but has not started its admission
+     * attempt. When a holder exists, the reservation stays in the FIFO at its original position;
+     * its release callback only posts an admission attempt to {@code executor}. The DB body never
+     * runs on the releasing thread.
+     */
+    public void runModelWriterWithCallTimeReservation(
+            @NonNull Executor executor, @NonNull Runnable admittedRunnable) {
+        ModelWriterReservation reservation = new ModelWriterReservation(executor, admittedRunnable);
+        boolean scheduleImmediately;
+        synchronized (lock) {
+            deferred.addLast(reservation);
+            scheduleImmediately = current == null;
+        }
+        if (scheduleImmediately) {
+            reservation.schedule();
+        }
+    }
+
+    /** Call-time reservation whose body is always admitted on MODEL_EXECUTOR. */
+    private final class ModelWriterReservation implements DeferredRunnable {
+        private final Executor executor;
+        private final Runnable admittedRunnable;
+        @GuardedBy("lock") private boolean admissionPosted;
+        @GuardedBy("lock") private boolean completed;
+
+        ModelWriterReservation(@NonNull Executor executor, @NonNull Runnable admittedRunnable) {
+            this.executor = executor;
+            this.admittedRunnable = admittedRunnable;
+        }
+
+        @Override
+        public void runWithOperationFuture() {
+            schedule();
+        }
+
+        void schedule() {
+            synchronized (lock) {
+                if (completed || admissionPosted) {
+                    return;
+                }
+                admissionPosted = true;
+            }
+            executor.execute(this::attemptAdmission);
+        }
+
+        private void attemptAdmission() {
+            Lease lease;
+            synchronized (lock) {
+                admissionPosted = false;
+                if (completed) {
+                    return;
+                }
+                Holder h = current;
+                if (h == null) {
+                    deferred.remove(this);
+                    completed = true;
+                    long token = nextToken.getAndIncrement();
+                    current = new Holder(
+                            Thread.currentThread(), OwnerKind.MODEL_WRITER, token);
+                    lease = new LeaseImpl(OwnerKind.MODEL_WRITER, token);
+                } else if (h.thread == Thread.currentThread()
+                        && h.kind == OwnerKind.MODEL_WRITER) {
+                    deferred.remove(this);
+                    completed = true;
+                    h.recursionCount += 1;
+                    lease = new LeaseImpl(h.kind, h.token);
+                } else {
+                    // A reservation moved out by a just-released holder must retain its original
+                    // position ahead of work submitted while the new holder was active.
+                    if (!deferred.contains(this)) {
+                        deferred.addFirst(this);
+                    }
+                    return;
+                }
+            }
+            try {
+                admittedRunnable.run();
+            } finally {
+                lease.close();
+            }
         }
     }
 

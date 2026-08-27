@@ -41,11 +41,11 @@ public class HotseatRestoreHelper {
     /**
      * Reserves Hotseat submission order, then schedules the DB body with atomic writer admission.
      *
-     * <p>Issue #156 has two separate ordering requirements. The call-time {@code runOrDefer}
-     * reserves this helper's FIFO position before a following ModelWriter migration when an
-     * organizer or restore-family holder is already active. Its deferred callback only posts to
-     * MODEL_EXECUTOR. The execution-time operation then atomically owns MODEL_WRITER or defers
-     * again, so a holder that appears after scheduling cannot block MODEL_EXECUTOR in
+     * <p>Issue #156 reserves this helper's stable logical FIFO position at call time even when
+     * the coordinator is empty. A following ModelWriter migration therefore cannot overtake a
+     * backup if an organizer or restore-family holder appears before executor admission. The
+     * reservation callback only posts to MODEL_EXECUTOR; execution-time admission then atomically
+     * owns MODEL_WRITER or defers again, so no holder can block MODEL_EXECUTOR in
      * ModelDbController.newTransaction().
      */
     private static void executeWithAtomicModelWriterAdmission(@NonNull Runnable dbBody) {
@@ -55,19 +55,10 @@ public class HotseatRestoreHelper {
     @VisibleForTesting
     static void executeWithAtomicModelWriterAdmission(
             @NonNull Executor executor, @NonNull Runnable dbBody) {
-        LayoutWriteCoordinator.getInstance().runOrDefer(
-                LayoutWriteCoordinator.OwnerKind.MODEL_WRITER,
-                0L,
-                false,
-                () -> scheduleAtomicModelWriterAdmission(executor, dbBody));
+        LayoutWriteCoordinator.getInstance().runModelWriterWithCallTimeReservation(
+                executor, dbBody);
     }
 
-    private static void scheduleAtomicModelWriterAdmission(
-            @NonNull Executor executor, @NonNull Runnable dbBody) {
-        executor.execute(() -> LayoutWriteCoordinator.getInstance().runModelWriterOrDefer(
-                dbBody,
-                () -> scheduleAtomicModelWriterAdmission(executor, dbBody)));
-    }
 
     /**
      * Creates a snapshot backup of Favorite table for future restoration use.

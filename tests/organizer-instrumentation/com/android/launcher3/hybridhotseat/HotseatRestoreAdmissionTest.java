@@ -229,6 +229,67 @@ public class HotseatRestoreAdmissionTest {
     }
 
     @Test
+    public void createBackupReservationSurvivesHolderAppearingBeforeAdmission()
+            throws Exception {
+        ItemInfo migrationItem = addTestHotseatItem();
+        int backupRank = migrationItem.rank;
+        int migratedRank = backupRank + 1;
+        CountDownLatch executorReached = new CountDownLatch(1);
+        CountDownLatch releaseExecutor = new CountDownLatch(1);
+        AtomicBoolean executorWaitFailed = new AtomicBoolean();
+        MODEL_EXECUTOR.execute(() -> {
+            executorReached.countDown();
+            try {
+                if (!releaseExecutor.await(15, TimeUnit.SECONDS)) {
+                    executorWaitFailed.set(true);
+                }
+            } catch (InterruptedException e) {
+                executorWaitFailed.set(true);
+                Thread.currentThread().interrupt();
+            }
+        });
+        assertTrue("MODEL_EXECUTOR did not reach the deterministic schedule gate",
+                executorReached.await(15, TimeUnit.SECONDS));
+
+        LayoutWriteCoordinator coordinator = LayoutWriteCoordinator.getInstance();
+        LayoutWriteCoordinator.Lease organizer = null;
+        try {
+            // createBackup reserves first while the coordinator is empty, but its executor
+            // admission is still stopped. The following organizer lease and real ModelWriter
+            // submission reproduce the review-reported interleaving.
+            HotseatRestoreHelper.createBackup(context);
+            organizer = coordinator.tryAcquire(LayoutWriteCoordinator.OwnerKind.ORGANIZER);
+            assertNotNull(organizer);
+            migrationItem.rank = migratedRank;
+            model.getWriter(false, CellPosMapper.DEFAULT, null).moveItemInDatabase(
+                    migrationItem,
+                    migrationItem.container,
+                    migrationItem.screenId,
+                    migrationItem.cellX,
+                    migrationItem.cellY);
+            assertEquals("call-time backup reservation must precede later ModelWriter work", 2,
+                    coordinator.pendingDeferredCount());
+
+            releaseExecutor.countDown();
+            awaitModelExecutor();
+            assertFalse("deterministic executor gate timed out", executorWaitFailed.get());
+            assertEquals("busy executor admission must retain its original reservation", 2,
+                    coordinator.pendingDeferredCount());
+        } finally {
+            releaseExecutor.countDown();
+            if (organizer != null) {
+                organizer.close();
+            }
+        }
+        awaitModelExecutor();
+
+        assertEquals("backup must retain the rank from before the later ModelWriter mutation",
+                backupRank, rankInTable(HYBRID_HOTSEAT_BACKUP_TABLE, migrationItem.id));
+        assertEquals("migration must update Favorites after the backup snapshot", migratedRank,
+                rankInTable(TABLE_NAME, migrationItem.id));
+    }
+
+    @Test
     public void createBackupReservationPrecedesFollowingMigrationSubmission() {
         LayoutWriteCoordinator coordinator = LayoutWriteCoordinator.getInstance();
         DeterministicExecutor modelExecutor = new DeterministicExecutor();
@@ -277,10 +338,11 @@ public class HotseatRestoreAdmissionTest {
         AtomicInteger hotseatDbBodyRuns = new AtomicInteger();
         AtomicBoolean correlatedLoaderCompleted = new AtomicBoolean();
 
-        // The helper has scheduled its MODEL_EXECUTOR work while no writer is held.
+        // The helper has reserved its logical FIFO position while no writer is held, then
+        // scheduled its MODEL_EXECUTOR admission attempt.
         scheduleAtomicHotseatWork(modelExecutor, hotseatDbBodyRuns::incrementAndGet);
         assertEquals(1, modelExecutor.pendingTaskCount());
-        assertEquals(0, coordinator.pendingDeferredCount());
+        assertEquals(1, coordinator.pendingDeferredCount());
 
         LayoutWriteCoordinator.Lease organizer = coordinator.tryAcquire(
                 LayoutWriteCoordinator.OwnerKind.ORGANIZER);
@@ -290,7 +352,7 @@ public class HotseatRestoreAdmissionTest {
             modelExecutor.runNext();
             assertEquals("busy admission must not execute the Hotseat DB body", 0,
                     hotseatDbBodyRuns.get());
-            assertEquals("busy admission must register exactly one retry", 1,
+            assertEquals("busy admission must retain exactly one reservation", 1,
                     coordinator.pendingDeferredCount());
             assertEquals("MODEL_EXECUTOR must return instead of waiting on the organizer", 0,
                     modelExecutor.pendingTaskCount());

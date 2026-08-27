@@ -47,6 +47,12 @@
   later `ModelWriter` mutation reserves the coordinator FIFO immediately. The
   resulting post-migration snapshot violates backup semantics even though it
   no longer blocks MODEL_EXECUTOR.
+- Re-review found the adjacent empty-gate race: after `createBackup()` posts an
+  executor admission but before that admission starts, another thread can take
+  `ORGANIZER` and a following `ModelWriter` can reserve FIFO first. A stable
+  helper reservation must therefore be recorded at `createBackup()` call time
+  regardless of current holder state, while execution-time atomic admission
+  remains required for non-blocking progress.
 
 | Evidence source | Relevant established fact |
 |---|---|
@@ -62,13 +68,15 @@
 ### Modules and interfaces
 
 The solution keeps all serialization ownership in `LayoutWriteCoordinator`.
-`HotseatRestoreHelper` uses two linked admission stages. At call time it uses
-existing `runOrDefer(MODEL_WRITER, 0L, false, ...)` to reserve a FIFO position
-when an organizer or restore-family holder is already present. The reserved
-callback only posts to `MODEL_EXECUTOR`. At execution time, the posted body
-calls the existing **internal atomic lease-or-defer operation** instead of
-invoking ordinary tokenless `newTransaction()` first. The first stage preserves
-logical submission order; the second stage closes the post-scheduling TOCTOU.
+`HotseatRestoreHelper` uses a linked reservation/admission operation. At call
+ time it records a stable FIFO reservation even when no holder is present; only
+when the coordinator is empty does it post the reservation's admission attempt
+to `MODEL_EXECUTOR` immediately. When a holder is present, the existing release
+drain invokes the reservation callback in its original order; that callback only
+posts to `MODEL_EXECUTOR`. On the executor, the reservation atomically acquires
+or re-enters `MODEL_WRITER`, or remains/re-enters the FIFO if another holder is
+now active. The call-time stage preserves logical submission order across the
+empty-gate race; the execution-time stage closes the post-scheduling TOCTOU.
 
 The operation accepts the Hotseat DB body and an executor hand-off callback. It
 performs exactly one decision while holding the coordinator monitor:
@@ -95,8 +103,8 @@ the established transaction close semantics.
 
 | Seam | Responsibility after this change | Explicitly unchanged |
 |---|---|---|
-| `HotseatRestoreHelper` | Reserve call-time FIFO order through existing `runOrDefer`, then submit both existing bodies to MODEL_EXECUTOR where each invokes atomic coordinator admission. Retain DB work, commits, cache refresh, and normal reload behavior. | Public helper methods, backup-table format, callers, user-visible outcome surface, and executor affinity of DB work. |
-| `LayoutWriteCoordinator` | Atomically grant/reenter a MODEL_WRITER lease or enqueue a MODEL_EXECUTOR continuation in its existing FIFO. The only serialization lock remains its existing monitor. | Existing owner kinds, exact organizer capability, `runOrDefer` behavior for existing callers, release isolation, and public product semantics. |
+| `HotseatRestoreHelper` | Route both existing bodies through one call-time reservation operation that preserves their order before later ModelWriter work, then admits their DB bodies atomically on MODEL_EXECUTOR. Retain DB work, commits, cache refresh, and normal reload behavior. | Public helper methods, backup-table format, callers, user-visible outcome surface, and executor affinity of DB work. |
+| `LayoutWriteCoordinator` | Record a stable call-time reservation in its existing FIFO; on MODEL_EXECUTOR, atomically grant/reenter a MODEL_WRITER lease or retain/re-enqueue that reservation. The only serialization lock remains its existing monitor. | Existing owner kinds, exact organizer capability, `runOrDefer` behavior for existing callers, release isolation, and public product semantics. |
 | `ModelDbController` | Continue to create transactions by same-thread model-writer reentry inside an already-admitted wrapper. | Ordinary tokenless blocking fallback and organizer/restore reentry rules for existing callers. |
 | `OrganizerModelReloadAdapter` / `LauncherModel` | Continue to execute the exact correlated loader under its scoped organizer capability. | Completion protocol, timeout policy, and result types. |
 | test-only hooks | Expose only package-private/`@VisibleForTesting` executor/probe controls needed to stage the admission race and restore global state in teardown. | No user-facing configuration, runtime bypass, or new production control surface. |
@@ -106,35 +114,37 @@ the established transaction close semantics.
 
 ```text
 HotseatRestoreHelper.createBackup() / restoreBackup()
-  -> coordinator.runOrDefer(MODEL_WRITER, 0L, false,
-       () -> MODEL_EXECUTOR.execute(() -> coordinator.runModelWriterOrDefer(
-           dbBody, retry -> repeat call-time reservation then MODEL_EXECUTOR post)))
+  -> coordinator.runModelWriterWithCallTimeReservation(MODEL_EXECUTOR, dbBody)
+  -> append one stable reservation to the existing FIFO under coordinator lock
 
-  existing external organizer/restore holder at call time
-    -> append the MODEL_EXECUTOR-post callback to FIFO immediately
-    -> preserve position before later ModelWriter submission
+  coordinator empty at call time
+    -> post the reservation's admission attempt to MODEL_EXECUTOR
+    -> reservation remains ordered in FIFO until admission succeeds
+
+  external organizer/restore holder at call time
+    -> await FIFO drain in the original reservation position
     -> never execute DB work in the holder-release callback
 
-inside one coordinator critical section:
+MODEL_EXECUTOR reservation admission under one coordinator critical section:
   current == null
-    -> acquire MODEL_WRITER lease
+    -> remove its reservation, acquire MODEL_WRITER lease
     -> execute dbBody in lease-owning wrapper
     -> dbBody.newTransaction() reenters MODEL_WRITER
     -> close inner transaction lease, then outer admission lease
 
   current == same MODEL_EXECUTOR thread + MODEL_WRITER
-    -> same-thread reentry lease
+    -> remove its reservation, obtain same-thread reentry lease
     -> execute dbBody in wrapper, then close reentry view
 
   current != null otherwise
-    -> append { MODEL_EXECUTOR.execute(same atomic attempt) } to existing FIFO
+    -> retain or reinsert the same reservation in FIFO
     -> return from MODEL_EXECUTOR without DB access or waiting
 
 outer holder releases
   -> coordinator drains FIFO in call-time order
   -> each helper reservation posts its atomic attempt to MODEL_EXECUTOR
-  -> MODEL_EXECUTOR retries the atomic decision before DB work
-  -> a holder that appeared after the call-time reservation causes re-deferral
+  -> a holder that appeared after the call-time reservation cannot place later
+     ModelWriter work ahead of the stable reservation
 ```
 
 This establishes the required safety property for both interleavings. If an
@@ -195,7 +205,7 @@ admission behavior.
 | Alternative | Reason for rejection |
 |---|---|
 | Helper-local `runOrDefer(..., () -> MODEL_EXECUTOR.execute(dbWork))` only. | Fails the review's admission-to-execution race: a holder can appear after the immediate gate decision and before `dbWork.newTransaction()`. |
-| Execution-time atomic admission only. | Prevents blocking but lets a later `ModelWriter` reserve FIFO position before a previously called `createBackup`, producing a post-migration snapshot. Call-time reservation is required in addition. |
+| Holder-present-only call-time reservation plus execution-time atomic admission. | Prevents blocking and fixes the already-held case, but an empty-gate `createBackup` can be posted without a durable position before another thread takes a holder and a later ModelWriter reserves FIFO. Stable reservation is required at every helper call. |
 | Add a second lock around Hotseat backup/restore. | Violates Issue #156 and Spec #60: `LayoutWriteCoordinator` remains the only serialization seam. It also creates an unreviewed lock order. |
 | Change every tokenless `ModelDbController.newTransaction()` to fail fast or defer implicitly. | Broadly changes baseline caller contracts and hides ownership policy. This plan confines atomic admission to a known self-posted MODEL_EXECUTOR writer. |
 | Pass organizer token into Hotseat helper and grant cross-thread reentry. | The helper is unrelated tokenless work. Granting capability would defeat the scoped correlated-loader boundary and permit writes during organizer verification. |
@@ -208,8 +218,8 @@ admission behavior.
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `src/com/android/launcher3/model/LayoutWriteCoordinator.java` | Add a narrowly scoped internal atomic `MODEL_WRITER` lease-or-defer operation. It grants/reenters the lease or registers an executor resubmission continuation under the same monitor; a lease-owning wrapper closes in `finally`. Reuse the existing FIFO/entry exception isolation. | Only the coordinator can make admission and ownership one indivisible decision without another lock. |
-| `quickstep/src/com/android/launcher3/hybridhotseat/HotseatRestoreHelper.java` | Use existing call-time `runOrDefer` to reserve external-holder FIFO position, and have the reservation post the same execution-time atomic coordinator operation. Both public helper methods share one private route. | This preserves `createBackup` before later migration writes while execution-time admission closes the post-scheduling race. |
+| `src/com/android/launcher3/model/LayoutWriteCoordinator.java` | Add a narrowly scoped reservation-backed atomic `MODEL_WRITER` operation. It appends a stable call-time entry under the existing monitor, schedules immediate executor admission only when empty, and otherwise retains/reposts the same entry until it grants/reenters the lease. A lease-owning wrapper closes in `finally`. | Only the coordinator can preserve submission order and make admission/ownership indivisible without another lock. |
+| `quickstep/src/com/android/launcher3/hybridhotseat/HotseatRestoreHelper.java` | Route both public helper methods through the reservation-backed coordinator operation. | This preserves `createBackup` before later migration writes even when a holder appears after scheduling, while atomic admission closes the non-blocking race. |
 | `src/com/android/launcher3/model/ModelDbController.java` (test support only, if necessary) | Add a narrowly scoped `@VisibleForTesting` probe immediately before the legacy tokenless blocking fallback, or an equivalent non-production-observable probe. It is used only to prove the pre-fix race reaches the forbidden path. | The red test needs an event-based oracle, not an elapsed-time inference. Production behavior must stay identical. |
 | `tests/organizer-instrumentation/com/android/launcher3/hybridhotseat/HotseatRestoreAdmissionTest.java` | Add API 36 instrumentation coverage for concrete `createBackup`/`restoreBackup`, the gate-empty→organizer-acquired→MODEL_EXECUTOR-start race, held-lease deferral, exact correlated reload progress, one-time continuation/body execution, no-contention behavior, missing backup table, and call-time backup-before-migration ordering. | The required interaction crosses helper, model executor, coordinator, `ModelDbController`, correlated loader, and ModelWriter FIFO; a coordinator-only test cannot prove the defect closed. |
 | `tests/organizer-instrumentation/com/android/launcher3/organizer/OrganizerReloadSupersessionTest.java` (reuse only) | Reuse `SyncPageSelectionBarrier` behavior or extract only the minimum package-private utility if duplication is unavoidable; do not make a second timing-based reload seam. | The current barrier already expresses deterministic correlated-reload progress. |
@@ -233,10 +243,12 @@ admission behavior.
    `createBackup` and `restoreBackup`. Preserve SQL/transaction contents,
    missing-table early return, cache refresh, and `model.forceReload()` after a
    successful restore transaction.
-4. **Preserve call-time backup ordering.** In an external-holder deterministic
-   sequence, reserve `createBackup`, submit the following ModelWriter-equivalent
-   migration, release the holder, and assert the backup MODEL_EXECUTOR body runs
-   first. The reservation callback must only post to MODEL_EXECUTOR.
+4. **Preserve stable backup ordering.** In both an external-holder deterministic
+   sequence and an empty-gate→holder-acquired-before-admission sequence, reserve
+   concrete `createBackup`, submit the following actual ModelWriter migration,
+   release the holder, and assert the backup DB state is pre-migration while
+   Favorites is post-migration. The reservation callback must only post to
+   MODEL_EXECUTOR.
 5. **Turn the race test green and prove loader progress.** In the staged
    sequence, assert no legacy blocking probe, a FIFO deferred continuation,
    return from MODEL_EXECUTOR, pre-release `COMPLETED` correlated reload, then
@@ -269,8 +281,9 @@ No schema, rule-format, backup-format, or persisted-state migration is required.
 
 | Condition | Required behavior |
 |---|---|
-| Helper task meets organizer/restore-family holder at call time | Existing `runOrDefer` reserves a FIFO entry immediately. Its callback posts the atomic attempt to MODEL_EXECUTOR; no helper DB access or blocking wait occurs before the holder releases. |
-| Holder appears after helper scheduling or call-time reservation | Execution-time atomic admission registers or preserves a MODEL_EXECUTOR continuation in the existing in-memory FIFO; no helper DB access or blocking wait occurs. |
+| Helper task is called while coordinator is empty | The new reservation operation inserts a stable FIFO entry before posting MODEL_EXECUTOR admission. A later holder cannot allow following ModelWriter work to overtake it. |
+| Helper task meets organizer/restore-family holder at call time | The same reservation remains in FIFO. Its callback posts the atomic attempt to MODEL_EXECUTOR; no helper DB access or blocking wait occurs before the holder releases. |
+| Holder appears after helper scheduling or call-time reservation | Execution-time atomic admission retains or reinserts the same stable reservation in the existing in-memory FIFO; no helper DB access or blocking wait occurs. |
 | Helper task meets no holder or its own same-thread MODEL_WRITER holder | Atomic admission returns a lease-owning wrapper; inner `newTransaction()` reenters as supported and the wrapper releases its outer view in `finally`. |
 | Deferred continuation runs while another holder has appeared | It reattempts atomic admission and re-defers; it does not execute DB work or block the model thread. |
 | Deferred helper transaction fails | Existing `SQLiteTransaction` rollback/close behavior applies; wrapper `finally` releases ownership and coordinator entry isolation prevents later FIFO entries from being stranded. |
@@ -293,7 +306,7 @@ from preventing that reload from running.
 | AC-156-04 | On an uncontended fixture DB, assert backup table creation/cache refresh and restore/reload request behavior match pre-change expectations. | `HotseatRestoreAdmissionTest` on clean fixture DB. |
 | AC-156-05 | Scanner includes quickstep, recognizes both helper transaction expressions, and rejects unallowlisted writer paths. Documented inspection decisions identify same-defect versus split findings. Atomic gate structure is not delegated to this scanner. | `python3 tools/repo-contract/validate_writer_inventory.py`; focused checker self-test if added; updated assessment. |
 | AC-156-06 | Clean fresh-install manual organization flow records recovery reload progress without a `MODEL_RELOAD_FAILED` timeout caused by Hotseat starvation; evidence records #155 state separately. | API 36/36.1 emulator or device; supported Settings diagnostic export, redacted logcat, and issue/PR evidence. |
-| AC-156-07 | With an organizer/restore-family holder, `createBackup` reserves before a following migration ModelWriter submission; after holder release, its DB body executes first on MODEL_EXECUTOR and never on the release thread. | Focused `HotseatRestoreAdmissionTest` deterministic executor case. |
+| AC-156-07 | With a holder already active **and** with empty-gate `createBackup` followed by holder acquisition before executor admission, actual `ModelWriter` migration observes backup table rank pre-migration and Favorites rank post-migration; release callbacks never execute DB bodies. | Focused `HotseatRestoreAdmissionTest` deterministic/executor-barrier cases. |
 | Style/build/regression | Required repository checks and source-changing shared-writer lane are green on the PR head. | `git submodule update --init --recursive`; `./gradlew spotlessCheck`; `./gradlew testLawnWithQuickstepGithubDebugUnitTest --rerun-tasks`; `./gradlew assembleLawnWithQuickstepGithubDebug`; `./gradlew compileLawnWithQuickstepGithubDebugAndroidTestJavaWithJavac`; focused `connectedLawnWithQuickstepGithubDebugAndroidTest`. |
 | High-risk independence | A different agent/session audits final code against accepted AC-156 criteria and links a successful PR `CI / final-status` run. | `docs/assessment/pr-<PR番号>-<slug>.md` plus GitHub Actions `final-status` and `high-risk-evidence` gate. |
 
@@ -330,11 +343,12 @@ SDK-independent checks passed on the implementation worktree before handoff:
 | `python3 tools/repo-contract/test_validate_high_risk_evidence.py` | Passed: 47 tests. |
 
 The connected environment ran the API 36 shared-writer command in this Plan, together with the
-required `spotlessCheck`, unit, assemble, and fresh-default-workspace device flows. Following
-implementation review, the branch was rebased onto latest `origin/main` and AC-156-07 was
-validated on the rebased head. The final commit SHA is recorded in the Issue/PR evidence; a
-successful remote CI run remains required before merge but does not block the local
-`implemented` state.
+required `spotlessCheck`, unit, assemble, and fresh-default-workspace device flows. Following implementation review, the branch was rebased onto latest `origin/main` and
+AC-156-07 was validated on the rebased head. Re-review then expanded AC-156-07 to the
+empty-gate→holder-acquired-before-admission interleaving; the stable reservation correction
+and regression evidence below supersede the earlier holder-present-only result. The final
+commit SHA is recorded in the Issue/PR evidence; a successful remote CI run and a new
+independent audit of the final code head remain required before merge.
 
 ## Connected-environment implementation evidence (2026-08-27)
 
@@ -350,17 +364,18 @@ Issue #156 branch; the final source state is committed after these results are r
 | Full JVM regression | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --rerun-tasks` | Passed. |
 | Android test compilation | `./gradlew compileLawnWithQuickstepGithubDebugAndroidTestJavaWithJavac` | Passed. |
 | Debug APK | `./gradlew assembleLawnWithQuickstepGithubDebug` | Passed. |
-| Focused Hotseat suite | `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest` | Passed: 10 tests on the rebased head. This includes real uncontended `createBackup`, backup-absent `restoreBackup`, backup-present/drop-after-use `restoreBackup`, atomic race, re-defer, exception release, exact-token reload, and actual ModelWriter backup-before-migration ordering. |
-| Shared-writer regression | Command at lines 293–294 | Passed: 23 tests on the rebased head. |
+| Focused Hotseat suite | `./gradlew --no-configuration-cache connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest` | Passed: 11 tests on the final correction head. This includes real uncontended `createBackup`, backup-absent `restoreBackup`, backup-present/drop-after-use `restoreBackup`, atomic race, re-defer, exception release, exact-token reload, already-held ordering, and empty-gate→holder-acquired-before-admission ordering with actual ModelWriter DB-rank assertion. |
+| Shared-writer regression | Seven-class command in this Plan | Passed: 48 tests on the final correction head. |
 | Writer inventory / contracts | `python3 tools/repo-contract/validate_writer_inventory.py`; repository-contract validator and both self-tests | Passed before connected handoff: 19 allowlisted writer files / 1,437 scanned sources / 0 errors / 0 warnings; 47 high-risk self-tests. |
 
 For fresh-workspace evidence, the debug launcher was installed on the isolated emulator,
 its package data was cleared, and it was temporarily assigned the HOME role. The initial
 review covered 15 targets over two pages; after the explicit apply confirmation, logcat
-recorded two call-time `Deferring tokenless runnable` entries and terminal
-`APPLY_RECOVERED stage=A7 err=APPLY_FAILURE.VERIFICATION_FAILED`. After more than the
-10-second starvation window, `MODEL_RELOAD_FAILED` had **zero** logcat occurrences and
-UI stated that the previous layout was restored. The original HOME role
+recorded terminal `APPLY_RECOVERED stage=A7 err=APPLY_FAILURE.VERIFICATION_FAILED`.
+After more than the 10-second starvation window, `MODEL_RELOAD_FAILED` had **zero**
+logcat occurrences and UI stated that the previous layout was restored. This
+fresh-workspace flow was repeated after the stable-reservation correction with the same
+zero-timeout result. The original HOME role
 `com.google.android.apps.nexuslauncher` was then restored and the debug package was no
 longer present.
 
@@ -383,13 +398,13 @@ recovery terminated without `MODEL_RELOAD_FAILED`, and the prior layout was rest
 ## Execution checklist
 
 - [ ] Empty-gate→organizer-acquired→executor-start reproducer is red on the legacy direct transaction path.
-- [x] Re-review accepted `spec.md`; implementation review added AC-156-07, whose evidence is now complete on the rebased head.
-- [x] Atomic lease-or-defer operation grants/reenters or FIFO-registers in one coordinator critical section; final API 36 test coverage is green.
-- [x] `createBackup` reserves call-time FIFO order before following migration ModelWriter work, while its release callback posts rather than executes DB work; actual ModelWriter DB-rank assertion is green.
+- [x] Re-review accepted `spec.md`; AC-156-07 now covers and has evidence for both holder-present and empty-gate→holder-acquired-before-admission ordering.
+- [x] Reservation-backed atomic admission records a stable FIFO entry under the existing monitor and later grants/reenters or retains that same entry; final API 36 coverage is green.
+- [x] `createBackup` reserves stable call-time FIFO order before following migration ModelWriter work whether a holder exists at call time or appears before executor admission; actual ModelWriter DB-rank assertions cover both cases.
 - [x] Both helper methods use the one internal atomic admission route; real uncontended helper work is green.
 - [x] Race test is green post-fix and exact correlated reload completes before explicit organizer-lease release on the final head.
 - [x] Uncontended, missing-table, existing-backup/drop-after-use, exception, re-defer, and exactly-once behaviors pass on the final head.
 - [x] quickstep writer-inventory coverage and allowlist entry are green; the expanded scan found no non-identical additional writer.
-- [x] Focused and full relevant lint/build/unit/instrumentation checks pass on Android SDK 36.1 / Build Tools 36.1.0 after rebase.
-- [x] Fresh-workspace device evidence after rebase separates #156 timeout resolution from #155 layout-overlap behavior: call-time deferral occurred and `MODEL_RELOAD_FAILED` was absent, while A7 `VERIFICATION_FAILED` restored the prior layout.
-- [ ] Independent high-risk audit, exact-head CI, and PR evidence are recorded.
+- [x] Focused and full relevant lint/build/unit/instrumentation checks pass on Android SDK 36.1 / Build Tools 36.1.0 after the stable-reservation correction.
+- [x] Fresh-workspace device evidence after the correction separates #156 timeout resolution from #155 layout-overlap behavior: `MODEL_RELOAD_FAILED` was absent, while A7 `VERIFICATION_FAILED` restored the prior layout.
+- [ ] The previous independent high-risk audit and exact-head CI are superseded by this source change; repeat both for the final code head before merge.
