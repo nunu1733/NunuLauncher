@@ -555,4 +555,8 @@
     <string name="organizer_category_override_unnamed_app">Unnamed app</string>
     <string name="organizer_category_override_automatic_description">No explicit override is stored. A future fresh organization run uses automatic classification.</string>
     <string name="organizer_category_override_category_description">Use %1$s as the explicit category.</string>
+    <!-- Issue #123: composed display and read-aloud text is a format resource so locales control word order and separators. -->
+    <string name="organizer_category_override_app_status">%1$s · %2$s</string>
+    <string name="organizer_category_override_app_description">%1$s, %2$s, %3$s</string>
+    <string name="organizer_category_override_app_description_with_profile">%1$s, %2$s</string>
 </resources>

@@ -195,4 +195,63 @@
     <string name="ps_container_transition" msgid="8667331812048014412">"プライベート スペース移行中"</string>
     <string name="ps_add_button_label" msgid="8127988716897128773">"インストール"</string>
     <string name="ps_add_button_content_description" msgid="3254274107740952556">"プライベート スペースにアプリをインストールします"</string>
+    <!-- Organizer category override authoring (Issue #99). Japanese translations added by Issue #123. -->
+    <string name="organizer_category_overrides_title">"アプリカテゴリのオーバーライド"</string>
+    <string name="organizer_category_overrides_summary">"アプリのカテゴリを選択するか、自動分類を使用します。"</string>
+    <string name="organizer_category_override_automatic">"自動カテゴリを使用中"</string>
+    <string name="organizer_category_override_explicit">"オーバーライド: %1$s"</string>
+    <string name="organizer_category_override_choose">"カテゴリを選択"</string>
+    <string name="organizer_category_override_use_automatic">"自動カテゴリを使用"</string>
+    <string name="organizer_category_override_save">"カテゴリのオーバーライドを保存"</string>
+    <string name="organizer_category_override_cancel">"アプリ一覧に戻る"</string>
+    <string name="organizer_category_override_saved">"カテゴリのオーバーライドを保存しました。"</string>
+    <string name="organizer_category_override_no_change">"変更は不要でした。既存のカテゴリのオーバーライドを維持します。"</string>
+    <string name="organizer_category_override_busy">"整理が実行中です。カテゴリの編集の前に完了してください。"</string>
+    <string name="organizer_category_override_unavailable">"このアプリまたはプロファイルは利用できなくなっています。一覧を再読み込みしてから、もう一度お試しください。"</string>
+    <string name="organizer_category_override_unavailable_store">"カテゴリのオーバーライドを利用できません。何も保存されていません。"</string>
+    <string name="organizer_category_override_conflict">"カテゴリソースが変更されました。一覧を再読み込みして、もう一度選択してください。"</string>
+    <string name="organizer_category_override_failed">"カテゴリのオーバーライドを保存できませんでした。変更は確定されていません。"</string>
+    <string name="organizer_category_art">"アート＆デザイン"</string>
+    <string name="organizer_category_auto">"自動車＆車両"</string>
+    <string name="organizer_category_beauty">"美容"</string>
+    <string name="organizer_category_books">"書籍＆参考書"</string>
+    <string name="organizer_category_business">"ビジネス"</string>
+    <string name="organizer_category_comics">"コミック"</string>
+    <string name="organizer_category_communication">"通信"</string>
+    <string name="organizer_category_dating">"出会い"</string>
+    <string name="organizer_category_education">"教育"</string>
+    <string name="organizer_category_entertainment">"エンターテインメント"</string>
+    <string name="organizer_category_events">"イベント"</string>
+    <string name="organizer_category_finance">"ファイナンス"</string>
+    <string name="organizer_category_food">"フード＆ドリンク"</string>
+    <string name="organizer_category_game">"ゲーム"</string>
+    <string name="organizer_category_health">"ヘルス＆フィットネス"</string>
+    <string name="organizer_category_house">"住まい＆インテリア"</string>
+    <string name="organizer_category_libraries">"ライブラリ＆デモ"</string>
+    <string name="organizer_category_lifestyle">"ライフスタイル"</string>
+    <string name="organizer_category_maps">"地図＆ナビゲーション"</string>
+    <string name="organizer_category_medical">"医療"</string>
+    <string name="organizer_category_music">"音楽"</string>
+    <string name="organizer_category_news">"ニュース"</string>
+    <string name="organizer_category_other">"その他"</string>
+    <string name="organizer_category_parenting">"子育て"</string>
+    <string name="organizer_category_personalization">"カスタマイズ"</string>
+    <string name="organizer_category_photography">"写真"</string>
+    <string name="organizer_category_productivity">"仕事効率化"</string>
+    <string name="organizer_category_shopping">"ショッピング"</string>
+    <string name="organizer_category_social">"ソーシャル"</string>
+    <string name="organizer_category_sports">"スポーツ"</string>
+    <string name="organizer_category_tools">"ツール"</string>
+    <string name="organizer_category_travel">"旅行＆ローカル"</string>
+    <string name="organizer_category_video">"動画"</string>
+    <string name="organizer_category_weather">"天気"</string>
+    <string name="organizer_category_override_profile_personal">"個人用"</string>
+    <string name="organizer_category_override_profile_work">"仕事用プロファイル"</string>
+    <string name="organizer_category_override_unnamed_app">"名称未設定のアプリ"</string>
+    <string name="organizer_category_override_automatic_description">"明示的なオーバーライドは保存されていません。次回の全体整理では自動分類が使用されます。"</string>
+    <string name="organizer_category_override_category_description">"明示的なカテゴリとして %1$s を使用します。"</string>
+    <!-- Issue #123: composed display and read-aloud text as format resources. -->
+    <string name="organizer_category_override_app_status">"%1$s · %2$s"</string>
+    <string name="organizer_category_override_app_description">"%1$s、%2$s、%3$s"</string>
+    <string name="organizer_category_override_app_description_with_profile">"%1$s、%2$s"</string>
 </resources>

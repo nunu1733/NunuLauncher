@@ -950,7 +950,6 @@
     <string name="organizer_lock_result_locked">Placement locked.</string>
     <string name="organizer_lock_result_unlocked">Placement unlocked.</string>
     <string name="organizer_lock_result_no_change">This placement is already in that state.</string>
-    <string name="organizer_lock_result_reviewed">Reviewed %1$d placements.</string>
     <string name="organizer_lock_error_failed">The change failed. Nothing was modified.</string>
     <string name="organizer_lock_error_stale">This item or the layout changed. Nothing was modified — try again.</string>
     <string name="organizer_lock_error_busy">Another layout change is in progress. Try again in a moment.</string>
@@ -966,19 +965,20 @@
     <string name="organizer_lock_screen_profile_cloned">Cloned profile</string>
     <string name="organizer_lock_screen_profile_private">Private space</string>
     <string name="organizer_lock_screen_profile_other">Other profile</string>
-    <string name="organizer_lock_screen_item_lock">Lock</string>
-    <string name="organizer_lock_screen_item_unlock">Unlock</string>
     <string name="organizer_lock_screen_unknown_banner">%1$d placements need review before organizing.</string>
     <string name="organizer_lock_screen_unknown_banner_none">No placements need review.</string>
     <string name="organizer_lock_screen_review_all_keep_locked">Review all as locked</string>
     <string name="organizer_lock_screen_review_all_mark_unlocked">Review all as unlocked</string>
     <string name="organizer_lock_screen_review_all_confirm">Review %1$d placements as %2$s? This applies to the listed placements only.</string>
-    <string name="organizer_lock_screen_profile_unavailable">Profile unavailable</string>
     <string name="organizer_lock_screen_effectively_locked">Protected by a locked parent</string>
     <string name="organizer_lock_screen_placement_desktop">Home screen %1$d</string>
     <string name="organizer_lock_screen_placement_dock">Dock %1$d</string>
     <string name="organizer_lock_screen_placement_folder">Inside a folder, position %1$d</string>
     <string name="organizer_lock_screen_placement_app_pair">In an app pair</string>
+    <!-- Issue #123: composed display and read-aloud text is a format resource so locales control word order and separators. -->
+    <string name="organizer_lock_screen_item_state_description">%1$s, %2$s</string>
+    <string name="organizer_lock_screen_placement_summary_double">%1$s · %2$s</string>
+    <string name="organizer_lock_screen_placement_summary_triple">%1$s · %2$s · %3$s</string>
 
     <!-- Organizer diagnostics export -->
     <!-- Issue #138: supported release Settings route for the diagnostics journal export -->
@@ -988,6 +988,8 @@
     <string name="organizer_diagnostics_export_subtitle">Export organizer diagnostic journal to a file</string>
     <string name="organizer_diagnostics_export_success">Diagnostics exported successfully</string>
     <string name="organizer_diagnostics_export_error">Failed to export diagnostics</string>
+    <!-- Issue #123: fixed technical identifier pre-filled in the system file picker; intentionally not translated. -->
+    <string name="organizer_diagnostics_export_default_filename" translatable="false">organizer_diagnostics.jsonl</string>
     <!-- Issue #52: explicit manual full organization -->
     <string name="manual_organization_title">Organize home layout</string>
     <string name="manual_organization_summary">Review a proposed home layout before applying it.</string>
@@ -1006,7 +1008,6 @@
     <string name="manual_organization_preserved_count">%1$d placements will be preserved</string>
     <string name="manual_organization_new_folders_count">%1$d new folders will be created</string>
     <string name="manual_organization_new_pages_count">%1$d new home screen pages will be created</string>
-    <string name="manual_organization_warnings_present">Some placements need attention and will be preserved where required.</string>
     <string name="manual_organization_confirm">Apply reviewed organization</string>
     <string name="manual_organization_cancel">Cancel</string>
     <string name="manual_organization_cancel_before_checkpoint">Cancel before applying</string>
