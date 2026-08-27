@@ -229,6 +229,78 @@ public class HotseatRestoreAdmissionTest {
     }
 
     @Test
+    public void createBackupReservationBlocksMigrationAcrossHolderReacquisition()
+            throws Exception {
+        ItemInfo migrationItem = addTestHotseatItem();
+        int backupRank = migrationItem.rank;
+        int migratedRank = backupRank + 1;
+        CountDownLatch executorReached = new CountDownLatch(1);
+        CountDownLatch releaseExecutor = new CountDownLatch(1);
+        AtomicBoolean executorWaitFailed = new AtomicBoolean();
+        MODEL_EXECUTOR.execute(() -> {
+            executorReached.countDown();
+            try {
+                if (!releaseExecutor.await(15, TimeUnit.SECONDS)) {
+                    executorWaitFailed.set(true);
+                }
+            } catch (InterruptedException e) {
+                executorWaitFailed.set(true);
+                Thread.currentThread().interrupt();
+            }
+        });
+        assertTrue("MODEL_EXECUTOR did not reach the deterministic reacquisition gate",
+                executorReached.await(15, TimeUnit.SECONDS));
+
+        LayoutWriteCoordinator coordinator = LayoutWriteCoordinator.getInstance();
+        LayoutWriteCoordinator.Lease firstOrganizer = coordinator.tryAcquire(
+                LayoutWriteCoordinator.OwnerKind.ORGANIZER);
+        assertNotNull(firstOrganizer);
+        LayoutWriteCoordinator.Lease secondOrganizer = null;
+        try {
+            HotseatRestoreHelper.createBackup(context);
+            migrationItem.rank = migratedRank;
+            model.getWriter(false, CellPosMapper.DEFAULT, null).moveItemInDatabase(
+                    migrationItem,
+                    migrationItem.container,
+                    migrationItem.screenId,
+                    migrationItem.cellX,
+                    migrationItem.cellY);
+            assertEquals("backup and following ModelWriter must be queued in call order", 2,
+                    coordinator.pendingDeferredCount());
+
+            firstOrganizer.close();
+            firstOrganizer = null;
+            secondOrganizer = coordinator.tryAcquire(LayoutWriteCoordinator.OwnerKind.ORGANIZER);
+            assertNotNull("second holder must acquire before reposted backup admission", secondOrganizer);
+            releaseExecutor.countDown();
+            awaitModelExecutor();
+            assertFalse("deterministic executor gate timed out", executorWaitFailed.get());
+
+            // The backup reservation remains the FIFO head under the second holder. The later
+            // ModelWriter must not be reposted to MODEL_EXECUTOR, where it would otherwise block
+            // on the second holder and could mutate Favorites before the backup snapshot.
+            assertEquals("re-deferred backup and later ModelWriter remain ordered", 2,
+                    coordinator.pendingDeferredCount());
+            assertEquals("migration cannot execute while the backup reservation owns FIFO head",
+                    backupRank, rankInTable(TABLE_NAME, migrationItem.id));
+        } finally {
+            releaseExecutor.countDown();
+            if (secondOrganizer != null) {
+                secondOrganizer.close();
+            }
+            if (firstOrganizer != null) {
+                firstOrganizer.close();
+            }
+        }
+        awaitModelExecutor();
+
+        assertEquals("backup must retain the rank from before ModelWriter migration", backupRank,
+                rankInTable(HYBRID_HOTSEAT_BACKUP_TABLE, migrationItem.id));
+        assertEquals("migration must update Favorites only after backup completes", migratedRank,
+                rankInTable(TABLE_NAME, migrationItem.id));
+    }
+
+    @Test
     public void createBackupReservationSurvivesHolderAppearingBeforeAdmission()
             throws Exception {
         ItemInfo migrationItem = addTestHotseatItem();
@@ -319,11 +391,13 @@ public class HotseatRestoreAdmissionTest {
 
         assertEquals("release callbacks may post but must not run DB bodies", 0,
                 executionOrder.size());
-        assertEquals("FIFO drain must preserve backup then migration hand-off order", 2,
+        assertEquals("FIFO head drain must post only the backup admission first", 1,
                 modelExecutor.pendingTaskCount());
         modelExecutor.runNext();
         assertEquals("backup DB body must run first on MODEL_EXECUTOR", "backup",
                 executionOrder.get(0));
+        assertEquals("backup completion may hand off the following migration", 1,
+                modelExecutor.pendingTaskCount());
         modelExecutor.runNext();
         assertEquals(2, executionOrder.size());
         assertEquals("following migration must run after backup snapshot", "migration",
@@ -497,7 +571,7 @@ public class HotseatRestoreAdmissionTest {
     }
 
     private static void awaitModelExecutor() throws Exception {
-        MODEL_EXECUTOR.submit(() -> { }).get();
+        MODEL_EXECUTOR.submit(() -> { }).get(15, TimeUnit.SECONDS);
     }
 
     private static void scheduleAtomicHotseatWork(

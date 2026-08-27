@@ -298,7 +298,7 @@ public final class LayoutWriteCoordinator {
         boolean scheduleImmediately;
         synchronized (lock) {
             deferred.addLast(reservation);
-            scheduleImmediately = current == null;
+            scheduleImmediately = current == null && deferred.peekFirst() == reservation;
         }
         if (scheduleImmediately) {
             reservation.schedule();
@@ -339,6 +339,12 @@ public final class LayoutWriteCoordinator {
                 if (completed) {
                     return;
                 }
+                // A reservation behind an earlier writer remains dormant until that head has
+                // completed. This preserves submission order even when multiple callbacks were
+                // reposted around a holder reacquisition.
+                if (deferred.peekFirst() != this) {
+                    return;
+                }
                 Holder h = current;
                 if (h == null) {
                     deferred.remove(this);
@@ -354,11 +360,8 @@ public final class LayoutWriteCoordinator {
                     h.recursionCount += 1;
                     lease = new LeaseImpl(h.kind, h.token);
                 } else {
-                    // A reservation moved out by a just-released holder must retain its original
-                    // position ahead of work submitted while the new holder was active.
-                    if (!deferred.contains(this)) {
-                        deferred.addFirst(this);
-                    }
+                    // Keep this entry in place. The releasing holder schedules the FIFO head;
+                    // a later writer must not overtake this reservation during reacquisition.
                     return;
                 }
             }
@@ -484,10 +487,18 @@ public final class LayoutWriteCoordinator {
                 return;
             }
             current = null;
-            // The queued callback owns its executor hand-off. Moving callbacks out of the
-            // monitor avoids running arbitrary model/provider code while holding this lock.
-            toRun.addAll(deferred);
-            deferred.clear();
+            // Ordinary callbacks can drain as before. A stable model-writer reservation remains
+            // in the existing FIFO until it has actually acquired a writer lease; scheduling only
+            // its head prevents a later ModelWriter callback from overtaking it if another holder
+            // is acquired before MODEL_EXECUTOR runs.
+            while (!deferred.isEmpty()) {
+                DeferredRunnable next = deferred.peekFirst();
+                if (next instanceof ModelWriterReservation) {
+                    toRun.add(next);
+                    break;
+                }
+                toRun.add(deferred.removeFirst());
+            }
             lock.notifyAll();
         }
         // Issue #60: each deferred callback runs in isolation so a throwing entry
