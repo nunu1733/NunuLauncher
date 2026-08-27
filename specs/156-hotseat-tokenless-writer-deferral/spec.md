@@ -1,6 +1,6 @@
 ---
 issue: "#156"
-status: implemented
+status: accepted
 requirements:
   - AC-156-01-atomic-hotseat-admission
   - AC-156-02-race-safe-correlated-reload-progress
@@ -82,6 +82,11 @@ DB workをlease-releasing thread上でinline実行しない。したがって後
 `LayoutWriteCoordinator` の内部monitor下で、MODEL_WRITER lease取得とbusy時のFIFO
 continuation登録を不可分に行う実装語である。「deferred task」は既存coordinatorが保持する
 process内FIFOの実装語であり、永続化されたホームレイアウトまたはrecovery pointではない。
+
+監査記録の機械検証では単一の数値を持つ要件IDを使用するため、次のaliasを定義する。
+`AC-001` は `AC-156-01`、`AC-002` は `AC-156-02`、`AC-003` は `AC-156-03`、
+`AC-004` は `AC-156-04`、`AC-005` は `AC-156-05`、`AC-006` は `AC-156-06`、
+`AC-007` は `AC-156-07` と同じ受入条件を指す。
 
 ## Behavior scenarios
 
@@ -258,4 +263,4 @@ admission原因である場合のみ本Issueに追加する。その他のpath�
 - 2026-08-27: Re-reviewに対応。transaction seamをPlanと整合させ、outer MODEL_WRITER leaseの下で既存 `newTransaction()` のsame-thread reentryを用いること、新しい `ModelDbController` / `SQLiteTransaction` overloadを追加しないことを明記した。Reviewの受入判断によりstatusを `accepted` へ遷移した。
 - 2026-08-27: JDK 21 / Android SDK Platform 36.1 / Build Tools 36.1.0 / API 36 emulatorで、focused Hotseat suite（8 tests）とshared-writer回帰（21 tests）を実行して成功した。uncontended `createBackup`、backup tableなしの`restoreBackup`、既存backupの`restoreBackup`、atomic race、re-defer、例外release、same-thread reentry、exact-token correlated reloadのpre-release `COMPLETED` を確認した。fresh default workspaceではHotseat atomic deferral後に`MODEL_RELOAD_FAILED`を観測せず、A7 verification failureからprevious layout restoredへ進んだ。#155はOpenであり、このlayout verification failureは#156のtimeout解消と区別する。全ACを実装済みとしてstatusを `implemented` へ遷移した。
 - 2026-08-27: Implementation reviewのblocking指摘に対応。外部holder下で`createBackup`が後続Hotseat migration `ModelWriter` writeより後にFIFOへ入るordering regressionを確認した。呼出し時FIFO reservationと実行時atomic admissionを両立するAC-156-07を追加し、再検証が完了するまでstatusを `accepted` へ戻した。
-- 2026-08-27: `createBackup`を呼出し時の`runOrDefer` FIFO reservationと実行時`runModelWriterOrDefer`に分け、backup-before-migrationの順序を復元した。API 36 instrumentationで、実`ModelWriter`が書き込むFavorites rankよりbackup tableのrankが先行stateであることを確認し、focused suite（10 tests）とshared-writer suite（23 tests）を成功させた。最新`main`へのrebase後にfresh default workspaceを再検証し、tokenless deferralを観測しつつ`MODEL_RELOAD_FAILED`は0件だった。AC-156-07を含む全ACが実装済みのためstatusを `implemented` へ遷移した。
+- 2026-08-27: `createBackup`を呼出し時の`runOrDefer` FIFO reservationと実行時`runModelWriterOrDefer`に分け、backup-before-migrationの順序を復元した。API 36 instrumentationで、実`ModelWriter`が書き込むFavorites rankよりbackup tableのrankが先行stateであることを確認し、focused suite（10 tests）とshared-writer suite（23 tests）を成功させた。最新`main`へのrebase後にfresh default workspaceを再検証し、tokenless deferralを観測しつつ`MODEL_RELOAD_FAILED`は0件だった。AC-156-07を含む全ACの実装・検証を完了した。PR #157が未mergeの間は、workflow規約に従いstatusを `accepted` に維持し、merge後に `implemented` へ遷移する。
