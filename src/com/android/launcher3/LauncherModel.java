@@ -472,10 +472,21 @@ public class LauncherModel implements InstallSessionTracker.Callback {
             token.cancelled.run();
             return;
         }
+        OrganizerReloadRequest superseded;
         synchronized (mLock) {
             stopLoader();
+            superseded = mOrganizerReloadToken;
             mOrganizerReloadToken = token;
             mModelLoaded = false;
+        }
+        // Issue #150: stopLoader only cancels the outstanding token when it actually
+        // stopped a running task. A request whose loader already closed its
+        // transaction but whose queued completion callback has not run yet would
+        // otherwise be overwritten here and never receive a terminal signal.
+        // Terminalize that leftover exactly once; requests already cancelled by
+        // stopLoader and requests already completed leave a null reference.
+        if (superseded != null) {
+            superseded.cancelled.run();
         }
         startLoader();
     }

@@ -1,6 +1,8 @@
 package com.android.launcher3.organizer;
 
+import static com.android.launcher3.util.Executors.MODEL_EXECUTOR;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -87,6 +89,88 @@ public class OrganizerReloadSupersessionTest {
     // ------------------------------------------------------------------
     // Tests
     // ------------------------------------------------------------------
+
+    /**
+     * Issue #150 (re-review P1): a request whose loader already closed its
+     * transaction but whose completion notification is still queued on
+     * MODEL_EXECUTOR must not lose its terminal signal when a newer request
+     * replaces the token. The replacement used to overwrite the outstanding
+     * token without cancelling it, because stopLoader only cancels when it
+     * actually stopped a running task; the stale notification was then dropped
+     * by the identity check and the old request could only time out.
+     *
+     * <p>Deterministic construction: hold the loader mid-task with the page
+     * selection barrier, enqueue a blocking runnable ahead of the completion
+     * notification (the notification is posted at the end of the loader task,
+     * so the blocker runs first), and issue the replacement while the gap is
+     * held open. The old request must be terminalized with SUPERSEDED by the
+     * replacement itself, without waiting for the executor to drain.
+     */
+    @Test
+    public void terminalSignalSurvivesReplacementDuringPostCloseDeliveryGap() throws Exception {
+        var barrier = new SyncPageSelectionBarrier();
+        addModelCallback(barrier);
+        waitForModelIdle();
+        barrier.arm();
+
+        var lease = LayoutWriteCoordinator.getInstance()
+                .tryAcquire(LayoutWriteCoordinator.OwnerKind.ORGANIZER);
+        assertNotNull("Must acquire organizer lease", lease);
+        var executor = Executors.newFixedThreadPool(3);
+        try {
+            var adapter = new OrganizerModelReloadAdapter(model, mainHandler);
+
+            // Request A: waits on a background thread while its loader is held.
+            Future<OrganizerModelReloadAdapter.Outcome> outcomeAFuture = executor.submit(
+                    () -> adapter.requestAndWait(lease.token()));
+            barrier.awaitReached();
+
+            // Enqueue the delivery blocker. A's task posts its notification when it
+            // finishes, so the blocker is strictly ahead of it in the queue.
+            var blockerStarted = new CountDownLatch(1);
+            var blockerRelease = new CountDownLatch(1);
+            var blockerFailed = new AtomicBoolean(false);
+            MODEL_EXECUTOR.execute(() -> {
+                blockerStarted.countDown();
+                try {
+                    if (!blockerRelease.await(RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                        blockerFailed.set(true);
+                    }
+                } catch (InterruptedException e) {
+                    blockerFailed.set(true);
+                    Thread.currentThread().interrupt();
+                }
+            });
+
+            // Let A's loader finish: transaction commit/close, notification posted
+            // behind the blocker, then the blocker starts and holds the gap open.
+            barrier.release();
+            assertTrue("Delivery blocker did not start", blockerStarted.await(
+                    RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS));
+
+            // Issue request B while A is closed-but-not-delivered. The replacement
+            // must terminalize A synchronously; A must not wait for the executor.
+            Future<OrganizerModelReloadAdapter.Outcome> outcomeBFuture = executor.submit(
+                    () -> adapter.requestAndWait(lease.token()));
+            OrganizerModelReloadAdapter.Outcome outcomeA = outcomeAFuture.get(
+                    RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            assertEquals("A must be SUPERSEDED by the replacement, not silently dropped",
+                    OrganizerModelReloadAdapter.Outcome.SUPERSEDED, outcomeA);
+
+            // Drain: B's loader runs behind the blocker and completes normally.
+            blockerRelease.countDown();
+            OrganizerModelReloadAdapter.Outcome outcomeB = outcomeBFuture.get(
+                    RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            assertEquals("B must complete successfully",
+                    OrganizerModelReloadAdapter.Outcome.COMPLETED, outcomeB);
+            assertFalse("Delivery blocker timed out or was interrupted", blockerFailed.get());
+        } finally {
+            barrier.release();
+            lease.close();
+            shutdownExecutor(executor);
+        }
+        waitForModelIdle();
+    }
 
     /**
      * A single organizer reload request completes with

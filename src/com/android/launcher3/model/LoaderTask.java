@@ -427,11 +427,14 @@ public class LoaderTask implements Runnable {
         }
         TraceHelper.INSTANCE.endSection();
         if (transactionCommitted && mOrganizerLeaseToken != 0L) {
-            // Post after the transaction close and trace boundary. This keeps any token-scoped
-            // loader work already queued on MODEL_EXECUTOR ahead of the completion signal without
-            // blocking the loader thread on itself. The binder keeps request identity and
-            // LauncherModel rejects stale/superseded tokens.
-            MODEL_EXECUTOR.execute(mLauncherBinder::notifyOrganizerReloadComplete);
+            // Queue — never run inline — after the transaction close. The completion is
+            // delivered only after every runnable already queued on MODEL_EXECUTOR
+            // ahead of it has drained, so the organizer's next capture cannot race
+            // pending token-scoped work. Delivery re-checks request identity under the
+            // model lock; LauncherModel terminalizes a request whose token is replaced
+            // before its queued notification runs, so no request loses its terminal
+            // signal while one is still queued here.
+            MODEL_EXECUTOR.post(mLauncherBinder::notifyOrganizerReloadComplete);
         }
     }
 
