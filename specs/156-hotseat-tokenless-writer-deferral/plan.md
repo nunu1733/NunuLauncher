@@ -2,7 +2,7 @@
 
 > Issue: #156
 > Spec: [spec.md](./spec.md)
-> Status: accepted
+> Status: implemented
 > Baseline examined: `7ba2194ce711ce8e9a9c7abe5957919d566e26dd` (`main`, 2026-08-27)
 
 ## Current evidence
@@ -354,7 +354,7 @@ retain shared-writer coordinator/reload coverage:
 
 ## Documentation updates
 
-- [x] Update this `spec.md` status/history when reviewed and implemented; AC-156-07のrebased-head検証結果を記録済み。Merge状態はPR merge後に記録する。
+- [x] Update this `spec.md` status/history when reviewed and implemented; AC-156-07の最終head検証、PR #157のmerge、Issue #156のクローズを記録済み。
 - [x] Update `docs/assessment/issue-60-executor-writer-admission-audit.md` inventory table/count, atomic-admission reason, and any separately tracked non-identical finding.
 - [ ] Keep `CONTEXT.md` unchanged: no domain-language change.
 - [ ] Keep `DESIGN.md` unchanged unless implementation reveals a conflict with an existing serialization invariant.
@@ -381,8 +381,8 @@ required `spotlessCheck`, unit, assemble, and fresh-default-workspace device flo
 AC-156-07 was validated on the rebased head. Re-review then expanded AC-156-07 to the
 empty-gate→holder-acquired-before-admission interleaving; the stable reservation correction
 and regression evidence below supersede the earlier holder-present-only result. The final
-commit SHA is recorded in the Issue/PR evidence; a successful remote CI run and a new
-independent audit of the final code head remain required before merge.
+source head passed the remote merge gate and independent audit before PR #157 was merged; the
+resulting merge commit and closed Issue are recorded in the post-merge evidence below.
 
 ## Connected-environment implementation evidence (2026-08-27)
 
@@ -398,8 +398,8 @@ Issue #156 branch; the final source state is committed after these results are r
 | Full JVM regression | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --rerun-tasks` | Passed. |
 | Android test compilation | `./gradlew compileLawnWithQuickstepGithubDebugAndroidTestJavaWithJavac` | Passed. |
 | Debug APK | `./gradlew assembleLawnWithQuickstepGithubDebug` | Passed. |
-| Focused Hotseat suite | `./gradlew --no-configuration-cache connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest` | Passed: 13 tests on the final correction head. This includes real uncontended `createBackup`, backup-absent `restoreBackup`, backup-present/drop-after-use `restoreBackup`, atomic race, re-defer, exception release, exact-token reload, already-held ordering, empty-gate ordering, H1-release→H2-reacquisition ordering, and pre-holder migration bypass ordering with actual ModelWriter DB-rank assertions. |
-| Shared-writer regression | Seven-class command in this Plan | Passed: 50 tests on the final correction head. |
+| Focused Hotseat suite | `./gradlew --no-configuration-cache connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest` | Passed: 14 tests on the final correction head. This includes real uncontended `createBackup`, backup-absent `restoreBackup`, backup-present/drop-after-use `restoreBackup`, atomic race, re-defer, exception release, exact-token reload, already-held ordering, empty-gate ordering, H1-release→H2-reacquisition ordering, pre-holder migration bypass ordering, and baseline MODEL_WRITER holder ordering with actual ModelWriter DB-rank assertions. |
+| Shared-writer regression | Seven-class command in this Plan | Passed: 51 tests on the final correction head. |
 | Writer inventory / contracts | `python3 tools/repo-contract/validate_writer_inventory.py`; repository-contract validator and both self-tests | Passed before connected handoff: 19 allowlisted writer files / 1,437 scanned sources / 0 errors / 0 warnings; 47 high-risk self-tests. |
 
 For fresh-workspace evidence, the debug launcher was installed on the isolated emulator,
@@ -427,18 +427,29 @@ recovery terminated without `MODEL_RELOAD_FAILED`, and the prior layout was rest
 | API 36 timing/concurrency flakiness | Prohibit sleeps/timeouts as causal oracle. Event latches/probes establish order; timeout only fails a hung test. |
 | Admission wrapper lease lifetime | Test normal/exception/early-return paths to prove the outer lease is always closed after the inner transaction/reload body and does not wedge deferred work. |
 | Source-scan expansion finds additional quickstep writers | Apply the explicit stop condition: same MODEL_EXECUTOR blocking cause is eligible for #156; all other findings are assessed and split before product changes. |
-| Data-layout safety | No intended DB data-model change, but writer scheduling changes a high-risk path. Require exact-head CI and independent audit before merge. |
+| Data-layout safety | No intended DB data-model change, but writer scheduling changed a high-risk path. Exact-head CI, independent audit, and HighRiskGate passed before PR #157 was merged. |
 
 ## Execution checklist
 
 - [ ] Empty-gate→organizer-acquired→executor-start reproducer is red on the legacy direct transaction path.
-- [x] Re-review accepted `spec.md`; AC-156-07 now covers and has evidence for holder-present, empty-gate→holder-acquired-before-admission, H1-release→H2-reacquisition, and pre-holder migration-post ordering.
+- [x] Re-review accepted `spec.md`; AC-156-07 now covers and has evidence for holder-present, empty-gate→holder-acquired-before-admission, H1-release→H2-reacquisition, pre-holder migration-post, and baseline MODEL_WRITER-holder ordering.
 - [x] Reservation-backed atomic admission records a stable FIFO entry under the existing monitor and later grants/reenters or retains that same entry; release drains only a stable-reservation head and `runOrDefer` queues later tokenless MODEL_WRITER work behind it, so it cannot overtake across reacquisition or pre-holder posting.
-- [x] `createBackup` reserves stable call-time FIFO order before following migration ModelWriter work whether a holder exists at call time, appears before executor admission, reacquires before reposted work, or appears after both backup/migration submissions; actual ModelWriter DB-rank assertions cover all four cases.
+- [x] `createBackup` reserves stable call-time FIFO order before following migration ModelWriter work whether a holder exists at call time, appears before executor admission, reacquires before reposted work, appears after both backup/migration submissions, or is a distinct-thread baseline MODEL_WRITER; actual ModelWriter DB-rank assertions cover all five cases.
 - [x] Both helper methods use the one internal atomic admission route; real uncontended helper work is green.
 - [x] Race test is green post-fix and exact correlated reload completes before explicit organizer-lease release on the final head.
 - [x] Uncontended, missing-table, existing-backup/drop-after-use, exception, re-defer, and exactly-once behaviors pass on the final head.
 - [x] quickstep writer-inventory coverage and allowlist entry are green; the expanded scan found no non-identical additional writer.
-- [x] Focused and full relevant lint/build/unit/instrumentation checks pass on Android SDK 36.1 / Build Tools 36.1.0 after the reservation-barrier correction.
+- [x] Focused (14 tests) and shared-writer (51 tests) instrumentation, plus full relevant lint/build/unit checks, pass on Android SDK 36.1 / Build Tools 36.1.0 after the reservation-barrier correction.
 - [x] Fresh-workspace device evidence after the barrier correction separates #156 timeout resolution from #155 layout-overlap behavior: `MODEL_RELOAD_FAILED` was absent, while A7 `VERIFICATION_FAILED` restored the prior layout.
-- [ ] The previous independent high-risk audit and exact-head CI are superseded by this source change; repeat both for the final code head before merge.
+- [x] Independent audit `docs/assessment/pr-157-hotseat-tokenless-writer-deferral.md`, audited-head CI run 33071961999, and post-audit HighRiskGate run 33075302901 passed before merge.
+
+## Post-merge evidence (2026-08-27)
+
+[PR #157](https://github.com/nunu1733/NunuLauncher/pull/157) merged to `main` as
+`6fd276b50d328e3d01aa71d1e18d30425f2929d4` after the exact-head
+[CI run 33071961999](https://github.com/nunu1733/NunuLauncher/actions/runs/33071961999)
+reported `final-status` success and the post-audit
+[HighRiskGate run 33075302901](https://github.com/nunu1733/NunuLauncher/actions/runs/33075302901)
+reported `high-risk-evidence` success. Its `Closes #156` linkage automatically closed
+[Issue #156](https://github.com/nunu1733/NunuLauncher/issues/156). The Issue Spec and this
+Plan therefore transition from `accepted` to `implemented`.
