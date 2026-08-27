@@ -1,8 +1,8 @@
 ---
 issue: "#123"
-status: accepted
+status: implemented
 requirements: []
-updated: 2026-08-26
+updated: 2026-08-27
 ---
 
 # オーガナイザーUIをLawnchairのビジュアル言語とローカリゼーションへ収束させる
@@ -170,5 +170,6 @@ None are blocking. 非blocking事項:
 - 2026-08-26: 4th review対応。AC-5のtest oracle（spec/plan両方）を検証集合定義ベースへ修正: `required = user-visibleかつtranslatableなNunu organizer default resource` を明示定義し、`required ⊆ values-ja name集合` とplaceholder一致を確認する形へ統一。`translatable="false"` 固定文言がja被覆検証から除外されることを保証。他の変更はない。
 - 2026-08-26: Issue #123上で承認（4回のreview対応後、head `5b9ad9fa`時点）。`accepted`へ更新。実装開始。
 - 2026-08-26: 実装中の調査訂正。Problem事実1の件数を修正: baseline差分は `lawnchair/res` 168個に加え、初回調査で取りこぼしたLauncher3側 `res` の54個（#99カテゴリ系）を含む計222個、ja欠落216個。AC定義は最終name集合ベースのため変更不要。
+- 2026-08-27: [PR #154](https://github.com/nunu1733/NunuLauncher/pull/154) merge（head `523f2e88dd`、CI `final-status` green、visual evidence群をrepo evidence配下へ収録）。`implemented`へ更新。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/123
