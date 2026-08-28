@@ -429,6 +429,97 @@ Captures were taken from the current issue branch APK on AVD issue142_api36 (And
 
 Japanese semantic, focus, touch-target, and action-reachability checks were exercised by the manual-organization, category-override, onboarding, lock-screen, and diagnostics instrumentation suites. The category-override test builds expected spoken descriptions from the localized resource so the same a11y contract is verified in English and Japanese.
 
+## REVISE audit register
+
+This table is keyed by `Resource` and joins to the full disposition table and accepted revision register above. `proposed_ja` is the exact adopted Japanese value in the issue branch; the remaining fields are the required LQA audit fields for every one of the 82 final `REVISE` resources.
+
+| Resource | proposed_ja | severity | reason | rule | meaning_preserved | layout_risk |
+| --- | --- | --- | --- | --- | --- | --- |
+| manual_organization_app_pair_constraint | アプリペアを保持: %1$d件 | medium | 実装語や曖昧な対象を利用者概念に置き換え、対象範囲と件数の意味を保持した。 | ja-style-guide.md §自然さ、簡潔さ; ja-glossary.tsv: target / placement / profile | yes | shorter |
+| manual_organization_apply_recovered | 整理を完了できませんでした。以前のレイアウトを復元しました。 | high | 失敗・制約・復旧の状態を利用者語で明示し、変更有無と安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: restore / rollback / recovery point | yes | shorter |
+| manual_organization_apply_recovery_failed | 自動復旧を確認できませんでした。今は別の整理を開始しないでください。 | high | 失敗・制約・復旧の状態を利用者語で明示し、変更有無と安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: restore / rollback / recovery point | yes | shorter |
+| manual_organization_apply_rolled_back | 整理を取り消しました。以前のレイアウトのままです。 | high | 取り消し結果と以前のレイアウトが維持された事実を明示し、安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: rollback / restore | yes | shorter |
+| manual_organization_apply_unresolved | 現在のレイアウトを確認できませんでした。今は別の整理を開始しないでください。 | high | 現在の状態を確認できないことと再実行を控える制約を明示し、安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: organization run / recovery point | yes | shorter |
+| manual_organization_applying | 確認した整理案を適用しています。この処理は安全に中断できません。 | high | 操作対象または操作結果を明示し、CTAの意味を予測しやすくした。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: organization proposal / organization run | yes | shorter |
+| manual_organization_confirm | 確認した整理案を適用 | high | 操作対象または操作結果を明示し、CTAの意味を予測しやすくした。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: organization proposal / organization run | yes | longer |
+| manual_organization_device_scope | 画面レイアウト: %1$d列 × %2$d行、Dock %3$d枠。 | medium | 実装語や曖昧な対象を利用者概念に置き換え、対象範囲と件数の意味を保持した。 | ja-style-guide.md §自然さ、簡潔さ; ja-glossary.tsv: target / placement / profile | yes | shorter |
+| manual_organization_disabled_constraint | 利用できないプロファイルの配置: %1$d件 | high | 実装語や曖昧な対象を利用者概念に置き換え、対象範囲と件数の意味を保持した。 | ja-style-guide.md §自然さ、簡潔さ; ja-glossary.tsv: target / placement / profile | yes | none |
+| manual_organization_explainer | 適用前に整理案を確認できます。現在のレイアウトは自動的に変更されません。 | medium | 通常利用者向けの語順と簡潔さを整え、resourceの意味を保持した。 | ja-style-guide.md §目的と読み手; ja-glossary.tsv: organization run | yes | shorter |
+| manual_organization_impossible | 現在の空きスペースでは、このレイアウトを整理できません。何も変更されていません。 | high | 失敗・制約・復旧の状態を利用者語で明示し、変更有無と安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: restore / rollback / recovery point | yes | none |
+| manual_organization_input_unavailable | 現在のレイアウトまたは必要な情報を利用できません。何も変更されていません。 | high | 失敗・制約・復旧の状態を利用者語で明示し、変更有無と安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: restore / rollback / recovery point | yes | shorter |
+| manual_organization_legacy_shortcut_constraint | 旧形式のショートカットを保持: %1$d件 | medium | 実装語や曖昧な対象を利用者概念に置き換え、対象範囲と件数の意味を保持した。 | ja-style-guide.md §自然さ、簡潔さ; ja-glossary.tsv: target / placement / profile | yes | shorter |
+| manual_organization_locked_constraint | ロックした配置を保持: %1$d件 | high | 実装語や曖昧な対象を利用者概念に置き換え、対象範囲と件数の意味を保持した。 | ja-style-guide.md §自然さ、簡潔さ; ja-glossary.tsv: target / placement / profile | yes | none |
+| manual_organization_moved_count | 移動する配置: %1$d件 | medium | 実装語や曖昧な対象を利用者概念に置き換え、対象範囲と件数の意味を保持した。 | ja-style-guide.md §自然さ、簡潔さ; ja-glossary.tsv: target / placement / profile | yes | shorter |
+| manual_organization_moved_folder_member | フォルダ内の項目として移動: %1$d件 | medium | 実装語や曖昧な対象を利用者概念に置き換え、対象範囲と件数の意味を保持した。 | ja-style-guide.md §自然さ、簡潔さ; ja-glossary.tsv: target / placement / profile | yes | none |
+| manual_organization_moved_single_placement | 単独で移動: %1$d件 | medium | 実装語や曖昧な対象を利用者概念に置き換え、対象範囲と件数の意味を保持した。 | ja-style-guide.md §自然さ、簡潔さ; ja-glossary.tsv: target / placement / profile | yes | shorter |
+| manual_organization_new_folders_count | 新しいフォルダ: %1$d個 | medium | 実装語や曖昧な対象を利用者概念に置き換え、対象範囲と件数の意味を保持した。 | ja-style-guide.md §自然さ、簡潔さ; ja-glossary.tsv: target / placement / profile | yes | shorter |
+| manual_organization_new_pages_count | 新しいホーム画面ページ: %1$d枚 | medium | 実装語や曖昧な対象を利用者概念に置き換え、対象範囲と件数の意味を保持した。 | ja-style-guide.md §自然さ、簡潔さ; ja-glossary.tsv: target / placement / profile | yes | shorter |
+| manual_organization_planning | 安全に整理できる案を作成しています… | medium | 通常利用者向けの語順と簡潔さを整え、resourceの意味を保持した。 | ja-style-guide.md §目的と読み手; ja-glossary.tsv: organization run | yes | longer |
+| manual_organization_preserved_already_canonical | 変更不要の配置: %1$d件 | medium | 実装語や曖昧な対象を利用者概念に置き換え、対象範囲と件数の意味を保持した。 | ja-style-guide.md §自然さ、簡潔さ; ja-glossary.tsv: target / placement / profile | yes | shorter |
+| manual_organization_preserved_count | 保持する配置: %1$d件 | medium | 実装語や曖昧な対象を利用者概念に置き換え、対象範囲と件数の意味を保持した。 | ja-style-guide.md §自然さ、簡潔さ; ja-glossary.tsv: target / placement / profile | yes | shorter |
+| manual_organization_preserved_legacy_shortcut | 旧形式のショートカットを保持: %1$d件 | medium | 実装語や曖昧な対象を利用者概念に置き換え、対象範囲と件数の意味を保持した。 | ja-style-guide.md §自然さ、簡潔さ; ja-glossary.tsv: target / placement / profile | yes | none |
+| manual_organization_preserved_structural | 関連する項目を保持: %1$d件 | medium | 実装語や曖昧な対象を利用者概念に置き換え、対象範囲と件数の意味を保持した。 | ja-style-guide.md §自然さ、簡潔さ; ja-glossary.tsv: target / placement / profile | yes | none |
+| manual_organization_preserved_unavailable | 利用できない配置を保持: %1$d件 | medium | 失敗・制約・復旧の状態を利用者語で明示し、変更有無と安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: restore / rollback / recovery point | yes | longer |
+| manual_organization_preview | 整理案を確認 | high | 操作対象または操作結果を明示し、CTAの意味を予測しやすくした。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: organization proposal / organization run | yes | shorter |
+| manual_organization_quiet_constraint | 一時停止中のプロファイルの配置: %1$d件 | high | 実装語や曖昧な対象を利用者概念に置き換え、対象範囲と件数の意味を保持した。 | ja-style-guide.md §自然さ、簡潔さ; ja-glossary.tsv: target / placement / profile | yes | shorter |
+| manual_organization_recapture | もう一度読み込んで確認 | medium | 通常利用者向けの語順と簡潔さを整え、resourceの意味を保持した。 | ja-style-guide.md §目的と読み手; ja-glossary.tsv: organization run | yes | longer |
+| manual_organization_recovery | 以前のレイアウトに戻す | high | 失敗・制約・復旧の状態を利用者語で明示し、変更有無と安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: restore / rollback / recovery point | yes | none |
+| manual_organization_recovery_confirm | 保存したレイアウトに戻す | high | 失敗・制約・復旧の状態を利用者語で明示し、変更有無と安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: restore / rollback / recovery point | yes | shorter |
+| manual_organization_recovery_failed | 保存したレイアウトに安全に戻せませんでした。 | high | 失敗・制約・復旧の状態を利用者語で明示し、変更有無と安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: restore / rollback / recovery point | yes | shorter |
+| manual_organization_recovery_preview | 保存したレイアウトに戻すには確認が必要です。 | high | 失敗・制約・復旧の状態を利用者語で明示し、変更有無と安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: restore / rollback / recovery point | yes | shorter |
+| manual_organization_rejection_duplicate_target | 重複する整理対象: %1$d件 | high | 失敗・制約・復旧の状態を利用者語で明示し、変更有無と安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: restore / rollback / recovery point | yes | longer |
+| manual_organization_rejection_kind_target_mismatch | アイテム種別と対象情報の不整合: %1$d件 | high | 失敗・制約・復旧の状態を利用者語で明示し、変更有無と安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: restore / rollback / recovery point | yes | longer |
+| manual_organization_rejection_missing_target | 見つからない整理対象: %1$d件 | high | 失敗・制約・復旧の状態を利用者語で明示し、変更有無と安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: restore / rollback / recovery point | yes | longer |
+| manual_organization_rejection_target_profile_mismatch | アイテムと対象情報のプロファイル不一致: %1$d件 | high | 失敗・制約・復旧の状態を利用者語で明示し、変更有無と安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: restore / rollback / recovery point | yes | longer |
+| manual_organization_scope | 整理対象: %1$d件（%2$d個のプロファイル、%3$dページ）。 | medium | 実装語や曖昧な対象を利用者概念に置き換え、対象範囲と件数の意味を保持した。 | ja-style-guide.md §自然さ、簡潔さ; ja-glossary.tsv: target / placement / profile | yes | shorter |
+| manual_organization_stale | ホームレイアウトが変更されました。適用前に新しい整理案を確認してください。 | high | 失敗・制約・復旧の状態を利用者語で明示し、変更有無と安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: restore / rollback / recovery point | yes | longer |
+| manual_organization_start | 整理案を確認 | high | 操作対象または操作結果を明示し、CTAの意味を予測しやすくした。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: organization proposal / organization run | yes | longer |
+| manual_organization_start_again | 新しい整理案を確認 | high | 操作対象または操作結果を明示し、CTAの意味を予測しやすくした。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: organization proposal / organization run | yes | longer |
+| manual_organization_summary | 適用前に、ホームレイアウトの整理案を確認できます。 | medium | 通常利用者向けの語順と簡潔さを整え、resourceの意味を保持した。 | ja-style-guide.md §目的と読み手; ja-glossary.tsv: organization run | yes | shorter |
+| manual_organization_unavailable_constraint | 利用不可またはプロファイルの制限がある配置: %1$d件 | high | 失敗・制約・復旧の状態を利用者語で明示し、変更有無と安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: restore / rollback / recovery point | yes | longer |
+| manual_organization_unplaced_grid | 画面の範囲を超えるため未配置: %1$d件 | high | 失敗・制約・復旧の状態を利用者語で明示し、変更有無と安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: restore / rollback / recovery point | yes | shorter |
+| manual_organization_unplaced_target | 対象を利用できないため未配置: %1$d件 | high | 失敗・制約・復旧の状態を利用者語で明示し、変更有無と安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: restore / rollback / recovery point | yes | shorter |
+| manual_organization_warning_fallback_category | 代替カテゴリを使用: %1$d件 | high | 失敗・制約・復旧の状態を利用者語で明示し、変更有無と安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: restore / rollback / recovery point | yes | shorter |
+| manual_organization_warning_legacy_shortcut | 旧形式のショートカットの確認が必要: %1$d件 | high | 失敗・制約・復旧の状態を利用者語で明示し、変更有無と安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: restore / rollback / recovery point | yes | none |
+| manual_organization_warning_unavailable | 利用できない配置を保持: %1$d件 | high | 失敗・制約・復旧の状態を利用者語で明示し、変更有無と安全上の意味を保持した。 | ja-style-guide.md §安全、失敗、復旧; ja-glossary.tsv: restore / rollback / recovery point | yes | shorter |
+| manual_organization_widget_constraint | ウィジェットを保持: %1$d件 | medium | 実装語や曖昧な対象を利用者概念に置き換え、対象範囲と件数の意味を保持した。 | ja-style-guide.md §自然さ、簡潔さ; ja-glossary.tsv: target / placement / profile | yes | shorter |
+| organization_onboarding_proposal_review | 整理案を確認 | high | オンボーディングの確認対象と次の操作を明示し、画面遷移の意味を保った。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: organization proposal | yes | longer |
+| organization_onboarding_proposal_summary | まず整理案を確認できます。プレビューを確定するまで、何も変更されません。 | medium | オンボーディングの確認対象と次の操作を明示し、画面遷移の意味を保った。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: organization proposal | yes | shorter |
+| organizer_lock_action_keep_locked | ロックしたままにする | high | ロックの対象・状態・操作を区別し、利用者が選ぶ結果を予測できる表現にした。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: lock state / locked placement | yes | longer |
+| organizer_lock_action_mark_unlocked | ロック解除に設定 | high | ロックの対象・状態・操作を区別し、利用者が選ぶ結果を予測できる表現にした。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: lock state / locked placement | yes | shorter |
+| organizer_lock_dialog_title_review | この配置を確認 | medium | ロックの対象・状態・操作を区別し、利用者が選ぶ結果を予測できる表現にした。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: lock state / locked placement | yes | shorter |
+| organizer_lock_error_busy | 別のレイアウト変更を実行中です。しばらくしてからもう一度お試しください。 | medium | ロックの対象・状態・操作を区別し、利用者が選ぶ結果を予測できる表現にした。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: lock state / locked placement | yes | none |
+| organizer_lock_error_failed | 変更に失敗しました。変更は適用されていません。 | medium | ロックの対象・状態・操作を区別し、利用者が選ぶ結果を予測できる表現にした。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: lock state / locked placement | yes | none |
+| organizer_lock_error_intent_required | 適用する変更内容を確認してください。 | medium | ロックの対象・状態・操作を区別し、利用者が選ぶ結果を予測できる表現にした。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: lock state / locked placement | yes | shorter |
+| organizer_lock_error_item_not_found | このアイテムは存在しません。変更は適用されていません。 | medium | ロックの対象・状態・操作を区別し、利用者が選ぶ結果を予測できる表現にした。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: lock state / locked placement | yes | shorter |
+| organizer_lock_error_item_not_unknown | このアイテムはすでに確認済みです。変更は適用されていません。 | medium | ロックの対象・状態・操作を区別し、利用者が選ぶ結果を予測できる表現にした。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: lock state / locked placement | yes | longer |
+| organizer_lock_error_profile_unavailable | このアイテムのプロファイルは現在利用できません。変更は適用されていません。 | medium | ロックの対象・状態・操作を区別し、利用者が選ぶ結果を予測できる表現にした。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: lock state / locked placement | yes | none |
+| organizer_lock_error_stale | このアイテムまたはレイアウトが変更されました。変更は適用されていません。もう一度お試しください。 | medium | ロックの対象・状態・操作を区別し、利用者が選ぶ結果を予測できる表現にした。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: lock state / locked placement | yes | none |
+| organizer_lock_screen_effectively_locked | 所属するフォルダまたはアプリペアのロックにより保護されています | high | ロックの対象・状態・操作を区別し、利用者が選ぶ結果を予測できる表現にした。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: lock state / locked placement | yes | longer |
+| organizer_lock_state_unlocked | ロック解除済み | medium | ロックの対象・状態・操作を区別し、利用者が選ぶ結果を予測できる表現にした。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: lock state / locked placement | yes | longer |
+| organizer_lock_screen_review_all_confirm | %1$d件の配置を「%2$s」として確認しますか？ この操作は一覧の配置のみに適用されます。 | high | ロックの対象・状態・操作を区別し、利用者が選ぶ結果を予測できる表現にした。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: lock state / locked placement | yes | shorter |
+| organizer_lock_screen_review_all_keep_locked | すべてロックとして確認 | high | ロックの対象・状態・操作を区別し、利用者が選ぶ結果を予測できる表現にした。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: lock state / locked placement | yes | shorter |
+| organizer_lock_screen_review_all_mark_unlocked | すべてロック解除として確認 | high | ロックの対象・状態・操作を区別し、利用者が選ぶ結果を予測できる表現にした。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: lock state / locked placement | yes | shorter |
+| organizer_lock_screen_unknown_banner | 整理の前に%1$d件の配置を確認してください。 | high | ロックの対象・状態・操作を区別し、利用者が選ぶ結果を予測できる表現にした。 | ja-style-guide.md §CTA、タイトル、状態; ja-glossary.tsv: lock state / locked placement | yes | none |
+| organizer_category_override_automatic | "自動分類を使用中" | medium | 自動分類と手動設定、またはカテゴリ値を利用者語で区別し、設定結果を明示した。 | ja-style-guide.md §カタカナ・英語・技術語; ja-glossary.tsv: override / automatic classification / category | yes | shorter |
+| organizer_category_override_automatic_description | "手動設定はありません。次回の全体整理では自動分類を使用します。" | medium | 自動分類と手動設定、またはカテゴリ値を利用者語で区別し、設定結果を明示した。 | ja-style-guide.md §カタカナ・英語・技術語; ja-glossary.tsv: override / automatic classification / category | yes | shorter |
+| organizer_category_override_busy | "整理を実行中です。カテゴリを編集する前に完了してください。" | medium | 自動分類と手動設定、またはカテゴリ値を利用者語で区別し、設定結果を明示した。 | ja-style-guide.md §カタカナ・英語・技術語; ja-glossary.tsv: override / automatic classification / category | yes | longer |
+| organizer_category_override_category_description | "カテゴリを%1$sに設定します。" | medium | 自動分類と手動設定、またはカテゴリ値を利用者語で区別し、設定結果を明示した。 | ja-style-guide.md §カタカナ・英語・技術語; ja-glossary.tsv: override / automatic classification / category | yes | shorter |
+| organizer_category_override_conflict | "カテゴリの情報が変更されました。リストを再読み込みして、もう一度選択してください。" | medium | 自動分類と手動設定、またはカテゴリ値を利用者語で区別し、設定結果を明示した。 | ja-style-guide.md §カタカナ・英語・技術語; ja-glossary.tsv: override / automatic classification / category | yes | longer |
+| organizer_category_override_explicit | "手動設定: %1$s" | medium | 自動分類と手動設定、またはカテゴリ値を利用者語で区別し、設定結果を明示した。 | ja-style-guide.md §カタカナ・英語・技術語; ja-glossary.tsv: override / automatic classification / category | yes | shorter |
+| organizer_category_override_failed | "カテゴリ設定を保存できませんでした。変更は確定していません。" | medium | 自動分類と手動設定、またはカテゴリ値を利用者語で区別し、設定結果を明示した。 | ja-style-guide.md §カタカナ・英語・技術語; ja-glossary.tsv: override / automatic classification / category | yes | shorter |
+| organizer_category_override_no_change | "変更はありません。現在のカテゴリ設定を維持します。" | medium | 自動分類と手動設定、またはカテゴリ値を利用者語で区別し、設定結果を明示した。 | ja-style-guide.md §カタカナ・英語・技術語; ja-glossary.tsv: override / automatic classification / category | yes | shorter |
+| organizer_category_override_profile_work | "仕事用" | medium | 自動分類と手動設定、またはカテゴリ値を利用者語で区別し、設定結果を明示した。 | ja-style-guide.md §カタカナ・英語・技術語; ja-glossary.tsv: override / automatic classification / category | yes | shorter |
+| organizer_category_override_save | "カテゴリ設定を保存" | medium | 自動分類と手動設定、またはカテゴリ値を利用者語で区別し、設定結果を明示した。 | ja-style-guide.md §カタカナ・英語・技術語; ja-glossary.tsv: override / automatic classification / category | yes | shorter |
+| organizer_category_override_saved | "カテゴリ設定を保存しました。" | medium | 自動分類と手動設定、またはカテゴリ値を利用者語で区別し、設定結果を明示した。 | ja-style-guide.md §カタカナ・英語・技術語; ja-glossary.tsv: override / automatic classification / category | yes | shorter |
+| organizer_category_override_unavailable | "このアプリまたはプロファイルは利用できません。リストを再読み込みして、もう一度お試しください。" | medium | 自動分類と手動設定、またはカテゴリ値を利用者語で区別し、設定結果を明示した。 | ja-style-guide.md §カタカナ・英語・技術語; ja-glossary.tsv: override / automatic classification / category | yes | shorter |
+| organizer_category_override_unavailable_store | "カテゴリ設定を利用できません。変更は保存されていません。" | medium | 自動分類と手動設定、またはカテゴリ値を利用者語で区別し、設定結果を明示した。 | ja-style-guide.md §カタカナ・英語・技術語; ja-glossary.tsv: override / automatic classification / category | yes | shorter |
+| organizer_category_override_use_automatic | "自動分類を使用" | medium | 自動分類と手動設定、またはカテゴリ値を利用者語で区別し、設定結果を明示した。 | ja-style-guide.md §カタカナ・英語・技術語; ja-glossary.tsv: override / automatic classification / category | yes | shorter |
+| organizer_category_overrides_summary | "アプリごとにカテゴリを選択できます。自動分類も利用できます。" | medium | 自動分類と手動設定、またはカテゴリ値を利用者語で区別し、設定結果を明示した。 | ja-style-guide.md §カタカナ・英語・技術語; ja-glossary.tsv: override / automatic classification / category | yes | longer |
+| organizer_category_overrides_title | "アプリカテゴリの手動設定" | medium | 自動分類と手動設定、またはカテゴリ値を利用者語で区別し、設定結果を明示した。 | ja-style-guide.md §カタカナ・英語・技術語; ja-glossary.tsv: override / automatic classification / category | yes | shorter |
+
+Rows: 82; all are final `REVISE` and join by the unique resource name.
+
 ## Verification record
 
 | Check | Result |
