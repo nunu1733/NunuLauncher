@@ -1,6 +1,6 @@
 ---
 issue: "#164"
-status: draft
+status: accepted
 requirements:
   - CANONICAL-WRITESET-ORDER
   - NEW-FOLDER-A8-DEVICE
@@ -271,7 +271,7 @@ is unchanged.
 | AC | Evidence |
 |---|---|
 | AC-164-01 | JVM unit test driving the real materializer and the real resolved-state resolution/finalization seam with a new-folder fixture whose allocated id byte-sorts mid-list; red before the fix, green after. |
-| AC-164-02 | JVM protocol test (`ApplyProtocolTest` seam) whose fake writer exercises the real materialization/resolution path and whose `recaptureDb` independently rebuilds state from persisted-row-equivalent rows with capture-side canonical semantics (no verbatim echo, no shared writer-side helper); red pre-fix, green post-fix. Reinforced by an in-memory-SQLite instrumentation roundtrip asserting the real `RowManifestCodec.capture` output equals the materialized intended state for the same fixture. Mismatch-injection recovery cases stay green. |
+| AC-164-02 | JVM protocol test (`ApplyProtocolTest` seam) whose fake writer exercises the real materialization/resolution path and whose `recaptureDb` independently rebuilds state from persisted-row-equivalent rows with capture-side canonical semantics (no verbatim echo, no shared writer-side helper); red pre-fix, green post-fix. The production-equivalent recapture is contained as an opt-in strategy of the shared fake — its default echo semantics, which existing protocol tests rely on, are unchanged. Reinforced by an in-memory-SQLite instrumentation roundtrip asserting the real `RowManifestCodec.capture` output equals the materialized intended state for the same fixture. Mismatch-injection recovery cases stay green. |
 | AC-164-03 | Unit tests for the shared canonical-order authority across capture and preparation; determinism/byte-identical assertions for repeated preparation, multi-folder, and id-boundary fixtures; existing organizer unit suite stays green. |
 | AC-164-04 | Pixel 9a / API 36 default-workspace debug and release runs; supported Settings diagnostics export showing `CHECKPOINTED → APPLY_COMMITTED → APPLY_VERIFIED`; recorded exact head SHA. |
 | AC-164-05 | Same device evidence: explicit recovery preview/confirm with `RECOVERY_REQUESTED`/`RECOVERY_RESTORED` and matching `pointOriginRunId`. |
@@ -308,3 +308,9 @@ is unchanged.
   preparation extraction without an independent justification), and the
   canonicalization preconditions are recorded as explicit fail-closed
   invariants.
+- 2026-08-28: Accepted by the issue owner (no blocking findings) with one
+  non-blocking implementation note: the production-equivalent recapture must
+  be contained as an opt-in strategy / fixture-specific mode of the shared
+  `FakeLayoutWriter`, whose default echo semantics existing protocol tests
+  depend on must not change. Stage B implementation may proceed on that
+  basis.

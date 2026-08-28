@@ -2,8 +2,9 @@
 
 > Issue: [#164](https://github.com/nunu1733/NunuLauncher/issues/164)
 > Spec: [spec.md](./spec.md)
-> Status: draft (Stage A — awaiting spec/plan review; no production behavior
-> change happens under this branch)
+> Status: **accepted** (2026-08-28, owner review passed with no blocking
+> findings). Stage B implementation follows this plan; no production behavior
+> change happened under the Stage A branch.
 > Risk: `layout-data`
 > Evidence baseline: Issue #164 reproduction at `92a490a2f8` (release) and
 > `c68abcce62` (debug reproduction build), both on the device environment
@@ -207,7 +208,7 @@ paths. This Stage A branch changes `spec.md` and `plan.md` only.
 | `lawnchair/src/app/lawnchair/organizer/application/actions/` or `.../canonical/` (new small internal seam, name TBD) | The extracted `resolvePersistentReferences` plus canonical finalization (shared order authority, fail-closed unresolved-reference rejection). | Minimal JVM-testable seam for AC-164-01/02; no public contract change; no full preparation extraction. |
 | `lawnchair/src/app/lawnchair/organizer/application/adapter/RowManifestCodec.kt` | Use the shared canonical-order authority instead of its local `sortedBy { ItemId(...) }`; output byte-identical. | Single canonical-order authority (AC-164-03); prevents future divergence. |
 | `tests/unit/app/lawnchair/organizer/application/` (new/existing unit tests) | Failing-path fixtures: a new folder whose allocated id byte-sorts mid-list (e.g. existing ids up to 18 → folder id 19, or ids 1–9 → folder id 10); canonical-order, determinism, and fail-closed unresolved-ref assertions; mismatch-injection recovery stays green. | The materializer/apply seam oracle required by the issue's acceptance. |
-| `tests/unit/app/lawnchair/organizer/application/adapter/FakeLayoutWriter.kt` | Writer side: materialize via the real materializer and the real resolution/finalization seam with fixture identity (max row id + 1). Recapture side: rebuild state and manifest independently from persisted-row-equivalent rows with capture-side canonical semantics — never echoing the intended state and never using the writer-side authority. | Reproduces the device asymmetry so AC-164-02 is red pre-fix; both oracle paths keep production fidelity. |
+| `tests/unit/app/lawnchair/organizer/application/adapter/FakeLayoutWriter.kt` | Opt-in only (per the owner's acceptance note): a fixture-specific `productionEquivalentCapture` mode. Writer side: materialize via the real materializer and the real resolution/finalization seam with fixture identity (max row id + 1). Recapture side: rebuild state and manifest independently from persisted-row-equivalent rows with capture-side canonical semantics — never echoing the intended state and never using the writer-side authority. The shared fake's default echo semantics and synthetic-manifest behavior, which existing protocol tests depend on, remain exactly as before when the flag is unset. | Reproduces the device asymmetry so AC-164-02 is red pre-fix; both oracle paths keep production fidelity without changing existing tests' abstraction level. |
 | `tests/organizer-instrumentation/app/lawnchair/organizer/application/RealAdapterRowMatrixInstrumentationTest.kt` (or a sibling) | Add a new-folder mid-list-id case: in-memory SQLite rows → real `RowManifestCodec.capture` output equals the materialized intended state. | Real capture-side mapping fidelity behind the JVM mirror. |
 | `docs/assessment/pr-<PR>-new-folder-a7-item-order.md` | Independent high-risk audit record after implementation CI succeeds. | Required by `AGENTS.md` for `risk: layout-data`. |
 | Follow-up lockout issue | Opened by the issue owner (or the Stage B PR) with an observable diagnostic code; linked from here and from #164. | AC-164-06; no tentative number per `AGENTS.md`. |
@@ -339,3 +340,12 @@ audit requires a new CI result and audit.
   extraction without an independent justification), and the canonicalization
   preconditions made explicit fail-closed invariants. Stop conditions now
   require two-sided oracle independence.
+- 2026-08-28: Accepted (no blocking findings) with one non-blocking
+  implementation note, adopted into the change set: the production-equivalent
+  recapture is contained as an opt-in mode of the shared `FakeLayoutWriter`
+  (`productionEquivalentCapture`); the fake's default echo semantics and
+  synthetic-manifest behavior stay unchanged so existing protocol tests keep
+  their abstraction level. Stage B staged as a red commit (seam extraction
+  with pre-fix behavior plus the oracle tests) followed by the fix commit
+  (canonical finalization, adapter wiring, capture authority), recording both
+  runs as PR evidence.
