@@ -2,11 +2,11 @@
 
 > Issue: [#161][1]
 > Spec: [spec.md](./spec.md)
-> Status: **accepted — Stage A / Stage B locally complete; PR CI pending.** 2026-08-28にリポジトリ所有者の承認を受領した。Stage B は本計画にないオーガナイザーの behavior、safety semantics、navigation、layout data を変更しない。
+> Status: **implemented — Stage A / Stage B complete; PR CI final-status passed.** 2026-08-28にリポジトリ所有者の承認を受領し、PR #163 の reviewed implementation head `97a0b624714e14c87b84c06f7124d60af09e7fa4` でCIを完了した。Stage B は本計画にないオーガナイザーの behavior、safety semantics、navigation、layout data を変更しない。
 
 ## Current evidence
 
-Stage A は `main` の `c68abcce628de9d01efaf29280193defe4aff540` を確認基準とした。#123 は実装済みであり、Nunu 固有の active / user-visible / translatable resource を final name set で扱う被覆 oracle、placeholder 一致、Japanese / `en-XA` / font scale の代表画面証拠を提供している。Stage B では accepted Stage A commit `48720a0a8bc965de10df70a24b48e9300eaf51ca` を対象に、required 223 名（lawnchair 166 / root 57）の inventory、Reviewer A/B の全件結果、24 件の blind bake-off、固定context fixture、resource validator、AVD による Japanese / `en-XA` / 200% 表示確認を実施した。ローカルの全検証は成功しており、実装はこのfollow-up修正を含む最新headへ反映する。PR CI `final-status` は最新headでworkflow完了待ちである。[2] [3]
+Stage A は `main` の `c68abcce628de9d01efaf29280193defe4aff540` を確認基準とした。#123 は実装済みであり、Nunu 固有の active / user-visible / translatable resource を final name set で扱う被覆 oracle、placeholder 一致、Japanese / `en-XA` / font scale の代表画面証拠を提供している。Stage B では accepted Stage A commit `48720a0a8bc965de10df70a24b48e9300eaf51ca` を対象に、required 223 名（lawnchair 166 / root 57）の inventory、Reviewer A/B の全件結果、24 件の blind bake-off、固定context fixture、resource validator、AVD による Japanese / `en-XA` / 200% 表示確認を実施した。ローカルの全検証とPR #163のCI `final-status` は、reviewed head `97a0b624714e14c87b84c06f7124d60af09e7fa4` で成功している。[2] [3]
 
 | 確認済み事項 | 根拠 | Stage B への含意 |
 |---|---|---|
@@ -166,13 +166,14 @@ validator の CLI 引数と fixture の最終形は Stage B で tool を実装�
 - [x] 初回 full pass の**全 inventory unit**を Reviewer A / B が別 session または独立 context で実行し、reviewer identity と family/provider の例外理由を記録する。low / medium agreement は確定し、high severity は A/B agreement・accepted spec/ADR に対する meaning-preservation 明示確認・product ambiguity 不在を満たす場合に確定する。high-severity disagreement と product decision を owner resolution / split Issue へ送る。
 - [x] owner-resolved `REVISE`、または初回 full pass で low / medium A/B agreement を得た `REVISE`、または high severity の A/B agreement・accepted spec/ADR に対する meaning-preservation 明示確認・product ambiguity 不在を evidence に記録した `REVISE` のみを 2 つの Japanese resource root へ反映する。
 - [x] resource oracle、format、build、existing behavior / a11y regression、Japanese / `en-XA` / font-scale 表示を検証する。
-- [ ] closing assessment、PR evidence、未解決/分離 Issue を記録し、spec / plan を `implemented` に更新する。
+- [x] closing assessment、PR evidence、未解決/分離 Issue を記録し、spec / plan を `implemented` に更新する。
 
 ## Change history
 
 - 2026-08-28: Issue #161 の Stage A review（P1: 初回 full-pass 二重レビュー、P1: bake-off adjudication、P2: reviewer 実行独立性、Minor: verification AC 対応）に対応。全 inventory unit の独立 A/B 結果、low/medium agreement と high-severity disagreement の分離、candidate 自己採点禁止・匿名 output・project-owner blind scoring・per-item/aggregate/hard-failure contract、reviewer role/model/family-or-provider/session-or-context evidence を追加し、Gradle/CI 行を AC-161-08 / AC-161-09 に整理した。
 - 2026-08-28: Stage A re-review の P2 に対応。high severity は、A/B agreement、accepted feature spec / ADR に対する meaning-preservation の明示確認、product ambiguity 不在の 3 条件を evidence に記録した場合に個別 owner approval なしで採用できる経路を Mermaid flow、independent LQA、resource application、checklist に統一した。disagreement または ambiguity のみ owner resolution / split Issue を必要とする。
-- 2026-08-28: Stage A 承認後、223 unit の inventory / independent A/B review、24 unit bake-off、82 件の最終 `REVISE`、固定context fixture、resource validator、Gradle、repository contract、organizer unit/UI、Japanese / `en-XA` / 200% AVD 検証を完了した。closing evidence を更新し、最新headのPR CI `final-status` は workflow 完了待ちである。
+- 2026-08-28: Stage A 承認後、223 unit の inventory / independent A/B review、24 unit bake-off、82 件の最終 `REVISE`、固定context fixture、resource validator、Gradle、repository contract、organizer unit/UI、Japanese / `en-XA` / 200% AVD 検証を完了した。closing evidence を更新し、最新headのPR CI `final-status` 完了を待った。
+- 2026-08-28: PR #163 の reviewed head `97a0b624714e14c87b84c06f7124d60af09e7fa4` で `CI / final-status` と High-risk gate が成功したため、closing evidence を確定し、plan status を `implemented` とした。
 
 ## References
 

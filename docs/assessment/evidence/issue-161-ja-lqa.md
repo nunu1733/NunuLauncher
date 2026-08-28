@@ -1,6 +1,6 @@
 # Issue #161 Japanese UI copy LQA evidence
 
-> Status: locally verified — rendered UI, repository, and build checks pass locally; the post-review fix head is awaiting the PR CI final-status.
+> Status: implemented — rendered UI, repository, build, and PR CI checks pass on PR #163 implementation head `97a0b624714e14c87b84c06f7124d60af09e7fa4`.
 
 Issue: [#161](https://github.com/nunu1733/NunuLauncher/issues/161)
 
@@ -12,6 +12,7 @@ Issue: [#161](https://github.com/nunu1733/NunuLauncher/issues/161)
 - Required set: 223 translatable current Nunu resources — 166 in lawnchair/res and 57 in res.
 - organizer_diagnostics_export_default_filename is excluded from the required copy set because the resource is explicitly translatable=false in the default resource.
 - Scope is Japanese UI copy, review workflow, evidence, and a standard-library resource contract validator. No runtime behavior, API, dependency, navigation, or layout semantics were changed.
+- PR: [#163](https://github.com/nunu1733/NunuLauncher/pull/163), reviewed implementation head `97a0b624714e14c87b84c06f7124d60af09e7fa4`.
 
 ## Independent review identities
 
@@ -443,6 +444,6 @@ Japanese semantic, focus, touch-target, and action-reachability checks were exer
 | Repository contract tests | PASS — 11 tests |
 | Related organizer UI instrumentation | PASS — 10 manual-organization tests; 30 category/onboarding/lock/diagnostics tests in English and Japanese locales |
 | Rendered Japanese/en-XA/font-scale evidence | PASS — issue142_api36 captures and 200% reachability test; links above |
-| PR CI final-status | PENDING — workflow is running or awaiting completion for the pushed post-review-fix head |
+| PR CI final-status | PASS — [CI run #33145303718](https://github.com/nunu1733/NunuLauncher/actions/runs/33145303718), [final-status job](https://github.com/nunu1733/NunuLauncher/actions/runs/33145303718/job/98766406289), PR [#163](https://github.com/nunu1733/NunuLauncher/pull/163), implementation head `97a0b624714e14c87b84c06f7124d60af09e7fa4` |
 
-The local evidence is complete. PR CI final-status remains pending until the repository workflow completes on the pushed post-review-fix head.
+The local evidence and the independent PR CI evidence are complete for PR [#163](https://github.com/nunu1733/NunuLauncher/pull/163). The workflow covered the reviewed implementation head `97a0b624714e14c87b84c06f7124d60af09e7fa4`; all required jobs and `final-status` succeeded. The High-risk gate also passed at [run #33145303715](https://github.com/nunu1733/NunuLauncher/actions/runs/33145303715). The subsequent closing-evidence commit changes documentation only.

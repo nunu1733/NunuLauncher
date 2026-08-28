@@ -1,6 +1,6 @@
 ---
 issue: "#161"
-status: accepted
+status: implemented
 requirements:
   - AC-161-01
   - AC-161-02
@@ -132,7 +132,7 @@ review table は resource ごとに surface / role、current Japanese、disposit
 - [x] **AC-161-07 — 合意規則と判断分離:** 初回 full pass の low / medium severity item は Reviewer A / B の合意により確定できる。primary CTA、warning、failure、recovery、破壊的/不可逆な意味、a11y、および用語 policy の high severity item で Reviewer A / B が実質的に不一致であるか、意味が曖昧な場合は、採用前に project owner が解決するか、別 Issue へ分離されている。Reviewer A / B の合意だけでは、未解決の product decision を解決したことにはならない。
 - [x] **AC-161-08 — resource と behavior の保存:** 採用済み `REVISE` だけが実装され、placeholder / plural / escaping / `translatable` 契約が保持される。オーガナイザーの planning、application、recovery、layout data、安全保証、navigation の diff を混在させない。
 - [x] **AC-161-09 — rendered localization evidence:** 主要な変更 surface を Japanese locale の通常 font scale と代表的な拡大 font scale で確認し、critical clipping / wrapping がない。a11y 意味を確認し、`en-XA` と #123 の被覆 oracle を構造 regression の検証として継続する。
-- [ ] **AC-161-10 — closing evidence:** exact base SHA、resource inventory / review table、style guide・glossary・workflow path、bake-off 実施日、candidate ごとの per-item / aggregate score と final adjudication、Reviewer A / B ごとの role・model identifier・family/provider・execution session または independent-context identifier、異なる family/provider を使えなかった理由、代表的な変更前後、reviewer の不一致と解決、resource validation、実行 command と結果、未解決/分離 Issue が closing evidence に記録されている。
+- [x] **AC-161-10 — closing evidence:** exact base SHA、resource inventory / review table、style guide・glossary・workflow path、bake-off 実施日、candidate ごとの per-item / aggregate score と final adjudication、Reviewer A / B ごとの role・model identifier・family/provider・execution session または independent-context identifier、異なる family/provider を使えなかった理由、代表的な変更前後、reviewer の不一致と解決、resource validation、実行 command と結果、未解決/分離 Issue が closing evidence に記録されている。
 
 ## Test oracle
 
@@ -158,8 +158,9 @@ Stage A を阻害する未決定事項はない。Stage B で使う reviewer pai
 - 2026-08-28: Issue #161 の Stage A 向け `proposed` 仕様を作成。Issue 本文・提案済み reviewer design、#123 の implemented spec / plan / visual evidence、`main` `c68abcce628de9d01efaf29280193defe4aff540`、および repository workflow を入力として、モデル非依存の文脈付き LQA contract と Stage B の停止条件を固定した。
 - 2026-08-28: Issue #161 の Stage A review（P1 × 2、P2 × 1）に対応。初回 full pass の全 inventory unit に独立 Reviewer A/B result を要求し、low/medium agreement と high-severity disagreement/ambiguity の扱いを分離した。bake-off には candidate 自己採点禁止、blind project-owner adjudication、per-item/aggregate 記録、safety/meaning-preservation hard failure を追加し、closing evidence に reviewer role/model/family-or-provider/session-or-context identity と例外理由を追加した。
 - 2026-08-28: リポジトリ所有者の承認を受領し、Stage A gate を `accepted` に更新。Stage B の実装を開始する。
-- 2026-08-28: Stage B の style guide、glossary、portable workflow、resource validator、全 223 unit の A/B review、24 unit の blind bake-off、承認済み日本語 resource 修正、AVD 表示検証を完了した。AC-161-01〜09 をローカル証拠で確認し、AC-161-10 は pushed PR head の CI `final-status` 待ちとして残す。
+- 2026-08-28: Stage B の style guide、glossary、portable workflow、resource validator、全 223 unit の A/B review、24 unit の blind bake-off、承認済み日本語 resource 修正、AVD 表示検証を完了した。AC-161-01〜09 をローカル証拠で確認し、AC-161-10 は pushed PR head の CI `final-status` 完了後に確認した。
 - 2026-08-28: 実装レビューの P1/P2 指摘に対応し、最終 disposition と実変更を 82 件で一致させ、24 件の固定 bake-off context、Japanese 側 `translatable` 契約検証、lock 状態/action の再レビューを追加した。
+- 2026-08-28: PR #163 の reviewed head `97a0b624714e14c87b84c06f7124d60af09e7fa4` で `CI / final-status` と High-risk gate が成功し、AC-161-10 を完了、spec status を `implemented` に更新した。
 
 ## References
 
