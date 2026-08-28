@@ -1,5 +1,6 @@
 package app.lawnchair.organizer.application.protocol
 
+import app.lawnchair.organizer.application.actions.IntendedStateResolution
 import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.ApplicationPageRef
 import app.lawnchair.organizer.application.public.CanonicalItemState
@@ -16,10 +17,15 @@ import app.lawnchair.organizer.planning.TargetKey
  * Protocol-owned validation of a writer's materialized intended state.
  *
  * A Launcher writer may allocate persistent identities for planned items and
- * pages, and the schema may omit unreferenced empty pages. No other state
- * transformation is permitted. Keeping the mapping explicit here prevents a
- * writer-provided copy of the original plan from becoming the source of
- * truth for this invariant.
+ * pages, and the schema may omit unreferenced empty pages. Issue #164 adds
+ * exactly one further permitted transformation: the resolved items are
+ * presented in the shared canonical `ItemId` byte order (the order the DB
+ * capture produces), so the writer's intended state and an independent
+ * recapture compare equal at A7. The ordering comes from the same
+ * `CanonicalItemOrder` authority the capture uses — never from the writer.
+ * No other state transformation is permitted. Keeping the mapping explicit
+ * here prevents a writer-provided copy of the original plan from becoming the
+ * source of truth for this invariant.
  */
 internal object MaterializedStateValidator {
 
@@ -34,8 +40,9 @@ internal object MaterializedStateValidator {
         } catch (_: RuntimeException) {
             return false
         }
-        return writeSet.intendedState == resolved ||
-            writeSet.intendedState == normalizePages(resolved)
+        val canonicalResolved = IntendedStateResolution.finalizeCanonicalOrder(resolved) ?: return false
+        return writeSet.intendedState == canonicalResolved ||
+            writeSet.intendedState == normalizePages(canonicalResolved)
     }
 
     private fun mappingMatchesPlan(

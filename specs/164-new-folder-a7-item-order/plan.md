@@ -207,6 +207,7 @@ paths. This Stage A branch changes `spec.md` and `plan.md` only.
 | `lawnchair/src/app/lawnchair/organizer/application/adapter/LauncherLayoutAdapter.kt` | Finalize the resolved intended state through the small pure seam (resolution + canonical finalization) before building the write set. | The only point where planned refs are resolved to persistent ids and the write set is finalized. |
 | `lawnchair/src/app/lawnchair/organizer/application/actions/` or `.../canonical/` (new small internal seam, name TBD) | The extracted `resolvePersistentReferences` plus canonical finalization (shared order authority, fail-closed unresolved-reference rejection). | Minimal JVM-testable seam for AC-164-01/02; no public contract change; no full preparation extraction. |
 | `lawnchair/src/app/lawnchair/organizer/application/adapter/RowManifestCodec.kt` | Use the shared canonical-order authority instead of its local `sortedBy { ItemId(...) }`; output byte-identical. | Single canonical-order authority (AC-164-03); prevents future divergence. |
+| `lawnchair/src/app/lawnchair/organizer/application/protocol/MaterializedStateValidator.kt` | Compare the write set's intended state against the plan-resolved reference after applying the same shared canonical finalization. | The validator forbids every writer transformation beyond identity resolution; the accepted canonical reordering must be allowed through the same authority (not by trusting the writer), or every new-folder apply would be rejected `INVALID_PLAN`. |
 | `tests/unit/app/lawnchair/organizer/application/` (new/existing unit tests) | Failing-path fixtures: a new folder whose allocated id byte-sorts mid-list (e.g. existing ids up to 18 → folder id 19, or ids 1–9 → folder id 10); canonical-order, determinism, and fail-closed unresolved-ref assertions; mismatch-injection recovery stays green. | The materializer/apply seam oracle required by the issue's acceptance. |
 | `tests/unit/app/lawnchair/organizer/application/adapter/FakeLayoutWriter.kt` | Opt-in only (per the owner's acceptance note): a fixture-specific `productionEquivalentCapture` mode. Writer side: materialize via the real materializer and the real resolution/finalization seam with fixture identity (max row id + 1). Recapture side: rebuild state and manifest independently from persisted-row-equivalent rows with capture-side canonical semantics — never echoing the intended state and never using the writer-side authority. The shared fake's default echo semantics and synthetic-manifest behavior, which existing protocol tests depend on, remain exactly as before when the flag is unset. | Reproduces the device asymmetry so AC-164-02 is red pre-fix; both oracle paths keep production fidelity without changing existing tests' abstraction level. |
 | `tests/organizer-instrumentation/app/lawnchair/organizer/application/RealAdapterRowMatrixInstrumentationTest.kt` (or a sibling) | Add a new-folder mid-list-id case: in-memory SQLite rows → real `RowManifestCodec.capture` output equals the materialized intended state. | Real capture-side mapping fidelity behind the JVM mirror. |
@@ -265,15 +266,15 @@ journal phase sequence, and redacted invariant results only.
 
 ## Execution checklist (Stage B, after acceptance)
 
-- [ ] Reproduce the divergence in a red unit test through the real
+- [x] Reproduce the divergence in a red unit test through the real
   materializer + resolution/finalization seam before touching production code.
-- [ ] Implement the minimal canonical finalization with the shared ordering
+- [x] Implement the minimal canonical finalization with the shared ordering
   authority and the fail-closed invariants (no `PlannedFolder`-stage
   reordering, no fallback order on unresolved refs).
-- [ ] Flip the protocol-seam test with the independent persisted-row-equivalent
+- [x] Flip the protocol-seam test with the independent persisted-row-equivalent
   recapture, add the real-capture instrumentation roundtrip, and keep
   mismatch-injection recovery green.
-- [ ] Run the full organizer unit suite, formatting, and debug build.
+- [x] Run the full organizer unit suite, formatting, and debug build.
 - [ ] Device evidence: default-workspace new-folder run to A8 (debug +
   release) and explicit recovery correlation on the Issue #164 environment.
 - [ ] Open/link the tombstone-lockout follow-up issue.
@@ -349,3 +350,20 @@ audit requires a new CI result and audit.
   with pre-fix behavior plus the oracle tests) followed by the fix commit
   (canonical finalization, adapter wiring, capture authority), recording both
   runs as PR evidence.
+- 2026-08-28: Stage B implemented on this branch in two commits. The red
+  commit (`a667b18e79`) extracted the resolution seam with pre-fix behavior
+  and recorded the failing oracles in
+  [issue-164-prefix-red-oracle.md](../../docs/assessment/evidence/issue-164-prefix-red-oracle.md);
+  the fix commit landed `CanonicalItemOrder` (shared authority), the
+  canonical finalization, and its adoption by `RowManifestCodec` and
+  `MaterializedStateValidator` — the validator change is required in the same
+  commit because its plan-order exact comparison would otherwise reject every
+  new-folder write set with `INVALID_PLAN`. Local verification: new oracles
+  red pre-fix and green post-fix; full unit suite 753 tests, 0 failures;
+  `spotlessCheck`; `assembleLawnWithQuickstepGithubDebug`;
+  repository-contract scripts; and the new instrumentation roundtrip green on
+  the `nunu_qpr2_api36_1` API 36.1 AVD (5/5 in
+  `RealAdapterRowMatrixInstrumentationTest`). Remaining before merge: device
+  evidence (AC-164-04/05), the tombstone-lockout follow-up issue
+  (AC-164-06), PR `CI / final-status` on the exact head, and the independent
+  `risk: layout-data` audit (AC-164-07).

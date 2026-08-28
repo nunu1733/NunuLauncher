@@ -34,8 +34,8 @@ import app.lawnchair.organizer.planning.PageId
 import app.lawnchair.organizer.planning.PlacementTarget
 import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.planning.RuleVersion
-import app.lawnchair.organizer.planning.TaxonomyVersion
 import app.lawnchair.organizer.planning.TargetKey
+import app.lawnchair.organizer.planning.TaxonomyVersion
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before

@@ -324,8 +324,7 @@ class FakeLayoutWriter(
         digest = RevisionCalculator.classificationDigestOf(state),
     )
 
-    private fun manifestFor(state: LayoutState): PersistenceManifest =
-        if (productionEquivalentCapture) identityManifestFor(state) else positionalManifestFor(state)
+    private fun manifestFor(state: LayoutState): PersistenceManifest = if (productionEquivalentCapture) identityManifestFor(state) else positionalManifestFor(state)
 
     /**
      * Issue #164 opt-in manifest: row identity is the resolved persistent id

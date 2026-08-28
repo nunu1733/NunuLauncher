@@ -1,5 +1,6 @@
 package app.lawnchair.organizer.application.actions
 
+import app.lawnchair.organizer.application.canonical.CanonicalItemOrder
 import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.ApplicationPageRef
 import app.lawnchair.organizer.application.public.LayoutState
@@ -99,8 +100,7 @@ internal object IntendedStateResolution {
      * no fallback order is invented.
      */
     fun finalizeCanonicalOrder(state: LayoutState): LayoutState? {
-        // Pre-fix behavior, reproduced verbatim by this commit so the new
-        // oracles run red; the accepted fix lands the canonical ordering here.
-        return state
+        val items = CanonicalItemOrder.sortedResolved(state.items) ?: return null
+        return state.copy(items = items)
     }
 }
