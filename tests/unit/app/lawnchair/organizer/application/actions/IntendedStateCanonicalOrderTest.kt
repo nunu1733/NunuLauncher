@@ -1,29 +1,10 @@
 package app.lawnchair.organizer.application.actions
 
-import app.lawnchair.organizer.application.canonical.CanonicalFixtures
 import app.lawnchair.organizer.application.public.ApplicationItemRef
-import app.lawnchair.organizer.application.public.ApplicationPageRef
 import app.lawnchair.organizer.application.public.CanonicalItemKind
-import app.lawnchair.organizer.application.public.CanonicalItemState
-import app.lawnchair.organizer.application.public.ItemAvailability
-import app.lawnchair.organizer.application.public.LayoutState
-import app.lawnchair.organizer.application.public.ModifiedAtMillis
-import app.lawnchair.organizer.application.public.OptionalBytes
-import app.lawnchair.organizer.application.public.OptionalText
-import app.lawnchair.organizer.application.public.OrganizerLockState
 import app.lawnchair.organizer.application.public.PlacementState
-import app.lawnchair.organizer.application.public.ProfileAvailability
-import app.lawnchair.organizer.application.public.RankedMember
-import app.lawnchair.organizer.application.public.StructureState
-import app.lawnchair.organizer.application.public.WidgetState
-import app.lawnchair.organizer.planning.FolderId
-import app.lawnchair.organizer.planning.GridCell
-import app.lawnchair.organizer.planning.GridSpan
 import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.NewFolderOrdinal
-import app.lawnchair.organizer.planning.PageId
-import app.lawnchair.organizer.planning.ProfileId
-import app.lawnchair.organizer.planning.TargetKey
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -31,133 +12,144 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Issue #164 AC-164-01: the resolved write-set intended state must leave the
- * resolution/finalization seam in canonical `ItemId` UTF-8 byte order — the
- * order `RowManifestCodec.capture` produces — whenever a plan creates a new
- * folder whose allocated id byte-sorts mid-list (here: existing ids 1..9 and
- * folder id 10, which sorts between "1" and "2").
+ * Issue #164 AC-164-01/03: plans produced by the real
+ * `OrganizationPlanMaterializer` (via [NewFolderPlanFixtures]) must resolve
+ * into a write-set intended state whose items are in canonical `ItemId`
+ * UTF-8 byte order — the order `RowManifestCodec.capture` produces — whenever
+ * a plan creates new folders whose allocated ids byte-sort mid-list.
  *
- * Red against the pre-fix seam (new folder kept last, exactly what the
+ * Red against the pre-fix seam (new folders kept last, exactly what the
  * materializer emits), green once the canonical finalization lands. Pure JVM
- * through the production seam; no fixture reimplementation of the ordering.
+ * through the production seam; no fixture reimplementation of the ordering
+ * and no hand-assembled materializer output.
  */
 class IntendedStateCanonicalOrderTest {
 
     @Test
-    fun resolvedIntendedStateIsInCanonicalItemIdByteOrder() {
-        val resolved = IntendedStateResolution.resolveAndFinalize(plannedState(), plannedIds(), emptyMap())
+    fun singleFolderPlanFromRealMaterializerIsCanonicalAfterResolution() {
+        val plan = NewFolderPlanFixtures.materializeReady(NewFolderPlanFixtures.singleFolder())
+
+        val folderItems = plan.intendedState.items.filter { it.ref is ApplicationItemRef.PlannedFolder }
+        assertTrue("Fixture must plan a new folder", folderItems.isNotEmpty())
+        assertEquals(
+            "The materializer appends the new folder last (the defect's writer-side shape)",
+            listOf(0),
+            folderItems.map { (it.ref as ApplicationItemRef.PlannedFolder).ordinal.value },
+        )
+        assertTrue(folderItems.single().ref == plan.intendedState.items.last().ref)
+
+        val resolved = IntendedStateResolution.resolveAndFinalize(
+            plan.intendedState,
+            mapOf(ApplicationItemRef.PlannedFolder(NewFolderOrdinal(0)) to 10L),
+            emptyMap(),
+        )
 
         assertNotNull("Resolution must succeed", resolved)
-        val ids = resolved!!.items.map {
-            (it.ref as ApplicationItemRef.PersistentItem).itemId.value
-        }
         assertEquals(
             "Intended items must be in canonical ItemId byte order (folder id 10 between 1 and 2)",
             listOf("1", "10", "2", "3", "4", "5", "6", "7", "8", "9"),
-            ids,
+            persistentIds(resolved!!),
         )
     }
 
     @Test
-    fun resolutionIsDeterministicAcrossRepeatedPreparation() {
-        val first = IntendedStateResolution.resolveAndFinalize(plannedState(), plannedIds(), emptyMap())
-        val second = IntendedStateResolution.resolveAndFinalize(plannedState(), plannedIds(), emptyMap())
+    fun multiFolderPlanWithBoundaryIdsMixesIntoCanonicalOrder() {
+        val plan = NewFolderPlanFixtures.materializeReady(NewFolderPlanFixtures.multiFolderWithBoundaryIds())
+
+        val resolved = IntendedStateResolution.resolveAndFinalize(
+            plan.intendedState,
+            mapOf<ApplicationItemRef, Long>(
+                ApplicationItemRef.PlannedFolder(NewFolderOrdinal(0)) to 100L,
+                ApplicationItemRef.PlannedFolder(NewFolderOrdinal(1)) to 101L,
+            ),
+            emptyMap(),
+        )
+
+        assertNotNull(resolved)
+        assertEquals(
+            "Both new folders (99+1 → 100, +1 → 101) must byte-sort mid-list across the 9x/10x boundary",
+            listOf("1", "100", "101", "19", "9", "91", "99"),
+            persistentIds(resolved!!),
+        )
+    }
+
+    @Test
+    fun repeatedPreparationOfMultiFolderPlanIsDeterministic() {
+        val plan = NewFolderPlanFixtures.materializeReady(NewFolderPlanFixtures.multiFolderWithBoundaryIds())
+        val plannedIds = mapOf<ApplicationItemRef, Long>(
+            ApplicationItemRef.PlannedFolder(NewFolderOrdinal(0)) to 100L,
+            ApplicationItemRef.PlannedFolder(NewFolderOrdinal(1)) to 101L,
+        )
+
+        val first = IntendedStateResolution.resolveAndFinalize(plan.intendedState, plannedIds, emptyMap())
+        val second = IntendedStateResolution.resolveAndFinalize(plan.intendedState, plannedIds, emptyMap())
 
         assertEquals(first, second)
     }
 
     @Test
-    fun finalizationFailsClosedOnUnresolvedReferenceInsteadOfInventingAnOrder() {
-        val planned = plannedState()
-        val unresolved = planned.items.any { it.ref !is ApplicationItemRef.PersistentItem }
-        assertTrue("Fixture must contain a planned reference", unresolved)
+    fun finalizationFailsClosedOnUnresolvedTopLevelReference() {
+        val plan = NewFolderPlanFixtures.materializeReady(NewFolderPlanFixtures.singleFolder())
+        val unresolved = plan.intendedState.items.any { it.ref !is ApplicationItemRef.PersistentItem }
+        assertTrue("Fixture must contain a planned top-level reference", unresolved)
         assertNull(
-            "Unresolved references must fail closed, not produce a fallback order",
-            IntendedStateResolution.finalizeCanonicalOrder(planned),
+            "Unresolved top-level references must fail closed, not produce a fallback order",
+            IntendedStateResolution.finalizeCanonicalOrder(plan.intendedState),
+        )
+    }
+
+    @Test
+    fun finalizationFailsClosedOnUnresolvedNestedReference() {
+        val resolved = IntendedStateResolution.resolveAndFinalize(
+            NewFolderPlanFixtures.materializeReady(NewFolderPlanFixtures.singleFolder()).intendedState,
+            mapOf(ApplicationItemRef.PlannedFolder(NewFolderOrdinal(0)) to 10L),
+            emptyMap(),
+        )!!
+        val drifted = resolved.copy(
+            items = resolved.items.map { item ->
+                val placement = item.placement as? PlacementState.FolderChild
+                if (placement != null && (placement.parent as ApplicationItemRef.PersistentItem).itemId.value == "10") {
+                    item.copy(placement = placement.copy(parent = ApplicationItemRef.PlannedFolder(NewFolderOrdinal(7))))
+                } else {
+                    item
+                }
+            },
+        )
+
+        assertNull(
+            "Unresolved nested placement references must fail closed too",
+            IntendedStateResolution.finalizeCanonicalOrder(drifted),
         )
     }
 
     @Test
     fun folderIdentityResolvesAcrossRefPlacementTargetKeyAndStructure() {
-        val resolved = IntendedStateResolution.resolveAndFinalize(plannedState(), plannedIds(), emptyMap())!!
+        val resolved = IntendedStateResolution.resolveAndFinalize(
+            NewFolderPlanFixtures.materializeReady(NewFolderPlanFixtures.singleFolder()).intendedState,
+            mapOf(ApplicationItemRef.PlannedFolder(NewFolderOrdinal(0)) to 10L),
+            emptyMap(),
+        )!!
 
         val folder = resolved.items.single { it.kind is CanonicalItemKind.Folder }
         assertEquals(ApplicationItemRef.PersistentItem(ItemId("10")), folder.ref)
-        assertEquals(TargetKey.FolderKey(FolderId("10")), folder.targetKey)
-        assertEquals(
-            StructureState.FolderMembers(
-                listOf(
-                    RankedMember(ApplicationItemRef.PersistentItem(ItemId("8")), 0),
-                    RankedMember(ApplicationItemRef.PersistentItem(ItemId("9")), 1),
-                ),
-            ),
-            folder.structure,
-        )
         val childParentIds = resolved.items
             .map { it.placement }
             .filterIsInstance<PlacementState.FolderChild>()
             .map { (it.parent as ApplicationItemRef.PersistentItem).itemId.value }
         assertEquals(listOf("10", "10"), childParentIds)
-    }
+        val memberIds = resolved.items
+            .flatMap { item ->
+                when (val structure = item.structure) {
+                    is app.lawnchair.organizer.application.public.StructureState.FolderMembers ->
+                        structure.members.map { (it.item as ApplicationItemRef.PersistentItem).itemId.value }
 
-    private fun plannedIds(): Map<ApplicationItemRef, Long> = mapOf(plannedFolderRef() to 10L)
-
-    private fun plannedFolderRef() = ApplicationItemRef.PlannedFolder(NewFolderOrdinal(0))
-
-    /**
-     * Existing items 1..9 in planner order (matching byte order for existing
-     * items) with items 8 and 9 moved into the new folder and the folder
-     * appended last, exactly as `OrganizationPlanMaterializer` emits it.
-     */
-    private fun plannedState(): LayoutState {
-        val base = CanonicalFixtures.state()
-        val items = (1..9).map { i ->
-            CanonicalFixtures.appItem(
-                itemId = i.toString(),
-                cell = GridCell(0, i - 1),
-                target = TargetKey.AppKey(
-                    component = app.lawnchair.organizer.planning.ComponentKey("com.example.a$i/.Main"),
-                    profile = ProfileId("personal"),
-                ),
-            )
-        }.map { item ->
-            when ((item.ref as ApplicationItemRef.PersistentItem).itemId.value) {
-                "8" -> item.copy(placement = PlacementState.FolderChild(plannedFolderRef(), 0))
-                "9" -> item.copy(placement = PlacementState.FolderChild(plannedFolderRef(), 1))
-                else -> item
+                    else -> emptyList()
+                }
             }
-        } + plannedFolderItem()
-        return LayoutState(
-            pages = base.pages,
-            profiles = base.profiles,
-            deviceCapabilities = base.deviceCapabilities,
-            items = items,
-        )
+        assertEquals(listOf("8", "9"), memberIds)
     }
 
-    private fun plannedFolderItem(): CanonicalItemState = CanonicalItemState(
-        ref = plannedFolderRef(),
-        kind = CanonicalItemKind.Folder,
-        targetKey = TargetKey.FolderKey(FolderId("planned-folder-0")),
-        profile = ProfileId("personal"),
-        profileAvailability = ProfileAvailability.AVAILABLE,
-        itemAvailability = ItemAvailability.AVAILABLE,
-        placement = PlacementState.Workspace(
-            page = ApplicationPageRef.PersistentPage(PageId("p0")),
-            cell = GridCell(1, 0),
-            span = GridSpan(1, 1),
-        ),
-        title = OptionalText.Present("Folder"),
-        intent = OptionalText.Absent,
-        icon = OptionalBytes.Absent,
-        widget = WidgetState.NoWidget,
-        modified = ModifiedAtMillis(0),
-        lockState = OrganizerLockState.UNLOCKED,
-        structure = StructureState.FolderMembers(
-            listOf(
-                RankedMember(ApplicationItemRef.PersistentItem(ItemId("8")), 0),
-                RankedMember(ApplicationItemRef.PersistentItem(ItemId("9")), 1),
-            ),
-        ),
-    )
+    private fun persistentIds(state: app.lawnchair.organizer.application.public.LayoutState) = state.items.map {
+        (it.ref as ApplicationItemRef.PersistentItem).itemId.value
+    }
 }

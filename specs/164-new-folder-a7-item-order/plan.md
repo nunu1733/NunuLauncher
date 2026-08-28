@@ -367,3 +367,15 @@ audit requires a new CI result and audit.
   evidence (AC-164-04/05), the tombstone-lockout follow-up issue
   (AC-164-06), PR `CI / final-status` on the exact head, and the independent
   `risk: layout-data` audit (AC-164-07).
+- 2026-08-28: Implementation review adopted (PR #165). AC-164-01/02 oracles
+  rewritten to consume plans from the real `OrganizationPlanMaterializer`
+  (`NewFolderPlanFixtures`: `OrganizationInput` + `PlanningResult` →
+  `materialize` → `Ready.plan`; the protocol test no longer hand-assembles
+  `ValidatedLayoutPlan`), with the fixture snapshot revision derived from the
+  canonical source state so A2 passes. Added the AC-164-03 multi-folder +
+  99→100 id-boundary determinism coverage. `CanonicalItemOrder.sortedResolved`
+  now fails closed on unresolved nested references (placement parents,
+  structure members), matching the spec invariant's full scope. Red
+  re-demonstrated against pre-fix production with the rewritten oracles
+  (5/8 failed, recorded in the evidence document); green again post-fix with
+  755 unit tests / 0 failures.

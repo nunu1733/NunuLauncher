@@ -7,7 +7,38 @@
 > the pre-fix behavior verbatim (planned order preserved, new folder kept
 > last), so the accepted oracles run red exactly as the device does.
 
-## Command
+## Review re-verification (real materializer fixtures, 2026-08-28)
+
+After the implementation review, the oracles were rewritten to consume plans
+from the **real `OrganizationPlanMaterializer`** (`NewFolderPlanFixtures`:
+`OrganizationInput` + `PlanningResult` → `materialize(...)` → `Ready.plan`);
+no hand-assembled materializer output remains. Reverting only the four
+production files to the pre-fix state (`IntendedStateResolution`,
+`RowManifestCodec`, `MaterializedStateValidator` from `a667b18e79`, and
+absent `CanonicalItemOrder`) against the rewritten oracles:
+
+```bash
+./gradlew testLawnWithQuickstepGithubDebugUnitTest \
+  --tests 'app.lawnchair.organizer.application.actions.IntendedStateCanonicalOrderTest' \
+  --tests 'app.lawnchair.organizer.application.protocol.NewFolderCanonicalOrderProtocolTest'
+# 8 tests completed, 5 failed — the intended pre-fix failures
+```
+
+- `singleFolderPlanFromRealMaterializerIsCanonicalAfterResolution`:
+  `expected:<[1, 10, 2, …]> but was:<[1, 2, …, 10]>` (folder appended last)
+- `multiFolderPlanWithBoundaryIdsMixesIntoCanonicalOrder`:
+  `expected:<[1, 100, 101, 19, 9, 91, 99]> but was:<[1, 9, 19, 91, 99, 100, 101]>`
+- `finalizationFailsClosedOnUnresolvedTopLevelReference` / `…NestedReference`:
+  `expected null, but was:<LayoutState…>` (no fail-closed yet)
+- `newFolderPlanReachesAppliedAfterCanonicalFinalization`:
+  `Expected Applied (A8), got Recovered(…, failure=VERIFICATION_FAILED)`
+
+Green at the fix commit: the same 8 oracles pass, and the full unit suite is
+755 tests / 0 failures.
+
+## Original red run (initial oracles at `a667b18e79`)
+
+### Command
 
 ```bash
 ./gradlew testLawnWithQuickstepGithubDebugUnitTest \
