@@ -225,14 +225,14 @@ is unchanged.
 
 ## Acceptance criteria
 
-- [ ] **AC-164-01 — Failing-path regression at the materializer/apply seam:**
+- [x] **AC-164-01 — Failing-path regression at the materializer/apply seam:**
   A deterministic test drives the real materializer and the real apply write-set
   preparation with a plan whose new folder's allocated persistent id byte-sorts
   strictly mid-list. Pre-fix it fails because the intended items keep the new
   folder last while a canonical recapture of the same rows sorts it mid-list;
   post-fix both sides are in canonical `ItemId` byte order. The A7 comparison
   itself is unchanged.
-- [ ] **AC-164-02 — Independent-recapture protocol regression:** The same
+- [x] **AC-164-02 — Independent-recapture protocol regression:** The same
   fixture drives `ApplyProtocol` end to end, and the A7 recapture is
   independently reconstructed from persisted-row-equivalent state using
   production-equivalent canonical capture behavior. The fixture must
@@ -243,21 +243,21 @@ is unchanged.
   canonicalization authority. An injected genuine DB mismatch still yields
   the typed failure with safe automatic recovery (no weakening, no false
   success).
-- [ ] **AC-164-03 — Canonical order is single-sourced and deterministic:**
+- [x] **AC-164-03 — Canonical order is single-sourced and deterministic:**
   Capture and write-set preparation use one internal canonical-order
   authority; repeated preparation of the same plan (including multi-folder and
   id-boundary cases) yields byte-identical intended states; existing capture
   behavior is byte-identical to before on unchanged workspaces.
-- [ ] **AC-164-04 — Default-workspace device evidence:** On the Issue #164
+- [x] **AC-164-04 — Default-workspace device evidence:** On the Issue #164
   environment (Pixel 9a, Android 16, 4x5 default workspace), a manual run that
   creates a new folder reaches `APPLY_VERIFIED`/A8 in debug and release
   evidence, with redacted journal export and before/after row-accounting
   invariants intact.
-- [ ] **AC-164-05 — Explicit recovery correlation preserved:** Device evidence
+- [x] **AC-164-05 — Explicit recovery correlation preserved:** Device evidence
   includes recovery preview/confirmation after a verified new-folder apply,
   with journal `RECOVERY_REQUESTED` and `RECOVERY_RESTORED` carrying the same
   point identity and non-null matching `pointOriginRunId`.
-- [ ] **AC-164-06 — Tombstone lockout split:** A follow-up issue owns the
+- [x] **AC-164-06 — Tombstone lockout split:** A follow-up issue owns the
   24-hour tombstone lockout after three recovered runs, with an observable
   diagnostic code, created before this issue closes; this work changes no
   retention or recovery-store behavior.
@@ -314,3 +314,10 @@ is unchanged.
   `FakeLayoutWriter`, whose default echo semantics existing protocol tests
   depend on must not change. Stage B implementation may proceed on that
   basis.
+- 2026-08-28: AC-164-01…06 verified. Device evidence: debug run on the
+  physical Pixel 9a (Issue #164 environment) and release run on the API 36.1
+  AVD both reached `APPLY_VERIFIED`/A8 with 1 new folder, and both explicit
+  recoveries carried `pointOriginRunId` with byte-identical pre-apply
+  restoration (`docs/assessment/evidence/issue-164-device-verification.md`).
+  Tombstone lockout split to Issue #166. AC-164-07 (merge gate) remains:
+  `CI / final-status` on the exact head and the independent audit.

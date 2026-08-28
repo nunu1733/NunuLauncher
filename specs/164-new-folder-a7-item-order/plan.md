@@ -250,7 +250,7 @@ journal phase sequence, and redacted invariant results only.
 
 ## Documentation updates
 
-- [ ] This spec and plan: `draft` → `accepted` after Stage A review (owner
+- [x] This spec and plan: `draft` → `accepted` after Stage A review (owner
   approval, including the tombstone-split decision and the chosen fix
   direction); → `implemented` after Stage B evidence.
 - [ ] `CONTEXT.md`: no change expected (no new domain term).
@@ -275,9 +275,11 @@ journal phase sequence, and redacted invariant results only.
   recapture, add the real-capture instrumentation roundtrip, and keep
   mismatch-injection recovery green.
 - [x] Run the full organizer unit suite, formatting, and debug build.
-- [ ] Device evidence: default-workspace new-folder run to A8 (debug +
-  release) and explicit recovery correlation on the Issue #164 environment.
-- [ ] Open/link the tombstone-lockout follow-up issue.
+- [x] Device evidence: default-workspace new-folder run to A8 (debug:
+  physical Pixel 9a; release: API 36.1 AVD) and explicit recovery
+  correlation on the Issue #164 environment
+  (`docs/assessment/evidence/issue-164-device-verification.md`).
+- [x] Open/link the tombstone-lockout follow-up issue (#166).
 - [ ] Record PR evidence, pass `CI / final-status` on the exact head, and
   obtain the independent `risk: layout-data` audit.
 
@@ -379,3 +381,18 @@ audit requires a new CI result and audit.
   re-demonstrated against pre-fix production with the rewritten oracles
   (5/8 failed, recorded in the evidence document); green again post-fix with
   755 unit tests / 0 failures.
+- 2026-08-28: Device evidence recorded
+  (`docs/assessment/evidence/issue-164-device-verification.md`). Debug on the
+  physical Pixel 9a (Issue #164 environment, fresh default 17-row workspace):
+  a manual run creating 1 new folder reached `APPLY_VERIFIED`/A8
+  (`CHECKPOINTED` → `APPLY_COMMITTED` → `APPLY_VERIFIED`), the allocated
+  folder id 19 byte-sorts mid-list (the issue's exact shape), and explicit
+  recovery emitted `RECOVERY_REQUESTED`/`RECOVERY_RESTORED` with
+  `pointOriginRunId`, restoring byte-identical pre-apply rows. Release on
+  the API 36.1 AVD (the device's `app.lawnchair` is CI-signed and cannot be
+  updated in place; the acceptance allows an API 36 environment): a
+  new-folder plan produced via the product's S1 category-override surface
+  reached A8 on the release build with the same recovery correlation and
+  exact pre-apply restoration. AC-164-04/05 satisfied; AC-164-06 satisfied
+  by follow-up Issue #166. Remaining before merge: PR `CI / final-status`
+  on the exact head and the independent `risk: layout-data` audit.
