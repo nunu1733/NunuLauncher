@@ -443,6 +443,6 @@ Japanese semantic, focus, touch-target, and action-reachability checks were exer
 | Repository contract tests | PASS — 11 tests |
 | Related organizer UI instrumentation | PASS — 10 manual-organization tests; 30 category/onboarding/lock/diagnostics tests in English and Japanese locales |
 | Rendered Japanese/en-XA/font-scale evidence | PASS — issue142_api36 captures and 200% reachability test; links above |
-| PR CI final-status | PENDING — workflow is running or awaiting completion for pushed head `735219d642` |
+| PR CI final-status | PENDING — workflow is running or awaiting completion for the pushed post-review-fix head |
 
-The local evidence is complete. PR CI final-status remains pending until the repository workflow completes on pushed head `735219d642`.
+The local evidence is complete. PR CI final-status remains pending until the repository workflow completes on the pushed post-review-fix head.

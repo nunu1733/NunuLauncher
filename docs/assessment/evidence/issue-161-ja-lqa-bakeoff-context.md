@@ -1,6 +1,6 @@
 # Issue #161 bake-off fixed contextual input
 
-This file is the immutable contextual input for the 24-unit bake-off recorded in [the assessment](./issue-161-ja-lqa.md). Candidate outputs were generated from these same units; candidate identities were hidden during owner scoring. The resource text below is pinned to the issue-branch head `d0caf80dc920ed4a91d660df16dd9ccce337f566` and the accepted Stage A semantic anchors.
+This file is the immutable contextual input for the 24-unit bake-off recorded in [the assessment](./issue-161-ja-lqa.md). Candidate outputs were generated from these same units; candidate identities were hidden during owner scoring. The resource text below is pinned to the pre-follow-up review head `d0caf80dc920ed4a91d660df16dd9ccce337f566` and the accepted Stage A semantic anchors. The follow-up fixes do not change any of the 24 source/current-Japanese inputs below.
 
 Each unit contains the source/current copy, surface and role, neighboring copy, placeholder contract, behavior anchor, and rendered-context note supplied to both candidates.
 
