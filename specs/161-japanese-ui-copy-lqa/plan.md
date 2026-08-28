@@ -2,11 +2,11 @@
 
 > Issue: [#161][1]
 > Spec: [spec.md](./spec.md)
-> Status: **proposed — Stage A.** Issue #161 による spec / plan 承認後にのみ Stage B を開始する。Stage B は本計画にないオーガナイザーの behavior、safety semantics、navigation、layout data を変更しない。
+> Status: **accepted — Stage A / Stage B locally complete; PR CI pending.** 2026-08-28にリポジトリ所有者の承認を受領した。Stage B は本計画にないオーガナイザーの behavior、safety semantics、navigation、layout data を変更しない。
 
 ## Current evidence
 
-Stage A は `main` の `c68abcce628de9d01efaf29280193defe4aff540` を確認基準とした。#123 は実装済みであり、Nunu 固有の active / user-visible / translatable resource を final name set で扱う被覆 oracle、placeholder 一致、Japanese / `en-XA` / font scale の代表画面証拠を提供している。実行記録では required 223 名の日本語被覆と placeholder 不一致 0 件が報告されているが、その一回限りの集計 command は現在の tree に専用 tool として存在しない。[2] [3]
+Stage A は `main` の `c68abcce628de9d01efaf29280193defe4aff540` を確認基準とした。#123 は実装済みであり、Nunu 固有の active / user-visible / translatable resource を final name set で扱う被覆 oracle、placeholder 一致、Japanese / `en-XA` / font scale の代表画面証拠を提供している。Stage B では accepted Stage A commit `48720a0a8bc965de10df70a24b48e9300eaf51ca` を対象に、required 223 名（lawnchair 166 / root 57）の inventory、Reviewer A/B の全件結果、24 件の blind bake-off、resource validator、AVD による Japanese / `en-XA` / 200% 表示確認を実施した。ローカルの全検証は成功しているが、PR CI `final-status` は pushed PR head が未確定のため pending である。[2] [3]
 
 | 確認済み事項 | 根拠 | Stage B への含意 |
 |---|---|---|
@@ -142,11 +142,11 @@ validator の CLI 引数と fixture の最終形は Stage B で tool を実装�
 ## Documentation updates
 
 - [ ] `spec.md` — Stage A 承認時に `accepted`、Stage B 完了時に `implemented` と change history を更新する。
-- [ ] `plan.md` — Stage B の実施済み inventory、command、evidence、残存 stop condition を更新する。
-- [ ] `docs/localization/ja-style-guide.md` — 新規。
-- [ ] `docs/localization/ja-glossary.tsv` — 新規。
-- [ ] `docs/localization/ja-review-workflow.md` — 新規。
-- [ ] `docs/assessment/evidence/issue-161-ja-lqa.md` — 新規。
+- [x] `plan.md` — Stage B の実施済み inventory、command、evidence、残存 stop condition を更新する。
+- [x] `docs/localization/ja-style-guide.md` — 新規。
+- [x] `docs/localization/ja-glossary.tsv` — 新規。
+- [x] `docs/localization/ja-review-workflow.md` — 新規。
+- [x] `docs/assessment/evidence/issue-161-ja-lqa.md` — 新規。
 - [ ] `CONTEXT.md` — domain 定義を変更しないため原則更新不要。用語集が domain definition を変更すると判明した場合は停止して owner decision を求める。
 - [ ] `DESIGN.md` — runtime module / interface / seam を変更しないため更新不要。
 - [ ] `docs/adr/` — 高コストで可逆でない設計判断が新たに生じた場合のみ追加する。model choice や文言の好みだけでは ADR を作らない。
@@ -157,19 +157,20 @@ validator の CLI 引数と fixture の最終形は Stage B で tool を実装�
 - [x] Issue #161、全コメント、#123 spec / plan / evidence、AGENTS、CONTEXT、DESIGN、quality strategy、GitHub workflow を確認した。
 - [x] `main` `c68abcce628de9d01efaf29280193defe4aff540` で Stage A の current evidence を固定した。
 - [x] Stage A の `proposed` spec と plan を作成した。
-- [ ] Issue #161 で Stage A の spec / plan 承認を受け、両文書を `accepted` にする。
-- [ ] accepted Stage A commit から active resource inventory と contextual review units を再構成する。
-- [ ] style guide、glossary、portable workflow、reproducible structural validator と tool tests を実装する。
-- [ ] candidate 自己採点なし・匿名 output・project-owner blind adjudication・per-item / aggregate / hard-failure scorecard を備えた fixed evaluation set で bake-off を実施し、current reviewer pair を execution evidence として記録する。
-- [ ] 初回 full pass の**全 inventory unit**を Reviewer A / B が別 session または独立 context で実行し、reviewer identity と family/provider の例外理由を記録する。low / medium agreement は確定し、high severity は A/B agreement・accepted spec/ADR に対する meaning-preservation 明示確認・product ambiguity 不在を満たす場合に確定する。high-severity disagreement と product decision を owner resolution / split Issue へ送る。
-- [ ] owner-resolved `REVISE`、または初回 full pass で low / medium A/B agreement を得た `REVISE`、または high severity の A/B agreement・accepted spec/ADR に対する meaning-preservation 明示確認・product ambiguity 不在を evidence に記録した `REVISE` のみを 2 つの Japanese resource root へ反映する。
-- [ ] resource oracle、format、build、existing behavior / a11y regression、Japanese / `en-XA` / font-scale 表示を検証する。
+- [x] Issue #161 のStage A承認を受領し、spec / planを `accepted` として扱う。
+- [x] accepted Stage A commit から active resource inventory と contextual review units を再構成する。
+- [x] style guide、glossary、portable workflow、reproducible structural validator と tool tests を実装する。
+- [x] candidate 自己採点なし・匿名 output・project-owner blind adjudication・per-item / aggregate / hard-failure scorecard を備えた fixed evaluation set で bake-off を実施し、current reviewer pair を execution evidence として記録する。
+- [x] 初回 full pass の**全 inventory unit**を Reviewer A / B が別 session または独立 context で実行し、reviewer identity と family/provider の例外理由を記録する。low / medium agreement は確定し、high severity は A/B agreement・accepted spec/ADR に対する meaning-preservation 明示確認・product ambiguity 不在を満たす場合に確定する。high-severity disagreement と product decision を owner resolution / split Issue へ送る。
+- [x] owner-resolved `REVISE`、または初回 full pass で low / medium A/B agreement を得た `REVISE`、または high severity の A/B agreement・accepted spec/ADR に対する meaning-preservation 明示確認・product ambiguity 不在を evidence に記録した `REVISE` のみを 2 つの Japanese resource root へ反映する。
+- [x] resource oracle、format、build、existing behavior / a11y regression、Japanese / `en-XA` / font-scale 表示を検証する。
 - [ ] closing assessment、PR evidence、未解決/分離 Issue を記録し、spec / plan を `implemented` に更新する。
 
 ## Change history
 
 - 2026-08-28: Issue #161 の Stage A review（P1: 初回 full-pass 二重レビュー、P1: bake-off adjudication、P2: reviewer 実行独立性、Minor: verification AC 対応）に対応。全 inventory unit の独立 A/B 結果、low/medium agreement と high-severity disagreement の分離、candidate 自己採点禁止・匿名 output・project-owner blind scoring・per-item/aggregate/hard-failure contract、reviewer role/model/family-or-provider/session-or-context evidence を追加し、Gradle/CI 行を AC-161-08 / AC-161-09 に整理した。
 - 2026-08-28: Stage A re-review の P2 に対応。high severity は、A/B agreement、accepted feature spec / ADR に対する meaning-preservation の明示確認、product ambiguity 不在の 3 条件を evidence に記録した場合に個別 owner approval なしで採用できる経路を Mermaid flow、independent LQA、resource application、checklist に統一した。disagreement または ambiguity のみ owner resolution / split Issue を必要とする。
+- 2026-08-28: Stage A 承認後、223 unit の inventory / independent A/B review、24 unit bake-off、14 件の accepted `REVISE`、resource validator、Gradle、repository contract、organizer unit/UI、Japanese / `en-XA` / 200% AVD 検証を完了した。closing evidence を追加し、PR CI `final-status` のみ pushed PR head 待ちとして残した。
 
 ## References
 
