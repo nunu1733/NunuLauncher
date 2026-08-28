@@ -2,7 +2,7 @@
 
 > Issue: [#150](https://github.com/nunu1733/NunuLauncher/issues/150)
 > Spec: [spec.md](./spec.md)
-> Status: accepted
+> Status: implemented
 > Risk: `layout-data`
 > Evidence baseline: Issue #150 reproduction at commit `74c2156767`; repository baseline remains governed by `AGENTS.md`.
 
@@ -221,9 +221,10 @@ redacted invariant result only.
 - [x] Change this spec and plan from `proposed` to `accepted`: done after the
   re-review P1 was resolved by the deterministic completion-runnable oracle in
   commit `38d33a622a` and the owner approved moving to implementation.
-- [ ] On implementation completion, update both statuses/history to
-  `implemented` only after AC-150-01 through AC-150-07, device evidence, CI,
-  and the independent audit are complete.
+- [x] On implementation completion, update both statuses/history to
+  `implemented`: all of AC-150-01 through AC-150-07, the device evidence at
+  `44b4bad0c2`, the exact-head CI merge gate, and the accepted independent
+  re-audit are complete (PR #160, merged at `8740f8c136`).
 - [ ] `CONTEXT.md`: no change expected; no product term is added.
 - [ ] `DESIGN.md`: no change expected unless the tested completion bridge
   changes a system-level interface/seam; stop and review if so.
@@ -306,3 +307,11 @@ source change after the audit requires a new CI result and independent audit.
 - 2026-08-26: Accepted after commit `38d33a622a` resolved the final re-review
   P1 (synchronous completion-flag inspection at the barrier, no timing
   oracle) and the owner approved the implementation phase.
+- 2026-08-28: Implemented via PR #160 (merged at `8740f8c136`). Beyond the
+  accepted scope's completion barrier, diagnosis on the Issue #150 device
+  surfaced three additional blocking layers — QSB-reservation overlap
+  deletion, MODEL_EXECUTOR starvation, and canonical capture ordering — which
+  were resolved through Issues #155/#156 and `b9f7e969cd`/`44b4bad0c2`
+  (post-close supersession terminalization, re-review P1/P2). All AC-150
+  criteria verified with exact-head CI, the accepted independent re-audit,
+  and `docs/assessment/evidence/issue-150-device-verification.md`.
