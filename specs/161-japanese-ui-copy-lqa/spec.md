@@ -38,12 +38,14 @@ Stage B 完了時、NunuLauncher は通常利用者向け・安全関連・設�
 | コピー規約 | reader、surface class、CTA、文体、句読点、外来語、内部用語、安全意味論、a11y、Android resource 互換性を定義する。 | `docs/localization/ja-style-guide.md` |
 | 用語一貫性 | 繰り返し現れる Nunu/domain 用語について、推奨語、避ける語、surface 例外、根拠を記録する。文脈依存の語を機械置換表にしない。 | `docs/localization/ja-glossary.tsv` |
 | 再利用可能なレビュー | 文脈化した review unit、優先順位、4 disposition、severity、第二レビュー、エスカレーション、出力表を定義する。 | `docs/localization/ja-review-workflow.md` |
-| 評価と監査 | 固定評価集合による reviewer bake-off、全対象 resource の inventory / review table、reviewer 間の判断と解決、変更前後の例を残す。 | `docs/assessment/evidence/issue-161-ja-lqa.md` |
+| 評価と監査 | 固定評価集合による reviewer bake-off、全対象 resource の inventory / review table、Reviewer A/B の独立実行記録、reviewer 間の判断と解決、変更前後の例を残す。 | `docs/assessment/evidence/issue-161-ja-lqa.md` |
 | リソース修正と表示検証 | 承認済み `REVISE` のみを `lawnchair/res/values-ja/strings.xml` と `res/values-ja/strings.xml` に反映し、既存の被覆・placeholder oracle と代表画面を再確認する。 | resource 差分と Issue #161 の evidence |
 
 対象 resource は、Lawnchair baseline `505dbc40e6154c05158b5d0271c45f6a885a411b` 以降に Nunu が追加し、現在も active / user-visible / translatable であるオーガナイザー UI resource とする。対象集合は固定件数では定義せず、Stage B の開始時に accepted Stage A commit を基準として再構成する。#123 が確立した定義、すなわち `required = active Nunu organizer default resource where user-visible && translatable != false` と、各 resource root の日本語 name 集合・placeholder 契約の比較を継続する。[2] [3]
 
 通常利用者向けの優先順位は、primary action / title、onboarding と manual organization、confirmation / failure / recovery、category override と lock、accessibility、diagnostics / support の順とする。診断・支援 surface は正確さのため技術語を保持できるが、その判断を `TECHNICAL_ONLY` として記録する。[1]
+
+**初回 full pass に限り**、inventory の全 review unit を Reviewer A と Reviewer B が同じ style guide、glossary、context に対して独立に評価する。low / medium severity で両者が合意した `OK`、`REVISE`、または `TECHNICAL_ONLY` は owner の resource ごとの個別承認なしに確定できる。一方、high severity の不一致または behavior / safety meaning の曖昧さは、resource を変更する前に owner resolution または split Issue を必要とする。将来の通常運用に、この初回 full-pass の全件二重レビューを恒久 requirement として拡張しない。[1]
 
 ## Non-goals
 
@@ -61,9 +63,9 @@ Given reviewer は resource name、default text、current Japanese、surface、U
 
 When reviewer が primary normal-user UI を style guide と glossary に照らして評価する
 
-Then 各 review unit は `OK`、`REVISE`、`PRODUCT_DECISION`、`TECHNICAL_ONLY` のいずれか 1 つに分類される
+Then 各 review unit は `OK`、`REVISE`、`PRODUCT_DECISION`、`TECHNICAL_ONLY` のいずれか 1 つに分類され、初回 full pass では Reviewer A と Reviewer B の独立した結果がともに記録される
 
-And `REVISE` は提案日本語、根拠、適用規則、意味/安全意味論が不変であること、layout 拡張リスクを記録する。[1]
+And low / medium severity の合意は owner の個別承認なしに確定でき、`REVISE` は提案日本語、根拠、適用規則、意味/安全意味論が不変であること、layout 拡張リスクを記録する。[1]
 
 ### Scenario: 高リスクの安全・復旧文言に曖昧さまたは不一致がある
 
@@ -125,12 +127,12 @@ review table は resource ごとに surface / role、current Japanese、disposit
 - [ ] **AC-161-02 — 日本語 UI コピー規約:** `docs/localization/ja-style-guide.md` が normal UI、confirmation / warning / recovery、settings / help、a11y、diagnostics の 5 surface class と、CTA、文体、句読点、外来語、内部用語、安全意味論、Android resource 互換性を定義している。
 - [ ] **AC-161-03 — 用語集:** `docs/localization/ja-glossary.tsv` が、整合性を要する recurring Nunu/domain terms について preferred term、avoid、surface-specific exception、rationale/reference を必要な範囲で記録し、機械的な全語置換を要求していない。
 - [ ] **AC-161-04 — 再利用可能 workflow:** `docs/localization/ja-review-workflow.md` が、contextualized review unit、優先順位、4 disposition、severity、必須出力、Reviewer A / B の独立モード、高リスク escalation を規定している。孤立した XML 値だけで結論を出すことを許可しない。
-- [ ] **AC-161-05 — Bake-off:** 20〜40 件の固定・文脈付き評価集合を用い、Accuracy、Fluency、Terminology、UI style / concision、Context fit、Safety preservation、resource correctness を評価した model bake-off が evidence に記録されている。恒久 workflow はモデル非依存である。
-- [ ] **AC-161-06 — 完全な LQA inventory:** Stage B 開始時点の active / user-visible / translatable Nunu 固有 resource が、`lawnchair/res/values-ja` と root `res/values-ja` の両方を含めて inventory 化され、各 unit に 4 disposition のいずれかが記録されている。
-- [ ] **AC-161-07 — 独立レビューと判断分離:** primary CTA、warning、failure、recovery、破壊的/不可逆な意味、a11y、および用語 policy の high severity item は独立 Reviewer A / B の結果を持つ。意味が曖昧または見解が実質的に異なる場合は、採用前に project owner が解決するか、別 Issue へ分離されている。
+- [ ] **AC-161-05 — Bake-off:** 20〜40 件の固定・文脈付き評価集合を用い、Accuracy、Fluency、Terminology、UI style / concision、Context fit、Safety preservation、resource correctness を評価した model bake-off が evidence に記録されている。candidate 自身による自己採点は禁止し、candidate 名を伏せた同一 context / output を project owner が blind adjudication する。evidence は candidate ごとの per-item score、aggregate 方法、最終 adjudication、選定理由を含む。Safety または meaning preservation の重大欠陥を 1 件でも出した candidate は aggregate にかかわらず不採用とする。恒久 workflow はモデル非依存である。
+- [ ] **AC-161-06 — 完全な LQA inventory と初回二重レビュー:** Stage B 開始時点の active / user-visible / translatable Nunu 固有 resource が、`lawnchair/res/values-ja` と root `res/values-ja` の両方を含めて inventory 化され、各 unit に 4 disposition のいずれかが記録されている。初回 full pass では**全 unit**に Reviewer A result と Reviewer B result を記録し、各 reviewer の role、model identifier、family または provider、execution session または independent-context identifier を evidence に残す。異なる family / provider を利用できなかった場合は理由も記録する。
+- [ ] **AC-161-07 — 合意規則と判断分離:** 初回 full pass の low / medium severity item は Reviewer A / B の合意により確定できる。primary CTA、warning、failure、recovery、破壊的/不可逆な意味、a11y、および用語 policy の high severity item で Reviewer A / B が実質的に不一致であるか、意味が曖昧な場合は、採用前に project owner が解決するか、別 Issue へ分離されている。Reviewer A / B の合意だけでは、未解決の product decision を解決したことにはならない。
 - [ ] **AC-161-08 — resource と behavior の保存:** 採用済み `REVISE` だけが実装され、placeholder / plural / escaping / `translatable` 契約が保持される。オーガナイザーの planning、application、recovery、layout data、安全保証、navigation の diff を混在させない。
 - [ ] **AC-161-09 — rendered localization evidence:** 主要な変更 surface を Japanese locale の通常 font scale と代表的な拡大 font scale で確認し、critical clipping / wrapping がない。a11y 意味を確認し、`en-XA` と #123 の被覆 oracle を構造 regression の検証として継続する。
-- [ ] **AC-161-10 — closing evidence:** exact base SHA、resource inventory / review table、style guide・glossary・workflow path、bake-off 実施日と model identifier / 集計結果、代表的な変更前後、reviewer の不一致と解決、resource validation、実行 command と結果、未解決/分離 Issue が closing evidence に記録されている。
+- [ ] **AC-161-10 — closing evidence:** exact base SHA、resource inventory / review table、style guide・glossary・workflow path、bake-off 実施日、candidate ごとの per-item / aggregate score と final adjudication、Reviewer A / B ごとの role・model identifier・family/provider・execution session または independent-context identifier、異なる family/provider を使えなかった理由、代表的な変更前後、reviewer の不一致と解決、resource validation、実行 command と結果、未解決/分離 Issue が closing evidence に記録されている。
 
 ## Test oracle
 
@@ -140,20 +142,21 @@ review table は resource ごとに surface / role、current Japanese、disposit
 | AC-161-02 | style guide の section review。5 surface class と safety/resource rules を checklist で照合する。 |
 | AC-161-03 | glossary TSV schema review。各列と representative term の根拠を確認する。 |
 | AC-161-04 | workflow に従い fixed evaluation set の各 unit を 4 disposition と required output で処理できることを dry-run で確認する。 |
-| AC-161-05 | evidence 内の固定 evaluation set、実施日、candidate identifier、rubric、集計、選定根拠。 |
-| AC-161-06 | `required` 集合、resource root、surface / role mapping、1 resource 1 disposition の review table。 |
-| AC-161-07 | high severity rows の A/B 結果、owner resolution または split Issue link。 |
+| AC-161-05 | evidence 内の固定 evaluation set、candidate 名を伏せた output、project owner の blind adjudication、candidate identifier、実施日、per-item score、aggregate 方法、hard-failure 判定、最終選定根拠。 |
+| AC-161-06 | `required` 集合、resource root、surface / role mapping、1 resource 1 disposition、全 unit の Reviewer A / B result、各 reviewer の role / model / family/provider / session-or-context identifier / 例外理由を持つ review table。 |
+| AC-161-07 | low / medium row の A/B agreement と、high severity disagreement / ambiguity の owner resolution または split Issue link。 |
 | AC-161-08 | 日本語 resource diff review、name-set 被覆と placeholder 比較、organizer behavior source path 非変更の diff review。 |
 | AC-161-09 | 日本語代表画面の capture / UI dump、font-scale 確認、a11y evidence、`en-XA` 確認、既存 Gradle / CI 結果。 |
 | AC-161-10 | `docs/assessment/evidence/issue-161-ja-lqa.md` の closing checklist と PR / CI link。 |
 
 ## Open questions
 
-Stage A を阻害する未決定事項はない。Stage B で使う reviewer pair は、固定評価集合の bake-off 後に実行証拠として記録する。利用可能な model family / provider の組合せは時点依存であり、style guide または workflow の恒久要件にはしない。既存 tree に repository-local Skill directory の規約は確認できないため、portable な正本は `docs/localization/ja-review-workflow.md` とする。将来、repository-wide skill convention が受諾された場合は、別途その convention に従って workflow の配置を検討する。[1]
+Stage A を阻害する未決定事項はない。Stage B で使う reviewer pair は、固定評価集合の bake-off 後に実行証拠として記録する。bake-off は candidate 名を伏せて project owner が adjudicate し、candidate の自己採点を認めない。利用可能な model family / provider の組合せは時点依存であり、style guide または workflow の恒久要件にはしないが、初回 full-pass の evidence には各 reviewer の role、model identifier、family/provider、session または独立 context identifier を残す。既存 tree に repository-local Skill directory の規約は確認できないため、portable な正本は `docs/localization/ja-review-workflow.md` とする。将来、repository-wide skill convention が受諾された場合は、別途その convention に従って workflow の配置を検討する。[1]
 
 ## Change history
 
 - 2026-08-28: Issue #161 の Stage A 向け `proposed` 仕様を作成。Issue 本文・提案済み reviewer design、#123 の implemented spec / plan / visual evidence、`main` `c68abcce628de9d01efaf29280193defe4aff540`、および repository workflow を入力として、モデル非依存の文脈付き LQA contract と Stage B の停止条件を固定した。
+- 2026-08-28: Issue #161 の Stage A review（P1 × 2、P2 × 1）に対応。初回 full pass の全 inventory unit に独立 Reviewer A/B result を要求し、low/medium agreement と high-severity disagreement/ambiguity の扱いを分離した。bake-off には candidate 自己採点禁止、blind project-owner adjudication、per-item/aggregate 記録、safety/meaning-preservation hard failure を追加し、closing evidence に reviewer role/model/family-or-provider/session-or-context identity と例外理由を追加した。
 
 ## References
 
