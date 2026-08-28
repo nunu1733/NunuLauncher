@@ -35,6 +35,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class OrganizerReloadCompletionOrderingTest {
 
     private static final long RELOAD_TIMEOUT_SECONDS = 15L;
+    private static final long HOLD_PROBE_SECONDS = 3L;
 
     private LauncherModel model;
     private final List<BgDataModel.Callbacks> addedCallbacks = new ArrayList<>();
@@ -55,6 +56,16 @@ public class OrganizerReloadCompletionOrderingTest {
     /**
      * Intentionally red against the old ordering: the completion runnable
      * must not fire while the loader transaction is held incomplete.
+     *
+     * <p>Causal chain of the hold (Issue #150 audit): the barrier blocks the UI
+     * thread inside {@code onInitialBindComplete}, and {@code LoaderTask} parks
+     * itself on main-looper idleness in {@code waitForIdle()} after
+     * {@code bindWorkspace} and before {@code transaction.commit()}. The held
+     * callback therefore pins the loader before the transaction boundary. The
+     * probe below makes that hold an observed invariant rather than an
+     * assumption: while the barrier is held, the completion must not fire even
+     * given generous scheduling time, so the oracle fails whenever the hold is
+     * broken, and never passes merely because the scheduler was slow.
      */
     @Test
     public void completionRunnableWaitsForLoaderTransactionBoundary() throws Exception {
@@ -84,6 +95,17 @@ public class OrganizerReloadCompletionOrderingTest {
                     model.isModelLoaded());
             assertFalse(
                     "Organizer completion fired before the loader transaction boundary",
+                    completionFired.get());
+
+            // The hold must be causal, not a scheduling accident: give the loader
+            // generous time to commit, close, and — if the hold were broken —
+            // deliver its completion anyway. Any firing in this window means the
+            // barrier does not own the transaction boundary.
+            assertFalse(
+                    "Completion fired while the loader transaction boundary was held",
+                    completion.await(HOLD_PROBE_SECONDS, TimeUnit.SECONDS));
+            assertFalse(
+                    "Organizer completion state changed during the held boundary",
                     completionFired.get());
 
             barrier.release();
