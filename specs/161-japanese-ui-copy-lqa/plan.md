@@ -6,7 +6,7 @@
 
 ## Current evidence
 
-Stage A は `main` の `c68abcce628de9d01efaf29280193defe4aff540` を確認基準とした。#123 は実装済みであり、Nunu 固有の active / user-visible / translatable resource を final name set で扱う被覆 oracle、placeholder 一致、Japanese / `en-XA` / font scale の代表画面証拠を提供している。Stage B では accepted Stage A commit `48720a0a8bc965de10df70a24b48e9300eaf51ca` を対象に、required 223 名（lawnchair 166 / root 57）の inventory、Reviewer A/B の全件結果、24 件の blind bake-off、resource validator、AVD による Japanese / `en-XA` / 200% 表示確認を実施した。ローカルの全検証は成功しており、実装は pushed head `735219d642` に反映済みである。PR CI `final-status` は workflow 完了待ちである。[2] [3]
+Stage A は `main` の `c68abcce628de9d01efaf29280193defe4aff540` を確認基準とした。#123 は実装済みであり、Nunu 固有の active / user-visible / translatable resource を final name set で扱う被覆 oracle、placeholder 一致、Japanese / `en-XA` / font scale の代表画面証拠を提供している。Stage B では accepted Stage A commit `48720a0a8bc965de10df70a24b48e9300eaf51ca` を対象に、required 223 名（lawnchair 166 / root 57）の inventory、Reviewer A/B の全件結果、24 件の blind bake-off、固定context fixture、resource validator、AVD による Japanese / `en-XA` / 200% 表示確認を実施した。ローカルの全検証は成功しており、実装はこのfollow-up修正を含む最新headへ反映する。PR CI `final-status` は最新headでworkflow完了待ちである。[2] [3]
 
 | 確認済み事項 | 根拠 | Stage B への含意 |
 |---|---|---|
@@ -110,6 +110,7 @@ meaning preserved?}
 | `tools/localization/verify_nunu_ja_resources.py` | #123 の required-name / Japanese coverage / placeholder oracle を再現可能な checked-in command として追加する。 | evidence にのみ記録された一回限りの集計を、Stage B 以後も再実行可能な structural guard にする。 |
 | `tools/localization/test_verify_nunu_ja_resources.py` | missing ja、placeholder type/order/count、plural、`translatable="false"`、root 混同、empty / duplicate resource を synthetic XML fixture で検証する。 | LQA 変更が structural localization guarantees を弱めないことを tool 自身で証明する。 |
 | `docs/assessment/evidence/issue-161-ja-lqa.md` | exact base SHA、inventory、candidate 名を伏せた fixed bake-off set / per-item score / aggregate / hard-failure / owner adjudication、全件 A/B review と reviewer execution identity、resolution、before/after、validator、rendered evidence、split Issue を記録する。 | Issue #161 の completion evidence の正本にする。 |
+| `docs/assessment/evidence/issue-161-ja-lqa-bakeoff-context.md` | 24件のbake-offへ渡した固定contextをsource/current Japanese、surface、role、neighboring copy、placeholder、behavior anchor、rendered context付きで保存する。 | bake-offを同一入力で再実行できるfixtureとする。 |
 | `lawnchair/res/values-ja/strings.xml` | owner-resolved `REVISE` のみを編集する。 | Nunu organizer の Lawnchair resource root にある Japanese UI text を更新する。 |
 | `res/values-ja/strings.xml` | owner-resolved `REVISE` のみを編集する。 | category/override 等を含む root resource の Japanese UI text を更新する。 |
 | `lawnchair/res/values/strings.xml`、`res/values/strings.xml` | **原則変更しない。** context / placeholder 名を確認するのみとし、source English の defect は別 Issue に分離する。 | language-quality task が product/source semantics 変更へ拡張することを防ぐ。 |
@@ -147,6 +148,7 @@ validator の CLI 引数と fixture の最終形は Stage B で tool を実装�
 - [x] `docs/localization/ja-glossary.tsv` — 新規。
 - [x] `docs/localization/ja-review-workflow.md` — 新規。
 - [x] `docs/assessment/evidence/issue-161-ja-lqa.md` — 新規。
+- [x] `docs/assessment/evidence/issue-161-ja-lqa-bakeoff-context.md` — 新規。
 - [ ] `CONTEXT.md` — domain 定義を変更しないため原則更新不要。用語集が domain definition を変更すると判明した場合は停止して owner decision を求める。
 - [ ] `DESIGN.md` — runtime module / interface / seam を変更しないため更新不要。
 - [ ] `docs/adr/` — 高コストで可逆でない設計判断が新たに生じた場合のみ追加する。model choice や文言の好みだけでは ADR を作らない。
@@ -170,7 +172,7 @@ validator の CLI 引数と fixture の最終形は Stage B で tool を実装�
 
 - 2026-08-28: Issue #161 の Stage A review（P1: 初回 full-pass 二重レビュー、P1: bake-off adjudication、P2: reviewer 実行独立性、Minor: verification AC 対応）に対応。全 inventory unit の独立 A/B 結果、low/medium agreement と high-severity disagreement の分離、candidate 自己採点禁止・匿名 output・project-owner blind scoring・per-item/aggregate/hard-failure contract、reviewer role/model/family-or-provider/session-or-context evidence を追加し、Gradle/CI 行を AC-161-08 / AC-161-09 に整理した。
 - 2026-08-28: Stage A re-review の P2 に対応。high severity は、A/B agreement、accepted feature spec / ADR に対する meaning-preservation の明示確認、product ambiguity 不在の 3 条件を evidence に記録した場合に個別 owner approval なしで採用できる経路を Mermaid flow、independent LQA、resource application、checklist に統一した。disagreement または ambiguity のみ owner resolution / split Issue を必要とする。
-- 2026-08-28: Stage A 承認後、223 unit の inventory / independent A/B review、24 unit bake-off、14 件の accepted `REVISE`、resource validator、Gradle、repository contract、organizer unit/UI、Japanese / `en-XA` / 200% AVD 検証を完了した。closing evidence を追加し、commit `735219d642` を `origin/issue-161-japanese-ui-copy-lqa` へ push した。PR CI `final-status` は workflow 完了待ちである。
+- 2026-08-28: Stage A 承認後、223 unit の inventory / independent A/B review、24 unit bake-off、82 件の最終 `REVISE`、固定context fixture、resource validator、Gradle、repository contract、organizer unit/UI、Japanese / `en-XA` / 200% AVD 検証を完了した。closing evidence を更新し、最新headのPR CI `final-status` は workflow 完了待ちである。
 
 ## References
 

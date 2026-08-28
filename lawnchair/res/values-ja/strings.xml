@@ -27,7 +27,7 @@
     <!-- Issue #38: placement locks -->
     <string name="organizer_lock_menu_title">配置ロック</string>
     <string name="organizer_lock_state_locked">ロック中</string>
-    <string name="organizer_lock_state_unlocked">ロック解除</string>
+    <string name="organizer_lock_state_unlocked">ロック解除済み</string>
     <string name="organizer_lock_state_unknown">要確認</string>
     <string name="organizer_lock_dialog_title_lock">この配置をロックしますか？</string>
     <string name="organizer_lock_dialog_title_unlock">この配置のロックを解除しますか？</string>

@@ -81,6 +81,16 @@ class ResourceValidatorTests(unittest.TestCase):
         )
         self.assertEqual(findings, [])
 
+    def test_japanese_translatable_contract_must_match_default(self) -> None:
+        findings = validator.validate_pair(
+            xml('<string name="old">old</string>'),
+            xml('<string name="organizer_title">Title</string>'),
+            xml('<string name="organizer_title" translatable="false">タイトル</string>'),
+            "res/values/strings.xml",
+            "res/values-ja/strings.xml",
+        )
+        self.assertTrue(any("translatable mismatch" in item for item in findings))
+
     def test_duplicate_and_empty_resources_are_reported(self) -> None:
         _, findings = validator.parse_resources(
             xml(

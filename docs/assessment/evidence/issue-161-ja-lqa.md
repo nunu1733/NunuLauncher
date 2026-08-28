@@ -1,6 +1,6 @@
 # Issue #161 Japanese UI copy LQA evidence
 
-> Status: locally verified — rendered UI, repository, and build checks pass locally; pushed head `735219d642` is awaiting the PR CI final-status.
+> Status: locally verified — rendered UI, repository, and build checks pass locally; the post-review fix head is awaiting the PR CI final-status.
 
 Issue: [#161](https://github.com/nunu1733/NunuLauncher/issues/161)
 
@@ -35,242 +35,244 @@ Reviewer A and Reviewer B independently inspected the same 223-unit required set
 
 | Surface family | Total | OK | REVISE | TECHNICAL_ONLY | PRODUCT_DECISION |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| manual organization | 91 | 62 | 12 | 17 | 0 |
-| onboarding | 5 | 5 | 0 | 0 | 0 |
-| diagnostics | 6 | 2 | 0 | 4 | 0 |
-| lock | 64 | 62 | 2 | 0 | 0 |
-| category settings | 57 | 57 | 0 | 0 | 0 |
-| Total | 223 | 188 | 14 | 21 | 0 |
+| manual organization | 91 | 26 | 48 | 17 | 0 |
+| onboarding | 5 | 3 | 2 | 0 | 0 |
+| diagnostics | 6 | 0 | 0 | 6 | 0 |
+| lock | 64 | 48 | 16 | 0 | 0 |
+| category settings | 57 | 41 | 16 | 0 | 0 |
+| Total | 223 | 118 | 82 | 23 | 0 |
 
 ## Full required-resource disposition
 
-The following table is the complete 223-unit inventory. The filename resource excluded above is covered by the default-resource translatable=false contract and validator test.
+The following table is the complete 223-unit inventory. The `Final disposition` column is authoritative: every resource changed against `main` is `REVISE`; unchanged technical resources are `TECHNICAL_ONLY`; unchanged user-facing resources are `OK`. The filename resource excluded above is covered by the default-resource `translatable=false` contract and validator test. A/B disagreements on changed rows are explicitly recorded as owner resolutions in the `Resolution` column.
 
-| Root | Resource | Surface | Reviewer A | Reviewer B | Applied disposition |
-| --- | --- | --- | --- | --- | --- |
-| lawnchair | manual_organization_app_pair_constraint | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_apply_concurrent | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_apply_recovered | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_apply_recovery_failed | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_apply_rejected | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_apply_rolled_back | manual organization | REVISE | REVISE | applied accepted revision |
-| lawnchair | manual_organization_apply_success | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_apply_unresolved | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_applying | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_available_constraint | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_cancel | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_cancel_before_checkpoint | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_capturing | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_confirm | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_device_scope | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_disabled_constraint | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_empty_folder_constraint | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_explainer | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_impossible | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_input_unavailable | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_legacy_shortcut_constraint | manual organization | REVISE | REVISE | applied accepted revision |
-| lawnchair | manual_organization_locked_constraint | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_moved_count | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_moved_folder_member | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_moved_folder_unit | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_moved_single_placement | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_new_folders_count | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_new_pages_count | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_no_changes | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_open_diagnostics | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | technical wording retained |
-| lawnchair | manual_organization_open_diagnostics_summary | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_planning | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_preserved_already_canonical | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_preserved_app_pair | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_preserved_count | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_preserved_dock | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_preserved_legacy_shortcut | manual organization | REVISE | REVISE | applied accepted revision |
-| lawnchair | manual_organization_preserved_locked | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_preserved_non_target | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_preserved_structural | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_preserved_unavailable | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_preserved_widget | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_preview | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_private_space_constraint | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_quiet_constraint | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_recapture | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_recovering | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_recovery | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_recovery_confirm | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_recovery_failed | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_recovery_inspecting | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_recovery_not_available | manual organization | OK | REVISE | retained; current text matches B proposal |
-| lawnchair | manual_organization_recovery_preview | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_recovery_restored | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_rejected | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_rejection_additions | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | technical wording retained |
-| lawnchair | manual_organization_rejection_bounds | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | technical wording retained |
-| lawnchair | manual_organization_rejection_dangling_reference | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | technical wording retained |
-| lawnchair | manual_organization_rejection_duplicate_item | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | technical wording retained |
-| lawnchair | manual_organization_rejection_duplicate_page | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | technical wording retained |
-| lawnchair | manual_organization_rejection_duplicate_target | manual organization | TECHNICAL_ONLY | REVISE | applied accepted revision |
-| lawnchair | manual_organization_rejection_incomplete_target_partition | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | technical wording retained |
-| lawnchair | manual_organization_rejection_invalid_container | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | technical wording retained |
-| lawnchair | manual_organization_rejection_invalid_dimensions | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | technical wording retained |
-| lawnchair | manual_organization_rejection_invalid_rules | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | technical wording retained |
-| lawnchair | manual_organization_rejection_kind_target_mismatch | manual organization | TECHNICAL_ONLY | REVISE | applied accepted revision |
-| lawnchair | manual_organization_rejection_locked_out_of_bounds | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | technical wording retained |
-| lawnchair | manual_organization_rejection_malformed_app_pair | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | technical wording retained |
-| lawnchair | manual_organization_rejection_missing_target | manual organization | TECHNICAL_ONLY | REVISE | applied accepted revision |
-| lawnchair | manual_organization_rejection_overlap | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | technical wording retained |
-| lawnchair | manual_organization_rejection_target_profile_mismatch | manual organization | TECHNICAL_ONLY | REVISE | applied accepted revision |
-| lawnchair | manual_organization_rejection_unknown_category | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | technical wording retained |
-| lawnchair | manual_organization_rejection_unknown_item_kind | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | technical wording retained |
-| lawnchair | manual_organization_rejection_unknown_page | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | technical wording retained |
-| lawnchair | manual_organization_rejection_unknown_signal_item | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | technical wording retained |
-| lawnchair | manual_organization_retry | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_safe_terminal | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_scope | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_stale | manual organization | REVISE | REVISE | applied accepted revision |
-| lawnchair | manual_organization_start | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_start_again | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_summary | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_title | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_unavailable_constraint | manual organization | REVISE | REVISE | applied accepted revision |
-| lawnchair | manual_organization_unavailable_item_constraint | manual organization | OK | OK | retained |
-| lawnchair | manual_organization_unplaced_grid | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_unplaced_target | manual organization | REVISE | REVISE | applied accepted revision |
-| lawnchair | manual_organization_warning_fallback_category | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_warning_legacy_shortcut | manual organization | REVISE | REVISE | applied accepted revision |
-| lawnchair | manual_organization_warning_unavailable | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | manual_organization_widget_constraint | manual organization | REVISE | OK | applied accepted revision |
-| lawnchair | organization_onboarding_proposal_defer | onboarding | OK | OK | retained |
-| lawnchair | organization_onboarding_proposal_review | onboarding | REVISE | OK | applied accepted revision |
-| lawnchair | organization_onboarding_proposal_skip | onboarding | OK | OK | retained |
-| lawnchair | organization_onboarding_proposal_summary | onboarding | REVISE | OK | applied accepted revision |
-| lawnchair | organization_onboarding_proposal_title | onboarding | OK | OK | retained |
-| lawnchair | organizer_diagnostics_description | diagnostics | TECHNICAL_ONLY | TECHNICAL_ONLY | technical wording retained |
-| lawnchair | organizer_diagnostics_export_error | diagnostics | TECHNICAL_ONLY | OK | technical wording retained |
-| lawnchair | organizer_diagnostics_export_label | diagnostics | TECHNICAL_ONLY | TECHNICAL_ONLY | technical wording retained |
-| lawnchair | organizer_diagnostics_export_subtitle | diagnostics | TECHNICAL_ONLY | TECHNICAL_ONLY | technical wording retained |
-| lawnchair | organizer_diagnostics_export_success | diagnostics | TECHNICAL_ONLY | OK | technical wording retained |
-| lawnchair | organizer_diagnostics_title | diagnostics | TECHNICAL_ONLY | TECHNICAL_ONLY | technical wording retained |
-| lawnchair | organizer_lock_action_keep_locked | lock | REVISE | OK | applied accepted revision |
-| lawnchair | organizer_lock_action_lock | lock | OK | OK | retained |
-| lawnchair | organizer_lock_action_mark_unlocked | lock | REVISE | OK | applied accepted revision |
-| lawnchair | organizer_lock_action_unlock | lock | OK | OK | retained |
-| lawnchair | organizer_lock_dialog_current_state | lock | OK | OK | retained |
-| lawnchair | organizer_lock_dialog_review_intro | lock | OK | OK | retained |
-| lawnchair | organizer_lock_dialog_title_lock | lock | OK | OK | retained |
-| lawnchair | organizer_lock_dialog_title_review | lock | REVISE | OK | applied accepted revision |
-| lawnchair | organizer_lock_dialog_title_unlock | lock | OK | OK | retained |
-| lawnchair | organizer_lock_effect_app_pair_member_own_lock_binds | lock | OK | OK | retained |
-| lawnchair | organizer_lock_effect_app_pair_member_scope | lock | OK | OK | retained |
-| lawnchair | organizer_lock_effect_app_pair_member_unlock_ineffective | lock | OK | OK | retained |
-| lawnchair | organizer_lock_effect_app_pair_parent_covers_members | lock | OK | OK | retained |
-| lawnchair | organizer_lock_effect_app_pair_scope | lock | OK | OK | retained |
-| lawnchair | organizer_lock_effect_dock_slot | lock | OK | OK | retained |
-| lawnchair | organizer_lock_effect_folder_child_own_lock_binds | lock | OK | OK | retained |
-| lawnchair | organizer_lock_effect_folder_child_scope | lock | OK | OK | retained |
-| lawnchair | organizer_lock_effect_folder_child_unlock_ineffective | lock | OK | OK | retained |
-| lawnchair | organizer_lock_effect_folder_children_own_lock_remains | lock | OK | OK | retained |
-| lawnchair | organizer_lock_effect_folder_parent_covers_children | lock | OK | OK | retained |
-| lawnchair | organizer_lock_effect_folder_scope | lock | OK | OK | retained |
-| lawnchair | organizer_lock_effect_own_placement | lock | OK | OK | retained |
-| lawnchair | organizer_lock_effect_widget_region | lock | OK | OK | retained |
-| lawnchair | organizer_lock_error_busy | lock | REVISE | OK | applied accepted revision |
-| lawnchair | organizer_lock_error_failed | lock | REVISE | OK | applied accepted revision |
-| lawnchair | organizer_lock_error_intent_required | lock | REVISE | REVISE | applied accepted revision |
-| lawnchair | organizer_lock_error_item_not_found | lock | REVISE | OK | applied accepted revision |
-| lawnchair | organizer_lock_error_item_not_unknown | lock | REVISE | OK | applied accepted revision |
-| lawnchair | organizer_lock_error_profile_unavailable | lock | REVISE | OK | applied accepted revision |
-| lawnchair | organizer_lock_error_stale | lock | REVISE | OK | applied accepted revision |
-| lawnchair | organizer_lock_error_unsupported | lock | OK | OK | retained |
-| lawnchair | organizer_lock_kind_app | lock | OK | OK | retained |
-| lawnchair | organizer_lock_kind_app_pair | lock | OK | OK | retained |
-| lawnchair | organizer_lock_kind_folder | lock | OK | OK | retained |
-| lawnchair | organizer_lock_kind_shortcut | lock | OK | OK | retained |
-| lawnchair | organizer_lock_kind_unknown | lock | OK | OK | retained |
-| lawnchair | organizer_lock_kind_widget | lock | OK | OK | retained |
-| lawnchair | organizer_lock_menu_title | lock | OK | OK | retained |
-| lawnchair | organizer_lock_result_locked | lock | OK | OK | retained |
-| lawnchair | organizer_lock_result_no_change | lock | OK | OK | retained |
-| lawnchair | organizer_lock_result_unlocked | lock | OK | OK | retained |
-| lawnchair | organizer_lock_screen_effectively_locked | lock | REVISE | REVISE | applied accepted revision |
-| lawnchair | organizer_lock_screen_item_state_description | lock | OK | OK | retained |
-| lawnchair | organizer_lock_screen_known_heading | lock | OK | OK | retained |
-| lawnchair | organizer_lock_screen_placement_app_pair | lock | OK | OK | retained |
-| lawnchair | organizer_lock_screen_placement_desktop | lock | OK | OK | retained |
-| lawnchair | organizer_lock_screen_placement_dock | lock | OK | OK | retained |
-| lawnchair | organizer_lock_screen_placement_folder | lock | OK | OK | retained |
-| lawnchair | organizer_lock_screen_placement_summary_double | lock | OK | OK | retained |
-| lawnchair | organizer_lock_screen_placement_summary_triple | lock | OK | OK | retained |
-| lawnchair | organizer_lock_screen_profile_cloned | lock | OK | OK | retained |
-| lawnchair | organizer_lock_screen_profile_other | lock | OK | OK | retained |
-| lawnchair | organizer_lock_screen_profile_private | lock | OK | OK | retained |
-| lawnchair | organizer_lock_screen_profile_work | lock | OK | OK | retained |
-| lawnchair | organizer_lock_screen_review_all_confirm | lock | REVISE | OK | applied accepted revision |
-| lawnchair | organizer_lock_screen_review_all_keep_locked | lock | REVISE | OK | applied accepted revision |
-| lawnchair | organizer_lock_screen_review_all_mark_unlocked | lock | REVISE | OK | applied accepted revision |
-| lawnchair | organizer_lock_screen_summary | lock | OK | OK | retained |
-| lawnchair | organizer_lock_screen_title | lock | OK | OK | retained |
-| lawnchair | organizer_lock_screen_unknown_banner | lock | REVISE | OK | applied accepted revision |
-| lawnchair | organizer_lock_screen_unknown_banner_none | lock | OK | OK | retained |
-| lawnchair | organizer_lock_state_locked | lock | OK | OK | retained |
-| lawnchair | organizer_lock_state_unknown | lock | OK | OK | retained |
-| lawnchair | organizer_lock_state_unlocked | lock | OK | OK | retained |
-| root | organizer_category_art | category settings | OK | OK | retained |
-| root | organizer_category_auto | category settings | OK | OK | retained |
-| root | organizer_category_beauty | category settings | OK | OK | retained |
-| root | organizer_category_books | category settings | OK | OK | retained |
-| root | organizer_category_business | category settings | OK | OK | retained |
-| root | organizer_category_comics | category settings | OK | OK | retained |
-| root | organizer_category_communication | category settings | OK | OK | retained |
-| root | organizer_category_dating | category settings | OK | OK | retained |
-| root | organizer_category_education | category settings | OK | OK | retained |
-| root | organizer_category_entertainment | category settings | OK | OK | retained |
-| root | organizer_category_events | category settings | OK | OK | retained |
-| root | organizer_category_finance | category settings | OK | OK | retained |
-| root | organizer_category_food | category settings | OK | OK | retained |
-| root | organizer_category_game | category settings | OK | OK | retained |
-| root | organizer_category_health | category settings | OK | OK | retained |
-| root | organizer_category_house | category settings | OK | OK | retained |
-| root | organizer_category_libraries | category settings | OK | OK | retained |
-| root | organizer_category_lifestyle | category settings | OK | OK | retained |
-| root | organizer_category_maps | category settings | OK | OK | retained |
-| root | organizer_category_medical | category settings | OK | OK | retained |
-| root | organizer_category_music | category settings | OK | OK | retained |
-| root | organizer_category_news | category settings | OK | OK | retained |
-| root | organizer_category_other | category settings | OK | OK | retained |
-| root | organizer_category_override_app_description | category settings | OK | OK | retained |
-| root | organizer_category_override_app_description_with_profile | category settings | OK | OK | retained |
-| root | organizer_category_override_app_status | category settings | OK | OK | retained |
-| root | organizer_category_override_automatic | category settings | REVISE | OK | applied accepted revision |
-| root | organizer_category_override_automatic_description | category settings | REVISE | OK | applied accepted revision |
-| root | organizer_category_override_busy | category settings | REVISE | OK | applied accepted revision |
-| root | organizer_category_override_cancel | category settings | OK | OK | retained |
-| root | organizer_category_override_category_description | category settings | REVISE | OK | applied accepted revision |
-| root | organizer_category_override_choose | category settings | OK | OK | retained |
-| root | organizer_category_override_conflict | category settings | REVISE | OK | applied accepted revision |
-| root | organizer_category_override_explicit | category settings | REVISE | OK | applied accepted revision |
-| root | organizer_category_override_failed | category settings | REVISE | OK | applied accepted revision |
-| root | organizer_category_override_no_change | category settings | REVISE | OK | applied accepted revision |
-| root | organizer_category_override_profile_personal | category settings | OK | OK | retained |
-| root | organizer_category_override_profile_work | category settings | REVISE | OK | applied accepted revision |
-| root | organizer_category_override_save | category settings | REVISE | OK | applied accepted revision |
-| root | organizer_category_override_saved | category settings | REVISE | OK | applied accepted revision |
-| root | organizer_category_override_unavailable | category settings | REVISE | OK | applied accepted revision |
-| root | organizer_category_override_unavailable_store | category settings | REVISE | OK | applied accepted revision |
-| root | organizer_category_override_unnamed_app | category settings | OK | OK | retained |
-| root | organizer_category_override_use_automatic | category settings | REVISE | OK | applied accepted revision |
-| root | organizer_category_overrides_summary | category settings | REVISE | OK | applied accepted revision |
-| root | organizer_category_overrides_title | category settings | REVISE | OK | applied accepted revision |
-| root | organizer_category_parenting | category settings | OK | OK | retained |
-| root | organizer_category_personalization | category settings | OK | OK | retained |
-| root | organizer_category_photography | category settings | OK | OK | retained |
-| root | organizer_category_productivity | category settings | OK | OK | retained |
-| root | organizer_category_shopping | category settings | OK | OK | retained |
-| root | organizer_category_social | category settings | OK | OK | retained |
-| root | organizer_category_sports | category settings | OK | OK | retained |
-| root | organizer_category_tools | category settings | OK | OK | retained |
-| root | organizer_category_travel | category settings | OK | OK | retained |
-| root | organizer_category_video | category settings | OK | OK | retained |
-| root | organizer_category_weather | category settings | OK | OK | retained |
+| Root | Resource | Surface | Reviewer A | Reviewer B | Resolution | Final disposition |
+| --- | --- | --- | --- | --- | --- | --- |
+| lawnchair | manual_organization_app_pair_constraint | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_apply_concurrent | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_apply_recovered | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_apply_recovery_failed | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_apply_rejected | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_apply_rolled_back | manual organization | REVISE | REVISE | A/B agreement; accepted revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_apply_success | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_apply_unresolved | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_applying | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_available_constraint | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_cancel | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_cancel_before_checkpoint | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_capturing | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_confirm | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_device_scope | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_disabled_constraint | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_empty_folder_constraint | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_explainer | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_impossible | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_input_unavailable | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_legacy_shortcut_constraint | manual organization | REVISE | REVISE | A/B agreement; accepted revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_locked_constraint | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_moved_count | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_moved_folder_member | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_moved_folder_unit | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_moved_single_placement | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_new_folders_count | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_new_pages_count | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_no_changes | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_open_diagnostics | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | A/B agreement; technical precision retained | TECHNICAL_ONLY |
+| lawnchair | manual_organization_open_diagnostics_summary | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_planning | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_preserved_already_canonical | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_preserved_app_pair | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_preserved_count | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_preserved_dock | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_preserved_legacy_shortcut | manual organization | REVISE | REVISE | A/B agreement; accepted revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_preserved_locked | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_preserved_non_target | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_preserved_structural | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_preserved_unavailable | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_preserved_widget | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_preview | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_private_space_constraint | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_quiet_constraint | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_recapture | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_recovering | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_recovery | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_recovery_confirm | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_recovery_failed | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_recovery_inspecting | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_recovery_not_available | manual organization | OK | REVISE | B proposal retained; no resource change | OK |
+| lawnchair | manual_organization_recovery_preview | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_recovery_restored | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_rejected | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_rejection_additions | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | A/B agreement; technical precision retained | TECHNICAL_ONLY |
+| lawnchair | manual_organization_rejection_bounds | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | A/B agreement; technical precision retained | TECHNICAL_ONLY |
+| lawnchair | manual_organization_rejection_dangling_reference | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | A/B agreement; technical precision retained | TECHNICAL_ONLY |
+| lawnchair | manual_organization_rejection_duplicate_item | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | A/B agreement; technical precision retained | TECHNICAL_ONLY |
+| lawnchair | manual_organization_rejection_duplicate_page | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | A/B agreement; technical precision retained | TECHNICAL_ONLY |
+| lawnchair | manual_organization_rejection_duplicate_target | manual organization | TECHNICAL_ONLY | REVISE | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_rejection_incomplete_target_partition | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | A/B agreement; technical precision retained | TECHNICAL_ONLY |
+| lawnchair | manual_organization_rejection_invalid_container | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | A/B agreement; technical precision retained | TECHNICAL_ONLY |
+| lawnchair | manual_organization_rejection_invalid_dimensions | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | A/B agreement; technical precision retained | TECHNICAL_ONLY |
+| lawnchair | manual_organization_rejection_invalid_rules | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | A/B agreement; technical precision retained | TECHNICAL_ONLY |
+| lawnchair | manual_organization_rejection_kind_target_mismatch | manual organization | TECHNICAL_ONLY | REVISE | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_rejection_locked_out_of_bounds | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | A/B agreement; technical precision retained | TECHNICAL_ONLY |
+| lawnchair | manual_organization_rejection_malformed_app_pair | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | A/B agreement; technical precision retained | TECHNICAL_ONLY |
+| lawnchair | manual_organization_rejection_missing_target | manual organization | TECHNICAL_ONLY | REVISE | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_rejection_overlap | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | A/B agreement; technical precision retained | TECHNICAL_ONLY |
+| lawnchair | manual_organization_rejection_target_profile_mismatch | manual organization | TECHNICAL_ONLY | REVISE | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_rejection_unknown_category | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | A/B agreement; technical precision retained | TECHNICAL_ONLY |
+| lawnchair | manual_organization_rejection_unknown_item_kind | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | A/B agreement; technical precision retained | TECHNICAL_ONLY |
+| lawnchair | manual_organization_rejection_unknown_page | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | A/B agreement; technical precision retained | TECHNICAL_ONLY |
+| lawnchair | manual_organization_rejection_unknown_signal_item | manual organization | TECHNICAL_ONLY | TECHNICAL_ONLY | A/B agreement; technical precision retained | TECHNICAL_ONLY |
+| lawnchair | manual_organization_retry | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_safe_terminal | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_scope | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_stale | manual organization | REVISE | REVISE | A/B agreement; accepted revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_start | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_start_again | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_summary | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_title | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_unavailable_constraint | manual organization | REVISE | REVISE | A/B agreement; accepted revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_unavailable_item_constraint | manual organization | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | manual_organization_unplaced_grid | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_unplaced_target | manual organization | REVISE | REVISE | A/B agreement; accepted revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_warning_fallback_category | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_warning_legacy_shortcut | manual organization | REVISE | REVISE | A/B agreement; accepted revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_warning_unavailable | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | manual_organization_widget_constraint | manual organization | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | organization_onboarding_proposal_defer | onboarding | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organization_onboarding_proposal_review | onboarding | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | organization_onboarding_proposal_skip | onboarding | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organization_onboarding_proposal_summary | onboarding | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | organization_onboarding_proposal_title | onboarding | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_diagnostics_description | diagnostics | TECHNICAL_ONLY | TECHNICAL_ONLY | A/B agreement; technical precision retained | TECHNICAL_ONLY |
+| lawnchair | organizer_diagnostics_export_error | diagnostics | TECHNICAL_ONLY | OK | owner resolution: retained technical wording; no user-facing copy change | TECHNICAL_ONLY |
+| lawnchair | organizer_diagnostics_export_label | diagnostics | TECHNICAL_ONLY | TECHNICAL_ONLY | A/B agreement; technical precision retained | TECHNICAL_ONLY |
+| lawnchair | organizer_diagnostics_export_subtitle | diagnostics | TECHNICAL_ONLY | TECHNICAL_ONLY | A/B agreement; technical precision retained | TECHNICAL_ONLY |
+| lawnchair | organizer_diagnostics_export_success | diagnostics | TECHNICAL_ONLY | OK | owner resolution: retained technical wording; no user-facing copy change | TECHNICAL_ONLY |
+| lawnchair | organizer_diagnostics_title | diagnostics | TECHNICAL_ONLY | TECHNICAL_ONLY | A/B agreement; technical precision retained | TECHNICAL_ONLY |
+| lawnchair | organizer_lock_action_keep_locked | lock | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | organizer_lock_action_lock | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_action_mark_unlocked | lock | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | organizer_lock_action_unlock | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_dialog_current_state | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_dialog_review_intro | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_dialog_title_lock | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_dialog_title_review | lock | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | organizer_lock_dialog_title_unlock | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_effect_app_pair_member_own_lock_binds | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_effect_app_pair_member_scope | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_effect_app_pair_member_unlock_ineffective | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_effect_app_pair_parent_covers_members | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_effect_app_pair_scope | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_effect_dock_slot | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_effect_folder_child_own_lock_binds | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_effect_folder_child_scope | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_effect_folder_child_unlock_ineffective | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_effect_folder_children_own_lock_remains | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_effect_folder_parent_covers_children | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_effect_folder_scope | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_effect_own_placement | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_effect_widget_region | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_error_busy | lock | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | organizer_lock_error_failed | lock | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | organizer_lock_error_intent_required | lock | REVISE | REVISE | A/B agreement; accepted revision; semantics preserved | REVISE |
+| lawnchair | organizer_lock_error_item_not_found | lock | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | organizer_lock_error_item_not_unknown | lock | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | organizer_lock_error_profile_unavailable | lock | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | organizer_lock_error_stale | lock | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | organizer_lock_error_unsupported | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_kind_app | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_kind_app_pair | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_kind_folder | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_kind_shortcut | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_kind_unknown | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_kind_widget | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_menu_title | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_result_locked | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_result_no_change | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_result_unlocked | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_screen_effectively_locked | lock | REVISE | REVISE | A/B agreement; accepted revision; semantics preserved | REVISE |
+| lawnchair | organizer_lock_screen_item_state_description | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_screen_known_heading | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_screen_placement_app_pair | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_screen_placement_desktop | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_screen_placement_dock | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_screen_placement_folder | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_screen_placement_summary_double | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_screen_placement_summary_triple | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_screen_profile_cloned | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_screen_profile_other | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_screen_profile_private | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_screen_profile_work | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_screen_review_all_confirm | lock | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | organizer_lock_screen_review_all_keep_locked | lock | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | organizer_lock_screen_review_all_mark_unlocked | lock | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | organizer_lock_screen_summary | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_screen_title | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_screen_unknown_banner | lock | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| lawnchair | organizer_lock_screen_unknown_banner_none | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_state_locked | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_state_unknown | lock | OK | OK | A/B agreement; no resource change | OK |
+| lawnchair | organizer_lock_state_unlocked | lock | OK | OK | owner follow-up re-review: state/action distinction accepted; semantics preserved | REVISE |
+| root | organizer_category_art | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_auto | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_beauty | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_books | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_business | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_comics | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_communication | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_dating | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_education | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_entertainment | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_events | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_finance | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_food | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_game | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_health | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_house | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_libraries | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_lifestyle | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_maps | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_medical | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_music | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_news | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_other | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_override_app_description | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_override_app_description_with_profile | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_override_app_status | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_override_automatic | category settings | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| root | organizer_category_override_automatic_description | category settings | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| root | organizer_category_override_busy | category settings | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| root | organizer_category_override_cancel | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_override_category_description | category settings | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| root | organizer_category_override_choose | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_override_conflict | category settings | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| root | organizer_category_override_explicit | category settings | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| root | organizer_category_override_failed | category settings | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| root | organizer_category_override_no_change | category settings | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| root | organizer_category_override_profile_personal | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_override_profile_work | category settings | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| root | organizer_category_override_save | category settings | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| root | organizer_category_override_saved | category settings | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| root | organizer_category_override_unavailable | category settings | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| root | organizer_category_override_unavailable_store | category settings | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| root | organizer_category_override_unnamed_app | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_override_use_automatic | category settings | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| root | organizer_category_overrides_summary | category settings | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| root | organizer_category_overrides_title | category settings | REVISE | OK | owner resolution: accepted copy-only revision; semantics preserved | REVISE |
+| root | organizer_category_parenting | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_personalization | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_photography | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_productivity | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_shopping | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_social | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_sports | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_tools | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_travel | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_video | category settings | OK | OK | A/B agreement; no resource change | OK |
+| root | organizer_category_weather | category settings | OK | OK | A/B agreement; no resource change | OK |
+
+Reconciliation: 82 resources differ from `main` and therefore have final disposition `REVISE`. Nine were changed with initial A/B agreement, 72 changed rows with an initial A/B disagreement have an explicit owner resolution above, and `organizer_lock_state_unlocked` was reopened after review as a state/action distinction and accepted as `REVISE`. The remaining 23 unchanged technical rows are `TECHNICAL_ONLY`; the remaining 118 unchanged user-facing rows are `OK`. This final-disposition reconciliation, rather than the initial reviewer disposition alone, is the source for the family summary.
 
 ## Accepted revision register
 
@@ -337,6 +339,7 @@ The following table is the complete 223-unit inventory. The filename resource ex
 | lawnchair | organizer_lock_error_profile_unavailable | このアイテムのプロファイルは現在利用できません。内容は変更されていません。 | このアイテムのプロファイルは現在利用できません。変更は適用されていません。 | lock |
 | lawnchair | organizer_lock_error_stale | このアイテムまたはレイアウトが変更されました。内容は変更されていません。もう一度お試しください。 | このアイテムまたはレイアウトが変更されました。変更は適用されていません。もう一度お試しください。 | lock |
 | lawnchair | organizer_lock_screen_effectively_locked | ロック済みの親により保護されています | 所属するフォルダまたはアプリペアのロックにより保護されています | lock |
+| lawnchair | organizer_lock_state_unlocked | ロック解除 | ロック解除済み | lock |
 | lawnchair | organizer_lock_screen_review_all_confirm | %1$d件の配置を「%2$s」として確認しますか？ この操作は表示中の配置のみに適用されます。 | %1$d件の配置を「%2$s」として確認しますか？ この操作は一覧の配置のみに適用されます。 | lock |
 | lawnchair | organizer_lock_screen_review_all_keep_locked | すべて「ロック」として確認 | すべてロックとして確認 | lock |
 | lawnchair | organizer_lock_screen_review_all_mark_unlocked | すべて「ロック解除」として確認 | すべてロック解除として確認 | lock |
@@ -360,7 +363,7 @@ The following table is the complete 223-unit inventory. The filename resource ex
 
 ## Anonymous model bake-off
 
-Twenty-four contextual units were selected before scoring: CTA/title, onboarding/progress/status, failure/safety/recovery, settings/category/lock, accessibility, and diagnostic/technical surfaces. Candidate outputs were anonymized as X and Y during owner scoring.
+Twenty-four contextual units were selected before scoring: CTA/title, onboarding/progress/status, failure/safety/recovery, settings/category/lock, accessibility, and diagnostic/technical surfaces. The exact fixed inputs are preserved in [issue-161-ja-lqa-bakeoff-context.md](./issue-161-ja-lqa-bakeoff-context.md), including source/current Japanese, surface, role, neighboring copy, placeholder contract, behavior anchor, and rendered context. Candidate outputs were anonymized as X and Y during owner scoring.
 
 Score axis order: Accuracy / Fluency / Terminology / UI style-concision / Context fit / Safety preservation / Resource correctness. Each axis is scored 0–2; total is out of 14. A 0 on meaning or safety is a hard failure.
 
@@ -429,7 +432,7 @@ Japanese semantic, focus, touch-target, and action-reachability checks were exer
 
 | Check | Result |
 | --- | --- |
-| Structural resource validator unit tests | PASS — 8 tests |
+| Structural resource validator unit tests | PASS — 9 tests |
 | Structural resource validator against baseline | PASS |
 | git diff --check | PASS |
 | Gradle spotlessCheck | PASS — `./gradlew spotlessCheck` |

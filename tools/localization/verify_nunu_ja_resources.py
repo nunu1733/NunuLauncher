@@ -5,7 +5,8 @@ The checker is intentionally standard-library-only and has no runtime or
 Gradle dependency. It reconstructs the Nunu resource set from the accepted
 baseline and the current default resources, then checks the corresponding
 ``values-ja`` files. Resources marked ``translatable="false"`` are reported as
-non-translatable and excluded from the required Japanese set.
+non-translatable and excluded from the required Japanese set. Required
+resources must preserve the source ``translatable`` contract in Japanese.
 """
 
 from __future__ import annotations
@@ -206,6 +207,11 @@ def validate_pair(
             findings.append(
                 f"{japanese_source}: {name!r} kind mismatch: "
                 f"default={source_entry.kind}, ja={translated.kind}"
+            )
+        if source_entry.translatable != translated.translatable:
+            findings.append(
+                f"{japanese_source}: {name!r} translatable mismatch: "
+                f"default={source_entry.translatable}, ja={translated.translatable}"
             )
         if source_entry.value != translated.value:
             findings.append(

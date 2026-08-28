@@ -159,6 +159,7 @@ Stage A を阻害する未決定事項はない。Stage B で使う reviewer pai
 - 2026-08-28: Issue #161 の Stage A review（P1 × 2、P2 × 1）に対応。初回 full pass の全 inventory unit に独立 Reviewer A/B result を要求し、low/medium agreement と high-severity disagreement/ambiguity の扱いを分離した。bake-off には candidate 自己採点禁止、blind project-owner adjudication、per-item/aggregate 記録、safety/meaning-preservation hard failure を追加し、closing evidence に reviewer role/model/family-or-provider/session-or-context identity と例外理由を追加した。
 - 2026-08-28: リポジトリ所有者の承認を受領し、Stage A gate を `accepted` に更新。Stage B の実装を開始する。
 - 2026-08-28: Stage B の style guide、glossary、portable workflow、resource validator、全 223 unit の A/B review、24 unit の blind bake-off、承認済み日本語 resource 修正、AVD 表示検証を完了した。AC-161-01〜09 をローカル証拠で確認し、AC-161-10 は pushed PR head の CI `final-status` 待ちとして残す。
+- 2026-08-28: 実装レビューの P1/P2 指摘に対応し、最終 disposition と実変更を 82 件で一致させ、24 件の固定 bake-off context、Japanese 側 `translatable` 契約検証、lock 状態/action の再レビューを追加した。
 
 ## References
 
