@@ -60,9 +60,19 @@ Two surrounding facts bound the fix:
 - `tests/unit/app/lawnchair/organizer/application/adapter/FakeLayoutWriter.kt`
   bypasses the real `prepareApplyWriteSet` (it reuses `plan.intendedState`
   verbatim unless `materializedIntendedStateOverride` is set) and its
-  `recaptureDb`/`captureOf` return the stored state without reordering. Pure
-  `ApplyProtocolTest` fixtures therefore cannot reproduce this defect through
-  the fake alone; the failing path needs the real preparation logic.
+  `recaptureDb`/`captureOf` return the stored state without reordering.
+  Worse, `applyWriteSet` stores `writeSet.intendedState` into `stateRef` and
+  `recaptureDb` returns `captureOf(stateRef.get())` verbatim, so the A7
+  comparison degenerates to an identity check: even with real preparation
+  delegation, a pre-fix run would still pass A7. The device failure exists
+  because the two sides are computed by different rules (writer-side planner
+  order vs capture-side canonical order); the protocol oracle must reproduce
+  exactly that asymmetry, which the current fake collapses. This is the
+  review's blocking finding against the originally drafted AC-164-02.
+- `tests/organizer-instrumentation/app/lawnchair/organizer/application/RealAdapterRowMatrixInstrumentationTest.kt`
+  drives the real `RowManifestCodec.capture` against an in-memory
+  `SQLiteDatabase.create(null)` with exact schema-33 row round-trips; it is
+  the existing surface for asserting real capture-side mapping fidelity.
 - `LauncherLayoutAdapter` requires `Context`, `ModelDbController`, and
   `LauncherModel` (lines 65–69), so it is not constructible in JVM unit tests.
   The existing precedent for JVM-testable write-set logic is
@@ -92,23 +102,30 @@ ApplyProtocol.apply(ValidatedLayoutPlan) -> ApplyResult
 The internal contract of `prepareApplyWriteSet` is sharpened: the ready write
 set's `intendedState.items` are always in canonical `ItemId` UTF-8 byte order
 — the same order `RowManifestCodec.capture` produces — after persistent
-reference resolution. Candidate shape (final choice during implementation):
+reference resolution. Selected shape (per the owner review of 2026-08-28):
 
-1. Extract the pure computation of `LauncherLayoutAdapter.prepareApplyWriteSet`
-   (capture + plan → `WriteSetPreparation`) into an internal object in the
-   `application/actions/` package, following the existing
-   `RecoveryWriteSetMaterializer` pattern, with the adapter delegating to it.
-   This is the seam AC-164-01/02 tests drive on the JVM.
-2. Introduce one internal canonical item-order authority (a small comparator
+1. Introduce one internal canonical item-order authority (a small comparator
    or ordering function in the application module, e.g. under
    `application/canonical/`), used by both `RowManifestCodec.capture` and the
-   write-set preparation. `RowManifestCodec`'s output must remain
+   resolved-state finalization. `RowManifestCodec`'s output must remain
    byte-identical; only the duplicated ordering knowledge is unified.
-3. Apply the ordering to the resolved item list after
-   `resolvePersistentReferences` (the only point where every ref is a
-   persistent `ItemId`). Page ordering (`sortedBy { order }`), manifest row
-   ordering (`rows.sortedBy { it.rowId }`), id allocation, action list,
-   digests, and identity mapping are untouched.
+2. Extract the adapter's private `resolvePersistentReferences` extension and
+   add the new canonical finalization into one small pure internal seam
+   (resolution + finalization of the intended state). The adapter calls it
+   after `normalizeMaterializedPages`; the JVM tests call the same seam. The
+   finalization enforces fail-closed invariants: ordering is applied only
+   when every item reference is resolved to a persistent `ItemId`; the
+   `PlannedFolder`-stage list is never reordered; any unresolved reference
+   rejects preparation (`InvalidPlan`) instead of producing a fallback order.
+   Page ordering (`sortedBy { order }`), manifest row ordering
+   (`rows.sortedBy { it.rowId }`), id allocation, action list, digests, and
+   identity mapping are untouched.
+3. No full `prepareApplyWriteSet` extraction in this change. The production
+   fix is the minimal seam above; moving the whole preparation (id
+   allocation, row derivation, manifest/context-resource encoding) out of the
+   adapter is out of scope and requires an independently recorded
+   justification (e.g. separating materialization from Android dependencies)
+   — protocol-testability alone is not that justification.
 
 The materializer is deliberately not reordered: `plan.intendedState` cannot
 know final ids (`PlannedFolder` ordinals only), and ordering it by anything
@@ -132,11 +149,48 @@ Pre-fix, the intended side kept the new folder last; post-fix both sides are
 canonical by construction. Automatic recovery and explicit recovery flows are
 untouched and keep their existing verification.
 
+### Test oracles and path fidelity
+
+The protocol oracle must reproduce the device asymmetry, so both sides of the
+A7 comparison need independent fidelity:
+
+- **Writer side** (real production logic): the fixture runs the real
+  `OrganizationPlanMaterializer` on a default-workspace-shaped snapshot, the
+  fake assigns fixture identity the way production does (maximum row id + 1,
+  so the new folder's id byte-sorts mid-list), and the real extracted
+  resolution/finalization seam materializes the write set's intended state.
+  Only the identity assignment is fixture code; the ordering behavior under
+  test is production code on both the pre-fix and post-fix heads.
+- **Recapture side** (independent, production-equivalent capture semantics):
+  `FakeLayoutWriter.applyWriteSet` persists row-equivalent state (rowId tied
+  to the resolved persistent id, mirroring production where rowId == id), and
+  `recaptureDb` rebuilds the `CapturedSnapshot` from those rows: manifest rows
+  re-paired by rowId in enumeration order (so the manifest side keeps
+  matching, as on device) and `LayoutState` items re-derived and ordered by a
+  test-local implementation of the documented capture rule — `ItemId` UTF-8
+  byte order, mirroring `RowManifestCodec` without reusing the writer-side
+  authority. The recapture never echoes `writeSet.intendedState` verbatim.
+
+Pre-fix, the intended list keeps the folder last while the recapture sorts it
+mid-list: A7 fails exactly as on device (`manifestEqual=true`,
+`stateEqual=false`) and the protocol returns `APPLY_RECOVERED`. Post-fix, the
+finalized intended state is canonical and A7 passes. A supplementary
+instrumentation roundtrip (in-memory SQLite + real `RowManifestCodec.capture`,
+extending the `RealAdapterRowMatrixInstrumentationTest` pattern) asserts the
+real capture output equals the materialized intended state for the same
+fixture, covering the real capture-side row→item mapping rather than its
+test-local mirror. A full real-adapter `ApplyProtocol` instrumentation harness
+is not required: capture-side fidelity is covered by the real codec roundtrip,
+writer-side ordering by the real pure seam, and true end-to-end behavior by
+the AC-164-04 device evidence.
+
 ### Alternatives rejected
 
 | Alternative | Reason rejected |
 |---|---|
 | Make the A7 `LayoutState` comparison order-insensitive for items | Weakens the accepted exact-verification contract (spec 13 / PR #160 canonical order), changes public `LayoutState` equality semantics or adds a special-case comparison, and could mask genuine ordering regressions (e.g. nondeterministic writes). The issue's constraint is that a false `APPLY_VERIFIED` stays impossible; loosening equality moves the opposite direction. |
+| Recapture that echoes `writeSet.intendedState` (identity fake) or calls the writer-side authority to self-match | Collapses the two independent paths into one, so A7 passes pre-fix and the red→green oracle is vacuous (the review's blocking finding). |
+| Full `prepareApplyWriteSet` extraction as a prerequisite of the fix | The fix needs only the small resolution/finalization seam; wholesale relocation of allocation/row/manifest logic widens the risk surface without strengthening the oracle. If later needed, it requires its own independent justification (e.g. Android-free materialization). |
 | Sort new folders into canonical order inside `OrganizationPlanMaterializer` | Impossible as stated: the materializer only has `PlannedFolder(ordinal)` refs; persistent ids are allocated later in the adapter (`max rowId + 1`). Any materializer-side order would rely on guessing the allocator, duplicating its authority. |
 | Reorder the capture to the materializer's planner order | Reverts the accepted PR #160 canonical-capture fix and couples the capture's determinism to planner internals. |
 | Retry recapture until it matches, or delay/refresh before comparison | Masks divergence, adds nondeterministic latency, and violates the no-timing/retry shortcuts rule (AGENTS.md, spec 150 precedent). |
@@ -149,12 +203,12 @@ paths. This Stage A branch changes `spec.md` and `plan.md` only.
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `lawnchair/src/app/lawnchair/organizer/application/adapter/LauncherLayoutAdapter.kt` | Delegate `prepareApplyWriteSet`'s pure computation to the extracted preparation; apply canonical item ordering to the resolved intended state. | The only point where planned refs are resolved to persistent ids and the write set is finalized. |
-| `lawnchair/src/app/lawnchair/organizer/application/actions/` (new internal object, name TBD, e.g. `ApplyWriteSetMaterializer`) | Pure capture+plan → `WriteSetPreparation` computation extracted from the adapter. | JVM-testable seam (AC-164-01/02), mirrors `RecoveryWriteSetMaterializer`; no public contract change. |
+| `lawnchair/src/app/lawnchair/organizer/application/adapter/LauncherLayoutAdapter.kt` | Finalize the resolved intended state through the small pure seam (resolution + canonical finalization) before building the write set. | The only point where planned refs are resolved to persistent ids and the write set is finalized. |
+| `lawnchair/src/app/lawnchair/organizer/application/actions/` or `.../canonical/` (new small internal seam, name TBD) | The extracted `resolvePersistentReferences` plus canonical finalization (shared order authority, fail-closed unresolved-reference rejection). | Minimal JVM-testable seam for AC-164-01/02; no public contract change; no full preparation extraction. |
 | `lawnchair/src/app/lawnchair/organizer/application/adapter/RowManifestCodec.kt` | Use the shared canonical-order authority instead of its local `sortedBy { ItemId(...) }`; output byte-identical. | Single canonical-order authority (AC-164-03); prevents future divergence. |
-| `lawnchair/src/app/lawnchair/organizer/application/canonical/` (or the actions object) | The shared canonical item-order comparator/function. | Internal authority for the ordering rule; no public exposure. |
-| `tests/unit/app/lawnchair/organizer/application/` (new/existing unit tests) | Failing-path fixture: plan creating a new folder whose allocated id byte-sorts mid-list (e.g. existing ids up to 18 → folder id 19, or ids 1–9 → folder id 10); assertions on canonical order, determinism, protocol outcome, and mismatch-injection recovery. | The materializer/apply seam oracle required by the issue's acceptance. |
-| `tests/unit/app/lawnchair/organizer/application/adapter/FakeLayoutWriter.kt` | Only if the protocol test needs it: let the fake delegate preparation to the real extracted path so the protocol seam exercises production ordering. | Keeps the protocol test honest without an Android-free reimplementation of canonicalization. |
+| `tests/unit/app/lawnchair/organizer/application/` (new/existing unit tests) | Failing-path fixtures: a new folder whose allocated id byte-sorts mid-list (e.g. existing ids up to 18 → folder id 19, or ids 1–9 → folder id 10); canonical-order, determinism, and fail-closed unresolved-ref assertions; mismatch-injection recovery stays green. | The materializer/apply seam oracle required by the issue's acceptance. |
+| `tests/unit/app/lawnchair/organizer/application/adapter/FakeLayoutWriter.kt` | Writer side: materialize via the real materializer and the real resolution/finalization seam with fixture identity (max row id + 1). Recapture side: rebuild state and manifest independently from persisted-row-equivalent rows with capture-side canonical semantics — never echoing the intended state and never using the writer-side authority. | Reproduces the device asymmetry so AC-164-02 is red pre-fix; both oracle paths keep production fidelity. |
+| `tests/organizer-instrumentation/app/lawnchair/organizer/application/RealAdapterRowMatrixInstrumentationTest.kt` (or a sibling) | Add a new-folder mid-list-id case: in-memory SQLite rows → real `RowManifestCodec.capture` output equals the materialized intended state. | Real capture-side mapping fidelity behind the JVM mirror. |
 | `docs/assessment/pr-<PR>-new-folder-a7-item-order.md` | Independent high-risk audit record after implementation CI succeeds. | Required by `AGENTS.md` for `risk: layout-data`. |
 | Follow-up lockout issue | Opened by the issue owner (or the Stage B PR) with an observable diagnostic code; linked from here and from #164. | AC-164-06; no tentative number per `AGENTS.md`. |
 
@@ -179,8 +233,8 @@ schema.
 
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
-| AC-164-01 | Red→green JVM unit test at the extracted write-set preparation with the mid-list new-folder fixture. | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.application.*'` |
-| AC-164-02 | Protocol seam test: pre-fix recovered outcome recorded, post-fix `Applied`; mismatch-injection still recovers safely. | Same command, protocol test class; pre-fix failure recorded in the PR before the production change. |
+| AC-164-01 | Red→green JVM unit test through the real materializer + resolution/finalization seam with the mid-list new-folder fixture. | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.application.*'` |
+| AC-164-02 | Protocol seam test with the independent persisted-row-equivalent recapture: pre-fix `APPLY_RECOVERED`/`VERIFICATION_FAILED` recorded, post-fix `Applied`; mismatch-injection still recovers safely; real-capture roundtrip via the new-folder instrumentation case. | Same command, protocol test class (pre-fix failure recorded in the PR before the production change); instrumentation case on the API 36.1 device/AVD with the exact command recorded in PR evidence once verified. |
 | AC-164-03 | Shared-authority unit tests + determinism/byte-identical assertions; full organizer unit suite green. | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
 | AC-164-04 | Pixel 9a / API 36 default-workspace debug and release runs reaching A8 with a new folder; redacted journal export; exact head SHA recorded. | `./gradlew assembleLawnWithQuickstepGithubDebug` / `...Release`; manual Settings flow per the issue; supported diagnostics export. |
 | AC-164-05 | Explicit recovery preview/confirm after a verified apply; journal shows `RECOVERY_REQUESTED`/`RECOVERY_RESTORED` with matching `pointOriginRunId`. | Same device; supported Settings diagnostics export. |
@@ -210,11 +264,14 @@ journal phase sequence, and redacted invariant results only.
 
 ## Execution checklist (Stage B, after acceptance)
 
-- [ ] Reproduce the divergence in a red unit test at the extracted/real
-  write-set preparation seam before touching production code.
-- [ ] Implement the smallest canonicalization at the resolved write-set
-  boundary with the shared ordering authority.
-- [ ] Flip the protocol-seam test and keep mismatch-injection recovery green.
+- [ ] Reproduce the divergence in a red unit test through the real
+  materializer + resolution/finalization seam before touching production code.
+- [ ] Implement the minimal canonical finalization with the shared ordering
+  authority and the fail-closed invariants (no `PlannedFolder`-stage
+  reordering, no fallback order on unresolved refs).
+- [ ] Flip the protocol-seam test with the independent persisted-row-equivalent
+  recapture, add the real-capture instrumentation roundtrip, and keep
+  mismatch-injection recovery green.
 - [ ] Run the full organizer unit suite, formatting, and debug build.
 - [ ] Device evidence: default-workspace new-folder run to A8 (debug +
   release) and explicit recovery correlation on the Issue #164 environment.
@@ -233,8 +290,15 @@ if:
 2. The fix requires changing `LayoutState` equality, the A7 comparison, the
    planner contract, a public organizer API, the diagnostics schema, or any
    Launcher3 bridge file.
-3. A test passes only with a delay, retry, weakened comparison, or a fake that
-   reimplements (rather than delegates to) the production preparation.
+3. A test passes only with a delay, retry, weakened comparison, or an oracle
+   whose two sides are not independent: a recapture that echoes
+   `writeSet.intendedState`, a recapture that reuses the writer-side
+   canonicalization authority, or a writer side that is a fake
+   reimplementation of the ordering logic under test. Fixture identity
+   assignment (id allocation) is acceptable; the ordering behavior must come
+   from production code on the writer side and from production code or an
+   independent implementation of the documented capture rule on the recapture
+   side.
 4. Device evidence shows a different root (e.g. manifest divergence, page
    normalization, profile/capability mismatch) — split that cause into its own
    issue instead of masking it here.
@@ -264,3 +328,14 @@ audit requires a new CI result and audit.
   authority) with rejected alternatives, the JVM test seam via the
   `RecoveryWriteSetMaterializer`-pattern extraction, device/recovery evidence
   requirements, and the tombstone-lockout split decision.
+- 2026-08-28: Revised after the owner's Spec/Plan review (Request changes).
+  Blocking adopted: the previous protocol-oracle design could not turn red
+  pre-fix because `FakeLayoutWriter` echoes the write set's intended state in
+  its recapture; AC-164-02 now requires an independent persisted-row-equivalent
+  recapture with production-equivalent capture semantics plus a real
+  `RowManifestCodec.capture` instrumentation roundtrip. Recommended items
+  adopted: the production change narrowed to the minimal pure seam (shared
+  order authority + resolved-state finalization; no full preparation
+  extraction without an independent justification), and the canonicalization
+  preconditions made explicit fail-closed invariants. Stop conditions now
+  require two-sided oracle independence.

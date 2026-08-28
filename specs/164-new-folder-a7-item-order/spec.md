@@ -56,13 +56,18 @@ match. Explicit recovery after a verified apply keeps `RECOVERY_REQUESTED` /
 - Make the materialized apply write set's intended state — after persistent
   reference resolution, when the new folder's real id is known — present its
   items in the canonical `ItemId` UTF-8 byte order that
-  `RowManifestCodec.capture` already produces.
+  `RowManifestCodec.capture` already produces. Canonicalization happens only
+  at that resolved boundary: never at the `PlannedFolder` stage, never as a
+  fallback order while any unresolved reference remains, and with a fail-closed
+  rejection instead of an invented order.
 - Keep one internal authority for the canonical item order, shared by the
-  capture and the write-set preparation, so the two sides cannot diverge again.
+  capture and the resolved-state finalization, so the two sides cannot diverge
+  again.
 - Add a failing-path regression test at the materializer/apply seam for a plan
-  whose new folder id byte-sorts mid-list, plus coverage for the protocol
-  outcome (pre-fix `APPLY_RECOVERED`, post-fix `Applied`) and for the
-  no-weakening property that a genuine DB mismatch still fails A7.
+  whose new folder id byte-sorts mid-list, plus a protocol regression whose A7
+  recapture is independently reconstructed with production-equivalent capture
+  semantics (the recapture must not echo the write set's intended state), and
+  the no-weakening property that a genuine DB mismatch still fails A7.
 - Record device evidence per the issue acceptance: a new-folder run reaching
   A8 on the default 4x5 workspace, and explicit recovery correlation.
 - Split the 24-hour recovery-point tombstone lockout interaction (three
@@ -116,7 +121,7 @@ And the exact A7 comparison succeeds and the run reaches `APPLY_VERIFIED` (A8)
 And the recovery point advances to `VERIFIED` and the journal emits
 `APPLY_VERIFIED`.
 
-### Scenario: the pre-fix divergence is reproduced by a failing test
+### Scenario: the pre-fix divergence is reproduced by failing tests
 
 Given a test fixture at the materializer/apply write-set seam whose plan
 creates a new folder with an allocated id that byte-sorts mid-list
@@ -124,9 +129,18 @@ When the write set is prepared and compared against a canonical recapture of
 the same rows
 Then the test fails before the fix (intended items keep the new folder last,
 the canonical recapture sorts it mid-list) and after the fix both sides are in
-canonical order
-And the same fixture drives the protocol outcome: pre-fix
-`APPLY_RECOVERED` via `APPLY_FAILURE.VERIFICATION_FAILED`, post-fix `Applied`.
+canonical order.
+
+Given the same fixture driven through the apply protocol end to end
+When the A7 recapture is reconstructed independently from persisted-row
+equivalent state using production-equivalent canonical capture behavior
+Then the run fails before the fix with `APPLY_RECOVERED` via
+`APPLY_FAILURE.VERIFICATION_FAILED` at stage A7 — while the manifest side
+still matches, reproducing the device asymmetry — and reaches `Applied` after
+the fix
+And the recapture never echoes the write set's intended state verbatim and
+never calls the writer-side canonicalization authority to make the
+comparison pass.
 
 ### Scenario: multiple new folders and boundary ids stay canonical
 
@@ -180,6 +194,13 @@ And this work changes no retention or recovery-store behavior.
   order is presentation order of the same item set, not a data change: row
   contents, row ids, manifest rows, page order, and folder member ranks are
   unchanged.
+- The canonical ordering is governed by explicit invariants, not
+  implementation choices: (1) ordering is applied only after every item
+  reference is resolved to a persistent `ItemId`; (2) the `PlannedFolder`-stage
+  list is never reordered; (3) if any unresolved reference remains at
+  finalization, preparation fails closed (`InvalidPlan`) — no fallback or
+  partially ordered presentation; (4) the rule is exactly the existing
+  `ItemId` UTF-8 byte order.
 - All item types keep their existing treatment; the reordering covers
   applications, shortcuts, folders, widgets, app pairs, and folder children
   uniformly as `CanonicalItemState` entries.
@@ -211,11 +232,17 @@ is unchanged.
   folder last while a canonical recapture of the same rows sorts it mid-list;
   post-fix both sides are in canonical `ItemId` byte order. The A7 comparison
   itself is unchanged.
-- [ ] **AC-164-02 — Protocol outcome flips only by the order fix:** The same
-  fixture drives `ApplyProtocol` end to end: pre-fix
-  `APPLY_RECOVERED`/`APPLY_FAILURE.VERIFICATION_FAILED` at stage A7; post-fix
-  `Applied`/A8; and an injected genuine DB mismatch still yields the typed
-  failure with safe automatic recovery (no weakening, no false success).
+- [ ] **AC-164-02 — Independent-recapture protocol regression:** The same
+  fixture drives `ApplyProtocol` end to end, and the A7 recapture is
+  independently reconstructed from persisted-row-equivalent state using
+  production-equivalent canonical capture behavior. The fixture must
+  demonstrably fail at A7 against the pre-fix writer preparation (with the
+  manifest side still matching, reproducing the device asymmetry) and pass
+  after the writer-side canonicalization. The recapture must not echo
+  `writeSet.intendedState` verbatim and must not call the writer-side
+  canonicalization authority. An injected genuine DB mismatch still yields
+  the typed failure with safe automatic recovery (no weakening, no false
+  success).
 - [ ] **AC-164-03 — Canonical order is single-sourced and deterministic:**
   Capture and write-set preparation use one internal canonical-order
   authority; repeated preparation of the same plan (including multi-folder and
@@ -243,8 +270,8 @@ is unchanged.
 
 | AC | Evidence |
 |---|---|
-| AC-164-01 | JVM unit test at the extracted/real write-set preparation seam with a new-folder fixture whose allocated id byte-sorts mid-list; red before the fix, green after. |
-| AC-164-02 | `ApplyProtocolTest` (or equivalent protocol seam) using the real preparation path: pre-fix recovered outcome, post-fix applied outcome, plus mismatch-injection recovery cases. |
+| AC-164-01 | JVM unit test driving the real materializer and the real resolved-state resolution/finalization seam with a new-folder fixture whose allocated id byte-sorts mid-list; red before the fix, green after. |
+| AC-164-02 | JVM protocol test (`ApplyProtocolTest` seam) whose fake writer exercises the real materialization/resolution path and whose `recaptureDb` independently rebuilds state from persisted-row-equivalent rows with capture-side canonical semantics (no verbatim echo, no shared writer-side helper); red pre-fix, green post-fix. Reinforced by an in-memory-SQLite instrumentation roundtrip asserting the real `RowManifestCodec.capture` output equals the materialized intended state for the same fixture. Mismatch-injection recovery cases stay green. |
 | AC-164-03 | Unit tests for the shared canonical-order authority across capture and preparation; determinism/byte-identical assertions for repeated preparation, multi-folder, and id-boundary fixtures; existing organizer unit suite stays green. |
 | AC-164-04 | Pixel 9a / API 36 default-workspace debug and release runs; supported Settings diagnostics export showing `CHECKPOINTED → APPLY_COMMITTED → APPLY_VERIFIED`; recorded exact head SHA. |
 | AC-164-05 | Same device evidence: explicit recovery preview/confirm with `RECOVERY_REQUESTED`/`RECOVERY_RESTORED` and matching `pointOriginRunId`. |
@@ -253,12 +280,14 @@ is unchanged.
 
 ## Open questions
 
-- The exact internal shape of the shared canonical-order authority (a small
-  comparator/object in the application module versus a method reused by
-  `RowManifestCodec`) and whether the pure write-set preparation is extracted
-  from `LauncherLayoutAdapter` for JVM testability are implementation choices
-  the plan bounds; both must keep capture output byte-identical and public
-  shapes unchanged.
+- Resolved by review (2026-08-28): the production change is the minimal pure
+  seam — the shared canonical-order authority plus resolved-state resolution/
+  finalization — not a full `prepareApplyWriteSet` extraction. A full
+  extraction happens only with an independently recorded justification (e.g.
+  separating materialization from Android dependencies), never as a
+  prerequisite of this fix. The remaining implementation choice is the
+  internal placement/naming of that small authority; capture output must stay
+  byte-identical and public shapes unchanged.
 - The follow-up lockout issue is opened upon (or before) Stage B merge; its
   number is recorded then. Per `AGENTS.md` no tentative issue number is
   assigned in this directory.
@@ -270,3 +299,12 @@ is unchanged.
   (`OrganizationPlanMaterializer`, `LauncherLayoutAdapter` write-set
   preparation, `RowManifestCodec.capture`, `ApplyProtocol` A7), and accepted
   specs 13/52/150 with ADR-0003.
+- 2026-08-28: Revised after the owner's Spec/Plan review (Request changes) on
+  Issue #164. AC-164-02 now requires an independent-recapture protocol oracle
+  (persisted-row-equivalent reconstruction with production-equivalent capture
+  semantics; no verbatim echo of the intended state and no reuse of the
+  writer-side authority), the production change is narrowed to the minimal
+  pure seam (shared order authority plus resolved-state finalization; no full
+  preparation extraction without an independent justification), and the
+  canonicalization preconditions are recorded as explicit fail-closed
+  invariants.
