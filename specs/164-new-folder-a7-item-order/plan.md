@@ -1,0 +1,266 @@
+# Implementation Plan: New-folder plans reach A8 (canonical intended-state item order)
+
+> Issue: [#164](https://github.com/nunu1733/NunuLauncher/issues/164)
+> Spec: [spec.md](./spec.md)
+> Status: draft (Stage A — awaiting spec/plan review; no production behavior
+> change happens under this branch)
+> Risk: `layout-data`
+> Evidence baseline: Issue #164 reproduction at `92a490a2f8` (release) and
+> `c68abcce62` (debug reproduction build), both on the device environment
+> recorded in the issue.
+
+## Current evidence
+
+### Confirmed production paths (read at `c68abcce62`, 2026-08-28)
+
+The defect chain the issue reports is confirmed in the source, step by step:
+
+- `lawnchair/src/app/lawnchair/organizer/application/actions/OrganizationPlanMaterializer.kt`
+  builds the intended items as planner-ordered existing items with new folders
+  appended last (`val allItems = (originalItems.values + folderItems)`, line
+  83) and hands the resulting `intendedState` to `ValidatedLayoutPlan`
+  (lines 112–116). At this stage new folders are `ApplicationItemRef.PlannedFolder`
+  refs; their persistent ids do not exist yet.
+- `lawnchair/src/app/lawnchair/organizer/application/adapter/LauncherLayoutAdapter.kt`
+  `prepareApplyWriteSet` allocates persistent ids in intended-items order
+  (`nextId = max rowId + 1`, lines 182, 206–212) and resolves
+  `PlannedFolder → PersistentItem` while preserving the list order
+  (`resolvePersistentReferences`, lines 225, 494–549). The materialized
+  write set's `intendedState` therefore keeps the new folder last — here,
+  carrying the device case's id `19`.
+- `lawnchair/src/app/lawnchair/organizer/application/adapter/RowManifestCodec.kt`
+  `capture` sorts canonical items by `ItemId` UTF-8 byte order (lines 95–103,
+  the PR #160 canonical-order fix, which documents that "A7 verification
+  compares LayoutState exactly"). `Item.compareTo` is
+  `compareUtf8Bytes` (`lawnchair/src/app/lawnchair/organizer/planning/Identity.kt`
+  lines 3–21), under which `"19" < "2"`.
+- `lawnchair/src/app/lawnchair/organizer/application/protocol/ApplyProtocol.kt`
+  A7 requires `db.layoutState == writeSet.intendedState &&
+  db.manifest == writeSet.intendedManifest` (lines 333–341) and routes any
+  mismatch to `automaticRecovery(..., ApplyFailure.VERIFICATION_FAILED, ...)`.
+  `LayoutState` is a data class; `items` equality is order-sensitive, so the
+  appended-last folder guarantees the mismatch. This matches the issue's
+  diagnostic log (`stateEqual=false manifestEqual=true`, both sides at 18
+  items, differing only in item order) and its ~630 ms failure timing (not the
+  #150-era 10 s timeout shape).
+
+Two surrounding facts bound the fix:
+
+- Id allocation is already order-independent by design: the adapter comments
+  that "a folder child can precede its planned folder in the canonical item
+  order, so IDs must not depend on the order in which rowFor happens to be
+  called" (lines 203–205). Reordering the resolved intended items therefore
+  cannot change ids, rows, or manifest content.
+- The A7 manifest side already coincides (`manifestEqual=true` on device;
+  the intended manifest is `rows.sortedBy { it.rowId }`, line 238). Only the
+  `LayoutState.items` list order diverges.
+
+### Test-seam facts
+
+- `tests/unit/app/lawnchair/organizer/application/adapter/FakeLayoutWriter.kt`
+  bypasses the real `prepareApplyWriteSet` (it reuses `plan.intendedState`
+  verbatim unless `materializedIntendedStateOverride` is set) and its
+  `recaptureDb`/`captureOf` return the stored state without reordering. Pure
+  `ApplyProtocolTest` fixtures therefore cannot reproduce this defect through
+  the fake alone; the failing path needs the real preparation logic.
+- `LauncherLayoutAdapter` requires `Context`, `ModelDbController`, and
+  `LauncherModel` (lines 65–69), so it is not constructible in JVM unit tests.
+  The existing precedent for JVM-testable write-set logic is
+  `RecoveryWriteSetMaterializer` (`application/actions/`) with
+  `RecoveryWriteSetTest`; `RealAdapterRowMatrixInstrumentationTest` is the
+  instrumentation surface for the real adapter.
+- `RetentionPolicy` (`application/lifecycle/RetentionPolicy.kt`, unit-covered
+  by `RetentionPolicyTest`) implements the issue's secondary finding: up to
+  three non-expired points, 24 h tombstone retention. With the A7 fix, three
+  recovered runs in 24 h remain reachable only through genuine recoveries;
+  the fourth attempt is rejected at A4 with
+  `PRE_WRITE_REJECTED.RECOVERY_STORE_UNAVAILABLE`
+  (`RecoveryStoreLifecycleTest` is the instrumentation seam for this
+  interaction).
+
+## Design
+
+### Modules and interfaces
+
+Public application and diagnostics contracts are unchanged:
+
+```text
+LayoutWriterPort.prepareApplyWriteSet(capture, plan) -> WriteSetPreparation
+ApplyProtocol.apply(ValidatedLayoutPlan) -> ApplyResult
+```
+
+The internal contract of `prepareApplyWriteSet` is sharpened: the ready write
+set's `intendedState.items` are always in canonical `ItemId` UTF-8 byte order
+— the same order `RowManifestCodec.capture` produces — after persistent
+reference resolution. Candidate shape (final choice during implementation):
+
+1. Extract the pure computation of `LauncherLayoutAdapter.prepareApplyWriteSet`
+   (capture + plan → `WriteSetPreparation`) into an internal object in the
+   `application/actions/` package, following the existing
+   `RecoveryWriteSetMaterializer` pattern, with the adapter delegating to it.
+   This is the seam AC-164-01/02 tests drive on the JVM.
+2. Introduce one internal canonical item-order authority (a small comparator
+   or ordering function in the application module, e.g. under
+   `application/canonical/`), used by both `RowManifestCodec.capture` and the
+   write-set preparation. `RowManifestCodec`'s output must remain
+   byte-identical; only the duplicated ordering knowledge is unified.
+3. Apply the ordering to the resolved item list after
+   `resolvePersistentReferences` (the only point where every ref is a
+   persistent `ItemId`). Page ordering (`sortedBy { order }`), manifest row
+   ordering (`rows.sortedBy { it.rowId }`), id allocation, action list,
+   digests, and identity mapping are untouched.
+
+The materializer is deliberately not reordered: `plan.intendedState` cannot
+know final ids (`PlannedFolder` ordinals only), and ordering it by anything
+other than the eventual persistent id would guess the adapter's allocation
+authority. The single canonicalization point is the write-set boundary.
+
+### Data flow
+
+```text
+A6 commit
+  -> COMMITTED_UNVERIFIED
+  -> correlated reload Completed (unchanged, #150/#160 barrier)
+  -> independent DB recapture: capture-side items in canonical ItemId order
+     (unchanged)
+  -> exact comparison: writeSet.intendedState (NOW canonical ItemId order
+     after reference resolution) == db.layoutState
+  -> A8 VERIFIED
+```
+
+Pre-fix, the intended side kept the new folder last; post-fix both sides are
+canonical by construction. Automatic recovery and explicit recovery flows are
+untouched and keep their existing verification.
+
+### Alternatives rejected
+
+| Alternative | Reason rejected |
+|---|---|
+| Make the A7 `LayoutState` comparison order-insensitive for items | Weakens the accepted exact-verification contract (spec 13 / PR #160 canonical order), changes public `LayoutState` equality semantics or adds a special-case comparison, and could mask genuine ordering regressions (e.g. nondeterministic writes). The issue's constraint is that a false `APPLY_VERIFIED` stays impossible; loosening equality moves the opposite direction. |
+| Sort new folders into canonical order inside `OrganizationPlanMaterializer` | Impossible as stated: the materializer only has `PlannedFolder(ordinal)` refs; persistent ids are allocated later in the adapter (`max rowId + 1`). Any materializer-side order would rely on guessing the allocator, duplicating its authority. |
+| Reorder the capture to the materializer's planner order | Reverts the accepted PR #160 canonical-capture fix and couples the capture's determinism to planner internals. |
+| Retry recapture until it matches, or delay/refresh before comparison | Masks divergence, adds nondeterministic latency, and violates the no-timing/retry shortcuts rule (AGENTS.md, spec 150 precedent). |
+| Fix the tombstone lockout (retention/admission change) in this work | A recovery-store policy change needs its own spec/risk review (ADR-0003 ownership); the issue explicitly allows splitting it. With the A7 fix the lockout is reachable only via genuine recoveries. |
+
+## Change set
+
+Only implementation work after this spec is accepted should touch production
+paths. This Stage A branch changes `spec.md` and `plan.md` only.
+
+| Area | Intended change | Why here |
+|---|---|---|
+| `lawnchair/src/app/lawnchair/organizer/application/adapter/LauncherLayoutAdapter.kt` | Delegate `prepareApplyWriteSet`'s pure computation to the extracted preparation; apply canonical item ordering to the resolved intended state. | The only point where planned refs are resolved to persistent ids and the write set is finalized. |
+| `lawnchair/src/app/lawnchair/organizer/application/actions/` (new internal object, name TBD, e.g. `ApplyWriteSetMaterializer`) | Pure capture+plan → `WriteSetPreparation` computation extracted from the adapter. | JVM-testable seam (AC-164-01/02), mirrors `RecoveryWriteSetMaterializer`; no public contract change. |
+| `lawnchair/src/app/lawnchair/organizer/application/adapter/RowManifestCodec.kt` | Use the shared canonical-order authority instead of its local `sortedBy { ItemId(...) }`; output byte-identical. | Single canonical-order authority (AC-164-03); prevents future divergence. |
+| `lawnchair/src/app/lawnchair/organizer/application/canonical/` (or the actions object) | The shared canonical item-order comparator/function. | Internal authority for the ordering rule; no public exposure. |
+| `tests/unit/app/lawnchair/organizer/application/` (new/existing unit tests) | Failing-path fixture: plan creating a new folder whose allocated id byte-sorts mid-list (e.g. existing ids up to 18 → folder id 19, or ids 1–9 → folder id 10); assertions on canonical order, determinism, protocol outcome, and mismatch-injection recovery. | The materializer/apply seam oracle required by the issue's acceptance. |
+| `tests/unit/app/lawnchair/organizer/application/adapter/FakeLayoutWriter.kt` | Only if the protocol test needs it: let the fake delegate preparation to the real extracted path so the protocol seam exercises production ordering. | Keeps the protocol test honest without an Android-free reimplementation of canonicalization. |
+| `docs/assessment/pr-<PR>-new-folder-a7-item-order.md` | Independent high-risk audit record after implementation CI succeeds. | Required by `AGENTS.md` for `risk: layout-data`. |
+| Follow-up lockout issue | Opened by the issue owner (or the Stage B PR) with an observable diagnostic code; linked from here and from #164. | AC-164-06; no tentative number per `AGENTS.md`. |
+
+No change to `specs/13`, `specs/52`, `specs/150`, `specs/83`, `ADR-0003`,
+database schema, recovery store, backup allowlist, planner, or diagnostics
+schema.
+
+## Migration and recovery
+
+- **Database/recovery migration:** none. No schema, recovery format, journal,
+  preference, or backup files change.
+- **Runtime rollback:** reverting the source restores prior behavior with no
+  data conversion. The reintroduced failure mode is the safe deterministic
+  `APPLY_RECOVERED`, never a corrupt or lost layout (the issue's row-level
+  evidence: pre/post rows byte-identical across recovery).
+- **Apply rollback:** existing A7 failure → automatic recovery semantics are
+  unchanged and must remain green under mismatch injection.
+- **Backup/restore:** unchanged; the intended state is transient and never
+  persisted outside the write set.
+
+## Verification
+
+| Acceptance criterion | Automated/manual evidence | Command or environment |
+|---|---|---|
+| AC-164-01 | Red→green JVM unit test at the extracted write-set preparation with the mid-list new-folder fixture. | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.application.*'` |
+| AC-164-02 | Protocol seam test: pre-fix recovered outcome recorded, post-fix `Applied`; mismatch-injection still recovers safely. | Same command, protocol test class; pre-fix failure recorded in the PR before the production change. |
+| AC-164-03 | Shared-authority unit tests + determinism/byte-identical assertions; full organizer unit suite green. | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
+| AC-164-04 | Pixel 9a / API 36 default-workspace debug and release runs reaching A8 with a new folder; redacted journal export; exact head SHA recorded. | `./gradlew assembleLawnWithQuickstepGithubDebug` / `...Release`; manual Settings flow per the issue; supported diagnostics export. |
+| AC-164-05 | Explicit recovery preview/confirm after a verified apply; journal shows `RECOVERY_REQUESTED`/`RECOVERY_RESTORED` with matching `pointOriginRunId`. | Same device; supported Settings diagnostics export. |
+| AC-164-06 | Follow-up issue link with observable diagnostic code recorded in this spec's history. | Issue link before #164 closes. |
+| AC-164-07 | Formatting, build, repository-contract checks, CI merge gate, independent audit on the exact head. | `./gradlew spotlessCheck`; `./gradlew assembleLawnWithQuickstepGithubDebug`; `python3 tools/repo-contract/validate_repo_contract.py`; `python3 tools/repo-contract/test_validate_repo_contract.py`; `python3 tools/repo-contract/test_validate_high_risk_evidence.py`; PR `CI / final-status`. |
+
+Commands follow [building.md](../../docs/engineering/building.md) on a clean,
+submodule-initialized checkout; commands not executed must not be reported as
+passing. Device evidence records build type, device/OS, grid, tested commit,
+journal phase sequence, and redacted invariant results only.
+
+## Documentation updates
+
+- [ ] This spec and plan: `draft` → `accepted` after Stage A review (owner
+  approval, including the tombstone-split decision and the chosen fix
+  direction); → `implemented` after Stage B evidence.
+- [ ] `CONTEXT.md`: no change expected (no new domain term).
+- [ ] `DESIGN.md`: no change expected (no system-level seam change; the
+  extraction stays inside the Layout Application module's internal
+  structure). Stop and review if the shared ordering authority crosses a
+  module boundary.
+- [ ] ADR: none expected. Create one only if implementation turns the
+  canonical-order authority or the write-set extraction into a
+  cross-module/persistence decision.
+- [ ] `AGENTS.md`: no change expected; no new verified command.
+- [ ] Follow-up lockout issue: link recorded here and in #164 when opened.
+
+## Execution checklist (Stage B, after acceptance)
+
+- [ ] Reproduce the divergence in a red unit test at the extracted/real
+  write-set preparation seam before touching production code.
+- [ ] Implement the smallest canonicalization at the resolved write-set
+  boundary with the shared ordering authority.
+- [ ] Flip the protocol-seam test and keep mismatch-injection recovery green.
+- [ ] Run the full organizer unit suite, formatting, and debug build.
+- [ ] Device evidence: default-workspace new-folder run to A8 (debug +
+  release) and explicit recovery correlation on the Issue #164 environment.
+- [ ] Open/link the tombstone-lockout follow-up issue.
+- [ ] Record PR evidence, pass `CI / final-status` on the exact head, and
+  obtain the independent `risk: layout-data` audit.
+
+## Stop conditions
+
+Stop implementation and return to the owning Issue/spec before changing code
+if:
+
+1. The canonical ordering of the resolved intended state cannot be made
+   deterministic without changing id allocation, row contents, manifest row
+   order, or the action list.
+2. The fix requires changing `LayoutState` equality, the A7 comparison, the
+   planner contract, a public organizer API, the diagnostics schema, or any
+   Launcher3 bridge file.
+3. A test passes only with a delay, retry, weakened comparison, or a fake that
+   reimplements (rather than delegates to) the production preparation.
+4. Device evidence shows a different root (e.g. manifest divergence, page
+   normalization, profile/capability mismatch) — split that cause into its own
+   issue instead of masking it here.
+5. The tombstone lockout cannot be split cleanly (e.g. the A7 fix cannot be
+   verified without changing retention) — resolve ownership with the recovery
+   store owner first.
+6. Automatic or explicit recovery ever loses a point, changes a locked
+   placement, or reports success without exact verification — preserve
+   evidence and return to the spec 13 recovery owner.
+
+## High-risk merge gate
+
+`risk: layout-data` applies. The Stage B PR must include `Closes #164`, map
+evidence to AC-164-01…07, pass `CI / final-status` on the exact head SHA, and
+then receive an independent audit record
+(`docs/assessment/pr-<PR-number>-new-folder-a7-item-order.md`) authored by a
+separate session/agent with the exact 40-character head SHA, CI run links,
+referenced spec/ADR criteria, and test surfaces. Any source change after the
+audit requires a new CI result and audit.
+
+## Change history
+
+- 2026-08-28: Stage A draft created for Issue #164. Records the confirmed
+  defect chain (materializer append-last → adapter id allocation/resolution →
+  capture canonical order → exact A7 comparison), the chosen fix direction
+  (canonicalize the resolved write-set intended state with a shared ordering
+  authority) with rejected alternatives, the JVM test seam via the
+  `RecoveryWriteSetMaterializer`-pattern extraction, device/recovery evidence
+  requirements, and the tombstone-lockout split decision.
