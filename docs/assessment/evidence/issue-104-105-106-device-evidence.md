@@ -111,6 +111,107 @@ fields outside the approved event representation.
   reach; no run can currently complete verification on-device. #104 stays open
   for that leg.
 
+## Addendum (2026-08-28): the `pointOriginRunId` leg, captured after #150
+
+> Status: Durable redacted subset — closes the one leg the 2026-08-26 capture
+> left blocked
+> Source commit: `0a43f616b4` (`main`; production sources identical to the
+> PR #160 implementation head `44b4bad0c2` — later commits touch only `tests/`
+> and `docs/`)
+> Debug APK: `Lawnchair.15.Dev.(0a43f61).github.debug.apk`, SHA-256
+> `a53506f659b0534bcbacc02f73fd7eeaa5995c8a46b21b34bd10a33f8aa5a7dd`
+> (`app.lawnchair.debug`), fresh install (`pm clear`) set as HOME
+> Runtime: `nunu_qpr2_api36_1` AVD (Pixel 6 definition, Google APIs arm64-v8a),
+> Android 16 / API 36, 1080x2400 @ 420 dpi, 4x5 grid, `emulator-5554`.
+> Only contract-allowed fields (random opaque correlation IDs, phase/stage
+> codes, counts, lifecycle names) are quoted below. No raw layout data,
+> package names, component names, or coordinates.
+
+With [#150](https://github.com/nunu1733/NunuLauncher/issues/150) fixed
+(PR #160), a run reaches `APPLY_VERIFIED`, so the explicit recovery flow — the
+only surface that projects `pointOriginRunId` onto the journal — is reachable.
+
+### Procedure (exact)
+
+1. Settings → Home screen → Organize home layout → **Review organization** →
+   **Apply reviewed organization**. The apply reached `APPLY_VERIFIED` (A8);
+   UI: "Organization was applied and verified." Journal sequence 1–8:
+   `RUN_STARTED`, `CAPTURED`, `PLANNED`, `PREVIEWED`, `USER_CONFIRMED`,
+   `CHECKPOINTED` (A4), `APPLY_COMMITTED` (A6), `APPLY_VERIFIED` (A8), all with
+   run `d93238d0…` and point `40b608ec…`.
+2. **Restore the previous layout** → preview → **Restore saved layout**
+   (confirmed 10:40:49 device-local). `RECOVERY_REQUESTED` was journaled
+   (sequence 9) at **10:40:49.234** carrying
+   `pointId=40b608ec…` and `pointOriginRunId=d93238d0…` — the origin run ID of
+   the verified apply.
+3. Process interruption: a device-side watcher polled the journal and ran
+   `adb shell am force-stop app.lawnchair.debug` **40 ms** after
+   `RECOVERY_REQUESTED` was persisted (**10:40:49.274**); empty `pidof`
+   confirmed process death. The recovery record was left mid-restore in
+   lifecycle `RESTORING`.
+4. Restart: relaunch started pid 8888 at **10:47:19.094** for the HOME
+   activity; startup reconciliation emitted `RESTART_RECONCILED`
+   (sequence 10) at **10:47:22.781**.
+5. The journal was exported through Settings → Home screen → Organizer
+   diagnostics → **Export organizer diagnostics** (system `ACTION_CREATE_DOCUMENT`
+   picker, saved to Downloads as `organizer_diagnostics.jsonl (3)`, 2634 bytes,
+   pulled over adb).
+
+### Correlation evidence (exported journal, redacted)
+
+Journal sequence, phase, and correlation fields only — this is the complete
+event list of the export:
+
+```text
+6  CHECKPOINTED        run=d93238d0… point=40b608ec… stage=A4
+7  APPLY_COMMITTED     run=d93238d0… point=40b608ec… stage=A6
+8  APPLY_VERIFIED      run=d93238d0… point=40b608ec… stage=A8
+9  RECOVERY_REQUESTED  point=40b608ec… pointOriginRunId=d93238d0…
+10 RESTART_RECONCILED  run=d93238d0… point=40b608ec…
+                       subjectRunId=d93238d0… priorLifecycle=RESTORING
+                       classification=PRE_STATE resultLifecycle=RESTORED
+```
+
+`pointOriginRunId` on the recovery event equals the verified apply's run ID,
+and the restart-reconciled event resolves the same `pointId` from `RESTORING`
+to `RESTORED` — all three required correlation fields now appear in one
+exported journal.
+
+Corresponding logcat (debug build logs ordinary transitions):
+
+```text
+08-28 10:47:22.781 D OrganizerDiag: run=d93238d0… phase=RESTART_RECONCILED subjectRun=d93238d0… priorLifecycle=RESTORING classification=PRE_STATE resultLifecycle=RESTORED
+```
+
+Post-restore invariants: `favorites` contains the exact pre-apply 15 rows, and
+the recovery record's final lifecycle is `RESTORED`. A field-closure and
+non-containment check over the export (every key/value compared against the
+approved representation; scans for coordinate-like, package-like, and
+component-like strings) found no field outside the approved event
+representation.
+
+### Capture note (not diagnosed as part of this capture)
+
+An intermediate adb relaunch at 10:41:12.090 (pid 8654, between the
+force-stop in step 3 and the restart in step 4) produced no reconciliation
+event during its ~3-minute lifetime, and no model-load timeout error was
+logged. The clean relaunch in step 4 reconciled normally. This capture records
+the observation without a diagnosis; the accepted evidence uses the clean
+relaunch.
+
+### Status
+
+- Real recovery point created by an organizer run: **captured**
+  (2026-08-26 samples and this addendum).
+- Process interruption/restart after an accepted recovery transition
+  (`RESTORING`): **captured** (both captures).
+- Matching `pointId`, `pointOriginRunId`, and `RESTART_RECONCILED` correlation
+  fields in the exported journal: **captured** (this addendum).
+- `pointOriginRunId` in the exported journal: **captured**; the #150 blocker
+  is resolved.
+
+**#104: complete.** All required evidence is captured with redaction checks.
+
 ## Issue #105 — diagnostics journal exclusion from backup/restore
 
 Pre-state: `files/organizer_diagnostics/` contained
@@ -287,8 +388,8 @@ unzip -l "Lawnchair_Backup … .lawnchairbackup"                # entry list abo
 - **#105: complete.** All three required checks pass with archive/before-after evidence.
 - **#106: complete.** Release failure-only filtering, single redacted WARN,
   and persistence-before-logging are proven on-device.
-- **#104: evidence recorded; one leg blocked.** Recovery point creation,
-  interruption/restart procedure, `pointId` + `RESTART_RECONCILED` correlation,
-  and redaction are captured. The `pointOriginRunId` journal field requires the
-  explicit recovery flow, which is unreachable until [#150](https://github.com/nunu1733/NunuLauncher/issues/150)
-  restores a successful apply path. #104 remains open, tracking #150.
+- **#104: complete.** Recovery point creation, interruption/restart procedure,
+  `pointId` + `RESTART_RECONCILED` correlation, and redaction are captured in
+  the 2026-08-26 section; the `pointOriginRunId` leg was unblocked by
+  [#150](https://github.com/nunu1733/NunuLauncher/issues/150) (PR #160) and is
+  captured in the 2026-08-28 addendum above.
