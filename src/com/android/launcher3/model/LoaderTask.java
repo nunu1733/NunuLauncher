@@ -273,6 +273,7 @@ public class LoaderTask implements Runnable {
             restoreEventLogger = LauncherRestoreEventLogger.Companion
                     .newInstance(mApp.getContext());
         }
+        boolean transactionCommitted = false;
         try (LauncherModel.LoaderTransaction transaction = mApp.getModel().beginLoader(this)) {
 
             List<ShortcutInfo> allShortcuts = new ArrayList<>();
@@ -408,6 +409,7 @@ public class LoaderTask implements Runnable {
 
             mModelDelegate.modelLoadComplete();
             transaction.commit();
+            transactionCommitted = true;
             memoryLogger.clearLogs();
             if (mIsRestoreFromBackup) {
                 mIsRestoreFromBackup = false;
@@ -424,6 +426,16 @@ public class LoaderTask implements Runnable {
             throw e;
         }
         TraceHelper.INSTANCE.endSection();
+        if (transactionCommitted && mOrganizerLeaseToken != 0L) {
+            // Queue — never run inline — after the transaction close. The completion is
+            // delivered only after every runnable already queued on MODEL_EXECUTOR
+            // ahead of it has drained, so the organizer's next capture cannot race
+            // pending token-scoped work. Delivery re-checks request identity under the
+            // model lock; LauncherModel terminalizes a request whose token is replaced
+            // before its queued notification runs, so no request loses its terminal
+            // signal while one is still queued here.
+            MODEL_EXECUTOR.post(mLauncherBinder::notifyOrganizerReloadComplete);
+        }
     }
 
     public synchronized void stopLocked() {
