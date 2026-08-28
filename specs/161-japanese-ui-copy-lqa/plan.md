@@ -60,8 +60,8 @@ flowchart LR
     E --> F[Independent Reviewer A / B]
     F --> G{Agreement and
 meaning preserved?}
-    G -- Low-risk agreement --> H[Accepted REVISE]
-    G -- High-risk disagreement or ambiguity --> I[Owner decision or split Issue]
+    G -- A/B agreement + accepted semantics confirmed --> H[Accepted REVISE]
+    G -- Disagreement or product ambiguity --> I[Owner decision or split Issue]
     I --> H
     H --> J[Japanese resource edit]
     J --> K[Coverage / placeholder validator]
@@ -72,8 +72,8 @@ meaning preserved?}
 1. **Inventory and contextualization.** #123 の final-name-set 定義を起点に、両 resource root の active / user-visible / translatable Nunu resource を再収集する。dead resource、runtime data、`translatable="false"` technical identifier は required set とレビューの対象理由を区別して記録する。
 2. **Policy materialization.** 固定した source precedence を style guide、glossary、workflow に実装する。workflow は proprietary tool を前提にせず、fresh agent が同じ unit を処理できる入力・出力形式を持つ。
 3. **Blind bake-off.** CTA/title 5、onboarding/progress/status 4、failure/safety/recovery 5、settings/category/lock 4、a11y 3、diagnostic/technical 3 以上を含む 20〜40 件の固定 unit で candidate reviewer を比較する。candidate は同一の context から output を生成するが、**candidate 自身の自己採点を禁止する**。candidate 名を伏せた output を project owner が唯一の final adjudication authority として blind に採点する。owner は各 item の 7 軸（Accuracy、Fluency、Terminology、UI style / concision、Context fit、Safety preservation、resource correctness）を 0–2 点で採点し、candidate ごとに軸別合計、総得点、理論満点に対する割合を記録する。Safety または meaning preservation の重大欠陥が 1 件でもある candidate は、平均点・総得点にかかわらず hard failure として不採用にする。候補名は adjudication 完了後に scorecard へ対応付け、同点または rubric で決まらない採択は owner が理由を evidence に記録して裁定する。[1]
-4. **Initial independent LQA.** 初回 full pass では、Reviewer A と B が全 inventory unit を同じ style guide、glossary、context で、別 session または互いの reasoning を渡さない独立 context から実行する。各実行の role、model identifier、family/provider、session-or-context identifier を review evidence に残し、異なる family/provider が practical でなかったときは理由を残す。low / medium severity の合意は review table に理由を記録して owner の個別承認なしに採用できる。high-severity disagreement、meaning ambiguity、source defect は owner decision または split Issue へ送る。
-5. **Resource application and proof.** owner が解決し、meaning-preserved と確認された `REVISE`、または初回 full pass で low / medium severity の A/B 合意を得た `REVISE` のみを values-ja に反映する。machine validator が name / placeholder/resource contract を確認後、代表画面で Japanese、`en-XA`、通常 / 拡大 font scale の表示と a11y 意味を確認する。
+4. **Initial independent LQA.** 初回 full pass では、Reviewer A と B が全 inventory unit を同じ style guide、glossary、context で、別 session または互いの reasoning を渡さない独立 context から実行する。各実行の role、model identifier、family/provider、session-or-context identifier を review evidence に残し、異なる family/provider が practical でなかったときは理由を残す。low / medium severity の合意は review table に理由を記録して owner の個別承認なしに採用できる。**high severity も、A/B が合意し、accepted feature spec / ADR に対する meaning preservation を明示確認でき、product ambiguity がない場合は、同じく個別 owner approval なしに採用できる。** high-severity disagreement、meaning ambiguity、source defect は owner decision または split Issue へ送る。
+5. **Resource application and proof.** owner が解決し、meaning-preserved と確認された `REVISE`、または初回 full pass で low / medium severity の A/B 合意を得た `REVISE`、または high severity で A/B agreement・accepted spec/ADR に対する meaning-preservation の明示確認・product ambiguity 不在のすべてを evidence に記録した `REVISE` のみを values-ja に反映する。machine validator が name / placeholder/resource contract を確認後、代表画面で Japanese、`en-XA`、通常 / 拡大 font scale の表示と a11y 意味を確認する。
 
 ### Alternatives rejected
 
@@ -83,7 +83,7 @@ meaning preserved?}
 | 特定 vendor / model を repository の恒久 requirement とする | model availability が変化し、workflow の可搬性を損なう。model identifier は execution evidence にのみ残す。[1] |
 | repository-local `SKILL.md` を新規 convention として導入する | 現在の tree に採用済み convention がない。Issue comment のとおり、対応 tooling を確認せず新しい Skill path を発明しない。[1] |
 | XML 値だけを機械的に査読する | surface、role、隣接コピー、placeholder、action / safety context を失い、CTA・warning・a11y の品質を判断できない。 |
-| Reviewer A の自己承認だけで修正する | 初回 full pass は全 row の独立 Reviewer B 結果を必要とする。low / medium agreement は個別 owner approval を不要とする一方、high-severity disagreement または meaning ambiguity は owner escalation を必要とする。 |
+| Reviewer A の自己承認だけで修正する | 初回 full pass は全 row の独立 Reviewer B 結果を必要とする。low / medium agreement は個別 owner approval を不要とし、high severity は A/B agreement・accepted spec/ADR に対する meaning-preservation 明示確認・product ambiguity 不在を満たす場合のみ同様に採用できる。disagreement または ambiguity は owner escalation を必要とする。 |
 | 上流 Lawnchair/AOSP 日本語を一括して書き換える | Nunu 固有 scope を超え、継承不具合は根拠付きの別 Issue に分離する。[1] |
 
 ### Stage B stop conditions
@@ -161,14 +161,15 @@ validator の CLI 引数と fixture の最終形は Stage B で tool を実装�
 - [ ] accepted Stage A commit から active resource inventory と contextual review units を再構成する。
 - [ ] style guide、glossary、portable workflow、reproducible structural validator と tool tests を実装する。
 - [ ] candidate 自己採点なし・匿名 output・project-owner blind adjudication・per-item / aggregate / hard-failure scorecard を備えた fixed evaluation set で bake-off を実施し、current reviewer pair を execution evidence として記録する。
-- [ ] 初回 full pass の**全 inventory unit**を Reviewer A / B が別 session または独立 context で実行し、reviewer identity と family/provider の例外理由を記録する。low / medium agreement は確定し、high-severity disagreement と product decision を owner resolution / split Issue へ送る。
-- [ ] owner-resolved `REVISE` のみを 2 つの Japanese resource root へ反映する。
+- [ ] 初回 full pass の**全 inventory unit**を Reviewer A / B が別 session または独立 context で実行し、reviewer identity と family/provider の例外理由を記録する。low / medium agreement は確定し、high severity は A/B agreement・accepted spec/ADR に対する meaning-preservation 明示確認・product ambiguity 不在を満たす場合に確定する。high-severity disagreement と product decision を owner resolution / split Issue へ送る。
+- [ ] owner-resolved `REVISE`、または初回 full pass で low / medium A/B agreement を得た `REVISE`、または high severity の A/B agreement・accepted spec/ADR に対する meaning-preservation 明示確認・product ambiguity 不在を evidence に記録した `REVISE` のみを 2 つの Japanese resource root へ反映する。
 - [ ] resource oracle、format、build、existing behavior / a11y regression、Japanese / `en-XA` / font-scale 表示を検証する。
 - [ ] closing assessment、PR evidence、未解決/分離 Issue を記録し、spec / plan を `implemented` に更新する。
 
 ## Change history
 
 - 2026-08-28: Issue #161 の Stage A review（P1: 初回 full-pass 二重レビュー、P1: bake-off adjudication、P2: reviewer 実行独立性、Minor: verification AC 対応）に対応。全 inventory unit の独立 A/B 結果、low/medium agreement と high-severity disagreement の分離、candidate 自己採点禁止・匿名 output・project-owner blind scoring・per-item/aggregate/hard-failure contract、reviewer role/model/family-or-provider/session-or-context evidence を追加し、Gradle/CI 行を AC-161-08 / AC-161-09 に整理した。
+- 2026-08-28: Stage A re-review の P2 に対応。high severity は、A/B agreement、accepted feature spec / ADR に対する meaning-preservation の明示確認、product ambiguity 不在の 3 条件を evidence に記録した場合に個別 owner approval なしで採用できる経路を Mermaid flow、independent LQA、resource application、checklist に統一した。disagreement または ambiguity のみ owner resolution / split Issue を必要とする。
 
 ## References
 
