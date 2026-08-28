@@ -6,7 +6,7 @@
 
 ## Current evidence
 
-Stage A は `main` の `c68abcce628de9d01efaf29280193defe4aff540` を確認基準とした。#123 は実装済みであり、Nunu 固有の active / user-visible / translatable resource を final name set で扱う被覆 oracle、placeholder 一致、Japanese / `en-XA` / font scale の代表画面証拠を提供している。Stage B では accepted Stage A commit `48720a0a8bc965de10df70a24b48e9300eaf51ca` を対象に、required 223 名（lawnchair 166 / root 57）の inventory、Reviewer A/B の全件結果、24 件の blind bake-off、resource validator、AVD による Japanese / `en-XA` / 200% 表示確認を実施した。ローカルの全検証は成功しているが、PR CI `final-status` は pushed PR head が未確定のため pending である。[2] [3]
+Stage A は `main` の `c68abcce628de9d01efaf29280193defe4aff540` を確認基準とした。#123 は実装済みであり、Nunu 固有の active / user-visible / translatable resource を final name set で扱う被覆 oracle、placeholder 一致、Japanese / `en-XA` / font scale の代表画面証拠を提供している。Stage B では accepted Stage A commit `48720a0a8bc965de10df70a24b48e9300eaf51ca` を対象に、required 223 名（lawnchair 166 / root 57）の inventory、Reviewer A/B の全件結果、24 件の blind bake-off、resource validator、AVD による Japanese / `en-XA` / 200% 表示確認を実施した。ローカルの全検証は成功しており、実装は pushed head `735219d642` に反映済みである。PR CI `final-status` は workflow 完了待ちである。[2] [3]
 
 | 確認済み事項 | 根拠 | Stage B への含意 |
 |---|---|---|
@@ -170,7 +170,7 @@ validator の CLI 引数と fixture の最終形は Stage B で tool を実装�
 
 - 2026-08-28: Issue #161 の Stage A review（P1: 初回 full-pass 二重レビュー、P1: bake-off adjudication、P2: reviewer 実行独立性、Minor: verification AC 対応）に対応。全 inventory unit の独立 A/B 結果、low/medium agreement と high-severity disagreement の分離、candidate 自己採点禁止・匿名 output・project-owner blind scoring・per-item/aggregate/hard-failure contract、reviewer role/model/family-or-provider/session-or-context evidence を追加し、Gradle/CI 行を AC-161-08 / AC-161-09 に整理した。
 - 2026-08-28: Stage A re-review の P2 に対応。high severity は、A/B agreement、accepted feature spec / ADR に対する meaning-preservation の明示確認、product ambiguity 不在の 3 条件を evidence に記録した場合に個別 owner approval なしで採用できる経路を Mermaid flow、independent LQA、resource application、checklist に統一した。disagreement または ambiguity のみ owner resolution / split Issue を必要とする。
-- 2026-08-28: Stage A 承認後、223 unit の inventory / independent A/B review、24 unit bake-off、14 件の accepted `REVISE`、resource validator、Gradle、repository contract、organizer unit/UI、Japanese / `en-XA` / 200% AVD 検証を完了した。closing evidence を追加し、PR CI `final-status` のみ pushed PR head 待ちとして残した。
+- 2026-08-28: Stage A 承認後、223 unit の inventory / independent A/B review、24 unit bake-off、14 件の accepted `REVISE`、resource validator、Gradle、repository contract、organizer unit/UI、Japanese / `en-XA` / 200% AVD 検証を完了した。closing evidence を追加し、commit `735219d642` を `origin/issue-161-japanese-ui-copy-lqa` へ push した。PR CI `final-status` は workflow 完了待ちである。
 
 ## References
 
