@@ -3,27 +3,33 @@ package app.lawnchair.organizer.application
 import android.database.sqlite.SQLiteDatabase
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.lawnchair.organizer.application.adapter.RowManifestCodec
+import app.lawnchair.organizer.application.actions.IntendedStateResolution
 import app.lawnchair.organizer.application.actions.RecoveryAction
 import app.lawnchair.organizer.application.actions.RecoveryWriteSetMaterializer
 import app.lawnchair.organizer.application.canonical.PersistentResourceKind
 import app.lawnchair.organizer.application.canonical.PersistentRow
+import app.lawnchair.organizer.application.public.ApplicationItemRef
+import app.lawnchair.organizer.application.public.CanonicalItemKind
 import app.lawnchair.organizer.application.public.DeviceCapabilities
 import app.lawnchair.organizer.application.public.DeviceOrientation
-import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.OrganizerLockState
+import app.lawnchair.organizer.application.public.PlacementState
 import app.lawnchair.organizer.application.public.ProfileAvailability
 import app.lawnchair.organizer.application.public.ProfileState
 import app.lawnchair.organizer.planning.AppWidgetId
 import app.lawnchair.organizer.planning.ComponentKey
 import app.lawnchair.organizer.planning.ContainerCode
+import app.lawnchair.organizer.planning.FolderId
 import app.lawnchair.organizer.planning.GridCell
 import app.lawnchair.organizer.planning.GridSpan
 import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.KindCode
+import app.lawnchair.organizer.planning.NewFolderOrdinal
 import app.lawnchair.organizer.planning.PageId
 import app.lawnchair.organizer.planning.PageRef
 import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.planning.ReservedWorkspaceRegion
+import app.lawnchair.organizer.planning.TargetKey
 import com.android.launcher3.LauncherSettings.Favorites
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -240,6 +246,106 @@ class RealAdapterRowMatrixInstrumentationTest {
                 "Manifest rows keep the row-enumeration order",
                 listOf(1L, 2L, 10L),
                 captured.manifest.rows.map { it.rowId },
+            )
+        } finally {
+            source.close()
+        }
+    }
+
+    /**
+     * Issue #164: the write set's intended state, after persistent-reference
+     * resolution and canonical finalization, must equal the real
+     * `RowManifestCodec.capture` output for the same rows. The fixture creates
+     * a new folder whose allocated id (10) byte-sorts mid-list among ids 1..9,
+     * which is exactly the divergence that failed A7 on device.
+     */
+    @Test
+    fun newFolderWriteSetIntendedStateMatchesRealCanonicalCapture() {
+        val source = SQLiteDatabase.create(null)
+        try {
+            Favorites.addTableToDb(source, 10L, false)
+            val rows = listOf(
+                row(
+                    1,
+                    Favorites.ITEM_TYPE_APPLICATION,
+                    10,
+                    Favorites.CONTAINER_DESKTOP,
+                    0,
+                    0,
+                    0,
+                    OrganizerLockState.UNLOCKED,
+                    intent = "#Intent;component=com.example/.A1;end",
+                ),
+                row(
+                    10,
+                    Favorites.ITEM_TYPE_FOLDER,
+                    10,
+                    Favorites.CONTAINER_DESKTOP,
+                    0,
+                    1,
+                    0,
+                    OrganizerLockState.UNLOCKED,
+                ),
+                row(
+                    2,
+                    Favorites.ITEM_TYPE_APPLICATION,
+                    10,
+                    10,
+                    null,
+                    null,
+                    null,
+                    OrganizerLockState.UNLOCKED,
+                    rank = 0,
+                    intent = "#Intent;component=com.example/.A2;end",
+                ),
+                row(
+                    3,
+                    Favorites.ITEM_TYPE_APPLICATION,
+                    10,
+                    Favorites.CONTAINER_DESKTOP,
+                    0,
+                    0,
+                    1,
+                    OrganizerLockState.UNLOCKED,
+                    intent = "#Intent;component=com.example/.A3;end",
+                ),
+            )
+            rows.forEach { source.insertOrThrow(Favorites.TABLE_NAME, null, RowManifestCodec.values(it)) }
+            val captured = RowManifestCodec.capture(
+                source,
+                DeviceCapabilities(4, 5, 5, 4, 4, DeviceOrientation.PORTRAIT),
+                listOf(PageId("0")),
+                listOf(ProfileState(ProfileId("10"), ProfileAvailability.AVAILABLE)),
+            )
+
+            // De-canonicalize into the planner/materializer shape: the new
+            // folder becomes a PlannedFolder appended last and its child points
+            // at the planned ordinal, exactly what the pre-fix writer produced.
+            val capturedFolder = captured.state.items.single { it.kind == CanonicalItemKind.Folder }
+            val plannedRef = ApplicationItemRef.PlannedFolder(NewFolderOrdinal(0))
+            val plannedItems = captured.state.items
+                .filter { it != capturedFolder }
+                .map { item ->
+                    val placement = item.placement as? PlacementState.FolderChild
+                    if (placement != null && placement.parent == capturedFolder.ref) {
+                        item.copy(placement = placement.copy(parent = plannedRef))
+                    } else {
+                        item
+                    }
+                } + capturedFolder.copy(
+                    ref = plannedRef,
+                    targetKey = TargetKey.FolderKey(FolderId("planned-folder-0")),
+                )
+            val resolved = IntendedStateResolution.resolveAndFinalize(
+                captured.state.copy(items = plannedItems),
+                mapOf(plannedRef to 10L),
+                emptyMap(),
+            )
+
+            assertEquals(
+                "Resolved write-set intended state must equal the real canonical capture",
+                captured.state,
+                resolved,
             )
         } finally {
             source.close()
