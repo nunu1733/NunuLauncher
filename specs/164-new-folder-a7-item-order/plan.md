@@ -238,7 +238,7 @@ schema.
 | AC-164-01 | Red→green JVM unit test through the real materializer + resolution/finalization seam with the mid-list new-folder fixture. | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.application.*'` |
 | AC-164-02 | Protocol seam test with the independent persisted-row-equivalent recapture: pre-fix `APPLY_RECOVERED`/`VERIFICATION_FAILED` recorded, post-fix `Applied`; mismatch-injection still recovers safely; real-capture roundtrip via the new-folder instrumentation case. | Same command, protocol test class (pre-fix failure recorded in the PR before the production change); instrumentation case on the API 36.1 device/AVD with the exact command recorded in PR evidence once verified. |
 | AC-164-03 | Shared-authority unit tests + determinism/byte-identical assertions; full organizer unit suite green. | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
-| AC-164-04 | Pixel 9a / API 36 default-workspace debug and release runs reaching A8 with a new folder; redacted journal export; exact head SHA recorded. | `./gradlew assembleLawnWithQuickstepGithubDebug` / `...Release`; manual Settings flow per the issue; supported diagnostics export. |
+| AC-164-04 | Pixel 9a (default-workspace 4x5) debug and release runs reaching A8 with a new folder; redacted journal export; exact head SHA recorded. | `./gradlew assembleLawnWithQuickstepGithubDebug` / `...Release`; manual Settings flow per the issue; supported diagnostics export. |
 | AC-164-05 | Explicit recovery preview/confirm after a verified apply; journal shows `RECOVERY_REQUESTED`/`RECOVERY_RESTORED` with matching `pointOriginRunId`. | Same device; supported Settings diagnostics export. |
 | AC-164-06 | Follow-up issue link with observable diagnostic code recorded in this spec's history. | Issue link before #164 closes. |
 | AC-164-07 | Formatting, build, repository-contract checks, CI merge gate, independent audit on the exact head. | `./gradlew spotlessCheck`; `./gradlew assembleLawnWithQuickstepGithubDebug`; `python3 tools/repo-contract/validate_repo_contract.py`; `python3 tools/repo-contract/test_validate_repo_contract.py`; `python3 tools/repo-contract/test_validate_high_risk_evidence.py`; PR `CI / final-status`. |
@@ -395,4 +395,17 @@ audit requires a new CI result and audit.
   reached A8 on the release build with the same recovery correlation and
   exact pre-apply restoration. AC-164-04/05 satisfied; AC-164-06 satisfied
   by follow-up Issue #166. Remaining before merge: PR `CI / final-status`
-  on the exact head and the independent `risk: layout-data` audit.
+  on the exact head and the independent `risk: layout-data` audit.- 2026-08-29: AC-164-04 re-verification delegated to a separate agent
+  session and completed on the physical Pixel 9a (the owner confirmed the
+  device's daily launcher is Nova and approved fresh installs of both
+  builds): debug and release both built at the reviewed head `344eabe73a`,
+  installed fresh, driven through the manual flow on the default 4x5
+  workspace, and both reached `APPLY_VERIFIED`/A8 with 1 new folder; release
+  journal evidence came through the supported diagnostics export route.
+  Both explicit recoveries carried `pointOriginRunId`; the debug run's
+  post-recovery favorites were byte-identical to the pre-apply rows. The
+  device OS (16 → 17 upgrade) is recorded as an environment fact in the
+  spec AC and the evidence document; both builds and the evidence were
+  produced/verified after the review. Device home restored to Nova, both
+  Lawnchair builds uninstalled. The API 36.1 AVD run is retained as
+  supplementary evidence.

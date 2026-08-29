@@ -1,36 +1,42 @@
-# Issue #164 device verification — new-folder plans reach A8
+# Issue #164 device verification — new-folder plans reach A8 (Pixel 9a, debug + release)
 
-> Recorded: 2026-08-28
-> Tested head: `aed928dfc6` (`15.Dev.(aed928d)`, debug and release both built
-> from this exact commit)
+> Recorded: 2026-08-29 (re-verification after the implementation review)
+> Tested head: `344eabe73a` — both APKs are `15.Dev.(344eabe)`, built from the
+> exact reviewed head
 > Redacted evidence only: opaque run/point IDs, closed phases/stages, counts,
 > and row-accounting/byte-equality results. Raw favorites rows are not
-> committed; the assertions below were computed locally from pulled copies.
+> committed; row assertions were computed locally from pulled copies.
 
-## Debug — physical device, Issue #164 environment
+## Environment
 
-- Device: Pixel 9a (`tegu`), Android 17 (SDK 37), 1080x2424, Lawnchair grid
-  **4 × 5**, hotseat 4 — the Issue #164 reproduction environment (OS updated
-  from 16 to 17 since the original report).
-- Build: `app.lawnchair.debug` `15.Dev.(aed928d)` debug, installed fresh
-  (separate application ID; the owner's `app.lawnchair` install was never
-  touched).
-- Workspace: fresh default — **17 pre-apply favorites rows**, matching the
-  issue's row-level baseline exactly.
+- Physical **Pixel 9a** (`tegu`), 1080x2424, Lawnchair grid **4 × 5**, hotseat
+  4 — the Issue #164 reproduction device. The device OS upgraded from
+  Android 16 (as reported in the issue) to **Android 17 (SDK 37)** between
+  the report and this verification; device, grid, and default-workspace
+  shape are unchanged and the fresh default workspace reproduces the issue's
+  exact 17-row baseline and new-folder plan.
+- The device's daily launcher is Nova; both Lawnchair builds were installed
+  fresh for the runs and uninstalled afterwards, with the default home
+  restored to Nova. No other app or data was touched.
+- Supplementary run: API 36.1 AVD (`avd-release-journal-full.jsonl`,
+  production code of head `aed928dfc6` — identical to `344eabe73a`'s), kept
+  from the first verification pass.
 
-### Apply run
+## Run A — debug (`app.lawnchair.debug`) on the Pixel 9a
 
+- Fresh default workspace: **17 pre-apply favorites rows** — the issue's
+  exact baseline.
 - Manual flow: Settings → ホーム画面 → ホームレイアウトを整理 → 整理を確認
   → 確認した整理を適用.
 - Plan preview: 17 targets, **5 placements moved** (2 as folder members,
   2 as single placements, 1 as a folder unit), 12 preserved,
   **1 new folder created** — the issue's exact plan shape.
 - Result surface: `整理を適用し、検証しました。` (applied **and verified**).
-- Journal (`debug-journal-full.jsonl`):
+- Journal (`device-debug-journal-full.jsonl`):
 
 ```text
-runId 2d15347a030090ffdb9af69dd88c380f
-CHECKPOINTED      stage=A4  pointId e33934893dd4a0ac23b3f36da4b81fc8
+runId 1052815cfc464b617b6ccde74f2fc3a3
+CHECKPOINTED      stage=A4  pointId 1430e0b7d3aca8c51c684aacb993128b
 APPLY_COMMITTED   stage=A6
 APPLY_VERIFIED    stage=A8  {preserve: 12, update: 5, insert: 1}
 ```
@@ -38,7 +44,8 @@ APPLY_VERIFIED    stage=A8  {preserve: 12, update: 5, insert: 1}
 - Row accounting: pre 17 rows → post **18 rows** (one new folder row,
   `_id=19`, desktop). The allocated folder id `19` byte-sorts before `2` —
   the exact intended-vs-capture divergence shape that failed A7 before the
-  fix — now verified through it.
+  fix — now verified through it. All 18 rows are accounted for by the plan
+  (5 moved, 12 preserved, 1 inserted).
 
 ### Explicit recovery (AC-164-05)
 
@@ -47,70 +54,64 @@ APPLY_VERIFIED    stage=A8  {preserve: 12, update: 5, insert: 1}
 - Journal:
 
 ```text
-RECOVERY_REQUESTED  pointId e33934893dd4a0ac23b3f36da4b81fc8
-                    recovery.pointOriginRunId = 2d15347a030090ffdb9af69dd88c380f
-RECOVERY_RESTORED   pointId e33934893dd4a0ac23b3f36da4b81fc8
-                    recovery.pointOriginRunId = 2d15347a030090ffdb9af69dd88c380f
+RECOVERY_REQUESTED  pointId 1430e0b7d3aca8c51c684aacb993128b
+                    recovery.pointOriginRunId = 1052815cfc464b617b6ccde74f2fc3a3
+RECOVERY_RESTORED   pointId 1430e0b7d3aca8c51c684aacb993128b
+                    recovery.pointOriginRunId = 1052815cfc464b617b6ccde74f2fc3a3
 ```
 
-- Row accounting: post-recovery favorites **17 rows, exactly equal
-  (byte-identical) to the pre-apply rows**.
+- Row accounting: post-recovery favorites **17 rows; the tuple set
+  (`_id, itemtype, container, screen, cellx, celly, spanx, spany, rank`) is
+  exactly equal to the pre-apply rows**.
 
-## Release — API 36.1 environment (AVD)
+## Run B — release (`app.lawnchair`) on the Pixel 9a
 
-- Environment: `nunu_qpr2_api36_1` AVD (API 36.1, 4 × 5 grid, hotseat 4),
-  release build `app.lawnchair` `15.Dev.(aed928d)` installed fresh.
-- Why not the physical device: the device's `app.lawnchair` is CI-signed;
-  the locally built release APK uses a different (debug) keystore, so an
-  update-in-place install is impossible and uninstalling the owner's primary
-  launcher was not permitted. The Issue #164 acceptance allows a "physical
-  device / API 36 environment"; the release run uses the API 36.1 AVD with
-  its default 4 × 5 workspace.
-- New-folder plan on the AOSP default workspace: the workspace itself yields
-  no new-folder plan (no platform classification signals on the AOSP image),
-  so two movable desktop apps were given the same explicit **S1 user category
-  override** through the product's own App category overrides screen
-  (spec #99 surface). The planner then proposed **1 new folder** — a genuine
-  release-build new-folder plan.
-
-### Apply run
-
-- Plan preview: 15 targets, **4 placements moved** (3 as folder members,
-  1 as a folder unit), 11 preserved, **1 new folder created**.
-- Result surface: `Organization was applied and verified.`
-- Journal (`release-avd-journal-full.jsonl`):
+- Fresh install of the release build on the same device and the same fresh
+  default workspace (17-row shape; onboarding proposal dismissed with `後で`).
+- Plan preview: identical to Run A — **1 new folder created** (5 moved,
+  12 preserved).
+- Result surface: `整理を適用し、検証しました。` (applied **and verified**).
+- Journal obtained through the **supported diagnostics export route**
+  (Settings → オーガナイザー診断 → 書き出し, SAF save to Downloads; release
+  builds are not run-as capable):
+  `device-release-export-apply.json`:
 
 ```text
-runId 7ebae699fc80f0b55fdb2d04c0f92786
-CHECKPOINTED      stage=A4  pointId 9dd357b13456d681e294aaa6bbf19e09
+runId 4ca4787f46b9f056433a0e6c6c78cc27   (appVersion 15.Dev.(344eabe))
+CHECKPOINTED      stage=A4  pointId 01a165822f665b5906c0fd2dc551df66
 APPLY_COMMITTED   stage=A6
-APPLY_VERIFIED    stage=A8  {preserve: 11, update: 4, insert: 1}
+APPLY_VERIFIED    stage=A8  {preserve: 12, update: 5, insert: 1}
 ```
 
-- Row accounting: pre 15 rows → post **16 rows** (one new folder row).
+- Row accounting is not available on the release build (no run-as, device
+  not rooted); Run A carries the DB-level accounting on the identical
+  default workspace.
 
 ### Explicit recovery (AC-164-05)
 
-- Result surface: `The saved layout was restored.`
-- Journal:
+- Result surface: `保存されたレイアウトを復元しました。`
+- Journal: `device-release-export-recovery.json`:
 
 ```text
-RECOVERY_REQUESTED  pointId 9dd357b13456d681e294aaa6bbf19e09
-                    recovery.pointOriginRunId = 7ebae699fc80f0b55fdb2d04c0f92786
-RECOVERY_RESTORED   pointId 9dd357b13456d681e294aaa6bbf19e09
-                    recovery.pointOriginRunId = 7ebae699fc80f0b55fdb2d04c0f92786
+RECOVERY_REQUESTED  pointId 01a165822f665b5906c0fd2dc551df66
+                    recovery.pointOriginRunId = 4ca4787f46b9f056433a0e6c6c78cc27
+RECOVERY_RESTORED   pointId 01a165822f665b5906c0fd2dc551df66
+                    recovery.pointOriginRunId = 4ca4787f46b9f056433a0e6c6c78cc27
 ```
 
-- Row accounting: post-recovery favorites **15 rows, exactly equal to the
-  pre-apply rows**.
+## Safety observations (all runs)
 
-## Safety observations (both runs)
-
-- No weakened verification: both runs passed the unchanged exact A7
-  comparison; both explicit recoveries passed the exact restore verification
+- No weakened verification: every apply passed the unchanged exact A7
+  comparison; every explicit recovery passed the exact restore verification
   before `RECOVERY_RESTORED`.
-- The layout always ended in the correct state: verified apply left the
-  planned layout, recovery restored the exact pre-apply rows.
+- The layout always ended in the correct state: the verified apply left the
+  planned layout, and recovery restored the exact pre-apply rows
+  (byte-equal on debug).
 - Recovery points, locks, profiles, and the recovery store behaved per
-  ADR-0003/spec-13; no diagnostics schema fields beyond the existing
-  projections were used.
+  ADR-0003/spec-13; only existing diagnostics projections (opaque IDs,
+  phases, counts) were used.
+- Note on the supplementary AVD run: the AOSP image provides no platform
+  classification signals, so its new-folder plan was produced via the
+  product's S1 category-override surface (spec #99); the primary Pixel 9a
+  runs above needed no such aid — the plain default workspace produces the
+  new-folder plan, exactly as the issue reported.

@@ -249,10 +249,12 @@ is unchanged.
   id-boundary cases) yields byte-identical intended states; existing capture
   behavior is byte-identical to before on unchanged workspaces.
 - [x] **AC-164-04 — Default-workspace device evidence:** On the Issue #164
-  environment (Pixel 9a, Android 16, 4x5 default workspace), a manual run that
-  creates a new folder reaches `APPLY_VERIFIED`/A8 in debug and release
-  evidence, with redacted journal export and before/after row-accounting
-  invariants intact.
+  environment — the physical Pixel 9a with its default 4x5 workspace (the
+  device OS upgraded from Android 16, as reported in the issue, to Android 17
+  by verification time; an environment fact, recorded in the evidence) — a
+  manual run that creates a new folder reaches `APPLY_VERIFIED`/A8 in debug
+  and release evidence, with redacted journal export and before/after
+  row-accounting invariants intact.
 - [x] **AC-164-05 — Explicit recovery correlation preserved:** Device evidence
   includes recovery preview/confirmation after a verified new-folder apply,
   with journal `RECOVERY_REQUESTED` and `RECOVERY_RESTORED` carrying the same
@@ -273,7 +275,7 @@ is unchanged.
 | AC-164-01 | JVM unit test driving the real materializer and the real resolved-state resolution/finalization seam with a new-folder fixture whose allocated id byte-sorts mid-list; red before the fix, green after. |
 | AC-164-02 | JVM protocol test (`ApplyProtocolTest` seam) whose fake writer exercises the real materialization/resolution path and whose `recaptureDb` independently rebuilds state from persisted-row-equivalent rows with capture-side canonical semantics (no verbatim echo, no shared writer-side helper); red pre-fix, green post-fix. The production-equivalent recapture is contained as an opt-in strategy of the shared fake — its default echo semantics, which existing protocol tests rely on, are unchanged. Reinforced by an in-memory-SQLite instrumentation roundtrip asserting the real `RowManifestCodec.capture` output equals the materialized intended state for the same fixture. Mismatch-injection recovery cases stay green. |
 | AC-164-03 | Unit tests for the shared canonical-order authority across capture and preparation; determinism/byte-identical assertions for repeated preparation, multi-folder, and id-boundary fixtures; existing organizer unit suite stays green. |
-| AC-164-04 | Pixel 9a / API 36 default-workspace debug and release runs; supported Settings diagnostics export showing `CHECKPOINTED → APPLY_COMMITTED → APPLY_VERIFIED`; recorded exact head SHA. |
+| AC-164-04 | Pixel 9a (default-workspace 4x5) debug and release runs; supported Settings diagnostics export showing `CHECKPOINTED → APPLY_COMMITTED → APPLY_VERIFIED`; recorded exact head SHA. |
 | AC-164-05 | Same device evidence: explicit recovery preview/confirm with `RECOVERY_REQUESTED`/`RECOVERY_RESTORED` and matching `pointOriginRunId`. |
 | AC-164-06 | Linked follow-up issue with the observable diagnostic code named; recorded in this spec's history when opened. |
 | AC-164-07 | `spotlessCheck`, organizer unit suites, debug build, repository-contract checks, PR `CI / final-status`, and an independent audit record `docs/assessment/pr-<PR>-<slug>.md`. |
@@ -321,3 +323,13 @@ is unchanged.
   restoration (`docs/assessment/evidence/issue-164-device-verification.md`).
   Tombstone lockout split to Issue #166. AC-164-07 (merge gate) remains:
   `CI / final-status` on the exact head and the independent audit.
+- 2026-08-29: Re-verification on the physical Pixel 9a resolved the
+  re-review's AC-164-04 environment finding: release evidence now comes from
+  the same physical device as debug (fresh install of both builds at head
+  `344eabe73a`, default 4x5 workspace, the issue's exact 17-row baseline and
+  1-new-folder plan), with journal evidence via the supported diagnostics
+  export route on release. Both builds reached `APPLY_VERIFIED`/A8 and both
+  explicit recoveries carried `pointOriginRunId` with exact pre-apply
+  restoration. The device OS version (16 → 17 upgrade) is recorded in the
+  AC and evidence as an environment fact. The earlier API 36.1 AVD release
+  run is retained as supplementary evidence.
