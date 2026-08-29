@@ -109,10 +109,14 @@ class NovaRestoreGridApplicationTest {
         val app = context().lawnchairApp
         val sibling = File(databasesDir(), "launcher_9_9_9_issue168_lease.db")
         sibling.createNewFile()
-        val lease = requireNotNull(
-            LayoutWriteCoordinator.getInstance()
-                .tryAcquire(LayoutWriteCoordinator.OwnerKind.BACKUP_RESTORE),
-        ) { "another lease is currently held; test precondition violated" }
+        // The coordinator is shared with the live app process; retry until free.
+        val lease = generateSequence { System.nanoTime() }
+            .map {
+                LayoutWriteCoordinator.getInstance()
+                    .tryAcquire(LayoutWriteCoordinator.OwnerKind.BACKUP_RESTORE)
+                    .also { if (it == null) Thread.sleep(50) }
+            }
+            .first { it != null }!!
         try {
             assertTrue(LayoutWriteCoordinator.getInstance().hasActiveRestoreFamilyLease())
             app.cleanUpDatabases()

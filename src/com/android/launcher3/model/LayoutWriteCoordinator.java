@@ -145,30 +145,33 @@ public final class LayoutWriteCoordinator {
      * @return whether the cleanup ran
      */
     public boolean runDbCleanupExclusively(@NonNull Runnable cleanup) {
-        Lease lease = null;
+        final Lease acquired;
+        boolean reentered = false;
         synchronized (lock) {
             Holder h = current;
             if (h == null) {
                 long token = nextToken.getAndIncrement();
                 h = new Holder(Thread.currentThread(), OwnerKind.MODEL_WRITER, token);
                 current = h;
-                lease = new LeaseImpl(OwnerKind.MODEL_WRITER, token);
+                acquired = new LeaseImpl(OwnerKind.MODEL_WRITER, token);
             } else if (h.thread == Thread.currentThread()
                     && h.kind == OwnerKind.MODEL_WRITER) {
                 h.recursionCount += 1;
+                acquired = null;
+                reentered = true;
             } else {
                 return false;
             }
         }
-        if (lease != null) {
-            try (lease) {
-                cleanup.run();
-            }
-        } else {
+        if (reentered) {
             try {
                 cleanup.run();
             } finally {
                 releaseReenteredModelWriter();
+            }
+        } else {
+            try (LayoutWriteCoordinator.Lease ignored = acquired) {
+                cleanup.run();
             }
         }
         return true;

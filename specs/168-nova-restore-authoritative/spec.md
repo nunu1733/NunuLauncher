@@ -85,7 +85,13 @@ A second restore must never be a supported success path.
 
 1. The converter keeps writing the backup grid to all three pref stores
    (`DeviceGridState.writeToPrefs` x2, `writeGridToLawnchairPrefs`) — the
-   persisted state must remain correct.
+   persisted state must remain correct. The lawnchair grid prefs are written
+   through the typed setters under `batchEdit` so the pref caches hold the
+   committed values at write time; `DeviceGridState.writeToPrefs(context,
+   commit = true)` is issued last as a synchronous `commit()` on the same
+   SharedPreferences file — the durability barrier that guarantees the grid
+   values survive the restore's self-restart despite `batchEdit`'s async
+   `apply()` (review follow-up).
 2. While still holding the `BACKUP_RESTORE` lease, the converter applies the
    converted grid to the live `InvariantDeviceProfile` singleton
    synchronously (main thread) from the converted values themselves — the
@@ -100,14 +106,19 @@ A second restore must never be a supported success path.
 
 ### Restore-safe cleanup (LawnchairApp)
 
-1. `cleanUpDatabases()` skips (does not delete) any `launcher*` DB file when
-   either (a) a restore-family lease (`RESTORE`/`BACKUP_RESTORE`) is
-   currently held on the `LayoutWriteCoordinator`, or (b) a staged restore
-   file (`restored.db`) exists. Skips are logged at WARN with the file name
-   and the blocking condition.
-2. Every executed deletion is logged with the deleted file name and the
-   surviving DB name (closing the current silent `file.delete()`).
-3. The cleanup contract for non-restore loads is unchanged: unmatched
+1. `cleanUpDatabases()` runs its deletion loop inside
+   `LayoutWriteCoordinator.runDbCleanupExclusively` — a short `MODEL_WRITER`
+   section (same-thread reentry preserved for admitted writer loads) that is
+   mutually exclusive with restore-family lease holders: a restore either
+   already holds a lease (the cleanup call is skipped outright) or cannot
+   start until the deletion completed. This closes the check→delete race a
+   plain snapshot check would leave (review follow-up).
+2. Within the section, a staged restore file (`restored.db`) still blocks
+   deletion (crashed-restore leftovers), logged at WARN with the file name.
+3. Every executed deletion is logged with the deleted file name and the
+   surviving DB name (closing the current silent `file.delete()`). A cleanup
+   skipped because another lease is held is also logged.
+4. The cleanup contract for ordinary loads is unchanged: unmatched
    `launcher*` files are still removed, so no orphan DB accumulation is
    introduced by the guard.
 
