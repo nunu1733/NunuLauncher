@@ -163,19 +163,49 @@ therefore not Nova-specific and not retention-related; the Nova restore is
 the trigger that makes the workspace (and thus the next checkpoint's
 pre-state manifest) large on a real device.
 
-## Stage D — semantic decision (unchanged, and independent of this defect)
+## Stage D — semantic decision (rev 3: recoverability scope corrected per review; independent of the checkpoint defect)
 
-**Keep current behavior: a `VERIFIED` recovery point remains stored and
-restorable after an authoritative external workspace replacement; no
-invalidation and no acknowledgement gate.** `VERIFIED → SilentAdvance` in
-restart reconciliation is accepted (observed `NEITHER_RECOGNIZED` on both
-platforms). Grounding: recovery restores a validated snapshot through an
-explicit, preconditioned, fail-closed write-set (ADR-0003; #155/ADR-0008
-context rejection), so a stale point is safe; external replacement is an
-explicit user action; invalidation would require a new external-restore seam
-across all replacement mechanisms for no demonstrated harm; retention bounds
-staleness. Per the PR review, this decision is recorded separately from the
-checkpoint defect and is not a prerequisite for the fix.
+**Decision: authoritative external restore alone is not a reason to
+pre-invalidate a `VERIFIED` recovery point; the record is retained.
+`VERIFIED → SilentAdvance` in restart reconciliation is accepted (observed
+`NEITHER_RECOGNIZED` on both platforms). Retention is not the same as
+recoverability: whether the point can actually be restored follows the
+recovery request-time revision/context preconditions, and the point can be
+`NotRestorable` (e.g. `STALE_REVISION`) at recovery time.**
+
+Grounding (against ADR-0003 / current recovery guarantees):
+
+1. **Keeping the record is safe because recovery is fail-closed at request
+   time.** Recovery restores a validated snapshot through an explicit,
+   preconditioned write-set in one Launcher DB transaction. The externally
+   owned recovery context (device profile, profile inventory, workspace
+   reservations — #155/ADR-0008) must match
+   (`ContextResourceCodec.recoveryContextsMatch`);
+   `prepareRecoveryWriteSet()` returns `ContextMismatch` otherwise, and
+   `RecoveryProtocol` maps it to
+   `RecoveryResult.NotRestorable(pointId, STALE_REVISION)`. A stale or
+   context-mismatched point cannot corrupt the workspace — the guarantee is
+   enforced at every recovery request, not at retention.
+2. **In the reported scenario the pre-restore point is expected to be
+   non-restorable in practice**: the Nova restore changed the grid
+   (device 4×5 → 6×5×5), so the point created on the old device profile is
+   rejected by the context precondition even though it is retained. "Kept"
+   and "actually restorable" are separate facts and are recorded separately.
+3. **Invalidation would require a new external-restore seam** coupling Nova
+   restore, Lawnchair ZIP restore, Launcher3 restore, grid migration, etc.
+   to the recovery store, for no safety benefit (point 1) and real
+   regression risk to recoverability (DESIGN.md invariant 11) in the window
+   where the external restore went wrong.
+4. **Retention already bounds staleness** (24 h age, ≤3 points, VERIFIED
+   evictable oldest-first at creation time).
+
+Rejected alternatives: "retire/invalidate on authoritative external
+restore" (seam coupling, no safety benefit); "keep stored but ineligible
+until acknowledged" (adds a gating state with no safety benefit — the
+request-time preconditions already fail closed). If product evidence for
+user confusion about retained-but-non-restorable points emerges, that is a
+product decision to be taken spec-first, not a defect in the current
+protocol.
 
 ## Focused owning issue (split per Stage E)
 
