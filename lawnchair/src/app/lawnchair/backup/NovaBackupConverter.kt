@@ -27,10 +27,12 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.URISyntaxException
 import java.util.UUID
+import java.util.concurrent.Executors
 import java.util.zip.ZipInputStream
 import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.withContext
 
 class NovaBackupConverter(
@@ -71,6 +73,15 @@ class NovaBackupConverter(
         private const val NOVA_COL_ICON = "icon"
         private const val NOVA_COL_APP_WIDGET_PROVIDER = "appWidgetProvider"
         private const val NOVA_SMART_FOLDER_MARKER = "FOLDER%3A-"
+
+        // Issue #168: the BACKUP_RESTORE lease is thread-bound (LayoutWriteCoordinator
+        // records the acquiring thread and RestoreDbTask.performRestore re-enters by
+        // thread identity). Run the whole restore sequence on one dedicated thread so
+        // the main-thread grid-application hop cannot resume the coroutine on a
+        // different pool worker and deadlock the lease re-entry.
+        private val restoreDispatcher =
+            Executors.newSingleThreadExecutor { r -> Thread(r, "NovaBackupRestore") }
+                .asCoroutineDispatcher()
     }
 
     private val novaGridRegex = Regex("(\\d+)x(\\d+)")
@@ -144,7 +155,7 @@ class NovaBackupConverter(
         }
     }
 
-    suspend fun convertAndRestore(info: NovaBackupInfo) = withContext(Dispatchers.IO) {
+    suspend fun convertAndRestore(info: NovaBackupInfo) = withContext(restoreDispatcher) {
         val tempDir = File(context.cacheDir, "$NOVA_TEMP_DIR_PREFIX${UUID.randomUUID()}")
         tempDir.mkdirs()
 
@@ -228,12 +239,18 @@ class NovaBackupConverter(
             "Committing converted grid to prefs: rows=$adjustedRows columns=${info.columns} " +
                 "hotseat=${info.hotseatCount}",
         )
-        prefs.sp.edit().apply {
-            info.columns?.let { putInt(prefs.workspaceColumns.key, it) }
-            adjustedRows?.let { putInt(prefs.workspaceRows.key, it) }
-            info.hotseatCount?.let { putInt(prefs.hotseatColumns.key, it) }
-            info.iconPackPackage?.let { putString(prefs.iconPackPackage.key, it) }
-        }.commit()
+        // Issue #168: write through the typed pref setters inside one batch so the
+        // pref caches hold the committed values immediately. A raw SharedPreferences
+        // commit left the workspaceRows/Columns caches stale while any listener-posted
+        // grid recompute read them during the restore window, reverting the live grid
+        // binding to the old DB (the pass-1 loss mechanism pinned by the #168 trace).
+        // With fresh caches every recompute converges to the converted grid.
+        prefs.batchEdit {
+            info.columns?.let { prefs.workspaceColumns.set(it) }
+            adjustedRows?.let { prefs.workspaceRows.set(it) }
+            info.hotseatCount?.let { prefs.hotseatColumns.set(it) }
+            info.iconPackPackage?.let { prefs.iconPackPackage.set(it) }
+        }
     }
 
     // Issue #168: apply the converted grid to the live IDP on the main thread while
