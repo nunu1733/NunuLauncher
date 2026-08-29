@@ -1,252 +1,238 @@
 # Assessment: Issue #171 — Organizer after external workspace restore (A4 checkpoint / recovery semantics)
 
-Status: `implemented` (investigation complete; focused follow-up split to a separate issue)
-Date: 2026-08-29
+Status: `implemented` (investigation complete; focused fix split to a separate Bug Issue)
+Date: 2026-08-29 (rev 2 — device root cause added; rev 1's "not reproducible post-#169" conclusion retracted)
 Investigation issue: https://github.com/nunu1733/NunuLauncher/issues/171
-Related: #167 / #168 / PR #169, #164, #166
+Related: #167 / #168 / PR #169, #164, #166, follow-up #172, fix issue #174
 
 Raw evidence (not committed, per issue non-goals): `/tmp/nova171/` — emulator
-screenshots, full logcat for each restore pass, pulled `launcher_6_5_5.db`,
-`organizer_recovery.db`, and the full organizer diagnostics journal. Only
-hashes, counts, opaque IDs, and lifecycle states are quoted here.
+and Pixel screenshots, full logcat per restore pass, pulled
+`launcher_*.db`/`organizer_recovery.db` copies, organizer diagnostics
+journals (device export + debug journal). Only hashes, counts, opaque IDs,
+lifecycle states, and schema-level exception messages are quoted here.
 
-## Verdict
+## Rev 2 verdict
 
-1. **The reported A4 `CHECKPOINT_CREATE_FAILED` does not reproduce on post-#169 `main`.**
-   The exact reported scenario — Organizer recovery points `VERIFIED` in the
-   store, workspace externally replaced by one Nova restore, restart
-   reconciliation classifying the old points against the new workspace as
-   `NEITHER`, then a new Organizer apply — was executed on post-#169 `main`
-   twice in the "stale point present" shape and both applies passed
-   A4 → A6 → A8 (`APPLY_VERIFIED`) with new points created cleanly. The
-   pre-#169 physical observation must be treated as secondary to the pre-#169
-   two-pass restore environment (#167/#168), not as an independent
-   checkpoint/store defect.
-2. **`VERIFIED + NEITHER` restart reconciliation is `SilentAdvance`; the point
-   stays `VERIFIED` and restorable.** Observed three times on-device
-   (`RESTART_RECONCILED priorLifecycle=VERIFIED classification=NEITHER_RECOGNIZED
-   resultingLifecycle=VERIFIED` for three distinct points). This matches the
-   source fact in the issue (`RestartReconciler` line 242) and is retained as
-   the accepted semantics (decision below).
-3. **No retention/collision mechanism exists by which stale `VERIFIED` points
-   could block checkpoint creation.** Source analysis of
-   `RetentionPolicy.planCreate` (records ≤ cap 3; VERIFIED is not active/READY,
-   so it is "resolved" capacity and is evictable oldest-first) and random
-   point IDs with 4 retries (`ApplyProtocol.MAX_POINT_ID_ATTEMPTS`) leave no
-   path from "one or two stale VERIFIED records" to
-   `PointIdCollision` / `CreateFailed` / `StoreUnavailable`.
-4. **New follow-up candidate (not the A4 defect):** the manual-organization
-   input-unavailable surface produces **no diagnostics** — the readiness
-   reason is dropped silently (UI state only, never journaled or logged), and
-   one post-restore process exhibited repeated capture unavailability that
-   could not be explained after the fact. Tracked in the follow-up issue.
+The reported A4 `CHECKPOINT_CREATE_FAILED` **is real on current `main` and
+was reproduced and root-caused on the physical device**. Rev 1's conclusion
+("not reproducible post-#169") was drawn from fresh-install emulator runs
+whose workspace is small enough to hide the failure; it is **retracted**.
+What stands from rev 1 is the emulator evidence set, which now serves as the
+small-workspace control that isolates the load-bearing variable.
+
+**Root cause (statement/phase level, instrumented device reproduction):**
+
+1. `RecoveryStore.checkpoint()` encodes the capture manifest twice into the
+   recovery record row (`pre_manifest` + `intended_manifest`, identical at
+   CREATING). On the device the post-Nova-restore workspace is a 125-row
+   import whose manifest is ~1.12 MB per blob → the single record row is
+   ~2.25 MB.
+2. The CREATING insert **commits successfully** (the row is durable).
+3. The protocol then closes and reopens the helper and reads the row back
+   (`readRecord` → `SELECT * … WHERE point_id = ?`). The row exceeds the
+   2 MB SQLite `CursorWindow` → `android.database.sqlite.SQLiteBlobTooBigException:
+   Row too big to fit into CursorWindow requiredPos=0, totalRows=1`.
+4. The exception is a `SQLException`, collapsed by
+   `RecoveryStore.checkpoint()` into `CheckpointResult.CreateFailed` →
+   `ApplyProtocol` maps it to `PRE_WRITE_REJECTED.CHECKPOINT_CREATE_FAILED`
+   at A4. No Launcher layout mutation occurs (pre-write rejection, as
+   reported).
+
+**Store poisoning (follow-on, also confirmed by instrumentation):**
+
+5. Because the CREATING row is committed and unreadable, the process's
+   inspection fence finishes `OUTCOME_UNCERTAIN` → DIRTY; every subsequent
+   apply in that process is rejected at A4 with
+   `PRE_WRITE_REJECTED.RECOVERY_STORE_UNAVAILABLE` (`beginMutation
+   fence=DIRTY_OR_UNKNOWN`) — matching the reported second symptom.
+6. After a designed restart, reconciliation's
+   `SELECT * FROM recovery_points ORDER BY created_at_ms ASC` throws the same
+   `SQLiteBlobTooBigException` (`requiredPos=1, totalRows=2`): the whole
+   non-final record list is unbuildable, so **even the small, healthy
+   VERIFIED record is not reconciled**, and the huge CREATING row cannot be
+   advanced, pruned, or tombstoned by any protocol path (every path reads
+   the row first). The store stays poisoned until the row is removed
+   out-of-band or the format changes.
+
+This is a checkpoint/store capacity defect independent of Nova semantics:
+any workspace whose capture manifest exceeds ~1 MB per blob (real-device
+row counts with icon-bearing rows) crosses the 2 MB `CursorWindow`.
+Nova-restore-after-organizer is simply the reported path that reaches it.
 
 ## Environments
 
-| | Value |
-|---|---|
-| Build | `main` @ `afb7618144` (post-#169 merge; production code identical to PR #169 head `1c64b5f4`), `assembleLawnWithQuickstepGithubDebug`, APK sha256 `26e35f54…9cc` |
-| Emulator | AVD `nunu_qpr2_api36_1` (Pixel 6-class, Google APIs), Android 16 / API 36, `emulator-5554` |
-| Package | `app.lawnchair.debug` (`15.Dev.(afb7618)`) |
-| Nova backup | same file as #167/#168 (`backup.novabackup`, md5 `af49202e1b2b2638056481975ef03c45`; identical to the Pixel's `2026-08-28_15-49.novabackup`) |
-| Default grid | `launcher_5_4_4.db`, 15 default rows |
-| Backup grid | 6 rows × 5 cols × 5 hotseat → target `launcher_6_5_5.db` |
-| Physical device | Pixel 9a (`56231JEBF08674`, API 37) available but not needed — the emulator reproduction satisfied the issue's "fix verification runs primarily on emulator" goal |
+| | Device (authoritative repro) | Emulator (control) |
+|---|---|---|
+| Hardware | Pixel 9a (`56231JEBF08674`), Android 17 / API 37 | AVD `nunu_qpr2_api36_1`, Android 16 / API 36 |
+| Builds | release `app.lawnchair` `15.Dev.(#18)` (versionCode 1500020300, APK sha256 `32ab0cd1…b5a`, installed 2026-08-29 21:40 — user-installed); debug `app.lawnchair.debug` `15.Dev.(afb7618)` + checkpoint instrumentation for the reproduction | debug `15.Dev.(afb7618)` (clean, then + instrumentation for one capture-reason run) |
+| Default grid / workspace | `launcher_5_4_4.db` (4 cols × 5 rows), 17 default rows | `launcher_5_4_4.db` (5×4×4), 15 default rows |
+| Nova backup | `2026-08-28_15-49.novabackup` (md5 `af49202e…fc45`) | identical file |
+| Post-restore workspace | 6×5×5 grid `launcher_6_5_5.db`, **125-row import, 3 pages** (real apps + icons) | 6×5×5 grid, **12–13 rows** after loader sanitation (most backup apps not installed) |
+| Recovery record size | pre+intended manifest = **2,247,054 bytes** (~1.12 MB each) | 211,560–233,569 bytes total |
 
-A temporary diagnosis-only log line (reason code only, no PII) was added to
-`ManualOrganizationRun` for one run and removed before this investigation
-closed; the working tree at the time of writing is exactly `main` @
-`afb7618144` (verified by `git diff` empty + `spotlessCheck` green).
+`main` @ `afb7618144`; production code identical to PR #169 head. The
+checkpoint instrumentation (phase + exception class/message + opaque point ID
+only, per the issue's Stage C contract) lived on the investigation branch
+`invest/issue-171-checkpoint-cause`, was used only for the device
+reproduction, and is not part of PR #173 or `main`. The device was restored
+after the reproduction: instrumented debug build uninstalled, default home
+returned to Nova; the user-installed release build and its (poisoned)
+app state were left untouched.
 
-## Stage A — post-#169 prerequisite (one Nova restore → authoritative)
+## Device evidence chain
 
-Fresh install of the `afb7618` debug build (fresh install, default workspace
-15 rows in `launcher_5_4_4.db`), then one Nova restore:
-
-- `IDP recompute: dbFile launcher_5_4_4.db -> launcher_6_5_5.db` then
-  `applyGridInfo: dbFile launcher_6_5_5.db -> launcher_6_5_5.db (grid 6x5 h5)`
-  — the #169 authoritative-application trace.
-- `migrateGridIfNeeded: no grid migration needed`; **no** default-workspace
-  load after the self-restart (`AutoInstalls` / default-layout lines: 0).
-- Active DB `launcher_6_5_5.db` holds the converted import (13 rows after
-  loader sanitation; the full 128-row staged import is reduced at load
-  because most backup packages are not installed on the emulator — the same
-  converter/loader semantics recorded in #167's secondary findings).
-- Visible workspace = imported layout. Recovery store fresh (0 points,
-  0 tombstones, `user_version` 2).
-
-**Prerequisite proven.**
-
-Note: `LoaderTask`'s `loadWorkspace: loading default favorites` line is an
-**unconditional** log (`LoaderTask.java:482` in this tree) and is NOT a
-default-workspace-load signature. An initial reading of this session's logs
-as "the import was lost and defaults were reloaded" was wrong and was
-retracted after source check; the DB contents never regressed to a default
-workspace at any point in the sequences below.
-
-## C-matrix outcomes (documented smaller equivalent set)
-
-| Case | Prior VERIFIED point | External restore | Outcome on post-#169 `main` |
-|---|---|---|---|
-| C1 equivalent | no | Nova (grid change 5_4_4→6_5_5) | Organizer run from clean store: `CHECKPOINTED(A4) → APPLY_COMMITTED(A6) → APPLY_VERIFIED(A8)`, point `20875cd7…` VERIFIED |
-| C3 (first, contaminated) | yes (1 point) | Nova (restore over existing 6_5_5, workspace then drifted via session's own force-stops) | Organizer apply: `CHECKPOINTED(A4) → APPLY_COMMITTED(A6) → APPLY_VERIFIED(A8)`, new point `e900ce24…` VERIFIED alongside the stale one (2 points, 0 tombstones) |
-| C3 (clean) | yes (2 stale points) | Nova (restore over existing 6_5_5, no session interventions) | Restart reconciliation: both stale points `VERIFIED + NEITHER_RECOGNIZED → VERIFIED`; Organizer apply in the post-restore process: `CHECKPOINTED(A4) → APPLY_COMMITTED(A6) → APPLY_VERIFIED(A8)`, new point `071d30bc…` VERIFIED (3 points, 0 tombstones) |
-| C2 | yes | none | Not run verbatim; subsumed: C3 exercised the stricter condition (prior point **and** external replacement) and passed; source analysis shows a prior VERIFIED point alone reduces free capacity from 3→2, still `Allowed` in `planCreate` |
-| C4 | yes | ordinary Lawnchair restore | Not run: its purpose was to localize the trigger of the original A4 failure. The failure no longer occurs, so no trigger exists to localize (issue: "Only add another dimension if evidence requires it") |
-
-**Answer to the C-matrix question:** on post-#169 `main`, `CHECKPOINT_CREATE_FAILED`
-has **no** necessary condition among {prior VERIFIED point, external
-replacement, Nova specifically} — none of them blocks A4.
-
-## Stage C — recovery-store evidence around the failing-apply attempts
-
-Before every apply attempt above, the store state was:
-
-- `recovery_points`: only `VERIFIED` records (1 → 2 across the session);
-  `lifecycle` canonical int 4 = VERIFIED; `created_at_ms` consistent.
-- `recovery_tombstones`: **0 rows at all times** — the #166 three-RESTORED-
-  tombstones admission lockout is definitively ruled out (nothing to evict,
-  no capacity pressure: max 2 non-final records vs cap 3).
-- `user_version` 2; main + sidecar files present; every `availability()`
-  probe READY (all applies passed A2 and reached A4).
-- Checkpoint phase reached and passed: the store accepted insert → close/
-  reopen readback → CREATING→READY advance → READY readback → projection
-  publication, i.e. every phase `RecoveryStore.checkpoint()` can fail in was
-  exercised successfully.
-
-Journal (`organizer_diagnostics.journal`, 40 events by end of session) key
-entries, all with opaque IDs only:
+### Release-build diagnostics export (user's run, `Download/organizer_diagnostics.jsonl`, 28 events)
 
 ```text
-run f44c6d89… CHECKPOINTED A4 → APPLY_COMMITTED A6 → APPLY_VERIFIED A8
-  {preserve:4, update:9, insert:2}   (C1-equivalent, clean store)
-RESTART_RECONCILED subject=f44c6d89… prior=VERIFIED classification=NEITHER_RECOGNIZED result=VERIFIED
-run 4533b587… CHECKPOINTED A4 → APPLY_COMMITTED A6 → APPLY_VERIFIED A8
-  {preserve:4, update:8, insert:2}   (C3 first, stale point present)
-RESTART_RECONCILED subject=4533b587… prior=VERIFIED classification=NEITHER_RECOGNIZED result=VERIFIED
-run 435dd4d6… CAPTURED → PLANNED captured=12 moved=8 preserved=4 → PREVIEWED → USER_CANCELLED
-run 7fb26eda… CAPTURED → PLANNED captured=12 moved=8 preserved=4 → PREVIEWED → USER_CONFIRMED
-  CHECKPOINTED A4 → APPLY_COMMITTED A6 → APPLY_VERIFIED A8
-  {preserve:4, update:8, insert:2}   (C3 clean, post-restore process)
+run ef50d3a4… MANUAL_FULL  RUN_STARTED → CAPTURED → PLANNED → PREVIEWED
+  → USER_CONFIRMED → CHECKPOINTED A4 (point 7ec1c2bf…) → APPLY_COMMITTED A6
+  → APPLY_VERIFIED A8 {preserve:12, update:5, insert:1}
+RESTART_RECONCILED prior=VERIFIED classification=NEITHER_RECOGNIZED result=VERIFIED
+run 5c06efb5… ONBOARDING_PROPOSAL … USER_CONFIRMED
+  → CHECKPOINT_REJECTED A4 {family: PRE_WRITE_REJECTED, code: CHECKPOINT_CREATE_FAILED}
+run ec5aa47e… MANUAL_FULL … USER_CONFIRMED
+  → APPLY_REJECTED A4 {code: RECOVERY_STORE_UNAVAILABLE}   (+12 s, same process)
+run 1865bc9e… MANUAL_FULL … USER_CONFIRMED
+  → APPLY_REJECTED A4 {code: RECOVERY_STORE_UNAVAILABLE}
 ```
 
-## The external workspace vs the old VERIFIED points
+This is exactly the reported scenario: one Nova restore completes normally
+(applyGridInfo trace, import authoritative), the first post-restore Organizer
+apply (the onboarding proposal) dies at A4 `CHECKPOINT_CREATE_FAILED` before
+any mutation, and the follow-ups degrade to `RECOVERY_STORE_UNAVAILABLE`.
 
-- The second Nova restore re-imports deterministically: the workspace tuple
-  set (`_id, itemType, container, screen, cellX, cellY`) after restore was
-  **byte-identical** to the post-first-restore import (13 rows, same `_id`s).
-- Nevertheless, restart reconciliation classified the stale VERIFIED points
-  as `NEITHER_RECOGNIZED` — the current workspace digest matches neither the
-  points' `preDigest` nor their `intendedDigest`. The classification digest
-  covers more than the favorites tuple set (manifest context resources,
-  page normalization, etc.), so tuple equality does not imply digest
-  equality. This is worth knowing when reasoning about "the restore put the
-  workspace back to the point's pre-state": **it does not, by digest**.
-- Reconciliation outcome is `SilentAdvance` in every observation; points
-  remain `VERIFIED`, restorable via the existing recovery surface, and
-  evictable by retention (24 h age, count cap 3).
+### Instrumented debug reproduction (same device, same sequence)
 
-## Stage D — semantic decision: VERIFIED points after authoritative external replacement
+Fresh debug install → manual organize (A4→A6→A8 verified, point `05ccd92f…`,
+record 5,193+4,830 bytes) → one Nova restore (one-pass authoritative, grid
+5_4_4→6_5_5) → restart → onboarding proposal → confirm → apply:
 
-**Decision: keep current behavior — a `VERIFIED` recovery point remains
-stored and restorable after an authoritative external workspace replacement;
-no invalidation and no acknowledgement gate is introduced.** Restart
-reconciliation keeps `VERIFIED → SilentAdvance` unchanged.
+```text
+checkpoint=64a4e6db… phase=DB_OPEN ok
+checkpoint=64a4e6db… phase=RETENTION_ALLOWED evictCount=0
+checkpoint=64a4e6db… phase=CREATING_INSERT_COMMITTED
+checkpoint=64a4e6db… phase=EXC sql class=android.database.sqlite.SQLiteBlobTooBigException
+                     msg=Row too big to fit into CursorWindow requiredPos=0, totalRows=1
+```
 
-Grounding (against ADR-0003 / current recovery guarantees):
+Store read-back after the failure (`run-as`, debug build):
+`64a4e6db…` lifecycle `CREATING`(0), `length(pre_manifest)=length(intended_manifest)=1,123,527`;
+`05ccd92f…` lifecycle `VERIFIED`(4), 5,193 bytes; 0 tombstones; `user_version` 2.
 
-1. **Safety does not depend on the point being current.** Recovery restores a
-   validated snapshot through an explicit, preconditioned write-set in one
-   Launcher DB transaction, with context-mismatch rejection before `RESTORING`
-   (ADR-0003 ordering; #155/ADR-0008 context). Restoring a stale pre-state is
-   therefore safe regardless of what the external restore installed — the
-   guarantees the point carries are transactional, not semantic.
-2. **External replacement is an explicit user action**, and the recovery
-   surface is equally explicit and user-initiated; a user who restores a
-   stale "previous layout" gets exactly that verified layout. No silent
-   behavior change is introduced by keeping the point.
-3. **An invalidation contract would need a new external-restore seam.** There
-   is no existing notification path from {Nova converter, Lawnchair ZIP
-   restore, Launcher3 restore, grid migration, raw-file restore} to the
-   recovery store. Creating one couples every replacement mechanism to the
-   organizer for a scenario with no demonstrated user harm, and would weaken
-   recoverability (invariant 11 in `DESIGN.md`) in the window where the
-   external restore went wrong — precisely when the old point is most
-   valuable.
-4. **Retention already bounds staleness** (24 h age, ≤3 points, VERIFIED
-   evictable oldest-first at creation time).
+Second apply in the same process (manual): rejected before any new
+instrumented checkpoint line — fence already DIRTY (consistent with the
+release-build `RECOVERY_STORE_UNAVAILABLE` follow-ups).
 
-The alternative "retire/invalidate on authoritative external restore" was
-rejected for the seam-coupling reason above; "keep stored but ineligible
-until acknowledged" was rejected because it adds a user-visible gating state
-with no safety benefit (the restore path is already fail-closed) and no
-evidence of user confusion in the reproduced scenario. If product evidence
-for user surprise emerges, that is a product decision to be taken spec-first,
-not a defect in the current protocol.
+Designed restart (Lawnchair再起動) with the poisoned store:
 
-## Follow-up issue (split from this investigation)
+```text
+E/SQLiteQuery: exception: Row too big to fit into CursorWindow requiredPos=1, totalRows=2;
+               query: SELECT * FROM recovery_points ORDER BY created_at_ms ASC
+```
 
-- **Organizer input-unavailability is undiagnosable in production**: when
-  `composeFullOrganization()` returns `NotReady(reason)`, the reason is placed
-  in UI state only — never journaled, never logged. During this session the
-  manual organizer showed "The current layout or required organization
-  information is unavailable" in a post-restore process (twice, with the
-  model loaded) and the cause could not be established afterwards; a later
-  capture attempt in an equivalent state succeeded, so the episode is
-  one-off and unexplained. This session also confirmed the same surface
-  fails legitimately when the launcher model has not loaded (capture ran
-  before any `LoaderTask` completed). The follow-up owns: (a) surfacing the
-  readiness reason through the existing diagnostics contract (reason code
-  only), (b) reproducing/understanding the one-off post-restore capture
-  unavailability. Link: https://github.com/nunu1733/NunuLauncher/issues/172
+No `RESTART_RECONCILED` event was emitted for either record (the list query
+aborts before any record is processed). The CREATING row and the VERIFIED row
+are both still present, unchanged.
 
-Secondary observations (recorded, not owned here):
+## Emulator control set (rev 1 evidence, retained)
 
-- Import content variance across restore passes: the backup's At a Glance
-  placeholder row (itemType 6, no intent/provider) was present after
-  grid-change restores but dropped by the loader after a restore over the
-  same grid; logcat shows `App widget provider info is null. PackageName=
-  app.lawnchair.debug appWidgetId-262/-263` around those loads. Converter/
-  loader widget semantics adjacent to #168's scope; worth a look when #168's
-  Open item A is revisited.
+All fresh-install emulator sequences passed — and their recovery records are
+5–9× below the window limit, which is now the explanation rather than a
+mystery:
 
-## Acceptance-criteria mapping (Issue #171)
+- One Nova restore → authoritative import (13 rows, no default load, 0).
+- Organizer from clean store: A4→A6→A8 `APPLY_VERIFIED` (point `20875cd7…`).
+- Restart reconciliation after external restore: `VERIFIED + NEITHER_RECOGNIZED
+  → VERIFIED` (observed for three distinct points across the session).
+- Apply with 1–2 stale VERIFIED points present: A4→A6→A8 `APPLY_VERIFIED`
+  (points `e900ce24…`, `071d30bc…`); 0 tombstones at all times → #166
+  capacity lockout ruled out; `RetentionPolicy.planCreate` source analysis
+  shows stale VERIFIED records cannot force `Unavailable` below the cap.
+- Known boundary: the manual organizer fails legitimately when opened before
+  the launcher model has loaded; the input-unavailable surface additionally
+  exhibited a one-off unexplained failure (diagnostics gap → #172).
+
+## Device vs emulator differentiator
+
+The only load-bearing difference found is **recovery-record size vs the 2 MB
+CursorWindow**, driven by captured manifest scale (row count × icon-bearing
+rows): device ~2.25 MB (fails) vs emulator ~0.21 MB (passes). Retention
+state, tombstone counts, store version/sidecars, prior-point shape
+(VERIFIED + NEITHER), and the restore flow itself are equivalent. The bug is
+therefore not Nova-specific and not retention-related; the Nova restore is
+the trigger that makes the workspace (and thus the next checkpoint's
+pre-state manifest) large on a real device.
+
+## Stage D — semantic decision (unchanged, and independent of this defect)
+
+**Keep current behavior: a `VERIFIED` recovery point remains stored and
+restorable after an authoritative external workspace replacement; no
+invalidation and no acknowledgement gate.** `VERIFIED → SilentAdvance` in
+restart reconciliation is accepted (observed `NEITHER_RECOGNIZED` on both
+platforms). Grounding: recovery restores a validated snapshot through an
+explicit, preconditioned, fail-closed write-set (ADR-0003; #155/ADR-0008
+context rejection), so a stale point is safe; external replacement is an
+explicit user action; invalidation would require a new external-restore seam
+across all replacement mechanisms for no demonstrated harm; retention bounds
+staleness. Per the PR review, this decision is recorded separately from the
+checkpoint defect and is not a prerequisite for the fix.
+
+## Focused owning issue (split per Stage E)
+
+- **#174 (Bug)**: `RecoveryStore.checkpoint()` creates records whose committed
+  row can exceed the 2 MB `CursorWindow` on readback — deterministic A4
+  `CHECKPOINT_CREATE_FAILED` at real-device workspace scale, plus store
+  poisoning (unreadable CREATING row blocks reconciliation of the entire
+  store, including healthy records). Owns the fix and the regression seam.
+- **#172 (existing)**: input-unavailable readiness reason is not journaled or
+  logged (the fence-DIRTY follow-on in this scenario was only visible through
+  instrumentation; production diagnostics showed `RECOVERY_STORE_UNAVAILABLE`
+  with no cause).
+
+## Acceptance-criteria mapping (Issue #171, rev 2)
 
 - Post-#169 prerequisite proven (one restore → authoritative workspace):
-  **yes** — Stage A section.
+  **yes** — both platforms.
 - Original sequence re-run from clean recovery-store state with exact build/
-  environment evidence: **yes** — Environments + C1-equivalent.
+  environment evidence: **yes** — device release export + instrumented device
+  debug reproduction.
 - C1-C4 (documented smaller equivalent set) establishing the necessary
-  condition: **yes** — table above; answer "neither" (no condition blocks A4).
-- Repeatable emulator reproduction, or non-reproducibility with a defensible
-  boundary: **yes, non-reproducible** — the scenario was executed twice in
-  the stale-point shape on post-#169 `main` and passed; source analysis shows
-  no mechanism; the pre-#169 observation is attributed to the pre-#169
-  two-pass environment.
+  condition: **yes** — the necessary condition is **workspace scale
+  (manifest size), not prior VERIFIED points, not external replacement as
+  such, not Nova specifically**; the emulator control isolates it.
+- Repeatable reproduction: **yes** — device sequence reproduced end-to-end
+  with instrumentation; emulator fix-verification is expected to run at the
+  application-contract level (test DB with an oversized record), per the fix
+  issue.
 - Recovery-store state before the failing apply captured sufficiently to
-  rule #166 in/out: **yes** — 0 tombstones at all times, ≤2 records vs cap 3.
-- Exact `RecoveryStore.checkpoint()` failure phase/cause if A4 still fails:
-  **N/A** — A4 no longer fails; every checkpoint phase passed.
-- Relationship between external workspace and old VERIFIED point classified
-  and correlated with restart reconciliation: **yes** — `NEITHER_RECOGNIZED`
-  (despite tuple-identical re-import), `SilentAdvance`, point retained.
+  rule #166 in/out: **yes** — 0 tombstones, ≤2 non-final records on both
+  platforms.
+- Exact `RecoveryStore.checkpoint()` failure phase and concrete exception:
+  **yes** — CREATING insert commits; close/reopen readback throws
+  `SQLiteBlobTooBigException` (`SELECT *` row > 2 MB CursorWindow); collapsed
+  to `CreateFailed`. `creation_failed` is no longer the only surface.
+- Relationship between the external workspace and the old VERIFIED point
+  classified and correlated with restart reconciliation: **yes** —
+  `NEITHER_RECOGNIZED → VERIFIED` (both platforms), plus the poisoning
+  behavior above.
 - Conscious recovery-point semantic decision recorded: **yes** — Stage D.
 - Implementation work split to focused owning Issue(s); no silent semantic or
-  fail-closed change: **yes** — follow-up #172 (diagnostics/observability);
-  no production semantics changed (the one temporary log line was removed).
-- Fix verification runs primarily on emulator: **yes** — all evidence above
-  is emulator-only; the physical Pixel was not needed.
+  fail-closed change: **yes** — #174 (fix) and #172 (diagnostics); no
+  production change in this investigation (net diff empty on the PR branch;
+  instrumentation isolated to the investigation branch and removed from the
+  device).
+- Fix verification runs primarily on emulator: **to be satisfied by #174** —
+  the defect is reproducible at the contract-test level (oversized record in
+  a test DB) without device hardware.
 
 ## Non-goal compliance
 
-- #168's one-restore fix was not reopened; the prerequisite was verified, not
-  re-fixed.
+- #168's one-restore fix was not reopened; the one-restore prerequisite held
+  on the device as well.
 - No #166 admission/tombstone policy was implemented.
 - Exact apply verification, recovery-store durability, and fail-closed
-  behavior were not weakened; no production code changed in this
-  investigation (net diff against `main` is empty).
+  behavior were not weakened; PR #173 remains docs-only.
 - No public diagnostics schema was added.
-- `VERIFIED + NEITHER` was not treated as valid-or-invalid before the
-  semantic review; the decision above is grounded in ADR-0003.
-- The pre-#169 physical observation was not treated as proof of a post-#169
-  root cause.
+- The pre-#169 physical observation is now **corroborated** (not explained
+  away); rev 1's attribution of the failure to the pre-#169 two-pass restore
+  environment is retracted.
