@@ -1,7 +1,7 @@
 # Assessment: Issue #171 — Organizer after external workspace restore (A4 checkpoint / recovery semantics)
 
 Status: `implemented` (investigation complete; focused fix split to a separate Bug Issue)
-Date: 2026-08-29 (rev 2 — device root cause added; rev 1's "not reproducible post-#169" conclusion retracted)
+Date: 2026-08-29 (rev 1; rev 2 device root cause; rev 3 — serial redacted, Stage D recoverability scope corrected)
 Investigation issue: https://github.com/nunu1733/NunuLauncher/issues/171
 Related: #167 / #168 / PR #169, #164, #166, follow-up #172, fix issue #174
 
@@ -11,7 +11,7 @@ and Pixel screenshots, full logcat per restore pass, pulled
 journals (device export + debug journal). Only hashes, counts, opaque IDs,
 lifecycle states, and schema-level exception messages are quoted here.
 
-## Rev 2 verdict
+## Rev 2/3 verdict
 
 The reported A4 `CHECKPOINT_CREATE_FAILED` **is real on current `main` and
 was reproduced and root-caused on the physical device**. Rev 1's conclusion
@@ -63,7 +63,7 @@ Nova-restore-after-organizer is simply the reported path that reaches it.
 
 | | Device (authoritative repro) | Emulator (control) |
 |---|---|---|
-| Hardware | Pixel 9a (`56231JEBF08674`), Android 17 / API 37 | AVD `nunu_qpr2_api36_1`, Android 16 / API 36 |
+| Hardware | physical-device-A (Pixel 9a-class), Android 17 / API 37 — unique serial redacted per the evidence contract | AVD `nunu_qpr2_api36_1`, Android 16 / API 36 |
 | Builds | release `app.lawnchair` `15.Dev.(#18)` (versionCode 1500020300, APK sha256 `32ab0cd1…b5a`, installed 2026-08-29 21:40 — user-installed); debug `app.lawnchair.debug` `15.Dev.(afb7618)` + checkpoint instrumentation for the reproduction | debug `15.Dev.(afb7618)` (clean, then + instrumentation for one capture-reason run) |
 | Default grid / workspace | `launcher_5_4_4.db` (4 cols × 5 rows), 17 default rows | `launcher_5_4_4.db` (5×4×4), 15 default rows |
 | Nova backup | `2026-08-28_15-49.novabackup` (md5 `af49202e…fc45`) | identical file |
@@ -219,7 +219,7 @@ protocol.
   instrumentation; production diagnostics showed `RECOVERY_STORE_UNAVAILABLE`
   with no cause).
 
-## Acceptance-criteria mapping (Issue #171, rev 2)
+## Acceptance-criteria mapping (Issue #171, rev 3)
 
 - Post-#169 prerequisite proven (one restore → authoritative workspace):
   **yes** — both platforms.
