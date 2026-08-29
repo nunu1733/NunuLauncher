@@ -2,9 +2,7 @@
 
 > Issue: [#164](https://github.com/nunu1733/NunuLauncher/issues/164)
 > Spec: [spec.md](./spec.md)
-> Status: **accepted** (2026-08-28, owner review passed with no blocking
-> findings). Stage B implementation follows this plan; no production behavior
-> change happened under the Stage A branch.
+> Status: **implemented**. Merged through [PR #165](https://github.com/nunu1733/NunuLauncher/pull/165) (merge commit `5b00c46b69`) after exact-head `CI / final-status`, Pixel 9a debug + release device evidence, and the accepted independent high-risk audit (`docs/assessment/pr-165-new-folder-a7-item-order.md`).
 > Risk: `layout-data`
 > Evidence baseline: Issue #164 reproduction at `92a490a2f8` (release) and
 > `c68abcce62` (debug reproduction build), both on the device environment
@@ -408,4 +406,5 @@ audit requires a new CI result and audit.
   spec AC and the evidence document; both builds and the evidence were
   produced/verified after the review. Device home restored to Nova, both
   Lawnchair builds uninstalled. The API 36.1 AVD run is retained as
-  supplementary evidence.
+  supplementary evidence.- 2026-08-29: Merged via PR #165 at `5b00c46b69`; spec and plan marked
+  implemented.

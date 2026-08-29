@@ -1,6 +1,6 @@
 ---
 issue: "#164"
-status: accepted
+status: implemented
 requirements:
   - CANONICAL-WRITESET-ORDER
   - NEW-FOLDER-A8-DEVICE
@@ -9,7 +9,7 @@ requirements:
   - TOMBSTONE-LOCKOUT-SPLIT
 risk:
   - layout-data
-updated: 2026-08-28
+updated: 2026-08-29
 ---
 
 # New-folder plans reach A8: canonical intended-state item order
@@ -332,4 +332,10 @@ is unchanged.
   explicit recoveries carried `pointOriginRunId` with exact pre-apply
   restoration. The device OS version (16 → 17 upgrade) is recorded in the
   AC and evidence as an environment fact. The earlier API 36.1 AVD release
-  run is retained as supplementary evidence.
+  run is retained as supplementary evidence.- 2026-08-29: Implemented and verified via PR #165 (merged at `5b00c46b69`).
+  All AC-164 criteria met: the canonical finalization fix with red/green
+  oracles, Pixel 9a debug + release device evidence reaching A8 with
+  `pointOriginRunId` recovery correlation and exact pre-apply restoration,
+  the tombstone-lockout split (#166), exact-head `CI / final-status`, and
+  the accepted independent audit
+  (`docs/assessment/pr-165-new-folder-a7-item-order.md`).
