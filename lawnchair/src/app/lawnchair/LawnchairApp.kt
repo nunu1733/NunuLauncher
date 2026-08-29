@@ -53,6 +53,7 @@ import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.Launcher
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
+import com.android.launcher3.model.LayoutWriteCoordinator
 import com.android.quickstep.RecentsActivity
 import com.android.systemui.shared.system.QuickStepContract
 import java.io.File
@@ -142,13 +143,29 @@ class LawnchairApp : Application() {
         }
     }
 
+    // Issue #168: restore-safe DB cleanup. Deletes unmatched launcher* files as
+    // before on ordinary loads, but never while a restore family lease is held or a
+    // staged restored.db exists — deleting then would destroy the import a restore
+    // is about to bind. Every deletion and every blocked deletion is logged.
     fun cleanUpDatabases() {
         val idp = InvariantDeviceProfile.INSTANCE.get(this)
         val dbName = idp.dbFile
         val dbFile = getDatabasePath(dbName)
+        val restoreLeaseActive = LayoutWriteCoordinator.getInstance().hasActiveRestoreFamilyLease()
+        val stagedRestoreExists = getDatabasePath(LawnchairBackup.RESTORED_DB_FILE_NAME).exists()
         dbFile?.parentFile?.listFiles()?.forEach { file ->
             val name = file.name
             if (name.startsWith("launcher") && !name.startsWith(dbName)) {
+                if (restoreLeaseActive || stagedRestoreExists) {
+                    Log.w(
+                        TAG,
+                        "Skipping deletion of $name while a restore is in progress " +
+                            "(restoreLeaseActive=$restoreLeaseActive, " +
+                            "stagedRestoreExists=$stagedRestoreExists, activeDb=$dbName)",
+                    )
+                    return@forEach
+                }
+                Log.i(TAG, "Deleting unmatched launcher database file: $name (active: $dbName)")
                 file.delete()
             }
         }

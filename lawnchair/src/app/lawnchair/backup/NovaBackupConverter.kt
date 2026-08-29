@@ -185,9 +185,16 @@ class NovaBackupConverter(
                         )
                         gridState.writeToPrefs(context, true)
                         gridState.writeToPrefs(context)
-                        InvariantDeviceProfile.INSTANCE.get(context).dbFile = gridInfo.dbFile
+                        writeGridToLawnchairPrefs(info, smartspaceEnabled)
+                        // Issue #168: make one restore authoritative. The persisted grid
+                        // state is committed; apply the same converted values to the live
+                        // IDP synchronously (main thread, under this lease) so performRestore
+                        // and the correlated reload bind the DB the sanitizer wrote, instead
+                        // of depending on pref-change listener timing.
+                        applyConvertedGrid(gridInfo)
+                    } else {
+                        writeGridToLawnchairPrefs(info, smartspaceEnabled)
                     }
-                    writeGridToLawnchairPrefs(info, smartspaceEnabled)
 
                     val restoredDbFile = context.getDatabasePath(LawnchairBackup.RESTORED_DB_FILE_NAME)
                     restoredDbFile.parentFile?.mkdirs()
@@ -214,12 +221,29 @@ class NovaBackupConverter(
     private fun writeGridToLawnchairPrefs(info: NovaBackupInfo, smartspaceEnabled: Boolean) {
         val prefs = PreferenceManager.getInstance(context)
         val adjustedRows = if (smartspaceEnabled && info.rows != null) info.rows + 1 else info.rows
+        // Issue #168: trace the committed grid values (Open item A of the two-pass
+        // restore investigation).
+        Log.i(
+            TAG,
+            "Committing converted grid to prefs: rows=$adjustedRows columns=${info.columns} " +
+                "hotseat=${info.hotseatCount}",
+        )
         prefs.sp.edit().apply {
             info.columns?.let { putInt(prefs.workspaceColumns.key, it) }
             adjustedRows?.let { putInt(prefs.workspaceRows.key, it) }
             info.hotseatCount?.let { putInt(prefs.hotseatColumns.key, it) }
             info.iconPackPackage?.let { putString(prefs.iconPackPackage.key, it) }
         }.commit()
+    }
+
+    // Issue #168: apply the converted grid to the live IDP on the main thread while
+    // the BACKUP_RESTORE lease is held. Running it on Main also places it behind any
+    // listener-posted recompute already queued by the pref writes above, so this is
+    // the last grid-state mutation before the staged DB is bound.
+    private suspend fun applyConvertedGrid(gridInfo: DeviceProfileOverrides.DBGridInfo) {
+        withContext(Dispatchers.Main) {
+            InvariantDeviceProfile.INSTANCE.get(context).applyGridInfo(context, gridInfo)
+        }
     }
 
     private fun parseNovaConfig(xmlFile: File): NovaConfig {

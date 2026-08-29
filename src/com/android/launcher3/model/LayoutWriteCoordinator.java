@@ -115,6 +115,17 @@ public final class LayoutWriteCoordinator {
                 || kind == OwnerKind.BACKUP_RESTORE;
     }
 
+    // Issue #168: read-only check used by LawnchairApp.cleanUpDatabases so DB file
+    // deletion becomes restore-safe: while any restore-family lease is held, a
+    // staged restore is in flight and unmatched launcher* DB files must not be
+    // removed.
+    public boolean hasActiveRestoreFamilyLease() {
+        synchronized (lock) {
+            Holder h = current;
+            return h != null && isRestoreFamily(h.kind);
+        }
+    }
+
     /**
      * Reentrant acquisition for the restore family (Issue #58). Succeeds when the
      * current lease is any restore kind ({@code RESTORE} or {@code BACKUP_RESTORE})

@@ -233,4 +233,40 @@ public class LayoutWriteCoordinatorTest {
         assertEquals(3, runCount.get());
         assertEquals(0, c.pendingDeferredCount());
     }
+
+    // --- Issue #168: restore-family lease visibility for restore-safe DB cleanup ---
+
+    @Test
+    public void restoreFamilyLeaseIsReportedAsActive() {
+        LayoutWriteCoordinator c = LayoutWriteCoordinator.getInstance();
+        assertFalse(c.hasActiveRestoreFamilyLease());
+        try (LayoutWriteCoordinator.Lease lease =
+                     c.tryAcquire(LayoutWriteCoordinator.OwnerKind.BACKUP_RESTORE)) {
+            assertNotNull(lease);
+            assertTrue(c.hasActiveRestoreFamilyLease());
+        }
+        assertFalse(c.hasActiveRestoreFamilyLease());
+    }
+
+    @Test
+    public void plainRestoreLeaseIsReportedAsActive() {
+        LayoutWriteCoordinator c = LayoutWriteCoordinator.getInstance();
+        try (LayoutWriteCoordinator.Lease lease =
+                     c.tryAcquire(LayoutWriteCoordinator.OwnerKind.RESTORE)) {
+            assertNotNull(lease);
+            assertTrue(c.hasActiveRestoreFamilyLease());
+        }
+        assertFalse(c.hasActiveRestoreFamilyLease());
+    }
+
+    @Test
+    public void nonRestoreLeaseIsNotReportedAsRestoreFamily() {
+        LayoutWriteCoordinator c = LayoutWriteCoordinator.getInstance();
+        try (LayoutWriteCoordinator.Lease lease =
+                     c.tryAcquire(LayoutWriteCoordinator.OwnerKind.ORGANIZER)) {
+            assertNotNull(lease);
+            assertFalse(c.hasActiveRestoreFamilyLease());
+        }
+        assertFalse(c.hasActiveRestoreFamilyLease());
+    }
 }

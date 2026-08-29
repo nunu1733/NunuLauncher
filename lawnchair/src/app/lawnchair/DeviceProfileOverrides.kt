@@ -12,6 +12,7 @@ import com.android.launcher3.InvariantDeviceProfile.INDEX_TWO_PANEL_PORTRAIT
 import com.android.launcher3.InvariantDeviceProfile.TYPE_MULTI_DISPLAY
 import com.android.launcher3.InvariantDeviceProfile.TYPE_PHONE
 import com.android.launcher3.InvariantDeviceProfile.TYPE_TABLET
+import com.android.launcher3.logging.FileLog
 import com.android.launcher3.util.DisplayController
 import com.android.launcher3.util.MainThreadInitializedObject
 import com.android.launcher3.util.SafeCloseable
@@ -22,7 +23,16 @@ class DeviceProfileOverrides(context: Context) : SafeCloseable {
     private val prefs = PreferenceManager.getInstance(context)
     private val preferenceManager2 = PreferenceManager2.getInstance(context)
 
-    fun getGridInfo() = DBGridInfo(prefs)
+    fun getGridInfo() = DBGridInfo(prefs).also {
+        // Issue #168: log the raw pref values behind every grid recompute so the
+        // restore-window interleaving (Open item A of the Nova two-pass restore
+        // investigation) is readable from logcat alone.
+        FileLog.d(
+            TAG,
+            "Grid recompute from prefs: rows=${it.numRows} columns=${it.numColumns} " +
+                "hotseat=${it.numHotseatColumns}",
+        )
+    }
 
     fun getGridInfo(gridName: String): DBGridInfo {
         val presets = enabledPresets()
@@ -174,6 +184,8 @@ class DeviceProfileOverrides(context: Context) : SafeCloseable {
     }
 
     companion object {
+        private const val TAG = "DeviceProfileOverrides"
+
         @JvmField
         val INSTANCE = MainThreadInitializedObject(::DeviceProfileOverrides)
 

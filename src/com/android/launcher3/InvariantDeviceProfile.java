@@ -553,6 +553,9 @@ public class InvariantDeviceProfile implements SafeCloseable {
 
         public void onPreferencesChanged(Context context) {
                 Context appContext = context.getApplicationContext();
+                // Issue #168: trace the recompute trigger so the restore window's
+                // recompute interleaving is readable from logcat (Open item A).
+                FileLog.d(TAG, "IDP recompute requested from a preferences change");
                 MAIN_EXECUTOR.execute(() -> onConfigChanged(appContext));
         }
 
@@ -575,12 +578,30 @@ public class InvariantDeviceProfile implements SafeCloseable {
                 // Re-init grid
                 String gridName = getCurrentGridName(context);
                 initGrid(context, gridName);
+                // Issue #168: trace the recompute outcome (Open item A).
+                FileLog.d(TAG, "IDP recompute: dbFile " + oldState[8] + " -> " + dbFile);
 
                 boolean modelPropsChanged = !Arrays.equals(oldState, toModelState());
                 for (OnIDPChangeListener listener : mChangeListeners) {
                         listener.onIdpChanged(modelPropsChanged);
                 }
                 LauncherAppState.getInstance(context).reloadIcons();
+        }
+
+        // Issue #168 bridge: apply a known converted grid (e.g. from a Nova backup
+        // import) to the live singleton synchronously. Unlike onConfigChanged this
+        // reads no grid dimensions from prefs and notifies no listeners, so the
+        // post-restore binding cannot be reverted by a stale pref read or trigger a
+        // mid-restore model reload; the correlated reloadAfterRestore reload follows
+        // instead. NovaBackupConverter calls this on the main thread under the
+        // BACKUP_RESTORE lease.
+        public void applyGridInfo(Context context, DeviceProfileOverrides.DBGridInfo dbGridInfo) {
+                String gridName = DeviceProfileOverrides.INSTANCE.get(context).getGridName(dbGridInfo);
+                String oldDbFile = dbFile;
+                initGrid(context, gridName, dbGridInfo);
+                FileLog.d(TAG, "applyGridInfo: dbFile " + oldDbFile + " -> " + dbFile
+                        + " (grid " + dbGridInfo.getNumRows() + "x" + dbGridInfo.getNumColumns()
+                        + " h" + dbGridInfo.getNumHotseatColumns() + ")");
         }
 
         private static ArrayList<DisplayOption> getPredefinedDeviceProfiles(Context context,
