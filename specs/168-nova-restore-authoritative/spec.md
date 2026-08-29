@@ -155,13 +155,44 @@ old→new), and cleanup decisions (deletion/skip + reason).
 
 ## Acceptance
 
-- [ ] S1 passes on the emulator (`nunu_qpr2_api36_1`) with the #167 backup
+- [x] S1 passes on the emulator (`nunu_qpr2_api36_1`) with the #167 backup
       (sha256 `fa7210a9…884f5`); one restore, no second restore anywhere in
-      the supported path.
-- [ ] No `launcher*` DB deletion can occur while a staged restore exists
+      the supported path. (2026-08-29, build `9bf4af9`: one restore →
+      `launcher_6_5_5.db` holds the import (12 rows, identical to the #167
+      pass-2 success state on the same emulator), zero
+      `loading default workspace` lines, import DB never deleted. Physical
+      Pixel 9a run pending device availability — recorded in the PR.)
+- [x] No `launcher*` DB deletion can occur while a staged restore exists
       (test-proven: S3 at test level, S1/S4 at runtime level).
-- [ ] Grid application is deterministic for grid mismatch (S1) and grid
-      match (S2).
-- [ ] Open item A mechanism pinned from trace logs and recorded in the PR.
-- [ ] `plan.md` in this directory implemented as specified; verification
+- [x] Grid application is deterministic for grid mismatch (S1, S4 cycle 1)
+      and grid match (S2 via `applyGridInfo` seam test; every post-restore
+      recompute converged `launcher_6_5_5.db -> launcher_6_5_5.db`).
+- [x] Open item A mechanism pinned from trace logs and recorded in the PR.
+- [x] `plan.md` in this directory implemented as specified; verification
       commands and results recorded in the PR.
+
+## Open item A — pinned mechanism (trace result)
+
+Direct trace on the failing path (2026-08-29, pre-fix build, restore window):
+
+```text
+.766 NovaBackupConverter: Committing converted grid to prefs: rows=6 columns=5 hotseat=5
+     (raw SharedPreferences commit() returns; rows/columns pref caches NOT invalidated)
+.849 IDP applyGridInfo-equivalent binding: launcher_5_4_4.db -> launcher_6_5_5.db
+.876 IDP recompute requested from a preferences change   (hotseatColumns listener,
+     posted by SharedPreferencesImpl.notifyListeners AFTER commit() returned)
+.876/.877 Grid recompute from prefs: rows=5 columns=4 hotseat=5   ← STALE rows/cols
+.961 IDP recompute: dbFile launcher_6_5_5.db -> launcher_5_4_5.db  ← revert
+```
+
+The hotseat `reloadGrid` listener fires from
+`SharedPreferencesImpl.notifyListeners`, which runs after `commit()` returns;
+the posted `onConfigChanged` then read `workspaceRows/Columns` through the
+`BasePreferenceManager` pref caches, which a raw `sp.edit()...commit()` does
+not refresh — reproducing exactly the mixed 5/4/5 signature from the #167
+pass-1 evidence (fresh hotseat, stale rows/columns) and reverting the live
+`idp.dbFile` onto the old grid. The fix removes both halves of the mechanism:
+the converter writes grid prefs through the typed setters under `batchEdit`
+(caches fresh at write time, so every recompute converges to the converted
+grid) and applies the converted values to the IDP synchronously under the
+lease (`applyGridInfo`), making the binding independent of listener timing.

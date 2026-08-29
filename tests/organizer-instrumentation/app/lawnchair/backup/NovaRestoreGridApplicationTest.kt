@@ -53,7 +53,7 @@ class NovaRestoreGridApplicationTest {
     private fun databasesDir(): File {
         val context = context()
         val dbName = InvariantDeviceProfile.INSTANCE.get(context).dbFile
-        val dir = File(context.getDatabasePath(dbName).parentFile!!)
+        val dir = context.getDatabasePath(dbName).parentFile!!
         dir.mkdirs()
         return dir
     }
