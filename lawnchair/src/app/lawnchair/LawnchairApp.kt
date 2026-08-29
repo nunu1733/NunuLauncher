@@ -144,30 +144,42 @@ class LawnchairApp : Application() {
     }
 
     // Issue #168: restore-safe DB cleanup. Deletes unmatched launcher* files as
-    // before on ordinary loads, but never while a restore family lease is held or a
-    // staged restored.db exists — deleting then would destroy the import a restore
-    // is about to bind. Every deletion and every blocked deletion is logged.
+    // before on ordinary loads. Review follow-up: the deletion runs inside
+    // `runDbCleanupExclusively` so it is mutually exclusive with restore-family
+    // lease holders — a restore either already holds a lease (cleanup skipped
+    // outright) or cannot start until the deletion completed. Within the section
+    // only the staged restored.db condition can still block deletion (crashed
+    // restore leftovers); a lease re-check would be redundant there because the
+    // section itself excludes restore acquisition. Every deletion and every
+    // blocked deletion is logged.
     fun cleanUpDatabases() {
         val idp = InvariantDeviceProfile.INSTANCE.get(this)
         val dbName = idp.dbFile
         val dbFile = getDatabasePath(dbName)
-        val restoreLeaseActive = LayoutWriteCoordinator.getInstance().hasActiveRestoreFamilyLease()
-        val stagedRestoreExists = getDatabasePath(LawnchairBackup.RESTORED_DB_FILE_NAME).exists()
-        dbFile?.parentFile?.listFiles()?.forEach { file ->
-            val name = file.name
-            if (name.startsWith("launcher") && !name.startsWith(dbName)) {
-                if (restoreLeaseActive || stagedRestoreExists) {
-                    Log.w(
-                        TAG,
-                        "Skipping deletion of $name while a restore is in progress " +
-                            "(restoreLeaseActive=$restoreLeaseActive, " +
-                            "stagedRestoreExists=$stagedRestoreExists, activeDb=$dbName)",
-                    )
-                    return@forEach
+        val ran = LayoutWriteCoordinator.getInstance().runDbCleanupExclusively {
+            val stagedRestoreExists = getDatabasePath(LawnchairBackup.RESTORED_DB_FILE_NAME).exists()
+            dbFile?.parentFile?.listFiles()?.forEach { file ->
+                val name = file.name
+                if (name.startsWith("launcher") && !name.startsWith(dbName)) {
+                    if (stagedRestoreExists) {
+                        Log.w(
+                            TAG,
+                            "Skipping deletion of $name while a staged restored.db exists " +
+                                "(activeDb=$dbName)",
+                        )
+                        return@forEach
+                    }
+                    Log.i(TAG, "Deleting unmatched launcher database file: $name (active: $dbName)")
+                    file.delete()
                 }
-                Log.i(TAG, "Deleting unmatched launcher database file: $name (active: $dbName)")
-                file.delete()
             }
+        }
+        if (!ran) {
+            Log.w(
+                TAG,
+                "Skipping launcher DB cleanup: another coordinator lease is held " +
+                    "(activeDb=$dbName); the next ordinary load will clean up",
+            )
         }
     }
 

@@ -13,6 +13,7 @@ import com.android.launcher3.model.LayoutWriteCoordinator;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -268,5 +269,63 @@ public class LayoutWriteCoordinatorTest {
             assertFalse(c.hasActiveRestoreFamilyLease());
         }
         assertFalse(c.hasActiveRestoreFamilyLease());
+    }
+
+    // --- Issue #168 review follow-up: DB cleanup runs under real mutual exclusion ---
+
+    @Test
+    public void dbCleanupExclusionBlocksRestoreAcquisitionForItsDuration() throws Exception {
+        LayoutWriteCoordinator c = LayoutWriteCoordinator.getInstance();
+        CountDownLatch cleanupRunning = new CountDownLatch(1);
+        CountDownLatch releaseCleanup = new CountDownLatch(1);
+        Thread cleanupThread = new Thread(() -> {
+            boolean ran = c.runDbCleanupExclusively(() -> {
+                cleanupRunning.countDown();
+                try {
+                    releaseCleanup.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+            assertTrue(ran);
+        });
+        cleanupThread.start();
+        assertTrue(cleanupRunning.await(5, java.util.concurrent.TimeUnit.SECONDS));
+        // While the cleanup section is open, a restore must not be able to acquire
+        // its lease — this is the guarantee that closes the check→delete race.
+        LayoutWriteCoordinator.Lease restore =
+                c.tryAcquire(LayoutWriteCoordinator.OwnerKind.BACKUP_RESTORE);
+        releaseCleanup.countDown();
+        assertNull("restore lease must be blocked while DB cleanup exclusion is held", restore);
+        cleanupThread.join(5000);
+        assertFalse(cleanupThread.isAlive());
+        assertFalse(c.hasActiveRestoreFamilyLease());
+    }
+
+    @Test
+    public void dbCleanupExclusionSkipsUnderRestoreFamilyLease() {
+        LayoutWriteCoordinator c = LayoutWriteCoordinator.getInstance();
+        try (LayoutWriteCoordinator.Lease restore =
+                     c.tryAcquire(LayoutWriteCoordinator.OwnerKind.BACKUP_RESTORE)) {
+            AtomicBoolean ran = new AtomicBoolean(false);
+            assertFalse(c.runDbCleanupExclusively(() -> ran.set(true)));
+            assertFalse(ran.get());
+        }
+        AtomicBoolean ranAfter = new AtomicBoolean(false);
+        assertTrue(c.runDbCleanupExclusively(() -> ranAfter.set(true)));
+        assertTrue(ranAfter.get());
+    }
+
+    @Test
+    public void dbCleanupExclusionReentersSameThreadModelWriter() {
+        LayoutWriteCoordinator c = LayoutWriteCoordinator.getInstance();
+        try (LayoutWriteCoordinator.Lease writer =
+                     c.tryAcquire(LayoutWriteCoordinator.OwnerKind.MODEL_WRITER)) {
+            AtomicBoolean ran = new AtomicBoolean(false);
+            assertTrue(c.runDbCleanupExclusively(() -> ran.set(true)));
+            assertTrue(ran.get());
+            // The outer writer lease is still held after the reentered cleanup.
+            assertNotNull(c.tryReenterModelWriter());
+        }
     }
 }

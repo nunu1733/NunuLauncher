@@ -194,7 +194,6 @@ class NovaBackupConverter(
                             InvariantDeviceProfile.TYPE_PHONE,
                             gridInfo.dbFile,
                         )
-                        gridState.writeToPrefs(context, true)
                         gridState.writeToPrefs(context)
                         writeGridToLawnchairPrefs(info, smartspaceEnabled)
                         // Issue #168: make one restore authoritative. The persisted grid
@@ -203,6 +202,13 @@ class NovaBackupConverter(
                         // and the correlated reload bind the DB the sanitizer wrote, instead
                         // of depending on pref-change listener timing.
                         applyConvertedGrid(gridInfo)
+                        // Issue #168 review follow-up: the lawnchair grid prefs are
+                        // persisted via batchEdit (apply, async disk). This synchronous
+                        // commit() on the same SharedPreferences file is the durability
+                        // barrier — when it returns, the grid values survive the
+                        // restore's self-restart even if the pending apply has not
+                        // flushed yet.
+                        gridState.writeToPrefs(context, true)
                     } else {
                         writeGridToLawnchairPrefs(info, smartspaceEnabled)
                     }

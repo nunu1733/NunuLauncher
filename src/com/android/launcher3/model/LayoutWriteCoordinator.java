@@ -115,14 +115,74 @@ public final class LayoutWriteCoordinator {
                 || kind == OwnerKind.BACKUP_RESTORE;
     }
 
-    // Issue #168: read-only check used by LawnchairApp.cleanUpDatabases so DB file
-    // deletion becomes restore-safe: while any restore-family lease is held, a
-    // staged restore is in flight and unmatched launcher* DB files must not be
-    // removed.
+    // Issue #168: read-only check reporting whether any restore-family lease
+    // (RESTORE / BACKUP_RESTORE) is currently held.
     public boolean hasActiveRestoreFamilyLease() {
         synchronized (lock) {
             Holder h = current;
             return h != null && isRestoreFamily(h.kind);
+        }
+    }
+
+    /**
+     * Issue #168: mutual exclusion for launcher* DB-file cleanup deletions.
+     *
+     * <p>Review follow-up to the first guard: checking lease state once and then
+     * deleting leaves a check→delete race in which a Nova restore acquires
+     * BACKUP_RESTORE between the check and the deletion. This method makes the
+     * deletion itself exclusive instead:
+     *
+     * <ul>
+     *   <li>no lease held: a short MODEL_WRITER lease is taken for the cleanup, so
+     *       a restore either starts strictly before it (then the cleanup call below
+     *       sees the holder and skips) or blocks until the deletion completed;</li>
+     *   <li>same-thread MODEL_WRITER held (an admitted writer transaction that runs
+     *       a model load): re-entered, cleanup proceeds;</li>
+     *   <li>any other holder (organizer, restore-family, other thread): returns
+     *       {@code false} without running; the next ordinary load cleans up.</li>
+     * </ul>
+     *
+     * @return whether the cleanup ran
+     */
+    public boolean runDbCleanupExclusively(@NonNull Runnable cleanup) {
+        Lease lease = null;
+        synchronized (lock) {
+            Holder h = current;
+            if (h == null) {
+                long token = nextToken.getAndIncrement();
+                h = new Holder(Thread.currentThread(), OwnerKind.MODEL_WRITER, token);
+                current = h;
+                lease = new LeaseImpl(OwnerKind.MODEL_WRITER, token);
+            } else if (h.thread == Thread.currentThread()
+                    && h.kind == OwnerKind.MODEL_WRITER) {
+                h.recursionCount += 1;
+            } else {
+                return false;
+            }
+        }
+        if (lease != null) {
+            try (lease) {
+                cleanup.run();
+            }
+        } else {
+            try {
+                cleanup.run();
+            } finally {
+                releaseReenteredModelWriter();
+            }
+        }
+        return true;
+    }
+
+    private void releaseReenteredModelWriter() {
+        synchronized (lock) {
+            Holder h = current;
+            if (h != null && h.thread == Thread.currentThread()
+                    && h.kind == OwnerKind.MODEL_WRITER) {
+                h.recursionCount -= 1;
+                // Recursion cannot reach zero here: the outer writer lease is still
+                // held by the caller of runDbCleanupExclusively.
+            }
         }
     }
 
