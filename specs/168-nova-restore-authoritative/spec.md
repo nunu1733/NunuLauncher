@@ -171,8 +171,14 @@ old→new), and cleanup decisions (deletion/skip + reason).
       the supported path. (2026-08-29, build `9bf4af9`: one restore →
       `launcher_6_5_5.db` holds the import (12 rows, identical to the #167
       pass-2 success state on the same emulator), zero
-      `loading default workspace` lines, import DB never deleted. Physical
-      Pixel 9a run pending device availability — recorded in the PR.)
+      `loading default workspace` lines, import DB never deleted.)
+- [x] S1 passes on the physical Pixel 9a (API 37, `56231JEBF08674`) with the
+      same backup and build `11d4074`: one restore → active DB
+      `launcher_6_5_5.db` holds the import (125 rows / 5 hotseat — identical
+      to the #167 pass-2 success state on this device), prefs durable at
+      rows=6/columns=5/hotseat=5 after the self-restart, zero
+      `loading default workspace` lines, import DB never deleted, imported
+      workspace visible.
 - [x] No `launcher*` DB deletion can occur while a staged restore exists
       (test-proven: S3 at test level, S1/S4 at runtime level).
 - [x] Grid application is deterministic for grid mismatch (S1, S4 cycle 1)
