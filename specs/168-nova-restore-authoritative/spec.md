@@ -173,7 +173,10 @@ old→new), and cleanup decisions (deletion/skip + reason).
       pass-2 success state on the same emulator), zero
       `loading default workspace` lines, import DB never deleted.)
 - [x] S1 passes on the physical Pixel 9a (API 37, `56231JEBF08674`) with the
-      same backup and build `11d4074`: one restore → active DB
+      same backup and build `11d4074` (APK built from a worktree whose
+      production code is identical to `1c64b5f4` — that commit adds only the
+      javac compile fix for `runDbCleanupExclusively`; PR-169 audit Finding 1):
+      one restore → active DB
       `launcher_6_5_5.db` holds the import (125 rows / 5 hotseat — identical
       to the #167 pass-2 success state on this device), prefs durable at
       rows=6/columns=5/hotseat=5 after the self-restart, zero
