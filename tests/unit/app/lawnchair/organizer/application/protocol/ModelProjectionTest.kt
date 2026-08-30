@@ -50,6 +50,19 @@ class ModelProjectionTest {
     }
 
     @Test
+    fun legacyIdentityMasksLoaderManagedFlags() {
+        // The loader adds task-management flags to legacy shortcut intents at
+        // load time; they are not organizer-owned launch semantics, so both
+        // legs mask the FLG component.
+        assertEquals(
+            "#Intent;action=X;end",
+            app.lawnchair.organizer.application.adapter.canonicalLegacyIntentUri(
+                "#Intent;action=X;FLG=0x10000000;end",
+            ),
+        )
+    }
+
+    @Test
     fun projectedItemsAreOrderedCanonicallyRegardlessOfInputOrder() {
         val a = CanonicalFixtures.appItem(itemId = "app.a")
         val z = CanonicalFixtures.appItem(itemId = "app.z")

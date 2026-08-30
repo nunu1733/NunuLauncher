@@ -33,6 +33,15 @@ import com.android.launcher3.model.data.WorkspaceItemInfo
 import com.android.launcher3.pm.UserCache
 
 /**
+ * Issue #152: canonical form of a legacy shortcut launch identity. The
+ * platform loader adds task-management flags (`FLAG_ACTIVITY_NEW_TASK`,
+ * `FLAG_ACTIVITY_RESET_TASK_IF_NEEDED`) to legacy shortcut intents at load
+ * time, so the in-memory intent's `FLG=` component is loader-managed state,
+ * not organizer-owned launch semantics; it is masked on both legs.
+ */
+internal fun canonicalLegacyIntentUri(uri: String): String = uri.replace(Regex(";FLG=[^;]*"), "")
+
+/**
  * Issue #152: capture-side model projection. Reduces the in-memory
  * [BgDataModel] state to the model-verifiable [ModelSnapshot] at the #150
  * terminal boundary of the correlated reload. The projection's required
@@ -130,7 +139,7 @@ internal object ModelProjectionCodec {
         // the same form the DB-side port derives from the persisted text.
         val legacyLaunchIdentity = when (kind) {
             CanonicalItemKind.ShortcutLegacy, is CanonicalItemKind.Unknown ->
-                (info as? WorkspaceItemInfo)?.intent?.toUri(0)
+                (info as? WorkspaceItemInfo)?.intent?.toUri(0)?.let(::canonicalLegacyIntentUri)
 
             else -> null
         }
