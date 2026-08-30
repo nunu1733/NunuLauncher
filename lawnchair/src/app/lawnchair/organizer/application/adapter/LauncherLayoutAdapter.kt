@@ -431,7 +431,7 @@ internal class LauncherLayoutAdapter(
         if (kind !is CanonicalItemKind.ShortcutLegacy && kind !is CanonicalItemKind.Unknown) return null
         val intentText = (item.intent as? OptionalText.Present)?.value ?: return null
         return try {
-            canonicalLegacyIntentUri(Intent.parseUri(intentText, 0).toUri(0))
+            canonicalLegacyLaunchUri(Intent.parseUri(intentText, 0))
         } catch (_: Exception) {
             // A row whose persisted intent no longer parses cannot have been
             // loaded with a usable in-memory intent either; both legs then

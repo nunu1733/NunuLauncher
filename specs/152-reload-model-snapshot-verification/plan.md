@@ -8,7 +8,7 @@ updated: 2026-08-30
 
 > Issue: #152
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: implemented
 > Risk: `risk: layout-data` — changes the apply/recovery verification path that
 > gates `Applied`/`Recovered`/`Restored`
 

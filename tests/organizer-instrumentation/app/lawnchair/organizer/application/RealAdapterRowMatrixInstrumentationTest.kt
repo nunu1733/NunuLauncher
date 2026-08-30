@@ -1,8 +1,10 @@
 package app.lawnchair.organizer.application
 
+import android.content.Intent
 import android.database.sqlite.SQLiteDatabase
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.lawnchair.organizer.application.adapter.RowManifestCodec
+import app.lawnchair.organizer.application.adapter.canonicalLegacyLaunchUri
 import app.lawnchair.organizer.application.actions.IntendedStateResolution
 import app.lawnchair.organizer.application.actions.RecoveryAction
 import app.lawnchair.organizer.application.actions.RecoveryWriteSetMaterializer
@@ -32,6 +34,7 @@ import app.lawnchair.organizer.planning.ReservedWorkspaceRegion
 import app.lawnchair.organizer.planning.TargetKey
 import com.android.launcher3.LauncherSettings.Favorites
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -350,6 +353,46 @@ class RealAdapterRowMatrixInstrumentationTest {
         } finally {
             source.close()
         }
+    }
+
+    /**
+     * Issue #152 (re-review P1): the canonical legacy launch identity masks
+     * exactly the two loader-managed bits — nothing more.
+     *
+     * (a) A model intent that differs from the persisted text only by
+     * `FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_RESET_TASK_IF_NEEDED` (what the
+     * AOSP processor adds at load time) canonicalizes to the same identity as
+     * the persisted DB text.
+     *
+     * (b) Any other flag divergence survives the mask: a model intent with an
+     * additional non-loader flag is NOT equal to the persisted canonical
+     * form, so a transformed launch target stays detectable.
+     */
+    @Test
+    fun legacyShortcutLaunchIdentityMasksOnlyLoaderFlags() {
+        val dbText = "#Intent;action=android.intent.action.VIEW;component=com.example/.Page;end"
+        val persisted = Intent.parseUri(dbText, 0)
+        val loaded = Intent(persisted).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+        }
+        assertEquals(
+            "(a) loader-added bits alone must canonicalize to the persisted identity",
+            canonicalLegacyLaunchUri(persisted),
+            canonicalLegacyLaunchUri(loaded),
+        )
+
+        val tampered = Intent(persisted).apply {
+            addFlags(
+                Intent.FLAG_ACTIVITY_NO_HISTORY or
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED,
+            )
+        }
+        assertNotEquals(
+            "(b) a non-loader flag divergence must stay detectable",
+            canonicalLegacyLaunchUri(persisted),
+            canonicalLegacyLaunchUri(tampered),
+        )
     }
 
     private fun row(

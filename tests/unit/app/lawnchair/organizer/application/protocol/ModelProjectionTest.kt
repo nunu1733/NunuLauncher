@@ -50,15 +50,17 @@ class ModelProjectionTest {
     }
 
     @Test
-    fun legacyIdentityMasksLoaderManagedFlags() {
-        // The loader adds task-management flags to legacy shortcut intents at
-        // load time; they are not organizer-owned launch semantics, so both
-        // legs mask the FLG component.
+    fun legacyIdentityMasksOnlyTheLoaderManagedBits() {
+        // The loader adds exactly NEW_TASK | RESET_TASK_IF_NEEDED to legacy
+        // shortcut intents at load time; the mask must stay pinned to those
+        // two bits. Any wider mask would hide organizer-owned launch
+        // semantics; any narrower one would fail healthy workspaces. The
+        // on-device (a)/(b) behavior is covered by
+        // RealAdapterRowMatrixInstrumentationTest.legacyShortcutLaunchIdentity.
         assertEquals(
-            "#Intent;action=X;end",
-            app.lawnchair.organizer.application.adapter.canonicalLegacyIntentUri(
-                "#Intent;action=X;FLG=0x10000000;end",
-            ),
+            android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                android.content.Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED,
+            app.lawnchair.organizer.application.adapter.LOADER_MANAGED_LEGACY_FLAGS,
         )
     }
 
