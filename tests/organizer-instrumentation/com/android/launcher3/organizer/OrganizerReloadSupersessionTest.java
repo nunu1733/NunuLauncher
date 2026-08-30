@@ -490,7 +490,7 @@ public class OrganizerReloadSupersessionTest {
                 assertNotNull("A completed request must carry the model snapshot",
                         resultB.snapshot);
                 assertTrue("The delivered snapshot must be non-empty for a loaded model",
-                        !resultB.snapshot.items.isEmpty());
+                        !resultB.snapshot.getItems().isEmpty());
                 barrier.assertWaitDidNotFail();
             } finally {
                 barrier.release();
