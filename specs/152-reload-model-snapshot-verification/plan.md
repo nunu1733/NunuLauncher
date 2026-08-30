@@ -92,34 +92,54 @@ makes the completed generation's state observable and compared.
     at completion (never used for equality or correlation decisions —
     correlation is the causal token path).
 - **`OrganizerModelReloadAdapter` (Java, same package as `LauncherModel`).**
-  The completion callback registered with `forceReloadForOrganizer` captures
-  the model snapshot at the exact #150 terminal boundary — after the loader
-  transaction has committed and closed and after token-scoped model work
-  queued ahead of the completion has drained — via a narrow same-package
-  snapshot source that reads `BgDataModel` (workspace items, folders,
-  widgets, screens) and reduces it to the model-verifiable projection. The
-  completion then carries `Outcome.COMPLETED` + snapshot to the waiting
-  adapter thread. Superseded / cancelled / failed / timed-out outcomes carry
-  no snapshot. **The staleness contract lives here**: completion already
-  requires the `LauncherModel.completeOrganizerReload` token identity check,
-  so only the loader generation bound to this request's token can complete
-  with a snapshot; the adapter additionally never emits `Completed` on
-  supersession/cancellation, and the diagnostic generation id carried in the
-  snapshot is recorded but never used for equality or correlation decisions.
+  The completion signal it waits on gains the snapshot payload captured by
+  `LauncherModel` at the #150 terminal boundary (see the `LauncherModel`
+  bullet): `Completed` carries `Outcome.COMPLETED` + snapshot to the waiting
+  adapter thread; superseded / cancelled / failed / timed-out outcomes carry
+  no snapshot. **The staleness contract lives here and in
+  `completeOrganizerReload`'s token identity check**: only the loader
+  generation bound to this request's token can complete with a snapshot, and
+  the diagnostic generation id carried in the snapshot is recorded but never
+  used for equality or correlation decisions.
+- **`LauncherModel.java` — the concrete capture/gating point (in the
+  documented minimal bridge surface).** `mBgDataModel` is private
+  (`LauncherModel.java` L155) and no existing safe seam reaches the
+  terminalized token's completion boundary (`loadAsync` at L535 hands out
+  `mBgDataModel`, but on an unrelated async load path, not the #150 terminal
+  boundary — rejected below). The completion runnable that `startLoader`
+  wires into `BaseLauncherBinder` (L412–415) is defined in `LauncherModel`
+  itself, so it can read the private field directly: the lambda captures the
+  snapshot from `mBgDataModel` when it runs (i.e. inside
+  `BaseLauncherBinder.notifyOrganizerReloadComplete`, on MODEL_EXECUTOR,
+  after the #150 drain), and passes it to
+  `completeOrganizerReload(token, snapshot)`. The existing token identity
+  check under `mLock` gates delivery: a snapshot captured for a token that
+  was superseded before the identity check is discarded together with that
+  token, and `token.completed` receives the snapshot only when the token is
+  still current. No stale-generation race exists because any newer loader
+  generation must first replace or cancel the outstanding token
+  (`stopLoader`/`forceReloadForOrganizer`) before its transaction can
+  commit. The bridge surface is therefore exactly
+  `OrganizerModelReloadAdapter.java` + `LauncherModel.java`;
+  `LoaderTask` and `BaseLauncherBinder` are unchanged (the completion
+  reaching the binder remains a plain `Runnable`).
 - **`ModelProjectionCodec` (new, organizer `application/adapter`).** Model-side
   counterpart of `RowManifestCodec`: converts `BgDataModel`-derived items
   into the **model-verifiable projection** — item identity, container,
-  placement, item type, folder membership, widget identity and bind state,
-  profile identity, lock placement occupancy — using the shared canonical
-  ordering (`CanonicalItemOrder`) and profile mapping (`CanonicalProfileId`).
-  The DB recapture's existing `LayoutState` is reduced to the same
-  projection at comparison time, so both legs compare like with like. Fields
-  the model does not faithfully represent (raw icon bytes, persisted
-  `modified` timestamps, device capabilities/IDP state, profile inventory,
-  reserved workspace regions) are excluded from the projection and remain
-  covered solely by the unchanged full DB equality. Step 2 of the execution
-  checklist pins the exact field list and each field's model source before
-  the codec is written.
+  placement, item type, folder membership, widget identity (provider +
+  widget id) and bind state, profile identity, lock placement occupancy, and
+  the pinned per-kind **semantic launch identity** (application component +
+  profile; shortcut package + shortcut id + profile; the faithful launch
+  identity the model exposes for legacy shortcut kinds) — using the shared
+  canonical ordering (`CanonicalItemOrder`) and profile mapping
+  (`CanonicalProfileId`). The DB recapture's existing `LayoutState` is
+  reduced to the same projection at comparison time, so both legs compare
+  like with like. Fields the model does not faithfully represent (raw icon
+  bytes, persisted `modified` timestamps, device capabilities/IDP state,
+  profile inventory, reserved workspace regions) are excluded from the
+  projection and remain covered solely by the unchanged full DB equality.
+  Step 2 of the execution checklist pins the remaining representation
+  details (canonical encoding per pinned field, DB-side projection helper).
 - **Protocols unchanged in shape.** `continueCommitted`,
   `automaticRecovery`, `RecoveryProtocol.recoverWithOuterLease`,
   `RestartReconciler.finishCommittedApply/finishRestored` gain one comparison
@@ -140,18 +160,23 @@ makes the completed generation's state observable and compared.
   unit tests express the projection contract without Android; stale-generation
   exclusion itself is proven at the adapter/instrumentation level per
   AC-152-02.
-- Launcher3/AOSP surface: only the same-package bridge files
-  (`OrganizerModelReloadAdapter`, a snapshot source in `com.android.launcher3`)
-  change; the bridge is documented here as the #152 reason, satisfying the
-  minimal-bridge rule.
+- Launcher3/AOSP surface: exactly two same-package bridge files change —
+  `OrganizerModelReloadAdapter` (payload transport) and `LauncherModel.java`
+  (capture from private `mBgDataModel` in the completion path plus the
+  identity-gated `completeOrganizerReload` handoff). The bridge is
+  documented here as the #152 reason, satisfying the minimal-bridge rule;
+  `LoaderTask` and `BaseLauncherBinder` are unchanged.
 
 ### Data flow
 
 1. A5/A6 commit unchanged → `COMMITTED_UNVERIFIED`.
 2. `requestCorrelatedReload(lease)` — adapter blocks; the model binds the
-   token to the exact `LoaderTask`; at the #150 terminal boundary (loader
-   transaction committed/closed, token-scoped queued work drained), the
-   adapter captures `ModelSnapshot` from `BgDataModel` and completes with it.
+   token to the exact `LoaderTask`; when the completion runnable runs at the
+   #150 terminal boundary (inside `notifyOrganizerReloadComplete` on
+   MODEL_EXECUTOR, after the loader transaction committed/closed and
+   token-scoped queued work drained), `LauncherModel` captures
+   `ModelSnapshot` from its private `mBgDataModel`; the token identity check
+   in `completeOrganizerReload` gates delivery to the waiting adapter.
 3. Protocol receives `Completed(snapshot)`; runs the unchanged DB recapture.
 4. Snapshot-leg equality: `snapshot.projection ==
    db.layoutState.projectedToModelVerifiable()`, on top of the unchanged DB
@@ -177,6 +202,12 @@ makes the completed generation's state observable and compared.
   would either weaken the DB contract or require a field-by-field proof
   before implementation. Rejected in favor of the model-verifiable
   projection, with the DB leg keeping full canonical equality.
+- **Reusing the existing `LauncherModel.loadAsync(Consumer<BgDataModel>)`**
+  as the capture seam — it hands out `mBgDataModel`, but on an unrelated
+  async load path with no binding to the terminalized request token, so the
+  snapshot would not be causally tied to the awaited generation. Rejected in
+  favor of capturing inside the completion path defined in `LauncherModel`
+  itself.
 - **Capture the snapshot at request time** — pre-commit state; not the
   generation's output. Rejected.
 - **Recapture-on-mismatch retry / delay before recapture** — banned by the
@@ -191,12 +222,12 @@ makes the completed generation's state observable and compared.
 | Area | Intended change | Why here |
 |---|---|---|
 | `protocol/Ports.kt` | `ReloadResult.Completed` carries `ModelSnapshot` (model-verifiable projection); add `ModelSnapshot` type | Only seam the protocol may observe the model through |
-| `com.android.launcher3` bridge | Completion callback captures snapshot from `BgDataModel` at the #150 terminal boundary via a same-package snapshot source; staleness excluded by the token-identity contract | Causal binding to the exact loader generation lives where the token lives |
-| `adapter/ModelProjectionCodec.kt` (new) | Model → model-verifiable projection conversion reusing `CanonicalItemOrder`/`CanonicalProfileId`; DB-side projection helper over `LayoutState` | Representation equality on the subset the model faithfully represents |
+| `com.android.launcher3` bridge (`OrganizerModelReloadAdapter.java`, `LauncherModel.java`) | Completion lambda in `startLoader` captures the snapshot from private `mBgDataModel` at the #150 terminal boundary; `completeOrganizerReload(token, snapshot)` gates delivery on the token identity check; `OrganizerModelReloadAdapter` transports the payload | Causal binding and staleness exclusion live where the token and the private model state live; `LoaderTask`/`BaseLauncherBinder` stay unchanged |
+| `adapter/ModelProjectionCodec.kt` (new) | Model → model-verifiable projection conversion reusing `CanonicalItemOrder`/`CanonicalProfileId`, including pinned semantic launch identity; DB-side projection helper over `LayoutState` | Representation equality on the subset the model faithfully represents |
 | `adapter/OrganizerModelReloadAdapter.java` / `LauncherLayoutAdapter.kt` | Transport snapshot through `requestAndWait` → `requestCorrelatedReload` | Production `LayoutWriterPort` implementation |
 | `protocol/ApplyProtocol.kt`, `RecoveryProtocol.kt`, `RestartReconciler.kt` | Snapshot-projection comparison before success results; `modelVerified` wiring | Acceptance AC-152-03/04 |
-| `tests/unit FakeLayoutWriter` + protocol tests | Snapshot-aware fake; divergence/stale/cancellation/stale-generation cases | Unit oracle per spec |
-| `tests/organizer-instrumentation` | Real-model verification cases: default workspace, folders/widgets/profiles/locks, cancellation, stale generation | AC-152-05 real-device leg |
+| `tests/unit FakeLayoutWriter` + protocol tests | Snapshot-aware fake; divergent-snapshot contents and reload-outcome (failed/superseded/cancelled) cases | Unit oracle per spec |
+| `tests/organizer-instrumentation` | Real-model verification cases: default workspace, folders/widgets/profiles/locks, semantic launch identity, reload cancellation/supersession, adapter-level stale-generation exclusion | AC-152-05 real-device leg |
 
 ## Migration and recovery
 
@@ -217,7 +248,7 @@ makes the completed generation's state observable and compared.
 | AC-152-02 | Adapter/instrumentation: only the exact token-bound generation completes with a snapshot (supersession/cancellation/stale-completion cases, `OrganizerReloadSupersessionTest`/`OrganizerReloadCompletionOrderingTest` style); protocol unit tests: valid `Completed(snapshot)` with divergent contents returns no success | Unit suite + `connectedLawnWithQuickstepGithubDebugAndroidTest` subset |
 | AC-152-03 | Unit: projection-equality + full-DB-leg cases across the four protocol paths | Unit suite |
 | AC-152-04 | `FaultInjector` reload/verification failure matrix asserting no false success; `*_MODEL_UNVERIFIED` assertions | Unit suite |
-| AC-152-05 | Unit fixtures + real-model instrumentation (default workspace, folders/widgets/profiles/locks, reload cancellation/supersession, stale generation) | Emulator instrumentation run |
+| AC-152-05 | Unit fixtures (default workspace, folders/widgets/profiles/locks, semantic launch identity, reload cancellation/supersession outcomes) + real-model instrumentation including adapter-level stale-generation exclusion | Emulator instrumentation run |
 | AC-152-06 | `high-risk-gate` CI `final-status` on head SHA + independent `docs/assessment/pr-<PR>-152-*.md` audit by a separate session | CI on the implementation PR |
 
 Regression gates per `AGENTS.md`: `./gradlew spotlessCheck` and
@@ -241,27 +272,30 @@ Regression gates per `AGENTS.md`: `./gradlew spotlessCheck` and
 
 1. Write the AC-152-01 regression test against current `main`; confirm it
    fails for the right reason (no snapshot leg exists).
-2. Pin the model-verifiable projection (`ModelProjectionCodec` feasibility
-   step): enumerate every projection field (identity, container, placement,
-   type, folder membership, widget identity/bind state, profile identity,
-   lock occupancy) and its in-memory model source; reduce the DB
-   `LayoutState` to the same projection. **Stop condition**: if any core
-   projection field is not faithfully recoverable from the model, stop and
-   reopen the design (spec Open questions) instead of silently shrinking the
+2. Pin the remaining projection representation details
+   (`ModelProjectionCodec` feasibility step): the required fields — identity,
+   container, placement, type, folder membership, widget identity/bind
+   state, profile identity, lock occupancy, and the pinned per-kind semantic
+   launch identity — are already fixed by the spec; this step pins each
+   field's in-memory model source and canonical encoding and reduces the DB
+   `LayoutState` to the same projection. **Stop condition**: if any pinned
+   field is not faithfully recoverable from the model, stop and reopen the
+   design (spec Open questions) instead of silently shrinking the
    projection.
 3. Extend `ReloadResult`/bridge/adapter/protocols per the change set; fakes
    updated in the same commit as the port change.
-4. Implement failure/cancellation/stale-generation behavior; keep all
-   existing failure contracts intact.
+4. Implement failure/cancellation outcome handling and the adapter-level
+   stale-generation exclusion; keep all existing failure contracts intact.
 5. Full verification table; record commands and results in the PR.
 6. PR: `Closes #152`, per-AC evidence, spec status/history updates, risk label
    `risk: layout-data`, independent audit record before merge.
 
 ## Stop conditions
 
-- The model-verifiable projection field enumeration (execution checklist
-  step 2) fails for any core field → stop; open the design question on the
-  issue; do not compare a silently shrunken projection.
+- The pinned projection fields (including semantic launch identity) cannot
+  be recovered faithfully from the model (execution checklist step 2) →
+  stop; open the design question on the issue; do not compare a silently
+  shrunken projection.
 - Any change to recovery store schema, Launcher DB schema, or backup format
   becomes necessary → out of scope; separate accepted design required.
 - The fix requires changing the #150 causal completion barrier semantics →

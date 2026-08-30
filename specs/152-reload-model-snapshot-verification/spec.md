@@ -74,13 +74,17 @@ demonstrated whenever `Applied`, `Recovered`, or `Restored` is returned.
   unrelated, cancelled, or superseded generation can never be delivered to
   the protocol as a completed snapshot for the request.
 - Model verification compares a defined **model-verifiable projection** of
-  the layout state: exactly the fields the in-memory model faithfully
-  represents (item identity, container, placement, item type, folder
-  membership, widget identity and bind state, profile identity, lock
-  placement occupancy). Fields the model does not represent (raw icon bytes,
-  persisted modification timestamps, device capabilities, profile inventory,
-  reserved regions) are verified solely by the unchanged DB leg, which keeps
-  full canonical equality with the intended/checkpoint-pre state.
+  the layout state. The projection's required fields are pinned in this
+  spec: item identity, container, placement, item type, folder membership,
+  widget identity (provider + widget id) and bind state, profile identity,
+  lock placement occupancy, and the **semantic launch identity** per item
+  kind — application component + profile for app icons, shortcut package +
+  shortcut id + profile for deep shortcuts, and the faithful launch identity
+  the model exposes for legacy shortcut kinds. Fields the model does not
+  represent (raw icon bytes, persisted modification timestamps, device
+  capabilities, profile inventory, reserved regions) are verified solely by
+  the unchanged DB leg, which keeps full canonical equality with the
+  intended/checkpoint-pre state.
 - When model verification succeeds, the authoritative-state classification
   may report the `*_DB_AND_MODEL` variants instead of the `*_MODEL_UNVERIFIED`
   variants; when model verification fails, the `*_MODEL_UNVERIFIED` variants
@@ -116,8 +120,8 @@ demonstrated whenever `Applied`, `Recovered`, or `Restored` is returned.
 - **モデル検証可能projection (Model-verifiable Projection)**: メモリ上の
   modelが忠実に表現するレイアウト状態のフィールド部分集合(配置アイテムの
   identity、container、配置、種別、folder構成、widget identityとbind状態、
-  profile identity、lock配置の占有)。modelが表現しないフィールドはDB側の
-  検証だけで担保する。
+  profile identity、lock配置の占有、および種別ごとの意味的起動対象
+  identity)。modelが表現しないフィールドはDB側の検証だけで担保する。
   _Avoid_: Model LayoutState（完全なcanonical stateと混同）
 - **相関リロード生成 (Correlated Reload Generation)**: 適用後の検証のために
   要求された1回のmodel reloadが生んだloader生成。要求と完了が同一tokenで
@@ -151,14 +155,16 @@ and automatic recovery runs with `VERIFICATION_FAILED`,
 and the authoritative state reported by any resulting failure is a
 `*_MODEL_UNVERIFIED` variant.
 
-### Scenario: Snapshot from another generation cannot satisfy verification
+### Scenario: A snapshot from another generation never reaches verification
 
-Given a model snapshot captured from a different loader generation than the
-one requested after commit (stale, unrelated, or superseded),
-when verification runs,
-then that snapshot is rejected as if the reload had not completed
-(`MODEL_RELOAD_FAILED` / verification failure path),
-and no success result is returned.
+Given a loader generation other than the one requested after commit — stale,
+unrelated, cancelled, or superseded — finished or was stopped,
+when the reload adapter handles the request,
+then that generation can never be delivered to the protocol as
+`Completed` carrying a snapshot:
+the protocol observes only a non-`Completed` outcome and enters the
+`MODEL_RELOAD_FAILED` automatic-recovery path,
+so no success result can be produced from a foreign generation's state.
 
 ### Scenario: Cancelled, superseded, or failed reload never verifies
 
@@ -252,9 +258,10 @@ None. No UI surface is added or changed.
       unverified, `*_DB_AND_MODEL` permitted once model verification
       succeeds).
 - [ ] AC-152-05: Tests cover the default workspace; folders, widgets, work
-      profiles, and locked placement; reload cancellation and supersession;
-      and stale-generation rejection, at both unit (fake seam) and
-      instrumentation (real model) levels.
+      profiles, locked placement, and semantic launch identity; reload
+      cancellation and supersession outcomes at the unit (fake seam) level;
+      and stale-generation exclusion at the adapter/instrumentation (real
+      model) level.
 - [ ] AC-152-06: The `risk: layout-data` CI merge gate (`final-status` on the
       exact head SHA) and an independent audit record in
       `docs/assessment/pr-<PR>-<slug>.md` are satisfied before merge.
@@ -267,20 +274,18 @@ None. No UI surface is added or changed.
 | AC-152-02 | Adapter/instrumentation: only the exact token-bound generation completes with a snapshot (`OrganizerReloadSupersessionTest`-style); protocol: divergent-snapshot unit cases via `FakeLayoutWriter` |
 | AC-152-03 | Unit: three-way (projection + full DB leg) equality cases for apply, automatic recovery, explicit recovery, restart reconciliation |
 | AC-152-04 | Unit: divergence/failure-injection matrix (`FaultInjector` reload and verification phases) asserting no false success |
-| AC-152-05 | Unit fixtures + `RealAdapterRowMatrixInstrumentationTest`-style real-model coverage: default workspace, folders/widgets/profiles/locks, reload cancellation/supersession, stale generation |
+| AC-152-05 | Unit fixtures (default workspace, folders/widgets/profiles/locks, semantic launch identity, reload cancellation/supersession outcomes) + `RealAdapterRowMatrixInstrumentationTest`-style real-model coverage including adapter-level stale-generation exclusion |
 | AC-152-06 | CI `high-risk-gate` workflow on the implementation PR + independent audit record |
 
 ## Open questions
 
-- The exact field list of the model-verifiable projection is pinned during
-  implementation (plan step 2): each projection field must be shown
-  recoverable faithfully from the in-memory model. If a core placement field
-  (identity, container, placement, type, folder membership, widget
-  identity/bind state, profile identity, lock occupancy) cannot be recovered,
-  implementation stops and the design reopens instead of silently shrinking
-  the projection. Fields already known to be DB-only (raw icon bytes,
-  persisted modification timestamps, device capabilities, profile inventory,
-  reserved regions) are excluded here by design.
+The fields required to prevent false success are pinned in Scope (including
+semantic launch identity per item kind). Implementation (plan step 2) pins
+only the remaining representation details of the projection — canonical
+encoding of each pinned field and the DB-side projection helper — under the
+same stop condition: if a pinned field turns out not to be recoverable
+faithfully from the model, implementation stops and the design reopens
+instead of silently shrinking the projection.
 
 ## Change history
 
@@ -293,3 +298,11 @@ None. No UI surface is added or changed.
   13; reload-level cancelled/superseded outcome only); stale-generation
   rejection moved into the adapter contract with AC-152-02 split between
   adapter/instrumentation proof and protocol divergence tests.
+- 2026-08-30: Stage A re-review revision — semantic launch identity (per-kind
+  launch target: application component, shortcut package + id, widget
+  provider/id, legacy-shortcut launch identity, each with profile) pinned in
+  the projection as a required field; the minimal bridge surface is updated
+  to name `LauncherModel.java`, where the completion captures the snapshot
+  from the private `mBgDataModel` and the token identity check gates its
+  delivery; the stale-generation scenario rewritten so a foreign generation
+  never reaches verification at all (adapter-owned exclusion).
