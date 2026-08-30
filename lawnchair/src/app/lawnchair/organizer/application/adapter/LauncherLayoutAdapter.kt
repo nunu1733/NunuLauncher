@@ -401,13 +401,21 @@ internal class LauncherLayoutAdapter(
         }
     }
 
-    override fun requestCorrelatedReload(lease: LeaseHandle): ReloadResult = when (
-        reload.requestAndWait(lease.token)
-    ) {
-        OrganizerModelReloadAdapter.Outcome.COMPLETED -> ReloadResult.Completed
-        OrganizerModelReloadAdapter.Outcome.SUPERSEDED -> ReloadResult.Superseded
-        OrganizerModelReloadAdapter.Outcome.TIMEOUT -> ReloadResult.Timeout
-        OrganizerModelReloadAdapter.Outcome.FAILED -> ReloadResult.Failed
+    override fun requestCorrelatedReload(lease: LeaseHandle): ReloadResult {
+        val result = reload.requestAndWaitWithSnapshot(lease.token)
+        return when (result.outcome) {
+            // Issue #152: a COMPLETED outcome without a capturable snapshot
+            // fails closed inside the adapter, so it never reaches this mapping.
+            OrganizerModelReloadAdapter.Outcome.COMPLETED -> ReloadResult.Completed(
+                requireNotNull(result.snapshot) { "Completed reload without model snapshot" },
+            )
+
+            OrganizerModelReloadAdapter.Outcome.SUPERSEDED -> ReloadResult.Superseded
+
+            OrganizerModelReloadAdapter.Outcome.TIMEOUT -> ReloadResult.Timeout
+
+            OrganizerModelReloadAdapter.Outcome.FAILED -> ReloadResult.Failed
+        }
     }
 
     override fun classifyAuthoritativeState(

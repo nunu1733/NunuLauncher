@@ -285,6 +285,49 @@ class ApplyProtocolTest {
         assertEquals("Recovery verification must use its reload completion", 2, writer.reloadCount)
     }
 
+    // Issue #152: DB/model convergence on the model-verifiable projection.
+    // These are the AC-152-01 regression cases — on pre-#152 code the DB leg
+    // alone decided Applied, so a divergent model generation returned a false
+    // success whenever the DB recapture matched.
+
+    @Test
+    fun sa12ModelDivergenceWithMatchingDbIsNeverApplied() {
+        val plan = mutatingPlan()
+        // The DB leg matches (echo semantics); the model leg of the apply
+        // reload diverges, as if the loader dropped a row relative to the
+        // committed DB content.
+        writer.modelSnapshotTransform = { snapshot -> snapshot.copy(items = snapshot.items.dropLast(1)) }
+
+        val result = protocol.apply(plan)
+
+        assertEquals("Only the apply reload must have completed", 1, writer.reloadCount)
+        assertTrue("A divergent model with a matching DB must never return Applied: $result", result is ApplyResult.RecoveryFailed)
+        assertEquals(ApplyFailure.VERIFICATION_FAILED, (result as ApplyResult.RecoveryFailed).failure)
+        assertEquals(
+            "A model-divergent run must never reach VERIFIED",
+            LifecycleState.RESTORING,
+            storedLifecycleOf((result as ApplyResult.RecoveryFailed).pointId),
+        )
+    }
+
+    @Test
+    fun sa12ReloadSupersessionIsNotFalseSuccess() {
+        writer.reloadResult = ReloadResult.Superseded
+        val result = protocol.apply(mutatingPlan())
+        assertTrue("Expected RecoveryFailed, got $result", result is ApplyResult.RecoveryFailed)
+        assertEquals(
+            ApplyFailure.MODEL_RELOAD_FAILED,
+            (result as ApplyResult.RecoveryFailed).failure,
+        )
+    }
+
+    @Test
+    fun sa12ReloadTimeoutIsNotFalseSuccess() {
+        writer.reloadResult = ReloadResult.Timeout
+        val result = protocol.apply(mutatingPlan())
+        assertTrue("Expected RecoveryFailed, got $result", result is ApplyResult.RecoveryFailed)
+    }
+
     @Test
     fun sa23ConcurrentRunIsRejected() {
         val mutex = RunMutex()

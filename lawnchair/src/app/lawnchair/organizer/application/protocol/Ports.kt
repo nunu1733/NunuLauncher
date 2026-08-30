@@ -136,7 +136,14 @@ sealed interface ApplyTxOutcome {
 }
 
 sealed interface ReloadResult {
-    data object Completed : ReloadResult
+    /**
+     * Issue #152: the completed correlated reload carries the model snapshot
+     * captured at the #150 terminal boundary. Stale, unrelated, cancelled, and
+     * superseded generations never arrive as [Completed] — the adapter and the
+     * token identity check exclude them, so the protocol never reasons about
+     * generation identity itself.
+     */
+    data class Completed(val modelSnapshot: ModelSnapshot) : ReloadResult
     data object Failed : ReloadResult
     data object Superseded : ReloadResult
     data object Timeout : ReloadResult

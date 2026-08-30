@@ -206,6 +206,45 @@ class RecoveryProtocolTest {
         )
     }
 
+    // Issue #152 (AC-152-03/04): explicit recovery must verify the model leg.
+    // The DB recapture still matches the checkpoint pre-state (echo semantics);
+    // a divergent model generation of the recovery reload must fail closed.
+
+    @Test
+    fun recoveryFailedWhenModelSnapshotDivergesFromDb() {
+        seedVerifiedPoint()
+        writer.modelSnapshotTransform = { snapshot -> snapshot.copy(items = snapshot.items.dropLast(1)) }
+        val result = protocol.recover(matchingRequest())
+        assertTrue(
+            "Expected RestoreFailed on model divergence: $result",
+            result is RecoveryResult.RestoreFailed,
+        )
+        assertEquals(
+            RecoveryFailure.VERIFICATION_FAILED,
+            (result as RecoveryResult.RestoreFailed).failure,
+        )
+        assertEquals(
+            "A model-divergent recovery must never reach RESTORED",
+            LifecycleState.RESTORING,
+            storedLifecycleOf(pointId),
+        )
+    }
+
+    @Test
+    fun recoverySupersededReloadIsNotFalseSuccess() {
+        seedVerifiedPoint()
+        writer.reloadResult = ReloadResult.Superseded
+        val result = protocol.recover(matchingRequest())
+        assertTrue(
+            "Expected RestoreFailed on supersession: $result",
+            result is RecoveryResult.RestoreFailed,
+        )
+        assertEquals(
+            RecoveryFailure.MODEL_RELOAD_FAILED,
+            (result as RecoveryResult.RestoreFailed).failure,
+        )
+    }
+
     @Test
     fun recoveryFailedWhenVerificationFails() {
         seedVerifiedPoint()

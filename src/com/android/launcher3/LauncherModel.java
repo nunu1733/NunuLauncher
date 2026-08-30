@@ -44,6 +44,9 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.WorkerThread;
 
+import app.lawnchair.organizer.application.adapter.ModelProjectionCodec;
+import app.lawnchair.organizer.application.protocol.ModelSnapshot;
+
 import com.android.launcher3.celllayout.CellPosMapper;
 import com.android.launcher3.config.FeatureFlags;
 import com.android.launcher3.icons.IconCache;
@@ -410,9 +413,17 @@ public class LauncherModel implements InstallSessionTracker.Callback {
                 }
 
                 final OrganizerReloadRequest organizerToken = mOrganizerReloadToken;
+                // Issue #152: the snapshot is captured here — inside the exact
+                // #150 terminal boundary this lambda runs at — from the private
+                // model state, then gated by the token identity check in
+                // completeOrganizerReload so only the current generation's
+                // snapshot can be delivered.
                 BaseLauncherBinder launcherBinder = new BaseLauncherBinder(
                         mApp, mBgDataModel, mBgAllAppsList, callbacksList,
-                        () -> completeOrganizerReload(organizerToken));
+                        () -> completeOrganizerReload(organizerToken,
+                                organizerToken == null ? null
+                                        : ModelProjectionCodec.captureModelSnapshot(
+                                                mBgDataModel, mApp.getContext())));
                 if (bindDirectly) {
                     // Divide the set of loaded items into those that we are binding synchronously,
                     // and everything else that is to be bound normally (asynchronously).
@@ -462,9 +473,12 @@ public class LauncherModel implements InstallSessionTracker.Callback {
     // Issue #14: package-private bridge for correlated reload.
     // Sets a per-model organizer reload token that the exact loader task's
     // transaction-complete path signals; supersession/cancellation unsets it.
+    // Issue #152: the completion carries the model snapshot captured at the
+    // #150 terminal boundary.
     private OrganizerReloadRequest mOrganizerReloadToken;
 
-    void forceReloadForOrganizer(long requestId, long organizerLeaseToken, @NonNull Runnable completed,
+    void forceReloadForOrganizer(long requestId, long organizerLeaseToken,
+            @NonNull Consumer<ModelSnapshot> completed,
             @NonNull Runnable cancelled) {
         OrganizerReloadRequest token = new OrganizerReloadRequest(
                 requestId, organizerLeaseToken, completed, cancelled);
@@ -492,14 +506,16 @@ public class LauncherModel implements InstallSessionTracker.Callback {
     }
 
     // Issue #14: only the token captured by the exact loader binder completes the request.
+    // Issue #152: the token identity check gates snapshot delivery — a snapshot
+    // captured for a token superseded before this check is discarded with it.
     private void completeOrganizerReload(
-            OrganizerReloadRequest token) {
+            OrganizerReloadRequest token, @Nullable ModelSnapshot snapshot) {
         if (token == null) return;
         synchronized (mLock) {
             if (mOrganizerReloadToken != token) return;
             mOrganizerReloadToken = null;
         }
-        token.completed.run();
+        token.completed.accept(snapshot);
     }
 
     private void cancelOrganizerReload() {
@@ -514,11 +530,11 @@ public class LauncherModel implements InstallSessionTracker.Callback {
     private static final class OrganizerReloadRequest {
         final long requestId;
         final long organizerLeaseToken;
-        final Runnable completed;
+        final Consumer<ModelSnapshot> completed;
         final Runnable cancelled;
 
-        OrganizerReloadRequest(long requestId, long organizerLeaseToken, Runnable completed,
-                Runnable cancelled) {
+        OrganizerReloadRequest(long requestId, long organizerLeaseToken,
+                Consumer<ModelSnapshot> completed, Runnable cancelled) {
             this.requestId = requestId;
             this.organizerLeaseToken = organizerLeaseToken;
             this.completed = completed;

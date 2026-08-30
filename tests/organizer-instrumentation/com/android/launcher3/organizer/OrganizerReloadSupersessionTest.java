@@ -4,6 +4,7 @@ import static com.android.launcher3.util.Executors.MODEL_EXECUTOR;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import android.os.Handler;
@@ -443,6 +444,62 @@ public class OrganizerReloadSupersessionTest {
         } finally {
             lease.close();
         }
+    }
+
+    /**
+     * Issue #152 (AC-152-02, adapter/instrumentation leg): a COMPLETED outcome
+     * always carries the model snapshot captured at the #150 terminal boundary
+     * of the exact token-bound generation, and a superseded outcome never
+     * carries one. Together with the stale-completion rejection test above,
+     * this proves a stale, unrelated, cancelled, or superseded generation can
+     * never be delivered to the protocol as a completed snapshot.
+     */
+    @Test
+    public void completedOutcomeCarriesSnapshotAndSupersededNeverDoes() throws Exception {
+        var barrier = new SyncPageSelectionBarrier();
+        addModelCallback(barrier);
+        waitForModelIdle();
+        barrier.arm();
+
+        var lease = LayoutWriteCoordinator.getInstance()
+                .tryAcquire(LayoutWriteCoordinator.OwnerKind.ORGANIZER);
+        assertNotNull("Must acquire organizer lease", lease);
+        try {
+            var adapter = new OrganizerModelReloadAdapter(model, mainHandler);
+            var executor = Executors.newFixedThreadPool(2);
+            try {
+                Future<OrganizerModelReloadAdapter.RequestResult> resultAFuture = executor.submit(
+                        () -> adapter.requestAndWaitWithSnapshot(lease.token()));
+                barrier.awaitReached();
+
+                // B supersedes A while A is blocked before its completion signal.
+                Future<OrganizerModelReloadAdapter.RequestResult> resultBFuture = executor.submit(
+                        () -> adapter.requestAndWaitWithSnapshot(lease.token()));
+                OrganizerModelReloadAdapter.RequestResult resultA = resultAFuture.get(
+                        RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                assertEquals("A must be SUPERSEDED by B",
+                        OrganizerModelReloadAdapter.Outcome.SUPERSEDED, resultA.outcome);
+                assertNull("A superseded generation must never carry a snapshot",
+                        resultA.snapshot);
+
+                barrier.release();
+                OrganizerModelReloadAdapter.RequestResult resultB = resultBFuture.get(
+                        RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                assertEquals("B must complete successfully",
+                        OrganizerModelReloadAdapter.Outcome.COMPLETED, resultB.outcome);
+                assertNotNull("A completed request must carry the model snapshot",
+                        resultB.snapshot);
+                assertTrue("The delivered snapshot must be non-empty for a loaded model",
+                        !resultB.snapshot.items.isEmpty());
+                barrier.assertWaitDidNotFail();
+            } finally {
+                barrier.release();
+                shutdownExecutor(executor);
+            }
+        } finally {
+            lease.close();
+        }
+        waitForModelIdle();
     }
 
     // ------------------------------------------------------------------

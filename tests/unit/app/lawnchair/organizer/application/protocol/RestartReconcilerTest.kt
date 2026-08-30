@@ -65,6 +65,30 @@ class RestartReconcilerTest {
         assertEquals(1, writer.reloadCount)
     }
 
+    // Issue #152 (AC-152-03): restart reconciliation must verify the model leg
+    // before resuming Restored. The DB recapture matches the checkpoint
+    // pre-state; the divergent snapshot of the reconciliation reload must fail
+    // closed and keep the record in RESTORING.
+
+    @Test
+    fun restoringWithDivergentModelSnapshotIsNotFalseSuccess() {
+        val capture = seedReady()
+        assertTrue(store.advance(pointId, LifecycleState.APPLYING))
+        assertTrue(store.advance(pointId, LifecycleState.COMMITTED_UNVERIFIED))
+        assertTrue(store.advance(pointId, LifecycleState.VERIFIED))
+        assertTrue(store.markRestoring(pointId, capture.manifest, capture.digest, ByteArray(32)))
+        writer.modelSnapshotTransform = { snapshot -> snapshot.copy(items = snapshot.items.dropLast(1)) }
+
+        val summary = reconciler.reconcileAll(session)
+
+        assertTrue(summary is RestartReconciler.ReconciliationSummary.Resolved)
+        assertEquals(
+            "A model-divergent reconciliation must never mark RESTORED",
+            LifecycleState.RESTORING,
+            storedLifecycleOf(pointId),
+        )
+    }
+
     private fun storedLifecycleOf(id: RecoveryPointId): LifecycleState? = (
         store.readRecord(id) as? RecoveryStorePort.RecordRead.Readable
         )?.record?.lifecycle
