@@ -394,7 +394,7 @@ internal class RestartReconciler(
         }
         // Issue #152: DB/model convergence on the model-verifiable projection
         // before the resumed Applied is returned.
-        if (db.layoutState.projectedToModelVerifiable().items != completed.modelSnapshot.items) {
+        if (db.layoutState.projectedToModelVerifiable(writer::legacyLaunchIdentityOf).items != completed.modelSnapshot.items) {
             return recover(session, record, lease, ApplyFailure.VERIFICATION_FAILED)
         }
         if (!session.advance(record.pointId, LifecycleState.VERIFIED)) {
@@ -432,7 +432,7 @@ internal class RestartReconciler(
         }
         // Issue #152: DB/model convergence on the model-verifiable projection
         // before the resumed Restored is returned.
-        if (db.layoutState.projectedToModelVerifiable().items != completed.modelSnapshot.items) {
+        if (db.layoutState.projectedToModelVerifiable(writer::legacyLaunchIdentityOf).items != completed.modelSnapshot.items) {
             return ReconciliationPublicResult.ResumeRecovery(
                 RecoveryResult.RestoreFailed(
                     record.pointId,

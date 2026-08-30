@@ -208,7 +208,7 @@ class RecoveryProtocol(
         }
         // Issue #152: DB/model convergence on the model-verifiable projection
         // before Restored is returned.
-        val modelVerified = db.layoutState.projectedToModelVerifiable().items ==
+        val modelVerified = db.layoutState.projectedToModelVerifiable(writer::legacyLaunchIdentityOf).items ==
             completed.modelSnapshot.items
         if (!modelVerified) {
             return RecoveryResult.RestoreFailed(

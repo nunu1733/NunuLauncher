@@ -23,8 +23,10 @@ import app.lawnchair.organizer.application.protocol.WriterKind
 import app.lawnchair.organizer.application.protocol.projectedToModelVerifiable
 import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.ApplyAction
+import app.lawnchair.organizer.application.public.CanonicalItemKind
 import app.lawnchair.organizer.application.public.CanonicalItemState
 import app.lawnchair.organizer.application.public.LayoutState
+import app.lawnchair.organizer.application.public.OptionalText
 import app.lawnchair.organizer.application.public.PreWriteRejection
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
@@ -69,10 +71,22 @@ class FakeLayoutWriter(
     private var reloadResultOverride: ReloadResult? = null
     var reloadResult: ReloadResult
         get() = reloadResultOverride
-            ?: ReloadResult.Completed(stateRef.get().projectedToModelVerifiable())
+            ?: ReloadResult.Completed(stateRef.get().projectedToModelVerifiable(this::legacyLaunchIdentityOf))
         set(value) {
             reloadResultOverride = value
         }
+
+    /**
+     * Issue #152: pure-JVM legacy launch identity — the raw persisted intent
+     * text stands in for the production `Intent.parseUri(...).toUri(0)`
+     * canonical form, which is unavailable on the JVM test classpath. Both
+     * legs of the fake derive the identity through this function, exactly like
+     * the production pair.
+     */
+    override fun legacyLaunchIdentityOf(item: CanonicalItemState): String? {
+        if (item.kind !is CanonicalItemKind.ShortcutLegacy && item.kind !is CanonicalItemKind.Unknown) return null
+        return (item.intent as? OptionalText.Present)?.value
+    }
 
     /**
      * Issue #152: transform the completed snapshot to simulate model/DB

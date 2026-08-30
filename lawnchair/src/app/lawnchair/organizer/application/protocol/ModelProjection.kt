@@ -11,6 +11,7 @@ import app.lawnchair.organizer.application.public.WidgetRestoreState
 import app.lawnchair.organizer.application.public.WidgetState
 import app.lawnchair.organizer.planning.AppWidgetId
 import app.lawnchair.organizer.planning.ComponentKey
+import app.lawnchair.organizer.planning.ContainerCode
 import app.lawnchair.organizer.planning.GridCell
 import app.lawnchair.organizer.planning.GridSpan
 import app.lawnchair.organizer.planning.ItemId
@@ -24,10 +25,11 @@ import app.lawnchair.organizer.planning.TargetKey
  * fields the in-memory Launcher model faithfully represents, pinned by the
  * accepted spec: item identity, container, placement, item type, folder
  * membership, widget identity and bind state, profile identity, and the
- * per-kind semantic launch identity. Fields the model does not represent
- * (raw icon bytes, persisted `modified`, device capabilities, profile
- * inventory, reserved regions, organizer lock state, raw folder ranks) are
- * verified solely by the unchanged DB leg.
+ * per-kind semantic launch identity (including the canonical launch identity
+ * of legacy shortcut kinds). Fields the model does not represent (raw icon
+ * bytes, persisted `modified`, device capabilities, profile inventory,
+ * reserved regions, organizer lock state, raw folder ranks) are verified
+ * solely by the unchanged DB leg.
  *
  * Both verification legs project onto this shape: the DB recapture through
  * [LayoutState.projectedToModelVerifiable], the model snapshot through the
@@ -47,6 +49,13 @@ data class ModelItemProjection(
     val placement: ModelPlacement,
     val structure: ModelStructure,
     val widget: ModelWidgetIdentity?,
+    /**
+     * Canonical launch identity of legacy shortcut kinds (`ShortcutLegacy`,
+     * `Unknown`), derived from the persisted DB intent and the in-memory
+     * `WorkspaceItemIntent` by the same canonical serialization. Null for
+     * other kinds and for rows with no comparable identity.
+     */
+    val legacyLaunchIdentity: String?,
 )
 
 sealed interface ModelPlacement {
@@ -56,6 +65,14 @@ sealed interface ModelPlacement {
     /** Folder membership carries the parent only; the platform normalizes child ranks on load. */
     data class FolderChild(val parent: ItemId) : ModelPlacement
     data class AppPairChild(val parent: ItemId, val stage: SplitStage) : ModelPlacement
+
+    /**
+     * A container the organizer does not own. Represented explicitly (not
+     * dropped) so a row the model loses cannot compare equal by symmetric
+     * omission; the raw container code is model-observable on the platform
+     * `ItemInfo`.
+     */
+    data class UnsupportedContainer(val container: ContainerCode) : ModelPlacement
 }
 
 sealed interface ModelStructure {
@@ -76,18 +93,24 @@ data class ModelWidgetIdentity(
 
 /**
  * Project the DB-derived canonical state onto the model-verifiable subset.
- * Items whose identity or placement the model cannot represent (planned
- * references, unsupported containers) are excluded — they stay covered by the
- * exact DB comparison, never by the model leg. Items are ordered by canonical
- * [ItemId] so projection equality never depends on enumeration order; the
- * canonical order itself is verified by the exact DB leg.
+ * [legacyLaunchIdentityOf] derives the canonical launch identity of legacy
+ * shortcut kinds from the persisted intent; production passes the writer
+ * port's implementation so both legs use the same canonical serialization.
+ * Items whose identity the model cannot represent (planned references) are
+ * excluded — they stay covered by the exact DB comparison. Items are ordered
+ * by canonical [ItemId] so projection equality never depends on enumeration
+ * order; the canonical order itself is verified by the exact DB leg.
  */
-fun LayoutState.projectedToModelVerifiable(): ModelSnapshot = ModelSnapshot(
-    items = items.mapNotNull { it.toModelProjection() }.sortedBy { it.itemId },
+fun LayoutState.projectedToModelVerifiable(
+    legacyLaunchIdentityOf: (CanonicalItemState) -> String? = { null },
+): ModelSnapshot = ModelSnapshot(
+    items = items.mapNotNull { it.toModelProjection(legacyLaunchIdentityOf) }.sortedBy { it.itemId },
     diagnosticGenerationId = 0L,
 )
 
-private fun CanonicalItemState.toModelProjection(): ModelItemProjection? {
+private fun CanonicalItemState.toModelProjection(
+    legacyLaunchIdentityOf: (CanonicalItemState) -> String?,
+): ModelItemProjection? {
     val persistentRef = ref as? ApplicationItemRef.PersistentItem ?: return null
     val modelPlacement = when (val p = placement) {
         is PlacementState.Workspace -> ModelPlacement.Workspace(
@@ -107,7 +130,7 @@ private fun CanonicalItemState.toModelProjection(): ModelItemProjection? {
             p.stage,
         )
 
-        is PlacementState.UnsupportedContainer -> return null
+        is PlacementState.UnsupportedContainer -> ModelPlacement.UnsupportedContainer(p.code)
     }
     val modelStructure = when (val s = structure) {
         is StructureState.FolderMembers -> ModelStructure.FolderMembers(
@@ -129,7 +152,21 @@ private fun CanonicalItemState.toModelProjection(): ModelItemProjection? {
         is WidgetState.Widget -> ModelWidgetIdentity(w.provider, w.appWidgetId, w.restored)
         WidgetState.NoWidget -> null
     }
-    return ModelItemProjection(persistentRef, kind, targetKey, profile, modelPlacement, modelStructure, widgetIdentity)
+    val legacyIdentity = if (kind is CanonicalItemKind.ShortcutLegacy || kind is CanonicalItemKind.Unknown) {
+        legacyLaunchIdentityOf(this)
+    } else {
+        null
+    }
+    return ModelItemProjection(
+        persistentRef,
+        kind,
+        targetKey,
+        profile,
+        modelPlacement,
+        modelStructure,
+        widgetIdentity,
+        legacyIdentity,
+    )
 }
 
 /** Comparison key for the canonical projection order. */

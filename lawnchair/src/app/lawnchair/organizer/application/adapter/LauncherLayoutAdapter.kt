@@ -1,6 +1,7 @@
 package app.lawnchair.organizer.application.adapter
 
 import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
 import android.os.Process
 import android.os.UserManager
@@ -24,6 +25,7 @@ import app.lawnchair.organizer.application.protocol.WriterKind
 import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.ApplicationPageRef
 import app.lawnchair.organizer.application.public.ApplyAction
+import app.lawnchair.organizer.application.public.CanonicalItemKind
 import app.lawnchair.organizer.application.public.CanonicalItemState
 import app.lawnchair.organizer.application.public.DeviceCapabilities
 import app.lawnchair.organizer.application.public.DeviceOrientation
@@ -415,6 +417,26 @@ internal class LauncherLayoutAdapter(
             OrganizerModelReloadAdapter.Outcome.TIMEOUT -> ReloadResult.Timeout
 
             OrganizerModelReloadAdapter.Outcome.FAILED -> ReloadResult.Failed
+        }
+    }
+
+    /**
+     * Issue #152: canonical launch identity of a legacy shortcut row — the
+     * persisted DB intent re-serialized canonically; the model-side codec
+     * derives the same form from the in-memory `WorkspaceItemInfo` intent, so
+     * a transformed launch target can no longer compare equal.
+     */
+    override fun legacyLaunchIdentityOf(item: CanonicalItemState): String? {
+        val kind = item.kind
+        if (kind !is CanonicalItemKind.ShortcutLegacy && kind !is CanonicalItemKind.Unknown) return null
+        val intentText = (item.intent as? OptionalText.Present)?.value ?: return null
+        return try {
+            Intent.parseUri(intentText, 0).toUri(0)
+        } catch (_: Exception) {
+            // A row whose persisted intent no longer parses cannot have been
+            // loaded with a usable in-memory intent either; both legs then
+            // carry no comparable identity and the DB leg keeps full coverage.
+            null
         }
     }
 

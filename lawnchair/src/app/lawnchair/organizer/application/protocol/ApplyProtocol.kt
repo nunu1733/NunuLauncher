@@ -346,7 +346,7 @@ class ApplyProtocol(
         // Issue #152: DB/model convergence — the model snapshot of the exact
         // correlated reload generation must equal the DB recapture on the
         // model-verifiable projection before Applied is returned.
-        val modelVerified = db.layoutState.projectedToModelVerifiable().items ==
+        val modelVerified = db.layoutState.projectedToModelVerifiable(writer::legacyLaunchIdentityOf).items ==
             completed.modelSnapshot.items
         if (!modelVerified) {
             ctx.terminalApplyStage = ApplyStage.A7
@@ -475,7 +475,7 @@ class ApplyProtocol(
         }
         // Issue #152: DB/model convergence on the model-verifiable projection
         // before Recovered is returned.
-        val modelVerified = db.layoutState.projectedToModelVerifiable().items ==
+        val modelVerified = db.layoutState.projectedToModelVerifiable(writer::legacyLaunchIdentityOf).items ==
             completed.modelSnapshot.items
         if (!modelVerified) {
             ctx.terminalApplyStage = ApplyStage.A7

@@ -14,6 +14,7 @@ import app.lawnchair.organizer.application.public.WidgetRestoreState
 import app.lawnchair.organizer.planning.AppPairId
 import app.lawnchair.organizer.planning.AppWidgetId
 import app.lawnchair.organizer.planning.ComponentKey
+import app.lawnchair.organizer.planning.ContainerCode
 import app.lawnchair.organizer.planning.FolderId
 import app.lawnchair.organizer.planning.GridCell
 import app.lawnchair.organizer.planning.GridSpan
@@ -110,7 +111,9 @@ internal object ModelProjectionCodec {
                 else -> ModelPlacement.FolderChild(ItemId(info.container.toString()))
             }
 
-            else -> return null
+            // Issue #152 (re-review P1): represented explicitly, never dropped —
+            // a row the model loses must not compare equal by symmetric omission.
+            else -> ModelPlacement.UnsupportedContainer(ContainerCode(info.container))
         }
         val members = membersByParent[info.id.toLong()].orEmpty()
         val structure = when (kind) {
@@ -121,6 +124,15 @@ internal object ModelProjectionCodec {
             )
 
             else -> ModelStructure.Plain
+        }
+        // Issue #152 (re-review P1): the faithful launch identity of legacy
+        // shortcut kinds, canonically re-serialized from the in-memory intent —
+        // the same form the DB-side port derives from the persisted text.
+        val legacyLaunchIdentity = when (kind) {
+            CanonicalItemKind.ShortcutLegacy, is CanonicalItemKind.Unknown ->
+                (info as? WorkspaceItemInfo)?.intent?.toUri(0)
+
+            else -> null
         }
         val widget = when (kind) {
             CanonicalItemKind.AppWidget, CanonicalItemKind.CustomAppWidget -> {
@@ -144,6 +156,7 @@ internal object ModelProjectionCodec {
             placement,
             structure,
             widget,
+            legacyLaunchIdentity,
         )
     }
 

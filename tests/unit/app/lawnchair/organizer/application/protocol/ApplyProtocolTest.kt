@@ -8,6 +8,7 @@ import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.public.ApplyAction
 import app.lawnchair.organizer.application.public.ApplyFailure
 import app.lawnchair.organizer.application.public.ApplyResult
+import app.lawnchair.organizer.application.public.CanonicalItemKind
 import app.lawnchair.organizer.application.public.OptionalText
 import app.lawnchair.organizer.application.public.OrganizerLockState
 import app.lawnchair.organizer.application.public.PreWriteRejection
@@ -22,6 +23,7 @@ import app.lawnchair.organizer.planning.NewPage
 import app.lawnchair.organizer.planning.NewPageOrdinal
 import app.lawnchair.organizer.planning.PageOrder
 import app.lawnchair.organizer.planning.RuleVersion
+import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.TaxonomyVersion
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -326,6 +328,64 @@ class ApplyProtocolTest {
         writer.reloadResult = ReloadResult.Timeout
         val result = protocol.apply(mutatingPlan())
         assertTrue("Expected RecoveryFailed, got $result", result is ApplyResult.RecoveryFailed)
+    }
+
+    @Test
+    fun sa12LegacyShortcutLaunchIntentDivergenceIsNeverApplied() {
+        // Issue #152 (re-review P1): the legacy shortcut's faithful launch
+        // identity is part of the projection; a loader generation that
+        // transforms only the launch target must fail verification even though
+        // the DB recapture still matches.
+        val legacyItem = CanonicalFixtures.appItem(
+            itemId = "shortcut.legacy",
+            kind = CanonicalItemKind.ShortcutLegacy,
+            target = TargetKey.LegacyShortcutKey,
+            intent = OptionalText.Present("#Intent;action=android.intent.action.VIEW;end"),
+        )
+        val appItem = CanonicalFixtures.appItem()
+        val movedApp = appItem.copy(
+            placement = app.lawnchair.organizer.application.public.PlacementState.Workspace(
+                app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage(
+                    app.lawnchair.organizer.planning.PageId("p0"),
+                ),
+                GridCell(1, 1),
+                GridSpan(1, 1),
+            ),
+        )
+        val sourceState = CanonicalFixtures.state(items = listOf(appItem, legacyItem))
+        val intendedState = sourceState.copy(items = listOf(movedApp, legacyItem))
+        val plan = ValidatedLayoutPlan(
+            sourceRevision = app.lawnchair.organizer.application.revision.RevisionCalculator.revisionOf(sourceState),
+            sourceState = sourceState,
+            intendedState = intendedState,
+            actions = listOf(ApplyAction.Update(ref = appItem.ref, expected = appItem, intended = movedApp)),
+            newPages = emptyList(),
+            newFolders = emptyList(),
+            ruleVersion = RuleVersion("v1"),
+            taxonomyVersion = TaxonomyVersion("tv1"),
+        )
+        writer.setCurrentState(sourceState)
+        writer.modelSnapshotTransform = { snapshot ->
+            snapshot.copy(
+                items = snapshot.items.map { item ->
+                    if (item.kind is CanonicalItemKind.ShortcutLegacy) {
+                        item.copy(legacyLaunchIdentity = "diverged-launch-target")
+                    } else {
+                        item
+                    }
+                },
+            )
+        }
+
+        val result = protocol.apply(plan)
+
+        assertTrue("Expected RecoveryFailed, got $result", result is ApplyResult.RecoveryFailed)
+        assertEquals(ApplyFailure.VERIFICATION_FAILED, (result as ApplyResult.RecoveryFailed).failure)
+        assertEquals(
+            "A transformed legacy launch target must never reach VERIFIED",
+            LifecycleState.RESTORING,
+            storedLifecycleOf((result as ApplyResult.RecoveryFailed).pointId),
+        )
     }
 
     @Test

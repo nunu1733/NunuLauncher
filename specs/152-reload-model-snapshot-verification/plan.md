@@ -1,6 +1,6 @@
 ---
 issue: "#152"
-status: draft
+status: implemented
 updated: 2026-08-30
 ---
 
