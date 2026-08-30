@@ -1,0 +1,242 @@
+---
+issue: "#152"
+status: draft
+updated: 2026-08-30
+---
+
+# Plan: bind the correlated reload generation to a canonical model snapshot and verify DB/model convergence
+
+> Issue: #152
+> Spec: [spec.md](./spec.md)
+> Status: draft
+> Risk: `risk: layout-data` — changes the apply/recovery verification path that
+> gates `Applied`/`Recovered`/`Restored`
+
+## Current evidence
+
+Confirmed on `main` @ `de2d33f551` (2026-08-30). The verification chain today
+is DB-only:
+
+- `lawnchair/src/app/lawnchair/organizer/application/protocol/ApplyProtocol.kt`
+  - `continueCommitted` (L299–350): after
+    `writer.requestCorrelatedReload(lease)` returns `Completed` (L321), it
+    calls `writer.recaptureDb()` (L333) and compares only
+    `db.layoutState == writeSet.intendedState && db.manifest ==
+    writeSet.intendedManifest` (L335–336) before
+    `store.advance(VERIFIED)` and `ApplyResult.Applied` (L349). The reload
+    result contributes nothing but its outcome enum.
+  - `automaticRecovery` (L352–471): after the recovery reload completes
+    (L437), verifies only `writer.recaptureDb().manifest ==
+    stored.preManifest` (L447) before `ApplyResult.Recovered` (L470).
+  - `authoritativeState(kind, modelVerified)` (L499–510): every call site
+    passes `modelVerified = false`; `AuthoritativeState.*_DB_AND_MODEL`
+    (`public/Results.kt` L131–136) is never returned except at L465, which is
+    unrelated to verification success.
+- `lawnchair/src/app/lawnchair/organizer/application/protocol/RecoveryProtocol.kt`
+  - `recoverWithOuterLease`: reload (L190), then
+    `writer.recaptureDb().manifest == stored.preManifest` (L197) before
+    `RecoveryResult.Restored` (L212).
+- `lawnchair/src/app/lawnchair/organizer/application/protocol/RestartReconciler.kt`
+  - `finishCommittedApply` (L375–394) and `finishRestored` (L397–429): same
+    manifest-only recapture comparison before resuming `Applied`/`Restored`.
+- `lawnchair/src/app/lawnchair/organizer/application/protocol/Ports.kt`
+  - `LayoutWriterPort.recaptureDb()` (L58) is documented as "independently of
+    the model snapshot" — the model snapshot it defers to does not exist.
+  - `LayoutWriterPort.requestCorrelatedReload` (L67) returns `ReloadResult`
+    (L138–143), a bare outcome enum with no payload.
+- `lawnchair/src/app/lawnchair/organizer/application/adapter/LauncherLayoutAdapter.kt`
+  - `recaptureDb()`/`captureCurrent()` (L85–86) are the same direct-SQL
+    capture; `RowManifestCodec.capture` (`adapter/RowManifestCodec.kt` L59–67)
+    reads `favorites` via SQLite only. Nothing reads `BgDataModel`.
+- `lawnchair/src/com/android/launcher3/OrganizerModelReloadAdapter.java`
+  - `requestAndWait` (L51–94): allocates `requestId` (L52) and blocks on the
+    completion signal; the completion `Runnable` registered at L68–72 carries
+    no state. `requestId` is passed to the model but never used again.
+- `src/com/android/launcher3/LauncherModel.java`
+  - `forceReloadForOrganizer` (L467–489): stores an `OrganizerReloadRequest`
+    token; the exact `LoaderTask` receives only `organizerLeaseToken` (L427).
+  - `completeOrganizerReload` (L493–503): identity-checks the token, runs
+    `token.completed` — a bare `Runnable`. `mLastLoadId`/`getLastLoadId()`
+    (L160, L640, L803) and `BgDataModel.lastLoadId` (L142) are loader
+    generation counters, and spec 13/`RevisionCalculator.kt` (L23) pin them as
+    diagnostic-only, never a correlation or revision identity.
+- Repo-wide `grep -i modelSnapshot` finds zero hits; the in-memory state that
+  would be captured exists (`BgDataModel.workspaceItems`, `itemsIdMap`,
+  `folders`, `getAllWorkspaceItems()`), but no organizer code reads it.
+- Test doubles: `tests/unit/.../adapter/FakeLayoutWriter.kt`
+  (`recaptureDb` L242, `requestCorrelatedReload` L283) and the protocol test
+  matrices (`ApplyProtocolTest` SA-01..SA-24, `RecoveryProtocolTest`,
+  `RestartReconcilerTest`) all express the DB-only contract today, so the new
+  verification will fail them until both production and fakes model the
+  snapshot leg. Instrumentation seams for the real adapter already exist
+  (`OrganizerReloadSupersessionTest`, `OrganizerReloadCompletionOrderingTest`,
+  `RealAdapterRowMatrixInstrumentationTest`).
+
+Root cause class (not a timing bug): the reload seam's terminal signal
+transports no state, so "the model produced by this generation" was never
+observable to the protocol. #150 made the completion boundary causal; #152
+makes the completed generation's state observable and compared.
+
+## Design
+
+### Modules and interfaces
+
+- **`LayoutWriterPort` seam (extended, not replaced).** `ReloadResult`
+  becomes payload-carrying on success:
+  `Completed(modelSnapshot: ModelSnapshot)`; the failure variants stay
+  payload-free. The protocol cannot observe the model by any other path, so
+  no second seam is added.
+  - `ModelSnapshot` (new data class in the protocol package): canonical
+    `LayoutState`-equivalent representation of the model-side workspace state
+    for all organizer-owned rows, plus the diagnostic loader generation id
+    observed at completion (never used for equality or correlation decisions —
+    correlation is the causal token path).
+- **`OrganizerModelReloadAdapter` (Java, same package as `LauncherModel`).**
+  The completion callback registered with `forceReloadForOrganizer` captures
+  the model snapshot at bind-complete time — the same causal boundary #150
+  established — via a narrow same-package snapshot source that reads
+  `BgDataModel` (workspace items, folders, widgets, screens) and converts it
+  through the shared canonical ordering (`CanonicalItemOrder`) into the
+  canonical representation. The completion then carries
+  `Outcome.COMPLETED` + snapshot to the waiting adapter thread. Superseded /
+  cancelled / failed / timed-out outcomes carry no snapshot.
+- **`ModelManifestCodec` (new, organizer `application/adapter`).** Model-side
+  counterpart of `RowManifestCodec`: converts `BgDataModel`-derived items into
+  the same canonical `LayoutState` the DB codec produces. Shared ordering and
+  profile mapping (`CanonicalProfileId`) are reused so equality is
+  representation-level, not textual.
+- **Protocols unchanged in shape.** `continueCommitted`,
+  `automaticRecovery`, `RecoveryProtocol.recoverWithOuterLease`,
+  `RestartReconciler.finishCommittedApply/finishRestored` gain one comparison
+  on the snapshot leg: `modelSnapshot == db.layoutState` (and, for the apply
+  path, `db` still equals intended; for recovery, `db.manifest` still equals
+  `stored.preManifest`). Mismatch routes to the existing
+  `VERIFICATION_FAILED` paths. `modelVerified = true` is passed to
+  `authoritativeState(...)` only after the model leg passes.
+- **Fakes.** `FakeLayoutWriter` learns to produce a configurable model
+  snapshot (equal by default; divergent/stale for failure tests) and to
+  report the generation association, so unit tests express the three-way
+  contract without Android.
+- Launcher3/AOSP surface: only the same-package bridge files
+  (`OrganizerModelReloadAdapter`, a snapshot source in `com.android.launcher3`)
+  change; the bridge is documented here as the #152 reason, satisfying the
+  minimal-bridge rule.
+
+### Data flow
+
+1. A5/A6 commit unchanged → `COMMITTED_UNVERIFIED`.
+2. `requestCorrelatedReload(lease)` — adapter blocks; the model binds the
+   token to the exact `LoaderTask`; at bind-complete (#150 barrier), the
+   adapter captures `ModelSnapshot` from `BgDataModel` and completes with it.
+3. Protocol receives `Completed(snapshot)`; runs the unchanged DB recapture.
+4. Three-way equality: `snapshot.layoutState == db.layoutState`
+   (`== intendedState` on apply; `db.manifest == stored.preManifest` on
+   recovery, as today).
+5. All equal → `VERIFIED`/`RESTORED` advance and success result with
+   `*_DB_AND_MODEL` authoritative classification where applicable.
+   Any unequal leg or non-`Completed` outcome → existing
+   `VERIFICATION_FAILED` / `MODEL_RELOAD_FAILED` automatic-recovery /
+   `RecoveryFailed` paths with `*_MODEL_UNVERIFIED` classification.
+6. The snapshot object is dropped when the protocol call returns; nothing is
+   persisted.
+
+### Alternatives rejected
+
+- **Correlate via `getLastLoadId()`/`lastLoadId` equality** — spec 13 pins
+  load id as diagnostic-only; a numeric equality check is a timing correlation
+  in disguise. Rejected.
+- **Capture the snapshot at request time** — pre-commit state; not the
+  generation's output. Rejected.
+- **Recapture-on-mismatch retry / delay before recapture** — banned by the
+  issue constraints and spec 13's causal-barrier rule. Rejected.
+- **Separate `captureModelSnapshot()` port called after `Completed`** — the
+  protocol could capture from an already-superseded generation; binding the
+  payload to the completion signal keeps the causality inside the seam.
+  Rejected in favor of the payload-carrying result.
+
+## Change set
+
+| Area | Intended change | Why here |
+|---|---|---|
+| `protocol/Ports.kt` | `ReloadResult.Completed` carries `ModelSnapshot`; add `ModelSnapshot` type | Only seam the protocol may observe the model through |
+| `com.android.launcher3` bridge | Completion callback captures snapshot from `BgDataModel` at bind-complete via a same-package snapshot source | Causal binding to the exact loader generation lives where the token lives |
+| `adapter/ModelManifestCodec.kt` (new) | Model → canonical `LayoutState` conversion reusing `CanonicalItemOrder`/`CanonicalProfileId` | Representation equality with `RowManifestCodec` output |
+| `adapter/OrganizerModelReloadAdapter.java` / `LauncherLayoutAdapter.kt` | Transport snapshot through `requestAndWait` → `requestCorrelatedReload` | Production `LayoutWriterPort` implementation |
+| `protocol/ApplyProtocol.kt`, `RecoveryProtocol.kt`, `RestartReconciler.kt` | Snapshot-leg comparison before success results; `modelVerified` wiring | Acceptance AC-152-03/04 |
+| `tests/unit FakeLayoutWriter` + protocol tests | Snapshot-aware fake; divergence/stale/cancellation/stale-generation cases | Unit oracle per spec |
+| `tests/organizer-instrumentation` | Real-model verification cases: default workspace, folders/widgets/profiles/locks, cancellation, stale generation | AC-152-05 real-device leg |
+
+## Migration and recovery
+
+- No schema, format, permission, transport, or backup change; nothing to
+  migrate. Release rollback (older build) is unaffected because no persisted
+  representation changes.
+- Behavior migration is intentional and fail-closed: workspaces that previously
+  passed verification with a divergent model will now fail `VERIFICATION_FAILED`
+  and enter automatic recovery — the direction spec 13 requires. No recovery
+  path weakens: recovery still verifies against the checkpoint pre-manifest,
+  now plus the model leg.
+
+## Verification
+
+| Acceptance criterion | Automated/manual evidence | Command or environment |
+|---|---|---|
+| AC-152-01 | New unit regression (divergent model, matching DB) demonstrated failing on pre-fix commit, passing after | `./gradlew :tests:unit` variant used by the module; PR records both runs |
+| AC-152-02 | Unit stale-generation/supersession cases; instrumentation correlation test | Unit suite + `connectedLawnWithQuickstepGithubDebugAndroidTest` subset |
+| AC-152-03 | Unit three-way equality cases across the four protocol paths | Unit suite |
+| AC-152-04 | `FaultInjector` reload/verification failure matrix asserting no false success; `*_MODEL_UNVERIFIED` assertions | Unit suite |
+| AC-152-05 | Unit fixtures + real-model instrumentation (default workspace, folders/widgets/profiles/locks, cancellation, stale generation) | Emulator instrumentation run |
+| AC-152-06 | `high-risk-gate` CI `final-status` on head SHA + independent `docs/assessment/pr-<PR>-152-*.md` audit by a separate session | CI on the implementation PR |
+
+Regression gates per `AGENTS.md`: `./gradlew spotlessCheck` and
+`./gradlew assembleLawnWithQuickstepGithubDebug` on the implementation PR.
+
+## Documentation updates
+
+- [ ] `specs/152-reload-model-snapshot-verification/spec.md` → `accepted` on
+      approval, `implemented` at merge of the implementation PR.
+- [ ] `CONTEXT.md`: add モデルスナップショット / 相関リロード生成 terms on
+      acceptance.
+- [ ] `DESIGN.md` §4.2/§10: one-line statement that post-apply/recovery
+      verification proves DB/model convergence (no progress notes).
+- [ ] `specs/150-*/spec.md` cross-references: leave as-is (they already
+      assign the gap to #152); no rewrite needed.
+- [ ] ADR: not required unless the model-side canonical equality watch item
+      (below) forces a design decision.
+
+## Execution checklist
+
+1. Write the AC-152-01 regression test against current `main`; confirm it
+   fails for the right reason (no snapshot leg exists).
+2. Spike `ModelManifestCodec` feasibility: verify every organizer-owned row
+   class recoverable from `BgDataModel` can reach byte-equal canonical
+   representation with the DB codec. **Stop condition**: if any row class
+   cannot, stop and reopen the design (spec Open questions) instead of
+   weakening the comparison.
+3. Extend `ReloadResult`/bridge/adapter/protocols per the change set; fakes
+   updated in the same commit as the port change.
+4. Implement failure/cancellation/stale-generation behavior; keep all
+   existing failure contracts intact.
+5. Full verification table; record commands and results in the PR.
+6. PR: `Closes #152`, per-AC evidence, spec status/history updates, risk label
+   `risk: layout-data`, independent audit record before merge.
+
+## Stop conditions
+
+- The `ModelManifestCodec` feasibility spike fails for any organizer-owned
+  row class → stop; open the design question on the issue; do not compare a
+  subset silently.
+- Any change to recovery store schema, Launcher DB schema, or backup format
+  becomes necessary → out of scope; separate accepted design required.
+- The fix requires changing the #150 causal completion barrier semantics →
+  stop; resolve the seam ownership between #150 and #152 first.
+
+## High-risk merge gate
+
+The implementation PR carries `risk: layout-data` and merges only when:
+
+- CI's merge gate (`final-status`) has actually succeeded on the exact head
+  SHA, and
+- `docs/assessment/pr-<PR>-152-reload-model-snapshot-verification.md` records
+  the independent audit (head SHA, spec acceptance criteria, test surfaces,
+  CI run links), written by a session other than the implementing one.
