@@ -1,6 +1,6 @@
 ---
 issue: "#152"
-status: draft
+status: accepted
 requirements: []
 risk:
   - layout-data
