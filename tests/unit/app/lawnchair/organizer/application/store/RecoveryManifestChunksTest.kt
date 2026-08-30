@@ -141,4 +141,24 @@ class RecoveryManifestChunksTest {
             RecoveryDbSchema.CHECKSUM_COLUMNS.filterNot { it in setOf("pre_manifest", "intended_manifest", "reviewed_manifest") },
         )
     }
+
+    @Test
+    fun truncatedManifestDecodeThrowsCheckedExceptionNotRuntimeException() {
+        val full = RecoveryRecordCodec.encodeManifest(
+            app.lawnchair.organizer.application.canonical.PersistenceManifest(1, 33, 0, emptyList(), emptyList(), 0L),
+        )
+        val truncated = full.copyOf(full.size - 4)
+
+        val thrown = runCatching { RecoveryRecordCodec.decodeManifest(truncated) }.exceptionOrNull()
+
+        assertTrue("Expected a decode failure, got $thrown", thrown != null)
+        // java.io.EOFException is a checked IOException: the store boundary
+        // must normalize Exception (not RuntimeException only) into the closed
+        // RecordRead result, or a truncated-but-shape-valid manifest escapes
+        // the Unreadable contract.
+        assertTrue(
+            "Expected a checked exception, got $thrown (${thrown!!::class.java.name})",
+            thrown !is RuntimeException,
+        )
+    }
 }

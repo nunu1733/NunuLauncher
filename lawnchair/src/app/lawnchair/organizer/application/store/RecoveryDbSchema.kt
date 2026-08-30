@@ -166,6 +166,17 @@ object RecoveryDbSchema {
         "payload_checksum",
     )
 
+    /**
+     * Canonical schema-3 DDL split into executable statements (including the
+     * `PRAGMA user_version` update). Shared by `RecoveryDbHelper.onCreate` and
+     * the v1-empty physical rebuild in `RecoveryStore` so both paths create
+     * the exact same structure (Issue #174 review).
+     */
+    val DDL_STATEMENTS: List<String> = DDL_SCHEMA_3
+        .split(";")
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+
     /** WAL plus `synchronous=FULL` configuration. */
     val PRAGMA_CONFIGS: List<String> = listOf(
         "PRAGMA journal_mode=WAL;",

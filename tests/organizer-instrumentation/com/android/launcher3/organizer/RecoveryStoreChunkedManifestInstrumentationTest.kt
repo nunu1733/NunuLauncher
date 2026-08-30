@@ -512,4 +512,108 @@ class RecoveryStoreChunkedManifestInstrumentationTest {
             mutex.release(runId)
         }
     }
+
+    // --- CW-AC-04 review regression: checked decode failure stays inside the closed result ---
+
+    @Test
+    fun truncatedManifestPayloadIsUnreadableAndDoesNotPoisonHealthyReconciliation() {
+        context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+        val store = RecoveryStore(context) { 1_000L }
+        prepareForMutation(store)
+        val verifiedId = RecoveryPointId("1123456789abcdef0123456789abcdef")
+        val truncatedId = RecoveryPointId("0123456789abcdef0123456789abcdef")
+        assertTrue(store.checkpoint(checkpointPayload(verifiedId, smallManifest())) is RecoveryStorePort.CheckpointResult.Ready)
+        assertTrue(store.advance(verifiedId, LifecycleState.APPLYING))
+        assertTrue(store.advance(verifiedId, LifecycleState.COMMITTED_UNVERIFIED))
+        assertTrue(store.advance(verifiedId, LifecycleState.VERIFIED))
+        assertTrue(store.checkpoint(checkpointPayload(truncatedId, smallManifest())) is RecoveryStorePort.CheckpointResult.Ready)
+
+        // Rewrite the READY record's chunks with a truncated manifest payload
+        // whose chunk shape and recorded sizes stay consistent (so assembly
+        // succeeds and the failure is exactly the manifest decode).
+        val full = RecoveryRecordCodec.encodeManifest(smallManifest())
+        val truncated = full.copyOf(full.size - 4)
+        val encoded = RecoveryRecordCodec.Encoded(
+            pointId = truncatedId,
+            runId = RunId("abcdef0123456789abcdef0123456789"),
+            createdAtMs = 1_000L,
+            updatedAtMs = 1_000L,
+            lifecycle = LifecycleState.READY,
+            priorLifecycle = null,
+            preManifest = truncated,
+            preRevision = RevisionId("revision"),
+            preDigest = ByteArray(32),
+            intendedManifest = truncated,
+            intendedDigest = ByteArray(32),
+            applyActionDigest = ByteArray(32),
+            reviewedManifest = null,
+            reviewedDigest = null,
+            recoveryActionDigest = null,
+            itemCount = 0,
+            resourceCount = 0,
+            payloadChecksum = ByteArray(32),
+        )
+        openReadWrite().use { db ->
+            db.execSQL(
+                "DELETE FROM ${RecoveryDbSchema.TABLE_MANIFEST_CHUNKS} WHERE point_id = ?",
+                arrayOf<Any>(truncatedId.value),
+            )
+            db.execSQL(
+                "UPDATE ${RecoveryDbSchema.TABLE_RECOVERY_POINTS} SET " +
+                    "pre_manifest_size = ?, intended_manifest_size = ?, payload_checksum = ? WHERE point_id = ?",
+                arrayOf<Any>(
+                    truncated.size,
+                    truncated.size,
+                    RecoveryRecordCodec.computePayloadChecksum(encoded),
+                    truncatedId.value,
+                ),
+            )
+            db.execSQL(
+                "INSERT INTO ${RecoveryDbSchema.TABLE_MANIFEST_CHUNKS} (point_id, slot, chunk_index, chunk) " +
+                    "VALUES (?, ${RecoveryDbSchema.SLOT_PRE}, 0, ?)",
+                arrayOf<Any>(truncatedId.value, truncated),
+            )
+            db.execSQL(
+                "INSERT INTO ${RecoveryDbSchema.TABLE_MANIFEST_CHUNKS} (point_id, slot, chunk_index, chunk) " +
+                    "VALUES (?, ${RecoveryDbSchema.SLOT_INTENDED}, 0, ?)",
+                arrayOf<Any>(truncatedId.value, truncated),
+            )
+        }
+
+        // Ordinary read: chunk shape assembles, payload decode fails (checked
+        // EOF) → closed Unreadable, never an escaping exception.
+        val read = store.readRecord(truncatedId)
+        assertTrue("Expected Unreadable, got $read", read is RecoveryStorePort.RecordRead.Unreadable)
+        // Healthy record still fully readable.
+        assertTrue(store.readRecord(verifiedId) is RecoveryStorePort.RecordRead.Readable)
+
+        // Reconciliation sees both candidates and loads each independently.
+        val sessionStore = RecoveryStore(context) { 2_000L }
+        val mutex = RunMutex()
+        val runId = RunId("cccccccccccccccccccccccccccccccc")
+        assertTrue(mutex.tryAcquire(runId))
+        val lease = requireNotNull(mutex.issueReconciliationLease(runId))
+        val issuer = requireNotNull(sessionStore.bindReconciliationIssuer(mutex))
+        val session = requireNotNull(issuer.openSession(lease))
+        try {
+            val candidates = requireNotNull(session.listReconciliationCandidates())
+            assertEquals(2, candidates.size)
+            candidates.forEach { candidate ->
+                val meta = (candidate as app.lawnchair.organizer.application.protocol.ReconciliationCandidate.Valid).metadata
+                val loaded = requireNotNull(session.loadRecord(meta))
+                when (meta.pointId) {
+                    truncatedId -> assertTrue(
+                        "Expected Unreadable, got $loaded",
+                        loaded is RecoveryStorePort.RecordRead.Unreadable,
+                    )
+
+                    else -> assertTrue(loaded is RecoveryStorePort.RecordRead.Readable)
+                }
+            }
+        } finally {
+            session.close()
+            mutex.release(runId)
+        }
+    }
+
 }

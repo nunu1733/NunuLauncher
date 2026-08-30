@@ -28,11 +28,8 @@ internal class RecoveryDbHelper(
     }
 
     override fun onCreate(db: SQLiteDatabase) {
-        for (stmt in RecoveryDbSchema.DDL_SCHEMA_3.trimIndent().split(";")) {
-            val trimmed = stmt.trim()
-            if (trimmed.isNotEmpty()) {
-                db.execSQL(trimmed)
-            }
+        for (stmt in RecoveryDbSchema.DDL_STATEMENTS) {
+            db.execSQL(stmt)
         }
     }
 

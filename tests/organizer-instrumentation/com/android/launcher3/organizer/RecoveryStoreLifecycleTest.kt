@@ -169,7 +169,7 @@ class RecoveryStoreLifecycleTest {
     }
 
     @Test
-    fun legacyV1StoreWithOnlyExpiredTombstoneMigratesToV2() {
+    fun legacyV1StoreWithOnlyExpiredTombstoneMigratesToCurrentSchema() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
         val file = context.getDatabasePath(RecoveryDbSchema.FILE_NAME)
@@ -185,7 +185,42 @@ class RecoveryStoreLifecycleTest {
                 0L,
                 android.database.DatabaseUtils.longForQuery(db, "SELECT COUNT(*) FROM recovery_tombstones", null),
             )
+            // The physical structure must be the real schema-3 shape, not a
+            // bumped pragma over the legacy tables.
+            assertEquals(
+                1L,
+                android.database.DatabaseUtils.longForQuery(
+                    db,
+                    "SELECT COUNT(*) FROM sqlite_master WHERE name = 'recovery_manifest_chunks'",
+                    null,
+                ),
+            )
         }
+
+        // End-to-end: the migrated store must actually be usable through the
+        // production writer, not just version-compatible on paper.
+        prepareForMutation(store)
+        val pointId = RecoveryPointId("aabbccdd00112233445566778899aabb")
+        val digest = ByteArray(32)
+        val empty = PersistenceManifest(1, 33, 0, emptyList(), emptyList(), 0L)
+        val result = store.checkpoint(
+            RecoveryStorePort.CheckpointPayload(
+                pointId,
+                RunId("aabbccdd00112233445566778899aabb"),
+                empty,
+                RevisionId("rev"),
+                digest,
+                digest,
+                0,
+                0,
+            ),
+        )
+        assertTrue("checkpoint after v1 migration: $result", result is RecoveryStorePort.CheckpointResult.Ready)
+        val reopened = RecoveryStore(context) { 2_000L }
+        val read = reopened.readRecord(pointId)
+        assertTrue("Expected Readable after close/reopen, got $read", read is RecoveryStorePort.RecordRead.Readable)
+        assertEquals(LifecycleState.READY, (read as RecoveryStorePort.RecordRead.Readable).record.lifecycle)
+        context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
     }
 
     @Test

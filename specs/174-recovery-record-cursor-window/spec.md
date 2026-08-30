@@ -355,6 +355,12 @@ proves necessary:
 
 ## Change history
 
+- 2026-08-30: Review fixes on PR #175: normalized checked manifest-decode
+  failures (`java.io.EOFException` from a truncated payload with valid chunk
+  shape) into the closed record-read result at the store boundary, and made
+  the v1-empty migration physically rebuild the current schema instead of only
+  advancing `PRAGMA user_version` (with an end-to-end checkpoint/read-back
+  migration test). Regression fixtures added for both.
 - 2026-08-30: Accepted and implemented on
   `docs/issue-174-stage-a-spec-plan`. Pre-fix reproduction recorded (emulator
   API 36: `Row too big to fit into CursorWindow requiredPos=0, totalRows=1` on

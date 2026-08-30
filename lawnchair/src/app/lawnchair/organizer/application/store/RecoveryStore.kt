@@ -157,7 +157,16 @@ internal class RecoveryStore(
                     "expires_at_ms <= ?",
                     arrayOf(now.toString()),
                 )
-                db.execSQL("PRAGMA user_version = ${RecoveryDbSchema.SCHEMA_VERSION}")
+                // Rebuild the physical store to the current schema, not only
+                // the version pragma: an eligible v1 store has no points and
+                // no retained tombstones, so the legacy tables hold nothing
+                // that must survive, and a v3 pragma over the legacy shape
+                // would block onCreate while every later operation fails
+                // (Issue #174 review).
+                db.execSQL("DROP TABLE IF EXISTS ${RecoveryDbSchema.TABLE_RECOVERY_POINTS}")
+                db.execSQL("DROP TABLE IF EXISTS ${RecoveryDbSchema.TABLE_MANIFEST_CHUNKS}")
+                db.execSQL("DROP TABLE IF EXISTS ${RecoveryDbSchema.TABLE_RECOVERY_TOMBSTONES}")
+                RecoveryDbSchema.DDL_STATEMENTS.forEach { db.execSQL(it) }
                 db.setTransactionSuccessful()
                 true
             } finally {
@@ -748,17 +757,17 @@ internal class RecoveryStore(
         }
         val db = try {
             helper.readableDatabase
-        } catch (_: RuntimeException) {
+        } catch (_: Exception) {
             return RecoveryStorePort.RecordRead.Failed
         }
         val row = try {
             readRowMetadata(db, pointId)
-        } catch (_: RuntimeException) {
+        } catch (_: Exception) {
             return RecoveryStorePort.RecordRead.Failed
         } ?: return RecoveryStorePort.RecordRead.Missing
         return try {
             rowToRecordRead(db, row)
-        } catch (_: RuntimeException) {
+        } catch (_: Exception) {
             RecoveryStorePort.RecordRead.Failed
         }
     }
@@ -768,20 +777,24 @@ internal class RecoveryStore(
         row: RecordRow,
     ): RecoveryStorePort.RecordRead {
         val metadata = row.toMetadata()
+        // Manifest decode can raise the checked java.io.EOFException for a
+        // truncated payload whose chunk shape still assembles, so the store
+        // boundary normalizes Exception (not RuntimeException only) into the
+        // closed result (Issue #174 review).
         val preManifest = try {
             RecoveryManifestChunks.readSlot(db, row.pointId, RecoveryDbSchema.SLOT_PRE, row.preManifestSize)
-        } catch (_: RuntimeException) {
+        } catch (_: Exception) {
             null
         } ?: return RecoveryStorePort.RecordRead.Unreadable(metadata)
         val intendedManifest = try {
             RecoveryManifestChunks.readSlot(db, row.pointId, RecoveryDbSchema.SLOT_INTENDED, row.intendedManifestSize)
-        } catch (_: RuntimeException) {
+        } catch (_: Exception) {
             null
         } ?: return RecoveryStorePort.RecordRead.Unreadable(metadata)
         val reviewedManifest = row.reviewedManifestSize?.let { size ->
             try {
                 RecoveryManifestChunks.readSlot(db, row.pointId, RecoveryDbSchema.SLOT_REVIEWED, size)
-            } catch (_: RuntimeException) {
+            } catch (_: Exception) {
                 null
             } ?: return RecoveryStorePort.RecordRead.Unreadable(metadata)
         }
@@ -790,7 +803,7 @@ internal class RecoveryStore(
             RecoveryRecordCodec.decodeManifest(encoded.preManifest)
             RecoveryRecordCodec.decodeManifest(encoded.intendedManifest)
             encoded.reviewedManifest?.let(RecoveryRecordCodec::decodeManifest)
-        } catch (_: RuntimeException) {
+        } catch (_: Exception) {
             return RecoveryStorePort.RecordRead.Unreadable(metadata)
         }
         return RecoveryStorePort.RecordRead.Readable(StoredRecord(encoded))
@@ -823,7 +836,7 @@ internal class RecoveryStore(
                 while (cursor.moveToNext()) {
                     val row = try {
                         cursorToRow(cursor)
-                    } catch (_: RuntimeException) {
+                    } catch (_: Exception) {
                         out += ReconciliationCandidate.Malformed(rowPointIdOrNull(cursor))
                         continue
                     }
@@ -833,7 +846,7 @@ internal class RecoveryStore(
                 }
             }
             out
-        } catch (_: RuntimeException) {
+        } catch (_: Exception) {
             null
         }
     }
@@ -1325,7 +1338,7 @@ internal class RecoveryStore(
 
     private fun rowPointIdOrNull(cursor: android.database.Cursor): RecoveryPointId? = try {
         RecoveryPointId(cursor.getString(cursor.getColumnIndexOrThrow("point_id")))
-    } catch (_: RuntimeException) {
+    } catch (_: Exception) {
         null
     }
 
@@ -1495,7 +1508,7 @@ internal class RecoveryStore(
             while (cursor.moveToNext()) {
                 val row = try {
                     cursorToRow(cursor)
-                } catch (_: RuntimeException) {
+                } catch (_: Exception) {
                     // Undecodable metadata cannot be projected; reconciliation
                     // reports it as malformed and preserves it. Never abort the
                     // publication for one row.
@@ -1504,7 +1517,7 @@ internal class RecoveryStore(
                 val checksumValid = try {
                     val encoded = rowAssembledEncoded(db, row)
                     encoded != null && validateRecord(encoded)
-                } catch (_: RuntimeException) {
+                } catch (_: Exception) {
                     false
                 }
                 records += RecoveryInspectionSnapshot.Record(
