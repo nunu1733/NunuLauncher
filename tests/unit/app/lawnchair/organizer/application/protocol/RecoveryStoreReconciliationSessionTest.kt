@@ -4,6 +4,7 @@ import app.lawnchair.organizer.application.adapter.FakeRecoveryStore
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RunId
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -46,5 +47,63 @@ class RecoveryStoreReconciliationSessionTest {
         assertTrue(requireNotNull(issuer.openSession(lease)).isActive())
         owner.release(runId)
         assertNull(issuer.openSession(lease))
+    }
+
+    @Test
+    fun quarantineRequiresAProvenNoMutationLifecycleAndRechecksIt() {
+        val store = FakeRecoveryStore()
+        val mutex = RunMutex()
+        assertTrue(mutex.tryAcquire(runId))
+        val issuer = requireNotNull(store.bindReconciliationIssuer(mutex))
+        val lease = requireNotNull(mutex.issueReconciliationLease(runId))
+        val session = requireNotNull(issuer.openSession(lease))
+        try {
+            val empty = app.lawnchair.organizer.application.canonical.PersistenceManifest(1, 33, 0, emptyList(), emptyList(), 0L)
+            val checkpointed = store.checkpoint(
+                RecoveryStorePort.CheckpointPayload(
+                    pointId,
+                    runId,
+                    empty,
+                    app.lawnchair.organizer.planning.RevisionId("rev"),
+                    ByteArray(32),
+                    ByteArray(32),
+                    0,
+                    0,
+                ),
+            )
+            assertTrue(checkpointed is RecoveryStorePort.CheckpointResult.Ready)
+
+            // Active lifecycles are never quarantine candidates and write no tombstone.
+            assertFalse(session.quarantineUnmutated(pointId, LifecycleState.APPLYING))
+            assertFalse(session.quarantineUnmutated(pointId, LifecycleState.VERIFIED))
+            assertNull(store.readTombstone(pointId))
+
+            // Expected-lifecycle recheck: a READY record cannot be quarantined as CREATING.
+            assertFalse(session.quarantineUnmutated(pointId, LifecycleState.CREATING))
+            assertNull(store.readTombstone(pointId))
+
+            // Proven no-mutation lifecycle: READY quarantines with the typed tombstone.
+            assertTrue(session.quarantineUnmutated(pointId, LifecycleState.READY))
+            assertEquals(1, store.quarantineCalls)
+            assertEquals(
+                RecoveryStorePort.RecordRead.Missing,
+                store.readRecord(pointId),
+            )
+            assertEquals(
+                RecoveryStorePort.TombstoneReason.QUARANTINED,
+                store.readTombstone(pointId)?.reason,
+            )
+
+            // Unknown point is refused.
+            assertFalse(
+                session.quarantineUnmutated(
+                    RecoveryPointId("99999999999999999999999999999999"),
+                    LifecycleState.READY,
+                ),
+            )
+        } finally {
+            session.close()
+            mutex.release(runId)
+        }
     }
 }

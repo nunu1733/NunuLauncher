@@ -8,6 +8,7 @@ import app.lawnchair.organizer.application.canonical.PersistenceManifest
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.lifecycle.LifecycleTransitions
 import app.lawnchair.organizer.application.lifecycle.RetentionPolicy
+import app.lawnchair.organizer.application.protocol.ReconciliationCandidate
 import app.lawnchair.organizer.application.protocol.RecoveryStorePort
 import app.lawnchair.organizer.application.protocol.RecoveryStoreReconciliationIssuer
 import app.lawnchair.organizer.application.protocol.RecoveryStoreReconciliationPort
@@ -23,9 +24,17 @@ import app.lawnchair.organizer.planning.RevisionId
  * successful `endTransaction` under `synchronous=FULL`, followed by close/reopen
  * read-back validation for checkpoint/lifecycle records.
  *
- * Spec §§“Recovery record and lifecycle”, “Retention”; ADR-0003.
+ * Physical schema 3 (Issue #174, ADR-0009): manifest bytes live in the chunked
+ * side table ([RecoveryManifestChunks]); every read uses the bounded
+ * [RecoveryDbSchema.RECORD_COLUMNS] projection plus per-point chunk assembly,
+ * so no physical row can exceed Android SQLite's 2 MB `CursorWindow`. Logical
+ * records stay format 2 ([RecoveryRecordCodec.RECORD_FORMAT_VERSION]) and
+ * payload-checksum bytes are unchanged, including across the server-side
+ * schema-2 → schema-3 migration.
  *
- * Issue #14 Stage B step 3.
+ * Spec §§“Recovery record and lifecycle”, “Retention”; ADR-0003, ADR-0009.
+ *
+ * Issue #14 Stage B step 3; Issue #174.
  */
 internal class RecoveryStore(
     context: Context,
@@ -74,6 +83,9 @@ internal class RecoveryStore(
 
     private companion object {
         const val LEGACY_FORMAT_VERSION: Int = 1
+
+        /** Physical schema 2: the last inline-manifest schema, migrated pre-open. */
+        const val LEGACY_SCHEMA2_VERSION: Int = 2
     }
     private val snapshotPublisher = RecoveryInspectionSnapshotPublisher(context.applicationContext)
     private var reconciliationMutex: RunMutex? = null
@@ -87,6 +99,11 @@ internal class RecoveryStore(
 
         is RecoveryDbVersionGate.VersionDecision.Incompatible -> {
             if (decision.version == LEGACY_FORMAT_VERSION && migrateEmptyLegacyStore()) {
+                when (probeVersion()) {
+                    is RecoveryDbVersionGate.VersionDecision.OpenExisting -> RecoveryStorePort.StoreAvailability.READY
+                    else -> RecoveryStorePort.StoreAvailability.INCOMPATIBLE_VERSION
+                }
+            } else if (decision.version == LEGACY_SCHEMA2_VERSION && migrateSchema2To3()) {
                 when (probeVersion()) {
                     is RecoveryDbVersionGate.VersionDecision.OpenExisting -> RecoveryStorePort.StoreAvailability.READY
                     else -> RecoveryStorePort.StoreAvailability.INCOMPATIBLE_VERSION
@@ -140,7 +157,7 @@ internal class RecoveryStore(
                     "expires_at_ms <= ?",
                     arrayOf(now.toString()),
                 )
-                db.execSQL("PRAGMA user_version = ${RecoveryDbSchema.FORMAT_VERSION}")
+                db.execSQL("PRAGMA user_version = ${RecoveryDbSchema.SCHEMA_VERSION}")
                 db.setTransactionSuccessful()
                 true
             } finally {
@@ -180,6 +197,192 @@ internal class RecoveryStore(
         } finally {
             db.close()
         }
+    }
+
+    /**
+     * Issue #174 / ADR-0009: server-side schema-2 → schema-3 migration. The
+     * manifest blobs are chunked entirely inside SQLite (`substr()` over a
+     * bounded recursive CTE); no Android `Cursor` ever reads a manifest row,
+     * so a store poisoned by a >2 MB schema-2 row migrates successfully.
+     * Logical `format_version` and `payload_checksum` bytes are copied
+     * unchanged, which is the checksum-invariance contract.
+     *
+     * The migration is one transaction: any DDL/CHECK/validation failure rolls
+     * the store back to a fail-closed schema-2 state; the next start may retry.
+     */
+    private fun migrateSchema2To3(): Boolean {
+        val db = try {
+            SQLiteDatabase.openDatabase(
+                versionGateFile.absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READWRITE,
+            )
+        } catch (_: android.database.sqlite.SQLiteException) {
+            return false
+        }
+        return try {
+            db.beginTransaction()
+            try {
+                createSchema3Tables(db)
+                copyRecordRows(db)
+                chunkColumn(db, RecoveryDbSchema.SLOT_PRE, "pre_manifest")
+                chunkColumn(db, RecoveryDbSchema.SLOT_INTENDED, "intended_manifest")
+                chunkReviewedColumn(db)
+                validateChunkCoverage(db)
+                db.execSQL("DROP TABLE ${RecoveryDbSchema.TABLE_RECOVERY_POINTS}")
+                db.execSQL(
+                    "ALTER TABLE recovery_points_v3 RENAME TO ${RecoveryDbSchema.TABLE_RECOVERY_POINTS}",
+                )
+                db.execSQL("PRAGMA user_version = ${RecoveryDbSchema.SCHEMA_VERSION}")
+                db.setTransactionSuccessful()
+                true
+            } finally {
+                db.endTransaction()
+            }
+        } catch (t: Throwable) {
+            android.util.Log.w("RecoveryStore", "schema 2->3 migration failed; store stays fail-closed", t)
+            false
+        } finally {
+            db.close()
+        }
+    }
+
+    private fun createSchema3Tables(db: SQLiteDatabase) {
+        // Stage the exact canonical schema-3 shapes under the v3 staging name;
+        // the existing v2 table keeps serving until the atomic rename.
+        db.execSQL(
+            "CREATE TABLE recovery_points_v3 (${RecoveryDbSchema.RECOVERY_POINTS_COLUMNS})",
+        )
+        db.execSQL(
+            "CREATE TABLE ${RecoveryDbSchema.TABLE_MANIFEST_CHUNKS} " +
+                "(${RecoveryDbSchema.MANIFEST_CHUNKS_COLUMNS})",
+        )
+    }
+
+    private fun copyRecordRows(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            INSERT INTO recovery_points_v3 (
+              point_id, format_version, run_id, created_at_ms, updated_at_ms,
+              lifecycle, prior_lifecycle,
+              pre_manifest_size, pre_revision, pre_digest,
+              intended_manifest_size, intended_digest, apply_action_digest,
+              reviewed_manifest_size, reviewed_digest, recovery_action_digest,
+              item_count, resource_count, payload_checksum
+            )
+            SELECT point_id, format_version, run_id, created_at_ms, updated_at_ms,
+              lifecycle, prior_lifecycle,
+              length(pre_manifest), pre_revision, pre_digest,
+              length(intended_manifest), intended_digest, apply_action_digest,
+              CASE WHEN reviewed_manifest IS NULL
+                   THEN NULL ELSE length(reviewed_manifest) END,
+              reviewed_digest, recovery_action_digest,
+              item_count, resource_count, payload_checksum
+            FROM ${RecoveryDbSchema.TABLE_RECOVERY_POINTS}
+            """.trimIndent(),
+        )
+    }
+
+    /**
+     * Chunk one manifest column inside SQLite. The recursive CTE is bounded by
+     * the engineering bound (max chunk count for [RecoveryDbSchema.MAX_MANIFEST_BYTES]);
+     * the per-row `WHERE i * L < length(col)` filters the actual chunk count.
+     * Zero-length or oversized sources violate the v3 CHECK constraints or the
+     * coverage validation and abort the transaction.
+     */
+    private fun chunkColumn(db: SQLiteDatabase, slot: Int, column: String) {
+        val maxChunks = RecoveryDbSchema.MAX_MANIFEST_BYTES / RecoveryDbSchema.CHUNK_BYTES
+        val last = maxChunks - 1
+        db.execSQL(
+            """
+            WITH RECURSIVE cnt(i) AS (
+              VALUES(0) UNION ALL SELECT i + 1 FROM cnt WHERE i < $last
+            )
+            INSERT INTO ${RecoveryDbSchema.TABLE_MANIFEST_CHUNKS} (point_id, slot, chunk_index, chunk)
+            SELECT point_id, $slot, i,
+                   substr($column, i * ${RecoveryDbSchema.CHUNK_BYTES} + 1, ${RecoveryDbSchema.CHUNK_BYTES})
+            FROM ${RecoveryDbSchema.TABLE_RECOVERY_POINTS}, cnt
+            WHERE i * ${RecoveryDbSchema.CHUNK_BYTES} < length($column)
+            """.trimIndent(),
+        )
+    }
+
+    private fun chunkReviewedColumn(db: SQLiteDatabase) {
+        val maxChunks = RecoveryDbSchema.MAX_MANIFEST_BYTES / RecoveryDbSchema.CHUNK_BYTES
+        val last = maxChunks - 1
+        db.execSQL(
+            """
+            WITH RECURSIVE cnt(i) AS (
+              VALUES(0) UNION ALL SELECT i + 1 FROM cnt WHERE i < $last
+            )
+            INSERT INTO ${RecoveryDbSchema.TABLE_MANIFEST_CHUNKS} (point_id, slot, chunk_index, chunk)
+            SELECT point_id, ${RecoveryDbSchema.SLOT_REVIEWED}, i,
+                   substr(reviewed_manifest, i * ${RecoveryDbSchema.CHUNK_BYTES} + 1, ${RecoveryDbSchema.CHUNK_BYTES})
+            FROM ${RecoveryDbSchema.TABLE_RECOVERY_POINTS}, cnt
+            WHERE reviewed_manifest IS NOT NULL
+              AND i * ${RecoveryDbSchema.CHUNK_BYTES} < length(reviewed_manifest)
+            """.trimIndent(),
+        )
+    }
+
+    /**
+     * Cursor-free coverage validation: any violated expectation inserts into a
+     * CHECK(0) table and throws, rolling the migration back. Proves, per
+     * (point, slot): the recorded size matches the assembled chunk total, the
+     * chunk count matches ceil(size / L), the indices are exactly 0..n-1, and
+     * the chunk lengths match the required shape (all L except one final
+     * remainder; a single chunk is exactly the size).
+     */
+    private fun validateChunkCoverage(db: SQLiteDatabase) {
+        val l = RecoveryDbSchema.CHUNK_BYTES
+        db.execSQL("CREATE TABLE migration_violations (violation INTEGER NOT NULL CHECK (violation = 0))")
+        db.execSQL(
+            """
+            INSERT INTO migration_violations (violation)
+            SELECT 1 FROM (
+              SELECT point_id, slot,
+                     COUNT(*) AS n,
+                     COUNT(DISTINCT chunk_index) AS dn,
+                     SUM(chunk_index) AS isum,
+                     SUM(length(chunk)) AS total,
+                     MAX(length(chunk)) AS max_len
+              FROM ${RecoveryDbSchema.TABLE_MANIFEST_CHUNKS}
+              GROUP BY point_id, slot
+            ) agg LEFT JOIN (
+              SELECT point_id AS p_id, ${RecoveryDbSchema.SLOT_PRE} AS s_slot, pre_manifest_size AS sz
+                FROM recovery_points_v3
+              UNION ALL
+              SELECT point_id, ${RecoveryDbSchema.SLOT_INTENDED}, intended_manifest_size
+                FROM recovery_points_v3
+              UNION ALL
+              SELECT point_id, ${RecoveryDbSchema.SLOT_REVIEWED}, reviewed_manifest_size
+                FROM recovery_points_v3 WHERE reviewed_manifest_size IS NOT NULL
+            ) sz ON sz.p_id = agg.point_id AND sz.s_slot = agg.slot
+            WHERE sz.p_id IS NULL
+               OR agg.dn != agg.n
+               OR agg.isum != agg.n * (agg.n - 1) / 2
+               OR agg.total != sz.sz
+               OR agg.n != (sz.sz + $l - 1) / $l
+               OR agg.max_len != CASE WHEN agg.n = 1 THEN sz.sz ELSE $l END
+            """.trimIndent(),
+        )
+        db.execSQL(
+            """
+            INSERT INTO migration_violations (violation)
+            SELECT 1 FROM (
+              SELECT point_id AS p_id, ${RecoveryDbSchema.SLOT_PRE} AS s_slot FROM recovery_points_v3
+              UNION ALL
+              SELECT point_id, ${RecoveryDbSchema.SLOT_INTENDED} FROM recovery_points_v3
+              UNION ALL
+              SELECT point_id, ${RecoveryDbSchema.SLOT_REVIEWED} FROM recovery_points_v3
+                WHERE reviewed_manifest_size IS NOT NULL
+            ) sz LEFT JOIN (
+              SELECT DISTINCT point_id, slot FROM ${RecoveryDbSchema.TABLE_MANIFEST_CHUNKS}
+            ) agg ON agg.point_id = sz.p_id AND agg.slot = sz.s_slot
+            WHERE agg.point_id IS NULL
+            """.trimIndent(),
+        )
+        db.execSQL("DROP TABLE migration_violations")
     }
 
     /** Startup-only availability: classify on-disk artifacts before any SQLite open. */
@@ -245,9 +448,9 @@ internal class RecoveryStore(
 
     /**
      * Insert a new recovery record with lifecycle `CREATING`, then advance to
-     * `READY`. The insert and the lifecycle transition are each one
-     * transaction. Returns the persisted [StoredRecord] after read-back
-     * validation.
+     * `READY`. The insert (record row plus both slot chunk sets) and the
+     * lifecycle transition are each one transaction. Returns the persisted
+     * [StoredRecord] after read-back validation.
      */
     override fun checkpoint(
         payload: RecoveryStorePort.CheckpointPayload,
@@ -256,6 +459,13 @@ internal class RecoveryStore(
             ?: return RecoveryStorePort.CheckpointResult.StoreUnavailable
         val now = clock()
         val preManifestBytes = RecoveryRecordCodec.encodeManifest(payload.preManifest)
+        // Engineering bound before any SQLite work: empty bytes are never a
+        // valid manifest and oversized bytes cannot be chunked. Fail-closed,
+        // no layout mutation (Issue #174).
+        if (preManifestBytes.isEmpty() || preManifestBytes.size > RecoveryDbSchema.MAX_MANIFEST_BYTES) {
+            snapshotFence.finish(mutation, InspectionSnapshotFence.MutationOutcome.OUTCOME_UNCERTAIN)
+            return RecoveryStorePort.CheckpointResult.CreateFailed
+        }
         val encoded = RecoveryRecordCodec.Encoded(
             pointId = payload.pointId,
             runId = payload.runId,
@@ -312,9 +522,9 @@ internal class RecoveryStore(
                 // Force a real close/reopen boundary before read-back validation.
                 helper.close()
                 val creatingReadback = readRecord(payload.pointId)
-                    ?: return@run RecoveryStorePort.CheckpointResult.ValidateFailed
-                if (creatingReadback.lifecycle != LifecycleState.CREATING ||
-                    !validateRecord(creatingReadback.encoded)
+                if (creatingReadback !is RecoveryStorePort.RecordRead.Readable ||
+                    creatingReadback.record.lifecycle != LifecycleState.CREATING ||
+                    !validateReadable(creatingReadback)
                 ) {
                     return@run RecoveryStorePort.CheckpointResult.ValidateFailed
                 }
@@ -323,13 +533,13 @@ internal class RecoveryStore(
                     return@run RecoveryStorePort.CheckpointResult.CreateFailed
                 }
                 val readyReadback = readRecord(payload.pointId)
-                    ?: return@run RecoveryStorePort.CheckpointResult.ValidateFailed
-                if (readyReadback.lifecycle != LifecycleState.READY ||
-                    !validateRecord(readyReadback.encoded)
+                if (readyReadback !is RecoveryStorePort.RecordRead.Readable ||
+                    readyReadback.record.lifecycle != LifecycleState.READY ||
+                    !validateReadable(readyReadback)
                 ) {
                     return@run RecoveryStorePort.CheckpointResult.ValidateFailed
                 }
-                RecoveryStorePort.CheckpointResult.Ready(readyReadback)
+                RecoveryStorePort.CheckpointResult.Ready(readyReadback.record)
             } catch (e: android.database.sqlite.SQLiteConstraintException) {
                 RecoveryStorePort.CheckpointResult.PointIdCollision
             } catch (e: android.database.SQLException) {
@@ -527,45 +737,105 @@ internal class RecoveryStore(
         return outcome
     }
 
-    override fun readRecord(pointId: RecoveryPointId): StoredRecord? {
-        if (availability() != RecoveryStorePort.StoreAvailability.READY) return null
-        val db = helper.readableDatabase
-        val cursor = db.query(
-            RecoveryDbSchema.TABLE_RECOVERY_POINTS,
-            null,
-            "point_id = ?",
-            arrayOf(pointId.value),
-            null,
-            null,
-            null,
-        )
-        return cursor.use {
-            if (!it.moveToFirst()) null else cursorToEncoded(it).let(::storedFromEncoded)
+    /**
+     * Ordinary closed point read (Issue #174). Bounded row projection first;
+     * chunk assembly and manifest decode failures are [Unreadable], never an
+     * exception or null.
+     */
+    override fun readRecord(pointId: RecoveryPointId): RecoveryStorePort.RecordRead {
+        if (availability() != RecoveryStorePort.StoreAvailability.READY) {
+            return RecoveryStorePort.RecordRead.Failed
+        }
+        val db = try {
+            helper.readableDatabase
+        } catch (_: RuntimeException) {
+            return RecoveryStorePort.RecordRead.Failed
+        }
+        val row = try {
+            readRowMetadata(db, pointId)
+        } catch (_: RuntimeException) {
+            return RecoveryStorePort.RecordRead.Failed
+        } ?: return RecoveryStorePort.RecordRead.Missing
+        return try {
+            rowToRecordRead(db, row)
+        } catch (_: RuntimeException) {
+            RecoveryStorePort.RecordRead.Failed
         }
     }
 
-    override fun listNonFinalRecords(): List<StoredRecord> {
-        if (availability() != RecoveryStorePort.StoreAvailability.READY) return emptyList()
-        val db = helper.readableDatabase
-        val cursor = db.query(
-            RecoveryDbSchema.TABLE_RECOVERY_POINTS,
-            null,
-            null,
-            null,
-            null,
-            null,
-            "created_at_ms ASC",
-        )
-        val out = ArrayList<StoredRecord>()
-        cursor.use {
-            while (it.moveToNext()) {
-                val encoded = cursorToEncoded(it)
-                if (!LifecycleTransitions.isFinal(encoded.lifecycle)) {
-                    out += storedFromEncoded(encoded)
+    private fun rowToRecordRead(
+        db: SQLiteDatabase,
+        row: RecordRow,
+    ): RecoveryStorePort.RecordRead {
+        val metadata = row.toMetadata()
+        val preManifest = try {
+            RecoveryManifestChunks.readSlot(db, row.pointId, RecoveryDbSchema.SLOT_PRE, row.preManifestSize)
+        } catch (_: RuntimeException) {
+            null
+        } ?: return RecoveryStorePort.RecordRead.Unreadable(metadata)
+        val intendedManifest = try {
+            RecoveryManifestChunks.readSlot(db, row.pointId, RecoveryDbSchema.SLOT_INTENDED, row.intendedManifestSize)
+        } catch (_: RuntimeException) {
+            null
+        } ?: return RecoveryStorePort.RecordRead.Unreadable(metadata)
+        val reviewedManifest = row.reviewedManifestSize?.let { size ->
+            try {
+                RecoveryManifestChunks.readSlot(db, row.pointId, RecoveryDbSchema.SLOT_REVIEWED, size)
+            } catch (_: RuntimeException) {
+                null
+            } ?: return RecoveryStorePort.RecordRead.Unreadable(metadata)
+        }
+        val encoded = row.toEncoded(preManifest, intendedManifest, reviewedManifest)
+        try {
+            RecoveryRecordCodec.decodeManifest(encoded.preManifest)
+            RecoveryRecordCodec.decodeManifest(encoded.intendedManifest)
+            encoded.reviewedManifest?.let(RecoveryRecordCodec::decodeManifest)
+        } catch (_: RuntimeException) {
+            return RecoveryStorePort.RecordRead.Unreadable(metadata)
+        }
+        return RecoveryStorePort.RecordRead.Readable(StoredRecord(encoded))
+    }
+
+    /**
+     * Bounded metadata enumeration for restart reconciliation (Issue #174):
+     * every non-final record's small columns, ordered by creation time. A row
+     * whose metadata cannot be decoded is reported [ReconciliationCandidate.Malformed]
+     * and preserved; a store-level failure returns null.
+     */
+    fun listReconciliationCandidates(): List<ReconciliationCandidate>? {
+        if (availability() != RecoveryStorePort.StoreAvailability.READY) return null
+        val db = try {
+            helper.readableDatabase
+        } catch (_: RuntimeException) {
+            return null
+        }
+        return try {
+            val out = ArrayList<ReconciliationCandidate>()
+            db.query(
+                RecoveryDbSchema.TABLE_RECOVERY_POINTS,
+                RecoveryDbSchema.RECORD_COLUMNS.toTypedArray(),
+                null,
+                null,
+                null,
+                null,
+                "created_at_ms ASC",
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val row = try {
+                        cursorToRow(cursor)
+                    } catch (_: RuntimeException) {
+                        out += ReconciliationCandidate.Malformed(rowPointIdOrNull(cursor))
+                        continue
+                    }
+                    if (!LifecycleTransitions.isFinal(row.lifecycle)) {
+                        out += ReconciliationCandidate.Valid(row.toMetadata())
+                    }
                 }
             }
+            out
+        } catch (_: RuntimeException) {
+            null
         }
-        return out
     }
 
     override fun pruneUnused(pointId: RecoveryPointId): Boolean {
@@ -578,7 +848,7 @@ internal class RecoveryStore(
         var committed = false
         db.beginTransaction()
         try {
-            val record = readEncoded(db, pointId) ?: return false
+            val record = readAssembledEncoded(db, pointId) ?: return false
             if (record.lifecycle != LifecycleState.READY) return false
             faultPort.beforeCommit(RecoveryStoreFaultPort.Phase.TOMBSTONE, pointId)
             writeTombstone(
@@ -679,6 +949,11 @@ internal class RecoveryStore(
         }
     }
 
+    /**
+     * One lifecycle mutation transaction: read the assembled record, transform,
+     * write the bounded row columns, and rewrite exactly the manifest slots
+     * whose bytes changed — all inside the caller's transaction (ADR-0003).
+     */
     private fun updateRecord(
         pointId: RecoveryPointId,
         phase: RecoveryStoreFaultPort.Phase,
@@ -689,7 +964,7 @@ internal class RecoveryStore(
         var committed = false
         db.beginTransaction()
         try {
-            val current = readEncoded(db, pointId) ?: return false
+            val current = readAssembledEncoded(db, pointId) ?: return false
             val transformed = transform(current) ?: return false
             faultPort.beforeCommit(phase, pointId)
             val updated = transformed.copy(
@@ -697,6 +972,17 @@ internal class RecoveryStore(
             )
             val count = writeMutableRecordColumns(db, updated)
             if (count != 1) return false
+            if (!updated.intendedManifest.contentEquals(current.intendedManifest)) {
+                RecoveryManifestChunks.writeSlot(db, pointId, RecoveryDbSchema.SLOT_INTENDED, updated.intendedManifest)
+            }
+            if (updated.reviewedManifest == null && current.reviewedManifest != null) {
+                RecoveryManifestChunks.deleteSlot(db, pointId, RecoveryDbSchema.SLOT_REVIEWED)
+            } else if (
+                updated.reviewedManifest != null &&
+                !updated.reviewedManifest.contentEquals(current.reviewedManifest)
+            ) {
+                RecoveryManifestChunks.writeSlot(db, pointId, RecoveryDbSchema.SLOT_REVIEWED, updated.reviewedManifest)
+            }
             db.setTransactionSuccessful()
             committed = true
         } catch (_: RuntimeException) {
@@ -716,7 +1002,7 @@ internal class RecoveryStore(
         } catch (_: RuntimeException) {
             null
         }
-        return readback != null && validateRecord(readback.encoded)
+        return readback is RecoveryStorePort.RecordRead.Readable && validateReadable(readback)
     }
 
     private inner class ReconciliationSession(
@@ -729,9 +1015,14 @@ internal class RecoveryStore(
 
         override fun availability(): RecoveryStorePort.StoreAvailability = if (isActive()) startupAvailability() else RecoveryStorePort.StoreAvailability.READ_FAILED
 
-        override fun listNonFinalRecords(): List<RecoveryStorePort.StoredRecord>? = if (isActive()) this@RecoveryStore.listNonFinalRecords() else null
+        override fun listReconciliationCandidates(): List<ReconciliationCandidate>? = if (isActive()) this@RecoveryStore.listReconciliationCandidates() else null
 
-        override fun readRecord(pointId: RecoveryPointId): RecoveryStorePort.StoredRecord? = if (isActive()) this@RecoveryStore.readRecord(pointId) else null
+        override fun loadRecord(candidate: RecoveryStorePort.RecordMetadata): RecoveryStorePort.RecordRead? = if (isActive()) this@RecoveryStore.readRecord(candidate.pointId) else null
+
+        override fun quarantineUnmutated(
+            pointId: RecoveryPointId,
+            expectedLifecycle: LifecycleState,
+        ): Boolean = reconcileMutation { quarantineUnmutatedRaw(pointId, expectedLifecycle) }
 
         override fun advance(pointId: RecoveryPointId, next: LifecycleState): Boolean = reconcileMutation { advanceRaw(pointId, next) }
 
@@ -795,6 +1086,57 @@ internal class RecoveryStore(
     }
 
     /**
+     * Session-only quarantine of an unreadable record whose durable lifecycle
+     * proves no Launcher mutation can have begun (Issue #174). Rechecks the
+     * point ID and expected lifecycle inside the transaction, writes the typed
+     * `QUARANTINED` tombstone, and deletes chunks child-first, then the row.
+     */
+    private fun quarantineUnmutatedRaw(
+        pointId: RecoveryPointId,
+        expectedLifecycle: LifecycleState,
+    ): Boolean = try {
+        require(
+            expectedLifecycle == LifecycleState.CREATING || expectedLifecycle == LifecycleState.READY,
+        ) { "Quarantine requires a proven no-mutation lifecycle: $expectedLifecycle" }
+        val db = helper.writableDatabase
+        var committed = false
+        db.beginTransaction()
+        try {
+            val row = readRowMetadata(db, pointId) ?: return false
+            if (row.lifecycle != expectedLifecycle) return false
+            faultPort.beforeCommit(RecoveryStoreFaultPort.Phase.TOMBSTONE, pointId)
+            writeTombstone(
+                db,
+                RetentionPolicy.RetentionRecord(
+                    pointId,
+                    row.lifecycle,
+                    row.createdAtMs,
+                    row.updatedAtMs,
+                ),
+                RetentionPolicy.RetentionAction.Keep,
+                clock(),
+                reasonOverride = RecoveryStorePort.TombstoneReason.QUARANTINED,
+            )
+            db.setTransactionSuccessful()
+            committed = true
+        } finally {
+            db.endTransaction()
+        }
+        if (!committed) return false
+        try {
+            faultPort.afterCommit(RecoveryStoreFaultPort.Phase.TOMBSTONE, pointId)
+        } catch (_: RuntimeException) {
+            return false
+        }
+        helper.close()
+        val tombstoneReadback = readTombstone(pointId)
+        tombstoneReadback != null &&
+            tombstoneReadback.reason == RecoveryStorePort.TombstoneReason.QUARANTINED
+    } catch (_: RuntimeException) {
+        false
+    }
+
+    /**
      * Ordinary callers may mutate only from an already trusted projection. The
      * fence becomes DIRTY before any authoritative availability/version probe
      * can open SQLite. A later failed probe is uncertain and therefore may not
@@ -831,11 +1173,11 @@ internal class RecoveryStore(
         cv.put("lifecycle", encoded.lifecycle.canonicalInt)
         encoded.priorLifecycle?.let { cv.put("prior_lifecycle", it.canonicalInt) }
             ?: cv.putNull("prior_lifecycle")
-        cv.put("intended_manifest", encoded.intendedManifest)
+        cv.put("intended_manifest_size", encoded.intendedManifest.size)
         cv.put("intended_digest", encoded.intendedDigest)
         cv.put("apply_action_digest", encoded.applyActionDigest)
-        encoded.reviewedManifest?.let { cv.put("reviewed_manifest", it) }
-            ?: cv.putNull("reviewed_manifest")
+        encoded.reviewedManifest?.let { cv.put("reviewed_manifest_size", it.size) }
+            ?: cv.putNull("reviewed_manifest_size")
         encoded.reviewedDigest?.let { cv.put("reviewed_digest", it) }
             ?: cv.putNull("reviewed_digest")
         encoded.recoveryActionDigest?.let { cv.put("recovery_action_digest", it) }
@@ -851,21 +1193,10 @@ internal class RecoveryStore(
         )
     }
 
-    private fun readEncoded(db: SQLiteDatabase, pointId: RecoveryPointId): RecoveryRecordCodec.Encoded? {
-        val cursor = db.query(
-            RecoveryDbSchema.TABLE_RECOVERY_POINTS,
-            null,
-            "point_id = ?",
-            arrayOf(pointId.value),
-            null,
-            null,
-            null,
-        )
-        return cursor.use {
-            if (!it.moveToFirst()) null else cursorToEncoded(it)
-        }
-    }
-
+    /**
+     * Insert the record row and both required manifest slot chunk sets inside
+     * the caller's transaction (ADR-0003: one checkpoint transaction).
+     */
     private fun insertRecordRow(db: SQLiteDatabase, encoded: RecoveryRecordCodec.Encoded) {
         val cv = ContentValues()
         cv.put("point_id", encoded.pointId.value)
@@ -876,51 +1207,168 @@ internal class RecoveryStore(
         cv.put("lifecycle", encoded.lifecycle.canonicalInt)
         encoded.priorLifecycle?.let { cv.put("prior_lifecycle", it.canonicalInt) }
             ?: cv.putNull("prior_lifecycle")
-        cv.put("pre_manifest", encoded.preManifest)
+        cv.put("pre_manifest_size", encoded.preManifest.size)
         cv.put("pre_revision", encoded.preRevision.value)
         cv.put("pre_digest", encoded.preDigest)
-        cv.put("intended_manifest", encoded.intendedManifest)
+        cv.put("intended_manifest_size", encoded.intendedManifest.size)
         cv.put("intended_digest", encoded.intendedDigest)
         cv.put("apply_action_digest", encoded.applyActionDigest)
-        cv.putNull("reviewed_manifest")
+        cv.putNull("reviewed_manifest_size")
         cv.putNull("reviewed_digest")
         cv.putNull("recovery_action_digest")
         cv.put("item_count", encoded.itemCount)
         cv.put("resource_count", encoded.resourceCount)
         cv.put("payload_checksum", encoded.payloadChecksum)
         db.insertOrThrow(RecoveryDbSchema.TABLE_RECOVERY_POINTS, null, cv)
+        RecoveryManifestChunks.writeSlot(db, encoded.pointId, RecoveryDbSchema.SLOT_PRE, encoded.preManifest)
+        RecoveryManifestChunks.writeSlot(db, encoded.pointId, RecoveryDbSchema.SLOT_INTENDED, encoded.intendedManifest)
     }
 
-    private fun cursorToEncoded(cursor: android.database.Cursor): RecoveryRecordCodec.Encoded {
+    /** Bounded projected row: small metadata only, never manifest bytes. */
+    private class RecordRow(
+        val pointId: RecoveryPointId,
+        val formatVersion: Int,
+        val runId: RunId,
+        val createdAtMs: Long,
+        val updatedAtMs: Long,
+        val lifecycle: LifecycleState,
+        val priorLifecycle: LifecycleState?,
+        val preManifestSize: Int,
+        val preRevision: RevisionId,
+        val preDigest: ByteArray,
+        val intendedManifestSize: Int,
+        val intendedDigest: ByteArray,
+        val applyActionDigest: ByteArray,
+        val reviewedManifestSize: Int?,
+        val reviewedDigest: ByteArray?,
+        val recoveryActionDigest: ByteArray?,
+        val itemCount: Int,
+        val resourceCount: Int,
+        val payloadChecksum: ByteArray,
+    ) {
+        fun toMetadata(): RecoveryStorePort.RecordMetadata = RecoveryStorePort.RecordMetadata(
+            pointId = pointId,
+            runId = runId,
+            lifecycle = lifecycle,
+            priorLifecycle = priorLifecycle,
+            createdAtMs = createdAtMs,
+            updatedAtMs = updatedAtMs,
+            formatVersion = formatVersion,
+            preDigest = preDigest,
+            intendedDigest = intendedDigest,
+            reviewedDigest = reviewedDigest,
+        )
+
+        fun toEncoded(
+            preManifest: ByteArray,
+            intendedManifest: ByteArray,
+            reviewedManifest: ByteArray?,
+        ): RecoveryRecordCodec.Encoded = RecoveryRecordCodec.Encoded(
+            pointId = pointId,
+            runId = runId,
+            createdAtMs = createdAtMs,
+            updatedAtMs = updatedAtMs,
+            lifecycle = lifecycle,
+            priorLifecycle = priorLifecycle,
+            preManifest = preManifest,
+            preRevision = preRevision,
+            preDigest = preDigest,
+            intendedManifest = intendedManifest,
+            intendedDigest = intendedDigest,
+            applyActionDigest = applyActionDigest,
+            reviewedManifest = reviewedManifest,
+            reviewedDigest = reviewedDigest,
+            recoveryActionDigest = recoveryActionDigest,
+            itemCount = itemCount,
+            resourceCount = resourceCount,
+            payloadChecksum = payloadChecksum,
+            formatVersion = formatVersion,
+        )
+    }
+
+    /**
+     * Parse the projected row. Point ID first so a lifecycle/format failure can
+     * still report a [ReconciliationCandidate.Malformed] identity; unknown
+     * lifecycle/format values throw (metadata failure, never speculation).
+     */
+    private fun cursorToRow(cursor: android.database.Cursor): RecordRow {
+        val pointIdIndex = cursor.getColumnIndexOrThrow("point_id")
+        val pointId = RecoveryPointId(cursor.getString(pointIdIndex))
         val priorLifecycleInt = if (cursor.isNull(cursor.getColumnIndexOrThrow("prior_lifecycle"))) {
             null
         } else {
             cursor.getInt(cursor.getColumnIndexOrThrow("prior_lifecycle"))
         }
-        val reviewedManifest = cursor.getBlobOrNull("reviewed_manifest")
-        val reviewedDigest = cursor.getBlobOrNull("reviewed_digest")
-        val recoveryActionDigest = cursor.getBlobOrNull("recovery_action_digest")
-        return RecoveryRecordCodec.Encoded(
-            pointId = RecoveryPointId(cursor.getString(cursor.getColumnIndexOrThrow("point_id"))),
+        val reviewedSizeIndex = cursor.getColumnIndexOrThrow("reviewed_manifest_size")
+        return RecordRow(
+            pointId = pointId,
+            formatVersion = cursor.getInt(cursor.getColumnIndexOrThrow("format_version")),
             runId = RunId(cursor.getString(cursor.getColumnIndexOrThrow("run_id"))),
             createdAtMs = cursor.getLong(cursor.getColumnIndexOrThrow("created_at_ms")),
             updatedAtMs = cursor.getLong(cursor.getColumnIndexOrThrow("updated_at_ms")),
             lifecycle = LifecycleState.fromCanonicalInt(cursor.getInt(cursor.getColumnIndexOrThrow("lifecycle"))),
             priorLifecycle = priorLifecycleInt?.let(LifecycleState::fromCanonicalInt),
-            preManifest = cursor.getBlob(cursor.getColumnIndexOrThrow("pre_manifest")),
+            preManifestSize = cursor.getInt(cursor.getColumnIndexOrThrow("pre_manifest_size")),
             preRevision = RevisionId(cursor.getString(cursor.getColumnIndexOrThrow("pre_revision"))),
             preDigest = cursor.getBlob(cursor.getColumnIndexOrThrow("pre_digest")),
-            intendedManifest = cursor.getBlob(cursor.getColumnIndexOrThrow("intended_manifest")),
+            intendedManifestSize = cursor.getInt(cursor.getColumnIndexOrThrow("intended_manifest_size")),
             intendedDigest = cursor.getBlob(cursor.getColumnIndexOrThrow("intended_digest")),
             applyActionDigest = cursor.getBlob(cursor.getColumnIndexOrThrow("apply_action_digest")),
-            reviewedManifest = reviewedManifest,
-            reviewedDigest = reviewedDigest,
-            recoveryActionDigest = recoveryActionDigest,
+            reviewedManifestSize = if (cursor.isNull(reviewedSizeIndex)) null else cursor.getInt(reviewedSizeIndex),
+            reviewedDigest = cursor.getBlobOrNull("reviewed_digest"),
+            recoveryActionDigest = cursor.getBlobOrNull("recovery_action_digest"),
             itemCount = cursor.getInt(cursor.getColumnIndexOrThrow("item_count")),
             resourceCount = cursor.getInt(cursor.getColumnIndexOrThrow("resource_count")),
             payloadChecksum = cursor.getBlob(cursor.getColumnIndexOrThrow("payload_checksum")),
-            formatVersion = cursor.getInt(cursor.getColumnIndexOrThrow("format_version")),
         )
+    }
+
+    private fun rowPointIdOrNull(cursor: android.database.Cursor): RecoveryPointId? = try {
+        RecoveryPointId(cursor.getString(cursor.getColumnIndexOrThrow("point_id")))
+    } catch (_: RuntimeException) {
+        null
+    }
+
+    private fun readRowMetadata(db: SQLiteDatabase, pointId: RecoveryPointId): RecordRow? {
+        val cursor = db.query(
+            RecoveryDbSchema.TABLE_RECOVERY_POINTS,
+            RecoveryDbSchema.RECORD_COLUMNS.toTypedArray(),
+            "point_id = ?",
+            arrayOf(pointId.value),
+            null,
+            null,
+            null,
+        )
+        return cursor.use {
+            if (!it.moveToFirst()) null else cursorToRow(it)
+        }
+    }
+
+    /** Assemble the full logical record from the projected row plus chunk slots. */
+    private fun readAssembledEncoded(db: SQLiteDatabase, pointId: RecoveryPointId): RecoveryRecordCodec.Encoded? {
+        val row = readRowMetadata(db, pointId) ?: return null
+        return rowAssembledEncoded(db, row)
+    }
+
+    private fun rowAssembledEncoded(db: SQLiteDatabase, row: RecordRow): RecoveryRecordCodec.Encoded? {
+        val preManifest = try {
+            RecoveryManifestChunks.readSlot(db, row.pointId, RecoveryDbSchema.SLOT_PRE, row.preManifestSize)
+        } catch (_: RuntimeException) {
+            null
+        } ?: return null
+        val intendedManifest = try {
+            RecoveryManifestChunks.readSlot(db, row.pointId, RecoveryDbSchema.SLOT_INTENDED, row.intendedManifestSize)
+        } catch (_: RuntimeException) {
+            null
+        } ?: return null
+        val reviewedManifest = row.reviewedManifestSize?.let { size ->
+            try {
+                RecoveryManifestChunks.readSlot(db, row.pointId, RecoveryDbSchema.SLOT_REVIEWED, size)
+            } catch (_: RuntimeException) {
+                null
+            } ?: return null
+        }
+        return row.toEncoded(preManifest, intendedManifest, reviewedManifest)
     }
 
     private fun storedFromEncoded(encoded: RecoveryRecordCodec.Encoded): StoredRecord = StoredRecord(encoded)
@@ -932,13 +1380,19 @@ internal class RecoveryStore(
         false
     }
 
+    /** Validate a point read-back through the port type; this store always returns its concrete record. */
+    private fun validateReadable(read: RecoveryStorePort.RecordRead.Readable): Boolean = (read.record as? StoredRecord)
+        ?.let { validateRecord(it.encoded) }
+        ?: false
+
     private fun writeTombstone(
         db: SQLiteDatabase,
         record: RetentionPolicy.RetentionRecord,
         action: RetentionPolicy.RetentionAction,
         nowMillis: Long,
+        reasonOverride: RecoveryStorePort.TombstoneReason? = null,
     ) {
-        val reason = when (record.lifecycle) {
+        val reason = reasonOverride ?: when (record.lifecycle) {
             LifecycleState.CORRUPT -> RecoveryStorePort.TombstoneReason.CORRUPT
 
             LifecycleState.INCOMPATIBLE -> RecoveryStorePort.TombstoneReason.INCOMPATIBLE_VERSION
@@ -963,7 +1417,8 @@ internal class RecoveryStore(
         val cv = ContentValues()
         cv.put("point_id", record.pointId.value)
         cv.put("reason", reason.canonicalInt)
-        cv.put("format_version", RecoveryDbSchema.FORMAT_VERSION)
+        // Tombstones carry the logical record format, not the physical schema.
+        cv.put("format_version", RecoveryRecordCodec.RECORD_FORMAT_VERSION)
         cv.put("expires_at_ms", nowMillis + RetentionPolicy.TOMBSTONE_RETENTION_MILLIS)
         db.insertWithOnConflict(
             RecoveryDbSchema.TABLE_RECOVERY_TOMBSTONES,
@@ -971,11 +1426,8 @@ internal class RecoveryStore(
             cv,
             SQLiteDatabase.CONFLICT_REPLACE,
         )
-        db.delete(
-            RecoveryDbSchema.TABLE_RECOVERY_POINTS,
-            "point_id = ?",
-            arrayOf(record.pointId.value),
-        )
+        // Explicit child-first chunk ownership (ADR-0009): no committed orphan.
+        RecoveryManifestChunks.deletePoint(db, record.pointId)
     }
 
     private fun purgeExpiredTombstones(db: SQLiteDatabase, nowMillis: Long) {
@@ -1006,6 +1458,7 @@ internal class RecoveryStore(
             RecoveryStorePort.TombstoneReason.ALREADY_RESTORED -> 3
             RecoveryStorePort.TombstoneReason.EXPIRED -> 4
             RecoveryStorePort.TombstoneReason.PRUNED_UNUSED -> 5
+            RecoveryStorePort.TombstoneReason.QUARANTINED -> 6
         }
 
     private fun tombstoneReasonFromCanonicalInt(value: Int): RecoveryStorePort.TombstoneReason = when (value) {
@@ -1014,10 +1467,16 @@ internal class RecoveryStore(
         3 -> RecoveryStorePort.TombstoneReason.ALREADY_RESTORED
         4 -> RecoveryStorePort.TombstoneReason.EXPIRED
         5 -> RecoveryStorePort.TombstoneReason.PRUNED_UNUSED
+        6 -> RecoveryStorePort.TombstoneReason.QUARANTINED
         else -> throw IllegalArgumentException("Unknown tombstone reason: $value")
     }
 
-    /** Build the full derived projection only from the authoritative DB writer path. */
+    /**
+     * Build the full derived projection only from the authoritative DB writer path.
+     * Every record is projected from bounded columns plus per-point assembly;
+     * one unreadable record projects `checksumValid = false` and never aborts
+     * publication (Issue #174).
+     */
     private fun publishCurrentProjection(mutation: InspectionSnapshotFence.Mutation): Boolean = try {
         // A complete close/reopen precedes every derived publication so the
         // snapshot is built only from a durable authoritative read-back.
@@ -1026,7 +1485,7 @@ internal class RecoveryStore(
         val records = ArrayList<RecoveryInspectionSnapshot.Record>()
         db.query(
             RecoveryDbSchema.TABLE_RECOVERY_POINTS,
-            null,
+            RecoveryDbSchema.RECORD_COLUMNS.toTypedArray(),
             null,
             null,
             null,
@@ -1034,14 +1493,27 @@ internal class RecoveryStore(
             "point_id ASC",
         ).use { cursor ->
             while (cursor.moveToNext()) {
-                val encoded = cursorToEncoded(cursor)
+                val row = try {
+                    cursorToRow(cursor)
+                } catch (_: RuntimeException) {
+                    // Undecodable metadata cannot be projected; reconciliation
+                    // reports it as malformed and preserves it. Never abort the
+                    // publication for one row.
+                    continue
+                }
+                val checksumValid = try {
+                    val encoded = rowAssembledEncoded(db, row)
+                    encoded != null && validateRecord(encoded)
+                } catch (_: RuntimeException) {
+                    false
+                }
                 records += RecoveryInspectionSnapshot.Record(
-                    pointId = encoded.pointId,
-                    lifecycle = encoded.lifecycle,
-                    createdAtMs = encoded.createdAtMs,
-                    updatedAtMs = encoded.updatedAtMs,
-                    checksumValid = validateRecord(encoded),
-                    formatVersion = encoded.formatVersion,
+                    pointId = row.pointId,
+                    lifecycle = row.lifecycle,
+                    createdAtMs = row.createdAtMs,
+                    updatedAtMs = row.updatedAtMs,
+                    checksumValid = checksumValid,
+                    formatVersion = row.formatVersion,
                 )
             }
         }

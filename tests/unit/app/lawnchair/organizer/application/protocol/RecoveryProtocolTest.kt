@@ -40,6 +40,11 @@ class RecoveryProtocolTest {
     private lateinit var store: FakeRecoveryStore
     private lateinit var faults: RecordingFaultInjector
     private lateinit var protocol: RecoveryProtocol
+
+    private fun storedLifecycleOf(id: RecoveryPointId): LifecycleState? = (
+        store.readRecord(id) as? RecoveryStorePort.RecordRead.Readable
+        )?.record?.lifecycle
+
     private val pointId = RecoveryPointId("22222222222222222222222222222222")
     private val runId = RunId("11111111111111111111111111111111")
 
@@ -272,7 +277,7 @@ class RecoveryProtocolTest {
             (result as RecoveryResult.RestoreFailed).failure,
         )
         assertEquals(AuthoritativeState.UNKNOWN, result.authoritativeState)
-        assertEquals(LifecycleState.RESTORING, store.readRecord(pointId)?.lifecycle)
+        assertEquals(LifecycleState.RESTORING, storedLifecycleOf(pointId))
         assertEquals("Zero committed writes for ${dim.name}", 0, writer.appliedWriteSets)
     }
 
@@ -377,5 +382,46 @@ class RecoveryProtocolTest {
             override val formatVersion: Int = formatVersion
         }
         store.seedRecord(stored)
+    }
+
+    @Test
+    fun unreadablePreservedRecordIsNotRestorableCorruptNeverMissingOrStoreFailure() {
+        seedVerifiedPoint()
+        store.unreadablePointIds.add(pointId.value)
+
+        val result = protocol.recover(matchingRequest())
+
+        assertTrue("Expected NotRestorable, got $result", result is RecoveryResult.NotRestorable)
+        assertEquals(RecoveryRejection.CORRUPT, (result as RecoveryResult.NotRestorable).reason)
+    }
+
+    @Test
+    fun failedPointReadReturnsRestoreFailedStoreFailure() {
+        seedVerifiedPoint()
+        store.failedReadPointIds.add(pointId.value)
+
+        val result = protocol.recover(matchingRequest())
+
+        assertTrue("Expected RestoreFailed, got $result", result is RecoveryResult.RestoreFailed)
+        assertEquals(
+            RecoveryFailure.RECOVERY_STORE_FAILED,
+            (result as RecoveryResult.RestoreFailed).failure,
+        )
+    }
+
+    @Test
+    fun quarantinedTombstoneReturnsCorruptRejection() {
+        store.seedTombstone(
+            RecoveryStorePort.Tombstone(
+                pointId,
+                RecoveryStorePort.TombstoneReason.QUARANTINED,
+                FakeClock.nowMillis() + 1_000L,
+            ),
+        )
+
+        val result = protocol.recover(matchingRequest())
+
+        assertTrue("Expected NotRestorable, got $result", result is RecoveryResult.NotRestorable)
+        assertEquals(RecoveryRejection.CORRUPT, (result as RecoveryResult.NotRestorable).reason)
     }
 }

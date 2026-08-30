@@ -356,12 +356,18 @@ class ApplyProtocol(
         lease: LeaseHandle,
         ctx: ApplyContext,
     ): ApplyResult {
-        val stored = store.readRecord(pointId)
-            ?: run {
+        // Closed point read (Issue #174): an unreadable preserved record can
+        // no longer provide its pre-state manifest, so automatic recovery
+        // cannot proceed — the same unresolved outcome as a vanished record.
+        val stored = when (val read = store.readRecord(pointId)) {
+            is RecoveryStorePort.RecordRead.Readable -> read.record
+
+            else -> run {
                 ctx.terminalApplyStage = ApplyStage.A7
                 ctx.terminalPointId = pointId.value
                 return ApplyResult.Unresolved(runId, pointId, applyFailure, AuthoritativeState.UNKNOWN)
             }
+        }
         val reviewed = writer.recaptureDb()
         val recoverySet = when (val prepared = writer.prepareRecoveryWriteSet(stored.preManifest, reviewed)) {
             is WriteSetPreparation.Ready -> prepared.writeSet

@@ -18,6 +18,7 @@ import app.lawnchair.organizer.application.protocol.CaptureId
 import app.lawnchair.organizer.application.protocol.FaultInjector
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
 import app.lawnchair.organizer.application.protocol.RestartReconciler
+import app.lawnchair.organizer.application.protocol.RecoveryStorePort
 import app.lawnchair.organizer.application.protocol.SecureRandomOperationIdSource
 import app.lawnchair.organizer.application.protocol.SystemClock
 import app.lawnchair.organizer.application.public.ApplyAction
@@ -140,6 +141,14 @@ class OrganizerRecoveryInstrumentationTest {
         }
     }
 
+    private fun recordLifecycleOf(store: RecoveryStore, rawId: String): LifecycleState? = (
+        store.readRecord(RecoveryPointId(rawId)) as? RecoveryStorePort.RecordRead.Readable
+        )?.record?.lifecycle
+
+    private fun recordChecksumValidOf(store: RecoveryStore, rawId: String): Boolean = (
+        store.readRecord(RecoveryPointId(rawId)) as? RecoveryStorePort.RecordRead.Readable
+        )?.record?.checksumValid ?: false
+
     private fun verifyAfterRestart(context: Context, phase: String) {
         val scenario = ActivityScenario.launch(LawnchairLauncher::class.java)
         val launcher = LauncherAppState.getInstance(context)
@@ -166,36 +175,36 @@ class OrganizerRecoveryInstrumentationTest {
             .getString(KEY_POINT_ID, null)
         requireNotNull(rawId) { "Fault run did not persist a recovery point id" }
         val store = RecoveryStore(context) { System.currentTimeMillis() }
-        var record = store.readRecord(RecoveryPointId(rawId))
+        var lifecycle = recordLifecycleOf(store, rawId)
         var attempts = 0
         while (attempts < 240) {
             val complete = when (phase) {
-                "READY", "AROUND_COMMIT" -> record == null
-                "COMMITTED_UNVERIFIED" -> record?.lifecycle == LifecycleState.VERIFIED
-                "RESTORING" -> record?.lifecycle == LifecycleState.RESTORED
+                "READY", "AROUND_COMMIT" -> lifecycle == null
+                "COMMITTED_UNVERIFIED" -> lifecycle == LifecycleState.VERIFIED
+                "RESTORING" -> lifecycle == LifecycleState.RESTORED
                 else -> error("Unknown phase $phase")
             }
             if (complete) break
             Thread.sleep(250)
-            record = store.readRecord(RecoveryPointId(rawId))
+            lifecycle = recordLifecycleOf(store, rawId)
             attempts++
         }
         when (phase) {
-            "READY", "AROUND_COMMIT" -> assertNull(record)
-            "COMMITTED_UNVERIFIED" -> assertEquals(LifecycleState.VERIFIED, record?.lifecycle)
-            "RESTORING" -> assertEquals(LifecycleState.RESTORED, record?.lifecycle)
+            "READY", "AROUND_COMMIT" -> assertNull(lifecycle)
+            "COMMITTED_UNVERIFIED" -> assertEquals(LifecycleState.VERIFIED, lifecycle)
+            "RESTORING" -> assertEquals(LifecycleState.RESTORED, lifecycle)
             else -> error("Unknown phase $phase")
         }
         Log.i(
             TAG,
-            "VERIFIED phase=$phase lifecycle=${record?.lifecycle ?: "PRUNED"} " +
+            "VERIFIED phase=$phase lifecycle=${lifecycle ?: "PRUNED"} " +
                 "manualState=${manualRun.state} typed=true",
         )
         reportToHost(
-            "VERIFIED phase=$phase lifecycle=${record?.lifecycle ?: "PRUNED"} " +
+            "VERIFIED phase=$phase lifecycle=${lifecycle ?: "PRUNED"} " +
                 "manualState=${manualRun.state} typed=true",
         )
-        assertTrue(record == null || record.checksumValid)
+        assertTrue(lifecycle == null || recordChecksumValidOf(store, rawId))
         scenario.close()
     }
 

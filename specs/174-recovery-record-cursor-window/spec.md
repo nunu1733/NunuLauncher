@@ -1,6 +1,6 @@
 ---
 issue: "#174"
-status: draft
+status: accepted
 requirements: []
 risk:
   - layout-data
@@ -355,6 +355,17 @@ proves necessary:
 
 ## Change history
 
+- 2026-08-30: Accepted and implemented on
+  `docs/issue-174-stage-a-spec-plan`. Pre-fix reproduction recorded (emulator
+  API 36: `Row too big to fit into CursorWindow requiredPos=0, totalRows=1` on
+  `SELECT * FROM recovery_points WHERE point_id = ?` at a 2,369,818-byte
+  logical record → `CreateFailed`); post-fix evidence: organizer JVM suite
+  758 tests green, new real-SQLite instrumentation suite green on the
+  emulator and on a Pixel 9a device, and the four-phase organizer recovery
+  smoke (READY / AROUND_COMMIT / COMMITTED_UNVERIFIED / RESTORING) passed
+  end-to-end. The smoke script itself has a pre-existing startup-reconcile
+  lease-contention race (reproduced on unfixed `main`) — follow-up issue
+  required, not part of this fix.
 - 2026-08-30: Revised after second Stage A review: added the ordinary closed
   record-read contract and recovery/preview parity for preserved unreadable
   `VERIFIED`; removed zero-length manifests from the physical schema and tests.

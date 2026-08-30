@@ -350,4 +350,38 @@ class RecoveryPreviewProtocolTest {
             },
         )
     }
+
+    @Test
+    fun quarantinedTombstonePreviewsCorrupt() {
+        store.seedTombstone(
+            RecoveryStorePort.Tombstone(
+                pointId,
+                RecoveryStorePort.TombstoneReason.QUARANTINED,
+                FakeClock.nowMillis() + 1_000L,
+            ),
+        )
+
+        val result = protocol.inspect(pointId)
+
+        assertTrue("Expected NotRestorable, got $result", result is RecoveryPreviewResult.NotRestorable)
+        assertEquals(
+            RecoveryPreviewRejection.CORRUPT,
+            (result as RecoveryPreviewResult.NotRestorable).reason,
+        )
+    }
+
+    @Test
+    fun unreadableVerifiedPointPreviewsCorruptFromItsChecksumInvalidProjection() {
+        seedRecord(LifecycleState.VERIFIED)
+        store.unreadablePointIds.add(pointId.value)
+
+        val result = protocol.inspect(pointId)
+
+        assertTrue("Expected NotRestorable, got $result", result is RecoveryPreviewResult.NotRestorable)
+        assertEquals(
+            RecoveryPreviewRejection.CORRUPT,
+            (result as RecoveryPreviewResult.NotRestorable).reason,
+        )
+        assertEquals("Preview must stay SQLite-free", 0, writer.appliedWriteSets)
+    }
 }

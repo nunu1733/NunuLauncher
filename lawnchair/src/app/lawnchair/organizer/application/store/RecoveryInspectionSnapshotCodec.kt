@@ -137,6 +137,7 @@ internal object RecoveryInspectionSnapshotCodec {
         RecoveryStorePort.TombstoneReason.ALREADY_RESTORED -> 3
         RecoveryStorePort.TombstoneReason.EXPIRED -> 4
         RecoveryStorePort.TombstoneReason.PRUNED_UNUSED -> 5
+        RecoveryStorePort.TombstoneReason.QUARANTINED -> 6
     }
 
     private fun tombstoneReason(value: Int): RecoveryStorePort.TombstoneReason? = when (value) {
@@ -145,6 +146,7 @@ internal object RecoveryInspectionSnapshotCodec {
         3 -> RecoveryStorePort.TombstoneReason.ALREADY_RESTORED
         4 -> RecoveryStorePort.TombstoneReason.EXPIRED
         5 -> RecoveryStorePort.TombstoneReason.PRUNED_UNUSED
+        6 -> RecoveryStorePort.TombstoneReason.QUARANTINED
         else -> null
     }
 }

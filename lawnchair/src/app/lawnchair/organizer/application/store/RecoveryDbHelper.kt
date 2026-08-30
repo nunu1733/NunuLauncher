@@ -18,7 +18,7 @@ internal class RecoveryDbHelper(
     RecoveryDbSchema.FILE_NAME,
     /* factory = */
     null,
-    RecoveryDbSchema.FORMAT_VERSION,
+    RecoveryDbSchema.SCHEMA_VERSION,
 ) {
 
     override fun onConfigure(db: SQLiteDatabase) {
@@ -28,7 +28,7 @@ internal class RecoveryDbHelper(
     }
 
     override fun onCreate(db: SQLiteDatabase) {
-        for (stmt in RecoveryDbSchema.DDL_FORMAT_2.trimIndent().split(";")) {
+        for (stmt in RecoveryDbSchema.DDL_SCHEMA_3.trimIndent().split(";")) {
             val trimmed = stmt.trim()
             if (trimmed.isNotEmpty()) {
                 db.execSQL(trimmed)

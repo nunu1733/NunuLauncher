@@ -1,6 +1,6 @@
 ---
 issue: "#174"
-status: draft
+status: accepted
 updated: 2026-08-30
 ---
 
@@ -8,7 +8,9 @@ updated: 2026-08-30
 
 > Issue: #174
 > Spec: [spec.md](./spec.md)
-> Status: draft (Stage A — pending spec approval)
+> Status: accepted — implemented on `docs/issue-174-stage-a-spec-plan` (merge
+> blocked on CI `final-status` + independent high-risk audit; CW-AC-08 manual
+> device sequence remains operator evidence)
 
 ## Current evidence
 
@@ -284,12 +286,20 @@ Baseline gates: `./gradlew spotlessCheck`,
 
 ## Execution checklist
 
-- [ ] Reproduce the failure at contract level (oversized record, real SQLite) on `main`.
-- [ ] Codec/store reads: positive slot sizes, chunk assembly, closed ordinary `RecordRead`, schema/record-version separation, and checksum-invariance tests failing first.
-- [ ] Schema-3 DDL + chunk collaborator; child-first delete primitive; store transaction paths; projected reads.
-- [ ] Schema-2→3 pre-open migration + version-gate decision; migration tests incl. poisoned store, unchanged logical format/checksum, orphan check, and fault injection.
-- [ ] Metadata enumeration + shared point-level `RecordRead`; adapt every caller and fake exhaustively through the same interface.
-- [ ] Lifecycle-sensitive containment matrix + transaction/retention/orphan tests.
-- [ ] Full relevant verification (unit + instrumentation) green; existing suites unchanged.
-- [ ] Device-class verification (CW-AC-08) executed and evidenced.
-- [ ] PR: spec status update, evidence table, high-risk independent audit.
+- [x] Reproduce the failure at contract level (oversized record, real SQLite) on `main`.
+      Evidence: emulator `nunu_qpr2_api36_1` (API 36), pre-fix run of a
+      2,369,818-byte logical record through the production writer →
+      `E/SQLiteQuery: exception: Row too big to fit into CursorWindow requiredPos=0, totalRows=1; query: SELECT * FROM recovery_points WHERE point_id = ?`
+      → `CheckpointResult.CreateFailed` (logcat excerpt retained in the PR).
+- [x] Codec/store reads: positive slot sizes, chunk assembly, closed ordinary `RecordRead`, schema/record-version separation, and checksum-invariance tests failing first.
+- [x] Schema-3 DDL + chunk collaborator; child-first delete primitive; store transaction paths; projected reads.
+- [x] Schema-2→3 pre-open migration + version-gate decision; migration tests incl. poisoned store, unchanged logical format/checksum, orphan check, and fault injection (fail-closed illegal-size fixture).
+- [x] Metadata enumeration + shared point-level `RecordRead`; adapt every caller and fake exhaustively through the same interface.
+- [x] Lifecycle-sensitive containment matrix + transaction/retention/orphan tests.
+- [x] Full relevant verification green:
+      - `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` — 758 tests, 0 failures.
+      - `./gradlew spotlessCheck`, `./gradlew assembleLawnWithQuickstepGithubDebug` — green.
+      - `connectedLawnWithQuickstepGithubDebugAndroidTest` (class-filtered): `RecoveryStoreChunkedManifestInstrumentationTest` 6/6 on the emulator and on a Pixel 9a device (CW-AC-02/03/04/05/10 evidence on real hardware); `RecoveryStoreLifecycleTest`, `RecoveryStoreInspectionInstrumentationTest`, `ProductionPublicSeamInstrumentationTest` green.
+      - `tools/organizer-recovery-smoke.sh --serial emulator-5554`: all four phases (READY, AROUND_COMMIT, COMMITTED_UNVERIFIED, RESTORING) passed end-to-end on the fixed build. The script has a pre-existing startup-reconcile lease-contention race (`Unresolved(COMMIT_OUTCOME_UNKNOWN)` racing the async startup resume); reproduced identically on unfixed `main` (RESTORING phase) — follow-up issue required.
+- [ ] Device-class verification (CW-AC-08): the #171 device sequence (organize → exactly one Nova restore → organize → `APPLY_VERIFIED`) executed by the operator; instrumentation evidence on the same Pixel 9a-class device is already recorded above.
+- [ ] PR: CI `final-status` incl. focused instrumentation jobs; independent high-risk audit `docs/assessment/pr-<PR>-<slug>.md` by a separate session.

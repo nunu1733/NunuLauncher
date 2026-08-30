@@ -12,7 +12,24 @@ import app.lawnchair.organizer.diagnostics.DiagnosticsPort
 import app.lawnchair.organizer.diagnostics.model.RunEvent
 import app.lawnchair.organizer.diagnostics.projection.ReconciliationProjection
 
-/** Executes restart reconciliation; lifecycle classification alone is never treated as work. */
+/**
+ * Executes restart reconciliation; lifecycle classification alone is never treated as work.
+ *
+ * Issue #174: candidates are enumerated as bounded metadata and loaded one at
+ * a time through the shared closed [RecoveryStorePort.RecordRead] result, so
+ * one unreadable record degrades that record only. Containment is
+ * lifecycle-sensitive (ADR-0009):
+ *
+ * - unreadable `CREATING`/`READY` records are transactionally quarantined —
+ *   their durable lifecycle proves no Launcher mutation can have begun;
+ * - unreadable `APPLYING`/`COMMITTED_UNVERIFIED`/`RESTORING` records keep
+ *   their row, chunks, and lifecycle and surface an unresolved result so
+ *   later organizer mutation stays fail-closed;
+ * - unreadable `VERIFIED` points stay stored (non-restorable until normal
+ *   retention) and reconcile silently;
+ * - malformed metadata is preserved and fails the aggregate pass — it never
+ *   authorizes deletion.
+ */
 internal class RestartReconciler(
     private val writer: LayoutWriterPort,
     private val faults: FaultInjector,
@@ -62,24 +79,54 @@ internal class RestartReconciler(
 
             RecoveryStorePort.StoreAvailability.READY -> Unit
         }
-        val records = session.listNonFinalRecords() ?: return ReconciliationSummary.Failed
+        val candidates = session.listReconciliationCandidates() ?: return ReconciliationSummary.Failed
+        var containmentFailure = false
         val surfaced = buildList {
-            records.forEach { record ->
+            candidates.forEach { candidate ->
                 faults.restartBoundary(FaultInjector.RestartPhase.BEFORE_RECONCILE)
-                // reconcileOne never returns null — every record gets a result
-                val result = reconcileOne(session, record)
-                emitReconciledEvent(session, record, result)
-                // Only add non-silent results to the public surfaced list.
-                // SilentPrune/SilentAdvance are internal outcomes that don't
-                // need to be surfaced to the public seam.
-                if (result !is ReconciliationPublicResult.SilentPrune &&
-                    result !is ReconciliationPublicResult.SilentAdvance
-                ) {
-                    add(result)
+                when (candidate) {
+                    is ReconciliationCandidate.Malformed -> {
+                        // Preserved, never speculatively deleted; fails the pass.
+                        containmentFailure = true
+                    }
+
+                    is ReconciliationCandidate.Valid -> {
+                        val meta = candidate.metadata
+                        when (val read = session.loadRecord(meta)) {
+                            null,
+                            RecoveryStorePort.RecordRead.Failed,
+                            -> containmentFailure = true
+
+                            RecoveryStorePort.RecordRead.Missing -> Unit
+
+                            is RecoveryStorePort.RecordRead.Unreadable -> {
+                                val containment = containUnreadable(session, meta)
+                                if (containment.quarantineRefused) containmentFailure = true
+                                emitUnreadableEvent(meta, containment)
+                                if (containment.surfaced) add(containment.result)
+                            }
+
+                            is RecoveryStorePort.RecordRead.Readable -> {
+                                val record = read.record
+                                // reconcileOne never returns null — every record gets a result
+                                val result = reconcileOne(session, record)
+                                emitReconciledEvent(session, record, result)
+                                // Only add non-silent results to the public surfaced list.
+                                // SilentPrune/SilentAdvance are internal outcomes that don't
+                                // need to be surfaced to the public seam.
+                                if (result !is ReconciliationPublicResult.SilentPrune &&
+                                    result !is ReconciliationPublicResult.SilentAdvance
+                                ) {
+                                    add(result)
+                                }
+                            }
+                        }
+                    }
                 }
                 faults.restartBoundary(FaultInjector.RestartPhase.AFTER_RECONCILE)
             }
         }
+        if (containmentFailure) return ReconciliationSummary.Failed
         if (session.runRetention(System.currentTimeMillis()) != RecoveryStorePort.RetentionOutcome.Applied) {
             return ReconciliationSummary.Failed
         }
@@ -87,6 +134,83 @@ internal class RestartReconciler(
             return ReconciliationSummary.Failed
         }
         return if (surfaced.isEmpty()) ReconciliationSummary.Clean else ReconciliationSummary.Resolved(surfaced)
+    }
+
+    /** Lifecycle-sensitive containment decision for one unreadable record. */
+    private data class Containment(
+        val result: ReconciliationPublicResult,
+        val surfaced: Boolean,
+        val quarantined: Boolean = false,
+        val quarantineRefused: Boolean = false,
+    )
+
+    private fun containUnreadable(
+        session: RecoveryStoreReconciliationSession,
+        meta: RecoveryStorePort.RecordMetadata,
+    ): Containment = when (meta.lifecycle) {
+        LifecycleState.CREATING, LifecycleState.READY -> {
+            val quarantined = session.quarantineUnmutated(meta.pointId, meta.lifecycle)
+            val result = unresolvedFor(meta)
+            if (quarantined) {
+                // The unreadable pre-mutation record is gone; the store is
+                // clean. Surface nothing, but project the tombstoned lifecycle.
+                Containment(result, surfaced = false, quarantined = true)
+            } else {
+                Containment(result, surfaced = true, quarantined = false, quarantineRefused = true)
+            }
+        }
+
+        LifecycleState.APPLYING,
+        LifecycleState.COMMITTED_UNVERIFIED,
+        LifecycleState.RESTORING,
+        -> {
+            // Active states may need their manifest to recover a layout that
+            // may already have been mutated. Preserve everything and keep the
+            // aggregate unresolved.
+            Containment(unresolvedFor(meta), surfaced = true)
+        }
+
+        LifecycleState.VERIFIED -> {
+            // The recovery point itself: remains stored, projects
+            // checksum-invalid, and is non-restorable until normal retention.
+            Containment(ReconciliationPublicResult.SilentAdvance, surfaced = false)
+        }
+
+        else -> Containment(ReconciliationPublicResult.SilentAdvance, surfaced = false)
+    }
+
+    private fun unresolvedFor(meta: RecoveryStorePort.RecordMetadata): ReconciliationPublicResult = ReconciliationPublicResult.Unresolved(
+        ApplyResult.Unresolved(
+            meta.runId,
+            meta.pointId,
+            ApplyFailure.RECOVERY_STORE_FAILED,
+            AuthoritativeState.UNKNOWN,
+        ),
+    )
+
+    /** Quarantined records project `CORRUPT`; preserved records keep their lifecycle. */
+    private fun emitUnreadableEvent(
+        meta: RecoveryStorePort.RecordMetadata,
+        containment: Containment,
+    ) {
+        try {
+            val resultingLifecycle = when {
+                containment.quarantined -> LifecycleState.CORRUPT
+                else -> meta.lifecycle
+            }
+            val classification = classifyMeta(meta)
+            val event = ReconciliationProjection.project(
+                subjectRunId = meta.runId,
+                priorLifecycle = meta.lifecycle,
+                classification = classification,
+                resultingLifecycle = resultingLifecycle,
+                journalSequence = 0L,
+                pointId = meta.pointId.value,
+            )
+            diagnosticsPort.emit(event)
+        } catch (_: Exception) {
+            // Fail-open
+        }
     }
 
     private fun emitReconciledEvent(
@@ -97,7 +221,7 @@ internal class RestartReconciler(
         try {
             val classification = classify(record)
             // Use the result directly to determine the actual resulting lifecycle
-            // (no store re-read that could return null after prune).
+            // (no destructive store re-read that could return Missing after prune).
             val resultingLifecycle = resultingLifecycleFor(session, result, record)
             val event = ReconciliationProjection.project(
                 subjectRunId = record.runId,
@@ -125,7 +249,10 @@ internal class RestartReconciler(
         result: ReconciliationPublicResult,
         record: RecoveryStorePort.StoredRecord,
     ): LifecycleState {
-        val actual = session.readRecord(record.pointId)?.lifecycle
+        val actual = when (val read = session.loadRecord(metaOf(record))) {
+            is RecoveryStorePort.RecordRead.Readable -> read.record.lifecycle
+            else -> null
+        }
         return actual ?: when (result) {
             is ReconciliationPublicResult.SilentPrune -> LifecycleState.READY
 
@@ -327,14 +454,33 @@ internal class RestartReconciler(
         val outcome = writer.applyWriteSet(lease, writeSet, record.pointId, faults)
         val restored = classify(record) in setOf(AuthoritativeClass.PRE_STATE, AuthoritativeClass.RECOVERY_TARGET)
         if (!restored || outcome is ApplyTxOutcome.Failed) return unresolved(record, failure)
-        return finishRestored(session, session.readRecord(record.pointId) ?: record, lease)
+        val reloaded = when (val read = session.loadRecord(metaOf(record))) {
+            is RecoveryStorePort.RecordRead.Readable -> read.record
+            else -> record
+        }
+        return finishRestored(session, reloaded, lease)
     }
 
-    private fun classify(record: RecoveryStorePort.StoredRecord): AuthoritativeClass = writer.classifyAuthoritativeState(
+    private fun classify(record: RecoveryStorePort.StoredRecord): AuthoritativeClass = classifyMeta(metaOf(record))
+
+    private fun classifyMeta(meta: RecoveryStorePort.RecordMetadata): AuthoritativeClass = writer.classifyAuthoritativeState(
+        preDigest = meta.preDigest,
+        intendedPostDigest = meta.intendedDigest,
+        recoveryTargetDigest = meta.preDigest,
+        reviewedCurrentDigest = meta.reviewedDigest,
+    )
+
+    private fun metaOf(record: RecoveryStorePort.StoredRecord): RecoveryStorePort.RecordMetadata = RecoveryStorePort.RecordMetadata(
+        pointId = record.pointId,
+        runId = record.runId,
+        lifecycle = record.lifecycle,
+        priorLifecycle = record.priorLifecycle,
+        createdAtMs = record.createdAtMs,
+        updatedAtMs = record.updatedAtMs,
+        formatVersion = record.formatVersion,
         preDigest = record.preDigest,
-        intendedPostDigest = record.intendedDigest,
-        recoveryTargetDigest = record.preDigest,
-        reviewedCurrentDigest = record.reviewedDigest,
+        intendedDigest = record.intendedDigest,
+        reviewedDigest = record.reviewedDigest,
     )
 
     private fun unresolved(
