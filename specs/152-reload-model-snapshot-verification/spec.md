@@ -43,29 +43,44 @@ explicitly assigned this remaining gap to Issue #152.
 ## Outcome
 
 Before any apply/recovery success result is returned, the protocol verifies
-three-way equality: the canonical model snapshot produced by the exact
-correlated reload generation, the independent DB recapture, and the intended
-(or checkpoint pre) state. A divergence on the model leg fails verification
-with the same fail-closed automatic-recovery / `RestoreFailed` behavior as a
-DB divergence, so DB/model convergence is actually demonstrated whenever
-`Applied`, `Recovered`, or `Restored` is returned.
+that the model snapshot produced by the exact correlated reload generation
+equals the independent DB recapture on the model-verifiable projection,
+while the DB leg keeps its existing full canonical equality with the
+intended (or checkpoint pre) state. A divergence on the model leg fails
+verification with the same fail-closed automatic-recovery / `RestoreFailed`
+behavior as a DB divergence, so DB/model convergence is actually
+demonstrated whenever `Applied`, `Recovered`, or `Restored` is returned.
 
 ## Scope
 
-- The apply protocol (A7/A8) captures a canonical model snapshot from the
-  exact reload generation requested after commit and requires equality with
-  the independent DB recapture and the intended state before `Applied`.
-- The automatic recovery path requires the same equality (model snapshot of
-  the recovery reload generation, DB recapture, checkpoint pre-manifest)
-  before `Recovered`.
-- The explicit recovery path requires the same equality before `Restored`.
+- The apply protocol (A7/A8) captures a model snapshot from the exact reload
+  generation requested after commit and requires model-projection equality
+  with the independent DB recapture, on top of the unchanged full DB
+  equality with the intended state, before `Applied`.
+- The automatic recovery path requires the same model-projection equality
+  (snapshot of the recovery reload generation vs DB recapture) on top of the
+  unchanged `db.manifest == checkpoint pre-manifest` comparison before
+  `Recovered`.
+- The explicit recovery path requires the same model-projection equality
+  before `Restored`.
 - Restart reconciliation completion paths
-  (`finishCommittedApply`/`finishRestored`) require the same equality before
-  resuming `Applied`/`Restored`.
-- The model snapshot is bound causally to the correlated reload: it is
-  captured only from the model state produced by the loader generation whose
-  completion the adapter awaited; a snapshot of any other generation cannot
-  satisfy verification.
+  (`finishCommittedApply`/`finishRestored`) require the same
+  model-projection equality before resuming `Applied`/`Restored`.
+- The model snapshot is captured only at the terminal boundary of the
+  correlated reload — after the loader transaction of the requested
+  generation has committed and closed and after token-scoped model work
+  queued ahead of the completion has drained (the causal completion boundary
+  established by Issue #150). The reload adapter owns this binding: a stale,
+  unrelated, cancelled, or superseded generation can never be delivered to
+  the protocol as a completed snapshot for the request.
+- Model verification compares a defined **model-verifiable projection** of
+  the layout state: exactly the fields the in-memory model faithfully
+  represents (item identity, container, placement, item type, folder
+  membership, widget identity and bind state, profile identity, lock
+  placement occupancy). Fields the model does not represent (raw icon bytes,
+  persisted modification timestamps, device capabilities, profile inventory,
+  reserved regions) are verified solely by the unchanged DB leg, which keeps
+  full canonical equality with the intended/checkpoint-pre state.
 - When model verification succeeds, the authoritative-state classification
   may report the `*_DB_AND_MODEL` variants instead of the `*_MODEL_UNVERIFIED`
   variants; when model verification fails, the `*_MODEL_UNVERIFIED` variants
@@ -93,25 +108,35 @@ DB divergence, so DB/model convergence is actually demonstrated whenever
 ## Domain language
 
 - **モデルスナップショット (Model Snapshot)**: 相関リロード生成の完了時に
-  読み取った、メモリ上のホームレイアウト状態のcanonical表現。DB再取得と
-  突き合わせる検証専用の一時データであり、永続化しない。
+  読み取った、メモリ上のホームレイアウト状態のcanonical表現。検証では
+  model-verifiable projection(モデルが忠実に表現できるフィールドの部分集合)
+  として比較され、DB再取得の同じprojectionと突き合わされる。検証専用の
+  一時データであり、永続化しない。
   _Avoid_: Backup（永続データと混同）、Layout Snapshot（入力captureと混同）
+- **モデル検証可能projection (Model-verifiable Projection)**: メモリ上の
+  modelが忠実に表現するレイアウト状態のフィールド部分集合(配置アイテムの
+  identity、container、配置、種別、folder構成、widget identityとbind状態、
+  profile identity、lock配置の占有)。modelが表現しないフィールドはDB側の
+  検証だけで担保する。
+  _Avoid_: Model LayoutState（完全なcanonical stateと混同）
 - **相関リロード生成 (Correlated Reload Generation)**: 適用後の検証のために
   要求された1回のmodel reloadが生んだloader生成。要求と完了が同一tokenで
-  結ばれている生成を指す。
+  結ばれ、#150の因果的完了境界(loader transactionのcommit/close後、
+  token-scopedな残務の排 drained後)でのみ完了する生成を指す。
   _Avoid_: Load ID（診断値であり相関の正本ではない）
 
 On acceptance these terms are reflected into `CONTEXT.md`.
 
 ## Behavior scenarios
 
-### Scenario: Apply succeeds only with three-way equality
+### Scenario: Apply succeeds only with model/DB agreement
 
 Given an apply transaction committed and the correlated reload requested at
 A7 completed,
 when verification runs,
-then the canonical model snapshot captured from that exact reload generation,
-the independent DB recapture, and the intended state/manifest are equal,
+then the model snapshot captured at that reload's terminal boundary equals
+the independent DB recapture on the model-verifiable projection,
+the DB recapture equals the intended state/manifest (unchanged DB leg),
 the record advances to `VERIFIED`,
 and the result is `Applied`.
 
@@ -135,20 +160,22 @@ then that snapshot is rejected as if the reload had not completed
 (`MODEL_RELOAD_FAILED` / verification failure path),
 and no success result is returned.
 
-### Scenario: Superseded or failed reload never verifies
+### Scenario: Cancelled, superseded, or failed reload never verifies
 
-Given the correlated reload reported superseded, failed, or timed out,
+Given the correlated reload reported cancelled, superseded, failed, or timed
+out,
 when the protocol handles the reload outcome,
 then no model snapshot comparison runs,
 automatic recovery is entered with `MODEL_RELOAD_FAILED`,
 and no `Applied`, `Recovered`, or `Restored` is returned.
 
-### Scenario: Explicit recovery succeeds only with three-way equality
+### Scenario: Explicit recovery succeeds only with model/DB agreement
 
 Given a recovery write-set committed and the correlated reload completed,
 when verification runs,
-then the canonical model snapshot of that reload generation, the independent
-DB recapture, and the checkpoint pre-manifest are equal,
+then the model snapshot of that reload generation equals the independent DB
+recapture on the model-verifiable projection and the DB recapture matches
+the checkpoint pre-manifest (unchanged DB leg),
 the record advances to `RESTORED`,
 and the result is `Restored`.
 
@@ -169,22 +196,18 @@ then the same model-snapshot/DB-recapture equality is required before the
 resumed `Applied`/`Restored` result is returned,
 and divergence resumes the failure path instead of success.
 
-### Scenario: Cancellation during post-commit verification
-
-Given the organization run is cancelled after commit but before verification
-completes,
-then no success result is returned,
-the record is left in a lifecycle state consistent with the #150/spec 13
-failure contracts,
-and recovery remains available through the existing paths.
+Operation-level cancellation of an organization run remains out of scope per
+accepted spec 13; only the correlated reload's own cancelled/superseded
+outcome is covered above.
 
 ## Data and state
 
-- Read: the in-memory Launcher model workspace state (desktop pages, hotseat,
-  folders and their contents, widgets, locked placement, profile identity)
-  after the correlated reload generation completes; the canonical
-  representation covers all organizer-owned `favorites` rows, matching the
-  canonical DB representation produced by the existing manifest codec.
+- Read: at the correlated reload's terminal boundary, the in-memory Launcher
+  model workspace state for all organizer-owned `favorites` rows (desktop
+  pages, hotseat, folders and their contents, widgets, locked placement,
+  profile identity), reduced to the model-verifiable projection defined in
+  Scope. The DB leg keeps its existing full canonical comparison; the
+  projection exists only so both legs compare like with like.
 - Written: nothing new. The model snapshot is transient, process-local, and
   never persisted, exported, or logged with user-identifying content.
 - Migration/backup/restore impact: none. No Launcher DB, recovery store
@@ -208,23 +231,30 @@ None. No UI surface is added or changed.
       `LayoutWriterPort`/reload seams demonstrates the gap: a divergent model
       generation with a matching DB recapture returns `Applied`/`Restored`
       before the fix and fails the new verification after it.
-- [ ] AC-152-02: The canonical model snapshot used in verification is
-      captured only from the model state produced by the exact correlated
-      reload generation; a snapshot from a stale, unrelated, or superseded
-      generation is rejected and cannot produce a success result.
+- [ ] AC-152-02: The reload adapter contract guarantees that only the exact
+      token-bound reload generation can complete with a snapshot: stale,
+      unrelated, cancelled, and superseded generations are rejected inside
+      the adapter and never delivered to the protocol as `Completed`
+      carrying a snapshot. This is proven at the adapter/instrumentation
+      level; separately, protocol tests cover a valid `Completed` snapshot
+      whose contents diverge from the DB recapture/intended state and assert
+      that no success result is returned.
 - [ ] AC-152-03: Apply, automatic recovery, explicit recovery, and restart
-      reconciliation each verify equality of the canonical model snapshot,
-      the independent DB recapture, and the intended (or checkpoint pre)
-      state before returning `Applied`/`Recovered`/`Restored`.
-- [ ] AC-152-04: A model/DB divergence, reload failure, or supersession can
-      never return `Applied`, `Recovered`, or `Restored`; failure results and
-      authoritative states follow the existing spec 13 contracts
-      (`*_MODEL_UNVERIFIED` while the model is unverified, `*_DB_AND_MODEL`
-      permitted once model verification succeeds).
+      reconciliation each verify equality of the model snapshot
+      (model-verifiable projection), the corresponding projection of the
+      independent DB recapture, and — unchanged — the existing full
+      canonical DB equality with the intended (or checkpoint pre) state
+      before returning `Applied`/`Recovered`/`Restored`.
+- [ ] AC-152-04: A model/DB divergence, reload failure, or cancellation or
+      supersession of the reload can never return `Applied`, `Recovered`, or
+      `Restored`; failure results and authoritative states follow the
+      existing spec 13 contracts (`*_MODEL_UNVERIFIED` while the model is
+      unverified, `*_DB_AND_MODEL` permitted once model verification
+      succeeds).
 - [ ] AC-152-05: Tests cover the default workspace; folders, widgets, work
-      profiles, and locked placement; cancellation; and stale-generation
-      rejection, at both unit (fake seam) and instrumentation (real model)
-      levels.
+      profiles, and locked placement; reload cancellation and supersession;
+      and stale-generation rejection, at both unit (fake seam) and
+      instrumentation (real model) levels.
 - [ ] AC-152-06: The `risk: layout-data` CI merge gate (`final-status` on the
       exact head SHA) and an independent audit record in
       `docs/assessment/pr-<PR>-<slug>.md` are satisfied before merge.
@@ -234,20 +264,32 @@ None. No UI surface is added or changed.
 | Acceptance criterion | Test surface |
 |---|---|
 | AC-152-01 | Unit: `ApplyProtocolTest`/`RecoveryProtocolTest` regression case that fails on pre-fix behavior; recorded in the PR |
-| AC-152-02 | Unit: stale-generation/supersession cases via `FakeLayoutWriter`; instrumentation: `OrganizerReloadSupersessionTest`-style correlation on the real adapter |
-| AC-152-03 | Unit: three-way equality cases for apply, automatic recovery, explicit recovery, restart reconciliation |
+| AC-152-02 | Adapter/instrumentation: only the exact token-bound generation completes with a snapshot (`OrganizerReloadSupersessionTest`-style); protocol: divergent-snapshot unit cases via `FakeLayoutWriter` |
+| AC-152-03 | Unit: three-way (projection + full DB leg) equality cases for apply, automatic recovery, explicit recovery, restart reconciliation |
 | AC-152-04 | Unit: divergence/failure-injection matrix (`FaultInjector` reload and verification phases) asserting no false success |
-| AC-152-05 | Unit fixtures + `RealAdapterRowMatrixInstrumentationTest`-style real-model coverage: default workspace, folders/widgets/profiles/locks, cancellation, stale generation |
+| AC-152-05 | Unit fixtures + `RealAdapterRowMatrixInstrumentationTest`-style real-model coverage: default workspace, folders/widgets/profiles/locks, reload cancellation/supersession, stale generation |
 | AC-152-06 | CI `high-risk-gate` workflow on the implementation PR + independent audit record |
 
 ## Open questions
 
-None blocking. One implementation-risk watch item is tracked in the plan:
-whether the in-memory model representation can reproduce byte-equivalent
-canonical equality for every organizer-owned row class; if not, stop and
-reopen the design decision instead of weakening the comparison.
+- The exact field list of the model-verifiable projection is pinned during
+  implementation (plan step 2): each projection field must be shown
+  recoverable faithfully from the in-memory model. If a core placement field
+  (identity, container, placement, type, folder membership, widget
+  identity/bind state, profile identity, lock occupancy) cannot be recovered,
+  implementation stops and the design reopens instead of silently shrinking
+  the projection. Fields already known to be DB-only (raw icon bytes,
+  persisted modification timestamps, device capabilities, profile inventory,
+  reserved regions) are excluded here by design.
 
 ## Change history
 
 - 2026-08-30: Draft created from Issue #152; gap evidence collected against
   `main` @ `de2d33f551`.
+- 2026-08-30: Stage A review revision — capture point restated as the #150
+  terminal boundary (not bind-complete); model verification redefined as
+  model-verifiable projection equality with the DB leg keeping full canonical
+  equality; run-level cancellation removed (out of scope per accepted spec
+  13; reload-level cancelled/superseded outcome only); stale-generation
+  rejection moved into the adapter contract with AC-152-02 split between
+  adapter/instrumentation proof and protocol divergence tests.

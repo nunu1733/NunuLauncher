@@ -86,37 +86,60 @@ makes the completed generation's state observable and compared.
   `Completed(modelSnapshot: ModelSnapshot)`; the failure variants stay
   payload-free. The protocol cannot observe the model by any other path, so
   no second seam is added.
-  - `ModelSnapshot` (new data class in the protocol package): canonical
-    `LayoutState`-equivalent representation of the model-side workspace state
-    for all organizer-owned rows, plus the diagnostic loader generation id
-    observed at completion (never used for equality or correlation decisions —
+  - `ModelSnapshot` (new data class in the protocol package): the
+    **model-verifiable projection** of the model-side workspace state for all
+    organizer-owned rows, plus the diagnostic loader generation id observed
+    at completion (never used for equality or correlation decisions —
     correlation is the causal token path).
 - **`OrganizerModelReloadAdapter` (Java, same package as `LauncherModel`).**
   The completion callback registered with `forceReloadForOrganizer` captures
-  the model snapshot at bind-complete time — the same causal boundary #150
-  established — via a narrow same-package snapshot source that reads
-  `BgDataModel` (workspace items, folders, widgets, screens) and converts it
-  through the shared canonical ordering (`CanonicalItemOrder`) into the
-  canonical representation. The completion then carries
-  `Outcome.COMPLETED` + snapshot to the waiting adapter thread. Superseded /
-  cancelled / failed / timed-out outcomes carry no snapshot.
-- **`ModelManifestCodec` (new, organizer `application/adapter`).** Model-side
-  counterpart of `RowManifestCodec`: converts `BgDataModel`-derived items into
-  the same canonical `LayoutState` the DB codec produces. Shared ordering and
-  profile mapping (`CanonicalProfileId`) are reused so equality is
-  representation-level, not textual.
+  the model snapshot at the exact #150 terminal boundary — after the loader
+  transaction has committed and closed and after token-scoped model work
+  queued ahead of the completion has drained — via a narrow same-package
+  snapshot source that reads `BgDataModel` (workspace items, folders,
+  widgets, screens) and reduces it to the model-verifiable projection. The
+  completion then carries `Outcome.COMPLETED` + snapshot to the waiting
+  adapter thread. Superseded / cancelled / failed / timed-out outcomes carry
+  no snapshot. **The staleness contract lives here**: completion already
+  requires the `LauncherModel.completeOrganizerReload` token identity check,
+  so only the loader generation bound to this request's token can complete
+  with a snapshot; the adapter additionally never emits `Completed` on
+  supersession/cancellation, and the diagnostic generation id carried in the
+  snapshot is recorded but never used for equality or correlation decisions.
+- **`ModelProjectionCodec` (new, organizer `application/adapter`).** Model-side
+  counterpart of `RowManifestCodec`: converts `BgDataModel`-derived items
+  into the **model-verifiable projection** — item identity, container,
+  placement, item type, folder membership, widget identity and bind state,
+  profile identity, lock placement occupancy — using the shared canonical
+  ordering (`CanonicalItemOrder`) and profile mapping (`CanonicalProfileId`).
+  The DB recapture's existing `LayoutState` is reduced to the same
+  projection at comparison time, so both legs compare like with like. Fields
+  the model does not faithfully represent (raw icon bytes, persisted
+  `modified` timestamps, device capabilities/IDP state, profile inventory,
+  reserved workspace regions) are excluded from the projection and remain
+  covered solely by the unchanged full DB equality. Step 2 of the execution
+  checklist pins the exact field list and each field's model source before
+  the codec is written.
 - **Protocols unchanged in shape.** `continueCommitted`,
   `automaticRecovery`, `RecoveryProtocol.recoverWithOuterLease`,
   `RestartReconciler.finishCommittedApply/finishRestored` gain one comparison
-  on the snapshot leg: `modelSnapshot == db.layoutState` (and, for the apply
-  path, `db` still equals intended; for recovery, `db.manifest` still equals
-  `stored.preManifest`). Mismatch routes to the existing
+  on the snapshot leg:
+  `snapshot.projection == db.layoutState.projectedToModelVerifiable()` —
+  the DB recapture reduced to the same projection — while the existing DB
+  equalities (`db` vs intended on apply; `db.manifest` vs `stored.preManifest`
+  on recovery) stay untouched. Mismatch routes to the existing
   `VERIFICATION_FAILED` paths. `modelVerified = true` is passed to
-  `authoritativeState(...)` only after the model leg passes.
+  `authoritativeState(...)` only after the model leg passes. The protocol
+  performs no generation reasoning of its own: staleness is excluded by the
+  adapter contract, and the protocol only ever sees either a valid
+  `Completed(snapshot)` or a non-`Completed` outcome.
 - **Fakes.** `FakeLayoutWriter` learns to produce a configurable model
-  snapshot (equal by default; divergent/stale for failure tests) and to
-  report the generation association, so unit tests express the three-way
-  contract without Android.
+  projection (equal by default; divergent contents for the protocol-level
+  divergence tests) and to report non-`Completed` outcomes (failed /
+  superseded / cancelled reload) separately from a divergent snapshot, so
+  unit tests express the projection contract without Android; stale-generation
+  exclusion itself is proven at the adapter/instrumentation level per
+  AC-152-02.
 - Launcher3/AOSP surface: only the same-package bridge files
   (`OrganizerModelReloadAdapter`, a snapshot source in `com.android.launcher3`)
   change; the bridge is documented here as the #152 reason, satisfying the
@@ -126,12 +149,14 @@ makes the completed generation's state observable and compared.
 
 1. A5/A6 commit unchanged → `COMMITTED_UNVERIFIED`.
 2. `requestCorrelatedReload(lease)` — adapter blocks; the model binds the
-   token to the exact `LoaderTask`; at bind-complete (#150 barrier), the
+   token to the exact `LoaderTask`; at the #150 terminal boundary (loader
+   transaction committed/closed, token-scoped queued work drained), the
    adapter captures `ModelSnapshot` from `BgDataModel` and completes with it.
 3. Protocol receives `Completed(snapshot)`; runs the unchanged DB recapture.
-4. Three-way equality: `snapshot.layoutState == db.layoutState`
-   (`== intendedState` on apply; `db.manifest == stored.preManifest` on
-   recovery, as today).
+4. Snapshot-leg equality: `snapshot.projection ==
+   db.layoutState.projectedToModelVerifiable()`, on top of the unchanged DB
+   equalities (`== intendedState`/`intendedManifest` on apply;
+   `db.manifest == stored.preManifest` on recovery).
 5. All equal → `VERIFIED`/`RESTORED` advance and success result with
    `*_DB_AND_MODEL` authoritative classification where applicable.
    Any unequal leg or non-`Completed` outcome → existing
@@ -145,6 +170,13 @@ makes the completed generation's state observable and compared.
 - **Correlate via `getLastLoadId()`/`lastLoadId` equality** — spec 13 pins
   load id as diagnostic-only; a numeric equality check is a timing correlation
   in disguise. Rejected.
+- **Full `LayoutState` equality between model snapshot and DB recapture** —
+  current `LayoutState` carries fields the in-memory model does not
+  faithfully represent (persisted `modified`, raw icon bytes, device
+  capabilities, profile inventory, reserved regions); assuming recoverability
+  would either weaken the DB contract or require a field-by-field proof
+  before implementation. Rejected in favor of the model-verifiable
+  projection, with the DB leg keeping full canonical equality.
 - **Capture the snapshot at request time** — pre-commit state; not the
   generation's output. Rejected.
 - **Recapture-on-mismatch retry / delay before recapture** — banned by the
@@ -158,11 +190,11 @@ makes the completed generation's state observable and compared.
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `protocol/Ports.kt` | `ReloadResult.Completed` carries `ModelSnapshot`; add `ModelSnapshot` type | Only seam the protocol may observe the model through |
-| `com.android.launcher3` bridge | Completion callback captures snapshot from `BgDataModel` at bind-complete via a same-package snapshot source | Causal binding to the exact loader generation lives where the token lives |
-| `adapter/ModelManifestCodec.kt` (new) | Model → canonical `LayoutState` conversion reusing `CanonicalItemOrder`/`CanonicalProfileId` | Representation equality with `RowManifestCodec` output |
+| `protocol/Ports.kt` | `ReloadResult.Completed` carries `ModelSnapshot` (model-verifiable projection); add `ModelSnapshot` type | Only seam the protocol may observe the model through |
+| `com.android.launcher3` bridge | Completion callback captures snapshot from `BgDataModel` at the #150 terminal boundary via a same-package snapshot source; staleness excluded by the token-identity contract | Causal binding to the exact loader generation lives where the token lives |
+| `adapter/ModelProjectionCodec.kt` (new) | Model → model-verifiable projection conversion reusing `CanonicalItemOrder`/`CanonicalProfileId`; DB-side projection helper over `LayoutState` | Representation equality on the subset the model faithfully represents |
 | `adapter/OrganizerModelReloadAdapter.java` / `LauncherLayoutAdapter.kt` | Transport snapshot through `requestAndWait` → `requestCorrelatedReload` | Production `LayoutWriterPort` implementation |
-| `protocol/ApplyProtocol.kt`, `RecoveryProtocol.kt`, `RestartReconciler.kt` | Snapshot-leg comparison before success results; `modelVerified` wiring | Acceptance AC-152-03/04 |
+| `protocol/ApplyProtocol.kt`, `RecoveryProtocol.kt`, `RestartReconciler.kt` | Snapshot-projection comparison before success results; `modelVerified` wiring | Acceptance AC-152-03/04 |
 | `tests/unit FakeLayoutWriter` + protocol tests | Snapshot-aware fake; divergence/stale/cancellation/stale-generation cases | Unit oracle per spec |
 | `tests/organizer-instrumentation` | Real-model verification cases: default workspace, folders/widgets/profiles/locks, cancellation, stale generation | AC-152-05 real-device leg |
 
@@ -182,10 +214,10 @@ makes the completed generation's state observable and compared.
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
 | AC-152-01 | New unit regression (divergent model, matching DB) demonstrated failing on pre-fix commit, passing after | `./gradlew :tests:unit` variant used by the module; PR records both runs |
-| AC-152-02 | Unit stale-generation/supersession cases; instrumentation correlation test | Unit suite + `connectedLawnWithQuickstepGithubDebugAndroidTest` subset |
-| AC-152-03 | Unit three-way equality cases across the four protocol paths | Unit suite |
+| AC-152-02 | Adapter/instrumentation: only the exact token-bound generation completes with a snapshot (supersession/cancellation/stale-completion cases, `OrganizerReloadSupersessionTest`/`OrganizerReloadCompletionOrderingTest` style); protocol unit tests: valid `Completed(snapshot)` with divergent contents returns no success | Unit suite + `connectedLawnWithQuickstepGithubDebugAndroidTest` subset |
+| AC-152-03 | Unit: projection-equality + full-DB-leg cases across the four protocol paths | Unit suite |
 | AC-152-04 | `FaultInjector` reload/verification failure matrix asserting no false success; `*_MODEL_UNVERIFIED` assertions | Unit suite |
-| AC-152-05 | Unit fixtures + real-model instrumentation (default workspace, folders/widgets/profiles/locks, cancellation, stale generation) | Emulator instrumentation run |
+| AC-152-05 | Unit fixtures + real-model instrumentation (default workspace, folders/widgets/profiles/locks, reload cancellation/supersession, stale generation) | Emulator instrumentation run |
 | AC-152-06 | `high-risk-gate` CI `final-status` on head SHA + independent `docs/assessment/pr-<PR>-152-*.md` audit by a separate session | CI on the implementation PR |
 
 Regression gates per `AGENTS.md`: `./gradlew spotlessCheck` and
@@ -201,18 +233,22 @@ Regression gates per `AGENTS.md`: `./gradlew spotlessCheck` and
       verification proves DB/model convergence (no progress notes).
 - [ ] `specs/150-*/spec.md` cross-references: leave as-is (they already
       assign the gap to #152); no rewrite needed.
-- [ ] ADR: not required unless the model-side canonical equality watch item
-      (below) forces a design decision.
+- [ ] ADR: not required unless the model-verifiable projection field
+      enumeration (execution checklist step 2) forces a design decision
+      beyond the projection defined in the spec.
 
 ## Execution checklist
 
 1. Write the AC-152-01 regression test against current `main`; confirm it
    fails for the right reason (no snapshot leg exists).
-2. Spike `ModelManifestCodec` feasibility: verify every organizer-owned row
-   class recoverable from `BgDataModel` can reach byte-equal canonical
-   representation with the DB codec. **Stop condition**: if any row class
-   cannot, stop and reopen the design (spec Open questions) instead of
-   weakening the comparison.
+2. Pin the model-verifiable projection (`ModelProjectionCodec` feasibility
+   step): enumerate every projection field (identity, container, placement,
+   type, folder membership, widget identity/bind state, profile identity,
+   lock occupancy) and its in-memory model source; reduce the DB
+   `LayoutState` to the same projection. **Stop condition**: if any core
+   projection field is not faithfully recoverable from the model, stop and
+   reopen the design (spec Open questions) instead of silently shrinking the
+   projection.
 3. Extend `ReloadResult`/bridge/adapter/protocols per the change set; fakes
    updated in the same commit as the port change.
 4. Implement failure/cancellation/stale-generation behavior; keep all
@@ -223,9 +259,9 @@ Regression gates per `AGENTS.md`: `./gradlew spotlessCheck` and
 
 ## Stop conditions
 
-- The `ModelManifestCodec` feasibility spike fails for any organizer-owned
-  row class → stop; open the design question on the issue; do not compare a
-  subset silently.
+- The model-verifiable projection field enumeration (execution checklist
+  step 2) fails for any core field → stop; open the design question on the
+  issue; do not compare a silently shrunken projection.
 - Any change to recovery store schema, Launcher DB schema, or backup format
   becomes necessary → out of scope; separate accepted design required.
 - The fix requires changing the #150 causal completion barrier semantics →
