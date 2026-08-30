@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: implemented
 issue: "#174"
 updated: 2026-08-30
 ---
@@ -130,6 +130,8 @@ failure policy inside that DB.
 
 ## Change history
 
+- 2026-08-30: Implemented and merged through
+  [PR #175](https://github.com/nunu1733/NunuLauncher/pull/175).
 - 2026-08-30: Added the closed ordinary read contract and recovery/preview
   corrupt mapping; required every present manifest slot to be non-empty.
 - 2026-08-30: Proposed for Issue #174 after Stage A review identified the

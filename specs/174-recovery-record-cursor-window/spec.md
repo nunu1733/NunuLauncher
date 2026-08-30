@@ -1,6 +1,6 @@
 ---
 issue: "#174"
-status: accepted
+status: implemented
 requirements: []
 risk:
   - layout-data
@@ -355,6 +355,15 @@ proves necessary:
 
 ## Change history
 
+- 2026-08-30: Implemented and merged through
+  [PR #175](https://github.com/nunu1733/NunuLauncher/pull/175). CW-AC-08
+  operator device evidence recorded on the PR (Pixel 9a, build
+  `15.Dev.(48e42e7)`: organize → exactly one Nova restore → organize reaches
+  `APPLY_VERIFIED` with recovery, restart reconciliation, and idempotent
+  no-op follow-ups; zero `CHECKPOINT_CREATE_FAILED` /
+  `RECOVERY_STORE_UNAVAILABLE`). Independent audit:
+  [docs/assessment/pr-175-chunk-recovery-manifests.md](../../docs/assessment/pr-175-chunk-recovery-manifests.md)
+  (pass-with-findings).
 - 2026-08-30: Review fixes on PR #175: normalized checked manifest-decode
   failures (`java.io.EOFException` from a truncated payload with valid chunk
   shape) into the closed record-read result at the store boundary, and made
