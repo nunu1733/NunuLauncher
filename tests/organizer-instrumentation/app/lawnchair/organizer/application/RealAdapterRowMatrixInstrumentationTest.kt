@@ -356,32 +356,44 @@ class RealAdapterRowMatrixInstrumentationTest {
     }
 
     /**
-     * Issue #152 (re-review P1): the canonical legacy launch identity masks
-     * exactly the two loader-managed bits — nothing more.
+     * Issue #152 (re-review P1, rev 5): the canonical legacy launch identity
+     * masks the two loader-managed bits **only for the intent shape the
+     * loader actually normalizes** (`ACTION_MAIN` + `CATEGORY_LAUNCHER`,
+     * mirroring `WorkspaceItemProcessor`) — nothing more, nothing wider.
      *
-     * (a) A model intent that differs from the persisted text only by
-     * `FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_RESET_TASK_IF_NEEDED` (what the
-     * AOSP processor adds at load time) canonicalizes to the same identity as
-     * the persisted DB text.
-     *
-     * (b) Any other flag divergence survives the mask: a model intent with an
-     * additional non-loader flag is NOT equal to the persisted canonical
-     * form, so a transformed launch target stays detectable.
+     * (a) MAIN+LAUNCHER: a model intent differing from the persisted text
+     * only by the loader-added bits canonicalizes to the persisted identity.
+     * (b) VIEW: the same loader-bits difference is a real semantic
+     * divergence — the loader never adds them here, so the canonical forms
+     * stay unequal.
+     * (c) MAIN+LAUNCHER with an extra non-loader flag (`NO_HISTORY`): the
+     * divergence survives the mask and stays detectable.
      */
     @Test
     fun legacyShortcutLaunchIdentityMasksOnlyLoaderFlags() {
-        val dbText = "#Intent;action=android.intent.action.VIEW;component=com.example/.Page;end"
-        val persisted = Intent.parseUri(dbText, 0)
-        val loaded = Intent(persisted).apply {
+        val mainLauncher = "#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;component=com.example/.Home;end"
+        val persistedMain = Intent.parseUri(mainLauncher, 0)
+        val loadedMain = Intent(persistedMain).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
         }
         assertEquals(
             "(a) loader-added bits alone must canonicalize to the persisted identity",
-            canonicalLegacyLaunchUri(persisted),
-            canonicalLegacyLaunchUri(loaded),
+            canonicalLegacyLaunchUri(persistedMain),
+            canonicalLegacyLaunchUri(loadedMain),
         )
 
-        val tampered = Intent(persisted).apply {
+        val view = "#Intent;action=android.intent.action.VIEW;component=com.example/.Page;end"
+        val persistedView = Intent.parseUri(view, 0)
+        val loadedView = Intent(persistedView).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+        }
+        assertNotEquals(
+            "(b) a loader-bits divergence on a non-normalized intent shape is a real semantic divergence",
+            canonicalLegacyLaunchUri(persistedView),
+            canonicalLegacyLaunchUri(loadedView),
+        )
+
+        val tampered = Intent(persistedMain).apply {
             addFlags(
                 Intent.FLAG_ACTIVITY_NO_HISTORY or
                     Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -389,8 +401,8 @@ class RealAdapterRowMatrixInstrumentationTest {
             )
         }
         assertNotEquals(
-            "(b) a non-loader flag divergence must stay detectable",
-            canonicalLegacyLaunchUri(persisted),
+            "(c) a non-loader flag divergence must stay detectable",
+            canonicalLegacyLaunchUri(persistedMain),
             canonicalLegacyLaunchUri(tampered),
         )
     }

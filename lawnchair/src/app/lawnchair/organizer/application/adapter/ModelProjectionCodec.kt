@@ -37,17 +37,29 @@ import com.android.launcher3.pm.UserCache
  * Issue #152: canonical form of a legacy shortcut launch identity. The
  * platform loader adds task-management flags (`FLAG_ACTIVITY_NEW_TASK`,
  * `FLAG_ACTIVITY_RESET_TASK_IF_NEEDED`) to legacy shortcut intents at load
- * time, so exactly those bits are loader-managed state, not organizer-owned
- * launch semantics; they are masked on both legs. Every other flag survives
- * the canonical form, so a divergence in any other launch flag remains
- * detectable.
+ * time — but only when the intent is `ACTION_MAIN` with `CATEGORY_LAUNCHER`
+ * (the exact normalization condition in `WorkspaceItemProcessor`). Those bits
+ * are masked on both legs **only for that intent shape**; every other flag,
+ * and every flag on any other intent shape, survives the canonical form, so a
+ * divergence in any other launch flag remains detectable.
  */
 internal val LOADER_MANAGED_LEGACY_FLAGS: Int =
     Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
 
-internal fun canonicalLegacyLaunchUri(intent: Intent): String = Intent(intent).apply {
-    flags = flags and LOADER_MANAGED_LEGACY_FLAGS.inv()
-}.toUri(0)
+/** Mirrors the loader's normalization condition (WorkspaceItemProcessor). */
+internal fun isLoaderManagedShortcutLaunch(intent: Intent): Boolean = intent.action != null &&
+    intent.categories != null &&
+    intent.action == Intent.ACTION_MAIN &&
+    intent.categories.contains(Intent.CATEGORY_LAUNCHER)
+
+internal fun canonicalLegacyLaunchUri(intent: Intent): String {
+    val canonical = if (isLoaderManagedShortcutLaunch(intent)) {
+        Intent(intent).apply { flags = flags and LOADER_MANAGED_LEGACY_FLAGS.inv() }
+    } else {
+        Intent(intent)
+    }
+    return canonical.toUri(0)
+}
 
 /**
  * Issue #152: capture-side model projection. Reduces the in-memory
