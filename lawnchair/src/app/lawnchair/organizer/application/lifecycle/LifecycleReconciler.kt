@@ -350,6 +350,11 @@ object LifecycleReconciler {
         data class NeedsRecovery(val nextLifecycle: LifecycleState) : RecoveryOutcomeClassification
     }
 
-    /** Issue #155: v2 records carry the reservation-aware capture context. */
+    /**
+     * Issue #155: v2 records carry the reservation-aware capture context.
+     * Logical recovery-record format, owned by
+     * [app.lawnchair.organizer.application.store.RecoveryRecordCodec.RECORD_FORMAT_VERSION]
+     * and independent of the physical DB schema version (Issue #174/ADR-0009).
+     */
     const val SUPPORTED_FORMAT: Int = 2
 }

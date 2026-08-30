@@ -11,7 +11,10 @@ import app.lawnchair.organizer.planning.RevisionId
  * (De)serializes a recovery record (canonical pre-state manifest, intended
  * post-state manifest, action-set digest, reviewed-current manifest/digest for
  * `RESTORING`, lifecycle state, counts, checksums, timestamps) to/from the
- * recovery-DB blob columns. Versioned by [RecoveryDbSchema.FORMAT_VERSION].
+ * recovery-DB blob columns. Versioned by the logical record
+ * [RECORD_FORMAT_VERSION], which is separate from the physical DB schema
+ * version ([RecoveryDbSchema.SCHEMA_VERSION]): schema 3 stores keep logical
+ * record format 2 and its checksum bytes (Issue #174, ADR-0009).
  *
  * The codec rejects NULLs in required columns, negative counts/times, unknown
  * lifecycle/reason integers, malformed IDs, non-32-byte digests, and
@@ -20,6 +23,15 @@ import app.lawnchair.organizer.planning.RevisionId
  * Issue #14 Stage B step 3.
  */
 object RecoveryRecordCodec {
+
+    /**
+     * Logical recovery-record format version. Persisted in
+     * `recovery_points.format_version` and tombstone `format_version`, included
+     * in the payload checksum, and required by [decode] and
+     * [app.lawnchair.organizer.application.lifecycle.LifecycleReconciler].
+     * Physical schema 3 records keep this value; migration never rewrites it.
+     */
+    const val RECORD_FORMAT_VERSION: Int = 2
 
     /**
      * Encoded recovery record. The `payloadChecksum` covers every other field
@@ -45,7 +57,7 @@ object RecoveryRecordCodec {
         val itemCount: Int,
         val resourceCount: Int,
         val payloadChecksum: ByteArray,
-        val formatVersion: Int = RecoveryDbSchema.FORMAT_VERSION,
+        val formatVersion: Int = RECORD_FORMAT_VERSION,
     )
 
     /** Decoded recovery record. */
@@ -162,7 +174,7 @@ object RecoveryRecordCodec {
 
     /** Validate the complete persisted record before it is exposed to protocol code. */
     fun decode(encoded: Encoded): Decoded {
-        require(encoded.formatVersion == RecoveryDbSchema.FORMAT_VERSION) {
+        require(encoded.formatVersion == RECORD_FORMAT_VERSION) {
             "Unsupported recovery record format: ${encoded.formatVersion}"
         }
         require(verifyPayloadChecksum(encoded)) { "Recovery payload checksum mismatch" }

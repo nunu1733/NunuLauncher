@@ -4,6 +4,7 @@ import app.lawnchair.organizer.application.canonical.PersistenceManifest
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.lifecycle.LifecycleTransitions
 import app.lawnchair.organizer.application.lifecycle.RetentionPolicy
+import app.lawnchair.organizer.application.protocol.ReconciliationCandidate
 import app.lawnchair.organizer.application.protocol.RecoveryStorePort
 import app.lawnchair.organizer.application.protocol.RecoveryStoreReconciliationIssuer
 import app.lawnchair.organizer.application.protocol.RecoveryStoreReconciliationPort
@@ -16,10 +17,11 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * In-memory [RecoveryStorePort] used by every contract test through the same
- * public seam (AC-13). Models the format-1 lifecycle transitions exactly as
+ * public seam (AC-13). Models the schema-3 lifecycle transitions, the closed
+ * point-read result, and the lifecycle-sensitive containment seam exactly as
  * the SQLite store does; no Android/SQLite types.
  *
- * Issue #14 Stage B step 4.
+ * Issue #14 Stage B step 4; Issue #174.
  */
 internal class FakeRecoveryStore(
     private val clock: () -> Long = { System.currentTimeMillis() },
@@ -54,6 +56,19 @@ internal class FakeRecoveryStore(
     var retentionCalls: Int = 0
         private set
 
+    /** Point IDs whose record is preserved but whose manifest cannot be assembled (Issue #174). */
+    val unreadablePointIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
+    /** Point IDs whose point-level read fails at the store level (Issue #174). */
+    val failedReadPointIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
+    /** Point IDs whose metadata cannot even be decoded (Issue #174 malformed candidates). */
+    val malformedPointIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
+    var quarantineCalls: Int = 0
+        private set
+    var quarantineFails: Boolean = false
+
     override fun availability(): RecoveryStorePort.StoreAvailability = storeAvailability
 
     override fun readTombstone(pointId: RecoveryPointId): RecoveryStorePort.Tombstone? {
@@ -84,7 +99,8 @@ internal class FakeRecoveryStore(
                     lifecycle = record.lifecycle,
                     createdAtMs = record.createdAtMs,
                     updatedAtMs = record.updatedAtMs,
-                    checksumValid = record.checksumValid,
+                    // An unreadable record projects checksum-invalid (Issue #174).
+                    checksumValid = record.checksumValid && pointId.value !in unreadablePointIds,
                     formatVersion = record.formatVersion,
                 ),
             )
@@ -128,9 +144,27 @@ internal class FakeRecoveryStore(
 
         override fun availability(): RecoveryStorePort.StoreAvailability = if (isActive()) this@FakeRecoveryStore.availability() else RecoveryStorePort.StoreAvailability.READ_FAILED
 
-        override fun listNonFinalRecords(): List<RecoveryStorePort.StoredRecord>? = if (isActive()) this@FakeRecoveryStore.listNonFinalRecords() else null
+        override fun listReconciliationCandidates(): List<ReconciliationCandidate>? = if (isActive()) {
+            records.values
+                .filter { !LifecycleTransitions.isFinal(it.lifecycle) }
+                .sortedBy { it.createdAtMs }
+                .map { record ->
+                    if (record.pointId.value in malformedPointIds) {
+                        ReconciliationCandidate.Malformed(record.pointId)
+                    } else {
+                        ReconciliationCandidate.Valid(record.asMetadata())
+                    }
+                }
+        } else {
+            null
+        }
 
-        override fun readRecord(pointId: RecoveryPointId): RecoveryStorePort.StoredRecord? = if (isActive()) this@FakeRecoveryStore.readRecord(pointId) else null
+        override fun loadRecord(candidate: RecoveryStorePort.RecordMetadata): RecoveryStorePort.RecordRead? = if (isActive()) this@FakeRecoveryStore.readRecord(candidate.pointId) else null
+
+        override fun quarantineUnmutated(
+            pointId: RecoveryPointId,
+            expectedLifecycle: LifecycleState,
+        ): Boolean = isActive() && this@FakeRecoveryStore.quarantineUnmutated(pointId, expectedLifecycle)
 
         override fun advance(pointId: RecoveryPointId, next: LifecycleState): Boolean = isActive() && this@FakeRecoveryStore.advance(pointId, next)
 
@@ -269,12 +303,19 @@ internal class FakeRecoveryStore(
         return true
     }
 
-    override fun readRecord(pointId: RecoveryPointId): RecoveryStorePort.StoredRecord? = records[pointId.value]?.asStored()
-
-    override fun listNonFinalRecords(): List<RecoveryStorePort.StoredRecord> = records.values
-        .filter { !LifecycleTransitions.isFinal(it.lifecycle) }
-        .sortedBy { it.createdAtMs }
-        .map { record -> record.asStored() }
+    override fun readRecord(pointId: RecoveryPointId): RecoveryStorePort.RecordRead {
+        if (storeAvailability != RecoveryStorePort.StoreAvailability.READY) {
+            return RecoveryStorePort.RecordRead.Failed
+        }
+        val record = records[pointId.value] ?: return RecoveryStorePort.RecordRead.Missing
+        if (pointId.value in failedReadPointIds) {
+            return RecoveryStorePort.RecordRead.Failed
+        }
+        if (pointId.value in unreadablePointIds) {
+            return RecoveryStorePort.RecordRead.Unreadable(record.asMetadata())
+        }
+        return RecoveryStorePort.RecordRead.Readable(record.asStored())
+    }
 
     override fun pruneUnused(pointId: RecoveryPointId): Boolean {
         pruneUnusedCalls += 1
@@ -289,6 +330,26 @@ internal class FakeRecoveryStore(
         // Fake store does not perform retention by default; tests assert retention
         // behavior via RetentionPolicyTest. Returning Applied keeps the protocol happy.
         return retentionOutcome
+    }
+
+    /**
+     * Lifecycle-sensitive quarantine mirror of the SQLite store: only a
+     * durable `CREATING`/`READY` lifecycle (proven no Launcher mutation) may
+     * be tombstoned and deleted.
+     */
+    fun quarantineUnmutated(pointId: RecoveryPointId, expectedLifecycle: LifecycleState): Boolean {
+        if (quarantineFails) return false
+        if (expectedLifecycle != LifecycleState.CREATING && expectedLifecycle != LifecycleState.READY) return false
+        val record = records[pointId.value] ?: return false
+        if (record.lifecycle != expectedLifecycle) return false
+        quarantineCalls += 1
+        tombstones[pointId.value] = RecoveryStorePort.Tombstone(
+            pointId,
+            RecoveryStorePort.TombstoneReason.QUARANTINED,
+            clock() + RetentionPolicy.TOMBSTONE_RETENTION_MILLIS,
+        )
+        records.remove(pointId.value)
+        return true
     }
 
     fun seedRecord(record: RecoveryStorePort.StoredRecord) {
@@ -340,7 +401,25 @@ internal class FakeRecoveryStore(
         advanceCalls = 0
         pruneUnusedCalls = 0
         retentionCalls = 0
+        unreadablePointIds.clear()
+        failedReadPointIds.clear()
+        malformedPointIds.clear()
+        quarantineCalls = 0
+        quarantineFails = false
     }
+
+    private fun MutableRecord.asMetadata(): RecoveryStorePort.RecordMetadata = RecoveryStorePort.RecordMetadata(
+        pointId = pointId,
+        runId = runId,
+        lifecycle = lifecycle,
+        priorLifecycle = priorLifecycle,
+        createdAtMs = createdAtMs,
+        updatedAtMs = updatedAtMs,
+        formatVersion = formatVersion,
+        preDigest = preDigest,
+        intendedDigest = intendedDigest,
+        reviewedDigest = reviewedDigest,
+    )
 
     private class MutableRecord(
         val pointId: RecoveryPointId,

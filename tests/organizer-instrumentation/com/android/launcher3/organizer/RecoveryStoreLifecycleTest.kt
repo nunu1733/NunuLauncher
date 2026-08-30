@@ -78,10 +78,10 @@ class RecoveryStoreLifecycleTest {
         assertTrue(result is RecoveryStorePort.CheckpointResult.Ready)
 
         val reopened = RecoveryStore(context) { 2000L }
-        val record = reopened.readRecord(pointId)
-        assertNotNull(record)
-        assertEquals(LifecycleState.READY, record?.lifecycle)
-        assertEquals(RevisionId("revision"), record?.preRevision)
+        val stored = (reopened.readRecord(pointId) as? RecoveryStorePort.RecordRead.Readable)?.record
+        assertNotNull(stored)
+        assertEquals(LifecycleState.READY, stored?.lifecycle)
+        assertEquals(RevisionId("revision"), stored?.preRevision)
         context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
     }
 
@@ -91,7 +91,7 @@ class RecoveryStoreLifecycleTest {
         context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
         val file = context.getDatabasePath(RecoveryDbSchema.FILE_NAME)
         SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
-            db.execSQL("PRAGMA user_version = 3")
+            db.execSQL("PRAGMA user_version = 4")
         }
         val before = file.readBytes()
         val store = RecoveryStore(context) { 1_000L }
@@ -99,7 +99,7 @@ class RecoveryStoreLifecycleTest {
             RecoveryStorePort.StoreAvailability.INCOMPATIBLE_VERSION,
             store.availability(),
         )
-        assertTrue(store.listNonFinalRecords().isEmpty())
+        assertNull(store.listReconciliationCandidates())
         assertTrue(before.contentEquals(file.readBytes()))
         context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
     }
@@ -143,7 +143,7 @@ class RecoveryStoreLifecycleTest {
         val before = file.readBytes()
 
         assertEquals(
-            RecoveryDbVersionGate.VersionDecision.Incompatible(RecoveryDbSchema.FORMAT_VERSION),
+            RecoveryDbVersionGate.VersionDecision.Incompatible(RecoveryDbSchema.SCHEMA_VERSION),
             RecoveryDbVersionGate.probeForFormat(file, 1),
         )
         assertTrue(before.contentEquals(file.readBytes()))
@@ -169,7 +169,7 @@ class RecoveryStoreLifecycleTest {
     }
 
     @Test
-    fun legacyV1StoreWithOnlyExpiredTombstoneMigratesToV2() {
+    fun legacyV1StoreWithOnlyExpiredTombstoneMigratesToCurrentSchema() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
         val file = context.getDatabasePath(RecoveryDbSchema.FILE_NAME)
@@ -179,12 +179,48 @@ class RecoveryStoreLifecycleTest {
 
         assertEquals(RecoveryStorePort.StoreAvailability.READY, store.availability())
         SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
-            assertEquals(RecoveryDbSchema.FORMAT_VERSION.toLong(), android.database.DatabaseUtils.longForQuery(db, "PRAGMA user_version", null))
+            // The empty v1 store advances straight to the current physical schema.
+            assertEquals(RecoveryDbSchema.SCHEMA_VERSION.toLong(), android.database.DatabaseUtils.longForQuery(db, "PRAGMA user_version", null))
             assertEquals(
                 0L,
                 android.database.DatabaseUtils.longForQuery(db, "SELECT COUNT(*) FROM recovery_tombstones", null),
             )
+            // The physical structure must be the real schema-3 shape, not a
+            // bumped pragma over the legacy tables.
+            assertEquals(
+                1L,
+                android.database.DatabaseUtils.longForQuery(
+                    db,
+                    "SELECT COUNT(*) FROM sqlite_master WHERE name = 'recovery_manifest_chunks'",
+                    null,
+                ),
+            )
         }
+
+        // End-to-end: the migrated store must actually be usable through the
+        // production writer, not just version-compatible on paper.
+        prepareForMutation(store)
+        val pointId = RecoveryPointId("aabbccdd00112233445566778899aabb")
+        val digest = ByteArray(32)
+        val empty = PersistenceManifest(1, 33, 0, emptyList(), emptyList(), 0L)
+        val result = store.checkpoint(
+            RecoveryStorePort.CheckpointPayload(
+                pointId,
+                RunId("aabbccdd00112233445566778899aabb"),
+                empty,
+                RevisionId("rev"),
+                digest,
+                digest,
+                0,
+                0,
+            ),
+        )
+        assertTrue("checkpoint after v1 migration: $result", result is RecoveryStorePort.CheckpointResult.Ready)
+        val reopened = RecoveryStore(context) { 2_000L }
+        val read = reopened.readRecord(pointId)
+        assertTrue("Expected Readable after close/reopen, got $read", read is RecoveryStorePort.RecordRead.Readable)
+        assertEquals(LifecycleState.READY, (read as RecoveryStorePort.RecordRead.Readable).record.lifecycle)
+        context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
     }
 
     @Test
@@ -239,7 +275,7 @@ class RecoveryStoreLifecycleTest {
         prepareForMutation(reopened)
         assertTrue(reopened.advance(pointId, LifecycleState.APPLYING))
         val rechecked = RecoveryStore(context) { 4000L }
-        assertEquals(LifecycleState.APPLYING, rechecked.readRecord(pointId)?.lifecycle)
+        assertEquals(LifecycleState.APPLYING, lifecycleOf(rechecked, pointId))
         context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
     }
 
@@ -249,7 +285,7 @@ class RecoveryStoreLifecycleTest {
         assertTrue(store.advance(pointId, LifecycleState.APPLYING))
         assertTrue(store.advance(pointId, LifecycleState.COMMITTED_UNVERIFIED))
         val reopened = RecoveryStore(context) { 3000L }
-        assertEquals(LifecycleState.COMMITTED_UNVERIFIED, reopened.readRecord(pointId)?.lifecycle)
+        assertEquals(LifecycleState.COMMITTED_UNVERIFIED, lifecycleOf(reopened, pointId))
         context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
     }
 
@@ -260,7 +296,7 @@ class RecoveryStoreLifecycleTest {
         assertTrue(store.advance(pointId, LifecycleState.COMMITTED_UNVERIFIED))
         assertTrue(store.advance(pointId, LifecycleState.VERIFIED))
         val reopened = RecoveryStore(context) { 3000L }
-        assertEquals(LifecycleState.VERIFIED, reopened.readRecord(pointId)?.lifecycle)
+        assertEquals(LifecycleState.VERIFIED, lifecycleOf(reopened, pointId))
         context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
     }
 
@@ -275,7 +311,7 @@ class RecoveryStoreLifecycleTest {
         assertTrue(store.advance(pointId, LifecycleState.APPLYING))
         assertTrue(store.markRestoring(pointId, empty, digest, digest))
         val reopened = RecoveryStore(context) { 3000L }
-        assertEquals(LifecycleState.RESTORING, reopened.readRecord(pointId)?.lifecycle)
+        assertEquals(LifecycleState.RESTORING, lifecycleOf(reopened, pointId))
         context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
     }
 
@@ -290,7 +326,7 @@ class RecoveryStoreLifecycleTest {
         assertTrue(store.markRestoring(pointId, empty, digest, digest))
         assertTrue(store.advance(pointId, LifecycleState.RESTORED))
         val reopened = RecoveryStore(context) { 3000L }
-        assertEquals(LifecycleState.RESTORED, reopened.readRecord(pointId)?.lifecycle)
+        assertEquals(LifecycleState.RESTORED, lifecycleOf(reopened, pointId))
         context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
     }
 
@@ -314,7 +350,7 @@ class RecoveryStoreLifecycleTest {
             assertEquals(
                 "${case.name} lifecycle",
                 case.expectedLifecycle,
-                reopened.readRecord(pointId)?.lifecycle,
+                lifecycleOf(reopened, pointId),
             )
             if (case.expectsTombstone) {
                 assertNotNull("${case.name} tombstone", reopened.readTombstone(pointId))
@@ -340,7 +376,7 @@ class RecoveryStoreLifecycleTest {
             assertEquals(
                 "${case.name} lifecycle",
                 case.expectedLifecycle,
-                reopened.readRecord(pointId)?.lifecycle,
+                lifecycleOf(reopened, pointId),
             )
             if (case.expectsTombstone) {
                 assertNotNull("${case.name} tombstone", reopened.readTombstone(pointId))
@@ -716,6 +752,10 @@ class RecoveryStoreLifecycleTest {
             db.execSQL("PRAGMA user_version = 1")
         }
     }
+
+    private fun lifecycleOf(store: RecoveryStore, pointId: RecoveryPointId): LifecycleState? = (
+        store.readRecord(pointId) as? RecoveryStorePort.RecordRead.Readable
+        )?.record?.lifecycle
 
     private fun prepareForMutation(store: RecoveryStore) {
         val mutex = RunMutex()

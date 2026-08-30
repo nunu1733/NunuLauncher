@@ -44,11 +44,29 @@ class RecoveryProtocol(
 
             RecoveryStorePort.StoreAvailability.READY -> Unit
         }
-        val stored = try {
-            store.readRecord(request.pointId)
-        } catch (_: RuntimeException) {
-            return recoveryStoreFailure(request.pointId)
-        } ?: return tombstoneResult(request.pointId)
+        // Closed point read (Issue #174): the store itself distinguishes an
+        // unreadable preserved record from a missing one and from store I/O
+        // failure. Unreadable means the record exists but its manifest cannot
+        // be reconstructed — deterministically corrupt, never missing and
+        // never a transient store failure.
+        val stored: RecoveryStorePort.StoredRecord = when (
+            val read = try {
+                store.readRecord(request.pointId)
+            } catch (_: RuntimeException) {
+                RecoveryStorePort.RecordRead.Failed
+            }
+        ) {
+            RecoveryStorePort.RecordRead.Missing -> return tombstoneResult(request.pointId)
+
+            RecoveryStorePort.RecordRead.Failed -> return recoveryStoreFailure(request.pointId)
+
+            is RecoveryStorePort.RecordRead.Unreadable -> return RecoveryResult.NotRestorable(
+                request.pointId,
+                RecoveryRejection.CORRUPT,
+            )
+
+            is RecoveryStorePort.RecordRead.Readable -> read.record
+        }
         preflight(stored)?.let { return RecoveryResult.NotRestorable(request.pointId, it) }
         if (faults.serializationContention()) return RecoveryResult.WriterBusy
         val lease = writer.tryAcquireLease(WriterKind.ORGANIZER, runId.value.hashCode().toLong())
@@ -75,6 +93,7 @@ class RecoveryProtocol(
             RecoveryStorePort.TombstoneReason.INCOMPATIBLE_VERSION -> RecoveryRejection.INCOMPATIBLE_VERSION
             RecoveryStorePort.TombstoneReason.ALREADY_RESTORED -> RecoveryRejection.ALREADY_RESTORED
             RecoveryStorePort.TombstoneReason.PRUNED_UNUSED -> RecoveryRejection.MISSING
+            RecoveryStorePort.TombstoneReason.QUARANTINED -> RecoveryRejection.CORRUPT
         }
         return RecoveryResult.NotRestorable(pointId, rejection)
     }

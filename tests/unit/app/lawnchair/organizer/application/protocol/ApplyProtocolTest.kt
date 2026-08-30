@@ -38,6 +38,10 @@ import org.junit.Test
  */
 class ApplyProtocolTest {
 
+    private fun storedLifecycleOf(id: RecoveryPointId): LifecycleState? = (
+        store.readRecord(id) as? RecoveryStorePort.RecordRead.Readable
+        )?.record?.lifecycle
+
     private lateinit var writer: FakeLayoutWriter
     private lateinit var store: FakeRecoveryStore
     private lateinit var faults: RecordingFaultInjector
@@ -197,7 +201,7 @@ class ApplyProtocolTest {
         val result = protocol.apply(mutatingPlan())
         assertTrue(result is ApplyResult.RolledBack)
         assertEquals(ApplyFailure.WRITE_FAILED, (result as ApplyResult.RolledBack).failure)
-        assertNull(store.readRecord(RecoveryPointId("22222222222222222222222222222222")))
+        assertEquals(RecoveryStorePort.RecordRead.Missing, store.readRecord(RecoveryPointId("22222222222222222222222222222222")))
     }
 
     @Test
@@ -209,7 +213,7 @@ class ApplyProtocolTest {
         assertEquals(ApplyFailure.RECOVERY_STORE_FAILED, (result as ApplyResult.Unresolved).failure)
         assertEquals(
             LifecycleState.APPLYING,
-            store.readRecord(RecoveryPointId("22222222222222222222222222222222"))?.lifecycle,
+            storedLifecycleOf(RecoveryPointId("22222222222222222222222222222222")),
         )
     }
 
@@ -222,7 +226,7 @@ class ApplyProtocolTest {
         assertEquals(ApplyFailure.RECOVERY_STORE_FAILED, (result as ApplyResult.Unresolved).failure)
         assertEquals(
             LifecycleState.READY,
-            store.readRecord(RecoveryPointId("22222222222222222222222222222222"))?.lifecycle,
+            storedLifecycleOf(RecoveryPointId("22222222222222222222222222222222")),
         )
     }
 
@@ -580,7 +584,7 @@ class ApplyProtocolTest {
         val result = protocol.apply(mutatingPlan())
         assertTrue(result is ApplyResult.Rejected)
         assertEquals(PreWriteRejection.STALE_REVISION, (result as ApplyResult.Rejected).reason)
-        assertNull(store.readRecord(RecoveryPointId("22222222222222222222222222222222")))
+        assertEquals(RecoveryStorePort.RecordRead.Missing, store.readRecord(RecoveryPointId("22222222222222222222222222222222")))
     }
 
     @Test fun sa04A5StaleAdvanceFailureSurfacesRecoveryStoreFailure() {
@@ -595,7 +599,7 @@ class ApplyProtocolTest {
         assertEquals(ApplyFailure.RECOVERY_STORE_FAILED, (result as ApplyResult.Unresolved).failure)
         assertEquals(
             LifecycleState.APPLYING,
-            store.readRecord(RecoveryPointId("22222222222222222222222222222222"))?.lifecycle,
+            storedLifecycleOf(RecoveryPointId("22222222222222222222222222222222")),
         )
     }
 
@@ -611,7 +615,7 @@ class ApplyProtocolTest {
         assertEquals(ApplyFailure.RECOVERY_STORE_FAILED, (result as ApplyResult.Unresolved).failure)
         assertEquals(
             LifecycleState.READY,
-            store.readRecord(RecoveryPointId("22222222222222222222222222222222"))?.lifecycle,
+            storedLifecycleOf(RecoveryPointId("22222222222222222222222222222222")),
         )
     }
 
