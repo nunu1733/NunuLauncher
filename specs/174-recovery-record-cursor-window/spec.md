@@ -78,6 +78,8 @@ inspection boundary are unchanged.
   including migration of a poisoned schema-2 store.
 - The reconciliation-only per-record load seam, lifecycle-sensitive
   containment path, and typed quarantine tombstone reason.
+- The ordinary closed record-read result and deterministic recovery/preview
+  `CORRUPT` mapping for a preserved unreadable point.
 - Explicit child-first chunk deletion in every retention, prune, quarantine,
   and tombstone path.
 - Regression and migration test coverage at the application-contract level
@@ -167,8 +169,11 @@ reconciliation summary is unresolved so later organizer mutation remains
 fail-closed,
 
 And each unreadable `VERIFIED` point remains stored and is rejected as
-non-restorable (`CORRUPT` through the existing public result mapping) until
-normal retention expires it,
+non-restorable until normal retention expires it. An ordinary recovery read
+returns a typed `Unreadable` result, so `recover()` deterministically returns
+`NotRestorable(CORRUPT)` rather than `RestoreFailed`, tombstone lookup, or
+`MISSING`. Recovery preview returns the matching `NotRestorable(CORRUPT)` from
+its SQLite-free inspection projection,
 
 And every healthy record is still reconciled. Inspection publication emits a
 `QUARANTINED` tombstone projection for a deleted safe-state record and a
@@ -236,14 +241,15 @@ retry the migration.
   chunk_index, chunk)`, primary key `(point_id, slot, chunk_index)`;
   slots `PRE`/`INTENDED`/`REVIEWED`; fixed chunk size (plan: 512 KiB).
   Schema checks require a known slot, non-negative index, and chunk length in
-  `1..512 KiB`; physical slot sizes are non-negative and no greater than the
-  64 MiB engineering bound (`reviewed_manifest_size` alone may be `NULL`). The
-  physical size columns determine required chunk count and distinguish an
-  intentionally zero-length slot from a missing chunk set. Assembly requires
+  `1..512 KiB`; required `pre_manifest_size`/`intended_manifest_size` and a
+  present `reviewed_manifest_size` are in `1..64 MiB`, while absent `REVIEWED`
+  is represented only by `reviewed_manifest_size IS NULL`. The physical size
+  columns determine a positive required chunk count. Assembly requires
   contiguous zero-based indices, exact non-final/final chunk sizes, and exact
   reconstructed length before the unchanged logical payload checksum and
-  manifest decoder validate the record. A zero-length manifest has zero
-  chunks. The table deliberately has no
+  existing manifest decoder validate the record. Empty bytes are never a
+  valid manifest and zero chunks always mean a missing/corrupt required slot.
+  The table deliberately has no
   foreign key because Android SQLite foreign-key enablement is not an implicit
   invariant of this store.
 - **Writes stay transactional**: the `CREATING` insert writes the record row
@@ -259,11 +265,25 @@ retry the migration.
   maps to the existing public `CORRUPT` rejection (no new public result);
   quarantine tombstones expire through the existing retention.
 - **Reconciliation seam**: metadata enumeration is separate from point-level
-  full-record loading. The session returns a closed `Readable`/`Unreadable`
-  result per candidate and owns the only safe-state quarantine operation.
+  full-record loading. The session reuses the same closed `RecordRead` result
+  as ordinary reads instead of exposing a second load-result type, and owns
+  the only safe-state quarantine operation.
   Candidate metadata includes the bounded lifecycle/identity fields and
   pre/intended/reviewed digests needed for authoritative classification; it
   never contains manifest bytes.
+- **Ordinary record-read seam**: `RecoveryStorePort.readRecord(pointId)`
+  returns a closed `Readable(StoredRecord)` / `Unreadable(metadata)` /
+  `Missing` / `Failed` result. `Unreadable` means the bounded row metadata was
+  decoded but chunk assembly or manifest decode failed; an assembled,
+  decodable record with a payload-checksum mismatch remains `Readable` with
+  `checksumValid = false` so the existing `CORRUPT` path is preserved.
+  `Failed` is reserved for store I/O or undecodable metadata. Recovery
+  maps `Unreadable` to existing public `NotRestorable(CORRUPT)`, `Missing` to
+  tombstone lookup, and `Failed` to existing `RestoreFailed` store failure.
+  Preview performs no SQLite read per #89; its existing closed inspection
+  projection must represent the same unreadable record as
+  `checksumValid = false` after startup reconciliation/snapshot rebuild, which
+  maps to preview `NotRestorable(CORRUPT)`.
 - **Retention, reconciliation, inspection snapshot, recovery context,
   digests, and counts** are unchanged.
 - **Backup/restore**: unchanged — the recovery DB keeps its file name and
@@ -287,23 +307,23 @@ Not applicable (storage-layer change; no UI).
 |---|---|
 | CW-AC-01 | `spec.md`, `plan.md`, and ADR-0009 select the chunked-manifest strategy, keep the fail-closed protocol and ADR-0003 ordering unchanged, and define physical schema 3, logical record format 2, migration, read-path normalization, lifecycle-sensitive containment, and chunk ownership. |
 | CW-AC-02 | A regression test at the application-contract level (real-SQLite test DB on the emulator) creates a checkpoint whose logical record is ≥ the ~2.25 MB observed on the #171 device. Pre-fix, the test reproduces the `SQLiteBlobTooBigException` → `CHECKPOINT_CREATE_FAILED` failure (recorded as PR evidence); post-fix, `checkpoint()` returns `Ready` deterministically at that scale: the record is committed, survives close/reopen, and passes the full read-back validation. |
-| CW-AC-03 | No recovery read path executes a full-row `SELECT *` over `recovery_points`. Record read-back, lifecycle updates, retention, reconciliation listing, and the inspection-snapshot projection read bounded projections and point-level chunk sets, so no single row can exceed the 2 MB `CursorWindow` through a protocol path. Physical per-slot sizes determine required chunk count; assembly rejects gaps, duplicate/non-contiguous indices, invalid chunk sizes, and length mismatch before logical decode. Size accounting covers every blob slot (`pre`, `intended`, `reviewed`) and the engineering bound is enforced at write time. |
-| CW-AC-04 | No store poisoning: reconciliation enumerates bounded metadata and obtains a point-level `Readable`/`Unreadable` load result, so every healthy record still reconciles. Unreadable `CREATING`/`READY` records alone are transactionally quarantined; unreadable `APPLYING`/`COMMITTED_UNVERIFIED`/`RESTORING` records retain their row, chunks, and original lifecycle and yield an unresolved summary; unreadable `VERIFIED` records remain stored and non-restorable until normal retention. Malformed metadata is preserved, never speculatively deleted. Inspection publication represents each contained record without aborting. |
+| CW-AC-03 | No recovery read path executes a full-row `SELECT *` over `recovery_points`. Record read-back, lifecycle updates, retention, reconciliation listing, and the inspection-snapshot projection read bounded projections and point-level chunk sets, so no single row can exceed the 2 MB `CursorWindow` through a protocol path. Required/present slot sizes are strictly positive and determine required chunk count; assembly rejects absent required slots, gaps, duplicate/non-contiguous indices, invalid chunk sizes, and length mismatch before logical decode. Size accounting covers every blob slot (`pre`, `intended`, `reviewed`) and the engineering bound is enforced at write time. |
+| CW-AC-04 | No store poisoning: reconciliation enumerates bounded metadata and obtains the shared point-level `RecordRead`, so every healthy record still reconciles. Unreadable `CREATING`/`READY` records alone are transactionally quarantined; unreadable `APPLYING`/`COMMITTED_UNVERIFIED`/`RESTORING` records retain their row, chunks, and original lifecycle and yield an unresolved summary; unreadable `VERIFIED` records remain stored until normal retention. Ordinary recovery receives the same typed `Unreadable` and deterministically maps it to `NotRestorable(CORRUPT)`; after startup reconciliation rebuilds the inspection snapshot, preview maps the corresponding checksum-invalid projection to preview `NotRestorable(CORRUPT)`. Neither path returns `RestoreFailed`, consults a tombstone, nor reports `MISSING` for the preserved row. Malformed metadata is preserved, never speculatively deleted. Inspection publication represents each contained record without aborting. |
 | CW-AC-05 | The physical schema-2 → schema-3 migration runs server-side SQL only (no `Cursor`/`CursorWindow` involvement), is transactional (failure leaves a fail-closed schema-2 store), leaves logical `format_version = 2` and `payload_checksum` bytes unchanged, and proves the checksum still valid after assembly. It recovers the #171-device-class poisoned store: after migration, the oversized `CREATING` row is classified and cleaned per the existing path and the healthy record remains available. |
 | CW-AC-06 | Downgrade (schema-3 store, schema-2-era build) and backup/restore behavior are unchanged and fail-closed; the Launcher layout is untouched on every failure path. |
-| CW-AC-07 | The application-facing `apply`/`recover` operations and public result types are unchanged. The batch `RecoveryStorePort.listNonFinalRecords()` contract is removed; the internal reconciliation session instead owns metadata enumeration plus point-level load results. `RecoveryStorePort.TombstoneReason` gains `QUARANTINED`, canonically encoded as 6 and mapped to the existing public `CORRUPT` rejection. Existing protocol, fence, retention, and inspection behavior remains unchanged for readable records; Fake-based store/session tests are adapted to the changed internal contracts. |
+| CW-AC-07 | The application-facing `apply`/`recover` operations and public result types are unchanged. `RecoveryStorePort.readRecord()` changes from nullable/throwing behavior to the closed ordinary read result; its reconciliation-only batch listing is removed, and the internal reconciliation session owns metadata enumeration plus point-level load results. `TombstoneReason` gains `QUARANTINED`, canonically encoded as 6 and mapped to the existing public `CORRUPT` rejection. All ordinary-read callers and Fake-based store/session tests adapt to the changed internal contracts; readable-record behavior is unchanged. |
 | CW-AC-08 | Device-class verification is mandatory and strict: the #171 device sequence (organize → exactly one Nova restore → organize) passes A4 and reaches `APPLY_VERIFIED` on a real-device-scale workspace. No "leaves a diagnosable, recoverable state" alternative is accepted. |
 | CW-AC-09 | High-risk evidence process applies: `risk: layout-data` / `risk: migration` labels, `CI / final-status` success on the verification head including the focused instrumentation jobs, and an independent audit record in `docs/assessment/pr-<PR>-<slug>.md` per `AGENTS.md`. |
-| CW-AC-10 | Schema checks enforce known slot values, non-negative contiguous indices at assembly, bounded non-empty chunk rows, and bounded/non-negative physical slot sizes. Every point-deletion path (retention, prune, quarantine, and tombstoning) explicitly deletes owned chunk rows before the point row in the same transaction. Migration and all deletion/failure-injection tests prove rollback atomicity and zero committed orphan chunks; correctness does not depend on foreign-key enablement. |
+| CW-AC-10 | Schema checks enforce known slot values, non-negative contiguous indices at assembly, bounded non-empty chunk rows, strictly positive required/present slot sizes, and `NULL` as the only absent-`REVIEWED` representation. Every point-deletion path (retention, prune, quarantine, and tombstoning) explicitly deletes owned chunk rows before the point row in the same transaction. Migration and all deletion/failure-injection tests prove rollback atomicity and zero committed orphan chunks; correctness does not depend on foreign-key enablement. |
 
 ## Test oracle
 
 | Test surface | Required cases |
 |---|---|
-| Codec (JVM) | chunked assembly round-trip, zero-length manifest, missing/non-contiguous/oversized chunk detection, engineering-bound enforcement, and payload-checksum validity with logical record format 2 before and after physical schema migration. |
+| Codec/store assembly (JVM + instrumentation) | chunked assembly round-trip; required `PRE`/`INTENDED` and present `REVIEWED` reject size 0; absent `REVIEWED` uses `NULL`; missing/non-contiguous/oversized chunk detection; engineering-bound enforcement; payload-checksum validity with logical record format 2 before and after physical schema migration. |
 | Store contract (instrumentation, real SQLite) | oversized ≥2.25 MB checkpoint end-to-end (`CREATING` → `READY` with both close/reopen read-backs), oversized `markApplying`/`markRestoring` rewrites, recovery restore of an oversized record, retention with oversized records present. |
 | Migration (instrumentation, real SQLite) | schema-2 store with a >2 MB row migrates server-side; `user_version` changes 2→3 while row/tombstone `format_version` stays 2; stored checksum bytes are unchanged and validate after assembly; migration fault injection leaves a fail-closed schema-2 store; downgrade probe is incompatible. |
-| Containment (instrumentation + JVM session tests) | separate missing/corrupt-chunk fixtures for `CREATING`, `READY`, `APPLYING`, `COMMITTED_UNVERIFIED`, `RESTORING`, and `VERIFIED`; only the first two quarantine; active states are preserved and unresolved; `VERIFIED` is preserved/non-restorable; malformed metadata is preserved; healthy records still reconcile. Quarantine fault injection rolls back, its tombstone uses canonical reason 6, and public recovery maps it to `CORRUPT`. |
+| Containment and ordinary reads (instrumentation + JVM protocol/session tests) | separate missing/corrupt-chunk fixtures for `CREATING`, `READY`, `APPLYING`, `COMMITTED_UNVERIFIED`, `RESTORING`, and `VERIFIED`; only the first two quarantine; active states are preserved and unresolved; `VERIFIED` is preserved. For the preserved unreadable `VERIFIED` fixture, ordinary read returns `Unreadable`; after startup reconciliation/snapshot rebuild, recovery and preview both return their existing `NotRestorable(CORRUPT)` variants, and neither returns store failure or missing. Malformed metadata returns `Failed`/aggregate failure and is preserved; healthy records still reconcile. Quarantine fault injection rolls back and its tombstone uses canonical reason 6. |
 | Ownership/deletion (instrumentation) | retention, prune, quarantine, and every tombstone path remove chunks child-first in the same transaction; failure injection restores parent and children; no orphan chunks remain after migration or committed deletion. |
 | Read-path normalization (source-level + instrumentation) | no `SELECT *` over `recovery_points` remains; inspection publication emits a `QUARANTINED` tombstone for safely deleted records and `checksumValid = false` for preserved unreadable records. |
 | Existing suites | protocol, fence, reconciliation, retention, and inspection tests pass unchanged in behavior. |
@@ -335,6 +355,9 @@ proves necessary:
 
 ## Change history
 
+- 2026-08-30: Revised after second Stage A review: added the ordinary closed
+  record-read contract and recovery/preview parity for preserved unreadable
+  `VERIFIED`; removed zero-length manifests from the physical schema and tests.
 - 2026-08-30: Revised Stage A after Issue comment review: separated physical
   schema 3 from logical record format 2, made containment lifecycle-sensitive,
   defined the point-level reconciliation load seam and child-first chunk
