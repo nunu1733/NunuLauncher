@@ -108,7 +108,7 @@ fun ManualOrganizationPreferences(
 
                 is ManualOrganizationRun.State.InputUnavailable -> item {
                     FocusTargetText(
-                        text = stringResource(R.string.manual_organization_input_unavailable),
+                        text = stringResource(currentState.reason.copyKind()),
                         focusRequester = focusRequester,
                     )
                     ClickablePreference(
@@ -511,6 +511,17 @@ private fun warningString(code: WarningCode): Int = when (code) {
     WarningCode.LEGACY_SHORTCUT_REVIEW -> R.string.manual_organization_warning_legacy_shortcut
     WarningCode.FALLBACK_CATEGORY -> R.string.manual_organization_warning_fallback_category
     WarningCode.UNAVAILABLE_PRESERVED -> R.string.manual_organization_warning_unavailable
+}
+
+/**
+ * Issue #172: `ReconciliationPending` is the "model still loading / try again
+ * later" family; every other readiness reason is a source/config problem that
+ * warrants a bug report. The copy split follows the diagnostics contract §2
+ * (user-facing reason is derived from typed results, never from the journal).
+ */
+private fun app.lawnchair.organizer.integration.InputReadinessReason.copyKind(): Int = when (this) {
+    app.lawnchair.organizer.integration.InputReadinessReason.ReconciliationPending -> R.string.manual_organization_input_not_ready_yet
+    else -> R.string.manual_organization_input_unavailable_bug
 }
 
 @Composable

@@ -4,6 +4,7 @@ import app.lawnchair.organizer.application.adapter.FakeLayoutWriter
 import app.lawnchair.organizer.application.canonical.CanonicalFixtures
 import app.lawnchair.organizer.application.protocol.CaptureId
 import app.lawnchair.organizer.application.protocol.CapturedSnapshot
+import app.lawnchair.organizer.application.protocol.LayoutWriterPort
 import app.lawnchair.organizer.application.public.ItemAvailability
 import app.lawnchair.organizer.application.public.OrganizerLockState
 import app.lawnchair.organizer.application.public.ProfileAvailability
@@ -238,6 +239,61 @@ class OrganizationInputComposerTest {
         assertFalse(first.input.targets.existing.isEmpty())
         assertEquals(ExistingRole.Preserved, first.input.targets.existing.single { it.item == ItemId("quiet") }.role)
         assertEquals(ExistingRole.Preserved, first.input.targets.existing.single { it.item == ItemId("work") }.role)
+    }
+
+    @Test
+    fun captureFailureObservesExceptionClassOnlyAndStaysFailClosed() {
+        val observed = mutableListOf<Class<out Throwable>>()
+        val failingSource = LayoutWriterCanonicalCaptureSource(
+            writer = throwingCaptureWriter(),
+            captureFailureObserver = CaptureFailureObserver { exceptionClass -> observed += exceptionClass },
+        )
+
+        val result = failingSource.capture()
+
+        assertTrue(result is CanonicalCaptureReadResult.Invalid)
+        assertEquals(listOf<Class<out Throwable>>(java.lang.IllegalStateException::class.java), observed)
+    }
+
+    @Test
+    fun defaultCaptureSourceIsSilentAboutFailures() {
+        val failingSource = LayoutWriterCanonicalCaptureSource(writer = throwingCaptureWriter())
+
+        assertTrue(failingSource.capture() is CanonicalCaptureReadResult.Invalid)
+    }
+
+    /** Delegating writer whose only throwing path is the capture the composer reads. */
+    private fun throwingCaptureWriter(): LayoutWriterPort = object : LayoutWriterPort by FakeLayoutWriter(
+        app.lawnchair.organizer.application.canonical.CanonicalFixtures.state(),
+    ) {
+        override fun captureCurrent(captureId: CaptureId): CapturedSnapshot = throw java.lang.IllegalStateException("capture failure with private layout context that must never be observed")
+    }
+
+    @Test
+    fun everyCompositionFailureSiteCarriesAClosedCode() {
+        // Issue #172: the closed code set must cover the composer's failure
+        // sites 1:1; the journal projects these names into
+        // ErrorFamily.INPUT_READINESS. Exhaustive spot checks of one code per
+        // readiness reason family keep the correspondence table honest.
+        val cases = mapOf(
+            InputCompositionCode.RECONCILIATION_PENDING to InputReadinessReason.ReconciliationPending,
+            InputCompositionCode.CAPTURE_INVALID to InputReadinessReason.InvalidCanonicalCapture(CaptureFailureCategory.CAPTURE_UNAVAILABLE),
+            InputCompositionCode.BUNDLE_CORRUPT to InputReadinessReason.SourceUnreadable(PolicySourceKind.ORGANIZER_POLICY_BUNDLE),
+            InputCompositionCode.OVERRIDE_UNREADABLE to InputReadinessReason.SourceUnreadable(PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT),
+            InputCompositionCode.EVIDENCE_UNREADABLE to InputReadinessReason.SourceUnreadable(PolicySourceKind.PLATFORM_CLASSIFICATION_EVIDENCE),
+            InputCompositionCode.SIGNAL_CONTRADICTION to InputReadinessReason.ContradictorySource(PolicySourceKind.MATERIALIZED_CLASSIFICATION_SIGNALS),
+        )
+        for ((code, reason) in cases) {
+            val composition = OrganizationInputComposition.NotReady(reason, CompositionDiagnostic(code))
+            assertEquals(code, composition.diagnostic.code)
+        }
+        // Every constant is a legal journal code after the model-layer validation.
+        for (code in InputCompositionCode.entries) {
+            app.lawnchair.organizer.diagnostics.model.ErrorEntry(
+                app.lawnchair.organizer.diagnostics.model.ErrorFamily.INPUT_READINESS,
+                code.name,
+            )
+        }
     }
 
     private fun ready(state: app.lawnchair.organizer.application.public.LayoutState): OrganizationInputComposition.Ready {

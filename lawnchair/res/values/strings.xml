@@ -999,7 +999,8 @@
     <string name="manual_organization_retry">Try again</string>
     <string name="manual_organization_capturing">Reading the current home layout…</string>
     <string name="manual_organization_planning">Preparing a safe organization proposal…</string>
-    <string name="manual_organization_input_unavailable">The current layout or required organization information is unavailable. Nothing was changed.</string>
+    <string name="manual_organization_input_not_ready_yet">The launcher is still starting up. Wait a moment, then try again.</string>
+    <string name="manual_organization_input_unavailable_bug">Required organization information is unavailable. Nothing was changed. If this keeps happening, please report a bug.</string>
     <string name="manual_organization_rejected">This layout cannot be organized safely. Nothing was changed.</string>
     <string name="manual_organization_impossible">This layout cannot be organized with the current available space. Nothing was changed.</string>
     <string name="manual_organization_no_changes">No changes are needed. Nothing was changed.</string>

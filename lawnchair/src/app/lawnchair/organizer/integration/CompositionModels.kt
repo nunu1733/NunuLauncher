@@ -68,12 +68,41 @@ enum class CaptureFailureCategory {
     UNKNOWN_LOCK,
 }
 
-/** Deliberately opaque: no package, profile, component, item, or layout identity. */
+/**
+ * Deliberately opaque: no package, profile, component, item, or layout identity.
+ * The single source of truth for composition failure codes: [code] is the
+ * closed set that the journal projects via `ErrorFamily.INPUT_READINESS`
+ * (issue #172).
+ */
 data class CompositionDiagnostic(
-    val code: String,
+    val code: InputCompositionCode,
     val policyVersionOrGeneration: String? = null,
     val digest: String? = null,
 )
+
+/**
+ * Closed set of composition failure sites (issue #172). The constant name is
+ * the formal serialized journal code for `ErrorFamily.INPUT_READINESS`; the
+ * pre-existing kebab-case composition codes map 1:1 onto these constants.
+ */
+enum class InputCompositionCode {
+    RECONCILIATION_PENDING,
+    RECONCILIATION_FAILED,
+    CAPTURE_INVALID,
+    CAPTURE_UNKNOWN_LOCK,
+    CAPTURE_UNREPRESENTABLE,
+    BUNDLE_MISSING,
+    BUNDLE_CORRUPT,
+    BUNDLE_UNSUPPORTED,
+    BUNDLE_INVALID,
+    OVERRIDE_UNREADABLE,
+    OVERRIDE_UNSUPPORTED_SCHEMA,
+    OVERRIDE_CATEGORY_INVALID,
+    EVIDENCE_UNREADABLE,
+    SIGNAL_CONTRADICTION,
+    TARGET_PARTITION,
+    DYNAMIC_CUT_UNSTABLE,
+}
 
 data class ClassificationEvidenceRequest(
     val item: ItemId,

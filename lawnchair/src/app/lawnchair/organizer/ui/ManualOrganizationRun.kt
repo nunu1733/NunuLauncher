@@ -23,6 +23,7 @@ import app.lawnchair.organizer.diagnostics.model.PhaseCode
 import app.lawnchair.organizer.diagnostics.model.RunEvent
 import app.lawnchair.organizer.diagnostics.model.RunMode
 import app.lawnchair.organizer.diagnostics.model.Trigger
+import app.lawnchair.organizer.diagnostics.projection.InputReadinessProjection
 import app.lawnchair.organizer.diagnostics.projection.PlanningProjection
 import app.lawnchair.organizer.integration.InputReadinessReason
 import app.lawnchair.organizer.integration.OrganizationInputComposition
@@ -209,6 +210,7 @@ class ManualOrganizationRun internal constructor(
         try {
             when (val composition = application.composeFullOrganization()) {
                 is OrganizationInputComposition.NotReady -> {
+                    emitInputNotReady(operation, composition)
                     finish(operation, State.InputUnavailable(composition.reason))
                 }
 
@@ -623,6 +625,28 @@ class ManualOrganizationRun internal constructor(
             -> Orientation.LANDSCAPE
         },
     )
+
+    /**
+     * Issue #172: a run that ends in `InputUnavailable` closes its journal
+     * sequence with a terminal `INPUT_NOT_READY` record carrying the privacy-safe
+     * readiness code, so exported diagnostics can distinguish capture/lock/bundle/
+     * override/evidence reasons instead of trailing `RUN_STARTED`.
+     */
+    private fun emitInputNotReady(
+        operation: Operation,
+        composition: OrganizationInputComposition.NotReady,
+    ) {
+        emit(
+            RunEvent(
+                journalSequence = 0L,
+                runId = operation.runId.value,
+                trigger = operation.trigger,
+                runMode = RunMode.FULL_ORGANIZATION,
+                phase = PhaseCode.INPUT_NOT_READY,
+                error = InputReadinessProjection.projectError(composition),
+            ),
+        )
+    }
 
     private fun emitStaleRejection(operation: Operation) {
         emit(

@@ -99,7 +99,8 @@
     <string name="manual_organization_retry">再試行</string>
     <string name="manual_organization_capturing">現在のホームレイアウトを読み込んでいます…</string>
     <string name="manual_organization_planning">安全に整理できる案を作成しています…</string>
-    <string name="manual_organization_input_unavailable">現在のレイアウトまたは必要な情報を利用できません。何も変更されていません。</string>
+    <string name="manual_organization_input_not_ready_yet">ランチャーはまだ起動中です。少し待ってから、もう一度お試しください。</string>
+    <string name="manual_organization_input_unavailable_bug">必要な整理情報を利用できません。何も変更されていません。繰り返し発生する場合はバグを報告してください。</string>
     <string name="manual_organization_rejected">このレイアウトは安全に整理できません。何も変更されていません。</string>
     <string name="manual_organization_impossible">現在の空きスペースでは、このレイアウトを整理できません。何も変更されていません。</string>
     <string name="manual_organization_no_changes">必要な変更はありません。何も変更されていません。</string>

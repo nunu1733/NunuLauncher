@@ -186,6 +186,23 @@ class ModelValidationTest {
     }
 
     @Test
+    fun errorEntryAllowsEveryInputCompositionCode() {
+        for (code in app.lawnchair.organizer.integration.InputCompositionCode.entries) {
+            ErrorEntry(ErrorFamily.INPUT_READINESS, code.name)
+        }
+    }
+
+    @Test
+    fun errorEntryRejectsArbitraryStringForInputReadiness() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ErrorEntry(ErrorFamily.INPUT_READINESS, "capture-invalid")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            ErrorEntry(ErrorFamily.INPUT_READINESS, "SOME_NEW_REASON")
+        }
+    }
+
+    @Test
     fun errorEntryAllowsUnmappedForEveryFamily() {
         for (family in ErrorFamily.entries) {
             ErrorEntry(family, "UNMAPPED")

@@ -103,6 +103,14 @@ DeviceProfileSummary { columns, rows, hotseatSlots, orientation }     // 寸法�
 - planner/apply の公開type は変更しない。journal はresult type を読んで
   event へ射影する専用のwriter を持ち、`DiagnosticParam` の値
   （`ItemParam`、`SpanParam`、`PageParam` 等）はjournal へコピーしない。
+- **serialized enum 追加のversioning（Issue #172）**: `ErrorEntry.code` は
+  String 値であり、来源enum の定数名が増えるだけならschema 変更なしで可である
+  （§5）。一方、`PhaseCode` / `ErrorFamily` などserial化されたenum 値の追加は、
+  新build が旧journal を読む（upgrade）方向では可であるが、旧build が新event を
+  含むjournal を読む（downgrade）方向ではstrict decode に失敗し、§8 の
+  corruption isolation と同じ扱いでjournal 全体が初期化される。downgrade で失う
+  のはretention 上限内のdiagnostics journal のみであり、layout DB・recovery
+  store・設定には影響しない。sequence はreset されない。
 
 ## 4. Phase taxonomy
 
@@ -115,6 +123,7 @@ apply protocol に対応する。terminal はrun の終了を意味する。
 | PhaseCode | 対応する観測点 | Terminal |
 |---|---|---|
 | `RUN_STARTED` | capture 開始。trigger/runMode/versions/deviceProfile を確定 | |
+| `INPUT_NOT_READY` | 入力合成が `NotReady` で終了（error 付き。code は§5 `INPUT_READINESS`）。`CAPTURED` 以前に終わるrun のterminal 記録（Issue #172） | ✓ |
 | `CAPTURED` | snapshot 取得完了 | |
 | `PREVIEWED` | preview をuser に表示 | |
 | `PLANNED` | plan 生成（planSummary 付き） | |
@@ -188,6 +197,7 @@ ErrorFamily =
     | RECOVERY_FAILURE      // spec 13 RecoveryFailure
     | CONCURRENT            // 同一module 内の操作競合
     | WRITER_BUSY           // 外部layout writer 競合
+    | INPUT_READINESS       // 入力合成が NotReady で終了（Issue #172）
 ```
 
 | Family | code の来源（enum 定数名をそのまま使用） |
@@ -199,6 +209,7 @@ ErrorFamily =
 | `RECOVERY_REJECTION` | spec 13 `RecoveryRejection`（`MISSING` … `ALREADY_RESTORED`） |
 | `RECOVERY_FAILURE` | spec 13 `RecoveryFailure` |
 | `CONCURRENT` / `WRITER_BUSY` | 固定code（`CONCURRENT_RUN` / `WRITER_BUSY`）。phase と重複するがerror としての検索性のために持つ |
+| `INPUT_READINESS` | integration `InputCompositionCode`（16 定数、Issue #172）。`RECONCILIATION_PENDING` / `RECONCILIATION_FAILED` / `CAPTURE_INVALID` / `CAPTURE_UNKNOWN_LOCK` / `CAPTURE_UNREPRESENTABLE` / `BUNDLE_MISSING` / `BUNDLE_CORRUPT` / `BUNDLE_UNSUPPORTED` / `BUNDLE_INVALID` / `OVERRIDE_UNREADABLE` / `OVERRIDE_UNSUPPORTED_SCHEMA` / `OVERRIDE_CATEGORY_INVALID` / `EVIDENCE_UNREADABLE` / `SIGNAL_CONTRADICTION` / `TARGET_PARTITION` / `DYNAMIC_CUT_UNSTABLE`。composer の失敗箇所と1:1対応する単一のclosed 集合である |
 
 規則:
 
@@ -264,6 +275,7 @@ ADR またはspec の承認を必要とする。
 | planner 診断param | `DiagnosticParam`（`ItemParam`、`SpanParam`、`PageParam` 等） | **Never** | error code と件数のみ |
 | 内容由来識別子 | `RevisionId`、`ItemId`、`PageId`、`FolderId`、digest | **Never** | 一致/不一致の結果（phase とerror code）のみ |
 | crash 上情報 | exception message、stack trace | **Never**（journal） | OS crash buffer と§11 で相関 |
+| capture 側例外のidentity（Issue #172） | exception class 単純名 | **Allowed**（`OrganizerDiag` tag・DEBUG level・debug build・capture 失敗時のみのlogcat 行。journal・export には書かない） | `phase=CAPTURE exceptionClass=<simple name>`。専用typed API（`Class<out Throwable>` のみ受取）が強制するため、message・layout 由来text は型として渡せない。raw `Throwable.message` とstack trace は本行にも含めない |
 | random opaque ID | `RunId`、`RecoveryPointId` | **Allowed** | 相関key |
 | 相関・状態 | trigger、runMode、phase、applyStage、lifecycle/authoritative state | **Allowed** | — |
 | error / warning code | enum 定数名 | **Allowed** | — |
@@ -332,7 +344,8 @@ ADR またはspec の承認を必要とする。
 - 出力内容は`RunEvent` のsubset 射影のみ: `run=<runId> phase=<phase>
   [stage=<A0–A8>] [err=<family>.<code>] [counts...]`。
 - level: phase 遷移は`DEBUG`、terminal failure 系（`*_REJECTED`、`*_FAILED`、
-  `*_ROLLED_BACK`、`*_UNRESOLVED`）は`WARN`。release build ではterminal failure 系のみ。
+  `*_ROLLED_BACK`、`*_UNRESOLVED`、および`INPUT_NOT_READY`）は`WARN`。release build ではterminal failure 系のみ。
+- capture 側例外の詳細行（§7 の限定例外）はdebug build のみで出力し、release build では出力しない。release ではjournal 由来の`INPUT_NOT_READY`（WARN、理由コード付き）のみが観測される。
 - §7 の**Never 分類はbuild variant にかかわらず一切出力しない**。
   一時的なデバッグ用途でもlogcat へのraw 値出力は禁止する。検討が必要な場合は
   journal に許可field を追加する手続き（本表更新）を通す。
@@ -479,6 +492,19 @@ non-containment を検証する。
 {"schemaVersion":1,"journalSequence":42,"phase":"CAPTURED", …}
 ```
 
+### D-11: 入力合成の失敗（INPUT_NOT_READY、Issue #172）
+
+```json
+{"schemaVersion":1,"journalSequence":43,"phase":"RUN_STARTED","runId":"7d1c…","trigger":"MANUAL_FULL","runMode":"FULL_ORGANIZATION"}
+{"journalSequence":44,"phase":"INPUT_NOT_READY","runId":"7d1c…","error":{"family":"INPUT_READINESS","code":"BUNDLE_MISSING"}}
+```
+
+`INPUT_NOT_READY` はterminal であり、理由コードはcomposer のclosed 集合
+（§5 `INPUT_READINESS`）の定数名のみである。capture 側例外があった場合でも、
+journal には例外class 名・message は書かれず、debug build のlogcat に限り
+`OrganizerDiag: phase=CAPTURE exceptionClass=SQLiteBlobTooBigException`
+のようなclass identity 行が出る。
+
 ## 14. Downstream handoff
 
 本契約を実装する変更と担当。planner/apply の公開type 変更は要求しない。
@@ -533,5 +559,11 @@ boundary（§12）、representative diagnostic fixtures（§13）。
 ## Change history
 
 - 2026-08-15: Issue #16 のresearch成果物として初版。typed run event model、
-  redaction/classification、retention/export/logcat、restart 相関、telemetry
-  default-off 境界、fixtures を定義した。
+redaction/classification、retention/export/logcat、restart 相関、telemetry
+default-off 境界、fixtures を定義した。
+- 2026-08-31: [Issue #172](https://github.com/nunu1733/NunuLauncher/issues/172)
+（spec: specs/172-input-unavailable-diagnostics）。`INPUT_NOT_READY` terminal
+phase と `INPUT_READINESS` family（`InputCompositionCode` 16 値）を追加し、
+`InputUnavailable` で終わるrun が理由コード付きでjournal を閉じるようになった。
+serialized enum 追加のupgrade/downgrade 規定（§3）と、capture 側例外のclass
+identity のみを許すdebug logcat の限定例外（§7/§10）を追加した。
