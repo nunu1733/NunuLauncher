@@ -4,6 +4,7 @@ import app.lawnchair.organizer.application.adapter.FakeClock
 import app.lawnchair.organizer.application.adapter.FakeLayoutWriter
 import app.lawnchair.organizer.application.adapter.FakeRecoveryStore
 import app.lawnchair.organizer.application.canonical.CanonicalFixtures
+import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.protocol.ApplyProtocol
 import app.lawnchair.organizer.application.protocol.FaultInjector
 import app.lawnchair.organizer.application.protocol.FixedOperationIdSource
@@ -200,6 +201,39 @@ class ApplyProtocolDiagnosticsTest {
         assertNotNull("Terminal event must be emitted", terminal)
         // The terminal event should have applyStage=A2
         assertEquals(ApplyStage.A2, terminal!!.applyStage)
+    }
+
+    @Test
+    fun recoveryPointAdmissionBlockedIsCheckpointRejectedAtA4() {
+        val capture = writer.captureCurrent(app.lawnchair.organizer.application.protocol.CaptureId("seed"))
+        repeat(3) { index ->
+            val pointId = RecoveryPointId(index.toString().padStart(32, 'a'))
+            val checkpoint = store.checkpoint(
+                app.lawnchair.organizer.application.protocol.RecoveryStorePort.CheckpointPayload(
+                    pointId = pointId,
+                    runId = app.lawnchair.organizer.application.public.RunId(index.toString().padStart(32, 'b')),
+                    preManifest = capture.manifest,
+                    preRevision = capture.revision,
+                    preDigest = capture.digest,
+                    applyActionDigest = ByteArray(32) { index.toByte() },
+                    itemCount = capture.manifest.rowCount,
+                    resourceCount = capture.manifest.resources.size,
+                ),
+            )
+            assertTrue(checkpoint is app.lawnchair.organizer.application.protocol.RecoveryStorePort.CheckpointResult.Ready)
+            assertTrue(store.advance(pointId, LifecycleState.APPLYING))
+        }
+
+        val result = createProtocol().apply(mutatingPlan())
+
+        assertEquals(
+            app.lawnchair.organizer.application.public.PreWriteRejection.RECOVERY_POINT_ADMISSION_BLOCKED,
+            (result as ApplyResult.Rejected).reason,
+        )
+        val terminal = recordedEvents.last()
+        assertEquals(PhaseCode.CHECKPOINT_REJECTED, terminal.phase)
+        assertEquals(ApplyStage.A4, terminal.applyStage)
+        assertEquals("RECOVERY_POINT_ADMISSION_BLOCKED", terminal.error?.code)
     }
 
     @Test

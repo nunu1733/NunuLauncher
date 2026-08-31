@@ -123,7 +123,7 @@ apply protocol に対応する。terminal はrun の終了を意味する。
 | `USER_CONFIRMED` | 明示的confirm（spec 13 A0 直前） | |
 | `USER_CANCELLED` | preview/confirm でのcancel。書き込みなし | ✓ |
 | `CHECKPOINTED` | recovery record が`READY`（pointId 付き） | |
-| `CHECKPOINT_REJECTED` | `CHECKPOINT_CREATE_FAILED` / `CHECKPOINT_VALIDATE_FAILED` | ✓ |
+| `CHECKPOINT_REJECTED` | `CHECKPOINT_CREATE_FAILED` / `CHECKPOINT_VALIDATE_FAILED` / `RECOVERY_POINT_ADMISSION_BLOCKED` | ✓ |
 | `APPLY_NO_CHANGES` | apply結果 `NoChanges`。両DB無変更 | ✓ |
 | `APPLY_REJECTED` | apply結果 `Rejected`（checkpoint 系以外）。stage はA0–A5 | ✓ |
 | `CONCURRENT_RUN_REJECTED` | apply結果 `ConcurrentRun` | ✓ |
