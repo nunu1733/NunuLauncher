@@ -346,6 +346,7 @@ ADR またはspec の承認を必要とする。
 - level: phase 遷移は`DEBUG`、terminal failure 系（`*_REJECTED`、`*_FAILED`、
   `*_ROLLED_BACK`、`*_UNRESOLVED`、および`INPUT_NOT_READY`）は`WARN`。release build ではterminal failure 系のみ。
 - capture 側例外の詳細行（§7 の限定例外）はdebug build のみで出力し、release build では出力しない。release ではjournal 由来の`INPUT_NOT_READY`（WARN、理由コード付き）のみが観測される。
+- **本節一般則の明示的な限定例外（Issue #172）**: capture 側例外の詳細行は`RunEvent` の射影ではなく、journal append より前にcapture site で発生する非`RunEvent` 行である。行の内容は§7 の限定例外（exception class 単純名のみ）に閉じられ、tag・level 規則は本節に従う。journal・export には一切書かれない。
 - §7 の**Never 分類はbuild variant にかかわらず一切出力しない**。
   一時的なデバッグ用途でもlogcat へのraw 値出力は禁止する。検討が必要な場合は
   journal に許可field を追加する手続き（本表更新）を通す。

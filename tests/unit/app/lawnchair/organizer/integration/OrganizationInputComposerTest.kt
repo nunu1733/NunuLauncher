@@ -256,6 +256,23 @@ class OrganizationInputComposerTest {
     }
 
     @Test
+    fun throwingObserverDoesNotChangeFailClosedResult() {
+        // Issue #172: the diagnostics observer is fail-open; an observer that
+        // throws must not leak its exception and must not change the
+        // fail-closed Invalid result the composer depends on.
+        val failingSource = LayoutWriterCanonicalCaptureSource(
+            writer = throwingCaptureWriter(),
+            captureFailureObserver = CaptureFailureObserver {
+                throw java.lang.IllegalStateException("observer failure")
+            },
+        )
+
+        val result = failingSource.capture()
+
+        assertTrue(result is CanonicalCaptureReadResult.Invalid)
+    }
+
+    @Test
     fun defaultCaptureSourceIsSilentAboutFailures() {
         val failingSource = LayoutWriterCanonicalCaptureSource(writer = throwingCaptureWriter())
 

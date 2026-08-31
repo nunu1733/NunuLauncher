@@ -91,10 +91,9 @@ class ManualOrganizationPreferencesInstrumentationTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun inputUnavailableCopySplitsTryAgainLaterFromBugReport() {
+    fun reconciliationPendingShowsTryAgainLaterCopy() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-
-        val pendingApplication = FakeApplication().apply {
+        val application = FakeApplication().apply {
             notReadyComposition = OrganizationInputComposition.NotReady(
                 reason = app.lawnchair.organizer.integration.InputReadinessReason.ReconciliationPending,
                 diagnostic = app.lawnchair.organizer.integration.CompositionDiagnostic(
@@ -102,22 +101,26 @@ class ManualOrganizationPreferencesInstrumentationTest {
                 ),
             )
         }
-        val pendingRunner = ManualOrganizationRun(
-            pendingApplication,
+        val runner = ManualOrganizationRun(
+            application,
             OrganizationPlanner { error("planner must not run") },
         )
-        pendingRunner.start()
+        runner.start()
         composeRule.setContent {
             LawnchairTheme {
-                ManualOrganizationPreferences(run = pendingRunner)
+                ManualOrganizationPreferences(run = runner)
             }
         }
-        composeRule.waitUntil { pendingRunner.state is ManualOrganizationRun.State.InputUnavailable }
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.InputUnavailable }
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_input_not_ready_yet),
         ).assertIsDisplayed()
+    }
 
-        val bugApplication = FakeApplication().apply {
+    @Test
+    fun sourceUnavailableShowsBugReportCopyWithRetry() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
             notReadyComposition = OrganizationInputComposition.NotReady(
                 reason = app.lawnchair.organizer.integration.InputReadinessReason.SourceUnavailable(
                     PolicySourceKind.ORGANIZER_POLICY_BUNDLE,
@@ -127,17 +130,17 @@ class ManualOrganizationPreferencesInstrumentationTest {
                 ),
             )
         }
-        val bugRunner = ManualOrganizationRun(
-            bugApplication,
+        val runner = ManualOrganizationRun(
+            application,
             OrganizationPlanner { error("planner must not run") },
         )
-        bugRunner.start()
+        runner.start()
         composeRule.setContent {
             LawnchairTheme {
-                ManualOrganizationPreferences(run = bugRunner)
+                ManualOrganizationPreferences(run = runner)
             }
         }
-        composeRule.waitUntil { bugRunner.state is ManualOrganizationRun.State.InputUnavailable }
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.InputUnavailable }
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_input_unavailable_bug),
         ).assertIsDisplayed()

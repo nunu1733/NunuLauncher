@@ -81,13 +81,16 @@ class DiagnosticsLogger(
     /**
      * Issue #172: capture-side failure detail, debug builds only.
      *
-     * Contract §7 bounded exception: only the exception class simple name may
-     * appear. The API takes no String parameter, so no caller can feed
-     * message/layout-derived text through this seam; raw `Throwable.message`
-     * and stack traces stay Never on every surface. The class simple name
-     * (e.g. `SQLiteBlobTooBigException`) is the normalized failure identity —
-     * the platform exposes no typed numeric error-code accessor, so none is
-     * carried.
+     * Contract §10 explicit exception: unlike [log], this line is NOT a
+     * `RunEvent` projection and is emitted at the capture site **before** any
+     * journal append. Its content is confined to the contract §7 bounded
+     * exception (exception class simple name only). The API takes no String
+     * parameter, so no caller can feed message/layout-derived text through
+     * this seam; raw `Throwable.message` and stack traces stay Never on every
+     * surface. The class simple name (e.g. `SQLiteBlobTooBigException`) is the
+     * normalized failure identity — the platform exposes no typed numeric
+     * error-code accessor, so none is carried. The journal-side counterpart is
+     * the terminal `INPUT_NOT_READY` record with the readiness code.
      */
     fun logCaptureFailure(exceptionClass: Class<out Throwable>) {
         if (isReleaseBuild) return

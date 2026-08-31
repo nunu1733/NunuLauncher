@@ -9,21 +9,21 @@
 確認済みの事実（commit `256fb6525d` 時点）:
 
 - `ManualOrganizationRun.start()` は `OrganizationInputComposition.NotReady` を受けると `finish(operation, State.InputUnavailable(reason))` のみを行い、journal eventを発行しない
-  （[ManualOrganizationRun.kt:210-213](../../../lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt)）。journalは `RUN_STARTED` のまま終わる。
+  （[ManualOrganizationRun.kt:210-213](../../lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt)）。journalは `RUN_STARTED` のまま終わる。
 - `LayoutWriterCanonicalCaptureSource.capture()` は `RuntimeException` を握り潰して `CanonicalCaptureReadResult.Invalid` を返す
-  （[OrganizationInputComposer.kt:57-63](../../../lawnchair/src/app/lawnchair/organizer/integration/OrganizationInputComposer.kt)）。例外の痕跡はどこにも残らない。
+  （[OrganizationInputComposer.kt:57-63](../../lawnchair/src/app/lawnchair/organizer/integration/OrganizationInputComposer.kt)）。例外の痕跡はどこにも残らない。
 - composerは `NotReady` ごとに安定したdiagnostic code（kebab-case文字列）を既に生成している
-  （`notReady(...)` 呼出し箇所、[OrganizationInputComposer.kt](../../../lawnchair/src/app/lawnchair/organizer/integration/OrganizationInputComposer.kt)）。
-- model未読込の経路は [LayoutApplicationModule.kt:111-123](../../../lawnchair/src/app/lawnchair/organizer/application/protocol/LayoutApplicationModule.kt) の `ReadinessGate.runWhenReady` であり、code `"reconciliation-pending"` / `"reconciliation-failed"` を返す。これもjournalに落ちない。
+  （`notReady(...)` 呼出し箇所、[OrganizationInputComposer.kt](../../lawnchair/src/app/lawnchair/organizer/integration/OrganizationInputComposer.kt)）。
+- model未読込の経路は [LayoutApplicationModule.kt:111-123](../../lawnchair/src/app/lawnchair/organizer/application/protocol/LayoutApplicationModule.kt) の `ReadinessGate.runWhenReady` であり、code `"reconciliation-pending"` / `"reconciliation-failed"` を返す。これもjournalに落ちない。
 - **journal versioning（review Blocker 2の前提確認済み）**:
   - `RunEventSerializer` はstrict decode（`ignoreUnknownKeys=false`）で、`schemaVersion == 1` のみ受理する
-    （[RunEventSerializer.kt:11-32](../../../lawnchair/src/app/lawnchair/organizer/diagnostics/journal/RunEventSerializer.kt)）。
+    （[RunEventSerializer.kt:11-32](../../lawnchair/src/app/lawnchair/organizer/diagnostics/journal/RunEventSerializer.kt)）。
   - `JournalStore` は既存journalを全件decodeし、**1件でもdecode失敗するとjournal全体をresetする**。sequenceは保持される
-    （[JournalStore.kt:222-242,316-326](../../../lawnchair/src/app/lawnchair/organizer/diagnostics/journal/JournalStore.kt)）。
+    （[JournalStore.kt:222-242,316-326](../../lawnchair/src/app/lawnchair/organizer/diagnostics/journal/JournalStore.kt)）。
   - したがって新enum（`INPUT_NOT_READY` / `INPUT_READINESS`）を含むjournalを旧buildで開くと「読み飛ばし」ではなくjournal resetになる。この挙動をspecはAC-7で受入条件として規定する。既存契約の「新enum定数はjournal schema変更なしに追加できる」は `ErrorEntry.code` のString値の規定であり、serialized enum値の追加には適用されない。
-  - [ExportWriter.kt:35](../../../lawnchair/src/app/lawnchair/organizer/diagnostics/export/ExportWriter.kt) も同一のstrict decodeである（exportは自buildのjournal snapshotを読むため、自buildが書いた値は必ずdecodeできる）。
+  - [ExportWriter.kt:35](../../lawnchair/src/app/lawnchair/organizer/diagnostics/export/ExportWriter.kt) も同一のstrict decodeである（exportは自buildのjournal snapshotを読むため、自buildが書いた値は必ずdecodeできる）。
 - **logger seam（review Major 1の前提確認済み）**: `DiagnosticsLogger.log(event: RunEvent)` はjournal persist後の呼出しを前提とし、terminal failure集合以外はrelease buildで出力をskipする
-  （[DiagnosticsLogger.kt:60-76](../../../lawnchair/src/app/lawnchair/organizer/diagnostics/logger/DiagnosticsLogger.kt)）。capture exceptionはjournal event以前のcapture siteで発生するため、現行APIでは表現できない。`DiagnosticsLogger` 自体の変更が本planのchange setに含まれる。
+  （[DiagnosticsLogger.kt:60-76](../../lawnchair/src/app/lawnchair/organizer/diagnostics/logger/DiagnosticsLogger.kt)）。capture exceptionはjournal event以前のcapture siteで発生するため、現行APIでは表現できない。`DiagnosticsLogger` 自体の変更が本planのchange setに含まれる。
 - 推測（未確認）: #171の一回性episodeの理由。capture側例外（例: CursorWindow超過）か、gate/別sourceの遅延かは、production証拠が無いため特定できない。これがAC-1/AC-2の動機である。
 
 ## Design
@@ -33,12 +33,12 @@
 | Module | 変更 |
 |---|---|
 | `diagnostics/model` | `PhaseCode` へ `INPUT_NOT_READY`（terminal）を追加。`ErrorFamily` へ `INPUT_READINESS` を追加し、`validCodesForFamily` が新closed enum `InputCompositionCode` の定数名 + `"UNMAPPED"` を返す実装を追加 |
-| `diagnostics/logger/DiagnosticsLogger.kt` | 専用API `logCaptureFailure(exceptionClass: Class<out Throwable>)` を追加。**String型パラメータを持たない**: class名はlogger内部で `simpleName` 化する（platformにtypedな数値error code accessorが存在しないため数値codeは運ばない）。debug buildでのみDEBUG levelで出力し、release buildでは何も出力しない。`terminalFailurePhases` に `INPUT_NOT_READY` を追加しWARN扱いにする（journal由来eventの従来経路） |
+| `diagnostics/logger/DiagnosticsLogger.kt` | 専用API `logCaptureFailure(exceptionClass: Class<out Throwable>)` を追加。**String型パラメータを持たない**: class名はlogger内部で `simpleName` 化する（platformにtypedなerror code accessorが存在しないため、数値codeは運ばない。issueのclass/code要求はdebug行のclass名+journal理由コードの組み合わせで満たす）。debug buildでのみDEBUG levelで出力し、release buildでは何も出力しない。`terminalFailurePhases` に `INPUT_NOT_READY` を追加しWARN扱いにする（journal由来eventの従来経路） |
 | `integration` | 新closed enum `InputCompositionCode`（16値、SCREAMING_SNAKE）を定義。`CompositionDiagnostic.code` の型をこれへ変更（既存kebab文字列との対応はAC-1の対応表testで固定）。`CanonicalCaptureReadResult` 失敗時にobserverへ通知する最小の注入点を `LayoutWriterCanonicalCaptureSource` に追加（production wiringは `LayoutApplicationModule` が `DiagnosticsLogger.logCaptureFailure` へ接続）。**`InputReadinessReason` とcomposerの判定ロジックは変更しない** |
 | `diagnostics/projection` | `InputReadinessProjection`（新規）: `OrganizationInputComposition.NotReady` → `ErrorEntry(INPUT_READINESS, code)` への射影。codeは既に `InputCompositionCode` 型であるため対応表は不要。将来の未知code（外部由来）に備え `UNMAPPED` へのfallthroughを検証するtestを持つ |
 | `organizer/ui` | `ManualOrganizationRun.start()` の `NotReady` 分岐で、`finish` 前に `INPUT_NOT_READY` eventをemit。既存の `emit()` のfail-open性を踏襲 |
 | `ui/preferences` | `State.InputUnavailable` の表示copyをreason区分で切替（`ReconciliationPending` → 再試行系 / その他 → 報告系）。string resourcesにen/jaを追加 |
-| `docs/engineering/organizer-diagnostics.md` | §3にserialized enum追加のversioning規定（upgrade可/downgrade時はjournal reset）、§4.1に `INPUT_NOT_READY` 行、§5にfamily/code来源（`InputCompositionCode` + `UNMAPPED`）と16値一覧、§7にcapture側例外の限定例外行（class名+正規化error code、debug build限定、message/stack traceはNeverのまま）、§10にWARN集合とdebug例外行の規則、§13にfixture例とnegative fixture拡張 |
+| `docs/engineering/organizer-diagnostics.md` | §3にserialized enum追加のversioning規定（upgrade可/downgrade時はjournal reset）、§4.1に `INPUT_NOT_READY` 行、§5にfamily/code来源（`InputCompositionCode` + `UNMAPPED`）と16値一覧、§7にcapture側例外の限定例外行（class名のみ、debug build限定、message/stack traceはNeverのまま）、§10にWARN集合とdebug例外行の規則、§13にfixture例とnegative fixture拡張 |
 
 - **journal理由コードの正本は `InputCompositionCode` 一つ**である。`CompositionDiagnostic.code` とjournalの `ErrorEntry.code` が同一集合を参照し、driftは `validCodesForFamily` の実行時validationで検出される。
 - capture失敗の観測は `RunEvent` に例外情報を載せない。observer注入点 → `logCaptureFailure` の型境界（`Class<out Throwable>` のみ）で完結させ、`RunEvent` schema・schemaVersionは不変である。文字列型パラメータが存在しないため、呼出側がmessageやlayout由来の文字列を渡せる経路はAPIレベルで存在しない（fixture依存ではなく構造的保証）。
@@ -83,7 +83,7 @@ start() → RUN_STARTED
 
 ### Alternatives rejected
 
-- **raw `Throwable.message` のlogcat出力**: 任意のmessageがlayout内容・package名等を含まない保証がなく、§7のNever分類（自由形式text）と両立しない。class名+数値error codeで#171種の診断（例: `SQLiteBlobTooBigException`）は十分である。
+- **raw `Throwable.message` のlogcat出力**: 任意のmessageがlayout内容・package名等を含まない保証がなく、§7のNever分類（自由形式text）と両立しない。class名（例: `SQLiteBlobTooBigException`）+journal理由コードで#171種の診断は十分である。
 - **`logCaptureFailure` を文字列パラメータ（`exceptionClassName: String`）で定義する**: 「typed accessorから取得済みだから安全」というcaller convention依存になり、別callerがmessage・package・layout由来の文字列を渡せてしまう。privacy保証をfixtureではなく構造的に成立させるため、`Class<out Throwable>` のみを受ける型境界とする。数値error code（`Int?`）も検討したが、API 36.1のplatform `SQLiteException` はtypedなerror code accessorを持たず（`javap` で確認）、productionで値を埋める手段が存在しないため削除した。
 - **schemaVersion 2への引き上げ / 新旧mixed-version journal**: `RunEventSerializer` はv1のみ受理し、JournalStoreは全件decodeする。v2 eventの混在は現行実装でもdecode失敗（journal reset）であり、旧buildとの互換は解決しない。retentionで物理的に短命なdiagnostics journalのdowngrade時resetは、corruption isolation（既存§8）と同じfail-open挙動として受入する方が実装差分が小さい。
 - **`InputReadinessReason` 系ごとの新ErrorFamily / `additionalCodes` にsource kindを混在**: `ErrorEntry` のvalidation（同一familyのcodeのみ許容）と§5の「codeは来源enum定数名」規則に反する。

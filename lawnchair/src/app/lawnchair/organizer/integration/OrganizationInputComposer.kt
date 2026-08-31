@@ -78,7 +78,13 @@ class LayoutWriterCanonicalCaptureSource(
     override fun capture(): CanonicalCaptureReadResult = try {
         CanonicalCaptureReadResult.Ready(writer.captureCurrent(CaptureId("organization-input")))
     } catch (failure: RuntimeException) {
-        captureFailureObserver.onCaptureFailure(failure.javaClass)
+        // Fail-open: a diagnostics observer failure must never change readiness
+        // semantics — the composer still returns Invalid regardless (issue #172).
+        try {
+            captureFailureObserver.onCaptureFailure(failure.javaClass)
+        } catch (_: RuntimeException) {
+            // Observability failed; fail-closed capture result is unaffected.
+        }
         CanonicalCaptureReadResult.Invalid
     }
 }

@@ -20,7 +20,7 @@ updated: 2026-08-31
 
 ## Outcome
 
-`InputUnavailable` で終わるすべてのrunが、privacy-safeな理由コードを持つterminal diagnostics recordをjournalに残す。capture側の失敗は、例外class名と数値error code（raw message・stack traceは出さない）としてdebug buildのlogcatで観測できる。supportとユーザーは「後でもう一度試せる」状態（model未読込等）と「バグ報告に値する」状態（source/config系の理由）を区別できる。#171の一回性episodeは、名前付きの理由で再現されるか、失敗時点の状態証拠でboundedされる。
+`InputUnavailable` で終わるすべてのrunが、privacy-safeな理由コードを持つterminal diagnostics recordをjournalに残す。capture側の失敗は、例外class名のみ（raw message・stack traceは出さない）をdebug buildのlogcatに出し、journal側は `INPUT_NOT_READY` の理由コードが担う組み合わせで観測できる。supportとユーザーは「後でもう一度試せる」状態（model未読込等）と「バグ報告に値する」状態（source/config系の理由）を区別できる。#171の一回性episodeは、名前付きの理由で再現されるか、失敗時点の状態証拠でboundedされる。
 
 Issue #172本文の受入条件にある「exception class/message/code」のうち、**messageは本specにより「出力しない」に強化する**。理由: 任意の `Throwable.message` がlayout内容・package名・component名・座標等を含まないことは一般に保証できず、§7のNever分類と両立しないためである。class名単独（例: `SQLiteBlobTooBigException`）とerror codeで#171の診断に必要な識別は十分であり、この強化はissueの意図（診断可能にする）を満たす。
 
@@ -85,7 +85,7 @@ And release buildではこの行は出力されない。releaseではjournal由�
 Given 任意の `INPUT_NOT_READY` run。
 When journal、export、logcatの全出力面を検査する。
 Then [organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md) §7のNever分類（package名、component名、座標、digest、自由形式text、exception message等）は一切現れない。
-And capture側例外のclass名・正規化error codeは、本specが承認するdebug-build限定のlogcat行を除いて現れない。
+And capture側例外のclass名は、本specが承認するdebug-build限定のlogcat行を除いて現れない。
 
 ### Scenario: 一回性のpost-restore capture不可の再現またはbounded
 
@@ -114,7 +114,7 @@ And upgrade方向（旧journal → 新build）は既存eventのみで構成さ�
 ## Permissions, privacy, and security
 
 - permission・network・telemetryの追加はnone。journal・exportは既存のlocal-only契約に従う。
-- [organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md) §7分類表に1行の限定例外を承認する: **capture側例外のexception class名** を、`DiagnosticsLogger` の専用API経由で、DEBUG level・debug build・capture失敗時のみlogcatに出力してよい。APIは `Class<out Throwable>` のみを受け取り、文字列型・数値error codeパラメータを持たない（platformがtyped accessorを提供しないため、class名単独が正規化identityである）。**raw `Throwable.message` とstack traceは引き続きNeverであり、journal・export・logcatのいずれにも出力しない。**
+- [organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md) §7分類表に1行の限定例外を承認する: **capture側例外のexception class名** を、`DiagnosticsLogger` の専用API経由で、DEBUG level・debug build・capture失敗時のみlogcatに出力してよい。APIは `Class<out Throwable>` のみを受け取り、文字列型パラメータを持たない（platformがtyped accessorを提供しないため、class名単独が正規化identityである）。issue本文の「class/code」要求は、debug logcat行のclass名とjournal `INPUT_NOT_READY` recordの理由コード（例: `CAPTURE_INVALID`）の組み合わせで満たされる。**raw `Throwable.message` とstack traceは引き続きNeverであり、journal・export・logcatのいずれにも出力しない。**
 
 ## Accessibility and localization
 
@@ -154,6 +154,6 @@ And upgrade方向（旧journal → 新build）は既存eventのみで構成さ�
 
 - 2026-08-31: Issue #172のdraft specを作成。#171 investigation（[assessment](../../docs/assessment/issue-171-organizer-after-external-restore.md)）のhandoffに基づく。
 - 2026-08-31: Review rev 2。Blocker指摘に対応: (1) capture例外はraw messageを出さずclass名+正規化error codeに限定（debug build限定）、(2) serialized enum追加のversioning/downgrade挙動（journal reset）をAC-7として明記、(3) `InputCompositionCode` の16値を正式closed集合として確定、(4) capture観測のlogger seamを `DiagnosticsLogger` への専用typed API追加として確定し、open questionsを解消。
-- 2026-08-31: Review rev 3。残り2点に対応: Issue #172本文のAC文言を「exception class/code、raw message不使用」へ更新（Blocker）。`logCaptureFailure` を `Class<out Throwable>` + `Int?` のみを受け取るAPIとして確定し、文字列型パラメータを排除してprivacy保証をcaller convention依存から型境界へ移した（Major）。
+- 2026-08-31: Review rev 3。残り2点に対応: Issue #172本文のAC文言を「exception class/code、raw message不使用」へ更新（Blocker。codeはjournal側の理由コードを指す）。`logCaptureFailure` を `Class<out Throwable>` + `Int?` のみを受け取るAPIとして確定し、文字列型パラメータを排除してprivacy保証をcaller convention依存から型境界へ移した（Major）。
 - 2026-08-31: 再レビューで指摘なし。statusを `accepted` へ更新し、plan.mdに従って実装を開始する。
 - 2026-08-31: rev 4。`logCaptureFailure` から数値error codeパラメータを削除。API 36.1のplatform `SQLiteException` はtypedなerror code accessorを持たないため、class simple名単独を正規化identityとする（`javap` で確認）。String型パラメータなしの型境界は不変である。
