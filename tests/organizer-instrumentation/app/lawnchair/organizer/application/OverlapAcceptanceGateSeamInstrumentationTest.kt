@@ -196,7 +196,14 @@ class OverlapAcceptanceGateSeamInstrumentationTest {
     fun recoveryGateRejectsRestoringRowTheLoaderDeletedWhenPolicyIntolerant() {
         val prefs = PreferenceManager2.getInstance(context)
         val originalSmartspace = prefs.enableSmartspace.firstBlocking()
+        // Audit C2: pin both platform policies explicitly. The fixture row sits
+        // inside the QSB reservation, so the loader would delete it during the
+        // first reload on a fresh emulator whose ambient allowWidgetOverlap is
+        // the default false — pin tolerance for the fixture, then evaluate the
+        // gate under the intolerant policy.
+        val originalTolerance = prefs.allowWidgetOverlap.firstBlocking()
         prefs.enableSmartspace.setBlocking(true)
+        prefs.allowWidgetOverlap.setBlocking(true)
         try {
             launcher.model.modelDbController.db.delete(Favorites.TABLE_NAME, null, null)
             val id = launcher.model.modelDbController.generateNewItemId()
@@ -259,6 +266,7 @@ class OverlapAcceptanceGateSeamInstrumentationTest {
             ).use { assertFalse(it.moveToFirst()) }
         } finally {
             prefs.enableSmartspace.setBlocking(originalSmartspace)
+            prefs.allowWidgetOverlap.setBlocking(originalTolerance)
         }
     }
 

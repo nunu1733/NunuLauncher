@@ -1,88 +1,77 @@
 # High-risk audit: PR #186 QSB-row item interop — preserved projection + overlap acceptance predicate (Issue #185)
 
-> Status: rejected (再監査必須 — 下記 Findings F1/F2 と CI merge gate 条件を参照)
+> Status: accepted with conditions
 > Audit date: 2026-08-31
-> Verdict: **REJECT**
+> Verdict: **ACCEPT WITH CONDITIONS**（初回監査 head `8f649e1e4c` での REJECT 指摘 F1/F2/F3 は新 head で対処済み。下記「再監査の条件」参照）
 
-- Auditor: 独立ZCode agent session（読み取り監査 + 検証commandの独立再実行。実装を行ったagent/sessionとは別作業。コードは未変更、本記録のみ新規作成）
+- Auditor: 独立ZCode agent session（実装を行ったagent/sessionとは別作業の読み取り監査 + 検証commandの独立再実行。初回監査と同一sessionによる新 head の再監査。コードは未変更、本記録の更新のみ）
 - PR: https://github.com/nunu1733/NunuLauncher/pull/186
-- Head SHA: 8f649e1e4c49602d606be69100c897995737a68b
-- Head SHA検証: 上記は `git rev-parse HEAD`（branch `issue-185-implementation`、working tree clean）と一致し、PR #186のheadと同一であることを監査sessionで確認した
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/33434045588
-- CI run補足: 上記はPR #186のpull_request merge-gate run（organizer-unit-tests / check-style / validate-repo-contract / build-debug-apk / instrumentation lanes実行）。監査時点での各jobの合否と、`final-status` がFAILUREである事実は Executed test surface 節に記録するとおり。CI完了（再実行含め全lane成功）時点で本記録のCI evidenceの再確認が必要
+- Head SHA: 8683542052914c5304eab50e8f17a40b1880c9b3
+- Head SHA検証: 上記は `git rev-parse HEAD`（branch `issue-185-implementation`、working tree clean）と一致し、PR #186のheadと同一であることを監査sessionで確認した。初回監査対象 `8f649e1e4c` の子孫であり、両者の間の非docs変更は修正コミット `8683542052` 1本のみ（`git log --oneline 8f649e1e4c..HEAD`）
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/33440703365
+- CI run補足: 上記はPR #186のpull_request merge-gate run（head `8683542052`、organizer-unit-tests / check-style / validate-repo-contract / build-debug-apk / instrumentation lanes実行）。監査完了時点でのこのrunの `final-status` はFAILURE（instrumentation 2 laneのflaky疑い失敗。Executed test surface 節に記録）。**このrun（または同一headの再実行run）の `final-status` green を再確認するまでmergeしないこと**。また本記録は head `8683542052` を監査しており、記録自体はdocs-only commitとしてpushされ、push後に `high-risk-evidence` が再実行される（validatorは「監査head以降の変更がdocs-only」であることを確認する設計）
 - Criteria: specs/185-qsb-row-item-interop/spec.md AC-1 AC-2 AC-3 AC-4 AC-5 AC-6 AC-7 AC-8 AC-9、docs/adr/0010-qsb-row-item-overlap-interop.md ADR-0010、docs/adr/0008-qsb-reservation-context-and-recovery-compatibility.md ADR-0008、specs/13-safe-layout-application/spec.md FR-004 FR-005（`PreWriteRejection` closed集合・A5）、docs/engineering/organizer-diagnostics.md §5/§7
 
 ## Scope
 
-監査対象diffは `git diff main...8f649e1e4c`（32 files、+1228/−45、commits `1ec7452f2a`→`58f9fa8f2f`→`8f649e1e4c`）。
+監査対象diffは `git diff main...8683542052`（36 files、+1777/−45、commits `1ec7452f2a`→`58f9fa8f2f`→`8f649e1e4c`→`8683542052`）。初回監査（head `8f649e1e4c`、32 files）でAC-1〜AC-7の適合を確認済み。増分（`git diff 8f649e1e4c..8683542052`）は以下を独立レビューした:
 
-変更内容: `RowManifestCodec.validateReservations` の item↔予約重複require撤去、`PreserveReason.RESERVED_REGION` 追加と分類precedence 2 site（`FullTargetSetMaterializer` / `PlanningPlacement.determinePreservation`）、`PlanningValidation.checkOverlap` の item↔予約拒絶のみ撤去、`OrganizationPlanMaterializer` のその場保存免除、composer受容gate（`WorkspaceOverlapToleranceSource` 注入 + `CAPTURE_RESERVED_OVERLAP`）、共通predicate `ReservationOverlapAcceptance`、A5/recovery transaction内の受容再評価 gate（`PreWriteRejection.OVERLAP_POLICY_REJECTED`）、production wiring（`ProductionOrganizationInputComposer` → `PreferenceWorkspaceOverlapToleranceSource`）、en/ja copy、diagnostics契約§5・spec 13 closed集合・ADR-0010新規/ADR-0008注記、unit/instrumentation test追加。
+- `LauncherLayoutAdapter.applyWriteSet` のA5 gate入力を `before.manifest.rows`（現在状態）→ `writeSet.intendedManifest.rows`（intended state。通常applyではintended manifest、recoveryでは `recovery.targetManifest`）へ変更（F1修正、`LauncherLayoutAdapter.kt:314-327`）
+- 新規 `OverlapAcceptanceGateSeamInstrumentationTest`（apply/recovery のadapter seam test、F2）
+- 新規 `LoaderCursorOverlapAcceptanceContractTest`（`LoaderCursor.checkItemPlacement` ↔ organizer predicate の等価contract test、F3）
+- `ProductionPublicSeamInstrumentationTest` のimport 2行追加（未使用。軽微指摘M4参照）
+- 本監査記録ファイル（初回REJECT版が `8683542052` に含まれてコミット済み。本更新はdocs-only commitでpushされる）
 
-runtime書き込み経路とmigration対象: Launcher DBへの書き込み自体は `LauncherLayoutAdapter.applyWriteSet` のtransaction構造内（A5 gateはwrite前・commit前）で変更なし。schema/format migrationはnone（recovery v2・journal schemaVersion 1・revision/digest計算は不変。`LayoutState`/`PersistenceManifest`/context resourceのshape変更なし）。`PreferenceWorkspaceOverlapToleranceSource` は既存preferenceの読み取り専用で、policy値はdigest/revision/recovery recordに不埋め込み（ADR-0010 §3どおり）。
+runtime書き込み経路とmigration対象: F1修正はtransaction内・write前のprecondition評価対象の差し替えのみで、transaction構造・commit経路・recovery lifecycleは不変。schema/format migrationはnone（recovery v2・journal schemaVersion 1・revision/digest計算不変）。予約listの取得元 `before.layoutState.reservedWorkspaceRegions` は現在=target（`RecoveryWriteSetMaterializer` のcontext一致検証 / ADR-0008のsource/intended不変検証）であり、intended rowsとの評価組合せは整合する。
 
 ## Criteria check
 
-**AC-1（決定の記録）— 適合。** ADR-0010がacceptedで作成され、採用候補（preserved射影+state-based predicate）、却下候補（予約狭小化、import時修復、revision/digest埋込み、capture時値保存、LoaderCursor bridge不採用とcontract test採用理由）が記録されている。ADR-0008 Change historyに「real item overlap は typed non-write failure」帰結の部分置換が注記され、invalid reservation geometry不変が明記されている。spec Decision節と矛盾なし。
+初回監査で適合確認した AC-1〜AC-7（ADR記録、capture fail-closedの局所性、分類precedence 2 site、plan時guard限定免除、composer受容gate+production wiring、closed集合17値、en/ja copy、#172手順の実機解消記録）は、増分diffがそれらの層に触れていないため維持される（unit 800 tests再実行で無回帰確認）。以下は再監査で状態が変化した項目。
 
-**AC-2（再現workspace形状の回帰）— 適合。** (a) capture: `RowManifestCodec` の重複requireのみ撤去され、予約自身の不正（重複/不明page/非正span/範囲外/予約↔予約）のfail-closedは `validateReservations` に残存を確認（`RowManifestCodec.kt:132-170`）。instrumentation `qsbRowItemCapturesLosslesslyAndComposesPerPlatformTolerance` が実codec+実DB行（row 115、`screen=0 cell(2,0)`、5x5、`GridSpan(5,1)`予約）でlossless captureとReady/NotReady両分岐を検証。(b) 分類: `FullTargetSetMaterializer` の precedence (0) `Preserved`（`FullTargetSetMaterializer.kt:26-35`）と `PlanningPlacement.determinePreservation` の precedence (0) `RESERVED_REGION`（`PlanningPlacement.kt:474-487`）の両siteを確認。productionでのmaterializer呼出はcomposerのみで予約listを引数渡し（`OrganizationInputComposer.kt:245`）。occupancyは予約mark（`PlanningPlacement.kt:36-37`）に続きpreserved itemの全cellをmark（同41-45）するため、予約からはみ出したspan部分もmovable割当から保護される（plan推論どおり変更不要）。unit test: composer分類・materializer role割当・planner disposition（`reservationOverlapIsPreservedInPlaceInsteadOfRejected`）。(c) 適用行不変+A7一致: on-device assessment（下記AC-3）+ instrumentation 16/16。
+**AC-8（受容policyのstalenessとrecovery安全）— 適合（条件付き、下記C2/C3）。** F1修正によりgateはintended stateを評価する: `overlapAcceptanceHolds(writeSet.intendedManifest.rows, before.layoutState.reservedWorkspaceRegions, overlapToleranceSource.isOverlapTolerated())`（`LauncherLayoutAdapter.kt:314-327`）。recovery write setの `intendedManifest` は `recovery.targetManifest`（同285行）であり、automaticRecovery（`ApplyProtocol.kt:431`）/ user-initiated recovery（`RecoveryProtocol.kt:153`）の両経路が同一のA5段で守られる。通常applyでは初回監査で示した現在=intended同値性がそのまま成立するため挙動不変。F2として実adapter seam testが追加された: (a) intended stateが予約重複を導入するplanを受容無効policyでapply → `Rejected(OVERLAP_POLICY_REJECTED)` + favorites無書込み検証、(b) loader削除済み重複行をrecovery targetが含むwrite set → `PreconditionFailed(OVERLAP_POLICY_REJECTED)` + 行が復活しないことのDB照会検証。実装側は修正前コードで(b)が `Committed`（復活）になることを実機で再現済み（treatmentの反証確認）。残存するtest品質上の条件はC2（test (b)のambient pref依存）とC3（CI lane未組み込み）。
 
-**AC-3（#172再現手順の解消）— 適合。** `docs/assessment/issue-185-qsb-row-interop.md` に手順（pm clear → allowWidgetOverlap ON → row 115直接挿入 → force-stop/relaunchで生存確認 → Review organization）、名前付き結果（`RUN_STARTED → CAPTURED → PLANNED captured=1 moved=0 preserved=1`）、journal証拠（`preservedByReason:{"RESERVED_REGION":1}`、runId、schemaVersion 1）が記録され、#172の恒久 `CAPTURE_INVALID` が解消されている。受容無効分岐はloader自己修復のためon-device到達不能で、focused instrumentationで証明——spec test oracleの「同等のfocused instrumentationで証明」に合致。
-
-**AC-4（予約不変条件の非弱化）— 適合。** `PlanningValidation.checkOverlap` はitem↔item重複（`PlanningValidation.kt:250-258`）と予約↔予約重複（同268-279）の拒絶を維持。`OrganizationPlanMaterializer` の免除は `targetPreservesCapturedWorkspace`（targetのpage/cell/spanがcaptured workspace placementと完全一致、かつcapturedがWorkspace型）に限られ（`OrganizationPlanMaterializer.kt:176-190`）、予約セルへの移動は `Invalid` のまま（negative test `movedTargetIntoReservationStillInvalid`）。newFoldersの予約guardは無変更。planner negative test（予約↔予約、不明page）は分割後も在存。recovery契約（`preconditionsHold` のexact一致、`RecoveryWriteSetMaterializer`）は無変更（diff対象外）。
-
-**AC-5（受容gate）— 適合（軽微な注記付き）。** composerはmapLayout後・bundle読取前に `reservationOverlaps > 0 && !tolerant` で `NotReady(InvalidCanonicalCapture(RESERVED_OVERLAP))` + `CAPTURE_RESERVED_OVERLAP` を返す（`OrganizationInputComposer.kt:131-150`）。sourceは重複がある時のみ1回読む（重複なしでは読まない=「受容sourceの値は挙動に影響しない」に合致）。composerはAndroid stateを直接読まない（injected source）。unit test 3件+instrumentation両分岐で組合せ行列をカバー。注記: 新codeのretry挙動（自動retry/busy loopなし）は既存NotReady経路（#172のterminal record + user-initiated retryのみ）をそのまま通るため専用testは追加されていない。意味論は既存機構で保証されており許容範囲だが、新code固有のtestはない。
-
-**AC-6（既存表面の無回帰）— 適合。** `InputCompositionCode` は17値に拡張され、`ModelValidationTest.errorEntryAllowsEveryInputCompositionCode` は `entries` 反復のため自動で全17値を検証。diagnostics契約§5は17値+`PRE_WRITE_REJECTION` family追記へ更新済み。`ApplyResultContractTest` のclosed集合に `OVERLAP_POLICY_REJECTED` 追加。`ContractShapeTest` の `PreserveReason` 数 9→10。既存planner testの分割（item↔予約はpreservedへ、予約↔予約/不明pageは拒絶維持）はspec意図どおり。監査session再実行でorganizer suite 800 tests / 0 failures、spotless/assemble成功（下記）。
-
-**AC-7（copy）— 適合。** `manual_organization_preserved_reserved_region` がen/ja両string resourceに存在し、`preservedReasonString` の網羅whenに分岐追加（`ManualOrganizationPreferences.kt:464`）。
-
-**AC-8（受容policyのstalenessとrecovery安全）— 不適合（Findings F1/F2参照）。** A5/recovery transaction内で現在値を再読する構造自体は実装されている（`LauncherLayoutAdapter.kt:314-323`、write前・commit前、`tx.close()` でno-write）。しかしpredicateへの入力が **再読した現在状態 `before.manifest.rows`** であり、spec/plan/ADR-0010/PR本文が要求する **intended state（通常applyのintended manifest、recoveryではrecovery target manifest）ではない**。通常applyでは両集合が一致するため実害はないが（`preconditionsHold` が現在=sourceを強制、applyに削除なし、materializer guardで新規重複target不可）、recovery write setでは現在状態が重複行を欠きrecovery target（pre-state）が重複行を含む状態到達可能で、その場合gateを通過し **削除済み重複itemを復活させるwriteが実行される**（詳細はF1）。加えてAC-8 test oracleが要求するadapter/seam test（反転→typed no-write、recovery fixture no-write/point保持）が一切追加されていない（F2）。
-
-**AC-9（acceptance一致保証）— 不適合（Findings F3参照）。** ADR-0010 §4はbridge不採用と引き換えに「organizerのpredicateと `LoaderCursor.checkItemPlacement` のQSB行重複acceptance ruleが同一の入力で同じ結果を返す等価contract testを**必須**」とする。本PRにそのようなtestは存在しない（`ReservationOverlapAcceptance` を参照するtestはなし。`LoaderCursorTest.java` は無変更でQSB/search container重複分岐のtestを含ない）。PR本文の「AC-9 … ✅」は事実と不一致。
+**AC-9（acceptance一致保証）— 適合（条件付き、下記C3）。** ADR-0010 §4が必須とする等価contract testが追加された（`LoaderCursorOverlapAcceptanceContractTest`）。実 `LoaderCursor.checkItemPlacement` をsandbox（`MatrixCursor` + protected seamを開くsubclass）で呼び、QSB行重複形状 `(2,0)` について policy true/false 両値で「loader受容 = policy値」「organizer predicate = loader判定」をassertする。`checkItemPlacement` はscreen単位のoccupied mapをメソッド内で遅延構築しQSB行をmarkするため（`LoaderCursor.java:571-581`）、sandbox呼び出しでも実際のQSB分岐を通過しており、判定は本物のloader ruleに基づく。drift検知機構としては成立するが、当該classはどのCI laneのclass filterにも含まれずCIで実行されない（C3）。
 
 ## Executed test surface
 
-監査sessionで実際に実行したcommandと結果（head `8f649e1e4c`、JDK 21 / Gradle 9.3.0）:
+監査sessionで実際に実行したcommandと結果（head `8683542052`、JDK 21 / Gradle 9.3.0）:
 
-- `git rev-parse HEAD` → `8f649e1e4c49602d606be69100c897995737a68b`（PR #186 headと一致）。`git status --porcelain` → 空。
+- `git rev-parse HEAD` → `8683542052914c5304eab50e8f17a40b1880c9b3`（PR headと一致）。`git status --porcelain` → 空。`git merge-base --is-ancestor 8f649e1e4c HEAD` → 成功。
 - `./gradlew spotlessCheck` → **BUILD SUCCESSFUL**
-- `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` → **BUILD SUCCESSFUL**。XML集計（`build/test-results/testLawnWithQuickstepGithubDebugUnitTest/*.xml`、67 suites）: **800 tests / 0 failures / 0 errors / 0 skipped**（PR本文の797は本監査時点の集計と3件差。追加test計上の差異と推定されるが、成否に影響なし）
+- `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` → **BUILD SUCCESSFUL**。XML集計（`build/test-results/testLawnWithQuickstepGithubDebugUnitTest/*.xml`、67 suites）: **800 tests / 0 failures / 0 errors / 0 skipped**（再実行時刻を確認済み: results mtimeが本監査実行時刻直後）
 - `./gradlew assembleLawnWithQuickstepGithubDebug` → **BUILD SUCCESSFUL**
+- `./gradlew assembleLawnWithQuickstepGithubDebugAndroidTest` → **BUILD SUCCESSFUL**（新規instrumentation test 2 classのcompile確認）
+- `python3 tools/repo-contract/validate_high_risk_evidence.py --repo 'nunu1733/NunuLauncher' --pr-number 186 --head-sha '8683542052914c5304eab50e8f17a40b1880c9b3'`（本記録更新後）→ 形式・criteria・lineage checkは本記録起因の失敗なし。残る失敗はCI evidence（下記 `final-status` FAILURE）のみであり、これは条件C1として記録
 
-CI（PR #186、監査時点 2026-08-31 20:15-20:20 UTC頃）:
+新規instrumentation testの実行結果（実装agentがemulator実行・報告済み: seam test + contract test 3 tests OK。本監査では実機再実行せず、compile成功までを独立確認）。
 
-- merge-gate run https://github.com/nunu1733/NunuLauncher/actions/runs/33434045588: `changes` / `validate-repo-contract` / `check-style` / `organizer-unit-tests` / `build-debug-apk` / instrumentation lanes（shared-writer、db-migration、api35、issue52、issue155、issue53）= **SUCCESS**。ただし `organizer-instrumentation-issue99-tests` = **FAILURE**（https://github.com/nunu1733/NunuLauncher/actions/runs/33434045588/job/99626157400 ）。失敗testは `CategoryOverridePreferencesInstrumentationTest > targetUnavailableReturnsToFreshDestinationAndRestoresFocus` の `ComposeTimeoutException`（5000ms）で、同一runにadb daemon接続失敗・emulator console起動失敗のログが先行しており、本PRの変更領域（organizer layout/planning/adapter）と無関係のUI test。flaky/infra起因の可能性が高い（同一laneは直近main run https://github.com/nunu1733/NunuLauncher/actions/runs/33388993173 でSUCCESS）。しかし **監査対象headでは `final-status` はFAILURE**（https://github.com/nunu1733/NunuLauncher/actions/runs/33434045588/job/99629019361 ）。AGENTSの「検証対象commit上でCI merge gate (final-status) が実際に成功していること」を現時点で満たさない。
-- high-risk gate run https://github.com/nunu1733/NunuLauncher/actions/runs/33434065618: `high-risk-evidence` = **FAILURE**、理由は「no docs/assessment/pr-186-<slug>.md audit record」のみ（本記録のdocs-only commitで解消される想定の手順どおり）。
+CI（PR #186、head `8683542052`、監査時点 2026-08-31 21:30 UTC頃完了）:
 
-instrumentation test（実装agent実行・記録済み、本監査では再実行しない）: `ProductionOrganizationInputInstrumentationTest` 16/16、`RealAdapterRowMatrix` + `ProductionPublicSeam` + `Sanitizer` 12/12（emulator `nunu_qpr2_api36_1`）。
+- merge-gate run https://github.com/nunu1733/NunuLauncher/actions/runs/33440703365: `changes` / `validate-repo-contract` / `check-style` / `organizer-unit-tests` / `build-debug-apk` / instrumentation（shared-writer、db-migration、issue52、issue53、issue155）= **SUCCESS**。`organizer-instrumentation-issue99-tests` = **FAILURE**（`CategoryOverridePreferencesInstrumentationTest > appRowMeetsMinimumFortyEightDpTouchTarget` の `ComposeTimeoutException`。初回監査headでは同一classの別testが同じtimeoutで失敗しrerunでpassしており、本PRと無関係のUI testのflaky継続と整合）。`organizer-instrumentation-api35-tests` = **FAILURE**（`ProductionOrganizationInputInstrumentationTest > productionComposerReadsOnlyCompleteGenerationsWhileAuthoringWrites` の `ExecutionException: AssertionError`。当該testは本PRで追加されたtestではなく、F1修正の適用対象 `applyWriteSet` を経由しないcomposer/authoring並行性の既存test。同一laneは同日main run `33380149381`・初回監査head `33434045588` でSUCCESSであり、失敗testも前回と異なるためflaky疑い。ただし**再実行で再現した場合は本PR回帰として調査必須**）。よって **`final-status` = FAILURE**（https://github.com/nunu1733/NunuLauncher/actions/runs/33440703365/job/99650747486 ）。AGENTSの「検証対象commit上でCI merge gate (final-status) が実際に成功していること」は現時点で未達（条件C1）。
+- high-risk gate run https://github.com/nunu1733/NunuLauncher/actions/runs/33440703377: `high-risk-evidence` = **FAILURE**、理由は「changes after the audited Head SHA are not docs-only; re-audit against the new head」（tree内の記録が初回headを指していたため。本更新のdocs-only commit push + 再実行で解消される手順どおりの状態）。
 
 ## Findings
 
-判定REJECTの根拠は以下のBlocking指摘（F1/F2/F3）と、監査対象headでのCI merge gate `final-status` FAILUREである。軽微指摘は非blocking。
+再監査の結論: 初回REJECTのBlocking指摘F1/F2/F3はいずれも新 head `8683542052` で対処を確認した。判定は **ACCEPT WITH CONDITIONS**。以下に対処確認と、merge前に充足すべき条件（C1〜C4）と軽微指摘を記載する。
 
-### F1（Blocking）— A5/recovery gateがintended stateでなく現在状態を評価する。recovery targetの重複行が検出されない
+### 初回指摘の対処確認
 
-`LauncherLayoutAdapter.applyWriteSet` のgateは `overlapAcceptanceHolds(before.manifest.rows, ...)` を呼ぶ（`LauncherLayoutAdapter.kt:314-323`）。`before` はtransaction内再読の**現在DB状態**であり、`writeSet.intendedManifest`（通常applyではintended manifest、recoveryでは `recovery.targetManifest` = pre-state。`LauncherLayoutAdapter.kt:285`）ではない。
+- **F1（解消）**: gate入力が `writeSet.intendedManifest.rows` となり、recovery targetを含むintended stateがtransaction内・write前に現在の受容policyで再評価される。recovery両経路（automatic/user-initiated）が同一段を通ることをコードで確認。実装側の実機反証（修正前 `Committed` 復活→修正後 `PreconditionFailed(OVERLAP_POLICY_REJECTED)`）+ seam test (b) のDB照会（復活なし）で裏付け。
+- **F2（解消・条件C2/C3付き）**: apply/recoveryのadapter seam testが実装され、`OVERLAP_POLICY_REJECTED` と無書込み/無復活をassert。ただしtest (b)はfixture行の初回reload生存を実機のambientな `allowWidgetOverlap`（既定falseではloaderが先読み削除してtestが失敗する）に依存しており、C2の確定化を条件にACCEPT。
+- **F3（解消・条件C3付き）**: ADR-0010 §4必須の等価contract testが実loader ruleの実際の分岐を通過する形で存在し、policy両値で一致を検証。drift検知として機能するにはCI実行が必要（C3）。
 
-- 通常apply: `preconditionsHold` が現在=plan sourceをexactに強制し、applyに削除がなく、materializer guardで新規重複targetが生成されないため、「現在に重複行あり」と「intendedに重複行あり」は同値。**この経路は仕様どおりに機能する**（compose後反転→loader未削除→revision不変の窓でOVERLAP_POLICY_REJECTED）。
-- recovery（automaticRecovery `ApplyProtocol.kt:431` / user-initiated `RecoveryProtocol.kt:153`）: recoveryは定義上 現在≠target を復元する機構で、`RecoveryAction.InsertRow` でtargetのみの行を再挿入する。**現在状態から重複行がloaderに削除済み・recovery targetは重複行を含む・policy無効** の状態で、gateは通過しwriteがcommitされる。続く相関reloadでloaderが当該行を再削除するため `db.manifest != stored.preManifest` → `RestoreFailed(VERIFICATION_FAILED)`（`RecoveryProtocol.kt:200-208`）となり、**layoutは部分的に復元された状態へ変更され、削除済みitemが一時的に復活する**。spec Scenario「受容無効環境でrecovery targetが予約重複行を含む」（「typed failureでno-write」「削除済みitemの復活…も行われない」「Launcher layoutは変更されない」）、AC-8本文（「intended stateが予約重複desktop rowを含む場合は現在の受容が必須」）、plan Data flow step 6（「recovery targetに予約重複行が含まれる場合はA5と同一のacceptance predicateで再評価」）、およびPR本文の主張（"the intended state (apply write set or recovery target) is re-evaluated"）のいずれとも一致しない。
+### 再監査の条件（merge前に充足・記録すること）
 
-修正案は小さい: gate入力を `writeSet.intendedManifest.rows` にする（通常applyでは同値集合、recoveryではtargetを正しく評価）。recovery時の予約listはcontext一致検証（`ContextResourceCodec.recoveryContextsMatch` / `ContextMismatch`）により現在=targetで不変のため `before.layoutState.reservedWorkspaceRegions` のまま可。
-
-### F2（Blocking）— AC-8のseam testが未追加
-
-`OverlapAcceptanceGateTest` は純関数 `overlapAcceptanceHolds` のmatrixのみで、**adapter seam（applyWriteSet/recovery）を通したtestが存在しない**。どのrowsがpredicateに渡るかを固定しないためF1を検出できず、spec test oracle AC-8の要求（(a) 計算後の無効化→typed no-write、(d) recovery targetが重複行を含み受容無効→no-write/recovery point保持、(e) 同一座標・別ID入替→exact precondition不一致 のadapter seam確認）を満たさない。`OVERLAP_POLICY_REJECTED` を検証するtestはclosed集合列挙（`ApplyResultContractTest`）のみ。さらに `docs/assessment/issue-185-qsb-row-interop.md` のAC-8根拠は「反転はreloadGrid→revision変化→stale pathでtyped失敗」に依存しており、これはspec Blocking 1が明示的に依存してはならないと定めた未保証仮定（LayoutState不変ならrevision不変であり得る）そのものである。
-
-### F3（Blocking）— AC-9の等価contract testが存在しない
-
-ADR-0010 §4はLoaderCursor bridge不採用の代替としてorganizer predicate↔`LoaderCursor.checkItemPlacement` QSB重複acceptance ruleの等価contract testを必須化したが、本PRに該当testはない（`LoaderCursorTest.java` 無変更、`ReservationOverlapAcceptance` をLoaderCursor意味論と突き合わせるtestなし）。drift検知機構が欠落しており、AC-9不成立。PR本文「AC-9 … ✅」の訂正も必要。
+- **C1**: 監査head `8683542052`（または同一内容の再実行）でCI `final-status` がSUCCESSであることを確認する。issue99/api35の失敗はflaky疑い（前回と別test、同一laneのmainでの成功履歴、変更領域との非関連）だが、再実行でapi35の `productionComposerReadsOnlyCompleteGenerationsWhileAuthoringWrites` が再現した場合は本PR回帰として再監査相当の調査を要求する。
+- **C2**: `OverlapAcceptanceGateSeamInstrumentationTest.recoveryGateRejectsRestoringRowTheLoaderDeletedWhenPolicyIntolerant` の環境依存を除去する。具体的にはfixture setupで `prefs.allowWidgetOverlap.setBlocking(true)`（finallyで復元）を明示し、fresh emulator（既定false）でも初回reloadでfixture行が削除されずrecoveryシナリオが成立することを保証する。現状のコードはambient stateに依存し、CI laneに組み込んだ時点で失敗する可能性が高い。
+- **C3**: 新規instrumentation 2 class（`OverlapAcceptanceGateSeamInstrumentationTest`、`LoaderCursorOverlapAcceptanceContractTest`）をいずれかのCI laneのclass filterに追加する（現状 `grep OverlapAcceptanceGateSeam\|LoaderCursorOverlapAcceptance .github/workflows/ci.yml` → 不一致。AC-8/AC-9のtest証拠とLoaderCursor drift検知がCIで一度も実行されない状態を解消すること。C2の確定化が前提）。
+- **C4**: 本記録の更新をdocs-only commitとしてpushし、そのheadで `high-risk-evidence` がPASSすることを確認する（本記録が監査するのは `8683542052` であり、docs-only commit以降の非docs変更は再監査対象となる）。
 
 ### 軽微（非blocking）
 
-- `DefaultOrganizationInputComposer` / `LauncherLayoutAdapter` の受容source defaultが `{ true }`（tolerant）。production wiring（`LayoutApplicationModule.kt:126` → `ProductionOrganizationInputComposer`、adapter default引数が `PreferenceWorkspaceOverlapToleranceSource`）は確認済みで現状の漏れはないが、将来のproduction呼出側がwireを忘れるとgateが黙って無効化される。デフォルトをfail-closed側にするか、production構成testで固定することを推奨。
-- `RESERVED_REGION` のprecedenceは `LOCKED` より前（spec「全既存reasonに先行」どおり）。lockedかつ重複のitemの件数表示がLOCKEDでなくRESERVED_REGIONに寄る点は表示上の差異のみで振る舞いは同一。
-- 新規codeのprivacyは適合: package名・座標・item列挙・raw messageをjournal/logcatへ出す経路なし（gateはtyped enum codeのみ、`notReady` はdigest非付与、§7 Never分類に抵触する出力なし）。
+- **M4**: `ProductionPublicSeamInstrumentationTest.kt` に未使用import 2本（`RowManifestCodec`、`assertFalse`）が増分コミットで混入。spotless/CI check-styleは通過しているが、C2/C3の作業時に除去推奨。
+- 初回監査の軽微指摘（composer/adapterのtolerance default `{ true }`、RESERVED_REGION precedenceのLOCKED表示差、新code固有retry testの非追加）は変更なし。いずれも非blockingとして維持。
 
 ### 判定根拠
 
-REJECT: (1) F1はrisk: layout-data変更の中心安全機構（Blocking 1/2対応としてspecが追加したrecovery受容再評価）がspecの明示シナリオどおりに動作しない仕様適合性の欠陥で、失敗時にlayoutを無変更に戻す契約を破る。(2) F2/F3は受入条件AC-8/AC-9のtest証拠欠落。(3) 監査対象headでCI merge gate `final-status` がFAILURE（issue99 lane。flaky疑いだがAGENTSは同一commitでの成功を要求）。実装の大部分（capture撤去の局所性、分類precedence、plan時guard、composer gate、wiring、privacy、docs/ADR）はspec/ADRと整合しており、F1の修正は1行レベル・F2/F3はtest追加レベルであるため、修正+docs-onlyでないcode変更後の**再監査**と、そのheadでの `final-status` SUCCESS確認を条件に再提出されたい。
+ACCEPT WITH CONDITIONS: 初回REJECTの中心であったlayout安全契約の欠陥（F1）は指摘どおりの最小修正で解消され、実機反証とseam testで確認できた。AC-8/AC-9のtest証拠も実質的なものが揃った。一方、AGENTSが高リスクPRのmerge要件として同一commitでの `final-status` 成功を要求しており（C1）、F2/F3のtestがCIで実行されない・片方が環境依存という状態（C2/C3）は、これらを「マージ前に潰すべき条件」として残すのが相当と判断。docs-only commit手順（C4）はgate設計どおり。

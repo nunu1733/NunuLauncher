@@ -8,7 +8,6 @@ import android.os.Process
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
-import app.lawnchair.organizer.application.adapter.RowManifestCodec
 import app.lawnchair.organizer.application.protocol.CaptureId
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
 import app.lawnchair.organizer.application.protocol.FaultInjector
