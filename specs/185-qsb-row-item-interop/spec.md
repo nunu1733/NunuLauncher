@@ -1,6 +1,6 @@
 ---
 issue: "#185"
-status: draft
+status: implemented
 requirements:
   - FR-002
   - FR-003
@@ -194,3 +194,4 @@ Issue #185が挙げた3候補を、以下の証拠に基づいて評価し、**�
 
 - 2026-08-31: #172 AC-3 assessment([docs/assessment/issue-172-input-unavailable-diagnostics.md](../../docs/assessment/issue-172-input-unavailable-diagnostics.md))のroot cause分析とIssue #185本文に基づきdraftを作成。loader受容(`allowWidgetOverlap`)の証拠を追加調査し、3候補の評価と受容gateを含むDecisionを確定した。
 - 2026-09-01: Issue #185のreview(Changes requested)に対応。(1) Blocking 1: 受容policyの反転をA5/recovery時のstate-based acceptance predicate再評価で検出するよう変更(revision/digest埋込みはrecovery互換性を壊すため不採用)。(2) Blocking 2: plan materializationのその場保存免除をplan時guardに限定し、apply/recoveryのexact preconditionと「placement一致では継続しない」ことを明文化、recovery targetの受容再評価シナリオを追加。(3) Non-blocking: 共通acceptance predicate(可能なら `LoaderCursor` からも参照するbridge、不可能なら等価contract test)をscope化しAC-9として追加。retry/busy-loop挙動と重複行なし空間への影響限定を明記。
+- 2026-09-01: 実装完了(reviewは指摘なしで承認済み)。statusを `implemented` へ更新。実装はADR-0010のcontract-test方式(bridge不採用)を採用。検証の詳細は [docs/assessment/issue-185-qsb-row-interop.md](../../docs/assessment/issue-185-qsb-row-interop.md) を参照(実機AC-3再現の解消、journal `preservedByReason: {RESERVED_REGION: 1}`、16/16 + 12/12 instrumentation、797 unit tests)。

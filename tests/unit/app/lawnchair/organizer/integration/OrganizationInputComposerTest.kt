@@ -20,6 +20,7 @@ import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.planning.ReservedWorkspaceRegion
 import app.lawnchair.organizer.planning.RuleVersion
 import app.lawnchair.organizer.planning.TargetKey
+import app.lawnchair.organizer.planning.WorkspaceOverlapToleranceSource
 import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
 import app.lawnchair.organizer.rules.BundleReadResult
 import app.lawnchair.organizer.rules.CategoryOverrideKey
@@ -88,6 +89,59 @@ class OrganizationInputComposerTest {
 
         assertEquals(listOf(reservation), ready.input.snapshot.reservedWorkspaceRegions)
         assertEquals(listOf(ItemId("a")), ready.input.targets.existing.map { it.item })
+    }
+
+    @Test
+    fun reservationOverlappingItemIsPreservedWhenPlatformToleratesOverlap() {
+        // Issue #185 / ADR-0010: an item inside the QSB row composes Ready under
+        // a tolerant platform policy and is partitioned Preserved, not Movable.
+        val reservation = ReservedWorkspaceRegion(PageRef(PageId("p0")), GridCell(0, 0), GridSpan(4, 1))
+        val state = CanonicalFixtures.state(
+            items = listOf(
+                CanonicalFixtures.appItem(itemId = "qsb.row", cell = GridCell(2, 0)),
+                CanonicalFixtures.appItem(
+                    itemId = "free",
+                    target = TargetKey.AppKey(ComponentKey("com.example.free/.Main"), ProfileId("personal")),
+                    cell = GridCell(2, 1),
+                ),
+            ),
+        ).copy(reservedWorkspaceRegions = listOf(reservation))
+
+        val ready = composer(state, tolerance = true).composeFullOrganization()
+            as OrganizationInputComposition.Ready
+
+        assertEquals(ExistingRole.Preserved, ready.input.targets.existing.single { it.item == ItemId("qsb.row") }.role)
+        assertEquals(ExistingRole.Movable, ready.input.targets.existing.single { it.item == ItemId("free") }.role)
+    }
+
+    @Test
+    fun reservationOverlappingItemFailsTypedWhenPlatformRejectsOverlap() {
+        val reservation = ReservedWorkspaceRegion(PageRef(PageId("p0")), GridCell(0, 0), GridSpan(4, 1))
+        val state = CanonicalFixtures.state(
+            items = listOf(CanonicalFixtures.appItem(itemId = "qsb.row", cell = GridCell(2, 0))),
+        ).copy(reservedWorkspaceRegions = listOf(reservation))
+
+        val composition = composer(state, tolerance = false).composeFullOrganization()
+
+        assertTrue(composition is OrganizationInputComposition.NotReady)
+        composition as OrganizationInputComposition.NotReady
+        assertEquals(
+            InputReadinessReason.InvalidCanonicalCapture(CaptureFailureCategory.RESERVED_OVERLAP),
+            composition.reason,
+        )
+        assertEquals(InputCompositionCode.CAPTURE_RESERVED_OVERLAP, composition.diagnostic.code)
+    }
+
+    @Test
+    fun tolerantPolicyValueIsIgnoredWithoutReservationOverlap() {
+        val reservation = ReservedWorkspaceRegion(PageRef(PageId("p0")), GridCell(0, 0), GridSpan(4, 1))
+        val state = CanonicalFixtures.state(
+            items = listOf(CanonicalFixtures.appItem(itemId = "below", cell = GridCell(2, 1))),
+        ).copy(reservedWorkspaceRegions = listOf(reservation))
+
+        val composition = composer(state, tolerance = false).composeFullOrganization()
+
+        assertTrue(composition is OrganizationInputComposition.Ready)
     }
 
     @Test
@@ -322,10 +376,11 @@ class OrganizationInputComposerTest {
 
     private fun composer(
         state: app.lawnchair.organizer.application.public.LayoutState,
-        overrideSource: CategoryOverrideSnapshotSource,
-        evidenceSource: ClassificationSignalSnapshotSource,
+        overrideSource: CategoryOverrideSnapshotSource = SequenceOverrides(emptySnapshot(), emptySnapshot()),
+        evidenceSource: ClassificationSignalSnapshotSource = SequenceEvidence(evidence(), evidence()),
         bundle: BundleReadResult = BuiltInOrganizerPolicyBundleSource.readActive(),
-    ) = DefaultOrganizationInputComposer(
+        tolerance: Boolean? = null,
+    ): DefaultOrganizationInputComposer = DefaultOrganizationInputComposer(
         captureSource = CanonicalCaptureSource {
             CanonicalCaptureReadResult.Ready(FakeLayoutWriter(state).captureCurrent(CaptureId("test")))
         },
@@ -334,6 +389,8 @@ class OrganizationInputComposerTest {
         },
         overrides = overrideSource,
         platformEvidence = evidenceSource,
+        overlapTolerance = tolerance?.let { WorkspaceOverlapToleranceSource { it } }
+            ?: WorkspaceOverlapToleranceSource { true },
     )
 
     private fun app(

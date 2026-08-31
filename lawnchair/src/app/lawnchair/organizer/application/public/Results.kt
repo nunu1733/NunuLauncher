@@ -72,6 +72,13 @@ enum class PreWriteRejection {
     INVALID_PLAN,
     STALE_REVISION,
     EXACT_PRECONDITION_FAILED,
+
+    /**
+     * Issue #185 / ADR-0010: the intended state (or recovery target) contains a
+     * desktop item overlapping an authoritative reservation while the current
+     * platform overlap policy does not accept it.
+     */
+    OVERLAP_POLICY_REJECTED,
     LOCK_STATE_UNAVAILABLE,
     IDENTITY_EXHAUSTED,
     CHECKPOINT_CREATE_FAILED,

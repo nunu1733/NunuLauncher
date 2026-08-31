@@ -2,8 +2,8 @@
 
 > Issue: [#185](https://github.com/nunu1733/NunuLauncher/issues/185)
 > Spec: [spec.md](./spec.md)
-> Decision: [ADR-0010](../../docs/adr/0010-qsb-row-item-overlap-interop.md)(本planの実装前にacceptedが必要)
-> Status: draft
+> Decision: [ADR-0010](../../docs/adr/0010-qsb-row-item-overlap-interop.md)(accepted — contract-test方式を採用、bridge不採用)
+> Status: **implemented — 2026-09-01。検証の詳細は [docs/assessment/issue-185-qsb-row-interop.md](../../docs/assessment/issue-185-qsb-row-interop.md)**
 > Baseline: `ac09d27bae` (`main`, 2026-08-31)
 
 ## Current evidence

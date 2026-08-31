@@ -18,6 +18,7 @@ import app.lawnchair.organizer.application.public.RankedMember
 import app.lawnchair.organizer.application.public.StructureState
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.application.public.WidgetState
+import app.lawnchair.organizer.planning.CapturedPlacement
 import app.lawnchair.organizer.planning.FolderId
 import app.lawnchair.organizer.planning.FolderRef
 import app.lawnchair.organizer.planning.NewFolder
@@ -55,7 +56,18 @@ internal object OrganizationPlanMaterializer {
         }
         val planned = result.outcome as? Planned ?: return Result.Invalid
         if (ActionMaterializer.validateOrdinals(planned) !is ActionMaterializer.OrdinalValidation.Ok) return Result.Invalid
-        if (planned.placements.any { overlapsReservation(it.target, input.snapshot.reservedWorkspaceRegions) } ||
+        // Issue #185 / ADR-0010: the reservation guard protects the planner's
+        // targets. A preserved item's target is its captured placement, so an
+        // authoritative-reservation overlap is accepted only when the target
+        // keeps that item exactly where it was captured; anything that moves
+        // into a reserved cell stays invalid. This is a plan-time guard — the
+        // A5/recovery exact preconditions are not relaxed by it.
+        val capturedByItem = input.snapshot.items.associate { it.id to it.placement }
+        if (
+            planned.placements.any { placement ->
+                overlapsReservation(placement.target, input.snapshot.reservedWorkspaceRegions) &&
+                    !targetPreservesCapturedWorkspace(placement.target, capturedByItem[placement.item])
+            } ||
             planned.newFolders.any { overlapsReservation(it.workspacePlacement, input.snapshot.reservedWorkspaceRegions) }
         ) {
             return Result.Invalid
@@ -159,6 +171,23 @@ internal object OrganizationPlanMaterializer {
                 workspace.span,
             )
         }
+    }
+
+    /**
+     * Issue #185 / ADR-0010: true only when the planned target reproduces the
+     * item's captured workspace placement — the exact in-place preservation the
+     * composer projects for a reservation-overlapping item.
+     */
+    private fun targetPreservesCapturedWorkspace(
+        target: PlacementTarget,
+        captured: CapturedPlacement?,
+    ): Boolean {
+        if (captured !is CapturedPlacement.Workspace) return false
+        val workspace = target as? PlacementTarget.WorkspaceTarget ?: return false
+        val page = workspace.page as? PageRef ?: return false
+        return page == captured.page &&
+            workspace.cell == captured.cell &&
+            workspace.span == captured.span
     }
 
     private fun rectanglesOverlap(
