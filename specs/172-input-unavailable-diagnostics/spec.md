@@ -1,6 +1,6 @@
 ---
 issue: "#172"
-status: draft
+status: accepted
 requirements:
   - FR-015
   - NFR-011
@@ -155,3 +155,4 @@ And upgrade方向（旧journal → 新build）は既存eventのみで構成さ�
 - 2026-08-31: Issue #172のdraft specを作成。#171 investigation（[assessment](../../docs/assessment/issue-171-organizer-after-external-restore.md)）のhandoffに基づく。
 - 2026-08-31: Review rev 2。Blocker指摘に対応: (1) capture例外はraw messageを出さずclass名+正規化error codeに限定（debug build限定）、(2) serialized enum追加のversioning/downgrade挙動（journal reset）をAC-7として明記、(3) `InputCompositionCode` の16値を正式closed集合として確定、(4) capture観測のlogger seamを `DiagnosticsLogger` への専用typed API追加として確定し、open questionsを解消。
 - 2026-08-31: Review rev 3。残り2点に対応: Issue #172本文のAC文言を「exception class/code、raw message不使用」へ更新（Blocker）。`logCaptureFailure` を `Class<out Throwable>` + `Int?` のみを受け取るAPIとして確定し、文字列型パラメータを排除してprivacy保証をcaller convention依存から型境界へ移した（Major）。
+- 2026-08-31: 再レビューで指摘なし。statusを `accepted` へ更新し、plan.mdに従って実装を開始する。
