@@ -7,6 +7,7 @@ import app.lawnchair.organizer.application.lifecycle.LifecycleTransitions
 import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.ApplicationPageRef
 import app.lawnchair.organizer.application.public.ApplyAction
+import app.lawnchair.organizer.application.public.CanonicalItemState
 import app.lawnchair.organizer.application.public.LayoutState
 import app.lawnchair.organizer.application.public.PreWriteRejection
 import app.lawnchair.organizer.application.public.RecoveryPointId
@@ -76,6 +77,16 @@ interface LayoutWriterPort {
         recoveryTargetDigest: ByteArray?,
         reviewedCurrentDigest: ByteArray?,
     ): AuthoritativeClass
+
+    /**
+     * Issue #152: canonical launch identity of a legacy shortcut row — the
+     * persisted DB intent re-serialized through the same canonical form the
+     * model-side codec derives from the in-memory `WorkspaceItemInfo` intent.
+     * Null for non-legacy kinds and rows with no comparable identity. Used by
+     * the model-verifiable projection so a transformed launch target can no
+     * longer compare equal.
+     */
+    fun legacyLaunchIdentityOf(item: CanonicalItemState): String? = null
 }
 
 enum class WriterKind { ORGANIZER, MODEL_WRITER, GRID_MIGRATION, RESTORE, BACKUP_RESTORE }
@@ -136,7 +147,14 @@ sealed interface ApplyTxOutcome {
 }
 
 sealed interface ReloadResult {
-    data object Completed : ReloadResult
+    /**
+     * Issue #152: the completed correlated reload carries the model snapshot
+     * captured at the #150 terminal boundary. Stale, unrelated, cancelled, and
+     * superseded generations never arrive as [Completed] — the adapter and the
+     * token identity check exclude them, so the protocol never reasons about
+     * generation identity itself.
+     */
+    data class Completed(val modelSnapshot: ModelSnapshot) : ReloadResult
     data object Failed : ReloadResult
     data object Superseded : ReloadResult
     data object Timeout : ReloadResult

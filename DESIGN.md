@@ -77,7 +77,7 @@ apply(ValidatedLayoutPlan) -> ApplyResult
 recover(RecoveryRequest) -> RecoveryResult
 ```
 
-このmoduleの実装は、revision再確認、recovery point作成、transactional write、memory model/UI bind、適用後検証を隠す。Launcher DBはlocal-substitutable dependencyとして扱い、production adapterとtest databaseで同じinterfaceを検証する。
+このmoduleの実装は、revision再確認、recovery point作成、transactional write、memory model/UI bind、適用後検証を隠す。適用後検証は、相関リロード生成のモデルスナップショットをmodel-verifiable projectionで独立DB再取得と突き合わせ、DB/model収束を証明してから初めて成功結果を返す([Issue #152 spec](./specs/152-reload-model-snapshot-verification/spec.md))。Launcher DBはlocal-substitutable dependencyとして扱い、production adapterとtest databaseで同じinterfaceを検証する。
 
 ### 4.3 Rule Management module
 
@@ -199,7 +199,7 @@ package数をこの図に合わせること自体を目的にしない。interfa
 
 - Planning contract tests: fixture corpusでplanとdiagnosticを検証する。
 - Property tests: overlap、bounds、conservation、lock、determinism、idempotenceを多数の生成layoutで検証する。
-- Application contract tests: test DBでtransaction、failure injection、rollback、stale revisionを検証する。
+- Application contract tests: test DBでtransaction、failure injection、rollback、stale revisionを検証する。適用後・復帰後検証は、相関リロード生成のモデルスナップショットと独立DB再取得のprojection一致を成功条件に含み、model/DB divergence・reload failure・supersessionでfalse successを検証する([Issue #152 spec](./specs/152-reload-model-snapshot-verification/spec.md))。
 - Upstream integration tests: package event、model reload、backup/restore、grid migration、process restartを検証する。
 - Startup migration integration tests: default processのapp-start normalization/cleanup ordering、secondary processの非実行、old-backup restore後のrestart、failure retry、real APK upgrade/downgrade evidenceを検証する。
 - UI tests: preview/confirmation/recoveryとaccessibilityを検証する。

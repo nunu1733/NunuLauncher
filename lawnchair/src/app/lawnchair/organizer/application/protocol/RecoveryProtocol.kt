@@ -187,15 +187,30 @@ class RecoveryProtocol(
             }
             return RecoveryResult.RestoreFailed(pointId, failure, state)
         }
-        if (writer.requestCorrelatedReload(lease) != ReloadResult.Completed) {
+        // Issue #152: the reload outcome carries the model snapshot; staleness
+        // is excluded inside the adapter, never here.
+        val completed = writer.requestCorrelatedReload(lease) as? ReloadResult.Completed
+        if (completed == null) {
             return RecoveryResult.RestoreFailed(
                 pointId,
                 RecoveryFailure.MODEL_RELOAD_FAILED,
                 AuthoritativeState.PRE_APPLY_DB_MODEL_UNVERIFIED,
             )
         }
-        val verified = writer.recaptureDb().manifest == stored.preManifest
+        val db = writer.recaptureDb()
+        val verified = db.manifest == stored.preManifest
         if (!verified) {
+            return RecoveryResult.RestoreFailed(
+                pointId,
+                RecoveryFailure.VERIFICATION_FAILED,
+                AuthoritativeState.PRE_APPLY_DB_MODEL_UNVERIFIED,
+            )
+        }
+        // Issue #152: DB/model convergence on the model-verifiable projection
+        // before Restored is returned.
+        val modelVerified = db.layoutState.projectedToModelVerifiable(writer::legacyLaunchIdentityOf).items ==
+            completed.modelSnapshot.items
+        if (!modelVerified) {
             return RecoveryResult.RestoreFailed(
                 pointId,
                 RecoveryFailure.VERIFICATION_FAILED,

@@ -324,7 +324,11 @@ class ApplyProtocol(
             FaultInjector.ReloadDirective.FAIL -> ReloadResult.Failed
             FaultInjector.ReloadDirective.SUPERSEDE -> ReloadResult.Superseded
         }
-        if (reload != ReloadResult.Completed) {
+        // Issue #152: the completed reload carries the model snapshot captured
+        // at the #150 terminal boundary; every non-Completed outcome carries
+        // none. Staleness is excluded inside the adapter, never here.
+        val completed = reload as? ReloadResult.Completed
+        if (completed == null) {
             ctx.terminalApplyStage = ApplyStage.A7
             ctx.terminalPointId = pointId.value
             return automaticRecovery(runId, pointId, ApplyFailure.MODEL_RELOAD_FAILED, lease, ctx)
@@ -335,6 +339,16 @@ class ApplyProtocol(
         val exactDb = db.layoutState == writeSet.intendedState &&
             db.manifest == writeSet.intendedManifest
         if (!exactDb) {
+            ctx.terminalApplyStage = ApplyStage.A7
+            ctx.terminalPointId = pointId.value
+            return automaticRecovery(runId, pointId, ApplyFailure.VERIFICATION_FAILED, lease, ctx)
+        }
+        // Issue #152: DB/model convergence — the model snapshot of the exact
+        // correlated reload generation must equal the DB recapture on the
+        // model-verifiable projection before Applied is returned.
+        val modelVerified = db.layoutState.projectedToModelVerifiable(writer::legacyLaunchIdentityOf).items ==
+            completed.modelSnapshot.items
+        if (!modelVerified) {
             ctx.terminalApplyStage = ApplyStage.A7
             ctx.terminalPointId = pointId.value
             return automaticRecovery(runId, pointId, ApplyFailure.VERIFICATION_FAILED, lease, ctx)
@@ -434,7 +448,10 @@ class ApplyProtocol(
                 authoritativeState(classification, false),
             )
         }
-        if (writer.requestCorrelatedReload(lease) != ReloadResult.Completed) {
+        // Issue #152: the reload outcome carries the model snapshot; staleness
+        // is excluded inside the adapter, never here.
+        val completed = writer.requestCorrelatedReload(lease) as? ReloadResult.Completed
+        if (completed == null) {
             ctx.terminalApplyStage = ApplyStage.A7
             return ApplyResult.RecoveryFailed(
                 runId,
@@ -444,8 +461,23 @@ class ApplyProtocol(
                 AuthoritativeState.PRE_APPLY_DB_MODEL_UNVERIFIED,
             )
         }
-        val verified = writer.recaptureDb().manifest == stored.preManifest
+        val db = writer.recaptureDb()
+        val verified = db.manifest == stored.preManifest
         if (!verified) {
+            ctx.terminalApplyStage = ApplyStage.A7
+            return ApplyResult.RecoveryFailed(
+                runId,
+                pointId,
+                applyFailure,
+                RecoveryFailure.VERIFICATION_FAILED,
+                AuthoritativeState.PRE_APPLY_DB_MODEL_UNVERIFIED,
+            )
+        }
+        // Issue #152: DB/model convergence on the model-verifiable projection
+        // before Recovered is returned.
+        val modelVerified = db.layoutState.projectedToModelVerifiable(writer::legacyLaunchIdentityOf).items ==
+            completed.modelSnapshot.items
+        if (!modelVerified) {
             ctx.terminalApplyStage = ApplyStage.A7
             return ApplyResult.RecoveryFailed(
                 runId,

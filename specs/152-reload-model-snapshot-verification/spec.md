@@ -1,6 +1,6 @@
 ---
 issue: "#152"
-status: draft
+status: implemented
 requirements: []
 risk:
   - layout-data
@@ -306,3 +306,14 @@ instead of silently shrinking the projection.
   from the private `mBgDataModel` and the token identity check gates its
   delivery; the stale-generation scenario rewritten so a foreign generation
   never reaches verification at all (adapter-owned exclusion).
+
+- 2026-08-30: Implementation review revision (PR #180) — legacy shortcut
+  launch identity made concrete: the projection carries the canonical
+  re-serialized launch intent for `ShortcutLegacy`/`Unknown` rows, derived
+  from the persisted DB intent and the in-memory `WorkspaceItemInfo` intent
+  through the same canonicalization (writer-port `legacyLaunchIdentityOf` /
+  model-side codec). Unsupported-container rows are represented explicitly in
+  both projection legs (raw container code is model-observable) instead of
+  being dropped, so a row the model loses cannot compare equal by symmetric
+  omission; a row class the model does not load at all fails closed. Status
+  moved to `implemented` at the merge of PR #180.

@@ -16,13 +16,17 @@ import app.lawnchair.organizer.application.protocol.LayoutWriterPort
 import app.lawnchair.organizer.application.protocol.LeaseHandle
 import app.lawnchair.organizer.application.protocol.MaterializationIdentityMapping
 import app.lawnchair.organizer.application.protocol.MaterializedWriteSet
+import app.lawnchair.organizer.application.protocol.ModelSnapshot
 import app.lawnchair.organizer.application.protocol.ReloadResult
 import app.lawnchair.organizer.application.protocol.WriteSetPreparation
 import app.lawnchair.organizer.application.protocol.WriterKind
+import app.lawnchair.organizer.application.protocol.projectedToModelVerifiable
 import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.ApplyAction
+import app.lawnchair.organizer.application.public.CanonicalItemKind
 import app.lawnchair.organizer.application.public.CanonicalItemState
 import app.lawnchair.organizer.application.public.LayoutState
+import app.lawnchair.organizer.application.public.OptionalText
 import app.lawnchair.organizer.application.public.PreWriteRejection
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
@@ -55,7 +59,42 @@ class FakeLayoutWriter(
 
     var refuseLease: Boolean = false
     var nextTxOutcome: ApplyTxOutcome = ApplyTxOutcome.Committed
-    var reloadResult: ReloadResult = ReloadResult.Completed
+
+    /**
+     * Issue #152: the reload outcome the fake reports. The default completes
+     * with the model-verifiable projection of the current simulated state —
+     * exactly what the production adapter captures at the terminal boundary —
+     * so a healthy run passes DB/model convergence. Assigning [ReloadResult.Failed]
+     * / [ReloadResult.Superseded] / [ReloadResult.Timeout] simulates the
+     * corresponding reload outcome.
+     */
+    private var reloadResultOverride: ReloadResult? = null
+    var reloadResult: ReloadResult
+        get() = reloadResultOverride
+            ?: ReloadResult.Completed(stateRef.get().projectedToModelVerifiable(this::legacyLaunchIdentityOf))
+        set(value) {
+            reloadResultOverride = value
+        }
+
+    /**
+     * Issue #152: pure-JVM legacy launch identity — the raw persisted intent
+     * text stands in for the production `Intent.parseUri(...).toUri(0)`
+     * canonical form, which is unavailable on the JVM test classpath. Both
+     * legs of the fake derive the identity through this function, exactly like
+     * the production pair.
+     */
+    override fun legacyLaunchIdentityOf(item: CanonicalItemState): String? {
+        if (item.kind !is CanonicalItemKind.ShortcutLegacy && item.kind !is CanonicalItemKind.Unknown) return null
+        return (item.intent as? OptionalText.Present)?.value
+    }
+
+    /**
+     * Issue #152: transform the completed snapshot to simulate model/DB
+     * divergence (a loader generation that dropped, reordered, or transformed
+     * rows relative to the committed DB content) while the DB leg still
+     * matches — the false-success class the model leg exists to catch.
+     */
+    var modelSnapshotTransform: ((ModelSnapshot) -> ModelSnapshot)? = null
     var materializedIntendedStateOverride: ((LayoutState) -> LayoutState)? = null
     var onApplyA5Reread: (() -> Unit)? = null
     var onReloadRequest: ((Int) -> Unit)? = null
@@ -283,7 +322,14 @@ class FakeLayoutWriter(
     override fun requestCorrelatedReload(lease: LeaseHandle): ReloadResult {
         reloadCount += 1
         onReloadRequest?.invoke(reloadCount)
-        return reloadResult
+        return when (val result = reloadResult) {
+            is ReloadResult.Completed ->
+                ReloadResult.Completed(
+                    modelSnapshotTransform?.invoke(result.modelSnapshot) ?: result.modelSnapshot,
+                )
+
+            else -> result
+        }
     }
 
     override fun <T> withLease(kind: WriterKind, token: Long, block: (LeaseHandle) -> T): T? {
