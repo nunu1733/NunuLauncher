@@ -2,7 +2,7 @@
 
 > Issue: #172
 > Spec: [spec.md](./spec.md)
-> Status: draft（spec再レビュー待ち。review rev 2対応済み）
+> Status: draft（spec再レビュー待ち。review rev 3対応済み）
 
 ## Current evidence
 
@@ -33,7 +33,7 @@
 | Module | 変更 |
 |---|---|
 | `diagnostics/model` | `PhaseCode` へ `INPUT_NOT_READY`（terminal）を追加。`ErrorFamily` へ `INPUT_READINESS` を追加し、`validCodesForFamily` が新closed enum `InputCompositionCode` の定数名 + `"UNMAPPED"` を返す実装を追加 |
-| `diagnostics/logger/DiagnosticsLogger.kt` | 専用typed API `logCaptureFailure(exceptionClassName: String, errorCode: String?)` を追加。自由形式Stringを受け取らない。**debug buildでのみ**DEBUG levelで出力し、release buildでは何も出力しない。`terminalFailurePhases` に `INPUT_NOT_READY` を追加しWARN扱いにする（journal由来eventの従来経路） |
+| `diagnostics/logger/DiagnosticsLogger.kt` | 専用API `logCaptureFailure(exceptionClass: Class<out Throwable>, errorCode: Int?)` を追加。**String型パラメータを持たない**: class名はlogger内部で `simpleName` 化し、error codeはtyped accessor由来の数値のみ。debug buildでのみDEBUG levelで出力し、release buildでは何も出力しない。`terminalFailurePhases` に `INPUT_NOT_READY` を追加しWARN扱いにする（journal由来eventの従来経路） |
 | `integration` | 新closed enum `InputCompositionCode`（16値、SCREAMING_SNAKE）を定義。`CompositionDiagnostic.code` の型をこれへ変更（既存kebab文字列との対応はAC-1の対応表testで固定）。`CanonicalCaptureReadResult` 失敗時にobserverへ通知する最小の注入点を `LayoutWriterCanonicalCaptureSource` に追加（production wiringは `LayoutApplicationModule` が `DiagnosticsLogger.logCaptureFailure` へ接続）。**`InputReadinessReason` とcomposerの判定ロジックは変更しない** |
 | `diagnostics/projection` | `InputReadinessProjection`（新規）: `OrganizationInputComposition.NotReady` → `ErrorEntry(INPUT_READINESS, code)` への射影。codeは既に `InputCompositionCode` 型であるため対応表は不要。将来の未知code（外部由来）に備え `UNMAPPED` へのfallthroughを検証するtestを持つ |
 | `organizer/ui` | `ManualOrganizationRun.start()` の `NotReady` 分岐で、`finish` 前に `INPUT_NOT_READY` eventをemit。既存の `emit()` のfail-open性を踏襲 |
@@ -41,7 +41,7 @@
 | `docs/engineering/organizer-diagnostics.md` | §3にserialized enum追加のversioning規定（upgrade可/downgrade時はjournal reset）、§4.1に `INPUT_NOT_READY` 行、§5にfamily/code来源（`InputCompositionCode` + `UNMAPPED`）と16値一覧、§7にcapture側例外の限定例外行（class名+正規化error code、debug build限定、message/stack traceはNeverのまま）、§10にWARN集合とdebug例外行の規則、§13にfixture例とnegative fixture拡張 |
 
 - **journal理由コードの正本は `InputCompositionCode` 一つ**である。`CompositionDiagnostic.code` とjournalの `ErrorEntry.code` が同一集合を参照し、driftは `validCodesForFamily` の実行時validationで検出される。
-- capture失敗の観測は `RunEvent` に例外情報を載せない。observer注入点 → `logCaptureFailure` のtyped APIで完結させ、`RunEvent` schema・schemaVersionは不変である。
+- capture失敗の観測は `RunEvent` に例外情報を載せない。observer注入点 → `logCaptureFailure` の型境界（`Class<out Throwable>` + `Int?`）で完結させ、`RunEvent` schema・schemaVersionは不変である。文字列型パラメータが存在しないため、呼出側がmessageやlayout由来の文字列を渡せる経路はAPIレベルで存在しない（fixture依存ではなく構造的保証）。
 - capture失敗時にjournalへ書く理由コードはcomposerの `NotReady(InvalidCanonicalCapture(CAPTURE_UNAVAILABLE))` が運ぶ `CAPTURE_INVALID` であり、例外情報とjournalが重複しない。
 
 ### Closed code set（正式値）
@@ -83,7 +83,8 @@ start() → RUN_STARTED
 
 ### Alternatives rejected
 
-- **raw `Throwable.message` のlogcat出力**: 任意のmessageがlayout内容・package名等を含まない保証がなく、§7のNever分類（自由形式text）と両立しない。class名+正規化error codeで#171種の診断（例: `SQLiteBlobTooBigException`）は十分である。
+- **raw `Throwable.message` のlogcat出力**: 任意のmessageがlayout内容・package名等を含まない保証がなく、§7のNever分類（自由形式text）と両立しない。class名+数値error codeで#171種の診断（例: `SQLiteBlobTooBigException`）は十分である。
+- **`logCaptureFailure` を文字列パラメータ（`exceptionClassName: String, errorCode: String?`）で定義する**: 「typed accessorから取得済みだから安全」というcaller convention依存になり、別callerがmessage・package・layout由来の文字列を渡せてしまう。privacy保証をfixtureではなく構造的に成立させるため、`Class<out Throwable>` + `Int?` の型境界とする。
 - **schemaVersion 2への引き上げ / 新旧mixed-version journal**: `RunEventSerializer` はv1のみ受理し、JournalStoreは全件decodeする。v2 eventの混在は現行実装でもdecode失敗（journal reset）であり、旧buildとの互換は解決しない。retentionで物理的に短命なdiagnostics journalのdowngrade時resetは、corruption isolation（既存§8）と同じfail-open挙動として受入する方が実装差分が小さい。
 - **`InputReadinessReason` 系ごとの新ErrorFamily / `additionalCodes` にsource kindを混在**: `ErrorEntry` のvalidation（同一familyのcodeのみ許容）と§5の「codeは来源enum定数名」規則に反する。
 - **kebab-case文字列を正式closed値とする**: serialized diagnostic codeは外部観測可能な契約であり、§5の「来源enumの定数名」規約に沿ってSCREAMING_SNAKEのenum定数名を正式値とする。kebab文字列は内部実装詳細から正式値への対応表testで退避する。
@@ -119,7 +120,7 @@ start() → RUN_STARTED
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
 | AC-1 | `InputCompositionCode` 対応表unit test（16値×既存code×`InputReadinessReason` 系）、`ManualOrganizationRunTest` 追加（`INPUT_NOT_READY` event、terminal性、理由コード、fail-open）、`ModelValidationTest` のclosed集合検証 | `./gradlew :lawnchair:testLawnWithQuickstepGithubDebugUnitTest` |
-| AC-2 | capture failure注入test: 例外→`Invalid` + `logCaptureFailure(class, code?)` 呼出し、messageのnon-containment、release buildでskipされるassert、composer返却不変のassert | 同上（unit） |
+| AC-2 | capture failure注入test: 例外→`Invalid` + `logCaptureFailure(class, code?)` 呼出し、class名/数値error codeのみのassert、messageのnon-containment、release buildでskipされるassert、composer返却不変のassert | 同上（unit） |
 | AC-3 | エミュレータ `nunu_qpr2_api36_1`: #168/#171手順でNova restore→同一processでorganizer起動→`INPUT_NOT_READY` 理由コード・capture例外の取得。`docs/assessment/issue-172-input-unavailable-diagnostics.md` に記録 | 手動（エミュレータ）。debug build |
 | AC-4 | UI compose test（`RECONCILIATION_PENDING`→再試行系copy、他理由→報告系copy）、en/ja string確認 | unit test + resource review |
 | AC-5 | journal/export negative fixture test拡張（例外message・stack trace・digest・package名等のnon-containment、`INPUT_NOT_READY` event含む） | 同unit test |

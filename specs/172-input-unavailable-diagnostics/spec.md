@@ -20,14 +20,14 @@ updated: 2026-08-31
 
 ## Outcome
 
-`InputUnavailable` で終わるすべてのrunが、privacy-safeな理由コードを持つterminal diagnostics recordをjournalに残す。capture側の失敗は、例外class名と正規化されたerror code（raw messageは出さない）としてdebug buildのlogcatで観測できる。supportとユーザーは「後でもう一度試せる」状態（model未読込等）と「バグ報告に値する」状態（source/config系の理由）を区別できる。#171の一回性episodeは、名前付きの理由で再現されるか、失敗時点の状態証拠でboundedされる。
+`InputUnavailable` で終わるすべてのrunが、privacy-safeな理由コードを持つterminal diagnostics recordをjournalに残す。capture側の失敗は、例外class名と数値error code（raw message・stack traceは出さない）としてdebug buildのlogcatで観測できる。supportとユーザーは「後でもう一度試せる」状態（model未読込等）と「バグ報告に値する」状態（source/config系の理由）を区別できる。#171の一回性episodeは、名前付きの理由で再現されるか、失敗時点の状態証拠でboundedされる。
 
 Issue #172本文の受入条件にある「exception class/message/code」のうち、**messageは本specにより「出力しない」に強化する**。理由: 任意の `Throwable.message` がlayout内容・package名・component名・座標等を含まないことは一般に保証できず、§7のNever分類と両立しないためである。class名単独（例: `SQLiteBlobTooBigException`）とerror codeで#171の診断に必要な識別は十分であり、この強化はissueの意図（診断可能にする）を満たす。
 
 ## Scope
 
 - `InputReadinessReason` の理由コードをjournalへ出力するterminal phase（`INPUT_NOT_READY`）の導入。journal理由コードはcomposerの既存diagnostic codeに1:1対応するclosed enum `InputCompositionCode`（SCREAMING_SNAKE定数名）を正式値とする。
-- capture側例外の観測: `DiagnosticsLogger` への専用typed API（`exceptionClass` + 任意の正規化 `errorCode` のみを受け取る）を追加し、debug buildのlogcatで出力する。raw message・stack traceは出力しない。
+- capture側例外の観測: `DiagnosticsLogger` への専用APIを追加し、debug buildのlogcatで出力する。APIは**String型を一切受け取らない**: 例外は `Class<out Throwable>` として受け、logger内部で `simpleName` 化する。error codeは `Int?`（typed accessor由来の数値、例: SQLite error code）のみである。raw message・stack traceは出力しない。
 - user-facing copyの区分: `ReconciliationPending` は「後でもう一度試してください」系、それ以外の理由は「バグ報告」系の文言を表示する。
 - #171の一回性post-restore capture不可episodeの再現またはbounded。具体的原因が特定された場合はfocused fix Issueへ分割する。
 - 上記に伴う [organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md)（正本）の§4.1/§5/§7/§10/§13更新と、serialized enum追加のversioning規定（§3/§8）の明確化。
@@ -74,8 +74,9 @@ And user-facing copyは「後でもう一度試す」ことを示す区分であ
 Given `LayoutWriterCanonicalCaptureSource.capture()` が `RuntimeException` を投げる。
 When composerがcaptureを読む。
 Then composerの返却は従来どおり `NotReady(InvalidCanonicalCapture(CAPTURE_UNAVAILABLE))` であり、振る舞いは変わらない。
-And debug buildでは、diagnostics loggerの単一tagにDEBUG levelで、失敗contextとexception class名（例: `exceptionClass=SQLiteBlobTooBigException`）、およびtyped accessorから取得できる正規化error code（存在する場合）のみの行が出力される。
+And debug buildでは、diagnostics loggerの単一tagにDEBUG levelで、失敗contextとexception class名（loggerが受け取った `Class` から `simpleName` 化した値。例: `exceptionClass=SQLiteBlobTooBigException`）、およびtyped accessorから取得できる数値error code（`Int`。存在する場合）のみの行が出力される。
 And raw `Throwable.message`、stack trace、layout内容、package名、profile識別子、座標、item列挙は出力されない。取得できない情報は省略され、`<redacted>` 等のtextに置換して出力することもしない。
+And この観測APIは文字列型パラメータを持たないため、呼出側がmessageやlayout由来の文字列を渡す経路が型として存在しない。
 And journalには例外class名・error codeは書かれず、理由コード `CAPTURE_INVALID` のみが書かれる。
 And release buildではこの行は出力されない。releaseではjournal由来の `INPUT_NOT_READY`（WARN、理由コード付き）のみが観測される。
 
@@ -113,7 +114,7 @@ And upgrade方向（旧journal → 新build）は既存eventのみで構成さ�
 ## Permissions, privacy, and security
 
 - permission・network・telemetryの追加はnone。journal・exportは既存のlocal-only契約に従う。
-- [organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md) §7分類表に1行の限定例外を承認する: **capture側例外のexception class名と正規化error code** を、`DiagnosticsLogger` の専用typed API経由で、DEBUG level・debug build・capture失敗時のみlogcatに出力してよい。**raw `Throwable.message` とstack traceは引き続きNeverであり、journal・export・logcatのいずれにも出力しない。** 正規化error codeはtyped accessor（例: SQLiteのerror code）から取得できる値に限り、自由形式textは許可しない。
+- [organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md) §7分類表に1行の限定例外を承認する: **capture側例外のexception class名と数値error code** を、`DiagnosticsLogger` の専用API経由で、DEBUG level・debug build・capture失敗時のみlogcatに出力してよい。APIは `Class<out Throwable>` と `Int?` のみを受け取り、文字列型パラメータを持たない。**raw `Throwable.message` とstack traceは引き続きNeverであり、journal・export・logcatのいずれにも出力しない。**
 
 ## Accessibility and localization
 
@@ -123,7 +124,7 @@ And upgrade方向（旧journal → 新build）は既存eventのみで構成さ�
 ## Acceptance criteria
 
 - [ ] **AC-1 — 理由コード付きterminal record:** `InputUnavailable` で終わるすべてのmanual runが、`INPUT_NOT_READY` phase + `ErrorFamily.INPUT_READINESS` + `InputCompositionCode` 定数名を持つjournal eventを生成する。`CompositionDiagnostic.code` は `InputCompositionCode` 型となり、journal側は `validCodesForFamily(INPUT_READINESS)` で検証し、未知codeは `UNMAPPED` に落ちる。全16値の対応（既存kebab-codeとの対応表を含む）がspec/契約に記載される。
-- [ ] **AC-2 — capture例外の観測（message出力なし）:** capture側 `RuntimeException` が、debug buildのlogcatに `exceptionClass`（単純名）と正規化error code（存在する場合）のみで出力される。raw message・stack traceは出力されない。composerのfail-closed返却値は不変である。専用APIは自由形式Stringを受け取らない。
+- [ ] **AC-2 — capture例外の観測（message出力なし）:** capture側 `RuntimeException` が、debug buildのlogcatに `exceptionClass`（loggerが受け取った `Class<out Throwable>` から `simpleName` 化）と数値error code `Int?`（存在する場合）のみで出力される。観測APIはString型パラメータを持たず、raw message・stack traceは出力されない。composerのfail-closed返却値は不変である。
 - [ ] **AC-3 — 一回性episodeの解決:** post-restore capture不可episodeが、名前付き理由での再現、または失敗時点の状態証拠によるboundedのいずかで `docs/assessment/` に記録される。具体的なcapture側欠陥が確認された場合はfocused fix Issueへ分割されている。
 - [ ] **AC-4 — copy区分:** `RECONCILIATION_PENDING` の場合とその他の理由の場合で、user-facing copyが「後で再試行」と「バグ報告」を区別する。en/ja両方が提供される。
 - [ ] **AC-5 — privacy不変:** journal・export・logcatの全出力面で§7 Never分類（exception message・stack traceを含む）が保たれる。negative fixture testがこれを自動検証する。
@@ -135,7 +136,7 @@ And upgrade方向（旧journal → 新build）は既存eventのみで構成さ�
 | AC | Evidence |
 |---|---|
 | AC-1 | `InputCompositionCode` 全16値と既存kebab-code・`InputReadinessReason` 系の対応表unit test。`ManualOrganizationRunTest` への `INPUT_NOT_READY` event検証追加（理由コード、terminal性、emit失敗時のfail-open）。`ModelValidationTest` / journal系testのclosed集合検証 |
-| AC-2 | capture sourceのfailure注入test（例外→`Invalid` + `logCaptureFailure` 呼出し、class名/error codeのみのassert、messageのnon-containment、release buildで出力されないassert） |
+| AC-2 | capture sourceのfailure注入test（例外→`Invalid` + `logCaptureFailure` 呼出し、class名/数値error codeのみのassert、messageのnon-containment、release buildで出力されないassert） |
 | AC-3 | エミュレータ（`nunu_qpr2_api36_1`）での再現/bounded手順と結果を記録した `docs/assessment/issue-172-input-unavailable-diagnostics.md` |
 | AC-4 | UI compose test（reason区分→表示copy）。string resourceのen/ja確認 |
 | AC-5 | journal/export negative fixture testの拡張（例外message・digest等のnon-containment、`INPUT_NOT_READY` 含む） |
@@ -153,3 +154,4 @@ And upgrade方向（旧journal → 新build）は既存eventのみで構成さ�
 
 - 2026-08-31: Issue #172のdraft specを作成。#171 investigation（[assessment](../../docs/assessment/issue-171-organizer-after-external-restore.md)）のhandoffに基づく。
 - 2026-08-31: Review rev 2。Blocker指摘に対応: (1) capture例外はraw messageを出さずclass名+正規化error codeに限定（debug build限定）、(2) serialized enum追加のversioning/downgrade挙動（journal reset）をAC-7として明記、(3) `InputCompositionCode` の16値を正式closed集合として確定、(4) capture観測のlogger seamを `DiagnosticsLogger` への専用typed API追加として確定し、open questionsを解消。
+- 2026-08-31: Review rev 3。残り2点に対応: Issue #172本文のAC文言を「exception class/code、raw message不使用」へ更新（Blocker）。`logCaptureFailure` を `Class<out Throwable>` + `Int?` のみを受け取るAPIとして確定し、文字列型パラメータを排除してprivacy保証をcaller convention依存から型境界へ移した（Major）。
