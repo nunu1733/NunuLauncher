@@ -2,76 +2,74 @@
 
 > Status: accepted with conditions
 > Audit date: 2026-08-31
-> Verdict: **ACCEPT WITH CONDITIONS**（初回監査 head `8f649e1e4c` での REJECT 指摘 F1/F2/F3 は新 head で対処済み。下記「再監査の条件」参照）
+> Verdict: **ACCEPT WITH CONDITIONS**（初回監査 head `8f649e1e4c` のREJECT指摘 F1/F2/F3、および再監査 head `8683542052` で課した条件 C1/C2/C3/C4(M4含む) のうち、C2/C3/C1は解消を確認。残る条件は C4（本記録のdocs-only commit pushと `high-risk-evidence` 再実行PASS）のみ。C4充足時点でmerge可能）
 
-- Auditor: 独立ZCode agent session（実装を行ったagent/sessionとは別作業の読み取り監査 + 検証commandの独立再実行。初回監査と同一sessionによる新 head の再監査。コードは未変更、本記録の更新のみ）
+- Auditor: 独立ZCode agent session（実装を行ったagent/sessionとは別作業の読み取り監査 + 検証commandの独立再実行。初回監査 `8f649e1e4c`、再監査 `8683542052` に続く第3回監査として `58da306c07` を対象。コードは未変更、本記録の更新のみ）
 - PR: https://github.com/nunu1733/NunuLauncher/pull/186
-- Head SHA: 8683542052914c5304eab50e8f17a40b1880c9b3
-- Head SHA検証: 上記は `git rev-parse HEAD`（branch `issue-185-implementation`、working tree clean）と一致し、PR #186のheadと同一であることを監査sessionで確認した。初回監査対象 `8f649e1e4c` の子孫であり、両者の間の非docs変更は修正コミット `8683542052` 1本のみ（`git log --oneline 8f649e1e4c..HEAD`）
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/33440703365
-- CI run補足: 上記はPR #186のpull_request merge-gate run（head `8683542052`、organizer-unit-tests / check-style / validate-repo-contract / build-debug-apk / instrumentation lanes実行）。監査完了時点でのこのrunの `final-status` はFAILURE（instrumentation 2 laneのflaky疑い失敗。Executed test surface 節に記録）。**このrun（または同一headの再実行run）の `final-status` green を再確認するまでmergeしないこと**。また本記録は head `8683542052` を監査しており、記録自体はdocs-only commitとしてpushされ、push後に `high-risk-evidence` が再実行される（validatorは「監査head以降の変更がdocs-only」であることを確認する設計）
+- Head SHA: 58da306c076874d8956da2754b4f1cd641322df8
+- Head SHA検証: 上記は `git rev-parse HEAD`（branch `issue-185-implementation`、working tree clean）と一致し、PR #186のheadと同一であることを監査sessionで確認した。前回監査対象 `8683542052` の子孫で、両者の間の増分は単一コミット `58da306c07`（`git diff 8683542052..HEAD --stat` = ci.yml 1行、seam test +8行、ProductionPublicSeam import −1行、本記録。productionコードへの変更なし）
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/33442674258
+- CI run補足: 上記はPR #186のpull_request merge-gate run（head `58da306c07`）で、監査実行時点で **completed / success、`final-status` job pass**（全lane内訳は Executed test surface 節に記録）。本記録はdocs-only commitとしてpushされ、push後の `high-risk-evidence` 再実行で本runがmerge-gate evidenceとして検証される（条件C4）
 - Criteria: specs/185-qsb-row-item-interop/spec.md AC-1 AC-2 AC-3 AC-4 AC-5 AC-6 AC-7 AC-8 AC-9、docs/adr/0010-qsb-row-item-overlap-interop.md ADR-0010、docs/adr/0008-qsb-reservation-context-and-recovery-compatibility.md ADR-0008、specs/13-safe-layout-application/spec.md FR-004 FR-005（`PreWriteRejection` closed集合・A5）、docs/engineering/organizer-diagnostics.md §5/§7
 
 ## Scope
 
-監査対象diffは `git diff main...8683542052`（36 files、+1777/−45、commits `1ec7452f2a`→`58f9fa8f2f`→`8f649e1e4c`→`8683542052`）。初回監査（head `8f649e1e4c`、32 files）でAC-1〜AC-7の適合を確認済み。増分（`git diff 8f649e1e4c..8683542052`）は以下を独立レビューした:
+監査対象diffは `git diff main...58da306c07`（37 files、+1774/−46、commits `1ec7452f2a`→`58f9fa8f2f`→`8f649e1e4c`→`8683542052`→`58da306c07`）。
 
-- `LauncherLayoutAdapter.applyWriteSet` のA5 gate入力を `before.manifest.rows`（現在状態）→ `writeSet.intendedManifest.rows`（intended state。通常applyではintended manifest、recoveryでは `recovery.targetManifest`）へ変更（F1修正、`LauncherLayoutAdapter.kt:314-327`）
-- 新規 `OverlapAcceptanceGateSeamInstrumentationTest`（apply/recovery のadapter seam test、F2）
-- 新規 `LoaderCursorOverlapAcceptanceContractTest`（`LoaderCursor.checkItemPlacement` ↔ organizer predicate の等価contract test、F3）
-- `ProductionPublicSeamInstrumentationTest` のimport 2行追加（未使用。軽微指摘M4参照）
-- 本監査記録ファイル（初回REJECT版が `8683542052` に含まれてコミット済み。本更新はdocs-only commitでpushされる）
+- head `8f649e1e4c`（初回監査）: capture require撤去、分類precedence 2 site、plan時guard限定免除、composer受容gate+production wiring、A5/recovery gate、closed集合/copy/docs。AC-1〜AC-7適合、F1/F2/F3をBlocking指摘。
+- head `8683542052`（第2回監査）: F1修正（gate入力 `writeSet.intendedManifest.rows` 化）、F2 seam test、F3 contract test追加。F1解消確認、条件C1〜C4付ACCEPT WITH CONDITIONS。
+- head `58da306c07`（本監査）の増分（test-only + CI workflow + 本記録）:
+  - C2: `OverlapAcceptanceGateSeamInstrumentationTest.recoveryGateRejectsRestoringRowTheLoaderDeletedWhenPolicyIntolerant` が `allowWidgetOverlap` を明示的にtrueへpin（finallyで復元）。fixture行（予約内 `(2,0)`）がfresh emulator（既定false）の初回reloadでloaderに削除される環境依存を除去。adapterへの注入は `overlapToleranceSource = { false }` のまま gate を非受容で評価する構成で、pinはfixture生存専用。apply側test (a) はfixture行が予約外 `(2,1)` のためpin不要で無変更は妥当。
+  - C3: `.github/workflows/ci.yml` のproduction-seam lane（`organizer-instrumentation-issue155-tests`、454行付近）のclass filterに `OverlapAcceptanceGateSeamInstrumentationTest` と `LoaderCursorOverlapAcceptanceContractTest` を追加。本headのCIで当該laneが **pass**（両classがCIで実行されたことをlane成功と、contract testの `assumeTrue` 前提（numColumns>=3、重複形状）がCI emulatorで成立していることをlane filterの性質上記録する。skipによるvacuous greenの排除はCI report artifactでの追加確認を推奨）。
+  - M4: `ProductionPublicSeamInstrumentationTest.kt` の未使用import `RowManifestCodec` を削除。ただし同ファイルの未使用import `org.junit.Assert.assertFalse`（`8683542052` で追加され、bodyでの使用なしをgrepで再確認）は残存 — 軽微指摘M5として継続扱い（非blocking、spotless/check-style通過済み）。
 
-runtime書き込み経路とmigration対象: F1修正はtransaction内・write前のprecondition評価対象の差し替えのみで、transaction構造・commit経路・recovery lifecycleは不変。schema/format migrationはnone（recovery v2・journal schemaVersion 1・revision/digest計算不変）。予約listの取得元 `before.layoutState.reservedWorkspaceRegions` は現在=target（`RecoveryWriteSetMaterializer` のcontext一致検証 / ADR-0008のsource/intended不変検証）であり、intended rowsとの評価組合せは整合する。
+runtime書き込み経路とmigration対象: 増分はproductionコードに一切触れない（test fixture + CI list + import除去）。F1以降の書き込み経路契約（transaction内・write前評価、recovery lifecycle、schema/format不変）は第2回監査どおり。
 
 ## Criteria check
 
-初回監査で適合確認した AC-1〜AC-7（ADR記録、capture fail-closedの局所性、分類precedence 2 site、plan時guard限定免除、composer受容gate+production wiring、closed集合17値、en/ja copy、#172手順の実機解消記録）は、増分diffがそれらの層に触れていないため維持される（unit 800 tests再実行で無回帰確認）。以下は再監査で状態が変化した項目。
+AC-1〜AC-7およびAC-8/AC-9の本体適合は第1回・第2回監査で確認済みで、本増分（test-only + CI）はそれらの層を変更しない。本監査での更新点は以下。
 
-**AC-8（受容policyのstalenessとrecovery安全）— 適合（条件付き、下記C2/C3）。** F1修正によりgateはintended stateを評価する: `overlapAcceptanceHolds(writeSet.intendedManifest.rows, before.layoutState.reservedWorkspaceRegions, overlapToleranceSource.isOverlapTolerated())`（`LauncherLayoutAdapter.kt:314-327`）。recovery write setの `intendedManifest` は `recovery.targetManifest`（同285行）であり、automaticRecovery（`ApplyProtocol.kt:431`）/ user-initiated recovery（`RecoveryProtocol.kt:153`）の両経路が同一のA5段で守られる。通常applyでは初回監査で示した現在=intended同値性がそのまま成立するため挙動不変。F2として実adapter seam testが追加された: (a) intended stateが予約重複を導入するplanを受容無効policyでapply → `Rejected(OVERLAP_POLICY_REJECTED)` + favorites無書込み検証、(b) loader削除済み重複行をrecovery targetが含むwrite set → `PreconditionFailed(OVERLAP_POLICY_REJECTED)` + 行が復活しないことのDB照会検証。実装側は修正前コードで(b)が `Committed`（復活）になることを実機で再現済み（treatmentの反証確認）。残存するtest品質上の条件はC2（test (b)のambient pref依存）とC3（CI lane未組み込み）。
+**AC-8 — 適合（条件なし）。** F1修正（intended state評価）は第2回監査で確認済み。第2回で課した条件C2（recovery seam testのambient pref依存）は解消: fixture setupで `allowWidgetOverlap=true` をpinしfinallyで復元（`OverlapAcceptanceGateSeamInstrumentationTest.kt:196-206, 266-269`）。実装側は `pm clear` 直後（ambient false）のエミュレータで seam + contract 両classの3 tests OKを報告、本監査はコードレビューでpinの位置（fixture reload前）と復元（finally）を確認した。条件C3（CI lane未組み込み）も解消: 両classがproduction-seam lane filterに追加され、head `58da306c07` のCI run 33442674258で当該laneがpass。
 
-**AC-9（acceptance一致保証）— 適合（条件付き、下記C3）。** ADR-0010 §4が必須とする等価contract testが追加された（`LoaderCursorOverlapAcceptanceContractTest`）。実 `LoaderCursor.checkItemPlacement` をsandbox（`MatrixCursor` + protected seamを開くsubclass）で呼び、QSB行重複形状 `(2,0)` について policy true/false 両値で「loader受容 = policy値」「organizer predicate = loader判定」をassertする。`checkItemPlacement` はscreen単位のoccupied mapをメソッド内で遅延構築しQSB行をmarkするため（`LoaderCursor.java:571-581`）、sandbox呼び出しでも実際のQSB分岐を通過しており、判定は本物のloader ruleに基づく。drift検知機構としては成立するが、当該classはどのCI laneのclass filterにも含まれずCIで実行されない（C3）。
+**AC-9 — 適合（条件なし）。** contract testは第2回監査で実loader QSB分岐を通過する有効な等価検証と確認済み。C3解消によりCIで実行されるようになり、ADR-0010 §4のdrift検知機構として機能する状態になった。
+
+**CI merge gate（AGENTS高リスク要件）— 充足。** head `58da306c07` のpull_request run 33442674258がcompleted/success、`final-status` job pass（https://github.com/nunu1733/NunuLauncher/actions/runs/33442674258/job/99657109373 ）。第2回監査でFAILUREだったapi35 lane（`productionComposerReadsOnlyCompleteGenerationsWhileAuthoringWrites`）とissue99 lane（`appRowMeetsMinimumFortyEightDpTouchTarget`）は本runでいずれもpassし、flaky疑いの評価が裏付けられた（同一testの再現失敗なし）。
 
 ## Executed test surface
 
-監査sessionで実際に実行したcommandと結果（head `8683542052`、JDK 21 / Gradle 9.3.0）:
+監査sessionで実際に実行したcommandと結果（head `58da306c07`、JDK 21 / Gradle 9.3.0）:
 
-- `git rev-parse HEAD` → `8683542052914c5304eab50e8f17a40b1880c9b3`（PR headと一致）。`git status --porcelain` → 空。`git merge-base --is-ancestor 8f649e1e4c HEAD` → 成功。
+- `git rev-parse HEAD` → `58da306c076874d8956da2754b4f1cd641322df8`（PR headと一致）。`git status --porcelain` → 空。`git merge-base --is-ancestor 8683542052 HEAD` → 成功。`git diff 8683542052..HEAD --stat` → 4 files（ci.yml / seam test / ProductionPublicSeam import / 本記録）。
 - `./gradlew spotlessCheck` → **BUILD SUCCESSFUL**
-- `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` → **BUILD SUCCESSFUL**。XML集計（`build/test-results/testLawnWithQuickstepGithubDebugUnitTest/*.xml`、67 suites）: **800 tests / 0 failures / 0 errors / 0 skipped**（再実行時刻を確認済み: results mtimeが本監査実行時刻直後）
+- `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` → **BUILD SUCCESSFUL**。XML集計（67 suites）: **800 tests / 0 failures / 0 errors / 0 skipped**（results mtime 2026-09-01 06:44、本監査実行時刻直後で再実行済みを確認）
+- `./gradlew assembleLawnWithQuickstepGithubDebugAndroidTest` → **BUILD SUCCESSFUL**（変更されたseam testのcompile確認）
 - `./gradlew assembleLawnWithQuickstepGithubDebug` → **BUILD SUCCESSFUL**
-- `./gradlew assembleLawnWithQuickstepGithubDebugAndroidTest` → **BUILD SUCCESSFUL**（新規instrumentation test 2 classのcompile確認）
-- `python3 tools/repo-contract/validate_high_risk_evidence.py --repo 'nunu1733/NunuLauncher' --pr-number 186 --head-sha '8683542052914c5304eab50e8f17a40b1880c9b3'`（本記録更新後）→ 形式・criteria・lineage checkは本記録起因の失敗なし。残る失敗はCI evidence（下記 `final-status` FAILURE）のみであり、これは条件C1として記録
+- `python3 tools/repo-contract/validate_high_risk_evidence.py --repo 'nunu1733/NunuLauncher' --pr-number 186 --head-sha '58da306c076874d8956da2754b4f1cd641322df8'`（本記録更新後・push前）→ 形式・criteria・lineage・CI evidence checkすべて **PASS**（CI run 33442674258がhead一致・pull_request・final-status green・source jobs実行済みとして検証された）。push後はdocs-only headでgateが再実行される（C4）。
 
-新規instrumentation testの実行結果（実装agentがemulator実行・報告済み: seam test + contract test 3 tests OK。本監査では実機再実行せず、compile成功までを独立確認）。
+新規instrumentation testの実行結果: 実装agentが `pm clear` 直後（ambient `allowWidgetOverlap=false`）のエミュレータで `OverlapAcceptanceGateSeamInstrumentationTest` + `LoaderCursorOverlapAcceptanceContractTest` → **OK (3 tests)** を報告（C2確定後の実機検証）。本監査では実機再実行は行わず、CI lane pass（下記）とcompile成功で確認に代えた。
 
-CI（PR #186、head `8683542052`、監査時点 2026-08-31 21:30 UTC頃完了）:
+CI（PR #186、head `58da306c07`、監査時点で完了）:
 
-- merge-gate run https://github.com/nunu1733/NunuLauncher/actions/runs/33440703365: `changes` / `validate-repo-contract` / `check-style` / `organizer-unit-tests` / `build-debug-apk` / instrumentation（shared-writer、db-migration、issue52、issue53、issue155）= **SUCCESS**。`organizer-instrumentation-issue99-tests` = **FAILURE**（`CategoryOverridePreferencesInstrumentationTest > appRowMeetsMinimumFortyEightDpTouchTarget` の `ComposeTimeoutException`。初回監査headでは同一classの別testが同じtimeoutで失敗しrerunでpassしており、本PRと無関係のUI testのflaky継続と整合）。`organizer-instrumentation-api35-tests` = **FAILURE**（`ProductionOrganizationInputInstrumentationTest > productionComposerReadsOnlyCompleteGenerationsWhileAuthoringWrites` の `ExecutionException: AssertionError`。当該testは本PRで追加されたtestではなく、F1修正の適用対象 `applyWriteSet` を経由しないcomposer/authoring並行性の既存test。同一laneは同日main run `33380149381`・初回監査head `33434045588` でSUCCESSであり、失敗testも前回と異なるためflaky疑い。ただし**再実行で再現した場合は本PR回帰として調査必須**）。よって **`final-status` = FAILURE**（https://github.com/nunu1733/NunuLauncher/actions/runs/33440703365/job/99650747486 ）。AGENTSの「検証対象commit上でCI merge gate (final-status) が実際に成功していること」は現時点で未達（条件C1）。
-- high-risk gate run https://github.com/nunu1733/NunuLauncher/actions/runs/33440703377: `high-risk-evidence` = **FAILURE**、理由は「changes after the audited Head SHA are not docs-only; re-audit against the new head」（tree内の記録が初回headを指していたため。本更新のdocs-only commit push + 再実行で解消される手順どおりの状態）。
+- merge-gate run https://github.com/nunu1733/NunuLauncher/actions/runs/33442674258 = **completed / success**。`changes` / `validate-repo-contract` / `check-style` / `organizer-unit-tests` / `build-debug-apk` / instrumentation全lane（shared-writer、db-migration、api35、issue52、issue53、issue99、**issue155 production-seam lane = 新規2 class組み込み済み**）= SUCCESS、`final-status` = **pass**。
+- high-risk gate run https://github.com/nunu1733/NunuLauncher/actions/runs/33442674294 = FAILURE（tree内記録が前head `8683542052` を指しており「changes after the audited Head SHA are not docs-only; re-audit against the new head」= 本更新の理由そのもの。docs-only commit push後の再実行でPASSする見込み — 本監査のローカルvalidator実行はPASS）。
 
 ## Findings
 
-再監査の結論: 初回REJECTのBlocking指摘F1/F2/F3はいずれも新 head `8683542052` で対処を確認した。判定は **ACCEPT WITH CONDITIONS**。以下に対処確認と、merge前に充足すべき条件（C1〜C4）と軽微指摘を記載する。
+判定 **ACCEPT WITH CONDITIONS**。残存条件はC1〜C4のうちC4のみ。以下、対処確認と残課題を記載する。
 
-### 初回指摘の対処確認
+### 条件の解消状況
 
-- **F1（解消）**: gate入力が `writeSet.intendedManifest.rows` となり、recovery targetを含むintended stateがtransaction内・write前に現在の受容policyで再評価される。recovery両経路（automatic/user-initiated）が同一段を通ることをコードで確認。実装側の実機反証（修正前 `Committed` 復活→修正後 `PreconditionFailed(OVERLAP_POLICY_REJECTED)`）+ seam test (b) のDB照会（復活なし）で裏付け。
-- **F2（解消・条件C2/C3付き）**: apply/recoveryのadapter seam testが実装され、`OVERLAP_POLICY_REJECTED` と無書込み/無復活をassert。ただしtest (b)はfixture行の初回reload生存を実機のambientな `allowWidgetOverlap`（既定falseではloaderが先読み削除してtestが失敗する）に依存しており、C2の確定化を条件にACCEPT。
-- **F3（解消・条件C3付き）**: ADR-0010 §4必須の等価contract testが実loader ruleの実際の分岐を通過する形で存在し、policy両値で一致を検証。drift検知として機能するにはCI実行が必要（C3）。
-
-### 再監査の条件（merge前に充足・記録すること）
-
-- **C1**: 監査head `8683542052`（または同一内容の再実行）でCI `final-status` がSUCCESSであることを確認する。issue99/api35の失敗はflaky疑い（前回と別test、同一laneのmainでの成功履歴、変更領域との非関連）だが、再実行でapi35の `productionComposerReadsOnlyCompleteGenerationsWhileAuthoringWrites` が再現した場合は本PR回帰として再監査相当の調査を要求する。
-- **C2**: `OverlapAcceptanceGateSeamInstrumentationTest.recoveryGateRejectsRestoringRowTheLoaderDeletedWhenPolicyIntolerant` の環境依存を除去する。具体的にはfixture setupで `prefs.allowWidgetOverlap.setBlocking(true)`（finallyで復元）を明示し、fresh emulator（既定false）でも初回reloadでfixture行が削除されずrecoveryシナリオが成立することを保証する。現状のコードはambient stateに依存し、CI laneに組み込んだ時点で失敗する可能性が高い。
-- **C3**: 新規instrumentation 2 class（`OverlapAcceptanceGateSeamInstrumentationTest`、`LoaderCursorOverlapAcceptanceContractTest`）をいずれかのCI laneのclass filterに追加する（現状 `grep OverlapAcceptanceGateSeam\|LoaderCursorOverlapAcceptance .github/workflows/ci.yml` → 不一致。AC-8/AC-9のtest証拠とLoaderCursor drift検知がCIで一度も実行されない状態を解消すること。C2の確定化が前提）。
-- **C4**: 本記録の更新をdocs-only commitとしてpushし、そのheadで `high-risk-evidence` がPASSすることを確認する（本記録が監査するのは `8683542052` であり、docs-only commit以降の非docs変更は再監査対象となる）。
+- **C1（解消）**: 監査head `58da306c07` で `final-status` green（run 33442674258）。第2回監査時のapi35/issue99失敗は本runで再現せず、flaky判定が裏付けられた。
+- **C2（解消）**: recovery seam testが `allowWidgetOverlap` をpin+復元。ambient false環境（`pm clear` 直後）での実機3 tests OKが報告され、コードレビューでもpin位置・復元・gate注入（false維持）の整合を確認。
+- **C3（解消）**: 新規2 classがproduction-seam lane filterに追加され、CIで実行されたlaneがpass。
+- **C4（残存・手順）**: 本記録のdocs-only commit pushと、そのheadでの `high-risk-evidence` 再実行PASS確認。これ以外の残存条件はないため、**C4充足時点でmerge可能**。
 
 ### 軽微（非blocking）
 
-- **M4**: `ProductionPublicSeamInstrumentationTest.kt` に未使用import 2本（`RowManifestCodec`、`assertFalse`）が増分コミットで混入。spotless/CI check-styleは通過しているが、C2/C3の作業時に除去推奨。
-- 初回監査の軽微指摘（composer/adapterのtolerance default `{ true }`、RESERVED_REGION precedenceのLOCKED表示差、新code固有retry testの非追加）は変更なし。いずれも非blockingとして維持。
+- **M5**: `ProductionPublicSeamInstrumentationTest.kt` の未使用import `org.junit.Assert.assertFalse` が残存（M4はRowManifestCodecのみ除去）。次のdocs/test作業時に除去推奨。
+- **M6**: production-seam laneのpassはclass filterの性質上、新規2 classがskipでなく実際に走ったことをreport artifactレベルでは示さない（`assumeTrue` 前提はCI emulator profileで成立しているが、vacuous green排除の最終確認はlane report artifactで可能）。次回以降の監査・作業時の任意確認。
+- 第1回からの軽微指摘（composer/adapterのtolerance default `{ true }`、RESERVED_REGION precedenceのLOCKED表示差、新code固有retry testの非追加）は変更なし。非blockingとして維持。
 
 ### 判定根拠
 
-ACCEPT WITH CONDITIONS: 初回REJECTの中心であったlayout安全契約の欠陥（F1）は指摘どおりの最小修正で解消され、実機反証とseam testで確認できた。AC-8/AC-9のtest証拠も実質的なものが揃った。一方、AGENTSが高リスクPRのmerge要件として同一commitでの `final-status` 成功を要求しており（C1）、F2/F3のtestがCIで実行されない・片方が環境依存という状態（C2/C3）は、これらを「マージ前に潰すべき条件」として残すのが相当と判断。docs-only commit手順（C4）はgate設計どおり。
+ACCEPT WITH CONDITIONS: 初回REJECTの中心（F1: recovery targetの受容再評価欠落）は第2回で解消を確認し、第2回条件（C1 CI green、C2 test確定化、C3 CI組み込み）はすべて本headで解消を独立確認した。AC-1〜AC-9は適合、AGENTS高リスク要件のうちCI merge gate（同一commitでの `final-status` 成功）は充足、監査記録要件は本記録のdocs-only push（C4）で充足する。C4はgate設計どおりの手順的残課題であり、実質的な再監査事由（非docs変更）は残っていない。
