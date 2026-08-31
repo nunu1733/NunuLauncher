@@ -32,9 +32,12 @@ class DiagnosticsLogger(
      * Phases like APPLY_NO_CHANGES, USER_CANCELLED, PLANNING_IMPOSSIBLE,
      * APPLY_RECOVERED, RECOVERY_WRITER_BUSY, RECOVERY_CONCURRENT are
      * NOT failures and are not included.
+     * `INPUT_NOT_READY` (issue #172) is terminal and journaled with a
+     * readiness code, so it joins the WARN set.
      */
     private val terminalFailurePhases: Set<PhaseCode> = setOf(
         PhaseCode.PLANNING_REJECTED,
+        PhaseCode.INPUT_NOT_READY,
         PhaseCode.CHECKPOINT_REJECTED,
         PhaseCode.APPLY_REJECTED,
         PhaseCode.CONCURRENT_RUN_REJECTED,
@@ -74,6 +77,36 @@ class DiagnosticsLogger(
             // Fail-open: logcat may not be available in all environments
         }
     }
+
+    /**
+     * Issue #172: capture-side failure detail, debug builds only.
+     *
+     * Contract §10 explicit exception: unlike [log], this line is NOT a
+     * `RunEvent` projection and is emitted at the capture site **before** any
+     * journal append. Its content is confined to the contract §7 bounded
+     * exception (exception class simple name only). The API takes no String
+     * parameter, so no caller can feed message/layout-derived text through
+     * this seam; raw `Throwable.message` and stack traces stay Never on every
+     * surface. The class simple name (e.g. `SQLiteBlobTooBigException`) is the
+     * normalized failure identity — the platform exposes no typed numeric
+     * error-code accessor, so none is carried. The journal-side counterpart is
+     * the terminal `INPUT_NOT_READY` record with the readiness code.
+     */
+    fun logCaptureFailure(exceptionClass: Class<out Throwable>) {
+        if (isReleaseBuild) return
+        try {
+            Log.d(TAG, formatCaptureFailure(exceptionClass))
+        } catch (_: RuntimeException) {
+            // Fail-open: logcat may not be available in all environments
+        }
+    }
+
+    /**
+     * Single-line rendering of [logCaptureFailure]. Pure function so the
+     * contract (class simple name only, no message/stack trace) is assertable
+     * without touching logcat.
+     */
+    fun formatCaptureFailure(exceptionClass: Class<out Throwable>): String = "phase=CAPTURE exceptionClass=${exceptionClass.simpleName}"
 
     fun format(event: RunEvent): String {
         val parts = mutableListOf<String>()

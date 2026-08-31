@@ -9,6 +9,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class PhaseCode {
     RUN_STARTED,
+    INPUT_NOT_READY, // terminal (issue #172)
     CAPTURED,
     PREVIEWED,
     PLANNED,

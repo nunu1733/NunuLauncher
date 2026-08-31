@@ -53,11 +53,38 @@ interface OrganizationInputComposer {
     fun composeFullOrganization(): OrganizationInputComposition
 }
 
+/**
+ * Type-safe observation of capture-side failures (issue #172). The observer
+ * receives no string-typed parameter: the logger derives the class name from
+ * [onCaptureFailure]'s `Class` argument, so message/layout-derived text cannot
+ * enter the diagnostics path through this seam. The class simple name is the
+ * normalized failure identity; the platform exposes no typed numeric
+ * error-code accessor, so none is carried.
+ */
+fun interface CaptureFailureObserver {
+    fun onCaptureFailure(exceptionClass: Class<out Throwable>)
+}
+
+/** No-op observer for seams that do not observe capture failures. */
+object NoopCaptureFailureObserver : CaptureFailureObserver {
+    override fun onCaptureFailure(exceptionClass: Class<out Throwable>) = Unit
+}
+
 /** Production capture adapter; the composer itself never reaches SQLite or Android state. */
-class LayoutWriterCanonicalCaptureSource(private val writer: LayoutWriterPort) : CanonicalCaptureSource {
+class LayoutWriterCanonicalCaptureSource(
+    private val writer: LayoutWriterPort,
+    private val captureFailureObserver: CaptureFailureObserver = NoopCaptureFailureObserver,
+) : CanonicalCaptureSource {
     override fun capture(): CanonicalCaptureReadResult = try {
         CanonicalCaptureReadResult.Ready(writer.captureCurrent(CaptureId("organization-input")))
-    } catch (_: RuntimeException) {
+    } catch (failure: RuntimeException) {
+        // Fail-open: a diagnostics observer failure must never change readiness
+        // semantics — the composer still returns Invalid regardless (issue #172).
+        try {
+            captureFailureObserver.onCaptureFailure(failure.javaClass)
+        } catch (_: RuntimeException) {
+            // Observability failed; fail-closed capture result is unaffected.
+        }
         CanonicalCaptureReadResult.Invalid
     }
 }
@@ -82,30 +109,30 @@ class DefaultOrganizationInputComposer(
         val capture = (captureSource.capture() as? CanonicalCaptureReadResult.Ready)?.snapshot
             ?: return notReady(
                 InputReadinessReason.InvalidCanonicalCapture(CaptureFailureCategory.CAPTURE_UNAVAILABLE),
-                "capture-invalid",
+                InputCompositionCode.CAPTURE_INVALID,
             )
         if (capture.layoutState.items.any { it.lockState == OrganizerLockState.UNKNOWN }) {
             return notReady(
                 InputReadinessReason.InvalidCanonicalCapture(CaptureFailureCategory.UNKNOWN_LOCK),
-                "capture-unknown-lock",
+                InputCompositionCode.CAPTURE_UNKNOWN_LOCK,
             )
         }
         val mapped = mapLayout(capture.layoutState, capture.revision)
             ?: return notReady(
                 InputReadinessReason.InvalidCanonicalCapture(CaptureFailureCategory.UNREPRESENTABLE_LAYOUT),
-                "capture-unrepresentable",
+                InputCompositionCode.CAPTURE_UNREPRESENTABLE,
             )
         val bundle = when (val read = bundleSource.readActive()) {
             is BundleReadResult.Ready -> read.bundle
 
             BundleReadResult.Missing -> return notReady(
                 InputReadinessReason.SourceUnavailable(PolicySourceKind.ORGANIZER_POLICY_BUNDLE),
-                "bundle-missing",
+                InputCompositionCode.BUNDLE_MISSING,
             )
 
             BundleReadResult.Corrupt -> return notReady(
                 InputReadinessReason.SourceUnreadable(PolicySourceKind.ORGANIZER_POLICY_BUNDLE),
-                "bundle-corrupt",
+                InputCompositionCode.BUNDLE_CORRUPT,
             )
 
             is BundleReadResult.UnsupportedVersion -> return notReady(
@@ -113,12 +140,12 @@ class DefaultOrganizationInputComposer(
                     PolicySourceKind.ORGANIZER_POLICY_BUNDLE,
                     read.identity?.let { policyIdentity(PolicySourceKind.ORGANIZER_POLICY_BUNDLE, it.semanticVersion, it.sha256) },
                 ),
-                "bundle-unsupported",
+                InputCompositionCode.BUNDLE_UNSUPPORTED,
                 read.identity?.sha256,
             )
         }
         bundle.validate()?.let {
-            return notReady(incompatibleBundleReason(bundle), "bundle-invalid", bundle.identity.sha256)
+            return notReady(incompatibleBundleReason(bundle), InputCompositionCode.BUNDLE_INVALID, bundle.identity.sha256)
         }
         val requests = mapped.items.mapNotNull(::evidenceRequest)
             .sortedWith(compareBy({ it.profile.value }, { it.packageName.value }, { it.item.value }))
@@ -130,12 +157,12 @@ class DefaultOrganizationInputComposer(
 
                 OverrideSnapshotReadResult.Unreadable -> return notReady(
                     InputReadinessReason.SourceUnreadable(PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT),
-                    "override-unreadable",
+                    InputCompositionCode.OVERRIDE_UNREADABLE,
                 )
 
                 OverrideSnapshotReadResult.UnsupportedSchema -> return notReady(
                     InputReadinessReason.UnsupportedVersion(PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT, null),
-                    "override-unsupported-schema",
+                    InputCompositionCode.OVERRIDE_UNSUPPORTED_SCHEMA,
                 )
             }
             val firstEvidence = when (val read = platformEvidence.read(requests, bundle.classification)) {
@@ -143,7 +170,7 @@ class DefaultOrganizationInputComposer(
 
                 PlatformEvidenceReadResult.Unreadable -> return notReady(
                     InputReadinessReason.SourceUnreadable(PolicySourceKind.PLATFORM_CLASSIFICATION_EVIDENCE),
-                    "evidence-unreadable",
+                    InputCompositionCode.EVIDENCE_UNREADABLE,
                 )
             }
             val secondOverrides = when (val read = overrides.read(mapped.profiles)) {
@@ -151,12 +178,12 @@ class DefaultOrganizationInputComposer(
 
                 OverrideSnapshotReadResult.Unreadable -> return notReady(
                     InputReadinessReason.SourceUnreadable(PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT),
-                    "override-unreadable",
+                    InputCompositionCode.OVERRIDE_UNREADABLE,
                 )
 
                 OverrideSnapshotReadResult.UnsupportedSchema -> return notReady(
                     InputReadinessReason.UnsupportedVersion(PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT, null),
-                    "override-unsupported-schema",
+                    InputCompositionCode.OVERRIDE_UNSUPPORTED_SCHEMA,
                 )
             }
             val secondEvidence = when (val read = platformEvidence.read(requests, bundle.classification)) {
@@ -164,7 +191,7 @@ class DefaultOrganizationInputComposer(
 
                 PlatformEvidenceReadResult.Unreadable -> return notReady(
                     InputReadinessReason.SourceUnreadable(PolicySourceKind.PLATFORM_CLASSIFICATION_EVIDENCE),
-                    "evidence-unreadable",
+                    InputCompositionCode.EVIDENCE_UNREADABLE,
                 )
             }
             val firstCut = dynamicCutIdentity(bundle, firstOverrides.identity, firstEvidence.identity)
@@ -177,20 +204,20 @@ class DefaultOrganizationInputComposer(
             if (firstOverrides.assignments.values.any { it !in bundle.taxonomy.allowedCategories }) {
                 return notReady(
                     InputReadinessReason.ContradictorySource(PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT),
-                    "override-category-invalid",
+                    InputCompositionCode.OVERRIDE_CATEGORY_INVALID,
                     bundle.identity.sha256,
                 )
             }
             val signals = materializeSignals(mapped.items, bundle, firstOverrides, firstEvidence)
                 ?: return notReady(
                     InputReadinessReason.ContradictorySource(PolicySourceKind.MATERIALIZED_CLASSIFICATION_SIGNALS),
-                    "signal-contradiction",
+                    InputCompositionCode.SIGNAL_CONTRADICTION,
                     bundle.identity.sha256,
                 )
             val targets = (targetMaterializer.materialize(mapped.items, bundle.fullOrganizationTargets) as? TargetMaterializationResult.Ready)?.value
                 ?: return notReady(
                     InputReadinessReason.ContradictorySource(PolicySourceKind.MATERIALIZED_FULL_TARGET_SET),
-                    "target-partition",
+                    InputCompositionCode.TARGET_PARTITION,
                     bundle.identity.sha256,
                 )
             val rulesIdentity = policyIdentity(PolicySourceKind.ORGANIZER_POLICY_BUNDLE, bundle.rules.version.value, bundle.identity.sha256)
@@ -202,7 +229,7 @@ class DefaultOrganizationInputComposer(
         }
         return notReady(
             InputReadinessReason.InconsistentPolicyRead(checkNotNull(expectedCut), checkNotNull(observedCut)),
-            "dynamic-cut-unstable",
+            InputCompositionCode.DYNAMIC_CUT_UNSTABLE,
             observedCut?.sha256,
         )
     }
@@ -389,7 +416,7 @@ class DefaultOrganizationInputComposer(
         sha256Canonical("${bundle.identity.sha256}\n${overrides.sha256}\n${evidence.sha256}"),
     )
 
-    private fun notReady(reason: InputReadinessReason, code: String, digest: String? = null) = OrganizationInputComposition.NotReady(
+    private fun notReady(reason: InputReadinessReason, code: InputCompositionCode, digest: String? = null) = OrganizationInputComposition.NotReady(
         reason,
         CompositionDiagnostic(code, digest = digest),
     )

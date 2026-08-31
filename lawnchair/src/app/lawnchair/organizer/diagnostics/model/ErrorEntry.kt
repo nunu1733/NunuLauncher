@@ -4,6 +4,7 @@ import app.lawnchair.organizer.application.public.ApplyFailure
 import app.lawnchair.organizer.application.public.PreWriteRejection
 import app.lawnchair.organizer.application.public.RecoveryFailure
 import app.lawnchair.organizer.application.public.RecoveryRejection
+import app.lawnchair.organizer.integration.InputCompositionCode
 import app.lawnchair.organizer.planning.RejectionCode
 import app.lawnchair.organizer.planning.UnplacedReason
 import kotlinx.serialization.Serializable
@@ -21,6 +22,7 @@ enum class ErrorFamily {
     RECOVERY_FAILURE,
     CONCURRENT,
     WRITER_BUSY,
+    INPUT_READINESS, // issue #172: input composition ended NotReady
 }
 
 /**
@@ -63,13 +65,26 @@ data class ErrorEntry(
          */
         fun validCodesForFamily(family: ErrorFamily): Set<String> = when (family) {
             ErrorFamily.PLANNING_INVALID -> RejectionCode.entries.map { it.name }.toSet()
+
             ErrorFamily.PLANNING_IMPOSSIBLE -> UnplacedReason.entries.map { it.name }.toSet()
+
             ErrorFamily.PRE_WRITE_REJECTED -> PreWriteRejection.entries.map { it.name }.toSet()
+
             ErrorFamily.APPLY_FAILURE -> ApplyFailure.entries.map { it.name }.toSet()
+
             ErrorFamily.RECOVERY_REJECTION -> RecoveryRejection.entries.map { it.name }.toSet()
+
             ErrorFamily.RECOVERY_FAILURE -> RecoveryFailure.entries.map { it.name }.toSet()
+
             ErrorFamily.CONCURRENT -> setOf("CONCURRENT_RUN")
+
             ErrorFamily.WRITER_BUSY -> setOf("WRITER_BUSY")
+
+            // Issue #172: codes are the serialized constant names of the single
+            // integration-side closed set, so journal validation can never drift
+            // from what the composer emits. "UNMAPPED" is accepted by the base
+            // check above.
+            ErrorFamily.INPUT_READINESS -> InputCompositionCode.entries.map { it.name }.toSet()
         }
     }
 }

@@ -122,6 +122,46 @@ class JournalStoreTest {
         assertEquals(PhaseCode.RUN_STARTED, events[0].phase)
     }
 
+    /**
+     * Issue #172 AC-7: a journal written by a newer build may contain serialized
+     * enum values (e.g. `INPUT_NOT_READY`) an older build cannot decode. The
+     * strict decode then fails per line, and the existing corruption-isolation
+     * path must reset the whole journal while preserving the sequence and
+     * leaving appends functional — the documented downgrade behavior.
+     */
+    @Test
+    fun unknownSerializedEnumValueResetsJournalAndKeepsSequence() {
+        val dir = tempDir.root
+        val journalFile = File(dir, "organizer_diagnostics.journal")
+        val seqFile = File(dir, "journal_seq")
+        val seq = JournalSequence(seqFile)
+        val writingStore = JournalStore(journalFile, seq)
+        writingStore.open()
+        assertTrue(writingStore.append(event(phase = PhaseCode.RUN_STARTED)))
+        assertTrue(writingStore.append(event(phase = PhaseCode.CAPTURED)))
+        assertEquals(2, writingStore.readAllEvents().size)
+        assertEquals(2L, seq.currentValue())
+
+        // Replace the second event with one whose phase no older build decodes.
+        val lines = journalFile.readLines().filter { it.isNotBlank() }
+        assertEquals(2, lines.size)
+        val downgraded = lines[0] + "\n" +
+            lines[1].replace("\"phase\":\"CAPTURED\"", "\"phase\":\"FUTURE_PHASE\"")
+        journalFile.writeText(downgraded + "\n")
+
+        val oldBuildStore = JournalStore(journalFile, seq)
+        oldBuildStore.open()
+        assertTrue("Journal must be reset, not partially read", oldBuildStore.readAllEvents().isEmpty())
+
+        // The journal stays usable and the sequence is preserved across the
+        // reset: the next append continues at 3 instead of rewinding to 1.
+        assertTrue(oldBuildStore.append(event(phase = PhaseCode.RUN_STARTED)))
+        val afterReset = oldBuildStore.readAllEvents()
+        assertEquals(1, afterReset.size)
+        assertEquals(PhaseCode.RUN_STARTED, afterReset[0].phase)
+        assertEquals(3L, afterReset[0].journalSequence)
+    }
+
     @Test
     fun writeFailureDoesNotThrow() {
         // Use a non-writable directory
