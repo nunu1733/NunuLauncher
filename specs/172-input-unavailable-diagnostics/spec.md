@@ -20,29 +20,35 @@ updated: 2026-08-31
 
 ## Outcome
 
-`InputUnavailable` で終わるすべてのrunが、privacy-safeな理由コードを持つterminal diagnostics recordをjournalに残す。capture側の失敗はdebug/diagnosis levelで観測できる。supportとユーザーは「後でもう一度試せる」状態（model未読込等）と「バグ報告に値する」状態（source/config系の理由）を区別できる。#171の一回性episodeは、名前付きの理由で再現されるか、失敗時点の状態証拠でboundedされる。
+`InputUnavailable` で終わるすべてのrunが、privacy-safeな理由コードを持つterminal diagnostics recordをjournalに残す。capture側の失敗は、例外class名と正規化されたerror code（raw messageは出さない）としてdebug buildのlogcatで観測できる。supportとユーザーは「後でもう一度試せる」状態（model未読込等）と「バグ報告に値する」状態（source/config系の理由）を区別できる。#171の一回性episodeは、名前付きの理由で再現されるか、失敗時点の状態証拠でboundedされる。
+
+Issue #172本文の受入条件にある「exception class/message/code」のうち、**messageは本specにより「出力しない」に強化する**。理由: 任意の `Throwable.message` がlayout内容・package名・component名・座標等を含まないことは一般に保証できず、§7のNever分類と両立しないためである。class名単独（例: `SQLiteBlobTooBigException`）とerror codeで#171の診断に必要な識別は十分であり、この強化はissueの意図（診断可能にする）を満たす。
 
 ## Scope
 
-- `InputReadinessReason` の理由カテゴリ（理由コードのみ。内容・座標・識別子は含まない）をjournalへ出力するterminal phase（`INPUT_NOT_READY`）の導入。
-- journal理由コードのclosed集合の定義。composerが既に生成している安定したdiagnostic code集合を、journal出力可能なclosed code集合へ昇格する。
-- capture側例外の観測: 例外phase + exception class/messageのdebugレベル出力（organizer diagnostics logger単一tag経由。layout内容は一切含まない）。
-- user-facing copyの区分: `ReconciliationPending` は「後でもう一度試してください」系、それ以外の理由は「バグ報告」系の文言を表示できるようにする。
+- `InputReadinessReason` の理由コードをjournalへ出力するterminal phase（`INPUT_NOT_READY`）の導入。journal理由コードはcomposerの既存diagnostic codeに1:1対応するclosed enum `InputCompositionCode`（SCREAMING_SNAKE定数名）を正式値とする。
+- capture側例外の観測: `DiagnosticsLogger` への専用typed API（`exceptionClass` + 任意の正規化 `errorCode` のみを受け取る）を追加し、debug buildのlogcatで出力する。raw message・stack traceは出力しない。
+- user-facing copyの区分: `ReconciliationPending` は「後でもう一度試してください」系、それ以外の理由は「バグ報告」系の文言を表示する。
 - #171の一回性post-restore capture不可episodeの再現またはbounded。具体的原因が特定された場合はfocused fix Issueへ分割する。
-- 上記に伴う [organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md)（正本）の§4.1/§5/§7/§10/§13更新。
+- 上記に伴う [organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md)（正本）の§4.1/§5/§7/§10/§13更新と、serialized enum追加のversioning規定（§3/§8）の明確化。
 
 ## Non-goals
 
 - Ready/NotReadyの意味論自体の変更。何がReadyかは [spec #83](../83-production-organization-input-sources/spec.md) が正本であり、本specはreadiness判定、fail-closed動作、composer制御フローを一切変更しない。
 - composerが返す `InputReadinessReason` 型とその割当ての変更。
-- 既存journal/projection契約を越える公開diagnostics schemaの追加。§7分類表の限定例外（capture側例外のdebug出力）以外のfield追加はしない。
+- 既存journal/projection契約を越える公開diagnostics schemaの追加。`RunEvent` のfield集合は不変であり、schemaVersionは1のままである（versioningの影響は「Data and state」に定義する）。
 - capture失敗の根本原因の修正。具体的なcapture側欠陥が見つかった場合はfocused fix Issueとして分割する。
 - onboarding/incremental run flowの変更。本specのjournal出力はmanual full run（`ManualOrganizationRun`）を対象とする。composerが共有であるため、将来のrun flowは同じ射影を再利用できる。
 
 ## Domain language
 
 - **INPUT_NOT_READY**: 入力合成が `NotReady` で終了したrunを閉じるterminal phase code。journal理由コードを1つ伴う。
-- **INPUT_READINESS**: `INPUT_NOT_READY` が使う `ErrorFamily`。codeの来源はcomposerのclosed diagnostic code集合である。
+- **INPUT_READINESS**: `INPUT_NOT_READY` が使う `ErrorFamily`。codeの正式値は `InputCompositionCode` の定数名（+ `UNMAPPED`）である。
+- **InputCompositionCode**: composerの失敗箇所に1:1対応するclosed enum。`CompositionDiagnostic.code` の型をこのenumに変更し、journal出力と同一の集合を単一の正本として参照する。
+
+正式なclosed code集合（16値 + `UNMAPPED`。契約§5へ記載する）:
+
+`RECONCILIATION_PENDING` / `RECONCILIATION_FAILED` / `CAPTURE_INVALID` / `CAPTURE_UNKNOWN_LOCK` / `CAPTURE_UNREPRESENTABLE` / `BUNDLE_MISSING` / `BUNDLE_CORRUPT` / `BUNDLE_UNSUPPORTED` / `BUNDLE_INVALID` / `OVERRIDE_UNREADABLE` / `OVERRIDE_UNSUPPORTED_SCHEMA` / `OVERRIDE_CATEGORY_INVALID` / `EVIDENCE_UNREADABLE` / `SIGNAL_CONTRADICTION` / `TARGET_PARTITION` / `DYNAMIC_CUT_UNSTABLE`
 
 承認時に [CONTEXT.md](../../CONTEXT.md) への追加は不要（diagnostics契約の用語であり、[organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md) が正本となる）。
 
@@ -53,14 +59,14 @@ updated: 2026-08-31
 Given launcher modelが読込済みで、composerがいずれかの理由（例: bundle読取失敗）で `NotReady` を返す。
 When manual organizerのstartが実行される。
 Then journalに `RUN_STARTED` に続くterminal event `INPUT_NOT_READY` が追記される。
-And eventのerrorは `family=INPUT_READINESS`、`code=<composerの失敗箇所を識別するclosed code>` であり、package名、座標、item列挙、digest、自由形式textを含まない。
+And eventのerrorは `family=INPUT_READINESS`、`code=<InputCompositionCode定数名>` であり、package名、座標、item列挙、digest、自由形式textを含まない。
 And UI stateは `State.InputUnavailable(reason)` のままであり、readiness判定とfail-closed動作は変わらない。
 
 ### Scenario: model読込前にorganizerを開く
 
 Given `ReadinessGate` が `IDLE` または `RECONCILING`（再起動reconciliation未完了）である。
 When manual organizerのstartが実行される。
-Then journalに `INPUT_NOT_READY` が `code` がreconciliation pendingを示す値で追記される。
+Then journalに `INPUT_NOT_READY` が `code=RECONCILIATION_PENDING` で追記される。
 And user-facing copyは「後でもう一度試す」ことを示す区分である。
 
 ### Scenario: capture側で例外が発生する
@@ -68,35 +74,46 @@ And user-facing copyは「後でもう一度試す」ことを示す区分であ
 Given `LayoutWriterCanonicalCaptureSource.capture()` が `RuntimeException` を投げる。
 When composerがcaptureを読む。
 Then composerの返却は従来どおり `NotReady(InvalidCanonicalCapture(CAPTURE_UNAVAILABLE))` であり、振る舞いは変わらない。
-And diagnostics loggerの単一tagにDEBUG levelで、失敗phaseとexception class名・messageのみの行が出力される。
-And その行にlayout内容、package名、profile識別子、座標、item列挙は含まれない。
-And journalには例外class名・messageが書かれず、理由コードのみが書かれる。
+And debug buildでは、diagnostics loggerの単一tagにDEBUG levelで、失敗contextとexception class名（例: `exceptionClass=SQLiteBlobTooBigException`）、およびtyped accessorから取得できる正規化error code（存在する場合）のみの行が出力される。
+And raw `Throwable.message`、stack trace、layout内容、package名、profile識別子、座標、item列挙は出力されない。取得できない情報は省略され、`<redacted>` 等のtextに置換して出力することもしない。
+And journalには例外class名・error codeは書かれず、理由コード `CAPTURE_INVALID` のみが書かれる。
+And release buildではこの行は出力されない。releaseではjournal由来の `INPUT_NOT_READY`（WARN、理由コード付き）のみが観測される。
 
 ### Scenario: journal・export・logcatのnegative invariant
 
 Given 任意の `INPUT_NOT_READY` run。
 When journal、export、logcatの全出力面を検査する。
-Then [organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md) §7のNever分類（package名、component名、座標、digest、自由形式text等）は一切現れない。
-And capture側例外のclass名・messageは、本specが承認するdebug出力面を除いて現れない。
+Then [organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md) §7のNever分類（package名、component名、座標、digest、自由形式text、exception message等）は一切現れない。
+And capture側例外のclass名・正規化error codeは、本specが承認するdebug-build限定のlogcat行を除いて現れない。
 
 ### Scenario: 一回性のpost-restore capture不可の再現またはbounded
 
 Given #168/#171と同じ手順で、既存grid上へのNova restoreを1回実施し、workspaceがauthoritativeである。
 When 同一process内でmanual organizerのstartを繰り返す。
-Then 失敗が再現された場合、`INPUT_NOT_READY` の理由コードと（capture側失敗なら）例外class・messageがevidenceとして記録される。
+Then 失敗が再現された場合、`INPUT_NOT_READY` の理由コードと（capture側失敗なら）exception class名・error codeがevidenceとして記録される。
 And 再現しない場合、失敗時点の状態（gate state、recovery-store availability、bundle/override/evidence sourceの読取結果）を含むbounded証拠がassessment文書に記録される。
+
+### Scenario: 新しいjournalを旧buildで開く（downgrade）
+
+Given 新buildが `INPUT_NOT_READY` / `INPUT_READINESS` を含むjournalを書いた後、端末が旧buildへ戻されている。
+When 旧buildがjournalを起動時にdecodeする。
+Then 未知のenum値によりdecodeが失敗し、既存のcorruption-isolation規則（§8）どおりjournal全体が初期化される。journalSequenceを保持するsequence fileはresetされない。
+And 失われるのはdiagnostics journalのみであり、layout DB、recovery store、設定には影響しない。journalはfail-openであるためrun動作も変わらない。
+And upgrade方向（旧journal → 新build）は既存eventのみで構成されるため、decodeに成功する。
 
 ## Data and state
 
 - 書込み先は既存organizer run journalのみ。retention（直近10 run・7日・512 KiB）、削除規則、fail-open性は既存契約のままである。`INPUT_NOT_READY` はterminal eventであるため、unresolved run保護の対象にならない。
-- journal schemaVersionは1のまま。closed enumへの定数追加はschema変更を伴わない。
-- export形式・手順は不変。exportはjournalの `RunEvent` 列を読むため、`INPUT_NOT_READY` は既存手順でexportされる。
+- **schemaVersionは1のまま**。ただし次のversioning性質を契約（§3/§8）に明記する:
+  - `ErrorEntry.code` のString値への新定数追加は従来どおりschema変更なしで可である（既存契約の規定対象）。
+  - serialized enum値（`PhaseCode` / `ErrorFamily`）の追加は、新buildが旧journalを読む（upgrade）方向では可である。旧buildが新eventを含むjournalを読む（downgrade）方向では、現行のstrict decode（`ignoreUnknownKeys=false`、schemaVersion 1のみ受理、decode失敗時にjournal全体をresetするcorruption isolation）によりjournalが初期化される。これは受入可能な挙動として規定し、downgrade時に失うのはdiagnostics journalのみであることを明記する。
+- export形式・手順は不変。exportはjournalの `RunEvent` 列を自buildのserializerで読むため、新buildのexportには `INPUT_NOT_READY` が含まれる。
 - layout DB、recovery store、backup/restore経路への影響はnone。capture、plan、apply、recoveryの動作は不変である。
 
 ## Permissions, privacy, and security
 
 - permission・network・telemetryの追加はnone。journal・exportは既存のlocal-only契約に従う。
-- [organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md) §7分類表に1行の例外を承認する: **capture側例外のclass名とmessage** を、organizer diagnostics loggerの単一tag・DEBUG level・capture失敗時のみに限り出力してよい。messageは例外に含まれるtextそのままであるが、layout内容・座標・package名を意図的に含めてはならない。journalとexportには書かない。
+- [organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md) §7分類表に1行の限定例外を承認する: **capture側例外のexception class名と正規化error code** を、`DiagnosticsLogger` の専用typed API経由で、DEBUG level・debug build・capture失敗時のみlogcatに出力してよい。**raw `Throwable.message` とstack traceは引き続きNeverであり、journal・export・logcatのいずれにも出力しない。** 正規化error codeはtyped accessor（例: SQLiteのerror code）から取得できる値に限り、自由形式textは許可しない。
 
 ## Accessibility and localization
 
@@ -105,29 +122,34 @@ And 再現しない場合、失敗時点の状態（gate state、recovery-store 
 
 ## Acceptance criteria
 
-- [ ] **AC-1 — 理由コード付きterminal record:** `InputUnavailable` で終わるすべてのmanual runが、`INPUT_NOT_READY` phase + `ErrorFamily.INPUT_READINESS` + composer失敗箇所を識別するclosed codeを持つjournal eventを生成する。すべての `InputReadinessReason` 系がこのclosed集合へ対応付けられ、未知のcodeは `UNMAPPED` に落ちる。
-- [ ] **AC-2 — capture例外の観測:** capture側 `RuntimeException` が、layout内容を含まない形（失敗phase + exception class/message）でdiagnostics logger単一tagにDEBUG levelで出力される。composerのfail-closed返却値は不変である。
+- [ ] **AC-1 — 理由コード付きterminal record:** `InputUnavailable` で終わるすべてのmanual runが、`INPUT_NOT_READY` phase + `ErrorFamily.INPUT_READINESS` + `InputCompositionCode` 定数名を持つjournal eventを生成する。`CompositionDiagnostic.code` は `InputCompositionCode` 型となり、journal側は `validCodesForFamily(INPUT_READINESS)` で検証し、未知codeは `UNMAPPED` に落ちる。全16値の対応（既存kebab-codeとの対応表を含む）がspec/契約に記載される。
+- [ ] **AC-2 — capture例外の観測（message出力なし）:** capture側 `RuntimeException` が、debug buildのlogcatに `exceptionClass`（単純名）と正規化error code（存在する場合）のみで出力される。raw message・stack traceは出力されない。composerのfail-closed返却値は不変である。専用APIは自由形式Stringを受け取らない。
 - [ ] **AC-3 — 一回性episodeの解決:** post-restore capture不可episodeが、名前付き理由での再現、または失敗時点の状態証拠によるboundedのいずかで `docs/assessment/` に記録される。具体的なcapture側欠陥が確認された場合はfocused fix Issueへ分割されている。
-- [ ] **AC-4 — copy区分:** `ReconciliationPending` の場合とその他の理由の場合で、user-facing copyが「後で再試行」と「バグ報告」を区別する。en/ja両方が提供される。
-- [ ] **AC-5 — privacy不変:** journal・export・logcatの全出力面で§7 Never分類が保たれる。negative fixture testがこれを自動検証する。
+- [ ] **AC-4 — copy区分:** `RECONCILIATION_PENDING` の場合とその他の理由の場合で、user-facing copyが「後で再試行」と「バグ報告」を区別する。en/ja両方が提供される。
+- [ ] **AC-5 — privacy不変:** journal・export・logcatの全出力面で§7 Never分類（exception message・stack traceを含む）が保たれる。negative fixture testがこれを自動検証する。
 - [ ] **AC-6 — readiness意味論の不変:** 既存のcomposer/readiness unit・contract testがすべて変更なしで通過し、Ready/NotReady判定とfail-closed動作に差分がない。
+- [ ] **AC-7 — journal versioning:** upgrade（旧journal→新build）で既存journalがdecode可能であること、および新event含むjournalが未知enumでdecode失敗した場合に既存のcorruption-isolation（journal全体reset、sequence保持、他store無影響）へ従うことをfixture testで検証する。契約§3/§8にversioning規定が記載される。
 
 ## Test oracle
 
 | AC | Evidence |
 |---|---|
-| AC-1 | `InputReadinessReason` 全variant→closed code対応のunit test。`ManualOrganizationRunTest` への `INPUT_NOT_READY` event検証追加（理由コード、terminal性、emit失敗時のfail-open）。`ModelValidationTest` / journal系testのclosed集合検証 |
-| AC-2 | capture sourceのfailure注入test（例外→Invalid + DEBUG log行、内容のnon-containment） |
-| AC-3 | エミュレータ（`nunu_qpr2_api36_1`）での再現/bounded手順と結果を記録した `docs/assessment/issue-172-<slug>.md` |
+| AC-1 | `InputCompositionCode` 全16値と既存kebab-code・`InputReadinessReason` 系の対応表unit test。`ManualOrganizationRunTest` への `INPUT_NOT_READY` event検証追加（理由コード、terminal性、emit失敗時のfail-open）。`ModelValidationTest` / journal系testのclosed集合検証 |
+| AC-2 | capture sourceのfailure注入test（例外→`Invalid` + `logCaptureFailure` 呼出し、class名/error codeのみのassert、messageのnon-containment、release buildで出力されないassert） |
+| AC-3 | エミュレータ（`nunu_qpr2_api36_1`）での再現/bounded手順と結果を記録した `docs/assessment/issue-172-input-unavailable-diagnostics.md` |
 | AC-4 | UI compose test（reason区分→表示copy）。string resourceのen/ja確認 |
-| AC-5 | journal/export negative fixture testの拡張（例外text・digest等のnon-containment、`INPUT_NOT_READY` 含む） |
+| AC-5 | journal/export negative fixture testの拡張（例外message・digest等のnon-containment、`INPUT_NOT_READY` 含む） |
 | AC-6 | 既存organizer test群の無変更通過 + `spotlessCheck` + `assembleLawnWithQuickstepGithubDebug` |
+| AC-7 | fixture test: 未知enum値を含むevent行でjournal初期化・sequence保持を検証（既存corruption系testの拡張）。upgrade方向は既存fixtureのdecode成功で検証 |
 
 ## Open questions
 
-- `INPUT_NOT_READY` のlogcat levelをWARN（terminal failure扱い、releaseでも出力）にするかDEBUGにするか。本specはterminal failureであることからWARNを想定するが、最終値は [organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md) §10更新時に確定する。非blocking。
-- capture側例外messageのdebug出力をrelease buildでも行うか。diagnosis価値はrelease端末で最も高いため、本specは「DEBUG level・全build」を想定する。§7更新時に確定する。非blocking。
+なし。前回reviewで挙がった2点は次の判断で確定した（実装開始の前提）:
+
+- `INPUT_NOT_READY` のlogcat level: **WARN**（terminal failure扱い。releaseでも出力される）。
+- capture例外詳細行: **debug build限定・DEBUG level**。releaseではjournal由来のWARN `INPUT_NOT_READY` のみ。diagnosis価値はdebug build（開発・emulator検証）で発揮され、releaseのprivacy面は§10の「terminal failure系のみ」規約に完全に従う。
 
 ## Change history
 
 - 2026-08-31: Issue #172のdraft specを作成。#171 investigation（[assessment](../../docs/assessment/issue-171-organizer-after-external-restore.md)）のhandoffに基づく。
+- 2026-08-31: Review rev 2。Blocker指摘に対応: (1) capture例外はraw messageを出さずclass名+正規化error codeに限定（debug build限定）、(2) serialized enum追加のversioning/downgrade挙動（journal reset）をAC-7として明記、(3) `InputCompositionCode` の16値を正式closed集合として確定、(4) capture観測のlogger seamを `DiagnosticsLogger` への専用typed API追加として確定し、open questionsを解消。
