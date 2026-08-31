@@ -313,7 +313,12 @@ internal class LauncherLayoutAdapter(
             }
             if (
                 !overlapAcceptanceHolds(
-                    before.manifest.rows,
+                    // Audit F1 (PR #186): evaluate the state this write would
+                    // produce — the intended manifest for a normal apply and the
+                    // recovery target for a recovery write set — never the
+                    // current state, or a recovery could resurrect an overlapped
+                    // row the loader already deleted.
+                    writeSet.intendedManifest.rows,
                     before.layoutState.reservedWorkspaceRegions,
                     overlapToleranceSource.isOverlapTolerated(),
                 )
