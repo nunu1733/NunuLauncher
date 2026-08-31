@@ -1,6 +1,6 @@
 ---
 issue: "#172"
-status: accepted
+status: implemented
 requirements:
   - FR-015
   - NFR-011
@@ -123,13 +123,13 @@ And upgrade方向（旧journal → 新build）は既存eventのみで構成さ�
 
 ## Acceptance criteria
 
-- [ ] **AC-1 — 理由コード付きterminal record:** `InputUnavailable` で終わるすべてのmanual runが、`INPUT_NOT_READY` phase + `ErrorFamily.INPUT_READINESS` + `InputCompositionCode` 定数名を持つjournal eventを生成する。`CompositionDiagnostic.code` は `InputCompositionCode` 型となり、journal側は `validCodesForFamily(INPUT_READINESS)` で検証し、未知codeは `UNMAPPED` に落ちる。全16値の対応（既存kebab-codeとの対応表を含む）がspec/契約に記載される。
-- [ ] **AC-2 — capture例外の観測（message出力なし）:** capture側 `RuntimeException` が、debug buildのlogcatに `exceptionClass`（loggerが受け取った `Class<out Throwable>` から `simpleName` 化）のみで出力される。観測APIはString型パラメータを持たず、raw message・stack traceは出力されない。composerのfail-closed返却値は不変である。
-- [ ] **AC-3 — 一回性episodeの解決:** post-restore capture不可episodeが、名前付き理由での再現、または失敗時点の状態証拠によるboundedのいずかで `docs/assessment/` に記録される。具体的なcapture側欠陥が確認された場合はfocused fix Issueへ分割されている。
-- [ ] **AC-4 — copy区分:** `RECONCILIATION_PENDING` の場合とその他の理由の場合で、user-facing copyが「後で再試行」と「バグ報告」を区別する。en/ja両方が提供される。
-- [ ] **AC-5 — privacy不変:** journal・export・logcatの全出力面で§7 Never分類（exception message・stack traceを含む）が保たれる。negative fixture testがこれを自動検証する。
-- [ ] **AC-6 — readiness意味論の不変:** 既存のcomposer/readiness unit・contract testがすべて変更なしで通過し、Ready/NotReady判定とfail-closed動作に差分がない。
-- [ ] **AC-7 — journal versioning:** upgrade（旧journal→新build）で既存journalがdecode可能であること、および新event含むjournalが未知enumでdecode失敗した場合に既存のcorruption-isolation（journal全体reset、sequence保持、他store無影響）へ従うことをfixture testで検証する。契約§3/§8にversioning規定が記載される。
+- [x] **AC-1 — 理由コード付きterminal record:** `InputUnavailable` で終わるすべてのmanual runが、`INPUT_NOT_READY` phase + `ErrorFamily.INPUT_READINESS` + `InputCompositionCode` 定数名を持つjournal eventを生成する。`CompositionDiagnostic.code` は `InputCompositionCode` 型となり、journal側は `validCodesForFamily(INPUT_READINESS)` で検証し、未知codeは `UNMAPPED` に落ちる。全16値の対応（既存kebab-codeとの対応表を含む）がspec/契約に記載される。
+- [x] **AC-2 — capture例外の観測（message出力なし）:** capture側 `RuntimeException` が、debug buildのlogcatに `exceptionClass`（loggerが受け取った `Class<out Throwable>` から `simpleName` 化）のみで出力される。観測APIはString型パラメータを持たず、raw message・stack traceは出力されない。composerのfail-closed返却値は不変である。
+- [x] **AC-3 — 一回性episodeの解決:** post-restore capture不可episodeが、名前付き理由での再現、または失敗時点の状態証拠によるboundedのいずかで `docs/assessment/` に記録される。具体的なcapture側欠陥が確認された場合はfocused fix Issueへ分割されている。
+- [x] **AC-4 — copy区分:** `RECONCILIATION_PENDING` の場合とその他の理由の場合で、user-facing copyが「後で再試行」と「バグ報告」を区別する。en/ja両方が提供される。
+- [x] **AC-5 — privacy不変:** journal・export・logcatの全出力面で§7 Never分類（exception message・stack traceを含む）が保たれる。negative fixture testがこれを自動検証する。
+- [x] **AC-6 — readiness意味論の不変:** 既存のcomposer/readiness unit・contract testがすべて変更なしで通過し、Ready/NotReady判定とfail-closed動作に差分がない。
+- [x] **AC-7 — journal versioning:** upgrade（旧journal→新build）で既存journalがdecode可能であること、および新event含むjournalが未知enumでdecode失敗した場合に既存のcorruption-isolation（journal全体reset、sequence保持、他store無影響）へ従うことをfixture testで検証する。契約§3/§8にversioning規定が記載される。
 
 ## Test oracle
 
@@ -156,4 +156,4 @@ And upgrade方向（旧journal → 新build）は既存eventのみで構成さ�
 - 2026-08-31: Review rev 2。Blocker指摘に対応: (1) capture例外はraw messageを出さずclass名+正規化error codeに限定（debug build限定）、(2) serialized enum追加のversioning/downgrade挙動（journal reset）をAC-7として明記、(3) `InputCompositionCode` の16値を正式closed集合として確定、(4) capture観測のlogger seamを `DiagnosticsLogger` への専用typed API追加として確定し、open questionsを解消。
 - 2026-08-31: Review rev 3。残り2点に対応: Issue #172本文のAC文言を「exception class/code、raw message不使用」へ更新（Blocker。codeはjournal側の理由コードを指す）。`logCaptureFailure` を `Class<out Throwable>` + `Int?` のみを受け取るAPIとして確定し、文字列型パラメータを排除してprivacy保証をcaller convention依存から型境界へ移した（Major）。
 - 2026-08-31: 再レビューで指摘なし。statusを `accepted` へ更新し、plan.mdに従って実装を開始する。
-- 2026-08-31: rev 4。`logCaptureFailure` から数値error codeパラメータを削除。API 36.1のplatform `SQLiteException` はtypedなerror code accessorを持たないため、class simple名単独を正規化identityとする（`javap` で確認）。String型パラメータなしの型境界は不変である。
+- 2026-08-31: rev 4。`logCaptureFailure` から数値error codeパラメータを削除。API 36.1のplatform `SQLiteException` はtypedなerror code accessorを持たないため、class simple名単独を正規化identityとする（`javap` で確認）。String型パラメータなしの型境界は不変である。- 2026-08-31: AC-3 assessment（docs/assessment/issue-172-input-unavailable-diagnostics.md）により、#171のepisodeは `INPUT_NOT_READY / CAPTURE_INVALID` で再現し、root cause（5x5 gridのQSB row予約とNova import itemの重複 → `RowManifestCodec` のrequire）を特定。interop修正は [#185](https://github.com/nunu1733/NunuLauncher/issues/185) へ分割し、本specの受入条件は完了として `implemented` へ更新。
