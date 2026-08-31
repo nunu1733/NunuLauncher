@@ -62,6 +62,7 @@ class ApplyResultContractTest {
             "IDENTITY_EXHAUSTED",
             "CHECKPOINT_CREATE_FAILED",
             "CHECKPOINT_VALIDATE_FAILED",
+            "RECOVERY_POINT_ADMISSION_BLOCKED",
             "RECOVERY_STORE_UNAVAILABLE",
             "WRITER_BUSY",
         )

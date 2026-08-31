@@ -6,10 +6,12 @@ import app.lawnchair.organizer.application.public.RecoveryPointId
  * Pure retention logic for the recovery store. Spec §“Retention”.
  *
  *  - 24 h (`86_400_000 ms`) from creation.
- *  - At most three non-expired points.
+ *  - At most three capacity-bearing points; final non-restorable rows are
+ *    retained as tombstones and do not consume capacity.
  *  - Never expire `APPLYING`, `COMMITTED_UNVERIFIED`, or `RESTORING`.
  *  - Tombstones (CORRUPT, INCOMPATIBLE, RESTORED, EXPIRED) remain 24 h.
- *  - `RECOVERY_STORE_UNAVAILABLE` when three unresolved points block cleanup.
+ *  - `RECOVERY_POINT_ADMISSION_BLOCKED` when three unresolved points block
+ *    checkpoint admission.
  *
  * No I/O; the recovery store calls into this with the current clock and the
  * records it observes, then performs the returned actions in its own
@@ -72,8 +74,8 @@ object RetentionPolicy {
 
     /**
      * Decide whether creating a new point is allowed given the existing
-     * non-final record set. Returns the records to evict, or
-     * [CreateDecision.Unavailable] when three unresolved records block
+     * record set. Returns the records to evict, or
+     * [CreateDecision.AdmissionBlocked] when three unresolved records block
      * cleanup.
      *
      * Spec: expiry/count cleanup and creation of the replacement point are one
@@ -98,19 +100,36 @@ object RetentionPolicy {
         // Evict aged/count-evictable records first; only evict by count if still needed.
         val toEvict = evictable.toMutableList()
         var retainedUsable = active.size + resolved.size
-        // Reserve one slot for the point being created. Evict only resolved,
-        // restorable VERIFIED points, oldest first; active records are never
-        // eligible even when they alone consume the entire capacity.
+        // Reserve one slot for the point being created. When capacity is
+        // needed, collapse every resolved final non-restorable row so its
+        // tombstone can stop consuming capacity; then evict resolved VERIFIED
+        // points oldest first if another slot is still needed. Active records
+        // are never eligible even when they alone consume the entire
+        // capacity. Final non-restorable rows remain physical records until
+        // capacity is needed, so three RESTORED rows exercise the admission
+        // transaction rather than being removed while the set is built.
+        val finalNonRestorable = resolved.filter {
+            LifecycleTransitions.isFinal(it.lifecycle) &&
+                !LifecycleTransitions.isRestorable(it.lifecycle)
+        }
+        if (retainedUsable >= MAX_NON_EXPIRED_POINTS) {
+            toEvict += finalNonRestorable
+            retainedUsable -= finalNonRestorable.size
+        }
         val verifiedByAge = resolved
-            .filter { it.lifecycle == LifecycleState.VERIFIED }
-            .sortedWith(compareBy<RetentionRecord> { it.createdAtMillis }.thenBy { it.pointId.value })
+            .filter {
+                it.lifecycle == LifecycleState.VERIFIED
+            }
+            .sortedWith(
+                compareBy<RetentionRecord> { it.createdAtMillis }.thenBy { it.pointId.value },
+            )
             .iterator()
         while (retainedUsable >= MAX_NON_EXPIRED_POINTS && verifiedByAge.hasNext()) {
             toEvict += verifiedByAge.next()
             retainedUsable -= 1
         }
         return if (retainedUsable >= MAX_NON_EXPIRED_POINTS) {
-            CreateDecision.Unavailable
+            CreateDecision.AdmissionBlocked
         } else {
             CreateDecision.Allowed(toEvict = toEvict.toList())
         }
@@ -118,6 +137,6 @@ object RetentionPolicy {
 
     sealed interface CreateDecision {
         data class Allowed(val toEvict: List<RetentionRecord>) : CreateDecision
-        data object Unavailable : CreateDecision
+        data object AdmissionBlocked : CreateDecision
     }
 }

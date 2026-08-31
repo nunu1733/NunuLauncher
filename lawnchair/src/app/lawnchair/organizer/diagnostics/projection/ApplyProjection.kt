@@ -101,6 +101,7 @@ object ApplyProjection {
         val (phase, errorFamily) = when (rejected.reason) {
             PreWriteRejection.CHECKPOINT_CREATE_FAILED,
             PreWriteRejection.CHECKPOINT_VALIDATE_FAILED,
+            PreWriteRejection.RECOVERY_POINT_ADMISSION_BLOCKED,
             -> PhaseCode.CHECKPOINT_REJECTED to ErrorFamily.PRE_WRITE_REJECTED
 
             else -> PhaseCode.APPLY_REJECTED to ErrorFamily.PRE_WRITE_REJECTED

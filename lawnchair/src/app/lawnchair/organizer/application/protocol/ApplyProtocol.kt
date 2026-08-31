@@ -172,6 +172,11 @@ class ApplyProtocol(
                 return ApplyResult.Rejected(runId, PreWriteRejection.RECOVERY_STORE_UNAVAILABLE)
             }
 
+            RecoveryStorePort.CheckpointResult.AdmissionBlocked -> {
+                ctx.terminalApplyStage = ApplyStage.A4
+                return ApplyResult.Rejected(runId, PreWriteRejection.RECOVERY_POINT_ADMISSION_BLOCKED)
+            }
+
             is RecoveryStorePort.CheckpointResult.Ready -> {
                 // Track pointId for subsequent terminal events
                 ctx.terminalPointId = pointId.value
@@ -595,6 +600,7 @@ class ApplyProtocol(
             PreWriteRejection.RECOVERY_STORE_UNAVAILABLE,
             -> ApplyStage.A2
 
+            PreWriteRejection.RECOVERY_POINT_ADMISSION_BLOCKED,
             PreWriteRejection.CHECKPOINT_CREATE_FAILED,
             PreWriteRejection.CHECKPOINT_VALIDATE_FAILED,
             -> ApplyStage.A4

@@ -210,10 +210,24 @@ internal class FakeRecoveryStore(
             )
         }
         when (val decision = RetentionPolicy.planCreate(existing, now)) {
-            RetentionPolicy.CreateDecision.Unavailable ->
-                return RecoveryStorePort.CheckpointResult.StoreUnavailable
+            RetentionPolicy.CreateDecision.AdmissionBlocked ->
+                return RecoveryStorePort.CheckpointResult.AdmissionBlocked
 
-            is RetentionPolicy.CreateDecision.Allowed -> decision.toEvict.forEach { records.remove(it.pointId.value) }
+            is RetentionPolicy.CreateDecision.Allowed -> decision.toEvict.forEach { record ->
+                val action = RetentionPolicy.actionFor(record, now).let { planned ->
+                    if (planned is RetentionPolicy.RetentionAction.Keep) {
+                        RetentionPolicy.RetentionAction.Tombstone(
+                            RetentionPolicy.ExpireReason.COUNT_RETENTION,
+                        )
+                    } else {
+                        planned
+                    }
+                }
+                tombstoneForAdmission(record, action, now)?.let { tombstone ->
+                    tombstones[tombstone.pointId.value] = tombstone
+                }
+                records.remove(record.pointId.value)
+            }
         }
         val record = MutableRecord(
             pointId = payload.pointId,
@@ -406,6 +420,45 @@ internal class FakeRecoveryStore(
         malformedPointIds.clear()
         quarantineCalls = 0
         quarantineFails = false
+    }
+
+    private fun tombstoneForAdmission(
+        record: RetentionPolicy.RetentionRecord,
+        action: RetentionPolicy.RetentionAction,
+        nowMillis: Long,
+    ): RecoveryStorePort.Tombstone? {
+        val reason = when (record.lifecycle) {
+            LifecycleState.CORRUPT -> RecoveryStorePort.TombstoneReason.CORRUPT
+
+            LifecycleState.INCOMPATIBLE -> RecoveryStorePort.TombstoneReason.INCOMPATIBLE_VERSION
+
+            LifecycleState.RESTORED -> RecoveryStorePort.TombstoneReason.ALREADY_RESTORED
+
+            LifecycleState.EXPIRED -> RecoveryStorePort.TombstoneReason.EXPIRED
+
+            else -> when (action) {
+                is RetentionPolicy.RetentionAction.Tombstone -> when (action.reason) {
+                    RetentionPolicy.ExpireReason.PRUNE_UNUSED_READY ->
+                        RecoveryStorePort.TombstoneReason.PRUNED_UNUSED
+
+                    else -> RecoveryStorePort.TombstoneReason.EXPIRED
+                }
+
+                is RetentionPolicy.RetentionAction.Expire -> RecoveryStorePort.TombstoneReason.EXPIRED
+
+                RetentionPolicy.RetentionAction.Keep -> return null
+            }
+        }
+        val expiresAtMillis = if (
+            action is RetentionPolicy.RetentionAction.Tombstone &&
+            action.reason == RetentionPolicy.ExpireReason.COUNT_RETENTION &&
+            LifecycleTransitions.isFinal(record.lifecycle)
+        ) {
+            Math.addExact(record.updatedAtMillis, RetentionPolicy.TOMBSTONE_RETENTION_MILLIS)
+        } else {
+            Math.addExact(nowMillis, RetentionPolicy.TOMBSTONE_RETENTION_MILLIS)
+        }
+        return RecoveryStorePort.Tombstone(record.pointId, reason, expiresAtMillis)
     }
 
     private fun MutableRecord.asMetadata(): RecoveryStorePort.RecordMetadata = RecoveryStorePort.RecordMetadata(

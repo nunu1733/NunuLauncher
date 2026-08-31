@@ -8,8 +8,8 @@ import org.junit.Test
 /**
  * Issue #14 Stage B step 2: RetentionPolicy enforces the spec §“Retention”
  * rules — 24 h from creation, at most three non-expired points, never expire
- * unresolved, tombstones for 24 h, RECOVERY_STORE_UNAVAILABLE when three
- * unresolved points block cleanup.
+ * unresolved, final tombstones outside capacity, and admission blocking when
+ * three unresolved points block cleanup.
  */
 class RetentionPolicyTest {
 
@@ -145,7 +145,26 @@ class RetentionPolicyTest {
     }
 
     @Test
-    fun createUnavailableWhenThreeUnresolvedRecordsBlockCleanup() {
+    fun createAllowedWhenThreeRestoredRecordsAreOnlyCapacityCandidates() {
+        val existing = listOf(
+            restored(pointA, updatedAt = 1_000L),
+            restored(pointB, updatedAt = 2_000L),
+            restored(pointC, updatedAt = 3_000L),
+        )
+
+        val decision = RetentionPolicy.planCreate(existing, nowMillis = 4_000L)
+
+        assertTrue("RESTORED records must not block admission: $decision", decision is RetentionPolicy.CreateDecision.Allowed)
+        val allowed = decision as RetentionPolicy.CreateDecision.Allowed
+        assertEquals(
+            "All final non-restorable records must be moved to tombstones",
+            setOf(pointA, pointB, pointC),
+            allowed.toEvict.map { it.pointId }.toSet(),
+        )
+    }
+
+    @Test
+    fun createAdmissionBlockedWhenThreeUnresolvedRecordsBlockCleanup() {
         val existing = listOf(
             active(pointA, LifecycleState.APPLYING, createdAt = 0L),
             active(pointB, LifecycleState.COMMITTED_UNVERIFIED, createdAt = 0L),
@@ -154,13 +173,13 @@ class RetentionPolicyTest {
         val decision = RetentionPolicy.planCreate(existing, nowMillis = 1_000L)
         assertEquals(
             "Three unresolved records must block new apply",
-            RetentionPolicy.CreateDecision.Unavailable,
+            RetentionPolicy.CreateDecision.AdmissionBlocked,
             decision,
         )
     }
 
     @Test
-    fun createUnavailableWhenThreeVerifiedPlusOneUnresolvedAndNothingEvictable() {
+    fun createAllowedWhenActiveAndVerifiedPointsHaveEvictableCapacity() {
         val existing = listOf(
             active(pointA, LifecycleState.APPLYING, createdAt = 0L),
             // Three fresh VERIFIED records that are still within retention.
@@ -192,5 +211,15 @@ class RetentionPolicyTest {
         lifecycle = lifecycle,
         createdAtMillis = createdAt,
         updatedAtMillis = createdAt,
+    )
+
+    private fun restored(
+        pointId: RecoveryPointId,
+        updatedAt: Long,
+    ): RetentionPolicy.RetentionRecord = RetentionPolicy.RetentionRecord(
+        pointId = pointId,
+        lifecycle = LifecycleState.RESTORED,
+        createdAtMillis = updatedAt,
+        updatedAtMillis = updatedAt,
     )
 }
