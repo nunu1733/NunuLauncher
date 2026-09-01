@@ -3,7 +3,7 @@
 > Status: implemented (AC-1/2/3/5/6/7 verified on this branch; AC-4 emulator evidence below; AC-6 high-risk merge gate to be completed on the main-based implementation PR)
 > Date: 2026-09-01
 > Spec: [specs/187-zip-restore-recovery-artifacts/spec.md](../../specs/187-zip-restore-recovery-artifacts/spec.md) (accepted) · ADR: [0011](../../docs/adr/0011-zip-restore-organizer-recovery-artifacts.md) (accepted; audit re-verified here)
-> Build: `15.Dev.(65ce6d6)` debug, branch `docs/issue-187-spec-plan` head `8884339eff`
+> Build: `15.Dev.(f4d007b)` debug (final head `f4d007b71e`; the initial AC-4 run used build `65ce6d6` and was re-executed on the final head), branch `docs/issue-187-spec-plan` head `f4d007b71e`
 > Environment: emulator `nunu_qpr2_api36_1` (API 36), serial `emulator-5554`
 > Raw evidence (not committed): `/tmp/issue153/` (attempt log), full logcat
 
