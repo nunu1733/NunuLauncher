@@ -1,6 +1,10 @@
-# ADR-0011: ZIP backup restore時のorganizer recovery artifacts扱い(recovery epoch boundary)
+---
+status: accepted
+issue: "#187"
+updated: 2026-09-01
+---
 
-Status: accepted (spec/plan approved alongside; call-site audit to be re-verified in the implementation PR assessment)
+# ADR-0011: ZIP backup restore時のorganizer recovery artifacts扱い(recovery epoch boundary)
 
 Date: 2026-09-01
 
