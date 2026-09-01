@@ -14,13 +14,17 @@ import androidx.test.filters.LargeTest
 import androidx.test.platform.app.InstrumentationRegistry
 import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
+import app.lawnchair.organizer.application.lifecycle.ReconciliationPublicResult
 import app.lawnchair.organizer.application.protocol.CaptureId
 import app.lawnchair.organizer.application.protocol.FaultInjector
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
+import app.lawnchair.organizer.application.protocol.ReadinessGate
 import app.lawnchair.organizer.application.protocol.RestartReconciler
 import app.lawnchair.organizer.application.protocol.RecoveryStorePort
 import app.lawnchair.organizer.application.protocol.SecureRandomOperationIdSource
 import app.lawnchair.organizer.application.protocol.SystemClock
+import app.lawnchair.organizer.application.public.ApplyFailure
+import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.ApplyAction
 import app.lawnchair.organizer.application.public.OrganizerLockState
 import app.lawnchair.organizer.application.public.RecoveryPointId
@@ -158,9 +162,46 @@ class OrganizerRecoveryInstrumentationTest {
             modelAttempts++
         }
         check(launcher.model.isModelLoaded) { "Launcher model did not load for restart verification" }
-        (context.applicationContext as LawnchairApp).layoutApplicationModule.reconcileAtStart()
+        // Issue #177: the app-owned startup reconciliation runs asynchronously on
+        // its own thread and holds the ORGANIZER writer lease (through
+        // requestCorrelatedReload + verification) while it advances the fault-run
+        // record. Wait until its readiness gate has settled (it leaves IDLE only
+        // once the pass actually runs, and leaves RECONCILING only after the
+        // whole pass — including the writer-lease hold — has finished) so the
+        // verify reconcile is serialized behind it. Then re-run the manual
+        // reconcile only while it reports the lease-contention signature, until
+        // it is quiescent.
+        val appModule = (context.applicationContext as LawnchairApp).layoutApplicationModule
+        var gateAttempts = 0
+        while (
+            appModule.readinessGate.state !in setOf(ReadinessGate.State.READY, ReadinessGate.State.FAILED) &&
+            gateAttempts < 240
+        ) {
+            Thread.sleep(250)
+            gateAttempts++
+        }
+        check(
+            appModule.readinessGate.state == ReadinessGate.State.READY ||
+                appModule.readinessGate.state == ReadinessGate.State.FAILED,
+        ) {
+            "Startup reconciliation did not settle before restart verification " +
+                "(state=${appModule.readinessGate.state})"
+        }
         val manualModule = LayoutApplicationModule.production(context, launcher)
-        assertEquals(RestartReconciler.ReconciliationSummary.Clean, manualModule.reconcileAtStart())
+        var summary = manualModule.reconcileAtStart()
+        var reconcileAttempts = 0
+        while (summary is RestartReconciler.ReconciliationSummary.Resolved &&
+            summary.publicResults.any { isLeaseContention(it) } &&
+            reconcileAttempts < 20
+        ) {
+            Thread.sleep(500)
+            summary = manualModule.reconcileAtStart()
+            reconcileAttempts++
+        }
+        assertEquals(
+            RestartReconciler.ReconciliationSummary.Clean,
+            summary,
+        )
         val manualRun = ManualOrganizationRun(
             ProductionManualOrganizationApplication(
                 context,
@@ -270,6 +311,18 @@ class OrganizerRecoveryInstrumentationTest {
         const val TAG = "OrganizerRecoverySmoke"
         const val PREFS = "organizer_recovery_smoke"
         const val KEY_POINT_ID = "point_id"
+
+        /**
+         * Issue #177: the observed flake signature — a reconcile pass that raced
+         * the startup reconciliation's ORGANIZER writer lease and could not
+         * acquire it. The record itself is intact, so this contention result is
+         * the only shape eligible for a bounded retry; any other unresolved
+         * shape still fails the assert.
+         */
+        fun isLeaseContention(result: ReconciliationPublicResult): Boolean =
+            result is ReconciliationPublicResult.Unresolved &&
+                result.outcome is ApplyResult.Unresolved &&
+                result.outcome.failure == ApplyFailure.COMMIT_OUTCOME_UNKNOWN
 
         fun reportToHost(marker: String) {
             InstrumentationRegistry.getInstrumentation().sendStatus(
