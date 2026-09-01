@@ -222,7 +222,8 @@ performance観点は本Issueの範囲外（30分窓の計測は観測記録と�
       snapshot削除による因果実験をH3/H4で実施し即解消を確認。
 - [x] triggerのdeterministic test: `RecoveryStartupStorageClassifierTest` にtrigger pin
       （characterization）を追加し通過。healing方向のred/green反転はfocused fix Issue側の証拠。
-- [ ] root causeの現行mainでの状態: **未解決のproduction defect**。focused fix Issueを起票し、
+- [ ] root causeの現行mainでの状態: **未解決のproduction defect**。focused fix Issue
+      [#187](https://github.com/nunu1733/NunuLauncher/issues/187) を起票済み（spec-first）。
       **fixの実装・検証が完了するまで本Issueをcloseしない（AC-6）。**
 - [x] #150との関係（independent）をassessmentに記録し、Issue #153へコメントする。
 - [x] 既存test群（`./gradlew testLawnWithQuickstepGithubDebugUnitTest`、全件 `--rerun-tasks`）・
