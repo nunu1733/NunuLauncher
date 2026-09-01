@@ -389,8 +389,7 @@ class OrganizationInputComposerTest {
         },
         overrides = overrideSource,
         platformEvidence = evidenceSource,
-        overlapTolerance = tolerance?.let { WorkspaceOverlapToleranceSource { it } }
-            ?: WorkspaceOverlapToleranceSource { true },
+        overlapTolerance = WorkspaceOverlapToleranceSource { tolerance ?: true },
     )
 
     private fun app(

@@ -297,6 +297,7 @@ class ProductionOrganizationInputInstrumentationTest {
                 },
                 overrides = EmptyOverrideSnapshotSource(),
                 platformEvidence = EmptyEvidenceSource(),
+                overlapTolerance = WorkspaceOverlapToleranceSource { true },
             ).composeFullOrganization()
             assertTrue("composition must be ready: $composition", composition is OrganizationInputComposition.Ready)
             val ready = composition as OrganizationInputComposition.Ready
@@ -536,6 +537,7 @@ class ProductionOrganizationInputInstrumentationTest {
                 },
                 overrides = EmptyOverrideSnapshotSource(),
                 platformEvidence = EmptyEvidenceSource(),
+                overlapTolerance = WorkspaceOverlapToleranceSource { true },
             ).composeFullOrganization()
             assertTrue("composition must be ready: $composition", composition is OrganizationInputComposition.Ready)
             val ready = composition as OrganizationInputComposition.Ready
@@ -619,6 +621,7 @@ class ProductionOrganizationInputInstrumentationTest {
                     },
                     overrides = EmptyOverrideSnapshotSource(),
                     platformEvidence = EmptyEvidenceSource(),
+                    overlapTolerance = WorkspaceOverlapToleranceSource { true },
                 ).composeFullOrganization()
                 assertTrue("$label: composition stays ready", composition is OrganizationInputComposition.Ready)
 
@@ -679,6 +682,7 @@ class ProductionOrganizationInputInstrumentationTest {
                     },
                     overrides = EmptyOverrideSnapshotSource(),
                     platformEvidence = EmptyEvidenceSource(),
+                    overlapTolerance = WorkspaceOverlapToleranceSource { true },
                 ).composeFullOrganization()
                 assertTrue("$memberCount: composition stays ready", composition is OrganizationInputComposition.Ready)
 

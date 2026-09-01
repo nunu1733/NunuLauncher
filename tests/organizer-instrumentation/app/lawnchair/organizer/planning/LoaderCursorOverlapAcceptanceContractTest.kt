@@ -9,7 +9,6 @@ import app.lawnchair.preferences2.PreferenceManager2
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings.Favorites
-import com.android.launcher3.model.BgDataModel
 import com.android.launcher3.model.LoaderCursor
 import com.android.launcher3.model.UserManagerState
 import com.android.launcher3.model.data.ItemInfo
@@ -17,7 +16,7 @@ import com.android.launcher3.util.PackageManagerHelper
 import com.patrykmichalik.opto.core.firstBlocking
 import com.patrykmichalik.opto.core.setBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assume.assumeTrue
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -49,33 +48,38 @@ class LoaderCursorOverlapAcceptanceContractTest {
         val app = LauncherAppState.getInstance(context)
         val prefs = PreferenceManager2.getInstance(context)
         val idp = InvariantDeviceProfile.INSTANCE.get(context)
-        assumeTrue("contract needs at least 3 columns", idp.numColumns >= 3)
 
         val originalSmartspace = prefs.enableSmartspace.firstBlocking()
         val originalTolerance = prefs.allowWidgetOverlap.firstBlocking()
         try {
             // The organizer predicate reads the same QSB condition the loader
-            // marks its occupancy with.
+            // marks its occupancy with. The fixture cell is derived from the
+            // live QSB geometry so a grid/QSB change cannot silently skip the
+            // drift check (PR #186 review): a premise failure is an assertion,
+            // not an assumption.
             prefs.enableSmartspace.setBlocking(true)
+            val qsbColumns = idp.numSearchContainerColumns.coerceAtMost(idp.numColumns)
+            assertTrue("QSB reservation must be positive", qsbColumns > 0)
             val reservation = ReservedWorkspaceRegion(
                 page = PageRef(PageId("0")),
                 cell = GridCell(0, 0),
-                span = GridSpan(idp.numSearchContainerColumns, 1),
+                span = GridSpan(qsbColumns, 1),
             )
+            val overlapCellX = qsbColumns / 2
             val overlapsReservation = ReservationOverlapAcceptance.overlaps(
                 PageId("0"),
-                GridCell(2, 0),
+                GridCell(overlapCellX, 0),
                 GridSpan(1, 1),
                 listOf(reservation),
             )
-            assumeTrue("fixture must overlap the QSB reservation", overlapsReservation)
+            assertTrue("fixture must overlap the QSB reservation", overlapsReservation)
 
             for (tolerance in listOf(false, true)) {
                 prefs.allowWidgetOverlap.setBlocking(tolerance)
-                val loaderAccepts = loaderDecision(app, idp)
+                val loaderAccepts = loaderDecision(app, overlapCellX)
                 val organizerAccepts = !ReservationOverlapAcceptance.overlaps(
                     PageId("0"),
-                    GridCell(2, 0),
+                    GridCell(overlapCellX, 0),
                     GridSpan(1, 1),
                     listOf(reservation),
                 ) || tolerance
@@ -98,7 +102,7 @@ class LoaderCursorOverlapAcceptanceContractTest {
     }
 
     /** Runs one real `LoaderCursor.checkItemPlacement` for the QSB-row overlap shape. */
-    private fun loaderDecision(app: LauncherAppState, idp: InvariantDeviceProfile): Boolean {
+    private fun loaderDecision(app: LauncherAppState, overlapCellX: Int): Boolean {
         val cursor = MatrixCursor(
             arrayOf(
                 Favorites.ICON, Favorites.TITLE, Favorites._ID, Favorites.CONTAINER, Favorites.ITEM_TYPE,
@@ -114,7 +118,7 @@ class LoaderCursorOverlapAcceptanceContractTest {
             put(Favorites.ITEM_TYPE, Favorites.ITEM_TYPE_APPLICATION)
             put(Favorites.PROFILE_ID, 0L)
             put(Favorites.SCREEN, 0)
-            put(Favorites.CELLX, 2)
+            put(Favorites.CELLX, overlapCellX)
             put(Favorites.CELLY, 0)
             put(Favorites.SPANX, 1)
             put(Favorites.SPANY, 1)
@@ -138,7 +142,7 @@ class LoaderCursorOverlapAcceptanceContractTest {
         val info = ItemInfo().apply {
             container = Favorites.CONTAINER_DESKTOP
             screenId = 0
-            cellX = 2
+            cellX = overlapCellX
             cellY = 0
             spanX = 1
             spanY = 1

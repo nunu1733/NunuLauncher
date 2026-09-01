@@ -106,10 +106,11 @@ class DefaultOrganizationInputComposer(
     private val overrides: CategoryOverrideSnapshotSource,
     private val platformEvidence: ClassificationSignalSnapshotSource,
     private val targetMaterializer: FullTargetSetMaterializer = FullTargetSetMaterializer(),
-    // Issue #185 / ADR-0010: defaults to tolerated so seams that never capture a
-    // reservation-overlapping item are unaffected; production wiring must supply
-    // the real platform policy (PreferenceWorkspaceOverlapToleranceSource).
-    private val overlapTolerance: WorkspaceOverlapToleranceSource = WorkspaceOverlapToleranceSource { true },
+    // Issue #185 / ADR-0010 (PR #186 review): mandatory with no default so a
+    // call site cannot silently fall back to unconditional acceptance. The
+    // gate never consults the source unless a reservation-overlapping item is
+    // captured; production wiring passes PreferenceWorkspaceOverlapToleranceSource.
+    private val overlapTolerance: WorkspaceOverlapToleranceSource,
 ) : OrganizationInputComposer {
     override fun composeFullOrganization(): OrganizationInputComposition {
         val capture = (captureSource.capture() as? CanonicalCaptureReadResult.Ready)?.snapshot
