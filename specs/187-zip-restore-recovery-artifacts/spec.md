@@ -34,37 +34,45 @@ ZIP backup restoreの後、organizer recovery storeのartifact状態が**矛盾�
 
 ## Decision(本specの中心判断)
 
-diagnosisの3候補に加えて比較のため1候補を追加し、**候補1（restoreと同一区間でのstale
-inspection snapshot削除）**を採用する。判断の正本は [ADR-0011](../../docs/adr/0011-zip-restore-organizer-recovery-artifacts.md)
-（本specの受入条件として作成）とする。
+diagnosis assessmentで確定した欠陥に対し、#187本文の候補（cleanup / classifier healing /
+hybrid）にrecovery DB保存案を加えた**計4案**を評価し、**候補1（restoreと同一lease区間での
+colocated cleanup。検証つき・失敗時は `databases/` wipe前のhard stop）**を採用する。併せて、
+**ZIP backup restoreをrecovery epoch boundaryとして扱い、pre-restore recovery pointsを
+互換性の如何にかかわらず意図的にinvalidateする**というデータ安全上の判断を下す。
+判断の正本は [ADR-0011](../../docs/adr/0011-zip-restore-organizer-recovery-artifacts.md)
+（本spec/planと同時にdraftし、review後にacceptedへ）とする。
 
-1. **採用: colocated cleanup。** `databases/` wipeと同一のlease区間・同一条件で
-   `no_backup/recovery-inspection/` を削除し、restore後のartifact状態をPristineへ揃える。
-   - 現行のrestoreは既にrecovery DB（＝全recovery record）を巻き添えで削除している。snapshotだけが
-     取り残されている状態は、restoreが本来意図する「launcher状態の全置換」と矛盾する残留物であり、
-     それを消すだけである。
-   - classifier（Issue #89のfail-closed設計）は一切変更しない。SuspiciousAbsenceのfail-closed性は、
-     今後も genuinely suspicious な状態（部分削除、corrupt DB、未知file）に対して維持される。
-   - 適用対象はsnapshot directory全体（`recovery-inspection.v1` およびAtomicFileの一時file）。
+1. **採用: colocated cleanup（検証つき・hard stop）。** cleanup（`no_backup/recovery-inspection/`
+   の削除）とその**検証（directoryが不在または空になったこと）**を、
+   `prepareForRawFileRestore`（model quiesce）より前に実施する。検証に失敗した場合（削除不可等）、
+   **launcher状態を一切変更せずrestoreを失敗させる**（quiesce・`databases/` wipeへ進まない）。
+   cleanupをbest-effortにすると、削除失敗+DB wipe成功が本欠陥のpoison状態
+   （DB不在+snapshot存在 → `SuspiciousAbsence` → gate FAILED恒久化）をそのまま再生成するため、
+   失敗時の進行を許さない。hookは `RecoveryInspectionSnapshotReader` の定数名の重複を作らず、
+   organizer module経由で呼ぶ。
 2. **却下: classifier/reconciliation側のhealing rule。** 「DB不在+snapshot存在」をpruneして
    Pristineへ復帰する規則は、Issue #89が意図したstartup時のfail-closed inventory検査を
-   producer側の欠陥のために弱める。healingが安全なのは本case（restoreがDBを消した）に限られ、
-   その原因はproducer側で閉じるべきである。
-3. **却下: recovery DBの保存（`databases/` wipeからのorganizer file除外）。** restore後の
-   workspaceはbackup由来の別stateであり、旧workspaceをtargetにしたrecovery recordは
-   request時のfail-closed precondition（STALE_REVISION / ContextMismatch）で実質NotRestorable
-   である（[ADR-0003](../../docs/adr/0003-organizer-recovery-point-storage.md)、#171 Stage D）。
-   保存する価値が現れない上に、restoreのfile操作にorganizer固有の除外規則を追加する変更が大きい。
-   「restoreがorganizer recovery recordを破棄する」という現行のde-facto挙動をADR-0011に明示的に
-   記録し、将来recovery-across-restoreが製品要件になった場合のproduct decision候補として残す。
+   producer側の欠陥のために永続的に弱める。healingが正しいのは本caseだけであり、原因は
+   producer側で閉じるべきである。
+3. **却下: recovery DB保存（`databases/` wipeからのorganizer file除外）。** 保存したrecordは
+   旧workspaceをtargetにするが、「常にNotRestorable」であるとは断定できない（ZIPが同一の有効
+   workspace状態を復元した場合、revision/contextが一致し得る）。それでも採用しない理由は、
+   epoch boundaryとしての意図的なinvalidationの方が偶然の一致に依存せず、restore後のstore状態
+   （常にPristine起点）を単純に保てるためである。recovery-across-restoreが将来製品要件になった
+   場合は、本決定を置換するproduct decisionとして再検討する。#171 Stage D（外部restoreでは
+   VERIFIED pointを事前無効化しない）は、launcher状態を置換しない外部restoreが前提であり、
+   launcher状態そのものを置換するLawnchair ZIP restoreとは前提が異なるため矛盾しない。
+4. **却下: hybrid（cleanup+healing併用）。** 検証つきcleanup単独でpoison状態の発生を断てるため、
+   healingの追加は#89 fail-closedの弱めにしかならない。
 
 ## Scope
 
-- `LawnchairBackup.restore()` の `databases/` wipeと同一区間（BACKUP_RESTORE lease内）に、
-  organizer側の小さなcleanup hook（例: organizer store層の
-  `RecoveryStartupArtifacts.clearInspectionSnapshot(context)` 相当）を追加し、
-  `no_backup/recovery-inspection/` を削除する。hookは `RecoveryInspectionSnapshotReader` の
-  定数名の重複を作らず、organizer module経由で呼ぶ。
+- `LawnchairBackup.restore()` の `databases/` wipeと同一lease区間（BACKUP_RESTORE lease内）、かつ
+  **`prepareForRawFileRestore`（model quiesce）より前**に、organizer側の小さなcleanup hook
+  （例: organizer store層の `RecoveryStartupArtifacts` 相当）で
+  `no_backup/recovery-inspection/` を削除し、**directoryが不在または空になったことを検証する**。
+  検証失敗時は何も変更せずrestoreを失敗させる（hard stop）。hookは `RecoveryInspectionSnapshotReader`
+  の定数名の重複を作らず、organizer module経由で呼ぶ。
 - cleanupは `databases/` wipeと**常に同じ条件で**走る（colocation）。wallpaper-only restoreで
   `databases/` wipeが走る現行挙動が変わらない限り、cleanupもこれに従う（既存挙動の変更は
   本specのnon-goal）。
@@ -103,13 +111,34 @@ ZIP backup restoreを実行した。
 **And** restore直後のon-disk状態はPristine相当（recovery DB不在、snapshot directory不在）であり、
 最初のstartup reconciliationで両者が再作成される。
 
-### Scenario: cleanupはdatabases/ wipeと同一条件で走る
+### Scenario: cleanupと検証はquiesce前・同一lease区間で走る
 
 **Given** ZIP restoreが `INCLUDE_LAYOUT_AND_SETTINGS` を含むcontentsで実行される。
-**When** restoreの `databases/` wipeが実行される。
-**Then** 同一lease区間でinspection snapshot directoryも削除され、artifact矛盾状態が生じない。
-**And** cleanupの失敗（file削除不可等）がrestoreを失敗させない。ただしcleanup自体はbest-effortの
-冪等削除であり、失敗時も既存のclassifier fail-closedが後段の安全を担保する（現行と同様）。
+**When** restoreがBACKUP_RESTORE leaseを獲得する。
+**Then** `prepareForRawFileRestore`（model quiesce）より前にinspection snapshot directoryが
+削除され、**directoryが不在または空になったことが検証される**。
+**And** 検証成功後にのみ既存の `databases/` wipeへ進むため、「DB不在+snapshot存在」のpoison状態は
+本経路から生じない。
+
+### Scenario: cleanup検証に失敗した場合はrestoreを中断しpoison状態を作らない
+
+**Given** recovery DBが存在する状態でZIP restoreが実行され、snapshot directoryの削除が
+IO失敗等で完了しない。
+**When** cleanupの検証（不在または空の確認）が失敗する。
+**Then** restoreはquiesce・`databases/` wipeへ進まずに失敗する。launcher状態はrestore開始前と
+同一である。
+**And** recovery DBは削除されず、DB不在+snapshot存在のpoison状態は作られない
+（failure-injection testで固定する）。
+**And** ユーザーにはrestore失敗が既存のrestore error surfaceで示され、再試行できる。
+
+### Scenario: snapshot不在+DB存在は定義済み安全中間状態である
+
+**Given** cleanup完了後・`databases/` wipe前の任意時点でprocess死が発生した
+（snapshot不在+recovery DB存在の中間状態）。
+**When** 次のprocessのstartup reconciliationが実行される。
+**Then** classifierはDB存在を `Existing` と分類し（snapshot不在は分類に影響しない）、
+reconcileが継続して `rebuildInspectionSnapshot` によりsnapshotが再生成され、gateはREADYへ到達する。
+**And** 中間状態はpoison（`SuspiciousAbsence`）に進まない（unit testで分類と順序を固定する）。
 
 ### Scenario: genuinely suspicious状態は引き続きfail-closed
 
@@ -135,9 +164,13 @@ undocumentedな巻き添え削除ではなくなる。
 **When** 次のprocessのstartup reconciliationが実行される。
 **Then** artifact状態がDB存在+snapshot存在なら現行どおりreconcileが進み、DB不在+snapshot不在なら
 Pristineとして成功する。
-**And** 本fixは新しい中間状態（snapshot不在+DB存在等の未定義組合せ）を生まない
-（削除順序: snapshot先に削除してから既存の `databases/` wipe。これにより中間状態は
-「DB存在+snapshot不在」または「両方不在」に限定される）。
+**And** cleanup検証失敗の中断時はlauncher状態がrestore開始前と同一であるため、次のrestore試行は
+通常どおり実行できる。
+**And** 本fixが生む中間状態は「DB存在+snapshot不在」（cleanup後・wipe前）のみであり、これは
+**定義済み安全中間状態**である（上のscenarioのとおり、次processで `Existing` としてreconcileし
+snapshotを再生成できる。「未定義組合せ」ではない）。
+**And** poison状態（DB不在+snapshot存在）はcleanup検証のhard stopと削除順序
+（snapshot先、検証後wipe）により本経路から生じない。
 
 ## Data and state
 
@@ -158,37 +191,55 @@ Pristineとして成功する。
 
 ## Acceptance criteria
 
-- [ ] **AC-1 — 決定の記録:** 採用候補（colocated cleanup）と却下候補（classifier healing、
-  recovery DB保存）の評価が [ADR-0011](../../docs/adr/0011-zip-restore-organizer-recovery-artifacts.md)
-  に記録され、「restoreがorganizer recovery recordを破棄する」de-facto挙動の明示化を含む。
-  本specのDecision節と矛盾しない。
-- [ ] **AC-2 — トリガpinの解消:** #153で追加した
-  `RecoveryStartupStorageClassifierTest.zipRestoreLeavesRecoveryDbDeletedWithPublishedSnapshotSuspiciousAbsence`
-  はclassifier自体のcharacterizationとして不変のまま維持され、新たに**restore artifact状態遷移**
-  （reconciled startup → restore相当のcleanup → 両artifact不在=Pristine）を検証するtestが
-  追加される。cleanup hookはorganizer moduleの純粋file操作としてunit test可能な形にする。
+- [ ] **AC-1 — 決定の記録:** 採用候補（検証つきcolocated cleanup + recovery epoch boundary）と
+  却下候補（classifier healing、recovery DB保存、hybrid）の評価が
+  [ADR-0011](../../docs/adr/0011-zip-restore-organizer-recovery-artifacts.md) に記録され、
+  「ZIP restoreがpre-restore recovery pointsを意図的にinvalidateする（epoch boundary）」判断の
+  明示化を含む。本specのDecision節と矛盾しない。ADR-0011は本spec/planと同時にdraftされ、
+  review後にacceptedへ更新する。
+- [ ] **AC-2 — cleanup hookの検証つき挙動とfailure injection:** cleanup hookは
+  （a）reconciled startup相当（DB+snapshot存在）→ cleanup → 両artifact不在=Pristine分類の
+  状態遷移、（b）**snapshot削除失敗の注入 → 検証失敗 → hard stop（recovery DB不削除、
+  poison状態「DB不在+snapshot存在」を生成しない）**、（c）削除順序（snapshot先・検証後wipe）を
+  unit testで固定する。#153で追加したtrigger pin
+  （`RecoveryStartupStorageClassifierTest.zipRestoreLeavesRecoveryDbDeletedWithPublishedSnapshotSuspiciousAbsence`）
+  はclassifier自体のcharacterizationとして不変のまま維持される。
 - [ ] **AC-3 — classifier不変:** `RecoveryStartupStorageClassifierTest` の既存test群（genuinely
   suspicious状態の分類）が無変更で通過し、classifier・reconciler・gateのコードdiffがない。
 - [ ] **AC-4 — #153再現手順の解消:** accepted assessment記録の再現手順（reconciled startup →
   ZIP restore → retry）をemulator `nunu_qpr2_api36_1` で実行し、restore後のprocessで
   reconciliation成功とpreview到達を確認する。結果を `docs/assessment/issue-187-zip-restore-recovery-artifacts.md`
   に記録する。
-- [ ] **AC-5 — 非干渉:** restore失敗中の状態（中間状態）が未定義組合せを生まないこと
-  （削除順序のtest、または同値のunit test）。journal・recovery format・backup formatへの
-  非影響を既存test群の無変更通過で確認する。
-- [ ] **AC-6 —  通常検証:** `spotlessCheck`、unit test全件、`assembleLawnWithQuickstepGithubDebug`
-  が成功する。PRに検証結果を記録する。
+- [ ] **AC-5 — 中間状態の定義化:** 「snapshot不在+DB存在」が `Existing` 分類として次processで
+  reconcileを継続し、`rebuildInspectionSnapshot` によりsnapshotが再生成されてgate READYへ到達する
+  ことがtest（unit分類test+既存store publish pathの通過、必要ならinstrumentation）で検証される。
+  journal・recovery format・backup formatへの非影響を既存test群の無変更通過で確認する。
+- [ ] **AC-6 — high-risk merge gate:** 本実装の変更path（`lawnchair/src/app/lawnchair/backup/**`、
+  `organizer/application/**`）はrepository workflow上のhigh-risk pathであるため、labelの有無に
+  かかわらず実装PRは次のmerge gateを満たす: **対象head SHA上の `CI / final-status` 成功、
+  独立audit記録 `docs/assessment/pr-<PR番号>-<slug>.md`、`high-risk-gate` workflow pass**。
+  加えて `spotlessCheck`、unit test全件、`assembleLawnWithQuickstepGithubDebug` が成功し、
+  PRに検証結果を記録する。
+- [ ] **AC-7 — #153 AC-6の検証（non-write/redaction/schema不変）:** fix側のtest/evidenceにより
+  次を証明する: (a) `NotReady` 経路がplanner呼出し・recovery point作成・layout mutationを
+  行わないこと（既存composer/run non-write fixtureの通過）。(b) journal/export/logcatの既存
+  redaction契約が変わらないこと（既存diagnostics negative-redaction fixtureの通過、
+  §7 non-containment）。(c) diagnostics schema・closed code集合の意味論が変わらないこと
+  （`ModelValidationTest` 等のclosed集合検証の通過、本実装diffがdiagnostics modelへ触れないこと）。
+  このACの完了が [Issue #153](https://github.com/nunu1733/NunuLauncher/issues/153) AC-6の
+  close条件である。
 
 ## Test oracle
 
 | AC | Evidence |
 |---|---|
-| AC-1 | ADR-0011本体 |
-| AC-2 | 新規unit test（artifact状態遷移: reconciled → cleanup → Pristine）+ 既存trigger pinの無変更通過 |
+| AC-1 | ADR-0011本体（epoch boundary判断とrecovery record破棄の明示化を含む） |
+| AC-2 | 新規unit test: (a) reconciled → cleanup → Pristine分類、(b) failure injection（snapshot削除失敗 → hard stop・recovery DB不削除・poison非生成）、(c) 削除順序。既存trigger pinの無変更通過 |
 | AC-3 | `RecoveryStartupStorageClassifierTest` 既存test群の無変更通過、`git diff` でclassifier/reconciler/gate非変更の確認 |
 | AC-4 | エミュレータでの再現手順実行記録（`docs/assessment/issue-187-zip-restore-recovery-artifacts.md`） |
-| AC-5 | unit test（削除順序/中間状態）または同値の確認記録 |
-| AC-6 | `./gradlew spotlessCheck` `./gradlew testLawnWithQuickstepGithubDebugUnitTest` `./gradlew assembleLawnWithQuickstepGithubDebug` |
+| AC-5 | unit分類test（`Existing` + snapshot不在）+ 既存store publish path（`rebuildInspectionSnapshot`）の通過。gapが残る場合はinstrumentation test |
+| AC-6 | 対象headの `CI / final-status` 成功、`docs/assessment/pr-<PR番号>-<slug>.md` 独立audit、`high-risk-gate` workflow pass、`./gradlew spotlessCheck` `./gradlew testLawnWithQuickstepGithubDebugUnitTest` `./gradlew assembleLawnWithQuickstepGithubDebug` |
+| AC-7 | 既存non-write fixture（`OrganizationInputComposerTest` / `ManualOrganizationRunTest` のINPUT_NOT_READY系）+ diagnostics negative-redaction fixture（journal/export non-containment系）+ `ModelValidationTest` 等closed集合検証の通過。本実装diffがdiagnostics modelに触れないことの確認 |
 
 ## Open questions
 
@@ -206,3 +257,16 @@ Pristineとして成功する。
 - 2026-09-01: #153 diagnosis（assessment `issue-153-zip-restore-notready-root-cause.md`、
   investigation review承認済み）に基づきdraftを作成。#187本文の3候補に保存候補を加えた4案を評価し、
   classifier不変のcolocated cleanupを採用案として起草。
+- 2026-09-01: Spec/Plan review対応。(1) [P1] cleanupをbest-effortから**検証つきhard stop**へ変更:
+  検証（directory不在/空の確認）をmodel quiesceより前に実施し、失敗時は一切変更せずrestoreを
+  失敗させる（failure-injection testで「recovery DB不削除・poison非生成」を固定）。(2) [P1]
+  「snapshot不在+DB存在」を**定義済み安全中間状態**として定義し（次processでExisting→reconcile→
+  snapshot再生成→READY）、rollback scenarioとAC-5のoracleへ反映。(3) [P1] 実装pathがhigh-risk
+  であるため、AC-6を **exact-head `CI / final-status` + 独立audit `pr-<n>-<slug>.md` +
+  `high-risk-gate` pass** を要求するmerge gateへ変更。(4) [P1] #153 AC-6の検証（non-write /
+  redaction / diagnostics schema・closed code不変）を専用AC-7として追加し、test oracleに
+  該当fixture群を明記。(5) [P1] **ADR-0011を本spec/planと同時にdraft**（recovery epoch boundary
+  としての意図的invalidation判断、中間状態定義、alternativesを含む）。候補3の却下理由から
+  「常にNotRestorable」の断定を除去。(6) [P2] #153→#187のbranch/PR依存をplanへ明記。
+  (7) Minor: 候補列挙を「計4案」に明示、Documentation updatesのADR-0011チェックは実物作成済みに
+  基づく形へ修正。
