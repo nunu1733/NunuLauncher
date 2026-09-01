@@ -2,7 +2,7 @@
 
 > Status: implemented (AC-1/2/3/5/6/7 verified on this branch; AC-4 emulator evidence below; AC-6 high-risk merge gate to be completed on the main-based implementation PR)
 > Date: 2026-09-01
-> Spec: [specs/187-zip-restore-recovery-artifacts/spec.md](../specs/187-zip-restore-recovery-artifacts/spec.md) (accepted) · ADR: [0011](../adr/0011-zip-restore-organizer-recovery-artifacts.md) (accepted; audit re-verified here)
+> Spec: [specs/187-zip-restore-recovery-artifacts/spec.md](../../specs/187-zip-restore-recovery-artifacts/spec.md) (accepted) · ADR: [0011](../../docs/adr/0011-zip-restore-organizer-recovery-artifacts.md) (accepted; audit re-verified here)
 > Build: `15.Dev.(65ce6d6)` debug, branch `docs/issue-187-spec-plan` head `8884339eff`
 > Environment: emulator `nunu_qpr2_api36_1` (API 36), serial `emulator-5554`
 > Raw evidence (not committed): `/tmp/issue153/` (attempt log), full logcat
@@ -38,7 +38,7 @@ This re-verification supersedes the initial audit recorded at spec time (review 
 
 ## AC-1..7 mapping
 
-- **AC-1 — decision recorded:** [ADR-0011](../adr/0011-zip-restore-organizer-recovery-artifacts.md) (accepted): verified colocated cleanup + hard stop, serialization contract, recovery epoch boundary (deliberate invalidation of pre-restore recovery points), rejected alternatives (classifier healing / recovery-DB preservation / hybrid / time-window-only), intermediate-state table.
+- **AC-1 — decision recorded:** [ADR-0011](../../docs/adr/0011-zip-restore-organizer-recovery-artifacts.md) (accepted): verified colocated cleanup + hard stop, serialization contract, recovery epoch boundary (deliberate invalidation of pre-restore recovery points), rejected alternatives (classifier healing / recovery-DB preservation / hybrid / time-window-only), intermediate-state table.
 - **AC-2 — verified cleanup + failure injection + order + interleaving/lock-order tests:** `RecoveryStartupArtifactsTest` (cleanup → both-absent Pristine; failed delete and leftover entries → false for hard stop; idempotency; defined-safe `Existing` classification) and `RunMutexRestoreSuspensionTest` (contending `reconcileAtStart` fails fast without touching the gate; exclusive acquisition drains an in-flight operation finitely; mutex returns to normal after release). The #153 trigger pin `RecoveryStartupStorageClassifierTest.zipRestoreLeavesRecoveryDbDeletedWithPublishedSnapshotSuspiciousAbsence` remains unchanged and green (classifier characterization intact).
 - **AC-3 — classifier unchanged:** no diff in `RecoveryStartupStorageClassifier` / `RestartReconciler` / `ReadinessGate`; the existing classifier test suite passes unmodified.
 - **AC-4 — reproduction resolution:** table above (emulator `nunu_qpr2_api36_1`, build `65ce6d6`).
