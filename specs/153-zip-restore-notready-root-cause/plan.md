@@ -210,22 +210,20 @@ performance観点は本Issueの範囲外（30分窓の計測は観測記録と�
 ## Execution checklist
 
 - [x] Spec review・承認（statusを `accepted` へ更新）。
-- [ ] H0準備: `74c2156767` をcheckoutし、debug buildをassemble・install。
-      synthetic/default workspaceでCreate backupを実行し、archiveを `/tmp/issue153/` に保存。
-      baselineとしてrestore前の同一head環境でorganizer runがpreview到達することをjournalで確認。
-- [ ] H0実測: `pm clear` → launcherをHOMEにして起動 → Restore backup（同一archive）→
-      同一process内retry → process再起動を挟んだretry（停止条件まで）。
-      元episodeと同型の挙動（NotReady窓→解消）を確認する。再現しない場合は入力差分を特定し、
-      Issue #153へ報告してから進む。
-- [ ] H1–H4を同手順で実測（同一archive、各head debug build）。各headのattempt分類・
-      時刻・process世代を記録。H3以降は理由コード3区分とtimeout行の有無も記録。
-- [ ] head×結果表から因果変更を限定し、owning seamを特定する。
-- [ ] triggerのdeterministic testを確保する: fixing変更の既存regression testを特定・検証する
-      （triggerを実際にカバーしていることを確認）、またはschema-level fixtureで追加testを
-      作って通す。
-- [ ] root causeの現行mainでの状態（未解決/解消済み）を判定し、未解決ならfocused fix Issueを
-      起票（spec-first）。**fixの実装・検証が完了するまで本Issueをcloseしない。** 解消済みなら
-      対応する変更・seam・既存testのmappingとinvariantsカバレッジ確認をassessmentに記録。
-- [ ] #150との関係（shared/independent）をassessmentに記録し、Issue #153へコメントする。
-- [ ] 既存test群（`./gradlew :lawnchair:testLawnWithQuickstepGithubDebugUnitTest`）・
+- [x] H0準備: `74c2156767` をcheckoutし、debug buildをassemble・install。
+      Create backupでarchive（75,715 bytes）を `/tmp/issue153/` に保存。
+      baselineとしてrestore前の同一head環境でorganizer runがpreview到達することをjournalで確認済み。
+- [x] H0実測: episode持続を確認（47分・5 process世代・全INPUT_UNAVAILABLE。元episodeの
+      「後のprocessで解消」は観測されず、持続として確定）。
+- [x] H1–H4を同手順で実測（同一archive）。H1/H2: 各40分・7世代で持続確定。H3/H4:
+      `INPUT_NOT_READY / INPUT_READINESS.RECONCILIATION_FAILED` を取得（timeout行なし）。
+- [x] 因果変更の限定: #155/#156/#172/#185のいずれも解消していない（現行mainで持続）。
+      root causeをowning seam（restore artifact handling + startup classifierの相互作用）で特定。
+      snapshot削除による因果実験をH3/H4で実施し即解消を確認。
+- [x] triggerのdeterministic test: `RecoveryStartupStorageClassifierTest` にtrigger pin
+      （characterization）を追加し通過。healing方向のred/green反転はfocused fix Issue側の証拠。
+- [ ] root causeの現行mainでの状態: **未解決のproduction defect**。focused fix Issueを起票し、
+      **fixの実装・検証が完了するまで本Issueをcloseしない（AC-6）。**
+- [x] #150との関係（independent）をassessmentに記録し、Issue #153へコメントする。
+- [x] 既存test群（`./gradlew testLawnWithQuickstepGithubDebugUnitTest`、全件 `--rerun-tasks`）・
       `spotlessCheck`・debug buildを実行し、結果をPRへ記録する。

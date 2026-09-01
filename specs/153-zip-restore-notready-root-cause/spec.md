@@ -315,3 +315,4 @@ And 独立と判定する場合、#150の所有するA6後reload完了境界（`
   本Issueの変更面の責務としてAC-6との責務境界を明記。non-blocking: AC-4のverificationに
   organizer unit test commandを追加。
 - 2026-09-01: 再レビューで指摘なし。statusを `accepted` へ更新し、plan.mdに従って実行を開始する。
+- 2026-09-01: 実行完了([assessment](../../docs/assessment/issue-153-zip-restore-notready-root-cause.md))。ladder全headでepisode再現。H3/H4で理由コード `INPUT_NOT_READY / RECONCILIATION_FAILED` を取得し、root causeを確定(ZIP restoreが `databases/` を削除しrecovery DBを巻き込む一方、stale inspection snapshotが残留 → `SuspiciousAbsence` → `READ_FAILED` → gate FAILEDの恒久化)。snapshot削除で即解消する因果実験をH3/H4で実施。AC-1/2/3/4/5を満たし、AC-6はfocused fix Issueのfix実装・検証完了まで未充足(blocking)。
