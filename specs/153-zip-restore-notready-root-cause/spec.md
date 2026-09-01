@@ -49,10 +49,13 @@ debug logcatのcapture例外class行）を通じて取得できる。process/rec
 readinessの境界が、既存surfaceで実際に観測可能な粒度でattempt・process単位のassessmentに
 記録され、観測は有限の停止条件で閉じる。限定された因果変更からowning seamを特定し、
 そのtriggerに対するregression固定testをowning seamに確保する（fixing変更のtestが既に
-存在すればそれを特定・検証し、なければ追加する）。本specは「現行mainで再現しない」こと
-単独を完了条件としない。root causeの特定とowning seamのdeterministic testは、
-[Issue #153](https://github.com/nunu1733/NunuLauncher/issues/153) 本文の受入条件として
-必須である。#150との関係が共有/独立として証拠付きで明示される。
+存在すればそれを特定・検証し、なければ追加する）。root causeが現行mainで未解決の
+production defectである場合、focused fix Issueの**fix実装とnon-write/redaction検証の完了は
+本Issueのcloseの前提（blocking dependency）**であり、起票だけでは完了しない。
+これにより [Issue #153](https://github.com/nunu1733/NunuLauncher/issues/153) 本文の受入条件
+「The fix preserves non-write behavior and existing diagnostics redaction」が、fix側の実装と
+検証によって実際に満たされてから本Issueが閉じる。#150との関係が共有/独立として
+証拠付きで明示される。
 
 ## Scope
 
@@ -83,7 +86,11 @@ readinessの境界が、既存surfaceで実際に観測可能な粒度でattempt
   そのtriggerに対するdeterministic testをowning seamに確保する。testは実ZIP archiveを解凍せず、
   schema-levelに合成した状態（grid/pref/favoritesのfixture）で同じ挙動を固定する。
 - root causeが現行mainで未解決のproduction defectである場合のfocused fix Issue分割
-  （spec-first）。本IssueのPRは生産コードのfixを含まない。
+  （spec-first）。**fixの実装と、fix側でのnon-write振る舞い・既存diagnostics redaction維持の
+  検証完了まで本Issueはcloseしない**（Issue本文のfix acceptance「The fix preserves
+  non-write behavior and existing diagnostics redaction」の所有権は、focused fix Issueが
+  実装・検証の実施者であっても、完了の受入は本Issue側が確認する）。本IssueのPRは
+  生産コードのfixを含まない。
 - [docs/assessment/](../../docs/assessment/) へのredacted assessment記録、および
   #150との関係（shared/independent）の明示。
 
@@ -173,9 +180,11 @@ owning seamに確保する。fixing変更（例: #155）が既に同triggerのre
 それを特定・linkし、triggerを実際にカバーしていることを検証する。存在しない場合は
 schema-level fixtureで追加する。いずれの場合もtestは実ZIP archiveを解凍しない。
 And root causeが現行mainで未解決のproduction defectである場合、fixはfocused fix Issueへ
-spec-firstで分割され、本IssueのPRは生産コードのfixを含まない。
+spec-firstで分割され、本IssueのPRは生産コードのfixを含まない。fix Issueの実装が完了し、
+fix側でnon-write振る舞いと§7 redactionの維持が検証されるまで、本Issueはcloseされない。
 And root causeが中間変更により既に解消済みである場合、その対応（変更・seam・既存test）を
-assessmentに記録する。追加の生産コード変更は行わない。
+assessmentに記録する。既存testがnon-write/redactionのinvariantsを実際にカバーしていることを
+この時点で確認する。追加の生産コード変更は行わない。
 
 ### Scenario: 収集evidenceのprivacy不変とhash境界
 
@@ -248,16 +257,20 @@ And 独立と判定する場合、#150の所有するA6後reload完了境界（`
   場合、focused fix Issueがspec-firstで起票されている。**現行mainで非再現であること単独では
   本ACを満たさない。** bounded non-reproductionを正式な完了条件にする場合は、先に
   Issue #153本文のAcceptanceを変更する。
-- [ ] **AC-4 — non-writeとredactionの不変:** 観測・test追加を通じて `NotReady` のnon-write
-  振る舞い（planner呼出し・recovery point作成・layout mutation 0回）と、§7 Never分類
-  （journal・export・logcat・assessment）が保たれる。assessmentのhashはコード識別
-  （head SHA・build識別子）に限定される。既存organizer test群が無変更で通過する。
+- [ ] **AC-4 — non-writeとredactionの不変（本Issueの変更面）:** 調査・test追加・docs変更の
+  本IssueのPRが `NotReady` のnon-write振る舞い（planner呼出し・recovery point作成・layout
+  mutation 0回）と、§7 Never分類（journal・export・logcat・assessment）を壊さない。assessmentの
+  hashはコード識別（head SHA・build識別子）に限定される。既存organizer test群が無変更で
+  通過する。**fix側の実装によるinvariants検証はAC-6が所有し、本ACは重複しない。**
 - [ ] **AC-5 — #150との関係の明示:** 共有/独立の判定が証拠とともにassessmentと
   Issue #153に記録される。
-- [ ] **AC-6 — 未解決defectの分割:** root causeが現行mainで未解決のproduction defectである
-  場合、spec-firstのfocused fix Issueが起票され、本IssueのPRにfixを含まない。中間変更により
-  既に解消済みの場合は、対応する変更・seam・既存testのmappingがassessmentに記録され、
-  本ACは満たされる。
+- [ ] **AC-6 — fix受入の完了:** root causeが現行mainで未解決のproduction defectである場合、
+  spec-firstのfocused fix Issueが起票され、**そのfixの実装が完了し、fix側でnon-write振る舞いと
+  既存diagnostics redactionの維持が検証済み（fix PRのtest・evidence）であること**。これらが
+  確認できるまで本Issueはcloseしない（Issue本文のfix acceptanceの充足確認）。root causeが
+  中間変更により既に解消済みの場合は、対応する変更・seam・既存testのmappingと、そのtestが
+  non-write/redaction invariantsをカバーすることの確認がassessmentに記録され、本ACは
+  満たされる。
 
 ## Test oracle
 
@@ -266,9 +279,9 @@ And 独立と判定する場合、#150の所有するA6後reload完了境界（`
 | AC-1 | 各headの実測記録: 公式export surfaceで取得したjournal（`RUN_STARTED` / `INPUT_NOT_READY` event行）と `logcat OrganizerDiag:V *:S` のredacted転載、attempt分類表。H0–H2は症状有無・時刻・process世代の記録 |
 | AC-2 | assessmentのattempt/process境界表（process世代、elapsed、結果分類、H3以降は理由コード区分とtimeout行の有無、停止条件の充足記録） |
 | AC-3 | 因果変更の限定根拠（head×結果の表）、owning seamの特定、deterministic testのlinkまたは追加test + 実行記録。追加時は `./gradlew :lawnchair:testLawnWithQuickstepGithubDebugUnitTest`（該当task） |
-| AC-4 | 既存organizer test群の無変更通過、§7 negative fixtureの通過、`./gradlew spotlessCheck` + `./gradlew assembleLawnWithQuickstepGithubDebug`。assessmentのhash使用がコード識別のみであることの確認記録 |
+| AC-4 | 本Issue PRの既存organizer test群の無変更通過（`./gradlew :lawnchair:testLawnWithQuickstepGithubDebugUnitTest`）、§7 negative fixtureの通過、`./gradlew spotlessCheck` + `./gradlew assembleLawnWithQuickstepGithubDebug`。assessmentのhash使用がコード識別のみであることの確認記録 |
 | AC-5 | assessmentの#150関係節 + Issue #153への記録コメント |
-| AC-6 | focused fix Issueのlink（起票時）、または中間変更とのmapping記録（解消済み時） |
+| AC-6 | （未解決defect時）focused fix Issueのlink、fix PRのtest/evidenceによるnon-write・redaction維持の検証記録。（解消済み時）中間変更とのmapping + 既存testのinvariantsカバレッジ確認記録 |
 
 ## Open questions
 
@@ -294,3 +307,10 @@ And 独立と判定する場合、#150の所有するA6後reload完了境界（`
   version gate拒否時の報告）。(5) [P2] 持続判定の停止条件（40分以上かつ3以上のfresh process）。(6) [P2]
   journal内容の取得を公式export surfaceに統一（`run-as` での内容読取を排除）。(7) [P2]
   assessmentのhashをコード識別のみに限定。
+- 2026-09-01: Re-review rev 3。残り1点のblockingに対応: focused fix Issueの「起票」だけでは
+  Issue #153本文のfix acceptance（"The fix preserves non-write behavior and existing
+  diagnostics redaction"）を満たさないため、**fix実装とfix側でのinvariants検証の完了を
+  本Issueのcloseの前提（blocking dependency）とする方針を採用**（Issue本文のAcceptanceを
+  維持し、変更しない選択）。AC-6を「起票」から「fix完了 + invariants確認」へ強化し、AC-4を
+  本Issueの変更面の責務としてAC-6との責務境界を明記。non-blocking: AC-4のverificationに
+  organizer unit test commandを追加。

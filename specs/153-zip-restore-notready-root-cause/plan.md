@@ -2,7 +2,7 @@
 
 > Issue: #153
 > Spec: [spec.md](./spec.md)
-> Status: draft（review rev 2対応済み。承認待ち）
+> Status: draft（review rev 3対応済み。承認待ち）
 
 ## Current evidence
 
@@ -145,9 +145,17 @@
 - **`run-as` でのprivate journal読取**: #172がexport手順を不変として定義しており、plan内で
   「存在確認のみ」と「exportでのevidence取得」が矛盾していた（P2-3）。公式export surfaceに
   統一する。
-- **episodeのfixを本Issueへ吸収**: Issue本文の制約（`NotReady` はnon-write、diagnostics
-  schema変更はaccepted specが必要、#150との共有時は依存を先に記録）と #172→#185の前例に
-  従い、未解決defectのfixはfocused fix Issueへ分割する。
+- **fix受入はblocking dependency**（P1対応）: root causeが現行mainで未解決のproduction
+  defectである場合、focused fix Issueの起票（spec-first）に加えて、**fixの実装完了と
+  fix側でのnon-write振る舞い・§7 redaction維持の検証完了まで本Issueをcloseしない**。
+  責務境界: AC-4は本IssueのPR（調査・test・docs）がinvariantsを壊さないことを、AC-6は
+  fix側の実装と検証の受入を所有する。fixの実装はfocused fix IssueのPRで行われるため、
+  本planのbranch（docs/issue-153-spec-plan）のPRは #153 を `Closes` せず、fix完了確認を
+  含む最終PR（またはdocs-only最終コミット）がcloseを担う。
+- **episodeのfixを本IssueのPRへ吸収しない**: Issue本文の制約（`NotReady` はnon-write、
+  diagnostics schema変更はaccepted specが必要、#150との共有時は依存を先に記録）と
+  #172→#185の前例に従う。fix実装自体はfocused fix Issueが所有するが、**その完了確認は
+  本Issueのclose条件である**（「起票だけ」でcloseしない）。
 - **無期限の観測による「持続」判定**: 判定が実行者依存になる（P2-2）。40分以上かつ3以上の
   fresh processという有限停止条件を固定する。
 
@@ -178,9 +186,9 @@
 | AC-1 | 各headの実測記録: 公式export surfaceで取得したjournal（`RUN_STARTED` / `INPUT_NOT_READY` event行。H3以降）と `logcat OrganizerDiag:V *:S` のredacted転載、attempt分類表。H0–H2は症状有無・時刻・process世代の記録 | エミュレータ `nunu_qpr2_api36_1`、各headのdebug build `assembleLawnWithQuickstepGithubDebug` |
 | AC-2 | assessmentのattempt/process境界表（process世代、elapsed、結果分類、H3以降は理由コード3区分とtimeout行の有無、停止条件の充足記録） | 同上（手動実測） |
 | AC-3 | 因果変更の限定根拠（head×結果表）、owning seamの特定、deterministic testのlink/検証記録または追加test + 実行記録 | （test追加時）`./gradlew :lawnchair:testLawnWithQuickstepGithubDebugUnitTest` |
-| AC-4 | 既存organizer test群の無変更通過、§7 negative fixture通過、assessment hash規約の確認記録 | `./gradlew spotlessCheck` `./gradlew assembleLawnWithQuickstepGithubDebug` |
+| AC-4 | 本Issue PRの既存organizer test群の無変更通過、§7 negative fixture通過、assessment hash規約の確認記録 | `./gradlew :lawnchair:testLawnWithQuickstepGithubDebugUnitTest` `./gradlew spotlessCheck` `./gradlew assembleLawnWithQuickstepGithubDebug` |
 | AC-5 | assessmentの#150関係節 + Issue #153へのコメント | — |
-| AC-6 | focused fix Issue link（未解決defect時）/ 中間変更・seam・既存testのmapping（解消済み時） | — |
+| AC-6 | （未解決defect時）focused fix Issueのlink + fix PRのtest/evidenceによるnon-write・redaction維持の検証記録を確認し、完了後に本Issueをclose。（解消済み時）中間変更・seam・既存testのmapping + invariantsカバレッジ確認記録 | — |
 
 含める観点: エミュレータでのintegration観測（AC-1/2）、deterministic test（AC-3、該当時）、
 privacy negative確認（AC-4: assessment記載とexportの§7 non-containment目視+既存fixture）。
@@ -216,6 +224,8 @@ performance観点は本Issueの範囲外（30分窓の計測は観測記録と�
       （triggerを実際にカバーしていることを確認）、またはschema-level fixtureで追加testを
       作って通す。
 - [ ] root causeの現行mainでの状態（未解決/解消済み）を判定し、未解決ならfocused fix Issueを
-      起票（spec-first）。解消済みなら対応する変更・seam・既存testのmappingをassessmentに記録。
+      起票（spec-first）。**fixの実装・検証が完了するまで本Issueをcloseしない。** 解消済みなら
+      対応する変更・seam・既存testのmappingとinvariantsカバレッジ確認をassessmentに記録。
 - [ ] #150との関係（shared/independent）をassessmentに記録し、Issue #153へコメントする。
-- [ ] 既存test群・`spotlessCheck`・debug buildを実行し、結果をPRへ記録する。
+- [ ] 既存test群（`./gradlew :lawnchair:testLawnWithQuickstepGithubDebugUnitTest`）・
+      `spotlessCheck`・debug buildを実行し、結果をPRへ記録する。
