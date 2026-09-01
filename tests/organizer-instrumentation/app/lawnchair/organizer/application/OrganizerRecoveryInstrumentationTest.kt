@@ -71,28 +71,6 @@ class OrganizerRecoveryInstrumentationTest {
                 "WHERE ${Favorites.ORGANIZER_LOCK_STATE}=0",
         )
         val writer = LauncherLayoutAdapter(context, controller, launcher.model)
-        val capture = writer.captureCurrent(CaptureId("smoke-source"))
-        val expected = capture.layoutState.items.firstOrNull()
-            ?: error("Smoke requires at least one launcher row")
-        val intended = expected.copy(
-            lockState = if (expected.lockState == OrganizerLockState.LOCKED) {
-                OrganizerLockState.UNLOCKED
-            } else {
-                OrganizerLockState.LOCKED
-            },
-        )
-        val plan = ValidatedLayoutPlan(
-            capture.revision,
-            capture.layoutState,
-            capture.layoutState.copy(
-                items = capture.layoutState.items.map { if (it.ref == expected.ref) intended else it },
-            ),
-            listOf(ApplyAction.Update(expected.ref, expected, intended)),
-            emptyList(),
-            emptyList(),
-            RuleVersion("smoke"),
-            TaxonomyVersion("smoke"),
-        )
         val clock = SystemClock()
         val module = LayoutApplicationModule(
             writer,
@@ -102,8 +80,45 @@ class OrganizerRecoveryInstrumentationTest {
             SmokeFaultInjector(context, phase),
         )
         module.reconcileAtStart()
-        module.apply(plan)
-        error("Fault phase $phase did not pause")
+        // Issue #177: a paused apply never returns, so any return here is a
+        // rejection. The apply result used to be discarded, which turned a
+        // transient rejection (e.g. WRITER_BUSY from a baseline writer holding
+        // the process-wide lease right after process start) into a silent
+        // "did not pause" failure. Re-capture and re-apply with a fresh plan so
+        // stale-revision rejections from concurrent startup DB activity also
+        // recover; a genuine repeated rejection still fails the smoke.
+        var attempts = 0
+        while (true) {
+            val freshCapture = writer.captureCurrent(CaptureId("smoke-source"))
+            val expected = freshCapture.layoutState.items.firstOrNull()
+                ?: error("Smoke requires at least one launcher row")
+            val intended = expected.copy(
+                lockState = if (expected.lockState == OrganizerLockState.LOCKED) {
+                    OrganizerLockState.UNLOCKED
+                } else {
+                    OrganizerLockState.LOCKED
+                },
+            )
+            val plan = ValidatedLayoutPlan(
+                freshCapture.revision,
+                freshCapture.layoutState,
+                freshCapture.layoutState.copy(
+                    items = freshCapture.layoutState.items.map { if (it.ref == expected.ref) intended else it },
+                ),
+                listOf(ApplyAction.Update(expected.ref, expected, intended)),
+                emptyList(),
+                emptyList(),
+                RuleVersion("smoke"),
+                TaxonomyVersion("smoke"),
+            )
+            val result = module.apply(plan)
+            check(attempts < 5) {
+                "Fault phase $phase did not pause after $attempts rejected applies (last=$result)"
+            }
+            attempts++
+            Log.i(TAG, "FAULT_APPLY_REJECTED phase=$phase attempt=$attempts result=$result")
+            Thread.sleep(500)
+        }
     }
 
     private fun ensureSmokeRow(
@@ -165,38 +180,42 @@ class OrganizerRecoveryInstrumentationTest {
         // Issue #177: the app-owned startup reconciliation runs asynchronously on
         // its own thread and holds the ORGANIZER writer lease (through
         // requestCorrelatedReload + verification) while it advances the fault-run
-        // record. Wait until its readiness gate has settled (it leaves IDLE only
-        // once the pass actually runs, and leaves RECONCILING only after the
-        // whole pass — including the writer-lease hold — has finished) so the
-        // verify reconcile is serialized behind it. Then re-run the manual
-        // reconcile only while it reports the lease-contention signature, until
-        // it is quiescent.
+        // record. Wait until its readiness gate reaches READY: the gate leaves
+        // IDLE only once the pass actually runs, and reaches READY only after the
+        // whole pass — including the writer-lease hold — has finished, so the
+        // verify reconcile below cannot contend with the startup pass itself.
+        // FAILED is a production startup failure and must fail the smoke, not be
+        // absorbed by the fresh test module.
         val appModule = (context.applicationContext as LawnchairApp).layoutApplicationModule
         var gateAttempts = 0
-        while (
-            appModule.readinessGate.state !in setOf(ReadinessGate.State.READY, ReadinessGate.State.FAILED) &&
-            gateAttempts < 240
-        ) {
+        while (appModule.readinessGate.state != ReadinessGate.State.READY && gateAttempts < 240) {
             Thread.sleep(250)
             gateAttempts++
         }
-        check(
-            appModule.readinessGate.state == ReadinessGate.State.READY ||
-                appModule.readinessGate.state == ReadinessGate.State.FAILED,
-        ) {
-            "Startup reconciliation did not settle before restart verification " +
+        check(appModule.readinessGate.state == ReadinessGate.State.READY) {
+            "Startup reconciliation did not become READY before restart verification " +
                 "(state=${appModule.readinessGate.state})"
         }
+        // Issue #177: even with the gate READY, the process-wide
+        // LayoutWriteCoordinator also serializes baseline MODEL_WRITER mutations
+        // (e.g. model work spawned by the startup pass's correlated reload), so
+        // the verify reconcile can still transiently lose tryAcquireLease and
+        // surface Unresolved(COMMIT_OUTCOME_UNKNOWN). Re-run only while the
+        // summary reports that contention-capable shape, until it is quiescent;
+        // genuine ambiguous states are deterministic and keep failing every
+        // retry, so the exact Clean assert below still fails for them.
         val manualModule = LayoutApplicationModule.production(context, launcher)
         var summary = manualModule.reconcileAtStart()
-        var reconcileAttempts = 0
-        while (summary is RestartReconciler.ReconciliationSummary.Resolved &&
-            summary.publicResults.any { isLeaseContention(it) } &&
-            reconcileAttempts < 20
+        var settleAttempts = 0
+        while (
+            summary is RestartReconciler.ReconciliationSummary.Resolved &&
+            summary.publicResults.any { isContentionCapable(it) } &&
+            settleAttempts < 20
         ) {
+            Log.i(TAG, "SETTLING phase=$phase attempt=$settleAttempts summary=$summary")
             Thread.sleep(500)
             summary = manualModule.reconcileAtStart()
-            reconcileAttempts++
+            settleAttempts++
         }
         assertEquals(
             RestartReconciler.ReconciliationSummary.Clean,
@@ -313,13 +332,15 @@ class OrganizerRecoveryInstrumentationTest {
         const val KEY_POINT_ID = "point_id"
 
         /**
-         * Issue #177: the observed flake signature — a reconcile pass that raced
-         * the startup reconciliation's ORGANIZER writer lease and could not
-         * acquire it. The record itself is intact, so this contention result is
-         * the only shape eligible for a bounded retry; any other unresolved
-         * shape still fails the assert.
+         * Issue #177: the only reconciliation failure shape that losing the
+         * process-wide writer lease can produce. `COMMIT_OUTCOME_UNKNOWN` is
+         * also produced by genuinely ambiguous durable states, so this shape is
+         * a necessary — not sufficient — contention signal; it only makes the
+         * reconcile pass retry-eligible. A genuine ambiguity is deterministic
+         * and recurs on every retry, so the bounded loop still ends in the
+         * exact-Clean assert failing with the real summary.
          */
-        fun isLeaseContention(result: ReconciliationPublicResult): Boolean =
+        fun isContentionCapable(result: ReconciliationPublicResult): Boolean =
             result is ReconciliationPublicResult.Unresolved &&
                 result.outcome is ApplyResult.Unresolved &&
                 result.outcome.failure == ApplyFailure.COMMIT_OUTCOME_UNKNOWN
