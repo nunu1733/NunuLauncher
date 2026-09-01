@@ -1,6 +1,6 @@
 ---
 issue: "#187"
-status: draft
+status: accepted
 requirements: []
 updated: 2026-09-01
 ---
@@ -318,3 +318,4 @@ snapshotを再生成できる。「未定義組合せ」ではない）。
   Non-blocking note対応: wrapper API名を `runWithRecoveryOperationsSuspendedForRestore` とし、
   契約範囲（recovery mutation/reconciliation排他。capture/composeはmodule mutex非経由で対象外、
   読取専用かつpublisherではない）を明記。
+- 2026-09-01: 再レビューで指摘なし。statusを `accepted` へ更新し、plan.mdに従って実装を開始する。

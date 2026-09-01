@@ -2,7 +2,7 @@
 
 > Issue: #187
 > Spec: [spec.md](./spec.md)
-> Status: draft（re-review対応済み。serialization契約追加。承認待ち）
+> Status: implementation（spec accepted。再review 2対応後、指摘なしで承認）
 
 ## Current evidence
 
@@ -177,7 +177,7 @@ restore系の安全pathに触れるためlabel判断はPRで明示する。
 
 ## Execution checklist
 
-- [ ] Spec review・承認（statusを `accepted` へ更新。ADR-0011のreview確認を含む）。
+- [x] Spec review・承認（statusを `accepted` へ更新。ADR-0011のreview確認を含む）。
 - [ ] `RunMutex` 排他取得API + `LayoutApplicationModule` restore排他wrapperを実装
       （AC-2(d): interleaving test——区間中のreconcile/apply競合が即時return・gate不変・
       解放後復帰——を含む）。
