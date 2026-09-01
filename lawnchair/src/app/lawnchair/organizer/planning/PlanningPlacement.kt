@@ -38,7 +38,7 @@ internal object PlanningPlacement {
         }
 
         for (item in input.snapshot.items) {
-            val reason = determinePreservation(item, rolesById[item.id])
+            val reason = determinePreservation(item, rolesById[item.id], input.snapshot.reservedWorkspaceRegions)
             if (reason != null || isIncremental) {
                 val ws = item.placement as? CapturedPlacement.Workspace
                 if (ws != null) {
@@ -83,7 +83,7 @@ internal object PlanningPlacement {
         val device = input.snapshot.device
         val taxonomy = input.taxonomy
 
-        val movableItems = items.filter { determinePreservation(it, rolesById[it.id]) == null }
+        val movableItems = items.filter { determinePreservation(it, rolesById[it.id], input.snapshot.reservedWorkspaceRegions) == null }
         val existingFolderUnits = movableItems.filter { it.kind == ItemKind.FOLDER }
         val movableApps = movableItems.filter {
             it.kind == ItemKind.APPLICATION || it.kind == ItemKind.DEEP_SHORTCUT
@@ -240,7 +240,7 @@ internal object PlanningPlacement {
         }
 
         for (item in items) {
-            val reason = determinePreservation(item, rolesById[item.id])
+            val reason = determinePreservation(item, rolesById[item.id], input.snapshot.reservedWorkspaceRegions)
             if (reason != null) {
                 placements += PlannedPlacement(
                     item = item.id,
@@ -275,7 +275,7 @@ internal object PlanningPlacement {
         val candidates = input.targets.additions
 
         val placements = items.map { item ->
-            val reason = determinePreservation(item, rolesById[item.id])
+            val reason = determinePreservation(item, rolesById[item.id], input.snapshot.reservedWorkspaceRegions)
             val effectiveReason = reason ?: PreserveReason.ALREADY_CANONICAL
             PlannedPlacement(
                 item = item.id,
@@ -471,15 +471,35 @@ internal object PlanningPlacement {
         return result
     }
 
-    private fun determinePreservation(item: CapturedItem, role: ExistingRole?): PreserveReason? = when {
+    private fun determinePreservation(
+        item: CapturedItem,
+        role: ExistingRole?,
+        reservations: List<ReservedWorkspaceRegion>,
+    ): PreserveReason? = when {
+        // Issue #185 / ADR-0010: an item whose captured placement overlaps an
+        // authoritative reservation is kept exactly where it is, ahead of every
+        // other preservation reason — the loader tolerates it only under the
+        // current overlap policy, so the planner must neither move it nor
+        // allocate anything into the reserved cells.
+        (item.placement as? CapturedPlacement.Workspace)
+            ?.let { ws -> ReservationOverlapAcceptance.overlaps(ws.page.pageId, ws.cell, ws.span, reservations) } == true -> PreserveReason.RESERVED_REGION
+
         item.locked -> PreserveReason.LOCKED
+
         item.availability != Availability.AVAILABLE -> PreserveReason.UNAVAILABLE_TARGET
+
         item.placement is CapturedPlacement.Dock -> PreserveReason.DOCK
+
         item.kind == ItemKind.APPWIDGET || item.kind == ItemKind.CUSTOM_APPWIDGET -> PreserveReason.WIDGET
+
         item.kind == ItemKind.APP_PAIR || item.placement is CapturedPlacement.AppPairMember -> PreserveReason.APP_PAIR
+
         item.kind == ItemKind.SHORTCUT_LEGACY -> PreserveReason.LEGACY_SHORTCUT
+
         role == ExistingRole.Preserved -> PreserveReason.NON_TARGET
+
         item.placement is CapturedPlacement.FolderMember -> PreserveReason.STRUCTURAL
+
         else -> null
     }
 

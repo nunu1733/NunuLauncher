@@ -36,6 +36,7 @@ import app.lawnchair.organizer.planning.RejectionCode
 import app.lawnchair.organizer.planning.SnapPositionToken
 import app.lawnchair.organizer.planning.SplitStage
 import app.lawnchair.organizer.planning.TargetKey
+import app.lawnchair.organizer.planning.WorkspaceOverlapToleranceSource
 import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
 import app.lawnchair.organizer.rules.CategoryOverrideSnapshot
 import app.lawnchair.organizer.rules.CategoryOverrideSnapshotSource
@@ -352,6 +353,7 @@ class DefaultLayoutComposerPlannerRegressionTest {
                 policy: ClassificationPolicy,
             ) = PlatformEvidenceReadResult.Ready(emptyEvidence())
         },
+        overlapTolerance = WorkspaceOverlapToleranceSource { true },
     )
 
     private fun emptyOverrideSnapshot() = CategoryOverrideSnapshot(

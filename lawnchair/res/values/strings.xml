@@ -1039,6 +1039,7 @@
     <string name="manual_organization_moved_folder_member">Moved as a folder member: %1$d</string>
     <string name="manual_organization_moved_folder_unit">Moved as a folder unit: %1$d</string>
     <string name="manual_organization_preserved_locked">Preserved locked placements: %1$d</string>
+    <string name="manual_organization_preserved_reserved_region">Preserved placements in the reserved search area: %1$d</string>
     <string name="manual_organization_preserved_unavailable">Preserved unavailable placements: %1$d</string>
     <string name="manual_organization_preserved_dock">Preserved Dock placements: %1$d</string>
     <string name="manual_organization_preserved_widget">Preserved widgets: %1$d</string>

@@ -82,7 +82,7 @@ internal object RowManifestCodec {
                 pageId.value == FIRST_SCREEN_ID.toString() ||
                 reservedWorkspaceRegions.any { it.page.pageId == pageId }
         }.distinct()
-        validateReservations(persistentPages, reservedWorkspaceRegions, rows, capabilities)
+        validateReservations(persistentPages, reservedWorkspaceRegions, capabilities)
         val pages = persistentPages.mapIndexed { index, id ->
             PageState(ApplicationPageRef.PersistentPage(id), PageOrder(index))
         }
@@ -132,7 +132,6 @@ internal object RowManifestCodec {
     private fun validateReservations(
         pages: List<PageId>,
         reservations: List<ReservedWorkspaceRegion>,
-        rows: List<PersistentRow>,
         capabilities: DeviceCapabilities,
     ) {
         require(reservations.distinct().size == reservations.size) {
@@ -164,20 +163,11 @@ internal object RowManifestCodec {
                 }
             }
         }
-        rows.asSequence()
-            .filter { it.containerCode.value == Favorites.CONTAINER_DESKTOP }
-            .forEach { row ->
-                val page = requireNotNull(row.screenId)
-                val cell = requireNotNull(row.rawCell)
-                val span = requireNotNull(row.rawSpan)
-                require(
-                    reservations.none { reservation ->
-                        reservation.page.pageId == page && rectanglesOverlap(reservation.cell, reservation.span, cell, span)
-                    },
-                ) {
-                    "Workspace item overlaps a platform reservation"
-                }
-            }
+        // Issue #185 / ADR-0010: a desktop row overlapping an authoritative
+        // reservation is a representable workspace state (Nova imports and grid
+        // migrations can produce it, and the loader keeps it when overlap is
+        // tolerated). The composer projects it as Preserved(RESERVED_REGION);
+        // only the reservation's own invalid geometry stays fail-closed here.
     }
 
     private fun rectanglesOverlap(

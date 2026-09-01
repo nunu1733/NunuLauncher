@@ -139,6 +139,7 @@
     <string name="manual_organization_moved_folder_member">フォルダ内の項目として移動: %1$d件</string>
     <string name="manual_organization_moved_folder_unit">フォルダ単位で移動: %1$d件</string>
     <string name="manual_organization_preserved_locked">ロックされた配置を保持: %1$d件</string>
+    <string name="manual_organization_preserved_reserved_region">検索バー領域の配置を保持: %1$d件</string>
     <string name="manual_organization_preserved_unavailable">利用できない配置を保持: %1$d件</string>
     <string name="manual_organization_preserved_dock">Dock配置を保持: %1$d件</string>
     <string name="manual_organization_preserved_widget">ウィジェットを保持: %1$d件</string>

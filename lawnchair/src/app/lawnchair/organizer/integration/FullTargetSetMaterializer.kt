@@ -6,6 +6,8 @@ import app.lawnchair.organizer.planning.CapturedPlacement
 import app.lawnchair.organizer.planning.ExistingRole
 import app.lawnchair.organizer.planning.ExistingTargetMembership
 import app.lawnchair.organizer.planning.ItemKind
+import app.lawnchair.organizer.planning.ReservationOverlapAcceptance
+import app.lawnchair.organizer.planning.ReservedWorkspaceRegion
 import app.lawnchair.organizer.planning.TargetSet
 import app.lawnchair.organizer.rules.FullOrganizationTargetPolicy
 import app.lawnchair.organizer.rules.PolicyInputIdentity
@@ -16,12 +18,21 @@ class FullTargetSetMaterializer {
     fun materialize(
         items: List<CapturedItem>,
         policy: FullOrganizationTargetPolicy,
+        reservedWorkspaceRegions: List<ReservedWorkspaceRegion> = emptyList(),
     ): TargetMaterializationResult {
         if (policy.version != FULL_ORGANIZATION_TARGET_POLICY_VERSION) return TargetMaterializationResult.Invalid
         if (items.distinctBy { it.id }.size != items.size) return TargetMaterializationResult.Invalid
         val memberships = ArrayList<ExistingTargetMembership>(items.size)
         for (item in items.sortedBy { it.id }) {
             val role = when {
+                // Issue #185 / ADR-0010: a captured workspace placement that
+                // overlaps an authoritative reservation is kept exactly where it
+                // is, ahead of every other role decision.
+                (item.placement as? CapturedPlacement.Workspace)
+                    ?.let { ws ->
+                        ReservationOverlapAcceptance.overlaps(ws.page.pageId, ws.cell, ws.span, reservedWorkspaceRegions)
+                    } == true -> ExistingRole.Preserved
+
                 item.locked -> ExistingRole.Preserved
 
                 item.availability != Availability.AVAILABLE -> ExistingRole.Preserved

@@ -46,12 +46,17 @@ import app.lawnchair.organizer.planning.PackageName
 import app.lawnchair.organizer.planning.PlacementTarget
 import app.lawnchair.organizer.planning.Planned
 import app.lawnchair.organizer.planning.ProfileId
+import app.lawnchair.organizer.planning.PageId
+import app.lawnchair.organizer.planning.PageRef
+import app.lawnchair.organizer.planning.GridSpan
 import app.lawnchair.organizer.planning.Rejected
 import app.lawnchair.organizer.planning.RejectionCode
+import app.lawnchair.organizer.planning.ReservedWorkspaceRegion
 import app.lawnchair.organizer.planning.SignalSource
 import app.lawnchair.organizer.planning.SnapPositionToken
 import app.lawnchair.organizer.planning.SplitStage
 import app.lawnchair.organizer.planning.TargetKey
+import app.lawnchair.organizer.planning.WorkspaceOverlapToleranceSource
 import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
 import app.lawnchair.organizer.rules.CategoryOverrideKey
 import app.lawnchair.organizer.rules.CategoryOverrideSnapshot
@@ -292,6 +297,7 @@ class ProductionOrganizationInputInstrumentationTest {
                 },
                 overrides = EmptyOverrideSnapshotSource(),
                 platformEvidence = EmptyEvidenceSource(),
+                overlapTolerance = WorkspaceOverlapToleranceSource { true },
             ).composeFullOrganization()
             assertTrue("composition must be ready: $composition", composition is OrganizationInputComposition.Ready)
             val ready = composition as OrganizationInputComposition.Ready
@@ -314,6 +320,99 @@ class ProductionOrganizationInputInstrumentationTest {
                     partition.single { it.item == member.id }.role,
                 )
             }
+        } finally {
+            source.close()
+        }
+    }
+
+    /**
+     * Issue #185 / ADR-0010: the #172 reproduction shape — a 5-column grid whose
+     * QSB reservation covers the entire first row, with an item captured inside
+     * it (favorites row 115, a deep shortcut at screen 0 cell(2,0)). Capture must
+     * succeed losslessly, and composition must follow the platform's overlap
+     * policy: Ready with a preserved item when tolerated, the narrower typed
+     * `CAPTURE_RESERVED_OVERLAP` reason otherwise.
+     */
+    @Test
+    fun qsbRowItemCapturesLosslesslyAndComposesPerPlatformTolerance() {
+        val serial = UserCache.INSTANCE.get(context)
+            .getSerialNumberForUser(Process.myUserHandle()).toString()
+        val capabilities = app.lawnchair.organizer.application.public.DeviceCapabilities(5, 5, 5, 4, 4, app.lawnchair.organizer.application.public.DeviceOrientation.PORTRAIT)
+        val reservation = ReservedWorkspaceRegion(PageRef(PageId("0")), GridCell(0, 0), GridSpan(5, 1))
+        val source = android.database.sqlite.SQLiteDatabase.create(null)
+        try {
+            Favorites.addTableToDb(source, 10L, false)
+            source.insertOrThrow(
+                Favorites.TABLE_NAME,
+                null,
+                ContentValues().apply {
+                    put(Favorites._ID, 115L)
+                    put(Favorites.TITLE, "ambient music shortcut")
+                    put(
+                        Favorites.INTENT,
+                        "#Intent;action=android.intent.action.VIEW;package=com.google.android.as;S.shortcut_id=ambient_music;end",
+                    )
+                    put(Favorites.CONTAINER, Favorites.CONTAINER_DESKTOP)
+                    put(Favorites.SCREEN, 0)
+                    put(Favorites.CELLX, 2)
+                    put(Favorites.CELLY, 0)
+                    put(Favorites.SPANX, 1)
+                    put(Favorites.SPANY, 1)
+                    put(Favorites.ITEM_TYPE, Favorites.ITEM_TYPE_DEEP_SHORTCUT)
+                    put(Favorites.APPWIDGET_ID, -1)
+                    put(Favorites.MODIFIED, 1_000L)
+                    put(Favorites.RESTORED, 0)
+                    put(Favorites.PROFILE_ID, serial.toLong())
+                    put(Favorites.RANK, 0)
+                    put(Favorites.OPTIONS, 0)
+                    put(Favorites.APPWIDGET_SOURCE, -1)
+                },
+            )
+
+            val captured = RowManifestCodec.capture(
+                source,
+                capabilities,
+                listOf(PageId("0")),
+                listOf(ProfileState(ProfileId(serial), ProfileAvailability.AVAILABLE)),
+                listOf(reservation),
+            )
+            assertEquals(1, captured.manifest.rows.size)
+            val workspace = captured.state.items.single().placement as PlacementState.Workspace
+            assertEquals(GridCell(2, 0), workspace.cell)
+
+            val snapshot = CapturedSnapshot(
+                layoutState = captured.state,
+                manifest = captured.manifest,
+                revision = RevisionCalculator.revisionOf(captured.state),
+                digest = RevisionCalculator.classificationDigestOf(captured.state),
+            )
+            val composition = DefaultOrganizationInputComposer(
+                captureSource = CanonicalCaptureSource { CanonicalCaptureReadResult.Ready(snapshot) },
+                bundleSource = object : app.lawnchair.organizer.rules.OrganizerPolicyBundleSource {
+                    override fun readActive() = BuiltInOrganizerPolicyBundleSource.readActive()
+                },
+                overrides = EmptyOverrideSnapshotSource(),
+                platformEvidence = EmptyEvidenceSource(),
+                overlapTolerance = WorkspaceOverlapToleranceSource { true },
+            ).composeFullOrganization()
+            assertTrue("tolerant policy must compose: $composition", composition is OrganizationInputComposition.Ready)
+            val role = (composition as OrganizationInputComposition.Ready).input.targets.existing.single().role
+            assertEquals(ExistingRole.Preserved, role)
+
+            val rejected = DefaultOrganizationInputComposer(
+                captureSource = CanonicalCaptureSource { CanonicalCaptureReadResult.Ready(snapshot) },
+                bundleSource = object : app.lawnchair.organizer.rules.OrganizerPolicyBundleSource {
+                    override fun readActive() = BuiltInOrganizerPolicyBundleSource.readActive()
+                },
+                overrides = EmptyOverrideSnapshotSource(),
+                platformEvidence = EmptyEvidenceSource(),
+                overlapTolerance = WorkspaceOverlapToleranceSource { false },
+            ).composeFullOrganization() as OrganizationInputComposition.NotReady
+            assertEquals(
+                InputReadinessReason.InvalidCanonicalCapture(CaptureFailureCategory.RESERVED_OVERLAP),
+                rejected.reason,
+            )
+            assertEquals(InputCompositionCode.CAPTURE_RESERVED_OVERLAP, rejected.diagnostic.code)
         } finally {
             source.close()
         }
@@ -438,6 +537,7 @@ class ProductionOrganizationInputInstrumentationTest {
                 },
                 overrides = EmptyOverrideSnapshotSource(),
                 platformEvidence = EmptyEvidenceSource(),
+                overlapTolerance = WorkspaceOverlapToleranceSource { true },
             ).composeFullOrganization()
             assertTrue("composition must be ready: $composition", composition is OrganizationInputComposition.Ready)
             val ready = composition as OrganizationInputComposition.Ready
@@ -521,6 +621,7 @@ class ProductionOrganizationInputInstrumentationTest {
                     },
                     overrides = EmptyOverrideSnapshotSource(),
                     platformEvidence = EmptyEvidenceSource(),
+                    overlapTolerance = WorkspaceOverlapToleranceSource { true },
                 ).composeFullOrganization()
                 assertTrue("$label: composition stays ready", composition is OrganizationInputComposition.Ready)
 
@@ -581,6 +682,7 @@ class ProductionOrganizationInputInstrumentationTest {
                     },
                     overrides = EmptyOverrideSnapshotSource(),
                     platformEvidence = EmptyEvidenceSource(),
+                    overlapTolerance = WorkspaceOverlapToleranceSource { true },
                 ).composeFullOrganization()
                 assertTrue("$memberCount: composition stays ready", composition is OrganizationInputComposition.Ready)
 

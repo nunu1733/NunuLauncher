@@ -34,9 +34,11 @@ import app.lawnchair.organizer.planning.PackageName
 import app.lawnchair.organizer.planning.Page
 import app.lawnchair.organizer.planning.PageRef
 import app.lawnchair.organizer.planning.ProfileId
+import app.lawnchair.organizer.planning.ReservationOverlapAcceptance
 import app.lawnchair.organizer.planning.RunMode
 import app.lawnchair.organizer.planning.SignalSource
 import app.lawnchair.organizer.planning.TargetKey
+import app.lawnchair.organizer.planning.WorkspaceOverlapToleranceSource
 import app.lawnchair.organizer.rules.BundleReadResult
 import app.lawnchair.organizer.rules.CategoryOverrideKey
 import app.lawnchair.organizer.rules.CategoryOverrideSnapshot
@@ -104,6 +106,11 @@ class DefaultOrganizationInputComposer(
     private val overrides: CategoryOverrideSnapshotSource,
     private val platformEvidence: ClassificationSignalSnapshotSource,
     private val targetMaterializer: FullTargetSetMaterializer = FullTargetSetMaterializer(),
+    // Issue #185 / ADR-0010 (PR #186 review): mandatory with no default so a
+    // call site cannot silently fall back to unconditional acceptance. The
+    // gate never consults the source unless a reservation-overlapping item is
+    // captured; production wiring passes PreferenceWorkspaceOverlapToleranceSource.
+    private val overlapTolerance: WorkspaceOverlapToleranceSource,
 ) : OrganizationInputComposer {
     override fun composeFullOrganization(): OrganizationInputComposition {
         val capture = (captureSource.capture() as? CanonicalCaptureReadResult.Ready)?.snapshot
@@ -122,6 +129,27 @@ class DefaultOrganizationInputComposer(
                 InputReadinessReason.InvalidCanonicalCapture(CaptureFailureCategory.UNREPRESENTABLE_LAYOUT),
                 InputCompositionCode.CAPTURE_UNREPRESENTABLE,
             )
+        // Issue #185 / ADR-0010: the capture succeeded and a reservation-overlapping
+        // item is representable (Preserved(RESERVED_REGION)), but only when the
+        // platform loader would keep it. Under the current policy it would be
+        // deleted at the next load, so composing would produce a run whose
+        // correlated reload breaks A7/recovery verification — fail closed here,
+        // before any write, with a reason narrower than CAPTURE_INVALID.
+        val reservationOverlaps = mapped.items.count { item ->
+            val ws = item.placement as? CapturedPlacement.Workspace
+            ws != null && ReservationOverlapAcceptance.overlaps(
+                ws.page.pageId,
+                ws.cell,
+                ws.span,
+                mapped.snapshot.reservedWorkspaceRegions,
+            )
+        }
+        if (reservationOverlaps > 0 && !overlapTolerance.isOverlapTolerated()) {
+            return notReady(
+                InputReadinessReason.InvalidCanonicalCapture(CaptureFailureCategory.RESERVED_OVERLAP),
+                InputCompositionCode.CAPTURE_RESERVED_OVERLAP,
+            )
+        }
         val bundle = when (val read = bundleSource.readActive()) {
             is BundleReadResult.Ready -> read.bundle
 
@@ -214,7 +242,13 @@ class DefaultOrganizationInputComposer(
                     InputCompositionCode.SIGNAL_CONTRADICTION,
                     bundle.identity.sha256,
                 )
-            val targets = (targetMaterializer.materialize(mapped.items, bundle.fullOrganizationTargets) as? TargetMaterializationResult.Ready)?.value
+            val targets = (
+                targetMaterializer.materialize(
+                    mapped.items,
+                    bundle.fullOrganizationTargets,
+                    mapped.snapshot.reservedWorkspaceRegions,
+                ) as? TargetMaterializationResult.Ready
+                )?.value
                 ?: return notReady(
                     InputReadinessReason.ContradictorySource(PolicySourceKind.MATERIALIZED_FULL_TARGET_SET),
                     InputCompositionCode.TARGET_PARTITION,

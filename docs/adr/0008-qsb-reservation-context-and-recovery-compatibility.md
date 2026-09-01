@@ -57,3 +57,4 @@ v2 recordが導入されるまで、v2 checkpointを作ってはならない。v
 ## Change history
 
 - 2026-08-27: Proposed for Issue #155 in response to the Spec/Plan review comment `#issuecomment-5432708854`.
+- 2026-09-01: Consequences の「invalid reservation geometry または real item overlap は typed non-write failure とし、Loader cleanupへ依存しない」のうち、real item overlap の部分は [ADR-0010](0010-qsb-row-item-overlap-interop.md) が置換した(loader受容時は `Preserved(RESERVED_REGION)` として射影し、受容policyはA5/recovery時のstate-based predicateで再評価する)。invalid reservation geometry のfail-closedは本ADRどおり不変。

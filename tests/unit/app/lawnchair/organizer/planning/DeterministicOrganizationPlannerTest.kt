@@ -174,15 +174,36 @@ class DeterministicOrganizationPlannerTest {
     }
 
     @Test
-    fun reservationOverlapAndUnknownPageAreRejected() {
-        val reserved = ReservedWorkspaceRegion(PageRef(PageId("p0")), GridCell(0, 0), GridSpan(1, 1))
-        val overlap = fullInput(items = listOf(app("overlap", x = 0, y = 0)), reservations = listOf(reserved))
+    fun reservationOverlapIsPreservedInPlaceInsteadOfRejected() {
+        // Issue #185 / ADR-0010: a captured item overlapping the QSB reservation
+        // is representable — it is preserved exactly where it was captured and
+        // the reservation cells stay untargetable.
+        val reserved = ReservedWorkspaceRegion(PageRef(PageId("p0")), GridCell(0, 0), GridSpan(4, 1))
+        val overlap = fullInput(items = listOf(app("overlap", x = 2, y = 0)), reservations = listOf(reserved))
+
+        val planned = planner.plan(overlap).outcome as Planned
+        val placement = planned.placements.single()
+
+        assertEquals(Disposition.Preserved(PreserveReason.RESERVED_REGION), placement.disposition)
+        val target = placement.target as PlacementTarget.WorkspaceTarget
+        assertEquals(PageRef(PageId("p0")), target.page)
+        assertEquals(GridCell(2, 0), target.cell)
+    }
+
+    @Test
+    fun reservationAndReservationOverlapIsStillRejected() {
+        val first = ReservedWorkspaceRegion(PageRef(PageId("p0")), GridCell(0, 0), GridSpan(2, 1))
+        val second = ReservedWorkspaceRegion(PageRef(PageId("p0")), GridCell(1, 0), GridSpan(2, 1))
+        val input = fullInput(items = emptyList(), reservations = listOf(first, second))
         assertTrue(
-            (planner.plan(overlap).outcome as Rejected.Invalid).reasons.contains(
+            (planner.plan(input).outcome as Rejected.Invalid).reasons.contains(
                 RejectionReason(RejectionCode.OVERLAP, emptyList()),
             ),
         )
+    }
 
+    @Test
+    fun unknownPageReservationIsRejected() {
         val unknown = fullInput(
             items = emptyList(),
             reservations = listOf(ReservedWorkspaceRegion(PageRef(PageId("unknown")), GridCell(0, 0), GridSpan(1, 1))),

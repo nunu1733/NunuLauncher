@@ -58,6 +58,8 @@ class ApplyResultContractTest {
             "INVALID_PLAN",
             "STALE_REVISION",
             "EXACT_PRECONDITION_FAILED",
+            // Issue #185 / ADR-0010; added to the spec 13 closed set.
+            "OVERLAP_POLICY_REJECTED",
             "LOCK_STATE_UNAVAILABLE",
             "IDENTITY_EXHAUSTED",
             "CHECKPOINT_CREATE_FAILED",

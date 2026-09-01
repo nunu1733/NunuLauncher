@@ -66,6 +66,14 @@ enum class CaptureFailureCategory {
     CAPTURE_UNAVAILABLE,
     UNREPRESENTABLE_LAYOUT,
     UNKNOWN_LOCK,
+
+    /**
+     * Issue #185 / ADR-0010: the capture itself succeeded, but the workspace
+     * contains a desktop item overlapping an authoritative reservation while
+     * the platform's overlap acceptance is disabled, so the layout cannot be
+     * organized without a loader-tolerant policy or a workspace change.
+     */
+    RESERVED_OVERLAP,
 }
 
 /**
@@ -91,6 +99,9 @@ enum class InputCompositionCode {
     CAPTURE_INVALID,
     CAPTURE_UNKNOWN_LOCK,
     CAPTURE_UNREPRESENTABLE,
+
+    /** Issue #185 / ADR-0010: reservation-overlapping item while platform acceptance is off. */
+    CAPTURE_RESERVED_OVERLAP,
     BUNDLE_MISSING,
     BUNDLE_CORRUPT,
     BUNDLE_UNSUPPORTED,
