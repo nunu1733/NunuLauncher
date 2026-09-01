@@ -1,7 +1,7 @@
 # High-risk audit: PR #186 QSB-row item interop — preserved projection + overlap acceptance predicate (Issue #185)
 
 > Status: accepted with conditions
-> Audit date: 2026-09-01（第4回監査。初回 2026-08-31）
+> Audit date: 2026-09-01
 > Verdict: **ACCEPT WITH CONDITIONS**（初回監査 head `8f649e1e4c` のREJECT指摘 F1/F2/F3、再監査 head `8683542052` の条件 C1/C2/C3/C4、第3回監査までにC1/C2/C3は解消。本第4回監査でPR #186実装レビューのnon-blocking指摘2点への対応commit `44e151a494` の増分を確認し、判定不変。残る条件は C4（本記録のdocs-only commit pushと `high-risk-evidence` 再実行PASS）のみ。C4充足時点でmerge可能）
 
 - Auditor: 独立ZCode agent session（実装を行ったagent/sessionとは別作業の読み取り監査 + 検証commandの独立再実行。初回監査 `8f649e1e4c`、再監査 `8683542052`、第3回監査 `58da306c07` に続く**第4回監査**として `44e151a494` を対象（PR #186実装レビューのnon-blocking指摘2点への対応commit `44e151a494` を含む。監査はその増分の読み取り検証 + 検証commandの独立再実行））
