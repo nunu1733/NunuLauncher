@@ -45,11 +45,31 @@ Issue #89 (inspection snapshot fail-closed invariants), #171 Stage D, #58 (BACKU
      必ず消す。
    - 保持中の `reconcileAtStart` はmutex `tryAcquire` 失敗で即時returnし、**gate状態を変更しない**
      （失敗は既存の競合扱い。`ReadinessGate` へのFAILED書込みはない）。
-   - デッドロックなし: `LayoutWriteCoordinator` は非blocking `tryAcquire` のみであり、module mutex
-     を保持するoperationがcoordinatorの解放待ちで滞留する経路がない。lock順序は
-     BACKUP_RESTORE lease → module mutex の一方向のみ。
+   - **デッドロック不存在の根拠（lock graph・call site audit）**: `LayoutWriteCoordinator` には
+     blocking取得（`acquireBlocking` / `acquireBlockingQuietly`）が実在するため、「coordinator全体が
+     nonblocking」は根拠にならない。根拠は**module mutexを保持するproduction経路がcoordinatorの
+     blocking取得を行わない**ことにある:
+     - ApplyProtocol / RecoveryProtocol / RestartReconciler のcoordinator取得は、writer seam
+       （`LauncherLayoutAdapter.tryAcquireLease` → `tryAcquire(ORGANIZER)`、非blocking、競合時は
+       typed failure）と、既取得capability tokenによるreentry
+       （`ModelDbController.newTransaction(organizerToken)` → `tryAcquireOrganizerLease`、非blocking、
+       不一致時はthrow）に限定される。capture（`capture()`）は `controller.db` の直接読取で
+       coordinatorを取得しない。locks系（`LockStateDbAdapter`）も非blocking `tryAcquire(ORGANIZER)`。
+     - `acquireBlockingQuietly` の実在call siteは、LawnchairBackup / NovaBackupConverter
+       （BACKUP_RESTORE。module mutex取得前に取得）、RestoreDbTask（RESTORE。restore-family lease
+       保持下のreentry）、GridSizeMigrationUtil と ModelDbController（GRID_MIGRATION）および
+       `getCoordinatorLease` のMODEL_WRITER fallback（launcher側mutation経路。organizer操作は
+       `newTransaction(organizerToken)` を使用し到達しない）である。いずれもmodule mutexを保持した
+       状態では実行されない。したがって「module mutex → coordinator blocking wait」の逆順は
+       形成されず、循環待ちは存在しない。
+     - 実装時に全call siteの再調査（grep audit）をassessmentへ記録し、lock-order drain test
+       （AC-2(d)）で機械的に担保する。
    - 保持区間は短い（cleanup file操作・quiesce・`deleteRecursively`）。zip読込等の長いIOは
      区間外である。
+   - 契約範囲の明確化: module mutexはrecovery mutation/reconciliationを直列化する。manual composeの
+     capture（`writer.captureCurrent()` 経路）はmodule mutexを通らず、restore区間中も読取として
+     動作し得る。captureは読取専用かつsnapshot publisherではないため、本契約の目的
+     （republication遮断）には影響しない。
 3. **Recovery epoch boundary**: ZIP backup restoreをorganizer recoveryの**epoch境界**として扱い、
    restoreはpre-restore recovery pointsを**互換性の如何にかかわらず意図的にinvalidate（破棄）する**。
    これは新たなデータ損失ではない——現行実装は既に `databases/` wipeでrecovery DBを削除している

@@ -56,8 +56,14 @@ colocated cleanup。検証つき・失敗時は `databases/` wipe前のhard stop
    module mutex下のoperationであるため、当該区間へsnapshot publicationは割り込めない。
    進入前にin-flight operationを完了待ちし（直前のpublishはcleanupが必ず消す）、保持中の
    `reconcileAtStart` はmutex `tryAcquire` 失敗で即時returnし**gate状態を変更しない**
-   （既存の競合扱い）。lock順序はBACKUP_RESTORE lease → module mutexの一方向のみで、
-   `LayoutWriteCoordinator` は非blocking `tryAcquire` のためデッドロック経路が存在しない。
+   （既存の競合扱い）。**デッドロック不存在の根拠はlock graph audit**である: module mutexを
+   保持するproduction経路（apply/recovery/reconciler）のcoordinator取得は非blocking
+   `tryAcquire`（`LauncherLayoutAdapter.tryAcquireLease`、`LockStateDbAdapter`）または既取得
+   capability tokenのreentry（`ModelDbController.newTransaction(organizerToken)`、非blocking）に
+   限定され、`acquireBlockingQuietly` のcall site（BACKUP_RESTORE/RESTORE/GRID_MIGRATION/
+   MODEL_WRITER fallback）はいずれもmodule mutexを保持しない経路でのみ実行される。
+   実装時に全call siteの再調査をassessmentへ記録し、lock-order drain test（AC-2(d)）で
+   機械的に担保する。
 2. **却下: classifier/reconciliation側のhealing rule。** 「DB不在+snapshot存在」をpruneして
    Pristineへ復帰する規則は、Issue #89が意図したstartup時のfail-closed inventory検査を
    producer側の欠陥のために永続的に弱める。healingが正しいのは本caseだけであり、原因は
@@ -223,12 +229,14 @@ snapshotを再生成できる。「未定義組合せ」ではない）。
   unit testで固定する。#153で追加したtrigger pin
   （`RecoveryStartupStorageClassifierTest.zipRestoreLeavesRecoveryDbDeletedWithPublishedSnapshotSuspiciousAbsence`）
   はclassifier自体のcharacterizationとして不変のまま維持される。
-  加えて（d）**serialization契約のdeterministic interleaving test**: 排他区間（cleanup検証後〜
-  DB wipe完了相当）の保持中にsnapshot publication経路（reconciliation/mutation）を実行しても
-  mutex待ちで即時競合returnしgate状態が変化せず、区間内にrepublicationが割り込めないこと、
-  および解放後に通常動作へ戻ることをowning seam（`RunMutex` / `LayoutApplicationModule`）で
-  検証する。全publisher経路がmodule mutex下であることを呼出site調査で確認し、assessmentに
-  記録する。
+  加えて（d）**serialization契約のdeterministic interleaving testとlock-order drain test**: 排他区間
+  （cleanup検証後〜DB wipe完了相当）の保持中にsnapshot publication経路（reconciliation/mutation）
+  を実行してもmutex待ちで即時競合returnしgate状態が変化せず、区間内にrepublicationが割り込めない
+  こと、および解放後に通常動作へ戻ることをowning seam（`RunMutex` / `LayoutApplicationModule`）で
+  検証する。さらに**in-flight module operationを保持した状態からの排他取得が有限時間でdrainする**
+  こと（lock-order test。module mutex → coordinator blocking waitの逆順が形成されないことの
+  機械的担保）を検証する。全publisher経路がmodule mutex下であること、および`acquireBlocking*`
+  call siteがmodule mutex保持下で実行されないことを呼出site調査で確認し、assessmentに記録する。
 - [ ] **AC-3 — classifier不変:** `RecoveryStartupStorageClassifierTest` の既存test群（genuinely
   suspicious状態の分類）が無変更で通過し、classifier・reconciler・gateのコードdiffがない。
 - [ ] **AC-4 — #153再現手順の解消:** accepted assessment記録の再現手順（reconciled startup →
@@ -259,7 +267,7 @@ snapshotを再生成できる。「未定義組合せ」ではない）。
 | AC | Evidence |
 |---|---|
 | AC-1 | ADR-0011本体（epoch boundary判断とrecovery record破棄の明示化を含む） |
-| AC-2 | 新規unit test: (a) reconciled → cleanup → Pristine分類、(b) failure injection（snapshot削除失敗 → hard stop・recovery DB不削除・poison非生成）、(c) 削除順序、(d) deterministic interleaving test（排他区間中のpublication介入不可・gate不変・解放後復帰）。既存trigger pinの無変更通過 |
+| AC-2 | 新規unit test: (a) reconciled → cleanup → Pristine分類、(b) failure injection（snapshot削除失敗 → hard stop・recovery DB不削除・poison非生成）、(c) 削除順序、(d) deterministic interleaving test（排他区間中のpublication介入不可・gate不変・解放後復帰）+ lock-order drain test（in-flight op保持からの排他取得が有限drain）。既存trigger pinの無変更通過 |
 | AC-3 | `RecoveryStartupStorageClassifierTest` 既存test群の無変更通過、`git diff` でclassifier/reconciler/gate非変更の確認 |
 | AC-4 | エミュレータでの再現手順実行記録（`docs/assessment/issue-187-zip-restore-recovery-artifacts.md`） |
 | AC-5 | unit分類test（`Existing` + snapshot不在）+ 既存store publish path（`rebuildInspectionSnapshot`）の通過。gapが残る場合はinstrumentation test |
@@ -298,6 +306,15 @@ snapshotを再生成できる。「未定義組合せ」ではない）。
 - 2026-09-01: Spec/Plan re-review対応。残留P1（cleanup検証後〜DB wipe完了間のsnapshot
   republication race）を解消: **serialization契約**（当該区間をorganizer moduleのoperation mutex
   `RunMutex` の排他保持下で実行。全publisher経路はmodule mutex下であることを前提契約とし、
-  in-flight完了待ち・保持中のreconcileはtryAcquire失敗でgate不変・coordinator非blockingのため
-  デッドロックなし）をDecision 1・新scenario・AC-2(d)に追加。ADR-0011にDecision 2として
-  serialization契約を追記し、時間窓依存の代替案を不採用として記録。
+  in-flight完了待ち・保持中のreconcileはtryAcquire失敗でgate不変）をDecision 1・新scenario・
+  AC-2(d)に追加。ADR-0011にDecision 2としてserialization契約を追記し、時間窓依存の代替案を
+  不採用として記録。
+- 2026-09-01: Re-review（2回目）対応。残留P1（deadlock不存在の根拠が実コードと不一致）を修正:
+  `LayoutWriteCoordinator` には `acquireBlocking*` が実在するため「coordinator全体がnonblocking」
+  という誤った前提をspec/plan/ADR-0011から削除し、**lock graph call site audit**による正しい根拠へ
+  置換（module mutex保持経路のcoordinator取得は非blocking `tryAcquire` またはcapability token
+  reentryに限定。`acquireBlockingQuietly` の実在call siteはすべてmodule mutex非保持経路）。
+  AC-2(d)にlock-order drain testを追加し、assessmentでのcall site再調査を必須化。
+  Non-blocking note対応: wrapper API名を `runWithRecoveryOperationsSuspendedForRestore` とし、
+  契約範囲（recovery mutation/reconciliation排他。capture/composeはmodule mutex非経由で対象外、
+  読取専用かつpublisherではない）を明記。
