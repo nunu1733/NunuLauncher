@@ -27,6 +27,7 @@ import app.lawnchair.organizer.application.public.ApplyFailure
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.ApplyAction
 import app.lawnchair.organizer.application.public.OrganizerLockState
+import app.lawnchair.organizer.application.public.PreWriteRejection
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.application.store.RecoveryStore
@@ -80,13 +81,15 @@ class OrganizerRecoveryInstrumentationTest {
             SmokeFaultInjector(context, phase),
         )
         module.reconcileAtStart()
-        // Issue #177: a paused apply never returns, so any return here is a
-        // rejection. The apply result used to be discarded, which turned a
-        // transient rejection (e.g. WRITER_BUSY from a baseline writer holding
-        // the process-wide lease right after process start) into a silent
-        // "did not pause" failure. Re-capture and re-apply with a fresh plan so
-        // stale-revision rejections from concurrent startup DB activity also
-        // recover; a genuine repeated rejection still fails the smoke.
+        // Issue #177: a paused apply never returns, so any return here means the
+        // fault point was not reached. The apply result used to be discarded,
+        // which turned a transient rejection (e.g. WRITER_BUSY from a baseline
+        // writer holding the process-wide lease right after process start) into
+        // a silent "did not pause" failure. Only pre-mutation, startup-race-
+        // shaped rejections are retried with a fresh capture/plan; every other
+        // result — including genuine post-mutation outcomes (RolledBack,
+        // Unresolved, RecoveryFailed) that retrying could absorb — fails the
+        // phase immediately with the typed result.
         var attempts = 0
         while (true) {
             val freshCapture = writer.captureCurrent(CaptureId("smoke-source"))
@@ -112,11 +115,14 @@ class OrganizerRecoveryInstrumentationTest {
                 TaxonomyVersion("smoke"),
             )
             val result = module.apply(plan)
+            Log.i(TAG, "FAULT_APPLY_NOT_PAUSED phase=$phase attempt=$attempts result=$result")
+            if (!(result is ApplyResult.Rejected && result.reason in TRANSIENT_APPLY_REJECTIONS)) {
+                error("Fault phase $phase did not pause (apply returned $result)")
+            }
             check(attempts < 5) {
-                "Fault phase $phase did not pause after $attempts rejected applies (last=$result)"
+                "Fault phase $phase did not pause after $attempts transient rejections (last=$result)"
             }
             attempts++
-            Log.i(TAG, "FAULT_APPLY_REJECTED phase=$phase attempt=$attempts result=$result")
             Thread.sleep(500)
         }
     }
@@ -330,6 +336,21 @@ class OrganizerRecoveryInstrumentationTest {
         const val TAG = "OrganizerRecoverySmoke"
         const val PREFS = "organizer_recovery_smoke"
         const val KEY_POINT_ID = "point_id"
+
+        /**
+         * Issue #177 review: the only pre-mutation rejections a concurrent
+         * baseline writer racing the fresh fault-run process can produce. All
+         * `Rejected` variants perform no layout mutation, but only these two
+         * reflect a transient state desync that a fresh capture/plan provably
+         * resolves; every other result (persistent rejections, or post-mutation
+         * RolledBack/Unresolved/RecoveryFailed/Applied/NoChanges that retrying
+         * could absorb) fails the fault phase immediately.
+         */
+        private val TRANSIENT_APPLY_REJECTIONS = setOf(
+            PreWriteRejection.WRITER_BUSY,
+            PreWriteRejection.STALE_REVISION,
+            PreWriteRejection.EXACT_PRECONDITION_FAILED,
+        )
 
         /**
          * Issue #177: the only reconciliation failure shape that losing the
