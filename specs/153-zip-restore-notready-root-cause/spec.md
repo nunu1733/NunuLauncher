@@ -91,7 +91,7 @@ production defectである場合、focused fix Issueの**fix実装とnon-write/r
   non-write behavior and existing diagnostics redaction」の所有権は、focused fix Issueが
   実装・検証の実施者であっても、完了の受入は本Issue側が確認する）。本IssueのPRは
   生産コードのfixを含まない。
-- [docs/assessment/](../../docs/assessment/) へのredacted assessment記録、および
+- `docs/assessment/issue-153-zip-restore-notready-root-cause.md` へのredacted assessment記録、および
   #150との関係（shared/independent）の明示。
 
 ## Non-goals

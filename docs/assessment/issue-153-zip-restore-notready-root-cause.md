@@ -2,7 +2,7 @@
 
 > Status: investigation complete (AC-1/2/4/5 met; AC-3 met for the reproduced persistent defect with a recorded historical discrepancy; AC-6 fix pending — blocking dependency of closing #153)
 > Date: 2026-09-01
-> Spec: [specs/153-zip-restore-notready-root-cause/spec.md](../specs/153-zip-restore-notready-root-cause/spec.md) (accepted)
+> Spec: [specs/153-zip-restore-notready-root-cause/spec.md](../../specs/153-zip-restore-notready-root-cause/spec.md) (accepted)
 > Environment: emulator `nunu_qpr2_api36_1` (API 36, `sdk_gphone64_arm64`), serial `emulator-5554`, debug builds
 > Same-input archive: created once at H0 from the pristine default 4×5 workspace, 75,715 bytes (stored under `/tmp`, not committed; same-file reuse across heads is attested by the procedure below, not by a content digest)
 > Raw evidence (not committed): `/tmp/issue153/` — per-head attempt logs, exported journals, APKs
