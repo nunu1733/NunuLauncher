@@ -76,19 +76,23 @@ class RunMutexRestoreSuspensionTest {
         val releaseInFlight = CountDownLatch(1)
         val executor: ExecutorService = Executors.newFixedThreadPool(2)
         try {
-            // In-flight module operation: reconcileAtStart holds the mutex until
-            // the latch releases (simulated via the section wrapper on the same
-            // mutex so the drain path is exercised deterministically).
+            // In-flight module operation using the PRODUCTION acquire/release path
+            // (reconcileAtStart holds the mutex via tryAcquire until the protocol
+            // finishes; here a raw tryAcquire/release stands in deterministically,
+            // which is the same holder slot and the same release() notify path the
+            // production code exercises).
+            val inFlightRun = RunId("f".repeat(32))
             val inFlight: Future<*> = executor.submit {
-                module.runWithRecoveryOperationsSuspendedForRestore {
-                    inFlightEntered.countDown()
-                    releaseInFlight.await(5, TimeUnit.SECONDS)
-                }
+                assertTrue(module.mutexForTest().tryAcquire(inFlightRun))
+                inFlightEntered.countDown()
+                releaseInFlight.await(5, TimeUnit.SECONDS)
+                module.mutexForTest().release(inFlightRun)
             }
             assertTrue(inFlightEntered.await(5, TimeUnit.SECONDS))
 
             // The restore-side exclusive acquisition must wait (drain) — it must
-            // not run while the in-flight holder is still active.
+            // not run while the in-flight holder is still active, and it must
+            // complete once the production release() wakes it.
             val drained = CountDownLatch(1)
             val acquisition: Future<*> = executor.submit {
                 module.runWithRecoveryOperationsSuspendedForRestore {

@@ -96,7 +96,10 @@ internal class LayoutApplicationModule<S>(
      * Decision 2). Fails fast with the rethrown exception when [block] throws
      * — the restore path turns that into its pre-state-preserving abort.
      */
-    internal fun <T> runWithRecoveryOperationsSuspendedForRestore(block: () -> T): T = mutex.withExclusive(operationIds.newRunId(), block)
+    internal fun <T> runWithRecoveryOperationsSuspendedForRestore(block: () -> T) = mutex.withExclusive(operationIds.newRunId(), block)
+
+    /** Test-only access to the module operation mutex (issue #187 drain tests). */
+    internal fun mutexForTest(): RunMutex = mutex
 
     /** The diagnostics port, available for export (e.g. debug menu). */
     val diagnostics: DiagnosticsPort = diagnosticsPort

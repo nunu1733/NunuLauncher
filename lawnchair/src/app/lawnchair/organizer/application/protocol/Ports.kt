@@ -540,6 +540,12 @@ class RunMutex : RunMutexPort {
             holder = null
             reconciliationLease = null
         }
+        // Issue #187: wake withExclusive drain waiters. Production operations
+        // release via this path (reconcileAtStart, apply, recover, preview), so
+        // without the notify a restore draining an in-flight operation would
+        // wait forever.
+        @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
+        (this as Object).notifyAll()
     }
 
     /**
