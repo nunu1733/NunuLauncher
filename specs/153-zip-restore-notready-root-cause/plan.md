@@ -2,7 +2,7 @@
 
 > Issue: #153
 > Spec: [spec.md](./spec.md)
-> Status: draft（review rev 3対応済み。承認待ち）
+> Status: implementation（specはaccepted。rev 3対応後、指摘なしで承認）
 
 ## Current evidence
 
@@ -209,7 +209,7 @@ performance観点は本Issueの範囲外（30分窓の計測は観測記録と�
 
 ## Execution checklist
 
-- [ ] Spec review・承認（statusを `accepted` へ更新）。
+- [x] Spec review・承認（statusを `accepted` へ更新）。
 - [ ] H0準備: `74c2156767` をcheckoutし、debug buildをassemble・install。
       synthetic/default workspaceでCreate backupを実行し、archiveを `/tmp/issue153/` に保存。
       baselineとしてrestore前の同一head環境でorganizer runがpreview到達することをjournalで確認。

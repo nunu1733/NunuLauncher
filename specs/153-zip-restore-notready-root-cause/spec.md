@@ -1,6 +1,6 @@
 ---
 issue: "#153"
-status: draft
+status: accepted
 requirements:
   - ZIP-NOTREADY-FOLLOWUP
 updated: 2026-09-01
@@ -314,3 +314,4 @@ And 独立と判定する場合、#150の所有するA6後reload完了境界（`
   維持し、変更しない選択）。AC-6を「起票」から「fix完了 + invariants確認」へ強化し、AC-4を
   本Issueの変更面の責務としてAC-6との責務境界を明記。non-blocking: AC-4のverificationに
   organizer unit test commandを追加。
+- 2026-09-01: 再レビューで指摘なし。statusを `accepted` へ更新し、plan.mdに従って実行を開始する。
