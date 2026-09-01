@@ -6,10 +6,10 @@
 
 - Auditor: 独立ZCode agent session（実装を行ったagent/sessionとは別作業の読み取り監査 + 検証commandの独立再実行。第1回監査 `6110e8d3af` 全件審査、第2回監査はfix delta `6110e8d3af..f4d007b71e`、第3回監査はreview対応 delta `f4d007b71e..dd0863d7d4` の増分確認）
 - PR: https://github.com/nunu1733/NunuLauncher/pull/188
-- Head SHA: dd0863d7d4c721feb6edc516a8a98faf82e08758
-- Head SHA検証: PR #188のheadRefOidと一致することを監査session（第3回）で確認。第2回監査対象 `f4d007b71e` の子孫で、増分は単一コミット `dd0863d7d4`（`git diff f4d007b71e..dd0863d7d4` = `LawnchairBackup.kt` の `runRestoreCriticalSection` seam切出し+production lambdas渡し、新規test `LawnchairBackupRestoreCriticalSectionTest`、comment表現修正の2 fileのみ。挙動は従来のinline blockと同一）。本記録のHead SHA/CI run更新はdocs-only commitとしてpushされ、push後の `high-risk-evidence` 再実行でmerge-gate evidenceが検証される
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/33512899868
-- CI run補足: 上記はPR #188のpull_request merge-gate run（head `dd0863d7d4`）で、監査実行時点で **completed / success、`final-status` job pass**（`organizer-unit-tests`、`check-style`、`build-debug-apk`、全instrumentation lane、`validate-repo-contract` 含む。第2回監査対象 `f4d007b71e` のrun 33507950197 もcompleted/success/final-status passでlineageが連続する）
+- Head SHA: 5f171d734c05f6e35e866a29b74de92e99c02edc
+- Head SHA検証: accepted planのbranch dependency手順に従い、#153 branch（PR #190、head `20cb868c0a`）を先にmainへmerge（main `1e7781f221`）した後、本PRをnew mainへrebaseした。監査済みcommit `dd0863d7d4`（第3回監査で認証）のreplayは **内容完全一致**（`git diff dd0863d7d4 5f171d734c` 空diff、lawnchair/tests配下0行差分）であり、認証はreplay後の `5f171d734c` を同一内容として引き継ぐ。本記録のHead SHA/CI run更新はdocs-only commitとしてpushされ、push後の `high-risk-evidence` 再実行でmerge-gate evidenceが検証される
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/33525093066
+- CI run補足: 上記はrebase後head `bec7b65e53` のpull_request merge-gate runで、監査実行時点で **completed / success、`final-status` job pass**（`organizer-unit-tests`、`check-style`、`build-debug-apk`、全instrumentation lane、`validate-repo-contract` 含む。第2回監査対象 `f4d007b71e` のrun 33507950197、第3回監査対象 `dd0863d7d4` のrun 33512899868 もcompleted/success/final-status passでlineageが連続する）
 - Criteria: specs/187-zip-restore-recovery-artifacts/spec.md AC-1 AC-2 AC-3 AC-4 AC-5 AC-6 AC-7、docs/adr/0011-zip-restore-organizer-recovery-artifacts.md ADR-0011
 
 ## Scope
