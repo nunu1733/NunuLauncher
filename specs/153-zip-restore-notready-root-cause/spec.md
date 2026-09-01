@@ -256,7 +256,11 @@ And 独立と判定する場合、#150の所有するA6後reload完了境界（`
   testの特定・検証、またはschema-level fixtureでの追加）。root causeが現行mainで未解決の
   場合、focused fix Issueがspec-firstで起票されている。**現行mainで非再現であること単独では
   本ACを満たさない。** bounded non-reproductionを正式な完了条件にする場合は、先に
-  Issue #153本文のAcceptanceを変更する。
+  Issue #153本文のAcceptanceを変更する。ただし本ACが満たすのは**実測で再現したNotReady条件の
+  root cause**であり、元episodeの「約30分で自然解消」を当該defectが説明できなかった場合
+  （H0 scenarioの差異分岐が発動した場合）は、その解消理由を
+  `historical discrepancy / unresolved` としてassessmentと本Issueに明示的に分離して記録し、
+  fix対象defectの採用判断を本specのchange historyに残す。
 - [ ] **AC-4 — non-writeとredactionの不変（本Issueの変更面）:** 調査・test追加・docs変更の
   本IssueのPRが `NotReady` のnon-write振る舞い（planner呼出し・recovery point作成・layout
   mutation 0回）と、§7 Never分類（journal・export・logcat・assessment）を壊さない。assessmentの
@@ -316,3 +320,4 @@ And 独立と判定する場合、#150の所有するA6後reload完了境界（`
   organizer unit test commandを追加。
 - 2026-09-01: 再レビューで指摘なし。statusを `accepted` へ更新し、plan.mdに従って実行を開始する。
 - 2026-09-01: 実行完了([assessment](../../docs/assessment/issue-153-zip-restore-notready-root-cause.md))。ladder全headでepisode再現。H3/H4で理由コード `INPUT_NOT_READY / RECONCILIATION_FAILED` を取得し、root causeを確定(ZIP restoreが `databases/` を削除しrecovery DBを巻き込む一方、stale inspection snapshotが残留 → `SuspiciousAbsence` → `READ_FAILED` → gate FAILEDの恒久化)。snapshot削除で即解消する因果実験をH3/H4で実施。AC-1/2/3/4/5を満たし、AC-6はfocused fix Issueのfix実装・検証完了まで未充足(blocking)。
+- 2026-09-01: Investigation review対応。(1) [P1] **fix対象の採用判断とhistorical discrepancyの分離を記録**: 実測で確定したのは「startup reconciliation後にZIP restoreするとrecovery DBだけ削除されsnapshotが残留し `RECONCILIATION_FAILED` が恒久化するproduction defect」であり、元episodeの「約30分で自然解消」(2026-08-26 16:49の回復)を本defectが説明するとは主張しない。解消時点のartifact stateが元証拠に記録されていないため、自然解消の理由は `historical discrepancy / unresolved` としてassessment・本Issueに分離記録した。H0 scenarioの差異分岐(記録・報告してから進む)はこの形で履行済み。AC-3は「実測で再現した条件のroot cause」に対して満たすものと注記。この採用判断は本エントリをもってspec側の記録とする。(2) [P1] assessmentのarchive由来SHA-256を削除し、AC-4 mappingをhead SHA / build識別子のみに修正(archive同一性は手順証拠で担保)。

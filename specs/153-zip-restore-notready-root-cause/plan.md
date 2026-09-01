@@ -214,7 +214,11 @@ performance観点は本Issueの範囲外（30分窓の計測は観測記録と�
       Create backupでarchive（75,715 bytes）を `/tmp/issue153/` に保存。
       baselineとしてrestore前の同一head環境でorganizer runがpreview到達することをjournalで確認済み。
 - [x] H0実測: episode持続を確認（47分・5 process世代・全INPUT_UNAVAILABLE。元episodeの
-      「後のprocessで解消」は観測されず、持続として確定）。
+      「後のprocessで解消」は観測されず）。
+      **spec H0 scenarioの差異分岐（入力・手順・環境差分の特定と報告）をこの形で履行**: 差分の
+      詳細（元16:49回復時のartifact stateが元証拠に未記録で限定不能）と、persistent defectを
+      fix対象として採用する判断をspec change historyへ記録し、自然解消理由は
+      `historical discrepancy / unresolved` としてassessment・Issue #153に分離記録した。
 - [x] H1–H4を同手順で実測（同一archive）。H1/H2: 各40分・7世代で持続確定。H3/H4:
       `INPUT_NOT_READY / INPUT_READINESS.RECONCILIATION_FAILED` を取得（timeout行なし）。
 - [x] 因果変更の限定: #155/#156/#172/#185のいずれも解消していない（現行mainで持続）。
