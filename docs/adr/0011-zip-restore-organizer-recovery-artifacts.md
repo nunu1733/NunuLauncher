@@ -30,14 +30,27 @@ Issue #89 (inspection snapshot fail-closed invariants), #171 Stage D, #58 (BACKU
 
 ## Decision
 
-1. **Colocated cleanup（検証つき・hard stop）**: `databases/` wipeと同一lease区間で、かつ
+1. **Colocated cleanup（検証つき・hard stop・serializationつき）**: `databases/` wipeと同一lease区間で、かつ
    **`prepareForRawFileRestore`（model quiesce）より前に**、organizer側のcleanup hookが
    `no_backup/recovery-inspection/` を削除し、**directoryが不在または空になったことを検証する**。
    検証に失敗した場合（削除不可等）、**何も変更せずrestoreを失敗させる**（quiesceにも
    `databases/` wipeにも進まない）。これにより「DB不在+snapshot存在」のpoison状態をcleanup
    失敗から再生する経路を型として断つ。cleanupはbest-effortではなく検証付きであり、失敗時の
    復旧はユーザーの再試行（または手動除去）に委ねられる。
-2. **Recovery epoch boundary**: ZIP backup restoreをorganizer recoveryの**epoch境界**として扱い、
+2. **Serialization契約（republication raceの遮断）**: cleanup検証成功から `databases/` wipe完了までの
+   区間を、**organizer application moduleのoperation mutex（reconciliation/apply/recoverと同一の
+   `RunMutex`）の排他保持下で実行する**。これにより当該区間ではinspection snapshotの全publisher
+   （`rebuildInspectionSnapshot` を呼ぶ全経路はmodule mutex下のoperationである）が介入できない。
+   - 進入前にin-flight operationを完了待ちするため、直前にpublishされたsnapshotはcleanupが
+     必ず消す。
+   - 保持中の `reconcileAtStart` はmutex `tryAcquire` 失敗で即時returnし、**gate状態を変更しない**
+     （失敗は既存の競合扱い。`ReadinessGate` へのFAILED書込みはない）。
+   - デッドロックなし: `LayoutWriteCoordinator` は非blocking `tryAcquire` のみであり、module mutex
+     を保持するoperationがcoordinatorの解放待ちで滞留する経路がない。lock順序は
+     BACKUP_RESTORE lease → module mutex の一方向のみ。
+   - 保持区間は短い（cleanup file操作・quiesce・`deleteRecursively`）。zip読込等の長いIOは
+     区間外である。
+3. **Recovery epoch boundary**: ZIP backup restoreをorganizer recoveryの**epoch境界**として扱い、
    restoreはpre-restore recovery pointsを**互換性の如何にかかわらず意図的にinvalidate（破棄）する**。
    これは新たなデータ損失ではない——現行実装は既に `databases/` wipeでrecovery DBを削除している
    （de-factoの巻き添え）——が、本決定により「restoreがorganizer recoveryをresetする」ことが
@@ -50,21 +63,22 @@ Issue #89 (inspection snapshot fail-closed invariants), #171 Stage D, #58 (BACKU
    - #171 Stage D（「authoritative external restore alone is not a reason to pre-invalidate a
      VERIFIED point」）は**Nova等の外部restoreがlauncher状態を置換しない**ケースの判断である。
      Lawnchair ZIP restoreはlauncher状態そのものを置換するため、前提が異なり矛盾しない。
-3. **Classifier不変**: `RecoveryStartupStorageClassifier` / `RestartReconciler` / `ReadinessGate`
+4. **Classifier不変**: `RecoveryStartupStorageClassifier` / `RestartReconciler` / `ReadinessGate`
    の分類規則・fail-closed挙動は変更しない。本欠陥はproducer（restore）側のartifact管理の欠陥
    であり、検出器（classifier）の規則は正しく機能していた。
 
 ### 中間状態の定義
 
-削除順序は「snapshot（検証つき）→ `databases/` wipe」。restore中の任意時点の状態は次のいずれかに
-限定され、いずれも定義済み安全状態である:
+削除順序は「snapshot（検証つき）→ `databases/` wipe」であり、当該区間はserialization契約
+（Decision 2: module mutex排他）によりsnapshot publisherの介入から閉じられている。restore中の
+任意時点の状態は次のいずれかに限定され、いずれも定義済み安全状態である:
 
 | 状態 | 意味 | 次processの挙動 |
 |---|---|---|
 | DB存在 + snapshot存在 | cleanup前、またはpublish後の正常状態 | `Existing` → reconcile継続、必要ならsnapshot再publish |
 | DB存在 + snapshot不在 | cleanup後・wipe前の中間状態（**定義済み安全**） | `Existing` → reconcile継続、`rebuildInspectionSnapshot` がsnapshotを再生成 → READY |
 | DB不在 + snapshot不在 | restore完了後（Pristine） | reconcile成功、両者を再作成 → READY |
-| DB不在 + snapshot存在 | **poison状態**。cleanup検証のhard stopとproducer側の順序により本経路では生じない | classifier fail-closed（現行のまま） |
+| DB不在 + snapshot存在 | **poison状態**。cleanup検証のhard stop、削除順序、およびDecision 2のserialization契約により本経路では生じない | classifier fail-closed（現行のまま） |
 
 ## Alternatives considered
 
@@ -78,6 +92,9 @@ Issue #89 (inspection snapshot fail-closed invariants), #171 Stage D, #58 (BACKU
   製品要件になった場合は、この決定を置換するproduct decisionとして再検討する。
 - **Hybrid（cleanup+healing併用）**: cleanup単独でpoison状態の発生を断てるため、healingの追加は
   fail-closedの弱めにしかならない。不採用。
+- **Cleanup後のwipeを同一mutex区間にせず、時間窓だけ頼る**（「通常はstartup reconciliationが
+  先に終わる」）: 排他ではなく実行順の期待に過ぎず、process死・IO遅延・loader遅延でrepublication
+  がwipeと入れ替わりpoison状態を再生し得る。本決定のserialization契約で排除した。不採用。
 
 ## Consequences
 

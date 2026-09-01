@@ -42,7 +42,7 @@ colocated cleanup。検証つき・失敗時は `databases/` wipe前のhard stop
 判断の正本は [ADR-0011](../../docs/adr/0011-zip-restore-organizer-recovery-artifacts.md)
 （本spec/planと同時にdraftし、review後にacceptedへ）とする。
 
-1. **採用: colocated cleanup（検証つき・hard stop）。** cleanup（`no_backup/recovery-inspection/`
+1. **採用: colocated cleanup（検証つき・hard stop・serializationつき）。** cleanup（`no_backup/recovery-inspection/`
    の削除）とその**検証（directoryが不在または空になったこと）**を、
    `prepareForRawFileRestore`（model quiesce）より前に実施する。検証に失敗した場合（削除不可等）、
    **launcher状態を一切変更せずrestoreを失敗させる**（quiesce・`databases/` wipeへ進まない）。
@@ -50,6 +50,14 @@ colocated cleanup。検証つき・失敗時は `databases/` wipe前のhard stop
    （DB不在+snapshot存在 → `SuspiciousAbsence` → gate FAILED恒久化）をそのまま再生成するため、
    失敗時の進行を許さない。hookは `RecoveryInspectionSnapshotReader` の定数名の重複を作らず、
    organizer module経由で呼ぶ。
+   加えて、**cleanup検証成功から `databases/` wipe完了までの区間を、organizer application
+   moduleのoperation mutex（reconciliation/apply/recoverと同一の `RunMutex`）の排他保持下で
+   実行する**（serialization契約）。`rebuildInspectionSnapshot` を呼ぶ全publisher経路は
+   module mutex下のoperationであるため、当該区間へsnapshot publicationは割り込めない。
+   進入前にin-flight operationを完了待ちし（直前のpublishはcleanupが必ず消す）、保持中の
+   `reconcileAtStart` はmutex `tryAcquire` 失敗で即時returnし**gate状態を変更しない**
+   （既存の競合扱い）。lock順序はBACKUP_RESTORE lease → module mutexの一方向のみで、
+   `LayoutWriteCoordinator` は非blocking `tryAcquire` のためデッドロック経路が存在しない。
 2. **却下: classifier/reconciliation側のhealing rule。** 「DB不在+snapshot存在」をpruneして
    Pristineへ復帰する規則は、Issue #89が意図したstartup時のfail-closed inventory検査を
    producer側の欠陥のために永続的に弱める。healingが正しいのは本caseだけであり、原因は
@@ -140,6 +148,17 @@ IO失敗等で完了しない。
 reconcileが継続して `rebuildInspectionSnapshot` によりsnapshotが再生成され、gateはREADYへ到達する。
 **And** 中間状態はpoison（`SuspiciousAbsence`）に進まない（unit testで分類と順序を固定する）。
 
+### Scenario: cleanup検証後〜DB wipe完了までsnapshot publicationは介入できない
+
+**Given** cleanup検証が成功し、serialization契約によりmodule operation mutexがrestore側で
+排他保持されている。
+**When** 同時にstartup reconciliation（またはapply/recover等のpublisher経路）が実行される。
+**Then** 当該operationはmutex `tryAcquire` 失敗で即時に既存の競合結果を返し、snapshotの
+republicationは発生しない。gate状態は変化しない（FAILEDに落ちない）。
+**And** `databases/` wipe完了までの間、DB不在+snapshot存在のpoison状態へ至るinterleavingが
+存在しない（deterministic interleaving testで固定する）。
+**And** mutex解放後は既存の競合経路が通常どおり動作する。
+
 ### Scenario: genuinely suspicious状態は引き続きfail-closed
 
 **Given** 部分削除・corrupt DB・ `-wal` 残留など、DB不在以外の疑わしいartifact状態が存在する。
@@ -204,6 +223,12 @@ snapshotを再生成できる。「未定義組合せ」ではない）。
   unit testで固定する。#153で追加したtrigger pin
   （`RecoveryStartupStorageClassifierTest.zipRestoreLeavesRecoveryDbDeletedWithPublishedSnapshotSuspiciousAbsence`）
   はclassifier自体のcharacterizationとして不変のまま維持される。
+  加えて（d）**serialization契約のdeterministic interleaving test**: 排他区間（cleanup検証後〜
+  DB wipe完了相当）の保持中にsnapshot publication経路（reconciliation/mutation）を実行しても
+  mutex待ちで即時競合returnしgate状態が変化せず、区間内にrepublicationが割り込めないこと、
+  および解放後に通常動作へ戻ることをowning seam（`RunMutex` / `LayoutApplicationModule`）で
+  検証する。全publisher経路がmodule mutex下であることを呼出site調査で確認し、assessmentに
+  記録する。
 - [ ] **AC-3 — classifier不変:** `RecoveryStartupStorageClassifierTest` の既存test群（genuinely
   suspicious状態の分類）が無変更で通過し、classifier・reconciler・gateのコードdiffがない。
 - [ ] **AC-4 — #153再現手順の解消:** accepted assessment記録の再現手順（reconciled startup →
@@ -234,7 +259,7 @@ snapshotを再生成できる。「未定義組合せ」ではない）。
 | AC | Evidence |
 |---|---|
 | AC-1 | ADR-0011本体（epoch boundary判断とrecovery record破棄の明示化を含む） |
-| AC-2 | 新規unit test: (a) reconciled → cleanup → Pristine分類、(b) failure injection（snapshot削除失敗 → hard stop・recovery DB不削除・poison非生成）、(c) 削除順序。既存trigger pinの無変更通過 |
+| AC-2 | 新規unit test: (a) reconciled → cleanup → Pristine分類、(b) failure injection（snapshot削除失敗 → hard stop・recovery DB不削除・poison非生成）、(c) 削除順序、(d) deterministic interleaving test（排他区間中のpublication介入不可・gate不変・解放後復帰）。既存trigger pinの無変更通過 |
 | AC-3 | `RecoveryStartupStorageClassifierTest` 既存test群の無変更通過、`git diff` でclassifier/reconciler/gate非変更の確認 |
 | AC-4 | エミュレータでの再現手順実行記録（`docs/assessment/issue-187-zip-restore-recovery-artifacts.md`） |
 | AC-5 | unit分類test（`Existing` + snapshot不在）+ 既存store publish path（`rebuildInspectionSnapshot`）の通過。gapが残る場合はinstrumentation test |
@@ -270,3 +295,9 @@ snapshotを再生成できる。「未定義組合せ」ではない）。
   「常にNotRestorable」の断定を除去。(6) [P2] #153→#187のbranch/PR依存をplanへ明記。
   (7) Minor: 候補列挙を「計4案」に明示、Documentation updatesのADR-0011チェックは実物作成済みに
   基づく形へ修正。
+- 2026-09-01: Spec/Plan re-review対応。残留P1（cleanup検証後〜DB wipe完了間のsnapshot
+  republication race）を解消: **serialization契約**（当該区間をorganizer moduleのoperation mutex
+  `RunMutex` の排他保持下で実行。全publisher経路はmodule mutex下であることを前提契約とし、
+  in-flight完了待ち・保持中のreconcileはtryAcquire失敗でgate不変・coordinator非blockingのため
+  デッドロックなし）をDecision 1・新scenario・AC-2(d)に追加。ADR-0011にDecision 2として
+  serialization契約を追記し、時間窓依存の代替案を不採用として記録。

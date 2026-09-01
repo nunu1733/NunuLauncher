@@ -2,7 +2,7 @@
 
 > Issue: #187
 > Spec: [spec.md](./spec.md)
-> Status: draft（review rev 2対応済み。ADR-0011同時draft済み。承認待ち）
+> Status: draft（re-review対応済み。serialization契約追加。承認待ち）
 
 ## Current evidence
 
@@ -22,6 +22,22 @@
   `noBackupFilesDir/recovery-inspection/` + `recovery-inspection.v1`。定数は
   `RecoveryInspectionSnapshotReader.DIRECTORY_NAME` / `FINAL_FILE_NAME`（companion const）。
   backup側でこの名前を複製しない——organizer module側のcleanup hook経由で参照する。
+- **republication raceの構造（re-review P1）**: startup reconciliationは `LawnchairApp` が
+  Launcher resume後に別threadで `layoutApplicationModule.reconcileAtStart()` を起動し、
+  `RestartReconciler.reconcileAll()` 末尾で `session.rebuildInspectionSnapshot()` を実行する
+  （[LayoutApplicationModule.kt:269-301](../../lawnchair/src/app/lawnchair/organizer/application/protocol/LayoutApplicationModule.kt)）。
+  このsnapshot publishはBACKUP_RESTORE leaseに直列化されていないため、cleanup検証後〜wipe間に
+  割込み得る。したがって検証つきcleanupのみでは不十分であり、serialization契約が必要である。
+- **serialization契約の実装可能性（コード確認済み）**:
+  - `RunMutex`（[Ports.kt:517-554](../../lawnchair/src/app/lawnchair/organizer/application/protocol/Ports.kt)）
+    は `@Synchronized` の `tryAcquire`/`release` のみ。blocking取得は未実装であり、本fixで追加する。
+  - `reconcileAtStart` のmutex `tryAcquire` 失敗は `readinessGate.reconcile` を呼ばずに即時returnする
+    ため、排他保持中のreconcile競合は **gate状態をFAILEDに落とさない**（gate不変）。
+  - `LayoutWriteCoordinator` は非blocking `tryAcquire`（null返却）のみで、blocking待ちがない。
+    したがって「BACKUP_RESTORE lease保持 → module mutex blocking取得」の順序でデッドロックは
+    成立しない（module mutex holderがcoordinator解放待ちで滞留する経路がない）。
+  - `quiesceForRestore`（[LauncherModel.java:333-338](../../src/com/android/launcher3/LauncherModel.java)）
+    はmodel lockのみを操作しorganizer mutexに触れないため、排他block内からの再入は発生しない。
 - **classifierの現行分類**（[RecoveryStartupStorageClassifier.kt](../../lawnchair/src/app/lawnchair/organizer/application/store/RecoveryStartupStorageClassifier.kt)）:
   DB不在+snapshot非空 → `SuspiciousAbsence`。両者不在 → `Pristine`。既存unit test
   （`RecoveryStartupStorageClassifierTest`、#153でtrigger pin追加済み）が分類を固定している。
@@ -37,11 +53,14 @@
 
 | Module | 変更 |
 |---|---|
+| `organizer/application/protocol/Ports.kt`（`RunMutex`） | 排他区間用のblocking取得を追加（例: `fun <T> withExclusive(runId: RunId, block: () -> T): T`。`synchronized` + wait/notifyでholder解放待ち）。既存 `tryAcquire` の意味論は不変 |
+| `organizer/application/protocol/LayoutApplicationModule.kt` | restore用の内部API（例: `runWithOperationsSuspendedForRestore(block)`）を追加。module mutexをblocking取得し、block実行後解放する。保持中の `reconcileAtStart` / apply / recover は既存の `tryAcquire` 失敗経路で即時競合return（gate状態は不変——`reconcileAtStart` のtryAcquire失敗は `readinessGate.reconcile` を呼ばないためFAILEDに落ちない。コード確認済み） |
 | `organizer/application/store/` 新規小helper（例: `RecoveryStartupArtifacts.kt`） | `clearInspectionSnapshot(context): Boolean` 相当の純粋file操作。`noBackupFilesDir/recovery-inspection/` を削除し、**directoryが不在または空になったことを検証して真偽を返す**（検証付き）。`RecoveryInspectionSnapshotReader` の定数を参照し、名前の複製を作らない。`File` 引数の内部関数に分離しunit test可能な形にする |
-| `backup/LawnchairBackup.kt` | lease獲得直後・**`prepareForRawFileRestore`（quiesce）より前**にhookを呼び、`false` なら**例外でrestoreを中断する**（hard stop。quiesce・`databases/` wipeへ進まないため、中断時のlauncher状態はrestore開始前と同一） |
-| `docs/adr/0011-zip-restore-organizer-recovery-artifacts.md` | 新規ADR（epoch boundary判断、recovery record破棄の明示、中間状態の定義、alternatives）。**本spec/planと同一commitでdraft** |
+| `backup/LawnchairBackup.kt` | lease獲得後・**`prepareForRawFileRestore`（quiesce）より前**に、上記module APIのblock内で (1) cleanup+検証（`false` なら例外でrestore中断＝hard stop）、(2) `prepareForRawFileRestore`、(3) `databases/` wipe を実行する。検証成功からwipe完了までmodule mutexが保持され、snapshot publicationの割込みが構造的に不可能になる |
+| `docs/adr/0011-zip-restore-organizer-recovery-artifacts.md` | ADR（epoch boundary判断、recovery record破棄の明示、中間状態の定義、alternatives、serialization契約）。**本spec/planと同一commitでdraft済み** |
 | `tests/unit/.../store/RecoveryStartupArtifactsTest.kt`（新規） | (a) reconciled相当（DB+snapshot存在）→ cleanup → 両者不在、(b) **failure injection**（snapshot file削除不可を注入 → hook検証失敗 → DB不削除・poison非生成）、(c) 削除順序・分類（`Existing` + snapshot不在 → 次reconcileで再生成可能） |
-| `docs/assessment/issue-187-zip-restore-recovery-artifacts.md` | エミュレータでの#153再現手順の解消記録（AC-4） |
+| `tests/unit/.../protocol/`（module mutex系test、既存patternの拡張） | (d) deterministic interleaving test: 排他区間保持中の `reconcileAtStart` / apply競合が即時returnしgate状態が不変、区内にrepublicationが割り込めないこと、解放後の通常復帰 |
+| `docs/assessment/issue-187-zip-restore-recovery-artifacts.md` | エミュレータでの#153再現手順の解消記録（AC-4）＋「`rebuildInspectionSnapshot` 呼出siteが全てmodule mutex下のoperationである」ことの呼出site調査記録（serialization契約の前提確認） |
 
 - **削除順序と中間状態**: snapshot（検証つき）→ 既存の `databases/` wipe。生じ得る中間状態は
   「DB存在+snapshot不在」のみで、これは**定義済み安全状態**である（classifierは `Existing` と
@@ -55,14 +74,21 @@
 ```text
 restore(selectedContents)
   acquire BACKUP_RESTORE lease
-    organizer: clearInspectionSnapshot + 検証（noBackupFilesDir/recovery-inspection）  ← 追加
-      ├─ 検証成功 → 続行
-      └─ 検証失敗 → 例外でrestore中断（hard stop。quiesce/wipeへ進まない。状態変更なし）
-    prepareForRawFileRestore (model quiesce)
-    databases/ deleteRecursively (既存; recovery DB含む)
+    module.runWithOperationsSuspendedForRestore {   ← 追加（RunMutex排他、blocking取得）
+      organizer: clearInspectionSnapshot + 検証（noBackupFilesDir/recovery-inspection）
+        ├─ 検証成功 → 続行
+        └─ 検証失敗 → 例外でrestore中断（hard stop。quiesce/wipeへ進まない。状態変更なし）
+      prepareForRawFileRestore (model quiesce)
+      databases/ deleteRecursively (既存; recovery DB含む)
+    }  ← mutex解放。以降の状態は定義済み安全（PristineまたはDB存在+snapshot不在）
     grid prefs write / zip read / performRestore / reloadAfterRestore
   lease release → process再起動
     startup reconcile: Pristine → DB作成+snapshot publish → gate READY → compose成功
+  （serialization契約: 区間中はreconciliation/apply/recoverがtryAcquire失敗で即時競合return
+    （gate不変）のため、snapshot republicationはwipeと間に入れない。lock順序は
+    BACKUP_RESTORE lease → module mutexの一方向。coordinatorは非blocking tryAcquireのみで
+    デッドロック経路なし。quiesceForRestoreはmodel lockのみを触りorganizer mutexに触れない
+    （コード確認済み）ため、block内の再入も発生しない）
   （中間状態: cleanup後・wipe前にprocess死 → DB存在+snapshot不在 = 定義済み安全。
     次processは Existing → reconcile → rebuildInspectionSnapshot でsnapshot再生成 → READY）
 ```
@@ -81,11 +107,14 @@ specのDecision節どおり。実装観点の補足:
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `lawnchair/src/app/lawnchair/organizer/application/store/RecoveryStartupArtifacts.kt` | cleanup hook（新規、純粋file操作） | 定数の正本がorganizer側にあるため |
-| `lawnchair/src/app/lawnchair/backup/LawnchairBackup.kt` | hook呼出し追加（1行相当） | databases/ wipeとのcolocationの正本位置 |
-| `tests/unit/app/lawnchair/organizer/application/store/RecoveryStartupArtifactsTest.kt` | 状態遷移test（新規） | hookの挙動固定（AC-2/AC-5） |
-| `docs/adr/0011-zip-restore-organizer-recovery-artifacts.md` | ADR（新規） | AC-1 |
-| `docs/assessment/issue-187-zip-restore-recovery-artifacts.md` | 実測記録（新規） | AC-4 |
+| `lawnchair/src/app/lawnchair/organizer/application/protocol/Ports.kt` | `RunMutex` に排他区間用blocking取得（例: `withExclusive`）を追加 | serialization契約の実装先。既存 `tryAcquire` 意味論は不変 |
+| `lawnchair/src/app/lawnchair/organizer/application/protocol/LayoutApplicationModule.kt` | restore用排他wrapper（例: `runWithOperationsSuspendedForRestore`）を追加 | 全publisher経路が通るmodule mutexの所有者 |
+| `lawnchair/src/app/lawnchair/organizer/application/store/RecoveryStartupArtifacts.kt` | cleanup hook（新規、検証つき純粋file操作） | 定数の正本がorganizer側にあるため |
+| `lawnchair/src/app/lawnchair/backup/LawnchairBackup.kt` | 排他block内へのcleanup+検証呼出し追加、wipeとの順序固定 | databases/ wipeとのcolocation+serializationの正本位置 |
+| `tests/unit/app/lawnchair/organizer/application/store/RecoveryStartupArtifactsTest.kt` | 状態遷移/failure injection/削除順序test（新規） | hookの挙動固定（AC-2/AC-5） |
+| `tests/unit/app/lawnchair/organizer/application/protocol/`（既存mutex系test拡張） | interleaving test（新規） | serialization契約の固定（AC-2(d)） |
+| `docs/adr/0011-zip-restore-organizer-recovery-artifacts.md` | ADR（新規、serialization契約を含む） | AC-1 |
+| `docs/assessment/issue-187-zip-restore-recovery-artifacts.md` | 実測記録+publisher呼出site調査（新規） | AC-4・serialization前提の確認 |
 
 ## Migration and recovery
 
@@ -133,9 +162,14 @@ restore系の安全pathに触れるためlabel判断はPRで明示する。
 ## Execution checklist
 
 - [ ] Spec review・承認（statusを `accepted` へ更新。ADR-0011のreview確認を含む）。
+- [ ] `RunMutex` 排他取得API + `LayoutApplicationModule` restore排他wrapperを実装
+      （AC-2(d): interleaving test——区間中のreconcile/apply競合が即時return・gate不変・
+      解放後復帰——を含む）。
 - [ ] `RecoveryStartupArtifacts` helper（検証つきcleanup）+ unit test
       （AC-2: 状態遷移/failure injection/削除順序、AC-5: `Existing`中間状態分類）を実装。
-- [ ] `LawnchairBackup.restore()` への呼出し追加（quiesce前hard stop）。
+- [ ] `LawnchairBackup.restore()` への排他block呼出し追加（quiesce前hard stop+serialization）。
+- [ ] `rebuildInspectionSnapshot` 呼出siteの全数調査（全publisherがmodule mutex下であること）
+      をassessmentへ記録。
 - [ ] 既存classifier test群の無変更通過・`spotlessCheck`・unit全件・debug build（AC-3/AC-6/AC-7）。
 - [ ] エミュレータでの#153手順解消を実測しassessmentへ記録（AC-4）。
 - [ ] #153 branchを先にmainへmergeし、本実装をmain basedで出す（planのBranch dependency）。
