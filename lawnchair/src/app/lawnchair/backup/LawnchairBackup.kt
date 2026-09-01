@@ -7,7 +7,9 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.core.graphics.drawable.toBitmap
+import app.lawnchair.LawnchairApp
 import app.lawnchair.LawnchairProto.BackupInfo
+import app.lawnchair.organizer.application.store.RecoveryStartupArtifacts
 import app.lawnchair.util.hasFlag
 import app.lawnchair.util.scaleDownTo
 import app.lawnchair.util.scaleDownToDisplaySize
@@ -83,8 +85,23 @@ class LawnchairBackup(
         // and the correlated reload.
         LayoutWriteCoordinator.getInstance()
             .acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.BACKUP_RESTORE).use {
-                RestoreDbTask.prepareForRawFileRestore(context)
-                context.getDatabasePath(LAUNCHER_DB_FILE_NAME).parentFile?.deleteRecursively()
+                // Issue #187 / ADR-0011: the databases wipe below takes the organizer
+                // recovery DB with it; the pre-restore process's inspection snapshot must
+                // go with it or every later process fail-closes on SuspiciousAbsence
+                // (permanently NotReady). Run cleanup + verification -> quiesce -> wipe
+                // under the module's operation mutex so no snapshot republication can
+                // interleave into the section. Verification failure aborts the restore
+                // with no state change at all (hard stop).
+                val module = (context.applicationContext as LawnchairApp).layoutApplicationModule
+                module.runWithRecoveryOperationsSuspendedForRestore {
+                    if (!RecoveryStartupArtifacts.clearInspectionSnapshot(context)) {
+                        throw IllegalStateException(
+                            "Restore aborted: could not clear the organizer inspection snapshot",
+                        )
+                    }
+                    RestoreDbTask.prepareForRawFileRestore(context)
+                    context.getDatabasePath(LAUNCHER_DB_FILE_NAME).parentFile?.deleteRecursively()
+                }
                 DeviceGridState(info.gridState).writeToPrefs(context, true)
                 readZip(handlers)
                 val dbController = ModelDbController(context)

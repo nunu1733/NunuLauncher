@@ -542,6 +542,40 @@ class RunMutex : RunMutexPort {
         }
     }
 
+    /**
+     * Issue #187: blocking exclusive acquisition for the backup-restore
+     * serialization contract. Drains any in-flight operation (blocking, not
+     * spinning) and then runs [block] while this mutex's holder slot is taken,
+     * so reconciliation/apply/recover attempts observe the existing
+     * `tryAcquire` failure semantics (and `reconcileAtStart` returns without
+     * touching the readiness gate) for the whole section. The lock order is
+     * one-way: callers already hold the restore-family coordinator lease and
+     * no module-mutex holder ever blocks on the coordinator, so no cycle
+     * exists (see ADR-0011 Decision 2). Uses the same monitor as
+     * [tryAcquire]/[release], hence strictly serial with them.
+     */
+    fun <T> withExclusive(runId: RunId, block: () -> T): T {
+        synchronized(this) {
+            while (holder != null) {
+                @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
+                (this as Object).wait()
+            }
+            holder = runId
+        }
+        try {
+            return block()
+        } finally {
+            synchronized(this) {
+                if (holder == runId) {
+                    holder = null
+                    reconciliationLease = null
+                }
+                @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
+                (this as Object).notifyAll()
+            }
+        }
+    }
+
     /** Available only to the composition root that owns the concrete mutex. */
     @Synchronized
     internal fun issueReconciliationLease(runId: RunId): ReconciliationLease? {
