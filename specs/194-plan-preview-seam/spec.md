@@ -19,7 +19,7 @@ Organizer の確認画面は件数サマリーのみを表示し、ユーザー�
 
 `LayoutApplicationModule` 配下に **read-only plan preview operation** (`inspectPlan`) と、その内部で動く **純粋な `PreviewChange` projection module** が追加される。`inspectPlan` は readiness gate と non-blocking writer lease の下で current state を一度だけ capture し、planning snapshot revision と照合した上で `OrganizationPlanMaterializer.materialize` を実行し、materialize 済み `ValidatedLayoutPlan` と、それと同一オブジェクト由来の per-item `PreviewChange` 一覧および header counts を返す。
 
-coordinator (`ManualOrganizationRun`) は preview 時に `inspectPlan` を呼び、preview 済み plan を保持する。confirm は preview 済み plan をそのまま apply へ渡す (confirm 時の materialize は preview が得られた場合は不要になる)。`State.Preview` は既存の件数サマリー (`Summary`) を引き続き供給し、本 Issue 単体 merge でも現行の件数 UI が regression なく動作する (#195 との independently mergeable の成立条件)。production confirmation UI の更新は #195 の scope である。
+coordinator (`ManualOrganizationRun`) は preview 時に `inspectPlan` を呼び、preview 済み plan を coordinator 非公開で保持する。confirm は preview 済み plan をそのまま apply へ渡す (confirm 時の materialize は preview が得られた場合は不要になる)。**observable data path として、`State.Preview` は既存の件数サマリー (`Summary`) に加えて optional な preview details (`PreviewDetails` = `List<PreviewChange>` + `PreviewCounts`) を公開する** (§Coordinator integration)。`details` は preview が得られたときのみ非 null であり、#195 の confirmation UI が per-item 変更一覧を消費する正規の seam である。executable `ValidatedLayoutPlan` 自体は UI へ露出しない。`Summary` は現行どおり供給され、本 Issue 単体 merge でも現行の件数 UI が regression なく動作する (#195 との independently mergeable の成立条件)。production confirmation UI の更新は #195 の scope である。
 
 本 Issue で organizer run の適用安全性契約 (apply / recovery / diagnostics) は変更しない。
 
@@ -67,7 +67,11 @@ PlanPreviewResult =
   | Concurrent
 
 PlanPreview {
-  plan: ValidatedLayoutPlan     // canonical preview source; confirm はこのオブジェクトをそのまま apply へ渡す
+  plan: ValidatedLayoutPlan     // canonical preview source; coordinator 非公開。confirm はこのオブジェクトをそのまま apply へ渡す
+  details: PreviewDetails       // UI-facing projection (State 経由で公開される唯一の部分)
+}
+
+PreviewDetails {
   changes: List<PreviewChange>  // 決定的な順序 (§Projection contract)
   counts: PreviewCounts         // §Projection contract
 }
@@ -81,6 +85,8 @@ PlanPreviewUnavailable =
   | RECONCILIATION_PENDING
   | RECONCILIATION_FAILED
 ```
+
+- **UI-facing rule**: `PlanPreview.plan` (executable `ValidatedLayoutPlan`) は coordinator の private `PendingPlan` のみが保持し、`State` を経由して UI へ露出しない。UI が消費する observable は `State.Preview(summary, details: PreviewDetails?)` の `details` のみであり、`details == null` は「具体的 preview が得られなかった」ことを UI から観測可能にする (#195 が degraded 状態を扱うための契約)。
 
 - `Previewed` は preview 済み `ValidatedLayoutPlan` を保持する。**opaque confirmation capability は導入しない**: plan 自身が application-owned な不変 artifact であり、apply の既存 A2 exact precondition gate (revision + 完全状態比較) が preview→confirm 間の TOCTOU を typed zero-write で閉じる。spec 84 の confirmation token は recovery の pointId 束縛が必要だったための仕組みであり、本契約では plan オブジェクト自体がその役割を果たす。
 - `PlanPreview` / `PreviewChange` は process-local であり、**serialize しない**。coordinator が所有し、opaque confirmation と同じ現行規約に従う。
@@ -192,27 +198,37 @@ PreviewCounts {
 - `NewFolderChange` は ordinal 昇順、`NewPageChange` は ordinal 昇順、`ItemWarningChange` は `Planned.warnings` の宣言順に従う。
 - projection は I/O を行わず、`Clock` や乱数に依存しない。
 
-### Header counts と既存 Summary の関係
+### Header counts と既存 Summary の truth 分担
 
-`PreviewCounts` は materialize 済み plan (actions) から導出した truth である。既存 `Summary` (planning disposition から導出) は `State.Preview` の UI 供給契約として**現行どおり別途維持され、本契約によって置き換えも正規化もしない**。両者の数値が一致しない edge case (planner が現位置と同一の target に `Moved` を付ける等) が将来生じても、UI の件数契約は壊れない。fixture corpus に対する v1 planner の property test で `movedCount == Summary.movedCount` 等の対応観測を行い、乖離が検出されたら #182 側へ課題として届ける。
+ヘッダ件数の truth は次のように分割し、分裂した表示を契約上許さない:
+
+- **#194 単体の既存 UI**: `Summary` (planning disposition 由来) を現行どおり供給し、件数表示の互換を維持する。`PreviewCounts` への移行は本 Issue では行わない。
+- **concrete preview details を描画する UI (#195 以降)**: 具体的な `PreviewChange` 一覧と共に表示するヘッダ件数は **`PreviewCounts` (materialize 済み actions 由来)** を使う。`Summary` と `PreviewCounts` を同一画面で混在させず、行数とヘッダが常に一致する状態を保つ。
+- **v1 planner の一致保証**: fixture corpus に対する contract / property test で、同一 `(input, result)` から得られる `Summary` と `PreviewCounts` の対応 (moved / preserved / newFolder / newPage / warnings) が一致することを保証する。これにより #194 単体では両者の差が UI に現れず、#195 がヘッダを `PreviewCounts` へ統一しても v1 では表示が変わらない。将来 #182 の strategy 拡張で乖離が生じ得るようになった時点で、乖離の意味と表示方針を #182 側の spec で決定する (本契約は placement 語彙の再解釈をしない)。
 
 ## Coordinator integration
 
 `ManualOrganizationRun` の変更:
 
 - **start**: `Planned` かつ非空のとき、現行の `PendingPlan` 生成と `State.Preview(summary)` 遷移の前に `inspectPlan(input, result)` を呼ぶ。
-  - `Previewed` → `PendingPlan` が `PlanPreview` を保持する。`State.Preview(summary)` の形状は**変更しない** (既存 `Summary` 供給を維持)。`PREVIEWED` run event は現行どおり発行する。
+  - `Previewed` → `PendingPlan` が preview 済み plan を非公開で保持し、`State.Preview(summary, details = preview.details)` へ遷移する。`PREVIEWED` run event は現行どおり発行する。
   - `Stale` → `State.Stale` へ遷移し、現行の confirm 時 materialize 失敗と同じ `APPLY_REJECTED` (A2, `STALE_REVISION`) run event を coordinator が発行する。書込みなし。MFO-06 の契約 (旧 plan 破棄、recapture 要求) は変わらない。
-  - `WriterBusy` / `Concurrent` / `Unavailable` / `NotPlannable` → **graceful degradation**: preview なしで現行どおり `State.Preview(summary)` へ遷移し、confirm が従来どおり materialize する。run を失敗させず、UI の件数サマリーも壊さない。新 state / 新 diagnostics は導入しない。
-- **confirm**: `PendingPlan` が `PlanPreview` を保持する場合、**preview 済み plan をそのまま** `application.apply(plan, runId)` へ渡し、confirm 時 materialize を省略する。保持しない場合 (degradation) は現行の materialize 経路をそのまま使う。apply の A2 exact precondition gate は変更しない — preview→confirm 間に layout が変われば、apply は現行どおり typed zero-write で fail (`STALE_REVISION` / `EXACT_PRECONDITION_FAILED`) し、`State.Stale` へ遷移して recapture を要求する。
-- cancel / dismissal / process recreation の契約は現行どおり。`PlanPreview` は process-local であり再現されない (opaque confirmation と同じ規約)。
+  - `WriterBusy` / `Concurrent` / `Unavailable` / `NotPlannable(CAPTURE_FAILED|OUTCOME_NOT_PLANNED)` → **compatibility fallback**: `State.Preview(summary, details = null)` へ遷移し、confirm が従来どおり materialize する。run を失敗させず、UI の件数サマリーも壊さない。新 state / 新 diagnostics は導入しない。
+  - `NotPlannable(MATERIALIZATION_INVALID)` → **fail-closed**: 同一 `(input, result)` からの materialize / join が契約違反であり、preview と confirm 時 materialize の両方が同じ Invalid に落ちることが既知であるため、確認なし apply を試みる意味がない。`State.PlanningRejected(PlanningFailureKind.IMPOSSIBLE, summary)` (既存 state、新 diagnostics なし) へ遷移して run を終了し、recapture を要求する。UI 文言の再利用は #195 側で必要なら別途行う。
+- **confirm**: `PendingPlan` が preview 済み plan を保持する場合、**preview 済み plan をそのまま** `application.apply(plan, runId)` へ渡し、confirm 時 materialize を省略する。保持しない場合 (fallback) は現行の materialize 経路をそのまま使う。apply の A2 exact precondition gate は変更しない — preview→confirm 間に layout が変われば、apply は現行どおり typed zero-write で fail (`STALE_REVISION` / `EXACT_PRECONDITION_FAILED`) し、`State.Stale` へ遷移して recapture を要求する。
+- cancel / dismissal / process recreation の契約は現行どおり。preview 済み plan は process-local であり再現されない (opaque confirmation と同じ規約)。
 - coordinator は `inspectPlan` の結果を diagnostics へ投影しない。`PlanningProjection` は件数のみのまま。
+
+### Degradation 契約 (#194 単体と #195 導入後の区別)
+
+- **#194 単体 (現行 UI)**: `details == null` の preview は compatibility fallback として confirm できる。既存の count-only 確認フローが regression なく動作することが本 Issue の受入条件である。
+- **#195 導入後の恒久契約 (本 spec が固定する方向性)**: `details == null` は「具体的変更を確認できない異常状態」として UI から observable である。具体的 preview の無い状態で confirm を許すか (既存どおり許す / confirmation を block して recapture を要求する等) は **#195 の spec が明示的に決定する**。本契約は「details unavailable を黙って count-only と同等に扱い続ける」ことを恒久化しない。#195 起票時にこの点を spec へ記載する責務を issue tracker 側で引き継ぐ。
 
 ## spec 52 への拡張 (同じ PR で適用)
 
-- §"Preview and details" に追記: plannable で非空の full run の preview は、application-owned の read-only plan preview (spec 194) に裏付けられる。coordinator は preview 時に materialize 済み `ValidatedLayoutPlan` と per-item `PreviewChange` projection を取得し、confirm はその plan を適用する。preview が得られない場合は count-only preview へ劣化し、confirm 時 materialize が既存どおり動く。preview 時の stale は既存の typed stale 結果と A2 stale rejection event で扱う。preview の per-item 表示 (文言・a11y・展開) の正本は #195 であり、本節は data path と安全性のみを固定する。
+- §"Preview and details" に追記: plannable で非空の full run の preview は、application-owned の read-only plan preview (spec 194) に裏付けられる。coordinator は preview 時に materialize 済み `ValidatedLayoutPlan` (非公開) と per-item `PreviewChange` projection (`State.Preview` の optional `details` として UI-facing) を取得し、confirm はその plan を適用する。preview が得られない環境的失敗 (busy / concurrent / readiness / capture failure) では `details = null` の count-only preview へ fallback し、confirm 時 materialize が既存どおり動く。plan / projection 整合性の契約違反 (`MATERIALIZATION_INVALID`) は fail-closed であり、確認なし apply へ fallback しない。preview 時の stale は既存の typed stale 結果と A2 stale rejection event で扱う。preview の per-item 表示 (文言・a11y・展開) の正本は #195 であり、本節は data path と安全性のみを固定する。
 - §"Confirmation, staleness, and apply" に追記: confirm は取得済み preview 済み plan を適用対象とし、A2 exact precondition が最終 gate であることを明記。
-- scenario matrix に1行追加: preview capture が stale / busy の場合 → typed stale (書込みなし、既存 event) または count-only への graceful degradation; 確認画面は機能し続ける。
+- scenario matrix に1行追加: preview capture が stale / busy / 整合性違反の場合 → typed stale (書込みなし、既存 event) / `details = null` の count-only fallback (compatibility) / fail-closed な planning rejection; 確認画面は機能し続ける。
 
 ## Behavior scenarios
 
@@ -222,9 +238,19 @@ Given capture と planning が成功し、非空の `Planned` result が得ら�
 
 When coordinator が `inspectPlan(input, result)` を呼ぶ,
 
-Then readiness gate / RunMutex / writer lease の下で1回の capture が行われ、revision 一致なら materialize と projection が実行され、`Previewed` (plan + `PreviewChange` 一覧 + counts) が返る,
+Then readiness gate / RunMutex / writer lease の下で1回の capture が行われ、revision 一致なら materialize と projection が実行され、`Previewed` (非公開の preview 済み plan + UI-facing `PreviewDetails`) が返り、`State.Preview(summary, details)` が両方を公開する,
 
-And `State.Preview` は既存 `Summary` を引き続き供給し、`PREVIEWED` event は現行どおり発行され、layout 書込み / checkpoint / recovery 書込み / model reload / lifecycle 遷移 / diagnostics emit は発生しない。
+And `PREVIEWED` event は現行どおり発行され、layout 書込み / checkpoint / recovery 書込み / model reload / lifecycle 遷移 / diagnostics emit は発生しない。
+
+### Scenario: UI never observes the executable plan
+
+Given `Previewed` な preview が `State.Preview` で公開されている,
+
+When UI / #195 の consumer が observable state を走査する,
+
+Then `State` 経由で到達可能な preview 情報は `Summary` と `PreviewDetails` (`PreviewChange` + `PreviewCounts`) のみである,
+
+And executable `ValidatedLayoutPlan`、`RevisionId`、raw canonical state は coordinator の private field の外へ露出しない。
 
 ### Scenario: Layout changes between planning capture and preview capture
 
@@ -236,15 +262,25 @@ Then `Stale` が返り、coordinator は `State.Stale` へ遷移して既存 `AP
 
 And いかなる書込みも checkpoint も行われず、UI は既存の stale 経路 (recapture 要求) を提示する。
 
-### Scenario: Preview is unavailable (writer busy / concurrent / readiness / not-plannable)
+### Scenario: Preview is environmentally unavailable (writer busy / concurrent / readiness / capture failure)
 
-Given writer lease が他 writer に保持されている、または mutex / readiness / plan 整合性の条件が満たされない,
+Given writer lease が他 writer に保持されている、または mutex / readiness / capture の環境的条件が満たされない,
 
-When `inspectPlan` が `WriterBusy` / `Concurrent` / `Unavailable` / `NotPlannable` を返した,
+When `inspectPlan` が `WriterBusy` / `Concurrent` / `Unavailable` / `NotPlannable(CAPTURE_FAILED)` を返した,
 
-Then coordinator は preview なしで `State.Preview(summary)` へ遷移し (graceful degradation)、confirm が従来どおり materialize する,
+Then coordinator は `State.Preview(summary, details = null)` へ遷移し (compatibility fallback)、confirm が従来どおり materialize する,
 
-And 件数サマリー UI は regression なく動作し、新 state も新 diagnostics も導入されない。
+And 件数サマリー UI は regression なく動作し、`details == null` により「具体的 preview が得られなかった」ことが UI から観測可能であり、新 state も新 diagnostics も導入されない。
+
+### Scenario: Plan / projection integrity violation fails closed
+
+Given materializer が `Invalid` を返した、または projection の item identity join が不整合を検出した,
+
+When `inspectPlan` が `NotPlannable(MATERIALIZATION_INVALID)` を返した,
+
+Then coordinator は既存の planning rejection state へ遷移して run を終了し、confirm へ進めない,
+
+And count-only preview への fallback も confirm 時 materialize の再試行も行われず、いかなる書込みも発生しない。
 
 ### Scenario: Confirm applies the previewed plan unchanged
 
@@ -290,10 +326,12 @@ And すべての action / before-after は `ValidatedLayoutPlan` に、すべて
 | PP-AC-04 | preview の内容が apply 対象 actions と構成的に一致する: preview 済み plan オブジェクトがそのまま apply へ渡されること (同一インスタンス)、および `MoveChange` / `PreservedChange` / `NewFolderChange` 行が同一 plan の actions と 1:1 対応することを contract test で検証する。 |
 | PP-AC-05 | action / before-after が `ValidatedLayoutPlan` から、rationale / preserve reason / warning が `Planned` から供給される責務分担を contract test で検証する (join の決定性を含む)。 |
 | PP-AC-06 | stale capture (revision 不一致) で typed non-write の `Stale` を返す。 |
-| PP-AC-07 | coordinator が `State.Preview` で既存 `Summary` を引き続き供給し、`WriterBusy` / `Concurrent` / `Unavailable` / `NotPlannable` 時に count-only preview + confirm 時 materialize へ graceful degradation することで、#195 未実装のまま本 Issue 単体 merge しても現行件数 UI が regression なく動作する。 |
+| PP-AC-07 | coordinator が `State.Preview(summary, details)` で既存 `Summary` を引き続き供給しつつ、preview 成功時は `PreviewDetails` (`PreviewChange` + `PreviewCounts`) を UI-facing に公開し、executable `ValidatedLayoutPlan` を露出しない。環境的失敗 (`WriterBusy` / `Concurrent` / `Unavailable` / `CAPTURE_FAILED`) 時は `details = null` となり、#195 未実装のまま本 Issue 単体 merge しても現行件数 UI が regression なく動作する。 |
 | PP-AC-08 | page 序数 / 行帯 × 列帯 / start cell 基準 / 帯内微調整判定 / dock / folder / label fallback の正規化規約が、境界値を含む unit test で検証される。 |
 | PP-AC-09 | spec 52 の拡張、`CONTEXT.md` / `DESIGN.md` の影響確認・更新、organizer-diagnostics.md の流出禁止明文化が同じ PR で完了する。 |
 | PP-AC-10 | test fixture が実 title を含まない (synthetic identity のみ)。 |
+| PP-AC-11 | `NotPlannable(MATERIALIZATION_INVALID)` が fail-closed であることを coordinator test で検証する: count-only preview への fallback も confirm 時 materialize の再試行も行われず、run は planning rejection で終了して apply に到達しない。 |
+| PP-AC-12 | v1 planner の fixture corpus で、同一 `(input, result)` から得られる `Summary` と `PreviewCounts` の対応 (moved / preserved / newFolder / newPage / warnings) が一致することを contract / property test で保証する (#195 がヘッダ truth を `PreviewCounts` へ統一する前提)。 |
 
 ## Test oracle
 
@@ -305,26 +343,32 @@ And すべての action / before-after は `ValidatedLayoutPlan` に、すべて
 | PP-AC-04 | coordinator test: `apply` へ渡された plan インスタンスが preview 済み plan と同一であること (`===`)、materialize が呼ばれないこと。projector contract test: action ↔ row 対応表。 |
 | PP-AC-05 | projector contract test: rationale / reason / warning を変えた fixture で行の該当 field のみが変化し、placement を変えた fixture で source / destination のみが変化すること。 |
 | PP-AC-06 | `PlanPreviewProtocolTest`: capture revision を planning snapshot と差し替えた fixture で `Stale`、書込み counter 0。 |
-| PP-AC-07 | `ManualOrganizationRunTest`: preview 成功時 / 非成功時の `State.Preview(summary)` 供給、`apply` 経路の分岐、既存 summary 系 test の無変更通過。 |
+| PP-AC-07 | `ManualOrganizationRunTest`: preview 成功時の `State.Preview(summary, details)` 公開と plan 非露出、環境的失敗時の `details = null` + `apply` 経路の分岐、既存 summary 系 test の無変更通過。 |
 | PP-AC-08 | `PlanPreviewProjectorTest`: band 境界値 (`floor(coord*3/dim)`、clamp)、start cell 基準 (span>1)、同帯判定、page 序数 (新規 page 含む)、`PreviewLabel` fallback、dock / folder / app pair 位置。 |
 | PP-AC-09 | PR diff review (spec 52 / CONTEXT.md / DESIGN.md / organizer-diagnostics.md)。 |
 | PP-AC-10 | fixture review + synthetic identity のみの fixture corpus による property test。 |
+| PP-AC-11 | `ManualOrganizationRunTest`: `NotPlannable(MATERIALIZATION_INVALID)` 注入時に planning rejection で run が終了し、`materialize` / `apply` が呼ばれないこと (fake counter 主張)。 |
+| PP-AC-12 | planner fixture corpus に対する contract / property test: `Summary` と `PreviewCounts` の category 別一致。 |
 
 ## Open questions
 
 None。Stage A で決定済み:
 
 1. opaque confirmation capability は導入しない — preview 済み `ValidatedLayoutPlan` 自身が confirm の適用対象であり、A2 exact precondition が TOCTOU の最終 gate である。
-2. preview が得られない場合は run を失敗させず count-only へ graceful degradation する (既存 confirm 時 materialize 経路を維持)。
-3. `risk: layout-data` label を付ける (coordinator の confirm / apply 前段フローと spec 52 を触るため)。high-risk independent-evidence gate (CI `final-status` + `docs/assessment/pr-194-*.md`) を満たす。
-4. profile role 表示名投影は #182 / #195 側の将来 decision とし、本契約は露出しない。
-5. kind fallback の文言所在地は UI (#195) とし、projection は `KindFallback(kind)` を運ぶ。
+2. UI-facing seam は `State.Preview(summary, details: PreviewDetails?)` の optional `details` とし、executable plan は coordinator 非公開のまま UI へ露出しない (レビュー Blocking 1)。
+3. 環境的 preview 失敗 (`WriterBusy` / `Concurrent` / `Unavailable` / `CAPTURE_FAILED`) は #194 単体の compatibility fallback (`details = null` + confirm 時 materialize) とし、`details == null` の confirm 可否を恒久化しない — #195 の spec が明示的に決定する (レビュー Blocking 2)。
+4. `NotPlannable(MATERIALIZATION_INVALID)` (plan / projection 整合性の契約違反) は fail-closed であり、fallback せず planning rejection で run を終了する (レビュー Blocking 2)。
+5. ヘッダ件数の truth は #194 単体では `Summary`、concrete details を描画する UI では `PreviewCounts` とし、v1 planner では両者一致を test で保証する (レビュー Medium)。
+6. `risk: layout-data` label を付ける (coordinator の confirm / apply 前段フローと spec 52 を触るため)。high-risk independent-evidence gate (CI `final-status` + `docs/assessment/pr-194-*.md`) を満たす。
+7. profile role 表示名投影は #182 / #195 側の将来 decision とし、本契約は露出しない。
+8. kind fallback の文言所在地は UI (#195) とし、projection は `KindFallback(kind)` を運ぶ。
 
 実装が raw revision の露出、書込み経路の追加、diagnostics 契約の変更なしには表現できないと判明した場合は、この境界を弱めず owner application-contract の follow-up issue を起票して停止する。
 
 ## Change history
 
 - 2026-09-02: Drafted for Issue #194。production 実装は spec / plan 承認まで停止。
+- 2026-09-02: Review revision (owner review @ `e9fe59d9f8`): `State.Preview` への optional `PreviewDetails` 公開 seam を追加し (Blocking 1)、preview 失敗時の扱いを「環境的失敗 = #194 限定の compatibility fallback (`details = null`)」「契約違反 = fail-closed」へ分離した (Blocking 2)。ヘッダ件数の truth 分担 (`Summary` / `PreviewCounts`) を確定し、v1 一致保証を AC 化した (Medium)。
 
 ## References
 

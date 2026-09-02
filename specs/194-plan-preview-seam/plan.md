@@ -15,7 +15,7 @@
 - materializer: `application/actions/OrganizationPlanMaterializer.kt` — 純粋関数。`ApplyAction.Preserve/Update/Insert` を構築し、`Update` は `intended != source` のときのみ発火。planned folder は `ApplicationItemRef.PlannedFolder(ordinal)`。
 - planning 側: `Planned` (`planning/PlanningResult.kt:12-18`) — `placements: List<PlannedPlacement>` (item + disposition + target)、`newFolders` (ordinal + members)、`warnings`。既存 folder への再親的政策は v1 に存在しない (`PlanningPlacement.kt:501` — 既存 folder member は `PreserveReason.STRUCTURAL` で現位置保持)。
 - capture title: `CanonicalItemState.title: OptionalText` (`application/public/LayoutState.kt:125`)。planning 入力には title が存在しない (`OrganizationInputComposer.mapItem` は読み捨て)。title は `plan.sourceState` 経由で入手可能。
-- UI: `lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt` — `State.Preview` は `currentState.summary` のみを消費 (`:153-160`)。State への新 field 追加は不要 (本 Issue では State 形状を変更しない)。
+- UI: `lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt` — `State.Preview` は `currentState.summary` のみを消費 (`:153-160`)。本 Issue では `State.Preview` に optional `details: PreviewDetails?` を追加するが、既存 UI は `summary` のみを読み続けるため rendering は不変 (regression-free)。#195 が `details` を消費する。
 - 既存 test: `tests/unit/app/lawnchair/organizer/ui/ManualOrganizationRunTest.kt` (FakeApplication が `ManualOrganizationApplication` を実装)、`tests/unit/app/lawnchair/organizer/application/protocol/RecoveryPreviewProtocolTest.kt` (write-free 証明パターン)、`application/adapter/FakeLayoutWriter.kt` (lease / capture counter)。
 
 ## Design
@@ -41,9 +41,12 @@ lawnchair/src/app/lawnchair/organizer/application/
 ```text
 start() ──> composeFullOrganization() ──> planner.plan(input) ──> Planned (非空)
    └──> inspectPlan(input, result)
-          ├─ Previewed  ──> PendingPlan(+preview) ──> State.Preview(summary)   [PREVIEWED]
+          ├─ Previewed  ──> PendingPlan(+非公開 plan) ──> State.Preview(summary, details)  [PREVIEWED]
           ├─ Stale      ──> State.Stale + APPLY_REJECTED(A2, STALE_REVISION)
-          └─ その他      ──> State.Preview(summary) (preview なし, degradation)
+          ├─ WriterBusy / Concurrent / Unavailable / CAPTURE_FAILED
+          │             ──> State.Preview(summary, details=null)  [compatibility fallback]
+          └─ MATERIALIZATION_INVALID
+                        ──> State.PlanningRejected (fail-closed, apply 不可能)
 confirm()
    ├─ preview あり ──> apply(preview.plan, runId)   (materialize 省略, A2 が最終 gate)
    └─ preview なし ──> materialize(input, result) ──> apply(plan, runId)   [現行どおり]
@@ -65,10 +68,10 @@ confirm()
 | `application/preview/PlanPreviewProjector.kt` (新規) | 純粋 projection + 正規化規約 | interface 経由で単体テスト可能な単一 seam |
 | `application/protocol/PlanPreviewProtocol.kt` (新規) | mutex / lease / capture / revision gate / materialize / projection 呼び出し | spec 84 の protocol パターン踏襲 |
 | `application/protocol/LayoutApplicationModule.kt` | `inspectPlan` 追加 + readiness mapping | module-owned operation の composition root |
-| `organizer/ui/ManualOrganizationRun.kt` | `ManualOrganizationApplication.inspectPlan` 追加、PendingPlan 拡張、start/confirm 分岐、degradation | preview 表示経路と confirm 対象の変更 (spec scope 3) |
-| `tests/unit/.../application/preview/PlanPreviewProjectorTest.kt` (新規) | 投影契約・正規化境界・決定性 | PP-AC-03/04/05/08 |
+| `organizer/ui/ManualOrganizationRun.kt` | `ManualOrganizationApplication.inspectPlan` 追加、`State.Preview(summary, details: PreviewDetails?)` への拡張、`PendingPlan` に preview 済み plan を非公開保持、start / confirm 分岐 (fallback + fail-closed) | preview 表示経路と confirm 対象の変更 (spec scope 3)、UI-facing seam (review Blocking 1) |
+| `tests/unit/.../application/preview/PlanPreviewProjectorTest.kt` (新規) | 投影契約・正規化境界・決定性・Summary 対応一致 | PP-AC-03/04/05/08/12 |
 | `tests/unit/.../application/protocol/PlanPreviewProtocolTest.kt` (新規) | write-free 証明・全 result path | PP-AC-02/03/06 |
-| `tests/unit/.../ui/ManualOrganizationRunTest.kt` (拡張) | preview 経路 / degradation / 同一 plan インスタンス適用 | PP-AC-04/07 |
+| `tests/unit/.../ui/ManualOrganizationRunTest.kt` (拡張) | preview 経路 / fallback / fail-closed / 同一 plan インスタンス適用 / details 公開・plan 非露出 | PP-AC-04/07/11 |
 | `specs/52-manual-full-organization-vertical-slice/spec.md` | Preview and details / Confirmation 拡張 + scenario 1行 | spec scope 4 |
 | `docs/engineering/organizer-diagnostics.md` | title / PreviewChange 流出禁止の明文化 | spec scope 5 |
 | `CONTEXT.md` | plan preview 用語追加 | domain language |
@@ -87,26 +90,28 @@ confirm()
 |---|---|---|
 | PP-AC-02/03/06 | `PlanPreviewProtocolTest` (write-free counters、determinism、stale) | `./gradlew :lawnchair:testDebugUnitTest --tests "app.lawnchair.organizer.application.protocol.PlanPreviewProtocolTest"` |
 | PP-AC-03/04/05/08/10 | `PlanPreviewProjectorTest` (join / normalization / boundary / synthetic identity) | 同上 `--tests "app.lawnchair.organizer.application.preview.PlanPreviewProjectorTest"` |
-| PP-AC-04/07 | `ManualOrganizationRunTest` 拡張 (同一 plan インスタンス、degradation、Summary 供給維持) | 同上 `--tests "app.lawnchair.organizer.ui.ManualOrganizationRunTest"` |
+| PP-AC-04/07 | `ManualOrganizationRunTest` 拡張 (同一 plan インスタンス、fallback、fail-closed、`details` 公開と plan 非露出、Summary 供給維持) | 同上 `--tests "app.lawnchair.organizer.ui.ManualOrganizationRunTest"` |
+| PP-AC-11 | `ManualOrganizationRunTest` (MATERIALIZATION_INVALID 注入 → planning rejection、materialize/apply 呼出し 0) | 同上 `--tests "app.lawnchair.organizer.ui.ManualOrganizationRunTest"` |
+| PP-AC-12 | `PlanPreviewProjectorTest` または planner contract test (fixture corpus で Summary ≡ PreviewCounts) | 同上 `--tests "app.lawnchair.organizer.application.preview.PlanPreviewProjectorTest"` |
 | 全体 | organizer JVM test 全体 + formatting + debug build | `./gradlew spotlessCheck` / `./gradlew assembleLawnWithQuickstepGithubDebug` |
 
 含めるべき観点: unit/contract (projector・protocol・coordinator)、property (決定性、band 正規化の境界値、fixture corpus での v1 planner 対応観測)、failure injection (writer busy、mutex 競合、revision 不一致、capture RuntimeException、join 不整合)。DB/integration・UI は本 Issue の変更外 (zero-write と UI 無変更を contract test で裏取り)。
 
 ## Documentation updates
 
-- [x] spec status/history (本 spec、spec 52)
-- [x] CONTEXT.md (plan preview 用語)
-- [x] DESIGN.md (§4.2 read-only seam 言及)
+- [ ] spec status/history (本 spec、spec 52 拡張 — 実装 PR で適用)
+- [ ] CONTEXT.md (plan preview 用語 — 実装 PR で適用)
+- [ ] DESIGN.md (§4.2 read-only seam 言及 — 実装 PR で適用)
 - [ ] ADR (不要 — Option 3 選択は spec と assessment に記録済みであり、ADR 3条件の「変更が高コスト」に相当する確定済み先例 [spec 84] がある)
 - [ ] AGENTS.md (変更不要)
 
 ## Execution checklist
 
 - [x] Current behavior traced (coordinator / module / materializer / UI / tests)。
-- [ ] spec / plan 承認。
+- [ ] spec / plan 承認 (review revision)。
 - [ ] `application/public/PlanPreview.kt` + `PlanPreviewProjector.kt` を interface 経由の test 先行で実装。
 - [ ] `PlanPreviewProtocol.kt` + module wiring 実装。
-- [ ] coordinator (`ManualOrganizationRun`) 更新 + 既存 test の維持。
-- [ ] spec 52 / organizer-diagnostics.md / CONTEXT.md / DESIGN.md 更新。
+- [ ] coordinator (`ManualOrganizationRun`) 更新 (`State.Preview(summary, details)`、fallback / fail-closed 分岐) + 既存 test の維持。
+- [ ] spec 52 / organizer-diagnostics.md / CONTEXT.md / DESIGN.md 更新 (実装 PR で適用)。
 - [ ] `./gradlew spotlessCheck` + organizer JVM test filter + `./gradlew assembleLawnWithQuickstepGithubDebug` 成功を PR へ記録。
 - [ ] `risk: layout-data` label + high-risk independent-evidence gate (CI `final-status` + `docs/assessment/pr-194-plan-preview-seam.md`) を満たす。
