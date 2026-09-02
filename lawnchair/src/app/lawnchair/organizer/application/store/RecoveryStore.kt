@@ -341,6 +341,13 @@ internal class RecoveryStore(
      * chunk count matches ceil(size / L), the indices are exactly 0..n-1, and
      * the chunk lengths match the required shape (all L except one final
      * remainder; a single chunk is exactly the size).
+     *
+     * Defense-in-depth note (Issue #178): the five predicates together are not
+     * a complete chunk-shape characterization — a hypothetical short-first /
+     * full-last permutation would satisfy them. That shape is unreachable from
+     * the `substr()` chunking that produced these rows (chunk 0 is always full
+     * when size > L), so the predicates are sound for the actual construction;
+     * they are a second opinion on the write, not a standalone proof of shape.
      */
     private fun validateChunkCoverage(db: SQLiteDatabase) {
         val l = RecoveryDbSchema.CHUNK_BYTES
@@ -1398,8 +1405,6 @@ internal class RecoveryStore(
         }
         return row.toEncoded(preManifest, intendedManifest, reviewedManifest)
     }
-
-    private fun storedFromEncoded(encoded: RecoveryRecordCodec.Encoded): StoredRecord = StoredRecord(encoded)
 
     private fun validateRecord(encoded: RecoveryRecordCodec.Encoded): Boolean = try {
         RecoveryRecordCodec.decode(encoded)

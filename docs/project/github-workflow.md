@@ -125,7 +125,7 @@ PRが次のいずれかに当たる場合に適用する。`high-risk-gate` work
 
 - PRが高リスクでない場合は即座にpassする（低リスクPRへの追加負担は数秒のjobのみ）。
 - audit記録が `docs/assessment/pr-<PR番号>-<slug>.md` に存在し、同名の競合記録がなく、必須field（Auditor、Audit date、Head SHA、CI run、Criteria）を満たすこと。
-- Criteriaが `Criteria:` 行に、spec (`specs/<n>-<slug>/spec.md`) またはADR (`docs/adr/*.md`) への参照と要件ID（FR-x / NFR-x / AC-x / ADR-xxxx）の組で記載されていること。機械検証は `Criteria:` 行だけを対象とし、行内で各要件IDは直前の文書参照に紐付く。参照先がrepository内に実在し、statusが `accepted`（または `implemented`）であり、IDがその文書に定義されていることを検証する。存在しないfile、draft/proposed/superseded、実在しないID、文書とIDの取り違え、Scope等の本文だけに書いた参照は拒否される。
+- Criteriaが `Criteria:` 行に、spec (`specs/<n>-<slug>/spec.md`) またはADR (`docs/adr/*.md`) への参照と要件ID（FR-x / NFR-x / AC-x / ADR-xxxx、および CW-AC-01 のようなハイフン付きfamilyのID）の組で記載されていること。機械検証は `Criteria:` 行だけを対象とし、行内で各要件IDは直前の文書参照に紐付く。参照先がrepository内に実在し、statusが `accepted`（または `implemented`）であり、IDがその文書に定義されていることを検証する。存在しないfile、draft/proposed/superseded、実在しないID、文書とIDの取り違え、Scope等の本文だけに書いた参照は拒否される。
 - 必須section（Scope、Criteria check、Executed test surface、Findings）が存在し、空でないこと。Executed test surfaceには具体的なcommand（`./gradlew`、`python3` 等）を含むこと。「test通過」だけの記載では通らない。
 - `Head SHA` がPR履歴内に存在すること。PR headと一致するか、それ以降の変更が `docs/` 配下のみであること。audit確定後にコードを変えた場合は再auditが必要になる。
 - 参照されたCI runがGitHub APIで照合され、GitHub自身がこのPRに関連付けている（runの `pull_requests` に当該PR番号を含む）`pull_request` eventによる `ci.yml` runであり、検証対象commit・head branchが一致し、`final-status` が成功、かつsource job（`organizer-unit-tests`、`check-style`、`build-debug-apk`）がskipなしに成功実行されていること。pushやworkflow_dispatchによるrun、別PRのrun、docs-only差分でsource jobをskipしたrunは証拠にならない。
