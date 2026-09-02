@@ -88,7 +88,7 @@ object PlanPreviewProjector {
             )
         }
 
-        plan.newPages.sortedBy { it.order }.forEach { page ->
+        plan.newPages.sortedBy { it.ordinal.value }.forEach { page ->
             val position = context.plannedPageDisplayPosition(page.ordinal) ?: return Result.Invalid
             changes.add(NewPageChange(ordinal = page.ordinal, displayPosition = position))
         }
@@ -180,22 +180,33 @@ object PlanPreviewProjector {
     ) {
         private val plannedFolderOrdinals: Set<NewFolderOrdinal> = plan.newFolders.map { it.ordinal }.toSet()
 
-        private val persistentPageOrdinals: Map<PageId, Int> = buildMap {
-            var position = 1
-            plan.sourceState.pages
-                .sortedBy { it.order }
-                .forEach { page ->
+        /**
+         * Combined `PageOrder` sequence: persistent and planned pages share one
+         * sort, so a planned page ordered between existing pages gets its
+         * in-between display position (spec §Position normalization).
+         */
+        private val combinedPagePositions: Map<PageKey, Int> = buildMap {
+            val entries = buildList {
+                plan.sourceState.pages.forEach { page ->
                     (page.ref as? ApplicationPageRef.PersistentPage)?.let {
-                        put(it.pageId, position++)
+                        add(PageKey.Persistent(it.pageId) to page.order)
                     }
                 }
+                plan.newPages.forEach { page ->
+                    add(PageKey.Planned(page.ordinal) to page.order)
+                }
+            }
+            var position = 1
+            entries.sortedBy { it.second }.forEach { (key, _) -> put(key, position++) }
         }
 
-        private val plannedPageOrdinals: Map<NewPageOrdinal, Int> = buildMap {
-            var position = persistentPageOrdinals.size + 1
-            plan.newPages
-                .sortedBy { it.order }
-                .forEach { page -> put(page.ordinal, position++) }
+        fun persistentPageOrdinal(pageId: PageId): Int? = combinedPagePositions[PageKey.Persistent(pageId)]
+
+        fun plannedPageOrdinal(ordinal: NewPageOrdinal): Int? = combinedPagePositions[PageKey.Planned(ordinal)]
+
+        private sealed interface PageKey {
+            data class Persistent(val pageId: PageId) : PageKey
+            data class Planned(val ordinal: NewPageOrdinal) : PageKey
         }
 
         fun label(state: CanonicalItemState): PreviewLabel = itemLabel(state)
@@ -235,12 +246,12 @@ object PlanPreviewProjector {
             val isNewPage: Boolean
             when (val page = placement.page) {
                 is ApplicationPageRef.PersistentPage -> {
-                    ordinal = persistentPageOrdinals[page.pageId] ?: return null
+                    ordinal = persistentPageOrdinal(page.pageId) ?: return null
                     isNewPage = false
                 }
 
                 is ApplicationPageRef.PlannedPage -> {
-                    ordinal = plannedPageOrdinals[page.ordinal] ?: return null
+                    ordinal = plannedPageOrdinal(page.ordinal) ?: return null
                     isNewPage = true
                 }
             }
@@ -253,7 +264,7 @@ object PlanPreviewProjector {
             )
         }
 
-        fun plannedPageDisplayPosition(ordinal: NewPageOrdinal): Int? = plannedPageOrdinals[ordinal]
+        fun plannedPageDisplayPosition(ordinal: NewPageOrdinal): Int? = plannedPageOrdinal(ordinal)
 
         private fun <B : Enum<B>> band(coordinate: Int, dimension: Int, bands: List<B>): B {
             val scaled = if (dimension <= 0) 0 else coordinate * 3 / dimension

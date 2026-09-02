@@ -207,6 +207,35 @@ class PlanPreviewProjectorTest {
     }
 
     @Test
+    fun plannedPageBetweenPersistentPagesGetsItsInBetweenDisplayPosition() {
+        // persistent orders 0 and 10; planned order 5 sits between them.
+        val plan = plan(
+            sourceItems = listOf(item("a", cell = GridCell(0, 0))),
+            actions = listOf(
+                updateAction(
+                    item("a", cell = GridCell(0, 0)),
+                    item("a", cell = GridCell(0, 0), page = ApplicationPageRef.PlannedPage(NewPageOrdinal(0))),
+                ),
+                updateAction(
+                    item("b", cell = GridCell(1, 0)),
+                    item("b", cell = GridCell(1, 0), page = pageRef("p1")),
+                ),
+            ),
+            newPages = listOf(NewPage(NewPageOrdinal(0), PageOrder(5))),
+            pageOrders = listOf(0, 10),
+        )
+
+        val result = PlanPreviewProjector.project(plan, planned(moved("a"), moved("b"))) as PlanPreviewProjector.Result.Ready
+
+        val move = result.details.changes.filterIsInstance<MoveChange>().first { it.item.value == "a" }
+        assertEquals(PreviewPosition.Workspace(2, true, RowBand.TOP, ColumnBand.LEFT, 1), move.destination)
+        val persistedMove = result.details.changes.filterIsInstance<MoveChange>().first { it.item.value == "b" }
+        assertEquals(PreviewPosition.Workspace(3, false, RowBand.TOP, ColumnBand.LEFT, 1), persistedMove.destination)
+        val pageRow = result.details.changes.filterIsInstance<NewPageChange>().single()
+        assertEquals(2, pageRow.displayPosition)
+    }
+
+    @Test
     fun singleItemWarningsBecomeRowsAndOtherWarningsStayHeaderOnly() {
         val plan = plan(
             sourceItems = listOf(item("a"), item("b")),
@@ -480,12 +509,12 @@ class PlanPreviewProjectorTest {
         actions: List<ApplyAction>,
         newPages: List<NewPage> = emptyList(),
         newFolders: List<NewFolder> = emptyList(),
+        pageOrders: List<Int> = listOf(0, 1),
     ): ValidatedLayoutPlan {
         val sourceState = LayoutState(
-            pages = listOf(
-                PageState(ApplicationPageRef.PersistentPage(PageId("p0")), PageOrder(0)),
-                PageState(ApplicationPageRef.PersistentPage(PageId("p1")), PageOrder(1)),
-            ),
+            pages = pageOrders.mapIndexed { index, order ->
+                PageState(ApplicationPageRef.PersistentPage(PageId("p$index")), PageOrder(order))
+            },
             profiles = listOf(ProfileState(ProfileId("personal"), ProfileAvailability.AVAILABLE)),
             deviceCapabilities = CanonicalFixtures.deviceCapabilities(columns = 6, rows = 6),
             items = sourceItems,

@@ -133,6 +133,43 @@ class PlanPreviewProtocolTest {
     }
 
     @Test
+    fun captureFailureReturnsTypedRejectionWithoutMutation() {
+        val fixture = consistentFixture()
+        val failing = PlanPreviewProtocol(
+            ThrowingCaptureWriter(writer),
+            FixedOperationIdSource(),
+            faults,
+            mutex,
+        )
+
+        val result = failing.inspect(fixture.input, fixture.result)
+
+        assertEquals(
+            PlanPreviewResult.NotPlannable(PlanPreviewRejection.CAPTURE_FAILED),
+            result,
+        )
+        assertEquals(0, writer.capturedSnapshots)
+        assertEquals(0, writer.appliedWriteSets)
+        assertEquals(0, writer.reloadCount)
+    }
+
+    @Test
+    fun materializerRejectionReturnsTypedRejectionWithoutMutation() {
+        val fixture = consistentFixture()
+        val incompatibleResult = fixture.result.copy(ruleVersion = RuleVersion("v9"))
+
+        val result = protocol.inspect(fixture.input, incompatibleResult)
+
+        assertEquals(
+            PlanPreviewResult.NotPlannable(PlanPreviewRejection.MATERIALIZATION_INVALID),
+            result,
+        )
+        assertEquals(1, writer.capturedSnapshots)
+        assertEquals(0, writer.appliedWriteSets)
+        assertEquals(0, writer.reloadCount)
+    }
+
+    @Test
     fun serializationContentionReturnsWriterBusyBeforeCapture() {
         faults.serializationContention = true
         val fixture = consistentFixture()
@@ -238,6 +275,13 @@ class PlanPreviewProtocolTest {
             ),
         )
         return Fixture(input, result)
+    }
+
+    /** Delegating writer whose authoritative capture always fails. */
+    private class ThrowingCaptureWriter(
+        private val delegate: LayoutWriterPort,
+    ) : LayoutWriterPort by delegate {
+        override fun captureCurrent(captureId: CaptureId): CapturedSnapshot = throw IllegalStateException("capture failure")
     }
 
     private class Fixture(
