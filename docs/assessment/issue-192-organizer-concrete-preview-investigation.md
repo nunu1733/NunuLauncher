@@ -7,7 +7,7 @@
 
 ## Outcome in one line
 
-確認画面表示時点で「実際に適用される具体的な変更計画」は**既に確定しておりメモリ内に保持されている**(`PendingPlan` の `OrganizationInput` + `PlanningResult`)。apply はそれを再導出するのではなく、同一ペアから決定的な materializer で per-item action へ変換し、revision + 完全状態の exact precondition で新鮮さを最終 gate している。不足しているのは一致性ではなく、**UI が消費できる typed preview model と表示名(title)の data path** である。推奨は spec 84 の `inspectRecovery` 先例に倣い、**application-owned の read-only preview seam で materialize 済み `ValidatedLayoutPlan` を canonical preview source とし、UI 向け `PreviewChange` projection を経由して表示する**構成である。
+確認画面表示時点で確定しているのは **semantic placement plan**(各項目の移動先・保持理由を記述する `PendingPlan` の `OrganizationInput` + `PlanningResult`)であり、これはメモリ内に保持されている。実際の `ApplyAction.Preserve/Update/Insert` を持つ **executable action plan**(`ValidatedLayoutPlan`)は、confirm 後の fresh capture を経て materialize されて初めて確定する。apply は semantic plan を再導出するのではなく、同一ペアから決定的な materializer で per-item action へ変換し、revision 照合 + 完全状態の exact precondition で新鮮さを最終 gate している。不足しているのは一致性ではなく、**UI が消費できる typed preview model と表示名(title)の data path** である。推奨は spec 84 の `inspectRecovery` 先例に倣い、**application-owned の read-only preview seam で materialize 済み `ValidatedLayoutPlan` を canonical preview source とし、UI 向け `PreviewChange` projection を経由して表示する**構成である。
 
 ## 1. 現行 plan → preview → confirm → apply の source trace
 
@@ -84,9 +84,9 @@ Materializer (`application/actions/OrganizationPlanMaterializer.kt:46-158`) は�
 
 **現状の保証は強い。** 欠落は UI 側の投影だけである。
 
-1. **同一 plan の再利用**: `PendingPlan` が `input + result` を保持し、confirm 時の materialize が同じペアを消費する。apply が別途変更内容を導出することはない(確認画面と apply は同じ `Planned` から分岐)。
-2. **revision = 全状態 content hash**: `RevisionId` は canonical `LayoutState` 全体の digest である (`application/revision/RevisionCalculator.kt:32`、"Two byte-identical canonical layouts produce equal revisions")。したがって **revision 一致 ⟺ canonical 状態が byte-identical**。
-3. **materialize 時の新鮮さ gate**: `LayoutApplicationModule.kt:164` が materialize 用 capture の revision を planning snapshot revision と照合する。不一致なら `Result.Invalid` → `State.Stale`(書込みなし)。
+1. **同一 semantic plan の再利用**: `PendingPlan` が `input + result`(semantic placement plan)を保持し、confirm 時の materialize が同じペアを消費する。apply が別途変更内容を導出することはない(確認画面と apply は同じ `Planned` から分岐)。
+2. **revision = 全状態 content hash**: `RevisionId` は canonical `LayoutState` 全体の digest である (`application/revision/RevisionCalculator.kt:32`、"Two byte-identical canonical layouts produce equal revisions")。ハッシュ一致は byte-identical を強く示唆するが、論理的な `⟺ byte-identical` と断定するものではない。**完全一致の最終保証は、revision 照合に加えて apply 時の exact precondition (`capture.layoutState != plan.sourceState` → `EXACT_PRECONDITION_FAILED`) が担う。**
+3. **materialize 時の新鮮さ gate**: `LayoutApplicationModule.kt:164` が materialize 用 capture の revision を planning snapshot revision と照合する。不一致なら `Result.Invalid` → `State.Stale`(書込みなし)。この gate は revision (digest) のみを照合する。
 4. **apply 時の二重 gate (A2)**: `ApplyProtocol.kt:109-117` が `capture.revision != plan.sourceRevision` → `STALE_REVISION`、**`capture.layoutState != plan.sourceState` → `EXACT_PRECONDITION_FAILED`** を返す。writer adapter 側でも同様の exact 再検証がある (`LauncherLayoutAdapter.kt:184`)。preview→confirm 間の TOCTOU はこの typed zero-write rejection で閉じられる。
 5. **決定性**: planner は決定的(spec 12、property/contract test)、materializer は純関数。同一 `(input, result)` から同一 actions が得られる。
 6. **UI の現状との関係**: UI が見ている `Summary` は `Planned` の集計であり、件数が偽る余地はない。ただし「どの項目がどう変わるか」は表示していないため、**ユーザーの承認対象が具体的内容ではなく件数になっている** — これが Issue #192 の問題の正確な位置づけである。
@@ -96,7 +96,7 @@ Materializer (`application/actions/OrganizationPlanMaterializer.kt:46-158`) は�
 1. **UI 向け typed preview model** が存在しない。UI は `Summary`(件数)しか受け取らない。`PreviewChange` 等の per-item projection 型と、それを組み立てる単一の seam が必要。
 2. **preview 時点での表示名 data path**。title は materialize 時 capture にしかない。preview を具体化するには (i) preview 前に materialize 相当の read-only capture を行う、または (ii) composer が title を planning 入力へ追加する、のいずれかが必要。(ii) は planner 入力契約(spec 10/12)の変更と #182 の「label は新 input」との整合判断を伴うため、(i) が影響範囲最小である。
 3. **profile role の表示名投影**(個人/仕事用)。`ProfileId` は不opaque。表示だけなら role なしの区別(セクション分け)でも成立するが、同名アプリ判別には PERSONAL/WORK 別の表示が事実上必要。category override UI の UserCache 判別の再利用または正式な profile-role projection の decision が必要(#182 も同 input を将来要求)。
-4. **page 序数のユーザー表現**。`PageId` は不opaqueのため、`PageOrder` ソート順に基づく序数表示の規約(1始まり、新規ページの位置表現)を契約として固定する必要がある。
+4. **page 序数と同一ページ内の領域表現のユーザー規約**。`PageId` は不opaqueのため、`PageOrder` ソート順に基づく序数表示の規約(1始まり、新規ページの位置表現)を契約として固定する必要がある。さらに同一ページ内移動は序数だけでは before/after を判断できないため、§6.1 の領域表現(帯の境界、start cell 基準、帯内微調整の扱い)を projection 側の正規化規約と strings 語彙として固定する必要がある。
 5. **spec 52 §"Preview and details" の拡張**。現行 spec は counts + reasons + warnings を要求する(accepted 契約)。具体的変更一覧は spec の拡張であり、spec 更新を同じ Feature Issue で行う必要がある。spec 13 (apply 契約) の変更は不要。
 6. **診断 privacy 境界の明示**。preview UI が title を表示することは診断契約と無関係だが、`PreviewChange` を `RunEvent` / journal へ流さない規約を明文化する必要がある(現行の `PlanningProjection` は件数のみ、`organizer-diagnostics.md` 契約どおり)。
 
@@ -121,22 +121,38 @@ Materializer (`application/actions/OrganizationPlanMaterializer.kt:46-158`) は�
 
 1. application 側に **read-only plan preview operation**(仮称 `inspectPlan(input, result) -> PlanPreviewResult`)を追加する。readiness gate + 非blocking writer lease の下で `captureCurrent` → revision 照合 → `OrganizationPlanMaterializer.materialize` → **actions を `PreviewChange` 一覧へ純粋投影**し、capture revision に紐付いた opaque `PlanPreviewConfirmation`(および preview 済み `ValidatedLayoutPlan`)を返す。checkpoint・診断・lifecycle 遷移は行わない(spec 84 の禁止事項リストを踏襲)。
 2. coordinator は preview 表示時に `inspectPlan` を呼び、`State.Preview(PlanPreviewResult)` を UI へ渡す。confirm は preview 済み plan をそのまま apply に渡す(現行の confirm 時 materialize は preview 側へ移動)。apply の A2 exact precondition は最終 gate として**変更しない** — stale は現行どおり typed zero-write で fail し recapture を要求する。
-   - 代替(confirm 時 materialize を維持し preview は投影のみ)も revision-hash 決定性により契約上は成立するが、preview と apply の一致を「決定性 + revision 一等」で論じるより同一オブジェクトの方が検証・説明とも単純である。最終選択は後続 spec で行う。
-3. **`PreviewChange` projection は純粋関数 module** (`ValidatedLayoutPlan` → `List<PreviewChange>` + header counts)。UI 文言を持たず、Android 型を持たず、planning/application の既存型だけを消費する。ItemId は `RecoveryPreviewSummary` の `pointId` と同じ「opaque 相関キー」としてのみ保持し、表示は名前解決済みの文字列を運ぶ。
+   - 用語の整理: preview 前に確定しているのは semantic placement plan(`input + result`)であり、executable action plan(`ValidatedLayoutPlan`)は `inspectPlan` 内の materialize で確定する。つまりこの構成では **confirm 前に executable plan へ引き上げる**変更であり、「semantic plan は preview 前に確定 / executable action plan は capture + materialize 後に確定」という区別は現行と同様に保たれる。`State.Preview` が旧 `Summary` と同等の情報を引き続き供給する互換性要件は #194 の acceptance criteria として明記済み。
+   - 代替(confirm 時 materialize を維持し preview は投影のみ)も revision 照合 + 決定性により契約上は成立するが、preview と apply の一致を「決定性 + revision 一致」で論じるより同一オブジェクトの方が検証・説明とも単純である。最終選択は後続 spec で行う。
+3. **`PreviewChange` projection は純粋関数 module** (`ValidatedLayoutPlan` → `List<PreviewChange>` + header counts)。UI 文言を持たず、Android 型を持たず、planning/application の既存型だけを消費する。ItemId は `RecoveryPreviewSummary` の `pointId` と同じ「opaque 相関キー」としてのみ保持し、表示は名前解決済みの文字列を運ぶ。位置は生 cell を運ばず、**page 序数 + 正規化済みの領域コード + 行序数**(§6.1)を typed 値として運ぶ。領域語彙の文言は strings(`values/` + `values-ja/`)で管理する。
 4. title 解決は §2.3 のとおり canonical capture title を主とし、Absent は kind 由来の総称表現へ fallback。PackageManager label は表示補助として独立 decision。
 5. diagnostics への流出禁止を projection の KDoc と diagnostics 契約文書に明記する。
+6. **既存 count-only UI との互換性**: `inspectPlan` 導入後も `PlanPreviewResult` は旧 `Summary` と同値の header counts(移動/保持/新規フォルダ/新規ページ/警告の件数)を供給し、`State.Preview` が既存 `Summary` 契約を壊さないことを #194 の acceptance criteria とする。これにより #194 単体 merge 時も現行の件数 UI が regression なしで動作し、#195 (UI 更新) と独立して merge 可能である。
 
 ## 6. 初回 UX の具体例(text/list ベース、visual は対象外)
 
-件数ヘッダ(現行サマリーを維持)+ 変更種別ごとの grouping + 先頭 N 件表示 + 「すべて表示」展開。座標は生 cell ではなく「ページ序数 + 粗い位置」で表現する。
+件数ヘッダ(現行サマリーを維持)+ 変更種別ごとの grouping + 先頭 N 件表示 + 「すべて表示」展開。座標は生 cell ではなく「ページ序数 + 粗い領域」で表現する(§6.1)。
 
-**例1: 移動のみ(9件)**
+### 6.1 同一ページ内移動のユーザー可読な位置表現
+
+同一ページ内移動では page 序数だけが変わらないため、「1ページ内で移動」では before/after を判断できない。Organizer の変更が同一ページ内の詰め直し中心になるケースでは、元の件数サマリーと情報価値が大きく変わらないリスクがある。ユーザー向けの粗い位置表現として、planner の既存出力から追加 input なしで計算可能な候補を比較する(cell + span と `DeviceCapabilities.columns/rows` は §2.1 のとおり capture に既存):
+
+| 候補 | 例 | 長所 | 短所 |
+|---|---|---|---|
+| A: 行帯 × 列帯の領域表現(grid を縦3×横3の帯へ正規化) | 「上段中央 → 上段左」「下段右 → 中段右」 | device grid 規格に非依存で移植性が高い。cell 1個分の座標より認知的に近い。localization は語彙9個のみ | 隣接帯境界付近の移動が同じ語に潰れる。span>1 の item は代表 cell(start cell)での判定になり誇張・過小が起き得る |
+| B: 行序数のみ(横方向は語らない) | 「2段目 → 1段目」 | 語彙が最小で TalkBack の読み上げが短い | 縦方向の詰め直しが支配的な実 grid で、横方向の移動を説明できない |
+| C: before/after の行列表現(ページ内の表) | 「2ページ目: 3×5 表で before/after を並べる」 | 変更全体の相対関係が分かる | 行列表現は text list の流れに埋め込むと視認性が悪く、a11y(表の線形 traversal)と font scaling で契約違反になりやすい。visual preview の領域であり text/list の前提を超える |
+
+推奨は **A を主表現とし、行の変化が主たる move では B を副詞的に併記する**(例: 「上段中央 → 上段左(2段目から1段目)」)。正規化規約(帯の境界、start cell 基準、dock / folder / page 跨ぎの扱い)は projection の純粋関数側に置き、`PreviewChange` は正規化済みの領域コード + 行序数を運ぶ(§5-3)。語彙の文言は strings(`values/` + `values-ja/`)で管理する。
+
+**残余リスク(text-only の説明力の限界)を明記する**: A は領域を3×3帯へ解像度圧縮するため、帯内の微細な詰め直し(例: 同じ「上段中央」帯内での隣接スワップ)は before/after が同じ語になり、**同一ページ移動では text-only に限界がある**。#195 の spec では (a) 帯内移動が検出された場合の行の表現(「同帯内で微調整」等の明示)、(b) 該当 move の全件が帯内に潰れる場合の警告、を契約に入れ、この residual risk が text-only で説明力不足と判定される場合は visual preview を「Optional な将来拡張」ではなく起票必須の後続 Issue として扱う判断を spec 時点で行う(本 assessment の「visual は初回実装の前提にしない」は変わらない)。
+
+**例1: 移動のみ(9件、§6.1 の領域表現を適用)**
 
 ```text
 整理の内容
 移動 9件:
-・Chrome — 2ページ目 → 1ページ目
-・カレンダー — 1ページ内で移動
+・Chrome — 2ページ目 → 1ページ目 上段中央
+・カレンダー — 1ページ目 上段中央 → 上段左(3段目から2段目)
 ・(残り7件) すべて表示
 変更なし 12件 / ロックされた配置 2件 / ウィジェット 2件
 [適用する]  [キャンセル]
@@ -146,7 +162,7 @@ Materializer (`application/actions/OrganizationPlanMaterializer.kt:46-158`) は�
 
 ```text
 移動 11件 / 新規フォルダ 2件
-新規フォルダ (1ページ目): 写真・カメラ・ファイル をまとめる
+新規フォルダ (1ページ目 上段中央): 写真・カメラ・ファイル をまとめる
 新規フォルダ (2ページ目): 音楽・ポッドキャスト をまとめる
 ・音楽 — 2ページ目 → 新規フォルダへ
 ...
@@ -169,7 +185,7 @@ Materializer (`application/actions/OrganizationPlanMaterializer.kt:46-158`) は�
 
 ## 7. accessibility / localization / privacy / stale-plan の考慮事項
 
-- **TalkBack**: 現行の status 行は `liveRegion = Polite`(`ManualOrganizationPreferences.kt:356-360`)。変更一覧の各行は「名前 + 移動元 → 移動先」を1つの意味ある label にまとめ、行ごとに focus させる。大量行を liveRegion にしない(読み上げ洪水防止)。「すべて表示」は状態(展開/折畳)を semantics に持つ。focus 復帰は spec 52 の契約(表示後・展開後・stale 後)を継承。
+- **TalkBack**: 現行の status 行は `liveRegion = Polite`(`ManualOrganizationPreferences.kt:356-360`)。変更一覧の各行は「名前 + 移動元 → 移動先」を1つの意味ある label にまとめ、行ごとに focus させる。§6.1 の領域表現(「上段中央」等)は座標より短く読み上げ可能である。大量行を liveRegion にしない(読み上げ洪水防止)。「すべて表示」は状態(展開/折畳)を semantics に持つ。focus 復帰は spec 52 の契約(表示後・展開後・stale 後)を継承。
 - **Switch Access / keyboard**: grouping 見出し + 行 + confirm/cancel/展開の線形 traversal。expandable が focus 順を壊さないこと。
 - **font scaling (200%)**: 行は `PreferenceLazyColumn` 規約(spec 123 収束先)で wrap し、横 scroll 依存を禁止(spec 52 a11y 契約どおり)。
 - **localization**: 全 copy を `values/` + `values-ja/` へ追加(spec 123 の「日本語 fallback 禁止」契約)。序数・結合プレースホルダは ICU 由来の Android resource 規約に従う。名前挿入による文の組み立ては `%1$s` + 語順差を許す構造にする。
@@ -188,9 +204,9 @@ Materializer (`application/actions/OrganizationPlanMaterializer.kt:46-158`) は�
 
 ## 9. 実装分割(後続 Issue、起票済み)
 
-1. **#194 — Feature: plan preview seam + `PreviewChange` projection contract**(application-owned read-only preview、spec 更新込み)。read-only 操作だが coordinator の confirm フローと spec 52 を触るため、PR では `risk: layout-data` 判定と evidence 要件を実装 Issue 側で確認する。
+1. **#194 — Feature: plan preview seam + `PreviewChange` projection contract**(application-owned read-only preview、spec 更新込み)。read-only 操作だが coordinator の confirm フローと spec 52 を触るため、PR では `risk: layout-data` 判定と evidence 要件を実装 Issue 側で確認する。**`PlanPreviewResult` が旧 `Summary` と同値の header counts を供給し、#194 単体 merge でも現行件数 UI が regression なく動作することを acceptance criteria とする**(§5-6)。これが #195 との independently mergeable の成立条件である。
 2. **#195 — Feature: Organizer confirmation UI を件数中心から変更一覧中心へ**(1 に依存。UI、strings + ja、a11y、instrumentation evidence)。
-3. **Optional Feature: visual before/after layout preview** — 本調査では起票しない。text/list ベースの出荷後の評価で必要性が確定した場合に起票。初回実装の前提にしない(#192 の指示どおり)。
+3. **Optional Feature: visual before/after layout preview** — 本調査では起票しない。text/list ベースの出荷後の評価で必要性が確定した場合に起票。初回実装の前提にしない(#192 の指示どおり)。ただし §6.1 のとおり、同一ページ内移動は text-only で説明力の限界(帯内微調整が同じ語に潰れる)が残るため、#195 の spec 時点で residual risk の大きさを再判定し、説明不足と結論した場合は Optional ではなく必須後続 Issue として起票する。
 4. **#182 側 integration** — #182 の spec / child Issue として扱い、本 Issue では起票しない(ownership は §8 のとおり #182 へ通知済み)。
 
 1 と 2 は independently mergeable(2 は 1 の契約にのみ依存)。単一巨大 PR は想定しない。
