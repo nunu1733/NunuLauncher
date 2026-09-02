@@ -7,7 +7,7 @@
 
 ## Outcome in one line
 
-確認画面表示時点で確定しているのは **semantic placement plan**(各項目の移動先・保持理由を記述する `PendingPlan` の `OrganizationInput` + `PlanningResult`)であり、これはメモリ内に保持されている。実際の `ApplyAction.Preserve/Update/Insert` を持つ **executable action plan**(`ValidatedLayoutPlan`)は、confirm 後の fresh capture を経て materialize されて初めて確定する。apply は semantic plan を再導出するのではなく、同一ペアから決定的な materializer で per-item action へ変換し、revision 照合 + 完全状態の exact precondition で新鮮さを最終 gate している。不足しているのは一致性ではなく、**UI が消費できる typed preview model と表示名(title)の data path** である。推奨は spec 84 の `inspectRecovery` 先例に倣い、**application-owned の read-only preview seam で materialize 済み `ValidatedLayoutPlan` を「何が適用されるか」の canonical source とし、rationale / warning は同一 semantic plan の `PlanningResult.Planned` を authoritative として併用、UI 向け `PreviewChange` projection を経由して表示する**構成である(§5-3)。
+確認画面表示時点で確定しているのは **semantic placement plan**(各項目の移動先・保持理由を記述する `PendingPlan` の `OrganizationInput` + `PlanningResult`)であり、これはメモリ内に保持されている。実際の `ApplyAction.Preserve/Update/Insert` を持つ **executable action plan**(`ValidatedLayoutPlan`)は、confirm 後の fresh capture を経て materialize されて初めて確定する。apply は semantic plan を再導出するのではなく、同一ペアから決定的な materializer で per-item action へ変換し、revision 照合 + 完全状態の exact precondition で新鮮さを最終 gate している。不足しているのは一致性ではなく、**UI が消費できる typed preview model と表示名(title)の data path** である。推奨は spec 84 の `inspectRecovery` 先例に倣い、**application-owned の read-only preview seam で materialize 済み `ValidatedLayoutPlan` を「何が適用されるか」の canonical source とし、rationale / warning は同一 semantic plan の `Planned` (`PlanningResult.outcome`) を authoritative として併用、UI 向け `PreviewChange` projection を経由して表示する**構成である(§5-3)。
 
 ## 1. 現行 plan → preview → confirm → apply の source trace
 
@@ -34,7 +34,7 @@
 
 ### 1.3 PlanningResult と writer mutation の対応
 
-`PlanningResult.Planned` (`planning/PlanningResult.kt:12-18`) の構造:
+`Planned` (`planning/PlanningResult.kt:12-21`、`PlanningResult.outcome: PlanningOutcome` の実現値) の構造:
 
 - `placements: List<PlannedPlacement>` — **対象全itemに対して1つ**(`item: ItemId`, `disposition: Moved(PlacementCode) | Preserved(PreserveReason)`, `target: PlacementTarget`)。`PlacementTarget` は `WorkspaceTarget(page, cell, span)` / `Dock(rank)` / `FolderMember(folder, rank)` / `AppPairMember(pair)`。
 - `newPages: List<NewPage>` (`ordinal`, `order`)、`newFolders: List<NewFolder>` (`ordinal`, `profile`, `workspacePlacement`, `members: List<ItemId>`)、`categories`、`warnings`。
@@ -63,14 +63,14 @@ Materializer (`application/actions/OrganizationPlanMaterializer.kt:46-158`) は�
 | item identity | `CapturedItem.target: TargetKey` (`AppKey(component, profile)` / `ShortcutKey(packageName, shortcutId, profile)` / `WidgetKey` / `FolderKey` / `AppPairKey`) | **component/package/shortcut id は内部識別子**。表示名への投影が必要(§2.3) |
 | 新規フォルダの構成メンバー・profile・配置 | `Planned.newFolders[].members/profile/workspacePlacement` | メンバーの ItemId → 表示名投影が必要。**フォルダ名は planner が決めない**(materialize 時の placeholder は "Folder", `OrganizationPlanMaterializer.kt:257`)。カテゴリは `categories: CategoryDecision` から推せるが folder title 契約は未定義 |
 | 新規ページ | `Planned.newPages[]` | ordinal + `PageOrder` → 「末尾にページ追加」として表示可能 |
-| 未配置/警告 | `Rejected.Impossible.unplaced` / `Planned.warnings` | 既存文言あり |
+| 警告 | `Planned.warnings` | 既存文言あり。**未配置 (`Rejected.Impossible.unplaced`) は confirmation preview に到達しない**: coordinator は `Rejected.Impossible` を `State.PlanningRejected` として扱い (`ManualOrganizationRun.kt:273-275`)、`State.Preview` に入らないため `PreviewChange` の対象外 |
 | page 情報 | `snapshot.pages` (`PageId`, `PageOrder`) | `PageId` は不透明。表示は `PageOrder` ソート順の序数(「2ページ目」)を使う |
 | profile | `CapturedItem.profile: ProfileId` (不opaque serial 由来) | **"仕事用/個人" という role 名への正本的投影は存在しない**(#182 も同じ指摘)。category override UI の `CategoryOverrideProfile{PERSONAL, WORK}` (`ui/CategoryOverrideAuthoring.kt:25`) が唯一の先例(UserCache serial → PERSONAL/WORK 判別) |
 
 ### 2.2 confirm 後(materialize 時)に初めて手に入るデータ
 
 - materialize 時 capture の `LayoutState`: per-item の `title: OptionalText`(favorites `TITLE` 列由来、Absent の場合あり)、`intent`、`icon`、widget 状態、lock state、folder/app-pair 構造 (`application/public/LayoutState.kt:117-132`)。
-- `ValidatedLayoutPlan.actions`: per-item の完全な before (`expected`) / after (`intended`) canonical state (`LayoutState.kt:260-276`)。これが A2 gate と writer の実行対象であり、**「何が適用されるか (before/after)」の canonical source** である。ただし actions には rationale が付かない(`ApplyAction.Preserve` は `ref + expected` のみ)ため、**表示用の理由 (`PlacementCode` / `PreserveReason` / `warnings`) は `PlanningResult.Planned` 側が authoritative であり、projection は両者を併用する**(§5-3)。
+- `ValidatedLayoutPlan.actions`: per-item の完全な before (`expected`) / after (`intended`) canonical state (`LayoutState.kt:260-276`)。これが A2 gate と writer の実行対象であり、**「何が適用されるか (before/after)」の canonical source** である。ただし actions には rationale が付かない(`ApplyAction.Preserve` は `ref + expected` のみ)ため、**表示用の理由 (`PlacementCode` / `PreserveReason` / `warnings`) は `Planned` 側が authoritative であり、projection は両者を併用する**(§5-3)。
 
 ### 2.3 表示名の source として何があり、何が欠けているか
 
@@ -115,17 +115,17 @@ Materializer (`application/actions/OrganizationPlanMaterializer.kt:46-158`) は�
 ### Option 3: materialize 済み `ValidatedLayoutPlan` を canonical preview source として再利用する
 
 - 長所: **preview と apply が構成上一致する**(表示対象の action が同一オブジェクト)。title を含む canonical state が手に入る。materializer は既に reservation guard・conservation・整合検証を通過済みの artifact を返す。spec 84 の `RecoveryPreviewProtocol` が「application-owned、writer lease 下の read-only capture、typed result、opaque confirmation、TOCTOU は confirm 時再検証」という同型パターンを実装済みで、安全姿勢の先例として検証されている。#182 の将来 strategy も同じ materializer を通るため**自動的に preview 対応**になる。
-- 短所: coordinator フローが変わり(spec 52 更新が必要)、preview 毎に capture+digest が 1 回増える(`RecoveryPreviewProtocol.inspect` と同コスト、DB read + hash 程度で軽微)。preview 操作が mutation を行わないことを test で証明する必要がある(spec 84 が同証明を既に持つ)。加えて `ValidatedLayoutPlan` 単独では rationale / warning を保持しないため、**projection は semantic plan (`PlanningResult.Planned`) を説明 metadata の source として併用する必要がある**(§5-3)。
+- 短所: coordinator フローが変わり(spec 52 更新が必要)、preview 毎に capture+digest が 1 回増える(`RecoveryPreviewProtocol.inspect` と同コスト、DB read + hash 程度で軽微)。preview 操作が mutation を行わないことを test で証明する必要がある(spec 84 が同証明を既に持つ)。加えて `ValidatedLayoutPlan` 単独では rationale / warning を保持しないため、**projection は semantic plan (`Planned`) を説明 metadata の source として併用する必要がある**(§5-3)。
 
 ### 推奨: Option 3 を骨格に、Option 2 の typed projection を提示層として重ねる
 
-1. application 側に **read-only plan preview operation**(仮称 `inspectPlan(input, result) -> PlanPreviewResult`)を追加する。readiness gate + 非blocking writer lease の下で `captureCurrent` → revision 照合 → `OrganizationPlanMaterializer.materialize` → **materialize 後に actions と `PlanningResult.Planned` を item identity で対応付け、両者を `PreviewChange` 一覧へ純粋投影**(§5-3 の責務分担)し、capture revision に紐付いた opaque `PlanPreviewConfirmation`(および preview 済み `ValidatedLayoutPlan`)を返す。checkpoint・診断・lifecycle 遷移は行わない(spec 84 の禁止事項リストを踏襲)。
+1. application 側に **read-only plan preview operation**(仮称 `inspectPlan(input, result) -> PlanPreviewResult`)を追加する。readiness gate + 非blocking writer lease の下で `captureCurrent` → revision 照合 → `OrganizationPlanMaterializer.materialize` → **materialize 後に actions と `Planned` を item identity で対応付け、両者を `PreviewChange` 一覧へ純粋投影**(§5-3 の責務分担)し、capture revision に紐付いた opaque `PlanPreviewConfirmation`(および preview 済み `ValidatedLayoutPlan`)を返す。checkpoint・診断・lifecycle 遷移は行わない(spec 84 の禁止事項リストを踏襲)。
 2. coordinator は preview 表示時に `inspectPlan` を呼び、`State.Preview(PlanPreviewResult)` を UI へ渡す。confirm は preview 済み plan をそのまま apply に渡す(現行の confirm 時 materialize は preview 側へ移動)。apply の A2 exact precondition は最終 gate として**変更しない** — stale は現行どおり typed zero-write で fail し recapture を要求する。
    - 用語の整理: preview 前に確定しているのは semantic placement plan(`input + result`)であり、executable action plan(`ValidatedLayoutPlan`)は `inspectPlan` 内の materialize で確定する。つまりこの構成では **confirm 前に executable plan へ引き上げる**変更であり、「semantic plan は preview 前に確定 / executable action plan は capture + materialize 後に確定」という区別は現行と同様に保たれる。`State.Preview` が旧 `Summary` と同等の情報を引き続き供給する互換性要件は #194 の acceptance criteria として明記済み。
    - 代替(confirm 時 materialize を維持し preview は投影のみ)も revision 照合 + 決定性により契約上は成立するが、preview と apply の一致を「決定性 + revision 一致」で論じるより同一オブジェクトの方が検証・説明とも単純である。最終選択は後続 spec で行う。
-3. **`PreviewChange` projection は純粋関数 module** (`ValidatedLayoutPlan` + `PlanningResult.Planned` → `List<PreviewChange>` + header counts)。**入力は2つであり、単独の `ValidatedLayoutPlan` では rationale / warning を投影できない**: `ValidatedLayoutPlan` が保持するのは `sourceState / intendedState / actions / newPages / newFolders / ruleVersion / taxonomyVersion` で(`ValidatedLayoutPlan.kt:16-43`)、`ApplyAction` は `ref + expected/intended` のみ(`LayoutState.kt:260-276`)であり、planner の `PlacementCode` / `PreserveReason` / `warnings` は保持しない。したがって責務を次のように分ける:
+3. **`PreviewChange` projection は純粋関数 module** (`ValidatedLayoutPlan` + `Planned` → `List<PreviewChange>` + header counts)。`inspectPlan` の API 境界は `PlanningResult` を受け、`result.outcome` が `Planned` である場合のみ preview に進む (`Rejected` は `State.PlanningRejected` への既存経路)。**入力は2つであり、単独の `ValidatedLayoutPlan` では rationale / warning を投影できない**: `ValidatedLayoutPlan` が保持するのは `sourceState / intendedState / actions / newPages / newFolders / ruleVersion / taxonomyVersion` で(`ValidatedLayoutPlan.kt:16-43`)、`ApplyAction` は `ref + expected/intended` のみ(`LayoutState.kt:260-276`)であり、planner の `PlacementCode` / `PreserveReason` / `warnings` は保持しない。したがって責務を次のように分ける:
    - **action / before-after / executable change の authoritative source は `ValidatedLayoutPlan`**(何が実際に適用されるか)。
-   - **rationale / preserve reason / placement reason / warning の authoritative source は `PlanningResult.Planned`**(なぜそうなったか; `disposition.rationale`、`Planned.warnings`)。将来 #182 の preserved-by-strategy rationale もこちらに付加され、`ValidatedLayoutPlan` 自体へ説明用 metadata を追加する必要はない。
+   - **rationale / preserve reason / placement reason / warning の authoritative source は `Planned`**(なぜそうなったか; `disposition.rationale`、`Planned.warnings`)。将来 #182 の preserved-by-strategy rationale もこちらに付加され、`ValidatedLayoutPlan` 自体へ説明用 metadata を追加する必要はない。
    - 両者は `inspectPlan(input, result)` 内で materialize 後に item identity(`ItemId` / planned folder ordinal)で対応付ける。materializer が同一 `(input, result)` から決定的に actions を導出するため(§3-5)、対応付けは決定的である。
    projection 自体は UI 文言を持たず、Android 型を持たず、planning/application の既存型だけを消費する。ItemId は `RecoveryPreviewSummary` の `pointId` と同じ「opaque 相関キー」としてのみ保持し、表示は名前解決済みの文字列を運ぶ。位置は生 cell を運ばず、**page 序数 + 正規化済みの領域コード + 行序数**(§6.1)を typed 値として運ぶ。領域語彙の文言は strings(`values/` + `values-ja/`)で管理する。
 4. title 解決は §2.3 のとおり canonical capture title を主とし、Absent は kind 由来の総称表現へ fallback。PackageManager label は表示補助として独立 decision。
