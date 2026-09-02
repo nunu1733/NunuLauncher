@@ -45,8 +45,9 @@ start() ──> composeFullOrganization() ──> planner.plan(input) ──> Pl
           ├─ Stale      ──> State.Stale + APPLY_REJECTED(A2, STALE_REVISION)
           ├─ WriterBusy / Concurrent / Unavailable / CAPTURE_FAILED
           │             ──> State.Preview(summary, details=null)  [compatibility fallback]
-          └─ MATERIALIZATION_INVALID
-                        ──> State.PlanningRejected (fail-closed, apply 不可能)
+          └─ OUTCOME_NOT_PLANNED / MATERIALIZATION_INVALID
+                        ──> State.PlanningRejected (fail-closed, apply 不可能,
+                            UI 互換の presentation alias)
 confirm()
    ├─ preview あり ──> apply(preview.plan, runId)   (materialize 省略, A2 が最終 gate)
    └─ preview なし ──> materialize(input, result) ──> apply(plan, runId)   [現行どおり]
@@ -70,7 +71,7 @@ confirm()
 | `application/protocol/LayoutApplicationModule.kt` | `inspectPlan` 追加 + readiness mapping | module-owned operation の composition root |
 | `organizer/ui/ManualOrganizationRun.kt` | `ManualOrganizationApplication.inspectPlan` 追加、`State.Preview(summary, details: PreviewDetails?)` への拡張、`PendingPlan` に preview 済み plan を非公開保持、start / confirm 分岐 (fallback + fail-closed) | preview 表示経路と confirm 対象の変更 (spec scope 3)、UI-facing seam (review Blocking 1) |
 | `tests/unit/.../application/preview/PlanPreviewProjectorTest.kt` (新規) | 投影契約・正規化境界・決定性・Summary 対応一致 | PP-AC-03/04/05/08/12 |
-| `tests/unit/.../application/protocol/PlanPreviewProtocolTest.kt` (新規) | write-free 証明・全 result path | PP-AC-02/03/06 |
+| `tests/unit/.../application/protocol/PlanPreviewProtocolTest.kt` (新規) | write-free 証明・全 result path・serialization contention (P2) | PP-AC-02/03/06/13 |
 | `tests/unit/.../ui/ManualOrganizationRunTest.kt` (拡張) | preview 経路 / fallback / fail-closed / 同一 plan インスタンス適用 / details 公開・plan 非露出 | PP-AC-04/07/11 |
 | `specs/52-manual-full-organization-vertical-slice/spec.md` | Preview and details / Confirmation 拡張 + scenario 1行 | spec scope 4 |
 | `docs/engineering/organizer-diagnostics.md` | title / PreviewChange 流出禁止の明文化 | spec scope 5 |
@@ -88,14 +89,14 @@ confirm()
 
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
-| PP-AC-02/03/06 | `PlanPreviewProtocolTest` (write-free counters、determinism、stale) | `./gradlew :lawnchair:testDebugUnitTest --tests "app.lawnchair.organizer.application.protocol.PlanPreviewProtocolTest"` |
+| PP-AC-02/03/06/13 | `PlanPreviewProtocolTest` (write-free counters、determinism、stale、serializationContention) | `./gradlew :lawnchair:testDebugUnitTest --tests "app.lawnchair.organizer.application.protocol.PlanPreviewProtocolTest"` |
 | PP-AC-03/04/05/08/10 | `PlanPreviewProjectorTest` (join / normalization / boundary / synthetic identity) | 同上 `--tests "app.lawnchair.organizer.application.preview.PlanPreviewProjectorTest"` |
 | PP-AC-04/07 | `ManualOrganizationRunTest` 拡張 (同一 plan インスタンス、fallback、fail-closed、`details` 公開と plan 非露出、Summary 供給維持) | 同上 `--tests "app.lawnchair.organizer.ui.ManualOrganizationRunTest"` |
-| PP-AC-11 | `ManualOrganizationRunTest` (MATERIALIZATION_INVALID 注入 → planning rejection、materialize/apply 呼出し 0) | 同上 `--tests "app.lawnchair.organizer.ui.ManualOrganizationRunTest"` |
+| PP-AC-11 | `ManualOrganizationRunTest` (`OUTCOME_NOT_PLANNED` / `MATERIALIZATION_INVALID` 注入 → planning rejection、materialize/apply 呼出し 0) | 同上 `--tests "app.lawnchair.organizer.ui.ManualOrganizationRunTest"` |
 | PP-AC-12 | `PlanPreviewProjectorTest` または planner contract test (fixture corpus で Summary ≡ PreviewCounts) | 同上 `--tests "app.lawnchair.organizer.application.preview.PlanPreviewProjectorTest"` |
 | 全体 | organizer JVM test 全体 + formatting + debug build | `./gradlew spotlessCheck` / `./gradlew assembleLawnWithQuickstepGithubDebug` |
 
-含めるべき観点: unit/contract (projector・protocol・coordinator)、property (決定性、band 正規化の境界値、fixture corpus での v1 planner 対応観測)、failure injection (writer busy、mutex 競合、revision 不一致、capture RuntimeException、join 不整合)。DB/integration・UI は本 Issue の変更外 (zero-write と UI 無変更を contract test で裏取り)。
+含めるべき観点: unit/contract (projector・protocol・coordinator)、property (決定性、band 正規化の境界値、fixture corpus での v1 planner 対応観測)、failure injection (serialization contention、writer busy、mutex 競合、revision 不一致、capture RuntimeException、join 不整合、Rejected outcome)。DB/integration・UI は本 Issue の変更外 (zero-write と UI 無変更を contract test で裏取り)。
 
 ## Documentation updates
 

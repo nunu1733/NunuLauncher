@@ -101,10 +101,11 @@ PlanPreviewUnavailable =
 |---|---|---|---|
 | P0 | Require completed successful startup reconciliation (readiness gate)。 | `Unavailable(RECONCILIATION_PENDING)` before readiness; `Unavailable(RECONCILIATION_FAILED)` after a failed gate。 | None. |
 | P1 | module RunMutex を non-blocking で取得。 | `Concurrent` on contention。 | None. |
-| P2 | 既存 organizer writer lease (`WriterKind.ORGANIZER`) を non-blocking で取得。lease は短命で、1回の authoritative capture のみを許す。 | `WriterBusy` on lease contention。 | None. |
-| P3 | lease の下で `captureCurrent` を1回実行し、lease と mutex を `finally` で解放する。capture failure (RuntimeException) は `NotPlannable(CAPTURE_FAILED)` へ落とす。 | — | None. |
-| P4 | `capture.revision != input.snapshot.revision` を検査。 | `Stale`。 | None. |
-| P5 | `result.outcome` が `Planned` であることを検査し、`OrganizationPlanMaterializer.materialize(input, result, capture.layoutState)` を実行、`Ready` なら純粋 projection を実行して `Previewed` を返す。 | `NotPlannable(OUTCOME_NOT_PLANNED)` / `NotPlannable(MATERIALIZATION_INVALID)`。 | None. |
+| P2 | serialization contention check (fault injection seam; spec 84 `RecoveryPreviewProtocol` と同一位置 — mutex 取得後、writer lease 取得前)。 | `WriterBusy` on `faults.serializationContention()`。 | None. |
+| P3 | 既存 organizer writer lease (`WriterKind.ORGANIZER`) を non-blocking で取得。lease は短命で、1回の authoritative capture のみを許す。 | `WriterBusy` on lease contention。 | None. |
+| P4 | lease の下で `captureCurrent` を1回実行し、lease と mutex を `finally` で解放する。capture failure (RuntimeException) は `NotPlannable(CAPTURE_FAILED)` へ落とす。 | — | None. |
+| P5 | `capture.revision != input.snapshot.revision` を検査。 | `Stale`。 | None. |
+| P6 | `result.outcome` が `Planned` であることを検査し、`OrganizationPlanMaterializer.materialize(input, result, capture.layoutState)` を実行、`Ready` なら純粋 projection を実行して `Previewed` を返す。 | `NotPlannable(OUTCOME_NOT_PLANNED)` / `NotPlannable(MATERIALIZATION_INVALID)`。 | None. |
 
 lease 保持中に `checkpoint`、`markApplying`、`markRestoring`、`advance`、`pruneUnused`、`runRetention`、`applyWriteSet`、`requestCorrelatedReload`、diagnostic projection を呼んではならない。lease を返却後に保持、転送、queue してもならない。**すべての result path で checkpoint、recovery store 書込み、layout 書込み、model reload、lifecycle 遷移、diagnostic emit を行わない** (spec 84 の禁止事項を踏襲し、test で証明する)。lock state の個別検査は不要である — revision は canonical state 全体の digest であり、lock state を含む全 canonical field が planning snapshot と一致していることを `Stale` 検査が包含する。
 
@@ -213,8 +214,8 @@ PreviewCounts {
 - **start**: `Planned` かつ非空のとき、現行の `PendingPlan` 生成と `State.Preview(summary)` 遷移の前に `inspectPlan(input, result)` を呼ぶ。
   - `Previewed` → `PendingPlan` が preview 済み plan を非公開で保持し、`State.Preview(summary, details = preview.details)` へ遷移する。`PREVIEWED` run event は現行どおり発行する。
   - `Stale` → `State.Stale` へ遷移し、現行の confirm 時 materialize 失敗と同じ `APPLY_REJECTED` (A2, `STALE_REVISION`) run event を coordinator が発行する。書込みなし。MFO-06 の契約 (旧 plan 破棄、recapture 要求) は変わらない。
-  - `WriterBusy` / `Concurrent` / `Unavailable` / `NotPlannable(CAPTURE_FAILED|OUTCOME_NOT_PLANNED)` → **compatibility fallback**: `State.Preview(summary, details = null)` へ遷移し、confirm が従来どおり materialize する。run を失敗させず、UI の件数サマリーも壊さない。新 state / 新 diagnostics は導入しない。
-  - `NotPlannable(MATERIALIZATION_INVALID)` → **fail-closed**: 同一 `(input, result)` からの materialize / join が契約違反であり、preview と confirm 時 materialize の両方が同じ Invalid に落ちることが既知であるため、確認なし apply を試みる意味がない。`State.PlanningRejected(PlanningFailureKind.IMPOSSIBLE, summary)` (既存 state、新 diagnostics なし) へ遷移して run を終了し、recapture を要求する。UI 文言の再利用は #195 側で必要なら別途行う。
+  - `WriterBusy` / `Concurrent` / `Unavailable` / `NotPlannable(CAPTURE_FAILED)` → **compatibility fallback**: `State.Preview(summary, details = null)` へ遷移し、confirm が従来どおり materialize する。run を失敗させず、UI の件数サマリーも壊さない。新 state / 新 diagnostics は導入しない。
+  - `NotPlannable(OUTCOME_NOT_PLANNED | MATERIALIZATION_INVALID)` → **fail-closed**: いずれも plan / projection の契約違反であり、confirm 時に再試行して成功する余地がない (`OUTCOME_NOT_PLANNED` は `result.outcome` が `Rejected` のケースであり、materializer は `Planned` 以外を必ず `Invalid` にする。`MATERIALIZATION_INVALID` は materialize / join の不整合)。count-only preview へ落として従来 materialize / apply を試みる扱いは行わない。`State.PlanningRejected(PlanningFailureKind.IMPOSSIBLE, summary)` (既存 state、新 diagnostics なし) へ遷移して run を終了し、recapture を要求する。**この再利用は UI 互換の presentation alias であり、planner の `Rejected.Impossible` を意味しない** (planner は既に `Planned` を返している)。内部では coordinator がこの terminal を区別して扱い、新 state / 新 diagnostics は導入しない。UI 文言の再利用は #195 側で必要なら別途行う。
 - **confirm**: `PendingPlan` が preview 済み plan を保持する場合、**preview 済み plan をそのまま** `application.apply(plan, runId)` へ渡し、confirm 時 materialize を省略する。保持しない場合 (fallback) は現行の materialize 経路をそのまま使う。apply の A2 exact precondition gate は変更しない — preview→confirm 間に layout が変われば、apply は現行どおり typed zero-write で fail (`STALE_REVISION` / `EXACT_PRECONDITION_FAILED`) し、`State.Stale` へ遷移して recapture を要求する。
 - cancel / dismissal / process recreation の契約は現行どおり。preview 済み plan は process-local であり再現されない (opaque confirmation と同じ規約)。
 - coordinator は `inspectPlan` の結果を diagnostics へ投影しない。`PlanningProjection` は件数のみのまま。
@@ -274,11 +275,11 @@ And 件数サマリー UI は regression なく動作し、`details == null` に
 
 ### Scenario: Plan / projection integrity violation fails closed
 
-Given materializer が `Invalid` を返した、または projection の item identity join が不整合を検出した,
+Given materializer が `Invalid` を返した、projection の item identity join が不整合を検出した、または `result.outcome` が `Rejected` であった,
 
-When `inspectPlan` が `NotPlannable(MATERIALIZATION_INVALID)` を返した,
+When `inspectPlan` が `NotPlannable(OUTCOME_NOT_PLANNED | MATERIALIZATION_INVALID)` を返した,
 
-Then coordinator は既存の planning rejection state へ遷移して run を終了し、confirm へ進めない,
+Then coordinator は既存の planning rejection state (UI 互換の presentation alias; planner の `Impossible` を意味しない) へ遷移して run を終了し、confirm へ進めない,
 
 And count-only preview への fallback も confirm 時 materialize の再試行も行われず、いかなる書込みも発生しない。
 
@@ -330,7 +331,7 @@ And すべての action / before-after は `ValidatedLayoutPlan` に、すべて
 | PP-AC-08 | page 序数 / 行帯 × 列帯 / start cell 基準 / 帯内微調整判定 / dock / folder / label fallback の正規化規約が、境界値を含む unit test で検証される。 |
 | PP-AC-09 | spec 52 の拡張、`CONTEXT.md` / `DESIGN.md` の影響確認・更新、organizer-diagnostics.md の流出禁止明文化が同じ PR で完了する。 |
 | PP-AC-10 | test fixture が実 title を含まない (synthetic identity のみ)。 |
-| PP-AC-11 | `NotPlannable(MATERIALIZATION_INVALID)` が fail-closed であることを coordinator test で検証する: count-only preview への fallback も confirm 時 materialize の再試行も行われず、run は planning rejection で終了して apply に到達しない。 |
+| PP-AC-11 | `NotPlannable(OUTCOME_NOT_PLANNED \| MATERIALIZATION_INVALID)` が fail-closed であることを coordinator test で検証する: count-only preview への fallback も confirm 時 materialize の再試行も行われず、run は planning rejection で終了して apply に到達しない。 |
 | PP-AC-12 | v1 planner の fixture corpus で、同一 `(input, result)` から得られる `Summary` と `PreviewCounts` の対応 (moved / preserved / newFolder / newPage / warnings) が一致することを contract / property test で保証する (#195 がヘッダ truth を `PreviewCounts` へ統一する前提)。 |
 
 ## Test oracle
@@ -347,8 +348,10 @@ And すべての action / before-after は `ValidatedLayoutPlan` に、すべて
 | PP-AC-08 | `PlanPreviewProjectorTest`: band 境界値 (`floor(coord*3/dim)`、clamp)、start cell 基準 (span>1)、同帯判定、page 序数 (新規 page 含む)、`PreviewLabel` fallback、dock / folder / app pair 位置。 |
 | PP-AC-09 | PR diff review (spec 52 / CONTEXT.md / DESIGN.md / organizer-diagnostics.md)。 |
 | PP-AC-10 | fixture review + synthetic identity のみの fixture corpus による property test。 |
-| PP-AC-11 | `ManualOrganizationRunTest`: `NotPlannable(MATERIALIZATION_INVALID)` 注入時に planning rejection で run が終了し、`materialize` / `apply` が呼ばれないこと (fake counter 主張)。 |
+| PP-AC-11 | `ManualOrganizationRunTest`: fail-closed 注入 (materializer Invalid / join 不整合 / `Rejected` outcome) で planning rejection 終了、`materialize` / `apply` 呼出し 0。 |
 | PP-AC-12 | planner fixture corpus に対する contract / property test: `Summary` と `PreviewCounts` の category 別一致。 |
+| PP-AC-13 | `PlanPreviewProtocolTest`: `RecordingFaultInjector.serializationContention` を有効化し、`WriterBusy`・`writer.capturedSnapshots == 0`・zero mutation を主張。 |
+| PP-AC-13 | `PlanPreviewProtocolTest`: `faults.serializationContention()` が mutex 取得後・writer lease 取得前の位置で `WriterBusy` を返すこと (capture counter 0、write-free)。 |
 
 ## Open questions
 
@@ -357,7 +360,7 @@ None。Stage A で決定済み:
 1. opaque confirmation capability は導入しない — preview 済み `ValidatedLayoutPlan` 自身が confirm の適用対象であり、A2 exact precondition が TOCTOU の最終 gate である。
 2. UI-facing seam は `State.Preview(summary, details: PreviewDetails?)` の optional `details` とし、executable plan は coordinator 非公開のまま UI へ露出しない (レビュー Blocking 1)。
 3. 環境的 preview 失敗 (`WriterBusy` / `Concurrent` / `Unavailable` / `CAPTURE_FAILED`) は #194 単体の compatibility fallback (`details = null` + confirm 時 materialize) とし、`details == null` の confirm 可否を恒久化しない — #195 の spec が明示的に決定する (レビュー Blocking 2)。
-4. `NotPlannable(MATERIALIZATION_INVALID)` (plan / projection 整合性の契約違反) は fail-closed であり、fallback せず planning rejection で run を終了する (レビュー Blocking 2)。
+4. `NotPlannable(OUTCOME_NOT_PLANNED | MATERIALIZATION_INVALID)` (plan / projection 整合性の契約違反) は fail-closed であり、fallback せず planning rejection で run を終了する (レビュー Blocking 2、再レビュー Medium)。`PlanningRejected(IMPOSSIBLE)` への写像は UI 互換の presentation alias であり planner の `Impossible` を意味しない (再レビュー Low)。
 5. ヘッダ件数の truth は #194 単体では `Summary`、concrete details を描画する UI では `PreviewCounts` とし、v1 planner では両者一致を test で保証する (レビュー Medium)。
 6. `risk: layout-data` label を付ける (coordinator の confirm / apply 前段フローと spec 52 を触るため)。high-risk independent-evidence gate (CI `final-status` + `docs/assessment/pr-194-*.md`) を満たす。
 7. profile role 表示名投影は #182 / #195 側の将来 decision とし、本契約は露出しない。
@@ -369,6 +372,7 @@ None。Stage A で決定済み:
 
 - 2026-09-02: Drafted for Issue #194。production 実装は spec / plan 承認まで停止。
 - 2026-09-02: Review revision (owner review @ `e9fe59d9f8`): `State.Preview` への optional `PreviewDetails` 公開 seam を追加し (Blocking 1)、preview 失敗時の扱いを「環境的失敗 = #194 限定の compatibility fallback (`details = null`)」「契約違反 = fail-closed」へ分離した (Blocking 2)。ヘッダ件数の truth 分担 (`Summary` / `PreviewCounts`) を確定し、v1 一致保証を AC 化した (Medium)。
+- 2026-09-02: Second review revision (owner review @ `6f4037ea4e`): `OUTCOME_NOT_PLANNED` を compatibility fallback から fail-closed 側へ移動 (Medium)。`PlanningRejected(IMPOSSIBLE)` 写像を presentation alias として明記 (Low)。protocol ordering に serialization contention check (P2) を追加し PP-AC-13 を新設 (Low)。#195 本文への引き継ぎ追記は follow-up として実施 (issue tracker 側)。
 
 ## References
 
