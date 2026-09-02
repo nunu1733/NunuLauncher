@@ -77,14 +77,18 @@ demonstrated whenever `Applied`, `Recovered`, or `Restored` is returned.
   the layout state. The projection's required fields are pinned in this
   spec: item identity, container, placement, item type, folder membership,
   widget identity (provider + widget id) and bind state, profile identity,
-  lock placement occupancy, and the **semantic launch identity** per item
+  lock placement occupancy (i.e. the placements of locked items are verified
+  via the placement and structure fields; the per-item organizer lock flag
+  itself is not model-representable — see ADR-0004 — and is excluded from the
+  model leg; the DB leg retains it in full canonical equality and in the
+  recovery manifest), and the **semantic launch identity** per item
   kind — application component + profile for app icons, shortcut package +
   shortcut id + profile for deep shortcuts, and the faithful launch identity
   the model exposes for legacy shortcut kinds. Fields the model does not
   represent (raw icon bytes, persisted modification timestamps, device
-  capabilities, profile inventory, reserved regions) are verified solely by
-  the unchanged DB leg, which keeps full canonical equality with the
-  intended/checkpoint-pre state.
+  capabilities, profile inventory, reserved regions, organizer lock state,
+  raw folder ranks) are verified solely by the unchanged DB leg, which keeps
+  full canonical equality with the intended/checkpoint-pre state.
 - When model verification succeeds, the authoritative-state classification
   may report the `*_DB_AND_MODEL` variants instead of the `*_MODEL_UNVERIFIED`
   variants; when model verification fails, the `*_MODEL_UNVERIFIED` variants
