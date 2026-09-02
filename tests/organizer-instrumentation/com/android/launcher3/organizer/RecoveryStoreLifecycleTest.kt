@@ -22,6 +22,7 @@ import android.database.sqlite.SQLiteDatabase
 import java.io.File
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -657,6 +658,84 @@ class RecoveryStoreLifecycleTest {
         }
     }
 
+    // --- Issue #178: fault injection on the quarantine transaction itself ---
+
+    @Test
+    fun quarantineFaultInjectionRollsBackBeforeCommitAndKeepsCanonicalTombstoneAfterCommit() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        for (timing in listOf(FaultTiming.BEFORE, FaultTiming.AFTER)) {
+            deleteRecoveryArtifacts(context)
+            val store = RecoveryStore(
+                context,
+                { 1000L },
+                ThrowingFaultPort(RecoveryStoreFaultPort.Phase.TOMBSTONE, timing),
+            )
+            prepareForMutation(store)
+            val pointId = createCheckpointed(store)
+            val chunksBefore = chunkRowCountFor(context, pointId)
+            check(chunksBefore > 0)
+
+            // The reconciliation issuer binds once per store instance, so the
+            // quarantining session opens on a fresh instance that carries the
+            // same fault port — injecting the exact quarantine transaction
+            // (writeTombstone → child-first deletePoint), not the shared
+            // retention/prune callers.
+            val sessionStore = RecoveryStore(
+                context,
+                { 2000L },
+                ThrowingFaultPort(RecoveryStoreFaultPort.Phase.TOMBSTONE, timing),
+            )
+            val mutex = RunMutex()
+            val runId = RunId("cccccccccccccccccccccccccccccccc")
+            assertTrue(mutex.tryAcquire(runId))
+            val lease = requireNotNull(mutex.issueReconciliationLease(runId))
+            val issuer = requireNotNull(sessionStore.bindReconciliationIssuer(mutex))
+            val session = requireNotNull(issuer.openSession(lease))
+            val quarantined = try {
+                session.quarantineUnmutated(pointId, LifecycleState.READY)
+            } finally {
+                session.close()
+                mutex.release(runId)
+            }
+            assertFalse("$timing quarantine must report the fault", quarantined)
+
+            val reopened = RecoveryStore(context) { 3000L }
+            if (timing == FaultTiming.BEFORE) {
+                // The transaction rolled back: the record and its chunks stay
+                // stored and no tombstone was written.
+                assertEquals(
+                    "$timing lifecycle",
+                    LifecycleState.READY,
+                    lifecycleOf(reopened, pointId),
+                )
+                assertNull("$timing tombstone", reopened.readTombstone(pointId))
+                assertEquals("$timing chunks", chunksBefore, chunkRowCountFor(context, pointId))
+            } else {
+                // The commit succeeded before the ambiguous fault: the
+                // QUARANTINED tombstone (canonical reason 6) survives and the
+                // child-first chunk deletion committed with the record.
+                assertEquals(
+                    "$timing record",
+                    RecoveryStorePort.RecordRead.Missing,
+                    reopened.readRecord(pointId),
+                )
+                assertEquals(
+                    "$timing tombstone reason",
+                    RecoveryStorePort.TombstoneReason.QUARANTINED,
+                    reopened.readTombstone(pointId)?.reason,
+                )
+                assertEquals("$timing chunks", 0, chunkRowCountFor(context, pointId))
+            }
+            SQLiteDatabase.openDatabase(
+                context.getDatabasePath(RecoveryDbSchema.FILE_NAME).absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READONLY,
+            ).use { db ->
+                assertEquals(0L, RecoveryManifestChunks.countOrphanChunks(db))
+            }
+        }
+    }
+
     private fun preCommitCases(): List<FaultCase> = listOf(
         FaultCase(
             name = "CREATING",
@@ -1097,6 +1176,20 @@ class RecoveryStoreLifecycleTest {
     private fun lifecycleOf(store: RecoveryStore, pointId: RecoveryPointId): LifecycleState? = (
         store.readRecord(pointId) as? RecoveryStorePort.RecordRead.Readable
         )?.record?.lifecycle
+
+    private fun chunkRowCountFor(context: Context, pointId: RecoveryPointId): Int = SQLiteDatabase
+        .openDatabase(
+            context.getDatabasePath(RecoveryDbSchema.FILE_NAME).absolutePath,
+            null,
+            SQLiteDatabase.OPEN_READONLY,
+        )
+        .use { db ->
+            android.database.DatabaseUtils.longForQuery(
+                db,
+                "SELECT COUNT(*) FROM ${RecoveryDbSchema.TABLE_MANIFEST_CHUNKS} WHERE point_id = ?",
+                arrayOf(pointId.value),
+            ).toInt()
+        }
 
     private fun prepareForMutation(store: RecoveryStore) {
         val mutex = RunMutex()
