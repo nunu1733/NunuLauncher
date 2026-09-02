@@ -71,6 +71,23 @@ internal fun canonicalLegacyLaunchUri(intent: Intent): String {
  *
  * Called from `LauncherModel`'s completion path; any capture failure returns
  * null so the reload is failed closed instead of reported complete.
+ *
+ * Thread confinement: this capture runs on MODEL_EXECUTOR inside the
+ * #150 terminal-boundary completion (see `LauncherModel.java`), where
+ * `BgDataModel` mutation is model-thread-confined. The `synchronized(bgDataModel)`
+ * block (lines 93–100) is defense-in-depth; subsequent reads of
+ * `bgDataModel.collections` (lines 104–106) and `bgDataModel.lastLoadId` (line 113)
+ * are safe under this confinement. Any concurrent-shape surprise would throw
+ * into the `catch (Throwable)` fail-closed path (lines 55–57), never a false
+ * success. See Issue #181 item 3.
+ *
+ * Test coverage note: `ModelProjectionCodec` has no JVM unit test (it requires
+ * Android `BgDataModel`/`UserCache`). Per-kind projection fidelity (folder,
+ * widget, app-pair, dock) at the fake-seam level rests on the real-model
+ * instrumentation lanes (`RealAdapterRowMatrixInstrumentationTest`,
+ * `ProductionPublicSeamInstrumentationTest`), which pass the model leg
+ * end-to-end on-device — a misprojection of any kind present in the workspace
+ * fails verification. This is a documented waiver per Issue #181 item 1.
  */
 internal object ModelProjectionCodec {
 
