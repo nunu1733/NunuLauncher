@@ -1,6 +1,6 @@
 ---
 issue: "#194"
-status: draft
+status: accepted
 requirements: []
 risk:
   - layout-data
@@ -373,6 +373,7 @@ None。Stage A で決定済み:
 - 2026-09-02: Review revision (owner review @ `e9fe59d9f8`): `State.Preview` への optional `PreviewDetails` 公開 seam を追加し (Blocking 1)、preview 失敗時の扱いを「環境的失敗 = #194 限定の compatibility fallback (`details = null`)」「契約違反 = fail-closed」へ分離した (Blocking 2)。ヘッダ件数の truth 分担 (`Summary` / `PreviewCounts`) を確定し、v1 一致保証を AC 化した (Medium)。
 - 2026-09-02: Second review revision (owner review @ `6f4037ea4e`): `OUTCOME_NOT_PLANNED` を compatibility fallback から fail-closed 側へ移動 (Medium)。`PlanningRejected(IMPOSSIBLE)` 写像を presentation alias として明記 (Low)。protocol ordering に serialization contention check (P2) を追加し PP-AC-13 を新設 (Low)。#195 本文への引き継ぎ追記は follow-up として実施 (issue tracker 側)。
 - 2026-09-02: Third review revision (owner review @ `7f254e5763`): Scope の旧 fallback 記述を環境的失敗 / 契約違反の分離へ揃え、presentation alias の説明に defensive path としての位置づけを追記 (Medium)。test oracle の重複した PP-AC-13 行を統合 (Low)。
+- 2026-09-02: Accepted by the Issue #194 owner at head `8ac2dec402`; implementation may begin within this specification and plan.
 
 ## References
 

@@ -36,6 +36,10 @@ _Avoid_: Layout（現在状態と混同する場合）、Result
 snapshot取得からplan作成、検証、確認、適用、結果検証までの一連の試行。
 _Avoid_: Task、Job
 
+**plan preview (プランプレビュー)**:
+確認より前に、planning snapshot と同じ revision を read-only に再 capture し、executable action plan を materialize して semantic plan の rationale と対応付けた、process-local な変更一覧。書込み、checkpoint、recovery 操作を行わない。
+_Avoid_: visual preview (UI scope とは区別)、Backup、Undo
+
 **全体整理 (Full Organization)**:
 対象集合全体について新しいレイアウトplanを作る整理run。
 _Avoid_: Reset、洗い替え
