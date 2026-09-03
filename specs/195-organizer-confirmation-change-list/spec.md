@@ -79,7 +79,7 @@ assessment §6.1 の residual risk に対し、本 spec は次の表現契約を
 ### D6: truncation と grouping の規約
 
 - group の順序と件数: 移動 (`movedCount`) → 新規フォルダ (`newFolderCount`) → 新規ページ (`newPageCount`) → 保持 (`preservedCount`) → 警告 (§D2 例外により `ItemWarningChange` 行数)。空の group は見出しごと省略する。group 内の行順は projection の決定的順序 (`plan.actions` 順等) をそのまま使う (re-sort しない)。
-- truncation は group ごとに先頭 5 件。展開 / 折りたたみは group ごとの独立 UI state (初期値: 折りたたみ)。「すべて表示 (N件)」の N は group の全体件数 (`PreviewCounts`)。
+- truncation は group ごとに先頭 5 件。展開 / 折りたたみは group ごとの独立 UI state (初期値: 折りたたみ)。「すべて表示 (N件)」の N は各 group の表示 truth に従う (moved / new folder / new page / preserved は `PreviewCounts` 由来の件数、warning group のみ §D2 の例外により `ItemWarningChange` 行数)。
 - truncation は表示上の省略であり、confirm 対象 (preview 済み plan) には一切影響しない。
 
 ## Behavior scenarios
@@ -192,6 +192,7 @@ None。spec 時点で確定した判断は §Design decisions (D1–D6) のと�
 
 - 2026-09-03: Drafted for Issue #195。#194 spec が委ねた 4 項目の契約判断 (D1–D4) と assessment §6.1 の residual risk 判定 (D5)、truncation 規約 (D6) を確定して作成。Issue owner の実施指示に基づき受理し、owner review は実装 PR で継続する。
 - 2026-09-03: Review revision (owner review @ PR #198): warning group の見出し / 展開件数の truth を `ItemWarningChange` 行数へ分離し、global / multi-item warning は header count のみへ明確化 (Medium, §D2/§D6)。a11y 契約へ展開後の展開 action focus 保持を明記し、AC-5 の traversal evidence を実際の keyboard focus 移動で検証するよう更新 (Blocking)。
+- 2026-09-03: Re-review fix (owner re-review @ PR #198): docs-only の整合性修正 — §D6 の展開件数 N の記述、spec 52 の Preview and details / MFO-17 を §D2 の warning 例外と揃えた。実装・test への変更はない。
 
 ## References
 
