@@ -1,0 +1,89 @@
+contract: ux-visual-review/v1
+report_type: observer
+status: observed
+report_id: issue-199-case-06-observer
+provenance:
+  contract_revision: sha256:97459d25bbb3cb2e8402a24d14ed1e8f529299771572129889c0f51dffb21da3
+  subject:
+    revision: synthetic-ui-fixture-v1
+    build_ref: repo-native-svg-rendered-png
+  runtime:
+    client: codex
+    client_version: 0.151.0
+    provider: openai
+    model: gpt-5.6-luna
+    protocol: codex
+    reasoning: xhigh
+    permission_mode: danger-full-access
+    tool_surface:
+      file_read: allowed
+      file_write: allowed
+      shell: allowed
+      network: allowed
+      external_side_effects: allowed
+    tools_used:
+      - exec_command
+      - view_image
+  evidence_manifest_ref: docs/assessment/evidence/issue-199/case-06/observer-manifest.yaml
+scenario: Understand the first screen shown for workspace guidance and decide what to do next.
+isolation:
+  mode: limited
+  limitations:
+    - The runtime exposed unrestricted filesystem, shell, network, and external-side-effect capabilities; observer-hidden materials were not accessed.
+    - Only the supplied static frame was reviewed; interactions, transitions, and content beyond the captured viewport cannot be determined.
+evidence:
+  - id: frame-01
+    apparent_state: An introductory workspace guidance screen containing a setup checklist.
+observations:
+  - evidence_refs:
+      - frame-01
+    visible: >-
+      First attention is drawn to the large heading “A clearer next step” near the
+      upper left, followed by the subtitle “Review the guidance below when you are ready.”
+    inference: >-
+      The screen appears to orient the user before they proceed with workspace-related
+      guidance.
+  - evidence_refs:
+      - frame-01
+    visible: >-
+      A large white rounded card contains the title “Setup checklist,” the subtitle
+      “Example notes for this workspace,” and two numbered entries. The first shows a
+      blue example address; the second shows a blue monospaced record path split across
+      two lines.
+    inference: >-
+      A guessed primary action is to read the checklist and follow one of the numbered
+      entries. The blue address and path look link-like or copyable, but their
+      interactivity is not established by the still image.
+  - evidence_refs:
+      - frame-01
+    visible: >-
+      The top bar shows a mint circular plus symbol and “Workspace” on the left, with
+      “09:41” on the right. Below it, the heading and subtitle precede the bordered
+      checklist card. A blue vertical accent marks the card’s left edge, and a pale
+      yellow note box groups the explanatory note near the bottom of the visible card.
+    inference: >-
+      The apparent scan path is app identity, page heading, short instruction, then
+      checklist title and numbered content, ending with the note.
+  - evidence_refs:
+      - frame-01
+    visible: >-
+      The plus symbol, blue address, and blue path are visually distinct from nearby
+      text. No conventional button label or separate call-to-action control is visible
+      in the captured area.
+    inference: >-
+      The plus symbol may indicate an add or create action, while the blue strings may
+      invite interaction; the exact relationships and action priority remain ambiguous.
+  - evidence_refs:
+      - frame-01
+    visible: >-
+      The card uses clear title, subtitle, numbered rows, monospaced strings, and a
+      highlighted note box. The card continues to the bottom edge of the square frame.
+    inference: >-
+      The content is grouped as a single checklist, but any lower content or control
+      beyond the captured viewport is unknown.
+sequence_changes: []
+uncertainties:
+  - The still image does not establish which visible elements are interactive.
+  - The lower portion of the card beyond the frame is not observable.
+  - No transition or response after an action is available.
+missing_evidence: []

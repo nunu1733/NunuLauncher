@@ -1,0 +1,75 @@
+contract: ux-visual-review/v1
+report_type: critic
+status: reviewed
+report_id: issue-199-case-03-critic-frame-01
+provenance:
+  contract_revision: "sha256:97459d25bbb3cb2e8402a24d14ed1e8f529299771572129889c0f51dffb21da3"
+  subject:
+    revision: 8104ce2af3dd9e26f7ddcb2ea339369e5b7b64b9
+    build_ref: "retained Issue #123 after-capture"
+  runtime:
+    client: codex
+    client_version: 0.151.0
+    provider: openai
+    model: gpt-5.6-luna
+    protocol: codex
+    reasoning: xhigh
+    permission_mode: danger-full-access
+    tool_surface:
+      file_read: allowed
+      file_write: allowed
+      shell: allowed
+      network: allowed
+      external_side_effects: allowed
+    tools_used:
+      - functions.exec
+      - exec_command
+      - view_image
+      - apply_patch
+  evidence_manifest_ref: docs/assessment/evidence/issue-199/case-03/observer-manifest.yaml
+scenario: Understand an unsolicited home-screen organization suggestion and choose whether to review it now, defer it, or dismiss it.
+evidence_refs:
+  - frame-01
+observer_report_ref: docs/assessment/evidence/issue-199/case-03/observer.yaml
+critic_context_ref: docs/assessment/evidence/issue-199/case-03/critic-context.yaml
+findings:
+  - id: UVR-001
+    category: mental-model-language
+    observation: "“LATER” and “SKIP” are presented as separate, equally prominent controls, but no visible copy explains how their outcomes differ."
+    evidence_refs:
+      - frame-01
+    user_impact: "A user deciding whether to review now, defer, or dismiss may hesitate or choose the wrong non-review path because each label's consequence is not predictable."
+    severity: moderate
+    confidence: medium
+    recommendation: "Make the two non-review choices communicate distinct, predictable outcomes before the user selects either one."
+    additional_validation:
+      - "Show the immediate result of each choice or validate revised wording with first-time users to confirm the distinction is understood."
+  - id: UVR-002
+    category: visual-hierarchy
+    observation: "All three controls use the same stacked rectangular treatment and similar text styling; the route to review the proposal is not visually distinguished from the alternatives."
+    evidence_refs:
+      - frame-01
+    user_impact: "The user may not immediately recognize how to inspect the proposal, slowing or weakening the decision about whether to review it."
+    severity: moderate
+    confidence: medium
+    recommendation: "Give the proceed-to-review choice clear, proportionate visual emphasis while keeping defer and dismiss options visibly secondary."
+    additional_validation:
+      - "Check the hierarchy with first-time viewers asked to identify how to inspect the proposal."
+deterministic_deferrals:
+  - surface: contrast
+    visible_symptom: "The button labels appear very faint against pale gray fills in frame-01."
+    required_check: "Measure rendered text/background contrast for each button state using authoritative UI color tokens and platform rendering."
+  - surface: touch-target
+    required_check: "Measure effective touch targets and inter-control spacing on the target Android profile."
+  - surface: functional-state
+    visible_symptom: "Only the pre-choice screen is retained; no post-selection response is shown."
+    required_check: "Exercise each choice and verify resulting state, persistence, and that no layout mutation occurs before preview confirmation."
+limitations:
+  - "Only the root entry frame is provided; post-selection states and feedback continuity are not assessable."
+  - "The still image cannot establish exact contrast, target size, accessibility semantics, focus or traversal behavior, or functional transitions."
+calibration:
+  baseline_ref: withheld until calibration adjudication
+  agreement: []
+  false_positive_candidates: []
+  missed_baseline_findings: []
+  severity_drift: []

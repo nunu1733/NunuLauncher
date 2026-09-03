@@ -1,0 +1,50 @@
+contract: ux-visual-review/v1
+report_type: observer
+status: insufficient-evidence
+report_id: issue-199-case-07-zcode-observer-negative-r1
+provenance:
+  contract_revision: sha256:97459d25bbb3cb2e8402a24d14ed1e8f529299771572129889c0f51dffb21da3
+  subject:
+    revision: synthetic-missing-fixture-v1
+    build_ref: intentionally-absent-image
+  runtime:
+    client: zcode
+    client_version: 3.10.2
+    provider: BAI
+    model: 2c4a554d-c324-4bd0-8567-20db0f081147/glm-5.3-flash
+    protocol: unknown
+    reasoning: high
+    permission_mode: read-only subagent session; only Skill, Read, and RespondToCoordinator tools exposed
+    tool_surface:
+      file_read: allowed
+      file_write: denied
+      shell: denied
+      network: denied
+      external_side_effects: denied
+    tools_used: [Skill, Read]
+  evidence_manifest_ref: docs/assessment/evidence/issue-199/case-07/observer-manifest.yaml
+attestation:
+  source_raw_ref: ../zcode-validation-r3-raw.txt
+  source_attachment_sha256: 33472f94d2924f0b0feca0c607327757633656fc075da387262713819e4047e0
+  normalization: >-
+    The repository curator supplied the canonical provenance fields from the
+    outer ZCode dispatcher and installed custom-agent definition and quoted one
+    colon-bearing scalar so the verbatim meaning parses as YAML. The report body
+    is otherwise unchanged. The raw dispatcher return remains authoritative for
+    attribution.
+scenario: Understand the first screen shown for workspace guidance.
+isolation:
+  mode: limited
+  limitations:
+    - Running as a subagent inside the repository; the Read tool is technically capable of opening repository files beyond the manifest and the skill's Observer references (specs, source, baselines are filesystem-accessible). Instruction-only non-use was enforced; no Observer-hidden materials were opened or used.
+    - The runtime does not expose the effective provider ID, API protocol, reasoning configuration, client version, or a contract revision digest; these are recorded as unknown rather than inferred.
+evidence:
+  - id: frame-01
+    apparent_state: not observable; the referenced image file is absent from the repository
+observations: []
+sequence_changes: []
+uncertainties:
+  - No pixels were reviewable, so no observation about apparent purpose, state, hierarchy, or affordances is possible for this case.
+missing_evidence:
+  - "frame-01.png referenced by the manifest at docs/assessment/evidence/issue-199/case-07/observer-manifest.yaml; the read attempt returned file-not-found, matching the manifest's own provenance fields (subject_revision: synthetic-missing-fixture-v1, build_ref: intentionally-absent-image, sha256: unknown)."
+  - "Smallest useful next capture: a single readable frame-01 screenshot of the first workspace-guidance screen (1080x1080, light theme, en locale, font scale 1.0), stored at the manifest's declared path with a recorded sha256, so a static first-impression Observer review can proceed."

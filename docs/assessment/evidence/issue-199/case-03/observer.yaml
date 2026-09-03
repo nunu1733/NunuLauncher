@@ -1,0 +1,77 @@
+contract: ux-visual-review/v1
+report_type: observer
+status: observed
+report_id: issue-199-case-03-observer-frame-01
+provenance:
+  contract_revision: sha256:97459d25bbb3cb2e8402a24d14ed1e8f529299771572129889c0f51dffb21da3
+  subject:
+    revision: 8104ce2af3dd9e26f7ddcb2ea339369e5b7b64b9
+    build_ref: retained Issue #123 after-capture
+  runtime:
+    client: codex
+    client_version: 0.151.0
+    provider: openai
+    model: gpt-5.6-luna
+    protocol: codex
+    reasoning: xhigh
+    permission_mode: danger-full-access
+    tool_surface:
+      file_read: allowed
+      file_write: allowed
+      shell: allowed
+      network: allowed
+      external_side_effects: allowed
+    tools_used:
+      - functions.exec
+      - exec_command
+      - view_image
+      - apply_patch
+  evidence_manifest_ref: docs/assessment/evidence/issue-199/case-03/observer-manifest.yaml
+scenario: Understand the first screen shown for a home-screen organization suggestion and decide what to do next.
+isolation:
+  mode: limited
+  limitations:
+    - Behavior was instruction-constrained because danger-full-access exposed mutation and network tools.
+evidence:
+  - id: frame-01
+    apparent_state: >-
+      A launcher screen is covered by a prompt awaiting a choice about a proposed home-screen organization.
+observations:
+  - evidence_refs: [frame-01]
+    visible: >-
+      A dark rounded prompt occupies the lower portion of the portrait screen. Its title reads "Organize your Home screen?" and the body text explains that a proposed organization can be reviewed before confirmation.
+    inference: >-
+      The prompt appears to introduce a home-screen organization flow.
+  - evidence_refs: [frame-01]
+    visible: >-
+      Three similarly sized buttons are stacked beneath the explanatory text and labeled "LATER", "SKIP", and "REVIEW ORGANIZATION".
+    inference: >-
+      "REVIEW ORGANIZATION" appears to be the main next-step choice because it names the review action and follows the two alternatives.
+  - evidence_refs: [frame-01]
+    visible: >-
+      The title is visually prominent, followed by a short paragraph, then the three vertically grouped controls.
+    inference: >-
+      The apparent scan path is title, explanation, then choices.
+  - evidence_refs: [frame-01]
+    visible: >-
+      The wallpaper, faint "Tap to set up" text, page indicators, and partial app icons remain visible behind the prompt.
+    inference: >-
+      These background elements orient the screen as a launcher home screen while remaining visually secondary to the prompt.
+  - evidence_refs: [frame-01]
+    visible: >-
+      "LATER" and "SKIP" are separate labels, with no additional text explaining the difference between them.
+    inference: >-
+      The relationship between those two choices is ambiguous from this screen alone.
+  - evidence_refs: [frame-01]
+    visible: >-
+      No proposed arrangement or preview content is shown within the captured screen.
+    inference: >-
+      The user is asked to choose whether to proceed before seeing the organization details.
+sequence_changes: []
+uncertainties:
+  - The screenshot does not show what follows "REVIEW ORGANIZATION", "LATER", or "SKIP".
+  - The screenshot does not clarify how "LATER" differs from "SKIP".
+  - A still image cannot establish exact touch-target dimensions, accessibility semantics, focus behavior, or functional state transitions.
+missing_evidence:
+  - Immediate resulting frames after selecting each of the three visible choices, if continuation behavior is in scope.
+  - Any explanatory state that distinguishes the "LATER" and "SKIP" choices.

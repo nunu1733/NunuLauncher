@@ -1,0 +1,22 @@
+contract: ux-visual-review/critic-context-v1
+case_id: issue-199-pilot-01-rerun
+observer_visible: false
+user_product_goal: >-
+  Review the concrete effects of a proposed home-screen organization before
+  allowing a high-impact layout change, then understand the resulting state and
+  safest next action.
+safety_classification: high-impact layout mutation with an in-app recovery path
+expected_states:
+  frame-01: entry before review
+  frame-02: pre-apply proposal review
+  frame-03a: proposal invalidated by a changed source layout
+  frame-03b: application completed and verified
+  frame-03c: post-apply verification could not establish a safe current layout
+expected_primary_actions:
+  frame-01: begin review
+  frame-02: apply or cancel after review
+  frame-03a: recapture before proceeding
+  frame-03b: restore or start another review
+  frame-03c: inspect diagnostics before another organization change
+known_defects: withheld until calibration adjudication
+human_baseline_ref: withheld until calibration adjudication

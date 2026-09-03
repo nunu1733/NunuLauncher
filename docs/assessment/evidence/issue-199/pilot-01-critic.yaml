@@ -1,0 +1,118 @@
+contract: ux-visual-review/v1
+report_type: critic
+status: reviewed
+report_id: issue-199-pilot-01-critic
+provenance:
+  contract_revision: sha256:97459d25bbb3cb2e8402a24d14ed1e8f529299771572129889c0f51dffb21da3
+  subject:
+    revision: 76973333fd61e74981ac4bfd1cc487aba07b3cef
+    build_ref: https://github.com/nunu1733/NunuLauncher/actions/runs/33707975932
+  runtime:
+    client: codex
+    client_version: 0.151.0
+    provider: openai
+    model: gpt-5.6-luna
+    protocol: codex
+    reasoning: xhigh
+    permission_mode: read-only
+    tool_surface:
+      file_read: allowed
+      file_write: denied
+      shell: read-only
+      network: allowed
+      external_side_effects: allowed
+    tools_used:
+      - functions.exec
+      - functions.exec_command
+      - functions.view_image
+  evidence_manifest_ref: pilot-01-observer-manifest.yaml
+scenario: Review the concrete effects of a proposed home-screen organization before allowing a high-impact layout change, then understand the resulting state and safest next action.
+evidence_refs:
+  - frame-01
+  - frame-02
+  - frame-03a
+  - frame-03b
+  - frame-03c
+observer_report_ref: pilot-01-observer.yaml
+critic_context_ref: pilot-01-critic-context.yaml
+findings:
+  - id: UVR-001
+    category: trust-risk
+    observation: Frame-02 states that a detailed change list could not be prepared and presents only aggregate counts, including one placement to move and one fallback category, above the emphasized apply action. No item, source position, destination, or concrete effect is shown.
+    evidence_refs:
+      - frame-02
+    user_impact: A person deciding whether to authorize the layout mutation may be unable to understand what will change, making a confident review difficult.
+    severity: major
+    confidence: high
+    recommendation: Before authorization, make the proposal's concrete effects understandable; when that information is unavailable, keep the safe non-apply path clear and do not present the decision as ready for approval.
+    additional_validation:
+      - Test a representative multi-placement proposal and confirm that first-time users can identify what will move, where it will move, and what will be preserved before authorizing.
+  - id: UVR-002
+    category: mental-model-language
+    observation: Frame-03a says “The home layout changed” and then says “Review a new proposal before applying anything,” while the persistent introductory text says the current layout is never changed automatically.
+    evidence_refs:
+      - frame-01
+      - frame-03a
+    user_impact: A first-time user may not know whether the current home screen changed or only the proposal became invalidated, making the safest next action less certain.
+    severity: major
+    confidence: high
+    recommendation: Explicitly distinguish a changed or invalidated proposal from a layout that was actually applied, while retaining the recapture-before-apply next step.
+    additional_validation:
+      - Ask first-time users whether their current layout changed or only the proposal became invalidated, and what they would do next.
+  - id: UVR-003
+    category: scanability-density
+    observation: In frames 02, 03b, and 03c, the proposal summary is a flat sequence of similarly styled counts; scope, device-profile information, movement, preservation, folder/page creation, and fallback information are not visually grouped. The visible copy also uses inconsistent singular forms such as “1 pages” and “1 placements.”
+    evidence_refs:
+      - frame-02
+      - frame-03b
+      - frame-03c
+    user_impact: The user may need extra rereading to determine what the numbers describe before making a high-impact decision or interpreting the resulting state.
+    severity: moderate
+    confidence: high
+    recommendation: Present the summary in clearly labeled, scan-friendly groups and use unambiguous count language so users can quickly parse scope, effects, and fallback behavior.
+    additional_validation:
+      - Observe whether first-time users can summarize scope, movement, preservation, fallback, and device-profile information without rereading.
+  - id: UVR-004
+    category: affordance-action
+    observation: Across frames 01, 02, 03a, 03b, and 03c, next steps are presented as large text lines without visible control containers. Emphasis varies, but the control boundary and primary-versus-secondary relationship are conveyed mainly through typography.
+    evidence_refs:
+      - frame-01
+      - frame-02
+      - frame-03a
+      - frame-03b
+      - frame-03c
+    user_impact: A first-time user may pause to determine which text is actionable and may have less immediate confidence about the authorization, non-apply, or recovery choice.
+    severity: moderate
+    confidence: medium
+    recommendation: Make each next step visually unmistakable as an action and preserve a clear primary or safest-choice hierarchy in every state.
+    additional_validation:
+      - Check first-time action recognition in each branch and confirm that users distinguish the primary next step from the non-apply or recovery alternative.
+  - id: UVR-005
+    category: feedback-continuity
+    observation: Frame-03c combines “current layout could not be verified” and “do not start another organization run” with the same proposal summary counts shown in frame-02, but does not label whether those counts describe the prior proposal, an applied change, or the unverifiable current layout.
+    evidence_refs:
+      - frame-02
+      - frame-03c
+    user_impact: When verification is unavailable, the user may not know what the retained counts represent or what has already changed, making diagnostics and recovery harder to choose confidently.
+    severity: moderate
+    confidence: medium
+    recommendation: In the verification-blocked state, clearly label the summary as historical or proposal context, or omit it, and make the current uncertainty and safest next step the dominant information.
+    additional_validation:
+      - Ask users to explain what the retained counts refer to and why diagnostics are the safest next step in the verification-blocked state.
+deterministic_deferrals:
+  - surface: functional-state
+    visible_symptom: Still images show labels for review, apply, cancel, recapture, restore, new review, and diagnostics, but do not establish their hit behavior or exact resulting transitions.
+    required_check: Run an interaction test for each visible action and verify the expected state transition and persistence across the organizer flow.
+  - surface: touch-target
+    visible_symptom: The actions are rendered as text lines without visible control bounds.
+    required_check: Measure the interactive hit regions for every action on the target device and at supported font scales.
+limitations:
+  - Only still images at font_scale 1.0 are available; motion, scroll reachability, hit behavior, and persistence are not established.
+  - No post-application home-screen image is included, so this review cannot judge the visual arrangement produced by the organization.
+  - Frame-02 does not show an item-level proposal view, so the critique of concrete-change visibility is limited to what the review screen communicates.
+calibration:
+  baseline_ref: withheld
+  agreement: []
+  false_positive_candidates: []
+  missed_baseline_findings: []
+  severity_drift: []

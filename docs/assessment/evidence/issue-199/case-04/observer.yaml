@@ -1,0 +1,61 @@
+contract: ux-visual-review/v1
+report_type: observer
+status: observed
+report_id: issue-199-case-04-observer
+provenance:
+  contract_revision: sha256:97459d25bbb3cb2e8402a24d14ed1e8f529299771572129889c0f51dffb21da3
+  subject:
+    revision: 8104ce2af3dd9e26f7ddcb2ea339369e5b7b64b9
+    build_ref: retained Issue #123 after-capture
+  runtime:
+    client: codex
+    client_version: 0.151.0
+    provider: openai
+    model: gpt-5.6-luna
+    protocol: codex
+    reasoning: xhigh
+    permission_mode: danger-full-access (approval never)
+    tool_surface:
+      file_read: allowed
+      file_write: allowed
+      shell: allowed
+      network: allowed
+      external_side_effects: allowed
+    tools_used:
+      - exec_command
+      - view_image
+      - apply_patch
+  evidence_manifest_ref: docs/assessment/evidence/issue-199/case-04/observer-manifest.yaml
+scenario: Understand the visible suggestion and decide what to do next.
+isolation:
+  mode: limited
+  limitations:
+    - Behavior was instruction-constrained because danger-full-access exposed mutation/network tools.
+evidence:
+  - id: frame-01
+    apparent_state: A dialog-like home-screen setup prompt is shown over a dark launcher background, with three stacked actions and no depicted interaction.
+observations:
+  - evidence_refs:
+      - frame-01
+    visible: >-
+      The largest visual focus is a light rounded card in the lower half of the portrait screen. It contains the heading 「ホーム画面を整理しますか？」, explanatory Japanese text below it, and three full-width gray buttons labeled 「後で」, 「スキップ」, and 「整理を確認」. Above the card, the dark background includes the heading 「タップでセットアップ」 and two small dots.
+    inference: >-
+      The card appears to ask whether to organize the home screen and presents the three button labels as the immediate choices. The bottom 「整理を確認」 label appears to be the most task-specific next action, while the other two appear to postpone or bypass the setup prompt.
+  - evidence_refs:
+      - frame-01
+    visible: >-
+      The heading and body copy are separated from the buttons by spacing, and the three buttons are grouped vertically inside the same card. The heading and body copy wrap across multiple lines.
+    inference: >-
+      The likely scan path is heading, explanatory copy, then the three stacked choices.
+  - evidence_refs:
+      - frame-01
+    visible: >-
+      The three gray rectangular controls have consistent width and are visually separated by narrow gaps. The top heading and the two dots are visually distinct from the card.
+    inference: >-
+      The gray rectangles read as tappable controls; the heading, explanatory copy, and dots read as informational rather than interactive elements.
+sequence_changes: []
+uncertainties:
+  - Only frame-01 is available, so no visible change after tapping any action can be observed.
+  - The distinction between 「後で」 and 「スキップ」, and whether 「整理を確認」 opens another view or applies anything, cannot be determined from this still image.
+  - The screenshot does not expose accessibility semantics, focus order, touch-target bounds, or content beyond the visible viewport.
+missing_evidence: []

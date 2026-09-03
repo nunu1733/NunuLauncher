@@ -1,0 +1,83 @@
+contract: ux-visual-review/v1
+report_type: critic
+status: reviewed
+report_id: issue-199-case-02-critic
+provenance:
+  contract_revision: sha256:97459d25bbb3cb2e8402a24d14ed1e8f529299771572129889c0f51dffb21da3
+  subject:
+    revision: 5b9ad9fab45a050fd09388cf7c8647d77cc7789a
+    build_ref: retained Issue #123 before-capture
+  runtime:
+    client: codex
+    client_version: 0.151.0
+    provider: openai
+    model: gpt-5.6-luna
+    protocol: codex
+    reasoning: xhigh
+    permission_mode: danger-full-access
+    tool_surface:
+      file_read: allowed
+      file_write: allowed
+      shell: allowed
+      network: allowed
+      external_side_effects: allowed
+    tools_used:
+      - functions.exec
+      - exec_command
+      - view_image
+      - apply_patch
+  evidence_manifest_ref: docs/assessment/evidence/issue-199/case-02/observer-manifest.yaml
+scenario: Understand an unsolicited home-screen organization suggestion and choose whether to review it now, defer it, or dismiss it.
+evidence_refs:
+  - frame-01
+observer_report_ref: docs/assessment/evidence/issue-199/case-02/observer.yaml
+critic_context_ref: docs/assessment/evidence/issue-199/case-02/critic-context.yaml
+findings:
+  - id: UVR-001
+    category: affordance-action
+    observation: The three action rows use the same pale gray fill and faint centered labels, with no visible distinction between the review path and the alternatives.
+    evidence_refs:
+      - frame-01
+    user_impact: The choices may appear muted or disabled, and a first-time user may hesitate because the intended next step is not visually apparent.
+    severity: moderate
+    confidence: high
+    recommendation: Make the controls clearly actionable and establish a visibly clear primary path for reviewing the organization while keeping defer and dismiss choices understandable.
+    additional_validation:
+      - Confirm with first-time users that all three options are recognized as actions and that the intended next step is identified quickly.
+  - id: UVR-002
+    category: mental-model-language
+    observation: The labels “LATER” and “SKIP” are short and have no adjacent wording that explains when the prompt will return or whether skipping applies to the review, the proposal, or the organization suggestion altogether.
+    evidence_refs:
+      - frame-01
+    user_impact: A user may choose the wrong handling for the unsolicited suggestion or defer it without knowing what will happen next.
+    severity: moderate
+    confidence: medium
+    recommendation: Make the defer and dismiss outcomes explicit in the visible labels or supporting copy so users can distinguish postponing review from bypassing the suggestion.
+    additional_validation:
+      - Capture the immediate and later behavior after each option and verify that the visible outcome matches the wording.
+  - id: UVR-003
+    category: orientation
+    observation: A separate faint “Tap to set up” cue remains visible behind the foreground sheet, while the sheet introduces home-screen organization without visibly explaining the relationship between the two messages.
+    evidence_refs:
+      - frame-01
+    user_impact: A first-time user may be unsure whether the organization suggestion is part of setup or a separate interruption before deciding what to do.
+    severity: minor
+    confidence: medium
+    recommendation: Make the relationship between the setup cue and organization suggestion apparent, or keep competing background guidance from competing with the foreground decision.
+    additional_validation: []
+deterministic_deferrals:
+  - surface: contrast
+    visible_symptom: The action-row labels appear very light against pale gray fills in frame-01.
+    required_check: Run deterministic contrast measurement for the action-row text and background tokens in the dark-theme build.
+  - surface: functional-state
+    visible_symptom: Only the root frame is provided; no post-selection behavior is visible.
+    required_check: Exercise LATER, SKIP, and REVIEW ORGANIZATION and verify immediate transitions, persisted choice, and re-entry behavior with functional tests.
+limitations:
+  - Evidence is limited to one root still; immediate response, preview, defer re-entry, and dismissal states are not available.
+  - This review does not establish touch-target geometry, exact contrast ratios, accessibility semantics, focus order, or functional correctness.
+calibration:
+  baseline_ref: withheld until calibration adjudication
+  agreement: []
+  false_positive_candidates: []
+  missed_baseline_findings: []
+  severity_drift: []
