@@ -2,12 +2,14 @@ package app.lawnchair.organizer.ui
 
 import android.content.Context
 import android.content.ContentValues
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.provider.MediaStore
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
@@ -30,10 +32,21 @@ import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.DeviceCapabilities
 import app.lawnchair.organizer.application.public.LayoutState
+import app.lawnchair.organizer.application.public.MoveChange
+import app.lawnchair.organizer.application.public.NewFolderChange
+import app.lawnchair.organizer.application.public.NewPageChange
+import app.lawnchair.organizer.application.public.PlanPreview
+import app.lawnchair.organizer.application.public.PlanPreviewDetails
+import app.lawnchair.organizer.application.public.PreservedChange
+import app.lawnchair.organizer.application.public.PreviewCounts
+import app.lawnchair.organizer.application.public.PreviewLabel
+import app.lawnchair.organizer.application.public.PreviewPosition
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
 import app.lawnchair.organizer.application.public.RecoveryResult
+import app.lawnchair.organizer.application.public.RowBand
+import app.lawnchair.organizer.application.public.ColumnBand
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.diagnostics.DiagnosticsPort
@@ -51,7 +64,9 @@ import app.lawnchair.organizer.planning.GridCell
 import app.lawnchair.organizer.planning.GridSpan
 import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.LayoutSnapshot
+import app.lawnchair.organizer.planning.NewFolderOrdinal
 import app.lawnchair.organizer.planning.NewFolderProfileScope
+import app.lawnchair.organizer.planning.NewPageOrdinal
 import app.lawnchair.organizer.application.public.PlanPreviewResult
 import app.lawnchair.organizer.planning.OrganizationInput
 import app.lawnchair.organizer.planning.OrganizationPlanner
@@ -66,6 +81,7 @@ import app.lawnchair.organizer.planning.PlacementTarget
 import app.lawnchair.organizer.planning.Planned
 import app.lawnchair.organizer.planning.PlannedPlacement
 import app.lawnchair.organizer.planning.PlanningResult
+import app.lawnchair.organizer.planning.PreserveReason
 import app.lawnchair.organizer.planning.RevisionId
 import app.lawnchair.organizer.planning.RuleSemantics
 import app.lawnchair.organizer.planning.RuleVersion
@@ -81,7 +97,9 @@ import app.lawnchair.organizer.rules.PolicySourceKind
 import app.lawnchair.ui.preferences.destinations.ManualOrganizationPreferences
 import app.lawnchair.ui.theme.LawnchairTheme
 import com.android.launcher3.R
+import java.util.Locale
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -360,6 +378,405 @@ class ManualOrganizationPreferencesInstrumentationTest {
     }
 
     @Test
+    fun previewDetailsRenderConcreteChangeListMatchingPreviewCounts() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            inspectPlanOverride = { _, _ -> previewed(concreteChangeListDetails()) }
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        runner.start()
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        awaitPreview(runner, context)
+
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_changes_heading)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_group_moved, 2)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_group_new_folders, 1)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_group_new_pages, 1)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_group_preserved, 1)).assertIsDisplayed()
+        composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_group_warnings, 0)).assertCountEquals(0)
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_moved_count, 2)).assertIsDisplayed()
+        // Spec §D2: Summary-derived change-count lines never mix with PreviewCounts truth.
+        composeRule.onAllNodesWithText(
+            context.getString(R.string.manual_organization_moved_single_placement, 1),
+        ).assertCountEquals(0)
+
+        // Same-band row change: the region words cannot express it, so the
+        // row-ordinal note rides on the destination (assessment §6.1).
+        composeRule.onNodeWithText(gameMoveRow(context)).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(
+                R.string.manual_organization_preview_move_row,
+                "maps",
+                workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
+                context.getString(R.string.manual_organization_preview_position_dock, 2),
+                context.getString(R.string.manual_organization_preview_move_reason_single_placement),
+            ),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(
+                R.string.manual_organization_preview_new_folder_row,
+                1,
+                workspacePosition(context, 2, RowBand.CENTER, ColumnBand.LEFT),
+                "game, maps",
+            ),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_preview_new_page_row, 3),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(
+                R.string.manual_organization_preview_item_row,
+                "clock",
+                context.getString(R.string.manual_organization_preview_preserved_reason_locked),
+            ),
+        ).assertIsDisplayed()
+        assertEquals(0, application.applyCalls)
+    }
+
+    @Test
+    fun sameBandAdjustmentMovesAreAnnouncedAsPositionAdjustments() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            inspectPlanOverride = { _, _ ->
+                previewed(
+                    PlanPreviewDetails(
+                        changes = listOf(
+                            move("game", 1, 1),
+                            move("maps", 2, 1),
+                        ),
+                        counts = PreviewCounts(movedCount = 2, preservedCount = 0, newFolderCount = 0, newPageCount = 0, warningCounts = emptyMap()),
+                    ),
+                )
+            }
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        runner.start()
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        awaitPreview(runner, context)
+
+        composeRule.onNodeWithText(
+            context.getString(
+                R.string.manual_organization_preview_same_band_move_row,
+                "game",
+                context.getString(R.string.manual_organization_preview_region_top_center),
+                "",
+            ),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(
+                R.string.manual_organization_preview_same_band_move_row,
+                "maps",
+                context.getString(R.string.manual_organization_preview_region_top_center),
+                context.getString(R.string.manual_organization_preview_row_ordinal_note, 2, 1),
+            ),
+        ).assertIsDisplayed()
+    }
+
+    @Test
+    fun largeChangeGroupsTruncateBehindExpandAction() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            inspectPlanOverride = { _, _ ->
+                previewed(
+                    PlanPreviewDetails(
+                        changes = (1..6).map { index -> crossBandMove("app$index") },
+                        counts = PreviewCounts(movedCount = 6, preservedCount = 0, newFolderCount = 0, newPageCount = 0, warningCounts = emptyMap()),
+                    ),
+                )
+            }
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        runner.start()
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        awaitPreview(runner, context)
+
+        // Truncated to the first five rows; the group total stays in the action.
+        composeRule.onAllNodesWithText(concreteMoveRow(context, "app6")).assertCountEquals(0)
+        composeRule.onNodeWithText(concreteMoveRow(context, "app5")).assertExists()
+        val expand = composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview_show_all, 6))
+        expand.assert(
+            SemanticsMatcher.expectValue(
+                SemanticsProperties.StateDescription,
+                context.getString(R.string.manual_organization_preview_collapsed_state),
+            ),
+        )
+
+        expand.performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(concreteMoveRow(context, "app6")).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview_show_fewer, 5))
+            .assert(
+                SemanticsMatcher.expectValue(
+                    SemanticsProperties.StateDescription,
+                    context.getString(R.string.manual_organization_preview_expanded_state),
+                ),
+            )
+            .performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(concreteMoveRow(context, "app6")).fetchSemanticsNodes().isEmpty()
+        }
+    }
+
+    @Test
+    fun changeListTraversalReachesExpandAndReviewActions() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            inspectPlanOverride = { _, _ ->
+                previewed(
+                    PlanPreviewDetails(
+                        changes = (1..6).map { index -> crossBandMove("app$index") },
+                        counts = PreviewCounts(movedCount = 6, preservedCount = 0, newFolderCount = 0, newPageCount = 0, warningCounts = emptyMap()),
+                    ),
+                )
+            }
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        runner.start()
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+
+        awaitPreview(runner, context)
+        composeRule.waitUntil(5_000) {
+            try {
+                composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsFocused()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+        }
+
+        // Keyboard traversal actually reaches the expand action.
+        pressDownUntilFocused(context.getString(R.string.manual_organization_preview_show_all, 6))
+        // Activating it with a keyboard action expands the group...
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_ENTER)
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(concreteMoveRow(context, "app6")).fetchSemanticsNodes().isNotEmpty()
+        }
+        // ...and the action keeps focus after the list reflows (spec 52 restoration).
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview_show_fewer, 5)).assertIsFocused()
+
+        // Traversal continues to the review actions.
+        pressDownUntilFocused(context.getString(R.string.manual_organization_confirm))
+        pressDownUntilFocused(context.getString(R.string.manual_organization_cancel))
+    }
+
+    /**
+     * Moves real (window-dispatched) keyboard focus down until [text] owns it,
+     * so the traversal exercises the same DPAD fallback path Switch Access and
+     * hardware keyboards rely on; fails after too many steps.
+     */
+    private fun pressDownUntilFocused(text: String, maxPresses: Int = 12) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        var presses = 0
+        while (presses < maxPresses) {
+            composeRule.waitForIdle()
+            val focused = try {
+                composeRule.onNodeWithText(text).assertIsFocused()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+            if (focused) return
+            instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DPAD_DOWN)
+            presses++
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(text).assertIsFocused()
+    }
+
+    @Test
+    fun degradedCountOnlyPreviewAnnouncesMissingDetailsAndKeepsConfirm() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication()
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        runner.start()
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        awaitPreview(runner, context)
+
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview_details_unavailable)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_moved_single_placement, 1)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm)).assertIsDisplayed()
+        composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_changes_heading)).assertCountEquals(0)
+        assertEquals(0, application.applyCalls)
+    }
+
+    @Test
+    fun noChangesStateOffersNoConfirmationAction() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication()
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { emptyPlannedResult() })
+        runner.start()
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        composeRule.waitUntil(5_000) { runner.state == ManualOrganizationRun.State.NoChanges }
+
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_no_changes)).assertIsDisplayed()
+        composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_confirm)).assertCountEquals(0)
+        assertEquals(0, application.applyCalls)
+    }
+
+    @Test
+    fun changeRowsArePlainReadableNodesWithoutLiveRegion() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            inspectPlanOverride = { _, _ -> previewed(concreteChangeListDetails()) }
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        runner.start()
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        awaitPreview(runner, context)
+
+        val preservedRow = context.getString(
+            R.string.manual_organization_preview_item_row,
+            "clock",
+            context.getString(R.string.manual_organization_preview_preserved_reason_locked),
+        )
+        composeRule.onNodeWithText(preservedRow).assertIsDisplayed().assert(
+            SemanticsMatcher("change rows are not live regions") { node ->
+                node.config.getOrNull(SemanticsProperties.LiveRegion) == null
+            },
+        )
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite),
+        )
+    }
+
+    @Test
+    fun changeListRemainsReadableAtTwoHundredPercentFontScale() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            inspectPlanOverride = { _, _ -> previewed(concreteChangeListDetails()) }
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        runner.start()
+        composeRule.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 2f)) {
+                LawnchairTheme {
+                    ManualOrganizationPreferences(run = runner)
+                }
+            }
+        }
+        awaitPreview(runner, context)
+
+        composeRule.onNodeWithText(gameMoveRow(context)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).assertIsDisplayed()
+    }
+
+    @Test
+    fun japaneseResourcesResolveEveryConcretePreviewString() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val japanese = context.createConfigurationContext(
+            Configuration().apply { setLocale(Locale.JAPAN) },
+        )
+        val addedPreviewStrings = listOf(
+            R.string.manual_organization_preview_details_unavailable,
+            R.string.manual_organization_changes_heading,
+            R.string.manual_organization_group_moved,
+            R.string.manual_organization_group_new_folders,
+            R.string.manual_organization_group_new_pages,
+            R.string.manual_organization_group_preserved,
+            R.string.manual_organization_group_warnings,
+            R.string.manual_organization_preview_show_all,
+            R.string.manual_organization_preview_show_fewer,
+            R.string.manual_organization_preview_expanded_state,
+            R.string.manual_organization_preview_collapsed_state,
+            R.string.manual_organization_preview_move_row,
+            R.string.manual_organization_preview_same_band_move_row,
+            R.string.manual_organization_preview_row_ordinal_note,
+            R.string.manual_organization_preview_item_row,
+            R.string.manual_organization_preview_move_reason_single_placement,
+            R.string.manual_organization_preview_move_reason_folder_member,
+            R.string.manual_organization_preview_move_reason_folder_unit,
+            R.string.manual_organization_preview_move_reason_unspecified,
+            R.string.manual_organization_preview_preserved_reason_locked,
+            R.string.manual_organization_preview_preserved_reason_reserved_region,
+            R.string.manual_organization_preview_preserved_reason_unavailable,
+            R.string.manual_organization_preview_preserved_reason_dock,
+            R.string.manual_organization_preview_preserved_reason_widget,
+            R.string.manual_organization_preview_preserved_reason_app_pair,
+            R.string.manual_organization_preview_preserved_reason_legacy_shortcut,
+            R.string.manual_organization_preview_preserved_reason_non_target,
+            R.string.manual_organization_preview_preserved_reason_structural,
+            R.string.manual_organization_preview_preserved_reason_already_canonical,
+            R.string.manual_organization_preview_warning_legacy_shortcut_item,
+            R.string.manual_organization_preview_warning_fallback_category_item,
+            R.string.manual_organization_preview_warning_unavailable_item,
+            R.string.manual_organization_preview_page,
+            R.string.manual_organization_preview_new_page_position,
+            R.string.manual_organization_preview_position_workspace,
+            R.string.manual_organization_preview_region_top_left,
+            R.string.manual_organization_preview_region_top_center,
+            R.string.manual_organization_preview_region_top_right,
+            R.string.manual_organization_preview_region_middle_left,
+            R.string.manual_organization_preview_region_middle_center,
+            R.string.manual_organization_preview_region_middle_right,
+            R.string.manual_organization_preview_region_bottom_left,
+            R.string.manual_organization_preview_region_bottom_center,
+            R.string.manual_organization_preview_region_bottom_right,
+            R.string.manual_organization_preview_position_dock,
+            R.string.manual_organization_preview_position_folder_existing,
+            R.string.manual_organization_preview_position_folder_planned,
+            R.string.manual_organization_preview_position_app_pair,
+            R.string.manual_organization_preview_kind_application,
+            R.string.manual_organization_preview_kind_deep_shortcut,
+            R.string.manual_organization_preview_kind_shortcut_legacy,
+            R.string.manual_organization_preview_kind_folder,
+            R.string.manual_organization_preview_kind_app_widget,
+            R.string.manual_organization_preview_kind_custom_app_widget,
+            R.string.manual_organization_preview_kind_app_pair,
+            R.string.manual_organization_preview_kind_unknown,
+            R.string.manual_organization_preview_new_folder_row,
+            R.string.manual_organization_preview_new_page_row,
+        )
+
+        addedPreviewStrings.forEach { id ->
+            assertNotEquals(
+                "string resource $id falls back to English under a Japanese locale",
+                context.getString(id),
+                japanese.getString(id),
+            )
+        }
+
+        // Placeholders survive the translation.
+        val japaneseMoveRow = japanese.getString(
+            R.string.manual_organization_preview_move_row,
+            "A",
+            "B",
+            "C",
+            "D",
+        )
+        assert(japaneseMoveRow.contains("A") && japaneseMoveRow.contains("D"))
+    }
+
+    @Test
     fun capturesManualOrganizationReviewSurfaces() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val application = FakeApplication()
@@ -516,6 +933,9 @@ class ManualOrganizationPreferencesInstrumentationTest {
         /** Issue #172: override to simulate a NotReady composition for copy-split coverage. */
         var notReadyComposition: OrganizationInputComposition.NotReady? = null
 
+        /** Issue #195: override to publish a concrete change-list preview; default stays count-only. */
+        var inspectPlanOverride: ((OrganizationInput, PlanningResult) -> PlanPreviewResult)? = null
+
         override fun newRunId() = RunId(RUN_ID)
 
         override fun composeFullOrganization(): OrganizationInputComposition {
@@ -527,8 +947,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
          * Issue #194: this fixture keeps the legacy count-only flow, so the
          * preview seam reports busy and confirm materializes as before.
          */
-        override fun inspectPlan(input: OrganizationInput, result: PlanningResult): PlanPreviewResult =
-            PlanPreviewResult.WriterBusy
+        override fun inspectPlan(input: OrganizationInput, result: PlanningResult): PlanPreviewResult = inspectPlanOverride?.invoke(input, result)
+            ?: PlanPreviewResult.WriterBusy
 
         private fun ready(): OrganizationInputComposition = OrganizationInputComposition.Ready(
             input = input(),
@@ -606,6 +1026,135 @@ class ManualOrganizationPreferencesInstrumentationTest {
             warnings = listOf(Warning(WarningCode.FALLBACK_CATEGORY, emptyList())),
         ),
     )
+
+    /** Issue #195: empty diff keeps the No changes surface without a confirm action. */
+    private fun emptyPlannedResult() = PlanningResult(
+        revision = RevisionId(REVISION),
+        ruleVersion = RuleVersion("v1"),
+        taxonomyVersion = TaxonomyVersion("v1"),
+        outcome = Planned(
+            placements = emptyList(),
+            newPages = emptyList(),
+            newFolders = emptyList(),
+            categories = emptyList(),
+            warnings = emptyList(),
+        ),
+    )
+
+    /** Issue #195: publishes a `Previewed` plan whose details the confirmation UI renders. */
+    private fun previewed(details: PlanPreviewDetails): PlanPreviewResult = PlanPreviewResult.Previewed(
+        PlanPreview(
+            plan = ValidatedLayoutPlan(
+                sourceRevision = RevisionId(REVISION),
+                sourceState = emptyLayoutState(),
+                intendedState = emptyLayoutState(),
+                actions = emptyList(),
+                newPages = emptyList(),
+                newFolders = emptyList(),
+                ruleVersion = RuleVersion("v1"),
+                taxonomyVersion = TaxonomyVersion("v1"),
+            ),
+            details = details,
+        ),
+    )
+
+    /**
+     * Representative concrete preview: a cross-region move whose row changed
+     * inside the same row band, a move into the Dock, a preserved item, a new
+     * folder with two members, and a new page.
+     */
+    private fun concreteChangeListDetails() = PlanPreviewDetails(
+        changes = listOf(
+            move("game", sourceRowOrdinal = 2, destinationRowOrdinal = 1, destination = workspace(1, RowBand.TOP, ColumnBand.LEFT, 1)),
+            move("maps", sourceRowOrdinal = 1, destinationRowOrdinal = 1, destination = PreviewPosition.DockRank(1)),
+            PreservedChange(ItemId("clock"), PreviewLabel.Named("clock"), PreserveReason.LOCKED),
+            NewFolderChange(
+                ordinal = NewFolderOrdinal(0),
+                placement = workspace(2, RowBand.CENTER, ColumnBand.LEFT, 3),
+                memberLabels = listOf(PreviewLabel.Named("game"), PreviewLabel.Named("maps")),
+            ),
+            NewPageChange(ordinal = NewPageOrdinal(0), displayPosition = 3),
+        ),
+        counts = PreviewCounts(movedCount = 2, preservedCount = 1, newFolderCount = 1, newPageCount = 1, warningCounts = emptyMap()),
+    )
+
+    /** Same-band adjustment within top-center: row ordinals decide the note. */
+    private fun move(label: String, sourceRowOrdinal: Int, destinationRowOrdinal: Int) = MoveChange(
+        item = ItemId(label),
+        label = PreviewLabel.Named(label),
+        source = workspace(1, RowBand.TOP, ColumnBand.CENTER, sourceRowOrdinal),
+        destination = workspace(1, RowBand.TOP, ColumnBand.CENTER, destinationRowOrdinal),
+        rationale = PlacementCode.SINGLE_PLACEMENT,
+    )
+
+    private fun move(label: String, sourceRowOrdinal: Int, destinationRowOrdinal: Int, destination: PreviewPosition) = MoveChange(
+        item = ItemId(label),
+        label = PreviewLabel.Named(label),
+        source = workspace(1, RowBand.TOP, ColumnBand.CENTER, sourceRowOrdinal),
+        destination = destination,
+        rationale = PlacementCode.SINGLE_PLACEMENT,
+    )
+
+    private fun workspace(page: Int, rowBand: RowBand, columnBand: ColumnBand, rowOrdinal: Int) = PreviewPosition.Workspace(
+        pageDisplayOrdinal = page,
+        isNewPage = false,
+        rowBand = rowBand,
+        columnBand = columnBand,
+        rowOrdinal = rowOrdinal,
+    )
+
+    /** Expected render of a move whose source and destination are plain workspaces. */
+    private fun concreteMoveRow(context: Context, label: String): String = context.getString(
+        R.string.manual_organization_preview_move_row,
+        label,
+        workspacePosition(context, 1, RowBand.TOP, ColumnBand.LEFT),
+        workspacePosition(context, 1, RowBand.TOP, ColumnBand.RIGHT),
+        context.getString(R.string.manual_organization_preview_move_reason_single_placement),
+    )
+
+    /** The "game" fixture move: top-center → top-left with a row-ordinal note. */
+    private fun gameMoveRow(context: Context): String = context.getString(
+        R.string.manual_organization_preview_move_row,
+        "game",
+        workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
+        workspacePosition(context, 1, RowBand.TOP, ColumnBand.LEFT) +
+            context.getString(R.string.manual_organization_preview_row_ordinal_note, 2, 1),
+        context.getString(R.string.manual_organization_preview_move_reason_single_placement),
+    )
+
+    private fun crossBandMove(label: String) = MoveChange(
+        item = ItemId(label),
+        label = PreviewLabel.Named(label),
+        source = workspace(1, RowBand.TOP, ColumnBand.LEFT, 1),
+        destination = workspace(1, RowBand.TOP, ColumnBand.RIGHT, 1),
+        rationale = PlacementCode.SINGLE_PLACEMENT,
+    )
+
+    private fun workspacePosition(context: Context, page: Int, rowBand: RowBand, columnBand: ColumnBand): String = context.getString(
+        R.string.manual_organization_preview_position_workspace,
+        context.getString(R.string.manual_organization_preview_page, page),
+        context.getString(regionString(rowBand, columnBand)),
+    )
+
+    private fun regionString(rowBand: RowBand, columnBand: ColumnBand): Int = when (rowBand) {
+        RowBand.TOP -> when (columnBand) {
+            ColumnBand.LEFT -> R.string.manual_organization_preview_region_top_left
+            ColumnBand.CENTER -> R.string.manual_organization_preview_region_top_center
+            ColumnBand.RIGHT -> R.string.manual_organization_preview_region_top_right
+        }
+
+        RowBand.CENTER -> when (columnBand) {
+            ColumnBand.LEFT -> R.string.manual_organization_preview_region_middle_left
+            ColumnBand.CENTER -> R.string.manual_organization_preview_region_middle_center
+            ColumnBand.RIGHT -> R.string.manual_organization_preview_region_middle_right
+        }
+
+        RowBand.BOTTOM -> when (columnBand) {
+            ColumnBand.LEFT -> R.string.manual_organization_preview_region_bottom_left
+            ColumnBand.CENTER -> R.string.manual_organization_preview_region_bottom_center
+            ColumnBand.RIGHT -> R.string.manual_organization_preview_region_bottom_right
+        }
+    }
 
     private fun awaitPreview(runner: ManualOrganizationRun, context: Context) {
         composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Preview }
