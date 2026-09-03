@@ -4,11 +4,11 @@ contract_revision: sha256:97459d25bbb3cb2e8402a24d14ed1e8f529299771572129889c0f5
 redaction:
   contract: path-sanitization-v1
   rule: >-
-    Deterministic UTF-8 byte substitution using literal escape notation:
-    replace `\x2fUsers\x2fnunu/Documents/work2/NunuLauncher/` with the empty
-    string to produce repository-relative paths, then replace an exact
-    standalone `\x2fUsers\x2fnunu/Documents/work2/NunuLauncher` token with
-    `<repo-root>`; no other bytes are changed.
+    Deterministic UTF-8 byte substitution: remove the operator-supplied
+    absolute repository-root prefix (including its trailing separator) to
+    produce repository-relative paths, then replace an exact standalone
+    repository-root token with `<repo-root>`; the personal root value is not
+    retained and no other bytes are changed.
   artifacts:
     - path: zcode-observer-raw.txt
       original_pre_redaction_sha256: e65cd04a8829a1a3183aeb6262b42d3d0368b20d49a1b003c0e4a8f9e3c7a489

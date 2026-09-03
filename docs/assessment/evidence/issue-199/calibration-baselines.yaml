@@ -1,7 +1,7 @@
 contract: ux-visual-review/calibration-baseline-v1
 frozen_before_model_runs: true
 adjudication_rules_ref: ../../../../.agents/skills/ux-visual-review/references/calibration.md
-source_ref: ../../issue-123-ui-mapping.md
+source_ref: ../issue-123-ui-mapping.md
 cases:
   - case_id: issue-199-case-02
     source_revision: 5b9ad9fab45a050fd09388cf7c8647d77cc7789a

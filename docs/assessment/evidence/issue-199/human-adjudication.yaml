@@ -6,7 +6,7 @@ instructions:
   - Review the named evidence and only the canonical fields of each named finding.
   - Choose accept, reject, or needs-evidence without changing the frozen baseline.
   - Record a short evidence-bound reason; do not use model confidence as a disposition.
-reviewer: nunu1733
+reviewer: repository-owner
 reviewed_at: 2026-09-03
 adjudication_mode: non-blind
 prior_exposure:

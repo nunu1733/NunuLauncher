@@ -279,7 +279,7 @@ limitations**.
 
 Read-only local inspection on 2026-09-03 found:
 
-- ZCode application version `3.10.2` at `/Applications/ZCode.app`;
+- installed ZCode application version `3.10.2`;
 - an existing NunuLauncher project in the client;
 - `BAI/glm-5.3-flash` visible as the selected model; and
 - the main client session displaying `Full access`.
