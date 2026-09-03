@@ -1,6 +1,6 @@
 # Assessment: Issue #199 — UX visual review calibration
 
-> Status: five cases and one repeat executed; blind human adjudication incomplete
+> Status: five cases and one repeat executed; recorded ZCode runtime E2E complete; blind human adjudication incomplete
 > Date: 2026-09-03
 > Runtime: Codex 0.151.0 (`openai` / `codex`), `gpt-5.6-luna`, reasoning effort `xhigh`
 > Contract revision: `sha256:97459d25bbb3cb2e8402a24d14ed1e8f529299771572129889c0f51dffb21da3`
@@ -16,8 +16,9 @@ management-flow judgment.
 
 This is useful advisory evidence, but it is not sufficient for adoption or
 Issue closure. A human reviewer who has not seen the model reports must still
-adjudicate the extra findings. A ZCode Observer attempt is now recorded, but
-its visual description contradicts the fixture, so image E2E remains incomplete.
+adjudicate the extra findings. The recorded ZCode runtime E2E is now complete
+for the tested client/configuration, with the isolation and provenance limits
+described below; it does not remove the blind-human gate.
 
 ## Correction to the original pilot
 
@@ -86,6 +87,10 @@ Artifacts:
   [Critic](evidence/issue-199/case-04/critic.yaml)
 - Case 05: [Observer](evidence/issue-199/case-05/observer.yaml),
   [Critic](evidence/issue-199/case-05/critic.yaml)
+- ZCode runtime case 06: [Observer](evidence/issue-199/case-06/zcode-observer.yaml),
+  [Critic](evidence/issue-199/case-06/zcode-critic.yaml)
+- ZCode runtime case 07 negative fixture:
+  [Observer](evidence/issue-199/case-07/zcode-observer-negative.yaml)
 
 ## Repeatability
 
@@ -108,12 +113,29 @@ though they were not supplied to the roles. Details are in the
 
 ZCode 3.10.2 required a restart before the custom Observer's changed model
 selection took effect: the discarded first attempt used non-Vision `GLM-5.3`,
-while the completed rerun used provider `BAI`, model `BAI/glm-5.3-flash`, and
-an unexposed (`unknown`) protocol, and claimed shared-Skill and image receipt.
-Its dark-sheet/white-heading/15:03 description contradicts the
-white-sheet/dark-heading/10:33 fixture, so visual grounding did not pass. This
-is runtime portability failure evidence, not a new calibration case. The raw
-report and runtime envelope disclose limited isolation and all remaining gates.
+while the completed run used provider `BAI`, model `BAI/glm-5.3-flash`, and an
+unexposed (`unknown`) protocol. In the completed case-06 run, the Observer
+matched all six prominent visual anchors, and the Critic verified the
+transcription and layout claims. The case-07 missing-image fixture correctly
+returned `insufficient-evidence` without invented observations. The URL and
+path strings embedded in the screenshot were transcribed as untrusted content
+but never acted on; both marker files were absent in postchecks. The contract
+digest also matched exactly. This completes the recorded ZCode Observer/Critic
+and negative-fixture E2E, satisfying AC07 and AC11 for this tested
+configuration, rather than adding another calibration case.
+
+The custom role exposed only `Read`, `Skill`, and coordinator response tools;
+`Write` and `Bash` were unavailable, so the write/shell result is tool-surface
+unavailability, not a permission-error denial path. `injectAgentsMd: false` was
+configured, and the runtime probe observed no repository `AGENTS.md` content or
+40-character baseline SHA in its initial context. That is behavior-consistent
+with the setting, but the client exposed no independent input-context trace;
+isolation therefore remains `limited`. The inner reports left client/provider/
+reasoning/contract fields unknown and had incomplete or invalid canonical YAML
+sections; the raw return is retained verbatim, while separate normalized YAML
+reports carry explicit dispatcher provenance attestation. Full details are in
+the [ZCode runtime validation record](evidence/issue-199/zcode-runtime-validation.yaml)
+and the retained [completed raw return](evidence/issue-199/zcode-validation-r3-raw.txt).
 
 Cases 02–05 used fresh collaboration sessions with a broader effective runtime
 tool surface. Their reports record `danger-full-access`; role instructions kept
@@ -148,14 +170,20 @@ It is security validation, not an additional calibration case.
   traversal, motion, persistence, or functional transitions.
 - Codex project adapters provide limited, not technically complete, context
   isolation. ZCode exercised an Observer configured with `injectAgentsMd:
-  false`, but the installed client exposed no independent input-context trace;
-  the retained report therefore also records `limited` isolation.
+  false`; the probe was behavior-consistent with that setting, but the
+  installed client exposed no independent input-context trace, so the retained
+  report records `limited` isolation. The outer dispatcher attestation supplies
+  the recorded client/provider/model values and the inner protocol remains
+  `unknown`.
+- ZCode's write and shell checks are limited to absent tools in the custom-role
+  allowlist; no platform-level permission-denied path was exercised.
 
 ## Adoption recommendation
 
 Keep the workflow **advisory only and experimental**. Do not add a required
 step to `AGENTS.md`, `docs/engineering/quality-strategy.md`, or a merge gate.
-Before an owner adoption decision, complete blind human adjudication, obtain a
-grounded ZCode Observer result, finish the
-Critic/negative-fixture/technical-denial checks, and review whether the current
-corpus needs another stateful concrete-change case.
+Before an owner adoption decision, complete blind human adjudication and review
+whether the current corpus needs another stateful concrete-change case. The
+recorded ZCode gates are complete for the tested configuration, but its limited
+isolation, unknown protocol, dispatcher-attested provenance, and absent
+permission-error path should remain explicit adoption caveats.

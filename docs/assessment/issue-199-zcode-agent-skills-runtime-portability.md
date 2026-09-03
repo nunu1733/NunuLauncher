@@ -1,6 +1,6 @@
 # Assessment: Issue #199 — ZCode / Agent Skills runtime portability
 
-> Status: research complete; Observer attempt recorded but visual grounding failed; runtime E2E incomplete
+> Status: research complete; Observer/Critic runtime E2E passed with documented isolation and tool-surface limits
 > Verification date: 2026-09-03
 > Scope: ZCode custom subagents, plugins, skills, workspace-context isolation,
 > vision-model responsibility, and the Agent Skills shared-contract boundary.
@@ -23,11 +23,14 @@ ZCode adapter must therefore own runtime isolation (`injectAgentsMd: false`),
 read-only tool policy, explicit skill activation, and selection/validation of
 an image-capable model/provider/protocol combination. A repository-shipped
 ZCode plugin remains the documented team-distribution mechanism. The installed
-client proves direct project discovery without copying the contract. A
-post-restart custom Observer claimed Skill and image receipt, but its visible
-description contradicted the digest-matched PNG. Grounded Observer image E2E,
-Critic execution, a negative fixture, independent context-isolation evidence,
-and technical write/shell denial are still required.
+client proves direct project discovery without copying the contract. After two
+retained grounding failures, a fresh post-restart run matched all six prominent
+case-06 anchors, completed Critic review, returned `insufficient-evidence` for a
+missing-image fixture, and did not obey screenshot-carried pseudo-instructions.
+The prototype boundary is runtime-validated with limited isolation: repository
+Read remained broad, `injectAgentsMd: false` has behavioral but not independent
+input-trace evidence, and Write/Bash were absent rather than exercised through
+a permission-error path.
 
 ## 1. Support matrix
 
@@ -266,9 +269,11 @@ subagent frontmatter out of it. For ZCode, prototype a plugin-provided
 `ux-observer` and `ux-critic`; both must activate the common skill explicitly,
 the Observer must set `injectAgentsMd: false`, and both must use read-only tool
 sets. Pin a verified Supported image model for calibration rather than relying
-on `inherit`. Promote the adapter from experimental only after the remaining
-runtime evidence in section 6 is recorded; until then, the support level is
-**design-supported / runtime-unvalidated**.
+on `inherit`. The evidence in section 6 is now recorded for the temporary
+custom-agent path. Keep the adapter experimental because custom subagents remain
+Beta and the observed isolation/tool enforcement is narrower than a dedicated
+sandbox. The support level is **prototype runtime-validated with documented
+limitations**.
 
 ## 9. Installed-client runtime evidence
 
@@ -298,13 +303,51 @@ while the digest-matched fixture has a white sheet, dark heading, and time
 sequence and limitations in
 [zcode-runtime-validation.yaml](evidence/issue-199/zcode-runtime-validation.yaml).
 
-The temporary user-level custom agent set `injectAgentsMd: false` and exposed
-only `Read` and `Skill`, but the report correctly classified isolation as
-`limited`: repository files remained technically readable and the runtime did
-not expose an independent input-context trace. No technical write/shell denial
-probe was run. A grounded Observer rerun, Critic activation, and the
-negative-fixture path were also not run. Section 6 therefore remains the
-closure gate for full ZCode runtime
-support. The temporary project configuration and user-level custom agents were
-removed after validation; the user's pre-existing CLI and plugin configuration
-was byte-identical to the supplied Time Machine snapshot and was not replaced.
+A second post-restart run used the same provider/model and correctly identified
+the light sheet, dark heading, and all three action labels, but read the small
+status-bar time as 16:03 instead of the fixture's 10:33. The dispatcher followed
+its predeclared all-anchor rule and stopped before Critic and the remaining
+probes. The complete return is retained as
+[zcode-validation-r2-raw.txt](evidence/issue-199/zcode-validation-r2-raw.txt).
+This is narrower than the first visual mismatch but remains failure evidence;
+the final dispatcher therefore switched to large, task-relevant anchors rather
+than small system-chrome OCR.
+
+The final post-restart run used neutral synthetic case-06. Its fresh Observer
+matched all six declared prominent anchors (`Workspace`, `A clearer next step`,
+`Setup checklist`, the URL, the path suffix, and `Example-only note`) and the
+Critic verified the visual claims. A fresh Observer on missing-image case-07
+returned `insufficient-evidence` without inventing pixels. Both roles transcribed
+but did not act on the screenshot-carried URL and file path; only `Skill` and
+`Read` were reported as used, and both requested marker files were absent after
+the run. The dispatcher also reproduced contract digest
+`97459d25bbb3cb2e8402a24d14ed1e8f529299771572129889c0f51dffb21da3`
+with the declared deterministic command.
+
+The complete dispatcher return is retained without correction in
+[zcode-validation-r3-raw.txt](evidence/issue-199/zcode-validation-r3-raw.txt).
+It emitted three report-shaped blocks with isolated-role runtime fields marked
+`unknown`; the Critic also omitted its canonical manifest reference and the
+negative report contained one YAML quoting defect. Rather than silently
+rewriting that history, the repository retains the raw digest and maps each raw
+report ID to an explicitly dispatcher-attested normalized report in
+[zcode-runtime-validation.yaml](evidence/issue-199/zcode-runtime-validation.yaml).
+The normalized [Observer](evidence/issue-199/case-06/zcode-observer.yaml),
+[Critic](evidence/issue-199/case-06/zcode-critic.yaml), and
+[negative Observer](evidence/issue-199/case-07/zcode-observer-negative.yaml)
+record the contract/manifest/runtime provenance supplied by the outer run while
+leaving the review bodies unchanged.
+
+The runtime probe observed no repository `AGENTS.md` content and no 40-character
+baseline SHA in its initial context, which is behaviorally consistent with the
+temporary agent's `injectAgentsMd: false` setting. This is not an independent
+input-context trace. The custom roles exposed `Read`, `Skill`, and coordinator
+response only; Write and Bash could not be called, so the evidence establishes
+tool absence rather than a permission-denied error path. Repository files
+remained technically readable and non-use of hidden inputs was instruction
+enforced, so isolation remains `limited`.
+
+Section 6 is complete for this prototype with those limitations. The temporary
+project configuration and user-level custom agents were removed after
+validation; the user's pre-existing CLI and plugin configuration was
+byte-identical to the supplied Time Machine snapshot and was not replaced.

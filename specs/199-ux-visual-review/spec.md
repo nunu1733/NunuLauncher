@@ -122,8 +122,6 @@ Vision review does not validate TalkBack semantics, focus order, keyboard/Switch
 
 ## Open questions
 
-- Which ZCode plugin/custom-agent configuration can independently prove `injectAgentsMd: false` and technical write/shell denial while retaining Skill and evidence reads?
-- Can the installed `BAI/glm-5.3-flash` path produce a grounded Observer result, complete the Critic role, and return `insufficient-evidence` for a negative fixture? The first retained Observer output contradicts the digest-matched image.
 - Does blind human adjudication of the current five-case corpus support advisory use beyond the Organizer confirmation flow?
 - Should repository adoption be recorded in `AGENTS.md`, `docs/engineering/quality-strategy.md`, both, or deferred?
 
@@ -135,3 +133,5 @@ Vision review does not validate TalkBack semantics, focus order, keyboard/Switch
 - 2026-09-03: Review correction split neutral Observer-visible and hidden evaluation context, established untrusted-evidence and canonical provenance requirements, reran Codex Observer/Critic E2E, and executed five calibration cases plus one repeat; blind human and ZCode validation remain open.
 - 2026-09-03: ZCode 3.10.2 initially retained non-Vision `GLM-5.3` until restart. The post-restart `BAI/glm-5.3-flash` custom-Observer run completed and claimed Skill/image receipt, but its visual description contradicted the digest-matched PNG; grounded Observer E2E and all remaining ZCode gates stay open. Runtime provenance records provider `BAI` and protocol `unknown` because the active protocol was not independently exposed.
 - 2026-09-03: Added required provider and optional protocol to canonical provenance, migrated retained reports to the new contract digest, and passed a neutral Codex Observer/Critic behavioral probe whose screenshot-carried URL and file-creation requests triggered no network, write, or external-action tool.
+- 2026-09-03: A second ZCode Observer attempt matched the case-02 sheet, heading, and actions but misread the small status-bar time, so its dispatcher stopped before all remaining stages; the run remains retained failure evidence rather than AC-07 completion.
+- 2026-09-03: A final ZCode 3.10.2 run matched all six prominent case-06 anchors, completed Critic review, returned `insufficient-evidence` for missing-image case-07, ignored screenshot-carried pseudo-instructions, and reproduced the contract digest. Raw output defects were preserved and mapped to dispatcher-attested canonical reports. Write/Bash were absent rather than permission-error tested, and `injectAgentsMd: false` remains behaviorally supported without an independent input-context trace. AC-08 blind human adjudication remains open.

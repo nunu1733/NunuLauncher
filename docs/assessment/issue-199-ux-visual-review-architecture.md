@@ -1,6 +1,6 @@
 # Assessment: Issue #199 — UX visual review architecture decision
 
-> Status: proposed; Codex E2E and five-case calibration executed; ZCode Observer attempt failed visual grounding
+> Status: proposed; Codex E2E, five-case calibration, and recorded ZCode runtime E2E executed; blind human adjudication remains incomplete
 > Date: 2026-09-03
 > Issue: [#199](https://github.com/nunu1733/NunuLauncher/issues/199)
 
@@ -11,11 +11,11 @@ Use `.agents/skills/ux-visual-review/` as the only authoritative evaluation cont
 Runtime integrations are adapters:
 
 - Codex: project-scoped `.codex/agents/ux-observer.toml` and `ux-critic.toml`, read-only and model-unpinned.
-- ZCode: plugin-provided Observer/Critic is the intended team-distribution adapter, with `injectAgentsMd: false` for Observer and a verified image-capable model. ZCode's bundled CLI directly discovers the repository Skill at `.agents/skills/ux-visual-review`; do not commit a permanent role adapter until custom-role activation and the required read-only tool surface are runtime-validated.
+- ZCode: plugin-provided Observer/Critic is the intended team-distribution adapter, with `injectAgentsMd: false` for Observer and a verified image-capable model. ZCode's bundled CLI directly discovers the repository Skill at `.agents/skills/ux-visual-review`. The recorded temporary custom-role run validated the role flow and exposed read-only tools, but its outer dispatcher had to attest runtime provenance; no permanent role adapter is committed.
 
 The Observer receives only a neutral user goal and an Observer-visible manifest containing neutral frame IDs, branch/order relations, preceding user actions, and named images. Expected states, risk, intended actions, known defects, AC/spec context, and the human baseline remain in a separate hidden layer. The Critic receives the same evidence plus the Observer report and only the product/risk context needed to judge impact. Neither role performs implementation, functional/spec review, or deterministic accessibility measurement.
 
-This is a proposed process decision, not an ADR: the runtime boundary remains Beta/evolving and the required cross-runtime evidence is incomplete. If later adoption makes the adapter boundary expensive to reverse and alternatives remain material, reassess the ADR criteria then.
+This is a proposed process decision, not an ADR: the runtime boundary remains Beta/evolving and adoption evidence (especially blind human adjudication) is incomplete. If later adoption makes the adapter boundary expensive to reverse and alternatives remain material, reassess the ADR criteria then.
 
 ## Why this boundary
 
@@ -32,7 +32,7 @@ This is a proposed process decision, not an ADR: the runtime boundary remains Be
 | Runtime | Skill reuse | Role adapter | Context isolation | Vision guarantee | Current level |
 |---|---|---|---|---|---|
 | Codex 0.151.0 | Official repo discovery at `.agents/skills` | Official project `.codex/agents/*.toml`; static TOML validation passed | No documented TOML equivalent of `injectAgentsMd: false`; hidden workspace files remained technically readable and reports correctly mark `limited` | Explicit Luna/xhigh invocation received all named images | Observer/Critic image E2E, write denial, and screenshot-instruction non-obedience runtime-validated; limited isolation |
-| ZCode 3.10.2 / bundled CLI 0.16.5 | Runtime enumeration directly discovered the exact repository `.agents/skills/ux-visual-review` path; post-restart custom Observer claimed activation | Temporary user-level custom Observer attempted; plugin distribution remains the intended team adapter | `injectAgentsMd: false` was configured, but no independent enforcement trace was available; report marks `limited` | `BAI/glm-5.3-flash` was selected, but the report contradicted the digest-matched PNG | Project discovery validated; grounded Observer image E2E and remaining gates unvalidated |
+| ZCode 3.10.2 / bundled CLI 0.16.5 | Runtime enumeration directly discovered the exact repository `.agents/skills/ux-visual-review` path; post-restart custom Observer/Critic activation completed | Temporary user-level custom Observer/Critic used for the recorded run; plugin distribution remains the intended team adapter | `injectAgentsMd: false` was configured; the probe observed no repository instructions or 40-character baseline SHA in initial context, which is behavior-consistent but not an independent enforcement trace; report marks `limited` | `BAI/glm-5.3-flash` grounded case 06 with 6/6 prominent anchors and the Critic verified the transcription | Observer/Critic image E2E, missing-image negative fixture, screenshot-instruction non-obedience, exact contract digest, and write/shell tool-surface unavailability validated; limited isolation and outer provenance attestation |
 
 Detailed evidence:
 
@@ -53,22 +53,29 @@ Do not yet add a required review step to `AGENTS.md` or `docs/engineering/qualit
 
 1. blind human adjudication of the extra findings from the five-case corpus;
 2. at least one more stateful case with a concrete change list, since three added cases are single-frame entry/settings surfaces;
-3. completion of grounded ZCode Observer image E2E plus Critic, negative-fixture, independent context-isolation, and write/shell-denial evidence;
-4. an owner decision on advisory adoption after reviewing the recorded false-negative and severity-drift behavior.
+3. an owner decision on advisory adoption after reviewing the recorded false-negative, severity-drift, and ZCode runtime limitations.
 
 ## Residual risks
 
 - Codex adapter configuration does not itself prove that all implementation context was excluded.
-- ZCode project Skill activation and image delivery are self-reported, but the visual output contradicts the fixture; grounding, isolation, and read-only enforcement are not proved.
+- ZCode's recorded case-06 Observer grounded all six prominent anchors and its Critic verified the visual claims; the inner reports still lack complete runtime provenance, so the outer dispatcher attestation is part of the evidence. `injectAgentsMd: false` is behavior-consistent but has no independent input-context trace, and repository-scoped Read leaves isolation `limited`.
+- ZCode's write/shell checks were unavailable because those tools were absent from the custom-role surface; this is not a platform permission-error denial proof. The screenshot URL/path non-obedience probe did pass and both marker files remained absent.
 - Model/provider image capability and output stability can change independently of the shared contract.
 - Aesthetic preference can still be mislabeled as a finding; clean negative cases are required to measure this.
 - Screenshot evidence can hide off-screen, motion, focus, and interaction problems.
 
 ## Remaining Issue #199 work
 
-Do not close #199 or move its current AC-07/AC-08 scope to follow-up Issues without first changing and approving the spec scope. Under the current spec, #199 still owns:
+The recorded ZCode runtime evidence completes AC-07 for the tested
+version/configuration: grounded case-06 Observer/Critic, case-07 missing-image
+refusal, screenshot-instruction non-obedience, exact contract digest, and absent
+write/shell tools are retained with explicit dispatcher provenance attestation.
+Universal plugin-level isolation or platform denial is not claimed.
 
-- ZCode real-client grounded Observer rerun, Critic, negative-fixture, technical write/shell denial, and independent context-isolation validation on the recorded version and model/provider.
+Do not close #199 or move its current AC-08 scope to follow-up Issues without
+first changing and approving the spec scope. Under the current spec, #199 still
+owns:
+
 - Calibration blind human adjudication and one additional stateful case if the owner considers the current entry/settings-heavy corpus insufficiently representative.
 - Product triage for pilot-only findings not already owned by #194/#195, including terminal-summary provenance and English singular/plural copy.
 - Repository process adoption after calibration; this follow-up would own any `AGENTS.md` / `quality-strategy.md` change and enforcement decision.
