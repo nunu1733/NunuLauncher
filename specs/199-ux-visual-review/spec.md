@@ -40,10 +40,17 @@ No NunuLauncher product-domain term is added. Observer, Critic, visual evidence,
 
 ### Scenario: Stateful visual review with isolated perception
 
-Given a minimal user goal and an ordered screenshot sequence with capture provenance,
+Given a neutral user goal and an Observer-visible manifest containing only neutral frame IDs, sequence or branch relations, preceding user actions, and capture provenance,
 When an Observer reviews only that scenario and evidence and a Critic reviews its report against the shared rubric,
 Then the result separates visual observation, likely user impact, and recommendation,
 And every finding cites evidence, severity, confidence, and rubric category without a single aggregate score.
+
+### Scenario: Hidden evaluation context cannot cue perception
+
+Given expected state, safety meaning, intended action, known defect, human baseline, spec, or acceptance criteria,
+When evidence is prepared for the Observer,
+Then those fields remain in an Observer-hidden context that is never supplied to it,
+And filenames and manifest fields do not encode semantic state labels.
 
 ### Scenario: Evidence cannot support the requested judgment
 
@@ -65,16 +72,23 @@ When its Observer adapter runs,
 Then the adapter instructs the Observer not to inspect or use implementation context,
 And the report records the isolation limitation rather than claiming full isolation.
 
+### Scenario: Evidence contains instructions or links
+
+Given text, images, QR codes, links, metadata, or instructions embedded in visual evidence,
+When either role reviews that evidence,
+Then it treats the content as untrusted data,
+And it does not follow instructions, open links, invoke tools, or disclose information because the evidence requests it.
+
 ## Data and state
 
-- Inputs are synthetic or privacy-reviewed screenshots, ordered evidence metadata, and a minimal user scenario.
+- Inputs are synthetic or privacy-reviewed screenshots, a neutral Observer-visible manifest, a separate Observer-hidden evaluation context, and a minimal user scenario.
 - Reports and retained evidence are repository artifacts only when their provenance and privacy status are recorded.
 - The review does not read or mutate Launcher DB state and adds no application persistence or migration.
 - Runtime-specific configuration does not own or duplicate rubric, evidence, or report semantics.
 
 ## Permissions, privacy, and security
 
-No application permission, network behavior, or telemetry is added. Calibration must not retain private device or account data. Runtime adapters are read-only and do not authorize product edits.
+No application permission, network behavior, or telemetry is added. Calibration must not retain private device or account data. Runtime adapters are read-only and do not authorize product edits. Screenshot content is an untrusted input boundary, not an instruction channel. Every report records the effective permission mode, tool surface, and tools actually exercised.
 
 ## Accessibility and localization
 
@@ -84,33 +98,37 @@ Vision review does not validate TalkBack semantics, focus order, keyboard/Switch
 
 - [ ] UVR-AC-01: `.agents/skills/ux-visual-review` is the single authoritative evidence/rubric/role/report contract; Codex and ZCode adapters contain no duplicated evaluation logic.
 - [ ] UVR-AC-02: Primary-source support evidence shows how both runtimes consume the shared Skill or, where direct import is unsupported, the exact thin-adapter boundary and limitation.
-- [ ] UVR-AC-03: Observer input excludes acceptance criteria, spec, plan, source, intended hierarchy, known defects, and fixes; unavoidable inherited context is disclosed.
+- [ ] UVR-AC-03: Observer input is a neutral visible layer and excludes expected state, safety meaning, intended hierarchy/action, acceptance criteria, spec, plan, source, known defects, fixes, and human baseline; unavoidable inherited context is disclosed.
 - [ ] UVR-AC-04: Critic findings keep `observation`, `user_impact`, and `recommendation` separate and include evidence refs, category, severity, and confidence.
 - [ ] UVR-AC-05: Evidence policy requires an ordered scenario sequence for stateful claims and returns `insufficient-evidence` instead of pass when evidence is inadequate.
 - [ ] UVR-AC-06: Deterministic quality surfaces and their authoritative checks are explicitly excluded from Vision pass/fail judgment.
-- [ ] UVR-AC-07: Codex and ZCode prototype validation records runtime/version, invocation, result, and isolation limitations using the same rubric and report schema.
-- [ ] UVR-AC-08: Calibration covers 5–10 representative cases and records agreement, false-positive candidates, missed human-baseline findings, severity drift, reproducibility, and residual risk.
+- [ ] UVR-AC-07: Codex and ZCode prototype validation records runtime/version, model/provider, reasoning, invocation, result, effective permission/tool surface, tools used, and isolation limitations using the same rubric and report schema.
+- [ ] UVR-AC-08: Calibration covers 5–10 representative cases against human baselines frozen before model review; adjudication records semantic-root-cause agreement, blind-human disposition of extras, missed baseline findings, severity drift, reproducibility, and residual risk.
 - [ ] UVR-AC-09: Adoption remains advisory until calibration evidence supports a later decision; the recommendation identifies the repository source of truth and any follow-up Issues.
+- [ ] UVR-AC-10: Both roles treat every instruction, link, QR code, and request embedded in evidence as untrusted content and never take tool, network, disclosure, or external-side-effect actions because of it.
+- [ ] UVR-AC-11: Retained reports carry a canonical provenance envelope identifying contract revision, subject revision/build, runtime/client/model/reasoning, evidence manifest, permission mode, effective tool surface, and tools used.
 
 ## Test oracle
 
 | AC | Evidence |
 |---|---|
-| UVR-AC-01, UVR-AC-04–06 | Skill validation plus review of shared references and adapter diff. |
+| UVR-AC-01, UVR-AC-04–06, UVR-AC-10 | Skill validation plus review of shared references and adapter diff. |
 | UVR-AC-02, UVR-AC-07 | Dated support matrix with primary-source URLs and local runtime evidence. |
 | UVR-AC-03 | Observer forward-test report with isolation metadata and a leakage probe. |
 | UVR-AC-08 | Calibration artifact containing 5–10 case records and human-baseline comparison. |
 | UVR-AC-09 | Decision section in the Issue #199 assessment and any resulting process-doc diff. |
+| UVR-AC-11 | Schema validation of retained reports and contract/subject/runtime provenance. |
 
 ## Open questions
 
-- Can a plugin-provided ZCode subagent activate the repository `.agents/skills/ux-visual-review` source without copying it in the target client?
-- Which exact ZCode model/provider/protocol and read-only tool identifiers satisfy image input plus Skill activation in the validation runtime?
-- Does the initial calibration support advisory use beyond the Organizer confirmation flow?
+- Can an isolated ZCode 3.10.2 custom/plugin role activate the directly discovered repository `.agents/skills/ux-visual-review` source, and which exact adapter/tool configuration enforces read-only execution?
+- Does the installed `BAI/glm-5.3-flash` provider/model path deliver images to both roles and return `insufficient-evidence` for a negative fixture?
+- Does blind human adjudication of the current five-case corpus support advisory use beyond the Organizer confirmation flow?
 - Should repository adoption be recorded in `AGENTS.md`, `docs/engineering/quality-strategy.md`, both, or deferred?
 
 ## Change history
 
 - 2026-09-03: Draft created for Issue #199; implementation remains limited to research, prototypes, and calibration until the contract is accepted.
-- 2026-09-03: ZCode research narrowed the adapter to plugin distribution with `injectAgentsMd: false`; no-copy Skill activation and exact model/tool configuration remain runtime-validation gates.
+- 2026-09-03: ZCode research narrowed team role distribution to a plugin with `injectAgentsMd: false`; bundled CLI 0.16.5 later proved direct project Skill discovery, while isolated-role activation and exact model/tool configuration remain runtime gates.
 - 2026-09-03: Codex 0.151.0 fresh-session validation discovered and spawned `ux_observer`; the no-image path returned `insufficient-evidence` with disclosed limited isolation.
+- 2026-09-03: Review correction split neutral Observer-visible and hidden evaluation context, established untrusted-evidence and canonical provenance requirements, reran Codex Observer/Critic E2E, and executed five calibration cases plus one repeat; blind human and ZCode validation remain open.

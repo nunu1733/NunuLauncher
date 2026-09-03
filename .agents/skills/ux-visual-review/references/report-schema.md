@@ -2,18 +2,53 @@
 
 The portable contract is `ux-visual-review/v1`. YAML below describes required fields; runtimes may render the same structure as JSON or Markdown if field names and meanings are preserved.
 
+## Canonical envelope
+
+Every retained report starts with enough provenance to reproduce and audit the review. `contract_revision` is the Git commit containing the exact contract or a deterministic content digest when the report and contract are committed together.
+
+```yaml
+contract: ux-visual-review/v1
+report_type: observer | critic
+status: observed | reviewed | insufficient-evidence
+report_id: <stable local identifier>
+provenance:
+  contract_revision: <git SHA or content digest>
+  subject:
+    revision: <app/source commit>
+    build_ref: <CI run, build, or artifact reference>
+  runtime:
+    client: codex | zcode | other
+    client_version: <version>
+    model: <effective model ID>
+    reasoning: <effective reasoning configuration>
+    permission_mode: <effective sandbox or permission mode>
+    tool_surface:
+      file_read: allowed | denied | unknown
+      file_write: allowed | denied | unknown
+      shell: allowed | read-only | denied | unknown
+      network: allowed | denied | unknown
+      external_side_effects: allowed | denied | unknown
+    tools_used: [<subset actually invoked>]
+  evidence_manifest_ref: <retained manifest or immutable reference>
+```
+
+Use `unknown` rather than omitting unavailable provenance. Never place secrets, credentials, or private endpoint details in the envelope.
+
 ## Observer report
 
 ```yaml
-schema: ux-visual-review/observer-v1
+contract: ux-visual-review/v1
+report_type: observer
 status: observed | insufficient-evidence
-scenario: <minimal user goal>
+report_id: <stable local identifier>
+provenance: <canonical envelope provenance>
+scenario: <neutral user goal>
 isolation:
   mode: isolated | limited
   limitations: []
 evidence:
   - id: frame-01
-    state: <visible state>
+    apparent_state: <state inferred from the pixels, not copied from the input manifest>
 observations:
   - evidence_refs: [frame-01]
     visible: <what is directly visible>
@@ -31,12 +66,15 @@ An insufficient Observer report may omit `observations` and `sequence_changes`, 
 ## Critic report
 
 ```yaml
-schema: ux-visual-review/v1
+contract: ux-visual-review/v1
+report_type: critic
 status: reviewed | insufficient-evidence
-review_id: <stable local identifier>
+report_id: <stable local identifier>
+provenance: <canonical envelope provenance>
 scenario: <user or product goal>
 evidence_refs: [frame-01, frame-02]
 observer_report_ref: <artifact or inline identifier>
+critic_context_ref: <artifact, inline identifier, or none>
 findings:
   - id: UVR-001
     category: orientation | visual-hierarchy | scanability-density | affordance-action | mental-model-language | feedback-continuity | trust-risk | visual-coherence
@@ -53,7 +91,7 @@ deterministic_deferrals:
     required_check: <authoritative test or measurement>
 limitations: []
 calibration:
-  baseline_ref: <optional human-baseline artifact>
+  baseline_ref: <human baseline revealed only after the Critic report is complete>
   agreement: []
   false_positive_candidates: []
   missed_baseline_findings: []

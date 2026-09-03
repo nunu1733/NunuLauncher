@@ -1,98 +1,84 @@
-schema: ux-visual-review/observer-v1
+contract: ux-visual-review/v1
+report_type: observer
 status: observed
-scenario: >-
-  A user wants to review a proposed home-screen organization before applying it,
-  then understand the visible terminal state and the safest next action.
+report_id: issue-199-pilot-01-observer
+provenance:
+  contract_revision: sha256:90d82dda6d56fe5d1494612bde751e99d3a87b1466cded526d3ab0ff2cc0510b
+  subject:
+    revision: 76973333fd61e74981ac4bfd1cc487aba07b3cef
+    build_ref: https://github.com/nunu1733/NunuLauncher/actions/runs/33707975932
+  runtime:
+    client: codex
+    client_version: 0.151.0
+    model: gpt-5.6-luna
+    reasoning: xhigh
+    permission_mode: read-only
+    tool_surface:
+      file_read: allowed
+      file_write: denied
+      shell: read-only
+      network: allowed
+      external_side_effects: allowed
+    tools_used:
+      - functions.exec
+      - functions.exec_command
+  evidence_manifest_ref: pilot-01-observer-manifest.yaml
+scenario: Understand the screens in a home-screen organization flow and decide what to do at each point.
 isolation:
-  mode: isolated
-  limitations: []
+  mode: limited
+  limitations:
+    - Repository files beyond the allowed inputs were technically accessible; they were not inspected or used to resolve visual ambiguity.
 evidence:
   - id: frame-01
-    state: Entry screen for reviewing a proposed home-layout organization
+    apparent_state: Entry screen presenting an organization and review flow.
   - id: frame-02
-    state: Proposal summary and apply/cancel decision screen
+    apparent_state: Review screen displaying summary counts and text actions to apply or cancel.
   - id: frame-03a
-    state: Stale-proposal terminal state
+    apparent_state: Screen stating that the home layout changed and offering another capture and review.
   - id: frame-03b
-    state: Successful application and verification terminal state
+    apparent_state: Screen stating that organization was applied and verified, with restore and new-review actions.
   - id: frame-03c
-    state: Recovery-verification failure terminal state
+    apparent_state: Screen stating that the current layout could not be verified and presenting organizer diagnostics.
 observations:
-  - evidence_refs: [frame-01]
+  - evidence_refs:
+      - frame-01
+    visible: The large "Organize home layout" heading and back arrow are the first prominent elements. Two lines explain that proposed changes should be reviewed and that the current layout is not changed automatically. A single emphasized "Review organization" line appears below.
+    inference: This reads as an entry point whose apparent next action is to review an organization proposal. The back arrow is visually suggestive of navigation; the review line has emphasis but no distinct button container.
+  - evidence_refs:
+      - frame-02
+    visible: The title and explanatory text remain. "Review the proposed organization" introduces text stating that a detailed change list could not be prepared, followed by aggregate counts for scope, device profile, placements, folders, pages, and fallback category. "Apply reviewed organization" is emphasized above "Cancel".
+    inference: This reads as a review-and-choose screen. The visible information is aggregate rather than item-level, and the apparent primary action is applying the reviewed organization.
+  - evidence_refs:
+      - frame-03a
+    visible: The title and explanatory text remain. The summary and apply/cancel options are replaced by the message "The home layout changed. Review a new proposal before applying anything." and the emphasized line "Capture and review again".
+    inference: The apparent available path is to capture and review again; no apply or cancel action is visible on this screen.
+  - evidence_refs:
+      - frame-03b
     visible: >-
-      The screen shows a back arrow, the heading “Organize home layout,”
-      explanatory text stating that proposed changes should be reviewed before
-      application and that the current layout is not changed automatically,
-      followed by “Review organization.” Most of the screen is empty.
-    inference: >-
-      “Review organization” appears to be the primary action; the page reads as
-      an entry point into a review flow.
-  - evidence_refs: [frame-02]
-    visible: >-
-      The heading reads “Review the proposed organization.” The screen states
-      that a detailed change list could not be prepared, then presents summary
-      counts and “Apply reviewed organization” / “Cancel” actions.
-    inference: >-
-      The apparent decision is whether to apply the summarized proposal or
-      cancel. No item-level placement details are visible. The summary is one
-      continuous column without visible separators or containers.
-  - evidence_refs: [frame-03a]
-    visible: >-
-      The screen states “The home layout changed. Review a new proposal before
-      applying anything.” A single emphasized action, “Capture and review
-      again,” is visible.
-    inference: >-
-      The prior proposal appears to be treated as no longer current, with
-      recapture and review presented as the next action.
-  - evidence_refs: [frame-03b]
-    visible: >-
-      The screen begins with “Organization was applied and verified.” It repeats
-      proposal summary counts and shows “Restore the previous layout” and “Start
-      a new review” as emphasized actions.
-    inference: >-
-      The apparent terminal state is successful application and verification,
-      with recovery and restarting the review both available.
-  - evidence_refs: [frame-03c]
-    visible: >-
-      The screen states “The current layout could not be verified. Do not make
-      another organization change yet.” It repeats summary counts, then says
-      that the current layout needs a safety review. “Open organizer diagnostics”
-      is followed by support-export text.
-    inference: >-
-      The visible next step appears to be opening diagnostics while deferring
-      another organization change.
-  - evidence_refs: [frame-02, frame-03b]
-    visible: >-
-      The summary includes “4 colums,” “1 placements,” and “1 pages,” and the
-      success screen repeats the same counts without showing the moved item or
-      resulting home screen.
-    inference: >-
-      The relationship between aggregate counts and the concrete layout change
-      is not visible.
+      The screen states "Organization was applied and verified." The aggregate
+      summary counts remain visible. Two emphasized text actions appear:
+      "Restore the previous layout" and "Start a new review".
+    inference: This reads as a post-action screen with an applied-and-verified result. The apparent next choices are restoring the previous layout or starting another review.
+  - evidence_refs:
+      - frame-03c
+    visible: The screen states that the current layout could not be verified and says not to make another organization change yet. The aggregate summary counts remain visible. A second message says the current layout needs a safety review, followed by "Open organizer diagnostics" and supporting text about exporting privacy-safe details for support.
+    inference: This reads as a verification-blocked state. Diagnostics are presented as the only visible onward action while another organization run is not offered.
 sequence_changes:
   - from: frame-01
     to: frame-02
-    visible_change: >-
-      Entry explanation becomes a review screen with an unavailable-detail
-      notice, aggregate counts, and apply/cancel actions.
+    visible_change: The single review line expands into a proposed-organization section with summary text, aggregate counts, and separate apply and cancel actions.
   - from: frame-02
     to: frame-03a
-    visible_change: >-
-      The stale branch replaces the decision with a message that the home layout
-      changed and an action to capture and review again.
+    visible_change: The summary and apply/cancel actions disappear and are replaced by a message about the home layout changing and a capture-and-review action.
   - from: frame-02
     to: frame-03b
-    visible_change: >-
-      The success branch confirms application and verification and offers restore
-      and new-review actions.
+    visible_change: A message stating that organization was applied and verified appears while the aggregate summary remains; the actions change to restore the previous layout and start a new review.
   - from: frame-02
     to: frame-03c
-    visible_change: >-
-      The recovery-failure branch shows verification warnings, repeats summary
-      information, and offers organizer diagnostics.
+    visible_change: Messages about inability to verify the current layout and needing a safety review appear while the aggregate summary remains; organizer diagnostics become the visible onward action.
 uncertainties:
-  - Still images do not establish which text elements are tappable or how actions transition between states.
-  - The concrete placement or item affected by the proposal is not shown.
-  - The terminal images are alternative branches after frame-02, not one linear sequence.
-  - The recovery-failure summary does not visibly clarify whether it describes the attempted proposal or the current verified layout.
+  - The screenshots show aggregate counts but do not show which specific placement would move.
+  - The still images do not establish whether the text action lines are tappable controls or static text.
+  - The relationship between the back arrow, Cancel, Restore the previous layout, and Start a new review is not demonstrated.
+  - No home-screen view after organization is shown, so the resulting arrangement is not visible.
 missing_evidence: []

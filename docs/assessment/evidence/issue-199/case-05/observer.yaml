@@ -1,0 +1,59 @@
+contract: ux-visual-review/v1
+report_type: observer
+status: observed
+report_id: issue-199-case-05-observer
+provenance:
+  contract_revision: sha256:90d82dda6d56fe5d1494612bde751e99d3a87b1466cded526d3ab0ff2cc0510b
+  subject:
+    revision: 8104ce2af3dd9e26f7ddcb2ea339369e5b7b64b9
+    build_ref: "retained Issue #123 after-capture"
+  runtime:
+    client: codex
+    client_version: 0.151.0
+    model: gpt-5.6-luna
+    reasoning: xhigh
+    permission_mode: "danger-full-access"
+    tool_surface:
+      file_read: allowed
+      file_write: allowed
+      shell: allowed
+      network: allowed
+      external_side_effects: allowed
+    tools_used:
+      - exec_command
+      - view_image
+  evidence_manifest_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-05/observer-manifest.yaml
+scenario: "Understand and manage the visible home-screen placement settings."
+isolation:
+  mode: limited
+  limitations:
+    - "Other repository files remained technically accessible to the runtime but were not read."
+    - "Behavior was instruction-constrained under danger-full-access."
+evidence:
+  - id: frame-01
+    apparent_state: "A light-themed portrait settings page titled “Placement locks,” with a summary message, explanatory guidance, and a list of app placement entries showing “Unlocked” statuses."
+observations:
+  - evidence_refs: [frame-01]
+    visible: "A back arrow appears in the upper-left, and “Placement locks” is the largest text near the top."
+    inference: "The heading establishes a settings and management context before the list is scanned."
+  - evidence_refs: [frame-01]
+    visible: "A blue line reads “No placements need review.” A rounded white card below reads “Review and change which placements organization must keep.”"
+    inference: "The upper section appears to summarize the current condition and explain the screen's purpose."
+  - evidence_refs: [frame-01]
+    visible: "The blue “All placements” label introduces a white grouped list. Each row has an app name, a secondary placement description, and a right-aligned “Unlocked” label."
+    inference: "The apparent scan path is summary, guidance, grouped list, then per-row status."
+  - evidence_refs: [frame-01]
+    visible: "Visible entries include Google, Gmail, Photos, Settings, Google, Gmail, and Maps, separated by horizontal dividers."
+    inference: "Repeated app names are distinguished by reading their secondary placement descriptions."
+  - evidence_refs: [frame-01]
+    visible: "No chevrons, switches, checkboxes, outlined buttons, or other explicit row controls are visible; the back arrow is the only clear icon affordance."
+    inference: "The likely action surface is ambiguous. Rows may be selectable, but the still image does not establish how an entry is changed."
+  - evidence_refs: [frame-01]
+    visible: "The Maps row is the final visible item immediately above the bottom gesture area."
+    inference: "Whether additional placements continue below the viewport cannot be established from this frame."
+sequence_changes: []
+uncertainties:
+  - "Whether selecting a row opens an editor or whether the right-aligned status is interactive is not visible."
+  - "The meaning and effect of changing “Unlocked” cannot be inferred from the pixels alone."
+  - "The frame does not establish whether more entries exist below the visible list."
+missing_evidence: []

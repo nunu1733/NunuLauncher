@@ -1,0 +1,62 @@
+contract: ux-visual-review/calibration-adjudication-v1
+status: pending-human
+baseline_ref: calibration-baselines.yaml
+baseline_frozen_before_model_runs: true
+instructions:
+  - Review the named evidence and only the canonical fields of each named finding.
+  - Choose accept, reject, or needs-evidence without changing the frozen baseline.
+  - Record a short evidence-bound reason; do not use model confidence as a disposition.
+reviewer: pending
+reviewed_at: pending
+cases:
+  - case_id: issue-199-pilot-01-rerun
+    critic_report_ref: pilot-01-critic.yaml
+    extras:
+      - finding_id: UVR-002
+        disposition: pending
+        reason: pending
+      - finding_id: UVR-003
+        disposition: pending
+        reason: pending
+      - finding_id: UVR-004
+        disposition: pending
+        reason: pending
+      - finding_id: UVR-005
+        disposition: pending
+        reason: pending
+  - case_id: issue-199-case-02
+    critic_report_ref: case-02/critic.yaml
+    extras:
+      - finding_id: UVR-001
+        disposition: pending
+        reason: pending
+      - finding_id: UVR-002
+        disposition: pending
+        reason: pending
+      - finding_id: UVR-003
+        disposition: pending
+        reason: pending
+  - case_id: issue-199-case-03
+    critic_report_ref: case-03/critic.yaml
+    extras:
+      - finding_id: UVR-001
+        disposition: pending
+        reason: pending
+      - finding_id: UVR-002
+        disposition: pending
+        reason: pending
+  - case_id: issue-199-case-04
+    critic_report_ref: case-04/critic.yaml
+    extras:
+      - finding_id: UVR-001
+        disposition: pending
+        reason: pending
+      - finding_id: UVR-002
+        disposition: pending
+        reason: pending
+      - finding_id: UVR-003
+        disposition: pending
+        reason: pending
+      - finding_id: UVR-004
+        disposition: pending
+        reason: pending

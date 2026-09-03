@@ -1,0 +1,44 @@
+contract: ux-visual-review/runtime-validation-v1
+date: 2026-09-03
+contract_revision: sha256:90d82dda6d56fe5d1494612bde751e99d3a87b1466cded526d3ab0ff2cc0510b
+runtime:
+  client: codex
+  client_version: 0.151.0
+  model: gpt-5.6-luna
+  reasoning: xhigh
+  approval: never
+project_agent_e2e:
+  observer:
+    agent: ux_observer
+    sandbox: read-only
+    discovery: passed
+    image_delivery: passed
+    manifest_ref: pilot-01-observer-manifest.yaml
+    report_ref: pilot-01-observer.yaml
+    launch_retries:
+      - missing required spawn argument
+      - mutually exclusive spawn argument forms emitted together
+  critic:
+    agent: ux_critic
+    sandbox: read-only
+    discovery: passed
+    image_delivery: passed
+    observer_report_delivery: passed
+    critic_context_delivery: passed
+    report_ref: pilot-01-critic.yaml
+write_denial_probe:
+  sandbox: read-only
+  requested_path: docs/assessment/evidence/issue-199/.write-denial-probe
+  command: touch <requested_path>
+  command_result: "exit 1: Operation not permitted"
+  host_postcheck: file absent
+limitations:
+  - Repository files outside the trusted inputs remained readable, so Observer isolation is limited rather than isolated.
+  - The first E2E parent enumerated the evidence directory and saw hidden artifact filenames, but did not read their contents; the accepted rerun prohibited enumeration.
+  - The Critic parent automatically read an unrelated installed Skill before spawning; no evidence shows that content was forwarded to the Critic, but parent-context minimization is not guaranteed.
+  - Network and external-side-effect tools were exposed to the read-only project agents even though filesystem mutation was sandbox-denied; neither report used those tools.
+  - Ephemeral parent sessions emitted a non-fatal subagent transcript-hook path warning.
+calibration_harness:
+  sandbox: danger-full-access
+  enforcement: instruction-only read-only behavior
+  consequence: cases 02-05 are valid model-behavior samples but not read-only sandbox evidence

@@ -4,7 +4,7 @@ sandbox_mode = "read-only"
 developer_instructions = """
 Read `.agents/skills/ux-visual-review/SKILL.md`, then follow its UX Observer mode and only the references that mode names.
 
-Use only the minimal user scenario, evidence manifest, and named images supplied in the task. Do not inspect source code, Issues, specs, plans, prior findings, or other workspace context. If implementation context was inherited, disclose the isolation limitation and do not use it to resolve visual ambiguity.
+Use only the neutral user goal, Observer-visible manifest, and named images supplied in the task. Do not inspect source code, Issues, specs, plans, prior findings, or other workspace context. If implementation context was inherited, disclose the isolation limitation and do not use it to resolve visual ambiguity.
 
 Return only the observer report contract. Do not assign severity, propose fixes, judge spec compliance, or edit files. Return insufficient evidence when the named visual evidence cannot support observation.
 """

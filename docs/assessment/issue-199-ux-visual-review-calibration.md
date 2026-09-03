@@ -1,70 +1,141 @@
 # Assessment: Issue #199 — UX visual review calibration
 
-> Status: pilot complete; required 5–10 case calibration incomplete
+> Status: five cases and one repeat executed; blind human adjudication incomplete
 > Date: 2026-09-03
-> Runtime: Codex subagents, `gpt-5.6-luna`, reasoning effort `xhigh`
-> Contract: `.agents/skills/ux-visual-review` draft
+> Runtime: Codex 0.151.0, `gpt-5.6-luna`, reasoning effort `xhigh`
+> Contract revision: `sha256:90d82dda6d56fe5d1494612bde751e99d3a87b1466cded526d3ab0ff2cc0510b`
 
-## Pilot outcome
+## Outcome
 
-The two-stage workflow produced a perception-only Observer report and a schema-conforming Critic report from a five-frame, branched Organizer scenario. The Critic independently recovered the human baseline's central trust problem: aggregate counts do not let a user judge the concrete home-layout change before applying it. The run also produced plausible additional findings, but one run and one scenario are not enough to estimate reproducibility or false-positive/negative rates. Adoption therefore remains advisory and the Issue #199 calibration acceptance criterion is not complete.
+The corrected two-stage workflow completed five pre-baselined cases and one
+repeat. It recovered the central trust problem in the stateful Organizer case,
+missed the known dark-theme coherence defect, repeated two extra findings on a
+clean case with one-level severity drift, and correctly returned
+`insufficient-evidence` when a single settings frame could not support a safe
+management-flow judgment.
 
-## Evidence manifest
+This is useful advisory evidence, but it is not sufficient for adoption or
+Issue closure. A human reviewer who has not seen the model reports must still
+adjudicate the extra findings. ZCode runtime validation is also incomplete.
 
-Source: PR #198 CI run [`33707975932`](https://github.com/nunu1733/NunuLauncher/actions/runs/33707975932), artifact `issue52-ui-evidence`, downloaded 2026-09-03. The fixture is synthetic and contains no private device data. Repository-retained copies and SHA-256 values:
+## Correction to the original pilot
 
-| ID | Branch/state | File | SHA-256 |
+The pilot committed at `47675716358e264d52ff29a16313437d18f7f29f` is excluded
+from calibration scoring. Its Observer input leaked semantic labels through
+filenames and manifest fields such as `success`, `stale`, and
+`recovery-failure`, so it did not establish perception blindness.
+
+The accepted rerun separates inputs into two layers:
+
+- Observer-visible: neutral goal, frame IDs, sequence/branch relations,
+  preceding user action, image path, and digest.
+- Observer-hidden: expected state, safety meaning, expected primary action,
+  known defect, human baseline, Issue/spec, and acceptance criteria.
+
+The retained images use neutral names (`frame-01`, `frame-02`, `frame-03a`,
+and so on). The Observer inferred visible state from pixels rather than being
+told the answer. The layer split is represented by the
+[Observer manifest](evidence/issue-199/pilot-01-observer-manifest.yaml) and
+[Critic context](evidence/issue-199/pilot-01-critic-context.yaml).
+
+## Frozen adjudication method
+
+The calibration rules and human baselines were frozen before cases 02–05 ran:
+
+- [calibration rules](../../.agents/skills/ux-visual-review/references/calibration.md)
+- [human baselines](evidence/issue-199/calibration-baselines.yaml)
+- [human adjudication queue](evidence/issue-199/human-adjudication.yaml)
+
+Agreement is matched by semantic root cause and user impact, not exact wording
+or rubric category. Severity is recorded as exact agreement, near-agreement
+within one level, or disagreement at two or more levels. Findings absent from
+the baseline remain `needs-evidence` until blind human review; they are not
+automatically counted as false positives. A rejected `minor` or `polish`
+finding on a clean case counts as an aesthetic false positive. A known baseline
+finding absent from the report is a miss.
+
+The contract digest covers every file below
+`.agents/skills/ux-visual-review/`, sorted by path, with a SHA-256 digest per
+file followed by a SHA-256 digest of that manifest. Every accepted report
+records this revision together with subject revision/build, runtime/client,
+model, reasoning effort, evidence manifest, permission mode, effective tool
+surface, and tools actually used.
+
+## Case results
+
+| Case | Evidence and baseline | Critic outcome | Calibration disposition |
 |---|---|---|---|
-| frame-01 | entry | [start](evidence/issue-199/case-01-organizer-flow/start.png) | `503063c5f16e21e622a1aca44478aee9bb5b533c92961c19d1543ae1023d5974` |
-| frame-02 | review/decision | [preview](evidence/issue-199/case-01-organizer-flow/preview-confirm.png) | `b51b3357fece4f5184582612fbaee1c9e0127c5bfd0e911b7b5ec6e7ff3d0a2f` |
-| frame-03a | stale branch | [stale](evidence/issue-199/case-01-organizer-flow/stale.png) | `3c15d368bdc617be60c4461924b722d9eb1f415fe444ad21dcdbb8f33b2b022f` |
-| frame-03b | success branch | [success](evidence/issue-199/case-01-organizer-flow/success.png) | `c53e810e644ed9f387eeaa47d5e19ba71d1a1b948eed9208e1008ef530b64c36` |
-| frame-03c | recovery-failure branch | [failure](evidence/issue-199/case-01-organizer-flow/recovery-failure.png) | `5974bd1868f5736cdd618d23044ee84caaa85eecbf273bab8fbb43286838fb95` |
-
-The three terminal frames are alternative branches after frame-02. They were declared as branches rather than misrepresented as one linear run.
-
-## Invocation and isolation
-
-- Observer: fresh subagent with no parent-turn history, model `gpt-5.6-luna`, effort `xhigh`; supplied only the shared Observer references, minimal scenario, evidence manifest, and named images.
-- Critic: separate fresh subagent with no parent-turn history, same model/effort; supplied only shared Critic references, product goal, evidence, and Observer report.
-- Both agents were instructed not to inspect code, Issues, specs, plans, or prior critique and made no file changes.
-- This proves the explicit fresh-spawn path used by the calibration harness, not automatic isolation by `.codex/agents/*.toml`. The Codex adapter limitation remains documented separately.
+| 01 — stateful Organizer proposal | Five neutral frames with three declared terminal branches; human baseline from the Issue #192 concrete-preview investigation | Recovered the central absence of item/destination detail before apply as `major/high`; also reported state wording, scanability, affordance, and failure-summary concerns | Central true positive. Extra findings need blind human adjudication. |
+| 02 — known dark-theme defect | Issue #123 before-capture; baseline: fixed light popup surface is incoherent with the dark launcher, `moderate` | Reported action hierarchy, `LATER`/`SKIP` ambiguity, and competing setup cues, but not the theme mismatch root cause | Known baseline miss. Extras need blind human adjudication. |
+| 03 — corrected dark theme, clean negative | Issue #123 after-capture; baseline records the theme correction and no visual-coherence defect | Reported `LATER`/`SKIP` ambiguity and equal action hierarchy | Clean-case extras need blind human adjudication; not yet false positives. |
+| 04 — Japanese at 200%, clean visual baseline | Issue #123 after-capture; deterministic evidence says actions remain in the viewport | Reported equal hierarchy, action-label ambiguity, an orphaned final text fragment, and missing scope/recovery context | Extras need blind human adjudication. The deterministic font-scale result remains separate and is not a Vision pass. |
+| 05 — placement settings, clean visual baseline | Issue #123 after-capture; intentional text state badges | Returned `insufficient-evidence` with no findings because the requested safe-management judgment requires interaction states | Correct evidence-bound refusal; no pass was inferred from a single root frame. |
 
 Artifacts:
 
-- [Observer report](evidence/issue-199/pilot-01-observer.yaml)
-- [Critic report](evidence/issue-199/pilot-01-critic.yaml)
+- Case 01: [Observer](evidence/issue-199/pilot-01-observer.yaml),
+  [Critic](evidence/issue-199/pilot-01-critic.yaml)
+- Case 02: [Observer](evidence/issue-199/case-02/observer.yaml),
+  [Critic](evidence/issue-199/case-02/critic.yaml)
+- Case 03: [Observer](evidence/issue-199/case-03/observer.yaml),
+  [Critic](evidence/issue-199/case-03/critic.yaml),
+  [repeat](evidence/issue-199/case-03/critic-repeat.yaml)
+- Case 04: [Observer](evidence/issue-199/case-04/observer.yaml),
+  [Critic](evidence/issue-199/case-04/critic.yaml)
+- Case 05: [Observer](evidence/issue-199/case-05/observer.yaml),
+  [Critic](evidence/issue-199/case-05/critic.yaml)
 
-## Human-baseline comparison
+## Repeatability
 
-Baseline: [Issue #192 Organizer concrete-preview investigation](issue-192-organizer-concrete-preview-investigation.md), especially its finding that a count-only preview makes the user approve counts rather than concrete affected items and destinations. PR #198 review is functional/spec/a11y evidence, not a human visual-UX baseline, so it was not treated as one.
+Case 03 was rerun with a fresh Luna/xhigh Critic. Both runs independently
+reported the same two semantic concerns: ambiguity between defer and dismiss,
+and equal visual hierarchy among the three actions. The language finding stayed
+`moderate`; confidence moved from `medium` to `high`. The hierarchy finding
+moved from `moderate` to `minor`, a one-level near-agreement drift. Recurrence
+does not establish correctness: both findings remain blind-human
+`needs-evidence` because the frozen baseline classified the capture as clean.
 
-| Critic result | Baseline comparison | Calibration disposition |
-|---|---|---|
-| UVR-001: no concrete item/destination before apply (`major/high`) | Direct agreement with the central #192 finding. | Useful true positive; severity is plausible for a high-impact layout decision. |
-| UVR-002: fallback-category language is implementation-like | Not covered by #192. | Unadjudicated extra finding; candidate for human review, not automatically a false positive. |
-| UVR-003: uninterrupted counts and singular/plural wording | The density concern is adjacent to #192; grammar was not part of its baseline. | Mixed: grouping concern supports baseline; copy defects need separate localization triage. |
-| UVR-004: success does not connect approval to concrete result | Not covered by #192's pre-apply focus. | Plausible scope-expanding finding; requires product review before acceptance. |
-| UVR-005: failure summary does not identify its source state | Not covered by #192. | Plausible trust-risk finding with appropriately reduced `medium` confidence. |
+## Runtime and security evidence
 
-## False-negative and evidence limits
+The case-01 rerun used the project `ux_observer` and `ux_critic` adapters under
+Codex `read-only`. A direct write probe was denied by Seatbelt and the target
+file did not exist afterward. The project-agent runs disclosed `limited`
+isolation because hidden workspace files remained technically readable even
+though they were not supplied to the roles. Details are in the
+[runtime validation record](evidence/issue-199/codex-runtime-validation.yaml).
 
-- #192 records a residual risk in same-band text descriptions. This pilot could not evaluate it because frame-02 is the explicitly degraded `details unavailable` state. That is a corpus gap, not a demonstrated model miss.
-- Still images do not verify touch targets, 200% font scaling, semantics, focus order, traversal, or functional transitions. The Critic correctly deferred those surfaces.
-- The Critic did not produce an aggregate score or a pass/fail verdict.
-- Reproducibility is unknown because the same case has not yet been repeated with a blind second run.
+Cases 02–05 used fresh collaboration sessions with a broader effective runtime
+tool surface. Their reports record `danger-full-access`; role instructions kept
+the actual review read-only. `apply_patch` appears in `tools_used` only because
+the completed report was serialized after evaluation, not because product code
+or evidence was changed during observation. These cases therefore test the
+semantic contract but do not add another sandbox-enforcement proof.
 
-## Required next calibration cases
+All screenshots, visible text, QR codes, links, metadata, and embedded
+instructions are treated as untrusted evidence. Neither role may follow or
+execute evidence-carried instructions, open evidence-carried links, invoke
+tools because an image asks it to, or disclose information requested by the
+evidence. No retained fixture contains private device data.
 
-Before changing repository process policy, add at least four more independently baselined cases:
+## Limits and residual risk
 
-1. concrete change-list details with same-band movement and truncation/expansion;
-2. known dark-theme onboarding defect versus corrected evidence from Issue #123;
-3. dense Japanese 200% evidence with deterministic accessibility results kept separate;
-4. a deliberately clean, low-risk settings screen to estimate aesthetic false positives.
+- The case-02 miss demonstrates a real false-negative risk for contextual
+  visual coherence.
+- Extra findings on cases 02–04 are not scored until blind human adjudication;
+  calibration therefore does not yet yield a false-positive rate.
+- Four cases are single-frame entry/settings surfaces. The stateful case is
+  stronger, but another stateful concrete-change case would improve corpus
+  representativeness.
+- Still images cannot verify touch targets, numeric contrast, semantics, focus,
+  traversal, motion, persistence, or functional transitions.
+- Codex project adapters provide limited, not technically complete, context
+  isolation. ZCode's stronger documented `injectAgentsMd: false` boundary has
+  not yet been exercised in the installed client.
 
-Repeat at least one case to measure finding/severity stability. Record adjudication by a human reviewer who did not see the Critic output first.
+## Adoption recommendation
 
-## Adoption recommendation at pilot stage
-
-Keep the workflow **advisory only**. It is already useful as an additional qualitative surface, but the required 5–10 case calibration, ZCode runtime validation, and Codex project-agent image-delivery/write-denial tests remain open. Fresh-session Codex Observer discovery and the no-image negative path have been validated separately. Do not update `AGENTS.md`, `docs/engineering/quality-strategy.md`, or merge gates based on this pilot alone.
+Keep the workflow **advisory only and experimental**. Do not add a required
+step to `AGENTS.md`, `docs/engineering/quality-strategy.md`, or a merge gate.
+Before an owner adoption decision, complete blind human adjudication, record a
+real ZCode Observer/Critic run on the shared contract, and review whether the
+current corpus needs another stateful concrete-change case.

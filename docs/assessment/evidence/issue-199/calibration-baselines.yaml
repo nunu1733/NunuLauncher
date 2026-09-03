@@ -1,0 +1,34 @@
+contract: ux-visual-review/calibration-baseline-v1
+frozen_before_model_runs: true
+adjudication_rules_ref: ../../../../.agents/skills/ux-visual-review/references/calibration.md
+source_ref: ../../issue-123-ui-mapping.md
+cases:
+  - case_id: issue-199-case-02
+    source_revision: 5b9ad9fab45a050fd09388cf7c8647d77cc7789a
+    human_baseline:
+      classification: known-defect
+      semantic_root_cause: A fixed light popup surface fails to follow the surrounding dark theme.
+      user_impact: The proposal looks visually disconnected from the launcher and its text/surface treatment is not dark-theme coherent.
+      category: visual-coherence
+      severity: moderate
+  - case_id: issue-199-case-03
+    source_revision: 8104ce2af3dd9e26f7ddcb2ea339369e5b7b64b9
+    human_baseline:
+      classification: clean-negative
+      semantic_root_cause: none recorded; the popup follows the dark theme after the Issue #123 correction.
+      category: visual-coherence
+      severity: none
+  - case_id: issue-199-case-04
+    source_revision: 8104ce2af3dd9e26f7ddcb2ea339369e5b7b64b9
+    human_baseline:
+      classification: clean-negative-with-deterministic-check
+      semantic_root_cause: none recorded in the retained visual assessment.
+      deterministic_result: At 200% font scale all popup actions remain in the viewport; this is not a Vision pass claim.
+      severity: none
+  - case_id: issue-199-case-05
+    source_revision: 8104ce2af3dd9e26f7ddcb2ea339369e5b7b64b9
+    human_baseline:
+      classification: clean-negative
+      semantic_root_cause: none recorded; text state badges are intentionally retained so status is not color-only.
+      category: visual-coherence
+      severity: none

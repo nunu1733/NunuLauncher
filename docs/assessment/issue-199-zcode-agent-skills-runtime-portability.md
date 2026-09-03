@@ -1,6 +1,6 @@
 # Assessment: Issue #199 — ZCode / Agent Skills runtime portability
 
-> Status: research complete for the ZCode and Agent Skills portability surface
+> Status: research complete; installed-client inventory recorded; runtime E2E incomplete
 > Verification date: 2026-09-03
 > Scope: ZCode custom subagents, plugins, skills, workspace-context isolation,
 > vision-model responsibility, and the Agent Skills shared-contract boundary.
@@ -22,9 +22,10 @@ format nor a ZCode plugin guarantees a vision-capable execution model. The
 ZCode adapter must therefore own runtime isolation (`injectAgentsMd: false`),
 read-only tool policy, explicit skill activation, and selection/validation of
 an image-capable model/provider/protocol combination. A repository-shipped
-ZCode plugin is the documented team-distribution mechanism, but a real-client
-prototype is still required to prove that its subagent can load the repository
-skill without copying the contract.
+ZCode plugin remains the documented team-distribution mechanism. The installed
+client now proves direct project discovery without copying the contract; a
+real-client prototype is still required to prove activation from an isolated
+role, image delivery, and write denial.
 
 ## 1. Support matrix
 
@@ -33,7 +34,7 @@ skill without copying the contract.
 | Agent Skills format | A skill is a directory containing required `SKILL.md`; `name` and `description` are required, while `references/`, `scripts/`, and `assets/` are optional. Relative references resolve from the skill root. | The rubric, evidence policy, Observer/Critic role contract, and report schema can live under one portable skill directory without runtime-specific model IDs. | [Agent Skills specification at target commit](https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx) (confirmed 2026-09-03) |
 | Portable discovery path | The format specification does not mandate an install path. The official client-integration guide recommends project/user `.agents/skills/` as a cross-client convention, alongside client-native locations. | `.agents/skills/ux-visual-review/` is a sound repository convention, but discovery is a client responsibility rather than a guarantee of the file format. | [Agent Skills client implementation guide at target commit](https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/client-implementation/adding-skills-support.mdx) (confirmed 2026-09-03) |
 | Progressive disclosure | Compatible clients disclose `name` + `description`, load the full `SKILL.md` on activation, then load referenced resources as needed. Subagent delegation is an optional advanced client feature, not part of the core file format. | Keep the common entry point short and link focused references directly; do not encode the Observer/Critic runtime topology as if the standard required it. | [Agent Skills client implementation guide at target commit](https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/client-implementation/adding-skills-support.mdx) (confirmed 2026-09-03) |
-| ZCode skills | A ZCode skill is a `SKILL.md` directory. Enabled-skill metadata is injected each turn and bodies load on invocation. ZCode can import external-agent skills by symlink or copy to Global or Project scope. Team distribution uses a plugin; plugin skills must use flat `skills/<name>/SKILL.md` layout. | The common skill can be reused locally through ZCode's documented symlink import. A team-installable form should be a plugin, subject to the no-copy validation in section 6. | [ZCode Skill](https://zcode.z.ai/en/docs/skill) (confirmed 2026-09-03) |
+| ZCode skills | A ZCode skill is a `SKILL.md` directory. Enabled-skill metadata is injected each turn and bodies load on invocation. ZCode can import external-agent skills by symlink or copy to Global or Project scope. Team distribution uses a plugin; plugin skills must use flat `skills/<name>/SKILL.md` layout. | ZCode CLI 0.16.5 directly discovered this repository's `.agents/skills/ux-visual-review` as a project Skill. A team-installable role adapter should still use a plugin. | [ZCode Skill](https://zcode.z.ai/en/docs/skill) (confirmed 2026-09-03) plus section 9 local evidence |
 | ZCode custom subagents | Custom subagents are Beta and currently user-level only. Settings writes `~/.zcode/agents/<name>.md`; workspace/project custom-agent editing is not available in Settings. The definition supports model, thought level, tools, max turns, `injectAgentsMd`, and MCP requirements. | A user-level file is unsuitable as the repository's authoritative contract. Use it only for local validation, or ship a plugin-provided subagent as the repository adapter. | [ZCode Subagents](https://zcode.z.ai/en/docs/subagents) (confirmed 2026-09-03) |
 | ZCode plugin distribution | A plugin can bundle `skills/`, `agents/`, commands, hooks, and MCP declarations under `.zcode-plugin/plugin.json`; plugin agents are `agents/*.md` and their Markdown body is the system prompt. GitHub, Git, and local marketplace sources are supported. | A thin Observer/Critic adapter plus the shared skill is distributable as one plugin. Plugin enablement is runtime trust and is not equivalent to a harmless prompt-only install. | [ZCode Plugin](https://zcode.z.ai/en/docs/plugin), [official plugin tutorial at target commit](https://github.com/zai-org/zcode-plugins/blob/9fd7d864501ce73a8dfd963b1f810d398e9ffbbc/docs/PLUGIN_DEVELOPMENT.md) (confirmed 2026-09-03) |
 | `AGENTS.md` isolation | Since ZCode v3.7.1, subagents receive user and workspace `AGENTS.md` by default. `injectAgentsMd: false` opts a custom subagent out; built-in Explore does not inject them. | Observer isolation from implementation expectations is expressible in a ZCode custom/plugin subagent and should be an explicit frontmatter invariant. | [ZCode Subagents](https://zcode.z.ai/en/docs/subagents) (confirmed 2026-09-03) |
@@ -190,31 +191,26 @@ skills unless the skill tool is present, but it does not publish the exact tool
 identifier on the Skill page. Source: [ZCode Skill](https://zcode.z.ai/en/docs/skill)
 (confirmed 2026-09-03).
 
-Accordingly, the plugin path is the preferred adapter distribution mechanism,
-but no-copy reuse is **not yet validated**. Do not commit duplicate role logic
-to `agents/*.md`; the prototype must prove one of these arrangements in a real
-client:
-
-1. the plugin manifest maps its `skills` component directly to the repository
-   `.agents/skills/` directory; or
-2. the plugin provides only subagent adapters while the shared Skill is
-   imported to Project scope by symlink, and the adapter invokes it by name.
-
-If neither works, move the canonical Skill directory inside the plugin and
-make other runtimes discover or link that same directory; do not maintain two
-independent `SKILL.md` copies.
+The installed ZCode CLI now directly enumerates the repository's
+`.agents/skills/ux-visual-review/SKILL.md` as a project-scoped `agents` source,
+so discovery without copying is validated for this client. The plugin path is
+still the preferred adapter distribution mechanism, but the plugin should
+provide only thin role adapters and activate the already discovered project
+Skill. Do not commit duplicate role logic or a second `SKILL.md`; runtime E2E
+must still prove that an isolated plugin/custom subagent can activate the
+project Skill and its references.
 
 ## 6. Required ZCode prototype evidence
 
 Before declaring the ZCode adapter supported, record all of the following on a
 specific ZCode version:
 
-1. Install/enable the local plugin and show that its Observer and Critic appear
-   as plugin subagents.
+1. Install/enable a local custom or plugin adapter and show that its Observer
+   and Critic appear as subagents.
 2. Invoke Observer with `injectAgentsMd: false` and demonstrate that neither
    repository nor user `AGENTS.md` content appears in its input/output behavior.
-3. Demonstrate that Observer can activate the exact repository-owned
-   `ux-visual-review` Skill and read each referenced file without a duplicate.
+3. Demonstrate that Observer can activate the directly discovered,
+   repository-owned `ux-visual-review` Skill and read each referenced file.
 4. Use a screenshot fixture to show the selected model is classified Supported
    and receives the image. Repeat with Unsupported or a negative fixture to
    prove the workflow returns insufficient evidence instead of a false pass.
@@ -268,6 +264,26 @@ subagent frontmatter out of it. For ZCode, prototype a plugin-provided
 `ux-observer` and `ux-critic`; both must activate the common skill explicitly,
 the Observer must set `injectAgentsMd: false`, and both must use read-only tool
 sets. Pin a verified Supported image model for calibration rather than relying
-on `inherit`. Promote the adapter from experimental only after the six pieces
-of evidence in section 6 are recorded; until then, the support level is
+on `inherit`. Promote the adapter from experimental only after the remaining
+runtime evidence in section 6 is recorded; until then, the support level is
 **design-supported / runtime-unvalidated**.
+
+## 9. Installed-client inventory
+
+Read-only local inspection on 2026-09-03 found:
+
+- ZCode application version `3.10.2` at `/Applications/ZCode.app`;
+- an existing NunuLauncher project in the client;
+- `BAI/glm-5.3-flash` visible as the selected model; and
+- the main client session displaying `Full access`.
+
+This inventory proves only that a named client and candidate model/provider are
+available. The bundled CLI `0.16.5` also enumerated the exact repository path
+`.agents/skills/ux-visual-review/SKILL.md` as a project-scoped `agents` source,
+which proves direct discovery without a copied contract. It does not prove that
+the provider route delivered image bytes, that Observer/Critic ran as isolated
+custom or plugin subagents, that `injectAgentsMd: false` took effect, that the
+discovered Skill could be activated inside those roles, or that write/shell
+capability was denied. No repository
+evidence was transmitted through the GUI during inventory. Section 6 remains
+the closure gate for ZCode runtime support.

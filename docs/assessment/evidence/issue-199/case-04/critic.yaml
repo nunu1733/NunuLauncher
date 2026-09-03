@@ -1,0 +1,143 @@
+contract: ux-visual-review/v1
+report_type: critic
+status: reviewed
+report_id: issue-199-case-04-critic
+provenance:
+  contract_revision: sha256:90d82dda6d56fe5d1494612bde751e99d3a87b1466cded526d3ab0ff2cc0510b
+  subject:
+    revision: 8104ce2af3dd9e26f7ddcb2ea339369e5b7b64b9
+    build_ref: retained Issue #123 after-capture
+  runtime:
+    client: codex
+    client_version: 0.151.0
+    model: gpt-5.6-luna
+    reasoning: xhigh
+    permission_mode: "danger-full-access (approval never)"
+    tool_surface:
+      file_read: allowed
+      file_write: allowed
+      shell: allowed
+      network: allowed
+      external_side_effects: allowed
+    tools_used:
+      - exec_command
+      - view_image
+      - apply_patch
+  evidence_manifest_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-04/observer-manifest.yaml
+scenario: Understand a home-screen organization suggestion at the configured text scale and choose the next action.
+evidence_refs:
+  - frame-01
+observer_report_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-04/observer.yaml
+critic_context_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-04/critic-context.yaml
+findings:
+  - id: UVR-001
+    category: visual-hierarchy
+    observation: >-
+      All three full-width actions use the same muted-gray fill, size, and
+      typographic treatment; no visible emphasis separates 「整理を確認」 from
+      「後で」 and 「スキップ」.
+    evidence_refs:
+      - frame-01
+    user_impact: >-
+      A first-time user may hesitate about which choice is the intended
+      task-progressing path, especially at the entry to a high-impact layout
+      flow.
+    severity: moderate
+    confidence: high
+    recommendation: >-
+      Make the review action and defer or bypass choices visibly
+      distinguishable so the next step is apparent at a glance.
+    additional_validation: []
+  - id: UVR-002
+    category: mental-model-language
+    observation: >-
+      「後で」 and 「スキップ」 are presented as separate buttons, but the
+      visible copy does not clarify how delaying differs from skipping.
+    evidence_refs:
+      - frame-01
+    user_impact: >-
+      Users may be unsure whether skipping is temporary or permanent, or when
+      the suggestion will appear again, making the choice harder to predict.
+    severity: moderate
+    confidence: medium
+    recommendation: >-
+      Explain the differing outcomes in concise labels or supporting copy so
+      users can predict what each choice does.
+    additional_validation: []
+  - id: UVR-003
+    category: scanability-density
+    observation: >-
+      At the configured 2.0 text scale, the explanatory copy wraps so the final
+      visible line contains only 「ん。」 beneath the preceding three-line block.
+    evidence_refs:
+      - frame-01
+    user_impact: >-
+      The reassurance about preview confirmation takes extra effort to scan and
+      appears visually broken, adding friction to understanding the suggestion.
+    severity: minor
+    confidence: high
+    recommendation: >-
+      Ensure the explanatory copy reflows into balanced, easily scanned lines
+      at this text scale without an orphaned fragment.
+    additional_validation: []
+  - id: UVR-004
+    category: trust-risk
+    observation: >-
+      The card states that nothing changes until preview confirmation, but gives
+      no visible summary of what organizing may change or how a confirmed change
+      could be recovered.
+    evidence_refs:
+      - frame-01
+    user_impact: >-
+      A user considering a high-impact layout change may lack enough context to
+      judge consequences or reversibility before continuing.
+    severity: moderate
+    confidence: medium
+    recommendation: >-
+      Provide plain-language scope and recovery information before the final
+      confirmation of any layout mutation.
+    additional_validation:
+      - >-
+        Capture the preview, final-confirmation, and recovery states to verify
+        that scope, consequences, and recovery are visible before mutation.
+deterministic_deferrals:
+  - surface: font-scale
+    visible_symptom: >-
+      The body copy wraps across multiple lines and ends with an orphaned
+      「ん。」 at font scale 2.0.
+    required_check: >-
+      Run deterministic layout checks at 2.0 and supported larger text scales
+      for clipping, overflow, and reachability of all card content.
+  - surface: touch-target
+    required_check: >-
+      Measure the effective hit regions of all three actions with the owning UI
+      test surface.
+  - surface: semantics
+    required_check: >-
+      Verify accessible names, roles, and state exposure for the heading and
+      three actions with the owning accessibility test surface.
+  - surface: functional-state
+    visible_symptom: >-
+      Only the entry card is captured; no outcome after tapping any action is
+      shown.
+    required_check: >-
+      Exercise each action deterministically and verify distinct intended
+      transitions, including that no layout mutation occurs before preview
+      confirmation.
+limitations:
+  - >-
+    Only frame-01 is available; preview, confirmation, recovery, and
+    post-action states are not captured, so feedback continuity and eventual
+    risk communication cannot be judged visually.
+  - >-
+    The screenshot cannot establish accessibility semantics, focus order,
+    hit-target dimensions, clipping under other scales, or functional outcomes.
+  - >-
+    The runtime exposes danger-full-access with approval never; this review
+    remained read-only and did not invoke mutation, network, or external-side-effect tools.
+calibration:
+  baseline_ref: withheld until calibration adjudication
+  agreement: []
+  false_positive_candidates: []
+  missed_baseline_findings: []
+  severity_drift: []

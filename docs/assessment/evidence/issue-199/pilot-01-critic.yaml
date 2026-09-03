@@ -1,111 +1,115 @@
-schema: ux-visual-review/v1
+contract: ux-visual-review/v1
+report_type: critic
 status: reviewed
-review_id: issue199-ux-critic-2026-09-03
-scenario: >-
-  A user wants to review a proposed home-screen organization before applying it,
-  understand the visible terminal state, and choose the safest next action.
-evidence_refs: [frame-01, frame-02, frame-03a, frame-03b, frame-03c]
+report_id: issue-199-pilot-01-critic
+provenance:
+  contract_revision: sha256:90d82dda6d56fe5d1494612bde751e99d3a87b1466cded526d3ab0ff2cc0510b
+  subject:
+    revision: 76973333fd61e74981ac4bfd1cc487aba07b3cef
+    build_ref: https://github.com/nunu1733/NunuLauncher/actions/runs/33707975932
+  runtime:
+    client: codex
+    client_version: 0.151.0
+    model: gpt-5.6-luna
+    reasoning: xhigh
+    permission_mode: read-only
+    tool_surface:
+      file_read: allowed
+      file_write: denied
+      shell: read-only
+      network: allowed
+      external_side_effects: allowed
+    tools_used:
+      - functions.exec
+      - functions.exec_command
+      - functions.view_image
+  evidence_manifest_ref: pilot-01-observer-manifest.yaml
+scenario: Review the concrete effects of a proposed home-screen organization before allowing a high-impact layout change, then understand the resulting state and safest next action.
+evidence_refs:
+  - frame-01
+  - frame-02
+  - frame-03a
+  - frame-03b
+  - frame-03c
 observer_report_ref: pilot-01-observer.yaml
+critic_context_ref: pilot-01-critic-context.yaml
 findings:
   - id: UVR-001
     category: trust-risk
-    observation: >-
-      The review screen says a detailed change list could not be prepared, then
-      presents Apply reviewed organization using only aggregate counts; no
-      affected item or destination is visible.
-    evidence_refs: [frame-02]
-    user_impact: >-
-      A user cannot judge whether the proposed placement is acceptable before
-      committing a home-layout change, weakening the review-before-apply safety
-      promise.
+    observation: Frame-02 states that a detailed change list could not be prepared and presents only aggregate counts, including one placement to move and one fallback category, above the emphasized apply action. No item, source position, destination, or concrete effect is shown.
+    evidence_refs:
+      - frame-02
+    user_impact: A person deciding whether to authorize the layout mutation may be unable to understand what will change, making a confident review difficult.
     severity: major
     confidence: high
-    recommendation: >-
-      Make the pre-apply surface expose enough concrete affected items and
-      destinations for the user to judge the change; when that scope cannot be
-      shown, make the safe non-apply path and its reason unambiguous.
-    additional_validation: []
+    recommendation: Before authorization, make the proposal's concrete effects understandable; when that information is unavailable, keep the safe non-apply path clear and do not present the decision as ready for approval.
+    additional_validation:
+      - Test a representative multi-placement proposal and confirm that first-time users can identify what will move, where it will move, and what will be preserved before authorizing.
   - id: UVR-002
     category: mental-model-language
-    observation: >-
-      “Fallback category used: 1” appears as an unexplained implementation-like
-      count among the proposal and terminal summaries.
-    evidence_refs: [frame-02, frame-03b, frame-03c]
-    user_impact: >-
-      Users may not understand what the fallback means or how it affects the
-      proposed placement and resulting layout.
-    severity: moderate
+    observation: Frame-03a says “The home layout changed” and then says “Review a new proposal before applying anything,” while the persistent introductory text says the current layout is never changed automatically.
+    evidence_refs:
+      - frame-01
+      - frame-03a
+    user_impact: A first-time user may not know whether the current home screen changed or only the proposal became invalidated, making the safest next action less certain.
+    severity: major
     confidence: high
-    recommendation: >-
-      Translate fallback terminology into user-facing language that explains its
-      effect on the proposal, ideally tied to the affected item.
-    additional_validation: []
+    recommendation: Explicitly distinguish a changed or invalidated proposal from a layout that was actually applied, while retaining the recapture-before-apply next step.
+    additional_validation:
+      - Ask first-time users whether their current layout changed or only the proposal became invalidated, and what they would do next.
   - id: UVR-003
     category: scanability-density
-    observation: >-
-      The review summary is one uninterrupted column of repeated counts,
-      including awkward forms such as “1 placements” and “1 pages”; similar
-      lines are repeated in the success and failure states.
-    evidence_refs: [frame-02, frame-03b, frame-03c]
-    user_impact: >-
-      Users must reread and mentally normalize the summary to understand
-      movement, preservation, and scope at the decision or recovery point.
+    observation: In frames 02, 03b, and 03c, the proposal summary is a flat sequence of similarly styled counts; scope, device-profile information, movement, preservation, folder/page creation, and fallback information are not visually grouped. The visible copy also uses inconsistent singular forms such as “1 pages” and “1 placements.”
+    evidence_refs:
+      - frame-02
+      - frame-03b
+      - frame-03c
+    user_impact: The user may need extra rereading to determine what the numbers describe before making a high-impact decision or interpreting the resulting state.
     severity: moderate
     confidence: high
-    recommendation: >-
-      Group the summary into clearly labeled scope, movement, preservation, and
-      creation sections with consistent singular/plural wording and a clear
-      distinction between proposal and terminal-state information.
-    additional_validation: []
+    recommendation: Present the summary in clearly labeled, scan-friendly groups and use unambiguous count language so users can quickly parse scope, effects, and fallback behavior.
+    additional_validation:
+      - Observe whether first-time users can summarize scope, movement, preservation, fallback, and device-profile information without rereading.
   - id: UVR-004
-    category: feedback-continuity
-    observation: >-
-      The success screen confirms that organization was applied and verified but
-      repeats only aggregate counts; it does not show the moved item, destination,
-      or a resulting home-screen view.
-    evidence_refs: [frame-02, frame-03b]
-    user_impact: >-
-      After applying, users cannot easily connect their approval to the concrete
-      home-screen result or decide whether restoration is needed.
-    severity: moderate
-    confidence: high
-    recommendation: >-
-      Connect verified success to a concrete outcome by showing the affected
-      item's new destination or an immediate, clearly labeled way to inspect the
-      resulting layout while keeping restore available.
-    additional_validation: []
-  - id: UVR-005
-    category: trust-risk
-    observation: >-
-      The recovery-failure state warns that the current layout could not be
-      verified and repeats the same counts without labeling whether they describe
-      the attempted proposal or the current layout.
-    evidence_refs: [frame-03c]
-    user_impact: >-
-      In a high-risk failure state, ambiguity about the summary's state can leave
-      users unsure what is safe to do next despite the diagnostics action.
+    category: affordance-action
+    observation: Across frames 01, 02, 03a, 03b, and 03c, next steps are presented as large text lines without visible control containers. Emphasis varies, but the control boundary and primary-versus-secondary relationship are conveyed mainly through typography.
+    evidence_refs:
+      - frame-01
+      - frame-02
+      - frame-03a
+      - frame-03b
+      - frame-03c
+    user_impact: A first-time user may pause to determine which text is actionable and may have less immediate confidence about the authorization, non-apply, or recovery choice.
     severity: moderate
     confidence: medium
-    recommendation: >-
-      Label the summary's source state explicitly and make diagnostics/support
-      before another organization change the unambiguous next step.
-    additional_validation: []
+    recommendation: Make each next step visually unmistakable as an action and preserve a clear primary or safest-choice hierarchy in every state.
+    additional_validation:
+      - Check first-time action recognition in each branch and confirm that users distinguish the primary next step from the non-apply or recovery alternative.
+  - id: UVR-005
+    category: feedback-continuity
+    observation: Frame-03c combines “current layout could not be verified” and “do not start another organization run” with the same proposal summary counts shown in frame-02, but does not label whether those counts describe the prior proposal, an applied change, or the unverifiable current layout.
+    evidence_refs:
+      - frame-02
+      - frame-03c
+    user_impact: When verification is unavailable, the user may not know what the retained counts represent or what has already changed, making diagnostics and recovery harder to choose confidently.
+    severity: moderate
+    confidence: medium
+    recommendation: In the verification-blocked state, clearly label the summary as historical or proposal context, or omit it, and make the current uncertainty and safest next step the dominant information.
+    additional_validation:
+      - Ask users to explain what the retained counts refer to and why diagnostics are the safest next step in the verification-blocked state.
 deterministic_deferrals:
-  - surface: touch-target
-    visible_symptom: Action labels are visible, but still images do not establish their hit-area dimensions.
-    required_check: Verify dimensions with the owning UI/accessibility test surface.
   - surface: functional-state
-    visible_symptom: The evidence shows terminal copy but not interaction, transitions, or persistence.
-    required_check: Exercise apply, cancel, stale, success, restore, new-review, and diagnostics paths end to end.
-  - surface: font-scale
-    visible_symptom: Evidence is captured at normal font scale; long summary and warning text wraps across multiple lines.
-    required_check: Exercise the review and terminal states at 200% font scale and verify content and actions remain reachable without clipping.
+    visible_symptom: Still images show labels for review, apply, cancel, recapture, restore, new review, and diagnostics, but do not establish their hit behavior or exact resulting transitions.
+    required_check: Run an interaction test for each visible action and verify the expected state transition and persistence across the organizer flow.
+  - surface: touch-target
+    visible_symptom: The actions are rendered as text lines without visible control bounds.
+    required_check: Measure the interactive hit regions for every action on the target device and at supported font scales.
 limitations:
-  - Still images cannot establish actual tappability, transitions, focus movement, or off-screen reachability.
-  - The concrete placement or affected item is not shown.
-  - Terminal frames are alternative branches, not one linear sequence.
+  - Only still images at font_scale 1.0 are available; motion, scroll reachability, hit behavior, and persistence are not established.
+  - No post-application home-screen image is included, so this review cannot judge the visual arrangement produced by the organization.
+  - Frame-02 does not show an item-level proposal view, so the critique of concrete-change visibility is limited to what the review screen communicates.
 calibration:
-  baseline_ref: ../../issue-192-organizer-concrete-preview-investigation.md
+  baseline_ref: withheld
   agreement: []
   false_positive_candidates: []
   missed_baseline_findings: []

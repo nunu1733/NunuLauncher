@@ -8,8 +8,9 @@
 
 - OpenAI documentation states that Codex discovers repository skills at `.agents/skills`, supports the open Agent Skills standard, and loads project-scoped custom agents from `.codex/agents/*.toml`.
 - Codex custom-agent files require `name`, `description`, and `developer_instructions`; they can set `sandbox_mode = "read-only"` and omit `model` so model selection remains a runtime concern.
-- The local runtime is `codex-cli 0.151.0`. No `zcode` CLI is currently discoverable in `PATH`; ZCode prototype validation therefore requires its supported GUI/runtime path or a documented static validation limitation.
-- PR #198 CI run `33707975932` retains an ordered five-frame Organizer UI artifact suitable for an initial sequence calibration candidate. The artifact does not by itself provide a human UX baseline.
+- The local runtime is `codex-cli 0.151.0`. Observer/Critic image E2E and a sandbox write-denial probe passed with the project adapters; hidden workspace files remain technically readable, so isolation is `limited`.
+- ZCode 3.10.2 with bundled CLI 0.16.5 is installed. The CLI directly discovers the repository Skill without copying and the UI exposes `BAI/glm-5.3-flash`; custom-role activation, image delivery, and read-only execution have not yet been validated.
+- The calibration corpus contains five cases and one repeat. The known Issue #123 dark-theme defect was missed; extras on clean cases remain pending blind human adjudication.
 
 ## Design
 
@@ -23,7 +24,8 @@
     ├── rubric.md
     ├── observer-agent.md
     ├── critic-agent.md
-    └── report-schema.md
+    ├── report-schema.md
+    └── calibration.md
 
 .codex/agents/                         # thin runtime adapters
 ├── ux-observer.toml
@@ -38,12 +40,12 @@ The shared Skill owns all evaluation semantics. Adapters only select a role, poi
 ### Data flow
 
 ```text
-minimal scenario + ordered evidence
+neutral scenario + Observer-visible manifest
   -> Observer (perception only)
-  -> observer-v1 report
-  -> Critic + shared rubric
+  -> observer report + hidden Critic context
+  -> Critic + shared rubric (human baseline still withheld)
   -> ux-visual-review/v1 advisory report
-  -> human calibration/disposition
+  -> blind human calibration/disposition
 ```
 
 ### Alternatives rejected
@@ -72,7 +74,7 @@ No application data, schema, rule, or backup migration. Removing the prototype f
 
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
-| UVR-AC-01, 04–06 | Skill structure and content validation | `python3 .../skill-creator/scripts/quick_validate.py .agents/skills/ux-visual-review` plus repository contract validation |
+| UVR-AC-01, 04–06, 10–11 | Skill structure, security boundary, schema, and provenance validation | `python3 .../skill-creator/scripts/quick_validate.py .agents/skills/ux-visual-review` plus repository contract and retained-report validation |
 | UVR-AC-02, 07 | Support matrix and adapter invocation | Codex 0.151.0; supported ZCode runtime recorded by research |
 | UVR-AC-03 | Isolated Observer leakage probe | Fresh subagent/session with only scenario + evidence manifest |
 | UVR-AC-08 | 5–10 case calibration | Two-stage reports compared with human baseline |
@@ -82,7 +84,8 @@ No application data, schema, rule, or backup migration. Removing the prototype f
 
 - [x] Draft spec and plan.
 - [x] Support matrix / architecture assessment.
-- [x] Initial calibration artifact; full 5–10 case set remains open.
+- [x] Five-case calibration corpus and one repeat recorded.
+- [ ] Blind human adjudication of extra findings recorded.
 - [ ] `AGENTS.md` decision after calibration.
 - [ ] `docs/engineering/quality-strategy.md` decision after calibration.
 - [ ] ADR only if the final decision meets all ADR criteria.
@@ -91,9 +94,11 @@ No application data, schema, rule, or backup migration. Removing the prototype f
 
 - [x] Issue and repository governing documents reviewed.
 - [x] Shared Skill draft created.
-- [x] Codex thin adapters created and statically validated; fresh-session Observer discovery and no-image negative path runtime-validated.
-- [x] ZCode support boundary established; concrete plugin adapter intentionally withheld until no-copy runtime validation is available.
-- [x] Observer and Critic forward-test pilot completed with isolated Luna/xhigh subagents.
-- [ ] 5–10 case calibration and human comparison completed.
-- [x] Advisory-only adoption recommendation and proposed follow-up Issue split recorded in the assessment.
+- [x] Codex thin adapters created; project Observer/Critic image E2E, no-image negative path, and write-denial probe runtime-validated.
+- [x] ZCode support boundary established and direct project Skill discovery runtime-validated; concrete role adapter intentionally withheld until custom-role/read-only validation.
+- [x] Corrected Observer and Critic forward-test pilot completed with neutral filenames and separated hidden context using Luna/xhigh.
+- [x] Five-case model calibration and one clean-case repeat completed.
+- [ ] Blind human comparison/disposition completed.
+- [ ] ZCode real-client Observer/Critic activation, image/negative fixture, and read-only enforcement validation completed.
+- [x] Advisory-only adoption recommendation recorded; current AC-07/AC-08 work remains in Issue #199 unless the spec scope is changed and approved.
 - [ ] Spec owner review obtained before marking accepted or enforcing the process.

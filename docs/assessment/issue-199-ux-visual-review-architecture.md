@@ -1,6 +1,6 @@
 # Assessment: Issue #199 — UX visual review architecture decision
 
-> Status: proposed; research and Codex negative-path validation complete, calibration incomplete
+> Status: proposed; Codex E2E and five-case calibration executed, human/ZCode validation incomplete
 > Date: 2026-09-03
 > Issue: [#199](https://github.com/nunu1733/NunuLauncher/issues/199)
 
@@ -11,9 +11,9 @@ Use `.agents/skills/ux-visual-review/` as the only authoritative evaluation cont
 Runtime integrations are adapters:
 
 - Codex: project-scoped `.codex/agents/ux-observer.toml` and `ux-critic.toml`, read-only and model-unpinned.
-- ZCode: plugin-provided Observer/Critic is the intended team-distribution adapter, with `injectAgentsMd: false` for Observer and a verified image-capable model. Do not commit that adapter until a real ZCode client proves a no-copy link to the shared Skill and the required read-only skill tool surface.
+- ZCode: plugin-provided Observer/Critic is the intended team-distribution adapter, with `injectAgentsMd: false` for Observer and a verified image-capable model. ZCode's bundled CLI directly discovers the repository Skill at `.agents/skills/ux-visual-review`; do not commit a permanent role adapter until custom-role activation and the required read-only tool surface are runtime-validated.
 
-The Observer receives only a minimal user scenario and ordered visual evidence. The Critic receives the same evidence plus the Observer report and user/product goal. Neither role performs implementation, functional/spec review, or deterministic accessibility measurement.
+The Observer receives only a neutral user goal and an Observer-visible manifest containing neutral frame IDs, branch/order relations, preceding user actions, and named images. Expected states, risk, intended actions, known defects, AC/spec context, and the human baseline remain in a separate hidden layer. The Critic receives the same evidence plus the Observer report and only the product/risk context needed to judge impact. Neither role performs implementation, functional/spec review, or deterministic accessibility measurement.
 
 This is a proposed process decision, not an ADR: the runtime boundary remains Beta/evolving and the required cross-runtime evidence is incomplete. If later adoption makes the adapter boundary expensive to reverse and alternatives remain material, reassess the ADR criteria then.
 
@@ -31,8 +31,8 @@ This is a proposed process decision, not an ADR: the runtime boundary remains Be
 
 | Runtime | Skill reuse | Role adapter | Context isolation | Vision guarantee | Current level |
 |---|---|---|---|---|---|
-| Codex 0.151.0 | Official repo discovery at `.agents/skills` | Official project `.codex/agents/*.toml`; static TOML validation passed | Role instruction plus fresh/no-history invocation; no documented TOML equivalent of `injectAgentsMd: false` | Invocation selects a vision-capable model; adapter intentionally unpinned | Observer discovery and no-image negative path runtime-validated; custom-agent image path pending |
-| ZCode | Official Skill import by symlink/copy; plugin skill layout documented | Plugin agent distribution documented; concrete repository adapter withheld | `injectAgentsMd: false` is documented for custom subagents | Adapter/operator must select a model/provider/protocol classified image-capable | Design-supported / runtime-unvalidated |
+| Codex 0.151.0 | Official repo discovery at `.agents/skills` | Official project `.codex/agents/*.toml`; static TOML validation passed | No documented TOML equivalent of `injectAgentsMd: false`; hidden workspace files remained technically readable and reports correctly mark `limited` | Explicit Luna/xhigh invocation received all named images | Observer/Critic image E2E and write denial runtime-validated; limited isolation |
+| ZCode 3.10.2 / bundled CLI 0.16.5 | Runtime enumeration directly discovered the exact repository `.agents/skills/ux-visual-review` path without a copy | Plugin agent distribution documented; concrete role adapter withheld | `injectAgentsMd: false` is documented for custom subagents | Installed client currently exposes `BAI/glm-5.3-flash`; image delivery has not been validated | Shared Skill discovery validated; adapter and image E2E unvalidated |
 
 Detailed evidence:
 
@@ -41,7 +41,7 @@ Detailed evidence:
 
 ## Pilot calibration result
 
-The Codex two-stage pilot used separate no-history `gpt-5.6-luna` / `xhigh` subagents and a five-frame branched Organizer flow. It reproduced the human baseline's central pre-apply trust finding and correctly deferred deterministic checks. Several additional findings require human adjudication, and repeatability was not measured.
+The corrected Codex two-stage pilot used neutral filenames and a manifest with no expected-state/risk labels. Project-scoped `ux_observer` and `ux_critic` ran with `gpt-5.6-luna` / `xhigh` under `read-only`, reproduced the human baseline's central pre-apply trust finding, and correctly disclosed limited isolation. Four additional pre-baselined cases bring the corpus to five; one clean case was repeated. The repeat preserved two semantic findings with one-level severity drift. Several extras still require blind human adjudication, and the known dark-theme root cause was missed.
 
 See [pilot calibration](issue-199-ux-visual-review-calibration.md).
 
@@ -51,24 +51,24 @@ Current recommendation: **advisory only, experimental invocation**.
 
 Do not yet add a required review step to `AGENTS.md` or `docs/engineering/quality-strategy.md`, and do not add a merge gate. Promotion requires:
 
-1. 5–10 independently baselined cases, including clean negative cases and at least one repeated run;
-2. a Codex custom-agent image-delivery test and a recorded write-denial probe;
-3. a real ZCode plugin/import test satisfying the six evidence items in the ZCode assessment;
-4. human adjudication of high-confidence major findings and recorded false-positive/negative behavior.
+1. blind human adjudication of the extra findings from the five-case corpus;
+2. at least one more stateful case with a concrete change list, since three added cases are single-frame entry/settings surfaces;
+3. a real ZCode custom/plugin role test satisfying the remaining evidence items in the ZCode assessment;
+4. an owner decision on advisory adoption after reviewing the recorded false-negative and severity-drift behavior.
 
 ## Residual risks
 
 - Codex adapter configuration does not itself prove that all implementation context was excluded.
-- ZCode no-copy plugin-to-repository Skill loading is not yet documented or observed.
+- ZCode project Skill discovery is observed, but activation from an isolated custom/plugin subagent is not yet proved.
 - Model/provider image capability and output stability can change independently of the shared contract.
 - Aesthetic preference can still be mislabeled as a finding; clean negative cases are required to measure this.
 - Screenshot evidence can hide off-screen, motion, focus, and interaction problems.
 
-## Follow-up work to split
+## Remaining Issue #199 work
 
-Create follow-up Issues rather than expanding the final implementation PR if these remain open after owner review:
+Do not close #199 or move its current AC-07/AC-08 scope to follow-up Issues without first changing and approving the spec scope. Under the current spec, #199 still owns:
 
-- ZCode real-client plugin/import/isolation validation on a named version and model/provider.
-- Calibration corpus completion and blind human adjudication.
+- ZCode real-client custom/plugin role, image-delivery, negative-fixture, and isolation validation on a named version and model/provider.
+- Calibration blind human adjudication and one additional stateful case if the owner considers the current entry/settings-heavy corpus insufficiently representative.
 - Product triage for pilot-only findings not already owned by #194/#195, including terminal-summary provenance and English singular/plural copy.
 - Repository process adoption after calibration; this follow-up would own any `AGENTS.md` / `quality-strategy.md` change and enforcement decision.
