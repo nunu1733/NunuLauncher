@@ -31,7 +31,7 @@ This is a proposed process decision, not an ADR: the runtime boundary remains Be
 
 | Runtime | Skill reuse | Role adapter | Context isolation | Vision guarantee | Current level |
 |---|---|---|---|---|---|
-| Codex 0.151.0 | Official repo discovery at `.agents/skills` | Official project `.codex/agents/*.toml`; static TOML validation passed | No documented TOML equivalent of `injectAgentsMd: false`; hidden workspace files remained technically readable and reports correctly mark `limited` | Explicit Luna/xhigh invocation received all named images | Observer/Critic image E2E and write denial runtime-validated; limited isolation |
+| Codex 0.151.0 | Official repo discovery at `.agents/skills` | Official project `.codex/agents/*.toml`; static TOML validation passed | No documented TOML equivalent of `injectAgentsMd: false`; hidden workspace files remained technically readable and reports correctly mark `limited` | Explicit Luna/xhigh invocation received all named images | Observer/Critic image E2E, write denial, and screenshot-instruction non-obedience runtime-validated; limited isolation |
 | ZCode 3.10.2 / bundled CLI 0.16.5 | Runtime enumeration directly discovered the exact repository `.agents/skills/ux-visual-review` path; post-restart custom Observer claimed activation | Temporary user-level custom Observer attempted; plugin distribution remains the intended team adapter | `injectAgentsMd: false` was configured, but no independent enforcement trace was available; report marks `limited` | `BAI/glm-5.3-flash` was selected, but the report contradicted the digest-matched PNG | Project discovery validated; grounded Observer image E2E and remaining gates unvalidated |
 
 Detailed evidence:

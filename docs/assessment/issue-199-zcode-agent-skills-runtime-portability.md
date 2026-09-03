@@ -286,8 +286,10 @@ which proves direct discovery without a copied contract.
 The first custom-Observer attempt launched `GLM-5.3`, which is not image
 capable, because ZCode had not yet reloaded the changed model field. The
 operator restarted ZCode and reran the task. The completed run used
-`BAI/glm-5.3-flash` and reported that it activated the repository-owned Skill,
-read its Observer references, and rendered the case-02 PNG. The model-selection
+provider `BAI`, model `BAI/glm-5.3-flash`, and an active protocol that was not
+independently exposed (`unknown`). It reported that it activated the
+repository-owned Skill, read its Observer references, and rendered the case-02
+PNG. The model-selection
 portion confirms the restart/new-session requirement, but visual grounding did
 not pass: the report described a dark sheet, white heading, and time 15:03,
 while the digest-matched fixture has a white sheet, dark heading, and time

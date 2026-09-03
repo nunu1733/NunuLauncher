@@ -19,7 +19,9 @@ provenance:
   runtime:
     client: codex | zcode | other
     client_version: <version>
+    provider: <effective model provider ID, or unknown>
     model: <effective model ID>
+    protocol: <active API protocol, unknown, or omitted when the runtime does not expose it>
     reasoning: <effective reasoning configuration>
     permission_mode: <effective sandbox or permission mode>
     tool_surface:
@@ -32,7 +34,7 @@ provenance:
   evidence_manifest_ref: <retained manifest or immutable reference>
 ```
 
-Use `unknown` rather than omitting unavailable provenance. Never place secrets, credentials, or private endpoint details in the envelope.
+`provider` is required. Record the effective provider, or `unknown` when the runtime cannot identify it. `protocol` is optional because some runtimes do not expose the active API protocol; when the field is present but the protocol cannot be determined, record `unknown` rather than inferring it from the model name or endpoint. Never place secrets, credentials, or private endpoint details in the envelope.
 
 ## Observer report
 

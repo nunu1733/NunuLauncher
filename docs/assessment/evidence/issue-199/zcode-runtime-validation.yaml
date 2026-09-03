@@ -1,9 +1,11 @@
 contract: ux-visual-review/runtime-validation-v1
 date: 2026-09-03
-contract_revision: sha256:90d82dda6d56fe5d1494612bde751e99d3a87b1466cded526d3ab0ff2cc0510b
+contract_revision: sha256:97459d25bbb3cb2e8402a24d14ed1e8f529299771572129889c0f51dffb21da3
 runtime:
   client: zcode
   client_version: 3.10.2
+  provider: BAI
+  protocol: unknown
   bundled_cli_version: 0.16.5
 project_skill:
   source: .agents/skills/ux-visual-review/SKILL.md

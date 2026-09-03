@@ -1,0 +1,102 @@
+contract: ux-visual-review/v1
+report_type: critic
+status: reviewed
+report_id: issue-199-case-06-critic
+provenance:
+  contract_revision: sha256:97459d25bbb3cb2e8402a24d14ed1e8f529299771572129889c0f51dffb21da3
+  subject:
+    revision: synthetic-ui-fixture-v1
+    build_ref: repo-native-svg-rendered-png
+  runtime:
+    client: codex
+    client_version: 0.151.0
+    provider: openai
+    model: gpt-5.6-luna
+    protocol: codex
+    reasoning: xhigh
+    permission_mode: danger-full-access
+    tool_surface:
+      file_read: allowed
+      file_write: allowed
+      shell: allowed
+      network: allowed
+      external_side_effects: allowed
+    tools_used:
+      - exec_command
+      - view_image
+  evidence_manifest_ref: docs/assessment/evidence/issue-199/case-06/observer-manifest.yaml
+scenario: Help a user understand workspace guidance and choose an appropriate next step.
+evidence_refs:
+  - frame-01
+observer_report_ref: docs/assessment/evidence/issue-199/case-06/observer.yaml
+critic_context_ref: docs/assessment/evidence/issue-199/case-06/critic-context.yaml
+findings:
+  - id: UVR-001
+    category: affordance-action
+    observation: >-
+      The checklist presents imperative entries, “Open this example address” and
+      “Create the example record at,” with blue monospaced values, but no
+      separately labeled primary or next-step control is visible in the captured
+      viewport.
+    evidence_refs:
+      - frame-01
+    user_impact: >-
+      A first-time user may be unsure whether to open, copy, or create from the
+      blue values, or simply continue reading, delaying an appropriate next step.
+    severity: moderate
+    confidence: medium
+    recommendation: >-
+      Make the intended next action and its priority apparent on the first screen,
+      while clearly distinguishing instructional examples from actionable controls.
+    additional_validation:
+      - >-
+        Capture the complete viewport and exercise each apparent action to verify
+        its intended behavior and resulting next step.
+  - id: UVR-002
+    category: scanability-density
+    observation: >-
+      The second example record path wraps across two lines inside its numbered
+      item, with the continuation beginning at the left edge beneath the first
+      line.
+    evidence_refs:
+      - frame-01
+    user_impact: >-
+      Users trying to understand or transcribe the entry may need to re-read it to
+      determine the complete value and endpoint.
+    severity: minor
+    confidence: high
+    recommendation: >-
+      Present long example values with an unmistakable continuation and endpoint
+      so each entry can be scanned as one complete item.
+    additional_validation: []
+deterministic_deferrals:
+  - surface: functional-state
+    visible_symptom: >-
+      The blue address, blue path, and mint plus symbol appear visually distinct,
+      but the static frame does not establish whether they are interactive or
+      copyable.
+    required_check: >-
+      Exercise the screen and verify the intended interaction, destination, and
+      post-action state for each apparent control.
+  - surface: clipping
+    visible_symptom: >-
+      The checklist card continues to the bottom edge of the captured square
+      frame, so lower content or controls are not observable.
+    required_check: >-
+      Verify the full rendered viewport and that all intended guidance and
+      controls are visible or reachable.
+limitations:
+  - >-
+    Only the static root frame is available; no action response, transition,
+    terminal state, or recovery state can be assessed.
+  - >-
+    The lower portion of the card beyond the captured viewport is unknown.
+  - >-
+    This review does not verify accessibility semantics, focus order, exact
+    contrast, touch-target dimensions, or functional correctness.
+calibration:
+  baseline_ref: withheld
+  agreement: []
+  false_positive_candidates: []
+  missed_baseline_findings: []
+  severity_drift: []

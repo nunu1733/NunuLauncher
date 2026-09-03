@@ -3,14 +3,16 @@ report_type: critic
 status: reviewed
 report_id: issue-199-case-03-critic-repeat
 provenance:
-  contract_revision: sha256:90d82dda6d56fe5d1494612bde751e99d3a87b1466cded526d3ab0ff2cc0510b
+  contract_revision: sha256:97459d25bbb3cb2e8402a24d14ed1e8f529299771572129889c0f51dffb21da3
   subject:
     revision: 8104ce2af3dd9e26f7ddcb2ea339369e5b7b64b9
     build_ref: retained Issue #123 after-capture
   runtime:
     client: codex
     client_version: 0.151.0
+    provider: openai
     model: gpt-5.6-luna
+    protocol: codex
     reasoning: xhigh
     permission_mode: danger-full-access
     tool_surface:

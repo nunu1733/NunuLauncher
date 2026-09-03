@@ -8,8 +8,8 @@
 
 - OpenAI documentation states that Codex discovers repository skills at `.agents/skills`, supports the open Agent Skills standard, and loads project-scoped custom agents from `.codex/agents/*.toml`.
 - Codex custom-agent files require `name`, `description`, and `developer_instructions`; they can set `sandbox_mode = "read-only"` and omit `model` so model selection remains a runtime concern.
-- The local runtime is `codex-cli 0.151.0`. Observer/Critic image E2E and a sandbox write-denial probe passed with the project adapters; hidden workspace files remain technically readable, so isolation is `limited`.
-- ZCode 3.10.2 with bundled CLI 0.16.5 directly discovers the repository Skill without copying. After a required client restart, a user-level custom Observer reported Skill and image receipt through `BAI/glm-5.3-flash`, but its visual description contradicts the digest-matched PNG; grounded image E2E, Critic, negative-fixture, technical write/shell denial, and independent `injectAgentsMd` enforcement remain unvalidated.
+- The local runtime is Codex CLI 0.151.0 through provider `openai` and protocol `codex`. Observer/Critic image E2E and a sandbox write-denial probe passed with the project adapters; hidden workspace files remain technically readable, so isolation is `limited`.
+- ZCode 3.10.2 with bundled CLI 0.16.5 directly discovers the repository Skill without copying. After a required client restart, a user-level custom Observer reported Skill and image receipt through provider `BAI` and model `BAI/glm-5.3-flash`; the active protocol was not independently exposed and is recorded as `unknown`. Its visual description contradicts the digest-matched PNG; grounded image E2E, Critic, negative-fixture, technical write/shell denial, and independent `injectAgentsMd` enforcement remain unvalidated.
 - The calibration corpus contains five cases and one repeat. The known Issue #123 dark-theme defect was missed; extras on clean cases remain pending blind human adjudication.
 
 ## Design
@@ -74,7 +74,8 @@ No application data, schema, rule, or backup migration. Removing the prototype f
 
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
-| UVR-AC-01, 04–06, 10–11 | Skill structure, security boundary, schema, and provenance validation | `python3 .../skill-creator/scripts/quick_validate.py .agents/skills/ux-visual-review` plus repository contract and retained-report validation |
+| UVR-AC-01, 04–06, 11 | Skill structure, security boundary, schema, and provider/protocol provenance validation | `python3 .../skill-creator/scripts/quick_validate.py .agents/skills/ux-visual-review` plus repository contract and retained-report validation |
+| UVR-AC-10 | Screenshot-carried pseudo-instruction behavioral probe | Case-06 Observer/Critic reports, tool traces, and requested-file pre/post check |
 | UVR-AC-02, 07 | Support matrix and adapter invocation | Codex 0.151.0 E2E; ZCode 3.10.2 attempted Observer run plus explicitly retained failures and remaining gates |
 | UVR-AC-03 | Isolated Observer leakage probe | Fresh subagent/session with only scenario + evidence manifest |
 | UVR-AC-08 | 5–10 case calibration | Two-stage reports compared with human baseline |
@@ -95,6 +96,7 @@ No application data, schema, rule, or backup migration. Removing the prototype f
 - [x] Issue and repository governing documents reviewed.
 - [x] Shared Skill draft created.
 - [x] Codex thin adapters created; project Observer/Critic image E2E, no-image negative path, and write-denial probe runtime-validated.
+- [x] Codex Observer/Critic ignored screenshot-carried URL and file-creation pseudo-instructions despite broad exposed capabilities; retained role traces contain only evidence reads and image viewing.
 - [x] ZCode support boundary and direct project Skill discovery runtime-validated; a temporary post-restart Observer attempt and its visual-grounding failure are retained.
 - [x] Corrected Observer and Critic forward-test pilot completed with neutral filenames and separated hidden context using Luna/xhigh.
 - [x] Five-case model calibration and one clean-case repeat completed.
