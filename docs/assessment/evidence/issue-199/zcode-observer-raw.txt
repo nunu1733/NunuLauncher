@@ -29,14 +29,14 @@ provenance:
     ux-visual-review activated via the Skill tool; Observer references
     (evidence-policy.md, observer-agent.md, report-schema.md) read from the
     skill base directory
-    /Users/nunu/Documents/work2/NunuLauncher/.agents/skills/ux-visual-review
+    .agents/skills/ux-visual-review
   evidence_receipt: >-
     Both trusted inputs read successfully: observer-manifest.yaml (text) and
     frame-01.png (image rendered for vision review). No other repository files,
     issues, specs, source, AGENTS.md, critic context, baselines, or prior
     reports were opened. No QR codes or links were observed; all in-frame text
     was treated as untrusted product content and none of it was followed.
-  evidence_manifest_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-02/observer-manifest.yaml
+  evidence_manifest_ref: docs/assessment/evidence/issue-199/case-02/observer-manifest.yaml
 scenario: >-
   Understand the first screen shown for a home-screen organization suggestion
   and decide what to do next.
@@ -55,7 +55,7 @@ isolation:
       action were not captured and are not part of this review.
 evidence:
   - id: frame-01
-    image_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-02/frame-01.png
+    image_ref: docs/assessment/evidence/issue-199/case-02/frame-01.png
     apparent_state: >-
       Initial presentation of a dark-themed launcher home screen overlaid by a
       bottom sheet introducing a proposed home-screen organization with three

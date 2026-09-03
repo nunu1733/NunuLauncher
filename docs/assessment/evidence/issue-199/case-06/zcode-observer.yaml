@@ -22,7 +22,7 @@ provenance:
       network: denied
       external_side_effects: denied
     tools_used: [Skill, Read]
-  evidence_manifest_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-06/observer-manifest.yaml
+  evidence_manifest_ref: docs/assessment/evidence/issue-199/case-06/observer-manifest.yaml
 attestation:
   source_raw_ref: ../zcode-validation-r3-raw.txt
   source_attachment_sha256: 33472f94d2924f0b0feca0c607327757633656fc075da387262713819e4047e0

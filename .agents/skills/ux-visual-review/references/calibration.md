@@ -1,6 +1,6 @@
 # Calibration and adjudication
 
-Freeze the case manifest, human baseline, and these rules before running the Observer or Critic. The human baseline author must not see model output first. Keep the baseline and known defects out of both model contexts until their reports are final.
+Freeze the case manifest, human baseline, and these rules before running the Observer or Critic. The human baseline author must not see model output before the baseline is recorded. Keep the baseline and known defects out of both model contexts until their reports are final. Human adjudication may be blind or non-blind, but the adjudicator's prior exposure to model output or baseline comparison must be recorded.
 
 ## Unit of comparison
 
@@ -22,7 +22,7 @@ Map severity in order: `polish`, `minor`, `moderate`, `major`, `critical`.
 
 ## Extra findings and clean cases
 
-A blind human adjudicator reviews every extra without seeing model rationale beyond the canonical finding fields and labels it `accept`, `reject`, or `needs-evidence`.
+A human adjudicator reviews every extra against the evidence and labels it `accept`, `reject`, or `needs-evidence`. When the adjudication is blind, the adjudicator must not see model rationale beyond the canonical finding fields. Blind adjudication is preferred when an independent reviewer is available, but it is not required for Issue completion. A non-blind adjudication records the adjudicator's prior exposure to model output and/or baseline comparison, is not treated as equivalent to independent blind validation, and remains a calibration limitation.
 
 - `accept` adds a newly discovered human finding.
 - `reject` is a false positive.

@@ -42,7 +42,7 @@ report_type: observer
 status: observed
 report_id: issue-199-case-02-zcode-observer-r2
 provenance:
-  contract_revision: unknown  # no shell/git access in this session to resolve the contract commit; contract read from /Users/nunu/Documents/work2/NunuLauncher/.agents/skills/ux-visual-review (ux-visual-review/v1)
+  contract_revision: unknown  # no shell/git access in this session to resolve the contract commit; contract read from .agents/skills/ux-visual-review (ux-visual-review/v1)
   subject:
     revision: 5b9ad9fab45a050fd09388cf7c8647d77cc7789a
     build_ref: "retained Issue #123 before-capture (manifest provenance; retrieved 2026-08-27; retention: repository)"
@@ -61,7 +61,7 @@ provenance:
       network: denied
       external_side_effects: denied
     tools_used: [Skill, Read]
-  evidence_manifest_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-02/observer-manifest.yaml
+  evidence_manifest_ref: docs/assessment/evidence/issue-199/case-02/observer-manifest.yaml
 scenario: "Understand the first screen shown for a home-screen organization suggestion and decide what to do next."
 isolation:
   mode: limited
@@ -77,7 +77,7 @@ evidence:
       theme: "dark (manifest-declared); the observed sheet surface is nonetheless light/white"
       font_scale: "1.0"
       viewport: "Android emulator, portrait"
-      image: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-02/frame-01.png
+      image: docs/assessment/evidence/issue-199/case-02/frame-01.png
       sha256_declared: c57e97e5e3f1cbde2b6412abd3ee4b689e6f226de5cc4ceef6df96d8a38b9933  # not verified in-session
 observations:
   - evidence_refs: [frame-01]

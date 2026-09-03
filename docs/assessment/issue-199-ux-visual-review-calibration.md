@@ -1,6 +1,6 @@
 # Assessment: Issue #199 — UX visual review calibration
 
-> Status: five cases and one repeat executed; recorded ZCode runtime E2E complete; blind human adjudication incomplete
+> Status: five cases and one repeat executed; recorded ZCode runtime E2E complete; human adjudication incomplete (blind preferred when an independent reviewer is available)
 > Date: 2026-09-03
 > Runtime: Codex 0.151.0 (`openai` / `codex`), `gpt-5.6-luna`, reasoning effort `xhigh`
 > Contract revision: `sha256:97459d25bbb3cb2e8402a24d14ed1e8f529299771572129889c0f51dffb21da3`
@@ -15,10 +15,15 @@ clean case with one-level severity drift, and correctly returned
 management-flow judgment.
 
 This is useful advisory evidence, but it is not sufficient for adoption or
-Issue closure. A human reviewer who has not seen the model reports must still
-adjudicate the extra findings. The recorded ZCode runtime E2E is now complete
-for the tested client/configuration, with the isolation and provenance limits
-described below; it does not remove the blind-human gate.
+Issue closure while the retained human-adjudication queue has no completed
+dispositions. A human reviewer must still adjudicate the extra findings. The
+adjudication may be blind or non-blind: blind review is preferred when an
+independent reviewer is available, while any prior exposure to model output or
+baseline comparison must be recorded. A non-blind result is not equivalent to
+independent blind validation and remains a calibration limitation. The
+recorded ZCode runtime E2E is complete for the tested client/configuration,
+with the isolation and provenance limits described below; it does not remove
+the human-adjudication requirement.
 
 ## Correction to the original pilot
 
@@ -51,10 +56,14 @@ The calibration rules and human baselines were frozen before cases 02–05 ran:
 Agreement is matched by semantic root cause and user impact, not exact wording
 or rubric category. Severity is recorded as exact agreement, near-agreement
 within one level, or disagreement at two or more levels. Findings absent from
-the baseline remain `needs-evidence` until blind human review; they are not
-automatically counted as false positives. A rejected `minor` or `polish`
-finding on a clean case counts as an aesthetic false positive. A known baseline
-finding absent from the report is a miss.
+the baseline remain `needs-evidence` until human adjudication; they are not
+automatically counted as false positives. Each adjudication record states
+whether the adjudicator had prior exposure to model output or baseline
+comparison. Blind adjudication is preferred when an independent reviewer is
+available, but a non-blind result is not treated as equivalent to independent
+blind validation and remains a calibration limitation. A rejected `minor` or
+`polish` finding on a clean case counts as an aesthetic false positive. A known
+baseline finding absent from the report is a miss.
 
 The contract digest covers every file below
 `.agents/skills/ux-visual-review/`, sorted by path, with a SHA-256 digest per
@@ -68,10 +77,10 @@ reports and runtime validation records use the post-provenance-update digest.
 
 | Case | Evidence and baseline | Critic outcome | Calibration disposition |
 |---|---|---|---|
-| 01 — stateful Organizer proposal | Five neutral frames with three declared terminal branches; human baseline from the Issue #192 concrete-preview investigation | Recovered the central absence of item/destination detail before apply as `major/high`; also reported state wording, scanability, affordance, and failure-summary concerns | Central true positive. Extra findings need blind human adjudication. |
-| 02 — known dark-theme defect | Issue #123 before-capture; baseline: fixed light popup surface is incoherent with the dark launcher, `moderate` | Reported action hierarchy, `LATER`/`SKIP` ambiguity, and competing setup cues, but not the theme mismatch root cause | Known baseline miss. Extras need blind human adjudication. |
-| 03 — corrected dark theme, clean negative | Issue #123 after-capture; baseline records the theme correction and no visual-coherence defect | Reported `LATER`/`SKIP` ambiguity and equal action hierarchy | Clean-case extras need blind human adjudication; not yet false positives. |
-| 04 — Japanese at 200%, clean visual baseline | Issue #123 after-capture; deterministic evidence says actions remain in the viewport | Reported equal hierarchy, action-label ambiguity, an orphaned final text fragment, and missing scope/recovery context | Extras need blind human adjudication. The deterministic font-scale result remains separate and is not a Vision pass. |
+| 01 — stateful Organizer proposal | Five neutral frames with three declared terminal branches; human baseline from the Issue #192 concrete-preview investigation | Recovered the central absence of item/destination detail before apply as `major/high`; also reported state wording, scanability, affordance, and failure-summary concerns | Central true positive. Extra findings need human adjudication; blind is preferred when independently available. |
+| 02 — known dark-theme defect | Issue #123 before-capture; baseline: fixed light popup surface is incoherent with the dark launcher, `moderate` | Reported action hierarchy, `LATER`/`SKIP` ambiguity, and competing setup cues, but not the theme mismatch root cause | Known baseline miss. Extras need human adjudication; blind is preferred when independently available. |
+| 03 — corrected dark theme, clean negative | Issue #123 after-capture; baseline records the theme correction and no visual-coherence defect | Reported `LATER`/`SKIP` ambiguity and equal action hierarchy | Clean-case extras need human adjudication; not yet false positives. Record prior exposure; blind is preferred when independently available. |
+| 04 — Japanese at 200%, clean visual baseline | Issue #123 after-capture; deterministic evidence says actions remain in the viewport | Reported equal hierarchy, action-label ambiguity, an orphaned final text fragment, and missing scope/recovery context | Extras need human adjudication; blind is preferred when independently available. The deterministic font-scale result remains separate and is not a Vision pass. |
 | 05 — placement settings, clean visual baseline | Issue #123 after-capture; intentional text state badges | Returned `insufficient-evidence` with no findings because the requested safe-management judgment requires interaction states | Correct evidence-bound refusal; no pass was inferred from a single root frame. |
 
 Artifacts:
@@ -99,8 +108,11 @@ reported the same two semantic concerns: ambiguity between defer and dismiss,
 and equal visual hierarchy among the three actions. The language finding stayed
 `moderate`; confidence moved from `medium` to `high`. The hierarchy finding
 moved from `moderate` to `minor`, a one-level near-agreement drift. Recurrence
-does not establish correctness: both findings remain blind-human
+Recurrence does not establish correctness: both findings remain human-adjudication
 `needs-evidence` because the frozen baseline classified the capture as clean.
+No human disposition is claimed in this artifact; if adjudication is
+non-blind, its prior exposure must be recorded and the result remains a
+calibration limitation.
 
 ## Runtime and security evidence
 
@@ -161,8 +173,11 @@ It is security validation, not an additional calibration case.
 
 - The case-02 miss demonstrates a real false-negative risk for contextual
   visual coherence.
-- Extra findings on cases 02–04 are not scored until blind human adjudication;
-  calibration therefore does not yet yield a false-positive rate.
+- Extra findings on cases 02–04 are not scored until human adjudication;
+  calibration therefore does not yet yield a false-positive rate. Blind
+  adjudication is preferred when an independent reviewer is available, but a
+  non-blind result must record prior exposure and cannot be treated as
+  equivalent to independent blind validation.
 - Four cases are single-frame entry/settings surfaces. The stateful case is
   stronger, but another stateful concrete-change case would improve corpus
   representativeness.
@@ -182,7 +197,11 @@ It is security validation, not an additional calibration case.
 
 Keep the workflow **advisory only and experimental**. Do not add a required
 step to `AGENTS.md`, `docs/engineering/quality-strategy.md`, or a merge gate.
-Before an owner adoption decision, complete blind human adjudication and review
+Before an owner adoption decision, complete human adjudication of the extra
+findings and record any prior model-output or baseline-comparison exposure;
+prefer blind adjudication when an independent reviewer is available. Any
+non-blind result must remain an explicit calibration limitation rather than
+being treated as equivalent to independent blind validation. Also review
 whether the current corpus needs another stateful concrete-change case. The
 recorded ZCode gates are complete for the tested configuration, but its limited
 isolation, unknown protocol, dispatcher-attested provenance, and absent

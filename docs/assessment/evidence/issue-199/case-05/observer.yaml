@@ -24,7 +24,7 @@ provenance:
     tools_used:
       - exec_command
       - view_image
-  evidence_manifest_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-05/observer-manifest.yaml
+  evidence_manifest_ref: docs/assessment/evidence/issue-199/case-05/observer-manifest.yaml
 scenario: "Understand and manage the visible home-screen placement settings."
 isolation:
   mode: limited

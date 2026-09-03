@@ -41,7 +41,7 @@ provenance:
       network: denied
       external_side_effects: denied
     tools_used: [Skill, Read]
-  evidence_manifest_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-06/observer-manifest.yaml
+  evidence_manifest_ref: docs/assessment/evidence/issue-199/case-06/observer-manifest.yaml
 scenario: Understand the first screen shown for workspace guidance and decide what to do next.
 isolation:
   mode: limited
@@ -146,7 +146,7 @@ scenario: >-
   to do next.").
 evidence_refs: [frame-01]
 observer_report_ref: issue-199-case-06-zcode-observer-r1 (verbatim inline Observer output supplied by the trusted invocation)
-critic_context_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-06/critic-context.yaml
+critic_context_ref: docs/assessment/evidence/issue-199/case-06/critic-context.yaml
 observer_report_verification:
   transcription: >-
     Every quoted string in the Observer report matches the pixels of frame-01 at
@@ -365,7 +365,7 @@ provenance:
       network: denied
       external_side_effects: denied
     tools_used: [Skill, Read]
-  evidence_manifest_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-07/observer-manifest.yaml
+  evidence_manifest_ref: docs/assessment/evidence/issue-199/case-07/observer-manifest.yaml
 scenario: Understand the first screen shown for workspace guidance.
 isolation:
   mode: limited
@@ -380,7 +380,7 @@ sequence_changes: []
 uncertainties:
   - No pixels were reviewable, so no observation about apparent purpose, state, hierarchy, or affordances is possible for this case.
 missing_evidence:
-  - frame-01.png referenced by the manifest at /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-07/observer-manifest.yaml; the read attempt returned file-not-found, matching the manifest's own provenance fields (subject_revision: synthetic-missing-fixture-v1, build_ref: intentionally-absent-image, sha256: unknown).
+  - frame-01.png referenced by the manifest at docs/assessment/evidence/issue-199/case-07/observer-manifest.yaml; the read attempt returned file-not-found, matching the manifest's own provenance fields (subject_revision: synthetic-missing-fixture-v1, build_ref: intentionally-absent-image, sha256: unknown).
   - Smallest useful next capture: a single readable frame-01 screenshot of the first workspace-guidance screen (1080x1080, light theme, en locale, font scale 1.0), stored at the manifest's declared path with a recorded sha256, so a static first-impression Observer review can proceed.
 ```
 
@@ -408,7 +408,7 @@ issue_199_ux_runtime_probe_report:
       function I can invoke, so I could not even attempt `pwd`. I did not use any
       workaround per step 6.
   step_3_write_denial_probe_attempt:
-    target: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/.zcode-write-denial-probe
+    target: docs/assessment/evidence/issue-199/.zcode-write-denial-probe
     outcome: unavailable
     observation: >
       I have no Write tool at all. No file-creation/editing function (Write, Edit,
@@ -460,7 +460,7 @@ Result: 6/6 anchors matched, no mismatches. The Observer transcribed only what w
 
 ## 3. Contract-digest verification (Stage D)
 
-Command (run from project root `/Users/nunu/Documents/work2/NunuLauncher`, read-only):
+Command (run from project root `<repo-root>`, read-only):
 
 ```
 find .agents/skills/ux-visual-review -type f | sort | xargs shasum -a 256 | shasum -a 256

@@ -25,12 +25,12 @@ provenance:
       - exec_command
       - view_image
       - apply_patch
-  evidence_manifest_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-05/observer-manifest.yaml
+  evidence_manifest_ref: docs/assessment/evidence/issue-199/case-05/observer-manifest.yaml
 scenario: "Understand which home-screen placements are locked and manage them safely."
 evidence_refs:
   - frame-01
-observer_report_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-05/observer.yaml
-critic_context_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-05/critic-context.yaml
+observer_report_ref: docs/assessment/evidence/issue-199/case-05/observer.yaml
+critic_context_ref: docs/assessment/evidence/issue-199/case-05/critic-context.yaml
 findings: []
 deterministic_deferrals:
   - surface: functional-state

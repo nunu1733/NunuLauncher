@@ -25,12 +25,12 @@ provenance:
       - exec_command
       - view_image
       - apply_patch
-  evidence_manifest_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-04/observer-manifest.yaml
+  evidence_manifest_ref: docs/assessment/evidence/issue-199/case-04/observer-manifest.yaml
 scenario: Understand a home-screen organization suggestion at the configured text scale and choose the next action.
 evidence_refs:
   - frame-01
-observer_report_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-04/observer.yaml
-critic_context_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-04/critic-context.yaml
+observer_report_ref: docs/assessment/evidence/issue-199/case-04/observer.yaml
+critic_context_ref: docs/assessment/evidence/issue-199/case-04/critic-context.yaml
 findings:
   - id: UVR-001
     category: visual-hierarchy

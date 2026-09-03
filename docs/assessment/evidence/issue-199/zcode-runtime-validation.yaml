@@ -1,6 +1,24 @@
 contract: ux-visual-review/runtime-validation-v1
 date: 2026-09-03
 contract_revision: sha256:97459d25bbb3cb2e8402a24d14ed1e8f529299771572129889c0f51dffb21da3
+redaction:
+  contract: path-sanitization-v1
+  rule: >-
+    Deterministic UTF-8 byte substitution using literal escape notation:
+    replace `\x2fUsers\x2fnunu/Documents/work2/NunuLauncher/` with the empty
+    string to produce repository-relative paths, then replace an exact
+    standalone `\x2fUsers\x2fnunu/Documents/work2/NunuLauncher` token with
+    `<repo-root>`; no other bytes are changed.
+  artifacts:
+    - path: zcode-observer-raw.txt
+      original_pre_redaction_sha256: e65cd04a8829a1a3183aeb6262b42d3d0368b20d49a1b003c0e4a8f9e3c7a489
+      sanitized_sha256: 98e9d64f2666669a90b13e2101235bf231f2ec0204469bf0a60d54b28705210f
+    - path: zcode-validation-r2-raw.txt
+      original_pre_redaction_sha256: 39785ec76acce6817692ddf87ca6a097dc426159044924f3800129699eeb72d1
+      sanitized_sha256: dfc661515e1a1b77360d60273ac9aa804c886cf88d37b86d494890e2c65af83f
+    - path: zcode-validation-r3-raw.txt
+      original_pre_redaction_sha256: 7d93248aea71cdbb8006636ecef9faae8fa5e8c2c42f8104f4a62efd0df5374f
+      sanitized_sha256: 3437462bf2c6e605a1b18e3842fd0ae7d10f1b2635f99301e3d8c8dd19c9e5f7
 runtime:
   client: zcode
   client_version: 3.10.2
@@ -44,8 +62,8 @@ session_reload_evidence:
     result: stopped-at-stage-1-visual-grounding-failed
     source: zcode-validation-r2-raw.txt
     source_attachment_sha256: c9995bf631d2a25aedcc1c57c33026193857b80686d674113538dbf992100405
-    retained_raw_sha256: 39785ec76acce6817692ddf87ca6a097dc426159044924f3800129699eeb72d1
-    retention_normalization: one trailing newline added; semantic content unchanged
+    retained_raw_sha256: dfc661515e1a1b77360d60273ac9aa804c886cf88d37b86d494890e2c65af83f
+    retention_normalization: one trailing newline added; paths sanitized per redaction record; all other content unchanged
     anchor_results:
       status_bar_time: "failed: reported 16:03; fixture shows 10:33"
       sheet_surface: passed
@@ -62,13 +80,8 @@ first_post_restart_observer_e2e:
   image_ref: case-02/frame-01.png
   report_ref: zcode-observer-raw.txt
   source_attachment_sha256: 2912afb61a7cbe779f80050c09ebe363711278ad1532f797083b1f1196d0c53d
-  retained_raw_report_sha256: e65cd04a8829a1a3183aeb6262b42d3d0368b20d49a1b003c0e4a8f9e3c7a489
-  retention_normalization: one trailing newline added; semantic content unchanged
-  raw_summary_caveat: >-
-    The raw dispatcher summary says every stage met its expectation and no stage
-    failed. For Stage C, that means Write and Bash were unavailable on the role's
-    exposed tool surface; it does not mean a permission-denied operation was
-    attempted successfully. The structured fields below are authoritative.
+  retained_raw_report_sha256: 98e9d64f2666669a90b13e2101235bf231f2ec0204469bf0a60d54b28705210f
+  retention_normalization: one trailing newline added; paths sanitized per redaction record; all other content unchanged
   skill_activation: claimed-passed
   image_delivery: claimed-by-agent-but-not-verified
   canonical_structure: passed
@@ -100,8 +113,13 @@ permission_validation:
 completed_e2e:
   source: zcode-validation-r3-raw.txt
   source_attachment_sha256: 33472f94d2924f0b0feca0c607327757633656fc075da387262713819e4047e0
-  retained_raw_sha256: 7d93248aea71cdbb8006636ecef9faae8fa5e8c2c42f8104f4a62efd0df5374f
-  retention_normalization: one trailing newline added; semantic content unchanged
+  retained_raw_sha256: 3437462bf2c6e605a1b18e3842fd0ae7d10f1b2635f99301e3d8c8dd19c9e5f7
+  retention_normalization: one trailing newline added; paths sanitized per redaction record; all other content unchanged
+  raw_summary_caveat: >-
+    The raw dispatcher summary says every stage met its expectation and no stage
+    failed. For Stage C, that means Write and Bash were unavailable on the role's
+    exposed tool surface; it does not mean a permission-denied operation was
+    attempted successfully. The structured fields below are authoritative.
   normalized_reports:
     - raw_report_id: issue-199-case-06-zcode-observer-r1
       report_ref: case-06/zcode-observer.yaml
@@ -115,8 +133,9 @@ completed_e2e:
     and the configured tool allowlist. The Observer/Critic self-reports expose
     the effective model identifier recorded above. The deterministic digest
     command attests the contract revision. Each normalized report identifies
-    this raw source and records the curator-supplied fields; the raw return
-    remains unchanged.
+    this raw source and records the curator-supplied fields; the checked-in raw
+    copy is path-sanitized per the redaction record, while its pre-redaction
+    SHA is retained above.
   grounded_observer:
     fixture: case-06/frame-01.png
     report_ref: case-06/zcode-observer.yaml

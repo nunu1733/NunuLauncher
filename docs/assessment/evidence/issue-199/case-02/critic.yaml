@@ -26,12 +26,12 @@ provenance:
       - exec_command
       - view_image
       - apply_patch
-  evidence_manifest_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-02/observer-manifest.yaml
+  evidence_manifest_ref: docs/assessment/evidence/issue-199/case-02/observer-manifest.yaml
 scenario: Understand an unsolicited home-screen organization suggestion and choose whether to review it now, defer it, or dismiss it.
 evidence_refs:
   - frame-01
-observer_report_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-02/observer.yaml
-critic_context_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-02/critic-context.yaml
+observer_report_ref: docs/assessment/evidence/issue-199/case-02/observer.yaml
+critic_context_ref: docs/assessment/evidence/issue-199/case-02/critic-context.yaml
 findings:
   - id: UVR-001
     category: affordance-action

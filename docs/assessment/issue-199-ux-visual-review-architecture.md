@@ -1,6 +1,6 @@
 # Assessment: Issue #199 — UX visual review architecture decision
 
-> Status: proposed; Codex E2E, five-case calibration, and recorded ZCode runtime E2E executed; blind human adjudication remains incomplete
+> Status: proposed; Codex E2E, five-case calibration, and recorded ZCode runtime E2E executed; human adjudication remains incomplete (blind preferred when an independent reviewer is available)
 > Date: 2026-09-03
 > Issue: [#199](https://github.com/nunu1733/NunuLauncher/issues/199)
 
@@ -15,7 +15,7 @@ Runtime integrations are adapters:
 
 The Observer receives only a neutral user goal and an Observer-visible manifest containing neutral frame IDs, branch/order relations, preceding user actions, and named images. Expected states, risk, intended actions, known defects, AC/spec context, and the human baseline remain in a separate hidden layer. The Critic receives the same evidence plus the Observer report and only the product/risk context needed to judge impact. Neither role performs implementation, functional/spec review, or deterministic accessibility measurement.
 
-This is a proposed process decision, not an ADR: the runtime boundary remains Beta/evolving and adoption evidence (especially blind human adjudication) is incomplete. If later adoption makes the adapter boundary expensive to reverse and alternatives remain material, reassess the ADR criteria then.
+This is a proposed process decision, not an ADR: the runtime boundary remains Beta/evolving and adoption evidence (especially human adjudication and its exposure record) is incomplete. Blind adjudication is preferred when an independent reviewer is available, but a non-blind result is not equivalent to independent blind validation and remains a calibration limitation. If later adoption makes the adapter boundary expensive to reverse and alternatives remain material, reassess the ADR criteria then.
 
 ## Why this boundary
 
@@ -41,7 +41,7 @@ Detailed evidence:
 
 ## Pilot calibration result
 
-The corrected Codex two-stage pilot used neutral filenames and a manifest with no expected-state/risk labels. Project-scoped `ux_observer` and `ux_critic` ran with `gpt-5.6-luna` / `xhigh` under `read-only`, reproduced the human baseline's central pre-apply trust finding, and correctly disclosed limited isolation. Four additional pre-baselined cases bring the corpus to five; one clean case was repeated. The repeat preserved two semantic findings with one-level severity drift. Several extras still require blind human adjudication, and the known dark-theme root cause was missed.
+The corrected Codex two-stage pilot used neutral filenames and a manifest with no expected-state/risk labels. Project-scoped `ux_observer` and `ux_critic` ran with `gpt-5.6-luna` / `xhigh` under `read-only`, reproduced the human baseline's central pre-apply trust finding, and correctly disclosed limited isolation. Four additional pre-baselined cases bring the corpus to five; one clean case was repeated. The repeat preserved two semantic findings with one-level severity drift. Several extras still require human adjudication; blind is preferred when an independent reviewer is available, and any prior model-output or baseline-comparison exposure must be recorded. The known dark-theme root cause was missed.
 
 See [pilot calibration](issue-199-ux-visual-review-calibration.md).
 
@@ -51,7 +51,7 @@ Current recommendation: **advisory only, experimental invocation**.
 
 Do not yet add a required review step to `AGENTS.md` or `docs/engineering/quality-strategy.md`, and do not add a merge gate. Promotion requires:
 
-1. blind human adjudication of the extra findings from the five-case corpus;
+1. human adjudication of the extra findings from the five-case corpus, with prior model-output or baseline-comparison exposure recorded. Blind adjudication is preferred when an independent reviewer is available, but is not required; non-blind results remain a calibration limitation and are not treated as equivalent to independent blind validation;
 2. at least one more stateful case with a concrete change list, since three added cases are single-frame entry/settings surfaces;
 3. an owner decision on advisory adoption after reviewing the recorded false-negative, severity-drift, and ZCode runtime limitations.
 
@@ -72,10 +72,12 @@ refusal, screenshot-instruction non-obedience, exact contract digest, and absent
 write/shell tools are retained with explicit dispatcher provenance attestation.
 Universal plugin-level isolation or platform denial is not claimed.
 
-Do not close #199 or move its current AC-08 scope to follow-up Issues without
-first changing and approving the spec scope. Under the current spec, #199 still
-owns:
+The approved AC-08 scope keeps human adjudication in #199 while making blind
+review preferred rather than mandatory. Any non-blind adjudication must record
+prior model-output or baseline-comparison exposure and is not equivalent to
+independent blind validation. The retained queue currently has no completed
+human dispositions, so #199 still owns:
 
-- Calibration blind human adjudication and one additional stateful case if the owner considers the current entry/settings-heavy corpus insufficiently representative.
+- Calibration human adjudication and exposure recording for the extra findings, plus one additional stateful case if the owner considers the current entry/settings-heavy corpus insufficiently representative.
 - Product triage for pilot-only findings not already owned by #194/#195, including terminal-summary provenance and English singular/plural copy.
 - Repository process adoption after calibration; this follow-up would own any `AGENTS.md` / `quality-strategy.md` change and enforcement decision.
