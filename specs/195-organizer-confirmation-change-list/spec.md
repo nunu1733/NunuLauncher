@@ -50,9 +50,10 @@ Manual organization の確認画面 (`ManualOrganizationPreferences` の `State.
 
 よって confirm は許可する。ただし「null を黙って count-only と同等に扱う」こと (#194 が恒久化を禁じた姿) は避け、画面先頭に degraded 告知行 (「具体的な変更一覧を用意できませんでした」) を表示して、ユーザーが件数のみでの確認であることを観測可能にする。confirm を block する方向へ変更する場合は、coordinator 契約の変更を伴う別 spec を要求する。
 
-### D2: ヘッダ件数の truth — **変更件数は `PreviewCounts`、入力文脈行は `Summary`**
+### D2: ヘッダ件数の truth — **変更件数は `PreviewCounts`、入力文脈行は `Summary`、warning group のみ行数 truth**
 
 - `details != null` の画面で表示する変更件数行 (moved / preserved / new folder / new page / warnings) は、すべて `PreviewCounts` を truth とする。group 見出しの件数も同じ `PreviewCounts` を使い、truncation 中でも group 見出しが全体件数を示す。
+- **warning group の例外 (review で確定)**: `PreviewCounts.warningCounts` には global / multi-item warning (具体行を持たない) も含まれるため、warning group の見出しと展開件数の truth は **`ItemWarningChange` の行数** とする。global / multi-item warning は上部の warning count 行 (`PreviewCounts` truth) のみに現れ、group 件数には数えない。「すべて表示 N件」が実際の行数より多く約束する虚偽表示を構造的に排除する。
 - `Summary` 由来の movedByReason / preservedByReason の件数 breakdown は、`details != null` の画面では表示しない (理由は行レベルの rationale / reason 語へ置き換わる)。`Summary` の変更件数行と `PreviewCounts` を同一画面で混在させない。
 - scope 行 (対象数 / profile 数 / page 数)、device 行、constraint 行 (locked / unavailable / widget 等) は**変更の件数ではなく入力の文脈情報**であり、spec 52 MFO-AC-07 の要求を満たすため `Summary` を truth として両 mode で表示する。これらは行数一致契約 (§Header counts の truth 分担) の対象外である。
 - `details == null` (fallback) の画面は、告知行を除き現行の `summaryItems` 全文を維持する (regression-free)。
@@ -77,7 +78,7 @@ assessment §6.1 の residual risk に対し、本 spec は次の表現契約を
 
 ### D6: truncation と grouping の規約
 
-- group の順序と件数: 移動 (`movedCount`) → 新規フォルダ (`newFolderCount`) → 新規ページ (`newPageCount`) → 保持 (`preservedCount`) → 警告 (`warningCounts`)。空の group は見出しごと省略する。group 内の行順は projection の決定的順序 (`plan.actions` 順等) をそのまま使う (re-sort しない)。
+- group の順序と件数: 移動 (`movedCount`) → 新規フォルダ (`newFolderCount`) → 新規ページ (`newPageCount`) → 保持 (`preservedCount`) → 警告 (§D2 例外により `ItemWarningChange` 行数)。空の group は見出しごと省略する。group 内の行順は projection の決定的順序 (`plan.actions` 順等) をそのまま使う (re-sort しない)。
 - truncation は group ごとに先頭 5 件。展開 / 折りたたみは group ごとの独立 UI state (初期値: 折りたたみ)。「すべて表示 (N件)」の N は group の全体件数 (`PreviewCounts`)。
 - truncation は表示上の省略であり、confirm 対象 (preview 済み plan) には一切影響しない。
 
@@ -137,7 +138,9 @@ Given 変更一覧が表示されている,
 
 When TalkBack / Switch Access / 200% font scale で操作する,
 
-Then 各変更行は単一の意味ある node として読め、`liveRegion` は status 行のみで、展開 action は展開/折りたたみの state を報告し、全 action に traversal で到達でき、必須 content が 200% で wrap して到達可能である。
+Then 各変更行は単一の意味ある node として読め、`liveRegion` は status 行のみで、展開 action は展開/折りたたみの state を報告し、keyboard / Switch traversal で status → 展開 action → confirm → cancel に実際に到達でき、必須 content が 200% で wrap して到達可能である,
+
+And 展開による行挿入の reflow 後も展開 action 自身が focus を保持する (spec 52 の focus 復帰契約)。
 
 ## Data and state
 
@@ -160,7 +163,7 @@ None。新たな permission、network、telemetry、export は追加しない。
 
 | AC | Acceptance criterion |
 |---|---|
-| AC-1 | `details != null` の確認画面に具体的変更一覧が表示され、行は #194 契約 (`PreviewChange`) のみを消費する。変更件数ヘッダと group 件数は `PreviewCounts` 由来であり、`Summary` の変更件数行と混在しない。 |
+| AC-1 | `details != null` の確認画面に具体的変更一覧が表示され、行は #194 契約 (`PreviewChange`) のみを消費する。変更件数ヘッダと group 件数は `PreviewCounts` 由来であり (warning group のみ §D2 例外で `ItemWarningChange` 行数)、`Summary` の変更件数行と混在しない。 |
 | AC-2 | 変更一覧の行は `details.changes` の全件を (truncation 分を含め) 表現し、group 順序と行順は projection の決定的順序に従う。帯内微調整行と行序数併記が §D5 の契約どおり描画される。 |
 | AC-3 | 大量変更 (group あたり閾値超過) で truncation + 展開 / 折りたたみが動作し、展開 state が semantics に現れる。 |
 | AC-4 | `details == null` で告知行と現行 count-only サマリー + confirm が表示され、既存 flow が退化しない。変更 0 件 / stale / recreate / readiness の既存表示も退化しない。 |
@@ -176,7 +179,7 @@ None。新たな permission、network、telemetry、export は追加しない。
 | AC-1, AC-2 | `tests/unit/.../ui/OrganizationPreviewContentTest.kt` (純粋行構築: grouping、位置語、same-band 行、行序数、理由語、`PreviewCounts` truth) + instrumentation 描画 test |
 | AC-3 | instrumentation test: 9 件移動 fixture で truncation → 展開 → 折りたたみと `stateDescription` 主張 |
 | AC-4 | instrumentation test: `WriterBusy` fallback (告知行 + count-only + confirm)、NoChanges fixture (confirm 無し)、既存 stale / recreate test の無変更通過 |
-| AC-5 | instrumentation test: 行 node の単一性と非 liveRegion、展開 action の state 語、traversal、200% font scale |
+| AC-5 | instrumentation test: 行 node の単一性と非 liveRegion、展開 action の state 語、実際の keyboard focus traversal (status → expand → confirm → cancel) と展開後の展開 action focus 保持、200% font scale |
 | AC-6 | instrumentation test: ja configuration context で全追加 string を解決し en 値と一致しないこと (fallback 検出)、format string の解決 |
 | AC-7 | `.github/workflows/ci.yml` `organizer-instrumentation-issue52-tests` job (API 36 / Platform 36.1) の成功 run URL を PR へ記録。可能な場合ローカル emulator 実行結果も記録 |
 | AC-8 | PR diff review (spec 52) |
@@ -188,6 +191,7 @@ None。spec 時点で確定した判断は §Design decisions (D1–D6) のと�
 ## Change history
 
 - 2026-09-03: Drafted for Issue #195。#194 spec が委ねた 4 項目の契約判断 (D1–D4) と assessment §6.1 の residual risk 判定 (D5)、truncation 規約 (D6) を確定して作成。Issue owner の実施指示に基づき受理し、owner review は実装 PR で継続する。
+- 2026-09-03: Review revision (owner review @ PR #198): warning group の見出し / 展開件数の truth を `ItemWarningChange` 行数へ分離し、global / multi-item warning は header count のみへ明確化 (Medium, §D2/§D6)。a11y 契約へ展開後の展開 action focus 保持を明記し、AC-5 の traversal evidence を実際の keyboard focus 移動で検証するよう更新 (Blocking)。
 
 ## References
 

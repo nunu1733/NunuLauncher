@@ -113,12 +113,12 @@ object OrganizationPreviewContent {
         if (preserved.isNotEmpty()) sections += OrganizationPreviewSection(format(wording.groupPreserved, counts.preservedCount), counts.preservedCount, preserved)
         val warnings = changes.filterIsInstance<ItemWarningChange>().map { warningRowText(it, wording) }
         if (warnings.isNotEmpty()) {
-            // The total counts all warnings from PreviewCounts (spec 194 carries
-            // non-item warnings in the header only), while rows list per-item
-            // warnings; the header count is authoritative, not the row count.
+            // Spec §D2 exception: this group speaks for its concrete rows only.
+            // Global / multi-item warnings stay header-count-only (PreviewCounts
+            // carries all warnings), so the heading count matches the row count.
             sections += OrganizationPreviewSection(
-                format(wording.groupWarnings, counts.warningCounts.values.sum()),
-                counts.warningCounts.values.sum(),
+                format(wording.groupWarnings, warnings.size),
+                warnings.size,
                 warnings,
             )
         }

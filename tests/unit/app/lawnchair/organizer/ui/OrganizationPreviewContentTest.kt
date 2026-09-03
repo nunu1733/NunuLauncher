@@ -51,11 +51,27 @@ class OrganizationPreviewContentTest {
         val sections = OrganizationPreviewContent.sections(details, TestWording)
 
         assertEquals(
-            listOf("Move (2)", "New folders (1)", "New pages (1)", "Preserve (1)", "Warnings (2)"),
+            listOf("Move (2)", "New folders (1)", "New pages (1)", "Preserve (1)", "Warnings (1)"),
             sections.map { it.heading },
         )
-        assertEquals(listOf(2, 1, 1, 1, 2), sections.map { it.totalCount })
+        assertEquals(listOf(2, 1, 1, 1, 1), sections.map { it.totalCount })
         assertEquals(2, sections[0].rows.size)
+    }
+
+    @Test
+    fun warningGroupCountsConcreteRowsWhileHeaderKeepsAllWarnings() {
+        val details = PlanPreviewDetails(
+            changes = listOf(itemWarning("notes", WarningCode.FALLBACK_CATEGORY)),
+            // Spec §D2 exception: warningCounts carries all warnings (1 item + 2
+            // global here), while the group speaks only for its concrete rows.
+            counts = PreviewCounts(0, 0, 0, 0, warningCounts = mapOf(WarningCode.FALLBACK_CATEGORY to 3)),
+        )
+
+        val warnings = OrganizationPreviewContent.sections(details, TestWording).single()
+
+        assertEquals("Warnings (1)", warnings.heading)
+        assertEquals(1, warnings.totalCount)
+        assertEquals(1, warnings.rows.size)
     }
 
     @Test

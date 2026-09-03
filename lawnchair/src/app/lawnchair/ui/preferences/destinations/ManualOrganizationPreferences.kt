@@ -536,7 +536,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.previewDetailsItems(
         )
     }
     sections.forEachIndexed { sectionIndex, section ->
-        item {
+        // Stable keys keep the toggle's node identity across the expansion
+        // reflow so focus and item state survive the rows inserted before it.
+        item(key = "preview-section-$sectionIndex") {
             Text(
                 text = section.heading,
                 style = MaterialTheme.typography.titleSmall,
@@ -545,30 +547,43 @@ private fun androidx.compose.foundation.lazy.LazyListScope.previewDetailsItems(
         }
         val expanded = sectionIndex in expandedGroups.value
         val visibleRows = if (expanded) section.rows else section.rows.take(PREVIEW_ROWS_BEFORE_EXPANSION)
-        visibleRows.forEach { row ->
-            item { SummaryText(row) }
+        visibleRows.forEachIndexed { rowIndex, row ->
+            item(key = "preview-row-$sectionIndex-$rowIndex") { SummaryText(row) }
         }
         if (section.rows.size > PREVIEW_ROWS_BEFORE_EXPANSION) {
-            item {
+            item(key = "preview-toggle-$sectionIndex") {
+                val expandedNow = sectionIndex in expandedGroups.value
                 val stateText = stringResource(
-                    if (expanded) {
+                    if (expandedNow) {
                         R.string.manual_organization_preview_expanded_state
                     } else {
                         R.string.manual_organization_preview_collapsed_state
                     },
                 )
+                val label = stringResource(
+                    if (expandedNow) {
+                        R.string.manual_organization_preview_show_fewer
+                    } else {
+                        R.string.manual_organization_preview_show_all
+                    },
+                    if (expandedNow) PREVIEW_ROWS_BEFORE_EXPANSION else section.totalCount,
+                )
+                val toggleFocus = remember { FocusRequester() }
+                // Spec 52 focus restoration: the action that announced the extra
+                // rows keeps focus after the list reflows around it.
+                LaunchedEffect(expandedNow) {
+                    if (expandedNow) {
+                        withFrameNanos { }
+                        runCatching { toggleFocus.requestFocus() }
+                    }
+                }
                 ClickablePreference(
-                    label = stringResource(
-                        if (expanded) {
-                            R.string.manual_organization_preview_show_fewer
-                        } else {
-                            R.string.manual_organization_preview_show_all
-                        },
-                        if (expanded) PREVIEW_ROWS_BEFORE_EXPANSION else section.totalCount,
-                    ),
-                    modifier = Modifier.semantics { stateDescription = stateText },
+                    label = label,
+                    modifier = Modifier
+                        .focusRequester(toggleFocus)
+                        .semantics { stateDescription = stateText },
                     onClick = {
-                        expandedGroups.value = if (expanded) {
+                        expandedGroups.value = if (expandedNow) {
                             expandedGroups.value - sectionIndex
                         } else {
                             expandedGroups.value + sectionIndex

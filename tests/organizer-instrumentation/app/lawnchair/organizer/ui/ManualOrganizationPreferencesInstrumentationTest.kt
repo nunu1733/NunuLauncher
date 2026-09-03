@@ -537,8 +537,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
             inspectPlanOverride = { _, _ ->
                 previewed(
                     PlanPreviewDetails(
-                        changes = (1..9).map { index -> crossBandMove("app$index") },
-                        counts = PreviewCounts(movedCount = 9, preservedCount = 0, newFolderCount = 0, newPageCount = 0, warningCounts = emptyMap()),
+                        changes = (1..6).map { index -> crossBandMove("app$index") },
+                        counts = PreviewCounts(movedCount = 6, preservedCount = 0, newFolderCount = 0, newPageCount = 0, warningCounts = emptyMap()),
                     ),
                 )
             }
@@ -561,15 +561,43 @@ class ManualOrganizationPreferencesInstrumentationTest {
             }
         }
 
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview_show_all, 9))
-            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Focused))
-            .assertHasClickAction()
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm))
-            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Focused))
-            .assertHasClickAction()
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel))
-            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Focused))
-            .assertHasClickAction()
+        // Keyboard traversal actually reaches the expand action.
+        pressDownUntilFocused(context.getString(R.string.manual_organization_preview_show_all, 6))
+        // Activating it with a keyboard action expands the group...
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_ENTER)
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(concreteMoveRow(context, "app6")).fetchSemanticsNodes().isNotEmpty()
+        }
+        // ...and the action keeps focus after the list reflows (spec 52 restoration).
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview_show_fewer, 5)).assertIsFocused()
+
+        // Traversal continues to the review actions.
+        pressDownUntilFocused(context.getString(R.string.manual_organization_confirm))
+        pressDownUntilFocused(context.getString(R.string.manual_organization_cancel))
+    }
+
+    /**
+     * Moves real (window-dispatched) keyboard focus down until [text] owns it,
+     * so the traversal exercises the same DPAD fallback path Switch Access and
+     * hardware keyboards rely on; fails after too many steps.
+     */
+    private fun pressDownUntilFocused(text: String, maxPresses: Int = 12) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        var presses = 0
+        while (presses < maxPresses) {
+            composeRule.waitForIdle()
+            val focused = try {
+                composeRule.onNodeWithText(text).assertIsFocused()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+            if (focused) return
+            instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DPAD_DOWN)
+            presses++
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(text).assertIsFocused()
     }
 
     @Test
