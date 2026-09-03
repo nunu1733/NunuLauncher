@@ -31,11 +31,11 @@ UI、planner、application writer が独立に title を推論する構造には
 ## Scope
 
 1. planning 型 `NewFolder` に semantic naming identity (`FolderNaming`) を追加する。v1 は category 由来の1種別のみで、#182 の strategy 拡張に備えた closed sealed 階層とする。full organization と incremental placement の両 planner 経路 (共通の `formFolderGroups`) で grouping key から決定的に導出する。
-2. application 側に `FolderTitleResolver` port を追加し、`OrganizationPlanMaterializer` が planned folder ごとに1回だけ title を解決して `ApplyAction.Insert` の intended state (`CanonicalItemState.title`) へ書き込むようにする。既存の2つの materialize 呼び出し site (plan preview protocol と confirm 時 materialize) は module が保持する resolver を渡す。production adapter は既存の v1 taxonomy presentation map と新設の fallback 文言で実装し、`LayoutApplicationModule.production` で wiring する。
+2. application 側に `FolderTitleResolver` port を追加し、`OrganizationPlanMaterializer` が planned folder ごとに resolver を正確に1回呼び、その結果を `ApplyAction.Insert` の intended state (`CanonicalItemState.title`) へ書き込むようにする。既存の2つの materialize 呼び出し site (plan preview protocol と confirm 時 materialize) は module が保持する resolver を渡す。production adapter は v1 taxonomy presentation map への total lookup (未知 category は `null`) と新設の fallback 文言で実装し、outer composition (`LawnchairApp`) が `LayoutApplicationModule.production(...)` へ注入する。
 3. preview projector の `NewFolderChange` に生成フォルダ名を追加する。値は intended state の title (解決済み文字列) から得て、apply と同一の値を preview が運べるようにする。#195 の確認 UI の新規フォルダ行文言にフォルダ名を反映する (行構造・group 構造は変更しない)。
 4. spec 194 の「新規 folder の名前は planner が決めないため、`NewFolderChange` 自身の label は持たない」点と spec 195 の「新規フォルダ行は配置 + メンバー label 一覧で識別する」点を本契約が置き換えることを明記し、両 spec の該当行を同じ PR で更新する。
 5. `CONTEXT.md` に生成フォルダ名の用語を追加し、`DESIGN.md` に naming seam の所在を反映する。
-6. planner / materializer / preview / UI の既存 test surface へ naming 関連の assertion と fixture を追加する。
+6. planner / materializer / production resolver / preview / UI の既存 test surface へ naming 関連の assertion と fixture を追加する (materializer と production resolver の test 責務は分離する)。
 
 ## Non-goals
 
@@ -95,10 +95,11 @@ fun interface FolderTitleResolver {
 }
 ```
 
-- `OrganizationPlanMaterializer.materialize` は `titleResolver` を引数に受け、planned folder ごとに `title = OptionalText.Present(resolver.resolve(folder.naming))` を `ApplyAction.Insert` の intended state へ設定する。resolver が blank を返すことは port 契約違反であり、`Result.Invalid` として fail-closed に扱う (preview では既存の `MATERIALIZATION_INVALID` 経路へ、confirm 時 materialize では既存の Invalid 経路へ落ちる)。fallback を materializer 側で黙って補完しない。
-- resolver の production 実装は organizer UI 層に置き、v1 taxonomy の presentation map (`CategoryOverrideCategoryPresentations` の label resource) と、解決不能時の汎用 fallback 文言 (新 string `organizer_generated_folder_fallback_name`、en "Folder" / ja "フォルダ") で構成する。presentation map に存在しない category id が来ても raw id を返さず fallback 文言へ落とす。bundle category と presentation map の対応は既存 test が担保する。
-- `LayoutApplicationModule` は resolver を constructor で受け、plan preview protocol と `materializeManualFullOrganizationPlan` の両呼び出し site に渡す。`LayoutApplicationModule.production(context)` で production adapter を wiring する。既定値による暗黙 fallback は設けない (固定名 `Folder` への退行を構造的に不可能にするため)。
-- 1回の run 内で title は materialize 時に確定し、以後不変である。plan は process-local であり (#194)、process death 後は run 全体が作り直されるため、locale 変更を跨いだ古い文字列の適用は発生しない。
+- `OrganizationPlanMaterializer.materialize` は `titleResolver` を引数に受け、planned folder ごとに `resolve` を**正確に1回**呼び、その結果を `title = OptionalText.Present(resolved)` として `ApplyAction.Insert` の intended state へ設定する (folder を複数回構築しても解決は1回である)。resolver が blank を返すことは port 契約違反であり、`Result.Invalid` として fail-closed に扱う (preview では既存の `MATERIALIZATION_INVALID` 経路へ、confirm 時 materialize では既存の Invalid 経路へ落ちる)。fallback を materializer 側で黙って補完しない。
+- resolver の production 実装は organizer UI 層に置き、v1 taxonomy の presentation map への **total lookup** (既存 `forCategory` のような例外 throw ではなく、未知 category は `null` を返す `findForCategory` 系 API を presentation API に追加) と、解決不能時の汎用 fallback 文言 (新 string `organizer_generated_folder_fallback_name`、en "Folder" / ja "フォルダ") で構成する。resolver は `null` を fallback 文言へ決定的に写像し、raw id を返さない。例外 (`IllegalStateException` 等) を捕捉して fallback する構成は採らない。bundle category と presentation map の対応は既存 test が担保する。
+- 依存方向は `UI / outer composition → FolderTitleResolver port → application` である。`LayoutApplicationModule` は resolver を constructor で受け、plan preview protocol と `materializeManualFullOrganizationPlan` の両呼び出し site に渡す。production wiring は outer composition (`LawnchairApp`) が production adapter を生成して `LayoutApplicationModule.production(...)` へ注入する形とし、application package が organizer ui package を import する構造は作らない。既定値による暗黙 fallback は設けない (固定名 `Folder` への退行を構造的に不可能にするため)。
+- test の責務分離: materializer 側の test は fake resolver による戻り値の intended title への伝播、blank 時の fail-closed、resolve 呼び出し回数 (新規 folder N 個 → 正確に N 回) を検証する。production resolver 側の test は active taxonomy category → localized title、未知 `CategoryId` → generic fallback、raw ID 非露出を en / ja で検証する。
+- **Creation-time locale snapshot**: 生成フォルダ title は materialize 時点の process locale で解決され、その時点で凍結される。locale / configuration 変更は必ずしも process death を伴わず、coordinator は materialize 済み plan を保持し続けるため (#194 の preview 済み plan 同一適用)、run の途中 (preview → confirm 間を含む) に locale が変わっても凍結された文字列がそのまま永続化される。再解決・plan 破棄は行わない。適用後のフォルダはユーザーフォルダとして扱われるため、locale 変更後の自動再命名も発生しない。次回 run の materialize がその時点の locale で解決し直す。
 
 ### Determinism, idempotence, and stale-plan semantics
 
@@ -118,7 +119,8 @@ fun interface FolderTitleResolver {
 ### Unsupported, unknown, and fallback categories
 
 - v1 の planner は fallback category (`OTHER`) を grouping の対象にしない (既存 `formFolderGroups` 規約)。したがって通常経路で生成されるフォルダは常に非 fallback category を持つ。この規約を本契約は明示的に維持する。
-- 解決不能な `FolderNaming` (presentation map 未収録の category id、将来種別の未実装到達) は、production resolver が汎用 fallback 文言へ決定的に落ちる。raw category ID / package name / `ItemId` / ordinal を user-facing surface へ出してはならない。
+- v1 の runtime fallback 対象は **未知の `CategoryId`** (presentation map 未収録) である。production resolver は total lookup の `null` を汎用 fallback 文言へ決定的に写像する。raw category ID / package name / `ItemId` / ordinal を user-facing surface へ出してはならない。
+- `FolderNaming` は同一 build 内の closed sealed 階層であり、subtype を追加すれば resolver の exhaustive `when` が compile 時に更新を要求する。したがって「未知 subtype が runtime に到達する」経路は存在しない。将来 strategy (#182) が subtype を追加する変更は、その subtype の解決規約 (resolver 実装と、必要なら fallback 文言) を同じ変更内で必ず定義する。
 - resolver の blank 返却は port 契約違反として fail-closed (§Single-resolution rule)。黙って内部 ID へ落ちる経路は存在しない。
 
 ### Existing folders
@@ -174,13 +176,23 @@ And semantic plan の `NewFolder.naming` はそれぞれの category を保持�
 
 ### Scenario: Planner / preview / writer do not recompute titles independently
 
-Given materialize 済み `ValidatedLayoutPlan` が1つの planned folder を含む,
+Given materialize 済み `ValidatedLayoutPlan` が N 個の planned folder を含む,
 
 When preview projector が `NewFolderChange` を構築し、apply writer が `Favorites.TITLE` を書き込む,
 
 Then 両者が読む値は同一 plan の同一 intended state の title であり、どちらも `FolderNaming` からの再解決を行わない,
 
-And title を解決する呼び出しは materializer の1回だけである。
+And title を解決する `resolve` 呼び出しは materializer の正確に N 回だけである (folder ごとに1回)。
+
+### Scenario: Locale changes between preview and confirm
+
+Given ja locale で preview が表示され、coordinator が materialize 済み plan (title「通信」) を保持している,
+
+When process を維持したまま locale が en へ変わり、user が confirm する,
+
+Then coordinator は preview 済み plan を再 materialize / 再解決せず、凍結された ja title「通信」がそのまま `Favorites.TITLE` へ適用される,
+
+And 次回 run の materialize はその時点の locale で解決し直す (適用済みフォルダの自動再命名は発生しない)。
 
 ### Scenario: Same category split across multiple folders keeps one deterministic title
 
@@ -243,8 +255,8 @@ And 適用後の DB 側 exact verification が TITLE を含めて intended と�
 | AC | Acceptance criterion |
 |---|---|
 | FN-AC-01 | `spec.md` と `plan.md` が、naming の authoritative source (`NewFolder.naming: FolderNaming`)、single-resolution rule (`FolderTitleResolver` + materializer)、preview / writer が plan から読むだけの構造を定義している。 |
-| FN-AC-02 | 現行 category grouping で生成される folder が、固定 `Folder` ではなく category semantic に基づくローカライズ済み user-facing 名を `Favorites.TITLE` に持つことを、interface 経由の materializer contract test が検証する。 |
-| FN-AC-03 | unknown category は汎用 fallback 文言へ決定的に落ち、resolver の blank 返却は `Invalid` (preview では `MATERIALIZATION_INVALID`) として fail-closed になることを test が検証する。user-facing surface に raw category ID / package / ItemId / ordinal が現れないことを fixture 全体で検証する。 |
+| FN-AC-02 | 現行 category grouping で生成される folder が、固定 `Folder` ではなく category semantic に基づくローカライズ済み user-facing 名を `Favorites.TITLE` に持つことを、interface 経由の materializer contract test が検証する。同一 test で fake resolver の invocation counter により、新規 folder N 個に対する `resolve` 呼び出しが正確に N 回であること (現行 `newFolder()` の二重構築を解消した上での resolve-once 契約) を検証する。 |
+| FN-AC-03 | 未知 `CategoryId` は production resolver が total lookup (`null`) 経由で汎用 fallback 文言へ決定的に落ちること (例外捕捉による fallback でないこと) を production resolver の en / ja test が検証する。resolver の blank 返却は materializer が `Invalid` (preview では `MATERIALIZATION_INVALID`) として fail-closed に扱うことを materializer test が検証する。user-facing surface に raw category ID / package / ItemId / ordinal が現れないことを fixture 全体で検証する。 |
 | FN-AC-04 | split folder が同一 category で同一 title を持ち、連番を含まないことを planner fixture / materializer test が検証する。fallback category が grouping の対象外である現行規約が test で維持されている。 |
 | FN-AC-05 | 既存フォルダの title が保持・移動のみの run で変化しないことを、既存 materializer / application contract test への assertion 追加で検証する。 |
 | FN-AC-06 | `NewFolderChange` が `name` を運び、その値が当該 `ApplyAction.Insert` の intended title と文字列一致することを projector contract test が検証する。preview 専用の名前再推論 (category → 名前の写像の重複実装) が存在しないことを code review で確認する。 |
@@ -254,14 +266,16 @@ And 適用後の DB 側 exact verification が TITLE を含めて intended と�
 | FN-AC-10 | `FolderNaming` が category 専用の特殊実装に閉じない構造 (closed sealed 階層 + 網羅 `when`) であり、`ValidatedLayoutPlan.newFolders` に同じ型で伝播することを contract shape test が検証する。 |
 | FN-AC-11 | 新規 user-facing 原文が汎用 fallback 1組のみであり、values / values-ja が揃っていることを resource review で確認する。 |
 | FN-AC-12 | spec 194 / spec 195 の置き換えられる契約行の更新、`CONTEXT.md` 用語追加、`DESIGN.md` の seam 反映が同じ PR で完了する。 |
+| FN-AC-13 | 生成フォルダ title が creation-time locale snapshot であること (preview → confirm 間の locale 変化で再 materialize / 再解決されず、凍結文字列が適用される) を、coordinator / materializer test で検証する。 |
+| FN-AC-14 | application package が organizer ui package を import しない依存方向 (`UI / outer composition → port → application`) であることを code review と (可能な場合) 静的確認で検証する。production wiring は `LawnchairApp` が resolver を生成して `LayoutApplicationModule.production(...)` へ注入する。 |
 
 ## Test oracle
 
 | AC | Automated/manual evidence |
 |---|---|
 | FN-AC-01 | spec / plan review。 |
-| FN-AC-02 | `OrganizationPlanMaterializerTest` (拡張): fake resolver で既定 title の検証、`Favorites.TITLE` への書き込みは既存 application adapter / protocol test が意図 state 経由で検証。実機確認は実装完了後の Organizer run (複数 generated folder の名称確認) を PR へ記録。 |
-| FN-AC-03 | materializer test: unknown category fixture で fallback 文言、blank resolver で `Invalid`; projector test で `MATERIALIZATION_INVALID`。raw id 露出の不在は planner / projector fixture 全体の assertion。 |
+| FN-AC-02 | `OrganizationPlanMaterializerTest` (拡張): fake resolver (invocation counter 付き) で既定 title の伝播と N folder → N 呼び出しを検証。`Favorites.TITLE` への書き込みは既存 application adapter / protocol test が意図 state 経由で検証。実機確認は実装完了後の Organizer run (複数 generated folder の名称確認) を PR へ記録。 |
+| FN-AC-03 | production resolver test (新規): active taxonomy category → localized title、未知 `CategoryId` → generic fallback (total lookup、例外捕捉なし)、raw ID 非露出、en / ja。materializer test: blank resolver で `Invalid`; projector test で `MATERIALIZATION_INVALID`。raw id 露出の不在は planner / projector fixture 全体の assertion。 |
 | FN-AC-04 | planner fixture test: capacity 超過 fixture で split 2 フォルダが同一 `naming` / 同一 resolved title。`formFolderGroups` の fallback skip の既存 test 維持。 |
 | FN-AC-05 | materializer / application contract test: Preserve / Update 対象の既存フォルダ title 不変 assertion。 |
 | FN-AC-06 | `PlanPreviewProjectorTest`: `NewFolderChange.name` と `insert.intended.title` の一致、`Absent` / blank intended title で `Invalid`。 |
@@ -271,6 +285,8 @@ And 適用後の DB 側 exact verification が TITLE を含めて intended と�
 | FN-AC-10 | `ContractShapeTest` (拡張): `FolderNaming` の shape と plan 伝播の検証。 |
 | FN-AC-11 | PR diff review (`lawnchair/res/values{,-ja}/strings.xml`)。 |
 | FN-AC-12 | PR diff review (spec 194 / 195 / CONTEXT.md / DESIGN.md)。 |
+| FN-AC-13 | `ManualOrganizationRunTest` / materializer test: preview 保持中の locale 変化を模擬し、`materialize` が再実行されず resolve 呼び出しが増えないこと (同一 plan インスタンス適用 + counter) を検証。 |
+| FN-AC-14 | PR diff review (import 方向) + `LawnchairApp` wiring の review。 |
 
 検証 command は building guide の正本に従う (`./gradlew spotlessCheck`、`./gradlew assembleLawnWithQuickstepGithubDebug`、`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`)。
 
@@ -286,14 +302,17 @@ None。Stage A で決定済み:
 
 1. semantic key と resolved string の二層構造を採用した。planner は semantic の正本、materializer が解決の唯一の点、preview / writer は plan から読むだけ (issue §Required design 1 の「UI、planner、application writer が独立に title を再計算しない」の直接実装)。
 2. split folder は同一 title (連番なし)。連番は陳腐化する内部識別子の user-facing 露出であり、Launcher は重複 title を許容する。
-3. 解決不能時の fallback は resolver 内蔵の汎用文言 (新 string 1組)。raw ID への fallback は禁止。blank 返却は契約違反として fail-closed。
+3. 解決不能時の fallback は resolver 内蔵の汎用文言 (新 string 1組) への写像とし、presentation API には total lookup (`findForCategory` 系、未知 category は `null`) を追加する。例外捕捉による fallback、raw ID への fallback は禁止。blank 返却は契約違反として fail-closed。
 4. 確認 UI への反映は新規フォルダ行文言への名前追加に限定する (#195 の行構造・件数 truth を維持)。
 5. policy bundle / taxonomy version / schema / diagnostics は無変更。naming presentation は bundle semantics ではない。
 6. `risk: layout-data` label を付ける (生成 row の TITLE 内容が変わるため)。high-risk independent-evidence gate (CI `final-status` + `docs/assessment/pr-201-*.md`) を満たす。
+7. locale は **creation-time snapshot** 契約とする: title は materialize 時 locale で凍結され、run 中の locale 変化では再解決せずそのまま適用する (レビュー Blocking 2)。invalidation (locale 変化時の preview plan 破棄) は採用しない — #194 の preview 済み plan 同一適用の構造を変えないため。
+8. production resolver の wiring は outer composition (`LawnchairApp`) 注入とし、application → ui の import を作らない (レビュー Major 3)。
 
 ## Change history
 
 - 2026-09-04: Drafted for Issue #201。source trace (title data flow / preview contract / taxonomy presentation の確認) に基づき作成。production 実装は spec / plan 承認まで停止。
+- 2026-09-04: Review revision (owner review @ `d9cce13fe6`): unknown category fallback を presentation API への total lookup 追加 (`null` → fallback、例外捕捉なし) へ修正し、materializer test と production resolver test の責務を分離 (Blocking 1)。locale を creation-time snapshot 契約として明示し、process death 前提の不正確な記述を削除、scenario を追加 (Blocking 2)。production resolver の wiring を outer composition (`LawnchairApp`) 注入へ変更し依存方向を修正、FN-AC-14 を新設 (Major 3)。materializer の二重構築 (`newFolder()` が `placeholderFolder` を2回呼ぶ) を解消する resolve-once 実装形状と invocation counter test を明記、FN-AC-02 を拡張 (Major 4)。runtime fallback 対象を未知 `CategoryId` に整理し、sealed subtype 追加時は解決規約を同一変更で定義することを明記 (Minor 5)。
 
 ## References
 
