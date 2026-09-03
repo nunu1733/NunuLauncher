@@ -399,6 +399,10 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_group_preserved, 1)).assertIsDisplayed()
         composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_group_warnings, 0)).assertCountEquals(0)
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_moved_count, 2)).assertIsDisplayed()
+        // Spec §D2: Summary-derived change-count lines never mix with PreviewCounts truth.
+        composeRule.onAllNodesWithText(
+            context.getString(R.string.manual_organization_moved_single_placement, 1),
+        ).assertCountEquals(0)
 
         // Same-band row change: the region words cannot express it, so the
         // row-ordinal note rides on the destination (assessment §6.1).
@@ -483,8 +487,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
             inspectPlanOverride = { _, _ ->
                 previewed(
                     PlanPreviewDetails(
-                        changes = (1..9).map { index -> crossBandMove("app$index") },
-                        counts = PreviewCounts(movedCount = 9, preservedCount = 0, newFolderCount = 0, newPageCount = 0, warningCounts = emptyMap()),
+                        changes = (1..6).map { index -> crossBandMove("app$index") },
+                        counts = PreviewCounts(movedCount = 6, preservedCount = 0, newFolderCount = 0, newPageCount = 0, warningCounts = emptyMap()),
                     ),
                 )
             }
@@ -500,8 +504,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
 
         // Truncated to the first five rows; the group total stays in the action.
         composeRule.onAllNodesWithText(concreteMoveRow(context, "app6")).assertCountEquals(0)
-        composeRule.onNodeWithText(concreteMoveRow(context, "app5")).assertIsDisplayed()
-        val expand = composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview_show_all, 9))
+        composeRule.onNodeWithText(concreteMoveRow(context, "app5")).assertExists()
+        val expand = composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview_show_all, 6))
         expand.assert(
             SemanticsMatcher.expectValue(
                 SemanticsProperties.StateDescription,
@@ -510,16 +514,62 @@ class ManualOrganizationPreferencesInstrumentationTest {
         )
 
         expand.performClick()
-        composeRule.onNodeWithText(concreteMoveRow(context, "app9")).assertIsDisplayed()
-        val collapse = composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview_show_fewer, 5))
-        collapse.assert(
-            SemanticsMatcher.expectValue(
-                SemanticsProperties.StateDescription,
-                context.getString(R.string.manual_organization_preview_expanded_state),
-            ),
-        )
-        collapse.performClick()
-        composeRule.onAllNodesWithText(concreteMoveRow(context, "app6")).assertCountEquals(0)
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(concreteMoveRow(context, "app6")).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview_show_fewer, 5))
+            .assert(
+                SemanticsMatcher.expectValue(
+                    SemanticsProperties.StateDescription,
+                    context.getString(R.string.manual_organization_preview_expanded_state),
+                ),
+            )
+            .performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(concreteMoveRow(context, "app6")).fetchSemanticsNodes().isEmpty()
+        }
+    }
+
+    @Test
+    fun changeListTraversalReachesExpandAndReviewActions() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            inspectPlanOverride = { _, _ ->
+                previewed(
+                    PlanPreviewDetails(
+                        changes = (1..9).map { index -> crossBandMove("app$index") },
+                        counts = PreviewCounts(movedCount = 9, preservedCount = 0, newFolderCount = 0, newPageCount = 0, warningCounts = emptyMap()),
+                    ),
+                )
+            }
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        runner.start()
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+
+        awaitPreview(runner, context)
+        composeRule.waitUntil(5_000) {
+            try {
+                composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsFocused()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+        }
+
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview_show_all, 9))
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Focused))
+            .assertHasClickAction()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm))
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Focused))
+            .assertHasClickAction()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel))
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Focused))
+            .assertHasClickAction()
     }
 
     @Test

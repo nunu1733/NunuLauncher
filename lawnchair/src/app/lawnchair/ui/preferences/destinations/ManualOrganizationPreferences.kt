@@ -1,5 +1,6 @@
 package app.lawnchair.ui.preferences.destinations
 
+import android.content.Context
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.focusable
@@ -71,9 +72,11 @@ fun ManualOrganizationPreferences(
     // Issue #195: the concrete change list is planned once per preview state.
     // Expansion state is UI-local and resets when new details arrive.
     val previewDetails = (state as? ManualOrganizationRun.State.Preview)?.details
-    val previewSections = previewDetails
-        ?.let { OrganizationPreviewContent.sections(it, organizationPreviewWording()) }
-        .orEmpty()
+    val previewSections = remember(previewDetails, context) {
+        previewDetails
+            ?.let { OrganizationPreviewContent.sections(it, organizationPreviewWording(context)) }
+            .orEmpty()
+    }
     val expandedPreviewGroups = remember(previewDetails) { mutableStateOf(emptySet<Int>()) }
 
     ManualOrganizationBackHandler(coordinator)
@@ -579,82 +582,72 @@ private fun androidx.compose.foundation.lazy.LazyListScope.previewDetailsItems(
 }
 
 /**
- * Resolves the change-list wording once per composition; row planning itself
- * stays in the pure [OrganizationPreviewContent] builder.
+ * Resolves the change-list wording with the given context; row planning itself
+ * stays in the pure [OrganizationPreviewContent] builder, which the caller
+ * caches per preview details.
  */
-@Composable
-private fun organizationPreviewWording(): OrganizationPreviewWording = ResourceOrganizationPreviewWording(
-    changesHeading = stringResource(R.string.manual_organization_changes_heading),
-    groupMoved = stringResource(R.string.manual_organization_group_moved),
-    groupNewFolders = stringResource(R.string.manual_organization_group_new_folders),
-    groupNewPages = stringResource(R.string.manual_organization_group_new_pages),
-    groupPreserved = stringResource(R.string.manual_organization_group_preserved),
-    groupWarnings = stringResource(R.string.manual_organization_group_warnings),
-    showAll = stringResource(R.string.manual_organization_preview_show_all),
-    showFewer = stringResource(R.string.manual_organization_preview_show_fewer),
-    expandedState = stringResource(R.string.manual_organization_preview_expanded_state),
-    collapsedState = stringResource(R.string.manual_organization_preview_collapsed_state),
-    moveRow = stringResource(R.string.manual_organization_preview_move_row),
-    sameBandMoveRow = stringResource(R.string.manual_organization_preview_same_band_move_row),
-    rowOrdinalNote = stringResource(R.string.manual_organization_preview_row_ordinal_note),
-    itemRow = stringResource(R.string.manual_organization_preview_item_row),
-    moveReasonSinglePlacement = stringResource(R.string.manual_organization_preview_move_reason_single_placement),
-    moveReasonFolderMember = stringResource(R.string.manual_organization_preview_move_reason_folder_member),
-    moveReasonFolderUnit = stringResource(R.string.manual_organization_preview_move_reason_folder_unit),
-    moveReasonUnspecified = stringResource(R.string.manual_organization_preview_move_reason_unspecified),
-    preservedReasonLocked = stringResource(R.string.manual_organization_preview_preserved_reason_locked),
-    preservedReasonReservedRegion = stringResource(R.string.manual_organization_preview_preserved_reason_reserved_region),
-    preservedReasonUnavailable = stringResource(R.string.manual_organization_preview_preserved_reason_unavailable),
-    preservedReasonDock = stringResource(R.string.manual_organization_preview_preserved_reason_dock),
-    preservedReasonWidget = stringResource(R.string.manual_organization_preview_preserved_reason_widget),
-    preservedReasonAppPair = stringResource(R.string.manual_organization_preview_preserved_reason_app_pair),
-    preservedReasonLegacyShortcut = stringResource(R.string.manual_organization_preview_preserved_reason_legacy_shortcut),
-    preservedReasonNonTarget = stringResource(R.string.manual_organization_preview_preserved_reason_non_target),
-    preservedReasonStructural = stringResource(R.string.manual_organization_preview_preserved_reason_structural),
-    preservedReasonAlreadyCanonical = stringResource(R.string.manual_organization_preview_preserved_reason_already_canonical),
-    warningLegacyShortcutReview = stringResource(R.string.manual_organization_preview_warning_legacy_shortcut_item),
-    warningFallbackCategory = stringResource(R.string.manual_organization_preview_warning_fallback_category_item),
-    warningUnavailablePreserved = stringResource(R.string.manual_organization_preview_warning_unavailable_item),
-    pagePosition = stringResource(R.string.manual_organization_preview_page),
-    newPagePosition = stringResource(R.string.manual_organization_preview_new_page_position),
-    workspacePosition = stringResource(R.string.manual_organization_preview_position_workspace),
-    regionTopLeft = stringResource(R.string.manual_organization_preview_region_top_left),
-    regionTopCenter = stringResource(R.string.manual_organization_preview_region_top_center),
-    regionTopRight = stringResource(R.string.manual_organization_preview_region_top_right),
-    regionMiddleLeft = stringResource(R.string.manual_organization_preview_region_middle_left),
-    regionMiddleCenter = stringResource(R.string.manual_organization_preview_region_middle_center),
-    regionMiddleRight = stringResource(R.string.manual_organization_preview_region_middle_right),
-    regionBottomLeft = stringResource(R.string.manual_organization_preview_region_bottom_left),
-    regionBottomCenter = stringResource(R.string.manual_organization_preview_region_bottom_center),
-    regionBottomRight = stringResource(R.string.manual_organization_preview_region_bottom_right),
-    dockPosition = stringResource(R.string.manual_organization_preview_position_dock),
-    folderPositionExisting = stringResource(R.string.manual_organization_preview_position_folder_existing),
-    folderPositionPlanned = stringResource(R.string.manual_organization_preview_position_folder_planned),
-    appPairPosition = stringResource(R.string.manual_organization_preview_position_app_pair),
-    kindApplication = stringResource(R.string.manual_organization_preview_kind_application),
-    kindDeepShortcut = stringResource(R.string.manual_organization_preview_kind_deep_shortcut),
-    kindShortcutLegacy = stringResource(R.string.manual_organization_preview_kind_shortcut_legacy),
-    kindFolder = stringResource(R.string.manual_organization_preview_kind_folder),
-    kindAppWidget = stringResource(R.string.manual_organization_preview_kind_app_widget),
-    kindCustomAppWidget = stringResource(R.string.manual_organization_preview_kind_custom_app_widget),
-    kindAppPair = stringResource(R.string.manual_organization_preview_kind_app_pair),
-    kindUnknown = stringResource(R.string.manual_organization_preview_kind_unknown),
-    newFolderRow = stringResource(R.string.manual_organization_preview_new_folder_row),
-    newPageRow = stringResource(R.string.manual_organization_preview_new_page_row),
+private fun organizationPreviewWording(context: Context): OrganizationPreviewWording = ResourceOrganizationPreviewWording(
+    groupMoved = context.getString(R.string.manual_organization_group_moved),
+    groupNewFolders = context.getString(R.string.manual_organization_group_new_folders),
+    groupNewPages = context.getString(R.string.manual_organization_group_new_pages),
+    groupPreserved = context.getString(R.string.manual_organization_group_preserved),
+    groupWarnings = context.getString(R.string.manual_organization_group_warnings),
+    moveRow = context.getString(R.string.manual_organization_preview_move_row),
+    sameBandMoveRow = context.getString(R.string.manual_organization_preview_same_band_move_row),
+    rowOrdinalNote = context.getString(R.string.manual_organization_preview_row_ordinal_note),
+    itemRow = context.getString(R.string.manual_organization_preview_item_row),
+    moveReasonSinglePlacement = context.getString(R.string.manual_organization_preview_move_reason_single_placement),
+    moveReasonFolderMember = context.getString(R.string.manual_organization_preview_move_reason_folder_member),
+    moveReasonFolderUnit = context.getString(R.string.manual_organization_preview_move_reason_folder_unit),
+    moveReasonUnspecified = context.getString(R.string.manual_organization_preview_move_reason_unspecified),
+    preservedReasonLocked = context.getString(R.string.manual_organization_preview_preserved_reason_locked),
+    preservedReasonReservedRegion = context.getString(R.string.manual_organization_preview_preserved_reason_reserved_region),
+    preservedReasonUnavailable = context.getString(R.string.manual_organization_preview_preserved_reason_unavailable),
+    preservedReasonDock = context.getString(R.string.manual_organization_preview_preserved_reason_dock),
+    preservedReasonWidget = context.getString(R.string.manual_organization_preview_preserved_reason_widget),
+    preservedReasonAppPair = context.getString(R.string.manual_organization_preview_preserved_reason_app_pair),
+    preservedReasonLegacyShortcut = context.getString(R.string.manual_organization_preview_preserved_reason_legacy_shortcut),
+    preservedReasonNonTarget = context.getString(R.string.manual_organization_preview_preserved_reason_non_target),
+    preservedReasonStructural = context.getString(R.string.manual_organization_preview_preserved_reason_structural),
+    preservedReasonAlreadyCanonical = context.getString(R.string.manual_organization_preview_preserved_reason_already_canonical),
+    warningLegacyShortcutReview = context.getString(R.string.manual_organization_preview_warning_legacy_shortcut_item),
+    warningFallbackCategory = context.getString(R.string.manual_organization_preview_warning_fallback_category_item),
+    warningUnavailablePreserved = context.getString(R.string.manual_organization_preview_warning_unavailable_item),
+    pagePosition = context.getString(R.string.manual_organization_preview_page),
+    newPagePosition = context.getString(R.string.manual_organization_preview_new_page_position),
+    workspacePosition = context.getString(R.string.manual_organization_preview_position_workspace),
+    regionTopLeft = context.getString(R.string.manual_organization_preview_region_top_left),
+    regionTopCenter = context.getString(R.string.manual_organization_preview_region_top_center),
+    regionTopRight = context.getString(R.string.manual_organization_preview_region_top_right),
+    regionMiddleLeft = context.getString(R.string.manual_organization_preview_region_middle_left),
+    regionMiddleCenter = context.getString(R.string.manual_organization_preview_region_middle_center),
+    regionMiddleRight = context.getString(R.string.manual_organization_preview_region_middle_right),
+    regionBottomLeft = context.getString(R.string.manual_organization_preview_region_bottom_left),
+    regionBottomCenter = context.getString(R.string.manual_organization_preview_region_bottom_center),
+    regionBottomRight = context.getString(R.string.manual_organization_preview_region_bottom_right),
+    dockPosition = context.getString(R.string.manual_organization_preview_position_dock),
+    folderPositionExisting = context.getString(R.string.manual_organization_preview_position_folder_existing),
+    folderPositionPlanned = context.getString(R.string.manual_organization_preview_position_folder_planned),
+    appPairPosition = context.getString(R.string.manual_organization_preview_position_app_pair),
+    kindApplication = context.getString(R.string.manual_organization_preview_kind_application),
+    kindDeepShortcut = context.getString(R.string.manual_organization_preview_kind_deep_shortcut),
+    kindShortcutLegacy = context.getString(R.string.manual_organization_preview_kind_shortcut_legacy),
+    kindFolder = context.getString(R.string.manual_organization_preview_kind_folder),
+    kindAppWidget = context.getString(R.string.manual_organization_preview_kind_app_widget),
+    kindCustomAppWidget = context.getString(R.string.manual_organization_preview_kind_custom_app_widget),
+    kindAppPair = context.getString(R.string.manual_organization_preview_kind_app_pair),
+    kindUnknown = context.getString(R.string.manual_organization_preview_kind_unknown),
+    newFolderRow = context.getString(R.string.manual_organization_preview_new_folder_row),
+    newPageRow = context.getString(R.string.manual_organization_preview_new_page_row),
 )
 
-/** Resource-backed [OrganizationPreviewWording]; all values resolved in composition. */
+/** Resource-backed [OrganizationPreviewWording]; all values resolved up front. */
 private class ResourceOrganizationPreviewWording(
-    override val changesHeading: String,
     override val groupMoved: String,
     override val groupNewFolders: String,
     override val groupNewPages: String,
     override val groupPreserved: String,
     override val groupWarnings: String,
-    override val showAll: String,
-    override val showFewer: String,
-    override val expandedState: String,
-    override val collapsedState: String,
     override val moveRow: String,
     override val sameBandMoveRow: String,
     override val rowOrdinalNote: String,

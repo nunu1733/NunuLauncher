@@ -267,16 +267,11 @@ class OrganizationPreviewContentTest {
     )
 
     private object TestWording : OrganizationPreviewWording {
-        override val changesHeading = "Proposed changes"
         override val groupMoved = "Move (%1\$d)"
         override val groupNewFolders = "New folders (%1\$d)"
         override val groupNewPages = "New pages (%1\$d)"
         override val groupPreserved = "Preserve (%1\$d)"
         override val groupWarnings = "Warnings (%1\$d)"
-        override val showAll = "Show all %1\$d items"
-        override val showFewer = "Show only the first %1\$d items"
-        override val expandedState = "Expanded"
-        override val collapsedState = "Collapsed"
         override val moveRow = "“%1\$s”: %2\$s → %3\$s (%4\$s)"
         override val sameBandMoveRow = "“%1\$s”: position adjusted within %2\$s%3\$s"
         override val rowOrdinalNote = " (from row %1\$d to row %2\$d)"

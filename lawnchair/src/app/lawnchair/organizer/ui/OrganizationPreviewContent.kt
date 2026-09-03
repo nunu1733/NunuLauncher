@@ -26,16 +26,11 @@ import java.util.Locale
  * mirror (values/ + values-ja/, Issue #123 contract).
  */
 interface OrganizationPreviewWording {
-    val changesHeading: String
     val groupMoved: String
     val groupNewFolders: String
     val groupNewPages: String
     val groupPreserved: String
     val groupWarnings: String
-    val showAll: String
-    val showFewer: String
-    val expandedState: String
-    val collapsedState: String
     val moveRow: String
     val sameBandMoveRow: String
     val rowOrdinalNote: String
@@ -118,6 +113,9 @@ object OrganizationPreviewContent {
         if (preserved.isNotEmpty()) sections += OrganizationPreviewSection(format(wording.groupPreserved, counts.preservedCount), counts.preservedCount, preserved)
         val warnings = changes.filterIsInstance<ItemWarningChange>().map { warningRowText(it, wording) }
         if (warnings.isNotEmpty()) {
+            // The total counts all warnings from PreviewCounts (spec 194 carries
+            // non-item warnings in the header only), while rows list per-item
+            // warnings; the header count is authoritative, not the row count.
             sections += OrganizationPreviewSection(
                 format(wording.groupWarnings, counts.warningCounts.values.sum()),
                 counts.warningCounts.values.sum(),
