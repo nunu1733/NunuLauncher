@@ -1,0 +1,112 @@
+schema: ux-visual-review/v1
+status: reviewed
+review_id: issue199-ux-critic-2026-09-03
+scenario: >-
+  A user wants to review a proposed home-screen organization before applying it,
+  understand the visible terminal state, and choose the safest next action.
+evidence_refs: [frame-01, frame-02, frame-03a, frame-03b, frame-03c]
+observer_report_ref: pilot-01-observer.yaml
+findings:
+  - id: UVR-001
+    category: trust-risk
+    observation: >-
+      The review screen says a detailed change list could not be prepared, then
+      presents Apply reviewed organization using only aggregate counts; no
+      affected item or destination is visible.
+    evidence_refs: [frame-02]
+    user_impact: >-
+      A user cannot judge whether the proposed placement is acceptable before
+      committing a home-layout change, weakening the review-before-apply safety
+      promise.
+    severity: major
+    confidence: high
+    recommendation: >-
+      Make the pre-apply surface expose enough concrete affected items and
+      destinations for the user to judge the change; when that scope cannot be
+      shown, make the safe non-apply path and its reason unambiguous.
+    additional_validation: []
+  - id: UVR-002
+    category: mental-model-language
+    observation: >-
+      “Fallback category used: 1” appears as an unexplained implementation-like
+      count among the proposal and terminal summaries.
+    evidence_refs: [frame-02, frame-03b, frame-03c]
+    user_impact: >-
+      Users may not understand what the fallback means or how it affects the
+      proposed placement and resulting layout.
+    severity: moderate
+    confidence: high
+    recommendation: >-
+      Translate fallback terminology into user-facing language that explains its
+      effect on the proposal, ideally tied to the affected item.
+    additional_validation: []
+  - id: UVR-003
+    category: scanability-density
+    observation: >-
+      The review summary is one uninterrupted column of repeated counts,
+      including awkward forms such as “1 placements” and “1 pages”; similar
+      lines are repeated in the success and failure states.
+    evidence_refs: [frame-02, frame-03b, frame-03c]
+    user_impact: >-
+      Users must reread and mentally normalize the summary to understand
+      movement, preservation, and scope at the decision or recovery point.
+    severity: moderate
+    confidence: high
+    recommendation: >-
+      Group the summary into clearly labeled scope, movement, preservation, and
+      creation sections with consistent singular/plural wording and a clear
+      distinction between proposal and terminal-state information.
+    additional_validation: []
+  - id: UVR-004
+    category: feedback-continuity
+    observation: >-
+      The success screen confirms that organization was applied and verified but
+      repeats only aggregate counts; it does not show the moved item, destination,
+      or a resulting home-screen view.
+    evidence_refs: [frame-02, frame-03b]
+    user_impact: >-
+      After applying, users cannot easily connect their approval to the concrete
+      home-screen result or decide whether restoration is needed.
+    severity: moderate
+    confidence: high
+    recommendation: >-
+      Connect verified success to a concrete outcome by showing the affected
+      item's new destination or an immediate, clearly labeled way to inspect the
+      resulting layout while keeping restore available.
+    additional_validation: []
+  - id: UVR-005
+    category: trust-risk
+    observation: >-
+      The recovery-failure state warns that the current layout could not be
+      verified and repeats the same counts without labeling whether they describe
+      the attempted proposal or the current layout.
+    evidence_refs: [frame-03c]
+    user_impact: >-
+      In a high-risk failure state, ambiguity about the summary's state can leave
+      users unsure what is safe to do next despite the diagnostics action.
+    severity: moderate
+    confidence: medium
+    recommendation: >-
+      Label the summary's source state explicitly and make diagnostics/support
+      before another organization change the unambiguous next step.
+    additional_validation: []
+deterministic_deferrals:
+  - surface: touch-target
+    visible_symptom: Action labels are visible, but still images do not establish their hit-area dimensions.
+    required_check: Verify dimensions with the owning UI/accessibility test surface.
+  - surface: functional-state
+    visible_symptom: The evidence shows terminal copy but not interaction, transitions, or persistence.
+    required_check: Exercise apply, cancel, stale, success, restore, new-review, and diagnostics paths end to end.
+  - surface: font-scale
+    visible_symptom: Evidence is captured at normal font scale; long summary and warning text wraps across multiple lines.
+    required_check: Exercise the review and terminal states at 200% font scale and verify content and actions remain reachable without clipping.
+limitations:
+  - Still images cannot establish actual tappability, transitions, focus movement, or off-screen reachability.
+  - The concrete placement or affected item is not shown.
+  - Terminal frames are alternative branches, not one linear sequence.
+calibration:
+  baseline_ref: ../../issue-192-organizer-concrete-preview-investigation.md
+  agreement: []
+  false_positive_candidates: []
+  missed_baseline_findings: []
+  severity_drift: []

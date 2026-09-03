@@ -1,0 +1,98 @@
+schema: ux-visual-review/observer-v1
+status: observed
+scenario: >-
+  A user wants to review a proposed home-screen organization before applying it,
+  then understand the visible terminal state and the safest next action.
+isolation:
+  mode: isolated
+  limitations: []
+evidence:
+  - id: frame-01
+    state: Entry screen for reviewing a proposed home-layout organization
+  - id: frame-02
+    state: Proposal summary and apply/cancel decision screen
+  - id: frame-03a
+    state: Stale-proposal terminal state
+  - id: frame-03b
+    state: Successful application and verification terminal state
+  - id: frame-03c
+    state: Recovery-verification failure terminal state
+observations:
+  - evidence_refs: [frame-01]
+    visible: >-
+      The screen shows a back arrow, the heading “Organize home layout,”
+      explanatory text stating that proposed changes should be reviewed before
+      application and that the current layout is not changed automatically,
+      followed by “Review organization.” Most of the screen is empty.
+    inference: >-
+      “Review organization” appears to be the primary action; the page reads as
+      an entry point into a review flow.
+  - evidence_refs: [frame-02]
+    visible: >-
+      The heading reads “Review the proposed organization.” The screen states
+      that a detailed change list could not be prepared, then presents summary
+      counts and “Apply reviewed organization” / “Cancel” actions.
+    inference: >-
+      The apparent decision is whether to apply the summarized proposal or
+      cancel. No item-level placement details are visible. The summary is one
+      continuous column without visible separators or containers.
+  - evidence_refs: [frame-03a]
+    visible: >-
+      The screen states “The home layout changed. Review a new proposal before
+      applying anything.” A single emphasized action, “Capture and review
+      again,” is visible.
+    inference: >-
+      The prior proposal appears to be treated as no longer current, with
+      recapture and review presented as the next action.
+  - evidence_refs: [frame-03b]
+    visible: >-
+      The screen begins with “Organization was applied and verified.” It repeats
+      proposal summary counts and shows “Restore the previous layout” and “Start
+      a new review” as emphasized actions.
+    inference: >-
+      The apparent terminal state is successful application and verification,
+      with recovery and restarting the review both available.
+  - evidence_refs: [frame-03c]
+    visible: >-
+      The screen states “The current layout could not be verified. Do not make
+      another organization change yet.” It repeats summary counts, then says
+      that the current layout needs a safety review. “Open organizer diagnostics”
+      is followed by support-export text.
+    inference: >-
+      The visible next step appears to be opening diagnostics while deferring
+      another organization change.
+  - evidence_refs: [frame-02, frame-03b]
+    visible: >-
+      The summary includes “4 colums,” “1 placements,” and “1 pages,” and the
+      success screen repeats the same counts without showing the moved item or
+      resulting home screen.
+    inference: >-
+      The relationship between aggregate counts and the concrete layout change
+      is not visible.
+sequence_changes:
+  - from: frame-01
+    to: frame-02
+    visible_change: >-
+      Entry explanation becomes a review screen with an unavailable-detail
+      notice, aggregate counts, and apply/cancel actions.
+  - from: frame-02
+    to: frame-03a
+    visible_change: >-
+      The stale branch replaces the decision with a message that the home layout
+      changed and an action to capture and review again.
+  - from: frame-02
+    to: frame-03b
+    visible_change: >-
+      The success branch confirms application and verification and offers restore
+      and new-review actions.
+  - from: frame-02
+    to: frame-03c
+    visible_change: >-
+      The recovery-failure branch shows verification warnings, repeats summary
+      information, and offers organizer diagnostics.
+uncertainties:
+  - Still images do not establish which text elements are tappable or how actions transition between states.
+  - The concrete placement or item affected by the proposal is not shown.
+  - The terminal images are alternative branches after frame-02, not one linear sequence.
+  - The recovery-failure summary does not visibly clarify whether it describes the attempted proposal or the current verified layout.
+missing_evidence: []
