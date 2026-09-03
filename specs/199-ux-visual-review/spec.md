@@ -121,8 +121,8 @@ Vision review does not validate TalkBack semantics, focus order, keyboard/Switch
 
 ## Open questions
 
-- Can an isolated ZCode 3.10.2 custom/plugin role activate the directly discovered repository `.agents/skills/ux-visual-review` source, and which exact adapter/tool configuration enforces read-only execution?
-- Does the installed `BAI/glm-5.3-flash` provider/model path deliver images to both roles and return `insufficient-evidence` for a negative fixture?
+- Which ZCode plugin/custom-agent configuration can independently prove `injectAgentsMd: false` and technical write/shell denial while retaining Skill and evidence reads?
+- Can the installed `BAI/glm-5.3-flash` path produce a grounded Observer result, complete the Critic role, and return `insufficient-evidence` for a negative fixture? The first retained Observer output contradicts the digest-matched image.
 - Does blind human adjudication of the current five-case corpus support advisory use beyond the Organizer confirmation flow?
 - Should repository adoption be recorded in `AGENTS.md`, `docs/engineering/quality-strategy.md`, both, or deferred?
 
@@ -132,3 +132,4 @@ Vision review does not validate TalkBack semantics, focus order, keyboard/Switch
 - 2026-09-03: ZCode research narrowed team role distribution to a plugin with `injectAgentsMd: false`; bundled CLI 0.16.5 later proved direct project Skill discovery, while isolated-role activation and exact model/tool configuration remain runtime gates.
 - 2026-09-03: Codex 0.151.0 fresh-session validation discovered and spawned `ux_observer`; the no-image path returned `insufficient-evidence` with disclosed limited isolation.
 - 2026-09-03: Review correction split neutral Observer-visible and hidden evaluation context, established untrusted-evidence and canonical provenance requirements, reran Codex Observer/Critic E2E, and executed five calibration cases plus one repeat; blind human and ZCode validation remain open.
+- 2026-09-03: ZCode 3.10.2 initially retained non-Vision `GLM-5.3` until restart. The post-restart `BAI/glm-5.3-flash` custom-Observer run completed and claimed Skill/image receipt, but its visual description contradicted the digest-matched PNG; grounded Observer E2E and all remaining ZCode gates stay open.

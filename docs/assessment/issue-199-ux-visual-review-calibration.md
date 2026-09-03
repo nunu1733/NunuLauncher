@@ -16,7 +16,8 @@ management-flow judgment.
 
 This is useful advisory evidence, but it is not sufficient for adoption or
 Issue closure. A human reviewer who has not seen the model reports must still
-adjudicate the extra findings. ZCode runtime validation is also incomplete.
+adjudicate the extra findings. A ZCode Observer attempt is now recorded, but
+its visual description contradicts the fixture, so image E2E remains incomplete.
 
 ## Correction to the original pilot
 
@@ -104,6 +105,14 @@ isolation because hidden workspace files remained technically readable even
 though they were not supplied to the roles. Details are in the
 [runtime validation record](evidence/issue-199/codex-runtime-validation.yaml).
 
+ZCode 3.10.2 required a restart before the custom Observer's changed model
+selection took effect: the discarded first attempt used non-Vision `GLM-5.3`,
+while the completed rerun used `BAI/glm-5.3-flash` and claimed shared-Skill and
+image receipt. Its dark-sheet/white-heading/15:03 description contradicts the
+white-sheet/dark-heading/10:33 fixture, so visual grounding did not pass. This
+is runtime portability failure evidence, not a new calibration case. The raw
+report and runtime envelope disclose limited isolation and all remaining gates.
+
 Cases 02–05 used fresh collaboration sessions with a broader effective runtime
 tool surface. Their reports record `danger-full-access`; role instructions kept
 the actual review read-only. `apply_patch` appears in `tools_used` only because
@@ -129,13 +138,15 @@ evidence. No retained fixture contains private device data.
 - Still images cannot verify touch targets, numeric contrast, semantics, focus,
   traversal, motion, persistence, or functional transitions.
 - Codex project adapters provide limited, not technically complete, context
-  isolation. ZCode's stronger documented `injectAgentsMd: false` boundary has
-  not yet been exercised in the installed client.
+  isolation. ZCode exercised an Observer configured with `injectAgentsMd:
+  false`, but the installed client exposed no independent input-context trace;
+  the retained report therefore also records `limited` isolation.
 
 ## Adoption recommendation
 
 Keep the workflow **advisory only and experimental**. Do not add a required
 step to `AGENTS.md`, `docs/engineering/quality-strategy.md`, or a merge gate.
-Before an owner adoption decision, complete blind human adjudication, record a
-real ZCode Observer/Critic run on the shared contract, and review whether the
-current corpus needs another stateful concrete-change case.
+Before an owner adoption decision, complete blind human adjudication, obtain a
+grounded ZCode Observer result, finish the
+Critic/negative-fixture/technical-denial checks, and review whether the current
+corpus needs another stateful concrete-change case.

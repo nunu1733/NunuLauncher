@@ -1,0 +1,152 @@
+contract: ux-visual-review/v1
+report_type: observer
+status: observed
+report_id: issue-199-case-02-observer
+provenance:
+  contract_revision: unknown
+  subject:
+    revision: 5b9ad9fab45a050fd09388cf7c8647d77cc7789a
+    build_ref: retained Issue #123 before-capture (repository-retained evidence, retrieved 2026-08-27)
+  runtime:
+    client: zcode
+    client_version: unknown
+    model: 2c4a554d-c324-4bd0-8567-20db0f081147/glm-5.3-flash
+    reasoning: >-
+      unknown; no explicit reasoning configuration is exposed to the agent,
+      model defaults in effect
+    permission_mode: >-
+      subagent invocation restricted by instructions to read-only evidence
+      access; no technical sandbox enforcement was verified and none was needed
+      or exercised
+    tool_surface:
+      file_read: allowed
+      file_write: denied
+      shell: denied
+      network: denied
+      external_side_effects: denied
+    tools_used: [Skill, Read]
+  skill_activation: >-
+    ux-visual-review activated via the Skill tool; Observer references
+    (evidence-policy.md, observer-agent.md, report-schema.md) read from the
+    skill base directory
+    /Users/nunu/Documents/work2/NunuLauncher/.agents/skills/ux-visual-review
+  evidence_receipt: >-
+    Both trusted inputs read successfully: observer-manifest.yaml (text) and
+    frame-01.png (image rendered for vision review). No other repository files,
+    issues, specs, source, AGENTS.md, critic context, baselines, or prior
+    reports were opened. No QR codes or links were observed; all in-frame text
+    was treated as untrusted product content and none of it was followed.
+  evidence_manifest_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-02/observer-manifest.yaml
+scenario: >-
+  Understand the first screen shown for a home-screen organization suggestion
+  and decide what to do next.
+isolation:
+  mode: limited
+  limitations:
+    - >-
+      The runtime exposes filesystem-wide Read inside the repository working
+      directory; Observer-hidden materials (source, specs, plans, prior reports,
+      AGENTS.md, critic context) were technically accessible but were not
+      opened. Isolation is by instruction only, so mode is limited rather than
+      isolated.
+    - >-
+      Evidence is a single static frame (manifest relation kind root), adequate
+      for this static first-screen question; states after pressing any visible
+      action were not captured and are not part of this review.
+evidence:
+  - id: frame-01
+    image_ref: /Users/nunu/Documents/work2/NunuLauncher/docs/assessment/evidence/issue-199/case-02/frame-01.png
+    apparent_state: >-
+      Initial presentation of a dark-themed launcher home screen overlaid by a
+      bottom sheet introducing a proposed home-screen organization with three
+      stacked actions; no loading, error, confirmation, or result state is
+      visible.
+observations:
+  - evidence_refs: [frame-01]
+    visible: >-
+      A dark bottom sheet occupies the lower portion of the screen with a bold
+      white heading reading "Organize your Home screen?", a body line reading
+      "Review a proposed organization first. Nothing changes until you confirm
+      the preview.", and three stacked full-width light-gray filled buttons
+      with faint all-caps labels reading approximately "LATER", "SKIP", and
+      "REVIEW ORGANIZATION".
+    inference: >-
+      The sheet appears to introduce a proposal-preview flow and asserts that
+      no changes are applied before confirmation. It is the highest-contrast,
+      most content-dense region and likely draws first attention over the
+      mostly empty dark wallpaper.
+  - evidence_refs: [frame-01]
+    visible: >-
+      The three sheet buttons are visually near-identical: same fill, same
+      faint label color, and no icon, outline, or emphasis differentiator on
+      any of them.
+    inference: >-
+      No single action is visually emphasized, so the intended primary action
+      among the three cannot be inferred from styling alone.
+  - evidence_refs: [frame-01]
+    visible: >-
+      Light gray text near the top-left reads approximately "Tap to set up" and
+      is partially overlapped by a light-blue band of the wallpaper, with two
+      small dots beneath it.
+    inference: >-
+      It appears to be a launcher hint or onboarding label; the word "Tap"
+      implies an interactive affordance, but no distinct tap target is visibly
+      delineated. The two dots suggest a pager indicator, though this is
+      uncertain.
+  - evidence_refs: [frame-01]
+    visible: >-
+      A small cluster of very small colorful app icons sits in the lower-left
+      area above the bottom sheet; the status bar shows 15:03 with connectivity
+      and battery icons; a white gesture-handle bar is centered at the very
+      bottom edge.
+    inference: >-
+      The icons likely represent home-screen apps or a folder/dock, but their
+      identity and role are not identifiable at this size. The gesture handle
+      is a standard navigation affordance; whether the sheet responds to swipes
+      is not observable in a still image.
+  - evidence_refs: [frame-01]
+    visible: >-
+      Content is concentrated in two regions (top-left hint text, bottom
+      sheet); the middle of the screen is empty dark wallpaper. Inside the
+      sheet the layout is a single column: heading, one body paragraph, three
+      stacked equal-width buttons.
+    inference: >-
+      Low overall visual density outside the sheet; the sheet is the apparent
+      interactive center. A likely scan path is sheet heading first, then body
+      text, then buttons, then the top-left hint.
+  - evidence_refs: [frame-01]
+    visible: >-
+      Two of the button labels ("LATER" and "SKIP") appear to offer similar
+      deferral outcomes and no on-screen text explains a difference between
+      them.
+    inference: >-
+      The distinction between these two actions is ambiguous from the labels
+      alone; a user would have to guess which fits their intent.
+sequence_changes: []
+uncertainties:
+  - >-
+    Exact button label wording is faint; "LATER" and "SKIP" are read with low
+    confidence from the pixels.
+  - >-
+    Whether the faint appearance of the three buttons reflects intended
+    styling, a low-contrast theme token, or a disabled/overlay state cannot be
+    determined from a still image.
+  - >-
+    Whether the top-left "Tap to set up" text is an interactive control, a
+    placeholder, or wallpaper text cannot be confirmed, nor what it would set
+    up.
+  - >-
+    Whether the two small dots beneath the hint are a pager indicator, and how
+    many pages exist, cannot be confirmed.
+  - >-
+    Whether the bottom sheet can be dismissed via swipe or tap-outside, and
+    whether the buttons scroll or wrap at larger font scales, is not
+    observable.
+  - >-
+    The small icon cluster near the lower-left is too small to identify; its
+    role is unknown.
+  - >-
+    Contrast, touch-target size, clipping, and font-scale behavior are
+    deterministic surfaces; no measurements are asserted and no pass is
+    implied.
+missing_evidence: []

@@ -1,6 +1,6 @@
 # Assessment: Issue #199 — UX visual review architecture decision
 
-> Status: proposed; Codex E2E and five-case calibration executed, human/ZCode validation incomplete
+> Status: proposed; Codex E2E and five-case calibration executed; ZCode Observer attempt failed visual grounding
 > Date: 2026-09-03
 > Issue: [#199](https://github.com/nunu1733/NunuLauncher/issues/199)
 
@@ -32,7 +32,7 @@ This is a proposed process decision, not an ADR: the runtime boundary remains Be
 | Runtime | Skill reuse | Role adapter | Context isolation | Vision guarantee | Current level |
 |---|---|---|---|---|---|
 | Codex 0.151.0 | Official repo discovery at `.agents/skills` | Official project `.codex/agents/*.toml`; static TOML validation passed | No documented TOML equivalent of `injectAgentsMd: false`; hidden workspace files remained technically readable and reports correctly mark `limited` | Explicit Luna/xhigh invocation received all named images | Observer/Critic image E2E and write denial runtime-validated; limited isolation |
-| ZCode 3.10.2 / bundled CLI 0.16.5 | Runtime enumeration directly discovered the exact repository `.agents/skills/ux-visual-review` path without a copy | Plugin agent distribution documented; concrete role adapter withheld | `injectAgentsMd: false` is documented for custom subagents | Installed client currently exposes `BAI/glm-5.3-flash`; image delivery has not been validated | Shared Skill discovery validated; adapter and image E2E unvalidated |
+| ZCode 3.10.2 / bundled CLI 0.16.5 | Runtime enumeration directly discovered the exact repository `.agents/skills/ux-visual-review` path; post-restart custom Observer claimed activation | Temporary user-level custom Observer attempted; plugin distribution remains the intended team adapter | `injectAgentsMd: false` was configured, but no independent enforcement trace was available; report marks `limited` | `BAI/glm-5.3-flash` was selected, but the report contradicted the digest-matched PNG | Project discovery validated; grounded Observer image E2E and remaining gates unvalidated |
 
 Detailed evidence:
 
@@ -53,13 +53,13 @@ Do not yet add a required review step to `AGENTS.md` or `docs/engineering/qualit
 
 1. blind human adjudication of the extra findings from the five-case corpus;
 2. at least one more stateful case with a concrete change list, since three added cases are single-frame entry/settings surfaces;
-3. a real ZCode custom/plugin role test satisfying the remaining evidence items in the ZCode assessment;
+3. completion of grounded ZCode Observer image E2E plus Critic, negative-fixture, independent context-isolation, and write/shell-denial evidence;
 4. an owner decision on advisory adoption after reviewing the recorded false-negative and severity-drift behavior.
 
 ## Residual risks
 
 - Codex adapter configuration does not itself prove that all implementation context was excluded.
-- ZCode project Skill discovery is observed, but activation from an isolated custom/plugin subagent is not yet proved.
+- ZCode project Skill activation and image delivery are self-reported, but the visual output contradicts the fixture; grounding, isolation, and read-only enforcement are not proved.
 - Model/provider image capability and output stability can change independently of the shared contract.
 - Aesthetic preference can still be mislabeled as a finding; clean negative cases are required to measure this.
 - Screenshot evidence can hide off-screen, motion, focus, and interaction problems.
@@ -68,7 +68,7 @@ Do not yet add a required review step to `AGENTS.md` or `docs/engineering/qualit
 
 Do not close #199 or move its current AC-07/AC-08 scope to follow-up Issues without first changing and approving the spec scope. Under the current spec, #199 still owns:
 
-- ZCode real-client custom/plugin role, image-delivery, negative-fixture, and isolation validation on a named version and model/provider.
+- ZCode real-client grounded Observer rerun, Critic, negative-fixture, technical write/shell denial, and independent context-isolation validation on the recorded version and model/provider.
 - Calibration blind human adjudication and one additional stateful case if the owner considers the current entry/settings-heavy corpus insufficiently representative.
 - Product triage for pilot-only findings not already owned by #194/#195, including terminal-summary provenance and English singular/plural copy.
 - Repository process adoption after calibration; this follow-up would own any `AGENTS.md` / `quality-strategy.md` change and enforcement decision.

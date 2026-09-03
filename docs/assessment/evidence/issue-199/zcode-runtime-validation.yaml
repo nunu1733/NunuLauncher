@@ -1,0 +1,77 @@
+contract: ux-visual-review/runtime-validation-v1
+date: 2026-09-03
+contract_revision: sha256:90d82dda6d56fe5d1494612bde751e99d3a87b1466cded526d3ab0ff2cc0510b
+runtime:
+  client: zcode
+  client_version: 3.10.2
+  bundled_cli_version: 0.16.5
+project_skill:
+  source: .agents/skills/ux-visual-review/SKILL.md
+  direct_discovery: passed
+  observer_activation: claimed-passed-not-independently-verified
+adapter:
+  kind: user-level custom subagent
+  name: issue199-ux-observer
+  temporary: true
+  cleanup: removed after validation
+  configured_model: BAI/glm-5.3-flash
+  configured_reasoning: high
+  inject_agents_md: false
+  configured_tools:
+    - Read
+    - Skill
+session_reload_evidence:
+  initial_attempt:
+    effective_model: GLM-5.3
+    image_capability: unsupported
+    result: discarded
+    source: operator observation
+    limitation: The model change in the custom-subagent definition was not reflected before restarting ZCode.
+  restart:
+    performed_by: operator
+    reason: reload the changed custom-subagent model definition
+  accepted_rerun:
+    effective_model: BAI/glm-5.3-flash
+    result: completed-with-invalid-visual-observations
+    source: retained Observer report and operator observation
+observer_e2e:
+  fixture: case-02
+  manifest_ref: case-02/observer-manifest.yaml
+  image_ref: case-02/frame-01.png
+  report_ref: zcode-observer-raw.txt
+  source_attachment_sha256: 2912afb61a7cbe779f80050c09ebe363711278ad1532f797083b1f1196d0c53d
+  retained_raw_report_sha256: e65cd04a8829a1a3183aeb6262b42d3d0368b20d49a1b003c0e4a8f9e3c7a489
+  retention_normalization: one trailing newline added; semantic content unchanged
+  skill_activation: claimed-passed
+  image_delivery: claimed-by-agent-but-not-verified
+  canonical_structure: passed
+  retention_provenance: failed
+  visual_grounding: failed
+  tools_used:
+    - Skill
+    - Read
+  tools_used_source: retained Observer self-report
+  untrusted_evidence_policy: claimed-observed-in-retained-report
+  isolation: limited
+  limitations:
+    - The retained report records the contract revision and ZCode client version as unknown; this validation envelope supplies the independently observed values.
+    - The raw report reuses the existing Codex case-02 report ID instead of a runtime-unique ID.
+    - The raw report describes a dark sheet, white heading, and time 15:03, while the digest-matched fixture visibly has a white sheet, dark heading, and time 10:33. Image delivery or visual grounding therefore cannot be accepted from the report's self-attestation.
+    - The repository filesystem remained technically readable; non-use of hidden inputs was instruction-enforced.
+    - The custom agent configured injectAgentsMd as false, but the runtime did not expose an independent input-context trace proving enforcement.
+permission_validation:
+  reported_tool_surface:
+    file_read: allowed
+    file_write: denied
+    shell: denied
+    network: denied
+    external_side_effects: denied
+  write_denial_probe: not-run
+  shell_denial_probe: not-run
+  conclusion: configuration-and-report evidence only; technical denial is not yet independently verified
+remaining_gates:
+  grounded_observer_image_e2e: not-passed
+  critic_e2e: not-run
+  negative_fixture_insufficient_evidence: not-run
+  write_and_shell_denial_probe: not-run
+  inject_agents_md_independent_probe: not-run

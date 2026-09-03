@@ -1,6 +1,6 @@
 # Assessment: Issue #199 — ZCode / Agent Skills runtime portability
 
-> Status: research complete; installed-client inventory recorded; runtime E2E incomplete
+> Status: research complete; Observer attempt recorded but visual grounding failed; runtime E2E incomplete
 > Verification date: 2026-09-03
 > Scope: ZCode custom subagents, plugins, skills, workspace-context isolation,
 > vision-model responsibility, and the Agent Skills shared-contract boundary.
@@ -23,9 +23,11 @@ ZCode adapter must therefore own runtime isolation (`injectAgentsMd: false`),
 read-only tool policy, explicit skill activation, and selection/validation of
 an image-capable model/provider/protocol combination. A repository-shipped
 ZCode plugin remains the documented team-distribution mechanism. The installed
-client now proves direct project discovery without copying the contract; a
-real-client prototype is still required to prove activation from an isolated
-role, image delivery, and write denial.
+client proves direct project discovery without copying the contract. A
+post-restart custom Observer claimed Skill and image receipt, but its visible
+description contradicted the digest-matched PNG. Grounded Observer image E2E,
+Critic execution, a negative fixture, independent context-isolation evidence,
+and technical write/shell denial are still required.
 
 ## 1. Support matrix
 
@@ -268,7 +270,7 @@ on `inherit`. Promote the adapter from experimental only after the remaining
 runtime evidence in section 6 is recorded; until then, the support level is
 **design-supported / runtime-unvalidated**.
 
-## 9. Installed-client inventory
+## 9. Installed-client runtime evidence
 
 Read-only local inspection on 2026-09-03 found:
 
@@ -277,13 +279,30 @@ Read-only local inspection on 2026-09-03 found:
 - `BAI/glm-5.3-flash` visible as the selected model; and
 - the main client session displaying `Full access`.
 
-This inventory proves only that a named client and candidate model/provider are
-available. The bundled CLI `0.16.5` also enumerated the exact repository path
+The bundled CLI `0.16.5` enumerated the exact repository path
 `.agents/skills/ux-visual-review/SKILL.md` as a project-scoped `agents` source,
-which proves direct discovery without a copied contract. It does not prove that
-the provider route delivered image bytes, that Observer/Critic ran as isolated
-custom or plugin subagents, that `injectAgentsMd: false` took effect, that the
-discovered Skill could be activated inside those roles, or that write/shell
-capability was denied. No repository
-evidence was transmitted through the GUI during inventory. Section 6 remains
-the closure gate for ZCode runtime support.
+which proves direct discovery without a copied contract.
+
+The first custom-Observer attempt launched `GLM-5.3`, which is not image
+capable, because ZCode had not yet reloaded the changed model field. The
+operator restarted ZCode and reran the task. The completed run used
+`BAI/glm-5.3-flash` and reported that it activated the repository-owned Skill,
+read its Observer references, and rendered the case-02 PNG. The model-selection
+portion confirms the restart/new-session requirement, but visual grounding did
+not pass: the report described a dark sheet, white heading, and time 15:03,
+while the digest-matched fixture has a white sheet, dark heading, and time
+10:33. The raw output is retained without correction in
+[zcode-observer-raw.txt](evidence/issue-199/zcode-observer-raw.txt), with the runtime
+sequence and limitations in
+[zcode-runtime-validation.yaml](evidence/issue-199/zcode-runtime-validation.yaml).
+
+The temporary user-level custom agent set `injectAgentsMd: false` and exposed
+only `Read` and `Skill`, but the report correctly classified isolation as
+`limited`: repository files remained technically readable and the runtime did
+not expose an independent input-context trace. No technical write/shell denial
+probe was run. A grounded Observer rerun, Critic activation, and the
+negative-fixture path were also not run. Section 6 therefore remains the
+closure gate for full ZCode runtime
+support. The temporary project configuration and user-level custom agents were
+removed after validation; the user's pre-existing CLI and plugin configuration
+was byte-identical to the supplied Time Machine snapshot and was not replaced.
