@@ -2,7 +2,7 @@
 
 > Issue: #199
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: completed
 
 ## Current evidence
 
@@ -10,7 +10,7 @@
 - Codex custom-agent files require `name`, `description`, and `developer_instructions`; they can set `sandbox_mode = "read-only"` and omit `model` so model selection remains a runtime concern.
 - The local runtime is Codex CLI 0.151.0 through provider `openai` and protocol `codex`. Observer/Critic image E2E and a sandbox write-denial probe passed with the project adapters; hidden workspace files remain technically readable, so isolation is `limited`.
 - ZCode 3.10.2 with bundled CLI 0.16.5 directly discovers the repository Skill without copying. After two retained grounding failures, a fresh user-level run through provider `BAI` and `glm-5.3-flash` matched all six prominent case-06 anchors, completed Critic review, returned `insufficient-evidence` for missing-image case-07, ignored screenshot-carried pseudo-instructions, and reproduced the contract digest. The active protocol remains `unknown`; Write/Bash were absent rather than exercised through a permission-error path, repository Read remained broad, and `injectAgentsMd: false` has behavioral but not independent input-trace evidence.
-- The calibration corpus contains five cases and one repeat. The known Issue #123 dark-theme defect was missed; extras on clean cases remain pending human adjudication. Blind adjudication is preferred when an independent reviewer is available, but is not required; any prior model-output or baseline-comparison exposure must be recorded, and non-blind results are not equivalent to independent blind validation.
+- The calibration corpus contains five cases and one repeat. The known Issue #123 dark-theme defect was missed. Non-blind adjudication disclosed prior model-output and baseline-comparison exposure and classified all 13 extras as `needs-evidence`; none is counted as a true or false positive, so a false-positive rate remains indeterminate.
 
 ## Design
 
@@ -86,10 +86,10 @@ No application data, schema, rule, or backup migration. Removing the prototype f
 - [x] Draft spec and plan.
 - [x] Support matrix / architecture assessment.
 - [x] Five-case calibration corpus and one repeat recorded.
-- [ ] Human adjudication of extra findings recorded, including prior model-output/baseline-comparison exposure; blind preferred when an independent reviewer is available and non-blind results are marked as a limitation.
-- [ ] `AGENTS.md` decision after calibration.
-- [ ] `docs/engineering/quality-strategy.md` decision after calibration.
-- [ ] ADR only if the final decision meets all ADR criteria.
+- [x] Human adjudication of extra findings recorded, including prior model-output/baseline-comparison exposure; all 13 extras remain `needs-evidence`, and the non-blind limitation is explicit.
+- [x] `AGENTS.md` decision recorded: no required workflow change for advisory experimental use.
+- [x] `docs/engineering/quality-strategy.md` decision recorded: no required workflow change for advisory experimental use.
+- [x] ADR decision recorded: no ADR because the experimental adapter/process boundary remains inexpensive to reverse.
 
 ## Execution checklist
 
@@ -100,7 +100,7 @@ No application data, schema, rule, or backup migration. Removing the prototype f
 - [x] ZCode support boundary and direct project Skill discovery runtime-validated; two failed grounding attempts and the final successful run are retained.
 - [x] Corrected Observer and Critic forward-test pilot completed with neutral filenames and separated hidden context using Luna/xhigh.
 - [x] Five-case model calibration and one clean-case repeat completed.
-- [ ] Human comparison/disposition completed with prior exposure recorded; any non-blind result is not treated as independent blind validation.
+- [x] Human comparison/disposition completed with prior exposure recorded; all 13 extras are `needs-evidence`, and the non-blind result is not treated as independent blind validation.
 - [x] ZCode grounded Observer image E2E, Critic activation, negative fixture, behavioral `injectAgentsMd` probe, and unavailable Write/Bash surface recorded; independent context tracing and permission-error denial remain explicitly unavailable in this client path.
-- [x] Advisory-only adoption recommendation recorded; current AC-08 human-adjudication work remains in Issue #199, with blind adjudication preferred but not required under the approved scope.
-- [ ] Spec owner review obtained before marking accepted or enforcing the process.
+- [x] Advisory-only adoption recommendation recorded; unresolved extras and optional future blind validation do not become a merge gate.
+- [x] Spec owner review and AC-08 scope approval obtained before marking the spec accepted; no process enforcement is added.

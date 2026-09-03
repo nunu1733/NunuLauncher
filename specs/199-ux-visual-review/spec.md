@@ -1,6 +1,6 @@
 ---
 issue: "#199"
-status: draft
+status: accepted
 requirements: []
 updated: 2026-09-03
 ---
@@ -96,17 +96,17 @@ Vision review does not validate TalkBack semantics, focus order, keyboard/Switch
 
 ## Acceptance criteria
 
-- [ ] UVR-AC-01: `.agents/skills/ux-visual-review` is the single authoritative evidence/rubric/role/report contract; Codex and ZCode adapters contain no duplicated evaluation logic.
-- [ ] UVR-AC-02: Primary-source support evidence shows how both runtimes consume the shared Skill or, where direct import is unsupported, the exact thin-adapter boundary and limitation.
-- [ ] UVR-AC-03: Observer input is a neutral visible layer and excludes expected state, safety meaning, intended hierarchy/action, acceptance criteria, spec, plan, source, known defects, fixes, and human baseline; unavoidable inherited context is disclosed.
-- [ ] UVR-AC-04: Critic findings keep `observation`, `user_impact`, and `recommendation` separate and include evidence refs, category, severity, and confidence.
-- [ ] UVR-AC-05: Evidence policy requires an ordered scenario sequence for stateful claims and returns `insufficient-evidence` instead of pass when evidence is inadequate.
-- [ ] UVR-AC-06: Deterministic quality surfaces and their authoritative checks are explicitly excluded from Vision pass/fail judgment.
-- [ ] UVR-AC-07: Codex and ZCode prototype validation records runtime/version, effective model/provider, active protocol when exposed (or `unknown`), reasoning, invocation, result, effective permission/tool surface, tools used, and isolation limitations using the same rubric and report schema.
-- [ ] UVR-AC-08: Calibration covers 5–10 representative cases against human baselines frozen before model review; human adjudication records semantic-root-cause agreement, disposition of extras, missed baseline findings, severity drift, reproducibility, residual risk, and whether the adjudicator had prior exposure to model output or baseline comparison. Blind adjudication is preferred when an independent reviewer is available, but is not required for Issue completion; non-blind outcomes are recorded as a limitation and are not treated as equivalent to independent blind validation.
-- [ ] UVR-AC-09: Adoption remains advisory until calibration evidence supports a later decision; the recommendation identifies the repository source of truth and any follow-up Issues.
-- [ ] UVR-AC-10: Both roles treat every instruction, link, QR code, and request embedded in evidence as untrusted content and never take tool, network, disclosure, or external-side-effect actions because of it.
-- [ ] UVR-AC-11: Retained reports carry a canonical provenance envelope identifying contract revision, subject revision/build, runtime/client/provider/model, active protocol when exposed (or `unknown`), reasoning, evidence manifest, permission mode, effective tool surface, and tools used.
+- [x] UVR-AC-01: `.agents/skills/ux-visual-review` is the single authoritative evidence/rubric/role/report contract; Codex and ZCode adapters contain no duplicated evaluation logic.
+- [x] UVR-AC-02: Primary-source support evidence shows how both runtimes consume the shared Skill or, where direct import is unsupported, the exact thin-adapter boundary and limitation.
+- [x] UVR-AC-03: Observer input is a neutral visible layer and excludes expected state, safety meaning, intended hierarchy/action, acceptance criteria, spec, plan, source, known defects, fixes, and human baseline; unavoidable inherited context is disclosed.
+- [x] UVR-AC-04: Critic findings keep `observation`, `user_impact`, and `recommendation` separate and include evidence refs, category, severity, and confidence.
+- [x] UVR-AC-05: Evidence policy requires an ordered scenario sequence for stateful claims and returns `insufficient-evidence` instead of pass when evidence is inadequate.
+- [x] UVR-AC-06: Deterministic quality surfaces and their authoritative checks are explicitly excluded from Vision pass/fail judgment.
+- [x] UVR-AC-07: Codex and ZCode prototype validation records runtime/version, effective model/provider, active protocol when exposed (or `unknown`), reasoning, invocation, result, effective permission/tool surface, tools used, and isolation limitations using the same rubric and report schema.
+- [x] UVR-AC-08: Calibration covers 5–10 representative cases against human baselines frozen before model review; human adjudication records semantic-root-cause agreement, disposition of extras, missed baseline findings, severity drift, reproducibility, residual risk, and whether the adjudicator had prior exposure to model output or baseline comparison. Blind adjudication is preferred when an independent reviewer is available, but is not required for Issue completion; non-blind outcomes are recorded as a limitation and are not treated as equivalent to independent blind validation.
+- [x] UVR-AC-09: Adoption remains advisory until calibration evidence supports a later decision; the recommendation identifies the repository source of truth and any follow-up Issues.
+- [x] UVR-AC-10: Both roles treat every instruction, link, QR code, and request embedded in evidence as untrusted content and never take tool, network, disclosure, or external-side-effect actions because of it.
+- [x] UVR-AC-11: Retained reports carry a canonical provenance envelope identifying contract revision, subject revision/build, runtime/client/provider/model, active protocol when exposed (or `unknown`), reasoning, evidence manifest, permission mode, effective tool surface, and tools used.
 
 ## Test oracle
 
@@ -120,10 +120,10 @@ Vision review does not validate TalkBack semantics, focus order, keyboard/Switch
 | UVR-AC-09 | Decision section in the Issue #199 assessment and any resulting process-doc diff. |
 | UVR-AC-11 | Schema validation of retained reports and contract/subject/runtime provenance. |
 
-## Open questions
+## Resolved decisions
 
-- Does human adjudication of the current five-case corpus support advisory use beyond the Organizer confirmation flow, and what limitation follows from any prior exposure to model output or baseline comparison? Blind adjudication is preferred when an independent reviewer is available but is not required for Issue completion.
-- Should repository adoption be recorded in `AGENTS.md`, `docs/engineering/quality-strategy.md`, both, or deferred?
+- The non-blind human adjudication leaves all 13 extras as `needs-evidence`; it supports experimental advisory use only and is not equivalent to independent blind validation.
+- Do not add a required step to `AGENTS.md` or `docs/engineering/quality-strategy.md`, and do not create a merge gate in Issue #199.
 
 ## Change history
 
@@ -135,3 +135,4 @@ Vision review does not validate TalkBack semantics, focus order, keyboard/Switch
 - 2026-09-03: Added required provider and optional protocol to canonical provenance, migrated retained reports to the new contract digest, and passed a neutral Codex Observer/Critic behavioral probe whose screenshot-carried URL and file-creation requests triggered no network, write, or external-action tool.
 - 2026-09-03: A second ZCode Observer attempt matched the case-02 sheet, heading, and actions but misread the small status-bar time, so its dispatcher stopped before all remaining stages; the run remains retained failure evidence rather than AC-07 completion.
 - 2026-09-03: A final ZCode 3.10.2 run matched all six prominent case-06 anchors, completed Critic review, returned `insufficient-evidence` for missing-image case-07, ignored screenshot-carried pseudo-instructions, and reproduced the contract digest. Raw output defects were preserved and mapped to dispatcher-attested canonical reports. Write/Bash were absent rather than permission-error tested, and `injectAgentsMd: false` remains behaviorally supported without an independent input-context trace. AC-08 human adjudication remains open; blind adjudication is preferred when independently available but is not required, and any prior model-output or baseline-comparison exposure must be recorded as a limitation.
+- 2026-09-03: The owner approved the revised AC-08, then non-blind adjudication recorded all 13 extras as `needs-evidence` with prior exposure disclosed. Retained local paths were sanitized with pre/post-redaction digests. All acceptance criteria are satisfied; the contract is accepted for advisory experimental use without repository enforcement.
