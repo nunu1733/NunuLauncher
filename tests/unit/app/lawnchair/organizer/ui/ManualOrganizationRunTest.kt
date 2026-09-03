@@ -4,6 +4,8 @@ import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.DeviceCapabilities
 import app.lawnchair.organizer.application.public.LayoutState
+import app.lawnchair.organizer.application.public.PlanPreviewRejection
+import app.lawnchair.organizer.application.public.PlanPreviewResult
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
@@ -99,6 +101,7 @@ class ManualOrganizationRunTest {
     @Test
     fun exceptionDuringConfirmationReleasesTheOrganizationOperationLease() {
         val application = FakeApplication(readyInput()).apply {
+            inspectPlanOverride = { _, _ -> PlanPreviewResult.WriterBusy }
             materializeOverride = { _, _ -> error("materialization failure") }
         }
         val runner = ManualOrganizationRun(
@@ -254,7 +257,7 @@ class ManualOrganizationRunTest {
         runner.confirm()
 
         assertTrue(runner.state is ManualOrganizationRun.State.Applied)
-        assertEquals(1, application.materializeCalls)
+        assertEquals(0, application.materializeCalls)
         assertEquals(1, application.applyCalls)
         assertEquals(RUN_ID, application.appliedRunId?.value)
         assertEquals(
@@ -276,6 +279,7 @@ class ManualOrganizationRunTest {
     @Test
     fun onboardingTriggerIsRetainedThroughPreviewConfirmationAndStaleRejection() {
         val application = FakeApplication(readyInput())
+        application.inspectPlanOverride = { _, _ -> PlanPreviewResult.WriterBusy }
         application.materializeOverride = { _, _ -> OrganizationPlanMaterializer.Result.Invalid }
         val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
 
@@ -461,8 +465,126 @@ class ManualOrganizationRunTest {
     }
 
     @Test
+    fun previewedPlanIsAppliedDirectlyWithoutConfirmTimeMaterialization() {
+        val application = FakeApplication(readyInput())
+        val previewedPlan = minimalPlan(readyInput().input)
+        val details = app.lawnchair.organizer.application.public.PlanPreviewDetails(
+            changes = emptyList(),
+            counts = app.lawnchair.organizer.application.public.PreviewCounts(1, 0, 0, 0, emptyMap()),
+        )
+        application.inspectPlanOverride = { _, _ ->
+            PlanPreviewResult.Previewed(
+                app.lawnchair.organizer.application.public.PlanPreview(
+                    plan = previewedPlan,
+                    details = details,
+                ),
+            )
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start()
+        val state = runner.state as ManualOrganizationRun.State.Preview
+        assertEquals(details, state.details)
+        assertEquals(1, application.inspectPlanCalls)
+
+        runner.confirm()
+
+        assertTrue(runner.state is ManualOrganizationRun.State.Applied)
+        assertEquals(0, application.materializeCalls)
+        assertEquals(1, application.applyCalls)
+        assertTrue(application.lastAppliedPlan === previewedPlan)
+    }
+
+    @Test
+    fun previewTimeStaleEndsRunWithA2RejectionAndNeverMaterializesOrApplies() {
+        val application = FakeApplication(readyInput())
+        application.inspectPlanOverride = { _, _ -> PlanPreviewResult.Stale }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start()
+
+        assertEquals(ManualOrganizationRun.State.Stale, runner.state)
+        assertEquals(0, application.materializeCalls)
+        assertEquals(0, application.applyCalls)
+        assertEquals(
+            app.lawnchair.organizer.diagnostics.model.PhaseCode.APPLY_REJECTED,
+            application.events.last().phase,
+        )
+        assertEquals(
+            app.lawnchair.organizer.diagnostics.model.ApplyStage.A2,
+            application.events.last().applyStage,
+        )
+    }
+
+    @Test
+    fun previewWriterBusyFallsBackToCountOnlyPreviewAndConfirmMaterializes() {
+        val application = FakeApplication(readyInput())
+        application.inspectPlanOverride = { _, _ -> PlanPreviewResult.WriterBusy }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start()
+        val state = runner.state as ManualOrganizationRun.State.Preview
+        assertEquals(null, state.details)
+        assertEquals(1, state.summary.movedCount)
+        assertEquals(
+            app.lawnchair.organizer.diagnostics.model.PhaseCode.PREVIEWED,
+            application.events.last().phase,
+        )
+
+        runner.confirm()
+
+        assertTrue(runner.state is ManualOrganizationRun.State.Applied)
+        assertEquals(1, application.materializeCalls)
+        assertEquals(1, application.applyCalls)
+    }
+
+    @Test
+    fun previewIntegrityViolationsFailClosedWithoutMaterializeOrApply() {
+        listOf(
+            PlanPreviewRejection.MATERIALIZATION_INVALID,
+            PlanPreviewRejection.OUTCOME_NOT_PLANNED,
+        ).forEach { rejection ->
+            val application = FakeApplication(readyInput())
+            application.inspectPlanOverride = { _, _ -> PlanPreviewResult.NotPlannable(rejection) }
+            val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+            runner.start()
+
+            val state = runner.state as ManualOrganizationRun.State.PlanningRejected
+            assertEquals(rejection.name, ManualOrganizationRun.PlanningFailureKind.IMPOSSIBLE, state.kind)
+            assertEquals(rejection.name, 0, application.materializeCalls)
+            assertEquals(rejection.name, 0, application.applyCalls)
+            assertEquals(
+                rejection.name,
+                0,
+                application.events.count {
+                    it.phase == app.lawnchair.organizer.diagnostics.model.PhaseCode.PREVIEWED
+                },
+            )
+        }
+    }
+
+    @Test
+    fun previewCaptureFailureFallsBackToCountOnlyPreview() {
+        val application = FakeApplication(readyInput())
+        application.inspectPlanOverride = { _, _ ->
+            PlanPreviewResult.NotPlannable(PlanPreviewRejection.CAPTURE_FAILED)
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start()
+
+        val state = runner.state as ManualOrganizationRun.State.Preview
+        assertEquals(null, state.details)
+        runner.confirm()
+        assertTrue(runner.state is ManualOrganizationRun.State.Applied)
+        assertEquals(1, application.materializeCalls)
+    }
+
+    @Test
     fun staleMaterializationIsVisibleAndNeverReachesApplicationWriter() {
         val application = FakeApplication(readyInput())
+        application.inspectPlanOverride = { _, _ -> PlanPreviewResult.WriterBusy }
         application.materializeOverride = { _, _ -> OrganizationPlanMaterializer.Result.Invalid }
         val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
 
@@ -540,6 +662,7 @@ class ManualOrganizationRunTest {
     @Test
     fun cancellationBeforeApplicationAdmissionPreventsApply() {
         val application = FakeApplication(readyInput())
+        application.inspectPlanOverride = { _, _ -> PlanPreviewResult.WriterBusy }
         val planned = movingPlan()
         val materializeStarted = CountDownLatch(1)
         val releaseMaterialize = CountDownLatch(1)
@@ -563,6 +686,7 @@ class ManualOrganizationRunTest {
     @Test
     fun dismissBeforeApplicationAdmissionCancelsAndEmitsUserCancellation() {
         val application = FakeApplication(readyInput())
+        application.inspectPlanOverride = { _, _ -> PlanPreviewResult.WriterBusy }
         val materializeStarted = CountDownLatch(1)
         val releaseMaterialize = CountDownLatch(1)
         application.materializeStarted = materializeStarted
@@ -741,6 +865,9 @@ class ManualOrganizationRunTest {
         var applyRelease: CountDownLatch? = null
         var materializeOverride: ((OrganizationInput, PlanningResult) -> OrganizationPlanMaterializer.Result)? = null
         var composeOverride: (() -> OrganizationInputComposition)? = null
+        var inspectPlanOverride: ((OrganizationInput, PlanningResult) -> PlanPreviewResult)? = null
+        var inspectPlanCalls = 0
+        var lastAppliedPlan: ValidatedLayoutPlan? = null
         var applyResult: ApplyResult = ApplyResult.Applied(RunId(RUN_ID), RecoveryPointId(POINT_ID))
         var recoveryPreview: RecoveryPreviewResult = RecoveryPreviewResult.NotRestorable(
             RecoveryPointId(POINT_ID),
@@ -753,27 +880,33 @@ class ManualOrganizationRunTest {
             composeRelease?.await(5, TimeUnit.SECONDS)
             return composeOverride?.invoke() ?: composition
         }
+
+        override fun inspectPlan(input: OrganizationInput, result: PlanningResult): PlanPreviewResult {
+            inspectPlanCalls++
+            return inspectPlanOverride?.invoke(input, result)
+                ?: PlanPreviewResult.Previewed(
+                    app.lawnchair.organizer.application.public.PlanPreview(
+                        plan = minimalPlan(input),
+                        details = app.lawnchair.organizer.application.public.PlanPreviewDetails(
+                            changes = emptyList(),
+                            counts = app.lawnchair.organizer.application.public.PreviewCounts(0, 0, 0, 0, emptyMap()),
+                        ),
+                    ),
+                )
+        }
+
         override fun materialize(input: OrganizationInput, result: PlanningResult): OrganizationPlanMaterializer.Result {
             materializeCalls++
             materializeStarted?.countDown()
             materializeRelease?.await(5, TimeUnit.SECONDS)
-            return materializeOverride?.invoke(input, result) ?: OrganizationPlanMaterializer.Result.Ready(
-                ValidatedLayoutPlan(
-                    sourceRevision = input.snapshot.revision,
-                    sourceState = LayoutState(emptyList(), emptyList(), DeviceCapabilities(4, 5, 5, 3, 4, app.lawnchair.organizer.application.public.DeviceOrientation.PORTRAIT), emptyList()),
-                    intendedState = LayoutState(emptyList(), emptyList(), DeviceCapabilities(4, 5, 5, 3, 4, app.lawnchair.organizer.application.public.DeviceOrientation.PORTRAIT), emptyList()),
-                    actions = emptyList(),
-                    newPages = emptyList(),
-                    newFolders = emptyList(),
-                    ruleVersion = input.rules.version,
-                    taxonomyVersion = input.taxonomy.version,
-                ),
-            )
+            return materializeOverride?.invoke(input, result)
+                ?: OrganizationPlanMaterializer.Result.Ready(minimalPlan(input))
         }
 
         override fun apply(plan: ValidatedLayoutPlan, runId: RunId): ApplyResult {
             applyCalls++
             appliedRunId = runId
+            lastAppliedPlan = plan
             applyStarted?.countDown()
             applyRelease?.await(5, TimeUnit.SECONDS)
             return applyResult
@@ -810,3 +943,14 @@ class ManualOrganizationRunTest {
         const val SHA_256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }
 }
+
+private fun minimalPlan(input: OrganizationInput): ValidatedLayoutPlan = ValidatedLayoutPlan(
+    sourceRevision = input.snapshot.revision,
+    sourceState = LayoutState(emptyList(), emptyList(), DeviceCapabilities(4, 5, 5, 3, 4, app.lawnchair.organizer.application.public.DeviceOrientation.PORTRAIT), emptyList()),
+    intendedState = LayoutState(emptyList(), emptyList(), DeviceCapabilities(4, 5, 5, 3, 4, app.lawnchair.organizer.application.public.DeviceOrientation.PORTRAIT), emptyList()),
+    actions = emptyList(),
+    newPages = emptyList(),
+    newFolders = emptyList(),
+    ruleVersion = input.rules.version,
+    taxonomyVersion = input.taxonomy.version,
+)

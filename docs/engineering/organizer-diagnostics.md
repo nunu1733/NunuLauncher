@@ -272,6 +272,7 @@ ADR またはspec の承認を必要とする。
 | folder / app pair 構造 | membership、親子関係 | **Never** | `newFolderCount` 等の件数 |
 | rule 内容 | `RuleSemantics` の値、rule file 中身 | **Never** | `ruleVersion` 識別子のみ |
 | 項目単位の分類結果 | `CategoryDecision`、`CategoryId` | **Never** | `confidenceCounts` の件数 |
+| plan preview の具体変更 (Issue #194) | `PreviewChange`、`PreviewLabel`（canonical capture title 含む）、`PreviewPosition`、`PreviewDetails` | **Never** | `PreviewCounts` の件数（preview はjournal 化せず、`PREVIEWED` 等の既存phase の件数のみ） |
 | planner 診断param | `DiagnosticParam`（`ItemParam`、`SpanParam`、`PageParam` 等） | **Never** | error code と件数のみ |
 | 内容由来識別子 | `RevisionId`、`ItemId`、`PageId`、`FolderId`、digest | **Never** | 一致/不一致の結果（phase とerror code）のみ |
 | crash 上情報 | exception message、stack trace | **Never**（journal） | OS crash buffer と§11 で相関 |

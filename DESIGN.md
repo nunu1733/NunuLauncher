@@ -77,7 +77,7 @@ apply(ValidatedLayoutPlan) -> ApplyResult
 recover(RecoveryRequest) -> RecoveryResult
 ```
 
-このmoduleの実装は、revision再確認、recovery point作成、transactional write、memory model/UI bind、適用後検証を隠す。適用後検証は、相関リロード生成のモデルスナップショットをmodel-verifiable projectionで独立DB再取得と突き合わせ、DB/model収束を証明してから初めて成功結果を返す([Issue #152 spec](./specs/152-reload-model-snapshot-verification/spec.md))。Launcher DBはlocal-substitutable dependencyとして扱い、production adapterとtest databaseで同じinterfaceを検証する。
+このmoduleの実装は、revision再確認、recovery point作成、transactional write、memory model/UI bind、適用後検証を隠す。適用後検証は、相関リロード生成のモデルスナップショットをmodel-verifiable projectionで独立DB再取得と突き合わせ、DB/model収束を証明してから初めて成功結果を返す([Issue #152 spec](./specs/152-reload-model-snapshot-verification/spec.md))。読み取り専用の preview seam (recovery preview `inspectRecovery` [spec 84](./specs/84-recovery-preview-seam/spec.md)、plan preview `inspectPlan` [spec 194](./specs/194-plan-preview-seam/spec.md)) もこのmoduleが所有し、いずれも書込み・lifecycle遷移・diagnostics発行を行わない。Launcher DBはlocal-substitutable dependencyとして扱い、production adapterとtest databaseで同じinterfaceを検証する。
 
 ### 4.3 Rule Management module
 

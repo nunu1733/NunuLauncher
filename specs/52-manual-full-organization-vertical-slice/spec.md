@@ -111,13 +111,17 @@ An empty change set is shown as **No changes**. It does not become a write-looki
 
 For a plannable, non-empty full run, the preview identifies the manual/full trigger, target profile scope, and target-set scope. It displays counts for moved, preserved, new placement/folder/page, unchanged where available, unplaced, and warnings. It exposes main typed reasons, including preservation and placement reasons, and does not hide warnings or unplaced items behind confirmation.
 
+The preview is backed by the application-owned read-only plan preview ([Spec 194](../194-plan-preview-seam/spec.md)). Before publishing `State.Preview`, the coordinator acquires the change-level preview through `inspectPlan`: a fresh capture under a short non-blocking writer lease is verified against the planning snapshot revision, the exact plan is materialized once, and the per-item `PreviewChange` projection is published as optional preview `details` alongside the existing count summary. The executable `ValidatedLayoutPlan` itself stays coordinator-private and is never exposed through run state. Confirm applies that previewed plan directly; the application seam's revision and exact preconditions remain the final gate.
+
+Environmental preview failures (`WriterBusy`, `Concurrent`, readiness unavailability, capture failure) degrade to a count-only preview with `details == null`, and confirm materializes as before. Plan/projection integrity violations (`OUTCOME_NOT_PLANNED`, `MATERIALIZATION_INVALID`) fail closed: the run ends as a planning rejection and never falls back to an unconfirmed apply. A preview-time stale capture ends the run with the existing typed stale result and A2 stale-rejection event. Rendering of the per-item list (wording, a11y, expansion) is owned by the confirmation-UI issue; this section fixes only the data path and safety.
+
 The preview distinguishes locked placements and occupied regions, unavailable/disabled/quiet/private-space constraints, profile-related restrictions, widgets/app pairs, legacy shortcuts, and empty folders that remain preserved. The v1 preview must not offer an empty-folder delete option. A profile-identity change is rejected and never reaches confirmation. If future owner policy ever permits destructive behavior, it is out of scope for this version and requires its separate typed action, item-level effect display, and dedicated confirmation contract before being surfaced.
 
 User-facing reason text is derived directly from the planner/application result codes and their allowed parameters. Developer diagnostics remain separate, count/category-only records.
 
 ### Confirmation, staleness, and apply
 
-Confirm is available only for a non-empty, non-rejected preview. It names the intended effect, relevant counts/warnings, and the availability of recovery after a verified apply. Confirm never applies a saved plan unconditionally.
+Confirm is available only for a non-empty, non-rejected preview. It names the intended effect, relevant counts/warnings, and the availability of recovery after a verified apply. Confirm never applies a saved plan unconditionally. When a change-level preview was obtained (spec 194), confirm applies the already-previewed `ValidatedLayoutPlan` without re-materializing; otherwise it materializes at confirm time as before. In both paths the application seam re-checks the complete current revision and exact preconditions before any mutation.
 
 Before any mutation, the application seam compares the complete current revision and exact preconditions. A changed layout, page/device profile, profile inventory/availability, lock state, widget, folder/app-pair structure, or other captured input causes a typed stale/precondition rejection. The UI states that the layout changed, discards the old preview, restores meaningful focus, and requires a new capture and plan. It never silently replays or patches an old plan.
 
@@ -163,6 +167,7 @@ Process recreation must not cause a blind plan replay, a blind apply, or a false
 | MFO-13 | Process dies before/after checkpoint or around commit | No automatic replay; application reconciliation determines the durable state before new operations. |
 | MFO-14 | Empty folder, locked placement, widget, app pair, unavailable profile, or unplaced item is present | Preview reflects the accepted typed preservation/constraint behavior; v1 offers no deletion or lock mutation. |
 | MFO-15 | TalkBack, 200% font scale, keyboard/switch navigation, or warning display | Required actions, progress, reason, and recovery are accessible without color-only state or focus loss. |
+| MFO-16 | Plan preview capture is stale, environmentally unavailable, or violates plan/projection integrity (spec 194) | Typed stale (no write, existing A2 event), count-only fallback with `details == null` (compatibility), or fail-closed planning rejection; the confirmation surface keeps functioning and never applies without the previewed plan or a fresh confirm-time materialization. |
 
 ## Accessibility and privacy requirements
 
