@@ -127,13 +127,14 @@ RuleSemantics {
 
 ### Provenance and consistency
 
-Responsibilities are split between two immutable identities (ADR-0007 compatibility):
+Provenance responsibilities are split so that every `InputProvenance` row keeps ADR-0007 §5's identity-content invariant (one identity never names different content):
 
 - **Bundle identity (immutable policy artifact):** covers the runtime-supported strategy catalog, the default, and all v2 policy projections. It changes only when the shipped artifact changes (including enabling a newly implemented strategy on a child-issue mainline), never when a user changes their selection.
 - **Selection identity (dynamic user state):** the `LayoutStrategySelectionSnapshot` contributes its own schema-version/generation/content-digest identity to `InputProvenance` as a fifth policy input, exactly like the override snapshot. `PolicySourceKind.LAYOUT_STRATEGY_SELECTION` is added.
-- A composition is uniquely identified by `bundleIdentity + selectionIdentity + rulesIdentity + taxonomyIdentity + signalsIdentity + targetsIdentity + revision`; no single identity is overloaded.
+- **Rules identity (materialized effective semantics):** the rules `PolicyInputIdentity` is the identity of the **effective `RuleSemantics`** that the planner actually receives — the bundle rules base with the selected strategy substituted. Its digest is computed over the canonical effective rule representation bound to the bundle and selection identities (bundle rule projection + selection identity digest + canonical effective `RuleSemantics`), and its version/generation is `rule-v2`. Because the effective strategy is part of that content, the same bundle with a different valid selection yields a different `rulesIdentity`; the pure bundle projection identity never substitutes for it.
+- Taxonomy, signals, and targets identities are unchanged; a composition is uniquely identified by `bundleIdentity + selectionIdentity + rulesIdentity + taxonomyIdentity + signalsIdentity + targetsIdentity + revision`, and no single identity is overloaded.
 - `OrganizerPolicyBundle.canonicalRepresentation()` includes the declared catalog and default (not the user selection). ADR-0007's consistent-cut protocol is extended: the selection snapshot is read as part of the dynamic A/E1/B/E2 reads (identity re-read as B), so a selection change mid-read yields `NotReady(InconsistentPolicyRead)` after the single bounded retry.
-- Stale-plan detection continues to compare the capture `RevisionId` (unchanged semantics); a strategy change alone does not make a captured input stale — it produces a different plan for the same snapshot.
+- Stale-plan detection continues to compare the capture `RevisionId` (unchanged semantics); a strategy change alone does not make a captured input stale — it produces a different plan for the same snapshot under a different `rulesIdentity`.
 
 ### Rule Management and composer
 
@@ -148,9 +149,13 @@ Responsibilities are split between two immutable identities (ADR-0007 compatibil
 
 ### Downgrade and rollback
 
-- A binary from before the selection store existed does not know the store and has no detection code for it: on downgrade it simply ignores the store and runs its own legacy `CANONICAL_V1` policy. It never reads, writes, or destroys the selection store, so a later re-upgrade rediscovers and revalidates the persisted selection.
-- A binary that understands the selection store but reads an unsupported newer schema fails closed per ADR-0007 §8 (organizer unavailable, layout unchanged); it never rewrites the newer store.
-- Reverting the feature APK-side therefore leaves the persisted selection dormant, not deleted; Launcher layout data is never rewritten because of selection migration. An already-applied layout from any strategy remains recoverable through the existing recovery contract (recovery points are strategy-agnostic).
+Rollback/downgrade safety has three distinct cases; conflating them is a specification error:
+
+1. **Bundle-version mismatch inside one binary (defensive):** if the shipped bundle artifact and the binary's compatibility matrix disagree (a build/packaging defect, reachable only through fault injection), the existing unsupported-version path fails closed. Normal APK upgrades/downgrades cannot produce this case: the bundle is an application-owned artifact, so a binary always reads its own bundle, never a bundle left behind by another version.
+2. **Store-aware APK downgrade:** the older binary reads **its own** (older) bundle; if the persisted selection names a strategy outside that older bundle's runtime-supported set, the selection-layer validation returns a typed `NotReady` — fail-closed, no silent fallback, layout unchanged. Re-upgrading revalidates the selection against the newer bundle and resumes it.
+3. **Pre-store binary downgrade:** a binary from before the selection store existed has no detection code for it; it ignores the store and runs its own legacy `CANONICAL_V1` policy. It never reads, writes, or destroys the selection store, so a later re-upgrade rediscovers and revalidates the persisted selection.
+
+A binary that understands the selection store but reads an unsupported newer store schema fails closed per ADR-0007 §8 and never rewrites the newer store. Launcher layout data is never rewritten by any of these cases; an already-applied layout from any strategy remains recoverable through the existing recovery contract (recovery points are strategy-agnostic).
 
 ## Internal planning seam
 
@@ -236,6 +241,8 @@ Neither layer silently substitutes a strategy.
 |---|---|
 | Persisted selection names an unknown/removed strategy (outside the active runtime-supported set) | Composer `NotReady` (typed non-write); planner never invoked (production layer). |
 | Selection store schema newer than the binary supports | Composer `NotReady` (fail closed); organizer unavailable; layout unchanged; store never rewritten. |
+| Persisted selection names a strategy outside the older bundle's runtime-supported set after an APK downgrade | Selection-layer `NotReady` (typed non-write); organizer unavailable until the user re-selects or re-upgrades; store never rewritten. |
+| Shipped bundle artifact disagrees with the binary's compatibility matrix (packaging defect; unreachable in normal upgrade/downgrade) | Defensive fail-closed via the existing unsupported-version path. |
 | Selection store corrupt/unreadable | Composer `NotReady`; no silent default. |
 | Selection change between A and B reads of the cut | One bounded retry, then `NotReady(InconsistentPolicyRead)`. |
 | Catalog-external `StrategyId` constructed directly through the planner seam | `V-20 INVALID_RULES` → typed `Rejected.Invalid` (defense-in-depth contract layer). |
@@ -296,7 +303,7 @@ For `STABLE_PAGE_TIDY_V1`, per-page placeability is constructive (lift-then-plac
 
 **Given** a user-selected `BOTTOM_FIRST_V1` in the strategy-selection store,
 **When** the composer composes a full-organization input,
-**Then** `RuleSemantics.organizationStrategy` carries `BOTTOM_FIRST_V1`, the selection snapshot's generation/digest identity appears in `InputProvenance` alongside the four existing policy identities, the bundle identity reflects the runtime-supported catalog (not the selection), and the plan result echoes `BOTTOM_FIRST_V1`,
+**Then** `RuleSemantics.organizationStrategy` carries `BOTTOM_FIRST_V1`, the selection snapshot's generation/digest identity appears in `InputProvenance` alongside the four existing policy identities, the rules identity digest covers the effective `RuleSemantics` (so the same bundle with `CANONICAL_PAGE_COMPACT_V1` selected produces a different `rulesIdentity`), the bundle identity reflects the runtime-supported catalog (not the selection), and the plan result echoes `BOTTOM_FIRST_V1`,
 **And** a selection change between the A and B reads yields one retry then `NotReady(InconsistentPolicyRead)`.
 
 ### Scenario: selection write is validated, atomic, and failure-preserving
@@ -356,7 +363,7 @@ Architecture/implementation:
 
 - [ ] AC-4: `OrganizationPlanner.plan(OrganizationInput)` remains the sole external planning seam; strategy logic cannot bypass shared validation, constraints, allocator safety, result validation, or application/recovery (verified by the existing purity guard extended to strategy sources).
 - [ ] AC-5: `CANONICAL_PAGE_COMPACT_V1` extraction is byte-equivalent on the accepted corpus.
-- [ ] AC-6: Strategy identity participates in policy provenance — the bundle digest covers the runtime-supported catalog and default; the selection contributes its own generation/digest identity to `InputProvenance`; the result echoes the effective strategy.
+- [ ] AC-6: Strategy identity participates in policy provenance — the bundle digest covers the runtime-supported catalog and default; the selection contributes its own generation/digest identity to `InputProvenance`; the rules identity is defined over the effective `RuleSemantics`, so the same bundle with different valid selections yields different `rulesIdentity` values (identity-content invariant holds per row); the result echoes the effective strategy.
 - [ ] AC-7: Selection is local, versioned, validated, generation/digest-bearing, and migration/fail-closed tested.
 - [ ] AC-8: UI identifies the effective strategy, offers only supported strategies, and previews strategy-specific consequences.
 
@@ -376,8 +383,8 @@ Verification:
 Created after this spec is accepted; never one PR:
 
 1. Research/decision confirmation: record the accepted set/default (closed by accepting this spec; no separate issue needed if acceptance is direct).
-2. Feature: versioned strategy-selection contract — `RuleSemantics`/bundle v2 change, selection store (read source + validated write command), composer/provenance/migration/fail-closed handling. The bundle's runtime-supported set declares only the strategies implemented at that point (initially `CANONICAL_PAGE_COMPACT_V1`); each later strategy child publishes a new bundle semantic version/generation with the expanded set (ADR-0007 §8) under unchanged `rule-v2`/selection-store schema.
-3. Feature: extract `CANONICAL_PAGE_COMPACT_V1` behind the internal seam with the compatibility corpus proof.
+2. Feature: versioned strategy-selection contract — `RuleSemantics`/bundle v2 change, selection store (read source + validated write command), composer/provenance/migration/fail-closed handling, the effective-`RuleSemantics` rules identity, and a minimal `CANONICAL_PAGE_COMPACT_V1` strategy registration (internal registry + adapter that dispatches to the existing placement body unchanged) so AC-9b catalog coherence is testable at this point. The bundle's runtime-supported set declares only the strategies implemented at that point (initially `CANONICAL_PAGE_COMPACT_V1`); each later strategy child publishes a new bundle semantic version/generation with the expanded set (ADR-0007 §8) under unchanged `rule-v2`/selection-store schema.
+3. Feature: extract `CANONICAL_PAGE_COMPACT_V1` behavior fully behind the internal seam (extraction/refactor of the placement body) with the compatibility corpus byte-equivalence proof; the registry it registers into exists since child 2.
 4. Feature: `STABLE_PAGE_TIDY_V1`.
 5. Feature: `BOTTOM_FIRST_V1` (may be delivered before or after child 4; both are first-delivery strategies).
 6. Feature: `GLOBAL_COMPACT_V1`.
@@ -395,6 +402,7 @@ None blocking acceptance. Deferred deliberately: catalog renaming policy (a rena
 - 2026-09-04: Draft created for Issue #182 (Epic spec): accepted catalog, selection contract, internal seam, strategy rules, diagnostics/preview integration, child-issue split.
 - 2026-09-04: Review revision (owner review on `bc023485`): separated the selection identity from the immutable bundle digest (bundle covers runtime-supported catalog/default; selection carries its own `InputProvenance` identity as a fifth policy input) — Blocking 1. Added the Rule Management write-command contract (write-time catalog validation, atomic generation/digest publication, failure preserves the existing selection, picker never writes storage or substitutes in-run) — Blocking 2. Split spec-level catalog from the bundle runtime-supported set so each child mainline declares only implemented strategies; enabling a strategy is a bundle content change without a schema bump — Blocking 3. Unified downgrade semantics (pre-store binaries ignore the store; store-aware binaries fail closed on newer schemas; re-upgrade revalidates) — Blocking 4. Removed the duplicate `StrategyVersion` field; `StrategyId` (with the `_V1` suffix) is the immutable semantic identity — Medium. Documented the two-layer failure policy (composition `NotReady` vs planner-seam `V-20`) — Medium.
 - 2026-09-04: Re-review revision (owner re-review on `c666c435`): strategy enablement now publishes a new bundle semantic version/generation and digest per ADR-0007 §8 (e.g. `organization-policy-v2.1`), keeping `rule-v2` and the selection-store schema unchanged; the "same schema, digest-only" model is withdrawn — Blocking. Added the bundle catalog coherence contract test (`runtimeSupported ⊆ implemented IDs`, `default ∈ runtimeSupported`, exact equality with runtime-enabled implementations) in the selection and strategy child issues — Medium. Removed the resolved echo-shape item from open questions — Low.
+- 2026-09-04: Second re-review revision (owner re-review on `110bba11`): the rules `PolicyInputIdentity` is redefined as the identity of the **effective** `RuleSemantics` (bundle rules base + selected strategy, digest bound to the bundle and selection identities), so the same bundle with a different valid selection yields a different `rulesIdentity` and ADR-0007 §5's identity-content invariant holds for every provenance row — Blocking. Child 2 now includes a minimal `CANONICAL_PAGE_COMPACT_V1` registration (internal registry + adapter dispatching to the unchanged placement body) so AC-9b is testable before child 3's behavior extraction — Medium. Downgrade/rollback rewritten as a three-case model (in-binary bundle-version mismatch defensive case; store-aware APK downgrade failing closed at the selection layer against the older bundle's set; pre-store binaries ignoring the store), and the "old binary reads an unknown bundle version" claim was withdrawn — Medium.
 
 ## References
 

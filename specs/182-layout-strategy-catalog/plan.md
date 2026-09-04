@@ -22,6 +22,7 @@
 
 - 2026-09-04: Owner review on `bc023485` 反映: selection identityをbundle digestから分離 (`InputProvenance` 第5input、Blocking 1)、Rule Management validated write command契約を追加 (Blocking 2)、spec-level catalog と runtime-supported setを分離し各mainlineは実装済みstrategyのみ宣言 (Blocking 3)、downgrade記述を「旧binaryはstoreを無視」に統一 (Blocking 4)、`StrategyVersion` field廃止 (`StrategyId` がimmutable semantic identity、Medium)、production (`NotReady`) とplanner-seam (`V-20`) のfailure layering明文化 (Medium)。
 - 2026-09-04: Owner re-review on `c666c435` 反映: strategy有効化を「同schemaのままdigest更新」から「ADR-0007 §8準拠の新bundle semantic version/generation + digest publish」へ変更 (`organization-policy-v2.1` 型、`rule-v2`/selection schemaは不変、旧binaryはunknown versionでfail-closed) — Blocking。catalog整合 (`runtimeSupported ⊆ 実装ID`、`default ∈ runtimeSupported`、runtime-enabled実装との完全一致) をchild 2と各strategy子Issueの必須contract test化 — Medium。Open questionsから解決済みのecho-shape項目を削除 — Low。
+- 2026-09-04: Owner second re-review on `110bba11` 反映: `rules` の `PolicyInputIdentity` をeffective `RuleSemantics` (bundle base + 選択substitute) のidentityとして再定義 — digest = `hash(bundleRuleProjectionDigest || selectionIdentityDigest || canonical(effectiveRuleSemantics))`、同一bundle+異なる有効selectionは異なる `rulesIdentity` を produceするcontract testをAC-6へ追加 (Blocking)。child 2に最小 `CANONICAL_PAGE_COMPACT_V1` registration (内部registry + 既存placement bodyへのadapter、挙動変更なし) を含め、AC-9bをchild 2時点で成立させる。child 3は本体extraction + byte-equivalence proofに専念 (Medium)。downgradeを3ケース (同一binary内bundle version不一致はdefensive / store-aware downgradeはselection層でfail-closed / pre-store binaryはstore無視) へ整理し、「旧binaryが新bundle versionを読む」記述を撤回 (Medium)。
 
 ## Design
 
@@ -69,6 +70,9 @@ data class PlanningResult(
 
 - `PolicySourceKind.LAYOUT_STRATEGY_SELECTION` を追加。composerはcut内でselection snapshotをA/Bの2回読み、`A.identity == B.identity` を検証する。bundleのruntime-supported setに対して検証し、unsupported/removed/corruptは既存の `NotReady(SourceUnreadable | UnsupportedVersion | ContradictorySource)` familyへ写像する。`RuleSemantics` 投影時にbundle defaultまたは選択値を `organizationStrategy` へ載せる。
 - `InputProvenance` に選択snapshot identity (schema version/generation/digest) を第5のpolicy inputとして追加する (レビューBlocking 1)。bundle identityはcatalog/defaultのimmutable identityのままであり、選択で変化しない。
+- **effective rules identity (再々レビューBlocking):** `rules` の `PolicyInputIdentity` はplannerが実際に受け取る **effective `RuleSemantics`** (bundle rules base + 選択substitute済み) のidentityとして計算し直す。version/generationは `rule-v2`、digestは次の結合に対するSHA-256とする:
+  `hash(bundleRuleProjectionDigest || selectionIdentityDigest || canonical(effectiveRuleSemantics))`
+  これにより同一bundleで選択が変われば `InputProvenance.rules` も変わり、ADR-0007 §5の「同一identityが異なるcontentを指さない」不変条件が全provenance行で成立する。bundle生projectionのidentityをそのまま `rulesIdentity` として使い回す実装は禁止する。
 
 **planning internal seam:**
 
@@ -85,7 +89,7 @@ internal data class StrategyDefinition(
 )
 ```
 
-- `PlanningPlacement.placeFullRun` を「shared materialization (constraints/unit化/preservation)」と「strategy dispatch」へ分割する。`Allocator` は `findRowMajorFirstFit` にcell traversal引数を追加するのみで、occupancy/bounds実装は1つを保つ。
+- `PlanningPlacement.placeFullRun` を「shared materialization (constraints/unit化/preservation)」と「strategy dispatch」へ分割する (child 3)。**child 2は内部registry + 最小 `CANONICAL_PAGE_COMPACT_V1` adapterのみを作り、既存placement bodyをdispatch経由でそのまま呼ぶ** (挙動変更なし) — AC-9bのcatalog整合 (runtimeSupported ⇔ 実装済み `StrategyDefinition`) をchild 2時点で成立させる (再々レビューMedium)。child 3が本体extraction/refactorとbyte-equivalence proofを担う。`Allocator` は `findRowMajorFirstFit` にcell traversal引数を追加するのみで、occupancy/bounds実装は1つを保つ。
 - `STABLE_PAGE_TIDY_V1`: pageごとにeligible `1×1` unitをliftし、visual order `(cell.y, cell.x, ItemId)` でrow-major first-fitへ再配置。既存folderと非`1×1` movableは固定constraintとして `STRATEGY_PRESERVED`。
 - `GLOBAL_COMPACT_V1`: 全unitをglobal visual order `(PageOrder, PageId, y, x, ItemId)` で `allocateCapturedThenNew` へ通す。新規folderは `(preferred page key, NewFolderOrdinal)` 順でcaptured-position unitの後に配置。既存のpage削除policyには触れない。
 - `BOTTOM_FIRST_V1`: canonical順序のまま、allocatorのtraversalをbottom-upへ切替 (`rows - span.height` から `0` へ降順)。
@@ -128,9 +132,12 @@ strategy選択変更はcompose時点で確定する (stable cut)。run途中の�
 
 ## Migration and recovery
 
-- bundle v2/`rule-v2` はapplication所有のimmutable artifact。in-place migrationなし (ADR-0007 §8)。旧bundleからの移行はbinary更新のみ。runtime-supported setの拡張 (後続strategy有効化) は **新bundle semantic version/generation + digestのpublish** であり (例: `organization-policy-v2.1`)、旧binaryは知らないversionを既存 `UnsupportedVersion` 経路でfail-closed扱いにする。`rule-v2`・selection-store schemaは有効化ごとに不変。
+- bundle v2/`rule-v2` はapplication所有のimmutable artifact。in-place migrationなし (ADR-0007 §8)。runtime-supported setの拡張 (後続strategy有効化) は **新bundle semantic version/generation + digestのpublish** であり (例: `organization-policy-v2.1`)、`rule-v2`・selection-store schemaは不変。
+- downgrade/rollback は3ケースに分けて扱う (再々レビューMedium):
+  1. **同一binary内のbundle version不一致** (artifactとcompatibility matrixの食い違い = packaging欠陥、通常のupgrade/downgradeでは発生しない、fault injectionのみ到達): 既存 `UnsupportedVersion` 経路でdefensive fail-closed。
+  2. **store-aware APK downgrade**: 旧binaryは**自分自身の旧bundle**を読む (新APKのbundleはpersistedされないため、旧binaryが新bundle versionに遭遇することはない)。persisted selectionが旧bundleのruntime-supported set外ならselection層検証で `NotReady` (fail-closed、黙ってfallbackしない)。再upgradeでselectionが再検証され再開する。
+  3. **pre-store binary downgrade**: selection store以前の旧binaryはstoreの存在を検知する機構を持たず、storeを無視して自前のlegacy policyで動作する。storeを読み・書き・破壊しないため、再upgrade時に保存済みselectionが再検証の上そのまま使える。
 - selection store: schema version 1、generation、digest。first-run不在 = 定義済みdefault状態。corrupt/unsupported/newer schemaはfail-closedで `NotReady`。backup/restore対象外 (override storeと同じv1判断)。
-- downgrade (レビューBlocking 4): selection store以前の旧binaryはstoreの存在を検知する機構を持たず、storeを無視して自前のlegacy policyで動作する。storeを読み・書き・破壊しないため、再upgrade時に保存済みselectionが再検証の上そのまま使える。storeを理解するbinaryがunsupported newer schemaを読んだ場合はfail-closedで書き換えない。
 - layout dataへのmigration影響なし: strategy適用結果のlayoutは既存recovery point契約 (spec 13) で復旧可能。strategyはrecovery点に無関係。
 
 ## Verification
@@ -144,7 +151,7 @@ Epic全体の受入条件 (spec AC-1〜AC-15) を子Issueへ割り当てる。�
 | AC-9b (catalog coherence) | bundle catalog contract test: `runtimeSupported ⊆ 実装済みStrategyDefinition ID`、`default ∈ runtimeSupported`、runtime-enabled実装IDとの完全一致 (child 2と各strategy子Issueで実行) | 同上 |
 | AC-4 (単一seam/purity) | `PurityGuardTest` 拡張 (strategy sourceも対象)、`OrganizationPlannerSeamTest` | 同上 |
 | AC-5 (byte-equivalence) | golden oracle corpus test (harness + property 64-case + spec 12 fixtures) | 同上 (`*PlannerContractHarnessTest*`, `*PlannerGeneratedPropertyTest*`) |
-| AC-6 (provenance/echo) | bundle digest test (catalog/defaultのみ、選択非依存)、`InputProvenance` selection identity test、result echo test、diagnostics projection test | 同上 |
+| AC-6 (provenance/echo) | bundle digest test (catalog/defaultのみ、選択非依存)、`InputProvenance` selection identity test、**effective rules identity test: 同一bundle + 異なる有効selection → 異なる `rulesIdentity`** (identity-content invariant)、result echo test、diagnostics projection test | 同上 |
 | AC-8/AC-13 (UI) | strategy picker/previewのCompose test、TalkBack/font-scale/switch test、recreation/stale test | `connectedLawnWithQuickstepGithubDebugAndroidTest` (spec 52パターン) |
 | AC-9/AC-11 (共有invariants/戦略分離) | harness + property testを全strategyで実行するcross-strategy runner | 同上 unit test |
 | AC-10 (fixture網羅) | strategy別fixture (spec scenario: 空home/full home/widget/folder/app pair/lock/page/profile/category fallback/rotation/tablet/two-panel/invalid selection) | 同上 |

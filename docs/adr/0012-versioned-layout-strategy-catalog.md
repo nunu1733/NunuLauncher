@@ -92,10 +92,19 @@ shape of the decision, not the per-strategy rules.
   the public seam; no strategy plugin surface is published.
 - Enabling a newly implemented strategy publishes a new bundle semantic
   version/generation and digest under the same rule schema (`rule-v2`),
-  per ADR-0007 §8; a binary that does not know the new bundle version fails
-  closed through its existing unsupported-version path. A semantic change to
-  strategy rules is a new strategy ID, and a schema change is a new bundle
-  major version — never a silent reinterpretation of an existing ID.
+  per ADR-0007 §8. Normal APK downgrade never confronts a binary with a
+  foreign bundle version: each binary reads its own bundle. Downgrade safety
+  comes from the selection layer — a persisted selection outside the older
+  bundle's runtime-supported set fails closed (`NotReady`) — and from
+  pre-store binaries ignoring the store entirely. The in-binary
+  bundle-version mismatch (`UnsupportedVersion` path) remains a defensive
+  case for packaging defects only.
+- The rules provenance identity is the identity of the **effective**
+  `RuleSemantics` (bundle rules base plus the selected strategy, digest bound
+  to the bundle and selection identities): the same bundle with a different
+  valid selection yields a different `rulesIdentity`, so ADR-0007 §5's
+  identity-content invariant holds for every provenance row while the bundle
+  digest stays selection-independent.
 - The runtime-supported catalog must be coherent with the planner:
   `runtimeSupported ⊆ implemented internal strategy IDs`,
   `default ∈ runtimeSupported`, and exactly equal to the runtime-enabled
@@ -126,6 +135,12 @@ shape of the decision, not the per-strategy rules.
 - **Fallback to the default strategy when a selection is unsupported.**
   Rejected for the same reason: fallback is an unconfirmed layout decision;
   the user must re-select explicitly.
+- **Keep the rules identity as the pure bundle projection while substituting
+  the selection elsewhere.** Rejected: the same `rulesIdentity` would then
+  name different `RuleSemantics` content depending on the user's selection,
+  breaking ADR-0007 §5's identity-content invariant. The rules identity is
+  therefore computed over the effective semantics and changes with the
+  selection; the immutable bundle digest stays selection-independent.
 - **Keep the same bundle version and only update the digest when a strategy
   is enabled.** Rejected: ADR-0007 §8 publishes any policy content change
   under a new semantic version/generation plus a new digest, and
