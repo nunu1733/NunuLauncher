@@ -45,8 +45,11 @@ object PlanningProjection {
             phase = PhaseCode.RUN_STARTED, // placeholder, overridden by copy()
             // Spec 182: the effective strategy identity is a policy version
             // identifier and is echoed into the journal alongside the other
-            // version identifiers.
-            versions = RunVersions.create(strategyVersion = result.organizationStrategy.value),
+            // version identifiers. A V-20-rejected catalog-external strategy is
+            // NOT an approved identifier — it is redacted to the empty value so
+            // the typed Invalid rejection reaches the journal without the
+            // diagnostics layer turning it into an exception.
+            versions = RunVersions.create(strategyVersion = strategyIdentifier(result.organizationStrategy)),
             deviceProfile = null,
         )
 
@@ -56,6 +59,13 @@ object PlanningProjection {
             is Rejected.Impossible -> projectImpossible(baseEvent, outcome, capturedItemCount, candidateItemCount)
         }
     }
+
+    /**
+     * The strategy echo carries only accepted catalog identifiers (spec 182):
+     * a catalog-external id — reachable only through a V-20 `Rejected.Invalid`
+     * result — projects as the empty value instead of failing construction.
+     */
+    private fun strategyIdentifier(strategy: app.lawnchair.organizer.planning.StrategyId): String = strategy.value.takeIf { it in RunVersions.APPROVED_VERSIONS }.orEmpty()
 
     private fun projectPlanned(
         base: RunEvent,

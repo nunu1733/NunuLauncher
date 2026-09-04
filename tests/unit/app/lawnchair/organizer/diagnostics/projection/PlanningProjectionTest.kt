@@ -36,6 +36,34 @@ import org.junit.Test
 class PlanningProjectionTest {
 
     @Test
+    fun catalogExternalStrategyIsRedactedInsteadOfThrowing() {
+        // Spec 182 failure layering: a direct planner-seam caller with a
+        // catalog-external StrategyId receives V-20 Rejected.Invalid. The
+        // diagnostics projection must keep that typed rejection — the
+        // unapproved identifier is redacted to the empty value, never turned
+        // into an IllegalArgumentException by RunVersions' allowlist.
+        val result = PlanningResult(
+            revision = dummyRevision,
+            ruleVersion = dummyRuleVersion,
+            taxonomyVersion = dummyTaxonomyVersion,
+            organizationStrategy = StrategyId("REMOVED_STRATEGY_V1"),
+            outcome = Rejected.Invalid(
+                reasons = listOf(
+                    RejectionReason(RejectionCode.INVALID_RULES, emptyList()),
+                ),
+                warnings = emptyList(),
+            ),
+        )
+
+        val event = PlanningProjection.project(result, journalSequence = 7L)
+
+        assertEquals(PhaseCode.PLANNING_REJECTED, event.phase)
+        assertNotNull(event.versions)
+        assertEquals("", event.versions!!.strategyVersion)
+        assertEquals("INVALID_RULES", event.error?.code)
+    }
+
+    @Test
     fun projectionEchoesTheEffectiveStrategyIdentityInRunVersions() {
         // Spec 182 / AC-6: the journal carries the effective strategy identity
         // as an approved version identifier for every projected outcome.

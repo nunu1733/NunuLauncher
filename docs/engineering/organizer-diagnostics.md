@@ -72,7 +72,7 @@ RunEvent {
     applySummary:    ApplySummary?       // §6.2。APPLY_VERIFIED のみ
     recovery:        RecoveryContext?    // recovery 操作系event のみ（§4.3）
     reconciliation:  ReconciliationContext?  // RESTART_RECONCILED のみ（§11）
-    versions:        RunVersions?        // RUN_STARTED のみ
+    versions:        RunVersions?        // RUN_STARTED のみ。spec 182 では PLANNED / PLANNING_REJECTED / PLANNING_IMPOSSIBLE も可 (strategyVersion echo)
     deviceProfile:   DeviceProfileSummary?   // RUN_STARTED のみ
 }
 
@@ -126,9 +126,9 @@ apply protocol に対応する。terminal はrun の終了を意味する。
 | `INPUT_NOT_READY` | 入力合成が `NotReady` で終了（error 付き。code は§5 `INPUT_READINESS`）。`CAPTURED` 以前に終わるrun のterminal 記録（Issue #172） | ✓ |
 | `CAPTURED` | snapshot 取得完了 | |
 | `PREVIEWED` | preview をuser に表示 | |
-| `PLANNED` | plan 生成（planSummary 付き） | |
-| `PLANNING_REJECTED` | planner `Rejected.Invalid`（error 付き） | ✓ |
-| `PLANNING_IMPOSSIBLE` | planner `Rejected.Impossible`（planSummary 付き） | ✓ |
+| `PLANNED` | plan 生成（planSummary 付き）。versions に strategyVersion を echo 可（spec 182） | |
+| `PLANNING_REJECTED` | planner `Rejected.Invalid`（error 付き）。versions に strategyVersion を echo 可（catalog-external ID は空に redact、spec 182） | ✓ |
+| `PLANNING_IMPOSSIBLE` | planner `Rejected.Impossible`（planSummary 付き）。versions に strategyVersion を echo 可（catalog-external ID は空に redact、spec 182） | ✓ |
 | `USER_CONFIRMED` | 明示的confirm（spec 13 A0 直前） | |
 | `USER_CANCELLED` | preview/confirm でのcancel。書き込みなし | ✓ |
 | `CHECKPOINTED` | recovery record が`READY`（pointId 付き） | |

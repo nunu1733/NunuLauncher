@@ -79,6 +79,23 @@ class DeterministicOrganizationPlannerTest {
 
     private fun apps(n: Int, prefix: String = "app", startX: Int = 0, startY: Int = 0, columns: Int = 4): List<CapturedItem> = (0 until n).map { app("$prefix$it", x = startX + it % columns, y = startY + it / columns) }
 
+    @Test
+    fun catalogExternalStrategyIsRejectedInvalidThroughTheSeam() {
+        // Spec 182 failure layering: a direct planner-seam caller with a
+        // catalog-external StrategyId receives a typed V-20 Rejected.Invalid —
+        // never a fallback strategy and never a thrown exception.
+        val input = fullInput(
+            items = listOf(app("a")),
+            rules = defaultRules().copy(organizationStrategy = StrategyId("REMOVED_STRATEGY_V1")),
+        )
+
+        val result = planner.plan(input)
+
+        val outcome = result.outcome as Rejected.Invalid
+        assertTrue(outcome.reasons.any { it.code == RejectionCode.INVALID_RULES })
+        assertEquals(StrategyId("REMOVED_STRATEGY_V1"), result.organizationStrategy)
+    }
+
     private fun fullInput(
         items: List<CapturedItem>,
         device: DeviceCapabilities = defaultDevice(),
