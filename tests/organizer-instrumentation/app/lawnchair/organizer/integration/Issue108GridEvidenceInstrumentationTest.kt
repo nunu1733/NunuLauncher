@@ -10,6 +10,7 @@ import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
 import app.lawnchair.organizer.application.protocol.CaptureId
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
+import app.lawnchair.organizer.ui.GeneratedFolderTitles
 import app.lawnchair.organizer.application.public.ApplyAction
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.PreWriteRejection
@@ -73,7 +74,7 @@ class Issue108GridEvidenceInstrumentationTest {
         val original = currentDimensions()
         val alternate = requestedAlternate(context, original)
         val writer = LauncherLayoutAdapter(context, launcher.model.modelDbController, launcher.model)
-        val module = LayoutApplicationModule.production(context, launcher)
+        val module = LayoutApplicationModule.production(context, GeneratedFolderTitles.resolver(context), launcher)
         val reconciliation = module.reconcileAtStart()
         check(reconciliation == app.lawnchair.organizer.application.protocol.RestartReconciler.ReconciliationSummary.Clean) {
             "production module must be reconciled before stale-grid evidence: $reconciliation"

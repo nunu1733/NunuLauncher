@@ -145,7 +145,7 @@ class PlanPreviewCountsCorpusContractTest {
             previewedFixtures++
             try {
                 val sourceState = canonicalStateOf(input)
-                val materialized = OrganizationPlanMaterializer.materialize(input, result, sourceState)
+                val materialized = OrganizationPlanMaterializer.materialize(input, result, sourceState, app.lawnchair.organizer.application.adapter.RecordingFolderTitleResolver())
                 val plan = (materialized as? OrganizationPlanMaterializer.Result.Ready)?.plan
                     ?: error("materializer rejected a planner-produced plan")
                 val projection = PlanPreviewProjector.project(plan, planned)

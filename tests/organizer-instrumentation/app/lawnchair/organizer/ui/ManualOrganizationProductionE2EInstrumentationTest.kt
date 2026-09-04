@@ -14,6 +14,7 @@ import app.lawnchair.LawnchairLauncher
 import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
 import app.lawnchair.organizer.application.adapter.RowManifestCodec
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
+import app.lawnchair.organizer.ui.GeneratedFolderTitles
 import app.lawnchair.organizer.application.public.ApplicationPageRef
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.PlacementState
@@ -164,7 +165,7 @@ class ManualOrganizationProductionE2EInstrumentationTest {
         assertEquals(2, before.layoutState.items.size)
         val qsbReservation = before.layoutState.reservedWorkspaceRegions.single()
 
-        val module = LayoutApplicationModule.production(context, launcher)
+        val module = LayoutApplicationModule.production(context, GeneratedFolderTitles.resolver(context), launcher)
         assertEquals(
             app.lawnchair.organizer.application.protocol.RestartReconciler.ReconciliationSummary.Clean,
             module.reconcileAtStart(),
@@ -249,7 +250,7 @@ class ManualOrganizationProductionE2EInstrumentationTest {
         val adapter = LauncherLayoutAdapter(context, launcher.model.modelDbController, launcher.model)
         val source = adapter.captureCurrent(app.lawnchair.organizer.application.protocol.CaptureId("issue155-red-source"))
         val reservation = source.layoutState.reservedWorkspaceRegions.single()
-        val module = LayoutApplicationModule.production(context, launcher)
+        val module = LayoutApplicationModule.production(context, GeneratedFolderTitles.resolver(context), launcher)
         assertEquals(
             app.lawnchair.organizer.application.protocol.RestartReconciler.ReconciliationSummary.Clean,
             module.reconcileAtStart(),
@@ -316,7 +317,7 @@ class ManualOrganizationProductionE2EInstrumentationTest {
         assertTrue(capture.layoutState.items.isEmpty())
         assertTrue(capture.layoutState.reservedWorkspaceRegions.isEmpty())
 
-        val module = LayoutApplicationModule.production(context, launcher)
+        val module = LayoutApplicationModule.production(context, GeneratedFolderTitles.resolver(context), launcher)
         assertEquals(
             app.lawnchair.organizer.application.protocol.RestartReconciler.ReconciliationSummary.Clean,
             module.reconcileAtStart(),
@@ -329,7 +330,7 @@ class ManualOrganizationProductionE2EInstrumentationTest {
 
     @Test
     fun manualActionWaitsForStartupReconciliationBeforeAcceptingCapture() {
-        val module = LayoutApplicationModule.production(context, launcher)
+        val module = LayoutApplicationModule.production(context, GeneratedFolderTitles.resolver(context), launcher)
         val run = ManualOrganizationRun(ProductionManualOrganizationApplication(context, module))
 
         run.start()
@@ -349,7 +350,7 @@ class ManualOrganizationProductionE2EInstrumentationTest {
 
     @Test
     fun staleProductionConfirmationDoesNotWrite() {
-        val module = LayoutApplicationModule.production(context, launcher)
+        val module = LayoutApplicationModule.production(context, GeneratedFolderTitles.resolver(context), launcher)
         assertEquals(
             app.lawnchair.organizer.application.protocol.RestartReconciler.ReconciliationSummary.Clean,
             module.reconcileAtStart(),

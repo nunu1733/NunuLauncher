@@ -150,7 +150,10 @@ object OrganizationPreviewContent {
 
         is PreviewPosition.InFolder -> when (val folder = position.folder) {
             is PreviewFolderRef.Existing -> format(wording.folderPositionExisting, labelText(folder.label, wording))
-            is PreviewFolderRef.Planned -> format(wording.folderPositionPlanned, folder.ordinal.value + 1)
+
+            // Issue #201: planned-folder destinations show the resolved name,
+            // never the planner ordinal.
+            is PreviewFolderRef.Planned -> format(wording.folderPositionPlanned, labelText(folder.name, wording))
         }
 
         is PreviewPosition.InAppPair -> format(wording.appPairPosition, labelText(position.pair, wording))
@@ -161,12 +164,17 @@ object OrganizationPreviewContent {
         is PreviewLabel.KindFallback -> kindText(label.kind, wording)
     }
 
-    private fun newFolderRowText(change: NewFolderChange, wording: OrganizationPreviewWording): String = format(
-        wording.newFolderRow,
-        change.ordinal.value + 1,
-        positionText(change.placement, wording),
-        change.memberLabels.joinToString(SEPARATOR) { labelText(it, wording) },
-    )
+    private fun newFolderRowText(change: NewFolderChange, wording: OrganizationPreviewWording): String {
+        // Issue #201: the row leads with the resolved folder name instead of the
+        // planner ordinal — an internal identifier has no place in user copy.
+        val name = labelText(change.name, wording)
+        return format(
+            wording.newFolderRow,
+            name,
+            positionText(change.placement, wording),
+            change.memberLabels.joinToString(SEPARATOR) { labelText(it, wording) },
+        )
+    }
 
     private fun newPageRowText(change: NewPageChange, wording: OrganizationPreviewWording): String = format(
         wording.newPageRow,

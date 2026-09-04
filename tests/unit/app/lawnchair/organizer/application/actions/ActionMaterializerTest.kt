@@ -44,6 +44,7 @@ class ActionMaterializerTest {
                 NewFolder(
                     ordinal = NewFolderOrdinal(0),
                     profile = app.lawnchair.organizer.planning.ProfileId("personal"),
+                    naming = app.lawnchair.organizer.planning.FolderNaming.FromCategory(app.lawnchair.organizer.planning.CategoryId("COMMUNICATION")),
                     workspacePlacement = PlacementTarget.WorkspaceTarget(
                         page = app.lawnchair.organizer.planning.NewPageRef(NewPageOrdinal(0)),
                         cell = GridCell(1, 0),
@@ -122,6 +123,7 @@ class ActionMaterializerTest {
                 NewFolder(
                     ordinal = NewFolderOrdinal(0),
                     profile = app.lawnchair.organizer.planning.ProfileId("personal"),
+                    naming = app.lawnchair.organizer.planning.FolderNaming.FromCategory(app.lawnchair.organizer.planning.CategoryId("COMMUNICATION")),
                     workspacePlacement = PlacementTarget.WorkspaceTarget(
                         page = app.lawnchair.organizer.planning.NewPageRef(NewPageOrdinal(0)),
                         cell = GridCell(0, 0),
@@ -159,6 +161,7 @@ class ActionMaterializerTest {
     private fun folder(ordinal: NewFolderOrdinal): NewFolder = NewFolder(
         ordinal = ordinal,
         profile = app.lawnchair.organizer.planning.ProfileId("personal"),
+        naming = app.lawnchair.organizer.planning.FolderNaming.FromCategory(app.lawnchair.organizer.planning.CategoryId("COMMUNICATION")),
         workspacePlacement = PlacementTarget.WorkspaceTarget(
             page = app.lawnchair.organizer.planning.NewPageRef(NewPageOrdinal(0)),
             cell = GridCell(0, 0),

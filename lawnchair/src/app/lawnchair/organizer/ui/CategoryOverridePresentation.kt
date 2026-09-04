@@ -56,5 +56,13 @@ internal object CategoryOverrideCategoryPresentations {
     fun forCategory(category: CategoryId): CategoryOverrideCategoryPresentation = checkNotNull(byId[category.value]) { "No localized presentation mapping for bundle category" }
         .let { CategoryOverrideCategoryPresentation(it, descriptions) }
 
+    /**
+     * Issue #201: total lookup for the generated-folder title resolver. Unlike
+     * [forCategory], an unknown category returns `null` instead of throwing —
+     * the resolver maps `null` to the generic fallback title and must never
+     * depend on exception handling or leak a raw category ID.
+     */
+    fun findForCategory(category: CategoryId): CategoryOverrideCategoryPresentation? = byId[category.value]?.let { CategoryOverrideCategoryPresentation(it, descriptions) }
+
     internal fun mappedIdsForTest(): Set<String> = byId.keys
 }
