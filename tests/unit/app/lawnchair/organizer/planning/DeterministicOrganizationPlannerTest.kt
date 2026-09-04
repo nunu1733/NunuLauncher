@@ -24,12 +24,12 @@ class DeterministicOrganizationPlannerTest {
     ) = DeviceCapabilities(columns, rows, hotseatSlots, folderMaxColumns, folderMaxRows, orientation)
 
     private fun defaultRules(minGroupSize: Int = 2) = RuleSemantics(
-        version = RuleVersion("v1"),
+        version = RuleVersion("v2"),
         folderPolicy = FolderPolicy(minGroupSize, NewFolderProfileScope.SAME_PROFILE_ONLY),
         dockPolicy = DockPolicy.PRESERVE,
         overflowPolicy = OverflowPolicy.ADD_PAGES_FOR_ITEMS_THAT_FIT_EMPTY_PAGE,
         fallbackCategoryPolicy = FallbackCategoryPolicy.KEEP_AS_SINGLETON,
-        orderingPolicy = OrderingPolicy.CANONICAL_V1,
+        organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
     )
 
     private fun defaultTaxonomy(

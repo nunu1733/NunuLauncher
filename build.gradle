@@ -89,7 +89,7 @@ allprojects {
     // Keep generated planner runs reproducible when Gradle reuses test outputs.
     // Issue #46 treats these test-only properties as part of the Test task input.
     tasks.withType(Test).matching { it.name == "testLawnWithQuickstepGithubDebugUnitTest" }.configureEach {
-        ["planner.seed", "planner.case", "planner.count"].each { propertyName ->
+        ["planner.seed", "planner.case", "planner.count", "golden.write"].each { propertyName ->
             def propertyValue = providers.systemProperty(propertyName)
             inputs.property(propertyName, propertyValue.orElse(""))
             if (propertyValue.isPresent()) {

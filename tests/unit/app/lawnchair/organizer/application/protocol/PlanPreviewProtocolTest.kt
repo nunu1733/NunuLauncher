@@ -24,7 +24,6 @@ import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.ItemKind
 import app.lawnchair.organizer.planning.LayoutSnapshot
 import app.lawnchair.organizer.planning.NewFolderProfileScope
-import app.lawnchair.organizer.planning.OrderingPolicy
 import app.lawnchair.organizer.planning.OrganizationInput
 import app.lawnchair.organizer.planning.Orientation
 import app.lawnchair.organizer.planning.OverflowPolicy
@@ -43,6 +42,7 @@ import app.lawnchair.organizer.planning.RevisionId
 import app.lawnchair.organizer.planning.RuleSemantics
 import app.lawnchair.organizer.planning.RuleVersion
 import app.lawnchair.organizer.planning.RunMode
+import app.lawnchair.organizer.planning.StrategyId
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.TargetSet
 import app.lawnchair.organizer.planning.TaxonomyContract
@@ -239,12 +239,12 @@ class PlanPreviewProtocolTest {
         val input = OrganizationInput(
             snapshot = snapshot,
             rules = RuleSemantics(
-                RuleVersion("v1"),
+                RuleVersion("v2"),
                 FolderPolicy(2, NewFolderProfileScope.SAME_PROFILE_ONLY),
                 DockPolicy.PRESERVE,
                 OverflowPolicy.ADD_PAGES_FOR_ITEMS_THAT_FIT_EMPTY_PAGE,
                 FallbackCategoryPolicy.KEEP_AS_SINGLETON,
-                OrderingPolicy.CANONICAL_V1,
+                StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             ),
             taxonomy = TaxonomyContract(
                 TaxonomyVersion("v1"),
@@ -260,8 +260,9 @@ class PlanPreviewProtocolTest {
         )
         val result = PlanningResult(
             revision = revision,
-            ruleVersion = RuleVersion("v1"),
+            ruleVersion = RuleVersion("v2"),
             taxonomyVersion = TaxonomyVersion("v1"),
+            organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             outcome = Planned(
                 placements = listOf(
                     PlannedPlacement(

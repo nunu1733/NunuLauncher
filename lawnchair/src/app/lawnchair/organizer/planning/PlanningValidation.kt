@@ -49,7 +49,13 @@ internal object PlanningValidation {
 
     private fun checkInvalidRules(input: OrganizationInput): List<RejectionReason> {
         val reasons = mutableListOf<RejectionReason>()
-        if (input.rules.version != RuleVersion("v1")) {
+        if (input.rules.version != RuleVersion("v2")) {
+            reasons += RejectionReason(RejectionCode.INVALID_RULES, emptyList())
+        }
+        // Spec 182 defense-in-depth layer: production composition fails earlier
+        // with NotReady; the planner itself also rejects a catalog-external
+        // strategy so no direct-seam caller can plan an unknown strategy.
+        if (input.rules.organizationStrategy !in LayoutStrategyRegistry.acceptedIds) {
             reasons += RejectionReason(RejectionCode.INVALID_RULES, emptyList())
         }
         if (input.rules.folderPolicy.minGroupSize < 2) {

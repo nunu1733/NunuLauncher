@@ -101,7 +101,7 @@ class ApplyProtocolTest {
             actions = listOf(preserveAction),
             newPages = emptyList(),
             newFolders = emptyList(),
-            ruleVersion = RuleVersion("v1"),
+            ruleVersion = RuleVersion("v2"),
             taxonomyVersion = TaxonomyVersion("tv1"),
         )
         val result = protocol.apply(plan)
@@ -361,7 +361,7 @@ class ApplyProtocolTest {
             actions = listOf(ApplyAction.Update(ref = appItem.ref, expected = appItem, intended = movedApp)),
             newPages = emptyList(),
             newFolders = emptyList(),
-            ruleVersion = RuleVersion("v1"),
+            ruleVersion = RuleVersion("v2"),
             taxonomyVersion = TaxonomyVersion("tv1"),
         )
         writer.setCurrentState(sourceState)
@@ -801,7 +801,7 @@ class ApplyProtocolTest {
             actions = listOf(action),
             newPages = emptyList(),
             newFolders = emptyList(),
-            ruleVersion = RuleVersion("v1"),
+            ruleVersion = RuleVersion("v2"),
             taxonomyVersion = TaxonomyVersion("tv1"),
         )
     }
@@ -822,7 +822,7 @@ class ApplyProtocolTest {
             actions = listOf(action),
             newPages = emptyList(),
             newFolders = emptyList(),
-            ruleVersion = RuleVersion("v1"),
+            ruleVersion = RuleVersion("v2"),
             taxonomyVersion = TaxonomyVersion("tv1"),
         )
     }

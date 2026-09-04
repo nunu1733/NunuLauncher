@@ -4,6 +4,7 @@ data class PlanningResult(
     val revision: RevisionId,
     val ruleVersion: RuleVersion,
     val taxonomyVersion: TaxonomyVersion,
+    val organizationStrategy: StrategyId,
     val outcome: PlanningOutcome,
 )
 
@@ -62,6 +63,13 @@ enum class PreserveReason {
     APP_PAIR,
     LEGACY_SHORTCUT,
     NON_TARGET,
+
+    /**
+     * Spec 182: the selected layout strategy intentionally keeps this
+     * otherwise-movable item fixed (e.g. a non-1x1 movable unit under a
+     * page-local tidy strategy). Never reported as ALREADY_CANONICAL.
+     */
+    STRATEGY_PRESERVED,
     STRUCTURAL,
     ALREADY_CANONICAL,
 }

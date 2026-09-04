@@ -47,6 +47,7 @@ interface OrganizationPreviewWording {
     val preservedReasonAppPair: String
     val preservedReasonLegacyShortcut: String
     val preservedReasonNonTarget: String
+    val preservedReasonStrategyPreserved: String
     val preservedReasonStructural: String
     val preservedReasonAlreadyCanonical: String
     val warningLegacyShortcutReview: String
@@ -224,6 +225,7 @@ object OrganizationPreviewContent {
         PreserveReason.APP_PAIR -> wording.preservedReasonAppPair
         PreserveReason.LEGACY_SHORTCUT -> wording.preservedReasonLegacyShortcut
         PreserveReason.NON_TARGET -> wording.preservedReasonNonTarget
+        PreserveReason.STRATEGY_PRESERVED -> wording.preservedReasonStrategyPreserved
         PreserveReason.STRUCTURAL -> wording.preservedReasonStructural
         PreserveReason.ALREADY_CANONICAL -> wording.preservedReasonAlreadyCanonical
     }

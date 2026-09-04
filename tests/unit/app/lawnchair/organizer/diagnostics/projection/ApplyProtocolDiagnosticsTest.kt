@@ -96,7 +96,7 @@ class ApplyProtocolDiagnosticsTest {
             actions = listOf(updateAction),
             newPages = emptyList(),
             newFolders = emptyList(),
-            ruleVersion = RuleVersion("v1"),
+            ruleVersion = RuleVersion("v2"),
             taxonomyVersion = TaxonomyVersion("tv1"),
         )
     }

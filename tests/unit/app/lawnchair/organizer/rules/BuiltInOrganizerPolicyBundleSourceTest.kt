@@ -1,6 +1,7 @@
 package app.lawnchair.organizer.rules
 
 import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.StrategyId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -8,13 +9,13 @@ import org.junit.Test
 
 class BuiltInOrganizerPolicyBundleSourceTest {
     @Test
-    fun activeBundleIsAcceptedV1AuthorityWithExplicitEmptyS3AndS4() {
+    fun activeBundleIsAcceptedV2AuthorityWithExplicitEmptyS3AndS4() {
         val result = BuiltInOrganizerPolicyBundleSource.readActive()
         assertTrue(result is BundleReadResult.Ready)
         val bundle = (result as BundleReadResult.Ready).bundle
 
-        assertEquals("organization-policy-v1", bundle.identity.semanticVersion)
-        assertEquals("v1", bundle.rules.version.value)
+        assertEquals("organization-policy-v2", bundle.identity.semanticVersion)
+        assertEquals("v2", bundle.rules.version.value)
         assertEquals("v1", bundle.taxonomy.version.value)
         assertEquals(34, bundle.taxonomy.allowedCategories.size)
         assertEquals("OTHER", bundle.taxonomy.fallbackCategory.value)
@@ -22,6 +23,47 @@ class BuiltInOrganizerPolicyBundleSourceTest {
         assertTrue(bundle.classification.intentRules.isEmpty())
         assertEquals(bundle.identity.sha256, bundle.canonicalDigest())
         assertEquals(null, bundle.validate())
+    }
+
+    @Test
+    fun runtimeSupportedCatalogDeclaresOnlyImplementedStrategiesWithTheDefault() {
+        val bundle = activeBundle()
+
+        // Spec 182 / AC-9b: runtimeSupported ⊆ implemented internal strategy IDs,
+        // default ∈ runtimeSupported, and exact equality with the runtime-enabled
+        // implementations. Child 2 implements only the canonical baseline.
+        val implemented = setOf(StrategyId("CANONICAL_PAGE_COMPACT_V1"))
+        val catalog = bundle.layoutStrategies
+        assertTrue(catalog.runtimeSupported.all { it in implemented })
+        assertEquals(implemented, catalog.runtimeSupported.toSet())
+        assertTrue(catalog.default in catalog.runtimeSupported)
+        assertEquals(catalog.default, bundle.rules.organizationStrategy)
+    }
+
+    @Test
+    fun catalogIsPartOfTheBundleDigestButNotMutatedByItself() {
+        val bundle = activeBundle()
+        val expanded = bundle.copy(
+            layoutStrategies = bundle.layoutStrategies.copy(
+                runtimeSupported = bundle.layoutStrategies.runtimeSupported + StrategyId("FUTURE_STRATEGY_V1"),
+            ),
+        )
+
+        // Enabling a strategy is bundle content: the digest changes (new bundle
+        // identity per ADR-0007 §8), and the altered copy fails digest validation.
+        assertNotEquals(bundle.canonicalDigest(), expanded.canonicalDigest())
+        assertEquals(BundleReadResult.Corrupt, expanded.validate())
+    }
+
+    @Test
+    fun composedRulesStrategyMustMatchTheDeclaredDefault() {
+        val bundle = activeBundle()
+        val altered = bundle.copy(
+            rules = bundle.rules.copy(organizationStrategy = StrategyId("OTHER_STRATEGY_V1")),
+        )
+
+        assertNotEquals(bundle.canonicalDigest(), altered.canonicalDigest())
+        assertEquals(BundleReadResult.Corrupt, altered.validate())
     }
 
     @Test

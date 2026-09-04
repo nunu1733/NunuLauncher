@@ -637,6 +637,7 @@ class ManualOrganizationRun internal constructor(
         revision = input.snapshot.revision,
         ruleVersion = input.rules.version,
         taxonomyVersion = input.taxonomy.version,
+        organizationStrategy = input.rules.organizationStrategy,
         outcome = this,
     ).summary(input)
 

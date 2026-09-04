@@ -30,7 +30,6 @@ import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.ItemKind
 import app.lawnchair.organizer.planning.LayoutSnapshot
 import app.lawnchair.organizer.planning.NewFolderProfileScope
-import app.lawnchair.organizer.planning.OrderingPolicy
 import app.lawnchair.organizer.planning.OrganizationInput
 import app.lawnchair.organizer.planning.Orientation
 import app.lawnchair.organizer.planning.OverflowPolicy
@@ -49,6 +48,7 @@ import app.lawnchair.organizer.planning.ShortcutId
 import app.lawnchair.organizer.planning.SignalSource
 import app.lawnchair.organizer.planning.SnapPositionToken
 import app.lawnchair.organizer.planning.SplitStage
+import app.lawnchair.organizer.planning.StrategyId
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.TargetSet
 import app.lawnchair.organizer.planning.TaxonomyContract
@@ -247,12 +247,12 @@ internal object SyntheticFixtureGenerator {
                 items,
             ),
             rules = RuleSemantics(
-                RuleVersion("v1"),
+                RuleVersion("v2"),
                 FolderPolicy(2, NewFolderProfileScope.SAME_PROFILE_ONLY),
                 DockPolicy.PRESERVE,
                 OverflowPolicy.ADD_PAGES_FOR_ITEMS_THAT_FIT_EMPTY_PAGE,
                 FallbackCategoryPolicy.KEEP_AS_SINGLETON,
-                OrderingPolicy.CANONICAL_V1,
+                StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             ),
             taxonomy = TaxonomyContract(TaxonomyVersion("fixture.taxonomy.$index"), categories, categories.first()),
             signals = ClassificationSignals(signals),

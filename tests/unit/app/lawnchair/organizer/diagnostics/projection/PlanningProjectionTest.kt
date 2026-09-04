@@ -19,6 +19,7 @@ import app.lawnchair.organizer.planning.RejectionReason
 import app.lawnchair.organizer.planning.RevisionId
 import app.lawnchair.organizer.planning.RuleVersion
 import app.lawnchair.organizer.planning.SignalSource
+import app.lawnchair.organizer.planning.StrategyId
 import app.lawnchair.organizer.planning.TaxonomyVersion
 import app.lawnchair.organizer.planning.UnplacedItem
 import app.lawnchair.organizer.planning.UnplacedReason
@@ -49,6 +50,7 @@ class PlanningProjectionTest {
             revision = dummyRevision,
             ruleVersion = dummyRuleVersion,
             taxonomyVersion = dummyTaxonomyVersion,
+            organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             outcome = Planned(
                 placements = placements,
                 newPages = emptyList(),
@@ -73,6 +75,7 @@ class PlanningProjectionTest {
             revision = dummyRevision,
             ruleVersion = dummyRuleVersion,
             taxonomyVersion = dummyTaxonomyVersion,
+            organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             outcome = Rejected.Invalid(
                 reasons = listOf(
                     RejectionReason(RejectionCode.BOUNDS_VIOLATION, emptyList()),
@@ -93,6 +96,7 @@ class PlanningProjectionTest {
             revision = dummyRevision,
             ruleVersion = dummyRuleVersion,
             taxonomyVersion = dummyTaxonomyVersion,
+            organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             outcome = Rejected.Invalid(
                 reasons = listOf(
                     RejectionReason(RejectionCode.BOUNDS_VIOLATION, emptyList()),
@@ -118,6 +122,7 @@ class PlanningProjectionTest {
             revision = dummyRevision,
             ruleVersion = dummyRuleVersion,
             taxonomyVersion = dummyTaxonomyVersion,
+            organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             outcome = Rejected.Impossible(
                 unplaced = listOf(
                     UnplacedItem(ItemId("item1"), GridSpan(1, 1), UnplacedReason.EXCEEDS_GRID_DIMENSIONS),
@@ -141,6 +146,7 @@ class PlanningProjectionTest {
             revision = dummyRevision,
             ruleVersion = dummyRuleVersion,
             taxonomyVersion = dummyTaxonomyVersion,
+            organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             outcome = Rejected.Impossible(
                 unplaced = listOf(
                     UnplacedItem(ItemId("item1"), GridSpan(1, 1), UnplacedReason.EXCEEDS_GRID_DIMENSIONS),
@@ -164,6 +170,7 @@ class PlanningProjectionTest {
             revision = dummyRevision,
             ruleVersion = dummyRuleVersion,
             taxonomyVersion = dummyTaxonomyVersion,
+            organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             outcome = Planned(
                 placements = placements,
                 newPages = emptyList(),

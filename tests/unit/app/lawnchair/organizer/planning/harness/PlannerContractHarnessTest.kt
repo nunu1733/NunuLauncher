@@ -39,7 +39,6 @@ import app.lawnchair.organizer.planning.NewFolderRef
 import app.lawnchair.organizer.planning.NewPage
 import app.lawnchair.organizer.planning.NewPageOrdinal
 import app.lawnchair.organizer.planning.NewPageRef
-import app.lawnchair.organizer.planning.OrderingPolicy
 import app.lawnchair.organizer.planning.OrganizationInput
 import app.lawnchair.organizer.planning.OrganizationPlanner
 import app.lawnchair.organizer.planning.Orientation
@@ -67,6 +66,7 @@ import app.lawnchair.organizer.planning.ShortcutId
 import app.lawnchair.organizer.planning.SignalSource
 import app.lawnchair.organizer.planning.SnapPositionToken
 import app.lawnchair.organizer.planning.SplitStage
+import app.lawnchair.organizer.planning.StrategyId
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.TargetSet
 import app.lawnchair.organizer.planning.TaxonomyContract
@@ -113,12 +113,12 @@ private val defaultDevice = DeviceCapabilities(
 )
 
 private val defaultRules = RuleSemantics(
-    version = RuleVersion("v1"),
+    version = RuleVersion("v2"),
     folderPolicy = FolderPolicy(minGroupSize = 2, newFolderProfileScope = NewFolderProfileScope.SAME_PROFILE_ONLY),
     dockPolicy = DockPolicy.PRESERVE,
     overflowPolicy = OverflowPolicy.ADD_PAGES_FOR_ITEMS_THAT_FIT_EMPTY_PAGE,
     fallbackCategoryPolicy = FallbackCategoryPolicy.KEEP_AS_SINGLETON,
-    orderingPolicy = OrderingPolicy.CANONICAL_V1,
+    organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
 )
 
 private val defaultTaxonomy = TaxonomyContract(
@@ -167,8 +167,9 @@ private fun plannedResult(
     warnings: List<Warning> = emptyList(),
 ): PlanningResult = PlanningResult(
     revision = RevisionId("test-rev"),
-    ruleVersion = RuleVersion("v1"),
+    ruleVersion = RuleVersion("v2"),
     taxonomyVersion = TaxonomyVersion("tv1"),
+    organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
     outcome = Planned(
         placements = placements,
         newPages = newPages,
@@ -183,8 +184,9 @@ private fun invalidResult(
     warnings: List<Warning> = emptyList(),
 ): PlanningResult = PlanningResult(
     revision = RevisionId("test-rev"),
-    ruleVersion = RuleVersion("v1"),
+    ruleVersion = RuleVersion("v2"),
     taxonomyVersion = TaxonomyVersion("tv1"),
+    organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
     outcome = Rejected.Invalid(reasons = reasons, warnings = warnings),
 )
 
@@ -193,8 +195,9 @@ private fun impossibleResult(
     warnings: List<Warning> = emptyList(),
 ): PlanningResult = PlanningResult(
     revision = RevisionId("test-rev"),
-    ruleVersion = RuleVersion("v1"),
+    ruleVersion = RuleVersion("v2"),
     taxonomyVersion = TaxonomyVersion("tv1"),
+    organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
     outcome = Rejected.Impossible(unplaced = unplaced, warnings = warnings),
 )
 
