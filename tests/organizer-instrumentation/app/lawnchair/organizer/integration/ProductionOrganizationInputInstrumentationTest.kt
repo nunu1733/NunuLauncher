@@ -295,6 +295,7 @@ class ProductionOrganizationInputInstrumentationTest {
                 bundleSource = object : app.lawnchair.organizer.rules.OrganizerPolicyBundleSource {
                     override fun readActive() = BuiltInOrganizerPolicyBundleSource.readActive()
                 },
+                layoutStrategySelections = EmptyLayoutStrategySelectionSource(),
                 overrides = EmptyOverrideSnapshotSource(),
                 platformEvidence = EmptyEvidenceSource(),
                 overlapTolerance = WorkspaceOverlapToleranceSource { true },
@@ -391,6 +392,7 @@ class ProductionOrganizationInputInstrumentationTest {
                 bundleSource = object : app.lawnchair.organizer.rules.OrganizerPolicyBundleSource {
                     override fun readActive() = BuiltInOrganizerPolicyBundleSource.readActive()
                 },
+                layoutStrategySelections = EmptyLayoutStrategySelectionSource(),
                 overrides = EmptyOverrideSnapshotSource(),
                 platformEvidence = EmptyEvidenceSource(),
                 overlapTolerance = WorkspaceOverlapToleranceSource { true },
@@ -404,6 +406,7 @@ class ProductionOrganizationInputInstrumentationTest {
                 bundleSource = object : app.lawnchair.organizer.rules.OrganizerPolicyBundleSource {
                     override fun readActive() = BuiltInOrganizerPolicyBundleSource.readActive()
                 },
+                layoutStrategySelections = EmptyLayoutStrategySelectionSource(),
                 overrides = EmptyOverrideSnapshotSource(),
                 platformEvidence = EmptyEvidenceSource(),
                 overlapTolerance = WorkspaceOverlapToleranceSource { false },
@@ -535,6 +538,7 @@ class ProductionOrganizationInputInstrumentationTest {
                 bundleSource = object : app.lawnchair.organizer.rules.OrganizerPolicyBundleSource {
                     override fun readActive() = BuiltInOrganizerPolicyBundleSource.readActive()
                 },
+                layoutStrategySelections = EmptyLayoutStrategySelectionSource(),
                 overrides = EmptyOverrideSnapshotSource(),
                 platformEvidence = EmptyEvidenceSource(),
                 overlapTolerance = WorkspaceOverlapToleranceSource { true },
@@ -619,7 +623,8 @@ class ProductionOrganizationInputInstrumentationTest {
                     bundleSource = object : app.lawnchair.organizer.rules.OrganizerPolicyBundleSource {
                         override fun readActive() = BuiltInOrganizerPolicyBundleSource.readActive()
                     },
-                    overrides = EmptyOverrideSnapshotSource(),
+                    layoutStrategySelections = EmptyLayoutStrategySelectionSource(),
+                overrides = EmptyOverrideSnapshotSource(),
                     platformEvidence = EmptyEvidenceSource(),
                     overlapTolerance = WorkspaceOverlapToleranceSource { true },
                 ).composeFullOrganization()
@@ -680,7 +685,8 @@ class ProductionOrganizationInputInstrumentationTest {
                     bundleSource = object : app.lawnchair.organizer.rules.OrganizerPolicyBundleSource {
                         override fun readActive() = BuiltInOrganizerPolicyBundleSource.readActive()
                     },
-                    overrides = EmptyOverrideSnapshotSource(),
+                    layoutStrategySelections = EmptyLayoutStrategySelectionSource(),
+                overrides = EmptyOverrideSnapshotSource(),
                     platformEvidence = EmptyEvidenceSource(),
                     overlapTolerance = WorkspaceOverlapToleranceSource { true },
                 ).composeFullOrganization()
@@ -1220,7 +1226,22 @@ class ProductionOrganizationInputInstrumentationTest {
         }
     }
 
-    private class EmptyOverrideSnapshotSource : CategoryOverrideSnapshotSource {
+    private class EmptyLayoutStrategySelectionSource : app.lawnchair.organizer.rules.LayoutStrategySelectionSource {
+    override fun read() = app.lawnchair.organizer.rules.LayoutStrategySelectionReadResult.Ready(
+        app.lawnchair.organizer.rules.LayoutStrategySelectionSnapshot(
+            schemaVersion = 1,
+            generation = 0L,
+            selection = null,
+            identity = app.lawnchair.organizer.rules.PolicyInputIdentity(
+                app.lawnchair.organizer.rules.PolicySourceKind.LAYOUT_STRATEGY_SELECTION,
+                "schema-1-generation-0",
+                "c".repeat(64),
+            ),
+        ),
+    )
+}
+
+private class EmptyOverrideSnapshotSource : CategoryOverrideSnapshotSource {
         override fun read(capturedProfiles: Set<ProfileId>): OverrideSnapshotReadResult = OverrideSnapshotReadResult.Ready(
             CategoryOverrideSnapshot(
                 schemaVersion = 1,
