@@ -1,6 +1,7 @@
 package app.lawnchair.organizer.rules
 
 import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.LayoutStrategyRegistry
 import app.lawnchair.organizer.planning.StrategyId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -29,10 +30,12 @@ class BuiltInOrganizerPolicyBundleSourceTest {
     fun runtimeSupportedCatalogDeclaresOnlyImplementedStrategiesWithTheDefault() {
         val bundle = activeBundle()
 
-        // Spec 182 / AC-9b: runtimeSupported ⊆ implemented internal strategy IDs,
-        // default ∈ runtimeSupported, and exact equality with the runtime-enabled
-        // implementations. Child 2 implements only the canonical baseline.
-        val implemented = setOf(StrategyId("CANONICAL_PAGE_COMPACT_V1"))
+        // Spec 182 / AC-9b: the bundle catalog must equal the registry's
+        // runtime-enabled executable strategies exactly — no bundle-supported
+        // strategy may exist without a planner implementation, and no
+        // implemented strategy may hide from selection.
+        val implemented = LayoutStrategyRegistry.acceptedIds
+        assertTrue(implemented.isNotEmpty())
         val catalog = bundle.layoutStrategies
         assertTrue(catalog.runtimeSupported.all { it in implemented })
         assertEquals(implemented, catalog.runtimeSupported.toSet())

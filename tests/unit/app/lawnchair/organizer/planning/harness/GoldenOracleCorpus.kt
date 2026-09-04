@@ -1,7 +1,13 @@
 package app.lawnchair.organizer.planning.harness
 
 import app.lawnchair.organizer.planning.DeterministicOrganizationPlanner
+import app.lawnchair.organizer.planning.DiagnosticParam
+import app.lawnchair.organizer.planning.Disposition
+import app.lawnchair.organizer.planning.FolderNaming
+import app.lawnchair.organizer.planning.PlacementTarget
+import app.lawnchair.organizer.planning.Planned
 import app.lawnchair.organizer.planning.PlanningResult
+import app.lawnchair.organizer.planning.Rejected
 import java.security.MessageDigest
 
 /**
@@ -9,23 +15,24 @@ import java.security.MessageDigest
  *
  * The golden file is pinned from the accepted pre-#182 baseline commit
  * (`5fdab48082`, recorded in spec 182). On that baseline, run
- * `GoldenOracleCorpusTest.generate` (system property `golden.write=baseline`)
- * to emit `planner-golden-corpus/sha256.txt`; the committed digest then gates
- * both the selection child (registry/adapter dispatch) and the extraction
- * child. The strategy echo is excluded from the digest — it is metadata, not
- * layout observation.
+ * `GoldenOracleCorpusTest` with `-Dgolden.write=true` to emit
+ * `planner-golden-corpus/sha256.txt`; the committed digest then gates both the
+ * selection child (registry/adapter dispatch) and the extraction child.
+ *
+ * The canonical payload losslessly serializes the observable `PlanningOutcome`:
+ * placements, new pages, new folders (naming category and target page
+ * included), categories, warnings with full param values, rejection reasons
+ * with full params, unplaced items, and rejected warnings. Only the four
+ * metadata echoes — `revision`, `ruleVersion`, `taxonomyVersion`,
+ * `organizationStrategy` — are excluded, per spec 182: they are identity
+ * metadata, not layout observation, and the rule version legitimately changes
+ * v1 → v2 across the boundary.
  */
 internal object GoldenOracleCorpus {
 
-    /**
-     * Canonical plan payload: placements, new pages, new folders, categories,
-     * warnings. The `organizationStrategy`, `ruleVersion`, `taxonomyVersion`,
-     * and `revision` echoes are deliberately excluded — they are metadata, not
-     * layout observation, and the rule version legitimately changes v1 → v2.
-     */
     fun canonicalPayload(result: PlanningResult): String = buildString {
         when (val outcome = result.outcome) {
-            is app.lawnchair.organizer.planning.Planned -> {
+            is Planned -> {
                 append("outcome=planned\n")
                 for (placement in outcome.placements) {
                     append("placement=").append(placement.item.value)
@@ -39,8 +46,10 @@ internal object GoldenOracleCorpus {
                 for (folder in outcome.newFolders) {
                     append("newFolder=").append(folder.ordinal.value)
                         .append('|').append(folder.profile.value)
-                        .append('|').append(folder.naming.javaClass.simpleName)
-                        .append('|').append(folder.workspacePlacement.cell.x)
+                        .append('|').append(folderNamingToken(folder.naming))
+                        .append('|').append(folder.workspacePlacement.page.javaClass.simpleName)
+                        .append(':').append(pageRefValue(folder.workspacePlacement.page))
+                        .append(':').append(folder.workspacePlacement.cell.x)
                         .append(',').append(folder.workspacePlacement.cell.y)
                         .append(',').append(folder.workspacePlacement.span.width)
                         .append('x').append(folder.workspacePlacement.span.height)
@@ -55,20 +64,23 @@ internal object GoldenOracleCorpus {
                         .append('\n')
                 }
                 for (warning in outcome.warnings) {
-                    append("warning=").append(warning.code.name)
-                        .append('|').append(warning.params.joinToString(",") { it.javaClass.simpleName })
-                        .append('\n')
+                    append("warning=").append(warningToken(warning)).append('\n')
                 }
             }
 
-            is app.lawnchair.organizer.planning.Rejected.Invalid -> {
+            is Rejected.Invalid -> {
                 append("outcome=invalid\n")
                 for (reason in outcome.reasons) {
-                    append("reason=").append(reason.code.name).append('\n')
+                    append("reason=").append(reason.code.name)
+                        .append('|').append(reason.params.joinToString(",") { paramToken(it) })
+                        .append('\n')
+                }
+                for (warning in outcome.warnings) {
+                    append("invalidWarning=").append(warningToken(warning)).append('\n')
                 }
             }
 
-            is app.lawnchair.organizer.planning.Rejected.Impossible -> {
+            is Rejected.Impossible -> {
                 append("outcome=impossible\n")
                 for (unplaced in outcome.unplaced) {
                     append("unplaced=").append(unplaced.item.value)
@@ -76,6 +88,9 @@ internal object GoldenOracleCorpus {
                         .append('|').append(unplaced.requiredSpan.width)
                         .append('x').append(unplaced.requiredSpan.height)
                         .append('\n')
+                }
+                for (warning in outcome.warnings) {
+                    append("impossibleWarning=").append(warningToken(warning)).append('\n')
                 }
             }
         }
@@ -87,6 +102,9 @@ internal object GoldenOracleCorpus {
             .digest(canonical.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
     }
+
+    /** Per-source digests alongside the aggregate, for pinpointing regressions. */
+    fun digestsBySource(): List<Pair<String, String>> = planAll().map { (source, result) -> source to digestOf(listOf(result)) }
 
     /** Every accepted fixture + generated case, planned through the public seam. */
     fun planAll(): List<Pair<String, PlanningResult>> {
@@ -101,26 +119,43 @@ internal object GoldenOracleCorpus {
         for (fixture in SyntheticFixtureGenerator.generate(seed = SyntheticFixtureGenerator.DEFAULT_SEED, count = DEFAULT_PLANNER_CASE_COUNT)) {
             planned += "generated:${fixture.id.value}" to planner.plan(fixture.input)
         }
-        return planned.sortedBy { it.first }
+        return planned.apply { sortBy { it.first } }
     }
 
     const val GOLDEN_RESOURCE_PATH = "/planner-golden-corpus/sha256.txt"
 
-    private fun dispositionToken(disposition: app.lawnchair.organizer.planning.Disposition): String = when (disposition) {
-        is app.lawnchair.organizer.planning.Disposition.Moved -> "moved:${disposition.rationale.name}"
-        is app.lawnchair.organizer.planning.Disposition.Preserved -> "preserved:${disposition.reason.name}"
+    private fun dispositionToken(disposition: Disposition): String = when (disposition) {
+        is Disposition.Moved -> "moved:${disposition.rationale.name}"
+        is Disposition.Preserved -> "preserved:${disposition.reason.name}"
     }
 
-    private fun targetToken(target: app.lawnchair.organizer.planning.PlacementTarget): String = when (target) {
-        is app.lawnchair.organizer.planning.PlacementTarget.WorkspaceTarget ->
+    private fun targetToken(target: PlacementTarget): String = when (target) {
+        is PlacementTarget.WorkspaceTarget ->
             "ws:${target.page.javaClass.simpleName}:${pageRefValue(target.page)}:${target.cell.x},${target.cell.y},${target.span.width}x${target.span.height}"
 
-        is app.lawnchair.organizer.planning.PlacementTarget.Dock -> "dock:${target.rank}"
+        is PlacementTarget.Dock -> "dock:${target.rank}"
 
-        is app.lawnchair.organizer.planning.PlacementTarget.FolderMember ->
+        is PlacementTarget.FolderMember ->
             "fm:${target.folder.javaClass.simpleName}:${folderRefValue(target.folder)}:${target.rank}"
 
-        is app.lawnchair.organizer.planning.PlacementTarget.AppPairMember -> "ap:${target.pair.appPairId.value}"
+        is PlacementTarget.AppPairMember -> "ap:${target.pair.appPairId.value}"
+    }
+
+    private fun folderNamingToken(naming: FolderNaming): String = when (naming) {
+        is FolderNaming.FromCategory -> "fromCategory:${naming.category.value}"
+    }
+
+    private fun warningToken(warning: app.lawnchair.organizer.planning.Warning): String = "${warning.code.name}|${warning.params.joinToString(",") { paramToken(it) }}"
+
+    private fun paramToken(param: DiagnosticParam): String = when (param) {
+        is DiagnosticParam.ItemParam -> "item:${param.item.value}"
+        is DiagnosticParam.KindParam -> "kind:${param.code.value}"
+        is DiagnosticParam.ContainerCodeParam -> "container:${param.code.value}"
+        is DiagnosticParam.SpanParam -> "span:${param.span.width}x${param.span.height}"
+        is DiagnosticParam.RankParam -> "rank:${param.rank}"
+        is DiagnosticParam.DimensionParam -> "dim:${param.dimension.name}:${param.value}"
+        is DiagnosticParam.PageParam -> "page:${param.page.value}"
+        is DiagnosticParam.CategoryParam -> "category:${param.category.value}"
     }
 
     private fun pageRefValue(page: app.lawnchair.organizer.planning.PageTargetRef): String = when (page) {

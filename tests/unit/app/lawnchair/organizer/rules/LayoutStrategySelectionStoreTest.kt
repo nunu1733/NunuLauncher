@@ -96,6 +96,37 @@ class LayoutStrategySelectionStoreTest {
     }
 
     @Test
+    fun postCommitReadFailureStillReportsCommittedSelection() {
+        val directory = tempDirectory()
+        try {
+            val file = File(directory, "selection-v1")
+            val failing = FailingAtomicFile(file)
+            val access = LayoutStrategySelectionAccess(failing, BuiltInOrganizerPolicyBundleSource)
+
+            // select() performs exactly one read (the pre-publish current state).
+            // Inject a failure at read #2 — the post-commit read-back the old
+            // implementation used to convert into WriteFailed. The commit point
+            // is finishWrite(), so the durable write must still be reported as
+            // Committed (spec 182 / AC-3b): converting it would let the caller
+            // assume the previous selection while later runs silently observe
+            // the new one.
+            failing.failReadNumber = 2
+            val result = access.select(supported)
+
+            assertTrue(result is LayoutStrategySelectionWriteResult.Committed)
+            val committed = (result as LayoutStrategySelectionWriteResult.Committed).snapshot
+            assertEquals(supported, committed.selection)
+            assertEquals(1L, committed.generation)
+
+            failing.failReadNumber = null
+            val observed = access.read() as LayoutStrategySelectionReadResult.Ready
+            assertEquals(committed, observed.snapshot)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun corruptStoreFailsClosedAsUnreadable() {
         val directory = tempDirectory()
         try {
@@ -154,7 +185,15 @@ class LayoutStrategySelectionStoreTest {
     ) : LayoutStrategySelectionAtomicFile {
         var failNextWrite = false
 
-        override fun openRead(): FileInputStream = FileInputStream(finalFile)
+        /** 1-based index of the openRead() call that must fail; null disables. */
+        var failReadNumber: Int? = null
+        private var readCount = 0
+
+        override fun openRead(): FileInputStream {
+            readCount++
+            if (failReadNumber == readCount) throw IOException("injected post-commit read failure")
+            return FileInputStream(finalFile)
+        }
 
         override fun startWrite(): FileOutputStream {
             if (failNextWrite) throw IOException("injected start-write failure")

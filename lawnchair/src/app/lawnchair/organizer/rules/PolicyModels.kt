@@ -183,12 +183,14 @@ internal fun v2RuleSemantics(catalog: LayoutStrategyCatalog) = RuleSemantics(
 
 /**
  * Spec 182: identity of the **effective** `RuleSemantics` the planner receives
- * (bundle rules base with the selected strategy substituted). The digest binds
- * the full bundle identity and the full selection identity (generation AND
- * content digest) so the same bundle with a different valid selection yields a
- * different rules identity (ADR-0007 §5 identity-content invariant). Segments
- * are length-prefixed so the hash input is unambiguous; raw concatenation is
- * never used.
+ * (bundle rules base with the selected strategy substituted), using exactly the
+ * accepted formula — `hash(bundleIdentity.semanticVersion ||
+ * bundleIdentity.sha256 || selectionIdentity.sha256 ||
+ * canonical(effectiveRuleSemantics))`. The selection *generation* stays out:
+ * it is already the fifth provenance row's and the stable cut's concern, and
+ * the rules identity must be the identity of the effective semantics content.
+ * Segments are length-prefixed so the hash input is unambiguous; raw
+ * concatenation is never used.
  */
 internal fun effectiveRulesIdentity(
     bundle: PolicyBundleIdentity,
@@ -201,7 +203,6 @@ internal fun effectiveRulesIdentity(
         lengthPrefixed(
             bundle.semanticVersion,
             bundle.sha256,
-            selection.versionOrGeneration,
             selection.sha256,
             effectiveRules.canonicalRepresentation(),
         ),

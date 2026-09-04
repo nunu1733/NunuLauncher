@@ -2,13 +2,24 @@ package app.lawnchair.organizer.planning
 
 /**
  * Internal curated catalog of built-in layout strategies (spec 182 / ADR-0012).
- * One [StrategyDefinition] per accepted catalog member; there is no plugin
- * surface and strategies cannot bypass the shared validation, allocator, or
- * result canonicalization — dispatch happens strictly inside `plan`.
+ * One executable [StrategyDefinition] per accepted catalog member; there is no
+ * plugin surface and strategies cannot bypass the shared validation, allocator,
+ * or result canonicalization — dispatch happens strictly inside `plan`.
  */
 internal data class StrategyDefinition(
     val identity: StrategyId,
     val createsFolders: Boolean,
+    /**
+     * Executes the strategy over the shared materialization. Child 2 registers
+     * only the canonical baseline, whose executor is the minimal adapter over
+     * the existing placement body (no behavior change). Behavior extraction
+     * per strategy is child 3+.
+     */
+    val place: (
+        input: OrganizationInput,
+        classification: ClassificationOutput,
+        allocationFault: AllocationFault,
+    ) -> PlacementOutput,
 )
 
 internal object LayoutStrategyRegistry {
@@ -24,11 +35,15 @@ internal object LayoutStrategyRegistry {
         CANONICAL_PAGE_COMPACT_V1 to StrategyDefinition(
             identity = CANONICAL_PAGE_COMPACT_V1,
             createsFolders = true,
+            place = PlanningPlacement::place,
         ),
     )
 
     fun definition(id: StrategyId): StrategyDefinition? = definitions[id]
 
-    /** Planner-side accepted set backing the V-20 defense-in-depth check. */
+    /**
+     * Planner-side accepted set backing the V-20 defense-in-depth check.
+     * Exactly the registered, executable strategies.
+     */
     val acceptedIds: Set<StrategyId> = definitions.keys
 }

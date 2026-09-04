@@ -74,15 +74,27 @@ internal class LayoutStrategySelectionAccess(
         val nextGeneration = current.generation + 1L
         val canonical = canonicalSelection(strategy)
         val digest = sha256Canonical(canonical)
+        // The commit point is `finishWrite()` success: once it returns, the new
+        // selection is durable and the caller is told `Committed`, even if a
+        // later read-back fails. A post-commit read failure must never turn a
+        // durable write into `WriteFailed` — that would let the caller assume
+        // the previous selection while later runs silently observe the new one.
         when (publishLocked(schemaVersion = SCHEMA_V1, generation = nextGeneration, strategy = strategy, digest = digest)) {
             PublishResult.WriteFailed -> return@synchronized LayoutStrategySelectionWriteResult.WriteFailed
-            PublishResult.Success -> Unit
+            PublishResult.Committed -> Unit
         }
-        val verified = readStoredLocked()
-        if (verified !is StoredReady || verified.generation != nextGeneration || verified.selection != strategy) {
-            return@synchronized LayoutStrategySelectionWriteResult.WriteFailed
-        }
-        LayoutStrategySelectionWriteResult.Committed(verified.toSnapshot())
+        LayoutStrategySelectionWriteResult.Committed(
+            LayoutStrategySelectionSnapshot(
+                schemaVersion = SCHEMA_V1,
+                generation = nextGeneration,
+                selection = strategy,
+                identity = PolicyInputIdentity(
+                    PolicySourceKind.LAYOUT_STRATEGY_SELECTION,
+                    "schema-$SCHEMA_V1-generation-$nextGeneration",
+                    digest,
+                ),
+            ),
+        )
     }
 
     private sealed interface StoredRead
@@ -147,7 +159,8 @@ internal class LayoutStrategySelectionAccess(
             stream.fd.sync()
             atomicFile.finishWrite(stream)
             stream = null
-            PublishResult.Success
+            // Commit point: the file is durable from here on.
+            PublishResult.Committed
         } catch (_: IOException) {
             PublishResult.WriteFailed
         } catch (_: SecurityException) {
@@ -184,7 +197,7 @@ internal class LayoutStrategySelectionAccess(
         return StoredReady(generation, selection)
     }
 
-    private enum class PublishResult { Success, WriteFailed }
+    private enum class PublishResult { Committed, WriteFailed }
 
     private companion object {
         const val SCHEMA_V1 = 1
