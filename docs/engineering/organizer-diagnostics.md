@@ -86,7 +86,7 @@ RunCorrelation {
 Trigger = MANUAL_FULL | ONBOARDING_PROPOSAL | INCREMENTAL_PROPOSAL
 RunMode = FULL_ORGANIZATION | INCREMENTAL_PLACEMENT
 
-RunVersions { ruleVersion, taxonomyVersion, recoveryFormatVersion }   // 識別子のみ。内容なし
+RunVersions { ruleVersion, taxonomyVersion, recoveryFormatVersion, strategyVersion }   // 識別子のみ。内容なし。strategyVersion は spec 182 (accepted strategy identity、allowlist 管理)
 DeviceProfileSummary { columns, rows, hotseatSlots, orientation }     // 寸法のみ。座標なし
 ```
 
@@ -271,6 +271,7 @@ ADR またはspec の承認を必要とする。
 | layout 座標 | cell、span、rank、page order、folder rank | **Never** | 件数のみ |
 | folder / app pair 構造 | membership、親子関係 | **Never** | `newFolderCount` 等の件数 |
 | rule 内容 | `RuleSemantics` の値、rule file 中身 | **Never** | `ruleVersion` 識別子のみ |
+| 選択された layout strategy (spec 182) | 選択値そのもの以外の policy content、selection store の generation/digest | **Never** | `strategyVersion` 識別子 (accepted catalog ID、`RunVersions.APPROVED_VERSIONS` 管理) のみ |
 | 項目単位の分類結果 | `CategoryDecision`、`CategoryId` | **Never** | `confidenceCounts` の件数 |
 | plan preview の具体変更 (Issue #194) | `PreviewChange`、`PreviewLabel`（canonical capture title 含む）、`PreviewPosition`、`PreviewDetails` | **Never** | `PreviewCounts` の件数（preview はjournal 化せず、`PREVIEWED` 等の既存phase の件数のみ） |
 | planner 診断param | `DiagnosticParam`（`ItemParam`、`SpanParam`、`PageParam` 等） | **Never** | error code と件数のみ |

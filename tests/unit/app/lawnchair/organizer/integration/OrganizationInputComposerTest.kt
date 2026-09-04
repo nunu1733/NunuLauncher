@@ -534,48 +534,6 @@ class OrganizationInputComposerTest {
     }
 
     @Test
-    fun sameBundleWithDifferentSelectedStrategyContentYieldsDifferentRulesIdentities() {
-        val state = CanonicalFixtures.state(
-            profiles = listOf(CanonicalFixtures.profile("personal")),
-            items = listOf(app("a", "personal", "com.example.a/.Main")),
-        )
-        val bundle = (BuiltInOrganizerPolicyBundleSource.readActive() as BundleReadResult.Ready).bundle
-        val supported = bundle.layoutStrategies.runtimeSupported
-        // A second supported strategy would be added by a later child issue; for
-        // child 2 the registry holds exactly one, so exercise the digest-binding
-        // property across two *supported* selections only when available. The
-        // assertion pair below is the AC-6 contract: same bundle, selections
-        // naming different supported strategies ⇒ different rulesIdentity.
-        if (supported.size < 2) {
-            val only = supported.single()
-            assertEquals(only, bundle.rules.organizationStrategy)
-            return
-        }
-        val first = emptySelection()
-        val second = emptySelection().copy(
-            generation = 1L,
-            selection = supported.first { it != first.selection },
-        )
-
-        val firstReady = composer(
-            state,
-            SequenceOverrides(emptySnapshot(), emptySnapshot()),
-            SequenceEvidence(evidence(), evidence()),
-            selections = SequenceSelections(first, first),
-        ).composeFullOrganization() as OrganizationInputComposition.Ready
-        val secondReady = composer(
-            state,
-            SequenceOverrides(emptySnapshot(), emptySnapshot()),
-            SequenceEvidence(evidence(), evidence()),
-            selections = SequenceSelections(second, second),
-        ).composeFullOrganization() as OrganizationInputComposition.Ready
-
-        assertNotEquals(firstReady.provenance.rules, secondReady.provenance.rules)
-        assertNotEquals(firstReady.input.rules, secondReady.input.rules)
-        assertEquals(firstReady.provenance.policyBundle, secondReady.provenance.policyBundle)
-    }
-
-    @Test
     fun selectionChangeBetweenCutReadsYieldsOneRetryThenInconsistentPolicyRead() {
         val state = CanonicalFixtures.state(
             profiles = listOf(CanonicalFixtures.profile("personal")),

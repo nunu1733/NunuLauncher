@@ -96,29 +96,37 @@ class LayoutStrategySelectionStoreTest {
     }
 
     @Test
-    fun postCommitReadFailureStillReportsCommittedSelection() {
+    fun selectDoesNotReadBackAfterTheCommitPoint() {
         val directory = tempDirectory()
         try {
             val file = File(directory, "selection-v1")
             val failing = FailingAtomicFile(file)
             val access = LayoutStrategySelectionAccess(failing, BuiltInOrganizerPolicyBundleSource)
 
-            // select() performs exactly one read (the pre-publish current state).
-            // Inject a failure at read #2 — the post-commit read-back the old
-            // implementation used to convert into WriteFailed. The commit point
-            // is finishWrite(), so the durable write must still be reported as
-            // Committed (spec 182 / AC-3b): converting it would let the caller
+            // The commit point is AtomicFile.finishWrite() success (spec 182 /
+            // AC-3b). select() must therefore perform exactly one openRead() —
+            // the pre-publish current-state read — and never read back after
+            // committing: a post-commit read failure must be unable to convert
+            // a durable write into WriteFailed, which would let the caller
             // assume the previous selection while later runs silently observe
             // the new one.
-            failing.failReadNumber = 2
+            // First seed a durable selection so the pre-publish read is a
+            // real openRead() (the first-ever select starts from the defined
+            // absent state, where openRead() throws FileNotFoundException).
+            access.select(supported)
+            failing.successfulReadCount = 0
+
             val result = access.select(supported)
+
+            assertEquals(1, failing.successfulReadCount)
 
             assertTrue(result is LayoutStrategySelectionWriteResult.Committed)
             val committed = (result as LayoutStrategySelectionWriteResult.Committed).snapshot
             assertEquals(supported, committed.selection)
-            assertEquals(1L, committed.generation)
+            // Second select after the seed: generation advanced to 2.
+            assertEquals(2L, committed.generation)
 
-            failing.failReadNumber = null
+            // The durable state independently matches the committed snapshot.
             val observed = access.read() as LayoutStrategySelectionReadResult.Ready
             assertEquals(committed, observed.snapshot)
         } finally {
@@ -184,16 +192,9 @@ class LayoutStrategySelectionStoreTest {
         private val finalFile: File,
     ) : LayoutStrategySelectionAtomicFile {
         var failNextWrite = false
+        var successfulReadCount = 0
 
-        /** 1-based index of the openRead() call that must fail; null disables. */
-        var failReadNumber: Int? = null
-        private var readCount = 0
-
-        override fun openRead(): FileInputStream {
-            readCount++
-            if (failReadNumber == readCount) throw IOException("injected post-commit read failure")
-            return FileInputStream(finalFile)
-        }
+        override fun openRead(): FileInputStream = FileInputStream(finalFile).also { successfulReadCount++ }
 
         override fun startWrite(): FileOutputStream {
             if (failNextWrite) throw IOException("injected start-write failure")

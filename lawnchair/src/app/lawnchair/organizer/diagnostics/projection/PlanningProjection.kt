@@ -5,6 +5,7 @@ import app.lawnchair.organizer.diagnostics.model.ErrorFamily
 import app.lawnchair.organizer.diagnostics.model.PhaseCode
 import app.lawnchair.organizer.diagnostics.model.PlanSummary
 import app.lawnchair.organizer.diagnostics.model.RunEvent
+import app.lawnchair.organizer.diagnostics.model.RunVersions
 import app.lawnchair.organizer.planning.Confidence
 import app.lawnchair.organizer.planning.Planned
 import app.lawnchair.organizer.planning.PlanningResult
@@ -42,7 +43,10 @@ object PlanningProjection {
         val baseEvent = RunEvent(
             journalSequence = journalSequence,
             phase = PhaseCode.RUN_STARTED, // placeholder, overridden by copy()
-            versions = null,
+            // Spec 182: the effective strategy identity is a policy version
+            // identifier and is echoed into the journal alongside the other
+            // version identifiers.
+            versions = RunVersions.create(strategyVersion = result.organizationStrategy.value),
             deviceProfile = null,
         )
 

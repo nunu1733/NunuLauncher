@@ -32,6 +32,8 @@ data class RunVersions private constructor(
     val ruleVersion: String = "",
     val taxonomyVersion: String = "",
     val recoveryFormatVersion: String = "",
+    /** Spec 182: selected layout strategy identity (e.g. CANONICAL_PAGE_COMPACT_V1). */
+    val strategyVersion: String = "",
 ) {
     companion object {
         /**
@@ -46,6 +48,13 @@ data class RunVersions private constructor(
             "rf-1",
             "a-b-c_d",
             "A",
+            // Spec 182 accepted catalog identities (ADR-0012: an ID is an
+            // immutable semantic identity; new strategies extend this set).
+            "CANONICAL_PAGE_COMPACT_V1",
+            "STABLE_PAGE_TIDY_V1",
+            "BOTTOM_FIRST_V1",
+            "GLOBAL_COMPACT_V1",
+            "CATEGORY_CONTIGUOUS_V1",
         )
 
         /** Construct [RunVersions] with approved version identifiers. */
@@ -53,13 +62,15 @@ data class RunVersions private constructor(
             ruleVersion: String = "",
             taxonomyVersion: String = "",
             recoveryFormatVersion: String = "",
-        ): RunVersions = RunVersions(ruleVersion, taxonomyVersion, recoveryFormatVersion)
+            strategyVersion: String = "",
+        ): RunVersions = RunVersions(ruleVersion, taxonomyVersion, recoveryFormatVersion, strategyVersion)
     }
 
     init {
         validateVersionIdentifier(ruleVersion, "ruleVersion")
         validateVersionIdentifier(taxonomyVersion, "taxonomyVersion")
         validateVersionIdentifier(recoveryFormatVersion, "recoveryFormatVersion")
+        validateVersionIdentifier(strategyVersion, "strategyVersion")
     }
 
     private fun validateVersionIdentifier(value: String, fieldName: String) {

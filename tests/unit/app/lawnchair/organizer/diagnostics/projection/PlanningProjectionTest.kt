@@ -35,6 +35,37 @@ import org.junit.Test
  */
 class PlanningProjectionTest {
 
+    @Test
+    fun projectionEchoesTheEffectiveStrategyIdentityInRunVersions() {
+        // Spec 182 / AC-6: the journal carries the effective strategy identity
+        // as an approved version identifier for every projected outcome.
+        for (outcome in listOf(plannedOutcome(), invalidOutcome(), impossibleOutcome())) {
+            val result = PlanningResult(
+                revision = dummyRevision,
+                ruleVersion = dummyRuleVersion,
+                taxonomyVersion = dummyTaxonomyVersion,
+                organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
+                outcome = outcome,
+            )
+            val event = PlanningProjection.project(result, journalSequence = 1L)
+
+            assertNotNull(event.versions)
+            assertEquals("CANONICAL_PAGE_COMPACT_V1", event.versions!!.strategyVersion)
+        }
+    }
+
+    private fun plannedOutcome() = Planned(
+        placements = emptyList(),
+        newPages = emptyList(),
+        newFolders = emptyList(),
+        categories = emptyList(),
+        warnings = emptyList(),
+    )
+
+    private fun invalidOutcome() = Rejected.Invalid(reasons = emptyList(), warnings = emptyList())
+
+    private fun impossibleOutcome() = Rejected.Impossible(unplaced = emptyList(), warnings = emptyList())
+
     private val dummyRevision = RevisionId("dummy_hash")
     private val dummyRuleVersion = RuleVersion("1")
     private val dummyTaxonomyVersion = TaxonomyVersion("1")
