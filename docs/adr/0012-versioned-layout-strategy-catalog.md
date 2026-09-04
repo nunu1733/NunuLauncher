@@ -65,11 +65,17 @@ Three decisions are expensive to reverse and not obvious from code:
    own identity to `InputProvenance` (a fifth policy input), so the mutable
    user state never enters the immutable bundle digest.
 4. **Idempotence-constrained strategy definitions.** Strategies that move
-   units across pages order units by captured visual (positional) order, which
-   is stable under the transformation; identity-tie-break ordering is accepted
-   only for strategies that never change page membership. A catalog member
-   that cannot state a complete tie-break and idempotence argument is not
-   accepted.
+   units across pages order units by captured visual (positional) order,
+   which is stable under the transformation **only when every moved unit has
+   the same span**: with heterogeneous spans plus fragmented fixed obstacles,
+   first-fit reorders the visual sequence across replans and breaks INV-8.
+   Cross-page movers are therefore restricted to `1×1` units, and
+   otherwise-movable non-`1×1` units are fixed with
+   `PreserveReason.STRATEGY_PRESERVED`; a heterogeneous-span variant would be
+   a new strategy ID requiring its own complete proof (including new-folder
+   lifecycle). Identity-tie-break ordering is accepted only for strategies
+   that never change page membership. A catalog member that cannot state a
+   complete tie-break and idempotence argument is not accepted.
 
 The accepted strategy-level behavior (catalog members, their rules, default,
 and delivery split) is normative in
