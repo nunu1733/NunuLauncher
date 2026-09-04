@@ -38,7 +38,7 @@ A curated, versioned, user-selectable catalog of built-in layout strategies behi
 - `CANONICAL_PAGE_COMPACT_V1` preserves the exact current `CANONICAL_V1` observable behavior as the compatibility baseline and regression oracle.
 - `STABLE_PAGE_TIDY_V1` and `BOTTOM_FIRST_V1` ship as the first two new strategies, both computed exclusively from already-authorized local inputs.
 - `GLOBAL_COMPACT_V1` and `CATEGORY_CONTIGUOUS_V1` are accepted catalog members implemented in later child issues after the baseline ships (their behavioral definitions are normative here; their delivery order is not).
-- The selected strategy is a versioned policy input: carried in `RuleSemantics`, participating in the canonical policy bundle digest, planner provenance, stale-plan semantics, diagnostics, and fail-closed selection handling.
+- The selected strategy is a policy input: carried in `RuleSemantics`, provenance-bound through its own selection-snapshot identity in `InputProvenance` (the immutable bundle digest covers the runtime-supported catalog and default, never the user selection), echoed in the result and diagnostics, with fail-closed selection handling.
 - The manual flow lets the user choose a supported strategy and previews the effective strategy identity and its consequences (move counts by scope, new folders/pages, preserved-by-strategy items, warnings) through the existing spec 194/195 preview seams.
 
 `OrganizationPlanner.plan(OrganizationInput)` remains the sole external planning interface. Strategy implementations, grouping, unit ordering, page scope, and cell traversal are internal seams tested through the public interface.
@@ -47,7 +47,7 @@ A curated, versioned, user-selectable catalog of built-in layout strategies behi
 
 The Issue #182 candidate table (canonical compact / preserve-and-tidy / category focused / alphabetical / reachability first / profile separated / balanced spacing / routine / user templates) was evaluated against: user value, required inputs, determinism/idempotence risk, compatibility/migration cost, and current-input feasibility. Alphabetical, usage-based, handedness-aware, and template/zone strategies require display labels, usage signals (FR-013), handedness preference, or versioned user-authored rules (FR-012/D-009) that `OrganizationInput` does not carry; they are not catalog candidates and this spec does not reinterpret them. `CATEGORY_CONTIGUOUS_V1` is the only accepted strategy that depends on a folder-policy decision; it is accepted here with explicit decisions (below) and scheduled after the baseline child issues.
 
-Accepted catalog for strategy-catalog v1 (working IDs are normative once this spec is accepted; renaming requires a new spec change):
+Accepted spec-level catalog for strategy-catalog v1 (IDs are normative once this spec is accepted; each ID is an immutable semantic identity — renaming requires a new spec change):
 
 | ID | Intent | Folder policy | Eligible movable units | Unit order | Page scope | Cell traversal |
 |---|---|---|---|---|---|---|
@@ -56,6 +56,8 @@ Accepted catalog for strategy-catalog v1 (working IDs are normative once this sp
 | `GLOBAL_COMPACT_V1` | minimize occupied early pages | identical to `CANONICAL_PAGE_COMPACT_V1` | current movable set | global captured visual order `(PageOrder, PageId, cell.y, cell.x, ItemId)`; new folders after all captured-position units by `(preferred page key, NewFolderOrdinal)` | scan all captured pages by `PageOrder` (≈ `allocateCapturedThenNew`), then new pages | top-left row-major first-fit |
 | `BOTTOM_FIRST_V1` | visibly different geometry from device dimensions only | identical to `CANONICAL_PAGE_COMPACT_V1` | current movable set | current canonical order | captured/preferred page, then new pages | bottom-first: candidate top-left `y` from `rows - span.height` down to `0`, `x` left-to-right |
 | `CATEGORY_CONTIGUOUS_V1` | categories visible as contiguous icon groups | create no new folders; existing folders preserved as fixed units | available, unlocked, top-level `1×1` `APPLICATION`/`DEEP_SHORTCUT` | per page: `(profile, category with fallback last, canonical target key, ItemId)` | page-local; categories never pulled across page boundaries | top-left row-major first-fit |
+
+**Spec-level catalog vs runtime-supported set.** This table is the spec-level accepted catalog. The active bundle additionally declares a **runtime-supported set**: only strategies whose planner implementation exists on that mainline. Every intermediate mainline (each independently mergeable child issue) declares exactly the implemented strategies, so a merge never creates a strategy that is bundle-supported but unplannable. Enabling a newly implemented strategy on a later child mainline is a bundle identity/content change under the same `organization-policy-v2` schema (a new bundle digest; the schema version itself does not bump per strategy). The UI offers exactly the runtime-supported set.
 
 Default strategy: `CANONICAL_PAGE_COMPACT_V1`. It is the compatibility control for product evaluation and the rollback oracle.
 
@@ -75,10 +77,10 @@ Strategy-preserved rationale: when a strategy intentionally keeps otherwise mova
 
 ## Scope
 
-- Versioned strategy selection contract: `RuleSemantics` carries the selected strategy identity; the policy bundle version bumps to `organization-policy-v2` and `rule-v2`; unsupported/corrupt/newer/removed selection fails closed with a typed non-write result.
+- Versioned strategy selection contract: `RuleSemantics` carries the selected strategy identity; the policy bundle version bumps to `organization-policy-v2` and `rule-v2`; the bundle digest covers the runtime-supported catalog and default, and the user selection carries its own provenance identity; unsupported/corrupt/newer/removed selection fails closed with a typed non-write result.
 - Internal planning seam: extract shared input materialization and the shared constraint-aware allocator; dispatch strategy-specific grouping/order/page-scope/cell-traversal from a curated internal strategy catalog (no combinational public toggles).
 - `CANONICAL_PAGE_COMPACT_V1` compatibility extraction with byte-equivalence proof on the accepted corpus.
-- `STABLE_PAGE_TIDY_V1` and `BOTTOM_FIRST_V1` implementations (first delivery).
+- `STABLE_PAGE_TIDY_V1` and `BOTTOM_FIRST_V1` implementations (first delivery). Each child mainline's bundle declares only its implemented strategies as runtime-supported.
 - `GLOBAL_COMPACT_V1` and `CATEGORY_CONTIGUOUS_V1` behavioral definitions (this spec) and later implementation (child issue).
 - Manual selection UI + preview integration: localized strategy name/intent description, only supported strategies offered, effective strategy identity in preview, strategy-specific consequence counts (cross-page moves, preserved-by-strategy), replan on strategy change.
 - Planner-facing diagnostics echo of the effective strategy identity (see Diagnostics).
@@ -111,32 +113,44 @@ _Avoid_: 並べ替え設定 (組合せ式toggleを想起させる)、Theme、Ord
 `OrderingPolicy` (exactly one value `CANONICAL_V1`, asserted by `ContractShapeTest`) is replaced by a versioned strategy identity type in `RuleSemantics`:
 
 ```text
-OrganizationStrategy {
-    id:      StrategyId          // e.g. "CANONICAL_PAGE_COMPACT_V1"
-    version: StrategyVersion    // e.g. "v1"
+RuleSemantics {
+    // ... existing v1 fields ...
+    organizationStrategy: StrategyId    // non-empty opaque String,
+                                        // e.g. "CANONICAL_PAGE_COMPACT_V1"
 }
 ```
 
-- The planner accepts exactly the declared catalog versions; an unknown, removed, or newer selection reaches the existing invalid-rules rejection family (`V-20 INVALID_RULES`), producing a typed `Rejected.Invalid`, never a silent fallback to another strategy.
-- `RuleSemantics` gains `organizationStrategy: OrganizationStrategy`; `orderingPolicy: OrderingPolicy` is removed. The public input model change is this spec's only planner public-shape change besides the new `PreserveReason.STRATEGY_PRESERVED` value; no other spec 10 type changes.
+- **Identity policy:** `StrategyId` is an immutable semantic identity. `CANONICAL_PAGE_COMPACT_V1` means exactly the behavior this spec defines, forever. A behavior change is expressed by a new ID (e.g. a future `CANONICAL_PAGE_COMPACT_V2`), never by reinterpreting an existing ID. There is no separate `StrategyVersion` field: the `_V1` suffix is the version, so a strategy's name and its semantics can never drift apart. Renaming a shipped ID is forbidden; removing a catalog member means new bundles stop declaring it, and selections naming it become unsupported (fail-closed below).
+- The planner accepts exactly the declared catalog members; an unknown, removed, or unsupported selection reaches the existing invalid-rules rejection family (`V-20 INVALID_RULES`), producing a typed `Rejected.Invalid`, never a silent fallback to another strategy. This is the direct-seam contract layer (see Failure layering below); the production composition path fails earlier with `NotReady`.
+- `RuleSemantics` gains `organizationStrategy: StrategyId`; `orderingPolicy: OrderingPolicy` is removed. The public input model change is this spec's only planner public-shape change besides the new `PreserveReason.STRATEGY_PRESERVED` value; no other spec 10 type changes.
 - This is a rule-schema change: bundle version `organization-policy-v2`, rule version `rule-v2` (v2 projections are otherwise identical to v1 with the strategy field added and default `CANONICAL_PAGE_COMPACT_V1`).
 
 ### Provenance and consistency
 
-- `OrganizerPolicyBundle.canonicalRepresentation()` includes the selected strategy identity; the bundle digest changes with it. ADR-0007's consistent-cut protocol is unchanged: the strategy is bundle content, so it cannot change between the dynamic A/E1/B/E2 reads.
-- `PolicyInputIdentity` for rules carries the rule version the selection came from; stale-plan detection continues to compare the capture `RevisionId` (unchanged semantics), while strategy change alone does not make a captured input stale — it produces a different plan for the same snapshot.
-- Because the strategy is bundle content, users do not author it freely: the active bundle declares exactly one supported strategy set and default. User selection is read through Rule Management as a validated local preference (see Rule Management below), not by mutating the bundle.
+Responsibilities are split between two immutable identities (ADR-0007 compatibility):
+
+- **Bundle identity (immutable policy artifact):** covers the runtime-supported strategy catalog, the default, and all v2 policy projections. It changes only when the shipped artifact changes (including enabling a newly implemented strategy on a child-issue mainline), never when a user changes their selection.
+- **Selection identity (dynamic user state):** the `LayoutStrategySelectionSnapshot` contributes its own schema-version/generation/content-digest identity to `InputProvenance` as a fifth policy input, exactly like the override snapshot. `PolicySourceKind.LAYOUT_STRATEGY_SELECTION` is added.
+- A composition is uniquely identified by `bundleIdentity + selectionIdentity + rulesIdentity + taxonomyIdentity + signalsIdentity + targetsIdentity + revision`; no single identity is overloaded.
+- `OrganizerPolicyBundle.canonicalRepresentation()` includes the declared catalog and default (not the user selection). ADR-0007's consistent-cut protocol is extended: the selection snapshot is read as part of the dynamic A/E1/B/E2 reads (identity re-read as B), so a selection change mid-read yields `NotReady(InconsistentPolicyRead)` after the single bounded retry.
+- Stale-plan detection continues to compare the capture `RevisionId` (unchanged semantics); a strategy change alone does not make a captured input stale — it produces a different plan for the same snapshot.
 
 ### Rule Management and composer
 
-- Rule Management gains a typed, generation/digest-bearing local strategy-selection source. First-run absence is the defined default (`CANONICAL_PAGE_COMPACT_V1`); corruption, unsupported identity, or a read failure fails closed (`NotReady`), never silently selecting another strategy.
-- The composer (`OrganizationInputComposer`) materializes `RuleSemantics` from the bundle with the selected strategy substituted after validating it against the bundle's supported set. Selection participates in the stable composition cut: the selection snapshot is read as part of the A/E1/B/E2 dynamic reads (identity re-read as B), so a strategy change mid-read yields `NotReady(InconsistentPolicyRead)` after the single bounded retry.
-- Bundle v2 declares the supported strategy catalog and the default. A selection naming a strategy absent from the active bundle's catalog is `NotReady(UnsupportedVersion)`-equivalent (typed non-write), not a fallback.
+- Rule Management owns both sides of the selection record: a read source (typed snapshot) and a write command. First-run absence is the defined default (`CANONICAL_PAGE_COMPACT_V1`); corruption, unsupported identity, or a read failure fails closed (`NotReady`), never silently selecting another strategy.
+- **Write authority:** the UI picker never writes storage directly and never passes a selection value to the composer; it issues a Rule Management-owned validated write command. The write path:
+  1. validates the requested `StrategyId` against the active bundle's runtime-supported catalog at write time (an unsupported request is rejected without touching storage);
+  2. publishes the new selection snapshot atomically with a new monotonic generation and content digest (same contract family as the category override store);
+  3. on write failure keeps the existing selection intact (the store is never left empty or half-written);
+  4. on success, the caller starts a fresh compose/plan cycle (spec 52: a run never reuses a prior snapshot) — the published snapshot reaches planning only through the next composer read, never through an in-run substitution.
+- The composer (`OrganizationInputComposer`) materializes `RuleSemantics` from the bundle with the selected strategy substituted after validating it against the bundle's runtime-supported set. The selection snapshot participates in the stable composition cut (read-after-validate, re-read as B, per Provenance above).
+- Bundle v2 declares the runtime-supported strategy catalog and the default. A selection naming a strategy absent from the active bundle's runtime-supported set is `NotReady(UnsupportedVersion)`-equivalent (typed non-write), not a fallback.
 
 ### Downgrade and rollback
 
-- An older binary that cannot understand the selection store at all fails closed per ADR-0007 §8 (organizer unavailable, layout unchanged); it never rewrites a newer store.
-- Reverting the feature APK-side returns selection to the bundle default; Launcher layout data is never rewritten because of selection migration. An already-applied layout from any strategy remains recoverable through the existing recovery contract (recovery points are strategy-agnostic).
+- A binary from before the selection store existed does not know the store and has no detection code for it: on downgrade it simply ignores the store and runs its own legacy `CANONICAL_V1` policy. It never reads, writes, or destroys the selection store, so a later re-upgrade rediscovers and revalidates the persisted selection.
+- A binary that understands the selection store but reads an unsupported newer schema fails closed per ADR-0007 §8 (organizer unavailable, layout unchanged); it never rewrites the newer store.
+- Reverting the feature APK-side therefore leaves the persisted selection dormant, not deleted; Launcher layout data is never rewritten because of selection migration. An already-applied layout from any strategy remains recoverable through the existing recovery contract (recovery points are strategy-agnostic).
 
 ## Internal planning seam
 
@@ -201,22 +215,32 @@ A strategy produces ordered placement units/preferences for the shared allocator
 
 The manual flow inherits spec 194/195 contracts unchanged and adds:
 
-- Strategy selection lives on the manual-run surface before planning: only strategies supported by the current schema/device context are offered, each with a localized name and short intent description. Changing the selection starts a new compose/plan cycle with a fresh capture (spec 52: a run never reuses a prior snapshot); staleness continues to be detected only by capture revision.
+- Strategy selection lives on the manual-run surface before planning: only strategies in the active bundle's runtime-supported set are offered, each with a localized name and short intent description. Changing the selection publishes through the Rule Management write command and then starts a new compose/plan cycle with a fresh capture (spec 52: a run never reuses a prior snapshot); staleness continues to be detected only by capture revision.
 - The preview shows the effective strategy identity and strategy-specific consequences: moved count split by within-page vs cross-page moves, new folders/pages, preserved-by-strategy count (`STRATEGY_PRESERVED`), and warnings. This rides the existing `PreviewChange`/`PreviewCounts` projection (rationale/preserve reasons come from `Planned`, per spec 194's responsibility split) plus header-level presentation in #195's UI; no new projection kinds are required.
 - `GLOBAL_COMPACT_V1` preview must make the cross-page move count visible because that change is materially more disruptive than page-local tidy.
 - Confirmation, recovery-point creation, transactional apply, and post-apply verification are unchanged for every strategy.
 - New selection UI inherits the Switch Access/TalkBack/font-scaling expectations of spec 52 (MFO-15) and spec 195.
 
+## Failure layering
+
+Invalid strategy selections are handled at two deliberate defense-in-depth layers:
+
+- **Production composition path (authoritative):** an invalid persisted selection (unknown/removed ID, unsupported identity, corrupt or unreadable store) is caught by Rule Management/composer validation and returns a typed `NotReady` before the planner is invoked. The planner, writer, and recovery-point are never reached through this path.
+- **Direct planner contract layer (defense-in-depth / test seam):** a caller that constructs an `OrganizationInput` with a catalog-external `StrategyId` directly (malformed test input, or a future non-composition caller) receives `Rejected.Invalid` via `V-20 INVALID_RULES`. The planner itself never falls back to another strategy.
+
+Neither layer silently substitutes a strategy.
+
 ## Failure behavior
 
 | Condition | Observable outcome |
 |---|---|
-| Selection names an unknown/removed strategy | Composer `NotReady` (typed non-write); planner never invoked. |
-| Selection version newer than binary supports | Composer `NotReady` (fail closed); organizer unavailable; layout unchanged. |
+| Persisted selection names an unknown/removed strategy (outside the active runtime-supported set) | Composer `NotReady` (typed non-write); planner never invoked (production layer). |
+| Selection store schema newer than the binary supports | Composer `NotReady` (fail closed); organizer unavailable; layout unchanged; store never rewritten. |
 | Selection store corrupt/unreadable | Composer `NotReady`; no silent default. |
-| Strategy change between A and B reads of the cut | One bounded retry, then `NotReady(InconsistentPolicyRead)`. |
+| Selection change between A and B reads of the cut | One bounded retry, then `NotReady(InconsistentPolicyRead)`. |
+| Catalog-external `StrategyId` constructed directly through the planner seam | `V-20 INVALID_RULES` → typed `Rejected.Invalid` (defense-in-depth contract layer). |
 | Strategy cannot place a unit its rules admit | Reuse of the existing typed impossibility semantics (spec 12 P-11: only V-21/V-22 make a candidate impossible; full-run planner invariants forbid silent drops). |
-| Older binary reads newer selection store | Fail closed per ADR-0007 §8; never rewrite. |
+| Downgrade to a binary predating the selection store | Store ignored (never read/written/deleted); legacy policy runs; re-upgrade revalidates and reuses the selection. |
 
 For `STABLE_PAGE_TIDY_V1`, per-page placeability is constructive (lift-then-place argument above); a placement failure of an admitted unit is therefore a planner invariant violation and fails loudly (internal error surfaced as a typed non-apply result), never a silent partial plan.
 
@@ -270,16 +294,25 @@ For `STABLE_PAGE_TIDY_V1`, per-page placeability is constructive (lift-then-plac
 
 ### Scenario: selection participates in provenance and cut
 
-**Given** a user-selected `BOTTOM_FIRST_V1` in the strategy-selection source,
+**Given** a user-selected `BOTTOM_FIRST_V1` in the strategy-selection store,
 **When** the composer composes a full-organization input,
-**Then** `RuleSemantics.organizationStrategy` carries `BOTTOM_FIRST_V1/v1`, the rules `PolicyInputIdentity` version reflects `rule-v2`, and the plan result echoes that identity,
+**Then** `RuleSemantics.organizationStrategy` carries `BOTTOM_FIRST_V1`, the selection snapshot's generation/digest identity appears in `InputProvenance` alongside the four existing policy identities, the bundle identity reflects the runtime-supported catalog (not the selection), and the plan result echoes `BOTTOM_FIRST_V1`,
 **And** a selection change between the A and B reads yields one retry then `NotReady(InconsistentPolicyRead)`.
+
+### Scenario: selection write is validated, atomic, and failure-preserving
+
+**Given** the strategy picker visible on the manual-run surface and an active bundle whose runtime-supported set contains `BOTTOM_FIRST_V1` but not a removed `LEGACY_SORT_V0`,
+**When** the user selects `BOTTOM_FIRST_V1`,
+**Then** the picker issues a Rule Management write command that validates against the runtime-supported set, publishes the new selection atomically with a new generation/digest, and the coordinator then starts a fresh compose/plan cycle,
+**And** a write attempt naming `LEGACY_SORT_V0` is rejected at write time without touching the store,
+**And** a storage failure during publication leaves the previous selection intact and does not start a new run.
 
 ### Scenario: unsupported or corrupt selection fails closed
 
-**Given** a selection naming a removed strategy, a newer version than the binary supports, or a corrupt selection store,
+**Given** a persisted selection naming a removed strategy, a selection store with a newer schema than the binary supports, or a corrupt selection store,
 **When** composition runs,
-**Then** the composer returns a typed `NotReady`, the planner/writer/recovery-point are never invoked, and no fallback strategy is applied silently.
+**Then** the composer returns a typed `NotReady`, the planner/writer/recovery-point are never invoked, and no fallback strategy is applied silently,
+**And** a direct planner-seam caller constructing the same invalid `StrategyId` instead receives `Rejected.Invalid` via `V-20 INVALID_RULES`.
 
 ### Scenario: strategy change replans under the stable-cut discipline
 
@@ -298,9 +331,9 @@ For `STABLE_PAGE_TIDY_V1`, per-page placeability is constructive (lift-then-plac
 ## Data and state
 
 - The planner stays pure; strategies add no I/O, state, or platform dependence.
-- New persistence: one local strategy-selection record owned by Rule Management (typed snapshot with schema version, generation, digest — same contract family as the category override store; excluded from backup/restore in v1 like the override store, with the same defined first-run empty state).
-- No Launcher DB schema change; recovery points, checkpoints, and the apply write-set are unchanged. Bundle `organization-policy-v2`/`rule-v2` is an application-owned immutable artifact change (no in-place migration; ADR-0007 §8).
-- Migration surface: selection-store schema v1 introduction (no migration from anything); unsupported-newer on downgrade fails closed.
+- New persistence: one local strategy-selection record owned by Rule Management, with a read source and a single validated write command (typed snapshot with schema version, monotonic generation, content digest — same contract family as the category override store; excluded from backup/restore in v1 like the override store, with the same defined first-run empty state).
+- No Launcher DB schema change; recovery points, checkpoints, and the apply write-set are unchanged. Bundle `organization-policy-v2`/`rule-v2` is an application-owned immutable artifact change (no in-place migration; ADR-0007 §8). Enabling a newly implemented strategy changes bundle content (new digest) but not the schema version.
+- Migration surface: selection-store schema v1 introduction (no migration from anything); a pre-store binary ignores the store; a store-aware binary reading a newer schema fails closed without rewriting.
 
 ## Permissions, privacy, and security
 
@@ -316,13 +349,14 @@ Product/specification:
 
 - [ ] AC-1: The candidate comparison, accepted initial set, default, and per-strategy observable rules (including tie-breaks, idempotence argument, overflow, and failure behavior) are recorded in this spec and accepted.
 - [ ] AC-2: A new requirement (FR-016) covers user selection and preview of a supported organization strategy; traceability is updated ([requirements.md](../../docs/product/requirements.md)).
-- [ ] AC-3: Unsupported/corrupt/newer/removed selection plus downgrade/rollback behavior is specified and implemented fail-closed.
+- [ ] AC-3: Unsupported/corrupt/newer/removed selection plus downgrade/rollback behavior is specified and implemented fail-closed at the composition layer, with the V-20 defense-in-depth layer behind it.
+- [ ] AC-3b: Selection writes go through the Rule Management validated write command (write-time catalog validation, atomic generation/digest publication, existing selection preserved on failure); the UI never writes storage directly.
 
 Architecture/implementation:
 
 - [ ] AC-4: `OrganizationPlanner.plan(OrganizationInput)` remains the sole external planning seam; strategy logic cannot bypass shared validation, constraints, allocator safety, result validation, or application/recovery (verified by the existing purity guard extended to strategy sources).
 - [ ] AC-5: `CANONICAL_PAGE_COMPACT_V1` extraction is byte-equivalent on the accepted corpus.
-- [ ] AC-6: Strategy identity/version participates in policy provenance (bundle digest), result echo, and stale-plan/diagnostic semantics.
+- [ ] AC-6: Strategy identity participates in policy provenance — the bundle digest covers the runtime-supported catalog and default; the selection contributes its own generation/digest identity to `InputProvenance`; the result echoes the effective strategy.
 - [ ] AC-7: Selection is local, versioned, validated, generation/digest-bearing, and migration/fail-closed tested.
 - [ ] AC-8: UI identifies the effective strategy, offers only supported strategies, and previews strategy-specific consequences.
 
@@ -341,7 +375,7 @@ Verification:
 Created after this spec is accepted; never one PR:
 
 1. Research/decision confirmation: record the accepted set/default (closed by accepting this spec; no separate issue needed if acceptance is direct).
-2. Feature: versioned strategy-selection contract — `RuleSemantics`/bundle v2 change, selection store, composer/migration/fail-closed handling.
+2. Feature: versioned strategy-selection contract — `RuleSemantics`/bundle v2 change, selection store (read source + validated write command), composer/provenance/migration/fail-closed handling. The bundle's runtime-supported set declares only the strategies implemented at that point (initially `CANONICAL_PAGE_COMPACT_V1`); each later strategy child expands the set with a new bundle identity under the same `organization-policy-v2` schema.
 3. Feature: extract `CANONICAL_PAGE_COMPACT_V1` behind the internal seam with the compatibility corpus proof.
 4. Feature: `STABLE_PAGE_TIDY_V1`.
 5. Feature: `BOTTOM_FIRST_V1` (may be delivered before or after child 4; both are first-delivery strategies).
@@ -358,6 +392,7 @@ None blocking acceptance. Deferred deliberately: catalog renaming policy (a rena
 ## Change history
 
 - 2026-09-04: Draft created for Issue #182 (Epic spec): accepted catalog, selection contract, internal seam, strategy rules, diagnostics/preview integration, child-issue split.
+- 2026-09-04: Review revision (owner review on `bc023485`): separated the selection identity from the immutable bundle digest (bundle covers runtime-supported catalog/default; selection carries its own `InputProvenance` identity as a fifth policy input) — Blocking 1. Added the Rule Management write-command contract (write-time catalog validation, atomic generation/digest publication, failure preserves the existing selection, picker never writes storage or substitutes in-run) — Blocking 2. Split spec-level catalog from the bundle runtime-supported set so each child mainline declares only implemented strategies; enabling a strategy is a bundle content change without a schema bump — Blocking 3. Unified downgrade semantics (pre-store binaries ignore the store; store-aware binaries fail closed on newer schemas; re-upgrade revalidates) — Blocking 4. Removed the duplicate `StrategyVersion` field; `StrategyId` (with the `_V1` suffix) is the immutable semantic identity — Medium. Documented the two-layer failure policy (composition `NotReady` vs planner-seam `V-20`) — Medium.
 
 ## References
 

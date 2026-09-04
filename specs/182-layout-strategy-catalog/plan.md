@@ -18,6 +18,10 @@
 - `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt:137` — `State.Preview(summary, details)` (spec 194)。strategy選択UIの着地点。
 - 推測 (未確認): selection storeの物理format。CategoryOverrideStoreと同family (schema version + generation + digest、atomic access) を前提にするが、実装Issueでstorage formatを確定する。Rule Managementはformatをimplementation detailとして所有する (ADR-0007 §3 先例)。
 
+## Review history
+
+- 2026-09-04: Owner review on `bc023485` 反映: selection identityをbundle digestから分離 (`InputProvenance` 第5input、Blocking 1)、Rule Management validated write command契約を追加 (Blocking 2)、spec-level catalog と runtime-supported setを分離し各mainlineは実装済みstrategyのみ宣言 (Blocking 3)、downgrade記述を「旧binaryはstoreを無視」に統一 (Blocking 4)、`StrategyVersion` field廃止 (`StrategyId` がimmutable semantic identity、Medium)、production (`NotReady`) とplanner-seam (`V-20`) のfailure layering明文化 (Medium)。
+
 ## Design
 
 ### Modules and interfaces
@@ -26,15 +30,9 @@
 
 ```kotlin
 @Suppress("ktlint:standard:class-naming")
-sealed interface StrategyId { /* 非空String backing、opaque */ }
-// 実際は spec 10 のhandle規約に従う value class/型エイリアス。
-// v2 catalog: "CANONICAL_PAGE_COMPACT_V1", "STABLE_PAGE_TIDY_V1",
-//             "GLOBAL_COMPACT_V1", "BOTTOM_FIRST_V1", "CATEGORY_CONTIGUOUS_V1"
-
-data class OrganizationStrategy(
-    val id: StrategyId,
-    val version: StrategyVersion,      // 非空String、"v1"
-)
+// StrategyId: spec 10 のopaque handle規約に従う非空String型。
+// ID自体がimmutable semantic identity (例: "CANONICAL_PAGE_COMPACT_V1")。
+// 個別のStrategyVersion fieldは持たない — _V1 接尾辞がversion。
 
 data class RuleSemantics(
     val version: RuleVersion,                 // "v2"
@@ -42,31 +40,33 @@ data class RuleSemantics(
     val dockPolicy: DockPolicy,
     val overflowPolicy: OverflowPolicy,
     val fallbackCategoryPolicy: FallbackCategoryPolicy,
-    val organizationStrategy: OrganizationStrategy,   // orderingPolicy を置換
+    val organizationStrategy: StrategyId,     // orderingPolicy を置換
 )
 
 data class PlanningResult(
     val revision: RevisionId,
     val ruleVersion: RuleVersion,
     val taxonomyVersion: TaxonomyVersion,
-    val organizationStrategy: OrganizationStrategy,   // echo
+    val organizationStrategy: StrategyId,     // echo
     val outcome: PlanningOutcome,
 )
 // PreserveReason へ STRATEGY_PRESERVED を追加
 // (precedence: ... > NON_TARGET > STRATEGY_PRESERVED > STRUCTURAL > ALREADY_CANONICAL)
 ```
 
-- V-20 を拡張: 受諾済み `RuleVersion` でもstrategy id/versionがcatalog外なら `INVALID_RULES`。
-- `ContractShapeTest` の `OrderingPolicy.entries.size == 1` 主張は `OrganizationStrategy` のclosed catalog主張へ置換する。
+- V-20 を拡張: 受諾済み `RuleVersion` でもstrategy IDがcatalog外なら `INVALID_RULES` (defense-in-depth層。productionはcomposerの`NotReady`で先に止まる)。
+- `ContractShapeTest` の `OrderingPolicy.entries.size == 1` 主張は catalog可変性の主張へ置換する。
 
 **rules (Rule Management):**
 
-- `OrganizerPolicyBundle` v2: `POLICY_BUNDLE_VERSION = "organization-policy-v2"`, `RULE_VERSION = RuleVersion("v2")`。v2は `LayoutStrategyCatalog(supported: List<OrganizationStrategy>, default: OrganizationStrategy)` をbundle contentに追加し、`canonicalRepresentation()` に `;strategy.catalog=...;strategy.default=...` を加える。taxonomy/classification/target versionは不変。
-- `interface LayoutStrategySelectionSource` (Rule Management配下): typed snapshot (`selection: OrganizationStrategy?`, `schemaVersion`, `generation`, `digest`)。読み取り失敗・unsupported schema・digest不一致はfail-closed値を返す。CategoryOverrideStoreと同familyのatomic access testを持つ。
+- `OrganizerPolicyBundle` v2: `POLICY_BUNDLE_VERSION = "organization-policy-v2"`, `RULE_VERSION = RuleVersion("v2")`。v2は `LayoutStrategyCatalog(runtimeSupported: List<StrategyId>, default: StrategyId)` をbundle contentに追加し、`canonicalRepresentation()` に `;strategy.runtimeSupported=...;strategy.default=...` を加える。**bundle digestはruntime-supported catalog + defaultのみをカバーし、ユーザー選択は含まない** (選択が変わってもbundle digestは不変 — レビューBlocking 1)。taxonomy/classification/target versionは不変。
+- runtime-supported setは各mainlineで実装済みstrategyのみを宣言する (child 2時点は `CANONICAL_PAGE_COMPACT_V1` のみ)。後続strategy子Issueは同schemaのままbundle content (digest) を更新して有効化する (レビューBlocking 3)。
+- selection store: read sourceに加え、**Rule Management所有のvalidated write command** を公開する (レビューBlocking 2)。write時: (1) 要求 `StrategyId` をactive bundleのruntime-supported setに対して検証し、非対応要求はstorageを触らず拒否、(2) 新monotonic generation + content digest付きで新snapshotをatomic publish、(3) publish失敗時は既存selectionを保持 (storeを空・中途半端にしない)、(4) 成功時はcallerがfresh compose/plan cycleを開始する (in-run substitution禁止)。UI pickerはこのcommandのみを呼び、storageを直接書かない。
 
 **integration (composer):**
 
-- `PolicySourceKind.LAYOUT_STRATEGY_SELECTION` を追加。composerはcut内でselection snapshotをA/Bの2回読み、`A.identity == B.identity` を検証する。bundle catalogに対して検証し、unsupported/removed/corruptは既存の `NotReady(SourceUnreadable | UnsupportedVersion | ContradictorySource)` familyへ写像する。`RuleSemantics` 投影時にbundle defaultまたは選択値を `organizationStrategy` へ載せる。
+- `PolicySourceKind.LAYOUT_STRATEGY_SELECTION` を追加。composerはcut内でselection snapshotをA/Bの2回読み、`A.identity == B.identity` を検証する。bundleのruntime-supported setに対して検証し、unsupported/removed/corruptは既存の `NotReady(SourceUnreadable | UnsupportedVersion | ContradictorySource)` familyへ写像する。`RuleSemantics` 投影時にbundle defaultまたは選択値を `organizationStrategy` へ載せる。
+- `InputProvenance` に選択snapshot identity (schema version/generation/digest) を第5のpolicy inputとして追加する (レビューBlocking 1)。bundle identityはcatalog/defaultのimmutable identityのままであり、選択で変化しない。
 
 **planning internal seam:**
 
@@ -74,7 +74,7 @@ data class PlanningResult(
 internal sealed interface CellTraversal { TOP_LEFT_ROW_MAJOR; BOTTOM_UP_ROW_MAJOR }
 internal sealed interface PageScope { PREFERRED_THEN_NEW; CAPTURED_THEN_NEW }
 internal data class StrategyDefinition(
-    val identity: OrganizationStrategy,
+    val identity: StrategyId,
     val createsFolders: Boolean,          // STABLE_PAGE_TIDY / CATEGORY_CONTIGUOUS は false
     val eligibleUnitFilter: (CapturedItem, /* span */ GridSpan) -> Boolean,
     val unitOrder: UnitOrder,             // CANONICAL_TIE_BREAK | CAPTURED_VISUAL (page-local | global)
@@ -113,22 +113,22 @@ strategy選択変更はcompose時点で確定する (stable cut)。run途中の�
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `planning/OrganizationInput.kt` | `OrganizationStrategy`/`StrategyId`/`StrategyVersion` 追加、`RuleSemantics.organizationStrategy` 化 | policy identityの唯一の公開inputs場所 |
+| `planning/OrganizationInput.kt` | `StrategyId` 追加、`RuleSemantics.organizationStrategy: StrategyId` 化 | policy identityの唯一の公開inputs場所 |
 | `planning/PlanningResult.kt` | echo field、`PreserveReason.STRATEGY_PRESERVED` | result自己記述性とtruthful rationale |
 | `planning/PlanningPlacement.kt` | shared materialization抽出、strategy dispatch、allocator traversal/page scope引数 | strategy固有処理の唯一の実装場所 |
 | `planning/PlanningValidation.kt` | V-20拡張 (catalog外strategy) | invalid rules familyの一元化 |
 | `rules/PolicyModels.kt` | bundle v2、strategy catalog/digest、validation | policy authorityはRule Management (ADR-0007) |
-| `rules/` 新規 selection store | schema/generation/digest付き読み取りsource | selectionの唯一のowner |
-| `integration/OrganizationInputComposer.kt` + `CompositionModels.kt` | cut拡張、catalog検証、`PolicySourceKind` 追加 | planner入力の唯一の合成点 (spec 83) |
+| `rules/` 新規 selection store | schema/generation/digest付き読み取りsource + validated write command | selectionの唯一のowner (read/write両方) |
+| `integration/OrganizationInputComposer.kt` + `CompositionModels.kt` | cut拡張、runtime-supported set検証、`PolicySourceKind` 追加、`InputProvenance` へselection identity追加 | planner入力の唯一の合成点 (spec 83) |
 | `ui/ManualOrganizationRun.kt` + preferences UI | strategy picker、Summary のstrategy identity、replan | selection UIの着地点 (spec 52/194/195継承) |
 | `organizer-diagnostics.md` | strategy identityのversion identifier allowance明文化 | diagnostics契約の正本 |
 | spec 10/12, `CONTEXT.md`, `DESIGN.md` | 受入PRでdelta反映 | 正本を先に直す規約 |
 
 ## Migration and recovery
 
-- bundle v2/`rule-v2` はapplication所有のimmutable artifact。in-place migrationなし (ADR-0007 §8)。旧bundleからの移行はbinary更新のみ。
-- selection store: schema version 1、generation、digest。first-run不在 = 定義済みdefault状態。corrupt/unsupported/newerはfail-closedで `NotReady`。backup/restore対象外 (override storeと同じv1判断)。
-- downgrade: selection storeを知らない旧binaryは自前のv1 policyで動作し、storeを読み書きしない。新schemaを読むはずのbinaryがunsupported schemaに当たった場合はfail-closedで書き換えない。
+- bundle v2/`rule-v2` はapplication所有のimmutable artifact。in-place migrationなし (ADR-0007 §8)。旧bundleからの移行はbinary更新のみ。runtime-supported setの拡張 (後続strategy有効化) は同schemaのbundle content (digest) 変更であり、schema version bumpを伴わない。
+- selection store: schema version 1、generation、digest。first-run不在 = 定義済みdefault状態。corrupt/unsupported/newer schemaはfail-closedで `NotReady`。backup/restore対象外 (override storeと同じv1判断)。
+- downgrade (レビューBlocking 4): selection store以前の旧binaryはstoreの存在を検知する機構を持たず、storeを無視して自前のlegacy policyで動作する。storeを読み・書き・破壊しないため、再upgrade時に保存済みselectionが再検証の上そのまま使える。storeを理解するbinaryがunsupported newer schemaを読んだ場合はfail-closedで書き換えない。
 - layout dataへのmigration影響なし: strategy適用結果のlayoutは既存recovery point契約 (spec 13) で復旧可能。strategyはrecovery点に無関係。
 
 ## Verification
@@ -138,10 +138,10 @@ Epic全体の受入条件 (spec AC-1〜AC-15) を子Issueへ割り当てる。�
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
 | AC-1/2 (spec受入, FR-016) | このspec/plan + requirements.md更新のreview | — |
-| AC-3/AC-7 (selection fail-closed) | selection store unit test (corrupt/newer/removed/generation)、composer `NotReady` mapping test、downgrade/fail-closed test | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
+| AC-3/AC-3b/AC-7 (selection fail-closed + write authority) | selection store unit test (corrupt/newer schema/removed strategy/generation)、write command test (write-time validation、atomic publish、failure keeps prior selection)、composer `NotReady` mapping test、V-20 defense-in-depth test、downgrade/re-upgrade test | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
 | AC-4 (単一seam/purity) | `PurityGuardTest` 拡張 (strategy sourceも対象)、`OrganizationPlannerSeamTest` | 同上 |
 | AC-5 (byte-equivalence) | golden oracle corpus test (harness + property 64-case + spec 12 fixtures) | 同上 (`*PlannerContractHarnessTest*`, `*PlannerGeneratedPropertyTest*`) |
-| AC-6 (provenance/echo) | bundle digest test、result echo test、diagnostics projection test | 同上 |
+| AC-6 (provenance/echo) | bundle digest test (catalog/defaultのみ、選択非依存)、`InputProvenance` selection identity test、result echo test、diagnostics projection test | 同上 |
 | AC-8/AC-13 (UI) | strategy picker/previewのCompose test、TalkBack/font-scale/switch test、recreation/stale test | `connectedLawnWithQuickstepGithubDebugAndroidTest` (spec 52パターン) |
 | AC-9/AC-11 (共有invariants/戦略分離) | harness + property testを全strategyで実行するcross-strategy runner | 同上 unit test |
 | AC-10 (fixture網羅) | strategy別fixture (spec scenario: 空home/full home/widget/folder/app pair/lock/page/profile/category fallback/rotation/tablet/two-panel/invalid selection) | 同上 |

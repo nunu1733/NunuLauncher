@@ -36,19 +36,33 @@ Three decisions are expensive to reverse and not obvious from code:
    traversal × ordering are rejected: they would enlarge the interface and
    multiply property-test states without user value.
 2. **Versioned identity in the rule schema.** `RuleSemantics` replaces
-   `orderingPolicy` with a versioned strategy identity (`id` + `version`). The
-   active bundle (`organization-policy-v2`, `rule-v2`) declares exactly the
-   supported strategy set and the default (`CANONICAL_PAGE_COMPACT_V1`); the
-   identity participates in the bundle digest, result echo, and diagnostics.
+   `orderingPolicy` with the strategy identity `StrategyId` (e.g.
+   `CANONICAL_PAGE_COMPACT_V1`). A strategy ID is an immutable semantic
+   identity: the `_V1` suffix is the version, so there is no separate version
+   field that could drift from the name. A behavior change is a new ID;
+   renaming a shipped ID is forbidden. The active bundle
+   (`organization-policy-v2`, `rule-v2`) declares the **runtime-supported**
+   strategy set and the default (`CANONICAL_PAGE_COMPACT_V1`) inside its
+   immutable digest; the runtime-supported set contains only implemented
+   strategies (staged enablement per child-issue mainline; each expansion
+   publishes a new bundle digest without a schema bump). The user selection
+   never enters the bundle digest.
    `CANONICAL_PAGE_COMPACT_V1` is the byte-equivalent extraction of the
    current `CANONICAL_V1` behavior and the compatibility oracle.
-3. **Fail-closed local selection.** User selection is read by the composer
-   through a Rule Management-owned local store with schema version, monotonic
-   generation, and content digest (the contract family of the category
-   override store). Missing selection means the bundle default; unknown,
-   removed, corrupt, or newer selections are typed non-write failures
-   (`NotReady`) — never a silent selection of another strategy. The selection
-   joins ADR-0007's consistent-cut protocol as a dynamic re-read.
+3. **Fail-closed local selection with a single write authority.** User
+   selection is owned by Rule Management through a local store with schema
+   version, monotonic generation, and content digest (the contract family of
+   the category override store), exposing one read source and one validated
+   write command. Missing selection means the bundle default; unknown,
+   removed, corrupt, or newer-schema selections are typed non-write failures
+   (`NotReady`) — never a silent selection of another strategy. The write
+   command validates against the active bundle's runtime-supported set at
+   write time, publishes atomically, and preserves the previous selection on
+   failure; the UI picker issues this command and never writes storage or
+   substitutes a strategy into an in-flight run. The selection joins
+   ADR-0007's consistent-cut protocol as a dynamic re-read and contributes its
+   own identity to `InputProvenance` (a fifth policy input), so the mutable
+   user state never enters the immutable bundle digest.
 4. **Idempotence-constrained strategy definitions.** Strategies that move
    units across pages order units by captured visual (positional) order, which
    is stable under the transformation; identity-tie-break ordering is accepted
@@ -65,20 +79,36 @@ shape of the decision, not the per-strategy rules.
 
 - The rule schema version bumps to `rule-v2` and the bundle to
   `organization-policy-v2`; per ADR-0007 §8 the older bundle is never migrated
-  in place, and a downgrade cannot rewrite a newer selection store.
+  in place. A binary from before the selection store ignores it entirely
+  (legacy policy keeps running; the store is never read, written, or
+  destroyed, so a re-upgrade rediscovers the selection); a store-aware binary
+  that reads a newer schema fails closed without rewriting it.
 - The composer gains one more dynamic read in the stable cut (selection
-  A/B re-read), and one more `PolicySourceKind`.
+  A/B re-read), one more `PolicySourceKind`, and one more `InputProvenance`
+  identity row; a composition is identified by the bundle identity together
+  with the selection identity, never by either alone.
 - Strategy definitions stay inside the planning module and are tested through
   the public seam; no strategy plugin surface is published.
-- Adding a strategy later means a new catalog member in a new bundle version
-  with its own versioned identity — never a silent reinterpretation of an
-  existing ID.
+- Enabling a newly implemented strategy changes the bundle content (new
+  digest) under the same `organization-policy-v2` schema; a semantic change to
+  strategy rules is a new strategy ID, and a schema change is a new bundle
+  version — never a silent reinterpretation of an existing ID.
 
 ## Alternatives considered
 
 - **Extend `OrderingPolicy` with more enum values.** Rejected: the name and
   shape mislead (strategies change more than ordering) and unversioned enum
   values cannot express removal/re-interpretation policy.
+- **Separate `StrategyVersion` field next to a versioned ID.** Rejected: with
+  IDs like `CANONICAL_PAGE_COMPACT_V1` plus a `v1` version field, future
+  changes could be expressed two conflicting ways (`..._V1/v2` versus
+  `..._V2/v1`). Making the `_V1` suffix itself the immutable identity leaves
+  one path: a behavior change is a new ID.
+- **Fold the user selection into the bundle identity.** Rejected: the bundle
+  is an immutable application artifact; a per-user, per-change digest would
+  break ADR-0007's identity discipline and re-derive the bundle on every
+  selection change. The selection therefore carries its own provenance
+  identity.
 - **Combinational public toggles.** Rejected above; a curated catalog keeps
   the interface deep and the test surface bounded.
 - **Plain `SharedPreferences` selection with silent fallback.** Rejected: a
@@ -87,8 +117,9 @@ shape of the decision, not the per-strategy rules.
 - **Fallback to the default strategy when a selection is unsupported.**
   Rejected for the same reason: fallback is an unconfirmed layout decision;
   the user must re-select explicitly.
-- **Include `CATEGORY_CONTIGUOUS_V1` in the first delivery.** Deferred: it is
-  behaviorally accepted in spec 182 but ships after the baseline/tidy/
-  bottom-first issues so the catalog grows in independently reviewable steps.
+- **Declare all five spec-level strategies runtime-supported in the first
+  bundle.** Rejected: intermediate mainlines would expose bundle-supported
+  strategies with no planner implementation. Each mainline declares only its
+  implemented strategies; enabling a strategy is a bundle content change.
 
 [ADR-0007]: 0007-authoritative-organization-policy-sources.md
