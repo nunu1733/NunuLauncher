@@ -1,7 +1,8 @@
 # High-risk audit: PR #207 Versioned layout-strategy selection contract (child 2)
 
 > Status: accepted — GO
-> Audit date: 2026-09-04 (re-audit at head `e38c92aed4`; supersedes this record's NO-GO version at head `498ae8c0e1`, committed as `9278ee3444` — see Findings for lineage)
+> Audit date: 2026-09-04
+> Audit scope note: re-audit at head `e38c92aed4`; supersedes this record's NO-GO version at head `498ae8c0e1`, committed as `9278ee3444` — see Findings for lineage
 
 - Auditor: Independent subagent audit session with no involvement in the implementation or review-fix sessions (solo-maintenance independent re-read + re-run; same session lineage as the first audit, re-executed against the new head)
 - PR: https://github.com/nunu1733/NunuLauncher/pull/207
