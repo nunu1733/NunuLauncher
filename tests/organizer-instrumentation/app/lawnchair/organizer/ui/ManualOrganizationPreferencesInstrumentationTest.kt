@@ -309,9 +309,12 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
 
         awaitPreview(runner, context)
-        composeRule.onNodeWithText(
+        // Concrete details follow spec 195 §D2: the header count is the
+        // PreviewCounts total and Summary-derived count lines never render.
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_moved_count, 2)).assertIsDisplayed()
+        composeRule.onAllNodesWithText(
             context.getString(R.string.manual_organization_moved_single_placement, 1),
-        ).assertIsDisplayed()
+        ).assertCountEquals(0)
         composeRule.onNodeWithText(
             context.getString(
                 R.string.manual_organization_preview_new_folder_row,

@@ -155,7 +155,7 @@ title を解決するのは materializer の1回だけである。preview と wr
   `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest`
   検証内容は actual en / ja resource での resolver 解決、未知 `CategoryId` → generic fallback、200% font scale の concrete preview で名前付き new-folder row が displayed / reachable であること。representative fixture は ja で比較的長い category label を使う。**PR の正式 evidence は既存 `organizer-instrumentation-issue52-tests` CI job の成功とする** — 同 class への test method 追加は既存 lane に自動的に含まれるため、新規 CI lane は設けない。
 - 実機確認 (FN-AC-02 の manual evidence): representative fixture での Organizer run を実機で実行し、複数 generated folder の名称 (ja locale)・TalkBack 読み上げ・適用後 reload での title 一致を確認して PR へ記録する。
-- PR は `Closes #201` を含め `risk: layout-data` label を付ける。high-risk independent-evidence gate (`final-status` + `docs/assessment/pr-201-generated-folder-semantic-naming.md`) を満たすまで merge しない。audit は実装 session とは別の作業として行う。
+- PR は `Closes #201` を含め `risk: layout-data` label を付ける。high-risk independent-evidence gate (`final-status` + `docs/assessment/pr-202-generated-folder-semantic-naming.md`、ファイル名は PR 番号に追従) を満たすまで merge しない。audit は実装 session とは別の作業として行う。
 
 ## Documentation updates
 
