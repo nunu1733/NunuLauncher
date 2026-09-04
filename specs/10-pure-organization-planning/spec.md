@@ -13,7 +13,7 @@ requirements:
   - NFR-004
   - NFR-005
   - NFR-010
-updated: 2026-08-27
+updated: 2026-09-04
 ---
 
 # Pure organization planning interface
@@ -98,6 +98,7 @@ programming identifiers, not domain vocabulary:
 | `AppPairId` | non-empty `String` | `AppPairInfo`, DB `_id` |
 | `SnapPositionToken` | non-empty `String` | encoded rank |
 | `CategoryId` / `TaxonomyVersion` | non-empty `String` | display name |
+| `StrategyId` | non-empty `String` | display name, rule file format |
 | `KindCode` / `ContainerCode` | `Int` | typed meaning |
 | `RevisionId` / `RuleVersion` | non-empty `String` | timestamp, file format |
 | `ComponentKey` / `PackageName` / `ShortcutId` | non-empty `String` | Android `ComponentName` or package object |
@@ -324,7 +325,7 @@ RuleSemantics {
     dockPolicy:             DockPolicy
     overflowPolicy:         OverflowPolicy
     fallbackCategoryPolicy: FallbackCategoryPolicy
-    orderingPolicy:         OrderingPolicy
+    organizationStrategy:   StrategyId
 }
 FolderPolicy { minGroupSize: Int, newFolderProfileScope: NewFolderProfileScope }
 
@@ -332,8 +333,9 @@ NewFolderProfileScope = SAME_PROFILE_ONLY
 DockPolicy             = PRESERVE
 OverflowPolicy         = ADD_PAGES_FOR_ITEMS_THAT_FIT_EMPTY_PAGE
 FallbackCategoryPolicy = KEEP_AS_SINGLETON
-OrderingPolicy         = CANONICAL_V1   // versioned identity linked to layout-strategy-v1;
-                                         // fill/sort/tie-break mechanics hidden in planner
+// organizationStrategy is a StrategyId naming one member of the accepted
+// built-in layout-strategy catalog (spec 182 / ADR-0012); fill/sort/
+// tie-break mechanics stay hidden in the planner.
 
 TaxonomyContract {
     version:           TaxonomyVersion
@@ -342,7 +344,9 @@ TaxonomyContract {
 }
 ```
 
-`CANONICAL_V1` is only a versioned policy identity — the seam contracts on
+A `StrategyId` is an immutable semantic identity naming one member of the
+accepted built-in strategy catalog ([spec
+182](../182-layout-strategy-catalog/spec.md)) — the seam contracts on
 observable result properties, not mechanics ([layout strategy
 v1](../../docs/product/layout-strategy-v1.md) §4). `RuleSemantics` and
 `TaxonomyContract` have value equality and are canonicalized as part of input.
@@ -352,8 +356,11 @@ implicitly determine taxonomy — the binding is explicit through `TaxonomyContr
 
 Each policy field is a single v1 variant, so an invalid policy cannot be
 constructed. Reachable V-20 (`INVALID_RULES`) cases: unaccepted `version`,
-`minGroupSize < 2`, duplicate `CategoryId` in `allowedCategories`, or
-`fallbackCategory` not in `allowedCategories`.
+`minGroupSize < 2`, duplicate `CategoryId` in `allowedCategories`,
+`fallbackCategory` not in `allowedCategories`, or an `organizationStrategy`
+outside the accepted catalog (defense-in-depth layer; the production
+composition path fails earlier with `NotReady`, per spec 182's failure
+layering).
 
 **Dock resolution under `PRESERVE`:** a dock-scoped item marked `Movable` is
 reported `Preserved { DOCK }` — the planner never moves it.
@@ -391,6 +398,7 @@ PlanningResult {
     revision:    RevisionId            // echoed
     ruleVersion: RuleVersion           // echoed
     taxonomyVersion: TaxonomyVersion   // echoed
+    organizationStrategy: StrategyId   // echoed (spec 182)
     outcome:     PlanningOutcome
 }
 PlanningOutcome = Planned | Rejected
@@ -411,7 +419,8 @@ Disposition =
     | Preserved { reason: PreserveReason }
 PlacementCode   = SINGLE_PLACEMENT | FOLDER_MEMBER | FOLDER_UNIT
 PreserveReason  = LOCKED | UNAVAILABLE_TARGET | DOCK | WIDGET
-                 | APP_PAIR | LEGACY_SHORTCUT | NON_TARGET | STRUCTURAL
+                 | APP_PAIR | LEGACY_SHORTCUT | NON_TARGET
+                 | STRATEGY_PRESERVED | STRUCTURAL
                  | ALREADY_CANONICAL
 
 NewPage { ordinal: NewPageOrdinal, order: PageOrder }
@@ -549,7 +558,7 @@ Each rule defined once. Scenarios, ACs, and oracle refer to these IDs.
 | V-17 | captured `ItemId` absent from all `existing` | `Invalid` | `INCOMPLETE_TARGET_PARTITION` | — |
 | V-18 | `additions` non-empty under `FullOrganization` | `Invalid` | `ADDITIONS_UNDER_FULL_ORGANIZATION` | — |
 | V-19 | `locked=true` region does not fit `DeviceCapabilities` | `Invalid` | `LOCKED_OUT_OF_BOUNDS` | `SpanParam` |
-| V-20 | unaccepted `RuleVersion`; `minGroupSize<2`; dup `CategoryId`; bad `fallbackCategory` | `Invalid` | `INVALID_RULES` | — |
+| V-20 | unaccepted `RuleVersion`; `minGroupSize<2`; dup `CategoryId`; bad `fallbackCategory`; `organizationStrategy` outside the accepted catalog (spec 182 defense-in-depth layer) | `Invalid` | `INVALID_RULES` | — |
 | V-21 | `CandidateItem.span` exceeds `(columns, rows)` | `Impossible` | `EXCEEDS_GRID_DIMENSIONS` | — |
 | V-22 | `CandidateItem.availability != AVAILABLE` | `Impossible` | `TARGET_UNAVAILABLE` | — |
 
@@ -557,7 +566,11 @@ Each rule defined once. Scenarios, ACs, and oracle refer to these IDs.
 
 When attributes intersect, exactly one reason is reported, highest first:
 
-`LOCKED > UNAVAILABLE_TARGET > DOCK > WIDGET > APP_PAIR > LEGACY_SHORTCUT > NON_TARGET > STRUCTURAL > ALREADY_CANONICAL`
+`LOCKED > UNAVAILABLE_TARGET > DOCK > WIDGET > APP_PAIR > LEGACY_SHORTCUT > NON_TARGET > STRATEGY_PRESERVED > STRUCTURAL > ALREADY_CANONICAL`
+
+`STRATEGY_PRESERVED` (spec 182) applies only to an otherwise-movable item that
+the selected layout strategy intentionally keeps fixed; it never outranks any
+existing reason.
 
 Locked+unavailable → `LOCKED`; locked+dock → `LOCKED`; unavailable+dock →
 `UNAVAILABLE_TARGET`; widget outside target set → `WIDGET` (not `NON_TARGET`).
@@ -586,7 +599,8 @@ Output collections also have a canonical representation: `placements` and
 unplaced items by `ItemId`. `DiagnosticParam` lists use their declared order.
 No public result collection is order-insensitive.
 
-`RuleSemantics.version`, `TaxonomyContract.version`, and
+`RuleSemantics.version`, `TaxonomyContract.version`,
+`RuleSemantics.organizationStrategy`, and
 `LayoutSnapshot.revision` are echoed in `PlanningResult`. Staleness is detected outside the seam (caller compares echoed
 `revision`). The planner is stale-independent.
 
@@ -925,6 +939,14 @@ Issue #10 uses a small representative suite, not the downstream harness:
   format is Rule Management's concern.
 
 ## Change history
+
+- 2026-09-04: Spec 182 (accepted) delta applied. Replaces the single-value
+  `OrderingPolicy` with `RuleSemantics.organizationStrategy: StrategyId`
+  (immutable catalog identity), adds the `organizationStrategy` echo to
+  `PlanningResult`, inserts `STRATEGY_PRESERVED` between `NON_TARGET` and
+  `STRUCTURAL` in the preservation precedence, and extends V-20 to reject a
+  catalog-external strategy (defense-in-depth layer; production composition
+  fails earlier with `NotReady`).
 
 - 2026-08-15: Recorded the Issue #24 reference in open questions (owner:
   spec 24); no contract, type, or behavior change.

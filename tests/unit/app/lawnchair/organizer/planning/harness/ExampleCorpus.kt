@@ -34,7 +34,6 @@ import app.lawnchair.organizer.planning.ItemKind
 import app.lawnchair.organizer.planning.KindCode
 import app.lawnchair.organizer.planning.LayoutSnapshot
 import app.lawnchair.organizer.planning.NewFolderProfileScope
-import app.lawnchair.organizer.planning.OrderingPolicy
 import app.lawnchair.organizer.planning.OrganizationInput
 import app.lawnchair.organizer.planning.Orientation
 import app.lawnchair.organizer.planning.OverflowPolicy
@@ -55,6 +54,7 @@ import app.lawnchair.organizer.planning.ShortcutId
 import app.lawnchair.organizer.planning.SignalSource
 import app.lawnchair.organizer.planning.SnapPositionToken
 import app.lawnchair.organizer.planning.SplitStage
+import app.lawnchair.organizer.planning.StrategyId
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.TargetSet
 import app.lawnchair.organizer.planning.TaxonomyContract
@@ -76,7 +76,7 @@ internal object ExampleCorpus {
     )
 
     private val defaultRules = RuleSemantics(
-        version = RuleVersion("v1"),
+        version = RuleVersion("v2"),
         folderPolicy = FolderPolicy(
             minGroupSize = 2,
             newFolderProfileScope = NewFolderProfileScope.SAME_PROFILE_ONLY,
@@ -84,7 +84,7 @@ internal object ExampleCorpus {
         dockPolicy = DockPolicy.PRESERVE,
         overflowPolicy = OverflowPolicy.ADD_PAGES_FOR_ITEMS_THAT_FIT_EMPTY_PAGE,
         fallbackCategoryPolicy = FallbackCategoryPolicy.KEEP_AS_SINGLETON,
-        orderingPolicy = OrderingPolicy.CANONICAL_V1,
+        organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
     )
 
     private val defaultTaxonomy = TaxonomyContract(

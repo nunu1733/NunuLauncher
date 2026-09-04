@@ -30,7 +30,11 @@ internal class DeterministicOrganizationPlanner(
                     input.taxonomy,
                 )
 
-                val placement = PlanningPlacement.place(input, classification, allocationFault)
+                // Spec 182: strategy dispatch goes strictly through the
+                // internal registry; the selected definition executes the
+                // placement. V-20 already rejected catalog-external ids.
+                val definition = checkNotNull(LayoutStrategyRegistry.definition(input.rules.organizationStrategy))
+                val placement = definition.place(input, classification, allocationFault)
 
                 PlanningResultCanonicalization.assemble(input, classification, placement)
             }

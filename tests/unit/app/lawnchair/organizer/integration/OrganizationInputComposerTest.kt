@@ -19,6 +19,7 @@ import app.lawnchair.organizer.planning.PageRef
 import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.planning.ReservedWorkspaceRegion
 import app.lawnchair.organizer.planning.RuleVersion
+import app.lawnchair.organizer.planning.StrategyId
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.WorkspaceOverlapToleranceSource
 import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
@@ -27,6 +28,9 @@ import app.lawnchair.organizer.rules.CategoryOverrideKey
 import app.lawnchair.organizer.rules.CategoryOverrideSnapshot
 import app.lawnchair.organizer.rules.CategoryOverrideSnapshotSource
 import app.lawnchair.organizer.rules.ClassificationPolicy
+import app.lawnchair.organizer.rules.LayoutStrategySelectionReadResult
+import app.lawnchair.organizer.rules.LayoutStrategySelectionSnapshot
+import app.lawnchair.organizer.rules.LayoutStrategySelectionSource
 import app.lawnchair.organizer.rules.OrganizerPolicyBundleSource
 import app.lawnchair.organizer.rules.OverrideSnapshotReadResult
 import app.lawnchair.organizer.rules.PolicyBundleIdentity
@@ -62,7 +66,7 @@ class OrganizationInputComposerTest {
         val result = composer(state, SequenceOverrides(overrides, overrides), SequenceEvidence(evidence, evidence)).composeFullOrganization()
         assertTrue(result is OrganizationInputComposition.Ready)
         val ready = result as OrganizationInputComposition.Ready
-        assertEquals("v1", ready.input.rules.version.value)
+        assertEquals("v2", ready.input.rules.version.value)
         assertEquals("v1", ready.input.taxonomy.version.value)
         assertEquals(3, ready.input.targets.existing.size)
         assertTrue(ready.input.targets.additions.isEmpty())
@@ -378,6 +382,7 @@ class OrganizationInputComposerTest {
         state: app.lawnchair.organizer.application.public.LayoutState,
         overrideSource: CategoryOverrideSnapshotSource = SequenceOverrides(emptySnapshot(), emptySnapshot()),
         evidenceSource: ClassificationSignalSnapshotSource = SequenceEvidence(evidence(), evidence()),
+        selections: LayoutStrategySelectionSource = SequenceSelections(emptySelection(), emptySelection()),
         bundle: BundleReadResult = BuiltInOrganizerPolicyBundleSource.readActive(),
         tolerance: Boolean? = null,
     ): DefaultOrganizationInputComposer = DefaultOrganizationInputComposer(
@@ -388,6 +393,7 @@ class OrganizationInputComposerTest {
             override fun readActive(): BundleReadResult = bundle
         },
         overrides = overrideSource,
+        layoutStrategySelections = selections,
         platformEvidence = evidenceSource,
         overlapTolerance = WorkspaceOverlapToleranceSource { tolerance ?: true },
     )
@@ -417,6 +423,13 @@ class OrganizationInputComposerTest {
     )
 
     private fun emptySnapshot(digest: String = digest('a')) = snapshot(digest = digest)
+
+    private fun emptySelection() = LayoutStrategySelectionSnapshot(
+        schemaVersion = 1,
+        generation = 0L,
+        selection = null,
+        identity = PolicyInputIdentity(PolicySourceKind.LAYOUT_STRATEGY_SELECTION, "schema-1-generation-0", digest('c')),
+    )
 
     private fun evidence(
         s2: Map<ItemId, CategoryId> = emptyMap(),
@@ -450,6 +463,120 @@ class OrganizationInputComposerTest {
                     "f".repeat(64),
                 ),
             ),
+        )
+    }
+
+    @Test
+    fun selectionOutsideRuntimeSupportedSetFailsClosedWithoutPlannerFallback() {
+        val state = CanonicalFixtures.state(
+            profiles = listOf(CanonicalFixtures.profile("personal")),
+            items = listOf(app("a", "personal", "com.example.a/.Main")),
+        )
+        val unsupported = emptySelection().copy(
+            generation = 3L,
+            selection = StrategyId("REMOVED_STRATEGY_V1"),
+        )
+
+        val composition = composer(
+            state,
+            SequenceOverrides(emptySnapshot(), emptySnapshot()),
+            SequenceEvidence(evidence(), evidence()),
+            selections = SequenceSelections(unsupported, unsupported),
+        ).composeFullOrganization() as OrganizationInputComposition.NotReady
+
+        assertEquals(
+            InputReadinessReason.UnsupportedVersion(PolicySourceKind.LAYOUT_STRATEGY_SELECTION, unsupported.identity),
+            composition.reason,
+        )
+        assertEquals(InputCompositionCode.STRATEGY_SELECTION_UNSUPPORTED, composition.diagnostic.code)
+    }
+
+    @Test
+    fun sameBundleWithDifferentSelectionIdentitiesKeepRulesIdentityButDifferInProvenanceRow() {
+        val state = CanonicalFixtures.state(
+            profiles = listOf(CanonicalFixtures.profile("personal")),
+            items = listOf(app("a", "personal", "com.example.a/.Main")),
+        )
+        val canonical = BuiltInOrganizerPolicyBundleSource.readActive()
+        val defaultStrategy = (canonical as BundleReadResult.Ready).bundle.layoutStrategies.default
+        val defaultSelection = emptySelection()
+        // Same supported strategy, different selection identity (generation):
+        // the rules identity is the identity of the effective semantics, whose
+        // content did not change, so it stays equal; the generation change is
+        // observable only in the fifth provenance row (and the stable cut).
+        val otherSelection = defaultSelection.copy(
+            generation = 1L,
+            identity = defaultSelection.identity.copy(versionOrGeneration = "schema-1-generation-1"),
+        )
+
+        val first = composer(
+            state,
+            SequenceOverrides(emptySnapshot(), emptySnapshot()),
+            SequenceEvidence(evidence(), evidence()),
+            selections = SequenceSelections(defaultSelection, defaultSelection),
+        ).composeFullOrganization() as OrganizationInputComposition.Ready
+
+        val second = composer(
+            state,
+            SequenceOverrides(emptySnapshot(), emptySnapshot()),
+            SequenceEvidence(evidence(), evidence()),
+            selections = SequenceSelections(otherSelection, otherSelection),
+        ).composeFullOrganization() as OrganizationInputComposition.Ready
+
+        assertEquals(first.provenance.rules, second.provenance.rules)
+        assertEquals(first.input.rules, second.input.rules)
+        assertEquals(first.provenance.policyBundle, second.provenance.policyBundle)
+        assertEquals(defaultStrategy, first.input.rules.organizationStrategy)
+        // The fifth provenance row carries each selection's own identity.
+        assertNotEquals(first.provenance.layoutStrategySelection, second.provenance.layoutStrategySelection)
+        assertEquals(defaultSelection.identity, first.provenance.layoutStrategySelection)
+        assertEquals(otherSelection.identity, second.provenance.layoutStrategySelection)
+    }
+
+    @Test
+    fun selectionChangeBetweenCutReadsYieldsOneRetryThenInconsistentPolicyRead() {
+        val state = CanonicalFixtures.state(
+            profiles = listOf(CanonicalFixtures.profile("personal")),
+            items = listOf(app("a", "personal", "com.example.a/.Main")),
+        )
+        // Both reads use the supported strategy; only the snapshot identity
+        // (generation) changes mid-cut, which must destabilize the cut.
+        val a = emptySelection()
+        val b = emptySelection().copy(
+            generation = 1L,
+            identity = emptySelection().identity.copy(versionOrGeneration = "schema-1-generation-1"),
+        )
+
+        val composition = composer(
+            state,
+            SequenceOverrides(emptySnapshot(), emptySnapshot()),
+            SequenceEvidence(evidence(), evidence()),
+            selections = SequenceSelections(a, b, a, b),
+        ).composeFullOrganization() as OrganizationInputComposition.NotReady
+
+        assertTrue(composition.reason is InputReadinessReason.InconsistentPolicyRead)
+        assertEquals(InputCompositionCode.DYNAMIC_CUT_UNSTABLE, composition.diagnostic.code)
+    }
+
+    @Test
+    fun absentSelectionComposesTheBundleDefault() {
+        val state = CanonicalFixtures.state(
+            profiles = listOf(CanonicalFixtures.profile("personal")),
+            items = listOf(app("a", "personal", "com.example.a/.Main")),
+        )
+        val composition = composer(state, SequenceOverrides(emptySnapshot(), emptySnapshot()), SequenceEvidence(evidence(), evidence()))
+            .composeFullOrganization() as OrganizationInputComposition.Ready
+
+        val bundle = (BuiltInOrganizerPolicyBundleSource.readActive() as BundleReadResult.Ready).bundle
+        assertEquals(bundle.layoutStrategies.default, composition.input.rules.organizationStrategy)
+    }
+
+    private class SequenceSelections(
+        private vararg val snapshots: LayoutStrategySelectionSnapshot,
+    ) : LayoutStrategySelectionSource {
+        private var index = 0
+        override fun read(): LayoutStrategySelectionReadResult = LayoutStrategySelectionReadResult.Ready(
+            snapshots[minOf(index++, snapshots.lastIndex)],
         )
     }
 

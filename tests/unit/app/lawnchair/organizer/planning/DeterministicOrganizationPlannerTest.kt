@@ -24,12 +24,12 @@ class DeterministicOrganizationPlannerTest {
     ) = DeviceCapabilities(columns, rows, hotseatSlots, folderMaxColumns, folderMaxRows, orientation)
 
     private fun defaultRules(minGroupSize: Int = 2) = RuleSemantics(
-        version = RuleVersion("v1"),
+        version = RuleVersion("v2"),
         folderPolicy = FolderPolicy(minGroupSize, NewFolderProfileScope.SAME_PROFILE_ONLY),
         dockPolicy = DockPolicy.PRESERVE,
         overflowPolicy = OverflowPolicy.ADD_PAGES_FOR_ITEMS_THAT_FIT_EMPTY_PAGE,
         fallbackCategoryPolicy = FallbackCategoryPolicy.KEEP_AS_SINGLETON,
-        orderingPolicy = OrderingPolicy.CANONICAL_V1,
+        organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
     )
 
     private fun defaultTaxonomy(
@@ -78,6 +78,23 @@ class DeterministicOrganizationPlannerTest {
     )
 
     private fun apps(n: Int, prefix: String = "app", startX: Int = 0, startY: Int = 0, columns: Int = 4): List<CapturedItem> = (0 until n).map { app("$prefix$it", x = startX + it % columns, y = startY + it / columns) }
+
+    @Test
+    fun catalogExternalStrategyIsRejectedInvalidThroughTheSeam() {
+        // Spec 182 failure layering: a direct planner-seam caller with a
+        // catalog-external StrategyId receives a typed V-20 Rejected.Invalid —
+        // never a fallback strategy and never a thrown exception.
+        val input = fullInput(
+            items = listOf(app("a")),
+            rules = defaultRules().copy(organizationStrategy = StrategyId("REMOVED_STRATEGY_V1")),
+        )
+
+        val result = planner.plan(input)
+
+        val outcome = result.outcome as Rejected.Invalid
+        assertTrue(outcome.reasons.any { it.code == RejectionCode.INVALID_RULES })
+        assertEquals(StrategyId("REMOVED_STRATEGY_V1"), result.organizationStrategy)
+    }
 
     private fun fullInput(
         items: List<CapturedItem>,

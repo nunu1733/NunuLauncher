@@ -24,6 +24,10 @@ _Avoid_: 全アプリ（対象範囲が曖昧な場合）
 対象集合をどのような配置へ変換するかを記述する、version付きの検証可能な規則。
 _Avoid_: 設定、XMLルール
 
+**レイアウトストラテジー (Layout Strategy)**:
+対象集合をどのような配置方針へ変換するかを決める、version付きの組み込み計画戦略。folder形成、対象unit、unit順序、page範囲、cell探索をcurated catalogの1メンバーとして固定し、選択identityがpolicy provenanceへ参加する ([spec 182](./specs/182-layout-strategy-catalog/spec.md))。
+_Avoid_: 並べ替え設定 (組合せ式toggleを想起させる)、Theme、OrderingPolicy (旧単一値の型名)
+
 **レイアウトsnapshot (Layout Snapshot)**:
 ある時点のホームレイアウト、端末能力、およびrevisionを固定した読み取り専用の入力。
 _Avoid_: Backup、DB dump

@@ -92,6 +92,18 @@ data class RuleVersion(val value: String) : Comparable<RuleVersion> {
     override fun compareTo(other: RuleVersion): Int = compareUtf8Bytes(value, other.value)
 }
 
+/**
+ * Immutable semantic identity of one built-in layout strategy (spec 182 /
+ * ADR-0012). The `_V1` suffix is the version; a behavior change is a new ID.
+ */
+data class StrategyId(val value: String) : Comparable<StrategyId> {
+    init {
+        require(value.isNotEmpty())
+    }
+
+    override fun compareTo(other: StrategyId): Int = compareUtf8Bytes(value, other.value)
+}
+
 data class ComponentKey(val value: String) : Comparable<ComponentKey> {
     init {
         require(value.isNotEmpty())

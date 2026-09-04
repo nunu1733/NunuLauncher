@@ -5,6 +5,7 @@ import app.lawnchair.organizer.diagnostics.model.ErrorFamily
 import app.lawnchair.organizer.diagnostics.model.PhaseCode
 import app.lawnchair.organizer.diagnostics.model.PlanSummary
 import app.lawnchair.organizer.diagnostics.model.RunEvent
+import app.lawnchair.organizer.diagnostics.model.RunVersions
 import app.lawnchair.organizer.planning.Confidence
 import app.lawnchair.organizer.planning.Planned
 import app.lawnchair.organizer.planning.PlanningResult
@@ -38,11 +39,23 @@ object PlanningProjection {
         journalSequence: Long,
         capturedItemCount: Int = 0,
         candidateItemCount: Int = 0,
+        /** Strategy ids the current binary actually executes (spec 182 runtime-enabled set). */
+        runtimeStrategyIds: Set<String> = emptySet(),
     ): RunEvent {
         val baseEvent = RunEvent(
             journalSequence = journalSequence,
             phase = PhaseCode.RUN_STARTED, // placeholder, overridden by copy()
-            versions = null,
+            // Spec 182: the effective strategy identity is a policy version
+            // identifier and is echoed into the journal alongside the other
+            // version identifiers. The echo must match the planner's runtime
+            // truth: a strategy outside the runtime-enabled catalog — a
+            // V-20-rejected catalog-external id, or a future catalog ID not yet
+            // implemented in this binary — is redacted to the empty value so
+            // the typed rejection reaches the journal without being recorded as
+            // an accepted strategy and without the diagnostics layer throwing.
+            versions = RunVersions.create(
+                strategyVersion = strategyIdentifier(result.organizationStrategy, runtimeStrategyIds),
+            ),
             deviceProfile = null,
         )
 
@@ -52,6 +65,11 @@ object PlanningProjection {
             is Rejected.Impossible -> projectImpossible(baseEvent, outcome, capturedItemCount, candidateItemCount)
         }
     }
+
+    private fun strategyIdentifier(
+        strategy: app.lawnchair.organizer.planning.StrategyId,
+        runtimeStrategyIds: Set<String>,
+    ): String = strategy.value.takeIf { it in runtimeStrategyIds }.orEmpty()
 
     private fun projectPlanned(
         base: RunEvent,
