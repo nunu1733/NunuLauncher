@@ -21,6 +21,7 @@
 ## Review history
 
 - 2026-09-04: Owner review on `bc023485` 反映: selection identityをbundle digestから分離 (`InputProvenance` 第5input、Blocking 1)、Rule Management validated write command契約を追加 (Blocking 2)、spec-level catalog と runtime-supported setを分離し各mainlineは実装済みstrategyのみ宣言 (Blocking 3)、downgrade記述を「旧binaryはstoreを無視」に統一 (Blocking 4)、`StrategyVersion` field廃止 (`StrategyId` がimmutable semantic identity、Medium)、production (`NotReady`) とplanner-seam (`V-20`) のfailure layering明文化 (Medium)。
+- 2026-09-04: Owner re-review on `c666c435` 反映: strategy有効化を「同schemaのままdigest更新」から「ADR-0007 §8準拠の新bundle semantic version/generation + digest publish」へ変更 (`organization-policy-v2.1` 型、`rule-v2`/selection schemaは不変、旧binaryはunknown versionでfail-closed) — Blocking。catalog整合 (`runtimeSupported ⊆ 実装ID`、`default ∈ runtimeSupported`、runtime-enabled実装との完全一致) をchild 2と各strategy子Issueの必須contract test化 — Medium。Open questionsから解決済みのecho-shape項目を削除 — Low。
 
 ## Design
 
@@ -59,8 +60,9 @@ data class PlanningResult(
 
 **rules (Rule Management):**
 
-- `OrganizerPolicyBundle` v2: `POLICY_BUNDLE_VERSION = "organization-policy-v2"`, `RULE_VERSION = RuleVersion("v2")`。v2は `LayoutStrategyCatalog(runtimeSupported: List<StrategyId>, default: StrategyId)` をbundle contentに追加し、`canonicalRepresentation()` に `;strategy.runtimeSupported=...;strategy.default=...` を加える。**bundle digestはruntime-supported catalog + defaultのみをカバーし、ユーザー選択は含まない** (選択が変わってもbundle digestは不変 — レビューBlocking 1)。taxonomy/classification/target versionは不変。
-- runtime-supported setは各mainlineで実装済みstrategyのみを宣言する (child 2時点は `CANONICAL_PAGE_COMPACT_V1` のみ)。後続strategy子Issueは同schemaのままbundle content (digest) を更新して有効化する (レビューBlocking 3)。
+- `OrganizerPolicyBundle` v2: `POLICY_BUNDLE_VERSION` 起点 `organization-policy-v2`, `RULE_VERSION = RuleVersion("v2")`。v2は `LayoutStrategyCatalog(runtimeSupported: List<StrategyId>, default: StrategyId)` をbundle contentに追加し、`canonicalRepresentation()` に `;strategy.runtimeSupported=...;strategy.default=...` を加える。**bundle digestはruntime-supported catalog + defaultのみをカバーし、ユーザー選択は含まない** (選択が変わってもbundle digestは不変 — レビューBlocking 1)。taxonomy/classification/target versionは不変。
+- runtime-supported setは各mainlineで実装済みstrategyのみを宣言する (child 2時点は `CANONICAL_PAGE_COMPACT_V1` のみ)。**後続strategy子IssueはADR-0007 §8に従い新bundle semantic version/generation + digestでpublishする** (例: `organization-policy-v2.1`)。`rule-v2`・taxonomy/classification/target version・selection-store schemaは有効化ごとに不変 (再レビューBlocking)。`PolicyBundleIdentity` のsemantic version検証はcompatible-range比較を行わず、binaryが宣言する正確なversionとの不一致は既存 `UnsupportedVersion` 経路でfail-closedする。
+- catalog整合のcontract testをchild 2と各strategy子Issueで必須化する (再レビューMedium): `bundle.runtimeSupported ⊆ 実装済み内部StrategyDefinition ID`、`bundle.default ∈ bundle.runtimeSupported`、かつ `bundle.runtimeSupported == runtime-enabledな実装ID` (完全一致)。
 - selection store: read sourceに加え、**Rule Management所有のvalidated write command** を公開する (レビューBlocking 2)。write時: (1) 要求 `StrategyId` をactive bundleのruntime-supported setに対して検証し、非対応要求はstorageを触らず拒否、(2) 新monotonic generation + content digest付きで新snapshotをatomic publish、(3) publish失敗時は既存selectionを保持 (storeを空・中途半端にしない)、(4) 成功時はcallerがfresh compose/plan cycleを開始する (in-run substitution禁止)。UI pickerはこのcommandのみを呼び、storageを直接書かない。
 
 **integration (composer):**
@@ -126,7 +128,7 @@ strategy選択変更はcompose時点で確定する (stable cut)。run途中の�
 
 ## Migration and recovery
 
-- bundle v2/`rule-v2` はapplication所有のimmutable artifact。in-place migrationなし (ADR-0007 §8)。旧bundleからの移行はbinary更新のみ。runtime-supported setの拡張 (後続strategy有効化) は同schemaのbundle content (digest) 変更であり、schema version bumpを伴わない。
+- bundle v2/`rule-v2` はapplication所有のimmutable artifact。in-place migrationなし (ADR-0007 §8)。旧bundleからの移行はbinary更新のみ。runtime-supported setの拡張 (後続strategy有効化) は **新bundle semantic version/generation + digestのpublish** であり (例: `organization-policy-v2.1`)、旧binaryは知らないversionを既存 `UnsupportedVersion` 経路でfail-closed扱いにする。`rule-v2`・selection-store schemaは有効化ごとに不変。
 - selection store: schema version 1、generation、digest。first-run不在 = 定義済みdefault状態。corrupt/unsupported/newer schemaはfail-closedで `NotReady`。backup/restore対象外 (override storeと同じv1判断)。
 - downgrade (レビューBlocking 4): selection store以前の旧binaryはstoreの存在を検知する機構を持たず、storeを無視して自前のlegacy policyで動作する。storeを読み・書き・破壊しないため、再upgrade時に保存済みselectionが再検証の上そのまま使える。storeを理解するbinaryがunsupported newer schemaを読んだ場合はfail-closedで書き換えない。
 - layout dataへのmigration影響なし: strategy適用結果のlayoutは既存recovery point契約 (spec 13) で復旧可能。strategyはrecovery点に無関係。
@@ -139,6 +141,7 @@ Epic全体の受入条件 (spec AC-1〜AC-15) を子Issueへ割り当てる。�
 |---|---|---|
 | AC-1/2 (spec受入, FR-016) | このspec/plan + requirements.md更新のreview | — |
 | AC-3/AC-3b/AC-7 (selection fail-closed + write authority) | selection store unit test (corrupt/newer schema/removed strategy/generation)、write command test (write-time validation、atomic publish、failure keeps prior selection)、composer `NotReady` mapping test、V-20 defense-in-depth test、downgrade/re-upgrade test | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
+| AC-9b (catalog coherence) | bundle catalog contract test: `runtimeSupported ⊆ 実装済みStrategyDefinition ID`、`default ∈ runtimeSupported`、runtime-enabled実装IDとの完全一致 (child 2と各strategy子Issueで実行) | 同上 |
 | AC-4 (単一seam/purity) | `PurityGuardTest` 拡張 (strategy sourceも対象)、`OrganizationPlannerSeamTest` | 同上 |
 | AC-5 (byte-equivalence) | golden oracle corpus test (harness + property 64-case + spec 12 fixtures) | 同上 (`*PlannerContractHarnessTest*`, `*PlannerGeneratedPropertyTest*`) |
 | AC-6 (provenance/echo) | bundle digest test (catalog/defaultのみ、選択非依存)、`InputProvenance` selection identity test、result echo test、diagnostics projection test | 同上 |

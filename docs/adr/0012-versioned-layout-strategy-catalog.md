@@ -44,9 +44,10 @@ Three decisions are expensive to reverse and not obvious from code:
    (`organization-policy-v2`, `rule-v2`) declares the **runtime-supported**
    strategy set and the default (`CANONICAL_PAGE_COMPACT_V1`) inside its
    immutable digest; the runtime-supported set contains only implemented
-   strategies (staged enablement per child-issue mainline; each expansion
-   publishes a new bundle digest without a schema bump). The user selection
-   never enters the bundle digest.
+   strategies, and enabling one on a later child-issue mainline publishes a
+   **new bundle semantic version/generation and digest** per ADR-0007 §8
+   (e.g. `organization-policy-v2.1`), with `rule-v2` and the selection-store
+   schema unchanged. The user selection never enters the bundle digest.
    `CANONICAL_PAGE_COMPACT_V1` is the byte-equivalent extraction of the
    current `CANONICAL_V1` behavior and the compatibility oracle.
 3. **Fail-closed local selection with a single write authority.** User
@@ -89,10 +90,18 @@ shape of the decision, not the per-strategy rules.
   with the selection identity, never by either alone.
 - Strategy definitions stay inside the planning module and are tested through
   the public seam; no strategy plugin surface is published.
-- Enabling a newly implemented strategy changes the bundle content (new
-  digest) under the same `organization-policy-v2` schema; a semantic change to
+- Enabling a newly implemented strategy publishes a new bundle semantic
+  version/generation and digest under the same rule schema (`rule-v2`),
+  per ADR-0007 §8; a binary that does not know the new bundle version fails
+  closed through its existing unsupported-version path. A semantic change to
   strategy rules is a new strategy ID, and a schema change is a new bundle
-  version — never a silent reinterpretation of an existing ID.
+  major version — never a silent reinterpretation of an existing ID.
+- The runtime-supported catalog must be coherent with the planner:
+  `runtimeSupported ⊆ implemented internal strategy IDs`,
+  `default ∈ runtimeSupported`, and exactly equal to the runtime-enabled
+  implementations. This coherence is a required contract test in the
+  selection and strategy child issues, so a strategy can never be offered by
+  the bundle while unknown to the planner.
 
 ## Alternatives considered
 
@@ -117,9 +126,18 @@ shape of the decision, not the per-strategy rules.
 - **Fallback to the default strategy when a selection is unsupported.**
   Rejected for the same reason: fallback is an unconfirmed layout decision;
   the user must re-select explicitly.
+- **Keep the same bundle version and only update the digest when a strategy
+  is enabled.** Rejected: ADR-0007 §8 publishes any policy content change
+  under a new semantic version/generation plus a new digest, and
+  `PolicyBundleIdentity` is a semantic identity, not a storage schema name. A
+  capability change with a frozen version would break that discipline; each
+  enablement is therefore a new bundle semantic version
+  (e.g. `organization-policy-v2.1`) with `rule-v2` and the selection-store
+  schema unchanged.
 - **Declare all five spec-level strategies runtime-supported in the first
   bundle.** Rejected: intermediate mainlines would expose bundle-supported
   strategies with no planner implementation. Each mainline declares only its
-  implemented strategies; enabling a strategy is a bundle content change.
+  implemented strategies; enabling a strategy publishes a new bundle
+  semantic version per ADR-0007 §8.
 
 [ADR-0007]: 0007-authoritative-organization-policy-sources.md

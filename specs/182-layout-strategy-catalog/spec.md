@@ -57,7 +57,7 @@ Accepted spec-level catalog for strategy-catalog v1 (IDs are normative once this
 | `BOTTOM_FIRST_V1` | visibly different geometry from device dimensions only | identical to `CANONICAL_PAGE_COMPACT_V1` | current movable set | current canonical order | captured/preferred page, then new pages | bottom-first: candidate top-left `y` from `rows - span.height` down to `0`, `x` left-to-right |
 | `CATEGORY_CONTIGUOUS_V1` | categories visible as contiguous icon groups | create no new folders; existing folders preserved as fixed units | available, unlocked, top-level `1×1` `APPLICATION`/`DEEP_SHORTCUT` | per page: `(profile, category with fallback last, canonical target key, ItemId)` | page-local; categories never pulled across page boundaries | top-left row-major first-fit |
 
-**Spec-level catalog vs runtime-supported set.** This table is the spec-level accepted catalog. The active bundle additionally declares a **runtime-supported set**: only strategies whose planner implementation exists on that mainline. Every intermediate mainline (each independently mergeable child issue) declares exactly the implemented strategies, so a merge never creates a strategy that is bundle-supported but unplannable. Enabling a newly implemented strategy on a later child mainline is a bundle identity/content change under the same `organization-policy-v2` schema (a new bundle digest; the schema version itself does not bump per strategy). The UI offers exactly the runtime-supported set.
+**Spec-level catalog vs runtime-supported set.** This table is the spec-level accepted catalog. The active bundle additionally declares a **runtime-supported set**: only strategies whose planner implementation exists on that mainline. Every intermediate mainline (each independently mergeable child issue) declares exactly the implemented strategies, so a merge never creates a strategy that is bundle-supported but unplannable. Enabling a newly implemented strategy on a later child mainline is a policy content change and therefore publishes a **new bundle semantic version/generation and digest** per ADR-0007 §8 (e.g. `organization-policy-v2.1`); `rule-v2`, taxonomy/classification/target versions, and the selection-store schema do not change per enablement. The UI offers exactly the runtime-supported set. Every binary's bundle must satisfy the catalog coherence invariants: `runtimeSupported ⊆ implemented internal strategy IDs`, `default ∈ runtimeSupported`, and — enforced exactly — `runtimeSupported == runtime-enabled implemented strategy IDs`, so a strategy can never be offered by the bundle while unknown to the planner. This is a required contract test in the selection child issue and in every strategy child issue.
 
 Default strategy: `CANONICAL_PAGE_COMPACT_V1`. It is the compatibility control for product evaluation and the rollback oracle.
 
@@ -332,7 +332,7 @@ For `STABLE_PAGE_TIDY_V1`, per-page placeability is constructive (lift-then-plac
 
 - The planner stays pure; strategies add no I/O, state, or platform dependence.
 - New persistence: one local strategy-selection record owned by Rule Management, with a read source and a single validated write command (typed snapshot with schema version, monotonic generation, content digest — same contract family as the category override store; excluded from backup/restore in v1 like the override store, with the same defined first-run empty state).
-- No Launcher DB schema change; recovery points, checkpoints, and the apply write-set are unchanged. Bundle `organization-policy-v2`/`rule-v2` is an application-owned immutable artifact change (no in-place migration; ADR-0007 §8). Enabling a newly implemented strategy changes bundle content (new digest) but not the schema version.
+- No Launcher DB schema change; recovery points, checkpoints, and the apply write-set are unchanged. Bundle `organization-policy-v2`/`rule-v2` is an application-owned immutable artifact change (no in-place migration; ADR-0007 §8). Enabling a newly implemented strategy publishes a new bundle semantic version/generation and digest (ADR-0007 §8); `rule-v2` and the selection-store schema are unchanged per enablement.
 - Migration surface: selection-store schema v1 introduction (no migration from anything); a pre-store binary ignores the store; a store-aware binary reading a newer schema fails closed without rewriting.
 
 ## Permissions, privacy, and security
@@ -363,6 +363,7 @@ Architecture/implementation:
 Verification:
 
 - [ ] AC-9: Every catalog strategy passes the shared conservation, bounds, overlap, reference, lock, profile-isolation, determinism, and idempotence contract/property tests through the public seam.
+- [ ] AC-9b: Bundle catalog coherence is contract-tested in the selection child issue and every strategy child issue: `runtimeSupported ⊆ implemented internal strategy IDs`, `default ∈ runtimeSupported`, and `runtimeSupported ==` the runtime-enabled implemented strategy IDs.
 - [ ] AC-10: Fixtures cover empty/full homes, widgets/folders/app pairs, fragmented locks, pages, profiles, category fallback, grids, rotation, tablet, foldable/two-panel, and invalid selection.
 - [ ] AC-11: Cross-strategy tests change only strategy while capture, target membership, and application safety semantics remain unchanged.
 - [ ] AC-12: Planner performance is sampled across the strategy × item/page/device matrix using the spec 12 protocol (no budget assertion; Issue-owned budgets unaffected).
@@ -375,7 +376,7 @@ Verification:
 Created after this spec is accepted; never one PR:
 
 1. Research/decision confirmation: record the accepted set/default (closed by accepting this spec; no separate issue needed if acceptance is direct).
-2. Feature: versioned strategy-selection contract — `RuleSemantics`/bundle v2 change, selection store (read source + validated write command), composer/provenance/migration/fail-closed handling. The bundle's runtime-supported set declares only the strategies implemented at that point (initially `CANONICAL_PAGE_COMPACT_V1`); each later strategy child expands the set with a new bundle identity under the same `organization-policy-v2` schema.
+2. Feature: versioned strategy-selection contract — `RuleSemantics`/bundle v2 change, selection store (read source + validated write command), composer/provenance/migration/fail-closed handling. The bundle's runtime-supported set declares only the strategies implemented at that point (initially `CANONICAL_PAGE_COMPACT_V1`); each later strategy child publishes a new bundle semantic version/generation with the expanded set (ADR-0007 §8) under unchanged `rule-v2`/selection-store schema.
 3. Feature: extract `CANONICAL_PAGE_COMPACT_V1` behind the internal seam with the compatibility corpus proof.
 4. Feature: `STABLE_PAGE_TIDY_V1`.
 5. Feature: `BOTTOM_FIRST_V1` (may be delivered before or after child 4; both are first-delivery strategies).
@@ -387,12 +388,13 @@ Created after this spec is accepted; never one PR:
 
 ## Open questions
 
-None blocking acceptance. Deferred deliberately: catalog renaming policy (a rename is a new strategy identity, never a silent reinterpretation); `GLOBAL_COMPACT_V1`/`CATEGORY_CONTIGUOUS_V1` delivery order (child issues); exact result echo field shape (plan.md, constrained by AC-6).
+None blocking acceptance. Deferred deliberately: catalog renaming policy (a rename is a new strategy identity, never a silent reinterpretation); `GLOBAL_COMPACT_V1`/`CATEGORY_CONTIGUOUS_V1` delivery order (child issues). The result echo field shape is fixed in plan.md.
 
 ## Change history
 
 - 2026-09-04: Draft created for Issue #182 (Epic spec): accepted catalog, selection contract, internal seam, strategy rules, diagnostics/preview integration, child-issue split.
 - 2026-09-04: Review revision (owner review on `bc023485`): separated the selection identity from the immutable bundle digest (bundle covers runtime-supported catalog/default; selection carries its own `InputProvenance` identity as a fifth policy input) — Blocking 1. Added the Rule Management write-command contract (write-time catalog validation, atomic generation/digest publication, failure preserves the existing selection, picker never writes storage or substitutes in-run) — Blocking 2. Split spec-level catalog from the bundle runtime-supported set so each child mainline declares only implemented strategies; enabling a strategy is a bundle content change without a schema bump — Blocking 3. Unified downgrade semantics (pre-store binaries ignore the store; store-aware binaries fail closed on newer schemas; re-upgrade revalidates) — Blocking 4. Removed the duplicate `StrategyVersion` field; `StrategyId` (with the `_V1` suffix) is the immutable semantic identity — Medium. Documented the two-layer failure policy (composition `NotReady` vs planner-seam `V-20`) — Medium.
+- 2026-09-04: Re-review revision (owner re-review on `c666c435`): strategy enablement now publishes a new bundle semantic version/generation and digest per ADR-0007 §8 (e.g. `organization-policy-v2.1`), keeping `rule-v2` and the selection-store schema unchanged; the "same schema, digest-only" model is withdrawn — Blocking. Added the bundle catalog coherence contract test (`runtimeSupported ⊆ implemented IDs`, `default ∈ runtimeSupported`, exact equality with runtime-enabled implementations) in the selection and strategy child issues — Medium. Removed the resolved echo-shape item from open questions — Low.
 
 ## References
 
