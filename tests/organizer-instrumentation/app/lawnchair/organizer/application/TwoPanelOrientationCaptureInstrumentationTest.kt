@@ -307,8 +307,29 @@ class TwoPanelOrientationCaptureInstrumentationTest {
         launcher: LauncherAppState,
     ): Long {
         val db = launcher.model.modelDbController.db
-        db.query(Favorites.TABLE_NAME, arrayOf(Favorites._ID), null, null, null, null, null).use {
-            if (it.moveToFirst()) return it.getLong(0)
+        // Reuse an existing row only when it is a workspace/hotseat item: the
+        // no-write assertion below compares this row before and after a
+        // rotation, and the launcher's relayout legitimately rewrites
+        // placement/modified on folder children (container = a folder id, with
+        // null screen/cells). Lane ordering decides whether rows from earlier
+        // instrumented classes are present, so without this filter the reused
+        // row — and therefore the test's outcome — depends on which row the
+        // unordered query happens to return first.
+        db.query(
+            Favorites.TABLE_NAME,
+            arrayOf(Favorites._ID, Favorites.CONTAINER),
+            null,
+            null,
+            null,
+            null,
+            Favorites._ID,
+        ).use {
+            while (it.moveToNext()) {
+                val container = it.getLong(it.getColumnIndexOrThrow(Favorites.CONTAINER))
+                if (container == Favorites.CONTAINER_DESKTOP.toLong() || container == Favorites.CONTAINER_HOTSEAT.toLong()) {
+                    return it.getLong(it.getColumnIndexOrThrow(Favorites._ID))
+                }
+            }
         }
         val id = launcher.model.modelDbController.generateNewItemId()
         val intent = Intent(Intent.ACTION_MAIN)
