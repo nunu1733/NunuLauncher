@@ -75,6 +75,12 @@ object PlanPreviewProjector {
             val insert = plan.actions.filterIsInstance<ApplyAction.Insert>()
                 .firstOrNull { (it.ref as? ApplicationItemRef.PlannedFolder)?.ordinal == folder.ordinal }
                 ?: return Result.Invalid
+            // Issue #201: the folder name is the same resolved title the apply
+            // writer persists — read from the intended state, never re-derived.
+            val name = when (val title = insert.intended.title) {
+                is OptionalText.Present -> title.value.takeIf { it.isNotBlank() } ?: return Result.Invalid
+                OptionalText.Absent -> return Result.Invalid
+            }
             val placement = context.workspacePosition(insert.intended) ?: return Result.Invalid
             val memberLabels = folder.members.map { memberId ->
                 sourceItemByItemId[memberId]?.let(::itemLabel) ?: return Result.Invalid
@@ -82,6 +88,7 @@ object PlanPreviewProjector {
             changes.add(
                 NewFolderChange(
                     ordinal = folder.ordinal,
+                    name = PreviewLabel.Named(name),
                     placement = placement,
                     memberLabels = memberLabels,
                 ),

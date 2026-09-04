@@ -18,6 +18,7 @@ import app.lawnchair.organizer.application.lifecycle.ReconciliationPublicResult
 import app.lawnchair.organizer.application.protocol.CaptureId
 import app.lawnchair.organizer.application.protocol.FaultInjector
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
+import app.lawnchair.organizer.ui.GeneratedFolderTitles
 import app.lawnchair.organizer.application.protocol.ReadinessGate
 import app.lawnchair.organizer.application.protocol.RestartReconciler
 import app.lawnchair.organizer.application.protocol.RecoveryStorePort
@@ -78,6 +79,7 @@ class OrganizerRecoveryInstrumentationTest {
             RecoveryStore(context, clock::nowMillis),
             clock,
             SecureRandomOperationIdSource(),
+            folderTitleResolver = app.lawnchair.organizer.ui.GeneratedFolderTitles.resolver(context),
             SmokeFaultInjector(context, phase),
         )
         module.reconcileAtStart()
@@ -210,7 +212,7 @@ class OrganizerRecoveryInstrumentationTest {
         // summary reports that contention-capable shape, until it is quiescent;
         // genuine ambiguous states are deterministic and keep failing every
         // retry, so the exact Clean assert below still fails for them.
-        val manualModule = LayoutApplicationModule.production(context, launcher)
+        val manualModule = LayoutApplicationModule.production(context, GeneratedFolderTitles.resolver(context), launcher)
         var summary = manualModule.reconcileAtStart()
         var settleAttempts = 0
         while (

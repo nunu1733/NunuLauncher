@@ -50,6 +50,7 @@ class LayoutApplicationModuleRecoveryEntryTest {
             store = store,
             clock = FakeClock,
             operationIds = FixedOperationIdSource(),
+            folderTitleResolver = app.lawnchair.organizer.application.adapter.RecordingFolderTitleResolver(),
             diagnosticsPort = diagnostics,
         )
         module.reconcileAtStart()

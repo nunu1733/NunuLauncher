@@ -161,12 +161,17 @@ object OrganizationPreviewContent {
         is PreviewLabel.KindFallback -> kindText(label.kind, wording)
     }
 
-    private fun newFolderRowText(change: NewFolderChange, wording: OrganizationPreviewWording): String = format(
-        wording.newFolderRow,
-        change.ordinal.value + 1,
-        positionText(change.placement, wording),
-        change.memberLabels.joinToString(SEPARATOR) { labelText(it, wording) },
-    )
+    private fun newFolderRowText(change: NewFolderChange, wording: OrganizationPreviewWording): String {
+        // Issue #201: the row leads with the resolved folder name instead of the
+        // planner ordinal — an internal identifier has no place in user copy.
+        val name = labelText(change.name, wording)
+        return format(
+            wording.newFolderRow,
+            name,
+            positionText(change.placement, wording),
+            change.memberLabels.joinToString(SEPARATOR) { labelText(it, wording) },
+        )
+    }
 
     private fun newPageRowText(change: NewPageChange, wording: OrganizationPreviewWording): String = format(
         wording.newPageRow,

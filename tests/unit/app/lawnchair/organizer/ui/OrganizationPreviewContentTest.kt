@@ -169,12 +169,13 @@ class OrganizationPreviewContentTest {
     fun newFolderRowListsPlacementAndMembers() {
         val change = NewFolderChange(
             ordinal = NewFolderOrdinal(0),
+            name = PreviewLabel.Named("Communication"),
             placement = source(2, RowBand.CENTER, ColumnBand.LEFT, 3),
             memberLabels = listOf(PreviewLabel.Named("game"), PreviewLabel.Named("maps")),
         )
 
         assertEquals(
-            "Create new folder 1 at middle left, page 2 (members: game, maps)",
+            "Create new folder \u201cCommunication\u201d at middle left, page 2 (members: game, maps)",
             OrganizationPreviewContent.sections(
                 PlanPreviewDetails(listOf(change), PreviewCounts(0, 0, 1, 0, emptyMap())),
                 TestWording,
@@ -264,6 +265,7 @@ class OrganizationPreviewContentTest {
 
     private fun newFolder(ordinal: Int) = NewFolderChange(
         ordinal = NewFolderOrdinal(ordinal),
+        name = PreviewLabel.Named("Communication"),
         placement = source(1, RowBand.TOP, ColumnBand.LEFT, 1),
         memberLabels = listOf(PreviewLabel.Named("game")),
     )
@@ -333,7 +335,7 @@ class OrganizationPreviewContentTest {
         override val kindCustomAppWidget = "Custom widget"
         override val kindAppPair = "App pair"
         override val kindUnknown = "Item"
-        override val newFolderRow = "Create new folder %1\$d at %2\$s (members: %3\$s)"
+        override val newFolderRow = "Create new folder \u201c%1\$s\u201d at %2\$s (members: %3\$s)"
         override val newPageRow = "Add a new page at position %1\$d"
     }
 }

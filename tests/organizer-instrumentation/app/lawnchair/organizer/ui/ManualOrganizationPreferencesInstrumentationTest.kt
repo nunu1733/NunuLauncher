@@ -47,6 +47,10 @@ import app.lawnchair.organizer.application.public.RecoveryPreviewResult
 import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.application.public.RowBand
 import app.lawnchair.organizer.application.public.ColumnBand
+import app.lawnchair.organizer.ui.GeneratedFolderTitles
+import app.lawnchair.organizer.planning.FolderNaming
+import app.lawnchair.organizer.planning.CategoryId
+import org.junit.Assert.assertFalse
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.diagnostics.DiagnosticsPort
@@ -284,7 +288,12 @@ class ManualOrganizationPreferencesInstrumentationTest {
 
     @Test
     fun previewRemainsReadableAtTwoHundredPercentFontScale() {
-        val application = FakeApplication()
+        // Issue #201: the named new-folder row itself must stay displayed /
+        // reachable at 200% font scale, so the concrete preview is injected.
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            inspectPlanOverride = { _, _ -> previewed(concreteChangeListDetails()) }
+        }
         val runner = ManualOrganizationRun(
             application,
             OrganizationPlanner { planningResult() },
@@ -299,13 +308,46 @@ class ManualOrganizationPreferencesInstrumentationTest {
             }
         }
 
-        val context = ApplicationProvider.getApplicationContext<Context>()
         awaitPreview(runner, context)
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_moved_single_placement, 1),
         ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(
+                R.string.manual_organization_preview_new_folder_row,
+                "Communication",
+                workspacePosition(context, 2, RowBand.CENTER, ColumnBand.LEFT),
+                "game, maps",
+            ),
+        ).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).assertIsDisplayed()
+    }
+
+    @Test
+    fun generatedFolderTitlesResolveActualResourcesAndFallback() {
+        // Issue #201 (FN-AC-15): the production resolver must resolve the v1
+        // taxonomy categories from actual localized resources and map unknown
+        // categories to the generic fallback via the total lookup — never a
+        // raw category ID and never an exception path.
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val japanese = context.createConfigurationContext(
+            Configuration().apply { setLocale(Locale.JAPAN) },
+        )
+        val english = context.createConfigurationContext(
+            Configuration().apply { setLocale(Locale.ENGLISH) },
+        )
+        val japaneseResolver = GeneratedFolderTitles.resolver { japanese.getString(it) }
+        val englishResolver = GeneratedFolderTitles.resolver { english.getString(it) }
+        val communication = FolderNaming.FromCategory(CategoryId("COMMUNICATION"))
+
+        assertEquals("通信", japaneseResolver.resolve(communication))
+        assertEquals("Communication", englishResolver.resolve(communication))
+
+        val unknown = FolderNaming.FromCategory(CategoryId("NOT_IN_V1_TAXONOMY"))
+        val fallback = japaneseResolver.resolve(unknown)
+        assertEquals(japanese.getString(R.string.organizer_generated_folder_fallback_name), fallback)
+        assertFalse("raw category id must not leak: $fallback", fallback.contains("NOT_IN_V1_TAXONOMY"))
     }
 
     @Test
@@ -419,7 +461,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(
             context.getString(
                 R.string.manual_organization_preview_new_folder_row,
-                1,
+                "Communication",
                 workspacePosition(context, 2, RowBand.CENTER, ColumnBand.LEFT),
                 "game, maps",
             ),
@@ -1070,6 +1112,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
             PreservedChange(ItemId("clock"), PreviewLabel.Named("clock"), PreserveReason.LOCKED),
             NewFolderChange(
                 ordinal = NewFolderOrdinal(0),
+                name = PreviewLabel.Named("Communication"),
                 placement = workspace(2, RowBand.CENTER, ColumnBand.LEFT, 3),
                 memberLabels = listOf(PreviewLabel.Named("game"), PreviewLabel.Named("maps")),
             ),

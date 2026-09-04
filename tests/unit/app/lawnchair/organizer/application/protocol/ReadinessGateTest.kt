@@ -44,6 +44,7 @@ class ReadinessGateTest {
             store,
             FakeClock,
             FixedOperationIdSource(),
+            app.lawnchair.organizer.application.adapter.RecordingFolderTitleResolver(),
             RecordingFaultInjector(),
         )
     }
@@ -267,6 +268,7 @@ class ReadinessGateTest {
             store,
             FakeClock,
             FixedOperationIdSource(),
+            app.lawnchair.organizer.application.adapter.RecordingFolderTitleResolver(),
             faults,
         )
     }

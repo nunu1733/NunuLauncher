@@ -4,6 +4,7 @@ import android.content.Context
 import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
 import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
 import app.lawnchair.organizer.application.public.ApplyResult
+import app.lawnchair.organizer.application.public.FolderTitleResolver
 import app.lawnchair.organizer.application.public.PlanPreviewResult
 import app.lawnchair.organizer.application.public.PlanPreviewUnavailable
 import app.lawnchair.organizer.application.public.PreWriteRejection
@@ -51,6 +52,9 @@ internal class LayoutApplicationModule<S>(
     private val store: S,
     private val clock: Clock,
     private val operationIds: OperationIdSource,
+    // Issue #201: injected by the outer composition (LawnchairApp). Required —
+    // no default, so production can never silently fall back to a fixed name.
+    private val folderTitleResolver: FolderTitleResolver,
     private val faults: FaultInjector = FaultInjector.NOOP,
     diagnosticsPort: DiagnosticsPort = DiagnosticsPort.NOOP,
     private val captureFailureObserver: CaptureFailureObserver = NoopCaptureFailureObserver,
@@ -82,6 +86,7 @@ internal class LayoutApplicationModule<S>(
         operationIds,
         faults,
         ordinaryMutex,
+        folderTitleResolver,
     )
     private val restartReconciler: RestartReconciler = RestartReconciler(
         writer,
@@ -170,7 +175,7 @@ internal class LayoutApplicationModule<S>(
             return@runWhenReady OrganizationPlanMaterializer.Result.Invalid
         }
         if (capture.revision != input.snapshot.revision) return@runWhenReady OrganizationPlanMaterializer.Result.Invalid
-        OrganizationPlanMaterializer.materialize(input, result, capture.layoutState)
+        OrganizationPlanMaterializer.materialize(input, result, capture.layoutState, folderTitleResolver)
     }
 
     /** Internal run identity factory for the manual orchestration protocol. */
@@ -358,11 +363,12 @@ internal class LayoutApplicationModule<S>(
 
         /** Issue #14 production composition; this is the only Android construction path. */
         @JvmStatic
-        fun production(context: Context): LayoutApplicationModule<RecoveryStore> = production(context, LauncherAppState.getInstance(context.applicationContext))
+        fun production(context: Context, folderTitleResolver: FolderTitleResolver): LayoutApplicationModule<RecoveryStore> = production(context, folderTitleResolver, LauncherAppState.getInstance(context.applicationContext))
 
         @JvmStatic
         fun production(
             context: Context,
+            folderTitleResolver: FolderTitleResolver,
             launcher: LauncherAppState,
         ): LayoutApplicationModule<RecoveryStore> {
             val appContext = context.applicationContext
@@ -404,6 +410,7 @@ internal class LayoutApplicationModule<S>(
                 store = recoveryStore,
                 clock = clock,
                 operationIds = defaultOperationIdSource(),
+                folderTitleResolver = folderTitleResolver,
                 diagnosticsPort = diagnosticsPort,
                 captureFailureObserver = captureFailureObserver,
             )

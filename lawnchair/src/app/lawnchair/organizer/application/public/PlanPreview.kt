@@ -85,6 +85,12 @@ data class PreservedChange(
 
 data class NewFolderChange(
     val ordinal: NewFolderOrdinal,
+    /**
+     * Issue #201: the resolved generated-folder title, identical to the value
+     * the apply writer persists. Always [PreviewLabel.Named]; raw identifiers
+     * are never carried here.
+     */
+    val name: PreviewLabel,
     val placement: PreviewPosition,
     val memberLabels: List<PreviewLabel>,
 ) : PreviewChange

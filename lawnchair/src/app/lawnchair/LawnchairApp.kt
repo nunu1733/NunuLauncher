@@ -42,6 +42,7 @@ import app.lawnchair.flowerpot.Flowerpot
 import app.lawnchair.migration.DeckRetirementMigration
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
 import app.lawnchair.organizer.application.store.RecoveryStore
+import app.lawnchair.organizer.ui.GeneratedFolderTitles
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.ui.ModalBottomSheetContent
 import app.lawnchair.ui.preferences.destinations.openAppInfo
@@ -108,7 +109,9 @@ class LawnchairApp : Application() {
     fun onLauncherAppStateCreated() {
         registerActivityLifecycleCallbacks(activityHandler)
         // Issue #14: make restart reconciliation reachable before organizer requests are accepted.
-        layoutApplicationModule = LayoutApplicationModule.production(this)
+        // Issue #201: the outer composition supplies the generated-folder title
+        // resolver, so the application module never depends on the UI layer.
+        layoutApplicationModule = LayoutApplicationModule.production(this, GeneratedFolderTitles.resolver(this))
     }
 
     fun restart(recreateLauncher: Boolean = true) {

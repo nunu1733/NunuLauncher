@@ -5,6 +5,7 @@ import app.lawnchair.organizer.application.public.ApplicationPageRef
 import app.lawnchair.organizer.application.public.ApplyAction
 import app.lawnchair.organizer.application.public.CanonicalItemKind
 import app.lawnchair.organizer.application.public.CanonicalItemState
+import app.lawnchair.organizer.application.public.FolderTitleResolver
 import app.lawnchair.organizer.application.public.ItemAvailability
 import app.lawnchair.organizer.application.public.LayoutState
 import app.lawnchair.organizer.application.public.ModifiedAtMillis
@@ -47,6 +48,7 @@ internal object OrganizationPlanMaterializer {
         input: OrganizationInput,
         result: PlanningResult,
         sourceState: LayoutState,
+        titleResolver: FolderTitleResolver,
     ): Result {
         if (result.revision != input.snapshot.revision ||
             result.ruleVersion != input.rules.version ||
@@ -90,7 +92,12 @@ internal object OrganizationPlanMaterializer {
         }
 
         val folderItems = planned.newFolders.map { folder ->
-            newFolder(folder, sourceState, plannedPageOrdinals) ?: return Result.Invalid
+            // Issue #201: resolve exactly once per planned folder. The resolved
+            // title is frozen into the plan (creation-time locale snapshot) and
+            // preview and apply both read this value without re-resolving.
+            val resolvedTitle = titleResolver.resolve(folder.naming)
+            if (resolvedTitle.isBlank()) return Result.Invalid
+            newFolder(folder, sourceState, plannedPageOrdinals, resolvedTitle) ?: return Result.Invalid
         }
         val allItems = (originalItems.values + folderItems).toMutableList()
         val parentMembers = allItems
@@ -239,14 +246,20 @@ internal object OrganizationPlanMaterializer {
         folder: NewFolder,
         sourceState: LayoutState,
         plannedPageOrdinals: Set<app.lawnchair.organizer.planning.NewPageOrdinal>,
+        resolvedTitle: String,
     ): CanonicalItemState? {
         val availability = sourceState.profiles.firstOrNull { it.id == folder.profile }?.availability ?: return null
-        val workspace = placementState(folder.workspacePlacement, placeholderFolder(folder, availability), plannedPageOrdinals)
+        val base = placeholderFolder(folder, availability, resolvedTitle)
+        val workspace = placementState(folder.workspacePlacement, base, plannedPageOrdinals)
             as? PlacementState.Workspace ?: return null
-        return placeholderFolder(folder, availability).copy(placement = workspace)
+        return base.copy(placement = workspace)
     }
 
-    private fun placeholderFolder(folder: NewFolder, availability: ProfileAvailability) = CanonicalItemState(
+    private fun placeholderFolder(
+        folder: NewFolder,
+        availability: ProfileAvailability,
+        resolvedTitle: String,
+    ) = CanonicalItemState(
         ref = ApplicationItemRef.PlannedFolder(folder.ordinal),
         kind = CanonicalItemKind.Folder,
         targetKey = TargetKey.FolderKey(FolderId("planned-folder-${folder.ordinal.value}")),
@@ -254,7 +267,7 @@ internal object OrganizationPlanMaterializer {
         profileAvailability = availability,
         itemAvailability = if (availability == ProfileAvailability.AVAILABLE) ItemAvailability.AVAILABLE else ItemAvailability.UNAVAILABLE,
         placement = PlacementState.UnsupportedContainer(app.lawnchair.organizer.planning.ContainerCode(Int.MIN_VALUE)),
-        title = OptionalText.Present("Folder"),
+        title = OptionalText.Present(resolvedTitle),
         intent = OptionalText.Absent,
         icon = OptionalBytes.Absent,
         widget = WidgetState.NoWidget,

@@ -241,8 +241,10 @@
     <string name="manual_organization_preview_kind_custom_app_widget">カスタムウィジェット</string>
     <string name="manual_organization_preview_kind_app_pair">アプリペア</string>
     <string name="manual_organization_preview_kind_unknown">アイテム</string>
-    <string name="manual_organization_preview_new_folder_row">新規フォルダ%1$dを%2$sに作成（メンバー: %3$s）</string>
+    <string name="manual_organization_preview_new_folder_row">"新規フォルダ「%1$s」を%2$sに作成（メンバー: %3$s）"</string>
     <string name="manual_organization_preview_new_page_row">%1$dページ目に新規ページを追加</string>
+    <!-- Issue #201: safe generic title for generated folders whose semantic name cannot be resolved. -->
+    <string name="organizer_generated_folder_fallback_name">"フォルダ"</string>
     <!-- Issue #53: non-blocking onboarding proposal. -->
     <string name="organization_onboarding_proposal_title">ホーム画面を整理しますか？</string>
     <string name="organization_onboarding_proposal_summary">まず整理案を確認できます。プレビューを確定するまで、何も変更されません。</string>
