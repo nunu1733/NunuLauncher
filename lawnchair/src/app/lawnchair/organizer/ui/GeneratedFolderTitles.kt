@@ -28,10 +28,13 @@ object GeneratedFolderTitles {
         fun string(resId: Int): String
     }
 
-    fun resolver(context: Context): FolderTitleResolver {
-        val appContext = context.applicationContext
-        return resolver { resId -> appContext.getString(resId) }
-    }
+    /**
+     * Production adapter used by the outer composition. Resolves against the
+     * given [Context] as-is so instrumentation can pass a locale-aware
+     * context through the exact production path (LawnchairApp passes the
+     * Application, whose resources carry the process locale).
+     */
+    fun resolver(context: Context): FolderTitleResolver = resolver { resId -> context.getString(resId) }
 
     fun resolver(stringProvider: StringProvider): FolderTitleResolver = FolderTitleResolver { naming ->
         when (naming) {

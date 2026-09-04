@@ -231,7 +231,7 @@
     <string name="manual_organization_preview_region_bottom_right">下段右</string>
     <string name="manual_organization_preview_position_dock">ドック%1$d番</string>
     <string name="manual_organization_preview_position_folder_existing">フォルダ「%1$s」</string>
-    <string name="manual_organization_preview_position_folder_planned">新規フォルダ%1$d</string>
+    <string name="manual_organization_preview_position_folder_planned">"新規フォルダ「%1$s」"</string>
     <string name="manual_organization_preview_position_app_pair">アプリペア「%1$s」</string>
     <string name="manual_organization_preview_kind_application">アプリ</string>
     <string name="manual_organization_preview_kind_deep_shortcut">ショートカット</string>

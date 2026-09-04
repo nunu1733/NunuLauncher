@@ -150,7 +150,10 @@ object OrganizationPreviewContent {
 
         is PreviewPosition.InFolder -> when (val folder = position.folder) {
             is PreviewFolderRef.Existing -> format(wording.folderPositionExisting, labelText(folder.label, wording))
-            is PreviewFolderRef.Planned -> format(wording.folderPositionPlanned, folder.ordinal.value + 1)
+
+            // Issue #201: planned-folder destinations show the resolved name,
+            // never the planner ordinal.
+            is PreviewFolderRef.Planned -> format(wording.folderPositionPlanned, labelText(folder.name, wording))
         }
 
         is PreviewPosition.InAppPair -> format(wording.appPairPosition, labelText(position.pair, wording))

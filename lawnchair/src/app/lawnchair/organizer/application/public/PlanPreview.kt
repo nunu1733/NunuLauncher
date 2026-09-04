@@ -132,7 +132,10 @@ sealed interface PreviewPosition {
 
 sealed interface PreviewFolderRef {
     data class Existing(val label: PreviewLabel) : PreviewFolderRef
-    data class Planned(val ordinal: NewFolderOrdinal) : PreviewFolderRef
+
+    /** Issue #201: planned-folder destinations carry the same resolved title
+     *  as the folder's own change row — UI never renders the planner ordinal. */
+    data class Planned(val ordinal: NewFolderOrdinal, val name: PreviewLabel) : PreviewFolderRef
 }
 
 enum class RowBand { TOP, CENTER, BOTTOM }

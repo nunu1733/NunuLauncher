@@ -1131,7 +1131,7 @@
     <string name="manual_organization_preview_region_bottom_right">bottom right</string>
     <string name="manual_organization_preview_position_dock">Dock slot %1$d</string>
     <string name="manual_organization_preview_position_folder_existing">folder “%1$s”</string>
-    <string name="manual_organization_preview_position_folder_planned">new folder %1$d</string>
+    <string name="manual_organization_preview_position_folder_planned">new folder “%1$s”</string>
     <string name="manual_organization_preview_position_app_pair">app pair “%1$s”</string>
     <string name="manual_organization_preview_kind_application">App</string>
     <string name="manual_organization_preview_kind_deep_shortcut">Shortcut</string>

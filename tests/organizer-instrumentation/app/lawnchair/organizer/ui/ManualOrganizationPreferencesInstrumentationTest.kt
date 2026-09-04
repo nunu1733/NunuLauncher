@@ -340,8 +340,10 @@ class ManualOrganizationPreferencesInstrumentationTest {
         val english = context.createConfigurationContext(
             Configuration().apply { setLocale(Locale.ENGLISH) },
         )
-        val japaneseResolver = GeneratedFolderTitles.resolver { japanese.getString(it) }
-        val englishResolver = GeneratedFolderTitles.resolver { english.getString(it) }
+        // Exercise the production resolver(Context) adapter itself with a
+        // locale-aware context (FN-AC-15), not only the provider overload.
+        val japaneseResolver = GeneratedFolderTitles.resolver(japanese)
+        val englishResolver = GeneratedFolderTitles.resolver(english)
         val communication = FolderNaming.FromCategory(CategoryId("COMMUNICATION"))
 
         assertEquals("通信", japaneseResolver.resolve(communication))

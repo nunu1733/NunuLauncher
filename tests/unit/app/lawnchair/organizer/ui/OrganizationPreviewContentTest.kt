@@ -154,15 +154,19 @@ class OrganizationPreviewContentTest {
     }
 
     @Test
-    fun dockAndPlannedFolderPositionsAreOneBased() {
+    fun dockPositionsAreOneBasedAndPlannedFoldersRenderByName() {
         val dock = OrganizationPreviewContent.positionText(dock(1), TestWording)
+        // Issue #201: planned-folder destinations render the resolved name,
+        // never the planner ordinal.
         val plannedFolder = OrganizationPreviewContent.positionText(
-            PreviewPosition.InFolder(PreviewFolderRef.Planned(NewFolderOrdinal(0))),
+            PreviewPosition.InFolder(
+                PreviewFolderRef.Planned(NewFolderOrdinal(0), PreviewLabel.Named("Communication")),
+            ),
             TestWording,
         )
 
         assertEquals("Dock slot 2", dock)
-        assertEquals("new folder 1", plannedFolder)
+        assertEquals("new folder \u201cCommunication\u201d", plannedFolder)
     }
 
     @Test
@@ -325,7 +329,7 @@ class OrganizationPreviewContentTest {
         override val regionBottomRight = "bottom right"
         override val dockPosition = "Dock slot %1\$d"
         override val folderPositionExisting = "folder “%1\$s”"
-        override val folderPositionPlanned = "new folder %1\$d"
+        override val folderPositionPlanned = "new folder \u201c%1\$s\u201d"
         override val appPairPosition = "app pair “%1\$s”"
         override val kindApplication = "App"
         override val kindDeepShortcut = "Shortcut"

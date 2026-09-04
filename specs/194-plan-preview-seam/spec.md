@@ -154,7 +154,7 @@ PreviewPosition =
 
 PreviewFolderRef =
   | Existing(label: PreviewLabel)
-  | Planned(ordinal: NewFolderOrdinal)
+  | Planned(ordinal: NewFolderOrdinal, name: PreviewLabel)   // Issue #201: resolved generated-folder title; UI renders the name, never the ordinal
 
 RowBand = TOP | CENTER | BOTTOM
 ColumnBand = LEFT | CENTER | RIGHT

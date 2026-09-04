@@ -143,6 +143,7 @@ data class NewFolderChange(
 - 名前の source は当該 `ApplyAction.Insert` の intended state (`CanonicalItemState.title`) であり、projector は plan から読むだけである。preview 専用に category から名前を再推論しない。#194 の projector 責務分担 (action / before-after の正本は `ValidatedLayoutPlan`) に従う。
 - intended title が `Absent` または blank な Insert は projection 契約違反であり、`Result.Invalid` (`NotPlannable(MATERIALIZATION_INVALID)`) として fail-closed に扱う。
 - `name` は常に `PreviewLabel.Named` である (解決不能時も resolver が fallback 文字列を返すため)。`KindFallback` は生成フォルダ名には使わない。raw id は運ばない。
+- **planned folder への移動先参照も名前で行う** (実装レビュー Major 1 で確定): 新規フォルダへの `MoveChange.destination` が運ぶ `PreviewFolderRef.Planned` は `(ordinal, name: PreviewLabel)` を持ち、UI は ordinal ではなく解決済み名前を表示する。projector は `NewFolderOrdinal → resolved PreviewLabel` を同じ intended title から構築し、join 不成立は `Invalid` (fail-closed) とする。planner ordinal は user-facing surface のどこにも現れず、移動行の文言も `新規フォルダ「ソーシャル」` 形式になる。category からの再解決は行わない。
 - 確認 UI の新規フォルダ行は、既存の行構造 (group 順序・truncation・決定的行順) を保ったままフォルダ名を含む文言へ更新する (例: 「新規フォルダ「通信」を Page 2 に作成（メンバー: A, B）」)。行構造・件数 truth (`PreviewCounts`) の変更はしない。
 - #194 の「`NewFolderChange` 自身の label は持たない」契約と #195 の「配置 + メンバー label 一覧で識別する」行規約は、本契約が置き換える。両 spec の該当行を同じ PR で更新する。
 
@@ -259,7 +260,7 @@ And 適用後の DB 側 exact verification が TITLE を含めて intended と�
 | FN-AC-01 | `spec.md` と `plan.md` が、naming の authoritative source (`NewFolder.naming: FolderNaming`)、single-resolution rule (`FolderTitleResolver` + materializer)、preview / writer が plan から読むだけの構造を定義している。 |
 | FN-AC-02 | 現行 category grouping で生成される folder が、固定 `Folder` ではなく category semantic に基づくローカライズ済み user-facing 名を `Favorites.TITLE` に持つことを、interface 経由の materializer contract test が検証する。同一 test で fake resolver の invocation counter により、新規 folder N 個に対する `resolve` 呼び出しが正確に N 回であること (現行 `newFolder()` の二重構築を解消した上での resolve-once 契約) を検証する。 |
 | FN-AC-03 | 未知 `CategoryId` は production resolver が total lookup (`null`) 経由で汎用 fallback 文言へ決定的に落ちること (例外捕捉による fallback でないこと) を production resolver の en / ja test が検証する。resolver の blank 返却は materializer が `Invalid` (preview では `MATERIALIZATION_INVALID`) として fail-closed に扱うことを materializer test が検証する。user-facing surface に raw category ID / package / ItemId / ordinal が現れないことを fixture 全体で検証する。 |
-| FN-AC-04 | split folder が同一 category で同一 title を持ち、連番を含まないことを planner fixture / materializer test が検証する。fallback category が grouping の対象外である現行規約が test で維持されている。 |
+| FN-AC-04 | 同一 category の移動可能アプリ群を folder capacity 超過させ、real planner が同 category を複数フォルダへ split した上で、materializer が生成する全 `Insert` の title が完全一致し、ordinal / 接尾辞 (数字) を含まないことを planner → materializer を通す fixture test が直接検証する。fallback category が grouping の対象外である現行規約が test で維持されている。 |
 | FN-AC-05 | 既存フォルダの title が保持・移動のみの run で変化しないことを、既存 materializer / application contract test への assertion 追加で検証する。 |
 | FN-AC-06 | `NewFolderChange` が `name` を運び、その値が当該 `ApplyAction.Insert` の intended title と文字列一致することを projector contract test が検証する。preview 専用の名前再推論 (category → 名前の写像の重複実装) が存在しないことを code review で確認する。 |
 | FN-AC-07 | planner の決定性・metamorphic・idempotence test が `naming` 追加後も無変更で通り、fixture corpus が「`NewFolder.naming` が member の grouping category と一致する」property を検証する。同一入力からの canonical plan が byte-equivalent であることを維持する。 |
@@ -290,7 +291,7 @@ And 適用後の DB 側 exact verification が TITLE を含めて intended と�
 | FN-AC-12 | PR diff review (spec 194 / 195 / CONTEXT.md / DESIGN.md)。 |
 | FN-AC-13 | `ManualOrganizationRunTest` / materializer test: preview 保持中の locale 変化を模擬し、`materialize` が再実行されず resolve 呼び出しが増えないこと (同一 plan インスタンス適用 + counter) を検証。 |
 | FN-AC-14 | PR diff review (import 方向) + `LawnchairApp` wiring の review。 |
-| FN-AC-15 | organizer instrumentation (`ManualOrganizationPreferencesInstrumentationTest` 拡張): `createConfigurationContext` による ja context で production resolver の actual resource 解決と未知 category → fallback 文言を検証し、200% font scale (`Density(1f, fontScale = 2f)`) の concrete preview で名前付き new-folder row の displayed / reachable を assert。representative fixture に ja の長め category label を使用。**正式 evidence は既存 `organizer-instrumentation-issue52-tests` CI job の成功** (同 class への method 追加で自動収録)。local には class filter 付き targeted 実行を使用する。 |
+| FN-AC-15 | organizer instrumentation (`ManualOrganizationPreferencesInstrumentationTest` 拡張): locale-aware `Context` を **production `GeneratedFolderTitles.resolver(Context)` 経路自体**に通し、actual resource での ja / en 解決と未知 category → fallback 文言を検証する。さらに 200% font scale (`Density(1f, fontScale = 2f)`) の concrete preview で名前付き new-folder row の displayed / reachable を assert。representative fixture に ja の長め category label を使用。**正式 evidence は既存 `organizer-instrumentation-issue52-tests` CI job の成功** (同 class への method 追加で自動収録)。local には class filter 付き targeted 実行を使用する。 |
 
 検証 command は building guide の正本に従う (`./gradlew spotlessCheck`、`./gradlew assembleLawnWithQuickstepGithubDebug`、`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`)。
 
@@ -320,6 +321,7 @@ None。Stage A で決定済み:
 - 2026-09-04: Re-review revision (owner re-review @ `c03896c927`): actual Android resources を使う en / ja 検証と未知 category の fallback 文言解決を organizer instrumentation へ移動し、unit test は fake string provider による resolver の純粋検証に限定 (Major)。200% font scale の concrete preview test を名前付き new-folder row の displayed / reachable assertion へ拡張し、representative fixture へ ja の長め category label を要求する FN-AC-15 を新設。FN-AC-09 の「既存 #195 test 無変更通過」を「新 format への更新 + 既存 #195 invariants (group / order / count / truncation) の維持」へ修正。TalkBack の実機 manual evidence は現行どおり。
 - 2026-09-04: Spec approved / plan revision (owner re-review @ `8be8435c7e`): instrumentation の正式 evidence を既存 `organizer-instrumentation-issue52-tests` CI job の成功へ固定し、local は class filter 付き targeted 実行へ変更 (新規 CI lane は設けない)。FN-AC-15 oracle 行の evidence 所在を計画側と揃えた整合修正。product contract の変更なし。
 - 2026-09-04: Accepted by the Issue #201 owner at head `8be8435c7e` (spec approved)。plan は既存 `organizer-instrumentation-issue52-tests` lane への整合を条件に実装開始可能とされ、本 revision でその条件を満たした。Implementation may begin within this specification and plan.
+- 2026-09-04: Implementation review revision (PR #202 review): planned folder への移動先参照 (`MoveChange.destination` の `PreviewFolderRef.Planned`) も resolved name を運び ordinal を user-facing に露出しない契約を §Preview integration へ明記 (Major 1)。FN-AC-04 の split 同一 title 検証を real planner → materializer の capacity 分割 fixture で直接 assert するよう test oracle を強化 (Major 2)。FN-AC-15 の production `resolver(Context)` 経路を instrumentation で通すよう追記 (Minor)。
 
 ## References
 

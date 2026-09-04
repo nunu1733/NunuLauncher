@@ -368,6 +368,65 @@ class PlanPreviewProjectorTest {
     }
 
     @Test
+    fun moveIntoPlannedFolderRendersTheResolvedFolderName() {
+        // Issue #201 (review Major 1): a move row whose destination is a
+        // planned folder must carry the same resolved title as the folder's
+        // own change row — the planner ordinal never reaches the UI.
+        val folderState = plannedFolderState(
+            ordinal = 0,
+            placement = PlacementState.Workspace(ApplicationPageRef.PersistentPage(PageId("p0")), GridCell(2, 0), GridSpan(1, 1)),
+            title = OptionalText.Present("ソーシャル"),
+        )
+        val intendedMember = item("a").copy(
+            placement = PlacementState.FolderChild(ApplicationItemRef.PlannedFolder(NewFolderOrdinal(0)), 0),
+        )
+        val plan = plan(
+            sourceItems = listOf(item("a")),
+            actions = listOf(
+                updateAction(item("a", cell = GridCell(0, 0)), intendedMember),
+                ApplyAction.Insert(ApplicationItemRef.PlannedFolder(NewFolderOrdinal(0)), folderState),
+            ),
+            newFolders = listOf(
+                NewFolder(
+                    ordinal = NewFolderOrdinal(0),
+                    profile = ProfileId("personal"),
+                    naming = FolderNaming.FromCategory(CategoryId("SOCIAL")),
+                    workspacePlacement = PlacementTarget.WorkspaceTarget(
+                        PageRef(PageId("p0")),
+                        GridCell(2, 0),
+                        GridSpan(1, 1),
+                    ),
+                    members = listOf(ItemId("a")),
+                ),
+            ),
+        )
+
+        val result = PlanPreviewProjector.project(
+            plan,
+            planned(
+                PlannedPlacement(
+                    item = ItemId("a"),
+                    disposition = Disposition.Moved(PlacementCode.FOLDER_MEMBER),
+                    target = app.lawnchair.organizer.planning.PlacementTarget.FolderMember(
+                        app.lawnchair.organizer.planning.NewFolderRef(NewFolderOrdinal(0)),
+                        0,
+                    ),
+                ),
+            ),
+        ) as PlanPreviewProjector.Result.Ready
+
+        val move = result.details.changes.filterIsInstance<MoveChange>().single()
+        assertEquals(
+            PreviewPosition.InFolder(
+                PreviewFolderRef.Planned(NewFolderOrdinal(0), PreviewLabel.Named("ソーシャル")),
+            ),
+            move.destination,
+        )
+        val folderRow = result.details.changes.filterIsInstance<NewFolderChange>().single()
+        assertEquals(PreviewLabel.Named("ソーシャル"), folderRow.name)
+    }
+
+    @Test
     fun dockSourceAndFolderDestinationsResolveByReference() {
         val dockItem = dockItem("dock.1", rank = 2)
         val folder = folderItem("folder.1", "Work", cell = GridCell(3, 0))
