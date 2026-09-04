@@ -248,7 +248,9 @@ And 適用後の DB 側 exact verification が TITLE を含めて intended と�
 
 - 追加する文言はすべて strings (`values/` + `values-ja/`) で管理する。planner・application core に fixed locale 文言を置かない。
 - 生成フォルダ名の source 文言は既存 category label resource を再利用し、新しい原文は汎用 fallback の1組のみとする (LQA 対象を最小化)。
-- TalkBack / font scaling は §UX expectations のとおり既存構成に従う。確認画面の新規フォルダ行の label 構成変更は既存 UI test パターンで検証する。
+- actual resource / locale 統合 (en・ja の resource 解決、未知 category の fallback 文言解決) と 200% font scale での表示は organizer instrumentation で検証する (FN-AC-15)。unit test は resolver の total lookup / fallback policy を fake string provider で純粋に検証する。
+- TalkBack: フォルダアイコンの既存 content description (`folder_name_format_exact`) が title を読むため、意味のある名前がそのまま読み上げ対象になる。確認画面の新規フォルダ行は既存の row 単位の label 構成を保つ。TalkBack の動作は実機 Organizer run の manual evidence で確認する。
+- font scaling: 追加は text row のみであり、200% font scale の instrumentation assertion (FN-AC-15) で名前付き new-folder row が displayed / reachable であることを確認する。
 
 ## Acceptance criteria
 
@@ -262,12 +264,13 @@ And 適用後の DB 側 exact verification が TITLE を含めて intended と�
 | FN-AC-06 | `NewFolderChange` が `name` を運び、その値が当該 `ApplyAction.Insert` の intended title と文字列一致することを projector contract test が検証する。preview 専用の名前再推論 (category → 名前の写像の重複実装) が存在しないことを code review で確認する。 |
 | FN-AC-07 | planner の決定性・metamorphic・idempotence test が `naming` 追加後も無変更で通り、fixture corpus が「`NewFolder.naming` が member の grouping category と一致する」property を検証する。同一入力からの canonical plan が byte-equivalent であることを維持する。 |
 | FN-AC-08 | 適用後の persisted folder title が intended plan と一致することを、既存の DB 側 exact verification / protocol test が TITLE 含めて検証する。apply / recovery / reload の既存 invariants test が無変更で通る。 |
-| FN-AC-09 | 確認 UI の新規フォルダ行がフォルダ名を含むことを UI test が検証する。行構造・group 構造・件数 truth が不変であることを既存 #195 test の無変更通過で示す。 |
+| FN-AC-09 | 確認 UI の新規フォルダ行がフォルダ名を含むことを test が検証する。影響を受ける new-folder row test は新しい format に更新し、group 順序 / 行順 / 件数 truth / truncation 等の既存 #195 invariants は維持する。 |
 | FN-AC-10 | `FolderNaming` が category 専用の特殊実装に閉じない構造 (closed sealed 階層 + 網羅 `when`) であり、`ValidatedLayoutPlan.newFolders` に同じ型で伝播することを contract shape test が検証する。 |
 | FN-AC-11 | 新規 user-facing 原文が汎用 fallback 1組のみであり、values / values-ja が揃っていることを resource review で確認する。 |
 | FN-AC-12 | spec 194 / spec 195 の置き換えられる契約行の更新、`CONTEXT.md` 用語追加、`DESIGN.md` の seam 反映が同じ PR で完了する。 |
 | FN-AC-13 | 生成フォルダ title が creation-time locale snapshot であること (preview → confirm 間の locale 変化で再 materialize / 再解決されず、凍結文字列が適用される) を、coordinator / materializer test で検証する。 |
 | FN-AC-14 | application package が organizer ui package を import しない依存方向 (`UI / outer composition → port → application`) であることを code review と (可能な場合) 静的確認で検証する。production wiring は `LawnchairApp` が resolver を生成して `LayoutApplicationModule.production(...)` へ注入する。 |
+| FN-AC-15 | actual Android resources に対する localization / font scaling 検証を organizer instrumentation で担保する: production `GeneratedFolderTitles` が en / ja の actual resource から category title を解決すること、未知 `CategoryId` が generic fallback 文言へ解決すること、および 200% font scale の concrete preview test で**名前付き new-folder row が displayed / reachable** であること。representative fixture は可能なら ja で比較的長い category label を使用する。 |
 
 ## Test oracle
 
@@ -275,18 +278,19 @@ And 適用後の DB 側 exact verification が TITLE を含めて intended と�
 |---|---|
 | FN-AC-01 | spec / plan review。 |
 | FN-AC-02 | `OrganizationPlanMaterializerTest` (拡張): fake resolver (invocation counter 付き) で既定 title の伝播と N folder → N 呼び出しを検証。`Favorites.TITLE` への書き込みは既存 application adapter / protocol test が意図 state 経由で検証。実機確認は実装完了後の Organizer run (複数 generated folder の名称確認) を PR へ記録。 |
-| FN-AC-03 | production resolver test (新規): active taxonomy category → localized title、未知 `CategoryId` → generic fallback (total lookup、例外捕捉なし)、raw ID 非露出、en / ja。materializer test: blank resolver で `Invalid`; projector test で `MATERIALIZATION_INVALID`。raw id 露出の不在は planner / projector fixture 全体の assertion。 |
+| FN-AC-03 | production resolver の **unit test** は fake string provider 等で total lookup / fallback policy を純粋に検証する (既知 category → 解決済み title、未知 `CategoryId` → `null` → generic fallback、例外捕捉なし、raw ID 非露出)。materializer test: blank resolver で `Invalid`; projector test で `MATERIALIZATION_INVALID`。raw id 露出の不在は planner / projector fixture 全体の assertion。**actual resource / locale 統合は FN-AC-15 の instrumentation で担保する**。 |
 | FN-AC-04 | planner fixture test: capacity 超過 fixture で split 2 フォルダが同一 `naming` / 同一 resolved title。`formFolderGroups` の fallback skip の既存 test 維持。 |
 | FN-AC-05 | materializer / application contract test: Preserve / Update 対象の既存フォルダ title 不変 assertion。 |
 | FN-AC-06 | `PlanPreviewProjectorTest`: `NewFolderChange.name` と `insert.intended.title` の一致、`Absent` / blank intended title で `Invalid`。 |
 | FN-AC-07 | `PlannerGeneratedPropertyTest` + fixture corpus: naming = grouping category property、既存 determinism / idempotence suite 無変更通過。 |
 | FN-AC-08 | 既存 application protocol test (`NewFolderCanonicalOrderProtocolTest` 等) の TITLE 含む無変更 / 拡張通過。 |
-| FN-AC-09 | 確認 UI の既存 text rendering test (OrganizationPreviewContent 系) の拡張: フォルダ名を含む row 文言。 |
+| FN-AC-09 | 影響を受ける new-folder row test (`OrganizationPreviewContent` 系 unit test、`ManualOrganizationPreferencesInstrumentationTest` の該当行) を新 format へ更新し、group / order / count / truncation の既存 #195 invariants を更新後も維持することを確認。 |
 | FN-AC-10 | `ContractShapeTest` (拡張): `FolderNaming` の shape と plan 伝播の検証。 |
 | FN-AC-11 | PR diff review (`lawnchair/res/values{,-ja}/strings.xml`)。 |
 | FN-AC-12 | PR diff review (spec 194 / 195 / CONTEXT.md / DESIGN.md)。 |
 | FN-AC-13 | `ManualOrganizationRunTest` / materializer test: preview 保持中の locale 変化を模擬し、`materialize` が再実行されず resolve 呼び出しが増えないこと (同一 plan インスタンス適用 + counter) を検証。 |
 | FN-AC-14 | PR diff review (import 方向) + `LawnchairApp` wiring の review。 |
+| FN-AC-15 | organizer instrumentation (`ManualOrganizationPreferencesInstrumentationTest` 拡張): `createConfigurationContext` による ja context で production resolver の actual resource 解決と未知 category → fallback 文言を検証し、200% font scale (`Density(1f, fontScale = 2f)`) の concrete preview で名前付き new-folder row の displayed / reachable を assert。representative fixture に ja の長め category label を使用。実行は `connectedLawnWithQuickstepGithubDebugAndroidTest`。 |
 
 検証 command は building guide の正本に従う (`./gradlew spotlessCheck`、`./gradlew assembleLawnWithQuickstepGithubDebug`、`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`)。
 
@@ -313,6 +317,7 @@ None。Stage A で決定済み:
 
 - 2026-09-04: Drafted for Issue #201。source trace (title data flow / preview contract / taxonomy presentation の確認) に基づき作成。production 実装は spec / plan 承認まで停止。
 - 2026-09-04: Review revision (owner review @ `d9cce13fe6`): unknown category fallback を presentation API への total lookup 追加 (`null` → fallback、例外捕捉なし) へ修正し、materializer test と production resolver test の責務を分離 (Blocking 1)。locale を creation-time snapshot 契約として明示し、process death 前提の不正確な記述を削除、scenario を追加 (Blocking 2)。production resolver の wiring を outer composition (`LawnchairApp`) 注入へ変更し依存方向を修正、FN-AC-14 を新設 (Major 3)。materializer の二重構築 (`newFolder()` が `placeholderFolder` を2回呼ぶ) を解消する resolve-once 実装形状と invocation counter test を明記、FN-AC-02 を拡張 (Major 4)。runtime fallback 対象を未知 `CategoryId` に整理し、sealed subtype 追加時は解決規約を同一変更で定義することを明記 (Minor 5)。
+- 2026-09-04: Re-review revision (owner re-review @ `c03896c927`): actual Android resources を使う en / ja 検証と未知 category の fallback 文言解決を organizer instrumentation へ移動し、unit test は fake string provider による resolver の純粋検証に限定 (Major)。200% font scale の concrete preview test を名前付き new-folder row の displayed / reachable assertion へ拡張し、representative fixture へ ja の長め category label を要求する FN-AC-15 を新設。FN-AC-09 の「既存 #195 test 無変更通過」を「新 format への更新 + 既存 #195 invariants (group / order / count / truncation) の維持」へ修正。TalkBack の実機 manual evidence は現行どおり。
 
 ## References
 
