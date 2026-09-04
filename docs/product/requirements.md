@@ -22,7 +22,7 @@
 | FR-013 | Later | deferred | usage signalを明示的な許可の下で利用し、取得不能時も動作できる |
 | FR-014 | Later | deferred | local分類が不明な場合だけ、明示的opt-inで外部分類adapterを利用できる |
 | FR-015 | MVP | implemented | 各移動、folder化、未配置、fallbackの主要理由を表示・診断できる |
-| FR-016 | Later | spec pending ([Issue #182](https://github.com/nunu1733/NunuLauncher/issues/182)) | ユーザーがversion付きの組み込みlayout strategyを選択でき、有効strategyのidentityと結果 (移動件数、新規folder/page、strategy固定item、警告) を確認前にpreviewできる。選択はversion付きで検証され、unsupported/破損/newer選択はfail-closedする。 |
+| FR-016 | Later | spec accepted ([spec 182](../../specs/182-layout-strategy-catalog/spec.md), [ADR-0012](../adr/0012-versioned-layout-strategy-catalog.md)) | ユーザーがversion付きの組み込みlayout strategyを選択でき、有効strategyのidentityと結果 (移動件数、新規folder/page、strategy固定item、警告) を確認前にpreviewできる。選択はversion付きで検証され、unsupported/破損/newer選択はfail-closedする。 |
 
 ## Non-functional requirements
 

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Versioned built-in layout-strategy catalog with fail-closed local selection
@@ -162,3 +162,9 @@ shape of the decision, not the per-strategy rules.
   semantic version per ADR-0007 §8.
 
 [ADR-0007]: 0007-authoritative-organization-policy-sources.md
+
+## Change history
+
+- 2026-09-04: Proposed alongside spec 182's draft.
+- 2026-09-04: Revised through five review rounds (selection/bundle identity split, write authority, staged runtime catalog, downgrade cases, effective rules identity, homogeneous-span idempotence constraint).
+- 2026-09-04: Accepted together with [spec 182](../../specs/182-layout-strategy-catalog/spec.md) after the fifth review round found no further issues.

@@ -1,6 +1,6 @@
 ---
 issue: "#182"
-status: draft
+status: accepted
 requirements:
   - FR-001
   - FR-003
@@ -25,7 +25,7 @@ updated: 2026-09-04
 
 # Selectable versioned layout-strategy catalog
 
-> Status: draft — Epic 正本spec。本specの受入は初期strategy集合・既定・selection契約・内部seamを確定し、source実装は planned child Issues (本文「Child issues」) へ分割する。
+> Status: accepted — Epic 正本spec。本specの受入により初期strategy集合・既定・selection契約・内部seamが確定した。source実装は planned child Issues (本文「Child issues」) へ分割し、最初の実装縦切りは child 2 (versioned strategy-selection contract) である。
 
 ## Problem
 
@@ -414,6 +414,7 @@ None blocking acceptance. Deferred deliberately: catalog renaming policy (a rena
 - 2026-09-04: Second re-review revision (owner re-review on `110bba11`): the rules `PolicyInputIdentity` is redefined as the identity of the **effective** `RuleSemantics` (bundle rules base + selected strategy, digest bound to the bundle and selection identities), so the same bundle with a different valid selection yields a different `rulesIdentity` and ADR-0007 §5's identity-content invariant holds for every provenance row — Blocking. Child 2 now includes a minimal `CANONICAL_PAGE_COMPACT_V1` registration (internal registry + adapter dispatching to the unchanged placement body) so AC-9b is testable before child 3's behavior extraction — Medium. Downgrade/rollback rewritten as a three-case model (in-binary bundle-version mismatch defensive case; store-aware APK downgrade failing closed at the selection layer against the older bundle's set; pre-store binaries ignoring the store), and the "old binary reads an unknown bundle version" claim was withdrawn — Medium.
 - 2026-09-04: Third re-review revision (owner re-review on `60af35c3`): `GLOBAL_COMPACT_V1` cross-page compaction is restricted to movable `1×1` singletons — otherwise-movable non-`1×1` singletons and all existing folder units are `STRATEGY_PRESERVED` — because the reviewer's heterogeneous-span counterexample (non-`1×1` unit plus fragmented fixed obstacle) reorders the visual sequence across replans and violates INV-8; the withdrawn claim and the required counterexample fixture/property coverage are documented — Blocking. The byte-equivalence oracle is now pinned from the accepted pre-#182 baseline commit (currently `main@5fdab48082`) and must pass on both the selection and extraction child issues, so a selection-child regression cannot be promoted into the oracle — Blocking. The effective-rules digest formula now names its inputs explicitly (`bundleIdentity.sha256 || selectionIdentity.sha256 || canonical(effectiveRuleSemantics)`) — Medium.
 - 2026-09-04: Fourth re-review revision (owner re-review on `8903156e`): the `1×1` restriction is propagated consistently through `GLOBAL_COMPACT_V1` — folder formation is "canonical grouping/partition policy applied to the eligible `1×1` candidates only" (a non-`1×1` app is never a folder candidate, so no item is both `STRATEGY_PRESERVED` and a new-folder member), and the counterexample fixture/scenario gains a movable `1×1` app with both non-`1×1` apps `STRATEGY_PRESERVED` — Blocking. The effective-rules digest formula is unified on the plan's shape (including `bundleIdentity.semanticVersion`) with a required unambiguous byte representation (length-prefixed/labeled; raw concatenation forbidden) — Medium. The execution checklist's stale "golden capture at extraction-child start" step is replaced with the pinned-baseline/both-children procedure — Medium.
+- 2026-09-04: Accepted by the Issue #182 owner after the fifth review round found no further issues (reviewed head `9b6eec73a9`). Implementation may begin within this specification and plan, split across the child issues; child 2 is the first implementation vertical. The spec-10/12 delta rows in this acceptance PR are the only planner public-shape changes authorized by this spec.
 
 ## References
 

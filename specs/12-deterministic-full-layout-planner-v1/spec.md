@@ -14,7 +14,7 @@ requirements:
   - NFR-005
   - NFR-006
   - NFR-010
-updated: 2026-08-27
+updated: 2026-09-04
 source:
   - ../10-pure-organization-planning/spec.md
   - ../11-planner-fixture-property-harness/spec.md
@@ -410,6 +410,12 @@ data flow. There is no migration or recovery action in this Issue.
 None.
 
 ## Change history
+
+- 2026-09-04: Spec 182 (accepted) records that the `CANONICAL_V1` ordering
+  policy becomes the first built-in strategy `CANONICAL_PAGE_COMPACT_V1` under
+  the versioned strategy catalog (spec 182 / ADR-0012). P-01–P-12 remain the
+  normative definition of that strategy's behavior; the strategy identity and
+  selection contract live in spec 182.
 
 - 2026-08-10: Accepted after Codex Standards/Spec review on main
   `2fe774b4f3`; no open questions remain.
