@@ -2,7 +2,7 @@
 
 > Issue: #201
 > Spec: [spec.md](./spec.md)
-> Status: proposed
+> Status: accepted
 
 ## Current evidence
 
@@ -132,7 +132,7 @@ title を解決するのは materializer の1回だけである。preview と wr
 | `tests/unit/.../planning/*` | fixture / property へ naming assertion、`ContractShapeTest` へ shape 検証、harness の compile fix | FN-AC-07 / FN-AC-10 |
 | `tests/unit/.../application/actions/*` | materializer test (既定 title 伝播 / **resolve-once: invocation counter で N folder → N 呼び出し** / blank fail-closed / 既存 title 不変 / split 同一 title)、fixtures compile fix | FN-AC-02/03/04/05 |
 | `tests/unit/.../ui/GeneratedFolderTitlesTest.kt` (新規) | production resolver の**純粋検証**: fake string provider による total lookup / fallback policy (既知 category → 解決済み title、未知 `CategoryId` → `null` → generic fallback、例外捕捉なし、raw ID 非露出)。actual resource 解決は持たない | FN-AC-03 (unit 側) |
-| `tests/organizer-instrumentation/.../ManualOrganizationPreferencesInstrumentationTest.kt` (拡張) | actual en / ja resource での production resolver 解決、未知 `CategoryId` → generic fallback 文言 (`createConfigurationContext` 利用)、200% font scale の concrete preview で**名前付き new-folder row が displayed / reachable** である assertion。representative fixture は ja の比較的長い category label を使用 | FN-AC-09 / FN-AC-15 (actual resource / locale / font scale の integration evidence) |
+| `tests/organizer-instrumentation/.../ManualOrganizationPreferencesInstrumentationTest.kt` (拡張) | actual en / ja resource での production resolver 解決、未知 `CategoryId` → generic fallback 文言 (`createConfigurationContext` 利用)、200% font scale の concrete preview で**名前付き new-folder row が displayed / reachable** である assertion。representative fixture は ja の比較的長い category label を使用。evidence は既存 `organizer-instrumentation-issue52-tests` job の成功 (同 class への method 追加で自動収録、新規 lane なし) | FN-AC-09 / FN-AC-15 (actual resource / locale / font scale の integration evidence) |
 | `tests/unit/.../application/preview/PlanPreviewProjectorTest.kt` | `name` ↔ intended title 一致、Absent / blank で Invalid | FN-AC-06 |
 | `tests/unit/.../ui/*Preview*Test.kt` / `ManualOrganizationRunTest.kt` | folder name 含む row 文言、run 経路の resolver 注入 | FN-AC-09 |
 | `specs/194-plan-preview-seam/spec.md` | §Labels and privacy の「`NewFolderChange` 自身の label は持たない」行を spec 201 参照へ更新 | 契約置き換えの正本更新 (spec scope 4) |
@@ -151,7 +151,9 @@ title を解決するのは materializer の1回だけである。preview と wr
 - `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` (FN-AC-02〜10 の主要 evidence。production resolver の unit test は fake string provider による純粋検証)
 - `./gradlew assembleLawnWithQuickstepGithubDebug`
 - planner property gate: `--tests '*PlannerGeneratedPropertyTest*'` (既存 64-case corpus が `naming` 追加後も決定的であること)
-- organizer instrumentation (FN-AC-09 / FN-AC-15): `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest` で `ManualOrganizationPreferencesInstrumentationTest` 拡張分を実行する — actual en / ja resource での resolver 解決、未知 `CategoryId` → generic fallback、200% font scale の concrete preview で名前付き new-folder row が displayed / reachable であること。representative fixture は ja で比較的長い category label を使う。
+- organizer instrumentation (FN-AC-09 / FN-AC-15): 既存の focused lane に合わせる。local / targeted 実行は class filter 付きで行う:
+  `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest`
+  検証内容は actual en / ja resource での resolver 解決、未知 `CategoryId` → generic fallback、200% font scale の concrete preview で名前付き new-folder row が displayed / reachable であること。representative fixture は ja で比較的長い category label を使う。**PR の正式 evidence は既存 `organizer-instrumentation-issue52-tests` CI job の成功とする** — 同 class への test method 追加は既存 lane に自動的に含まれるため、新規 CI lane は設けない。
 - 実機確認 (FN-AC-02 の manual evidence): representative fixture での Organizer run を実機で実行し、複数 generated folder の名称 (ja locale)・TalkBack 読み上げ・適用後 reload での title 一致を確認して PR へ記録する。
 - PR は `Closes #201` を含め `risk: layout-data` label を付ける。high-risk independent-evidence gate (`final-status` + `docs/assessment/pr-201-generated-folder-semantic-naming.md`) を満たすまで merge しない。audit は実装 session とは別の作業として行う。
 
@@ -171,5 +173,5 @@ title を解決するのは materializer の1回だけである。preview と wr
 4. UI / resources: `CategoryOverridePresentation` への total lookup 追加、production resolver (`GeneratedFolderTitles`)、行文言の folder name 対応、strings (en/ja) を実装する。unit test は fake string provider で resolver の total lookup / fallback policy を検証し、actual resource / locale 統合と 200% font scale の名前付き new-folder row assertion は organizer instrumentation (`ManualOrganizationPreferencesInstrumentationTest` 拡張、ja は `createConfigurationContext`) として追加する。`LawnchairApp` が resolver を `LayoutApplicationModule.production(...)` へ注入するよう wiring し、application → ui import が無いことを確認する。
 5. compile fix sweep: `NewFolder` を直接構築する既存 test / harness (`NewFolderPlanFixtures`、`Oracle`、`PostPlanMaterializer`、`ContractShapeTest`、`IntendedCanonicalOrder*` 等) を synthetic naming 付きへ更新する。
 6. docs: spec 194 / 195 の該当行、`CONTEXT.md`、`DESIGN.md` を同じ PR で更新する。
-7. Verification セクションのコマンドを全て実行し、結果を PR へ記録する。実機 Organizer run の evidence を添付する。
+7. Verification セクションのコマンドを全て実行し、結果を PR へ記録する。instrumentation は class filter 付き targeted 実行で確認し、正式 evidence として既存 `organizer-instrumentation-issue52-tests` job の成功を示す。実機 Organizer run の evidence を添付する。
 8. independent audit (`docs/assessment/pr-201-*.md`) を別 session で作成し、high-risk gate を通して merge する。

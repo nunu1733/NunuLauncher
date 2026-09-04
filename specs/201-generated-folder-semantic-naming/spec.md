@@ -1,6 +1,6 @@
 ---
 issue: "#201"
-status: proposed
+status: accepted
 requirements: []
 risk:
   - layout-data
@@ -290,7 +290,7 @@ And 適用後の DB 側 exact verification が TITLE を含めて intended と�
 | FN-AC-12 | PR diff review (spec 194 / 195 / CONTEXT.md / DESIGN.md)。 |
 | FN-AC-13 | `ManualOrganizationRunTest` / materializer test: preview 保持中の locale 変化を模擬し、`materialize` が再実行されず resolve 呼び出しが増えないこと (同一 plan インスタンス適用 + counter) を検証。 |
 | FN-AC-14 | PR diff review (import 方向) + `LawnchairApp` wiring の review。 |
-| FN-AC-15 | organizer instrumentation (`ManualOrganizationPreferencesInstrumentationTest` 拡張): `createConfigurationContext` による ja context で production resolver の actual resource 解決と未知 category → fallback 文言を検証し、200% font scale (`Density(1f, fontScale = 2f)`) の concrete preview で名前付き new-folder row の displayed / reachable を assert。representative fixture に ja の長め category label を使用。実行は `connectedLawnWithQuickstepGithubDebugAndroidTest`。 |
+| FN-AC-15 | organizer instrumentation (`ManualOrganizationPreferencesInstrumentationTest` 拡張): `createConfigurationContext` による ja context で production resolver の actual resource 解決と未知 category → fallback 文言を検証し、200% font scale (`Density(1f, fontScale = 2f)`) の concrete preview で名前付き new-folder row の displayed / reachable を assert。representative fixture に ja の長め category label を使用。**正式 evidence は既存 `organizer-instrumentation-issue52-tests` CI job の成功** (同 class への method 追加で自動収録)。local には class filter 付き targeted 実行を使用する。 |
 
 検証 command は building guide の正本に従う (`./gradlew spotlessCheck`、`./gradlew assembleLawnWithQuickstepGithubDebug`、`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`)。
 
@@ -318,6 +318,8 @@ None。Stage A で決定済み:
 - 2026-09-04: Drafted for Issue #201。source trace (title data flow / preview contract / taxonomy presentation の確認) に基づき作成。production 実装は spec / plan 承認まで停止。
 - 2026-09-04: Review revision (owner review @ `d9cce13fe6`): unknown category fallback を presentation API への total lookup 追加 (`null` → fallback、例外捕捉なし) へ修正し、materializer test と production resolver test の責務を分離 (Blocking 1)。locale を creation-time snapshot 契約として明示し、process death 前提の不正確な記述を削除、scenario を追加 (Blocking 2)。production resolver の wiring を outer composition (`LawnchairApp`) 注入へ変更し依存方向を修正、FN-AC-14 を新設 (Major 3)。materializer の二重構築 (`newFolder()` が `placeholderFolder` を2回呼ぶ) を解消する resolve-once 実装形状と invocation counter test を明記、FN-AC-02 を拡張 (Major 4)。runtime fallback 対象を未知 `CategoryId` に整理し、sealed subtype 追加時は解決規約を同一変更で定義することを明記 (Minor 5)。
 - 2026-09-04: Re-review revision (owner re-review @ `c03896c927`): actual Android resources を使う en / ja 検証と未知 category の fallback 文言解決を organizer instrumentation へ移動し、unit test は fake string provider による resolver の純粋検証に限定 (Major)。200% font scale の concrete preview test を名前付き new-folder row の displayed / reachable assertion へ拡張し、representative fixture へ ja の長め category label を要求する FN-AC-15 を新設。FN-AC-09 の「既存 #195 test 無変更通過」を「新 format への更新 + 既存 #195 invariants (group / order / count / truncation) の維持」へ修正。TalkBack の実機 manual evidence は現行どおり。
+- 2026-09-04: Spec approved / plan revision (owner re-review @ `8be8435c7e`): instrumentation の正式 evidence を既存 `organizer-instrumentation-issue52-tests` CI job の成功へ固定し、local は class filter 付き targeted 実行へ変更 (新規 CI lane は設けない)。FN-AC-15 oracle 行の evidence 所在を計画側と揃えた整合修正。product contract の変更なし。
+- 2026-09-04: Accepted by the Issue #201 owner at head `8be8435c7e` (spec approved)。plan は既存 `organizer-instrumentation-issue52-tests` lane への整合を条件に実装開始可能とされ、本 revision でその条件を満たした。Implementation may begin within this specification and plan.
 
 ## References
 
