@@ -1,0 +1,374 @@
+---
+issue: "#182"
+status: draft
+requirements:
+  - FR-001
+  - FR-003
+  - FR-006
+  - FR-010
+  - FR-015
+  - FR-016
+  - NFR-002
+  - NFR-003
+  - NFR-004
+  - NFR-006
+  - NFR-007
+  - NFR-009
+  - NFR-010
+  - NFR-011
+  - NFR-012
+risk:
+  - layout-data
+  - migration
+updated: 2026-09-04
+---
+
+# Selectable versioned layout-strategy catalog
+
+> Status: draft — Epic 正本spec。本specの受入は初期strategy集合・既定・selection契約・内部seamを確定し、source実装は planned child Issues (本文「Child issues」) へ分割する。
+
+## Problem
+
+The organizer MVP has one built-in planning policy. `DeterministicOrganizationPlanner` classifies movable apps/deep shortcuts, forms same-profile/category folders, preserves locked/unsupported regions, and allocates units deterministically in top-left row-major order under `OrderingPolicy.CANONICAL_V1`. Users cannot choose an organization intent: when classification yields few useful groups, the result is perceived as little more than upper-left compaction. The safety/application machinery is valuable, but the produced layout needs meaningful, selectable alternatives without weakening planner or application safety contracts.
+
+## Outcome
+
+A curated, versioned, user-selectable catalog of built-in layout strategies behind the unchanged external seam `OrganizationPlanner.plan(OrganizationInput) -> PlanningResult`:
+
+- `CANONICAL_PAGE_COMPACT_V1` preserves the exact current `CANONICAL_V1` observable behavior as the compatibility baseline and regression oracle.
+- `STABLE_PAGE_TIDY_V1` and `BOTTOM_FIRST_V1` ship as the first two new strategies, both computed exclusively from already-authorized local inputs.
+- `GLOBAL_COMPACT_V1` and `CATEGORY_CONTIGUOUS_V1` are accepted catalog members implemented in later child issues after the baseline ships (their behavioral definitions are normative here; their delivery order is not).
+- The selected strategy is a versioned policy input: carried in `RuleSemantics`, participating in the canonical policy bundle digest, planner provenance, stale-plan semantics, diagnostics, and fail-closed selection handling.
+- The manual flow lets the user choose a supported strategy and previews the effective strategy identity and its consequences (move counts by scope, new folders/pages, preserved-by-strategy items, warnings) through the existing spec 194/195 preview seams.
+
+`OrganizationPlanner.plan(OrganizationInput)` remains the sole external planning interface. Strategy implementations, grouping, unit ordering, page scope, and cell traversal are internal seams tested through the public interface.
+
+## Candidate comparison and accepted initial set
+
+The Issue #182 candidate table (canonical compact / preserve-and-tidy / category focused / alphabetical / reachability first / profile separated / balanced spacing / routine / user templates) was evaluated against: user value, required inputs, determinism/idempotence risk, compatibility/migration cost, and current-input feasibility. Alphabetical, usage-based, handedness-aware, and template/zone strategies require display labels, usage signals (FR-013), handedness preference, or versioned user-authored rules (FR-012/D-009) that `OrganizationInput` does not carry; they are not catalog candidates and this spec does not reinterpret them. `CATEGORY_CONTIGUOUS_V1` is the only accepted strategy that depends on a folder-policy decision; it is accepted here with explicit decisions (below) and scheduled after the baseline child issues.
+
+Accepted catalog for strategy-catalog v1 (working IDs are normative once this spec is accepted; renaming requires a new spec change):
+
+| ID | Intent | Folder policy | Eligible movable units | Unit order | Page scope | Cell traversal |
+|---|---|---|---|---|---|---|
+| `CANONICAL_PAGE_COMPACT_V1` | compatibility baseline / rollback oracle | identical to current behavior | current movable set (existing folders, new folders, movable singletons incl. non-`1×1`) | current existing-folder → new-folder → singleton canonical order with current tie-breaks | captured/preferred page, then new pages | top-left row-major first-fit |
+| `STABLE_PAGE_TIDY_V1` | close holes with least surprising movement | create no folders; never rewrite existing folder children | available, unlocked, top-level `APPLICATION`/`DEEP_SHORTCUT` with `1×1` span | per page: captured visual order `(cell.y, cell.x, ItemId)` | stay on captured page; never create or cross pages | earliest free row-major `1×1` cell on that page |
+| `GLOBAL_COMPACT_V1` | minimize occupied early pages | identical to `CANONICAL_PAGE_COMPACT_V1` | current movable set | global captured visual order `(PageOrder, PageId, cell.y, cell.x, ItemId)`; new folders after all captured-position units by `(preferred page key, NewFolderOrdinal)` | scan all captured pages by `PageOrder` (≈ `allocateCapturedThenNew`), then new pages | top-left row-major first-fit |
+| `BOTTOM_FIRST_V1` | visibly different geometry from device dimensions only | identical to `CANONICAL_PAGE_COMPACT_V1` | current movable set | current canonical order | captured/preferred page, then new pages | bottom-first: candidate top-left `y` from `rows - span.height` down to `0`, `x` left-to-right |
+| `CATEGORY_CONTIGUOUS_V1` | categories visible as contiguous icon groups | create no new folders; existing folders preserved as fixed units | available, unlocked, top-level `1×1` `APPLICATION`/`DEEP_SHORTCUT` | per page: `(profile, category with fallback last, canonical target key, ItemId)` | page-local; categories never pulled across page boundaries | top-left row-major first-fit |
+
+Default strategy: `CANONICAL_PAGE_COMPACT_V1`. It is the compatibility control for product evaluation and the rollback oracle.
+
+Category-contiguous folder decisions (closing the Issue's open product point): this strategy creates no titled/category folders and does not imply any `NewFolder` contract change; expressing category value through better folders is separate work that must not be implied by this ID.
+
+Compatibility requirement: `CANONICAL_PAGE_COMPACT_V1` produces a byte-equivalent canonical plan payload (placements, new pages, new folders, categories, warnings) to the current `CANONICAL_V1` implementation over the accepted corpus (spec 11 harness corpus, generated property cases, and the fixtures fixed in spec 12). The strategy identity echo is additional metadata and is excluded from the equivalence payload. The extraction of the current behavior behind the internal strategy seam is verified by a compatibility corpus run on both paths.
+
+Idempotence arguments per strategy:
+
+- `CANONICAL_PAGE_COMPACT_V1`: unchanged current behavior; existing INV-8 evidence.
+- `STABLE_PAGE_TIDY_V1`: after one run, captured visual order equals target traversal order on every page, so the next run moves nothing.
+- `GLOBAL_COMPACT_V1`: the global unit order is the captured visual order, which the cross-page first-fit placement reproduces position-for-position; a replan of the materialized result processes units in the same positional order against the same constraints and moves nothing. (The Issue's working note "captured source-page order, then unit-kind/profile/category/identity tie-breaks" is deliberately not accepted: tie-break order is not stable under cross-page movement — items merged into an earlier page regroup and permute on replan — and would violate INV-8.)
+- `BOTTOM_FIRST_V1`: deterministic unit order plus deterministic bottom-first candidate order yields the same targets on replan.
+- `CATEGORY_CONTIGUOUS_V1`: page-local identity-based ordering is invariant under the placement (page membership never changes), so a replan reproduces the same order and targets.
+
+Strategy-preserved rationale: when a strategy intentionally keeps otherwise movable items fixed (e.g. non-`1×1` movable items under `STABLE_PAGE_TIDY_V1`, existing folders under `CATEGORY_CONTIGUOUS_V1`), the planner reports a truthful dedicated preservation reason (`PreserveReason.STRATEGY_PRESERVED`), never `ALREADY_CANONICAL` and never `NON_TARGET`.
+
+## Scope
+
+- Versioned strategy selection contract: `RuleSemantics` carries the selected strategy identity; the policy bundle version bumps to `organization-policy-v2` and `rule-v2`; unsupported/corrupt/newer/removed selection fails closed with a typed non-write result.
+- Internal planning seam: extract shared input materialization and the shared constraint-aware allocator; dispatch strategy-specific grouping/order/page-scope/cell-traversal from a curated internal strategy catalog (no combinational public toggles).
+- `CANONICAL_PAGE_COMPACT_V1` compatibility extraction with byte-equivalence proof on the accepted corpus.
+- `STABLE_PAGE_TIDY_V1` and `BOTTOM_FIRST_V1` implementations (first delivery).
+- `GLOBAL_COMPACT_V1` and `CATEGORY_CONTIGUOUS_V1` behavioral definitions (this spec) and later implementation (child issue).
+- Manual selection UI + preview integration: localized strategy name/intent description, only supported strategies offered, effective strategy identity in preview, strategy-specific consequence counts (cross-page moves, preserved-by-strategy), replan on strategy change.
+- Planner-facing diagnostics echo of the effective strategy identity (see Diagnostics).
+- Requirements/traceability updates (FR-016), `CONTEXT.md`/`DESIGN.md` updates, and the ADR recording the strategy-catalog decision.
+
+## Non-goals
+
+- Changing application/recovery safety invariants, apply/recovery contracts, or diagnostics privacy rules.
+- Moving locked placements, preserved widgets/app pairs/legacy shortcuts, Dock items, or reserved regions under any strategy; every strategy sees them only as fixed occupancy constraints.
+- Automatic unconfirmed full organization; strategy selection never bypasses confirmation.
+- Usage/frequency permission (FR-013), network/LLM/external classification, arbitrary user scripts or imported rule execution.
+- Launcher DB schema changes; page-record deletion policy (a global compaction does not itself delete empty page records).
+- Lawnchair 16 migration.
+- Label/alphabetical, handedness, profile-role naming, usage-ranked, or user-authored template strategies (each needs a new authoritative input and its own accepted decision; profile-role display projection is already excluded from spec 194 scope).
+- A minimum-cost optimizer or general layout solver; `STABLE_PAGE_TIDY_V1` is deliberately a stable-compaction heuristic.
+- Independently combinable public policy switches (folder policy × page policy × cell traversal × ordering); the catalog is curated.
+
+## Domain language
+
+`CONTEXT.md` gains (at acceptance):
+
+**layout strategy (レイアウトストラテジー)**:
+対象集合をどのような配置方針へ変換するかを決める、version付きの組み込み計画戦略。folder形成、対象unit、unit順序、page範囲、cell探索をcurated catalogの1メンバーとして固定し、selection identityがpolicy provenanceへ参加する。
+_Avoid_: 並べ替え設定 (組合せ式toggleを想起させる)、Theme、OrderingPolicy (旧単一値の型名)
+
+## Selection contract
+
+### Versioned identity
+
+`OrderingPolicy` (exactly one value `CANONICAL_V1`, asserted by `ContractShapeTest`) is replaced by a versioned strategy identity type in `RuleSemantics`:
+
+```text
+OrganizationStrategy {
+    id:      StrategyId          // e.g. "CANONICAL_PAGE_COMPACT_V1"
+    version: StrategyVersion    // e.g. "v1"
+}
+```
+
+- The planner accepts exactly the declared catalog versions; an unknown, removed, or newer selection reaches the existing invalid-rules rejection family (`V-20 INVALID_RULES`), producing a typed `Rejected.Invalid`, never a silent fallback to another strategy.
+- `RuleSemantics` gains `organizationStrategy: OrganizationStrategy`; `orderingPolicy: OrderingPolicy` is removed. The public input model change is this spec's only planner public-shape change besides the new `PreserveReason.STRATEGY_PRESERVED` value; no other spec 10 type changes.
+- This is a rule-schema change: bundle version `organization-policy-v2`, rule version `rule-v2` (v2 projections are otherwise identical to v1 with the strategy field added and default `CANONICAL_PAGE_COMPACT_V1`).
+
+### Provenance and consistency
+
+- `OrganizerPolicyBundle.canonicalRepresentation()` includes the selected strategy identity; the bundle digest changes with it. ADR-0007's consistent-cut protocol is unchanged: the strategy is bundle content, so it cannot change between the dynamic A/E1/B/E2 reads.
+- `PolicyInputIdentity` for rules carries the rule version the selection came from; stale-plan detection continues to compare the capture `RevisionId` (unchanged semantics), while strategy change alone does not make a captured input stale — it produces a different plan for the same snapshot.
+- Because the strategy is bundle content, users do not author it freely: the active bundle declares exactly one supported strategy set and default. User selection is read through Rule Management as a validated local preference (see Rule Management below), not by mutating the bundle.
+
+### Rule Management and composer
+
+- Rule Management gains a typed, generation/digest-bearing local strategy-selection source. First-run absence is the defined default (`CANONICAL_PAGE_COMPACT_V1`); corruption, unsupported identity, or a read failure fails closed (`NotReady`), never silently selecting another strategy.
+- The composer (`OrganizationInputComposer`) materializes `RuleSemantics` from the bundle with the selected strategy substituted after validating it against the bundle's supported set. Selection participates in the stable composition cut: the selection snapshot is read as part of the A/E1/B/E2 dynamic reads (identity re-read as B), so a strategy change mid-read yields `NotReady(InconsistentPolicyRead)` after the single bounded retry.
+- Bundle v2 declares the supported strategy catalog and the default. A selection naming a strategy absent from the active bundle's catalog is `NotReady(UnsupportedVersion)`-equivalent (typed non-write), not a fallback.
+
+### Downgrade and rollback
+
+- An older binary that cannot understand the selection store at all fails closed per ADR-0007 §8 (organizer unavailable, layout unchanged); it never rewrites a newer store.
+- Reverting the feature APK-side returns selection to the bundle default; Launcher layout data is never rewritten because of selection migration. An already-applied layout from any strategy remains recoverable through the existing recovery contract (recovery points are strategy-agnostic).
+
+## Internal planning seam
+
+Inside the planning module, separate (all internal; callers and tests keep using `OrganizationPlanner.plan`):
+
+1. shared input validation/canonicalization and classification (unchanged);
+2. shared immutable constraints: locks, preserved items, reservations, spans, profiles, containers (extracted from `PlanningPlacement.place`);
+3. strategy-specific grouping, eligible-unit selection, unit ordering, preferred page/region, and placement objective — a curated `StrategyDefinition` per catalog member;
+4. one shared allocator accepting a deterministic page scope and cell traversal; a single occupancy/bounds implementation (extend the existing `Allocator` + `findRowMajorFirstFit` rather than adding a second one);
+5. shared result canonicalization, self-validation, and explanation (unchanged).
+
+A strategy produces ordered placement units/preferences for the shared allocator. Strategies never access Android types, Launcher DB rows, UI state, the application module, or recovery storage, and cannot bypass shared validation, allocator safety, result validation, or application/recovery.
+
+`CANONICAL_V1` becomes the first built-in strategy (`CANONICAL_PAGE_COMPACT_V1`); its extraction must not change output (byte-equivalence on the accepted corpus is the acceptance gate for the extraction child issue).
+
+### Determinism and complexity
+
+- All strategies are pure functions of canonical input (P-09 semantics unchanged): no locale, clock, thread, or platform dependence; complete tie-breaks; canonical output ordering unchanged.
+- `STABLE_PAGE_TIDY_V1` per-page stable compaction is bounded by the existing planner complexity model (sort + first-fit scan); it does not introduce search or backtracking.
+
+## Observable strategy behavior
+
+### STABLE_PAGE_TIDY_V1 — normative rules
+
+- Movable set: available, unlocked, top-level `APPLICATION`/`DEEP_SHORTCUT` placements with `1×1` span. Everything else — all currently preserved items/reservations, existing folders, and non-`1×1` movable items — is a fixed constraint with `PreserveReason.STRATEGY_PRESERVED` for the non-`1×1` movable and existing-folder cases (genuinely preserved kinds keep their higher-precedence reasons per spec 10 precedence).
+- No new folders are created; existing folder children are never rewritten.
+- Per page, all eligible `1×1` units are first lifted against the page's fixed constraints (lift-then-place), then placed in captured visual order `(cell.y, cell.x, ItemId)` into the earliest free row-major `1×1` cell on that page. Because the captured layout is valid and non-overlapping, the number of eligible units never exceeds the free cells after lifting: every eligible unit is always placeable and no new page is ever needed.
+- Units never leave their captured page; no page is created and no existing page is crossed.
+- Representative fixture: apps at `(0,0), (2,0), (3,0)` with no fixed occupant at `(1,0)` become `(0,0), (1,0), (2,0)`; apps on another page do not move into the gap.
+- A movable `1×1` item already at its stable position is `ALREADY_CANONICAL`; a movable item the strategy intentionally keeps fixed (non-`1×1`) is `STRATEGY_PRESERVED`.
+
+### GLOBAL_COMPACT_V1 — normative rules
+
+- Folder formation identical to `CANONICAL_PAGE_COMPACT_V1`.
+- Global unit order: all captured-position units (existing folder units, movable singletons) in captured visual order `(PageOrder, PageId, cell.y, cell.x, ItemId)`, then new folders by `(preferred page key, NewFolderOrdinal)`.
+- Page scope: for each unit in global order, scan all captured pages by `PageOrder`, then already-created new pages, then create another page (the proven `allocateCapturedThenNew` semantics applied to the full-run stream).
+- Cell order: top-left row-major first-fit.
+- The planner does not delete empty page records; preview must surface the cross-page move count (see Preview integration).
+
+### BOTTOM_FIRST_V1 — normative rules
+
+- Folder/unit/page policy identical to `CANONICAL_PAGE_COMPACT_V1`; only the cell traversal changes.
+- Candidate top-left `y` runs from `rows - span.height` down to `0`; `x` runs left-to-right. Locks, widgets, app pairs, preserved items, and reserved regions remain occupied constraints.
+- Naming constraint: user-facing copy describes this as "bottom first", never "thumb optimized" or "one-handed" (no handedness input exists).
+- Device coverage: verified on portrait, landscape, tablet, and both two-panel orientations; no phone-only hard-coded row.
+
+### CATEGORY_CONTIGUOUS_V1 — normative rules
+
+- Movable set: available, unlocked, top-level `1×1` apps/deep shortcuts; existing folders are preserved fixed units; no new folders.
+- Per page unit order: `(profile, category with fallback last, canonical target key, ItemId)`; page-local only — categories never pulled across page boundaries.
+- Cell order: top-left row-major first-fit.
+- Category decisions themselves (signals, fallback, warnings) are unchanged (P-02 applies to every strategy).
+
+## Diagnostics
+
+- `PlanningResult` echoes the effective strategy identity: `organizationStrategy` sits alongside `revision`/`ruleVersion`/`taxonomyVersion` (exact field shape fixed in plan.md; value-equality participates in canonical result comparison).
+- `PreserveReason` gains `STRATEGY_PRESERVED`, placed in the precedence between `NON_TARGET` and `STRUCTURAL` (`LOCKED > UNAVAILABLE_TARGET > DOCK > WIDGET > APP_PAIR > LEGACY_SHORTCUT > NON_TARGET > STRATEGY_PRESERVED > STRUCTURAL > ALREADY_CANONICAL`); it applies only to otherwise-movable items a strategy intentionally fixed, and the precedence of all existing reasons is unchanged.
+- The run journal keeps recording the accepted version identifiers; strategy identity is a policy identifier and is allowed in diagnostics under the existing "version identifiers" allowance ([organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md) §Allowed). No new fields beyond the strategy identity are added; counts projections are unchanged.
+- The diagnostics contract file gains the strategy-identity allowance in the same PR as the first strategy-shipping child issue.
+
+## Preview integration
+
+The manual flow inherits spec 194/195 contracts unchanged and adds:
+
+- Strategy selection lives on the manual-run surface before planning: only strategies supported by the current schema/device context are offered, each with a localized name and short intent description. Changing the selection starts a new compose/plan cycle with a fresh capture (spec 52: a run never reuses a prior snapshot); staleness continues to be detected only by capture revision.
+- The preview shows the effective strategy identity and strategy-specific consequences: moved count split by within-page vs cross-page moves, new folders/pages, preserved-by-strategy count (`STRATEGY_PRESERVED`), and warnings. This rides the existing `PreviewChange`/`PreviewCounts` projection (rationale/preserve reasons come from `Planned`, per spec 194's responsibility split) plus header-level presentation in #195's UI; no new projection kinds are required.
+- `GLOBAL_COMPACT_V1` preview must make the cross-page move count visible because that change is materially more disruptive than page-local tidy.
+- Confirmation, recovery-point creation, transactional apply, and post-apply verification are unchanged for every strategy.
+- New selection UI inherits the Switch Access/TalkBack/font-scaling expectations of spec 52 (MFO-15) and spec 195.
+
+## Failure behavior
+
+| Condition | Observable outcome |
+|---|---|
+| Selection names an unknown/removed strategy | Composer `NotReady` (typed non-write); planner never invoked. |
+| Selection version newer than binary supports | Composer `NotReady` (fail closed); organizer unavailable; layout unchanged. |
+| Selection store corrupt/unreadable | Composer `NotReady`; no silent default. |
+| Strategy change between A and B reads of the cut | One bounded retry, then `NotReady(InconsistentPolicyRead)`. |
+| Strategy cannot place a unit its rules admit | Reuse of the existing typed impossibility semantics (spec 12 P-11: only V-21/V-22 make a candidate impossible; full-run planner invariants forbid silent drops). |
+| Older binary reads newer selection store | Fail closed per ADR-0007 §8; never rewrite. |
+
+For `STABLE_PAGE_TIDY_V1`, per-page placeability is constructive (lift-then-place argument above); a placement failure of an admitted unit is therefore a planner invariant violation and fails loudly (internal error surfaced as a typed non-apply result), never a silent partial plan.
+
+## Behavior scenarios
+
+### Scenario: baseline strategy reproduces current output byte-for-byte
+
+**Given** the accepted corpus (spec 11 harness corpus + generated cases + spec 12 fixed fixtures) and the current `main` planner outputs recorded as the oracle,
+**When** `plan` runs with `CANONICAL_PAGE_COMPACT_V1` selected,
+**Then** every result is byte-equivalent to the oracle over the whole corpus,
+**And** the existing harness, property, determinism, idempotence, and purity tests pass without modification of their assertions.
+
+### Scenario: page-local tidy closes holes without cross-page movement
+
+**Given** a 4×5 page with apps at `(0,0), (2,0), (3,0)` and no fixed occupant at `(1,0)`, plus a second page with apps,
+**When** a full run executes with `STABLE_PAGE_TIDY_V1`,
+**Then** the page-1 apps occupy `(0,0), (1,0), (2,0)`, page-2 apps are unchanged or page-2-tidied but never moved to page 1,
+**And** no `NewPage` is produced and existing folders' children are unchanged,
+**And** replanning the materialized result yields an empty diff.
+
+### Scenario: global compaction fills earlier pages
+
+**Given** two captured pages where page 2 holds movable singletons and page 1 has free cells,
+**When** a full run executes with `GLOBAL_COMPACT_V1`,
+**Then** page-2 units fill page-1 free cells in captured-visual global order before any new page is created,
+**And** the preview's cross-page move count is greater than zero and equals the number of `Moved` placements whose source and destination pages differ,
+**And** no captured page record is deleted,
+**And** replanning the materialized result yields an empty diff.
+
+### Scenario: bottom-first fills lower rows first
+
+**Given** an otherwise empty 4×5 portrait page with ten movable `1×1` apps,
+**When** a full run executes with `BOTTOM_FIRST_V1`,
+**Then** apps occupy the bottom rows first: `(0,4)..(3,4)` then `(0,3)..(3,3)` then `(0,2)..(1,2)`,
+**And** the same fixture on landscape 4×3, tablet 6×5, and both two-panel orientations fills the respective bottom rows first,
+**And** a locked app at `(3,4)` (fixture L-17 variant) is preserved and the remaining apps fill lower free cells without overlapping it.
+
+### Scenario: category-contiguous keeps categories visible per page
+
+**Given** a page with `1×1` apps of categories GAME, TOOLS, and fallback-OTHER, plus one existing folder,
+**When** a full run executes with `CATEGORY_CONTIGUOUS_V1`,
+**Then** same-category apps occupy contiguous row-major cells ordered by `(profile, category with fallback last, target key, ItemId)`, the folder stays fixed with `STRATEGY_PRESERVED`, and no new folder is created,
+**And** no app crosses a page boundary that its category ordering would otherwise suggest.
+
+### Scenario: strategy-preserved items are truthful
+
+**Given** a `STABLE_PAGE_TIDY_V1` run over a page containing a non-`1×1` movable app and an existing folder,
+**When** the plan is produced,
+**Then** both are `Preserved` with `STRATEGY_PRESERVED` (not `ALREADY_CANONICAL`, not `NON_TARGET`),
+**And** they remain occupancy constraints for the movable `1×1` units.
+
+### Scenario: selection participates in provenance and cut
+
+**Given** a user-selected `BOTTOM_FIRST_V1` in the strategy-selection source,
+**When** the composer composes a full-organization input,
+**Then** `RuleSemantics.organizationStrategy` carries `BOTTOM_FIRST_V1/v1`, the rules `PolicyInputIdentity` version reflects `rule-v2`, and the plan result echoes that identity,
+**And** a selection change between the A and B reads yields one retry then `NotReady(InconsistentPolicyRead)`.
+
+### Scenario: unsupported or corrupt selection fails closed
+
+**Given** a selection naming a removed strategy, a newer version than the binary supports, or a corrupt selection store,
+**When** composition runs,
+**Then** the composer returns a typed `NotReady`, the planner/writer/recovery-point are never invoked, and no fallback strategy is applied silently.
+
+### Scenario: strategy change replans under the stable-cut discipline
+
+**Given** a displayed preview computed for strategy S1,
+**When** the user selects strategy S2 supported on this device,
+**Then** the coordinator starts a new compose/plan cycle with a fresh capture (spec 52: no snapshot reuse); if the layout is unchanged the plan is recomputed under S2 and re-previewed with S2's identity and consequences,
+**And** staleness continues to be detected only by capture revision.
+
+### Scenario: cross-strategy isolation
+
+**Given** identical capture, target membership, and application semantics,
+**When** the same fixture runs under each catalog strategy,
+**Then** only strategy-varying observables differ (targets, dispositions, cross-page counts); conservation, bounds, overlap, reference, lock, profile isolation, determinism, and idempotence hold for every strategy,
+**And** every strategy passes the shared spec 11 harness and property suite through the public seam.
+
+## Data and state
+
+- The planner stays pure; strategies add no I/O, state, or platform dependence.
+- New persistence: one local strategy-selection record owned by Rule Management (typed snapshot with schema version, generation, digest — same contract family as the category override store; excluded from backup/restore in v1 like the override store, with the same defined first-run empty state).
+- No Launcher DB schema change; recovery points, checkpoints, and the apply write-set are unchanged. Bundle `organization-policy-v2`/`rule-v2` is an application-owned immutable artifact change (no in-place migration; ADR-0007 §8).
+- Migration surface: selection-store schema v1 introduction (no migration from anything); unsupported-newer on downgrade fails closed.
+
+## Permissions, privacy, and security
+
+No new permission, network, or telemetry. The strategy selection is a local, app-private preference. Diagnostics expose only the strategy identity under the existing version-identifier allowance; no raw policy content, package, profile, or coordinate data is added to any diagnostic.
+
+## Accessibility and localization
+
+Strategy names and intent descriptions are localized strings (`values/` + `values-ja/`). Selection UI satisfies TalkBack (meaningful label/state/selection announcements), Switch Access/keyboard traversal, and 200% font scaling per spec 52/195 expectations. Preview consequence counts are announced as text, not color-only.
+
+## Acceptance criteria
+
+Product/specification:
+
+- [ ] AC-1: The candidate comparison, accepted initial set, default, and per-strategy observable rules (including tie-breaks, idempotence argument, overflow, and failure behavior) are recorded in this spec and accepted.
+- [ ] AC-2: A new requirement (FR-016) covers user selection and preview of a supported organization strategy; traceability is updated ([requirements.md](../../docs/product/requirements.md)).
+- [ ] AC-3: Unsupported/corrupt/newer/removed selection plus downgrade/rollback behavior is specified and implemented fail-closed.
+
+Architecture/implementation:
+
+- [ ] AC-4: `OrganizationPlanner.plan(OrganizationInput)` remains the sole external planning seam; strategy logic cannot bypass shared validation, constraints, allocator safety, result validation, or application/recovery (verified by the existing purity guard extended to strategy sources).
+- [ ] AC-5: `CANONICAL_PAGE_COMPACT_V1` extraction is byte-equivalent on the accepted corpus.
+- [ ] AC-6: Strategy identity/version participates in policy provenance (bundle digest), result echo, and stale-plan/diagnostic semantics.
+- [ ] AC-7: Selection is local, versioned, validated, generation/digest-bearing, and migration/fail-closed tested.
+- [ ] AC-8: UI identifies the effective strategy, offers only supported strategies, and previews strategy-specific consequences.
+
+Verification:
+
+- [ ] AC-9: Every catalog strategy passes the shared conservation, bounds, overlap, reference, lock, profile-isolation, determinism, and idempotence contract/property tests through the public seam.
+- [ ] AC-10: Fixtures cover empty/full homes, widgets/folders/app pairs, fragmented locks, pages, profiles, category fallback, grids, rotation, tablet, foldable/two-panel, and invalid selection.
+- [ ] AC-11: Cross-strategy tests change only strategy while capture, target membership, and application safety semantics remain unchanged.
+- [ ] AC-12: Planner performance is sampled across the strategy × item/page/device matrix using the spec 12 protocol (no budget assertion; Issue-owned budgets unaffected).
+- [ ] AC-13: UI covers TalkBack, Switch Access, font scaling, recreation, stale plan, failure/recovery, and localization.
+- [ ] AC-14: Physical-device before/preview/after/recovery evidence exists for every shipped strategy.
+- [ ] AC-15: High-risk PRs carry successful `final-status` CI and independent audit records per the evidence gate.
+
+## Child issues
+
+Created after this spec is accepted; never one PR:
+
+1. Research/decision confirmation: record the accepted set/default (closed by accepting this spec; no separate issue needed if acceptance is direct).
+2. Feature: versioned strategy-selection contract — `RuleSemantics`/bundle v2 change, selection store, composer/migration/fail-closed handling.
+3. Feature: extract `CANONICAL_PAGE_COMPACT_V1` behind the internal seam with the compatibility corpus proof.
+4. Feature: `STABLE_PAGE_TIDY_V1`.
+5. Feature: `BOTTOM_FIRST_V1` (may be delivered before or after child 4; both are first-delivery strategies).
+6. Feature: `GLOBAL_COMPACT_V1`.
+7. Feature: `CATEGORY_CONTIGUOUS_V1`.
+8. Feature: selection and preview-explanation UI (strategy picker, identity display, cross-page/preserved-by-strategy consequence counts).
+9. Maintenance/evidence: compatibility, accessibility, performance, physical-device matrix.
+10. Independent high-risk audit work for final source-changing PRs.
+
+## Open questions
+
+None blocking acceptance. Deferred deliberately: catalog renaming policy (a rename is a new strategy identity, never a silent reinterpretation); `GLOBAL_COMPACT_V1`/`CATEGORY_CONTIGUOUS_V1` delivery order (child issues); exact result echo field shape (plan.md, constrained by AC-6).
+
+## Change history
+
+- 2026-09-04: Draft created for Issue #182 (Epic spec): accepted catalog, selection contract, internal seam, strategy rules, diagnostics/preview integration, child-issue split.
+
+## References
+
+- [Issue #182: Expand organizer layout strategies beyond CANONICAL_V1](https://github.com/nunu1733/NunuLauncher/issues/182)
+- [Spec 10: pure organization planning interface](../10-pure-organization-planning/spec.md)
+- [Spec 12: deterministic full-layout planner v1](../12-deterministic-full-layout-planner-v1/spec.md)
+- [Spec 83: production OrganizationInput sources](../83-production-organization-input-sources/spec.md)
+- [Spec 52: manual full-organization vertical slice](../52-manual-full-organization-vertical-slice/spec.md)
+- [Spec 194: plan preview seam](../194-plan-preview-seam/spec.md)
+- [Spec 195: confirmation change list](../195-organizer-confirmation-change-list/spec.md)
+- [ADR-0007: authoritative organization policy sources](../../docs/adr/0007-authoritative-organization-policy-sources.md)
+- [layout-strategy-v1 research](../../docs/product/layout-strategy-v1.md)
+- [organizer diagnostics contract](../../docs/engineering/organizer-diagnostics.md)
+- [AGENTS.md](../../AGENTS.md), [DESIGN.md](../../DESIGN.md), [CONTEXT.md](../../CONTEXT.md)
