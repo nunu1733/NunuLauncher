@@ -24,6 +24,7 @@
 - 2026-09-04: Owner re-review on `c666c435` 反映: strategy有効化を「同schemaのままdigest更新」から「ADR-0007 §8準拠の新bundle semantic version/generation + digest publish」へ変更 (`organization-policy-v2.1` 型、`rule-v2`/selection schemaは不変、旧binaryはunknown versionでfail-closed) — Blocking。catalog整合 (`runtimeSupported ⊆ 実装ID`、`default ∈ runtimeSupported`、runtime-enabled実装との完全一致) をchild 2と各strategy子Issueの必須contract test化 — Medium。Open questionsから解決済みのecho-shape項目を削除 — Low。
 - 2026-09-04: Owner second re-review on `110bba11` 反映: `rules` の `PolicyInputIdentity` をeffective `RuleSemantics` (bundle base + 選択substitute) のidentityとして再定義 — digest = `hash(bundleRuleProjectionDigest || selectionIdentityDigest || canonical(effectiveRuleSemantics))`、同一bundle+異なる有効selectionは異なる `rulesIdentity` を produceするcontract testをAC-6へ追加 (Blocking)。child 2に最小 `CANONICAL_PAGE_COMPACT_V1` registration (内部registry + 既存placement bodyへのadapter、挙動変更なし) を含め、AC-9bをchild 2時点で成立させる。child 3は本体extraction + byte-equivalence proofに専念 (Medium)。downgradeを3ケース (同一binary内bundle version不一致はdefensive / store-aware downgradeはselection層でfail-closed / pre-store binaryはstore無視) へ整理し、「旧binaryが新bundle versionを読む」記述を撤回 (Medium)。
 - 2026-09-04: Owner third re-review on `60af35c3` 反映: `GLOBAL_COMPACT_V1` のcompaction対象をmovable `1×1` singletonに限定し、non-`1×1` singletonと既存folder unitを `STRATEGY_PRESERVED` 固定へ変更 — heterogeneous span + fragmented obstacleの反例で再計画時にvisual orderが入れ替わりINV-8を破るため (Blocking)。反例fixture (3×2 grid、fixed `(1,0)`、movable `2×1` at `(0,1)`、movable `1×2` at `(0,0)`) をcontract/property test必須化。byte-equivalence golden corpusを「extraction子Issue開始時」から「pre-#182 baseline commit (`main@5fdab48082`) からのpin」へ変更し、child 2とchild 3の両方で同一corpusを実行 (Blocking)。effective rules digest式の入力を `bundleIdentity` (semanticVersion + sha256) 全体として明示 (Medium)。
+- 2026-09-04: Owner fourth re-review on `8903156e` 反映: `1×1` 制約をfolder形成へも伝播 — folder形成はcanonical grouping/partition policy (P-04/P-05) をeligible `1×1` candidateのみへ適用と明記し、non-`1×1` appの「`STRATEGY_PRESERVED` とnew folder memberの二重要求」を排除 (Blocking)。counterexample fixtureにmovable `1×1` app (`(2,1)`) を追加し、`2×1`/`1×2` は共に `STRATEGY_PRESERVED` へ統一 (Blocking)。effective rules digest式をspec/planで統一 (`bundleIdentity.semanticVersion` を含む形) し、一意なbyte representation (length-prefix/label付き、bare concatenation禁止) を固定 (Medium)。Execution checklistの旧oracle手順 (extraction子Issue冒頭capture) をpin済みbaseline + 両子Issue実行へ更新 (Medium)。
 
 ## Design
 
@@ -73,7 +74,8 @@ data class PlanningResult(
 - `InputProvenance` に選択snapshot identity (schema version/generation/digest) を第5のpolicy inputとして追加する (レビューBlocking 1)。bundle identityはcatalog/defaultのimmutable identityのままであり、選択で変化しない。
 - **effective rules identity (再々レビューBlocking):** `rules` の `PolicyInputIdentity` はplannerが実際に受け取る **effective `RuleSemantics`** (bundle rules base + 選択substitute済み) のidentityとして計算し直す。version/generationは `rule-v2`、digestは次の結合に対するSHA-256とする (入力を明示 — 4回目レビューMedium):
   `hash(bundleIdentity.semanticVersion || bundleIdentity.sha256 || selectionIdentity.sha256 || canonical(effectiveRuleSemantics))`
-  (`bundleIdentity` は `PolicyBundleIdentity` 全体 = semanticVersion + sha256。ADR-0007 §5の「個別rule identityはbundle identityを含む」契約をdigest入力レベルで明示する。) これにより同一bundleで選択が変われば `InputProvenance.rules` も変わり、ADR-0007 §5の「同一identityが異なるcontentを指さない」不変条件が全provenance行で成立する。bundle生projectionのidentityをそのまま `rulesIdentity` として使い回す実装は禁止する。
+  (`bundleIdentity` は `PolicyBundleIdentity` 全体 = semanticVersion + sha256。ADR-0007 §5の「個別rule identityはbundle identityを含む」契約をdigest入力レベルで明示する。)
+  実装時のambiguityを避けるため、結合は **一意なbyte representation** (各segmentのlength-prefix付き、またはlabel付きcanonical表現) で行い、bare string concatenationは禁止する (5回目レビューMedium)。これにより同一bundleで選択が変われば `InputProvenance.rules` も変わり、ADR-0007 §5の「同一identityが異なるcontentを指さない」不変条件が全provenance行で成立する。bundle生projectionのidentityをそのまま `rulesIdentity` として使い回す実装は禁止する。
 
 **planning internal seam:**
 
@@ -96,7 +98,7 @@ internal data class StrategyDefinition(
 
 - `PlanningPlacement.placeFullRun` を「shared materialization (constraints/unit化/preservation)」と「strategy dispatch」へ分割する (child 3)。**child 2は内部registry + 最小 `CANONICAL_PAGE_COMPACT_V1` adapterのみを作り、既存placement bodyをdispatch経由でそのまま呼ぶ** (挙動変更なし) — AC-9bのcatalog整合 (runtimeSupported ⇔ 実装済み `StrategyDefinition`) をchild 2時点で成立させる (再々レビューMedium)。child 3が本体extraction/refactorとbyte-equivalence proofを担う。`Allocator` は `findRowMajorFirstFit` にcell traversal引数を追加するのみで、occupancy/bounds実装は1つを保つ。
 - `STABLE_PAGE_TIDY_V1`: pageごとにeligible `1×1` unitをliftし、visual order `(cell.y, cell.x, ItemId)` でrow-major first-fitへ再配置。既存folderと非`1×1` movableは固定constraintとして `STRATEGY_PRESERVED`。
-- `GLOBAL_COMPACT_V1`: movable `1×1` singletonのみをglobal visual order `(PageOrder, PageId, y, x, ItemId)` で `allocateCapturedThenNew` へ通す。non-`1×1` singletonと既存folder unitは固定constraintとして `STRATEGY_PRESERVED`。新規folderはeligible unitの後に `(preferred page key, NewFolderOrdinal)` 順で配置。既存のpage削除policyには触れない。heterogeneous span反例fixture (3×2 grid、fixed `(1,0)`、movable `2×1`/`1×2`) をcontract/property testに含める。
+- `GLOBAL_COMPACT_V1`: movable `1×1` singletonのみをglobal visual order `(PageOrder, PageId, y, x, ItemId)` で `allocateCapturedThenNew` へ通す。non-`1×1` singletonと既存folder unitは固定constraintとして `STRATEGY_PRESERVED`。**folder形成はcanonical grouping/partition policy (P-04/P-05) をeligible `1×1` candidateのみへ適用** (non-`1×1` appはfolder candidateにならない — `STRATEGY_PRESERVED` とnew folder memberの二重要求を排除)。新規folderはeligible unitの後に `(preferred page key, NewFolderOrdinal)` 順で配置。既存のpage削除policyには触れない。counterexample fixture (3×2 grid、fixed `(1,0)`、movable `2×1` at `(0,1)`、movable `1×1` at `(2,1)`、movable `1×2` at `(0,0)`; 2×1と1×2は共に `STRATEGY_PRESERVED`、1×1のみcompaction) をcontract/property testに含める。
 - `BOTTOM_FIRST_V1`: canonical順序のまま、allocatorのtraversalをbottom-upへ切替 (`rows - span.height` から `0` へ降順)。
 - `CATEGORY_CONTIGUOUS_V1`: page-local、`(profile, category(fallback last), target key, ItemId)` 順。既存folder固定。
 - 新戦略は純粋関数として `DeterministicOrganizationPlanner` 経由でのみ到達可能。strategy実装がvalidation/allocator safety/result validationをbypassする経路を追加しない (`PurityGuardTest` をstrategy sourceにも適用)。
@@ -186,7 +188,7 @@ Epic全体の受入条件 (spec AC-1〜AC-15) を子Issueへ割り当てる。�
 
 ## Execution checklist
 
-- [ ] Current behavior reproduced (golden oracle captureをextraction子Issue冒頭で実施)。
+- [ ] Current behavior reproduced (pre-#182 baseline SHA からgolden oracleをpin済みであることを確認し、child 2 / child 3 の双方で同一oracleを実行)。
 - [ ] Tests fail for the missing behavior (各子Issueで先にtestを追加)。
 - [ ] Minimal implementation completed (子Issue単位の縦切り)。
 - [ ] Migration/recovery verified (selection store fail-closed、bundle v2 downgrade)。
