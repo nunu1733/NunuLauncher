@@ -39,17 +39,23 @@ object PlanningProjection {
         journalSequence: Long,
         capturedItemCount: Int = 0,
         candidateItemCount: Int = 0,
+        /** Strategy ids the current binary actually executes (spec 182 runtime-enabled set). */
+        runtimeStrategyIds: Set<String> = emptySet(),
     ): RunEvent {
         val baseEvent = RunEvent(
             journalSequence = journalSequence,
             phase = PhaseCode.RUN_STARTED, // placeholder, overridden by copy()
             // Spec 182: the effective strategy identity is a policy version
             // identifier and is echoed into the journal alongside the other
-            // version identifiers. A V-20-rejected catalog-external strategy is
-            // NOT an approved identifier — it is redacted to the empty value so
-            // the typed Invalid rejection reaches the journal without the
-            // diagnostics layer turning it into an exception.
-            versions = RunVersions.create(strategyVersion = strategyIdentifier(result.organizationStrategy)),
+            // version identifiers. The echo must match the planner's runtime
+            // truth: a strategy outside the runtime-enabled catalog — a
+            // V-20-rejected catalog-external id, or a future catalog ID not yet
+            // implemented in this binary — is redacted to the empty value so
+            // the typed rejection reaches the journal without being recorded as
+            // an accepted strategy and without the diagnostics layer throwing.
+            versions = RunVersions.create(
+                strategyVersion = strategyIdentifier(result.organizationStrategy, runtimeStrategyIds),
+            ),
             deviceProfile = null,
         )
 
@@ -60,12 +66,10 @@ object PlanningProjection {
         }
     }
 
-    /**
-     * The strategy echo carries only accepted catalog identifiers (spec 182):
-     * a catalog-external id — reachable only through a V-20 `Rejected.Invalid`
-     * result — projects as the empty value instead of failing construction.
-     */
-    private fun strategyIdentifier(strategy: app.lawnchair.organizer.planning.StrategyId): String = strategy.value.takeIf { it in RunVersions.APPROVED_VERSIONS }.orEmpty()
+    private fun strategyIdentifier(
+        strategy: app.lawnchair.organizer.planning.StrategyId,
+        runtimeStrategyIds: Set<String>,
+    ): String = strategy.value.takeIf { it in runtimeStrategyIds }.orEmpty()
 
     private fun projectPlanned(
         base: RunEvent,

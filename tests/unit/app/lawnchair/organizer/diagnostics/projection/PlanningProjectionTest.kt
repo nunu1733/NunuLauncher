@@ -75,11 +75,47 @@ class PlanningProjectionTest {
                 organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
                 outcome = outcome,
             )
-            val event = PlanningProjection.project(result, journalSequence = 1L)
+            val event = PlanningProjection.project(
+                result,
+                journalSequence = 1L,
+                runtimeStrategyIds = setOf("CANONICAL_PAGE_COMPACT_V1"),
+            )
 
             assertNotNull(event.versions)
             assertEquals("CANONICAL_PAGE_COMPACT_V1", event.versions!!.strategyVersion)
         }
+    }
+
+    @Test
+    fun diagnosticsApprovedButNotRuntimeSupportedStrategyIsRedacted() {
+        // Spec 182: the diagnostics echo must match the planner's runtime truth.
+        // STABLE_PAGE_TIDY_V1 is an accepted spec-182 catalog ID (so diagnostics
+        // policy approves it) but is not runtime-supported in child 2 — the
+        // planner rejects it via V-20, and the projection must not record it as
+        // an effective strategy.
+        val result = PlanningResult(
+            revision = dummyRevision,
+            ruleVersion = dummyRuleVersion,
+            taxonomyVersion = dummyTaxonomyVersion,
+            organizationStrategy = StrategyId("STABLE_PAGE_TIDY_V1"),
+            outcome = Rejected.Invalid(
+                reasons = listOf(
+                    RejectionReason(RejectionCode.INVALID_RULES, emptyList()),
+                ),
+                warnings = emptyList(),
+            ),
+        )
+
+        val event = PlanningProjection.project(
+            result,
+            journalSequence = 9L,
+            runtimeStrategyIds = setOf("CANONICAL_PAGE_COMPACT_V1"),
+        )
+
+        assertEquals(PhaseCode.PLANNING_REJECTED, event.phase)
+        assertNotNull(event.versions)
+        assertEquals("", event.versions!!.strategyVersion)
+        assertEquals("INVALID_RULES", event.error?.code)
     }
 
     private fun plannedOutcome() = Planned(

@@ -246,6 +246,11 @@ class ManualOrganizationRun internal constructor(
                             result = result,
                             journalSequence = 0L,
                             capturedItemCount = input.snapshot.items.size,
+                            // Spec 182: the diagnostics echo must match the
+                            // planner's runtime truth — the selected strategy is
+                            // echoed only when this binary executes it (the
+                            // input already passed V-20, so it always does).
+                            runtimeStrategyIds = setOf(input.rules.organizationStrategy.value),
                         ).copy(
                             runId = runId.value,
                             trigger = operation.trigger,
