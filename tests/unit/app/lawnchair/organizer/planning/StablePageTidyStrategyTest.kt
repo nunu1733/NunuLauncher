@@ -278,6 +278,41 @@ class StablePageTidyStrategyTest {
     }
 
     @Test
+    fun tidyFormsNoFoldersEvenWhenCanonicalGroupingWouldApply() {
+        // Two same-profile eligible apps with the same non-fallback category
+        // (S1 signals): canonical folder formation would satisfy minGroupSize
+        // and create a folder. STABLE_PAGE_TIDY_V1 must create none and keep
+        // the apps as singleton workspace placements.
+        val signals = ClassificationSignals(
+            listOf(
+                ClassificationSignal(ItemId("a"), SignalSource.S1, CategoryId("GAMES")),
+                ClassificationSignal(ItemId("b"), SignalSource.S1, CategoryId("GAMES")),
+            ),
+        )
+        val base = input(listOf(app("a", 0, 0), app("b", 2, 0), app("c", 3, 0)))
+        val result = planner.plan(base.copy(signals = signals))
+
+        val planned = result.outcome as Planned
+        // Canonical control: the same input under CANONICAL_PAGE_COMPACT_V1
+        // forms one GAMES folder.
+        val canonicalResult = planner.plan(
+            base.copy(
+                signals = signals,
+                rules = base.rules.copy(organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1")),
+            ),
+        )
+        assertEquals(1, (canonicalResult.outcome as Planned).newFolders.size)
+
+        // Tidy: no folder, no folder-member dispositions, singleton placements.
+        assertTrue(planned.newFolders.isEmpty())
+        assertTrue(planned.placements.none { it.disposition == Disposition.Moved(PlacementCode.FOLDER_MEMBER) })
+        for (id in listOf("a", "b", "c")) {
+            val placement = planned.placements.single { it.item == ItemId(id) }
+            assertTrue(placement.target is PlacementTarget.WorkspaceTarget)
+        }
+    }
+
+    @Test
     fun planEchoesTheTidyStrategyIdentity() {
         val result = planner.plan(input(listOf(app("a", 1, 1))))
 
