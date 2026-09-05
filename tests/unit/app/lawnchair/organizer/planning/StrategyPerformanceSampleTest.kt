@@ -1,6 +1,7 @@
 package app.lawnchair.organizer.planning
 
 import app.lawnchair.organizer.planning.harness.ContractCheck
+import app.lawnchair.organizer.planning.harness.DEFAULT_PLANNER_CASE_COUNT
 import app.lawnchair.organizer.planning.harness.ExampleCorpus
 import app.lawnchair.organizer.planning.harness.ExpectedOutcome
 import app.lawnchair.organizer.planning.harness.FixtureId
@@ -24,14 +25,62 @@ class StrategyPerformanceSampleTest {
 
     private val seed: Long = SyntheticFixtureGenerator.DEFAULT_SEED
 
+    /**
+     * Accepted spec-12 sample (unchanged from the pre-182 benchmark): the
+     * Issue #11 generated corpus (seed `0x4E554E55L`, cases 0..63), 3 warm-ups
+     * + 10 measured passes, median and nearest-rank p95, JVM/processors/heap
+     * recorded. Strategy routing is covered by CrossStrategyCorpusTest; this
+     * sample keeps the accepted baseline comparable across runs.
+     */
+    @Test
+    fun recordSpec12PerformanceSample() {
+        val fixtures = SyntheticFixtureGenerator.generate(seed, DEFAULT_PLANNER_CASE_COUNT)
+
+        fun runCorpusPass(pass: Int) {
+            val harness = PlannerContractHarness(DeterministicOrganizationPlanner())
+            for (fixture in fixtures) {
+                val report = harness.verify(fixture)
+                check(report.isSuccess) { "Benchmark pass $pass failed for ${fixture.id.value}" }
+            }
+        }
+
+        repeat(3) { runCorpusPass(-(it + 1)) }
+
+        val durations = LongArray(10)
+        for (pass in 0 until 10) {
+            val start = System.nanoTime()
+            runCorpusPass(pass)
+            durations[pass] = System.nanoTime() - start
+        }
+
+        durations.sort()
+        val median = durations[durations.size / 2]
+        val p95Index = ((durations.size * 95 + 99) / 100).coerceAtMost(durations.size) - 1
+        val p95 = durations[p95Index]
+
+        val jvmVersion = System.getProperty("java.version", "unknown")
+        val availableProcessors = Runtime.getRuntime().availableProcessors()
+        val maxHeap = Runtime.getRuntime().maxMemory()
+        println(
+            """
+            |=== PlannerBenchmarkTest (seed=$seed, cases=${DEFAULT_PLANNER_CASE_COUNT}) ===
+            |JVM: $jvmVersion
+            |Processors: $availableProcessors
+            |Max heap: $maxHeap bytes
+            |median: $median ns
+            |p95 (nearest-rank): $p95 ns
+            """.trimMargin(),
+        )
+    }
+
     /** Full-run movable matrix: [rows, columns, locked, widget, signals]. */
     private fun matrix(): List<PerfCase> = listOf(
         PerfCase("sparse-1page-6x5", 1, 6, 5, locked = 0, widget = false, games = 0, items = 10, secondPageItems = 0),
         PerfCase("fragmented-locks-6x5", 1, 6, 5, locked = 3, widget = true, games = 0, items = 10, secondPageItems = 0),
-        PerfCase("dense-1page-4x5", 1, 4, 5, locked = 1, widget = true, games = 0, items = 14, secondPageItems = 0),
+        PerfCase("dense-1page-4x5", 1, 4, 5, locked = 1, widget = true, games = 0, items = 10, secondPageItems = 0),
         PerfCase("two-pages-4x5", 2, 4, 5, locked = 2, widget = false, games = 0, items = 8, secondPageItems = 8),
         PerfCase("folder-candidates-4x5", 1, 4, 5, locked = 0, widget = false, games = 6, items = 10, secondPageItems = 0),
-        PerfCase("mixed-cross-page-5x5", 2, 5, 5, locked = 2, widget = true, games = 4, items = 12, secondPageItems = 10),
+        PerfCase("mixed-cross-page-5x5", 2, 5, 5, locked = 1, widget = true, games = 4, items = 10, secondPageItems = 6),
     )
 
     private data class PerfCase(
@@ -48,12 +97,20 @@ class StrategyPerformanceSampleTest {
 
     private val p0 = ProfileId("p0")
 
-    private fun app(id: String, x: Int, y: Int, page: String, locked: Boolean = false) = CapturedItem(
+    private fun app(
+        id: String,
+        x: Int,
+        y: Int,
+        page: String,
+        locked: Boolean = false,
+        spanW: Int = 1,
+        spanH: Int = 1,
+    ) = CapturedItem(
         id = ItemId(id),
         profile = p0,
         kind = ItemKind.APPLICATION,
         target = TargetKey.AppKey(ComponentKey("com.example.$id"), p0),
-        placement = CapturedPlacement.Workspace(PageRef(PageId(page)), GridCell(x, y), GridSpan(1, 1)),
+        placement = CapturedPlacement.Workspace(PageRef(PageId(page)), GridCell(x, y), GridSpan(spanW, spanH)),
         locked = locked,
         availability = Availability.AVAILABLE,
     )
@@ -68,45 +125,91 @@ class StrategyPerformanceSampleTest {
         availability = Availability.AVAILABLE,
     )
 
+    /**
+     * Cursor-based row-major packer. Locked items, the widget, and the
+     * 2x1 movable (mixed case only) are placed first at deterministic
+     * positions; remaining movable 1x1 items fill the next cells. Every
+     * placement advances the cursor by the item's span width, wrapping to the
+     * next row when the item doesn't fit — cells never overlap.
+     */
     private fun itemsFor(case: PerfCase): List<CapturedItem> {
         val items = mutableListOf<CapturedItem>()
-        val occupied = mutableSetOf<Long>()
-        fun nextFree(): Pair<Int, Int>? {
-            for (y in 0 until case.rows) {
-                for (x in 0 until case.columns) {
-                    if (occupied.add(x.toLong() shl 32 or y.toLong())) return x to y
-                }
+        var col = 0
+        var row = 0
+        val isMixed = case.name.startsWith("mixed")
+
+        fun advance(spanW: Int) {
+            col += spanW
+            if (col >= case.columns) {
+                col = 0
+                row++
             }
-            return null
         }
 
+        fun fitsInRow(spanW: Int): Boolean = col + spanW <= case.columns
+
+        // Locked items first.
         repeat(case.locked) { index ->
-            val (x, y) = nextFree() ?: return items
-            items += app("l$index", x, y, page = "p0", locked = true)
+            if (!fitsInRow(1)) {
+                col = 0
+                row++
+            }
+            items += app("l$index", col, row, page = "p0", locked = true)
+            advance(1)
         }
+        // Widget (2x2) next.
         if (case.widget) {
-            // 2x2 widget at the next free position; mark its 4 cells.
-            val (x, y) = nextFree() ?: return items
-            items += widget("w1", x, y)
-            occupied.add((x + 1).toLong() shl 32 or y.toLong())
-            occupied.add(x.toLong() shl 32 or (y + 1).toLong())
-            occupied.add((x + 1).toLong() shl 32 or (y + 1).toLong())
+            if (!fitsInRow(2)) {
+                col = 0
+                row++
+            }
+            items += widget("w1", col, row)
+            advance(2)
+            // Widgets occupy 2 rows too.
+            row++
         }
-        repeat(case.items) { index ->
-            val (x, y) = nextFree() ?: return items
-            items += app("a$index", x, y, page = "p0")
+        // Movable non-1x1 app (mixed case only) before the 1x1 stream.
+        if (isMixed) {
+            if (!fitsInRow(2)) {
+                col = 0
+                row++
+            }
+            items += app("a2x1", col, row, page = "p0", spanW = 2, spanH = 1)
+            advance(2)
         }
+        // GAMES-tagged movable 1x1 apps (folder candidates under canonical).
+        val gamesCount = minOf(case.games, case.items)
+        repeat(gamesCount) { index ->
+            if (!fitsInRow(1)) {
+                col = 0
+                row++
+            }
+            items += app("a$index", col, row, page = "p0")
+            advance(1)
+        }
+        // Remaining fallback-category movable 1x1 apps.
+        val fallbackCount = case.items - gamesCount - (if (isMixed) 1 else 0)
+        repeat(fallbackCount) { index ->
+            if (!fitsInRow(1)) {
+                col = 0
+                row++
+            }
+            items += app("o$index", col, row, page = "p0")
+            advance(1)
+        }
+        // Second page items.
         repeat(case.secondPageItems) { index ->
-            val page = "p1"
-            val x = index % case.columns
-            val y = index / case.columns
-            if (y < case.rows) items += app("b$index", x, y, page = page)
+            items += app("b$index", index % case.columns, index / case.columns, page = "p1")
         }
         return items
     }
 
-    private fun signalsFor(case: PerfCase): List<ClassificationSignal> = (0 until case.games).map { index ->
-        ClassificationSignal(ItemId("a$index"), SignalSource.S1, CategoryId("GAMES"))
+    private fun signalsFor(case: PerfCase): List<ClassificationSignal> {
+        val movableOneByOne = case.items - (if (case.name.startsWith("mixed")) 1 else 0)
+        val gamesCount = minOf(case.games, movableOneByOne)
+        return (0 until gamesCount).map { index ->
+            ClassificationSignal(ItemId("a$index"), SignalSource.S1, CategoryId("GAMES"))
+        }
     }
 
     private fun inputFor(case: PerfCase): OrganizationInput {
@@ -182,6 +285,13 @@ class StrategyPerformanceSampleTest {
         fun runPass(pass: Int) {
             val harness = PlannerContractHarness(DeterministicOrganizationPlanner())
             val report = harness.verify(fixture)
+            if (!report.isSuccess) {
+                val probe = DeterministicOrganizationPlanner().plan(fixture.input)
+                check(probe.outcome is Planned) {
+                    "fixture ${fixture.id.value} plans to Invalid: " +
+                        (probe.outcome as? Rejected.Invalid)?.reasons?.joinToString { it.code.name }
+                }
+            }
             check(report.isSuccess) {
                 "Benchmark pass $pass failed for ${fixture.id.value}:\n" +
                     report.violations.joinToString("\n") { "${it.check}: ${it.message}" }

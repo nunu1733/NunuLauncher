@@ -35,23 +35,27 @@ class CrossStrategyCorpusTest {
         )
     }
 
-    /** Strategy-agnostic view of a fixture: outcome family + shared checks only. */
+    /**
+     * Strategy-agnostic view of a fixture. Exact canonical-specific
+     * expectations (required preservations/categories/cells) are strategy-
+     * dependent by design and dropped, but the outcome *family* (Planned /
+     * Invalid / Impossible) is kept so `Oracle.checkExpectation` — reached
+     * through the retained `EXPECTATION` check — pins that a strategy can
+     * never change a fixture's outcome family. The shared invariant checks
+     * then run only when the family matches, exactly as in the canonical
+     * harness.
+     */
     private fun routed(fixture: PlannerFixture, strategy: StrategyId): PlannerFixture {
         val sharedExpectation = when (val outcome = fixture.expectation.outcome) {
             is ExpectedOutcome.Planned -> ExpectedOutcome.Planned()
             is ExpectedOutcome.Invalid -> ExpectedOutcome.Invalid(outcome.requiredCodes)
             is ExpectedOutcome.Impossible -> ExpectedOutcome.Impossible(outcome.requiredReasons)
         }
-        val checks = fixture.checks.toMutableSet()
-        // Canonical-specific expectations (exact cells/preservations) are
-        // strategy-dependent by design and replaced by the family assertion.
-        checks.remove(ContractCheck.EXPECTATION)
         return fixture.copy(
             input = fixture.input.copy(
                 rules = fixture.input.rules.copy(organizationStrategy = strategy),
             ),
             expectation = fixture.expectation.copy(outcome = sharedExpectation),
-            checks = checks,
         )
     }
 
