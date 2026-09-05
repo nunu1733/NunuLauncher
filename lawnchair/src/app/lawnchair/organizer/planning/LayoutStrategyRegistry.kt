@@ -52,6 +52,14 @@ internal object LayoutStrategyRegistry {
      */
     val STABLE_PAGE_TIDY_V1 = StrategyId("STABLE_PAGE_TIDY_V1")
 
+    /**
+     * Spec 182 BOTTOM_FIRST_V1: canonical folder/unit/page policy with the
+     * allocator traversal mirrored to fill lower rows first. User-facing copy
+     * must say "bottom first" — never "thumb optimized" or "one-handed" (no
+     * handedness input exists).
+     */
+    val BOTTOM_FIRST_V1 = StrategyId("BOTTOM_FIRST_V1")
+
     private val definitions: Map<StrategyId, StrategyDefinition> = mapOf(
         CANONICAL_PAGE_COMPACT_V1 to StrategyDefinition(
             identity = CANONICAL_PAGE_COMPACT_V1,
@@ -72,6 +80,15 @@ internal object LayoutStrategyRegistry {
             unitOrder = UnitOrdering.CAPTURED_VISUAL_PAGE_LOCAL,
             pageScope = PageScope.CAPTURED_PAGE_ONLY,
             cellTraversal = CellTraversal.TOP_LEFT_ROW_MAJOR,
+            placeFullRun = FullRunExecution::execute,
+        ),
+        BOTTOM_FIRST_V1 to StrategyDefinition(
+            identity = BOTTOM_FIRST_V1,
+            createsFolders = true,
+            eligibleUnitFilter = { it.kind == ItemKind.APPLICATION || it.kind == ItemKind.DEEP_SHORTCUT },
+            unitOrder = UnitOrdering.CANONICAL_TIE_BREAK,
+            pageScope = PageScope.PREFERRED_THEN_NEW,
+            cellTraversal = CellTraversal.BOTTOM_UP_ROW_MAJOR,
             placeFullRun = FullRunExecution::execute,
         ),
     )
