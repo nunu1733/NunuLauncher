@@ -119,7 +119,12 @@ fun ManualOrganizationPreferences(
     // planner uses, so the picker shows the default as the effective choice.
     // Only a failed read hides the active selection (fail-closed).
     var selectedStrategy by remember {
-        mutableStateOf(readSelectedStrategy(context)?.selection ?: strategyCatalog?.default)
+        val snapshot = readSelectedStrategy(context)
+        // Read succeeded: an absent selection means the bundle default is
+        // what the planner resolves, so show the default as effective.
+        // Read failed (unreadable/unsupported): show nothing — fail-closed,
+        // matching the composer.
+        mutableStateOf(if (snapshot == null) null else snapshot.selection ?: strategyCatalog?.default)
     }
     fun onStrategySelected(id: StrategyId) {
         // Radio semantics: re-selecting the effective strategy is a no-op, not
@@ -382,7 +387,6 @@ fun ManualOrganizationPreferences(
             }
             strategyPickerItems(
                 catalog = strategyCatalog?.runtimeSupported,
-                default = strategyCatalog?.default,
                 selected = selectedStrategy,
                 onSelect = ::onStrategySelected,
             )
@@ -429,38 +433,43 @@ private fun strategyDescription(id: StrategyId): Int = when (id.value) {
  */
 private fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
     catalog: List<StrategyId>?,
-    default: StrategyId?,
     selected: StrategyId?,
     onSelect: (StrategyId) -> Unit,
 ) {
     if (catalog.isNullOrEmpty()) return
-    item(key = "strategy-section") {
-        Text(
-            text = stringResource(R.string.manual_organization_strategy_section),
-            style = MaterialTheme.typography.titleMedium,
+    // The whole picker lives in one selectableGroup so TalkBack announces the
+    // rows as a single mutually-exclusive radio group ("x of N" semantics).
+    // Six rows fit one screen, so losing LazyColumn virtualization here is
+    // harmless (spec 182 child 8 a11y contract).
+    item(key = "strategy-picker") {
+        Column(
             modifier = Modifier
-                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .fillMaxWidth()
                 .semantics { selectableGroup() },
-        )
-    }
-    catalog.forEach { id ->
-        item(key = "strategy-${id.value}") {
-            val name = stringResource(strategyDisplayName(id))
-            val description = stringResource(strategyDescription(id))
-            val isSelected = selected == id
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .selectable(
-                        selected = isSelected,
-                        role = Role.RadioButton,
-                        onClick = { onSelect(id) },
-                    )
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            ) {
-                Column {
-                    Text(name, style = MaterialTheme.typography.bodyLarge)
-                    Text(description, style = MaterialTheme.typography.bodyMedium)
+        ) {
+            Text(
+                text = stringResource(R.string.manual_organization_strategy_section),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            catalog.forEach { id ->
+                val name = stringResource(strategyDisplayName(id))
+                val description = stringResource(strategyDescription(id))
+                val isSelected = selected == id
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .selectable(
+                            selected = isSelected,
+                            role = Role.RadioButton,
+                            onClick = { onSelect(id) },
+                        )
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                ) {
+                    Column {
+                        Text(name, style = MaterialTheme.typography.bodyLarge)
+                        Text(description, style = MaterialTheme.typography.bodyMedium)
+                    }
                 }
             }
         }

@@ -5,6 +5,15 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -119,6 +128,36 @@ class StrategyPickerInstrumentationTest {
         }
         composeRule.onNodeWithText(context().getString(R.string.organization_strategy_canonical_name))
             .assertIsSelected()
+    }
+
+    @Test
+    fun failedReadShowsNoActiveSelection() {
+        // Spec 182 fail-closed: a corrupt selection store must show NO active
+        // selection — the composer will fail closed the same way, so showing
+        // the bundle default as selected would misrepresent the planner.
+        val file = File(context().noBackupFilesDir, "organizer_strategy_selection/selection-v1")
+        file.parentFile?.mkdirs()
+        file.writeText("corrupt selection store")
+        composeRule.setContent {
+            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+        }
+
+        composeRule.onNodeWithText(context().getString(R.string.organization_strategy_canonical_name))
+            .assertIsNotSelected()
+        composeRule.onNodeWithText(context().getString(R.string.organization_strategy_tidy_name))
+            .assertIsNotSelected()
+    }
+
+    @Test
+    fun strategyPickerIsWrappedInASelectableGroup() {
+        clearSelectionStore()
+        composeRule.setContent {
+            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+        }
+
+        composeRule.onNodeWithTag("manual-organization-strategy-picker").assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.SelectableGroup, Unit),
+        )
     }
 
     @Test
