@@ -122,11 +122,27 @@ class BottomFirstStrategyTest {
     }
 
     @Test
-    fun twoPanelOrientationFillsFromTheBottomRowFirst() {
+    fun twoPanelLandscapeFillsFromTheBottomRowFirst() {
         val result = planner.plan(input(tenApps(), device(6, 4, Orientation.TWO_PANEL_LANDSCAPE)))
 
         val expected = (0 until 10).map { i ->
             if (i < 6) GridCell(i, 3) else GridCell(i - 6, 2)
+        }
+        expected.forEachIndexed { index, cell -> assertEquals(cell, wsCell(result, "a$index")) }
+    }
+
+    @Test
+    fun twoPanelPortraitFillsFromTheBottomRowFirst() {
+        // Spec device coverage requires BOTH two-panel orientations; the plan
+        // math stays grid-derived (no phone-only hard-coded row).
+        val result = planner.plan(input(tenApps(), device(4, 6, Orientation.TWO_PANEL_PORTRAIT)))
+
+        val expected = (0 until 10).map { i ->
+            when {
+                i < 4 -> GridCell(i, 5)
+                i < 8 -> GridCell(i - 4, 4)
+                else -> GridCell(i - 8, 3)
+            }
         }
         expected.forEachIndexed { index, cell -> assertEquals(cell, wsCell(result, "a$index")) }
     }
