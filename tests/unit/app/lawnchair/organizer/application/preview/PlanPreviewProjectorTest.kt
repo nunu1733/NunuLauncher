@@ -122,6 +122,40 @@ class PlanPreviewProjectorTest {
     }
 
     @Test
+    fun strategyConsequenceCountsSplitCrossPageMovesAndStrategyPreservedRows() {
+        // Spec 182 child 8 data path: header counts derive from the same rows
+        // the change list renders — a move across pages (page p0 → p1), a
+        // same-page move, and a STRATEGY_PRESERVED row.
+        val plan = plan(
+            sourceItems = listOf(
+                item("cross", cell = GridCell(0, 0)),
+                item("same", cell = GridCell(2, 2)),
+                item("kept", cell = GridCell(4, 4)),
+            ),
+            actions = listOf(
+                updateAction(
+                    item("cross", cell = GridCell(0, 0)),
+                    item("cross", cell = GridCell(4, 4), page = pageRef("p1")),
+                ),
+                updateAction(item("same", cell = GridCell(2, 2)), item("same", cell = GridCell(3, 3))),
+                ApplyAction.Preserve(ApplicationItemRef.PersistentItem(ItemId("kept")), item("kept", cell = GridCell(4, 4))),
+            ),
+        )
+        val result = PlanPreviewProjector.project(
+            plan,
+            planned(
+                moved("cross"),
+                moved("same"),
+                preserved("kept", PreserveReason.STRATEGY_PRESERVED),
+            ),
+        ) as PlanPreviewProjector.Result.Ready
+
+        assertEquals(2, result.details.counts.movedCount)
+        assertEquals(1, result.details.counts.crossPageMovedCount)
+        assertEquals(1, result.details.counts.preservedByStrategyCount)
+    }
+
+    @Test
     fun preserveRowsCarryPlannedReasonAndKindFallbackLabels() {
         val widget = CanonicalFixtures.widgetItem(itemId = "widget.1")
         val plan = plan(

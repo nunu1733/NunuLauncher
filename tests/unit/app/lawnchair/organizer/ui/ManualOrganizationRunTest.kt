@@ -820,6 +820,19 @@ class ManualOrganizationRunTest {
         runMode = RunMode.FullOrganization,
     )
 
+    @Test
+    fun summaryEchoesTheEffectiveStrategyIdentity() {
+        val application = FakeApplication(readyInput())
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start()
+        val preview = runner.state as ManualOrganizationRun.State.Preview
+        assertEquals(
+            app.lawnchair.organizer.planning.StrategyId("CANONICAL_PAGE_COMPACT_V1"),
+            preview.summary.organizationStrategy,
+        )
+    }
+
     private fun planningResult(outcome: app.lawnchair.organizer.planning.PlanningOutcome) = PlanningResult(
         revision = RevisionId("revision"),
         ruleVersion = RuleVersion("v2"),
