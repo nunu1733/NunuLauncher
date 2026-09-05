@@ -155,7 +155,7 @@ class StrategyPickerInstrumentationTest {
             LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
         }
 
-        composeRule.onNodeWithTag("manual-organization-strategy-picker").assert(
+        composeRule.onNodeWithTag("manual-organization-strategy-picker", useUnmergedTree = true).assert(
             SemanticsMatcher.expectValue(SemanticsProperties.SelectableGroup, Unit),
         )
     }
