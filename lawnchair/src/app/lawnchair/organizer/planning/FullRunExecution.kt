@@ -1,0 +1,234 @@
+package app.lawnchair.organizer.planning
+
+/**
+ * Shared materialization handed to a strategy's full-run executor
+ * (spec 182 internal seam): the constraint/unit/preservation work that is
+ * invariant across strategies, computed once by `PlanningPlacement.place`.
+ */
+internal data class FullRunContext(
+    val input: OrganizationInput,
+    val classification: ClassificationOutput,
+    val strategy: StrategyDefinition,
+    val rolesById: Map<ItemId, ExistingRole>,
+    val itemById: Map<ItemId, CapturedItem>,
+    /** Captured items with no preservation predicate — the strategy's raw material. */
+    val movableItems: List<CapturedItem>,
+    val allocator: Allocator,
+    val pageOrderMap: Map<PageId, PageOrder>,
+    val preservationWarnings: List<Warning>,
+)
+
+/**
+ * The single shared full-run executor (spec 182 internal seam item 4): it
+ * branches only on the registered [StrategyDefinition]'s declared fields
+ * (createsFolders / eligibleUnitFilter / unitOrder / pageScope; cell traversal
+ * is carried by the shared allocator). Strategy semantics that are not yet
+ * represented here belong to their own child issue — registering a definition
+ * whose declared fields have no executor branch fails loudly instead of
+ * silently running another strategy's layout.
+ */
+internal object FullRunExecution {
+
+    fun execute(context: FullRunContext): PlacementOutput {
+        val input = context.input
+        val strategy = context.strategy
+        val items = input.snapshot.items
+        val itemById = context.itemById
+        val device = input.snapshot.device
+        val taxonomy = input.taxonomy
+        val movableItems = context.movableItems
+        val allocator = context.allocator
+
+        val existingFolderUnits = movableItems.filter { it.kind == ItemKind.FOLDER }
+        val movableApps = movableItems.filter { strategy.eligibleUnitFilter(it) }
+
+        val capacity = device.folderMaxColumns.toLong() * device.folderMaxRows.toLong()
+        val minGroupSize = input.rules.folderPolicy.minGroupSize
+
+        data class FormedFolder(
+            val ordinal: NewFolderOrdinal,
+            val profile: ProfileId,
+            val naming: FolderNaming,
+            val members: List<ItemId>,
+            val preferredPage: PageRef,
+        )
+
+        val folderGroups = if (strategy.createsFolders) {
+            formFolderGroups(
+                candidates = movableApps.map { item ->
+                    FolderCandidate(
+                        item.id,
+                        item.profile,
+                        context.classification.decisions[item.id]?.category ?: taxonomy.fallbackCategory,
+                    )
+                },
+                fallbackCategory = taxonomy.fallbackCategory,
+                capacity = capacity,
+                minGroupSize = minGroupSize,
+            )
+        } else {
+            emptyList()
+        }
+        val newFolders = folderGroups.map { group ->
+            val preferredPage = group.members
+                .map { id -> (itemById.getValue(id).placement as CapturedPlacement.Workspace).page }
+                .minWith(pageRefComparator(context.pageOrderMap))
+            FormedFolder(group.ordinal, group.profile, FolderNaming.FromCategory(group.category), group.members, preferredPage)
+        }
+        val folderMemberIds = folderGroups.flatMapTo(mutableSetOf()) { it.members }
+
+        val singletonItems = movableApps.filter { it.id !in folderMemberIds }
+
+        data class FullUnit(
+            val itemId: ItemId,
+            val span: GridSpan,
+            val preferredPage: PageRef,
+            val isFolder: Boolean,
+            val sortProfile: ProfileId,
+            val sortCategory: CategoryId,
+            val isNewFolder: Boolean,
+            val newFolderOrdinal: NewFolderOrdinal?,
+        )
+
+        val units = mutableListOf<FullUnit>()
+        for (folder in existingFolderUnits) {
+            val ws = folder.placement as CapturedPlacement.Workspace
+            units += FullUnit(
+                itemId = folder.id,
+                span = ws.span,
+                preferredPage = ws.page,
+                isFolder = true,
+                sortProfile = folder.profile,
+                sortCategory = context.classification.decisions[folder.id]?.category ?: taxonomy.fallbackCategory,
+                isNewFolder = false,
+                newFolderOrdinal = null,
+            )
+        }
+        for (nf in newFolders) {
+            units += FullUnit(
+                itemId = nf.members.first(),
+                span = GridSpan(1, 1),
+                preferredPage = nf.preferredPage,
+                isFolder = true,
+                sortProfile = nf.profile,
+                sortCategory = taxonomy.fallbackCategory,
+                isNewFolder = true,
+                newFolderOrdinal = nf.ordinal,
+            )
+        }
+        for (item in singletonItems) {
+            val ws = item.placement as CapturedPlacement.Workspace
+            units += FullUnit(
+                itemId = item.id,
+                span = ws.span,
+                preferredPage = ws.page,
+                isFolder = false,
+                sortProfile = item.profile,
+                sortCategory = context.classification.decisions[item.id]?.category ?: taxonomy.fallbackCategory,
+                isNewFolder = false,
+                newFolderOrdinal = null,
+            )
+        }
+
+        val pageGroups = units.groupBy { it.preferredPage }
+        val sortedPages = pageGroups.keys.sortedWith(pageRefComparator(context.pageOrderMap))
+
+        val placements = mutableListOf<PlannedPlacement>()
+        val outputNewFolders = mutableListOf<NewFolder>()
+
+        for (page in sortedPages) {
+            val pageUnits = pageGroups.getValue(page)
+
+            val ordered = when (strategy.unitOrder) {
+                UnitOrdering.CANONICAL_TIE_BREAK -> {
+                    val existingFolders = pageUnits.filter { it.isFolder && !it.isNewFolder }
+                        .sortedBy { it.itemId }
+                    val newFolderUnits = pageUnits.filter { it.isNewFolder }
+                        .sortedBy { it.newFolderOrdinal }
+                    val singletons = pageUnits.filter { !it.isFolder }
+                        .sortedWith(compareBy({ it.sortProfile }, { it.sortCategory }, { it.itemId }))
+                    existingFolders + newFolderUnits + singletons
+                }
+
+                UnitOrdering.CAPTURED_VISUAL_PAGE_LOCAL,
+                UnitOrdering.CAPTURED_VISUAL_GLOBAL,
+                -> throw IllegalStateException(
+                    "UnitOrdering ${strategy.unitOrder} has no full-run executor yet (its child issue owns it)",
+                )
+            }
+
+            for (unit in ordered) {
+                val allocated = when (strategy.pageScope) {
+                    PageScope.PREFERRED_THEN_NEW -> allocator.allocatePreferred(unit.span, unit.preferredPage)
+                    PageScope.CAPTURED_THEN_NEW -> allocator.allocateCapturedThenNew(unit.span)
+                }
+                val (pageRef, cell) = allocated ?: error(
+                    "Validated item ${unit.itemId} could not be allocated",
+                )
+
+                allocator.markOccupied(pageRef, cell, unit.span)
+
+                if (unit.isNewFolder) {
+                    val nf = newFolders.single { it.ordinal == unit.newFolderOrdinal }
+                    val wsTarget = PlacementTarget.WorkspaceTarget(pageRef, cell, unit.span)
+                    outputNewFolders += NewFolder(
+                        ordinal = nf.ordinal,
+                        profile = nf.profile,
+                        naming = nf.naming,
+                        workspacePlacement = wsTarget,
+                        members = nf.members,
+                    )
+                    for ((rank, memberId) in nf.members.withIndex()) {
+                        placements += PlannedPlacement(
+                            item = memberId,
+                            disposition = Disposition.Moved(PlacementCode.FOLDER_MEMBER),
+                            target = PlacementTarget.FolderMember(
+                                NewFolderRef(nf.ordinal),
+                                rank,
+                            ),
+                        )
+                    }
+                } else {
+                    val item = itemById[unit.itemId]!!
+                    val capturedWs = item.placement as CapturedPlacement.Workspace
+                    val capturedTarget = PlacementTarget.WorkspaceTarget(
+                        PageRef(capturedWs.page.pageId),
+                        capturedWs.cell,
+                        capturedWs.span,
+                    )
+                    val newTarget = PlacementTarget.WorkspaceTarget(pageRef, cell, unit.span)
+                    val isChanged = newTarget != capturedTarget
+                    val disposition = if (isChanged) {
+                        Disposition.Moved(
+                            if (unit.isFolder) PlacementCode.FOLDER_UNIT else PlacementCode.SINGLE_PLACEMENT,
+                        )
+                    } else {
+                        Disposition.Preserved(PreserveReason.ALREADY_CANONICAL)
+                    }
+                    placements += PlannedPlacement(item.id, disposition, newTarget)
+                }
+            }
+        }
+
+        for (item in items) {
+            val reason = determinePreservation(item, context.rolesById[item.id], input.snapshot.reservedWorkspaceRegions)
+            if (reason != null) {
+                placements += PlannedPlacement(
+                    item = item.id,
+                    disposition = Disposition.Preserved(reason),
+                    target = capturedToOutput(item.placement),
+                )
+            }
+        }
+
+        val sortedPlacements = placements.sortedBy { it.item }
+        val sortedNewFolders = outputNewFolders.sortedBy { it.ordinal }
+
+        return PlacementOutput(
+            placements = sortedPlacements,
+            newPages = allocator.buildNewPages(),
+            newFolders = sortedNewFolders,
+            preservationWarnings = context.preservationWarnings,
+        )
+    }
+}
