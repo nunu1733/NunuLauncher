@@ -1,20 +1,17 @@
 package app.lawnchair.organizer.ui
 
 import android.content.Context
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertHasClickAction
-import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.assert
-import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.test.assertIsSelected
-import androidx.compose.ui.test.assertIsNotSelected
-import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
@@ -45,6 +42,7 @@ import app.lawnchair.organizer.rules.LayoutStrategySelectionWriteResult
 import app.lawnchair.ui.theme.LawnchairTheme
 import app.lawnchair.ui.preferences.destinations.ManualOrganizationPreferences
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -155,9 +153,11 @@ class StrategyPickerInstrumentationTest {
             LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
         }
 
-        composeRule.onNodeWithTag("manual-organization-strategy-picker", useUnmergedTree = true).assert(
-            SemanticsMatcher.expectValue(SemanticsProperties.SelectableGroup, Unit),
-        )
+        val groups = composeRule
+            .onAllNodes(hasTestTag("manual-organization-strategy-picker"), useUnmergedTree = true)
+            .fetchSemanticsNodes()
+        assertEquals(1, groups.size)
+        assertTrue(groups.first().config.contains(SemanticsProperties.SelectableGroup))
     }
 
     @Test
