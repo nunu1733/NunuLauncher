@@ -36,9 +36,13 @@ object BuiltInOrganizerPolicyBundleSource : OrganizerPolicyBundleSource {
         )
         val targets = FullOrganizationTargetPolicy(OrganizerPolicyBundle.TARGET_VERSION)
         // Spec 182: runtime-supported set names only implemented strategies.
-        // Enabling a later strategy publishes a new bundle identity per ADR-0007 §8.
+        // Enabling a later strategy publishes a new bundle identity per ADR-0007 §8
+        // (child 4 enabled STABLE_PAGE_TIDY_V1: new digest, unchanged schema).
         val layoutStrategies = LayoutStrategyCatalog(
-            runtimeSupported = listOf(app.lawnchair.organizer.planning.StrategyId("CANONICAL_PAGE_COMPACT_V1")),
+            runtimeSupported = listOf(
+                app.lawnchair.organizer.planning.StrategyId("CANONICAL_PAGE_COMPACT_V1"),
+                app.lawnchair.organizer.planning.StrategyId("STABLE_PAGE_TIDY_V1"),
+            ),
             default = app.lawnchair.organizer.planning.StrategyId("CANONICAL_PAGE_COMPACT_V1"),
         )
         val rules = v2RuleSemantics(layoutStrategies)

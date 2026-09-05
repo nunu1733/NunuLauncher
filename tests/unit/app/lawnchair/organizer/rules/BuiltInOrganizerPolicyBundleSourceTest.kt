@@ -15,7 +15,7 @@ class BuiltInOrganizerPolicyBundleSourceTest {
         assertTrue(result is BundleReadResult.Ready)
         val bundle = (result as BundleReadResult.Ready).bundle
 
-        assertEquals("organization-policy-v2", bundle.identity.semanticVersion)
+        assertEquals("organization-policy-v2.1", bundle.identity.semanticVersion)
         assertEquals("v2", bundle.rules.version.value)
         assertEquals("v1", bundle.taxonomy.version.value)
         assertEquals(34, bundle.taxonomy.allowedCategories.size)

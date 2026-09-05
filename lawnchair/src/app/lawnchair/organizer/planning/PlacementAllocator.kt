@@ -19,7 +19,7 @@ internal enum class CellTraversal { TOP_LEFT_ROW_MAJOR, BOTTOM_UP_ROW_MAJOR }
  * `CAPTURED_THEN_NEW` reuses the proven incremental scan and is exercised by
  * `GLOBAL_COMPACT_V1` (child 6) through the public seam.
  */
-internal enum class PageScope { PREFERRED_THEN_NEW, CAPTURED_THEN_NEW }
+internal enum class PageScope { PREFERRED_THEN_NEW, CAPTURED_THEN_NEW, CAPTURED_PAGE_ONLY }
 
 /**
  * The single shared occupancy/bounds allocator (spec 182: never a second
@@ -50,6 +50,21 @@ internal class Allocator(
         val cell = findRowMajorFirstFit(occupied, device.columns, device.rows, span, cellTraversal)
         if (cell != null) return preferredPage to cell
         return allocateOnNewPages(span)
+    }
+
+    /**
+     * Page-local allocation for strategies that never create or cross pages
+     * (`CAPTURED_PAGE_ONLY`, e.g. `STABLE_PAGE_TIDY_V1`): only [page]'s free
+     * cells are considered; `null` means no fit on that page. Strategies whose
+     * lift-then-place argument guarantees placeability turn a `null` into a
+     * loud invariant failure, never a silent new page.
+     */
+    fun allocateOnPageOnly(span: GridSpan, page: PageRef): Pair<PageTargetRef, GridCell>? {
+        if (allocationFault == AllocationFault.FAIL_ALLOCATION) return null
+
+        val occupied = occupancy[page] ?: emptyList()
+        val cell = findRowMajorFirstFit(occupied, device.columns, device.rows, span, cellTraversal)
+        return cell?.let { page to it }
     }
 
     fun allocateCapturedThenNew(span: GridSpan): Pair<PageTargetRef, GridCell>? {
