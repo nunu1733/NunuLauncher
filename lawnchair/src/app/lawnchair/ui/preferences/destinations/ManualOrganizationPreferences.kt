@@ -30,8 +30,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.selectableGroup
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
@@ -52,6 +52,7 @@ import app.lawnchair.organizer.planning.WarningCode
 import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
 import app.lawnchair.organizer.rules.LayoutStrategySelectionModule
 import app.lawnchair.organizer.rules.LayoutStrategySelectionReadResult
+import app.lawnchair.organizer.rules.LayoutStrategySelectionSnapshot
 import app.lawnchair.organizer.rules.LayoutStrategySelectionWriteResult
 import app.lawnchair.organizer.ui.ManualOrganizationModule
 import app.lawnchair.organizer.ui.ManualOrganizationRun
@@ -112,12 +113,18 @@ fun ManualOrganizationPreferences(
     // nothing) and a fresh compose/plan cycle starts with a fresh capture.
     val strategyCatalog = remember {
         (BuiltInOrganizerPolicyBundleSource.readActive() as? app.lawnchair.organizer.rules.BundleReadResult.Ready)
-            ?.bundle?.layoutStrategies?.runtimeSupported
+            ?.bundle?.layoutStrategies
     }
+    // Spec 182: a valid absent selection means the bundle default is what the
+    // planner uses, so the picker shows the default as the effective choice.
+    // Only a failed read hides the active selection (fail-closed).
     var selectedStrategy by remember {
-        mutableStateOf(readSelectedStrategy(context))
+        mutableStateOf(readSelectedStrategy(context)?.selection ?: strategyCatalog?.default)
     }
     fun onStrategySelected(id: StrategyId) {
+        // Radio semantics: re-selecting the effective strategy is a no-op, not
+        // a new policy generation or a run restart.
+        if (id == selectedStrategy) return
         execute {
             when (val write = LayoutStrategySelectionModule.store(context).select(id)) {
                 is LayoutStrategySelectionWriteResult.Committed -> {
@@ -374,7 +381,8 @@ fun ManualOrganizationPreferences(
                 }
             }
             strategyPickerItems(
-                catalog = strategyCatalog,
+                catalog = strategyCatalog?.runtimeSupported,
+                default = strategyCatalog?.default,
                 selected = selectedStrategy,
                 onSelect = ::onStrategySelected,
             )
@@ -383,13 +391,15 @@ fun ManualOrganizationPreferences(
 }
 
 /**
- * Reads the persisted strategy selection; `null` when the store is unreadable
- * or fails closed (the picker then shows no active selection, and the
- * composer will fail closed the same way — never a silent default).
+ * Reads the persisted selection snapshot. `Ready` is returned even for the
+ * first-run absent state (`selection = null`) — the caller then displays the
+ * bundle default as the effective selection. A failed read (unreadable,
+ * unsupported schema) returns `null` and the picker shows no active
+ * selection, failing closed exactly like the composer.
  */
-private fun readSelectedStrategy(context: Context): StrategyId? {
+private fun readSelectedStrategy(context: Context): LayoutStrategySelectionSnapshot? {
     val read = LayoutStrategySelectionModule.store(context).read()
-    return (read as? LayoutStrategySelectionReadResult.Ready)?.snapshot?.selection
+    return (read as? LayoutStrategySelectionReadResult.Ready)?.snapshot
 }
 
 private fun strategyDisplayName(id: StrategyId): Int = when (id.value) {
@@ -419,6 +429,7 @@ private fun strategyDescription(id: StrategyId): Int = when (id.value) {
  */
 private fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
     catalog: List<StrategyId>?,
+    default: StrategyId?,
     selected: StrategyId?,
     onSelect: (StrategyId) -> Unit,
 ) {
@@ -427,7 +438,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
         Text(
             text = stringResource(R.string.manual_organization_strategy_section),
             style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .semantics { selectableGroup() },
         )
     }
     catalog.forEach { id ->

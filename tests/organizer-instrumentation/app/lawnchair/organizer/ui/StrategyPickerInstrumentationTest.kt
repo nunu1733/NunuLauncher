@@ -2,6 +2,9 @@ package app.lawnchair.organizer.ui
 
 import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -73,6 +76,49 @@ class StrategyPickerInstrumentationTest {
         )) {
             composeRule.onNodeWithText(context().getString(name)).assertIsDisplayed()
         }
+    }
+
+    @Test
+    fun firstRunShowsTheBundleDefaultAsTheEffectiveSelection() {
+        // Spec 182: a valid absent selection means the planner uses the bundle
+        // default, so the canonical row must be shown as selected even though
+        // nothing is persisted yet.
+        clearSelectionStore()
+        composeRule.setContent {
+            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+        }
+
+        val canonicalName = context().getString(R.string.organization_strategy_canonical_name)
+        composeRule.onNodeWithText(canonicalName).assertIsSelected()
+        composeRule.onNodeWithText(
+            context().getString(R.string.organization_strategy_tidy_name),
+        ).assertIsNotSelected()
+    }
+
+    @Test
+    fun strategyRowsExposeRadioSemanticsInsideASelectableGroup() {
+        // Issue #218 a11y contract: one mutually-exclusive radio group whose
+        // rows announce name + selected state + description as single nodes.
+        clearSelectionStore()
+        composeRule.setContent {
+            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+        }
+
+        val sectionNode = composeRule.onNodeWithText(
+            context().getString(R.string.manual_organization_strategy_section),
+        )
+        sectionNode.assertExists()
+        for (name in listOf(
+            R.string.organization_strategy_canonical_name,
+            R.string.organization_strategy_tidy_name,
+            R.string.organization_strategy_bottom_first_name,
+            R.string.organization_strategy_global_name,
+            R.string.organization_strategy_category_contiguous_name,
+        )) {
+            composeRule.onNodeWithText(context().getString(name)).assertHasClickAction()
+        }
+        composeRule.onNodeWithText(context().getString(R.string.organization_strategy_canonical_name))
+            .assertIsSelected()
     }
 
     @Test
