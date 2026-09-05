@@ -148,11 +148,6 @@ fun ManualOrganizationPreferences(
                     modifier = Modifier.padding(16.dp),
                 )
             }
-            strategyPickerItems(
-                catalog = strategyCatalog,
-                selected = selectedStrategy,
-                onSelect = ::onStrategySelected,
-            )
             when (val currentState = state) {
                 ManualOrganizationRun.State.Idle,
                 ManualOrganizationRun.State.Cancelled,
@@ -378,6 +373,11 @@ fun ManualOrganizationPreferences(
                     }
                 }
             }
+            strategyPickerItems(
+                catalog = strategyCatalog,
+                selected = selectedStrategy,
+                onSelect = ::onStrategySelected,
+            )
         }
     }
 }
@@ -443,8 +443,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
                         role = Role.RadioButton,
                         onClick = { onSelect(id) },
                     )
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .semantics { contentDescription = description },
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
                 Column {
                     Text(name, style = MaterialTheme.typography.bodyLarge)
