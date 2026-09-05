@@ -57,7 +57,6 @@ internal object FullRunExecution {
     }
 
     private fun executeStablePageTidy(context: FullRunContext): PlacementOutput {
-        val input = context.input
         val strategy = context.strategy
         val allocator = context.allocator
 

@@ -259,6 +259,25 @@ class StablePageTidyStrategyTest {
     }
 
     @Test
+    fun deepShortcutsAreEligibleTidyUnitsToo() {
+        val shortcut = CapturedItem(
+            id = ItemId("s1"),
+            profile = p0,
+            kind = ItemKind.DEEP_SHORTCUT,
+            target = TargetKey.ShortcutKey(PackageName("com.example.shortcut"), ShortcutId("sc1"), p0),
+            placement = CapturedPlacement.Workspace(PageRef(PageId("p0")), GridCell(3, 3), GridSpan(1, 1)),
+            locked = false,
+            availability = Availability.AVAILABLE,
+        )
+        val result = planner.plan(input(listOf(app("a", 0, 0), app("b", 1, 0), app("c", 2, 0), shortcut)))
+
+        val planned = result.outcome as Planned
+        val moved = planned.placements.single { it.item == ItemId("s1") }
+        assertEquals(Disposition.Moved(PlacementCode.SINGLE_PLACEMENT), moved.disposition)
+        assertEquals(GridCell(3, 0), wsCell(moved.target))
+    }
+
+    @Test
     fun planEchoesTheTidyStrategyIdentity() {
         val result = planner.plan(input(listOf(app("a", 1, 1))))
 
