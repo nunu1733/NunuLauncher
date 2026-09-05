@@ -28,6 +28,7 @@ import app.lawnchair.organizer.planning.NewFolderOrdinal
 import app.lawnchair.organizer.planning.NewPageOrdinal
 import app.lawnchair.organizer.planning.PageId
 import app.lawnchair.organizer.planning.Planned
+import app.lawnchair.organizer.planning.PreserveReason
 
 /**
  * Pure projection of a materialized plan plus its semantic plan into the
@@ -123,6 +124,18 @@ object PlanPreviewProjector {
                 newFolderCount = plan.newFolders.size,
                 newPageCount = plan.newPages.size,
                 warningCounts = planned.warnings.groupingBy { it.code }.eachCount(),
+                // Spec 182 strategy consequences, derived from the same rows
+                // the change list renders so header and rows share one truth.
+                crossPageMovedCount = changes.count { change ->
+                    change is MoveChange &&
+                        change.source is PreviewPosition.Workspace &&
+                        change.destination is PreviewPosition.Workspace &&
+                        (change.source as PreviewPosition.Workspace).pageDisplayOrdinal !=
+                        (change.destination as PreviewPosition.Workspace).pageDisplayOrdinal
+                },
+                preservedByStrategyCount = changes.count { change ->
+                    change is PreservedChange && change.reason == PreserveReason.STRATEGY_PRESERVED
+                },
             ),
         )
         return Result.Ready(details)

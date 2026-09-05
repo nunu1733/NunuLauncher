@@ -153,4 +153,8 @@ data class PreviewCounts(
     val newFolderCount: Int,
     val newPageCount: Int,
     val warningCounts: Map<WarningCode, Int>,
+    /** Spec 182: moves whose source and destination pages differ. */
+    val crossPageMovedCount: Int = 0,
+    /** Spec 182: rows kept fixed by the selected strategy (STRATEGY_PRESERVED). */
+    val preservedByStrategyCount: Int = 0,
 )

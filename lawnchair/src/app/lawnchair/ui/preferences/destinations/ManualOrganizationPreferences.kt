@@ -4,8 +4,12 @@ import android.content.Context
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -17,14 +21,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.selectableGroup
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
@@ -39,8 +47,14 @@ import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.PlacementCode
 import app.lawnchair.organizer.planning.PreserveReason
 import app.lawnchair.organizer.planning.RejectionCode
+import app.lawnchair.organizer.planning.StrategyId
 import app.lawnchair.organizer.planning.UnplacedReason
 import app.lawnchair.organizer.planning.WarningCode
+import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
+import app.lawnchair.organizer.rules.LayoutStrategySelectionModule
+import app.lawnchair.organizer.rules.LayoutStrategySelectionReadResult
+import app.lawnchair.organizer.rules.LayoutStrategySelectionSnapshot
+import app.lawnchair.organizer.rules.LayoutStrategySelectionWriteResult
 import app.lawnchair.organizer.ui.ManualOrganizationModule
 import app.lawnchair.organizer.ui.ManualOrganizationRun
 import app.lawnchair.organizer.ui.OrganizationPreviewContent
@@ -89,6 +103,48 @@ fun ManualOrganizationPreferences(
     fun execute(action: () -> Unit) {
         scope.launch {
             withContext(Dispatchers.IO) { action() }
+        }
+    }
+
+    // Spec 182 child 8: strategy picker. The catalog is display-only (the
+    // composer still validates); the current selection is read from and every
+    // change is issued through Rule Management's validated write command — the
+    // UI never mutates the store directly. On a committed change while a run
+    // is active, the run is dismissed (pre-checkpoint cancellation writes
+    // nothing) and a fresh compose/plan cycle starts with a fresh capture.
+    val strategyCatalog = remember {
+        (BuiltInOrganizerPolicyBundleSource.readActive() as? app.lawnchair.organizer.rules.BundleReadResult.Ready)
+            ?.bundle?.layoutStrategies
+    }
+    // Spec 182: a valid absent selection means the bundle default is what the
+    // planner uses, so the picker shows the default as the effective choice.
+    // Only a failed read hides the active selection (fail-closed).
+    var selectedStrategy by remember {
+        val snapshot = readSelectedStrategy(context)
+        // Read succeeded: an absent selection means the bundle default is
+        // what the planner resolves, so show the default as effective.
+        // Read failed (unreadable/unsupported): show nothing — fail-closed,
+        // matching the composer.
+        mutableStateOf(if (snapshot == null) null else snapshot.selection ?: strategyCatalog?.default)
+    }
+    fun onStrategySelected(id: StrategyId) {
+        // Radio semantics: re-selecting the effective strategy is a no-op, not
+        // a new policy generation or a run restart.
+        if (id == selectedStrategy) return
+        execute {
+            when (val write = LayoutStrategySelectionModule.store(context).select(id)) {
+                is LayoutStrategySelectionWriteResult.Committed -> {
+                    selectedStrategy = write.snapshot.selection
+                    val runActive = coordinator.state !is ManualOrganizationRun.State.Idle &&
+                        coordinator.state !is ManualOrganizationRun.State.Cancelled
+                    if (runActive) {
+                        coordinator.dismiss()
+                        coordinator.start(trigger)
+                    }
+                }
+
+                else -> Unit
+            }
         }
     }
 
@@ -330,6 +386,94 @@ fun ManualOrganizationPreferences(
                     }
                 }
             }
+            strategyPickerItems(
+                catalog = strategyCatalog?.runtimeSupported,
+                selected = selectedStrategy,
+                onSelect = ::onStrategySelected,
+            )
+        }
+    }
+}
+
+/**
+ * Reads the persisted selection snapshot. `Ready` is returned even for the
+ * first-run absent state (`selection = null`) — the caller then displays the
+ * bundle default as the effective selection. A failed read (unreadable,
+ * unsupported schema) returns `null` and the picker shows no active
+ * selection, failing closed exactly like the composer.
+ */
+private fun readSelectedStrategy(context: Context): LayoutStrategySelectionSnapshot? {
+    val read = LayoutStrategySelectionModule.store(context).read()
+    return (read as? LayoutStrategySelectionReadResult.Ready)?.snapshot
+}
+
+private fun strategyDisplayName(id: StrategyId): Int = when (id.value) {
+    "CANONICAL_PAGE_COMPACT_V1" -> R.string.organization_strategy_canonical_name
+    "STABLE_PAGE_TIDY_V1" -> R.string.organization_strategy_tidy_name
+    "BOTTOM_FIRST_V1" -> R.string.organization_strategy_bottom_first_name
+    "GLOBAL_COMPACT_V1" -> R.string.organization_strategy_global_name
+    "CATEGORY_CONTIGUOUS_V1" -> R.string.organization_strategy_category_contiguous_name
+    else -> R.string.organization_strategy_unknown_name
+}
+
+private fun strategyDescription(id: StrategyId): Int = when (id.value) {
+    "CANONICAL_PAGE_COMPACT_V1" -> R.string.organization_strategy_canonical_description
+    "STABLE_PAGE_TIDY_V1" -> R.string.organization_strategy_tidy_description
+    "BOTTOM_FIRST_V1" -> R.string.organization_strategy_bottom_first_description
+    "GLOBAL_COMPACT_V1" -> R.string.organization_strategy_global_description
+    "CATEGORY_CONTIGUOUS_V1" -> R.string.organization_strategy_category_contiguous_description
+    else -> R.string.organization_strategy_unknown_description
+}
+
+/**
+ * Spec 182: strategy picker. Only the active bundle's runtime-supported
+ * strategies are offered, each with a localized name and intent description.
+ * Selection uses radio semantics so TalkBack announces name, state, and
+ * description as one node; a store read failure hides the active selection
+ * instead of inventing one (fail-closed, matching the composer).
+ */
+private fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
+    catalog: List<StrategyId>?,
+    selected: StrategyId?,
+    onSelect: (StrategyId) -> Unit,
+) {
+    if (catalog.isNullOrEmpty()) return
+    // The whole picker lives in one selectableGroup so TalkBack announces the
+    // rows as a single mutually-exclusive radio group ("x of N" semantics).
+    // Six rows fit one screen, so losing LazyColumn virtualization here is
+    // harmless (spec 182 child 8 a11y contract).
+    item(key = "strategy-picker") {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("manual-organization-strategy-picker")
+                .semantics { selectableGroup() },
+        ) {
+            Text(
+                text = stringResource(R.string.manual_organization_strategy_section),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            catalog.forEach { id ->
+                val name = stringResource(strategyDisplayName(id))
+                val description = stringResource(strategyDescription(id))
+                val isSelected = selected == id
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .selectable(
+                            selected = isSelected,
+                            role = Role.RadioButton,
+                            onClick = { onSelect(id) },
+                        )
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                ) {
+                    Column {
+                        Text(name, style = MaterialTheme.typography.bodyLarge)
+                        Text(description, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
         }
     }
 }
@@ -447,6 +591,14 @@ private fun androidx.compose.foundation.lazy.LazyListScope.contextItems(
             ),
         )
     }
+    item {
+        SummaryText(
+            stringResource(
+                R.string.manual_organization_preview_strategy,
+                stringResource(strategyDisplayName(summary.organizationStrategy)),
+            ),
+        )
+    }
 }
 
 /**
@@ -525,6 +677,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.previewDetailsItems(
     item { SummaryText(stringResource(R.string.manual_organization_preserved_count, counts.preservedCount)) }
     item { SummaryText(stringResource(R.string.manual_organization_new_folders_count, counts.newFolderCount)) }
     item { SummaryText(stringResource(R.string.manual_organization_new_pages_count, counts.newPageCount)) }
+    if (counts.crossPageMovedCount > 0) {
+        item { SummaryText(stringResource(R.string.manual_organization_cross_page_moved_count, counts.crossPageMovedCount)) }
+    }
+    if (counts.preservedByStrategyCount > 0) {
+        item { SummaryText(stringResource(R.string.manual_organization_preserved_by_strategy_count, counts.preservedByStrategyCount)) }
+    }
     counts.warningCounts.forEach { (code, count) ->
         item { SummaryText(stringResource(warningString(code), count)) }
     }
