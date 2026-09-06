@@ -39,8 +39,11 @@ import app.lawnchair.organizer.application.public.PlanPreview
 import app.lawnchair.organizer.application.public.PlanPreviewDetails
 import app.lawnchair.organizer.application.public.PreservedChange
 import app.lawnchair.organizer.application.public.PreviewCounts
+import app.lawnchair.organizer.application.public.PreviewFolderRef
 import app.lawnchair.organizer.application.public.PreviewLabel
+import app.lawnchair.organizer.application.public.PreviewPlacementIdentity
 import app.lawnchair.organizer.application.public.PreviewPosition
+import app.lawnchair.organizer.application.public.CanonicalItemKind
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
@@ -82,6 +85,7 @@ import app.lawnchair.organizer.planning.PageOrder
 import app.lawnchair.organizer.planning.PageRef
 import app.lawnchair.organizer.planning.PlacementCode
 import app.lawnchair.organizer.planning.PlacementTarget
+import app.lawnchair.organizer.planning.SplitStage
 import app.lawnchair.organizer.planning.Planned
 import app.lawnchair.organizer.planning.PlannedPlacement
 import app.lawnchair.organizer.planning.PlanningResult
@@ -457,8 +461,12 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(
             context.getString(
                 R.string.manual_organization_preview_move_row,
-                "maps",
-                workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
+                context.getString(
+                    R.string.manual_organization_preview_item_descriptor,
+                    "maps",
+                    context.getString(R.string.manual_organization_preview_kind_application),
+                    workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
+                ),
                 context.getString(R.string.manual_organization_preview_position_dock, 2),
                 context.getString(R.string.manual_organization_preview_move_reason_single_placement),
             ),
@@ -477,7 +485,12 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(
             context.getString(
                 R.string.manual_organization_preview_item_row,
-                "clock",
+                context.getString(
+                    R.string.manual_organization_preview_item_descriptor,
+                    "clock",
+                    context.getString(R.string.manual_organization_preview_kind_application),
+                    context.getString(R.string.manual_organization_preview_position_dock, 3),
+                ),
                 context.getString(R.string.manual_organization_preview_preserved_reason_locked),
             ),
         ).assertIsDisplayed()
@@ -530,11 +543,16 @@ class ManualOrganizationPreferencesInstrumentationTest {
         // Both rows render; the destination part of each row is the identical
         // "top left, page 2" wording while the resolved anchors differ.
         val destination = workspacePosition(context, 2, RowBand.TOP, ColumnBand.LEFT)
+        val kind = context.getString(R.string.manual_organization_preview_kind_application)
         composeRule.onNodeWithText(
             context.getString(
                 R.string.manual_organization_preview_move_row,
-                "game",
-                workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
+                context.getString(
+                    R.string.manual_organization_preview_item_descriptor,
+                    "game",
+                    kind,
+                    workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
+                ),
                 destination,
                 context.getString(R.string.manual_organization_preview_move_reason_single_placement),
             ),
@@ -542,12 +560,196 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(
             context.getString(
                 R.string.manual_organization_preview_move_row,
-                "maps",
-                workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
+                context.getString(
+                    R.string.manual_organization_preview_item_descriptor,
+                    "maps",
+                    kind,
+                    workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
+                ),
                 destination,
                 context.getString(R.string.manual_organization_preview_move_reason_single_placement),
             ),
         ).assertIsDisplayed()
+        assertEquals(0, application.applyCalls)
+    }
+
+    /**
+     * Issue #208 (F8, 終了条件 2): same-named placements spanning the Move and
+     * Preserve buckets — a home-screen icon that moves, a folder child that is
+     * kept, and a widget with the same title. Every row must carry the source
+     * placement's distinguishing elements (kind word + current position) so a
+     * person can tell the rows apart on the rendered card; asserting only
+     * whole-row inequality would pass on the original F-01 display.
+     */
+    @Test
+    fun sameNamedPlacementsAcrossBucketsStayDistinguishableOnTheCard() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            inspectPlanOverride = { _, _ ->
+                previewed(
+                    PlanPreviewDetails(
+                        changes = listOf(
+                            // icon (home): moves as a single placement.
+                            MoveChange(
+                                item = ItemId("gmail.icon"),
+                                label = PreviewLabel.Named("Gmail"),
+                                identity = PreviewPlacementIdentity.Workspace(2, false, 0, 4),
+                                kind = CanonicalItemKind.Application,
+                                source = workspace(2, RowBand.BOTTOM, ColumnBand.LEFT, 5),
+                                destination = workspace(2, RowBand.TOP, ColumnBand.LEFT, 1),
+                                rationale = PlacementCode.SINGLE_PLACEMENT,
+                            ),
+                            // folder child: kept, inside a named folder.
+                            PreservedChange(
+                                item = ItemId("gmail.child"),
+                                label = PreviewLabel.Named("Gmail"),
+                                identity = PreviewPlacementIdentity.FolderChild(
+                                    PreviewPlacementIdentity.Workspace(1, false, 3, 3),
+                                    0,
+                                ),
+                                kind = CanonicalItemKind.Application,
+                                current = PreviewPosition.InFolder(
+                                    PreviewFolderRef.Existing(PreviewLabel.Named("Work")),
+                                    1,
+                                ),
+                                reason = PreserveReason.NON_TARGET,
+                            ),
+                            // widget: kept, kind word distinguishes the icon.
+                            PreservedChange(
+                                item = ItemId("gmail.widget"),
+                                label = PreviewLabel.Named("Gmail"),
+                                identity = PreviewPlacementIdentity.Workspace(1, false, 0, 0),
+                                kind = CanonicalItemKind.AppWidget,
+                                current = workspace(1, RowBand.TOP, ColumnBand.LEFT, 1),
+                                reason = PreserveReason.WIDGET,
+                            ),
+                            // folder unit: kept at its own workspace cell.
+                            PreservedChange(
+                                item = ItemId("gmail.folder"),
+                                label = PreviewLabel.Named("Gmail"),
+                                identity = PreviewPlacementIdentity.Workspace(1, false, 2, 0),
+                                kind = CanonicalItemKind.Folder,
+                                current = workspace(1, RowBand.TOP, ColumnBand.CENTER, 1),
+                                reason = PreserveReason.NON_TARGET,
+                            ),
+                            // dock icon: kept, dock slot word.
+                            PreservedChange(
+                                item = ItemId("gmail.dock"),
+                                label = PreviewLabel.Named("Gmail"),
+                                identity = PreviewPlacementIdentity.Dock(4),
+                                kind = CanonicalItemKind.Application,
+                                current = PreviewPosition.DockRank(4),
+                                reason = PreserveReason.DOCK,
+                            ),
+                            // app pair: kept, pair name word.
+                            PreservedChange(
+                                item = ItemId("gmail.pair"),
+                                label = PreviewLabel.Named("Gmail"),
+                                identity = PreviewPlacementIdentity.AppPairChild(
+                                    PreviewPlacementIdentity.Workspace(1, false, 3, 0),
+                                    SplitStage.TOP_OR_LEFT,
+                                ),
+                                kind = CanonicalItemKind.AppPair,
+                                current = PreviewPosition.InAppPair(PreviewLabel.Named("Gmail")),
+                                reason = PreserveReason.APP_PAIR,
+                            ),
+                        ),
+                        counts = PreviewCounts(movedCount = 1, preservedCount = 5, newFolderCount = 0, newPageCount = 0, warningCounts = emptyMap()),
+                    ),
+                )
+            }
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        runner.start()
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        awaitPreview(runner, context)
+
+        val appKind = context.getString(R.string.manual_organization_preview_kind_application)
+        val widgetKind = context.getString(R.string.manual_organization_preview_kind_app_widget)
+        val folderKind = context.getString(R.string.manual_organization_preview_kind_folder)
+        val pairKind = context.getString(R.string.manual_organization_preview_kind_app_pair)
+        fun descriptor(name: String, kind: String, position: String) = context.getString(
+            R.string.manual_organization_preview_item_descriptor,
+            name,
+            kind,
+            position,
+        )
+        val moveRow = context.getString(
+            R.string.manual_organization_preview_move_row,
+            descriptor(
+                "Gmail",
+                appKind,
+                workspacePosition(context, 2, RowBand.BOTTOM, ColumnBand.LEFT),
+            ),
+            workspacePosition(context, 2, RowBand.TOP, ColumnBand.LEFT),
+            context.getString(R.string.manual_organization_preview_move_reason_single_placement),
+        )
+        val folderChildRow = context.getString(
+            R.string.manual_organization_preview_item_row,
+            descriptor(
+                "Gmail",
+                appKind,
+                context.getString(
+                    R.string.manual_organization_preview_position_folder_existing,
+                    "Work",
+                    1,
+                ),
+            ),
+            context.getString(R.string.manual_organization_preview_preserved_reason_non_target),
+        )
+        val widgetRow = context.getString(
+            R.string.manual_organization_preview_item_row,
+            descriptor(
+                "Gmail",
+                widgetKind,
+                workspacePosition(context, 1, RowBand.TOP, ColumnBand.LEFT),
+            ),
+            context.getString(R.string.manual_organization_preview_preserved_reason_widget),
+        )
+        val folderUnitRow = context.getString(
+            R.string.manual_organization_preview_item_row,
+            descriptor(
+                "Gmail",
+                folderKind,
+                workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
+            ),
+            context.getString(R.string.manual_organization_preview_preserved_reason_non_target),
+        )
+        val dockRow = context.getString(
+            R.string.manual_organization_preview_item_row,
+            descriptor(
+                "Gmail",
+                appKind,
+                context.getString(R.string.manual_organization_preview_position_dock, 5),
+            ),
+            context.getString(R.string.manual_organization_preview_preserved_reason_dock),
+        )
+        val appPairRow = context.getString(
+            R.string.manual_organization_preview_item_row,
+            descriptor(
+                "Gmail",
+                pairKind,
+                context.getString(R.string.manual_organization_preview_position_app_pair, "Gmail"),
+            ),
+            context.getString(R.string.manual_organization_preview_preserved_reason_app_pair),
+        )
+
+        // AC-9: every placement kind (icon / folder unit / folder child /
+        // widget / app pair / dock) with the same display name renders, and
+        // the source descriptors (kind word + current position) actually
+        // differ — the F-01 ambiguity is fixed at the rendered surface, not
+        // just in the projection model.
+        composeRule.onNodeWithText(moveRow).assertIsDisplayed()
+        composeRule.onNodeWithText(folderChildRow).assertIsDisplayed()
+        composeRule.onNodeWithText(widgetRow).assertIsDisplayed()
+        composeRule.onNodeWithText(folderUnitRow).assertIsDisplayed()
+        composeRule.onNodeWithText(dockRow).assertIsDisplayed()
+        composeRule.onNodeWithText(appPairRow).assertIsDisplayed()
+        assertEquals(6, setOf(moveRow, folderChildRow, widgetRow, folderUnitRow, dockRow, appPairRow).size)
         assertEquals(0, application.applyCalls)
     }
 
@@ -578,7 +780,12 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(
             context.getString(
                 R.string.manual_organization_preview_same_band_move_row,
-                "game",
+                context.getString(
+                    R.string.manual_organization_preview_item_descriptor,
+                    "game",
+                    context.getString(R.string.manual_organization_preview_kind_application),
+                    workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
+                ),
                 context.getString(R.string.manual_organization_preview_region_top_center),
                 "",
             ),
@@ -586,7 +793,12 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(
             context.getString(
                 R.string.manual_organization_preview_same_band_move_row,
-                "maps",
+                context.getString(
+                    R.string.manual_organization_preview_item_descriptor,
+                    "maps",
+                    context.getString(R.string.manual_organization_preview_kind_application),
+                    workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
+                ),
                 context.getString(R.string.manual_organization_preview_region_top_center),
                 context.getString(R.string.manual_organization_preview_row_ordinal_note, 2, 1),
             ),
@@ -768,7 +980,12 @@ class ManualOrganizationPreferencesInstrumentationTest {
 
         val preservedRow = context.getString(
             R.string.manual_organization_preview_item_row,
-            "clock",
+            context.getString(
+                R.string.manual_organization_preview_item_descriptor,
+                "clock",
+                context.getString(R.string.manual_organization_preview_kind_application),
+                context.getString(R.string.manual_organization_preview_position_dock, 3),
+            ),
             context.getString(R.string.manual_organization_preview_preserved_reason_locked),
         )
         composeRule.onNodeWithText(preservedRow).assertIsDisplayed().assert(
@@ -825,6 +1042,14 @@ class ManualOrganizationPreferencesInstrumentationTest {
             R.string.manual_organization_preview_same_band_move_row,
             R.string.manual_organization_preview_row_ordinal_note,
             R.string.manual_organization_preview_item_row,
+            R.string.manual_organization_preview_item_descriptor,
+            R.string.manual_organization_preview_item_descriptor_without_kind,
+            R.string.manual_organization_preview_position_unidentified,
+            R.string.manual_organization_preview_position_with_supplement,
+            R.string.manual_organization_preview_supplement_cell,
+            R.string.manual_organization_preview_supplement_parent_with_stage,
+            R.string.manual_organization_preview_supplement_stage_top,
+            R.string.manual_organization_preview_supplement_stage_bottom,
             R.string.manual_organization_preview_move_reason_single_placement,
             R.string.manual_organization_preview_move_reason_folder_member,
             R.string.manual_organization_preview_move_reason_folder_unit,
@@ -878,15 +1103,15 @@ class ManualOrganizationPreferencesInstrumentationTest {
             )
         }
 
-        // Placeholders survive the translation.
+        // Placeholders survive the translation (issue #208: the move row
+        // carries source descriptor, destination, reason).
         val japaneseMoveRow = japanese.getString(
             R.string.manual_organization_preview_move_row,
             "A",
             "B",
             "C",
-            "D",
         )
-        assert(japaneseMoveRow.contains("A") && japaneseMoveRow.contains("D"))
+        assert(japaneseMoveRow.contains("A") && japaneseMoveRow.contains("C"))
     }
 
     @Test
@@ -1183,7 +1408,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         changes = listOf(
             move("game", sourceRowOrdinal = 2, destinationRowOrdinal = 1, destination = workspace(1, RowBand.TOP, ColumnBand.LEFT, 1)),
             move("maps", sourceRowOrdinal = 1, destinationRowOrdinal = 1, destination = PreviewPosition.DockRank(1)),
-            PreservedChange(ItemId("clock"), PreviewLabel.Named("clock"), PreserveReason.LOCKED),
+            preserved("clock"),
             NewFolderChange(
                 ordinal = NewFolderOrdinal(0),
                 name = PreviewLabel.Named("Communication"),
@@ -1199,6 +1424,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
     private fun move(label: String, sourceRowOrdinal: Int, destinationRowOrdinal: Int) = MoveChange(
         item = ItemId(label),
         label = PreviewLabel.Named(label),
+        identity = PreviewPlacementIdentity.Workspace(1, false, 1, sourceRowOrdinal - 1),
+        kind = CanonicalItemKind.Application,
         source = workspace(1, RowBand.TOP, ColumnBand.CENTER, sourceRowOrdinal),
         destination = workspace(1, RowBand.TOP, ColumnBand.CENTER, destinationRowOrdinal),
         rationale = PlacementCode.SINGLE_PLACEMENT,
@@ -1207,9 +1434,20 @@ class ManualOrganizationPreferencesInstrumentationTest {
     private fun move(label: String, sourceRowOrdinal: Int, destinationRowOrdinal: Int, destination: PreviewPosition) = MoveChange(
         item = ItemId(label),
         label = PreviewLabel.Named(label),
+        identity = PreviewPlacementIdentity.Workspace(1, false, 1, sourceRowOrdinal - 1),
+        kind = CanonicalItemKind.Application,
         source = workspace(1, RowBand.TOP, ColumnBand.CENTER, sourceRowOrdinal),
         destination = destination,
         rationale = PlacementCode.SINGLE_PLACEMENT,
+    )
+
+    private fun preserved(label: String, reason: PreserveReason = PreserveReason.LOCKED) = PreservedChange(
+        item = ItemId(label),
+        label = PreviewLabel.Named(label),
+        identity = PreviewPlacementIdentity.Dock(2),
+        kind = CanonicalItemKind.Application,
+        current = PreviewPosition.DockRank(2),
+        reason = reason,
     )
 
     private fun workspace(page: Int, rowBand: RowBand, columnBand: ColumnBand, rowOrdinal: Int) = PreviewPosition.Workspace(
@@ -1223,8 +1461,12 @@ class ManualOrganizationPreferencesInstrumentationTest {
     /** Expected render of a move whose source and destination are plain workspaces. */
     private fun concreteMoveRow(context: Context, label: String): String = context.getString(
         R.string.manual_organization_preview_move_row,
-        label,
-        workspacePosition(context, 1, RowBand.TOP, ColumnBand.LEFT),
+        context.getString(
+            R.string.manual_organization_preview_item_descriptor,
+            label,
+            context.getString(R.string.manual_organization_preview_kind_application),
+            workspacePosition(context, 1, RowBand.TOP, ColumnBand.LEFT),
+        ),
         workspacePosition(context, 1, RowBand.TOP, ColumnBand.RIGHT),
         context.getString(R.string.manual_organization_preview_move_reason_single_placement),
     )
@@ -1232,8 +1474,12 @@ class ManualOrganizationPreferencesInstrumentationTest {
     /** The "game" fixture move: top-center → top-left with a row-ordinal note. */
     private fun gameMoveRow(context: Context): String = context.getString(
         R.string.manual_organization_preview_move_row,
-        "game",
-        workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
+        context.getString(
+            R.string.manual_organization_preview_item_descriptor,
+            "game",
+            context.getString(R.string.manual_organization_preview_kind_application),
+            workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
+        ),
         workspacePosition(context, 1, RowBand.TOP, ColumnBand.LEFT) +
             context.getString(R.string.manual_organization_preview_row_ordinal_note, 2, 1),
         context.getString(R.string.manual_organization_preview_move_reason_single_placement),
@@ -1242,6 +1488,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
     private fun crossBandMove(label: String) = MoveChange(
         item = ItemId(label),
         label = PreviewLabel.Named(label),
+        identity = PreviewPlacementIdentity.Workspace(1, false, 0, 0),
+        kind = CanonicalItemKind.Application,
         source = workspace(1, RowBand.TOP, ColumnBand.LEFT, 1),
         destination = workspace(1, RowBand.TOP, ColumnBand.RIGHT, 1),
         rationale = PlacementCode.SINGLE_PLACEMENT,

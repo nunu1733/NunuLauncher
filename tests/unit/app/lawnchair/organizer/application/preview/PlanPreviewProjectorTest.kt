@@ -8,6 +8,7 @@ import app.lawnchair.organizer.application.public.CanonicalItemKind
 import app.lawnchair.organizer.application.public.CanonicalItemState
 import app.lawnchair.organizer.application.public.ColumnBand
 import app.lawnchair.organizer.application.public.ItemAvailability
+import app.lawnchair.organizer.application.public.ItemWarningChange
 import app.lawnchair.organizer.application.public.LayoutState
 import app.lawnchair.organizer.application.public.ModifiedAtMillis
 import app.lawnchair.organizer.application.public.MoveChange
@@ -18,8 +19,10 @@ import app.lawnchair.organizer.application.public.OptionalText
 import app.lawnchair.organizer.application.public.OrganizerLockState
 import app.lawnchair.organizer.application.public.PageState
 import app.lawnchair.organizer.application.public.PlacementState
+import app.lawnchair.organizer.application.public.PreservedChange
 import app.lawnchair.organizer.application.public.PreviewFolderRef
 import app.lawnchair.organizer.application.public.PreviewLabel
+import app.lawnchair.organizer.application.public.PreviewPlacementIdentity
 import app.lawnchair.organizer.application.public.PreviewPosition
 import app.lawnchair.organizer.application.public.ProfileAvailability
 import app.lawnchair.organizer.application.public.ProfileState
@@ -29,6 +32,7 @@ import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.application.public.WidgetState
 import app.lawnchair.organizer.planning.CategoryId
 import app.lawnchair.organizer.planning.ComponentKey
+import app.lawnchair.organizer.planning.ContainerCode
 import app.lawnchair.organizer.planning.DiagnosticParam
 import app.lawnchair.organizer.planning.Disposition
 import app.lawnchair.organizer.planning.FolderId
@@ -156,7 +160,7 @@ class PlanPreviewProjectorTest {
     }
 
     @Test
-    fun preserveRowsCarryPlannedReasonAndKindFallbackLabels() {
+    fun preserveRowsCarryPlannedReasonIdentityKindAndDerivedCurrent() {
         val widget = CanonicalFixtures.widgetItem(itemId = "widget.1")
         val plan = plan(
             sourceItems = listOf(widget),
@@ -165,10 +169,15 @@ class PlanPreviewProjectorTest {
 
         val result = PlanPreviewProjector.project(plan, planned(preserved("widget.1", PreserveReason.WIDGET))) as PlanPreviewProjector.Result.Ready
 
-        val row = result.details.changes.single() as app.lawnchair.organizer.application.public.PreservedChange
+        val row = result.details.changes.single() as PreservedChange
         assertEquals(ItemId("widget.1"), row.item)
         assertEquals(PreviewLabel.KindFallback(CanonicalItemKind.AppWidget), row.label)
         assertEquals(PreserveReason.WIDGET, row.reason)
+        // Issue #208: identity anchors at the exact source cell; the current
+        // position is the identity's presentation, and the kind is restored.
+        assertEquals(PreviewPlacementIdentity.Workspace(1, false, 0, 0), row.identity)
+        assertEquals(CanonicalItemKind.AppWidget, row.kind)
+        assertEquals(PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 1), row.current)
         assertEquals(1, result.details.counts.preservedCount)
     }
 
@@ -387,10 +396,15 @@ class PlanPreviewProjectorTest {
 
         val result = PlanPreviewProjector.project(plan, planned) as PlanPreviewProjector.Result.Ready
 
-        val warningRows = result.details.changes.filterIsInstance<app.lawnchair.organizer.application.public.ItemWarningChange>()
+        val warningRows = result.details.changes.filterIsInstance<ItemWarningChange>()
         assertEquals(1, warningRows.size)
         assertEquals(ItemId("a"), warningRows.single().item)
         assertEquals(WarningCode.LEGACY_SHORTCUT_REVIEW, warningRows.single().code)
+        // Issue #208: warning rows carry the same identity / kind / current
+        // presentation contract as preserve rows.
+        assertEquals(PreviewPlacementIdentity.Workspace(1, false, 0, 0), warningRows.single().identity)
+        assertEquals(CanonicalItemKind.Application, warningRows.single().kind)
+        assertEquals(PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 1), warningRows.single().current)
         assertEquals(
             mapOf(
                 WarningCode.LEGACY_SHORTCUT_REVIEW to 1,
@@ -453,6 +467,7 @@ class PlanPreviewProjectorTest {
         assertEquals(
             PreviewPosition.InFolder(
                 PreviewFolderRef.Planned(NewFolderOrdinal(0), PreviewLabel.Named("ソーシャル")),
+                1,
             ),
             move.destination,
         )
@@ -485,7 +500,7 @@ class PlanPreviewProjectorTest {
         val moves = result.details.changes.filterIsInstance<MoveChange>()
         assertEquals(2, moves.size)
         assertEquals(
-            PreviewPosition.InFolder(PreviewFolderRef.Existing(PreviewLabel.Named("Work"))),
+            PreviewPosition.InFolder(PreviewFolderRef.Existing(PreviewLabel.Named("Work")), 1),
             moves.first { it.item.value == "a" }.destination,
         )
         assertEquals(
@@ -591,6 +606,203 @@ class PlanPreviewProjectorTest {
         val move = result.details.changes.single() as MoveChange
         assertEquals(PreviewPosition.Workspace(1, false, RowBand.CENTER, ColumnBand.LEFT, 3), move.source)
         assertEquals(PreviewPosition.Workspace(2, false, RowBand.BOTTOM, ColumnBand.RIGHT, 5), move.destination)
+    }
+
+    // Issue #208 identity-invariant fixtures (F1-F5, F9, F10).
+
+    @Test
+    fun sameNamedItemsOnDifferentPagesGetDistinctIdentities() {
+        // F1: same name, same kind, different pages, both preserved.
+        val plan = plan(
+            sourceItems = listOf(
+                item("gmail.a", title = "Gmail", cell = GridCell(0, 0)),
+                item("gmail.b", title = "Gmail", cell = GridCell(0, 0), page = pageRef("p1")),
+            ),
+            actions = listOf(
+                ApplyAction.Preserve(ApplicationItemRef.PersistentItem(ItemId("gmail.a")), item("gmail.a", title = "Gmail")),
+                ApplyAction.Preserve(ApplicationItemRef.PersistentItem(ItemId("gmail.b")), item("gmail.b", title = "Gmail", page = pageRef("p1"))),
+            ),
+        )
+
+        val result = PlanPreviewProjector.project(
+            plan,
+            planned(preserved("gmail.a", PreserveReason.NON_TARGET), preserved("gmail.b", PreserveReason.NON_TARGET)),
+        ) as PlanPreviewProjector.Result.Ready
+
+        val identities = result.details.changes.filterIsInstance<PreservedChange>().map { it.identity }
+        assertEquals(
+            listOf(
+                PreviewPlacementIdentity.Workspace(1, false, 0, 0),
+                PreviewPlacementIdentity.Workspace(2, false, 0, 0),
+            ),
+            identities,
+        )
+        assertEquals(2, identities.toSet().size)
+    }
+
+    @Test
+    fun sameNamedIconsInsideOneBandGetDistinctCellAnchors() {
+        // F2: same name, same kind, same page, same 3x3 band, different cells.
+        val plan = plan(
+            sourceItems = listOf(
+                item("gmail.a", title = "Gmail", cell = GridCell(0, 0)),
+                item("gmail.b", title = "Gmail", cell = GridCell(1, 0)),
+            ),
+            actions = listOf(
+                ApplyAction.Preserve(ApplicationItemRef.PersistentItem(ItemId("gmail.a")), item("gmail.a", title = "Gmail", cell = GridCell(0, 0))),
+                ApplyAction.Preserve(ApplicationItemRef.PersistentItem(ItemId("gmail.b")), item("gmail.b", title = "Gmail", cell = GridCell(1, 0))),
+            ),
+        )
+
+        val result = PlanPreviewProjector.project(
+            plan,
+            planned(preserved("gmail.a", PreserveReason.NON_TARGET), preserved("gmail.b", PreserveReason.NON_TARGET)),
+        ) as PlanPreviewProjector.Result.Ready
+
+        val rows = result.details.changes.filterIsInstance<PreservedChange>()
+        // Distinct anchors, and both band to the same coarse region — the
+        // descriptor supplement (row/column) is what keeps the rows apart.
+        assertEquals(
+            listOf(
+                PreviewPlacementIdentity.Workspace(1, false, 0, 0),
+                PreviewPlacementIdentity.Workspace(1, false, 1, 0),
+            ),
+            rows.map { it.identity },
+        )
+        assertEquals(rows[0].current, rows[1].current)
+    }
+
+    @Test
+    fun sameNamedFoldersWithSameNamedChildrenResolveDistinctParentIdentities() {
+        // F3/F4: two "Google" folders on different cells, each with a
+        // same-named child at the same rank.
+        val childA = item("gmail.a", title = "Gmail").copy(
+            placement = PlacementState.FolderChild(ApplicationItemRef.PersistentItem(ItemId("folder.a")), 0),
+        )
+        val childB = item("gmail.b", title = "Gmail").copy(
+            placement = PlacementState.FolderChild(ApplicationItemRef.PersistentItem(ItemId("folder.b")), 0),
+        )
+        val plan = plan(
+            sourceItems = listOf(
+                folderItem("folder.a", "Google", cell = GridCell(0, 0)),
+                folderItem("folder.b", "Google", cell = GridCell(0, 3)),
+                childA,
+                childB,
+            ),
+            actions = listOf(
+                ApplyAction.Preserve(ApplicationItemRef.PersistentItem(ItemId("gmail.a")), childA),
+                ApplyAction.Preserve(ApplicationItemRef.PersistentItem(ItemId("gmail.b")), childB),
+            ),
+        )
+
+        val result = PlanPreviewProjector.project(
+            plan,
+            planned(preserved("gmail.a", PreserveReason.NON_TARGET), preserved("gmail.b", PreserveReason.NON_TARGET)),
+        ) as PlanPreviewProjector.Result.Ready
+
+        val rows = result.details.changes.filterIsInstance<PreservedChange>()
+        assertEquals(
+            listOf(
+                PreviewPlacementIdentity.FolderChild(PreviewPlacementIdentity.Workspace(1, false, 0, 0), 0),
+                PreviewPlacementIdentity.FolderChild(PreviewPlacementIdentity.Workspace(1, false, 0, 3), 0),
+            ),
+            rows.map { it.identity },
+        )
+        // Same folder title and rank — the parent cell is what distinguishes.
+        assertEquals(rows[0].current, rows[1].current)
+    }
+
+    @Test
+    fun moveAndPreserveIdentitiesStayDisjointForSameNamedItems() {
+        // F5: same-named home icon moves while the folder copy is preserved;
+        // no identity may appear in both buckets.
+        val movedIcon = item("photos", title = "Photos", cell = GridCell(0, 0))
+        val folderChild = item("photos.b", title = "Photos").copy(
+            placement = PlacementState.FolderChild(ApplicationItemRef.PersistentItem(ItemId("folder.a")), 0),
+        )
+        val plan = plan(
+            sourceItems = listOf(
+                movedIcon,
+                folderItem("folder.a", "Utilities", cell = GridCell(3, 3)),
+                folderChild,
+            ),
+            actions = listOf(
+                updateAction(movedIcon, movedIcon.copy(placement = withCell(movedIcon.placement, GridCell(4, 4)))),
+                ApplyAction.Preserve(ApplicationItemRef.PersistentItem(ItemId("photos.b")), folderChild),
+            ),
+        )
+
+        val result = PlanPreviewProjector.project(
+            plan,
+            planned(moved("photos"), preserved("photos.b", PreserveReason.NON_TARGET)),
+        ) as PlanPreviewProjector.Result.Ready
+
+        val moveIdentities = result.details.changes.filterIsInstance<MoveChange>().map { it.identity }
+        val preservedIdentities = result.details.changes.filterIsInstance<PreservedChange>().map { it.identity }
+        assertTrue(moveIdentities.toSet().intersect(preservedIdentities.toSet()).isEmpty())
+    }
+
+    /** Workspace placement with only the anchor cell changed. */
+    private fun withCell(placement: PlacementState, cell: GridCell): PlacementState {
+        val workspace = placement as PlacementState.Workspace
+        return PlacementState.Workspace(workspace.page, cell, workspace.span)
+    }
+
+    @Test
+    fun sameUnsupportedSourceItemSharesOneIdentityAcrossPreserveAndWarningRows() {
+        // F9: the discriminator is keyed by source item, so the same item's
+        // preserve row and warning row carry the identical identity.
+        val unsupported = item("u.1").copy(placement = PlacementState.UnsupportedContainer(ContainerCode(7)))
+        val plan = plan(
+            sourceItems = listOf(unsupported),
+            actions = listOf(ApplyAction.Preserve(ApplicationItemRef.PersistentItem(ItemId("u.1")), unsupported)),
+        )
+        val plannedWithWarning = Planned(
+            placements = listOf(preserved("u.1", PreserveReason.UNAVAILABLE_TARGET)),
+            newPages = emptyList(),
+            newFolders = emptyList(),
+            categories = emptyList(),
+            warnings = listOf(
+                Warning(WarningCode.UNAVAILABLE_PRESERVED, listOf(DiagnosticParam.ItemParam(ItemId("u.1")))),
+            ),
+        )
+
+        val result = PlanPreviewProjector.project(plan, plannedWithWarning) as PlanPreviewProjector.Result.Ready
+
+        val preservedRow = result.details.changes.filterIsInstance<PreservedChange>().single()
+        val warningRow = result.details.changes.filterIsInstance<ItemWarningChange>().single()
+        assertEquals(PreviewPlacementIdentity.Unidentified(ContainerCode(7), 1), preservedRow.identity)
+        assertEquals(preservedRow.identity, warningRow.identity)
+        assertEquals(PreviewPosition.Unidentified(1), preservedRow.current)
+        assertEquals(PreviewPosition.Unidentified(1), warningRow.current)
+    }
+
+    @Test
+    fun sameCodeUnsupportedItemsGetDistinctProposalLocalDiscriminators() {
+        // F10: two items inside identically-coded unsupported containers stay
+        // distinct identities with deterministic discriminator ordinals.
+        val first = item("u.1").copy(placement = PlacementState.UnsupportedContainer(ContainerCode(7)))
+        val second = item("u.2").copy(placement = PlacementState.UnsupportedContainer(ContainerCode(7)))
+        val plan = plan(
+            sourceItems = listOf(first, second),
+            actions = listOf(
+                ApplyAction.Preserve(ApplicationItemRef.PersistentItem(ItemId("u.1")), first),
+                ApplyAction.Preserve(ApplicationItemRef.PersistentItem(ItemId("u.2")), second),
+            ),
+        )
+
+        val result = PlanPreviewProjector.project(
+            plan,
+            planned(preserved("u.1", PreserveReason.UNAVAILABLE_TARGET), preserved("u.2", PreserveReason.UNAVAILABLE_TARGET)),
+        ) as PlanPreviewProjector.Result.Ready
+
+        assertEquals(
+            listOf(
+                PreviewPlacementIdentity.Unidentified(ContainerCode(7), 1),
+                PreviewPlacementIdentity.Unidentified(ContainerCode(7), 2),
+            ),
+            result.details.changes.filterIsInstance<PreservedChange>().map { it.identity },
+        )
     }
 
     // Fixture helpers (synthetic identities only).
