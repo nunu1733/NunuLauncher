@@ -20,10 +20,17 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.click
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.activity.OnBackPressedDispatcher
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -840,18 +847,20 @@ class ManualOrganizationPreferencesInstrumentationTest {
             ),
         )
 
-        expand.performClick()
+        expand.clickVisibleCenter()
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText(concreteMoveRow(context, "app6")).fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview_show_fewer, 5))
+        val showFewer = context.getString(R.string.manual_organization_preview_show_fewer, 5)
+        composeRule.onNodeWithText(showFewer)
             .assert(
                 SemanticsMatcher.expectValue(
                     SemanticsProperties.StateDescription,
                     context.getString(R.string.manual_organization_preview_expanded_state),
                 ),
             )
-            .performClick()
+            .bringAboveGestureArea()
+            .clickVisibleCenter()
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText(concreteMoveRow(context, "app6")).fetchSemanticsNodes().isEmpty()
         }
@@ -903,6 +912,42 @@ class ManualOrganizationPreferencesInstrumentationTest {
     }
 
     /**
+     * Issues #209/#209-CI: a list row can sit mostly below the fold on tall
+     * low-row-count screens, where `performClick` (node center) lands off the
+     * window and silently misses. Clicking the center of the visible part
+     * keeps the toggle interaction about the widget, not the scroll position.
+     */
+    /**
+     * Issue #209 CI follow-up: after expansion the focus-restored toggle can
+     * be scrolled flush against the window bottom, inside the gesture-nav
+     * area where (at screen-center x) taps land on the system pill instead of
+     * the app. Scroll the list up until the row sits well above that area.
+     */
+    private fun SemanticsNodeInteraction.bringAboveGestureArea(): SemanticsNodeInteraction {
+        val metrics = InstrumentationRegistry.getInstrumentation()
+            .targetContext.resources.displayMetrics
+        val safeBottom = metrics.heightPixels - 300f
+        repeat(10) {
+            val node = fetchSemanticsNode()
+            val nodeCenterYInWindow = (node.boundsInWindow.top + node.boundsInWindow.bottom) / 2f
+            if (nodeCenterYInWindow <= safeBottom) return this
+            composeRule.onNode(hasScrollAction())
+                .performSemanticsAction(SemanticsActions.ScrollBy) { scrollBy -> scrollBy(0f, 300f) }
+            composeRule.waitForIdle()
+        }
+        return this
+    }
+
+    private fun SemanticsNodeInteraction.clickVisibleCenter() {
+        val node = fetchSemanticsNode()
+        val windowBottom = InstrumentationRegistry.getInstrumentation()
+            .targetContext.resources.displayMetrics.heightPixels.toFloat()
+        val nodeTop = node.boundsInWindow.top
+        val visibleBottom = minOf(node.boundsInWindow.bottom, windowBottom)
+        val localY = (nodeTop + visibleBottom) / 2f - nodeTop
+        performTouchInput { click(Offset(centerX, localY)) }
+    }
+    /**
      * Moves real (window-dispatched) keyboard focus down until [text] owns it,
      * so the traversal exercises the same DPAD fallback path Switch Access and
      * hardware keyboards rely on; fails after too many steps.
@@ -947,9 +992,9 @@ class ManualOrganizationPreferencesInstrumentationTest {
     }
 
     /**
-     * Issue #209 AC-1: the apply/cancel decision pair leads the preview, so
-     * both stay displayed together before and after the change list expands,
-     * and again in the degraded count-only fallback.
+     * Issue #209: the decision pair must be visible together on entering the
+     * preview and remain visible after the change list expands — expansion
+     * must never push a decision path out of the viewport.
      */
     @Test
     fun decisionPairStaysDisplayedTogetherAcrossExpansionStates() {
@@ -980,7 +1025,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(cancel).assertIsDisplayed()
 
         // Expanded: extra rows join the list; the pair must not be pushed out.
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview_show_all, 6)).performClick()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview_show_all, 6))
+            .clickVisibleCenter()
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText(concreteMoveRow(context, "app6")).fetchSemanticsNodes().isNotEmpty()
         }
