@@ -974,6 +974,13 @@ class ManualOrganizationPreferencesInstrumentationTest {
             R.string.manual_organization_preview_same_band_move_row,
             R.string.manual_organization_preview_row_ordinal_note,
             R.string.manual_organization_preview_item_row,
+            R.string.manual_organization_preview_item_descriptor,
+            R.string.manual_organization_preview_item_descriptor_without_kind,
+            R.string.manual_organization_preview_position_unidentified,
+            R.string.manual_organization_preview_position_with_supplement,
+            R.string.manual_organization_preview_supplement_cell,
+            R.string.manual_organization_preview_supplement_stage_top,
+            R.string.manual_organization_preview_supplement_stage_bottom,
             R.string.manual_organization_preview_move_reason_single_placement,
             R.string.manual_organization_preview_move_reason_folder_member,
             R.string.manual_organization_preview_move_reason_folder_unit,
@@ -1027,15 +1034,15 @@ class ManualOrganizationPreferencesInstrumentationTest {
             )
         }
 
-        // Placeholders survive the translation.
+        // Placeholders survive the translation (issue #208: the move row
+        // carries source descriptor, destination, reason).
         val japaneseMoveRow = japanese.getString(
             R.string.manual_organization_preview_move_row,
             "A",
             "B",
             "C",
-            "D",
         )
-        assert(japaneseMoveRow.contains("A") && japaneseMoveRow.contains("D"))
+        assert(japaneseMoveRow.contains("A") && japaneseMoveRow.contains("C"))
     }
 
     @Test

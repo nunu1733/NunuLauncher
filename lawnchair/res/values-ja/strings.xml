@@ -220,7 +220,7 @@
     <string name="manual_organization_preview_move_row">%1$s → %2$s（%3$s）</string>
     <string name="manual_organization_preview_same_band_move_row">%1$s → %2$s内で位置を調整%3$s</string>
     <string name="manual_organization_preview_row_ordinal_note">（%1$d段目から%2$d段目）</string>
-    <string name="manual_organization_preview_item_row">%1$s: %2$s</string>
+    <string name="manual_organization_preview_item_row">%1$s：%2$s</string>
     <string name="manual_organization_preview_item_descriptor">「%1$s」(%2$s)・%3$s</string>
     <string name="manual_organization_preview_item_descriptor_without_kind">「%1$s」・%2$s</string>
     <string name="manual_organization_preview_position_unidentified">サポート対象外の配置%1$d</string>
