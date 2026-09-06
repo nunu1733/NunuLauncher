@@ -58,6 +58,8 @@ confirm / cancel / restore は `ClickablePreference` 行から Material3 button 
 
 **degraded モード (`details == null`) では spec 195 D1 が優先される**: 描画順を 見出し → 欠落告知行 → count-only summary → **decision group** へ変更する。ユーザーは「具体的な変更一覧を用意できなかった」告知と件数のみの確認である事実を、primary action に到達する前に読む。#195 の「review → confirm」情報設計と decision group の先頭配置が衝突するのは degraded モードのみであり、具体一覧モードでは「cancel の即時視認 = レビューを強制されない・中断可能であることの表明」として先頭配置を採用する (変更一覧そのものは decision の直後に読める)。
 
+**状態遷移時の scroll 復帰**: run state が変化するたびに list を先頭 item へ戻してから status 見出しへ focus を復元する。LazyColumn は遷移間で scroll offset を保持するため、復帰しない場合 (例: `Applied` の summary 位置から `RecoveryPreview` へ遷移) は decision group が composed でも viewport 外に残る。遷移直後は「見出し + decision group が scroll 無しで視認できる」ことを契約とし、ユーザーが自力で list を戻すことに依存しない。
+
 - **scroll に対する契約の限界を明記**: decision group は通常の list item であり、persistent / sticky surface ではない。ユーザーが変更一覧を下へ scroll すれば decision group は viewport 外へ出る (通常の設定画面と同じ挙動)。本 spec が保証するのは「**展開によって片方の decision のみが fold 下へ押し出されない**」ことまでであり、scroll 後の可視性は要求しない (F-02 の実害は展開時の押し出しであり、F-16 の解消は §D4 のとおり)。persistent surface を要求する場合は別 spec を要求する。
 - **末尾維持 + sticky footer の不採用理由**: sticky bar は `PreferenceScaffold` / `PreferenceLazyColumn` の構造変更 (全 settings 画面が共有する component への介入) か、この画面専用の overlay 表現 (Nunu-only convention、#123 違反) を要求する。リスクに対して得られるものは少ない (先頭配置で展開時の同時視認は満たされる)。
 - **decision group の先頭配置によるUX影響の受容**: ユーザーが変更一覧を読む前に decision 操作が視界に入るが、cancel が即座に視認できることは「レビューを強制されない・中断可能である」ことの表明として機能する。誤 tap リスクは confirm を filled / cancel を outlined と重み分けし、confirm が previewed plan の A2 exact precondition gate によって guard されていることで緩和される (適用安全性は本 spec の対象外)。
@@ -114,6 +116,8 @@ Given apply が検証済み成功で終了し (`ApplyResult.Applied`)、recovery
 When 結果画面を観察する,
 
 Then `Restore the previous layout` が周囲の preference row より強調された button として描画される。
+
+And `Restore the previous layout` を tap して `RecoveryPreview` へ遷移した直後、追加 scroll 無しで status 見出しと `Restore saved layout` / `Cancel` の decision group が同時に視認できる。
 
 ### Scenario: 既存の a11y・focus 契約が退化しない
 
@@ -177,6 +181,7 @@ None。設計判断は §D1–D5 のとおり spec 時点で確定した。実�
 - 2026-09-06: Drafted for Issue #209。Issue 本文の exploratory review 結果 (F-02/F-06/F-16)、spec 195 / spec 52 の a11y・traversal 契約、#123 の visual language 契約、現行実装 (`ManualOrganizationPreferences.kt`、`ClickablePreference.kt`、decision 表現の既存参照 `PreferenceClickConfirmation` / `PermissionDialog`) の調査を入力に作成。Issue owner の実施指示に基づき受理し、owner review は実装 PR で継続する。
 - 2026-09-06: 実装 ([PR #239](https://github.com/nunu1733/NunuLauncher/pull/239))。D3 は初版の横並び案から縦並び全幅へ決め直し (DPAD down が同一行内の横方向へ到達しない実装依存挙動を traversal test が再現したため、失敗するテストで確認のうえ修正)。CI issue52 lane (pixel_7_pro / 560dpi) でのみ toggle 折りたたみ test が timeout する問題を pixel_7_pro AVD で再現・分析し、focus 復元後に toggle が gesture-navigation 領域へ追い込まれ tap が system pill に奪われることが原因と判明 — test を ScrollBy semantics action で toggle を安全領域へ移動してから tap する方式へ修正 (製品コードの変更なし)。
 - 2026-09-07: Owner review ([PR #239](https://github.com/nunu1733/NunuLauncher/pull/239)) 対応 (Blocking 2件): (1) 「展開・scroll 状態によらず同時視認」のうち scroll 部分を契約から削除 — decision group は通常の list item であり、scroll 後は viewport 外に出ることを §D2 に明記し、本 spec の保証を「展開による片方の fold 下押し出しの防止」に限定。(2) spec 195 D1 の degraded 告知契約との衝突を解消 — `details == null` の描画順を 見出し → 告知行 → count-only summary → decision group へ変更 (AC-1a 追加、§D2 に degraded 優先規定)。通常 preview では decision group 先頭配置を正本とすることを §D2 に明記。`status` を実装 PR 再review のため `accepted` へ戻す。
+- 2026-09-07: 再review対応 (Blocking 1件): `Applied` → `RecoveryPreview` 遷移で LazyColumn が scroll offset を保持し decision group が viewport 外に残る製品挙動を修正 — run state 遷移のたびに list を先頭 item へ戻してから status 見出しへ focus を復元する (§D2「状態遷移時の scroll 復帰」)。test から swipeDown による人工的な復帰を削除し、遷移直後の heading + decision pair 同時視認を instrumentation で主張。`accepted` のまま再review 待ち。
 
 ## References
 

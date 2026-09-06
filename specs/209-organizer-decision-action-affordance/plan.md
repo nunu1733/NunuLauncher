@@ -63,3 +63,12 @@
 2. **degraded path の描画順**: `details == null` の場合の描画順を 見出し → 告知行 → count-only summary → decision group へ変更 (spec 195 D1 優先)。通常 preview (`details != null`) は decision group 先頭配置を正本とすることを §D2 に明記。テスト `degradedFallbackKeepsDecisionPairDisplayed` を順序アサーション付き `degradedFallbackAnnouncesMissingDetailsBeforeTheDecisionPair` へ更新。
 
 検証: pixel_7_pro AVD で全 instrumentation test pass、`spotlessCheck` / organizer unit gate pass。
+
+## Re-review response (2026-09-07, PR #239 owner review — Blocking 1件)
+
+`Applied` → `RecoveryPreview` 遷移で LazyColumn の scroll offset が保持され、decision group が composed でも viewport 外に残る挙動は test-only ではなく実ユーザーに現れるものとして、製品側で修正:
+
+- `ManualOrganizationPreferences` が `PreferenceLazyColumn` の `LazyListState` を保持し、`LaunchedEffect(state)` で run state 遷移のたびに `scrollToItem(0)` してから status 見出しへ focus を復元。各 state は新しい surface として先頭から描画される。
+- テストから `swipeDown()` による人工的な scroll 復帰を削除し、`RecoveryPreview` 遷移直後に heading + `Restore saved layout` / `Cancel` が追加 scroll 無しで同時視認できることを instrumentation で主張。
+
+検証: pixel_7_pro AVD で全 instrumentation test pass、`spotlessCheck` / organizer unit gate pass。

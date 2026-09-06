@@ -24,7 +24,6 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.click
-import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsActions
@@ -1134,14 +1133,9 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.RecoveryPreview }
 
         val recoveryConfirm = context.getString(R.string.manual_organization_recovery_confirm)
-        // The state transition preserves the list scroll position, which can
-        // rest at the Applied summary; drag the list back to its head so the
-        // decision pair is back in the viewport before asserting on it.
-        val list = composeRule.onNode(hasScrollAction())
-        repeat(3) {
-            list.performTouchInput { swipeDown() }
-            composeRule.waitForIdle()
-        }
+        // Issue #209 review: the screen returns its lazy list to the head on
+        // every state transition, so the heading and the decision pair must be
+        // visible right after the transition — no corrective scrolling.
         composeRule.onNodeWithText(recoveryConfirm).assertIsDisplayed().assert(buttonRole())
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).assertIsDisplayed()
             .assert(buttonRole())

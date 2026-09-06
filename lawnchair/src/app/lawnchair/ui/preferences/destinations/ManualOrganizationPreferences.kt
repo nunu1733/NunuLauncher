@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
@@ -87,6 +88,7 @@ fun ManualOrganizationPreferences(
     val scope = rememberCoroutineScope()
     val state by coordinator.stateFlow.collectAsStateWithLifecycle()
     val focusRequester = remember { FocusRequester() }
+    val listState = rememberLazyListState()
 
     // Issue #195: the concrete change list is planned once per preview state.
     // Expansion state is UI-local and resets when new details arrive.
@@ -101,6 +103,13 @@ fun ManualOrganizationPreferences(
     ManualOrganizationBackHandler(coordinator)
 
     LaunchedEffect(state) {
+        // Issue #209 review: each run state is a fresh surface, but the lazy
+        // list keeps its scroll offset across transitions (Applied's summary
+        // offset used to leave the RecoveryPreview decision pair above the
+        // viewport). Return to the head before restoring focus to the status
+        // heading, so the heading and its decision pair are visible on every
+        // transition without the user scrolling.
+        runCatching { listState.scrollToItem(0) }
         withFrameNanos { }
         runCatching { focusRequester.requestFocus() }
     }
@@ -158,7 +167,7 @@ fun ManualOrganizationPreferences(
         modifier = modifier,
         isExpandedScreen = LocalIsExpandedScreen.current,
     ) { paddingValues ->
-        PreferenceLazyColumn(paddingValues) {
+        PreferenceLazyColumn(paddingValues, state = listState) {
             item {
                 Text(
                     text = stringResource(R.string.manual_organization_explainer),
