@@ -713,9 +713,10 @@ class ManualOrganizationPreferencesInstrumentationTest {
             context.getString(
                 R.string.manual_organization_preview_same_band_move_row,
                 context.getString(
-                    R.string.manual_organization_preview_item_name_with_kind,
+                    R.string.manual_organization_preview_item_descriptor,
                     "game",
                     context.getString(R.string.manual_organization_preview_kind_application),
+                    workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
                 ),
                 context.getString(R.string.manual_organization_preview_region_top_center),
                 "",
@@ -725,9 +726,10 @@ class ManualOrganizationPreferencesInstrumentationTest {
             context.getString(
                 R.string.manual_organization_preview_same_band_move_row,
                 context.getString(
-                    R.string.manual_organization_preview_item_name_with_kind,
+                    R.string.manual_organization_preview_item_descriptor,
                     "maps",
                     context.getString(R.string.manual_organization_preview_kind_application),
+                    workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
                 ),
                 context.getString(R.string.manual_organization_preview_region_top_center),
                 context.getString(R.string.manual_organization_preview_row_ordinal_note, 2, 1),

@@ -1115,14 +1115,15 @@
     <string name="manual_organization_preview_collapsed_state">Collapsed</string>
     <!-- Issue #208: row templates take the source descriptor (quoted name with
          kind, plus current position) as their first argument; quoting lives in
-         the descriptor strings so same-named placements stay distinguishable. -->
+         the descriptor strings so same-named placements stay distinguishable.
+         The same-band row reuses the descriptor and only replaces the
+         destination with the in-region adjustment wording. -->
     <string name="manual_organization_preview_move_row">%1$s → %2$s (%3$s)</string>
-    <string name="manual_organization_preview_same_band_move_row">%1$s: position adjusted within %2$s%3$s</string>
+    <string name="manual_organization_preview_same_band_move_row">%1$s → position adjusted within %2$s%3$s</string>
     <string name="manual_organization_preview_row_ordinal_note"> (from row %1$d to row %2$d)</string>
     <string name="manual_organization_preview_item_row">%1$s: %2$s</string>
     <string name="manual_organization_preview_item_descriptor">“%1$s” (%2$s) — %3$s</string>
     <string name="manual_organization_preview_item_descriptor_without_kind">“%1$s” — %2$s</string>
-    <string name="manual_organization_preview_item_name_with_kind">“%1$s” (%2$s)</string>
     <string name="manual_organization_preview_position_unidentified">unsupported placement %1$d</string>
     <string name="manual_organization_preview_position_with_supplement">%1$s (%2$s)</string>
     <string name="manual_organization_preview_supplement_cell">row %1$d, column %2$d</string>

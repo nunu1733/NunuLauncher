@@ -397,9 +397,10 @@ object PlanPreviewProjector {
         }
 
         /**
-         * Issue #208: the single identity -> presentation path. `null` only
-         * for a parent title whose identity was not resolved (contract
-         * violation); every well-formed identity maps to a presentation.
+         * Issue #208: the single identity -> presentation path. Total over
+         * every well-formed identity: `PlannedFolder` resolves through the
+         * same workspace-identity map the insert row used, so no identity
+         * variant is unrepresentable.
          */
         fun position(identity: PreviewPlacementIdentity): PreviewPosition? = when (identity) {
             is PreviewPlacementIdentity.Workspace -> workspacePosition(identity)
@@ -422,8 +423,22 @@ object PlanPreviewProjector {
 
             is PreviewPlacementIdentity.Unidentified -> PreviewPosition.Unidentified(identity.proposalLocalDiscriminator)
 
-            is PreviewPlacementIdentity.PlannedFolder -> null
+            is PreviewPlacementIdentity.PlannedFolder ->
+                plannedFolderWorkspaceIdentity[identity.ordinal]?.let { workspacePosition(it) }
         }
+
+        /**
+         * Issue #208 (review Medium): each planned folder's intended workspace
+         * identity, so a `PlannedFolder` identity resolves to the same
+         * presentation as its insert row instead of mapping to `null`.
+         */
+        private val plannedFolderWorkspaceIdentity: Map<NewFolderOrdinal, PreviewPlacementIdentity.Workspace> =
+            plan.actions.filterIsInstance<ApplyAction.Insert>()
+                .mapNotNull { insert ->
+                    val ordinal = (insert.ref as? ApplicationItemRef.PlannedFolder)?.ordinal ?: return@mapNotNull null
+                    workspaceIdentity(insert.intended)?.let { ordinal to it }
+                }
+                .toMap()
 
         fun workspacePosition(position: PreviewPlacementIdentity.Workspace): PreviewPosition.Workspace {
             val device = plan.sourceState.deviceCapabilities

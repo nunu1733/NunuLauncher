@@ -149,13 +149,53 @@ class OrganizationPreviewContentTest {
         )
 
         assertEquals(
-            "“game” (App): position adjusted within top center",
+            "“game” (App) — top center, page 1 → position adjusted within top center",
             OrganizationPreviewContent.moveRowText(sameRow, TestWording),
         )
         assertEquals(
-            "“game” (App): position adjusted within top center (from row 2 to row 1)",
+            "“game” (App) — top center, page 1 → position adjusted within top center (from row 2 to row 1)",
             OrganizationPreviewContent.moveRowText(differentRow, TestWording),
         )
+    }
+
+    /**
+     * Issue #208 (review High 1): two same-named, same-kind moves that both
+     * become same-band adjustments must still render distinct source
+     * descriptors — the same-band branch shares the descriptor path, and the
+     * identity-derived cell supplement separates same-band anchors.
+     */
+    @Test
+    fun sameNamedSameBandAdjustmentsGetDistinctDescriptors() {
+        val details = PlanPreviewDetails(
+            changes = listOf(
+                labeledMove(
+                    PreviewLabel.Named("Photos"),
+                    source(2, RowBand.TOP, ColumnBand.CENTER, 1),
+                    destination(2, RowBand.TOP, ColumnBand.CENTER, 1),
+                    PlacementCode.SINGLE_PLACEMENT,
+                    anchor = Grid(0, 0),
+                ),
+                labeledMove(
+                    PreviewLabel.Named("Photos"),
+                    source(2, RowBand.TOP, ColumnBand.CENTER, 1),
+                    destination(2, RowBand.TOP, ColumnBand.CENTER, 1),
+                    PlacementCode.SINGLE_PLACEMENT,
+                    anchor = Grid(1, 0),
+                ),
+            ),
+            counts = PreviewCounts(2, 0, 0, 0, emptyMap()),
+        )
+
+        val rows = OrganizationPreviewContent.sections(details, TestWording).single().rows
+
+        assertEquals(
+            listOf(
+                "“Photos” (App) — top center, page 2 (row 1, column 1) → position adjusted within top center",
+                "“Photos” (App) — top center, page 2 (row 1, column 2) → position adjusted within top center",
+            ),
+            rows,
+        )
+        assertEquals(2, rows.toSet().size)
     }
 
     @Test
@@ -371,17 +411,19 @@ class OrganizationPreviewContentTest {
         label: String,
         source: PreviewPosition,
         destination: PreviewPosition,
-    ) = labeledMove(PreviewLabel.Named(label), source, destination, PlacementCode.SINGLE_PLACEMENT)
+        anchor: Grid = Grid(0, 0),
+    ) = labeledMove(PreviewLabel.Named(label), source, destination, PlacementCode.SINGLE_PLACEMENT, anchor)
 
     private fun labeledMove(
         label: PreviewLabel,
         source: PreviewPosition,
         destination: PreviewPosition,
         rationale: PlacementCode?,
+        anchor: Grid = Grid(0, 0),
     ) = MoveChange(
         item = ItemId(label.toString()),
         label = label,
-        identity = PreviewPlacementIdentity.Workspace(1, false, 0, 0),
+        identity = PreviewPlacementIdentity.Workspace(1, false, anchor.x, anchor.y),
         kind = CanonicalItemKind.Application,
         source = source,
         destination = destination,
@@ -502,12 +544,11 @@ class OrganizationPreviewContentTest {
         override val groupPreserved = "Preserve (%1\$d)"
         override val groupWarnings = "Warnings (%1\$d)"
         override val moveRow = "%1\$s → %2\$s (%3\$s)"
-        override val sameBandMoveRow = "%1\$s: position adjusted within %2\$s%3\$s"
+        override val sameBandMoveRow = "%1\$s → position adjusted within %2\$s%3\$s"
         override val rowOrdinalNote = " (from row %1\$d to row %2\$d)"
         override val itemRow = "%1\$s: %2\$s"
         override val itemDescriptor = "“%1\$s” (%2\$s) — %3\$s"
         override val itemDescriptorWithoutKind = "“%1\$s” — %2\$s"
-        override val itemNameWithKind = "“%1\$s” (%2\$s)"
         override val moveReasonSinglePlacement = "moves as a single placement"
         override val moveReasonFolderMember = "moves as a folder member"
         override val moveReasonFolderUnit = "moves as a folder unit"

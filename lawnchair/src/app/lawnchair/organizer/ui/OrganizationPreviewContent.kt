@@ -38,7 +38,8 @@ interface OrganizationPreviewWording {
      *  %2 = destination, %3 = reason. Quoting lives in the descriptor. */
     val moveRow: String
 
-    /** Issue #208: %1 = name with kind, %2 = region, %3 = ordinal note. */
+    /** Issue #208: %1 = full source descriptor (same path as the plain move
+     *  row), %2 = region, %3 = ordinal note. */
     val sameBandMoveRow: String
     val rowOrdinalNote: String
 
@@ -50,9 +51,6 @@ interface OrganizationPreviewWording {
 
     /** Issue #208: kindless variant for kind-fallback labels. */
     val itemDescriptorWithoutKind: String
-
-    /** Issue #208: %1 = name, %2 = kind (same-band rows carry no position). */
-    val itemNameWithKind: String
     val moveReasonSinglePlacement: String
     val moveReasonFolderMember: String
     val moveReasonFolderUnit: String
@@ -248,14 +246,16 @@ object OrganizationPreviewContent {
     }
 
     fun moveRowText(change: MoveChange, wording: OrganizationPreviewWording, supplement: String? = null): String {
+        // Issue #208: every move row speaks its source placement through the
+        // shared descriptor path — the same-band branch only replaces the
+        // destination part, so same-named sources can never collapse.
+        val source = descriptorText(change.label, change.kind, change.source, wording, supplement)
         if (change.sameBandAdjustment) {
             // sameBandAdjustment guarantees both ends are same-page workspaces.
-            val source = change.source as PreviewPosition.Workspace
+            val destination = change.destination as PreviewPosition.Workspace
             val note = rowOrdinalNote(change, wording)
-            val name = displayName(change.label, change.kind, wording)
-            return format(wording.sameBandMoveRow, name, regionText(source, wording), note)
+            return format(wording.sameBandMoveRow, source, regionText(destination, wording), note)
         }
-        val source = descriptorText(change.label, change.kind, change.source, wording, supplement)
         val destination = positionText(change.destination, wording) + rowOrdinalNote(change, wording)
         return format(wording.moveRow, source, destination, moveReasonText(change.rationale, wording))
     }
@@ -287,11 +287,6 @@ object OrganizationPreviewContent {
     fun labelText(label: PreviewLabel, wording: OrganizationPreviewWording): String = when (label) {
         is PreviewLabel.Named -> label.value
         is PreviewLabel.KindFallback -> kindText(label.kind, wording)
-    }
-
-    private fun displayName(label: PreviewLabel, kind: CanonicalItemKind, wording: OrganizationPreviewWording): String {
-        val name = labelText(label, wording)
-        return if (label is PreviewLabel.KindFallback) name else format(wording.itemNameWithKind, name, kindText(kind, wording))
     }
 
     private fun newFolderRowText(change: NewFolderChange, wording: OrganizationPreviewWording): String {
