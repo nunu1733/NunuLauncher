@@ -19,7 +19,7 @@ R1/R2/R3 verdicts:
 | Requirement | Verdict | Evidence |
 |---|---|---|
 | R1 — preview identifies the resolved placement | **FAIL** (coarse band label alone) | `DestinationRegionMappingTest`, `distinctAnchorsInsideOneBandRenderIdenticalDestinationTextOnTheCard` |
-| R2 — preview == apply == persisted placement | **PASS** | `PreviewApplyPlacementEqualityTest` |
+| R2 — preview == apply == persisted placement | **PASS** | `PreviewApplyPlacementEqualityTest` (planner→materializer→preview→write-set input, cell-exact), `PreviewApplyPersistedPlacementEqualityTest` (real `ApplyProtocol` → post-apply capture rebuilt from persisted rows, cell-exact), `ManualOrganizationProductionE2EInstrumentationTest.manualRunUsesProductionCaptureApplyVerificationAndRecovery` (production DB leg: exact preconditions before confirm, capture after apply, recovery restore) |
 | R3 — rendered card is acceptance evidence | **PASS** (delivery verified; specificity itself fails R1) | instrumentation test on the real `ManualOrganizationPreferences` card |
 
 Classification per the spec decision matrix: **Case A** (resolved == apply == persisted; region labels are coherently defined; the actual card shows coarse labels only and cannot distinguish distinct resolved placements). Follow-up for R1 goes to the #195 presentation line.
@@ -72,6 +72,7 @@ JVM (`./gradlew testLawnWithQuickstepGithubDebugUnitTest`):
 
 - `app.lawnchair.organizer.application.preview.DestinationRegionMappingTest` — 4/4 pass. Characterizes: band boundaries on 4/2/5 columns through the projection seam; the F-03 shape (distinct anchors (0,0),(1,0) → identical coarse projection incl. row ordinal); `visibleCandidates("top left", 4×6) = 4` anchors.
 - `app.lawnchair.organizer.application.actions.PreviewApplyPlacementEqualityTest` — pass. Real planner targets → `OrganizationPlanMaterializer` → intended state == preview source == `IntendedStateResolution.resolveAndFinalize` output, cell-exact; projection deterministic.
+- `app.lawnchair.organizer.application.protocol.PreviewApplyPersistedPlacementEqualityTest` — pass. The same chain continued through the real `ApplyProtocol`: planner targets → materializer → preview projection → `protocol.apply(plan)` → post-apply `captureCurrent` rebuilt from persisted rows (`FakeLayoutWriter` production-equivalent capture, so reads never echo the write set's intended state). Asserts preview == committed == persisted cell-exact for both in-band anchors, including that the rendered band + row ordinal recompute from the persisted cells.
 - `app.lawnchair.organizer.planning.PlannerGeneratedPropertyTest` — 7/7 pass (existing surface; planner-only, does not touch preview/apply — coverage boundary recorded in spec).
 
 Instrumentation (emulator `nunu_qpr2_api36_1`, API 36, `connectedLawnWithQuickstepGithubDebugAndroidTest`, 23/23 pass):
@@ -81,8 +82,10 @@ Instrumentation (emulator `nunu_qpr2_api36_1`, API 36, `connectedLawnWithQuickst
 
 ## Non-goals honored
 
-No production planner, formatter, or copy was changed in this investigation. The change set is exactly: two JVM characterization tests, one instrumentation evidence test, this assessment, and the spec/plan status updates.
+No production planner, formatter, or copy was changed in this investigation. The change set is exactly: three JVM characterization tests, one instrumentation evidence test, this assessment, and the spec/plan status updates.
 
 ## Follow-up required
 
-R1 is open product work, not resolvable inside an investigation: the Organizer card needs a destination presentation that reduces `visibleCandidates` to the single resolved anchor (row ordinal is already carried by the projection and would cover same-band row moves; column specificity needs either exact coordinates, per-column wording, or a unique region+supplement combination). Handoff to the #195 presentation line / focused follow-up issue with the region mapping table above and the failing-as-is R1 tests as the regression boundary.
+R1 is open product work, not resolvable inside an investigation: the Organizer card needs a destination presentation that reduces `visibleCandidates` to the single resolved anchor (row ordinal is already carried by the projection and would cover same-band row moves; column specificity needs either exact coordinates, per-column wording, or a unique region+supplement combination).
+
+Handed off to **Issue #234** ("Organizer proposal card の destination 表示を resolved anchor を一意に識別できる具体性へ更新"), which carries: this assessment and the Case A verdict, the `visibleCandidates(display, grid) == {resolved anchor}` contract, the 4×6 `top left` = 4-candidate-anchor counterexample, the re-evaluation of the closed #195 D5 "text-only is sufficient" decision against this evidence, and `DestinationRegionMappingTest` / `distinctAnchorsInsideOneBandRenderIdenticalDestinationTextOnTheCard` as the regression boundary.
