@@ -1,9 +1,9 @@
 ---
 issue: "#209"
-status: implemented
+status: accepted
 requirements: []
 risk: []
-updated: 2026-09-06
+updated: 2026-09-07
 ---
 
 # Organizer の decision action がボタンとして視認でき、Apply と Cancel が decision 時点で揃って見える
@@ -18,11 +18,11 @@ updated: 2026-09-06
 
 ## Outcome
 
-Organizer の decision 系 action (confirm / cancel / restore) が、Lawnchair 既存の visual language に整合する Material3 button として描画され、静的 text や list toggle から視覚的に区別される。Preview 画面では `Apply` と `Cancel` が proposal の展開・scroll 状態によらず、同一画面内の先頭付近に揃って視認できる。TalkBack はこれらを button として報告する。
+Organizer の decision 系 action (confirm / cancel / restore) が、Lawnchair 既存の visual language に整合する Material3 button として描画され、静的 text や list toggle から視覚的に区別される。Preview 画面では `Apply` と `Cancel` が proposal の展開状態によらず、同一 viewport 内に揃って視認できる。TalkBack はこれらを button として報告する。
 
 ## Scope
 
-- **decision pair の button 化と同時視認配置**: `State.Preview` の confirm (`Apply reviewed organization`) と cancel (`Cancel`) を、preview 見出しの直後に置かれた 1 つの decision group (縦並び全幅 button) へ移動し、Material3 button で描画する。`State.RecoveryPreview` の `Restore saved layout` と `Cancel` も同一の decision group 構成へ統一する。
+- **decision pair の button 化と同時視認配置**: `State.Preview` の confirm (`Apply reviewed organization`) と cancel (`Cancel`) を Material3 button の decision group (縦並び全幅) として描画する。具体変更一覧がある場合 (`details != null`) は preview 見出しの直後に置き、degraded の場合 (`details == null`) は欠落告知行と count-only summary の後に置く (§D2)。`State.RecoveryPreview` の `Restore saved layout` と `Cancel` も同一の decision group 構成へ統一する。
 - **復旧導線の button 化**: `State.Applied` (apply 成功時) の safety net `Restore the previous layout` を、preference row より強調された Material3 button で描画する。
 - **TalkBack role**: 本 spec が button 化する全 control が `Role.Button` を報告することを instrumentation test で検証する。
 - **spec 52 / spec 195 の契約調整**: decision group の先頭配置に伴い keyboard/Switch traversal の到達順序が変わるため、spec 52 の §"Preview and details" 関連記述と spec 195 の traversal 契約 (status → 展開 action → confirm → cancel) を本 spec の順序 (status → confirm → cancel → 展開 action) へ更新する。同一 PR で行う。
@@ -52,11 +52,14 @@ confirm / cancel / restore は `ClickablePreference` 行から Material3 button 
 
 いずれも既存 string の再利用であり、theme token 外の色・shape・独自装飾を導入しない (#123 の「既存 component / theme token 再利用」契約)。Material3 の minimum interactive component enforcement (既定有効) により touch target は 48dp 以上が保証される。
 
-### D2: decision group の配置 — **preview 見出しの直後 (先頭固定)。末尾配置・sticky bar は不採用**
+### D2: decision group の配置 — **具体一覧モードでは見出し直後、degraded モードでは告知・summary の後。末尾配置・sticky bar は不採用**
 
-`State.Preview` の描画順を 見出し → **decision group** 入力文脈 → 件数 → 変更一覧 (group + 展開トグル) → constraint へ変更する。decision group を list item の 2 番目に置くことで、画面サイズ・font scale・proposal の展開・scroll 状態にかかわらず confirm と cancel が entry 直後に同一 viewport へ描画されることが構造的に保証される。
+具体変更一覧がある場合 (`details != null`)、`State.Preview` の描画順を 見出し → **decision group** → 入力文脈 → 件数 → 変更一覧 (group + 展開トグル) → constraint へ変更する。decision group を list item の 2 番目に置くことで、画面サイズ・font scale・proposal の展開状態にかかわらず confirm と cancel が entry 直後に同一 viewport へ描画されることが構造的に保証される。
 
-- **末尾維持 + sticky footer の不採用理由**: sticky bar は `PreferenceScaffold` / `PreferenceLazyColumn` の構造変更 (全 settings 画面が共有する component への介入) か、この画面専用の overlay 表現 (Nunu-only convention、#123 違反) を要求する。リスクに対して得られるものは少ない (先頭配置で同時視認は満たされる)。
+**degraded モード (`details == null`) では spec 195 D1 が優先される**: 描画順を 見出し → 欠落告知行 → count-only summary → **decision group** へ変更する。ユーザーは「具体的な変更一覧を用意できなかった」告知と件数のみの確認である事実を、primary action に到達する前に読む。#195 の「review → confirm」情報設計と decision group の先頭配置が衝突するのは degraded モードのみであり、具体一覧モードでは「cancel の即時視認 = レビューを強制されない・中断可能であることの表明」として先頭配置を採用する (変更一覧そのものは decision の直後に読める)。
+
+- **scroll に対する契約の限界を明記**: decision group は通常の list item であり、persistent / sticky surface ではない。ユーザーが変更一覧を下へ scroll すれば decision group は viewport 外へ出る (通常の設定画面と同じ挙動)。本 spec が保証するのは「**展開によって片方の decision のみが fold 下へ押し出されない**」ことまでであり、scroll 後の可視性は要求しない (F-02 の実害は展開時の押し出しであり、F-16 の解消は §D4 のとおり)。persistent surface を要求する場合は別 spec を要求する。
+- **末尾維持 + sticky footer の不採用理由**: sticky bar は `PreferenceScaffold` / `PreferenceLazyColumn` の構造変更 (全 settings 画面が共有する component への介入) か、この画面専用の overlay 表現 (Nunu-only convention、#123 違反) を要求する。リスクに対して得られるものは少ない (先頭配置で展開時の同時視認は満たされる)。
 - **decision group の先頭配置によるUX影響の受容**: ユーザーが変更一覧を読む前に decision 操作が視界に入るが、cancel が即座に視認できることは「レビューを強制されない・中断可能である」ことの表明として機能する。誤 tap リスクは confirm を filled / cancel を outlined と重み分けし、confirm が previewed plan の A2 exact precondition gate によって guard されていることで緩和される (適用安全性は本 spec の対象外)。
 - **`State.Applying` の `Cancel before applying` は preference row のまま**: 適用進行中の安全文脈 (checkpoint 前のみ中断可能) を持つ遷移状態であり、decision pair ではない。変更する場合は別 spec とする。
 
@@ -83,6 +86,16 @@ When preview 画面が表示される,
 Then `Apply reviewed organization` と `Cancel` がどちらも初期 viewport 内で表示され、いずれも scroll 無しに到達できる,
 
 And 変更 group を展開して行数が増えた後も、両者は引き続き同一 viewport 内で表示される。
+
+### Scenario: degraded preview では欠落告知が decision に先行する
+
+Given 環境的失敗により `State.Preview(summary, details = null)` が公開されている,
+
+When preview 画面が表示される,
+
+Then「具体的な変更一覧を用意できなかった」告知行と count-only summary が `Apply reviewed organization` より先に表示される,
+
+And decision group は summary の直後に配置され、confirm / cancel が同時に視認できる。
 
 ### Scenario: Decision actions がボタンとして区別される
 
@@ -128,14 +141,15 @@ None。新たな permission、通信、telemetry は追加しない。表示す�
 
 - button 化対象は `Role.Button` を報告する (§D5)。label は既存 string を再利用し、新規 strings は発生しないため ja/en 解決契約 (#123) に新たな面は追加されない。
 - focus 契約: status 見出しの focus + `liveRegion = Polite`、cancel 後の focus 復帰、展開後の展開 action focus 保持は spec 52 / spec 195 契約を継承する。
-- traversal 順序は status → confirm → cancel → 変更一覧 → 展開 action へ更新される (spec 52 / spec 195 の記述を同一 PR で更新)。
+- traversal 順序は (具体一覧モードでは) status → confirm → cancel → 変更一覧 → 展開 action、(degraded モードでは) status → 告知行 → summary → confirm → cancel へ更新される (spec 52 / spec 195 の記述を同一 PR で更新)。
 - touch target は Material3 minimum interactive component enforcement (48dp) に依存する。200% font scale で label は button 内で折り返し、clipping 無しに到達可能である。
 
 ## Acceptance criteria
 
 | AC | Acceptance criterion |
 |---|---|
-| AC-1 | `State.Preview` の confirm / cancel が preview 見出し直後の decision group に Material3 button として描画され、truncation が発生する大きさの変更一覧 (展開トグルが存在する fixture) において、初期表示時と group 展開後の両方で confirm と cancel が同時に表示される。`details == null` (degraded) の場合も同様である。 |
+| AC-1 | 具体変更一覧 (`details != null`) の `State.Preview` では、confirm / cancel が preview 見出し直後の decision group に Material3 button として描画され、truncation が発生する大きさの変更一覧 (展開トグルが存在する fixture) において、初期表示時と group 展開後の両方で confirm と cancel が同時に表示される。 |
+| AC-1a | `details == null` (degraded) の `State.Preview` では、欠落告知行と count-only summary が decision group より先に描画され、decision group の confirm / cancel は summary の直後に同時に表示される。 |
 | AC-2 | `State.RecoveryPreview` の `Restore saved layout` / `Cancel` と、`State.Applied` (成功) の `Restore the previous layout` が §D1 の指定どおり button として描画される。 |
 | AC-3 | button 化対象の全 control が TalkBack semantics で `Role.Button` を報告する。 |
 | AC-4 | 既存 a11y 契約が退化しない: status 見出しの focus + liveRegion、cancel 後の start action focus 復帰、展開後の展開 action focus 保持、traversal 到達性 (新順序)、200% font scale (label の button 内折り返し含む)、ja/en string 解決。 |
@@ -146,7 +160,8 @@ None。新たな permission、通信、telemetry は追加しない。表示す�
 
 | AC | Evidence |
 |---|---|
-| AC-1 | `ManualOrganizationPreferencesInstrumentationTest` に追加した同時視認 test (移動 6 件 + truncation トグル fixture で初期表示時と展開後の `assertIsDisplayed` × confirm/cancel、degraded fallback 含む) |
+| AC-1 | `ManualOrganizationPreferencesInstrumentationTest` に追加した同時視認 test (移動 6 件 + truncation トグル fixture で初期表示時と展開後の `assertIsDisplayed` × confirm/cancel) |
+| AC-1a | 同 instrumentation test: degraded fixture で告知行 / summary が confirm より先に存在することと decision pair の同時表示を主張 |
 | AC-2 | 同 instrumentation test: Applied→recovery entry と RecoveryPreview の描画主張 |
 | AC-3 | 同 instrumentation test: `SemanticsProperties.Role == Role.Button` 主張 |
 | AC-4 | 既存 instrumentation test 群 (focus 復帰 / liveRegion / traversal / 200% font scale / ja locale 解決) の無変更または新順序への整合的更新で通過 |
@@ -160,7 +175,8 @@ None。設計判断は §D1–D5 のとおり spec 時点で確定した。実�
 ## Change history
 
 - 2026-09-06: Drafted for Issue #209。Issue 本文の exploratory review 結果 (F-02/F-06/F-16)、spec 195 / spec 52 の a11y・traversal 契約、#123 の visual language 契約、現行実装 (`ManualOrganizationPreferences.kt`、`ClickablePreference.kt`、decision 表現の既存参照 `PreferenceClickConfirmation` / `PermissionDialog`) の調査を入力に作成。Issue owner の実施指示に基づき受理し、owner review は実装 PR で継続する。
-- 2026-09-06: 実装 ([PR #239](https://github.com/nunu1733/NunuLauncher/pull/239))。D3 は初版の横並び案から縦並び全幅へ決め直し (DPAD down が同一行内の横方向へ到達しない実装依存挙動を traversal test が再現したため、失敗するテストで確認のうえ修正)。CI issue52 lane (pixel_7_pro / 560dpi) でのみ toggle 折りたたみ test が timeout する問題を pixel_7_pro AVD で再現・分析し、focus 復元後に toggle が gesture-navigation 領域へ追い込まれ tap が system pill に奪われることが原因と判明 — test を ScrollBy semantics action で toggle を安全領域へ移動してから tap する方式へ修正 (製品コードの変更なし)。CI `final-status` green (run 34042167115) をもって `implemented` へ更新。
+- 2026-09-06: 実装 ([PR #239](https://github.com/nunu1733/NunuLauncher/pull/239))。D3 は初版の横並び案から縦並び全幅へ決め直し (DPAD down が同一行内の横方向へ到達しない実装依存挙動を traversal test が再現したため、失敗するテストで確認のうえ修正)。CI issue52 lane (pixel_7_pro / 560dpi) でのみ toggle 折りたたみ test が timeout する問題を pixel_7_pro AVD で再現・分析し、focus 復元後に toggle が gesture-navigation 領域へ追い込まれ tap が system pill に奪われることが原因と判明 — test を ScrollBy semantics action で toggle を安全領域へ移動してから tap する方式へ修正 (製品コードの変更なし)。
+- 2026-09-07: Owner review ([PR #239](https://github.com/nunu1733/NunuLauncher/pull/239)) 対応 (Blocking 2件): (1) 「展開・scroll 状態によらず同時視認」のうち scroll 部分を契約から削除 — decision group は通常の list item であり、scroll 後は viewport 外に出ることを §D2 に明記し、本 spec の保証を「展開による片方の fold 下押し出しの防止」に限定。(2) spec 195 D1 の degraded 告知契約との衝突を解消 — `details == null` の描画順を 見出し → 告知行 → count-only summary → decision group へ変更 (AC-1a 追加、§D2 に degraded 優先規定)。通常 preview では decision group 先頭配置を正本とすることを §D2 に明記。`status` を実装 PR 再review のため `accepted` へ戻す。
 
 ## References
 

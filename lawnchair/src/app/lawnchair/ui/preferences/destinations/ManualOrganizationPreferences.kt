@@ -236,36 +236,36 @@ fun ManualOrganizationPreferences(
                             focusRequester = focusRequester,
                         )
                     }
-                    // Issue #209: the decision pair leads the screen so Apply
-                    // and Cancel are visible together no matter how much of
-                    // the change list is expanded or scrolled.
-                    item {
-                        DecisionActionsRow {
-                            Button(
-                                onClick = { execute(coordinator::confirm) },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text(text = stringResource(R.string.manual_organization_confirm))
-                            }
-                            OutlinedButton(
-                                onClick = { execute(coordinator::cancel) },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text(text = stringResource(R.string.manual_organization_cancel))
-                            }
-                        }
-                    }
                     if (currentState.details == null) {
                         // Issue #195 spec D1: environmental preview failures keep the
                         // existing count-only flow, but announce the missing details
                         // instead of silently equating them with a normal preview.
+                        // Issue #209 review: the degraded announcement and the
+                        // count-only summary precede the decision pair, so the user
+                        // sees that the concrete list is missing before reaching the
+                        // primary action (spec 195 D1 over leading placement).
                         item {
                             SummaryText(
                                 stringResource(R.string.manual_organization_preview_details_unavailable),
                             )
                         }
                         summaryItems(currentState.summary)
+                        item {
+                            PreviewDecisionActions(
+                                onConfirm = { execute(coordinator::confirm) },
+                                onCancel = { execute(coordinator::cancel) },
+                            )
+                        }
                     } else {
+                        // Issue #209: the decision pair leads the concrete change
+                        // list so Apply and Cancel are visible together no matter
+                        // how much of the list is expanded.
+                        item {
+                            PreviewDecisionActions(
+                                onConfirm = { execute(coordinator::confirm) },
+                                onCancel = { execute(coordinator::cancel) },
+                            )
+                        }
                         previewDetailsItems(
                             summary = currentState.summary,
                             counts = currentState.details.counts,
@@ -577,6 +577,36 @@ private fun FocusTargetText(
                 liveRegion = LiveRegionMode.Polite
             },
     )
+}
+
+/**
+ * Issue #209: the preview decision pair (confirm / cancel) as Material3
+ * buttons — the same emphasis split as the lawnchair confirmation bottom
+ * sheet — instead of preference rows that read like plain text. In the
+ * concrete-list mode it sits directly below the status heading so both paths
+ * of the decision are visible together no matter how far the list is
+ * expanded; the degraded mode keeps it after the missing-details announcement
+ * and the count-only summary (spec 195 D1).
+ */
+@Composable
+private fun PreviewDecisionActions(
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    DecisionActionsRow {
+        Button(
+            onClick = onConfirm,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(text = stringResource(R.string.manual_organization_confirm))
+        }
+        OutlinedButton(
+            onClick = onCancel,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(text = stringResource(R.string.manual_organization_cancel))
+        }
+    }
 }
 
 /**

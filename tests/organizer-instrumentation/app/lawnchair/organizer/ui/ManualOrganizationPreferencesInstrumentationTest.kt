@@ -24,6 +24,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsActions
@@ -1036,11 +1037,13 @@ class ManualOrganizationPreferencesInstrumentationTest {
     }
 
     /**
-     * Issue #209 AC-1 (degraded path): the count-only fallback keeps the same
-     * leading decision pair.
+     * Issue #209 AC-1a (degraded path, owner review): the count-only fallback
+     * renders the missing-details announcement and the summary BEFORE the
+     * decision pair (spec 195 D1 takes precedence over leading placement), and
+     * the pair still shows together on the same screen.
      */
     @Test
-    fun degradedFallbackKeepsDecisionPairDisplayed() {
+    fun degradedFallbackAnnouncesMissingDetailsBeforeTheDecisionPair() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val application = FakeApplication()
         val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
@@ -1052,8 +1055,23 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
         awaitPreview(runner, context)
 
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).assertIsDisplayed()
+        val confirm = composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm))
+        val cancel = composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel))
+        confirm.assertIsDisplayed()
+        cancel.assertIsDisplayed()
+
+        val warning = composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_preview_details_unavailable),
+        ).assertIsDisplayed().fetchSemanticsNode()
+        val summary = composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_moved_single_placement, 1),
+        ).fetchSemanticsNode()
+        assert(warning.boundsInRoot.top < confirm.fetchSemanticsNode().boundsInRoot.top) {
+            "degraded announcement must be rendered above the Apply action"
+        }
+        assert(summary.boundsInRoot.top < confirm.fetchSemanticsNode().boundsInRoot.top) {
+            "count-only summary must be rendered above the Apply action"
+        }
     }
 
     /**
@@ -1116,6 +1134,14 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.RecoveryPreview }
 
         val recoveryConfirm = context.getString(R.string.manual_organization_recovery_confirm)
+        // The state transition preserves the list scroll position, which can
+        // rest at the Applied summary; drag the list back to its head so the
+        // decision pair is back in the viewport before asserting on it.
+        val list = composeRule.onNode(hasScrollAction())
+        repeat(3) {
+            list.performTouchInput { swipeDown() }
+            composeRule.waitForIdle()
+        }
         composeRule.onNodeWithText(recoveryConfirm).assertIsDisplayed().assert(buttonRole())
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).assertIsDisplayed()
             .assert(buttonRole())

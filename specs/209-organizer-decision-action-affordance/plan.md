@@ -56,3 +56,10 @@
 - CI issue52 lane (pixel_7_pro / 560dpi / x86_64) でのみ `largeChangeGroupsTruncateBehindExpandAction` の折りたたみ待ちが 2 回 timeout。pixel_7_pro AVD を local で作成して再現・計測した結果: 展開後の spec 52 focus 復元が toggle を viewport 最下端 (3120px) にぴったり配置し、row 全体が gesture-navigation 領域 (末尾 ~84px) に入る。クリック座標 x=720 は画面中央 = system nav pill の真上であり、tap が pill window に奪われてアプリに届かない (pixel_6 / 420dpi では toggle が領域外のため不発生)。test を `ScrollBy` semantics action で toggle を window 下端 +300px 以上に配置してから可視中心を tap する方式へ修正 (製品コード無変更)。
 - 検証: pixel_7_pro AVD (1440x3120 @560dpi, API 36.1, Android 16) で `ManualOrganizationPreferencesInstrumentationTest` 28/28 pass。`spotlessCheck` / organizer JVM unit gate / `assembleLawnWithQuickstepGithubDebug` pass。CI run 34042167115 全 job pass (`final-status` green)。
 - emulator screenshot 目視確認: preview で filled Apply + outlined Cancel が見出し直下に同時描画、Applied で tonal restore が row と区別される。
+
+## Review response (2026-09-07, PR #239 owner review — Blocking 2件)
+
+1. **scroll invariant の不一致**: spec / MFO-18 / PR本文 / コードコメントの「scroll によらず同時視認」主張を削除し、契約を実際の実装 (list item として scroll 後は viewport 外に出る) に揃えた。spec 209 §D2 に「本 spec が保証するのは展開による片方の fold 下押し出しの防止まで。persistent surface を要求する場合は別 spec」を明記。
+2. **degraded path の描画順**: `details == null` の場合の描画順を 見出し → 告知行 → count-only summary → decision group へ変更 (spec 195 D1 優先)。通常 preview (`details != null`) は decision group 先頭配置を正本とすることを §D2 に明記。テスト `degradedFallbackKeepsDecisionPairDisplayed` を順序アサーション付き `degradedFallbackAnnouncesMissingDetailsBeforeTheDecisionPair` へ更新。
+
+検証: pixel_7_pro AVD で全 instrumentation test pass、`spotlessCheck` / organizer unit gate pass。
