@@ -484,9 +484,75 @@ class ManualOrganizationPreferencesInstrumentationTest {
         assertEquals(0, application.applyCalls)
     }
 
+    /**
+     * Issue #212 R1/R3 evidence: two moves whose resolved anchors differ only
+     * inside one coarse band render the SAME destination text on the actual
+     * Organizer card. The rendered destination ("top left, page 2") alone
+     * cannot tell the two rows apart — the F-03 display ambiguity reproduced
+     * at the UI surface, so a coarse region label alone does not satisfy the
+     * destination-specificity contract.
+     */
     @Test
-    fun sameBandAdjustmentMovesAreAnnouncedAsPositionAdjustments() {
+    fun distinctAnchorsInsideOneBandRenderIdenticalDestinationTextOnTheCard() {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            inspectPlanOverride = { _, _ ->
+                previewed(
+                    PlanPreviewDetails(
+                        changes = listOf(
+                            move(
+                                "game",
+                                sourceRowOrdinal = 1,
+                                destinationRowOrdinal = 1,
+                                destination = workspace(2, RowBand.TOP, ColumnBand.LEFT, 1),
+                            ),
+                            move(
+                                "maps",
+                                sourceRowOrdinal = 1,
+                                destinationRowOrdinal = 1,
+                                destination = workspace(2, RowBand.TOP, ColumnBand.LEFT, 1),
+                            ),
+                        ),
+                        counts = PreviewCounts(movedCount = 2, preservedCount = 0, newFolderCount = 0, newPageCount = 0, warningCounts = emptyMap()),
+                    ),
+                )
+            }
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        runner.start()
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        awaitPreview(runner, context)
+
+        // Both rows render; the destination part of each row is the identical
+        // "top left, page 2" wording while the resolved anchors differ.
+        val destination = workspacePosition(context, 2, RowBand.TOP, ColumnBand.LEFT)
+        composeRule.onNodeWithText(
+            context.getString(
+                R.string.manual_organization_preview_move_row,
+                "game",
+                workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
+                destination,
+                context.getString(R.string.manual_organization_preview_move_reason_single_placement),
+            ),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(
+                R.string.manual_organization_preview_move_row,
+                "maps",
+                workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
+                destination,
+                context.getString(R.string.manual_organization_preview_move_reason_single_placement),
+            ),
+        ).assertIsDisplayed()
+        assertEquals(0, application.applyCalls)
+    }
+
+    @Test
+    fun sameBandAdjustmentMovesAreAnnouncedAsPositionAdjustments() {        val context = ApplicationProvider.getApplicationContext<Context>()
         val application = FakeApplication().apply {
             inspectPlanOverride = { _, _ ->
                 previewed(
