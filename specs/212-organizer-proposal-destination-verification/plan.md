@@ -2,7 +2,7 @@
 
 > Issue: #212
 > Spec: [spec.md](./spec.md)
-> Status: ready
+> Status: accepted
 
 ## Goal
 
