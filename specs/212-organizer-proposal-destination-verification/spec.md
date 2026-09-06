@@ -1,6 +1,6 @@
 ---
 issue: "#212"
-status: accepted
+status: implemented
 requirements: []
 updated: 2026-09-06
 ---
