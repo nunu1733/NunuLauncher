@@ -1,6 +1,6 @@
 ---
 issue: "#209"
-status: accepted
+status: implemented
 requirements: []
 risk: []
 updated: 2026-09-06
@@ -160,6 +160,7 @@ None。設計判断は §D1–D5 のとおり spec 時点で確定した。実�
 ## Change history
 
 - 2026-09-06: Drafted for Issue #209。Issue 本文の exploratory review 結果 (F-02/F-06/F-16)、spec 195 / spec 52 の a11y・traversal 契約、#123 の visual language 契約、現行実装 (`ManualOrganizationPreferences.kt`、`ClickablePreference.kt`、decision 表現の既存参照 `PreferenceClickConfirmation` / `PermissionDialog`) の調査を入力に作成。Issue owner の実施指示に基づき受理し、owner review は実装 PR で継続する。
+- 2026-09-06: 実装 ([PR #239](https://github.com/nunu1733/NunuLauncher/pull/239))。D3 は初版の横並び案から縦並び全幅へ決め直し (DPAD down が同一行内の横方向へ到達しない実装依存挙動を traversal test が再現したため、失敗するテストで確認のうえ修正)。CI issue52 lane (pixel_7_pro / 560dpi) でのみ toggle 折りたたみ test が timeout する問題を pixel_7_pro AVD で再現・分析し、focus 復元後に toggle が gesture-navigation 領域へ追い込まれ tap が system pill に奪われることが原因と判明 — test を ScrollBy semantics action で toggle を安全領域へ移動してから tap する方式へ修正 (製品コードの変更なし)。CI `final-status` green (run 34042167115) をもって `implemented` へ更新。
 
 ## References
 

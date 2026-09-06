@@ -2,7 +2,7 @@
 
 > Issue: #209
 > Spec: [spec.md](./spec.md)
-> Status: planned
+> Status: implemented — 2026-09-06 に[PR #239](https://github.com/nunu1733/NunuLauncher/pull/239) としてpush、CI `final-status` green (run 34042167115)。
 
 ## Current evidence
 
@@ -49,3 +49,10 @@
 - [ ] spec 209 status/history (merge 時 `implemented`)
 - [ ] spec 52 / spec 195 の traversal 記述更新 (AC-5)
 - [ ] CONTEXT.md / DESIGN.md / ADR — presentation-only のため更新不要見込み
+
+## Execution notes (2026-09-06)
+
+- `DecisionActionsRow` (private composable) を `ManualOrganizationPreferences.kt` へ追加し、Preview / RecoveryPreview / Applied に適用。D3 は初版の横並び (weighted Row) から縦並び全幅へ決め直し: DPAD down が同一行内の横方向の focusable に到達しないため traversal test (`changeListTraversalReachesExpandAndReviewActions`) が cancel に到達できず失敗 — spec D3 を更新し、失敗を再現したテストで修正を確認。
+- CI issue52 lane (pixel_7_pro / 560dpi / x86_64) でのみ `largeChangeGroupsTruncateBehindExpandAction` の折りたたみ待ちが 2 回 timeout。pixel_7_pro AVD を local で作成して再現・計測した結果: 展開後の spec 52 focus 復元が toggle を viewport 最下端 (3120px) にぴったり配置し、row 全体が gesture-navigation 領域 (末尾 ~84px) に入る。クリック座標 x=720 は画面中央 = system nav pill の真上であり、tap が pill window に奪われてアプリに届かない (pixel_6 / 420dpi では toggle が領域外のため不発生)。test を `ScrollBy` semantics action で toggle を window 下端 +300px 以上に配置してから可視中心を tap する方式へ修正 (製品コード無変更)。
+- 検証: pixel_7_pro AVD (1440x3120 @560dpi, API 36.1, Android 16) で `ManualOrganizationPreferencesInstrumentationTest` 28/28 pass。`spotlessCheck` / organizer JVM unit gate / `assembleLawnWithQuickstepGithubDebug` pass。CI run 34042167115 全 job pass (`final-status` green)。
+- emulator screenshot 目視確認: preview で filled Apply + outlined Cancel が見出し直下に同時描画、Applied で tonal restore が row と区別される。
