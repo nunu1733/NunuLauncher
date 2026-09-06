@@ -3,7 +3,7 @@
 > Issue: #208
 > Spec: [spec.md](./spec.md)
 > Status: draft (spec owner review 待ち。spec 承認後に実装を開始する)
-> Revision: 3 — v2 review の High 1–3 (位置表示の単一導出経路・`Unidentified` discriminator・descriptor 主張への寄せ) と Medium 4–5 を反映
+> Revision: 4 — v3 review の High 1–3 (Preserve/Warning への `current: PreviewPosition` 追加・`PreviewPosition.Unidentified` variant による total 変換・discriminator の source item 固定) と Medium 4 (descriptor 行列の table-driven 化) を反映
 
 ## Current evidence
 
@@ -28,22 +28,24 @@
 変更は 3 つの既存 seam に局所する。planner / application / materializer / coordinator は触れない。
 
 1. **placement identity の型と uniqueness invariant を確定 (推奨順序 1)** — `application/public/PlanPreview.kt`:
-   - `PreviewPlacementIdentity` (sealed interface) を新設。variant: `Workspace(pageDisplayOrdinal, isNewPage, cellX, cellY)` / `Dock(rank)` / `FolderChild(parent, rank)` / `AppPairChild(parent, stage)` / `Unidentified(code, proposalLocalDiscriminator)`。discriminator は projector が action 順で決定的に採番し、表示には現れない。spec §Scope 1 の契約どおり。
-   - `MoveChange` に `identity` (source 側) と `kind`、`PreservedChange` / `ItemWarningChange` に `identity` と `kind` を追加。
+   - `PreviewPlacementIdentity` (sealed interface) を新設。variant: `Workspace(pageDisplayOrdinal, isNewPage, cellX, cellY)` / `Dock(rank)` / `FolderChild(parent, rank)` / `AppPairChild(parent, stage)` / `Unidentified(code, proposalLocalDiscriminator)`。discriminator は **source item ごとに 1 回**、決定的に採番する (v4 review High 3)。spec §Scope 1 の契約どおり。
+   - `MoveChange` に `identity` (source 側) と `kind`、`PreservedChange` / `ItemWarningChange` に `identity` / `kind` / **`current: PreviewPosition`** を追加。UI は `current` を消費して位置語を描画し、identity から再計算しない (v4 review High 1)。
+   - **`PreviewPosition` に `Unidentified` variant を追加**し、`PreviewPlacementIdentity -> PreviewPosition` を全 identity variant に対する total 関数にする (v4 review High 2)。`PreviewPosition.Unidentified` は proposal-local 序数 (identity discriminator と同値) を保持し、descriptor は raw ID・生 code 値でない一般序数語として描画する。
    - KDoc に一意性 invariant と有効期間契約 (proposal 内一意・非永続・serialize されない) を記録する。
 2. **duplicate fixture を先に追加 (推奨順序 2)** — 失敗 test 先行:
    - §Change set の fixture 表どおり、unit property test (identity invariant) と行構築 test (表示区別要素) を、実装に先立って red で追加する。
 3. **projector が identity を生成し、位置表示を identity から導出 (推奨順序 3)** — `application/preview/PlanPreviewProjector.kt`:
-   - `PositionContext` 内に `identity(state: CanonicalItemState): PreviewPlacementIdentity` を新設。`PlacementState` → identity の決定的変換。`Unidentified` には action 順で決定的な proposal-local discriminator を採番。
-   - **単一導出経路への統合 (v3 review High 1)**: 現行の `PositionContext.position(state)` は identity を入力とする純粋関数へ置き換え (`position(of: PreviewPlacementIdentity)`)、`CanonicalItemState.placement` から位置表示を直接再生成する経路は残さない。移動行の source / destination、保持行・警告行の位置はすべてこの関数経由とする。capture 構造を consult するのは identity 生成と、親 folder の表示 title 解決のみ。
+   - **discriminator の採番は proposal 生成時に 1 回 (v4 review High 3)**: `discriminatorBySourceItem: Map<ItemId, Int>` (または `ApplicationItemRef` key 相当) を projection 開始時に構築し、`identity(state)` は map を参照するのみ。同一 source item が action 行 (Move / Preserve) と warning 行の双方に現れても同一 identity になる。呼び出し順 counter は使わない。
+   - `PositionContext` 内に `identity(state: CanonicalItemState): PreviewPlacementIdentity` を新設。`PlacementState` → identity の決定的変換。
+   - **単一導出経路への統合 (v3 review High 1)**: 現行の `PositionContext.position(state)` は identity を入力とする total 関数へ置き換え (`position(of: PreviewPlacementIdentity)`)、`CanonicalItemState.placement` から位置表示を直接再生成する経路は残さない。移動行の source / destination、保持行・警告行の `current` はすべてこの関数経由とする。capture 構造を consult するのは identity 生成と、親 folder の表示 title 解決のみ。
    - `FolderChild` / `AppPairChild` の parent は `ApplicationItemRef` を `sourceItemByItemId` で解決し、parent の identity を再帰構成。planned folder parent は planned folder の intended workspace placement から構成。join miss は現行どおり `Result.Invalid`。
-   - Preserve / warning 経路で `identity` / `kind` を `PreservedChange` / `ItemWarningChange` へ流す。`UnsupportedContainer` は `Unidentified(code, discriminator)` とする (行の欠落ではなく、理由語が既に状態を語る)。
+   - Preserve / warning 経路で `identity` / `kind` / `current = position(identity)` を `PreservedChange` / `ItemWarningChange` へ流す。`UnsupportedContainer` は `Unidentified(code, discriminator)` + `PreviewPosition.Unidentified` とする (行の欠落ではなく、理由語が既に状態を語る)。
    - `combinedPagePositions` を page 表示序数の source として再利用 (既存 `workspacePosition` と同一規約)。
 4. **change 型への適用 (推奨順序 4)**: 3 と同一変更 (型追加と projector 生成は 1 つの PR ステップで通す。test は 2 が red を先に固定する)。
 5. **UI presentation と copy を更新 (推奨順序 5)** — `organizer/ui/OrganizationPreviewContent.kt`:
-   - **descriptor の分離 (v3 review High 3)**: source descriptor (名前 + kind + 現在位置) を構築する純粋関数 (`descriptorText(identity, kind, label, wording)` 等) を運命部分 (移動先・理由・警告語) の構築から分離し、unit test / instrumentation が descriptor を直接主張できる構成にする。保持行・警告行は「descriptor: 理由」、移動行は「descriptor — 移動先 (理由)」構成。
-   - **位置語は projector が identity から導出した `PreviewPosition` のみを消費する** (v3 review High 1)。`OrganizationPreviewContent` は capture 構造へ触れず、descriptor の位置部分は既存 `positionText` 語彙を identity 由来の `PreviewPosition` に対して使う。
-   - **同 band 別 cell / 同名 folder の表示区別要素**: identity と `PreviewPosition` の差分 (cell、親の cell) を descriptor 構築が受け、既存 vocabulary での区別が不可能な場合に補助語を付与する。補助語 format と en/ja copy は spec AC-3 のとおり実装 PR で owner review にかける。
+   - **descriptor の分離 (v3 review High 3)**: source descriptor (名前 + kind + 現在位置) を構築する純粋関数 (`descriptorText(identity, kind, label, current, wording)` 等) を運命部分 (移動先・理由・警告語) の構築から分離し、unit test / instrumentation が descriptor を直接主張できる構成にする。保持行・警告行は「descriptor: 理由」、移動行は「descriptor — 移動先 (理由)」構成。
+   - **位置語は change 行が運ぶ `current` / `source` / `destination` (`PreviewPosition`) を消費する**。`OrganizationPreviewContent` は capture 構造へ触れず、identity からの再計算もしない (UI に grid dimensions も親表示名も渡らないため再計算は構造的に成立しない)。
+   - **同 band 別 cell / 同名 folder の表示区別要素**: identity と `PreviewPosition` の差分 (cell、親の cell) を descriptor 構築が受け、既存 vocabulary での区別が不可能な場合に補助語を付与する。`PreviewPosition.Unidentified` は raw code・discriminator 生値を表示せず、proposal-local な一般序数語で描画する。補助語 format と en/ja copy は spec AC-3 のとおり実装 PR で owner review にかける。
    - `moveRowText` / `sameBandAdjustment` 行も descriptor に kind を併記。`KindFallback` の行では kind 語を二重化しない。
    - grouping / counts / truncation / 展開の制御 flow は無変更 (行 text だけが変わる)。
 6. **instrumentation (推奨順序 6)**: §Verification の AC-9 行を参照。
@@ -55,13 +57,16 @@
 
 ```text
 CanonicalItemState (placement, kind, title)
-  -> PreviewPlacementIdentity          (PositionContext.identity、決定的)
-  -> PreviewPosition                   (identity を入力とする純粋関数。capture への再照会なし)
+  -> PreviewPlacementIdentity          (PositionContext.identity、決定的。
+                                        Unidentified の discriminator は
+                                        proposal 開始時に source item ごとに採番)
+  -> PreviewPosition                   (identity を入力とする total 関数。
+                                        capture への再照会なし。全 variant を網羅)
   -> PlacementDescriptor (純粋行構築)  (名前 + kind + 位置。unit/instrumentation の主張対象)
   -> row text                          (descriptor + 運命部分: 移動先・理由・警告語)
 ```
 
-移動行の destination も同一経路 (intended placement → identity → `PreviewPosition`) であり、#234 はこの一本化された経路を消費する。エラーは既存の `Result.Invalid` (join miss) のみで、`Unidentified` は行内 fallback 表示へ落ちる。
+`PreservedChange` / `ItemWarningChange` は `current: PreviewPosition` を projection に運び、`current == position(identity)` が projector invariant である。移動行の destination も同一経路 (intended placement → identity → `PreviewPosition`) であり、#234 はこの一本化された経路を消費する。エラーは既存の `Result.Invalid` (join miss) のみで、`Unidentified` は行内 fallback 表示へ落ちる。
 
 ### Alternatives rejected
 
@@ -77,11 +82,11 @@ CanonicalItemState (placement, kind, title)
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `lawnchair/src/app/lawnchair/organizer/application/public/PlanPreview.kt` | `PreviewPlacementIdentity` 新設、`MoveChange.identity/.kind`、`PreservedChange.identity/.kind`、`ItemWarningChange.identity/.kind` 追加 (KDoc に invariant と有効期間) | spec 194 projection 契約の唯一の定義点。identity data model はここでしか導入できない |
+| `lawnchair/src/app/lawnchair/organizer/application/public/PlanPreview.kt` | `PreviewPlacementIdentity` 新設、`PreviewPosition.Unidentified` variant 新設、`MoveChange.identity/.kind`、`PreservedChange.identity/.kind/.current`、`ItemWarningChange.identity/.kind/.current` 追加 (KDoc に invariant と有効期間) | spec 194 projection 契約の唯一の定義点。identity data model とその派生 presentation の運搬先はここでしか導入できない |
 | `lawnchair/src/app/lawnchair/organizer/application/preview/PlanPreviewProjector.kt` | `PositionContext.identity()` 新設、`position()` を identity からの導出へ置き換え (単一経路)、Preserve / warning 経路での identity・kind 設定 | placement → identity の決定的変換と、位置表示の唯一の source of truth は projector の責務 |
 | `lawnchair/src/app/lawnchair/organizer/ui/OrganizationPreviewContent.kt` | descriptor 分離 pure 関数の新設、保持・警告・移動行の format 拡張、同 band 別 cell / 同名 folder の区別補助語、`OrganizationPreviewWording` 追加分 | 純粋行構築 seam (#195)。UI composable 側は変更不要 |
 | `lawnchair/res/values/strings.xml` / `values-ja/strings.xml` | 移動行 / 保持行 / 警告行 format の拡張、区別補助語 format | #123 契約 (en/ja 両方) |
-| `tests/unit/.../application/preview/PlanPreviewProjectorTest.kt` (+ 新規 identity property test) | identity 生成・一意性 invariant (全 fixture)、`Unidentified` 経路、既存 Invalid 経路の維持 | projection 契約の unit 正本 |
+| `tests/unit/.../application/preview/PlanPreviewProjectorTest.kt` (+ 新規 identity property test) | identity 生成・一意性 invariant (全 fixture)、`current == position(identity)` invariant、`Unidentified` / `PreviewPosition.Unidentified` 経路、F9 (同一 unsupported item の行跨ぎ identity 同一性)、既存 Invalid 経路の維持 | projection 契約の unit 正本 |
 | `tests/unit/app/lawnchair/organizer/ui/OrganizationPreviewContentTest.kt` | descriptor 分離関数の直接主張 (同名同 kind の distinct identity で descriptor 不一致)、保持行・警告行・移動行の新 format、区別補助語、KindFallback 非二重化 | 行構築契約の正本 test |
 | `tests/organizer-instrumentation/.../ManualOrganizationPreferencesInstrumentationTest.kt` | 同名 placement が Move/Preserve に跨る fixture で、行ごとの区別可能性を rendered text で主張する新規 test。既存行 text 主張の期待更新 | UI レベル検証 (Issue #208 終了条件 2) |
 | `specs/194-plan-preview-seam/spec.md` | Change history へ「#208 による additive 拡張 (identity / kind)」を追記 | 契約変更の記録規約 |
@@ -101,6 +106,8 @@ planner / application / materializer / coordinator / diagnostics / DB には変�
 | F6 | widget / folder unit / app pair / dock の同名混在 | kind 併記による区別、identity が各 container 種別で成立 | unit + row test |
 | F7 | title 無し (KindFallback) item の混在 | fallback 行でも identity・位置・kind 構成が欠落しない | unit row test |
 | F8 | 全種別 + 同名の統合 proposal | instrumentation で各行が source placement を区別する表示要素 (kind 語・位置語) を実際に持つことを descriptor ベースで主張する — **行全文の不一致主張では元の UX バグを捕捉できないため行わない** (v3 review High 3)。Move / Preserve identity 排他も主張 (終了条件 2) | instrumentation (API 36) |
+| F9 | **同一 unsupported source item が Preserve 行 + Warning 行の双方に現れる** (v4 review High 3) | 両行の `PreviewPlacementIdentity` が同一であること (discriminator が source item 固定であることの直接固定)。counter 方式だと破れる境界 | unit property test |
+| F10 | **同名・同 kind・同 unsupported code の別 item 複数** (v4 review High 2) | identity は別 (discriminator)、descriptor は proposal-local 一般序数語で区別される。raw code / 生 ID は表示に現れない | unit property + row test |
 
 ## Migration and recovery
 
@@ -113,9 +120,9 @@ planner / application / materializer / coordinator / diagnostics / DB には変�
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
 | AC-1 (identity 導入・shape 不変) | `PlanPreviewProjectorTest` 更新 + corpus / counts contract test 通過 | `./gradlew testLawnWithQuickstepGithubDebugUnitTest` |
-| AC-2 (identity invariant + bucket exclusivity) | F1–F4 を含む identity property test、F5 / F8 の `MoveChange`・`PreservedChange` identity 排他主張 | 同上 |
-| AC-3 (descriptor 一意性) | F2 / F4 の row test を descriptor 分離関数への直接主張で実装 (copy 確定は実装 PR review) | 同上 |
-| AC-4 (保持行 format・単一導出経路) | `OrganizationPreviewContentTest` 更新 + projector の `position()` が identity のみを入力とすることの unit 主張 (capture 再照会経路の不在) | 同上 |
+| AC-2 (identity invariant + bucket exclusivity) | F1–F4 を含む identity property test、F5 / F8 の `MoveChange`・`PreservedChange` identity 排他主張、F9 の行跨ぎ identity 同一性主張 | 同上 |
+| AC-3 (descriptor 一意性, table-driven) | AC-3 行列 (同 band 別 cell、同名 folder、dock 別 rank、同一 folder 内別 rank、app pair 別 stage、F10 unsupported duplicate) の row test を descriptor 分離関数への直接主張で実装 (copy 確定は実装 PR review) | 同上 |
+| AC-4 (保持行 format・単一導出経路) | `OrganizationPreviewContentTest` 更新 + `current == position(identity)` invariant の unit 主張 + `position()` が identity のみを入力とすることの unit 主張 (capture 再照会経路の不在) | 同上 |
 | AC-5 (folder child 親区別・locks 語彙) | F4 row test + locks 画面語彙一致の LQA 記録 | unit + manual |
 | AC-6 (kind 併記・非二重化) | F6 / F7 の row test | 同上 |
 | AC-7 (有効期間・非永続) | 契約 review + identity 型が Parcelable/Serializable でないことの確認 | code review |
@@ -154,3 +161,4 @@ planner / application / materializer / coordinator / diagnostics / DB には変�
 
 - 2026-09-06: v2 — v1 review (Request changes) を受け、canonical placement identity 導入方式へ改訂。
 - 2026-09-06: v3 — v2 review の反映: source/current 位置表示を `identity -> PreviewPosition` の単一経路へ統合し、Plan 側の「現行 `PreviewPosition` から導出」との食い違いを解消 (High 1)。`Unidentified` に proposal-local discriminator を追加し invariant を universal 化 (High 2)。受入 test を descriptor (source 部分) 主張へ寄せ、行全文不一致主張の誤 PASS を排除 (High 3)。F5 / F8 に Move / Preserve identity 排他の明示主張を追加 (Medium 5)。
+- 2026-09-06: v4 — v3 review の反映: `PreservedChange` / `ItemWarningChange` に identity 導出の `current: PreviewPosition` を追加し `current == position(identity)` を invariant 化 (High 1)。`PreviewPosition.Unidentified` variant を追加し identity → `PreviewPosition` を total 関数化、unsupported duplicate の descriptor 区別語を契約に含めた (High 2)。discriminator を source item 固定の proposal-local ordinal に変更し、F9 で同一 unsupported item の行跨ぎ identity 同一性を固定 (High 3)。AC-3 を identity variant 全体の table-driven 行列へ一般化し F10 を追加 (Medium 4)。

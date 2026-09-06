@@ -63,7 +63,9 @@ sealed interface PreviewPlacementIdentity {
 
     /** container 種別が capture 上未対応の場合 (UnsupportedContainer)。
      *  同一 code を持つ別 item と衝突しないよう proposal-local な
-     *  discriminator を持つ (表示には現れない)。 */
+     *  discriminator を持つ。discriminator は source item ごとに 1 回
+     *  採番され、同一 source item から生じる全 row (Move / Preserve /
+     *  Warning) で再利用される (表示には現れない)。 */
     data class Unidentified(
         val code: ContainerCode,
         val proposalLocalDiscriminator: Int,
@@ -73,6 +75,8 @@ sealed interface PreviewPlacementIdentity {
 
 `SplitStage` / `ContainerCode` は capture model (`CanonicalItemState.placement`) が既に public projection で露出している型である。identity 一意性に対する page 表示序数の十分性: `combinedPagePositions` は決定的であり、1 proposal 内で 2 つの異なる page が同じ表示序数を持たないため、page 同定は proposal 内で一意である (有効期間契約と整合)。
 
+**`Unidentified` discriminator の採番規則 (v4 review High 3)**: discriminator は `identity()` 呼び出しごとに進める counter ではなく、**source item ごとに 1 回**採番される proposal-local ordinal である (`discriminatorBySourceItem: ApplicationItemRef -> Int` を proposal 生成時に一度確定)。同一 source item が action 行 (Move / Preserve) と warning 行の双方に現れても、両行の identity は同一である (「同一 placement / 同一 source item iff 同一 identity」契約の維持)。この境界を fixture (F9) で直接固定する。
+
 要件:
 
 - **identity 一意性 invariant**: 同一 proposal (`PlanPreviewDetails`) 内で、2 つの行が同じ container 種別の同一 variant かつ等しい identity を持つのは、両行が **同一 placement (同一 source item)** を指すとき、かつそのときに限る。すなわち `distinct source placements ⇒ distinct identities`。fixture test でこの invariant を property として検証する。`Unidentified` は proposal-local discriminator により同 proposal 内の他の `Unidentified` と衝突しない (projector が action 順で決定的に採番)。これにより invariant は全 variant で universal に成立する。
@@ -81,9 +85,10 @@ sealed interface PreviewPlacementIdentity {
 
 ### 2. 既存 change 型への適用
 
-- `MoveChange` に `identity: PreviewPlacementIdentity` (source 側) と `kind: CanonicalItemKind` を追加。
-- `PreservedChange` に `identity: PreviewPlacementIdentity` と `kind: CanonicalItemKind` を追加。
-- `ItemWarningChange` に `identity: PreviewPlacementIdentity` と `kind: CanonicalItemKind` を追加。
+- `MoveChange` に `identity: PreviewPlacementIdentity` (source 側) と `kind: CanonicalItemKind` を追加。既存の `source` / `destination` は identity からの導出値に置き換わる (§4)。
+- `PreservedChange` に `identity: PreviewPlacementIdentity`、`kind: CanonicalItemKind`、`current: PreviewPosition` を追加 (v4 review High 1)。`current` は identity から導出された現在位置表示であり、保持行が位置語を描画するための唯一の projection 上の source である。UI が identity から位置を再計算する経路は設けない (Workspace の band 算出に必要な grid dimensions、folder / app pair の親表示名は identity 単体には存在しない)。
+- `ItemWarningChange` に `identity: PreviewPlacementIdentity`、`kind: CanonicalItemKind`、`current: PreviewPosition` を追加。
+- `current == position(identity)` は projector invariant である。identity は「どの placement か」、`PreviewPosition` は「どう表示するか」の派生値であり、同一 source item から両者が独立に生成されることはない (二重 source の禁止)。
 - identity 契約の対象は上記の source-backed な per-item 行である。`NewFolderChange` は member の運命が同一であるため対象外 (§Non-goals)。
 - `PreviewChange` の variant 集合は変更しない。全追加は data class の field 追加であり、既存消費者 (行構築、counts 導出、既存 test) に対して非破壊である。
 
@@ -114,7 +119,8 @@ CanonicalItemState
 
 - identity は `plan.sourceState` の `CanonicalItemState.placement` (`Workspace(page, cell)` / `Dock(rank)` / `FolderChild(parent, rank)` / `AppPairChild(parent, stage)` / `UnsupportedContainer(code)`) から決定的に生成する。parent は `ApplicationItemRef` を source item lookup で解決し、parent の placement identity を再帰的に構成する。join miss は現行どおり `Result.Invalid` (fail-closed)。
 - `Unidentified` の proposal-local discriminator は projector が action 順で決定的に採番する (同一 proposal 内で衝突しない)。
-- **位置表示の単一経路 (v3 review 指摘 1)**: 既存 `PreviewPosition` は identity から導出される presentation である。capture 構造 (`CanonicalItemState.placement`) が consult されるのは identity 生成と表示 title の解決のみであり、位置表示を capture から直接再生成する経路は残さない。現行の `PositionContext.position(state)` は identity 生成の後段へ再配置し、`PreviewPosition` への変換は identity を入力とする純粋関数へ一本化する。移動行の destination も同一経路であり (intended placement → identity → `PreviewPosition`)、#234 が destination の具体性を上げる場合もこの一本化された経路を消費する。
+- **位置表示の単一経路 (v3 review 指摘 1)**: 既存 `PreviewPosition` は identity から導出される presentation である。capture 構造 (`CanonicalItemState.placement`) が consult されるのは identity 生成と表示 title の解決のみであり、位置表示を capture から直接再生成する経路は残さない。現行の `PositionContext.position(state)` は identity 生成の後段へ再配置し、`PreviewPosition` への変換は identity を入力とする **total function** へ一本化する。移動行の destination も同一経路であり (intended placement → identity → `PreviewPosition`)、#234 が destination の具体性を上げる場合もこの一本化された経路を消費する。
+- **`Unidentified` の presentation (v4 review High 2)**: `PreviewPosition` に unsupported container に対応する variant は存在しないため、`PreviewPosition.Unidentified` (表示上は理由語に任せる総称位置表現) を追加する。identity → `PreviewPosition` の変換を全 identity variant に対する total function とするためであり、unsupported placement を descriptor-position 契約の対象外にする (Outcome を狭める) 案は採用しない。`Unidentified` の discriminator は表示に現れない契約のため、同名・同 kind・同 code の unsupported item が複数ある場合、descriptor の位置部分は同一になり得る。この場合の区別は raw ID ではない proposal-local な区別語 (「維持対象 N」相当の fallback 語) で行い、その copy は AC-3 と同じく実装 PR で owner review にかける。
 - **descriptor の分離 (v3 review 指摘 3)**: 行構築は source descriptor (名前 + kind + 現在位置) を運命部分 (移動先・理由・警告語) から分離した純粋関数として構築し、descriptor を unit test / instrumentation の直接の主張対象とする。
 
 ## Relationship to #234 (責務境界 — review 指摘 3)
@@ -238,10 +244,10 @@ None。新たな permission、network、telemetry、export は追加しない。
 
 | AC | Acceptance criterion |
 |---|---|
-| AC-1 | projection に `PreviewPlacementIdentity` が導入され、`MoveChange` / `PreservedChange` / `ItemWarningChange` が identity と kind を持つ。identity は localized string を含まない。`PreviewChange` の variant 集合と `PlanPreviewDetails` / `PreviewCounts` の shape は不変である。 |
-| AC-2 | identity 一意性 invariant「同一 proposal 内で distinct source placements ⇒ distinct identities」が、同名・同 kind・同 page・同 3×3 band 内の別 cell、同名 folder × 同 rank × 同名 child を含む fixture で property test として検証される。同一 identity が `MoveChange` と `PreservedChange` の両 bucket に現れないこと (bucket exclusivity) を、同名 item が Move と Preserve に跨る fixture (F5 / F8) で明示的に主張する。 |
-| AC-3 | source placement descriptor の一意性: 同一 label・同 kind を持つ distinct source identity が共存する fixture (同 band 内別 cell、同名 folder × 同位置語) で、行の source descriptor 部分 (名前 + kind + 現在位置) の rendered text が互いに異なる。主張は descriptor に対して行い、移動先・理由語の差による行全文の不一致では満たされない。表示要素の採用 (identity 由来補助語等) は en/ja copy とともに実装 PR で owner review にかける。 |
-| AC-4 | 保持行は「名前 — kind — 現在位置 — 保持理由」の全要素で描画される。source/current の位置表示は `PreviewPlacementIdentity -> PreviewPosition -> text` の単一経路で導出され、`CanonicalItemState.placement` から位置表示を直接再生成する第二経路は存在しない。生 cell / 生 ordinal は表示へ現れない。 |
+| AC-1 | projection に `PreviewPlacementIdentity` が導入され、`MoveChange` / `PreservedChange` / `ItemWarningChange` が identity と kind を持つ。保持・警告行は identity 導出の `current: PreviewPosition` を projection に持ち、UI は `current` を消費して位置語を描画する (identity からの UI 側再計算経路なし)。identity は localized string を含まない。`PreviewChange` の variant 集合と `PlanPreviewDetails` / `PreviewCounts` の shape は不変である。 |
+| AC-2 | identity 一意性 invariant「同一 proposal 内で distinct source placements ⇒ distinct identities」が、同名・同 kind・同 page・同 3×3 band 内の別 cell、同名 folder × 同 rank × 同名 child を含む fixture で property test として検証される。同一 identity が `MoveChange` と `PreservedChange` の両 bucket に現れないこと (bucket exclusivity) を、同名 item が Move と Preserve に跨る fixture (F5 / F8) で明示的に主張する。同一 unsupported source item が Preserve 行と Warning 行の双方に現れる場合も identity が同一である (F9)。 |
+| AC-3 | source placement descriptor の一意性: 「同一 label・同 kind・distinct source identity ⇒ distinct source descriptor」を、identity variant 全体へ table-driven に適用して検証する — 同 page 同 band 内別 cell、同名 folder × 同位置語、dock の別 rank、同一 folder 内の別 rank、app pair child の別 stage、および unsupported duplicate (F10) を table case とする。主張は descriptor に対して行い、移動先・理由語の差による行全文の不一致では満たされない。表示要素の採用 (identity 由来補助語、unsupported の proposal-local 区別語等) は en/ja copy とともに実装 PR で owner review にかける。 |
+| AC-4 | 保持行は「名前 — kind — 現在位置 — 保持理由」の全要素で描画される。`PreservedChange` / `ItemWarningChange` は `current: PreviewPosition` を projection に持ち、それが identity からの導出値であること (`current == position(identity)`) を projector invariant として検証する。source/current の位置表示は `PreviewPlacementIdentity -> PreviewPosition -> text` の単一経路で導出され、`CanonicalItemState.placement` から位置表示を直接再生成する第二経路は存在しない。生 cell / 生 ordinal は表示へ現れない。 |
 | AC-5 | folder child 行は親 folder を区別できる表示要素 (親 folder の現在位置語) を持ち、Placement locks 画面の folder 位置語彙と語彙系統が一致する (en/ja)。 |
 | AC-6 | kind 併記が全変更行で行われ、`KindFallback` の行で二重化しない。 |
 | AC-7 | identity は 1 回の projected proposal 内で一意かつ安定であり、永続 launcher item ID ではない。process-local であり serialize / persist されない。 |
@@ -254,8 +260,8 @@ None。新たな permission、network、telemetry、export は追加しない。
 | AC | Evidence |
 |---|---|
 | AC-1, AC-7 | `PlanPreview.kt` 契約 review + `PlanPreviewProjectorTest` (identity 生成、serialize 不可能性は型で保証) |
-| AC-2 | 新規 property test: 全 placement 種別 × 同名 × 同 band 別 cell / 同名 folder × 同 rank fixture で distinct placements ⇒ distinct identities を主張。F5 / F8 fixture で `MoveChange` と `PreservedChange` の identity 集合の排他を主張 |
-| AC-3 | `OrganizationPreviewContentTest`: descriptor 分離 pure 関数を直接主張 — 同 band 別 cell fixture・同名 folder fixture で source descriptor (名前 + kind + 現在位置) の互いの不一致を検証 (copy 確定は実装 PR review) |
+| AC-2 | 新規 property test: 全 placement 種別 × 同名 × 同 band 別 cell / 同名 folder × 同 rank fixture で distinct placements ⇒ distinct identities を主張。F5 / F8 fixture で `MoveChange` と `PreservedChange` の identity 集合の排他を主張。F9 (同一 unsupported item の Preserve 行 + Warning 行) で identity の同一性を主張 |
+| AC-3 | `OrganizationPreviewContentTest`: descriptor 分離 pure 関数を直接主張 — AC-3 の table-driven case 行列 (同 band 別 cell、同名 folder、dock 別 rank、同一 folder 内別 rank、app pair 別 stage、unsupported duplicate) で source descriptor の互いの不一致を検証 (copy 確定は実装 PR review) |
 | AC-4, AC-6 | `OrganizationPreviewContentTest` 更新 (保持行 format、kind 併記、KindFallback 非二重化、単一導出経路) |
 | AC-5 | folder child 表示の unit test + locks 画面語彙一致の LQA 記録 (manual) |
 | AC-8 | 既存 `PlanPreviewProjectorTest` / `PlanPreviewCountsCorpusContractTest` / `DestinationRegionMappingTest` の無変更 (または最小更新) 通過 |
@@ -271,6 +277,7 @@ None。spec 時点で確定した判断は §Scope 1–4 と §Relationship to #
 - 2026-09-06: Drafted for Issue #208。UX review F-01 の行アイデンティティ問題を、#234 (destination 具体性) と棲み分けた上で、projection additive 拡張 (PreservedChange 位置/kind、folder 内 rank、kind 併記) として起案。
 - 2026-09-06: Owner review revision (Request changes 反映): 表示位置と placement の同一視を撤回し、canonical `PreviewPlacementIdentity` の導入と一意性 invariant (distinct placements ⇒ distinct identities) を契約の中核へ変更 (High 1)。folder child identity を親 folder の placement identity + rank で定義 (High 2)。#234 との責務境界を Option A (identity data model は #208、destination presentation は #234、依存は #234→#208 のみ) として明記 (High 3)。identity の有効期間 (proposal 内一意・非永続) を定義 (Medium 4)。identity → presentation → localized copy の一方向を明記 (Medium 5)。AC を identity invariant ベースへ再構成し、反例 fixture (同 band 別 cell、同名 folder × 同 rank) を test oracle へ追加。
 - 2026-09-06: Owner review revision 2 (Request changes 継続の反映): source placement の位置表示を identity から導出する単一経路 (`PreviewPlacementIdentity -> PreviewPosition -> text`) に固定し、`CanonicalItemState.placement` からの直接再生成を禁止 (High 1)。`Unidentified` に proposal-local discriminator を追加し、一意性 invariant を全 variant で universal に成立させた (High 2)。受入条件を行全文の不一致から source placement descriptor (名前 + kind + 現在位置) の一意性へ寄せ、descriptor を unit test / instrumentation の主張対象に変更 (High 3)。Outcome の identity 契約対象を source-backed な per-item 行へ明確化し `NewFolderChange` を対象外と整理 (Medium 4)。bucket exclusivity を AC-2 に明示 (Medium 5)。
+- 2026-09-06: Owner review revision 3 (Request changes 継続の反映、前回 5 点は解消済み判定の上で projection shape への落とし込みを修正): `PreservedChange` / `ItemWarningChange` に identity 導出の `current: PreviewPosition` を追加し、`current == position(identity)` を projector invariant として固定 (High 1)。`PreviewPosition.Unidentified` variant を追加し、identity → `PreviewPosition` を全 variant の total function に変更。unsupported duplicate の descriptor 区別語も契約に含めた (High 2)。`Unidentified` discriminator を「identity() 呼び出し順」ではなく source item 固定の proposal-local ordinal に変更し、同一 source item の Move / Preserve / Warning 行が同一 identity を持つことを F9 で固定 (High 3)。AC-3 を identity variant 全体の table-driven 行列へ一般化 (Medium 4)。
 
 ## References
 
