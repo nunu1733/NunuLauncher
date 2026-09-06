@@ -1126,7 +1126,8 @@
     <string name="manual_organization_preview_item_descriptor_without_kind">“%1$s” — %2$s</string>
     <string name="manual_organization_preview_position_unidentified">unsupported placement %1$d</string>
     <string name="manual_organization_preview_position_with_supplement">%1$s (%2$s)</string>
-    <string name="manual_organization_preview_supplement_cell">row %1$d, column %2$d</string>
+    <string name="manual_organization_preview_supplement_cell">row %1$d, column %2$d, %3$s</string>
+    <string name="manual_organization_preview_supplement_parent_with_stage">%1$s, %2$s</string>
     <string name="manual_organization_preview_supplement_stage_top">upper half</string>
     <string name="manual_organization_preview_supplement_stage_bottom">lower half</string>
     <string name="manual_organization_preview_move_reason_single_placement">moves as a single placement</string>

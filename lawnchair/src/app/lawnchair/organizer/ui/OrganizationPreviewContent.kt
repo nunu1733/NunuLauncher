@@ -91,8 +91,12 @@ interface OrganizationPreviewWording {
     /** Issue #208: %1 = position text, %2 = identity-derived supplement. */
     val positionWithSupplement: String
 
-    /** Issue #208: %1 = 1-based row ordinal, %2 = 1-based column ordinal. */
+    /** Issue #208: %1 = 1-based row ordinal, %2 = 1-based column ordinal,
+     *  %3 = page wording — the full parent locator for nested collisions. */
     val supplementCell: String
+
+    /** Issue #208: %1 = parent locator, %2 = split stage word. */
+    val supplementParentWithStage: String
 
     /** Issue #208: split-pair stage words for same-named pair children. */
     val supplementStageTop: String
@@ -191,10 +195,11 @@ object OrganizationPreviewContent {
 
     /**
      * Issue #208 (AC-3): rows whose (label, kind, position) triple collides
-     * with another row receive an identity-derived supplement (cell ordinals
-     * for workspace anchors and folder parents, split stage for pair
-     * children) so their rendered descriptors stay unique. Deterministic and
-     * computed once per proposal; unique rows are never touched.
+     * with another row receive an identity-derived supplement so their
+     * rendered descriptors stay unique. Deterministic and computed once per
+     * proposal; unique rows are never touched. Nested identities supplement
+     * with the full parent locator (page + row/column, dock slot) — not just
+     * the cell — so same-named parents on different pages stay distinct too.
      */
     private fun descriptorSupplements(
         changes: List<PreviewChange>,
@@ -229,20 +234,43 @@ object OrganizationPreviewContent {
     }
 
     private fun identitySupplement(identity: PreviewPlacementIdentity?, wording: OrganizationPreviewWording): String? = when (identity) {
-        is PreviewPlacementIdentity.Workspace -> format(wording.supplementCell, identity.cellY + 1, identity.cellX + 1)
+        is PreviewPlacementIdentity.Workspace -> workspaceLocator(identity, wording)
 
-        is PreviewPlacementIdentity.FolderChild -> when (val parent = identity.parent) {
-            is PreviewPlacementIdentity.Workspace -> format(wording.supplementCell, parent.cellY + 1, parent.cellX + 1)
-            is PreviewPlacementIdentity.Dock -> format(wording.dockPosition, parent.rank + 1)
-            else -> null
-        }
+        is PreviewPlacementIdentity.Dock -> format(wording.dockPosition, identity.rank + 1)
 
-        is PreviewPlacementIdentity.AppPairChild -> when (identity.stage) {
-            SplitStage.TOP_OR_LEFT -> wording.supplementStageTop
-            SplitStage.BOTTOM_OR_RIGHT -> wording.supplementStageBottom
+        is PreviewPlacementIdentity.FolderChild -> parentLocator(identity.parent, wording)
+
+        is PreviewPlacementIdentity.AppPairChild -> {
+            val stage = when (identity.stage) {
+                SplitStage.TOP_OR_LEFT -> wording.supplementStageTop
+                SplitStage.BOTTOM_OR_RIGHT -> wording.supplementStageBottom
+            }
+            parentLocator(identity.parent, wording)?.let { parent ->
+                format(wording.supplementParentWithStage, parent, stage)
+            }
         }
 
         else -> null
+    }
+
+    private fun parentLocator(parent: PreviewPlacementIdentity, wording: OrganizationPreviewWording): String? = when (parent) {
+        is PreviewPlacementIdentity.Workspace -> workspaceLocator(parent, wording)
+        is PreviewPlacementIdentity.Dock -> format(wording.dockPosition, parent.rank + 1)
+        else -> null
+    }
+
+    private fun workspaceLocator(identity: PreviewPlacementIdentity.Workspace, wording: OrganizationPreviewWording): String {
+        val page = if (identity.isNewPage) {
+            format(wording.newPagePosition, identity.pageDisplayOrdinal)
+        } else {
+            format(wording.pagePosition, identity.pageDisplayOrdinal)
+        }
+        return format(
+            wording.supplementCell,
+            identity.cellY + 1,
+            identity.cellX + 1,
+            page,
+        )
     }
 
     fun moveRowText(change: MoveChange, wording: OrganizationPreviewWording, supplement: String? = null): String {

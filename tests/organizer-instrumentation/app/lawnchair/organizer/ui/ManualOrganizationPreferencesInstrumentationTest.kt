@@ -85,6 +85,7 @@ import app.lawnchair.organizer.planning.PageOrder
 import app.lawnchair.organizer.planning.PageRef
 import app.lawnchair.organizer.planning.PlacementCode
 import app.lawnchair.organizer.planning.PlacementTarget
+import app.lawnchair.organizer.planning.SplitStage
 import app.lawnchair.organizer.planning.Planned
 import app.lawnchair.organizer.planning.PlannedPlacement
 import app.lawnchair.organizer.planning.PlanningResult
@@ -588,8 +589,9 @@ class ManualOrganizationPreferencesInstrumentationTest {
                 previewed(
                     PlanPreviewDetails(
                         changes = listOf(
+                            // icon (home): moves as a single placement.
                             MoveChange(
-                                item = ItemId("gmail.a"),
+                                item = ItemId("gmail.icon"),
                                 label = PreviewLabel.Named("Gmail"),
                                 identity = PreviewPlacementIdentity.Workspace(2, false, 0, 4),
                                 kind = CanonicalItemKind.Application,
@@ -597,8 +599,9 @@ class ManualOrganizationPreferencesInstrumentationTest {
                                 destination = workspace(2, RowBand.TOP, ColumnBand.LEFT, 1),
                                 rationale = PlacementCode.SINGLE_PLACEMENT,
                             ),
+                            // folder child: kept, inside a named folder.
                             PreservedChange(
-                                item = ItemId("gmail.b"),
+                                item = ItemId("gmail.child"),
                                 label = PreviewLabel.Named("Gmail"),
                                 identity = PreviewPlacementIdentity.FolderChild(
                                     PreviewPlacementIdentity.Workspace(1, false, 3, 3),
@@ -611,6 +614,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
                                 ),
                                 reason = PreserveReason.NON_TARGET,
                             ),
+                            // widget: kept, kind word distinguishes the icon.
                             PreservedChange(
                                 item = ItemId("gmail.widget"),
                                 label = PreviewLabel.Named("Gmail"),
@@ -619,8 +623,38 @@ class ManualOrganizationPreferencesInstrumentationTest {
                                 current = workspace(1, RowBand.TOP, ColumnBand.LEFT, 1),
                                 reason = PreserveReason.WIDGET,
                             ),
+                            // folder unit: kept at its own workspace cell.
+                            PreservedChange(
+                                item = ItemId("gmail.folder"),
+                                label = PreviewLabel.Named("Gmail"),
+                                identity = PreviewPlacementIdentity.Workspace(1, false, 2, 0),
+                                kind = CanonicalItemKind.Folder,
+                                current = workspace(1, RowBand.TOP, ColumnBand.CENTER, 1),
+                                reason = PreserveReason.NON_TARGET,
+                            ),
+                            // dock icon: kept, dock slot word.
+                            PreservedChange(
+                                item = ItemId("gmail.dock"),
+                                label = PreviewLabel.Named("Gmail"),
+                                identity = PreviewPlacementIdentity.Dock(4),
+                                kind = CanonicalItemKind.Application,
+                                current = PreviewPosition.DockRank(4),
+                                reason = PreserveReason.DOCK,
+                            ),
+                            // app pair: kept, pair name word.
+                            PreservedChange(
+                                item = ItemId("gmail.pair"),
+                                label = PreviewLabel.Named("Gmail"),
+                                identity = PreviewPlacementIdentity.AppPairChild(
+                                    PreviewPlacementIdentity.Workspace(1, false, 3, 0),
+                                    SplitStage.TOP_OR_LEFT,
+                                ),
+                                kind = CanonicalItemKind.AppPair,
+                                current = PreviewPosition.InAppPair(PreviewLabel.Named("Gmail")),
+                                reason = PreserveReason.APP_PAIR,
+                            ),
                         ),
-                        counts = PreviewCounts(movedCount = 1, preservedCount = 2, newFolderCount = 0, newPageCount = 0, warningCounts = emptyMap()),
+                        counts = PreviewCounts(movedCount = 1, preservedCount = 5, newFolderCount = 0, newPageCount = 0, warningCounts = emptyMap()),
                     ),
                 )
             }
@@ -636,6 +670,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
 
         val appKind = context.getString(R.string.manual_organization_preview_kind_application)
         val widgetKind = context.getString(R.string.manual_organization_preview_kind_app_widget)
+        val folderKind = context.getString(R.string.manual_organization_preview_kind_folder)
+        val pairKind = context.getString(R.string.manual_organization_preview_kind_app_pair)
         fun descriptor(name: String, kind: String, position: String) = context.getString(
             R.string.manual_organization_preview_item_descriptor,
             name,
@@ -674,14 +710,46 @@ class ManualOrganizationPreferencesInstrumentationTest {
             ),
             context.getString(R.string.manual_organization_preview_preserved_reason_widget),
         )
+        val folderUnitRow = context.getString(
+            R.string.manual_organization_preview_item_row,
+            descriptor(
+                "Gmail",
+                folderKind,
+                workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
+            ),
+            context.getString(R.string.manual_organization_preview_preserved_reason_non_target),
+        )
+        val dockRow = context.getString(
+            R.string.manual_organization_preview_item_row,
+            descriptor(
+                "Gmail",
+                appKind,
+                context.getString(R.string.manual_organization_preview_position_dock, 5),
+            ),
+            context.getString(R.string.manual_organization_preview_preserved_reason_dock),
+        )
+        val appPairRow = context.getString(
+            R.string.manual_organization_preview_item_row,
+            descriptor(
+                "Gmail",
+                pairKind,
+                context.getString(R.string.manual_organization_preview_position_app_pair, "Gmail"),
+            ),
+            context.getString(R.string.manual_organization_preview_preserved_reason_app_pair),
+        )
 
-        // Each same-named row renders, and the source descriptors (kind word +
-        // current position) actually differ — the F-01 ambiguity is fixed at
-        // the rendered surface, not just in the projection model.
+        // AC-9: every placement kind (icon / folder unit / folder child /
+        // widget / app pair / dock) with the same display name renders, and
+        // the source descriptors (kind word + current position) actually
+        // differ — the F-01 ambiguity is fixed at the rendered surface, not
+        // just in the projection model.
         composeRule.onNodeWithText(moveRow).assertIsDisplayed()
         composeRule.onNodeWithText(folderChildRow).assertIsDisplayed()
         composeRule.onNodeWithText(widgetRow).assertIsDisplayed()
-        assertEquals(3, setOf(moveRow, folderChildRow, widgetRow).size)
+        composeRule.onNodeWithText(folderUnitRow).assertIsDisplayed()
+        composeRule.onNodeWithText(dockRow).assertIsDisplayed()
+        composeRule.onNodeWithText(appPairRow).assertIsDisplayed()
+        assertEquals(6, setOf(moveRow, folderChildRow, widgetRow, folderUnitRow, dockRow, appPairRow).size)
         assertEquals(0, application.applyCalls)
     }
 
@@ -979,6 +1047,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
             R.string.manual_organization_preview_position_unidentified,
             R.string.manual_organization_preview_position_with_supplement,
             R.string.manual_organization_preview_supplement_cell,
+            R.string.manual_organization_preview_supplement_parent_with_stage,
             R.string.manual_organization_preview_supplement_stage_top,
             R.string.manual_organization_preview_supplement_stage_bottom,
             R.string.manual_organization_preview_move_reason_single_placement,

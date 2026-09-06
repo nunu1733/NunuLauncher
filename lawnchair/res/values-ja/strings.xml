@@ -225,7 +225,8 @@
     <string name="manual_organization_preview_item_descriptor_without_kind">「%1$s」・%2$s</string>
     <string name="manual_organization_preview_position_unidentified">サポート対象外の配置%1$d</string>
     <string name="manual_organization_preview_position_with_supplement">%1$s（%2$s）</string>
-    <string name="manual_organization_preview_supplement_cell">%1$d行目・%2$d列目</string>
+    <string name="manual_organization_preview_supplement_cell">%3$s・%1$d行目・%2$d列目</string>
+    <string name="manual_organization_preview_supplement_parent_with_stage">%1$s・%2$s</string>
     <string name="manual_organization_preview_supplement_stage_top">上側</string>
     <string name="manual_organization_preview_supplement_stage_bottom">下側</string>
     <string name="manual_organization_preview_move_reason_single_placement">単体配置として移動</string>

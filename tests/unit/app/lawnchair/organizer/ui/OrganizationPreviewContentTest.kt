@@ -173,14 +173,14 @@ class OrganizationPreviewContentTest {
                     source(2, RowBand.TOP, ColumnBand.CENTER, 1),
                     destination(2, RowBand.TOP, ColumnBand.CENTER, 1),
                     PlacementCode.SINGLE_PLACEMENT,
-                    anchor = Grid(0, 0),
+                    anchor = Grid(0, 0, page = 2),
                 ),
                 labeledMove(
                     PreviewLabel.Named("Photos"),
                     source(2, RowBand.TOP, ColumnBand.CENTER, 1),
                     destination(2, RowBand.TOP, ColumnBand.CENTER, 1),
                     PlacementCode.SINGLE_PLACEMENT,
-                    anchor = Grid(1, 0),
+                    anchor = Grid(1, 0, page = 2),
                 ),
             ),
             counts = PreviewCounts(2, 0, 0, 0, emptyMap()),
@@ -190,8 +190,8 @@ class OrganizationPreviewContentTest {
 
         assertEquals(
             listOf(
-                "“Photos” (App) — top center, page 2 (row 1, column 1) → position adjusted within top center",
-                "“Photos” (App) — top center, page 2 (row 1, column 2) → position adjusted within top center",
+                "“Photos” (App) — top center, page 2 (row 1, column 1, page 2) → position adjusted within top center",
+                "“Photos” (App) — top center, page 2 (row 1, column 2, page 2) → position adjusted within top center",
             ),
             rows,
         )
@@ -287,8 +287,8 @@ class OrganizationPreviewContentTest {
 
         assertEquals(
             listOf(
-                "“Gmail” (App) — top left, page 1 (row 1, column 1): kept because it is out of scope",
-                "“Gmail” (App) — top left, page 1 (row 1, column 2): kept because it is out of scope",
+                "“Gmail” (App) — top left, page 1 (row 1, column 1, page 1): kept because it is out of scope",
+                "“Gmail” (App) — top left, page 1 (row 1, column 2, page 1): kept because it is out of scope",
             ),
             rows,
         )
@@ -314,8 +314,8 @@ class OrganizationPreviewContentTest {
 
         assertEquals(
             listOf(
-                "“Gmail” (App) — folder “Google”, position 2 (row 1, column 1): kept because it is out of scope",
-                "“Gmail” (App) — folder “Google”, position 2 (row 4, column 1): kept because it is out of scope",
+                "“Gmail” (App) — folder “Google”, position 2 (row 1, column 1, page 1): kept because it is out of scope",
+                "“Gmail” (App) — folder “Google”, position 2 (row 4, column 1, page 1): kept because it is out of scope",
             ),
             rows,
         )
@@ -366,8 +366,8 @@ class OrganizationPreviewContentTest {
 
         assertEquals(
             listOf(
-                "“Maps” (App) — app pair “Pair” (upper half): kept because it is out of scope",
-                "“Maps” (App) — app pair “Pair” (lower half): kept because it is out of scope",
+                "“Maps” (App) — app pair “Pair” (row 3, column 3, page 1, upper half): kept because it is out of scope",
+                "“Maps” (App) — app pair “Pair” (row 3, column 3, page 1, lower half): kept because it is out of scope",
             ),
             rows,
         )
@@ -385,6 +385,78 @@ class OrganizationPreviewContentTest {
         val row = OrganizationPreviewContent.sections(details, TestWording).single().rows.single()
 
         assertEquals("“Widget” — Dock slot 3: kept because it is a widget", row)
+    }
+
+    /**
+     * Issue #208 (re-review High 1): same-named folders on DIFFERENT pages
+     * with the same cell, holding same-named children at the same rank. The
+     * parent page in the locator supplement is what distinguishes them —
+     * a cell-only supplement would render identical descriptors.
+     */
+    @Test
+    fun sameNamedFoldersOnDifferentPagesGetDistinctChildDescriptors() {
+        val details = PlanPreviewDetails(
+            changes = listOf(
+                PreservedChange(
+                    item = ItemId("gmail.a"),
+                    label = PreviewLabel.Named("Gmail"),
+                    identity = PreviewPlacementIdentity.FolderChild(
+                        PreviewPlacementIdentity.Workspace(1, false, 0, 0),
+                        0,
+                    ),
+                    kind = CanonicalItemKind.Application,
+                    current = PreviewPosition.InFolder(PreviewFolderRef.Existing(PreviewLabel.Named("Google")), 1),
+                    reason = PreserveReason.NON_TARGET,
+                ),
+                PreservedChange(
+                    item = ItemId("gmail.b"),
+                    label = PreviewLabel.Named("Gmail"),
+                    identity = PreviewPlacementIdentity.FolderChild(
+                        PreviewPlacementIdentity.Workspace(2, false, 0, 0),
+                        0,
+                    ),
+                    kind = CanonicalItemKind.Application,
+                    current = PreviewPosition.InFolder(PreviewFolderRef.Existing(PreviewLabel.Named("Google")), 1),
+                    reason = PreserveReason.NON_TARGET,
+                ),
+            ),
+            counts = PreviewCounts(0, 2, 0, 0, emptyMap()),
+        )
+
+        val rows = OrganizationPreviewContent.sections(details, TestWording).single().rows
+
+        assertEquals(
+            listOf(
+                "“Gmail” (App) — folder “Google”, position 1 (row 1, column 1, page 1): kept because it is out of scope",
+                "“Gmail” (App) — folder “Google”, position 1 (row 1, column 1, page 2): kept because it is out of scope",
+            ),
+            rows,
+        )
+        assertEquals(2, rows.toSet().size)
+    }
+
+    /** Re-review High 1: same-named app pairs at different parent placements
+     *  with same-stage children are distinguished by the parent locator. */
+    @Test
+    fun sameNamedAppPairsOnDifferentParentsGetDistinctChildDescriptors() {
+        val details = PlanPreviewDetails(
+            changes = listOf(
+                preservedInAppPair("maps.a", "Maps", pairTitle = "Pair", stage = SplitStage.TOP_OR_LEFT, parentPage = 1),
+                preservedInAppPair("maps.b", "Maps", pairTitle = "Pair", stage = SplitStage.TOP_OR_LEFT, parentPage = 2),
+            ),
+            counts = PreviewCounts(0, 2, 0, 0, emptyMap()),
+        )
+
+        val rows = OrganizationPreviewContent.sections(details, TestWording).single().rows
+
+        assertEquals(
+            listOf(
+                "“Maps” (App) — app pair “Pair” (row 3, column 3, page 1, upper half): kept because it is out of scope",
+                "“Maps” (App) — app pair “Pair” (row 3, column 3, page 2, upper half): kept because it is out of scope",
+            ),
+            rows,
+        )
+        assertEquals(2, rows.toSet().size)
     }
 
     @Test
@@ -405,7 +477,7 @@ class OrganizationPreviewContentTest {
 
     // Fixture helpers (synthetic identities only).
 
-    private data class Grid(val x: Int, val y: Int)
+    private data class Grid(val x: Int, val y: Int, val page: Int = 1)
 
     private fun move(
         label: String,
@@ -423,7 +495,7 @@ class OrganizationPreviewContentTest {
     ) = MoveChange(
         item = ItemId(label.toString()),
         label = label,
-        identity = PreviewPlacementIdentity.Workspace(1, false, anchor.x, anchor.y),
+        identity = PreviewPlacementIdentity.Workspace(anchor.page, false, anchor.x, anchor.y),
         kind = CanonicalItemKind.Application,
         source = source,
         destination = destination,
@@ -490,11 +562,12 @@ class OrganizationPreviewContentTest {
         labelText: String,
         pairTitle: String,
         stage: SplitStage,
+        parentPage: Int = 1,
     ) = PreservedChange(
         item = ItemId(itemId),
         label = PreviewLabel.Named(labelText),
         identity = PreviewPlacementIdentity.AppPairChild(
-            PreviewPlacementIdentity.Workspace(1, false, 2, 2),
+            PreviewPlacementIdentity.Workspace(parentPage, false, 2, 2),
             stage,
         ),
         kind = CanonicalItemKind.Application,
@@ -585,9 +658,10 @@ class OrganizationPreviewContentTest {
         override val appPairPosition = "app pair “%1\$s”"
         override val unidentifiedPosition = "unsupported placement %1\$d"
         override val positionWithSupplement = "%1\$s (%2\$s)"
-        override val supplementCell = "row %1\$d, column %2\$d"
+        override val supplementCell = "row %1\$d, column %2\$d, %3\$s"
         override val supplementStageTop = "upper half"
         override val supplementStageBottom = "lower half"
+        override val supplementParentWithStage = "%1\$s, %2\$s"
         override val kindApplication = "App"
         override val kindDeepShortcut = "Shortcut"
         override val kindShortcutLegacy = "Legacy shortcut"
