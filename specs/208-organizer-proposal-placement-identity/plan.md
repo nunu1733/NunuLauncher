@@ -2,7 +2,7 @@
 
 > Issue: #208
 > Spec: [spec.md](./spec.md)
-> Status: draft (spec owner review 待ち。spec 承認後に実装を開始する)
+> Status: in progress (spec は 2026-09-06 に owner 承認済み)
 > Revision: 4 — v3 review の High 1–3 (Preserve/Warning への `current: PreviewPosition` 追加・`PreviewPosition.Unidentified` variant による total 変換・discriminator の source item 固定) と Medium 4 (descriptor 行列の table-driven 化) を反映
 
 ## Current evidence

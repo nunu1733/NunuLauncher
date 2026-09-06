@@ -1113,10 +1113,21 @@
     <string name="manual_organization_preview_show_fewer">Show only the first %1$d items</string>
     <string name="manual_organization_preview_expanded_state">Expanded</string>
     <string name="manual_organization_preview_collapsed_state">Collapsed</string>
-    <string name="manual_organization_preview_move_row">“%1$s”: %2$s → %3$s (%4$s)</string>
-    <string name="manual_organization_preview_same_band_move_row">“%1$s”: position adjusted within %2$s%3$s</string>
+    <!-- Issue #208: row templates take the source descriptor (quoted name with
+         kind, plus current position) as their first argument; quoting lives in
+         the descriptor strings so same-named placements stay distinguishable. -->
+    <string name="manual_organization_preview_move_row">%1$s → %2$s (%3$s)</string>
+    <string name="manual_organization_preview_same_band_move_row">%1$s: position adjusted within %2$s%3$s</string>
     <string name="manual_organization_preview_row_ordinal_note"> (from row %1$d to row %2$d)</string>
-    <string name="manual_organization_preview_item_row">“%1$s”: %2$s</string>
+    <string name="manual_organization_preview_item_row">%1$s: %2$s</string>
+    <string name="manual_organization_preview_item_descriptor">“%1$s” (%2$s) — %3$s</string>
+    <string name="manual_organization_preview_item_descriptor_without_kind">“%1$s” — %2$s</string>
+    <string name="manual_organization_preview_item_name_with_kind">“%1$s” (%2$s)</string>
+    <string name="manual_organization_preview_position_unidentified">unsupported placement %1$d</string>
+    <string name="manual_organization_preview_position_with_supplement">%1$s (%2$s)</string>
+    <string name="manual_organization_preview_supplement_cell">row %1$d, column %2$d</string>
+    <string name="manual_organization_preview_supplement_stage_top">upper half</string>
+    <string name="manual_organization_preview_supplement_stage_bottom">lower half</string>
     <string name="manual_organization_preview_move_reason_single_placement">moves as a single placement</string>
     <string name="manual_organization_preview_move_reason_folder_member">moves as a folder member</string>
     <string name="manual_organization_preview_move_reason_folder_unit">moves as a folder unit</string>
@@ -1148,8 +1159,10 @@
     <string name="manual_organization_preview_region_bottom_center">bottom center</string>
     <string name="manual_organization_preview_region_bottom_right">bottom right</string>
     <string name="manual_organization_preview_position_dock">Dock slot %1$d</string>
-    <string name="manual_organization_preview_position_folder_existing">folder “%1$s”</string>
-    <string name="manual_organization_preview_position_folder_planned">new folder “%1$s”</string>
+    <!-- Issue #208: the position inside the folder disambiguates same-named
+         folder children, matching the placement-locks screen wording. -->
+    <string name="manual_organization_preview_position_folder_existing">folder “%1$s”, position %2$d</string>
+    <string name="manual_organization_preview_position_folder_planned">new folder “%1$s”, position %2$d</string>
     <string name="manual_organization_preview_position_app_pair">app pair “%1$s”</string>
     <string name="manual_organization_preview_kind_application">App</string>
     <string name="manual_organization_preview_kind_deep_shortcut">Shortcut</string>

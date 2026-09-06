@@ -213,10 +213,21 @@
     <string name="manual_organization_preview_show_fewer">先頭%1$d件のみ表示</string>
     <string name="manual_organization_preview_expanded_state">展開</string>
     <string name="manual_organization_preview_collapsed_state">折りたたみ</string>
-    <string name="manual_organization_preview_move_row">「%1$s」: %2$s → %3$s（%4$s）</string>
-    <string name="manual_organization_preview_same_band_move_row">「%1$s」: %2$s内で位置を調整%3$s</string>
+    <!-- Issue #208: 行テンプレートの第1引数は source descriptor (種別つき引用名 +
+         現在位置)。引用符は descriptor 側の文字列が持つため、同名 placement 行も
+         区別できる。 -->
+    <string name="manual_organization_preview_move_row">%1$s → %2$s（%3$s）</string>
+    <string name="manual_organization_preview_same_band_move_row">%1$s: %2$s内で位置を調整%3$s</string>
     <string name="manual_organization_preview_row_ordinal_note">（%1$d段目から%2$d段目）</string>
-    <string name="manual_organization_preview_item_row">「%1$s」: %2$s</string>
+    <string name="manual_organization_preview_item_row">%1$s: %2$s</string>
+    <string name="manual_organization_preview_item_descriptor">「%1$s」(%2$s)・%3$s</string>
+    <string name="manual_organization_preview_item_descriptor_without_kind">「%1$s」・%2$s</string>
+    <string name="manual_organization_preview_item_name_with_kind">「%1$s」(%2$s)</string>
+    <string name="manual_organization_preview_position_unidentified">サポート対象外の配置%1$d</string>
+    <string name="manual_organization_preview_position_with_supplement">%1$s（%2$s）</string>
+    <string name="manual_organization_preview_supplement_cell">%1$d行目・%2$d列目</string>
+    <string name="manual_organization_preview_supplement_stage_top">上側</string>
+    <string name="manual_organization_preview_supplement_stage_bottom">下側</string>
     <string name="manual_organization_preview_move_reason_single_placement">単体配置として移動</string>
     <string name="manual_organization_preview_move_reason_folder_member">フォルダメンバーとして移動</string>
     <string name="manual_organization_preview_move_reason_folder_unit">フォルダ単位で移動</string>
@@ -248,8 +259,10 @@
     <string name="manual_organization_preview_region_bottom_center">下段中央</string>
     <string name="manual_organization_preview_region_bottom_right">下段右</string>
     <string name="manual_organization_preview_position_dock">ドック%1$d番</string>
-    <string name="manual_organization_preview_position_folder_existing">フォルダ「%1$s」</string>
-    <string name="manual_organization_preview_position_folder_planned">"新規フォルダ「%1$s」"</string>
+    <!-- Issue #208: フォルダ内の位置で同名フォルダ内 item を区別する
+         (placement locks 画面の語彙と一致)。 -->
+    <string name="manual_organization_preview_position_folder_existing">フォルダ「%1$s」内の位置 %2$d</string>
+    <string name="manual_organization_preview_position_folder_planned">新規フォルダ「%1$s」内の位置 %2$d</string>
     <string name="manual_organization_preview_position_app_pair">アプリペア「%1$s」</string>
     <string name="manual_organization_preview_kind_application">アプリ</string>
     <string name="manual_organization_preview_kind_deep_shortcut">ショートカット</string>

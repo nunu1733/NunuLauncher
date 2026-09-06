@@ -1,6 +1,6 @@
 ---
 issue: "#208"
-status: draft
+status: accepted
 requirements: []
 risk: []
 updated: 2026-09-06
@@ -277,6 +277,7 @@ None。spec 時点で確定した判断は §Scope 1–4 と §Relationship to #
 - 2026-09-06: Drafted for Issue #208。UX review F-01 の行アイデンティティ問題を、#234 (destination 具体性) と棲み分けた上で、projection additive 拡張 (PreservedChange 位置/kind、folder 内 rank、kind 併記) として起案。
 - 2026-09-06: Owner review revision (Request changes 反映): 表示位置と placement の同一視を撤回し、canonical `PreviewPlacementIdentity` の導入と一意性 invariant (distinct placements ⇒ distinct identities) を契約の中核へ変更 (High 1)。folder child identity を親 folder の placement identity + rank で定義 (High 2)。#234 との責務境界を Option A (identity data model は #208、destination presentation は #234、依存は #234→#208 のみ) として明記 (High 3)。identity の有効期間 (proposal 内一意・非永続) を定義 (Medium 4)。identity → presentation → localized copy の一方向を明記 (Medium 5)。AC を identity invariant ベースへ再構成し、反例 fixture (同 band 別 cell、同名 folder × 同 rank) を test oracle へ追加。
 - 2026-09-06: Owner review revision 2 (Request changes 継続の反映): source placement の位置表示を identity から導出する単一経路 (`PreviewPlacementIdentity -> PreviewPosition -> text`) に固定し、`CanonicalItemState.placement` からの直接再生成を禁止 (High 1)。`Unidentified` に proposal-local discriminator を追加し、一意性 invariant を全 variant で universal に成立させた (High 2)。受入条件を行全文の不一致から source placement descriptor (名前 + kind + 現在位置) の一意性へ寄せ、descriptor を unit test / instrumentation の主張対象に変更 (High 3)。Outcome の identity 契約対象を source-backed な per-item 行へ明確化し `NewFolderChange` を対象外と整理 (Medium 4)。bucket exclusivity を AC-2 に明示 (Medium 5)。
+- 2026-09-06: Approved by the Issue #208 owner (branch `issue-208-placement-identity` の v4 に対して)。実装は本 spec と plan に従って開始する。
 - 2026-09-06: Owner review revision 3 (Request changes 継続の反映、前回 5 点は解消済み判定の上で projection shape への落とし込みを修正): `PreservedChange` / `ItemWarningChange` に identity 導出の `current: PreviewPosition` を追加し、`current == position(identity)` を projector invariant として固定 (High 1)。`PreviewPosition.Unidentified` variant を追加し、identity → `PreviewPosition` を全 variant の total function に変更。unsupported duplicate の descriptor 区別語も契約に含めた (High 2)。`Unidentified` discriminator を「identity() 呼び出し順」ではなく source item 固定の proposal-local ordinal に変更し、同一 source item の Move / Preserve / Warning 行が同一 identity を持つことを F9 で固定 (High 3)。AC-3 を identity variant 全体の table-driven 行列へ一般化 (Medium 4)。
 
 ## References

@@ -1,5 +1,6 @@
 package app.lawnchair.organizer.ui
 
+import app.lawnchair.organizer.application.public.CanonicalItemKind
 import app.lawnchair.organizer.application.public.ColumnBand
 import app.lawnchair.organizer.application.public.ItemWarningChange
 import app.lawnchair.organizer.application.public.MoveChange
@@ -10,6 +11,7 @@ import app.lawnchair.organizer.application.public.PreservedChange
 import app.lawnchair.organizer.application.public.PreviewCounts
 import app.lawnchair.organizer.application.public.PreviewFolderRef
 import app.lawnchair.organizer.application.public.PreviewLabel
+import app.lawnchair.organizer.application.public.PreviewPlacementIdentity
 import app.lawnchair.organizer.application.public.PreviewPosition
 import app.lawnchair.organizer.application.public.RowBand
 import app.lawnchair.organizer.planning.ItemId
@@ -17,14 +19,17 @@ import app.lawnchair.organizer.planning.NewFolderOrdinal
 import app.lawnchair.organizer.planning.NewPageOrdinal
 import app.lawnchair.organizer.planning.PlacementCode
 import app.lawnchair.organizer.planning.PreserveReason
+import app.lawnchair.organizer.planning.SplitStage
 import app.lawnchair.organizer.planning.WarningCode
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
  * Pure row-builder contract for the confirmation change list (Issue #195,
- * spec AC-1/AC-2): grouping order, `PreviewCounts` header truth, position
- * wording, same-band adjustment rows, row-ordinal notes, and label fallback.
+ * spec AC-1/AC-2; Issue #208 AC-3/AC-4/AC-6): grouping order, `PreviewCounts`
+ * header truth, position wording, same-band adjustment rows, row-ordinal
+ * notes, label fallback, and the source-descriptor identity contract that
+ * keeps same-named placements distinguishable.
  */
 class OrganizationPreviewContentTest {
 
@@ -36,7 +41,7 @@ class OrganizationPreviewContentTest {
                 move("maps", source(2, RowBand.TOP, ColumnBand.LEFT, 1), dock(1)),
                 newFolder(0),
                 newPage(2),
-                preserved("clock", PreserveReason.LOCKED),
+                preserved("clock", "clock", PreserveReason.LOCKED),
                 itemWarning("notes", WarningCode.FALLBACK_CATEGORY),
             ),
             counts = PreviewCounts(
@@ -87,7 +92,7 @@ class OrganizationPreviewContentTest {
     }
 
     @Test
-    fun moveRowSpeaksPagesRegionsReasonsAndRowOrdinalNote() {
+    fun moveRowSpeaksNameKindSourceDestinationReasonAndOrdinalNote() {
         val change = move(
             label = "game",
             source = source(1, RowBand.TOP, ColumnBand.CENTER, 2),
@@ -95,7 +100,7 @@ class OrganizationPreviewContentTest {
         )
 
         assertEquals(
-            "“game”: top center, page 1 → top left, page 1 (from row 2 to row 1) (moves as a single placement)",
+            "“game” (App) — top center, page 1 → top left, page 1 (from row 2 to row 1) (moves as a single placement)",
             OrganizationPreviewContent.moveRowText(change, TestWording),
         )
     }
@@ -110,7 +115,7 @@ class OrganizationPreviewContentTest {
         )
 
         assertEquals(
-            "“game”: top center, page 1 → middle center, page 1 (moves as a folder member)",
+            "“game” (App) — top center, page 1 → middle center, page 1 (moves as a folder member)",
             OrganizationPreviewContent.moveRowText(change, TestWording),
         )
     }
@@ -125,7 +130,7 @@ class OrganizationPreviewContentTest {
         )
 
         assertEquals(
-            "“game”: top center, page 1 → top left, page 2 (moves)",
+            "“game” (App) — top center, page 1 → top left, page 2 (moves)",
             OrganizationPreviewContent.moveRowText(change, TestWording),
         )
     }
@@ -144,29 +149,36 @@ class OrganizationPreviewContentTest {
         )
 
         assertEquals(
-            "“game”: position adjusted within top center",
+            "“game” (App): position adjusted within top center",
             OrganizationPreviewContent.moveRowText(sameRow, TestWording),
         )
         assertEquals(
-            "“game”: position adjusted within top center (from row 2 to row 1)",
+            "“game” (App): position adjusted within top center (from row 2 to row 1)",
             OrganizationPreviewContent.moveRowText(differentRow, TestWording),
         )
     }
 
     @Test
-    fun dockPositionsAreOneBasedAndPlannedFoldersRenderByName() {
+    fun dockPositionsAreOneBasedAndFoldersRenderNameAndInsidePosition() {
         val dock = OrganizationPreviewContent.positionText(dock(1), TestWording)
+        val existingFolder = OrganizationPreviewContent.positionText(
+            PreviewPosition.InFolder(PreviewFolderRef.Existing(PreviewLabel.Named("Work")), 2),
+            TestWording,
+        )
         // Issue #201: planned-folder destinations render the resolved name,
-        // never the planner ordinal.
+        // never the planner ordinal. Issue #208: the in-folder position rides
+        // along so same-named folder children stay distinguishable.
         val plannedFolder = OrganizationPreviewContent.positionText(
             PreviewPosition.InFolder(
                 PreviewFolderRef.Planned(NewFolderOrdinal(0), PreviewLabel.Named("Communication")),
+                1,
             ),
             TestWording,
         )
 
         assertEquals("Dock slot 2", dock)
-        assertEquals("new folder \u201cCommunication\u201d", plannedFolder)
+        assertEquals("folder “Work”, position 2", existingFolder)
+        assertEquals("new folder “Communication”, position 1", plannedFolder)
     }
 
     @Test
@@ -188,10 +200,10 @@ class OrganizationPreviewContentTest {
     }
 
     @Test
-    fun preservedAndWarningRowsSpeakPerItemReasons() {
+    fun preservedAndWarningRowsSpeakNameKindPositionThenFate() {
         val details = PlanPreviewDetails(
             changes = listOf(
-                preserved("clock", PreserveReason.LOCKED),
+                preserved("clock", "clock", PreserveReason.LOCKED),
                 itemWarning("notes", WarningCode.LEGACY_SHORTCUT_REVIEW),
             ),
             counts = PreviewCounts(0, 1, 0, 0, mapOf(WarningCode.LEGACY_SHORTCUT_REVIEW to 1)),
@@ -199,23 +211,140 @@ class OrganizationPreviewContentTest {
 
         val sections = OrganizationPreviewContent.sections(details, TestWording)
 
-        assertEquals("“clock”: kept because it is locked", sections[0].rows.single())
-        assertEquals("“notes”: legacy shortcut needs review", sections[1].rows.single())
+        assertEquals("“clock” (App) — top center, page 1: kept because it is locked", sections[0].rows.single())
+        assertEquals("“notes” (App) — Dock slot 3: legacy shortcut needs review", sections[1].rows.single())
     }
 
     @Test
-    fun absentTitlesFallBackToKindWording() {
-        val change = labeledMove(
-            label = PreviewLabel.KindFallback(app.lawnchair.organizer.application.public.CanonicalItemKind.AppWidget),
-            source = source(1, RowBand.TOP, ColumnBand.LEFT, 1),
-            destination = destination(1, RowBand.TOP, ColumnBand.RIGHT, 1),
-            rationale = PlacementCode.SINGLE_PLACEMENT,
+    fun unsupportedCurrentPositionRendersGenericOrdinalWithoutRawCodes() {
+        val row = OrganizationPreviewContent.descriptorText(
+            label = PreviewLabel.Named("mystery"),
+            kind = CanonicalItemKind.Application,
+            current = PreviewPosition.Unidentified(2),
+            wording = TestWording,
         )
 
-        assertEquals(
-            "“Widget”: top left, page 1 → top right, page 1 (moves as a single placement)",
-            OrganizationPreviewContent.moveRowText(change, TestWording),
+        assertEquals("“mystery” (App) — unsupported placement 2", row)
+    }
+
+    /**
+     * Issue #208 F2 (AC-3 matrix): same name, same kind, same page, same 3x3
+     * band, different anchor cells. The coarse position text alone collides,
+     * so the identity-derived row/column supplement keeps the descriptors —
+     * and therefore the rows — distinct.
+     */
+    @Test
+    fun sameNamedSameBandAnchorsGetDistinctDescriptorsViaCellSupplement() {
+        val details = PlanPreviewDetails(
+            changes = listOf(
+                preserved("gmail.a", "Gmail", PreserveReason.NON_TARGET, cell = Grid(0, 0)),
+                preserved("gmail.b", "Gmail", PreserveReason.NON_TARGET, cell = Grid(1, 0)),
+            ),
+            counts = PreviewCounts(0, 2, 0, 0, emptyMap()),
         )
+
+        val rows = OrganizationPreviewContent.sections(details, TestWording).single().rows
+
+        assertEquals(
+            listOf(
+                "“Gmail” (App) — top left, page 1 (row 1, column 1): kept because it is out of scope",
+                "“Gmail” (App) — top left, page 1 (row 1, column 2): kept because it is out of scope",
+            ),
+            rows,
+        )
+        assertEquals(2, rows.toSet().size)
+    }
+
+    /**
+     * Issue #208 F4 (AC-3 matrix): two same-named folders each holding a
+     * same-named child at the same rank. The parent folder's cell supplement
+     * is the only thing that can tell the two descriptors apart.
+     */
+    @Test
+    fun sameNamedFolderParentsGetDistinctChildDescriptorsViaParentCellSupplement() {
+        val details = PlanPreviewDetails(
+            changes = listOf(
+                preservedInFolder("gmail.a", "Gmail", folderTitle = "Google", folderCell = Grid(0, 0), rank = 1),
+                preservedInFolder("gmail.b", "Gmail", folderTitle = "Google", folderCell = Grid(0, 3), rank = 1),
+            ),
+            counts = PreviewCounts(0, 2, 0, 0, emptyMap()),
+        )
+
+        val rows = OrganizationPreviewContent.sections(details, TestWording).single().rows
+
+        assertEquals(
+            listOf(
+                "“Gmail” (App) — folder “Google”, position 2 (row 1, column 1): kept because it is out of scope",
+                "“Gmail” (App) — folder “Google”, position 2 (row 4, column 1): kept because it is out of scope",
+            ),
+            rows,
+        )
+        assertEquals(2, rows.toSet().size)
+    }
+
+    /**
+     * Issue #208 F5 (AC-3): same-named home icon (moved) and folder child
+     * (preserved) in one proposal. The descriptors differ by position — no
+     * supplement needed — and each row explains which placement it speaks
+     * about.
+     */
+    @Test
+    fun sameNamedMoveAndPreserveDescriptorsDifferWithoutSupplement() {
+        val details = PlanPreviewDetails(
+            changes = listOf(
+                move("Photos", source(2, RowBand.BOTTOM, ColumnBand.LEFT, 5), destination(2, RowBand.TOP, ColumnBand.LEFT, 1)),
+                preservedInFolder("photos.b", "Photos", folderTitle = "Utilities", folderCell = Grid(3, 3), rank = 0),
+            ),
+            counts = PreviewCounts(1, 1, 0, 0, emptyMap()),
+        )
+
+        val sections = OrganizationPreviewContent.sections(details, TestWording)
+
+        assertEquals(
+            "“Photos” (App) — bottom left, page 2 → top left, page 2 (moves as a single placement)",
+            sections[0].rows.single(),
+        )
+        assertEquals(
+            "“Photos” (App) — folder “Utilities”, position 1: kept because it is out of scope",
+            sections[1].rows.single(),
+        )
+    }
+
+    /** Issue #208 F6 (AC-3 matrix): dock ranks and in-folder ranks already
+     *  differentiate their rows; colliding split-pair children get stage words. */
+    @Test
+    fun sameNamedSplitPairChildrenGetStageSupplement() {
+        val details = PlanPreviewDetails(
+            changes = listOf(
+                preservedInAppPair("maps.a", "Maps", pairTitle = "Pair", stage = SplitStage.TOP_OR_LEFT),
+                preservedInAppPair("maps.b", "Maps", pairTitle = "Pair", stage = SplitStage.BOTTOM_OR_RIGHT),
+            ),
+            counts = PreviewCounts(0, 2, 0, 0, emptyMap()),
+        )
+
+        val rows = OrganizationPreviewContent.sections(details, TestWording).single().rows
+
+        assertEquals(
+            listOf(
+                "“Maps” (App) — app pair “Pair” (upper half): kept because it is out of scope",
+                "“Maps” (App) — app pair “Pair” (lower half): kept because it is out of scope",
+            ),
+            rows,
+        )
+    }
+
+    /** Issue #208 F7: kind-fallback labels already carry the kind word, so the
+     *  descriptor must not duplicate it. */
+    @Test
+    fun kindFallbackRowsDoNotDuplicateTheKindWord() {
+        val details = PlanPreviewDetails(
+            changes = listOf(preservedFallback(CanonicalItemKind.AppWidget, PreserveReason.WIDGET)),
+            counts = PreviewCounts(0, 1, 0, 0, emptyMap()),
+        )
+
+        val row = OrganizationPreviewContent.sections(details, TestWording).single().rows.single()
+
+        assertEquals("“Widget” — Dock slot 3: kept because it is a widget", row)
     }
 
     @Test
@@ -223,7 +352,7 @@ class OrganizationPreviewContentTest {
         val details = PlanPreviewDetails(
             changes = listOf(
                 move("game", source(1, RowBand.TOP, ColumnBand.CENTER, 2), destination(1, RowBand.TOP, ColumnBand.LEFT, 1)),
-                preserved("clock", PreserveReason.ALREADY_CANONICAL),
+                preserved("clock", "clock", PreserveReason.ALREADY_CANONICAL),
             ),
             counts = PreviewCounts(1, 1, 0, 0, emptyMap()),
         )
@@ -233,6 +362,10 @@ class OrganizationPreviewContentTest {
             OrganizationPreviewContent.sections(details, TestWording),
         )
     }
+
+    // Fixture helpers (synthetic identities only).
+
+    private data class Grid(val x: Int, val y: Int)
 
     private fun move(
         label: String,
@@ -248,6 +381,8 @@ class OrganizationPreviewContentTest {
     ) = MoveChange(
         item = ItemId(label.toString()),
         label = label,
+        identity = PreviewPlacementIdentity.Workspace(1, false, 0, 0),
+        kind = CanonicalItemKind.Application,
         source = source,
         destination = destination,
         rationale = rationale,
@@ -276,16 +411,88 @@ class OrganizationPreviewContentTest {
 
     private fun newPage(displayPosition: Int) = NewPageChange(ordinal = NewPageOrdinal(0), displayPosition = displayPosition)
 
-    private fun preserved(label: String, reason: PreserveReason) = PreservedChange(
-        item = ItemId(label),
-        label = PreviewLabel.Named(label),
+    private fun preserved(
+        itemId: String,
+        labelText: String,
+        reason: PreserveReason,
+        cell: Grid = Grid(2, 1),
+    ) = PreservedChange(
+        item = ItemId(itemId),
+        label = PreviewLabel.Named(labelText),
+        identity = PreviewPlacementIdentity.Workspace(1, false, cell.x, cell.y),
+        kind = CanonicalItemKind.Application,
+        current = workspaceFromCell(cell),
+        reason = reason,
+    )
+
+    private fun preservedInFolder(
+        itemId: String,
+        labelText: String,
+        folderTitle: String,
+        folderCell: Grid,
+        rank: Int,
+    ) = PreservedChange(
+        item = ItemId(itemId),
+        label = PreviewLabel.Named(labelText),
+        identity = PreviewPlacementIdentity.FolderChild(
+            PreviewPlacementIdentity.Workspace(1, false, folderCell.x, folderCell.y),
+            rank,
+        ),
+        kind = CanonicalItemKind.Application,
+        current = PreviewPosition.InFolder(PreviewFolderRef.Existing(PreviewLabel.Named(folderTitle)), rank + 1),
+        reason = PreserveReason.NON_TARGET,
+    )
+
+    private fun preservedInAppPair(
+        itemId: String,
+        labelText: String,
+        pairTitle: String,
+        stage: SplitStage,
+    ) = PreservedChange(
+        item = ItemId(itemId),
+        label = PreviewLabel.Named(labelText),
+        identity = PreviewPlacementIdentity.AppPairChild(
+            PreviewPlacementIdentity.Workspace(1, false, 2, 2),
+            stage,
+        ),
+        kind = CanonicalItemKind.Application,
+        current = PreviewPosition.InAppPair(PreviewLabel.Named(pairTitle)),
+        reason = PreserveReason.NON_TARGET,
+    )
+
+    private fun preservedFallback(kind: CanonicalItemKind, reason: PreserveReason) = PreservedChange(
+        item = ItemId("widget.1"),
+        label = PreviewLabel.KindFallback(kind),
+        identity = PreviewPlacementIdentity.Dock(2),
+        kind = kind,
+        current = dock(2),
         reason = reason,
     )
 
     private fun itemWarning(label: String, code: WarningCode) = ItemWarningChange(
         item = ItemId(label),
         label = PreviewLabel.Named(label),
+        identity = PreviewPlacementIdentity.Dock(2),
+        kind = CanonicalItemKind.Application,
+        current = dock(2),
         code = code,
+    )
+
+    /** Bands the fixture cell into the 3x3 presentation the projector derives. */
+    private fun workspaceFromCell(cell: Grid): PreviewPosition.Workspace = PreviewPosition.Workspace(
+        pageDisplayOrdinal = 1,
+        isNewPage = false,
+        rowBand = when {
+            cell.y < 2 -> RowBand.TOP
+            cell.y < 4 -> RowBand.CENTER
+            else -> RowBand.BOTTOM
+        },
+        columnBand = when {
+            cell.x < 2 -> ColumnBand.LEFT
+            cell.x < 4 -> ColumnBand.CENTER
+            else -> ColumnBand.RIGHT
+        },
+        rowOrdinal = cell.y + 1,
     )
 
     private object TestWording : OrganizationPreviewWording {
@@ -294,10 +501,13 @@ class OrganizationPreviewContentTest {
         override val groupNewPages = "New pages (%1\$d)"
         override val groupPreserved = "Preserve (%1\$d)"
         override val groupWarnings = "Warnings (%1\$d)"
-        override val moveRow = "“%1\$s”: %2\$s → %3\$s (%4\$s)"
-        override val sameBandMoveRow = "“%1\$s”: position adjusted within %2\$s%3\$s"
+        override val moveRow = "%1\$s → %2\$s (%3\$s)"
+        override val sameBandMoveRow = "%1\$s: position adjusted within %2\$s%3\$s"
         override val rowOrdinalNote = " (from row %1\$d to row %2\$d)"
-        override val itemRow = "“%1\$s”: %2\$s"
+        override val itemRow = "%1\$s: %2\$s"
+        override val itemDescriptor = "“%1\$s” (%2\$s) — %3\$s"
+        override val itemDescriptorWithoutKind = "“%1\$s” — %2\$s"
+        override val itemNameWithKind = "“%1\$s” (%2\$s)"
         override val moveReasonSinglePlacement = "moves as a single placement"
         override val moveReasonFolderMember = "moves as a folder member"
         override val moveReasonFolderUnit = "moves as a folder unit"
@@ -329,9 +539,14 @@ class OrganizationPreviewContentTest {
         override val regionBottomCenter = "bottom center"
         override val regionBottomRight = "bottom right"
         override val dockPosition = "Dock slot %1\$d"
-        override val folderPositionExisting = "folder “%1\$s”"
-        override val folderPositionPlanned = "new folder \u201c%1\$s\u201d"
+        override val folderPositionExisting = "folder “%1\$s”, position %2\$d"
+        override val folderPositionPlanned = "new folder “%1\$s”, position %2\$d"
         override val appPairPosition = "app pair “%1\$s”"
+        override val unidentifiedPosition = "unsupported placement %1\$d"
+        override val positionWithSupplement = "%1\$s (%2\$s)"
+        override val supplementCell = "row %1\$d, column %2\$d"
+        override val supplementStageTop = "upper half"
+        override val supplementStageBottom = "lower half"
         override val kindApplication = "App"
         override val kindDeepShortcut = "Shortcut"
         override val kindShortcutLegacy = "Legacy shortcut"
