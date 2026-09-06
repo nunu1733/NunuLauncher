@@ -4,13 +4,18 @@ import android.content.Context
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -231,6 +236,25 @@ fun ManualOrganizationPreferences(
                             focusRequester = focusRequester,
                         )
                     }
+                    // Issue #209: the decision pair leads the screen so Apply
+                    // and Cancel are visible together no matter how much of
+                    // the change list is expanded or scrolled.
+                    item {
+                        DecisionActionsRow {
+                            Button(
+                                onClick = { execute(coordinator::confirm) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(text = stringResource(R.string.manual_organization_confirm))
+                            }
+                            OutlinedButton(
+                                onClick = { execute(coordinator::cancel) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(text = stringResource(R.string.manual_organization_cancel))
+                            }
+                        }
+                    }
                     if (currentState.details == null) {
                         // Issue #195 spec D1: environmental preview failures keep the
                         // existing count-only flow, but announce the missing details
@@ -247,18 +271,6 @@ fun ManualOrganizationPreferences(
                             counts = currentState.details.counts,
                             sections = previewSections,
                             expandedGroups = expandedPreviewGroups,
-                        )
-                    }
-                    item {
-                        ClickablePreference(
-                            label = stringResource(R.string.manual_organization_confirm),
-                            onClick = { execute(coordinator::confirm) },
-                        )
-                    }
-                    item {
-                        ClickablePreference(
-                            label = stringResource(R.string.manual_organization_cancel),
-                            onClick = { execute(coordinator::cancel) },
                         )
                     }
                 }
@@ -291,11 +303,17 @@ fun ManualOrganizationPreferences(
                     }
                     summaryItems(currentState.summary)
                     if (currentState.result is ApplyResult.Applied) {
+                        // Issue #209: the safety net must read as a control,
+                        // not as a caption row among the summary lines.
                         item {
-                            ClickablePreference(
-                                label = stringResource(R.string.manual_organization_recovery),
-                                onClick = { execute(coordinator::beginRecoveryPreview) },
-                            )
+                            DecisionActionsRow {
+                                FilledTonalButton(
+                                    onClick = { execute(coordinator::beginRecoveryPreview) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(text = stringResource(R.string.manual_organization_recovery))
+                                }
+                            }
                         }
                     }
                     if (currentState.result.requiresSafeSupport()) {
@@ -334,19 +352,25 @@ fun ManualOrganizationPreferences(
                             focusRequester = focusRequester,
                         )
                     }
-                    if (currentState.result is RecoveryPreviewResult.Restorable) {
-                        item {
-                            ClickablePreference(
-                                label = stringResource(R.string.manual_organization_recovery_confirm),
-                                onClick = { execute(coordinator::confirmRecovery) },
-                            )
-                        }
-                    }
+                    // Issue #209: restore-or-cancel renders as the same
+                    // decision pair as the apply preview.
                     item {
-                        ClickablePreference(
-                            label = stringResource(R.string.manual_organization_cancel),
-                            onClick = { execute(coordinator::cancelRecoveryPreview) },
-                        )
+                        DecisionActionsRow {
+                            if (currentState.result is RecoveryPreviewResult.Restorable) {
+                                Button(
+                                    onClick = { execute(coordinator::confirmRecovery) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(text = stringResource(R.string.manual_organization_recovery_confirm))
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = { execute(coordinator::cancelRecoveryPreview) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(text = stringResource(R.string.manual_organization_cancel))
+                            }
+                        }
                     }
                 }
 
@@ -552,6 +576,28 @@ private fun FocusTargetText(
             .semantics {
                 liveRegion = LiveRegionMode.Polite
             },
+    )
+}
+
+/**
+ * Issue #209: decision actions (confirm / cancel / restore) render as
+ * Material3 buttons — the same emphasis split as the lawnchair confirmation
+ * bottom sheet — instead of preference rows that read like plain text. The
+ * actions sit directly below the state heading so both paths of a decision
+ * are visible together regardless of how far the change list is expanded,
+ * stacked full-width so keyboard/DPAD traversal visits them in the visual
+ * confirm-then-cancel order and long labels wrap instead of clipping.
+ */
+@Composable
+private fun DecisionActionsRow(
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        content = content,
     )
 }
 

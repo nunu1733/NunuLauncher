@@ -138,7 +138,7 @@ Given 変更一覧が表示されている,
 
 When TalkBack / Switch Access / 200% font scale で操作する,
 
-Then 各変更行は単一の意味ある node として読め、`liveRegion` は status 行のみで、展開 action は展開/折りたたみの state を報告し、keyboard / Switch traversal で status → 展開 action → confirm → cancel に実際に到達でき、必須 content が 200% で wrap して到達可能である,
+Then 各変更行は単一の意味ある node として読め、`liveRegion` は status 行のみで、展開 action は展開/折りたたみの state を報告し、keyboard / Switch traversal で status → confirm → cancel → 展開 action に実際に到達でき、必須 content が 200% で wrap して到達可能である,
 
 And 展開による行挿入の reflow 後も展開 action 自身が focus を保持する (spec 52 の focus 復帰契約)。
 
@@ -167,7 +167,7 @@ None。新たな permission、network、telemetry、export は追加しない。
 | AC-2 | 変更一覧の行は `details.changes` の全件を (truncation 分を含め) 表現し、group 順序と行順は projection の決定的順序に従う。帯内微調整行と行序数併記が §D5 の契約どおり描画される。 |
 | AC-3 | 大量変更 (group あたり閾値超過) で truncation + 展開 / 折りたたみが動作し、展開 state が semantics に現れる。 |
 | AC-4 | `details == null` で告知行と現行 count-only サマリー + confirm が表示され、既存 flow が退化しない。変更 0 件 / stale / recreate / readiness の既存表示も退化しない。 |
-| AC-5 | TalkBack (行 node、liveRegion 配置、state 語) / Switch Access / keyboard traversal / 200% font scale の UI test と evidence がある。 |
+| AC-5 | TalkBack (行 node、liveRegion 配置、state 語) / Switch Access / keyboard traversal / 200% font scale の UI test と evidence がある。traversal 順序は [spec 209](../209-organizer-decision-action-affordance/spec.md) により status → confirm → cancel → 展開 action へ更新。 |
 | AC-6 | 追加 strings が ja / en 両 locale で解決する (#123 契約)。`KindFallback` の全 kind と全 `PreserveReason` / `PlacementCode` / 項目警告 `WarningCode` に対応する文言が存在する。 |
 | AC-7 | fixture (移動のみ / フォルダ作成を含む / 新規ページ追加 / 変更 0 件 / stale) の UI test が instrumented evidence (API 36 / Platform 36.1) として記録される。 |
 | AC-8 | spec 52 の描画契約所在の明文化が同じ PR で完了する。 |
@@ -179,7 +179,7 @@ None。新たな permission、network、telemetry、export は追加しない。
 | AC-1, AC-2 | `tests/unit/.../ui/OrganizationPreviewContentTest.kt` (純粋行構築: grouping、位置語、same-band 行、行序数、理由語、`PreviewCounts` truth) + instrumentation 描画 test |
 | AC-3 | instrumentation test: 9 件移動 fixture で truncation → 展開 → 折りたたみと `stateDescription` 主張 |
 | AC-4 | instrumentation test: `WriterBusy` fallback (告知行 + count-only + confirm)、NoChanges fixture (confirm 無し)、既存 stale / recreate test の無変更通過 |
-| AC-5 | instrumentation test: 行 node の単一性と非 liveRegion、展開 action の state 語、実際の keyboard focus traversal (status → expand → confirm → cancel) と展開後の展開 action focus 保持、200% font scale |
+| AC-5 | instrumentation test: 行 node の単一性と非 liveRegion、展開 action の state 語、実際の keyboard focus traversal (status → confirm → cancel → 展開 action、spec 209 の新順序) と展開後の展開 action focus 保持、200% font scale |
 | AC-6 | instrumentation test: ja configuration context で全追加 string を解決し en 値と一致しないこと (fallback 検出)、format string の解決 |
 | AC-7 | `.github/workflows/ci.yml` `organizer-instrumentation-issue52-tests` job (API 36 / Platform 36.1) の成功 run URL を PR へ記録。可能な場合ローカル emulator 実行結果も記録 |
 | AC-8 | PR diff review (spec 52) |
@@ -194,6 +194,7 @@ None。spec 時点で確定した判断は §Design decisions (D1–D6) のと�
 - 2026-09-03: Review revision (owner review @ PR #198): warning group の見出し / 展開件数の truth を `ItemWarningChange` 行数へ分離し、global / multi-item warning は header count のみへ明確化 (Medium, §D2/§D6)。a11y 契約へ展開後の展開 action focus 保持を明記し、AC-5 の traversal evidence を実際の keyboard focus 移動で検証するよう更新 (Blocking)。
 - 2026-09-03: Re-review fix (owner re-review @ PR #198): docs-only の整合性修正 — §D6 の展開件数 N の記述、spec 52 の Preview and details / MFO-17 を §D2 の warning 例外と揃えた。実装・test への変更はない。
 - 2026-09-06: [Issue #208](https://github.com/nunu1733/NunuLauncher/issues/208) による行表現の拡張 ([spec 208](../208-organizer-proposal-placement-identity/spec.md) を正本とする): 移動・保持・警告行の先頭が source descriptor (「名前 (kind) — 現在位置」) になり、同名 placement 行が descriptor で区別できる。保持・警告行は `current: PreviewPosition` を消費し、folder 位置語は folder 内 position (1-based) を含む。descriptor が衝突する同名行には identity 由来の補助語 (cell 序数・split stage) が付く。grouping / counts truth / truncation (§D2 / §D6) の契約は無変更。
+- 2026-09-06: [Issue #209](https://github.com/nunu1733/NunuLauncher/issues/209) ([spec 209](../209-organizer-decision-action-affordance/spec.md)) による decision action 表現の変更: confirm / cancel が preview 見出し直後の Material3 button decision row へ移動したことに伴い、keyboard / Switch traversal の契約順序を status → confirm → cancel → 展開 action へ更新 (AC-5 と scenario)。変更一覧の grouping / counts truth / truncation / a11y 契約は無変更。
 
 ## References
 

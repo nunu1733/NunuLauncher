@@ -9,6 +9,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.assertIsDisplayed
@@ -47,6 +48,7 @@ import app.lawnchair.organizer.application.public.CanonicalItemKind
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
+import app.lawnchair.organizer.application.public.RecoveryPreviewSummary
 import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.application.public.RowBand
 import app.lawnchair.organizer.application.public.ColumnBand
@@ -886,7 +888,10 @@ class ManualOrganizationPreferencesInstrumentationTest {
             }
         }
 
-        // Keyboard traversal actually reaches the expand action.
+        // Issue #209: the decision pair leads the screen, so traversal reaches
+        // confirm and cancel before the change-list expand action.
+        pressDownUntilFocused(context.getString(R.string.manual_organization_confirm))
+        pressDownUntilFocused(context.getString(R.string.manual_organization_cancel))
         pressDownUntilFocused(context.getString(R.string.manual_organization_preview_show_all, 6))
         // Activating it with a keyboard action expands the group...
         InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_ENTER)
@@ -895,10 +900,6 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
         // ...and the action keeps focus after the list reflows (spec 52 restoration).
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview_show_fewer, 5)).assertIsFocused()
-
-        // Traversal continues to the review actions.
-        pressDownUntilFocused(context.getString(R.string.manual_organization_confirm))
-        pressDownUntilFocused(context.getString(R.string.manual_organization_cancel))
     }
 
     /**
@@ -943,6 +944,135 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm)).assertIsDisplayed()
         composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_changes_heading)).assertCountEquals(0)
         assertEquals(0, application.applyCalls)
+    }
+
+    /**
+     * Issue #209 AC-1: the apply/cancel decision pair leads the preview, so
+     * both stay displayed together before and after the change list expands,
+     * and again in the degraded count-only fallback.
+     */
+    @Test
+    fun decisionPairStaysDisplayedTogetherAcrossExpansionStates() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            inspectPlanOverride = { _, _ ->
+                previewed(
+                    PlanPreviewDetails(
+                        changes = (1..6).map { index -> crossBandMove("app$index") },
+                        counts = PreviewCounts(movedCount = 6, preservedCount = 0, newFolderCount = 0, newPageCount = 0, warningCounts = emptyMap()),
+                    ),
+                )
+            }
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        runner.start()
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        awaitPreview(runner, context)
+
+        val confirm = context.getString(R.string.manual_organization_confirm)
+        val cancel = context.getString(R.string.manual_organization_cancel)
+        // Collapsed: both decisions render in the leading viewport.
+        composeRule.onNodeWithText(confirm).assertIsDisplayed()
+        composeRule.onNodeWithText(cancel).assertIsDisplayed()
+
+        // Expanded: extra rows join the list; the pair must not be pushed out.
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview_show_all, 6)).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(concreteMoveRow(context, "app6")).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(confirm).assertIsDisplayed()
+        composeRule.onNodeWithText(cancel).assertIsDisplayed()
+        assertEquals(0, application.applyCalls)
+    }
+
+    /**
+     * Issue #209 AC-1 (degraded path): the count-only fallback keeps the same
+     * leading decision pair.
+     */
+    @Test
+    fun degradedFallbackKeepsDecisionPairDisplayed() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication()
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        runner.start()
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        awaitPreview(runner, context)
+
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).assertIsDisplayed()
+    }
+
+    /**
+     * Issue #209 AC-3: the decision actions report the button role to
+     * assistive technology instead of plain clickable text.
+     */
+    @Test
+    fun decisionActionsReportButtonRoleToAssistiveTechnology() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication()
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        runner.start()
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        awaitPreview(runner, context)
+
+        fun buttonRole() = SemanticsMatcher("role is Button") { node ->
+            node.config.getOrNull(SemanticsProperties.Role) == Role.Button
+        }
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm)).assert(buttonRole())
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).assert(buttonRole())
+    }
+
+    /**
+     * Issue #209 AC-2: after a verified apply the safety net renders as an
+     * emphasized control, and the recovery preview renders the same
+     * restore/cancel decision pair.
+     */
+    @Test
+    fun recoverySurfacesRenderDecisionButtons() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            recoveryPreview = RecoveryPreviewResult.Restorable(
+                pointId = RecoveryPointId(POINT_ID),
+                summary = RecoveryPreviewSummary(),
+                confirmation = RecoveryPreviewConfirmation.issue(byteArrayOf(1)),
+            )
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        runner.start()
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        awaitPreview(runner, context)
+        runner.confirm()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Applied }
+
+        fun buttonRole() = SemanticsMatcher("role is Button") { node ->
+            node.config.getOrNull(SemanticsProperties.Role) == Role.Button
+        }
+        val restore = context.getString(R.string.manual_organization_recovery)
+        composeRule.onNodeWithText(restore).assertIsDisplayed().assert(buttonRole())
+
+        composeRule.onNodeWithText(restore).performClick()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.RecoveryPreview }
+
+        val recoveryConfirm = context.getString(R.string.manual_organization_recovery_confirm)
+        composeRule.onNodeWithText(recoveryConfirm).assertIsDisplayed().assert(buttonRole())
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).assertIsDisplayed()
+            .assert(buttonRole())
     }
 
     @Test
@@ -1274,6 +1404,12 @@ class ManualOrganizationPreferencesInstrumentationTest {
         /** Issue #195: override to publish a concrete change-list preview; default stays count-only. */
         var inspectPlanOverride: ((OrganizationInput, PlanningResult) -> PlanPreviewResult)? = null
 
+        /** Issue #209: overridable recovery preview for the decision-button rendering test. */
+        var recoveryPreview: RecoveryPreviewResult = RecoveryPreviewResult.NotRestorable(
+            RecoveryPointId(POINT_ID),
+            app.lawnchair.organizer.application.public.RecoveryPreviewRejection.MISSING,
+        )
+
         override fun newRunId() = RunId(RUN_ID)
 
         override fun composeFullOrganization(): OrganizationInputComposition {
@@ -1322,10 +1458,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
             return applyResult
         }
 
-        override fun inspectRecovery(pointId: RecoveryPointId): RecoveryPreviewResult = RecoveryPreviewResult.NotRestorable(
-            pointId,
-            app.lawnchair.organizer.application.public.RecoveryPreviewRejection.MISSING,
-        )
+        override fun inspectRecovery(pointId: RecoveryPointId): RecoveryPreviewResult = recoveryPreview
 
         override fun confirmRecovery(pointId: RecoveryPointId, confirmation: RecoveryPreviewConfirmation): RecoveryResult = RecoveryResult.NotRestorable(
             pointId,
