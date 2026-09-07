@@ -1,6 +1,6 @@
 ---
 issue: "#210"
-status: accepted
+status: proposed
 requirements: []
 risk: []
 updated: 2026-09-07
@@ -24,8 +24,8 @@ updated: 2026-09-07
 
 stale 適用試行の後、ユーザーは画面文言だけで次を正しく説明できる:
 
-1. 何も適用されていないこと。
-2. 現在の home layout が (この操作によっては) 変更されていないこと。
+1. 確認していた proposal が適用されなかったこと。
+2. この適用試行が現在の home layout を変更しなかったこと (ユーザー自身の操作による既存の変更を否定しない)。
 3. 確認していた proposal が破棄されたこと。
 4. 次の一手 (`Capture and review again`) が現在の home layout を起点に確認用の新しい proposal を作ること。
 
@@ -34,7 +34,7 @@ proposal がまだ確認されていない stale 検出 (経路 1) では、破�
 ## Scope
 
 - **`State.Stale` に stale 検出時点を表す origin を追加**: `State.Stale` を `data object` から origin (`APPLY_BLOCKED` / `DETECTED_BEFORE_REVIEW`) を持つ data class へ変更する。経路 2・3 は `APPLY_BLOCKED`、経路 1 は `DETECTED_BEFORE_REVIEW` を運ぶ。遷移・diagnostics (`A2` rejection event)・適用 semantics は変更しない。
-- **outcome 文と origin 別詳細文の導入**: `State.Stale` の描画を (1) 共通 outcome 見出し (`Nothing was applied. Your current home layout is unchanged.`)、(2) origin 別の詳細文 (proposal の破棄と時点)、(3) `Capture and review again` action へ再構成する。
+- **outcome 文と origin 別詳細文の導入**: `State.Stale` の描画を (1) 共通 outcome 見出し (`This proposal was not applied. This attempt did not change your current home layout.`)、(2) origin 別の詳細文 (proposal の破棄と時点)、(3) `Capture and review again` action へ再構成する。
 - **recapture action の説明追加**: `Capture and review again` に summary 行を追加し、現在の home layout を起点に確認用の新しい proposal を作ることを文言から分かるようにする。label 自体と preference row 表現 (spec 209 non-goals) は変更しない。
 - **string 見直し**: `manual_organization_stale` を outcome 文で置換し、新規 3 string (origin 別詳細 ×2、recapture summary ×1) を追加する。ja も同時に提供する。
 - **既存契約の維持**: stale 経路の zero-write 契約、`A2` stale-rejection diagnostics、status 見出しの focus + `liveRegion = Polite`、cancel/遷移の扱いは退化させない。
@@ -64,14 +64,14 @@ origin は UI observable state (`State`) にのみ載せる。適用 blocking �
 `State.Stale` の描画を次の 3 要素へ再構成する。outcome が status 見出しとして focus + `liveRegion` を引き継ぐ。
 
 - **共通 outcome 見出し** (`manual_organization_stale_outcome`、旧 `manual_organization_stale` を置換):
-  - en: `Nothing was applied. Your current home layout is unchanged.`
-  - ja: `何も適用されていません。現在のホームレイアウトは変更されていません。`
+  - en: `This proposal was not applied. This attempt did not change your current home layout.`
+  - ja: `この整理案は適用されませんでした。この操作によるホーム画面の変更はありません。`
 - **origin 別詳細文**:
   - `APPLY_BLOCKED` (`manual_organization_stale_proposal_discarded`) — en: `The home layout changed after you reviewed the proposal, so it was discarded to keep your layout safe.` / ja: `整理案の確認後にホームレイアウトが変更されたため、整理案は破棄されました。`
   - `DETECTED_BEFORE_REVIEW` (`manual_organization_stale_proposal_not_reviewed`) — en: `The home layout changed while the proposal was being prepared, so it was discarded before you could review it.` / ja: `整理案の作成中にホームレイアウトが変更されたため、確認前に整理案は破棄されました。`
 - **recapture summary** (`manual_organization_recapture_summary`、label は既存 `Capture and review again` を維持): en: `Captures your current home layout and prepares a new proposal to review.` / ja: `現在のホームレイアウトを読み込み、確認用の新しい整理案を作成します。`
 
-outcome 文は Issue が例示した文言に従い、「何も適用されていない」ことを先頭に置く。詳細文は proposal の破棄 (Non-goals と衝突しない範囲で issue が要求する事実) と理由 (layout 変化) を伝える。「変更されていません」は「この適用試行・整理 run によっては変更されていない」ことを意味し、ユーザー自身の drag による変更を否定しない (exploratory review の観察どおり layout 変更自体は正しく保持されている)。
+outcome 文は操作主体・試行にスコープする。stale 画面には「layout が変更された」ことを伝える詳細文が直後に続くため、outcome を `Your current home layout is unchanged.` のような無条件な現在状態の主張にすると、画面上で自己矛盾に読める (owner review で指摘)。`This attempt did not change your current home layout.` は「この適用試行が追加の変更を行わなかった」ことを主張し、ユーザー自身の drag による既存の変更 (stale 検出の原因) を否定しない。production E2E の oracle (`expectedAfterMutation` と confirm 後の DB の一致) もこの意味を検証する。詳細文は proposal の破棄と理由 (layout 変化) を伝える。
 
 ### D3: 詳細文の表現 — **既存の静的 body text 規約に従う**
 
@@ -79,7 +79,7 @@ origin 別詳細文は `manual_organization_safe_terminal` と同一の表現 (`
 
 ### D4: 適用安全性の再主張はしない — **zero-write は既存契約の継続である**
 
-stale 経路の zero-write は既に `LayoutApplicationModule` の revision 照合と E2E test (`staleProductionConfirmationDoesNotWrite`) が担保する。本 spec はその結果の「表現」を直すものであり、新たな安全機構を追加しない。文言が「何も適用されていません」と主張する対象は、この既存契約が保証する事実である。
+stale 経路の zero-write は既に `LayoutApplicationModule` の revision 照合と E2E test (`staleProductionConfirmationDoesNotWrite`) が担保する。本 spec はその結果の「表現」を直すものであり、新たな安全機構を追加しない。outcome 文が「この整理案は適用されない・この操作による変更はない」と主張する対象は、この既存契約が保証する事実である。
 
 ## Behavior scenarios
 
@@ -89,7 +89,7 @@ Given preview 表示後に home layout が変化しており、`Apply reviewed o
 
 When stale 状態の画面が表示される,
 
-Then `Nothing was applied. Your current home layout is unchanged.` が status 見出しとして表示される,
+Then `This proposal was not applied. This attempt did not change your current home layout.` が status 見出しとして表示される,
 
 And `整理案の確認後にホームレイアウトが変更されたため、整理案は破棄されました。` (en 同義) に相当する詳細文が表示される,
 
@@ -143,7 +143,7 @@ None。新たな permission、通信、telemetry は追加しない。表示文�
 
 | AC | Acceptance criterion |
 |---|---|
-| AC-1 | `Apply` 試行が stale で拒否された場合 (`State.Stale(APPLY_BLOCKED)`)、画面に (1) outcome 文 `Nothing was applied. Your current home layout is unchanged.`、(2) 整理案の破棄を伝える詳細文、(3) `Capture and review again` とその summary が表示される。 |
+| AC-1 | `Apply` 試行が stale で拒否された場合 (`State.Stale(APPLY_BLOCKED)`)、画面に (1) outcome 文 `This proposal was not applied. This attempt did not change your current home layout.`、(2) 整理案の破棄を伝える詳細文、(3) `Capture and review again` とその summary が表示される。 |
 | AC-2 | proposal 確認前の stale 検出 (`State.Stale(DETECTED_BEFORE_REVIEW)`) では、outcome 文と「確認前に破棄」の詳細文が表示され、「確認済み整理案」を主張しない。 |
 | AC-3 | ja locale で新規 4 string が英語 fallback なしに解決される。 |
 | AC-4 | stale 経路の zero-write 契約と `A2` stale-rejection diagnostics が退化しない (既存 unit / E2E 契約が origin 付き主張へ更新されて green)。 |
@@ -165,7 +165,8 @@ None。文言と state 形状は §D1–D4 のとおり spec 時点で確定し�
 
 ## Change history
 
-- 2026-09-07: Drafted for Issue #210。Issue 本文 (exploratory review F-04)、`ManualOrganizationRun.kt` / `ManualOrganizationPreferences.kt` / strings の現行実装調査、spec 209・195 の UI 契約、E2E stale test (`staleProductionConfirmationDoesNotWrite`) の調査を入力に作成。Issue owner の実施指示 (「Issue210 対応開始」) に基づき受理し、owner review は実装 PR で継続する。
+- 2026-09-07: Drafted for Issue #210。Issue 本文 (exploratory review F-04)、`ManualOrganizationRun.kt` / `ManualOrganizationPreferences.kt` / strings の現行実装調査、spec 209・195 の UI 契約、E2E stale test (`staleProductionConfirmationDoesNotWrite`) の調査を入力に作成。実装 PR ([#240](https://github.com/nunu1733/NunuLauncher/pull/240)) で owner review を実施する。
+- 2026-09-07: Spec/Plan owner review ([Issue #210 コメント](https://github.com/nunu1733/NunuLauncher/issues/210#issuecomment-review), Request changes) 対応: (1) Blocker — D2 / AC-1 / Scenario の共通 outcome 文を適用試行スコープ (`This proposal was not applied. This attempt did not change your current home layout.` / `この整理案は適用されませんでした。この操作によるホーム画面の変更はありません。`) へ変更。旧文言「現在のホームレイアウトは変更されていません」が直後の「layout が変更されたため破棄」詳細文と画面上で自己矛盾に読めるため。strings・ja を同時更新。(2) status を accepted → proposed へ訂正 (承認は owner review 完了後に行う)。plan.md に en/ja screenshot・visual review・`assembleLawnWithQuickstepGithubDebug` 完了確認を検証として追加。
 
 ## References
 

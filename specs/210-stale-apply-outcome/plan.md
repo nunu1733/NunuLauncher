@@ -1,7 +1,7 @@
 # Plan: Issue #210 stale apply outcome
 
 > Spec: [spec.md](./spec.md)
-> Status: implemented for this issue's vertical slice
+> Status: proposed — owner review は [PR #240](https://github.com/nunu1733/NunuLauncher/pull/240) で実施する (承認後に implemented へ進める)
 
 ## 現在の code の根拠
 
@@ -44,9 +44,12 @@
 1. unit: `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.ui.ManualOrganizationRunTest'` (origin equality)。
 2. organizer unit gate: `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`。
 3. instrumentation: organizer instrumentation lane (既存 ManualOrganization 関連 test class) を emulator で実行し、新規 2 test と更新済み test を green にする。
-4. lint/format: `./gradlew spotlessCheck`。
+4. 通常 build: `./gradlew assembleLawnWithQuickstepGithubDebug` の完了確認。
+5. format: `./gradlew spotlessCheck`。
+6. UI 証拠 (UI 変更 PR として): 既存 `capturesManualOrganizationReviewSurfaces` が記録する stale surface screenshot を取得し、outcome → 破棄詳細 → recapture summary の描画を目視確認する (en)。ja は ja locale 解決 test (新規 4 string が fallback しない) と ja copy の visual review で代替する。
 
 ## リスク
 
 - `State.Stale` の shape 変更により、同 equality / exhaustiveness を前提とする箇所が壊れる可能性 → 全参照箇所は grep 済み (spec「現在の code の根拠」)。`when` 分岐で `State.Stale` を使う箇所は UI 1 箇所のみ (`is` で受けるため影響なし)。
 - risk label 不要: `organizer/application/**`、Launcher DB、recovery への変更はゼロ (高リスク path 一覧の対象外)。
+- 文言の機械テスト限界: 各 string の表示 assertion は「文の組み合わせの矛盾」を検出できない (owner review #1 の指摘どおり)。このため plan の検証に screenshot による目視確認と spec D2 文面の owner review を組み込む。

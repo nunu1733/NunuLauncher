@@ -113,7 +113,7 @@
     <string name="manual_organization_cancel">キャンセル</string>
     <string name="manual_organization_cancel_before_checkpoint">適用前にキャンセル</string>
     <string name="manual_organization_applying">確認した整理案を適用しています。この処理は安全に中断できません。</string>
-    <string name="manual_organization_stale_outcome">何も適用されていません。現在のホームレイアウトは変更されていません。</string>
+    <string name="manual_organization_stale_outcome">この整理案は適用されませんでした。この操作によるホーム画面の変更はありません。</string>
     <string name="manual_organization_stale_proposal_discarded">整理案の確認後にホームレイアウトが変更されたため、整理案は破棄されました。</string>
     <string name="manual_organization_stale_proposal_not_reviewed">整理案の作成中にホームレイアウトが変更されたため、確認前に整理案は破棄されました。</string>
     <string name="manual_organization_recapture">もう一度読み込んで確認</string>
