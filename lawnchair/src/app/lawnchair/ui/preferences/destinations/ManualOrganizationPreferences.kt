@@ -4,13 +4,19 @@ import android.content.Context
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -82,6 +88,7 @@ fun ManualOrganizationPreferences(
     val scope = rememberCoroutineScope()
     val state by coordinator.stateFlow.collectAsStateWithLifecycle()
     val focusRequester = remember { FocusRequester() }
+    val listState = rememberLazyListState()
 
     // Issue #195: the concrete change list is planned once per preview state.
     // Expansion state is UI-local and resets when new details arrive.
@@ -96,6 +103,13 @@ fun ManualOrganizationPreferences(
     ManualOrganizationBackHandler(coordinator)
 
     LaunchedEffect(state) {
+        // Issue #209 review: each run state is a fresh surface, but the lazy
+        // list keeps its scroll offset across transitions (Applied's summary
+        // offset used to leave the RecoveryPreview decision pair above the
+        // viewport). Return to the head before restoring focus to the status
+        // heading, so the heading and its decision pair are visible on every
+        // transition without the user scrolling.
+        runCatching { listState.scrollToItem(0) }
         withFrameNanos { }
         runCatching { focusRequester.requestFocus() }
     }
@@ -153,7 +167,7 @@ fun ManualOrganizationPreferences(
         modifier = modifier,
         isExpandedScreen = LocalIsExpandedScreen.current,
     ) { paddingValues ->
-        PreferenceLazyColumn(paddingValues) {
+        PreferenceLazyColumn(paddingValues, state = listState) {
             item {
                 Text(
                     text = stringResource(R.string.manual_organization_explainer),
@@ -235,30 +249,37 @@ fun ManualOrganizationPreferences(
                         // Issue #195 spec D1: environmental preview failures keep the
                         // existing count-only flow, but announce the missing details
                         // instead of silently equating them with a normal preview.
+                        // Issue #209 review: the degraded announcement and the
+                        // count-only summary precede the decision pair, so the user
+                        // sees that the concrete list is missing before reaching the
+                        // primary action (spec 195 D1 over leading placement).
                         item {
                             SummaryText(
                                 stringResource(R.string.manual_organization_preview_details_unavailable),
                             )
                         }
                         summaryItems(currentState.summary)
+                        item {
+                            PreviewDecisionActions(
+                                onConfirm = { execute(coordinator::confirm) },
+                                onCancel = { execute(coordinator::cancel) },
+                            )
+                        }
                     } else {
+                        // Issue #209: the decision pair leads the concrete change
+                        // list so Apply and Cancel are visible together no matter
+                        // how much of the list is expanded.
+                        item {
+                            PreviewDecisionActions(
+                                onConfirm = { execute(coordinator::confirm) },
+                                onCancel = { execute(coordinator::cancel) },
+                            )
+                        }
                         previewDetailsItems(
                             summary = currentState.summary,
                             counts = currentState.details.counts,
                             sections = previewSections,
                             expandedGroups = expandedPreviewGroups,
-                        )
-                    }
-                    item {
-                        ClickablePreference(
-                            label = stringResource(R.string.manual_organization_confirm),
-                            onClick = { execute(coordinator::confirm) },
-                        )
-                    }
-                    item {
-                        ClickablePreference(
-                            label = stringResource(R.string.manual_organization_cancel),
-                            onClick = { execute(coordinator::cancel) },
                         )
                     }
                 }
@@ -291,11 +312,17 @@ fun ManualOrganizationPreferences(
                     }
                     summaryItems(currentState.summary)
                     if (currentState.result is ApplyResult.Applied) {
+                        // Issue #209: the safety net must read as a control,
+                        // not as a caption row among the summary lines.
                         item {
-                            ClickablePreference(
-                                label = stringResource(R.string.manual_organization_recovery),
-                                onClick = { execute(coordinator::beginRecoveryPreview) },
-                            )
+                            DecisionActionsRow {
+                                FilledTonalButton(
+                                    onClick = { execute(coordinator::beginRecoveryPreview) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(text = stringResource(R.string.manual_organization_recovery))
+                                }
+                            }
                         }
                     }
                     if (currentState.result.requiresSafeSupport()) {
@@ -334,19 +361,25 @@ fun ManualOrganizationPreferences(
                             focusRequester = focusRequester,
                         )
                     }
-                    if (currentState.result is RecoveryPreviewResult.Restorable) {
-                        item {
-                            ClickablePreference(
-                                label = stringResource(R.string.manual_organization_recovery_confirm),
-                                onClick = { execute(coordinator::confirmRecovery) },
-                            )
-                        }
-                    }
+                    // Issue #209: restore-or-cancel renders as the same
+                    // decision pair as the apply preview.
                     item {
-                        ClickablePreference(
-                            label = stringResource(R.string.manual_organization_cancel),
-                            onClick = { execute(coordinator::cancelRecoveryPreview) },
-                        )
+                        DecisionActionsRow {
+                            if (currentState.result is RecoveryPreviewResult.Restorable) {
+                                Button(
+                                    onClick = { execute(coordinator::confirmRecovery) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(text = stringResource(R.string.manual_organization_recovery_confirm))
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = { execute(coordinator::cancelRecoveryPreview) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(text = stringResource(R.string.manual_organization_cancel))
+                            }
+                        }
                     }
                 }
 
@@ -552,6 +585,58 @@ private fun FocusTargetText(
             .semantics {
                 liveRegion = LiveRegionMode.Polite
             },
+    )
+}
+
+/**
+ * Issue #209: the preview decision pair (confirm / cancel) as Material3
+ * buttons — the same emphasis split as the lawnchair confirmation bottom
+ * sheet — instead of preference rows that read like plain text. In the
+ * concrete-list mode it sits directly below the status heading so both paths
+ * of the decision are visible together no matter how far the list is
+ * expanded; the degraded mode keeps it after the missing-details announcement
+ * and the count-only summary (spec 195 D1).
+ */
+@Composable
+private fun PreviewDecisionActions(
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    DecisionActionsRow {
+        Button(
+            onClick = onConfirm,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(text = stringResource(R.string.manual_organization_confirm))
+        }
+        OutlinedButton(
+            onClick = onCancel,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(text = stringResource(R.string.manual_organization_cancel))
+        }
+    }
+}
+
+/**
+ * Issue #209: decision actions (confirm / cancel / restore) render as
+ * Material3 buttons — the same emphasis split as the lawnchair confirmation
+ * bottom sheet — instead of preference rows that read like plain text. The
+ * actions sit directly below the state heading so both paths of a decision
+ * are visible together regardless of how far the change list is expanded,
+ * stacked full-width so keyboard/DPAD traversal visits them in the visual
+ * confirm-then-cancel order and long labels wrap instead of clipping.
+ */
+@Composable
+private fun DecisionActionsRow(
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        content = content,
     )
 }
 
