@@ -28,6 +28,10 @@ _Avoid_: 設定、XMLルール
 対象集合をどのような配置方針へ変換するかを決める、version付きの組み込み計画戦略。folder形成、対象unit、unit順序、page範囲、cell探索をcurated catalogの1メンバーとして固定し、選択identityがpolicy provenanceへ参加する ([spec 182](./specs/182-layout-strategy-catalog/spec.md))。
 _Avoid_: 並べ替え設定 (組合せ式toggleを想起させる)、Theme、OrderingPolicy (旧単一値の型名)
 
+**ストラテジー固定unit (strategy-fixed unit)**:
+あるlayout strategyが「本来はmovableだが、そのstrategyの意図として動かさない」と決めたtop-level unit。`PreserveReason.STRATEGY_PRESERVED`で報告され、occupancy constraintとして残る ([spec 237](./specs/237-global-compact-v2-folder-relocation/spec.md))。
+_Avoid_: 保存済み (naturally preservedとの混同)、スキップ対象
+
 **レイアウトsnapshot (Layout Snapshot)**:
 ある時点のホームレイアウト、端末能力、およびrevisionを固定した読み取り専用の入力。
 _Avoid_: Backup、DB dump

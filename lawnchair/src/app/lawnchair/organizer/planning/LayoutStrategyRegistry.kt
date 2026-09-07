@@ -22,7 +22,17 @@ internal data class StrategyDefinition(
     val pageScope: PageScope,
     val cellTraversal: CellTraversal,
     val placeFullRun: (FullRunContext) -> PlacementOutput,
-)
+) {
+    /**
+     * Whether this strategy's executor reports an otherwise-movable captured
+     * item as `PreserveReason.STRATEGY_PRESERVED` (spec 182/237). Strategies
+     * with a narrowing eligibility filter fix every movable item the filter
+     * excludes; the canonical-family flows place every movable item (existing
+     * folders included, through their own unit stream) and never
+     * strategy-fix.
+     */
+    fun strategyFixes(item: CapturedItem): Boolean = unitOrder != UnitOrdering.CANONICAL_TIE_BREAK && !eligibleUnitFilter(item)
+}
 
 /** Deterministic unit-ordering families (spec 182 internal seam). */
 internal enum class UnitOrdering {
@@ -75,6 +85,21 @@ internal object LayoutStrategyRegistry {
     val GLOBAL_COMPACT_V1 = StrategyId("GLOBAL_COMPACT_V1")
 
     /**
+     * Spec 237 GLOBAL_COMPACT_V2: GLOBAL_COMPACT_V1's cross-page density
+     * compaction with existing `1×1` top-level folder units joining the
+     * movable stream — they relocate like singletons while folder identity,
+     * members, and profile isolation stay untouched, and a moved folder is
+     * reported as `PlacementCode.FOLDER_UNIT`. Otherwise-movable non-`1×1`
+     * units (including non-`1×1` folders) remain `STRATEGY_PRESERVED`; folder
+     * formation still applies to singleton candidates only. Replan
+     * idempotence is re-proven over the formation-inclusive state transition
+     * (spec 237): the fixed set is invariant, the materialized captured
+     * visual order restores the consumption order, and formation is
+     * replan-stable.
+     */
+    val GLOBAL_COMPACT_V2 = StrategyId("GLOBAL_COMPACT_V2")
+
+    /**
      * Spec 182 CATEGORY_CONTIGUOUS_V1: page-local category grouping — same
      * lift-then-place mechanics as STABLE_PAGE_TIDY_V1 with the per-page unit
      * order `(profile, category with fallback last, canonical target key,
@@ -119,6 +144,18 @@ internal object LayoutStrategyRegistry {
             createsFolders = true,
             eligibleUnitFilter = { item ->
                 (item.kind == ItemKind.APPLICATION || item.kind == ItemKind.DEEP_SHORTCUT) &&
+                    (item.placement as? CapturedPlacement.Workspace)?.span == GridSpan(1, 1)
+            },
+            unitOrder = UnitOrdering.CAPTURED_VISUAL_GLOBAL,
+            pageScope = PageScope.CAPTURED_THEN_NEW,
+            cellTraversal = CellTraversal.TOP_LEFT_ROW_MAJOR,
+            placeFullRun = FullRunExecution::execute,
+        ),
+        GLOBAL_COMPACT_V2 to StrategyDefinition(
+            identity = GLOBAL_COMPACT_V2,
+            createsFolders = true,
+            eligibleUnitFilter = { item ->
+                (item.kind == ItemKind.APPLICATION || item.kind == ItemKind.DEEP_SHORTCUT || item.kind == ItemKind.FOLDER) &&
                     (item.placement as? CapturedPlacement.Workspace)?.span == GridSpan(1, 1)
             },
             unitOrder = UnitOrdering.CAPTURED_VISUAL_GLOBAL,

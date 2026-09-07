@@ -1088,7 +1088,11 @@ class PlannerContractHarnessTest {
         assertEquals(folderItem.folderId, materializedFolder.folderId)
         assertEquals(input.targets.existing.first { it.item == folderItem.id }.role, materialized.targets.existing.first { it.item == folderItem.id }.role)
         val synthetic = materialized.snapshot.items.single { it.id.value.startsWith("fixture.materialized.folder-item.") }
-        assertEquals(ExistingRole.Preserved, materialized.targets.existing.single { it.item == synthetic.id }.role)
+        // Spec 237: the materialized synthetic folder re-enters the target set
+        // with the production recapture role (Movable, per
+        // FullTargetSetMaterializer) — under GLOBAL_COMPACT_V2 it rejoins the
+        // mover stream; under V1 the strategy filter re-pins it.
+        assertEquals(ExistingRole.Movable, materialized.targets.existing.single { it.item == synthetic.id }.role)
         assertEquals(CapturedPlacement.FolderMember(FolderRef(synthetic.folderId!!), 0), materialized.snapshot.items.single { it.id == memberId }.placement)
         val repeated = (PostPlanMaterializer.materialize(input, plannedOutcome) as MaterializationResult.Success).input
         assertEquals(materialized, repeated)

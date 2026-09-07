@@ -1001,8 +1001,10 @@
     <string name="organization_strategy_tidy_description">Closes gaps on each screen without moving apps to other screens.</string>
     <string name="organization_strategy_bottom_first_name">Bottom-first fill</string>
     <string name="organization_strategy_bottom_first_description">Fills each screen starting from the bottom rows.</string>
-    <string name="organization_strategy_global_name">Compact across screens</string>
-    <string name="organization_strategy_global_description">Moves apps from later screens into earlier free spaces.</string>
+    <string name="organization_strategy_global_name">Compact across screens (apps only)</string>
+    <string name="organization_strategy_global_description">Moves apps from later screens into earlier free spaces. Existing folders stay where they are.</string>
+    <string name="organization_strategy_global_v2_name">Compact across screens</string>
+    <string name="organization_strategy_global_v2_description">Moves apps and folders from later screens into earlier free spaces.</string>
     <string name="organization_strategy_category_contiguous_name">Group by category</string>
     <string name="organization_strategy_category_contiguous_description">Keeps apps of the same category next to each other on each screen.</string>
     <string name="organization_strategy_unknown_name">Custom strategy</string>
