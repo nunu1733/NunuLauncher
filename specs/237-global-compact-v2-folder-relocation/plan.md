@@ -34,7 +34,7 @@ capture → composer (bundle v2.5 を読み `RuleSemantics.organizationStrategy`
 2. formation candidate = eligible のうち `APPLICATION`/`DEEP_SHORTCUT` のみ。`formFolderGroups` で new folder 群を形成。
 3. workspace units = eligible − new-folder members (既存 1×1 folder を含む) を global captured visual order で `allocateCapturedThenNew`。
 4. new folder を singleton stream の後ろに `(preferred page key, NewFolderOrdinal)` 順で配置。
-5. folder member は既存どおり `Preserved{STRUCTURAL}` (planner は workspace item として扱わない)。
+5. folder member は placement (`FolderMember`) のまま出力に現れ、preserve reason は spec 10 の precedence で決まる: **production recapture (composer `FullTargetSetMaterializer` が `FolderMember` を `Preserved` membership にする) では `Preserved{NON_TARGET}`**。member を `Movable` membership で渡す direct-seam 形では `Preserved{STRUCTURAL}`。
 
 ### Alternatives rejected
 
@@ -60,11 +60,12 @@ capture → composer (bundle v2.5 を読み `RuleSemantics.organizationStrategy`
 | `tests/unit/.../harness/Oracle.kt` | `checkIdempotence` の期待 reason に `strategyFixes` 経由の `STRATEGY_PRESERVED` を追加 | movable folder の role 変更に伴い、strategy-fixed item の replan reason を oracle が正しく期待するように |
 | `tests/unit/.../harness/PlannerContractHarnessTest.kt` | `materializationPreservesOriginalRoles` の期待を `Movable` へ | 同上 |
 | `tests/unit/.../CrossStrategyCorpusTest.kt` | formation fixture (`expectedNewFolderCount > 0`) を `IDEMPOTENCE` 付きで派生し、全 strategy に流す。派生の存在を契約 test 化 | review P1: 共有 suite が formation → recapture → replan を実際に踏むように |
-| `tests/unit/.../harness/Oracle.kt` | `checkIdempotence` の期待 reason に `strategyFixes` 経由の `STRATEGY_PRESERVED` を追加 | movable folder の role 変更に伴い、strategy-fixed item の replan reason を oracle が正しく期待するように |
-| `tests/unit/.../harness/PlannerContractHarnessTest.kt` | `materializationPreservesOriginalRoles` の期待を `Movable` へ | 同上 |
+| `lawnchair/src/.../organizer/diagnostics/model/RunEvent.kt` | `APPROVED_VERSIONS` に `GLOBAL_COMPACT_V2` を追加 | device evidence 取得時に発見: diagnostics 経路のみが `RunVersions` を構築し、未登録 ID で run coroutine が abort するため |
+| `tests/unit/.../diagnostics/model/RunEventSerializationTest.kt` | 「registry の全 strategy ID が approved」契約 test 追加 | allowlist と catalog の drift を構造的に防止 |
 | `tests/unit/.../BuiltInOrganizerPolicyBundleSourceTest.kt` | v2.5 期待値 | bundle 契約 |
 | `tests/organizer-instrumentation/.../StrategyPickerInstrumentationTest.kt` | V2 行追加 | AC-9 |
-| `CONTEXT.md` / `docs/product/requirements.md` | domain language / traceability | spec 承認時更新 |
+| `docs/assessment/ac14-device-evidence/237-*.png` | 実機 before/preview/after evidence (6 枚) | AC-10 |
+| `CONTEXT.md` / `docs/product/requirements.md` | domain language / traceability | spec 承認時更新 (実装済み) |
 
 ## Migration and recovery
 
@@ -79,7 +80,7 @@ capture → composer (bundle v2.5 を読み `RuleSemantics.organizationStrategy`
 |---|---|---|
 | AC-2 | `GlobalCompactStrategyTest` V2: 既存 1×1 folder が前方 page 空き cell へ `Moved{FOLDER_UNIT}` | `:tests` unit test (JVM) |
 | AC-3 | V2 mixed-movers fixture + `CrossStrategyCorpusTest` (V2 が registry 経由で自動対象) | 同上 |
-| AC-4 | folder identity / member / profile isolation assertion (`STRUCTURAL` 不変) | 同上 |
+| AC-4 | folder identity / member / profile isolation assertion。member の recapture reason は production role で `Preserved{NON_TARGET}` (direct-seam 形では `STRUCTURAL`) を assert | 同上 |
 | AC-5 | formation → apply → recapture → replan → 空 diff、形成済み folder は `Preserved{ALREADY_CANONICAL}` | 同上 |
 | AC-6 | preview projection: `FOLDER_UNIT` wording 経由で folder 移動行が表示 | 既存 preview unit/instrumentation test |
 | AC-7 | V1 既存 test 群 (`GlobalCompactStrategyTest` V1 case) 無修正 pass | 同上 |
@@ -94,10 +95,10 @@ capture → composer (bundle v2.5 を読み `RuleSemantics.organizationStrategy`
 ## Documentation updates
 
 - [x] spec status/history (accepted + correction 記録済み)
-- [ ] CONTEXT.md (strategy-fixed unit 追加)
-- [ ] DESIGN.md — 影響なし (catalog member 追加は DESIGN の記述粒度以下)
-- [ ] ADR — 不要 (versioning 判断は spec 内で記録、ADR-0012 の適用例)
-- [ ] requirements.md — FR-016 status に spec 237 を追記
+- [x] CONTEXT.md (strategy-fixed unit 追加)
+- [x] DESIGN.md — 影響なし (catalog member 追加は DESIGN の記述粒度以下)
+- [x] ADR — 不要 (versioning 判断は spec 内で記録、ADR-0012 の適用例)
+- [x] requirements.md — FR-016 status に spec 237 を追記
 
 ## Execution checklist
 
@@ -105,8 +106,8 @@ capture → composer (bundle v2.5 を読み `RuleSemantics.organizationStrategy`
 - [x] Tests fail for the missing behavior. (V2 fixture を先に追加し、登録前は 5 件 fail を確認)
 - [x] Minimal implementation completed.
 - [x] Migration/recovery verified. (bundle version test + selection 継続性)
-- [x] Full relevant verification completed. (organizer unit suite 952 tests、spotlessCheck、assemble、repo contract)
-- [ ] PR evidence and remaining risks recorded. (PR 作成時に記録)
+- [x] Full relevant verification completed. (organizer unit suite 954 tests、spotlessCheck、assemble、repo contract)
+- [x] PR evidence and remaining risks recorded. (PR #241 本文、[AC-10 実機 evidence コメント](https://github.com/nunu1733/NunuLauncher/issues/237#issuecomment-5569381592)、`docs/assessment/pr-241-global-compact-v2.md`)
 
 ## Implementation review follow-ups (2026-09-07)
 
@@ -115,3 +116,5 @@ capture → composer (bundle v2.5 を読み `RuleSemantics.organizationStrategy`
 - **再レビュー P1 (fixed)**: 前回の materializer 修正だけでは formation transition を踏んでいなかった (`apps-only` の checks に `IDEMPOTENCE` がなく、generated corpus も formation なし)。`CrossStrategyCorpusTest` が `expectedNewFolderCount > 0` の fixture を `IDEMPOTENCE` 付きで派生し (golden corpus 不変)、派生の存在自体を契約 test `formationFixturesCarryTheIdempotenceCheck` で固定。
 - **再レビュー P1b (fixed, 正本決定)**: materialized folder member の recapture reason について、production semantics (`FullTargetSetMaterializer`: `FolderMember` → `Preserved` membership + spec 10 precedence `NON_TARGET` > `STRUCTURAL`) を正本とし、**production recapture では member は `Preserved{NON_TARGET}`** と確定。`STRUCTURAL` は direct-seam 形 (member を `Movable` membership で渡す) の planner 契約。`determinePreservation` の precedence 変更は全 strategy の公開挙動変更のため本 spec 範囲外として不実施。`PostPlanMaterializer` は materialized `FolderMember` items を `Preserved` role で再投入し、spec 記述・unit test (formation replan test を production shape に更新し member reason を assert) を同期。
 - **再レビュー P2 (fixed)**: Data flow の `executeGlobalCompactV2` 表記を shared executor 名に修正。
+- **実機 evidence 取得時に発見 (fixed, `ccdb4c33`)**: `RunVersions.APPROVED_VERSIONS` に `GLOBAL_COMPACT_V2` が未登録のため、diagnostics 経路 (`PlanningProjection.project`) が即例外を投げ run coroutine が abort — 実機では capture 直後に UI が start button へ戻る症状として現れた。allowlist 追加 + 「registry 全 strategy ID が approved」契約 test で再発防止。test count は 954。
+- **docs 整合修正 (fixed)**: Data flow 5 と AC-4 行の member recapture reason を確定 semantics (production = `NON_TARGET`、direct-seam = `STRUCTURAL`) へ同期、Change set の重複行を整理、Documentation updates / checklist を実績に更新。AC-10 の device evidence は [Issue #237 コメント](https://github.com/nunu1733/NunuLauncher/issues/237#issuecomment-5569381592) と `docs/assessment/ac14-device-evidence/237-*.png` で記録済み。
