@@ -101,6 +101,14 @@ internal object PostPlanMaterializer {
             val target = placements[item.id]?.singleOrNull()?.target ?: return@mapNotNull null
             convert(FindingSubject.Item(item.id), target)?.let { item.copy(placement = it) }
         }
+        // Items whose materialized placement is a folder membership follow the
+        // production target materializer: CapturedPlacement.FolderMember is
+        // always Preserved (spec 237 review — a member absorbed into a new
+        // folder re-enters the planner as NON_TARGET, not its original role).
+        val materializedFolderMemberIds = planned.placements
+            .filter { it.target is PlacementTarget.FolderMember }
+            .map { it.item }
+            .toSet()
         val syntheticFolders = planned.newFolders.mapNotNull { folder ->
             val folderId = folderIds[folder.ordinal] ?: return@mapNotNull null
             val itemId = folderItemIds[folder.ordinal] ?: return@mapNotNull null
@@ -130,7 +138,16 @@ internal object PostPlanMaterializer {
         }
         if (findings.isNotEmpty()) return MaterializationResult.Failed(findings)
         val existingMemberships = input.snapshot.items.map { item ->
-            ExistingTargetMembership(item.id, requireNotNull(rolesByItem[item.id]))
+            val role = if (item.id in materializedFolderMemberIds) {
+                // Production recapture semantics (FullTargetSetMaterializer):
+                // a captured FolderMember is Preserved, so members kept inside
+                // (or absorbed into) folders re-enter the planner as
+                // NON_TARGET — spec 10 precedence: NON_TARGET > STRUCTURAL.
+                ExistingRole.Preserved
+            } else {
+                requireNotNull(rolesByItem[item.id])
+            }
+            ExistingTargetMembership(item.id, role)
         }
         // Production recapture semantics (FullTargetSetMaterializer): an
         // unlocked, available top-level workspace folder is Movable, so a

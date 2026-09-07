@@ -28,7 +28,7 @@
 
 ### Data flow
 
-capture → composer (bundle v2.5 を読み `RuleSemantics.organizationStrategy` へ反映) → `plan` → `executeGlobalCompactV2`:
+capture → composer (bundle v2.5 を読み `RuleSemantics.organizationStrategy` へ反映) → `plan` → `executeGlobalCompact` (V1/V2 共有 executor):
 
 1. fixed (naturally preserved + non-1×1 movable) を元位置 `markOccupied`。
 2. formation candidate = eligible のうち `APPLICATION`/`DEEP_SHORTCUT` のみ。`formFolderGroups` で new folder 群を形成。
@@ -56,7 +56,10 @@ capture → composer (bundle v2.5 を読み `RuleSemantics.organizationStrategy`
 | `lawnchair/res/values{,-ja}/strings.xml` | V2 copy 追加・V1 copy 更新 | UI 正本 |
 | `lawnchair/src/.../ManualOrganizationPreferences.kt` | V2 mapping | picker 表示 |
 | `tests/unit/.../GlobalCompactStrategyTest.kt` | V2 fixture 追加 | AC-2〜AC-6 |
-| `tests/unit/.../harness/PostPlanMaterializer.kt` | materialized synthetic folder の role を production (`FullTargetSetMaterializer` と同じ `Movable`) へ変更 | review P1: idempotence oracle を production recapture semantics に一致させる |
+| `tests/unit/.../harness/PostPlanMaterializer.kt` | materialized synthetic folder を `Movable`、materialized `FolderMember` items を `Preserved` (production roles) で再投入 | review P1/P1b: idempotence oracle を production recapture semantics に一致させる |
+| `tests/unit/.../harness/Oracle.kt` | `checkIdempotence` の期待 reason に `strategyFixes` 経由の `STRATEGY_PRESERVED` を追加 | movable folder の role 変更に伴い、strategy-fixed item の replan reason を oracle が正しく期待するように |
+| `tests/unit/.../harness/PlannerContractHarnessTest.kt` | `materializationPreservesOriginalRoles` の期待を `Movable` へ | 同上 |
+| `tests/unit/.../CrossStrategyCorpusTest.kt` | formation fixture (`expectedNewFolderCount > 0`) を `IDEMPOTENCE` 付きで派生し、全 strategy に流す。派生の存在を契約 test 化 | review P1: 共有 suite が formation → recapture → replan を実際に踏むように |
 | `tests/unit/.../harness/Oracle.kt` | `checkIdempotence` の期待 reason に `strategyFixes` 経由の `STRATEGY_PRESERVED` を追加 | movable folder の role 変更に伴い、strategy-fixed item の replan reason を oracle が正しく期待するように |
 | `tests/unit/.../harness/PlannerContractHarnessTest.kt` | `materializationPreservesOriginalRoles` の期待を `Movable` へ | 同上 |
 | `tests/unit/.../BuiltInOrganizerPolicyBundleSourceTest.kt` | v2.5 期待値 | bundle 契約 |
@@ -109,3 +112,6 @@ capture → composer (bundle v2.5 を読み `RuleSemantics.organizationStrategy`
 
 - **P1 (fixed)**: `PostPlanMaterializer` が materialized synthetic folder を `ExistingRole.Preserved` で固定しており、production の `FullTargetSetMaterializer` (unlocked・available な workspace `FOLDER` は `Movable`) と不一致だった。role を `Movable` に合わせ、property corpus 全体を再実行した。付随修正: (1) `Oracle.checkIdempotence` の期待 reason テーブルに `StrategyDefinition.strategyFixes` 経由の `STRATEGY_PRESERVED` を追加 (strategy-fixed item は replan でも同じ reason を報告する — V1 は materialized folder をこの経路で再 pin する)、(2) `PlannerContractHarnessTest.materializationPreservesOriginalRoles` の期待を `Movable` へ更新。これにより `CrossStrategyCorpusTest` が「formation → materialize (Movable) → V2 mover stream 再参加 → replan 空 diff」を全 corpus で検証する。golden digest は corpus を変えていないため不変 (corpus 変更の代替案は Alternatives rejected を参照)。
 - **P2 (fixed)**: 本 plan の設計記述を実装実態 (shared `executeGlobalCompact`、`strategyFixes` 述語) へ同期し、status を implemented に更新。
+- **再レビュー P1 (fixed)**: 前回の materializer 修正だけでは formation transition を踏んでいなかった (`apps-only` の checks に `IDEMPOTENCE` がなく、generated corpus も formation なし)。`CrossStrategyCorpusTest` が `expectedNewFolderCount > 0` の fixture を `IDEMPOTENCE` 付きで派生し (golden corpus 不変)、派生の存在自体を契約 test `formationFixturesCarryTheIdempotenceCheck` で固定。
+- **再レビュー P1b (fixed, 正本決定)**: materialized folder member の recapture reason について、production semantics (`FullTargetSetMaterializer`: `FolderMember` → `Preserved` membership + spec 10 precedence `NON_TARGET` > `STRUCTURAL`) を正本とし、**production recapture では member は `Preserved{NON_TARGET}`** と確定。`STRUCTURAL` は direct-seam 形 (member を `Movable` membership で渡す) の planner 契約。`determinePreservation` の precedence 変更は全 strategy の公開挙動変更のため本 spec 範囲外として不実施。`PostPlanMaterializer` は materialized `FolderMember` items を `Preserved` role で再投入し、spec 記述・unit test (formation replan test を production shape に更新し member reason を assert) を同期。
+- **再レビュー P2 (fixed)**: Data flow の `executeGlobalCompactV2` 表記を shared executor 名に修正。

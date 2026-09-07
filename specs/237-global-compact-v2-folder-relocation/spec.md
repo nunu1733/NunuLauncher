@@ -35,7 +35,7 @@ spec 182 はこの制限を INV-8 (replan 冪等性) の heterogeneous-span coun
 ## Scope
 
 - Versioned successor strategy `GLOBAL_COMPACT_V2` の導入: 既存 1×1 top-level `FOLDER` unit を movable 対象に加え、1×1 singleton と同一の global captured visual order / `CAPTURED_THEN_NEW` page scope / row-major first-fit で配置する。
-- 既存 folder の移動時 invariant 保持: folder unit は span (`folderMaxColumns`/`folderMaxRows` を超えない 1×1) でのみ移動し、folder id・members・rank・profile・naming は不変。children は `STRUCTURAL` のまま folder 内に留まり、folder の跨ぎ移動で member の workspace 書き込みは発生しない。
+- 既存 folder の移動時 invariant 保持: folder unit は span (`folderMaxColumns`/`folderMaxRows` を超えない 1×1) でのみ移動し、folder id・members・rank・profile・naming は不変。children は placement (FolderMember) のまま folder 内に留まり、folder の跨ぎ移動で member の workspace 書き込みは発生しない。member の preserve reason は spec 10 の predicate 順に従う (下記 Folder invariant)。
 - `GLOBAL_COMPACT_V2` を runtime-supported catalog へ追加し、ADR-0007 §8 に従い新 bundle semantic version (`organization-policy-v2.5`) / generation / digest を publish する。`rule-v2`・selection store schema は不変。
 - Strategy picker UI・localization copy: `GLOBAL_COMPACT_V2` の name/description 追加。`GLOBAL_COMPACT_V1` の copy は、その挙動 (既存 folder は動かさない) を正直に表す内容へ更新する。
 - Preview: cross-page move count / rows に folder relocation を含める (projection 種別の追加は不要)。
@@ -80,13 +80,13 @@ Versioning 機械的帰結 (ADR-0007 §8 / ADR-0012):
 
 - **Eligible movable units**: 1×1 `APPLICATION` / `DEEP_SHORTCUT` singleton に加え、**1×1 top-level `FOLDER` unit** (unlocked、`AVAILABLE`、workspace 配置、span 1×1)。non-1×1 top-level unit (widget、2×1/1×2 app、app pair、multi-span folder) は `STRATEGY_PRESERVED` 固定 unit のまま。
 - **既存 folder の扱い**: folder unit は 1×1 である限り singleton と同一の unit stream に参加し、global captured visual order `(PageOrder, PageId, cell.y, cell.x, ItemId)` で順序付けられ、`allocateCapturedThenNew` で配置される。captured state が 1×1 以外の span を持つ folder は eligible にならず、`STRATEGY_PRESERVED` 固定 unit のままである。
-- **Folder invariant**: folder を移動しても folder id・naming・profile・members・rank は変化しない。folder members の placement は `Preserved{STRUCTURAL}` 行として現存どおり出力に現れ、folder の移動によって内容が変わらない (members は既に folder 内にあり、planner は workspace item として扱わない)。folder 移動が member 行を書き換えることはない。
+- **Folder invariant**: folder を移動しても folder id・naming・profile・members・rank は変化しない。folder members の placement は現存どおり出力に現れ、folder の移動によって内容が変わらない (members は既に folder 内にあり、planner は workspace item として扱わない)。folder 移動が member 行を書き換えることはない。member の preserve reason は spec 10 の precedence (`NON_TARGET` > `STRUCTURAL`) に従い、membership role で決まる: **production recapture (composer `FullTargetSetMaterializer`) では captured `FolderMember` は `Preserved` membership のため `Preserved{NON_TARGET}`** であり、直接 seam を叩く caller が member を `Movable` membership で渡した場合のみ `Preserved{STRUCTURAL}` になる。V1/V2/category 系の既存 strategy も同一の規則で動いており、本 strategy による理由の変更は発生しない。
 - **Folder formation**: canonical P-04/P-05 grouping は movable 1×1 **singleton** candidate のみを対象とする。既存 folder は formation candidate にならず、既存 folder と new folder が併存する。new folder は singleton stream の後、`(preferred page key, NewFolderOrdinal)` で配置される (V1 と同じ)。
 - **1×1 制限の根拠**: spec 182 の heterogeneous-span INV-8 counterexample は「movable non-1×1 unit が compaction に参加した場合」の反例であり、本 strategy は引き続き non-1×1 を compaction 対象としないため、この反例は成立しない。
 - **Replan 冪等性の証明 (folder formation を含む状態遷移の不動点)**: V2 では材料化された new folder も次回 replan で通常の movable 1×1 folder として mover stream に再参加する。したがって V1 の「formed folder は replan で fixed set に加わる」argument は eligibility 定義と矛盾するため使えず、formation を含む状態遷移ごと不動点を示す (owner review on `b613bfb42f` の P1 指摘)。証明は次の 4 段構成とする:
   1. **fixed set の不変性**: naturally preserved item と `STRATEGY_PRESERVED` unit (non-1×1 top-level unit) は replan 間で位置も理由も変わらない。したがって「全 cell から fixed 占有を除いた、page 順 → row-major 順の空き cell リスト」(new page が作られた場合は作成順の PageOrder を続けて含む) は run 間で同一である。
   2. **消費順の単調性**: run 1 では unit stream が global captured visual order で、new folder がその後 `(preferred page key, NewFolderOrdinal)` 順で、それぞれ `allocateCapturedThenNew` の first-fit により「その時点で最小の空き cell」を消費する。消費 cell 列は消費順について狭義単調増加なので、材料化後の captured visual order (位置整列) は消費順を復元する。材料化後の layout は非重複であるため ItemId tie-break は使われない。
-  3. **formation の replan 安定性**: grouping は per-(profile, category) の候補群に独立に処理される。group 化から漏れた残余候補群は、(a) minGroupSize 未満、(b) fallback category (常に group 対象外)、(c) capacity < minGroupSize (formation 全体が無効) のいずれかであり、残余 alone を candidate として再実行しても新規 folder を形成しない。replan 時の top-level singleton candidate 集合はこの残余に一致する (run 1 の member は folder 内 `STRUCTURAL` となり candidate から外れる)。分類・taxonomy は同一 capture から決定論的に再現されるため、replan で新規 folder は形成されない。
+  3. **formation の replan 安定性**: grouping は per-(profile, category) の候補群に独立に処理される。group 化から漏れた残余候補群は、(a) minGroupSize 未満、(b) fallback category (常に group 対象外)、(c) capacity < minGroupSize (formation 全体が無効) のいずれかであり、残余 alone を candidate として再実行しても新規 folder を形成しない。replan 時の top-level singleton candidate 集合はこの残余に一致する (run 1 の member は folder 内の captured `FolderMember` — production recapture では `Preserved` membership — となり candidate から外れる)。分類・taxonomy は同一 capture から決定論的に再現されるため、replan で新規 folder は形成されない。
   4. **帰結**: replan の mover 集合は「singleton ∪ 既存 folder」から「singleton 残余 ∪ 形成済み folder」へ構成・個数とも変化するが、その captured visual order は (2) より run 1 の消費順そのものであり、空き cell リストも (1) より同一である。first-fit は各 unit を自分の captured cell へ回収し、全 unit が `Preserved{ALREADY_CANONICAL}`、新規 folder・新規 page なし、diff は空である。formation による unit 数の縮約は run 1 の allocation 内で既に反映済みであり、replan で追加の前詰めは発生しない。
 - 形成済み folder を次回以降 fixed とする永続的な provenance は導入しない (review 選択肢 (a) を不採用 — 永続 state の設計負荷に対し、上記の証明で不動点が成立するため)。代わりに、形成済み folder が replan で `Preserved{ALREADY_CANONICAL}` として自 cell を回収すること (`STRATEGY_PRESERVED` 固定ではないこと) を、formation を含む fixture で直接 pin する。formation replan 安定性は property suite の全 fixture replan assertion によっても広域に検証される。
 
@@ -131,7 +131,7 @@ And replanning the materialized result yields an empty diff
 
 Given 既存 1×1 folder が前方 page へ移動する fixture (members 2+、profile 分離あり)
 When full run が `GLOBAL_COMPACT_V2` で実行される
-Then folder members は workspace placement に書き出されず、member 行は `Preserved{STRUCTURAL}` として capture と同一の placement を保つ
+Then folder members は workspace placement に書き出されず、member 行は capture と同一の placement を保つ (production recapture role では `Preserved{NON_TARGET}`、member を `Movable` membership で渡す direct-seam 形では `Preserved{STRUCTURAL}`)
 And folder id、naming、profile、member list、member rank は capture と同一である
 And profile isolation が保持される (folder が異なる profile の cell へ跨ぐことはない)
 
@@ -156,7 +156,7 @@ And selection は fail-closed にならない
 Given 既存 folder を含む 3 page fixture
 When preview が `GLOBAL_COMPACT_V2` で生成される
 Then cross-page move count に既存 folder の cross-page move が含まれる
-And folder unit の行が `Moved` として表示され、member 行は `STRUCTURAL` として現存どおり表示される
+And folder unit の行が `Moved` として表示され、member 行は preserve reason (production recapture では `NON_TARGET`) 付きで現存どおり表示される
 And preview が V1 選択時と V2 選択時で異なる結果を示す
 
 ### Scenario: strategy picker offers both and copy is truthful
@@ -233,3 +233,4 @@ None。新 permission、network、telemetry は追加しない。strategy identi
 - 2026-09-07: Review revision (owner review on `b613bfb42f`): idempotence proof が V1 の「formed folder は replan で fixed set に加わる」argument を流用しており、V2 の eligibility 定義 (材料化された folder も movable) と矛盾していた — proof を「fixed set 不変 ⇒ 空き cell リスト同一」「消費順の単調性 ⇒ 材料化後 captured visual order が消費順を復元」「formation の replan 安定性 ⇒ replan で新規 folder なし」の 4 段構成の状態遷移不動点として書き直した — Blocking。形成済み folder を fixed 化する永続 provenance は導入せず、形成済み folder が `Preserved{ALREADY_CANONICAL}` で自 cell を回収することを fixture で pin する方針を明記 — Blocking。AC-5 と test oracle に「new folder 形成 → 適用 → recapture → replan → 空 diff」の状態遷移 test を明示 — Medium。
 - 2026-09-07: Correction (implementation prep): moved existing folder の placement code を `SINGLE_PLACEMENT` から `FOLDER_UNIT` へ訂正した。UI と preview は code ごとに別 wording (`manual_organization_moved_folder_unit` / `moveReasonFolderUnit`) を持ち、canonical flow の既存 folder 移動も `FOLDER_UNIT` であるため、folder 移動を app singleton と同 code にすると change list の文言が不誠実になるため。behavior 変更ではなく code 選択の訂正である。
 - 2026-09-07: Accepted by the Issue #237 owner。実装は本specと plan.md に従い、単一 PR で spec 受入条件と対応付ける。
+- 2026-09-07: Implementation review follow-up (owner review on `fbc5f3fca7`): (1) 共有 property suite が formation → production recapture → replan を実際に踏んでいなかった (`apps-only` に `IDEMPOTENCE` check がなく、generated corpus も formation を含まない) — `CrossStrategyCorpusTest` が formation fixture を `IDEMPOTENCE` 付きで派生し、存在を契約 test で固定 — Blocking。(2) folder member の recapture reason を正本化 — production (`FullTargetSetMaterializer` が `FolderMember` を `Preserved` membership にする + spec 10 precedence `NON_TARGET` > `STRUCTURAL`) に従い **`NON_TARGET` を正本** とし、`STRUCTURAL` は member を `Movable` membership で渡す direct-seam 形の planner 契約として位置づけた。`determinePreservation` の precedence 変更は全 strategy の公開挙動変更となるため本 spec の範囲外として実施しない。`PostPlanMaterializer` は materialized `FolderMember` items を production role に合わせ `Preserved` で再投入する — Blocking。本訂正は既存 strategy の挙動変更を伴わない (テストと文書の訂正のみ)。(3) plan.md の残存表記を修正 — Medium。

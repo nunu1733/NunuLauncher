@@ -329,7 +329,10 @@ class GlobalCompactStrategyTest {
         // into page 1's free cells in global captured visual order — the
         // behavior the "compact across screens" name promises. V1 pins this
         // unit as STRATEGY_PRESERVED-fixed; V2 moves it as FOLDER_UNIT while
-        // its member stays STRUCTURAL and untouched.
+        // its member keeps its FolderMember placement untouched. The member
+        // here carries a Movable membership (direct-seam planner shape), so
+        // spec 10's predicate table reports STRUCTURAL; under production
+        // recapture roles it is NON_TARGET (see the formation replan test).
         val items = listOf(
             app("fixed", 0, 0, page = "p0", locked = true),
             folder("fold", 0, 0, page = "p1", memberIds = listOf("foldchild")),
@@ -417,14 +420,30 @@ class GlobalCompactStrategyTest {
                 }
             }
         }
+        // Production recapture roles (FullTargetSetMaterializer): the
+        // materialized folder is Movable; its captured FolderMember children
+        // are Preserved — spec 10 precedence makes them NON_TARGET on the
+        // replan, never STRUCTURAL (STRUCTURAL applies only when the target
+        // set itself marks a folder member Movable; a direct-seam caller may
+        // do that, the composer never does).
+        val recapturedTargets = TargetSet(
+            existing = (applied + materializedFolder).map { item ->
+                val role = if (item.placement is CapturedPlacement.FolderMember) ExistingRole.Preserved else ExistingRole.Movable
+                ExistingTargetMembership(item.id, role)
+            },
+            additions = emptyList(),
+        )
         val second = planner.plan(
-            twoPageInput(applied + materializedFolder, 4, 4, strategyV2).copy(signals = signals),
+            twoPageInput(applied + materializedFolder, 4, 4, strategyV2)
+                .copy(signals = signals, targets = recapturedTargets),
         )
         val secondPlanned = second.outcome as Planned
         assertTrue(secondPlanned.placements.none { it.disposition is Disposition.Moved })
         assertTrue(secondPlanned.newFolders.isEmpty())
         val foldRow = secondPlanned.placements.single { it.item == ItemId("fold0") }
         assertEquals(Disposition.Preserved(PreserveReason.ALREADY_CANONICAL), foldRow.disposition)
+        val memberRow = secondPlanned.placements.single { it.item == ItemId("g1") }
+        assertEquals(Disposition.Preserved(PreserveReason.NON_TARGET), memberRow.disposition)
     }
 
     @Test
