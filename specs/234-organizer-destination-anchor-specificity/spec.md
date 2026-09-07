@@ -28,7 +28,7 @@ spec #212 R1 未達であり、ユーザーは accept 前に移動先 cell を�
 
 - **移動行の destination 表示**を、band label 単独から anchor 一意の表現へ更新する。対象は `MoveChange.destination` を描画する分岐 (通常 move 行、same-band adjustment 行) である。
   - **実現方法は destination 専用の formatter 経路に限る**。`positionText` は source descriptor (`descriptorText`)、保持行・警告行の `current` 位置、`descriptorSupplements` の collision 判定、`NewFolderChange.placement` と共有されており、ここへ anchor 具体性を織り込むと「coarse position が衝突した行だけ identity 補助語を付与する」という #208 の source descriptor 契約が意味論ごと変わる (owner review 指摘 1)。したがって destination 専用の組立て経路を追加し、移動行の destination 描画のみで使用する。
-  - **表示要素の契約 (en/ja 共通、owner review 指摘 4 により accepted 前に確定)**: 通常 move 行の destination は **page 語 + 領域語 + 1-based row ordinal + 1-based column ordinal** を常時表示する。same-band adjustment 行の destination 部分は **領域語 + 1-based row ordinal + 1-based column ordinal** を常時表示する (page は same-band の定義上 source descriptor と同一のため省略)。grid や衝突の有無に依存する条件付き省略は設けない。
+  - **表示要素の契約 (en/ja 共通、owner review 指摘 4 により accepted 前に確定、再レビュー指摘で統一)**: workspace destination (通常 move 行 / same-band adjustment 行のいずれも) は **page 語 + 領域語 + 1-based row ordinal + 1-based column ordinal** を常時表示する。same-band 行でも page を省略しない — same-band は page 内の band 調整を指すが、R1 の正本は「final resolved **page** + anchor cell」の一意識別であり、same-band の省略を許すと異なる page の same-band 調整が同一 destination 語になる (re-review counterexample)。grid や衝突の有無に依存する条件付き省略は設けない。
   - exact `(cellX, cellY)` 文字列は必須としない (Issue 受入条件)。上記の要素集合は `(page, row, column)` が grid 上で anchor をちょうど 1 個に絞るため、anchor 一意性を構造的に満たす。**同一 proposal 内で異なる resolved placement を持つ 2 item が destination 部分だけで区別できない表示を残してはならない**。
   - same-band adjustment 行 (`«領域» 内で位置を調整 (from row X to row Y)`) も、行序数 note が効かない純粋な列方向調整 (同 band・同行序数) で destination 候補が複数残らない形へ更新する。これは #195 D5 の残余リスク「同帯・同行序数の列方向調整は before/after が同一文言」を解消する。
 - **projection の additive 拡張**: `PreviewPosition.Workspace` が保持する page ordinal / rowBand / columnBand / rowOrdinal のデータ範囲では column specific 性を表現できないため、1-based **column ordinal** (`cellX + 1`) を projection に追加する ([spec 194](../194-plan-preview-seam/spec.md) projection 契約の additive 変更、[spec 208](../208-organizer-proposal-placement-identity/spec.md) §Relationship to #234 が許諾する範囲)。formatter は `PreviewPosition` からのみ表示を組み立て、独自の座標再計算を行わない (Issue 受入条件)。
@@ -69,9 +69,19 @@ Given 同一 page・同 row band・同 column band・同一 row ordinal 内で�
 
 When 確認画面の same-band adjustment 行を描画する,
 
-Then 行は調整の発生を告知し (現行契約どおり)、かつ destination 側の表示から解釈できる anchor 候補が 1 個になる (「位置を調整」の対象 region 内で列表示序数が復元される),
+Then 行は調整の発生を告知し (現行契約どおり)、かつ destination 部分の表示 (page + 領域 + 行表示序数 + 列表示序数) から解釈できる anchor 候補が 1 個になる,
 
 And #195 D5 の残余リスク「同帯・同行序数の列方向調整は before/after が同一文言」は当該行の destination 部分については残らない。
+
+### Scenario: 異なる page の same-band 調整が destination だけで区別できる
+
+Given 同一 proposal 内に、同一 row ordinal・同一 column ordinal・異なる page への same-band adjustment が 2 つ含まれる (例: A は page 1 の (0,0) → (1,0)、B は page 2 の (0,0) → (1,0)),
+
+When 確認画面の 2 行を描画する,
+
+Then 2 行の destination 部分の表示は異なり (page 語の差)、各表示から解釈できる anchor 候補集合は `{ (page 1, (1,0)) }` / `{ (page 2, (1,0)) }` として 1 個になる,
+
+And 同一 proposal 内で異なる resolved placement が destination 部分だけで区別不能になる表示を残さない (R1)。
 
 ### Scenario: 既存の行序数 note 分岐は意味を保つ
 
@@ -141,7 +151,7 @@ None。新たな permission、network、telemetry は追加しない。表示は
 ## Acceptance criteria
 
 - [ ] AC-1: **anchor 一意性 (本 Issue の中核、spec #212 R1 の反転)**。同一 proposal 内の全 move 行について、destination 表示から解釈できる current grid 上の anchor 候補集合が `{ resolved anchor }` に一致する。特に 4×6 grid で (0,0) と (1,0) へ resolved された 2 item が destination 部分だけで区別できる。exact `(cellX, cellY)` 文字列は要求しない。検証は **projection 層 → formatter 層 → rendered card 層** の 3 層で連鎖的に行い、application/preview の test が UI copy の解釈ロジックを複製しない (owner review 指摘 3)。
-- [ ] AC-2: **same-band 列方向調整の非曖昧化**。同 page・同 band・同行序数の列方向調整行が、destination 側の表示で調整先 cell を一意に特定でき、#195 D5 の残余リスクの当該部分を解消する。
+- [ ] AC-2: **same-band 列方向調整の非曖昧化 (page を含む)**。同 page・同 band・同行序数の列方向調整行が、destination 側の表示 (page + 領域 + 行/列表示序数) で調整先 cell を一意に特定でき、#195 D5 の残余リスクの当該部分を解消する。**異なる page の same-band 調整が同一 destination 語にならないこと** (同一 row/column ordinal・異なる page の 2 same-band move fixture で固定、再レビュー指摘) を含む。
 - [ ] AC-3: **単一導出経路と destination 専用経路の分離**。destination の表示は `PreviewPlacementIdentity` → `PreviewPosition` → copy の単一経路で構築され、formatter が座標を再計算しない。column 表示序数は projection が供給する ([spec 208](../208-organizer-proposal-placement-identity/spec.md) §4 の経路契約の継続)。anchor 具体性は **destination 専用の formatter 経路**でのみ付与され、`positionText` (source descriptor、保持行・警告行の current、collision 判定、新規フォルダ placement に共有) の語彙と #208 の collision-local 補助語契約は無変更である (owner review 指摘 1)。
 - [ ] AC-4: **placement equality の非回帰と test 責務の分離**。`PreviewApplyPlacementEqualityTest` と `PreviewApplyPersistedPlacementEqualityTest` が cell-exact 一致を維持して pass する (projection 型変更への機械的更新は許容、意味論的緩和は不許可)。`DestinationRegionMappingTest` の characterization は **application/preview 層の主張** (projection が `(rowOrdinal, columnOrdinal)` を失わず保持し、distinct anchors が distinct projected destinations になる) へ反転し、UI formatter に依存しない。rendered copy の主張は `OrganizationPreviewContentTest` が担う (owner review 指摘 3)。
 - [ ] AC-5: **branch stability (R5)**。同じ resolved move data・grid・locale 条件で、formatter 分岐と destination 語が deterministic である。既存 `sectionsAreDeterministicForIdenticalDetails` 系の主張が維持される。
@@ -156,7 +166,7 @@ None。新たな permission、network、telemetry は追加しない。表示は
 | AC-1 (projection 層) | `tests/unit/.../application/preview/DestinationRegionMappingTest.kt` の更新: F-03 fixture の主張を「同一 coarse destination」から「distinct anchors ⇒ distinct projected destinations (row/column 表示序数の無欠損)」へ反転。同 band 別 column (x=0 vs x=1)、別 row、grid 境界 (2/4/5 column) を parameterized に主張。**UI formatter に依存しない** |
 | AC-1 (formatter 層) | `tests/unit/.../ui/OrganizationPreviewContentTest.kt`: projection で得た destination から組み立てた copy が anchor 一意であること (同 band 別 column の 2 destination が異なる copy、copy 中の表示序数が projection 値と一致)。formatter が `PreviewPosition` のみを入力にすることもこの純粋行構築 test で担保 |
 | AC-1 (rendered card 層) | AC-7 の instrumentation evidence |
-| AC-2 | `tests/unit/.../ui/OrganizationPreviewContentTest.kt` へ同帯・同行序数の列方向調整 fixture を追加し、destination 部分の具体性を主張 |
+| AC-2 | `tests/unit/.../ui/OrganizationPreviewContentTest.kt` へ同帯・同行序数の列方向調整 fixture を追加し、destination 部分の具体性を主張。**同一 row/column ordinal・異なる page の 2 same-band move が異なる destination 語になる fixture** (再レビュー指摘) もここで固定 |
 | AC-3 | `PlanPreviewProjectorTest` の更新: `workspacePosition` が column 表示序数を identity から導出すること、`position()` が total であること。destination 専用経路のみが具体語を付けることは `OrganizationPreviewContentTest` の構造と `positionText` 系主張の無変更で担保 |
 | AC-4 | 既存 `PreviewApplyPlacementEqualityTest` / `PreviewApplyPersistedPlacementEqualityTest` を無変更 (または機械的追従のみ) で実行し pass。command: `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
 | AC-5 | `OrganizationPreviewContentTest` の determinism 主張の維持 + branch 分岐 (通常 move / same-band / row ordinal note) の fixture 追加 |
@@ -166,7 +176,7 @@ None。新たな permission、network、telemetry は追加しない。表示は
 
 ## Open questions
 
-- **copy の確定状況 (owner review 指摘 4 により accepted 前に確定)**: destination が常時表示する要素集合は本 spec で確定した — 通常 move 行の destination は page + 領域 + 1-based row ordinal + 1-based column ordinal、same-band 行の destination は領域 + 1-based row ordinal + 1-based column ordinal (en/ja 共通の要素集合)。残る実装 PR での調整は句読点・接続語・string 名などの micro-copy に限られ、表示要素集合を変える場合は spec 更新を伴う。
+- **copy の確定状況 (owner review 指摘 4 により accepted 前に確定)**: destination が常時表示する要素集合は本 spec で確定した — **workspace destination は page + 領域 + 1-based row ordinal + 1-based column ordinal で統一** (通常 move 行 / same-band adjustment 行とも、再レビュー指摘により same-band の page 省略を撤回)。残る実装 PR での調整は句読点・接続語・string 名などの micro-copy に限られ、表示要素集合を変える場合は spec 更新を伴う。
 - destination 全行が anchor 一意形式になった結果、source descriptor 側の #208 collision 補助語 (`supplementCell`) と語彙が重複して冗長になる可能性: copy review で調整する。補助語の collision-local 付与契約自体は無変更。
 - #195 D5 の判断は、本 spec の受入条件が pass した時点で「destination 部分については解消」として Issue 側へ記録する。
 
@@ -174,6 +184,7 @@ None。新たな permission、network、telemetry は追加しない。表示は
 
 - 2026-09-07: Drafted for Issue #234。#212 assessment (Case A 判定、region⇆cell mapping、R1 handoff) を evidence とし、destination の anchor 一意性 contract、projection への column 表示序数追加、regression boundary の取り扱いを確定して作成。
 - 2026-09-07: Review revision (owner review @ [Issue #234 コメント](https://github.com/nunu1733/NunuLauncher/issues/234)「Spec / Plan review — Changes requested」): (1) **High** — destination 専用 formatter 経路へ設計変更し、`positionText` 共有による #208 source descriptor 契約への波及を排除。新規フォルダ placement の具体化を non-goal へ明記。(2) **Medium** — 「2-column grid の `top left` は band 一意」の誤例 (TOP row band が y=0,1 を含むため候補 2 件) を削除し、row/column 表示序数の **常時表示** を契約化。(3) **Medium** — AC-1 の検証を projection → formatter → rendered card の 3 層に分離し、`DestinationRegionMappingTest` を UI 依存のない projection 層主張へ反転。(4) **Medium** — en/ja とも表示要素集合 (page/region/row/column ordinal) を spec accepted 前に確定し、micro-copy のみを実装 PR review に移動。
+- 2026-09-07: Re-review revision (owner re-review @ Issue #234「Spec / Plan re-review — Changes requested」): **High** — same-band 行の destination から page を省略する契約を撤回し、workspace destination を一律 **page + 領域 + row ordinal + column ordinal** に統一。異なる page の same-band 調整が同一 destination 語になる counterexample (page 1 / page 2 の同座標調整) を R1 違反として解消。Behavior scenario「異なる page の same-band 調整が destination だけで区別できる」と AC-2 へ境界 fixture を追加。
 
 ## References
 

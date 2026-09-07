@@ -53,17 +53,16 @@
 
    - **`positionText` は無変更** (owner review 指摘 1 / blocker)。source descriptor、保持行・警告行の `current` 位置、`descriptorSupplements` の collision 判定 key、`NewFolderChange.placement` が共有しており、ここへ row/column の常時表示を織り込むと「coarse position が衝突した行だけ #208 identity 補助語を付与する」契約が意味論ごと変わる (collision が構造的に消え、補助語が付かなくなる)。
    - **destination 専用の組立て関数** (案: `destinationText(position, wording)` / `workspaceDestinationText(...)`) を追加し、`MoveChange.destination` を描画する 2 分岐のみで使用する:
-     - 通常 move 行の destination: page 語 + 領域語 + 1-based row ordinal + 1-based column ordinal を **常時** 表示 (grid・衝突の有無に依存する条件付き省略はしない。owner review 指摘 2 を受けた spec の契約)。
-     - same-band adjustment 行の destination: 領域語 + 1-based row ordinal + 1-based column ordinal を常時表示 (page は same-band の定義上 source descriptor と同一のため省略)。
+     - **workspace destination は一律 page 語 + 領域語 + 1-based row ordinal + 1-based column ordinal を常時表示** — 通常 move 行 / same-band adjustment 行とも同一の要素集合である (再レビュー指摘により same-band の page 省略を撤回。省略すると異なる page の same-band 調整が同一 destination 語になり R1 違反)。grid・衝突の有無に依存する条件付き省略はしない。
    - `moveRowText` の 2 分岐だけが destination 専用関数を呼ぶ。`rowOrdinalNote` の分岐条件は無変更 (R5)。same-band 行で note が出ないケース (同 row ordinal) でも列方向の区別は destination 語自体が担うため曖昧さは残らない。
    - **無変更を保つ箇所**: `positionText`、`descriptorText`、`descriptorSupplements` / `identitySupplement` / `workspaceLocator` (#208 collision 補助語)、`newFolderRowText` (`NewFolderChange.placement` は現行どおり coarse)。語彙の重複 (`supplementCell` と新 destination 語) が気になる場合は copy review で語を分ける。
 
 3. **strings** (`lawnchair/res/values/strings.xml` + `values-ja/strings.xml`)
 
-   - **表示要素集合は spec で確定済み** (owner review 指摘 4): 通常 move destination = page + 領域 + 1-based row ordinal + 1-based column ordinal、same-band destination = 領域 + 1-based row ordinal + 1-based column ordinal。これを en/ja で表現する template を追加する。baseline 案 (micro-copy は実装 PR owner review で調整可、表示要素集合の変更は spec 更新を伴う):
-     - en destination: `«領域», «page», row R, column C` (例: `top left, page 2, row 1, column 2`) / same-band: `«領域», row R, column C` (例: `top left, row 1, column 2`)
-     - ja destination: `«page»・«領域»・R行目・C列目` (例: `2ページ目・上段左・1行目・2列目`) / same-band: `«領域»・R行目・C列目` (例: `上段左・1行目・2列目`)
-   - 行/列の語は #208 `supplementCell` と同じ 1-based 表示序数語彙 (`row/column` / `行目/列目`) を使い、en/ja で語彙と placeholder 数・順序を一致させる。既存 `manual_organization_preview_position_workspace` / `manual_organization_preview_same_band_move_row` / `manual_organization_preview_row_ordinal_note` は destination 専用経路の外で現行どおり。placeholder は positional `%n$` を維持 (#123 契約)。
+   - **表示要素集合は spec で確定済み** (owner review 指摘 4 + 再レビュー指摘): **workspace destination は page + 領域 + 1-based row ordinal + 1-based column ordinal で統一** (通常 move / same-band とも同一 template でよい)。en/ja でこれを表現する template を追加する。baseline 案 (micro-copy は実装 PR owner review で調整可、表示要素集合の変更は spec 更新を伴う):
+     - en destination: `«領域», «page», row R, column C` (例: `top left, page 2, row 1, column 2`) — 通常 move / same-band 共通
+     - ja destination: `«page»・«領域»・R行目・C列目` (例: `2ページ目・上段左・1行目・2列目`) — 通常 move / same-band 共通
+   - 行/列の語は #208 `supplementCell` と同じ 1-based 表示序数語彙 (`row/column` / `行目/列目`) を使い、en/ja で語彙と placeholder 数・順序を一致させる。要素集合が統一されたため、same-band 行は既存 `manual_organization_preview_same_band_move_row` の `%2$s` (領域語 slot) に代えて destination 全体語を入れる形になる可能性が高い (template 調整は micro-copy review に含める)。既存 `manual_organization_preview_position_workspace` / `manual_organization_preview_row_ordinal_note` は destination 専用経路の外で現行どおり。placeholder は positional `%n$` を維持 (#123 契約)。
 
 4. **wording interface** (`OrganizationPreviewWording`)
 
@@ -84,6 +83,7 @@ intended placement (不変)
 ### Alternatives rejected
 
 - **`positionText` を destination 専用化・具体化する**: 実装は最小で済むが、source descriptor・保持/警告行・collision 判定・新規フォルダ placement が共有するため、#208 の「coarse 衝突時のみ補助語」契約が意味論ごと変わる (owner review 指摘 1 で blocker 判定)。destination 専用関数を追加する設計を採用。
+- **same-band 行のみ destination から page を省略する (短縮)**: same-band の定義上 source descriptor と同一 page のため一見冗長だが、R1 の正本は resolved **page** + anchor cell の一意識別であり、page 1 と page 2 の同座標 same-band 調整 (例: `page 1, (0,0) → (1,0)` と `page 2, (0,0) → (1,0)`) が同一 destination 語になる counterexample が成立する (再レビュー指摘 High)。workspace destination を `page + 領域 + row + column` で統一する方が、一意性契約・formatter・test oracle のいずれも単純になる。
 - **destination 側へ #208 型の collision-local 補助語を適用**: 衝突検出が proposal 内の行集合に依存するため、単独 move の表示でも anchor 候補が 1 個に絞られず `visibleCandidates == {resolved anchor}` を満たさない。destination は常時 anchor 一意であることを契約とする (spec AC-1)。
 - **band 一意な grid でのみ表示序数を省略する (条件付き省略)**: 省略条件は row band と column band の両方向の候補集合で判定する必要があり、かつ「2-column grid の `top left` は x=0 に絞られるが TOP row band が y=0,1 を含むため候補 2 件」のように当初想定した例は誤りだった (owner review 指摘 2)。全 grid で row/column ordinal を常時表示する方が契約が単純で、条件分岐の R5 deterministic 検証も不要になる。
 - **生 cell 座標 (`cell 0,1`) の常時表示**: Issue 受入条件が exact `(cellX, cellY)` を必須とせず、生座標は spec 194/208 の「raw 値を表示しない」privacy 調性と衝突する。1-based 表示序数で十分に一意である (row ordinal が既に同方式)。
@@ -101,7 +101,7 @@ intended placement (不変)
 | `lawnchair/res/values/strings.xml` + `values-ja/strings.xml` | destination 表示序数 string 追加 / template 更新 (en + ja 同時) | #123 契約 |
 | `tests/unit/.../application/preview/DestinationRegionMappingTest.kt` | **projection 層の主張へ反転**: F-03 fixture を「同一 coarse destination」から「distinct anchors ⇒ distinct projected destinations (row/column 表示序数の無欠損)」へ。grid 境界 (2/4/5 column) を parameterized に主張。**UI formatter に依存しない** | R1 未達 characterization の正本 (application/preview 層)。fix と同じ PR で期待を反転 (review 指摘 3) |
 | `tests/unit/.../application/preview/PlanPreviewProjectorTest.kt` | `columnOrdinal` 導出と total function の追従 | projection seam test |
-| `tests/unit/.../ui/OrganizationPreviewContentTest.kt` | **formatter 層の主張**: projection から組み立てた destination copy が anchor 一意 (同 band 別 column の 2 destination が異なる copy、copy 中の表示序数が projection 値と一致)。同帯・同行序数の列方向調整 fixture、branch 分岐 fixture、`positionText` 系主張の無変更確認 | 純粋行構築の主張対象。UI copy の責務をこの層に集約 (review 指摘 3) |
+| `tests/unit/.../ui/OrganizationPreviewContentTest.kt` | **formatter 層の主張**: projection から組み立てた destination copy が anchor 一意 (同 band 別 column の 2 destination が異なる copy、copy 中の表示序数が projection 値と一致)。**同一 row/column ordinal・異なる page の 2 same-band move が異なる destination 語になる境界 fixture** (再レビュー指摘)。同帯・同行序数の列方向調整 fixture、branch 分岐 fixture、`positionText` 系主張の無変更確認 | 純粋行構築の主張対象。UI copy の責務をこの層に集約 (review 指摘 3) |
 | `tests/unit/.../application/actions/PreviewApplyPlacementEqualityTest.kt` / `.../protocol/PreviewApplyPersistedPlacementEqualityTest.kt` | constructor 呼び出しの機械的追従のみ (断言は無変更) | regression boundary: 意味論的変更をしないための証拠 |
 | `tests/organizer-instrumentation/.../ManualOrganizationPreferencesInstrumentationTest.kt` | `distinctAnchorsInsideOneBand...` を fix 後期待へ更新、ja fallback / a11y 主張 | R1 PASS の user-visible 反転 evidence (AC-7) |
 
@@ -117,7 +117,7 @@ intended placement (不変)
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
 | AC-1 anchor 一意性 (3 層で連鎖) | **projection 層**: `DestinationRegionMappingTest` (反転後) — (page, rowOrdinal, columnOrdinal) の無欠損と anchor 単射性、2/4/5 column 境界。**formatter 層**: `OrganizationPreviewContentTest` — projection からの destination copy が anchor 一意 (同 band 別 column ⇒ 異なる copy)。**rendered card 層**: AC-7 の instrumentation | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
-| AC-2 同帯列方向調整 | `OrganizationPreviewContentTest`: 同帯・同行序数の列方向調整行の destination が調整先 cell を一意に特定 | 同上 `--tests 'app.lawnchair.organizer.ui.*'` |
+| AC-2 同帯列方向調整 (page 含む) | `OrganizationPreviewContentTest`: 同帯・同行序数の列方向調整行の destination が調整先 cell を一意に特定 + 異なる page の same-band 2 move が異なる destination 語 (境界 fixture) | 同上 `--tests 'app.lawnchair.organizer.ui.*'` |
 | AC-3 単一導出経路 | `PlanPreviewProjectorTest`: `columnOrdinal` が identity から導出。formatter が `PreviewPosition` のみを入力にすることは純粋行構築 test の構造で担保 | 同上 |
 | AC-4 placement equality 非回帰 | 既存 2 test が機械的追従のみで pass。diff review で断言の緩和が無いことを確認 | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
 | AC-5 branch stability | `OrganizationPreviewContentTest` の determinism 主張 + 通常 move / same-band / row ordinal note の分岐 fixture | 同上 |
@@ -155,3 +155,4 @@ intended placement (不変)
 ## Review coordination notes
 
 - owner review (2026-09-07、Issue #234 コメント) の 4 指摘の反映位置: 指摘 1 (High) → plan §Design 2 / §Alternatives rejected / spec §Scope・AC-3・Behavior scenario「destination 専用経路」、指摘 2 (Medium) → plan §Alternatives rejected「条件付き省略」+ spec §Scope の常時表示契約、指摘 3 (Medium) → spec AC-1/AC-4・Test oracle の 3 層分離 + plan §Change set・§Verification、指摘 4 (Medium) → spec §Scope の表示要素集合契約 + plan §Design 3 の baseline copy。
+- re-review (2026-09-07、Issue #234 コメント) の 1 指摘 (High / same-band destination からの page 省略が R1 違反) の反映位置: spec §Scope 表示要素契約の統一 (page + 領域 + row + column) / Behavior scenario「異なる page の same-band 調整が destination だけで区別できる」/ AC-2 / Test oracle AC-2 行 / plan §Design 2・3 / §Alternatives rejected「page 省略」/ §Change set (OrganizationPreviewContentTest 境界 fixture) / §Verification AC-2 行。
