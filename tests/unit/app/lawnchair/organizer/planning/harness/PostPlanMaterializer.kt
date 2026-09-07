@@ -132,7 +132,13 @@ internal object PostPlanMaterializer {
         val existingMemberships = input.snapshot.items.map { item ->
             ExistingTargetMembership(item.id, requireNotNull(rolesByItem[item.id]))
         }
-        val syntheticMemberships = syntheticFolders.map { ExistingTargetMembership(it.id, ExistingRole.Preserved) }
+        // Production recapture semantics (FullTargetSetMaterializer): an
+        // unlocked, available top-level workspace folder is Movable, so a
+        // materialized synthetic folder re-enters the planner's target set as
+        // a movable unit — under GLOBAL_COMPACT_V2 (spec 237) it rejoins the
+        // mover stream, and under V1 the strategy filter re-pins it as
+        // STRATEGY_PRESERVED.
+        val syntheticMemberships = syntheticFolders.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }
         return MaterializationResult.Success(
             input.copy(
                 snapshot = LayoutSnapshot(

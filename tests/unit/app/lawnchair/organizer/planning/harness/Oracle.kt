@@ -412,13 +412,28 @@ internal object Oracle {
 
         fun expectedReason(item: CapturedItem): PreserveReason = when {
             item.locked -> PreserveReason.LOCKED
+
             item.availability != Availability.AVAILABLE -> PreserveReason.UNAVAILABLE_TARGET
+
             item.placement is CapturedPlacement.Dock -> PreserveReason.DOCK
+
             item.kind == ItemKind.APPWIDGET || item.kind == ItemKind.CUSTOM_APPWIDGET -> PreserveReason.WIDGET
+
             item.kind == ItemKind.APP_PAIR || item.placement is CapturedPlacement.AppPairMember -> PreserveReason.APP_PAIR
+
             item.kind == ItemKind.SHORTCUT_LEGACY -> PreserveReason.LEGACY_SHORTCUT
+
             rolesById[item.id] == ExistingRole.Preserved -> PreserveReason.NON_TARGET
+
             item.placement is CapturedPlacement.FolderMember -> PreserveReason.STRUCTURAL
+
+            // Spec 182/237: a movable item the selected strategy intentionally
+            // keeps fixed reports STRATEGY_PRESERVED on every run, including
+            // the replan (spec 237: V1 re-pins materialized folders this way).
+            input.rules.organizationStrategy.let { strategyId ->
+                app.lawnchair.organizer.planning.LayoutStrategyRegistry.definition(strategyId)
+            }?.strategyFixes(item) == true -> PreserveReason.STRATEGY_PRESERVED
+
             else -> PreserveReason.ALREADY_CANONICAL
         }
 

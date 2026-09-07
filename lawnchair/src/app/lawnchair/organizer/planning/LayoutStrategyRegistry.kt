@@ -22,7 +22,17 @@ internal data class StrategyDefinition(
     val pageScope: PageScope,
     val cellTraversal: CellTraversal,
     val placeFullRun: (FullRunContext) -> PlacementOutput,
-)
+) {
+    /**
+     * Whether this strategy's executor reports an otherwise-movable captured
+     * item as `PreserveReason.STRATEGY_PRESERVED` (spec 182/237). Strategies
+     * with a narrowing eligibility filter fix every movable item the filter
+     * excludes; the canonical-family flows place every movable item (existing
+     * folders included, through their own unit stream) and never
+     * strategy-fix.
+     */
+    fun strategyFixes(item: CapturedItem): Boolean = unitOrder != UnitOrdering.CANONICAL_TIE_BREAK && !eligibleUnitFilter(item)
+}
 
 /** Deterministic unit-ordering families (spec 182 internal seam). */
 internal enum class UnitOrdering {

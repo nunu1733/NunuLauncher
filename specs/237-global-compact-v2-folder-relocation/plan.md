@@ -2,7 +2,7 @@
 
 > Issue: #237
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: implemented (2026-09-07, `f998da7` + review follow-up)
 
 ## Current evidence
 
@@ -19,8 +19,8 @@
 
 外部 seam `OrganizationPlanner.plan(OrganizationInput)` は不変。変更はすべて planning module 内部と bundle/UI 媒体層:
 
-- `LayoutStrategyRegistry`: `GLOBAL_COMPACT_V2` の `StrategyId` と `StrategyDefinition` を追加。`eligibleUnitFilter` に 1×1 top-level `FOLDER` を加える。`placeFullRun` は新 executor `FullRunExecution::executeGlobalCompactV2` へ接続 (executor 分岐は宣言 field でなく identity dispatch を避けるため、`UnitOrdering.CAPTURED_VISUAL_GLOBAL` を V1 と共有しつつ `StrategyDefinition` の `placeFullRun` 参照で区別する)。
-- `FullRunExecution.executeGlobalCompactV2`: V1 executor と同型。差分は (1) folder formation candidate を `kind != FOLDER` に限定、(2) moved workspace unit の code を kind で選択 (`FOLDER` → `PlacementCode.FOLDER_UNIT`、それ以外 → `SINGLE_PLACEMENT`)、(3) V1 executor は無変更。
+- `LayoutStrategyRegistry`: `GLOBAL_COMPACT_V2` の `StrategyId` と `StrategyDefinition` を追加。`eligibleUnitFilter` に 1×1 top-level `FOLDER` を加える。実装済み: `StrategyDefinition.strategyFixes(item)` を追加し、「eligible filter の絞り込みで strategy が movable item を固定する」述語を registry に一元化した (canonical family は常に false)。oracle とテストがこの述語を共有する。
+- `FullRunExecution`: **V1/V2 で `executeGlobalCompact(context)` を共有** (当初計画の `executeGlobalCompactV2` 分離は不採用 — 2 version の差分は `StrategyDefinition` が宣言する eligibility filter だけで表現でき、executor 複製は seam を太らせるため)。共有 executor 内の差分は (1) folder formation candidate を `kind != FOLDER` に限定 (V1 でも既存 folder は candidate になり得ないので V1 出力は不変)、(2) moved workspace unit の code を kind で選択 (`FOLDER` → `PlacementCode.FOLDER_UNIT`、それ以外 → `SINGLE_PLACEMENT`)。V1 既存テストは無修正で通過 (byte-equivalent の実証)。
 - `PolicyModels.OrganizerPolicyBundle.POLICY_BUNDLE_VERSION`: `organization-policy-v2.4` → `organization-policy-v2.5`。
 - `BuiltInOrganizerPolicyBundleSource`: `runtimeSupported` へ `GLOBAL_COMPACT_V2` 追加 (V1 は残す)。digest は canonical 内容から自動再計算。
 - `ManualOrganizationPreferences` + `lawnchair/res/values{,-ja}/strings.xml`: V2 の name/description 追加、V1 の description を「既存 folder は移動しない」と正直に更新。
@@ -40,20 +40,25 @@ capture → composer (bundle v2.5 を読み `RuleSemantics.organizationStrategy`
 
 - **V1 の無言変更 (eligibility 差し替え)**: ADR-0012 identity policy 違反。spec 182 が新 ID を要求済み。
 - **V1 廃止 + V2 置換**: V1 選択の fail-closed (再選択強制) が発生する。spec は共存を採用したため不採用。
-- **V2 を `UnitOrdering` 新 enum 値で分岐**: 順序付けは V1 と同一のため、ordering family を複製すると seam が太る。`placeFullRun` 参照の違いだけで十分。
+- **V2 を `UnitOrdering` 新 enum 値で分岐**: 順序付けは V1 と同一のため、ordering family を複製すると seam が太る。eligibility filter の違いだけで十分。
+- **`executeGlobalCompactV2` を別 executor として複製** (当初計画): V1/V2 の差分は eligibility filter だけで表現でき、~100 行の allocation logic 複製はバグ温床になるため共有化に変更した。V1 出力への影響は「FOLDER が candidate/stream に入らない」ことで no-op であり、V1 既存テストが無修正で通過することで実証。
+- **formation fixture を `SyntheticFixtureGenerator` へ追加**: corpus 変更は golden digest (pre-#182 baseline pin) を再 pin することになる。既存 `ExampleCorpus.apps-only` (`expectedNewFolderCount = 1`) が既に formation を網羅するため不採用とし、golden corpus は不変のまま materialization 層だけを production semantics に合わせた。
 - **形成済み folder を次回以降 fixed 化する永続 provenance**: 永続 state 追加の設計負荷に対し、formation replan 安定性により不動点が成立するため不採用 (spec 証明参照)。
 
 ## Change set
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `lawnchair/src/app/lawnchair/organizer/planning/LayoutStrategyRegistry.kt` | `GLOBAL_COMPACT_V2` 登録 | catalog はここだけ |
-| `lawnchair/src/app/lawnchair/organizer/planning/FullRunExecution.kt` | `executeGlobalCompactV2` 追加 (V1 無変更) | strategy semantics は executor 内部 |
+| `lawnchair/src/app/lawnchair/organizer/planning/LayoutStrategyRegistry.kt` | `GLOBAL_COMPACT_V2` 登録 + `strategyFixes` 述語 | catalog と strategy-fixed 判定の正本はここだけ |
+| `lawnchair/src/app/lawnchair/organizer/planning/FullRunExecution.kt` | `executeGlobalCompact` 共有化 (V1/V2 とも同一 executor) | strategy semantics の差分は `StrategyDefinition` 宣言に還元できる |
 | `lawnchair/src/app/lawnchair/organizer/rules/PolicyModels.kt` | bundle version v2.5 | ADR-0007 §8 |
 | `lawnchair/src/app/lawnchair/organizer/rules/BuiltInOrganizerPolicyBundleSource.kt` | runtimeSupported 追加 | bundle 正本 |
 | `lawnchair/res/values{,-ja}/strings.xml` | V2 copy 追加・V1 copy 更新 | UI 正本 |
 | `lawnchair/src/.../ManualOrganizationPreferences.kt` | V2 mapping | picker 表示 |
 | `tests/unit/.../GlobalCompactStrategyTest.kt` | V2 fixture 追加 | AC-2〜AC-6 |
+| `tests/unit/.../harness/PostPlanMaterializer.kt` | materialized synthetic folder の role を production (`FullTargetSetMaterializer` と同じ `Movable`) へ変更 | review P1: idempotence oracle を production recapture semantics に一致させる |
+| `tests/unit/.../harness/Oracle.kt` | `checkIdempotence` の期待 reason に `strategyFixes` 経由の `STRATEGY_PRESERVED` を追加 | movable folder の role 変更に伴い、strategy-fixed item の replan reason を oracle が正しく期待するように |
+| `tests/unit/.../harness/PlannerContractHarnessTest.kt` | `materializationPreservesOriginalRoles` の期待を `Movable` へ | 同上 |
 | `tests/unit/.../BuiltInOrganizerPolicyBundleSourceTest.kt` | v2.5 期待値 | bundle 契約 |
 | `tests/organizer-instrumentation/.../StrategyPickerInstrumentationTest.kt` | V2 行追加 | AC-9 |
 | `CONTEXT.md` / `docs/product/requirements.md` | domain language / traceability | spec 承認時更新 |
@@ -93,9 +98,14 @@ capture → composer (bundle v2.5 を読み `RuleSemantics.organizationStrategy`
 
 ## Execution checklist
 
-- [ ] Current behavior reproduced. (既存 V1 test が緑であることで担保)
-- [ ] Tests fail for the missing behavior. (V2 fixture を先に追加し、登録前は fail することを確認)
-- [ ] Minimal implementation completed.
-- [ ] Migration/recovery verified. (bundle version test + selection 継続性)
-- [ ] Full relevant verification completed.
-- [ ] PR evidence and remaining risks recorded.
+- [x] Current behavior reproduced. (既存 V1 test が緑であることで担保)
+- [x] Tests fail for the missing behavior. (V2 fixture を先に追加し、登録前は 5 件 fail を確認)
+- [x] Minimal implementation completed.
+- [x] Migration/recovery verified. (bundle version test + selection 継続性)
+- [x] Full relevant verification completed. (organizer unit suite 952 tests、spotlessCheck、assemble、repo contract)
+- [ ] PR evidence and remaining risks recorded. (PR 作成時に記録)
+
+## Implementation review follow-ups (2026-09-07)
+
+- **P1 (fixed)**: `PostPlanMaterializer` が materialized synthetic folder を `ExistingRole.Preserved` で固定しており、production の `FullTargetSetMaterializer` (unlocked・available な workspace `FOLDER` は `Movable`) と不一致だった。role を `Movable` に合わせ、property corpus 全体を再実行した。付随修正: (1) `Oracle.checkIdempotence` の期待 reason テーブルに `StrategyDefinition.strategyFixes` 経由の `STRATEGY_PRESERVED` を追加 (strategy-fixed item は replan でも同じ reason を報告する — V1 は materialized folder をこの経路で再 pin する)、(2) `PlannerContractHarnessTest.materializationPreservesOriginalRoles` の期待を `Movable` へ更新。これにより `CrossStrategyCorpusTest` が「formation → materialize (Movable) → V2 mover stream 再参加 → replan 空 diff」を全 corpus で検証する。golden digest は corpus を変えていないため不変 (corpus 変更の代替案は Alternatives rejected を参照)。
+- **P2 (fixed)**: 本 plan の設計記述を実装実態 (shared `executeGlobalCompact`、`strategyFixes` 述語) へ同期し、status を implemented に更新。
