@@ -1,6 +1,6 @@
 ---
 issue: "#237"
-status: draft
+status: accepted
 requirements:
   - FR-003
   - FR-016
@@ -15,7 +15,7 @@ updated: 2026-09-07
 
 # Compact existing 1×1 folders across pages under a new GLOBAL_COMPACT_V2 strategy
 
-> Status: draft for #237. 本specの受入により、`GLOBAL_COMPACT` intent の下で既存 1×1 top-level folder が前方pageの空きへ apps と同様に詰められる versioned successor strategy と、その versioning・選択・preview 契約が確定する。`GLOBAL_COMPACT_V1` の observable behavior は一切変更しない。
+> Status: accepted — 本specの受入により、`GLOBAL_COMPACT` intent の下で既存 1×1 top-level folder が前方pageの空きへ apps と同様に詰められる versioned successor strategy と、その versioning・選択・preview 契約が確定した。`GLOBAL_COMPACT_V1` の observable behavior は一切変更しない。
 
 ## Problem
 
@@ -105,7 +105,7 @@ Versioning 機械的帰結 (ADR-0007 §8 / ADR-0012):
 
 Given 前方 page に movable item を 1 つだけ持ち空き cell が残る 1 page、後方 page に既存 1×1 folder が配置された snapshot
 When full run が `GLOBAL_COMPACT_V2` で実行される
-Then 既存 folder は前方 page の空き cell へ `Moved{SINGLE_PLACEMENT}` として配置される
+Then 既存 folder は前方 page の空き cell へ `Moved{FOLDER_UNIT}` として配置される
 And folder id、`NewFolderRef` 等価物の有無、members、rank、naming、profile は不変である
 And 前方 page に配置可能な空き 1×1 cell が残ったまま後方 page に movable 1×1 top-level unit が残る状態は発生しない
 And replanning the materialized result yields an empty diff
@@ -231,3 +231,5 @@ None。新 permission、network、telemetry は追加しない。strategy identi
 
 - 2026-09-07: Draft created for #237. Issue の観察 (既存 folder が後方 page に固定され前方 page に空きが残る) を spec 182 の受入済み semantics と突き合わせ、versioned successor (`GLOBAL_COMPACT_V2`) 導入を選択肢 2 として決定した draft。
 - 2026-09-07: Review revision (owner review on `b613bfb42f`): idempotence proof が V1 の「formed folder は replan で fixed set に加わる」argument を流用しており、V2 の eligibility 定義 (材料化された folder も movable) と矛盾していた — proof を「fixed set 不変 ⇒ 空き cell リスト同一」「消費順の単調性 ⇒ 材料化後 captured visual order が消費順を復元」「formation の replan 安定性 ⇒ replan で新規 folder なし」の 4 段構成の状態遷移不動点として書き直した — Blocking。形成済み folder を fixed 化する永続 provenance は導入せず、形成済み folder が `Preserved{ALREADY_CANONICAL}` で自 cell を回収することを fixture で pin する方針を明記 — Blocking。AC-5 と test oracle に「new folder 形成 → 適用 → recapture → replan → 空 diff」の状態遷移 test を明示 — Medium。
+- 2026-09-07: Correction (implementation prep): moved existing folder の placement code を `SINGLE_PLACEMENT` から `FOLDER_UNIT` へ訂正した。UI と preview は code ごとに別 wording (`manual_organization_moved_folder_unit` / `moveReasonFolderUnit`) を持ち、canonical flow の既存 folder 移動も `FOLDER_UNIT` であるため、folder 移動を app singleton と同 code にすると change list の文言が不誠実になるため。behavior 変更ではなく code 選択の訂正である。
+- 2026-09-07: Accepted by the Issue #237 owner。実装は本specと plan.md に従い、単一 PR で spec 受入条件と対応付ける。

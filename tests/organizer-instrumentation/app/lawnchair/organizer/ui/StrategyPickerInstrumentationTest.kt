@@ -79,6 +79,7 @@ class StrategyPickerInstrumentationTest {
             R.string.organization_strategy_tidy_name,
             R.string.organization_strategy_bottom_first_name,
             R.string.organization_strategy_global_name,
+            R.string.organization_strategy_global_v2_name,
             R.string.organization_strategy_category_contiguous_name,
         )) {
             composeRule.onNodeWithText(context().getString(name)).assertIsDisplayed()
@@ -120,6 +121,7 @@ class StrategyPickerInstrumentationTest {
             R.string.organization_strategy_tidy_name,
             R.string.organization_strategy_bottom_first_name,
             R.string.organization_strategy_global_name,
+            R.string.organization_strategy_global_v2_name,
             R.string.organization_strategy_category_contiguous_name,
         )) {
             composeRule.onNodeWithText(context().getString(name)).assertHasClickAction()

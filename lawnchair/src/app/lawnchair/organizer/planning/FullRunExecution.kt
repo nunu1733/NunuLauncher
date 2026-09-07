@@ -160,18 +160,26 @@ internal object FullRunExecution {
     }
 
     /**
-     * GLOBAL_COMPACT_V1 (spec 182): cross-page density compaction. Only
-     * movable `1×1` singletons compact, in global captured visual order
-     * `(PageOrder, PageId, cell.y, cell.x, ItemId)`, each taking the earliest
-     * free cell scanning all captured pages then already-created new pages
-     * (`PageScope.CAPTURED_THEN_NEW`). Otherwise-movable non-`1×1` units and
-     * all existing folder units are `STRATEGY_PRESERVED` fixed constraints.
-     * Formed folders (canonical P-04/P-05 grouping over the eligible `1×1`
-     * candidates only) are placed after the compacting units by
-     * `(preferred page key, NewFolderOrdinal)`. Idempotence: the compacting
-     * units occupy the earliest free cells in visual order and the folders
-     * take the tail, so on a replan the (now fixed) folders sit exactly where
-     * the singleton stream never reaches and every unit reclaims its cell.
+     * GLOBAL_COMPACT family (spec 182 V1 / spec 237 V2): cross-page density
+     * compaction in global captured visual order `(PageOrder, PageId, cell.y,
+     * cell.x, ItemId)`, each unit taking the earliest free cell scanning all
+     * captured pages then already-created new pages
+     * (`PageScope.CAPTURED_THEN_NEW`). Formed folders (canonical P-04/P-05
+     * grouping) are placed after the compacting units by `(preferred page
+     * key, NewFolderOrdinal)`.
+     *
+     * The two versions differ only in their [StrategyDefinition]'s declared
+     * eligibility filter: V1 compacts movable `1×1` singletons and pins every
+     * existing folder (`STRATEGY_PRESERVED`); V2 (spec 237) lets existing `1×1`
+     * top-level folder units join the stream — reported as
+     * `PlacementCode.FOLDER_UNIT` when they move — while non-`1×1` units stay
+     * fixed. Folder formation candidates exclude existing folders under both
+     * versions. Replan idempotence for V2 is re-proven over the
+     * formation-inclusive state transition in spec 237: the fixed set is
+     * invariant, the materialized captured visual order restores the
+     * consumption order, and formation is replan-stable (residual singleton
+     * candidate groups cannot form a new folder), so a replan reclaims every
+     * unit's own cell with an empty diff.
      */
     private fun executeGlobalCompact(context: FullRunContext): PlacementOutput {
         val input = context.input
@@ -198,13 +206,15 @@ internal object FullRunExecution {
         val minGroupSize = input.rules.folderPolicy.minGroupSize
         val folderGroups = if (strategy.createsFolders) {
             formFolderGroups(
-                candidates = eligible.map { item ->
-                    FolderCandidate(
-                        item.id,
-                        item.profile,
-                        context.classification.decisions[item.id]?.category ?: taxonomy.fallbackCategory,
-                    )
-                },
+                candidates = eligible
+                    .filter { it.kind != ItemKind.FOLDER }
+                    .map { item ->
+                        FolderCandidate(
+                            item.id,
+                            item.profile,
+                            context.classification.decisions[item.id]?.category ?: taxonomy.fallbackCategory,
+                        )
+                    },
                 fallbackCategory = taxonomy.fallbackCategory,
                 capacity = capacity,
                 minGroupSize = minGroupSize,
@@ -234,7 +244,9 @@ internal object FullRunExecution {
             allocator.markOccupied(pageRef, cell, ws.span)
             val newTarget = PlacementTarget.WorkspaceTarget(pageRef, cell, ws.span)
             val disposition = if (newTarget != capturedTarget) {
-                Disposition.Moved(PlacementCode.SINGLE_PLACEMENT)
+                Disposition.Moved(
+                    if (item.kind == ItemKind.FOLDER) PlacementCode.FOLDER_UNIT else PlacementCode.SINGLE_PLACEMENT,
+                )
             } else {
                 Disposition.Preserved(PreserveReason.ALREADY_CANONICAL)
             }

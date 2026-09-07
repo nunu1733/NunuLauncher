@@ -467,6 +467,7 @@ private fun strategyDisplayName(id: StrategyId): Int = when (id.value) {
     "STABLE_PAGE_TIDY_V1" -> R.string.organization_strategy_tidy_name
     "BOTTOM_FIRST_V1" -> R.string.organization_strategy_bottom_first_name
     "GLOBAL_COMPACT_V1" -> R.string.organization_strategy_global_name
+    "GLOBAL_COMPACT_V2" -> R.string.organization_strategy_global_v2_name
     "CATEGORY_CONTIGUOUS_V1" -> R.string.organization_strategy_category_contiguous_name
     else -> R.string.organization_strategy_unknown_name
 }
@@ -476,6 +477,7 @@ private fun strategyDescription(id: StrategyId): Int = when (id.value) {
     "STABLE_PAGE_TIDY_V1" -> R.string.organization_strategy_tidy_description
     "BOTTOM_FIRST_V1" -> R.string.organization_strategy_bottom_first_description
     "GLOBAL_COMPACT_V1" -> R.string.organization_strategy_global_description
+    "GLOBAL_COMPACT_V2" -> R.string.organization_strategy_global_v2_description
     "CATEGORY_CONTIGUOUS_V1" -> R.string.organization_strategy_category_contiguous_description
     else -> R.string.organization_strategy_unknown_description
 }
