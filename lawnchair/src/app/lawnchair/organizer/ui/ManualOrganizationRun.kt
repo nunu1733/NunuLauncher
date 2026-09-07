@@ -145,7 +145,16 @@ class ManualOrganizationRun internal constructor(
         data object NoChanges : State
         data class Preview(val summary: Summary, val details: PlanPreviewDetails?) : State
         data object Applying : State
-        data object Stale : State
+
+        /**
+         * Issue #210: carries where staleness was detected, because the
+         * user-facing outcome differs. [StaleOrigin.APPLY_BLOCKED] means the
+         * user attempted to apply a reviewed proposal and was blocked;
+         * [StaleOrigin.DETECTED_BEFORE_REVIEW] means the proposal never reached
+         * the confirmation surface. Both are zero-write terminal states.
+         */
+        data class Stale(val origin: StaleOrigin) : State
+
         data class Applied(val result: ApplyResult, val summary: Summary) : State
         data object Cancelled : State
         data object InspectingRecovery : State
@@ -153,6 +162,8 @@ class ManualOrganizationRun internal constructor(
         data object Recovering : State
         data class RecoveryResultState(val result: RecoveryResult) : State
     }
+
+    enum class StaleOrigin { APPLY_BLOCKED, DETECTED_BEFORE_REVIEW }
 
     enum class PlanningFailureKind { INVALID, IMPOSSIBLE }
 
@@ -273,7 +284,11 @@ class ManualOrganizationRun internal constructor(
                                 when (val preview = application.inspectPlan(input, result)) {
                                     is PlanPreviewResult.Previewed -> enterPreview(operation, input, result, summary, preview.preview)
 
-                                    is PlanPreviewResult.Stale -> transitionToStale(operation, emitRejection = true)
+                                    is PlanPreviewResult.Stale -> transitionToStale(
+                                        operation,
+                                        emitRejection = true,
+                                        origin = StaleOrigin.DETECTED_BEFORE_REVIEW,
+                                    )
 
                                     is PlanPreviewResult.NotPlannable -> when (preview.reason) {
                                         PlanPreviewRejection.CAPTURE_FAILED -> enterPreview(operation, input, result, summary, null)
@@ -369,7 +384,7 @@ class ManualOrganizationRun internal constructor(
             }
             val plan = (materialized as? OrganizationPlanMaterializer.Result.Ready)?.plan
             if (plan == null) {
-                transitionToStale(operation, emitRejection = true)
+                transitionToStale(operation, emitRejection = true, origin = StaleOrigin.APPLY_BLOCKED)
                 return
             }
             val admitted = synchronized(lock) {
@@ -391,7 +406,7 @@ class ManualOrganizationRun internal constructor(
                     is ApplyResult.NoChanges -> State.NoChanges
 
                     is ApplyResult.Rejected -> if (result.reason == PreWriteRejection.STALE_REVISION || result.reason == PreWriteRejection.EXACT_PRECONDITION_FAILED) {
-                        State.Stale
+                        State.Stale(StaleOrigin.APPLY_BLOCKED)
                     } else {
                         State.Applied(result, pendingPlan.summary)
                     }
@@ -546,15 +561,16 @@ class ManualOrganizationRun internal constructor(
     /**
      * Ends the active run in [State.Stale]. [emitRejection] reproduces the
      * existing A2 stale-rejection run event for materialize-time staleness.
+     * [origin] records whether the user had attempted to apply (Issue #210).
      */
-    private fun transitionToStale(operation: Operation, emitRejection: Boolean) {
+    private fun transitionToStale(operation: Operation, emitRejection: Boolean, origin: StaleOrigin) {
         val stale = synchronized(lock) {
             if (!isActiveLocked(operation)) {
                 false
             } else {
                 pending = null
                 activeOperation = null
-                stateHolder.value = State.Stale
+                stateHolder.value = State.Stale(origin)
                 true
             }
         }
