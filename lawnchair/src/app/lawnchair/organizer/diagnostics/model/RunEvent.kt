@@ -54,6 +54,8 @@ data class RunVersions private constructor(
             "STABLE_PAGE_TIDY_V1",
             "BOTTOM_FIRST_V1",
             "GLOBAL_COMPACT_V1",
+            // Spec 237: the versioned folder-relocating successor strategy.
+            "GLOBAL_COMPACT_V2",
             "CATEGORY_CONTIGUOUS_V1",
         )
 
