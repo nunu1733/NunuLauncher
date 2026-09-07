@@ -49,7 +49,7 @@ proposal がまだ確認されていない stale 検出 (経路 1) では、破�
 
 ## Domain language
 
-- **stale origin**: `State.Stale` が到達した経路の区別。`APPLY_BLOCKED` (適用試行が revision 照合で拒否された) と `DETECTED_BEFORE_REVIEW` (proposal が確認画面に到達する前に stale 検出された) の 2 値。UI 文言の正確性のためだけに存在し、適用 blocking の意味は変わらない。
+- **stale origin**: `State.Stale` が到達した経路の区別。`APPLY_BLOCKED` (ユーザーの適用試行が blocking され、確認済み proposal が破棄された) と `DETECTED_BEFORE_REVIEW` (proposal が確認画面に到達する前に stale 検出された) の 2 値。UI 文言の正確性のためだけに存在し、適用 blocking の意味は変わらない。`APPLY_BLOCKED` は原因 (layout 変化) まで保証しない。
 
 ## Design decisions
 
@@ -57,7 +57,7 @@ proposal がまだ確認されていない stale 検出 (経路 1) では、破�
 
 `State.Stale` に origin を持たせる。理由は、「確認済み proposal の破棄」の主張が経路 1 では偽になるためである。経路 1 (preview-time stale) は proposal が一度も画面に表示されていない run 内の競合であり、ユーザーは何も確認していない。一方で経路 2・3 はユーザーが明示的に `Apply` を tap した後である。
 
-origin は UI observable state (`State`) にのみ載せる。適用 blocking の意味・diagnostics event・`transitionToStale` の契約は変わらないため、既存の unit/E2E 契約は主張対象を origin 付き equality へ更新するだけで維持される。`APPLY_BLOCKED` / `DETECTED_BEFORE_REVIEW` という 2 値の理由は、UI が分けるべき事実が「proposal を確認済みか」の 1 軸だからである (materialize 失敗か apply 拒否かの区別はユーザーに説明する事実が同一のため載せない)。
+origin は UI observable state (`State`) にのみ載せる。適用 blocking の意味・diagnostics event・`transitionToStale` の契約は変わらないため、既存の unit/E2E 契約は主張対象を origin 付き equality へ更新するだけで維持される。`APPLY_BLOCKED` / `DETECTED_BEFORE_REVIEW` という 2 値の理由は、UI が分けるべき事実が「proposal を確認済みか」の 1 軸だからである。materialize 失敗と apply 拒否を同一 origin に畳むのは、ユーザーへの説明事実が同一であることに加え、materialize 経路の `Result.Invalid` は原因を保持しないため state 側で確実に主張できる事実が「適用を安全に行えなかった」までであるためである (D2 の cause-neutral 詳細文を参照)。
 
 ### D2: 文言構成 — **共通 outcome 見出し + origin 別詳細文 + recapture summary**
 
@@ -67,11 +67,13 @@ origin は UI observable state (`State`) にのみ載せる。適用 blocking �
   - en: `This proposal was not applied. This attempt did not change your current home layout.`
   - ja: `この整理案は適用されませんでした。この操作によるホーム画面の変更はありません。`
 - **origin 別詳細文**:
-  - `APPLY_BLOCKED` (`manual_organization_stale_proposal_discarded`) — en: `The home layout changed after you reviewed the proposal, so it was discarded to keep your layout safe.` / ja: `整理案の確認後にホームレイアウトが変更されたため、整理案は破棄されました。`
+  - `APPLY_BLOCKED` (`manual_organization_stale_proposal_discarded`) — en: `The reviewed proposal could no longer be applied safely, so it was discarded.` / ja: `確認した整理案を安全に適用できなくなったため、整理案は破棄されました。`
   - `DETECTED_BEFORE_REVIEW` (`manual_organization_stale_proposal_not_reviewed`) — en: `The home layout changed while the proposal was being prepared, so it was discarded before you could review it.` / ja: `整理案の作成中にホームレイアウトが変更されたため、確認前に整理案は破棄されました。`
 - **recapture summary** (`manual_organization_recapture_summary`、label は既存 `Capture and review again` を維持): en: `Captures your current home layout and prepares a new proposal to review.` / ja: `現在のホームレイアウトを読み込み、確認用の新しい整理案を作成します。`
 
-outcome 文は操作主体・試行にスコープする。stale 画面には「layout が変更された」ことを伝える詳細文が直後に続くため、outcome を `Your current home layout is unchanged.` のような無条件な現在状態の主張にすると、画面上で自己矛盾に読める (owner review で指摘)。`This attempt did not change your current home layout.` は「この適用試行が追加の変更を行わなかった」ことを主張し、ユーザー自身の drag による既存の変更 (stale 検出の原因) を否定しない。production E2E の oracle (`expectedAfterMutation` と confirm 後の DB の一致) もこの意味を検証する。詳細文は proposal の破棄と理由 (layout 変化) を伝える。
+outcome 文は操作主体・試行にスコープする。stale 画面には失敗の文脈を伝える詳細文が直後に続くため、outcome を `Your current home layout is unchanged.` のような無条件な現在状態の主張にすると、画面上で自己矛盾に読める (owner review で指摘)。`This attempt did not change your current home layout.` は「この適用試行が追加の変更を行わなかった」ことを主張し、ユーザー自身の drag による既存の変更を否定しない。production E2E の oracle (`expectedAfterMutation` と confirm 後の DB の一致) もこの意味を検証する。
+
+`APPLY_BLOCKED` の詳細文は **cause-neutral** である。`APPLY_BLOCKED` には 2 つの下位経路があるが (confirm 時の materialize 失敗 / apply の stale revision 拒否)、materializer の `Result.Invalid` は stale 専用の結果ではなく readiness unavailable・capture 失敗・revision mismatch・構造整合性違反をまとめて畳む契約であり、state から「home layout が変更された」という原因は保証できない (2nd owner review で指摘)。そのため詳細文は「確認した整理案を安全に適用できなくなったため破棄された」と、両経路で真である事実だけを述べる。原因 (layout 変化) が state から確実に言える `DETECTED_BEFORE_REVIEW` (`PlanPreviewResult.Stale` 由来) のみが layout-change 文を維持する。原因まで state に運ぶ案 (`APPLY_STALE` / `APPLY_BLOCKED_OTHER` 分離) は application/materializer 側の失敗理由細分化を要求し、presentation fix の範囲を超えるため不採用とした。
 
 ### D3: 詳細文の表現 — **既存の静的 body text 規約に従う**
 
@@ -91,7 +93,7 @@ When stale 状態の画面が表示される,
 
 Then `This proposal was not applied. This attempt did not change your current home layout.` が status 見出しとして表示される,
 
-And `整理案の確認後にホームレイアウトが変更されたため、整理案は破棄されました。` (en 同義) に相当する詳細文が表示される,
+And `確認した整理案を安全に適用できなくなったため、整理案は破棄されました。` (en 同義) に相当する詳細文が表示される,
 
 And `Capture and review again` とその summary (`Captures your current home layout and prepares a new proposal to review.`) が表示される。
 
@@ -167,6 +169,7 @@ None。文言と state 形状は §D1–D4 のとおり spec 時点で確定し�
 
 - 2026-09-07: Drafted for Issue #210。Issue 本文 (exploratory review F-04)、`ManualOrganizationRun.kt` / `ManualOrganizationPreferences.kt` / strings の現行実装調査、spec 209・195 の UI 契約、E2E stale test (`staleProductionConfirmationDoesNotWrite`) の調査を入力に作成。実装 PR ([#240](https://github.com/nunu1733/NunuLauncher/pull/240)) で owner review を実施する。
 - 2026-09-07: Spec/Plan owner review ([Issue #210 コメント](https://github.com/nunu1733/NunuLauncher/issues/210#issuecomment-review), Request changes) 対応: (1) Blocker — D2 / AC-1 / Scenario の共通 outcome 文を適用試行スコープ (`This proposal was not applied. This attempt did not change your current home layout.` / `この整理案は適用されませんでした。この操作によるホーム画面の変更はありません。`) へ変更。旧文言「現在のホームレイアウトは変更されていません」が直後の「layout が変更されたため破棄」詳細文と画面上で自己矛盾に読めるため。strings・ja を同時更新。(2) status を accepted → proposed へ訂正 (承認は owner review 完了後に行う)。plan.md に en/ja screenshot・visual review・`assembleLawnWithQuickstepGithubDebug` 完了確認を検証として追加。
+- 2026-09-07: Spec/Plan re-review ([Issue #210 コメント](https://github.com/nunu1733/NunuLauncher/issues/210#issuecomment-review), Request changes) 対応: Blocker — `APPLY_BLOCKED` の詳細文を cause-neutral 化 (`The reviewed proposal could no longer be applied safely, so it was discarded.` / `確認した整理案を安全に適用できなくなったため、整理案は破棄されました。`)。`APPLY_BLOCKED` の materialize 失敗経路は `OrganizationPlanMaterializer.Result.Invalid` (readiness unavailable・capture 失敗・revision mismatch・構造整合性違反を畳む契約) を含み、state から「home layout が変更された」原因は保証できないため。D1 / D2 (cause-neutral 規定を新設) / Domain language / Scenario / strings を更新。`DETECTED_BEFORE_REVIEW` は `PlanPreviewResult.Stale` 由来で原因が確実なため layout-change 文を維持。原因分離 origin (`APPLY_STALE` / `APPLY_BLOCKED_OTHER`) は materializer 失敗理由の細分化を要求し範囲外として不採用。
 
 ## References
 
