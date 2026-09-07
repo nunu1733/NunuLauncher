@@ -1,6 +1,6 @@
 ---
 issue: "#234"
-status: draft
+status: accepted
 requirements: [R1-ANCHOR-UNIQUENESS, R2-EQUALITY-NONREGRESSION, R3-BRANCH-STABILITY, R4-SINGLE-DERIVATION, R5-LOCALE-COPY, R6-A11Y-AND-PRIVACY]
 risk: []
 updated: 2026-09-07
@@ -188,6 +188,7 @@ None。新たな permission、network、telemetry は追加しない。表示は
 - 2026-09-07: Review revision (owner review @ [Issue #234 コメント](https://github.com/nunu1733/NunuLauncher/issues/234)「Spec / Plan review — Changes requested」): (1) **High** — destination 専用 formatter 経路へ設計変更し、`positionText` 共有による #208 source descriptor 契約への波及を排除。新規フォルダ placement の具体化を non-goal へ明記。(2) **Medium** — 「2-column grid の `top left` は band 一意」の誤例 (TOP row band が y=0,1 を含むため候補 2 件) を削除し、row/column 表示序数の **常時表示** を契約化。(3) **Medium** — AC-1 の検証を projection → formatter → rendered card の 3 層に分離し、`DestinationRegionMappingTest` を UI 依存のない projection 層主張へ反転。(4) **Medium** — en/ja とも表示要素集合 (page/region/row/column ordinal) を spec accepted 前に確定し、micro-copy のみを実装 PR review に移動。
 - 2026-09-07: Re-review revision (owner re-review @ Issue #234「Spec / Plan re-review — Changes requested」): **High** — same-band 行の destination から page を省略する契約を撤回し、workspace destination を一律 **page + 領域 + row ordinal + column ordinal** に統一。異なる page の same-band 調整が同一 destination 語になる counterexample (page 1 / page 2 の同座標調整) を R1 違反として解消。Behavior scenario「異なる page の same-band 調整が destination だけで区別できる」と AC-2 へ境界 fixture を追加。
 - 2026-09-07: Re-review 2 revision (owner re-review @ Issue #234「Spec / Plan re-review — Changes requested (minor)」): **Medium** — `MoveChange.destination` は Workspace 限定ではないため、AC-1 の対象を **Workspace destination を持つ move 行** に限定し、非-workspace destination (`DockRank` / `InFolder` / `InAppPair`) は grid anchor 契約の対象外であることを §Scope・Behavior scenario・Test oracle に明記。destination 専用 formatter が非-workspace を既存 `positionText` へ委譲し、既存 copy が #234 で変わらないことを `OrganizationPreviewContentTest` の 1〜2 case で固定するよう plan へ反映。
+- 2026-09-07: Approved by the Issue #234 owner (branch `agent/issue-234-destination-anchor-specificity` の commit `fed6c50f73` に対して、指摘なし)。実装は本 spec と [plan](./plan.md) に従って開始する。
 
 ## References
 

@@ -99,12 +99,17 @@ class PreviewApplyPersistedPlacementEqualityTest {
         val destinations = preview.details.changes
             .filterIsInstance<MoveChange>()
             .associate { it.item.value to it.destination as PreviewPosition.Workspace }
-        // Same coarse band, same page, identical row ordinal — the F-03 display.
+        // Same coarse band, same page, identical row ordinal — Issue #234
+        // keeps the projection lossless, so the two anchors now differ by
+        // column ordinal while the cell-exact equality chain is unchanged.
         assertEquals(
-            PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 1),
+            PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 1, 1),
             destinations.getValue("1"),
         )
-        assertEquals(destinations.getValue("1"), destinations.getValue("2"))
+        assertEquals(
+            PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 1, 2),
+            destinations.getValue("2"),
+        )
 
         // Apply through the real protocol; the fake commits the write set and
         // rebuilds every later read from persisted rows.
@@ -134,6 +139,9 @@ class PreviewApplyPersistedPlacementEqualityTest {
         (persisted.layoutState.items.map { it to destinations.getValue(refId(it)) }).forEach { (item, destination) ->
             val cell = (item.placement as PlacementState.Workspace).cell
             assertEquals(destination.rowOrdinal, cell.y + 1)
+            // Issue #234: the column display ordinal recomputes from the
+            // persisted cell exactly like the row ordinal does.
+            assertEquals(destination.columnOrdinal, cell.x + 1)
             assertEquals(destination.rowBand, band(cell.y, 6, RowBand.entries))
             assertEquals(destination.columnBand, band(cell.x, 4, ColumnBand.entries))
         }
