@@ -82,11 +82,13 @@ Versioning 機械的帰結 (ADR-0007 §8 / ADR-0012):
 - **既存 folder の扱い**: folder unit は 1×1 である限り singleton と同一の unit stream に参加し、global captured visual order `(PageOrder, PageId, cell.y, cell.x, ItemId)` で順序付けられ、`allocateCapturedThenNew` で配置される。captured state が 1×1 以外の span を持つ folder は eligible にならず、`STRATEGY_PRESERVED` 固定 unit のままである。
 - **Folder invariant**: folder を移動しても folder id・naming・profile・members・rank は変化しない。folder members の placement は `Preserved{STRUCTURAL}` 行として現存どおり出力に現れ、folder の移動によって内容が変わらない (members は既に folder 内にあり、planner は workspace item として扱わない)。folder 移動が member 行を書き換えることはない。
 - **Folder formation**: canonical P-04/P-05 grouping は movable 1×1 **singleton** candidate のみを対象とする。既存 folder は formation candidate にならず、既存 folder と new folder が併存する。new folder は singleton stream の後、`(preferred page key, NewFolderOrdinal)` で配置される (V1 と同じ)。
-- **1×1 制限の根拠 (idempotence proof)**: spec 182 の heterogeneous-span INV-8 counterexample は「movable non-1×1 unit が compaction に参加した場合」の反例であり、本 strategy は引き続き non-1×1 を compaction 対象としないため、この反例は成立しない。1×1 folder の参加は次の不変式で冪等性を保つ:
-  1. すべての movable 1×1 unit (singleton + folder) は global captured visual order で sorted assignment を行い、`allocateCapturedThenNew` の first-fit で最初に空いた cell を取る。
-  2. `STRATEGY_PRESERVED` unit と naturally preserved item は元位置 fixed であり、動かない。
-  3. 材料化後の captured visual order は、全 movable 1×1 unit が「page 順 → row-major 順」に再配置されているため、sorted assignment の不動点である。replan すると同じ unit 集合が同じ順序で同じ cell を回収し、空 diff となる。
-  4. new folder が材料化されると captured folder となり fixed set に加わる。new folder は singleton stream の tail に置かれるため、replan 時の singleton stream は new folder の cell を到達不能として扱い、回収しない (V1 と同じ argument)。
+- **1×1 制限の根拠**: spec 182 の heterogeneous-span INV-8 counterexample は「movable non-1×1 unit が compaction に参加した場合」の反例であり、本 strategy は引き続き non-1×1 を compaction 対象としないため、この反例は成立しない。
+- **Replan 冪等性の証明 (folder formation を含む状態遷移の不動点)**: V2 では材料化された new folder も次回 replan で通常の movable 1×1 folder として mover stream に再参加する。したがって V1 の「formed folder は replan で fixed set に加わる」argument は eligibility 定義と矛盾するため使えず、formation を含む状態遷移ごと不動点を示す (owner review on `b613bfb42f` の P1 指摘)。証明は次の 4 段構成とする:
+  1. **fixed set の不変性**: naturally preserved item と `STRATEGY_PRESERVED` unit (non-1×1 top-level unit) は replan 間で位置も理由も変わらない。したがって「全 cell から fixed 占有を除いた、page 順 → row-major 順の空き cell リスト」(new page が作られた場合は作成順の PageOrder を続けて含む) は run 間で同一である。
+  2. **消費順の単調性**: run 1 では unit stream が global captured visual order で、new folder がその後 `(preferred page key, NewFolderOrdinal)` 順で、それぞれ `allocateCapturedThenNew` の first-fit により「その時点で最小の空き cell」を消費する。消費 cell 列は消費順について狭義単調増加なので、材料化後の captured visual order (位置整列) は消費順を復元する。材料化後の layout は非重複であるため ItemId tie-break は使われない。
+  3. **formation の replan 安定性**: grouping は per-(profile, category) の候補群に独立に処理される。group 化から漏れた残余候補群は、(a) minGroupSize 未満、(b) fallback category (常に group 対象外)、(c) capacity < minGroupSize (formation 全体が無効) のいずれかであり、残余 alone を candidate として再実行しても新規 folder を形成しない。replan 時の top-level singleton candidate 集合はこの残余に一致する (run 1 の member は folder 内 `STRUCTURAL` となり candidate から外れる)。分類・taxonomy は同一 capture から決定論的に再現されるため、replan で新規 folder は形成されない。
+  4. **帰結**: replan の mover 集合は「singleton ∪ 既存 folder」から「singleton 残余 ∪ 形成済み folder」へ構成・個数とも変化するが、その captured visual order は (2) より run 1 の消費順そのものであり、空き cell リストも (1) より同一である。first-fit は各 unit を自分の captured cell へ回収し、全 unit が `Preserved{ALREADY_CANONICAL}`、新規 folder・新規 page なし、diff は空である。formation による unit 数の縮約は run 1 の allocation 内で既に反映済みであり、replan で追加の前詰めは発生しない。
+- 形成済み folder を次回以降 fixed とする永続的な provenance は導入しない (review 選択肢 (a) を不採用 — 永続 state の設計負荷に対し、上記の証明で不動点が成立するため)。代わりに、形成済み folder が replan で `Preserved{ALREADY_CANONICAL}` として自 cell を回収すること (`STRATEGY_PRESERVED` 固定ではないこと) を、formation を含む fixture で直接 pin する。formation replan 安定性は property suite の全 fixture replan assertion によっても広域に検証される。
 
 ### Failure behavior
 
@@ -132,6 +134,14 @@ When full run が `GLOBAL_COMPACT_V2` で実行される
 Then folder members は workspace placement に書き出されず、member 行は `Preserved{STRUCTURAL}` として capture と同一の placement を保つ
 And folder id、naming、profile、member list、member rank は capture と同一である
 And profile isolation が保持される (folder が異なる profile の cell へ跨ぐことはない)
+
+### Scenario: formed folder rejoins the movable stream and the layout is a fixed point
+
+Given 同一 profile・同一 category の movable 1×1 singleton が minGroupSize 以上あり、`GLOBAL_COMPACT_V2` の run 1 で new folder が実際に形成される fixture
+When run 1 の plan を適用し、材料化された layout を recapture して同じ `GLOBAL_COMPACT_V2` で replan する
+Then replan の plan に `Moved` placement が 1 つもなく、新規 folder も新規 page も作られない
+And replan における形成済み folder の disposition は `Preserved{ALREADY_CANONICAL}` であり、`STRATEGY_PRESERVED` 固定ではない (V2 では通常の movable 1×1 folder として自 cell を回収する)
+And この状態遷移 (formation → apply → recapture → replan → 空 diff) を unit test で直接固定する
 
 ### Scenario: V1 remains byte-identical and selectable
 
@@ -187,7 +197,7 @@ None。新 permission、network、telemetry は追加しない。strategy identi
 - [ ] AC-2: 後方 page に movable existing 1×1 folder があり、前方 page に安全な空き 1×1 cell がある fixture で、前方 page が先に埋まる。`GLOBAL_COMPACT_V2` の plan がその結果を produce する regression test が public seam 経由で存在する。
 - [ ] AC-3: apps / deep shortcuts / existing folders を含め、前方に配置可能な空きがあるのに後方へ movable 1×1 top-level unit が残る状態を regression test で防ぐ。
 - [ ] AC-4: folder identity、members、profile isolation、locks、reservations、application/recovery safety が保持される。folder 移動は既存 writer 経路で favorites の folder row cell/screen のみを更新し、member 行や container 参照を変えない。
-- [ ] AC-5: deterministic ordering と replan idempotence (材料化後 replan で空 diff) が `GLOBAL_COMPACT_V2` で維持される (property test / determinism suite を public seam で通す)。
+- [ ] AC-5: deterministic ordering と replan idempotence (材料化後 replan で空 diff) が `GLOBAL_COMPACT_V2` で維持される。「new folder 形成 → 適用 → recapture → 同 strategy replan → 空 diff」の状態遷移を fixture で直接固定し、形成済み folder が `Preserved{ALREADY_CANONICAL}` で自 cell を回収すること (`STRATEGY_PRESERVED` 固定ではないこと) を assert する。加えて property test / determinism suite を public seam で通す。
 - [ ] AC-6: preview の cross-page move count / rows が folder relocation を正しく反映する。
 - [ ] AC-7: `GLOBAL_COMPACT_V1` の plan 出力が spec 182 受入時と byte-equivalent であることを golden corpus で確認する (無修正 pass)。
 - [ ] AC-8: bundle coherence 契約 test (`runtimeSupported ⊆ implemented`、`default ∈ runtimeSupported`、等価) が V2 追加後も通る。bundle identity は `organization-policy-v2.5` として publish される。
@@ -204,7 +214,7 @@ None。新 permission、network、telemetry は追加しない。strategy identi
 | AC-2 | `GlobalCompactStrategyTest` (V2) に実機相当 fixture を追加、public seam `OrganizationPlanner.plan` |
 | AC-3 | 同上 regression test + spec 11 harness / property suite |
 | AC-4 | folder identity / member / profile isolation の assertion を含む unit test + apply module の test DB test |
-| AC-5 | spec 11 determinism / idempotence property suite (V2 を catalog 対象に追加) |
+| AC-5 | `GlobalCompactStrategyTest` (V2) の formation → apply → recapture → replan fixture + spec 11 determinism / idempotence property suite (V2 を catalog 対象に追加) |
 | AC-6 | preview projection の unit test + confirmation change list test |
 | AC-7 | golden corpus (pre-#182 pin + V1 出力 pin) の無修正 pass |
 | AC-8 | bundle coherence contract test (`runtimeSupported == implemented` equality) |
@@ -220,3 +230,4 @@ None。新 permission、network、telemetry は追加しない。strategy identi
 ## Change history
 
 - 2026-09-07: Draft created for #237. Issue の観察 (既存 folder が後方 page に固定され前方 page に空きが残る) を spec 182 の受入済み semantics と突き合わせ、versioned successor (`GLOBAL_COMPACT_V2`) 導入を選択肢 2 として決定した draft。
+- 2026-09-07: Review revision (owner review on `b613bfb42f`): idempotence proof が V1 の「formed folder は replan で fixed set に加わる」argument を流用しており、V2 の eligibility 定義 (材料化された folder も movable) と矛盾していた — proof を「fixed set 不変 ⇒ 空き cell リスト同一」「消費順の単調性 ⇒ 材料化後 captured visual order が消費順を復元」「formation の replan 安定性 ⇒ replan で新規 folder なし」の 4 段構成の状態遷移不動点として書き直した — Blocking。形成済み folder を fixed 化する永続 provenance は導入せず、形成済み folder が `Preserved{ALREADY_CANONICAL}` で自 cell を回収することを fixture で pin する方針を明記 — Blocking。AC-5 と test oracle に「new folder 形成 → 適用 → recapture → replan → 空 diff」の状態遷移 test を明示 — Medium。
