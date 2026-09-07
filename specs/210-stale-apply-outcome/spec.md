@@ -1,6 +1,6 @@
 ---
 issue: "#210"
-status: proposed
+status: accepted
 requirements: []
 risk: []
 updated: 2026-09-07
@@ -170,6 +170,7 @@ None。文言と state 形状は §D1–D4 のとおり spec 時点で確定し�
 - 2026-09-07: Drafted for Issue #210。Issue 本文 (exploratory review F-04)、`ManualOrganizationRun.kt` / `ManualOrganizationPreferences.kt` / strings の現行実装調査、spec 209・195 の UI 契約、E2E stale test (`staleProductionConfirmationDoesNotWrite`) の調査を入力に作成。実装 PR ([#240](https://github.com/nunu1733/NunuLauncher/pull/240)) で owner review を実施する。
 - 2026-09-07: Spec/Plan owner review ([Issue #210 コメント](https://github.com/nunu1733/NunuLauncher/issues/210#issuecomment-review), Request changes) 対応: (1) Blocker — D2 / AC-1 / Scenario の共通 outcome 文を適用試行スコープ (`This proposal was not applied. This attempt did not change your current home layout.` / `この整理案は適用されませんでした。この操作によるホーム画面の変更はありません。`) へ変更。旧文言「現在のホームレイアウトは変更されていません」が直後の「layout が変更されたため破棄」詳細文と画面上で自己矛盾に読めるため。strings・ja を同時更新。(2) status を accepted → proposed へ訂正 (承認は owner review 完了後に行う)。plan.md に en/ja screenshot・visual review・`assembleLawnWithQuickstepGithubDebug` 完了確認を検証として追加。
 - 2026-09-07: Spec/Plan re-review ([Issue #210 コメント](https://github.com/nunu1733/NunuLauncher/issues/210#issuecomment-review), Request changes) 対応: Blocker — `APPLY_BLOCKED` の詳細文を cause-neutral 化 (`The reviewed proposal could no longer be applied safely, so it was discarded.` / `確認した整理案を安全に適用できなくなったため、整理案は破棄されました。`)。`APPLY_BLOCKED` の materialize 失敗経路は `OrganizationPlanMaterializer.Result.Invalid` (readiness unavailable・capture 失敗・revision mismatch・構造整合性違反を畳む契約) を含み、state から「home layout が変更された」原因は保証できないため。D1 / D2 (cause-neutral 規定を新設) / Domain language / Scenario / strings を更新。`DETECTED_BEFORE_REVIEW` は `PlanPreviewResult.Stale` 由来で原因が確実なため layout-change 文を維持。原因分離 origin (`APPLY_STALE` / `APPLY_BLOCKED_OTHER`) は materializer 失敗理由の細分化を要求し範囲外として不採用。
+- 2026-09-07: Owner approval (「Approve 進めてください」の実施指示)。spec を `accepted` へ進める。実装 ([PR #240](https://github.com/nunu1733/NunuLauncher/pull/240)) は commit `dfde97cc6f` 時点で承認済み spec の受入条件 (AC-1〜AC-5) を満たす。merge 後に `implemented` へ進める。
 
 ## References
 
