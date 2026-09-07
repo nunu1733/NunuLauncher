@@ -1029,8 +1029,11 @@
     <string name="manual_organization_cancel">Cancel</string>
     <string name="manual_organization_cancel_before_checkpoint">Cancel before applying</string>
     <string name="manual_organization_applying">Applying the reviewed organization. This step cannot be interrupted safely.</string>
-    <string name="manual_organization_stale">The home layout changed. Review a new proposal before applying anything.</string>
+    <string name="manual_organization_stale_outcome">Nothing was applied. Your current home layout is unchanged.</string>
+    <string name="manual_organization_stale_proposal_discarded">The home layout changed after you reviewed the proposal, so it was discarded to keep your layout safe.</string>
+    <string name="manual_organization_stale_proposal_not_reviewed">The home layout changed while the proposal was being prepared, so it was discarded before you could review it.</string>
     <string name="manual_organization_recapture">Capture and review again</string>
+    <string name="manual_organization_recapture_summary">Captures your current home layout and prepares a new proposal to review.</string>
     <string name="manual_organization_apply_success">Organization was applied and verified.</string>
     <string name="manual_organization_apply_rejected">Organization was not applied.</string>
     <string name="manual_organization_apply_rolled_back">The attempted organization was rolled back. Your previous layout remains in place.</string>
