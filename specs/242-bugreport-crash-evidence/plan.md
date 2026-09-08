@@ -73,14 +73,23 @@
        preHandler: () -> Unit,
        onPreHandlerFailure: (Throwable) -> Unit = {},
    ) {
-       val failure = try { preHandler(); null } catch (t: Throwable) { t }
-       if (failure != null) onPreHandlerFailure(failure)
-       defaultHandler?.uncaughtException(thread, throwable)
+       try {
+           try {
+               preHandler()
+           } catch (t: Throwable) {
+               onPreHandlerFailure(t)
+           }
+       } catch (ignored: Throwable) {
+           // 失敗記録経路自体の失敗をさらに記録する安全な経路はないため、吞んで委譲を優先する
+       } finally {
+           defaultHandler?.uncaughtException(thread, throwable)
+       }
    }
    ```
 
    - `init` の handler は `dispatchUncaughtException(defaultHandler, thread, throwable, { sendNotification(throwable) }) { Log.w(TAG, "Uncaught exception pre-handler error", it) }` へ委譲する。
-   - **委譲は try の外側・ちょうど 1 回**: pre-handler work がどの `Throwable` を throw しても、platform default handler が元の `(thread, throwable)` で必ず呼ばれる (Issue 期待動作 2)。defaultHandler 自体の throw は platform の責務であり、ここでは扱わない。
+   - **委譲は `finally` で保証・ちょうど 1 回**: pre-handler work がどの `Throwable` を throw しても、また失敗の記録 (`onPreHandlerFailure`) 自体が throw しても、platform default handler が元の `(thread, throwable)` で必ず呼ばれる (Issue 期待動作 2、owner review Blocker 1)。defaultHandler 自体の throw は platform の責務であり、ここでは扱わない。
+   - 失敗記録は二段の隔離: 内側 catch が preHandler の throw を `onPreHandlerFailure` へ渡し、外側 catch が `onPreHandlerFailure` 自体の throw を吞む。記録経路の失敗をさらに記録する安全な経路は存在しないため、委譲の保証を優先する。
    - `onPreHandlerFailure` を parameter 化することで android `Log` への依存を抽出関数の外に置き、JVM test 可能性を保つ。
 
 ### Data flow
@@ -102,18 +111,19 @@ uncaught exception (thread, throwable)
 - **Robolectric を導入して `Report` を直接 test**: dependency 追加は AGENTS 規約上 spec と risk 評価を要求し、`java.io` + 文字列組立ての検証には過剰。純粋関数抽出で回避する。
 - **`java.time` (`DateTimeFormatter`) への置換**: 挙動は等価だが、minSdk / desugaring の確認が伴い diff が増える。固定 pattern + 明示 locale の `SimpleDateFormat` で locale 独立性・安全性は達成できる (thread-safety 不要: 毎 call 新規構築は現行と同じ)。実装 PR で `java.time` 利用が既に file 内で確立されていることが分かれば置換してよい (micro、挙動契約は同一)。
 - **IOException の catch を `Throwable` に広げる**: null 契約の意味論が曖昧になる。`createNewFile` / `writeText` の failure (IOException) と既存 false 返却のみを縮退対象とする。
+- **AC-4 の IOException 注入に「target path へ directory 先置き」を使う**: `File.createNewFile()` は対象 path が既に存在する場合、通常は `false` を返すのみで IOException にならない (owner review Blocker 2)。既存の id 衝突 branch と同じ挙動になり、Issue の直接原因である IOException 分岐が未検証のまま残る。確実な注入は **`dest` を通常 file として先に作成**し、その配下 (`dest/<name>.txt`) への作成で `FileNotFoundException` (IOException の subclass) を発生させる方法を採用する。
 - **ファイル名から timestamp を除き id のみにする**: header の人間可読性が失われ、report 開閉時の識別が id hash にのみ依存する。timestamp は安全な形式で保持する。
-- **pre-handler 委譲も try に含める / 失敗時に委譲を retry する**: defaultHandler 委譲は platform crash 処理への単一委譲であり、retry・吞み込みは証跡を再び消す。委譲は 1 回・try 外 (spec AC-3)。
+- **pre-handler 委譲の retry・吞み込みを許す**: defaultHandler 委譲は platform crash 処理への単一委譲であり、retry・吞み込みは証跡を再び消す。委譲は `finally` で 1 回だけ保証し、preHandler と失敗記録 (`onPreHandlerFailure`) のみを隔離対象とする (spec AC-3)。
 - **CI filter を追加せず targeted command のみで検証**: gate が新 test を自動で拾わず退行検出が手動依存になる。第 2 filter の前例が既にあり追加コストは最小。quality-strategy どおり第二の seam は作らない (同じ `tests/unit` source set)。
 
 ## Change set
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `lawnchair/src/app/lawnchair/bugreport/LawnchairBugReporter.kt` | (1) `buildReportFileName` の抽出と固定 pattern + `Locale.US` 化、`fileName` initializer 置換。(2) `writeReportFile` の抽出と `save()` の委譲 + IOException 縮退。(3) `dispatchUncaughtException` の抽出と handler shell 化 (Log.w は shell 側) | 3 振る舞いの正本が 1 file に集約されており、新規 module を作る根拠がない。抽出は android import を含まないため JVM test 可能 |
+| `lawnchair/src/app/lawnchair/bugreport/LawnchairBugReporter.kt` | (1) `buildReportFileName` の抽出と固定 pattern + `Locale.US` 化、`fileName` initializer 置換。(2) `writeReportFile` の抽出と `save()` の委譲 + IOException 縮退。(3) `dispatchUncaughtException` の抽出と handler shell 化 (Log.w は shell 側)。companion object へ `private const val TAG = "LawnchairBugReporter"` を追加 | 3 振る舞いの正本が 1 file に集約されており、新規 module を作る根拠がない。抽出は android import を含まないため JVM test 可能。TAG は shell 側の失敗記録 (`Log.w`) 用 (owner review Minor) |
 | `tests/unit/app/lawnchair/bugreport/BugReportFileNameTest.kt` (新規) | ja 再現 test (red → green 反転)、locale 行列 (ja / en_US / de / fi / ar) の `/` 非含有・移植文字集合・determinism、header 表現の主張 | AC-1 の test surface。`tests/unit` は既存 JVM source set (`build.gradle:364-366`) |
-| `tests/unit/app/lawnchair/bugreport/ReportFileSaveTest.kt` (新規) | save 成功 (temp directory への file 作成・内容一致・`<hex id>` 配下配置)、failure injection (target path に directory を先置き → IOException → null・例外非漏出)、id 衝突 (createNewFile false → null) | AC-2 / AC-4 / AC-5 (path 構造) の test surface。純粋 `java.io` のみで構成 |
-| `tests/unit/app/lawnchair/bugreport/CrashPreHandlerIsolationTest.kt` (新規) | throw する preHandler + 記録用 fake default handler: 元 `(thread, throwable)` でちょうど 1 回委譲、pre-handler 由来例外が漏れず `onPreHandlerFailure` へ渡る、preHandler 成功時も委譲される | AC-3 の test surface。純粋関数を直接呼ぶ |
+| `tests/unit/app/lawnchair/bugreport/ReportFileSaveTest.kt` (新規) | save 成功 (temp directory への file 作成・内容一致・`<hex id>` 配下配置)、failure injection (**`dest` を通常 file として先に作成** → child 作成時の `FileNotFoundException` (IOException) → null・例外非漏出)、id 衝突 (createNewFile false → null) | AC-2 / AC-4 / AC-5 (path 構造) の test surface。純粋 `java.io` のみで構成 |
+| `tests/unit/app/lawnchair/bugreport/CrashPreHandlerIsolationTest.kt` (新規) | throw する preHandler + 記録用 fake default handler: 元 `(thread, throwable)` でちょうど 1 回委譲、pre-handler 由来例外が漏れず `onPreHandlerFailure` へ渡る、**`onPreHandlerFailure` 自体が throw しても委譲が保証される (外側 catch)**、preHandler 成功時も委譲される | AC-3 の test surface。純粋関数を直接呼ぶ |
 | `.github/workflows/ci.yml` | `organizer-unit-tests` job の test command へ `--tests 'app.lawnchair.bugreport.*'` を追加 | 新 test を merge gate に接続する。workflow 変更 PR は同一 gates を実行する (quality-strategy) |
 
 ## Migration and recovery
@@ -130,7 +140,7 @@ uncaught exception (thread, throwable)
 | AC-1 ファイル名の安全性・locale 独立性 | `BugReportFileNameTest`: `Locale.setDefault(Locale.JAPAN)` での `/` 非含有 (現行 logic 抽出 commit 上で red、fix 後 green)、locale 行列・determinism・移植文字集合 | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.bugreport.*'` |
 | AC-2 save 成功 | `ReportFileSaveTest`: 非null `File`、内容一致、path 構造 | 同上 |
 | AC-3 pre-handler 失敗隔離 | `CrashPreHandlerIsolationTest`: throw する preHandler でも default handler が元 throwable で 1 回呼ばれる、例外非漏出、failure が `onPreHandlerFailure` に渡る | 同上 |
-| AC-4 save 失敗時の縮退 | `ReportFileSaveTest` failure injection case: IOException → null → 例外非漏出 | 同上 |
+| AC-4 save 失敗時の縮退 | `ReportFileSaveTest` failure injection case: `dest` 通常 file 先置き → child 作成時 IOException → null 返却・例外非漏出。id 衝突 case (target path の file 先置き → `createNewFile` false → null) | 同上 |
 | AC-5 retention・id 契約の無変更 | `ReportFileSaveTest` path 主張 + `removeDismissedLogs` / id 計算の zero-diff review | diff review (PR) |
 | AC-6 organizer 非回帰 | 既存 organizer JVM gate 無変更で pass | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` / CI `organizer-unit-tests` job |
 | AC-7 文書・証跡 | spec status/history 更新、PR へ AC ごと evidence 記録 | PR |
@@ -138,8 +148,8 @@ uncaught exception (thread, throwable)
 
 含めるべき観点:
 
-- **unit/contract**: 3 抽出関数の全分岐 (成功・false 返却・IOException・preHandler throw・preHandler 成功)。locale 行列は parameterized。
-- **failure injection**: save 先の書き込み不能状態 (target path の directory 先置き) と preHandler throw を注入し、いずれも例外が caller へ漏れないことを主張。
+- **unit/contract**: 3 抽出関数の全分岐 (成功・false 返却・IOException・preHandler throw・onPreHandlerFailure throw・preHandler 成功)。locale 行列は parameterized。
+- **failure injection**: save 先の書き込み不能状態 (`dest` を通常 file として先に作成) と preHandler / onPreHandlerFailure の throw を注入し、いずれも例外が caller へ漏れず委譲が保証されることを主張。
 - **determinism**: 同一 `(appName, timestamp)` で繰り返し生成したファイル名が一致 (quality-strategy の「locale、timezone に依存しない」規約)。
 - **performance / property / DB / UI**: 対象外 (報告 path の I/O 1 回、DB 書込みなし、通知 UI は無変更)。
 - **format**: `./gradlew spotlessCheck` (ktfmt) を通す。
