@@ -158,7 +158,17 @@ class ManualOrganizationRun internal constructor(
         data class Applied(val result: ApplyResult, val summary: Summary) : State
         data object Cancelled : State
         data object InspectingRecovery : State
-        data class RecoveryPreview(val result: RecoveryPreviewResult) : State
+
+        /**
+         * Issue #230: [appliedSummary] carries the apply-time [Summary] of the
+         * verified apply that produced this preview's recovery point. It is
+         * populated only when the correlation gate matches (the retained
+         * `lastVerifiedApply.result` narrows to `ApplyResult.Applied` with the
+         * same pointId); otherwise it is null and the confirmation renders the
+         * restore target without a history line. Null never blocks confirm.
+         */
+        data class RecoveryPreview(val result: RecoveryPreviewResult, val appliedSummary: Summary? = null) : State
+
         data object Recovering : State
         data class RecoveryResultState(val result: RecoveryResult) : State
     }
@@ -455,7 +465,17 @@ class ManualOrganizationRun internal constructor(
                 false
             } else {
                 pendingRecovery = preview as? RecoveryPreviewResult.Restorable
-                stateHolder.value = State.RecoveryPreview(preview)
+                // Issue #230 correlation gate: expose the retained apply's
+                // summary only when it is an ApplyResult.Applied sharing the
+                // preview's pointId; any other shape renders without history.
+                val retained = lastVerifiedApply
+                val correlated = (preview as? RecoveryPreviewResult.Restorable)
+                    ?.let { restorable ->
+                        (retained?.result as? ApplyResult.Applied)
+                            ?.takeIf { it.pointId == restorable.pointId }
+                            ?.let { retained.summary }
+                    }
+                stateHolder.value = State.RecoveryPreview(preview, correlated)
                 true
             }
         }

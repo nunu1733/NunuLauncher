@@ -383,6 +383,15 @@ fun ManualOrganizationPreferences(
                             focusRequester = focusRequester,
                         )
                     }
+                    // Issue #230: describe the restore target with the apply
+                    // history of the correlated verified apply. The counts are
+                    // apply history, never a predicted restore diff, and the
+                    // line is omitted when the correlation gate cleared the
+                    // summary (confirm/cancel remain available).
+                    val history = currentState.appliedSummary
+                    if (history != null && (history.movedCount > 0 || history.newFolderCount > 0 || history.newPageCount > 0)) {
+                        item { SummaryText(recoveryHistoryLine(history)) }
+                    }
                     // Issue #209: restore-or-cancel renders as the same
                     // decision pair as the apply preview.
                     item {
@@ -1097,6 +1106,24 @@ private fun applyMessage(result: ApplyResult): String = stringResource(
         ApplyResult.ConcurrentRun -> R.string.manual_organization_apply_concurrent
     },
 )
+
+/**
+ * Issue #230: one history line for the correlated verified apply, phrased as
+ * apply history (spec D4). Only non-zero segments are joined; the caller
+ * omits the line entirely when the apply changed nothing.
+ */
+@Composable
+private fun recoveryHistoryLine(summary: ManualOrganizationRun.Summary): String {
+    val segments = listOfNotNull(
+        summary.movedCount.takeIf { it > 0 }
+            ?.let { stringResource(R.string.manual_organization_recovery_history_moved, it) },
+        summary.newFolderCount.takeIf { it > 0 }
+            ?.let { stringResource(R.string.manual_organization_recovery_history_new_folders, it) },
+        summary.newPageCount.takeIf { it > 0 }
+            ?.let { stringResource(R.string.manual_organization_recovery_history_new_pages, it) },
+    )
+    return stringResource(R.string.manual_organization_recovery_history_prefix, segments.joinToString(" / "))
+}
 
 @Composable
 private fun recoveryPreviewMessage(result: RecoveryPreviewResult): String = stringResource(
