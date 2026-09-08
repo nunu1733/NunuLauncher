@@ -11,8 +11,10 @@ import app.lawnchair.util.requireSystemService
 import com.android.launcher3.BuildConfig
 import com.android.launcher3.R
 import java.io.File
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 
 class LawnchairBugReporter(private val context: Context) {
 
@@ -43,6 +45,9 @@ class LawnchairBugReporter(private val context: Context) {
                 thread,
                 throwable,
                 preHandler = { sendNotification(throwable) },
+                onPreHandlerFailure = { failure ->
+                    Log.w(TAG, "Uncaught exception pre-handler error", failure)
+                },
             )
         }
 
@@ -126,21 +131,43 @@ class LawnchairBugReporter(private val context: Context) {
 
     companion object {
         val INSTANCE = MainThreadInitializedObject(::LawnchairBugReporter)
+
+        private const val TAG = "LawnchairBugReporter"
     }
 }
 
-internal fun buildReportFileName(appName: String, date: Date): String =
-    "$appName bug report ${SimpleDateFormat.getDateTimeInstance().format(date)}"
+/**
+ * Locale-independent, filesystem-safe report file name. The current-locale
+ * date-time instance can emit path separators (e.g. "2026/09/07" in ja), which
+ * makes File.createNewFile() throw; Issue #242.
+ */
+internal fun buildReportFileName(appName: String, date: Date): String = "$appName bug report ${SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(date)}"
 
-internal fun writeReportFile(dest: File, fileName: String, contents: String): File? {
+/**
+ * Writes the report file under [dest] using the same [fileName] that headed the
+ * report contents. Returns null on any IOException (e.g. unwritable dest) or on
+ * createNewFile() == false (same id collision), degrading to the file-less
+ * notification path instead of throwing from the crash pre-handler.
+ */
+internal fun writeReportFile(dest: File, fileName: String, contents: String): File? = try {
     dest.mkdirs()
-
     val file = File(dest, "$fileName.txt")
-    if (!file.createNewFile()) return null
-    file.writeText(contents)
-    return file
+    if (file.createNewFile()) {
+        file.writeText(contents)
+        file
+    } else {
+        null
+    }
+} catch (ignored: IOException) {
+    null
 }
 
+/**
+ * Runs the crash [preHandler] work in isolation and guarantees exactly one
+ * delegation of the original [throwable] to [defaultHandler]: preHandler throws
+ * are handed to [onPreHandlerFailure], and a throw from the failure logger
+ * itself is swallowed (recording is best effort) so delegation still wins.
+ */
 internal fun dispatchUncaughtException(
     defaultHandler: Thread.UncaughtExceptionHandler?,
     thread: Thread,
@@ -148,6 +175,15 @@ internal fun dispatchUncaughtException(
     preHandler: () -> Unit,
     onPreHandlerFailure: (Throwable) -> Unit = {},
 ) {
-    preHandler()
-    defaultHandler?.uncaughtException(thread, throwable)
+    try {
+        try {
+            preHandler()
+        } catch (t: Throwable) {
+            onPreHandlerFailure(t)
+        }
+    } catch (ignored: Throwable) {
+        // Nothing safe can record a failure of the failure logger; delegation wins.
+    } finally {
+        defaultHandler?.uncaughtException(thread, throwable)
+    }
 }
