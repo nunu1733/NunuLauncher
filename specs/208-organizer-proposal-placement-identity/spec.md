@@ -1,9 +1,9 @@
 ---
 issue: "#208"
-status: accepted
+status: implemented
 requirements: []
 risk: []
-updated: 2026-09-06
+updated: 2026-09-08
 ---
 
 # Organizer proposal の各行が同一名称の複数 placement 間で対象を一意に識別する

@@ -1,9 +1,9 @@
 ---
 issue: "#209"
-status: accepted
+status: implemented
 requirements: []
 risk: []
-updated: 2026-09-07
+updated: 2026-09-08
 ---
 
 # Organizer の decision action がボタンとして視認でき、Apply と Cancel が decision 時点で揃って見える

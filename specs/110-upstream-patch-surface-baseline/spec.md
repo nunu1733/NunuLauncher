@@ -1,9 +1,9 @@
 ---
 issue: "#110"
-status: accepted
+status: implemented
 requirements:
   - NFR-010
-updated: 2026-08-23
+updated: 2026-09-08
 ---
 
 # Reproducible organizer upstream patch-surface baseline
