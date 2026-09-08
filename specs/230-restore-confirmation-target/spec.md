@@ -1,6 +1,6 @@
 ---
 issue: "#230"
-status: accepted
+status: implemented
 requirements: []
 risk: []
 updated: 2026-09-08
@@ -258,3 +258,4 @@ None (spec 時点で確定)。D1–D6 が情報源、相関保証、粒度、件
 - 2026-09-08: Drafted for Issue #230 (Astra blind exploratory UX review 2026-09-06, Finding 2)。apply 文脈の `Summary` 再利用 (D1)、件数要約までの出荷 (D3)、「保存したレイアウト」への用語統一 (D5) を提案。
 - 2026-09-08: Spec review (PR #244) 対応。point–summary 相関保証を D2 として新設 (既存 invariant の明示化 + UI 側 pointId 等価ゲート)、apply 履歴語彙の規約を D4 として新設、D 番号を D1–D6 へ再採番。推奨テスト 6 件を scenarios / AC / test oracle へ反映。
 - 2026-09-08: Accepted by the Issue #230 owner (PR #244 review「この相関ルールが明文化されれば、spec としては Approve 可能」+ Approve)。plan.md の作成を開始する。
+- 2026-09-08: Implemented and merged through [PR #246](https://github.com/nunu1733/NunuLauncher/pull/246) (plan review fix [PR #245](https://github.com/nunu1733/NunuLauncher/pull/245)、review fix [PR #253](https://github.com/nunu1733/NunuLauncher/pull/253) を含む) at merge commit `f16b1db0c1`。CI `final-status` を含む全 gate が成功し、AC-7 の representative emulator evidence (en/ja 両経路) を `docs/evidence/issue-230/` に記録。件数区分は `<plurals>` で解決。Issue #230 は本 merge で close。
