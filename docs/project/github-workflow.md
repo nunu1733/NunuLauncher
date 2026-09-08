@@ -1,7 +1,7 @@
 # GitHub Issue / Spec / Pull Request Workflow
 
-> Status: Proposed
-> Updated: 2026-09-08（spec/plan PRによるIssue早期close防止、Worker/Review handoff契約、Issue #251）
+> Status: Accepted
+> Updated: 2026-09-08（Issue #247 closing-keyword rule、Issue #251 Worker/Review handoff、Issue #252 security reporting の運用反映）
 
 ## Principle
 
@@ -216,6 +216,17 @@ gh api --method DELETE repos/nunu1733/NunuLauncher/branches/main/protection
 ### 6. Close
 
 最終PRのmerge後にIssueを閉じる。中間PRのmergeではIssueを開いたままにし、次のspec/plan/実装/検証PRへ引き渡す。最終PRではspecを `implemented` にし、必要な要件、DESIGN、CONTEXT、ADRを更新する。残課題は新しいIssueへ移し、元Issueを曖昧なTODO置場にしない。
+
+#### Close-state checklist
+
+Workerは最終PRのhandoff packetに、Issueの終了条件、merge済みPR、対象head、各ACの証拠、specの遷移後statusを記録する。Reviewはそのpacketと現在のheadを再確認し、Ownerは最終判断を記録する。Merge operatorは次を確認してからIssueを閉じる。
+
+- feature/bug/maintenanceの受入条件をmainline上の実装または成果物が満たした。対応specが存在する場合は `implemented` に更新する。`spec: N/A` のmaintenance/docs-onlyは、N/Aの理由、mainlineに入った成果物、および各ACのevidenceをhandoff packetに記録する。
+- research/decisionや実装を要求しない契約specは、成果物が完成しても `accepted` のまま残せる。その場合は、Issueが研究・判断・契約の完了を終了条件としていたことと、後続実装を別Issueが所有することを、assessmentまたはspecのchange historyに記録する。
+- 既存文書を置き換えた場合だけ `superseded` とし、置換先のpathと理由を記録した。単なる実装完了やIssue closeを `superseded` の根拠にしない。
+- Issue state、status label、spec frontmatter、PRのclosing keywordが互いに矛盾していない。中間PRのclosing keywordで先に閉じた場合は、最終PRの証拠が揃うまで実装完了とは扱わず、監査記録と是正Issueを残す。
+
+Close後にstatusを変更する場合も、日付だけを更新せず、承認リンク、merge link、対象head、AC evidenceを同じPRまたはassessmentへ追加する。
 
 ## 高リスクPRへの独立エビデンス要求
 

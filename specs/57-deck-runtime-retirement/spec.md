@@ -1,8 +1,8 @@
 ---
 issue: "#57"
-status: accepted
+status: implemented
 requirements: [NFR-001, NFR-007, NFR-010, NFR-012]
-updated: 2026-08-15
+updated: 2026-09-08
 ---
 
 # Retire Deck while preserving the current home layout

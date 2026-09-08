@@ -1,6 +1,6 @@
 ---
 issue: "#182"
-status: accepted
+status: implemented
 requirements:
   - FR-001
   - FR-003
@@ -20,7 +20,7 @@ requirements:
 risk:
   - layout-data
   - migration
-updated: 2026-09-05
+updated: 2026-09-08
 ---
 
 # Selectable versioned layout-strategy catalog

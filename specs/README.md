@@ -29,6 +29,11 @@ specs/
 ## Status
 
 - `draft`: 検討中。
-- `accepted`: 実装可能。
+- `accepted`: 承認済み。実装を要求するspecではimplementation-readyを意味する。一方、research/decision/advisory contractでは、製品実装完了を意味せず、Issueの終了条件を満たした最終状態として残る場合がある。
 - `implemented`: mainlineで受入済み。
 - `superseded`: 別specに置換。
+
+`accepted` のままIssueがclosedになることはある。research/decisionや、
+後続Issueが実装を所有する再利用可能な契約では、Issueの終了条件が成果物の
+完成であり、製品実装完了を意味しない。理由と後続IssueはIssueまたは
+`docs/assessment/`の状態証拠へ記録する。
