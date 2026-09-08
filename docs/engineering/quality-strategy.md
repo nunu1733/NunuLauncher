@@ -132,7 +132,7 @@ python3 tools/repo-contract/test_validate_high_risk_evidence.py
 
 ## Repository contract gates
 
-Issue #8 で repository contract validator を導入した。次のcommandはlocalで検証済みであり、CIではPyYAMLを追加して完全なYAML parseを行う。Markdown内部link、Issue form YAML、required project filesを検証する。
+Issue #8 で repository contract validator を導入した。次のcommandはlocalで検証済みであり、CIではPyYAMLを追加して完全なYAML parseを行う。Markdown内部link、Issue form YAML、forkのIssue chooser設定（上流contact routeを含む）、required project filesを検証する。
 
 ```bash
 python3 tools/repo-contract/validate_repo_contract.py

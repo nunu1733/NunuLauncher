@@ -8,10 +8,14 @@ contract is violated so the surrounding CI job fails loudly.
 Validated contracts:
   1. Markdown local links resolve to a tracked file in the repository.
   2. Issue form templates under ``.github/ISSUE_TEMPLATE`` parse as YAML.
-  3. Required project files referenced by AGENTS.md exist.
+  3. The Issue chooser config preserves the explicit upstream contact route.
+  4. Required project files referenced by AGENTS.md exist.
 
-Remote links (http/https) and mailto links are intentionally ignored: validating
-them needs network access and would make the result non-deterministic.
+Remote links (http/https) in Markdown and forms are intentionally ignored:
+validating them needs network access and would make the result non-deterministic.
+The fixed Lawnchair upstream contact URL in the chooser config is an exception:
+it is validated against an exact, reviewed target because it is part of the
+fork's intake contract.
 """
 
 from __future__ import annotations
@@ -278,6 +282,159 @@ def _yaml_smoke_check(form: Path) -> List[Finding]:
     return findings
 
 
+# --- Issue chooser configuration validation ---------------------------------
+
+
+CHOOSER_CONFIG_RELATIVE_PATH = ".github/ISSUE_TEMPLATE/config.yml"
+UPSTREAM_ISSUE_CHOOSER_URL = (
+    "https://github.com/LawnchairLauncher/lawnchair/issues/new/choose"
+)
+UPSTREAM_CONTACT_NAME = "Report to Lawnchair upstream"
+
+
+def _line_containing(path: Path, needle: str) -> int:
+    for line_no, line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        if needle in line:
+            return line_no
+    return 1
+
+
+def _chooser_finding(path: Path, message: str, needle: str | None = None) -> Finding:
+    return Finding(path, _line_containing(path, needle) if needle else 1, message)
+
+
+def _chooser_smoke_check(config: Path) -> List[Finding]:
+    """Check the fixed chooser contract without requiring PyYAML."""
+
+    text = config.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    findings: List[Finding] = []
+    if "blank_issues_enabled: false" not in lines:
+        findings.append(
+            _chooser_finding(
+                config,
+                "Issue chooser must set blank_issues_enabled to false",
+                "blank_issues_enabled",
+            )
+        )
+    if "contact_links:" not in lines:
+        findings.append(
+            _chooser_finding(
+                config, "Issue chooser must define contact_links", "contact_links"
+            )
+        )
+    if not any(f"name: {UPSTREAM_CONTACT_NAME}" in line for line in lines):
+        findings.append(
+            _chooser_finding(
+                config, "Issue chooser is missing the upstream contact name"
+            )
+        )
+    if not any(f"url: {UPSTREAM_ISSUE_CHOOSER_URL}" in line for line in lines):
+        findings.append(
+            _chooser_finding(
+                config,
+                f"Issue chooser must contain the exact upstream URL {UPSTREAM_ISSUE_CHOOSER_URL!r}",
+                "url:",
+            )
+        )
+    about_index = next(
+        (index for index, line in enumerate(lines) if line.strip().startswith("about:")),
+        None,
+    )
+    if about_index is None or not lines[about_index].split(":", 1)[1].strip():
+        findings.append(
+            _chooser_finding(
+                config,
+                "Issue chooser contact link must have a non-empty about",
+                "about:",
+            )
+        )
+    return findings
+
+
+def validate_issue_chooser_config(root: Path) -> List[Finding]:
+    """Validate the fork-specific Issue chooser and upstream contact route."""
+
+    config = root / CHOOSER_CONFIG_RELATIVE_PATH
+    if not config.is_file():
+        # validate_required_files reports the missing load-bearing config.
+        return []
+
+    if yaml is None:
+        return _chooser_smoke_check(config)
+
+    text = config.read_text(encoding="utf-8")
+    try:
+        parsed = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        return [
+            _chooser_finding(config, f"invalid Issue chooser YAML: {exc}")
+        ]
+
+    if not isinstance(parsed, dict):
+        return [_chooser_finding(config, "Issue chooser YAML must be a mapping")]
+
+    findings: List[Finding] = []
+    if parsed.get("blank_issues_enabled") is not False:
+        findings.append(
+            _chooser_finding(
+                config,
+                "Issue chooser must set blank_issues_enabled to false",
+                "blank_issues_enabled",
+            )
+        )
+
+    contact_links = parsed.get("contact_links")
+    if not isinstance(contact_links, list) or not contact_links:
+        findings.append(
+            _chooser_finding(
+                config,
+                "Issue chooser must define a non-empty contact_links list",
+                "contact_links",
+            )
+        )
+        return findings
+
+    expected_route_found = False
+    for index, link in enumerate(contact_links):
+        if not isinstance(link, dict):
+            findings.append(
+                _chooser_finding(
+                    config,
+                    f"contact_links[{index}] must be a mapping",
+                    "contact_links",
+                )
+            )
+            continue
+        for key in ("name", "url", "about"):
+            value = link.get(key)
+            if not isinstance(value, str) or not value.strip():
+                findings.append(
+                    _chooser_finding(
+                        config,
+                        f"contact_links[{index}] must have a non-empty {key}",
+                        f"{key}:",
+                    )
+                )
+        if (
+            link.get("name") == UPSTREAM_CONTACT_NAME
+            and link.get("url") == UPSTREAM_ISSUE_CHOOSER_URL
+        ):
+            expected_route_found = True
+
+    if not expected_route_found:
+        findings.append(
+            _chooser_finding(
+                config,
+                "Issue chooser is missing the exact Lawnchair upstream contact route",
+                "url:",
+            )
+        )
+    return findings
+
+
 # --- Required project files ---------------------------------------------------
 
 # Files that AGENTS.md and docs/README.md treat as load-bearing for the
@@ -362,6 +519,7 @@ def run(root: Path) -> List[Finding]:
     for md in _iter_markdown_files(root):
         findings.extend(validate_markdown_links(md, root))
     findings.extend(validate_issue_forms(root))
+    findings.extend(validate_issue_chooser_config(root))
     findings.extend(validate_required_files(root))
     return findings
 
