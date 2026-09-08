@@ -298,8 +298,9 @@ object OrganizationPreviewContent {
      * new-folder placements keep the #208 wording). A workspace destination
      * always renders page + region + 1-based row ordinal + 1-based column
      * ordinal — the resolved anchor, unambiguous on any grid. Non-workspace
-     * destinations (dock slot, folder rank, app pair) already identify their
-     * container + rank and keep the existing wording.
+     * destinations (dock, folder, app pair) are out of scope for the
+     * anchor-specificity contract and keep the existing [positionText]
+     * wording unchanged.
      */
     fun destinationText(destination: PreviewPosition, wording: OrganizationPreviewWording): String = when (destination) {
         is PreviewPosition.Workspace -> format(

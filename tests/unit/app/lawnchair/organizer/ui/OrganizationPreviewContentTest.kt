@@ -139,24 +139,26 @@ class OrganizationPreviewContentTest {
     fun sameBandAdjustmentUsesDedicatedRowAndOrdinalNoteWhenRowsDiffer() {
         // Pure column-direction adjustment (Issue #195 D5 residual, closed by
         // #234): same row ordinal, different column ordinal — the destination
-        // identifies the exact landing cell and no row note fires.
+        // identifies the exact landing cell and no row note fires. LEFT band
+        // keeps the fixture projection-reachable: column ordinal 1 and 2 are
+        // x=0 and x=1, which both band LEFT on the 6-column grid.
         val sameRow = move(
             label = "game",
-            source = source(1, RowBand.TOP, ColumnBand.CENTER, 1, columnOrdinal = 1),
-            destination = destination(1, RowBand.TOP, ColumnBand.CENTER, 1, columnOrdinal = 2),
+            source = source(1, RowBand.TOP, ColumnBand.LEFT, 1, columnOrdinal = 1),
+            destination = destination(1, RowBand.TOP, ColumnBand.LEFT, 1, columnOrdinal = 2),
         )
         val differentRow = move(
             label = "game",
-            source = source(1, RowBand.TOP, ColumnBand.CENTER, 2),
-            destination = destination(1, RowBand.TOP, ColumnBand.CENTER, 1, columnOrdinal = 1),
+            source = source(1, RowBand.TOP, ColumnBand.LEFT, 2),
+            destination = destination(1, RowBand.TOP, ColumnBand.LEFT, 1, columnOrdinal = 1),
         )
 
         assertEquals(
-            "“game” (App) — top center, page 1 → position adjusted within top center, page 1, row 1, column 2",
+            "“game” (App) — top left, page 1 → position adjusted within top left, page 1, row 1, column 2",
             OrganizationPreviewContent.moveRowText(sameRow, TestWording),
         )
         assertEquals(
-            "“game” (App) — top center, page 1 → position adjusted within top center, page 1, row 1, column 1 (from row 2 to row 1)",
+            "“game” (App) — top left, page 1 → position adjusted within top left, page 1, row 1, column 1 (from row 2 to row 1)",
             OrganizationPreviewContent.moveRowText(differentRow, TestWording),
         )
     }
