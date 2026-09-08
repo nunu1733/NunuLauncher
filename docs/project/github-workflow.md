@@ -144,7 +144,7 @@ Review / handoff packet
 The following is a compact example based on the #230 handoff. It demonstrates the fields a different Review session needs; it does not claim that this Codex session executed the Zcode or ChatGPT runtime.
 
 ```text
-Issue and all comments: https://github.com/nunu1733/NunuLauncher/issues/230
+Issue and all comments: https://github.com/nunu1733/NunuLauncher/issues/230; retrieved at 2026-09-08T09:58:36Z; state=closed; labels=type: bug, status: needs-spec
 Scope type: feature
 Accepted spec + commit: specs/230-restore-confirmation-target/spec.md @ 436f2a7a54d2ae1346806772ce0fbd3e7827ef76
 Plan + revision: specs/230-restore-confirmation-target/plan.md @ f69251ad55493c1acc60ffd687e4c18268ae3eaa (PR #245 plan-review fix; the earlier 0f3d1d3a8f2562be5f21ea23f3b4d2ccc53cd463 revision is superseded)

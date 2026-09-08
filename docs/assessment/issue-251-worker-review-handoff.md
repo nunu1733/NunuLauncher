@@ -23,7 +23,7 @@ This assessment records the shared execution contract for a Worker, an external 
 
 The worked example is the historical #230 delivery:
 
-- Issue and all comments: [Issue #230](https://github.com/nunu1733/NunuLauncher/issues/230)
+- Issue and all comments: [Issue #230](https://github.com/nunu1733/NunuLauncher/issues/230); retrieved at `2026-09-08T09:58:36Z`; state=`closed`; labels=`type: bug`, `status: needs-spec`.
 - Accepted spec revision: `specs/230-restore-confirmation-target/spec.md` at `436f2a7a54d2ae1346806772ce0fbd3e7827ef76`.
 - Plan revision: PR #245 plan-review fix at `f69251ad55493c1acc60ffd687e4c18268ae3eaa`; the earlier `0f3d1d3a8f2562be5f21ea23f3b4d2ccc53cd463` revision is superseded.
 - Implementation base/head: `d36b109e989d49fd218bc13f3eb7c0e053a16709` → `73173d2e829438447e3a0230b4af0959c18e9661`.
