@@ -44,6 +44,7 @@
    ```
 
    - 固定 pattern + 明示 `Locale.US` により、default locale に依存しない。使用文字は英数字・`-`・`_`・空白のみで `/` を含まない。
+   - **timezone**: 出力は default timezone に依存する (同一 `Date` でも UTC と Asia/Tokyo で異なる文字列になる — 委託レビューで JDK 実測)。crash 時刻は triage のため device-local 時刻を維持する価値が高いため UTC への固定はせず、determinism 契約を「同一 `(appName, timestamp, default timezone)` 下で deterministic」に限定する。quality-strategy の locale・timezone 非依存規約は Organization Planning interface の項目であり、本修正への無条件適用ではない。
    - `Report.fileName` の initializer を `buildReportFileName(appName, Date())` へ置換。header 行 (`contentsWithHeader` の先頭行) も `2026-09-07_19-09-17` 型の固定表現になり人間可読性を維持する。
    - 秒解像度のため同一秒・同一 contents の 2 report は id 衝突で既存どおり null を返す (非回帰、挙動変化なし)。異なる contents なら id が異なり directory も分離するため、timestamp 保持で一意性の退行はない。
 
@@ -59,7 +60,7 @@
    }
    ```
 
-   - `save()` は `writeReportFile(File(logsFolder, String.format("%x", id)), buildReportFileName(appName, Date()), contents)` へ委譲する薄い shell になる。
+   - `save()` は `writeReportFile(File(logsFolder, String.format("%x", id)), fileName, contents)` へ委譲する薄い shell になる。**`save()` は新たな `Date()` を生成せず、Report 構築時に保持した同一 `fileName` を header と保存先で共有する** (現行 `:71` / `:90` の挙動維持)。実装時に新たに `buildReportFileName(appName, Date())` を呼ぶと、header と実ファイル名が秒境界を跨いで不一致になったり、同一 `Report` の再実行で現行より広い衝突回避 (新名前での保存) が発生するため禁止する。この接続は抽出関数単体の test では検出できないため、diff review の確認項目とする。
    - `createNewFile() == false` (id 衝突) と IOException の両方が既存の null 契約へ収束し、`BugReport.file == null` → 通知側 text fallback が designed path として到達可能になる。
    - `dest.mkdirs()` は既存どおり (`logsFolder` 自体は init 時に作成済み、`<hex id>` directory はここで作成)。
 
@@ -80,7 +81,7 @@
                onPreHandlerFailure(t)
            }
        } catch (ignored: Throwable) {
-           // 失敗記録経路自体の失敗をさらに記録する安全な経路はないため、吞んで委譲を優先する
+           // 失敗記録経路自体の失敗は再記録できないため、委譲を優先して吞む (記録は best effort)
        } finally {
            defaultHandler?.uncaughtException(thread, throwable)
        }
@@ -89,7 +90,7 @@
 
    - `init` の handler は `dispatchUncaughtException(defaultHandler, thread, throwable, { sendNotification(throwable) }) { Log.w(TAG, "Uncaught exception pre-handler error", it) }` へ委譲する。
    - **委譲は `finally` で保証・ちょうど 1 回**: pre-handler work がどの `Throwable` を throw しても、また失敗の記録 (`onPreHandlerFailure`) 自体が throw しても、platform default handler が元の `(thread, throwable)` で必ず呼ばれる (Issue 期待動作 2、owner review Blocker 1)。defaultHandler 自体の throw は platform の責務であり、ここでは扱わない。
-   - 失敗記録は二段の隔離: 内側 catch が preHandler の throw を `onPreHandlerFailure` へ渡し、外側 catch が `onPreHandlerFailure` 自体の throw を吞む。記録経路の失敗をさらに記録する安全な経路は存在しないため、委譲の保証を優先する。
+   - 失敗記録は二段の隔離: 内側 catch が preHandler の throw を `onPreHandlerFailure` へ渡し、外側 catch が `onPreHandlerFailure` 自体の throw を吞む。記録は **best effort** であり、記録経路自体の失敗をさらに記録する安全な経路は存在しないため、再記録・再委譲はせず委譲の保証を優先する (委託レビュー P2-1)。
    - `onPreHandlerFailure` を parameter 化することで android `Log` への依存を抽出関数の外に置き、JVM test 可能性を保つ。
 
 ### Data flow
@@ -111,7 +112,7 @@ uncaught exception (thread, throwable)
 - **Robolectric を導入して `Report` を直接 test**: dependency 追加は AGENTS 規約上 spec と risk 評価を要求し、`java.io` + 文字列組立ての検証には過剰。純粋関数抽出で回避する。
 - **`java.time` (`DateTimeFormatter`) への置換**: 挙動は等価だが、minSdk / desugaring の確認が伴い diff が増える。固定 pattern + 明示 locale の `SimpleDateFormat` で locale 独立性・安全性は達成できる (thread-safety 不要: 毎 call 新規構築は現行と同じ)。実装 PR で `java.time` 利用が既に file 内で確立されていることが分かれば置換してよい (micro、挙動契約は同一)。
 - **IOException の catch を `Throwable` に広げる**: null 契約の意味論が曖昧になる。`createNewFile` / `writeText` の failure (IOException) と既存 false 返却のみを縮退対象とする。
-- **AC-4 の IOException 注入に「target path へ directory 先置き」を使う**: `File.createNewFile()` は対象 path が既に存在する場合、通常は `false` を返すのみで IOException にならない (owner review Blocker 2)。既存の id 衝突 branch と同じ挙動になり、Issue の直接原因である IOException 分岐が未検証のまま残る。確実な注入は **`dest` を通常 file として先に作成**し、その配下 (`dest/<name>.txt`) への作成で `FileNotFoundException` (IOException の subclass) を発生させる方法を採用する。
+- **AC-4 の IOException 注入に「target path へ directory 先置き」を使う**: `File.createNewFile()` は対象 path が既に存在する場合、通常は `false` を返すのみで IOException にならない (owner review Blocker 2)。既存の id 衝突 branch と同じ挙動になり、Issue の直接原因である IOException 分岐が未検証のまま残る。確実な注入は **`dest` を通常 file として先に作成**し、その配下 (`dest/<name>.txt`) への作成で `IOException` を発生させる方法を採用する (具体型は環境依存 — JDK 21 / macOS APFS 実測では `IOException: Not a directory`。assertion は `IOException` に限定する)。
 - **ファイル名から timestamp を除き id のみにする**: header の人間可読性が失われ、report 開閉時の識別が id hash にのみ依存する。timestamp は安全な形式で保持する。
 - **pre-handler 委譲の retry・吞み込みを許す**: defaultHandler 委譲は platform crash 処理への単一委譲であり、retry・吞み込みは証跡を再び消す。委譲は `finally` で 1 回だけ保証し、preHandler と失敗記録 (`onPreHandlerFailure`) のみを隔離対象とする (spec AC-3)。
 - **CI filter を追加せず targeted command のみで検証**: gate が新 test を自動で拾わず退行検出が手動依存になる。第 2 filter の前例が既にあり追加コストは最小。quality-strategy どおり第二の seam は作らない (同じ `tests/unit` source set)。
@@ -120,9 +121,9 @@ uncaught exception (thread, throwable)
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `lawnchair/src/app/lawnchair/bugreport/LawnchairBugReporter.kt` | (1) `buildReportFileName` の抽出と固定 pattern + `Locale.US` 化、`fileName` initializer 置換。(2) `writeReportFile` の抽出と `save()` の委譲 + IOException 縮退。(3) `dispatchUncaughtException` の抽出と handler shell 化 (Log.w は shell 側)。companion object へ `private const val TAG = "LawnchairBugReporter"` を追加 | 3 振る舞いの正本が 1 file に集約されており、新規 module を作る根拠がない。抽出は android import を含まないため JVM test 可能。TAG は shell 側の失敗記録 (`Log.w`) 用 (owner review Minor) |
+| `lawnchair/src/app/lawnchair/bugreport/LawnchairBugReporter.kt` | (1) `buildReportFileName` の抽出と固定 pattern + `Locale.US` 化、`fileName` initializer 置換。(2) `writeReportFile` の抽出と `save()` の委譲 + IOException 縮退 (**Report 保持の同一 `fileName` を header と保存先で共有**、新たな `Date()` 生成はしない)。(3) `dispatchUncaughtException` の抽出と handler shell 化 (Log.w は shell 側)。companion object へ `private const val TAG = "LawnchairBugReporter"` を追加 | 3 振る舞いの正本が 1 file に集約されており、新規 module を作る根拠がない。抽出は android import を含まないため JVM test 可能。TAG は shell 側の失敗記録 (`Log.w`) 用 (owner review Minor) |
 | `tests/unit/app/lawnchair/bugreport/BugReportFileNameTest.kt` (新規) | ja 再現 test (red → green 反転)、locale 行列 (ja / en_US / de / fi / ar) の `/` 非含有・移植文字集合・determinism、header 表現の主張 | AC-1 の test surface。`tests/unit` は既存 JVM source set (`build.gradle:364-366`) |
-| `tests/unit/app/lawnchair/bugreport/ReportFileSaveTest.kt` (新規) | save 成功 (temp directory への file 作成・内容一致・`<hex id>` 配下配置)、failure injection (**`dest` を通常 file として先に作成** → child 作成時の `FileNotFoundException` (IOException) → null・例外非漏出)、id 衝突 (createNewFile false → null) | AC-2 / AC-4 / AC-5 (path 構造) の test surface。純粋 `java.io` のみで構成 |
+| `tests/unit/app/lawnchair/bugreport/ReportFileSaveTest.kt` (新規) | save 成功 (temp directory への file 作成・内容一致・`<hex id>` 配下配置)、failure injection (**`dest` を通常 file として先に作成** → child 作成時の `IOException` (具体型への限定 assertion はしない) → null・例外非漏出)、id 衝突 (createNewFile false → null) | AC-2 / AC-4 / AC-5 (path 構造) の test surface。純粋 `java.io` のみで構成 |
 | `tests/unit/app/lawnchair/bugreport/CrashPreHandlerIsolationTest.kt` (新規) | throw する preHandler + 記録用 fake default handler: 元 `(thread, throwable)` でちょうど 1 回委譲、pre-handler 由来例外が漏れず `onPreHandlerFailure` へ渡る、**`onPreHandlerFailure` 自体が throw しても委譲が保証される (外側 catch)**、preHandler 成功時も委譲される | AC-3 の test surface。純粋関数を直接呼ぶ |
 | `.github/workflows/ci.yml` | `organizer-unit-tests` job の test command へ `--tests 'app.lawnchair.bugreport.*'` を追加 | 新 test を merge gate に接続する。workflow 変更 PR は同一 gates を実行する (quality-strategy) |
 
@@ -137,7 +138,7 @@ uncaught exception (thread, throwable)
 
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
-| AC-1 ファイル名の安全性・locale 独立性 | `BugReportFileNameTest`: `Locale.setDefault(Locale.JAPAN)` での `/` 非含有 (現行 logic 抽出 commit 上で red、fix 後 green)、locale 行列・determinism・移植文字集合 | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.bugreport.*'` |
+| AC-1 ファイル名の安全性・locale 独立性 | `BugReportFileNameTest`: `Locale.setDefault(Locale.JAPAN)` での `/` 非含有 (現行 logic 抽出 commit 上で red、fix 後 green)、locale 行列・同一 `(appName, timestamp, default timezone)` 下の determinism・移植文字集合 | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.bugreport.*'` |
 | AC-2 save 成功 | `ReportFileSaveTest`: 非null `File`、内容一致、path 構造 | 同上 |
 | AC-3 pre-handler 失敗隔離 | `CrashPreHandlerIsolationTest`: throw する preHandler でも default handler が元 throwable で 1 回呼ばれる、例外非漏出、failure が `onPreHandlerFailure` に渡る | 同上 |
 | AC-4 save 失敗時の縮退 | `ReportFileSaveTest` failure injection case: `dest` 通常 file 先置き → child 作成時 IOException → null 返却・例外非漏出。id 衝突 case (target path の file 先置き → `createNewFile` false → null) | 同上 |
@@ -150,7 +151,7 @@ uncaught exception (thread, throwable)
 
 - **unit/contract**: 3 抽出関数の全分岐 (成功・false 返却・IOException・preHandler throw・onPreHandlerFailure throw・preHandler 成功)。locale 行列は parameterized。
 - **failure injection**: save 先の書き込み不能状態 (`dest` を通常 file として先に作成) と preHandler / onPreHandlerFailure の throw を注入し、いずれも例外が caller へ漏れず委譲が保証されることを主張。
-- **determinism**: 同一 `(appName, timestamp)` で繰り返し生成したファイル名が一致 (quality-strategy の「locale、timezone に依存しない」規約)。
+- **determinism**: 同一 `(appName, timestamp, default timezone)` で繰り返し生成したファイル名が一致。timezone 非依存は契約外 (device-local 時刻の維持を優先)。quality-strategy の「locale、timezone に依存しない」規約は Organization Planning interface の項目であり、本修正への無条件適用ではない。
 - **performance / property / DB / UI**: 対象外 (報告 path の I/O 1 回、DB 書込みなし、通知 UI は無変更)。
 - **format**: `./gradlew spotlessCheck` (ktfmt) を通す。
 
@@ -167,6 +168,7 @@ uncaught exception (thread, throwable)
 - [ ] Current behavior reproduced: 現行 `buildReportFileName` 相当 logic (抽出 commit 直後) 上で ja locale test が red になることを確認 (`/` 含みファイル名の再現)
 - [ ] Tests fail for the missing behavior: `BugReportFileNameTest` (ja 再現 case) が抽出後・修正前の code で fail することを確認してから修正する (extract-then-fix)
 - [ ] Minimal implementation completed: ファイル名修正 → save 縮退 → handler 隔離の順。`removeDismissedLogs` / id 計算 / 通知・upload 経路を変更しない
+- [ ] Shell 接続の diff review: `save()` が Report 保持の同一 `fileName` を header と保存先の双方に使用していること (新たな `Date()` 生成の混入なし)。抽出関数単体 test では検出されない接続箇所
 - [ ] CI filter 追加 (`app.lawnchair.bugreport.*`) と workflow gate の成功確認
 - [ ] Full relevant verification completed: `spotlessCheck` + targeted unit test + organizer gate + `assembleLawnWithQuickstepGithubDebug` の成功を PR へ記録
 - [ ] PR evidence and remaining risks recorded: `Closes #242`、AC ごと evidence、残余 risk (上流への同種 bug 報告は別 track である旨) を明記

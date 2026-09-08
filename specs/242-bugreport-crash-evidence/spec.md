@@ -65,13 +65,13 @@ Given 日付形式に `/`・`:`・非 ASCII 数字等を含みうる locale 行�
 
 When 同一の `(appName, timestamp)` から report ファイル名を生成する,
 
-Then 全ての出力が `/` を含まず移植可能な文字集合のみで構成され、同一入力に対する出力は deterministic である,
+Then 全ての出力が `/` を含まず移植可能な文字集合のみで構成され、同一の `(appName, timestamp)` と同一 default timezone の組合せに対する出力は deterministic である (timezone は安全性契約の対象外であり、`/` 非含有と移植可能文字集合は全 timezone で成立する),
 
 And header 行 (`contentsWithHeader` の先頭行) は人間が読める timestamp 表現を維持する。
 
 ### Scenario: save 失敗時は例外を漏らさず text 通知へ縮退する
 
-Given save 先が書き込み不能である (`dest` 自体が通常 file として存在し、その配下への child file 作成が `FileNotFoundException` (IOException) を throw する状態を注入)、または `createNewFile()` が false を返す (id 衝突),
+Given save 先が書き込み不能である (`dest` 自体が通常 file として存在し、その配下への child file 作成が `IOException` を throw する状態を注入)、または `createNewFile()` が false を返す (id 衝突),
 
 When `generateBugReport()` が実行される,
 
@@ -85,7 +85,7 @@ Given アプリの default uncaught exception handler が登録されており�
 
 When uncaught exception handler が実行される,
 
-Then platform の default handler が元の `(thread, throwable)` で **ちょうど 1 回** 呼ばれ (pre-handler work の throw と失敗記録経路の throw のいずれが発生しても)、pre-handler work の失敗は記録される (caller 側の log),
+Then platform の default handler が元の `(thread, throwable)` で **ちょうど 1 回** 呼ばれ (pre-handler work の throw と失敗記録経路の throw のいずれが発生しても)、pre-handler work の失敗の記録は best effort で行われ、記録経路自体が失敗した場合は再記録・再委譲をせず元例外への委譲を優先する,
 
 And 元例外の stack trace が platform の crash 処理 (crash buffer 等の証跡) に到達し、reporter の失敗によって消えない (Issue の期待動作 2)。
 
@@ -125,9 +125,9 @@ None。新たな permission・network・telemetry は追加しない。report �
 
 ## Acceptance criteria
 
-- [ ] AC-1 (R1): **ファイル名の安全性・locale 独立性**。ja を default locale とした状態で生成される report ファイル名に `/` が含まれない (現行実装で再現する red test が fix 後 green へ反転)。locale 行列 (ja, en_US, de, fi, ar) のいずれでも `/` を含まず移植可能な文字集合のみで、同一入力に対し deterministic。header 行は人間が読める timestamp を維持する。
+- [ ] AC-1 (R1): **ファイル名の安全性・locale 独立性**。ja を default locale とした状態で生成される report ファイル名に `/` が含まれない (現行実装で再現する red test が fix 後 green へ反転)。locale 行列 (ja, en_US, de, fi, ar) のいずれでも `/` を含まず移植可能な文字集合のみで、同一の `(appName, timestamp, default timezone)` に対し deterministic。header 行は人間が読める timestamp を維持する。
 - [ ] AC-2 (R2): **save 成功**。任意の locale で `generateBugReport()` が非 null の `File` を持つ `BugReport` を返し、file が `cache/logs/<hex id>/` 配下に存在し内容が `contentsWithHeader` と一致する。
-- [ ] AC-3 (R3): **pre-handler 失敗隔離**。pre-handler work が `Throwable` を throw しても、また失敗の記録経路自体が `Throwable` を throw しても、platform default handler が元の `(thread, throwable)` でちょうど 1 回呼ばれ (`finally` による保証)、pre-handler 由来の例外は handler 外へ漏れず、失敗が log に記録される。
+- [ ] AC-3 (R3): **pre-handler 失敗隔離**。pre-handler work が `Throwable` を throw しても、また失敗の記録経路自体が `Throwable` を throw しても、platform default handler が元の `(thread, throwable)` でちょうど 1 回呼ばれ (`finally` による保証)、pre-handler 由来の例外は handler 外へ漏れない。失敗の log 記録は best effort であり、記録経路自体の失敗時に再記録・再委譲はせず、元例外への委譲を優先する。
 - [ ] AC-4 (R4): **save 失敗時の縮退**。注入した save 失敗に対し `file == null` の `BugReport` が返り、例外が漏れず、通知側の既存 fallback 分岐が使われる。
 - [ ] AC-5 (R5): **retention・id 契約の無変更**。file は `<hex id>` directory 配下に置かれ、`removeDismissedLogs`・notification id の logic に機能的な diff がない (diff review で確認)。
 - [ ] AC-6 (R6): **organizer 非回帰**。既存 organizer JVM gate (`app.lawnchair.organizer.*`) が無変更で pass する。
@@ -139,8 +139,8 @@ None。新たな permission・network・telemetry は追加しない。report �
 |---|---|
 | AC-1 | `tests/unit/app/lawnchair/bugreport/` (例: `BugReportFileNameTest`): `Locale.setDefault(Locale.JAPAN)` 再現 test (現行 `main` で red)、locale 行列 (ja / en_US / de / fi / ar) の `/` 非含有・移植文字集合・determinism 主張。command: `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.bugreport.*'` |
 | AC-2 | `ReportFileSaveTest` (同 directory) の save 成功 case: temp directory への file 作成・内容一致・`<hex id>` 配下配置の主張 |
-| AC-3 | `CrashPreHandlerIsolationTest` (同 directory): throw する pre-handler work lambda + 記録用 fake default handler — 元 throwable でちょうど 1 回呼ばれる / 例外が漏れない / 失敗が `onPreHandlerFailure` へ渡る / **`onPreHandlerFailure` 自体が throw しても委譲される**。本 JVM surface の CI 実行は filter 追加後の `organizer-unit-tests` job |
-| AC-4 | `ReportFileSaveTest` failure injection (`dest` を通常 file として先に作成 → child 作成時の `FileNotFoundException` (IOException) → null 返却・例外非漏出。target path が既に存在する場合は `createNewFile` が false を返すため IOException 注入には使えない)、id 衝突 case (target path の file 先置き → `createNewFile` false → null) |
+| AC-3 | `CrashPreHandlerIsolationTest` (同 directory): throw する pre-handler work lambda + 記録用 fake default handler — 元 throwable でちょうど 1 回呼ばれる / 例外が漏れない / 失敗が `onPreHandlerFailure` へ渡る / **`onPreHandlerFailure` 自体が throw しても委譲される (記録は best effort、再記録・再委譲なし)**。本 JVM surface の CI 実行は filter 追加後の `organizer-unit-tests` job |
+| AC-4 | `ReportFileSaveTest` failure injection (`dest` を通常 file として先に作成 → child 作成時の `IOException` → null 返却・例外非漏出。具体型は実行環境依存 (`Not a directory` 等) のため assertion は `IOException` に限定。target path が既に存在する場合は `createNewFile` が false を返すため IOException 注入には使えない)、id 衝突 case (target path の file 先置き → `createNewFile` false → null) |
 | AC-5 | save test の path 構造主張 + `removeDismissedLogs` / notification id logic の zero-diff review |
 | AC-6 | CI `organizer-unit-tests` job (無変更分) の成功 run URL |
 | AC-7 | PR 本文の AC ごと evidence 記録 |
@@ -155,6 +155,7 @@ None。新たな permission・network・telemetry は追加しない。report �
 
 - 2026-09-08: Draft created for #242。#237 AC-10 実機 triage の観測記録と現行 `main` (`4da41ef1bb`) における静的分析を evidence として作成。
 - 2026-09-09: Review revision (owner review @ [Issue #242 コメント](https://github.com/nunu1733/NunuLauncher/issues/242#issuecomment-5587856141)、Changes requested — 2 blockers): (1) **P1** — pre-handler 失敗隔離を `finally` による委譲保証 + 二段の隔離 (preHandler の throw を `onPreHandlerFailure` へ、`onPreHandlerFailure` 自体の throw を吞む) へ変更し、AC-3 と該当 scenario / test oracle に記録経路の throw case を追加。(2) **P1** — AC-4 の IOException 注入方法を「target path への directory 先置き」(実際には `createNewFile` が false を返すため不成立) から「`dest` を通常 file として先に作成」へ修正し、spec / plan の test oracle と Alternatives rejected に不成立の理由を記録。(3) **P3** — `Log.w` 用 `TAG` 定数の追加を plan Change set へ明記。
+- 2026-09-09: Delegated review revision (code-reviewer-1 委託レビュー、Changes requested — 3 should-fix + 1 minor、いずれも JDK 21 実測 / コード照合つき): (1) **P2** — 失敗記録 (`onPreHandlerFailure`) 自体の失敗時には log 記録を保証できないため、AC-3・scenario・test oracle を「記録は best effort、再記録・再委譲せず委譲を優先」へ統一。(2) **P2** — `Locale.US` は timezone を固定しないため (同一 `Date(0)` が UTC と Asia/Tokyo で異なる出力になることを JDK 実測)、determinism 契約を「同一 `(appName, timestamp, default timezone)` 下」へ限定。UTC 固定はせず device-local 時刻の triage 価値を優先。(3) **P2** — plan の `save()` 委譲例が新たな `Date()` でファイル名を再生成しており、現行の「header と保存先が同一 `fileName`」契約を壊すため、保持済み `fileName` を渡すよう修正し、diff review 項目へ追加。(4) **P3** — `dest` 通常 file 先置き時の child 作成が throw する例外の具体型は環境依存 (`IOException: Not a directory` を JDK / macOS APFS で実測、`FileNotFoundException` 断定は誤り) のため、`IOException` に統一し assertion も `IOException` に限定。
 
 ## References
 
