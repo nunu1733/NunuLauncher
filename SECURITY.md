@@ -2,30 +2,38 @@
 
 ## Supported Versions
 
-> [!WARNING]
-> [Lawnchair Legacy](https://play.google.com/store/apps/details?id=ch.deletescape.lawnchair.plah) is **unsupported**. Use the newer versions instead.
-> See [this FAQ page](https://lawnchair.app/faq/#what-happened-to-lawnchair-legacy) for additional information.
+NunuLauncher is a fork of Lawnchair. This policy covers the NunuLauncher
+`main` development line and builds produced from it. The product baseline for
+that line is Lawnchair `v15.0.0-beta3.0`
+([baseline commit](https://github.com/nunu1733/NunuLauncher/commit/505dbc40e6154c05158b5d0271c45f6a885a411b)).
 
-The latest version of Lawnchair is the only supported version.
+| Version or build line | Supported |
+| --- | --- |
+| NunuLauncher `main` and builds from current `main` | :white_check_mark: |
+| Other NunuLauncher branches or locally modified builds | :x: |
+| Lawnchair upstream releases | See the [upstream security policy](https://github.com/LawnchairLauncher/lawnchair/security/policy) |
 
-| Version        | Supported          |
-| -------------- | ------------------ |
-| Nightly build  | :white_check_mark: |
-| 15             | :white_check_mark: |
-| 14             | :x:                |
-| 13             | :x:                |
-| 12.1           | :x:                |
-| 12             | :x:                |
-| 11             | :x:                |
-| Older (Legacy) | :x:                |
+This fork does not claim support for Lawnchair releases or branches that are
+not part of the NunuLauncher `main` line.
 
-## Reporting Security issues
+## Reporting Security Issues
 
-We appreciate your efforts to responsibly disclose your findings and will make every effort to
-acknowledge your contributions.
+To report a suspected vulnerability in NunuLauncher, use
+[NunuLauncher private vulnerability reporting](https://github.com/nunu1733/NunuLauncher/security/advisories/new).
+This is the primary private route for vulnerabilities in fork code, build or
+configuration, release infrastructure, and other NunuLauncher-owned changes.
 
-To report an issue, please file a [security advisory](https://github.com/LawnchairLauncher/lawnchair/security/advisories/new)
-or contact a developer (can be found in the about page of the app) in [Telegram](https://t.me/lccommunity) or [Discord](https://discord.com/invite/3x8qNWxgGZ) and
-state your security vulnerability starting with the words "**SECURITY**"
+Please do not include sensitive details in public Issues, pull requests,
+Telegram, or Discord. Include the affected build or commit, reproduction
+steps, impact, and any minimal proof needed to reproduce the issue in the
+private report.
 
-We'll endeavor to respond quickly, and will keep you updated throughout the process.
+If a report affects only unmodified Lawnchair upstream code and does not
+affect NunuLauncher-specific changes or packaging, maintainers may coordinate
+with the [upstream security policy](https://github.com/LawnchairLauncher/lawnchair/security/policy).
+If you are unsure whether the issue is fork-specific, report it privately to
+NunuLauncher first; do not route fork-specific issues to upstream by default.
+
+We will keep security-report discussion and follow-up in the private advisory
+workflow. No response-time or remediation-time guarantee is made by this
+policy.

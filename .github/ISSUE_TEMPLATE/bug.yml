@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        This form is for NunuLauncher. To report behavior belonging to Lawnchair upstream, use the external upstream link in the Issue chooser.
+        This public form is for non-security NunuLauncher bugs. For a suspected security vulnerability, do not submit sensitive details here; follow the [NunuLauncher SECURITY.md](https://github.com/nunu1733/NunuLauncher/security/policy) private reporting instructions. To report non-security behavior belonging to Lawnchair upstream, use the external upstream link in the Issue chooser.
   - type: textarea
     id: observed
     attributes:
