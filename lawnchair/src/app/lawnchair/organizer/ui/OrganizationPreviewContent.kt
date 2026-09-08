@@ -43,6 +43,12 @@ interface OrganizationPreviewWording {
     val sameBandMoveRow: String
     val rowOrdinalNote: String
 
+    /** Issue #234: workspace destination for both move branches —
+     *  %1 = region, %2 = page, %3 = 1-based row ordinal, %4 = 1-based column
+     *  ordinal. Always all four parts (re-review: same-band rows keep the
+     *  page so cross-page same-band adjustments stay distinct). */
+    val workspaceDestination: String
+
     /** %1 = descriptor (name, kind, current position), %2 = fate wording. */
     val itemRow: String
 
@@ -279,13 +285,33 @@ object OrganizationPreviewContent {
         // destination part, so same-named sources can never collapse.
         val source = descriptorText(change.label, change.kind, change.source, wording, supplement)
         if (change.sameBandAdjustment) {
-            // sameBandAdjustment guarantees both ends are same-page workspaces.
-            val destination = change.destination as PreviewPosition.Workspace
-            val note = rowOrdinalNote(change, wording)
-            return format(wording.sameBandMoveRow, source, regionText(destination, wording), note)
+            return format(wording.sameBandMoveRow, source, destinationText(change.destination, wording), rowOrdinalNote(change, wording))
         }
-        val destination = positionText(change.destination, wording) + rowOrdinalNote(change, wording)
+        val destination = destinationText(change.destination, wording) + rowOrdinalNote(change, wording)
         return format(wording.moveRow, source, destination, moveReasonText(change.rationale, wording))
+    }
+
+    /**
+     * Issue #234: the destination part of a move row, built only here so the
+     * anchor specificity never touches the shared [positionText] (source
+     * descriptors, preserve/warning positions, collision supplements and
+     * new-folder placements keep the #208 wording). A workspace destination
+     * always renders page + region + 1-based row ordinal + 1-based column
+     * ordinal — the resolved anchor, unambiguous on any grid. Non-workspace
+     * destinations (dock, folder, app pair) are out of scope for the
+     * anchor-specificity contract and keep the existing [positionText]
+     * wording unchanged.
+     */
+    fun destinationText(destination: PreviewPosition, wording: OrganizationPreviewWording): String = when (destination) {
+        is PreviewPosition.Workspace -> format(
+            wording.workspaceDestination,
+            regionText(destination, wording),
+            workspacePageText(destination, wording),
+            destination.rowOrdinal,
+            destination.columnOrdinal,
+        )
+
+        else -> positionText(destination, wording)
     }
 
     fun positionText(position: PreviewPosition, wording: OrganizationPreviewWording): String = when (position) {

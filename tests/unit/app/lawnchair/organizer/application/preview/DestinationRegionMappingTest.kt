@@ -31,20 +31,23 @@ import app.lawnchair.organizer.planning.RuleVersion
 import app.lawnchair.organizer.planning.TaxonomyVersion
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Issue #212: destination specificity contract for the organizer preview.
+ * Issue #212 / #234: destination specificity contract for the organizer
+ * preview projection.
  *
  * The preview destination is derived from the validated plan's intended
  * placement (PlanPreviewProjector.PositionContext) by bucketizing the exact
  * anchor cell into 3x3 row/column bands (`floor(coord * 3 / dimension)`,
- * clamped). These tests characterize, on the F-03-observed 4-column grid, the
- * mapping from resolved anchor cells to band labels and the resulting R1
- * verdict: a single coarse band label leaves multiple candidate anchors, so
- * the coarse-label-only presentation does NOT uniquely identify the resolved
- * placement.
+ * clamped) and carrying 1-based row and column display ordinals. These tests
+ * characterize, on the F-03-observed 4-column grid, the mapping from resolved
+ * anchor cells to band labels and — since Issue #234 — the R1 PASS state: the
+ * projection keeps `(page, rowOrdinal, columnOrdinal)` lossless, so distinct
+ * anchors inside one band project to distinct destinations and the
+ * candidate-anchor set derivable from a projected destination is exactly the
+ * single resolved anchor. This is a projection-layer claim: it never consults
+ * the UI formatter (that responsibility lives in OrganizationPreviewContentTest).
  */
 class DestinationRegionMappingTest {
 
@@ -81,13 +84,15 @@ class DestinationRegionMappingTest {
 
     /**
      * F-03 shape on the 4-column baseline: two items resolve to distinct
-     * anchors (0,0) and (1,0) of the same page yet both preview as the same
-     * coarse (page, TOP, LEFT) label. `visibleCandidates("top left", grid) >=
-     * 2`, so the coarse label alone cannot identify the resolved anchor — the
-     * exact negative characterization spec R1 requires to be recorded.
+     * anchors (0,0) and (1,0) of the same page. Before Issue #234 both
+     * projected to the identical coarse destination; the projection now keeps
+     * the column display ordinal, so the destinations differ and each
+     * projected destination narrows the candidate anchors to exactly the one
+     * resolved anchor — the R1 PASS state (visibleCandidates == {resolved
+     * anchor}) asserted at the projection layer.
      */
     @Test
-    fun f03ShapeDistinctResolvedAnchorsShareOneCoarseDestinationLabel() {
+    fun f03ShapeDistinctResolvedAnchorsProjectToDistinctDestinations() {
         val fixture = plan(
             columns = 4,
             rows = 6,
@@ -109,27 +114,29 @@ class DestinationRegionMappingTest {
         // The intended anchors are genuinely distinct cells...
         assertEquals(GridCell(0, 0), intendedCell(fixture, "a"))
         assertEquals(GridCell(1, 0), intendedCell(fixture, "b"))
-        // ...and both project to the identical coarse destination — including
-        // the same row ordinal, so nothing in the rendered destination part
-        // distinguishes them.
-        assertEquals(PreviewPosition.Workspace(2, false, RowBand.TOP, ColumnBand.LEFT, 1), destinations.getValue("a"))
-        assertEquals(PreviewPosition.Workspace(2, false, RowBand.TOP, ColumnBand.LEFT, 1), destinations.getValue("b"))
+        // ...and the projection keeps them distinct: same band and row
+        // ordinal, different column ordinals (1-based: x=0 -> 1, x=1 -> 2).
+        val destinationA = destinations.getValue("a")
+        val destinationB = destinations.getValue("b")
+        assertEquals(PreviewPosition.Workspace(2, false, RowBand.TOP, ColumnBand.LEFT, 1, 1), destinationA)
+        assertEquals(PreviewPosition.Workspace(2, false, RowBand.TOP, ColumnBand.LEFT, 1, 2), destinationB)
+        assertNotEquals(destinationA, destinationB)
 
+        // visibleCandidates(projected destination, grid) == {resolved anchor}:
+        // the anchors under the coarse band that share the projected row AND
+        // column ordinal collapse to the single resolved anchor.
         val candidates = anchorsUnder(RowBand.TOP, ColumnBand.LEFT, columns = 4, rows = 6)
-        assertTrue(
-            "visibleCandidates(coarse label) must keep >= 2 anchors, got $candidates",
-            candidates.containsAll(setOf(GridCell(0, 0), GridCell(1, 0))),
-        )
-        assertEquals(4, candidates.size)
+            .filter { it.y + 1 == destinationA.rowOrdinal && it.x + 1 == destinationA.columnOrdinal }
+        assertEquals(setOf(GridCell(0, 0)), candidates.toSet())
     }
 
     /**
-     * R1 specificity boundary inside one band: the projection carries the
-     * 1-based row ordinal but no column coordinate, so two anchors differing
-     * only in column produce identical projections.
+     * R1 specificity inside one band (Issue #234): the projection carries the
+     * 1-based row ordinal AND the 1-based column ordinal, so two anchors
+     * differing only in column produce distinct projections.
      */
     @Test
-    fun projectionDropsTheColumnCoordinateInsideABand() {
+    fun projectionKeepsTheColumnCoordinateInsideABand() {
         val fixture = plan(
             columns = 4,
             rows = 6,
@@ -147,10 +154,42 @@ class DestinationRegionMappingTest {
         val destinations = result.details.changes
             .filterIsInstance<MoveChange>()
             .associate { it.item.value to it.destination as PreviewPosition.Workspace }
-        // (0,1) and (1,1) differ only in column: identical projection.
-        assertEquals(PreviewPosition.Workspace(2, false, RowBand.TOP, ColumnBand.LEFT, 2), destinations.getValue("a"))
-        assertEquals(destinations.getValue("a"), destinations.getValue("b"))
+        // (0,1) and (1,1) differ only in column: distinct projections now.
+        assertEquals(PreviewPosition.Workspace(2, false, RowBand.TOP, ColumnBand.LEFT, 2, 1), destinations.getValue("a"))
+        assertEquals(PreviewPosition.Workspace(2, false, RowBand.TOP, ColumnBand.LEFT, 2, 2), destinations.getValue("b"))
+        assertNotEquals(destinations.getValue("a"), destinations.getValue("b"))
         assertNotEquals(intendedCell(fixture, "a"), intendedCell(fixture, "b"))
+    }
+
+    /**
+     * Grid-size boundary (spec 212 Phase 2.2 + #234): the band rule is
+     * `floor(coord * 3 / dimension)` and the ordinal is `coord + 1`; together
+     * they keep every projected destination unique to its anchor on every
+     * column count (2/4/5).
+     */
+    @Test
+    fun projectedDestinationIdentifiesTheAnchorOnEveryColumnCount() {
+        for (columns in intArrayOf(2, 4, 5)) {
+            for (x in 0 until columns) {
+                val fixture = plan(
+                    columns = columns,
+                    rows = 6,
+                    moves = listOf(MoveFixture("a", GridCell(0, 0), GridCell(x, 0))),
+                )
+                val result = PlanPreviewProjector.project(
+                    fixture.plan,
+                    planned(*fixture.moves.map { movedTo(it) }.toTypedArray()),
+                ) as PlanPreviewProjector.Result.Ready
+                val destination = (result.details.changes.single() as MoveChange).destination as PreviewPosition.Workspace
+
+                // The (row, column) ordinal pair pins exactly one anchor.
+                assertEquals(x + 1, destination.columnOrdinal)
+                assertEquals(1, destination.rowOrdinal)
+                val candidates = anchorsUnder(destination.rowBand, destination.columnBand, columns = columns, rows = 6)
+                    .filter { it.y + 1 == destination.rowOrdinal && it.x + 1 == destination.columnOrdinal }
+                assertEquals("columns=$columns, x=$x", setOf(GridCell(x, 0)), candidates.toSet())
+            }
+        }
     }
 
     // -- fixture helpers (mirror PlanPreviewProjectorTest) --

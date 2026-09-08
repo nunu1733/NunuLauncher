@@ -1125,6 +1125,10 @@
          destination with the in-region adjustment wording. -->
     <string name="manual_organization_preview_move_row">%1$s → %2$s (%3$s)</string>
     <string name="manual_organization_preview_same_band_move_row">%1$s → position adjusted within %2$s%3$s</string>
+    <!-- Issue #234: workspace destination of both move branches (%1 = region,
+         %2 = page, %3 = row ordinal, %4 = column ordinal). Always all four
+         parts so the resolved anchor is uniquely identifiable on any grid. -->
+    <string name="manual_organization_preview_workspace_destination">%1$s, %2$s, row %3$d, column %4$d</string>
     <string name="manual_organization_preview_row_ordinal_note"> (from row %1$d to row %2$d)</string>
     <string name="manual_organization_preview_item_row">%1$s: %2$s</string>
     <string name="manual_organization_preview_item_descriptor">“%1$s” (%2$s) — %3$s</string>

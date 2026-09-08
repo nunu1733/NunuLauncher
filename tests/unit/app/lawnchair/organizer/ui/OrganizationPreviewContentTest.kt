@@ -96,11 +96,11 @@ class OrganizationPreviewContentTest {
         val change = move(
             label = "game",
             source = source(1, RowBand.TOP, ColumnBand.CENTER, 2),
-            destination = destination(1, RowBand.TOP, ColumnBand.LEFT, 1),
+            destination = destination(1, RowBand.TOP, ColumnBand.LEFT, 1, columnOrdinal = 1),
         )
 
         assertEquals(
-            "“game” (App) — top center, page 1 → top left, page 1 (from row 2 to row 1) (moves as a single placement)",
+            "“game” (App) — top center, page 1 → top left, page 1, row 1, column 1 (from row 2 to row 1) (moves as a single placement)",
             OrganizationPreviewContent.moveRowText(change, TestWording),
         )
     }
@@ -110,12 +110,12 @@ class OrganizationPreviewContentTest {
         val change = labeledMove(
             label = PreviewLabel.Named("game"),
             source = source(1, RowBand.TOP, ColumnBand.CENTER, 2),
-            destination = destination(1, RowBand.CENTER, ColumnBand.CENTER, 3),
+            destination = destination(1, RowBand.CENTER, ColumnBand.CENTER, 3, columnOrdinal = 3),
             rationale = PlacementCode.FOLDER_MEMBER,
         )
 
         assertEquals(
-            "“game” (App) — top center, page 1 → middle center, page 1 (moves as a folder member)",
+            "“game” (App) — top center, page 1 → middle center, page 1, row 3, column 3 (moves as a folder member)",
             OrganizationPreviewContent.moveRowText(change, TestWording),
         )
     }
@@ -125,36 +125,116 @@ class OrganizationPreviewContentTest {
         val change = labeledMove(
             label = PreviewLabel.Named("game"),
             source = source(1, RowBand.TOP, ColumnBand.CENTER, 2),
-            destination = destination(2, RowBand.TOP, ColumnBand.LEFT, 1),
+            destination = destination(2, RowBand.TOP, ColumnBand.LEFT, 1, columnOrdinal = 2),
             rationale = null,
         )
 
         assertEquals(
-            "“game” (App) — top center, page 1 → top left, page 2 (moves)",
+            "“game” (App) — top center, page 1 → top left, page 2, row 1, column 2 (moves)",
             OrganizationPreviewContent.moveRowText(change, TestWording),
         )
     }
 
     @Test
     fun sameBandAdjustmentUsesDedicatedRowAndOrdinalNoteWhenRowsDiffer() {
+        // Pure column-direction adjustment (Issue #195 D5 residual, closed by
+        // #234): same row ordinal, different column ordinal — the destination
+        // identifies the exact landing cell and no row note fires. LEFT band
+        // keeps the fixture projection-reachable: column ordinal 1 and 2 are
+        // x=0 and x=1, which both band LEFT on the 6-column grid.
         val sameRow = move(
             label = "game",
-            source = source(1, RowBand.TOP, ColumnBand.CENTER, 1),
-            destination = destination(1, RowBand.TOP, ColumnBand.CENTER, 1),
+            source = source(1, RowBand.TOP, ColumnBand.LEFT, 1, columnOrdinal = 1),
+            destination = destination(1, RowBand.TOP, ColumnBand.LEFT, 1, columnOrdinal = 2),
         )
         val differentRow = move(
             label = "game",
-            source = source(1, RowBand.TOP, ColumnBand.CENTER, 2),
-            destination = destination(1, RowBand.TOP, ColumnBand.CENTER, 1),
+            source = source(1, RowBand.TOP, ColumnBand.LEFT, 2),
+            destination = destination(1, RowBand.TOP, ColumnBand.LEFT, 1, columnOrdinal = 1),
         )
 
         assertEquals(
-            "“game” (App) — top center, page 1 → position adjusted within top center",
+            "“game” (App) — top left, page 1 → position adjusted within top left, page 1, row 1, column 2",
             OrganizationPreviewContent.moveRowText(sameRow, TestWording),
         )
         assertEquals(
-            "“game” (App) — top center, page 1 → position adjusted within top center (from row 2 to row 1)",
+            "“game” (App) — top left, page 1 → position adjusted within top left, page 1, row 1, column 1 (from row 2 to row 1)",
             OrganizationPreviewContent.moveRowText(differentRow, TestWording),
+        )
+    }
+
+    /**
+     * Issue #234 (re-review): two same-band adjustments with the same row and
+     * column ordinals on DIFFERENT pages must not collapse into one
+     * destination text — the page is part of the destination contract.
+     */
+    @Test
+    fun sameBandAdjustmentsOnDifferentPagesRenderDistinctDestinationText() {
+        val details = PlanPreviewDetails(
+            changes = listOf(
+                labeledMove(
+                    PreviewLabel.Named("Photos"),
+                    source(1, RowBand.TOP, ColumnBand.LEFT, 1),
+                    destination(1, RowBand.TOP, ColumnBand.LEFT, 1, columnOrdinal = 2),
+                    PlacementCode.SINGLE_PLACEMENT,
+                ),
+                labeledMove(
+                    PreviewLabel.Named("Maps"),
+                    source(2, RowBand.TOP, ColumnBand.LEFT, 1),
+                    destination(2, RowBand.TOP, ColumnBand.LEFT, 1, columnOrdinal = 2),
+                    PlacementCode.SINGLE_PLACEMENT,
+                ),
+            ),
+            counts = PreviewCounts(2, 0, 0, 0, emptyMap()),
+        )
+
+        val rows = OrganizationPreviewContent.sections(details, TestWording).single().rows
+
+        assertEquals(
+            listOf(
+                "“Photos” (App) — top left, page 1 → position adjusted within top left, page 1, row 1, column 2",
+                "“Maps” (App) — top left, page 2 → position adjusted within top left, page 2, row 1, column 2",
+            ),
+            rows,
+        )
+        assertEquals(2, rows.toSet().size)
+    }
+
+    /**
+     * Issue #234 (re-review 2): non-workspace destinations ride the existing
+     * `positionText` wording — the anchor-specific destination copy must not
+     * leak into dock / folder / app-pair rows.
+     */
+    @Test
+    fun nonWorkspaceDestinationsKeepExistingWording() {
+        val details = PlanPreviewDetails(
+            changes = listOf(
+                move("maps", source(1, RowBand.TOP, ColumnBand.LEFT, 1), dock(1)),
+                labeledMove(
+                    PreviewLabel.Named("game"),
+                    source(1, RowBand.TOP, ColumnBand.LEFT, 1),
+                    PreviewPosition.InFolder(PreviewFolderRef.Existing(PreviewLabel.Named("Work")), 2),
+                    PlacementCode.FOLDER_MEMBER,
+                ),
+                labeledMove(
+                    PreviewLabel.Named("pair"),
+                    source(1, RowBand.TOP, ColumnBand.LEFT, 1),
+                    PreviewPosition.InAppPair(PreviewLabel.Named("Pair")),
+                    PlacementCode.FOLDER_UNIT,
+                ),
+            ),
+            counts = PreviewCounts(3, 0, 0, 0, emptyMap()),
+        )
+
+        val rows = OrganizationPreviewContent.sections(details, TestWording).single().rows
+
+        assertEquals(
+            listOf(
+                "“maps” (App) — top left, page 1 → Dock slot 2 (moves as a single placement)",
+                "“game” (App) — top left, page 1 → folder “Work”, position 2 (moves as a folder member)",
+                "“pair” (App) — top left, page 1 → app pair “Pair” (moves as a folder unit)",
+            ),
+            rows,
         )
     }
 
@@ -171,14 +251,14 @@ class OrganizationPreviewContentTest {
                 labeledMove(
                     PreviewLabel.Named("Photos"),
                     source(2, RowBand.TOP, ColumnBand.CENTER, 1),
-                    destination(2, RowBand.TOP, ColumnBand.CENTER, 1),
+                    destination(2, RowBand.TOP, ColumnBand.CENTER, 1, columnOrdinal = 1),
                     PlacementCode.SINGLE_PLACEMENT,
                     anchor = Grid(0, 0, page = 2),
                 ),
                 labeledMove(
                     PreviewLabel.Named("Photos"),
                     source(2, RowBand.TOP, ColumnBand.CENTER, 1),
-                    destination(2, RowBand.TOP, ColumnBand.CENTER, 1),
+                    destination(2, RowBand.TOP, ColumnBand.CENTER, 1, columnOrdinal = 2),
                     PlacementCode.SINGLE_PLACEMENT,
                     anchor = Grid(1, 0, page = 2),
                 ),
@@ -190,8 +270,8 @@ class OrganizationPreviewContentTest {
 
         assertEquals(
             listOf(
-                "“Photos” (App) — top center, page 2 (row 1, column 1, page 2) → position adjusted within top center",
-                "“Photos” (App) — top center, page 2 (row 1, column 2, page 2) → position adjusted within top center",
+                "“Photos” (App) — top center, page 2 (row 1, column 1, page 2) → position adjusted within top center, page 2, row 1, column 1",
+                "“Photos” (App) — top center, page 2 (row 1, column 2, page 2) → position adjusted within top center, page 2, row 1, column 2",
             ),
             rows,
         )
@@ -341,7 +421,7 @@ class OrganizationPreviewContentTest {
         val sections = OrganizationPreviewContent.sections(details, TestWording)
 
         assertEquals(
-            "“Photos” (App) — bottom left, page 2 → top left, page 2 (moves as a single placement)",
+            "“Photos” (App) — bottom left, page 2 → top left, page 2, row 1, column 1 (moves as a single placement)",
             sections[0].rows.single(),
         )
         assertEquals(
@@ -502,16 +582,35 @@ class OrganizationPreviewContentTest {
         rationale = rationale,
     )
 
-    private fun source(page: Int, rowBand: RowBand, columnBand: ColumnBand, rowOrdinal: Int) = workspace(page, rowBand, columnBand, rowOrdinal)
+    private fun source(
+        page: Int,
+        rowBand: RowBand,
+        columnBand: ColumnBand,
+        rowOrdinal: Int,
+        columnOrdinal: Int = 1,
+    ) = workspace(page, rowBand, columnBand, rowOrdinal, columnOrdinal)
 
-    private fun destination(page: Int, rowBand: RowBand, columnBand: ColumnBand, rowOrdinal: Int) = workspace(page, rowBand, columnBand, rowOrdinal)
+    private fun destination(
+        page: Int,
+        rowBand: RowBand,
+        columnBand: ColumnBand,
+        rowOrdinal: Int,
+        columnOrdinal: Int = 1,
+    ) = workspace(page, rowBand, columnBand, rowOrdinal, columnOrdinal)
 
-    private fun workspace(page: Int, rowBand: RowBand, columnBand: ColumnBand, rowOrdinal: Int) = PreviewPosition.Workspace(
+    private fun workspace(
+        page: Int,
+        rowBand: RowBand,
+        columnBand: ColumnBand,
+        rowOrdinal: Int,
+        columnOrdinal: Int = 1,
+    ) = PreviewPosition.Workspace(
         pageDisplayOrdinal = page,
         isNewPage = false,
         rowBand = rowBand,
         columnBand = columnBand,
         rowOrdinal = rowOrdinal,
+        columnOrdinal = columnOrdinal,
     )
 
     private fun dock(rank: Int) = PreviewPosition.DockRank(rank)
@@ -608,6 +707,7 @@ class OrganizationPreviewContentTest {
             else -> ColumnBand.RIGHT
         },
         rowOrdinal = cell.y + 1,
+        columnOrdinal = cell.x + 1,
     )
 
     private object TestWording : OrganizationPreviewWording {
@@ -619,6 +719,7 @@ class OrganizationPreviewContentTest {
         override val moveRow = "%1\$s → %2\$s (%3\$s)"
         override val sameBandMoveRow = "%1\$s → position adjusted within %2\$s%3\$s"
         override val rowOrdinalNote = " (from row %1\$d to row %2\$d)"
+        override val workspaceDestination = "%1\$s, %2\$s, row %3\$d, column %4\$d"
         override val itemRow = "%1\$s: %2\$s"
         override val itemDescriptor = "“%1\$s” (%2\$s) — %3\$s"
         override val itemDescriptorWithoutKind = "“%1\$s” — %2\$s"
