@@ -3,7 +3,7 @@
 > Status: accepted
 > Audit date: 2026-09-08
 > Repository: `nunu1733/NunuLauncher`
-> Audited head: `a992dd893d8cc7d13f67c7f68c13edfd16adfbb4`
+> Audited head: `a992dd893d76a6fc384e6fc31135ae592ea69cbe`
 
 ## Scope and method
 
