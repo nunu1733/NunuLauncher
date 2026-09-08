@@ -2,7 +2,7 @@
 
 > Issue: #242
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: accepted
 
 ## Current evidence
 

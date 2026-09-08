@@ -1,6 +1,6 @@
 ---
 issue: "#242"
-status: draft
+status: accepted
 requirements: [R1-SAFE-FILENAME, R2-SAVE-SUCCESS, R3-PRE-HANDLER-ISOLATION, R4-GRACEFUL-DEGRADE, R5-RETENTION-CONTRACT, R6-NO-ORGANIZER-REGRESSION]
 risk: []
 updated: 2026-09-09
@@ -156,6 +156,8 @@ None。新たな permission・network・telemetry は追加しない。report �
 - 2026-09-08: Draft created for #242。#237 AC-10 実機 triage の観測記録と現行 `main` (`4da41ef1bb`) における静的分析を evidence として作成。
 - 2026-09-09: Review revision (owner review @ [Issue #242 コメント](https://github.com/nunu1733/NunuLauncher/issues/242#issuecomment-5587856141)、Changes requested — 2 blockers): (1) **P1** — pre-handler 失敗隔離を `finally` による委譲保証 + 二段の隔離 (preHandler の throw を `onPreHandlerFailure` へ、`onPreHandlerFailure` 自体の throw を吞む) へ変更し、AC-3 と該当 scenario / test oracle に記録経路の throw case を追加。(2) **P1** — AC-4 の IOException 注入方法を「target path への directory 先置き」(実際には `createNewFile` が false を返すため不成立) から「`dest` を通常 file として先に作成」へ修正し、spec / plan の test oracle と Alternatives rejected に不成立の理由を記録。(3) **P3** — `Log.w` 用 `TAG` 定数の追加を plan Change set へ明記。
 - 2026-09-09: Delegated review revision (code-reviewer-1 委託レビュー、Changes requested — 3 should-fix + 1 minor、いずれも JDK 21 実測 / コード照合つき): (1) **P2** — 失敗記録 (`onPreHandlerFailure`) 自体の失敗時には log 記録を保証できないため、AC-3・scenario・test oracle を「記録は best effort、再記録・再委譲せず委譲を優先」へ統一。(2) **P2** — `Locale.US` は timezone を固定しないため (同一 `Date(0)` が UTC と Asia/Tokyo で異なる出力になることを JDK 実測)、determinism 契約を「同一 `(appName, timestamp, default timezone)` 下」へ限定。UTC 固定はせず device-local 時刻の triage 価値を優先。(3) **P2** — plan の `save()` 委譲例が新たな `Date()` でファイル名を再生成しており、現行の「header と保存先が同一 `fileName`」契約を壊すため、保持済み `fileName` を渡すよう修正し、diff review 項目へ追加。(4) **P3** — `dest` 通常 file 先置き時の child 作成が throw する例外の具体型は環境依存 (`IOException: Not a directory` を JDK / macOS APFS で実測、`FileNotFoundException` 断定は誤り) のため、`IOException` に統一し assertion も `IOException` に限定。
+- 2026-09-09: Independent verification (code-reviewer-2 委託レビュー) が PASS。指摘の P3 整備 4 件 (Scope の timezone 修飾、front matter 日付、Verification AC-3 行への併記、`writeText` 失敗時の空 file 残留 edge の記録) を `a8e1ff5a02` で反映。
+- 2026-09-09: Approved by the Issue #242 owner (branch `issue-242-bugreport-crash-evidence` の commit `a8e1ff5a02` に対して)。実装を本 spec と [plan](./plan.md) に従って開始する。
 
 ## References
 
