@@ -48,6 +48,7 @@ restore 確認画面 (`State.RecoveryPreview` の `Restorable`) で、ユーザ�
 - strings は `values/` と `values-ja/` の両方へ追加・変更する (#123 の日本語 fallback 禁止契約)。
 - a11y: 追加行は既存の `FocusTargetText` / `SummaryText` 規約に従う。status 見出しの focus + `liveRegion` 構成は維持し、追加の履歴行は liveRegion 対象外とする (#195 と同一規約)。
 - [spec 52](../52-manual-full-organization-vertical-slice/spec.md) の §"Result and recovery" へ、確認画面が apply 文脈の要約を表示する旨を追記する。
+- [plan.md](./plan.md) を作成する (変更 module、文言案、検証)。
 
 ## Non-goals
 
