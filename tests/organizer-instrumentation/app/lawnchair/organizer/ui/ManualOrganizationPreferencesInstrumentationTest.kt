@@ -1133,11 +1133,13 @@ class ManualOrganizationPreferencesInstrumentationTest {
             .assert(buttonRole())
 
         // Issue #230: the correlated apply history renders above the decision
-        // pair (the fixture plan moves exactly one placement).
-        val history = context.getString(
-            R.string.manual_organization_recovery_history_prefix,
-            context.getString(R.string.manual_organization_recovery_history_moved, 1),
-        )
+        // pair (the fixture plan moves exactly one placement). The singular
+        // plural form must resolve too.
+        val history = context.resources.getQuantityString(
+            R.plurals.manual_organization_recovery_history_moved,
+            1,
+            1,
+        ).let { context.getString(R.string.manual_organization_recovery_history_prefix, it) }
         composeRule.onNodeWithText(history).assertIsDisplayed()
 
         // Issue #230 AC-2: a preview whose pointId does not match the
@@ -1244,11 +1246,9 @@ class ManualOrganizationPreferencesInstrumentationTest {
             R.string.manual_organization_stale_proposal_not_reviewed,
             R.string.manual_organization_recapture_summary,
             R.string.manual_organization_preview_details_unavailable,
-            // Issue #230: the recovery confirmation's apply-history line.
+            // Issue #230: the recovery confirmation's apply-history prefix.
+            // The three count segments are plurals and are asserted below.
             R.string.manual_organization_recovery_history_prefix,
-            R.string.manual_organization_recovery_history_moved,
-            R.string.manual_organization_recovery_history_new_folders,
-            R.string.manual_organization_recovery_history_new_pages,
             R.string.manual_organization_changes_heading,
             R.string.manual_organization_group_moved,
             R.string.manual_organization_group_new_folders,
@@ -1334,6 +1334,21 @@ class ManualOrganizationPreferencesInstrumentationTest {
             "C",
         )
         assert(japaneseMoveRow.contains("A") && japaneseMoveRow.contains("C"))
+
+        // Issue #230: the recovery history plurals resolve in Japanese (the
+        // ja locale carries only the `other` quantity).
+        listOf(
+            R.plurals.manual_organization_recovery_history_moved,
+            R.plurals.manual_organization_recovery_history_new_folders,
+            R.plurals.manual_organization_recovery_history_new_pages,
+        ).forEach { id ->
+            val resolved = japanese.resources.getQuantityString(id, 2, 2)
+            assertNotEquals(
+                "plurals resource $id falls back to English under a Japanese locale",
+                context.resources.getQuantityString(id, 2, 2),
+                resolved,
+            )
+        }
     }
 
     @Test

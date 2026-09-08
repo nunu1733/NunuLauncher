@@ -1050,9 +1050,18 @@
     <string name="manual_organization_recovery_inspecting">Checking whether the saved layout can be restored safely…</string>
     <string name="manual_organization_recovery_preview">The saved layout — this returns your home layout to the state before the organization you reviewed on this screen. Confirmation is required to proceed.</string>
     <string name="manual_organization_recovery_history_prefix">Changes made by the last organization: %1$s</string>
-    <string name="manual_organization_recovery_history_moved">moved %1$d placements</string>
-    <string name="manual_organization_recovery_history_new_folders">created %1$d folders</string>
-    <string name="manual_organization_recovery_history_new_pages">added %1$d pages</string>
+    <plurals name="manual_organization_recovery_history_moved">
+        <item quantity="one">moved %1$d placement</item>
+        <item quantity="other">moved %1$d placements</item>
+    </plurals>
+    <plurals name="manual_organization_recovery_history_new_folders">
+        <item quantity="one">created %1$d folder</item>
+        <item quantity="other">created %1$d folders</item>
+    </plurals>
+    <plurals name="manual_organization_recovery_history_new_pages">
+        <item quantity="one">added %1$d page</item>
+        <item quantity="other">added %1$d pages</item>
+    </plurals>
     <string name="manual_organization_recovery_confirm">Restore saved layout</string>
     <string name="manual_organization_recovering">Restoring the saved layout…</string>
     <string name="manual_organization_recovery_restored">The saved layout was restored.</string>

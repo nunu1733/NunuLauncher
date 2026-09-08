@@ -132,9 +132,15 @@
     <string name="manual_organization_recovery_inspecting">保存したレイアウトを安全に復元できるか確認しています…</string>
     <string name="manual_organization_recovery_preview">保存したレイアウト — この画面で確認した整理を適用する前の状態へ、ホームレイアウトを戻します。実行するには確認が必要です。</string>
     <string name="manual_organization_recovery_history_prefix">直前の整理での変更: %1$s</string>
-    <string name="manual_organization_recovery_history_moved">移動 %1$d 件</string>
-    <string name="manual_organization_recovery_history_new_folders">新規フォルダ %1$d 個</string>
-    <string name="manual_organization_recovery_history_new_pages">新規ページ %1$d ページ</string>
+    <plurals name="manual_organization_recovery_history_moved">
+        <item quantity="other">移動 %1$d 件</item>
+    </plurals>
+    <plurals name="manual_organization_recovery_history_new_folders">
+        <item quantity="other">新規フォルダ %1$d 個</item>
+    </plurals>
+    <plurals name="manual_organization_recovery_history_new_pages">
+        <item quantity="other">新規ページ %1$d ページ</item>
+    </plurals>
     <string name="manual_organization_recovery_confirm">保存したレイアウトに戻す</string>
     <string name="manual_organization_recovering">保存されたレイアウトを復元しています…</string>
     <string name="manual_organization_recovery_restored">保存されたレイアウトを復元しました。</string>
