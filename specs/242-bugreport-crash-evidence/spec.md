@@ -3,7 +3,7 @@ issue: "#242"
 status: draft
 requirements: [R1-SAFE-FILENAME, R2-SAVE-SUCCESS, R3-PRE-HANDLER-ISOLATION, R4-GRACEFUL-DEGRADE, R5-RETENTION-CONTRACT, R6-NO-ORGANIZER-REGRESSION]
 risk: []
-updated: 2026-09-08
+updated: 2026-09-09
 ---
 
 # Crash レポートの証跡が全 locale で永続化される（filesystem 安全なファイル名と crash pre-handler の失敗隔離）
@@ -27,7 +27,7 @@ updated: 2026-09-08
 
 ## Scope
 
-- **report ファイル名の生成** (`LawnchairBugReporter.kt`): 固定 pattern + 明示 locale により、locale に依存せず filesystem 移植安全な文字 (`/` なし、ASCII 系の移植可能な文字集合) で構成する。`(appName, timestamp)` に対し deterministic。`contentsWithHeader` の先頭行 (header) は人間が読める timestamp 表現を維持する。
+- **report ファイル名の生成** (`LawnchairBugReporter.kt`): 固定 pattern + 明示 locale により、locale に依存せず filesystem 移植安全な文字 (`/` なし、ASCII 系の移植可能な文字集合) で構成する。`(appName, timestamp, default timezone)` に対し deterministic。`contentsWithHeader` の先頭行 (header) は人間が読める timestamp 表現を維持する。
 - **save 失敗時の挙動** (`save()`): IOException を catch して既存の null 契約 (→ `file == null` 通知) へ縮退する。`createNewFile()` が false を返す既存 case (id 衝突) の扱いは無変更。
 - **uncaught exception handler の失敗隔離** (`init` 内 handler): pre-handler work (report 生成 + 通知) を隔離し、あらゆる `Throwable` を catch して記録した上で、platform の default handler へ元の `(thread, throwable)` を **必ず 1 回** 委譲する。
 - **JVM test 可能化のための最小抽出**: 上記 3 振る舞い (ファイル名構築、report file 書き込み、pre-handler dispatch) を同一 file 内の純粋関数として抽出する。新規 interface・module・adapter は作らない (設計規約: 必要になるまで仮想 interface を増やさない)。

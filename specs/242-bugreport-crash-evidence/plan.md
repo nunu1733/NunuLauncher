@@ -63,6 +63,7 @@
    - `save()` は `writeReportFile(File(logsFolder, String.format("%x", id)), fileName, contents)` へ委譲する薄い shell になる。**`save()` は新たな `Date()` を生成せず、Report 構築時に保持した同一 `fileName` を header と保存先で共有する** (現行 `:71` / `:90` の挙動維持)。実装時に新たに `buildReportFileName(appName, Date())` を呼ぶと、header と実ファイル名が秒境界を跨いで不一致になったり、同一 `Report` の再実行で現行より広い衝突回避 (新名前での保存) が発生するため禁止する。この接続は抽出関数単体の test では検出できないため、diff review の確認項目とする。
    - `createNewFile() == false` (id 衝突) と IOException の両方が既存の null 契約へ収束し、`BugReport.file == null` → 通知側 text fallback が designed path として到達可能になる。
    - `dest.mkdirs()` は既存どおり (`logsFolder` 自体は init 時に作成済み、`<hex id>` directory はここで作成)。
+   - **既知 edge (現行と同等、非回帰)**: `createNewFile()` 成功後の `writeText()` 失敗 (disk full 等) では空 file が `<hex id>/` 配下に残留したまま null 縮退する。現行実装も同様の残留を起こすため回帰ではない。残留 file は `removeDismissedLogs()` (通知非 active 時の再起動時清掃) または active 通知の保持期間で自然に扱われる。失敗時の file 削除は null 契約を複雑化するため追加しない。
 
 3. **pre-handler work の失敗隔離**
 
@@ -140,7 +141,7 @@ uncaught exception (thread, throwable)
 |---|---|---|
 | AC-1 ファイル名の安全性・locale 独立性 | `BugReportFileNameTest`: `Locale.setDefault(Locale.JAPAN)` での `/` 非含有 (現行 logic 抽出 commit 上で red、fix 後 green)、locale 行列・同一 `(appName, timestamp, default timezone)` 下の determinism・移植文字集合 | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.bugreport.*'` |
 | AC-2 save 成功 | `ReportFileSaveTest`: 非null `File`、内容一致、path 構造 | 同上 |
-| AC-3 pre-handler 失敗隔離 | `CrashPreHandlerIsolationTest`: throw する preHandler でも default handler が元 throwable で 1 回呼ばれる、例外非漏出、failure が `onPreHandlerFailure` に渡る | 同上 |
+| AC-3 pre-handler 失敗隔離 | `CrashPreHandlerIsolationTest`: throw する preHandler でも default handler が元 throwable で 1 回呼ばれる、例外非漏出、failure が `onPreHandlerFailure` に渡る、**`onPreHandlerFailure` 自体が throw しても委譲が 1 回保証される** | 同上 |
 | AC-4 save 失敗時の縮退 | `ReportFileSaveTest` failure injection case: `dest` 通常 file 先置き → child 作成時 IOException → null 返却・例外非漏出。id 衝突 case (target path の file 先置き → `createNewFile` false → null) | 同上 |
 | AC-5 retention・id 契約の無変更 | `ReportFileSaveTest` path 主張 + `removeDismissedLogs` / id 計算の zero-diff review | diff review (PR) |
 | AC-6 organizer 非回帰 | 既存 organizer JVM gate 無変更で pass | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` / CI `organizer-unit-tests` job |
