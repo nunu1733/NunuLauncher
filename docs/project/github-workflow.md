@@ -221,7 +221,7 @@ gh api --method DELETE repos/nunu1733/NunuLauncher/branches/main/protection
 
 Workerは最終PRのhandoff packetに、Issueの終了条件、merge済みPR、対象head、各ACの証拠、specの遷移後statusを記録する。Reviewはそのpacketと現在のheadを再確認し、Ownerは最終判断を記録する。Merge operatorは次を確認してからIssueを閉じる。
 
-- feature/bug/maintenanceの受入条件をmainline上の実装または成果物が満たし、対応specを `implemented` に更新した。文書のみのmaintenanceも、受入成果物がmainlineに入った場合は同じ扱いとする。
+- feature/bug/maintenanceの受入条件をmainline上の実装または成果物が満たした。対応specが存在する場合は `implemented` に更新する。`spec: N/A` のmaintenance/docs-onlyは、N/Aの理由、mainlineに入った成果物、および各ACのevidenceをhandoff packetに記録する。
 - research/decisionや実装を要求しない契約specは、成果物が完成しても `accepted` のまま残せる。その場合は、Issueが研究・判断・契約の完了を終了条件としていたことと、後続実装を別Issueが所有することを、assessmentまたはspecのchange historyに記録する。
 - 既存文書を置き換えた場合だけ `superseded` とし、置換先のpathと理由を記録した。単なる実装完了やIssue closeを `superseded` の根拠にしない。
 - Issue state、status label、spec frontmatter、PRのclosing keywordが互いに矛盾していない。中間PRのclosing keywordで先に閉じた場合は、最終PRの証拠が揃うまで実装完了とは扱わず、監査記録と是正Issueを残す。

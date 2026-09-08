@@ -76,11 +76,57 @@ entry, so `spec: N/A` is valid with this recorded reason.
 - `CONTEXT.md` now contains domain vocabulary only. Strategy reason identifiers,
   model projections, and correlated reload/token mechanics are defined under
   the Layout Application module in `DESIGN.md`.
-- Closed Issues' stale `status:*` labels were removed after an explicit
-  repository-wide inventory (32 closed Issues affected, including the 13
-  audited spec/maintenance cases). The close procedure now requires a final
+- Closed Issues' stale `status:*` labels were removed after the explicit
+  repository-wide inventory below (32 closed Issues affected, including the
+  13 audited spec/maintenance cases). The close procedure now requires a final
   Issue/spec reconciliation before closure. This audit does not infer
   implementation from labels.
+
+### Closed status-label reconciliation inventory
+
+The removed label was an active-work marker left on an already closed Issue;
+the canonical closed state is sufficient, and the active-work label would
+misrepresent current work. The list records the pre-change label so the
+reconciliation is reconstructable:
+
+| Issue | Removed status label | Reason |
+|---:|---|---|
+| #251 | `status: review` | Closed state is canonical; active-work label was stale. |
+| #247 | `status: review` | Closed state is canonical; active-work label was stale. |
+| #230 | `status: needs-spec` | Closed state is canonical; active-work label was stale. |
+| #212 | `status: review` | Closed state is canonical; active-work label was stale. |
+| #210 | `status: needs-spec` | Closed state is canonical; active-work label was stale. |
+| #130 | `status: ready` | Closed state is canonical; active-work label was stale. |
+| #129 | `status: ready` | Closed state is canonical; active-work label was stale. |
+| #106 | `status: blocked` | Closed state is canonical; active-work label was stale. |
+| #105 | `status: blocked` | Closed state is canonical; active-work label was stale. |
+| #104 | `status: blocked` | Closed state is canonical; active-work label was stale. |
+| #100 | `status: in-progress` | Closed state is canonical; active-work label was stale. |
+| #96 | `status: in-progress` | Closed state is canonical; active-work label was stale. |
+| #89 | `status: needs-spec` | Closed state is canonical; active-work label was stale. |
+| #85 | `status: ready` | Closed state is canonical; active-work label was stale. |
+| #84 | `status: in-progress` | Closed state is canonical; active-work label was stale. |
+| #83 | `status: review` | Closed state is canonical; active-work label was stale. |
+| #81 | `status: ready` | Closed state is canonical; active-work label was stale. |
+| #56 | `status: ready` | Closed state is canonical; active-work label was stale. |
+| #55 | `status: blocked` | Closed state is canonical; active-work label was stale. |
+| #54 | `status: ready` | Closed state is canonical; active-work label was stale. |
+| #45 | `status: ready` | Closed state is canonical; active-work label was stale. |
+| #44 | `status: ready` | Closed state is canonical; active-work label was stale. |
+| #43 | `status: ready` | Closed state is canonical; active-work label was stale. |
+| #42 | `status: ready` | Closed state is canonical; active-work label was stale. |
+| #41 | `status: ready` | Closed state is canonical; active-work label was stale. |
+| #38 | `status: ready` | Closed state is canonical; active-work label was stale. |
+| #16 | `status: ready` | Closed state is canonical; active-work label was stale. |
+| #15 | `status: blocked` | Closed state is canonical; active-work label was stale. |
+| #6 | `status: in-progress` | Closed state is canonical; active-work label was stale. |
+| #5 | `status: in-progress` | Closed state is canonical; active-work label was stale. |
+| #4 | `status: review` | Closed state is canonical; active-work label was stale. |
+| #3 | `status: review` | Closed state is canonical; active-work label was stale. |
+
+The workflow and quality-strategy `Proposed` → `Accepted` transitions were
+also explicitly owner-approved for the reviewed PR head in the owner decision
+recorded on PR #260; the PR packet links that decision and exact head.
 
 ## Verification
 
