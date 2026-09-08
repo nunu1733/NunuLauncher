@@ -188,6 +188,7 @@ PRが次のいずれかに当たる場合に適用する。`high-risk-gate` work
 
 - 低リスク経路: [PR #63](https://github.com/nunu1733/NunuLauncher/pull/63)（docs/toolingのみ）はauditなしで [gateがpass](https://github.com/nunu1733/NunuLauncher/actions/runs/31801071856)。
 - 高リスク経路: 検証専用の [PR #64](https://github.com/nunu1733/NunuLauncher/pull/64)（close済み・非merge）に `risk: layout-data` labelを付与すると [gateがfail](https://github.com/nunu1733/NunuLauncher/actions/runs/31801210644)（audit記録欠如）し、`docs/assessment/pr-64-gate-demo.md` の追加（Head SHA・docs-only delta・[成功CI run参照](https://github.com/nunu1733/NunuLauncher/actions/runs/31801159754)）で [pass](https://github.com/nunu1733/NunuLauncher/actions/runs/31801306031) した。
+- post-protection経路: [PR #256](https://github.com/nunu1733/NunuLauncher/pull/256)（2026-09-08のbranch protection設定後）に `risk: layout-data` labelを付け、audit記録を欠落させると [high-risk-evidenceがfail](https://github.com/nunu1733/NunuLauncher/actions/runs/34198208520)し、Pulls APIの `mergeable_state` が `blocked` になった。検証PRはclose済み・非mergeである。
 
 ## Fork label vocabulary
 
