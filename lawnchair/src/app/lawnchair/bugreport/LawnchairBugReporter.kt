@@ -38,8 +38,12 @@ class LawnchairBugReporter(private val context: Context) {
 
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            sendNotification(throwable)
-            defaultHandler?.uncaughtException(thread, throwable)
+            dispatchUncaughtException(
+                defaultHandler,
+                thread,
+                throwable,
+                preHandler = { sendNotification(throwable) },
+            )
         }
 
         removeDismissedLogs()
@@ -68,7 +72,7 @@ class LawnchairBugReporter(private val context: Context) {
 
     inner class Report(val error: String, val throwable: Throwable? = null) {
 
-        private val fileName = "$appName bug report ${SimpleDateFormat.getDateTimeInstance().format(Date())}"
+        private val fileName = buildReportFileName(appName, Date())
 
         fun generateBugReport(): BugReport? {
             val contents = writeContents()
@@ -85,12 +89,7 @@ class LawnchairBugReporter(private val context: Context) {
 
         private fun save(contents: String, id: Int): File? {
             val dest = File(logsFolder, String.format("%x", id))
-            dest.mkdirs()
-
-            val file = File(dest, "$fileName.txt")
-            if (!file.createNewFile()) return null
-            file.writeText(contents)
-            return file
+            return writeReportFile(dest, fileName, contents)
         }
 
         private fun writeContents() = StringBuilder()
@@ -128,4 +127,27 @@ class LawnchairBugReporter(private val context: Context) {
     companion object {
         val INSTANCE = MainThreadInitializedObject(::LawnchairBugReporter)
     }
+}
+
+internal fun buildReportFileName(appName: String, date: Date): String =
+    "$appName bug report ${SimpleDateFormat.getDateTimeInstance().format(date)}"
+
+internal fun writeReportFile(dest: File, fileName: String, contents: String): File? {
+    dest.mkdirs()
+
+    val file = File(dest, "$fileName.txt")
+    if (!file.createNewFile()) return null
+    file.writeText(contents)
+    return file
+}
+
+internal fun dispatchUncaughtException(
+    defaultHandler: Thread.UncaughtExceptionHandler?,
+    thread: Thread,
+    throwable: Throwable,
+    preHandler: () -> Unit,
+    onPreHandlerFailure: (Throwable) -> Unit = {},
+) {
+    preHandler()
+    defaultHandler?.uncaughtException(thread, throwable)
 }
