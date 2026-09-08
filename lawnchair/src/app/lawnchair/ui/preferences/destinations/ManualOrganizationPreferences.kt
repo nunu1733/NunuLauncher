@@ -34,6 +34,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -1110,17 +1111,18 @@ private fun applyMessage(result: ApplyResult): String = stringResource(
 /**
  * Issue #230: one history line for the correlated verified apply, phrased as
  * apply history (spec D4). Only non-zero segments are joined; the caller
- * omits the line entirely when the apply changed nothing.
+ * omits the line entirely when the apply changed nothing. Counts resolve
+ * through plurals so singular counts read naturally.
  */
 @Composable
 private fun recoveryHistoryLine(summary: ManualOrganizationRun.Summary): String {
     val segments = listOfNotNull(
         summary.movedCount.takeIf { it > 0 }
-            ?.let { stringResource(R.string.manual_organization_recovery_history_moved, it) },
+            ?.let { pluralStringResource(R.plurals.manual_organization_recovery_history_moved, it, it) },
         summary.newFolderCount.takeIf { it > 0 }
-            ?.let { stringResource(R.string.manual_organization_recovery_history_new_folders, it) },
+            ?.let { pluralStringResource(R.plurals.manual_organization_recovery_history_new_folders, it, it) },
         summary.newPageCount.takeIf { it > 0 }
-            ?.let { stringResource(R.string.manual_organization_recovery_history_new_pages, it) },
+            ?.let { pluralStringResource(R.plurals.manual_organization_recovery_history_new_pages, it, it) },
     )
     return stringResource(R.string.manual_organization_recovery_history_prefix, segments.joinToString(" / "))
 }
