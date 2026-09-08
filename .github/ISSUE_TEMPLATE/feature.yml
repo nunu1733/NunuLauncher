@@ -8,6 +8,10 @@ body:
   - type: markdown
     attributes:
       value: |
+        This form is for NunuLauncher. To report behavior belonging to Lawnchair upstream, use the external upstream link in the Issue chooser.
+  - type: markdown
+    attributes:
+      value: |
         A feature starts with this Issue and uses a repository spec as the behavioral source of truth.
   - type: textarea
     id: problem

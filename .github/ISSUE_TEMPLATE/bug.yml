@@ -4,6 +4,10 @@ title: "[Bug]: "
 labels:
   - "type: bug"
 body:
+  - type: markdown
+    attributes:
+      value: |
+        This form is for NunuLauncher. To report behavior belonging to Lawnchair upstream, use the external upstream link in the Issue chooser.
   - type: textarea
     id: observed
     attributes:
