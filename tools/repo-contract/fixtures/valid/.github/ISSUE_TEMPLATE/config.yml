@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report to Lawnchair upstream
+    url: https://github.com/LawnchairLauncher/lawnchair/issues/new/choose
+    about: Report upstream behavior directly.

@@ -6,9 +6,9 @@ fresh checkout without installing anything beyond Python. Run with:
 
     python3 tools/repo-contract/test_validate_repo_contract.py
 
-These tests are the acceptance evidence for Issue #8: they prove that a broken
-internal Markdown link and an invalid Issue form YAML both make the validator
-fail, which is what the CI gate relies on.
+These tests are the acceptance evidence for the repository contract gate: they
+prove that broken internal Markdown, invalid Issue forms, and an invalid Issue
+chooser route make the validator fail.
 """
 
 from __future__ import annotations
@@ -42,6 +42,7 @@ def _gather_link_and_form_findings(root: Path) -> list:
         if "broken local link" in f.message
         or "YAML" in f.message
         or "Issue form" in f.message
+        or "Issue chooser" in f.message
     ]
 
 
@@ -117,14 +118,27 @@ class IssueFormValidationTests(unittest.TestCase):
         )
 
     def test_config_yml_is_not_treated_as_a_form(self) -> None:
-        # The real repo has a config.yml chooser; it must never be flagged as a
-        # malformed form because it intentionally lacks name/body.
+        # The chooser config intentionally lacks name/body, so it is validated
+        # by its own contract rather than the Issue-form validator.
         findings = vrc.validate_issue_forms(REPO_ROOT)
         config_findings = [
             f for f in findings if "config.yml" in str(f.path)
         ]
         self.assertEqual(
             config_findings, [], "config.yml must be excluded from form checks"
+        )
+
+    def test_issue_chooser_contract_passes(self) -> None:
+        findings = vrc.validate_issue_chooser_config(VALID)
+        self.assertEqual(
+            findings, [], "valid fixture chooser config must satisfy the contract"
+        )
+
+    def test_invalid_issue_chooser_contract_is_flagged(self) -> None:
+        findings = vrc.validate_issue_chooser_config(INVALID)
+        self.assertTrue(
+            findings,
+            "invalid fixture chooser config must produce a finding",
         )
 
 
