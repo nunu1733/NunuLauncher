@@ -23,6 +23,20 @@ Requirements: FR-___, NFR-___
 |---|---|
 | AC-1 | |
 
+## Review / handoff packet
+
+- Issue and all comments:
+- Scope type (`feature` / `bug` / `research/decision` / `maintenance/docs-only`):
+- Accepted spec or bug oracle + exact commit, or `N/A` with reason:
+- Plan + exact revision, or `N/A` with reason:
+- Base SHA / head SHA:
+- Diff compare URL and `git diff --stat <base>..<head>` result:
+- Exact commands/results and CI/check URLs:
+- Unverified scope or runtime constraints:
+- Review recommendation / conditions / re-review head:
+- Owner decision / conditional approval closure:
+- Merge operator check / next step:
+
 ## Risk review
 
 - Risk labels applied to this PR (`risk: layout-data`, `risk: migration`), or why none:
