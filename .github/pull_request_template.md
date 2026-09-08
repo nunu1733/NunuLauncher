@@ -27,10 +27,11 @@ Requirements: FR-___, NFR-___
 
 - Issue and all comments:
 - Scope type (`feature` / `bug` / `research/decision` / `maintenance/docs-only`):
-- Accepted spec or bug oracle + exact commit, or `N/A` with reason:
+- Accepted spec + exact commit, or bug oracle as either repository-tracked path + exact commit **or** Issue/comment permalink + retrieved-at UTC timestamp + owner acceptance link, or `N/A` with reason:
 - Plan + exact revision, or `N/A` with reason:
 - Base SHA / head SHA:
 - Diff compare URL and `git diff --stat <base>..<head>` result:
+- Diff boundary: full diff inspected, or verified path/range list for a partial/pasted diff; all other scope is unverified and partial review is not whole-scope final approval:
 - Exact commands/results and CI/check URLs:
 - Unverified scope or runtime constraints:
 - Review recommendation / conditions / re-review head:
