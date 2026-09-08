@@ -1,11 +1,13 @@
 ## Issue relationship
 
-Choose one relationship for each Issue and replace the placeholders below:
-
-- Final PR that satisfies the Issue's exit criteria: `Closes #<issue>`
-- Intermediate spec/plan/research/investigation/evidence PR: `Refs #<issue>`
-
-Do not use `Closes #<issue> (after implementation)` or a similar parenthetical reservation. GitHub still closes the Issue when this PR merges.
+<!--
+For each linked Issue, replace the single line below with exactly one relationship:
+- final PR that satisfies the Issue's exit criteria: `Closes #N`
+- intermediate spec/plan/research/investigation/evidence PR: `Refs #N`
+Never leave both relationships for the same Issue. Do not use a parenthetical such as
+`Closes #N (after implementation)`; GitHub still closes the Issue when this PR merges.
+-->
+Issue relationship:
 
 ## Outcome
 

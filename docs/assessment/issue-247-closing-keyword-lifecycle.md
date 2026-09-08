@@ -1,6 +1,6 @@
 # Issue #247 closing-keyword lifecycle assessment
 
-> Status: proposed
+> Status: implemented
 > Audit date: 2026-09-08
 > Repository: `nunu1733/NunuLauncher`
 > Target: `main`
