@@ -1,7 +1,7 @@
 # GitHub Issue / Spec / Pull Request Workflow
 
 > Status: Proposed
-> Updated: 2026-08-14（高リスクPRへの独立エビデンス要求を追加、Issue #43）
+> Updated: 2026-09-08（spec/plan PRによるIssue早期close防止、Issue #247）
 
 ## Principle
 
@@ -39,6 +39,8 @@ flowchart LR
     D --> E["Pull request"]
     E --> F["Verified"]
     F --> G["Merged / Issue closed"]
+    E --> H2["Intermediate PR / Issue remains open"]
+    H2 --> D
     B --> H["Research issue"]
     H --> B
 ```
@@ -78,7 +80,7 @@ specには通常系だけでなく、permission拒否、容量不足、unsupport
 
 PRは次を含む。
 
-- `Closes #<issue>`。
+- Issue関係。Issueの終了条件をこのPRで満たす最終PRは `Closes #<issue>`、中間のspec/plan/research/調査・証跡PRは `Refs #<issue>` とする。
 - specへのlinkと要件ID。
 - 変更した振る舞いの要約。
 - data/upstream/privacy risk。
@@ -87,6 +89,15 @@ PRは次を含む。
 - screenshot/video（UI変更時）。
 
 reviewはspec適合、安全invariant、上流patch surface、test evidenceを優先する。
+
+#### Issue relationship and closing keywords
+
+GitHubのclosing keywordはPRがmergeされた時点で対象Issueを自動closeする。したがって、Issueの終了条件を満たしていない中間PRに `Closes`、`Fixes`、`Resolves`（各活用形を含む）と `#<issue>` の組を置いてはならない。`Closes #<issue> (実装 PR 完了後)` のような括弧書きは自動closeを遅延させない。
+
+- **中間PR**: accepted spec、plan、research、調査、証跡、レビュー修正など、後続の実装または別の終了条件が残るPRは `Refs #<issue>` とし、未完Issue用のclosing keywordを本文に置かない。
+- **最終PR**: Issueの全終了条件をこのPRで満たす実装・意思決定・調査成果物・証跡PRだけが `Closes #<issue>`（または同等のclosing keyword）を使う。PR本文の受入条件表とIssueの終了条件を対応付ける。
+- **複数Issue**: それぞれを個別に判定し、完了したIssueだけをclosing keywordにし、残りは `Refs #<issue>` にする。PRのタイトル、branch名、親Issueへの言及だけで最終性を推測しない。
+- **レビュー項目**: reviewer/workerはPR本文を検索し、すべての `close`/`fix`/`resolve` 系キーワードとIssue番号について、今回のscopeがIssueの終了条件を満たすか、後続作業が残っていないかを確認する。closing keywordがあれば、括弧書きの留保を理由に許可してはならない。
 
 ### main branch protection (Issue #249)
 
@@ -117,7 +128,7 @@ gh api --method DELETE repos/nunu1733/NunuLauncher/branches/main/protection
 
 ### 6. Close
 
-merge後にIssueを閉じる。specを `implemented` にし、必要な要件、DESIGN、CONTEXT、ADRを更新する。残課題は新しいIssueへ移し、元Issueを曖昧なTODO置場にしない。
+最終PRのmerge後にIssueを閉じる。中間PRのmergeではIssueを開いたままにし、次のspec/plan/実装/検証PRへ引き渡す。最終PRではspecを `implemented` にし、必要な要件、DESIGN、CONTEXT、ADRを更新する。残課題は新しいIssueへ移し、元Issueを曖昧なTODO置場にしない。
 
 ## 高リスクPRへの独立エビデンス要求
 

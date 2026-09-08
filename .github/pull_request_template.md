@@ -1,12 +1,21 @@
+## Issue relationship
+
+<!--
+For each linked Issue, replace the single line below with exactly one relationship:
+- final PR that satisfies the Issue's exit criteria: `Closes #N`
+- intermediate spec/plan/research/investigation/evidence PR: `Refs #N`
+Never leave both relationships for the same Issue. Do not use a parenthetical such as
+`Closes #N (after implementation)`; GitHub still closes the Issue when this PR merges.
+-->
+Issue relationship:
+
 ## Outcome
 
-Closes #<issue>
+Describe the observable outcome and the smallest implementation shape that delivers it.
 
 Spec: `specs/<issue>-<slug>/spec.md`
 
 Requirements: FR-___, NFR-___
-
-Describe the observable outcome and the smallest implementation shape that delivers it.
 
 ## Acceptance evidence
 
@@ -32,6 +41,11 @@ List exact commands/environments and results. Do not write only â€œtests pass.â€
 ```
 
 Not run and why:
+
+## Closing keyword review
+
+- [ ] I searched this PR body for `close`/`fix`/`resolve` keywords and checked every linked Issue against this PR's actual exit criteria.
+- [ ] Intermediate Issues use `Refs #<issue>` and remain open for the next PR; only completed Issues use a closing keyword.
 
 ## Documentation
 

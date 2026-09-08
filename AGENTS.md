@@ -51,7 +51,7 @@ Issueまたは承認済みspecがない機能実装は開始しない。調査�
 4. spec承認後に `plan.md` を作り、変更するmodule、seam、migration、rollback、検証を記載する。
 5. 最小の縦切りで実装し、interfaceを通したテストを先に追加する。
 6. 実行した検証と結果をPRへ記録し、必要な文書を同じPRで更新する。
-7. PRは `Closes #<issue>` を含め、specの受入条件と対応付ける。
+7. PR本文のIssue関係を成果の完了度に合わせる。Issueの終了条件を満たす最終PRだけが `Closes #<issue>` を含め、中間のspec/plan/research/調査・証跡PRは `Refs #<issue>` を使う。括弧書き（例: `Closes #<issue> (実装後)`）で自動closeを遅延できない。
 
 詳細は [docs/project/github-workflow.md](./docs/project/github-workflow.md) を参照する。
 
