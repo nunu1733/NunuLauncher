@@ -158,20 +158,21 @@ uncaught exception (thread, throwable)
 
 ## Documentation updates
 
-- [x] spec status/history: owner review 通過時に `accepted`、実装 PR で `implemented` へ更新
-- [ ] CONTEXT.md: domain 語の追加判定 (「crash pre-handler work」が生きた語になるか実装 PR で判断。実装語の域を出なければ追加しない)
-- [ ] DESIGN.md: 変更なし (module 構造・seam 構造は不変。`:bugReport` secondary process の記述に影響しない)
-- [ ] ADR: 不要 (選択肢比較は spec / 本 plan の Alternatives rejected に留まり、変更困難な架橋判断を生まない)
-- [ ] AGENTS.md: 変更なし (新 command なし。CI filter 追加は既存 gate への package tree 追加であり検証済み command の追加を伴わない)
+- [x] spec status/history: owner review 通過時に `accepted` (`99d6c7fe44`)、実装完了後 `implemented` へ更新
+- [x] CONTEXT.md: domain 語の追加判定 — 「crash pre-handler work」は実装語の域を出ないため追加しない (spec §Domain language の前提どおり)
+- [x] DESIGN.md: 変更なし (module 構造・seam 構造は不変。`:bugReport` secondary process の記述に影響しない)
+- [x] ADR: 不要 (選択肢比較は spec / 本 plan の Alternatives rejected に留まり、変更困難な架橋判断を生まない)
+- [x] AGENTS.md: 変更なし (新 command なし。CI filter 追加は既存 gate への package tree 追加であり検証済み command の追加を伴わない)
+- [x] docs/engineering/quality-strategy.md: `organizer-unit-tests` gate への `app.lawnchair.bugreport.*` filter 追加を記録 (実装 PR)
 
 ## Execution checklist
 
-- [ ] Current behavior reproduced: 現行 `buildReportFileName` 相当 logic (抽出 commit 直後) 上で ja locale test が red になることを確認 (`/` 含みファイル名の再現)
-- [ ] Tests fail for the missing behavior: `BugReportFileNameTest` (ja 再現 case) が抽出後・修正前の code で fail することを確認してから修正する (extract-then-fix)
-- [ ] Minimal implementation completed: ファイル名修正 → save 縮退 → handler 隔離の順。`removeDismissedLogs` / id 計算 / 通知・upload 経路を変更しない
-- [ ] Shell 接続の diff review: `save()` が Report 保持の同一 `fileName` を header と保存先の双方に使用していること (新たな `Date()` 生成の混入なし)。抽出関数単体 test では検出されない接続箇所
-- [ ] CI filter 追加 (`app.lawnchair.bugreport.*`) と workflow gate の成功確認
-- [ ] Full relevant verification completed: `spotlessCheck` + targeted unit test + organizer gate + `assembleLawnWithQuickstepGithubDebug` の成功を PR へ記録
+- [x] Current behavior reproduced: 抽出 commit (`9501bf4d4d`) 上で ja locale / save IOException / handler 隔離の各 test が red になることを確認 (13 test 中 8 件が期待どおり red、現行挙動と一致する 5 件は green)
+- [x] Tests fail for the missing behavior: 上記の red run で extract-then-fix を確認してから修正 commit を適用
+- [x] Minimal implementation completed: ファイル名修正 → save 縮退 → handler 隔離の順 (`cafc999b46`)。`removeDismissedLogs` / id 計算 / 通知・upload 経路を変更しない
+- [x] Shell 接続の diff review: `save()` が Report 保持の同一 `fileName` を header と保存先の双方に使用していること (新たな `Date()` 生成の混入なし)。抽出関数単体 test では検出されない接続箇所 — 独立監査と委託レビューで再確認する
+- [x] CI filter 追加 (`app.lawnchair.bugreport.*`) と quality-strategy.md の記録
+- [x] Full relevant verification completed: `spotlessCheck` + bugreport targeted test + CI gate と同一 filter での全 unit test + `assembleLawnWithQuickstepGithubDebug` が成功 (実行結果は PR 本文へ記録)
 - [ ] PR evidence and remaining risks recorded: `Closes #242`、AC ごと evidence、残余 risk (上流への同種 bug 報告は別 track である旨) を明記
 
 ## Open questions (owner approval 時の判断事項)
