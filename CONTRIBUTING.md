@@ -18,7 +18,7 @@ NunuLauncherの変更は、human/AI Agentを問わずGitHub Issueから開始し
 gh repo view -R nunu1733/NunuLauncher --json nameWithOwner,defaultBranchRef
 ```
 
-以降の `gh issue`、`gh pr`、API操作でも対象forkを明示し、PRのbaseは `main` とします。Lawnchair上流への不具合・提案報告は、Issue chooserの[上流報告リンク](https://github.com/LawnchairLauncher/lawnchair/issues/new/choose)から上流へ直接送ります。上流報告をNunuLauncherのIssueとして起票し直すことはしません。
+以降の `gh issue`、`gh pr`、API操作でも対象forkを明示し、PRのbaseは `main` とします。Lawnchair上流への通常の不具合・提案報告は、Issue chooserの[上流報告リンク](https://github.com/LawnchairLauncher/lawnchair/issues/new/choose)から上流へ直接送ります。ただし脆弱性の疑いは公開Issueへ送らず、[SECURITY.md](./SECURITY.md)のNunuLauncher非公開報告窓口を使います。上流報告をNunuLauncherのIssueとして起票し直すことはしません。
 
 Issue chooserのfork用フォームは、Bug、Feature、Documentation or maintenance、Research or decision、Upstream integrationです。forkに存在しない上流用labelや上流のnightly/FAQ案内を持つフォームは使用しません。
 
