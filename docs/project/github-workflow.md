@@ -86,7 +86,7 @@ specには通常系だけでなく、permission拒否、容量不足、unsupport
 |---|---|---|
 | Worker | Issue/全コメント、正本revision、実装または文書差分、exact command/result、未確認範囲をpacketへ記録し、次の1手を明示する。 | 自分の実装報告だけでfinal approvalとすること。 |
 | Review | packetの同じbase/headとdiffを読み、Issue/spec/plan/bug oracleへの適合、証拠、未確認事項、リスクを判定し、`Approve` または条件付きの `Request changes` を現在のheadへ紐付ける。部分的または貼り付けられたdiffしか確認できない場合は、確認したpath/rangeを記録し、それ以外を未確認として扱う。 | タイトル、会話要約、異なるモデル名だけを独立証拠とすること。部分diffから変更全体を承認すること。 |
-| Owner | 製品判断、Issueの終了条件、条件付き承認の解除、最終的なmerge可否を決定し、decision linkを残す。 | Review recommendationをownerの承認と取り違えること。 |
+| Owner | 製品判断、Issueの終了条件、Reviewが明示した条件解除の確認、最終的なmerge可否を決定し、decision linkを残す。 | Review recommendationをownerの承認と取り違えること。 |
 | Merge operator | ownerの決定、Reviewの現在head確認、required checks、branch protection、高リスクaudit gateを確認してmergeを実行する。 | green CIだけで未解決の条件や未確認範囲を無視すること。 |
 
 通常のモデル前提は次のとおりである。
@@ -145,7 +145,7 @@ The following is a compact example based on the #230 handoff. It demonstrates th
 
 ```text
 Issue and all comments: https://github.com/nunu1733/NunuLauncher/issues/230; retrieved at 2026-09-08T09:58:36Z; state=closed; labels=type: bug, status: needs-spec
-Scope type: feature
+Scope type: bug
 Accepted spec + commit: specs/230-restore-confirmation-target/spec.md @ 436f2a7a54d2ae1346806772ce0fbd3e7827ef76
 Plan + revision: specs/230-restore-confirmation-target/plan.md @ f69251ad55493c1acc60ffd687e4c18268ae3eaa (PR #245 plan-review fix; the earlier 0f3d1d3a8f2562be5f21ea23f3b4d2ccc53cd463 revision is superseded)
 Base SHA: d36b109e989d49fd218bc13f3eb7c0e053a16709
