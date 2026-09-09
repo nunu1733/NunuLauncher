@@ -1,6 +1,6 @@
 ---
 issue: "#211"
-status: draft
+status: accepted
 requirements:
   - FR-003
 updated: 2026-09-09
@@ -286,3 +286,6 @@ None（spec 時点で確定）。D1–D3 が値の供給経路、node 構成、�
 - 2026-09-09: Plan review 対応。string key を
   `organizer_lock_dialog_target_title` へ変更 (中身が title 導入であるため)、
   ephemeral review report 参照の注記を追加。
+- 2026-09-09: Accepted。plan revision 3 (`7ccf3b18cb`) に対する
+  in-session review (code-reviewer-2 agent、owner 委譲の Phase 1 gate) の
+  Approve により実装へ移行する。
