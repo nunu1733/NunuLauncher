@@ -234,6 +234,7 @@ fun PlacementLockPreferences(
             entry = entry,
             explanation = explanation,
             profileLabel = profileLabels[entry.profile.value],
+            parentTitle = parentTitleOf(entry, entries.orEmpty()),
             onDismiss = {
                 dialogEntry = null
                 dialogExplanation = null
@@ -309,6 +310,7 @@ private fun LockChangeDialog(
     entry: LockStateEntry,
     explanation: LockExplanation,
     profileLabel: String?,
+    parentTitle: String?,
     onDismiss: () -> Unit,
     onConfirm: (LockTargetState, UserReviewedIntent) -> Unit,
 ) {
@@ -353,7 +355,10 @@ private fun LockChangeDialog(
                     // Issue #211: the dialog names the tapped row with the same
                     // title and placement description the list row renders, so
                     // same-named placements are distinguishable while the row
-                    // itself is covered.
+                    // itself is covered. The disambiguator line (PR #264 review
+                    // P1) adds the detail the row description abstracts away —
+                    // cell for desktop rows, parent title for folder and app
+                    // pair rows — so colliding descriptions still resolve.
                     Column {
                         Text(
                             stringResource(
@@ -362,6 +367,7 @@ private fun LockChangeDialog(
                             ),
                         )
                         Text(placementDescription(entry, profileLabel))
+                        dialogTargetDisambiguator(entry, parentTitle)?.let { Text(it) }
                         Spacer(Modifier.height(8.dp))
                         Text(if (entry.stored == OrganizerLockState.UNKNOWN) "$reviewIntro\n\n$body" else body)
                     }
@@ -454,6 +460,50 @@ private fun placementDescription(entry: LockStateEntry, profileLabel: String?): 
 
         else -> placement
     }
+}
+
+/**
+ * PR #264 review P1: the row placement description collapses Desktop to the
+ * page number, folder children to the rank, and app pair members to a fixed
+ * phrase, so same-named rows in different cells, different folders at the
+ * same position, or different app pairs share one description. The dialog
+ * therefore appends this disambiguator line, always shown for the affected
+ * placements, from the detail [LockPlacementSummary] already carries.
+ */
+@Composable
+private fun dialogTargetDisambiguator(entry: LockStateEntry, parentTitle: String?): String? = when (val p = entry.placement) {
+    is LockPlacementSummary.Desktop -> stringResource(
+        R.string.organizer_lock_dialog_target_position,
+        p.cell.y + 1,
+        p.cell.x + 1,
+    )
+
+    is LockPlacementSummary.InFolder -> stringResource(
+        R.string.organizer_lock_dialog_target_folder,
+        parentTitle ?: p.parent.value,
+    )
+
+    is LockPlacementSummary.InAppPair -> stringResource(
+        R.string.organizer_lock_dialog_target_app_pair,
+        parentTitle ?: p.parent.value,
+    )
+
+    is LockPlacementSummary.DockSlot, is LockPlacementSummary.Unsupported -> null
+}
+
+/** Parent row title for folder / app pair placements, resolved from the already-loaded listing. */
+private fun parentTitleOf(entry: LockStateEntry, listing: List<LockStateEntry>): String? {
+    val parentId = when (val p = entry.placement) {
+        is LockPlacementSummary.InFolder -> p.parent
+        is LockPlacementSummary.InAppPair -> p.parent
+        else -> return null
+    }
+    val parent = listing.firstOrNull { it.item == parentId } ?: return null
+    val title = when (val t = parent.title) {
+        is OptionalText.Present -> t.value
+        OptionalText.Absent -> ""
+    }
+    return title.ifBlank { null }
 }
 
 private fun OptionalText.textOrFallback(entry: LockStateEntry): String = when (this) {

@@ -1,8 +1,13 @@
 # Plan: Issue #211 Placement lock確認ダイアログの対象行表示
 
-> Spec: [spec.md](./spec.md) (status: draft → review経由でaccepted)
-> Status: planned (review承認後に実装開始)
-> Revision 3 (2026-09-09): 2nd plan review (head e6079a1277) への対応。F2 を
+> Spec: [spec.md](./spec.md) (status: accepted)
+> Status: planned → PR #264 review fix in progress
+> Revision 4 (2026-09-09): PR #264 review (P1, Request changes) への対応。
+> row description の縮約では同 page 別 cell / 別 folder 同 position / 別 app pair
+> を区別できないため、dialog へ D4 区別行 (Position: row/column / Folder: /
+> App pair:) を常時追加 + collision fixture test。非 blocking 指摘として
+> evidence capture test を regression suite から分離 (instrumentation
+> argument gate)。Revision 3 (2026-09-09): 2nd plan review (head e6079a1277) への対応。F2 を
 > page p2 へ移動して F との "Home screen 2" 衝突を解消 (R-1)、protected 行の
 > 合成を `summary_double` に修正 (R-2)、変更 module 表の旧 key 名残存を修正 (R-3)。
 > Revision 2 (2026-09-09): plan review (Request changes, head be50cbd67e) への対応。
@@ -57,8 +62,8 @@
 
 | File | 変更 |
 |---|---|
-| `lawnchair/src/app/lawnchair/ui/preferences/destinations/PlacementLockPreferences.kt` | ① `LockChangeDialog` の `Available` 経路で、本文 `Text` の前に 2 つの `Text` node を追加: (a) `organizer_lock_dialog_target_title` で title (`entry.title.textOrFallback(entry)` と同一規則) を導入する行、(b) `placementDescription(entry, profileLabel)` と**同一呼び出し**の配置概要行。② `LockChangeDialog` の呼び出し側 (`PlacementLockPreferences`) から `profileLabels[entry.profile.value]` を引数で渡す。③ `buildString` の既存本文 (state + scope + effect、UNKNOWN は review intro 追加) は現行のまま第 3 node とする。 |
-| `lawnchair/res/values/strings.xml` | `organizer_lock_dialog_target_title` 追加 (値は下表。実装時に #161 style guide で最終確認)。 |
+| `lawnchair/src/app/lawnchair/ui/preferences/destinations/PlacementLockPreferences.kt` | ① `LockChangeDialog` の `Available` 経路で、本文 `Text` の前に 2 つの `Text` node を追加: (a) `organizer_lock_dialog_target_title` で title (`entry.title.textOrFallback(entry)` と同一規則) を導入する行、(b) `placementDescription(entry, profileLabel)` と**同一呼び出し**の配置概要行。② `LockChangeDialog` の呼び出し側 (`PlacementLockPreferences`) から `profileLabels[entry.profile.value]` を引数で渡す。③ `buildString` の既存本文 (state + scope + effect、UNKNOWN は review intro 追加) は現行のまま第 3 node とする。④ **Revision 4 (D4)**: 配置概要行の直後に D4 区別行を追加 — Desktop は `organizer_lock_dialog_target_position` (cell.y+1 / cell.x+1)、folder child は `organizer_lock_dialog_target_folder` (listing map から parent title 解決、fallback は raw id)、app pair member は `organizer_lock_dialog_target_app_pair` (同様)。Dock / Unsupported では区別行を出さない。呼び出し側から entries 由来の `Map<ItemId, LockStateEntry>` (parent title 解決用) も引数で渡す。 |
+| `lawnchair/res/values/strings.xml` | `organizer_lock_dialog_target_title` + Revision 4 の 3 string (`_target_position` / `_target_folder` / `_target_app_pair`) 追加 (値は下表。実装時に #161 style guide で最終確認)。 |
 | `lawnchair/res/values-ja/strings.xml` | 同 key の ja を同時追加 (#123 契約)。 |
 | `tests/organizer-instrumentation/app/lawnchair/organizer/locks/OrganizerLockScreenTest.kt` | 同名 fixture (下記) と新規 test 2 件を追加。既存 4 test は無変更で継続成功させる。 |
 | `specs/38-lock-authoring-unknown-review/spec.md` | §Launcher UI surfaces の管理画面 bullet へ、確認ダイアログが行と同一の識別情報 (title + 配置概要) を表示する旨を 1 文追記 + Change history に本 spec 参照を追記 (docs-only)。 |
@@ -68,10 +73,17 @@
 | Key | en (案) | ja (案) |
 |---|---|---|
 | `organizer_lock_dialog_target_title` (新規) | `Target: %1$s` | `対象: %1$s` |
+| `organizer_lock_dialog_target_position` (Revision 4) | `Position: row %1$d, column %2$d` | `位置: %1$d 行 %2$d 列` |
+| `organizer_lock_dialog_target_folder` (Revision 4) | `Folder: %1$s` | `フォルダ: %1$s` |
+| `organizer_lock_dialog_target_app_pair` (Revision 4) | `App pair: %1$s` | `アプリペア: %1$s` |
 
-- `%1$s` には行と同一の表示タイトル (`textOrFallback` 結果) を渡す。配置概要は
-  別 node で `placementDescription` をそのまま表示するため、
+- `%1$s` (title) には行と同一の表示タイトル (`textOrFallback` 結果) を渡す。
+  配置概要は別 node で `placementDescription` をそのまま表示するため、
   separator や連結 format を新規に作らない（行と同じ値をそのまま出す）。
+- 区別行 (D4, Revision 4) は `LockPlacementSummary` の detail から合成:
+  position の `%1$d`/`%2$d` は cell.y+1 / cell.x+1 (1-based、行/列の語順は
+  sort key の y→x と一致)。folder/app pair の `%1$s` は listing map から
+  解決した parent 行の title (fallback は raw item id)。
 - key 名が `_title` であるのは、この string が title 導入行のためである
   （`placementDescription` の語感と衝突させない）。ja 語彙は glossary の
   「配置 (placement)」に従い、「対象」は
@@ -137,11 +149,56 @@ test 2 `dialogTargetRowIsIndependentTextNode` (AC-4):
 
 test 3 (既存 4 test の継続成功 = AC-3): 既存 test は無変更のまま実行する。
 
+test 4 `dialogResolvesCollidingDescriptionsWithDisambiguator` (AC-2, Revision 4):
+既存 `screenState()` fixture を用いる — fixture 自体が description 衝突を
+持つ（"Locked App" Workspace(p0, (0,0)) の plain 行と "Folder Child"
+FolderChild(201, rank 0) は description が異なるが、collision 起点として
+**"201" folder (Workspace p0, (1,0))** と "Locked App" (p0) は description
+"Home screen 1" が同一で title も異なるため不適）。よって collision 専用
+fixture `collidingTitleState()` を新設する:
+
+- `Google` (Application, UNLOCKED, Workspace(p0, cell (0,0)))
+- `Google` (Application, UNLOCKED, Workspace(p0, cell (3,1))) — 同 page 別 cell、
+  row description も "Home screen 1" で同一 (review P1 の第 1 例)
+- `G` (Folder "G", UNLOCKED, Workspace(p1, (0,0)), members=[Google child A])
+- `H` (Folder "H", UNLOCKED, Workspace(p1, (2,0)), members=[Google child B])
+- `Google` (Application, UNLOCKED, FolderChild(G, rank 0))
+- `Google` (Application, UNLOCKED, FolderChild(H, rank 0)) — 別 folder 同
+  position、row description も "Inside a folder, position 1" で同一
+  (review P1 の第 2 例)
+
+検証:
+
+1. 1 つ目の "Home screen 1" 行を tap → dialog に
+   `Target: Google` + `Home screen 1` + `Position: row 1, column 1` が
+   表示されること。
+2. 閉じて 2 つ目の "Home screen 1" 行を tap → `Position: row 4, column 2`
+   (cell (3,1) の 1-based) に差し替わること。同一 description の 2 行が
+   区別行で区別できることを exact match で assert。
+3. 1 つ目の "Inside a folder, position 1" 行 (G 配下) を tap →
+   `Folder: G` が表示されること。
+4. 2 つ目 (H 配下) を tap → `Folder: H` に差し替わること。
+5. dialog open 前後で `writer.writes.size == 0` を維持すること。
+
+test 5 (非 blocking 指摘対応, Revision 4): `capturesLockDialogTargetEvidence`
+を通常 regression 実行から分離する。test に `@AssumeDevice` のような annotation は
+使わず、Gradle instrumentation argument gate を採用する: test 本体先頭で
+`androidx.test.filters` / `InstrumentationRegistry.arguments` により
+`-e captureEvidence true` が無ければ `assumeTrue` で skip。これにより
+通常の `connectedLawnWithQuickstepGithubDebugAndroidTest` (CI / local full run)
+は evidence 書込みを行わず、証憑更新時のみ
+`-Pandroid.testInstrumentationRunnerArguments.captureEvidence=true` で
+実行する。`OrganizerLockScreenTest` の 7 test 構成 (regression 6 + capture 1)
+を維持し、第二 test seam を作らない。
+
 注意: dialog 表示中も背景 list は semantics tree に残る
 (既存 test が dialog button と row 待ち合わせを同じ tree で行っている)。
 test 1 の count assert はこの前提の上に立っており、dialog が背景 node を
 除外する window 分離をしたとしても count は 2 → 1 側に寄るだけで
 意味論（tap 行 description が dialog に現れ、対抗行は現れない）は保たれる。
+D4 区別行は独立 Text node であるため、test 2 の「単独 exact match」戦略は
+区別行にも同じく適用できる (`Position: row 1, column 1` が単独 node として
+match する)。
 
 ## Interface / seam
 

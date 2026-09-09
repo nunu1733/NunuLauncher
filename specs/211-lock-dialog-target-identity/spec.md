@@ -60,13 +60,24 @@ review intro、confirm/cancel の動作は現行維持である。`Unavailable` 
   - 構成値は行 (`LockRow`) と同一の source から取る: 表示タイトルは
     `entry.title.textOrFallback(entry)` と同一の合成規則、配置概要は
     `placementDescription(entry, profileLabel)` と**同一の合成関数**を使う
-    （D1）。行とダイアログで値の構成経路が分岐しないことを構造的に保証する。
+    （D1）。
+  - **衝突区別行 (D4)**: 行の配置概要は placement 種別への縮約であり、同一
+    page の別 cell、別 folder の同 position、別 app pair が同じ文言になる
+    （PR #264 review P1）。よってダイアログは配置概要行に続き、
+    `LockPlacementSummary` が保持する識別 detail と管理画面 listing から
+    解決した parent title で構成した**区別行**を独立した `Text` node として
+    常時表示する: Desktop は cell 座標 (`organizer_lock_dialog_target_position`)、
+    folder child は所属 folder 名 (`organizer_lock_dialog_target_folder`)、
+    app pair member はペア名 (`organizer_lock_dialog_target_app_pair`)。
+    区別行は衝突の有無によらず常時表示する（表示条件の分岐を作らない）。
   - 対象行は 1 行 1 事実の単純テキストとし、`title` と `description` を
     別 node として読める形にする（a11y 契約は既存のダイアログ text node
     規約に従う）。
-  - 新規 string 1 件 (`organizer_lock_dialog_target_title`: `Target: %1$s`)
-    の prefix で対象行を導入し、既存の state/scope/effect 文と視覚的に区別する。
-    en/ja 同時に追加する (#123 / #161 契約)。
+  - 新規 string (en/ja 同時追加、#123 / #161 契約):
+    `organizer_lock_dialog_target_title` (`Target: %1$s`)、
+    `organizer_lock_dialog_target_position` (`Position: row %1$d, column %2$d`)、
+    `organizer_lock_dialog_target_folder` (`Folder: %1$s`)、
+    `organizer_lock_dialog_target_app_pair` (`App pair: %1$s`)。
 - **`PlacementLockPreferences` 内での値の単一供給**: `placementDescription` は
   既に同 file 内の private 合成関数であり、行描画とダイアログ描画の両方から
   呼ばれる。title の fallback 規約も既存 `textOrFallback` を共有する。
@@ -126,7 +137,7 @@ domain 型であり、localized 文字列を載せるのは層違反である、
 同一行 description 文字列が行とダイアログの両方に現れることを
 Compose test で観測的に検証する（構造の直接検証をしないテスト規約に従う）。
 
-### D2: 対象行は prefix string で導入し、単純テキスト 2 node のままにする
+### D2: 対象行は prefix string で導入し、単純テキスト node のままにする
 
 ダイアログ本文は既存実装が `buildString` で 1 つの `Text` node を組んでいる。
 対象行を「`Target:` prefix + title」+「配置概要」の 2 node にするか、
@@ -140,8 +151,8 @@ Compose test で観測的に検証する（構造の直接検証をしないテ�
 よって対象行は、(1) `organizer_lock_dialog_target_title` (`Target: %1$s`)
 で title を導入する行と、(2) `placementDescription` の結果（profile label /
 effectively-protected を含む同一合成値）の行、の 2 つの `Text` node として
-本文の先頭へ置く。既存の state/scope/effect 本文は 3 番目の node として
-現行のまま維持する。これにより既存 test
+本文の先頭へ置く。既存の state/scope/effect 本文は、D4 の区別行（該当時）を
+挟んで現行のまま維持する。これにより既存 test
 (`folderLockDialogExplainsChildCoverageBeforeMutation` の substring assert 等)
 は壊れない。
 
@@ -154,6 +165,34 @@ rejection 理由を表示するものであり、対象 placement の識別は�
 `ItemInfo`→title 解決という別の実装課題を持ち込むため、本 spec では
 管理画面の `Available` 経路に絞る。ポップアップ側の必要性は
 UX review の観測範囲外であり、必要になった時点で別 Issue とする。
+
+### D4: 衝突区別行 — `LockPlacementSummary` の detail と listing から解決した parent title を、衝突の有無によらず常時表示する
+
+PR #264 review (P1) が、行の配置概要の縮約では AC-2 を一般には成立させないことを指摘した:
+`placementDescription` は Desktop で page 番号のみ (`LockPlacementSummary.Desktop`
+が cell/span 保有)、folder child で rank のみ (`InFolder` が parent 保有)、
+app pair member で固定文のみ (`InAppPair` が parent 保有) であり、次が同じ
+dialog text になる:
+
+- 同一 app 名の icon が同一 Home page の別 cell に 2 件
+- 同一 app 名が別 folder の同 position に 2 件
+- 同一 app 名が異なる app pair に属する 2 件
+
+情報源は `LockStateEntry.placement` (`LockPlacementSummary`) に既に保持される
+detail と、管理画面 listing (既に解決済みの `entries` state) から引ける
+parent 行の title。planning domain 型 (`GridCell`) や `ItemId` を直接表示せず、
+UI 層で human readable 文へ合成する。parent title は
+`listing.associateBy { it.item }` (dialog 表示中に UI が既に保持する値のみ;
+新規 module 呼び出しを追加しない) から解決し、解決不能時 (title blank) は
+raw item id を fallback とする — id は画面上の行 fallback (`textOrFallback`)
+と同じ既得情報であり、新たな公開は発生しない。
+
+「衝突があるときだけ表示する」条件分岐は、衝突判定自体が listing 全体と
+entry 集合の一致を要求して表示の再現性を下げるため採らない。区別行は
+Desktop / folder child / app pair member で**常時**表示し、Dock (rank 一意) と
+Unsupported では省略する。表示 node 数が placement 種別で変化するが、
+その変化は種別の関数であり listing の関数ではないため、dialog 描画は
+決定的である。
 
 ## Behavior scenarios
 
@@ -185,6 +224,31 @@ folder 内位置、Dock 位置、profile のいずれかで区別される）,
 
 And したがってダイアログ文言だけでどちらの placement を変更するか説明できる
 （Issue 受入条件）。
+
+### Scenario: Colliding descriptions are resolved by the disambiguator line
+
+Given 同一 Home page の別 cell に同名 icon が 2 件（row description が
+`Home screen 1` と同一）、または別 folder の同 position に同名 item が 2 件
+（row description が `Inside a folder, position 1` と同一）ある,
+
+When それぞれの行の確認ダイアログを開く,
+
+Then 各ダイアログには区別行が表示される: Desktop では
+`Position: row %1$d, column %2$d`（cell 座標, 1-based）、folder child では
+`Folder: <parent title>`（parent title が解決不能のときは raw item id）、
+app pair member では `App pair: <parent title>`,
+
+And 同一 row description を持つ 2 行のダイアログは区別行によって相異なる
+文言になり、ダイアログ文言だけで対象を識別できる (D4, PR #264 review P1)。
+
+### Scenario: Dock and unsupported rows show no disambiguator
+
+Given Dock 行（rank が単一 Dock 内で一意）または Unsupported 行の
+ダイアログを開いた,
+
+When 対象行が描画される,
+
+Then 区別行は表示されず、配置概要行のみが対象の配置を示す（D4 の省略規則）。
 
 ### Scenario: Dialog opens without any write
 
@@ -248,7 +312,7 @@ title と placement 概要は管理画面の行が既に表示している同一
 | AC | Acceptance criterion | Required evidence |
 |---|---|---|
 | AC-1 | `LockChangeDialog` (`Available` 経路) の本文先頭に、開いた行と同一の表示タイトルを導入する対象行と、同一の配置概要（`placementDescription` と同一合成値）を示す行が表示される。state / scope / effect / review intro は現行維持。 | `OrganizerLockScreenTest` への Compose test 追加（同名 fixture で対象行の title と description を assert）+ screenshot |
-| AC-2 | 同名 placement が複数ある fixture で、ダイアログの配置概要行が開いた行の description と等しく、他方と異なる。ダイアログ文言だけで対象を区別して説明できる。 | `OrganizerLockScreenTest` の同名 fixture test: (a) 行 description == dialog 内 description、(b) 他方の description は dialog に現れない |
+| AC-2 | 同名 placement が複数ある fixture で、ダイアログの配置概要行が開いた行の description と等しく、他方と異なる。ダイアログ文言だけで対象を区別して説明できる。**row description が同一になる衝突（同 page 別 cell / 別 folder 同 position）でも、区別行 (D4) により区別できる。** | `OrganizerLockScreenTest` の同名 fixture test: (a) 行 description == dialog 内 description、(b) 他方の description は dialog に現れない、(c) collision fixture（同 page 別 cell、別 folder 同 position）で区別行が tap 行ごとに正しく出ること |
 | AC-3 | ダイアログを開くだけでは書込みが発生しない（既存契約の維持）。confirm / Cancel 動作は現行どおり。 | 既存 `unknownReviewResolvesOnlyThroughConfirmedDialog` / `busyFailureRendersLocalizedMessage` の継続成功 |
 | AC-4 | 対象行は独立した `Text` node として TalkBack から読める。strings は en/ja で同時に追加する。 | Compose semantics test（2 node の分離 assert）+ strings diff (values/ + values-ja/) |
 | AC-5 | locks module・`LockStateEntry`・`LockAuthoringModule` 契約・DB への変更がない。表示のみの変更である。 | diff review（`organizer/locks/**` と `organizer/application/**` への変更ゼロ）+ 既存 JVM gate の継続成功 |
@@ -258,7 +322,7 @@ title と placement 概要は管理画面の行が既に表示している同一
 | AC | Automated/manual evidence |
 |---|---|
 | AC-1 | `OrganizerLockScreenTest` 新規 test（dialog 表示後、title 導入 string + 行 description の assert）、en/ja screenshot |
-| AC-2 | `OrganizerLockScreenTest` 新規 test（同名 2 行 fixture: tap 行の description が dialog に現れること、非 tap 行の description が現れないこと） |
+| AC-2 | `OrganizerLockScreenTest` 新規 test（同名 2 行 fixture: tap 行の description が dialog に現れること、非 tap 行の description が現れないこと）+ collision fixture test（同 page 別 cell / 別 folder 同 position で区別行を assert） |
 | AC-3 | 既存 test 群の継続成功（書込み確認ダイアログの契約 oracle） |
 | AC-4 | Compose test での node 分離 assert + strings diff (values / values-ja 同期) |
 | AC-5 | diff review + `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` 継続成功 |
@@ -276,16 +340,23 @@ None（spec 時点で確定）。D1–D3 が値の供給経路、node 構成、�
 - [Spec 38: lock authoring and unknown-state review](../38-lock-authoring-unknown-review/spec.md)
 - [Spec 230: restore 確認の復元対象説明](../230-restore-confirmation-target/spec.md)（同一の「確認ダイアログが対象を説明する」パターンの先例）
 - [Spec 161: 日本語 UI コピー LQA](../161-japanese-ui-copy-lqa/spec.md)
+- [PR #264 review (2026-09-09)](https://github.com/nunu1733/NunuLauncher/pull/264): placement 概要の縮約による AC-2 衝突指摘 (P1) — D4 の正本
 - [Quality strategy](../../docs/engineering/quality-strategy.md)
 
 ## Change history
 
 - 2026-09-09: Drafted for Issue #211 (UX exploratory review 2026-09-05, F-05)。
   行と同一合成経路からの対象行表示 (D1)、2 node 構成 (D2)、管理画面
-  `Available` 経路への絞り込み (D3) を提案。
+  `Available` 睾路への絞り込み (D3) を提案。
 - 2026-09-09: Plan review 対応。string key を
   `organizer_lock_dialog_target_title` へ変更 (中身が title 導入であるため)、
   ephemeral review report 参照の注記を追加。
 - 2026-09-09: Accepted。plan revision 3 (`7ccf3b18cb`) に対する
   in-session review (code-reviewer-2 agent、owner 委譲の Phase 1 gate) の
   Approve により実装へ移行する。
+- 2026-09-09: PR #264 review 対応 (P1)。配置概要の縮約では同 page 別 cell /
+  別 folder 同 position / 別 app pair が区別できないため、D4 (区別行の常時
+  表示) を新設し、新規 3 string (`_target_position` / `_target_folder` /
+  `_target_app_pair`) を Scope へ追加。AC-2 必要証憑へ collision fixture
+  test を追加。evidence capture test は regression suite から分離する
+  (instrumentation argument gate)。

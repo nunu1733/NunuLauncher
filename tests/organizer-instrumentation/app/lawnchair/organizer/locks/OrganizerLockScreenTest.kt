@@ -247,6 +247,83 @@ class OrganizerLockScreenTest {
         )
     }
 
+    /**
+     * PR #264 review P1: rows whose placement descriptions collide — the
+     * row description collapses Desktop to the page number and folder
+     * children to the rank, so two same-named icons in different cells of
+     * one page, and two same-named icons in different folders at the same
+     * position, render one identical description. The dialog must resolve
+     * them with the disambiguator line.
+     */
+    private fun collidingTitleState(): LayoutState {
+        val folderG = appItem(
+            "201",
+            title = "G",
+            kind = CanonicalItemKind.Folder,
+            structure = StructureState.FolderMembers(emptyList()),
+            placement = PlacementState.Workspace(
+                page = ApplicationPageRef.PersistentPage(PageId("p1")),
+                cell = GridCell(0, 0),
+                span = GridSpan(1, 1),
+            ),
+        )
+        val folderH = appItem(
+            "202",
+            title = "H",
+            kind = CanonicalItemKind.Folder,
+            structure = StructureState.FolderMembers(emptyList()),
+            placement = PlacementState.Workspace(
+                page = ApplicationPageRef.PersistentPage(PageId("p1")),
+                cell = GridCell(2, 0),
+                span = GridSpan(1, 1),
+            ),
+        )
+        val cellA = appItem(
+            "101",
+            title = "Google",
+            placement = PlacementState.Workspace(
+                page = ApplicationPageRef.PersistentPage(PageId("p0")),
+                cell = GridCell(0, 0),
+                span = GridSpan(1, 1),
+            ),
+        )
+        val cellB = appItem(
+            "102",
+            title = "Google",
+            placement = PlacementState.Workspace(
+                page = ApplicationPageRef.PersistentPage(PageId("p0")),
+                cell = GridCell(3, 1),
+                span = GridSpan(1, 1),
+            ),
+        )
+        val inG = appItem(
+            "103",
+            title = "Google",
+            placement = PlacementState.FolderChild(ApplicationItemRef.PersistentItem(ItemId("201")), 0),
+        )
+        val inH = appItem(
+            "104",
+            title = "Google",
+            placement = PlacementState.FolderChild(ApplicationItemRef.PersistentItem(ItemId("202")), 0),
+        )
+        return LayoutState(
+            pages = listOf(
+                PageState(ApplicationPageRef.PersistentPage(PageId("p0")), PageOrder(0)),
+                PageState(ApplicationPageRef.PersistentPage(PageId("p1")), PageOrder(1)),
+            ),
+            profiles = listOf(ProfileState(ProfileId("personal"), ProfileAvailability.AVAILABLE)),
+            deviceCapabilities = app.lawnchair.organizer.application.public.DeviceCapabilities(
+                4,
+                5,
+                4,
+                4,
+                4,
+                app.lawnchair.organizer.application.public.DeviceOrientation.PORTRAIT,
+            ),
+            items = listOf(folderG, folderH, cellA, cellB, inG, inH),
+        )
+    }
+
     @Test
     fun unknownBannerAndTextStateLabelsAreRendered() {
         val capture = MutableCapture(screenState())
@@ -397,6 +474,61 @@ class OrganizerLockScreenTest {
     }
 
     @Test
+    fun dialogResolvesCollidingDescriptionsWithDisambiguator() {
+        val capture = MutableCapture(collidingTitleState())
+        val writer = FakeWriter(capture)
+        setContent(LockAuthoringModule(capture, writer))
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val homeDescription = context.getString(R.string.organizer_lock_screen_placement_desktop, 1)
+        val folderDescription = context.getString(R.string.organizer_lock_screen_placement_folder, 1)
+        val targetTitle = context.getString(R.string.organizer_lock_dialog_target_title, "Google")
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(homeDescription).fetchSemanticsNodes().isNotEmpty()
+        }
+        assertEquals(0, writer.writes.size)
+        // Two same-named icons on one page share the "Home screen 1" row
+        // description; the disambiguator line resolves them by cell.
+        val homeRows = composeRule.onAllNodesWithText(homeDescription)
+        homeRows[0].performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(targetTitle).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(context.getString(R.string.organizer_lock_dialog_target_position, 1, 1))
+            .assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
+        composeRule.onAllNodesWithText(homeDescription)[1].performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.organizer_lock_dialog_target_position, 2, 4),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
+        // Two same-named icons in different folders at the same position
+        // share "Inside a folder, position 1"; the disambiguator resolves
+        // them by the parent folder's title.
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(folderDescription).fetchSemanticsNodes().size == 2
+        }
+        composeRule.onAllNodesWithText(folderDescription)[0].performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.organizer_lock_dialog_target_folder, "G"),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
+        composeRule.onAllNodesWithText(folderDescription)[1].performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.organizer_lock_dialog_target_folder, "H"),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        // Listing order (LockReviewEntrySortKey) sorts desktop rows before
+        // folder children, so index 0/1 within each description group is
+        // deterministic: cell (0,0) then (3,1); folder G then folder H.
+        assertEquals(0, writer.writes.size)
+    }
+
+    @Test
     fun busyFailureRendersLocalizedMessage() {
         val capture = MutableCapture(screenState())
         val writer = FakeWriter(capture, outcome = LockWriteOutcome.Rejected(LockWriteRejection.WRITER_BUSY))
@@ -424,9 +556,18 @@ class OrganizerLockScreenTest {
      * target-naming dialog from the real composable with real resources, for
      * `docs/evidence/issue-211/`. Runs on the local emulator; the captured
      * PNGs land in `Pictures/Issue211-ui-evidence` via MediaStore.
+     *
+     * PR #264 review: this is evidence capture, not a regression assertion —
+     * it writes to shared device storage, so it is skipped unless the runner
+     * is explicitly invoked with `-e captureEvidence true` (Gradle:
+     * `-Pandroid.testInstrumentationRunnerArguments.captureEvidence=true`).
      */
     @Test
     fun capturesLockDialogTargetEvidence() {
+        org.junit.Assume.assumeTrue(
+            androidx.test.platform.app.InstrumentationRegistry.getArguments()
+                .getString("captureEvidence") == "true",
+        )
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val homeDescription = context.getString(R.string.organizer_lock_screen_placement_desktop, 1)
         val folderDescription = context.getString(R.string.organizer_lock_screen_placement_folder, 1)
