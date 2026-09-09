@@ -1557,13 +1557,16 @@ class ManualOrganizationPreferencesInstrumentationTest {
         ).assertIsDisplayed()
 
         // The proposal's future-tense count lines must not appear as a result.
+        // Pair each resource with the applied summary's real count so the
+        // absence check covers the exact rendering a regression would show
+        // (review: a fixed value would only exclude the moved=1 variant).
         listOf(
-            R.string.manual_organization_moved_count,
-            R.string.manual_organization_preserved_count,
-            R.string.manual_organization_new_folders_count,
-            R.string.manual_organization_new_pages_count,
-        ).forEach { id ->
-            composeRule.onAllNodesWithText(context.getString(id, 1)).assertCountEquals(0)
+            R.string.manual_organization_moved_count to applied.summary.movedCount,
+            R.string.manual_organization_preserved_count to applied.summary.preservedCount,
+            R.string.manual_organization_new_folders_count to applied.summary.newFolderCount,
+            R.string.manual_organization_new_pages_count to applied.summary.newPageCount,
+        ).forEach { (id, count) ->
+            composeRule.onAllNodesWithText(context.getString(id, count)).assertCountEquals(0)
         }
 
         // Unchanged rows keep their parity: heading, reason breakdown, and the
@@ -1639,12 +1642,31 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) {
             (runner.state as? ManualOrganizationRun.State.Applied)?.result is ApplyResult.RolledBack
         }
+        val applied = runner.state as ManualOrganizationRun.State.Applied
 
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_apply_rolled_back)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_moved_count, 1)).assertIsDisplayed()
-        composeRule.onAllNodesWithText(
-            context.resources.getQuantityString(R.plurals.manual_organization_applied_moved_count, 1, 1),
-        ).assertCountEquals(0)
+        // Proposal count lines keep rendering for non-success outcomes, paired
+        // with the plan summary's real counts (review: symmetry with the
+        // success-surface absence check).
+        listOf(
+            R.string.manual_organization_moved_count to applied.summary.movedCount,
+            R.string.manual_organization_preserved_count to applied.summary.preservedCount,
+            R.string.manual_organization_new_folders_count to applied.summary.newFolderCount,
+            R.string.manual_organization_new_pages_count to applied.summary.newPageCount,
+        ).forEach { (id, count) ->
+            composeRule.onNodeWithText(context.getString(id, count)).assertIsDisplayed()
+        }
+        // Completed-tense lines must not claim completed changes here.
+        listOf(
+            R.plurals.manual_organization_applied_moved_count to applied.summary.movedCount,
+            R.plurals.manual_organization_applied_preserved_count to applied.summary.preservedCount,
+            R.plurals.manual_organization_applied_new_folders_count to applied.summary.newFolderCount,
+            R.plurals.manual_organization_applied_new_pages_count to applied.summary.newPageCount,
+        ).forEach { (id, count) ->
+            composeRule.onAllNodesWithText(
+                context.resources.getQuantityString(id, count, count),
+            ).assertCountEquals(0)
+        }
     }
 
     @Test
