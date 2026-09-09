@@ -2,6 +2,10 @@
 
 > Spec: [spec.md](./spec.md) (status: draft → review経由でaccepted)
 > Status: planned (review承認後に実装開始)
+> Revision 2 (2026-09-09): plan review (Request changes, head be50cbd67e) への対応。
+> fixture の page 構成を修正して description を全行一意化 (M-1)、count assert を
+> 既定戦略として明記 (N-1)、string key を `_target_title` へ変更 (N-2)、
+> protected 行を fixture へ追加 (N-3)。
 
 ## 現在の code の根拠
 
@@ -51,7 +55,7 @@
 | File | 変更 |
 |---|---|
 | `lawnchair/src/app/lawnchair/ui/preferences/destinations/PlacementLockPreferences.kt` | ① `LockChangeDialog` の `Available` 経路で、本文 `Text` の前に 2 つの `Text` node を追加: (a) `organizer_lock_dialog_target_description` で title (`entry.title.textOrFallback(entry)` と同一規則) を導入する行、(b) `placementDescription(entry, profileLabel)` と**同一呼び出し**の配置概要行。② `LockChangeDialog` の呼び出し側 (`PlacementLockPreferences`) から `profileLabels[entry.profile.value]` を引数で渡す。③ `buildString` の既存本文 (state + scope + effect、UNKNOWN は review intro 追加) は現行のまま第 3 node とする。 |
-| `lawnchair/res/values/strings.xml` | `organizer_lock_dialog_target_description` 追加 (値は下表。実装時に #161 style guide で最終確認)。 |
+| `lawnchair/res/values/strings.xml` | `organizer_lock_dialog_target_title` 追加 (値は下表。実装時に #161 style guide で最終確認)。 |
 | `lawnchair/res/values-ja/strings.xml` | 同 key の ja を同時追加 (#123 契約)。 |
 | `tests/organizer-instrumentation/app/lawnchair/organizer/locks/OrganizerLockScreenTest.kt` | 同名 fixture (下記) と新規 test 2 件を追加。既存 4 test は無変更で継続成功させる。 |
 | `specs/38-lock-authoring-unknown-review/spec.md` | §Launcher UI surfaces の管理画面 bullet へ、確認ダイアログが行と同一の識別情報 (title + 配置概要) を表示する旨を 1 文追記 + Change history に本 spec 参照を追記 (docs-only)。 |
@@ -60,35 +64,60 @@
 
 | Key | en (案) | ja (案) |
 |---|---|---|
-| `organizer_lock_dialog_target_description` (新規) | `Target: %1$s` | `対象: %1$s` |
+| `organizer_lock_dialog_target_title` (新規) | `Target: %1$s` | `対象: %1$s` |
 
 - `%1$s` には行と同一の表示タイトル (`textOrFallback` 結果) を渡す。配置概要は
   別 node で `placementDescription` をそのまま表示するため、
   separator や連結 format を新規に作らない（行と同じ値をそのまま出す）。
-- ja 語彙は glossary の「配置 (placement)」に従う。「対象」は
+- key 名が `_title` であるのは、この string が title 導入行のためである
+  （`placementDescription` の語感と衝突させない）。ja 語彙は glossary の
+  「配置 (placement)」に従い、「対象」は
   `organizer_lock_screen_review_all_confirm` (ja) の文脈語彙と整合。
 
 ## Test 設計 (spec AC との対応)
 
 fixture: 既存 `screenState()` を変更せず、新規 private builder
-`sameTitleState()` を作る。構成:
+`sameTitleState()` を作る。構成 (review M-1 修正後):
 
-- `Google` (Application, UNLOCKED, `PlacementState.Workspace(page p0, cell (0,0))`)
-- `Google` (Application, UNLOCKED, `PlacementState.FolderChild(parent F, rank 0)`)
+- `Google` (Application, UNLOCKED, `PlacementState.Workspace(page p0, cell (0,0))`) →
+  description は `organizer_lock_screen_placement_desktop` = "Home screen 1"
+- `Google` (Application, UNLOCKED, `PlacementState.FolderChild(parent F, rank 0)`) →
+  description は `organizer_lock_screen_placement_folder` = "Inside a folder, position 1"
 - `F` (Folder, UNLOCKED, `StructureState.FolderMembers([Google child], 0)`,
-  `PlacementState.Workspace(page p0, cell (1,0))`)
+  `PlacementState.Workspace(page p1, cell (0,0))`) →
+  description は **"Home screen 2"**（別 page p1 を fixture に追加する。
+  同じ p0 に置くと folder 行の description も "Home screen 1" になり、
+  description で行を一意特定できなくなるため）
+- `Protected` (Application, UNLOCKED, `PlacementState.FolderChild(parent F2, rank 0)`,
+  parent F2 は LOCKED) → description が
+  `organizer_lock_screen_placement_summary_triple`
+  ("Inside a folder, position 1 · Protected by a locked parent" 相当) となる行。
+  `placementDescription` の double/triple 合成経路 (profile label /
+  effectively-protected) を dialog 側でも観測可能にする (review N-3)。
+  F2 は `PlacementState.Workspace(page p1, cell (1,0))` に置く。
+
+fixture 内の全行で description 文字列が一意になる ("Home screen 1" /
+"Inside a folder, position 1" / "Home screen 2" / triple 系)。title (`Google`)
+が重複するのは同名行の再現に必要なため、tap 対象の特定は
+description text で行う。
 
 test 1 `dialogNamesTheTappedRowAmongSameTitleRows` (AC-1, AC-2):
 
-1. tap する行は description text で一意に特定する（title は重複するため
-   `onAllNodesWithText` + description string で絞る。行全体は
-   `placementDescription` 値 "Home screen 1" / "Inside a folder, position 1" で区別できる）。
-2. tap 後、dialog 内で `Target: Google` が表示されること。
-3. dialog 内に tap した行の `placementDescription` 値と同一文字列が存在すること。
-   実装は行 description と dialog description が同一合成関数の結果であるため、
-   fixture 上の期待値は `context.getString(R.string.organizer_lock_screen_placement_folder, 1)` 等
-   resource から組む。
-4. 閉じてもう一方の行を tap し、逆側の description に差し替わること。
+1. tap する行を description text で一意に特定する（fixture により description
+   は全行一意。`onNodeWithText(desc).performClick()`）。
+2. tap 後、dialog 内で `Target: Google` が表示されること
+   (`composeRule.onNodeWithText(context.getString(R.string.organizer_lock_dialog_target_title, "Google")).assertIsDisplayed()`)。
+3. **count assert (既定戦略, review N-1)**: tap 行の description は
+   `onAllNodesWithText(desc).fetchSemanticsNodes().size == 2`（背景 list の行
+   1 + dialog の対象行 1）、非 tap の同名対抗行 ("Inside a folder, position 1" と
+   "Home screen 2") の description は size == 1 のまま（背景行のみ、dialog には
+   現れない）。description が fixture で一意であるため、count 比較で
+   「dialog に表示された description が tap 行と同一であり、他方ではない」ことを
+   順序依存なしに検証できる。
+4. 閉じてもう一方の行 ("Inside a folder, position 1") を tap し、count が
+   入れ替わること（dialog 側 description の差し替え確認）。
+5. `Protected` 行の triple description でも step 2-3 を繰り返し、
+   profile/protected 合成値がそのまま dialog へ出ることを確認する。
 
 test 2 `dialogTargetRowIsIndependentTextNode` (AC-4):
 
@@ -100,18 +129,11 @@ test 2 `dialogTargetRowIsIndependentTextNode` (AC-4):
 
 test 3 (既存 4 test の継続成功 = AC-3): 既存 test は無変更のまま実行する。
 
-注意: dialog 表示中も背景 list は semantics tree に残るため、
-「他方の description が dialog に現れない」(AC-2) は背景 list node との
-誤検出を避けるため、**dialog 内の description node を
-`onAllNodesWithText(desc)` のうち dialog 側 node で確認する** 方式を取る。
-実装時に Compose test の window 挙動を確認し、必要なら
-`onNodeWithText(desc).assertExists()` を dialog の `Target:` node 直後の
-順序依存なしで dialog node 群に限定して assert する。背景 list にも
-同一文字列が存在する場合（行 description と dialog description が同値）、
-「dialog に現れる」ことの assert は成立するが「背景にだけ現れる」場合との
-区別は `Target:` 導入行との近接で確認する。具体 assert 方法は
-実装時に Compose test の実測で確定し、AC-2 の意味論
-（dialog 文言だけで対象を区別できる）を裏付けることを PR へ記録する。
+注意: dialog 表示中も背景 list は semantics tree に残る
+(既存 test が dialog button と row 待ち合わせを同じ tree で行っている)。
+test 1 の count assert はこの前提の上に立っており、dialog が背景 node を
+除外する window 分離をしたとしても count は 2 → 1 側に寄るだけで
+意味論（tap 行 description が dialog に現れ、対抗行は現れない）は保たれる。
 
 ## Interface / seam
 

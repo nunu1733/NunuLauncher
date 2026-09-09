@@ -64,9 +64,9 @@ review intro、confirm/cancel の動作は現行維持である。`Unavailable` 
   - 対象行は 1 行 1 事実の単純テキストとし、`title` と `description` を
     別 node として読める形にする（a11y 契約は既存のダイアログ text node
     規約に従う）。
-  - 新規 string 1 件 (`organizer_lock_dialog_target_description`:
-    `Target: %1$s`) の prefix で対象行を導入し、既存の state/scope/effect
-    文と視覚的に区別する。en/ja 同時に追加する (#123 / #161 契約)。
+  - 新規 string 1 件 (`organizer_lock_dialog_target_title`: `Target: %1$s`)
+    の prefix で対象行を導入し、既存の state/scope/effect 文と視覚的に区別する。
+    en/ja 同時に追加する (#123 / #161 契約)。
 - **`PlacementLockPreferences` 内での値の単一供給**: `placementDescription` は
   既に同 file 内の private 合成関数であり、行描画とダイアログ描画の両方から
   呼ばれる。title の fallback 規約も既存 `textOrFallback` を共有する。
@@ -137,7 +137,7 @@ Compose test で観測的に検証する（構造の直接検証をしないテ�
 を独立に読めるため spec 38 の a11y 契約（state/effect が screen reader で
 読める、単一意味の node）と整合する。
 
-よって対象行は、(1) `organizer_lock_dialog_target_description` (`Target: %1$s`)
+よって対象行は、(1) `organizer_lock_dialog_target_title` (`Target: %1$s`)
 で title を導入する行と、(2) `placementDescription` の結果（profile label /
 effectively-protected を含む同一合成値）の行、の 2 つの `Text` node として
 本文の先頭へ置く。既存の state/scope/effect 本文は 3 番目の node として
@@ -270,7 +270,9 @@ None（spec 時点で確定）。D1–D3 が値の供給経路、node 構成、�
 ## References
 
 - [Issue #211: Placement lock確認ダイアログが対象placementの名前・位置を表示しない](https://github.com/nunu1733/NunuLauncher/issues/211)
-- [ux-exploratory-review-2026-09-05 F-05](https://github.com/nunu1733/NunuLauncher/blob/main/.ux-review/ux-exploratory-review-2026-09-05.md)
+- 原典の review report (`ux-exploratory-review-2026-09-05.md`, F-05) は
+  ephemeral な作業文書であり、repository には存在しない。観測事実は
+  Issue #211 本文が正本として記録している。
 - [Spec 38: lock authoring and unknown-state review](../38-lock-authoring-unknown-review/spec.md)
 - [Spec 230: restore 確認の復元対象説明](../230-restore-confirmation-target/spec.md)（同一の「確認ダイアログが対象を説明する」パターンの先例）
 - [Spec 161: 日本語 UI コピー LQA](../161-japanese-ui-copy-lqa/spec.md)
@@ -281,3 +283,6 @@ None（spec 時点で確定）。D1–D3 が値の供給経路、node 構成、�
 - 2026-09-09: Drafted for Issue #211 (UX exploratory review 2026-09-05, F-05)。
   行と同一合成経路からの対象行表示 (D1)、2 node 構成 (D2)、管理画面
   `Available` 経路への絞り込み (D3) を提案。
+- 2026-09-09: Plan review 対応。string key を
+  `organizer_lock_dialog_target_title` へ変更 (中身が title 導入であるため)、
+  ephemeral review report 参照の注記を追加。
