@@ -29,7 +29,7 @@ _Avoid_: 設定、XMLルール
 _Avoid_: 並べ替え設定 (組合せ式toggleを想起させる)、Theme、OrderingPolicy (旧単一値の型名)
 
 **ストラテジー固定unit (strategy-fixed unit)**:
-あるlayout strategyが「本来はmovableだが、そのstrategyの意図として動かさない」と決めたtop-level unit。`PreserveReason.STRATEGY_PRESERVED`で報告され、occupancy constraintとして残る ([spec 237](./specs/237-global-compact-v2-folder-relocation/spec.md))。
+あるlayout strategyが「本来はmovableだが、そのstrategyの意図として動かさない」と決めたtop-level unit。配置上の占有を維持し、自然に保持されたunitとは別の理由として扱う ([spec 237](./specs/237-global-compact-v2-folder-relocation/spec.md))。
 _Avoid_: 保存済み (naturally preservedとの混同)、スキップ対象
 
 **レイアウトsnapshot (Layout Snapshot)**:
@@ -75,15 +75,3 @@ _Avoid_: 利用可能グリッド（設定UIの表示と混同する場合）、
 **生成フォルダ名 (Generated Folder Title)**:
 Organizer が新規生成したフォルダへ、その grouping semantic から単一の resolver 経由で決定して適用される user-facing なタイトル。semantic naming identity が plan 内の正本であり、解決済み文字列は preview と apply の両方が同一 plan から消費する。
 _Avoid_: フォルダ名の自動推論 (UI 側再計算を想起させる)、Folder (固定名)
-
-**モデルスナップショット (Model Snapshot)**:
-相関リロード生成の完了時に読み取った、メモリ上のホームレイアウト状態のcanonical表現。検証ではmodel-verifiable projectionとして比較され、DB再取得の同じprojectionと突き合わされる。検証専用の一時データであり、永続化しない。
-_Avoid_: Backup（永続データと混同）、Layout Snapshot（入力captureと混同）
-
-**モデル検証可能projection (Model-verifiable Projection)**:
-メモリ上のmodelが忠実に表現するレイアウト状態のフィールド部分集合(配置アイテムのidentity、container、配置、種別、folder構成、widget identityとbind状態、profile identity、種別ごとの意味的起動対象identity)。modelが表現しないフィールドはDB側の検証だけで担保する。
-_Avoid_: Model LayoutState（完全なcanonical stateと混同）
-
-**相関リロード生成 (Correlated Reload Generation)**:
-適用後の検証のために要求された1回のmodel reloadが生んだloader生成。要求と完了が同一tokenで結ばれ、loader transactionのcommit/close後の因果的完了境界でのみ完了する生成を指す。
-_Avoid_: Load ID（診断値であり相関の正本ではない）

@@ -1,8 +1,8 @@
 ---
 issue: "#187"
-status: accepted
+status: implemented
 requirements: []
-updated: 2026-09-01
+updated: 2026-09-08
 ---
 
 # ZIP backup restoreがorganizer recovery artifactsを矛盾なくresetする

@@ -1,6 +1,6 @@
 ---
 issue: "#155"
-status: accepted
+status: implemented
 requirements:
   - FR-002
   - FR-004
@@ -12,7 +12,7 @@ requirements:
   - NFR-011
 risk:
   - layout-data
-updated: 2026-08-27
+updated: 2026-09-08
 ---
 
 # QSB予約領域を考慮した全体整理と相関再読込の整合

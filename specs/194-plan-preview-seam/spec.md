@@ -1,10 +1,10 @@
 ---
 issue: "#194"
-status: accepted
+status: implemented
 requirements: []
 risk:
   - layout-data
-updated: 2026-09-02
+updated: 2026-09-08
 ---
 
 # Read-only plan preview and PreviewChange projection contract

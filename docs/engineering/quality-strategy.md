@@ -1,7 +1,7 @@
 # Quality Strategy
 
-> Status: Proposed
-> Updated: 2026-09-09 (bugreport JVM test filter added to organizer unit-test gate, Issue #242)
+> Status: Accepted
+> Updated: 2026-09-09 (bugreport JVM test filter added to organizer unit-test gate, Issue #242; current CI and high-risk gates verified in Issues #41 and #43; operational handoff contract recorded in Issue #251)
 
 ## Quality order
 
@@ -98,7 +98,9 @@ PRに残し、regression比較可能にする。
 - debug APK build。
 - risk label付きPRでのtargeted emulator test。
 
-compile以降のcommand名はsource導入後に確定する。
+The source-import command names are now fixed by the checked-in workflow and
+the [building guide](./building.md). Any new mandatory command requires a
+successful clean-checkout or CI run before it is added here.
 
 ## Organizer unit-test CI gate
 

@@ -1,7 +1,7 @@
 # GitHub Issue / Spec / Pull Request Workflow
 
-> Status: Proposed
-> Updated: 2026-09-08（spec/plan PRによるIssue早期close防止、Issue #247）
+> Status: Accepted
+> Updated: 2026-09-08（Issue #247 closing-keyword rule、Issue #251 Worker/Review handoff、Issue #252 security reporting の運用反映）
 
 ## Principle
 
@@ -76,6 +76,93 @@ specには通常系だけでなく、permission拒否、容量不足、unsupport
 
 同じspec directoryの `plan.md` に、現在codeの根拠、変更module、interface/seam、migration、rollback、testを記載する。Issueのtask listを複製せず、実装上の判断だけを残す。
 
+## Execution and approval contract
+
+この契約は、Workerが作業を開始し、別のReview sessionが検証し、ownerが最終判断してmergeするまでの共有実行境界である。モデル名は作業のrouting前提であり、モデル性能の比較実験やAstraの必須条件ではない。
+
+### Roles and model premise
+
+| Role | Required responsibility | Not sufficient by itself |
+|---|---|---|
+| Worker | Issue/全コメント、正本revision、実装または文書差分、exact command/result、未確認範囲をpacketへ記録し、次の1手を明示する。 | 自分の実装報告だけでfinal approvalとすること。 |
+| Review | packetの同じbase/headとdiffを読み、Issue/spec/plan/bug oracleへの適合、証拠、未確認事項、リスクを判定し、`Approve` または条件付きの `Request changes` を現在のheadへ紐付ける。部分的または貼り付けられたdiffしか確認できない場合は、確認したpath/rangeを記録し、それ以外を未確認として扱う。 | タイトル、会話要約、異なるモデル名だけを独立証拠とすること。部分diffから変更全体を承認すること。 |
+| Owner | 製品判断、Issueの終了条件、Reviewが明示した条件解除の確認、最終的なmerge可否を決定し、decision linkを残す。 | Review recommendationをownerの承認と取り違えること。 |
+| Merge operator | ownerの決定、Reviewの現在head確認、required checks、branch protection、高リスクaudit gateを確認してmergeを実行する。 | green CIだけで未解決の条件や未確認範囲を無視すること。 |
+
+通常のモデル前提は次のとおりである。
+
+- Worker: **GLM-5.3-flash (Zcode)** または **GPT-5.6-Luna (Codex/xhigh)**。
+- Review: **GPT-5.6-Sol (ChatGPT/High)**。
+- Astraを通常作業の必須モデルにしない。モデルが異なることだけでは、独立session・独立context・独立evidenceの条件を満たさない。
+- solo保守で同じ人が複数roleを担う場合も、Workerの報告、Reviewのrecommendation、Ownerのfinal decision、Merge operatorの実行を別の記録として残す。branch protectionのrequired approving review count `0` は、この文書上の責任記録を省略する理由にならない。
+- `risk: layout-data`、`risk: migration`、または高リスクpathのPRは、ここでの一般Reviewに加えて [高リスク独立エビデンス契約](#高リスクprへの独立エビデンス要求) を満たす。一般Reviewでauditを代替しない。
+
+### Start gate and approval lifecycle
+
+Workerは次のpacketを作成してから実装またはレビュー依頼へ進む。
+
+- **feature**: `status: accepted` のspecと、そのaccepted内容を含むcommit SHA、plan revision。
+- **bug**: accepted spec、または正本としてrepositoryに追跡されたbug oracleのpathと、そのoracleを含むexact commit SHA。Issue/commentに固定されたoracleを使う場合は、Issue/comment permalink、取得時刻 (UTC)、ownerのacceptance linkを記録し、Issueだけに存在するoracleへrepository commit SHAを付けない。oracleが曖昧なら実装を開始せずresearch/decision Issueへ分離する。
+- **research/decision**: Issueが求める成果物、未決定事項、判断基準を固定する。成果物自体が終了条件である場合だけfinal PRでcloseする。
+- **maintenance/docs-only**: spec/planが不要な理由、変更scope、exit criteriaを明記する。`N/A` は理由なしの省略ではない。
+
+`Approve` は、そのreviewが確認した **現在のhead SHA** に対するrecommendationである。条件が付いた `Approve` 相当の記録はfinal approvalではなく、Workerが条件ごとのevidenceを追加し、Reviewが同じheadまたは新headを再確認して条件解除を明示するまで未承認として扱う。
+
+次のいずれかが発生したら、以前の承認は失効する。
+
+1. source、test、workflow、spec、plan、acceptance、dependency、riskの実質変更を含む新commitをpushした。
+2. Issueのexit criteria、owner decision、関連Issueの依存関係が変わった。
+3. Reviewの条件を修正したが、条件ごとのevidenceと再確認linkがpacketへ追加されていない。
+
+失効後は新headのdiffを再取得し、Review recommendationを更新する。単なるtypo等の非実質的docs変更を再review不要とする場合も、Reviewがその判断をlink付きで明記する。OwnerはReview recommendationと条件解除を確認してfinal decisionを記録し、Merge operatorはそのdecisionと現在headの一致を確認してからmergeする。
+
+### Review / handoff packet
+
+PR本文またはIssueコメントに、次の欄を一つのpacketとして残す。chat logだけをpacketの代わりにしない。
+
+```text
+Review / handoff packet
+- Issue and all comments: <Issue URL>; retrieved at <UTC timestamp>; state/labels <...>
+- Scope type: feature | bug | research/decision | maintenance/docs-only
+- Accepted spec + commit: <path or N/A with reason>; <40-character SHA>
+- Bug oracle: <repository-tracked path>; <40-character SHA> **or** <Issue/comment permalink>; retrieved at <UTC timestamp>; owner acceptance <link> **or** N/A with reason
+- Plan + revision: <path or N/A with reason>; <40-character SHA or revision>
+- Base SHA: <40-character SHA>
+- Head SHA: <40-character SHA>
+- Diff: <compare URL> and `git diff --stat <base>..<head>` result
+- Diff boundary: full diff inspected **or** partial/pasted diff; if partial, list every verified path/range and mark all other scope unverified. A partial view cannot support whole-scope final approval.
+- Executed evidence: <exact command> -> <result>; environment <...>
+- CI evidence: <run/check URL>; source event and head <...>
+- Unverified / runtime constraints: <what was not run or cannot be accessed>
+- Review recommendation: <link>; current head checked <SHA>; conditions <none or list>
+- Owner decision / conditional approval closure: <link>; final decision <...>
+- Merge operator check: <link or record>; next step <...>
+```
+
+#### Packet example (historical, exact revision; not a runtime claim)
+
+The following is a compact example based on the #230 handoff. It demonstrates the fields a different Review session needs; it does not claim that this Codex session executed the Zcode or ChatGPT runtime.
+
+```text
+Issue and all comments: https://github.com/nunu1733/NunuLauncher/issues/230; retrieved at 2026-09-08T09:58:36Z; state=closed; labels=type: bug, status: needs-spec
+Scope type: bug
+Accepted spec + commit: specs/230-restore-confirmation-target/spec.md @ 436f2a7a54d2ae1346806772ce0fbd3e7827ef76
+Plan + revision: specs/230-restore-confirmation-target/plan.md @ f69251ad55493c1acc60ffd687e4c18268ae3eaa (PR #245 plan-review fix; the earlier 0f3d1d3a8f2562be5f21ea23f3b4d2ccc53cd463 revision is superseded)
+Base SHA: d36b109e989d49fd218bc13f3eb7c0e053a16709
+Head SHA: 73173d2e829438447e3a0230b4af0959c18e9661
+Diff: https://github.com/nunu1733/NunuLauncher/compare/d36b109e989d49fd218bc13f3eb7c0e053a16709...73173d2e829438447e3a0230b4af0959c18e9661
+Diff stat: `17 files changed, 297 insertions(+), 14 deletions(-)` (including 9 emulator evidence images)
+Executed evidence: `./gradlew spotlessCheck` -> PASS; organizer unit/instrumentation/E2E commands -> PASS; emulator evidence recorded in PR #246
+CI evidence: https://github.com/nunu1733/NunuLauncher/actions/runs/34189752934 (head 73173d2e829438447e3a0230b4af0959c18e9661)
+Unverified / runtime constraints: Zcode and ChatGPT runtime were not invoked by this Codex session; do not describe them as execution evidence.
+Review recommendation: https://github.com/nunu1733/NunuLauncher/pull/246#pullrequestreview-5137097642; conditions were resolved by head 73173d2e829438447e3a0230b4af0959c18e9661
+Owner decision: https://github.com/nunu1733/NunuLauncher/issues/230#issuecomment-5579746821; final implementation and AC-1..AC-7 recorded
+Merge operator check: PR #246 merge and required checks recorded in the PR
+Next step: if any substantive change is added, rebuild this packet and request re-review
+```
+
+The example explicitly marks runtime non-execution as unverified. This repository session has not performed a cross-runtime handoff; that limitation is evidence to review, not evidence that each listed model has been tested.
+
 ### 5. Pull request
 
 PRは次を含む。
@@ -129,6 +216,17 @@ gh api --method DELETE repos/nunu1733/NunuLauncher/branches/main/protection
 ### 6. Close
 
 最終PRのmerge後にIssueを閉じる。中間PRのmergeではIssueを開いたままにし、次のspec/plan/実装/検証PRへ引き渡す。最終PRではspecを `implemented` にし、必要な要件、DESIGN、CONTEXT、ADRを更新する。残課題は新しいIssueへ移し、元Issueを曖昧なTODO置場にしない。
+
+#### Close-state checklist
+
+Workerは最終PRのhandoff packetに、Issueの終了条件、merge済みPR、対象head、各ACの証拠、specの遷移後statusを記録する。Reviewはそのpacketと現在のheadを再確認し、Ownerは最終判断を記録する。Merge operatorは次を確認してからIssueを閉じる。
+
+- feature/bug/maintenanceの受入条件をmainline上の実装または成果物が満たした。対応specが存在する場合は `implemented` に更新する。`spec: N/A` のmaintenance/docs-onlyは、N/Aの理由、mainlineに入った成果物、および各ACのevidenceをhandoff packetに記録する。
+- research/decisionや実装を要求しない契約specは、成果物が完成しても `accepted` のまま残せる。その場合は、Issueが研究・判断・契約の完了を終了条件としていたことと、後続実装を別Issueが所有することを、assessmentまたはspecのchange historyに記録する。
+- 既存文書を置き換えた場合だけ `superseded` とし、置換先のpathと理由を記録した。単なる実装完了やIssue closeを `superseded` の根拠にしない。
+- Issue state、status label、spec frontmatter、PRのclosing keywordが互いに矛盾していない。中間PRのclosing keywordで先に閉じた場合は、最終PRの証拠が揃うまで実装完了とは扱わず、監査記録と是正Issueを残す。
+
+Close後にstatusを変更する場合も、日付だけを更新せず、承認リンク、merge link、対象head、AC evidenceを同じPRまたはassessmentへ追加する。
 
 ## 高リスクPRへの独立エビデンス要求
 
@@ -233,14 +331,7 @@ phase: later
 
 ## Agent handoff
 
-AI Agentが途中でhandoffする場合は、IssueまたはPRへ以下を残す。
-
-- 完了した受入条件。
-- 現在の差分と未完箇所。
-- 実行したtestと最後の結果。
-- 仮定、blocker、次の具体的な1手。
-
-chat logだけをhandoff情報にしない。
+AI Agentが途中でhandoffする場合は、上記の [Review / handoff packet](#review--handoff-packet) をIssueまたはPRへ残す。少なくとも、完了した受入条件、現在の差分と未完箇所、exact revision、実行したtestと最後の結果、仮定、blocker、未確認範囲、次の具体的な1手を含める。chat logだけをhandoff情報にしない。
 
 ## Parallel work
 
