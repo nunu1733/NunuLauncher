@@ -11,8 +11,10 @@ import app.lawnchair.util.requireSystemService
 import com.android.launcher3.BuildConfig
 import com.android.launcher3.R
 import java.io.File
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 
 class LawnchairBugReporter(private val context: Context) {
 
@@ -38,8 +40,15 @@ class LawnchairBugReporter(private val context: Context) {
 
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            sendNotification(throwable)
-            defaultHandler?.uncaughtException(thread, throwable)
+            dispatchUncaughtException(
+                defaultHandler,
+                thread,
+                throwable,
+                preHandler = { sendNotification(throwable) },
+                onPreHandlerFailure = { failure ->
+                    Log.w(TAG, "Uncaught exception pre-handler error", failure)
+                },
+            )
         }
 
         removeDismissedLogs()
@@ -68,7 +77,7 @@ class LawnchairBugReporter(private val context: Context) {
 
     inner class Report(val error: String, val throwable: Throwable? = null) {
 
-        private val fileName = "$appName bug report ${SimpleDateFormat.getDateTimeInstance().format(Date())}"
+        private val fileName = buildReportFileName(appName, Date())
 
         fun generateBugReport(): BugReport? {
             val contents = writeContents()
@@ -85,12 +94,7 @@ class LawnchairBugReporter(private val context: Context) {
 
         private fun save(contents: String, id: Int): File? {
             val dest = File(logsFolder, String.format("%x", id))
-            dest.mkdirs()
-
-            val file = File(dest, "$fileName.txt")
-            if (!file.createNewFile()) return null
-            file.writeText(contents)
-            return file
+            return writeReportFile(dest, fileName, contents)
         }
 
         private fun writeContents() = StringBuilder()
@@ -127,5 +131,59 @@ class LawnchairBugReporter(private val context: Context) {
 
     companion object {
         val INSTANCE = MainThreadInitializedObject(::LawnchairBugReporter)
+
+        private const val TAG = "LawnchairBugReporter"
+    }
+}
+
+/**
+ * Locale-independent, filesystem-safe report file name. The current-locale
+ * date-time instance can emit path separators (e.g. "2026/09/07" in ja), which
+ * makes File.createNewFile() throw; Issue #242.
+ */
+internal fun buildReportFileName(appName: String, date: Date): String = "$appName bug report ${SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(date)}"
+
+/**
+ * Writes the report file under [dest] using the same [fileName] that headed the
+ * report contents. Returns null on any IOException (e.g. unwritable dest) or on
+ * createNewFile() == false (same id collision), degrading to the file-less
+ * notification path instead of throwing from the crash pre-handler.
+ */
+internal fun writeReportFile(dest: File, fileName: String, contents: String): File? = try {
+    dest.mkdirs()
+    val file = File(dest, "$fileName.txt")
+    if (file.createNewFile()) {
+        file.writeText(contents)
+        file
+    } else {
+        null
+    }
+} catch (ignored: IOException) {
+    null
+}
+
+/**
+ * Runs the crash [preHandler] work in isolation and guarantees exactly one
+ * delegation of the original [throwable] to [defaultHandler]: preHandler throws
+ * are handed to [onPreHandlerFailure], and a throw from the failure logger
+ * itself is swallowed (recording is best effort) so delegation still wins.
+ */
+internal fun dispatchUncaughtException(
+    defaultHandler: Thread.UncaughtExceptionHandler?,
+    thread: Thread,
+    throwable: Throwable,
+    preHandler: () -> Unit,
+    onPreHandlerFailure: (Throwable) -> Unit = {},
+) {
+    try {
+        try {
+            preHandler()
+        } catch (t: Throwable) {
+            onPreHandlerFailure(t)
+        }
+    } catch (ignored: Throwable) {
+        // Nothing safe can record a failure of the failure logger; delegation wins.
+    } finally {
+        defaultHandler?.uncaughtException(thread, throwable)
     }
 }

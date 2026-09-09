@@ -1,7 +1,7 @@
 # Quality Strategy
 
 > Status: Accepted
-> Updated: 2026-09-08 (current CI and high-risk gates verified in Issues #41 and #43; operational handoff contract recorded in Issue #251)
+> Updated: 2026-09-09 (bugreport JVM test filter added to organizer unit-test gate, Issue #242; current CI and high-risk gates verified in Issues #41 and #43; operational handoff contract recorded in Issue #251)
 
 ## Quality order
 
@@ -113,6 +113,7 @@ Issue #41 で organizer JVM test gateをCIに追加した。`.github/workflows/c
 - この `--tests` filterは `app.lawnchair.organizer.planning.*`（contract/property test）と純粋な `application` JVM testの両方を含み、同package treeへ追加された新testは自動的にこのgateに加わる。
 - jobは `final-status` 集約に接続されており、test失敗はmergeをblockする。docs/spec-only PRではpath filterによりskipされ、repository contract検証のみ走る。
 - 実行結果の正本はGitHub Actionsの当該run URLとする（PR本文に記録する）。instrumentation test（Issue #14）とemulator実行はこのgateの対象外である。
+- Issue #242 で `app.lawnchair.ui.preferences.navigation.*`（既存）に続き `app.lawnchair.bugreport.*` を同じjobのfilterへ追加した。bugreport packageのJVM test (`tests/unit/app/lawnchair/bugreport/`) もこのgateで実行される。
 
 ## Organizer connected-test CI gate
 
