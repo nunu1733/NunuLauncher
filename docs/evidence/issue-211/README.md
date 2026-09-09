@@ -22,7 +22,7 @@ emulator system dialogs cannot overlay the evidence.
 | `en-03-dialog-folder-row.png` | en-US | The same dialog after tapping the folder-child `Google` row: `Target: Google` + `Inside a folder, position 1` + `Folder: F · Home screen 2 · Position: row 1, column 1` — the dialog text alone distinguishes the two rows, including the colliding-description case. |
 | `ja-01-dialog-home-screen-row.png` | ja-JP | `対象: Google` / `ホーム画面 1` / `位置: 1 行 1 列` / `現在の状態: ロック解除済み`. |
 | `ja-02-dialog-folder-row.png` | ja-JP | `対象: Google` / `フォルダ内の位置 1` / `フォルダ: F · ホーム画面 2 · 位置: 1 行 1 列` — ja copy follows the #161 glossary (`配置`, `フォルダ内の位置`). |
-| `ja-03-dialog-200-percent-font-scale.png` | en-US | The dialog at 200% font scale (dialog-window capture): the target block including the disambiguator line wraps without truncation or layout breakage. Captured while the device locale was en-US; the ja normal-scale captures above already exercise the localized strings. |
+| `en-04-dialog-200-percent-font-scale.png` | en-US | The dialog at 200% font scale (dialog-window capture): the target block including the disambiguator line wraps without truncation or layout breakage. The ja normal-scale captures above already exercise the localized strings. |
 
 Note: during capture the emulator repeatedly threw transient ANR dialogs
 (System UI / Pixel Launcher) — the same pre-existing environment behavior

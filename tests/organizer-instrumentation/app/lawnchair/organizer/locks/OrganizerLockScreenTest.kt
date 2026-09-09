@@ -258,7 +258,8 @@ class OrganizerLockScreenTest {
      * position, render one identical description. The dialog must resolve
      * them with the disambiguator line.
      */
-    private fun collidingTitleState(): LayoutState {        val folderG = appItem(
+    private fun collidingTitleState(): LayoutState {
+        val folderG = appItem(
             "201",
             title = "G",
             kind = CanonicalItemKind.Folder,
