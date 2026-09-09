@@ -173,7 +173,7 @@ uncaught exception (thread, throwable)
 - [x] Shell 接続の diff review: `save()` が Report 保持の同一 `fileName` を header と保存先の双方に使用していること (新たな `Date()` 生成の混入なし)。抽出関数単体 test では検出されない接続箇所 — 独立監査と委託レビューで再確認する
 - [x] CI filter 追加 (`app.lawnchair.bugreport.*`) と quality-strategy.md の記録
 - [x] Full relevant verification completed: `spotlessCheck` + bugreport targeted test + CI gate と同一 filter での全 unit test + `assembleLawnWithQuickstepGithubDebug` が成功 (実行結果は PR 本文へ記録)
-- [ ] PR evidence and remaining risks recorded: `Closes #242`、AC ごと evidence、残余 risk (上流への同種 bug 報告は別 track である旨) を明記
+- [x] PR evidence and remaining risks recorded: PR #261 本文へ `Closes #242`、AC ごと evidence、CI run URL、残余 risk (上流への同種 bug 報告は別 track である旨) を記録
 
 ## Open questions (owner approval 時の判断事項)
 

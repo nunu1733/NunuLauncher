@@ -99,6 +99,18 @@ class BugReportFileNameTest {
     }
 
     @Test
+    fun `file name is identical across locales for the same instant`() {
+        val date = fixedDate()
+        val expected = buildReportFileName("Lawnchair", date)
+
+        for (locale in listOf(Locale.JAPAN, Locale.GERMANY, Locale("fi", "FI"), Locale("ar", "SA"))) {
+            Locale.setDefault(locale)
+
+            assertEquals("output changed under $locale", expected, buildReportFileName("Lawnchair", date))
+        }
+    }
+
+    @Test
     fun `header keeps a human readable timestamp`() {
         TimeZone.setDefault(TimeZone.getTimeZone("Asia/Tokyo"))
 

@@ -1,6 +1,6 @@
 ---
 issue: "#242"
-status: accepted
+status: implemented
 requirements: [R1-SAFE-FILENAME, R2-SAVE-SUCCESS, R3-PRE-HANDLER-ISOLATION, R4-GRACEFUL-DEGRADE, R5-RETENTION-CONTRACT, R6-NO-ORGANIZER-REGRESSION]
 risk: []
 updated: 2026-09-09
@@ -158,6 +158,7 @@ None。新たな permission・network・telemetry は追加しない。report �
 - 2026-09-09: Delegated review revision (code-reviewer-1 委託レビュー、Changes requested — 3 should-fix + 1 minor、いずれも JDK 21 実測 / コード照合つき): (1) **P2** — 失敗記録 (`onPreHandlerFailure`) 自体の失敗時には log 記録を保証できないため、AC-3・scenario・test oracle を「記録は best effort、再記録・再委譲せず委譲を優先」へ統一。(2) **P2** — `Locale.US` は timezone を固定しないため (同一 `Date(0)` が UTC と Asia/Tokyo で異なる出力になることを JDK 実測)、determinism 契約を「同一 `(appName, timestamp, default timezone)` 下」へ限定。UTC 固定はせず device-local 時刻の triage 価値を優先。(3) **P2** — plan の `save()` 委譲例が新たな `Date()` でファイル名を再生成しており、現行の「header と保存先が同一 `fileName`」契約を壊すため、保持済み `fileName` を渡すよう修正し、diff review 項目へ追加。(4) **P3** — `dest` 通常 file 先置き時の child 作成が throw する例外の具体型は環境依存 (`IOException: Not a directory` を JDK / macOS APFS で実測、`FileNotFoundException` 断定は誤り) のため、`IOException` に統一し assertion も `IOException` に限定。
 - 2026-09-09: Independent verification (code-reviewer-2 委託レビュー) が PASS。指摘の P3 整備 4 件 (Scope の timezone 修飾、front matter 日付、Verification AC-3 行への併記、`writeText` 失敗時の空 file 残留 edge の記録) を `a8e1ff5a02` で反映。
 - 2026-09-09: Approved by the Issue #242 owner (branch `issue-242-bugreport-crash-evidence` の commit `a8e1ff5a02` に対して)。実装を本 spec と [plan](./plan.md) に従って開始する。
+- 2026-09-09: Implementation completed ([PR #261](https://github.com/nunu1733/NunuLauncher/pull/261))。独立監査 (general-purpose subagent、別 session) は PASS with findings (`docs/assessment/pr-261-bugreport-crash-evidence.md`)、実装レビューは委託レビューが担当 (code-reviewer-1 が基盤エラーで疎通不能のため、owner 指示のフォールバック手順により code-reviewer-2 が実施) し PASS (APPROVE WITH NOTES、P3-1 の status 更新と P3-2 の locale 間同一出力 test を反映)。CI は head 上の全 job 成功 ([run 34291853134](https://github.com/nunu1733/NunuLauncher/actions/runs/34291853134))。status を `implemented` へ更新。
 
 ## References
 
