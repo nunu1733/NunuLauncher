@@ -5,7 +5,7 @@
 
 - Auditor: 独立監査セッション (general-purpose subagent、実装セッションとは別の作業主体。solo保守の独立session規定に基づく)
 - PR: https://github.com/nunu1733/NunuLauncher/pull/262
-- Head SHA: e27ceda8147070c55603b3cb905adf04604a7cbd
+- Head SHA: b2eb1851e8b3ef2ac4e140a9f61118a665c74f54
 - CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34314576878
 - Criteria: specs/231-applied-result-outcome/spec.md — AC-1, AC-2, AC-3, AC-4, AC-5, AC-6, AC-7, AC-8
 
@@ -50,4 +50,8 @@ CI 証拠 (同一 head SHA):
 
 ## Overall verdict
 
-**PASS** — AC-1..AC-8 を対象 head `e27ceda814` の diff に対して検証済み。CI `final-status` が同一 commit で成功、zero-write 主張は成立、独立再実行 (spotless + 962 unit tests) は green。
+**PASS** — AC-1..AC-8 を対象 head の diff に対して検証済み。CI `final-status` が同一 commit で成功、zero-write 主張は成立、独立再実行 (spotless + 962 unit tests) は green。
+
+## Re-audit note (2026-09-09, review fix)
+
+Review finding 対応の delta `b50f26307c..b2eb1851e8` (test-only: `ManualOrganizationPreferencesInstrumentationTest.kt` — proposal-wording の不在/存在確認を `applied.summary` 実件数と組にし、非成功 test を 4 count 対称化) を同一監査セッションが再確認した。verdict は **PASS のまま** (AC-1/AC-5 の test 証拠はむしろ強化、AC-4/AC-6 は無変更、コード/strings/spec/evidence に差分なし)。`./gradlew spotlessCheck` → PASS、`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` → 962 tests / 0 failures を新 head で独立実行。code に対する先の CI 証拠 (run 34314576878, final-status success) は delta が test-only のため引き続き有効。新 head の CI run 34322893724 (High-risk gate 34322893725 は success) は push 時点で進行中。Head SHA を `b2eb1851e8` へ更新した。
