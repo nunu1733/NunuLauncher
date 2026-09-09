@@ -1349,6 +1349,34 @@ class ManualOrganizationPreferencesInstrumentationTest {
                 resolved,
             )
         }
+
+        // Issue #231: the applied-result plurals resolve in Japanese too, and
+        // the English quantities stay distinct for one vs other.
+        listOf(
+            R.plurals.manual_organization_applied_moved_count,
+            R.plurals.manual_organization_applied_preserved_count,
+            R.plurals.manual_organization_applied_new_folders_count,
+            R.plurals.manual_organization_applied_new_pages_count,
+        ).forEach { id ->
+            val resolved = japanese.resources.getQuantityString(id, 2, 2)
+            assertNotEquals(
+                "plurals resource $id falls back to English under a Japanese locale",
+                context.resources.getQuantityString(id, 2, 2),
+                resolved,
+            )
+        }
+        listOf(
+            R.plurals.manual_organization_applied_moved_count,
+            R.plurals.manual_organization_applied_preserved_count,
+            R.plurals.manual_organization_applied_new_folders_count,
+            R.plurals.manual_organization_applied_new_pages_count,
+        ).forEach { id ->
+            assertNotEquals(
+                "plurals resource $id ignores the one/other quantity distinction",
+                context.resources.getQuantityString(id, 1, 1),
+                context.resources.getQuantityString(id, 2, 2),
+            )
+        }
     }
 
     @Test
@@ -1474,6 +1502,171 @@ class ManualOrganizationPreferencesInstrumentationTest {
         )
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_stale_outcome)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_stale_proposal_not_reviewed)).assertIsDisplayed()
+    }
+
+    @Test
+    fun verifiedSuccessSurfaceReportsAppliedOutcomeInPastTense() {
+        // Issue #231 AC-1/AC-2/AC-6: after a verified apply the result surface
+        // reports the outcome in the completed tense with the applied plan's
+        // counts, and never re-renders the proposal's future-tense count lines.
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication()
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        runner.start()
+        awaitPreview(runner, context)
+        runner.confirm()
+        composeRule.waitUntil(5_000) {
+            (runner.state as? ManualOrganizationRun.State.Applied)?.result is ApplyResult.Applied
+        }
+
+        val applied = runner.state as ManualOrganizationRun.State.Applied
+        // Completed-tense count lines derived from the applied plan's summary.
+        composeRule.onNodeWithText(
+            context.resources.getQuantityString(
+                R.plurals.manual_organization_applied_moved_count,
+                applied.summary.movedCount,
+                applied.summary.movedCount,
+            ),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.resources.getQuantityString(
+                R.plurals.manual_organization_applied_preserved_count,
+                applied.summary.preservedCount,
+                applied.summary.preservedCount,
+            ),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.resources.getQuantityString(
+                R.plurals.manual_organization_applied_new_folders_count,
+                applied.summary.newFolderCount,
+                applied.summary.newFolderCount,
+            ),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.resources.getQuantityString(
+                R.plurals.manual_organization_applied_new_pages_count,
+                applied.summary.newPageCount,
+                applied.summary.newPageCount,
+            ),
+        ).assertIsDisplayed()
+
+        // The proposal's future-tense count lines must not appear as a result.
+        // Pair each resource with the applied summary's real count so the
+        // absence check covers the exact rendering a regression would show
+        // (review: a fixed value would only exclude the moved=1 variant).
+        listOf(
+            R.string.manual_organization_moved_count to applied.summary.movedCount,
+            R.string.manual_organization_preserved_count to applied.summary.preservedCount,
+            R.string.manual_organization_new_folders_count to applied.summary.newFolderCount,
+            R.string.manual_organization_new_pages_count to applied.summary.newPageCount,
+        ).forEach { (id, count) ->
+            composeRule.onAllNodesWithText(context.getString(id, count)).assertCountEquals(0)
+        }
+
+        // Unchanged rows keep their parity: heading, reason breakdown, and the
+        // persisting warning line (fixture plans one FALLBACK_CATEGORY warning).
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_apply_success)).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_moved_single_placement, applied.summary.movedCount),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_warning_fallback_category, 1),
+        ).assertIsDisplayed()
+    }
+
+    @Test
+    fun verifiedSuccessKeepsAppliedWordingAfterRecoveryPreviewCancel() {
+        // Issue #231 AC-3: returning to the applied surface (recovery preview
+        // cancel, or revisiting the screen after checking Home) re-renders the
+        // same completed-tense counts — the semantics never revert to proposal
+        // wording.
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication()
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        runner.start()
+        awaitPreview(runner, context)
+        runner.confirm()
+        composeRule.waitUntil(5_000) {
+            (runner.state as? ManualOrganizationRun.State.Applied)?.result is ApplyResult.Applied
+        }
+        val appliedMovedLine = context.resources.getQuantityString(
+            R.plurals.manual_organization_applied_moved_count,
+            1,
+            1,
+        )
+        composeRule.onNodeWithText(appliedMovedLine).assertIsDisplayed()
+
+        runner.beginRecoveryPreview()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.RecoveryPreview }
+        runner.cancelRecoveryPreview()
+        composeRule.waitUntil(5_000) {
+            (runner.state as? ManualOrganizationRun.State.Applied)?.result is ApplyResult.Applied
+        }
+        composeRule.onNodeWithText(appliedMovedLine).assertIsDisplayed()
+    }
+
+    @Test
+    fun nonSuccessApplyResultKeepsProposalSummaryWording() {
+        // Issue #231 AC-5: non-success results carried by State.Applied must not
+        // claim completed changes; they keep the existing outcome heading and
+        // proposal summary rendering.
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            applyResult = ApplyResult.RolledBack(
+                RunId(RUN_ID),
+                app.lawnchair.organizer.application.public.ApplyFailure.WRITE_FAILED,
+            )
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        runner.start()
+        awaitPreview(runner, context)
+        runner.confirm()
+        composeRule.waitUntil(5_000) {
+            (runner.state as? ManualOrganizationRun.State.Applied)?.result is ApplyResult.RolledBack
+        }
+        val applied = runner.state as ManualOrganizationRun.State.Applied
+
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_apply_rolled_back)).assertIsDisplayed()
+        // Proposal count lines keep rendering for non-success outcomes, paired
+        // with the plan summary's real counts (review: symmetry with the
+        // success-surface absence check).
+        listOf(
+            R.string.manual_organization_moved_count to applied.summary.movedCount,
+            R.string.manual_organization_preserved_count to applied.summary.preservedCount,
+            R.string.manual_organization_new_folders_count to applied.summary.newFolderCount,
+            R.string.manual_organization_new_pages_count to applied.summary.newPageCount,
+        ).forEach { (id, count) ->
+            composeRule.onNodeWithText(context.getString(id, count)).assertIsDisplayed()
+        }
+        // Completed-tense lines must not claim completed changes here.
+        listOf(
+            R.plurals.manual_organization_applied_moved_count to applied.summary.movedCount,
+            R.plurals.manual_organization_applied_preserved_count to applied.summary.preservedCount,
+            R.plurals.manual_organization_applied_new_folders_count to applied.summary.newFolderCount,
+            R.plurals.manual_organization_applied_new_pages_count to applied.summary.newPageCount,
+        ).forEach { (id, count) ->
+            composeRule.onAllNodesWithText(
+                context.resources.getQuantityString(id, count, count),
+            ).assertCountEquals(0)
+        }
     }
 
     @Test
