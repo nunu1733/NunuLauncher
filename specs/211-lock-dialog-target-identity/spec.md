@@ -194,11 +194,17 @@ Unsupported では省略する。表示 node 数が placement 種別で変化す
 その変化は種別の関数であり listing の関数ではないため、dialog 描画は
 決定的である。
 
-残余条件の認識: folder 名・app pair 名は user 編集可能で一意性を持たないため、
+残余衝突の解消 (PR #264 second review P1): folder 名・app pair 名は
+user 編集可能で一意性を持たないため、区別行に parent title だけを載せると、
 同名の parent が複数あり、そのそれぞれに同名 item が同 position で存在する
-場合は区別行も同一になる。この残余衝突の解消（例: parent 自身の位置を
-区別行へ含める）は、必要になった時点で別 Issue とする（plan review N-4、
-2026-09-09）。
+場合に dialog 文言が再び同一になる。よって folder / app pair の区別行は、
+parent title に**parent 自身の配置**（Desktop なら page + cell
+`Home screen N · row Y, column X`、Dock なら slot 番号）を連結する。
+これにより dialog の対象識別は「item title + rank + parent title +
+parent の page + parent の cell」の組になり、2 つの placement が完全に
+衝突するのは parent 同士が同一 page の同一 cell を共有する場合のみであるが、
+これは no overlap 不変条件により到達不能である。parent の placement が
+解決不能な場合のみ、title 導入のみに後退する（fail toward less detail）。
 
 ## Behavior scenarios
 
@@ -246,6 +252,22 @@ app pair member では `App pair: <parent title>`,
 
 And 同一 row description を持つ 2 行のダイアログは区別行によって相異なる
 文言になり、ダイアログ文言だけで対象を識別できる (D4, PR #264 review P1)。
+
+### Scenario: Same-named parents are resolved by the parent's own placement
+
+Given 同名の folder（または app pair）が 2 件あり、そのそれぞれに同名 item が
+同 position で存在する（row description、target title、parent title の
+すべてが同一になる）,
+
+When それぞれの行の確認ダイアログを開く,
+
+Then folder / app pair の区別行は parent title に parent 自身の配置
+（Desktop なら `Home screen N · row Y, column X`、Dock なら `Dock N`）を
+連結した文言になり、2 つの dialog text は parent の page・cell の違いで
+相異なる (D4, PR #264 second review P1)。
+
+And 2 つの placement が完全に衝突するのは parent 同士が同一 page の同一
+cell を共有する場合のみであり、これは no overlap 不変条件で到達不能である。
 
 ### Scenario: Dock and unsupported rows show no disambiguator
 
@@ -318,7 +340,7 @@ title と placement 概要は管理画面の行が既に表示している同一
 | AC | Acceptance criterion | Required evidence |
 |---|---|---|
 | AC-1 | `LockChangeDialog` (`Available` 経路) の本文先頭に、開いた行と同一の表示タイトルを導入する対象行と、同一の配置概要（`placementDescription` と同一合成値）を示す行が表示される。state / scope / effect / review intro は現行維持。 | `OrganizerLockScreenTest` への Compose test 追加（同名 fixture で対象行の title と description を assert）+ screenshot |
-| AC-2 | 同名 placement が複数ある fixture で、ダイアログの配置概要行が開いた行の description と等しく、他方と異なる。ダイアログ文言だけで対象を区別して説明できる。**row description が同一になる衝突（同 page 別 cell / 別 folder 同 position）でも、区別行 (D4) により区別できる。** | `OrganizerLockScreenTest` の同名 fixture test: (a) 行 description == dialog 内 description、(b) 他方の description は dialog に現れない、(c) collision fixture（同 page 別 cell、別 folder 同 position）で区別行が tap 行ごとに正しく出ること |
+| AC-2 | 同名 placement が複数ある fixture で、ダイアログの配置概要行が開いた行の description と等しく、他方と異なる。ダイアログ文言だけで対象を区別して説明できる。**row description が同一になる衝突（同 page 別 cell / 別 folder 同 position / 同名 parent × 同名 child 同 position / 同名 app pair × 同名 member）でも、区別行 (D4, parent 自身の配置連結を含む) により区別できる。** | `OrganizerLockScreenTest` の同名 fixture test: (a) 行 description == dialog 内 description、(b) 他方の description は dialog に現れない、(c) collision fixture（同 page 別 cell、別 folder 同 position、同名 parent × 同名 child、同名 app pair × 同名 member）で区別行が tap 行ごとに正しく出ること |
 | AC-3 | ダイアログを開くだけでは書込みが発生しない（既存契約の維持）。confirm / Cancel 動作は現行どおり。 | 既存 `unknownReviewResolvesOnlyThroughConfirmedDialog` / `busyFailureRendersLocalizedMessage` の継続成功 |
 | AC-4 | 対象行（title 導入行・配置概要行・D4 区別行）はそれぞれ独立した `Text` node として TalkBack から読める。strings は en/ja で同時に追加する。 | Compose semantics test（各行の単独 exact-match 分離 assert）+ strings diff (values/ + values-ja/) |
 | AC-5 | locks module・`LockStateEntry`・`LockAuthoringModule` 契約・DB への変更がない。表示のみの変更である。 | diff review（`organizer/locks/**` と `organizer/application/**` への変更ゼロ）+ 既存 JVM gate の継続成功 |
@@ -328,7 +350,7 @@ title と placement 概要は管理画面の行が既に表示している同一
 | AC | Automated/manual evidence |
 |---|---|
 | AC-1 | `OrganizerLockScreenTest` 新規 test（dialog 表示後、title 導入 string + 行 description の assert）、en/ja screenshot |
-| AC-2 | `OrganizerLockScreenTest` 新規 test（同名 2 行 fixture: tap 行の description が dialog に現れること、非 tap 行の description が現れないこと）+ collision fixture test（同 page 別 cell / 別 folder 同 position で区別行を assert） |
+| AC-2 | `OrganizerLockScreenTest` 新規 test（同名 2 行 fixture: tap 行の description が dialog に現れること、非 tap 行の description が現れないこと）+ collision fixture test（同 page 別 cell / 別 folder 同 position / 同名 parent / 同名 app pair で区別行を assert） |
 | AC-3 | 既存 test 群の継続成功（書込み確認ダイアログの契約 oracle） |
 | AC-4 | Compose test での node 分離 assert + strings diff (values / values-ja 同期) |
 | AC-5 | diff review + `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` 継続成功 |
@@ -370,3 +392,8 @@ None（spec 時点で確定）。D1–D3 が値の供給経路、node 構成、�
   screenshot を gate 経由で再撮影・差し替え (200% font scale の wrap 確認を
   区別行込みで実施)。C-2: Change history の文字化け 1 文字を修正。
   N-4 の残余衝突の認識を D4 へ追記。
+- 2026-09-09: PR #264 second review 対応 (P1)。parent title のみの区別行は
+  同名 parent で再衝突するため、D4 を改訂し区別行へ parent 自身の配置
+  (Desktop: page + cell / Dock: slot) を連結する規約へ変更。AC-2 evidence と
+  scenario に同名 parent・同名 app pair の衝突 class を追加。残余衝突は
+  no overlap 不変条件により到達不能であることを明記。

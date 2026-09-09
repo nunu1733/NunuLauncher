@@ -62,7 +62,7 @@
 
 | File | 変更 |
 |---|---|
-| `lawnchair/src/app/lawnchair/ui/preferences/destinations/PlacementLockPreferences.kt` | ① `LockChangeDialog` の `Available` 経路で、本文 `Text` の前に 2 つの `Text` node を追加: (a) `organizer_lock_dialog_target_title` で title (`entry.title.textOrFallback(entry)` と同一規則) を導入する行、(b) `placementDescription(entry, profileLabel)` と**同一呼び出し**の配置概要行。② `LockChangeDialog` の呼び出し側 (`PlacementLockPreferences`) から `profileLabels[entry.profile.value]` を引数で渡す。③ `buildString` の既存本文 (state + scope + effect、UNKNOWN は review intro 追加) は現行のまま第 3 node とする。④ **Revision 4 (D4)**: 配置概要行の直後に D4 区別行を追加 — Desktop は `organizer_lock_dialog_target_position` (cell.y+1 / cell.x+1)、folder child は `organizer_lock_dialog_target_folder` (listing map から parent title 解決、fallback は raw id)、app pair member は `organizer_lock_dialog_target_app_pair` (同様)。Dock / Unsupported では区別行を出さない。呼び出し側からは解決済みの `parentTitle` (`parentTitleOf(entry, entries.orEmpty())` の結果) を引数で渡す。 |
+| `lawnchair/src/app/lawnchair/ui/preferences/destinations/PlacementLockPreferences.kt` | ① `LockChangeDialog` の `Available` 経路で、本文 `Text` の前に 2 つの `Text` node を追加: (a) `organizer_lock_dialog_target_title` で title (`entry.title.textOrFallback(entry)` と同一規則) を導入する行、(b) `placementDescription(entry, profileLabel)` と**同一呼び出し**の配置概要行。② `LockChangeDialog` の呼び出し側 (`PlacementLockPreferences`) から `profileLabels[entry.profile.value]` を引数で渡す。③ `buildString` の既存本文 (state + scope + effect、UNKNOWN は review intro 追加) は現行のまま第 3 node とする。④ **Revision 4 (D4)**: 配置概要行の直後に D4 区別行を追加 — Desktop は `organizer_lock_dialog_target_position` (cell.y+1 / cell.x+1)、folder child は `organizer_lock_dialog_target_folder` (listing map から parent title 解決、fallback は raw id)、app pair member は `organizer_lock_dialog_target_app_pair` (同様)。Dock / Unsupported では区別行を出さない。呼び出し側からは解決済みの `parentTitle` と `parentPlacement` (`parentTitleOf` / `parentPlacementOf` の結果) を引数で渡す。区別行は parent title に parent 自身の配置を連結する (second review P1): Desktop parent は `Home screen N · row Y, column X`、Dock parent は `Dock N`。 |
 | `lawnchair/res/values/strings.xml` | `organizer_lock_dialog_target_title` + Revision 4 の 3 string (`_target_position` / `_target_folder` / `_target_app_pair`) 追加 (値は下表。実装時に #161 style guide で最終確認)。 |
 | `lawnchair/res/values-ja/strings.xml` | 同 key の ja を同時追加 (#123 契約)。 |
 | `tests/organizer-instrumentation/app/lawnchair/organizer/locks/OrganizerLockScreenTest.kt` | 同名 fixture (下記) と新規 test 2 件を追加。既存 4 test は無変更で継続成功させる。 |
@@ -249,3 +249,14 @@ git submodule update --init --recursive
 - 文言の機械テスト限界: description 値の en/ja での自然さは
   #161 の LQA 規約（style guide + glossary）に依存し、機械 test では
   検証しない。screenshot + spec 承認時の文言確認で担保する。
+
+## Revision 5 (2026-09-09): second review P1 対応
+
+区別行へ parent 自身の配置を連結: `parentPlacementOf(entry, listing)` を新設し、
+folder / app pair の区別行を `Folder: <title> · Home screen N · row Y, column X`
+(または `App pair: …`) 形式へ変更 (`shortParentLocation`)。Dock parent は
+`Dock N`。`collidingTitleState()` へ同名 folder "Same"×2 (p1 の別 cell) +
+同名 child 同 rank、同名 app pair "Duo"×2 (p2 の別 cell) + 同名 member を
+追加し、`dialogResolvesCollidingDescriptionsWithDisambiguator` を拡張
+(区別行全文の exact match assert)。残余衝突は parent 同士が同一 cell を
+共有する場合のみで、no overlap 不変条件により到達不能。

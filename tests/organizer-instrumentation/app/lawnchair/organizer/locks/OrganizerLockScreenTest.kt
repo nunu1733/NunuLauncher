@@ -17,12 +17,14 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.ApplicationPageRef
+import app.lawnchair.organizer.application.public.AppPairMemberState
 import app.lawnchair.organizer.application.public.CanonicalItemKind
 import app.lawnchair.organizer.application.public.CanonicalItemState
 import app.lawnchair.organizer.application.public.ItemAvailability
 import app.lawnchair.organizer.application.public.LayoutState
 import app.lawnchair.organizer.application.public.ModifiedAtMillis
 import app.lawnchair.organizer.application.public.OptionalBytes
+import app.lawnchair.organizer.application.public.OptionalSnapPosition
 import app.lawnchair.organizer.application.public.OptionalText
 import app.lawnchair.organizer.application.public.OrganizerLockState
 import app.lawnchair.organizer.application.public.PageState
@@ -32,6 +34,7 @@ import app.lawnchair.organizer.application.public.ProfileState
 import app.lawnchair.organizer.application.public.RankedMember
 import app.lawnchair.organizer.application.public.StructureState
 import app.lawnchair.organizer.application.public.WidgetState
+import app.lawnchair.organizer.planning.SplitStage
 import app.lawnchair.organizer.locks.LockEffectNote
 import app.lawnchair.organizer.locks.LockTargetState
 import app.lawnchair.organizer.locks.LockWriteOutcome
@@ -255,8 +258,7 @@ class OrganizerLockScreenTest {
      * position, render one identical description. The dialog must resolve
      * them with the disambiguator line.
      */
-    private fun collidingTitleState(): LayoutState {
-        val folderG = appItem(
+    private fun collidingTitleState(): LayoutState {        val folderG = appItem(
             "201",
             title = "G",
             kind = CanonicalItemKind.Folder,
@@ -298,18 +300,100 @@ class OrganizerLockScreenTest {
         )
         val inG = appItem(
             "103",
-            title = "Google",
+            title = "FChild",
             placement = PlacementState.FolderChild(ApplicationItemRef.PersistentItem(ItemId("201")), 0),
         )
         val inH = appItem(
             "104",
-            title = "Google",
+            title = "FChild",
             placement = PlacementState.FolderChild(ApplicationItemRef.PersistentItem(ItemId("202")), 0),
+        )
+        // Second review P1: parent titles are not unique, so two same-named
+        // folders each holding a same-named child at the same position must
+        // still resolve through the parent's own placement.
+        val sameFolderA = appItem(
+            "301",
+            title = "Same",
+            kind = CanonicalItemKind.Folder,
+            structure = StructureState.FolderMembers(emptyList()),
+            placement = PlacementState.Workspace(
+                page = ApplicationPageRef.PersistentPage(PageId("p1")),
+                cell = GridCell(0, 2),
+                span = GridSpan(1, 1),
+            ),
+        )
+        val sameFolderB = appItem(
+            "302",
+            title = "Same",
+            kind = CanonicalItemKind.Folder,
+            structure = StructureState.FolderMembers(emptyList()),
+            placement = PlacementState.Workspace(
+                page = ApplicationPageRef.PersistentPage(PageId("p1")),
+                cell = GridCell(2, 2),
+                span = GridSpan(1, 1),
+            ),
+        )
+        val inSameA = appItem(
+            "303",
+            title = "SChild",
+            placement = PlacementState.FolderChild(ApplicationItemRef.PersistentItem(ItemId("301")), 0),
+        )
+        val inSameB = appItem(
+            "304",
+            title = "SChild",
+            placement = PlacementState.FolderChild(ApplicationItemRef.PersistentItem(ItemId("302")), 0),
+        )
+        // …and the app pair class from the first review: two same-named pairs
+        // on the workspace, each holding a same-named member.
+        val pairARef = ApplicationItemRef.PersistentItem(ItemId("401"))
+        val pairBRef = ApplicationItemRef.PersistentItem(ItemId("402"))
+        val pairA = appItem(
+            "401",
+            title = "Duo",
+            kind = CanonicalItemKind.AppPair,
+            structure = StructureState.AppPairMembers(
+                members = listOf(
+                    AppPairMemberState(ApplicationItemRef.PersistentItem(ItemId("403")), SplitStage.TOP_OR_LEFT),
+                ),
+                snapPosition = OptionalSnapPosition.Absent,
+            ),
+            placement = PlacementState.Workspace(
+                page = ApplicationPageRef.PersistentPage(PageId("p2")),
+                cell = GridCell(0, 0),
+                span = GridSpan(1, 1),
+            ),
+        )
+        val pairB = appItem(
+            "402",
+            title = "Duo",
+            kind = CanonicalItemKind.AppPair,
+            structure = StructureState.AppPairMembers(
+                members = listOf(
+                    AppPairMemberState(ApplicationItemRef.PersistentItem(ItemId("404")), SplitStage.TOP_OR_LEFT),
+                ),
+                snapPosition = OptionalSnapPosition.Absent,
+            ),
+            placement = PlacementState.Workspace(
+                page = ApplicationPageRef.PersistentPage(PageId("p2")),
+                cell = GridCell(2, 0),
+                span = GridSpan(1, 1),
+            ),
+        )
+        val inPairA = appItem(
+            "403",
+            title = "PChild",
+            placement = PlacementState.AppPairChild(parent = pairARef, stage = SplitStage.TOP_OR_LEFT),
+        )
+        val inPairB = appItem(
+            "404",
+            title = "PChild",
+            placement = PlacementState.AppPairChild(parent = pairBRef, stage = SplitStage.TOP_OR_LEFT),
         )
         return LayoutState(
             pages = listOf(
                 PageState(ApplicationPageRef.PersistentPage(PageId("p0")), PageOrder(0)),
                 PageState(ApplicationPageRef.PersistentPage(PageId("p1")), PageOrder(1)),
+                PageState(ApplicationPageRef.PersistentPage(PageId("p2")), PageOrder(2)),
             ),
             profiles = listOf(ProfileState(ProfileId("personal"), ProfileAvailability.AVAILABLE)),
             deviceCapabilities = app.lawnchair.organizer.application.public.DeviceCapabilities(
@@ -320,7 +404,22 @@ class OrganizerLockScreenTest {
                 4,
                 app.lawnchair.organizer.application.public.DeviceOrientation.PORTRAIT,
             ),
-            items = listOf(folderG, folderH, cellA, cellB, inG, inH),
+            items = listOf(
+                folderG,
+                folderH,
+                cellA,
+                cellB,
+                inG,
+                inH,
+                sameFolderA,
+                sameFolderB,
+                inSameA,
+                inSameB,
+                pairA,
+                pairB,
+                inPairA,
+                inPairB,
+            ),
         )
     }
 
@@ -480,7 +579,6 @@ class OrganizerLockScreenTest {
         setContent(LockAuthoringModule(capture, writer))
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val homeDescription = context.getString(R.string.organizer_lock_screen_placement_desktop, 1)
-        val folderDescription = context.getString(R.string.organizer_lock_screen_placement_folder, 1)
         val targetTitle = context.getString(R.string.organizer_lock_dialog_target_title, "Google")
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText(homeDescription).fetchSemanticsNodes().isNotEmpty()
@@ -503,28 +601,83 @@ class OrganizerLockScreenTest {
             ).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
-        // Two same-named icons in different folders at the same position
-        // share "Inside a folder, position 1"; the disambiguator resolves
-        // them by the parent folder's title.
+        // Two same-named "FChild" icons in differently-named folders at the
+        // same position share the row description; the disambiguator resolves
+        // them by the parent folder's title. The pair of rows is brought on
+        // screen by scrolling to the first row's unique-ish sibling title.
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("FChild"))
         composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithText(folderDescription).fetchSemanticsNodes().size == 2
+            composeRule.onAllNodesWithText("FChild").fetchSemanticsNodes().size == 2
         }
-        composeRule.onAllNodesWithText(folderDescription)[0].performClick()
+        val home2Description = context.getString(R.string.organizer_lock_screen_placement_desktop, 2)
+        composeRule.onAllNodesWithText("FChild")[0].performClick()
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText(
-                context.getString(R.string.organizer_lock_dialog_target_folder, "G"),
+                context.getString(R.string.organizer_lock_dialog_target_folder, "G") +
+                    " · " + home2Description + " · " +
+                    context.getString(R.string.organizer_lock_dialog_target_position, 1, 1),
             ).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
-        composeRule.onAllNodesWithText(folderDescription)[1].performClick()
+        composeRule.onAllNodesWithText("FChild")[1].performClick()
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText(
-                context.getString(R.string.organizer_lock_dialog_target_folder, "H"),
+                context.getString(R.string.organizer_lock_dialog_target_folder, "H") +
+                    " · " + home2Description + " · " +
+                    context.getString(R.string.organizer_lock_dialog_target_position, 1, 3),
             ).fetchSemanticsNodes().isNotEmpty()
         }
-        // Listing order (LockReviewEntrySortKey) sorts desktop rows before
-        // folder children, so index 0/1 within each description group is
-        // deterministic: cell (0,0) then (3,1); folder G then folder H.
+        composeRule.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
+        // Second review P1: two same-named folders ("Same") each holding a
+        // same-named child at the same position produce identical title +
+        // description + parent title; the parent's own placement appended to
+        // the disambiguator is the distinguishing part.
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("SChild"))
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("SChild").fetchSemanticsNodes().size == 2
+        }
+        composeRule.onAllNodesWithText("SChild")[0].performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.organizer_lock_dialog_target_folder, "Same") +
+                    " · " + home2Description + " · " +
+                    context.getString(R.string.organizer_lock_dialog_target_position, 3, 1),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
+        composeRule.onAllNodesWithText("SChild")[1].performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.organizer_lock_dialog_target_folder, "Same") +
+                    " · " + home2Description + " · " +
+                    context.getString(R.string.organizer_lock_dialog_target_position, 3, 3),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
+        // First review class: two same-named app pairs ("Duo") each holding a
+        // same-named member share the "In an app pair" description; the
+        // disambiguator resolves them by pair title plus the pair's placement.
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("PChild"))
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("PChild").fetchSemanticsNodes().size == 2
+        }
+        composeRule.onAllNodesWithText("PChild")[0].performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.organizer_lock_dialog_target_app_pair, "Duo") +
+                    " · " + context.getString(R.string.organizer_lock_screen_placement_desktop, 3) + " · " +
+                    context.getString(R.string.organizer_lock_dialog_target_position, 1, 1),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
+        composeRule.onAllNodesWithText("PChild")[1].performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.organizer_lock_dialog_target_app_pair, "Duo") +
+                    " · " + context.getString(R.string.organizer_lock_screen_placement_desktop, 3) + " · " +
+                    context.getString(R.string.organizer_lock_dialog_target_position, 1, 3),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
         assertEquals(0, writer.writes.size)
     }
 

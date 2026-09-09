@@ -230,11 +230,13 @@ fun PlacementLockPreferences(
     val entry = dialogEntry
     val explanation = dialogExplanation
     if (entry != null && explanation != null) {
+        val listing = entries.orEmpty()
         LockChangeDialog(
             entry = entry,
             explanation = explanation,
             profileLabel = profileLabels[entry.profile.value],
-            parentTitle = parentTitleOf(entry, entries.orEmpty()),
+            parentTitle = parentTitleOf(entry, listing),
+            parentPlacement = parentPlacementOf(entry, listing),
             onDismiss = {
                 dialogEntry = null
                 dialogExplanation = null
@@ -311,6 +313,7 @@ private fun LockChangeDialog(
     explanation: LockExplanation,
     profileLabel: String?,
     parentTitle: String?,
+    parentPlacement: LockPlacementSummary?,
     onDismiss: () -> Unit,
     onConfirm: (LockTargetState, UserReviewedIntent) -> Unit,
 ) {
@@ -357,8 +360,10 @@ private fun LockChangeDialog(
                     // same-named placements are distinguishable while the row
                     // itself is covered. The disambiguator line (PR #264 review
                     // P1) adds the detail the row description abstracts away —
-                    // cell for desktop rows, parent title for folder and app
-                    // pair rows — so colliding descriptions still resolve.
+                    // cell for desktop rows, parent title plus the parent's own
+                    // placement for folder and app pair rows (second review P1:
+                    // parent titles are user-editable and not unique) — so
+                    // colliding descriptions still resolve.
                     Column {
                         Text(
                             stringResource(
@@ -367,7 +372,7 @@ private fun LockChangeDialog(
                             ),
                         )
                         Text(placementDescription(entry, profileLabel))
-                        dialogTargetDisambiguator(entry, parentTitle)?.let { Text(it) }
+                        dialogTargetDisambiguator(entry, parentTitle, parentPlacement)?.let { Text(it) }
                         Spacer(Modifier.height(8.dp))
                         Text(if (entry.stored == OrganizerLockState.UNKNOWN) "$reviewIntro\n\n$body" else body)
                     }
@@ -471,24 +476,56 @@ private fun placementDescription(entry: LockStateEntry, profileLabel: String?): 
  * placements, from the detail [LockPlacementSummary] already carries.
  */
 @Composable
-private fun dialogTargetDisambiguator(entry: LockStateEntry, parentTitle: String?): String? = when (val p = entry.placement) {
+private fun dialogTargetDisambiguator(
+    entry: LockStateEntry,
+    parentTitle: String?,
+    parentPlacement: LockPlacementSummary?,
+): String? = when (val p = entry.placement) {
     is LockPlacementSummary.Desktop -> stringResource(
         R.string.organizer_lock_dialog_target_position,
         p.cell.y + 1,
         p.cell.x + 1,
     )
 
-    is LockPlacementSummary.InFolder -> stringResource(
-        R.string.organizer_lock_dialog_target_folder,
-        parentTitle ?: p.parent.value,
-    )
+    is LockPlacementSummary.InFolder -> listOfNotNull(
+        stringResource(
+            R.string.organizer_lock_dialog_target_folder,
+            parentTitle ?: p.parent.value,
+        ),
+        // Second review P1: parent titles are user-editable and not unique,
+        // so the parent's own placement is appended when it is resolvable.
+        parentPlacement?.let { shortParentLocation(it) },
+    ).joinToString(" · ")
 
-    is LockPlacementSummary.InAppPair -> stringResource(
-        R.string.organizer_lock_dialog_target_app_pair,
-        parentTitle ?: p.parent.value,
-    )
+    is LockPlacementSummary.InAppPair -> listOfNotNull(
+        stringResource(
+            R.string.organizer_lock_dialog_target_app_pair,
+            parentTitle ?: p.parent.value,
+        ),
+        parentPlacement?.let { shortParentLocation(it) },
+    ).joinToString(" · ")
 
     is LockPlacementSummary.DockSlot, is LockPlacementSummary.Unsupported -> null
+}
+
+/** Short user-facing location of a parent row (desktop page + cell, or dock slot). */
+@Composable
+private fun shortParentLocation(parent: LockPlacementSummary): String? = when (parent) {
+    is LockPlacementSummary.Desktop -> stringResource(
+        R.string.organizer_lock_screen_placement_desktop,
+        (parent.pageOrder ?: 0) + 1,
+    ) + " · " + stringResource(
+        R.string.organizer_lock_dialog_target_position,
+        parent.cell.y + 1,
+        parent.cell.x + 1,
+    )
+
+    is LockPlacementSummary.DockSlot -> stringResource(
+        R.string.organizer_lock_screen_placement_dock,
+        parent.rank + 1,
+    )
+
+    else -> null
 }
 
 /** Parent row title for folder / app pair placements, resolved from the already-loaded listing. */
@@ -504,6 +541,16 @@ private fun parentTitleOf(entry: LockStateEntry, listing: List<LockStateEntry>):
         OptionalText.Absent -> ""
     }
     return title.ifBlank { null }
+}
+
+/** Parent row's own placement for folder / app pair placements, resolved from the already-loaded listing. */
+private fun parentPlacementOf(entry: LockStateEntry, listing: List<LockStateEntry>): LockPlacementSummary? {
+    val parentId = when (val p = entry.placement) {
+        is LockPlacementSummary.InFolder -> p.parent
+        is LockPlacementSummary.InAppPair -> p.parent
+        else -> return null
+    }
+    return listing.firstOrNull { it.item == parentId }?.placement
 }
 
 private fun OptionalText.textOrFallback(entry: LockStateEntry): String = when (this) {
