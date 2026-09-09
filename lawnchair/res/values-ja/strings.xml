@@ -119,6 +119,19 @@
     <string name="manual_organization_recapture">もう一度読み込んで確認</string>
     <string name="manual_organization_recapture_summary">現在のホームレイアウトを読み込み、確認用の新しい整理案を作成します。</string>
     <string name="manual_organization_apply_success">整理を適用し、検証しました。</string>
+    <!-- Issue #231: completed-tense counts on the verified success surface -->
+    <plurals name="manual_organization_applied_moved_count">
+        <item quantity="other">移動した配置: %1$d件</item>
+    </plurals>
+    <plurals name="manual_organization_applied_preserved_count">
+        <item quantity="other">保持した配置: %1$d件</item>
+    </plurals>
+    <plurals name="manual_organization_applied_new_folders_count">
+        <item quantity="other">作成した新しいフォルダ: %1$d個</item>
+    </plurals>
+    <plurals name="manual_organization_applied_new_pages_count">
+        <item quantity="other">作成した新しいホーム画面ページ: %1$d枚</item>
+    </plurals>
     <string name="manual_organization_apply_rejected">整理は適用されませんでした。</string>
     <string name="manual_organization_apply_rolled_back">整理を取り消しました。保存したレイアウトのままです。</string>
     <string name="manual_organization_apply_recovered">整理を完了できませんでした。保存したレイアウトを復元しました。</string>
