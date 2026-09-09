@@ -1,7 +1,7 @@
 # Plan: Issue #231 applied result outcome
 
 > Spec: [spec.md](./spec.md)
-> Status: accepted (Phase1 review で code-reviewer サブエージェントが APPROVE)
+> Status: implemented ([PR #262](https://github.com/nunu1733/NunuLauncher/pull/262) を merge commit `0f86386921` で squash merge。Phase1 review APPROVE、owner review 指摘対応済み)
 
 ## 現在の code の根拠
 
