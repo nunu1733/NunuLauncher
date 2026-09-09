@@ -645,6 +645,12 @@ class OrganizerLockScreenTest {
             ).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
+        // Cancel can leave the list scrolled; re-scroll before tapping the
+        // second same-named child (needed at 200% font scale).
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("SChild"))
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("SChild").fetchSemanticsNodes().size == 2
+        }
         composeRule.onAllNodesWithText("SChild")[1].performClick()
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText(
@@ -670,6 +676,11 @@ class OrganizerLockScreenTest {
             ).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
+        // Re-scroll for the second member row (needed at 200% font scale).
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("PChild"))
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("PChild").fetchSemanticsNodes().size == 2
+        }
         composeRule.onAllNodesWithText("PChild")[1].performClick()
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText(
