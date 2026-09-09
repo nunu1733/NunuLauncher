@@ -2,6 +2,9 @@
 
 > Spec: [spec.md](./spec.md) (status: draft → review経由でaccepted)
 > Status: planned (review承認後に実装開始)
+> Revision 3 (2026-09-09): 2nd plan review (head e6079a1277) への対応。F2 を
+> page p2 へ移動して F との "Home screen 2" 衝突を解消 (R-1)、protected 行の
+> 合成を `summary_double` に修正 (R-2)、変更 module 表の旧 key 名残存を修正 (R-3)。
 > Revision 2 (2026-09-09): plan review (Request changes, head be50cbd67e) への対応。
 > fixture の page 構成を修正して description を全行一意化 (M-1)、count assert を
 > 既定戦略として明記 (N-1)、string key を `_target_title` へ変更 (N-2)、
@@ -54,7 +57,7 @@
 
 | File | 変更 |
 |---|---|
-| `lawnchair/src/app/lawnchair/ui/preferences/destinations/PlacementLockPreferences.kt` | ① `LockChangeDialog` の `Available` 経路で、本文 `Text` の前に 2 つの `Text` node を追加: (a) `organizer_lock_dialog_target_description` で title (`entry.title.textOrFallback(entry)` と同一規則) を導入する行、(b) `placementDescription(entry, profileLabel)` と**同一呼び出し**の配置概要行。② `LockChangeDialog` の呼び出し側 (`PlacementLockPreferences`) から `profileLabels[entry.profile.value]` を引数で渡す。③ `buildString` の既存本文 (state + scope + effect、UNKNOWN は review intro 追加) は現行のまま第 3 node とする。 |
+| `lawnchair/src/app/lawnchair/ui/preferences/destinations/PlacementLockPreferences.kt` | ① `LockChangeDialog` の `Available` 経路で、本文 `Text` の前に 2 つの `Text` node を追加: (a) `organizer_lock_dialog_target_title` で title (`entry.title.textOrFallback(entry)` と同一規則) を導入する行、(b) `placementDescription(entry, profileLabel)` と**同一呼び出し**の配置概要行。② `LockChangeDialog` の呼び出し側 (`PlacementLockPreferences`) から `profileLabels[entry.profile.value]` を引数で渡す。③ `buildString` の既存本文 (state + scope + effect、UNKNOWN は review intro 追加) は現行のまま第 3 node とする。 |
 | `lawnchair/res/values/strings.xml` | `organizer_lock_dialog_target_title` 追加 (値は下表。実装時に #161 style guide で最終確認)。 |
 | `lawnchair/res/values-ja/strings.xml` | 同 key の ja を同時追加 (#123 契約)。 |
 | `tests/organizer-instrumentation/app/lawnchair/organizer/locks/OrganizerLockScreenTest.kt` | 同名 fixture (下記) と新規 test 2 件を追加。既存 4 test は無変更で継続成功させる。 |
@@ -89,17 +92,21 @@ fixture: 既存 `screenState()` を変更せず、新規 private builder
   同じ p0 に置くと folder 行の description も "Home screen 1" になり、
   description で行を一意特定できなくなるため）
 - `Protected` (Application, UNLOCKED, `PlacementState.FolderChild(parent F2, rank 0)`,
-  parent F2 は LOCKED) → description が
-  `organizer_lock_screen_placement_summary_triple`
-  ("Inside a folder, position 1 · Protected by a locked parent" 相当) となる行。
-  `placementDescription` の double/triple 合成経路 (profile label /
-  effectively-protected) を dialog 側でも観測可能にする (review N-3)。
-  F2 は `PlacementState.Workspace(page p1, cell (1,0))` に置く。
+  parent F2 は LOCKED) → F2 は `PlacementState.Workspace(page p2, cell (0,0))`
+  に置く（**F と同じ p1 に置くと Desktop 合成は pageOrder のみを使うため
+  F も F2 も "Home screen 2" となり description が衝突する。p2 を追加して
+  F2 の description を "Home screen 3" にする**）。
+  Protected 行の description は `organizer_lock_screen_placement_summary_double`
+  の合成 = **"Inside a folder, position 1 · Protected by a locked parent"**
+  (`profileLabels` は test 環境で personal のみのため空 map、`profileLabel == null`
+  なので double 合成になる。triple にはならない)。
+  `placementDescription` の protected 合成経路を dialog 側でも観測可能にする
+  (review N-3)。
 
 fixture 内の全行で description 文字列が一意になる ("Home screen 1" /
-"Inside a folder, position 1" / "Home screen 2" / triple 系)。title (`Google`)
-が重複するのは同名行の再現に必要なため、tap 対象の特定は
-description text で行う。
+"Inside a folder, position 1" / "Home screen 2" / "Home screen 3" /
+protected 行の double 合成値)。title (`Google`) が重複するのは同名行の
+再現に必要なため、tap 対象の特定は description text で行う。
 
 test 1 `dialogNamesTheTappedRowAmongSameTitleRows` (AC-1, AC-2):
 
@@ -109,15 +116,16 @@ test 1 `dialogNamesTheTappedRowAmongSameTitleRows` (AC-1, AC-2):
    (`composeRule.onNodeWithText(context.getString(R.string.organizer_lock_dialog_target_title, "Google")).assertIsDisplayed()`)。
 3. **count assert (既定戦略, review N-1)**: tap 行の description は
    `onAllNodesWithText(desc).fetchSemanticsNodes().size == 2`（背景 list の行
-   1 + dialog の対象行 1）、非 tap の同名対抗行 ("Inside a folder, position 1" と
-   "Home screen 2") の description は size == 1 のまま（背景行のみ、dialog には
+   1 + dialog の対象行 1）、非 tap の同名対抗行 ("Inside a folder, position 1") の
+   description は size == 1 のまま（背景行のみ、dialog には
    現れない）。description が fixture で一意であるため、count 比較で
    「dialog に表示された description が tap 行と同一であり、他方ではない」ことを
    順序依存なしに検証できる。
 4. 閉じてもう一方の行 ("Inside a folder, position 1") を tap し、count が
    入れ替わること（dialog 側 description の差し替え確認）。
-5. `Protected` 行の triple description でも step 2-3 を繰り返し、
-   profile/protected 合成値がそのまま dialog へ出ることを確認する。
+5. `Protected` 行 (description "Inside a folder, position 1 ·
+   Protected by a locked parent") でも step 2-3 を繰り返し、
+   protected 合成値がそのまま dialog へ出ることを確認する。
 
 test 2 `dialogTargetRowIsIndependentTextNode` (AC-4):
 
