@@ -62,7 +62,7 @@
 
 | File | 変更 |
 |---|---|
-| `lawnchair/src/app/lawnchair/ui/preferences/destinations/PlacementLockPreferences.kt` | ① `LockChangeDialog` の `Available` 経路で、本文 `Text` の前に 2 つの `Text` node を追加: (a) `organizer_lock_dialog_target_title` で title (`entry.title.textOrFallback(entry)` と同一規則) を導入する行、(b) `placementDescription(entry, profileLabel)` と**同一呼び出し**の配置概要行。② `LockChangeDialog` の呼び出し側 (`PlacementLockPreferences`) から `profileLabels[entry.profile.value]` を引数で渡す。③ `buildString` の既存本文 (state + scope + effect、UNKNOWN は review intro 追加) は現行のまま第 3 node とする。④ **Revision 4 (D4)**: 配置概要行の直後に D4 区別行を追加 — Desktop は `organizer_lock_dialog_target_position` (cell.y+1 / cell.x+1)、folder child は `organizer_lock_dialog_target_folder` (listing map から parent title 解決、fallback は raw id)、app pair member は `organizer_lock_dialog_target_app_pair` (同様)。Dock / Unsupported では区別行を出さない。呼び出し側から entries 由来の `Map<ItemId, LockStateEntry>` (parent title 解決用) も引数で渡す。 |
+| `lawnchair/src/app/lawnchair/ui/preferences/destinations/PlacementLockPreferences.kt` | ① `LockChangeDialog` の `Available` 経路で、本文 `Text` の前に 2 つの `Text` node を追加: (a) `organizer_lock_dialog_target_title` で title (`entry.title.textOrFallback(entry)` と同一規則) を導入する行、(b) `placementDescription(entry, profileLabel)` と**同一呼び出し**の配置概要行。② `LockChangeDialog` の呼び出し側 (`PlacementLockPreferences`) から `profileLabels[entry.profile.value]` を引数で渡す。③ `buildString` の既存本文 (state + scope + effect、UNKNOWN は review intro 追加) は現行のまま第 3 node とする。④ **Revision 4 (D4)**: 配置概要行の直後に D4 区別行を追加 — Desktop は `organizer_lock_dialog_target_position` (cell.y+1 / cell.x+1)、folder child は `organizer_lock_dialog_target_folder` (listing map から parent title 解決、fallback は raw id)、app pair member は `organizer_lock_dialog_target_app_pair` (同様)。Dock / Unsupported では区別行を出さない。呼び出し側からは解決済みの `parentTitle` (`parentTitleOf(entry, entries.orEmpty())` の結果) を引数で渡す。 |
 | `lawnchair/res/values/strings.xml` | `organizer_lock_dialog_target_title` + Revision 4 の 3 string (`_target_position` / `_target_folder` / `_target_app_pair`) 追加 (値は下表。実装時に #161 style guide で最終確認)。 |
 | `lawnchair/res/values-ja/strings.xml` | 同 key の ja を同時追加 (#123 契約)。 |
 | `tests/organizer-instrumentation/app/lawnchair/organizer/locks/OrganizerLockScreenTest.kt` | 同名 fixture (下記) と新規 test 2 件を追加。既存 4 test は無変更で継続成功させる。 |
@@ -160,8 +160,8 @@ fixture `collidingTitleState()` を新設する:
 - `Google` (Application, UNLOCKED, Workspace(p0, cell (0,0)))
 - `Google` (Application, UNLOCKED, Workspace(p0, cell (3,1))) — 同 page 別 cell、
   row description も "Home screen 1" で同一 (review P1 の第 1 例)
-- `G` (Folder "G", UNLOCKED, Workspace(p1, (0,0)), members=[Google child A])
-- `H` (Folder "H", UNLOCKED, Workspace(p1, (2,0)), members=[Google child B])
+- `G` (Folder "G", UNLOCKED, Workspace(p1, (0,0)), `FolderMembers(emptyList())`)
+- `H` (Folder "H", UNLOCKED, Workspace(p1, (2,0)), `FolderMembers(emptyList())`)
 - `Google` (Application, UNLOCKED, FolderChild(G, rank 0))
 - `Google` (Application, UNLOCKED, FolderChild(H, rank 0)) — 別 folder 同
   position、row description も "Inside a folder, position 1" で同一
@@ -172,8 +172,8 @@ fixture `collidingTitleState()` を新設する:
 1. 1 つ目の "Home screen 1" 行を tap → dialog に
    `Target: Google` + `Home screen 1` + `Position: row 1, column 1` が
    表示されること。
-2. 閉じて 2 つ目の "Home screen 1" 行を tap → `Position: row 4, column 2`
-   (cell (3,1) の 1-based) に差し替わること。同一 description の 2 行が
+2. 閉じて 2 つ目の "Home screen 1" 行を tap → `Position: row 2, column 4`
+   (`GridCell(x=3, y=1)` → row=y+1=2, column=x+1=4) に差し替わること。同一 description の 2 行が
    区別行で区別できることを exact match で assert。
 3. 1 つ目の "Inside a folder, position 1" 行 (G 配下) を tap →
    `Folder: G` が表示されること。

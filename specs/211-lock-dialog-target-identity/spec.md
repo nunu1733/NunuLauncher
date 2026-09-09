@@ -194,6 +194,12 @@ Unsupported では省略する。表示 node 数が placement 種別で変化す
 その変化は種別の関数であり listing の関数ではないため、dialog 描画は
 決定的である。
 
+残余条件の認識: folder 名・app pair 名は user 編集可能で一意性を持たないため、
+同名の parent が複数あり、そのそれぞれに同名 item が同 position で存在する
+場合は区別行も同一になる。この残余衝突の解消（例: parent 自身の位置を
+区別行へ含める）は、必要になった時点で別 Issue とする（plan review N-4、
+2026-09-09）。
+
 ## Behavior scenarios
 
 ### Scenario: Dialog names the tapped row
@@ -314,7 +320,7 @@ title と placement 概要は管理画面の行が既に表示している同一
 | AC-1 | `LockChangeDialog` (`Available` 経路) の本文先頭に、開いた行と同一の表示タイトルを導入する対象行と、同一の配置概要（`placementDescription` と同一合成値）を示す行が表示される。state / scope / effect / review intro は現行維持。 | `OrganizerLockScreenTest` への Compose test 追加（同名 fixture で対象行の title と description を assert）+ screenshot |
 | AC-2 | 同名 placement が複数ある fixture で、ダイアログの配置概要行が開いた行の description と等しく、他方と異なる。ダイアログ文言だけで対象を区別して説明できる。**row description が同一になる衝突（同 page 別 cell / 別 folder 同 position）でも、区別行 (D4) により区別できる。** | `OrganizerLockScreenTest` の同名 fixture test: (a) 行 description == dialog 内 description、(b) 他方の description は dialog に現れない、(c) collision fixture（同 page 別 cell、別 folder 同 position）で区別行が tap 行ごとに正しく出ること |
 | AC-3 | ダイアログを開くだけでは書込みが発生しない（既存契約の維持）。confirm / Cancel 動作は現行どおり。 | 既存 `unknownReviewResolvesOnlyThroughConfirmedDialog` / `busyFailureRendersLocalizedMessage` の継続成功 |
-| AC-4 | 対象行は独立した `Text` node として TalkBack から読める。strings は en/ja で同時に追加する。 | Compose semantics test（2 node の分離 assert）+ strings diff (values/ + values-ja/) |
+| AC-4 | 対象行（title 導入行・配置概要行・D4 区別行）はそれぞれ独立した `Text` node として TalkBack から読める。strings は en/ja で同時に追加する。 | Compose semantics test（各行の単独 exact-match 分離 assert）+ strings diff (values/ + values-ja/) |
 | AC-5 | locks module・`LockStateEntry`・`LockAuthoringModule` 契約・DB への変更がない。表示のみの変更である。 | diff review（`organizer/locks/**` と `organizer/application/**` への変更ゼロ）+ 既存 JVM gate の継続成功 |
 
 ## Test oracle
@@ -347,7 +353,7 @@ None（spec 時点で確定）。D1–D3 が値の供給経路、node 構成、�
 
 - 2026-09-09: Drafted for Issue #211 (UX exploratory review 2026-09-05, F-05)。
   行と同一合成経路からの対象行表示 (D1)、2 node 構成 (D2)、管理画面
-  `Available` 睾路への絞り込み (D3) を提案。
+  `Available` 経路への絞り込み (D3) を提案。
 - 2026-09-09: Plan review 対応。string key を
   `organizer_lock_dialog_target_title` へ変更 (中身が title 導入であるため)、
   ephemeral review report 参照の注記を追加。
@@ -360,3 +366,7 @@ None（spec 時点で確定）。D1–D3 が値の供給経路、node 構成、�
   `_target_app_pair`) を Scope へ追加。AC-2 必要証憑へ collision fixture
   test を追加。evidence capture test は regression suite から分離する
   (instrumentation argument gate)。
+- 2026-09-09: PR #264 re-review 対応。C-1: D4 追加後の dialog へ evidence
+  screenshot を gate 経由で再撮影・差し替え (200% font scale の wrap 確認を
+  区別行込みで実施)。C-2: Change history の文字化け 1 文字を修正。
+  N-4 の残余衝突の認識を D4 へ追記。

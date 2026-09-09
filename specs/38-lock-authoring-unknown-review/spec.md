@@ -64,8 +64,9 @@ screen readers and localized; no state is communicated by color alone.
     app-pair member — grouped with profile context, supports lock/unlock with
     the same confirmation, and hosts the `UNKNOWN` review flow including batch
     review. Its confirmation dialog names the tapped row with the same title
-    and placement description the list row renders, so same-named placements
-    are distinguishable from the dialog text alone
+    and placement description the list row renders, plus a disambiguator
+    line (cell / parent title) for placements the description collapses, so
+    same-named placements are distinguishable from the dialog text alone
     ([spec 211](../211-lock-dialog-target-identity/spec.md)).
 - Localized, accessible state/effect/error/result messaging.
 
