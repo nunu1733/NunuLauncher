@@ -19,8 +19,10 @@ package app.lawnchair.ui.preferences.destinations
 import android.content.Context
 import android.os.Process
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
@@ -231,6 +233,7 @@ fun PlacementLockPreferences(
         LockChangeDialog(
             entry = entry,
             explanation = explanation,
+            profileLabel = profileLabels[entry.profile.value],
             onDismiss = {
                 dialogEntry = null
                 dialogExplanation = null
@@ -305,6 +308,7 @@ private fun StateBadge(stateLabel: String, contentDescription: String) {
 private fun LockChangeDialog(
     entry: LockStateEntry,
     explanation: LockExplanation,
+    profileLabel: String?,
     onDismiss: () -> Unit,
     onConfirm: (LockTargetState, UserReviewedIntent) -> Unit,
 ) {
@@ -346,7 +350,21 @@ private fun LockChangeDialog(
                     )
                 },
                 text = {
-                    Text(if (entry.stored == OrganizerLockState.UNKNOWN) "$reviewIntro\n\n$body" else body)
+                    // Issue #211: the dialog names the tapped row with the same
+                    // title and placement description the list row renders, so
+                    // same-named placements are distinguishable while the row
+                    // itself is covered.
+                    Column {
+                        Text(
+                            stringResource(
+                                R.string.organizer_lock_dialog_target_title,
+                                entry.title.textOrFallback(entry),
+                            ),
+                        )
+                        Text(placementDescription(entry, profileLabel))
+                        Spacer(Modifier.height(8.dp))
+                        Text(if (entry.stored == OrganizerLockState.UNKNOWN) "$reviewIntro\n\n$body" else body)
+                    }
                 },
                 confirmButton = {
                     when (entry.stored) {

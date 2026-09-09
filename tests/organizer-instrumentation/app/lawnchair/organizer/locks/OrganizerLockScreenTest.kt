@@ -1,10 +1,18 @@
 package app.lawnchair.organizer.locks
 
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.lawnchair.organizer.application.public.ApplicationItemRef
@@ -170,6 +178,75 @@ class OrganizerLockScreenTest {
         }
     }
 
+    /**
+     * Issue #211: same-named rows in distinct placements. Every row's
+     * placement description is unique ("Home screen 1", "Inside a folder,
+     * position 1", "Home screen 2", "Home screen 3", and the
+     * effectively-protected composition) while the app title repeats, so the
+     * dialog can be checked against the tapped row by description alone.
+     */
+    private fun sameTitleState(): LayoutState {
+        val folder = appItem(
+            "201",
+            title = "F",
+            kind = CanonicalItemKind.Folder,
+            structure = StructureState.FolderMembers(emptyList()),
+            placement = PlacementState.Workspace(
+                page = ApplicationPageRef.PersistentPage(PageId("p1")),
+                cell = GridCell(0, 0),
+                span = GridSpan(1, 1),
+            ),
+        )
+        val lockedFolder = appItem(
+            "202",
+            title = "F2",
+            kind = CanonicalItemKind.Folder,
+            lockState = OrganizerLockState.LOCKED,
+            structure = StructureState.FolderMembers(emptyList()),
+            placement = PlacementState.Workspace(
+                page = ApplicationPageRef.PersistentPage(PageId("p2")),
+                cell = GridCell(0, 0),
+                span = GridSpan(1, 1),
+            ),
+        )
+        val protectedChild = appItem(
+            "211",
+            title = "Protected",
+            placement = PlacementState.FolderChild(ApplicationItemRef.PersistentItem(ItemId("202")), 0),
+        )
+        val onHome = appItem(
+            "101",
+            title = "Google",
+            placement = PlacementState.Workspace(
+                page = ApplicationPageRef.PersistentPage(PageId("p0")),
+                cell = GridCell(0, 0),
+                span = GridSpan(1, 1),
+            ),
+        )
+        val inFolder = appItem(
+            "102",
+            title = "Google",
+            placement = PlacementState.FolderChild(ApplicationItemRef.PersistentItem(ItemId("201")), 0),
+        )
+        return LayoutState(
+            pages = listOf(
+                PageState(ApplicationPageRef.PersistentPage(PageId("p0")), PageOrder(0)),
+                PageState(ApplicationPageRef.PersistentPage(PageId("p1")), PageOrder(1)),
+                PageState(ApplicationPageRef.PersistentPage(PageId("p2")), PageOrder(2)),
+            ),
+            profiles = listOf(ProfileState(ProfileId("personal"), ProfileAvailability.AVAILABLE)),
+            deviceCapabilities = app.lawnchair.organizer.application.public.DeviceCapabilities(
+                4,
+                5,
+                4,
+                4,
+                4,
+                app.lawnchair.organizer.application.public.DeviceOrientation.PORTRAIT,
+            ),
+            items = listOf(folder, lockedFolder, protectedChild, onHome, inFolder),
+        )
+    }
+
     @Test
     fun unknownBannerAndTextStateLabelsAreRendered() {
         val capture = MutableCapture(screenState())
@@ -242,6 +319,84 @@ class OrganizerLockScreenTest {
     }
 
     @Test
+    fun dialogNamesTheTappedRowAmongSameTitleRows() {
+        val capture = MutableCapture(sameTitleState())
+        val writer = FakeWriter(capture)
+        setContent(LockAuthoringModule(capture, writer))
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val homeDescription = context.getString(R.string.organizer_lock_screen_placement_desktop, 1)
+        val folderDescription = context.getString(R.string.organizer_lock_screen_placement_folder, 1)
+        val protectedDescription = context.getString(
+            R.string.organizer_lock_screen_placement_summary_double,
+            context.getString(R.string.organizer_lock_screen_placement_folder, 1),
+            context.getString(R.string.organizer_lock_screen_effectively_locked),
+        )
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(homeDescription).fetchSemanticsNodes().isNotEmpty()
+        }
+        // Opening the dialog must not write.
+        assertEquals(0, writer.writes.size)
+        composeRule.onNodeWithText(homeDescription).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.organizer_lock_dialog_target_title, "Google"),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        // The tapped row's description now exists both in the list and in the dialog.
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(homeDescription).fetchSemanticsNodes().size == 2
+        }
+        // The other same-title row's placement is not named by the dialog.
+        assertEquals(1, composeRule.onAllNodesWithText(folderDescription).fetchSemanticsNodes().size)
+        composeRule.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
+        // Tapping the folder-child row swaps the dialog's named target.
+        composeRule.onNodeWithText(folderDescription).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(folderDescription).fetchSemanticsNodes().size == 2
+        }
+        assertEquals(1, composeRule.onAllNodesWithText(homeDescription).fetchSemanticsNodes().size)
+        assertEquals(0, writer.writes.size)
+        composeRule.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
+        // The effectively-protected row is named with the same composed
+        // description the row renders. At 200% font scale the row can sit
+        // below the fold of the lazy list, so scroll it into view first.
+        composeRule.onNode(hasScrollAction())
+            .performScrollToNode(hasText(protectedDescription))
+        composeRule.onNodeWithText(protectedDescription).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(protectedDescription).fetchSemanticsNodes().size == 2
+        }
+        assertEquals(0, writer.writes.size)
+    }
+
+    @Test
+    fun dialogTargetRowsRenderAsIndependentTextNodes() {
+        val capture = MutableCapture(sameTitleState())
+        setContent(LockAuthoringModule(capture, FakeWriter(capture)))
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val homeDescription = context.getString(R.string.organizer_lock_screen_placement_desktop, 1)
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(homeDescription).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(homeDescription).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.organizer_lock_dialog_target_title, "Google"),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        // "Target: Google" and the placement description are separate text
+        // nodes: an exact match on the target line only succeeds if the title
+        // was not concatenated into one body string, and the description node
+        // appears next to the list row (2 nodes total).
+        composeRule.onNodeWithText(
+            context.getString(R.string.organizer_lock_dialog_target_title, "Google"),
+        ).assertIsDisplayed()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(homeDescription).fetchSemanticsNodes().size == 2
+        }
+    }
+
+    @Test
     fun busyFailureRendersLocalizedMessage() {
         val capture = MutableCapture(screenState())
         val writer = FakeWriter(capture, outcome = LockWriteOutcome.Rejected(LockWriteRejection.WRITER_BUSY))
@@ -262,5 +417,82 @@ class OrganizerLockScreenTest {
             composeRule.onAllNodesWithText(busy).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText(busy).assertIsDisplayed()
+    }
+
+    /**
+     * Issue #211 device evidence: captures the same-named rows and the
+     * target-naming dialog from the real composable with real resources, for
+     * `docs/evidence/issue-211/`. Runs on the local emulator; the captured
+     * PNGs land in `Pictures/Issue211-ui-evidence` via MediaStore.
+     */
+    @Test
+    fun capturesLockDialogTargetEvidence() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val homeDescription = context.getString(R.string.organizer_lock_screen_placement_desktop, 1)
+        val folderDescription = context.getString(R.string.organizer_lock_screen_placement_folder, 1)
+        val capture = MutableCapture(sameTitleState())
+        setContent(LockAuthoringModule(capture, FakeWriter(capture)))
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(homeDescription).fetchSemanticsNodes().isNotEmpty()
+        }
+        captureLockDialogScreenshot(context, "rows-same-title")
+        composeRule.onNodeWithText(homeDescription).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.organizer_lock_dialog_target_title, "Google"),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        captureLockDialogScreenshot(context, "dialog-names-tapped-row")
+        composeRule.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
+        composeRule.onNodeWithText(folderDescription).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(folderDescription).fetchSemanticsNodes().size == 2
+        }
+        captureLockDialogScreenshot(context, "dialog-names-folder-row")
+    }
+
+    private fun captureLockDialogScreenshot(context: android.content.Context, name: String) {
+        composeRule.waitForIdle()
+        // PixelCopy of the hosting window (activity window for the list,
+        // dialog window once the dialog is open) instead of a full-display
+        // uiAutomation screenshot: transient emulator system overlays (ANR
+        // dialogs) must not photobomb the evidence.
+        val isDialog = SemanticsMatcher.keyIsDefined(SemanticsProperties.IsDialog)
+        val hasDialog = composeRule.onAllNodes(isDialog).fetchSemanticsNodes().isNotEmpty()
+        val bitmap = (if (hasDialog) {
+            composeRule.onNode(isDialog).captureToImage()
+        } else {
+            composeRule.onRoot().captureToImage()
+        }).asAndroidBitmap()
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "$name.png")
+            put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Issue211-ui-evidence")
+            put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val resolver = context.contentResolver
+        // MediaStore keeps rows from previous capture runs; delete rows with
+        // the same name first so re-running cannot collide on the file path.
+        resolver.delete(
+            android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            "${android.provider.MediaStore.Images.Media.DISPLAY_NAME} = ?",
+            arrayOf("$name.png"),
+        )
+        val uri = requireNotNull(
+            resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values),
+        )
+        try {
+            check(
+                resolver.openOutputStream(uri).use { output ->
+                    output != null && bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output)
+                },
+            )
+            values.clear()
+            values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+        } catch (error: Throwable) {
+            resolver.delete(uri, null, null)
+            throw error
+        }
     }
 }
