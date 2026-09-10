@@ -260,3 +260,22 @@ folder / app pair の区別行を `Folder: <title> · Home screen N · row Y, co
 追加し、`dialogResolvesCollidingDescriptionsWithDisambiguator` を拡張
 (区別行全文の exact match assert)。残余衝突は parent 同士が同一 cell を
 共有する場合のみで、no overlap 不変条件により到達不能。
+
+## Revision 6 (2026-09-09): third review P1 対応
+
+同一 valid app pair 内の同名 2 member は parent 情報だけでは区別できない
+(`PlacementState.AppPairChild.stage` が `LockPlacementSummary.InAppPair`
+への変換で落ちていた) ため:
+
+- `LockPlacementSummary.InAppPair` へ `stage: SplitStage` field を追加
+  (`placementSummaryOf` で受渡し)。表示 model の拡張のみで、capture /
+  planner / application 契約と DB は無変更 (AC-5 をこの範囲で調整)。
+- app pair member の区別行へ member stage (`Member: top or left` /
+  `Member: bottom or right`) を連結。新規 string 2 件 (en/ja 同時):
+  `organizer_lock_dialog_split_top_left` / `organizer_lock_dialog_split_bottom_right`。
+- fixture を valid 2-member pair 構成へ変更: pairA/B ("Duo"×2) がそれぞれ
+  同名 member "PChild" を TOP_OR_LEFT / BOTTOM_OR_RIGHT で 1 件ずつ保持
+  (計 4 member 行)。test は list 末尾まで scroll して 4 行を compose し、
+  sort key 順 (p:401 top, p:402 top, p:401 bottom, p:402 bottom) で tap、
+  区別行全文 (`… · Position: row Y, column X · Member: <stage>`) を
+  exact match assert。

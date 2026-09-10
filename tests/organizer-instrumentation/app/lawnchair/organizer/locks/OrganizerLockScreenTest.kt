@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -355,6 +356,7 @@ class OrganizerLockScreenTest {
             structure = StructureState.AppPairMembers(
                 members = listOf(
                     AppPairMemberState(ApplicationItemRef.PersistentItem(ItemId("403")), SplitStage.TOP_OR_LEFT),
+                    AppPairMemberState(ApplicationItemRef.PersistentItem(ItemId("405")), SplitStage.BOTTOM_OR_RIGHT),
                 ),
                 snapPosition = OptionalSnapPosition.Absent,
             ),
@@ -371,6 +373,7 @@ class OrganizerLockScreenTest {
             structure = StructureState.AppPairMembers(
                 members = listOf(
                     AppPairMemberState(ApplicationItemRef.PersistentItem(ItemId("404")), SplitStage.TOP_OR_LEFT),
+                    AppPairMemberState(ApplicationItemRef.PersistentItem(ItemId("406")), SplitStage.BOTTOM_OR_RIGHT),
                 ),
                 snapPosition = OptionalSnapPosition.Absent,
             ),
@@ -389,6 +392,19 @@ class OrganizerLockScreenTest {
             "404",
             title = "PChild",
             placement = PlacementState.AppPairChild(parent = pairBRef, stage = SplitStage.TOP_OR_LEFT),
+        )
+        // Third review P1: one valid pair may hold two same-named members at
+        // different split stages — the stage is their only in-pair
+        // discriminator.
+        val inPairABottom = appItem(
+            "405",
+            title = "PChild",
+            placement = PlacementState.AppPairChild(parent = pairARef, stage = SplitStage.BOTTOM_OR_RIGHT),
+        )
+        val inPairBBottom = appItem(
+            "406",
+            title = "PChild",
+            placement = PlacementState.AppPairChild(parent = pairBRef, stage = SplitStage.BOTTOM_OR_RIGHT),
         )
         return LayoutState(
             pages = listOf(
@@ -420,6 +436,8 @@ class OrganizerLockScreenTest {
                 pairB,
                 inPairA,
                 inPairB,
+                inPairABottom,
+                inPairBBottom,
             ),
         )
     }
@@ -664,30 +682,56 @@ class OrganizerLockScreenTest {
         // First review class: two same-named app pairs ("Duo") each holding a
         // same-named member share the "In an app pair" description; the
         // disambiguator resolves them by pair title plus the pair's placement.
-        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("PChild"))
+        // Third review class: each valid pair also holds a second same-named
+        // member at the other split stage — the stage is the within-pair
+        // discriminator. Scroll to the list bottom so all four member rows
+        // are composed, then tap them in sort-key order (parent id groups
+        // lexically first: pairA top, pairA bottom, pairB top, pairB bottom).
+        composeRule.onNode(hasScrollAction()).performScrollToIndex(15)
         composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithText("PChild").fetchSemanticsNodes().size == 2
+            composeRule.onAllNodesWithText("PChild").fetchSemanticsNodes().size == 4
         }
-        composeRule.onAllNodesWithText("PChild")[0].performClick()
+        val home3Description = context.getString(R.string.organizer_lock_screen_placement_desktop, 3)
+        val topStage = context.getString(R.string.organizer_lock_dialog_split_top_left)
+        val bottomStage = context.getString(R.string.organizer_lock_dialog_split_bottom_right)
+        val pairMembers = composeRule.onAllNodesWithText("PChild")
+        pairMembers[0].performClick()
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText(
                 context.getString(R.string.organizer_lock_dialog_target_app_pair, "Duo") +
-                    " · " + context.getString(R.string.organizer_lock_screen_placement_desktop, 3) + " · " +
-                    context.getString(R.string.organizer_lock_dialog_target_position, 1, 1),
+                    " · " + home3Description + " · " +
+                    context.getString(R.string.organizer_lock_dialog_target_position, 1, 1) +
+                    " · " + topStage,
             ).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
-        // Re-scroll for the second member row (needed at 200% font scale).
-        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("PChild"))
-        composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithText("PChild").fetchSemanticsNodes().size == 2
-        }
         composeRule.onAllNodesWithText("PChild")[1].performClick()
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText(
                 context.getString(R.string.organizer_lock_dialog_target_app_pair, "Duo") +
-                    " · " + context.getString(R.string.organizer_lock_screen_placement_desktop, 3) + " · " +
-                    context.getString(R.string.organizer_lock_dialog_target_position, 1, 3),
+                    " · " + home3Description + " · " +
+                    context.getString(R.string.organizer_lock_dialog_target_position, 1, 1) +
+                    " · " + bottomStage,
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
+        composeRule.onAllNodesWithText("PChild")[2].performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.organizer_lock_dialog_target_app_pair, "Duo") +
+                    " · " + home3Description + " · " +
+                    context.getString(R.string.organizer_lock_dialog_target_position, 1, 3) +
+                    " · " + topStage,
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
+        composeRule.onAllNodesWithText("PChild")[3].performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.organizer_lock_dialog_target_app_pair, "Duo") +
+                    " · " + home3Description + " · " +
+                    context.getString(R.string.organizer_lock_dialog_target_position, 1, 3) +
+                    " · " + bottomStage,
             ).fetchSemanticsNodes().isNotEmpty()
         }
         assertEquals(0, writer.writes.size)

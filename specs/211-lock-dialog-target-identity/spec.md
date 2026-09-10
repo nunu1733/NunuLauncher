@@ -68,8 +68,10 @@ review intro、confirm/cancel の動作は現行維持である。`Unavailable` 
     解決した parent title で構成した**区別行**を独立した `Text` node として
     常時表示する: Desktop は cell 座標 (`organizer_lock_dialog_target_position`)、
     folder child は所属 folder 名 (`organizer_lock_dialog_target_folder`)、
-    app pair member はペア名 (`organizer_lock_dialog_target_app_pair`)。
-    区別行は衝突の有無によらず常時表示する（表示条件の分岐を作らない）。
+    app pair member はペア名 (`organizer_lock_dialog_target_app_pair`) +
+    parent 配置 + member の split stage (`organizer_lock_dialog_split_top_left` /
+    `organizer_lock_dialog_split_bottom_right`)。区別行は衝突の有無によらず
+    常時表示する（表示条件の分岐を作らない）。
   - 対象行は 1 行 1 事実の単純テキストとし、`title` と `description` を
     別 node として読める形にする（a11y 契約は既存のダイアログ text node
     規約に従う）。
@@ -200,6 +202,16 @@ user 編集可能で一意性を持たないため、区別行に parent title �
 場合に dialog 文言が再び同一になる。よって folder / app pair の区別行は、
 parent title に**parent 自身の配置**（Desktop なら page + cell
 `Home screen N · row Y, column X`、Dock なら slot 番号）を連結する。
+
+同一 pair 内の衝突の解消 (PR #264 third review P1): valid な app pair は
+異なる split stage を持つ 2 member を許し、member の表示名の一意性は要求
+しないため、同一 pair 内の同名 2 member は parent 情報だけでは区別できない。
+よって app pair member の区別行は **member の split stage**
+(`Member: top or left` / `Member: bottom or right`) も連結する。stage は
+planner 契約により pair 内で必ず異なるため、member の区別はこの 1 語で
+成立する。そのため `LockPlacementSummary.InAppPair` は stage field を
+追加する（表示 model の拡張であり、capture / planner / application 契約と
+DB は無変更。AC-5 をこの範囲で調整）。
 これにより dialog の対象識別は「item title + rank + parent title +
 parent の page + parent の cell」の組になり、2 つの placement が完全に
 衝突するのは parent 同士が同一 page の同一 cell を共有する場合のみであるが、
@@ -268,6 +280,22 @@ Then folder / app pair の区別行は parent title に parent 自身の配置
 
 And 2 つの placement が完全に衝突するのは parent 同士が同一 page の同一
 cell を共有する場合のみであり、これは no overlap 不変条件で到達不能である。
+
+### Scenario: Same-named members within one app pair are resolved by their split stage
+
+Given 1 つの valid な app pair（2 member、title `Duo`）に、同名の 2 member
+（同 display name、TOP_OR_LEFT / BOTTOM_OR_RIGHT の異なる stage）が存在する
+— 両 member の target title・row description・parent title・parent 配置は
+完全に一致する,
+
+When それぞれの member 行の確認ダイアログを開く,
+
+Then app pair member の区別行は `App pair: <pair title> · <pair の配置> ·
+Member: <split stage>` となり、2 つの dialog text は split stage の違いで
+相異なる (D4, PR #264 third review P1),
+
+And planner 契約により pair 内の 2 member は必ず異なる stage を持つため、
+同一 pair 内の member 衝突は stage 語で必ず解消される。
 
 ### Scenario: Dock and unsupported rows show no disambiguator
 
@@ -340,17 +368,17 @@ title と placement 概要は管理画面の行が既に表示している同一
 | AC | Acceptance criterion | Required evidence |
 |---|---|---|
 | AC-1 | `LockChangeDialog` (`Available` 経路) の本文先頭に、開いた行と同一の表示タイトルを導入する対象行と、同一の配置概要（`placementDescription` と同一合成値）を示す行が表示される。state / scope / effect / review intro は現行維持。 | `OrganizerLockScreenTest` への Compose test 追加（同名 fixture で対象行の title と description を assert）+ screenshot |
-| AC-2 | 同名 placement が複数ある fixture で、ダイアログの配置概要行が開いた行の description と等しく、他方と異なる。ダイアログ文言だけで対象を区別して説明できる。**row description が同一になる衝突（同 page 別 cell / 別 folder 同 position / 同名 parent × 同名 child 同 position / 同名 app pair × 同名 member）でも、区別行 (D4, parent 自身の配置連結を含む) により区別できる。** | `OrganizerLockScreenTest` の同名 fixture test: (a) 行 description == dialog 内 description、(b) 他方の description は dialog に現れない、(c) collision fixture（同 page 別 cell、別 folder 同 position、同名 parent × 同名 child、同名 app pair × 同名 member）で区別行が tap 行ごとに正しく出ること |
+| AC-2 | 同名 placement が複数ある fixture で、ダイアログの配置概要行が開いた行の description と等しく、他方と異なる。ダイアログ文言だけで対象を区別して説明できる。**row description が同一になる衝突（同 page 別 cell / 別 folder 同 position / 同名 parent × 同名 child 同 position / 同名 app pair × 同名 member / 同一 app pair 内の同名 2 member）でも、区別行 (D4, parent 自身の配置連結 + member split stage を含む) により区別できる。** | `OrganizerLockScreenTest` の同名 fixture test: (a) 行 description == dialog 内 description、(b) 他方の description は dialog に現れない、(c) collision fixture（同 page 別 cell、別 folder 同 position、同名 parent × 同名 child、同名 app pair × 同名 member、同一 valid app pair 内の同名 2 member）で区別行が tap 行ごとに正しく出ること |
 | AC-3 | ダイアログを開くだけでは書込みが発生しない（既存契約の維持）。confirm / Cancel 動作は現行どおり。 | 既存 `unknownReviewResolvesOnlyThroughConfirmedDialog` / `busyFailureRendersLocalizedMessage` の継続成功 |
 | AC-4 | 対象行（title 導入行・配置概要行・D4 区別行）はそれぞれ独立した `Text` node として TalkBack から読める。strings は en/ja で同時に追加する。 | Compose semantics test（各行の単独 exact-match 分離 assert）+ strings diff (values/ + values-ja/) |
-| AC-5 | locks module・`LockStateEntry`・`LockAuthoringModule` 契約・DB への変更がない。表示のみの変更である。 | diff review（`organizer/locks/**` と `organizer/application/**` への変更ゼロ）+ 既存 JVM gate の継続成功 |
+| AC-5 | 表示契約の変更は `LockPlacementSummary` の表示 model 拡張（D4 のため `InAppPair` へ split stage field を追加）に留まり、`LockStateEntry` の shape、`LockAuthoringModule` 契約、planner / application 契約、Launcher DB への変更がない。 | diff review（`organizer/application/**` と DB への変更ゼロ、`organizer/locks/**` は `LockPlacementSummary.InAppPair` の stage field 追加と `placementSummaryOf` の受渡しのみ）+ 既存 JVM gate の継続成功 |
 
 ## Test oracle
 
 | AC | Automated/manual evidence |
 |---|---|
 | AC-1 | `OrganizerLockScreenTest` 新規 test（dialog 表示後、title 導入 string + 行 description の assert）、en/ja screenshot |
-| AC-2 | `OrganizerLockScreenTest` 新規 test（同名 2 行 fixture: tap 行の description が dialog に現れること、非 tap 行の description が現れないこと）+ collision fixture test（同 page 別 cell / 別 folder 同 position / 同名 parent / 同名 app pair で区別行を assert） |
+| AC-2 | `OrganizerLockScreenTest` 新規 test（同名 2 行 fixture: tap 行の description が dialog に現れること、非 tap 行の description が現れないこと）+ collision fixture test（同 page 別 cell / 別 folder 同 position / 同名 parent / 同名 app pair / 同一 pair 内同名 2 member で区別行を assert） |
 | AC-3 | 既存 test 群の継続成功（書込み確認ダイアログの契約 oracle） |
 | AC-4 | Compose test での node 分離 assert + strings diff (values / values-ja 同期) |
 | AC-5 | diff review + `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` 継続成功 |
@@ -397,3 +425,9 @@ None（spec 時点で確定）。D1–D3 が値の供給経路、node 構成、�
   (Desktop: page + cell / Dock: slot) を連結する規約へ変更。AC-2 evidence と
   scenario に同名 parent・同名 app pair の衝突 class を追加。残余衝突は
   no overlap 不変条件により到達不能であることを明記。
+- 2026-09-09: PR #264 third review 対応 (P1)。同一 valid app pair 内の
+  同名 2 member は parent 情報だけでは区別できないため、`InAppPair` 表示
+  model へ split stage を追加し、app pair member の区別行に member stage
+  (`Member: top or left` / `Member: bottom or right`) を連結する規約へ変更。
+  fixture を valid 2-member pair 構成へ変更し、同 pair 内同名 member の
+  衝突 class を回帰固定。AC-5 を表示 model 拡張の範囲で調整。

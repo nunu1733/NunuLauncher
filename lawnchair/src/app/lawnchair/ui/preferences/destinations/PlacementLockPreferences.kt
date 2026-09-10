@@ -57,6 +57,8 @@ import app.lawnchair.organizer.locks.LockStateEntry
 import app.lawnchair.organizer.locks.LockTargetState
 import app.lawnchair.organizer.locks.OrganizerLocks
 import app.lawnchair.organizer.locks.UserReviewedIntent
+import app.lawnchair.organizer.planning.ItemId
+import app.lawnchair.organizer.planning.SplitStage
 import app.lawnchair.organizer.ui.LockMessages
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.components.controls.ClickablePreference
@@ -503,9 +505,18 @@ private fun dialogTargetDisambiguator(
             parentTitle ?: p.parent.value,
         ),
         parentPlacement?.let { shortParentLocation(it) },
+        // Third review P1: a valid pair may hold two same-named members, so
+        // the split stage is the within-pair discriminator.
+        memberStageLabel(p.stage),
     ).joinToString(" · ")
 
     is LockPlacementSummary.DockSlot, is LockPlacementSummary.Unsupported -> null
+}
+
+@Composable
+private fun memberStageLabel(stage: SplitStage): String = when (stage) {
+    SplitStage.TOP_OR_LEFT -> stringResource(R.string.organizer_lock_dialog_split_top_left)
+    SplitStage.BOTTOM_OR_RIGHT -> stringResource(R.string.organizer_lock_dialog_split_bottom_right)
 }
 
 /** Short user-facing location of a parent row (desktop page + cell, or dock slot). */
