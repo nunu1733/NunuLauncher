@@ -321,4 +321,8 @@
     <string name="organization_onboarding_proposal_defer">後で</string>
     <string name="organization_onboarding_proposal_skip">スキップ</string>
     <string name="organization_onboarding_proposal_review">整理案を確認</string>
+    <!-- Issue #232: re-entry guidance shown once after `Later`. The body is assembled from
+         the real UI labels so the path stays in sync with the actual settings naming. -->
+    <string name="organization_onboarding_reentry_hint_title">整理はいつでもできます</string>
+    <string name="organization_onboarding_reentry_hint_body">ホーム画面を長押し → %1$s → %2$s → %3$s</string>
 </resources>

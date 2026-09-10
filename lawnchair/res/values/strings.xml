@@ -1230,4 +1230,8 @@
     <string name="organization_onboarding_proposal_defer">Later</string>
     <string name="organization_onboarding_proposal_skip">Skip</string>
     <string name="organization_onboarding_proposal_review">Review organization</string>
+    <!-- Issue #232: re-entry guidance shown once after `Later`. The body is assembled from
+         the real UI labels so the path stays in sync with the actual settings naming. -->
+    <string name="organization_onboarding_reentry_hint_title">You can organize anytime</string>
+    <string name="organization_onboarding_reentry_hint_body">Long-press the Home screen → %1$s → %2$s → %3$s.</string>
 </resources>
