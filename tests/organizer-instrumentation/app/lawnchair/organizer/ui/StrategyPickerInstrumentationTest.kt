@@ -220,5 +220,7 @@ class StrategyPickerInstrumentationTest {
             pointId: RecoveryPointId,
             confirmation: RecoveryPreviewConfirmation,
         ) = error("not reached: composition is NotReady")
+
+        override fun readDurableOrganizerStatus() = app.lawnchair.organizer.application.public.OrganizerDurableStatus.NEVER_ORGANIZED
     }
 }

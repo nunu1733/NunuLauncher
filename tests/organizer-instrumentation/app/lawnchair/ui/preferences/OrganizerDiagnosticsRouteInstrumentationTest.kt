@@ -375,6 +375,9 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
                 pointId,
                 app.lawnchair.organizer.application.public.RecoveryRejection.MISSING,
             )
+
+        override fun readDurableOrganizerStatus(): app.lawnchair.organizer.application.public.OrganizerDurableStatus =
+            app.lawnchair.organizer.application.public.OrganizerDurableStatus.NEVER_ORGANIZED
     }
 
     private companion object {

@@ -85,6 +85,7 @@ import app.lawnchair.organizer.planning.NewFolderOrdinal
 import app.lawnchair.organizer.planning.NewFolderProfileScope
 import app.lawnchair.organizer.planning.NewPageOrdinal
 import app.lawnchair.organizer.application.public.PlanPreviewResult
+import app.lawnchair.organizer.application.public.OrganizerDurableStatus
 import app.lawnchair.organizer.planning.OrganizationInput
 import app.lawnchair.organizer.planning.OrganizationPlanner
 import app.lawnchair.organizer.planning.Orientation
@@ -184,6 +185,123 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_retry),
         ).assertHasClickAction()
+    }
+
+    /**
+     * Issue #271 (DS-AC-07): the durable status projection renders on the
+     * Idle surface and never leaks anything beyond the closed wording.
+     */
+    @Test
+    fun durableRestorableStatusRendersWhileIdle() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { error("planner must not run") },
+        )
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.Idle }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restorable),
+        ).assertIsDisplayed()
+    }
+
+    /**
+     * Issue #271 (DS-AC-07): the unresolved durable status reuses the existing
+     * safe-support guidance rows.
+     */
+    @Test
+    fun durableUnresolvedStatusRendersSafeSupportGuidance() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            durableStatus = OrganizerDurableStatus.UNRESOLVED
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { error("planner must not run") },
+        )
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.Idle }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_unresolved),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_safe_terminal),
+        ).assertIsDisplayed()
+    }
+
+    /**
+     * Issue #271 (DS-AC-07): never-organized and fail-closed unavailable
+     * render no durable status row at all.
+     */
+    private fun assertNoDurableRowRenders(status: OrganizerDurableStatus) {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val runner = ManualOrganizationRun(
+            FakeApplication().apply { durableStatus = status },
+            OrganizationPlanner { error("planner must not run") },
+        )
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.Idle }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restorable),
+        ).assertDoesNotExist()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restored_or_expired),
+        ).assertDoesNotExist()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_unresolved),
+        ).assertDoesNotExist()
+    }
+
+    @Test
+    fun neverOrganizedRendersNoDurableRow() {
+        assertNoDurableRowRenders(OrganizerDurableStatus.NEVER_ORGANIZED)
+    }
+
+    @Test
+    fun failClosedUnavailableRendersNoDurableRow() {
+        assertNoDurableRowRenders(OrganizerDurableStatus.UNAVAILABLE)
+    }
+
+    /**
+     * Issue #271 (DS-AC-07): an active process-local run keeps precedence —
+     * no durable status row renders next to run states.
+     */
+    @Test
+    fun durableStatusIsHiddenWhileARunIsActive() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { planningResult() },
+        )
+        runner.start()
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        awaitPreview(runner, context)
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restorable),
+        ).assertDoesNotExist()
+        assertEquals(0, application.applyCalls)
     }
 
     @Test
@@ -1827,6 +1945,12 @@ class ManualOrganizationPreferencesInstrumentationTest {
             pointId,
             app.lawnchair.organizer.application.public.RecoveryRejection.MISSING,
         )
+
+        /** Issue #271: overridable durable status projection for the Idle/Cancelled render tests. */
+        var durableStatus: app.lawnchair.organizer.application.public.OrganizerDurableStatus =
+            app.lawnchair.organizer.application.public.OrganizerDurableStatus.NEVER_ORGANIZED
+
+        override fun readDurableOrganizerStatus(): app.lawnchair.organizer.application.public.OrganizerDurableStatus = durableStatus
     }
 
     private class RecordingDiagnostics : DiagnosticsPort {

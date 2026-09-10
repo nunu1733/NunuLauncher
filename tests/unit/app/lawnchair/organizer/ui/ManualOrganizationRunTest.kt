@@ -1027,6 +1027,8 @@ class ManualOrganizationRunTest {
             RecoveryPointId(POINT_ID),
             app.lawnchair.organizer.application.public.RecoveryPreviewRejection.MISSING,
         )
+        var durableStatus: app.lawnchair.organizer.application.public.OrganizerDurableStatus =
+            app.lawnchair.organizer.application.public.OrganizerDurableStatus.NEVER_ORGANIZED
 
         override fun newRunId() = RunId(nextRunIds.getOrElse(nextRunIdIndex++) { RUN_ID })
         override fun composeFullOrganization(): OrganizationInputComposition {
@@ -1069,6 +1071,8 @@ class ManualOrganizationRunTest {
         override fun inspectRecovery(pointId: RecoveryPointId): RecoveryPreviewResult = recoveryPreview
 
         override fun confirmRecovery(pointId: RecoveryPointId, confirmation: RecoveryPreviewConfirmation): RecoveryResult = RecoveryResult.NotRestorable(pointId, app.lawnchair.organizer.application.public.RecoveryRejection.MISSING)
+
+        override fun readDurableOrganizerStatus(): app.lawnchair.organizer.application.public.OrganizerDurableStatus = durableStatus
     }
 
     private fun assertThrowsIllegalState(block: () -> Unit) {

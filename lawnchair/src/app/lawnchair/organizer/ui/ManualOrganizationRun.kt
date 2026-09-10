@@ -5,6 +5,7 @@ import app.lawnchair.LawnchairApp
 import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
 import app.lawnchair.organizer.application.public.ApplyResult
+import app.lawnchair.organizer.application.public.OrganizerDurableStatus
 import app.lawnchair.organizer.application.public.PlanPreview
 import app.lawnchair.organizer.application.public.PlanPreviewDetails
 import app.lawnchair.organizer.application.public.PlanPreviewRejection
@@ -64,6 +65,9 @@ internal interface ManualOrganizationApplication {
     fun apply(plan: ValidatedLayoutPlan, runId: RunId): ApplyResult
     fun inspectRecovery(pointId: RecoveryPointId): RecoveryPreviewResult
     fun confirmRecovery(pointId: RecoveryPointId, confirmation: RecoveryPreviewConfirmation): RecoveryResult
+
+    /** Issue #271: read-only durable status projection owned by the application module. */
+    fun readDurableOrganizerStatus(): OrganizerDurableStatus
 }
 
 internal class ProductionManualOrganizationApplication(
@@ -97,6 +101,8 @@ internal class ProductionManualOrganizationApplication(
         pointId: RecoveryPointId,
         confirmation: RecoveryPreviewConfirmation,
     ): RecoveryResult = module.confirmRecoveryPreview(pointId, confirmation)
+
+    override fun readDurableOrganizerStatus(): OrganizerDurableStatus = module.durableOrganizerStatus()
 }
 
 /** Process-local composition holder. Construction itself is read-only. */
@@ -513,6 +519,13 @@ class ManualOrganizationRun internal constructor(
         }
         lease?.close()
     }
+
+    /**
+     * Issue #271: read-only projection of the durable recovery-store state for
+     * the re-opened Settings surface. No run state is mutated and no lock is
+     * involved; the projection itself is owned by the application module.
+     */
+    fun readDurableOrganizerStatus(): OrganizerDurableStatus = application.readDurableOrganizerStatus()
 
     fun dismiss(): DismissalOutcome {
         val recovery = synchronized(lock) {
