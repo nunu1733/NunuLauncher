@@ -276,6 +276,7 @@ folder / app pair の区別行を `Folder: <title> · Home screen N · row Y, co
 - fixture を valid 2-member pair 構成へ変更: pairA/B ("Duo"×2) がそれぞれ
   同名 member "PChild" を TOP_OR_LEFT / BOTTOM_OR_RIGHT で 1 件ずつ保持
   (計 4 member 行)。test は list 末尾まで scroll して 4 行を compose し、
-  sort key 順 (p:401 top, p:402 top, p:401 bottom, p:402 bottom) で tap、
+  sort key 順 (p:401 top, p:401 bottom, p:402 top, p:402 bottom — full key
+  `personal:p:<parent>:<item>` の lexical 順) で tap、
   区別行全文 (`… · Position: row Y, column X · Member: <stage>`) を
   exact match assert。
