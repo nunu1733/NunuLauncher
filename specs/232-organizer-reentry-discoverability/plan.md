@@ -19,13 +19,13 @@
 
 変更は presenter 層 (`organizer/ui`) と settings 画面構成のみ。interface 追加なし、planning / application / diagnostics への変更なし。
 
-1. **Re-entry hint (新規内部 view、`OrganizationReentryHint`)**
+1. **Re-entry hint (新規内部 view、`OrganizationOnboardingReentryHint`)**
    - `OrganizationOnboardingProposal.kt` と同じ file (同 fixture を共有する内部 view) に、`AbstractFloatingView` を継承した小さな hint view を追加する。proposal と同じ dragLayer host / bottom sheet 配置 / focus 復帰 pattern を再利用する。
-   - content は title (`organization_reentry_hint_title`) + body (`organization_reentry_hint_body`) の read-only 表示のみで、action button は持たない。
-   - 表示契約: `OrganizationOnboardingProposalController.defer()` の呼び出し後 (persistence は既に完了)、proposal の `close(false)` と同じ dragLayer へ `OrganizationReentryHint.show()` する。表示は `runCatching` で囲み、失敗時に logcat へ warning を出して握りつぶす (AC-5 の crash 非発生)。
+   - content は title (`organization_onboarding_reentry_hint_title`) + body (`organization_onboarding_reentry_hint_body`) の read-only 表示のみで、action button は持たない。
+   - 表示契約: `OrganizationOnboardingProposalController.defer()` の呼び出し後 (persistence は既に完了)、proposal の `close(false)` と同じ dragLayer へ hint を `show()` する。表示は `runCatching` で囲み、失敗時に logcat へ warning を出して握りつぶす (AC-5 の crash 非発生)。
    - dismiss 契約: Back (`AbstractFloatingView` の back handling)、hint 外 touch、タイムアウト (auto-dismiss) の 3 経路で閉じる。いずれも persistence を書かない。
    - タイムアウト: `postDelayed` ベースの 6 秒 (仮決定)。view detach 時に callback を cancel する。`6_000L` を file 内 const にし、テストからは参照しない (挙動は integration で確認)。
-   - accessibility: `importantForAccessibility=YES`、title + body を 1 つの contentDescription に統合しない ( TalkBack が 2 ノードとして読める構成を維持しつつ、hint の役割を伝える)。`TYPE_ON_BOARD_POPUP` と同種の view type は持たせず、`isOfType` は専用 type を返す。focus 復帰は proposal と同じ `focusBeforeOpen` pattern を使う。
+   - accessibility: `importantForAccessibility=YES`、title + body を TalkBack が読める構成で伝え、hint の役割を contentDescription で示す。focus 復帰は proposal と同じ `focusBeforeOpen` pattern を使う。`AbstractFloatingView` の view type bit は上流 file を変更せずに済む既存値のうち、実挙動に影響しないものを再利用する (実装時に選択し、PR で根拠を記録する。上流 `AbstractFloatingView.java` は変更しない)。
 2. **`OrganizationOnboardingProposalView` の `onLater` 変更 (最小)**
    - 現在の `onLater = { resolved = true; controller.defer(); close(false) }` に、`close(false)` 後の hint 表示を 1 行追加する。`resolved = true` と `controller.defer()` の順序・意味は変更しない (spec 53 の outcome semantics を保持)。
    - `Skip` / `Review organization` / outside-dismiss 経路は変更しない (hint を出すのは `Later` 経路だけ)。
@@ -50,11 +50,10 @@
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `lawnchair/src/app/lawnchair/organizer/ui/OrganizationOnboardingProposal.kt` | `OrganizationReentryHint` (内部 view) を追加し、`onLater` 経路で defer 後に表示する | proposal presenter と同 fixture で再利用性が高く、`Later` 経路の局所変更で済む |
-| `lawnchair/res/values/strings.xml` / `values-ja-rJP/strings.xml` | `organization_reentry_hint_title` / `organization_reentry_hint_body` を追加 | 既存 organizer 文言の対訳規約に従う |
+| `lawnchair/src/app/lawnchair/organizer/ui/OrganizationOnboardingProposal.kt` | `OrganizationOnboardingReentryHint` (内部 view) を追加し、`onLater` 経路で defer 後に表示する | proposal presenter と同 fixture で再利用性が高く、`Later` 経路の局所変更で済む |
+| `lawnchair/res/values/strings.xml` / `lawnchair/res/values-ja/strings.xml` | `organization_onboarding_reentry_hint_title` / `organization_onboarding_reentry_hint_body` を追加 ([spec 161](../161-japanese-ui-copy-lqa/spec.md) の `values-ja` 対訳規約) | 既存 organizer 文言の対訳規約に従う |
 | `lawnchair/src/app/lawnchair/ui/preferences/destinations/HomeScreenPreferences.kt` | `Organize home layout` 行を `Layout` → `General` セクションへ移動 | 入口の視認性向上。destination 不変 |
-| `tests/unit/app/lawnchair/organizer/ui/OrganizationOnboardingProposalTest.kt` | hint 表示契約の unit 拡張 | controller / presenter 契約の回帰 |
-| `tests/organizer-instrumentation/app/lawnchair/organizer/ui/OnboardingOrganizationProposalInstrumentationTest.kt` | hint 表示 / dismiss / persistence 不変 / focus 復帰の instrumentation 拡張 | AC-1/2/4/5 の実機確認 |
+| `tests/organizer-instrumentation/app/lawnchair/organizer/ui/OnboardingOrganizationProposalInstrumentationTest.kt` | hint 表示 / dismiss / persistence 不変 / focus 復帰の instrumentation 拡張 | AC-1/2/4/5 の実機確認。unit surface は view を持たないため hint 挙動の正本 evidence は instrumentation とする |
 
 ## Migration and recovery
 
@@ -67,7 +66,7 @@
 
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
-| AC-1 | unit: defer 後の hint 表示契約 / instrumentation: `Later` 後 hint 表示 | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.ui.*'`; API 36.1 emulator (nunu_qpr2_api36_1 以外) |
+| AC-1 | instrumentation: `Later` 後 hint 表示 + unit: 既存 defer semantics 不変の回帰 | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.ui.*'`; API 36.1 emulator |
 | AC-2 | instrumentation: hint dismiss / persistence 不変 | 同上 |
 | AC-3 | instrumentation: Home settings 構成回帰 (入口行の存在/位置) | 同上 |
 | AC-4 | instrumentation: focus 復帰 / TalkBack semantics / 200% font scale | 同上 + emulator 手動確認 |
@@ -86,8 +85,8 @@
 ## Execution checklist
 
 - [ ] Current behavior reproduced (emulator: `Later` → hint なしで Organizer 再発見が困難な現状確認)。
-- [ ] Tests fail for the missing behavior。
-- [ ] Minimal implementation completed。
+- [ ] Tests fail for the missing behavior.
+- [ ] Minimal implementation completed.
 - [ ] Migration/recovery verified (該当なし — 永続化変更なし。hint 表示失敗時の安全性のみ検証)。
-- [ ] Full relevant verification completed。
-- [ ] PR evidence and remaining risks recorded。
+- [ ] Full relevant verification completed.
+- [ ] PR evidence and remaining risks recorded.

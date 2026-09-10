@@ -16,7 +16,7 @@ updated: 2026-09-10
 `Later` は「今回は実行しないが後で行う」という選択であるが ([spec 53](../53-onboarding-organization-proposal/spec.md) §3.1 outcome semantics: defer)、選択後に表示される画面は一切なく、その後の再開はユーザーの記憶だけに依存する。source上の経路は次のとおり (head `cc41f3bb1b` 時点、2026-09-10 確認):
 
 - `Later` (`organization_onboarding_proposal_defer`) は `OrganizationOnboardingProposalView` で `controller.defer()` を呼んで proposal を閉じるだけである ([OrganizationOnboardingProposal.kt:295-299](../../lawnchair/src/app/lawnchair/organizer/ui/OrganizationOnboardingProposal.kt))。defer後の案内・再開経路の表示はない。
-- Organizerの恒常的な手動入口は settings 内の `Home screen` → `Layout` セクション下端の `Organize home layout` 行 ([HomeScreenPreferences.kt:157-161](../../lawnchair/src/app/lawnchair/ui/preferences/destinations/HomeScreenPreferences.kt)) だけであり、dashboard (`PreferencesDashboard`) からは3階層目 (Settings → Home screen → Layout section 内) に位置する。
+- Organizerの恒常的な手動入口は settings 内 `Home screen` 画面の `Layout` セクション内の `Organize home layout` 行 ([HomeScreenPreferences.kt:157-161](../../lawnchair/src/app/lawnchair/ui/preferences/destinations/HomeScreenPreferences.kt)) だけであり、dashboard (`PreferencesDashboard`) からは3階層目 (Settings → Home screen → Layout section 内) に位置する。`Layout` セクションは wallpaper セクションより下にあり、上部からは視認できない。
 - `Later` 選択直後の launcher Home には、Organizer へ至るいかなる視覚的手がかりも追加されない。
 
 観測された失敗モードは「Home 長押し → Home settings を開く → 設定トップに入口が見えない → Home screen を開く → 上部に見えない → 別メニュー探索 → 後から Home screen を下へスクロールして発見」という、設定構造の探索と往復である。一度入口を覚えても、Home で結果確認した後に戻るには同じ階層を辿る必要がある。
@@ -77,7 +77,7 @@ And `Review organization` の fresh-run admission と `ONBOARDING_PROPOSAL` trig
 
 Given `Later` 済みのユーザーが Home 長押しから Home settings を開く
 When `Home screen` を開く
-Then `Organize home layout` 入口が `Layout` セクション内の wallpaper に近い位置ではなく、画面上部の `General` セクションに配置される
+Then `Organize home layout` 入口が `Layout` セクション内ではなく、画面上部の `General` セクションに配置される
 And 入口の label / destination / 副説明 (`manual_organization_summary`) は変化しない
 And 同セクション内の既存行との相対順序は既存の Lawnchair 情報設計と整合する
 
@@ -110,7 +110,7 @@ None。新規 permission、外部送信、sensitive data は存在しない。hi
 ## Accessibility and localization
 
 - hint は TalkBack で到達可能であり、title と body の内容を伝える。`AbstractFloatingView` 系の proposal と同等の focus 付与 / 復帰 ([spec 53](../53-onboarding-organization-proposal/spec.md) §6 の accessibility contract) に従う。
-- hint の文言は `values/strings.xml` と `values-ja-rJP/strings.xml` に追加し、既存の organizer 文言の対訳規約に従う。
+- hint の文言は `lawnchair/res/values/strings.xml` と `lawnchair/res/values-ja/strings.xml` に追加し ([spec 161](../161-japanese-ui-copy-lqa/spec.md) の対訳規約)、文字列名は `organization_onboarding_` prefix に従う。path 案内は `settings_button_text` / `home_screen_label` / `manual_organization_title` の実表示 label を参照して構成し、locale 間で実 UI と一致させる。
 - 200% font scale で reflow し、非色依存で情報を伝える。
 - 入口移動は既存行 (`organizer_lock_screen_title` など) の label / 副説明を変更せず、比較可能性を維持する。
 
@@ -118,7 +118,7 @@ None。新規 permission、外部送信、sensitive data は存在しない。hi
 
 - [ ] AC-1: `Later` 選択直後に、Organizer の再開場所 (Home settings の Home screen 内) を案内する非ブロッキングな hint が表示され、既存 defer semantics・persistence・run-journal 非発行は変化しない。
 - [ ] AC-2: hint は Back / hint 外 touch / タイムアウトで閉じ、dismiss が outcome persistence を変更せず、launcher の通常操作を阻害しない。
-- [ ] AC-3: Home settings の `Organize home layout` 入口が `Layout` セクション内の下端ではなく `General` セクションに配置され、label / destination / 副説明が変化せず、同一画面内の既存行の挙動に影響しない。
+- [ ] AC-3: Home settings の `Organize home layout` 入口が `Layout` セクション内ではなく `General` セクションに配置され、label / destination / 副説明が変化せず、同一画面内の既存行の挙動に影響しない。
 - [ ] AC-4: hint は TalkBack / keyboard / DPAD で到達可能であり、focus 復帰と 200% font scale reflow を満たす。
 - [ ] AC-5: hint の表示経路で例外が発生しても、defer persistence と launcher の動作は壊れず、自動テストとエミュレータ手動確認の証跡が PR に残る。
 
@@ -126,7 +126,7 @@ None。新規 permission、外部送信、sensitive data は存在しない。hi
 
 | AC | Evidence |
 |---|---|
-| AC-1 | unit (`OrganizationOnboardingProposalTest` 拡張: defer 後 hint 表示状態) + instrumentation (`OnboardingOrganizationProposalInstrumentationTest` 拡張: hint 表示) |
+| AC-1 | instrumentation (`OnboardingOrganizationProposalInstrumentationTest` 拡張: `Later` 後 hint 表示) + 既存 unit (`OrganizationOnboardingProposalTest`: defer semantics 不変の回帰) |
 | AC-2 | instrumentation (hint dismiss / タイムアウト / persistence 不変) |
 | AC-3 | instrumentation または UI test (Home settings 画面構成の回帰) |
 | AC-4 | instrumentation (TalkBack semantics / focus 復帰 / 200% font scale) |
@@ -134,7 +134,7 @@ None。新規 permission、外部送信、sensitive data は存在しない。hi
 
 ## Open questions
 
-- (実装前に解消、非 blocking) hint の表示时长の具体値 (秒) は plan で決め、spec では「短時間 (自動 dismiss)」の範囲で固定する。
+- (実装前に解消、非 blocking) hint の表示時間の具体値 (秒) は plan で決め、spec では「短時間 (自動 dismiss)」の範囲で固定する。
 
 ## Change history
 
