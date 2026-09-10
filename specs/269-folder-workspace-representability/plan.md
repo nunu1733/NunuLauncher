@@ -35,9 +35,10 @@
   the Issue #265 instrumentation harness is included in the change set because
   it is the regression oracle for this issue.
 - The focused production instrumentation suite passed on the API 36.1
-  `nunu_qpr2_api36_1` emulator: all 5 tests in
-  `Issue265ManualEditRecoveryInstrumentationTest` passed, including both
-  strict Path A/Path B recovery flows and the three desktop-entry span cases.
+  `nunu_qpr2_api36_1` emulator: all 6 tests in
+  `Issue265ManualEditRecoveryInstrumentationTest` passed, including the
+  independent strict Path A/Path B recovery flows, the second-organize flow,
+  and the three desktop-entry span cases.
 
 ## Design
 
@@ -118,7 +119,7 @@ classify the source container or inspect its parent kind. Do not change
 | `specs/13-safe-layout-application/spec.md` | After acceptance, add the Spec 13 normative folder-child raw-span rule and link Issue #269 in change history/downstream gates | Spec 13 owns the canonical/application contract; this Issue supplies the accepted revision |
 | `specs/269-folder-workspace-representability/spec.md` | Keep the observable outcome, selected seam, exactness, scenarios, and ACs | Issue #269 is the source of the follow-up behavior and status gate |
 | `src/com/android/launcher3/model/ModelWriter.java` | In `moveItemInDatabase`, when the destination is desktop and the item is `WorkspaceItemInfo`, persist in-memory/DB `1×1` without source-container classification | Owns the actual desktop-entry transition and protects direct, Hotseat-mediated, old, NULL, and positive non-1×1 rows |
-| `tests/organizer-instrumentation/app/lawnchair/organizer/application/Issue265ManualEditRecoveryInstrumentationTest.kt` | Turn Path A into the regression oracle: assert real writer normalization for NULL and positive non-1×1 rows, including folder → Hotseat → desktop, reload DB/model convergence, strict `Restorable → Restored`, exact pre-run manifest, and a second organize pass before recovery; retain Path B control | Exercises the complete production flow requested by Issue #269 |
+| `tests/organizer-instrumentation/app/lawnchair/organizer/application/Issue265ManualEditRecoveryInstrumentationTest.kt` | Keep Path A as the first-organize recovery oracle: assert real writer normalization, strict `Restorable → Restored`, and exact pre-run manifest; add an independent manual-move → second-organize flow with reload and verification, plus the Path B control | Exercises the complete production flow requested by Issue #269 without allowing the second organize to replace Path A's recovery point |
 | `tests/organizer-instrumentation/app/lawnchair/organizer/application/Issue265ManualEditRecoveryInstrumentationTest.kt` focused writer cases | Add focused real-writer fixtures for NULL and positive non-1×1 folder-child spans, direct and Hotseat-mediated desktop entry, and an AppPair-container source value; the existing `RealAdapterRowMatrixInstrumentationTest` retains the desktop NULL-span strictness control | Keeps the destination transition seam covered without testing private implementation details directly |
 | `tests/unit/app/lawnchair/organizer/application/...` | Add only pure helper/contract coverage if the final implementation extracts a platform-free helper | Unit coverage is optional and must not create a second production seam |
 
@@ -149,8 +150,8 @@ targeted `ModelWriter.java` transition rule described above.
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
 | AC-269-01 | Real writer seam seeds NULL and positive non-1×1 folder-child rows, exercises direct and Hotseat-mediated desktop entry plus an AppPair-container source value, and asserts both DB columns and in-memory/model spans are `1×1` after reload | Focused organizer instrumentation test on API 36.1; no materializer helper or source-parent lookup is required |
-| AC-269-02 | Path A runs organize → real `ModelWriter` move → recovery preview/confirm and has failing assertions for non-`Restorable`, non-`Restored`, and manifest mismatch | `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.application.Issue265ManualEditRecoveryInstrumentationTest` on `nunu_qpr2_api36_1` |
-| AC-269-03 | Path A performs a second organize after the manual move and before recovery, with failing assertions for unavailable capture, non-verified apply, and reload failure | Same API 36.1 instrumentation target; use latch/state assertions, not sleeps as the oracle |
+| AC-269-02 | Path A runs organize → real `ModelWriter` move → recovery preview/confirm for the first organize's recovery point and has failing assertions for non-`Restorable`, non-`Restored`, and manifest mismatch | `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.application.Issue265ManualEditRecoveryInstrumentationTest` on `nunu_qpr2_api36_1` |
+| AC-269-03 | The independent second-organize regression runs organize → manual move → second organize, with failing assertions for unavailable capture, non-verified apply, reload failure, and post-reload canonical capture | Same API 36.1 instrumentation target; use state assertions, not sleeps as the oracle |
 | AC-269-04 | Path B exact restore/next-start assertions remain green; injected/external desktop NULL span remains rejected by strict canonical capture without a write | Same instrumentation suite plus focused row-matrix instrumentation test |
 | Spec 13 revision | Spec 13 status/history and #269 cross-reference were updated after owner acceptance; no implementation started while draft | Markdown review and repo-contract validation |
 | Layout-data gate | Implementation PR records the accepted spec/plan revision, exact base/head SHA, full relevant diff, successful CI `final-status`, and independent audit under `docs/assessment/pr-<number>-<slug>.md` | GitHub Actions + `docs/project/github-workflow.md` high-risk evidence contract |
@@ -187,7 +188,9 @@ CI before it becomes a new required command in `docs/engineering/building.md`.
 - [x] Direct folder, folder → Hotseat → desktop, and AppPair-source icon
       transitions all converge to DB/model `1×1`.
 - [x] Path A passes through `Restorable → Restored` with exact manifest
-      equality, including the second organize pass.
+      equality for the first organize's recovery point.
+- [x] The independent manual-move → second-organize path reaches verified
+      apply and remains canonically capturable after reload.
 - [x] Path B control remains exact.
 - [x] Strict malformed desktop capture behavior remains fail-closed.
 - [x] `spotlessCheck`, relevant organizer tests, and debug build pass.

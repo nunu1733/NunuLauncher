@@ -45,9 +45,11 @@ import org.junit.runners.MethodSorters
  *
  * path A (manual edit): organize -> move one item out of the folder through
  * the baseline writer (the real drag call-site: real in-memory ItemInfo,
- * `ModelWriter.moveItemInDatabase` on the main thread) -> second organize ->
- * Restore -> open Organizer again;
- * path B (control): identical minus the manual edit.
+ * `ModelWriter.moveItemInDatabase` on the main thread) -> Restore the first
+ * organize's recovery point -> open Organizer again;
+ * path B (control): identical minus the manual edit;
+ * path C (second-organize regression): organize -> manual move -> second
+ * organize -> reload and verify.
  *
  * Both paths record: recovery preview result, confirmation/result, durable
  * recovery lifecycle (direct recovery-DB read), favorites rows at each stage,
@@ -102,6 +104,70 @@ class Issue265ManualEditRecoveryInstrumentationTest {
     @Test
     fun pathB_controlWithoutManualEdit() {
         runPath(manualEdit = false)
+    }
+
+    @Test
+    fun pathC_manualEditThenSecondOrganize() {
+        val runner = ManualOrganizationModule.get(context)
+        seedLayoutWithFolder()
+
+        val firstStart = runStart(runner)
+        if (firstStart is ManualOrganizationRun.State.Preview) {
+            runner.confirm()
+        }
+        val firstApplied = runner.state as? ManualOrganizationRun.State.Applied
+            ?: error("first organize did not reach Applied: ${runner.state}")
+        check(firstApplied.result is ApplyResult.Applied) {
+            "first organize was not verified: ${firstApplied.result}"
+        }
+        launcher.model.forceReload()
+        awaitModelLoaded()
+
+        val childRowId = pickFolderChildRowId()
+        check(childRowId > 0) { "no folder child row found after first organize" }
+        moveRowToDesktopViaWriter(childRowId, findFreeDesktopCell())
+        launcher.model.forceReload()
+        awaitModelLoaded()
+
+        // This capture is the input to the independent second-organize
+        // regression. It must remain canonical after the real writer move.
+        val postManualEdit = adapter().captureCurrent(CaptureId("issue269-post-manual-edit"))
+        val movedRow = postManualEdit.manifest.rows.single { it.rowId == childRowId }
+        assertEquals(1, movedRow.spanX)
+        assertEquals(1, movedRow.spanY)
+
+        val secondStart = runStart(runner)
+        assertTrue(
+            "second organize must not become unavailable: $secondStart",
+            secondStart !is ManualOrganizationRun.State.InputUnavailable,
+        )
+        if (secondStart is ManualOrganizationRun.State.Preview) {
+            runner.confirm()
+        }
+        val secondApplied = runner.state as? ManualOrganizationRun.State.Applied
+            ?: error("second organize did not reach Applied: ${runner.state}")
+        val secondResult = secondApplied.result as? ApplyResult.Applied
+            ?: error("second organize was not verified: ${secondApplied.result}")
+        launcher.model.forceReload()
+        awaitModelLoaded()
+
+        // Applied is only reported after the production A7 verification. A
+        // fresh capture after the correlated reload additionally proves the
+        // resulting layout remains canonical and contains no desktop NULL
+        // span.
+        val afterSecond = adapter().captureCurrent(CaptureId("issue269-post-second-organize"))
+        assertTrue(
+            "second organize must leave at least one row",
+            afterSecond.manifest.rows.isNotEmpty(),
+        )
+        assertTrue(
+            "second organize must not create a desktop NULL span",
+            afterSecond.manifest.rows
+                .filter { it.containerCode.value == Favorites.CONTAINER_DESKTOP }
+                .all { it.spanX != null && it.spanY != null },
+        )
+        report("SECOND_ORGANIZE_RESULT=$secondResult")
+        runner.dismiss()
     }
 
     /**
@@ -231,8 +297,7 @@ class Issue265ManualEditRecoveryInstrumentationTest {
 
         // 2. Manual edit: drag-equivalent move of one folder child onto the
         //    workspace (real ItemInfo, baseline writer, main thread).
-        var recoveryTarget = beforeOrganize
-        var recoveryPointId: app.lawnchair.organizer.application.public.RecoveryPointId
+        val recoveryPointId = applied.result.pointId
         if (manualEdit) {
             val childRowId = pickFolderChildRowId()
             check(childRowId > 0) { "no folder child row found post-apply" }
@@ -241,34 +306,10 @@ class Issue265ManualEditRecoveryInstrumentationTest {
             launcher.model.forceReload()
             awaitModelLoaded()
             dumpRawRows("POST_MANUAL_EDIT")
-
-            // 3. The second organize is deliberately before recovery. Its
-            //    pre-run capture is the exact target that recovery must later
-            //    restore; a failure to capture, apply, reload, or verify must
-            //    fail the test rather than become log-only evidence.
-            recoveryTarget = adapter().captureCurrent(CaptureId("issue269-pre-second-organize"))
-            val secondStart = runStart(runner)
-            assertTrue(
-                "second organize must not become unavailable: $secondStart",
-                secondStart !is ManualOrganizationRun.State.InputUnavailable,
-            )
-            if (secondStart is ManualOrganizationRun.State.Preview) {
-                runner.confirm()
-            }
-            val secondApplied = runner.state as? ManualOrganizationRun.State.Applied
-                ?: error("second organize did not reach Applied: ${runner.state}")
-            val secondResult = secondApplied.result as? ApplyResult.Applied
-                ?: error("second organize was not verified: ${secondApplied.result}")
-            recoveryPointId = secondResult.pointId
-            launcher.model.forceReload()
-            awaitModelLoaded()
-            report("SECOND_ORGANIZE_RESULT=${secondApplied.result}")
-        } else {
-            val firstResult = applied.result
-            recoveryPointId = firstResult.pointId
         }
 
-        // 4. Restore: preview and confirmation are strict AC-269-02
+        // 3. Restore the first organize's recovery point: preview and
+        //    confirmation are strict AC-269-02
         //    assertions. Preview exceptions, unavailable results, and failed
         //    recovery results must all fail the regression oracle.
         runner.beginRecoveryPreview()
@@ -283,14 +324,14 @@ class Issue265ManualEditRecoveryInstrumentationTest {
         assertEquals(RecoveryResult.Restored(recoveryPointId), recoveryState.result)
         report("RECOVERY_RECORD_POST_RESTORE=${readLatestRecoveryRecord()}")
 
-        // 5. Post-restore layout: manifest equality with the pre-run capture
+        // 4. Post-restore layout: manifest equality with the pre-run capture
         //    is an asserted exact-restore check.
         val afterRestore = adapter().captureCurrent(CaptureId("issue265-post-restore"))
-        assertEquals(recoveryTarget.manifest.rows, afterRestore.manifest.rows)
+        assertEquals(beforeOrganize.manifest.rows, afterRestore.manifest.rows)
         report("POST_RESTORE_ROWS_MATCH_PRE_ORGANIZE=true")
         dumpRawRows("POST_RESTORE")
 
-        // 6. Open Organizer again: the readiness result a re-opened Settings
+        // 5. Open Organizer again: the readiness result a re-opened Settings
         //    would produce.
         val nextStart = runStart(runner)
         report("NEXT_ORGANIZER_STATE=$nextStart")
@@ -304,6 +345,10 @@ class Issue265ManualEditRecoveryInstrumentationTest {
         assertTrue(
             "next organizer start must leave a terminal or preview state: $nextStart",
             nextStart !is ManualOrganizationRun.State.Applying,
+        )
+        assertTrue(
+            "next organizer start must remain available: $nextStart",
+            nextStart !is ManualOrganizationRun.State.InputUnavailable,
         )
     }
 

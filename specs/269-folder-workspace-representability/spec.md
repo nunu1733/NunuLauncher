@@ -339,8 +339,8 @@ localization contract.
 | AC | Evidence |
 |---|---|
 | AC-269-01 | Focused real-writer instrumentation asserts NULL and positive non-1×1 folder-child fixtures, including a Hotseat intermediate move, are committed as `1×1` on desktop entry and converge after reload. |
-| AC-269-02 | `Issue265ManualEditRecoveryInstrumentationTest.pathA_manualEditBeforeRestore` on the API 36.1 emulator, with raw-row, `Restorable → Restored`, and exact manifest assertions. |
-| AC-269-03 | The same real production harness performs a second organize pass after the manual move; a focused writer contract test repeats the transition and compares DB/model spans deterministically. |
+| AC-269-02 | `Issue265ManualEditRecoveryInstrumentationTest.pathA_manualEditBeforeRestore` on the API 36.1 emulator, restoring the first organize's recovery point with raw-row, `Restorable → Restored`, and exact manifest assertions. |
+| AC-269-03 | `Issue265ManualEditRecoveryInstrumentationTest.pathC_manualEditThenSecondOrganize` performs the second organize independently, with verified apply, reload, and post-reload canonical-capture assertions. |
 | AC-269-04 | `pathB_controlWithoutManualEdit` remains green with exact restore; a focused capture fixture proves a NULL-span desktop row is not accepted as a 1×1 row. Typed Settings presentation is explicitly deferred to #270. |
 
 ## Open questions
