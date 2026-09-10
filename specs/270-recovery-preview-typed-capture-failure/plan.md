@@ -65,12 +65,18 @@
 
 4. **`RecoveryPreviewProtocolTest`（test 追加）**
 
-   - `captureFailureReturnsTypedUnavailableWithoutMutation`: `writer.captureFailure = IllegalArgumentException("injected unrepresentable row")` を seed 後に設定し、`Unavailable(pointId, CURRENT_LAYOUT_CAPTURE_UNAVAILABLE)`、`capturedSnapshots == 1`、`assertNoInspectionMutation()` を assert。注入例外は #265 の `IllegalArgumentException`（unrepresentable row）を proxy する（TC-AC-05 の決定論的注入）。
+   - `captureFailureReturnsTypedUnavailableWithoutMutation`: `writer.captureFailure = IllegalArgumentException("injected unrepresentable row")` を seed 後に設定し、`Unavailable(pointId, CURRENT_LAYOUT_CAPTURE_UNAVAILABLE)`、`capturedSnapshots == 1`、`assertNoInspectionMutation()` を assert。注入例外は #265 の `IllegalArgumentException`（unrepresentable row）を proxy する（TC-AC-06 の決定論的注入。`RowManifestCodec` は `android.database` 依存のため JVM source set で実行できず、protocol seam 注入が本 issue の決定論的 invalid-row 模擬となる）。
+   - `captureFailureReleasesLeaseAndMutexForSubsequentPreview`: 前test の失敗直後に `captureFailure = null` へ戻して再 `inspectRecovery` し、`Restorable` を返すことを assert（writer lease と run mutex の解放を直接証明する。TC-AC-02）。
    - 既存 test は変更しない（TC-AC-04 の非回帰 evidence）。
 
-5. **`specs/84-recovery-preview-seam/spec.md`（正本の同期）**
+5. **`ManualOrganizationRunTest`（caller seam test 追加）**
 
-   - Result surface の `RecoveryPreviewUnavailable` 列挙へ `CURRENT_LAYOUT_CAPTURE_UNAVAILABLE` を追加し、change history に 1 行追記（issue #270、typed capture-failure mapping）。status は `implemented` のまま、本 PR で実装済みとなる内容の追記のみ。
+   - 既存 fake application の `recoveryPreview` seam に `RecoveryPreviewResult.Unavailable(pointId, CURRENT_LAYOUT_CAPTURE_UNAVAILABLE)` を設定し、`beginRecoveryPreview()` が例外を throw せず `State.RecoveryPreview` へ遷移し、`result is RecoveryPreviewResult.Restorable` でない（confirm 非表示条件）ことを assert（TC-AC-05）。protocol test（capture 失敗 → `Unavailable`）との合成で caller 到達 path を covering する。
+   - 実 UI Compose 描画の変更は存在しない（`recoveryPreviewMessage` は variant 単位で既存対応済み）ため、rendering の追加検証は不要である。
+
+6. **`specs/84-recovery-preview-seam/spec.md`（正本の同期）**
+
+   - Result surface の `RecoveryPreviewUnavailable` 列挙へ `CURRENT_LAYOUT_CAPTURE_UNAVAILABLE` を追加し、read-only protocol / ordering 表の I5 行に capture 失敗結果（`Unavailable(CURRENT_LAYOUT_CAPTURE_UNAVAILABLE)`、zero persistent effect）を追記、change history に 1 行追記（issue #270）。status は `implemented` のまま、本 PR で実装済みとなる内容の追記のみ。
 
 ### 変更しない seam
 
@@ -91,19 +97,20 @@
 
 ```bash
 ./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.application.protocol.RecoveryPreviewProtocolTest'
+./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.ui.ManualOrganizationRunTest'
 ./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'
 ./gradlew spotlessCheck
 ./gradlew assembleLawnWithQuickstepGithubDebug
 python3 tools/repo-contract/validate_repo_contract.py
 ```
 
-- 最初の 1 件が TC-AC-01..05 の直接的 evidence。organizer 全体 filter は非回帰確認。CI の `organizer-unit-tests` job（`final-status` 接続）が同一 surface を実行する。
+- 最初の 2 件が TC-AC-01..06 の直接的 evidence。organizer 全体 filter は非回帰確認。CI の `organizer-unit-tests` job（`final-status` 接続）が同一 surface を実行する。
 - 修正は失敗を再現するテストを伴う: 実装前に `captureFailureReturnsTypedUnavailableWithoutMutation` を追加し、現行 main で「例外が漏れて test 失敗」することを確認してから catch を入れる。
 
 ## Steps
 
-1. `FakeLayoutWriter` に `captureFailure` knob、`RecoveryPreviewProtocolTest` に failure-path test を追加 → 現行実装で失敗することを確認（oracle）。
+1. `FakeLayoutWriter` に `captureFailure` knob、`RecoveryPreviewProtocolTest` に failure-path test（lease 再取得の証拠を含む）、`ManualOrganizationRunTest` に caller test を追加 → 現行実装で protocol test が「例外が漏れて」失敗することを確認（oracle）。
 2. `RecoveryPreviewUnavailable` へ value 追加、`RecoveryPreviewProtocol` に catch を実装 → test が緑化。
-3. spec 84 の surface 記述・change history を同期。
+3. spec 84 の surface 記述（列挙と I5 行）・change history を同期。
 4. 全 verification command を実行し結果を PR へ記録。
 5. PR 作成（`Closes #270`）、`docs/assessment/` の独立 audit を別作業主体で実施。

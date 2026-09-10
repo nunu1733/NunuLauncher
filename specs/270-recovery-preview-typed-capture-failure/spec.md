@@ -1,7 +1,7 @@
 ---
 issue: "#270"
 status: draft
-requirements: [TC-AC-01, TC-AC-02, TC-AC-03, TC-AC-04, TC-AC-05]
+requirements: [TC-AC-01, TC-AC-02, TC-AC-03, TC-AC-04, TC-AC-05, TC-AC-06]
 risk: []
 updated: 2026-09-10
 ---
@@ -27,7 +27,7 @@ preview seam の契約 ([spec 84](../84-recovery-preview-seam/spec.md)) は `ins
 - `RecoveryPreviewProtocol` の capture 呼び出し（lease 保持下の単一 capture）を `RuntimeException` に対して catch し、typed result へマップする。新規 code は `RecoveryPreviewUnavailable` へ追加する。
 - `RecoveryPreviewUnavailable` の閉じた列挙に 1 value を追加する（public surface 拡張）。既存 2 値の意味は変更しない。
 - capture 失敗を決定論的に注入する test fixture hook（`FakeLayoutWriter` の test knob）と、protocol seam の failure-path test を追加する。注入は「capture が unrepresentable row を拒否した」ことを proxy する防御層であり、どの row 表現判断（#269）にも依存しない。
-- [spec 84](../84-recovery-preview-seam/spec.md) の result surface 記述へ新 value を反映し、change history に記録する（同一 PR 内。矛盾する正本を残さないため）。
+- [spec 84](../84-recovery-preview-seam/spec.md) の result surface 記述（`RecoveryPreviewUnavailable` 列挙と I5 の結果表）へ新 value を反映し、change history に記録する（同一 PR 内。矛盾する正本を残さないため）。
 
 ## Non-goals
 
@@ -63,6 +63,14 @@ Then preview は例外を再throw せず、run state は `State.RecoveryPreview(
 
 And 既存 UI は not-available message を描画し、confirm は表示されず、cancel が提供される。
 
+### Scenario: capture 失敗後も次の preview が成立する（lease 解放）
+
+Given 前々シナリオの capture 失敗の直後である,
+
+When 注入を解除して `inspectRecovery(pointId)` を再度呼ぶ,
+
+Then 結果は `Restorable` であり、writer serialization lease と run mutex が capture 失敗 path でも解放されたことが証明される（`WriterBusy` / `Concurrent` が残らない）。
+
 ### Scenario: 正常 capture は従来どおり Restorable
 
 Given capture が成功し、lock state が判明可能な `VERIFIED` point がある,
@@ -81,8 +89,9 @@ Then `NotRestorable(LOCK_STATE_UNAVAILABLE)` が返り、capture 失敗の Unava
 
 ## Data and state
 
-- 読み取る data は spec 84 と同一: #89 inspection projection、`Clock`、pure retention policy、1 回の authoritative capture。
-- 永続化・migration・rollback への影響なし。全 path で zero write であることを既存の `assertNoInspectionMutation` 型 counter で継続検証する。
+- 読み取る data は spec 84 と同一: #89 inspection projection（capture 前に 1 回 — これは仕様上必須の許可された読み取りである）、`Clock`、pure retention policy、1 回の authoritative capture。
+- capture 失敗 path で禁止されるのは、authoritative recovery DB への access（#89 projection 以外の maintenance / tombstone 読み、SQLite 接続）、書込み、lifecycle 遷移、retention/prune、layout 書込み、reload、diagnostics である。#89 inspection projection read の 1 回は capture 失敗 path でも発生し得る（正常 path と同様）。
+- 永続化・migration・rollback への影響なし。禁止された全操作が 0 回であることを既存の `assertNoInspectionMutation` 型 counter で継続検証する。
 - capture 失敗 path では confirmation registry への登録も発生しない（`Restorable` を返さないため）。
 
 ## Permissions, privacy, and security
@@ -96,21 +105,27 @@ UI 変更なし。`Unavailable` variant は既存の `manual_organization_recove
 ## Acceptance criteria
 
 - [ ] TC-AC-01: capture が `RuntimeException` で失敗した `inspectRecovery` は、例外を漏らさず `Unavailable(pointId, <新 code>)` を返す。新 code は `RECOVERY_STORE_UNAVAILABLE` と区別可能である。
-- [ ] TC-AC-02: capture 失敗 path で、lease は解放され、recovery store 読み書き・lifecycle 遷移・layout 書込み・reload・retention 操作・diagnostics が 0 回である。
+- [ ] TC-AC-02: capture 失敗 path で、lease と run mutex は解放される（失敗直後の再 `inspectRecovery` が `Restorable` を返すことで証明する）。また、authoritative recovery DB access・recovery store 書込み・lifecycle 遷移・layout 書込み・reload・retention 操作・diagnostics が 0 回である（#89 inspection projection read の 1 回は許容）。
 - [ ] TC-AC-03: capture 失敗時は `Restorable` も confirmation capability も発行されない（fail-closed の維持）。
 - [ ] TC-AC-04: 正常 capture（`Restorable`）と lock-state 不明（`NotRestorable(LOCK_STATE_UNAVAILABLE)`）の既存 path は不変である。
-- [ ] TC-AC-05: 注入は決定論的である（network・時間・scheduler に依存しない JVM test）であり、#269 の row 表現判断に依存しない防御層として spec 84 の result surface 記述へ新 value が反映されている。
+- [ ] TC-AC-05: caller seam で、capture 失敗を proxy する状態から `ManualOrganizationRun.beginRecoveryPreview()` が例外を throw せず `State.RecoveryPreview` へ遷移し、confirm 可能な `Restorable` でないことが観測できる。
+- [ ] TC-AC-06: 注入は決定論的である（network・時間・scheduler に依存しない JVM test）。注入対象が production の JVM-testable でない row→codec path（`RowManifestCodec` は `android.database` 依存のため JVM source set で実行不可）であるため、protocol seam での注入（実 trigger と同一の `IllegalArgumentException`）をこの issue の決定論的 invalid-row 模擬とし、実 row 形での Path A 緑化は #269 の spec 判断と一体で検証する。spec 84 の result surface 記述（`RecoveryPreviewUnavailable` 列挙と I5 の結果表）へ新 value が反映されている。
 
 ## Test oracle
 
 | AC | Evidence |
 |---|---|
 | TC-AC-01 | `RecoveryPreviewProtocolTest` に capture 失敗注入 case を追加: `Unavailable(pointId, CURRENT_LAYOUT_CAPTURE_UNAVAILABLE)` を assert |
-| TC-AC-02 | 同 test で `assertNoInspectionMutation()` と writer counter（lease 解放は `capturedSnapshots` と mutex 解放で確認）を assert |
+| TC-AC-02 | 同 test で `assertNoInspectionMutation()` を assert し、失敗後に注入を解除して再 `inspectRecovery` が `Restorable` を返すことを assert（lease / mutex 解放の直接証拠） |
 | TC-AC-03 | 同 test で result variant が `Unavailable` であること（`Restorable` でないこと）を直接 assert |
 | TC-AC-04 | 既存 `verifiedUnexpiredPointReturnsSafeRestorablePreviewWithoutMutation` / `unknownLockStateReturnsTypedRejectionWithoutMutation` が変更なしで pass |
-| TC-AC-05 | `FakeLayoutWriter` の決定論的 capture-failure knob（lambda hook）で注入; `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.application.protocol.RecoveryPreviewProtocolTest'` の成功を PR へ記録 |
+| TC-AC-05 | `ManualOrganizationRunTest` で、実 `RecoveryPreviewProtocol`（capture 失敗注入済み fake writer）を application seam 経由で接続し、`beginRecoveryPreview()` が例外を throw せず `State.RecoveryPreview`（`Unavailable`）へ遷移することを assert |
+| TC-AC-06 | `FakeLayoutWriter` の決定論的 capture-failure knob（`RuntimeException` フィールド）で注入; `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.application.protocol.RecoveryPreviewProtocolTest'` と `--tests 'app.lawnchair.organizer.ui.ManualOrganizationRunTest'` の成功を PR へ記録 |
+
+## Change history
+
+- 2026-09-10: Drafted for Issue #270（Phase1 spec/plan review の指摘により、caller seam AC・lease 解放証拠・#89 projection read の許容範囲明示を反映）。
 
 ## Open questions
 
-None。型付き結果の variant は `Unavailable`（capture 失敗は point の非復旧性を主張せず「現状を検証できない」ことを意味する）とする判断は、`NotRestorable` の reason 集合が recovery point 状態の分類に使われている現行意味論と、issue 270 が「code が store unavailability と区別可能」なことだけを要求することに基づく。
+None。型付き結果の variant は `Unavailable`（capture 失敗は point の非復旧性も復旧可能性も主張せず「現状の検証自体が成立しなかった」ことを意味する）とする。`NotRestorable` の reason 集合は「復旧を進められない判断（point 状態の分類、および capture は成立した上での lock-state 判定不可）」を運ぶのに対し、capture 失敗は判定に必要な evidence が 1 つも得られなかった状態であり、検証不能を表す `Unavailable` が意味的に正しい。
