@@ -140,7 +140,18 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 hint = OrganizationOnboardingReentryHint(launcher)
                 hint.show()
             }
-            awaitInputFocus({ hint.getChildAt(0) }, "re-entry hint title")
+            awaitInputFocus({ hint }, "re-entry hint root")
+            instrumentation.runOnMainSync {
+                // The combined title + body must survive 200% font as one accessibility node.
+                assertEquals(
+                    OrganizationOnboardingReentryHint.combinedAccessibilityText(launcher),
+                    hint.contentDescription,
+                )
+                val title = hint.getChildAt(0) as TextView
+                val body = hint.getChildAt(1) as TextView
+                assertTrue(title.isShown && body.isShown)
+                assertTrue(title.height > 0 && body.height > 0)
+            }
             instrumentation.runOnMainSync {
                 val viewport = Rect()
                 assertTrue(launcher.dragLayer.getGlobalVisibleRect(viewport))
@@ -159,10 +170,6 @@ class OnboardingOrganizationProposalInstrumentationTest {
                         "(bottom=${hintBounds.bottom}, safeAreaBottom=$safeAreaBottom)",
                     hintBounds.bottom <= safeAreaBottom,
                 )
-                val title = hint.getChildAt(0) as TextView
-                val body = hint.getChildAt(1) as TextView
-                assertTrue(title.isShown && body.isShown)
-                assertTrue(title.height > 0 && body.height > 0)
                 hint.close(false)
                 assertFalse(hint.isOpen)
             }
@@ -355,15 +362,24 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 OrganizationOnboardingProposalOutcome.DEFERRED,
                 gate.store.value,
             )
-            assertEquals(
-                gate.instrumentation.targetContext.getString(
-                    R.string.organization_onboarding_reentry_hint_title,
-                ),
-                hint.contentDescription,
-            )
-            // Both guidance lines must be present for the path to be actionable.
             gate.instrumentation.runOnMainSync {
                 assertEquals(2, hint.childCount)
+                // The single accessibility announcement must carry the title AND the re-entry
+                // path, assembled from the real settings labels (spec 232 review).
+                val context = gate.launcher
+                val expectedAnnouncement = OrganizationOnboardingReentryHint.combinedAccessibilityText(context)
+                assertEquals(expectedAnnouncement, hint.contentDescription)
+                listOf(
+                    R.string.settings_button_text,
+                    R.string.home_screen_label,
+                    R.string.manual_organization_title,
+                ).forEach { label ->
+                    val pathLabel = context.getString(label)
+                    assertTrue(
+                        "hint announcement must name the real settings label: $pathLabel",
+                        hint.contentDescription.contains(pathLabel),
+                    )
+                }
             }
 
             // Back closes the hint without writing any proposal outcome.
@@ -410,40 +426,59 @@ class OnboardingOrganizationProposalInstrumentationTest {
     }
 
     @Test
-    fun reentryHintRestoresFocusToThePreHintTargetWhenClosed() {
-        val gate = TouchActivationGate()
+    fun laterThenHintCloseRestoresThePreProposalFocusTargetInOneProductionPath() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        lateinit var focusTarget: View
+        // The focus target must own focus BEFORE the proposal is shown, so the proposal's
+        // focusBeforeOpen — and through the queued handoff, the hint's — is this target.
+        val gate = TouchActivationGate(
+            beforeShow = { launcher ->
+                focusTarget = View(launcher).apply {
+                    isFocusable = true
+                    isFocusableInTouchMode = true
+                }
+                launcher.dragLayer.addView(focusTarget, FrameLayout.LayoutParams(1, 1))
+                assertTrue(focusTarget.requestFocus())
+            },
+        )
         gate.show()
         try {
             gate.awaitInitialFocus()
             gate.deliveredTap(gate.content.laterButton)
 
-            // The production path just demonstrated Later → hint; close it to start the
-            // focus-restore contract from a known focus owner.
-            val productionHint = awaitOpenReentryHint(gate.launcher)
-            gate.instrumentation.runOnMainSync { productionHint.close(false) }
-            awaitClosedReentryHint(gate.launcher)
-
-            val focusBefore = View(gate.launcher).apply {
-                isFocusable = true
-                isFocusableInTouchMode = true
-            }
-            gate.instrumentation.runOnMainSync {
-                gate.launcher.dragLayer.addView(focusBefore, FrameLayout.LayoutParams(1, 1))
-                assertTrue(focusBefore.requestFocus())
-            }
-            awaitInputFocus({ focusBefore }, "pre-hint focus target")
-
-            lateinit var hint: OrganizationOnboardingReentryHint
-            gate.instrumentation.runOnMainSync {
-                hint = OrganizationOnboardingReentryHint(gate.launcher)
-                hint.show()
-            }
-            awaitInputFocus({ hint.getChildAt(0) }, "re-entry hint title")
+            // The proposal hands focus back to the pre-proposal target via its queued restore,
+            // and the hint (queued behind it) captures that same target as its own restore
+            // point; the hint takes focus while visible.
+            val hint = awaitOpenReentryHint(gate.launcher)
+            awaitInputFocus({ hint }, "re-entry hint root")
             gate.instrumentation.runOnMainSync { hint.close(false) }
             awaitClosedReentryHint(gate.launcher)
-            awaitInputFocus({ focusBefore }, "restored focus target after hint close")
+            awaitInputFocus({ focusTarget }, "pre-proposal focus target restored after production Later→hint→close")
+            instrumentation.runOnMainSync {
+                gate.launcher.dragLayer.removeView(focusTarget)
+            }
+        } finally {
+            gate.restore()
+        }
+    }
+
+    @Test
+    fun reentryHintAutoDismissesAfterTheTimeoutWithoutTouchingTheOutcome() {
+        val gate = TouchActivationGate()
+        gate.show()
+        try {
+            gate.awaitInitialFocus()
+            gate.deliveredTap(gate.content.laterButton)
+            val hint = awaitOpenReentryHint(gate.launcher)
+
+            // The production postDelayed must close the hint on its own; the poll window
+            // extends well past the 6s timeout to absorb emulator scheduling stalls.
+            awaitClosedReentryHint(gate.launcher, iterations = AWAIT_HINT_TIMEOUT_ITERATIONS)
             gate.instrumentation.runOnMainSync {
-                gate.launcher.dragLayer.removeView(focusBefore)
+                assertEquals(
+                    OrganizationOnboardingProposalOutcome.DEFERRED,
+                    gate.store.value,
+                )
             }
         } finally {
             gate.restore()
@@ -977,9 +1012,12 @@ class OnboardingOrganizationProposalInstrumentationTest {
         error("Organization re-entry hint was not shown after `Later`")
     }
 
-    private fun awaitClosedReentryHint(launcher: LawnchairLauncher) {
+    private fun awaitClosedReentryHint(
+        launcher: LawnchairLauncher,
+        iterations: Int = 50,
+    ) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        repeat(50) {
+        repeat(iterations) {
             if (isHintClosed(launcher)) return
             SystemClock.sleep(100)
         }
@@ -1160,6 +1198,7 @@ class OnboardingOrganizationProposalInstrumentationTest {
      */
     private inner class TouchActivationGate(
         private val showHint: ((LawnchairLauncher) -> Unit)? = null,
+        private val beforeShow: ((LawnchairLauncher) -> Unit)? = null,
     ) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val store = FakeStore()
@@ -1190,6 +1229,9 @@ class OnboardingOrganizationProposalInstrumentationTest {
             instrumentation.runOnMainSync {
                 // Start from a clean floating-view baseline regardless of cross-test ordering.
                 AbstractFloatingView.closeOpenViews(launcher, false, AbstractFloatingView.TYPE_ALL)
+                // Runs inside the same main-sync block as proposal.show() so state prepared
+                // here (e.g. a focused pre-proposal target) is what the proposal captures.
+                beforeShow?.invoke(launcher)
                 proposal = OrganizationOnboardingProposal.OrganizationOnboardingProposalView(
                     launcher,
                     OrganizationOnboardingProposalController(store),
@@ -1395,6 +1437,12 @@ class OnboardingOrganizationProposalInstrumentationTest {
 
         /** Guard for the Issue #232 settings-tree walk so a broken tree cannot hang a test. */
         const val MAX_ACCESSIBILITY_TRAVERSAL_DEPTH = 80
+
+        /**
+         * 13s > the 6s production timeout, so the auto-dismiss poll cannot pass on scheduling
+         * slack alone unless the timer actually fired.
+         */
+        const val AWAIT_HINT_TIMEOUT_ITERATIONS = 130
 
         /**
          * Admission waits span the click → lifecycleScope coroutine → Dispatchers.IO hop, whose

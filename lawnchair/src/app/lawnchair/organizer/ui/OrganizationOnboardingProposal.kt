@@ -302,7 +302,10 @@ internal class OrganizationOnboardingProposal(
                         resolved = true
                         controller.defer()
                         close(false)
-                        showReentryHint()
+                        // Issue #232 review: close(false) queues this proposal's focus restore on
+                        // the dragLayer; queueing the hint behind it lets show() capture the real
+                        // pre-proposal target instead of the detached proposal's focus.
+                        launcher.dragLayer.post { showReentryHint() }
                     },
                     onSkip = {
                         resolved = true
@@ -472,7 +475,10 @@ internal class OrganizationOnboardingReentryHint(
     init {
         orientation = VERTICAL
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
-        contentDescription = context.getString(R.string.organization_onboarding_reentry_hint_title)
+        // Issue #232 review: the 6s hint must announce as one piece that already carries the
+        // re-entry path. The children are hidden from accessibility so TalkBack reads the
+        // combined title + body once instead of a title-only announcement.
+        contentDescription = combinedAccessibilityText(context)
         isFocusable = true
         isFocusableInTouchMode = true
         setPadding(dp(20), dp(12), dp(20), dp(12))
@@ -487,16 +493,15 @@ internal class OrganizationOnboardingReentryHint(
                 setText(R.string.organization_onboarding_reentry_hint_title)
                 textSize = 16f
                 setTextColor(Themes.getAttrColor(context, android.R.attr.textColorPrimary))
-                // Deterministic keyboard/DPAD entry point, mirroring the proposal's title.
-                isFocusable = true
-                isFocusableInTouchMode = true
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             },
         )
         addView(
             TextView(context).apply {
-                setText(R.string.organization_onboarding_reentry_hint_body)
+                text = reentryBodyText(context)
                 setTextColor(Themes.getAttrColor(context, android.R.attr.textColorSecondary))
                 setPadding(0, dp(4), 0, 0)
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             },
         )
     }
@@ -556,18 +561,30 @@ internal class OrganizationOnboardingReentryHint(
 
     override fun isOfType(type: Int): Boolean = (type and AbstractFloatingView.TYPE_ON_BOARD_POPUP) != 0
 
+    /** The announcement and the initial focus target are both the combined title + body node. */
     override fun getAccessibilityTarget(): Pair<View, String> = Pair.create(
         this,
-        context.getString(R.string.organization_onboarding_reentry_hint_title),
+        combinedAccessibilityText(context),
     )
-
-    override fun getAccessibilityInitialFocusView(): View = getChildAt(0)
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     internal companion object {
         /** Short-lived by contract; long enough to read the two-line guidance at 200% font. */
         internal const val REENTRY_HINT_TIMEOUT_MS = 6_000L
+
+        /**
+         * The re-entry path is composed from the real settings labels so the hint can never
+         * drift from what the user actually sees in the settings UI (spec 232 localization).
+         */
+        internal fun reentryBodyText(context: android.content.Context): String = context.getString(
+            R.string.organization_onboarding_reentry_hint_body,
+            context.getString(R.string.settings_button_text),
+            context.getString(R.string.home_screen_label),
+            context.getString(R.string.manual_organization_title),
+        )
+
+        internal fun combinedAccessibilityText(context: android.content.Context): String = context.getString(R.string.organization_onboarding_reentry_hint_title) + " " + reentryBodyText(context)
 
         /**
          * Best-effort display entry point. A failure here must never undo the defer outcome the
