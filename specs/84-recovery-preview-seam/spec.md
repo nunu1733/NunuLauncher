@@ -104,6 +104,7 @@ RecoveryPreviewRejection =
 RecoveryPreviewUnavailable =
   | RECONCILIATION_PENDING
   | RECOVERY_STORE_UNAVAILABLE
+  | CURRENT_LAYOUT_CAPTURE_UNAVAILABLE
 ```
 
 `RecoveryPreviewSummary` deliberately returns only the stable user-facing effect: a confirmed attempt would seek to restore the saved layout represented by the recovery point. It contains no item count, package/component/title, coordinate, profile, revision, digest, record timestamp, lifecycle value, manifest, or payload. `pointId` is permitted solely as the existing opaque recovery correlation key.
@@ -123,7 +124,7 @@ Inspection shares the module’s readiness gate and `RunMutex`, but it never joi
 | I2 | Read only the typed #89 inspection projection for the requested point. Successful classification requires the matching in-process `VALID(generation)` fence and a clean snapshot inventory, then reads the exact final snapshot through bounded direct `FileInputStream`. Inspection never probes or opens the authoritative recovery DB, its WAL sidecars, `SQLiteOpenHelper`, or `AtomicFile` reader methods; it never cleans snapshot companions. | `NotRestorable(INCOMPATIBLE_VERSION)` only for trusted authoritative incompatibility; `Unavailable(RECOVERY_STORE_UNAVAILABLE)` for unknown/dirty fence, missing/invalid/generation-mismatched snapshot, I/O, or companion/inventory uncertainty; exact projection missing/tombstone result otherwise. | None, including no recovery DB/schema/WAL/sidecar or snapshot-companion creation, cleanup, or change. |
 | I3 | Validate checksum, supported format, lifecycle, and logical retention using `Clock` plus pure `RetentionPolicy.actionFor()`. | `EXPIRED` for an aged `VERIFIED` record; `MISSING` for a tombstone past its retained expiry; exact remaining non-restorable reason otherwise. | None. |
 | I4 | Acquire the existing organizer writer serialization lease **non-blockingly**. The lease is short-lived and permits only one authoritative current capture. | `WriterBusy` on lease contention. | None. |
-| I5 | Under that lease, capture current state once and fail closed if lock state is unavailable/unknown. Build the closed summary and opaque confirmation only for a non-expired `VERIFIED` point. Release the lease and mutex in `finally`. | `NotRestorable(LOCK_STATE_UNAVAILABLE)` or `Restorable`. | None. |
+| I5 | Under that lease, capture current state once and fail closed if lock state is unavailable/unknown. Build the closed summary and opaque confirmation only for a non-expired `VERIFIED` point. Release the lease and mutex in `finally`. A capture failure maps to the typed `Unavailable(CURRENT_LAYOUT_CAPTURE_UNAVAILABLE)` surface (Issue #270), never an exception; no `Restorable` result or confirmation is issued. | `NotRestorable(LOCK_STATE_UNAVAILABLE)`, `Unavailable(CURRENT_LAYOUT_CAPTURE_UNAVAILABLE)`, or `Restorable`. | None. |
 
 The acquired lease is not merely observed: it is acquired non-blockingly to make the authoritative capture coherent with external writers. While held by inspection it **must not** call `checkpoint`, `markApplying`, `markRestoring`, `advance`, `pruneUnused`, `runRetention`, `applyWriteSet`, `requestCorrelatedReload`, or a diagnostic projection. It must not transfer, queue, or retain the lease after returning.
 
@@ -236,6 +237,7 @@ None. Stage A decides that inspection self-captures current context under non-bl
 - 2026-08-20: The #89 inspection-safe storage strategy was implemented and merged through [PR #90](https://github.com/nunu1733/NunuLauncher/pull/90), with required CI, API 26/API 35 physical evidence, and independent audit. I2 now consumes that SQLite-free fenced projection seam; confirmation remains an authoritative recovery operation and is unchanged.
 - 2026-08-19: Stage A accepted by the Issue #84 owner; Stage B may begin only within this specification and plan.
 - 2026-08-20: Stage B completed and merged through [PR #92](https://github.com/nunu1733/NunuLauncher/pull/92) at merge commit `a6bf5024e88f7659a48009ed83725fdf0baacb4c`. The PR-associated `CI / final-status` and `high-risk-evidence` gates succeeded, and the required independent audit is recorded in [`docs/assessment/pr-92-recovery-preview-seam.md`](../../docs/assessment/pr-92-recovery-preview-seam.md). Issue #84 is closed.
+- 2026-09-10: Issue #270 added the `CURRENT_LAYOUT_CAPTURE_UNAVAILABLE` result value: a capture failure inside I5 maps to the typed `Unavailable` surface instead of leaking an exception, keeping the protocol fail-closed. See [spec 270](../270-recovery-preview-typed-capture-failure/spec.md).
 
 ## References
 

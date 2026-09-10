@@ -290,6 +290,43 @@ class RecoveryPreviewProtocolTest {
         assertNoInspectionMutation()
     }
 
+    @Test
+    fun captureFailureReturnsTypedUnavailableWithoutMutation() {
+        seedRecord(LifecycleState.VERIFIED)
+        // Issue #270: proxies the production canonical capture rejecting an
+        // unrepresentable persisted row (#265 trigger, same exception type).
+        writer.captureFailure = IllegalArgumentException("injected unrepresentable row")
+
+        val result = protocol.inspect(pointId)
+
+        assertEquals(
+            RecoveryPreviewResult.Unavailable(pointId, RecoveryPreviewUnavailable.CURRENT_LAYOUT_CAPTURE_UNAVAILABLE),
+            result,
+        )
+        assertEquals(1, writer.capturedSnapshots)
+        assertNoInspectionMutation()
+    }
+
+    @Test
+    fun captureFailureReleasesLeaseAndMutexForSubsequentPreview() {
+        seedRecord(LifecycleState.VERIFIED)
+        writer.captureFailure = IllegalArgumentException("injected unrepresentable row")
+        assertEquals(
+            RecoveryPreviewResult.Unavailable(pointId, RecoveryPreviewUnavailable.CURRENT_LAYOUT_CAPTURE_UNAVAILABLE),
+            protocol.inspect(pointId),
+        )
+
+        // The failure path must release the writer lease and run mutex, so the
+        // next inspection is not stuck on WriterBusy / Concurrent.
+        writer.captureFailure = null
+
+        val result = protocol.inspect(pointId)
+
+        assertTrue("Expected Restorable, got $result", result is RecoveryPreviewResult.Restorable)
+        assertEquals(2, writer.capturedSnapshots)
+        assertNoInspectionMutation()
+    }
+
     private data class MatrixCase(
         val lifecycle: LifecycleState,
         val checksumValid: Boolean,
