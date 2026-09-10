@@ -77,7 +77,19 @@ class RecoveryPreviewProtocol(
         val lease = writer.tryAcquireLease(WriterKind.ORGANIZER, runId.value.hashCode().toLong())
             ?: return RecoveryPreviewResult.WriterBusy
         return try {
-            val current = writer.captureCurrent(CaptureId("recovery-preview:${pointId.value}"))
+            // Issue #270: a capture failure (e.g. the canonical capture
+            // rejecting an unrepresentable persisted row) must not leak as an
+            // exception; it maps to the typed unavailable surface, distinct
+            // from store unavailability. Fail-closed: no Restorable result and
+            // no confirmation is issued against an uncapturable layout.
+            val current = try {
+                writer.captureCurrent(CaptureId("recovery-preview:${pointId.value}"))
+            } catch (_: RuntimeException) {
+                return RecoveryPreviewResult.Unavailable(
+                    pointId,
+                    RecoveryPreviewUnavailable.CURRENT_LAYOUT_CAPTURE_UNAVAILABLE,
+                )
+            }
             if (faults.lockStateColumnReadFailure() ||
                 current.layoutState.items.any { it.lockState == OrganizerLockState.UNKNOWN }
             ) {
