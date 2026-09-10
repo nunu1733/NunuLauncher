@@ -49,9 +49,10 @@ import org.junit.runners.MethodSorters
  * organize's recovery point -> open Organizer again;
  * path B (control): identical minus the manual edit;
  * path C (second-organize regression): organize -> manual move -> second
- * organize -> reload and verify.
+ * organize -> reload and verify -> repeat organize on the same snapshot and
+ * compare the raw manifest.
  *
- * Both paths record: recovery preview result, confirmation/result, durable
+ * These flows record: recovery preview result, confirmation/result, durable
  * recovery lifecycle (direct recovery-DB read), favorites rows at each stage,
  * pre/post restore manifest equality, the ManualOrganizationRun state machine
  * projection (what Settings renders), and the next organizer start state.
@@ -167,6 +168,35 @@ class Issue265ManualEditRecoveryInstrumentationTest {
                 .all { it.spanX != null && it.spanY != null },
         )
         report("SECOND_ORGANIZE_RESULT=$secondResult")
+
+        // Repeat the organize on the exact resulting snapshot. A successful
+        // first pass is insufficient for AC-269-03: a later pass must not
+        // mutate raw placement or span values differently.
+        runner.dismiss()
+        val repeatStart = runStart(runner)
+        assertTrue(
+            "repeat organize must not become unavailable: $repeatStart",
+            repeatStart !is ManualOrganizationRun.State.InputUnavailable,
+        )
+        if (repeatStart is ManualOrganizationRun.State.Preview) {
+            runner.confirm()
+        }
+        val repeatState = runner.state
+        assertTrue(
+            "repeat organize must reach a verified terminal state: $repeatState",
+            repeatState is ManualOrganizationRun.State.Applied ||
+                repeatState is ManualOrganizationRun.State.NoChanges,
+        )
+        if (repeatState is ManualOrganizationRun.State.Applied) {
+            check(repeatState.result is ApplyResult.Applied) {
+                "repeat organize was not verified: ${repeatState.result}"
+            }
+        }
+        launcher.model.forceReload()
+        awaitModelLoaded()
+        val afterRepeat = adapter().captureCurrent(CaptureId("issue269-post-repeat-organize"))
+        assertEquals(afterSecond.manifest.rows, afterRepeat.manifest.rows)
+        report("REPEAT_ORGANIZE_RESULT=$repeatState")
         runner.dismiss()
     }
 
