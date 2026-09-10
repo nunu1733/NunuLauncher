@@ -4,6 +4,7 @@
 > Spec: [spec.md](./spec.md)
 > Status: accepted (Phase-1 review: APPROVE, code-reviewer-2 session, head bcd01e915441af5ea6840ac6552783bfb162180c delta b68578790f..bcd01e9154; two non-blocking implementer notes folded into test wording)
 > PR #276 owner review round: Request changes (P1 re-read race, P1 cold settings entry, P2 loading distinct) → addressed in this revision (readiness-driven re-read, cold-start-safe entry, checking row).
+> PR #276 re-review round: Request changes (cold settings entry still never starts reconciliation — the surface stays status-less while open) → addressed: the shared trigger now drives the no-callback model load itself; the checking row persists while the gate is pending.
 
 ## Current evidence
 
@@ -172,28 +173,39 @@ record.
      status line. Any other run state renders exactly as today (active
      process-local state keeps precedence).
 
-5b. **Cold-process settings entry (LawnchairApp / ManualOrganizationModule)**
+5b. **Cold-process settings entry (LawnchairApp / ManualOrganizationModule /
+    LauncherModel bridge)**
     The exported `PreferenceActivity` accepts `APPLICATION_PREFERENCES`, so
     the organizer surface can be the first screen of a fresh process where
-    `LauncherAppState` (and therefore the application module) was never
-    constructed and the reconciliation trigger (Launcher-resume only) never
-    fired. Fixes, reusing existing behavior only:
-    - `LawnchairApp`: the reconciliation trigger is extracted into an
-      idempotent, process-scoped
-      `ensureOrganizerStartupReconciliation(waitForModel: Boolean)` (the
-      `AtomicBoolean` guard moves from the activity handler to the app). The
-      `Launcher`-resume path passes `true` (unchanged behavior: wait for the
-      model, fail-close on timeout). `false` — used by non-Launcher entries —
-      proceeds only when the model is already loaded, and otherwise leaves the
-      once-guard unconsumed so the Launcher-resume path still runs
-      reconciliation later; a model-less process fail-closes (gate `IDLE`)
-      instead of poisoning the gate for the process.
-    - `ManualOrganizationModule.get(context)`: before reading
-      `layoutApplicationModule` it ensures `LauncherAppState.getInstance(app)`
-      (which constructs the module via the existing `onPostInit` hook;
-      thread-safe) and calls `ensureOrganizerStartupReconciliation(false)`.
-      Until reconciliation reaches a terminal state, the read fail-closes per
-      spec.
+    `LauncherAppState` was never constructed and — decisively — no Launcher
+    ever binds, so nothing ever starts the model load
+    (`LauncherModel.startLoader` only runs its loader when callbacks are
+    bound; a deferred trigger alone therefore leaves the surface status-less
+    forever — the re-review finding). Fixes:
+    - `LauncherModel.startLoaderWithoutCallbacks()` (minimal upstream bridge
+      per AGENTS, rationale + issue number at the site): the existing
+      `startLoader` path with the callbacks-empty guard lifted — the loader
+      task runs and commits `mModelLoaded`; binding is a no-op because no
+      callbacks are bound. The loader-running install-queue flag stays paused
+      until a real Launcher binds (existing "loader runs next time launcher
+      starts" semantics).
+    - `LawnchairApp`: one idempotent, process-scoped trigger
+      `ensureOrganizerStartupReconciliation()` (the `AtomicBoolean` guard
+      moves from the activity handler to the app), shared by the
+      Launcher-resume path and the settings entry. The reconciliation thread
+      first posts, on the main executor, a guarded
+      `startLoaderWithoutCallbacks()` — guarded by `!isModelLoaded &&
+      !hasCallbacks`, so a bound Launcher's own load/bind is never replaced —
+      then waits for the model (existing timeout, fail-close on timeout) and
+      reconciles (unchanged).
+    - `ManualOrganizationModule.get(context)`: ensures
+      `LauncherAppState.getInstance(app)` (module construction via the
+      existing `onPostInit` hook; thread-safe) and calls the trigger. The
+      Settings surface therefore reaches a terminal gate — and the derived
+      durable status — without opening the Launcher.
+    - UI: while the gate is `IDLE`/`RECONCILING`, the checking row persists
+      even after an `UNAVAILABLE` read (an unavailable read during a pending
+      gate is not yet the durable truth); it disappears at a terminal gate.
 
 6. **Strings** (`values/strings.xml`, `values-ja/strings.xml`): three new
    `manual_organization_durable_status_*` strings (restorable /
@@ -255,6 +267,7 @@ record.
 | `tests/organizer-instrumentation/app/lawnchair/organizer/application/store/OrganizerDurableStatusInstrumentationTest.kt` | new: close/reopen restart scenarios per DS-AC-01/02/03/05 | durability needs real SQLite across reopen |
 | `tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationPreferencesInstrumentationTest.kt` | extend: durable status render scenarios incl. fail-closed + active-run precedence (DS-AC-07) | existing surface test harness with fake application |
 | `lawnchair/src/app/lawnchair/LawnchairApp.kt`, `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt` (module holder) | idempotent process-scoped reconciliation trigger + cold-start-safe settings entry | fixes the exported-settings cold-process path (DS-AC-10) |
+| `src/com/android/launcher3/LauncherModel.java` | `startLoaderWithoutCallbacks()` minimal bridge (guard lifted on the existing startLoader path) | upstream bridge per AGENTS — minimal point, Issue #271 rationale at the site |
 | `CONTEXT.md`, `DESIGN.md` | domain term + seam ownership line | 正本 updates (DS-AC-08) |
 | `specs/271-organizer-durable-status-projection/{spec,plan}.md` | spec/plan status updates | specs README rule |
 
@@ -289,7 +302,7 @@ record.
 | DS-AC-06 | type is field-free (code review); no `RunEvent` emission in the new path; existing diagnostics tests stay green | full unit suite command |
 | DS-AC-07 | `ManualOrganizationPreferencesInstrumentationTest`: durable row present for the three informative statuses on `Idle`, absent for `NEVER_ORGANIZED`/`UNAVAILABLE`, absent during active run states, unresolved guidance rows present | instrumentation command (UI class) |
 | DS-AC-09 | `durableStatusRecoversWhenReconciliationCompletesOnTheSameSurface` (blocked first read → checking row → gate READY → row recovers on the same surface), `statusRecoversOnTheSameModuleAfterReconciliationCompletes` (`UNAVAILABLE` before / restorable after `reconcileAtStart()` on one instance), `stateFlowMirrorsEveryGateTransition` unit test | unit + instrumentation commands above |
-| DS-AC-10 | Emulator cold-process flow (force-stop → cold-start exported settings into the organizer screen): no crash, reconciliation runs, status or explicit fail-closed renders; recorded in PR/audit | manual device evidence + `ManualOrganizationModule.get` exercised in instrumentation runs |
+| DS-AC-10 | Emulator cold-process flow (force-stop → cold-start exported settings into the organizer screen → wait WITHOUT opening the Launcher → model load + reconciliation complete on their own → restorable row renders on the same surface); recorded in PR/audit | manual device evidence + `ManualOrganizationModule.get` exercised in instrumentation runs |
 | DS-AC-08 | PR diff | review |
 
 Regression: `./gradlew spotlessCheck` and
@@ -323,8 +336,11 @@ via the class filter.
 4b. [ ] Make `ReadinessGate` observable (`stateFlow`) and expose `readinessState`
    through the façade; key the UI read on `(Idle|Cancelled, readinessState)`;
    render the explicit checking row while no result is known (DS-AC-09).
-4c. [ ] Extract the idempotent `LawnchairApp.ensureOrganizerStartupReconciliation()`
-   and make `ManualOrganizationModule.get` cold-start safe (DS-AC-10).
+4c. [ ] Extract the idempotent `LawnchairApp.ensureOrganizerStartupReconciliation()`,
+   make `ManualOrganizationModule.get` cold-start safe, and add the
+   `LauncherModel.startLoaderWithoutCallbacks()` bridge so the cold settings
+   entry reaches a terminal gate without opening the Launcher (DS-AC-10);
+   persist the checking row while the gate is pending.
 5. [ ] Extend the `ManualOrganizationApplication` façade + `ManualOrganizationRun`
    delegate.
 6. [ ] Settings render mapping + strings (EN/ja); the step-1 test now passes

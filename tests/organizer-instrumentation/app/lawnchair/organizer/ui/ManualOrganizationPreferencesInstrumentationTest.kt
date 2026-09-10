@@ -248,6 +248,12 @@ class ManualOrganizationPreferencesInstrumentationTest {
 
         release.countDown()
         composeRule.waitForIdle()
+        // The read returned UNAVAILABLE while the gate is still pending: the
+        // checking row persists (the durable truth is not yet known) and no
+        // durable status row renders.
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_checking),
+        ).assertIsDisplayed()
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_durable_status_restorable),
         ).assertDoesNotExist()
@@ -266,6 +272,9 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_durable_status_restorable),
         ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_checking),
+        ).assertDoesNotExist()
     }
 
     /**

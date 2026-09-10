@@ -151,7 +151,9 @@ the inspection snapshot for the current generation is unreadable
 When the Settings surface requests the durable status
 Then the projection returns a fail-closed unavailable result and the surface
 presents no durable status row and no invented state, announcing an explicit
-checking/loading row instead while no result is known
+checking/loading row instead while the result is not yet known — the row
+persists while the gate is `IDLE`/`RECONCILING` and disappears once the gate
+reaches a terminal state (`READY`/`FAILED`)
 And no write, lifecycle transition, retention cleanup, or journal event is
 performed by the read
 
@@ -181,11 +183,14 @@ Given the exported settings surface opens the organizer in a process where no
 Launcher activity has resumed yet
 When the organizer Settings entry initializes
 Then the application module exists (its `LauncherAppState` composition is
-ensured) and startup reconciliation is triggered through the same idempotent
-process-scoped trigger the Launcher-resume path uses
-And until that reconciliation reaches a terminal state the durable status
-fail-closes per the unavailable scenario, and never presents an invented
-status
+ensured) and the shared, idempotent startup reconciliation trigger runs
+And because no Launcher is bound to start the model load, the trigger drives
+the model load itself (a no-callback loader, a no-op once a Launcher has
+bound), so reconciliation completes on its own and the same Settings surface
+presents the derived durable status without the user ever opening the
+Launcher
+And the load fails closed only on a genuine failure or timeout; until then
+the checking row persists and no invented status is presented
 
 ### Scenario: active process-local run state keeps precedence
 
@@ -277,10 +282,15 @@ read again and rendered per the scenarios above
       organized". Covered by a UI instrumentation test and a same-module
       before/after reconciliation instrumentation test.
 - [ ] DS-AC-10: Opening the organizer surface as the first screen of a fresh
-      process initializes the application module's composition and triggers
-      startup reconciliation through the same idempotent process-scoped trigger
-      as the Launcher-resume path (no crash, no permanently stale surface);
-      evidenced by a cold-process emulator flow into the organizer screen.
+      process initializes the application module's composition and runs the
+      shared idempotent startup reconciliation trigger; with no bound Launcher
+      the trigger drives the model load itself (minimal no-callback loader
+      bridge, a no-op once a Launcher binds), so staying on the Settings
+      surface alone reaches a terminal gate and — when a restorable point
+      exists — presents the restorable status without opening the Launcher.
+      No crash, no invented status, no permanently stale surface; fail-closed
+      only on genuine load failure/timeout. Evidenced by a cold-process
+      emulator flow that never opens the Launcher.
 - [ ] DS-AC-06: No new diagnostics fields outside the closed vocabulary; the
       projection emits no journal events; the projection type leaks no record
       payload, revision, digest, or item identity (enforced by the type's shape).
@@ -304,7 +314,7 @@ read again and rendered per the scenarios above
 | DS-AC-07 | Instrumentation UI test on the organizer Settings surface: durable row present/absent per status incl. fail-closed and active-run precedence |
 | DS-AC-08 | PR diff contains `CONTEXT.md`, `DESIGN.md`, and spec/plan status updates |
 | DS-AC-09 | UI instrumentation test: blocked first read announces the checking row, then a readiness-gate transition re-reads and presents the status on the same surface; instrumentation test asserting one module instance reports `UNAVAILABLE` before and the derived status after `reconcileAtStart()`; unit test that the gate's observable state flow mirrors every transition |
-| DS-AC-10 | Emulator evidence: force-stop → cold-start the exported settings surface directly into the organizer screen → no crash, reconciliation runs, status (or explicit fail-closed) renders; recorded in the PR/audit |
+| DS-AC-10 | Emulator evidence: force-stop → cold-start the exported settings surface directly into the organizer screen → wait WITHOUT opening the Launcher → model load + reconciliation complete on their own → restorable status row renders on the same surface; recorded in the PR/audit |
 
 ## Open questions
 
@@ -316,3 +326,4 @@ read again and rendered per the scenarios above
 
 - 2026-09-10: Draft created for #271.
 - 2026-09-10: Accepted after Phase-1 review; extended with DS-AC-09/DS-AC-10 (readiness-driven re-read, explicit loading row, cold-process settings entry) from the PR #276 owner review.
+- 2026-09-10: Re-review round: DS-AC-10 strengthened — the cold settings entry drives the model load itself (no-callback loader bridge) so the same surface reaches the derived status without opening the Launcher; the checking row persists while the gate is pending.

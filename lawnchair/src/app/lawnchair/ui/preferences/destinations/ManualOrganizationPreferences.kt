@@ -44,6 +44,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.lawnchair.organizer.application.protocol.ReadinessGate
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.OrganizerDurableStatus
 import app.lawnchair.organizer.application.public.PlanPreviewDetails
@@ -203,8 +204,20 @@ fun ManualOrganizationPreferences(
                 ManualOrganizationRun.State.Cancelled,
                 -> {
                     // Issue #271 review: loading is announced, never silently
-                    // equated with "never organized".
-                    if (durableStatus == null) {
+                    // equated with "never organized". While startup
+                    // reconciliation is still pending (IDLE/RECONCILING), an
+                    // unavailable read is not yet the durable truth, so the
+                    // checking row stays until the gate reaches a terminal
+                    // state and the surface re-reads.
+                    val showCheckingRow = durableStatus == null ||
+                        (
+                            durableStatus == OrganizerDurableStatus.UNAVAILABLE &&
+                                (
+                                    readinessState == ReadinessGate.State.IDLE ||
+                                        readinessState == ReadinessGate.State.RECONCILING
+                                    )
+                            )
+                    if (showCheckingRow) {
                         item { ProgressText(R.string.manual_organization_durable_status_checking) }
                     }
                     durableStatus?.let { durableStatusItems(it, onOpenDiagnostics) }

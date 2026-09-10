@@ -116,23 +116,24 @@ class LawnchairApp : Application() {
 
     /**
      * Issue #14: make restart reconciliation reachable before organizer requests are accepted.
-     * Issue #271 review: idempotent, process-scoped trigger. The
-     * Launcher-resume path passes `waitForModel = true` (wait up to the
-     * timeout, fail-close the gate on timeout). Non-Launcher entry points
-     * (e.g. the exported settings surface opening as the first activity of a
-     * fresh process) pass `false`: they proceed only when the model is
-     * already loaded, and otherwise leave the once-guard unconsumed so the
-     * Launcher-resume path can still run reconciliation later — a
-     * model-less process fail-closes (gate `IDLE`) instead of poisoning the
-     * gate for the rest of the process.
+     * Issue #271 review: idempotent, process-scoped trigger shared by the
+     * Launcher-resume path and non-Launcher entries (the exported settings
+     * surface opening as the first activity of a fresh process). Waits for
+     * the model to finish loading and fail-closes the gate on timeout. A
+     * settings-only process has no bound Launcher to start the model load, so
+     * the thread kicks a no-callback load on the main executor — a no-op once
+     * a Launcher has bound its own callbacks, and skipped while a launcher
+     * load is already running, so the Launcher's own bind is never replaced.
      */
-    internal fun ensureOrganizerStartupReconciliation(waitForModel: Boolean) {
-        if (!waitForModel && !com.android.launcher3.LauncherAppState.getInstance(this@LawnchairApp).model.isModelLoaded) {
-            return
-        }
+    internal fun ensureOrganizerStartupReconciliation() {
         if (!organizerReconciliationStarted.compareAndSet(false, true)) return
         thread(name = "organizer-startup-reconciliation") {
             val model = com.android.launcher3.LauncherAppState.getInstance(this@LawnchairApp).model
+            com.android.launcher3.util.Executors.MAIN_EXECUTOR.execute {
+                if (!model.isModelLoaded && !model.hasCallbacks()) {
+                    model.startLoaderWithoutCallbacks()
+                }
+            }
             val deadline = SystemClock.elapsedRealtime() + ORGANIZER_MODEL_LOAD_TIMEOUT_MS
             while (!model.isModelLoaded && SystemClock.elapsedRealtime() < deadline) {
                 try {
@@ -277,7 +278,7 @@ class LawnchairApp : Application() {
         override fun onActivityResumed(activity: Activity) {
             foregroundActivity = activity
             if (activity is Launcher) {
-                ensureOrganizerStartupReconciliation(waitForModel = true)
+                ensureOrganizerStartupReconciliation()
             }
         }
 

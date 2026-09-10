@@ -126,14 +126,14 @@ internal object ManualOrganizationModule {
             // Issue #271 review: this surface can be the first screen of a
             // fresh process (the exported PreferenceActivity accepts
             // APPLICATION_PREFERENCES directly). Make LauncherAppState — and
-            // with it the application module — exist before it is read. The
-            // reconciliation trigger fires only when the model is already
-            // loaded; otherwise it stays with the Launcher-resume path, and
-            // until then the durable status fail-closes instead of inventing
-            // state from an unreconciled store.
+            // with it the application module — exist before it is read, and
+            // start the shared reconciliation trigger: with no bound Launcher
+            // it also drives the model load itself, so the durable status on
+            // this surface reaches its derived value without opening the
+            // Launcher (fail-closed only on a genuine load failure/timeout).
             val app = context.applicationContext as LawnchairApp
             com.android.launcher3.LauncherAppState.getInstance(app)
-            app.ensureOrganizerStartupReconciliation(waitForModel = false)
+            app.ensureOrganizerStartupReconciliation()
             ProductionManualOrganizationApplication(
                 app,
                 app.layoutApplicationModule,
