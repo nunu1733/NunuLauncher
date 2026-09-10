@@ -321,4 +321,7 @@
     <string name="organization_onboarding_proposal_defer">後で</string>
     <string name="organization_onboarding_proposal_skip">スキップ</string>
     <string name="organization_onboarding_proposal_review">整理案を確認</string>
+    <!-- Issue #232: re-entry guidance shown once after `Later`. -->
+    <string name="organization_onboarding_reentry_hint_title">整理はいつでもできます</string>
+    <string name="organization_onboarding_reentry_hint_body">ホーム画面を長押し → 「ホーム設定」 → 「ホーム画面」 → 「ホームレイアウトを整理」</string>
 </resources>

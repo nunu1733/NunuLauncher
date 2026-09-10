@@ -2,6 +2,7 @@ package app.lawnchair.organizer.ui
 
 import android.content.pm.PackageManager
 import android.graphics.drawable.GradientDrawable
+import android.util.Log
 import android.util.Pair
 import android.view.Gravity
 import android.view.MotionEvent
@@ -268,6 +269,11 @@ internal class OrganizationOnboardingProposal(
         private val admitReview: () -> ManualOrganizationRun.StartOutcome = {
             ManualOrganizationModule.get(launcher).start(Trigger.ONBOARDING_PROPOSAL)
         },
+        // Issue #232: shown after `Later` records its defer; injectable so tests can prove a
+        // hint display failure never undoes the already-recorded outcome.
+        private val showHint: (LawnchairLauncher) -> Unit = {
+            OrganizationOnboardingReentryHint.showOrganizationReentryHint(it)
+        },
     ) : AbstractFloatingView(launcher, null) {
         private var resolved = false
         private var reviewInFlight = false
@@ -296,6 +302,7 @@ internal class OrganizationOnboardingProposal(
                         resolved = true
                         controller.defer()
                         close(false)
+                        showReentryHint()
                     },
                     onSkip = {
                         resolved = true
@@ -424,6 +431,9 @@ internal class OrganizationOnboardingProposal(
             }
         }
 
+        /** Issue #232: the defer outcome is already recorded; the hint is best-effort. */
+        private fun showReentryHint() = showHint(launcher)
+
         private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
     }
 
@@ -443,5 +453,139 @@ internal class OrganizationOnboardingProposal(
                 restoreSnapshot = prefs.get(OnboardingPrefs.ORGANIZATION_PROPOSAL_RESTORE_SEEN),
             )
         }
+    }
+}
+
+/**
+ * Issue #232: non-blocking one-shot guidance shown right after the onboarding proposal's
+ * `Later` records its defer. The hint only points back at the persistent re-entry path
+ * (Home settings → Home screen → Organize home layout); it owns no state, records no
+ * outcome, and dismisses on Back, an outside touch, or the [REENTRY_HINT_TIMEOUT_MS]
+ * timeout — none of which touches the proposal's persistence.
+ */
+internal class OrganizationOnboardingReentryHint(
+    private val launcher: LawnchairLauncher,
+) : AbstractFloatingView(launcher, null) {
+    private var focusBeforeOpen: View? = null
+    private val autoDismiss = Runnable { close(true) }
+
+    init {
+        orientation = VERTICAL
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        contentDescription = context.getString(R.string.organization_onboarding_reentry_hint_title)
+        isFocusable = true
+        isFocusableInTouchMode = true
+        setPadding(dp(20), dp(12), dp(20), dp(12))
+        background = GradientDrawable().apply {
+            setColor(Themes.getAttrColor(context, android.R.attr.colorBackground))
+            cornerRadius = resources.getDimensionPixelSize(R.dimen.default_dialog_corner_radius).toFloat()
+        }
+        elevation = resources.getDimension(R.dimen.deep_shortcuts_elevation)
+
+        addView(
+            TextView(context).apply {
+                setText(R.string.organization_onboarding_reentry_hint_title)
+                textSize = 16f
+                setTextColor(Themes.getAttrColor(context, android.R.attr.textColorPrimary))
+                // Deterministic keyboard/DPAD entry point, mirroring the proposal's title.
+                isFocusable = true
+                isFocusableInTouchMode = true
+            },
+        )
+        addView(
+            TextView(context).apply {
+                setText(R.string.organization_onboarding_reentry_hint_body)
+                setTextColor(Themes.getAttrColor(context, android.R.attr.textColorSecondary))
+                setPadding(0, dp(4), 0, 0)
+            },
+        )
+    }
+
+    fun show() {
+        focusBeforeOpen = launcher.currentFocus ?: launcher.workspace
+        // Same BaseDragLayer.LayoutParams construction as the proposal popup: the dragLayer's
+        // generateLayoutParams conversion would drop the bottom-sheet gravity.
+        launcher.dragLayer.addView(
+            this,
+            BaseDragLayer.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
+                bottomMargin = dp(32)
+                marginStart = dp(16)
+                marginEnd = dp(16)
+            },
+        )
+        postDelayed(autoDismiss, REENTRY_HINT_TIMEOUT_MS)
+        // Accessibility announcement alone does not assign ordinary keyboard focus; mirror the
+        // proposal's deterministic entry so DPAD and TalkBack users reach the hint, and
+        // handleClose restores the pre-open target.
+        launcher.dragLayer.post {
+            if (isAttachedToWindow) getAccessibilityInitialFocusView().requestFocus()
+        }
+        announceAccessibilityChanges()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        mIsOpen = true
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        mIsOpen = false
+    }
+
+    override fun canHandleBack(): Boolean = true
+
+    /** An outside touch dismisses the hint and lets the gesture fall through to the launcher. */
+    override fun onControllerInterceptTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.action == MotionEvent.ACTION_DOWN && !launcher.dragLayer.isEventOverView(this, ev)) {
+            close(false)
+        }
+        return false
+    }
+
+    override fun handleClose(animate: Boolean) {
+        removeCallbacks(autoDismiss)
+        launcher.dragLayer.removeView(this)
+        val focusTarget = focusBeforeOpen?.takeIf(View::isAttachedToWindow) ?: launcher.workspace
+        launcher.dragLayer.post { focusTarget.requestFocus() }
+    }
+
+    override fun isOfType(type: Int): Boolean = (type and AbstractFloatingView.TYPE_ON_BOARD_POPUP) != 0
+
+    override fun getAccessibilityTarget(): Pair<View, String> = Pair.create(
+        this,
+        context.getString(R.string.organization_onboarding_reentry_hint_title),
+    )
+
+    override fun getAccessibilityInitialFocusView(): View = getChildAt(0)
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    internal companion object {
+        /** Short-lived by contract; long enough to read the two-line guidance at 200% font. */
+        internal const val REENTRY_HINT_TIMEOUT_MS = 6_000L
+
+        /**
+         * Best-effort display entry point. A failure here must never undo the defer outcome the
+         * proposal already recorded, nor crash the launcher (spec 232 AC-5). `createHint` is a
+         * test seam only; production always builds the real hint.
+         */
+        internal fun showOrganizationReentryHint(
+            launcher: LawnchairLauncher,
+            createHint: (LawnchairLauncher) -> OrganizationOnboardingReentryHint = ::OrganizationOnboardingReentryHint,
+        ) {
+            runCatching {
+                AbstractFloatingView.closeOpenViews(launcher, false, AbstractFloatingView.TYPE_ON_BOARD_POPUP)
+                createHint(launcher).show()
+            }.onFailure { failure ->
+                Log.w(TAG, "re-entry hint display failed; defer outcome is unaffected", failure)
+            }
+        }
+
+        private const val TAG = "OrganizationReentry"
     }
 }

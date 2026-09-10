@@ -11,6 +11,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
+import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Button
 import android.widget.FrameLayout
 import androidx.lifecycle.Lifecycle
@@ -22,8 +23,10 @@ import androidx.test.runner.lifecycle.Stage
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.ui.preferences.PreferenceActivity
+import app.lawnchair.ui.preferences.navigation.HomeScreen
 import com.android.launcher3.AbstractFloatingView
 import com.android.launcher3.LauncherPrefs
+import com.android.launcher3.R
 import com.android.launcher3.provider.RestoreDbTask
 import com.android.launcher3.util.OnboardingPrefs
 import org.junit.Assert.assertEquals
@@ -300,6 +303,216 @@ class OnboardingOrganizationProposalInstrumentationTest {
             gate.store.value,
         )
         assertFalse(gate.isOpen())
+    }
+
+    @Test
+    fun laterTapShowsTheReentryHintAndPreservesTheDeferOutcome() {
+        val gate = TouchActivationGate()
+        gate.show()
+        try {
+            gate.awaitInitialFocus()
+            gate.deliveredTap(gate.content.laterButton)
+
+            // The hint replaces the proposal on the shared popup surface; the defer outcome was
+            // recorded by the proposal before the hint appeared and must survive it.
+            val hint = awaitOpenReentryHint(gate.launcher)
+            assertEquals(
+                OrganizationOnboardingProposalOutcome.DEFERRED,
+                gate.store.value,
+            )
+            assertEquals(
+                gate.instrumentation.targetContext.getString(
+                    R.string.organization_onboarding_reentry_hint_title,
+                ),
+                hint.contentDescription,
+            )
+            // Both guidance lines must be present for the path to be actionable.
+            gate.instrumentation.runOnMainSync {
+                assertEquals(2, hint.childCount)
+            }
+
+            // Back closes the hint without writing any proposal outcome.
+            gate.instrumentation.runOnMainSync { hint.onBackInvoked() }
+            awaitClosedReentryHint(gate.launcher)
+            assertEquals(
+                OrganizationOnboardingProposalOutcome.DEFERRED,
+                gate.store.value,
+            )
+        } finally {
+            gate.restore()
+        }
+    }
+
+    @Test
+    fun reentryHintDismissesOnOutsideTouchWithoutTouchingTheProposalOutcome() {
+        val gate = TouchActivationGate()
+        gate.show()
+        try {
+            gate.awaitInitialFocus()
+            gate.deliveredTap(gate.content.laterButton)
+            val hint = awaitOpenReentryHint(gate.launcher)
+            gate.instrumentation.runOnMainSync {
+                assertEquals(
+                    OrganizationOnboardingProposalOutcome.DEFERRED,
+                    gate.store.value,
+                )
+            }
+
+            // A real touch stream below the hint (outside its bounds) dismisses it and falls
+            // through to the launcher; the outcome stays exactly `DEFERRED`.
+            val injected = gate.deliveredTapOutside(hint)
+            assertEquals(1, injected)
+            awaitClosedReentryHint(gate.launcher)
+            gate.instrumentation.runOnMainSync {
+                assertEquals(
+                    OrganizationOnboardingProposalOutcome.DEFERRED,
+                    gate.store.value,
+                )
+            }
+        } finally {
+            gate.restore()
+        }
+    }
+
+    @Test
+    fun reentryHintRestoresFocusToThePreHintTargetWhenClosed() {
+        val gate = TouchActivationGate()
+        gate.show()
+        try {
+            gate.awaitInitialFocus()
+            gate.deliveredTap(gate.content.laterButton)
+
+            // The production path just demonstrated Later → hint; close it to start the
+            // focus-restore contract from a known focus owner.
+            val productionHint = awaitOpenReentryHint(gate.launcher)
+            gate.instrumentation.runOnMainSync { productionHint.close(false) }
+            awaitClosedReentryHint(gate.launcher)
+
+            val focusBefore = View(gate.launcher).apply {
+                isFocusable = true
+                isFocusableInTouchMode = true
+            }
+            gate.instrumentation.runOnMainSync {
+                gate.launcher.dragLayer.addView(focusBefore, FrameLayout.LayoutParams(1, 1))
+                assertTrue(focusBefore.requestFocus())
+            }
+            awaitInputFocus({ focusBefore }, "pre-hint focus target")
+
+            lateinit var hint: OrganizationOnboardingReentryHint
+            gate.instrumentation.runOnMainSync {
+                hint = OrganizationOnboardingReentryHint(gate.launcher)
+                hint.show()
+            }
+            awaitInputFocus({ hint.getChildAt(0) }, "re-entry hint title")
+            gate.instrumentation.runOnMainSync { hint.close(false) }
+            awaitClosedReentryHint(gate.launcher)
+            awaitInputFocus({ focusBefore }, "restored focus target after hint close")
+            gate.instrumentation.runOnMainSync {
+                gate.launcher.dragLayer.removeView(focusBefore)
+            }
+        } finally {
+            gate.restore()
+        }
+    }
+
+    @Test
+    fun hintDisplayFailureNeverUndoesTheDeferOutcomeOrCrashes() {
+        val gate = TouchActivationGate(
+            showHint = { launcher ->
+                OrganizationOnboardingReentryHint.showOrganizationReentryHint(launcher) {
+                    error("injected hint display failure")
+                }
+            },
+        )
+        try {
+            gate.show()
+            gate.awaitInitialFocus()
+            gate.deliveredTap(gate.content.laterButton)
+
+            // The proposal still resolved as defer; the injected display failure was swallowed
+            // by the production display path (runCatching) instead of crashing the launcher.
+            assertEquals(
+                OrganizationOnboardingProposalOutcome.DEFERRED,
+                gate.store.value,
+            )
+            gate.instrumentation.runOnMainSync {
+                assertFalse(gate.proposal.isOpen)
+                assertFalse(
+                    AbstractFloatingView.getTopOpenView(gate.launcher)
+                        is OrganizationOnboardingReentryHint,
+                )
+            }
+            gate.instrumentation.waitForIdleSync()
+        } finally {
+            gate.restore()
+        }
+    }
+
+    @Test
+    fun homeScreenSettingsShowsTheOrganizerEntryInGeneralAboveTheFold() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val entryLabel = context.getString(R.string.manual_organization_title)
+        val generalHeading = context.getString(R.string.general_label)
+
+        context.startActivity(
+            PreferenceActivity.createIntent(context, HomeScreen)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+        val activity = awaitResumedPreferenceActivity()
+        val entryBounds = awaitAccessibilityTextBounds(activity, entryLabel, "organizer entry")
+        val generalBounds = awaitAccessibilityTextBounds(activity, generalHeading, "General heading")
+        instrumentation.runOnMainSync {
+            val viewport = Rect()
+            assertTrue(activity.window.decorView.getGlobalVisibleRect(viewport))
+            assertTrue(
+                "the organizer entry must render in the first viewport after the Issue #232 " +
+                    "promotion (entry=$entryBounds, viewport=$viewport)",
+                entryBounds.top < viewport.bottom,
+            )
+            assertTrue(
+                "the organizer entry must sit inside the General section " +
+                    "(heading=$generalBounds, entry=$entryBounds)",
+                generalBounds.top <= entryBounds.top,
+            )
+        }
+    }
+
+    /** Walks the real accessibility tree (Compose semantics included) for a text node's bounds. */
+    private fun awaitAccessibilityTextBounds(
+        activity: PreferenceActivity,
+        text: String,
+        description: String,
+    ): Rect {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        repeat(50) {
+            // rootInActiveWindow returns the sealed node tree of the frontmost window; plain
+            // createAccessibilityNodeInfo children are unsealed on API 36 and refuse getChild.
+            val root = instrumentation.uiAutomation.rootInActiveWindow
+            if (root != null && root.packageName == activity.packageName) {
+                findAccessibilityTextBounds(root, text)?.let { return it }
+            }
+            SystemClock.sleep(100)
+        }
+        error("$description with text '$text' was not found in the accessibility tree")
+    }
+
+    private fun findAccessibilityTextBounds(node: AccessibilityNodeInfo, target: String): Rect? =
+        walkAccessibilityNodes(node, target, depth = 0)
+
+    private fun walkAccessibilityNodes(
+        node: AccessibilityNodeInfo,
+        target: String,
+        depth: Int,
+    ): Rect? {
+        if (depth > MAX_ACCESSIBILITY_TRAVERSAL_DEPTH) return null
+        if (node.text?.toString() == target) return Rect(node.boundsInScreen)
+        for (index in 0 until node.childCount) {
+            node.getChild(index)?.let { child ->
+                walkAccessibilityNodes(child, target, depth + 1)?.let { return it }
+            }
+        }
+        return null
     }
 
     @Test
@@ -697,6 +910,36 @@ class OnboardingOrganizationProposalInstrumentationTest {
         error("Organization onboarding proposal was not shown through its production owner")
     }
 
+    /** Waits for the Issue #232 hint that replaced the closed proposal on the popup surface. */
+    private fun awaitOpenReentryHint(
+        launcher: LawnchairLauncher,
+    ): OrganizationOnboardingReentryHint {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        repeat(50) {
+            var hint: OrganizationOnboardingReentryHint? = null
+            instrumentation.runOnMainSync {
+                hint = AbstractFloatingView.getTopOpenView(launcher) as? OrganizationOnboardingReentryHint
+            }
+            hint?.let { return it }
+            SystemClock.sleep(100)
+        }
+        error("Organization re-entry hint was not shown after `Later`")
+    }
+
+    private fun awaitClosedReentryHint(launcher: LawnchairLauncher) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        repeat(50) {
+            var closed = false
+            instrumentation.runOnMainSync {
+                closed = (0 until launcher.dragLayer.childCount)
+                    .none { launcher.dragLayer.getChildAt(it) is OrganizationOnboardingReentryHint }
+            }
+            if (closed) return
+            SystemClock.sleep(100)
+        }
+        error("re-entry hint did not close")
+    }
+
     private fun awaitVisibleProposalActions(
         launcher: LawnchairLauncher,
         content: OrganizationOnboardingProposalContent,
@@ -856,9 +1099,12 @@ class OnboardingOrganizationProposalInstrumentationTest {
 
     /**
      * Shows the real floating-host proposal on a resumed launcher and records the touch/focus
-     * observations required by the Issue #137 Phase 0 gate.
+     * observations required by the Issue #137 Phase 0 gate. `showHint` overrides the Issue #232
+     * re-entry hint entry point (default: the production display path).
      */
-    private inner class TouchActivationGate {
+    private inner class TouchActivationGate(
+        private val showHint: ((LawnchairLauncher) -> Unit)? = null,
+    ) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val store = FakeStore()
         val touchLog: MutableList<String> = Collections.synchronizedList(mutableListOf<String>())
@@ -895,6 +1141,7 @@ class OnboardingOrganizationProposalInstrumentationTest {
                         admissions.incrementAndGet()
                         reviewOutcome.get()
                     },
+                    showHint = showHint ?: { OrganizationOnboardingReentryHint.showOrganizationReentryHint(it) },
                 )
                 content = proposal.getChildAt(0) as OrganizationOnboardingProposalContent
                 listOf(content.laterButton, content.skipButton, content.reviewButton).forEach { button ->
@@ -1013,6 +1260,49 @@ class OnboardingOrganizationProposalInstrumentationTest {
             return false
         }
 
+        /**
+         * Injects a real touch stream at a point outside the hint's bounds (the launcher
+         * viewport's lower-left quadrant) to exercise the outside-dismiss path.
+         */
+        fun deliveredTapOutside(hint: OrganizationOnboardingReentryHint): Int {
+            val eventsBefore = touchLog.size
+            var attempts = 0
+            while (attempts < MAX_INJECTION_ATTEMPTS_PER_TAP) {
+                attempts++
+                val hintLocation = IntArray(2)
+                var viewportHeight = 0
+                instrumentation.runOnMainSync {
+                    hint.getLocationOnScreen(hintLocation)
+                    viewportHeight = launcher.dragLayer.height
+                }
+                val x = 24f
+                val y = (viewportHeight - 24f).coerceAtMost(
+                    (hintLocation[1].toFloat() - 8f).takeIf { it > 0f } ?: (viewportHeight - 24f).toFloat(),
+                )
+                val downTime = SystemClock.uptimeMillis()
+                val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0)
+                val downInjected = instrumentation.uiAutomation.injectInputEvent(down, true)
+                SystemClock.sleep(TOUCH_INJECTION_GAP_MILLIS)
+                val up = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0)
+                val upInjected = instrumentation.uiAutomation.injectInputEvent(up, true)
+                down.recycle()
+                up.recycle()
+                check(downInjected && upInjected) {
+                    "real touch injection was rejected by the system (down=$downInjected, up=$upInjected)"
+                }
+                val deadline = SystemClock.uptimeMillis() + DELIVERY_TIMEOUT_MILLIS
+                while (SystemClock.uptimeMillis() < deadline) {
+                    if (!isOpen() || touchLog.size > eventsBefore) {
+                        // Delivered; the touchLog may not grow because the tap fell on the
+                        // workspace, so completion is judged by the hint closing.
+                        if (!isOpen()) return attempts
+                    }
+                    SystemClock.sleep(50)
+                }
+            }
+            error("outside touch never dismissed the re-entry hint after $attempts attempts")
+        }
+
         fun restore() {
             LauncherPrefs.get(instrumentation.targetContext).put(
                 OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME,
@@ -1049,6 +1339,9 @@ class OnboardingOrganizationProposalInstrumentationTest {
         const val TOUCH_INJECTION_GAP_MILLIS = 60L
         const val MAX_INJECTION_ATTEMPTS_PER_TAP = 3
         const val DELIVERY_TIMEOUT_MILLIS = 1500L
+
+        /** Guard for the Issue #232 settings-tree walk so a broken tree cannot hang a test. */
+        const val MAX_ACCESSIBILITY_TRAVERSAL_DEPTH = 80
 
         /**
          * Admission waits span the click → lifecycleScope coroutine → Dispatchers.IO hop, whose
