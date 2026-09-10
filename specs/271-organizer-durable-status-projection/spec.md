@@ -1,6 +1,6 @@
 ---
 issue: "#271"
-status: draft
+status: accepted
 requirements: [DS-AC-01, DS-AC-02, DS-AC-03, DS-AC-04, DS-AC-05, DS-AC-06, DS-AC-07, DS-AC-08]
 risk: []
 updated: 2026-09-10

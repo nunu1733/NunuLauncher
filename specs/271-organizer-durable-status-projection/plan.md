@@ -2,7 +2,7 @@
 
 > Issue: #271
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: accepted (Phase-1 review: APPROVE, code-reviewer-2 session, head bcd01e915441af5ea6840ac6552783bfb162180c delta b68578790f..bcd01e9154; two non-blocking implementer notes folded into test wording)
 
 ## Current evidence
 
@@ -241,9 +241,9 @@ record.
 
 | AC | Evidence | Command |
 |---|---|---|
-| DS-AC-01 | `OrganizerDurableStatusInstrumentationTest`: checkpoint → advance to `VERIFIED` → fresh store + reconciliation-session snapshot rebuild (process-death surrogate) → `durableOrganizerStatus()` = `ORGANIZED_RESTORABLE` | `connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=...OrganizerDurableStatusInstrumentationTest` |
+| DS-AC-01 | `OrganizerDurableStatusInstrumentationTest`: checkpoint → advance to `VERIFIED` → fresh store + fresh module, module-level restart reconciliation driven (the `ProductionPublicSeamInstrumentationTest` pattern — a bare session snapshot rebuild leaves the gate `IDLE`, so the module read would fail-closed) → `durableOrganizerStatus()` = `ORGANIZED_RESTORABLE` | `connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=...OrganizerDurableStatusInstrumentationTest` |
 | DS-AC-02 | same test class: `VERIFIED` → `RESTORING` → `RESTORED` → close/reopen asserts the fresh `RESTORED` row; then retention eviction → `ALREADY_RESTORED` tombstone path; separate `EXPIRED` tombstone path | same |
-| DS-AC-03 | same test class: a `CORRUPT` row and a checksum-invalid `VERIFIED` row (corrupted after checkpoint) → `UNRESOLVED` after a reconciliation-equivalent snapshot rebuild (session over a test-owned `RunMutex`); `INCOMPATIBLE` rows and non-final rows are covered by deriver unit tests (no legal production seeding path for `INCOMPATIBLE` row advancement) | same |
+| DS-AC-03 | same test class: a `CORRUPT` row and an unreadable `VERIFIED` row (manifest chunk truncated/deleted after checkpoint so the record reads `Unreadable` with `checksumValid = false` — a readable-but-checksum-mismatched row would instead advance to `CORRUPT` with a surfaced Unresolved and fail the gate) → `UNRESOLVED` after module-level restart reconciliation; `INCOMPATIBLE` rows and non-final rows are covered by deriver unit tests (no legal production seeding path for `INCOMPATIBLE` row advancement) | same |
 | DS-AC-04 | `OrganizerDurableStatusDeriverTest`: ±1 ms retention boundary at `createdAt + 24h`, tombstone expiry boundary, priority ordering, checksum-invalid `VERIFIED`, final `RESTORED`/`EXPIRED` rows, `PRUNED_UNUSED`/`QUARANTINED` → `NEVER_ORGANIZED`, `CORRUPT`/`INCOMPATIBLE_VERSION` tombstones → `UNRESOLVED` | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.application.lifecycle.*'` |
 | DS-AC-05 | deriver unit test (record removed from inputs → not restorable) + instrumentation test (tombstone purged → `NEVER_ORGANIZED`; fresh store before snapshot rebuild → `UNAVAILABLE`) + render test for no-row | unit + instrumentation commands above |
 | DS-AC-06 | type is field-free (code review); no `RunEvent` emission in the new path; existing diagnostics tests stay green | full unit suite command |
