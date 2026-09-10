@@ -5,11 +5,11 @@
 
 - Auditor: 独立監査セッション (ZCode/GLM general-purpose subagent、実装セッションとは別の作業主体。solo保守の独立session規定に基づく。round 1: `34ca558234…`対象、round 2: `dcc18d053e…`対象 — 両者は別session)
 - PR: https://github.com/nunu1733/NunuLauncher/pull/276
-- Head SHA: dcc18d053e45f73f62faf42ebd644f8be18ca38c
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34495038063
+- Head SHA: 92205bf99eb7aabd44c69b78f159fd3f55685942
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34497804951
 - Criteria: specs/271-organizer-durable-status-projection/spec.md — DS-AC-01, DS-AC-02, DS-AC-03, DS-AC-04, DS-AC-05, DS-AC-06, DS-AC-07, DS-AC-08, DS-AC-09, DS-AC-10
 
-上記は round 2 (最新) の値。round 1 の対象headは `34ca55823423dcd76c5f3d16953bf319e7acf815`、そのhead上のCI実行は actions/runs/34484392559、round 1 時点のcriteriaは DS-AC-01..08 だった (DS-AC-09/10 はround 2対象commitでspecへ追加)。round 1 の記録は以下に保持する。
+上記の CI run は merge head `92205bf99eb…` 上の成功実行 (`final-status` green、13 job全て success)。round 2 監査の対象 **code** head は `dcc18d053e45f73f62faf42ebd644f8be18ca38c` であり、監査記録を含む merge head までの delta (`dcc18d053e..92205bf99e`) は `docs/assessment/` 配下 3 file (本記録 + evidence画像2枚) のみの docs-only 変更であるため、byte-identical なコードを検証するものとしてこの実行を証拠とする。round 1 の対象headは `34ca55823423dcd76c5f3d16953bf319e7acf815`、そのhead上のCI実行は actions/runs/34484392559、round 1 時点のcriteriaは DS-AC-01..08 だった (DS-AC-09/10 はround 2対象commitでspecへ追加)。round 1 の記録は以下に保持する。
 
 ## Scope
 
@@ -89,7 +89,7 @@ CI 証拠 (監査実行時点):
 ## Round 2 (owner review対応の再監査)
 
 > 監査日: 2026-09-10
-> 対象head: `dcc18d053e45f73f62faf42ebd644f8be18ca38c` (PR head。round 1 記録commit `51f22c128f` の直後の review-response commit)
+> 対象head: `dcc18d053e45f73f62faf42ebd644f8be18ca38c` (review-response commit。round 1 記録commit `51f22c128f` の直後)。本記録は merge head `92205bf99eb7aabd44c69b78f159fd3f55685942` — 監査記録 + evidence画像の docs-only commit — にpinし、そのhead上のgreenなCI実行を証拠とする (コードは対象headとbyte-identical)
 > 契約: 同一spec の DS-AC-01..DS-AC-10 (DS-AC-09/10 は対象commitでspec/planへ同時追加)
 > 監査主体: round 1 とは別の独立監査session (solo保守の独立session規定に基づく)
 
@@ -150,20 +150,21 @@ workerが取得した cold-process flow の証跡 (emulator `nunu_qpr2_api36_1`)
   - `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.application.store.OrganizerDurableStatusInstrumentationTest` → **9 tests / 0 failures / 0 errors** (round 1 の8に same-module recovery test 追加で+1)
   - `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest` → **39 tests / 0 failures / 0 errors** (round 1 の38に same-surface recovery test 追加で+1。flake対象の `changeListTraversalReachesExpandAndReviewActions` を含め全green)
 
-### CI status (監査時点) と merge gate
+### CI status と merge gate
 
-- run 34495038063 (CI `.github/workflows/ci.yml`, `pull_request`, head `dcc18d053e…`, branch `issue-271-organizer-durable-status-projection`): **completed / conclusion failure**。失敗jobは `organizer-instrumentation-issue52-tests` — `ManualOrganizationPreferencesInstrumentationTest.changeListTraversalReachesExpandAndReviewActions` が `AssertionError: Failed to assert the following: (Focused = 'true')` — と、それを受けて failed となった `final-status`。他の全job (`organizer-unit-tests`, `check-style`, `build-debug-apk`, `validate-repo-contract`, `changes`, instrumentation 6 job中5 job) は success。
-- `high-risk-evidence` (run 34495038056, high-risk-gate) は本 round-2 監査記録の欠如を理由に fail — 本記録の追加がその是正である。
-- **flake分析 (PR diff に起因しないと判断):** (i) 該当testは本deltaで未変更 (deltaのtest変更は新規2testとfake member追加のみ); (ii) 該当testは Preview 状態のみを走り、checking行は Idle/Cancelled 限定・`readinessState` は既定READYのまま不変のため、deltaが当該testのrender面に到達しない; (iii) 新規testはalphabetical実行順で該当testより後に走り汚染源になり得ない; (iv) 同一headでの同一class独立再実行 39/39 green (本監査)、round-1 head (`34ca558234…`) の同CI job も success; (v) 該当test自体に #209/#209-CI 由来のfocus系CI不安定性への追記修正履歴がある。なお merge ref は main 未変更 (`6b6bf8dd9f`) のため PR head コードそのものを検証している。
-- **merge 条件:** 高リスク契約により、merge前に対象head上で `final-status` が成功した CI run と本記録の両方が揃うこと。現状は上記flakeのため未確定 — 失敗jobのre-run (またはworkerによる再発時の対処) で `final-status` を再確立すること。本記録は再確立を条件とした承認である。
+- run 34495038063 (CI `.github/workflows/ci.yml`, `pull_request`, head `dcc18d053e…`, branch `issue-271-organizer-durable-status-projection`): 初回attemptは `organizer-instrumentation-issue52-tests` のflake — `ManualOrganizationPreferencesInstrumentationTest.changeListTraversalReachesExpandAndReviewActions` が `AssertionError: Failed to assert the following: (Focused = 'true')` — により failure (他の全jobはsuccess)。issue53 も別attemptで同種のflakeに当たった。その後の再attemptはjob再実行と、後続commit pushに伴うconcurrency cancellationで中断され、このrunは最終的に **cancelled** として記録された。issue52/issue53 はいずれも本deltaに起因しない既知の不安定job (下記のflake分析どおり)。
+- **green実行 (CI証拠): run 34497804951** (CI, `pull_request`, GitHubによりPR #276に紐付け, head `92205bf99eb…` = merge head): issue52/issue53 の同一head再実行を含め **13 job全て success** — `final-status` および要件上のsource jobs (`organizer-unit-tests`, `check-style`, `build-debug-apk`) を含む。merge head へのdeltaは docs-only (監査記録 + evidence画像) でコードは対象head `dcc18d053e…` と byte-identical なため、この実行が対象コードのmerge-gate証拠として有効である。
+- `high-risk-evidence` (high-risk-gate workflow) のこれまでのfailは (a) 監査記録の未追加、(b) 記録がred/cancelled runを参照していたこと、の2点によるものであり、本記録のgreen run参照への更新が (b) の是正である。
+- **flake分析 (PR diff に起因しないと判断):** (i) 該当testは本deltaで未変更 (deltaのtest変更は新規2testとfake member追加のみ); (ii) 該当testは Preview 状態のみを走り、checking行は Idle/Cancelled 限定・`readinessState` は既定READYのまま不変のため、deltaが当該testのrender面に到達しない; (iii) 新規testはalphabetical実行順で該当testより後に走り汚染源になり得ない; (iv) 同一headでの同一class独立再実行 39/39 green (本監査) に加え、flake対象2 jobとも同一コード上の再実行 (run 34497804951) で green — 再現性のない一回限りのemulator不安定と確認された; (v) 該当test自体に #209/#209-CI 由来のfocus系CI不安定性への追記修正履歴がある。なお merge ref は main 未変更 (`6b6bf8dd9f`) のため CI は PR head コードそのものを検証している。
+- **merge 条件の充足:** `final-status` は merge head `92205bf99eb…` 上で green を確認した (run 34497804951)。高リスク契約の要件 — 検証対象コード上で成功したCI merge gateと本独立監査記録 — は両方とも揃った。
 
 ### Findings (round 2)
 
 - **Blocking (code): なし。** owner review P1×2 / P2 への対応主張 (a)–(e) はすべて対象headで成立した。
-- **Merge gate (条件):** 上記のとおり `final-status` 再確立がmergeの前提。
+- **Merge gate:** 解消。flake (issue52/issue53) は同一コードの再実行で green となり、merge head `92205bf99eb…` 上で `final-status` green (run 34497804951) を確認済み — PR diff起因ではない (上記分析)。
 - 参考 (非blocking): cold settings入口では、初回readが即時に `UNAVAILABLE` へ確定するため checking行は一瞬のみ表示され、model未loadが続く間は durable status 領域は無renderになる (step1 screenshot のとおり)。これは spec の fail-closed 語義・「no invented status」に一致するが、loading表示は「読み取りが結果を知るまで」の表現である点は、将来のUX調整余地として記録する (DS-AC-09 の受入は満たす)。
 - 未確認範囲: (i) cold-pathシーケンス本体の独立再実行 (上記の代替検証で扱う、エミュレータdata保護のため); (ii) `StrategyPickerInstrumentationTest` / `OrganizerDiagnosticsRouteInstrumentationTest` / `ProductionPublicSeamInstrumentationTest` の再実行 (deltaはfaçade実装追加のみをdiff目視で確認、round 1と同じ扱い); (iii) 物理deviceでの process death 再現 (round 1と同様、emulatorがrestart-equivalent代理)。
 
 ### Round 2 verdict
 
-**PASS (`final-status` 再確立を条件とした承認)** — 対象head `dcc18d053e45f73f62faf42ebd644f8be18ca38c` のdeltaに対し、owner review の P1×2 / P2 への対応を独立検証し、DS-AC-09/DS-AC-10 を含む全criteriaを確認。独立再実行 (spotless + unit 982 + instrumentation 48) は green。merge には (1) 本記録、(2) 対象head上での `final-status` 成功 (flake job の re-run を含む) の揃うことを要求する。
+**PASS (無条件)** — 対象code head `dcc18d053e45f73f62faf42ebd644f8be18ca38c` のdeltaに対し、owner review の P1×2 / P2 への対応を独立検証し、DS-AC-09/DS-AC-10 を含む全criteriaを確認。独立再実行 (spotless + unit 982 + instrumentation 48) は green。merge head `92205bf99eb7aabd44c69b78f159fd3f55685942` (docs-only delta、コードは対象headとbyte-identical) 上で `final-status` green のCI実行 (run 34497804951) を確認済み — 本記録と同runにより高リスク独立エビデンス契約を満たす。
