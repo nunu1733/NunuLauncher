@@ -2,7 +2,7 @@
 
 > Issue: #232
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: accepted (spec approved at PR #267 head 9c23c98a6a)
 
 ## Current evidence
 

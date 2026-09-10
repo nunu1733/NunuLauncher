@@ -1,6 +1,6 @@
 ---
 issue: "#232"
-status: draft
+status: accepted
 requirements:
   - NFR-009
 risk: []
@@ -139,3 +139,4 @@ None。新規 permission、外部送信、sensitive data は存在しない。hi
 ## Change history
 
 - 2026-09-10: Draft created for #232.
+- 2026-09-10: Accepted after code-reviewer-2 review of PR #267 (head 9c23c98a6a).
