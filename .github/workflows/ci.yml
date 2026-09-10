@@ -418,7 +418,9 @@ jobs:
   # emulator: the production adapter/page-ID seam, manifest-context validation,
   # ordinary sanitizer separation, and RecoveryStore v1/v2 lifecycle matrix all
   # mutate or inspect independent storage and must not inherit the Issue #52 UI
-  # fixture state.
+  # fixture state. Issue #269's real writer/recovery oracle runs on this same
+  # clean surface so its accepted AC-269-01..04 execution evidence is retained
+  # by the pull-request merge gate.
   organizer-instrumentation-issue155-tests:
     needs: changes
     if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
@@ -451,7 +453,7 @@ jobs:
           emulator-boot-timeout: 900
           script: >-
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
-            -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.application.ProductionPublicSeamInstrumentationTest,app.lawnchair.organizer.application.RealAdapterRowMatrixInstrumentationTest,app.lawnchair.organizer.application.SanitizerInstrumentationTest,com.android.launcher3.organizer.RecoveryStoreLifecycleTest,app.lawnchair.organizer.application.OverlapAcceptanceGateSeamInstrumentationTest,app.lawnchair.organizer.planning.LoaderCursorOverlapAcceptanceContractTest
+            -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.application.ProductionPublicSeamInstrumentationTest,app.lawnchair.organizer.application.RealAdapterRowMatrixInstrumentationTest,app.lawnchair.organizer.application.SanitizerInstrumentationTest,com.android.launcher3.organizer.RecoveryStoreLifecycleTest,app.lawnchair.organizer.application.OverlapAcceptanceGateSeamInstrumentationTest,app.lawnchair.organizer.planning.LoaderCursorOverlapAcceptanceContractTest,app.lawnchair.organizer.application.Issue265ManualEditRecoveryInstrumentationTest
       - name: Upload Issue 155 instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
