@@ -1,6 +1,6 @@
 ---
 issue: "#270"
-status: accepted
+status: implemented
 requirements: [TC-AC-01, TC-AC-02, TC-AC-03, TC-AC-04, TC-AC-05, TC-AC-06]
 risk: []
 updated: 2026-09-10
@@ -127,6 +127,7 @@ UI 変更なし。`Unavailable` variant は既存の `manual_organization_recove
 
 - 2026-09-10: Drafted for Issue #270（Phase1 spec/plan review の指摘により、caller seam AC・lease 解放証拠・#89 projection read の許容範囲明示を反映）。
 - 2026-09-10: 第2 review cycle で contract test 期待集合更新を plan へ追加、TC-AC-05 evidence を stub+composition 構成に整合、evidence 形式代替を Open questions へ明示、confirm 時 capture TOCTOU window を Non-goals へ明記。同日 Phase1 review `Approve`（code-reviewer-2、head `f1f6033088`）により `accepted`。
+- 2026-09-10: 実装が [PR #273](https://github.com/nunu1733/NunuLauncher/pull/273) として merge（merge commit `e7929c9a99`、head `25a185bf29`）。Phase2 review は code-reviewer-2 が `Approve`（`18e0dc6025`、test 強化 + docs-only delta を含む `25a185bf29` への承認引き継ぎを再確認）、独立 audit（[`docs/assessment/pr-273-recovery-preview-capture-failure.md`](../../docs/assessment/pr-273-recovery-preview-capture-failure.md)、対象 head `81939d414b`、[CI run 34457322743](https://github.com/nunu1733/NunuLauncher/actions/runs/34457322743)）は blocking findings なし。merge head 上の `CI / final-status` は [run 34463613621](https://github.com/nunu1733/NunuLauncher/actions/runs/34463613621) で clean pass。Issue #270 は PR merge により closed。全 TC-AC-01..06 が満たされたため `implemented` に遷移。
 
 ## Open questions
 
