@@ -98,9 +98,10 @@ manifest payload, item identity, or timestamp
 
 ### Scenario: reopen after restore shows restored or expired
 
-Given the recovery store durably holds only a tombstone with reason
-`ALREADY_RESTORED` (or an `EXPIRED` tombstone) within its tombstone retention,
-and the process has restarted
+Given a restore completed successfully — the recovery store durably holds
+either a record row in `RESTORED` (or `EXPIRED`) lifecycle, or, after retention
+eviction, only a tombstone with reason `ALREADY_RESTORED` (or `EXPIRED`) within
+its tombstone retention — and the process has restarted
 When the user opens organizer Settings and no run operation is active
 Then the surface presents the durable status "restored or expired"
 And it does not present "organized and restorable"
@@ -116,21 +117,28 @@ And after retention eviction the status derives from the `EXPIRED` tombstone as
 
 ### Scenario: unresolved record shows the unresolved surface
 
-Given the recovery store durably holds a record whose lifecycle is in-flight or
-unresolved — `CREATING`, `READY`, `APPLYING`, `COMMITTED_UNVERIFIED`,
-`RESTORING`, `CORRUPT`, or `INCOMPATIBLE` — after startup reconciliation
-completed
+Given startup reconciliation completed successfully (readiness `READY`) and the
+recovery store durably holds a record that presents an unresolved recovery: a
+row in `CORRUPT` or `INCOMPATIBLE` lifecycle, or a `VERIFIED` row whose payload
+checksum is invalid
 When the user opens organizer Settings and no run operation is active
 Then the surface presents the durable status "unresolved" with the existing
 safe-support guidance (open diagnostics), reusing the existing unresolved
 wording pattern
 And it does not present "organized and restorable"
 
+And (derivation rule, unit-tested): a row in a non-final lifecycle — `CREATING`,
+`READY`, `APPLYING`, `COMMITTED_UNVERIFIED`, `RESTORING` — also derives
+"unresolved", as does a retained `CORRUPT` or `INCOMPATIBLE_VERSION` tombstone.
+Non-final rows normally cannot coexist with a completed reconciliation (the
+readiness gate fail-closes to unavailable instead), so the surface-level
+assertion targets the reachable rows above.
+
 ### Scenario: never organized presents no durable status row
 
-Given the recovery store holds no records and no retained tombstones (or only
-`PRUNED_UNUSED` / `QUARANTINED` tombstones, which never represented an applied
-result)
+Given the recovery store holds no record rows and no retained tombstones, or
+only tombstones that never represented an applied result (`PRUNED_UNUSED` /
+`QUARANTINED`)
 When the user opens organizer Settings and no run operation is active
 Then the surface presents no durable status row and is unchanged from today
 
@@ -138,8 +146,8 @@ Then the surface presents no durable status row and is unchanged from today
 
 Given the recovery store is unavailable (`INCOMPATIBLE_VERSION`,
 `READ_FAILED`), or startup reconciliation has not completed (`FAILED`,
-`RECONCILING`, `IDLE`), or the inspection snapshot for the current generation
-is unreadable
+`RECONCILING`, `IDLE`), or the module's run mutex is contended by a writer, or
+the inspection snapshot for the current generation is unreadable
 When the Settings surface requests the durable status
 Then the projection returns a fail-closed unavailable result and the surface
 presents no durable status row and no invented state
@@ -170,11 +178,13 @@ read again and rendered per the scenarios above
 - **Reads**: the recovery store's persisted record rows (bounded metadata only:
   `lifecycle`, `created_at_ms`, `updated_at_ms`, checksum validity) and
   tombstones (`reason`, `expires_at_ms`). The read path reuses the module-owned
-  inspection snapshot seam (#89): it never opens SQLite, probes versions,
-  writes, mutates lifecycle, or purges tombstones from the Settings-driven
-  read. The snapshot is republished by startup reconciliation
-  (`reconcileAtStart` → `rebuildInspectionSnapshot`), so a re-opened process
-  reads a fresh, generation-valid snapshot after reconciliation completes.
+  inspection snapshot seam (#89), including its concurrency contract: the
+  module acquires its run mutex non-blocking before reading (writer contention
+  fail-closes to unavailable), and the read itself never opens SQLite, probes
+  versions, writes, mutates lifecycle, or purges tombstones. The snapshot is
+  republished by startup reconciliation (`reconcileAtStart` →
+  `rebuildInspectionSnapshot`), so a re-opened process reads a fresh,
+  generation-valid snapshot after reconciliation completes.
 - **Writes**: none. The projection is derived, non-authoritative, and stateless.
 - **Identity/retention**: the projection type carries no identifiers. The
   "restorable" window follows spec 13 retention (24h from record creation);
@@ -198,10 +208,12 @@ read again and rendered per the scenarios above
 
 ## Accessibility and localization
 
-- The durable status renders as a text row announced by the screen reader
-  before the decision actions, following the existing `SummaryText` /
-  live-region patterns of this surface; focus behavior of the existing start
-  entry is unchanged.
+- The durable status renders as a text row announced by the screen reader,
+  placed before the start entry on the `Idle`/`Cancelled` surfaces, following
+  the existing `SummaryText` / live-region patterns of this surface; focus
+  behavior of the existing start entry is unchanged. The status is re-read each
+  time the surface transitions into `Idle` or `Cancelled` (e.g., after
+  cancelling a run in place), not only on first composition.
 - All new user-visible strings are localized in EN (`values/`) and ja
   (`values-ja/`); no string embeds counts, identifiers, or timestamps, so no
   plural handling is required.
@@ -212,23 +224,27 @@ read again and rendered per the scenarios above
       Settings projection presents "organized and restorable" for a `VERIFIED`
       record within retention.
 - [ ] DS-AC-02: Process-death restart test — restore (and expiration) →
-      close/reopen → projection presents "restored or expired" from the
-      `ALREADY_RESTORED` / `EXPIRED` tombstone, and never "organized and
-      restorable".
-- [ ] DS-AC-03: Process-death restart test — an in-flight/unresolved record
-      (`RESTORING`, `CORRUPT`, `INCOMPATIBLE` — and the other non-final
-      lifecycles) after completed startup reconciliation → projection presents
-      "unresolved".
+      close/reopen → projection presents "restored or expired" both for the
+      fresh `RESTORED`/`EXPIRED` record row (pre-eviction) and for the
+      `ALREADY_RESTORED` / `EXPIRED` tombstone (post-eviction), and never
+      "organized and restorable".
+- [ ] DS-AC-03: Process-death restart test — an unresolved record after
+      completed startup reconciliation (a `CORRUPT` row, an `INCOMPATIBLE`
+      row, or a `VERIFIED` row with an invalid payload checksum) → projection
+      presents "unresolved"; the derivations for non-final lifecycle rows and
+      retained `CORRUPT`/`INCOMPATIBLE_VERSION` tombstones are covered by unit
+      tests on the deriver.
 - [ ] DS-AC-04: A `VERIFIED` record past its retention window (boundary tested
       at exactly `createdAt + 24h`) never derives "organized and restorable",
       before and after lazy eviction; expired/restored tombstones outside
       tombstone retention never derive "restored or expired"; no records and
-      only `PRUNED_UNUSED`/`QUARANTINED` tombstones derive "never organized".
+      only `PRUNED_UNUSED`/`QUARANTINED` tombstones derive "never organized";
+      retained `CORRUPT`/`INCOMPATIBLE_VERSION` tombstones derive "unresolved".
 - [ ] DS-AC-05: The projection never presents "organized and restorable" while
       the underlying record is gone (retention-aligned invalidation covered by
       a test); fail-closed unavailable (store unavailable, reconciliation not
-      completed, unreadable snapshot) renders no durable status row and
-      performs no writes or journal events.
+      completed, run-mutex contention, unreadable snapshot) renders no durable
+      status row and performs no writes or journal events.
 - [ ] DS-AC-06: No new diagnostics fields outside the closed vocabulary; the
       projection emits no journal events; the projection type leaks no record
       payload, revision, digest, or item identity (enforced by the type's shape).
@@ -244,8 +260,8 @@ read again and rendered per the scenarios above
 | AC | Evidence |
 |---|---|
 | DS-AC-01 | Instrumentation test: recovery store + projection seam across close/reopen (process-death surrogate, existing restart-equivalent pattern) asserting the restorable projection |
-| DS-AC-02 | Instrumentation test: restore → retention → tombstone → close/reopen → restored/expired projection |
-| DS-AC-03 | Instrumentation test: unresolved lifecycles after reconciliation-equivalent state → unresolved projection |
+| DS-AC-02 | Instrumentation test: restore → retention → close/reopen asserting both the fresh `RESTORED` row projection and, after eviction, the `ALREADY_RESTORED`/`EXPIRED` tombstone projection |
+| DS-AC-03 | Instrumentation test: `CORRUPT` row and checksum-invalid `VERIFIED` row after a reconciliation-equivalent snapshot rebuild → unresolved projection; unit tests cover non-final rows and `CORRUPT`/`INCOMPATIBLE_VERSION` tombstones |
 | DS-AC-04 | Unit tests: pure derivation fixtures and retention/tombstone boundary edges (±1 ms at `createdAt + 24h`, tombstone expiry edge), priority ordering between statuses |
 | DS-AC-05 | Unit test (invalidation on derived inputs) + instrumentation test (record gone → re-derivation; fail-closed paths) |
 | DS-AC-06 | Type-shape review (projection type carries no payload fields) + existing diagnostics contract tests unchanged; no `RunEvent` emission in the new path (code review + grep) |

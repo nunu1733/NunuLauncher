@@ -49,11 +49,15 @@ record.
 - `readInspectionProjection(pointId)` (#89) already established the
   snapshot-only, fence-gated read pattern; this issue adds the whole-store
   variant plus a closed-vocabulary derivation, reusing the same fence.
-- `LifecycleReconciler` guarantees that after completed reconciliation the only
-  durable record states are `VERIFIED` (restorable, retention-managed), final
-  states (`RESTORED`/`EXPIRED`/`CORRUPT`/`INCOMPATIBLE`), or explicitly
-  unresolved leftovers (`RESTORING` from `unresolvedNeither`) — the derivation
-  can therefore map a small closed set, not the full state machine.
+- `LifecycleReconciler` plus `RestartReconciler`/`ReadinessGate` together
+  guarantee that after a completed, successful reconciliation (`READY` gate)
+  the durable record rows are: `VERIFIED` (restorable, retention-managed),
+  final rows (`RESTORED`/`EXPIRED` kept until eviction, `CORRUPT`,
+  `INCOMPATIBLE`), or a `VERIFIED` row silently reconciled with an invalid
+  checksum (`RestartReconciler.kt:173-177`). Non-final rows surface only when
+  reconciliation fails or has not run, in which case the readiness gate is not
+  `READY` and the projection fail-closes to `UNAVAILABLE`. The derivation maps
+  this small closed set, not the full state machine.
 
 ## Design
 
@@ -72,18 +76,33 @@ record.
    - `nowMs: Long`
    Retention windows come from `RetentionPolicy` constants (single source).
    Derivation (priority order):
-   1. any record in `{CREATING, READY, APPLYING, COMMITTED_UNVERIFIED,
-      RESTORING, CORRUPT, INCOMPATIBLE}` → `UNRESOLVED`;
-   2. any `VERIFIED` record with `checksumValid == false` → `UNRESOLVED`
-      (defensive; reconciliation advances such records to `CORRUPT`, so this is
-      unreachable after completed reconciliation);
-   3. any `VERIFIED` record within retention (`nowMs < createdAtMs + retention`)
-      → `ORGANIZED_RESTORABLE`;
-   4. any `VERIFIED` record past retention (lapsed, pre-eviction) →
+   1. any record row in a non-final lifecycle `{CREATING, READY, APPLYING,
+      COMMITTED_UNVERIFIED, RESTORING}` → `UNRESOLVED` (defensive: normally
+      unreachable with a `READY` gate — completed reconciliation resolves or
+      prunes these rows or fails the gate — but the mapping keeps the closed
+      vocabulary total);
+   2. any record row in `CORRUPT` or `INCOMPATIBLE` lifecycle → `UNRESOLVED`
+      (final rows skipped by reconciliation candidates, so they persist after
+      a completed reconciliation);
+   3. any `VERIFIED` record row with `checksumValid == false` → `UNRESOLVED`
+      (reachable: `RestartReconciler` reconciles unreadable rows silently
+      without advancing them, so the row stays `VERIFIED` with an invalid
+      checksum);
+   4. any `VERIFIED` record row within retention (`nowMs < createdAtMs +
+      retention`) → `ORGANIZED_RESTORABLE`;
+   5. any `VERIFIED` record row past retention (lapsed, pre-eviction) →
       `RESTORED_OR_EXPIRED`;
-   5. any retained tombstone with reason `ALREADY_RESTORED` or `EXPIRED`
+   6. any record row in final `RESTORED` or `EXPIRED` lifecycle →
+      `RESTORED_OR_EXPIRED` (the durable state for up to 24h after a
+      successful restore / retention lapse, until eviction writes the
+      tombstone);
+   7. any retained tombstone with reason `ALREADY_RESTORED` or `EXPIRED`
       (`expiresAtMs > nowMs`) → `RESTORED_OR_EXPIRED`;
-   6. otherwise → `NEVER_ORGANIZED`.
+   8. any retained tombstone with reason `CORRUPT` or `INCOMPATIBLE_VERSION`
+      → `UNRESOLVED` (it represented an applied result whose recovery is now
+      unusable — never silently "never organized");
+   9. otherwise → `NEVER_ORGANIZED` (no rows; tombstones `PRUNED_UNUSED` /
+      `QUARANTINED` never represented an applied result).
    Unit-testable without Android (DS-AC-04).
 
 3. **`RecoveryStorePort.readInspectionSnapshot()` (new port method, closed result)**
@@ -102,16 +121,24 @@ record.
    read).
 
 4. **`LayoutApplicationModule.durableOrganizerStatus()` (new public method)**
+   Concurrency and gating mirror the existing inspection read
+   (`RecoveryPreviewProtocol.inspect`): the read acquires the module run mutex
+   non-blocking (contention → `UNAVAILABLE` — a writer between mark-dirty and
+   republish must never be classified from the pre-mutation snapshot, per
+   spec 89 §"Inspection and concurrency semantics"), then applies
+   `readinessGate.runWhenReady`:
    ```kotlin
    fun durableOrganizerStatus(): OrganizerDurableStatus =
        readinessGate.runWhenReady(
            unavailable = { OrganizerDurableStatus.UNAVAILABLE },
-           block = { /* map store.readInspectionSnapshot() through the deriver; map failure → UNAVAILABLE */ },
+           block = { /* tryAcquire run mutex; map store.readInspectionSnapshot()
+                        through the deriver; map failure/contention → UNAVAILABLE */ },
        )
    ```
-   The application module owns the projection (it owns the recovery store and
-   the clock); the UI only reads the closed enum. Mapping the snapshot values
-   into the deriver inputs lives here (protocol layer), not in the store.
+   The application module owns the projection (it owns the recovery store, the
+   run mutex, and the clock); the UI only reads the closed enum. Mapping the
+   snapshot values into the deriver inputs lives here (protocol layer), not in
+   the store.
 
 5. **UI seam (existing)**
    - `ManualOrganizationApplication` += `fun readDurableOrganizerStatus():
@@ -120,13 +147,13 @@ record.
      the module.
    - `ManualOrganizationRun.readDurableOrganizerStatus()` delegates to the
      application seam (read-only; no state mutation, no lock interaction).
-   - `ManualOrganizationPreferences.kt`: while `state` is `Idle` or
-     `Cancelled`, read the status once per surface entry on `Dispatchers.IO`
-     and render a `SummaryText` row for `ORGANIZED_RESTORABLE`,
-     `RESTORED_OR_EXPIRED`, and `UNRESOLVED`; render nothing for
-     `NEVER_ORGANIZED` and `UNAVAILABLE`. For `UNRESOLVED`, render the existing
-     safe-support rows (`manual_organization_safe_terminal` +
-     `manual_organization_open_diagnostics`, `onOpenDiagnostics`) after the
+   - `ManualOrganizationPreferences.kt`: each time `state` transitions into
+     `Idle` or `Cancelled` (keyed on that condition, so an in-place cancel
+     re-reads), read the status on `Dispatchers.IO` and render a `SummaryText`
+     row for `ORGANIZED_RESTORABLE`, `RESTORED_OR_EXPIRED`, and `UNRESOLVED`;
+     render nothing for `NEVER_ORGANIZED` and `UNAVAILABLE`. For `UNRESOLVED`,
+     render the existing safe-support rows (`manual_organization_safe_terminal`
+     + `manual_organization_open_diagnostics`, `onOpenDiagnostics`) after the
      status line. Any other run state renders exactly as today (active
      process-local state keeps precedence).
 
@@ -134,6 +161,18 @@ record.
    `manual_organization_durable_status_*` strings (restorable /
    restored-or-expired / unresolved heading). The unresolved guidance reuses
    existing strings. No plurals, no placeholders.
+
+### Data flow
+
+- Settings (Idle/Cancelled) → `ManualOrganizationRun.readDurableOrganizerStatus()`
+  → `ManualOrganizationApplication` façade →
+  `LayoutApplicationModule.durableOrganizerStatus()` → run mutex tryAcquire +
+  `ReadinessGate.runWhenReady` → `RecoveryStore.readInspectionSnapshot()`
+  (fence-gated, snapshot-only) → snapshot records/tombstones mapped to deriver
+  inputs in the protocol layer → `OrganizerDurableStatusDeriver.derive(...)`
+  → closed enum back up the same path → UI render mapping.
+- No step writes, mutates lifecycle, purges tombstones, or emits journal
+  events; every failure maps to `UNAVAILABLE` at the module boundary.
 
 ### 変更しない seam
 
@@ -163,21 +202,21 @@ record.
 
 ## Change set
 
-| Path | Change |
-|---|---|
-| `lawnchair/src/app/lawnchair/organizer/application/public/OrganizerDurableStatus.kt` | new: closed status enum |
-| `lawnchair/src/app/lawnchair/organizer/application/lifecycle/OrganizerDurableStatusDeriver.kt` | new: pure derivation + minimal input types |
-| `lawnchair/src/app/lawnchair/organizer/application/protocol/Ports.kt` | add `readInspectionSnapshot()` + closed read result to `RecoveryStorePort` |
-| `lawnchair/src/app/lawnchair/organizer/application/store/RecoveryStore.kt` | implement `readInspectionSnapshot()` (fence-gated, snapshot-only) |
-| `lawnchair/src/app/lawnchair/organizer/application/protocol/LayoutApplicationModule.kt` | add `durableOrganizerStatus()` (readiness-gated, fail-closed) |
-| `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt` | add `readDurableOrganizerStatus()` to the application façade + run delegate |
-| `lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt` | render mapping for `Idle`/`Cancelled` |
-| `lawnchair/res/values/strings.xml`, `lawnchair/res/values-ja/strings.xml` | 3 new strings each |
-| `tests/unit/app/lawnchair/organizer/application/lifecycle/OrganizerDurableStatusDeriverTest.kt` | new: fixtures, boundaries, priority, invalidation |
-| `tests/organizer-instrumentation/app/lawnchair/organizer/application/store/OrganizerDurableStatusInstrumentationTest.kt` | new: close/reopen restart scenarios per DS-AC-01/02/03/05 |
-| `tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationPreferencesInstrumentationTest.kt` | extend: durable status render scenarios incl. fail-closed + active-run precedence (DS-AC-07) |
-| `CONTEXT.md`, `DESIGN.md` | domain term + seam ownership line |
-| `specs/271-organizer-durable-status-projection/{spec,plan}.md` | spec/plan status updates |
+| Path | Change | Why here |
+|---|---|---|
+| `lawnchair/src/app/lawnchair/organizer/application/public/OrganizerDurableStatus.kt` | new: closed status enum | field-free public type is the privacy boundary |
+| `lawnchair/src/app/lawnchair/organizer/application/lifecycle/OrganizerDurableStatusDeriver.kt` | new: pure derivation + minimal input types | retention policy lives next to `RetentionPolicy`; pure = JVM-testable |
+| `lawnchair/src/app/lawnchair/organizer/application/protocol/Ports.kt` | add `readInspectionSnapshot()` + closed read result to `RecoveryStorePort` | the port is the module↔store seam |
+| `lawnchair/src/app/lawnchair/organizer/application/store/RecoveryStore.kt` | implement `readInspectionSnapshot()` (fence-gated, snapshot-only) | only implementation of the port; reuses #89 fence pattern |
+| `lawnchair/src/app/lawnchair/organizer/application/protocol/LayoutApplicationModule.kt` | add `durableOrganizerStatus()` (mutex + readiness gated, fail-closed) | module owns store, mutex, clock → owns the projection |
+| `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt` | add `readDurableOrganizerStatus()` to the application façade + run delegate | existing narrow façade is the UI↔module seam |
+| `lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt` | render mapping for `Idle`/`Cancelled` | the surface named by the issue |
+| `lawnchair/res/values/strings.xml`, `lawnchair/res/values-ja/strings.xml` | 3 new strings each | localized user-visible status text |
+| `tests/unit/app/lawnchair/organizer/application/lifecycle/OrganizerDurableStatusDeriverTest.kt` | new: fixtures, boundaries, priority, invalidation | pure deriver → JVM unit tests |
+| `tests/organizer-instrumentation/app/lawnchair/organizer/application/store/OrganizerDurableStatusInstrumentationTest.kt` | new: close/reopen restart scenarios per DS-AC-01/02/03/05 | durability needs real SQLite across reopen |
+| `tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationPreferencesInstrumentationTest.kt` | extend: durable status render scenarios incl. fail-closed + active-run precedence (DS-AC-07) | existing surface test harness with fake application |
+| `CONTEXT.md`, `DESIGN.md` | domain term + seam ownership line | 正本 updates (DS-AC-08) |
+| `specs/271-organizer-durable-status-projection/{spec,plan}.md` | spec/plan status updates | specs README rule |
 
 ## Migration and recovery
 
@@ -203,9 +242,9 @@ record.
 | AC | Evidence | Command |
 |---|---|---|
 | DS-AC-01 | `OrganizerDurableStatusInstrumentationTest`: checkpoint → advance to `VERIFIED` → fresh store + reconciliation-session snapshot rebuild (process-death surrogate) → `durableOrganizerStatus()` = `ORGANIZED_RESTORABLE` | `connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=...OrganizerDurableStatusInstrumentationTest` |
-| DS-AC-02 | same test class: `VERIFIED` → `RESTORING` → `RESTORED` → retention → `ALREADY_RESTORED` tombstone; and `EXPIRED` tombstone path | same |
-| DS-AC-03 | same test class: records left in `RESTORING` / `CORRUPT` (fault injection) / `INCOMPATIBLE` (format) → `UNRESOLVED` | same |
-| DS-AC-04 | `OrganizerDurableStatusDeriverTest`: ±1 ms retention boundary at `createdAt + 24h`, tombstone expiry boundary, priority ordering, checksum-invalid `VERIFIED`, `PRUNED_UNUSED`/`QUARANTINED` → `NEVER_ORGANIZED` | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.application.lifecycle.*'` |
+| DS-AC-02 | same test class: `VERIFIED` → `RESTORING` → `RESTORED` → close/reopen asserts the fresh `RESTORED` row; then retention eviction → `ALREADY_RESTORED` tombstone path; separate `EXPIRED` tombstone path | same |
+| DS-AC-03 | same test class: a `CORRUPT` row and a checksum-invalid `VERIFIED` row (corrupted after checkpoint) → `UNRESOLVED` after a reconciliation-equivalent snapshot rebuild (session over a test-owned `RunMutex`); `INCOMPATIBLE` rows and non-final rows are covered by deriver unit tests (no legal production seeding path for `INCOMPATIBLE` row advancement) | same |
+| DS-AC-04 | `OrganizerDurableStatusDeriverTest`: ±1 ms retention boundary at `createdAt + 24h`, tombstone expiry boundary, priority ordering, checksum-invalid `VERIFIED`, final `RESTORED`/`EXPIRED` rows, `PRUNED_UNUSED`/`QUARANTINED` → `NEVER_ORGANIZED`, `CORRUPT`/`INCOMPATIBLE_VERSION` tombstones → `UNRESOLVED` | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.application.lifecycle.*'` |
 | DS-AC-05 | deriver unit test (record removed from inputs → not restorable) + instrumentation test (tombstone purged → `NEVER_ORGANIZED`; fresh store before snapshot rebuild → `UNAVAILABLE`) + render test for no-row | unit + instrumentation commands above |
 | DS-AC-06 | type is field-free (code review); no `RunEvent` emission in the new path; existing diagnostics tests stay green | full unit suite command |
 | DS-AC-07 | `ManualOrganizationPreferencesInstrumentationTest`: durable row present for the three informative statuses on `Idle`, absent for `NEVER_ORGANIZED`/`UNAVAILABLE`, absent during active run states, unresolved guidance rows present | instrumentation command (UI class) |
@@ -230,15 +269,20 @@ via the class filter.
 
 ## Execution checklist
 
-1. Add `OrganizerDurableStatus` enum + pure deriver + unit tests (DS-AC-04).
-2. Add `RecoveryStorePort.readInspectionSnapshot()` + `RecoveryStore`
+1. [ ] Reproduce current behavior: reopen after a durable `VERIFIED` point
+   presents a bare `Idle` (instrumentation assertion on the existing surface —
+   the failing test for the missing behavior).
+2. [ ] Add `OrganizerDurableStatus` enum + pure deriver + unit tests
+   (DS-AC-04); the reproduction-mapping tests fail before the deriver exists.
+3. [ ] Add `RecoveryStorePort.readInspectionSnapshot()` + `RecoveryStore`
    implementation (fence-gated, snapshot-only).
-3. Add `LayoutApplicationModule.durableOrganizerStatus()` with readiness
-   gating and fail-closed mapping.
-4. Extend the `ManualOrganizationApplication` façade + `ManualOrganizationRun`
+4. [ ] Add `LayoutApplicationModule.durableOrganizerStatus()` with run-mutex +
+   readiness gating and fail-closed mapping.
+5. [ ] Extend the `ManualOrganizationApplication` façade + `ManualOrganizationRun`
    delegate.
-5. Settings render mapping + strings (EN/ja).
-6. Instrumentation tests: durable status across close/reopen (DS-AC-01/02/03/05)
-   and Settings render scenarios (DS-AC-07).
-7. Run verification commands; update docs (DS-AC-08); open PR (Refs/Closes per
-   workflow).
+6. [ ] Settings render mapping + strings (EN/ja); the step-1 test now passes
+   (DS-AC-01/07).
+7. [ ] Instrumentation tests: durable status across close/reopen
+   (DS-AC-02/03/05) and Settings render scenarios (DS-AC-07).
+8. [ ] Run verification commands; update docs (DS-AC-08); open PR (Refs/Closes
+   per workflow).
