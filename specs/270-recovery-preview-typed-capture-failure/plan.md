@@ -2,7 +2,7 @@
 
 > Issue: #270
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: accepted
 
 ## Current evidence
 
@@ -117,4 +117,4 @@ python3 tools/repo-contract/validate_repo_contract.py
 2. `RecoveryPreviewUnavailable` へ value 追加、`RecoveryPreviewContractTest` の期待集合更新、`RecoveryPreviewProtocol` に catch を実装 → test が緑化。
 3. spec 84 の surface 記述（列挙と I5 行）・change history を同期。
 4. 全 verification command を実行し結果を PR へ記録。
-5. PR 作成（`Closes #270`）、`docs/assessment/` の独立 audit を別作業主体で実施。
+5. PR 作成（`Closes #270`）、`docs/assessment/` の独立 audit を別作業主体で実施。PR 記録時に、spec Open questions の evidence 形式代替（protocol seam 注入の採用と #269 への帰属）を issue 270 のコメントへ明示する。

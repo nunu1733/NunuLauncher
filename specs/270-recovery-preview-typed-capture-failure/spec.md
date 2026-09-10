@@ -1,6 +1,6 @@
 ---
 issue: "#270"
-status: draft
+status: accepted
 requirements: [TC-AC-01, TC-AC-02, TC-AC-03, TC-AC-04, TC-AC-05, TC-AC-06]
 risk: []
 updated: 2026-09-10
@@ -126,6 +126,7 @@ UI 変更なし。`Unavailable` variant は既存の `manual_organization_recove
 ## Change history
 
 - 2026-09-10: Drafted for Issue #270（Phase1 spec/plan review の指摘により、caller seam AC・lease 解放証拠・#89 projection read の許容範囲明示を反映）。
+- 2026-09-10: 第2 review cycle で contract test 期待集合更新を plan へ追加、TC-AC-05 evidence を stub+composition 構成に整合、evidence 形式代替を Open questions へ明示、confirm 時 capture TOCTOU window を Non-goals へ明記。同日 Phase1 review `Approve`（code-reviewer-2、head `f1f6033088`）により `accepted`。
 
 ## Open questions
 
