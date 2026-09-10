@@ -15,6 +15,9 @@ import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
 import app.lawnchair.organizer.application.protocol.CaptureId
 import app.lawnchair.organizer.application.protocol.CapturedSnapshot
 import app.lawnchair.organizer.application.protocol.ReadinessGate
+import app.lawnchair.organizer.application.public.ApplyResult
+import app.lawnchair.organizer.application.public.RecoveryPreviewResult
+import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.application.store.RecoveryDbSchema
 import app.lawnchair.organizer.ui.ManualOrganizationModule
 import app.lawnchair.organizer.ui.ManualOrganizationRun
@@ -42,8 +45,8 @@ import org.junit.runners.MethodSorters
  *
  * path A (manual edit): organize -> move one item out of the folder through
  * the baseline writer (the real drag call-site: real in-memory ItemInfo,
- * `ModelWriter.moveItemInDatabase` on the main thread) -> Restore -> open
- * Organizer again;
+ * `ModelWriter.moveItemInDatabase` on the main thread) -> second organize ->
+ * Restore -> open Organizer again;
  * path B (control): identical minus the manual edit.
  *
  * Both paths record: recovery preview result, confirmation/result, durable
@@ -99,7 +102,55 @@ class Issue265ManualEditRecoveryInstrumentationTest {
      * written by an older organizer version before the two real writer moves.
      */
     @Test
+    fun legacyNullSpanThroughHotseatConvergesOnDesktopEntry() {
+        assertLegacySpanThroughHotseatConverges(rawSpanX = null, rawSpanY = null)
+    }
+
+    @Test
     fun legacyPositiveSpanThroughHotseatConvergesOnDesktopEntry() {
+        assertLegacySpanThroughHotseatConverges(rawSpanX = 2, rawSpanY = 2)
+    }
+
+    /**
+     * The destination rule must not depend on the source parent kind. This
+     * fixture uses an AppPair-like positive container id while retaining the
+     * real model-owned WorkspaceItemInfo and writer call path; no parent lookup
+     * is intentionally needed by the production seam.
+     */
+    @Test
+    fun appPairSourceWorkspaceItemConvergesOnDesktopEntry() {
+        seedLayoutWithFolder()
+        val childRowId = pickFolderChildRowId()
+        val info = checkNotNull(modelItemOf(childRowId)) { "model has no ItemInfo for row $childRowId" }
+        val appPairContainerId = launcher.model.modelDbController.generateNewItemId()
+        launcher.model.modelDbController.db.update(
+            Favorites.TABLE_NAME,
+            ContentValues().apply {
+                put(Favorites.CONTAINER, appPairContainerId)
+                put(Favorites.SPANX, 2)
+                put(Favorites.SPANY, 2)
+            },
+            "${Favorites._ID}=?",
+            arrayOf(childRowId.toString()),
+        ).also { updated ->
+            assertEquals(1, updated)
+        }
+        info.container = appPairContainerId
+        info.spanX = 2
+        info.spanY = 2
+
+        moveRowToDesktopViaWriter(childRowId, findFreeDesktopCell())
+        launcher.model.forceReload()
+        awaitModelLoaded()
+        assertEquals(1, querySpan(childRowId).first)
+        assertEquals(1, querySpan(childRowId).second)
+        val row = adapter().captureCurrent(CaptureId("issue269-app-pair-source")).manifest.rows
+            .single { it.rowId == childRowId }
+        assertEquals(1, row.spanX)
+        assertEquals(1, row.spanY)
+    }
+
+    private fun assertLegacySpanThroughHotseatConverges(rawSpanX: Int?, rawSpanY: Int?) {
         val runner = ManualOrganizationModule.get(context)
         seedLayoutWithFolder()
         val startState = runStart(runner)
@@ -113,13 +164,13 @@ class Issue265ManualEditRecoveryInstrumentationTest {
 
         val childRowId = pickFolderChildRowId()
         check(childRowId > 0) { "no folder child row found after organize" }
-        setRawSpan(childRowId, spanX = 2, spanY = 2)
+        setRawSpan(childRowId, spanX = rawSpanX, spanY = rawSpanY)
         launcher.model.forceReload()
         awaitModelLoaded()
 
         moveRowToHotseatViaWriter(childRowId, slot = 0)
-        assertEquals(2, querySpan(childRowId).first)
-        assertEquals(2, querySpan(childRowId).second)
+        assertEquals(rawSpanX, querySpan(childRowId).first)
+        assertEquals(rawSpanY, querySpan(childRowId).second)
 
         moveRowToDesktopViaWriter(childRowId, findFreeDesktopCell())
         launcher.model.forceReload()
@@ -129,6 +180,10 @@ class Issue265ManualEditRecoveryInstrumentationTest {
         val reloaded = modelItemOf(childRowId)
         assertEquals(1, reloaded?.spanX)
         assertEquals(1, reloaded?.spanY)
+        val row = adapter().captureCurrent(CaptureId("issue269-hotseat-${rawSpanX ?: "null"}")).manifest.rows
+            .single { it.rowId == childRowId }
+        assertEquals(1, row.spanX)
+        assertEquals(1, row.spanY)
         runner.dismiss()
     }
 
@@ -162,6 +217,8 @@ class Issue265ManualEditRecoveryInstrumentationTest {
 
         // 2. Manual edit: drag-equivalent move of one folder child onto the
         //    workspace (real ItemInfo, baseline writer, main thread).
+        var recoveryTarget = beforeOrganize
+        var recoveryPointId: app.lawnchair.organizer.application.public.RecoveryPointId
         if (manualEdit) {
             val childRowId = pickFolderChildRowId()
             check(childRowId > 0) { "no folder child row found post-apply" }
@@ -170,66 +227,53 @@ class Issue265ManualEditRecoveryInstrumentationTest {
             launcher.model.forceReload()
             awaitModelLoaded()
             dumpRawRows("POST_MANUAL_EDIT")
+
+            // 3. The second organize is deliberately before recovery. Its
+            //    pre-run capture is the exact target that recovery must later
+            //    restore; a failure to capture, apply, reload, or verify must
+            //    fail the test rather than become log-only evidence.
+            recoveryTarget = adapter().captureCurrent(CaptureId("issue269-pre-second-organize"))
+            val secondStart = runStart(runner)
+            assertTrue(
+                "second organize must not become unavailable: $secondStart",
+                secondStart !is ManualOrganizationRun.State.InputUnavailable,
+            )
+            val secondApplied = runner.state as? ManualOrganizationRun.State.Applied
+                ?: error("second organize did not reach Applied: ${runner.state}")
+            val secondResult = secondApplied.result as? ApplyResult.Applied
+                ?: error("second organize was not verified: ${secondApplied.result}")
+            recoveryPointId = secondResult.pointId
+            launcher.model.forceReload()
+            awaitModelLoaded()
+            report("SECOND_ORGANIZE_RESULT=${secondApplied.result}")
+        } else {
+            val firstResult = applied.result
+            recoveryPointId = firstResult.pointId
         }
 
-        // 3. Restore: preview then confirm, through the same state machine.
-        //    A preview-stage exception is itself evidence (the Restore surface
-        //    throwing instead of returning a typed result) and is recorded,
-        //    then the remaining observation points still run.
-        val previewException = runCatching { runner.beginRecoveryPreview() }.exceptionOrNull()
-        if (previewException != null) {
-            report("PREVIEW_RESULT=THREW ${previewException.javaClass.simpleName}: ${previewException.message}")
-        } else {
-            report("PREVIEW_STATE=${runner.state}")
-            val previewState = runner.state as? ManualOrganizationRun.State.RecoveryPreview
-            report("PREVIEW_RESULT=${previewState?.result}")
-            if (previewState?.result
-                is app.lawnchair.organizer.application.public.RecoveryPreviewResult.Restorable
-            ) {
-                runner.confirmRecovery()
-                report("RECOVERY_STATE=${runner.state}")
-                val recoveryState = runner.state
-                    as? ManualOrganizationRun.State.RecoveryResultState
-                report("RECOVERY_RESULT=${recoveryState?.result}")
-                if (recoveryState?.result
-                    is app.lawnchair.organizer.application.public.RecoveryResult.WriterBusy
-                ) {
-                    // A real user presses Restore again; record the retry too.
-                    Thread.sleep(2_000)
-                    runner.beginRecoveryPreview()
-                    val retryPreview = runner.state as? ManualOrganizationRun.State.RecoveryPreview
-                    report("RETRY_PREVIEW_RESULT=${retryPreview?.result}")
-                    if (retryPreview?.result
-                        is app.lawnchair.organizer.application.public.RecoveryPreviewResult.Restorable
-                    ) {
-                        runner.confirmRecovery()
-                        report("RETRY_RECOVERY_RESULT=${(runner.state as? ManualOrganizationRun.State.RecoveryResultState)?.result}")
-                    }
-                }
-            }
-        }
+        // 4. Restore: preview and confirmation are strict AC-269-02
+        //    assertions. Preview exceptions, unavailable results, and failed
+        //    recovery results must all fail the regression oracle.
+        runner.beginRecoveryPreview()
+        val previewState = runner.state as? ManualOrganizationRun.State.RecoveryPreview
+            ?: error("recovery preview did not reach the confirmation surface: ${runner.state}")
+        val restorable = previewState.result as? RecoveryPreviewResult.Restorable
+            ?: error("recovery preview was not Restorable: ${previewState.result}")
+        assertEquals(recoveryPointId, restorable.pointId)
+        runner.confirmRecovery()
+        val recoveryState = runner.state as? ManualOrganizationRun.State.RecoveryResultState
+            ?: error("recovery did not reach a terminal result: ${runner.state}")
+        assertEquals(RecoveryResult.Restored(recoveryPointId), recoveryState.result)
         report("RECOVERY_RECORD_POST_RESTORE=${readLatestRecoveryRecord()}")
 
-        // 4. Post-restore layout: manifest equality with the pre-organize
-        //    capture is the exact-restore check. A throwing capture is itself
-        //    evidence and must not stop the remaining observation points.
-        val afterRestore = runCatching {
-            adapter().captureCurrent(CaptureId("issue265-post-restore"))
-        }
-        afterRestore.fold(
-            onSuccess = { snapshot ->
-                report(
-                    "POST_RESTORE_ROWS_MATCH_PRE_ORGANIZE=" +
-                        (snapshot.manifest.rows == beforeOrganize.manifest.rows),
-                )
-            },
-            onFailure = { failure ->
-                report("POST_RESTORE_CAPTURE=THREW ${failure.javaClass.simpleName}: ${failure.message}")
-            },
-        )
+        // 5. Post-restore layout: manifest equality with the pre-run capture
+        //    is an asserted exact-restore check.
+        val afterRestore = adapter().captureCurrent(CaptureId("issue265-post-restore"))
+        assertEquals(recoveryTarget.manifest.rows, afterRestore.manifest.rows)
+        report("POST_RESTORE_ROWS_MATCH_PRE_ORGANIZE=true")
         dumpRawRows("POST_RESTORE")
 
-        // 5. Open Organizer again: the readiness result a re-opened Settings
+        // 6. Open Organizer again: the readiness result a re-opened Settings
         //    would produce.
         val nextStart = runStart(runner)
         report("NEXT_ORGANIZER_STATE=$nextStart")
@@ -317,16 +361,16 @@ class Issue265ManualEditRecoveryInstrumentationTest {
             "hotseat move never reached the DB ($container)"
         }
         // The loader already exposes the icon as 1x1 in memory, while this
-        // legacy DB row remains 2x2 until the desktop-entry transition.
+        // legacy DB row retains its raw span until the desktop-entry transition.
         assertEquals(1, info.spanX)
         assertEquals(1, info.spanY)
         report("HOTSEAT_MOVE_APPLIED row=$rowId slot=$slot")
     }
 
-    private fun setRawSpan(rowId: Long, spanX: Int, spanY: Int) {
+    private fun setRawSpan(rowId: Long, spanX: Int?, spanY: Int?) {
         val values = ContentValues().apply {
-            put(Favorites.SPANX, spanX)
-            put(Favorites.SPANY, spanY)
+            if (spanX == null) putNull(Favorites.SPANX) else put(Favorites.SPANX, spanX)
+            if (spanY == null) putNull(Favorites.SPANY) else put(Favorites.SPANY, spanY)
         }
         assertEquals(
             1,
