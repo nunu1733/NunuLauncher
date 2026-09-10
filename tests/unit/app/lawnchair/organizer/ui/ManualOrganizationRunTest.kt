@@ -10,6 +10,7 @@ import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
 import app.lawnchair.organizer.application.public.RecoveryPreviewSummary
+import app.lawnchair.organizer.application.public.RecoveryPreviewUnavailable
 import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
@@ -793,6 +794,33 @@ class ManualOrganizationRunTest {
 
         assertEquals(applied, runner.state)
         assertEquals(applied.summary, (runner.state as ManualOrganizationRun.State.Applied).summary)
+    }
+
+    @Test
+    fun recoveryPreviewWithCaptureFailureSurfacesTypedUnavailableWithoutThrowing() {
+        // Issue #270: the capture-failure Unavailable result must reach the
+        // run state machine as a rendered preview (no exception, no confirm),
+        // with cancel returning to the retained verified apply.
+        val application = FakeApplication(readyInput())
+        application.recoveryPreview = RecoveryPreviewResult.Unavailable(
+            RecoveryPointId(POINT_ID),
+            RecoveryPreviewUnavailable.CURRENT_LAYOUT_CAPTURE_UNAVAILABLE,
+        )
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        runner.start()
+        runner.confirm()
+        val applied = runner.state as ManualOrganizationRun.State.Applied
+
+        runner.beginRecoveryPreview()
+
+        val preview = runner.state as ManualOrganizationRun.State.RecoveryPreview
+        assertEquals(
+            RecoveryPreviewResult.Unavailable(RecoveryPointId(POINT_ID), RecoveryPreviewUnavailable.CURRENT_LAYOUT_CAPTURE_UNAVAILABLE),
+            preview.result,
+        )
+
+        runner.cancelRecoveryPreview()
+        assertEquals(applied, runner.state)
     }
 
     @Test

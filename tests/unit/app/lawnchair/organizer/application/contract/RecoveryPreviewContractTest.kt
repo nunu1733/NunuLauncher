@@ -60,6 +60,9 @@ class RecoveryPreviewContractTest {
             setOf(
                 RecoveryPreviewUnavailable.RECONCILIATION_PENDING,
                 RecoveryPreviewUnavailable.RECOVERY_STORE_UNAVAILABLE,
+                // Issue #270: current-layout capture failure, distinct from
+                // recovery-store unavailability.
+                RecoveryPreviewUnavailable.CURRENT_LAYOUT_CAPTURE_UNAVAILABLE,
             ),
             RecoveryPreviewUnavailable.entries.toSet(),
         )

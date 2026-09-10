@@ -54,6 +54,15 @@ enum class RecoveryPreviewRejection {
 enum class RecoveryPreviewUnavailable {
     RECONCILIATION_PENDING,
     RECOVERY_STORE_UNAVAILABLE,
+
+    /**
+     * Issue #270: the authoritative current-layout capture failed (e.g. the
+     * canonical capture rejected an unrepresentable persisted row). Distinct
+     * from [RECOVERY_STORE_UNAVAILABLE]: the recovery store was readable, but
+     * inspection could not gather current-state evidence, so no restorable
+     * result is issued.
+     */
+    CURRENT_LAYOUT_CAPTURE_UNAVAILABLE,
 }
 
 /**
