@@ -43,8 +43,10 @@ failure is defense-in-depth and belongs to [Issue #270](https://github.com/nunu1
 ## Outcome
 
 After an organizer apply has created or retained a folder child, moving that
-child to the workspace through the platform's ordinary writer leaves a valid,
-deterministically capturable desktop placement. The flow
+child to the workspace through the platform's ordinary writer persists the
+same valid span that Launcher restores for an icon item. This applies to rows
+created by an older organizer version and to rows restored exactly from an
+older recovery point as well. The flow
 
 > organize → move an app from an organizer-created folder to the workspace →
 > organize again or restore
@@ -61,10 +63,11 @@ until this revision is accepted.
 
 - Revise Spec 13's canonical/application boundary for raw span handling of
   `FolderChild` rows.
-- In the organizer materialization path, preserve a valid captured raw span
-  for an existing folder child and use deterministic `1×1` span data when the
-  source folder-child row has no span. A folder-child row emitted by organizer
-  apply therefore never has `NULL` `SPANX`/`SPANY`.
+- At the folder-child → workspace transition, make the ordinary Launcher
+  writer persist deterministic `1×1` span data for Launcher-managed icon
+  items. This is a transition guarantee, so it covers existing NULL-span rows
+  and positive non-1×1 rows without requiring a no-op organizer apply or a
+  repair-on-restore write.
 - Keep `FolderChild(parent, rank)` as the public semantic placement. Raw
   `favorites` columns remain internal to `PersistenceManifest` and do not
   leak into the planner/application public seam.
@@ -85,8 +88,9 @@ until this revision is accepted.
   recovery retention, recovery format, Launcher DB schema, or the exact
   precondition/rollback protocol.
 - Broadly changing `ModelWriter` or every Launcher writer call site. The
-  chosen owner seam is organizer materialization, not a platform writer
-  policy.
+  chosen seam is one targeted folder-child → workspace bridge in
+  `moveItemInDatabase`; unrelated moves and batch folder insertion remain
+  unchanged.
 - Making canonical capture accept a `NULL` span for a desktop row or silently
   inventing a span during capture. External/legacy malformed desktop rows
   remain fail-closed; typed presentation of that failure is the separate
@@ -101,29 +105,25 @@ not a user-facing concept.
 
 ## Design decisions
 
-### D1: Owner seam — organizer materialization retains a valid raw span
+### D1: Owner seam — the transition writer persists Launcher-compatible 1×1
 
-The chosen option is to retain deterministic span data across folder-child
-normalization. `rowFor(FolderChild)` remains the only place that projects the
-public folder-child placement into a `PersistentRow` for a normal apply:
+The chosen option is to persist a valid span when a folder child moves to the
+workspace. The targeted `ModelWriter.moveItemInDatabase` bridge observes the
+source container before `updateItemInfoProps` changes it. When the source is a
+folder-child container, the destination is the desktop, and the item is a
+Launcher-managed icon item, it sets the in-memory item span and the pending DB
+write to `1×1`.
 
-- when `base.rawSpan` is present, the intended row carries that exact positive
-  `(spanX, spanY)` pair;
-- when `base.rawSpan` is absent, the intended row carries `GridSpan(1, 1)`;
-- `screen`, `cellX`, and `cellY` keep the existing folder-child normalization
-  (`NULL`), because the public folder-child placement has no workspace cell;
-- a newly materialized folder child also receives `GridSpan(1, 1)`.
+This is intentionally normalization rather than arbitrary raw-span retention.
+`WorkspaceItemProcessor` restores application and deep-shortcut icon items as
+`spanX=1` and `spanY=1`; persisting any other positive raw span would make the
+DB leg and model leg diverge after reload. A NULL or positive non-1×1 folder
+child is therefore handled by the same deterministic transition rule.
 
-The fallback is applied at write-set materialization, before the recovery
-manifest is built. It is not a capture-time repair and it is not a nullable
-wildcard. The `PersistentRow` constructor's positive-span invariant remains
-the guard for values that reach `values()`.
-
-This makes every organizer-produced folder-child row safe for a later
-placement-only writer move: the writer changes the container and workspace
-coordinates while the valid span remains in the row. It also repairs rows
-left by an earlier organizer apply the next time a normal apply materializes
-them, without changing their public semantic placement.
+The change is made at the transition, not during capture, planner evaluation,
+or recovery. It protects rows produced by old organizer versions and rows
+restored exactly from old recovery points while preserving Spec 13's exact
+recovery semantics.
 
 ### D2: Canonical/public representation stays closed
 
@@ -133,7 +133,7 @@ lossless persistence manifest continues to record nullable schema columns so
 recovery can round-trip legacy or unsupported rows exactly. The distinction is
 intentional:
 
-- valid organizer-generated folder-child write intent has a positive raw span;
+- a folder-child → workspace writer transition has a positive raw span;
 - a captured desktop row must have a positive cell and span;
 - a legacy/external desktop row with a `NULL` span is not reinterpreted as
   `1×1` by capture and is not silently accepted as a different state.
@@ -142,26 +142,25 @@ Thus write and capture describe the same row deterministically. The strict
 desktop capture check remains in this Issue; mapping its exception to a
 localized typed preview result remains Issue #270.
 
-### D3: No Launcher3 writer bridge change
+### D3: Minimal Launcher3 writer bridge
 
-`ModelWriter.moveItemInDatabase` is a placement-only writer used by many
-Launcher paths. Changing it to infer or overwrite spans would widen the
-Launcher3 bridge and could alter widget or other item moves. The organizer
-already owns the row materialization that created the invalid combination, so
-the smallest responsibility boundary is to ensure its output supplies the
-platform writer with valid span data. Existing writer behavior then remains
-the compatibility contract: a move that does not write span columns preserves
-the valid stored value.
+The bridge is limited to the folder-child → desktop transition for a
+Launcher-managed icon item. The source container must be captured before the
+common `updateItemInfoProps` call; the same `1×1` values are then applied to
+the in-memory item and to the pending `Favorites.SPANX`/`SPANY` write. Queueing,
+notifications, transaction behavior, and unrelated writer moves remain
+unchanged. `moveItemsInDatabase` continues to serve folder insertion without
+this desktop-transition rule.
 
 ### D4: Recovery and exactness
 
 No recovery format or Launcher schema migration is needed. New checkpoints
-capture the materialized `1×1`/retained span in their intended manifest, and
-A7 recapture must equal that manifest. Existing recovery records remain
-lossless and are not rewritten just because this policy changes. Exact restore
-continues to restore the recorded pre-state; the new invariant applies to
-rows emitted by a subsequent organizer materialization. No whole-table delete,
-delay, or process restart is introduced.
+capture the post-transition `1×1` span in their intended manifest, and A7
+recapture must equal that manifest. Existing recovery records remain lossless
+and are not rewritten just because this policy changes. Exact restore
+continues to restore the recorded pre-state; the new invariant applies when a
+subsequent writer transition moves an icon child to the desktop. No whole-table
+delete, delay, or process restart is introduced.
 
 ## Behavior scenarios
 
@@ -173,23 +172,33 @@ keeps or creates one of its children,
 When the user moves that child to a free workspace cell through the ordinary
 Launcher writer,
 
-Then the resulting desktop row has the writer-provided page/cell and a
-positive span equal to the span emitted by the organizer apply,
+Then the resulting desktop row has the writer-provided page/cell and
+`SPANX=1`, `SPANY=1`,
 
 And a fresh canonical capture succeeds and includes the child as an exact
 `PlacementState.Workspace` item.
 
-### Scenario: Existing folder child has no raw span before a later apply
+### Scenario: Existing NULL folder child is moved to the workspace
 
 Given a folder-child row is accepted by canonical capture because its parent
 and rank are valid but its raw span is `NULL`,
 
-When a subsequent organizer apply materializes that child,
+When the user moves that child to the workspace through the ordinary writer,
 
-Then the intended and committed row uses `SPANX=1` and `SPANY=1`,
+Then the committed desktop row uses `SPANX=1` and `SPANY=1`,
 
-And the public canonical state remains `FolderChild(parent, rank)` with no
-invented workspace placement.
+And a fresh capture succeeds with the matching Launcher model span.
+
+### Scenario: Existing positive non-1×1 folder child is moved to the workspace
+
+Given a legacy folder-child row has a positive raw span such as `2×2`,
+
+When the user moves that child to the workspace through the ordinary writer,
+
+Then the committed desktop row is normalized to `SPANX=1` and `SPANY=1`,
+
+And a reload produces the same span in the DB and Launcher model rather than
+retaining the arbitrary raw span.
 
 ### Scenario: Manual edit followed by restore
 
@@ -247,13 +256,14 @@ this Issue.
   exact positive `GridSpan`.
 - `PersistenceManifest` continues to record the raw `SPANX`/`SPANY` values and
   the recovery record codec remains byte-compatible. The change affects the
-  values of newly materialized intended rows, not the manifest schema.
+  values written by the targeted workspace transition, not the manifest
+  schema.
 - No `favorites` schema version, recovery format version, backup allowlist, or
   migration is added.
-- Before A5, the materialized intended manifest must contain the same positive
-  folder-child spans that will be committed. After reload, A7 must recapture
-  the same raw rows and canonical state. A mismatch is the existing verified
-  apply failure/recovery path.
+- The manual transition's pending write and in-memory item must contain the
+  same `1×1` span. After that move, a fresh capture and any subsequent A7 must
+  recapture the same raw rows and canonical state. A mismatch is the existing
+  verified apply failure/recovery path.
 - The pre-apply recovery point remains the exact source state. Existing NULL
   spans in folder-child rows may be restored exactly; they are not silently
   rewritten by recovery.
@@ -275,10 +285,10 @@ localization contract.
 
 ## Acceptance criteria
 
-- [ ] AC-269-01: After organizer apply, every materialized `FolderChild` row
-  has a positive deterministic span: the captured positive span is retained,
-  otherwise `1×1` is written. A folder child never becomes a `NULL`-span
-  desktop row solely because the ordinary writer later changes its container.
+- [ ] AC-269-01: At the targeted folder-child → workspace transition, a
+  Launcher-managed icon item is persisted with `SPANX=1` and `SPANY=1`, whether
+  its prior folder-child span was NULL or a positive non-1×1 value; after
+  reload, DB and Launcher model spans converge.
 - [ ] AC-269-02: The Issue #265 Path A production harness reaches
   `RecoveryPreviewResult.Restorable` and `RecoveryResult.Restored` after the
   manual move, and the restored manifest equals the manifest captured before
@@ -295,20 +305,21 @@ localization contract.
 
 | AC | Evidence |
 |---|---|
-| AC-269-01 | Production application/instrumentation seam asserts intended and committed `PersistentRow.spanX/spanY`, plus a pre-existing NULL folder-child fixture receives `1×1` on the next apply. |
+| AC-269-01 | Focused real-writer instrumentation asserts both NULL and positive non-1×1 folder-child fixtures are committed as `1×1` and converge after reload. |
 | AC-269-02 | `Issue265ManualEditRecoveryInstrumentationTest.pathA_manualEditBeforeRestore` on the API 36.1 emulator, with raw-row, `Restorable → Restored`, and exact manifest assertions. |
-| AC-269-03 | The same real production harness performs a second organize pass after the manual move; a focused adapter contract test repeats materialization and compares the intended state/manifest deterministically. |
+| AC-269-03 | The same real production harness performs a second organize pass after the manual move; a focused writer contract test repeats the transition and compares DB/model spans deterministically. |
 | AC-269-04 | `pathB_controlWithoutManualEdit` remains green with exact restore; a focused capture fixture proves a NULL-span desktop row is not accepted as a 1×1 row. Typed Settings presentation is explicitly deferred to #270. |
 
 ## Open questions
 
 No product choice remains in this draft: the selected responsibility boundary
-is organizer materialization with a retained-or-`1×1` raw span. Owner
-acceptance of this Spec 13 revision is the implementation gate.
+is the targeted folder-child → workspace writer bridge, with Launcher-managed
+icon items normalized to `1×1`. Owner acceptance of this Spec 13 revision is
+the implementation gate.
 
 ## Change history
 
 - 2026-09-10: Draft created for #269 from the accepted #265 two-path
   reproduction at repository `main` `b25f20ca7c31ad384fbe8f8b696e87118f8fbe8c`.
-  Selected organizer materialization as the owner seam; retained the strict
-  desktop capture boundary and separated typed preview failure to #270.
+  Selected the targeted writer transition as the owner seam; retained the
+  strict desktop capture boundary and separated typed preview failure to #270.

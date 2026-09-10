@@ -13,14 +13,20 @@
   child to the workspace and produces `spanX/spanY = NULL`; recovery preview
   then throws from canonical capture. Path B restores exactly and remains a
   control.
-- `LauncherLayoutAdapter.rowFor` currently maps `PlacementState.FolderChild`
-  to `screen = null`, `cell = null`, `span = null` (lines 615–624).
+- `LauncherLayoutAdapter.rowFor` maps `PlacementState.FolderChild` to
+  `screen = null`, `cell = null`, `span = null` (current lines 615–624). That
+  is valid for the public folder-child semantic state; it is not the owner of
+  the later folder-child → workspace transition.
 - `RowManifestCodec.toCanonical` requires a non-null `rawSpan` for a desktop
   row (lines 257–262). This strictness is correct for desktop canonical state
   and remains unchanged by this plan.
 - `ModelWriter.moveItemInDatabase` writes container, cell, rank, and screen,
-  but not span (lines 190–200). Its placement-only behavior is shared by
-  normal Launcher paths and is not changed by this plan.
+  but not span (current lines 190–200). The targeted bridge will capture the
+  old container before the common update, and add `1×1` span persistence only
+  for a folder-child → desktop move of a Launcher-managed icon item.
+- `WorkspaceItemProcessor` restores application and deep-shortcut icon items
+  with `spanX=1` and `spanY=1` (current lines 318–327); the writer transition
+  must persist that same model representation.
 - `PersistentRow` already accepts and serializes positive spans and the
   recovery codec already carries nullable raw span values. No data-format
   change is required.
@@ -35,46 +41,58 @@
 
 The public `LayoutWriterPort`, `OrganizationPlanner`, and application result
 types remain unchanged. The implementation uses the existing production
-adapter seam:
+writer seam:
 
 | Module | Responsibility | Boundary |
 |---|---|---|
-| `LauncherLayoutAdapter.rowFor` | Materialize a `FolderChild` into a lossless `PersistentRow` with retained-or-default positive span | No Android/SQLite type crosses the public application state; `PersistentRow` stays internal |
+| `LauncherLayoutAdapter.rowFor` | Preserve the existing lossless `FolderChild` representation (`NULL` cell/span) | No Android/SQLite type crosses the public application state; `PersistentRow` stays internal |
 | `RowManifestCodec` | Continue lossless capture/serialization and strict desktop canonicalization | No capture-time span invention; no typed preview mapping here |
-| baseline `ModelWriter` | Continue placement-only move behavior | No broad Launcher3 writer policy change |
+| baseline `ModelWriter.moveItemInDatabase` | Normalize icon span at the folder-child → desktop transition | One targeted Launcher3 bridge; unrelated moves and `moveItemsInDatabase` remain unchanged |
 | `LayoutApplicationModule` / existing protocols | Apply, recovery point, correlated reload, and A7 verification | No lifecycle or recovery-contract change |
 
-The first implementation change should be a small private helper at the
-materialization boundary, for example `folderChildSpan(base)`, that returns
-`base?.rawSpan ?: GridSpan(1, 1)`. It must be used only in the
-`PlacementState.FolderChild` branch. It must not be used for desktop capture,
-`AppPairChild`, `Dock`, or `UnsupportedContainer` branches.
+The first implementation change should be a small, local condition in
+`ModelWriter.moveItemInDatabase`: capture `item.container` before
+`updateItemInfoProps`; when the old container is a folder-child container, the
+target is `Favorites.CONTAINER_DESKTOP`, and the item is a
+`WorkspaceItemInfo` icon, set `item.spanX`/`item.spanY` to `1` and include
+`Favorites.SPANX`/`Favorites.SPANY` in the pending `ContentValues`. Do not
+change `LauncherLayoutAdapter.rowFor`, desktop capture, or other container
+branches.
 
 ### Data flow
 
 1. Capture reads the current rows losslessly. A folder child may still have a
    NULL raw span in the input because its public placement is parent/rank.
 2. Planning and validation continue to operate on `FolderChild(parent, rank)`.
-3. During normal apply materialization, an existing positive raw span is
-   copied; a missing raw span becomes `1×1`. The public intended state remains
-   unchanged, while the intended persistence manifest contains a positive
-   span for every materialized folder child.
-4. A5 writes the intended rows in the existing transaction. The recovery
-   point stores the exact pre-state and positive-span intended post-state.
-5. The platform writer later moves a child by changing container/page/cell;
-   its placement-only update leaves the stored positive span intact.
-6. A fresh capture maps the moved row to `Workspace(page, cell, span)`, and
-   A7 compares DB/model/intended state as before.
+3. A5 writes the intended rows in the existing transaction. A folder child
+   may still have nullable raw cell/span columns because its public semantic
+   state is `FolderChild(parent, rank)`.
+4. Before the platform writer's common position update, capture the source
+   container. If the move is from a folder child to the desktop and the item
+   is a Launcher-managed icon, set both the in-memory item and pending DB span
+   to `1×1`.
+5. The writer commits container/page/cell and the normalized span in the same
+   existing write path, preserving its queueing and notification behavior.
+6. A fresh capture and model reload both observe `Workspace(page, cell,
+   1×1)`, and A7 compares DB/model/intended state as before.
 7. Recovery still materializes the exact recorded pre-state. It never
    normalizes an old recovery record, so exact restore remains exact.
 
 ### Alternatives rejected
 
-- **Change `ModelWriter.moveItemInDatabase` to write a default span**: rejected
-  for this Issue. It is a shared Launcher3 bridge and would require deciding
-  how every item type, widget, and move call site supplies span data. The
-  organizer-created invalid row can be prevented at its owning seam with a
-  smaller and more reviewable change.
+- **Retain arbitrary raw span during organizer materialization**: rejected.
+  `WorkspaceItemProcessor` restores application/deep-shortcut icon items as
+  `1×1`, so retaining a `2×2` raw span can leave the DB and model divergent
+  after reload.
+- **Change every `ModelWriter` move to write a default span**: rejected.
+  The bridge must remain targeted to folder-child → desktop icon moves; widget,
+  unrelated item, and batch folder-insertion behavior must not change.
+- **Normalize only in organizer materialization**: rejected. It does not
+  protect pre-existing NULL rows or rows restored exactly from an old recovery
+  point when the next action is a manual writer move or a no-change apply.
+- **Capture the container and normalize only at the writer transition**:
+  selected. It covers legacy and post-recovery rows at the actual state change
+  without repair-on-restore or a broad writer policy.
 - **Accept NULL span as canonical desktop `1×1` during capture**: rejected.
   It makes capture diverge from the lossless write/recovery manifest, hides a
   malformed/external row, and weakens the exact `Workspace` contract. Typed
@@ -93,22 +111,22 @@ materialization boundary, for example `folderChildSpan(base)`, that returns
 |---|---|---|
 | `specs/13-safe-layout-application/spec.md` | After acceptance, add the Spec 13 normative folder-child raw-span rule and link Issue #269 in change history/downstream gates | Spec 13 owns the canonical/application contract; this Issue supplies the accepted revision |
 | `specs/269-folder-workspace-representability/spec.md` | Keep the observable outcome, selected seam, exactness, scenarios, and ACs | Issue #269 is the source of the follow-up behavior and status gate |
-| `lawnchair/src/app/lawnchair/organizer/application/adapter/LauncherLayoutAdapter.kt` | In the `FolderChild` materializer, retain `base.rawSpan` when present, otherwise emit `GridSpan(1, 1)`; add a focused Issue #269 comment | The invalid row is created here; no public seam or baseline writer expansion is needed |
-| `tests/organizer-instrumentation/app/lawnchair/organizer/application/Issue265ManualEditRecoveryInstrumentationTest.kt` | Turn Path A into the regression oracle: assert positive post-apply child span, real writer move, `Restorable → Restored`, exact pre-run manifest, and a second organize pass; retain Path B control | Exercises the complete production flow requested by Issue #269 |
-| `tests/organizer-instrumentation/app/lawnchair/organizer/application/RealAdapterRowMatrixInstrumentationTest.kt` or a focused sibling | Add a production adapter contract fixture for an existing NULL-span folder child and deterministic `1×1` intended materialization; add a desktop NULL-span strictness control | Keeps the owning seam covered without testing private implementation details directly |
+| `src/com/android/launcher3/model/ModelWriter.java` | In `moveItemInDatabase`, capture the source container before the common update and persist in-memory/DB `1×1` only for folder-child → desktop `WorkspaceItemInfo` icon moves | Owns the actual transition and protects old, NULL, and positive non-1×1 rows |
+| `tests/organizer-instrumentation/app/lawnchair/organizer/application/Issue265ManualEditRecoveryInstrumentationTest.kt` | Turn Path A into the regression oracle: assert real writer normalization for NULL and positive non-1×1 rows, reload DB/model convergence, `Restorable → Restored`, exact pre-run manifest, and a second organize pass; retain Path B control | Exercises the complete production flow requested by Issue #269 |
+| `tests/organizer-instrumentation/app/lawnchair/organizer/application/ModelWriterFolderChildWorkspaceSpanInstrumentationTest.kt` or a focused sibling | Add a focused real-writer fixture for NULL and positive non-1×1 folder-child spans plus a desktop NULL-span strictness control | Keeps the transition seam covered without testing private implementation details directly |
 | `tests/unit/app/lawnchair/organizer/application/...` | Add only pure helper/contract coverage if the final implementation extracts a platform-free helper | Unit coverage is optional and must not create a second production seam |
 
 The implementation PR must not modify `RecoveryRecordCodec`, recovery DB DDL,
-`ModelWriter.java`, planner semantics, or UI/resources unless an accepted
-spec change proves that the selected seam cannot satisfy the ACs.
+planner semantics, or UI/resources. The only Launcher3 bridge change is the
+targeted `ModelWriter.java` transition rule described above.
 
 ## Migration and recovery
 
 - No Launcher DB schema or recovery format migration.
 - No backup/restore allowlist change. Recovery records continue to be excluded
   from Lawnchair ZIP and Android backup as specified by Spec 13.
-- New organizer apply write sets contain positive spans for folder children;
-  their recovery points record these exact intended rows.
+- New workspace transitions for icon folder children contain `1×1` spans;
+  their recovery points record these exact post-transition rows.
 - Existing recovery points remain readable and are restored byte-for-byte,
   including a NULL span on a folder-child row. They are not rewritten during
   startup reconciliation or explicit recovery.
@@ -116,13 +134,14 @@ spec change proves that the selected seam cannot satisfy the ACs.
   post-commit recovery result applies. The implementation must not add a
   repair write, retry loop, sleep, or whole-table replacement.
 - A release downgrade requires no special handling because no persisted format
-  changed. The behavior difference is in the new binary's apply materializer.
+  changed. The behavior difference is in the new binary's workspace-transition
+  writer behavior.
 
 ## Verification
 
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
-| AC-269-01 | Adapter/application seam asserts `FolderChild` intended rows use retained positive span or `1×1`; DB read-back confirms both `SPANX` and `SPANY` are non-NULL and positive before the real move | Focused organizer instrumentation test on API 36.1; existing organizer unit suite for any extracted pure helper |
+| AC-269-01 | Real writer seam seeds NULL and positive non-1×1 folder-child rows, moves icon items to desktop, and asserts both DB columns and in-memory/model spans are `1×1` after reload | Focused organizer instrumentation test on API 36.1; no materializer helper is required |
 | AC-269-02 | Path A runs organize → real `ModelWriter` move → recovery preview/confirm and asserts `Restorable`, `Restored`, and exact manifest equality | `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.application.Issue265ManualEditRecoveryInstrumentationTest` on `nunu_qpr2_api36_1` |
 | AC-269-03 | Path A performs a second organize after the manual move and asserts no `InputUnavailable`, no capture exception, and verified outcome; repeated post-move capture/materialization is deterministic | Same API 36.1 instrumentation target; use latch/state assertions, not sleeps as the oracle |
 | AC-269-04 | Path B exact restore/next-start assertions remain green; injected/external desktop NULL span remains rejected by strict canonical capture without a write | Same instrumentation suite plus focused row-matrix instrumentation test |
@@ -156,7 +175,7 @@ CI before it becomes a new required command in `docs/engineering/building.md`.
 - [ ] Current behavior reproduced from the accepted #265 evidence.
 - [ ] Focused regression test fails before the implementation change.
 - [ ] Spec #269 and the Spec 13 revision are accepted.
-- [ ] Minimal materialization change completed; no `ModelWriter` bridge change.
+- [ ] Targeted `ModelWriter` bridge change completed; no broad writer or materialization change.
 - [ ] Path A passes through `Restorable → Restored` with exact manifest
       equality, including the second organize pass.
 - [ ] Path B control remains exact.
