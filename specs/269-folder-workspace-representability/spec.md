@@ -56,9 +56,9 @@ remains available on every supported grid. Apply and recovery continue to use
 Spec 13's exact row-accounted, revision-bound, transactionally verified
 contract; no success is inferred from a successful write alone.
 
-This document is the Issue #269 revision proposal for
-[Spec 13](../13-safe-layout-application/spec.md). Implementation is blocked
-until this revision is accepted.
+This document is the accepted Issue #269 revision for
+[Spec 13](../13-safe-layout-application/spec.md). Its implementation and
+verification are tracked in [plan.md](./plan.md).
 
 ## Scope
 

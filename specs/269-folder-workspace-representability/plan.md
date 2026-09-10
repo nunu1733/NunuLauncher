@@ -20,10 +20,10 @@
 - `RowManifestCodec.toCanonical` requires a non-null `rawSpan` for a desktop
   row (lines 257–262). This strictness is correct for desktop canonical state
   and remains unchanged by this plan.
-- `ModelWriter.moveItemInDatabase` writes container, cell, rank, and screen,
-  but not span (current lines 190–200). The targeted bridge will add `1×1`
-  span persistence when the destination is the desktop and the item is a
-  `WorkspaceItemInfo`, independently of its source container.
+- Before this change, `ModelWriter.moveItemInDatabase` wrote container, cell,
+  rank, and screen, but not span (current lines 190–200). The implemented
+  bridge now adds `1×1` span persistence when the destination is the desktop
+  and the item is a `WorkspaceItemInfo`, independently of its source container.
 - `WorkspaceItemProcessor` restores application and deep-shortcut icon items
   with `spanX=1` and `spanY=1` (current lines 318–327); the writer transition
   must persist that same model representation.
