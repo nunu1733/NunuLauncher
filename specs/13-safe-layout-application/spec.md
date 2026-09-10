@@ -9,7 +9,7 @@ requirements:
   - NFR-007
   - NFR-011
   - NFR-012
-updated: 2026-08-27
+updated: 2026-09-10
 ---
 
 # Safe layout application and recovery contract
@@ -164,6 +164,26 @@ until allocation inside the transaction. The exact raw row placement for an
 unsupported container is retained in the separate internal manifest. The module captures a separate
 internal lossless persistence manifest at checkpoint time; raw column names,
 row encodings, and recovery bytes never cross this public contract.
+
+### Desktop-entry span normalization
+
+`FolderChild` and `Dock` retain their semantic placement without exposing raw
+workspace geometry. Their persistence rows may therefore have nullable raw
+cell/span columns while they remain in those containers. A desktop row, in
+contrast, must have a positive cell and span for canonical capture.
+
+When an existing `WorkspaceItemInfo` is moved into
+`Favorites.CONTAINER_DESKTOP` through `ModelWriter.moveItemInDatabase`, the
+writer must set the in-memory `spanX`/`spanY` and persist
+`Favorites.SPANX`/`Favorites.SPANY` as `1` in the same write operation. This
+rule is based on the destination and item representation, not the source
+container or parent kind. It consequently covers direct folder moves and
+folder → Hotseat → desktop moves, including legacy NULL or positive non-1×1
+rows and AppPair members represented as `WorkspaceItemInfo`.
+
+The rule does not alter `moveItemsInDatabase`, widget/folder item handling, or
+the exact recovery materialization of an existing recovery record. Capture
+does not reinterpret a NULL-span desktop row as `1×1`; it remains fail-closed.
 
 ### Revision semantics
 
@@ -579,6 +599,9 @@ The invariants themselves remain authoritative in `DESIGN.md` §5.
   organizer-diagnostics contract; this seam only exposes typed action
   results. Explicit row-accounted recovery is not blocked by spec 24.
 - Issue #16 owns diagnostic field encoding, retention, and export.
+- Issue #269 owns the desktop-entry span normalization rule above and its
+  direct/Hotseat-mediated writer regression evidence; the implementation must
+  preserve the exact recovery and strict-capture contracts defined here.
 
 ## Open questions
 
@@ -624,3 +647,7 @@ Source observations are fixed to
   requires the current platform overlap policy to accept an intended state that
   contains an authoritative-reservation-overlapping desktop item, for apply and
   recovery write sets alike. No other result shape, lifecycle, or behavior change.
+- 2026-09-10: Issue #269 added the destination-based `WorkspaceItemInfo`
+  desktop-entry `1×1` normalization rule. It closes direct and
+  folder → Hotseat → desktop transitions without changing raw folder/Dock
+  semantics, strict desktop capture, or exact recovery.

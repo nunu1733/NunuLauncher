@@ -190,14 +190,33 @@ public class ModelWriter {
     public void moveItemInDatabase(final ItemInfo item,
             int container, int screenId, int cellX, int cellY) {
         updateItemInfoProps(item, container, screenId, cellX, cellY);
+
+        // Issue #269: Launcher reloads WorkspaceItemInfo icons as 1x1. Persist
+        // the same representation whenever an existing icon enters the
+        // desktop, regardless of its source container. This also closes the
+        // folder -> hotseat -> desktop path without classifying the source
+        // parent or changing widget/folder moves.
+        final boolean normalizeWorkspaceIcon = container == Favorites.CONTAINER_DESKTOP
+                && item instanceof WorkspaceItemInfo;
+        if (normalizeWorkspaceIcon) {
+            item.spanX = 1;
+            item.spanY = 1;
+        }
         notifyItemModified(item);
 
-        enqueueDeleteRunnable(new UpdateItemRunnable(item, () -> new ContentWriter(mContext)
-                .put(Favorites.CONTAINER, item.container)
-                .put(Favorites.CELLX, item.cellX)
-                .put(Favorites.CELLY, item.cellY)
-                .put(Favorites.RANK, item.rank)
-                .put(Favorites.SCREEN, item.screenId)));
+        enqueueDeleteRunnable(new UpdateItemRunnable(item, () -> {
+            ContentWriter writer = new ContentWriter(mContext)
+                    .put(Favorites.CONTAINER, item.container)
+                    .put(Favorites.CELLX, item.cellX)
+                    .put(Favorites.CELLY, item.cellY)
+                    .put(Favorites.RANK, item.rank)
+                    .put(Favorites.SCREEN, item.screenId);
+            if (normalizeWorkspaceIcon) {
+                writer.put(Favorites.SPANX, item.spanX)
+                        .put(Favorites.SPANY, item.spanY);
+            }
+            return writer;
+        }));
     }
 
     /**
