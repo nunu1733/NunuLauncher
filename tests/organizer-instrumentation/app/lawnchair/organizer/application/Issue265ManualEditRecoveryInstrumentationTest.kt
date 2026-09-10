@@ -357,7 +357,7 @@ class Issue265ManualEditRecoveryInstrumentationTest {
         // 4. Post-restore layout: manifest equality with the pre-run capture
         //    is an asserted exact-restore check.
         val afterRestore = adapter().captureCurrent(CaptureId("issue265-post-restore"))
-        assertEquals(beforeOrganize.manifest.rows, afterRestore.manifest.rows)
+        assertEquals(beforeOrganize.manifest, afterRestore.manifest)
         report("POST_RESTORE_ROWS_MATCH_PRE_ORGANIZE=true")
         dumpRawRows("POST_RESTORE")
 
@@ -373,12 +373,9 @@ class Issue265ManualEditRecoveryInstrumentationTest {
         val resultState = runnerStateSnapshot
         report("=== PATH ${if (manualEdit) "A" else "B"} END state=$resultState ===")
         assertTrue(
-            "next organizer start must leave a terminal or preview state: $nextStart",
-            nextStart !is ManualOrganizationRun.State.Applying,
-        )
-        assertTrue(
-            "next organizer start must remain available: $nextStart",
-            nextStart !is ManualOrganizationRun.State.InputUnavailable,
+            "next organizer start must remain the existing preview/ready outcome: $nextStart",
+            nextStart is ManualOrganizationRun.State.Preview ||
+                nextStart is ManualOrganizationRun.State.NoChanges,
         )
     }
 
