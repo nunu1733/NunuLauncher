@@ -74,7 +74,11 @@
    - 既存 fake application の `recoveryPreview` seam に `RecoveryPreviewResult.Unavailable(pointId, CURRENT_LAYOUT_CAPTURE_UNAVAILABLE)` を設定し、`beginRecoveryPreview()` が例外を throw せず `State.RecoveryPreview` へ遷移し、`result is RecoveryPreviewResult.Restorable` でない（confirm 非表示条件）ことを assert（TC-AC-05）。protocol test（capture 失敗 → `Unavailable`）との合成で caller 到達 path を covering する。
    - 実 UI Compose 描画の変更は存在しない（`recoveryPreviewMessage` は variant 単位で既存対応済み）ため、rendering の追加検証は不要である。
 
-6. **`specs/84-recovery-preview-seam/spec.md`（正本の同期）**
+6. **`tests/unit/.../contract/RecoveryPreviewContractTest.kt`（surface 契約 test の更新）**
+
+   - `RecoveryPreviewContractTest.kt:59-65` が `RecoveryPreviewUnavailable.entries.toSet()` の期待集合を exact assert しているため、enum value 追加と同時に期待集合へ `CURRENT_LAYOUT_CAPTURE_UNAVAILABLE` を追加する（spec 84 の RP-AC-01 が指す「新 closed preview 値の列挙 guard」）。update 以外の contract test は変更しない。
+
+7. **`specs/84-recovery-preview-seam/spec.md`（正本の同期）**
 
    - Result surface の `RecoveryPreviewUnavailable` 列挙へ `CURRENT_LAYOUT_CAPTURE_UNAVAILABLE` を追加し、read-only protocol / ordering 表の I5 行に capture 失敗結果（`Unavailable(CURRENT_LAYOUT_CAPTURE_UNAVAILABLE)`、zero persistent effect）を追記、change history に 1 行追記（issue #270）。status は `implemented` のまま、本 PR で実装済みとなる内容の追記のみ。
 
@@ -110,7 +114,7 @@ python3 tools/repo-contract/validate_repo_contract.py
 ## Steps
 
 1. `FakeLayoutWriter` に `captureFailure` knob、`RecoveryPreviewProtocolTest` に failure-path test（lease 再取得の証拠を含む）、`ManualOrganizationRunTest` に caller test を追加 → 現行実装で protocol test が「例外が漏れて」失敗することを確認（oracle）。
-2. `RecoveryPreviewUnavailable` へ value 追加、`RecoveryPreviewProtocol` に catch を実装 → test が緑化。
+2. `RecoveryPreviewUnavailable` へ value 追加、`RecoveryPreviewContractTest` の期待集合更新、`RecoveryPreviewProtocol` に catch を実装 → test が緑化。
 3. spec 84 の surface 記述（列挙と I5 行）・change history を同期。
 4. 全 verification command を実行し結果を PR へ記録。
 5. PR 作成（`Closes #270`）、`docs/assessment/` の独立 audit を別作業主体で実施。

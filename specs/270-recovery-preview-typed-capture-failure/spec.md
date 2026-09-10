@@ -36,6 +36,7 @@ preview seam の契約 ([spec 84](../84-recovery-preview-seam/spec.md)) は `ins
 - Settings status の persistence、retry UX、`WriterBusy` surface、`ManualOrganizationRun` の例外 rethrow 構造（capture 失敗以外の例外は従来どおり rethrow される）。
 - `PlanPreviewProtocol` の変更 — 既に `NotPlannable(CAPTURE_FAILED)` へマップ済みであり leak は存在しない（plan で source-verified して記録する）。
 - diagnostics event、log 追加、recovery store / Launcher DB / schema への一切の書込み。
+- preview 成功後に confirm 時点で layout が capture 不能へ変わる window（`RecoveryProtocol.recover` 内の capture、`RecoveryProtocol.kt:113`、および `ManualOrganizationRun.confirmRecovery` の rethrow）— issue 270 の scope は preview seam であり、この TOCTOU 型 window は #269 の representability 修正で解消される前提の既知事項として本 issue では扱わない。
 
 ## Domain language
 
@@ -119,8 +120,8 @@ UI 変更なし。`Unavailable` variant は既存の `manual_organization_recove
 | TC-AC-02 | 同 test で `assertNoInspectionMutation()` を assert し、失敗後に注入を解除して再 `inspectRecovery` が `Restorable` を返すことを assert（lease / mutex 解放の直接証拠） |
 | TC-AC-03 | 同 test で result variant が `Unavailable` であること（`Restorable` でないこと）を直接 assert |
 | TC-AC-04 | 既存 `verifiedUnexpiredPointReturnsSafeRestorablePreviewWithoutMutation` / `unknownLockStateReturnsTypedRejectionWithoutMutation` が変更なしで pass |
-| TC-AC-05 | `ManualOrganizationRunTest` で、実 `RecoveryPreviewProtocol`（capture 失敗注入済み fake writer）を application seam 経由で接続し、`beginRecoveryPreview()` が例外を throw せず `State.RecoveryPreview`（`Unavailable`）へ遷移することを assert |
-| TC-AC-06 | `FakeLayoutWriter` の決定論的 capture-failure knob（`RuntimeException` フィールド）で注入; `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.application.protocol.RecoveryPreviewProtocolTest'` と `--tests 'app.lawnchair.organizer.ui.ManualOrganizationRunTest'` の成功を PR へ記録 |
+| TC-AC-05 | `ManualOrganizationRunTest` で、既存 fake application の `recoveryPreview` seam に `Unavailable(pointId, CURRENT_LAYOUT_CAPTURE_UNAVAILABLE)` を設定し、`beginRecoveryPreview()` が例外を throw せず `State.RecoveryPreview`（`Unavailable`）へ遷移することを assert。protocol test（capture 失敗 → `Unavailable`）との合成で caller 到達 path を covering（唯一の接続点 `LayoutApplicationModule.inspectRecovery` は `readinessGate.runWhenReady` の pass-through であることを plan で確認済み） |
+| TC-AC-06 | `FakeLayoutWriter` の決定論的 capture-failure knob（`RuntimeException` フィールド）で注入; `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.application.protocol.RecoveryPreviewProtocolTest'` と `--tests 'app.lawnchair.organizer.ui.ManualOrganizationRunTest'` の成功、および `RecoveryPreviewContractTest` の期待集合更新後の成功を PR へ記録 |
 
 ## Change history
 
@@ -128,4 +129,7 @@ UI 変更なし。`Unavailable` variant は既存の `manual_organization_recove
 
 ## Open questions
 
-None。型付き結果の variant は `Unavailable`（capture 失敗は point の非復旧性も復旧可能性も主張せず「現状の検証自体が成立しなかった」ことを意味する）とする。`NotRestorable` の reason 集合は「復旧を進められない判断（point 状態の分類、および capture は成立した上での lock-state 判定不可）」を運ぶのに対し、capture 失敗は判定に必要な evidence が 1 つも得られなかった状態であり、検証不能を表す `Unavailable` が意味的に正しい。
+None（実装開始前に解消すべき未決定事項はない）。
+
+- **variant 選択の根拠（確定事項）**: 型付き結果の variant は `Unavailable` とする。capture 失敗は point の非復旧性も復旧可能性も主張せず「現状の検証自体が成立しなかった」ことを意味する。`NotRestorable` の reason 集合は「復旧を進められない判断（point 状態の分類、および capture は成立した上での lock-state 判定不可）」を運ぶのに対し、capture 失敗は判定に必要な evidence が 1 つも得られなかった状態であり、検証不能を表す `Unavailable` が意味的に正しい。
+- **evidence 形式の意図的な代替（owner 向け明示）**: issue 270 の scope が参照する「#265 harness の Path A」は repository に存在しない作業 tree の再現 harness であり、また実 row→codec path（`RowManifestCodec`）は `android.database` 依存のため JVM test で実行できない。そこで本 spec は、決定論的 invalid-row 模擬として protocol seam 注入（実 trigger と同一の `IllegalArgumentException`）を採用し、実 row 形での Path A 緑化検証を #269 の spec 判断と一体に帰属させる。この代替は Phase1 review で検証済みであり、実装 PR を issue 270 へ記録する際に明示する。
