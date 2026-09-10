@@ -14,6 +14,7 @@ import android.view.WindowInsets
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -132,6 +133,40 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 assertEquals(OrganizationOnboardingProposalOutcome.DEFERRED, store.value)
             }
             awaitInputFocus({ focusBeforeOpen }, "pre-proposal focus target")
+            // Issue #232: the deferred proposal shows the re-entry hint on the same host; the
+            // hint must also fit the viewport and safe area at 200% font scale.
+            lateinit var hint: OrganizationOnboardingReentryHint
+            instrumentation.runOnMainSync {
+                hint = OrganizationOnboardingReentryHint(launcher)
+                hint.show()
+            }
+            awaitInputFocus({ hint.getChildAt(0) }, "re-entry hint title")
+            instrumentation.runOnMainSync {
+                val viewport = Rect()
+                assertTrue(launcher.dragLayer.getGlobalVisibleRect(viewport))
+                assertEquals(TWO_HUNDRED_PERCENT_FONT_SCALE, hint.resources.configuration.fontScale)
+                val safeAreaBottom = viewport.bottom - launcher.windowManager.currentWindowMetrics.windowInsets
+                    .getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+                    .bottom
+                val hintBounds = Rect()
+                assertTrue(hint.getGlobalVisibleRect(hintBounds))
+                assertTrue(
+                    "re-entry hint must stay within the viewport (bounds=$hintBounds, viewport=$viewport)",
+                    hintBounds.bottom <= viewport.bottom,
+                )
+                assertTrue(
+                    "re-entry hint must stay above the system bar safe area " +
+                        "(bottom=${hintBounds.bottom}, safeAreaBottom=$safeAreaBottom)",
+                    hintBounds.bottom <= safeAreaBottom,
+                )
+                val title = hint.getChildAt(0) as TextView
+                val body = hint.getChildAt(1) as TextView
+                assertTrue(title.isShown && body.isShown)
+                assertTrue(title.height > 0 && body.height > 0)
+                hint.close(false)
+                assertFalse(hint.isOpen)
+            }
+            awaitInputFocus({ focusBeforeOpen }, "focus restored after hint close")
             instrumentation.runOnMainSync {
                 launcher.dragLayer.removeView(focusBeforeOpen)
             }
