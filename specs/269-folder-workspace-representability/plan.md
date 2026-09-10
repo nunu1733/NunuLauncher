@@ -2,7 +2,7 @@
 
 > Issue: #269
 > Spec: [spec.md](./spec.md)
-> Status: implementation-complete locally — connected and high-risk gate evidence pending
+> Status: implementation-complete locally — high-risk gate evidence pending
 > Baseline: `main` at `b25f20ca7c31ad384fbe8f8b696e87118f8fbe8c`; upstream baseline `505dbc40e6154c05158b5d0271c45f6a885a411b`.
 
 ## Current evidence
@@ -34,6 +34,10 @@
   evidence directory. It is preserved and excluded from this implementation;
   the Issue #265 instrumentation harness is included in the change set because
   it is the regression oracle for this issue.
+- The focused production instrumentation suite passed on the API 36.1
+  `nunu_qpr2_api36_1` emulator: all 5 tests in
+  `Issue265ManualEditRecoveryInstrumentationTest` passed, including both
+  strict Path A/Path B recovery flows and the three desktop-entry span cases.
 
 ## Design
 
@@ -175,16 +179,16 @@ CI before it becomes a new required command in `docs/engineering/building.md`.
 
 ## Execution checklist
 
-- [ ] Current behavior reproduced from the accepted #265 evidence.
-- [ ] Focused regression test fails before the implementation change.
+- [x] Current behavior reproduced from the accepted #265 evidence.
+- [x] Focused regression test fails before the implementation change.
 - [x] Spec #269 and the Spec 13 revision are accepted.
 - [x] Targeted destination-based `ModelWriter` bridge change completed; no
       broad writer or materialization change.
 - [x] Direct folder, folder → Hotseat → desktop, and AppPair-source icon
       transitions all converge to DB/model `1×1`.
-- [ ] Path A passes through `Restorable → Restored` with exact manifest
+- [x] Path A passes through `Restorable → Restored` with exact manifest
       equality, including the second organize pass.
-- [ ] Path B control remains exact.
-- [ ] Strict malformed desktop capture behavior remains fail-closed.
-- [ ] `spotlessCheck`, relevant organizer tests, and debug build pass.
+- [x] Path B control remains exact.
+- [x] Strict malformed desktop capture behavior remains fail-closed.
+- [x] `spotlessCheck`, relevant organizer tests, and debug build pass.
 - [ ] High-risk CI and independent audit evidence are recorded before merge.

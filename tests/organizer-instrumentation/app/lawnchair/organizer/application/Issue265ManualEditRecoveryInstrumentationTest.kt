@@ -59,16 +59,18 @@ import org.junit.runners.MethodSorters
 class Issue265ManualEditRecoveryInstrumentationTest {
     private lateinit var context: android.content.Context
     private lateinit var launcher: LauncherAppState
+    private lateinit var launcherScenario: ActivityScenario<LawnchairLauncher>
     private var snapshotRows: List<ContentValues> = emptyList()
 
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         launcher = LauncherAppState.getInstance(context)
+        closeRecoveryStoreHelper()
         deleteRecoveryArtifacts()
         // The model binds when a Launcher activity is alive; the Settings flow
         // under investigation also runs with the launcher in the back stack.
-        ActivityScenario.launch(LawnchairLauncher::class.java)
+        launcherScenario = ActivityScenario.launch(LawnchairLauncher::class.java)
         awaitModelLoaded()
         awaitGateReady()
         snapshotRows = snapshotFavorites()
@@ -77,10 +79,17 @@ class Issue265ManualEditRecoveryInstrumentationTest {
     @After
     fun tearDown() {
         try {
+            // A failed assertion can leave a reviewed proposal active. Clear
+            // that process-local lease before restoring the fixture so the
+            // next ordered test cannot be rejected as APPLY_BLOCKED.
+            ManualOrganizationModule.get(context).cancel()
+            ManualOrganizationModule.get(context).dismiss()
             restoreFavorites(snapshotRows)
             launcher.model.forceReload()
             awaitModelLoaded()
+            closeRecoveryStoreHelper()
         } finally {
+            if (::launcherScenario.isInitialized) launcherScenario.close()
             deleteRecoveryArtifacts()
         }
     }
@@ -212,6 +221,11 @@ class Issue265ManualEditRecoveryInstrumentationTest {
         check(applied.result is app.lawnchair.organizer.application.public.ApplyResult.Applied) {
             "apply did not verify: ${applied.result}"
         }
+        // Let the normal model reload and any tokenless writer callbacks drain
+        // before opening the recovery preview. This keeps the control path
+        // equivalent to the manual-edit path's explicit reload boundary.
+        launcher.model.forceReload()
+        awaitModelLoaded()
         dumpRawRows("POST_APPLY")
         report("RECOVERY_RECORD_POST_APPLY=${readLatestRecoveryRecord()}")
 
@@ -238,6 +252,9 @@ class Issue265ManualEditRecoveryInstrumentationTest {
                 "second organize must not become unavailable: $secondStart",
                 secondStart !is ManualOrganizationRun.State.InputUnavailable,
             )
+            if (secondStart is ManualOrganizationRun.State.Preview) {
+                runner.confirm()
+            }
             val secondApplied = runner.state as? ManualOrganizationRun.State.Applied
                 ?: error("second organize did not reach Applied: ${runner.state}")
             val secondResult = secondApplied.result as? ApplyResult.Applied
@@ -646,6 +663,15 @@ class Issue265ManualEditRecoveryInstrumentationTest {
             context.noBackupFilesDir,
             app.lawnchair.organizer.application.store.RecoveryInspectionSnapshotReader.DIRECTORY_NAME,
         ).takeIf { it.exists() }?.deleteRecursively()
+    }
+
+    /** Close the production helper before deleting its database between tests. */
+    private fun closeRecoveryStoreHelper() {
+        val module = (context.applicationContext as LawnchairApp).layoutApplicationModule
+        val storeField = module.javaClass.getDeclaredField("store").apply { isAccessible = true }
+        val store = storeField.get(module)
+        val helperField = store.javaClass.getDeclaredField("helper").apply { isAccessible = true }
+        helperField.get(store).javaClass.getMethod("close").invoke(helperField.get(store))
     }
 
     private companion object {
