@@ -922,6 +922,12 @@
     <string name="organizer_lock_dialog_title_unlock">Unlock this placement?</string>
     <string name="organizer_lock_dialog_title_review">Review this placement</string>
     <string name="organizer_lock_dialog_current_state">Current state: %1$s</string>
+    <string name="organizer_lock_dialog_target_title">Target: %1$s</string>
+    <string name="organizer_lock_dialog_target_position">Position: row %1$d, column %2$d</string>
+    <string name="organizer_lock_dialog_target_folder">Folder: %1$s</string>
+    <string name="organizer_lock_dialog_target_app_pair">App pair: %1$s</string>
+    <string name="organizer_lock_dialog_split_top_left">Member: top or left</string>
+    <string name="organizer_lock_dialog_split_bottom_right">Member: bottom or right</string>
     <string name="organizer_lock_dialog_review_intro">The lock state of this placement is unknown, for example after an update, a grid change, or restoring a backup. Choose whether it should stay where it is.</string>
     <string name="organizer_lock_action_lock">Lock</string>
     <string name="organizer_lock_action_unlock">Unlock</string>
@@ -1224,4 +1230,8 @@
     <string name="organization_onboarding_proposal_defer">Later</string>
     <string name="organization_onboarding_proposal_skip">Skip</string>
     <string name="organization_onboarding_proposal_review">Review organization</string>
+    <!-- Issue #232: re-entry guidance shown once after `Later`. The body is assembled from
+         the real UI labels so the path stays in sync with the actual settings naming. -->
+    <string name="organization_onboarding_reentry_hint_title">You can organize anytime</string>
+    <string name="organization_onboarding_reentry_hint_body">Long-press the Home screen → %1$s → %2$s → %3$s.</string>
 </resources>

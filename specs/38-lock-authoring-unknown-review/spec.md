@@ -63,7 +63,11 @@ screen readers and localized; no state is communicated by color alone.
     captured row of every kind — folder, folder child, Dock, widget, app pair,
     app-pair member — grouped with profile context, supports lock/unlock with
     the same confirmation, and hosts the `UNKNOWN` review flow including batch
-    review.
+    review. Its confirmation dialog names the tapped row with the same title
+    and placement description the list row renders, plus a disambiguator
+    line (cell / parent title) for placements the description collapses, so
+    same-named placements are distinguishable from the dialog text alone
+    ([spec 211](../211-lock-dialog-target-identity/spec.md)).
 - Localized, accessible state/effect/error/result messaging.
 
 ## Non-goals
@@ -295,3 +299,7 @@ in the organizer UX work (Issue #52/#53) if a proactive surface is wanted.
 
 - 2026-08-16: Draft created for #38; accepted with the repository workflow
   (solo maintainer delegation) before implementation.
+- 2026-09-09: Issue #211 ([spec 211](../211-lock-dialog-target-identity/spec.md))
+  extended the management-screen confirmation dialog to name the tapped row
+  (title + placement description shared with the list row). This spec's ACs
+  and oracle are unchanged.

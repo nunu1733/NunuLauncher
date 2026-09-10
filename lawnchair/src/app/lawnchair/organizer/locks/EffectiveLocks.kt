@@ -11,6 +11,7 @@ import app.lawnchair.organizer.planning.ContainerCode
 import app.lawnchair.organizer.planning.GridCell
 import app.lawnchair.organizer.planning.GridSpan
 import app.lawnchair.organizer.planning.ItemId
+import app.lawnchair.organizer.planning.SplitStage
 
 /**
  * What a stored `LOCKED` state protects for one row, per ADR-0004
@@ -79,7 +80,7 @@ sealed interface LockPlacementSummary {
 
     data class InFolder(val parent: ItemId, val rank: Int) : LockPlacementSummary
 
-    data class InAppPair(val parent: ItemId) : LockPlacementSummary
+    data class InAppPair(val parent: ItemId, val stage: SplitStage) : LockPlacementSummary
 
     data class Unsupported(val code: ContainerCode) : LockPlacementSummary
 }
@@ -231,6 +232,7 @@ fun placementSummaryOf(state: LayoutState, item: CanonicalItemState): LockPlacem
     is PlacementState.AppPairChild -> LockPlacementSummary.InAppPair(
         parent = (placement.parent as? ApplicationItemRef.PersistentItem)?.itemId
             ?: ItemId(placement.parent.toString()),
+        stage = placement.stage,
     )
 
     is PlacementState.UnsupportedContainer -> LockPlacementSummary.Unsupported(placement.code)
