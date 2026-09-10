@@ -213,6 +213,62 @@ class ManualOrganizationPreferencesInstrumentationTest {
     }
 
     /**
+     * Issue #271 review (P1/P2): a durable-status read taken while startup
+     * reconciliation is still running fails closed; the surface announces the
+     * loading state instead of looking "never organized", and once readiness
+     * reaches a terminal state on the same Idle surface the status re-reads
+     * and recovers without navigation.
+     */
+    @Test
+    fun durableStatusRecoversWhenReconciliationCompletesOnTheSameSurface() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val release = java.util.concurrent.CountDownLatch(1)
+        val application = FakeApplication().apply {
+            readiness.value = app.lawnchair.organizer.application.protocol.ReadinessGate.State.RECONCILING
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+            readOverride = {
+                release.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                OrganizerDurableStatus.UNAVAILABLE
+            }
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { error("planner must not run") },
+        )
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.Idle }
+        // Loading is announced, never silently equated with "never organized".
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_checking),
+        ).assertIsDisplayed()
+
+        release.countDown()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restorable),
+        ).assertDoesNotExist()
+
+        // Reconciliation completes while the surface stays open: the status
+        // re-reads and recovers on the same surface.
+        composeRule.runOnIdle {
+            application.readOverride = null
+            application.readiness.value = app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY
+        }
+        composeRule.waitUntil {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_durable_status_restorable),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restorable),
+        ).assertIsDisplayed()
+    }
+
+    /**
      * Issue #271 (DS-AC-07): the unresolved durable status reuses the existing
      * safe-support guidance rows.
      */
@@ -1950,7 +2006,17 @@ class ManualOrganizationPreferencesInstrumentationTest {
         var durableStatus: app.lawnchair.organizer.application.public.OrganizerDurableStatus =
             app.lawnchair.organizer.application.public.OrganizerDurableStatus.NEVER_ORGANIZED
 
-        override fun readDurableOrganizerStatus(): app.lawnchair.organizer.application.public.OrganizerDurableStatus = durableStatus
+        /** Issue #271 review: blocks the durable read to observe the loading state. */
+        var readOverride: (() -> app.lawnchair.organizer.application.public.OrganizerDurableStatus)? = null
+
+        override fun readDurableOrganizerStatus(): app.lawnchair.organizer.application.public.OrganizerDurableStatus = readOverride?.invoke() ?: durableStatus
+
+        /** Issue #271 review: overridable readiness for the re-read race test. */
+        var readiness = kotlinx.coroutines.flow.MutableStateFlow(
+            app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY,
+        )
+
+        override val readinessState: kotlinx.coroutines.flow.StateFlow<app.lawnchair.organizer.application.protocol.ReadinessGate.State> = readiness
     }
 
     private class RecordingDiagnostics : DiagnosticsPort {

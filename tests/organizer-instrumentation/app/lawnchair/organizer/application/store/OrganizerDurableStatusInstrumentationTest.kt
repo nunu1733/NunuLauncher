@@ -235,6 +235,24 @@ class OrganizerDurableStatusInstrumentationTest {
     }
 
     @Test
+    fun statusRecoversOnTheSameModuleAfterReconciliationCompletes() {
+        deleteRecoveryArtifacts(context)
+        val pointId = RecoveryPointId("0123456789abcdef0123456789abcdef")
+        val store = RecoveryStore(context, SystemClock()::nowMillis)
+        prepareForMutation(store)
+        assertTrue(checkpoint(store, pointId))
+        advanceThrough(store, pointId, LifecycleState.APPLYING, LifecycleState.COMMITTED_UNVERIFIED, LifecycleState.VERIFIED)
+
+        // Issue #271 review: one module instance, read before and after
+        // reconciliation completes — the fail-closed first read must recover
+        // on the same instance (the Settings re-open race).
+        val module = freshModule()
+        assertEquals(OrganizerDurableStatus.UNAVAILABLE, module.durableOrganizerStatus())
+        assertEquals(RestartReconciler.ReconciliationSummary.Clean, module.reconcileAtStart())
+        assertEquals(OrganizerDurableStatus.ORGANIZED_RESTORABLE, module.durableOrganizerStatus())
+    }
+
+    @Test
     fun prunedCheckpointPresentsNeverOrganized() {
         deleteRecoveryArtifacts(context)
         val pointId = RecoveryPointId("0123456789abcdef0123456789abcdef")

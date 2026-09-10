@@ -96,9 +96,16 @@ fun ManualOrganizationPreferences(
     // operation is active (Idle/Cancelled). It is re-read on each transition
     // into those states — an in-place cancel re-reads, not only the first
     // composition — and any read maps to a fail-closed no-row outcome.
+    // Issue #271 review: the read also re-runs whenever the application
+    // module's startup readiness moves, so a fail-closed read taken while
+    // startup reconciliation is still running recovers on the same surface
+    // once reconciliation reaches a terminal state, without the user
+    // navigating away. While no result is known yet, an explicit checking row
+    // keeps the loading state visually distinct from "never organized".
     val showDurableStatus = state is ManualOrganizationRun.State.Idle || state is ManualOrganizationRun.State.Cancelled
+    val readinessState by coordinator.readinessState.collectAsStateWithLifecycle()
     var durableStatus by remember { mutableStateOf<OrganizerDurableStatus?>(null) }
-    LaunchedEffect(showDurableStatus) {
+    LaunchedEffect(showDurableStatus, readinessState) {
         durableStatus = if (showDurableStatus) {
             withContext(Dispatchers.IO) { coordinator.readDurableOrganizerStatus() }
         } else {
@@ -195,6 +202,11 @@ fun ManualOrganizationPreferences(
                 ManualOrganizationRun.State.Idle,
                 ManualOrganizationRun.State.Cancelled,
                 -> {
+                    // Issue #271 review: loading is announced, never silently
+                    // equated with "never organized".
+                    if (durableStatus == null) {
+                        item { ProgressText(R.string.manual_organization_durable_status_checking) }
+                    }
                     durableStatus?.let { durableStatusItems(it, onOpenDiagnostics) }
                     item {
                         ClickablePreference(

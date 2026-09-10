@@ -1,7 +1,7 @@
 ---
 issue: "#271"
 status: accepted
-requirements: [DS-AC-01, DS-AC-02, DS-AC-03, DS-AC-04, DS-AC-05, DS-AC-06, DS-AC-07, DS-AC-08]
+requirements: [DS-AC-01, DS-AC-02, DS-AC-03, DS-AC-04, DS-AC-05, DS-AC-06, DS-AC-07, DS-AC-08, DS-AC-09, DS-AC-10]
 risk: []
 updated: 2026-09-10
 ---
@@ -150,9 +150,21 @@ Given the recovery store is unavailable (`INCOMPATIBLE_VERSION`,
 the inspection snapshot for the current generation is unreadable
 When the Settings surface requests the durable status
 Then the projection returns a fail-closed unavailable result and the surface
-presents no durable status row and no invented state
+presents no durable status row and no invented state, announcing an explicit
+checking/loading row instead while no result is known
 And no write, lifecycle transition, retention cleanup, or journal event is
 performed by the read
+
+### Scenario: reconciliation completes while the surface stays open
+
+Given a durable-status read failed closed because startup reconciliation was
+still pending (`IDLE`/`RECONCILING`) when the Settings surface entered `Idle`
+When startup reconciliation reaches a terminal state (`READY` or `FAILED`)
+without the user navigating away and no run operation becomes active
+Then the surface re-reads the durable status and presents it per the scenarios
+above, on the same surface, without depending on read timing
+And a first read that already succeeded is not re-presented differently by a
+later gate state
 
 ### Scenario: retention-aligned invalidation — no projection outliving its record
 
@@ -162,6 +174,18 @@ When the underlying record is gone from the recovery store (evicted and its
 tombstone purged, or pruned as unused)
 Then deriving the durable status again never presents "organized and
 restorable"
+
+### Scenario: organizer surface as the first screen of a fresh process
+
+Given the exported settings surface opens the organizer in a process where no
+Launcher activity has resumed yet
+When the organizer Settings entry initializes
+Then the application module exists (its `LauncherAppState` composition is
+ensured) and startup reconciliation is triggered through the same idempotent
+process-scoped trigger the Launcher-resume path uses
+And until that reconciliation reaches a terminal state the durable status
+fail-closes per the unavailable scenario, and never presents an invented
+status
 
 ### Scenario: active process-local run state keeps precedence
 
@@ -245,6 +269,18 @@ read again and rendered per the scenarios above
       a test); fail-closed unavailable (store unavailable, reconciliation not
       completed, run-mutex contention, unreadable snapshot) renders no durable
       status row and performs no writes or journal events.
+- [ ] DS-AC-09: A fail-closed read taken during pending startup reconciliation
+      recovers on the same Settings surface when the readiness gate reaches a
+      terminal state (no navigation, no timing dependence — the surface re-reads
+      on observable gate transitions); while no result is known the surface
+      presents an explicit checking row, visually distinct from "never
+      organized". Covered by a UI instrumentation test and a same-module
+      before/after reconciliation instrumentation test.
+- [ ] DS-AC-10: Opening the organizer surface as the first screen of a fresh
+      process initializes the application module's composition and triggers
+      startup reconciliation through the same idempotent process-scoped trigger
+      as the Launcher-resume path (no crash, no permanently stale surface);
+      evidenced by a cold-process emulator flow into the organizer screen.
 - [ ] DS-AC-06: No new diagnostics fields outside the closed vocabulary; the
       projection emits no journal events; the projection type leaks no record
       payload, revision, digest, or item identity (enforced by the type's shape).
@@ -267,6 +303,8 @@ read again and rendered per the scenarios above
 | DS-AC-06 | Type-shape review (projection type carries no payload fields) + existing diagnostics contract tests unchanged; no `RunEvent` emission in the new path (code review + grep) |
 | DS-AC-07 | Instrumentation UI test on the organizer Settings surface: durable row present/absent per status incl. fail-closed and active-run precedence |
 | DS-AC-08 | PR diff contains `CONTEXT.md`, `DESIGN.md`, and spec/plan status updates |
+| DS-AC-09 | UI instrumentation test: blocked first read announces the checking row, then a readiness-gate transition re-reads and presents the status on the same surface; instrumentation test asserting one module instance reports `UNAVAILABLE` before and the derived status after `reconcileAtStart()`; unit test that the gate's observable state flow mirrors every transition |
+| DS-AC-10 | Emulator evidence: force-stop → cold-start the exported settings surface directly into the organizer screen → no crash, reconciliation runs, status (or explicit fail-closed) renders; recorded in the PR/audit |
 
 ## Open questions
 
@@ -277,3 +315,4 @@ read again and rendered per the scenarios above
 ## Change history
 
 - 2026-09-10: Draft created for #271.
+- 2026-09-10: Accepted after Phase-1 review; extended with DS-AC-09/DS-AC-10 (readiness-driven re-read, explicit loading row, cold-process settings entry) from the PR #276 owner review.

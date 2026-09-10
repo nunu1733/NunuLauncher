@@ -3,6 +3,7 @@
 > Issue: #271
 > Spec: [spec.md](./spec.md)
 > Status: accepted (Phase-1 review: APPROVE, code-reviewer-2 session, head bcd01e915441af5ea6840ac6552783bfb162180c delta b68578790f..bcd01e9154; two non-blocking implementer notes folded into test wording)
+> PR #276 owner review round: Request changes (P1 re-read race, P1 cold settings entry, P2 loading distinct) → addressed in this revision (readiness-driven re-read, cold-start-safe entry, checking row).
 
 ## Current evidence
 
@@ -140,6 +141,14 @@ record.
    snapshot values into the deriver inputs lives here (protocol layer), not in
    the store.
 
+4b. **`ReadinessGate.stateFlow` (observable mirror)**
+    A conflated `StateFlow<State>` mirroring every gate transition (unit-tested).
+    Exposed through the `ManualOrganizationApplication` façade as
+    `readinessState`, so the Settings surface can re-read the durable status
+    when reconciliation completes without depending on timing (Issue #276
+    review P1: a first read during pending reconciliation failed closed and
+    never recovered on the same surface).
+
 5. **UI seam (existing)**
    - `ManualOrganizationApplication` += `fun readDurableOrganizerStatus():
      OrganizerDurableStatus` (one more read on the existing narrow façade; no
@@ -147,15 +156,44 @@ record.
      the module.
    - `ManualOrganizationRun.readDurableOrganizerStatus()` delegates to the
      application seam (read-only; no state mutation, no lock interaction).
-   - `ManualOrganizationPreferences.kt`: each time `state` transitions into
-     `Idle` or `Cancelled` (keyed on that condition, so an in-place cancel
-     re-reads), read the status on `Dispatchers.IO` and render a `SummaryText`
-     row for `ORGANIZED_RESTORABLE`, `RESTORED_OR_EXPIRED`, and `UNRESOLVED`;
-     render nothing for `NEVER_ORGANIZED` and `UNAVAILABLE`. For `UNRESOLVED`,
+   - `ManualOrganizationPreferences.kt`: the read effect is keyed on
+     `(Idle|Cancelled, readinessState)` — it re-runs on each transition into
+     `Idle`/`Cancelled` (an in-place cancel re-reads) **and** on every
+     application-module readiness transition, so a fail-closed read taken
+     while startup reconciliation is pending recovers on the same surface.
+     While no result is known, an explicit checking row
+     (`manual_organization_durable_status_checking`, reusing the existing
+     progress/live-region pattern) keeps loading visually distinct from
+     "never organized". Results render a `SummaryText` row for
+     `ORGANIZED_RESTORABLE`, `RESTORED_OR_EXPIRED`, and `UNRESOLVED`;
+     `NEVER_ORGANIZED` and `UNAVAILABLE` render nothing. For `UNRESOLVED`,
      render the existing safe-support rows (`manual_organization_safe_terminal`
      + `manual_organization_open_diagnostics`, `onOpenDiagnostics`) after the
      status line. Any other run state renders exactly as today (active
      process-local state keeps precedence).
+
+5b. **Cold-process settings entry (LawnchairApp / ManualOrganizationModule)**
+    The exported `PreferenceActivity` accepts `APPLICATION_PREFERENCES`, so
+    the organizer surface can be the first screen of a fresh process where
+    `LauncherAppState` (and therefore the application module) was never
+    constructed and the reconciliation trigger (Launcher-resume only) never
+    fired. Fixes, reusing existing behavior only:
+    - `LawnchairApp`: the reconciliation trigger is extracted into an
+      idempotent, process-scoped
+      `ensureOrganizerStartupReconciliation(waitForModel: Boolean)` (the
+      `AtomicBoolean` guard moves from the activity handler to the app). The
+      `Launcher`-resume path passes `true` (unchanged behavior: wait for the
+      model, fail-close on timeout). `false` — used by non-Launcher entries —
+      proceeds only when the model is already loaded, and otherwise leaves the
+      once-guard unconsumed so the Launcher-resume path still runs
+      reconciliation later; a model-less process fail-closes (gate `IDLE`)
+      instead of poisoning the gate for the process.
+    - `ManualOrganizationModule.get(context)`: before reading
+      `layoutApplicationModule` it ensures `LauncherAppState.getInstance(app)`
+      (which constructs the module via the existing `onPostInit` hook;
+      thread-safe) and calls `ensureOrganizerStartupReconciliation(false)`.
+      Until reconciliation reaches a terminal state, the read fail-closes per
+      spec.
 
 6. **Strings** (`values/strings.xml`, `values-ja/strings.xml`): three new
    `manual_organization_durable_status_*` strings (restorable /
@@ -209,12 +247,14 @@ record.
 | `lawnchair/src/app/lawnchair/organizer/application/protocol/Ports.kt` | add `readInspectionSnapshot()` + closed read result to `RecoveryStorePort` | the port is the module↔store seam |
 | `lawnchair/src/app/lawnchair/organizer/application/store/RecoveryStore.kt` | implement `readInspectionSnapshot()` (fence-gated, snapshot-only) | only implementation of the port; reuses #89 fence pattern |
 | `lawnchair/src/app/lawnchair/organizer/application/protocol/LayoutApplicationModule.kt` | add `durableOrganizerStatus()` (mutex + readiness gated, fail-closed) | module owns store, mutex, clock → owns the projection |
+| `lawnchair/src/app/lawnchair/organizer/application/protocol/ReadinessGate.kt` | observable `stateFlow` mirror of gate transitions | enables readiness-driven re-read without timing dependence |
 | `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt` | add `readDurableOrganizerStatus()` to the application façade + run delegate | existing narrow façade is the UI↔module seam |
 | `lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt` | render mapping for `Idle`/`Cancelled` | the surface named by the issue |
-| `lawnchair/res/values/strings.xml`, `lawnchair/res/values-ja/strings.xml` | 3 new strings each | localized user-visible status text |
+| `lawnchair/res/values/strings.xml`, `lawnchair/res/values-ja/strings.xml` | 4 new strings each (3 statuses + checking row) | localized user-visible status text |
 | `tests/unit/app/lawnchair/organizer/application/lifecycle/OrganizerDurableStatusDeriverTest.kt` | new: fixtures, boundaries, priority, invalidation | pure deriver → JVM unit tests |
 | `tests/organizer-instrumentation/app/lawnchair/organizer/application/store/OrganizerDurableStatusInstrumentationTest.kt` | new: close/reopen restart scenarios per DS-AC-01/02/03/05 | durability needs real SQLite across reopen |
 | `tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationPreferencesInstrumentationTest.kt` | extend: durable status render scenarios incl. fail-closed + active-run precedence (DS-AC-07) | existing surface test harness with fake application |
+| `lawnchair/src/app/lawnchair/LawnchairApp.kt`, `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt` (module holder) | idempotent process-scoped reconciliation trigger + cold-start-safe settings entry | fixes the exported-settings cold-process path (DS-AC-10) |
 | `CONTEXT.md`, `DESIGN.md` | domain term + seam ownership line | 正本 updates (DS-AC-08) |
 | `specs/271-organizer-durable-status-projection/{spec,plan}.md` | spec/plan status updates | specs README rule |
 
@@ -248,6 +288,8 @@ record.
 | DS-AC-05 | deriver unit test (record removed from inputs → not restorable) + instrumentation test (tombstone purged → `NEVER_ORGANIZED`; fresh store before snapshot rebuild → `UNAVAILABLE`) + render test for no-row | unit + instrumentation commands above |
 | DS-AC-06 | type is field-free (code review); no `RunEvent` emission in the new path; existing diagnostics tests stay green | full unit suite command |
 | DS-AC-07 | `ManualOrganizationPreferencesInstrumentationTest`: durable row present for the three informative statuses on `Idle`, absent for `NEVER_ORGANIZED`/`UNAVAILABLE`, absent during active run states, unresolved guidance rows present | instrumentation command (UI class) |
+| DS-AC-09 | `durableStatusRecoversWhenReconciliationCompletesOnTheSameSurface` (blocked first read → checking row → gate READY → row recovers on the same surface), `statusRecoversOnTheSameModuleAfterReconciliationCompletes` (`UNAVAILABLE` before / restorable after `reconcileAtStart()` on one instance), `stateFlowMirrorsEveryGateTransition` unit test | unit + instrumentation commands above |
+| DS-AC-10 | Emulator cold-process flow (force-stop → cold-start exported settings into the organizer screen): no crash, reconciliation runs, status or explicit fail-closed renders; recorded in PR/audit | manual device evidence + `ManualOrganizationModule.get` exercised in instrumentation runs |
 | DS-AC-08 | PR diff | review |
 
 Regression: `./gradlew spotlessCheck` and
@@ -278,6 +320,11 @@ via the class filter.
    implementation (fence-gated, snapshot-only).
 4. [ ] Add `LayoutApplicationModule.durableOrganizerStatus()` with run-mutex +
    readiness gating and fail-closed mapping.
+4b. [ ] Make `ReadinessGate` observable (`stateFlow`) and expose `readinessState`
+   through the façade; key the UI read on `(Idle|Cancelled, readinessState)`;
+   render the explicit checking row while no result is known (DS-AC-09).
+4c. [ ] Extract the idempotent `LawnchairApp.ensureOrganizerStartupReconciliation()`
+   and make `ManualOrganizationModule.get` cold-start safe (DS-AC-10).
 5. [ ] Extend the `ManualOrganizationApplication` façade + `ManualOrganizationRun`
    delegate.
 6. [ ] Settings render mapping + strings (EN/ja); the step-1 test now passes

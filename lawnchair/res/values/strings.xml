@@ -1093,6 +1093,7 @@
     <string name="manual_organization_durable_status_restorable">Home layout is organized. Its saved pre-organization backup is restorable.</string>
     <string name="manual_organization_durable_status_restored_or_expired">The saved pre-organization backup is no longer restorable (restored or expired).</string>
     <string name="manual_organization_durable_status_unresolved">An organizer change did not finish safely.</string>
+    <string name="manual_organization_durable_status_checking">Checking for a saved organizer state…</string>
     <string name="manual_organization_scope">Full layout scope: %1$d targets across %2$d profiles and %3$d pages.</string>
     <string name="manual_organization_device_scope">Device profile: %1$d columns × %2$d rows, %3$d Dock slots.</string>
     <string name="manual_organization_moved_single_placement">Moved as a single placement: %1$d</string>

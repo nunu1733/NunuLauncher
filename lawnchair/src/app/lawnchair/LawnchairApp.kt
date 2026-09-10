@@ -114,6 +114,43 @@ class LawnchairApp : Application() {
         layoutApplicationModule = LayoutApplicationModule.production(this, GeneratedFolderTitles.resolver(this))
     }
 
+    /**
+     * Issue #14: make restart reconciliation reachable before organizer requests are accepted.
+     * Issue #271 review: idempotent, process-scoped trigger. The
+     * Launcher-resume path passes `waitForModel = true` (wait up to the
+     * timeout, fail-close the gate on timeout). Non-Launcher entry points
+     * (e.g. the exported settings surface opening as the first activity of a
+     * fresh process) pass `false`: they proceed only when the model is
+     * already loaded, and otherwise leave the once-guard unconsumed so the
+     * Launcher-resume path can still run reconciliation later — a
+     * model-less process fail-closes (gate `IDLE`) instead of poisoning the
+     * gate for the rest of the process.
+     */
+    internal fun ensureOrganizerStartupReconciliation(waitForModel: Boolean) {
+        if (!waitForModel && !com.android.launcher3.LauncherAppState.getInstance(this@LawnchairApp).model.isModelLoaded) {
+            return
+        }
+        if (!organizerReconciliationStarted.compareAndSet(false, true)) return
+        thread(name = "organizer-startup-reconciliation") {
+            val model = com.android.launcher3.LauncherAppState.getInstance(this@LawnchairApp).model
+            val deadline = SystemClock.elapsedRealtime() + ORGANIZER_MODEL_LOAD_TIMEOUT_MS
+            while (!model.isModelLoaded && SystemClock.elapsedRealtime() < deadline) {
+                try {
+                    Thread.sleep(50)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    break
+                }
+            }
+            if (!model.isModelLoaded) {
+                Log.e(TAG, "Organizer startup reconciliation began without a completed model load")
+                layoutApplicationModule.failStartupReconciliation()
+                return@thread
+            }
+            layoutApplicationModule.reconcileAtStart()
+        }
+    }
+
     fun restart(recreateLauncher: Boolean = true) {
         if (recreateLauncher) {
             activityHandler.finishAll()
@@ -221,10 +258,15 @@ class LawnchairApp : Application() {
         return currentProcessName == packageName
     }
 
+    // Issue #271 review: startup reconciliation is process-scoped and must also
+    // run when an exported settings surface is the first activity of a fresh
+    // process, so the guard lives on the application, not on the activity
+    // handler.
+    private val organizerReconciliationStarted = AtomicBoolean(false)
+
     private val activityHandler = object : ActivityLifecycleCallbacks {
         private val activities = HashSet<Activity>()
         private var foregroundActivity: Activity? = null
-        private val organizerReconciliationStarted = AtomicBoolean(false)
 
         fun finishAll() {
             HashSet(activities).forEach { it.finish() }
@@ -234,25 +276,8 @@ class LawnchairApp : Application() {
 
         override fun onActivityResumed(activity: Activity) {
             foregroundActivity = activity
-            if (activity is Launcher && organizerReconciliationStarted.compareAndSet(false, true)) {
-                thread(name = "organizer-startup-reconciliation") {
-                    val model = com.android.launcher3.LauncherAppState.getInstance(this@LawnchairApp).model
-                    val deadline = SystemClock.elapsedRealtime() + ORGANIZER_MODEL_LOAD_TIMEOUT_MS
-                    while (!model.isModelLoaded && SystemClock.elapsedRealtime() < deadline) {
-                        try {
-                            Thread.sleep(50)
-                        } catch (_: InterruptedException) {
-                            Thread.currentThread().interrupt()
-                            break
-                        }
-                    }
-                    if (!model.isModelLoaded) {
-                        Log.e(TAG, "Organizer startup reconciliation began without a completed model load")
-                        layoutApplicationModule.failStartupReconciliation()
-                        return@thread
-                    }
-                    layoutApplicationModule.reconcileAtStart()
-                }
+            if (activity is Launcher) {
+                ensureOrganizerStartupReconciliation(waitForModel = true)
             }
         }
 

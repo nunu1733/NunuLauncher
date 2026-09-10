@@ -1073,6 +1073,11 @@ class ManualOrganizationRunTest {
         override fun confirmRecovery(pointId: RecoveryPointId, confirmation: RecoveryPreviewConfirmation): RecoveryResult = RecoveryResult.NotRestorable(pointId, app.lawnchair.organizer.application.public.RecoveryRejection.MISSING)
 
         override fun readDurableOrganizerStatus(): app.lawnchair.organizer.application.public.OrganizerDurableStatus = durableStatus
+
+        val readiness = kotlinx.coroutines.flow.MutableStateFlow(
+            app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY,
+        )
+        override val readinessState: kotlinx.coroutines.flow.StateFlow<app.lawnchair.organizer.application.protocol.ReadinessGate.State> = readiness
     }
 
     private fun assertThrowsIllegalState(block: () -> Unit) {
