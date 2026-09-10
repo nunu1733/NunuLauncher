@@ -1,6 +1,6 @@
 ---
 issue: "#269"
-status: draft
+status: accepted
 requirements:
   - AC-269-01
   - AC-269-02
@@ -352,6 +352,10 @@ Owner acceptance of this Spec 13 revision is the implementation gate.
 
 ## Change history
 
+- 2026-09-10: Owner accepted the destination-based desktop-entry writer
+  bridge revision. Implementation may proceed under the accepted Spec 13
+  contract; verification and Spec 13 cross-reference remain implementation
+  deliverables.
 - 2026-09-10: Draft created for #269 from the accepted #265 two-path
   reproduction at repository `main` `b25f20ca7c31ad384fbe8f8b696e87118f8fbe8c`.
   Selected the targeted writer transition as the owner seam; retained the

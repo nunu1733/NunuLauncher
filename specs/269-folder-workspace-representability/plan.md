@@ -2,7 +2,7 @@
 
 > Issue: #269
 > Spec: [spec.md](./spec.md)
-> Status: draft — implementation is blocked until the Spec 13 revision is accepted
+> Status: implementation-complete locally — connected and high-risk gate evidence pending
 > Baseline: `main` at `b25f20ca7c31ad384fbe8f8b696e87118f8fbe8c`; upstream baseline `505dbc40e6154c05158b5d0271c45f6a885a411b`.
 
 ## Current evidence
@@ -30,10 +30,10 @@
 - `PersistentRow` already accepts and serializes positive spans and the
   recovery codec already carries nullable raw span values. No data-format
   change is required.
-- The working tree contains unrelated user-owned untracked paths:
-  `.ux-review/` and the Issue #265 instrumentation harness. They must be
-  preserved and reviewed as part of the implementation PR rather than
-  discarded by this work.
+- The working tree contains the unrelated user-owned untracked `.ux-review/`
+  evidence directory. It is preserved and excluded from this implementation;
+  the Issue #265 instrumentation harness is included in the change set because
+  it is the regression oracle for this issue.
 
 ## Design
 
@@ -148,7 +148,7 @@ targeted `ModelWriter.java` transition rule described above.
 | AC-269-02 | Path A runs organize → real `ModelWriter` move → recovery preview/confirm and asserts `Restorable`, `Restored`, and exact manifest equality | `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.application.Issue265ManualEditRecoveryInstrumentationTest` on `nunu_qpr2_api36_1` |
 | AC-269-03 | Path A performs a second organize after the manual move and asserts no `InputUnavailable`, no capture exception, and verified outcome; repeated post-move capture/materialization is deterministic | Same API 36.1 instrumentation target; use latch/state assertions, not sleeps as the oracle |
 | AC-269-04 | Path B exact restore/next-start assertions remain green; injected/external desktop NULL span remains rejected by strict canonical capture without a write | Same instrumentation suite plus focused row-matrix instrumentation test |
-| Spec 13 revision | Spec 13 status/history and #269 cross-reference are updated only after owner acceptance; no implementation starts while draft | Markdown review and repo-contract validation |
+| Spec 13 revision | Spec 13 status/history and #269 cross-reference were updated after owner acceptance; no implementation started while draft | Markdown review and repo-contract validation |
 | Layout-data gate | Implementation PR records the accepted spec/plan revision, exact base/head SHA, full relevant diff, successful CI `final-status`, and independent audit under `docs/assessment/pr-<number>-<slug>.md` | GitHub Actions + `docs/project/github-workflow.md` high-risk evidence contract |
 
 Required verification surface also includes the existing repository commands
@@ -159,11 +159,11 @@ CI before it becomes a new required command in `docs/engineering/building.md`.
 
 ## Documentation updates
 
-- [ ] `specs/269-folder-workspace-representability/spec.md` accepted by owner
-- [ ] `specs/13-safe-layout-application/spec.md` updated with the accepted
+- [x] `specs/269-folder-workspace-representability/spec.md` accepted by owner
+- [x] `specs/13-safe-layout-application/spec.md` updated with the accepted
       normative revision and cross-reference
-- [ ] `specs/269-folder-workspace-representability/plan.md` status changed to
-      implementation-ready only after spec acceptance
+- [x] `specs/269-folder-workspace-representability/plan.md` status changed to
+      implementation-ready after spec acceptance
 - [ ] `CONTEXT.md` — no change expected
 - [ ] `DESIGN.md` — no structural seam change expected; update only if review
       finds the adapter responsibility description materially changed
@@ -177,8 +177,8 @@ CI before it becomes a new required command in `docs/engineering/building.md`.
 
 - [ ] Current behavior reproduced from the accepted #265 evidence.
 - [ ] Focused regression test fails before the implementation change.
-- [ ] Spec #269 and the Spec 13 revision are accepted.
-- [ ] Targeted destination-based `ModelWriter` bridge change completed; no
+- [x] Spec #269 and the Spec 13 revision are accepted.
+- [x] Targeted destination-based `ModelWriter` bridge change completed; no
       broad writer or materialization change.
 - [ ] Direct folder, folder → Hotseat → desktop, and AppPair-source icon
       transitions all converge to DB/model `1×1`.
