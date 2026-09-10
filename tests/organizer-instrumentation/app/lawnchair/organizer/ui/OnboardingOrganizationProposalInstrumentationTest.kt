@@ -463,6 +463,9 @@ class OnboardingOrganizationProposalInstrumentationTest {
             gate.show()
             gate.awaitInitialFocus()
             gate.deliveredTap(gate.content.laterButton)
+            // The click dispatches on the main thread after the injected UP; wait for the
+            // proposal to close so the outcome assertion cannot race the defer recording.
+            assertTrue("proposal must close after the Later tap", gate.awaitResolvedOrRecord())
 
             // The proposal still resolved as defer; the injected display failure was swallowed
             // by the production display path (runCatching) instead of crashing the launcher.
@@ -497,6 +500,14 @@ class OnboardingOrganizationProposalInstrumentationTest {
         val activity = awaitResumedPreferenceActivity()
         val entryBounds = awaitAccessibilityTextBounds(activity, entryLabel, "organizer entry")
         val generalBounds = awaitAccessibilityTextBounds(activity, generalHeading, "General heading")
+        // The next group heading after General; the entry must sit above it so a regression
+        // that parks the row back inside the (below-the-fold) Layout section cannot pass on
+        // tall viewports where both sections happen to compose in the first screenful.
+        val actionsBounds = awaitAccessibilityTextBounds(
+            activity,
+            context.getString(R.string.home_screen_actions),
+            "Home screen actions heading",
+        )
         instrumentation.runOnMainSync {
             val viewport = Rect()
             assertTrue(activity.window.decorView.getGlobalVisibleRect(viewport))
@@ -509,6 +520,11 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 "the organizer entry must sit inside the General section " +
                     "(heading=$generalBounds, entry=$entryBounds)",
                 generalBounds.top <= entryBounds.top,
+            )
+            assertTrue(
+                "the organizer entry must precede the first group after General " +
+                    "(entry=$entryBounds, actions=$actionsBounds)",
+                entryBounds.bottom <= actionsBounds.top,
             )
         }
     }
@@ -964,15 +980,20 @@ class OnboardingOrganizationProposalInstrumentationTest {
     private fun awaitClosedReentryHint(launcher: LawnchairLauncher) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         repeat(50) {
-            var closed = false
-            instrumentation.runOnMainSync {
-                closed = (0 until launcher.dragLayer.childCount)
-                    .none { launcher.dragLayer.getChildAt(it) is OrganizationOnboardingReentryHint }
-            }
-            if (closed) return
+            if (isHintClosed(launcher)) return
             SystemClock.sleep(100)
         }
         error("re-entry hint did not close")
+    }
+
+    /** The hint is closed when no drag-layer child is a re-entry hint (attached or stray). */
+    private fun isHintClosed(launcher: LawnchairLauncher): Boolean {
+        var closed = false
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            closed = (0 until launcher.dragLayer.childCount)
+                .none { launcher.dragLayer.getChildAt(it) is OrganizationOnboardingReentryHint }
+        }
+        return closed
     }
 
     private fun awaitVisibleProposalActions(
@@ -1296,11 +1317,12 @@ class OnboardingOrganizationProposalInstrumentationTest {
         }
 
         /**
-         * Injects a real touch stream at a point outside the hint's bounds (the launcher
-         * viewport's lower-left quadrant) to exercise the outside-dismiss path.
+         * Injects a real touch stream at a point outside the hint's bounds to exercise the
+         * outside-dismiss path. Delivery is judged by the hint's own openness flipping from
+         * open to closed — the proposal is already closed at this point, so polling the
+         * proposal would make the check vacuous.
          */
         fun deliveredTapOutside(hint: OrganizationOnboardingReentryHint): Int {
-            val eventsBefore = touchLog.size
             var attempts = 0
             while (attempts < MAX_INJECTION_ATTEMPTS_PER_TAP) {
                 attempts++
@@ -1327,11 +1349,7 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 }
                 val deadline = SystemClock.uptimeMillis() + DELIVERY_TIMEOUT_MILLIS
                 while (SystemClock.uptimeMillis() < deadline) {
-                    if (!isOpen() || touchLog.size > eventsBefore) {
-                        // Delivered; the touchLog may not grow because the tap fell on the
-                        // workspace, so completion is judged by the hint closing.
-                        if (!isOpen()) return attempts
-                    }
+                    if (isHintClosed(launcher)) return attempts
                     SystemClock.sleep(50)
                 }
             }
