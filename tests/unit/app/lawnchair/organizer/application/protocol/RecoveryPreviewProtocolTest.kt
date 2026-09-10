@@ -311,7 +311,10 @@ class RecoveryPreviewProtocolTest {
     fun captureFailureReleasesLeaseAndMutexForSubsequentPreview() {
         seedRecord(LifecycleState.VERIFIED)
         writer.captureFailure = IllegalArgumentException("injected unrepresentable row")
-        protocol.inspect(pointId)
+        assertEquals(
+            RecoveryPreviewResult.Unavailable(pointId, RecoveryPreviewUnavailable.CURRENT_LAYOUT_CAPTURE_UNAVAILABLE),
+            protocol.inspect(pointId),
+        )
 
         // The failure path must release the writer lease and run mutex, so the
         // next inspection is not stuck on WriterBusy / Concurrent.
