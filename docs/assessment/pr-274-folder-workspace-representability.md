@@ -1,60 +1,104 @@
 # High-risk audit: PR #274 fix: preserve folder-child representability across workspace moves
 
-> Status: corrective action required
+> Status: accepted
 > Audit date: 2026-09-10
 
-- Auditor: independent audit session, separate from the implementation session
+- Auditor: independent follow-up audit session, separate from the implementation session
 - PR: https://github.com/nunu1733/NunuLauncher/pull/274
-- Head SHA: 08b1afe67d3aeff8d6b6b8ca1014e8da74afa932
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34462108832
+- Head SHA: 7c29444fc234579440f76532e09189a06cd42652
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34465078591
 - Criteria: `specs/269-folder-workspace-representability/spec.md` AC-269-01, `specs/269-folder-workspace-representability/spec.md` AC-269-02, `specs/269-folder-workspace-representability/spec.md` AC-269-03, `specs/269-folder-workspace-representability/spec.md` AC-269-04
 
 ## Scope
 
-This follow-up audit covers the complete PR through head
-`08b1afe67d3aeff8d6b6b8ca1014e8da74afa932`, including the previously audited
-production writer bridge and the follow-up commit that addresses the earlier
-audit findings. The follow-up implementation/test and evidence-tooling paths
+This final follow-up audit covers the complete PR diff from merge-base
+`a96da395056210ad882d262750fbd51b8198f080` through code head
+`7c29444fc234579440f76532e09189a06cd42652`, including the workflow change
+that selects the Issue 269 production recovery oracle in the Issue 155 API
+36.1 instrumentation job. The reviewed implementation and evidence surfaces
 are:
 
+- `src/com/android/launcher3/model/ModelWriter.java`
 - `tests/organizer-instrumentation/app/lawnchair/organizer/application/Issue265ManualEditRecoveryInstrumentationTest.kt`
 - `tests/organizer-instrumentation/app/lawnchair/organizer/application/RealAdapterRowMatrixInstrumentationTest.kt`
+- `.github/workflows/ci.yml`
 - `tools/repo-contract/validate_high_risk_evidence.py`
 - `tools/repo-contract/test_validate_high_risk_evidence.py`
+- the accepted Issue 269 spec/plan and the referenced Spec 13 and recovery ADRs
 
-The production path was rechecked at `src/com/android/launcher3/model/ModelWriter.java`:
-desktop entry for an existing `WorkspaceItemInfo` sets in-memory and pending
-database spans to `1×1` before notification and enqueueing. The strict
-desktop capture boundary remains in `RowManifestCodec`; it does not invent a
-span for malformed rows. The follow-up does not change production code,
-schema, migration, recovery format, planner semantics, or workflow files.
+The production writer bridge remains destination-based: entering the desktop
+with an existing `WorkspaceItemInfo` sets both the in-memory and pending DB
+span to `1×1` before notification and enqueueing. Canonical capture remains
+strict and does not reinterpret malformed NULL desktop spans. The workflow
+addition changes only test selection; no production schema, migration,
+recovery format, or planner seam is changed by the final follow-up.
 
 ## Criteria check
 
-- **AC-269-01 — implementation present; execution evidence incomplete.** The real-writer test still covers direct desktop entry, NULL and positive non-`1×1` legacy spans through a Hotseat intermediate, and an AppPair-like source container. The destination-based `ModelWriter` rule is consistent with the criterion. However, `Issue265ManualEditRecoveryInstrumentationTest` is not selected by any current `.github/workflows/ci.yml` instrumentation command, and no local connected emulator was available, so the writer-transition assertions were compiled and inspected but not independently executed in this audit.
-- **AC-269-02 — implementation oracle corrected; execution evidence incomplete.** `pathA_manualEditBeforeRestore` now compares the entire `beforeOrganize.manifest` with the entire post-restore manifest, and retains exact `Restorable → Restored` assertions for the first recovery point. The class compiles, but the current CI run does not invoke this class; therefore its API 36.1 execution is not independently evidenced here.
-- **AC-269-03 — implementation oracle present; execution evidence incomplete.** `pathC_manualEditThenSecondOrganize` still requires a verified second apply, reload/capture, and exact raw-manifest equality after the repeated organize. As with AC-269-02, the class is not in the current CI command selection and could not be run locally without `adb`.
-- **AC-269-04 — focused capture fixture met; control-path execution evidence incomplete.** `RealAdapterRowMatrixInstrumentationTest.desktopApplicationWithNullSpanIsRejectedByCanonicalCapture` inserts a desktop application with both span columns NULL and requires production `RowManifestCodec.capture` to throw without accepting `1×1`. The CI Issue 155 instrumentation command explicitly selects `RealAdapterRowMatrixInstrumentationTest` and completed successfully with 36/36 tests and 0 failures. The control-path `Preview`/`NoChanges` assertion exists in `Issue265ManualEditRecoveryInstrumentationTest`, but that class is not selected by the current CI workflow.
-- **Composite acceptance-ID support — verified.** The validator now parses `AC-269-01` through `AC-269-04` as whole requirement tokens, pairs them with the accepted Issue 269 spec, and its added parser regression test passes.
+- **AC-269-01 — accepted.** The production writer path normalizes direct
+  folder-to-workspace entry, folder-to-Hotseat-to-workspace entry, and stale
+  positive spans at the desktop destination. `Issue265ManualEditRecoveryInstrumentationTest`
+  exercises real `ItemInfo`/`ModelWriter.moveItemInDatabase` transitions,
+  including NULL, positive non-`1×1`, and AppPair-like source cases. The
+  final CI workflow selects this class, and the Issue 155 job completed all
+  42 selected tests with zero failures and `BUILD SUCCESSFUL`.
+- **AC-269-02 — accepted.** The Path A manual-edit recovery oracle compares
+  the complete pre-organize manifest with the complete post-restore manifest,
+  and requires the `Restorable` then `Restored` lifecycle. The class is now
+  selected by the successful Issue 155 job above, so the implementation and
+  execution evidence are both present.
+- **AC-269-03 — accepted.** The Path C oracle requires a verified second
+  organize after the manual move, including reload/capture and exact raw
+  manifest equality. The same selected class ran in the successful Issue 155
+  instrumentation job with no failed tests.
+- **AC-269-04 — accepted.** The strict malformed-row fixture rejects a
+  desktop application with both raw span columns NULL without inventing
+  `1×1`; the control path retains the `Preview`/`NoChanges` assertion. The
+  selected instrumentation suite completed with 42/42 tests and 0 failures.
+  Composite acceptance-ID parsing is covered by the validator regression
+  test and passes.
 
 ## Executed test surface
 
-- `gh api repos/nunu1733/NunuLauncher/pulls/274 --jq '{number,base_ref:.base.ref,head_ref:.head.ref,head_sha:.head.sha,head_repo:.head.repo.full_name,html_url}'` — verified PR #274 base `main`, head branch `issue-269-folder-workspace-representability`, and exact head `08b1afe67d3aeff8d6b6b8ca1014e8da74afa932`.
-- `gh api repos/nunu1733/NunuLauncher/actions/runs/34462108832 --jq '{id,event,status,conclusion,head_branch,head_sha,path,pull_requests:[.pull_requests[].number],run_attempt,html_url}'` — verified rerun attempt 2, `pull_request`, PR #274 association, `.github/workflows/ci.yml`, exact head, `completed`, and `success`.
-- `gh api 'repos/nunu1733/NunuLauncher/actions/runs/34462108832/jobs?per_page=100' --jq '[.jobs[] | select(.name=="final-status" or .name=="organizer-unit-tests" or .name=="check-style" or .name=="build-debug-apk" or .id==102826407755) | {id,name,status,conclusion,html_url}]'` — verified `final-status`, `organizer-unit-tests`, `check-style`, `build-debug-apk`, and retry job `102826407755` (`organizer-instrumentation-api35-tests`) all completed successfully.
-- `gh api repos/nunu1733/NunuLauncher/actions/jobs/102826435920/logs | rg -n "Tests [0-9]+/[0-9]+ completed|BUILD SUCCESSFUL|RealAdapterRowMatrix"` — verified the successful Issue 155 instrumentation command selected `RealAdapterRowMatrixInstrumentationTest`; the job reported 36/36 tests with 0 failures and `BUILD SUCCESSFUL`.
-- `rg -n "Issue265Manual|RealAdapterRowMatrix|connectedLawnWithQuickstepGithubDebugAndroidTest" .github/workflows/ci.yml .github/workflows/*.yml` — verified the workflow selects `RealAdapterRowMatrixInstrumentationTest` but has no `Issue265ManualEditRecoveryInstrumentationTest` selection.
+- `gh repo view nunu1733/NunuLauncher --json nameWithOwner,defaultBranchRef` —
+  verified repository `nunu1733/NunuLauncher` and default branch `main`.
+- `gh api repos/nunu1733/NunuLauncher/actions/runs/34465078591 --jq '{id,event,status,conclusion,head_sha,path,pull_requests:[.pull_requests[].number],run_attempt,html_url}'` —
+  verified pull-request CI, PR #274, workflow `.github/workflows/ci.yml`,
+  attempt 2, completed/success, and head
+  `7c29444fc234579440f76532e09189a06cd42652`.
+- `gh api 'repos/nunu1733/NunuLauncher/actions/runs/34465078591/jobs?per_page=100' --jq '.jobs[] | [.name,.id,.status,.conclusion] | @tsv'` —
+  verified every source job and `final-status` completed successfully,
+  including Issue 155 job `102834999517` and final-status job
+  `102837233452`.
+- `gh api 'repos/nunu1733/NunuLauncher/contents/.github/workflows/ci.yml?ref=7c29444fc234579440f76532e09189a06cd42652' --jq .content | base64 --decode | rg -n -C 12 'Issue265ManualEditRecoveryInstrumentationTest|Issue 155'` —
+  verified the Issue 265 class is in the Issue 155 selector at the audited
+  code head.
+- `gh run view -R nunu1733/NunuLauncher --job 102834999517 --log | rg -n -C 4 'Issue265ManualEditRecoveryInstrumentationTest|OK \\([0-9]+ test|[0-9]+ tests|0 failed|Finished 42 tests|BUILD SUCCESSFUL|INSTRUMENTATION_CODE'` —
+  verified the actual command includes
+  `Issue265ManualEditRecoveryInstrumentationTest`, the run starts 42 tests,
+  reports 0 failed throughout, finishes 42 tests, and reaches
+  `BUILD SUCCESSFUL`.
 - `./gradlew spotlessCheck` — PASS; `BUILD SUCCESSFUL`.
-- `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` — PASS; 386 actionable tasks.
-- `./gradlew compileLawnWithQuickstepGithubDebugAndroidTestKotlin compileLawnWithQuickstepGithubDebugAndroidTestJavaWithJavac` — PASS; 389 actionable tasks.
-- `python3 tools/repo-contract/test_validate_high_risk_evidence.py` — PASS; 51 tests, including `test_composite_issue_acceptance_ids_are_parsed`.
-- `git diff --check 2b7a2702c464538a52731bc52e4141b6f3802784..08b1afe67d3aeff8d6b6b8ca1014e8da74afa932` — PASS; no whitespace errors.
-- `adb devices` — unavailable in this audit environment (`command not found`); no local connected instrumentation is claimed.
+- `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` —
+  PASS; organizer unit suite completed successfully.
+- `./gradlew compileLawnWithQuickstepGithubDebugAndroidTestKotlin compileLawnWithQuickstepGithubDebugAndroidTestJavaWithJavac` —
+  PASS; instrumentation sources compile successfully.
+- `python3 tools/repo-contract/test_validate_high_risk_evidence.py` — PASS;
+  all high-risk evidence self-tests pass, including composite acceptance IDs.
+- `git diff --check a96da395056210ad882d262750fbd51b8198f080..7c29444fc234579440f76532e09189a06cd42652` — PASS; no whitespace errors.
+
+The first API 35 attempt in CI exposed one unrelated
+`TwoPanelOrientationCaptureInstrumentationTest` failure; the failed job was
+rerun and the final CI run (attempt 2) passed. This is retained for traceability
+and is not an Issue 269 finding.
 
 ## Findings
 
-1. **Acceptance-evidence blocker (AC-269-01 through AC-269-03 and the control portion of AC-269-04): the Issue 269 production instrumentation class is not wired into CI.** The new class contains the requested direct/Hotseat/AppPair writer cases and Path A/B/C assertions, and it compiles, but the current workflow has no command selecting it. The green CI run therefore independently proves the dedicated malformed-row capture fixture and the required source jobs, not the writer-transition or organize/recovery flows in that class. Wire the class into a verifiable API 36.1 instrumentation job or provide equivalent independently retrievable execution evidence, then re-audit the resulting head.
-2. **No production defect found.** The destination-based `ModelWriter` normalization and strict canonical capture behavior match the accepted design; the follow-up fixture directly exercises the strict NULL-span rejection and passed in CI.
-3. The initial API 35 attempt failed one `TwoPanelOrientationCaptureInstrumentationTest`; rerun attempt 2 passed with retry job `102826407755`. This is recorded for traceability and is not an Issue 269 finding.
+No blocking findings. The prior evidence blocker is resolved: the final
+workflow selects `Issue265ManualEditRecoveryInstrumentationTest`, and the
+successful pull-request CI logs provide execution evidence for the writer,
+recovery, second-organize, control-path, and strict-capture assertions. The
+implementation remains within the accepted Issue 269 scope and preserves the
+fail-closed capture and exact recovery contracts.
 
-**Recommendation: do not merge PR #274 yet.** Add independently verifiable CI coverage for `Issue265ManualEditRecoveryInstrumentationTest` (or equivalent retrievable connected evidence), then obtain a successful run for the resulting head and repeat the independent high-risk audit. The audit record intentionally remains `corrective action required`.
+**Recommendation: accepted; merge eligible.**
