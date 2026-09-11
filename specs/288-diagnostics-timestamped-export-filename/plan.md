@@ -2,7 +2,7 @@
 
 > Issue: #288
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: draft (rev 2; review round 1 on #288 was Request changes — P1 pending-session lifecycle and P2 UTC injectivity addressed in this revision, awaiting re-review)
 
 ## Current evidence
 
@@ -17,6 +17,13 @@
   `ExportWriter.writeToUri(context, diagnosticsPort, uri)`
   (`ExportUi.kt:41-45`); the returned URI is used as-is, so no code assumes
   the destination name today.
+- **Async boundary (review P1)**: the timestamp must survive from
+  `onClick` (`launcher.launch(intent)`, `ExportUi.kt:76`) to the
+  `rememberLauncherForActivityResult` callback (`ExportUi.kt:32-39`) where the
+  write actually runs. The androidx `ActivityResultRegistry` persists pending
+  results across activity recreation and process death and re-delivers them;
+  whatever holds the timestamp must be restored through the same saved
+  instance state, or the re-delivered result recombines with a lost value.
 - The header timestamp is read independently inside the writer:
   `ExportWriter.write` sets `exportedAtWallMillis = System.currentTimeMillis()`
   (`ExportWriter.kt:84`). This is the double-clock-read hazard the issue
@@ -32,6 +39,16 @@
   - no cleanup/deletion of exports (destination is user-owned),
   - contract doc (`docs/engineering/organizer-diagnostics.md` §9, D-10) fixes
     the file *shape*, not the filename.
+- Test harnesses available for the oracle:
+  - `tests/organizer-instrumentation/.../OrganizerDiagnosticsRouteInstrumentationTest.kt`
+    already stubs SAF results through a `RecordingRegistry`
+    (`ActivityResultRegistry` subclass dispatching `dispatchResult`),
+    composed under `LocalActivityResultRegistryOwner`.
+  - compose `StateRestorationTester` (androidx compose ui-test) can exercise
+    `rememberSaveable` restoration; a recreation variant can re-deliver a
+    result through the stubbed registry after restoration.
+  - `tests/unit/.../diagnostics/export/ExportWriterTest.kt` holds the D-10
+    suite that must keep passing unchanged.
 - Confirmed facts vs inference: file/line references above are confirmed by
   reading current `main`; the claim "no other path assumes the fixed name"
   is a grep-based negative confirmed at plan time and must be re-confirmed at
@@ -47,17 +64,44 @@
 
   ```kotlin
   object DiagnosticsExportFilename {
-      fun format(exportedAtWallMillis: Long, zone: ZoneId = ZoneId.systemDefault()): String
+      fun format(exportedAtWallMillis: Long): String
   }
   ```
 
   - Small interface; no state; no filesystem/clock access (pure function of
-    the captured instant + zone). Platform types (`Uri`, `Context`) do not
-    appear.
-  - Renders `organizer_diagnostics_yyyyMMdd_HHmmss_SSS.jsonl` with zero-padded
-    Gregorian fields (`DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS")`)
-    and the fixed prefix from the existing non-translatable string resource
-    logic (prefix stays `organizer_diagnostics`).
+    the captured instant). Platform types (`Uri`, `Context`) do not appear.
+  - Renders `organizer_diagnostics_yyyyMMdd_HHmmss_SSS.jsonl` with
+    zero-padded Gregorian fields
+    (`DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS")` with
+    `ZoneOffset.UTC`) and the fixed prefix from the existing non-translatable
+    string resource logic (prefix stays `organizer_diagnostics`).
+  - **UTC is fixed, not injectable** (review P2): rendering must be injective
+    over epoch millis so AC-4 ("distinct instants never reuse a name") holds
+    unconditionally. Device-local rendering collides on DST fall-back folds
+    (two distinct instants share one local wall representation); UTC + `SSS`
+    makes the mapping injective. A `ZoneId` parameter would invite
+    non-injective callers, so it is not offered.
+- **Pending export session** (review P1): `ExportUi` holds the captured
+  instant in `rememberSaveable` state:
+
+  ```kotlin
+  var pendingExportedAtWallMillis by rememberSaveable { mutableLongStateOf(0L) } // 0 = no session
+  ```
+
+  - `onClick` (single wall-clock read of the whole flow):
+    capture now → store in the saveable state → derive `EXTRA_TITLE` via the
+    formatter → `launcher.launch(intent)`.
+  - Result callback: read `pendingExportedAtWallMillis`. If `0` (no restorable
+    session), ignore the result without writing. If `RESULT_OK` with a URI,
+    call `ExportWriter.writeToUri(context, port, uri, pendingExportedAtWallMillis)`.
+  - Clear the state (`= 0L`) on **all three** session endings: cancel
+    (non-OK result), write success, write failure — in the callback, after the
+    outcome is handled, so a recreation mid-write still finds the value.
+  - Recombination guarantee: the registry re-delivers a result saved in the
+    same instance state that restores `rememberSaveable`, so after activity
+    recreation or process death the callback and the restored timestamp
+    recombine. This is framework behavior (`ActivityResultRegistry` +
+    `SavedStateRegistry`), not something this feature implements.
 - `ExportWriter.write` gains an explicit export timestamp parameter:
 
   ```kotlin
@@ -66,24 +110,28 @@
 
   and uses that value for `ExportHeader.exportedAtWallMillis` instead of
   calling `System.currentTimeMillis()` internally
-  (`ExportWriter.kt:82-86`). `writeToUri` forwards the same parameter. The
-  wall clock is read exactly once per export, in `ExportUi`'s
-  `onClick` (`ExportUi.kt:66-77`), immediately before launching SAF.
-- No new adapter is created; the seam is (formatter function, explicit
-  timestamp parameter) — both directly testable with fixed values, matching
-  the "production/test実体が必要になるまで仮想interfaceを増やさない" rule.
+  (`ExportWriter.kt:82-86`). `writeToUri` forwards the same parameter.
+  No clock seam is added to the writer; the single read site is `ExportUi`'s
+  `onClick`.
+- No new adapter is created; the seams are (formatter function, explicit
+  timestamp parameter, saveable session state) — all directly testable with
+  fixed values, matching the "production/test実体が必要になるまで仮想interfaceを増やさない" rule.
 
 ### Data flow
 
 1. User taps the export preference → `onClick` captures
-   `exportedAtWallMillis = System.currentTimeMillis()` once.
+   `exportedAtWallMillis = System.currentTimeMillis()` once and stores it in
+   the pending export session (saveable state).
 2. `DiagnosticsExportFilename.format(exportedAtWallMillis)` produces the
    `EXTRA_TITLE`; the intent launches SAF.
-3. User confirms (or cancels) → on confirm,
+3. Picker open: the session survives configuration change and process death
+   via saved instance state; the registry re-delivers the result after
+   restoration.
+4. User confirms → callback sees the restored session →
    `ExportWriter.writeToUri(context, port, uri, exportedAtWallMillis)` writes
-   the D-10 content whose header reuses the captured value.
-4. Errors/cancel: unchanged behavior (`ExportUi.kt:34-39, 51-58`).
-   The journal is never mutated by the export path (unchanged).
+   the D-10 content whose header reuses the captured value → clear session.
+5. Errors/cancel: unchanged behavior (`ExportUi.kt:34-39, 51-58`), plus
+   session clear. The journal is never mutated by the export path (unchanged).
 
 ### Alternatives rejected
 
@@ -91,8 +139,19 @@
   clock): rejected because the filename must exist before SAF launches; the
   value would still need to come from the UI to stay identical, so the
   writer owning the clock adds a second read or a callback seam for no gain.
+- Re-capture the timestamp in the result callback (what a plain
+  `remember {}`/local variable or "just read the clock again" does):
+  rejected — a plain `remember` slot dies with recreation and a re-read
+  breaks AC-2 ("filename and header share one instant"); this is the exact
+  failure mode review P1 called out.
+- ViewModel + `SavedStateHandle` for the session: rejected for now — this
+  surface has no ViewModel today; `rememberSaveable` provides the same
+  saved-instance-state ownership in the Compose-idiomatic form with less
+  machinery. Revisit if the diagnostics settings surface grows a ViewModel.
 - Derive the filename from the header after writing (post-hoc rename):
   rejected — SAF destinations are provider-owned; rename is not portable.
+- Device-local timezone rendering: rejected (review P2) — not injective
+  across DST folds; violates AC-4. UTC fixed instead.
 - Inject a `Clock`/`() -> Long` into a new exporter class: rejected for now —
   the explicit-timestamp parameter keeps `ExportWriter` stateless and gives
   the same testability with a smaller surface. Revisit only if more
@@ -102,19 +161,20 @@
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `export/DiagnosticsExportFilename.kt` (new) | Pure timestamped filename formatter | Naming logic needs a deterministic, unit-testable seam |
+| `export/DiagnosticsExportFilename.kt` (new) | Pure UTC timestamped filename formatter | Naming logic needs a deterministic, unit-testable seam |
 | `export/ExportWriter.kt` | `write`/`writeToUri` take `exportedAtWallMillis`; remove internal `System.currentTimeMillis()` | Header and filename must share one captured instant (EF-AC-02) |
-| `export/ExportUi.kt` | Capture the instant once in `onClick`; set timestamped `EXTRA_TITLE`; pass the value through to `writeToUri` | Only the UI knows the intent-creation moment; single read site |
+| `export/ExportUi.kt` | Capture the instant once in `onClick`; hold it as `rememberSaveable` pending session; set timestamped `EXTRA_TITLE`; consume/forward/clear it in the result callback (all paths) | Only the UI knows the intent-creation moment and owns the async SAF boundary (EF-AC-02, EF-AC-09) |
 | `lawnchair/res/values/strings.xml` | Replace `organizer_diagnostics_export_default_filename` value or fold into the formatter (keep `translatable="false"`) | Fixed technical identifier, not UI copy |
-| `tests/unit/.../diagnostics/export/` | Formatter tests (fixed clock/zone, distinctness, character class, `.jsonl` suffix); `ExportWriter` header-timestamp test | EF-AC-01..05, EF-AC-08 evidence |
-| `tests/organizer-instrumentation/.../OrganizerDiagnosticsRouteInstrumentationTest.kt` (extend if a harness exists) | Export flow with timestamped suggested name; cancel path | EF-AC-06 evidence |
-| `docs/engineering/organizer-diagnostics.md` §9 | Document the filename convention (prefix + local-time timestamp, `.jsonl`) | EF-AC-08 |
+| `tests/unit/.../diagnostics/export/` | Formatter tests (fixed clock, distinctness incl. DST-fold pair, character class, `.jsonl` suffix); `ExportWriter` header-timestamp test | EF-AC-01..05, EF-AC-08 evidence |
+| `tests/organizer-instrumentation/.../OrganizerDiagnosticsRouteInstrumentationTest.kt` (extend) | Export flow with timestamped suggested name via `RecordingRegistry`; cancel path; recreation/restoration variant (`StateRestorationTester` or saved-state re-delivery); session-cleared-after-end; result-without-session ignored | EF-AC-06, EF-AC-09 evidence |
+| `docs/engineering/organizer-diagnostics.md` §9 | Document the filename convention (prefix + UTC timestamp, `.jsonl`, injective naming) | EF-AC-08 |
 
 ## Migration and recovery
 
 - No schema/rule migration; no persisted app-owned state is added or changed.
 - Failure rollback: nothing to roll back — a failed write leaves the journal
-  intact (unchanged, existing behavior).
+  intact (unchanged, existing behavior). A lost pending session (restoration
+  failed) results in an ignored result, not a wrong-timestamp write.
 - Release rollback/downgrade: a downgraded build simply suggests the fixed
   filename again; previously exported timestamped files are ordinary user
   files and remain untouched.
@@ -125,27 +185,28 @@
 
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
-| AC-1 / AC-4 / AC-5 | Formatter unit tests (fixed clock + fixed zone; distinct instants → distinct names; character class + suffix) | `./gradlew :lawnchair:testLawnWithQuickstepGithubDebugUnitTest --tests '*DiagnosticsExportFilename*'` (exact task per building guide at implementation time) |
+| AC-1 / AC-4 / AC-5 | Formatter unit tests (fixed clock; distinct instants → distinct names incl. a DST-fold pair; character class + suffix) | `./gradlew :lawnchair:testLawnWithQuickstepGithubDebugUnitTest --tests '*DiagnosticsExportFilename*'` (exact task per building guide at implementation time) |
 | AC-2 | `ExportWriter` unit test: explicit timestamp appears verbatim as `exportedAtWallMillis`; no clock call inside writer | Same unit test task, `--tests '*ExportWriter*'` |
-| AC-3 | Existing export/D-10 fixture tests pass unmodified | Existing export unit tests |
-| AC-6 | Instrumentation: export route flow with timestamped `EXTRA_TITLE`; cancel leaves journal intact | Connected device/emulator instrumentation run (`tests/organizer-instrumentation`) |
+| AC-3 | Existing export/D-10 fixture tests (`ExportWriterTest`) pass unmodified | Existing export unit tests |
+| AC-6 | Instrumentation: export route flow with timestamped `EXTRA_TITLE` via stubbed registry; cancel leaves journal intact | Connected device/emulator instrumentation run (`tests/organizer-instrumentation`) |
 | AC-7 | Formatter purity (no fs/clock deps) by construction + PR grep evidence that no export cache/temp path exists | PR description evidence |
 | AC-8 | Contract doc §9 diff in PR | Review |
+| AC-9 | Instrumentation/compose: state restoration + registry re-delivery → writer receives the original instant; session cleared on cancel/success/failure; result-without-session ignored | Connected device/emulator instrumentation run (`tests/organizer-instrumentation`) |
 
-含めるべき観点: unit/contract（formatter、writer header）、UI/accessibility（export route instrumentation、label不変）、failure injection（write失敗・cancelの既存挙動保持）。layout-data/migration該当なし（`risk: []`）。
+含めるべき観点: unit/contract（formatter、writer header）、UI/accessibility（export route instrumentation、label不変）、failure injection（write失敗・cancel・session restoration失敗の既存挙動保持）。layout-data/migration該当なし（`risk: []`）。
 
 ## Documentation updates
 
 - [ ] spec status/history（承認時: `draft` → `accepted`、実装後 `implemented`）
 - [ ] CONTEXT.md — 不要（implementation語のみ。domain languageが定着した場合のみ追記）
 - [ ] DESIGN.md — 不要（module構造・不変条件の変更なし）
-- [ ] ADR — 不要（タイムゾーン選択等、判断はspecのopen questionで解消。変更困難になればADRを再評価）
+- [ ] ADR — 不要（UTC固定・rememberSaveable選択はspecとこのplanに記録済み。変更困難になればADRを再評価）
 - [ ] AGENTS.md — 不要（workflow/verified commandの変更なし）
 
 ## Execution checklist
 
 - [ ] Current behavior reproduced（固定ファイル名の `EXTRA_TITLE` と writer内の独立clock読み取りを確認）。
-- [ ] Tests fail for the missing behavior（formatter新設・header timestamp引数化に対する先行test）。
+- [ ] Tests fail for the missing behavior（formatter新設・header timestamp引数化・session restorationに対する先行test）。
 - [ ] Minimal implementation completed.
 - [ ] Migration/recovery verified（該当なし — 該当なしことをPRに明記）。
 - [ ] Full relevant verification completed（spotlessCheck、unit tests、instrumentation）。
