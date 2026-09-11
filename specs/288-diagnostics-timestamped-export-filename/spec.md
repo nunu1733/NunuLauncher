@@ -1,6 +1,6 @@
 ---
 issue: "#288"
-status: draft
+status: accepted
 requirements: [EF-AC-01, EF-AC-02, EF-AC-03, EF-AC-04, EF-AC-05, EF-AC-06, EF-AC-07, EF-AC-08, EF-AC-09]
 risk: []
 updated: 2026-09-12
@@ -273,6 +273,9 @@ And journal retention behavior (§8) is unchanged.
   added AC-9 + recreation test oracle. P2: resolved the timezone open question
   to fixed UTC so instant→filename stays injective (DST-fold collision);
   AC-4 strengthened accordingly.
+- 2026-09-12: Accepted after re-review on #288 (no further findings;
+  consume-at-delivery lifecycle approved). Implementation proceeds in the
+  same PR.
 - 2026-09-12: Rev 3 after re-review on #288 (Request changes, 1 blocking).
   Pending export session is now **consumed at picker-result delivery** (read
   once, cleared immediately, before outcome handling) instead of cleared after

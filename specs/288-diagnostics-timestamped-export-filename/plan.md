@@ -2,7 +2,7 @@
 
 > Issue: #288
 > Spec: [spec.md](./spec.md)
-> Status: draft (rev 3; review round 2 on #288 was Request changes with 1 blocking point — pending session now consumed at result delivery; round-1 items (UTC injectivity, picker-boundary restoration) confirmed resolved by the reviewer, awaiting re-review)
+> Status: accepted (rev 3 approved on #288 with no further findings after the round-2 consume-at-delivery fix; implementation proceeds in the same PR)
 
 ## Current evidence
 
