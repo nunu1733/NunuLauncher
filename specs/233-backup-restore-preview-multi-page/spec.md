@@ -24,7 +24,7 @@ updated: 2026-09-11
 
 ## Scope
 
-- **preview 制約の明示**: `RestoreBackupScreen` において、layout を含む backup かつ「preview で表示されない可能性のある非空 page」が存在する場合、preview 画像が保存された page の全部は表示されない可能性がある旨の caption を表示する。判定は **preview coverage の推定**に基づく: `launcher.db` の `workspaceScreens` 表 (`screenRank` 昇順、表が存在しない場合は favorites の非空 `screen` の最小値) で先頭 screen を特定し、先頭 screen 以外に非空 page が1つでも存在するとき表示する。これにより (a) 通常の multi-page (2 page 以上)、(b) 先頭 screen が空で item が2番目以降にのみ存在する構成、の両方で caption が出る。caption 文言は two-panel device では先頭2 panel 分が screenshot に含まれるため「表示されない**可能性がある**」とする (coverage は device で変わるため断定を避ける)。非空 page が先頭 screen のみの場合は現行の無 caption 表示を維持する。
+- **preview 制約の明示**: `RestoreBackupScreen` において、layout を含む backup かつ「preview で表示されない可能性のある非空 page」が存在する場合、preview 画像が保存された page の全部は表示されない可能性がある旨の caption を表示する。判定は **preview coverage の推定**に基づく: `launcher.db` の `workspaceScreens` 表 (`screenRank` 昇順) の先頭 screen を特定する。表が存在しない場合は renderer の実際の動作 (`LauncherPreviewRenderer` が固定の `FIRST_SCREEN_ID = 0` を描画する) に合わせて **screen 0** を coverage とみなす (非空 screen の最小値は使わない。screen 0 が空で item が screen 1 以降にのみ存在する backup でも caption が出る)。先頭 screen 以外に非空 page が1つでも存在するとき表示する。caption 文言は two-panel device では先頭2 panel 分が screenshot に含まれるため「表示されない**可能性がある**」とする (coverage は device で変わるため断定を避ける)。非空 page が先頭 screen のみの場合は現行の無 caption 表示を維持する。
 - **page 識別情報の表示**: backup zip 内の `launcher.db` を読み取り専用で解析し、workspace page (`container = -100`) の一覧と各 page の要約 (page 別の item 総数 / folder 数 / widget 数) を確認画面に表示する。解析は backup 作成時ではなく restore 画面表示時に行うため、**backup format は変更しない**。過去の backup (`BACKUP_VERSION = 1` のみが存在) にも同じ経路で作用する。
 - **集計定義 (確定)**:
     - 対象行は `favorites` のうち `container = -100` (workspace) の行のみ。hotseat (`container = -101`) は対象外。
@@ -73,7 +73,7 @@ Then caption も page 要約も表示されず、現行の表示のまま追加�
 
 ### Scenario: 先頭 screen が空で item が以降の page のみ
 
-Given 先頭 screen (screenRank 最小) に workspace item がなく、item が2番目以降の screen にのみ存在する場合
+Given 先頭 screen (workspaceScreens の screenRank 最小、表がなければ screen 0) に workspace item がなく、item が2番目以降の screen にのみ存在する場合
 When ユーザーが restore 画面を開く
 Then 非空 page が先頭 screen 以外に存在するため caption と page 要約が表示される (非空 page 数が1でも表示する)
 
@@ -142,7 +142,7 @@ Then launcher DB への書き込みは一切行われない。解析のための
 
 ## Acceptance criteria
 
-- [ ] AC-1: layout を含む backup のうち、先頭 screen (workspaceScreens の screenRank 最小、なければ非空 screen の最小値) 以外に非空 page が存在するものを restore 画面で開いたとき、preview に保存 page の全部が表示されない可能性がある旨の caption と、非空 page 数・各 page の要約 (item / folder / widget 件数) が表示される。page は screen 昇順の連番表示。
+- [ ] AC-1: layout を含む backup のうち、先頭 screen (workspaceScreens の screenRank 最小、表がなければ renderer と同じ screen 0) 以外に非空 page が存在するものを restore 画面で開いたとき、preview に保存 page の全部が表示されない可能性がある旨の caption と、非空 page 数・各 page の要約 (item / folder / widget 件数) が表示される。page は screen 昇順の連番表示。
 - [ ] AC-2: 非空 page が先頭 screen のみの backup では caption・要約が表示されない。layout を含まない backup でも表示されない。
 - [ ] AC-3: `launcher.db` 解析失敗時 (entry 不在・破損・重複・schema 不一致・size 超過)、screenshot preview と restore 操作は維持され、page 情報不可の typed 文言が表示される。restore は block されず、backup 全体の Error にもならない。zip level の失敗は unit test で、SQLite level の失敗 (open 不能・schema 欠損) は emulator で検証する。
 - [ ] AC-4: 解析は zip を読み取り専用で扱い、entry 名完全一致と内部生成の一時 file を使う。正常完了時に一時 file は削除される。favorites への書き込みを一切行わない。
@@ -176,4 +176,5 @@ Then launcher DB への書き込みは一切行われない。解析のための
 
 - 2026-09-10: Draft created for #233. 先頭 page 限定が upstream の構造的な設計であることを code evidence とともに確定し、format 不変・読み取り専用の page 識別情報表示を中心とする契約として起草した。
 - 2026-09-11: codex review (gpt-6-astra) の指摘へ対応。caption 文言を two-panel でも嘘のならない「一部のみ」表現へ修正、非空 page の定義と集計規則 (folder 二重計上禁止・hotseat 除外・screen 連番化) を確定、landscape / checkbox / screenshot 欠落時の表示条件を明確化、zip 読み取りの安全契約 (entry 完全一致・内部生成 path・重複/size 上限)、一時 file の一意性と削除契約、解析の非同期分離、schema 検証失敗の unavailable 扱い、test 環境の実態 (JVM unit test) への整合、high-risk gate 要件を追記した。app title 表示は non-goal へ確定分離。
-- 2026-09-11 (2nd): 再レビューの指摘へ対応。caption 判定を「非空 page 数 >= 2」から「先頭 screen 以外に非空 page が存在」へ変更し (workspaceScreens の screenRank で先頭 screen を特定、fallback は非空 screen 最小値)、先頭 screen が空の場合の見落としを解消。two-panel での断定を避ける「可能性」表記へ修正。widget 数の itemType (4/5) を明示。SQLite level の失敗検証を emulator evidence へ分離し、AC-8 に restore 実行後の page 構成一致確認 (round-trip) を追加した。
+- 2026-09-11 (2nd): 再レビューの指摘へ対応。caption 判定を「非空 page 数 >= 2」から「先頭 screen 以外に非空 page が存在」へ変更し、two-panel での断定を避ける「可能性」表記へ修正。widget 数の itemType (4/5) を明示。SQLite level の失敗検証を emulator evidence へ分離し、AC-8 に restore 実行後の page 構成一致確認 (round-trip) を追加した。
+- 2026-09-11 (3rd): 第3ラウンドレビューの指摘へ対応。`workspaceScreens` 表がない場合の先頭 screen fallback を「非空 screen の最小値」から renderer の実際の描画対象である `screen 0` へ変更し、screen 0 が空の backup で caption が消える隙間を解消した。
