@@ -1119,7 +1119,11 @@ class ManualOrganizationRunTest {
             detection = detected("com.example.c1")
             inspectPlanOverride = { _, _ -> PlanPreviewResult.WriterBusy }
         }
-        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { planningResult(movingPlan()) },
+            operationGate = OrganizationOperationLease,
+        )
 
         runner.start()
         runner.confirmSelection(
@@ -1136,10 +1140,21 @@ class ManualOrganizationRunTest {
 
         assertEquals(ManualOrganizationRun.State.Cancelled, runner.state)
         assertEquals(0, application.applyCalls)
-        // The released operation admits a fresh run immediately.
-        assertTrue(
-            ManualOrganizationRun(FakeApplication(readyInput()), OrganizationPlanner { planningResult(movingPlan()) })
-                .start() is ManualOrganizationRun.StartOutcome.Started,
+        // The released lease admits a fresh run on the shared gate immediately
+        // (the fresh runner is dismissed again so the gate is free for later
+        // tests on the shared singleton).
+        val freshRunner = ManualOrganizationRun(
+            FakeApplication(readyInput()),
+            OrganizationPlanner { planningResult(movingPlan()) },
+            operationGate = OrganizationOperationLease,
+        )
+        assertTrue(freshRunner.start() is ManualOrganizationRun.StartOutcome.Started)
+        freshRunner.cancel()
+        // The cancelled scope-composed run reports its diagnostics mode
+        // consistently on the terminal USER_CANCELLED event.
+        assertEquals(
+            app.lawnchair.organizer.diagnostics.model.RunMode.SCOPE_COMPOSED_ORGANIZATION,
+            application.events.last { it.phase == app.lawnchair.organizer.diagnostics.model.PhaseCode.USER_CANCELLED }.runMode,
         )
     }
 
