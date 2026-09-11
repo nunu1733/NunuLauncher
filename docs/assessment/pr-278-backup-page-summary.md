@@ -6,7 +6,7 @@
 - Auditor: independent general-purpose subagent session, distinct from the implementing session (solo-maintenance independent-session audit per docs/project/github-workflow.md)
 - PR: https://github.com/nunu1733/NunuLauncher/pull/278
 - Head SHA: 674983b57399fcb25e16c257ab6c74b0828062f7
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34551442368 (pull_request merge-gate run for head 674983b573; `final-status` pending at audit time — see Findings)
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34551442368 (pull_request merge-gate run on head 674983b573; completed/success — `final-status` green after two failed-job reruns of pre-existing organizer instrumentation flakes, see Findings)
 - Criteria: specs/233-backup-restore-preview-multi-page/spec.md AC-1, AC-2, AC-3, AC-4, AC-5, AC-6, AC-7, AC-8, AC-9 (spec reviewed at commit 62a3c0a40a, merged via PR #277)
 
 ## Scope
@@ -47,13 +47,14 @@ Executed by the auditor on head `674983b573` (JDK 21, Android SDK 36.1):
 - `git grep` for the four new string names across `values/` and `values-ja/` → all present in both locales (AC-7).
 - Diff review (all 7 files read in full) against the spec's zip safety contract, coverage predicate, and aggregation rules → conformant; no AOSP/proto/format changes.
 
-CI runs observed (pull_request events, head `674983b573`): run 34551442368 — `check-style`, `validate-repo-contract`, `changes` pass; `build-debug-apk`, `organizer-unit-tests` (which now includes the `app.lawnchair.backup.*` filter), and instrumentation jobs pending at audit time. High-risk gate run 34551467244 failed solely because this audit record did not yet exist (the run at 34551688013 on the first audit commit re-evaluates it). `final-status` on the final head must be confirmed green by the merge operator before merge.
+CI runs observed (pull_request events, head `674983b573`): run 34551442368 completed/success — all jobs green, including `organizer-unit-tests` (which now executes the `app.lawnchair.backup.*` filter), `build-debug-apk`, and `check-style`. Two pre-existing organizer instrumentation flakes (`TwoPanelOrientationCaptureInstrumentationTest.orientationChangeRejectsPreChangePlanAsStaleWithoutDbWrite` in the api35 job; the full issue-53 onboarding suite on its first attempt) required `--failed` reruns to pass; none touch code or tests modified by this PR. The original attempt of this run had been cancelled mid-flight by the audit-record docs pushes and was rerun on the same head SHA.
 
 ## Findings
 
-1. `final-status` on the audited head was still pending when this audit concluded (CI run 34551442368). Merge must wait for it (and for the gate re-run on the head including this docs-only commit) to be green. This is the only merge-blocking item.
-2. Unverified (recorded in the PR body, outside this audit's reach): on-device landscape rendering (rotation could not be enabled on the emulator; structural assurance only via placement outside `DummyLauncherBox`) and actual TalkBack read-aloud (uiautomator text-node confirmation only). Suitable to close via follow-up manual evidence without code change.
-3. Info: the unavailable string is shown for any layout backup whose analysis fails, including single-page ones, where the success path shows nothing. This matches the spec's typed-failure wording; deliberate.
-4. Info: pre-existing ja localization contract findings (10 × `manual_organization_*`) are identical in nature to those recorded in the PR #268 audit; not introduced here.
+1. Blocking for the machine gate (documentation state, not implementation): the referenced spec `specs/233-backup-restore-preview-multi-page/spec.md` frontmatter still reads `status: draft`, while the PR body and PR #277 treat the spec as reviewed/approved. `validate_high_risk_evidence.py` requires `accepted`/`implemented`. The spec status line must be corrected by the owner/worker; until then the `high-risk-evidence` job fails on this point alone. The auditor's mandate is limited to the audit record and does not include editing the spec's state.
+2. CI on the audited head is green, but only after two `--failed` reruns of unrelated organizer instrumentation flakes (see Executed test surface). The audited diff neither touches nor is touched by those tests.
+3. Unverified (recorded in the PR body, outside this audit's reach): on-device landscape rendering (rotation could not be enabled on the emulator; structural assurance only via placement outside `DummyLauncherBox`) and actual TalkBack read-aloud (uiautomator text-node confirmation only). Suitable to close via follow-up manual evidence without code change.
+4. Info: the unavailable string is shown for any layout backup whose analysis fails, including single-page ones, where the success path shows nothing. This matches the spec's typed-failure wording; deliberate.
+5. Info: pre-existing ja localization contract findings (10 × `manual_organization_*`) are identical in nature to those recorded in the PR #268 audit; not introduced here.
 
 Verdict: **pass-with-notes**. No discrepancy between spec 233 and the implementation on head `674983b573` was found; the notes above are CI-pending status and manual-evidence gaps already disclosed in the PR body.
