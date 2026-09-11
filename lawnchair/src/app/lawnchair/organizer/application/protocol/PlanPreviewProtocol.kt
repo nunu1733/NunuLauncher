@@ -28,6 +28,9 @@ class PlanPreviewProtocol(
     private val faults: FaultInjector,
     private val mutex: RunMutexPort,
     private val folderTitleResolver: FolderTitleResolver,
+    // Issue #228: resolves selected candidates' canonical application state
+    // during Add-run preview materialization.
+    private val candidateResolver: CandidateApplicationResolver? = null,
 ) {
 
     fun inspect(input: OrganizationInput, result: PlanningResult): PlanPreviewResult {
@@ -61,7 +64,7 @@ class PlanPreviewProtocol(
 
         val planned = result.outcome as? Planned
             ?: return PlanPreviewResult.NotPlannable(PlanPreviewRejection.OUTCOME_NOT_PLANNED)
-        val materialized = OrganizationPlanMaterializer.materialize(input, result, capture.layoutState, folderTitleResolver)
+        val materialized = OrganizationPlanMaterializer.materialize(input, result, capture.layoutState, folderTitleResolver, candidateResolver)
         val plan = (materialized as? OrganizationPlanMaterializer.Result.Ready)?.plan
             ?: return PlanPreviewResult.NotPlannable(PlanPreviewRejection.MATERIALIZATION_INVALID)
         val projection = PlanPreviewProjector.project(plan, planned)

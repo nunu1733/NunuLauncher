@@ -241,8 +241,30 @@
     <string name="manual_organization_empty_folder_constraint">空のフォルダを保持: %1$d件</string>
     <!-- Issue #195: concrete change list on the confirmation surface -->
     <string name="manual_organization_preview_details_unavailable">今回、具体的な変更一覧を用意できませんでした。適用前に下の件数サマリーを確認してください。</string>
+    <!-- Issue #228: missing-app selection and Add rows -->
+    <string name="manual_organization_detecting_missing_apps">ホーム画面にないアプリを確認しています…</string>
+    <string name="manual_organization_missing_apps_title">整理するアプリを選択</string>
+    <plurals name="manual_organization_missing_apps_selected_count">
+        <item quantity="other">%1$d件を選択中</item>
+    </plurals>
+    <string name="manual_organization_missing_apps_empty">インストール済みのアプリはすべてホーム画面に配置済みです。続行すると現在の配置を整理します。</string>
+    <string name="manual_organization_missing_apps_search_hint">アプリを検索</string>
+    <string name="manual_organization_missing_apps_select_all">すべて選択</string>
+    <string name="manual_organization_missing_apps_clear_all">選択を解除</string>
+    <string name="manual_organization_missing_apps_continue">続行</string>
+    <string name="manual_organization_missing_apps_state_checked">選択済み</string>
+    <string name="manual_organization_missing_apps_state_unchecked">未選択</string>
+    <string name="manual_organization_preview_unavailable_add">新しいアプリを追加するこの提案の変更一覧を表示できませんでした。ホーム画面は変更されていません。追加は、変更一覧を確認できてから行われます。</string>
+    <string name="manual_organization_preview_retry">プレビューを再試行</string>
+    <string name="manual_organization_added_count">追加するアプリ: %1$d件</string>
+    <plurals name="manual_organization_applied_added_count">
+        <item quantity="other">%1$d件のアプリを追加しました</item>
+    </plurals>
     <string name="manual_organization_changes_heading">変更内容</string>
     <string name="manual_organization_group_moved">移動 (%1$d件)</string>
+    <string name="manual_organization_group_added">追加 (%1$d件)</string>
+    <string name="manual_organization_preview_add_descriptor">%1$s（%2$s）</string>
+    <string name="manual_organization_preview_add_row">%1$sを%2$sに追加</string>
     <string name="manual_organization_group_new_folders">新規フォルダ (%1$d件)</string>
     <string name="manual_organization_group_new_pages">新規ページ (%1$d件)</string>
     <string name="manual_organization_group_preserved">保持 (%1$d件)</string>

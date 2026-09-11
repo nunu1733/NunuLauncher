@@ -31,9 +31,12 @@ import app.lawnchair.organizer.diagnostics.model.RunMode
 import app.lawnchair.organizer.diagnostics.model.Trigger
 import app.lawnchair.organizer.diagnostics.projection.InputReadinessProjection
 import app.lawnchair.organizer.diagnostics.projection.PlanningProjection
+import app.lawnchair.organizer.integration.CandidateDetectionResult
+import app.lawnchair.organizer.integration.DetectedCandidate
 import app.lawnchair.organizer.integration.InputReadinessReason
 import app.lawnchair.organizer.integration.OrganizationInputComposition
 import app.lawnchair.organizer.planning.Availability
+import app.lawnchair.organizer.planning.CandidateTarget
 import app.lawnchair.organizer.planning.DeterministicOrganizationPlanner
 import app.lawnchair.organizer.planning.Disposition
 import app.lawnchair.organizer.planning.LayoutStrategyRegistry
@@ -61,6 +64,13 @@ internal interface ManualOrganizationApplication {
 
     fun newRunId(): RunId
     fun composeFullOrganization(): OrganizationInputComposition
+
+    /** Issue #228: read-only missing-app detection (zero-write). */
+    fun detectMissingAppCandidates(): CandidateDetectionResult
+
+    /** Issue #228 (D-2): composition with the selected candidates as additions. */
+    fun composeScopeComposedOrganization(selection: List<CandidateTarget.AppKey>): OrganizationInputComposition
+
     fun inspectPlan(input: OrganizationInput, result: PlanningResult): PlanPreviewResult
     fun materialize(input: OrganizationInput, result: PlanningResult): OrganizationPlanMaterializer.Result
     fun apply(plan: ValidatedLayoutPlan, runId: RunId): ApplyResult
@@ -91,6 +101,10 @@ internal class ProductionManualOrganizationApplication(
     override fun newRunId(): RunId = module.newManualRunId()
 
     override fun composeFullOrganization(): OrganizationInputComposition = module.composeManualFullOrganizationInput(appContext)
+
+    override fun detectMissingAppCandidates(): CandidateDetectionResult = module.detectMissingAppCandidates(appContext)
+
+    override fun composeScopeComposedOrganization(selection: List<CandidateTarget.AppKey>): OrganizationInputComposition = module.composeScopeComposedManualInput(appContext, selection)
 
     override fun inspectPlan(
         input: OrganizationInput,
@@ -170,11 +184,32 @@ class ManualOrganizationRun internal constructor(
     sealed interface State {
         data object Idle : State
         data object Capturing : State
+
+        /** Issue #228: missing-app detection in progress (zero-write). */
+        data object CandidateDetection : State
+
+        /**
+         * Issue #228: explicit selection of missing apps. [candidates] is the
+         * detection-time cut (deterministic display order); an empty list
+         * renders the zero-candidates notice and a plain continue. Selection
+         * state is process-local UI state and never persists.
+         */
+        data class Selecting(val candidates: List<DetectedCandidate>) : State
+
         data object Planning : State
         data class InputUnavailable(val reason: InputReadinessReason) : State
         data class PlanningRejected(val kind: PlanningFailureKind, val summary: Summary) : State
         data object NoChanges : State
         data class Preview(val summary: Summary, val details: PlanPreviewDetails?) : State
+
+        /**
+         * Issue #228 (spec AC-14): a run whose plan contains Add rows cannot
+         * be confirmed from a count-only fallback — when the concrete preview
+         * is not obtainable, the run stops here and offers re-preview. No
+         * write has happened.
+         */
+        data class PreviewUnavailable(val summary: Summary) : State
+
         data object Applying : State
 
         /**
@@ -213,6 +248,8 @@ class ManualOrganizationRun internal constructor(
         val preservedCount: Int,
         val newFolderCount: Int,
         val newPageCount: Int,
+        /** Issue #228: selected candidates this plan creates placements for. */
+        val addedCount: Int = 0,
         /** Spec 182: the effective strategy the preview was computed with. */
         val organizationStrategy: StrategyId,
         val scope: Scope,
@@ -274,101 +311,14 @@ class ManualOrganizationRun internal constructor(
         )
 
         try {
-            when (val composition = application.composeFullOrganization()) {
-                is OrganizationInputComposition.NotReady -> {
-                    emitInputNotReady(operation, composition)
-                    finish(operation, State.InputUnavailable(composition.reason))
-                }
-
-                is OrganizationInputComposition.Ready -> {
-                    if (!isActive(operation)) return started
-                    val input = composition.input
-                    emit(
-                        RunEvent(
-                            journalSequence = 0L,
-                            runId = runId.value,
-                            trigger = operation.trigger,
-                            runMode = RunMode.FULL_ORGANIZATION,
-                            phase = PhaseCode.CAPTURED,
-                            deviceProfile = deviceSummary(input),
-                        ),
-                    )
-                    setIfActive(operation, State.Planning)
-                    if (!isActive(operation)) return started
-                    val result = planner.plan(input)
-                    if (!isActive(operation)) return started
-                    emit(
-                        PlanningProjection.project(
-                            result = result,
-                            journalSequence = 0L,
-                            capturedItemCount = input.snapshot.items.size,
-                            // Spec 182: the diagnostics echo must match the
-                            // planner's runtime truth. The runtime-enabled set
-                            // comes from the internal executable registry, so a
-                            // strategy the binary does not implement is never
-                            // recorded as effective.
-                            runtimeStrategyIds = LayoutStrategyRegistry.acceptedIds
-                                .map { it.value }
-                                .toSet(),
-                        ).copy(
-                            runId = runId.value,
-                            trigger = operation.trigger,
-                            runMode = RunMode.FULL_ORGANIZATION,
-                        ),
-                    )
-                    when (val outcome = result.outcome) {
-                        is Planned -> {
-                            val summary = outcome.summary(input)
-                            if (summary.movedCount == 0 && summary.newFolderCount == 0 && summary.newPageCount == 0) {
-                                finish(operation, State.NoChanges)
-                            } else {
-                                when (val preview = application.inspectPlan(input, result)) {
-                                    is PlanPreviewResult.Previewed -> enterPreview(operation, input, result, summary, preview.preview)
-
-                                    is PlanPreviewResult.Stale -> transitionToStale(
-                                        operation,
-                                        emitRejection = true,
-                                        origin = StaleOrigin.DETECTED_BEFORE_REVIEW,
-                                    )
-
-                                    is PlanPreviewResult.NotPlannable -> when (preview.reason) {
-                                        PlanPreviewRejection.CAPTURE_FAILED -> enterPreview(operation, input, result, summary, null)
-
-                                        PlanPreviewRejection.OUTCOME_NOT_PLANNED,
-                                        PlanPreviewRejection.MATERIALIZATION_INVALID,
-                                        -> finish(operation, State.PlanningRejected(PlanningFailureKind.IMPOSSIBLE, summary))
-                                    }
-
-                                    is PlanPreviewResult.Unavailable,
-                                    PlanPreviewResult.WriterBusy,
-                                    PlanPreviewResult.Concurrent,
-                                    -> enterPreview(operation, input, result, summary, null)
-                                }
-                                if (state is State.Preview) {
-                                    emit(
-                                        RunEvent(
-                                            journalSequence = 0L,
-                                            runId = runId.value,
-                                            trigger = operation.trigger,
-                                            runMode = RunMode.FULL_ORGANIZATION,
-                                            phase = PhaseCode.PREVIEWED,
-                                        ),
-                                    )
-                                }
-                            }
-                        }
-
-                        is app.lawnchair.organizer.planning.Rejected.Invalid -> finish(
-                            operation,
-                            State.PlanningRejected(PlanningFailureKind.INVALID, result.summary(input)),
-                        )
-
-                        is app.lawnchair.organizer.planning.Rejected.Impossible -> finish(
-                            operation,
-                            State.PlanningRejected(PlanningFailureKind.IMPOSSIBLE, result.summary(input)),
-                        )
-                    }
-                }
+            // Issue #228: the manual run opens with read-only missing-app
+            // detection. Detection itself writes nothing; its failure never
+            // blocks the plain full organize (spec §7) — it only skips the
+            // selection surface.
+            setIfActive(operation, State.CandidateDetection)
+            when (val detection = application.detectMissingAppCandidates()) {
+                is CandidateDetectionResult.Ready -> setIfActive(operation, State.Selecting(detection.candidates))
+                is CandidateDetectionResult.Unavailable -> runComposedPhase(operation, selection = null)
             }
         } catch (failure: Throwable) {
             abort(operation)
@@ -377,11 +327,220 @@ class ManualOrganizationRun internal constructor(
         return started
     }
 
+    /**
+     * Issue #228: confirms the selection surface and continues the run. An
+     * empty selection is valid and composes the plain full organization; a
+     * non-empty selection composes the scope-composed run.
+     */
+    fun confirmSelection(selection: Set<CandidateTarget.AppKey>) {
+        val operation = synchronized(lock) {
+            if (state !is State.Selecting) return
+            activeOperation ?: return
+        }
+        try {
+            runComposedPhase(
+                operation,
+                // An empty confirmed selection is the plain full organize —
+                // the null selection keeps the legacy composition path.
+                selection = selection.sortedWith(
+                    compareBy({ it.component.value }, { it.profile.value }),
+                ).ifEmpty { null },
+            )
+        } catch (failure: Throwable) {
+            abort(operation)
+            throw failure
+        }
+    }
+
+    /**
+     * Issue #228 (spec AC-14): re-runs the read-only preview for a retained
+     * Add-run whose concrete preview was unavailable. The layout may have
+     * moved since planning — staleness surfaces through the same inspect
+     * seam as the first attempt.
+     */
+    fun retryPlanPreview() {
+        val retained = synchronized(lock) {
+            if (state !is State.PreviewUnavailable) return
+            val operation = activeOperation ?: return
+            val plan = pending ?: return
+            operation to plan
+        }
+        try {
+            handlePlanPreview(retained.first, retained.second.input, retained.second.result, retained.second.summary)
+        } catch (failure: Throwable) {
+            abort(retained.first)
+            throw failure
+        }
+    }
+
+    private fun runComposedPhase(operation: Operation, selection: List<CandidateTarget.AppKey>?) {
+        val runId = operation.runId
+        // Issue #228: once the user confirmed a non-empty selection, the run's
+        // diagnostics identity is the scope-composed mode.
+        val diagnosticsRunMode = if (selection != null) RunMode.SCOPE_COMPOSED_ORGANIZATION else RunMode.FULL_ORGANIZATION
+        // The composition performs its own canonical capture (plan §5), so the
+        // run re-enters the capturing phase after the selection surface.
+        setIfActive(operation, State.Capturing)
+        when (
+            val composition = if (selection == null) {
+                application.composeFullOrganization()
+            } else {
+                application.composeScopeComposedOrganization(selection)
+            }
+        ) {
+            is OrganizationInputComposition.NotReady -> {
+                emitInputNotReady(operation, composition)
+                finish(operation, State.InputUnavailable(composition.reason))
+            }
+
+            is OrganizationInputComposition.Ready -> {
+                if (!isActive(operation)) return
+                val input = composition.input
+                emit(
+                    RunEvent(
+                        journalSequence = 0L,
+                        runId = runId.value,
+                        trigger = operation.trigger,
+                        runMode = diagnosticsRunMode,
+                        phase = PhaseCode.CAPTURED,
+                        deviceProfile = deviceSummary(input),
+                    ),
+                )
+                setIfActive(operation, State.Planning)
+                if (!isActive(operation)) return
+                val result = planner.plan(input)
+                if (!isActive(operation)) return
+                emit(
+                    PlanningProjection.project(
+                        result = result,
+                        journalSequence = 0L,
+                        capturedItemCount = input.snapshot.items.size,
+                        candidateItemCount = input.targets.additions.size,
+                        candidateItemIds = input.targets.additions.map { it.id.value }.toSet(),
+                        // Spec 182: the diagnostics echo must match the
+                        // planner's runtime truth. The runtime-enabled set
+                        // comes from the internal executable registry, so a
+                        // strategy the binary does not implement is never
+                        // recorded as effective.
+                        runtimeStrategyIds = LayoutStrategyRegistry.acceptedIds
+                            .map { it.value }
+                            .toSet(),
+                    ).copy(
+                        runId = runId.value,
+                        trigger = operation.trigger,
+                        runMode = diagnosticsRunMode,
+                    ),
+                )
+                when (val outcome = result.outcome) {
+                    is Planned -> {
+                        val summary = outcome.summary(input)
+                        if (summary.movedCount == 0 && summary.newFolderCount == 0 && summary.newPageCount == 0 && summary.addedCount == 0) {
+                            finish(operation, State.NoChanges)
+                        } else {
+                            handlePlanPreview(operation, input, result, summary)
+                        }
+                    }
+
+                    is app.lawnchair.organizer.planning.Rejected.Invalid -> finish(
+                        operation,
+                        State.PlanningRejected(PlanningFailureKind.INVALID, result.summary(input)),
+                    )
+
+                    is app.lawnchair.organizer.planning.Rejected.Impossible -> finish(
+                        operation,
+                        State.PlanningRejected(PlanningFailureKind.IMPOSSIBLE, result.summary(input)),
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Issue #194 + #228: obtains (or re-obtains) the read-only preview. A run
+     * without Add rows keeps the count-only compatibility fallback for
+     * environmental preview failures; a run with Add rows must never be
+     * confirmable without the concrete change list, so the same failures stop
+     * at [State.PreviewUnavailable] with a re-preview action instead (spec
+     * AC-14).
+     */
+    private fun handlePlanPreview(
+        operation: Operation,
+        input: OrganizationInput,
+        result: PlanningResult,
+        summary: Summary,
+    ) {
+        val includesAdditions = input.targets.additions.isNotEmpty()
+        when (val preview = application.inspectPlan(input, result)) {
+            is PlanPreviewResult.Previewed -> enterPreview(operation, input, result, summary, preview.preview)
+
+            is PlanPreviewResult.Stale -> transitionToStale(
+                operation,
+                emitRejection = true,
+                origin = StaleOrigin.DETECTED_BEFORE_REVIEW,
+            )
+
+            is PlanPreviewResult.NotPlannable -> when (preview.reason) {
+                PlanPreviewRejection.CAPTURE_FAILED ->
+                    if (includesAdditions) {
+                        enterPreviewUnavailable(operation, input, result, summary)
+                    } else {
+                        enterPreview(operation, input, result, summary, null)
+                    }
+
+                PlanPreviewRejection.OUTCOME_NOT_PLANNED,
+                PlanPreviewRejection.MATERIALIZATION_INVALID,
+                -> finish(operation, State.PlanningRejected(PlanningFailureKind.IMPOSSIBLE, summary))
+            }
+
+            is PlanPreviewResult.Unavailable,
+            PlanPreviewResult.WriterBusy,
+            PlanPreviewResult.Concurrent,
+            -> if (includesAdditions) {
+                enterPreviewUnavailable(operation, input, result, summary)
+            } else {
+                enterPreview(operation, input, result, summary, null)
+            }
+        }
+        if (state is State.Preview) {
+            emit(
+                RunEvent(
+                    journalSequence = 0L,
+                    runId = operation.runId.value,
+                    trigger = operation.trigger,
+                    runMode = diagnosticsRunModeOf(input),
+                    phase = PhaseCode.PREVIEWED,
+                ),
+            )
+        }
+    }
+
+    private fun diagnosticsRunModeOf(input: OrganizationInput): RunMode = when (input.runMode) {
+        app.lawnchair.organizer.planning.RunMode.ScopeComposedOrganization -> RunMode.SCOPE_COMPOSED_ORGANIZATION
+        else -> RunMode.FULL_ORGANIZATION
+    }
+
+    private fun enterPreviewUnavailable(
+        operation: Operation,
+        input: OrganizationInput,
+        result: PlanningResult,
+        summary: Summary,
+    ) {
+        synchronized(lock) {
+            if (!isActiveLocked(operation)) return
+            pending = PendingPlan(operation, input, result, summary, previewPlan = null)
+            stateHolder.value = State.PreviewUnavailable(summary)
+        }
+    }
+
     fun cancel() {
         val operation = synchronized(lock) {
             val candidate = activeOperation ?: return
             if (candidate.applicationAdmitted.get()) return
-            if (state !is State.Preview && state !is State.Capturing && state !is State.Planning && state !is State.Applying) return
+            if (state !is State.Preview && state !is State.Capturing && state !is State.CandidateDetection &&
+                state !is State.Selecting && state !is State.Planning && state !is State.Applying
+            ) {
+                return
+            }
             candidate.cancelled.set(true)
             pending = null
             activeOperation = null
@@ -708,11 +867,15 @@ class ManualOrganizationRun internal constructor(
         }
         val rejected = (planningOutcome as? app.lawnchair.organizer.planning.Rejected.Invalid)?.reasons.orEmpty()
         val unplaced = (planningOutcome as? app.lawnchair.organizer.planning.Rejected.Impossible)?.unplaced.orEmpty()
+        // Issue #228: candidate placements are Adds, not moves — they leave the
+        // moved/preserved vocabulary and surface as their own count.
+        val candidateIds = input.targets.additions.map { it.id }.toSet()
         return Summary(
-            movedCount = placements.count { it.disposition is Disposition.Moved },
+            movedCount = placements.count { it.disposition is Disposition.Moved && it.item !in candidateIds },
             preservedCount = placements.count { it.disposition is Disposition.Preserved },
             newFolderCount = (planningOutcome as? Planned)?.newFolders?.size ?: 0,
             newPageCount = (planningOutcome as? Planned)?.newPages?.size ?: 0,
+            addedCount = placements.count { it.item in candidateIds },
             organizationStrategy = organizationStrategy,
             scope = input.summaryScope(),
             movedByReason = placements.mapNotNull { (it.disposition as? Disposition.Moved)?.rationale }.groupingBy { it }.eachCount(),

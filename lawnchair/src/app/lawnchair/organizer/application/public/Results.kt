@@ -74,6 +74,15 @@ enum class PreWriteRejection {
     EXACT_PRECONDITION_FAILED,
 
     /**
+     * Issue #228: a selected missing-app candidate is no longer launchable
+     * (disabled/suspended/uninstalled), or its apply-time availability
+     * re-verification itself failed. Detected before the write transaction —
+     * the workspace is unchanged and the user is directed back to
+     * re-detection.
+     */
+    CANDIDATE_UNAVAILABLE,
+
+    /**
      * Issue #185 / ADR-0010: the intended state (or recovery target) contains a
      * desktop item overlapping an authoritative reservation while the current
      * platform overlap policy does not accept it.

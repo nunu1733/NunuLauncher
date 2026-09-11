@@ -5,7 +5,9 @@ import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.Serializable
 
 /**
- * RunMode from the diagnostics contract §3: closed two-value set.
+ * RunMode from the diagnostics contract §3: closed value set. Issue #228
+ * adds the scope-composed mode (full re-organization plus explicitly
+ * selected missing-app candidates).
  */
 @Serializable
 enum class RunMode {
@@ -14,6 +16,9 @@ enum class RunMode {
 
     @kotlinx.serialization.SerialName("INCREMENTAL_PLACEMENT")
     INCREMENTAL_PLACEMENT,
+
+    @kotlinx.serialization.SerialName("SCOPE_COMPOSED_ORGANIZATION")
+    SCOPE_COMPOSED_ORGANIZATION,
 }
 
 /**

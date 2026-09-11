@@ -63,26 +63,83 @@ internal object PlanningPlacement {
             }
         }
 
-        return if (input.runMode == RunMode.FullOrganization) {
-            val movableItems = input.snapshot.items.filter {
-                determinePreservation(it, rolesById[it.id], input.snapshot.reservedWorkspaceRegions) == null
-            }
-            strategy.placeFullRun(
+        return when (input.runMode) {
+            RunMode.FullOrganization -> strategy.placeFullRun(
                 FullRunContext(
                     input = input,
                     classification = classification,
                     strategy = strategy,
                     rolesById = rolesById,
                     itemById = input.snapshot.items.associateBy { it.id },
-                    movableItems = movableItems,
+                    movableItems = input.snapshot.items.filter {
+                        determinePreservation(it, rolesById[it.id], input.snapshot.reservedWorkspaceRegions) == null
+                    },
                     allocator = allocator,
                     pageOrderMap = pageOrderMap,
                     preservationWarnings = preservationWarnings,
                 ),
             )
-        } else {
-            placeIncrementalRun(input, classification, pageOrderMap, allocator, preservationWarnings)
+
+            RunMode.ScopeComposedOrganization -> placeScopeComposedRun(
+                input,
+                classification,
+                strategy,
+                rolesById,
+                pageOrderMap,
+                allocator,
+                preservationWarnings,
+            )
+
+            RunMode.IncrementalPlacement -> placeIncrementalRun(input, classification, pageOrderMap, allocator, preservationWarnings)
         }
+    }
+
+    /**
+     * Issue #228 (D-2, `ScopeComposedOrganization`): the existing layout is
+     * re-organized by exactly the selected strategy's full-run executor
+     * first; the selected candidates are then appended as incremental-style
+     * units into the *same* allocator, so they fill the free cells the
+     * re-organized layout leaves and overflow onto new pages. With an empty
+     * selection the output is byte-equivalent to the full-organization run
+     * over the same input. Candidate folder groups continue the new-folder
+     * ordinal sequence after the existing items' folders, so planned-folder
+     * identities never collide.
+     */
+    private fun placeScopeComposedRun(
+        input: OrganizationInput,
+        classification: ClassificationOutput,
+        strategy: StrategyDefinition,
+        rolesById: Map<ItemId, ExistingRole>,
+        pageOrderMap: Map<PageId, PageOrder>,
+        allocator: Allocator,
+        preservationWarnings: List<Warning>,
+    ): PlacementOutput {
+        val fullOutput = strategy.placeFullRun(
+            FullRunContext(
+                input = input,
+                classification = classification,
+                strategy = strategy,
+                rolesById = rolesById,
+                itemById = input.snapshot.items.associateBy { it.id },
+                movableItems = input.snapshot.items.filter {
+                    determinePreservation(it, rolesById[it.id], input.snapshot.reservedWorkspaceRegions) == null
+                },
+                allocator = allocator,
+                pageOrderMap = pageOrderMap,
+                preservationWarnings = preservationWarnings,
+            ),
+        )
+        val placements = fullOutput.placements.toMutableList()
+        val newFolders = fullOutput.newFolders.toMutableList()
+        appendCandidatePlacements(input, classification, allocator, placements, newFolders, folderOrdinalOffset = fullOutput.newFolders.size)
+        return PlacementOutput(
+            placements = placements.sortedBy { it.item },
+            // Cumulative on the shared allocator: the full run's pages plus
+            // any page appended for candidate overflow.
+            newPages = allocator.buildNewPages(),
+            newFolders = newFolders.sortedBy { it.ordinal },
+            preservationWarnings = preservationWarnings,
+        )
     }
 
     private fun placeIncrementalRun(
@@ -93,10 +150,7 @@ internal object PlanningPlacement {
         preservationWarnings: List<Warning>,
     ): PlacementOutput {
         val items = input.snapshot.items
-        val device = input.snapshot.device
-        val taxonomy = input.taxonomy
         val rolesById = input.targets.existing.associate { it.item to it.role }
-        val candidates = input.targets.additions
 
         val placements = items.map { item ->
             val reason = determinePreservation(item, rolesById[item.id], input.snapshot.reservedWorkspaceRegions)
@@ -107,6 +161,37 @@ internal object PlanningPlacement {
                 target = capturedToOutput(item.placement),
             )
         }.toMutableList()
+
+        val newFolders = mutableListOf<NewFolder>()
+        appendCandidatePlacements(input, classification, allocator, placements, newFolders, folderOrdinalOffset = 0)
+
+        return PlacementOutput(
+            placements = placements.sortedBy { it.item },
+            newPages = allocator.buildNewPages(),
+            newFolders = newFolders.sortedBy { it.ordinal },
+            preservationWarnings = preservationWarnings,
+        )
+    }
+
+    /**
+     * Shared candidate-unit placement (issue #228): forms same-profile
+     * same-category folder groups plus singleton units from the validated
+     * additions and allocates them captured-pages-first, then onto new pages.
+     * Used by both the incremental run and the scope-composed run.
+     * [folderOrdinalOffset] continues the new-folder ordinal sequence after
+     * any folders the caller's existing-item placement already created.
+     */
+    private fun appendCandidatePlacements(
+        input: OrganizationInput,
+        classification: ClassificationOutput,
+        allocator: Allocator,
+        placements: MutableList<PlannedPlacement>,
+        newFolders: MutableList<NewFolder>,
+        folderOrdinalOffset: Int,
+    ) {
+        val device = input.snapshot.device
+        val taxonomy = input.taxonomy
+        val candidates = input.targets.additions
 
         val capacity = device.folderMaxColumns.toLong() * device.folderMaxRows.toLong()
         val minGroupSize = input.rules.folderPolicy.minGroupSize
@@ -123,10 +208,14 @@ internal object PlanningPlacement {
             fallbackCategory = taxonomy.fallbackCategory,
             capacity = capacity,
             minGroupSize = minGroupSize,
-        )
+        ).map { group ->
+            if (folderOrdinalOffset == 0) {
+                group
+            } else {
+                group.copy(ordinal = NewFolderOrdinal(group.ordinal.value + folderOrdinalOffset))
+            }
+        }
         val folderMemberIds = folderGroups.flatMapTo(mutableSetOf()) { it.members }
-
-        val outputNewFolders = mutableListOf<NewFolder>()
 
         data class IncUnit(
             val sortOrdinal: NewFolderOrdinal?,
@@ -184,7 +273,7 @@ internal object PlanningPlacement {
             if (unit.members != null) {
                 val nf = folderGroups.single { it.ordinal == unit.sortOrdinal }
                 val wsTarget = PlacementTarget.WorkspaceTarget(pageRef, cell, unit.span)
-                outputNewFolders += NewFolder(
+                newFolders += NewFolder(
                     ordinal = nf.ordinal,
                     profile = nf.profile,
                     naming = FolderNaming.FromCategory(nf.category),
@@ -207,13 +296,6 @@ internal object PlanningPlacement {
                 )
             }
         }
-
-        return PlacementOutput(
-            placements = placements.sortedBy { it.item },
-            newPages = allocator.buildNewPages(),
-            newFolders = outputNewFolders.sortedBy { it.ordinal },
-            preservationWarnings = preservationWarnings,
-        )
     }
 }
 

@@ -41,6 +41,8 @@ object PlanningProjection {
         candidateItemCount: Int = 0,
         /** Strategy ids the current binary actually executes (spec 182 runtime-enabled set). */
         runtimeStrategyIds: Set<String> = emptySet(),
+        /** Issue #228: planning ids of the run's candidates (counting only; never journaled). */
+        candidateItemIds: Set<String> = emptySet(),
     ): RunEvent {
         val baseEvent = RunEvent(
             journalSequence = journalSequence,
@@ -60,7 +62,7 @@ object PlanningProjection {
         )
 
         return when (val outcome = result.outcome) {
-            is Planned -> projectPlanned(baseEvent, outcome, capturedItemCount, candidateItemCount)
+            is Planned -> projectPlanned(baseEvent, outcome, capturedItemCount, candidateItemCount, candidateItemIds)
             is Rejected.Invalid -> projectInvalid(baseEvent, outcome)
             is Rejected.Impossible -> projectImpossible(baseEvent, outcome, capturedItemCount, candidateItemCount)
         }
@@ -76,11 +78,16 @@ object PlanningProjection {
         planned: Planned,
         capturedItemCount: Int,
         candidateItemCount: Int,
+        candidateItemIds: Set<String> = emptySet(),
     ): RunEvent {
         val placements = planned.placements
-        val movedCount = placements.count { it.disposition is app.lawnchair.organizer.planning.Disposition.Moved }
-        val preservedCount = placements.count { it.disposition is app.lawnchair.organizer.planning.Disposition.Preserved }
-        val preservedByReason = placements
+        // Issue #228: candidate placements are creations, not moves; the
+        // candidate count carries them (moved/preserved count captured items
+        // only).
+        val capturedPlacements = placements.filter { it.item.value !in candidateItemIds }
+        val movedCount = capturedPlacements.count { it.disposition is app.lawnchair.organizer.planning.Disposition.Moved }
+        val preservedCount = capturedPlacements.count { it.disposition is app.lawnchair.organizer.planning.Disposition.Preserved }
+        val preservedByReason = capturedPlacements
             .mapNotNull { p ->
                 val disp = p.disposition
                 if (disp is app.lawnchair.organizer.planning.Disposition.Preserved) disp.reason.name else null

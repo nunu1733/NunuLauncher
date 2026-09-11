@@ -329,6 +329,15 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
 
         override fun newRunId() = RunId(RUN_ID)
 
+        // Issue #228: detection unavailable keeps the legacy full flow.
+        override fun detectMissingAppCandidates() = app.lawnchair.organizer.integration.CandidateDetectionResult.Unavailable(
+            app.lawnchair.organizer.integration.DetectionUnavailableReason.PROFILE_SERIAL_UNAVAILABLE,
+        )
+
+        override fun composeScopeComposedOrganization(
+            selection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>,
+        ): OrganizationInputComposition = composeFullOrganization()
+
         override fun composeFullOrganization(): OrganizationInputComposition = OrganizationInputComposition.Ready(
             input = input(),
             provenance = InputProvenance(

@@ -25,8 +25,13 @@ import app.lawnchair.organizer.diagnostics.journal.JournalSequence
 import app.lawnchair.organizer.diagnostics.journal.JournalStore
 import app.lawnchair.organizer.diagnostics.logger.DiagnosticsLogger
 import app.lawnchair.organizer.diagnostics.model.RunEvent
+import app.lawnchair.organizer.integration.AndroidCandidateApplicationResolver
+import app.lawnchair.organizer.integration.AndroidCandidateAvailabilityPort
+import app.lawnchair.organizer.integration.AndroidMissingAppCandidateSource
+import app.lawnchair.organizer.integration.CandidateDetectionResult
 import app.lawnchair.organizer.integration.CaptureFailureObserver
 import app.lawnchair.organizer.integration.CompositionDiagnostic
+import app.lawnchair.organizer.integration.DetectionUnavailableReason
 import app.lawnchair.organizer.integration.InputCompositionCode
 import app.lawnchair.organizer.integration.InputReadinessReason
 import app.lawnchair.organizer.integration.NoopCaptureFailureObserver
@@ -60,6 +65,11 @@ internal class LayoutApplicationModule<S>(
     private val faults: FaultInjector = FaultInjector.NOOP,
     diagnosticsPort: DiagnosticsPort = DiagnosticsPort.NOOP,
     private val captureFailureObserver: CaptureFailureObserver = NoopCaptureFailureObserver,
+    // Issue #228: candidate construction resolution (plan/preview time) and
+    // apply-time availability re-verification. Nullable for legacy test
+    // wiring; a plan that carries candidates fails closed when either is null.
+    private val candidateApplicationResolver: CandidateApplicationResolver? = null,
+    private val candidateAvailability: CandidateAvailabilityPort? = null,
 ) where S : RecoveryStorePort, S : RecoveryStoreReconciliationPort {
 
     private val mutex: RunMutex = RunMutex()
@@ -72,7 +82,7 @@ internal class LayoutApplicationModule<S>(
     private val confirmationRandom: SecureRandom = SecureRandom()
     private val pendingPreviewConfirmations: java.util.IdentityHashMap<RecoveryPreviewConfirmation, PendingPreviewConfirmation> =
         java.util.IdentityHashMap()
-    private val applyProtocol: ApplyProtocol = ApplyProtocol(writer, store, clock, operationIds, faults, ordinaryMutex, diagnosticsPort)
+    private val applyProtocol: ApplyProtocol = ApplyProtocol(writer, store, clock, operationIds, faults, ordinaryMutex, diagnosticsPort, candidateAvailability)
     private val recoveryProtocol: RecoveryProtocol = RecoveryProtocol(writer, store, clock, operationIds, faults, ordinaryMutex)
     private val recoveryPreviewProtocol: RecoveryPreviewProtocol = RecoveryPreviewProtocol(
         writer,
@@ -89,6 +99,7 @@ internal class LayoutApplicationModule<S>(
         faults,
         ordinaryMutex,
         folderTitleResolver,
+        candidateApplicationResolver,
     )
     private val restartReconciler: RestartReconciler = RestartReconciler(
         writer,
@@ -161,6 +172,47 @@ internal class LayoutApplicationModule<S>(
     }
 
     /**
+     * Issue #228: read-only missing-app detection. Captures the current
+     * canonical state (read-only, no lease beyond the capture itself) and
+     * diffs the launchable installed inventory against it. Never writes.
+     */
+    internal fun detectMissingAppCandidates(context: Context): CandidateDetectionResult = readinessGate.runWhenReady(
+        unavailable = {
+            CandidateDetectionResult.Unavailable(DetectionUnavailableReason.CAPTURE_FAILED)
+        },
+    ) {
+        val capture = try {
+            writer.captureCurrent(CaptureId("missing-app-detection"))
+        } catch (_: RuntimeException) {
+            return@runWhenReady CandidateDetectionResult.Unavailable(DetectionUnavailableReason.CAPTURE_FAILED)
+        }
+        AndroidMissingAppCandidateSource(context.applicationContext).detect(capture)
+    }
+
+    /**
+     * Issue #228 (D-2): composition for a scope-composed manual run — the
+     * selected missing-app candidates join the full re-organization as
+     * `TargetSet.additions`. Gated like the plain manual composition.
+     */
+    internal fun composeScopeComposedManualInput(
+        context: Context,
+        selection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>,
+    ): OrganizationInputComposition = readinessGate.runWhenReady(
+        unavailable = { state ->
+            val failed = state == ReadinessGate.State.FAILED
+            OrganizationInputComposition.NotReady(
+                reason = if (failed) InputReadinessReason.ReconciliationFailed else InputReadinessReason.ReconciliationPending,
+                diagnostic = CompositionDiagnostic(
+                    code = if (failed) InputCompositionCode.RECONCILIATION_FAILED else InputCompositionCode.RECONCILIATION_PENDING,
+                ),
+            )
+        },
+    ) {
+        ProductionOrganizationInputComposer(context.applicationContext, writer, captureFailureObserver)
+            .composeScopeComposedOrganization(selection)
+    }
+
+    /**
      * Captures the current canonical state only to materialize the exact planner
      * result for a prior input. Any capture failure or revision mismatch is a
      * safe invalid result; it never falls back to a cached layout.
@@ -177,7 +229,7 @@ internal class LayoutApplicationModule<S>(
             return@runWhenReady OrganizationPlanMaterializer.Result.Invalid
         }
         if (capture.revision != input.snapshot.revision) return@runWhenReady OrganizationPlanMaterializer.Result.Invalid
-        OrganizationPlanMaterializer.materialize(input, result, capture.layoutState, folderTitleResolver)
+        OrganizationPlanMaterializer.materialize(input, result, capture.layoutState, folderTitleResolver, candidateApplicationResolver)
     }
 
     /** Internal run identity factory for the manual orchestration protocol. */
@@ -417,6 +469,8 @@ internal class LayoutApplicationModule<S>(
             context: Context,
             folderTitleResolver: FolderTitleResolver,
             launcher: LauncherAppState,
+            candidateApplicationResolver: CandidateApplicationResolver? = null,
+            candidateAvailability: CandidateAvailabilityPort? = null,
         ): LayoutApplicationModule<RecoveryStore> {
             val appContext = context.applicationContext
             val clock = SystemClock()
@@ -460,6 +514,10 @@ internal class LayoutApplicationModule<S>(
                 folderTitleResolver = folderTitleResolver,
                 diagnosticsPort = diagnosticsPort,
                 captureFailureObserver = captureFailureObserver,
+                candidateApplicationResolver = candidateApplicationResolver
+                    ?: AndroidCandidateApplicationResolver(appContext),
+                candidateAvailability = candidateAvailability
+                    ?: AndroidCandidateAvailabilityPort(appContext),
             )
             return module
         }

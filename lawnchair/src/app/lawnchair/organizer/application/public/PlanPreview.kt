@@ -101,6 +101,21 @@ data class PreservedChange(
     val reason: PreserveReason,
 ) : PreviewChange
 
+/**
+ * Issue #228: a new placement this plan creates for a selected missing-app
+ * candidate — one row per candidate, regardless of destination (top-level or
+ * inside a generated folder). Unlike [MoveChange] it has no source placement
+ * and therefore no source identity; like [NewFolderChange] it stands outside
+ * the spec 208 source-row identity contract. Unselected candidates never
+ * appear here (spec AC-4/AC-5).
+ */
+data class AddChange(
+    val item: ItemId,
+    val label: PreviewLabel,
+    val kind: CanonicalItemKind,
+    val destination: PreviewPosition,
+) : PreviewChange
+
 data class NewFolderChange(
     val ordinal: NewFolderOrdinal,
     /**
@@ -247,4 +262,10 @@ data class PreviewCounts(
     val crossPageMovedCount: Int = 0,
     /** Spec 182: rows kept fixed by the selected strategy (STRATEGY_PRESERVED). */
     val preservedByStrategyCount: Int = 0,
+    /**
+     * Issue #228: number of [AddChange] rows — the selected candidates whose
+     * destination this plan fixes, including candidates placed inside
+     * generated folders (spec AC-5).
+     */
+    val addedCount: Int = 0,
 )

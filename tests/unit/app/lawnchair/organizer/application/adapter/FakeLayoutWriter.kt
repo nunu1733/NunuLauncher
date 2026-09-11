@@ -162,6 +162,13 @@ class FakeLayoutWriter(
         plan: ValidatedLayoutPlan,
     ): WriteSetPreparation {
         if (productionEquivalentCapture) return productionPreparation(capture, plan)
+        // Issue #228: a plan carrying planned (non-persistent) references —
+        // selected candidates, generated folders — needs fixture identity
+        // resolution even in the default echo mode, because the protocol's
+        // materialized-state validator requires an identity mapping for them.
+        if (plan.intendedState.items.any { it.ref !is ApplicationItemRef.PersistentItem }) {
+            return productionPreparation(capture, plan)
+        }
         val intendedState = materializedIntendedStateOverride?.invoke(plan.intendedState) ?: plan.intendedState
         val intendedManifest = manifestFor(intendedState)
         knownStates += intendedState
