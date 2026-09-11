@@ -41,6 +41,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
+import app.lawnchair.backup.BackupPageSummaryResult
 import app.lawnchair.backup.LawnchairBackup
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.LocalNavController
@@ -170,6 +171,61 @@ fun ColumnScope.RestoreBackupOptions(
                     contentScale = ContentScale.FillHeight,
                 )
             }
+        }
+    }
+
+    // Issue #233: page identification for layouts the single screenshot preview
+    // cannot cover. Shown in both orientations whenever the backup contains
+    // layout data; independent of the contents checkboxes and screenshot presence.
+    val layoutIncluded = backupContents.hasFlag(LawnchairBackup.INCLUDE_LAYOUT_AND_SETTINGS)
+    if (layoutIncluded) {
+        when (val pageSummaryState = viewModel.pageSummary.collectAsStateWithLifecycle().value) {
+            is BackupPageSummaryUiState.Result -> {
+                when (val result = pageSummaryState.result) {
+                    is BackupPageSummaryResult.Available -> {
+                        val summary = result.summary
+                        if (summary.hasPagesOutsidePreview) {
+                            PreferenceGroup(
+                                modifier = modifier,
+                                heading = stringResource(id = R.string.backup_page_summary_title),
+                            ) {
+                                Text(
+                                    text = stringResource(id = R.string.backup_preview_partial_caption),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                )
+                                summary.pages.forEachIndexed { index, page ->
+                                    Text(
+                                        text = stringResource(
+                                            id = R.string.backup_page_summary_entry,
+                                            index + 1,
+                                            page.itemCount,
+                                            page.folderCount,
+                                            page.widgetCount,
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier
+                                            .padding(top = 4.dp)
+                                            .padding(horizontal = 16.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    is BackupPageSummaryResult.Unavailable -> {
+                        Text(
+                            text = stringResource(id = R.string.backup_page_summary_unavailable),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier
+                                .padding(top = 8.dp)
+                                .padding(horizontal = 16.dp),
+                        )
+                    }
+                }
+            }
+
+            is BackupPageSummaryUiState.Pending -> {}
         }
     }
 
