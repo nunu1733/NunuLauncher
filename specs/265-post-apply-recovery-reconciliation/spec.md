@@ -102,8 +102,10 @@ Either a reproduced, source-attributed explanation of how a run on current
 (gate `FAILED`) in a post-apply/restore scenario, or documented evidence that
 the original journal's failure route cannot be produced by current `main`
 (including the non-`main`-build hypothesis), plus an explicit recorded decision
-on whether the `WriterBusy` observation becomes its own issue. #265 can then be
-closed as an investigation record with no open causal question.
+on whether the `WriterBusy` observation becomes its own issue. #265 can then be closed
+as an investigation record with no open actionable causal question on current
+`main` — AC-265-R3 explicitly allows the non-`main`-build conclusion, under
+which the original journal is not further attributable.
 
 ## Scope
 
@@ -162,7 +164,9 @@ not open questions:
 2. Residual `screen`/`cellX`/`cellY` columns on folder-child rows are benign;
    `toCanonical` maps `container >= 0` rows to `FolderChild(parent, rank)`.
 3. The unrepresentable row was the platform writer's `NULL` span on a desktop
-   row after a folder → workspace move; fixed by #269.
+   row after a folder → workspace move; fixed by #269 (the move path now
+   persists a valid `1×1` span; strict canonical capture is unchanged and
+   still fails closed on malformed NULL-span rows).
 4. `RecoveryPreviewProtocol.inspect` does call `captureCurrent`; its
    exception-leaking behavior is fixed by #270.
 5. The attached journal's extra codes do not exist in this repository's

@@ -53,10 +53,16 @@ execution time.
    restore in the report never entered `RESTORING` on `main`?
 2. **Exception inside `reconcileAll`.** Any `RuntimeException` from
    `writer.recaptureDb()` / capture during reconciliation sets `FAILED`
-   directly. Post-#269, NULL-span rows are representable; post-#270 the typed
-   capture-failure surface exists in preview — verify whether
-   `reconcileAll`'s capture/recapture call sites convert typed capture
-   failures to unresolved records or propagate them (internal catch blocks
+   directly. Post-#269, the ordinary folder → workspace move path
+   normalizes desktop spans to `1×1` (`ModelWriter.java:202`), so that user
+   flow no longer produces a NULL-span desktop row; strict canonical capture
+   still rejects malformed/external NULL-span desktop rows
+   (`RowManifestCodec.kt:261`) — a synthetic NULL-span fixture is an
+   invalid-row case, not the ordinary user flow #269 fixed. Post-#270,
+   preview capture failures are typed; verify separately whether
+   capture/recapture failures arising during restart reconciliation are
+   converted to unresolved outcomes or can still escape to
+   `ReadinessGate.reconcile` and set the gate `FAILED` (internal catch blocks
    `:211`/`:235`).
 3. **Recovery-store read failures / artifact-pair poison state.**
    `RecoveryStartupArtifacts` / `RecoveryInspectionSnapshotReader`
