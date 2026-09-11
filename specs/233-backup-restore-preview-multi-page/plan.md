@@ -30,7 +30,7 @@ Baseline `6b6bf8dd9fa0c42399185dbb13c30192f1e15962` (origin/main, 2026-09-10) �
 
 ### test / CI 環境の実態 (2026-09-11 確認)
 
-- local unit test は single module の `test` source set (`java.srcDirs = ['tests/unit']`, `build.gradle` L364-366)、依存は JUnit4 のみ (`testImplementation libs.junit4`)。**Robolectric は未導入**。`:lawnchair` project は存在しない (module は root 一つ)。
+- local unit test は root project の `test` source set (`java.srcDirs = ['tests/unit']`, `build.gradle` L364-366)、依存は JUnit4 のみ (`testImplementation libs.junit4`)。**Robolectric は未導入**。backup UI/logic は root project に属する (`:lawnchair` のような独立 module は存在しない。`settings.gradle` には他 subproject が含まれるが本件の対象は root)。
 - 既存 `tests/unit/app/lawnchair/backup/LawnchairBackupRestoreCriticalSectionTest.kt` は pure JVM (java.io / JUnit4) で DB に依存しない orchestration test。
 - CI (`.github/workflows/ci.yml` "Run organizer unit tests") は `--tests 'app.lawnchair.organizer.*'` 等の filter 指定であり、**`app.lawnchair.backup.*` は含まれていない**。本件で filter に追加する。
 - 検証 command: `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.backup.*'` (既存 task。CI filter への追加も同じ PR で行う)。
@@ -48,14 +48,14 @@ Baseline `6b6bf8dd9fa0c42399185dbb13c30192f1e15962` (origin/main, 2026-09-10) �
 1. **page 要約の解析module (新規)**: `app.lawnchair.backup` 配下に新設 (例: `BackupPageSummaryReader`)。
    - 入力: backup uri (既に画面が保持するもの)。
    - 責務 (純粋 JVM 部分と Android 依存部分に分離):
-     a. **zip 抽出 (pure JVM, unit test 対象)**: `ZipInputStream` で entry 名が完全一致 `launcher.db` のもののみを扱う。同名 entry の2回目の遭遇は unavailable。entry の uncompressed size が上限 (既定 64 MB) を超えたら読まずに unavailable。出力先は内部生成の一意な一時 file (entry 名を使わない)。展開は byte 上限つきで行う (打ち切り = unavailable)。
-     b. **集計 (pure JVM, unit test 対象)**: favorites 行 (`container` / `screen` / `itemType` のみ) の列から、非空 page の昇順 list と page 別の item 総数 / folder 数 / widget 数を計算する純粋関数。folder child は二重計上しない (favorites 行ベースの集計のため自明)。hotseat・空 screen は除外。screen 飛び番は連番化。
-     c. **SQLite 読み取り (Android 依存、unit test 対象外)**: 展開した db を `SQLiteDatabase.OPEN_READONLY` で開き、`favorites` 表の必要 column の存在を検証したうえで 1 本の GROUP BY query (`WHERE container = -100 GROUP BY screen, itemType`) で行を取り出し、(b) へ渡す。失敗 (open 不能・table/column 欠損) は unavailable。
+     a. **zip 抽出 (pure JVM, unit test 対象)**: `ZipInputStream` で entry 名が完全一致 `launcher.db` のもののみを扱う。同名 entry の2回目の遭遇は unavailable。entry の uncompressed size が上限 (既定 64 MB) を超えたら読まずに unavailable。出力先は内部生成の一意な一時 file (entry 名を使わない)。展開は byte 上限つきで行う (打ち切り = unavailable)。**zip 全体の走査にも上限を設ける**: 圧縮 stream の累積読み取り byte 上限 (既定 512 MB) と entry 数上限を設け、`getNextEntry()` の都度 `ensureActive()` で coroutine cancel を確認し、上限到達時は unavailable とする (`ZipInputStream` は未読 entry を内部で drain するため、関連しない entry の展開 cost もこの上限で bound される)。
+     b. **集計 (pure JVM, unit test 対象)**: `(screen, itemType, count)` の grouped 列 (下記 (c) の GROUP BY query 出力) から、非空 page の昇順 list と page 別の item 総数 / folder 数 (`itemType = 2`) / widget 数 (`itemType = 4, 5`) を計算する純粋関数。folder child は二重計上しない (favorites 行ベースの集計のため自明)。hotseat・空 screen は除外。screen 飛び番は連番化。先頭 screen の特定は `workspaceScreens` 表の `screenRank` 最小値 (表なしの場合は非空 screen の最小値) で行い、caption 表示判定 (先頭 screen 以外に非空 page が存在するか) もこの層で計算する。
+     c. **SQLite 読み取り (Android 依存、unit test 対象外)**: 展開した db を `SQLiteDatabase.OPEN_READONLY` で開き、`favorites` 表の必要 column (`container` / `screen` / `itemType`) の存在を検証したうえで `SELECT screen, itemType, COUNT(*) FROM favorites WHERE container = -100 GROUP BY screen, itemType` を実行し、grouped count 行を (b) へ渡す。`workspaceScreens` 表は存在する場合のみ `SELECT _ID FROM workspaceScreens ORDER BY screenRank LIMIT 1` で先頭 screen を読む (表なしは fallback)。失敗 (open 不能・table/column 欠損) は unavailable。
    - 出力: typed result (`PageSummary(pages: List<PageSummaryEntry>)` / `PageSummaryUnavailable`)。platform 型 (Cursor 等) を interface に漏らさない。`BackupInfo` proto は拡張しない。
    - 作業 file: `context.cacheDir` 配下に解析1回ごとに一意な名前で作成し、close 後 `finally` で削除。削除失敗は log のみ。
    - 既存の `LawnchairBackup.readZip` の handler 機構は private であるため、独立した読み取りとして実装する。
 2. **ViewModel 拡張**: `RestoreBackupViewModel` — `readInfoAndPreview()` 成功後、contents が layout を含む場合のみ解析を起動し、その state を `RestoreBackupUiState.Success` とは別の flow (例: `pageSummary: StateFlow<PageSummaryUiState>`) として公開する。`Success` 表示を解析完了待ちさせない (pending 中は UI に何も表示しない)。解析失敗は restore 可否へ影響させない。
-3. **UI**: `RestoreBackupScreen.kt` — caption と page 要約を portrait `DummyLauncherBox` の外 (options 領域近傍) に追加し、landscape でも表示する。表示条件は「backup が layout を含む」かつ「非空 page 数 >= 2」で、screenshot の有無・contents checkbox 状態に依存しない。
+3. **UI**: `RestoreBackupScreen.kt` — caption と page 要約を portrait `DummyLauncherBox` の外 (options 領域近傍) に追加し、landscape でも表示する。表示条件は「backup が layout を含む」かつ「先頭 screen 以外に非空 page が存在 (上記 (b) の判定)」で、screenshot の有無・contents checkbox 状態に依存しない。caption 文言は「保存された page の全部が画像に表示されない可能性があります」系の非断定表現とする。
 4. **strings**: `values/` / `values-ja/` へ追加。caption は「保存された page の一部のみを表示」等の two-panel でも不正確にならない表現。
 5. **CI**: `.github/workflows/ci.yml` の unit test filter へ `'app.lawnchair.backup.*'` を追加。
 
@@ -76,7 +76,7 @@ RestoreBackup route (uri)
 ```
 
 - 解析は `Dispatchers.IO` で実行し、restore button の有効条件 (`contents != 0 && !restoringBackup`) は変更しない。
-- 解析の cost は entry size 上限と単発 GROUP BY query で bound される。`ViewModel.onCleared` で coroutine はキャンセルされ、一時 file は `finally` で削除される。
+- 解析の cost は (a) の zip 全体走査上限 (累積読み取り byte・entry 数) と (c) の単発 GROUP BY query で bound される。`ViewModel.onCleared` で coroutine はキャンセルされ (entry 境界ごとに cancel を確認)、一時 file は `finally` で削除される。
 - 並行性: 解析は restore 実行前の表示期間のみ。restore 実行 (`backup.restore`) との間に data 競合はない (解析は zip のみ読み、DB へ触れない)。`restoringBackup` 中の再解析を行わない。
 
 ### Alternatives rejected
@@ -119,12 +119,12 @@ RestoreBackup route (uri)
 |---|---|---|
 | AC-1 | unit test: multi-page fixture → 集計結果。手動: emulator 2 page layout | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.backup.*'` |
 | AC-2 | unit test: single-page / hotseat-only / 空 favorites fixture | 同上 |
-| AC-3 | unit test: entry 不在・破損 db・重複 entry・size 超過 fixture → unavailable | 同上 |
+| AC-3 | unit test: zip level 失敗注入 (entry 不在・entry 破損・重複 entry・size 超過) → unavailable。SQLite level 失敗 (open 不能・schema 欠損) は AC-8 emulator | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.backup.*'` |
 | AC-4 | unit test: 解析後の作業 file 削除・内部生成 path・書き込みなし | 同上 |
-| AC-5 | unit test: 飛び番 screenId・folder/widget 混在・folder 二重計上なしの境界 fixture | 同上 |
+| AC-5 | unit test: 飛び番 screenId・folder/widget 混在・folder 二重計上なし・先頭 screen 空の境界 fixture | 同上 |
 | AC-6 | unit test (ViewModel state 分離) + 手動 (回転・checkbox) | 同上 + emulator |
 | AC-7 | string 両言語の存在確認 | PR evidence (`git grep`) |
-| AC-8 | emulator (2 page layout) で backup 作成 → restore 画面の caption・要約・TalkBack 読み上げ、実 launcher.db を用いた解析経路を確認し evidence を PR へ記録 | device/emulator |
+| AC-8 | emulator (2 page layout) で backup 作成 → restore 画面の caption・要約・TalkBack 読み上げ・実 launcher.db 解析経路、さらに restore 実行後に復元された workspace の page 構成が backup 保存内容と一致すること (round-trip) を確認し evidence を PR へ記録 | device/emulator |
 | AC-9 | 本 plan の Upstream 記載 + high-risk gate (上記) | PR 本文 / `docs/assessment/` / CI |
 
 property test は本件 (集計ロジック) の規模に対して過剰であり、境界 fixture の列举で代替する。failure injection は AC-3/AC-4 で実施する。instrumentation test は追加しない (表示確認は AC-8 の手動 evidence で担保し、loop cost に見合わない)。
@@ -157,4 +157,4 @@ property test は本件 (集計ロジック) の規模に対して過剰であ�
 - upstream Lawnchair repository に同等の制約・Issue・実装 (graphical multi-page preview) が存在するかは未確認 (network 調査を実装 PR 前に実施する)。
 - SQLite open 経路 (c) は JVM unit test の対象外であり、実 db での検証は AC-8 の emulator evidence に依存する。
 - `favorites` 表の fork 固有 column (organizer lock tri-state 等) が read-only open や集計に影響しないことは schema 定義 (`src/com/android/launcher3/provider/LauncherProvider.java` 系列) の確認で担保する。実装時に確認する。
-- 旧 BACKUP_VERSION の db との互換は「`BACKUP_VERSION = 1` のみ ever-written」であること (L133) と column 存在検証で担保する。
+- 旧 BACKUP_VERSION の db との互換は「`BACKUP_VERSION` は commit `2038c6722c` での backup 実装導入時から一貫して `1` のみ」であること (git history で `BACKUP_VERSION` の変更 record なし) と、必要 column の存在検証で担保する。
