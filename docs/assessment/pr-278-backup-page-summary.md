@@ -5,13 +5,15 @@
 
 - Auditor: independent general-purpose subagent session, distinct from the implementing session (solo-maintenance independent-session audit per docs/project/github-workflow.md)
 - PR: https://github.com/nunu1733/NunuLauncher/pull/278
-- Head SHA: 674983b57399fcb25e16c257ab6c74b0828062f7
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34551442368 (pull_request merge-gate run on head 674983b573; completed/success — `final-status` green after two failed-job reruns of pre-existing organizer instrumentation flakes, see Findings)
+- Head SHA: 25b6e90d687524fed89da69872f2d0c6a2f489b5
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34555077879 (pull_request merge-gate run on head 25b6e90d68; completed/success, `final-status` pass)
 - Criteria: specs/233-backup-restore-preview-multi-page/spec.md AC-1, AC-2, AC-3, AC-4, AC-5, AC-6, AC-7, AC-8, AC-9 (spec reviewed at commit 62a3c0a40a, merged via PR #277)
 
 ## Scope
 
 The audited Head SHA 674983b57399fcb25e16c257ab6c74b0828062f7 is the implementation head; this audit record is the docs-only commit that follows it, per the gate's rule that only docs-only commits may follow an audit.
+
+Re-audit note (2026-09-11): the audit was re-anchored from 674983b57399fcb25e16c257ab6c74b0828062f7 to 25b6e90d687524fed89da69872f2d0c6a2f489b5. `git show 25b6e90d68` verified the intervening delta is exactly one line in `specs/233-backup-restore-preview-multi-page/spec.md` frontmatter (`status: draft` → `status: accepted`, resolving original finding 1); no implementation code, tests, resources, or workflows changed. All other audit content (criteria checks, executed test surface, remaining findings 2–5) is unchanged from the original audit of 674983b573, whose CI merge-gate run 34551442368 was independently confirmed green. CI on the re-anchored head is green: run 34555077879, `final-status` pass (verified via `gh pr checks 278`).
 
 Diff `git diff origin/main..674983b573 --name-only` — 7 files, +613/-1:
 
@@ -51,7 +53,7 @@ CI runs observed (pull_request events, head `674983b573`): run 34551442368 compl
 
 ## Findings
 
-1. Blocking for the machine gate (documentation state, not implementation): the referenced spec `specs/233-backup-restore-preview-multi-page/spec.md` frontmatter still reads `status: draft`, while the PR body and PR #277 treat the spec as reviewed/approved. `validate_high_risk_evidence.py` requires `accepted`/`implemented`. The spec status line must be corrected by the owner/worker; until then the `high-risk-evidence` job fails on this point alone. The auditor's mandate is limited to the audit record and does not include editing the spec's state.
+1. Blocking for the machine gate (documentation state, not implementation): the referenced spec `specs/233-backup-restore-preview-multi-page/spec.md` frontmatter still reads `status: draft`, while the PR body and PR #277 treat the spec as reviewed/approved. `validate_high_risk_evidence.py` requires `accepted`/`implemented`. The spec status line must be corrected by the owner/worker; until then the `high-risk-evidence` job fails on this point alone. The auditor's mandate is limited to the audit record and does not include editing the spec's state. RESOLVED: commit 25b6e90d68 flipped the status to `accepted` (verified one-line diff); see the re-audit note in Scope.
 2. CI on the audited head is green, but only after two `--failed` reruns of unrelated organizer instrumentation flakes (see Executed test surface). The audited diff neither touches nor is touched by those tests.
 3. Unverified (recorded in the PR body, outside this audit's reach): on-device landscape rendering (rotation could not be enabled on the emulator; structural assurance only via placement outside `DummyLauncherBox`) and actual TalkBack read-aloud (uiautomator text-node confirmation only). Suitable to close via follow-up manual evidence without code change.
 4. Info: the unavailable string is shown for any layout backup whose analysis fails, including single-page ones, where the success path shows nothing. This matches the spec's typed-failure wording; deliberate.
