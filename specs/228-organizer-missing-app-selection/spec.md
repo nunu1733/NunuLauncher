@@ -50,7 +50,7 @@ launchable installed apps (per-profile, LauncherApps権限で列挙)
 - 同一appの重複placement (home iconが2箇所等) は「表現済み」と判定する。identity集合からの差分計算であるため、重複は候補性に影響しない。
 - folder内・dock・app pair内のappも「表現済み」と数える (`TargetKey.AppKey` の等価性で判定し、配置種別に依存しない)。
 - work profile / personal profileの別は `ProfileId` で区別する (profile isolation不変条件の継続)。
-- **検出の初期対象は「選択UI表示時点で `AVAILABLE` な候補」に限る**。disabled / suspended / quiet / locked-private-space / unavailable なappは候補一覧から除外する。検出後に無効化されたappは提案生成または適用時に失敗として扱う (§failure)。
+- **検出の初期対象は「選択UI表示時点で `AVAILABLE` な候補」に限る**。disabled / suspended / quiet / locked-private-space / unavailable なappは候補一覧から除外する。検出後に無効化されたappは提案生成または適用時に失敗として扱う (§6)。
 - launcher自身・system内部activity等の「通常のユーザーappとして露出すべきでない」componentの除外は、platformのlaunchable列挙 (`LauncherApps.getActivityList`) がlaunchableと判定したactivity集合をそのまま使う。project側で独自のblocklistを追加しない (最初のdeliveryではplatform列挙を信頼し、除外が必要になった時点で証拠とともに別Issueで扱う)。
 - deep-link-only / non-launchable packageは `getActivityList` に現れないため、構造的に候補にならない。
 - 検出は読み取りのみであり、診断には個人情報 (package名のtext化) を露出しない (既存diagnostics契約の継続)。
@@ -133,7 +133,7 @@ launchable installed apps (per-profile, LauncherApps権限で列挙)
 - preview / 確認のbypass。
 - app install時のbackground自動配置 (package-event配置はIssue #85 Option Bにより別扱い。本機能は**ユーザーが明示的に開始する**選択flowであり、#85のdefer対象であるpackage event triggerを復活させない)。
 - 双方向scope編集 (既存Home配置を整理対象から除外する方向) の実装。ただしdata model / UI構造がこの拡張を妨げないこと (§将来拡張)。
-- 候補の並べ替え・推薦ranking (label順等の決定的な表示順を除く)。
+- 候補の並べ替え・推薦ranking (決定的な表示順の提供自体はD-3に従い実装PRで確定する)。
 
 ## 依存関係
 
@@ -142,7 +142,7 @@ launchable installed apps (per-profile, LauncherApps権限で列挙)
 | #182 layout strategy catalog | implemented | 選択候補の配置が既存strategy選択に従う。変更なし |
 | #194 plan preview seam | implemented | read-only previewと `PreviewChange` projectionの消費。Add表現の追加はprojectionのadditive拡張 |
 | #195 confirmation change list | implemented | 確認UIのgrouping / counts / truncation契約のAdd分拡張 |
-| #208 placement identity | implemented | Add行はsource-backed行ではないためidentity契約の対象外 (NewFolderChangeと同じ位置づけ)。Move/Preserve行のidentity契約は無変更 |
+| #208 placement identity | implemented | Add行はsource-backed行ではないためidentity契約の対象外 (NewFolderChangeと同じ位置づけ)。Move/Preserve行のidentity契約は無変更。`PreviewChange` variant集合の不変条項 (spec 208 AC-1) は本specの`AddChange`追加により意図的に拡張する (既存variantは不変) |
 | #203 usage signals | **未着手 (unsettled)** | 依存しない。usage accessなしで決定的動作が受入条件 |
 | #85 (package-event incremental) | Option Bでdeferred | 本機能はuser-initiatedでありtriggerを共有しない。FR-008のdeferを変更しない |
 
@@ -154,7 +154,7 @@ Given Homeにapp配置が1件もなく、installed launchable appsが40件存在
 
 When ユーザーがOrganizerを開始し選択UIを開く,
 
-Then 40件が候補として表示され (label決定的順序)、選択・検索・Select all / Clear allが機能し、選択せず確定すれば従来どおり変更0件または既存itemのみの提案となる,
+Then 40件が候補として表示され (決定的な順序。表示順はD-3により実装PRで確定)、選択・検索・Select all / Clear allが機能し、選択せず確定すれば従来どおり変更0件または既存itemのみの提案となる,
 
 And 選択したアプリは `Add` 行として提案され、確認・適用を経てHomeへ作成される。
 
@@ -281,6 +281,7 @@ Then 当該appは候補一覧に現れない。
 - 2026-09-11: レビュー条件解消 (code-reviewer-1, Request changes → 修正)。初版は「candidate→Insert経路が既存」と記載していたが、実際にはproduction materialization / preview projection経路が存在しないため (検証: `OrganizationPlanMaterializer.kt` L79-88、`PlanPreviewProjector.kt` L79/L343)、§6を「create経路を本機能で構築」へ書き直した。適用時availability再検証の事前条件追加、commit前後の失敗区別、選択/filter相互作用 (Select all / Clear all / 選択数) の定義、Addを含むrunの具体preview前提、`PreviewCounts` のAdd拡張の明示、policy provenance (AC-13) とpreview確認gate (AC-14) の受入条件追加、test oracleの強化 (write seam counter、CI class filter、a11y evidence分離) を行った。
 - 2026-09-11: ownerレビュー条件解消 (Request changes → 修正)。(1) §5を「`AddChange` を配置先に関係なく候補ごとに1行生成」へ変更し、生成folder内候補がmember listだけで隠れないことをAC-5へ明記。Add count = `AddChange` 行数へ再定義 (top-level限定数えの廃止)。`NewFolderChange` はfolder構造表現のまま構造変更なし。(2) 候補planning ID (`CandidateItem.id`) の契約を§4へ追加し、AC-15を新設 (安定identity由来・決定的・namespace分離・label非依存)。(3) §6のcanonical構築解決をapplication所有の `CandidateApplicationResolver` port経由へ明示 (現行materializerはfolder title resolverのみ受取)。 (4) D-1 = unchecked-by-default / D-2 = 新規scope-composed run mode をowner決定 (2026-09-11コメント) として§3/§4/Decisionsへ記録し、unresolved decisions を解消。
 - 2026-09-11: **owner受入により status を accepted へ移行**。レビュー条件解消後の改訂版 (commit `3d028dda68`) に対するowner指示 (2026-09-11セッション、Phase 1指示) による。本specに基づく実装を開始可能になる。
+- 2026-09-11: accepted移行後のreview (code-reviewer-1, Approve @ `562fc327cd`) の非blocking指摘 (P3×5) を反映。シナリオ・Non-goalsの表示順文言をD-3 (実装PR確定) と整合させ、§1の参照を「(§6)」へ修正、依存関係表の#208行にvariant集合の意図的拡張を明記。
 
 ## References
 

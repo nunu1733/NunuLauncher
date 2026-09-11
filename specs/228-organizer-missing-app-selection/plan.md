@@ -130,9 +130,11 @@ object CandidatePlanningIds {
      * - 表示label / locale / 列挙順に依存しない。同一identityから同一ID
      */
     fun planningId(target: CandidateTarget.AppKey): ItemId =
-        ItemId("candidate-" + sha256Hex("${target.component}:${target.profile.value}"))
+        ItemId("candidate-" + sha256Hex("${target.component.value}:${target.profile.value}"))
 }
 ```
+
+  - 補間対象は両辺ともraw string (`ComponentKey.value` / `ProfileId.value` の `String`) とする (data classのtoString補間にしない)。separator `:` はflatten済みcomponent名 (`pkg/activity` 形式)・profile serialのいずれにも現れないため安全である。
 
   - 導出はcomposerが `CandidateItem` 変換時に使う。既存snapshotとの衝突検証はunit testでnamespace境界として固定する (数値文字列・`planned-folder-*`との交差なし)。
 - candidateのcanonical構築解決port (application所有、新規):
@@ -241,7 +243,7 @@ ManualOrganizationRun (start)
 3. plannerの合成配置経路 + 新mode (ScopeComposedOrganization) 検証 + dispatch + property test
 4. `OrganizationPlanMaterializer` のcandidate partition / `CandidateApplicationResolver` 注入 / canonical構築 / Insert生成 + `PlanPreviewProjector` / `PlanPreview.kt` の `AddChange` 表現 (候補ごと1行、生成folder所属を含む) + counts拡張 (spec 195/208契約の既存test無変更確認)
 5. 適用時availability再検証port + adapter実装 + 契約test (commit前拒否 / Unknown fail-closed / recovery結果契約)
-6. 選択UI + State machine拡張 + Add含むrunの具体preview gate + en/ja strings + CONTEXT.mdへの新mode用語追加
+6. 選択UI + State machine拡張 + Add含むrunの具体preview gate + en/ja strings + CONTEXT.mdへの新mode用語追加 + ADR-0007へのadditions provenance規定の追記 (§2。authority表のfull-organization `TargetSet`行に対する新modeの位置づけ含む)
 7. instrumentation / device evidence (CI class filter更新を含む)
 
 各段階で既存test全通過を確認する。手順は依存順であり、spec受入前に着手する手順は存在しない。
@@ -277,3 +279,4 @@ ManualOrganizationRun (start)
 - 2026-09-11: レビュー条件解消 (code-reviewer-1, Request changes → 修正)。(1) 初版の「typed create pathが既存」という§1.1記載を「断片のみ/production経路は本Issueで構築」へ修正し、§1.2にcandidate materialization経路・availability再検証・分類/provenance対応を追加。(2) §2にsignal materializationとprovenance identityのadditions包含要件 (ADR-0007更新を含む) を追記。(3) §3に `OrganizationPlanMaterializer` / `PlanPreviewProjector` / availability再検証portの変更moduleと所有境界を追加。(4) §4にavailability再検証portのinterface草案を追加。(5) §5にAdd含むrunの具体preview gateをflowへ反映。(6) §7にcommit前/後の失敗区分と `Unknown` fail-closedを追加。(7) §8にmaterializer/provenance/preview gate testとCI class filter要件を追加。(8) §9の開始gateを「全手順はspec受入後」に統一 (初版の「手順1はD-1/D-2と独立に着手できる」を削除)。(9) §10にR-5/R-6、§11にplatform前提の未確認項目を追加。
 - 2026-09-11: ownerレビュー条件解消 (Request changes → 修正)。(1) **D-2を採用 (B) で確定** (owner決定 2026-09-11) し、§2を「(B) 採用、(A) は比較記録」に更新、§3/§9を新mode `ScopeComposedOrganization` 実装要件へ統一。plan冒頭の「D-1〜D-3 owner確定必須」を「D-1/D-2決定済み、D-3実装PR判断」へ統一。(2) **候補planning ID導出規約** (§1.2 item 8、§3 `CandidatePlanningIds`、§4 `planningId` 草案: `candidate-` + SHA-256 16進64文字、namespace分離、locale非依存) を追加し、AC-15対応のunit testを§8へ追加。(3) **`CandidateApplicationResolver` port** (§1.2 item 4にresolver不在を明記、§3所有境界、§4 interface草案、§7責務分離、§8契約test、§9手順4へ注入を追加) を定義し、`CandidateAvailabilityPort` (apply直前) との責務分離を明示。(4) §8のprojection testを「Add count = `AddChange` 行数 (生成folder所属候補を含む)」へ更新。
 - 2026-09-11: **owner受入により status を accepted へ移行** (spec.mdと同時、owner指示 2026-09-11セッション)。§9の開始gateは解消済みとして記録。
+- 2026-09-11: accepted移行後のreview (code-reviewer-1, Approve @ `562fc327cd`) の非blocking指摘 (P3×5) を反映。§4 `planningId` sketchの補間対象を両辺raw stringへ統一しseparator安全性を注記、§9手順6へADR-0007更新 (§2で要求済み) を明記。
