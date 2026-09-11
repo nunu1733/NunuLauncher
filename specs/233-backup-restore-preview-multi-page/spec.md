@@ -61,7 +61,7 @@ updated: 2026-09-11
 Given layout を含む backup が 3 つの非空 workspace page 分の favorites を保存しており
 When ユーザーが restore 画面を開く
 Then graphical preview には従来どおり先頭 page の screenshot が表示される
-And preview 近傍に preview 画像が保存された page の一部のみを表す旨の caption が表示される
+And preview 近傍に preview 画像に保存された page の全部が表示されない可能性がある旨の caption が表示される
 And 保存された非空 page 数 (3) と各 page の要約 (page 別の item / folder / widget 件数) が表示される
 And page は screen 値の昇順で Page 1..3 の連番表示となる
 
