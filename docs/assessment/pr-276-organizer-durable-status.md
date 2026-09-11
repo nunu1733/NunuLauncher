@@ -1,12 +1,13 @@
 # Independent audit: PR #276 durable organizer status projection for re-opened settings (#271)
 
 > Status: accepted
-> Audit date: 2026-09-11 (round 1/2: 2026-09-10)
+> Audit date: 2026-09-11
 
 - Auditor: 独立監査セッション (ZCode/GLM general-purpose subagent、実装セッションとは別の作業主体。solo保守の独立session規定に基づく。round 1: `34ca558234…`対象、round 2: `dcc18d053e…`対象、round 3: `67f427f4e5…`対象 — いずれも別session)
 - PR: https://github.com/nunu1733/NunuLauncher/pull/276
-- Head SHA: 67f427f4e5c02c8c513083cad3917bc38362cdf7
-- CI run: 対象head上の確定した緑runは監査時点で未確定 (round 3 のmerge条件として最終head上での `final-status` 成功を要求 — 下記 Round 3 section)。round 2 までの証拠run: https://github.com/nunu1733/NunuLauncher/actions/runs/34497804951
+- Head SHA: 7804d634a297cf19ddba695732f5e1155c6ef794
+- Audited code head: 67f427f4e5c02c8c513083cad3917bc38362cdf7 (round 3 の検証対象code head。Head SHA までの間は docs/ 配下の監査記録commitのみ)
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34545525921 (pull_request `ci.yml` 実行、Head SHA 上で成功 — 全 job success、`final-status` green)
 - Criteria: specs/271-organizer-durable-status-projection/spec.md — DS-AC-01, DS-AC-02, DS-AC-03, DS-AC-04, DS-AC-05, DS-AC-06, DS-AC-07, DS-AC-08, DS-AC-09, DS-AC-10 (DS-AC-10 は round 3 対象commitで強化)
 
 上記の CI run は merge head `92205bf99eb…` 上の成功実行 (`final-status` green、13 job全て success)。round 2 監査の対象 **code** head は `dcc18d053e45f73f62faf42ebd644f8be18ca38c` であり、監査記録を含む merge head までの delta (`dcc18d053e..92205bf99e`) は `docs/assessment/` 配下 3 file (本記録 + evidence画像2枚) のみの docs-only 変更であるため、byte-identical なコードを検証するものとしてこの実行を証拠とする。round 1 の対象headは `34ca55823423dcd76c5f3d16953bf319e7acf815`、そのhead上のCI実行は actions/runs/34484392559、round 1 時点のcriteriaは DS-AC-01..08 だった (DS-AC-09/10 はround 2対象commitでspecへ追加)。round 1 の記録は以下に保持する。
@@ -250,7 +251,8 @@ worker が取得した cold-process flow の証跡 (emulator `nunu_qpr2_api36_1`
 - CI run 34544282436 (`ci.yml`, `pull_request`, head `67f427f4e5…`): 監査時点で in progress。`check-style` / `organizer-unit-tests` / `build-debug-apk` / `validate-repo-contract` / `changes` および organizer instrumentation の api35 / db-migration / issue155 / issue99 / shared-writer は success。`organizer-instrumentation-issue52-tests` は pending、`organizer-instrumentation-issue53-tests` は failure。
 - **issue53 failure の分析 (PR diff に起因しないと判断):** 失敗は `OnboardingOrganizationProposalInstrumentationTest.awaitResumedLauncher` の `IllegalStateException: LawnchairLauncher did not reach an attached, laid-out RESUMED state after HOME launch` (1/20 tests) — HOME launch 後の resume 待ち timeout という device 状態依存の不安定で、本deltaが触れていない issue-53 onboarding test class である。delta の test 変更対象は `ManualOrganizationPreferencesInstrumentationTest` (issue52 job) であり無関係。同 class は round 2 の green run (34497804951) でも通過しており、round 2 で同種の emulator 不安定が記録済み (その際は同一コードの再実行で green)。
 - `high-risk-evidence` (run 34544282422) の fail は "Evaluate high-risk evidence gate" — 本 round-3 監査記録が対象head上にまだ存在しないためである。本記録を含む docs commit の push がその是正である。
-- **merge 条件:** 高リスク独立エビデンス契約により、merge 前に (1) 検証対象commit (監査記録 + evidence を含む最終head) 上で CI の merge gate (`final-status`) が実際に成功していること、(2) `high-risk-evidence` が本記録を参照して green になること、の両方が要求される。監査時点では issue52 の完了と、issue53 flake の同一head再実行 (round 2 と同様、既知不安定 job の再試行) が必要である。flake でない失敗が最終headで生じた場合は本記録の前提を再確認すること。
+- **merge 条件:** 高リスク独立エビデンス契約により、merge 前に (1) 検証対象commit (監査記録 + evidence を含む最終head) 上で CI の merge gate (`final-status`) が実際に成功していること、(2) `high-risk-evidence` が本記録を参照して green になること、の両方が要求される。監査時点では issue52 の完了と、issue53 flake の同一head再実行 (round 2 と同様、既知不安定 job の再試行) が必要であった。flake でない失敗が最終headで生じた場合は本記録の前提を再確認すること。
+- **監査後の解決 (2026-09-11):** 本記録を含むhead `7804d634a2…` (= Head SHA) 上で、run 34545525921 (pull_request, `ci.yml`) が完了 — 全 job success、`final-status` green。issue52 の focus-assertion flake は既知の既存不安定として同一headの再実行で解消され、issue53 も同様に解消された。上記 merge 条件 (1) はこのheadで満たされている。なお round 2 までの証拠run (34497804951) は merge head `92205bf99e…` 上の実行で本roundの対象commit上の実行ではないため、ヘッダの Head SHA / CI run 行はこの緑runに統一した (監査時点の経緯は本節に履歴として保持)。
 
 ### Findings (round 3)
 
@@ -261,4 +263,4 @@ worker が取得した cold-process flow の証跡 (emulator `nunu_qpr2_api36_1`
 
 ### Round 3 verdict
 
-**PASS (最終head上での CI `final-status` 確定を条件とした承認)** — re-review P1 (cold settings entry が reconciliation を開始しない) への対応を独立検証し、強化版 DS-AC-10 を含む全criteriaを対象head `67f427f4e5…` で確認。upstream bridge (`startLoaderWithoutCallbacks`) は既存pathへの1行 guard 追加のみで、concurrent Launcher bind・organizer reload token・ModelDelegate・install-queue flag のいずれとの相互作用も安全であることを source で確認した。独立再実行 (spotless + unit 982 + instrumentation 48) は green。merge operator は、本記録と evidence を含む最終head上で `final-status` および `high-risk-evidence` の成功を確認してから merge すること。
+**PASS (承認 — 対象Head SHA上で `final-status` green を確認済み)** — re-review P1 (cold settings entry が reconciliation を開始しない) への対応を独立検証し、強化版 DS-AC-10 を含む全criteriaを対象head `67f427f4e5…` で確認。upstream bridge (`startLoaderWithoutCallbacks`) は既存pathへの1行 guard 追加のみで、concurrent Launcher bind・organizer reload token・ModelDelegate・install-queue flag のいずれとの相互作用も安全であることを source で確認した。独立再実行 (spotless + unit 982 + instrumentation 48) は green。`final-status` は本記録を含む Head SHA `7804d634a2…` 上で green を確認済み (run 34545525921、上記「監査後の解決」)。merge operator は `high-risk-evidence` が本記録を参照して green になることを確認してから merge すること。
