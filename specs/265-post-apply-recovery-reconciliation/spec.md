@@ -1,6 +1,6 @@
 ---
 issue: "#265"
-status: draft
+status: accepted
 requirements:
   - AC-265-R1
   - AC-265-R2
