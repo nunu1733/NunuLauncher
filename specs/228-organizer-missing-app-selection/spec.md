@@ -30,7 +30,7 @@ Organizerは、現在Homeに存在しないinstalled/launchable appsを**候補*
 
 - **未配置アプリ候補 (missing-app candidate)**: installed かつ launchable な app のうち、現在のlayout snapshotに同じ安定identityで表現されていないもの。**安定identityは `ComponentKey` (package + activity component) と `ProfileId` の組**であり、表示labelやiconでは同定しない (planning modelの `CandidateTarget.AppKey` と同一規約)。
 - **Home上のapp表現**: snapshot中の `CapturedItem` のうち `TargetKey.AppKey` を持つもの (workspace icon / dock / folder member / app pair memberを含む)。folder内・重複配置も「表現されている」と数える。
-- **`Add`**: 現在workspaceに存在しないアプリに対する新規配置の作成。application層の既存の typed create mutation (`ApplyAction.Insert` 経由の `ApplicationItemRef.PlannedCandidate`) の提案側表現である。`Move` (既存placementの移動) とは区別される。
+- **`Add`**: 現在workspaceに存在しないアプリに対する新規配置の作成。application層の create mutation (`ApplyAction.Insert` 経由の `ApplicationItemRef.PlannedCandidate`) の提案側表現である。`Move` (既存placementの移動) とは区別される。**現在のrepositoryには、この経路の断片 (型定義、DB書込み面の `ApplyAction.Insert` 取扱い) のみが存在し、planをcandidate Insertへ流すproduction materialization経路は存在しない** (`OrganizationPlanMaterializer` はplanned placementがcaptured snapshot itemに対応することを要求し、`PlanPreviewProjector` は `PlannedCandidate` をrejectする)。本機能はこのcreate経路を新規に構築し、既存のMove/Update適用と同等の保証 (transaction / stale-check / recovery / 適用後検証) を与える (§6)。
 
 ## Scope
 
@@ -70,6 +70,11 @@ launchable installed apps (per-profile, LauncherApps権限で列挙)
 - 未選択のまま確定することは「候補を追加しない従来どおりの全体整理」として有効である。
 - 検出された候補が0件の場合、その旨を表示して従来flowに戻る (エラーではない)。
 - 選択stateはprocess-localなUI stateであり、persistしない。
+- **選択stateと検索/filterの相互作用** (受入条件の一部):
+  - 選択stateは候補の安定identityで保持され、検索語・filterの変更では選択を保持する (非表示になっても解除しない)。
+  - **Select all** は、現在の検索語・filterに一致する候補 (表示中の集合) をすべて選択し、それに一致しない既存選択を保持する。
+  - **Clear all** は、検索語・filterの状態に関係なく**候補全体**の選択を解除する (filter外の選択を残すescape hatchではない)。
+  - **選択数の表示は候補全体に対する選択数**であり、filterで絞り込まれた部分集合の数と一致しないことがある。表示は「全体選択数」を正本とする。
 - user-facing語は `Select apps to organize` / `Apps not on Home` 系とする (`install inventory import` 等の実装中心語は使わない)。stringsは `values/` + `values-ja/` 両方へ置く (spec 123契約)。
 
 ### 3. 選択default (初期選択policy)
@@ -91,6 +96,8 @@ launchable installed apps (per-profile, LauncherApps権限で列挙)
 本specはobservable behaviorのみを規定し、(A)/(B)の選択はplanで実装可能性を比較のうえowner reviewで確定する。いずれの選択でも、次の観測可能契約は同一とする:
 
 - 選択された候補は既存の整理規則 (strategy #182, lock, reservation) の下で配置される。
+- **選択された候補は、既存配置と同一のpolicy authority (ADR-0007のimmutable bundleとuser category override) の下で分類・配置される**。候補に対して既存のpolicy source以外の新規policy入力を導入しない。compositionが候補を分類signal materializationの対象に含めない設計は、本specの受入条件を満たさない。
+- **入力provenance (target digest等) は選択済みadditionsを含んで計算される**。同一の選択集合から同一のprovenance identityが得られ、選択集合が変わればprovenance identityが変わること (staleなprovenance再利用の禁止)。
 - 未選択候補はplanにcreate mutationとして現れない。
 - 既存itemのMove/Preserve意味は従来の全体整理と同じ規則に従う。
 - 決定性 (同一入力からbyte-equivalentなplan) と冪等性 (適用後に再実行すると空差分) は維持する。冪等性の規則: 追加済みappは次回検出で「表現済み」となり候補にならない。
@@ -98,16 +105,19 @@ launchable installed apps (per-profile, LauncherApps権限で列挙)
 ### 5. 提案・preview上の `Add` 表現
 
 - preview projection (`PreviewChange`) に、source placementを持たない新規配置行としての **Add表現を導入する** (variant追加または同等の明示的表現)。`MoveChange` (source identity必須) へのoverloadは行わない (#208のidentity契約はsource-backed行が対象であり、Add行はsourceを持たないため、別表現が必要)。
+- **Add行を含む提案は、具体化されたpreview (変更一覧 `details` が存在する状態) でのみ確認可能とする**。既存flowはpreview capture/materialization失敗時に「件数のみのpreview」へfallbackする経路を持つが、Addを含むrunがこのfallback経路で確認可能なままでは、ユーザーがAdd行とその追加先を見ないで作成を承認できてしまう。Addを含むrunで具体previewが得られない場合、確認ではなくtyped失敗 (re-preview誘導) として扱う。Addを含まない従来runの既存fallback挙動は変更しない。
 - Add行は「アプリlabel — kind — 追加先 (page/領域/行列表現 or 生成folder所属)」を表示し、`NewFolderChange` のmemberとして配置される候補は新規folder行のmember一覧で表現される (既存契約の踏襲)。
+- **counts契約の拡張 (意図的なshape拡張を明示)**: `PreviewCounts` にAdd分のcountを追加する。数え方は「新規top-level placement」を1行と数え、生成folderは1行として数え、そのmember数はfolder行内で示す。既存のMove/Preserve/NewFolder/NewPage countsの意味は変更しない。
 - group順序・counts truth・truncationはspec 195の契約をAdd group分だけ拡張し、既存group契約は変更しない。
 - destination表示は #234 (#208依存の実装済み契約) と同じanchor表現を使う。
 - raw package / component / profile serialは表示へ現れない (spec 194 privacy契約の継続)。
 
-### 6. 適用・stale・recovery
+### 6. create mutation経路の構築と適用・stale・recovery
 
-- Add操作の適用は、既存のtyped create mutation (`ApplicationItemRef.PlannedCandidate` → `ApplyAction.Insert`) が持つtransaction / stale-check / recovery / 適用後検証の保証をそのまま消費する。並列の独自write pathは作らない。
-- **app inventoryのstale**: 選択〜適用の間にアプリがuninstalled / disabledになった場合、適用はその候補を含まない部分成功をせず、全体として失敗 (fail-closed) とする。ユーザーは再検出からやり直す。layout revisionのstale検出は既存契約 (exact precondition) に従う。
-- 適用失敗時、部分作成されたHome itemを残さない (atomicity不変条件)。recovery pointは既存契約に従い作成・復旧される。
+- **create経路は本機能で構築する。** 現在のrepositoryには、planをcandidate Insertへ流すproduction経路が存在しない (`OrganizationPlanMaterializer` はplanned placementをcaptured snapshot itemに限定し、candidateを含むplanを `Result.Invalid` にする。`PlanPreviewProjector` も `PlannedCandidate` をrejectする)。既存のDB書込み面 (`ApplyAction.Insert` のtransaction / stale-check / recovery取扱い) は消費するが、並列のwrite pathは作らず、既存materializer / projectorへのcandidate partition拡張として構築する。拡張内容: 候補と既存のpartition検証、候補のcanonical application item構築 (launch intent / profile / title / iconの解決は既存resolver経由)、planned identity mapping、生成folder membership、candidate Insert action生成。
+- **適用時のavailability再検証 (新規のfail-closed事前条件)**: 既存の適用事前条件はInsertについて「対象がDBに存在しないこと」のみを検証し、capture側のavailabilityはprofile由来でcomponent状態 (disabled / suspended等) を反映しないため、preview後のアプリ無効化を既存検証では捕捉できない。本機能は、application module所有のavailability再検証 (component + profile単位) を適用の事前条件に加える。検証はstale revision再確認と同じ適用transaction境界の内側 (または直前) に行い、失敗ならcommit前に拒否する。
+- **app inventoryのstale**: 選択〜適用の間にアプリがuninstall / disabled / suspendedになった場合、前項の再検証がcommit前失敗として捕捉し、全体として失敗 (fail-closed) とする。部分成功はしない。ユーザーは再検出からやり直す。layout revisionのstale検出は既存契約 (exact precondition) に従う。
+- **commit前失敗とcommit後の区別**: commit前の失敗 (availability再検証、stale revision、事前条件違反、write失敗) はrollbackされ、workspace変更は0件である (atomicity不変条件)。commit後の検証失敗は既存recovery契約に従うが、recoveryが `Unresolved` / 失敗になる場合があることを前提とし、**無条件の復旧を約束しない**。ユーザー向け結果表示は既存のrecovery失敗契約 (spec 13 / #210系) に従う。
 - 選択UIを開く・提案を生成する・previewするだけでworkspaceへ書き込まない (zero-write)。previewはread-only seam (`inspectPlan`) を使う。
 
 ### 7. Fresh workspace
@@ -171,7 +181,19 @@ Given 選択済み候補の1つが、提案生成後・適用前にuninstallさ�
 
 When ユーザーが適用を確認する,
 
-Then 適用は失敗し (fail-closed)、一部だけ作成されたitemは残らず、再検出を促す表示がされる。
+Then 適用はcommit前に失敗し (availability再検証のfail-closed)、一部だけ作成されたitemは残らず、再検出を促す表示がされる。
+
+### Scenario: Bulk selection under filter
+
+Given 候補40件があり、検索語で5件が一致し、検索前に3件が選択済みである,
+
+When ユーザーがSelect allを実行する,
+
+Then 選択数は8 (既存3 + 一致5) となり、検索語を解除しても選択8件が保持される。
+
+When 検索語を変えて一致0件の状態でClear allを実行する,
+
+Then 候補全体の選択が解除され、選択数は0になる。
 
 ### Scenario: Zero-write on browsing
 
@@ -218,26 +240,30 @@ Then 当該appは候補一覧に現れない。
 | AC-4 | 未選択候補が提案・適用のいずれにもcreate mutationとして現れない。 |
 | AC-5 | 選択された候補が `Move` / `Preserve` と区別可能な `Add` 表現として提案・確認画面に現れ、#208のsource行identity契約と #195のgrouping/counts契約を退化させない。 |
 | AC-6 | 選択UIを開く・提案生成・previewの各段階でworkspace書込みが0件である (read-only seam経由)。 |
-| AC-7 | Add適用が既存のtransaction / stale-check / recovery / 適用後検証を利用し、適用失敗時に部分作成を残さない。適用中のapp無効化は全体失敗 (fail-closed) となる。 |
+| AC-7 | create経路が既存のtransaction / stale-check / recovery / 適用後検証の面を利用して構築され、適用失敗時に部分作成を残さない。commit前にavailability再検証 (component + profile単位) が行われ、適用時のapp無効化・uninstallは全体失敗 (fail-closed) となる。commit後の検証失敗・recovery失敗 (`Unresolved`含む) のユーザー結果は既存recovery契約に従う。 |
 | AC-8 | Home配置が0件の入力で、検出から選択・提案・適用まで一連のflowが成功する。 |
 | AC-9 | usage accessなし (権限なし・#203なし) で全機能が決定的に動作する。 |
 | AC-10 | 空workspace / 既存+未配置混在 / folder内既存 / 重複配置 / select all / clear all / 部分選択 / cancel / stale layout / 適用と復旧 を覆すinstrumentation/device evidenceがある。 |
-| AC-11 | multi-select semantics / TalkBack / keyboard / Switch Access / 大font layout のaccessibility evidenceがある。 |
+| AC-11 | multi-select semantics / TalkBack / keyboard / Switch Access / 大font layout のaccessibility evidenceがある。自動assertionとassistive-tech (TalkBack / Switch Access) を用いた実機操作evidenceを区別して記録する。 |
 | AC-12 | 追加stringsがja / en両localeで解決する (spec 123契約)。 |
+| AC-13 | 選択済み候補が既存配置と同一のpolicy authority (bundle + user override) で分類され、入力provenance (target digest) がadditionsを含む。同一選択集合から同一provenance identityが得られ、選択集合の変更がprovenance identityを変える。 |
+| AC-14 | Addを含む提案は具体preview (`details` 有り) でのみ確認可能であり、count-only fallbackでは確認できない。Addを含まない従来runの確認挙動は無変更である。 |
 
 ## Test oracle
 
 | AC | Evidence |
 |---|---|
-| AC-1 | 検出moduleのunit test (fixture: folder内・重複・work profile・disabled / suspended除外・non-launchable構造除外) |
-| AC-2, AC-3 | 選択UIのinstrumentation test (選択・検索・bulk操作・選択数表示・初期選択policy) |
+| AC-1 | 検出moduleのunit test (fixture: folder内・重複・work profile・disabled / suspended除外・non-launchable構造除外・複数launcher activity) |
+| AC-2, AC-3 | 選択UIのinstrumentation test (選択・検索・bulk操作・選択数表示・初期選択policy)。CI class filter (`ci.yml` connected-test lanes) への新test class追加を実装PRで行う |
 | AC-4, AC-5 | planner / projectionのunit + property test (未選択候補の不在、Add行とMove/Preserve行の区別、counts整合) |
-| AC-6 | zero-writeのinstrumentation test (DB状態比較) |
-| AC-7 | application契約test (test DBでinsert失敗注入・rollback・stale・適用後検証) |
+| AC-6 | zero-writeのinstrumentation test (DB状態比較**と**application write seamの呼出し回数0) |
+| AC-7 | application契約test (test DBでinsert失敗注入・rollback・stale・適用後検証)。preview後・適用直前のdisable / uninstall注入によるcommit前拒否、およびcommit後recovery失敗 (`Unresolved`) の結果契約testを含む |
 | AC-8, AC-10 | 空workspace / 混在workspaceの決定的test + device evidence (API 36 / Platform 36.1, CI job) |
 | AC-9 | 権限なし環境での決定的動作test |
-| AC-11 | a11y instrumentation test (TalkBack / Switch Access / keyboard / 200% font) |
+| AC-11 | 自動a11y assertion (unit / instrumentation) に加え、TalkBack / Switch Access実操作とkeyboard / 200% fontのdevice evidenceを分離して記録 |
 | AC-12 | ja configuration contextでのstring解決test |
+| AC-13 | composer / planner unit test (選択集合変更によるprovenance identity変化、候補分類がbundle + overrideのみを経由すること) |
+| AC-14 | preview fallback経路のunit / instrumentation test (Add runで `details = null` が確認不可、Add無しrunは既存挙動維持) |
 
 ## Unresolved decisions (実装開始前にowner判断が必要)
 
@@ -248,7 +274,8 @@ Then 当該appは候補一覧に現れない。
 ## Change history
 
 - 2026-09-10: Drafted for Issue #228。依存Issue (#182/#194/#195/#208) はimplementedであることを確認し、domain model (`TargetSet.additions` / `CandidateItem` / `RunMode.IncrementalPlacement` / `ApplyAction.Insert`) に既存の拡張点があること、production wiringがFullOrganization固定であることをbaseline `6b6bf8dd9fa0c42399185dbb13c30192f1e15962` 上で確認して起草。#203は未着手のため依存から除外。D-1〜D-3をunresolved decisionsとして明記。
-- 2026-09-11: 再入場検証。baseline `6b6bf8dd` から `b761839479` へのmain差分を確認し、本specが参照する拡張点・検証規則・preview variants・typed create pathがいずれも未変更であることを再確認した。baseline以降のorganizer変更は Issue #271 (durable status projection) のadditive変更のみであり、本specのobservable behavior・受入条件・Non-goalsに変更なし。実質的な設計判断の変更なし。
+- 2026-09-11: 再入場検証。baseline `6b6bf8dd` から `b761839479` へのmain差分を確認し、本specが参照する拡張点・検証規則・preview variantsがいずれも未変更であることを再確認した。baseline以降のorganizer変更は Issue #271 (durable status projection) のadditive変更のみであり、本specのobservable behavior・受入条件・Non-goalsに変更なし。
+- 2026-09-11: レビュー条件解消 (code-reviewer-1, Request changes → 修正)。初版は「candidate→Insert経路が既存」と記載していたが、実際にはproduction materialization / preview projection経路が存在しないため (検証: `OrganizationPlanMaterializer.kt` L79-88、`PlanPreviewProjector.kt` L79/L343)、§6を「create経路を本機能で構築」へ書き直した。適用時availability再検証の事前条件追加、commit前後の失敗区別、選択/filter相互作用 (Select all / Clear all / 選択数) の定義、Addを含むrunの具体preview前提、`PreviewCounts` のAdd拡張の明示、policy provenance (AC-13) とpreview確認gate (AC-14) の受入条件追加、test oracleの強化 (write seam counter、CI class filter、a11y evidence分離) を行った。
 
 ## References
 
