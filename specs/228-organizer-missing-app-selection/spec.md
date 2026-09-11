@@ -9,7 +9,7 @@ requirements:
   - NFR-009
 risk:
   - layout-data
-updated: 2026-09-10
+updated: 2026-09-11
 ---
 
 # ホーム未配置アプリを選択してOrganizerの対象へ追加できる
@@ -248,6 +248,7 @@ Then 当該appは候補一覧に現れない。
 ## Change history
 
 - 2026-09-10: Drafted for Issue #228。依存Issue (#182/#194/#195/#208) はimplementedであることを確認し、domain model (`TargetSet.additions` / `CandidateItem` / `RunMode.IncrementalPlacement` / `ApplyAction.Insert`) に既存の拡張点があること、production wiringがFullOrganization固定であることをbaseline `6b6bf8dd9fa0c42399185dbb13c30192f1e15962` 上で確認して起草。#203は未着手のため依存から除外。D-1〜D-3をunresolved decisionsとして明記。
+- 2026-09-11: 再入場検証。baseline `6b6bf8dd` から `b761839479` へのmain差分を確認し、本specが参照する拡張点・検証規則・preview variants・typed create pathがいずれも未変更であることを再確認した。baseline以降のorganizer変更は Issue #271 (durable status projection) のadditive変更のみであり、本specのobservable behavior・受入条件・Non-goalsに変更なし。実質的な設計判断の変更なし。
 
 ## References
 

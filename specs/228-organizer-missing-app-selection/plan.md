@@ -2,13 +2,15 @@
 issue: "#228"
 status: draft
 spec: ./spec.md
-updated: 2026-09-10
+updated: 2026-09-11
 ---
 
 # Plan: ホーム未配置アプリ選択のOrganizer対象追加
 
-> Baseline: `origin/main` = `6b6bf8dd9fa0c42399185dbb13c30192f1e15962` (2026-09-10時点)。
+> Baseline: `origin/main` = `b761839479259cb4df815151e01df93c655448a7` (2026-09-11時点)。
 > 本planは spec.md (draft) に対応する。D-1〜D-3はspecのunresolved decisionsであり、実装開始前にownerが確定する必要がある。本planは (D-2 について) 比較材料を提供するが、選択を確定しない。
+>
+> **再入場検証 (2026-09-11)**: 初版baseline `6b6bf8dd9fa0c42399185dbb13c30192f1e15962` から現baseline `b761839479` への差分を確認した。`specs/228` 参照の拡張点 (`TargetSet.additions` / `CandidateItem` / `RunMode` / `ADDITIONS_UNDER_FULL_ORGANIZATION` / `checkCandidates` / `FullTargetSetMaterializer` の `additions = emptyList()` 固定 / `PlanPreview.kt` variants / `ActionMaterializer.kt` Insert経路) は**いずれも未変更**である。organizer側の変更は Issue #271 (durable status projection: `ReadinessGate.stateFlow` / `RecoveryStore.readInspectionSnapshot` / `ManualOrganizationRun` への読み取り専用facade追加) が本plan対象外のadditive変更であり、本planの前提に影響しない。Issue #228のコメント再取得では、スナップショットコメント (2026-09-10) 以降の追記はない。
 
 ## 1. 現状の実装と拡張点 (baseline確認済み)
 
@@ -16,11 +18,11 @@ updated: 2026-09-10
 
 | 要素 | 場所 | 状態 |
 |---|---|---|
-| `TargetSet.additions: List<CandidateItem>` | `lawnchair/src/app/lawnchair/organizer/planning/OrganizationInput.kt` (L214-) | 存在。productionからは常に空 |
+| `TargetSet.additions: List<CandidateItem>` | `lawnchair/src/app/lawnchair/organizer/planning/OrganizationInput.kt` (L216) | 存在。productionからは常に空 (`integration/FullTargetSetMaterializer.kt` L63) |
 | `CandidateItem` (`CandidateKind.APPLICATION/DEEP_SHORTCUT`, `CandidateTarget.AppKey/ShortcutKey`, `availability`, `span`) | 同上 (L136-) | 存在。安定identityは `ComponentKey` + `ProfileId` |
 | `RunMode.IncrementalPlacement` | 同上 | 存在。plannerは `placeIncrementalRun` で既存itemを全Preserveし候補のみ配置 |
 | 検証 `ADDITIONS_UNDER_FULL_ORGANIZATION` | `planning/PlanningValidation.kt` L619-624 | FullOrganizationでadditions非空をreject |
-| 候補検証 `checkCandidates` (grid超過 / unavailable) | `planning/PlanningValidation.kt` L625-640 | 存在 |
+| 候補検証 `checkCandidates` (grid超過 / unavailable) | `planning/PlanningValidation.kt` L627-641 | 存在 |
 | typed create path: `PlannedCandidateItem` → `ApplyAction.Insert` | `application/actions/ActionMaterializer.kt` L78-83, `application/adapter/LauncherLayoutAdapter.kt` L423 | 存在。InsertのDB書込み・transaction・recoveryは既存契約に含まれる |
 | launchable列挙の権限面 | `integration/AndroidClassificationSignalSnapshotSource.kt`, `ui/CategoryOverrideAuthoring.kt` (L160-166: `LauncherApps.getActivityList(null, user)`) | 参照実装あり |
 
@@ -160,10 +162,15 @@ ManualOrganizationRun (start)
 - `placeIncrementalRun` のfolder group構成をfull-organize合成に再利用した場合のtie-break順序が既存`GLOBAL_COMPACT_V2`等のstrategy別期待値と衝突しないかは、実装時にstrategyごとの期待値testで確認する必要がある (baseline時点では未検証)。
 - `PreviewLabel` / 行構築 (`OrganizationPreviewContent`) の既存copy構造にAdd行が収まるかの詳細は、手順4での実装時確認 (spec 195の行形式契約に従う)。
 - app pair memberとして表現されたappが `TargetKey.AppKey` 等価で差分計算できるかは、captureのapp pair表現 (`AppPairMetadata` / members) の実装詳細確認が必要 (baseline時点でmembersのtarget解決方法は未確認)。
-- 本planは`git worktree`上のbaseline (`6b6bf8dd`) でのみ検証しており、CI上でのbuild/testは実行していない。
+- 初版はbaseline `6b6bf8dd` で検証し、2026-09-11に再入場検証を行ってbaseline `b761839479` へ再アンカーした (§1参照箇所の行番号は現baseline上で再確認済み)。CI上でのbuild/testは実行していない (docs-only差分)。
 
 ## 12. 関連
 
 - spec: [./spec.md](./spec.md) (draft)
 - Issue: [#228](https://github.com/nunu1733/NunuLauncher/issues/228)
 - 依存: #182, #194, #195, #208 (いずれもimplemented), #203 (オプション・未依存)
+
+## Change history
+
+- 2026-09-10: 初版起草 (baseline `6b6bf8dd9fa0c42399185dbb13c30192f1e15962`)。
+- 2026-09-11: 再入場検証。baselineを `b761839479259cb4df815151e01df93c655448a7` へ再アンカーし、§1の参照箇所 (`OrganizationInput.kt` L216、`FullTargetSetMaterializer.kt` L63、`PlanningValidation.kt` L619-624/L627-641、`PlanPreview.kt` variants、`ActionMaterializer.kt` L82、`LauncherLayoutAdapter.kt` L423、`CategoryOverrideAuthoring.kt` L166) を現baseline上で再確認。baseline以降のorganizer変更は #271 のadditive変更のみであり、本planの前提に影響なし。実質的な設計判断の変更なし。
