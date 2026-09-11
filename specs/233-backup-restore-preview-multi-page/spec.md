@@ -20,7 +20,7 @@ updated: 2026-09-11
 
 ## Outcome
 
-複数 Home page を含む backup の restore 確認画面で、ユーザーは (1) graphical preview が保存された全 page の一部のみを表すことを明示され、(2) 保存対象の Home page を識別する補助情報 (非空 page 数と各 page の item 種別件数) を restore 実行前に確認できる。これにより「表示されている preview = backup 全体」という誤認が排除され、high-impact な restore 操作の事前確認としての妥当性が回復する。ただし本機能は page 別の**件数集計**までを提供し、「特定の app がどの page のどこへ配置されるか」を特定できるようにはしない (app 同定は非対象、Open questions 参照)。
+複数 Home page を含む backup の restore 確認画面で、ユーザーは (1) graphical preview に保存された page の全部が表示されない可能性があることを明示され、(2) 保存対象の Home page を識別する補助情報 (非空 page 数と各 page の item 種別件数) を restore 実行前に確認できる。これにより「表示されている preview = backup 全体」という誤認が排除され、high-impact な restore 操作の事前確認としての妥当性が回復する。ただし本機能は page 別の**件数集計**までを提供し、「特定の app がどの page のどこへ配置されるか」を特定できるようにはしない (app 同定は非対象、Open questions 参照)。
 
 ## Scope
 

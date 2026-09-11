@@ -76,7 +76,7 @@ RestoreBackup route (uri)
 ```
 
 - 解析は `Dispatchers.IO` で実行し、restore button の有効条件 (`contents != 0 && !restoringBackup`) は変更しない。
-- 解析の cost は (a) の zip 全体走査上限 (累積読み取り byte・entry 数) と (c) の単発 GROUP BY query で bound される。`ViewModel.onCleared` で coroutine はキャンセルされ (entry 境界ごとに cancel を確認)、一時 file は `finally` で削除される。
+- 解析の cost は (a) の zip 全体走査上限 (chunk ごとの展開後累積 byte 上限・圧縮 byte 上限・entry 数上限) と (c) の単発 GROUP BY query で bound される。`ViewModel.onCleared` で coroutine はキャンセルされ (chunk 読み取りごとに cancel を確認)、一時 file は `finally` で削除される。
 - 並行性: 解析は restore 実行前の表示期間のみ。restore 実行 (`backup.restore`) との間に data 競合はない (解析は zip のみ読み、DB へ触れない)。`restoringBackup` 中の再解析を行わない。
 
 ### Alternatives rejected
