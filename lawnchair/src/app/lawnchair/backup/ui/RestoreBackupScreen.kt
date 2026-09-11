@@ -90,7 +90,7 @@ fun RestoreBackupScreen(
         label = stringResource(id = R.string.restore_backup),
         modifier = modifier,
         backArrowVisible = !LocalIsExpandedScreen.current,
-        scrollState = if (isPortrait) null else scrollState,
+        scrollState = scrollState,
     ) {
         when (uiState) {
             is RestoreBackupUiState.Success -> RestoreBackupOptions(isPortrait, uiState.backup)
@@ -151,7 +151,7 @@ fun ColumnScope.RestoreBackupOptions(
         DummyLauncherBox(
             modifier = Modifier
                 .padding(top = 8.dp)
-                .weight(1f)
+                .heightIn(max = 320.dp)
                 .align(Alignment.CenterHorizontally)
                 .clip(MaterialTheme.shapes.large),
             darkText = backup.info.previewDarkText,
@@ -195,37 +195,28 @@ fun ColumnScope.RestoreBackupOptions(
                                     summary.pages.size,
                                 ),
                             ) {
-                                // The portrait restore layout has no page-level scroll, so the
-                                // summary body is height-bounded and scrollable itself: every
-                                // saved page stays listed while the restore controls below
-                                // remain reachable at any font scale (spec overflow contract).
-                                Box(
-                                    modifier = Modifier
-                                        .heightIn(max = 240.dp)
-                                        .verticalScroll(rememberScrollState()),
-                                ) {
-                                    Column {
-                                        Text(
-                                            text = stringResource(id = R.string.backup_preview_partial_caption),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            modifier = Modifier.padding(horizontal = 16.dp),
-                                        )
-                                        summary.pages.forEachIndexed { index, page ->
-                                            Text(
-                                                text = stringResource(
-                                                    id = R.string.backup_page_summary_entry,
-                                                    index + 1,
-                                                    page.itemCount,
-                                                    page.folderCount,
-                                                    page.widgetCount,
-                                                ),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                modifier = Modifier
-                                                    .padding(top = 4.dp)
-                                                    .padding(horizontal = 16.dp),
-                                            )
-                                        }
-                                    }
+                                // The restore layout scrolls as a whole (spec overflow
+                                // contract): every saved page stays listed and the restore
+                                // controls remain reachable at any font scale or page count.
+                                Text(
+                                    text = stringResource(id = R.string.backup_preview_partial_caption),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                )
+                                summary.pages.forEachIndexed { index, page ->
+                                    Text(
+                                        text = stringResource(
+                                            id = R.string.backup_page_summary_entry,
+                                            index + 1,
+                                            page.itemCount,
+                                            page.folderCount,
+                                            page.widgetCount,
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier
+                                            .padding(top = 4.dp)
+                                            .padding(horizontal = 16.dp),
+                                    )
                                 }
                             }
                         }

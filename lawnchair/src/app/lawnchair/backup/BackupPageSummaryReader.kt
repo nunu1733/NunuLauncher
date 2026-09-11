@@ -131,11 +131,10 @@ private class BoundedInputStream(
     private fun count(bytes: Long) {
         bytesRead += bytes
         if (bytesRead > maxBytes && !budgetThrown) {
-            // Throw exactly once. The extraction loop drains each entry fully
-            // itself, but during use{} unwinding close() can still perform
-            // reads; those must not mask the mapped result with a second
-            // exception, and after the budget is spent there is no legitimate
-            // consumer of further bytes.
+            // Throw exactly once: the extraction loop maps this to
+            // ArchiveTooLarge and returns; later reads (e.g. defensive
+            // close-drain) must not mask the mapped result with a second
+            // exception, and after the budget is spent no consumer remains.
             budgetThrown = true
             throw ArchiveBudgetExceededException
         }
