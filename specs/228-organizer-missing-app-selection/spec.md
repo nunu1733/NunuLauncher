@@ -1,6 +1,6 @@
 ---
 issue: "#228"
-status: draft
+status: accepted
 requirements:
   - FR-002
   - FR-006
@@ -14,7 +14,7 @@ updated: 2026-09-11
 
 # ホーム未配置アプリを選択してOrganizerの対象へ追加できる
 
-> Status: draft (未承認)。Issue #228 の依存Issue (#182, #194, #195, #208) はいずれもimplementedであり、本specはそれらの契約を変更せず消費する。#203 (usage signal) には依存しない。
+> Status: **accepted** (owner承認 2026-09-11。経緯はChange history末尾)。Issue #228 の依存Issue (#182, #194, #195, #208) はいずれもimplementedであり、本specはそれらの契約を変更せず消費する。#203 (usage signal) には依存しない。
 
 ## Problem
 
@@ -272,7 +272,7 @@ Then 当該appは候補一覧に現れない。
 - **D-2 run mode composition: 新規run mode (scope-composed organize) 採用** — owner決定 (2026-09-11, 同コメント)。`FullOrganization` の「additions空」不変条件と既存検証は無変更。
 - **D-3 候補一覧の表示順**: 実装PR内で確定 (owner判断)。決定性 (NFR-003) を満たす決定的順序であること (locale依存の表示label順はplan §4のID規約の採番には使わない; 表示順としての可否は実装PRで決める)。
 
-実装開始は、本spec (上記決定を反映した改訂版) のowner受入をもって許可される。
+実装開始は、本spec (上記決定を反映した改訂版) のowner受入をもって許可される。**owner受入: 2026-09-11** — レビュー ([Request changes](https://github.com/nunu1733/NunuLauncher/issues/228#issuecomment-5634964606)) の全条件 (Add行の候補ごと表現、planning ID契約、CandidateApplicationResolver port、D-1/D-2確定、D-3表記統一) が解消された改訂版 (commit `3d028dda68`) に対し、ownerの指示によりacceptedへ移行した。
 
 ## Change history
 
@@ -280,6 +280,7 @@ Then 当該appは候補一覧に現れない。
 - 2026-09-11: 再入場検証。baseline `6b6bf8dd` から `b761839479` へのmain差分を確認し、本specが参照する拡張点・検証規則・preview variantsがいずれも未変更であることを再確認した。baseline以降のorganizer変更は Issue #271 (durable status projection) のadditive変更のみであり、本specのobservable behavior・受入条件・Non-goalsに変更なし。
 - 2026-09-11: レビュー条件解消 (code-reviewer-1, Request changes → 修正)。初版は「candidate→Insert経路が既存」と記載していたが、実際にはproduction materialization / preview projection経路が存在しないため (検証: `OrganizationPlanMaterializer.kt` L79-88、`PlanPreviewProjector.kt` L79/L343)、§6を「create経路を本機能で構築」へ書き直した。適用時availability再検証の事前条件追加、commit前後の失敗区別、選択/filter相互作用 (Select all / Clear all / 選択数) の定義、Addを含むrunの具体preview前提、`PreviewCounts` のAdd拡張の明示、policy provenance (AC-13) とpreview確認gate (AC-14) の受入条件追加、test oracleの強化 (write seam counter、CI class filter、a11y evidence分離) を行った。
 - 2026-09-11: ownerレビュー条件解消 (Request changes → 修正)。(1) §5を「`AddChange` を配置先に関係なく候補ごとに1行生成」へ変更し、生成folder内候補がmember listだけで隠れないことをAC-5へ明記。Add count = `AddChange` 行数へ再定義 (top-level限定数えの廃止)。`NewFolderChange` はfolder構造表現のまま構造変更なし。(2) 候補planning ID (`CandidateItem.id`) の契約を§4へ追加し、AC-15を新設 (安定identity由来・決定的・namespace分離・label非依存)。(3) §6のcanonical構築解決をapplication所有の `CandidateApplicationResolver` port経由へ明示 (現行materializerはfolder title resolverのみ受取)。 (4) D-1 = unchecked-by-default / D-2 = 新規scope-composed run mode をowner決定 (2026-09-11コメント) として§3/§4/Decisionsへ記録し、unresolved decisions を解消。
+- 2026-09-11: **owner受入により status を accepted へ移行**。レビュー条件解消後の改訂版 (commit `3d028dda68`) に対するowner指示 (2026-09-11セッション、Phase 1指示) による。本specに基づく実装を開始可能になる。
 
 ## References
 

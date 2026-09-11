@@ -1,6 +1,6 @@
 ---
 issue: "#228"
-status: draft
+status: accepted
 spec: ./spec.md
 updated: 2026-09-11
 ---
@@ -8,7 +8,7 @@ updated: 2026-09-11
 # Plan: ホーム未配置アプリ選択のOrganizer対象追加
 
 > Baseline: `origin/main` = `b761839479259cb4df815151e01df93c655448a7` (2026-09-11時点)。
-> 本planは spec.md (draft) に対応する。**D-1 (unchecked-by-default) とD-2 (新規scope-composed run mode) はowner決定済み** ([Issueコメント 2026-09-11](https://github.com/nunu1733/NunuLauncher/issues/228#issuecomment-5634964606))。D-3 (候補表示順) はowner判断により実装PR内で確定する。本planはD-2の比較記録を残すが、採用は (B) で確定済み。実装開始はspec accepted後。
+> 本planは spec.md (**accepted**, owner承認 2026-09-11) に対応する。**D-1 (unchecked-by-default) とD-2 (新規scope-composed run mode) はowner決定済み** ([Issueコメント 2026-09-11](https://github.com/nunu1733/NunuLauncher/issues/228#issuecomment-5634964606))。D-3 (候補表示順) はowner判断により実装PR内で確定する。本planはD-2の比較記録を残すが、採用は (B) で確定済み。spec受入済みのため §9 の実装手順は開始可能である。
 >
 > **再入場検証 (2026-09-11)**: 初版baseline `6b6bf8dd9fa0c42399185dbb13c30192f1e15962` から現baseline `b761839479` への差分を確認した。`specs/228` 参照の拡張点 (`TargetSet.additions` / `CandidateItem` / `RunMode` / `ADDITIONS_UNDER_FULL_ORGANIZATION` / `checkCandidates` / `FullTargetSetMaterializer` の `additions = emptyList()` 固定 / `PlanPreview.kt` variants / `ActionMaterializer.kt` Insert経路) は**いずれも未変更**である。organizer側の変更は Issue #271 (durable status projection: `ReadinessGate.stateFlow` / `RecoveryStore.readInspectionSnapshot` / `ManualOrganizationRun` への読み取り専用facade追加) が本plan対象外のadditive変更であり、本planの前提に影響しない。Issue #228のコメント再取得では、スナップショットコメント (2026-09-10) 以降の追記はない。
 
@@ -234,7 +234,7 @@ ManualOrganizationRun (start)
 
 ## 9. 実装順序 (incremental)
 
-**開始gate**: 本planの全手順 (手順1の純粋計算とtestを含む) は、**spec.mdがownerによりacceptedになった後にのみ開始する** (D-1/D-2は決定済み。受入対象は決定反映済みの改訂版spec)。Issue #228とAGENTS.mdの要求により、missing-app identity規則・選択semantics・create-mutation安全契約の受入前にsource実装を始めない。D-3 (候補表示順) は決定性 (NFR-003) を満たす範囲で実装PR内で確定してよい実装判断であり、受入後の実装PRで決める。
+**開始gate (解消済み)**: 本planの全手順 (手順1の純粋計算とtestを含む) は、**spec.mdがownerによりacceptedになった後にのみ開始する** (D-1/D-2は決定済み。受入対象は決定反映済みの改訂版spec)。Issue #228とAGENTS.mdの要求により、missing-app identity規則・選択semantics・create-mutation安全契約の受入前にsource実装を始めない。D-3 (候補表示順) は決定性 (NFR-003) を満たす範囲で実装PR内で確定してよい実装判断であり、受入後の実装PRで決める。**spec受入: 2026-09-11 (owner指示、改訂版 commit `3d028dda68` 対象)。開始条件は満たされている。**
 
 1. detection純粋計算 + unit test (platformなしで検証可能)
 2. planning ID導出 (`CandidatePlanningIds`) + `MissingAppCandidateSource` production実装 + composition拡張 (additions転換、分類signal materializationの候補対応、provenance/digest拡張)
@@ -266,7 +266,7 @@ ManualOrganizationRun (start)
 
 ## 12. 関連
 
-- spec: [./spec.md](./spec.md) (draft)
+- spec: [./spec.md](./spec.md) (accepted)
 - Issue: [#228](https://github.com/nunu1733/NunuLauncher/issues/228)
 - 依存: #182, #194, #195, #208 (いずれもimplemented), #203 (オプション・未依存)
 
@@ -276,3 +276,4 @@ ManualOrganizationRun (start)
 - 2026-09-11: 再入場検証。baselineを `b761839479259cb4df815151e01df93c655448a7` へ再アンカーし、§1の参照箇所 (`OrganizationInput.kt` L216、`FullTargetSetMaterializer.kt` L63、`PlanningValidation.kt` L619-624/L627-641、`PlanPreview.kt` variants、`ActionMaterializer.kt` L82、`LauncherLayoutAdapter.kt` L423、`CategoryOverrideAuthoring.kt` L166) を現baseline上で再確認。baseline以降のorganizer変更は #271 のadditive変更のみであり、本planの前提に影響なし。
 - 2026-09-11: レビュー条件解消 (code-reviewer-1, Request changes → 修正)。(1) 初版の「typed create pathが既存」という§1.1記載を「断片のみ/production経路は本Issueで構築」へ修正し、§1.2にcandidate materialization経路・availability再検証・分類/provenance対応を追加。(2) §2にsignal materializationとprovenance identityのadditions包含要件 (ADR-0007更新を含む) を追記。(3) §3に `OrganizationPlanMaterializer` / `PlanPreviewProjector` / availability再検証portの変更moduleと所有境界を追加。(4) §4にavailability再検証portのinterface草案を追加。(5) §5にAdd含むrunの具体preview gateをflowへ反映。(6) §7にcommit前/後の失敗区分と `Unknown` fail-closedを追加。(7) §8にmaterializer/provenance/preview gate testとCI class filter要件を追加。(8) §9の開始gateを「全手順はspec受入後」に統一 (初版の「手順1はD-1/D-2と独立に着手できる」を削除)。(9) §10にR-5/R-6、§11にplatform前提の未確認項目を追加。
 - 2026-09-11: ownerレビュー条件解消 (Request changes → 修正)。(1) **D-2を採用 (B) で確定** (owner決定 2026-09-11) し、§2を「(B) 採用、(A) は比較記録」に更新、§3/§9を新mode `ScopeComposedOrganization` 実装要件へ統一。plan冒頭の「D-1〜D-3 owner確定必須」を「D-1/D-2決定済み、D-3実装PR判断」へ統一。(2) **候補planning ID導出規約** (§1.2 item 8、§3 `CandidatePlanningIds`、§4 `planningId` 草案: `candidate-` + SHA-256 16進64文字、namespace分離、locale非依存) を追加し、AC-15対応のunit testを§8へ追加。(3) **`CandidateApplicationResolver` port** (§1.2 item 4にresolver不在を明記、§3所有境界、§4 interface草案、§7責務分離、§8契約test、§9手順4へ注入を追加) を定義し、`CandidateAvailabilityPort` (apply直前) との責務分離を明示。(4) §8のprojection testを「Add count = `AddChange` 行数 (生成folder所属候補を含む)」へ更新。
+- 2026-09-11: **owner受入により status を accepted へ移行** (spec.mdと同時、owner指示 2026-09-11セッション)。§9の開始gateは解消済みとして記録。
