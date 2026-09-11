@@ -139,6 +139,7 @@ class BackupPageSummaryTest {
         zipBytes: ByteArray,
         maxEntryBytes: Long = 64L * 1024 * 1024,
         maxArchiveUncompressedBytes: Long = 512L * 1024 * 1024,
+        maxArchiveCompressedBytes: Long = 512L * 1024 * 1024,
         maxEntries: Int = 10_000,
     ): Pair<ZipExtractionResult, File> {
         val target = tempFolder.newFile("extracted.db")
@@ -148,6 +149,7 @@ class BackupPageSummaryTest {
                 target,
                 maxEntryBytes = maxEntryBytes,
                 maxArchiveUncompressedBytes = maxArchiveUncompressedBytes,
+                maxArchiveCompressedBytes = maxArchiveCompressedBytes,
                 maxEntries = maxEntries,
             )
         }
@@ -246,6 +248,34 @@ class BackupPageSummaryTest {
         val entries = (1..20).associate { "f$it" to byteArrayOf(it.toByte()) }
         val (result, _) = extract(zip(entries), maxEntries = 5)
         assertEquals(ZipExtractionResult.ArchiveTooLarge, result)
+    }
+
+    @Test
+    fun `compressed input budget bounds the scan`() {
+        val (result, _) = extract(
+            zip(mapOf("big.bin" to ByteArray(4096), LAUNCHER_DB_FILE_NAME to ByteArray(16))),
+            maxArchiveCompressedBytes = 128,
+        )
+        assertEquals(ZipExtractionResult.ArchiveTooLarge, result)
+    }
+
+    @Test
+    fun `truncated zip stream surfaces as an exception for the reader to map to unavailable`() {
+        val full = zip(mapOf(LAUNCHER_DB_FILE_NAME to ByteArray(2048) { it.toByte() }))
+        val target = tempFolder.newFile("truncated.db")
+        val truncated = full.copyOf(full.size / 2)
+        val failure = runCatching {
+            runBlocking {
+                extractLauncherDbEntry(ByteArrayInputStream(truncated), target)
+            }
+        }
+        // Truncation surfaces as ZipException or EOFException depending on where
+        // the stream is cut; either way the reader maps it to Unavailable.
+        assertTrue(
+            "expected zip/EOF exception on truncated stream, got $failure",
+            failure.exceptionOrNull() is java.util.zip.ZipException ||
+                failure.exceptionOrNull() is java.io.EOFException,
+        )
     }
 
     @Test

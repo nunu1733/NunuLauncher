@@ -111,6 +111,9 @@ fun RestoreBackupScreen(
     }
 }
 
+/** Overflow guard for the non-scrollable portrait restore layout (Issue #233). */
+private const val MAX_RENDERED_PAGE_ROWS = 8
+
 @Composable
 fun ColumnScope.RestoreBackupOptions(
     isPortrait: Boolean,
@@ -187,14 +190,18 @@ fun ColumnScope.RestoreBackupOptions(
                         if (summary.hasPagesOutsidePreview) {
                             PreferenceGroup(
                                 modifier = modifier,
-                                heading = stringResource(id = R.string.backup_page_summary_title),
+                                heading = stringResource(
+                                    id = R.string.backup_page_summary_title,
+                                    summary.pages.size,
+                                ),
                             ) {
                                 Text(
                                     text = stringResource(id = R.string.backup_preview_partial_caption),
                                     style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier.padding(horizontal = 16.dp),
                                 )
-                                summary.pages.forEachIndexed { index, page ->
+                                val visiblePages = summary.pages.take(MAX_RENDERED_PAGE_ROWS)
+                                visiblePages.forEachIndexed { index, page ->
                                     Text(
                                         text = stringResource(
                                             id = R.string.backup_page_summary_entry,
@@ -202,6 +209,22 @@ fun ColumnScope.RestoreBackupOptions(
                                             page.itemCount,
                                             page.folderCount,
                                             page.widgetCount,
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier
+                                            .padding(top = 4.dp)
+                                            .padding(horizontal = 16.dp),
+                                    )
+                                }
+                                val omittedPages = summary.pages.size - visiblePages.size
+                                if (omittedPages > 0) {
+                                    // Overflow guard: the portrait restore layout has no
+                                    // scroll, so the row list is bounded and the full page
+                                    // count stays visible in the heading.
+                                    Text(
+                                        text = stringResource(
+                                            id = R.string.backup_page_summary_more,
+                                            omittedPages,
                                         ),
                                         style = MaterialTheme.typography.bodySmall,
                                         modifier = Modifier

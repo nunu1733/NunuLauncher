@@ -7,7 +7,9 @@ import android.net.Uri
 import android.util.Log
 import com.android.launcher3.LauncherSettings.Favorites
 import java.io.File
+import java.io.FilterInputStream
 import java.io.InputStream
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -53,6 +55,7 @@ data class GroupedFavoritesRow(val screenId: Long, val itemType: Int, val count:
 
 private const val MAX_LAUNCHER_DB_BYTES = 64L * 1024 * 1024
 private const val MAX_ARCHIVE_UNCOMPRESSED_BYTES = 512L * 1024 * 1024
+private const val MAX_ARCHIVE_COMPRESSED_BYTES = 256L * 1024 * 1024
 private const val MAX_ARCHIVE_ENTRIES = 10_000
 private const val CHUNK_SIZE_BYTES = 64 * 1024
 
@@ -101,61 +104,108 @@ internal sealed interface ZipExtractionResult {
 }
 
 /**
+ * Input stream that fails with [ArchiveBudgetExceededException] once more than
+ * [maxBytes] have been read from the underlying compressed stream. ZipInputStream
+ * output-side chunk checks cannot bound input consumed by a single read, so the
+ * compressed budget is enforced here, on the raw stream.
+ */
+private class BoundedInputStream(
+    input: InputStream,
+    private val maxBytes: Long,
+) : FilterInputStream(input) {
+    private var bytesRead = 0L
+    private var budgetThrown = false
+
+    override fun read(): Int {
+        val value = super.read()
+        if (value >= 0) count(1)
+        return value
+    }
+
+    override fun read(b: ByteArray, off: Int, len: Int): Int {
+        val read = super.read(b, off, len)
+        if (read > 0) count(read.toLong())
+        return read
+    }
+
+    private fun count(bytes: Long) {
+        bytesRead += bytes
+        if (bytesRead > maxBytes && !budgetThrown) {
+            // Throw once; ZipInputStream's close()/closeEntry() drains the
+            // current entry during unwinding, and those reads must not mask
+            // the result with a second exception.
+            budgetThrown = true
+            throw ArchiveBudgetExceededException
+        }
+    }
+}
+
+private object ArchiveBudgetExceededException : RuntimeException("compressed archive budget exceeded")
+
+/**
  * Extracts the exact-name `launcher.db` entry from a zip stream into [target],
  * bounding the work done on unrelated entries too. Every entry (including
  * unrelated ones, which ZipInputStream would otherwise drain internally) is
  * read in [chunkSize]-byte chunks so cancellation is responsive and the
- * cumulative uncompressed budget is enforced.
+ * cumulative uncompressed budget is enforced; the compressed input budget is
+ * enforced by [BoundedInputStream].
  */
 internal suspend fun extractLauncherDbEntry(
     input: InputStream,
     target: File,
     maxEntryBytes: Long = MAX_LAUNCHER_DB_BYTES,
     maxArchiveUncompressedBytes: Long = MAX_ARCHIVE_UNCOMPRESSED_BYTES,
+    maxArchiveCompressedBytes: Long = MAX_ARCHIVE_COMPRESSED_BYTES,
     maxEntries: Int = MAX_ARCHIVE_ENTRIES,
     chunkSize: Int = CHUNK_SIZE_BYTES,
 ): ZipExtractionResult {
     var sawLauncherDb = false
     var archiveUncompressedBytes = 0L
     var entryCount = 0
-    input.use { stream ->
+    val boundedInput = BoundedInputStream(input, maxArchiveCompressedBytes)
+    boundedInput.use { stream ->
         java.util.zip.ZipInputStream(stream.buffered()).use { zip ->
             val chunk = ByteArray(chunkSize)
-            while (true) {
-                currentCoroutineContext().ensureActive()
-                val entry = zip.nextEntry ?: break
-                entryCount += 1
-                if (entryCount > maxEntries) return ZipExtractionResult.ArchiveTooLarge
-                val isLauncherDb = entry.name == LawnchairBackup.LAUNCHER_DB_FILE_NAME
-                if (isLauncherDb) {
-                    if (sawLauncherDb) return ZipExtractionResult.DuplicateEntry
-                    sawLauncherDb = true
-                    if (entry.size > maxEntryBytes) return ZipExtractionResult.EntryTooLarge
-                    target.outputStream().use { out ->
-                        var written = 0L
+            try {
+                while (true) {
+                    currentCoroutineContext().ensureActive()
+                    val entry = zip.nextEntry ?: break
+                    entryCount += 1
+                    if (entryCount > maxEntries) return ZipExtractionResult.ArchiveTooLarge
+                    val isLauncherDb = entry.name == LawnchairBackup.LAUNCHER_DB_FILE_NAME
+                    if (isLauncherDb) {
+                        if (sawLauncherDb) return ZipExtractionResult.DuplicateEntry
+                        sawLauncherDb = true
+                        if (entry.size > maxEntryBytes) return ZipExtractionResult.EntryTooLarge
+                        target.outputStream().use { out ->
+                            var written = 0L
+                            while (true) {
+                                currentCoroutineContext().ensureActive()
+                                val read = zip.read(chunk)
+                                if (read < 0) break
+                                written += read
+                                archiveUncompressedBytes += read
+                                if (written > maxEntryBytes) return ZipExtractionResult.EntryTooLarge
+                                if (archiveUncompressedBytes > maxArchiveUncompressedBytes) {
+                                    return ZipExtractionResult.ArchiveTooLarge
+                                }
+                                out.write(chunk, 0, read)
+                            }
+                        }
+                    } else {
                         while (true) {
                             currentCoroutineContext().ensureActive()
                             val read = zip.read(chunk)
                             if (read < 0) break
-                            written += read
                             archiveUncompressedBytes += read
-                            if (written > maxEntryBytes || archiveUncompressedBytes > maxArchiveUncompressedBytes) {
-                                return ZipExtractionResult.EntryTooLarge
+                            if (archiveUncompressedBytes > maxArchiveUncompressedBytes) {
+                                return ZipExtractionResult.ArchiveTooLarge
                             }
-                            out.write(chunk, 0, read)
-                        }
-                    }
-                } else {
-                    while (true) {
-                        currentCoroutineContext().ensureActive()
-                        val read = zip.read(chunk)
-                        if (read < 0) break
-                        archiveUncompressedBytes += read
-                        if (archiveUncompressedBytes > maxArchiveUncompressedBytes) {
-                            return ZipExtractionResult.ArchiveTooLarge
                         }
                     }
                 }
+            } catch (e: ArchiveBudgetExceededException) {
+                return ZipExtractionResult.ArchiveTooLarge
             }
         }
     }
@@ -167,9 +217,10 @@ class BackupPageSummaryReader(
     private val uri: Uri,
 ) {
     suspend fun read(): BackupPageSummaryResult = withContext(Dispatchers.IO) {
-        val tempFile = File.createTempFile("backup_page_summary", ".db", context.cacheDir)
+        var tempFile: File? = null
         var outcome: BackupPageSummaryResult = BackupPageSummaryResult.Unavailable
         try {
+            tempFile = File.createTempFile("backup_page_summary", ".db", context.cacheDir)
             val pfd = context.contentResolver.openFileDescriptor(uri, "r")
             if (pfd != null) {
                 val extraction = pfd.use {
@@ -188,12 +239,13 @@ class BackupPageSummaryReader(
                 Log.w(TAG, "backup zip cannot be opened for page summary analysis")
             }
         } catch (t: Throwable) {
-            if (t !is kotlinx.coroutines.CancellationException) {
-                Log.w(TAG, "failed to analyze backup pages", t)
-            }
+            if (t is CancellationException) throw t
+            Log.w(TAG, "failed to analyze backup pages", t)
         } finally {
-            if (!tempFile.delete()) {
-                Log.w(TAG, "failed to delete temporary analysis file ${tempFile.path}")
+            tempFile?.let { file ->
+                if (!file.delete()) {
+                    Log.w(TAG, "failed to delete temporary analysis file ${file.path}")
+                }
             }
         }
         outcome
@@ -222,16 +274,23 @@ class BackupPageSummaryReader(
         }
     }
 
-    /** workspaceScreens rank minimum; the renderer's FIRST_SCREEN_ID when absent. */
+    /**
+     * workspaceScreens rank minimum. The table being absent is the fallback
+     * case (the renderer draws FIRST_SCREEN_ID, 0); a present but malformed
+     * table is a schema failure and propagates so the result becomes
+     * Unavailable instead of silently suppressing the caption.
+     */
     private fun firstWorkspaceScreenId(db: SQLiteDatabase): Long? {
-        try {
-            db.rawQuery("SELECT ${Favorites._ID} FROM $WORKSPACE_SCREENS_TABLE ORDER BY screenRank LIMIT 1", null).use { cursor ->
-                return if (cursor.moveToFirst()) cursor.getLong(0) else BackupPageAggregator.FIRST_SCREEN_ID_FALLBACK
-            }
-        } catch (t: Throwable) {
-            // Table absent (older backups drop it during upgrades); the renderer
-            // draws FIRST_SCREEN_ID (0) in that case.
-            return null
+        val tableExists = db.rawQuery(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            arrayOf(WORKSPACE_SCREENS_TABLE),
+        ).use { it.moveToFirst() }
+        if (!tableExists) return null
+        db.rawQuery(
+            "SELECT ${Favorites._ID} FROM $WORKSPACE_SCREENS_TABLE ORDER BY screenRank LIMIT 1",
+            null,
+        ).use { cursor ->
+            return if (cursor.moveToFirst()) cursor.getLong(0) else BackupPageAggregator.FIRST_SCREEN_ID_FALLBACK
         }
     }
 

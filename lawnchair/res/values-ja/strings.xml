@@ -328,7 +328,8 @@
     <!-- Issue #233: バックアップ復元確認画面で、スクリーンショット1枚のプレビューでは
          保存された全ページを確認できない場合に表示するページ要約。 -->
     <string name="backup_preview_partial_caption">プレビュー画像には、保存されたページのすべてが表示されていない場合があります。</string>
-    <string name="backup_page_summary_title">保存されたページ</string>
-    <string name="backup_page_summary_entry">ページ%1$d: アイテム%2$d個、フォルダー%3$d個、ウィジェット%4$d個</string>
+    <string name="backup_page_summary_title">保存されたページ (%1$d)</string>
+    <string name="backup_page_summary_entry">ページ%1$d (アイテム: %2$d、フォルダー: %3$d、ウィジェット: %4$d)</string>
+    <string name="backup_page_summary_more">他 %1$d ページは未表示</string>
     <string name="backup_page_summary_unavailable">保存されたページの詳細を表示できません。</string>
 </resources>
