@@ -165,6 +165,10 @@
     <string name="manual_organization_recovery_restored">保存されたレイアウトを復元しました。</string>
     <string name="manual_organization_recovery_not_available">この保存済みレイアウトは、安全に復元できなくなっています。</string>
     <string name="manual_organization_recovery_failed">保存したレイアウトに安全に戻せませんでした。</string>
+    <string name="manual_organization_durable_status_restorable">ホームレイアウトは整理済みです。保存された整理前のバックアップは復元できます。</string>
+    <string name="manual_organization_durable_status_restored_or_expired">保存された整理前のバックアップは、復元済みまたは期限切れのため、もう復元できません。</string>
+    <string name="manual_organization_durable_status_unresolved">整理の変更が安全に完了しませんでした。</string>
+    <string name="manual_organization_durable_status_checking">保存された整理状態を確認しています…</string>
     <string name="manual_organization_scope">整理対象: %1$d件（%2$d個のプロファイル、%3$dページ）。</string>
     <string name="manual_organization_device_scope">画面レイアウト: %1$d列 × %2$d行、Dock %3$d枠。</string>
     <string name="manual_organization_moved_single_placement">単独で移動: %1$d件</string>
