@@ -4,7 +4,9 @@ import android.content.Context
 import app.lawnchair.LawnchairApp
 import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
+import app.lawnchair.organizer.application.protocol.ReadinessGate
 import app.lawnchair.organizer.application.public.ApplyResult
+import app.lawnchair.organizer.application.public.OrganizerDurableStatus
 import app.lawnchair.organizer.application.public.PlanPreview
 import app.lawnchair.organizer.application.public.PlanPreviewDetails
 import app.lawnchair.organizer.application.public.PlanPreviewRejection
@@ -64,6 +66,17 @@ internal interface ManualOrganizationApplication {
     fun apply(plan: ValidatedLayoutPlan, runId: RunId): ApplyResult
     fun inspectRecovery(pointId: RecoveryPointId): RecoveryPreviewResult
     fun confirmRecovery(pointId: RecoveryPointId, confirmation: RecoveryPreviewConfirmation): RecoveryResult
+
+    /** Issue #271: read-only durable status projection owned by the application module. */
+    fun readDurableOrganizerStatus(): OrganizerDurableStatus
+
+    /**
+     * Issue #271 review: observable startup-readiness state of the application
+     * module. The Settings surface re-reads the durable status when this moves,
+     * so a fail-closed read taken during startup reconciliation recovers
+     * without the user navigating away.
+     */
+    val readinessState: StateFlow<ReadinessGate.State>
 }
 
 internal class ProductionManualOrganizationApplication(
@@ -97,6 +110,11 @@ internal class ProductionManualOrganizationApplication(
         pointId: RecoveryPointId,
         confirmation: RecoveryPreviewConfirmation,
     ): RecoveryResult = module.confirmRecoveryPreview(pointId, confirmation)
+
+    override fun readDurableOrganizerStatus(): OrganizerDurableStatus = module.durableOrganizerStatus()
+
+    override val readinessState: StateFlow<ReadinessGate.State>
+        get() = module.readinessGate.stateFlow
 }
 
 /** Process-local composition holder. Construction itself is read-only. */
@@ -104,11 +122,24 @@ internal object ManualOrganizationModule {
     @Volatile private var instance: ManualOrganizationRun? = null
 
     fun get(context: Context): ManualOrganizationRun = instance ?: synchronized(this) {
-        instance ?: ProductionManualOrganizationApplication(
-            context.applicationContext,
-            (context.applicationContext as LawnchairApp).layoutApplicationModule,
-        ).let { application ->
-            ManualOrganizationRun(application, operationGate = OrganizationOperationLease).also { instance = it }
+        instance ?: run {
+            // Issue #271 review: this surface can be the first screen of a
+            // fresh process (the exported PreferenceActivity accepts
+            // APPLICATION_PREFERENCES directly). Make LauncherAppState — and
+            // with it the application module — exist before it is read, and
+            // start the shared reconciliation trigger: with no bound Launcher
+            // it also drives the model load itself, so the durable status on
+            // this surface reaches its derived value without opening the
+            // Launcher (fail-closed only on a genuine load failure/timeout).
+            val app = context.applicationContext as LawnchairApp
+            com.android.launcher3.LauncherAppState.getInstance(app)
+            app.ensureOrganizerStartupReconciliation()
+            ProductionManualOrganizationApplication(
+                app,
+                app.layoutApplicationModule,
+            ).let { application ->
+                ManualOrganizationRun(application, operationGate = OrganizationOperationLease).also { instance = it }
+            }
         }
     }
 }
@@ -513,6 +544,17 @@ class ManualOrganizationRun internal constructor(
         }
         lease?.close()
     }
+
+    /**
+     * Issue #271: read-only projection of the durable recovery-store state for
+     * the re-opened Settings surface. No run state is mutated and no lock is
+     * involved; the projection itself is owned by the application module.
+     */
+    fun readDurableOrganizerStatus(): OrganizerDurableStatus = application.readDurableOrganizerStatus()
+
+    /** Observable startup readiness of the application module (see the façade). */
+    val readinessState: StateFlow<ReadinessGate.State>
+        get() = application.readinessState
 
     fun dismiss(): DismissalOutcome {
         val recovery = synchronized(lock) {
