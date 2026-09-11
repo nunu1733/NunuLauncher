@@ -36,8 +36,10 @@ and the explicit-user-initiated SAF flow are unchanged.
   collide, including DST-fold wall-clock coincidences).
 - The export timestamp is captured exactly once per export and drives both the
   suggested filename and the header `exportedAtWallMillis`. The value is held
-  in saved instance state for the duration of the pending export and cleared
-  when the export session ends (cancel, success, or failure).
+  in saved instance state only while the SAF picker result has not yet been
+  delivered; it is **consumed at result delivery** — read once and cleared
+  immediately, before any outcome handling — after which ownership of the
+  instant passes to the in-flight write as a plain local value.
 - A pure filename formatter makes naming deterministic and testable with a
   fixed clock value.
 - Documentation of the filename convention in the diagnostics contract
@@ -62,8 +64,10 @@ and the explicit-user-initiated SAF flow are unchanged.
   initiation. Derives both the suggested filename and
   `ExportHeader.exportedAtWallMillis`.
 - **Pending export session**: the captured export timestamp while the SAF
-  picker is open, held in saved instance state. Ends when the picker result is
-  handled (cancel, success, or failure), at which point it is cleared.
+  picker result has not yet been delivered, held in saved instance state.
+  Ends at result delivery: the timestamp is consumed (read once and
+  immediately cleared) regardless of the result's outcome. After consumption,
+  ownership of the instant belongs to the in-flight write, not to UI state.
   To be reflected in `CONTEXT.md` only if these become load-bearing beyond
   this spec; otherwise implementation-local.
 
@@ -135,12 +139,24 @@ Then the picker result is re-delivered, the pending instant is restored from
 And the export is written with `exportedAtWallMillis` equal to the originally
   captured instant (the same instant the suggested filename was derived from).
 
-### Scenario: Pending session ends on cancel, success, and failure
+### Scenario: Pending session is consumed at result delivery
 
 Given a pending export session exists
-When the user cancels the picker, or the write succeeds, or the write fails
-Then the pending export timestamp is cleared and no stale session remains
-And a subsequent export captures a fresh instant.
+When the picker result is delivered, whatever its outcome (cancel, OK with a
+  URI, OK with a null URI)
+Then the pending timestamp is consumed — read once and cleared immediately at
+  delivery, before any outcome handling
+And no stale session remains after result delivery.
+
+### Scenario: Mid-write recreation leaves no pending session
+
+Given a picker result was delivered and the export write is running with the
+  consumed instant
+When the activity is recreated or the composition leaves (cancelling the
+  write coroutine) mid-write
+Then no pending export session is restored or preserved
+And the consumed instant is never used for another export; a subsequent
+  export captures a fresh instant.
 
 ### Scenario: Result without a restored pending session is ignored
 
@@ -171,8 +187,9 @@ And journal retention behavior (§8) is unchanged.
 - Read: live journal snapshot via `DiagnosticsPort.snapshot()` (unchanged).
 - Written: the D-10 export content to the user-selected SAF destination only.
 - Persisted app-owned state: none added. The export timestamp lives only in
-  saved instance state (OS-managed `Bundle`) for the duration of a pending
-  export session and is cleared when the session ends; it is never written to
+  saved instance state (OS-managed `Bundle`) until the picker result is
+  delivered, is consumed (cleared) at delivery, and afterwards survives only
+  as a local value owned by the in-flight write; it is never written to
   durable storage.
 - No migration, no backup/restore impact (journal is already excluded from
   backup; exported files live outside app storage).
@@ -216,11 +233,16 @@ And journal retention behavior (§8) is unchanged.
       accumulation).
 - [ ] AC-8 (EF-AC-08): The filename convention (UTC, injective naming) is
       documented in the diagnostics contract (§9).
-- [ ] AC-9 (EF-AC-09): The pending export session survives activity
-      recreation/process death during the picker (restored from saved instance
-      state) so the write still uses the originally captured instant; the
-      session is cleared on cancel, success, and failure; a result arriving
-      without a restorable session is ignored without a write.
+- [ ] AC-9 (EF-AC-09): The pending export session exists only until
+      picker-result delivery and is consumed at delivery: read once and
+      cleared immediately, before outcome handling, so cancel, OK with a
+      null URI, and result-without-a-session all leave no stale session.
+      Ownership of the instant then passes to the in-flight write as a local
+      value; recreation/cancellation during the write does not restore or
+      preserve a pending session. While the picker is open, the session
+      survives activity recreation/process death (restored from saved
+      instance state) so the write still uses the originally captured
+      instant.
 
 ## Test oracle
 
@@ -234,7 +256,7 @@ And journal retention behavior (§8) is unchanged.
 | AC-6 | Instrumentation test on the diagnostics Settings route using the stubbed `ActivityResultRegistry` (existing `RecordingRegistry` harness): dispatch `RESULT_OK` with a URI → write path invoked with the timestamped flow; cancel path leaves journal intact |
 | AC-7 | Unit test: formatter/output is pure (no filesystem access); grep-level evidence in PR that no export cache/temp file path exists |
 | AC-8 | Contract doc review in PR |
-| AC-9 | Instrumentation/compose test: initiate export, recreate composition with state restoration (`StateRestorationTester` or equivalent saved-state re-delivery through the stubbed registry), dispatch the result → writer receives the originally captured instant; assert the pending session is cleared after cancel/success/failure; result-without-session is ignored |
+| AC-9 | Instrumentation/compose test: (a) while the picker is open, state restoration + registry re-delivery → writer receives the originally captured instant; (b) consume-at-delivery — after any result delivery (cancel, OK+URI, OK+null URI) the pending session reads as empty; (c) mid-write recreation/cancellation leaves no restorable pending session; (d) result-without-session is ignored without a write |
 
 ## Open questions
 
@@ -251,3 +273,12 @@ And journal retention behavior (§8) is unchanged.
   added AC-9 + recreation test oracle. P2: resolved the timezone open question
   to fixed UTC so instant→filename stays injective (DST-fold collision);
   AC-4 strengthened accordingly.
+- 2026-09-12: Rev 3 after re-review on #288 (Request changes, 1 blocking).
+  Pending export session is now **consumed at picker-result delivery** (read
+  once, cleared immediately, before outcome handling) instead of cleared after
+  write success/failure: after delivery the androidx registry never re-delivers
+  the consumed result, and a mid-write recreation cancels the write coroutine,
+  so keeping the saveable value until write completion would strand a stale
+  session; `RESULT_OK` with a null URI also bypassed the rev-2 clear sites.
+  Ownership after delivery belongs to the in-flight write. AC-9, scenarios,
+  and test oracle updated accordingly.
