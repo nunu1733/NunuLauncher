@@ -1,6 +1,6 @@
 ---
 issue: "#233"
-status: accepted
+status: implemented
 requirements: []
 updated: 2026-09-11
 ---
@@ -178,3 +178,5 @@ Then launcher DB への書き込みは一切行われない。解析のための
 - 2026-09-11: codex review (gpt-6-astra) の指摘へ対応。caption 文言を two-panel でも嘘のならない「一部のみ」表現へ修正、非空 page の定義と集計規則 (folder 二重計上禁止・hotseat 除外・screen 連番化) を確定、landscape / checkbox / screenshot 欠落時の表示条件を明確化、zip 読み取りの安全契約 (entry 完全一致・内部生成 path・重複/size 上限)、一時 file の一意性と削除契約、解析の非同期分離、schema 検証失敗の unavailable 扱い、test 環境の実態 (JVM unit test) への整合、high-risk gate 要件を追記した。app title 表示は non-goal へ確定分離。
 - 2026-09-11 (2nd): 再レビューの指摘へ対応。caption 判定を「非空 page 数 >= 2」から「先頭 screen 以外に非空 page が存在」へ変更し、two-panel での断定を避ける「可能性」表記へ修正。widget 数の itemType (4/5) を明示。SQLite level の失敗検証を emulator evidence へ分離し、AC-8 に restore 実行後の page 構成一致確認 (round-trip) を追加した。
 - 2026-09-11 (3rd): 第3ラウンドレビューの指摘へ対応。`workspaceScreens` 表がない場合の先頭 screen fallback を「非空 screen の最小値」から renderer の実際の描画対象である `screen 0` へ変更し、screen 0 が空の backup で caption が消える隙間を解消した。
+- 2026-09-11: Marked implemented after merge. PR [#278](https://github.com/NunuLauncher?...)
+- 2026-09-11: Marked implemented after merge. Implementation PR [#278](https://github.com/nunu1733/NunuLauncher/pull/278) merged as commit `1f2be5573d` (Phase 1 codex review rounds 1-4 + implementation review addressed; final delta review APPROVE by code-reviewer-2; independent audit docs/assessment/pr-278-backup-page-summary.md pass-with-notes with AC-8 closed by owner TalkBack confirmation on release build run 34589852442; high-risk gate green on final head `1c59284286`).
