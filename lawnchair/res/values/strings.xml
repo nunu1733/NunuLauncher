@@ -1002,8 +1002,6 @@
     <string name="organizer_diagnostics_export_subtitle">Export organizer diagnostic journal to a file</string>
     <string name="organizer_diagnostics_export_success">Diagnostics exported successfully</string>
     <string name="organizer_diagnostics_export_error">Failed to export diagnostics</string>
-    <!-- Issue #123: fixed technical identifier pre-filled in the system file picker; intentionally not translated. -->
-    <string name="organizer_diagnostics_export_default_filename" translatable="false">organizer_diagnostics.jsonl</string>
     <!-- Issue #52: explicit manual full organization -->
     <string name="manual_organization_title">Organize home layout</string>
     <string name="manual_organization_summary">Review a proposed home layout before applying it.</string>

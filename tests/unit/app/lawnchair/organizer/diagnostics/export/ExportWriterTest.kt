@@ -17,6 +17,8 @@ import app.lawnchair.organizer.diagnostics.model.Trigger
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -28,6 +30,13 @@ import org.junit.Test
  * ordering, field parity, and cancellation/write-failure isolation.
  */
 class ExportWriterTest {
+
+    /**
+     * Fixed export timestamp (2026-09-11T23:02:43.969Z, the #288 example) so
+     * header content assertions are deterministic. The writer must write this
+     * value verbatim and never read the wall clock itself.
+     */
+    private val testExportedAtWallMillis: Long = 1789167763969L
 
     private val exportJson = Json {
         encodeDefaults = false
@@ -50,7 +59,7 @@ class ExportWriterTest {
         )
 
         val output = ByteArrayOutputStream()
-        ExportWriter.write(events, output)
+        ExportWriter.write(events, output, testExportedAtWallMillis)
         val text = output.toString(Charsets.UTF_8)
 
         // Split into lines
@@ -88,7 +97,7 @@ class ExportWriterTest {
         )
 
         val output = ByteArrayOutputStream()
-        ExportWriter.write(events, output)
+        ExportWriter.write(events, output, testExportedAtWallMillis)
         val text = output.toString(Charsets.UTF_8)
 
         val lines = text.lines().filter { it.isNotBlank() }
@@ -120,7 +129,7 @@ class ExportWriterTest {
         )
 
         val output = ByteArrayOutputStream()
-        ExportWriter.write(events, output)
+        ExportWriter.write(events, output, testExportedAtWallMillis)
         val text = output.toString(Charsets.UTF_8)
 
         val lines = text.lines().filter { it.isNotBlank() }
@@ -191,7 +200,7 @@ class ExportWriterTest {
         )
 
         val output = ByteArrayOutputStream()
-        ExportWriter.write(events, output)
+        ExportWriter.write(events, output, testExportedAtWallMillis)
         val text = output.toString(Charsets.UTF_8)
 
         val lines = text.lines().filter { it.isNotBlank() }
@@ -269,7 +278,7 @@ class ExportWriterTest {
         )
 
         val output = ByteArrayOutputStream()
-        ExportWriter.write(events, output)
+        ExportWriter.write(events, output, testExportedAtWallMillis)
         val text = output.toString(Charsets.UTF_8)
 
         // D-09 forbidden strings must not appear in export
@@ -296,7 +305,7 @@ class ExportWriterTest {
         val journalJson = journalBytes.toString(Charsets.UTF_8)
 
         val output = ByteArrayOutputStream()
-        ExportWriter.write(listOf(event), output)
+        ExportWriter.write(listOf(event), output, testExportedAtWallMillis)
         val lines = output.toString(Charsets.UTF_8).lines().filter { it.isNotBlank() }
         val exportEventJson = lines[1] // Skip header
 
@@ -328,7 +337,7 @@ class ExportWriterTest {
         }
 
         try {
-            ExportWriter.write(events, failingStream)
+            ExportWriter.write(events, failingStream, testExportedAtWallMillis)
             // If we get here, the write didn't throw because the failure
             // happened after the header was written
         } catch (_: IOException) {
@@ -357,7 +366,7 @@ class ExportWriterTest {
         }
 
         try {
-            ExportWriter.write(events, cancelledStream)
+            ExportWriter.write(events, cancelledStream, testExportedAtWallMillis)
         } catch (_: IOException) {
             // Expected — cancellation does not affect the journal
         }
@@ -368,7 +377,7 @@ class ExportWriterTest {
     fun d10EmptyJournalExport() {
         // Exporting an empty journal should produce just the header line
         val output = ByteArrayOutputStream()
-        ExportWriter.write(emptyList(), output)
+        ExportWriter.write(emptyList(), output, testExportedAtWallMillis)
         val text = output.toString(Charsets.UTF_8)
 
         val lines = text.lines().filter { it.isNotBlank() }
@@ -384,7 +393,7 @@ class ExportWriterTest {
         )
 
         val output = ByteArrayOutputStream()
-        ExportWriter.write(events, output, deviceProfile = profile)
+        ExportWriter.write(events, output, testExportedAtWallMillis, deviceProfile = profile)
         val text = output.toString(Charsets.UTF_8)
 
         val lines = text.lines().filter { it.isNotBlank() }
@@ -411,7 +420,7 @@ class ExportWriterTest {
         )
 
         val output = ByteArrayOutputStream()
-        ExportWriter.write(events, output)
+        ExportWriter.write(events, output, testExportedAtWallMillis)
         val text = output.toString(Charsets.UTF_8)
 
         val lines = text.lines().filter { it.isNotBlank() }
@@ -429,7 +438,7 @@ class ExportWriterTest {
         )
 
         val output = ByteArrayOutputStream()
-        ExportWriter.write(events, output)
+        ExportWriter.write(events, output, testExportedAtWallMillis)
         val text = output.toString(Charsets.UTF_8)
 
         val lines = text.lines().filter { it.isNotBlank() }
@@ -438,6 +447,53 @@ class ExportWriterTest {
             "Header must have journalSchemaVersion=1",
             headerLine.contains("\"journalSchemaVersion\":1"),
         )
+    }
+
+    // --- explicit export timestamp drives the header (Issue #288, EF-AC-02) ---
+
+    @Test
+    fun exportedAtWallMillisVerbatimInHeader() {
+        val output = ByteArrayOutputStream()
+        ExportWriter.write(emptyList(), output, testExportedAtWallMillis)
+
+        val headerLine = output.toString(Charsets.UTF_8).lines().first { it.isNotBlank() }
+        val headerJson = Json.parseToJsonElement(headerLine).jsonObject["header"]?.jsonObject
+        assertNotNull("Header object must be present", headerJson)
+        assertEquals(
+            "Header must carry the caller-supplied export timestamp verbatim",
+            testExportedAtWallMillis,
+            headerJson?.get("exportedAtWallMillis")?.jsonPrimitive?.content?.toLong(),
+        )
+    }
+
+    @Test
+    fun headerTimestampAndSuggestedFilenameDeriveFromSameCapturedInstant() {
+        // The suggested filename and the header must be derivable from one
+        // captured value: formatting the same instant the writer received
+        // must produce a name whose timestamp segment equals the header's
+        // exportedAtWallMillis.
+        val output = ByteArrayOutputStream()
+        ExportWriter.write(emptyList(), output, testExportedAtWallMillis)
+
+        val headerLine = output.toString(Charsets.UTF_8).lines().first { it.isNotBlank() }
+        val headerMillis = Json.parseToJsonElement(headerLine)
+            .jsonObject["header"]?.jsonObject
+            ?.get("exportedAtWallMillis")?.jsonPrimitive?.content?.toLong()
+        assertEquals(testExportedAtWallMillis, headerMillis)
+
+        val suggestedName = DiagnosticsExportFilename.format(testExportedAtWallMillis)
+        val timestampSegment = suggestedName
+            .removePrefix(DiagnosticsExportFilename.PREFIX + "_")
+            .removeSuffix(DiagnosticsExportFilename.EXTENSION)
+        assertTrue(
+            "Filename timestamp segment must parse back to the header instant",
+            timestampSegment.matches(Regex("\\d{8}_\\d{6}_\\d{3}")),
+        )
+        val parsed = java.time.LocalDateTime.parse(
+            timestampSegment,
+            java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS"),
+        ).atZone(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+        assertEquals(testExportedAtWallMillis, parsed)
     }
 
     // --- readJournalEvents delegates to DiagnosticsPort.snapshot (P1-1) ---
