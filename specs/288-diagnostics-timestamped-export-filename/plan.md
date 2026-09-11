@@ -2,7 +2,7 @@
 
 > Issue: #288
 > Spec: [spec.md](./spec.md)
-> Status: accepted (rev 3 approved on #288 with no further findings after the round-2 consume-at-delivery fix; implementation proceeds in the same PR)
+> Status: implemented (merged as PR #290, merge commit 806bef2450; accepted rev 3 after review rounds 1–2 on #288; independent audit: APPROVE, code-reviewer-2 session, code head 350f82cfb6)
 
 ## Current evidence
 
