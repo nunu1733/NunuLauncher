@@ -285,3 +285,9 @@ And journal retention behavior (§8) is unchanged.
   session; `RESULT_OK` with a null URI also bypassed the rev-2 clear sites.
   Ownership after delivery belongs to the in-flight write. AC-9, scenarios,
   and test oracle updated accordingly.
+- 2026-09-12: Implementation note from audit (non-blocking traceability): the
+  export toast is now posted to the main looper via `Handler(Looper.getMainLooper())`
+  (`showExportToast` in ExportUi.kt). Production behavior is unchanged
+  (success/error toast still shown); this removes a crash path when the write
+  resumes on a dispatcher without a prepared Looper. Recorded here because it
+  is user-observable robustness adjacent to the AC-6 flow.
