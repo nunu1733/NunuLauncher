@@ -180,6 +180,7 @@ ManualOrganizationRun (start)
 - **instrumentation test** (API 36 / Platform 36.1): 選択UI (multi-select / search / select all (filter範囲) / clear all / 選択数 / cancel)・zero-write (DB比較 **+ application write seam呼出し回数0**)・空workspace混在のend-to-end・ja string解決。**新規test classは `ci.yml` connected-test lanes のclass filterへ実装PRで追加する** (filterは明示列挙のため自動発見されない)。
 - **a11y evidence**: 自動assertion (unit / instrumentation) に加え、TalkBack / Switch Access実操作・keyboard・200% fontのdevice evidenceを分離して記録する。
 - **device evidence**: fresh workspace (初期化後 / 別launcherからの切替) での手順実行記録。
+- **高リスクgate**: 本specはfrontmatterで `risk: layout-data` を指定しているため、実装PRにはAGENTS.mdの高リスクPR独立エビデンス要件 (`final-status` CI成功 + `docs/assessment/pr-<PR番号>-<slug>.md` の独立audit記録) が課される。実装Workerは最初のPR作成時にこれを前提に計画する。
 
 ## 9. 実装順序 (incremental)
 

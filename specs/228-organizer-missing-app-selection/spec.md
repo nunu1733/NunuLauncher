@@ -51,7 +51,7 @@ launchable installed apps (per-profile, LauncherApps権限で列挙)
 - folder内・dock・app pair内のappも「表現済み」と数える (`TargetKey.AppKey` の等価性で判定し、配置種別に依存しない)。
 - work profile / personal profileの別は `ProfileId` で区別する (profile isolation不変条件の継続)。
 - **検出の初期対象は「選択UI表示時点で `AVAILABLE` な候補」に限る**。disabled / suspended / quiet / locked-private-space / unavailable なappは候補一覧から除外する。検出後に無効化されたappは提案生成または適用時に失敗として扱う (§failure)。
-- launcher自身・system内部activity等の「通常のユーザーappとして露出すべきでない」componentの除外は、platformのlaunchable列挙 (`LauncherApps.getActivityList`) がlaunchableと判定したactivity集合をそのまま使う。project側で独自のblocklistを追加しない (最初のdeliveryでは平台列挙を信頼し、除外が必要になった時点で証拠とともに別Issueで扱う)。
+- launcher自身・system内部activity等の「通常のユーザーappとして露出すべきでない」componentの除外は、platformのlaunchable列挙 (`LauncherApps.getActivityList`) がlaunchableと判定したactivity集合をそのまま使う。project側で独自のblocklistを追加しない (最初のdeliveryではplatform列挙を信頼し、除外が必要になった時点で証拠とともに別Issueで扱う)。
 - deep-link-only / non-launchable packageは `getActivityList` に現れないため、構造的に候補にならない。
 - 検出は読み取りのみであり、診断には個人情報 (package名のtext化) を露出しない (既存diagnostics契約の継続)。
 
