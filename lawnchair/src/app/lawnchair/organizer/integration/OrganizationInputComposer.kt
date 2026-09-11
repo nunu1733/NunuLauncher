@@ -206,6 +206,22 @@ class DefaultOrganizationInputComposer(
         // Issue #228: selected candidates join the input as explicit additions
         // with deterministic planning IDs (spec AC-15) and the same 1x1
         // application shape the incremental run consumes.
+        // Review P2 #4: the selection was cut against the detection capture,
+        // but this composition runs on a fresh capture. An app placed on Home
+        // between detection and confirm must never be planned as an Add on
+        // top of itself — re-verify the selection against the fresh snapshot's
+        // stable identities and fail closed (re-detect) on any overlap.
+        val representedIdentities = mapped.items.asSequence()
+            .mapNotNull { (it.target as? TargetKey.AppKey) }
+            .map { CandidateTarget.AppKey(it.component, it.profile) }
+            .toSet()
+        val selectionIdentities: List<CandidateTarget.AppKey> = selection.orEmpty()
+        if (selectionIdentities.any { it in representedIdentities }) {
+            return notReady(
+                InputReadinessReason.StaleCandidateSelection,
+                InputCompositionCode.CANDIDATE_SELECTION_STALE,
+            )
+        }
         val additions = selection?.map { target ->
             CandidateItem(
                 id = CandidatePlanningIds.planningId(target),

@@ -200,6 +200,17 @@ class ManualOrganizationRun internal constructor(
 
         data object Planning : State
         data class InputUnavailable(val reason: InputReadinessReason) : State
+
+        /**
+         * Issue #228 (review P2 #2): a selected candidate stopped resolving
+         * between detection and materialization (uninstalled or platform read
+         * failure). Typed re-detect outcome — nothing was written; the only
+         * paths are starting a fresh detection or navigating away.
+         */
+        data class CandidateResolutionFailed(
+            val failure: app.lawnchair.organizer.application.protocol.CandidateResolutionFailure,
+        ) : State
+
         data class PlanningRejected(val kind: PlanningFailureKind, val summary: Summary) : State
         data object NoChanges : State
         data class Preview(val summary: Summary, val details: PlanPreviewDetails?) : State
@@ -302,16 +313,15 @@ class ManualOrganizationRun internal constructor(
         val operation = beginOperation(trigger) ?: return StartOutcome.Busy
         val runId = operation.runId
         val started = StartOutcome.Started(runId)
-        emit(
-            RunEvent(
-                journalSequence = 0L,
-                runId = runId.value,
-                trigger = operation.trigger,
-                runMode = operation.diagnosticsRunMode,
-                phase = PhaseCode.RUN_STARTED,
-            ),
-        )
-
+        // Issue #228 (review P2 #3): the diagnostics run-mode identity must be
+        // constant for the run's whole journal, but it is only known after the
+        // selection surface closes (empty selection → full organization,
+        // non-empty → scope-composed). RUN_STARTED is therefore emitted when
+        // the composed phase begins with the resolved mode, and the pre-select
+        // detection/selection window carries no run-mode-bearing events at
+        // all. USER_CANCELLED before a selection uses the mode the run would
+        // have had — the plain full organization — which is exact because no
+        // scope-composed event exists for that runId.
         try {
             // Issue #228: the manual run opens with read-only missing-app
             // detection. Detection itself writes nothing; its failure never
@@ -382,12 +392,21 @@ class ManualOrganizationRun internal constructor(
 
     private fun runComposedPhase(operation: Operation, selection: List<CandidateTarget.AppKey>?) {
         val runId = operation.runId
-        // Issue #228: once the user confirmed a non-empty selection, the run's
-        // diagnostics identity is the scope-composed mode.
+        // Issue #228 (review P2 #3): the run's diagnostics mode is resolved
+        // here — before this point no run-mode-bearing event exists for the
+        // runId — and stays constant for every event that follows
+        // (RUN_STARTED through terminal).
         val diagnosticsRunMode = if (selection != null) RunMode.SCOPE_COMPOSED_ORGANIZATION else RunMode.FULL_ORGANIZATION
-        if (diagnosticsRunMode == RunMode.SCOPE_COMPOSED_ORGANIZATION) {
-            operation.diagnosticsRunMode = diagnosticsRunMode
-        }
+        operation.diagnosticsRunMode = diagnosticsRunMode
+        emit(
+            RunEvent(
+                journalSequence = 0L,
+                runId = runId.value,
+                trigger = operation.trigger,
+                runMode = diagnosticsRunMode,
+                phase = PhaseCode.RUN_STARTED,
+            ),
+        )
         // The composition performs its own canonical capture (plan §5), so the
         // run re-enters the capturing phase after the selection surface.
         setIfActive(operation, State.Capturing)
@@ -592,6 +611,14 @@ class ManualOrganizationRun internal constructor(
                 OrganizationPlanMaterializer.Result.Ready(pendingPlan.previewPlan)
             } else {
                 application.materialize(pendingPlan.input, pendingPlan.result)
+            }
+            // Issue #228 (review P2 #2): a candidate that stopped resolving
+            // between preview and confirm is a typed re-detect outcome, not a
+            // stale-layout one — nothing was written either way.
+            val resolutionFailure = (materialized as? OrganizationPlanMaterializer.Result.CandidateResolutionFailed)?.failure
+            if (resolutionFailure != null) {
+                finish(operation, State.CandidateResolutionFailed(resolutionFailure))
+                return
             }
             val plan = (materialized as? OrganizationPlanMaterializer.Result.Ready)?.plan
             if (plan == null) {

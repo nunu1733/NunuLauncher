@@ -2,6 +2,7 @@ package app.lawnchair.organizer.application.actions
 
 import app.lawnchair.organizer.application.protocol.CandidateApplicationResolution
 import app.lawnchair.organizer.application.protocol.CandidateApplicationResolver
+import app.lawnchair.organizer.application.protocol.CandidateResolutionFailure
 import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.ApplicationPageRef
 import app.lawnchair.organizer.application.public.ApplyAction
@@ -51,6 +52,14 @@ internal object OrganizationPlanMaterializer {
     sealed interface Result {
         data class Ready(val plan: ValidatedLayoutPlan) : Result
         data object Invalid : Result
+
+        /**
+         * Issue #228 (review P2 #2): a selected candidate could not be
+         * resolved to canonical application content. Distinct from
+         * [Invalid] so the run surfaces the typed failure as "re-detect and
+         * retry" instead of a generic plan rejection — nothing was written.
+         */
+        data class CandidateResolutionFailed(val failure: CandidateResolutionFailure) : Result
     }
 
     fun materialize(
@@ -131,8 +140,11 @@ internal object OrganizationPlanMaterializer {
         for (placement in candidatePlacements.sortedBy { it.item }) {
             val candidate = candidateById.getValue(placement.item)
             val resolution = candidateResolver!!.resolve((candidate.target as? CandidateTarget.AppKey) ?: return Result.Invalid)
-            val ready = resolution as? CandidateApplicationResolution.Ready ?: return Result.Invalid
-            if (ready.title.isBlank()) return Result.Invalid
+            // Review P2 #2: keep the typed failure so the run can direct the
+            // user to re-detection instead of a generic invalid-plan result.
+            val ready = resolution as? CandidateApplicationResolution.Ready
+                ?: return Result.CandidateResolutionFailed((resolution as CandidateApplicationResolution.Unavailable).reason)
+            if (ready.title.isBlank()) return Result.CandidateResolutionFailed(CandidateResolutionFailure.LABEL_UNAVAILABLE)
             candidateItems += candidateItemState(candidate, ready, placement.target, plannedPageOrdinals, profileAvailability) ?: return Result.Invalid
         }
 

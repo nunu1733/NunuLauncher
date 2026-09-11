@@ -169,6 +169,28 @@ class ScopeComposedCompositionTest {
         )
     }
 
+    @Test
+    fun selectionOverlappingFreshCaptureFailsClosedAsStale() {
+        // Review P2 #4: the app was placed on Home between detection and
+        // confirm — the fresh capture now represents the selected identity,
+        // and composition must fail closed instead of planning an Add on top
+        // of an existing placement.
+        val composer = composer()
+        val stale = composer.composeScopeComposedOrganization(
+            listOf(CandidateTarget.AppKey(ComponentKey("com.example.existing/.Main"), ProfileId("personal"))),
+        )
+
+        assertTrue(stale is OrganizationInputComposition.NotReady)
+        assertEquals(
+            InputReadinessReason.StaleCandidateSelection,
+            (stale as OrganizationInputComposition.NotReady).reason,
+        )
+        assertEquals(
+            InputCompositionCode.CANDIDATE_SELECTION_STALE,
+            stale.diagnostic.code,
+        )
+    }
+
     private fun emptyOverrideSnapshot() = overrideSnapshot(emptyMap())
 
     private fun overrideSnapshot(assignments: Map<CategoryOverrideKey, CategoryId>) = CategoryOverrideSnapshot(

@@ -48,13 +48,17 @@ class AndroidCandidateApplicationResolver(
     private val launcherApps = checkNotNull(context.getSystemService(LauncherApps::class.java))
 
     override fun resolve(target: CandidateTarget.AppKey): CandidateApplicationResolution {
-        val user = userForProfile(userCache, target.profile)
-        val info = user?.let { launcherApps.getActivityList(null, it) }
-            ?.firstOrNull { it.componentName.flattenToString() == target.component.value }
-            ?: return CandidateApplicationResolution.Unavailable(CandidateResolutionFailure.COMPONENT_NOT_FOUND)
-        val label = info.label?.toString()?.takeIf { it.isNotBlank() }
-            ?: return CandidateApplicationResolution.Unavailable(CandidateResolutionFailure.LABEL_UNAVAILABLE)
+        // Issue #228 (review P2 #2): the no-exception contract (plan §4) holds
+        // for the *whole* platform read — enumeration, component match, and
+        // label included, not only intent/icon construction. Any binder
+        // failure is a typed resolution failure; nothing escapes upward.
         return try {
+            val user = userForProfile(userCache, target.profile)
+            val info = user?.let { launcherApps.getActivityList(null, it) }
+                ?.firstOrNull { it.componentName.flattenToString() == target.component.value }
+                ?: return CandidateApplicationResolution.Unavailable(CandidateResolutionFailure.COMPONENT_NOT_FOUND)
+            val label = info.label?.toString()?.takeIf { it.isNotBlank() }
+                ?: return CandidateApplicationResolution.Unavailable(CandidateResolutionFailure.LABEL_UNAVAILABLE)
             // The canonical app-icon intent the launcher itself persists for
             // application rows (AppInfo.makeLaunchIntent): ACTION_MAIN +
             // CATEGORY_LAUNCHER + component + launch flags, serialized exactly

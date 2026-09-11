@@ -205,6 +205,9 @@
     <string name="manual_organization_preserved_already_canonical">変更不要の配置: %1$d件</string>
     <string name="manual_organization_unplaced_grid">画面の範囲を超えるため未配置: %1$d件</string>
     <string name="manual_organization_unplaced_target">対象を利用できないため未配置: %1$d件</string>
+    <string name="manual_organization_unplaced_strategy_scope">選択したストラテジーが現在のページとフォルダーを維持するため未配置: %1$d件</string>
+    <string name="manual_organization_selection_stale">選択後にホーム画面のレイアウトが変わりました。変更は加えられていません。もう一度開始して、ホーム画面にないアプリを再確認してください。</string>
+    <string name="manual_organization_candidate_unresolved">選択したアプリを追加できません。変更は加えられていません。もう一度開始して、ホーム画面にないアプリを再確認してください。</string>
     <string name="manual_organization_warning_legacy_shortcut">旧形式のショートカットの確認が必要: %1$d件</string>
     <string name="manual_organization_warning_fallback_category">代替カテゴリを使用: %1$d件</string>
     <string name="manual_organization_warning_unavailable">利用できない配置を保持: %1$d件</string>

@@ -1035,6 +1035,50 @@ class ManualOrganizationRunTest {
 
         assertTrue(runner.state is ManualOrganizationRun.State.Preview)
         assertEquals(0, application.composeScopeComposedCalls)
+        // Review P2 #3: the run's diagnostics mode is constant — the
+        // detection-only run never mixes FULL_ORGANIZATION with
+        // SCOPE_COMPOSED_ORGANIZATION on one runId.
+        val runModes = application.events.map { it.runMode }.toSet()
+        assertEquals(
+            setOf(app.lawnchair.organizer.diagnostics.model.RunMode.FULL_ORGANIZATION),
+            runModes,
+        )
+        assertEquals(
+            app.lawnchair.organizer.diagnostics.model.RunMode.FULL_ORGANIZATION,
+            application.events.last { it.phase == app.lawnchair.organizer.diagnostics.model.PhaseCode.RUN_STARTED }.runMode,
+        )
+    }
+
+    @Test
+    fun scopeComposedRunKeepsOneDiagnosticsModeAcrossAllEvents() {
+        // Review P2 #3: RUN_STARTED is emitted only after the selection
+        // resolves the mode, so every event of the run carries the same
+        // SCOPE_COMPOSED_ORGANIZATION identity.
+        val application = FakeApplication(scopeReadyInput()).apply {
+            detection = detected("com.example.c1")
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start()
+        runner.confirmSelection(
+            setOf(
+                app.lawnchair.organizer.planning.CandidateTarget.AppKey(
+                    app.lawnchair.organizer.planning.ComponentKey("com.example.c1"),
+                    app.lawnchair.organizer.planning.ProfileId("personal"),
+                ),
+            ),
+        )
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+
+        val runModes = application.events.map { it.runMode }.toSet()
+        assertEquals(
+            setOf(app.lawnchair.organizer.diagnostics.model.RunMode.SCOPE_COMPOSED_ORGANIZATION),
+            runModes,
+        )
+        // No FULL_ORGANIZATION-tagged event exists for this runId at all.
+        assertTrue(
+            application.events.none { it.runMode == app.lawnchair.organizer.diagnostics.model.RunMode.FULL_ORGANIZATION },
+        )
     }
 
     @Test

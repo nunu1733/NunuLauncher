@@ -271,7 +271,27 @@ fun ManualOrganizationPreferences(
 
                 is ManualOrganizationRun.State.InputUnavailable -> item {
                     FocusTargetText(
-                        text = stringResource(currentState.reason.copyKind()),
+                        text = if (currentState.reason is app.lawnchair.organizer.integration.InputReadinessReason.StaleCandidateSelection) {
+                            // Issue #228 (review P2 #4): the selection was cut
+                            // against an older layout; re-detection resolves it.
+                            stringResource(R.string.manual_organization_selection_stale)
+                        } else {
+                            stringResource(currentState.reason.copyKind())
+                        },
+                        focusRequester = focusRequester,
+                    )
+                    ClickablePreference(
+                        label = stringResource(R.string.manual_organization_retry),
+                        onClick = { execute { coordinator.start(trigger) } },
+                    )
+                }
+
+                is ManualOrganizationRun.State.CandidateResolutionFailed -> item {
+                    // Issue #228 (review P2 #2): a selected app stopped
+                    // resolving; re-detection is the only recovery, and
+                    // nothing was written.
+                    FocusTargetText(
+                        text = stringResource(R.string.manual_organization_candidate_unresolved),
                         focusRequester = focusRequester,
                     )
                     ClickablePreference(
@@ -1287,6 +1307,7 @@ private fun preservedReasonString(reason: PreserveReason): Int = when (reason) {
 private fun unplacedReasonString(reason: UnplacedReason): Int = when (reason) {
     UnplacedReason.EXCEEDS_GRID_DIMENSIONS -> R.string.manual_organization_unplaced_grid
     UnplacedReason.TARGET_UNAVAILABLE -> R.string.manual_organization_unplaced_target
+    UnplacedReason.STRATEGY_SCOPE_FULL -> R.string.manual_organization_unplaced_strategy_scope
 }
 
 private fun rejectionReasonString(reason: RejectionCode): Int = when (reason) {

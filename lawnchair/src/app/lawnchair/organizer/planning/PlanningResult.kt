@@ -16,6 +16,13 @@ data class Planned(
     val newFolders: List<NewFolder>,
     val categories: List<CategoryDecision>,
     val warnings: List<Warning>,
+    /**
+     * Issue #228: selected candidates the strategy's declared page/folder
+     * scope could not place (scope-composed runs). They follow the existing
+     * unplaced contract — reported, never silently created. Empty for
+     * validated inputs of the other run modes.
+     */
+    val unplaced: List<UnplacedItem> = emptyList(),
 ) : PlanningOutcome
 
 sealed interface Rejected : PlanningOutcome {
@@ -166,6 +173,16 @@ enum class WarningCode {
 enum class UnplacedReason {
     EXCEEDS_GRID_DIMENSIONS,
     TARGET_UNAVAILABLE,
+
+    /**
+     * Issue #228: the selected strategy's declared semantics disallow the
+     * candidate unit's destination (folder formation under
+     * `createsFolders = false`, or new-page overflow under
+     * `CAPTURED_PAGE_ONLY`) and no free captured cell fit the unit. The
+     * candidate is reported unplaced instead of the strategy violating its
+     * own page/folder scope.
+     */
+    STRATEGY_SCOPE_FULL,
 }
 
 enum class RejectionCode {

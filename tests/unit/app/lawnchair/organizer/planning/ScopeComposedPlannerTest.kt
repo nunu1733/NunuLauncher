@@ -272,6 +272,72 @@ class ScopeComposedPlannerTest {
     }
 
     @Test
+    fun strategiesThatNeverCreateFoldersKeepEveryCandidateAsSingleton() {
+        // Review P1: STABLE_PAGE_TIDY_V1 and CATEGORY_CONTIGUOUS_V1 declare
+        // createsFolders = false — same-category candidate pairs must never
+        // collapse into a planned folder, whatever their category.
+        val signals = listOf(
+            ClassificationSignal(ItemId("c0"), SignalSource.S2, CategoryId("GAMES")),
+            ClassificationSignal(ItemId("c1"), SignalSource.S2, CategoryId("GAMES")),
+            ClassificationSignal(ItemId("c2"), SignalSource.S2, CategoryId("GAMES")),
+        )
+        val additions = listOf(candidate("c0"), candidate("c1"), candidate("c2"))
+
+        for (strategyId in listOf("STABLE_PAGE_TIDY_V1", "CATEGORY_CONTIGUOUS_V1")) {
+            val rules = defaultRules(strategy = StrategyId(strategyId))
+            val planned = planner.plan(input(emptyList(), additions, signals = signals, rules = rules)).outcome as Planned
+
+            assertTrue(
+                "$strategyId formed a candidate folder despite createsFolders = false",
+                planned.newFolders.isEmpty(),
+            )
+            assertEquals(additions.map { it.id }.toSet(), planned.placements.map { it.item }.toSet())
+        }
+    }
+
+    @Test
+    fun pageLocalStrategiesReportOverflowingCandidatesAsUnplacedInsteadOfNewPages() {
+        // Review P1: CAPTURED_PAGE_ONLY strategies (STABLE_PAGE_TIDY_V1,
+        // CATEGORY_CONTIGUOUS_V1) never create pages. Candidates that do not
+        // fit the captured pages surface through the unplaced contract with
+        // STRATEGY_SCOPE_FULL — never silently created, never forced onto a
+        // new page.
+        val items = listOf(app("a", x = 0, y = 0))
+        // A 4x4 device holds 16 cells; the occupied one leaves 15 free. More
+        // than 15 candidates must overflow the strategy's page scope.
+        val additions = (0 until 18).map { candidate("p$it") }
+
+        for (strategyId in listOf("STABLE_PAGE_TIDY_V1", "CATEGORY_CONTIGUOUS_V1")) {
+            val rules = defaultRules(strategy = StrategyId(strategyId))
+            val planned = planner.plan(input(items, additions, rules = rules)).outcome as Planned
+
+            assertTrue(
+                "$strategyId created new pages despite CAPTURED_PAGE_ONLY",
+                planned.newPages.isEmpty(),
+            )
+            val placedIds = planned.placements.map { it.item }.toSet()
+            val unplacedIds = planned.unplaced.map { it.item }.toSet()
+            // Candidate partition: every candidate either placed or unplaced.
+            assertEquals(
+                "$strategyId lost a candidate between placed and unplaced",
+                additions.map { it.id }.toSet(),
+                (placedIds + unplacedIds) - items.map { it.id }.toSet(),
+            )
+            assertTrue(
+                "$strategyId did not report the overflow as STRATEGY_SCOPE_FULL",
+                planned.unplaced.isNotEmpty() &&
+                    planned.unplaced.all { it.reason == UnplacedReason.STRATEGY_SCOPE_FULL },
+            )
+            // Placed candidates stay on the captured page and never overlap.
+            val workspace = planned.placements
+                .mapNotNull { p -> (p.target as? PlacementTarget.WorkspaceTarget)?.let { p.item to it } }
+            workspace.forEach { (_, target) ->
+                assertEquals(PageRef(PageId("p0")), target.page)
+            }
+        }
+    }
+
+    @Test
     fun planningOscillatesNothingAfterTheCandidatesArePlaced() {
         // Spec §4 idempotence: once the candidates are on the workspace, the
         // next full organize over the post-state proposes the same layout (all

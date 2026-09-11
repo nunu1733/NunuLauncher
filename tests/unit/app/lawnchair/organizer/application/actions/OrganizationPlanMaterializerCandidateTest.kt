@@ -136,7 +136,12 @@ class OrganizationPlanMaterializerCandidateTest {
 
         val materialized = OrganizationPlanMaterializer.materialize(input, result, sourceState, NoopTitleResolver, resolver)
 
-        assertEquals(OrganizationPlanMaterializer.Result.Invalid, materialized)
+        // Review P2 #2: the typed resolution failure survives to the caller so
+        // the run can direct the user to re-detection (never partial adoption).
+        assertEquals(
+            OrganizationPlanMaterializer.Result.CandidateResolutionFailed(CandidateResolutionFailure.COMPONENT_NOT_FOUND),
+            materialized,
+        )
     }
 
     @Test
@@ -146,7 +151,10 @@ class OrganizationPlanMaterializerCandidateTest {
 
         val materialized = OrganizationPlanMaterializer.materialize(input, result, sourceState, NoopTitleResolver, resolver)
 
-        assertEquals(OrganizationPlanMaterializer.Result.Invalid, materialized)
+        assertEquals(
+            OrganizationPlanMaterializer.Result.CandidateResolutionFailed(CandidateResolutionFailure.LABEL_UNAVAILABLE),
+            materialized,
+        )
     }
 
     @Test

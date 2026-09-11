@@ -1118,6 +1118,9 @@
     <string name="manual_organization_preserved_already_canonical">Already-canonical placements: %1$d</string>
     <string name="manual_organization_unplaced_grid">Unplaced because the item exceeds grid dimensions: %1$d</string>
     <string name="manual_organization_unplaced_target">Unplaced because the target is unavailable: %1$d</string>
+    <string name="manual_organization_unplaced_strategy_scope">Unplaced because the selected strategy keeps the current pages and folders: %1$d</string>
+    <string name="manual_organization_selection_stale">The Home layout changed since these apps were selected. Nothing was changed — start again to re-check the apps that are not on the Home screen.</string>
+    <string name="manual_organization_candidate_unresolved">A selected app can no longer be added. Nothing was changed — start again to re-check the apps that are not on the Home screen.</string>
     <string name="manual_organization_warning_legacy_shortcut">Legacy shortcuts require review: %1$d</string>
     <string name="manual_organization_warning_fallback_category">Fallback category used: %1$d</string>
     <string name="manual_organization_warning_unavailable">Unavailable placements were preserved: %1$d</string>
