@@ -131,9 +131,11 @@ private class BoundedInputStream(
     private fun count(bytes: Long) {
         bytesRead += bytes
         if (bytesRead > maxBytes && !budgetThrown) {
-            // Throw once; ZipInputStream's close()/closeEntry() drains the
-            // current entry during unwinding, and those reads must not mask
-            // the result with a second exception.
+            // Throw exactly once. The extraction loop drains each entry fully
+            // itself, but during use{} unwinding close() can still perform
+            // reads; those must not mask the mapped result with a second
+            // exception, and after the budget is spent there is no legitimate
+            // consumer of further bytes.
             budgetThrown = true
             throw ArchiveBudgetExceededException
         }

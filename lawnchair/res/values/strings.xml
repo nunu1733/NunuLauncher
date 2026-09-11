@@ -534,7 +534,6 @@
     <string name="backup_preview_partial_caption">The preview image may not show all saved pages.</string>
     <string name="backup_page_summary_title">Saved pages (%1$d)</string>
     <string name="backup_page_summary_entry">Page %1$d (items: %2$d, folders: %3$d, widgets: %4$d)</string>
-    <string name="backup_page_summary_more">%1$d more pages not listed</string>
     <string name="backup_page_summary_unavailable">Saved page details are not available.</string>
 
     <!--

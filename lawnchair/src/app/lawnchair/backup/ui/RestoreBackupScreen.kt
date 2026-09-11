@@ -10,11 +10,14 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -111,9 +114,6 @@ fun RestoreBackupScreen(
     }
 }
 
-/** Overflow guard for the non-scrollable portrait restore layout (Issue #233). */
-private const val MAX_RENDERED_PAGE_ROWS = 8
-
 @Composable
 fun ColumnScope.RestoreBackupOptions(
     isPortrait: Boolean,
@@ -195,42 +195,37 @@ fun ColumnScope.RestoreBackupOptions(
                                     summary.pages.size,
                                 ),
                             ) {
-                                Text(
-                                    text = stringResource(id = R.string.backup_preview_partial_caption),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.padding(horizontal = 16.dp),
-                                )
-                                val visiblePages = summary.pages.take(MAX_RENDERED_PAGE_ROWS)
-                                visiblePages.forEachIndexed { index, page ->
-                                    Text(
-                                        text = stringResource(
-                                            id = R.string.backup_page_summary_entry,
-                                            index + 1,
-                                            page.itemCount,
-                                            page.folderCount,
-                                            page.widgetCount,
-                                        ),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        modifier = Modifier
-                                            .padding(top = 4.dp)
-                                            .padding(horizontal = 16.dp),
-                                    )
-                                }
-                                val omittedPages = summary.pages.size - visiblePages.size
-                                if (omittedPages > 0) {
-                                    // Overflow guard: the portrait restore layout has no
-                                    // scroll, so the row list is bounded and the full page
-                                    // count stays visible in the heading.
-                                    Text(
-                                        text = stringResource(
-                                            id = R.string.backup_page_summary_more,
-                                            omittedPages,
-                                        ),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        modifier = Modifier
-                                            .padding(top = 4.dp)
-                                            .padding(horizontal = 16.dp),
-                                    )
+                                // The portrait restore layout has no page-level scroll, so the
+                                // summary body is height-bounded and scrollable itself: every
+                                // saved page stays listed while the restore controls below
+                                // remain reachable at any font scale (spec overflow contract).
+                                Box(
+                                    modifier = Modifier
+                                        .heightIn(max = 240.dp)
+                                        .verticalScroll(rememberScrollState()),
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = stringResource(id = R.string.backup_preview_partial_caption),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.padding(horizontal = 16.dp),
+                                        )
+                                        summary.pages.forEachIndexed { index, page ->
+                                            Text(
+                                                text = stringResource(
+                                                    id = R.string.backup_page_summary_entry,
+                                                    index + 1,
+                                                    page.itemCount,
+                                                    page.folderCount,
+                                                    page.widgetCount,
+                                                ),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                modifier = Modifier
+                                                    .padding(top = 4.dp)
+                                                    .padding(horizontal = 16.dp),
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
