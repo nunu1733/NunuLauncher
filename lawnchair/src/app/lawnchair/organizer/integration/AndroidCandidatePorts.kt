@@ -56,11 +56,13 @@ class AndroidCandidateApplicationResolver(
             ?: return CandidateApplicationResolution.Unavailable(CandidateResolutionFailure.LABEL_UNAVAILABLE)
         return try {
             // The canonical app-icon intent the launcher itself persists for
-            // application rows (AppInfo): ACTION_MAIN + CATEGORY_LAUNCHER +
-            // component, serialized exactly like ModelWriter stores it.
+            // application rows (AppInfo.makeLaunchIntent): ACTION_MAIN +
+            // CATEGORY_LAUNCHER + component + launch flags, serialized exactly
+            // like ModelWriter stores it.
             val intent = Intent(Intent.ACTION_MAIN)
                 .addCategory(Intent.CATEGORY_LAUNCHER)
                 .setComponent(info.componentName)
+                .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
             CandidateApplicationResolution.Ready(
                 title = label,
                 intentText = intent.toUri(0),

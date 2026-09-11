@@ -191,10 +191,12 @@ class ManualOrganizationRun internal constructor(
         /**
          * Issue #228: explicit selection of missing apps. [candidates] is the
          * detection-time cut (deterministic display order); an empty list
-         * renders the zero-candidates notice and a plain continue. Selection
-         * state is process-local UI state and never persists.
+         * renders the zero-candidates notice and a plain continue. [runId]
+         * identifies the owning run so the selection surface resets its
+         * process-local state for every new run (D-1). Selection state never
+         * persists.
          */
-        data class Selecting(val candidates: List<DetectedCandidate>) : State
+        data class Selecting(val runId: RunId, val candidates: List<DetectedCandidate>) : State
 
         data object Planning : State
         data class InputUnavailable(val reason: InputReadinessReason) : State
@@ -305,7 +307,7 @@ class ManualOrganizationRun internal constructor(
                 journalSequence = 0L,
                 runId = runId.value,
                 trigger = operation.trigger,
-                runMode = RunMode.FULL_ORGANIZATION,
+                runMode = operation.diagnosticsRunMode,
                 phase = PhaseCode.RUN_STARTED,
             ),
         )
@@ -317,7 +319,7 @@ class ManualOrganizationRun internal constructor(
             // selection surface.
             setIfActive(operation, State.CandidateDetection)
             when (val detection = application.detectMissingAppCandidates()) {
-                is CandidateDetectionResult.Ready -> setIfActive(operation, State.Selecting(detection.candidates))
+                is CandidateDetectionResult.Ready -> setIfActive(operation, State.Selecting(runId, detection.candidates))
                 is CandidateDetectionResult.Unavailable -> runComposedPhase(operation, selection = null)
             }
         } catch (failure: Throwable) {
@@ -330,22 +332,27 @@ class ManualOrganizationRun internal constructor(
     /**
      * Issue #228: confirms the selection surface and continues the run. An
      * empty selection is valid and composes the plain full organization; a
-     * non-empty selection composes the scope-composed run.
+     * non-empty selection composes the scope-composed run. The state
+     * transition happens under the lock so a second confirmation of the same
+     * surface cannot double-run the compose/plan/preview phase.
      */
     fun confirmSelection(selection: Set<CandidateTarget.AppKey>) {
+        val sortedSelection = selection.sortedWith(
+            compareBy({ it.component.value }, { it.profile.value }),
+        )
         val operation = synchronized(lock) {
             if (state !is State.Selecting) return
-            activeOperation ?: return
+            val current = activeOperation ?: return
+            // An empty confirmed selection is the plain full organize —
+            // the null selection keeps the legacy composition path.
+            if (sortedSelection.isNotEmpty()) {
+                current.diagnosticsRunMode = RunMode.SCOPE_COMPOSED_ORGANIZATION
+            }
+            stateHolder.value = State.Capturing
+            current
         }
         try {
-            runComposedPhase(
-                operation,
-                // An empty confirmed selection is the plain full organize —
-                // the null selection keeps the legacy composition path.
-                selection = selection.sortedWith(
-                    compareBy({ it.component.value }, { it.profile.value }),
-                ).ifEmpty { null },
-            )
+            runComposedPhase(operation, selection = sortedSelection.ifEmpty { null })
         } catch (failure: Throwable) {
             abort(operation)
             throw failure
@@ -378,6 +385,9 @@ class ManualOrganizationRun internal constructor(
         // Issue #228: once the user confirmed a non-empty selection, the run's
         // diagnostics identity is the scope-composed mode.
         val diagnosticsRunMode = if (selection != null) RunMode.SCOPE_COMPOSED_ORGANIZATION else RunMode.FULL_ORGANIZATION
+        if (diagnosticsRunMode == RunMode.SCOPE_COMPOSED_ORGANIZATION) {
+            operation.diagnosticsRunMode = diagnosticsRunMode
+        }
         // The composition performs its own canonical capture (plan §5), so the
         // run re-enters the capturing phase after the selection surface.
         setIfActive(operation, State.Capturing)
@@ -537,7 +547,8 @@ class ManualOrganizationRun internal constructor(
             val candidate = activeOperation ?: return
             if (candidate.applicationAdmitted.get()) return
             if (state !is State.Preview && state !is State.Capturing && state !is State.CandidateDetection &&
-                state !is State.Selecting && state !is State.Planning && state !is State.Applying
+                state !is State.Selecting && state !is State.Planning && state !is State.Applying &&
+                state !is State.PreviewUnavailable
             ) {
                 return
             }
@@ -553,7 +564,7 @@ class ManualOrganizationRun internal constructor(
                 journalSequence = 0L,
                 runId = operation.runId.value,
                 trigger = operation.trigger,
-                runMode = RunMode.FULL_ORGANIZATION,
+                runMode = operation.diagnosticsRunMode,
                 phase = PhaseCode.USER_CANCELLED,
             ),
         )
@@ -573,7 +584,7 @@ class ManualOrganizationRun internal constructor(
                     journalSequence = 0L,
                     runId = operation.runId.value,
                     trigger = operation.trigger,
-                    runMode = RunMode.FULL_ORGANIZATION,
+                    runMode = operation.diagnosticsRunMode,
                     phase = PhaseCode.USER_CONFIRMED,
                 ),
             )
@@ -751,7 +762,7 @@ class ManualOrganizationRun internal constructor(
                     journalSequence = 0L,
                     runId = it.runId.value,
                     trigger = it.trigger,
-                    runMode = RunMode.FULL_ORGANIZATION,
+                    runMode = it.diagnosticsRunMode,
                     phase = PhaseCode.USER_CANCELLED,
                 ),
             )
@@ -956,7 +967,7 @@ class ManualOrganizationRun internal constructor(
                 journalSequence = 0L,
                 runId = operation.runId.value,
                 trigger = operation.trigger,
-                runMode = RunMode.FULL_ORGANIZATION,
+                runMode = operation.diagnosticsRunMode,
                 phase = PhaseCode.INPUT_NOT_READY,
                 error = InputReadinessProjection.projectError(composition),
             ),
@@ -969,7 +980,7 @@ class ManualOrganizationRun internal constructor(
                 journalSequence = 0L,
                 runId = operation.runId.value,
                 trigger = operation.trigger,
-                runMode = RunMode.FULL_ORGANIZATION,
+                runMode = operation.diagnosticsRunMode,
                 phase = PhaseCode.APPLY_REJECTED,
                 applyStage = ApplyStage.A2,
                 error = ErrorEntry(ErrorFamily.PRE_WRITE_REJECTED, PreWriteRejection.STALE_REVISION.name),
@@ -1003,5 +1014,14 @@ class ManualOrganizationRun internal constructor(
         val lease: AutoCloseable,
         val cancelled: AtomicBoolean = AtomicBoolean(false),
         val applicationAdmitted: AtomicBoolean = AtomicBoolean(false),
-    )
+    ) {
+        /**
+         * Issue #228: diagnostics run-mode identity of this operation. Starts
+         * as the plain full organization and moves to the scope-composed mode
+         * the moment the user confirms a non-empty selection, so terminal
+         * events (USER_CANCELLED) never contradict the phases between them.
+         */
+        @Volatile
+        var diagnosticsRunMode: RunMode = RunMode.FULL_ORGANIZATION
+    }
 }

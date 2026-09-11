@@ -126,12 +126,14 @@ fun ManualOrganizationPreferences(
     }
     val expandedPreviewGroups = remember(previewDetails) { mutableStateOf(emptySet<Int>()) }
 
-    // Issue #228: the selection surface's process-local state, reset whenever
-    // a new detection cut arrives. Hoisted here because LazyListScope item
-    // builders are not composable contexts.
-    val selectingCandidates = (state as? ManualOrganizationRun.State.Selecting)?.candidates
-    var missingAppSelection by remember(selectingCandidates) {
-        mutableStateOf(MissingAppSelectionState(selectingCandidates.orEmpty(), emptySet()))
+    // Issue #228: the selection surface's process-local state, keyed by the
+    // owning run — a fresh detection cut always starts unchecked (D-1/AC-3),
+    // even when the previous run's Selecting state is structurally equal.
+    // Hoisted here because LazyListScope item builders are not composable
+    // contexts.
+    val selectingState = state as? ManualOrganizationRun.State.Selecting
+    var missingAppSelection by remember(selectingState?.runId) {
+        mutableStateOf(MissingAppSelectionState(selectingState?.candidates.orEmpty(), emptySet()))
     }
 
     ManualOrganizationBackHandler(coordinator)

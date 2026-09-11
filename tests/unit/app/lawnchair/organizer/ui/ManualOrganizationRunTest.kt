@@ -1114,6 +1114,36 @@ class ManualOrganizationRunTest {
     }
 
     @Test
+    fun cancellingFromPreviewUnavailableEndsTheRunAndReleasesTheOperation() {
+        val application = FakeApplication(scopeReadyInput()).apply {
+            detection = detected("com.example.c1")
+            inspectPlanOverride = { _, _ -> PlanPreviewResult.WriterBusy }
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start()
+        runner.confirmSelection(
+            setOf(
+                app.lawnchair.organizer.planning.CandidateTarget.AppKey(
+                    app.lawnchair.organizer.planning.ComponentKey("com.example.c1"),
+                    app.lawnchair.organizer.planning.ProfileId("personal"),
+                ),
+            ),
+        )
+        assertTrue(runner.state is ManualOrganizationRun.State.PreviewUnavailable)
+
+        runner.cancel()
+
+        assertEquals(ManualOrganizationRun.State.Cancelled, runner.state)
+        assertEquals(0, application.applyCalls)
+        // The released operation admits a fresh run immediately.
+        assertTrue(
+            ManualOrganizationRun(FakeApplication(readyInput()), OrganizationPlanner { planningResult(movingPlan()) })
+                .start() is ManualOrganizationRun.StartOutcome.Started,
+        )
+    }
+
+    @Test
     fun addRunPreviewUnavailableRetrySurfacesStalenessThroughTheInspectSeam() {
         val application = FakeApplication(scopeReadyInput()).apply {
             detection = detected("com.example.c1")

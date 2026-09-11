@@ -202,6 +202,76 @@ class ScopeComposedPlannerTest {
     }
 
     @Test
+    fun everyStrategyKeepsTheComposedInvariantsAndEmptySelectionEquality() {
+        // Plan §11/R-1: the composed tail must hold for every catalog
+        // strategy's full-run executor, and an empty selection must keep the
+        // strategy's plain full-organization output byte for byte.
+        val strategies = listOf(
+            "CANONICAL_PAGE_COMPACT_V1",
+            "STABLE_PAGE_TIDY_V1",
+            "BOTTOM_FIRST_V1",
+            "GLOBAL_COMPACT_V1",
+            "GLOBAL_COMPACT_V2",
+            "CATEGORY_CONTIGUOUS_V1",
+        )
+        val items = listOf(
+            app("a", x = 0, y = 0),
+            app("b", x = 3, y = 2),
+            app("c", x = 1, y = 3),
+        )
+        val additions = (0 until 5).map { candidate("s$it") }
+
+        for (strategyId in strategies.map(::StrategyId)) {
+            val rules = defaultRules(strategy = strategyId)
+            val composed = planner.plan(input(items, additions, rules = rules))
+            val planned = composed.outcome as Planned
+
+            // Conservation: every captured item and candidate placed exactly once.
+            val placementItems = planned.placements.map { it.item }
+            assertEquals(
+                "strategy $strategyId lost an item",
+                (items.map { it.id } + additions.map { it.id }).toSet(),
+                placementItems.toSet(),
+            )
+            assertEquals(placementItems.size, placementItems.distinct().size)
+
+            // Bounds + no overlap per page.
+            val workspace = planned.placements
+                .mapNotNull { p -> (p.target as? PlacementTarget.WorkspaceTarget)?.let { p.item to it } }
+            workspace.forEach { (_, target) ->
+                assertTrue(target.cell.x >= 0 && target.cell.y >= 0)
+                assertTrue(target.cell.x + target.span.width <= 4)
+                assertTrue(target.cell.y + target.span.height <= 4)
+            }
+            workspace.groupBy({ it.second.page }, { it.second }).forEach { (_, targets) ->
+                for (i in targets.indices) {
+                    for (j in i + 1 until targets.size) {
+                        val a = targets[i]
+                        val b = targets[j]
+                        val overlaps = a.cell.x < b.cell.x + b.span.width &&
+                            b.cell.x < a.cell.x + a.span.width &&
+                            a.cell.y < b.cell.y + b.span.height &&
+                            b.cell.y < a.cell.y + a.span.height
+                        assertTrue("strategy $strategyId overlap: $a vs $b", !overlaps)
+                    }
+                }
+            }
+
+            // Determinism.
+            assertEquals(planned, planner.plan(input(items, additions, rules = rules)).outcome as Planned)
+
+            // Empty selection equals the plain full run of the same strategy.
+            val composedEmpty = planner.plan(input(items, emptyList(), rules = rules))
+            val fullEmpty = planner.plan(input(items, emptyList(), rules = rules).copy(runMode = RunMode.FullOrganization))
+            assertEquals(
+                "strategy $strategyId diverged on empty selection",
+                (fullEmpty.outcome as Planned),
+                composedEmpty.outcome as Planned,
+            )
+        }
+    }
+
+    @Test
     fun planningOscillatesNothingAfterTheCandidatesArePlaced() {
         // Spec §4 idempotence: once the candidates are on the workspace, the
         // next full organize over the post-state proposes the same layout (all

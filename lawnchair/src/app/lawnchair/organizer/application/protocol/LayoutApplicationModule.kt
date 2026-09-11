@@ -186,7 +186,14 @@ internal class LayoutApplicationModule<S>(
         } catch (_: RuntimeException) {
             return@runWhenReady CandidateDetectionResult.Unavailable(DetectionUnavailableReason.CAPTURE_FAILED)
         }
-        AndroidMissingAppCandidateSource(context.applicationContext).detect(capture)
+        // Issue #228 (plan §4): the detection seam returns typed failures —
+        // platform enumeration errors never escape upward (spec §7: the run
+        // simply falls back to the plain full organize).
+        try {
+            AndroidMissingAppCandidateSource(context.applicationContext).detect(capture)
+        } catch (_: RuntimeException) {
+            CandidateDetectionResult.Unavailable(DetectionUnavailableReason.CAPTURE_FAILED)
+        }
     }
 
     /**

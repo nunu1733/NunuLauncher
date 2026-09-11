@@ -145,4 +145,107 @@ class MissingAppDetectionTest {
             assertEquals(available - represented, candidates)
         }
     }
+
+    @Test
+    fun representedIdentitiesExtractAppsFromEveryContainerKindAndDuplicates() {
+        // Spec AC-1: the snapshot-side extraction — a workspace icon, a dock
+        // item, a folder member, an app-pair member, and a duplicate row all
+        // count as "represented"; folder containers never do.
+        val profile = ProfileId("personal")
+
+        fun appRow(id: String, component: String, placement: app.lawnchair.organizer.application.public.PlacementState) = app.lawnchair.organizer.application.public.CanonicalItemState(
+            ref = app.lawnchair.organizer.application.public.ApplicationItemRef.PersistentItem(
+                app.lawnchair.organizer.planning.ItemId(id),
+            ),
+            kind = app.lawnchair.organizer.application.public.CanonicalItemKind.Application,
+            targetKey = app.lawnchair.organizer.planning.TargetKey.AppKey(ComponentKey(component), profile),
+            profile = profile,
+            profileAvailability = app.lawnchair.organizer.application.public.ProfileAvailability.AVAILABLE,
+            itemAvailability = app.lawnchair.organizer.application.public.ItemAvailability.AVAILABLE,
+            placement = placement,
+            title = app.lawnchair.organizer.application.public.OptionalText.Present(id),
+            intent = app.lawnchair.organizer.application.public.OptionalText.Present("#Intent;"),
+            icon = app.lawnchair.organizer.application.public.OptionalBytes.Absent,
+            widget = app.lawnchair.organizer.application.public.WidgetState.NoWidget,
+            modified = app.lawnchair.organizer.application.public.ModifiedAtMillis(1_000L),
+            lockState = app.lawnchair.organizer.application.public.OrganizerLockState.UNLOCKED,
+            structure = app.lawnchair.organizer.application.public.StructureState.Plain,
+        )
+
+        val workspacePage = app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage(
+            app.lawnchair.organizer.planning.PageId("p0"),
+        )
+        val folderRef = app.lawnchair.organizer.application.public.ApplicationItemRef.PersistentItem(
+            app.lawnchair.organizer.planning.ItemId("folder"),
+        )
+        val pairRef = app.lawnchair.organizer.application.public.ApplicationItemRef.PersistentItem(
+            app.lawnchair.organizer.planning.ItemId("pair"),
+        )
+        val state = app.lawnchair.organizer.application.canonical.CanonicalFixtures.state(
+            items = listOf(
+                appRow(
+                    "ws",
+                    "com.example.ws/.Main",
+                    app.lawnchair.organizer.application.public.PlacementState.Workspace(
+                        workspacePage,
+                        app.lawnchair.organizer.planning.GridCell(0, 0),
+                        app.lawnchair.organizer.planning.GridSpan(1, 1),
+                    ),
+                ),
+                // Same app represented a second time — still one identity.
+                appRow(
+                    "ws-duplicate",
+                    "com.example.ws/.Main",
+                    app.lawnchair.organizer.application.public.PlacementState.Workspace(
+                        workspacePage,
+                        app.lawnchair.organizer.planning.GridCell(1, 0),
+                        app.lawnchair.organizer.planning.GridSpan(1, 1),
+                    ),
+                ),
+                appRow("dock", "com.example.dock/.Main", app.lawnchair.organizer.application.public.PlacementState.Dock(0)),
+                appRow("folder-member", "com.example.folder.app/.Main", app.lawnchair.organizer.application.public.PlacementState.FolderChild(folderRef, 0)),
+                appRow(
+                    "pair-member",
+                    "com.example.pair.app/.Main",
+                    app.lawnchair.organizer.application.public.PlacementState.AppPairChild(
+                        pairRef,
+                        app.lawnchair.organizer.planning.SplitStage.TOP_OR_LEFT,
+                    ),
+                ),
+                // The folder container itself: FolderKey, never an app identity.
+                app.lawnchair.organizer.application.canonical.CanonicalFixtures.appItem(
+                    itemId = "folder",
+                    kind = app.lawnchair.organizer.application.public.CanonicalItemKind.Folder,
+                ).copy(
+                    targetKey = app.lawnchair.organizer.planning.TargetKey.FolderKey(
+                        app.lawnchair.organizer.planning.FolderId("folder"),
+                    ),
+                    structure = app.lawnchair.organizer.application.public.StructureState.FolderMembers(
+                        listOf(
+                            app.lawnchair.organizer.application.public.RankedMember(
+                                app.lawnchair.organizer.application.public.ApplicationItemRef.PersistentItem(
+                                    app.lawnchair.organizer.planning.ItemId("folder-member"),
+                                ),
+                                0,
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val snapshot = app.lawnchair.organizer.application.adapter.FakeLayoutWriter(state)
+            .captureCurrent(app.lawnchair.organizer.application.protocol.CaptureId("represented-test"))
+
+        val represented = MissingAppDetection.representedIdentities(snapshot)
+
+        assertEquals(
+            setOf(
+                key("com.example.ws/.Main", "personal"),
+                key("com.example.dock/.Main", "personal"),
+                key("com.example.folder.app/.Main", "personal"),
+                key("com.example.pair.app/.Main", "personal"),
+            ),
+            represented,
+        )
+    }
 }
