@@ -6,9 +6,13 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
+import app.lawnchair.backup.BackupPageSummaryReader
+import app.lawnchair.backup.BackupPageSummaryResult
 import app.lawnchair.backup.LawnchairBackup
+import app.lawnchair.util.hasFlag
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -28,6 +32,17 @@ sealed interface RestoreBackupUiState {
     data object Error : RestoreBackupUiState {
         override val isLoading: Boolean = true
     }
+}
+
+/**
+ * Issue #233: page summary analysis runs independently of the main Success
+ * state so the confirmation screen never waits for it. Pending renders as
+ * nothing; analysis failure is typed and never blocks restore.
+ */
+sealed interface BackupPageSummaryUiState {
+    data object Pending : BackupPageSummaryUiState
+
+    data class Result(val result: BackupPageSummaryResult) : BackupPageSummaryUiState
 }
 
 private data class RestoreBackupViewModelState(
@@ -59,6 +74,9 @@ class RestoreBackupViewModel(
 
     val backupContents = savedStateHandle.getStateFlow("contents", 0)
 
+    private val _pageSummary = MutableStateFlow<BackupPageSummaryUiState>(BackupPageSummaryUiState.Pending)
+    val pageSummary: StateFlow<BackupPageSummaryUiState> = _pageSummary
+
     fun init(backupUri: Uri) {
         if (initialized) return
         initialized = true
@@ -69,10 +87,19 @@ class RestoreBackupViewModel(
                 backup.readInfoAndPreview()
                 setBackupContents(backup.info.contents)
                 viewModelState.update { it.copy(backup = backup) }
+                launchPageSummaryAnalysis(backup)
             } catch (t: Throwable) {
                 Log.e("RestoreBackupViewModel", "failed to parse backup", t)
                 viewModelState.update { it.copy(hasError = true) }
             }
+        }
+    }
+
+    private fun launchPageSummaryAnalysis(backup: LawnchairBackup) {
+        if (!backup.info.contents.hasFlag(LawnchairBackup.INCLUDE_LAYOUT_AND_SETTINGS)) return
+        viewModelScope.launch {
+            val result = BackupPageSummaryReader(getApplication(), backupUri).read()
+            _pageSummary.value = BackupPageSummaryUiState.Result(result)
         }
     }
 

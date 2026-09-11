@@ -10,11 +10,14 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -41,6 +44,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
+import app.lawnchair.backup.BackupPageSummaryResult
 import app.lawnchair.backup.LawnchairBackup
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.LocalNavController
@@ -86,7 +90,7 @@ fun RestoreBackupScreen(
         label = stringResource(id = R.string.restore_backup),
         modifier = modifier,
         backArrowVisible = !LocalIsExpandedScreen.current,
-        scrollState = if (isPortrait) null else scrollState,
+        scrollState = scrollState,
     ) {
         when (uiState) {
             is RestoreBackupUiState.Success -> RestoreBackupOptions(isPortrait, uiState.backup)
@@ -147,7 +151,7 @@ fun ColumnScope.RestoreBackupOptions(
         DummyLauncherBox(
             modifier = Modifier
                 .padding(top = 8.dp)
-                .weight(1f)
+                .heightIn(max = 320.dp)
                 .align(Alignment.CenterHorizontally)
                 .clip(MaterialTheme.shapes.large),
             darkText = backup.info.previewDarkText,
@@ -170,6 +174,67 @@ fun ColumnScope.RestoreBackupOptions(
                     contentScale = ContentScale.FillHeight,
                 )
             }
+        }
+    }
+
+    // Issue #233: page identification for layouts the single screenshot preview
+    // cannot cover. Shown in both orientations whenever the backup contains
+    // layout data; independent of the contents checkboxes and screenshot presence.
+    val layoutIncluded = backupContents.hasFlag(LawnchairBackup.INCLUDE_LAYOUT_AND_SETTINGS)
+    if (layoutIncluded) {
+        when (val pageSummaryState = viewModel.pageSummary.collectAsStateWithLifecycle().value) {
+            is BackupPageSummaryUiState.Result -> {
+                when (val result = pageSummaryState.result) {
+                    is BackupPageSummaryResult.Available -> {
+                        val summary = result.summary
+                        if (summary.hasPagesOutsidePreview) {
+                            PreferenceGroup(
+                                modifier = modifier,
+                                heading = stringResource(
+                                    id = R.string.backup_page_summary_title,
+                                    summary.pages.size,
+                                ),
+                            ) {
+                                // The restore layout scrolls as a whole (spec overflow
+                                // contract): every saved page stays listed and the restore
+                                // controls remain reachable at any font scale or page count.
+                                Text(
+                                    text = stringResource(id = R.string.backup_preview_partial_caption),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                )
+                                summary.pages.forEachIndexed { index, page ->
+                                    Text(
+                                        text = stringResource(
+                                            id = R.string.backup_page_summary_entry,
+                                            index + 1,
+                                            page.itemCount,
+                                            page.folderCount,
+                                            page.widgetCount,
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier
+                                            .padding(top = 4.dp)
+                                            .padding(horizontal = 16.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    is BackupPageSummaryResult.Unavailable -> {
+                        Text(
+                            text = stringResource(id = R.string.backup_page_summary_unavailable),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier
+                                .padding(top = 8.dp)
+                                .padding(horizontal = 16.dp),
+                        )
+                    }
+                }
+            }
+
+            is BackupPageSummaryUiState.Pending -> {}
         }
     }
 
