@@ -5,11 +5,13 @@
 
 - Auditor: independent general-purpose subagent session, distinct from the implementing session (solo-maintenance independent-session audit per docs/project/github-workflow.md)
 - PR: https://github.com/nunu1733/NunuLauncher/pull/278
-- Head SHA: 674983b57399fcb25e16c257ab6c74b0828062f7 (implementation head audited; this audit record itself is the docs-only commit that follows it, per gate rule 4)
+- Head SHA: 674983b57399fcb25e16c257ab6c74b0828062f7
 - CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34551442368 (pull_request merge-gate run for head 674983b573; `final-status` pending at audit time — see Findings)
 - Criteria: specs/233-backup-restore-preview-multi-page/spec.md AC-1, AC-2, AC-3, AC-4, AC-5, AC-6, AC-7, AC-8, AC-9 (spec reviewed at commit 62a3c0a40a, merged via PR #277)
 
 ## Scope
+
+The audited Head SHA 674983b57399fcb25e16c257ab6c74b0828062f7 is the implementation head; this audit record is the docs-only commit that follows it, per the gate's rule that only docs-only commits may follow an audit.
 
 Diff `git diff origin/main..674983b573 --name-only` — 7 files, +613/-1:
 
