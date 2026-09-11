@@ -9,7 +9,7 @@ requirements:
   - AC-265-R5
 risk:
   - layout-data
-updated: 2026-09-10
+updated: 2026-09-11
 ---
 
 # Post-apply manual layout edits: recovery-state consistency and Organizer reconciliation (remaining investigation)
@@ -38,7 +38,8 @@ unexplained mismatch**:
     across folder → workspace moves.
   - #270 (defense-in-depth, merged via PR #273): recovery preview maps capture
     failure to a typed result instead of leaking an exception.
-  - #271 (open): Settings status projection persistence.
+  - #271 (closed, merged via PR #276; spec 271 marked implemented via PR
+    #279): Settings status projection persistence.
 - **Still unexplained (this spec's scope).** The attached journal of the
   original report shows the second run stopping at `INPUT_NOT_READY` with
   `INPUT_READINESS / RECONCILIATION_FAILED`, which on current `main` requires
@@ -61,6 +62,38 @@ original `RECONCILIATION_FAILED` route (or establish it is not reproducible
 on `main` / not producible by `main`'s journal), and decide the disposition of
 the `WriterBusy` observation. It deliberately does not specify any fix; the
 confirmed boundary's fix is owned by #269/#270/#271.
+
+## Re-baseline (2026-09-11)
+
+The prior snapshot was valid for baseline
+`6b6bf8dd9fa0c42399185dbb13c30192f1e15962` (merge of PR #274). Per its
+re-entry rule this revision is re-based onto
+`ed7ce5a205985cd7a59224f60789aae4ba3c5ceb` (merge of PR #279); the issue body
+and all comments were re-retrieved on 2026-09-11 (no comments after the
+snapshot). The only relevant changes since the prior baseline are the #271
+implementation (PR #276), its docs (PR #279), and unrelated spec-233 docs
+(PR #277). Verified effects on this spec's scope:
+
+- `ReadinessGate` gained an observable `stateFlow` mirror
+  (`ReadinessGate.kt:43`); the transition semantics of `reconcile` (`:45`)
+  and `failBeforeReconciliation` (`:66`) are unchanged, so no new
+  gate-`FAILED` route was added.
+- Startup reconciliation is now triggered by a process-scoped,
+  idempotent `LawnchairApp.ensureOrganizerStartupReconciliation()`
+  (`LawnchairApp.kt:128`) invoked from Launcher `onActivityResumed` **and**
+  from `ManualOrganizationModule.get()` (`ManualOrganizationRun.kt:124-137`):
+  re-opening Settings in a fresh process itself drives startup
+  reconciliation — including the model-load kick via the #271 bridge
+  `LauncherModel.startLoaderWithoutCallbacks()` and, on model-load timeout,
+  the pre-reconciliation gate failure (`LawnchairApp.kt:148`). The reported
+  build's trigger surface is unknown and does not change the enumeration
+  below.
+- Settings status presentation now reads the durable `OrganizerDurableStatus`
+  projection (`LayoutApplicationModule.durableOrganizerStatus()` /
+  `ManualOrganizationRun.readDurableOrganizerStatus()`); status observations
+  in the reproduction contract use this seam.
+
+Scope and acceptance criteria are unchanged by the re-baseline.
 
 ## Outcome
 
@@ -147,8 +180,10 @@ For each candidate gate-`FAILED` route, the investigation must produce:
   requires a state the reported sequence cannot create), recording:
   recovery preview result, confirm/result, lifecycle and persisted recovery
   state, recovery-point/backup manifest state, DB/canonical state after
-  reload, recapture/verification result, Settings status projection, and the
-  next organizer readiness result with the exact journal codes;
+  reload, recapture/verification result, Settings status projection
+  (post-#271 seam: `readDurableOrganizerStatus()` and `readinessState`, plus
+  the visible surface), and the next organizer readiness result with the
+  exact journal codes;
 - the precise source condition (file/line or invariant) that sets the gate to
   `FAILED` or returns `RECONCILIATION_FAILED`;
 - the journal signature the route emits on `main` (codes that do exist:
@@ -187,9 +222,11 @@ For each candidate gate-`FAILED` route, the investigation must produce:
 
 - #269 (closed, merged PR #274) — primary representability fix.
 - #270 (closed, merged PR #273) — typed preview capture failure.
-- #271 (open) — Settings status projection persistence; independent of the
-  remaining question but relevant to how a gate-`FAILED` or unresolved-record
-  state is presented.
+- #271 (closed, merged PR #276; spec implemented via PR #279) — Settings
+  status projection persistence; its durable `OrganizerDurableStatus`
+  projection is the seam through which status observations are recorded, and
+  its settings-first reconciliation trigger is part of the reopen step of
+  the reported sequence.
 - #153 (closed) post-ZIP-restore `NotReady`; #172 (closed) readiness
   diagnostics; #150/#155 (closed) apply-time A7 verification — lineage only.
 - ADR-0003 (recovery-point storage), ADR-0011 (ZIP-restore recovery
