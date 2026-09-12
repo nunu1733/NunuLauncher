@@ -2,10 +2,10 @@ package app.lawnchair.organizer.application.actions
 
 import app.lawnchair.organizer.application.protocol.CandidateApplicationResolution
 import app.lawnchair.organizer.application.protocol.CandidateApplicationResolver
-import app.lawnchair.organizer.application.protocol.CandidateResolutionFailure
 import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.ApplicationPageRef
 import app.lawnchair.organizer.application.public.ApplyAction
+import app.lawnchair.organizer.application.public.CandidateResolutionFailure
 import app.lawnchair.organizer.application.public.CanonicalItemKind
 import app.lawnchair.organizer.application.public.CanonicalItemState
 import app.lawnchair.organizer.application.public.FolderTitleResolver
@@ -37,6 +37,7 @@ import app.lawnchair.organizer.planning.Planned
 import app.lawnchair.organizer.planning.PlannedPlacement
 import app.lawnchair.organizer.planning.PlanningResult
 import app.lawnchair.organizer.planning.TargetKey
+import app.lawnchair.organizer.planning.UnplacedReason
 
 /**
  * Bridges the exact planner artifact for one captured [OrganizationInput] to
@@ -101,9 +102,12 @@ internal object OrganizationPlanMaterializer {
 
         // Issue #228: partition the planner's placements into captured-item
         // placements (must cover the snapshot exactly) and candidate
-        // placements (must cover the declared additions exactly — validation
-        // guarantees every candidate is placed, so a partial candidate set is
-        // a contract violation).
+        // placements. Review P1 follow-up: the strategy's page/folder scope
+        // may legitimately leave selected candidates unplaced
+        // (`Planned.unplaced`, STRATEGY_SCOPE_FULL) — the accepted spec's
+        // overflow contract makes them a reported warning, never a failure
+        // and never a creation. The partition is therefore accepted when
+        // `placed ∪ unplaced == additions` and the two are disjoint.
         val candidateById = input.targets.additions.associateBy { it.id }
         val capturedPlacements = mutableListOf<PlannedPlacement>()
         val candidatePlacements = mutableListOf<PlannedPlacement>()
@@ -119,9 +123,15 @@ internal object OrganizationPlanMaterializer {
         if (capturedPlacements.map { it.item }.toSet() != snapshotIds || capturedPlacements.distinctBy { it.item }.size != capturedPlacements.size) {
             return Result.Invalid
         }
-        if (candidatePlacements.map { it.item }.toSet() != candidateById.keys || candidatePlacements.distinctBy { it.item }.size != candidatePlacements.size) {
-            return Result.Invalid
-        }
+        val placedCandidateIds = candidatePlacements.map { it.item }.toSet()
+        if (placedCandidateIds.size != candidatePlacements.size) return Result.Invalid
+        val unplacedCandidateIds = planned.unplaced.map { it.item }.toSet()
+        if (unplacedCandidateIds.size != planned.unplaced.size) return Result.Invalid
+        if (placedCandidateIds + unplacedCandidateIds != candidateById.keys) return Result.Invalid
+        if (placedCandidateIds.any { it in unplacedCandidateIds }) return Result.Invalid
+        // Unplaced entries are only ever scope-unplaced candidates; a
+        // captured item can never appear there in a Planned outcome.
+        if (planned.unplaced.any { it.reason != UnplacedReason.STRATEGY_SCOPE_FULL }) return Result.Invalid
         if (candidatePlacements.isNotEmpty() && candidateResolver == null) return Result.Invalid
 
         val plannedPageOrdinals = planned.newPages.map { it.ordinal }.toSet()

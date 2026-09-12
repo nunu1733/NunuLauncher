@@ -1,9 +1,9 @@
 package app.lawnchair.organizer.application.protocol
 
+import app.lawnchair.organizer.application.public.CandidateResolutionFailure
 import app.lawnchair.organizer.application.public.ItemAvailability
 import app.lawnchair.organizer.application.public.OptionalBytes
 import app.lawnchair.organizer.planning.CandidateTarget
-
 /**
  * Issue #228: application-owned port that resolves everything needed to build
  * a selected candidate's canonical application item at composition/plan time
@@ -36,17 +36,6 @@ sealed interface CandidateApplicationResolution {
 
     /** Typed failure: one unresolvable candidate fails the whole composition (no partial adoption). */
     data class Unavailable(val reason: CandidateResolutionFailure) : CandidateApplicationResolution
-}
-
-enum class CandidateResolutionFailure {
-    /** The component is no longer present in the launcher-authorized enumeration. */
-    COMPONENT_NOT_FOUND,
-
-    /** The label/title could not be resolved to a non-blank value. */
-    LABEL_UNAVAILABLE,
-
-    /** The platform read failed in a way that is not proof of absence. */
-    PLATFORM_READ_FAILED,
 }
 
 /**

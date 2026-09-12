@@ -1050,6 +1050,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.previewDetailsItems(
     if (counts.addedCount > 0) {
         item { SummaryText(stringResource(R.string.manual_organization_added_count, counts.addedCount)) }
     }
+    // Issue #228 (review P1 follow-up): scope-unplaced candidates ride the
+    // summary's unplaced vocabulary — informational context lines, like
+    // contextItems, so the placed Adds and the overflow stay visible together.
+    summary.unplacedByReason.forEach { (reason, count) ->
+        item { SummaryText(stringResource(unplacedReasonString(reason), count)) }
+    }
     item { SummaryText(stringResource(R.string.manual_organization_preserved_count, counts.preservedCount)) }
     item { SummaryText(stringResource(R.string.manual_organization_new_folders_count, counts.newFolderCount)) }
     item { SummaryText(stringResource(R.string.manual_organization_new_pages_count, counts.newPageCount)) }

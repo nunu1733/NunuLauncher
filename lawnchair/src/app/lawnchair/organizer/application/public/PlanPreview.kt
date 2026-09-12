@@ -18,6 +18,14 @@ sealed interface PlanPreviewResult {
     data class Previewed(val preview: PlanPreview) : PlanPreviewResult
     data object Stale : PlanPreviewResult
     data class NotPlannable(val reason: PlanPreviewRejection) : PlanPreviewResult
+
+    /**
+     * Issue #228 (review P2): a selected candidate stopped resolving during
+     * preview materialization. Typed re-detect outcome carried to the run
+     * coordinator — never collapsed into a generic materialization failure.
+     * Zero-write like every other variant.
+     */
+    data class CandidateResolutionFailed(val failure: CandidateResolutionFailure) : PlanPreviewResult
     data class Unavailable(val reason: PlanPreviewUnavailable) : PlanPreviewResult
     data object WriterBusy : PlanPreviewResult
     data object Concurrent : PlanPreviewResult

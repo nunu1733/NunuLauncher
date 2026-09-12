@@ -95,7 +95,13 @@ object PlanningProjection {
             .groupingBy { it }
             .eachCount()
 
-        val unplacedCount = 0 // Planned has no unplaced items
+        // Issue #228 (review P1 follow-up): a scope-composed run can succeed
+        // with strategy-scope-unplaced candidates; they join the same
+        // unplaced vocabulary the Impossible outcome reports.
+        val plannedUnplacedByReason = planned.unplaced
+            .map { it.reason.name }
+            .groupingBy { it }
+            .eachCount()
         val confidenceCounts = planned.categories
             .map { it.confidence.name }
             .groupingBy { it }
@@ -116,7 +122,8 @@ object PlanningProjection {
                 preservedByReason = preservedByReason,
                 newFolderCount = planned.newFolders.size,
                 newPageCount = planned.newPages.size,
-                unplacedCount = unplacedCount,
+                unplacedCount = planned.unplaced.size,
+                unplacedByReason = plannedUnplacedByReason,
                 confidenceCounts = confidenceCounts,
                 warningByCode = warningByCode,
             ),

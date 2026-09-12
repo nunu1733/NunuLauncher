@@ -208,7 +208,7 @@ class ManualOrganizationRun internal constructor(
          * paths are starting a fresh detection or navigating away.
          */
         data class CandidateResolutionFailed(
-            val failure: app.lawnchair.organizer.application.protocol.CandidateResolutionFailure,
+            val failure: app.lawnchair.organizer.application.public.CandidateResolutionFailure,
         ) : State
 
         data class PlanningRejected(val kind: PlanningFailureKind, val summary: Summary) : State
@@ -407,6 +407,7 @@ class ManualOrganizationRun internal constructor(
                 phase = PhaseCode.RUN_STARTED,
             ),
         )
+        operation.journalStarted = true
         // The composition performs its own canonical capture (plan §5), so the
         // run re-enters the capturing phase after the selection surface.
         setIfActive(operation, State.Capturing)
@@ -463,8 +464,19 @@ class ManualOrganizationRun internal constructor(
                 when (val outcome = result.outcome) {
                     is Planned -> {
                         val summary = outcome.summary(input)
+                        // Review P1 follow-up: scope-unplaced candidates are
+                        // a reported overflow, never a failure — but they are
+                        // also not "no changes". With no other changes and
+                        // nothing placeable, the run ends in the existing
+                        // Impossible surface (unplaced counts rendered); with
+                        // partial placement it previews the placed Adds and
+                        // carries the unplaced counts in the summary.
                         if (summary.movedCount == 0 && summary.newFolderCount == 0 && summary.newPageCount == 0 && summary.addedCount == 0) {
-                            finish(operation, State.NoChanges)
+                            if (outcome.unplaced.isEmpty()) {
+                                finish(operation, State.NoChanges)
+                            } else {
+                                finish(operation, State.PlanningRejected(PlanningFailureKind.IMPOSSIBLE, summary))
+                            }
                         } else {
                             handlePlanPreview(operation, input, result, summary)
                         }
@@ -507,6 +519,11 @@ class ManualOrganizationRun internal constructor(
                 emitRejection = true,
                 origin = StaleOrigin.DETECTED_BEFORE_REVIEW,
             )
+
+            // Review P2: the typed candidate-resolution failure from the
+            // preview seam keeps its identity — re-detect outcome, zero-write.
+            is PlanPreviewResult.CandidateResolutionFailed ->
+                finish(operation, State.CandidateResolutionFailed(preview.failure))
 
             is PlanPreviewResult.NotPlannable -> when (preview.reason) {
                 PlanPreviewRejection.CAPTURE_FAILED ->
@@ -578,15 +595,20 @@ class ManualOrganizationRun internal constructor(
             candidate
         }
         operation.lease.close()
-        emit(
-            RunEvent(
-                journalSequence = 0L,
-                runId = operation.runId.value,
-                trigger = operation.trigger,
-                runMode = operation.diagnosticsRunMode,
-                phase = PhaseCode.USER_CANCELLED,
-            ),
-        )
+        // Review P2 (runMode correlation): before the composed phase there is
+        // no RUN_STARTED for this runId, so the journal must stay empty —
+        // USER_CANCELLED without its RUN_STARTED would violate the contract.
+        if (operation.journalStarted) {
+            emit(
+                RunEvent(
+                    journalSequence = 0L,
+                    runId = operation.runId.value,
+                    trigger = operation.trigger,
+                    runMode = operation.diagnosticsRunMode,
+                    phase = PhaseCode.USER_CANCELLED,
+                ),
+            )
+        }
     }
 
     fun confirm() {
@@ -784,15 +806,18 @@ class ManualOrganizationRun internal constructor(
         }
         operation.second?.lease?.close()
         operation.second?.let {
-            emit(
-                RunEvent(
-                    journalSequence = 0L,
-                    runId = it.runId.value,
-                    trigger = it.trigger,
-                    runMode = it.diagnosticsRunMode,
-                    phase = PhaseCode.USER_CANCELLED,
-                ),
-            )
+            // Same journal rule as cancel(): no RUN_STARTED → no events.
+            if (it.journalStarted) {
+                emit(
+                    RunEvent(
+                        journalSequence = 0L,
+                        runId = it.runId.value,
+                        trigger = it.trigger,
+                        runMode = it.diagnosticsRunMode,
+                        phase = PhaseCode.USER_CANCELLED,
+                    ),
+                )
+            }
         }
         return operation.first
     }
@@ -905,6 +930,10 @@ class ManualOrganizationRun internal constructor(
         }
         val rejected = (planningOutcome as? app.lawnchair.organizer.planning.Rejected.Invalid)?.reasons.orEmpty()
         val unplaced = (planningOutcome as? app.lawnchair.organizer.planning.Rejected.Impossible)?.unplaced.orEmpty()
+        // Review P1 follow-up: strategy-scoped runs can also succeed with
+        // scope-unplaced candidates (`Planned.unplaced`) — they surface
+        // through the same unplaced-by-reason vocabulary as Impossible.
+        val plannedUnplaced = (planningOutcome as? app.lawnchair.organizer.planning.Planned)?.unplaced.orEmpty()
         // Issue #228: candidate placements are Adds, not moves — they leave the
         // moved/preserved vocabulary and surface as their own count.
         val candidateIds = input.targets.additions.map { it.id }.toSet()
@@ -919,7 +948,7 @@ class ManualOrganizationRun internal constructor(
             movedByReason = placements.mapNotNull { (it.disposition as? Disposition.Moved)?.rationale }.groupingBy { it }.eachCount(),
             preservedByReason = placements.mapNotNull { (it.disposition as? Disposition.Preserved)?.reason }.groupingBy { it }.eachCount(),
             rejectedByReason = rejected.groupingBy { it.code }.eachCount(),
-            unplacedByReason = unplaced.groupingBy { it.reason }.eachCount(),
+            unplacedByReason = (unplaced + plannedUnplaced).groupingBy { it.reason }.eachCount(),
             warningCounts = warnings.groupingBy { it.code }.eachCount(),
             constraints = input.summaryConstraints(),
         )
@@ -1050,5 +1079,16 @@ class ManualOrganizationRun internal constructor(
          */
         @Volatile
         var diagnosticsRunMode: RunMode = RunMode.FULL_ORGANIZATION
+
+        /**
+         * Review P2 (runMode correlation): true once the composed phase has
+         * emitted RUN_STARTED for this runId. The diagnostics contract starts
+         * a run's journal with RUN_STARTED (trigger/runMode anchor), so a
+         * cancel during the pre-select detection/selection window — before
+         * the mode exists — must leave NO events for the runId, not a
+         * USER_CANCELLED without its RUN_STARTED.
+         */
+        @Volatile
+        var journalStarted: Boolean = false
     }
 }

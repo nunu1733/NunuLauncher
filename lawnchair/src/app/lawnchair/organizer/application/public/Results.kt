@@ -97,6 +97,22 @@ enum class PreWriteRejection {
     WRITER_BUSY,
 }
 
+/**
+ * Issue #228: why a selected missing-app candidate could not be resolved to
+ * canonical application content. Public because the typed failure travels
+ * through the preview result and run state to drive re-detection.
+ */
+enum class CandidateResolutionFailure {
+    /** The component is no longer present in the launcher-authorized enumeration. */
+    COMPONENT_NOT_FOUND,
+
+    /** The label/title could not be resolved to a non-blank value. */
+    LABEL_UNAVAILABLE,
+
+    /** The platform read failed in a way that is not proof of absence. */
+    PLATFORM_READ_FAILED,
+}
+
 enum class ApplyFailure {
     WRITE_FAILED,
     COMMIT_OUTCOME_UNKNOWN,

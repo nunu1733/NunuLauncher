@@ -3,9 +3,9 @@ package app.lawnchair.organizer.application.actions
 import app.lawnchair.organizer.application.canonical.CanonicalFixtures
 import app.lawnchair.organizer.application.protocol.CandidateApplicationResolution
 import app.lawnchair.organizer.application.protocol.CandidateApplicationResolver
-import app.lawnchair.organizer.application.protocol.CandidateResolutionFailure
 import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.ApplyAction
+import app.lawnchair.organizer.application.public.CandidateResolutionFailure
 import app.lawnchair.organizer.application.public.CanonicalItemKind
 import app.lawnchair.organizer.application.public.ImmutableByteString
 import app.lawnchair.organizer.application.public.ItemAvailability
@@ -177,6 +177,78 @@ class OrganizationPlanMaterializerCandidateTest {
     }
 
     @Test
+    fun partiallyPlacedCandidatesMaterializeOnlyThePlacedOnes() {
+        // Review P1 follow-up: the strategy's page/folder scope can leave
+        // selected candidates unplaced (`Planned.unplaced`). The spec's
+        // overflow contract makes them a reported warning — the materializer
+        // must accept `placed ∪ unplaced == additions` (disjoint) and insert
+        // only the placed ones.
+        val secondTarget = CandidateTarget.AppKey(ComponentKey("com.example.second/.Main"), profile)
+        val secondId = app.lawnchair.organizer.planning.CandidatePlanningIds.planningId(secondTarget)
+        val second = app.lawnchair.organizer.planning.CandidateItem(
+            id = secondId,
+            profile = profile,
+            kind = CandidateKind.APPLICATION,
+            target = secondTarget,
+            availability = Availability.AVAILABLE,
+            span = GridSpan(1, 1),
+        )
+        val unplaced = app.lawnchair.organizer.planning.UnplacedItem(
+            secondId,
+            GridSpan(1, 1),
+            app.lawnchair.organizer.planning.UnplacedReason.STRATEGY_SCOPE_FULL,
+        )
+        val (input, result, sourceState) = fixture(extraCandidate = second, extraUnplaced = unplaced)
+
+        val materialized = OrganizationPlanMaterializer.materialize(input, result, sourceState, NoopTitleResolver, FakeResolver(readyResolution()))
+
+        assertTrue("expected Ready: $materialized", materialized is OrganizationPlanMaterializer.Result.Ready)
+        val plan = (materialized as OrganizationPlanMaterializer.Result.Ready).plan
+        val candidateInserts = plan.actions.filterIsInstance<ApplyAction.Insert>()
+            .filter { it.ref is ApplicationItemRef.PlannedCandidate }
+        assertEquals(listOf(ApplicationItemRef.PlannedCandidate(candidateId)), candidateInserts.map { it.ref })
+        // The unplaced candidate appears nowhere in the intended state.
+        assertTrue(plan.intendedState.items.none { it.ref == ApplicationItemRef.PlannedCandidate(secondId) })
+    }
+
+    @Test
+    fun candidateNeitherPlacedNorUnplacedIsInvalid() {
+        val secondTarget = CandidateTarget.AppKey(ComponentKey("com.example.second/.Main"), profile)
+        val secondId = app.lawnchair.organizer.planning.CandidatePlanningIds.planningId(secondTarget)
+        val second = app.lawnchair.organizer.planning.CandidateItem(
+            id = secondId,
+            profile = profile,
+            kind = CandidateKind.APPLICATION,
+            target = secondTarget,
+            availability = Availability.AVAILABLE,
+            span = GridSpan(1, 1),
+        )
+        // Declared addition with neither a placement nor an unplaced entry.
+        val (input, result, sourceState) = fixture(extraCandidate = second)
+
+        val materialized = OrganizationPlanMaterializer.materialize(input, result, sourceState, NoopTitleResolver, FakeResolver(readyResolution()))
+
+        assertEquals(OrganizationPlanMaterializer.Result.Invalid, materialized)
+    }
+
+    @Test
+    fun nonStrategyScopeUnplacedEntriesAreInvalid() {
+        // Only STRATEGY_SCOPE_FULL is a legitimate Planned-outcome unplaced
+        // reason; anything else means the planner produced an inconsistent
+        // artifact.
+        val unplaced = app.lawnchair.organizer.planning.UnplacedItem(
+            candidateId,
+            GridSpan(1, 1),
+            app.lawnchair.organizer.planning.UnplacedReason.TARGET_UNAVAILABLE,
+        )
+        val (input, result, sourceState) = fixture(candidatePlacement = null, extraUnplaced = unplaced)
+
+        val materialized = OrganizationPlanMaterializer.materialize(input, result, sourceState, NoopTitleResolver, FakeResolver(readyResolution()))
+
+        assertEquals(OrganizationPlanMaterializer.Result.Invalid, materialized)
+    }
+
+    @Test
     fun candidateFreePlanMaterializesIdenticallyWithoutAResolver() {
         // Regression: plans whose placements cover only captured items never
         // consult the candidate resolver (legacy seam keeps its behavior).
@@ -201,6 +273,8 @@ class OrganizationPlanMaterializerCandidateTest {
         candidatePlacement: PlacementTarget? = PlacementTarget.WorkspaceTarget(PageRef(PageId("p0")), GridCell(3, 3), GridSpan(1, 1)),
         withCandidate: Boolean = true,
         withFolder: Boolean = false,
+        extraCandidate: app.lawnchair.organizer.planning.CandidateItem? = null,
+        extraUnplaced: app.lawnchair.organizer.planning.UnplacedItem? = null,
     ): Triple<OrganizationInput, PlanningResult, LayoutState> {
         val capturedItems = listOf(
             CapturedItem(
@@ -240,7 +314,7 @@ class OrganizationPlanMaterializerCandidateTest {
             )
         } else {
             emptyList()
-        }
+        } + listOfNotNull(extraCandidate)
         val placements = mutableListOf(
             PlannedPlacement(
                 ItemId("1"),
@@ -295,6 +369,7 @@ class OrganizationPlanMaterializerCandidateTest {
                 newFolders = newFolders,
                 categories = emptyList(),
                 warnings = emptyList(),
+                unplaced = listOfNotNull(extraUnplaced),
             ),
         )
         return Triple(input, result, sourceState)

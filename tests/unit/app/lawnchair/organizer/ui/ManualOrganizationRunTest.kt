@@ -1259,6 +1259,145 @@ class ManualOrganizationRunTest {
         warnings = emptyList(),
     )
 
+    // --- Issue #228 review follow-ups: partial placement, typed preview
+    // resolution failure, and pre-start journal silence ---
+
+    private fun candidatePlacementPlan(placedIds: List<String>, unplacedIds: List<String>) = Planned(
+        placements = placedIds.map { id ->
+            PlannedPlacement(
+                item = app.lawnchair.organizer.planning.ItemId(id),
+                disposition = Disposition.Moved(PlacementCode.SINGLE_PLACEMENT),
+                target = PlacementTarget.WorkspaceTarget(
+                    PageRef(PageId("page")),
+                    app.lawnchair.organizer.planning.GridCell(0, 0),
+                    app.lawnchair.organizer.planning.GridSpan(1, 1),
+                ),
+            )
+        },
+        newPages = emptyList(),
+        newFolders = emptyList(),
+        categories = emptyList(),
+        warnings = emptyList(),
+        unplaced = unplacedIds.map { id ->
+            app.lawnchair.organizer.planning.UnplacedItem(
+                app.lawnchair.organizer.planning.ItemId(id),
+                app.lawnchair.organizer.planning.GridSpan(1, 1),
+                app.lawnchair.organizer.planning.UnplacedReason.STRATEGY_SCOPE_FULL,
+            )
+        },
+    )
+
+    private fun selectionOf(vararg components: String) = components.map {
+        app.lawnchair.organizer.planning.CandidateTarget.AppKey(
+            app.lawnchair.organizer.planning.ComponentKey(it),
+            app.lawnchair.organizer.planning.ProfileId("personal"),
+        )
+    }.toSet()
+
+    @Test
+    fun partiallyPlacedCandidatesPreviewWithUnplacedCountsInSummary() {
+        // Review P1 follow-up: one candidate placed, one scope-unplaced.
+        // The placed one previews as an Add; the unplaced one surfaces as a
+        // STRATEGY_SCOPE_FULL count in the summary (spec overflow contract),
+        // and the run does NOT collapse into NoChanges.
+        val composition = scopeReadyInput().let { ready ->
+            ready.copy(
+                input = ready.input.copy(
+                    targets = TargetSet(emptyList(), listOf(candidate("c1"), candidate("c2"))),
+                ),
+            )
+        }
+        val application = FakeApplication(composition).apply {
+            detection = detected("com.example.c1", "com.example.c2")
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner {
+                planningResult(candidatePlacementPlan(placedIds = listOf("c1"), unplacedIds = listOf("c2")))
+            },
+        )
+
+        runner.start()
+        runner.confirmSelection(selectionOf("com.example.c1", "com.example.c2"))
+
+        val preview = runner.state as ManualOrganizationRun.State.Preview
+        assertEquals(1, preview.summary.addedCount)
+        assertEquals(
+            1,
+            preview.summary.unplacedByReason[app.lawnchair.organizer.planning.UnplacedReason.STRATEGY_SCOPE_FULL],
+        )
+    }
+
+    @Test
+    fun allCandidatesUnplacedWithNoOtherChangesEndsInTheImpossibleSurface() {
+        // Review P1 follow-up: nothing fits and nothing else changes — the
+        // run must not report "no changes"; it reports the scope overflow
+        // through the existing Impossible surface.
+        val application = FakeApplication(scopeReadyInput()).apply {
+            detection = detected("com.example.c1")
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner {
+                planningResult(candidatePlacementPlan(placedIds = emptyList(), unplacedIds = listOf("c1")))
+            },
+        )
+
+        runner.start()
+        runner.confirmSelection(selectionOf("com.example.c1"))
+
+        val rejected = runner.state as ManualOrganizationRun.State.PlanningRejected
+        assertEquals(ManualOrganizationRun.PlanningFailureKind.IMPOSSIBLE, rejected.kind)
+        assertEquals(
+            1,
+            rejected.summary.unplacedByReason[app.lawnchair.organizer.planning.UnplacedReason.STRATEGY_SCOPE_FULL],
+        )
+    }
+
+    @Test
+    fun resolutionFailureOnTheFirstPreviewReachesTheTypedReDetectState() {
+        // Review P2: the typed candidate-resolution failure must survive the
+        // preview seam (not collapse into MATERIALIZATION_INVALID) so the
+        // first preview routes to the re-detect outcome.
+        val application = FakeApplication(scopeReadyInput()).apply {
+            detection = detected("com.example.c1")
+            inspectPlanOverride = { _, _ ->
+                PlanPreviewResult.CandidateResolutionFailed(
+                    app.lawnchair.organizer.application.public.CandidateResolutionFailure.COMPONENT_NOT_FOUND,
+                )
+            }
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start()
+        runner.confirmSelection(selectionOf("com.example.c1"))
+
+        val failed = runner.state as ManualOrganizationRun.State.CandidateResolutionFailed
+        assertEquals(
+            app.lawnchair.organizer.application.public.CandidateResolutionFailure.COMPONENT_NOT_FOUND,
+            failed.failure,
+        )
+        assertEquals(0, application.applyCalls)
+    }
+
+    @Test
+    fun cancellingDuringSelectionLeavesTheJournalSilentForThatRunId() {
+        // Review P2 (runMode correlation): RUN_STARTED anchors the journal;
+        // a cancel during the pre-select window emits no events at all for
+        // the runId — never a USER_CANCELLED without its RUN_STARTED.
+        val application = FakeApplication(readyInput()).apply {
+            detection = detected("com.example.a/.Main")
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start()
+        assertTrue(runner.state is ManualOrganizationRun.State.Selecting)
+        runner.cancel()
+
+        assertEquals(ManualOrganizationRun.State.Cancelled, runner.state)
+        assertEquals(emptyList<RunEvent>(), application.events)
+    }
+
     private fun placement(
         item: String,
         disposition: Disposition,

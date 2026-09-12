@@ -11,7 +11,7 @@ import app.lawnchair.organizer.application.protocol.AvailabilityVerification
 import app.lawnchair.organizer.application.protocol.CandidateApplicationResolution
 import app.lawnchair.organizer.application.protocol.CandidateApplicationResolver
 import app.lawnchair.organizer.application.protocol.CandidateAvailabilityPort
-import app.lawnchair.organizer.application.protocol.CandidateResolutionFailure
+import app.lawnchair.organizer.application.public.CandidateResolutionFailure
 import app.lawnchair.organizer.application.public.ImmutableByteString
 import app.lawnchair.organizer.application.public.ItemAvailability
 import app.lawnchair.organizer.application.public.OptionalBytes
