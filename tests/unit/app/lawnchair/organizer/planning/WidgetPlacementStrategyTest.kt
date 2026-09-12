@@ -281,11 +281,16 @@ class WidgetPlacementStrategyTest {
     }
 
     @Test
-    fun tidyV2WidgetOutsideTheTargetSetStaysNonTarget() {
-        // Spec common rules: parameterizing the widget branch only yields at
-        // that precedence step — an out-of-target-set widget still reaches
-        // NON_TARGET and never moves (spec 10 role discipline preserved).
-        val items = listOf(widget("w", 0, 2, 2, 2), app("a1", 0, 0))
+    fun tidyV2WidgetMovesEvenWhenTargetSetRoleIsPreserved() {
+        // AC-10 production finding: the production composer marks every
+        // widget `ExistingRole.Preserved` by kind (widgets are never
+        // user-selected organization targets). The widget branch is terminal
+        // for widget kinds under widget-capable strategies, so such a widget
+        // still travels the widget stream — a role-based exclusion would
+        // make widget relocation unreachable in production. Locked,
+        // unavailable, reserved-overlapping, and Dock widgets stay fixed via
+        // the higher-precedence reasons above the widget branch.
+        val items = listOf(widget("w", 2, 2, 2, 2), app("a1", 0, 0))
         val source = input(items, tidyV2, roles = { item ->
             if (item.kind == ItemKind.APPWIDGET) ExistingRole.Preserved else ExistingRole.Movable
         })
@@ -293,7 +298,8 @@ class WidgetPlacementStrategyTest {
         val result = planner.plan(source)
 
         assertEquals(GridCell(0, 2), wsTarget(result, "w").cell)
-        assertEquals(Disposition.Preserved(PreserveReason.NON_TARGET), placement(result, "w").disposition)
+        assertEquals(Disposition.Moved(PlacementCode.WIDGET_UNIT), placement(result, "w").disposition)
+        assertReplanIsEmptyDiff(result, source)
     }
 
     @Test
