@@ -32,6 +32,18 @@ _Avoid_: 並べ替え設定 (組合せ式toggleを想起させる)、Theme、Ord
 あるlayout strategyが「本来はmovableだが、そのstrategyの意図として動かさない」と決めたtop-level unit。配置上の占有を維持し、自然に保持されたunitとは別の理由として扱う ([spec 237](./specs/237-global-compact-v2-folder-relocation/spec.md))。
 _Avoid_: 保存済み (naturally preservedとの混同)、スキップ対象
 
+**セマンティック配置role (semantic placement role)**:
+計画対象のtop-level unitを、配置意味論上の種別 (app/shortcut、folder、widget) として分類したもの。strategyはroleごとにpreferred regionとmovement intentを別個に宣言し、widgetは専用のwidget streamとしてapp/folder streamより先に消費される ([spec 235](./specs/235-widget-strategy-placement/spec.md))。
+_Avoid_: movable flag (widgetをgeneric movable unitへ退化させる)、item kind (capture側の型名との混同)
+
+**ウィジェット配置ポリシー (widget placement policy)**:
+widget移動に対応したstrategyがwidget roleに対して宣言する、span不変の再配置意思。preferred region (ウィジェット帯 / page全域)、決定的cell走査、不変key順の処理順、page affinity、配置不能時のdegradeからなる純data ([spec 235](./specs/235-widget-strategy-placement/spec.md))。
+_Avoid_: widget settings (user設定との混同)、movement cost (数値costや探索を想起させる)
+
+**ウィジェット帯 (widget band)**:
+1つのcaptured page上で、そのpageのeligible widget群がcapture時点で占有する行の閉区間。[minRow, maxRow]。stable/tidy系のwidget再配置領域として使う ([spec 235](./specs/235-widget-strategy-placement/spec.md))。
+_Avoid_: widget area (領域サイズが固定であるような誤解)、widget zone
+
 **レイアウトsnapshot (Layout Snapshot)**:
 ある時点のホームレイアウト、端末能力、およびrevisionを固定した読み取り専用の入力。
 _Avoid_: Backup、DB dump
@@ -56,6 +68,10 @@ _Avoid_: Reset、洗い替え
 新しい配置アイテムを既存レイアウトへ加え、全体整理の規則と整合するplanを作る整理run。
 _Avoid_: Auto add
 
+**スコープ合成整理 (Scope-Composed Organization)**:
+既存配置の全体再整理と、ユーザーが明示的に選択したホーム未配置アプリを候補追加として、1つのplanで扱う整理run ([spec 228](./specs/228-organizer-missing-app-selection/spec.md))。未選択の候補はplanに現れない。
+_Avoid_: 全体整理＋追加 (別々のrunの連結と混同する場合)、自動追加 (選択は常に明示的)
+
 **ロック配置 (Locked Placement)**:
 整理runが変更してはならない配置。配置アイテム自体だけでなく、その占有領域も制約となる。
 _Avoid_: Locked item（何が固定されるか曖昧な場合）
@@ -67,6 +83,10 @@ _Avoid_: Play Store category（情報源を指す場合を除く）、Theme
 **recovery point**:
 整理runの適用前へアプリ内操作で戻すために保存された、検証済みの復旧状態。
 _Avoid_: Backup（長期保存用バックアップと混同する場合）、Undo（操作そのものを指す場合）
+
+**organizer durable status (永続整理状態)**:
+application moduleがrecovery storeの永続recordとtombstoneから導出する、閉じた語彙の状態表示。永続化せず毎回導出するため、記述対象のrecordより長く生存しない。recordの中身、revision、digest、アイテム識別子を含まない。
+_Avoid_: Organizer status（process-localなrun状態と混同する場合）、Backup state
 
 **有効プリセット (enabled preset)**:
 宣言カタログのうち、現在の端末種別に対してプラットフォーム宣言上有効と判定されたグリッドプリセット。

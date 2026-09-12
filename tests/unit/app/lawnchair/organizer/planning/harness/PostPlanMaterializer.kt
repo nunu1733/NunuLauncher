@@ -163,6 +163,11 @@ internal object PostPlanMaterializer {
                     device = input.snapshot.device,
                     pages = pages,
                     items = convertedOriginals + syntheticFolders,
+                    // Issue #235 (owner review): production recapture keeps the
+                    // platform's reserved workspace regions — dropping them here
+                    // let replan idempotence fixtures place units onto reserved
+                    // cells that run 1 correctly avoided.
+                    reservedWorkspaceRegions = input.snapshot.reservedWorkspaceRegions,
                 ),
                 targets = TargetSet(existing = existingMemberships + syntheticMemberships, additions = emptyList()),
                 runMode = RunMode.FullOrganization,
