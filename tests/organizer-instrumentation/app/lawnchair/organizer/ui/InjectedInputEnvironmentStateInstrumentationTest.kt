@@ -33,8 +33,10 @@ class InjectedInputEnvironmentStateInstrumentationTest {
             deviceState = "interactive=true",
             inputEnvironment = "later anomaly",
         )
-        state.markUnhealthy(first)
-        state.markUnhealthy(second)
+        // Issue #300 review P2: markUnhealthy always returns the retained winner, so a caller
+        // (even one racing an earlier timeout) fails on the first evidence, never its own.
+        assertEquals(first, state.markUnhealthy(first))
+        assertEquals(first, state.markUnhealthy(second))
 
         assertTrue(state.isUnhealthy())
         assertEquals(first, state.unhealthyEvidence)

@@ -54,8 +54,14 @@ class EnvironmentHealthState {
 
     fun isUnhealthy(): Boolean = firstEvidence.get() != null
 
-    fun markUnhealthy(evidence: EnvironmentFailureEvidence) {
-        firstEvidence.compareAndSet(null, evidence)
+    fun markUnhealthy(evidence: EnvironmentFailureEvidence): EnvironmentFailureEvidence {
+        // Always hand back the retained winner: under concurrent gate timeouts the loser's
+        // failure must reference the first evidence, never its own (Issue #300 review P2).
+        while (true) {
+            val retained = firstEvidence.get()
+            if (retained != null) return retained
+            if (firstEvidence.compareAndSet(null, evidence)) return evidence
+        }
     }
 
     /** Returns normally while healthy; throws referencing the captured evidence once unhealthy. */
@@ -135,9 +141,8 @@ object InjectedInputEnvironment {
     /** Process-static: one instrumentation invocation == one process == one lane job. */
     private val processState = EnvironmentHealthState()
 
-    fun markEnvironmentFailure(evidence: EnvironmentFailureEvidence) {
+    fun markEnvironmentFailure(evidence: EnvironmentFailureEvidence): EnvironmentFailureEvidence =
         processState.markUnhealthy(evidence)
-    }
 
     /**
      * Device-level repair for waits that run before any window exists (e.g. `awaitResumedLauncher`).
@@ -173,8 +178,9 @@ object InjectedInputEnvironment {
             deviceState = describeDeviceState(),
             inputEnvironment = "target window never gained focus within ${timeoutMillis}ms",
         )
-        processState.markUnhealthy(evidence)
-        throw IllegalStateException(buildGateFailureMessage(evidence))
+        // Fail on the retained evidence so a concurrent earlier timeout wins the message.
+        val retained = processState.markUnhealthy(evidence)
+        throw IllegalStateException(buildGateFailureMessage(retained))
     }
 
     /** One-line summary of the device/window state for failure messages. */

@@ -600,10 +600,10 @@ class OnboardingOrganizationProposalInstrumentationTest {
                     deviceState = deviceState,
                     inputEnvironment = "$baseMessage; activityWindowFocused=$activityWindowFocused",
                 )
-                InjectedInputEnvironment.markEnvironmentFailure(evidence)
+                val retained = InjectedInputEnvironment.markEnvironmentFailure(evidence)
                 error(
                     "$baseMessage; ${InjectedInputEnvironment.ACCESSIBILITY_ENVIRONMENT_PREFIX}; " +
-                        "${buildGateFailureMessage(evidence)}",
+                        "${buildGateFailureMessage(retained)}",
                 )
             }
             EnvironmentFailureKind.NODE_NOT_FOUND, EnvironmentFailureKind.LOCAL_REGRESSION ->
@@ -1194,10 +1194,10 @@ class OnboardingOrganizationProposalInstrumentationTest {
                     deviceState = InjectedInputEnvironment.describeDeviceState(),
                     inputEnvironment = baseMessage,
                 )
-                InjectedInputEnvironment.markEnvironmentFailure(evidence)
+                val retained = InjectedInputEnvironment.markEnvironmentFailure(evidence)
                 error(
                     "${InjectedInputEnvironment.RESUME_ENVIRONMENT_PREFIX}; " +
-                        "${buildGateFailureMessage(evidence)}",
+                        "${buildGateFailureMessage(retained)}",
                 )
             }
             EnvironmentFailureKind.LOCAL_REGRESSION, EnvironmentFailureKind.NODE_NOT_FOUND ->

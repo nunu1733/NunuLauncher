@@ -1217,9 +1217,29 @@ class ManualOrganizationPreferencesInstrumentationTest {
         return activity
     }
 
+    /**
+     * Issue #300 (review P1): refuses to run real key injection without a focus observation.
+     * Host resolution must succeed exactly once; zero or multiple RESUMED activities are an
+     * explicit fail-closed error, never a silent gate bypass.
+     */
     private fun ensureWindowFocusedForComposeHost() {
-        resumedHostActivityOrNull()?.let { host ->
-            InjectedInputEnvironment.ensureWindowFocused(host)
+        var hosts: List<Activity> = emptyList()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            hosts = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .toList()
+        }
+        when (hosts.size) {
+            1 -> InjectedInputEnvironment.ensureWindowFocused(hosts.single())
+            0 -> error(
+                "input environment gate could not resolve the compose host activity " +
+                    "(no RESUMED activity); refusing real key injection without a focus observation",
+            )
+            else -> error(
+                "input environment gate could not resolve the compose host activity uniquely " +
+                    "(${hosts.size} RESUMED activities); refusing real key injection without a " +
+                    "focus observation",
+            )
         }
     }
 
