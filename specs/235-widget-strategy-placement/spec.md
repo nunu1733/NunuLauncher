@@ -1,6 +1,6 @@
 ---
 issue: "#235"
-status: draft
+status: accepted
 requirements:
   - FR-003
   - FR-016
@@ -11,7 +11,7 @@ updated: 2026-09-12
 
 # Strategy-aware fixed-span widget placement in Organizer
 
-> Status: draft — 2026-09-12 re-anchor revision。初版draft (2026-09-10) のOpen questions 1〜6を実装開始前判断 D-1〜D-6 として解消し、baselineを `origin/main` @ `3e113302b9` へ再固定した。本specは未承認であり、phase-1 reviewを経てowner承認されるまで実装開始の根拠にならない。
+> Status: accepted — 2026-09-12。phase-1 review (2 round、下記change history) を経て所有者により承認された。実装は本specとplan.mdに従い、`STABLE_PAGE_TIDY_V2` → `BOTTOM_FIRST_V2` の縦切りで行う。`GLOBAL_COMPACT_V3` / `CATEGORY_CONTIGUOUS_V2` は本specのnormative rulesを実装する後続child issueとする。
 
 ## Problem
 
@@ -284,3 +284,4 @@ None — 初版draftのOpen questions 1〜6は D-1〜D-6 として解消した�
 - 2026-09-12: Re-anchor revision (worker; baseline `origin/main` @ `3e113302b9`)。re-entry check: baseline `6b6bf8dd..3e113302b9` の差分 (issue 228 missing-app selection / 271 durable status / 269 folder representability / 233 backup preview / 265 recovery reconciliation / 288 export filename) を確認し、(1) `ScopeComposedOrganization` run modeとscope-composed契約をD-5および共通規則へ反映、(2) `PreviewCounts.addedCount` (spec 228) の拡張前例に D-4 を整合、(3) `UnplacedReason.STRATEGY_SCOPE_FULL` / `allocateCapturedPageOnly` の現行実装を現行コード参照として更新、(4) コード参照 (PlanningPlacement.kt:373/392 等) を更新。Open questions 1〜6を判断 D-1〜D-6 として解消 (後継ID命名・packaging、cross-page証明方針、movement costの構成的形式化、preview shape拡張、run mode適用範囲、UX案内)。`GLOBAL_COMPACT_V3`/`CATEGORY_CONTIGUOUS_V2` のnormative rulesと冪等性証明を追加、AC-11を追加。
 - 2026-09-12: Review revision (code-reviewer-1 review on `f62c51e530`, verdict Request changes; 冪等性証明は全て検証済み健全)。M1: widget streamの障害物集合にstrategy-fixed movable item (既存folder・non-`1×1` app) を明示的に含め、STABLE_PAGE_TIDY_V2の配置規則・冪等性構成・fixture (d) を修正 (wrapperがstrategy-fixed占有を先に印付けする実装方針はplanへ反映)。M2: D-4/§Data and state/planのdelta正本化regimeを単一規則 (受入PRは本spec本文のみ正本、実装PRがspec 10 fileへ反映、spec 194 fileは更新しない) に統一。Low: D-1へcanonical系後継を作らない理由を記録、eligible条件に `ExistingRole == Preserved` の `NON_TARGET` fall-throughを明記 (direct-seam fixtureをAC-5/test oracleへ追加)、BOTTOM_FIRST_V2 fixtureにfolder形成なし条件を固定。
 - 2026-09-12: Second review revision (code-reviewer-2 re-review on `fb420a33b4` — M1/M2/L1-L4解消を確認、残条件1件)。D-4のspec 182前例引用を訂正: `FOLDER_UNIT` はspec 10の初期grammar由来でありspec 182の追加ではなく、spec 182は受入時にspec 10 deltaを適用した (acceptance commit `182fc7ec28`)。PlacementCodeへの事後追加は本specが初回であり、受入scopeはspec 228方式の意図的な選定である旨を正確に記述。plan step 3(a') を `strategyFixes` predicate基準 (`unitOrder != CANONICAL_TIE_BREAK && !eligibleUnitFilter`) に固定し、単純filter外判定の誤用 (canonical flowの既存folder) を排除。
+- 2026-09-12: Accepted。review経緯: round 1 code-reviewer-1 (Request changes on `f62c51e530`、冪等性証明は全段検証済み健全) → fix `fb420a33b4` → round 2 code-reviewer-2 (M1/M2/L1-L4解消確認、残条件: D-4前例引用の史実誤り) → fix `3d6364445b` → code-reviewer-2 final **Approve on `3d6364445b`** (全条件解消、regressionなし)。所有者 (session 2026-09-12) はreviewクリア後のPhase 2 (実装) 開始を指示済みであり、これを本specの受入判断として記録する。実装は `STABLE_PAGE_TIDY_V2` (bundle `organization-policy-v2.6`) → `BOTTOM_FIRST_V2` (`-v2.7`) の順とする。

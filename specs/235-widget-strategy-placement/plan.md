@@ -2,7 +2,7 @@
 
 > Issue: #235
 > Spec: [spec.md](./spec.md)
-> Status: draft (spec未承認のため実装不可。phase-1 reviewとowner承認後に実装開始する)
+> Status: accepted (2026-09-12。実装は`STABLE_PAGE_TIDY_V2` → `BOTTOM_FIRST_V2` の縦切りで開始する)
 > Baseline evidence: `origin/main` @ `3e113302b96e0236a9f0a0682b676fa347215421` (2026-09-12確認、re-anchor)
 
 ## Current evidence (確認済み現行実装)
