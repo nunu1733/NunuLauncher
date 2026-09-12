@@ -77,7 +77,9 @@ class StrategyPickerInstrumentationTest {
         for (name in listOf(
             R.string.organization_strategy_canonical_name,
             R.string.organization_strategy_tidy_name,
+            R.string.organization_strategy_tidy_v2_name,
             R.string.organization_strategy_bottom_first_name,
+            R.string.organization_strategy_bottom_first_v2_name,
             R.string.organization_strategy_global_name,
             R.string.organization_strategy_global_v2_name,
             R.string.organization_strategy_category_contiguous_name,
@@ -119,7 +121,9 @@ class StrategyPickerInstrumentationTest {
         for (name in listOf(
             R.string.organization_strategy_canonical_name,
             R.string.organization_strategy_tidy_name,
+            R.string.organization_strategy_tidy_v2_name,
             R.string.organization_strategy_bottom_first_name,
+            R.string.organization_strategy_bottom_first_v2_name,
             R.string.organization_strategy_global_name,
             R.string.organization_strategy_global_v2_name,
             R.string.organization_strategy_category_contiguous_name,
