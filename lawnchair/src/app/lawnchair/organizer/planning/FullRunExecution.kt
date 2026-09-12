@@ -41,6 +41,167 @@ internal object FullRunExecution {
             executePageLocalLiftThenPlace(context, categoryContiguousOrder(context))
     }
 
+    /**
+     * Issue #235: full-run executor for strategies that declare a
+     * [WidgetPlacementPolicy]. The widget stream is consumed *before* the
+     * strategy's app/folder stream (spec: role ordering is explicit, never
+     * allocator iteration order) with these stages:
+     *
+     * (a) movable widgets are lifted out of `movableItems`;
+     * (a') strategy-fixed movable items (`StrategyDefinition.strategyFixes`,
+     *   restricted to non-widget items) become occupancy before any widget is
+     *   placed — the page-local executors mark them only inside their own
+     *   bodies, after this wrapper would already have placed widgets
+     *   (spec 235 review M1). Re-marking inside the executor is
+     *   occupancy-idempotent (`Allocator.markOccupied` is append-only);
+     * (b) each captured page's widgets place first-fit row-major in the
+     *   invariant key order `(span height desc, span width desc, target key,
+     *   ItemId)` — all position-independent, so replan reproduces the stream
+     *   order (spec D-2/D-3) — inside the policy's region (the captured
+     *   widget band for [WidgetPlacementPolicy.PageLocalBand], the whole
+     *   page for [WidgetPlacementPolicy.PageLocalTopAnchored]);
+     * (c) a page whose widgets cannot all be placed degrades: every eligible
+     *   widget on it keeps its captured position as occupancy and is reported
+     *   `PreserveReason.STRATEGY_PRESERVED` (truthful; never a resize or a
+     *   silent drop);
+     * (d) the strategy's ordinary executor runs over the remaining movable
+     *   items with the widget targets as fixed occupancy.
+     *
+     * Widget targets always keep the captured span; a moved widget is
+     * `Moved{WIDGET_UNIT}`, an unmoved one `Preserved{ALREADY_CANONICAL}`.
+     */
+    fun executeWithWidgetStream(context: FullRunContext): PlacementOutput {
+        val widgets = context.movableItems.filter(::isWidgetItem)
+        if (widgets.isEmpty()) return execute(context)
+        val remaining = context.movableItems.filterNot(::isWidgetItem)
+
+        val widgetRows = placeWidgetStream(context, widgets, remaining)
+
+        val output = execute(context.copy(movableItems = remaining))
+        return output.copy(
+            placements = (output.placements + widgetRows).sortedBy { it.item },
+        )
+    }
+
+    internal fun isWidgetItem(item: CapturedItem): Boolean = item.kind == ItemKind.APPWIDGET || item.kind == ItemKind.CUSTOM_APPWIDGET
+
+    /**
+     * Stages (b)/(c) plus the row materialization. Each page's targets are
+     * computed against a local obstacle list — the page's fixed occupancy
+     * (naturally preserved items plus stage (a') strategy-fixed movable
+     * items, both recomputed from the input) and the page's earlier widget
+     * targets — and only a fully placeable page commits to the shared
+     * allocator, so a degraded page never leaves partial marks behind. A
+     * degraded page's widgets keep their captured positions as occupancy and
+     * are reported `STRATEGY_PRESERVED`.
+     */
+    private fun placeWidgetStream(
+        context: FullRunContext,
+        widgets: List<CapturedItem>,
+        remaining: List<CapturedItem>,
+    ): List<PlannedPlacement> {
+        val device = context.input.snapshot.device
+        val reservations = context.input.snapshot.reservedWorkspaceRegions
+
+        val pageObstacles = mutableMapOf<PageId, MutableList<Rect>>()
+        for (item in context.input.snapshot.items) {
+            if (determinePreservation(item, context.rolesById[item.id], reservations, relocateWidgets = true) != null) {
+                val ws = item.placement as? CapturedPlacement.Workspace ?: continue
+                pageObstacles.getOrPut(ws.page.pageId) { mutableListOf() } += rectOf(ws.cell, ws.span)
+            }
+        }
+        for (item in remaining.filter(context.strategy::strategyFixes)) {
+            val ws = item.placement as CapturedPlacement.Workspace
+            pageObstacles.getOrPut(ws.page.pageId) { mutableListOf() } += rectOf(ws.cell, ws.span)
+        }
+
+        val ordered = widgets.sortedWith(
+            compareByDescending<CapturedItem> { (it.placement as CapturedPlacement.Workspace).span.height }
+                .thenByDescending { (it.placement as CapturedPlacement.Workspace).span.width }
+                .thenBy { targetKeySortValue(it.target) }
+                .thenBy { it.id },
+        )
+        val byPage = ordered.groupBy { (it.placement as CapturedPlacement.Workspace).page.pageId }
+        val pagesInOrder = context.input.snapshot.pages
+            .sortedWith(compareBy({ it.order }, { it.id.value }))
+            .filter { it.id in byPage.keys }
+
+        data class WidgetCell(val page: PageRef, val cell: GridCell)
+
+        val streamCells = mutableMapOf<ItemId, WidgetCell>()
+        val degradedPages = mutableSetOf<PageId>()
+        for (page in pagesInOrder) {
+            val pageWidgets = byPage.getValue(page.id)
+            val obstacles = pageObstacles[page.id] ?: mutableListOf()
+            val window = when (context.strategy.widgetPolicy) {
+                WidgetPlacementPolicy.PageLocalBand -> {
+                    val minY = pageWidgets.minOf { item -> (item.placement as CapturedPlacement.Workspace).cell.y }
+                    val maxY = pageWidgets.maxOf { item ->
+                        val ws = item.placement as CapturedPlacement.Workspace
+                        ws.cell.y + ws.span.height - 1
+                    }
+                    minY..maxY
+                }
+
+                WidgetPlacementPolicy.PageLocalTopAnchored -> null
+
+                null -> error("executeWithWidgetStream registered without a widget policy")
+            }
+            val pageCells = mutableListOf<WidgetCell>()
+            for (widget in pageWidgets) {
+                val ws = widget.placement as CapturedPlacement.Workspace
+                val cell = findRowMajorFirstFit(
+                    obstacles,
+                    device.columns,
+                    device.rows,
+                    ws.span,
+                    CellTraversal.TOP_LEFT_ROW_MAJOR,
+                    rowWindow = window,
+                )
+                if (cell == null) {
+                    degradedPages += page.id
+                    break
+                }
+                obstacles += rectOf(cell, ws.span)
+                pageCells += WidgetCell(PageRef(page.id), cell)
+            }
+            if (page.id in degradedPages) continue
+            pageCells.forEachIndexed { index, widgetCell ->
+                val widget = pageWidgets[index]
+                streamCells[widget.id] = widgetCell
+                val ws = widget.placement as CapturedPlacement.Workspace
+                context.allocator.markOccupied(widgetCell.page, widgetCell.cell, ws.span)
+            }
+        }
+
+        return widgets.map { widget ->
+            val ws = widget.placement as CapturedPlacement.Workspace
+            val capturedTarget = PlacementTarget.WorkspaceTarget(PageRef(ws.page.pageId), ws.cell, ws.span)
+            val degraded = ws.page.pageId in degradedPages
+            val streamCell = streamCells[widget.id]
+            check(degraded != (streamCell != null)) { "widget ${widget.id} must be either degraded or placed" }
+            if (degraded) {
+                context.allocator.markOccupied(PageRef(ws.page.pageId), ws.cell, ws.span)
+                PlannedPlacement(widget.id, Disposition.Preserved(PreserveReason.STRATEGY_PRESERVED), capturedTarget)
+            } else {
+                val target = PlacementTarget.WorkspaceTarget(streamCell!!.page, streamCell.cell, ws.span)
+                val disposition = if (target == capturedTarget) {
+                    Disposition.Preserved(PreserveReason.ALREADY_CANONICAL)
+                } else {
+                    Disposition.Moved(PlacementCode.WIDGET_UNIT)
+                }
+                PlannedPlacement(widget.id, disposition, target)
+            }
+        }
+    }
+
+    private fun rectOf(cell: GridCell, span: GridSpan) = Rect(
+        cell.x.toLong(),
+        cell.y.toLong(),
+        span.width.toLong(),
+        span.height.toLong(),
+    )
+
     /** CAPTURED_VISUAL_PAGE_LOCAL: captured visual order `(cell.y, cell.x, ItemId)`. */
     private fun capturedVisualOrder(): Comparator<CapturedItem> = compareBy(
         { (it.placement as CapturedPlacement.Workspace).cell.y },
@@ -80,8 +241,17 @@ internal object FullRunExecution {
         context: FullRunContext,
         placements: MutableList<PlannedPlacement>,
     ) {
+        // Issue #235: under a widget-capable strategy an eligible widget has
+        // no preservation reason — its row comes from the widget stream, so
+        // this tail must not re-report it.
+        val relocateWidgets = context.strategy.widgetPolicy != null
         for (item in context.input.snapshot.items) {
-            val reason = determinePreservation(item, context.rolesById[item.id], context.input.snapshot.reservedWorkspaceRegions)
+            val reason = determinePreservation(
+                item,
+                context.rolesById[item.id],
+                context.input.snapshot.reservedWorkspaceRegions,
+                relocateWidgets = relocateWidgets,
+            )
             if (reason != null) {
                 placements += PlannedPlacement(
                     item = item.id,
