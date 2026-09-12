@@ -4,20 +4,23 @@
 > Spec: [spec.md](./spec.md)
 > Status: draft — #204 (Context / PersonalizedIntent contract) のacceptanceが実装開始の前提条件である。
 
+## Re-entry status
+
+- 2026-09-13: 前回snapshot (baseline `6b6bf8dd9fa0c42399185dbb13c30192f1e15962`) を検証し、現行main `f9afd8bfde121932c0c8ed965225d52a84d86ab4` をmergeして再anchorした。main差分のうち本planに関係する変更: #228 (scope-composed run・missing-app selection)、#235 (widget strategy placement・semantic placement role)、#271/#288 (durable status・diagnostics export filename)、requirements.md FR-016 implemented化 (FR-017は未割当のまま)。#204はdraftのまま (branch `issue-204-spec-plan` commit `65b9fc859d` で同一baselineへre-anchor、未accept・main未取り込み)。既存のdesign・change set・verification構造に影響する矛盾は見つかっていない。
+
 ## Current evidence
 
-origin/main (`6b6bf8dd9fa0c42399185dbb13c30192f1e15962`) 時点の確認事実:
+origin/main (`f9afd8bfde121932c0c8ed965225d52a84d86ab4`) 時点の確認事実:
 
-- `PersonalizationContextExportV1` / `PersonalizedIntentV1` の実装・参照はsource上に存在しない (`Personaliz` でhitなし)。#204はdraft snapshotがbranch `origin/issue-204-spec-plan` (`specs/204-ai-personalization-context-intent-contract/`) にあるのみで、origin/main未取り込み・未accept。
-- organizer module構造は `lawnchair/src/app/lawnchair/organizer/{planning,integration,ui,rules,locks,diagnostics,application}` (DESIGN.md §9と一致)。
-  - planning: `OrganizationPlanner.kt`, `OrganizationInput.kt`, `DeterministicOrganizationPlanner.kt`, `LayoutStrategyRegistry.kt` 等。planner seamは #182 で整備済み。
-  - integration: `ProductionOrganizationInputComposer.kt`, `FullTargetSetMaterializer.kt` 等 (canonical入力composeの既定位置)。
-  - ui: `ManualOrganizationRun.kt`, `OrganizationPreviewContent.kt` 等。preview/confirmation surfaceは #194/#195 で実装済み。
-- 外部export precedent: `organizer/diagnostics/export/{ExportUi.kt, ExportWriter.kt}` (#67/#138。user-initiated export、diagnostics port経由、個人情報redaction規則は [organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md))。
-- clipboard precedent: `lawnchair/src/app/lawnchair/util/ClipboardUtils.kt` (bugreport等で使用)。Share Sheet (`ACTION_SEND` + chooser) もbugreport経路で使用実績あり。
+- `PersonalizationContextExportV1` / `PersonalizedIntentV1` の実装・参照はsource上に存在しない (`Personaliz` でのhitはflowerpot asset・翻訳fileのみ)。#204はdraft snapshotがbranch `origin/issue-204-spec-plan` (`specs/204-ai-personalization-context-intent-contract/`、commit `65b9fc859d`) にあるのみで、origin/main未取り込み・未accept。`PolicySourceKind` は6値で `PERSONALIZED_INTENT` は含まない (`lawnchair/src/app/lawnchair/organizer/rules/PolicyModels.kt`)。
+- organizer module構造は `lawnchair/src/app/lawnchair/organizer/{planning,integration,ui,rules,locks,diagnostics,application}` (DESIGN.md §9と一致)。`application` 配下に `actions/adapter/canonical/lifecycle/preview/protocol/public/revision/store` を持つ。
+  - planning: `OrganizationPlanner.kt`, `OrganizationInput.kt` (`RunMode` = `FullOrganization` / `IncrementalPlacement` / `ScopeComposedOrganization`), `DeterministicOrganizationPlanner.kt`, `LayoutStrategyRegistry.kt` (#235の `STABLE_PAGE_TIDY_V2` / `BOTTOM_FIRST_V2` を含む), `CandidatePlanningIds.kt` (#228), `PlacementAllocator.kt` 等。planner seamは #182、widget配置の意味論は #235、scope合成runは #228 で拡張済み。
+  - integration: `OrganizationInputComposer.kt`, `ProductionOrganizationInputComposer.kt`, `CompositionModels.kt`, `FullTargetSetMaterializer.kt`, `MissingAppCandidateSource.kt` / `AndroidCandidatePorts.kt` (#228) 等 (canonical入力composeの既定位置)。
+  - ui: `ManualOrganizationRun.kt`, `MissingAppSelectionScreen.kt` (#228), `OrganizationPreviewContent.kt` 等。preview/confirmation surfaceは #194/#195 で実装済み。
+- 外部export precedent: `organizer/diagnostics/export/{ExportUi.kt, ExportWriter.kt, DiagnosticsExportFilename.kt}` (#67/#138 + #288。user-initiated export、diagnostics port経由、個人情報redaction規則は [organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md))。
+- clipboard precedent: `lawnchair/src/app/lawnchair/util/ClipboardUtils.kt` (現baselineで存在確認済み)。Share Sheet (`ACTION_SEND` + chooser) もbugreport経路で使用実績あり。
 - #203 (usage signals) はOPEN。signal snapshot契約は未確定。
-
-推測ではない確認事実のみを記載した。#204 draftの内容 (tier、failure分類、framing) は参照したが、確定契約ではないため本planでは依存変数として扱う。
+- #204 draft (2026-09-13時点) は、export対象種別を #235 のsemantic placement role族に揃えること、widget spanをexport/intent両方から除外すること、`Unknown` をexport対象から除外すること、reserved workspace regionを制約として投影すること、intentが新規RunMode・対象追加を持たないこと、8つのtyped failure classとreject-by-default V1を、草案として固定している。これらは依存変数であり、受入時に再確認する。
 
 ## Design
 
@@ -31,7 +34,7 @@ origin/main (`6b6bf8dd9fa0c42399185dbb13c30192f1e15962`) 時点の確認事実:
   - production/test同一seam。interfaceへAndroid型・`Intent`・`ClipboardManager`を漏らさない。
 - `exchange/transport/` (thin adapter): clipboard / share / file の各transport。純粋部の結果 (package text) を受け取り、Android APIへ出すだけ。失敗はtyped resultで返す。
 - `ui/`: 送信前確認画面、import画面 (paste/text入力/file選択/share-back受信)、失敗・reject表示。既存 `ManualOrganizationRun` / preview surfaceからの導線。
-- #204側が所有するvalidator・planner adapterは本planの対象外。本moduleは検証済みintentを既存planning入力compose経路へ渡すのみ。
+- #204側が所有するvalidator・planner adapterは本planの対象外。本moduleは検証済みintentを既存planning入力compose経路へ渡すのみ。#204 draftによれば、intentのprovenance参加 (第6policy input `PERSONALIZED_INTENT`) とplanner投影adapterは #204 側の成果物であり、本workflowが新たなRunMode・対象追加を導入することはない (既存 `FullOrganization` / `IncrementalPlacement` / `ScopeComposedOrganization` と組合わされる)。
 
 ### Data flow
 
@@ -97,8 +100,8 @@ Manual run UI → 確認 (privacy mode選択 + 送信前確認)
 
 ## Dependencies and blockers
 
-- **#204 acceptance (blocker)**: schema、tier、validator、framing、intent identityが全て #204 側で決定される。未acceptのため実装開始不可。#204受入後に本spec/planを改訂してからStage Bへ進む。
-- #203 (OPEN): usageSignals projectionは #203 確定後。不在でも本workflowは成立 (signalはoptional)。
+- **#204 acceptance (blocker)**: schema、tier、validator、framing、intent identityが全て #204 側で決定される。#204は2026-09-13時点でdraft (branch `issue-204-spec-plan`、baseline `f9afd8bfde` へre-anchor済み、main未取り込み) のため実装開始不可。#204受入後に本spec/planを改訂してから実装へ進む。
+- #203 (OPEN): usageSignals projectionは #203 確定後。不在でも本workflowは成立 (signalはoptional、#204 draftでもcoarse bucket + tier制御の方向)。
 - #206 (OPEN): 兄弟issue。transport/provider adapterの共通化はintent契約 (#204) のみで行い、UI・provider選択は独立に保つ。
 
 ## Risks
@@ -111,7 +114,8 @@ Manual run UI → 確認 (privacy mode選択 + 送信前確認)
 
 - 外部agent (ChatGPT/Gemini) がinstruction部に実際にどの程度従うかは未検証 (AC-10で実施)。
 - clipboard/Share Sheetの実機挙動 (size上限、target有無) は本draft時点で未計測。
-- #204 draftの内容は将来変更され得るため、それに依存する記述は全て再確認が必要。
+- #204 draftの内容は将来変更され得るため、それに依存する記述 (tier名、failure class名、widget span非投影、reject-by-default V1等) は全て #204受入時に再確認が必要。
+- 本planのevidence再確認は2026-09-13時点のdocs-only差分に対して行った。build・testは未実行 (docs-only変更のため、full buildは対象外)。
 
 ## Execution checklist
 
@@ -122,3 +126,8 @@ Manual run UI → 確認 (privacy mode選択 + 送信前確認)
 - [ ] Security/a11y/environment failure verification completed。
 - [ ] Physical-device representative workflow evidence recorded。
 - [ ] PR evidence and remaining risks recorded。
+
+## Re-entry history
+
+- 2026-09-10: 初回draft (baseline `6b6bf8dd9fa0c42399185dbb13c30192f1e15962`)。
+- 2026-09-13: baseline `f9afd8bfde121932c0c8ed965225d52a84d86ab4` へのmerge re-anchor。Current evidence更新 (organizer構造の #228/#235 差分、`DiagnosticsExportFilename.kt`、`PolicySourceKind` 6値)、#204 draft再anchor状態をDependenciesへ反映。design・change set・verificationの構造は変更なし。

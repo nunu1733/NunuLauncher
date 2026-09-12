@@ -5,12 +5,12 @@ requirements: []
 risk:
   - privacy
   - layout-data
-updated: 2026-09-10
+updated: 2026-09-13
 ---
 
 # External Agent Exchange: ChatGPT/Gemini等によるOrganizer personalization
 
-> Status: draft — 本specは #204 (Context / PersonalizedIntent exchange contract) を **必須依存** とする。#204の契約は本draft時点で未accept (draft snapshotが `origin/issue-204-spec-plan` branchに存在するのみでorigin/main未取り込み)。本specは #204 のschema詳細 (field名、tier名、failure分類) を **確定事実として扱わない**。#204受入時に本specの unresolved decisions を解消し、用語・field参照をaccepted契約へ合わせて改訂する。
+> Status: draft — 本specは #204 (Context / PersonalizedIntent exchange contract) を **必須依存** とする。#204の契約は本draft時点 (2026-09-13) でも未acceptであり、origin/mainには未取り込み (draft snapshotは `origin/issue-204-spec-plan` branch、baseline `f9afd8bfde121932c0c8ed965225d52a84d86ab4` へre-anchor済み)。本specは #204 のschema詳細 (field名、tier名、failure分類) を **確定事実として扱わない**。本文中の #204 draft由来の固有名 (`EXTERNAL_REDACTED` / `EXTERNAL_WITH_LABELS`、`EXPORT_MISMATCH` 等のfailure class) は全てdraft時点でのプレースホルダであり、#204受入時に accepted契約へ合わせて再確認・改訂する。
 
 ## Problem
 
@@ -85,6 +85,8 @@ When userがredacted mode (既定) とlabel-inclusive modeを選択できる、
 Then modeはdata部のmetadataとして明示され、label-inclusive選択時はapp label・folder titleが外部へ出る旨を確認画面が明示する、
 And 既定はredacted modeである。
 
+> #204 draftではこの2 modeは privacy tier `EXTERNAL_REDACTED` (既定候補) / `EXTERNAL_WITH_LABELS` (明示選択時) として命名されている (内部engine向け `LOCAL_FULL` は本workflow対象外)。tier名は#204受入まで仮称として扱う。
+
 ### Scenario: transport実行
 
 Given 確認済みexchange package、
@@ -113,10 +115,14 @@ When 検証結果を表示する、
 Then typed failure種別ごとにuserが理解できる説明を表示し、zero-write (selection/layout/planning入力を一切変更しない) であり、
 And userは修正した返答を再importできる。
 
+> #204 draftはtyped failure classとして `SCHEMA_MISMATCH` / `EXPORT_MISMATCH` / `OVERSIZE` / `UNKNOWN_REF` / `DUPLICATE_REF` / `INVALID_ENUM` / `FORBIDDEN_CONTENT` / `CAPABILITY_UNSUPPORTED` を定義し、未宣言capabilityはV1ではreject-by-defaultとしている。分類名・個数は#204受入まで仮称として扱い、UIの失敗説明はこの分類に一対対応させる。
+
 ### Scenario: 古いexport宛のintent
 
 Given export E1を生成後にuserが再生成してexport E2が存在し、E1宛のintentがimportされる、
 Then #204のexport一致検証によりrejectされ、userに再生成済みexportへ対応する旨が表示される。
+
+> #204 draftではこの失敗は `EXPORT_MISMATCH` failure classに対応する (受入まで仮称)。
 
 ### Scenario: previewと確認の省略禁止
 
@@ -144,6 +150,7 @@ Then 確認画面・失敗表示はaccessibility対応され (focus順、読み�
 - 永続化: V1ではexchange package・import済みtext・export-scoped ID mapをいずれも永続化しない (process-local。#204 draftの規則に従う)。DB migration・backup/restoreへの影響なし。
 - export再生成は新規export identityとなる。既存previewの無効化規則は #204 に従う。
 - layout変更は既存run (snapshot → plan → preview → confirm → apply) のみで行われ、本workflowは新しいDB書込経路を作らない。
+- #204 draft由来の制約 (受入まで仮): export data部の対象種別は #235 のsemantic placement role族 (app/shortcut系、folder、widget) に揃えられ、widgetのspanはexportに含まれずintentからも指定できない。`Unknown` 種別はexportから除外される。intentは既存RunMode (`FullOrganization` / `IncrementalPlacement` / `ScopeComposedOrganization`) を増やさず、整理対象の追加も行わない (追加候補は #228 のuser明示選択composition inputのみ)。instruction部はこれらの制約と矛盾する約束 (「widget sizeを提案してよい」等) を含んではならない。
 
 ## Permissions, privacy, and security
 
@@ -190,26 +197,29 @@ Then 確認画面・失敗表示はaccessibility対応され (focus順、読み�
 
 ## Open questions (未決定事項 — 実装前に解決が必要)
 
-1. **#204 acceptance**: 本specの全ACは#204受入を前提とする。#204受入時にtier名・field名・failure分類・framing候補を本specへ反映する。
+1. **#204 acceptance**: 本specの全ACは#204受入を前提とする。#204受入時にtier名・field名・failure分類・framing候補を本specへ反映する。#204 draft (2026-09-13時点、branch `issue-204-spec-plan`) はtier (`EXTERNAL_REDACTED` / `EXTERNAL_WITH_LABELS`) と8つのfailure class・reject-by-default V1を固定しているが、未acceptであるため本specはこれを仮称としてのみ参照する。
 2. **初回transportの決定**: clipboard copy / Share Sheet / file export の比較基準 (Android上の摩擦、clipboard size制限、share target有無) と初回採用組み合わせ。
-3. **accepted framingの形式**: import text内で `PersonalizedIntentV1` を囲むmarker・構造の具体形 (#204受入時に #204 と共通化)。
+3. **accepted framingの形式**: import text内で `PersonalizedIntentV1` を囲むmarker・構造の具体形 (#204受入時に #204 と共通化。#204 draft現時点ではtext framing規格は未定義)。
 4. **instruction部の文言・schema embedding方式**: Issue本文の例を起点とした具体文言、instruction内へschemaをどう埋め込むか。
-5. **redacted modeのlabel surrogate表現**: #204 draft open question 5と合わせた調整。
-6. **#203 usageSignalsの取り扱い**: #203 (OPEN) のsignal契約確定後、export packageのusage projection表現を確定する。
+5. **redacted modeのlabel surrogate表現**: #204 draft open question (hash surrogate可・形式未確定) と合わせた調整。
+6. **#203 usageSignalsの取り扱い**: #203 (OPEN) のsignal契約確定後、export packageのusage projection表現を確定する (#204 draftではcoarse bucket + tier制御の方向)。
 7. **instruction部言語**: 英語固定か、user locale追従か。
 8. **rate/size制約**: clipboard・share textのsize上限に対する巨大layout (数百item) の扱い。
 
 ## Change history
 
 - 2026-09-10: Draft created for #205. External Agent Exchange workflow spec: exchange package (instruction/data分離)、export/import transport、送信前確認、厳格import、#194/#195 preview必須。#204 acceptanceを明示的依存とする。
+- 2026-09-13: Re-entry re-anchor。main `6b6bf8dd` → `f9afd8bfde` をmerge (organizer差分: #228 scope-composed run/missing-app selection、#235 widget strategy placement/semantic placement role、#271/#288 diagnostics、requirements FR-016 implemented化)。#204 draftが `f9afd8bfde` baselineへre-anchorされたことを受け、draft段階の固有名 (privacy tier名、failure class名、widget span非投影、reject-by-default V1、RunMode不変・対象追加なし) を仮称として明記。未解決のproduct decisionは解消していない (status: draft維持)。
 
 ## References
 
 - [Issue #205](https://github.com/nunu1733/NunuLauncher/issues/205)
-- Issue #204 (contract、draft: branch `origin/issue-204-spec-plan` `specs/204-ai-personalization-context-intent-contract/` — 未accept・origin/main未取り込み)
+- Issue #204 (contract、draft: branch `origin/issue-204-spec-plan` `specs/204-ai-personalization-context-intent-contract/` — 2026-09-13にbaseline `f9afd8bfde` へre-anchor (commit `65b9fc859d`)。未accept・origin/main未取り込み)
 - [Spec 182: layout strategy catalog](../182-layout-strategy-catalog/spec.md)
 - [Spec 194: plan preview seam](../194-plan-preview-seam/spec.md)
 - [Spec 195: confirmation change list](../195-organizer-confirmation-change-list/spec.md)
+- [Spec 228: organizer missing-app selection](../228-organizer-missing-app-selection/spec.md) (scope-composed run、target追加はuser明示選択のみ)
+- [Spec 235: widget strategy placement](../235-widget-strategy-placement/spec.md) (semantic placement role、widget span不変)
 - Issue #203 (usage signals、OPEN), Issue #206 (managed AI、OPEN)
 - [organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md)
 - [requirements.md](../../docs/product/requirements.md), [AGENTS.md](../../AGENTS.md), [DESIGN.md](../../DESIGN.md)
