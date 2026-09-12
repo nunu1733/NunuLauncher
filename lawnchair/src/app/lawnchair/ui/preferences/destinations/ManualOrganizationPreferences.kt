@@ -684,8 +684,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
     if (catalog.isNullOrEmpty()) return
     // The whole picker lives in one selectableGroup so TalkBack announces the
     // rows as a single mutually-exclusive radio group ("x of N" semantics).
-    // Six rows fit one screen, so losing LazyColumn virtualization here is
-    // harmless (spec 182 child 8 a11y contract).
+    // The catalog's rows may exceed one small screen (eight strategies since
+    // issue #235); losing LazyColumn virtualization here only composes rows
+    // off-screen — never clips them — so the radio-group a11y contract holds
+    // (spec 182 child 8; picker tests scroll rows into view).
     item(key = "strategy-picker") {
         Column(
             modifier = Modifier
