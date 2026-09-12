@@ -52,6 +52,16 @@ head `8cd7240e6be5eeaf9ef4afc0f39b55b82388e96b` までの9ファイル
 permission・network追加はnone。監査はcommit内容に対して行い、作業treeの
 未追跡ファイル（`.ux-review/`等）は対象外。
 
+監査対象headとPR現在headの関係（本記録追加分の除外の明示）: 本監査の対象
+Head SHAは `8cd7240e6be5eeaf9ef4afc0f39b55b82388e96b`（CI run 34708809439が
+成功したcommit）である。PRの現在headは、この監査記録自体の追加のみからなる
+**docs-only commit**であり、実装・テストコードはCI確認済みheadから不変である。
+baseからの全diff（10ファイル、+1413/−2）と本記録のscope（9ファイル、
++1216/−2）の差分は、この監査文書の追加分のみであり、監査対象外とする。
+これは workflow（docs/project/github-workflow.md）の「監査のHead SHAがPR履歴内に
+存在し、それ以降の変更がdocs/配下のみである」要件に基づく除外の明示である
+（`validate_high_risk_evidence.py` のdocs-only後続commit許容規定に対応）。
+
 ## Criteria check
 
 - **AC-1（フォルダ子のreview可能性）: 確認。**
