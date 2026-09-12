@@ -65,6 +65,10 @@ object ExportWriter {
      * @param events All journal events (any order; will be sorted).
      * @param outputStream The writable destination (e.g. a SAF content URI
      *   opened via [android.content.ContentResolver.openOutputStream]).
+     * @param exportedAtWallMillis The export timestamp captured once per
+     *   export. Written verbatim to the header so the filename (derived from
+     *   the same captured value) and the exported metadata always agree. The
+     *   writer never reads the wall clock itself.
      * @param deviceProfile An optional device profile to include in the header.
      *   If null, the writer searches for the last [PhaseCode.RUN_STARTED] event
      *   in [events] whose [RunEvent.deviceProfile] is non-null.
@@ -73,6 +77,7 @@ object ExportWriter {
     fun write(
         events: List<RunEvent>,
         outputStream: OutputStream,
+        exportedAtWallMillis: Long,
         deviceProfile: DeviceProfileSummary? = null,
     ) {
         val resolvedProfile = deviceProfile
@@ -81,7 +86,7 @@ object ExportWriter {
 
         val header = ExportHeader(
             appVersion = BuildConfig.VERSION_NAME,
-            exportedAtWallMillis = System.currentTimeMillis(),
+            exportedAtWallMillis = exportedAtWallMillis,
             deviceProfile = resolvedProfile,
         )
 
@@ -130,15 +135,22 @@ object ExportWriter {
      * @param diagnosticsPort The live diagnostics port for stable snapshot.
      * @param uri The content URI to write to (from SAF CreateDocument or
      *   similar).
+     * @param exportedAtWallMillis The export timestamp captured once per
+     *   export (see [write]).
      * @throws java.io.IOException if writing fails.
      * @throws java.io.FileNotFoundException if the URI cannot be opened.
      */
     @JvmStatic
     @Throws(java.io.IOException::class)
-    fun writeToUri(context: Context, diagnosticsPort: DiagnosticsPort, uri: Uri) {
+    fun writeToUri(
+        context: Context,
+        diagnosticsPort: DiagnosticsPort,
+        uri: Uri,
+        exportedAtWallMillis: Long,
+    ) {
         val events = readJournalEvents(diagnosticsPort)
         context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-            write(events, outputStream)
+            write(events, outputStream, exportedAtWallMillis)
         } ?: throw java.io.FileNotFoundException("Cannot open output stream for $uri")
     }
 }

@@ -22,6 +22,7 @@ import app.lawnchair.organizer.integration.InputCompositionCode
 import app.lawnchair.organizer.integration.InputProvenance
 import app.lawnchair.organizer.integration.InputReadinessReason
 import app.lawnchair.organizer.integration.OrganizationInputComposition
+import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.ClassificationSignals
 import app.lawnchair.organizer.planning.DeviceCapabilities as PlannerDeviceCapabilities
 import app.lawnchair.organizer.planning.Disposition
@@ -971,6 +972,277 @@ class ManualOrganizationRunTest {
         )
     }
 
+    // --- Issue #228: detection → selection → scope-composed run ---
+
+    private fun candidate(id: String) = app.lawnchair.organizer.planning.CandidateItem(
+        id = app.lawnchair.organizer.planning.ItemId(id),
+        profile = app.lawnchair.organizer.planning.ProfileId("personal"),
+        kind = app.lawnchair.organizer.planning.CandidateKind.APPLICATION,
+        target = app.lawnchair.organizer.planning.CandidateTarget.AppKey(
+            app.lawnchair.organizer.planning.ComponentKey("com.example.$id"),
+            app.lawnchair.organizer.planning.ProfileId("personal"),
+        ),
+        availability = Availability.AVAILABLE,
+        span = app.lawnchair.organizer.planning.GridSpan(1, 1),
+    )
+
+    private fun scopeReadyInput() = readyInput().let { composition ->
+        composition.copy(
+            input = composition.input.copy(
+                runMode = RunMode.ScopeComposedOrganization,
+                targets = TargetSet(emptyList(), listOf(candidate("c1"))),
+            ),
+        )
+    }
+
+    private fun detected(vararg components: String) = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(
+        components.map { component ->
+            app.lawnchair.organizer.integration.DetectedCandidate(
+                target = app.lawnchair.organizer.planning.CandidateTarget.AppKey(
+                    app.lawnchair.organizer.planning.ComponentKey(component),
+                    app.lawnchair.organizer.planning.ProfileId("personal"),
+                ),
+                label = component,
+                availability = Availability.AVAILABLE,
+            )
+        },
+    )
+
+    @Test
+    fun detectionReadyOpensTheSelectionSurfaceWithoutComposingOrWriting() {
+        val application = FakeApplication(readyInput()).apply {
+            detection = detected("com.example.a/.Main", "com.example.b/.Main")
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { error("planner must not run before selection") })
+
+        runner.start()
+
+        val selecting = runner.state as ManualOrganizationRun.State.Selecting
+        assertEquals(2, selecting.candidates.size)
+        assertEquals(0, application.composeScopeComposedCalls)
+        assertEquals(0, application.materializeCalls)
+        assertEquals(0, application.applyCalls)
+    }
+
+    @Test
+    fun detectionFailureFallsThroughToThePlainFullFlow() {
+        // The fake's default detection is Unavailable; the run must continue
+        // as the plain full organize without opening the selection surface.
+        val application = FakeApplication(readyInput())
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start()
+
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+        assertEquals(0, application.composeScopeComposedCalls)
+        // Review P2 #3: the run's diagnostics mode is constant — the
+        // detection-only run never mixes FULL_ORGANIZATION with
+        // SCOPE_COMPOSED_ORGANIZATION on one runId.
+        val runModes = application.events.map { it.runMode }.toSet()
+        assertEquals(
+            setOf(app.lawnchair.organizer.diagnostics.model.RunMode.FULL_ORGANIZATION),
+            runModes,
+        )
+        assertEquals(
+            app.lawnchair.organizer.diagnostics.model.RunMode.FULL_ORGANIZATION,
+            application.events.last { it.phase == app.lawnchair.organizer.diagnostics.model.PhaseCode.RUN_STARTED }.runMode,
+        )
+    }
+
+    @Test
+    fun scopeComposedRunKeepsOneDiagnosticsModeAcrossAllEvents() {
+        // Review P2 #3: RUN_STARTED is emitted only after the selection
+        // resolves the mode, so every event of the run carries the same
+        // SCOPE_COMPOSED_ORGANIZATION identity.
+        val application = FakeApplication(scopeReadyInput()).apply {
+            detection = detected("com.example.c1")
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start()
+        runner.confirmSelection(
+            setOf(
+                app.lawnchair.organizer.planning.CandidateTarget.AppKey(
+                    app.lawnchair.organizer.planning.ComponentKey("com.example.c1"),
+                    app.lawnchair.organizer.planning.ProfileId("personal"),
+                ),
+            ),
+        )
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+
+        val runModes = application.events.map { it.runMode }.toSet()
+        assertEquals(
+            setOf(app.lawnchair.organizer.diagnostics.model.RunMode.SCOPE_COMPOSED_ORGANIZATION),
+            runModes,
+        )
+        // No FULL_ORGANIZATION-tagged event exists for this runId at all.
+        assertTrue(
+            application.events.none { it.runMode == app.lawnchair.organizer.diagnostics.model.RunMode.FULL_ORGANIZATION },
+        )
+    }
+
+    @Test
+    fun confirmingAnEmptySelectionRunsThePlainFullCompose() {
+        val application = FakeApplication(readyInput()).apply { detection = detected() }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start()
+        runner.confirmSelection(emptySet())
+
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+        assertEquals(0, application.composeScopeComposedCalls)
+    }
+
+    @Test
+    fun confirmingASelectionRunsTheScopeComposedComposeWithDeterministicOrder() {
+        val application = FakeApplication(scopeReadyInput()).apply {
+            detection = detected("com.example.b/.Main", "com.example.a/.Main", "com.example.c/.Main")
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start()
+        val selecting = runner.state as ManualOrganizationRun.State.Selecting
+        val identities = selecting.candidates.map { it.target }.toSet()
+        runner.confirmSelection(identities)
+
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+        assertEquals(1, application.composeScopeComposedCalls)
+        assertEquals(
+            identities.sortedWith(compareBy({ it.component.value }, { it.profile.value })),
+            application.composeSelection,
+        )
+    }
+
+    @Test
+    fun cancellingFromTheSelectionSurfaceWritesNothing() {
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.a/.Main") }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { error("planner must not run") })
+
+        runner.start()
+        runner.cancel()
+
+        assertEquals(ManualOrganizationRun.State.Cancelled, runner.state)
+        assertEquals(0, application.composeScopeComposedCalls)
+        assertEquals(0, application.applyCalls)
+    }
+
+    @Test
+    fun addRunWithoutConcretePreviewStopsAtPreviewUnavailableAndCannotConfirm() {
+        val application = FakeApplication(scopeReadyInput()).apply {
+            detection = detected("com.example.c1")
+            inspectPlanOverride = { _, _ -> PlanPreviewResult.WriterBusy }
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start()
+        runner.confirmSelection(
+            setOf(
+                app.lawnchair.organizer.planning.CandidateTarget.AppKey(
+                    app.lawnchair.organizer.planning.ComponentKey("com.example.c1"),
+                    app.lawnchair.organizer.planning.ProfileId("personal"),
+                ),
+            ),
+        )
+
+        // Spec AC-14: no count-only fallback for an Add run.
+        assertTrue(runner.state is ManualOrganizationRun.State.PreviewUnavailable)
+
+        // Confirm is impossible from this state — apply never happens.
+        runner.confirm()
+        assertEquals(0, application.applyCalls)
+
+        // Re-preview succeeds and restores the confirmable preview.
+        application.inspectPlanOverride = null
+        runner.retryPlanPreview()
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+    }
+
+    @Test
+    fun cancellingFromPreviewUnavailableEndsTheRunAndReleasesTheOperation() {
+        val application = FakeApplication(scopeReadyInput()).apply {
+            detection = detected("com.example.c1")
+            inspectPlanOverride = { _, _ -> PlanPreviewResult.WriterBusy }
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { planningResult(movingPlan()) },
+            operationGate = OrganizationOperationLease,
+        )
+
+        runner.start()
+        runner.confirmSelection(
+            setOf(
+                app.lawnchair.organizer.planning.CandidateTarget.AppKey(
+                    app.lawnchair.organizer.planning.ComponentKey("com.example.c1"),
+                    app.lawnchair.organizer.planning.ProfileId("personal"),
+                ),
+            ),
+        )
+        assertTrue(runner.state is ManualOrganizationRun.State.PreviewUnavailable)
+
+        runner.cancel()
+
+        assertEquals(ManualOrganizationRun.State.Cancelled, runner.state)
+        assertEquals(0, application.applyCalls)
+        // The released lease admits a fresh run on the shared gate immediately
+        // (the fresh runner is dismissed again so the gate is free for later
+        // tests on the shared singleton).
+        val freshRunner = ManualOrganizationRun(
+            FakeApplication(readyInput()),
+            OrganizationPlanner { planningResult(movingPlan()) },
+            operationGate = OrganizationOperationLease,
+        )
+        assertTrue(freshRunner.start() is ManualOrganizationRun.StartOutcome.Started)
+        freshRunner.cancel()
+        // The cancelled scope-composed run reports its diagnostics mode
+        // consistently on the terminal USER_CANCELLED event.
+        assertEquals(
+            app.lawnchair.organizer.diagnostics.model.RunMode.SCOPE_COMPOSED_ORGANIZATION,
+            application.events.last { it.phase == app.lawnchair.organizer.diagnostics.model.PhaseCode.USER_CANCELLED }.runMode,
+        )
+    }
+
+    @Test
+    fun addRunPreviewUnavailableRetrySurfacesStalenessThroughTheInspectSeam() {
+        val application = FakeApplication(scopeReadyInput()).apply {
+            detection = detected("com.example.c1")
+            inspectPlanOverride = { _, _ -> PlanPreviewResult.WriterBusy }
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start()
+        runner.confirmSelection(
+            setOf(
+                app.lawnchair.organizer.planning.CandidateTarget.AppKey(
+                    app.lawnchair.organizer.planning.ComponentKey("com.example.c1"),
+                    app.lawnchair.organizer.planning.ProfileId("personal"),
+                ),
+            ),
+        )
+        assertTrue(runner.state is ManualOrganizationRun.State.PreviewUnavailable)
+
+        application.inspectPlanOverride = { _, _ -> PlanPreviewResult.Stale }
+        runner.retryPlanPreview()
+
+        assertTrue(runner.state is ManualOrganizationRun.State.Stale)
+        assertEquals(ManualOrganizationRun.StaleOrigin.DETECTED_BEFORE_REVIEW, (runner.state as ManualOrganizationRun.State.Stale).origin)
+    }
+
+    @Test
+    fun nonAddRunKeepsTheCountOnlyFallbackForEnvironmentalPreviewFailures() {
+        // Regression for spec AC-14's second half: an Add-less run still
+        // falls back to the count-only preview (existing behavior).
+        val application = FakeApplication(readyInput()).apply {
+            inspectPlanOverride = { _, _ -> PlanPreviewResult.WriterBusy }
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start()
+
+        val preview = runner.state as ManualOrganizationRun.State.Preview
+        assertEquals(null, preview.details)
+    }
+
     private fun planningResult(outcome: app.lawnchair.organizer.planning.PlanningOutcome) = PlanningResult(
         revision = RevisionId("revision"),
         ruleVersion = RuleVersion("v2"),
@@ -986,6 +1258,145 @@ class ManualOrganizationRunTest {
         categories = emptyList(),
         warnings = emptyList(),
     )
+
+    // --- Issue #228 review follow-ups: partial placement, typed preview
+    // resolution failure, and pre-start journal silence ---
+
+    private fun candidatePlacementPlan(placedIds: List<String>, unplacedIds: List<String>) = Planned(
+        placements = placedIds.map { id ->
+            PlannedPlacement(
+                item = app.lawnchair.organizer.planning.ItemId(id),
+                disposition = Disposition.Moved(PlacementCode.SINGLE_PLACEMENT),
+                target = PlacementTarget.WorkspaceTarget(
+                    PageRef(PageId("page")),
+                    app.lawnchair.organizer.planning.GridCell(0, 0),
+                    app.lawnchair.organizer.planning.GridSpan(1, 1),
+                ),
+            )
+        },
+        newPages = emptyList(),
+        newFolders = emptyList(),
+        categories = emptyList(),
+        warnings = emptyList(),
+        unplaced = unplacedIds.map { id ->
+            app.lawnchair.organizer.planning.UnplacedItem(
+                app.lawnchair.organizer.planning.ItemId(id),
+                app.lawnchair.organizer.planning.GridSpan(1, 1),
+                app.lawnchair.organizer.planning.UnplacedReason.STRATEGY_SCOPE_FULL,
+            )
+        },
+    )
+
+    private fun selectionOf(vararg components: String) = components.map {
+        app.lawnchair.organizer.planning.CandidateTarget.AppKey(
+            app.lawnchair.organizer.planning.ComponentKey(it),
+            app.lawnchair.organizer.planning.ProfileId("personal"),
+        )
+    }.toSet()
+
+    @Test
+    fun partiallyPlacedCandidatesPreviewWithUnplacedCountsInSummary() {
+        // Review P1 follow-up: one candidate placed, one scope-unplaced.
+        // The placed one previews as an Add; the unplaced one surfaces as a
+        // STRATEGY_SCOPE_FULL count in the summary (spec overflow contract),
+        // and the run does NOT collapse into NoChanges.
+        val composition = scopeReadyInput().let { ready ->
+            ready.copy(
+                input = ready.input.copy(
+                    targets = TargetSet(emptyList(), listOf(candidate("c1"), candidate("c2"))),
+                ),
+            )
+        }
+        val application = FakeApplication(composition).apply {
+            detection = detected("com.example.c1", "com.example.c2")
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner {
+                planningResult(candidatePlacementPlan(placedIds = listOf("c1"), unplacedIds = listOf("c2")))
+            },
+        )
+
+        runner.start()
+        runner.confirmSelection(selectionOf("com.example.c1", "com.example.c2"))
+
+        val preview = runner.state as ManualOrganizationRun.State.Preview
+        assertEquals(1, preview.summary.addedCount)
+        assertEquals(
+            1,
+            preview.summary.unplacedByReason[app.lawnchair.organizer.planning.UnplacedReason.STRATEGY_SCOPE_FULL],
+        )
+    }
+
+    @Test
+    fun allCandidatesUnplacedWithNoOtherChangesEndsInTheImpossibleSurface() {
+        // Review P1 follow-up: nothing fits and nothing else changes — the
+        // run must not report "no changes"; it reports the scope overflow
+        // through the existing Impossible surface.
+        val application = FakeApplication(scopeReadyInput()).apply {
+            detection = detected("com.example.c1")
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner {
+                planningResult(candidatePlacementPlan(placedIds = emptyList(), unplacedIds = listOf("c1")))
+            },
+        )
+
+        runner.start()
+        runner.confirmSelection(selectionOf("com.example.c1"))
+
+        val rejected = runner.state as ManualOrganizationRun.State.PlanningRejected
+        assertEquals(ManualOrganizationRun.PlanningFailureKind.IMPOSSIBLE, rejected.kind)
+        assertEquals(
+            1,
+            rejected.summary.unplacedByReason[app.lawnchair.organizer.planning.UnplacedReason.STRATEGY_SCOPE_FULL],
+        )
+    }
+
+    @Test
+    fun resolutionFailureOnTheFirstPreviewReachesTheTypedReDetectState() {
+        // Review P2: the typed candidate-resolution failure must survive the
+        // preview seam (not collapse into MATERIALIZATION_INVALID) so the
+        // first preview routes to the re-detect outcome.
+        val application = FakeApplication(scopeReadyInput()).apply {
+            detection = detected("com.example.c1")
+            inspectPlanOverride = { _, _ ->
+                PlanPreviewResult.CandidateResolutionFailed(
+                    app.lawnchair.organizer.application.public.CandidateResolutionFailure.COMPONENT_NOT_FOUND,
+                )
+            }
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start()
+        runner.confirmSelection(selectionOf("com.example.c1"))
+
+        val failed = runner.state as ManualOrganizationRun.State.CandidateResolutionFailed
+        assertEquals(
+            app.lawnchair.organizer.application.public.CandidateResolutionFailure.COMPONENT_NOT_FOUND,
+            failed.failure,
+        )
+        assertEquals(0, application.applyCalls)
+    }
+
+    @Test
+    fun cancellingDuringSelectionLeavesTheJournalSilentForThatRunId() {
+        // Review P2 (runMode correlation): RUN_STARTED anchors the journal;
+        // a cancel during the pre-select window emits no events at all for
+        // the runId — never a USER_CANCELLED without its RUN_STARTED.
+        val application = FakeApplication(readyInput()).apply {
+            detection = detected("com.example.a/.Main")
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start()
+        assertTrue(runner.state is ManualOrganizationRun.State.Selecting)
+        runner.cancel()
+
+        assertEquals(ManualOrganizationRun.State.Cancelled, runner.state)
+        assertEquals(emptyList<RunEvent>(), application.events)
+    }
 
     private fun placement(
         item: String,
@@ -1027,6 +1438,35 @@ class ManualOrganizationRunTest {
             RecoveryPointId(POINT_ID),
             app.lawnchair.organizer.application.public.RecoveryPreviewRejection.MISSING,
         )
+        var durableStatus: app.lawnchair.organizer.application.public.OrganizerDurableStatus =
+            app.lawnchair.organizer.application.public.OrganizerDurableStatus.NEVER_ORGANIZED
+
+        // Issue #228: default keeps the legacy behavior — detection is
+        // unavailable, so start() falls straight through to the plain full
+        // compose (spec §7). Tests of the selection flow override this.
+        var detection: app.lawnchair.organizer.integration.CandidateDetectionResult =
+            app.lawnchair.organizer.integration.CandidateDetectionResult.Unavailable(
+                app.lawnchair.organizer.integration.DetectionUnavailableReason.PROFILE_SERIAL_UNAVAILABLE,
+            )
+        var detectStarted: CountDownLatch? = null
+        var detectRelease: CountDownLatch? = null
+        var composeSelection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>? = null
+        var composeScopeComposedCalls = 0
+        var composeScopeComposedOverride: ((List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>) -> OrganizationInputComposition)? = null
+
+        override fun detectMissingAppCandidates(): app.lawnchair.organizer.integration.CandidateDetectionResult {
+            detectStarted?.countDown()
+            detectRelease?.await(5, TimeUnit.SECONDS)
+            return detection
+        }
+
+        override fun composeScopeComposedOrganization(
+            selection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>,
+        ): OrganizationInputComposition {
+            composeScopeComposedCalls++
+            composeSelection = selection
+            return composeScopeComposedOverride?.invoke(selection) ?: composition
+        }
 
         override fun newRunId() = RunId(nextRunIds.getOrElse(nextRunIdIndex++) { RUN_ID })
         override fun composeFullOrganization(): OrganizationInputComposition {
@@ -1069,6 +1509,13 @@ class ManualOrganizationRunTest {
         override fun inspectRecovery(pointId: RecoveryPointId): RecoveryPreviewResult = recoveryPreview
 
         override fun confirmRecovery(pointId: RecoveryPointId, confirmation: RecoveryPreviewConfirmation): RecoveryResult = RecoveryResult.NotRestorable(pointId, app.lawnchair.organizer.application.public.RecoveryRejection.MISSING)
+
+        override fun readDurableOrganizerStatus(): app.lawnchair.organizer.application.public.OrganizerDurableStatus = durableStatus
+
+        val readiness = kotlinx.coroutines.flow.MutableStateFlow(
+            app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY,
+        )
+        override val readinessState: kotlinx.coroutines.flow.StateFlow<app.lawnchair.organizer.application.protocol.ReadinessGate.State> = readiness
     }
 
     private fun assertThrowsIllegalState(block: () -> Unit) {

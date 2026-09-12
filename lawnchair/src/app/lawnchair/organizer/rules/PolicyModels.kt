@@ -154,8 +154,11 @@ data class OrganizerPolicyBundle(
         // child 7 published -v2.4 (CATEGORY_CONTIGUOUS_V1); issue #237
         // published -v2.5 (GLOBAL_COMPACT_V2). Every strategy enablement is a
         // new semantic version/generation per ADR-0007 §8 / ADR-0012 —
-        // digest-only expansion was explicitly rejected.
-        const val POLICY_BUNDLE_VERSION = "organization-policy-v2.5"
+        // digest-only expansion was explicitly rejected. Issue #235 ships
+        // both widget-relocating successors (STABLE_PAGE_TIDY_V2 and
+        // BOTTOM_FIRST_V2) on one mainline, so the single shipped artifact
+        // change publishes one increment: -v2.6.
+        const val POLICY_BUNDLE_VERSION = "organization-policy-v2.6"
         val RULE_VERSION = RuleVersion("v2")
         val TAXONOMY_VERSION = TaxonomyVersion("v1")
         const val CLASSIFICATION_VERSION = "classification-v1"
