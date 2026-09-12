@@ -9,7 +9,7 @@ requirements:
   - NFR-007
   - NFR-011
   - NFR-012
-updated: 2026-09-10
+updated: 2026-09-12
 ---
 
 # Safe layout application and recovery contract
@@ -254,6 +254,7 @@ ApplyResult =
 
 PreWriteRejection =
   | INVALID_PLAN | STALE_REVISION | EXACT_PRECONDITION_FAILED
+  | CANDIDATE_UNAVAILABLE
   | LOCK_STATE_UNAVAILABLE | IDENTITY_EXHAUSTED
   | CHECKPOINT_CREATE_FAILED | CHECKPOINT_VALIDATE_FAILED
   | RECOVERY_STORE_UNAVAILABLE | RECOVERY_POINT_ADMISSION_BLOCKED
@@ -651,3 +652,11 @@ Source observations are fixed to
   desktop-entry `1×1` normalization rule. It closes direct and
   folder → Hotseat → desktop transitions without changing raw folder/Dock
   semantics, strict desktop capture, or exact recovery.
+- 2026-09-12: Issue #293 recorded the `CANDIDATE_UNAVAILABLE` extension that
+  issue #228 added to the closed `PreWriteRejection` set: apply-time candidate
+  availability re-verification sits between the stale-revision recheck and
+  checkpoint creation and rejects with `CANDIDATE_UNAVAILABLE`, failing closed
+  with zero writes, when a selected missing-app candidate is no longer
+  resolvable. Runtime (`PreWriteRejection`) and its `ApplyResultContractTest`
+  pin were fixed by PR #289; this entry is the canonical-set recording only.
+  No other result shape, lifecycle, or behavior change.
