@@ -1,6 +1,6 @@
 ---
 issue: "#235"
-status: accepted
+status: implemented
 requirements:
   - FR-003
   - FR-016
@@ -11,7 +11,7 @@ updated: 2026-09-12
 
 # Strategy-aware fixed-span widget placement in Organizer
 
-> Status: accepted — 2026-09-12。phase-1 review (2 round、下記change history) を経て所有者により承認された。実装は本specとplan.mdに従い、`STABLE_PAGE_TIDY_V2` → `BOTTOM_FIRST_V2` の縦切りで行う。`GLOBAL_COMPACT_V3` / `CATEGORY_CONTIGUOUS_V2` は本specのnormative rulesを実装する後続child issueとする。
+> Status: **implemented** (PR #296 merge commit `463b25d217` + production-fix PR #302 merge commit `39214aef02`、2026-09-12)。受入経緯はChange history末尾。実装: `STABLE_PAGE_TIDY_V2` / `BOTTOM_FIRST_V2` (bundle `organization-policy-v2.6`)、widget production統合fix、preview分離count、AC-10実機/emulator evidence (`docs/assessment/assets-235-ac10/`)。`GLOBAL_COMPACT_V3` / `CATEGORY_CONTIGUOUS_V2` は本specのnormative rulesを実装する後続child issueである。
 
 ## Problem
 
@@ -288,3 +288,4 @@ None — 初版draftのOpen questions 1〜6は D-1〜D-6 として解消した�
 - 2026-09-12: Implementation-prep correction (plan.mdの単一PR統合パスを採用): 両strategyを同一mainlineで有効化するためbundle増分は `organization-policy-v2.6` の1回のみとする (旧記述の `-v2.6`/`-v2.7` の2段階増分は個別child PR分割を想定したもので、ADR-0007 §8 の要件は中間versionを出荷しなければ単一増分で満たされる)。behavior定義への影響なし。
 - 2026-09-12: Owner re-review correction (PR #296 re-review round 2): widget streamの不変key順におけるtarget keyのcanonical順をspec 10の型どおり比較として明記した — `(provider UTF-8 byte order, appWidgetId numeric order, profile UTF-8 byte order)`。実装が `targetKeySortValue` の連結文字列を比較していたため、`appWidgetId` の辞書順化 (`"10" < "2"`) とprofile segment欠落がAC-5のdeterministic invariant-key orderと不一致だった (owner review発見)。実装 comparator と fixture (appWidgetId 2/10 numeric順、同provider同appWidgetId異profile順) を修正、不変keyは全segment移動不変のため冪等性証明に影響なし。
 - 2026-09-12: AC-10 production-finding amendment (device evaluation on the merged build found the widget stream never fires in production): the eligibility rule is corrected — the widget branch is terminal for widget kinds under widget-capable strategies, superseding the `ExistingRole` check. The production composer marks every widget `ExistingRole.Preserved` by kind (widgets are never user-selected organization targets, pre-#235 rule), so the round-1 "NON_TARGET fall-through" wording made widget relocation unreachable in production; the withdrawn-rule discriminator fixture is replaced by a production-role fixture. Locked/unavailable/reserved-overlapping/Dock widgets remain fixed via the higher-precedence reasons. Non-widget-capable strategies are unchanged (`PreserveReason.WIDGET`). Idempotence proofs unaffected: all widget-stream segments remain relocation-invariant.
+- 2026-09-12: Implemented (PR #296 merge `463b25d217` + production-fix PR #302 merge `39214aef02`)。AC-1〜AC-9 はPR #296 (widget placement role・`STABLE_PAGE_TIDY_V2`/`BOTTOM_FIRST_V2`・preview分離count・copy)、AC-10 は実機/emulator evaluation (evidence: `docs/assessment/assets-235-ac10/`、production欠陥の発見とPR #302による修正を含む)、AC-11 は本specのnormative rules (実装は後続child) により満たされた。独立監査: `docs/assessment/pr-296-widget-strategy-placement.md`、`docs/assessment/pr-302-widget-production-fix.md`。
