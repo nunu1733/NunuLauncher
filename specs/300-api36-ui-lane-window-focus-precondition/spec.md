@@ -10,7 +10,7 @@ requirements:
   - TS-AC-06
   - TS-AC-07
 risk: []
-updated: 2026-09-12
+updated: 2026-09-13
 ---
 
 # api36 UI lanes: 実入力注入は対象windowのfocus観測を前提とし、environment health state による単一証拠採取と即時失敗で burst の待機連鎖を収束させる
@@ -99,6 +99,13 @@ Spec review で確定した設計上の制約（2026-09-12 の 2 回の review�
   （review 3 指摘 1）。issue52 invocation の他 3 クラスは health state を参照しないため、
   「本番 4 クラス filter 全体が即時失敗する」という主張は成立しない。収束保証の対象を
   gated クラスに限定し、決定的配線検証も gated クラスの明示指定で行う。
+- **保証単位は gated class ではなく gate を通る実行（gated execution）である**
+  （review 4 指摘 1）。実測では、issue53 の 20 test 中 9 が `TouchActivationGate` 経路を
+  使い 11 は使わない。issue52 の 40 test 中、実鍵注入 gate を通るのは
+  `changeListTraversalReachesExpandAndReviewActions` の 1 test のみである。helper を
+  呼ばないテストは health state を参照しないため、クラス単位の「後続テストが即時失敗」
+  という主張は成立しない。共通入口（runner listener / test rule / `@Before`）は
+  追加しない。
 - **topology は「現行」と「修正後」を分けて記述する**（review 3 指摘 2）。状態 test
   クラスの issue53 lane 追加により、修正後の issue53 filter は 2 クラスになる。
   配線検証は修正後 filter 全体ではなく、gated クラスを明示指定して行う。
@@ -112,10 +119,10 @@ Spec review で確定した設計上の制約（2026-09-12 の 2 回の review�
 api36 UI lane では、touch/keyboard 注入は対象 window が window focus を保持している
 ことを観測した後にのみ行われる。すべての environment 操作（修復・focus 待ち）は入口で
 run-level health state を確認し、unhealthy なら何も修復・待機せず即座に、最初の
-failure が採取した environment 証拠を参照して失敗する。この保証は environment helper を
-配線した gated test クラス（issue53: `OnboardingOrganizationProposalInstrumentationTest`、
-issue52: `ManualOrganizationPreferencesInstrumentationTest`）に適用され、同一 invocation
-内の他クラスは health state を参照しないため通常どおり実行される。証拠採取は「environment 前提の
+failure が採取した environment 証拠を参照して失敗する。この保証の単位は
+**gate を通る実行（gated execution）**であり、同一クラス内の gate を通らないテスト
+（issue53: 20 test 中 11、issue52: 40 test 中 39。実測）や同一 invocation 内の他クラスは
+health state を参照しないため通常どおり実行される。証拠採取は「environment 前提の
 崩壊を示す観測」がある場合に限られ、環境が正常な失敗（launcher lifecycle 回帰、
 UI 回帰）は従来どおり個別の failure として報告される。per-boot 環境問題は
 「繰り返し待機する失敗連鎖」ではなく「1 つの証拠採取＋即時失敗の連鎖」として現れ、
@@ -149,11 +156,13 @@ Issue（#304）の一次資料になる。
     `TouchActivationGate.tapCenterOf`/`deliveredTap`、`deliveredTapOutside`、
     `sendKey`（DPAD）経路、および proposal show 直前。
   - issue52 lane `ManualOrganizationPreferencesInstrumentationTest`:
-    `pressDownUntilFocused` と `KEYCODE_ENTER` 注入の前。window focus 観測下でも
-    focus traversal が失敗した場合、failure メッセージに注入時の device/window state
-    を含める（TS-AC-06）。
-  - 配線対象はこの 2 クラス（gated test クラス）のみであり、他クラスへの共通入口
-    （runner listener / test rule）は追加しない。
+    `pressDownUntilFocused` と `KEYCODE_ENTER` 注入の前
+    （gate を通るのは `changeListTraversalReachesExpandAndReviewActions` の 1 test）。
+    window focus 観測下でも focus traversal が失敗した場合、failure メッセージに
+    注入時の device/window state を含める（TS-AC-06）。
+  - 配線対象はこの 2 クラスの gate 利用経路のみであり、保証単位はクラスではなく
+    gate を通る実行である。共通入口（runner listener / test rule / `@Before`）は
+    追加しないため、helper を呼ばないテストは health state の影響を受けない。
 - 非注入経路の修復・診断・**分類**:
   - `awaitResumedLauncher`: 待ちの前に `ensureInteractiveUnlocked()`。timeout 時に
     環境を再観測（interactive / keyguard / frontmost window）し、environment 異常の
@@ -168,6 +177,10 @@ Issue（#304）の一次資料になる。
     test クラス（状態の遷移・証拠の単一性・入口確認の即時性を直接駆動）で検証する。
     状態 test クラスは自身の fresh な state instance を駆動し、process-static な
     singleton や injection hook に依存しない。
+  - issue52 の traversal 失敗診断（device/window state の付加）も、観測値 snapshot から
+    failure メッセージを組み立てる純粋関数として切り出し、状態 test クラスで
+    決定的に検証する（固定 snapshot から生成したメッセージに interactive /
+    keyguard / focused window / frontmost / 対象 focus の各 field が含まれること）。
   - helper には、instrumentation runner 引数が明示指定された場合にのみ health state を
     unhealthy に固定する failure injection hook を設ける（CI lane では指定しない）。
     これにより、実際の配線（helper 入口確認 → 後続テスト即時失敗）を環境に依存せず
@@ -218,17 +231,17 @@ And focus が到達した後は、テストは修復なしの場合と同一の�
 
 ### Scenario: health 確認はすべての environment 操作の入口で行われる (TS-AC-03)
 
-Given gated test クラス（helper を配線した `OnboardingOrganizationProposalInstrumentationTest`
-または `ManualOrganizationPreferencesInstrumentationTest`）内のあるテストが既に
-environment failure で `markUnhealthy` されている
-When 同一 gated クラスの後続テストが `ensureInteractiveUnlocked` または
-`ensureWindowFocused` を呼ぶ
+Given 同一 instrumentation invocation 内のある実行が既に environment failure で
+`markUnhealthy` されている
+When gate を通る後続の実行（helper を配線した注入経路・待ちを呼ぶテスト）が
+`ensureInteractiveUnlocked` または `ensureWindowFocused` を呼ぶ
 Then helper は修復・待機を一切実行せず、入口で即座に失敗する
 And 失敗メッセージは最初の failure が採取した environment 証拠を参照する
-And gate 待機と注入 retry（3 attempt × delivery timeout）は gated クラス内で高々 1 回
-だけ発生する
-And 同一 invocation 内の gated でないクラスは health state を参照せず通常どおり実行される
-（収束保証の対象外である）
+And gate 待機と注入 retry（3 attempt × delivery timeout）は gate を通る実行の中で
+高々 1 回だけ発生する
+And helper を呼ばないテスト（同一クラス内の gate を通らないテスト、同一 invocation 内の
+gated でないクラスを含む）は health state を参照せず通常どおり実行される
+（保証単位は gate を通る実行であり、クラスではない）
 
 ### Scenario: markUnhealthy は前提崩壊の観測がある場合に限られる (TS-AC-04)
 
@@ -250,9 +263,11 @@ Given health state の純粋 state machine と、runner 引数による failure 
 When 同 package の状態 test クラスが state machine を直接駆動する
 Then 最初の `markUnhealthy` だけが証拠を保持し、以後の入口確認が待機なしで同じ証拠を
 参照する error を投げることが決定的に検証される
-And runner 引数と gated クラスの明示指定（`-e class`）による別 invocation 実行では、
-実配線（helper 入口確認 → gated クラスの後続テストの即時失敗）が環境に依存せず
-検証される
+And runner 引数と gate 利用 test の明示指定（`-e class Class#method`）による別 invocation
+実行では、実配線（helper 入口確認 → gate 利用 test の即時失敗、gate を通らない
+test の通常実行）が環境に依存せず検証される。issue53 は gate 利用 test を指定し、
+issue52 は `changeListTraversalReachesExpandAndReviewActions` と gate を通らない
+sibling test を指定する
 And 状態 test クラスは自身の fresh な state instance を駆動するため、injection hook や
 他テストの health 状態に依存しない
 And 実環境の強制状態（KEYCODE_SLEEP 等）による再現試行は #304 用の証拠として
@@ -281,11 +296,12 @@ head SHA とともに PR に記録する）
 - テストのみの変更であり、読み書きする永続 data、schema、migration、backup/restore への
   影響はない。
 - run-level environment health state は instrumentation process 内で閉じ、永続化しない。
-  有効範囲は 1 instrumentation invocation ＝ 1 process であるが、**参照するのは gated
-  test クラスのみ**である（issue52 lane の他 3 クラスは参照せず、収束保証の対象外）。
-  issue52 と issue53 は別 job・別 emulator であり、state は混在しない。topology は
-  現行（issue53 = 1 クラス、issue52 = 4 クラス）と修正後（issue53 に状態 test クラスを
-  追加して 2 クラス、issue52 不変）を分けて plan.md に記録する。
+  有効範囲は 1 instrumentation invocation ＝ 1 process であるが、**参照するのは gate を
+  通る実行のみ**である（同一クラス内の gate を通らないテスト、同一 invocation 内の
+  gated でないクラスは参照せず、収束保証の対象外）。issue52 と issue53 は別 job・別
+  emulator であり、state は混在しない。topology は現行（issue53 = 1 クラス、
+  issue52 = 4 クラス）と修正後（issue53 に状態 test クラスを追加して 2 クラス、
+  issue52 不変）を分けて plan.md に記録する。
 - failure injection hook は runner 引数が明示指定された場合にのみ動作し、CI lane では
   指定しない。通常実行の挙動を変えない。
 - gate の修復 shell（wakeup、keyguard dismiss）は lane の前提状態（interactive・
@@ -312,12 +328,11 @@ gate によって frontmost window 前提が確認され、timeout 時の分類�
 - [ ] AC-1: 注入経路は対象 window focus を観測していない状態で注入せず、修復
       （wakeup / keyguard dismiss）を試みてから待つ（TS-AC-01、TS-AC-02）。
 - [ ] AC-2: health 確認がすべての environment 操作（修復・focus 待ち）の入口で行われ、
-      unhealthy な run の gated クラス内の後続テストは修復・待機を一切実行せず最初の
-      証拠を参照して即座に失敗する。保証範囲は gated test クラスに限られ、決定的配線
-      検証は gated クラスを明示指定した別 invocation（issue53:
-      `OnboardingOrganizationProposalInstrumentationTest`、issue52:
-      `ManualOrganizationPreferencesInstrumentationTest`）で行う（TS-AC-03、
-      TS-AC-05）。
+      unhealthy な invocation 内の gate を通る後続実行は修復・待機を一切実行せず最初の
+      証拠を参照して即座に失敗する。保証単位は gate を通る実行であり、helper を呼ばない
+      テストは対象外。決定的配線検証は gate 利用 test の明示指定
+      （issue53: gate 利用 test、issue52: `changeListTraversalReachesExpandAndReviewActions`
+      ＋ gate を通らない sibling）で行う（TS-AC-03、TS-AC-05）。
 - [ ] AC-3: `markUnhealthy` の分類が検証される。環境正常下での accessibility
       node-not-found と `awaitResumedLauncher` timeout は health state を変化させず、
       環境異常の観測が取れた timeout のみが environment failure になる
@@ -325,8 +340,9 @@ gate によって frontmost window 前提が確認され、timeout 時の分類�
 - [ ] AC-4: health state state machine が、状態 test クラス（issue53 lane filter に
       追加）と runner 引数 injection により決定的に検証される。実環境の強制状態
       試行結果は #304 の証拠として plan.md に記録される（TS-AC-05）。
-- [ ] AC-5: issue52 の実鍵注入が gate を通る。window focus 観測下での traversal 失敗時
-      メッセージに device/window state が含まれる。spec/plan に issue52 と issue53 の
+- [ ] AC-5: issue52 の実鍵注入が gate を通る。traversal 失敗時メッセージへの
+      device/window state 付加は、固定 snapshot から生成したメッセージの決定的 test と
+      注入経路への配線 code review で検証される。spec/plan に issue52 と issue53 の
       同一原因の主張が無い（TS-AC-06）。
 - [ ] AC-6: 異なる workflow run を 3 回連続で実行し、各 run で issue53・issue52 両
       lane が `run_attempt = 1` のまま green。rerun で green になった run は数えない
@@ -339,10 +355,10 @@ gate によって frontmost window 前提が確認され、timeout 時の分類�
 | AC | Evidence |
 |---|---|
 | AC-1 | 修正 head のローカル api36 lane 実行（通常状態）の結果と、注入呼び出し箇所の gate 配線 review |
-| AC-2 | 状態 test クラスの実行結果 + runner 引数 injection と gated クラス明示指定（`-e class`）による別 invocation 実行 log（issue53 / issue52 それぞれの gated クラスで、後続テストが待機なしで失敗する証跡）。plan.md Verification に記録 |
-| AC-3 | 状態 test クラスの分類ケース結果 + 強制状態実行で得られる分類メッセージの実物。plan.md に記録 |
+| AC-2 | 状態 test クラスの実行結果 + runner 引数 injection と gate 利用 test 明示指定（`-e class Class#method`）による別 invocation 実行 log（issue53: gate 利用 test、issue52: `changeListTraversalReachesExpandAndReviewActions`＋gate を通らない sibling。gate 利用 test が待機なしで失敗し、非 gate テストが通常実行される証跡）。plan.md Verification に記録 |
+| AC-3 | 状態 test クラスの分類ケース結果（決定的）。強制状態実行で分類メッセージの実物が取得できた場合は #304 向け evidence として plan.md に併記（取得できなくても AC には影響しない） |
 | AC-4 | 状態 test クラスの CI 実行結果（issue53 lane）+ injection 付き lane 実行 log。強制状態試行の記録は #304 参照用 |
-| AC-5 | issue52 lane（本番 filter の 4 クラス実行）のローカル実行結果 + 失敗時メッセージの診断内容確認 |
+| AC-5 | 診断メッセージ生成（固定 snapshot → failure メッセージ）の決定的 test 結果 + issue52 注入経路への配線 code review。実環境の強制状態実行は #304 向け optional evidence として plan.md に記録 |
 | AC-6 | CI run link（連続 3 workflow run、各 `run_attempt = 1`、head SHA 付き）。PR 本文に記録 |
 | AC-7 | `./gradlew spotlessCheck` 実行結果と `git diff --stat` の範囲確認。PR に記録 |
 

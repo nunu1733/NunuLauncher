@@ -67,6 +67,14 @@
   - gate 対象の実入力注入（`uiAutomation.injectInputEvent` / `sendKeyDownUpSync`）は
     issue52 job 内では `ManualOrganizationPreferencesInstrumentationTest` のみが使用し、
     他 3 クラスは使用していない（grep 実測）。burst の実測もこのクラスに限る
+  - **gate を通る test の実数**（保証単位がクラスではなく gate を通る実行である根拠。
+    review 指摘の確認）:
+    - issue53: `OnboardingOrganizationProposalInstrumentationTest` は 20 test のうち
+      9 が `TouchActivationGate` 経路を使用し、11 は使用しない（grep 実測）
+    - issue52: `ManualOrganizationPreferencesInstrumentationTest` は 40 test のうち、
+      実鍵注入 gate（`pressDownUntilFocused` / `KEYCODE_ENTER`）を通るのは
+      `changeListTraversalReachesExpandAndReviewActions` の 1 test のみである
+      （`sendKeyDownUpSync` の使用箇所は同 test と helper のみ。grep 実測）
   - `tests/organizer-instrumentation` は androidTest 専用 source set であり
     （自前 build.gradle 無し、lawnchair module の androidTest として compile）、
     helper の JVM unit test は存在しない。決定的検証は instrumentation test で行う。
@@ -137,17 +145,22 @@
   - helper に runner 引数による failure injection hook を設ける:
     instrumentation 引数（例: `-e nunuInjectEnvironmentHealthFailure <label>`）が
     明示指定された場合にのみ、最初の environment 操作で state を unhealthy に固定する。
-    CI lane では指定しない。これにより実際の配線（helper 入口確認 → 後続テストの
+    CI lane では指定しない。これにより実際の配線（helper 入口確認 → gate 利用 test の
     即時失敗）を、修復が成功して green になってしまう環境（sleep 等はまさに修復対象）
     に依存せず検証できる。
+  - issue52 の traversal 失敗診断のメッセージ生成も、観測値 snapshot から failure
+    メッセージを組み立てる純粋関数に切り出し、状態 test クラスで決定的に検証する
+    （強制状態実行は oracle にしない方針と整合させる）。
   - 状態 test クラスを issue53 lane の class filter に追加する（ci.yml :550 への
     1 行追加。lane 構成・job 分離・API 構成は不変）。
-  - **保証範囲と検証の対応**: health state の収束保証は gated test クラス（helper を
-    配線した 2 クラス）に限る。runner 引数 injection による決定的配線検証も、filter
-    全体ではなく gated クラスを `-e class` で明示指定した別 invocation で行う
-    （修正後の issue53 filter は状態 test クラスを含む 2 クラスになるため、全体指定
-    では保証範囲と一致しない）。同一 invocation 内の gated でないクラスは health
-    state を参照せず通常どおり実行される（review 3 指摘 1・2）。
+  - **保証範囲と検証の対応**: health state の収束保証の単位は
+    **gate を通る実行（gated execution）**であり、gated class ではない。issue53 の
+    20 test 中 9、issue52 の 40 test 中 1（`changeListTraversalReachesExpandAndReviewActions`）
+    だけが gate を通るため、helper を呼ばないテストは health state を参照せず通常どおり
+    実行される。runner 引数 injection による決定的配線検証も、filter やクラス全体では
+    なく gate 利用 test を `-e class Class#method` で明示指定して行う。同一 invocation
+    内の gate を通らない実行（同クラス内・他クラスを含む）は保証対象外である
+    （review 指摘: 保証単位を「クラス」から「gate を実際に通る経路」へ正確に落とす）。
 - いずれも実行を 1 箇所に集めた具象関数・具象クラスであり、仮想的な interface・
   adapter は追加しない（AGENTS 規約: 必要になるまで実体を増やさない。純粋 state
   machine と分類関数は、決定的検証が reviewer により必須化された時点で必要になった
@@ -186,14 +199,15 @@ composeRule.setContent → awaitPreview
         device/window state を failure メッセージへ付加                 // NEW
 
 決定的検証（CI 常設 + 計画実行）:
-InjectedInputEnvironmentStateInstrumentationTest        // state machine + 分類
+InjectedInputEnvironmentStateInstrumentationTest        // state machine + 分類 + 診断メッセージ
   → issue53 lane filter で常設実行（自身の fresh instance を駆動）      // NEW
-`am instrument -e nunuInjectEnvironmentHealthFailure <label> -e class <gated クラス> ...`
-  （gated クラスを明示指定した別 invocation。issue53 は
-  OnboardingOrganizationProposalInstrumentationTest、issue52 は
-  ManualOrganizationPreferencesInstrumentationTest。lane 間で混ぜない）
-  → gated クラスの全テストが待機なしで即時失敗し、同一証拠を参照することを
-    実配線で検証                                                        // NEW
+`am instrument -e nunuInjectEnvironmentHealthFailure <label> \
+  -e class <gate 利用 test の Class#method> ...`
+  （gate 利用 test を明示指定した別 invocation。issue53 は gate 利用 test、
+  issue52 は changeListTraversalReachesExpandAndReviewActions と
+  gate を通らない sibling test。lane 間で混ぜない）
+  → gate 利用 test が待機なしで即時失敗し同一証拠を参照すること、
+    gate を通らない test が通常実行されることを実配線で検証             // NEW
 ```
 
 - `describeInputEnvironment`（既存、issue53 側）は `describeDeviceState()` の出力を
@@ -221,6 +235,10 @@ InjectedInputEnvironmentStateInstrumentationTest        // state machine + 分�
   gate の自動修復対象であり、正常実装なら gate failure に届かず green になる。state
   machine の決定的検証が不可能（再 review 指摘 3）。runner 引数 injection +
   状態 test クラスの seam を導入し、実環境試行は #304 証拠へ分離した。
+- **クラス単位の保証（`@Before` / Rule 等の共通入口で health を確認する）**: issue52 の
+  40 test 中 gate を通るのは 1 test のみであり、クラス単位の保証は実測を超える範囲を
+  environment failure に変換する。保証単位を gate を通る実行に限定し、共通入口は
+  追加しない（review 指摘の方向性。クラス全体の収束が必要になった時点で再評価）。
 - **4 クラス lane 全体を共通入口（runner listener / test rule）で収束対象にする**:
   helper を配線していないクラスまで強制的に environment failure に変える設計は、
   本 Issue の実測（実入力注入経路を持つのは gated 2 クラス、burst もその 2 クラスに
@@ -250,7 +268,7 @@ InjectedInputEnvironmentStateInstrumentationTest        // state machine + 分�
 | Area | Intended change | Why here |
 |---|---|---|
 | `tests/organizer-instrumentation/.../ui/` 新規支援 file | `ensureWindowFocused` / `ensureInteractiveUnlocked` / `describeDeviceState` / 純粋 state machine `EnvironmentHealthState` / 分類関数 / runner 引数 injection hook | 2 クラスが同一 package で共有する test-only 手続き。入口確認と分類を 1 箇所で所有する |
-| `tests/organizer-instrumentation/.../ui/InjectedInputEnvironmentStateInstrumentationTest.kt`（新規） | state machine（単一証拠保持・入口確認の即時性・証拠同一性）と分類関数の決定的検証 | instrumentation module に JVM unit test が無いため、検証は instrumentation test で常設実行する |
+| `tests/organizer-instrumentation/.../ui/InjectedInputEnvironmentStateInstrumentationTest.kt`（新規） | state machine（単一証拠保持・入口確認の即時性・証拠同一性）、分類関数、issue52 診断メッセージ生成の決定的検証 | instrumentation module に JVM unit test が無いため、検証は instrumentation test で常設実行する |
 | `OnboardingOrganizationProposalInstrumentationTest.kt` | `TouchActivationGate.show()` 直後と各注入経路（`deliveredTap`、`deliveredTapOutside`、`sendKey`）への gate 配線、`describeInputEnvironment` の拡張、`awaitResumedLauncher` の修復前置き＋timeout 分類、`awaitAccessibilityTextBounds` の gate＋timeout 分類 | burst の直接 source がこのクラスの注入 loop と待ち。非注入系 failure も同一 burst の症状である |
 | `ManualOrganizationPreferencesInstrumentationTest.kt` | `pressDownUntilFocused` と `KEYCODE_ENTER` 注入前の gate 配線、traversal 失敗時の device/window state 付加 | issue52 lane の実鍵注入が焦点依存であるため。同一原因の主張はせず、次回判別可能な証拠を残す |
 | `.github/workflows/ci.yml`（:550、1 行） | issue53 lane の class filter に状態 test クラスを追加 | state machine の検証を CI で常設化するため。lane 構成・job 分離・API 構成は不変（spec の例外条項） |
@@ -278,10 +296,10 @@ production source、`src/com/android/launcher3/**` は変更しない。workflow
 | Acceptance criterion | Requirement | Automated/manual evidence | Command or environment |
 |---|---|---|---|
 | AC-1 注入は focus 観測後のみ実行される | TS-AC-01, TS-AC-02 | 実装後、通常 lane 実行で全 green（gate が通常 path を壊さないこと）＋ gate 配線の code review | api36 emulator（google_apis x86_64、`docs/assessment/evidence/issue-123-ui-mapping.md` の `emulator -avd ... -no-window` 手順と同一構成）+ `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest` |
-| AC-2 入口確認と run 収束 | TS-AC-03, TS-AC-05 | 状態 test クラス green ＋ runner 引数 injection と **gated クラス明示指定**（`-e class`）による別 invocation 実行 log: issue53（`OnboardingOrganizationProposalInstrumentationTest`）と issue52（`ManualOrganizationPreferencesInstrumentationTest`）を別々に実行し、いずれも gated クラスの後続テストが待機・修復なしで即座に失敗し同一証拠を参照すること。lane 間で混ぜない | `adb shell am instrument -w -e nunuInjectEnvironmentHealthFailure review -e class <gated クラス> app.lawnchair.debug.test/androidx.test.runner.AndroidJUnitRunner`（`connectedLawnWithQuickstepGithubDebugAndroidTest` の class filter でも代替可） |
+| AC-2 入口確認と run 収束 | TS-AC-03, TS-AC-05 | 状態 test クラス green ＋ runner 引数 injection と **gate 利用 test 明示指定**（`-e class Class#method`）による別 invocation 実行 log: issue53（gate 利用 test）と issue52（`changeListTraversalReachesExpandAndReviewActions` ＋ gate を通らない sibling）を別々に実行し、gate 利用 test が待機・修復なしで即座に失敗し同一証拠を参照すること、gate を通らない test が通常実行されること。lane 間で混ぜない | `adb shell am instrument -w -e nunuInjectEnvironmentHealthFailure review -e class <Class#method> app.lawnchair.debug.test/androidx.test.runner.AndroidJUnitRunner`（`connectedLawnWithQuickstepGithubDebugAndroidTest` の runner 引数でも代替可） |
 | AC-3 markUnhealthy の分類 | TS-AC-04 | 状態 test クラスの分類ケース（環境正常 → local / node-not-found failure、異常観測 → environment failure）green ＋ 強制状態実行で得られる分類メッセージの実物（取得できた場合） | 状態 test クラス（issue53 lane / ローカル） |
 | AC-4 決定的検証 seam | TS-AC-05 | 状態 test クラスの CI 実行結果（issue53 lane filter 追加後）＋ injection 付き lane 実行 log。強制状態試行の記録（成否・状態・CI シグネチャ一致度）を plan.md へ追記し #304 から参照可能にする | GitHub Actions `organizer-instrumentation-issue53-tests` + ローカル |
-| AC-5 issue52 の gate と失敗時診断 | TS-AC-06 | issue52 filter（本番 4 クラス）のローカル実行 green + 強制状態での失敗メッセージ診断内容確認 | 同上 + issue52 の本番 class filter |
+| AC-5 issue52 の gate と失敗時診断 | TS-AC-06 | 診断メッセージ生成（固定 snapshot → failure メッセージ）の決定的 test green ＋ issue52 注入経路への配線 code review。強制状態実行は #304 向け optional evidence（取得できた場合のみ plan.md に記録） | 状態 test クラス（issue53 lane / ローカル） |
 | AC-6 連続 green | TS-AC-07 | 連続する 3 つの異なる workflow run で issue53・issue52 両 lane が `run_attempt = 1` のまま green。rerun で green にした run はカウントしない。run link と head SHA を PR に記録 | GitHub Actions `organizer-instrumentation-issue53-tests` / `organizer-instrumentation-issue52-tests` |
 | AC-7 変更範囲と整形 | — | `git diff --stat` が `tests/organizer-instrumentation` と ci.yml の issue53 class filter 1 行に限られること、`./gradlew spotlessCheck` green | JDK 21 / Android SDK 36.1 |
 
@@ -306,10 +324,11 @@ production source、`src/com/android/launcher3/**` は変更しない。workflow
 - 分類の再観測が「異常の見逃し」側に倒す設計であること（環境異常でも観測が取れない
   場合は local failure になる）を仕様に明示する。poisoning より見逃しを優先するのは、
   merge gate の診断能力（製品回帰と環境 failure の分離）を保つためである。
-- issue52 invocation 内の gated でない 3 クラスは、health state が unhealthy でも
-  通常どおり実行される（収束保証の対象外）。これは仕様であり、環境破損下でこれらの
-  クラスが時間を要する可能性は残る。実入力注入経路と burst の実測がある gated クラス
-  のみを対象とする本 Issue の範囲決定（review 3 指摘 1）に基づく。
+- gate を通らない実行（issue52 の 40 test 中 39、issue53 の 20 test 中 11、issue52
+  invocation 内の他 3 クラス）は、health state が unhealthy でも通常どおり実行される
+  （収束保証の対象外）。これは仕様であり、環境破損下でこれらのテストが時間を要したり
+  個別に失敗したりする可能性は残る。実入力注入経路と burst の実測がある gate 利用経路
+  のみを対象とする本 Issue の範囲決定に基づく。
 - gate の修復 shell が keyguard 無し環境で冪等であること（`wm dismiss-keyguard` は
   no-op）を通常 path 実行（AC-1）で確認する。
 
