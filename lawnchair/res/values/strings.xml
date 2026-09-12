@@ -1040,6 +1040,7 @@
     <string name="manual_organization_no_changes">No changes are needed. Nothing was changed.</string>
     <string name="manual_organization_preview">Review the proposed organization</string>
     <string name="manual_organization_moved_count">%1$d placements will move</string>
+    <string name="manual_organization_widget_moved_count">Moved as a widget: %1$d</string>
     <string name="manual_organization_preserved_count">%1$d placements will be preserved</string>
     <string name="manual_organization_new_folders_count">%1$d new folders will be created</string>
     <string name="manual_organization_new_pages_count">%1$d new home screen pages will be created</string>

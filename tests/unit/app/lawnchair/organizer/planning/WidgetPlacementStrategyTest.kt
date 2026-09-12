@@ -135,8 +135,15 @@ class WidgetPlacementStrategyTest {
         additions: List<CandidateItem> = emptyList(),
         minGroupSize: Int = 2,
         signals: List<ClassificationSignal> = emptyList(),
+        reservations: List<ReservedWorkspaceRegion> = emptyList(),
     ) = OrganizationInput(
-        snapshot = LayoutSnapshot(RevisionId("rev"), device(columns, rows, orientation), pages, items, emptyList()),
+        snapshot = LayoutSnapshot(
+            RevisionId("rev"),
+            device(columns, rows, orientation),
+            pages,
+            items,
+            reservations,
+        ),
         rules = rules(strategy, minGroupSize),
         taxonomy = taxonomy(),
         signals = ClassificationSignals(signals),
@@ -614,5 +621,53 @@ class WidgetPlacementStrategyTest {
 
         // A span taller than the window can never fit.
         assertNull(findRowMajorFirstFit(emptyList(), 4, 6, GridSpan(2, 2), CellTraversal.BOTTOM_UP_ROW_MAJOR, rowWindow = 0..0))
+    }
+
+    // ------------------------------------------------------------------
+    // Reserved workspace regions (owner review PR #296 High)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun tidyV2WidgetNeverLandsOnAnEmptyReservedRegionInsideItsBand() {
+        // The reservation strip shares the widget's band top row and no
+        // captured item overlaps it, so only the obstacle handling can keep
+        // the widget off it: the first-fit stays on the widget's own (free)
+        // columns instead of sliding onto the reserved cells.
+        val reservation = ReservedWorkspaceRegion(PageRef(PageId("p0")), GridCell(0, 4), GridSpan(2, 1))
+        val items = listOf(
+            widget("w", 2, 4, 2, 2, provider = "com.a", appWidgetId = 1),
+            app("a1", 0, 0),
+        )
+        val source = input(items, tidyV2, rows = 6, reservations = listOf(reservation))
+
+        val result = planner.plan(source)
+
+        // (0,4) would be the unobstructed band-first fit — it must not win.
+        assertEquals(GridCell(2, 4), wsTarget(result, "w").cell)
+        assertEquals(GridSpan(2, 2), wsTarget(result, "w").span)
+        assertEquals(Disposition.Preserved(PreserveReason.ALREADY_CANONICAL), placement(result, "w").disposition)
+        assertEquals(GridCell(0, 0), wsTarget(result, "a1").cell)
+        assertReplanIsEmptyDiff(result, source)
+    }
+
+    @Test
+    fun bottomFirstV2WidgetAvoidsTheTopReservedRegion() {
+        // QSB-like top strip: the top-anchored first-fit must skip row 0 and
+        // take the earliest free rectangle below it — never the reservation.
+        val reservation = ReservedWorkspaceRegion(PageRef(PageId("p0")), GridCell(0, 0), GridSpan(4, 1))
+        val items = listOf(
+            widget("w", 2, 2, 2, 2, provider = "com.a", appWidgetId = 1),
+            app("a1", 0, 3),
+        )
+        val source = input(items, bottomFirstV2, rows = 4, reservations = listOf(reservation), minGroupSize = 99)
+
+        val result = planner.plan(source)
+
+        assertEquals(GridCell(0, 1), wsTarget(result, "w").cell)
+        assertEquals(GridSpan(2, 2), wsTarget(result, "w").span)
+        assertEquals(Disposition.Moved(PlacementCode.WIDGET_UNIT), placement(result, "w").disposition)
+        // The app stream sees the reservation through the shared allocator.
+        assertEquals(GridCell(0, 3), wsTarget(result, "a1").cell)
+        assertReplanIsEmptyDiff(result, source)
     }
 }

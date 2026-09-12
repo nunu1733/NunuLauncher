@@ -114,6 +114,14 @@ internal object FullRunExecution {
             val ws = item.placement as CapturedPlacement.Workspace
             pageObstaclesBuilder.getOrPut(ws.page.pageId) { mutableListOf() } += rectOf(ws.cell, ws.span)
         }
+        // Owner review (PR #296 High): the reservation rectangles themselves
+        // are planner occupancy authority (spec #185/ADR-0010) — a widget
+        // target must never land on a reserved region even when no captured
+        // item overlaps it. Without this, the trial scan could place a widget
+        // onto e.g. a top QSB strip because `markOccupied` never re-checks.
+        for (reservation in reservations) {
+            pageObstaclesBuilder.getOrPut(reservation.page.pageId) { mutableListOf() } += rectOf(reservation.cell, reservation.span)
+        }
         val pageObstacles: Map<PageId, List<Rect>> = pageObstaclesBuilder
 
         val ordered = widgets.sortedWith(

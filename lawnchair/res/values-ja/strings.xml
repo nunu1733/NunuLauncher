@@ -112,6 +112,7 @@
     <string name="manual_organization_no_changes">必要な変更はありません。何も変更されていません。</string>
     <string name="manual_organization_preview">整理案を確認</string>
     <string name="manual_organization_moved_count">移動する配置: %1$d件</string>
+    <string name="manual_organization_widget_moved_count">ウィジェット単位で移動: %1$d件</string>
     <string name="manual_organization_preserved_count">保持する配置: %1$d件</string>
     <string name="manual_organization_new_folders_count">新しいフォルダ: %1$d個</string>
     <string name="manual_organization_new_pages_count">新しいホーム画面ページ: %1$d枚</string>

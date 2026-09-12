@@ -1053,6 +1053,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.previewDetailsItems(
 ) {
     contextItems(summary)
     item { SummaryText(stringResource(R.string.manual_organization_moved_count, counts.movedCount)) }
+    // Issue #235 (owner review): widget relocations get their own header line
+    // on the concrete change list too — AC-8's separate widget count must be
+    // visible wherever the details rows are shown, not only in the degraded
+    // count-only summary (whose movedByReason rows carry it).
+    if (counts.widgetMovedCount > 0) {
+        item { SummaryText(stringResource(R.string.manual_organization_widget_moved_count, counts.widgetMovedCount)) }
+    }
     if (counts.addedCount > 0) {
         item { SummaryText(stringResource(R.string.manual_organization_added_count, counts.addedCount)) }
     }
