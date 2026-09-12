@@ -1,6 +1,6 @@
 ---
 issue: "#300"
-status: draft
+status: accepted
 requirements:
   - TS-AC-01
   - TS-AC-02
@@ -153,7 +153,8 @@ Issue（#304）の一次資料になる。
     helper object が所有）: 最初の `markUnhealthy(evidence)` で証拠を保持し、以後の
     入口確認は待機・修復なしで即座に、同じ証拠を参照する error を投げる。有効範囲は
     1 instrumentation invocation ＝ 1 process ＝ 1 lane job であるが、**参照するのは
-    gated test クラスのみ**であり、同一 invocation 内の gated でないクラス（issue52
+    environment helper へ到達する gated execution のみ**であり、同一 invocation 内の
+    gated でないクラス（issue52
     lane の他 3 クラス）は収束保証の対象外で通常どおり実行される。
 - gate 配線:
   - issue53 lane `OnboardingOrganizationProposalInstrumentationTest`:

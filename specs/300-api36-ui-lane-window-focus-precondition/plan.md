@@ -2,7 +2,7 @@
 
 > Issue: #300
 > Spec: [spec.md](./spec.md)
-> Status: draft（spec 承認後に実装開始）
+> Status: accepted（2026-09-12 review で Approve。実装開始）
 
 ## Current evidence
 
