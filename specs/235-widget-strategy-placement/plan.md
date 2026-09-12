@@ -47,8 +47,8 @@
    - `PageLocalTopAnchored(topLeftFirstFit)` — BOTTOM_FIRST_V2 / CATEGORY_CONTIGUOUS_V2用 (page全域first-fit)
    - `CrossPageIdentityOrdered` — GLOBAL_COMPACT_V3用 (CAPTURED_THEN_NEW走査)
    共通でwidget streamの処理順 (不変key順: span降順 → target key → ItemId) とdegrade規則を運ぶ。実装は1つのexecutor関数 (`placeWidgetStream`) に束ね、policyの組み合わせがexecutor branchを持たないものは現行どおりloud failure。
-3. **Executor拡張 (`FullRunExecution`)**: widgetPolicyを持つstrategyの `placeFullRun` は、既存executorの前にwidget stream処理を挟む wrapper とする: (a) `movableItems` からwidget kindを抽出、(b) 不変key順にpolicyのregion/traversalで配置し `Moved{WIDGET_UNIT}` / `Preserved{ALREADY_CANONICAL}` を出力、(c) 配置不能ならscope単位でdegrade (全widget元位置固定 + `STRATEGY_PRESERVED` + `markOccupied`)、(d) 残りのmovableItemsで既存executor (app/folder stream) を実行。既存4分岐executor本体は変更しない (widgetは既にoccupancyとして印付け済みの状態で渡るため、app stream側の変更は不要)。
-4. **Allocator拡張**: band制限付きpage-local矩形first-fit (候補top-left `y` を `[band.minRow, band.maxRow - span.height + 1]` に制限した `findRowMajorFirstFit` のwindow付き呼び出し)。実装は既存 `Allocator`/`findRowMajorFirstFit` への最小拡張 (y-window引数) とし、第二のoccupancy実装は作らない。page全域 (BOTTOM_FIRST_V2) は既存 `allocateOnPageOnly` で足りる。cross-page (V3) は既存 `allocateCapturedThenNew` を使う (後続child)。
+3. **Executor拡張 (`FullRunExecution`)**: widgetPolicyを持つstrategyの `placeFullRun` は、既存executorの前にwidget stream処理を挟む wrapper とする: (a) `movableItems` からwidget kindを抽出、(a') **strategy-fixed movable item (そのstrategyの `eligibleUnitFilter` でfilter外となる非widget movable item — 既存folder・non-`1×1` app等) のcaptured占有を先に `markOccupied** する (既存executor内のstrategyFixed前処理より前にwidgetが配置されるため、wrapper側で障害物化が必須。既存executorのstrategyFixed markingは同一cellの再markでありoccupancy-idempotentなので二重印付けは無害。`BOTTOM_FIRST_V2` のcanonical flowはstrategy-fixed movable itemを持たないため該当なし)、(b) 不変key順にpolicyのregion/traversalで配置し `Moved{WIDGET_UNIT}` / `Preserved{ALREADY_CANONICAL}` を出力、(c) 配置不能ならscope単位でdegrade (全widget元位置固定 + `STRATEGY_PRESERVED` + `markOccupied`)、(d) 残りのmovableItemsで既存executor (app/folder stream) を実行。既存4分岐executor本体の配置logicは変更しない (widgetとstrategy-fixed占有は既に印付け済みの状態で渡る。strategy-fixed itemの `STRATEGY_PRESERVED` 行の出力は既存executorが担う)。
+4. **Allocator拡張**: band制限付きpage-local矩形first-fit。`findRowMajorFirstFit` のcandidate-y集合は `[0] ∪ occupied bottoms` から導かれるため、y-windowを**事後filterとして実装してはならない** (band minRowがcandidate集合に現れず、障害物のない単独widgetで偽のdegradeが発生する — fixture (b) が検出する)。実装はcandidate-y集合の生成時に `minRow` を原点として加える構成とする (例: candidate-y = `distinct([band.minRow] ∪ occupied.bottoms ∪ [0]).filter { band.minRow ≤ it && it + h - 1 ≤ band.maxRow }` の昇順)。page全域 (BOTTOM_FIRST_V2) は既存 `allocateOnPageOnly` で足りる。cross-page (V3) は既存 `allocateCapturedThenNew` を使う (後続child)。第二のoccupancy実装は作らない。
 5. **`PlacementCode.WIDGET_UNIT`** 追加 (`PlanningResult.kt` のenum値追加、spec 10 delta)。
 6. **Preview**: `PreviewCounts` に `widgetMovedCount: Int = 0` 追加、`PlanPreviewProjector` が `Moved{WIDGET_UNIT}` を `MoveChange` (rationale=`WIDGET_UNIT`) に投影しcountを集計。UIは `WIDGET_UNIT` rationaleの移動理由文言を追加。
 7. **Bundle**: `STABLE_PAGE_TIDY_V2` 有効化childで `runtimeSupported` に追加 + semantic version `organization-policy-v2.6` 増分 + digest再計算 + catalog coherence test。`BOTTOM_FIRST_V2` で `-v2.7`。
@@ -96,7 +96,7 @@
 
 ## Testing strategy
 
-- **Contract/unit** (public seam `OrganizationPlanner.plan` 経由): 各新strategyのnormative fixture — 2×2 widget, 4×2 widget, 1×1 widget, 複数widget (band内詰め・順序安定), widget+locked app混在, band内障害物によるdegrade, 単独widgetの左寄せ, bottom-firstの相補領域, portrait/landscape/tablet/two-panel device profile, page容量境界。全配置でwidgetのtarget spanがcaptured spanと一致するassertion。`Moved{WIDGET_UNIT}` / `Preserved{ALREADY_CANONICAL}` / `Preserved{STRATEGY_PRESERVED}` の理由assertion。
+- **Contract/unit** (public seam `OrganizationPlanner.plan` 経由): 各新strategyのnormative fixture — 2×2 widget, 4×2 widget, 1×1 widget, 複数widget (band内詰め・順序安定), widget+locked app混在, band内障害物によるdegrade, **band内の既存folder / non-1×1 app (strategy-fixed障害物) との重なりなし**, **対象集合外widget (`NON_TARGET` fall-through, direct-seam)**, 単独widgetの左寄せ, bottom-firstの相補領域 (folder形成なし構成), portrait/landscape/tablet/two-panel device profile, page容量境界。全配置でwidgetのtarget spanがcaptured spanと一致するassertion。`Moved{WIDGET_UNIT}` / `Preserved{ALREADY_CANONICAL}` / `Preserved{STRATEGY_PRESERVED}` の理由assertion。
 - **Replan idempotence**: 各新strategyで「plan → materialize → replan → empty diff」を直接固定 (specの構成証明との対応)。formation は絡まない (widget対応strategyはcreatesFolders=false (tidy) / true (bottom-first) 両方を検証)。
 - **Property**: 既存spec 11 harness/property suiteを全新strategyで実行 (cross-strategy runner)。conservation/bounds/overlap/lock/profile isolation/determinism/idempotence。
 - **既存回帰**: golden corpus (byte-equivalence) 無変更で通過。既存 `GlobalCompactStrategyTest` 等6 strategyのtest主張無変更。scope-composed test (`ScopeComposedPlannerTest`) 無変更通過 + widget対応strategyでのscope-composed新規test。
@@ -107,8 +107,8 @@
 
 ## Incremental order (child issue / PR分割案)
 
-1. **Spec/plan受入PR (本PR)** — docsのみ。spec 10/194 delta (`WIDGET_UNIT`, `widgetMovedCount`) の正本化を含む。
-2. **実装PR 1**: role分類 + `WidgetPlacementPolicy` + `placeWidgetStream` + allocator拡張 + `STABLE_PAGE_TIDY_V2` 登録・有効化 (bundle `-v2.6`) + `WIDGET_UNIT`/`widgetMovedCount` projection + copy (tidy V2 + V1真実化) + 全test表面。
+1. **Spec/plan受入PR (本PR)** — docsのみ。spec 10/194 delta (`WIDGET_UNIT`, `widgetMovedCount`) は本spec本文に正本化する (受入PRではspec 10/194 fileを編集しない — spec D-4の単一規則)。
+2. **実装PR 1**: role分類 + `WidgetPlacementPolicy` + `placeWidgetStream` + allocator拡張 + `STABLE_PAGE_TIDY_V2` 登録・有効化 (bundle `-v2.6`) + `WIDGET_UNIT`/`widgetMovedCount` projection + **spec 10 file delta (`PlacementCode.WIDGET_UNIT`)** + copy (tidy V2 + V1真実化) + 全test表面。
 3. **実装PR 2**: `BOTTOM_FIRST_V2` 登録・有効化 (bundle `-v2.7`) + copy + test。
 4. **(後続child issue)** `GLOBAL_COMPACT_V3`、`CATEGORY_CONTIGUOUS_V2` の実装・有効化。
 5. **実機評価・独立audit** — 最終source-changing PRに対して `docs/assessment/pr-<n>-*.md`。

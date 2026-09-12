@@ -33,7 +33,8 @@ Organizerのlayout strategy catalog (spec 182 / ADR-0012) は、現状すべて�
 ### D-1: 後継strategy IDの命名と packaging
 
 - 導入する後継ID: `STABLE_PAGE_TIDY_V2`、`BOTTOM_FIRST_V2`、`GLOBAL_COMPACT_V3`、`CATEGORY_CONTIGUOUS_V2`。`GLOBAL_COMPACT` 系は `_V2` が存在するため次版は `_V3` とする (ADR-0012: IDはimmutable semantic identity、版はsuffix)。
-- 初期縦切り (本issueの実装child): **`STABLE_PAGE_TIDY_V2` を最初、`BOTTOM_FIRST_V2` を2番目**。Issue受入条件「stable/tidy系とbottom/upper compact系の少なくとも2 family」をこの2本で満たす。`GLOBAL_COMPACT_V3` と `CATEGORY_CONTIGUOUS_V2` は本specでnormative rulesを確定するが、実装は後続child issueとする (spec 182が `GLOBAL_COMPACT_V1`/`CATEGORY_CONTIGUOUS_V1` を定義のみ先行受理したのと同じ分割)。
+- 初期縦切り (本issueの実装child): **`STABLE_PAGE_TIDY_V2` を最初、`BOTTOM_FIRST_V2` を2番目**。Issue受入条件「stable/tidy系とbottom/upper compact系の少なくとも2 family」をこの2本で満たす (`BOTTOM_FIRST_V2` がissueの「bottom-firstではapp下部・widget上部の相補配置」を直接実装する)。`GLOBAL_COMPACT_V3` と `CATEGORY_CONTIGUOUS_V2` は本specでnormative rulesを確定するが、実装は後続child issueとする (spec 182が `GLOBAL_COMPACT_V1`/`CATEGORY_CONTIGUOUS_V1` を定義のみ先行受理したのと同じ分割)。
+- **canonical (upper-left) 系の後継は本specでは定義しない**: `CANONICAL_PAGE_COMPACT_V1` はcompatibility oracle/rollback baselineであり、issue本文はcanonical系のwidget移動を「望むならversioned successorを」と任意としている。現行catalogには純粋なupper-left compact strategyも存在しない (canonical系はfolder形成込みのcomposite intentである)。将来必要になった場合は新ID + 本specと同じ様式の証明を要件とする。
 - 既存IDのdeprecate・置換・選択migrationは**行わない**。旧strategyはcatalogに残り、既存selectionはfail-closedにならない (spec 237と同一の共存機構)。
 
 ### D-2: Global compact系でのwidget cross-page移動 — 完全証明付きで許容
@@ -58,7 +59,7 @@ ADR-0012 Decision 4 のheterogeneous-span反例は「**captured visual (位置) 
 
 - `PlacementCode` に `WIDGET_UNIT` を追加する (spec 10 delta。spec 182が `FOLDER_UNIT` を追加したのと同じ、enumへの値追加)。widget移動は `Moved{WIDGET_UNIT}` として報告され、`SINGLE_PLACEMENT` へ偽装しない。
 - `PreviewCounts` に `widgetMovedCount: Int = 0` を追加する (**意図的なshape拡張**。spec 228が `addedCount` を追加したのと同じ形式: 既存countの意味は変更しない、default引数で後方互換)。値は `rationale == WIDGET_UNIT` の `MoveChange` 行数。初期2 strategyはwidget移動がpage-localであるためcross-page widget移動は発生せず、既存 `crossPageMovedCount` にwidget分は含まれない。`GLOBAL_COMPACT_V3` (cross-page widget) は後続child有効化時に `widgetMovedCount` と page ordinal表示 (spec 194正規化) で可視化する。
-- spec 194 / 195 のfile本文は本specでは編集しない (spec 228と同じ取扱い: 拡張は本specに正本化し、spec 194の「将来の拡張で乖離が生じた時点で拡張側specが決定する」契約に従う)。
+- **Delta正本化regime (単一規則)**: 両deltaとも本spec本文を受入時点での正本とし、**受入PRではspec 10/194のfile本文を編集しない** (spec 228の `addedCount` と同じ受入PR scope)。code変更を land させる最初の実装PRが、対応する正本fileへ反映する: spec 10は閉じたgrammar (PlacementCode enum) を自らnormativeに所有するため、`WIDGET_UNIT` 追加を同PRのspec 10 delta (PlacementCode定義行 + change history行) として適用する (spec 182が `FOLDER_UNIT` で実装時にspec 10を更新した前例)。spec 194は本文で「将来の拡張の乖離は拡張側specが決定する」と委任しているためfile本文を更新せず、`widgetMovedCount` の意味は本specと実装code (KDoc) が正本とする (spec 228が `addedCount` で取った扱いと同一)。
 
 ### D-5: Run mode毎の適用範囲
 
@@ -128,10 +129,11 @@ _Avoid_: widget area (領域サイズが固定であるような誤解)、widget
 
 ### 共通のwidget role規則 (全widget対応strategy)
 
-- **Eligible widget**: captured page上のtop-level workspace配置 (`CapturedPlacement.Workspace`) かつ unlocked・`AVAILABLE`・`RESERVED_REGION`重複なしの `APPWIDGET`/`CUSTOM_APPWIDGET`。これらの条件を満たさないwidgetは、現行のprecedence順で高い保持理由 (`RESERVED_REGION` > `LOCKED` > `UNAVAILABLE_TARGET` > `DOCK`) によりnatural preservationで固定され、新strategyでも動かない。
+- **Eligible widget**: captured page上のtop-level workspace配置 (`CapturedPlacement.Workspace`) かつ unlocked・`AVAILABLE`・`RESERVED_REGION`重複なしの `APPWIDGET`/`CUSTOM_APPWIDGET`、および対象集合内 (`ExistingRole` が `Preserved` でない)。widget分岐のmovable化はprecedence chainの該当段を `null` にするだけであり、後続の `NON_TARGET` (role == `Preserved`) 検査には変わらず到達するため、対象集合外のwidgetは `Preserved{NON_TARGET}` として固定される (spec 10の「widget outside target set → `WIDGET` (not `NON_TARGET`)」規則はwidget対応strategyでは「対象集合外のwidgetは移動しない」が観測結果となり、この書き換えをdirect-seam fixtureで固定する)。これらの条件を満たさないwidgetは、現行のprecedence順で高い保持理由 (`RESERVED_REGION` > `LOCKED` > `UNAVAILABLE_TARGET` > `DOCK` > `NON_TARGET`) によりnatural preservationで固定され、新strategyでも動かない。
 - **Movable化の宣言性**: widgetが `movableItems` に入るのは、選択strategyが `widgetPolicy` を宣言している場合のみである。宣言なきstrategy (既存6 ID + incremental candidate tail) では `PreserveReason.WIDGET` のまま固定され、出力は現行とbyte同一である。
 - **Span不変**: 移動時もwidgetのtarget spanはcaptured spanと厳密に等しい (`PlacementTarget.WorkspaceTarget` のspan)。resizeは一切発生しない。
 - **Role分離**: widgetはfolder形成候補にならず、category orderingに参加せず、`1×1` unit streamに混入しない。widgetは専用の**widget stream**として、app/folder streamより**先に**消費される (role間配置順の明示的定義。偶発的なiteration順に委ねない)。
+- **Widget streamの障害物集合**: widget配置時点のoccupancyは、(1) natural preservation itemのcaptured占有 (`PlanningPlacement.place` が既に印付け)、(2) **strategy-fixed movable item** (そのstrategyのapp-stream規則が固定するmovable item — 例: `STABLE_PAGE_TIDY_V2` では既存folderとnon-`1×1` app、`GLOBAL_COMPACT_V3` ではnon-`1×1` top-level unit。`BOTTOM_FIRST_V2` のcanonical flowでは該当なし)、(3) 先に配置したwidget、である。strategy-fixed movable itemは毎run同じcaptured位置に固定されるため (`STRATEGY_PRESERVED`)、この障害物集合はrun間で不変であり、冪等性証明の固定集合に含まれる。widgetがstrategy-fixed itemの占有と重ならないことは共有allocatorのoccupancy検証が保証する。
 - **Widget streamの処理順 (不変key順)**: `(span.height desc, span.width desc, target key のcanonical順, ItemId)`。高い矩形ほど候補行が少ないため先に配置する (multi-cell packing orderの決定的回答)。target keyは `TargetKey.WidgetKey(provider, appWidgetId, profile)` の既存canonical encodingを用い、移動によって変化しない。
 - **報告**: 移動したwidgetは `Moved{WIDGET_UNIT}`、配置先がcaptured位置と同一のwidgetは `Preserved{ALREADY_CANONICAL}`、degradeで固定したwidgetは `Preserved{STRATEGY_PRESERVED}`。
 - **Degrade規則 (page-local系)**: strategyのregion規則で当該pageのeligible widgetの1つでも配置不能になった場合、そのpageのwidget再配置全体を無効化する (当該pageの全eligible widgetが元位置で `STRATEGY_PRESERVED`、occupancyとして印付け、app streamは V1/V2 family規則どおり)。**Degrade規則 (cross-page系)**: `GLOBAL_COMPACT_V3` ではwidget stream全体 (全page) を無効化する。いずれもresize・黙示dropはしない。app streamはdegradeしたwidgetをfixed occupancyとして通常どおり実行される (plan全体は失敗しない)。
@@ -143,14 +145,15 @@ _Avoid_: widget area (領域サイズが固定であるような誤解)、widget
 
 - **Page affinity**: eligible widgetはcaptured pageに留まる。pageの新規作成・crossはしない。
 - **Widget band**: 各captured pageについて、そのpageのeligible widget群のcaptured extentsから行閉区間 `[minRow, maxRow]` を計算する。eligible widgetがいないpageにbandはない (何も起きない)。
-- **Widget配置**: 当該pageのeligible widgetを不変key順に、band内 (候補top-left `y` は `minRow ≤ y` かつ `y + span.height - 1 ≤ maxRow`) でtop-left row-major first-fit (固定occupant + 先に置いたwidgetを障害物として) で配置する。
+- **Widget配置**: 当該pageのeligible widgetを不変key順に、band内 (候補top-left `y` は `minRow ≤ y` かつ `y + span.height - 1 ≤ maxRow`) でtop-left row-major first-fit (共通規則の障害物集合 = natural preservation占有 + strategy-fixed movable item (既存folder・non-`1×1` app等) + 先に置いたwidget) で配置する。
 - **Degrade**: band内で1つでもwidgetが配置不能なら、そのpageのwidget再配置を全体無効化 (共通規則)。
 - **App stream**: V1どおり、widgetのtargetをoccupancyとして `1×1` eligible unitのpage-local lift-then-place。
-- **Idempotence (構成)**: widget配置は「pageのfixed occupancy + eligible widgetの不変key順multiset (span付き)」の純関数である。run 2のbandはrun 1の配置結果の行範囲 `B' ⊆ B` になるが、run 1のfirst-fit選択はすべて `B'` 内にあり、走査時点のoccupancyが同一 (帰納法) であるため、`B'` 内のより早い候補はrun 1でも利用可能だったはずであり矛盾する。ゆえに各widgetは同じcellを再選択し、degrade判定も再現され、widgetのdiffは空になる。app streamはV1のplaceability argument (eligible `1×1` count ≤ lifting後の空きcell数) をwidget occupancy込みで満たし、replanでempty diffになる。
+- **Idempotence (構成)**: widget配置は「pageの固定障害物 (natural preservation + strategy-fixed movable item。後者は毎run同じcaptured位置に固定されるため不変) + eligible widgetの不変key順multiset (span付き)」の純関数である。run 2のbandはrun 1の配置結果の行範囲 `B' ⊆ B` になるが、run 1のfirst-fit選択はすべて `B'` 内にあり、走査時点のoccupancyが同一 (帰納法) であるため、`B'` 内のより早い候補はrun 1でも利用可能だったはずであり矛盾する。ゆえに各widgetは同じcellを再選択し、degrade判定も再現され、widgetのdiffは空になる。app streamはV1のplaceability argument (eligible `1×1` count ≤ lifting後の空きcell数) をwidget occupancy込みで満たし、replanでempty diffになる。
 - **代表fixture**:
   - (a) 同一pageのwidget間のicon行が埋まる: `4×2` widgetが行1〜2、`2×2` widgetが行4にあるpage → band = 行1〜4、大きい方が先にband先頭へ、`2×2` がその直後へ詰め、間のiconはband外へlift-then-placeされる。
   - (b) 単独widget: band = 自身の行。行内で左寄せになる以外動かない (captured位置が既にband先頭なら `ALREADY_CANONICAL`)。
   - (c) band内にlocked cellがあり `4×2` が入らない → 当該pageはdegrade、widgetは全て `STRATEGY_PRESERVED`、iconはV1どおり。
+  - (d) band内に既存folder / non-`1×1` app (strategy-fixed movable item) がある → それは障害物として避けて配置され、重ならない。障害物の分断でwidgetが置けない場合は (c) と同じdegrade。
 
 ### BOTTOM_FIRST_V2 — normative rules (実装child 2)
 
@@ -162,7 +165,7 @@ _Avoid_: widget area (領域サイズが固定であるような誤解)、widget
 - **App stream**: V1のcanonical flow。widgetのtargetがoccupancyとなるため、widget分の面積だけappはpageから溢れ、`PREFERRED_THEN_NEW` により新規pageへoverflowし得る (V1がwidget固定だったときと同じoverflow意味論)。
 - **Idempotence (構成)**: widget配置は「fixed occupancy + 不変key順widget multiset」の純関数 (regionがpage全域のためbandのような入力依存もない) であり、replanで同一targetを再現する。app streamはV1の既存argument (identity基準のunit order + 決定的bottom-up候補順) を、replanで同一に再現されるwidget occupancy込みで適用し、empty diffになる。
 - **Device profiles**: portrait / landscape / tablet / two-panel両方向で決定的 (region・走査がgrid寸法の関数であり、phone専用の行仮定を置かない)。各profileのfixture検証を必須とする。
-- **代表fixture**: 4×5 pageに `4×2` widget (行2中央) とmovable app 8個 → widgetが `(0,0)` へ、appが行4→行3へbottom-upで埋まる。行2は空く (V1ではwidgetが行2固定のまま周囲を埋めたのと対照)。
+- **代表fixture**: 4×5 pageに `4×2` widget (行2中央) とmovable app 8個 (全app異なるcategory — folder形成なし) → widgetが `(0,0)` へ、appが行4→行3へbottom-upで埋まる。行2は空く (V1ではwidgetが行2固定のまま周囲を埋めたのと対照)。
 
 ### GLOBAL_COMPACT_V3 — normative rules (定義確定、実装は後続child)
 
@@ -225,7 +228,7 @@ _Avoid_: widget area (領域サイズが固定であるような誤解)、widget
 
 - 新規永続化なし。strategy選択store・bundle機構はspec 182/237と同一 (新strategy有効化はbundle semantic version/generation/digestの増分publish、`rule-v2`・selection store schema不変)。`STABLE_PAGE_TIDY_V2` 有効化で `organization-policy-v2.6`、`BOTTOM_FIRST_V2` で `organization-policy-v2.7` をpublishする。
 - Plannerは純関数のまま。widget role分類は計画module内部分類であり、platform型/DB行をpublic seamへ漏らさない。
-- `PlacementCode.WIDGET_UNIT` はspec 10のpublic shapeへの値追加である (spec 182の `FOLDER_UNIT` と同種)。本spec受入PRがこのdeltaを正本化する。
+- `PlacementCode.WIDGET_UNIT` はspec 10のpublic shapeへの値追加である (spec 182の `FOLDER_UNIT` と同種)。delta正本化は D-4 の単一規則に従う: 受入時点の正本は本spec本文であり、codeを land させる最初の実装PRがspec 10 fileへ反映する (PlacementCode定義 + change history)。
 
 ## Permissions, privacy, and security
 
@@ -249,7 +252,7 @@ None — 新規permission・network・telemetryなし。diagnosticsは既存のv
 - [ ] AC-2: widget再配置はcaptured spanを厳密に保存し、Organizerはwidgetを決してresizeしない (contract/property test)。
 - [ ] AC-3: 既存互換baseline strategyの挙動は黙って変更されない。observable変更は新versioned strategy IDでのみ提供される (golden corpus無変更)。
 - [ ] AC-4: `STABLE_PAGE_TIDY_V2` と `BOTTOM_FIRST_V2` がwidget固有の配置挙動を実装し、runtime-supported catalogへ有効化される (bundle semantic version増分、coherence test)。
-- [ ] AC-5: multi-cell packing order (role順・不変key順)・候補走査・degrade fallback・idempotenceが各strategyで決定的に定義され、testで検証される (2×2, 4×2, 1×1 widget fixture、widget+lock混在、band内障害物、複数widget順序安定、portrait/landscape/tablet/two-panelを含む)。
+- [ ] AC-5: multi-cell packing order (role順・不変key順)・候補走査・degrade fallback・idempotenceが各strategyで決定的に定義され、testで検証される (2×2, 4×2, 1×1 widget fixture、widget+lock混在、band内の既存folder/non-`1×1` app (strategy-fixed障害物)、対象集合外widget (`NON_TARGET`)、band内障害物degrade、複数widget順序安定、portrait/landscape/tablet/two-panelを含む)。
 - [ ] AC-6: locked/unsupported/unplaceable widgetがtruthful rationale (`STRATEGY_PRESERVED` または高いprecedenceのnatural preservation) 付きで保留される。
 - [ ] AC-7: apply/recovery/provider identity/`appWidgetId`/構成の安全性は無変更のまま検証される (widget移動を含むapplyが既存transaction/recovery test表面で検証される)。
 - [ ] AC-8: previewがwidget再配置を分離して報告し (`widgetMovedCount` + `WIDGET_UNIT` 行)、移動先page・位置を適用前に可視化する。
@@ -262,7 +265,7 @@ None — 新規permission・network・telemetryなし。diagnosticsは既存のv
 | AC | Evidence |
 |---|---|
 | AC-1/AC-3 | spec review + golden corpus test (既存corpus無変更で通過) + 既存6 strategyの既存test無修正通過 |
-| AC-2/AC-5 | planner unit/contract/property test (public seam経由; fixture: 2×2, 4×2, 1×1 widget, widget+lock混在, band内障害物degrade, 複数widgetの順序安定, portrait/landscape/tablet/two-panel, page容量境界) + replan idempotence property (各新strategy) + span保存assertion |
+| AC-2/AC-5 | planner unit/contract/property test (public seam経由; fixture: 2×2, 4×2, 1×1 widget, widget+lock混在, band内の既存folder/non-`1×1` app (strategy-fixed障害物) + 重なりなしassertion, 対象集合外widget (`NON_TARGET`, direct-seam), band内障害物degrade, 複数widgetの順序安定, portrait/landscape/tablet/two-panel, page容量境界) + replan idempotence property (各新strategy) + span保存assertion |
 | AC-4 | catalog coherence contract test + bundle identity assertion (`organization-policy-v2.6` / `-v2.7`) |
 | AC-6 | preservation reason assertion (`STRATEGY_PRESERVED`/natural precedence) |
 | AC-7 | 既存application/recovery testの無変更通過 + widget移動を含むplanの適用経路test (writer write-set: cell/screenのみ) |
@@ -279,3 +282,4 @@ None — 初版draftのOpen questions 1〜6は D-1〜D-6 として解消した�
 
 - 2026-09-10: Draft created for #235 (spec-prep worker; baseline `origin/main` @ `6b6bf8dd9f`)。Open questions 6件を所有者判断待ちとして記録。
 - 2026-09-12: Re-anchor revision (worker; baseline `origin/main` @ `3e113302b9`)。re-entry check: baseline `6b6bf8dd..3e113302b9` の差分 (issue 228 missing-app selection / 271 durable status / 269 folder representability / 233 backup preview / 265 recovery reconciliation / 288 export filename) を確認し、(1) `ScopeComposedOrganization` run modeとscope-composed契約をD-5および共通規則へ反映、(2) `PreviewCounts.addedCount` (spec 228) の拡張前例に D-4 を整合、(3) `UnplacedReason.STRATEGY_SCOPE_FULL` / `allocateCapturedPageOnly` の現行実装を現行コード参照として更新、(4) コード参照 (PlanningPlacement.kt:373/392 等) を更新。Open questions 1〜6を判断 D-1〜D-6 として解消 (後継ID命名・packaging、cross-page証明方針、movement costの構成的形式化、preview shape拡張、run mode適用範囲、UX案内)。`GLOBAL_COMPACT_V3`/`CATEGORY_CONTIGUOUS_V2` のnormative rulesと冪等性証明を追加、AC-11を追加。
+- 2026-09-12: Review revision (code-reviewer-1 review on `f62c51e530`, verdict Request changes; 冪等性証明は全て検証済み健全)。M1: widget streamの障害物集合にstrategy-fixed movable item (既存folder・non-`1×1` app) を明示的に含め、STABLE_PAGE_TIDY_V2の配置規則・冪等性構成・fixture (d) を修正 (wrapperがstrategy-fixed占有を先に印付けする実装方針はplanへ反映)。M2: D-4/§Data and state/planのdelta正本化regimeを単一規則 (受入PRは本spec本文のみ正本、実装PRがspec 10 fileへ反映、spec 194 fileは更新しない) に統一。Low: D-1へcanonical系後継を作らない理由を記録、eligible条件に `ExistingRole == Preserved` の `NON_TARGET` fall-throughを明記 (direct-seam fixtureをAC-5/test oracleへ追加)、BOTTOM_FIRST_V2 fixtureにfolder形成なし条件を固定。
