@@ -11,12 +11,12 @@ risk:
   - privacy
   - network
   - layout-data
-updated: 2026-09-10
+updated: 2026-09-13
 ---
 
 # Managed Grounded AI: アプリ内完結型Organizer personalization
 
-> Status: draft — 本specは **#204 (Context / PersonalizedIntent exchange contract) の受入を必須依存** とする。本draft時点で #204 の契約は未acceptであり、draft snapshotがbranch `origin/issue-204-spec-plan` に存在するのみで `origin/main` に取り込まれていない。よって本specは #204 のschema詳細 (field名、tier名、failure分類、`PersonalizedIntentV1` の具体形) を **確定事実として扱わない**。#204受入時に本specの依存参照と用語をaccepted契約へ合わせて改訂する。
+> Status: draft — 本specは **#204 (Context / PersonalizedIntent exchange contract) の受入を必須依存** とする。2026-09-13再確認時点で #204 の契約は未acceptであり、draft snapshot (2026-09-13にbaseline `f9afd8bfde` へ再anchor) がbranch `origin/issue-204-spec-plan` に存在するのみで `origin/main` に取り込まれていない。よって本specは #204 のschema詳細 (field名、tier名、failure分類、`PersonalizedIntentV1` の具体形) を **確定事実として扱わない**。#204受入時に本specの依存参照と用語をaccepted契約へ合わせて改訂する。
 >
 > さらに D-011 (external LLM): 「privacy/threat modelとoffline behavior承認後まで導入しない」が requirements.md のdecision gateであり、本機能の実装開始は (1) #204受入、(2) privacy/threat model承認、(3) offline behavior (local deterministic Organizerがnetwork/AIなしで利用可能なまま) の確認を満たすまで禁止される (Issue本文も同じ)。
 
@@ -200,22 +200,23 @@ AI実行の全失敗をtyped outcomeとして定義する。いずれも **zero-
 - providerが `STRUCTURED_OUTPUT` 相当を満たせない場合はadapterとして登録しない。
 - work profile / private profileの分離は既存planner制約が所有する。intentはprofileを跨ぐ指示を出せない (#204契約)。
 - grounding結果で未知appの断定ができない場合、unresolvedとして返す。推測による断定をしない。
+- intentの対象範囲は既存run modeに限定される (main側の現行 `RunMode` は `FullOrganization` / `IncrementalPlacement` / #228由来の `ScopeComposedOrganization`)。intentが新規run modeを導入しないこと、target追加 (missing-app候補) を生まないことは #204契約側の制約として扱い、受入時に合致を確認する。
 
 ## Dependencies
 
-| 依存先 | 関係 | 状態 (本draft時点) |
+| 依存先 | 関係 | 状態 (2026-09-13時点) |
 |---|---|---|
-| #204 Context / PersonalizedIntent contract | 唯一のAI output contract。adapterの入出力・validationはこれに従う | **未accept** (draft snapshotがbranchのみ)。実装開始のhard blocker |
-| D-011 (external LLM gate) | privacy/threat modelとoffline behaviorの承認が必要 | 未承認。実装開始のhard blocker |
-| #182 (spec 182, accepted/implemented) | planner seam。intentは #204経由でこのseamに入る | 実装済み |
-| #194/#195/#13 (implemented) | preview / confirmation / apply / recoveryの再利用 | 実装済み |
-| #203 usage signals (OPEN) | usage signalがあればcontextへ含まれる (optional) | 未実装。不在でも本機能は成立する |
+| #204 Context / PersonalizedIntent contract | 唯一のAI output contract。adapterの入出力・validationはこれに従う | **未accept** (draft snapshotがbranch `origin/issue-204-spec-plan` のみ。2026-09-13にbaseline `f9afd8bfde` へ再anchor済み)。実装開始のhard blocker |
+| D-011 (external LLM gate) | privacy/threat modelとoffline behaviorの承認が必要 | 未承認 (requirements.md変更なし)。実装開始のhard blocker |
+| #182 (spec 182, implemented) | planner seam。intentは #204経由でこのseamに入る | 実装済み |
+| #194/#195/#13 (implemented/accepted) | preview / confirmation / apply / recoveryの再利用 | 実装済み |
+| #203 usage signals (OPEN) | usage signalがあればcontextへ含まれる (optional) | 未実装 (spec draftはbranchのみ)。不在でも本機能は成立する |
 | #205 (OPEN) | 兄弟issue。transport共通化はしない | draft specがbranchのみ |
 
 ## Compatibility / migration
 
 - 本機能はnetwork使用の新規追加であるため、AGENTS.mdによりspecとrisk評価を前提とする (本spec + 別途threat model)。app全体としてはbaseline Lawnchair由来の `INTERNET` permissionが既に存在するが、organizer系機能のexternal transmissionは引き続きdefault offである (NFR-008)。
-- BYOK credential保存の新設 (保存機構はOpen decision)。backup/restore対象とするかは受入時に決定し、決定まで の既定は backup対象外 とする。
+- BYOK credential保存の新設 (保存機構はOpen decision)。backup/restore対象とするかは受入時に決定し、決定までの既定はbackup対象外とする。
 - intent未使用・managed AI未opt-inのrunは、全て従来どおり (既存testが無修正で通ることが回帰基準)。
 - DB schema変更なし。provider追加はadapter追加のみで行い、domain契約変更を伴わない。
 
@@ -249,6 +250,7 @@ AI実行の全失敗をtyped outcomeとして定義する。いずれも **zero-
 ## Change history
 
 - 2026-09-10: Draft created for Issue #206. Managed Grounded AI path: capability model, provider adapter contract, failure taxonomy, BYOK/privacy constraints, quality class, immutable intent handling. #204 marked as unsettled hard dependency; D-011 gate recorded.
+- 2026-09-13: Re-entry re-anchor to baseline `f9afd8bfde` (2026-09-13時点 `origin/main`)。前回baseline `6b6bf8dd` 以降のmain差分 (#228/#235/#265/#271/#288/#292、requirements FR-016 status更新、ADR-0007への#228追記、CONTEXT/DESIGN/organizer-diagnostics更新) を検証し、本specの契約は変更不要と判断。#204は未acceptのまま (branch側で同baselineへ再anchor)、D-011は未承認のまま。run mode現況 (#228 `ScopeComposedOrganization`) をUnsupported casesへ追記。
 
 ## References
 

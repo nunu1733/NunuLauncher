@@ -6,15 +6,16 @@
 
 ## Current evidence
 
-確認済みの現行状態 (2026-09-10, `origin/main` @ `6b6bf8dd9fa0c42399185dbb13c30192f1e15962`)。実装開始時に再検証する。
+確認済みの現行状態 (2026-09-13に再検証、`origin/main` @ `f9afd8bfde121932c0c8ed965225d52a84d86ab4`)。実装開始時に再検証する。前回確認 (2026-09-10, `6b6bf8dd`) からの主差分は本節末尾に記載する。
 
-- **AI/network provider codeはorganizerに存在しない。** `lawnchair/src/app/lawnchair/organizer/` 配下にAI・provider・network関連実装はない。AI adapter・credential store・opt-in設定はすべて新規実装である。
-- **app全体のnetwork前提**: `lawnchair/AndroidManifest.xml` はbaseline Lawnchair由来の `android.permission.INTERNET` を既に保持する。`gradle/libs.versions.toml` にretrofit/okhttp (bundle `retrofit`) が存在し、`lawnchair/src/app/lawnchair/ui/preferences/about/GithubService.kt`、`data/liveinfo/LiveInformationService.kt`、`bugreport/KatbinService.kt` 等のpreferences系serviceがokhttp系networkingの先例である。よって新規permissionや新規network library追加は必須ではない (provider SDK追加与否はOpen decision)。
+- **AI/network provider codeはorganizerに存在しない。** `lawnchair/src/app/lawnchair/organizer/` 配下にAI・provider・network関連実装、`organizer/personalization/` packageは存在しない。AI adapter・credential store・opt-in設定はすべて新規実装である。
+- **app全体のnetwork前提**: `lawnchair/AndroidManifest.xml` はbaseline Lawnchair由来の `android.permission.INTERNET` を既に保持する。`gradle/libs.versions.toml` にretrofit/okhttp (bundle `retrofit`) が存在し、`lawnchair/src/app/lawnchair/ui/preferences/about/GithubService.kt`、`ui/preferences/data/liveinfo/LiveInformationService.kt`、`bugreport/KatbinService.kt` 等のpreferences系serviceがokhttp系networkingの先例である。よって新規permissionや新規network library追加は必須ではない (provider SDK追加与否はOpen decision)。
 - **organizerのno-transport規律**: `tests/unit/app/lawnchair/organizer/diagnostics/integration/NoTransportContractTest.kt` (spec 67 AC-67-12) はdiagnostics module配下のnetwork/worker importを禁止する。organizer-diagnostics.mdは「organizer diagnosticsは外部transportを持たずdefault off」(NFR-008) が正本。AI diagnostics field追加時はこの正本とtestの更新が必要。
-- **planner seam**: `lawnchair/src/app/lawnchair/organizer/planning/OrganizationPlanner.kt` が唯一の外部planning seam `plan(OrganizationInput): PlanningResult` (spec 182 AC-4)。AI intentは直接ここへ入らず、#204契約のadapterを経る (draft時点で #204 の `IntentPlannerAdapter` 相当は未実装・未accept)。
-- **provenance**: `organizer/integration/CompositionModels.kt` / `OrganizationInputComposer.kt` が `InputProvenance` / `PolicySourceKind` を所有。#182により `PolicySourceKind.LAYOUT_STRATEGY_SELECTION` が第5 policy input。#204 draftは `PERSONALIZED_INTENT` を第6 inputとして提案しているが未確定。
+- **planner seam**: `lawnchair/src/app/lawnchair/organizer/planning/OrganizationPlanner.kt` が唯一の外部planning seam `plan(OrganizationInput): PlanningResult` (spec 182 AC-4)。前回確認からsignature不変。AI intentは直接ここへ入らず、#204契約のadapterを経る (draft時点で #204 の `IntentPlannerAdapter` 相当は未実装・未accept)。
+- **provenance**: `organizer/rules/PolicyModels.kt` の `PolicySourceKind` (6値) と `organizer/integration/CompositionModels.kt` / `OrganizationInputComposer.kt` が `InputProvenance` / policy input identityを所有。#182により `LAYOUT_STRATEGY_SELECTION` が第5 policy input (`InputProvenance.layoutStrategySelection`、code comment "Spec 182: fifth policy input")。#204 draftは第6input `PERSONALIZED_INTENT` を提案しているが未確定。
 - **preview/confirm/apply**: `organizer/application/preview/` (spec 194 `inspectPlan`)、`organizer/ui/` (spec 195 confirmation、`ManualOrganizationRun.kt`、`OrganizationOperationLease.kt` 等)、spec 13 apply/recovery。いずれも実装済みで、AI pathはこれを複製しない。
-- **#204/#205/#203**: いずれもOPEN。#204/#205のdraft spec/plan はbranch (`origin/issue-204-spec-plan`, `origin/issue-205-spec-plan`) のみでorigin/main未取り込み。#203のsignal実装もorigin/mainに存在しない。
+- **#204/#205/#203**: いずれもOPEN。#204/#205のdraft spec/plan はbranch (`origin/issue-204-spec-plan`, `origin/issue-205-spec-plan`) のみでorigin/main未取り込み。#204 draftは2026-09-13にbaseline `f9afd8bfde` へ再anchor済み (契約の核は不変、#235/#228反映の投影詳細を更新)。#203のsignal実装もorigin/mainに存在しない。
+- **2026-09-10 → 2026-09-13のmain差分と本planへの影響**: #228 (missing-app選択: `RunMode.ScopeComposedOrganization` 追加、`CandidateResolution`/`CandidatePlanningIds`、`MissingAppSelectionScreen.kt`、`InputReadinessReason.StaleCandidateSelection`)、#235 (widget移動strategy `STABLE_PAGE_TIDY_V2`/`BOTTOM_FIRST_V2`、`POLICY_BUNDLE_VERSION` v2.6)、#271 (durable status projection)、#288 (diagnostics export filename規則)、#292 (orientation row安定化)、requirements FR-016 implemented更新、ADR-0007へ#228追記。いずれもAI/transport/credentialに関係せず、本planの変更set・flow・seam前提は不変。AI intentがtarget追加を生まない限り #228 のselection入力と干渉しない点は #204受入時に確認する。
 - 推測 (未確認): provider APIのstructured output / grounding optionの現行仕様詳細。実装時にprovider選定とともに調査し、調査記録をIssueへ残す。
 
 ## Design
@@ -125,7 +126,7 @@ network/permission/dependency変更: 予定制約として、新規permission追
 
 ## Dependencies / blockers
 
-- **#204受入 (hard blocker)**: context/intent schema、validator、planner接続adapterが全て #204 由来。未accept。
+- **#204受入 (hard blocker)**: context/intent schema、validator、planner接続adapterが全て #204 由来。未accept (2026-09-13にbranch側でbaseline `f9afd8bfde` へ再anchor、statusはdraftのまま)。
 - **D-011 privacy/threat model承認 (hard blocker)**: 実装開始条件。
 - **#203 (soft)**: usageSignals不在でも成立 (optional)。
 - **provider API仕様調査** (Open decision 1の入力): 実装前のresearchとして記録する。
@@ -140,8 +141,9 @@ network/permission/dependency変更: 予定制約として、新規permission追
 
 ## Explicitly unverified areas
 
-- #204契約の最終形 (field、tier、validator分類)。本planの `context表現`/`intent表現` は #204受入形への参照として扱う。
+- #204契約の最終形 (field、tier、validator分類)。本planの `context表現`/`intent表現` は #204受入形への参照として扱う。#204 draftの2026-09-13再anchor内容 (semantic placement role投影、widget span/reservation系 `FORBIDDEN_CONTENT` 拡張等) は本planの前提にしない。受入時に改めて確認する。
 - #203 signal snapshotの最終schema (未実装)。
 - 初回providerのstructured output / grounding API仕様詳細 (未調査。provider選定researchで確認)。
 - credential保存機構の選定とbackup/restore互換性の詳細 (Open decision 3)。
 - `organizer/personalization/` package名は #204 draftの想定であり、#204受入時の実配置に合わせる必要がある。
+- AI intentと #228 `ScopeComposedOrganization` の `TargetSet.additions` (missing-app選択) の共存詳細 (intentが追加対象を生まないことの契約上の保証は #204 draft側の記述であり、受入時に確認)。
