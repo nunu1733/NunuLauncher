@@ -331,7 +331,8 @@ class TwoPanelOrientationCaptureInstrumentationTest {
 
     /**
      * Returns the _ID of an existing or freshly inserted stable launcher row.
-     * Call only once the launcher model has loaded ([awaitLauncherModelLoaded]):
+     * Callers that later compare this row by id (no-write assertions) must call
+     * this only after the launcher model has loaded ([awaitLauncherModelLoaded]):
      * the pending default-workspace load deletes and renumbers favorites rows,
      * so a row planned before it cannot be compared by id (Issue #292).
      */
