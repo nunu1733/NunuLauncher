@@ -57,9 +57,9 @@ ADR-0012 Decision 4 のheterogeneous-span反例は「**captured visual (位置) 
 
 ### D-4: Preview / 結果reportingのpublic形状変更
 
-- `PlacementCode` に `WIDGET_UNIT` を追加する (spec 10 delta。spec 182が `FOLDER_UNIT` を追加したのと同じ、enumへの値追加)。widget移動は `Moved{WIDGET_UNIT}` として報告され、`SINGLE_PLACEMENT` へ偽装しない。
+- `PlacementCode` に `WIDGET_UNIT` を追加する (spec 10 delta。閉じたenumへの値追加)。widget移動は `Moved{WIDGET_UNIT}` として報告され、`SINGLE_PLACEMENT` へ偽装しない。
 - `PreviewCounts` に `widgetMovedCount: Int = 0` を追加する (**意図的なshape拡張**。spec 228が `addedCount` を追加したのと同じ形式: 既存countの意味は変更しない、default引数で後方互換)。値は `rationale == WIDGET_UNIT` の `MoveChange` 行数。初期2 strategyはwidget移動がpage-localであるためcross-page widget移動は発生せず、既存 `crossPageMovedCount` にwidget分は含まれない。`GLOBAL_COMPACT_V3` (cross-page widget) は後続child有効化時に `widgetMovedCount` と page ordinal表示 (spec 194正規化) で可視化する。
-- **Delta正本化regime (単一規則)**: 両deltaとも本spec本文を受入時点での正本とし、**受入PRではspec 10/194のfile本文を編集しない** (spec 228の `addedCount` と同じ受入PR scope)。code変更を land させる最初の実装PRが、対応する正本fileへ反映する: spec 10は閉じたgrammar (PlacementCode enum) を自らnormativeに所有するため、`WIDGET_UNIT` 追加を同PRのspec 10 delta (PlacementCode定義行 + change history行) として適用する (spec 182が `FOLDER_UNIT` で実装時にspec 10を更新した前例)。spec 194は本文で「将来の拡張の乖離は拡張側specが決定する」と委任しているためfile本文を更新せず、`widgetMovedCount` の意味は本specと実装code (KDoc) が正本とする (spec 228が `addedCount` で取った扱いと同一)。
+- **Delta正本化regime (単一規則)**: 両deltaとも本spec本文を受入時点での正本とし、**受入PRではspec 10/194のfile本文を編集しない** (spec 228の `addedCount` と同じ受入PR scope)。code変更を land させる最初の実装PRが、対応する正本fileへ反映する: spec 10は閉じたgrammar (PlacementCode enum) を自らnormativeに所有するため、`WIDGET_UNIT` 追加を同PRのspec 10 delta (PlacementCode定義行 + change history行) として適用する (PlacementCodeへの事後追加は本regimeが初回であり、既存の3値 `SINGLE_PLACEMENT`/`FOLDER_MEMBER`/`FOLDER_UNIT` はspec 10の初期grammarに由来する。前例としては、spec 182は受入時 (acceptance commit) にspec 10 delta (`organizationStrategy`/`STRATEGY_PRESERVED`/V-20) を適用しており、本specは受入scopeをspec 228方式へ寄せた上でfile反映を実装PRへ遅らせる意図的な選択を取る)。spec 194は本文で「将来の拡張の乖離は拡張側specが決定する」と委任しているためfile本文を更新せず、`widgetMovedCount` の意味は本specと実装code (KDoc) が正本とする (spec 228が `addedCount` で取った扱いと同一)。
 
 ### D-5: Run mode毎の適用範囲
 
@@ -228,7 +228,7 @@ _Avoid_: widget area (領域サイズが固定であるような誤解)、widget
 
 - 新規永続化なし。strategy選択store・bundle機構はspec 182/237と同一 (新strategy有効化はbundle semantic version/generation/digestの増分publish、`rule-v2`・selection store schema不変)。`STABLE_PAGE_TIDY_V2` 有効化で `organization-policy-v2.6`、`BOTTOM_FIRST_V2` で `organization-policy-v2.7` をpublishする。
 - Plannerは純関数のまま。widget role分類は計画module内部分類であり、platform型/DB行をpublic seamへ漏らさない。
-- `PlacementCode.WIDGET_UNIT` はspec 10のpublic shapeへの値追加である (spec 182の `FOLDER_UNIT` と同種)。delta正本化は D-4 の単一規則に従う: 受入時点の正本は本spec本文であり、codeを land させる最初の実装PRがspec 10 fileへ反映する (PlacementCode定義 + change history)。
+- `PlacementCode.WIDGET_UNIT` はspec 10のpublic shapeへの値追加である (閉じたenumへの事後追加としては初回)。delta正本化は D-4 の単一規則に従う: 受入時点の正本は本spec本文であり、codeを land させる最初の実装PRがspec 10 fileへ反映する (PlacementCode定義 + change history)。
 
 ## Permissions, privacy, and security
 
@@ -283,3 +283,4 @@ None — 初版draftのOpen questions 1〜6は D-1〜D-6 として解消した�
 - 2026-09-10: Draft created for #235 (spec-prep worker; baseline `origin/main` @ `6b6bf8dd9f`)。Open questions 6件を所有者判断待ちとして記録。
 - 2026-09-12: Re-anchor revision (worker; baseline `origin/main` @ `3e113302b9`)。re-entry check: baseline `6b6bf8dd..3e113302b9` の差分 (issue 228 missing-app selection / 271 durable status / 269 folder representability / 233 backup preview / 265 recovery reconciliation / 288 export filename) を確認し、(1) `ScopeComposedOrganization` run modeとscope-composed契約をD-5および共通規則へ反映、(2) `PreviewCounts.addedCount` (spec 228) の拡張前例に D-4 を整合、(3) `UnplacedReason.STRATEGY_SCOPE_FULL` / `allocateCapturedPageOnly` の現行実装を現行コード参照として更新、(4) コード参照 (PlanningPlacement.kt:373/392 等) を更新。Open questions 1〜6を判断 D-1〜D-6 として解消 (後継ID命名・packaging、cross-page証明方針、movement costの構成的形式化、preview shape拡張、run mode適用範囲、UX案内)。`GLOBAL_COMPACT_V3`/`CATEGORY_CONTIGUOUS_V2` のnormative rulesと冪等性証明を追加、AC-11を追加。
 - 2026-09-12: Review revision (code-reviewer-1 review on `f62c51e530`, verdict Request changes; 冪等性証明は全て検証済み健全)。M1: widget streamの障害物集合にstrategy-fixed movable item (既存folder・non-`1×1` app) を明示的に含め、STABLE_PAGE_TIDY_V2の配置規則・冪等性構成・fixture (d) を修正 (wrapperがstrategy-fixed占有を先に印付けする実装方針はplanへ反映)。M2: D-4/§Data and state/planのdelta正本化regimeを単一規則 (受入PRは本spec本文のみ正本、実装PRがspec 10 fileへ反映、spec 194 fileは更新しない) に統一。Low: D-1へcanonical系後継を作らない理由を記録、eligible条件に `ExistingRole == Preserved` の `NON_TARGET` fall-throughを明記 (direct-seam fixtureをAC-5/test oracleへ追加)、BOTTOM_FIRST_V2 fixtureにfolder形成なし条件を固定。
+- 2026-09-12: Second review revision (code-reviewer-2 re-review on `fb420a33b4` — M1/M2/L1-L4解消を確認、残条件1件)。D-4のspec 182前例引用を訂正: `FOLDER_UNIT` はspec 10の初期grammar由来でありspec 182の追加ではなく、spec 182は受入時にspec 10 deltaを適用した (acceptance commit `182fc7ec28`)。PlacementCodeへの事後追加は本specが初回であり、受入scopeはspec 228方式の意図的な選定である旨を正確に記述。plan step 3(a') を `strategyFixes` predicate基準 (`unitOrder != CANONICAL_TIE_BREAK && !eligibleUnitFilter`) に固定し、単純filter外判定の誤用 (canonical flowの既存folder) を排除。
