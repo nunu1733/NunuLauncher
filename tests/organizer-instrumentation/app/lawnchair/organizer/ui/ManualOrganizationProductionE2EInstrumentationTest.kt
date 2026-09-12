@@ -155,6 +155,16 @@ class ManualOrganizationProductionE2EInstrumentationTest {
         }
     }
 
+    /**
+     * Issue #228: these E2E cases exercise the plain full-organization
+     * contract, so they pass through the selection surface with an empty
+     * selection (equivalent to the pre-#228 flow).
+     */
+    private fun ManualOrganizationRun.startPlain() {
+        start()
+        (state as? ManualOrganizationRun.State.Selecting)?.let { confirmSelection(emptySet()) }
+    }
+
     @Test
     fun manualRunUsesProductionCaptureApplyVerificationAndRecovery() {
         val before = LauncherLayoutAdapter(
@@ -172,7 +182,7 @@ class ManualOrganizationProductionE2EInstrumentationTest {
         )
         val run = ManualOrganizationRun(ProductionManualOrganizationApplication(context, module))
 
-        run.start()
+        run.startPlain()
         val preview = run.state as? ManualOrganizationRun.State.Preview
             ?: error("Production manual run did not reach preview: ${run.state}")
         assertEquals(1, preview.summary.newFolderCount)
@@ -281,7 +291,7 @@ class ManualOrganizationProductionE2EInstrumentationTest {
         )
         val run = ManualOrganizationRun(ProductionManualOrganizationApplication(context, module))
 
-        run.start()
+        run.startPlain()
         assertTrue(run.state is ManualOrganizationRun.State.Preview)
         run.confirm()
         val applied = run.state as? ManualOrganizationRun.State.Applied
@@ -391,7 +401,7 @@ class ManualOrganizationProductionE2EInstrumentationTest {
             module.reconcileAtStart(),
         )
         val run = ManualOrganizationRun(ProductionManualOrganizationApplication(context, module))
-        run.start()
+        run.startPlain()
         assertEquals(ManualOrganizationRun.State.NoChanges, run.state)
         assertTrue(snapshotFavorites().isEmpty())
     }
@@ -412,7 +422,7 @@ class ManualOrganizationProductionE2EInstrumentationTest {
             app.lawnchair.organizer.application.protocol.RestartReconciler.ReconciliationSummary.Clean,
             module.reconcileAtStart(),
         )
-        run.start()
+        run.startPlain()
         assertTrue(run.state is ManualOrganizationRun.State.Preview)
     }
 
@@ -425,7 +435,7 @@ class ManualOrganizationProductionE2EInstrumentationTest {
         )
         val run = ManualOrganizationRun(ProductionManualOrganizationApplication(context, module))
 
-        run.start()
+        run.startPlain()
         assertTrue(run.state is ManualOrganizationRun.State.Preview)
 
         val beforeMutation = snapshotFavorites()

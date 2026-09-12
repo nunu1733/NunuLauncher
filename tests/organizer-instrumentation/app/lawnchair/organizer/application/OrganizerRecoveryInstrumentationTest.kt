@@ -236,6 +236,11 @@ class OrganizerRecoveryInstrumentationTest {
             ),
         )
         manualRun.start()
+        // Issue #228: pass through the selection surface with an empty
+        // selection so the manual-compose readiness check keeps its meaning.
+        (manualRun.state as? ManualOrganizationRun.State.Selecting)?.let {
+            manualRun.confirmSelection(emptySet())
+        }
         check(manualRun.state !is ManualOrganizationRun.State.InputUnavailable) {
             "Manual operation remained blocked after restart reconciliation: ${manualRun.state}"
         }

@@ -197,6 +197,19 @@ version and canonical digest of the complete membership result. The canonical
 layout `RevisionId` remains a separate provenance field; it is not overloaded as
 a policy version.
 
+Issue #228 extends the target-identity rule for the third run mode
+(scope-composed organization): when the composition carries explicitly selected
+missing-app candidate additions, the materialized target identity extends its
+canonical digest with the addition content (deterministic planning IDs, kinds,
+spans, availability), so two different selection sets can never share one
+provenance identity and a stale identity can never be reused across
+selections. An empty selection keeps the plain full-organization target
+identity byte for byte. `full-target-v1` continues to own the
+existing-membership partition; additions enter only through the scope-composed
+composition seam, never by relaxing the full-organization target policy, and
+candidates classify under the same S1–S6 policy sources as captured items
+(their evidence/override requests join the materialized signal set).
+
 Diagnostics may record source kind, version/generation, result code, and opaque
 content digest. They must not record raw policy content, package/component
 identity, profile identity, layout coordinates, or override values.

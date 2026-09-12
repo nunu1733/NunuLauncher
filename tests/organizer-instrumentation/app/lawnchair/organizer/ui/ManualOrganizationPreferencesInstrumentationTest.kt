@@ -1958,6 +1958,22 @@ class ManualOrganizationPreferencesInstrumentationTest {
 
         override fun newRunId() = RunId(RUN_ID)
 
+        /**
+         * Issue #228: default keeps the legacy flow — detection is unavailable
+         * so start() proceeds straight to the plain full compose. Tests of the
+         * selection surface override this.
+         */
+        var detection: app.lawnchair.organizer.integration.CandidateDetectionResult =
+            app.lawnchair.organizer.integration.CandidateDetectionResult.Unavailable(
+                app.lawnchair.organizer.integration.DetectionUnavailableReason.PROFILE_SERIAL_UNAVAILABLE,
+            )
+
+        override fun detectMissingAppCandidates(): app.lawnchair.organizer.integration.CandidateDetectionResult = detection
+
+        override fun composeScopeComposedOrganization(
+            selection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>,
+        ): OrganizationInputComposition = ready()
+
         override fun composeFullOrganization(): OrganizationInputComposition {
             notReadyComposition?.let { return it }
             return ready()

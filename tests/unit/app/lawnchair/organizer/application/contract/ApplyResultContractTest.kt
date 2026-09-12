@@ -67,6 +67,9 @@ class ApplyResultContractTest {
             "RECOVERY_POINT_ADMISSION_BLOCKED",
             "RECOVERY_STORE_UNAVAILABLE",
             "WRITER_BUSY",
+            // Issue #228 spec §6; commit-before rejection when a selected
+            // candidate is no longer launchable or the re-verification failed.
+            "CANDIDATE_UNAVAILABLE",
         )
         val actual = PreWriteRejection.entries.map { it.name }.toSet()
         assertEquals("PreWriteRejection must match spec exactly", expected, actual)

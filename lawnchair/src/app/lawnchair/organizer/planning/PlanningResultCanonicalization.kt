@@ -25,6 +25,11 @@ internal object PlanningResultCanonicalization {
                 newFolders = placement.newFolders,
                 categories = categories,
                 warnings = allWarnings,
+                // Issue #228: candidates the strategy's scope could not place
+                // surface through the existing unplaced contract (warning
+                // surface, no create mutation) instead of the strategy
+                // breaking its own page/folder scope.
+                unplaced = placement.unplaced,
             ),
         )
     }
