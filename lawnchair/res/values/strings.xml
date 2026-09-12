@@ -528,6 +528,14 @@
     <string name="restore_nova_subgrid_warning">This backup uses Nova\'s subgrid positioning. Lawnchair does not support subgrids, so any items placed in a subgrid will be aligned to the nearest grid position.</string>
     <string name="restore_nova_smartspace_conflict_toggle">Add extra row to show At a Glance</string>
 
+    <!-- Issue #233: page summary shown on the restore confirmation screen when
+         the single screenshot preview cannot cover all saved workspace pages.
+         Counts use label-style wording so singular/plural stays correct. -->
+    <string name="backup_preview_partial_caption">The preview image may not show all saved pages.</string>
+    <string name="backup_page_summary_title">Saved pages (%1$d)</string>
+    <string name="backup_page_summary_entry">Page %1$d (items: %2$d, folders: %3$d, widgets: %4$d)</string>
+    <string name="backup_page_summary_unavailable">Saved page details are not available.</string>
+
     <!--
 
     Gesture settings
@@ -994,8 +1002,6 @@
     <string name="organizer_diagnostics_export_subtitle">Export organizer diagnostic journal to a file</string>
     <string name="organizer_diagnostics_export_success">Diagnostics exported successfully</string>
     <string name="organizer_diagnostics_export_error">Failed to export diagnostics</string>
-    <!-- Issue #123: fixed technical identifier pre-filled in the system file picker; intentionally not translated. -->
-    <string name="organizer_diagnostics_export_default_filename" translatable="false">organizer_diagnostics.jsonl</string>
     <!-- Issue #52: explicit manual full organization -->
     <string name="manual_organization_title">Organize home layout</string>
     <string name="manual_organization_summary">Review a proposed home layout before applying it.</string>
@@ -1090,6 +1096,10 @@
     <string name="manual_organization_recovery_restored">The saved layout was restored.</string>
     <string name="manual_organization_recovery_not_available">This saved layout can no longer be restored safely.</string>
     <string name="manual_organization_recovery_failed">The saved layout could not be restored safely.</string>
+    <string name="manual_organization_durable_status_restorable">Home layout is organized. Its saved pre-organization backup is restorable.</string>
+    <string name="manual_organization_durable_status_restored_or_expired">The saved pre-organization backup is no longer restorable (restored or expired).</string>
+    <string name="manual_organization_durable_status_unresolved">An organizer change did not finish safely.</string>
+    <string name="manual_organization_durable_status_checking">Checking for a saved organizer state…</string>
     <string name="manual_organization_scope">Full layout scope: %1$d targets across %2$d profiles and %3$d pages.</string>
     <string name="manual_organization_device_scope">Device profile: %1$d columns × %2$d rows, %3$d Dock slots.</string>
     <string name="manual_organization_moved_single_placement">Moved as a single placement: %1$d</string>
@@ -1108,6 +1118,9 @@
     <string name="manual_organization_preserved_already_canonical">Already-canonical placements: %1$d</string>
     <string name="manual_organization_unplaced_grid">Unplaced because the item exceeds grid dimensions: %1$d</string>
     <string name="manual_organization_unplaced_target">Unplaced because the target is unavailable: %1$d</string>
+    <string name="manual_organization_unplaced_strategy_scope">Unplaced because the selected strategy keeps the current pages and folders: %1$d</string>
+    <string name="manual_organization_selection_stale">The Home layout changed since these apps were selected. Nothing was changed — start again to re-check the apps that are not on the Home screen.</string>
+    <string name="manual_organization_candidate_unresolved">A selected app can no longer be added. Nothing was changed — start again to re-check the apps that are not on the Home screen.</string>
     <string name="manual_organization_warning_legacy_shortcut">Legacy shortcuts require review: %1$d</string>
     <string name="manual_organization_warning_fallback_category">Fallback category used: %1$d</string>
     <string name="manual_organization_warning_unavailable">Unavailable placements were preserved: %1$d</string>
@@ -1144,8 +1157,32 @@
     <string name="manual_organization_empty_folder_constraint">Empty folders preserved: %1$d</string>
     <!-- Issue #195: concrete change list on the confirmation surface -->
     <string name="manual_organization_preview_details_unavailable">A detailed change list could not be prepared this time. Review the summary counts before applying.</string>
+    <!-- Issue #228: missing-app selection and Add rows -->
+    <string name="manual_organization_detecting_missing_apps">Checking for apps that are not on the Home screen…</string>
+    <string name="manual_organization_missing_apps_title">Select apps to organize</string>
+    <plurals name="manual_organization_missing_apps_selected_count">
+        <item quantity="one">%1$d app selected</item>
+        <item quantity="other">%1$d apps selected</item>
+    </plurals>
+    <string name="manual_organization_missing_apps_empty">All installed apps are already on the Home screen. Continue to organize the current layout.</string>
+    <string name="manual_organization_missing_apps_search_hint">Search apps</string>
+    <string name="manual_organization_missing_apps_select_all">Select all</string>
+    <string name="manual_organization_missing_apps_clear_all">Clear all</string>
+    <string name="manual_organization_missing_apps_continue">Continue</string>
+    <string name="manual_organization_missing_apps_state_checked">Selected</string>
+    <string name="manual_organization_missing_apps_state_unchecked">Not selected</string>
+    <string name="manual_organization_preview_unavailable_add">The detailed change list for this proposal, which adds new apps, could not be prepared. Nothing has been changed. New apps are only added after the full list is reviewed.</string>
+    <string name="manual_organization_preview_retry">Retry preview</string>
+    <string name="manual_organization_added_count">Apps to add: %1$d</string>
+    <plurals name="manual_organization_applied_added_count">
+        <item quantity="one">%1$d app added</item>
+        <item quantity="other">%1$d apps added</item>
+    </plurals>
     <string name="manual_organization_changes_heading">Proposed changes</string>
     <string name="manual_organization_group_moved">Move (%1$d)</string>
+    <string name="manual_organization_group_added">Add (%1$d)</string>
+    <string name="manual_organization_preview_add_descriptor">%1$s (%2$s)</string>
+    <string name="manual_organization_preview_add_row">Add %1$s → %2$s</string>
     <string name="manual_organization_group_new_folders">New folders (%1$d)</string>
     <string name="manual_organization_group_new_pages">New pages (%1$d)</string>
     <string name="manual_organization_group_preserved">Preserve (%1$d)</string>

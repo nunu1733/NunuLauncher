@@ -198,6 +198,15 @@ class StrategyPickerInstrumentationTest {
 
         override fun newRunId() = RunId("0123456789abcdef0123456789abcdef")
 
+        // Issue #228: detection unavailable keeps the legacy full flow.
+        override fun detectMissingAppCandidates() = app.lawnchair.organizer.integration.CandidateDetectionResult.Unavailable(
+            app.lawnchair.organizer.integration.DetectionUnavailableReason.PROFILE_SERIAL_UNAVAILABLE,
+        )
+
+        override fun composeScopeComposedOrganization(
+            selection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>,
+        ): OrganizationInputComposition = composeFullOrganization()
+
         override fun composeFullOrganization() = OrganizationInputComposition.NotReady(
             InputReadinessReason.InvalidCanonicalCapture(CaptureFailureCategory.CAPTURE_UNAVAILABLE),
             CompositionDiagnostic(InputCompositionCode.CAPTURE_INVALID),
@@ -220,5 +229,10 @@ class StrategyPickerInstrumentationTest {
             pointId: RecoveryPointId,
             confirmation: RecoveryPreviewConfirmation,
         ) = error("not reached: composition is NotReady")
+
+        override fun readDurableOrganizerStatus() = app.lawnchair.organizer.application.public.OrganizerDurableStatus.NEVER_ORGANIZED
+
+        override val readinessState: kotlinx.coroutines.flow.StateFlow<app.lawnchair.organizer.application.protocol.ReadinessGate.State> =
+            kotlinx.coroutines.flow.MutableStateFlow(app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY)
     }
 }

@@ -21,6 +21,7 @@ import app.lawnchair.organizer.planning.TaxonomyVersion
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -47,6 +48,28 @@ class ReadinessGateTest {
             app.lawnchair.organizer.application.adapter.RecordingFolderTitleResolver(),
             RecordingFaultInjector(),
         )
+    }
+
+    @Test
+    fun stateFlowMirrorsEveryGateTransition() {
+        val observed = mutableListOf<ReadinessGate.State>()
+        val job = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined).launch {
+            module.readinessGate.stateFlow.collect { observed.add(it) }
+        }
+        try {
+            assertEquals(listOf(ReadinessGate.State.IDLE), observed)
+            module.reconcileAtStart()
+            assertEquals(
+                listOf(
+                    ReadinessGate.State.IDLE,
+                    ReadinessGate.State.RECONCILING,
+                    ReadinessGate.State.READY,
+                ),
+                observed,
+            )
+        } finally {
+            job.cancel()
+        }
     }
 
     @Test

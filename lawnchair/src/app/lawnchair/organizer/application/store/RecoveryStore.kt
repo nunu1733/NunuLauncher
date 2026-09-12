@@ -444,6 +444,44 @@ internal class RecoveryStore(
         -> RecoveryStorePort.InspectionProjectionRead.Unavailable
     }
 
+    /**
+     * Issue #271: whole-snapshot read for the derived durable status
+     * projection. Same fence/generation boundary as
+     * [readInspectionProjection]; returns bounded public projections only and
+     * never opens SQLite or mutates state.
+     */
+    override fun readInspectionSnapshot(): RecoveryStorePort.InspectionSnapshotRead = when (val state = snapshotFence.state()) {
+        is InspectionSnapshotFence.State.VALID -> {
+            val snapshot = snapshotPublisher.reader().read()
+                ?: return RecoveryStorePort.InspectionSnapshotRead.Unavailable
+            if (snapshot.generation != state.generation) {
+                RecoveryStorePort.InspectionSnapshotRead.Unavailable
+            } else {
+                RecoveryStorePort.InspectionSnapshotRead.Value(
+                    records = snapshot.records.map {
+                        RecoveryStorePort.InspectionProjection.Record(
+                            pointId = it.pointId,
+                            lifecycle = it.lifecycle,
+                            createdAtMs = it.createdAtMs,
+                            updatedAtMs = it.updatedAtMs,
+                            checksumValid = it.checksumValid,
+                            formatVersion = it.formatVersion,
+                        )
+                    },
+                    tombstones = snapshot.tombstones.map {
+                        RecoveryStorePort.InspectionProjection.Tombstone(
+                            pointId = it.pointId,
+                            reason = it.reason,
+                            expiresAtMs = it.expiresAtMs,
+                        )
+                    },
+                )
+            }
+        }
+
+        else -> RecoveryStorePort.InspectionSnapshotRead.Unavailable
+    }
+
     @Synchronized
     override fun bindReconciliationIssuer(
         mutex: RunMutex,

@@ -79,6 +79,24 @@ internal class Allocator(
         return allocateOnNewPages(span)
     }
 
+    /**
+     * Issue #228 (review P1): page-local candidate placement for strategies
+     * whose declared scope never creates or crosses pages
+     * (`CAPTURED_PAGE_ONLY`); `null` means no free captured cell fits the
+     * span and the caller reports the unit unplaced instead of overflowing.
+     */
+    fun allocateCapturedPageOnly(span: GridSpan): Pair<PageTargetRef, GridCell>? {
+        if (allocationFault == AllocationFault.FAIL_ALLOCATION) return null
+
+        for (page in capturedPages) {
+            val ref: PageTargetRef = PageRef(page.id)
+            val occupied = occupancy[ref] ?: emptyList()
+            val cell = findRowMajorFirstFit(occupied, device.columns, device.rows, span, cellTraversal)
+            if (cell != null) return ref to cell
+        }
+        return null
+    }
+
     private fun allocateOnNewPages(span: GridSpan): Pair<PageTargetRef, GridCell> {
         for (np in newPages) {
             val ref: PageTargetRef = NewPageRef(np.ordinal)
