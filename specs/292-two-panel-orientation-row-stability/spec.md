@@ -1,6 +1,6 @@
 ---
 issue: "#292"
-status: accepted
+status: implemented
 requirements:
   - TS-AC-01
   - TS-AC-02
