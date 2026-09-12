@@ -217,30 +217,30 @@ TalkBack到達性はspec #38の既存実装 (UI testで検証済み) を変更�
 
 ## Acceptance criteria
 
-- [ ] **AC-1 — フォルダ子のreview可能性:** loaderが永続化し得るフォルダ子の
+- [x] **AC-1 — フォルダ子のreview可能性:** loaderが永続化し得るフォルダ子の
   rank (1ページ容量 `folderMaxColumns * folderMaxRows` 以上を含む、
   `rank >= 0`) が、個別review・一括reviewのどちらの経路でも
   `LockAuthoringDecision` に受け入れられ、書込みは `organizerLockState`
  のみを変更する。負のrankは引き続き拒否される。JVM testで固定する。
-- [ ] **AC-2 — 表示と実効の一致:** review listingがlistingするunknown行の
+- [x] **AC-2 — 表示と実効の一致:** review listingがlistingするunknown行の
   うち「書込み適格行の述語」scenarioで定義した行 (persistent ref・既知kind・
   supported container・利用可能profile・能力内placement) は、実際の
   書込み判定でも受け入れられる。JVM testで固定する。
-- [ ] **AC-3 — 実DB reviewと旧世代拒否:** 実DB上で (a) 1ページ容量超過の
+- [x] **AC-3 — 実DB reviewと旧世代拒否:** 実DB上で (a) 1ページ容量超過の
   rankを持つフォルダメンバーが `markOrganizerLocksUnknown` によるUNKNOWN化
   後にreview経由で解消でき、再captureのlock stateがUNKNOWN 0になること、
   および (b) 移行前captureに由来する書込みplanが移行後に `STALE_CAPTURE`
   で拒否され無変更であること。instrumentation test (実DB、実migration
   primitive、実writer) で固定する。
-- [ ] **AC-4 — 同一プロセス自動回帰:** 実DB・実loader・実composerを使う
+- [x] **AC-4 — 同一プロセス自動回帰:** 実DB・実loader・実composerを使う
   instrumentation testが、同一プロセス内で organizer実行 (preview到達) →
   復元 → production経路のグリッド変更 → `CAPTURE_UNKNOWN_LOCK` での
   input unavailable → review解消 (容量超過rankのフォルダメンバーを含む) →
   preview再到達、を実行し各状態をassertする。
-- [ ] **AC-5 — fail-closed不変:** 既存のcomposer/readiness・lock authoring
+- [x] **AC-5 — fail-closed不変:** 既存のcomposer/readiness・lock authoring
   test群が意味論変更なしで通過する。UNKNOWN残存時の`CAPTURE_UNKNOWN_LOCK`、
   batch atomicity、exact precondition、busy/stale経路は不変である。
-- [ ] **AC-6 — 再現フローの端末検証:** Issue再現シーケンス (適用 → 復元 →
+- [x] **AC-6 — 再現フローの端末検証:** Issue再現シーケンス (適用 → 復元 →
   グリッド変更 → 失敗 → review解消 → 同一プロセスでpreview成功) を
   emulatorで実行し、`docs/assessment/` に手順・journal証跡付きで記録する。
 - [ ] **AC-7 — gate:** `spotlessCheck`、`assembleLawnWithQuickstepGithubDebug`、
@@ -277,3 +277,6 @@ migration仕様・composer意味論・batch atomicityは既存正本
   (Minor)。
 - 2026-09-13: re-reviewで指摘なし。statusを `accepted` へ更新し、
   plan.mdに従って実装を開始する。
+- 2026-09-13: rev 3実装。`fitsProfile` フォルダ子上限の削除、JVM/instrumentation
+  回帰 (AC-1〜AC-4)、emulator検証とassessment記録 (AC-6)。AC-7はCI
+  `final-status` の確認後に完了とする。
