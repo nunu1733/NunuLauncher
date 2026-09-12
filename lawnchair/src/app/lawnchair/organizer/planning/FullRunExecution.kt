@@ -103,17 +103,18 @@ internal object FullRunExecution {
         val device = context.input.snapshot.device
         val reservations = context.input.snapshot.reservedWorkspaceRegions
 
-        val pageObstacles = mutableMapOf<PageId, MutableList<Rect>>()
+        val pageObstaclesBuilder = mutableMapOf<PageId, MutableList<Rect>>()
         for (item in context.input.snapshot.items) {
             if (determinePreservation(item, context.rolesById[item.id], reservations, relocateWidgets = true) != null) {
                 val ws = item.placement as? CapturedPlacement.Workspace ?: continue
-                pageObstacles.getOrPut(ws.page.pageId) { mutableListOf() } += rectOf(ws.cell, ws.span)
+                pageObstaclesBuilder.getOrPut(ws.page.pageId) { mutableListOf() } += rectOf(ws.cell, ws.span)
             }
         }
         for (item in remaining.filter(context.strategy::strategyFixes)) {
             val ws = item.placement as CapturedPlacement.Workspace
-            pageObstacles.getOrPut(ws.page.pageId) { mutableListOf() } += rectOf(ws.cell, ws.span)
+            pageObstaclesBuilder.getOrPut(ws.page.pageId) { mutableListOf() } += rectOf(ws.cell, ws.span)
         }
+        val pageObstacles: Map<PageId, List<Rect>> = pageObstaclesBuilder
 
         val ordered = widgets.sortedWith(
             compareByDescending<CapturedItem> { (it.placement as CapturedPlacement.Workspace).span.height }
@@ -132,7 +133,10 @@ internal object FullRunExecution {
         val degradedPages = mutableSetOf<PageId>()
         for (page in pagesInOrder) {
             val pageWidgets = byPage.getValue(page.id)
-            val obstacles = pageObstacles[page.id] ?: mutableListOf()
+            // Trial targets accumulate into a page-local list: a degraded page
+            // must leave no trace here, and the map's captured lists stay
+            // immutable (review L-2).
+            val obstacles = (pageObstacles[page.id] ?: emptyList()).toMutableList()
             val window = when (context.strategy.widgetPolicy) {
                 WidgetPlacementPolicy.PageLocalBand -> {
                     val minY = pageWidgets.minOf { item -> (item.placement as CapturedPlacement.Workspace).cell.y }

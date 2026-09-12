@@ -3,6 +3,7 @@ package app.lawnchair.organizer.planning
 import app.lawnchair.organizer.planning.harness.MaterializationResult
 import app.lawnchair.organizer.planning.harness.PostPlanMaterializer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -37,13 +38,17 @@ class WidgetPlacementStrategyTest {
         CategoryId("OTHER"),
     )
 
-    private fun device(columns: Int = 4, rows: Int = 4) = DeviceCapabilities(
+    private fun device(
+        columns: Int = 4,
+        rows: Int = 4,
+        orientation: Orientation = Orientation.PORTRAIT,
+    ) = DeviceCapabilities(
         columns,
         rows,
         4,
         4,
         4,
-        Orientation.PORTRAIT,
+        orientation,
     )
 
     private fun app(
@@ -123,16 +128,18 @@ class WidgetPlacementStrategyTest {
         strategy: StrategyId,
         columns: Int = 4,
         rows: Int = 4,
+        orientation: Orientation = Orientation.PORTRAIT,
         pages: List<Page> = listOf(Page(PageId("p0"), PageOrder(0))),
         roles: (CapturedItem) -> ExistingRole = { ExistingRole.Movable },
         runMode: RunMode = RunMode.FullOrganization,
         additions: List<CandidateItem> = emptyList(),
         minGroupSize: Int = 2,
+        signals: List<ClassificationSignal> = emptyList(),
     ) = OrganizationInput(
-        snapshot = LayoutSnapshot(RevisionId("rev"), device(columns, rows), pages, items, emptyList()),
+        snapshot = LayoutSnapshot(RevisionId("rev"), device(columns, rows, orientation), pages, items, emptyList()),
         rules = rules(strategy, minGroupSize),
         taxonomy = taxonomy(),
-        signals = ClassificationSignals(emptyList()),
+        signals = ClassificationSignals(signals),
         targets = TargetSet(items.map { ExistingTargetMembership(it.id, roles(it)) }, additions),
         runMode = runMode,
     )
@@ -334,6 +341,66 @@ class WidgetPlacementStrategyTest {
         assertEquals(GridSpan(2, 2), wsTarget(result, "w2").span)
     }
 
+    @Test
+    fun tidyV2EligibleSingleCellWidgetMovesThroughTheWidgetStream() {
+        // A 1×1 widget is eligible like any other span: it travels the widget
+        // stream (WIDGET_UNIT, band = its own row), never the app stream.
+        val source = input(listOf(widget("w", 3, 3, 1, 1), app("a1", 0, 0)), tidyV2)
+
+        val result = planner.plan(source)
+
+        assertEquals(GridCell(0, 3), wsTarget(result, "w").cell)
+        assertEquals(GridSpan(1, 1), wsTarget(result, "w").span)
+        assertEquals(Disposition.Moved(PlacementCode.WIDGET_UNIT), placement(result, "w").disposition)
+        assertEquals(GridCell(0, 0), wsTarget(result, "a1").cell)
+    }
+
+    @Test
+    fun tidyV2WidgetStreamIsDeterministicAcrossDeviceProfiles() {
+        // Spec AC-5: the widget stream (band, invariant key order, degrade
+        // absence) is deterministic on landscape and both two-panel
+        // orientations, not just portrait. Per profile: two 2×2 widgets
+        // (com.a key-packs first) plus one app; expected cells are
+        // profile-specific and hand-derived.
+        data class Profile(val columns: Int, val rows: Int, val orientation: Orientation, val w1: GridCell, val w2: GridCell, val app: GridCell)
+
+        // LANDSCAPE 6×4: w1 captured (4,0), w2 (0,2), app (0,1). Band = all
+        // rows; key order packs com.a at (0,0), com.b at (2,0); the app lifts
+        // to the first free cell (4,0).
+        // TWO_PANEL_LANDSCAPE 6×4: same geometry, different orientation.
+        // TWO_PANEL_PORTRAIT 4×6: w1 4×2 at (0,1) keeps its cell (band start),
+        // w2 2×2 at (1,4) consolidates to (0,3); the app lifts to (0,0).
+        val profiles = listOf(
+            Profile(6, 4, Orientation.LANDSCAPE, GridCell(0, 0), GridCell(2, 0), GridCell(4, 0)),
+            Profile(6, 4, Orientation.TWO_PANEL_LANDSCAPE, GridCell(0, 0), GridCell(2, 0), GridCell(4, 0)),
+            Profile(4, 6, Orientation.TWO_PANEL_PORTRAIT, GridCell(0, 1), GridCell(0, 3), GridCell(0, 0)),
+        )
+        for (profile in profiles) {
+            val items = if (profile.orientation == Orientation.TWO_PANEL_PORTRAIT) {
+                listOf(
+                    widget("w1", 0, 1, 4, 2, provider = "com.a", appWidgetId = 1),
+                    widget("w2", 1, 4, 2, 2, provider = "com.b", appWidgetId = 2),
+                    app("a1", 0, 3),
+                )
+            } else {
+                listOf(
+                    widget("w1", 4, 0, 2, 2, provider = "com.a", appWidgetId = 1),
+                    widget("w2", 0, 2, 2, 2, provider = "com.b", appWidgetId = 2),
+                    app("a1", 0, 1),
+                )
+            }
+            val source = input(items, tidyV2, columns = profile.columns, rows = profile.rows, orientation = profile.orientation)
+
+            val result = planner.plan(source)
+
+            assertEquals("${profile.orientation}: w1", profile.w1, wsTarget(result, "w1").cell)
+            assertEquals("${profile.orientation}: w2", profile.w2, wsTarget(result, "w2").cell)
+            assertEquals("${profile.orientation}: a1", profile.app, wsTarget(result, "a1").cell)
+            assertEquals("${profile.orientation}: w2 rationale", Disposition.Moved(PlacementCode.WIDGET_UNIT), placement(result, "w2").disposition)
+            assertReplanIsEmptyDiff(result, source)
+        }
+    }
+
     // ------------------------------------------------------------------
     // BOTTOM_FIRST_V2 — top-anchored widgets over the bottom-first apps
     // ------------------------------------------------------------------
@@ -422,6 +489,76 @@ class WidgetPlacementStrategyTest {
         assertReplanIsEmptyDiff(result, source)
     }
 
+    @Test
+    fun bottomFirstV2WidgetStreamIsDeterministicAcrossDeviceProfiles() {
+        // Spec AC-5: top-anchored widget placement over the bottom-up app
+        // stream is deterministic on landscape and both two-panel
+        // orientations. Per profile: one 2×2 widget plus one app (lifted, so
+        // not an obstacle) — the widget takes the page's top-left rectangle
+        // and the app stream reclaims the bottom-left cell.
+        data class Profile(val columns: Int, val rows: Int, val orientation: Orientation, val widget: CapturedItem, val appCell: GridCell)
+
+        val profiles = listOf(
+            Profile(6, 4, Orientation.LANDSCAPE, widget("w", 2, 2, 2, 2, provider = "com.a", appWidgetId = 1), GridCell(0, 3)),
+            Profile(6, 4, Orientation.TWO_PANEL_LANDSCAPE, widget("w", 2, 2, 2, 2, provider = "com.a", appWidgetId = 1), GridCell(0, 3)),
+            Profile(4, 6, Orientation.TWO_PANEL_PORTRAIT, widget("w", 1, 1, 2, 2, provider = "com.a", appWidgetId = 1), GridCell(0, 5)),
+        )
+        for (profile in profiles) {
+            val items = listOf(profile.widget, app("a1", 0, 0))
+            val source = input(
+                items,
+                bottomFirstV2,
+                columns = profile.columns,
+                rows = profile.rows,
+                orientation = profile.orientation,
+                minGroupSize = 99,
+            )
+
+            val result = planner.plan(source)
+
+            assertEquals("${profile.orientation}: w", GridCell(0, 0), wsTarget(result, "w").cell)
+            assertEquals("${profile.orientation}: w span", GridSpan(2, 2), wsTarget(result, "w").span)
+            assertEquals("${profile.orientation}: rationale", Disposition.Moved(PlacementCode.WIDGET_UNIT), placement(result, "w").disposition)
+            assertEquals("${profile.orientation}: a1", profile.appCell, wsTarget(result, "a1").cell)
+            assertReplanIsEmptyDiff(result, source)
+        }
+    }
+
+    @Test
+    fun bottomFirstV2ScopeComposedCandidatesOverflowPastWidgetOccupancy() {
+        // Spec app-stream note under the unchanged PREFERRED_THEN_NEW scope:
+        // widget targets are occupancy for the candidate tail too — a full
+        // captured page (widget + 12 apps on 4×4) leaves no free cell, so
+        // scope-composed candidates open a new page instead of squeezing in.
+        val items = buildList {
+            add(widget("w", 0, 0, 2, 2, provider = "com.a", appWidgetId = 1))
+            val cells = listOf(
+                GridCell(2, 0), GridCell(3, 0), GridCell(2, 1), GridCell(3, 1),
+                GridCell(0, 2), GridCell(1, 2), GridCell(2, 2), GridCell(3, 2),
+                GridCell(0, 3), GridCell(1, 3), GridCell(2, 3), GridCell(3, 3),
+            )
+            cells.forEachIndexed { index, cell -> add(app("a$index", cell.x, cell.y)) }
+        }
+        val source = input(
+            items,
+            bottomFirstV2,
+            runMode = RunMode.ScopeComposedOrganization,
+            additions = listOf(candidate("c0"), candidate("c1"), candidate("c2")),
+            minGroupSize = 99,
+        )
+
+        val result = planner.plan(source)
+
+        val outcome = planned(result)
+        assertEquals(GridCell(0, 0), wsTarget(result, "w").cell)
+        assertEquals(1, outcome.newPages.size)
+        for (index in 0 until 3) {
+            val target = wsTarget(result, "c$index")
+            assertTrue("candidate c$index must overflow to the new page: $target", target.page is NewPageRef)
+        }
+        assertTrue(outcome.unplaced.isEmpty())
+    }
+
     // ------------------------------------------------------------------
     // Scope-composed runs (spec D-5)
     // ------------------------------------------------------------------
@@ -457,4 +594,25 @@ class WidgetPlacementStrategyTest {
         availability = Availability.AVAILABLE,
         span = GridSpan(1, 1),
     )
+
+    @Test
+    fun bottomUpWindowedFirstFitScansFromTheWindowUpperBound() {
+        // Review L-3: the mirrored traversal + window arm is not reachable
+        // from this issue's policies (the widget stream scans top-left);
+        // pin its semantics at the allocator seam for the child that first
+        // uses it. The window's upper bound joins the candidate-y origins.
+        val occupied = listOf(Rect(0, 0, 2, 2))
+
+        // Window rows 2..5 on a 4×6 page: the unwindowed bottom-up scan
+        // would start at y=4 (in-window), then y=2 (window origin) after
+        // in-window exhaustion... y=4 is free, so it wins.
+        assertEquals(GridCell(0, 4), findRowMajorFirstFit(occupied, 4, 6, GridSpan(2, 2), CellTraversal.BOTTOM_UP_ROW_MAJOR, rowWindow = 2..5))
+
+        // Window rows 0..3: y=4 is out of window; the window-origin y=2 is
+        // free.
+        assertEquals(GridCell(0, 2), findRowMajorFirstFit(occupied, 4, 6, GridSpan(2, 2), CellTraversal.BOTTOM_UP_ROW_MAJOR, rowWindow = 0..3))
+
+        // A span taller than the window can never fit.
+        assertNull(findRowMajorFirstFit(emptyList(), 4, 6, GridSpan(2, 2), CellTraversal.BOTTOM_UP_ROW_MAJOR, rowWindow = 0..0))
+    }
 }
