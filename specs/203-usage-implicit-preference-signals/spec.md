@@ -4,16 +4,17 @@ status: draft
 requirements:
   - FR-013
   - D-010
-updated: 2026-09-10
+updated: 2026-09-12
 ---
 
 # Versioned local usage / implicit-preference signal snapshot for Organizer personalization
 
 > Status: draft — このspecは Issue #203 の準備として作成された。本タスクでは自己承認しない。採用signal集合・permission UX・retentionの最終判断は Issue owner の review を要する (「Unresolved decisions」参照)。
+> 2026-09-12 re-entry: baseline `6b6bf8dd` 以降の main 差分 (#228/#235 の実装、composer 拡張、ADR-0007 追記) を反映して見直した。未決定事項 (U-1〜U-6) は変わりなく draft のままである。
 
 ## Problem
 
-Organizer (spec 10/12/83/182) の計画入力は、`LayoutSnapshot` / category / profile / 既存配置という authoritative なローカル入力だけで構成されている。`OrganizationInput.signals` は分類 (category assignment) 専用の `ClassificationSignals` であり、usage / recency / 現在配置が示す暗黙の preference を運ぶ欄を持たない。そのため #182 の strategy catalog は usage-based strategy を first delivery から除外せざるを得ず、#204/#205/#206 (AI personalization) および #228 (未配置アプリ追加) は normalized usage signal を前提に設計されているのに、それを供給する authoritative input が存在しない。
+Organizer (spec 10/12/83/182) の計画入力は、`LayoutSnapshot` / category / profile / 既存配置という authoritative なローカル入力だけで構成されている。`OrganizationInput.signals` は分類 (category assignment) 専用の `ClassificationSignals` であり、usage / recency / 現在配置が示す暗黙の preference を運ぶ欄を持たない。そのため #182 の strategy catalog は usage-based strategy を first delivery から除外せざるを得ず、#204/#205/#206 (AI personalization) は draft contract で normalized usage signal を optional 入力として前提にしている (詳細は #203 の確定に委ねられている)。#228 (未配置アプリ追加) は実装済みだが usage signal を使わず、usage access がなくても deterministic に動作する。
 
 FR-013 は usage signal を Later、D-010 は usage access を optional とし、拒否・取得不能時にも deterministic fallback を要求する。raw Android usage API (usage stats / `UsageEvents` stream) や millisecond timestamp を planner や AI adapter へ直接渡す構造は、determinism (P-09)、privacy (diagnostics 契約)、provenance (ADR-0007) のすべてと衝突する。
 
@@ -38,7 +39,7 @@ Organizer personalization が消費できる **versioned / provenance-bearing �
 - usage を必須 permission にすること。拒否時に Organizer を使えなくすること。
 - raw `UsageEvent` / event-level 履歴の永続化。
 - package/profile identity の外部送信。
-- #228 (未配置アプリ追加) の実装。#228 は本specなしで deterministic に動作する。
+- #228 (未配置アプリ追加) の変更。#228 は usage signal なしで実装済みであり、本specもその挙動を変えない。
 
 ## Domain language (CONTEXT.md 追加候補、承認時)
 
@@ -114,7 +115,7 @@ sealed UsageAccessState
 ## Composition and provenance
 
 - `PersonalizationSignalSnapshot` は capture/composition 時点で構築・固定され、planner および AI adapter はこの snapshot のみを読む。planner が Android usage API・`UsageStatsManager`・app-op 状態に直接触れる経路は存在しない (AGENTS.md 設計規約・#182 と同じ purity 要求)。
-- snapshot の `PolicyInputIdentity` は `InputProvenance` への追加参加 (6番目の dynamic input) として composer の stable cut に加わる。dynamic cut identity (`dynamicCutIdentity`) は personalization snapshot の generation+digest を含め、cut 不安定時は既存どおり bounded retry の後 `NotReady(InconsistentPolicyRead)` とする。参加形態の最終形状 (provenance field 追加 vs signals identity への統合) は plan.md で固定する。
+- snapshot の `PolicyInputIdentity` は `InputProvenance` (現行7 field: revision + 6 identity) への追加参加候補であり、composer の dynamic cut (bundle / overrides / evidence / selection を二回読む `dynamicCutIdentity`) に generation+digest を加える。cut 不安定時は既存どおり bounded retry (`MAX_DYNAMIC_ATTEMPTS`) の後 `NotReady(InconsistentPolicyRead)` とする。参加形態の最終形状 (provenance field 追加 vs signals identity への統合) は plan.md で固定する (U-4)。#228 の `scopeComposedTargetsIdentity` (canonical 追加内容による target identity 拡張、[ADR-0007](../../docs/adr/0007-authoritative-organization-policy-sources.md) §targets) が同一 pattern の先例である。
 - **personalization snapshot を消費しない構成も正**: usage access がなくても composition は成功し、#182 のすべての strategy は現行どおり動作する。personalization snapshot は optional input であり、required source の欠落は `NotReady` にならない (D-010)。
 - stale 判定は既存どおり capture `RevisionId` が正本。usage の変化そのものは captured plan を stale にしない — snapshot identity が変われば別の composition として次回 run に反映される。
 
@@ -145,9 +146,9 @@ sealed UsageAccessState
 
 ## Relationship to #182 / #204 / #228
 
-- **#182**: 本specは #182 の seam (`OrganizationPlanner.plan`) が将来消費する新しい authoritative input を所有する。#182 の first delivery・runtime-supported set・bundle identity は本specの影響を受けない。usage-based strategy の追加は #182 の child issue 形式で別途行う。
-- **#204/#205/#206**: exchange contract は本snapshot の normalized field を対象に定義する。本specは「export できる構造」の要件のみを定め、exchange 形状は #204 が所有する。
-- **#228**: #228 は本specなしで deterministic に動作する。usage があれば候補提示の改善に使ってもよいが、`unavailable` を「追加すべきでない」証拠として扱ってはならない。
+- **#182** (implemented): 本specは #182 の seam (`OrganizationPlanner.plan`) が将来消費する新しい authoritative input を所有する。#182 の first delivery・runtime-supported set・bundle identity は本specの影響を受けない (本specも `organization-policy-v2.6` の bundle identity を書き換えない)。usage-based strategy の追加は #182 の child issue 形式で別途行う。
+- **#204/#205/#206**: いずれも draft spec/plan snapshot が専用 branch に存在するだけで未accept (2026-09-12 時点)。exchange contract は本snapshot の normalized field を対象に定義される。本specは「export できる構造」の要件のみを定め、exchange 形状は #204 が所有する。#204 draft は `usageSignals` を optional とし詳細を本specの確定に委ねているため、本specの確定は #204 の受入前提を満たす。
+- **#228** (implemented): usage signal なしで deterministic に動作する。usage があれば候補提示の改善に使ってもよいが、`unavailable` を「追加すべきでない」証拠として扱ってはならない。#228 が導入した `RunMode.ScopeComposedOrganization` と candidate identity 拡張 (`scopeComposedTargetsIdentity`) は本snapshot の provenance 参加に影響しない。
 
 ## Compatibility / migration
 
