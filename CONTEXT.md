@@ -32,6 +32,18 @@ _Avoid_: 並べ替え設定 (組合せ式toggleを想起させる)、Theme、Ord
 あるlayout strategyが「本来はmovableだが、そのstrategyの意図として動かさない」と決めたtop-level unit。配置上の占有を維持し、自然に保持されたunitとは別の理由として扱う ([spec 237](./specs/237-global-compact-v2-folder-relocation/spec.md))。
 _Avoid_: 保存済み (naturally preservedとの混同)、スキップ対象
 
+**セマンティック配置role (semantic placement role)**:
+計画対象のtop-level unitを、配置意味論上の種別 (app/shortcut、folder、widget) として分類したもの。strategyはroleごとにpreferred regionとmovement intentを別個に宣言し、widgetは専用のwidget streamとしてapp/folder streamより先に消費される ([spec 235](./specs/235-widget-strategy-placement/spec.md))。
+_Avoid_: movable flag (widgetをgeneric movable unitへ退化させる)、item kind (capture側の型名との混同)
+
+**ウィジェット配置ポリシー (widget placement policy)**:
+widget移動に対応したstrategyがwidget roleに対して宣言する、span不変の再配置意思。preferred region (ウィジェット帯 / page全域)、決定的cell走査、不変key順の処理順、page affinity、配置不能時のdegradeからなる純data ([spec 235](./specs/235-widget-strategy-placement/spec.md))。
+_Avoid_: widget settings (user設定との混同)、movement cost (数値costや探索を想起させる)
+
+**ウィジェット帯 (widget band)**:
+1つのcaptured page上で、そのpageのeligible widget群がcapture時点で占有する行の閉区間。[minRow, maxRow]。stable/tidy系のwidget再配置領域として使う ([spec 235](./specs/235-widget-strategy-placement/spec.md))。
+_Avoid_: widget area (領域サイズが固定であるような誤解)、widget zone
+
 **レイアウトsnapshot (Layout Snapshot)**:
 ある時点のホームレイアウト、端末能力、およびrevisionを固定した読み取り専用の入力。
 _Avoid_: Backup、DB dump

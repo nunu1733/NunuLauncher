@@ -276,4 +276,12 @@ data class PreviewCounts(
      * generated folders (spec AC-5).
      */
     val addedCount: Int = 0,
+    /**
+     * Issue #235 (spec D-4): number of [MoveChange] rows whose rationale is
+     * [PlacementCode.WIDGET_UNIT] — widget relocations reported separately
+     * from app/folder moves. Widget-capable strategies move widgets
+     * page-locally, so these rows never contribute to
+     * [crossPageMovedCount] in this issue.
+     */
+    val widgetMovedCount: Int = 0,
 )

@@ -51,7 +51,7 @@
 4. **Allocator拡張**: band制限付きpage-local矩形first-fit。`findRowMajorFirstFit` のcandidate-y集合は `[0] ∪ occupied bottoms` から導かれるため、y-windowを**事後filterとして実装してはならない** (band minRowがcandidate集合に現れず、障害物のない単独widgetで偽のdegradeが発生する — fixture (b) が検出する)。実装はcandidate-y集合の生成時に `minRow` を原点として加える構成とする (例: candidate-y = `distinct([band.minRow] ∪ occupied.bottoms ∪ [0]).filter { band.minRow ≤ it && it + h - 1 ≤ band.maxRow }` の昇順)。page全域 (BOTTOM_FIRST_V2) は既存 `allocateOnPageOnly` で足りる。cross-page (V3) は既存 `allocateCapturedThenNew` を使う (後続child)。第二のoccupancy実装は作らない。
 5. **`PlacementCode.WIDGET_UNIT`** 追加 (`PlanningResult.kt` のenum値追加、spec 10 delta)。
 6. **Preview**: `PreviewCounts` に `widgetMovedCount: Int = 0` 追加、`PlanPreviewProjector` が `Moved{WIDGET_UNIT}` を `MoveChange` (rationale=`WIDGET_UNIT`) に投影しcountを集計。UIは `WIDGET_UNIT` rationaleの移動理由文言を追加。
-7. **Bundle**: `STABLE_PAGE_TIDY_V2` 有効化childで `runtimeSupported` に追加 + semantic version `organization-policy-v2.6` 増分 + digest再計算 + catalog coherence test。`BOTTOM_FIRST_V2` で `-v2.7`。
+7. **Bundle**: 両新strategyを `runtimeSupported` に追加 + semantic version `organization-policy-v2.6` への単一増分 + digest再計算 + catalog coherence test (単一mainline有効化 — Incremental order節参照)。
 8. **Copy**: `organization_strategy_tidy_v2_name/description`、`organization_strategy_bottom_first_v2_name/description` (ja/en) 追加。`STABLE_PAGE_TIDY_V1`/`BOTTOM_FIRST_V1` descriptionに「ウィジェットは移動しません」を追記して真実化 (D-6)。移動理由文言 (`WIDGET_UNIT` 用) 追加。
 
 ### Widget streamの詳細 (共通実装)
@@ -76,7 +76,7 @@
 | `planning/FullRunExecution.kt` | `placeWidgetStream` (不変key順・region走査・degrade) と既存executorへのwrapper接続 |
 | `planning/PlacementAllocator.kt` | band (y-window) 制限付きfirst-fit の最小拡張 |
 | `planning/PlanningResult.kt` | `PlacementCode.WIDGET_UNIT` 追加 |
-| `rules/BuiltInOrganizerPolicyBundleSource.kt` | runtimeSupported拡張、semantic version増分 (`-v2.6` / `-v2.7`) |
+| `rules/BuiltInOrganizerPolicyBundleSource.kt` | runtimeSupported拡張、semantic version増分 (`-v2.6`、単一増分) |
 | `application/public/PlanPreview.kt` + `application/preview/PlanPreviewProjector.kt` | `widgetMovedCount` projection |
 | `ui/preferences/destinations/ManualOrganizationPreferences.kt` + `ui/` | strategy名/descriptionのmapping、移動理由文言 |
 | `values/strings.xml` + `values-ja/strings.xml` | 新strategy copy、V1 copy真実化、`WIDGET_UNIT` 移動理由 |
@@ -107,11 +107,10 @@
 
 ## Incremental order (child issue / PR分割案)
 
-1. **Spec/plan受入PR (本PR)** — docsのみ。spec 10/194 delta (`WIDGET_UNIT`, `widgetMovedCount`) は本spec本文に正本化する (受入PRではspec 10/194 fileを編集しない — spec D-4の単一規則)。
-2. **実装PR 1**: role分類 + `WidgetPlacementPolicy` + `placeWidgetStream` + allocator拡張 + `STABLE_PAGE_TIDY_V2` 登録・有効化 (bundle `-v2.6`) + `WIDGET_UNIT`/`widgetMovedCount` projection + **spec 10 file delta (`PlacementCode.WIDGET_UNIT`)** + copy (tidy V2 + V1真実化) + 全test表面。
-3. **実装PR 2**: `BOTTOM_FIRST_V2` 登録・有効化 (bundle `-v2.7`) + copy + test。
-4. **(後続child issue)** `GLOBAL_COMPACT_V3`、`CATEGORY_CONTIGUOUS_V2` の実装・有効化。
-5. **実機評価・独立audit** — 最終source-changing PRに対して `docs/assessment/pr-<n>-*.md`。
+1. **Spec/plan受入PR** — docsのみ (merge済み: PR #295)。spec 10/194 delta (`WIDGET_UNIT`, `widgetMovedCount`) はspec本文に正本化 (受入PRではspec 10/194 fileを編集しない — spec D-4の単一規則)。
+2. **実装PR (単一PR: PR #296)**: role分類 + `WidgetPlacementPolicy` + `placeWidgetStream` + allocator拡張 + `STABLE_PAGE_TIDY_V2` / `BOTTOM_FIRST_V2` 登録・有効化 + `WIDGET_UNIT`/`widgetMovedCount` projection + **spec 10 file delta (`PlacementCode.WIDGET_UNIT`)** + copy (V2両方 + V1真実化) + 全test表面。両strategyを同一mainlineで有効化するため、bundle semantic versionは **`organization-policy-v2.6` への単一増分** でpublishする (ADR-0007 §8は「policy content変更ごとの新semantic version」を要求するが、中間versionを出荷しない単一mainlineでは1増分で足りる。下記の旧2段階増分案は本PR統合パスの採用により取り下げ — spec 235 change history 2026-09-12 implementation-prep correction 参照)。
+3. **(後続child issue)** `GLOBAL_COMPACT_V3`、`CATEGORY_CONTIGUOUS_V2` の実装・有効化。
+4. **実機評価・独立audit** — 最終source-changing PRに対して `docs/assessment/pr-<n>-*.md`。
 
 各実装PRは `Refs #235`。Issue終了条件 (AC-1〜AC-10) を満たす最終PRのみ `Closes #235`。実装PR 1・2を個別PRに分ける理由はreview可能性とbundle増分のper-enablement原則 (ADR-0007 §8)。solo運用でまとめる場合は1 PRに統合してもよいが、その場合もcommitは分離し、auditは最終headに対して実施する。
 

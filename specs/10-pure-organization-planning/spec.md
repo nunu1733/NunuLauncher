@@ -417,7 +417,7 @@ PlannedPlacement { item: ItemId, disposition: Disposition, target: PlacementTarg
 Disposition =
     | Moved { rationale: PlacementCode }
     | Preserved { reason: PreserveReason }
-PlacementCode   = SINGLE_PLACEMENT | FOLDER_MEMBER | FOLDER_UNIT
+PlacementCode   = SINGLE_PLACEMENT | FOLDER_MEMBER | FOLDER_UNIT | WIDGET_UNIT
 PreserveReason  = LOCKED | UNAVAILABLE_TARGET | DOCK | WIDGET
                  | APP_PAIR | LEGACY_SHORTCUT | NON_TARGET
                  | STRATEGY_PRESERVED | STRUCTURAL
@@ -940,6 +940,7 @@ Issue #10 uses a small representative suite, not the downstream harness:
 
 ## Change history
 
+- 2026-09-12: Spec 235 (accepted) delta applied: `PlacementCode` gains `WIDGET_UNIT` — a relocated widget under a widget-capable layout strategy (issue #235, first post-initial-grammar `PlacementCode` addition; semantics normalized in [spec 235](../235-widget-strategy-placement/spec.md) D-4).
 - 2026-09-04: Spec 182 (accepted) delta applied. Replaces the single-value
   `OrderingPolicy` with `RuleSemantics.organizationStrategy: StrategyId`
   (immutable catalog identity), adds the `organizationStrategy` echo to

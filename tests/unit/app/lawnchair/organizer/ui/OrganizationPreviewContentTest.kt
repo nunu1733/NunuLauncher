@@ -779,6 +779,7 @@ class OrganizationPreviewContentTest {
         override val moveReasonSinglePlacement = "moves as a single placement"
         override val moveReasonFolderMember = "moves as a folder member"
         override val moveReasonFolderUnit = "moves as a folder unit"
+        override val moveReasonWidgetUnit = "moves as a widget"
         override val moveReasonUnspecified = "moves"
         override val preservedReasonLocked = "kept because it is locked"
         override val preservedReasonReservedRegion = "kept for the reserved search area"

@@ -112,6 +112,7 @@
     <string name="manual_organization_no_changes">必要な変更はありません。何も変更されていません。</string>
     <string name="manual_organization_preview">整理案を確認</string>
     <string name="manual_organization_moved_count">移動する配置: %1$d件</string>
+    <string name="manual_organization_widget_moved_count">ウィジェット単位で移動: %1$d件</string>
     <string name="manual_organization_preserved_count">保持する配置: %1$d件</string>
     <string name="manual_organization_new_folders_count">新しいフォルダ: %1$d個</string>
     <string name="manual_organization_new_pages_count">新しいホーム画面ページ: %1$d枚</string>
@@ -174,6 +175,7 @@
     <string name="manual_organization_moved_single_placement">単独で移動: %1$d件</string>
     <string name="manual_organization_moved_folder_member">フォルダ内の項目として移動: %1$d件</string>
     <string name="manual_organization_moved_folder_unit">フォルダ単位で移動: %1$d件</string>
+    <string name="manual_organization_moved_widget_unit">ウィジェット単位で移動: %1$d件</string>
     <string name="manual_organization_preserved_locked">ロックされた配置を保持: %1$d件</string>
     <string name="manual_organization_preserved_reserved_region">検索バー領域の配置を保持: %1$d件</string>
     <string name="manual_organization_preserved_unavailable">利用できない配置を保持: %1$d件</string>
@@ -188,9 +190,13 @@
     <string name="organization_strategy_canonical_name">標準コンパクト</string>
     <string name="organization_strategy_canonical_description">各ページを左上から詰めます。従来の整理動作です。</string>
     <string name="organization_strategy_tidy_name">ページ内で隙間を詰める</string>
-    <string name="organization_strategy_tidy_description">アプリを別のページへ移動せずに、各ページの隙間を閉じます。</string>
+    <string name="organization_strategy_tidy_description">アプリを別のページへ移動せずに、各ページの隙間を閉じます。ウィジェットは移動しません。</string>
+    <string name="organization_strategy_tidy_v2_name">ページ内で隙間を詰める（ウィジェット対応）</string>
+    <string name="organization_strategy_tidy_v2_description">アプリの隙間を埋め、ウィジェットは今ある範囲の中にまとめて配置します。</string>
     <string name="organization_strategy_bottom_first_name">下段から詰める</string>
-    <string name="organization_strategy_bottom_first_description">各ページを下段から順に詰めます。</string>
+    <string name="organization_strategy_bottom_first_description">各ページを下段から順に詰めます。ウィジェットは移動しません。</string>
+    <string name="organization_strategy_bottom_first_v2_name">下段から詰める（ウィジェット対応）</string>
+    <string name="organization_strategy_bottom_first_v2_description">アプリを画面下部に詰め、ウィジェットをその上に配置します。</string>
     <string name="organization_strategy_global_name">ページ間でコンパクト（アプリのみ）</string>
     <string name="organization_strategy_global_description">後ろのページのアプリを、前のページの空きスペースへ移動します。既存のフォルダは移動しません。</string>
     <string name="organization_strategy_global_v2_name">ページ間でコンパクト</string>
@@ -299,6 +305,7 @@
     <string name="manual_organization_preview_move_reason_single_placement">単体配置として移動</string>
     <string name="manual_organization_preview_move_reason_folder_member">フォルダメンバーとして移動</string>
     <string name="manual_organization_preview_move_reason_folder_unit">フォルダ単位で移動</string>
+    <string name="manual_organization_preview_move_reason_widget_unit">ウィジェット単位で移動</string>
     <string name="manual_organization_preview_move_reason_unspecified">移動</string>
     <string name="manual_organization_preview_preserved_reason_locked">ロックされているため保持</string>
     <string name="manual_organization_preview_preserved_reason_reserved_region">予約領域のため保持</string>
