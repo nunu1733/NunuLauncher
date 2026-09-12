@@ -127,7 +127,17 @@ internal object FullRunExecution {
         val ordered = widgets.sortedWith(
             compareByDescending<CapturedItem> { (it.placement as CapturedPlacement.Workspace).span.height }
                 .thenByDescending { (it.placement as CapturedPlacement.Workspace).span.width }
-                .thenBy { targetKeySortValue(it.target) }
+                // Owner review (PR #296 Medium): the invariant key compares the
+                // widget identity in its typed canonical order — provider
+                // (ComponentKey, UTF-8 byte order), appWidgetId numerically
+                // (AppWidgetId), profile (ProfileId, UTF-8 byte order) — never
+                // the concatenated `targetKeySortValue` string, whose
+                // appWidgetId segment compares lexicographically ("10" < "2")
+                // and which drops the profile segment entirely. Validation
+                // (V-12 family) guarantees widget kinds carry a WidgetKey.
+                .thenBy { (it.target as TargetKey.WidgetKey).provider }
+                .thenBy { (it.target as TargetKey.WidgetKey).appWidgetId }
+                .thenBy { (it.target as TargetKey.WidgetKey).profile }
                 .thenBy { it.id },
         )
         val byPage = ordered.groupBy { (it.placement as CapturedPlacement.Workspace).page.pageId }

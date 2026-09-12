@@ -113,11 +113,12 @@ class WidgetPlacementStrategyTest {
         appWidgetId: Int = 1,
         locked: Boolean = false,
         page: String = "p0",
+        profile: ProfileId = p0,
     ) = CapturedItem(
         id = ItemId(id),
-        profile = p0,
+        profile = profile,
         kind = ItemKind.APPWIDGET,
-        target = TargetKey.WidgetKey(ComponentKey("$provider/.Widget"), AppWidgetId(appWidgetId), p0),
+        target = TargetKey.WidgetKey(ComponentKey("$provider/.Widget"), AppWidgetId(appWidgetId), profile),
         placement = CapturedPlacement.Workspace(PageRef(PageId(page)), GridCell(x, y), GridSpan(spanW, spanH)),
         locked = locked,
         availability = Availability.AVAILABLE,
@@ -668,6 +669,51 @@ class WidgetPlacementStrategyTest {
         assertEquals(Disposition.Moved(PlacementCode.WIDGET_UNIT), placement(result, "w").disposition)
         // The app stream sees the reservation through the shared allocator.
         assertEquals(GridCell(0, 3), wsTarget(result, "a1").cell)
+        assertReplanIsEmptyDiff(result, source)
+    }
+
+    // ------------------------------------------------------------------
+    // Invariant key order — typed canonical comparison (owner re-review)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun tidyV2WidgetKeyOrdersAppWidgetIdNumericallyNotLexicographically() {
+        // Same provider/profile, appWidgetId 2 vs 10, ItemIds reversed
+        // relative to the numeric order. The typed canonical order ranks
+        // 2 before 10; the withdrawn concatenated-string encoding would
+        // rank "10" < "2" and swap the two first-fit cells.
+        val items = listOf(
+            widget("zb", 2, 4, 2, 2, provider = "com.same", appWidgetId = 2),
+            widget("za", 0, 1, 2, 2, provider = "com.same", appWidgetId = 10),
+        )
+        val source = input(items, tidyV2, rows = 6)
+
+        val result = planner.plan(source)
+
+        assertEquals(GridCell(0, 1), wsTarget(result, "zb").cell)
+        assertEquals(GridCell(2, 1), wsTarget(result, "za").cell)
+        assertEquals(Disposition.Moved(PlacementCode.WIDGET_UNIT), placement(result, "zb").disposition)
+        assertEquals(Disposition.Moved(PlacementCode.WIDGET_UNIT), placement(result, "za").disposition)
+        assertReplanIsEmptyDiff(result, source)
+    }
+
+    @Test
+    fun tidyV2WidgetKeyOrdersProfileBeforeItemId() {
+        // Same provider/appWidgetId, different profiles, ItemIds reversed
+        // relative to the profile canonical order. The profile segment must
+        // decide; without it the comparator would fall through to ItemId.
+        val personal = ProfileId("pa")
+        val work = ProfileId("pb")
+        val items = listOf(
+            widget("zb", 2, 4, 2, 2, provider = "com.same", appWidgetId = 7, profile = personal),
+            widget("za", 0, 1, 2, 2, provider = "com.same", appWidgetId = 7, profile = work),
+        )
+        val source = input(items, tidyV2, rows = 6)
+
+        val result = planner.plan(source)
+
+        assertEquals(GridCell(0, 1), wsTarget(result, "zb").cell)
+        assertEquals(GridCell(2, 1), wsTarget(result, "za").cell)
         assertReplanIsEmptyDiff(result, source)
     }
 }
