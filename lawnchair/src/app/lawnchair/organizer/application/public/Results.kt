@@ -74,6 +74,15 @@ enum class PreWriteRejection {
     EXACT_PRECONDITION_FAILED,
 
     /**
+     * Issue #228: a selected missing-app candidate is no longer launchable
+     * (disabled/suspended/uninstalled), or its apply-time availability
+     * re-verification itself failed. Detected before the write transaction —
+     * the workspace is unchanged and the user is directed back to
+     * re-detection.
+     */
+    CANDIDATE_UNAVAILABLE,
+
+    /**
      * Issue #185 / ADR-0010: the intended state (or recovery target) contains a
      * desktop item overlapping an authoritative reservation while the current
      * platform overlap policy does not accept it.
@@ -86,6 +95,22 @@ enum class PreWriteRejection {
     RECOVERY_POINT_ADMISSION_BLOCKED,
     RECOVERY_STORE_UNAVAILABLE,
     WRITER_BUSY,
+}
+
+/**
+ * Issue #228: why a selected missing-app candidate could not be resolved to
+ * canonical application content. Public because the typed failure travels
+ * through the preview result and run state to drive re-detection.
+ */
+enum class CandidateResolutionFailure {
+    /** The component is no longer present in the launcher-authorized enumeration. */
+    COMPONENT_NOT_FOUND,
+
+    /** The label/title could not be resolved to a non-blank value. */
+    LABEL_UNAVAILABLE,
+
+    /** The platform read failed in a way that is not proof of absence. */
+    PLATFORM_READ_FAILED,
 }
 
 enum class ApplyFailure {

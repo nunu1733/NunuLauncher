@@ -79,6 +79,24 @@ internal class Allocator(
         return allocateOnNewPages(span)
     }
 
+    /**
+     * Issue #228 (review P1): page-local candidate placement for strategies
+     * whose declared scope never creates or crosses pages
+     * (`CAPTURED_PAGE_ONLY`); `null` means no free captured cell fits the
+     * span and the caller reports the unit unplaced instead of overflowing.
+     */
+    fun allocateCapturedPageOnly(span: GridSpan): Pair<PageTargetRef, GridCell>? {
+        if (allocationFault == AllocationFault.FAIL_ALLOCATION) return null
+
+        for (page in capturedPages) {
+            val ref: PageTargetRef = PageRef(page.id)
+            val occupied = occupancy[ref] ?: emptyList()
+            val cell = findRowMajorFirstFit(occupied, device.columns, device.rows, span, cellTraversal)
+            if (cell != null) return ref to cell
+        }
+        return null
+    }
+
     private fun allocateOnNewPages(span: GridSpan): Pair<PageTargetRef, GridCell> {
         for (np in newPages) {
             val ref: PageTargetRef = NewPageRef(np.ordinal)
@@ -102,12 +120,23 @@ internal class Allocator(
     fun buildNewPages(): List<NewPage> = newPages.toList()
 }
 
+/**
+ * Deterministic row-major first-fit over [occupied] rectangles on one
+ * `columns × rows` page (spec 182 internal seam; the single shared
+ * implementation). [rowWindow] optionally restricts candidate top-left rows
+ * (`first ≤ y && y + span.height - 1 ≤ last`, issue #235 widget band); the
+ * window's lower bound joins the candidate-y origins so a window start that
+ * no occupied rectangle bottom produces is still reachable — filtering the
+ * unwindowed candidate set after the fact would miss it (spec 235 plan,
+ * review L3).
+ */
 internal fun findRowMajorFirstFit(
     occupied: List<Rect>,
     columns: Int,
     rows: Int,
     span: GridSpan,
     traversal: CellTraversal,
+    rowWindow: IntRange? = null,
 ): GridCell? {
     val w = span.width.toLong()
     val h = span.height.toLong()
@@ -115,19 +144,29 @@ internal fun findRowMajorFirstFit(
     val rws = rows.toLong()
 
     if (w > cols || h > rws) return null
+    if (rowWindow != null && (rowWindow.first < 0 || rowWindow.last >= rows || rowWindow.last - rowWindow.first + 1 < span.height)) {
+        return null
+    }
+
+    fun inWindow(y: Long): Boolean = rowWindow == null || (y >= rowWindow.first && y + h - 1 <= rowWindow.last)
 
     val candidateYs = when (traversal) {
-        // A fit can start at the top edge or directly below any occupied
-        // rectangle's bottom; scan rows top-down.
-        CellTraversal.TOP_LEFT_ROW_MAJOR -> (listOf(0L) + occupied.map { it.bottom }).distinct().sorted()
+        // A fit can start at the top edge, at any occupied rectangle's
+        // bottom, or at the window's lower bound; scan rows top-down.
+        CellTraversal.TOP_LEFT_ROW_MAJOR -> (listOfNotNull(0L, rowWindow?.first?.toLong()) + occupied.map { it.bottom })
+            .distinct()
+            .sorted()
+            .filter(::inWindow)
 
-        // Mirror image: a fit can start at the bottom edge or directly above
-        // any occupied rectangle's top; scan rows bottom-up.
+        // Mirror image: a fit can start at the bottom edge, directly above
+        // any occupied rectangle's top, or at the window's upper bound; scan
+        // rows bottom-up.
         CellTraversal.BOTTOM_UP_ROW_MAJOR ->
-            (listOf(rws - h) + occupied.map { it.y - h })
+            (listOfNotNull(rws - h, rowWindow?.let { (it.last + 1 - span.height).toLong() }) + occupied.map { it.y - h })
                 .filter { it >= 0 }
                 .distinct()
                 .sortedDescending()
+                .filter(::inWindow)
     }
 
     for (y in candidateYs) {

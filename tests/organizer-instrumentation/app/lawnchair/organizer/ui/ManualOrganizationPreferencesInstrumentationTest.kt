@@ -85,6 +85,7 @@ import app.lawnchair.organizer.planning.NewFolderOrdinal
 import app.lawnchair.organizer.planning.NewFolderProfileScope
 import app.lawnchair.organizer.planning.NewPageOrdinal
 import app.lawnchair.organizer.application.public.PlanPreviewResult
+import app.lawnchair.organizer.application.public.OrganizerDurableStatus
 import app.lawnchair.organizer.planning.OrganizationInput
 import app.lawnchair.organizer.planning.OrganizationPlanner
 import app.lawnchair.organizer.planning.Orientation
@@ -184,6 +185,188 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_retry),
         ).assertHasClickAction()
+    }
+
+    /**
+     * Issue #271 (DS-AC-07): the durable status projection renders on the
+     * Idle surface and never leaks anything beyond the closed wording.
+     */
+    @Test
+    fun durableRestorableStatusRendersWhileIdle() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { error("planner must not run") },
+        )
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.Idle }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restorable),
+        ).assertIsDisplayed()
+    }
+
+    /**
+     * Issue #271 review (P1/P2): a durable-status read taken while startup
+     * reconciliation is still running fails closed; the surface announces the
+     * loading state instead of looking "never organized", and once readiness
+     * reaches a terminal state on the same Idle surface the status re-reads
+     * and recovers without navigation.
+     */
+    @Test
+    fun durableStatusRecoversWhenReconciliationCompletesOnTheSameSurface() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val release = java.util.concurrent.CountDownLatch(1)
+        val application = FakeApplication().apply {
+            readiness.value = app.lawnchair.organizer.application.protocol.ReadinessGate.State.RECONCILING
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+            readOverride = {
+                release.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                OrganizerDurableStatus.UNAVAILABLE
+            }
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { error("planner must not run") },
+        )
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.Idle }
+        // Loading is announced, never silently equated with "never organized".
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_checking),
+        ).assertIsDisplayed()
+
+        release.countDown()
+        composeRule.waitForIdle()
+        // The read returned UNAVAILABLE while the gate is still pending: the
+        // checking row persists (the durable truth is not yet known) and no
+        // durable status row renders.
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_checking),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restorable),
+        ).assertDoesNotExist()
+
+        // Reconciliation completes while the surface stays open: the status
+        // re-reads and recovers on the same surface.
+        composeRule.runOnIdle {
+            application.readOverride = null
+            application.readiness.value = app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY
+        }
+        composeRule.waitUntil {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_durable_status_restorable),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restorable),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_checking),
+        ).assertDoesNotExist()
+    }
+
+    /**
+     * Issue #271 (DS-AC-07): the unresolved durable status reuses the existing
+     * safe-support guidance rows.
+     */
+    @Test
+    fun durableUnresolvedStatusRendersSafeSupportGuidance() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            durableStatus = OrganizerDurableStatus.UNRESOLVED
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { error("planner must not run") },
+        )
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.Idle }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_unresolved),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_safe_terminal),
+        ).assertIsDisplayed()
+    }
+
+    /**
+     * Issue #271 (DS-AC-07): never-organized and fail-closed unavailable
+     * render no durable status row at all.
+     */
+    private fun assertNoDurableRowRenders(status: OrganizerDurableStatus) {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val runner = ManualOrganizationRun(
+            FakeApplication().apply { durableStatus = status },
+            OrganizationPlanner { error("planner must not run") },
+        )
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.Idle }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restorable),
+        ).assertDoesNotExist()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restored_or_expired),
+        ).assertDoesNotExist()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_unresolved),
+        ).assertDoesNotExist()
+    }
+
+    @Test
+    fun neverOrganizedRendersNoDurableRow() {
+        assertNoDurableRowRenders(OrganizerDurableStatus.NEVER_ORGANIZED)
+    }
+
+    @Test
+    fun failClosedUnavailableRendersNoDurableRow() {
+        assertNoDurableRowRenders(OrganizerDurableStatus.UNAVAILABLE)
+    }
+
+    /**
+     * Issue #271 (DS-AC-07): an active process-local run keeps precedence —
+     * no durable status row renders next to run states.
+     */
+    @Test
+    fun durableStatusIsHiddenWhileARunIsActive() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { planningResult() },
+        )
+        runner.start()
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        awaitPreview(runner, context)
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restorable),
+        ).assertDoesNotExist()
+        assertEquals(0, application.applyCalls)
     }
 
     @Test
@@ -339,6 +522,59 @@ class ManualOrganizationPreferencesInstrumentationTest {
         ).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).assertIsDisplayed()
+    }
+
+    @Test
+    fun previewDetailsHeaderShowsTheSeparateWidgetMoveCount() {
+        // Issue #235 (owner review): AC-8's separate widget count must be
+        // visible on the concrete change list — a dedicated header line next
+        // to the move total, not folded into it.
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val widgetMove = MoveChange(
+            item = ItemId("clock"),
+            label = PreviewLabel.Named("clock"),
+            identity = PreviewPlacementIdentity.Workspace(1, false, 2, 0),
+            kind = CanonicalItemKind.AppWidget,
+            source = workspace(1, RowBand.TOP, ColumnBand.LEFT, 1),
+            destination = workspace(1, RowBand.TOP, ColumnBand.LEFT, 2),
+            rationale = PlacementCode.WIDGET_UNIT,
+        )
+        val application = FakeApplication().apply {
+            inspectPlanOverride = { _, _ ->
+                previewed(
+                    PlanPreviewDetails(
+                        changes = listOf(
+                            move("game", sourceRowOrdinal = 2, destinationRowOrdinal = 1),
+                            widgetMove,
+                        ),
+                        counts = PreviewCounts(
+                            movedCount = 2,
+                            preservedCount = 0,
+                            newFolderCount = 0,
+                            newPageCount = 0,
+                            warningCounts = emptyMap(),
+                            widgetMovedCount = 1,
+                        ),
+                    ),
+                )
+            }
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { planningResult() },
+        )
+        runner.start()
+
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+
+        awaitPreview(runner, context)
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_moved_count, 2)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_widget_moved_count, 1)).assertIsDisplayed()
+        assertEquals(0, application.applyCalls)
     }
 
     @Test
@@ -1775,6 +2011,22 @@ class ManualOrganizationPreferencesInstrumentationTest {
 
         override fun newRunId() = RunId(RUN_ID)
 
+        /**
+         * Issue #228: default keeps the legacy flow — detection is unavailable
+         * so start() proceeds straight to the plain full compose. Tests of the
+         * selection surface override this.
+         */
+        var detection: app.lawnchair.organizer.integration.CandidateDetectionResult =
+            app.lawnchair.organizer.integration.CandidateDetectionResult.Unavailable(
+                app.lawnchair.organizer.integration.DetectionUnavailableReason.PROFILE_SERIAL_UNAVAILABLE,
+            )
+
+        override fun detectMissingAppCandidates(): app.lawnchair.organizer.integration.CandidateDetectionResult = detection
+
+        override fun composeScopeComposedOrganization(
+            selection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>,
+        ): OrganizationInputComposition = ready()
+
         override fun composeFullOrganization(): OrganizationInputComposition {
             notReadyComposition?.let { return it }
             return ready()
@@ -1827,6 +2079,22 @@ class ManualOrganizationPreferencesInstrumentationTest {
             pointId,
             app.lawnchair.organizer.application.public.RecoveryRejection.MISSING,
         )
+
+        /** Issue #271: overridable durable status projection for the Idle/Cancelled render tests. */
+        var durableStatus: app.lawnchair.organizer.application.public.OrganizerDurableStatus =
+            app.lawnchair.organizer.application.public.OrganizerDurableStatus.NEVER_ORGANIZED
+
+        /** Issue #271 review: blocks the durable read to observe the loading state. */
+        var readOverride: (() -> app.lawnchair.organizer.application.public.OrganizerDurableStatus)? = null
+
+        override fun readDurableOrganizerStatus(): app.lawnchair.organizer.application.public.OrganizerDurableStatus = readOverride?.invoke() ?: durableStatus
+
+        /** Issue #271 review: overridable readiness for the re-read race test. */
+        var readiness = kotlinx.coroutines.flow.MutableStateFlow(
+            app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY,
+        )
+
+        override val readinessState: kotlinx.coroutines.flow.StateFlow<app.lawnchair.organizer.application.protocol.ReadinessGate.State> = readiness
     }
 
     private class RecordingDiagnostics : DiagnosticsPort {

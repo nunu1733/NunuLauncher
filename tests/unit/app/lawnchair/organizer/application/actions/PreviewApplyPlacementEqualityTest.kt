@@ -87,6 +87,9 @@ class PreviewApplyPlacementEqualityTest {
 
             is OrganizationPlanMaterializer.Result.Invalid ->
                 throw AssertionError("materializer rejected the fixture")
+
+            is OrganizationPlanMaterializer.Result.CandidateResolutionFailed ->
+                throw AssertionError("materializer reported candidate resolution failure: ${materialized.failure}")
         }
 
         // Apply destination source of truth: the materializer froze the planner

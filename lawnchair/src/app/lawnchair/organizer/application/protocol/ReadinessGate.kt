@@ -2,6 +2,9 @@ package app.lawnchair.organizer.application.protocol
 
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Startup/readiness gate owned by [LayoutApplicationModule]. Ensures that
@@ -21,29 +24,36 @@ import java.util.concurrent.locks.ReentrantReadWriteLock
  * operation, the module reconciles every unresolved APPLYING,
  * COMMITTED_UNVERIFIED, or RESTORING record."
  *
- * Issue #14 fixed-point review P0.
+ * Issue #14 fixed-point review P0. Issue #271 review: [stateFlow] mirrors
+ * every transition so a UI surface that read a fail-closed result during
+ * reconciliation can re-read once the gate reaches a terminal state, without
+ * depending on timing.
  */
 class ReadinessGate {
 
     enum class State { IDLE, RECONCILING, READY, FAILED }
 
     private val stateRef: AtomicReference<State> = AtomicReference(State.IDLE)
+    private val stateMirror = MutableStateFlow(State.IDLE)
     private val lock = ReentrantReadWriteLock()
 
     val state: State get() = stateRef.get()
+
+    /** Observable mirror of [state]; emits on every transition, conflated. */
+    val stateFlow: StateFlow<State> = stateMirror.asStateFlow()
 
     fun <T> reconcile(
         block: () -> T,
         succeeded: (T) -> Boolean,
         failed: (Throwable) -> T,
     ): T = lock.writeLocked {
-        stateRef.set(State.RECONCILING)
+        set(State.RECONCILING)
         try {
             block().also { result ->
-                stateRef.set(if (succeeded(result)) State.READY else State.FAILED)
+                set(if (succeeded(result)) State.READY else State.FAILED)
             }
         } catch (error: Throwable) {
-            stateRef.set(State.FAILED)
+            set(State.FAILED)
             failed(error)
         }
     }
@@ -54,7 +64,13 @@ class ReadinessGate {
     }
 
     fun failBeforeReconciliation() = lock.writeLocked {
-        stateRef.set(State.FAILED)
+        set(State.FAILED)
+    }
+
+    /** Publish the reference and its observable mirror under the same lock. */
+    private fun set(next: State) {
+        stateRef.set(next)
+        stateMirror.value = next
     }
 
     private inline fun <T> ReentrantReadWriteLock.writeLocked(block: () -> T): T {

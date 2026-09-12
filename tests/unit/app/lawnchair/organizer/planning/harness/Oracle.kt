@@ -452,7 +452,28 @@ internal object Oracle {
                     add(finding(ContractCheck.IDEMPOTENCE, FindingSubject.Item(placement.item), "Replan changed an item target"))
                 }
                 val expected = expectedReason(captured)
-                if (placement.disposition != Disposition.Preserved(expected)) {
+                // Issue #235: under a widget-capable strategy an eligible
+                // widget (the V1-expectation `WIDGET` set) is a widget-stream
+                // item — replan-stable because it reclaimed its own cell
+                // (ALREADY_CANONICAL) or its page degraded
+                // (STRATEGY_PRESERVED). The widget branch is terminal for
+                // widget kinds, so NON_TARGET never applies to them under
+                // widget-capable strategies (AC-10 production finding).
+                val widgetStreamItem = expected == PreserveReason.WIDGET &&
+                    app.lawnchair.organizer.planning.LayoutStrategyRegistry
+                        .definition(input.rules.organizationStrategy)?.widgetPolicy != null
+                if (widgetStreamItem) {
+                    val reason = (placement.disposition as? Disposition.Preserved)?.reason
+                    if (reason != PreserveReason.ALREADY_CANONICAL && reason != PreserveReason.STRATEGY_PRESERVED) {
+                        add(
+                            finding(
+                                ContractCheck.IDEMPOTENCE,
+                                FindingSubject.Item(placement.item),
+                                "Replan widget-stream item did not use a truthful stable preserve reason (got $reason)",
+                            ),
+                        )
+                    }
+                } else if (placement.disposition != Disposition.Preserved(expected)) {
                     add(finding(ContractCheck.IDEMPOTENCE, FindingSubject.Item(placement.item), "Replan item did not use expected preserve reason $expected"))
                 }
             }
