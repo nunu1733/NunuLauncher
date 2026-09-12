@@ -1,5 +1,6 @@
 package app.lawnchair.organizer.ui
 
+import app.lawnchair.organizer.application.public.AddChange
 import app.lawnchair.organizer.application.public.CanonicalItemKind
 import app.lawnchair.organizer.application.public.ColumnBand
 import app.lawnchair.organizer.application.public.ItemWarningChange
@@ -61,6 +62,55 @@ class OrganizationPreviewContentTest {
         )
         assertEquals(listOf(2, 1, 1, 1, 1), sections.map { it.totalCount })
         assertEquals(2, sections[0].rows.size)
+    }
+
+    @Test
+    fun addRowsGroupDirectlyAfterMovesAndCarryTheDestinationAnchor() {
+        // Issue #228 (spec AC-5): one Add row per selected candidate — the
+        // top-level one names its resolved anchor; the generated-folder one
+        // names the resolved folder title, never an ordinal.
+        val details = PlanPreviewDetails(
+            changes = listOf(
+                move("game", source(1, RowBand.TOP, ColumnBand.CENTER, 2), destination(1, RowBand.BOTTOM, ColumnBand.RIGHT, 5)),
+                AddChange(
+                    item = ItemId("c1"),
+                    label = PreviewLabel.Named("Spotify"),
+                    kind = CanonicalItemKind.Application,
+                    destination = PreviewPosition.Workspace(1, false, RowBand.CENTER, ColumnBand.CENTER, 3, 3),
+                ),
+                AddChange(
+                    item = ItemId("c2"),
+                    label = PreviewLabel.Named("Podcasts"),
+                    kind = CanonicalItemKind.Application,
+                    destination = PreviewPosition.InFolder(
+                        PreviewFolderRef.Planned(NewFolderOrdinal(0), PreviewLabel.Named("Audio")),
+                        1,
+                    ),
+                ),
+            ),
+            counts = PreviewCounts(
+                movedCount = 1,
+                preservedCount = 0,
+                newFolderCount = 0,
+                newPageCount = 0,
+                warningCounts = emptyMap(),
+                addedCount = 2,
+            ),
+        )
+
+        val sections = OrganizationPreviewContent.sections(details, TestWording)
+
+        assertEquals(listOf("Move (1)", "Add (2)"), sections.map { it.heading })
+        val addRows = sections[1].rows
+        assertEquals(2, addRows.size)
+        assertEquals(
+            "Add Spotify (App) → middle center, page 1, row 3, column 3",
+            addRows[0],
+        )
+        assertEquals(
+            "Add Podcasts (App) → new folder “Audio”, position 1",
+            addRows[1],
+        )
     }
 
     @Test
@@ -712,6 +762,9 @@ class OrganizationPreviewContentTest {
 
     private object TestWording : OrganizationPreviewWording {
         override val groupMoved = "Move (%1\$d)"
+        override val groupAdded = "Add (%1\$d)"
+        override val addDescriptor = "%1\$s (%2\$s)"
+        override val addRow = "Add %1\$s → %2\$s"
         override val groupNewFolders = "New folders (%1\$d)"
         override val groupNewPages = "New pages (%1\$d)"
         override val groupPreserved = "Preserve (%1\$d)"
@@ -726,6 +779,7 @@ class OrganizationPreviewContentTest {
         override val moveReasonSinglePlacement = "moves as a single placement"
         override val moveReasonFolderMember = "moves as a folder member"
         override val moveReasonFolderUnit = "moves as a folder unit"
+        override val moveReasonWidgetUnit = "moves as a widget"
         override val moveReasonUnspecified = "moves"
         override val preservedReasonLocked = "kept because it is locked"
         override val preservedReasonReservedRegion = "kept for the reserved search area"

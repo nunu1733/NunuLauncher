@@ -778,10 +778,16 @@ class ContractShapeTest {
 
     @Test
     fun everyPlacementCodeVariantIsConstructible() {
-        assertEquals(3, PlacementCode.entries.size)
+        // Issue #235: WIDGET_UNIT joins the closed grammar (spec 10 delta).
+        assertEquals(4, PlacementCode.entries.size)
         assertTrue(
             PlacementCode.entries.containsAll(
-                listOf(PlacementCode.SINGLE_PLACEMENT, PlacementCode.FOLDER_MEMBER, PlacementCode.FOLDER_UNIT),
+                listOf(
+                    PlacementCode.SINGLE_PLACEMENT,
+                    PlacementCode.FOLDER_MEMBER,
+                    PlacementCode.FOLDER_UNIT,
+                    PlacementCode.WIDGET_UNIT,
+                ),
             ),
         )
     }

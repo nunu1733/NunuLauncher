@@ -383,6 +383,12 @@ class Issue265ManualEditRecoveryInstrumentationTest {
 
     private fun runStart(runner: ManualOrganizationRun): ManualOrganizationRun.State {
         runner.start()
+        // Issue #228: the manual run opens the missing-app selection surface;
+        // these recovery cases exercise the plain full organize, so continue
+        // with an empty selection (the pre-#228 behavior).
+        (runner.state as? ManualOrganizationRun.State.Selecting)?.let {
+            runner.confirmSelection(emptySet())
+        }
         runnerStateSnapshot = runner.state
         return runner.state
     }

@@ -329,6 +329,15 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
 
         override fun newRunId() = RunId(RUN_ID)
 
+        // Issue #228: detection unavailable keeps the legacy full flow.
+        override fun detectMissingAppCandidates() = app.lawnchair.organizer.integration.CandidateDetectionResult.Unavailable(
+            app.lawnchair.organizer.integration.DetectionUnavailableReason.PROFILE_SERIAL_UNAVAILABLE,
+        )
+
+        override fun composeScopeComposedOrganization(
+            selection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>,
+        ): OrganizationInputComposition = composeFullOrganization()
+
         override fun composeFullOrganization(): OrganizationInputComposition = OrganizationInputComposition.Ready(
             input = input(),
             provenance = InputProvenance(
@@ -375,6 +384,12 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
                 pointId,
                 app.lawnchair.organizer.application.public.RecoveryRejection.MISSING,
             )
+
+        override fun readDurableOrganizerStatus(): app.lawnchair.organizer.application.public.OrganizerDurableStatus =
+            app.lawnchair.organizer.application.public.OrganizerDurableStatus.NEVER_ORGANIZED
+
+        override val readinessState: kotlinx.coroutines.flow.StateFlow<app.lawnchair.organizer.application.protocol.ReadinessGate.State> =
+            kotlinx.coroutines.flow.MutableStateFlow(app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY)
     }
 
     private companion object {

@@ -1,5 +1,6 @@
 package app.lawnchair.organizer.ui
 
+import app.lawnchair.organizer.application.public.AddChange
 import app.lawnchair.organizer.application.public.CanonicalItemKind
 import app.lawnchair.organizer.application.public.ColumnBand
 import app.lawnchair.organizer.application.public.ItemWarningChange
@@ -34,6 +35,15 @@ interface OrganizationPreviewWording {
     val groupPreserved: String
     val groupWarnings: String
 
+    /** Issue #228: heading of the Add group. %1 = row count. */
+    val groupAdded: String
+
+    /** Issue #228: name-with-kind part of an Add row. %1 = name, %2 = kind. */
+    val addDescriptor: String
+
+    /** Issue #228: Add row. %1 = descriptor (name, kind), %2 = destination. */
+    val addRow: String
+
     /** Issue #208: %1 = source descriptor (name, kind, current position),
      *  %2 = destination, %3 = reason. Quoting lives in the descriptor. */
     val moveRow: String
@@ -60,6 +70,9 @@ interface OrganizationPreviewWording {
     val moveReasonSinglePlacement: String
     val moveReasonFolderMember: String
     val moveReasonFolderUnit: String
+
+    /** Issue #235: moved-as-widget rows never reuse the single-placement wording. */
+    val moveReasonWidgetUnit: String
     val moveReasonUnspecified: String
     val preservedReasonLocked: String
     val preservedReasonReservedRegion: String
@@ -153,6 +166,10 @@ object OrganizationPreviewContent {
         val sections = mutableListOf<OrganizationPreviewSection>()
         val moves = changes.filterIsInstance<MoveChange>().map { moveRowText(it, wording, supplements[it]) }
         if (moves.isNotEmpty()) sections += OrganizationPreviewSection(format(wording.groupMoved, counts.movedCount), counts.movedCount, moves)
+        // Issue #228 (spec AC-5): one Add row per selected candidate, directly
+        // after the move group — both are placement changes the user reviews.
+        val adds = changes.filterIsInstance<AddChange>().map { addRowText(it, wording) }
+        if (adds.isNotEmpty()) sections += OrganizationPreviewSection(format(wording.groupAdded, counts.addedCount), counts.addedCount, adds)
         val folders = changes.filterIsInstance<NewFolderChange>().map { newFolderRowText(it, wording) }
         if (folders.isNotEmpty()) sections += OrganizationPreviewSection(format(wording.groupNewFolders, counts.newFolderCount), counts.newFolderCount, folders)
         val pages = changes.filterIsInstance<NewPageChange>().map { newPageRowText(it, wording) }
@@ -360,6 +377,20 @@ object OrganizationPreviewContent {
         change.displayPosition,
     )
 
+    /**
+     * Issue #228: an Add row — the candidate's name (with kind) and its new
+     * destination. There is no source placement; the destination uses the
+     * same anchor-specific path as move destinations (spec #234).
+     */
+    private fun addRowText(change: AddChange, wording: OrganizationPreviewWording): String {
+        val descriptor = if (change.label is PreviewLabel.KindFallback) {
+            labelText(change.label, wording)
+        } else {
+            format(wording.addDescriptor, labelText(change.label, wording), kindText(change.kind, wording))
+        }
+        return format(wording.addRow, descriptor, destinationText(change.destination, wording))
+    }
+
     private fun preservedRowText(change: PreservedChange, wording: OrganizationPreviewWording, supplement: String? = null): String = format(
         wording.itemRow,
         descriptorText(change.label, change.kind, change.current, wording, supplement),
@@ -391,6 +422,7 @@ object OrganizationPreviewContent {
         PlacementCode.SINGLE_PLACEMENT -> wording.moveReasonSinglePlacement
         PlacementCode.FOLDER_MEMBER -> wording.moveReasonFolderMember
         PlacementCode.FOLDER_UNIT -> wording.moveReasonFolderUnit
+        PlacementCode.WIDGET_UNIT -> wording.moveReasonWidgetUnit
         null -> wording.moveReasonUnspecified
     }
 

@@ -1,5 +1,6 @@
 package app.lawnchair.organizer.application.preview
 
+import app.lawnchair.organizer.application.public.AddChange
 import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.ApplicationPageRef
 import app.lawnchair.organizer.application.public.ApplyAction
@@ -28,6 +29,7 @@ import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.NewFolderOrdinal
 import app.lawnchair.organizer.planning.NewPageOrdinal
 import app.lawnchair.organizer.planning.PageId
+import app.lawnchair.organizer.planning.PlacementCode
 import app.lawnchair.organizer.planning.Planned
 import app.lawnchair.organizer.planning.PreserveReason
 
@@ -56,11 +58,28 @@ object PlanPreviewProjector {
         val sourceItemByItemId = plan.sourceState.items
             .mapNotNull { item -> item.persistentItemId()?.let { it to item } }
             .toMap()
+        // Issue #228: intended states of the selected candidates, keyed by
+        // their planning IDs — the join source for Add rows and for candidate
+        // members of generated folders.
+        val candidateByItemId: Map<ItemId, CanonicalItemState> = plan.actions
+            .mapNotNull { action ->
+                val insert = action as? ApplyAction.Insert ?: return@mapNotNull null
+                val id = (insert.ref as? ApplicationItemRef.PlannedCandidate)?.itemId ?: return@mapNotNull null
+                id to insert.intended
+            }
+            .toMap()
         // Issue #201: join each planned folder ordinal to its resolved title
         // (the same value the new-folder row and the apply writer use). A join
         // miss is a contract violation and fails closed.
         val plannedFolderNames = plannedFolderNames(plan) ?: return Result.Invalid
-        val warningItemIds = planned.warnings.flatMap { warning ->
+        // Issue #228: warnings speak for captured placements only. A
+        // candidate's S6 fallback is not a placement warning — there is no
+        // current placement to warn about — so candidate-keyed warnings are
+        // dropped before counts and rows (they stay consistent).
+        val capturedWarnings = planned.warnings.filter { warning ->
+            warning.params.filterIsInstance<DiagnosticParam.ItemParam>().all { it.item in sourceItemByItemId }
+        }
+        val warningItemIds = capturedWarnings.flatMap { warning ->
             warning.params.filterIsInstance<DiagnosticParam.ItemParam>().map { it.item }
         }
         val context = PositionContext(plan, sourceItemByItemId, plannedFolderNames, warningItemIds)
@@ -76,7 +95,13 @@ object PlanPreviewProjector {
                     changes.addAll(rows)
                 }
 
-                is ApplicationItemRef.PlannedCandidate -> return Result.Invalid
+                // Issue #228 (spec AC-5): one Add row per selected candidate,
+                // regardless of destination — top-level or inside a generated
+                // folder.
+                is ApplicationItemRef.PlannedCandidate -> {
+                    val insert = action as? ApplyAction.Insert ?: return Result.Invalid
+                    changes += addChange(insert.intended, context) ?: return Result.Invalid
+                }
             }
         }
 
@@ -92,7 +117,9 @@ object PlanPreviewProjector {
             val folderIdentity = context.identity(insert.intended) ?: return Result.Invalid
             val placement = context.position(folderIdentity) ?: return Result.Invalid
             val memberLabels = folder.members.map { memberId ->
-                sourceItemByItemId[memberId]?.let(::itemLabel) ?: return Result.Invalid
+                sourceItemByItemId[memberId]?.let(::itemLabel)
+                    ?: candidateByItemId[memberId]?.let(::itemLabel)
+                    ?: return Result.Invalid
             }
             changes.add(
                 NewFolderChange(
@@ -109,7 +136,7 @@ object PlanPreviewProjector {
             changes.add(NewPageChange(ordinal = page.ordinal, displayPosition = position))
         }
 
-        planned.warnings.forEach { warning ->
+        capturedWarnings.forEach { warning ->
             val itemParams = warning.params.filterIsInstance<DiagnosticParam.ItemParam>()
             if (itemParams.size == 1) {
                 val state = sourceItemByItemId[itemParams.single().item] ?: return Result.Invalid
@@ -137,7 +164,7 @@ object PlanPreviewProjector {
                 preservedCount = changes.count { it is PreservedChange },
                 newFolderCount = plan.newFolders.size,
                 newPageCount = plan.newPages.size,
-                warningCounts = planned.warnings.groupingBy { it.code }.eachCount(),
+                warningCounts = capturedWarnings.groupingBy { it.code }.eachCount(),
                 // Spec 182 strategy consequences, derived from the same rows
                 // the change list renders so header and rows share one truth.
                 crossPageMovedCount = changes.count { change ->
@@ -150,9 +177,34 @@ object PlanPreviewProjector {
                 preservedByStrategyCount = changes.count { change ->
                     change is PreservedChange && change.reason == PreserveReason.STRATEGY_PRESERVED
                 },
+                // Issue #228 (spec AC-5): Add rows count every fixed-destination
+                // candidate, including generated-folder members.
+                addedCount = changes.count { it is AddChange },
+                // Issue #235 (spec D-4): widget relocations counted separately
+                // from app/folder moves, from the same rows the list renders.
+                widgetMovedCount = changes.count { change ->
+                    change is MoveChange && change.rationale == PlacementCode.WIDGET_UNIT
+                },
             ),
         )
         return Result.Ready(details)
+    }
+
+    /**
+     * Issue #228: the Add row for one selected candidate. The destination
+     * derives through the single identity -> position path like every other
+     * row; there is no source identity because the placement is new.
+     */
+    private fun addChange(intended: CanonicalItemState, context: PositionContext): AddChange? {
+        val itemId = (intended.ref as? ApplicationItemRef.PlannedCandidate)?.itemId ?: return null
+        val destinationIdentity = context.identity(intended) ?: return null
+        val destination = context.position(destinationIdentity) ?: return null
+        return AddChange(
+            item = itemId,
+            label = itemLabel(intended),
+            kind = intended.kind,
+            destination = destination,
+        )
     }
 
     /**
