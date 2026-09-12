@@ -103,12 +103,12 @@ Spec review で確定した設計上の制約（2026-09-12 の 2 回の review�
   （review 4 指摘 1、review 5 指摘 1）。gated execution の集合は
   `TouchActivationGate` 使用数ではなく、**実装後の配線で environment helper
   （`ensureInteractiveUnlocked` / `ensureWindowFocused`）へ到達する全 call path** から
-  算出する。現行 head の実測では、issue53 は 20 test 中 14 が helper へ到達する
-  （`TouchActivationGate` 経由 9 ＋ `awaitResumedLauncher` / `sendKey` /
-  accessibility 走査 / PreferenceActivity 遷移の direct 呼び出し 5。
+  算出する。実装後の実測（head `083c902973` で確定）では、issue53 は 20 test 中 13 が
+  helper へ到達する（`TouchActivationGate` 経由 9 ＋ `awaitResumedLauncher` /
+  `sendKey` / accessibility 走査 / launcher 起動の direct 呼び出し 4。
   `realLauncherFloatingHostKeepsAllActionsWithinViewportAtTwoHundredPercentFontScale` の
   ように gate を使わず `awaitResumedLauncher` と `sendKey` を使う test も gated である）。
-  issue52 は 40 test 中 1 のみである。確定セットは実装時に配線から再確認し PR へ記録する。
+  issue52 は 40 test 中 1 のみである。確定セットは PR へ記録した。
 - **topology は「現行」と「修正後」を分けて記述する**（review 3 指摘 2）。状態 test
   クラスの issue53 lane 追加により、修正後の issue53 filter は 2 クラスになる。
   配線検証は修正後 filter 全体ではなく、gated クラスを明示指定して行う。
@@ -123,8 +123,8 @@ api36 UI lane では、touch/keyboard 注入は対象 window が window focus �
 ことを観測した後にのみ行われる。すべての environment 操作（修復・focus 待ち）は入口で
 run-level health state を確認し、unhealthy なら何も修復・待機せず即座に、最初の
 failure が採取した environment 証拠を参照して失敗する。この保証の単位は
-**gate を通る実行（gated execution）**であり、helper へ到達しない実行（現行 head 実測で
-issue53 の 20 test 中 6、issue52 の 40 test 中 39、および同一 invocation 内の gated で
+**gate を通る実行（gated execution）**であり、helper へ到達しない実行（実装後実測で
+issue53 の 20 test 中 7、issue52 の 40 test 中 39、および同一 invocation 内の gated で
 ない他クラス）は health state を参照しないため通常どおり実行される。証拠採取は
 「environment 前提の
 崩壊を示す観測」がある場合に限られ、環境が正常な失敗（launcher lifecycle 回帰、

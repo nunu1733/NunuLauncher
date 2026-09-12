@@ -67,23 +67,21 @@
   - gate 対象の実入力注入（`uiAutomation.injectInputEvent` / `sendKeyDownUpSync`）は
     issue52 job 内では `ManualOrganizationPreferencesInstrumentationTest` のみが使用し、
     他 3 クラスは使用していない（grep 実測）。burst の実測もこのクラスに限る
-  - **gate を通る test の実数（call path ベース）**: gated execution の集合は
+  - **gate を通る test の実数（call path ベース、実装後確定）**: gated execution の集合は
     `TouchActivationGate` 使用数ではなく、**実装後の配線で environment helper
     （`ensureInteractiveUnlocked` / `ensureWindowFocused`）へ到達する全 call path** から
-    算出する（review 指摘による修正。初版の `TouchActivationGate` 利用数 9/20 は
-    配線範囲より狭い誤集計であった）。現行 head の実測:
-    - issue53: 20 test 中 **14** が helper へ到達する。
-      `TouchActivationGate` 経由 9 ＋ direct helper 呼び出し 5
+    算出する。初版の推定 14/20 は parser の誤帰属（`productionProvenanceBoundary...` は
+    純粋分類 test で helper 不通過）を含んでおり、実装後の確定値は **13/20** である:
+    - issue53: 20 test 中 **13** が helper へ到達する。
+      `TouchActivationGate` 経由 9 ＋ direct 呼び出し 4
       （`realLauncherFloatingHostKeepsAllActionsWithinViewportAtTwoHundredPercentFontScale`
-      は `awaitResumedLauncher` × 2 ＋ `sendKey`、`recreatingLauncherWhileProposalIsShownLeavesNoDuplicateOrOrganizerRun`
-      は `awaitResumedLauncher` ＋ `startLauncher`、`homeScreenSettingsShowsTheOrganizerEntryInGeneralAboveTheFold`
-      は accessibility 走査経路、`productionOwnerDefersBindWhilePausedThenShowsAndRoutesReviewAfterResume` /
-      `productionProvenanceBoundaryFailsClosedOutsideFreshInstall` は launcher 起動経路）。
-      非 gate は 6 test（pure JVM 相当・content 表示・outcome 記録系）
+      = awaitResumedLauncher×2 + sendKey、`recreatingLauncherWhileProposalIsShownLeavesNoDuplicateOrOrganizerRun`
+      = awaitResumedLauncher + startLauncher、`homeScreenSettingsShowsTheOrganizerEntryInGeneralAboveTheFold`
+      = accessibility 走査経路、`productionOwnerDefersBindWhilePausedThenShowsAndRoutesReviewAfterResume`
+      = launcher 起動経路）。非 gate は 7 test。確定セットは PR 本文へ記録済み
+      （`awaitResumedPreferenceActivity` 単体は未配線であり、これが推定 14 との差である）
     - issue52: 40 test 中 **1**（`changeListTraversalReachesExpandAndReviewActions`。
       `pressDownUntilFocused` / `KEYCODE_ENTER` 経路）
-    - 確定セットは実装時に配線から再確認し、PR へ記録する。数値は配線変更に伴い
-      変わり得るため、正本は call path の定義であり、実測値はその時点の snapshot である
   - `tests/organizer-instrumentation` は androidTest 専用 source set であり
     （自前 build.gradle 無し、lawnchair module の androidTest として compile）、
     helper の JVM unit test は存在しない。決定的検証は instrumentation test で行う。
@@ -340,7 +338,7 @@ production source、`src/com/android/launcher3/**` は変更しない。workflow
 - 分類の再観測が「異常の見逃し」側に倒す設計であること（環境異常でも観測が取れない
   場合は local failure になる）を仕様に明示する。poisoning より見逃しを優先するのは、
   merge gate の診断能力（製品回帰と環境 failure の分離）を保つためである。
-- gate を通らない実行（現行 head 実測で issue53 の 20 test 中 6、issue52 の 40 test 中
+- gate を通らない実行（実装後実測で issue53 の 20 test 中 7、issue52 の 40 test 中
   39、issue52 invocation 内の他 3 クラス）は、health state が unhealthy でも通常どおり
   実行される（収束保証の対象外）。これは仕様であり、環境破損下でこれらのテストが時間を
   要したり個別に失敗したりする可能性は残る。実入力注入経路と burst の実測がある gate
@@ -351,7 +349,29 @@ production source、`src/com/android/launcher3/**` は変更しない。workflow
 ## Documentation updates
 
 - [ ] spec status/history（承認後に `accepted`、PR 後に `implemented`）
-- [ ] plan.md Current evidence/Verification への再現証跡追記（AC-2〜AC-5）
+- [x] plan.md Current evidence/Verification への再現証跡追記（AC-2〜AC-5。下記 Verification evidence 節）
+
+### Verification evidence（実装後の実測記録。2026-09-13、api36 AVD `issue142_api36`）
+
+- **AC-2（issue53 実配線・cross-test convergence・範囲境界）**: runner 引数
+  `nunuInjectEnvironmentHealthFailure=review` 付きの同一 invocation で
+  `realTouchStreamActivatesLaterWithASingleTap` ＋ `realTouchStreamActivatesSkipWithASingleTap`
+  ＋ `skippedAndReviewedOutcomesNeverResurfaceAfterAColdStart` を実行。
+  gated 2 test は
+  `input environment already marked unhealthy by an earlier gate failure; reusing the original evidence: evidence=review; injected by runner argument ...`
+  で即時失敗（2 つ目が 1 つ目の証拠を再利用）、非 gate 1 test は PASSED
+  （test XML: `build/outputs/androidTest-results/.../TEST-issue142_api36(AVD) - 16-_-lawnWithQuickstepGithub.xml`）。
+- **AC-2（issue52 入口拒否）**: `nunuInjectEnvironmentHealthFailure=review52` で
+  `changeListTraversalReachesExpandAndReviewActions` 単独実行 → gate 入口で
+  `evidence=review52` を参照して即時失敗（DPAD press 発生前に停留）。
+- **AC-5 / TS-AC-02（修復・強制状態）**: `input keyevent KEYCODE_SLEEP` で
+  `mWakefulness=Asleep` にした後、injection 無しで
+  `realTouchStreamActivatesLaterWithASingleTap` を実行 → gate が wakeup
+  （実行後 `mWakefulness=Awake`）し **green**。sleep 強制状態は gate の自動修復対象であり
+  CI burst を再現しないことが実証された（plan 予測通り）。occluder 判別を含む詳細な
+  再現試行は #304 へ引き継ぐ。
+- **AC-5補足**: issue52 lane 全体（本番 4 クラス）を通常状態で実行 →
+  **58 tests / 0 failures / 0 errors**。
 - [ ] Issue #300 終了条件の更新（root cause 特定を #304 へ分離。2026-09-12 review
       response で実施済み）
 - [ ] CONTEXT.md — 不要（domain language 変更なし）
