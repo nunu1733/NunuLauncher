@@ -144,10 +144,10 @@ Issue #292 の終了条件「連続複数runでのgreen確認」に対応する�
 | Acceptance criterion | Requirement | Automated/manual evidence | Command or environment |
 |---|---|---|---|
 | AC-1 現行テストが再現条件で失敗する（メカニズム実証） | TS-AC-04 | 済み。CI 2 回（#292 本文）＋ローカル再現（上記 Current evidence、`_id=8` Gmail 子、logcat タイムライン付き） | api35 emulator（google_apis arm64）+ `am instrument` |
-| AC-2 修正後、同一の衝突準備（ダミー行 5 行）＋同一手順で green | TS-AC-01, TS-AC-02 | 修正 branch 上で再実行し PR へ記録 | 同上 |
-| AC-3 修正後、新規インストール状態（フラグ未消化）からの 4 クラス lane が**連続 3 回** green（各 run 間に emulator の app data を消去してフラグを復元する） | TS-AC-01, TS-AC-02, TS-AC-04 | 修正 branch 上で 3 run 実行し、各 run の結果を PR へ記録 | `ANDROID_SERIAL=<api35> ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.integration.ProductionOrganizationInputInstrumentationTest,app.lawnchair.organizer.rules.CategoryOverrideAtomicFileInstrumentationTest,com.android.launcher3.organizer.NestedTransactionTest,app.lawnchair.organizer.application.TwoPanelOrientationCaptureInstrumentationTest` |
-| AC-4 lint/formatter green | — | `./gradlew spotlessCheck` | JDK 21 / Android SDK 36.1 |
-| AC-5 PR CI の api35 lane が、同一 fix head で**連続 3 回** green（job の rerun を含む。attempt 1 が green なら rerun 2 回） | TS-AC-01, TS-AC-02 | PR の CI run 記録を PR へ link | GitHub Actions `organizer-instrumentation-api35-tests` |
+| AC-2 修正後、同一の衝突準備（ダミー行 5 行）＋同一手順で green | TS-AC-01, TS-AC-02 | 済み。修正 head で `am instrument` フルクラス **3 tests, 0 failed**。logcat により default load がテスト窓内（テスト開始後 489ms）に発生したことを確認 — 修正後はその窓の後で pick する | 同上 |
+| AC-3 修正後、新規インストール状態（フラグ未消化）からの 4 クラス lane が**連続 3 回** green（各 run 間に emulator の app data を消去してフラグを復元する） | TS-AC-01, TS-AC-02, TS-AC-04 | 済み。連続 3 run とも `Tests 26/26 completed. (1 skipped) (0 failed)` | `ANDROID_SERIAL=<api35> ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.integration.ProductionOrganizationInputInstrumentationTest,app.lawnchair.organizer.rules.CategoryOverrideAtomicFileInstrumentationTest,com.android.launcher3.organizer.NestedTransactionTest,app.lawnchair.organizer.application.TwoPanelOrientationCaptureInstrumentationTest` |
+| AC-4 lint/formatter green | — | 済み。`--rerun-tasks` 強制再実行で BUILD SUCCESSFUL | `./gradlew spotlessCheck`（JDK 21 / Android SDK 36.1） |
+| AC-5 PR CI の api35 lane が、同一 fix head で**連続 3 回** green（job の rerun を含む。attempt 1 が green なら rerun 2 回） | TS-AC-01, TS-AC-02 | 済み。run [34674957358](https://github.com/nunu1733/NunuLauncher/actions/runs/34674957358)（head `c5d3c38e68`）で同一 job の attempt 1/2/3 が全 success。全 14 check pass、`final-status` pass。詳細は [audit record](../../docs/assessment/pr-297-orientation-row-stability.md) の post-audit 追記節 | GitHub Actions `organizer-instrumentation-api35-tests` |
 
 含めるべき観点の内、unit/property/DB-integration/UI は本変更の対象外（テストタイミ
 ング修正のみのため）。failure injection 相当は AC-1/AC-2 の再現・消滅ペアで代替する
@@ -166,9 +166,11 @@ deadline 定数で検証する（実行環境を人工的に作れないため�
 ## Execution checklist
 
 - [x] Current behavior reproduced.（CI 2 回 + ローカル再現）
-- [ ] Tests fail for the missing behavior.（AC-1 がそれ自身。修正対象はテストであり、
+- [x] Tests fail for the missing behavior.（AC-1 がそれ自身。修正対象はテストであり、
   新規テストは不要）
-- [ ] Minimal implementation completed.
-- [ ] Migration/recovery verified.（対象外、テストのみ）
-- [ ] Full relevant verification completed.（AC-2〜AC-5、AC-5のCI run記録はPR evidenceに含める）
-- [ ] PR evidence and remaining risks recorded.
+- [x] Minimal implementation completed.
+- [x] Migration/recovery verified.（対象外、テストのみ）
+- [x] Full relevant verification completed.（AC-2〜AC-5、AC-5のCI run記録はPR evidenceと
+  [audit record](../../docs/assessment/pr-297-orientation-row-stability.md)に含める）
+- [x] PR evidence and remaining risks recorded.（PR #297 本文、残余リスクは audit
+  record の findings を参照）
