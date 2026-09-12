@@ -5,7 +5,7 @@ requirements: []
 risk:
   - privacy
   - layout-data
-updated: 2026-09-10
+updated: 2026-09-13
 ---
 
 # AI personalization用 Context / PersonalizedIntent exchange contract
@@ -75,11 +75,11 @@ _Aavoid_ 系: ItemId (内部正本IDとの混同)、package名
 - `gridContext`: device/gridの必要最小限projection (行/列数、page数、領域種別の列挙)。raw `DeviceCapabilities` やplatform型を含まない。
 - `items`: 対象itemごとのentry。各entryは少なくとも:
   - `ref`: export-scoped ID (export内で一意)
-  - `kind`: 限定enum (`APPLICATION`, `DEEP_SHORTCUT`, `FOLDER` 等既存対象種別のprojection)
+  - `kind`: 対象種別のprojection。planning側の型名ではなくsemantic placement role族 (spec 235) に揃える: app/shortcut系、folder、widget。現行plannerはwidget (固定span矩形、`APPWIDGET`/`CUSTOM_APPWIDGET`) とapp pairを第一級の計画対象として持つため、V1 exportはこれらをroleとして投影する。widgetの **span (サイズ) はprojectionに含めず、intentからも指定できない** (spanはcapture不変)。`Unknown` kindはexportから除外する (意図的な対象と解釈させない)
   - `category`: project taxonomyの `CategoryId` (override結果を含む解決済み分類) または `null`
   - `groupSemantic`: 既存folder所属の場合、そのfolderのgroup semantic projection
   - `pageAffinity` / `regionAffinity`: 現在page/領域のcoarseな親和表現。raw `(page,x,y)` 座標を必須としない (page序数や領域種別の抽象度とする)
-  - `locked`: locked/preserved constraint projection (boolean。AIに対し「これは保持対象」と伝える)
+  - `locked`: locked/preserved constraint projection (boolean。AIに対し「これは保持対象」と伝える)。itemのlockに加え、platform占有領域 (`ReservedWorkspaceRegion` 相当、authoritative reservation) も **itemではなく制約として** projectionに含める
 - `capabilities`: consumer (AI) が返してよいintent機能の列挙と、対応intent schema version。
 - `usageSignals` (optional): #203 signal snapshotの正規化projection (tier制御付き、後述)。signalが存在しない場合・許可がない場合はこのfield自体を省略する。
 
@@ -110,7 +110,7 @@ export生成時にtierを1つ選ぶ。tierは`PersonalizationContextExportV1`の
 - `exportId`: このintentが応答するcontext exportの `exportId` (一致検証)。
 - `itemIntents`: `ref` (export-scoped ID) ごとのsemantic preference。候補field:
   - `importance`: 限定enum (例: `HIGH`/`NORMAL`/`LOW`)
-  - `desiredGroup`: 同一export内の他 `ref` の集合によるgrouping希望
+  - `desiredGroup`: 同一export内の他 `ref` の集合によるgrouping希望 (widget roleのitemはfolder memberになれないため、そのような希望は意味検証でrejectする)
   - `groupSemantic`: 提案group/folderのsemantic (既存taxonomy `CategoryId` または自由記述は長上限付きで許可)
   - `pageAffinity` / `regionAffinity`: contextと同じ抽象度の親和
   - `preserve`: 当該itemの現配置維持希望
@@ -124,8 +124,8 @@ AI/agentは次をauthoritativeにしてはならない。これらを含むinten
 
 - exact Launcher DB row mutation
 - locked itemの移動指示
-- bounds/profile/container不変条件を迂回する指示 (最終座標 `(page,x,y)` の直接指定を含む)
-- exportに存在しない `ref` の追加
+- bounds/profile/container不変条件を迂回する指示 (最終座標 `(page,x,y)` の直接指定を含む。widgetのspan/サイズ指定、reservation領域の占拠指示も含む)
+- exportに存在しない `ref` の追加 (runへの対象追加は #228 のuser明示選択composition inputのみが担い、intentは関与しない)
 - arbitrary script / code / 外部tool実行結果のrule取り込み
 
 ## Validation / fail-closed
@@ -168,7 +168,9 @@ AI/agentは次をauthoritativeにしてはならない。これらを含むinten
 
 ## Planner接続 (#182 seam)
 
-- intent → planner入力の変換は、#182の内部seam (shared constraints/allocator) の**前段**に位置する1つのadapterとして表現する。adapterはvalidated intentを、既存のplannerが消費できるsemantic入力 (分類・親和・grouping希望の重み付け) へ投影する。
+- intent → planner入力の変換は、#182の内部seam (唯一の外部planning seam `OrganizationPlanner.plan(OrganizationInput): PlanningResult` とshared constraints/allocator) の**前段**に位置する1つのadapterとして表現する。adapterはvalidated intentを、既存のplannerが消費できるsemantic入力 (分類・親和・grouping希望の重み付け) へ投影する。
+- intentは新しい `RunMode` を導入しない。既存run mode (FullOrganization / ScopeComposedOrganization / IncrementalPlacement) のいずれかと組合わされる。`TargetSet.additions` (missing-app候補、#228) はuserの明示選択による別のcomposition inputであり、intentは追加対象を生み出さない。
+- #235 のsemantic placement role (app/shortcut、folder、widget) とwidget stream/bandの配置意味論はplanner側の正本である。adapterの投影がwidget span不変・strategy宣言済みmovement intentを弱めることはない。
 - adapter・validator・codecはpure moduleとし、Android型・DB row・networkを扱わない。production/testが同じseamを使う。
 - AI provider/network logicは #182 planner に入れない (本契約の所有物でもない。#205/#206が独立に接続する)。
 - adapterの具体的な投影先 (既存 `OrganizationInput` のどの入力へどう反映するか) は本specの受入時点で方向を固定し、実装child issueのplanで確定する (Open questions参照)。
@@ -193,7 +195,8 @@ AI/agentは次をauthoritativeにしてはならない。これらを含むinten
 
 | 依存先 | 関係 |
 |---|---|
-| #182 (spec 182, accepted/implemented) | planner/allocator seam。intentはこのseamへの入力に限定される。本IssueはAI provider logicを#182へ持ち込まない |
+| #182 (spec 182, implemented) | planner/allocator seam。intentはこのseamへの入力に限定される。本IssueはAI provider logicを#182へ持ち込まない |
+| #228 / #235 (specs 228/235, implemented) | 接続先plannerの現行拡張 (scope-composed run、semantic placement role/widget配置)。本契約はこれらを変更せず、intentは既存run mode・role意味論の内側でのみ働く |
 | #203 (OPEN) | usage signal snapshot。`usageSignals` fieldは#203の契約に依存するためoptionalとし、不在でも本契約は成立する |
 | #205 (OPEN) | 本契約の外部agent consumer。export tier・確認UIの実装主体 |
 | #206 (OPEN) | 本契約の内部managed AI consumer |
@@ -303,11 +306,14 @@ AI/agentは次をauthoritativeにしてはならない。これらを含むinten
 ## Change history
 
 - 2026-09-10: Draft created for Issue #204. Contract-only spec: ContextV1/IntentV1 schema, privacy tiers, fail-closed validation, intent identity/determinism, prompt-injection threat model, #182 seam connection, FR-017 proposal.
+- 2026-09-13: Re-entry re-anchor to baseline `f9afd8bfde` (2026-09-13時点 `origin/main`)。#228/#235/#271/#288 由来のmain差分を検証し、契約の核は不変のまま現行planner実態へ追従: `kind` 投影をsemantic placement role族 (widget含む、span不変) へ明確化、reservation制約projectionを明記、FORBIDDEN_CONTENTへwidget span/reservation指示を追加、intentが新run modeや対象追加を生まないことを明記。#203/#205/#206は依然OPEN (mainに実装・specなし)。statusはdraftのまま (受入判断はOwner)。
 
 ## References
 
 - [Issue #204](https://github.com/nunu1733/NunuLauncher/issues/204)
 - [Spec 182: layout strategy catalog](../182-layout-strategy-catalog/spec.md)
+- [Spec 228: organizer missing-app selection](../228-organizer-missing-app-selection/spec.md)
+- [Spec 235: widget strategy placement](../235-widget-strategy-placement/spec.md)
 - [Spec 194: plan preview seam](../194-plan-preview-seam/spec.md)
 - [Spec 195: confirmation change list](../195-organizer-confirmation-change-list/spec.md)
 - [ADR-0007: authoritative organization policy sources](../../docs/adr/0007-authoritative-organization-policy-sources.md)

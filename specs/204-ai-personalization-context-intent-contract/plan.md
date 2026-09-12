@@ -3,20 +3,24 @@
 > Issue: #204
 > Spec: [spec.md](./spec.md)
 > Status: draft
+> Baseline: `origin/main` = `f9afd8bfde121932c0c8ed965225d52a84d86ab4` (2026-09-13時点)。初版 (`6b6bf8dd` 基準、2026-09-10) からの再入場検証は「Current evidence」の再入場検証節を参照。
 
 ## Current evidence
 
-確認済みの現行状態 (2026-09-10, `origin/main` @ `6b6bf8dd9fa0c42399185dbb13c30192f1e15962`)。実装開始時に再検証する。
+確認済みの現行状態 (2026-09-13, `origin/main` @ `f9afd8bfde121932c0c8ed965225d52a84d86ab4`)。実装開始時に再検証する。
 
-- `lawnchair/src/app/lawnchair/organizer/planning/OrganizationInput.kt` — `OrganizationInput(snapshot, rules, taxonomy, signals, targets, runMode)`。`CapturedItem(id, profile, kind, target, placement, locked, availability, folderId, ...)`。`ItemId`/`ProfileId`/`CategoryId` 等は `planning/Identity.kt` のopaque value class。
-- `lawnchair/src/app/lawnchair/organizer/planning/OrganizationPlanner.kt` — 唯一の外部planning seam `plan(OrganizationInput): PlanningResult` (spec 182 AC-4)。
-- `lawnchair/src/app/lawnchair/organizer/planning/LayoutStrategyRegistry.kt` — #182内部strategy catalog。shared constraints/allocatorは `PlanningPlacement.kt` / `PlacementAllocator.kt`。
-- `lawnchair/src/app/lawnchair/organizer/integration/OrganizationInputComposer.kt` / `CompositionModels.kt` — `InputProvenance`/`PolicyInputIdentity` を所有。#182により `PolicySourceKind.LAYOUT_STRATEGY_SELECTION` が第5 policy inputとして追加済み (spec 182のselection snapshot族)。
-- `lawnchair/src/app/lawnchair/organizer/rules/` — `BuiltInOrganizerPolicyBundleSource.kt` (ADR-0007のpolicy authority)、`LayoutStrategySelectionStore.kt`、`CategoryOverrideStore.kt` (schema version + generation + digest のatomic store族の先例)。
-- `lawnchair/src/app/lawnchair/organizer/application/preview/` — spec 194 plan preview (`inspectPlan`)。spec 195 confirmation UIは `organizer/ui/`。
-- #203 (usage signals) は OPEN で、origin/main にsignal snapshot実装は存在しない (branch `issue-203-spec-plan` のdraft spec も baselineに含まれない)。よって `usageSignals` はoptional fieldとし、不在でも契約が成立するよう設計する。
+- `lawnchair/src/app/lawnchair/organizer/planning/OrganizationInput.kt` — `OrganizationInput(snapshot, rules, taxonomy, signals, targets, runMode)`。`RunMode` は `FullOrganization` / `IncrementalPlacement` / `ScopeComposedOrganization` (#228、`TargetSet.additions` が非空になり得る唯一のmode)。`CapturedItem` は `ItemKind` として `APPLICATION`/`DEEP_SHORTCUT`/`SHORTCUT_LEGACY`/`FOLDER`/`APPWIDGET`/`CUSTOM_APPWIDGET`/`APP_PAIR`/`Unknown` を持つ (#235でwidgetが第一級計画対象)。`LayoutSnapshot.reservedWorkspaceRegions` (`ReservedWorkspaceRegion`) はitem外のplatform占有領域constraint。`ItemId`/`ProfileId`/`CategoryId` 等は `planning/Identity.kt` のopaque value class。
+- `lawnchair/src/app/lawnchair/organizer/planning/OrganizationPlanner.kt` — 唯一の外部planning seam `plan(OrganizationInput): PlanningResult` (spec 182 AC-4)。前回baselineから未変更。
+- `lawnchair/src/app/lawnchair/organizer/planning/LayoutStrategyRegistry.kt` — #182内部strategy catalog。#235によりwidget placement role/stream/band (`PlanningPlacement.kt` / `PlacementAllocator.kt`、`PlacementCode.WIDGET_UNIT`) が追加済み。`PlanningResult` は `organizationStrategy: StrategyId` と #228 の `unplaced` を持つ。
+- `lawnchair/src/app/lawnchair/organizer/integration/OrganizationInputComposer.kt` / `CompositionModels.kt` — `InputProvenance`/`PolicyInputIdentity` を所有。`layoutStrategySelection` は第5 policy input (code comment明記)。`PolicySourceKind` は現時点で6値 (`ORGANIZER_POLICY_BUNDLE`, `CATEGORY_OVERRIDE_SNAPSHOT`, `LAYOUT_STRATEGY_SELECTION`, `PLATFORM_CLASSIFICATION_EVIDENCE`, `MATERIALIZED_CLASSIFICATION_SIGNALS`, `MATERIALIZED_FULL_TARGET_SET`)。#228の `StaleCandidateSelection` 等、composition failure型も拡張済み。
+- `lawnchair/src/app/lawnchair/organizer/rules/` — `BuiltInOrganizerPolicyBundleSource.kt` (ADR-0007のpolicy authority)、`LayoutStrategySelectionStore.kt`、`CategoryOverrideStore.kt` (schema version + generation + digest のatomic store族の先例)。ADR-0007へは #228 のscope-composed target identity拡張が追記済み (本契約と矛盾なし)。
+- `lawnchair/src/app/lawnchair/organizer/application/preview/` — spec 194 plan preview (`inspectPlan`)。spec 195 confirmation UIは `organizer/ui/`。#271 durable status / #288 diagnostics export filename は本契約と直交するadditive変更。
+- unit test置き場は `tests/unit/app/lawnchair/organizer/` (planning/integration/rules/ui 等)。既存guard: `planning/PurityGuardTest.kt`、property test基盤 `planning/PlannerGeneratedPropertyTest.kt`、widget系 `planning/WidgetPlacementStrategyTest.kt`、scope-composed系 `planning/ScopeComposedPlannerTest.kt` / `integration/ScopeComposedCompositionTest.kt`。実行commandはbuilding guideの `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`。
+- #203 (usage signals) は OPEN で、`PersonalizationSignalSnapshot` / usage signal実装は現mainに存在しない (`specs/203-*` も未取り込み)。よって `usageSignals` はoptional fieldとし、不在でも契約が成立するよう設計する。
 - #205/#206 (外部agent exchange / managed AI) は OPEN。consumer不在でも本契約 (codec + validator + adapter) は単体でtest可能な純粋moduleとして成立する。
-- 推測 (未確認): intent採用時の `InputProvenance` 第6 input追加が `CompositionModels.kt` のsealed構造へ与える影響の詳細。実装child issueで確認する。
+- 推測 (未確認): intent採用時の `InputProvenance` 第6 input追加が `CompositionModels.kt` のsealed構造 (`SourceUnavailable` 等の全網羅箇所) へ与える影響の詳細。実装child issueで確認する。
+
+**再入場検証 (2026-09-13)**: 初版baseline `6b6bf8dd9fa0c42399185dbb13c30192f1e15962` から現baseline `f9afd8bfde121932c0c8ed965225d52a84d86ab4` への差分を確認した。主な変更は #235 (widget strategy placement: `STABLE_PAGE_TIDY_V2`/`BOTTOM_FIRST_V2`、widget placement role/policy seam)、#228 (missing-app selection: `CandidateResolution.kt`/`CandidatePlanningIds.kt`/`MissingAppCandidateSource.kt`、`ScopeComposedOrganization`)、#271/#288 (durable status/diagnostics filename)。契約の核 (`OrganizationPlanner.plan` seam、`InputProvenance` 第5 input構造、preview path、ADR-0007 authority model) は不変であり、本planはspec側のkind投影・制約projectionの明確化と本節の再アンカーのみで現行に追従する。Issue/comments再取得では、snapshotコメント (2026-09-10) 以降の追記はない。
 
 ## Design
 
@@ -89,7 +93,7 @@ canonical inputs --(ContextExportBuilder, tier)--> PersonalizationContextExportV
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
 | AC-1 (FR-017) | requirements.md更新 (受入PR) | review |
-| AC-2 (versioned schema) | model contract test: schemaVersion固定、unknown version拒否 | unit test (`./gradlew test`) |
+| AC-2 (versioned schema) | model contract test: schemaVersion固定、unknown version拒否 | unit test (`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`) |
 | AC-3 (provider非依存) | 同一intentをtest doubleと将来providerが同じseamで取り込める契約test | unit test |
 | AC-4 (planner authority) | `FORBIDDEN_CONTENT` 検証test (座標指定/lock移動含むintentのreject) + purity guard拡張 | unit test |
 | AC-5 (fail-closed zero-write) | 各typed failureのtable-driven test。malformed/oversize/duplicate/unknown | unit test |
@@ -100,8 +104,9 @@ canonical inputs --(ContextExportBuilder, tier)--> PersonalizationContextExportV
 | AC-10 (test計画) | 本表 | 本plan |
 
 追加観点:
-- **Property test**: validatorは全fail classでtotal functionである (入力任意byte列に対しrejectまたはvalidのいずれか、例外・hangなし)。export builderは同一inputs→同一digest。
-- **Purity test**: personalization packageのAndroid依存・I/O依存ゼロ (既存purity guard族に追加)。
+- **Property test**: validatorは全fail classでtotal functionである (入力任意byte列に対しrejectまたはvalidのいずれか、例外・hangなし)。export builderは同一inputs→同一digest。既存のproperty基盤 (`tests/unit/app/lawnchair/organizer/planning/PlannerGeneratedPropertyTest.kt` 族) に整合させる。
+- **Purity test**: personalization packageのAndroid依存・I/O依存ゼロ (`tests/unit/app/lawnchair/organizer/planning/PurityGuardTest.kt` 族に追加)。
+- **Widget projection test**: widget itemを含むexport/intentでspan不変が保たれること (`FORBIDDEN_CONTENT` のspan指定reject、adapter投影後も `PlacementCode.WIDGET_UNIT` 系のstrategy宣言semanticsを弱めない) を #235 の `WidgetPlacementStrategyTest` と同水準のfixtureで検証する。
 - **高リスク分類**: 本契約自体はpure追加だが、provenance/planner統合PRは `risk: layout-data` 払いとし、high-risk gate (CI `final-status` + `docs/assessment/pr-<n>-*.md`) を満たす。
 
 ## Documentation updates
@@ -130,6 +135,7 @@ canonical inputs --(ContextExportBuilder, tier)--> PersonalizationContextExportV
 ## Risks
 
 - intent→planner投影が既存determinism/idempotence (INV-7/8) を壊す恐れ → child Bで既存harness/property suiteの無修正通過を必須化し、intentあり/なしのcross-run testを追加する。
+- widget/span投影の漏れ: intentのpageAffinity等が #235 のwidget stream/band・span不変semanticsを迂回する形で実装される恐れ → `FORBIDDEN_CONTENT` のspan指定rejectと投影後planのwidget意味論testで固定する (Verification参照)。
 - privacy tier判定の漏れ (将来field追加時に意図せず外部送信) → tier別field集合をclosed classで表現し、新field追加時にtier明示を強制するtype設計。
 - export/intent中間データの意図しない永続化 → process-local制限をpurity/persistence testで固定。
 
