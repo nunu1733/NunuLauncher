@@ -1,6 +1,6 @@
 ---
 issue: "#228"
-status: accepted
+status: implemented
 requirements:
   - FR-002
   - FR-006
@@ -9,12 +9,12 @@ requirements:
   - NFR-009
 risk:
   - layout-data
-updated: 2026-09-11
+updated: 2026-09-12
 ---
 
 # ホーム未配置アプリを選択してOrganizerの対象へ追加できる
 
-> Status: **accepted** (owner承認 2026-09-11。経緯はChange history末尾)。Issue #228 の依存Issue (#182, #194, #195, #208) はいずれもimplementedであり、本specはそれらの契約を変更せず消費する。#203 (usage signal) には依存しない。
+> Status: **implemented** (PR #289 merge commit `85047244680bf476dd585b7217113d587c9059c9`、2026-09-12)。受入経緯はChange history末尾。依存Issue (#182, #194, #195, #208) はいずれもimplementedであり、本specはそれらの契約を変更せず消費する。#203 (usage signal) には依存しない。残follow-upはissue #293 (ja解決test拡張、spec 13 `PreWriteRejection`追記)、テストflake追跡はissue #292。
 
 ## Problem
 
@@ -282,6 +282,7 @@ Then 当該appは候補一覧に現れない。
 - 2026-09-11: ownerレビュー条件解消 (Request changes → 修正)。(1) §5を「`AddChange` を配置先に関係なく候補ごとに1行生成」へ変更し、生成folder内候補がmember listだけで隠れないことをAC-5へ明記。Add count = `AddChange` 行数へ再定義 (top-level限定数えの廃止)。`NewFolderChange` はfolder構造表現のまま構造変更なし。(2) 候補planning ID (`CandidateItem.id`) の契約を§4へ追加し、AC-15を新設 (安定identity由来・決定的・namespace分離・label非依存)。(3) §6のcanonical構築解決をapplication所有の `CandidateApplicationResolver` port経由へ明示 (現行materializerはfolder title resolverのみ受取)。 (4) D-1 = unchecked-by-default / D-2 = 新規scope-composed run mode をowner決定 (2026-09-11コメント) として§3/§4/Decisionsへ記録し、unresolved decisions を解消。
 - 2026-09-11: **owner受入により status を accepted へ移行**。レビュー条件解消後の改訂版 (commit `3d028dda68`) に対するowner指示 (2026-09-11セッション、Phase 1指示) による。本specに基づく実装を開始可能になる。
 - 2026-09-11: accepted移行後のreview (code-reviewer-1, Approve @ `562fc327cd`) の非blocking指摘 (P3×5) を反映。シナリオ・Non-goalsの表示順文言をD-3 (実装PR確定) と整合させ、§1の参照を「(§6)」へ修正、依存関係表の#208行にvariant集合の意図的拡張を明記。
+- 2026-09-12: **status を implemented へ移行**。実装PR [#289](https://github.com/nunu1733/NunuLauncher/pull/289) merge (merge commit `85047244680bf476dd585b7217113d587c9059c9`)。実装は3回のreview round (code-reviewer-1 Request changes → 修正、code-reviewer-2 Approve、owner review 2回 Request changes → 修正) と独立監査 3版 ([docs/assessment/pr-289-organizer-missing-app-selection.md](../../docs/assessment/pr-289-organizer-missing-app-selection.md) — 最終版はhead `9cd3522883` + [run 34665957437](https://github.com/nunu1733/NunuLauncher/actions/runs/34665957437) 対応) を経て受理。AC-1〜AC-15の充足は監査記録と [Issue close記録](https://github.com/nunu1733/NunuLauncher/issues/228#issuecomment-5643169817) を正本とする。owner指摘に伴う契約拡張: (1) strategy意味論を候補tailへ適用 (`createsFolders`/`pageScope`消費、`UnplacedReason.STRATEGY_SCOPE_FULL` によるoverflow契約の実装)、(2) `PreWriteRejection.CANDIDATE_UNAVAILABLE` 追加 (spec 13閉集合への記載はissue #293)、(3) `PlanPreviewResult.CandidateResolutionFailed` 追加。残follow-upはissue #293、テストflake追跡はissue #292。
 
 ## References
 
