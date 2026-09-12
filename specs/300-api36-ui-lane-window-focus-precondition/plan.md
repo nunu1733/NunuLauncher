@@ -56,14 +56,17 @@
   `screen_off_timeout` は boot property で無限大（:233）。
   failure 時の window／keyguard 状態の証拠は CI 上に残らない
   （artifact は test report のみ）。
-- **lane topology の実測**（2026-09-12 再 review 指摘 4 の確認）:
-  - issue53 job: 1 クラス（`OnboardingOrganizationProposalInstrumentationTest`、
-    ci.yml :550）
-  - issue52 job: **4 クラス**を 1 Gradle invocation で実行
+- **lane topology の実測**（現行 → 修正後を分けて記録。review 指摘の確認）:
+  - issue53 job（現行）: 1 クラス（`OnboardingOrganizationProposalInstrumentationTest`、
+    ci.yml :550）。**修正後**: 状態 test クラス追加により 2 クラスの filter になる
+  - issue52 job（現行・修正後とも不変）: **4 クラス**を 1 Gradle invocation で実行
     （`ManualOrganizationProductionE2EInstrumentationTest`、
     `ManualOrganizationPreferencesInstrumentationTest`、
     `StrategyPickerInstrumentationTest`、`MissingAppSelectionInstrumentationTest`、
     ci.yml :394）
+  - gate 対象の実入力注入（`uiAutomation.injectInputEvent` / `sendKeyDownUpSync`）は
+    issue52 job 内では `ManualOrganizationPreferencesInstrumentationTest` のみが使用し、
+    他 3 クラスは使用していない（grep 実測）。burst の実測もこのクラスに限る
   - `tests/organizer-instrumentation` は androidTest 専用 source set であり
     （自前 build.gradle 無し、lawnchair module の androidTest として compile）、
     helper の JVM unit test は存在しない。決定的検証は instrumentation test で行う。
@@ -139,6 +142,12 @@
     に依存せず検証できる。
   - 状態 test クラスを issue53 lane の class filter に追加する（ci.yml :550 への
     1 行追加。lane 構成・job 分離・API 構成は不変）。
+  - **保証範囲と検証の対応**: health state の収束保証は gated test クラス（helper を
+    配線した 2 クラス）に限る。runner 引数 injection による決定的配線検証も、filter
+    全体ではなく gated クラスを `-e class` で明示指定した別 invocation で行う
+    （修正後の issue53 filter は状態 test クラスを含む 2 クラスになるため、全体指定
+    では保証範囲と一致しない）。同一 invocation 内の gated でないクラスは health
+    state を参照せず通常どおり実行される（review 3 指摘 1・2）。
 - いずれも実行を 1 箇所に集めた具象関数・具象クラスであり、仮想的な interface・
   adapter は追加しない（AGENTS 規約: 必要になるまで実体を増やさない。純粋 state
   machine と分類関数は、決定的検証が reviewer により必須化された時点で必要になった
@@ -178,10 +187,13 @@ composeRule.setContent → awaitPreview
 
 決定的検証（CI 常設 + 計画実行）:
 InjectedInputEnvironmentStateInstrumentationTest        // state machine + 分類
-  → issue53 lane filter で常設実行                                      // NEW
-`am instrument -e nunuInjectEnvironmentHealthFailure <label> ...`（issue53 /
-  issue52 の本番 filter を 1 invocation ずつ）
-  → 全テストが待機なしで即時失敗し、同一証拠を参照することを実配線で検証 // NEW
+  → issue53 lane filter で常設実行（自身の fresh instance を駆動）      // NEW
+`am instrument -e nunuInjectEnvironmentHealthFailure <label> -e class <gated クラス> ...`
+  （gated クラスを明示指定した別 invocation。issue53 は
+  OnboardingOrganizationProposalInstrumentationTest、issue52 は
+  ManualOrganizationPreferencesInstrumentationTest。lane 間で混ぜない）
+  → gated クラスの全テストが待機なしで即時失敗し、同一証拠を参照することを
+    実配線で検証                                                        // NEW
 ```
 
 - `describeInputEnvironment`（既存、issue53 側）は `describeDeviceState()` の出力を
@@ -209,6 +221,12 @@ InjectedInputEnvironmentStateInstrumentationTest        // state machine + 分�
   gate の自動修復対象であり、正常実装なら gate failure に届かず green になる。state
   machine の決定的検証が不可能（再 review 指摘 3）。runner 引数 injection +
   状態 test クラスの seam を導入し、実環境試行は #304 証拠へ分離した。
+- **4 クラス lane 全体を共通入口（runner listener / test rule）で収束対象にする**:
+  helper を配線していないクラスまで強制的に environment failure に変える設計は、
+  本 Issue の実測（実入力注入経路を持つのは gated 2 クラス、burst もその 2 クラスに
+  限る）を超える保証範囲であり、配線漏れの診断も難しくなる。保証範囲を gated クラスに
+  限定し、他クラスの配線が必要になった時点（burst の実測等）で再評価する
+  （review 3 指摘 1 の方向性）。
 - **JUnit runner / @ClassRule による run abort**: テスト毎の失敗所有が不明瞭になり、
   report 上の失敗数と原因の対応が崩れる。health state は「各テストが即座に・同じ証拠を
   参照して失敗する」形で run を収束させる。
@@ -260,11 +278,11 @@ production source、`src/com/android/launcher3/**` は変更しない。workflow
 | Acceptance criterion | Requirement | Automated/manual evidence | Command or environment |
 |---|---|---|---|
 | AC-1 注入は focus 観測後のみ実行される | TS-AC-01, TS-AC-02 | 実装後、通常 lane 実行で全 green（gate が通常 path を壊さないこと）＋ gate 配線の code review | api36 emulator（google_apis x86_64、`docs/assessment/evidence/issue-123-ui-mapping.md` の `emulator -avd ... -no-window` 手順と同一構成）+ `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest` |
-| AC-2 入口確認と run 収束 | TS-AC-03, TS-AC-05 | 状態 test クラス green ＋ runner 引数 injection 付きの **本番 lane topology ごとの** 実行 log: issue53 filter（1 クラス）、issue52 filter（4 クラス）を別 invocation で実行し、いずれも後続テストが待機・修復なしで即座に失敗し同一証拠を参照すること。issue52/53 のクラスを同一 process に混ぜない | `adb shell am instrument -w -e nunuInjectEnvironmentHealthFailure review -e class <各 lane の本番 filter> app.lawnchair.debug.test/androidx.test.runner.AndroidJUnitRunner`（実行は `connectedLawnWithQuickstepGithubDebugAndroidTest` の class filter でも代替可） |
+| AC-2 入口確認と run 収束 | TS-AC-03, TS-AC-05 | 状態 test クラス green ＋ runner 引数 injection と **gated クラス明示指定**（`-e class`）による別 invocation 実行 log: issue53（`OnboardingOrganizationProposalInstrumentationTest`）と issue52（`ManualOrganizationPreferencesInstrumentationTest`）を別々に実行し、いずれも gated クラスの後続テストが待機・修復なしで即座に失敗し同一証拠を参照すること。lane 間で混ぜない | `adb shell am instrument -w -e nunuInjectEnvironmentHealthFailure review -e class <gated クラス> app.lawnchair.debug.test/androidx.test.runner.AndroidJUnitRunner`（`connectedLawnWithQuickstepGithubDebugAndroidTest` の class filter でも代替可） |
 | AC-3 markUnhealthy の分類 | TS-AC-04 | 状態 test クラスの分類ケース（環境正常 → local / node-not-found failure、異常観測 → environment failure）green ＋ 強制状態実行で得られる分類メッセージの実物（取得できた場合） | 状態 test クラス（issue53 lane / ローカル） |
 | AC-4 決定的検証 seam | TS-AC-05 | 状態 test クラスの CI 実行結果（issue53 lane filter 追加後）＋ injection 付き lane 実行 log。強制状態試行の記録（成否・状態・CI シグネチャ一致度）を plan.md へ追記し #304 から参照可能にする | GitHub Actions `organizer-instrumentation-issue53-tests` + ローカル |
 | AC-5 issue52 の gate と失敗時診断 | TS-AC-06 | issue52 filter（本番 4 クラス）のローカル実行 green + 強制状態での失敗メッセージ診断内容確認 | 同上 + issue52 の本番 class filter |
-| AC-6 連続 green | TS-AC-07 | PR CI で issue53・issue52 両 lane が rerun なし連続 green（#292 AC-5 と同基準: 同一 job の連続 attempt を含む）。run link を PR に記録 | GitHub Actions `organizer-instrumentation-issue53-tests` / `organizer-instrumentation-issue52-tests` |
+| AC-6 連続 green | TS-AC-07 | 連続する 3 つの異なる workflow run で issue53・issue52 両 lane が `run_attempt = 1` のまま green。rerun で green にした run はカウントしない。run link と head SHA を PR に記録 | GitHub Actions `organizer-instrumentation-issue53-tests` / `organizer-instrumentation-issue52-tests` |
 | AC-7 変更範囲と整形 | — | `git diff --stat` が `tests/organizer-instrumentation` と ci.yml の issue53 class filter 1 行に限られること、`./gradlew spotlessCheck` green | JDK 21 / Android SDK 36.1 |
 
 含めるべき観点のうち、unit/contract/property/DB-integration は本変更の対象外
@@ -288,6 +306,10 @@ production source、`src/com/android/launcher3/**` は変更しない。workflow
 - 分類の再観測が「異常の見逃し」側に倒す設計であること（環境異常でも観測が取れない
   場合は local failure になる）を仕様に明示する。poisoning より見逃しを優先するのは、
   merge gate の診断能力（製品回帰と環境 failure の分離）を保つためである。
+- issue52 invocation 内の gated でない 3 クラスは、health state が unhealthy でも
+  通常どおり実行される（収束保証の対象外）。これは仕様であり、環境破損下でこれらの
+  クラスが時間を要する可能性は残る。実入力注入経路と burst の実測がある gated クラス
+  のみを対象とする本 Issue の範囲決定（review 3 指摘 1）に基づく。
 - gate の修復 shell が keyguard 無し環境で冪等であること（`wm dismiss-keyguard` は
   no-op）を通常 path 実行（AC-1）で確認する。
 
