@@ -3,8 +3,8 @@
 Status: `implemented` (fix + regression evidence on emulator)
 Date: 2026-09-13
 Issue: https://github.com/nunu1733/NunuLauncher/issues/287
-Spec: [specs/287-grid-change-unknown-lock-recovery/spec.md](../specs/287-grid-change-unknown-lock-recovery/spec.md) (accepted)
-Plan: [specs/287-grid-change-unknown-lock-recovery/plan.md](../specs/287-grid-change-unknown-lock-recovery/plan.md) (rev 3)
+Spec: [specs/287-grid-change-unknown-lock-recovery/spec.md](../../specs/287-grid-change-unknown-lock-recovery/spec.md) (accepted)
+Plan: [specs/287-grid-change-unknown-lock-recovery/plan.md](../../specs/287-grid-change-unknown-lock-recovery/plan.md) (rev 3)
 Related: #172 (diagnostics), #38 (lock authoring/review), #83 (input sources), #59 (migration failure), #298 / #299 (separate Nova-restore session defects)
 
 ## Root cause
