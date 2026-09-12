@@ -136,6 +136,24 @@ class LockAuthoringModuleProtocolTest {
     }
 
     @Test
+    fun `review of a capacity-exceeding folder member commits a single-column plan`() {
+        // Issue #287: a persisted folder member beyond the one-page capacity
+        // must flow through the same reviewed single-column write path.
+        val child = LockFixtures.folderChild("211", parent = "201", rank = 40, lockState = OrganizerLockState.UNKNOWN)
+        val parent = LockFixtures.folder("201", children = listOf(child), lockState = OrganizerLockState.UNKNOWN)
+        val capture = FakeCapture(capture(state(listOf(child, parent))))
+        val writer = RecordingWriter()
+        val result = module(capture, writer).setLock(
+            LockStateChangeRequest(ItemId("211"), LockTargetState.LOCKED, intent),
+        )
+        assertTrue(result is LockChangeResult.Changed)
+        val plan = writer.plans.single()
+        assertEquals(1, plan.writes.size)
+        assertEquals(LockTargetState.LOCKED, plan.writes.single().newState)
+        assertEquals(child, plan.writes.single().expected)
+    }
+
+    @Test
     fun `explain previews state and notes without writing`() {
         val child = LockFixtures.folderChild("211", parent = "201", rank = 0)
         val parent = LockFixtures.folder(
