@@ -67,14 +67,23 @@
   - gate 対象の実入力注入（`uiAutomation.injectInputEvent` / `sendKeyDownUpSync`）は
     issue52 job 内では `ManualOrganizationPreferencesInstrumentationTest` のみが使用し、
     他 3 クラスは使用していない（grep 実測）。burst の実測もこのクラスに限る
-  - **gate を通る test の実数**（保証単位がクラスではなく gate を通る実行である根拠。
-    review 指摘の確認）:
-    - issue53: `OnboardingOrganizationProposalInstrumentationTest` は 20 test のうち
-      9 が `TouchActivationGate` 経路を使用し、11 は使用しない（grep 実測）
-    - issue52: `ManualOrganizationPreferencesInstrumentationTest` は 40 test のうち、
-      実鍵注入 gate（`pressDownUntilFocused` / `KEYCODE_ENTER`）を通るのは
-      `changeListTraversalReachesExpandAndReviewActions` の 1 test のみである
-      （`sendKeyDownUpSync` の使用箇所は同 test と helper のみ。grep 実測）
+  - **gate を通る test の実数（call path ベース）**: gated execution の集合は
+    `TouchActivationGate` 使用数ではなく、**実装後の配線で environment helper
+    （`ensureInteractiveUnlocked` / `ensureWindowFocused`）へ到達する全 call path** から
+    算出する（review 指摘による修正。初版の `TouchActivationGate` 利用数 9/20 は
+    配線範囲より狭い誤集計であった）。現行 head の実測:
+    - issue53: 20 test 中 **14** が helper へ到達する。
+      `TouchActivationGate` 経由 9 ＋ direct helper 呼び出し 5
+      （`realLauncherFloatingHostKeepsAllActionsWithinViewportAtTwoHundredPercentFontScale`
+      は `awaitResumedLauncher` × 2 ＋ `sendKey`、`recreatingLauncherWhileProposalIsShownLeavesNoDuplicateOrOrganizerRun`
+      は `awaitResumedLauncher` ＋ `startLauncher`、`homeScreenSettingsShowsTheOrganizerEntryInGeneralAboveTheFold`
+      は accessibility 走査経路、`productionOwnerDefersBindWhilePausedThenShowsAndRoutesReviewAfterResume` /
+      `productionProvenanceBoundaryFailsClosedOutsideFreshInstall` は launcher 起動経路）。
+      非 gate は 6 test（pure JVM 相当・content 表示・outcome 記録系）
+    - issue52: 40 test 中 **1**（`changeListTraversalReachesExpandAndReviewActions`。
+      `pressDownUntilFocused` / `KEYCODE_ENTER` 経路）
+    - 確定セットは実装時に配線から再確認し、PR へ記録する。数値は配線変更に伴い
+      変わり得るため、正本は call path の定義であり、実測値はその時点の snapshot である
   - `tests/organizer-instrumentation` は androidTest 専用 source set であり
     （自前 build.gradle 無し、lawnchair module の androidTest として compile）、
     helper の JVM unit test は存在しない。決定的検証は instrumentation test で行う。
@@ -154,13 +163,19 @@
   - 状態 test クラスを issue53 lane の class filter に追加する（ci.yml :550 への
     1 行追加。lane 構成・job 分離・API 構成は不変）。
   - **保証範囲と検証の対応**: health state の収束保証の単位は
-    **gate を通る実行（gated execution）**であり、gated class ではない。issue53 の
-    20 test 中 9、issue52 の 40 test 中 1（`changeListTraversalReachesExpandAndReviewActions`）
-    だけが gate を通るため、helper を呼ばないテストは health state を参照せず通常どおり
-    実行される。runner 引数 injection による決定的配線検証も、filter やクラス全体では
-    なく gate 利用 test を `-e class Class#method` で明示指定して行う。同一 invocation
-    内の gate を通らない実行（同クラス内・他クラスを含む）は保証対象外である
-    （review 指摘: 保証単位を「クラス」から「gate を実際に通る経路」へ正確に落とす）。
+    **gate を通る実行（gated execution）**であり、gated class ではない。集合は
+    実装後の配線で helper へ到達する全 call path から算出し、現行 head 実測は
+    issue53 14/20、issue52 1/40 である（Current evidence 参照）。helper へ到達しない
+    実行は health state を参照せず通常どおり実行される。runner 引数 injection による
+    決定的配線検証は gate 利用 test を `-e class Class#method` で明示指定して行う:
+    - **issue53 は同一 invocation に gate 利用 test を 2 つ以上**（例:
+      `realTouchStreamActivatesLaterWithASingleTap` と
+      `realTouchStreamActivatesSkipWithASingleTap`）**と gate を通らない 1 test** を
+      指定し、TS-AC-03 の本質である cross-test convergence（最初の unhealthy 証拠が
+      次の gated execution でも再利用されること。process-static wiring の実経路確認）
+      と範囲境界（非 gate test は通常実行）を検証する
+    - issue52 は gate 利用 test が 1 つであるため cross-test convergence の対象外とし、
+      入口拒否のみを検証する
 - いずれも実行を 1 箇所に集めた具象関数・具象クラスであり、仮想的な interface・
   adapter は追加しない（AGENTS 規約: 必要になるまで実体を増やさない。純粋 state
   machine と分類関数は、決定的検証が reviewer により必須化された時点で必要になった
@@ -202,11 +217,12 @@ composeRule.setContent → awaitPreview
 InjectedInputEnvironmentStateInstrumentationTest        // state machine + 分類 + 診断メッセージ
   → issue53 lane filter で常設実行（自身の fresh instance を駆動）      // NEW
 `am instrument -e nunuInjectEnvironmentHealthFailure <label> \
-  -e class <gate 利用 test の Class#method> ...`
-  （gate 利用 test を明示指定した別 invocation。issue53 は gate 利用 test、
-  issue52 は changeListTraversalReachesExpandAndReviewActions と
-  gate を通らない sibling test。lane 間で混ぜない）
-  → gate 利用 test が待機なしで即時失敗し同一証拠を参照すること、
+  -e class <gate 利用 test 2 つ以上 + 非 gate test の Class#method> ...`
+  （issue53: gate 利用 test 2 つ以上 + gate を通らない 1 test を同一 invocation で
+  実行し、cross-test convergence と範囲境界を検証。issue52:
+  changeListTraversalReachesExpandAndReviewActions のみ指定し入口拒否を検証。
+  lane 間で混ぜない）
+  → gate 利用 test が待機なしで即時失敗し、2 つ目以降が同一証拠を参照すること、
     gate を通らない test が通常実行されることを実配線で検証             // NEW
 ```
 
@@ -296,7 +312,7 @@ production source、`src/com/android/launcher3/**` は変更しない。workflow
 | Acceptance criterion | Requirement | Automated/manual evidence | Command or environment |
 |---|---|---|---|
 | AC-1 注入は focus 観測後のみ実行される | TS-AC-01, TS-AC-02 | 実装後、通常 lane 実行で全 green（gate が通常 path を壊さないこと）＋ gate 配線の code review | api36 emulator（google_apis x86_64、`docs/assessment/evidence/issue-123-ui-mapping.md` の `emulator -avd ... -no-window` 手順と同一構成）+ `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest` |
-| AC-2 入口確認と run 収束 | TS-AC-03, TS-AC-05 | 状態 test クラス green ＋ runner 引数 injection と **gate 利用 test 明示指定**（`-e class Class#method`）による別 invocation 実行 log: issue53（gate 利用 test）と issue52（`changeListTraversalReachesExpandAndReviewActions` ＋ gate を通らない sibling）を別々に実行し、gate 利用 test が待機・修復なしで即座に失敗し同一証拠を参照すること、gate を通らない test が通常実行されること。lane 間で混ぜない | `adb shell am instrument -w -e nunuInjectEnvironmentHealthFailure review -e class <Class#method> app.lawnchair.debug.test/androidx.test.runner.AndroidJUnitRunner`（`connectedLawnWithQuickstepGithubDebugAndroidTest` の runner 引数でも代替可） |
+| AC-2 入口確認と run 収束 | TS-AC-03, TS-AC-05 | 状態 test クラス green ＋ runner 引数 injection と **gate 利用 test 明示指定**（`-e class Class#method`）による別 invocation 実行 log。**issue53: 同一 invocation に gate 利用 test 2 つ以上（例: `realTouchStreamActivatesLaterWithASingleTap`、`realTouchStreamActivatesSkipWithASingleTap`）＋ gate を通らない 1 test** を指定し、gate 利用 test が待機・修復なしで即座に失敗すること、2 つ目以降が同一証拠を参照すること（cross-test convergence）、非 gate test が通常実行されること。**issue52: `changeListTraversalReachesExpandAndReviewActions` の入口拒否**。lane 間で混ぜない | `adb shell am instrument -w -e nunuInjectEnvironmentHealthFailure review -e class <Class#method の連結> app.lawnchair.debug.test/androidx.test.runner.AndroidJUnitRunner`（`connectedLawnWithQuickstepGithubDebugAndroidTest` の runner 引数でも代替可） |
 | AC-3 markUnhealthy の分類 | TS-AC-04 | 状態 test クラスの分類ケース（環境正常 → local / node-not-found failure、異常観測 → environment failure）green ＋ 強制状態実行で得られる分類メッセージの実物（取得できた場合） | 状態 test クラス（issue53 lane / ローカル） |
 | AC-4 決定的検証 seam | TS-AC-05 | 状態 test クラスの CI 実行結果（issue53 lane filter 追加後）＋ injection 付き lane 実行 log。強制状態試行の記録（成否・状態・CI シグネチャ一致度）を plan.md へ追記し #304 から参照可能にする | GitHub Actions `organizer-instrumentation-issue53-tests` + ローカル |
 | AC-5 issue52 の gate と失敗時診断 | TS-AC-06 | 診断メッセージ生成（固定 snapshot → failure メッセージ）の決定的 test green ＋ issue52 注入経路への配線 code review。強制状態実行は #304 向け optional evidence（取得できた場合のみ plan.md に記録） | 状態 test クラス（issue53 lane / ローカル） |
@@ -324,11 +340,11 @@ production source、`src/com/android/launcher3/**` は変更しない。workflow
 - 分類の再観測が「異常の見逃し」側に倒す設計であること（環境異常でも観測が取れない
   場合は local failure になる）を仕様に明示する。poisoning より見逃しを優先するのは、
   merge gate の診断能力（製品回帰と環境 failure の分離）を保つためである。
-- gate を通らない実行（issue52 の 40 test 中 39、issue53 の 20 test 中 11、issue52
-  invocation 内の他 3 クラス）は、health state が unhealthy でも通常どおり実行される
-  （収束保証の対象外）。これは仕様であり、環境破損下でこれらのテストが時間を要したり
-  個別に失敗したりする可能性は残る。実入力注入経路と burst の実測がある gate 利用経路
-  のみを対象とする本 Issue の範囲決定に基づく。
+- gate を通らない実行（現行 head 実測で issue53 の 20 test 中 6、issue52 の 40 test 中
+  39、issue52 invocation 内の他 3 クラス）は、health state が unhealthy でも通常どおり
+  実行される（収束保証の対象外）。これは仕様であり、環境破損下でこれらのテストが時間を
+  要したり個別に失敗したりする可能性は残る。実入力注入経路と burst の実測がある gate
+  利用経路のみを対象とする本 Issue の範囲決定に基づく。
 - gate の修復 shell が keyguard 無し環境で冪等であること（`wm dismiss-keyguard` は
   no-op）を通常 path 実行（AC-1）で確認する。
 

@@ -100,12 +100,15 @@ Spec review で確定した設計上の制約（2026-09-12 の 2 回の review�
   「本番 4 クラス filter 全体が即時失敗する」という主張は成立しない。収束保証の対象を
   gated クラスに限定し、決定的配線検証も gated クラスの明示指定で行う。
 - **保証単位は gated class ではなく gate を通る実行（gated execution）である**
-  （review 4 指摘 1）。実測では、issue53 の 20 test 中 9 が `TouchActivationGate` 経路を
-  使い 11 は使わない。issue52 の 40 test 中、実鍵注入 gate を通るのは
-  `changeListTraversalReachesExpandAndReviewActions` の 1 test のみである。helper を
-  呼ばないテストは health state を参照しないため、クラス単位の「後続テストが即時失敗」
-  という主張は成立しない。共通入口（runner listener / test rule / `@Before`）は
-  追加しない。
+  （review 4 指摘 1、review 5 指摘 1）。gated execution の集合は
+  `TouchActivationGate` 使用数ではなく、**実装後の配線で environment helper
+  （`ensureInteractiveUnlocked` / `ensureWindowFocused`）へ到達する全 call path** から
+  算出する。現行 head の実測では、issue53 は 20 test 中 14 が helper へ到達する
+  （`TouchActivationGate` 経由 9 ＋ `awaitResumedLauncher` / `sendKey` /
+  accessibility 走査 / PreferenceActivity 遷移の direct 呼び出し 5。
+  `realLauncherFloatingHostKeepsAllActionsWithinViewportAtTwoHundredPercentFontScale` の
+  ように gate を使わず `awaitResumedLauncher` と `sendKey` を使う test も gated である）。
+  issue52 は 40 test 中 1 のみである。確定セットは実装時に配線から再確認し PR へ記録する。
 - **topology は「現行」と「修正後」を分けて記述する**（review 3 指摘 2）。状態 test
   クラスの issue53 lane 追加により、修正後の issue53 filter は 2 クラスになる。
   配線検証は修正後 filter 全体ではなく、gated クラスを明示指定して行う。
@@ -120,9 +123,10 @@ api36 UI lane では、touch/keyboard 注入は対象 window が window focus �
 ことを観測した後にのみ行われる。すべての environment 操作（修復・focus 待ち）は入口で
 run-level health state を確認し、unhealthy なら何も修復・待機せず即座に、最初の
 failure が採取した environment 証拠を参照して失敗する。この保証の単位は
-**gate を通る実行（gated execution）**であり、同一クラス内の gate を通らないテスト
-（issue53: 20 test 中 11、issue52: 40 test 中 39。実測）や同一 invocation 内の他クラスは
-health state を参照しないため通常どおり実行される。証拠採取は「environment 前提の
+**gate を通る実行（gated execution）**であり、helper へ到達しない実行（現行 head 実測で
+issue53 の 20 test 中 6、issue52 の 40 test 中 39、および同一 invocation 内の gated で
+ない他クラス）は health state を参照しないため通常どおり実行される。証拠採取は
+「environment 前提の
 崩壊を示す観測」がある場合に限られ、環境が正常な失敗（launcher lifecycle 回帰、
 UI 回帰）は従来どおり個別の failure として報告される。per-boot 環境問題は
 「繰り返し待機する失敗連鎖」ではなく「1 つの証拠採取＋即時失敗の連鎖」として現れ、
@@ -264,10 +268,11 @@ When 同 package の状態 test クラスが state machine を直接駆動する
 Then 最初の `markUnhealthy` だけが証拠を保持し、以後の入口確認が待機なしで同じ証拠を
 参照する error を投げることが決定的に検証される
 And runner 引数と gate 利用 test の明示指定（`-e class Class#method`）による別 invocation
-実行では、実配線（helper 入口確認 → gate 利用 test の即時失敗、gate を通らない
-test の通常実行）が環境に依存せず検証される。issue53 は gate 利用 test を指定し、
-issue52 は `changeListTraversalReachesExpandAndReviewActions` と gate を通らない
-sibling test を指定する
+実行では、実配線が環境に依存せず検証される。**issue53 は同一 invocation で 2 つ以上の
+gate 利用 test と gate を通らない 1 test を指定し**、最初の unhealthy 証拠が次の gated
+execution でも再利用されること（cross-test convergence）と、gate を通らない test が
+通常実行されることを確認する。issue52 は gate 利用 test が 1 つであるため
+cross-test convergence の対象外とし、入口拒否のみを検証する
 And 状態 test クラスは自身の fresh な state instance を駆動するため、injection hook や
 他テストの health 状態に依存しない
 And 実環境の強制状態（KEYCODE_SLEEP 等）による再現試行は #304 用の証拠として
@@ -329,10 +334,11 @@ gate によって frontmost window 前提が確認され、timeout 時の分類�
       （wakeup / keyguard dismiss）を試みてから待つ（TS-AC-01、TS-AC-02）。
 - [ ] AC-2: health 確認がすべての environment 操作（修復・focus 待ち）の入口で行われ、
       unhealthy な invocation 内の gate を通る後続実行は修復・待機を一切実行せず最初の
-      証拠を参照して即座に失敗する。保証単位は gate を通る実行であり、helper を呼ばない
-      テストは対象外。決定的配線検証は gate 利用 test の明示指定
-      （issue53: gate 利用 test、issue52: `changeListTraversalReachesExpandAndReviewActions`
-      ＋ gate を通らない sibling）で行う（TS-AC-03、TS-AC-05）。
+      証拠を参照して即座に失敗する。保証単位は gate を通る実行であり、helper へ到達
+      しないテストは対象外。決定的配線検証は、issue53 で同一 invocation に 2 つ以上の
+      gate 利用 test ＋ gate を通らない 1 test を指定して cross-test convergence と
+      範囲境界を検証し、issue52 は gate 利用 test 1 つの入口拒否を検証する
+      （TS-AC-03、TS-AC-05）。
 - [ ] AC-3: `markUnhealthy` の分類が検証される。環境正常下での accessibility
       node-not-found と `awaitResumedLauncher` timeout は health state を変化させず、
       環境異常の観測が取れた timeout のみが environment failure になる
@@ -355,7 +361,7 @@ gate によって frontmost window 前提が確認され、timeout 時の分類�
 | AC | Evidence |
 |---|---|
 | AC-1 | 修正 head のローカル api36 lane 実行（通常状態）の結果と、注入呼び出し箇所の gate 配線 review |
-| AC-2 | 状態 test クラスの実行結果 + runner 引数 injection と gate 利用 test 明示指定（`-e class Class#method`）による別 invocation 実行 log（issue53: gate 利用 test、issue52: `changeListTraversalReachesExpandAndReviewActions`＋gate を通らない sibling。gate 利用 test が待機なしで失敗し、非 gate テストが通常実行される証跡）。plan.md Verification に記録 |
+| AC-2 | 状態 test クラスの実行結果 + runner 引数 injection と gate 利用 test 明示指定（`-e class Class#method`）による別 invocation 実行 log。**issue53: 同一 invocation に gate 利用 test 2 つ以上 ＋ gate を通らない 1 test** を指定し、gate 利用 test が待機なしで失敗すること・2 つ目以降が同一証拠を参照すること・非 gate test が通常実行されることの証跡。issue52: gate 利用 test 1 つの入口拒否の証跡。plan.md Verification に記録 |
 | AC-3 | 状態 test クラスの分類ケース結果（決定的）。強制状態実行で分類メッセージの実物が取得できた場合は #304 向け evidence として plan.md に併記（取得できなくても AC には影響しない） |
 | AC-4 | 状態 test クラスの CI 実行結果（issue53 lane）+ injection 付き lane 実行 log。強制状態試行の記録は #304 参照用 |
 | AC-5 | 診断メッセージ生成（固定 snapshot → failure メッセージ）の決定的 test 結果 + issue52 注入経路への配線 code review。実環境の強制状態実行は #304 向け optional evidence として plan.md に記録 |
