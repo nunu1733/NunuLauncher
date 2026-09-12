@@ -13,7 +13,7 @@ risk: []
 updated: 2026-09-12
 ---
 
-# api36 UI lanes: 実入力注入は対象windowのfocus観測を前提とし、environment gate の単一証拠採取と即時失敗で burst の待機連鎖を収束させる
+# api36 UI lanes: 実入力注入は対象windowのfocus観測を前提とし、environment health state による単一証拠採取と即時失敗で burst の待機連鎖を収束させる
 
 ## Problem
 
@@ -64,49 +64,72 @@ proposalOpen=true, proposalAttached=true, targetShown=true, ... topOpenView=...P
    「実鍵注入が focus 遷移を起こせなかった」と整合するが、同時点の window focus を
    記録する diagnostic が存在せず、`hasWindowFocus()==true` のまま Compose focus
    traversal だけ失敗した可能性も残る。issue52 を issue53 と同一原因とは主張しない。
-   判別に必要な状態採取を本 Issue で整備する（TS-AC-05）。
+   判別に必要な状態採取を本 Issue で整備する（TS-AC-06）。
 7. **どの per-boot 状態が window focus を奪うかは未確定であり、CI には failure 時の
    window 状態証拠が残らない**。root cause の特定は本 Issue から分離し
    [Issue #304](https://github.com/nunu1733/NunuLauncher/issues/304) で追跡する
    （2026-09-12 の Spec/Plan review での決定。Issue #300 終了条件の更新を参照）。
 
-Spec review（#300 コメント、2026-09-12）で確定した設計上の制約:
+Spec review で確定した設計上の制約（2026-09-12 の 2 回の review）:
 
-- **per-test fail-fast だけでは run を収束させられない**。CI はテストクラス全体を
-  1 回の instrumentation 実行で流すため、focus 異常が持続すれば後続テストが各々
-  gate 待機で失敗し、最悪 20 × 15秒 の失敗連鎖になる。run を収束させるには
-  run-level の environment health state が必要である（TS-AC-03）。
-- **burst の症状の一部である非注入系 failure も扱う**。`awaitAccessibilityTextBounds`
-  は `rootInActiveWindow` を直接 poll し、`awaitResumedLauncher` は gate より前に
-  実行されるため、両者に修復・診断を適用しない限り burst の症状が残る（TS-AC-04）。
+- **run を収束させるには run-level の environment health state が必要である**
+  （review 1 指摘 1）。さらに（review 2 指摘 1）health 確認は environment 操作
+  （修復・待機）の**入口**で行われなければならない。別個の `checkAtGateEntry()` を
+  待ちの後に置く設計では、unhealthy 判定後のテストも修復・待機を実行できてしまい、
+  「最初のテストだけが待機・修復する」という要件を満たせない。
+- **`markUnhealthy` は environment 前提の崩壊を示す観測がある場合に限る**
+  （review 2 指摘 2）。`awaitResumedLauncher` の timeout は launcher の lifecycle 回帰、
+  accessibility 走査の timeout は organizer entry が本当に消える UI 回帰でも発生する。
+  window focus gate を正常に通過し frontmost window も正しいのに対象 text が無い場合は
+  検出すべき製品回帰であり、これを sticky unhealthy にすると後続テストが全て
+  environment 即時失敗になり、merge gate の診断能力を落とす。
+- **run-level health state は決定的に検証できる必要がある**（review 2 指摘 3）。
+  強制状態（KEYCODE_SLEEP 等）はまさに gate の自動修復対象であるため、正常実装なら
+  gate failure に届かず green になり、「最初だけ証拠を採取し、以後待機せず同じ証拠を
+  参照する」state machine を実環境で実証できない。決定的な failure injection seam を
+  設ける。実環境の強制状態試行は #304 用の証拠として別扱いする。
+- **health state の有効範囲の根拠は「1 instrumentation invocation ＝ 1 process」である**
+  （review 2 指摘 4）。issue52 job は 4 クラス
+  （`ManualOrganizationProductionE2EInstrumentationTest`、
+  `ManualOrganizationPreferencesInstrumentationTest`、`StrategyPickerInstrumentationTest`、
+  `MissingAppSelectionInstrumentationTest`）を同じ Gradle invocation で流す
+  （ci.yml 実測）。issue53 job は 1 クラスである。検証は本番 lane topology ごとの
+  別実行で行い、issue52/53 のクラスを同一 process に混ぜない。
 
 ## Outcome
 
 api36 UI lane では、touch/keyboard 注入は対象 window が window focus を保持している
-ことを観測した後にのみ行われる。environment gate が focus を観測できない場合、
-修復を試みた上で、**最初の gate 失敗のみ** environment 証拠を採取して明示的に失敗し、
-同一 run の残りテストは gate 入口で待機せず即座に失敗してその証拠を参照する。
-per-boot 環境問題は「繰り返し待機する失敗連鎖」ではなく「1 つの証拠採取＋即時失敗の
-連鎖」として現れ、gate 証拠は root-cause 確定 Issue（#304）の一次資料になる。
-非注入系の待ち（`awaitResumedLauncher`、accessibility 走査）も修復・診断の対象に入り、
-environment 異常時の全 failure が同一の証拠から説明できる。
+ことを観測した後にのみ行われる。すべての environment 操作（修復・focus 待ち）は入口で
+run-level health state を確認し、unhealthy なら何も修復・待機せず即座に、最初の
+failure が採取した environment 証拠を参照して失敗する。証拠採取は「environment 前提の
+崩壊を示す観測」がある場合に限られ、環境が正常な失敗（launcher lifecycle 回帰、
+UI 回帰）は従来どおり個別の failure として報告される。per-boot 環境問題は
+「繰り返し待機する失敗連鎖」ではなく「1 つの証拠採取＋即時失敗の連鎖」として現れ、
+state machine は決定的な injection seam で検証され、gate 証拠は root-cause 確定
+Issue（#304）の一次資料になる。
 
 ## Scope
 
 - `tests/organizer-instrumentation` 内に test 支援実体を 1 つ追加する:
-  - `ensureWindowFocused(activity, deadline)`: 対象 activity の window focus を
-    bound 付きで待つ。非 interactive（`PowerManager.isInteractive`）なら
-    `input keyevent KEYCODE_WAKEUP`、keyguard showing（`KeyguardManager.isKeyguardLocked`）
-    なら `wm dismiss-keyguard` を shell で発行してから再待ちする。既に focus 済みなら
-    即座に返す（修復を発火しない）。
-  - `ensureInteractiveUnlocked()`: `awaitResumedLauncher` 等の window が存在しない
-    待ちの前に使う device-level 修復（wakeup / keyguard dismiss）。待ち自体は行わない。
+  - `ensureWindowFocused(activity, deadline)`: **入口で health state を確認**した上で、
+    対象 activity の window focus を bound 付きで待つ。非 interactive
+    （`PowerManager.isInteractive`）なら `input keyevent KEYCODE_WAKEUP`、keyguard
+    showing（`KeyguardManager.isKeyguardLocked`）なら `wm dismiss-keyguard` を shell で
+    発行してから再待ちする。既に focus 済みなら即座に返す（修復を発火しない）。
+    timeout 時は environment 前提（window focus）の崩壊として証拠を採取し
+    `markUnhealthy` する。
+  - `ensureInteractiveUnlocked()`: **入口で health state を確認**した上で、
+    `awaitResumedLauncher` 等の window が存在しない待ちの前に使う device-level 修復
+    （wakeup / keyguard dismiss）。待ち自体は行わない。
   - `describeDeviceState()`: interactive / keyguard / focused window（`dumpsys window`
     の focused window 行）/ frontmost window package（`rootInActiveWindow?.packageName`）
     の 1 行 summary。
-  - **run-level environment health state**: gate 系 failure（注入 gate、
-    `awaitResumedLauncher` timeout、accessibility 走査 timeout）の最初の 1 回で証拠を
-    採取・保持し、以後の gate 入口は待機せず即座に失敗してその証拠を参照する。
+  - **run-level environment health state**（純粋な state machine クラス、process-static、
+    helper object が所有）: 最初の `markUnhealthy(evidence)` で証拠を保持し、以後の
+    入口確認は待機・修復なしで即座に、同じ証拠を参照する error を投げる。有効範囲は
+    1 instrumentation invocation ＝ 1 process ＝ 1 lane job である（issue52 lane は
+    4 クラスが同一 process で共有する。同じ emulator 上の同一 job 内であるため
+    環境も共有であり、意図した挙動である）。
 - gate 配線:
   - issue53 lane `OnboardingOrganizationProposalInstrumentationTest`:
     `TouchActivationGate.tapCenterOf`/`deliveredTap`、`deliveredTapOutside`、
@@ -114,27 +137,41 @@ environment 異常時の全 failure が同一の証拠から説明できる。
   - issue52 lane `ManualOrganizationPreferencesInstrumentationTest`:
     `pressDownUntilFocused` と `KEYCODE_ENTER` 注入の前。window focus 観測下でも
     focus traversal が失敗した場合、failure メッセージに注入時の device/window state
-    を含める（TS-AC-05）。
-- 非注入経路の修復・診断:
-  - `awaitResumedLauncher`: 待ちの前に `ensureInteractiveUnlocked()`、timeout 時の
-    メッセージに `describeDeviceState()` を追加。
-  - `awaitAccessibilityTextBounds`: 対象 activity の window focus を gate で確認し、
-    timeout 時のメッセージに frontmost window package と device state を追加。
-- 強制状態による再現試行の結果（成否・再現した状態・CI シグネチャとの一致度）を
-  plan.md に記録し、#304 の証拠として引き継ぐ。
+    を含める（TS-AC-06）。
+- 非注入経路の修復・診断・**分類**:
+  - `awaitResumedLauncher`: 待ちの前に `ensureInteractiveUnlocked()`。timeout 時に
+    環境を再観測（interactive / keyguard / frontmost window）し、environment 異常の
+    観測が取れた場合のみ environment failure（診断＋`markUnhealthy`）。環境が正常なら
+    local failure として従来どおり失敗する（診断は付加）。
+  - `awaitAccessibilityTextBounds`: 対象 activity の window focus を gate で確認。
+    timeout 時に環境を再観測し、frontmost window が異物または activity が focus を
+    持たない場合のみ environment failure（診断＋`markUnhealthy`）。環境が正常なら
+    node-not-found failure のまま（製品回帰の検出を保つ）。
+- **決定的検証 seam**:
+  - health state は Android 非依存の純粋クラスとし、同 package の新規 instrumentation
+    test クラス（状態の遷移・証拠の単一性・入口確認の即時性を直接駆動）で検証する。
+  - helper には、instrumentation runner 引数が明示指定された場合にのみ health state を
+    unhealthy に固定する failure injection hook を設ける（CI lane では指定しない）。
+    これにより、実際の配線（helper 入口確認 → 後続テスト即時失敗）を環境に依存せず
+    実行できる。
+  - 新規状態 test クラスを issue53 lane の class filter に追加する（1 行の workflow
+    変更。lane 構成・job 分離・API 構成は不変）。
+- 強制状態による実環境再現試行の結果（成否・再現した状態・CI シグネチャとの一致度）を
+  plan.md に記録し、#304 の証拠として引き継ぐ（本 Issue の merge 条件ではない）。
 
 ## Non-goals
 
 - production code（launcher / organizer module）の変更。
-- lane 構成・class filter・CI workflow・emulator provisioning の変更
-  （lane 分割、API 統合は [ci-test-portfolio.md](../../docs/engineering/ci-test-portfolio.md)
-  の管轄であり、本緩和後も burst が継続する証拠が出た場合にのみ再評価する）。
+- lane 構成・job 分離・API 構成・emulator provisioning の変更
+  （[ci-test-portfolio.md](../../docs/engineering/ci-test-portfolio.md) の管轄）。
+  ただし issue53 lane の class filter への状態 test クラス追加（1 行）は例外とする。
 - api35 lane および issue #292 の修正への影響。
 - **root cause（per-boot トリガー）の特定**。#304 に分離した。本 Issue は証拠採取の
   仕組みと強制状態試行の記録までを行い、試行の成否は本 Issue の完了条件ではない。
 - TestProtocol 結合、Orchestrator 導入、Gradle/CI レベルの自動 retry の追加
   （rerun は運用者の判断のままとする）。
-- `awaitResumedLauncher` の待機ロジック自体の変更（修復の前置きと診断付加のみ）。
+- `awaitResumedLauncher` の待機ロジック自体の変更（修復の前置き・timeout 時の分類と
+  診断付加のみ）。
 
 ## Domain language
 
@@ -161,30 +198,41 @@ And `awaitResumedLauncher` のように window がまだ存在しない待ちの
 device-level 修復（`ensureInteractiveUnlocked`）が同じ方針で試みられる
 And focus が到達した後は、テストは修復なしの場合と同一の手順で続行する
 
-### Scenario: environment gate の最初の失敗が run の証拠採取を担う (TS-AC-03)
+### Scenario: health 確認はすべての environment 操作の入口で行われる (TS-AC-03)
 
-Given gate が deadline までに対象 window の focus を観測できず、environment 異常が
-持続している
-When run 内で最初に gate に到達したテストが実行される
-Then そのテストだけが待機・修復を行い、environment 証拠（interactive / keyguard /
-focused window / frontmost window / input dump）を 1 回採取して単一の明示的メッセージで
-失敗する
-And 同一 run の後続テストは gate 入口で待機せず即座に失敗し、最初の証拠を参照する
+Given run 内のあるテストが既に environment failure で `markUnhealthy` されている
+When 後続テストが `ensureInteractiveUnlocked` または `ensureWindowFocused` を呼ぶ
+Then helper は修復・待機を一切実行せず、入口で即座に失敗する
+And 失敗メッセージは最初の failure が採取した environment 証拠を参照する
 And gate 待機と注入 retry（3 attempt × delivery timeout）は run 全体で高々 1 回だけ
 発生する
 
-### Scenario: 非注入経路も environment 修復・診断を通る (TS-AC-04)
+### Scenario: markUnhealthy は前提崩壊の観測がある場合に限られる (TS-AC-04)
 
-Given launcher / PreferenceActivity への遷移待ちまたは accessibility 走査が
-environment 異常下で実行される
-When `awaitResumedLauncher` または `awaitAccessibilityTextBounds` が待機する
-Then 前者は待機前に device-level 修復を試み、timeout 時のメッセージに device state を
-含む
-And 後者は対象 activity の window focus を gate で確認し、timeout 時のメッセージに
-frontmost window package と device state を含む
-And これらの失敗も run-level health state を設定し、後続テストの即時失敗の根拠になる
+Given `awaitResumedLauncher` または `awaitAccessibilityTextBounds` が timeout した
+When timeout 時に環境を再観測する
+Then 非 interactive / keyguard locked / frontmost window が異物 / 対象 window が
+focus を持たない、のいずれかの観測が取れた場合のみ environment failure として
+証拠採取・`markUnhealthy` する
+And 環境が正常な場合（例: activity が focus を持ち frontmost も正しいのに
+organizer entry の text が無い）、health state は変化せず、従来型の
+node-not-found / local failure として報告される（製品回帰の検出能力を保つ）
+And `ensureWindowFocused` の timeout は、gate が守る environment 前提（window focus）
+自体の崩壊であるため、environment failure として `markUnhealthy` する
 
-### Scenario: issue52 の実鍵注入は gate を通り、失敗時の状態が残る (TS-AC-05)
+### Scenario: health state は決定的に検証される (TS-AC-05)
+
+Given health state の純粋 state machine と、runner 引数による failure injection hook
+が実装されている
+When 同 package の状態 test クラスが state machine を直接駆動する
+Then 最初の `markUnhealthy` だけが証拠を保持し、以後の入口確認が待機なしで同じ証拠を
+参照する error を投げることが決定的に検証される
+And runner 引数を指定した lane 実行では、実配線（helper 入口確認 → 後続テストの
+即時失敗）が環境に依存せず検証される
+And 実環境の強制状態（KEYCODE_SLEEP 等）による再現試行は #304 用の証拠として
+記録され、本 state machine の検証条件ではない
+
+### Scenario: issue52 の実鍵注入は gate を通り、失敗時の状態が残る (TS-AC-06)
 
 Given issue52 lane の compose host が任意の window focus 状態にある
 When `pressDownUntilFocused` または `KEYCODE_ENTER` が実鍵注入を行う
@@ -193,17 +241,6 @@ And window focus 観測下で focus traversal がそれでも失敗した場合�
 注入時の device/window state が含まれる
 And 本 Issue は issue52 を issue53 と同一原因とは主張しない（`hasWindowFocus()==true`
 での Compose traversal 失敗の可能性は次回証拠で判別する）
-
-### Scenario: 強制状態での再現試行が #304 の証拠になる (TS-AC-06)
-
-Given ローカル api36 emulator で、lane 実行前に非 interactive／keyguard 等の候補状態を
-強制した
-When 修正前・修正後のテストを同一手順で実行する
-Then 再現の成否、再現した状態、CI シグネチャ（`launcherWindowFocus=false`＋注入喪失＋
-activity RESUMED＋view focus 成立）との一致度が plan.md に記録される
-And 再現できた状態については、修正後テストが修復または gate fail-fast することを
-同一手順で確認する
-And 記録は #304 から参照される
 
 ### Scenario: 連続 green の確認 (TS-AC-07)
 
@@ -217,8 +254,11 @@ And 結果 run への link が PR に記録される
 - テストのみの変更であり、読み書きする永続 data、schema、migration、backup/restore への
   影響はない。
 - run-level environment health state は instrumentation process 内で閉じ、永続化しない。
-  lane は 1 クラス＝1 process で実行されるため、health state の有効範囲は 1 lane run と
-  一致する。
+  有効範囲は 1 instrumentation invocation ＝ 1 process であり、issue52 lane では
+  4 クラスが共有する（同一 emulator job 内であるため環境も共有される）。
+  issue52 と issue53 は別 job・別 emulator であり、state は混在しない。
+- failure injection hook は runner 引数が明示指定された場合にのみ動作し、CI lane では
+  指定しない。通常実行の挙動を変えない。
 - gate の修復 shell（wakeup、keyguard dismiss）は lane の前提状態（interactive・
   unlocked）を本 Issue で初めて明示要求するものであり、既存テストが keyguard 状態に
   依存する前提は存在しない。
@@ -234,38 +274,42 @@ CI 上の component 名のみであり、個人情報を含まない。
 ## Accessibility and localization
 
 None。production の accessibility 振る舞いは変更しない。テスト内の accessibility 走査は
-gate によって frontmost window 前提が確認され、timeout 時の診断が充実するだけで、
-走査方法自体は不変である。
+gate によって frontmost window 前提が確認され、timeout 時の分類・診断が充実するだけで、
+走査方法自体は不変である。環境正常時の node-not-found は製品回帰として
+そのまま報告される。
 
 ## Acceptance criteria
 
 - [ ] AC-1: 注入経路は対象 window focus を観測していない状態で注入せず、修復
       （wakeup / keyguard dismiss）を試みてから待つ（TS-AC-01、TS-AC-02）。
-- [ ] AC-2: environment 異常が持続する run で、gate 待機・修復・注入 retry の連鎖は
-      run 全体で高々 1 回であり、後続テストは待機せず最初の証拠を参照して即座に失敗する
-      （TS-AC-03）。
-- [ ] AC-3: `awaitResumedLauncher` が修復前置き＋timeout 時診断を、
-      `awaitAccessibilityTextBounds` が gate＋timeout 時診断（frontmost window /
-      device state）を通る（TS-AC-04）。
-- [ ] AC-4: issue52 の実鍵注入が gate を通る。window focus 観測下での traversal 失敗時
+- [ ] AC-2: health 確認がすべての environment 操作（修復・focus 待ち）の入口で行われ、
+      unhealthy な run の後続テストは修復・待機を一切実行せず最初の証拠を参照して
+      即座に失敗する。本番 lane topology ごとの実行（issue53: 1 クラス、issue52:
+      4 クラス）で検証され、issue52/53 のクラスを同一 process に混ぜない
+      （TS-AC-03、TS-AC-05）。
+- [ ] AC-3: `markUnhealthy` の分類が検証される。環境正常下での accessibility
+      node-not-found と `awaitResumedLauncher` timeout は health state を変化させず、
+      環境異常の観測が取れた timeout のみが environment failure になる
+      （TS-AC-04）。
+- [ ] AC-4: health state state machine が、状態 test クラス（issue53 lane filter に
+      追加）と runner 引数 injection により決定的に検証される。実環境の強制状態
+      試行結果は #304 の証拠として plan.md に記録される（TS-AC-05）。
+- [ ] AC-5: issue52 の実鍵注入が gate を通る。window focus 観測下での traversal 失敗時
       メッセージに device/window state が含まれる。spec/plan に issue52 と issue53 の
-      同一原因の主張が無い（TS-AC-05）。
-- [ ] AC-5: 強制状態再現試行の結果（成否・状態・CI シグネチャ一致度）が plan.md に
-      記録され、再現できた状態では修正後テストの修復/fail-fast が同一手順で確認される
-      （TS-AC-06）。
+      同一原因の主張が無い（TS-AC-06）。
 - [ ] AC-6: issue53・issue52 両 lane が連続する複数 CI run で green（TS-AC-07）。
-- [ ] AC-7: production file の diff が 0 であること、および `./gradlew spotlessCheck`
-      が green であること。
+- [ ] AC-7: 変更範囲が `tests/organizer-instrumentation` と issue53 lane の class
+      filter 1 行に限られること、および `./gradlew spotlessCheck` が green であること。
 
 ## Test oracle
 
 | AC | Evidence |
 |---|---|
 | AC-1 | 修正 head のローカル api36 lane 実行（通常状態）の結果と、注入呼び出し箇所の gate 配線 review |
-| AC-2 | 強制状態でのローカル実行 log（証拠採取 1 回、後続即時失敗の証跡）。plan.md Verification に記録 |
-| AC-3 | 強制状態でのローカル実行 log（`awaitResumedLauncher` / accessibility 経路の診断メッセージ実物） |
-| AC-4 | issue52 全クラスのローカル実行結果 + 失敗時メッセージの診断内容確認 |
-| AC-5 | 強制状態での修正前/修正後実行結果ペアと CI シグネチャ一致度の評価。plan.md に記録し #304 から参照 |
+| AC-2 | 状態 test クラスの実行結果 + runner 引数 injection による issue53 / issue52 lane 実行 log（後続テストが待機なしで失敗する証跡）。plan.md Verification に記録 |
+| AC-3 | 状態 test クラスの分類ケース結果 + 強制状態実行で得られる分類メッセージの実物。plan.md に記録 |
+| AC-4 | 状態 test クラスの CI 実行結果（issue53 lane）+ injection 付き lane 実行 log。強制状態試行の記録は #304 参照用 |
+| AC-5 | issue52 lane（本番 filter の 4 クラス実行）のローカル実行結果 + 失敗時メッセージの診断内容確認 |
 | AC-6 | CI run link（同一 job の連続 attempt または連続 run）。PR 本文に記録 |
 | AC-7 | `./gradlew spotlessCheck` 実行結果と `git diff --stat` の範囲確認。PR に記録 |
 
