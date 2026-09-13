@@ -10,7 +10,7 @@ updated: 2026-09-13
 
 # AI personalization用 Context / PersonalizedIntent exchange contract
 
-> Status: draft — 本specは契約 (contract) の定義のみを対象とし、provider実装・network・UIを含まない。受入時に新しい Later functional requirement (提案ID: FR-017) を [requirements.md](../../docs/product/requirements.md) へ割り当てる。
+> Status: draft — 本specは契約 (contract) の定義のみを対象とし、provider実装・network・UIを含まない。受入時に新しい Later functional requirement (**FR-017**、2026-09-13時点のrequirements.mdで次の空きIDを確認済み) を [requirements.md](../../docs/product/requirements.md) へ割り当てる。2026-09-13のowner review (Request changes) の指摘 (P1×4 / P2×2) を本revisionで反映しており、再review待ちである。
 
 ## Problem
 
@@ -22,7 +22,7 @@ updated: 2026-09-13
 
 ## Outcome
 
-内部AI・外部agent・将来providerが共通利用できる、version付きの2つの交换契約と、その fail-closed な取り込み経路が定義される。
+内部AI・外部agent・将来providerが共通利用できる、version付きの2つの交換契約と、その fail-closed な取り込み経路が定義される。
 
 1. `PersonalizationContextExportV1` — AI/agentへ提示可能な最小限の personalization context の typed schema と、app内canonical入力からの生成規則 (privacy tier付き)。
 2. `PersonalizedIntentV1` — AI/agentが返す semantic layout intent の typed schema と、厳格な schema/semantic validation 規則。
@@ -31,7 +31,7 @@ updated: 2026-09-13
 
 ## Scope
 
-- `PersonalizationContextExportV1` の typed model、field必須/optional、privacy tier、app内canonical入力 (`LayoutSnapshot`、分類結果、override、lock、#203 signal snapshot) からの生成規則。
+- `PersonalizationContextExportV1` の typed model、field必須/optional、privacy tier、app内canonical入力 (`LayoutSnapshot`、分類結果、override、lock、#203 signal snapshot) からの生成規則、export session (durable・期限付き) の契約。
 - `PersonalizedIntentV1` の typed model、field、capability/schema version。
 - intent の strict validation 規則 (schema version、content limits、enum、export-scoped ID参照、duplicate/unknown検出) と typed failure 分類。
 - accepted intent の content identity (digest) と、#182 planner seamへの取り込み契約 (provenance参加、stale/regeneration semantics)。
@@ -63,23 +63,29 @@ AI/agentが `PersonalizationContextExportV1` に対して返す、semantic prefe
 _Avoid_: layout plan (最終配置結果との混同)、rule (整理ルールとの混同)
 
 **export-scoped ID (Export Item Reference)**:
-1つのcontext export内でのみ有効な、itemを指すopaqueな識別子。内部`ItemId`・DB row IDとは独立に割り当てられ、export作成時にmapがapp内に保持される。
-_Aavoid_ 系: ItemId (内部正本IDとの混同)、package名
+1つのcontext export内でのみ有効な、itemを指すopaqueな識別子。内部`ItemId`・DB row IDとは独立に割り当てられ、対応付けはexport sessionが保持する。
+_Avoid_: ItemId (内部正本IDとの混同)、package名
+
+**export session (エクスポートセッション)**:
+1つのcontext exportに対応する、app-privateで期限付きのdurableな対応記録 (`exportId`、ref↔内部`ItemId`のmap、privacy tier、`contextDigest`、生成・失効時刻)。外部アプリ滞在中のprocess deathを跨いでintent取り込みを可能にする。backup対象外であり、label等のuser作成自由文を含まない。
+_Avoid_: backup、永続layout入力 (planning入力との混同)
 
 ## Contract 1: PersonalizationContextExportV1
 
 ### 必須field (V1)
 
 - `schemaVersion`: 固定文字列 `personalization-context-v1`。unknown versionのconsumerは拒否する。
-- `exportId`: 1つのexportに固有のopaque識別子 (再生成ごとに新規)。
+- `exportId`: **export instance identity**。1回の生成に固有のopaque識別子 (再生成ごとに新規)。対応するexport sessionの参照キーであり、canonical内容のdigest対象には含まれない。
+- `contextDigest`: canonical context内容 (envelopeを除くexport本文。`ref` 割当を含む) のcanonical serializationに対するdigest。exportの **source context identity** であり、取り込み時のsource binding検証 (「Determinism / provenance semantics」節) に使う。`exportId` とは独立の概念である。
 - `gridContext`: device/gridの必要最小限projection (行/列数、page数、領域種別の列挙)。raw `DeviceCapabilities` やplatform型を含まない。
 - `items`: 対象itemごとのentry。各entryは少なくとも:
   - `ref`: export-scoped ID (export内で一意)
-  - `kind`: 対象種別のprojection。planning側の型名ではなくsemantic placement role族 (spec 235) に揃える: app/shortcut系、folder、widget。現行plannerはwidget (固定span矩形、`APPWIDGET`/`CUSTOM_APPWIDGET`) とapp pairを第一級の計画対象として持つため、V1 exportはこれらをroleとして投影する。widgetの **span (サイズ) はprojectionに含めず、intentからも指定できない** (spanはcapture不変)。`Unknown` kindはexportから除外する (意図的な対象と解釈させない)
+  - `kind`: 対象種別のprojection。spec 235のsemantic placement role族に揃える: `APP_OR_SHORTCUT` (plannerの `ItemKind.APPLICATION`/`DEEP_SHORTCUT` に対応。plannerが再配置できる唯一のshortcut族)、`FOLDER`、`WIDGET` (`APPWIDGET`/`CUSTOM_APPWIDGET`)。widgetの **span (サイズ) はprojectionに含めず、intentからも指定できない** (spanはcapture不変)。**`APP_PAIR` と `SHORTCUT_LEGACY` はV1ではintent addressable対象外** である (現行plannerは両者を種別基準で無条件に保持する: `PreserveReason.APP_PAIR` / `LEGACY_SHORTCUT`)。これらは `items` に現れず、`preservedConstraints` による制約集計としてのみ投影する。`Unknown` kindもexportから除外する (意図的な対象と解釈させない)
   - `category`: project taxonomyの `CategoryId` (override結果を含む解決済み分類) または `null`
   - `groupSemantic`: 既存folder所属の場合、そのfolderのgroup semantic projection
   - `pageAffinity` / `regionAffinity`: 現在page/領域のcoarseな親和表現。raw `(page,x,y)` 座標を必須としない (page序数や領域種別の抽象度とする)
-  - `locked`: locked/preserved constraint projection (boolean。AIに対し「これは保持対象」と伝える)。itemのlockに加え、platform占有領域 (`ReservedWorkspaceRegion` 相当、authoritative reservation) も **itemではなく制約として** projectionに含める
+  - `locked`: 当該addressable itemのlock状態 (boolean。AIに対し「これは保持対象」と伝える)。lockされたitemもintentのaddress対象にはなり得るが (coverage不変条件の対象)、plannerのlock制約が常に優先される)
+- `preservedConstraints`: intent addressableでない保持対象の最小集計。platform占有領域 (`ReservedWorkspaceRegion` 相当、authoritative reservation) の列挙と、理由class別の保持件数 (lock、app pair、legacy shortcut、dock、folder member、利用不可等) を含む。個別itemのidentity・`ref` を持たない (AIはこれらを直接参照・移動できず、`ref` としても現れない)。
 - `capabilities`: consumer (AI) が返してよいintent機能の列挙と、対応intent schema version。
 - `usageSignals` (optional): #203 signal snapshotの正規化projection (tier制御付き、後述)。signalが存在しない場合・許可がない場合はこのfield自体を省略する。
 
@@ -87,20 +93,25 @@ _Aavoid_ 系: ItemId (内部正本IDとの混同)、package名
 
 export生成時にtierを1つ選ぶ。tierは`PersonalizationContextExportV1`のmetadataとして明示される。
 
-| Tier | label | category/semantic | usage | 想定consumer |
+| Tier | user作成自由文 (app label・folder title等) | category/semantic (taxonomy enum) | usage | 想定consumer |
 |---|---|---|---|---|
 | `LOCAL_FULL` | 含む | 含む | 正規化値 (app内滞留) | 内部engine (#206) |
-| `EXTERNAL_REDACTED` | 除外 (hash surrogate可) | 含む | coarse bucketのみ | 外部AI (#205) 既定候補 |
-| `EXTERNAL_WITH_LABELS` | 含む | 含む | coarse bucketのみ | 外部AI (#205) 明示選択時 |
+| `EXTERNAL_REDACTED` | **除外 (V1ではhash等のsurrogate代替も生成しない)** | 含む | coarse bucketのみ | 外部AI (#205) 既定 |
+| `EXTERNAL_WITH_LABELS` | 含む (長上限付き) | 含む | coarse bucketのみ | 外部AI (#205) 明示選択時 |
 
-- package名、profile identity、raw usage milliseconds/timestamp、DB row ID、内部 `ItemId` は **いずれのtierでもexport fieldに含めない** (既定外部送信なし、NFR-008)。labelはuser-facing app labelに限り、tierが明示的に許す場合のみ含む。
-- label・folder title等の自由文は data として扱い (「Prompt injection / untrusted labels」節)、field長上限を設ける。
+- **user作成自由文 (free text) class**: app label、folder title、その他userが入力し得る自由文fieldを **1つのclass** として定義し、tierで一括制御する。既存folder/groupはtaxonomy enum (category semantic) として投影し、folder title自体は自由文classに属する。`EXTERNAL_REDACTED` ではこのclass全体を除外する。
+- **V1ではlabel surrogateを生成しない**: 単純・予測可能なlabel hashは一般的なアプリ名の辞書照合で推測可能であり、opaque `ref` が既に存在するredacted tierでsurrogateに価値はない。surrogateを導入する場合は新schema versionとして、keyed・不可逆・用途限定の要件を脅威model review付きで別途定義する。
+- package名、profile identity、raw usage milliseconds/timestamp、DB row ID、内部 `ItemId` は **いずれのtierでもexport fieldに含めない** (既定外部送信なし、NFR-008)。labelは自由文classに属し、tierが明示的に許す場合のみ含む。
+- 自由文は data として扱い (「Prompt injection / untrusted labels」節)、field長上限を設ける。export fieldの追加時、user作成自由文に相当する新fieldは必ず自由文classへ宣言する (tier制御の漏れを防ぐclosed class設計)。
 
 ### 生成規則
 
 - exportは副作用のない計画module内で、canonicalな入力 (captured `LayoutSnapshot`、解決済み分類、lock状態、#203 signal snapshot) から純粋に生成する。生成自体は書込みを行わない。
-- export-scoped IDと内部 `ItemId` のmapはapp内privateかつprocess-localに保持し、intent取り込み時のID解決のみに使う。永続化はV1では不要 (再生成で新規export)。
-- 同じcanonical入力から同じexport内容が得られる (byte-deterministic。label除外fieldのdigest一致で検証)。
+- **identityの分離**: `exportId` (export instance identity) と `contextDigest` (canonical context内容のdigest) は別概念である。生成時には **export session** がdurableに作成され、`exportId`、ref↔内部`ItemId` map、tier、`contextDigest`、生成・失効時刻をapp-private storageへ保持する (backup対象外。user作成自由文を含まない)。sessionは失効時刻を超えると無効であり、intent取り込みに使えない。durable化の理由は、#205の往復flow (share/copy → 外部AI → paste/share-back) では外部アプリ滞在中にLauncher processがkillされることが通常に起こり得るためである。
+- **single-active-session (V1)**: activityなexport sessionは同時に1つとし、新規export生成は既存sessionをすべて無効化する。無効化されたsession宛のintentは `EXPORT_MISMATCH` でrejectされる (「再生成は新しいintent identity」の規律と整合)。並列に複数の外部exchangeを待つ必要性が生じた場合はV2で再検討する。
+- **`ref` 割当はcanonical入力から決定的** である (実行時順序・乱数に依存しない)。refから内部 `ItemId` を逆算できない (一方向割当)。同一canonical状態からは同一の `ref` 集合が得られる。
+- **決定性の正確な定義**: 同一canonical入力 + 同一tier + 同一capability setから生成した2つのexportは、`exportId` を除いてbyte等しい。すなわち `contextDigest` は同一canonical状態に対して同一であり、canonical状態の変化に対しては (高確率で) 変化する。`exportId` は再生成ごとに新規であってよく、digest対象から除外される。**digest対象はexport本文 (envelope外) である**。
+- export sessionの保持はLauncher favorites DBとは独立なapp-private storageへの書込みであり、Launcher DB migration・home layout適用契約とは無関係である。
 
 ## Contract 2: PersonalizedIntentV1
 
@@ -115,7 +126,7 @@ export生成時にtierを1つ選ぶ。tierは`PersonalizationContextExportV1`の
   - `pageAffinity` / `regionAffinity`: contextと同じ抽象度の親和
   - `preserve`: 当該itemの現配置維持希望
 - `globalPreference` (optional): preserve/minimize-movement等のrun全体の偏好。
-- `unresolvedRefs` (optional): AIが判断できなかった `ref` の明示的なmarker。黙って省略する手段としては使えない (後述)。
+- `unresolvedRefs` (optional): AIが判断できなかった `ref` の明示的なmarker。**coverage不変条件**: `itemIntents` の `ref` 集合と `unresolvedRefs` の集合は、exportの全addressable `ref` の **分割 (partition)** でなければならない (互いに素、かつ合計が全addressable `ref` と一致)。この条件を満たさない部分応答は `INCOMPLETE_COVERAGE` でrejectされる — 黙って省略して正常扱いされる経路は存在しない。
 - `rationale` (optional)、`confidence` (optional): 表示・診断用。authorityを持たない。
 
 ### 原則: intentはsemantic preferenceである
@@ -135,10 +146,13 @@ AI/agentは次をauthoritativeにしてはならない。これらを含むinten
 | 失敗class | 条件 | 挙動 |
 |---|---|---|
 | `SCHEMA_MISMATCH` | unknown `schemaVersion`、構造破損、malformed JSON/text | reject。partial applyしない |
-| `EXPORT_MISMATCH` | `exportId` が現在のexportと不一致 (古い/別export宛) | reject |
+| `EXPORT_MISMATCH` | `exportId` がactivityなexport sessionと不一致 (古い/別export宛/不明session) | reject |
+| `SESSION_EXPIRED` | 対応するexport sessionが失効時刻を超過 | reject。再exportが必要 |
+| `CONTEXT_STALE` | sessionが保持する `contextDigest` と、取り込み時に再計算した現在canonical状態のdigestが不一致 (export後にhome配置・lock・分類等が変化) | reject。V1ではrebaseしない (再export) |
 | `OVERSIZE` | 内容がcontent limits (entry数、field長) を超過 | reject |
-| `UNKNOWN_REF` | exportに存在しない `ref` | reject |
+| `UNKNOWN_REF` | exportに存在しない `ref` (addressable対象外の `APP_PAIR`/`SHORTCUT_LEGACY` は `ref` を持たないため、これらへの参照も該当) | reject |
 | `DUPLICATE_REF` | 同一 `ref` への重複intent | reject |
+| `INCOMPLETE_COVERAGE` | coverage不変条件違反 (`itemIntents` refs ∪ `unresolvedRefs` ≠ 全addressable refs、または両集合の重複) | reject |
 | `INVALID_ENUM` | 許可enum外の値 | reject |
 | `FORBIDDEN_CONTENT` | 座標直接指定・lock移動・script等の禁止内容 | reject |
 | `CAPABILITY_UNSUPPORTED` | context `capabilities` に宣言されていないintent機能 | reject (ignoreしない、下記決定参照) |
@@ -156,6 +170,7 @@ AI/agentは次をauthoritativeにしてはならない。これらを含むinten
 - intent identity は `InputProvenance` に追加のpolicy input (第6入力、`PolicySourceKind.PERSONALIZED_INTENT`。#182のselection snapshotと同じ族) として参加する。intentが無いrunはこのinputを持たない (既存runは影響なし)。
 - **再生成は新しい intent identity** である。既存previewを新しいintentで黙って再解釈しない。preview中に別intentがacceptされた場合、previewは無効化され、新規compose/plan cycleが必要になる (spec 52「runはsnapshotを再利用しない」と同じ規律)。
 - intent取り込み後のplanも通常の `PlanningResult` / `ValidatedLayoutPlan` pathを通り、stale検出はcapture `RevisionId` により既存どおり行われる。
+- **source context binding**: intentは `exportId` でexport sessionに、sessionは生成時の `contextDigest` でcanonical状態にbindされる。取り込み時に現在canonical状態の `contextDigest` を再計算し、sessionの値と一致しない場合は `CONTEXT_STALE` でrejectする。**V1はreject-on-change固定であり、明示的rebaseは行わない** (rebaseはV2以降の課題)。これはplanning/apply側の既存capture `RevisionId` stale checkを置き換えるものではなく、より前段の取り込み時検証であり、両方とも残る。agentが見たcontextとplannerが使うcontextが異なるintentは、この段階で受理されない。
 
 ## Prompt injection / untrusted labels
 
@@ -170,7 +185,7 @@ AI/agentは次をauthoritativeにしてはならない。これらを含むinten
 
 - intent → planner入力の変換は、#182の内部seam (唯一の外部planning seam `OrganizationPlanner.plan(OrganizationInput): PlanningResult` とshared constraints/allocator) の**前段**に位置する1つのadapterとして表現する。adapterはvalidated intentを、既存のplannerが消費できるsemantic入力 (分類・親和・grouping希望の重み付け) へ投影する。
 - intentは新しい `RunMode` を導入しない。既存run mode (FullOrganization / ScopeComposedOrganization / IncrementalPlacement) のいずれかと組合わされる。`TargetSet.additions` (missing-app候補、#228) はuserの明示選択による別のcomposition inputであり、intentは追加対象を生み出さない。
-- #235 のsemantic placement role (app/shortcut、folder、widget) とwidget stream/bandの配置意味論はplanner側の正本である。adapterの投影がwidget span不変・strategy宣言済みmovement intentを弱めることはない。
+- #235 のsemantic placement role (app/shortcut、folder、widget) とwidget stream/bandの配置意味論はplanner側の正本である。adapterの投影がwidget span不変・strategy宣言済みmovement intentを弱めることはない。intentがwidgetにpage/region親和を示しても、実際のwidget再配置はuserが選択したwidget対応strategy (`widgetPolicy` 持ち) が存在する場合にのみplanner自身が行い、intentの指定でwidget移動が強制・無効化されることはない。非addressable種別 (`APP_PAIR`/`SHORTCUT_LEGACY`) はplannerの既存preservation規則 (`PreserveReason.APP_PAIR`/`LEGACY_SHORTCUT`) により常に保持され、intentはこれらに関与できない。
 - adapter・validator・codecはpure moduleとし、Android型・DB row・networkを扱わない。production/testが同じseamを使う。
 - AI provider/network logicは #182 planner に入れない (本契約の所有物でもない。#205/#206が独立に接続する)。
 - adapterの具体的な投影先 (既存 `OrganizationInput` のどの入力へどう反映するか) は本specの受入時点で方向を固定し、実装child issueのplanで確定する (Open questions参照)。
@@ -185,7 +200,7 @@ AI/agentは次をauthoritativeにしてはならない。これらを含むinten
 - 本契約自体はnetwork transportを持たない。#205 (外部agent exchange) が実際の外部送信を行う際、送信内容は本契約のexport表現そのものであり、tierにより何が外へ渡るかをuserが送信前に確認できることを要求する。
 - 既定の外部送信はない (NFR-008)。package/profile/raw usageのdefault external送信は禁止。
 - intent取り込み・検証・保持の全過程で、個人情報をdiagnosticsへ出さない (organizer-diagnostics.mdの既存規則。intent identity/digestはversion identifier系の許容範囲とする)。
-- export/intentの中間artifactはprocess-localとし、backup対象外・永続化しない (V1)。
+- export session (ref↔内部ID map、`contextDigest` 等のmetadata) はapp-private・backup対象外・期限付きでdurableに保持する。sessionにはuser作成自由文・package名を含まない。export/intentの本文 (label等の自由文を含み得る) は永続化せず、取り込み後・session失効後に残存させない。session内容をdiagnosticsへ出力しない。
 
 ## Accessibility
 
@@ -198,7 +213,7 @@ AI/agentは次をauthoritativeにしてはならない。これらを含むinten
 | #182 (spec 182, implemented) | planner/allocator seam。intentはこのseamへの入力に限定される。本IssueはAI provider logicを#182へ持ち込まない |
 | #228 / #235 (specs 228/235, implemented) | 接続先plannerの現行拡張 (scope-composed run、semantic placement role/widget配置)。本契約はこれらを変更せず、intentは既存run mode・role意味論の内側でのみ働く |
 | #203 (OPEN) | usage signal snapshot。`usageSignals` fieldは#203の契約に依存するためoptionalとし、不在でも本契約は成立する |
-| #205 (OPEN) | 本契約の外部agent consumer。export tier・確認UIの実装主体 |
+| #205 (OPEN) | 本契約の外部agent consumer。export tier・確認UIの実装主体。share/copy → 外部AI → paste/share-backの往復flowがexport sessionのdurable化契約の前提 |
 | #206 (OPEN) | 本契約の内部managed AI consumer |
 | #194/#195 (implemented) | preview/confirmation pathの再利用 |
 
@@ -216,7 +231,7 @@ AI/agentは次をauthoritativeにしてはならない。これらを含むinten
 
 - 本契約の導入は新規追加のみで、既存run (intentなし) の挙動・provenance・DBに変更はない。
 - `personalization-context-v1` / `personalized-intent-v1` はimmutable semantic version (spec 182の`StrategyId`と同じ規則)。field変更・意味変更は `-v2` として新規定義し、旧version consumerはunknown versionをfail-closed拒否する。
-- 永続化するartifactはV1になく、DB migration・backup/restore互換の変更もない。
+- V1で新たに永続化するのはexport session (app-private・backup対象外・Launcher favorites DBと独立なstorage) のみであり、Launcher DB schema migration・backup/restore互換の変更はない。sessionは期限付きの一時recordであり、home layoutの正本ではない。
 
 ## Behavior scenarios
 
@@ -232,7 +247,7 @@ AI/agentは次をauthoritativeにしてはならない。これらを含むinten
 
 **Given** userが外部AI利用 (#205) を選択、
 **When** exportが生成される、
-**Then** 既定tierはpackage/profile/raw usageを含まず、label含有は明示選択時のみであり、
+**Then** 既定tierはpackage/profile/raw usageを含まず、user作成自由文 (app label・folder title等) とそのsurrogate代替表現も含まず、
 **And** userは送信前にtierに応じた内容確認を行え、確認なしに外部送信しない。
 
 ### Scenario: schema不整合のreject
@@ -242,11 +257,31 @@ AI/agentは次をauthoritativeにしてはならない。これらを含むinten
 **Then** typed failure (`SCHEMA_MISMATCH`/`OVERSIZE`) でrejectされ、partial applyは一切発生せず、
 **And** 既存selection/layout/planning入力は不変である。
 
-### Scenario: export外IDと重複
+### Scenario: export外ID・重複・欠落
 
-**Given** intentがexportに存在しない `ref` を含む、または同一 `ref` に重複intentを含む、
+**Given** intentがexportに存在しない `ref` を含む、同一 `ref` に重複intentを含む、または一部のaddressable `ref` を `itemIntents` と `unresolvedRefs` の双方から欠落させている、
 **When** validationを実行する、
-**Then** `UNKNOWN_REF`/`DUPLICATE_REF` でrejectされる。
+**Then** `UNKNOWN_REF`/`DUPLICATE_REF`/`INCOMPLETE_COVERAGE` でrejectされる。
+
+### Scenario: process deathを跨ぐ外部exchange
+
+**Given** userが外部AI利用を選びexport Eが生成され (durableなexport sessionが作成され)、外部アプリ使用中にLauncher processがkillされる、
+**When** 戻ってきた `PersonalizedIntentV1` をsession失効前に取り込む、
+**Then** sessionがdurableであるため `ref` 解決に成功し、取り込みが成立する、
+**And** session失効後に到着したintentは `SESSION_EXPIRED` でrejectされ、再exportが要求される。
+
+### Scenario: export後の状態変化
+
+**Given** export Eの生成後、userがhomeで配置変更・lock変更等を行い、現在canonical状態の `contextDigest` がsessionの保持値と不一致になった、
+**When** E宛のintentの取り込みを試みる、
+**Then** `CONTEXT_STALE` でrejectされ (V1はrebaseしない)、既存selection/layout/planning入力は不変である。
+
+### Scenario: addressable対象外種別への参照
+
+**Given** exportに `APP_PAIR` が存在し、`preservedConstraints` にapp pairの保持件数としてのみ現れている、
+**When** intentがapp pair (に対応する内容) を `itemIntents` や `desiredGroup` の対象として参照する、
+**Then** 当該 `ref` はexportに存在しないため `UNKNOWN_REF` でrejectされ、
+**And** plannerの `PreserveReason.APP_PAIR` 規則によりapp pair自体は常に保持される。
 
 ### Scenario: 禁止内容 (lock移動・座標直接指定)
 
@@ -256,8 +291,8 @@ AI/agentは次をauthoritativeにしてはならない。これらを含むinten
 
 ### Scenario: 古いexport宛のintent
 
-**Given** export E1のpreview表示中に、userが再生成してexport E2を作成し、E1宛のintentが到着する、
-**When** 取り込みを試みる、
+**Given** export E1のpreview表示中に、userが再生成してexport E2を作成した (single-active-session規則によりE1のsessionは無効化された)、
+**When** E1宛のintentの取り込みを試みる、
 **Then** `EXPORT_MISMATCH` でrejectされる。
 
 ### Scenario: 再生成とstale preview
@@ -287,26 +322,30 @@ AI/agentは次をauthoritativeにしてはならない。これらを含むinten
 - [ ] AC-2: `PersonalizationContextExportV1` と `PersonalizedIntentV1` のversioned schema/typed modelが定義され、immutable semantic version規則が明文化される。
 - [ ] AC-3: 外部/internal generatorが同じintent contractを利用できる (契約がprovider非依存であることがcontract testで検証される)。
 - [ ] AC-4: AIがraw physical layout mutationをauthoritativeにせず、#182 shared planner/allocatorが最終安全配置を所有することが契約上保証される (`FORBIDDEN_CONTENT` 検証含む)。
-- [ ] AC-5: unknown/duplicate/out-of-scope ID、schema mismatch、oversize、malformed inputがfail-closed zero-writeになる (各typed failureのcontract test)。
+- [ ] AC-5: unknown/duplicate/missing (coverage違反) /out-of-scope ID、schema mismatch、oversize、malformed input、session失効、source context不一致がfail-closed zero-writeになる (各typed failureのcontract test)。
 - [ ] AC-6: accepted intentにcontent identityがあり、stale preview/regeneration semanticsが定義される (determinism再現test)。
 - [ ] AC-7: prompt injection/untrusted label/arbitrary scriptが脅威モデルに含まれる (security test計画)。
 - [ ] AC-8: package/profile/raw usage等をdefault external exportしない (tier別field集合のcontract test)。
 - [ ] AC-9: #194/#195 preview pathを複製しない (planが既存`PlanningResult`/preview seamのみ通ることの確認)。
 - [ ] AC-10: contract/property/security testsの計画がplan.mdに含まれる。
+- [ ] AC-11: export session/ref mapは外部アプリ滞在中のprocess deathを跨いで解決可能であり (durable・期限付き)、失効後・不明sessionはtyped failureでrejectされる (process deathを模擬したcontract test)。
+- [ ] AC-12: intentは生成元contextにbindされ (`exportId` + `contextDigest`)、export後のcanonical状態変化は `CONTEXT_STALE` でfail-closed rejectされる (V1はrebaseしない)。
+- [ ] AC-13: kind projection matrixが契約で固定され、testで検証される (`APP_OR_SHORTCUT`/`FOLDER`/`WIDGET` のみaddressable。`APP_PAIR`/`SHORTCUT_LEGACY`/`Unknown` は対象外で、前者2者はconstraint-only投影)。
 
 ## Open questions (未決定事項 — 実装前に解決が必要)
 
-1. **planner投影の具体形**: validated intentを `OrganizationInput` のどの入力 (signals重み付け、分類overlay、新規internal input) へ反映するか。受入時に方向を固定し、実装child issueのplanで確定する。
-2. **FR IDの確定**: FR-017は提案。受入時にrequirements.mdの次の空きIDを割り当てる。
-3. **capability set の初期内容**: context `capabilities` に列挙するintent機能の初期一覧。
-4. **content limits の数値**: entry数・field長・全体size上限の具体値。
-5. **EXTERNAL_REDACTED のlabel surrogate表現**: hash surrogateの形式 (受入時に固定。#205と調整)。
-6. **usage signal projectionの詳細**: #203 の最終契約 (origin/main未取り込み) 確定後、`usageSignals` のfield詳細を追記する。
+1. **planner投影の具体形**: validated intentを `OrganizationInput` のどの入力 (signals重み付け、分類overlay、新規internal input) へ反映するか。受入時に方向を固定し、実装child issueのplanで確定する。**(受入gate必須)**
+2. **FR IDの確定**: **解決済み (2026-09-13)**。現行requirements.mdの最終IDはFR-016であり、次の空きID **FR-017** で確定。受入PRでrequirements.mdへ反映する (AC-1)。
+3. **capability set の初期内容**: context `capabilities` に列挙するintent機能の初期一覧。**(受入gate必須 — child A実装の前提)**
+4. **content limits と session TTL の数値**: entry数・field長・全体size上限、およびexport session失効時間の具体値。**(受入gate必須 — child A実装の前提)**
+5. **EXTERNAL_REDACTED の自由文/surrogate方針**: **解決済み (2026-09-13)**。V1ではsurrogateを生成せず、自由文classのtier matrixは本spec本文で固定した。surrogate導入は新schema versionで脅威model review付き。
+6. **usage signal projectionの詳細**: #203 の最終契約確定後のoptional extension (受入gateの対象外。#203確定後に後続childで追記)。
 
 ## Change history
 
 - 2026-09-10: Draft created for Issue #204. Contract-only spec: ContextV1/IntentV1 schema, privacy tiers, fail-closed validation, intent identity/determinism, prompt-injection threat model, #182 seam connection, FR-017 proposal.
 - 2026-09-13: Re-entry re-anchor to baseline `f9afd8bfde` (2026-09-13時点 `origin/main`)。#228/#235/#271/#288 由来のmain差分を検証し、契約の核は不変のまま現行planner実態へ追従: `kind` 投影をsemantic placement role族 (widget含む、span不変) へ明確化、reservation制約projectionを明記、FORBIDDEN_CONTENTへwidget span/reservation指示を追加、intentが新run modeや対象追加を生まないことを明記。#203/#205/#206は依然OPEN (mainに実装・specなし)。statusはdraftのまま (受入判断はOwner)。
+- 2026-09-13: Review response revision (owner review "Request changes" on snapshot `65b9fc859d`)。P1×4 / P2×2を反映: (1) export sessionをdurable・期限付きに変更しprocess deathを跨ぐ取り込みを契約化 (`SESSION_EXPIRED` 追加。従来のprocess-local前提は#205の往復flowと矛盾していたため取止め。V1はsingle-active-session: 新規export生成が既存sessionを無効化)、(2) coverage不変条件と `INCOMPLETE_COVERAGE` 追加 (missing required app IDのtyped failure化)、(3) `exportId` (instance identity) と `contextDigest` (canonical content digest) を分離し決定性主張を正確化 (両立不可だった旧記述を修正)、(4) `EXTERNAL_REDACTED` を自由文class一括制御に変更しV1でのsurrogate生成を廃止 (辞書照合耐性)、(5) source context binding (`CONTEXT_STALE`、V1はreject-on-change固定) を追加、(6) `APP_PAIR`/`SHORTCUT_LEGACY` をintent addressable対象外 (constraint-only投影) に固定 (現行plannerの無条件preservation規則と整合)。Open questions 2/5を解決、3/4 (capability set、content limits/session TTL) を受入gate必須に変更。statusはdraftのまま (再review待ち)。
 
 ## References
 
