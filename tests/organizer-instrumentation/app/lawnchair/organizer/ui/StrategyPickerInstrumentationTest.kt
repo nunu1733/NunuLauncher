@@ -1,17 +1,27 @@
 package app.lawnchair.organizer.ui
 
 import android.content.Context
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isFocusable
+import androidx.compose.ui.test.isSelectable
+import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -46,6 +56,7 @@ import app.lawnchair.ui.theme.LawnchairTheme
 import app.lawnchair.ui.preferences.destinations.ManualOrganizationPreferences
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -57,6 +68,10 @@ import org.junit.Test
  * (the UI never writes storage directly).
  */
 class StrategyPickerInstrumentationTest {
+
+    private companion object {
+        const val STRATEGY_PICKER_TAG = "manual-organization-strategy-picker"
+    }
 
     @get:Rule
     val composeRule = createComposeRule()
@@ -169,10 +184,124 @@ class StrategyPickerInstrumentationTest {
         }
 
         val groups = composeRule
-            .onAllNodes(hasTestTag("manual-organization-strategy-picker"), useUnmergedTree = true)
+            .onAllNodes(hasTestTag(STRATEGY_PICKER_TAG), useUnmergedTree = true)
             .fetchSemanticsNodes()
         assertEquals(1, groups.size)
         assertTrue(groups.first().config.contains(SemanticsProperties.SelectableGroup))
+    }
+
+    @Test
+    fun strategyRowsKeepSelectionSemanticsOnTheParentRow() {
+        clearSelectionStore()
+        composeRule.setContent {
+            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+        }
+
+        val pickerClickTargets = composeRule.onAllNodes(
+            inStrategyPicker(hasClickAction()),
+            useUnmergedTree = true,
+        ).fetchSemanticsNodes()
+        assertEquals(8, pickerClickTargets.size)
+        assertTrue(pickerClickTargets.all { it.config.getOrNull(SemanticsProperties.Role) == Role.RadioButton })
+
+        val pickerSelectableTargets = composeRule.onAllNodes(
+            inStrategyPicker(isSelectable()),
+            useUnmergedTree = true,
+        ).fetchSemanticsNodes()
+        assertEquals(pickerClickTargets.size, pickerSelectableTargets.size)
+        assertTrue(pickerSelectableTargets.all { it.config.getOrNull(SemanticsProperties.Role) == Role.RadioButton })
+
+        // A visual-only RadioButton(onClick = null) must not add a focus target.
+        // Clickable/selectable rows may be focusable, but every focusable node
+        // in this picker must still be one of the parent radio rows.
+        val pickerFocusableTargets = composeRule.onAllNodes(
+            inStrategyPicker(isFocusable()),
+            useUnmergedTree = true,
+        ).fetchSemanticsNodes()
+        assertTrue(pickerFocusableTargets.size <= pickerClickTargets.size)
+        assertTrue(pickerFocusableTargets.all { it.config.getOrNull(SemanticsProperties.Role) == Role.RadioButton })
+    }
+
+    @Test
+    fun selectingAStrategyMovesTheSingleSelectedParentRow() {
+        clearSelectionStore()
+        composeRule.setContent {
+            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+        }
+
+        val canonical = context().getString(R.string.organization_strategy_canonical_name)
+        val tidy = context().getString(R.string.organization_strategy_tidy_name)
+        composeRule.onNodeWithText(canonical).assertIsSelected()
+        composeRule.onNodeWithText(tidy).assertIsNotSelected().performClick()
+        composeRule.waitUntil(5_000) {
+            val read = LayoutStrategySelectionModule.store(context()).read()
+            read is LayoutStrategySelectionReadResult.Ready &&
+                read.snapshot.selection == StrategyId("STABLE_PAGE_TIDY_V1")
+        }
+
+        composeRule.onNodeWithText(canonical).assertIsNotSelected()
+        composeRule.onNodeWithText(tidy).assertIsSelected()
+        assertEquals(
+            1,
+            composeRule.onAllNodes(inStrategyPicker(isSelected())).fetchSemanticsNodes().size,
+        )
+    }
+
+    @Test
+    fun selectingTheEffectiveStrategyIsAStoreAndVisualNoOp() {
+        clearSelectionStore()
+        composeRule.setContent {
+            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+        }
+
+        val before = LayoutStrategySelectionModule.store(context()).read()
+            as LayoutStrategySelectionReadResult.Ready
+        val canonical = context().getString(R.string.organization_strategy_canonical_name)
+        composeRule.onNodeWithText(canonical).assertIsSelected().performClick()
+
+        composeRule.waitUntil(5_000) {
+            val after = LayoutStrategySelectionModule.store(context()).read()
+            after is LayoutStrategySelectionReadResult.Ready && after.snapshot == before.snapshot
+        }
+        composeRule.onNodeWithText(canonical).assertIsSelected()
+        assertEquals(
+            1,
+            composeRule.onAllNodes(inStrategyPicker(isSelected())).fetchSemanticsNodes().size,
+        )
+    }
+
+    @Test
+    fun pickerRemainsReadableAtTwoHundredPercentFontScale() {
+        clearSelectionStore()
+        composeRule.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 2f)) {
+                LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+            }
+        }
+
+        val context = context()
+        for (name in listOf(
+            R.string.organization_strategy_canonical_name,
+            R.string.organization_strategy_tidy_name,
+            R.string.organization_strategy_tidy_v2_name,
+            R.string.organization_strategy_bottom_first_name,
+            R.string.organization_strategy_bottom_first_v2_name,
+            R.string.organization_strategy_global_name,
+            R.string.organization_strategy_global_v2_name,
+            R.string.organization_strategy_category_contiguous_name,
+        )) {
+            val label = context.getString(name)
+            composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(label))
+            composeRule.onNodeWithText(label).assertIsDisplayed()
+        }
+    }
+
+    @Test
+    fun canonicalStrategyDescriptionOmitsHistoricalWording() {
+        val description = context().getString(R.string.organization_strategy_canonical_description)
+
+        assertFalse(description.contains("The original organizer behavior."))
+        assertFalse(description.contains("従来の整理動作です。"))
     }
 
     @Test
@@ -202,6 +331,9 @@ class StrategyPickerInstrumentationTest {
         val application = NotReadyManualOrganizationApplication()
         return ManualOrganizationRun(application, OrganizationPlanner { error("planner must not run") })
     }
+
+    private fun inStrategyPicker(matcher: SemanticsMatcher): SemanticsMatcher =
+        hasAnyAncestor(hasTestTag(STRATEGY_PICKER_TAG)) and matcher
 
     private class NotReadyManualOrganizationApplication : ManualOrganizationApplication {
         override val diagnostics = object : DiagnosticsPort {
