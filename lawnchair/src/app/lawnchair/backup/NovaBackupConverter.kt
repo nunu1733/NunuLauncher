@@ -291,6 +291,10 @@ class NovaBackupConverter(
         private val outcome = AtomicReference("")
 
         fun dispatch() {
+            // Fresh latch/outcome per attempt: a superseded generation's
+            // cancelled callback has already fired on the previous pair.
+            latch = CountDownLatch(1)
+            outcome.set("")
             val requestId = model.beginRestoreReload()
             model.dispatchRestoreReload(
                 requestId,
