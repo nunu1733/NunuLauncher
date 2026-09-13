@@ -1,6 +1,6 @@
 ---
 issue: "#283"
-status: draft
+status: accepted
 requirements:
   - FR-016
   - NFR-009
@@ -10,7 +10,7 @@ updated: 2026-09-13
 
 # 整理ストラテジー選択の現在値を視覚的に判別できるようにする
 
-> Status: draft。本specは [Issue #283](https://github.com/nunu1733/NunuLauncher/issues/283) の実機確認に基づく user-visible defect を拘束契約として定義する。承認されるまで implementation-ready ではない。
+> Status: accepted。本specは [Issue #283](https://github.com/nunu1733/NunuLauncher/issues/283) の実機確認に基づく user-visible defect を拘束契約として定義する。ユーザー承認を受け、implementation-ready とする。
 
 ## Problem
 
@@ -172,3 +172,4 @@ None。新規 permission、外部送信、sensitive data は存在しない。di
 
 - 2026-09-13: Draft created for #283 (baseline main `f9afd8bfde`, 2026-09-12 UTC 取得)。
 - 2026-09-13: Spec/plan review の Request changes (P1: `RadioButton(onClick = null)` は visual-only、P2: AC-3 の visual oracle、P2: 200% font-scale evidence) を反映。selection semantics の唯一の truth を parent row に固定し、視覚・font-scale evidence を screenshot または bounds 検査で拘束した。
+- 2026-09-13: ユーザー承認により spec を `accepted` に遷移し、実装を開始する。

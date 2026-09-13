@@ -2,7 +2,7 @@
 
 > Issue: #283
 > Spec: [spec.md](./spec.md)
-> Status: draft (spec review の Request changes 対応、plan revision 2。spec 承認まで実装を開始しない)
+> Status: accepted (spec review 対応済み、plan revision 2。implementation 開始)
 > Baseline: main `f9afd8bfde121932c0c8ed965225d52a84d86ab4` (2026-09-12 UTC 取得)
 
 ## Current evidence
