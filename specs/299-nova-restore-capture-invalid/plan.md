@@ -252,6 +252,13 @@ mergeしない方針は不変である。
   `sanitizeDB` / `restoreAppWidgetIdsIfExists` / 通常reloadがどの修復・削除を
   行うはずかを動的に確認し、#298のreload中断がその処理をどこで止めたかを
   評価する。#298との因果判断はこの観測でのみ行い、証拠なしにmergeしない。
+  → **I-4実施結果（assessment参照）**: (c)の修復はbind（`WorkspaceItemProcessor.
+  processWidget`）・削除（`markDeleted`）の両経路ともreload generation依存で
+  動作することを観測。repair-point継続中断ではinvalid rowと`CAPTURE_INVALID`が
+  持続し（(c)の再現）、**process death単独ではunbound行は持続せず**、death窓は
+  削除修復のcommitまたは空workspace読み込みに帰結する（cross-process実験、
+  `NovaRestoreCaptureCrossProcess*Test`）。#298との因果は「actual pathの実在と
+  反復が持続の条件」として整理（merge判断は引き続き証拠待ち）。
 - **I-5: #185非回帰確認とdecision gate。** I-2の結果を #185 の保護と突き
   合わせ、回帰/変種か独立障害かを記録する。その上で、修正のseam選択
   （下記候補）とtest戦略を確定する。正規化/拒絶を採用するか否かの決定と、

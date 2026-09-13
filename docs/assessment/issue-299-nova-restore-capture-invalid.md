@@ -1,6 +1,6 @@
 # Assessment: Issue #299 — Nova restore後のOrganizer capture `CAPTURE_INVALID`
 
-Status: `investigation I-1/I-2 complete`（throw-site直接捕捉済み、repair中断による持続再現、matrix拡張+de-scope判定。cross-process追跡はI-4残務、fix architectureはI-5 decision gate待ち）
+Status: `investigation I-1/I-2/I-3/I-4 complete`（throw-site直接捕捉、repair中断による持続再現、process death窓の帰結確定、matrix拡張+de-scope判定。fix architectureはI-5 decision gate待ち）
 
 Date: 2026-09-13（I-2完了revision）
 Investigation issue: https://github.com/nunu1733/NunuLauncher/issues/299
@@ -97,6 +97,45 @@ candidate path（Nova restore → unbound widget行）が既に直接捕捉済�
 将来I-3で成功/失敗差分が本mechanismで説明できない場合に限りI-2追補として
 再開する（plan.mdへ同期済み）。
 
+## I-3/I-4 additions（2026-09-13）: cross-process persistence追跡（I-4残務の実施）
+
+`NovaRestoreCaptureCrossProcessStageATest` / `StageBTest`（committed harness、
+手動 `am instrument` を2プロセスで実行）により、process deathを跨ぐ
+unbound widget行の追跡を実施した（run @ 2026-09-13T22:41）:
+
+| 時点 | favorites行 | widget行 appWidgetId | capture |
+|---|---|---|---|
+| Stage A: restore直後 | 12行 | **-1** 1行 | （観測のみ） |
+| Stage A: instrumentation runnerによるforce-stop（SIGKILL）直後 | — | — | — |
+| Stage B（新process）: 起動時の最初のloader generation読み込み後 | **0行** | なし | **Ready（空workspace）** |
+| Stage B: settle generation後 | 0行 | なし | **Ready** |
+
+**I-4の発見（death windowの帰結）**: restore直後〜最初の修復generation完了までの
+窓でprocessが死んでも、**unbound widget行は次プロセスへ持続しない**。
+kill窓に走っていたloader generationのrestore sanitize transactionが
+削除修復（`markDeleted` — 未install packageのアプリ行と未bind widget行）をcommitして終了し、
+次プロセスは **空workspace（または削除修復済みworkspace）** を読む。
+つまりprocess death窓の帰結は「削除修復のcommit」または「空workspace読み込み」であり、
+「unbound行の持続」ではない。
+
+これにより持続メカニズムの全貌が確定した:
+
+- **持続的 `CAPTURE_INVALID` は「修復generationが継続的に中断され続ける」場合に限って
+  観測される**（I-2のrepair-point継続中断実験が唯一の再現経路）。
+- process death単独では持続しない（本I-4実験で確認）。修復は次プロセスの
+  loader generationが収束させる。
+- 元実機セッション（process再起動・再restore不回復）の説明としては、
+  「再起動・再restoreのたびに修復generationが継続的に中断され続けた」場合のみ
+  本mechanismで説明でき、それ以外の要因（#298のactual wrong-thread連鎖や
+  別の破損経路）が残る。mechanism hypothesisの地位は変わらないが、
+  「process death単独では足りない」ことが排除された点が前進である。
+
+実装上の注記: Stage Bはbase setUpのworkspaceリセットをskipする
+stage marker（`B_keep_workspace`）で動作する。また本実験の実行は
+Gradle connectedTestではなく手動 `install -r` + `am instrument` を用いた
+（Gradleはtest APK再install時にapp dataを消去するため、cross-process stateが
+保持できない。 手順はassessmentに記録した）。
+
 ## Verdict（I-1/I-2で証明できた範囲）
 
 capture側 `IllegalArgumentException` のthrow点
@@ -132,13 +171,13 @@ identityの限界は下記2のとおり残る。
    をDBへ書き戻す（観測: flag 7→4、`appWidgetId` -1→有効値）。providerが
    未インストールでrestore未開始の場合は `markDeleted`（:497-505）で行を削除する。
    つまり**修復（bindまたは削除）はreload generation依存**であることまでは確認できた。
-4. **持続性の証拠範囲（重要な限界）**: 直接証明できたのは次までである —
+4. **持続性の証拠範囲（I-4 cross-process実験で更新）**: 直接証明できたのは次の通り —
    **repair generationを同じ位置で継続的に中断すればinvalid rowと
-   `CAPTURE_INVALID` は持続し、中断を止めれば修復する**。元障害のpersistence
-   （process再起動・再restoreを跨ぐ恒常化）をこの機構で説明できるのは
-   **有力なmechanism hypothesis**であり、process restart / re-restoreを跨ぐ
-   cross-process追跡（I-4残務）と #298 actual wrong-thread pathの特定（#298 scope）
-   が残る。
+   `CAPTURE_INVALID` は持続し、中断を止めれば修復する**。かつ
+   **process death単独ではunbound行は持続しない**（death窓は削除修復のcommitまたは
+   空workspace読み込みに帰着する — I-3/I-4 additions参照）。したがって元障害の
+   persistenceを本mechanismで説明するには「継続的な修復中断の反復」が必要であり、
+   これは #298 actual wrong-thread pathの実在と反復に依存する（#298 scope）。
 5. **#185非関与（この範囲での観測）**: 全runでreservation検証・`CAPTURE_RESERVED_OVERLAP`
    は発生せず、QSB予約不変条件への回帰・変種の兆候は観測されなかった
    （正式な非回帰確認はI-5で既存coverageのgreenをもって実施）。
@@ -231,13 +270,14 @@ barrier後のcaptureは9行。これも「修復・削除はreload generationの
 5. bounded state matrix（件数・分類のみ）をlogcatへ記録。
 6. interrupted variantは `quiesceForRestore()` でgenerationを中断してから同様に観測。
 
-## この調査で確定しないこと（I-2完了後 / I-3以降または未確認）
+## この調査で確定しないこと（I-4実施後 / 残余）
 
 - 元の#299実機セッションが同一のthrow点（`RowManifestCodec:297` widget不変条件）で
   落ちたことの直接証明（元セッションのdiagnosticsは例外class identityのみ。
   throw-site直接捕捉はsynthetic issue-representative failure上のものである）。
-- process restart / re-restoreを跨ぐcross-process persistence追跡（I-4残務）。
-  現在の持続観測は1 process内のrepair-point継続中断である。
+- 元実機セッションで「修復generationが継続的に中断され続けた」こと自体の証明。
+  process death単独では持続しないことが本調査で確定したため、元セッションの
+  持続を説明するには継続的中断の要因（#298 actual pathの実在と反復）が必要である。
 - #298の **actual** wrong-thread障害（`BaseIconCache.assertWorkerThread` 経由の
   `Cache accessed on wrong thread`、`Can't create handler inside Thread[NovaBackupRestore]`）
   そのものの再現。本調査は修復点crashを #298相当の **中断** として使用し、
