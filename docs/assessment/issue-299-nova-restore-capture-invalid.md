@@ -83,12 +83,15 @@ settle点までのcaptureは同一のcodec widget不変条件でfail-closedす�
 
 ### 複数profile / grid変換窓 — de-scope判定
 
-throw-siteの直接捕捉（上記）により、widget不変条件が実際のthrow点であることが
-確定した。providerのbind/delete分岐が同じ不変条件に到達することに加え、
-この確定により「profile inventory欠落（:90）」「page inventory不整合（:73）」
+throw-siteの直接捕捉（上記）により、**synthetic issue-representative failureに
+対して**、widget不変条件が実際のthrow点であることが確定した。providerの
+bind/delete分岐が同じ不変条件に到達することに加え、この確定により
+「profile inventory欠落（:90）」「page inventory不整合（:73）」
 「NULL screen/cell/span（:232, :259-261）」「malformed intent（:370-401）」といった
-**他のIAE candidateがこの障害のcapture失敗点ではないことが exclude された**。
-複数profileとgrid変換窓が新たなIAE candidateを追加する可能性は、
+**他のIAE candidateは、synthetic issue-representative failureのcapture失敗点から
+除外された**（元実機セッションが同じrequireだったこと自体は未証明 —
+「この調査で確定しないこと」節参照）。複数profileとgrid変換窓が新たな
+IAE candidateを追加する可能性は、
 candidate path（Nova restore → unbound widget行）が既に直接捕捉済みの以上に
 優先される根拠がない。よって両項目を本Issueの調査matrixからde-scopeし、
 将来I-3で成功/失敗差分が本mechanismで説明できない場合に限りI-2追補として
@@ -121,7 +124,8 @@ identityの限界は下記2のとおり残る。
    shipped diagnosticsは例外class identityのみであり、「元のセッションも
    同一のrequireで落ちた」こと自体は推論の域を出ない。ただしthrow-site確定により、
    他のcodec IAE candidate（profile inventory欠落、page inventory不整合、
-   NULL座標、malformed intent）はこのcapture失敗の説明から除外された。
+   NULL座標、malformed intent）は **synthetic issue-representative failureの
+   capture失敗点から** 除外された（元実機セッションについての除外ではない）。
 3. **修復機構（I-4経路cの実在確認）**: reload generationの内側で
    `WorkspaceItemProcessor.processWidget`（WorkspaceItemProcessor.kt:533-538）が
    `WidgetInflater` によるbind成功後に `APPWIDGET_ID` / `APPWIDGET_PROVIDER` / `RESTORED`
