@@ -86,7 +86,7 @@ And 既存の fail-closed 契約 (composer と一致する非選択表示) が�
 
 Given light または dark theme で picker が表示されている
 When selected 行と unselected 行を比較する
-Then 選択状態が、色 (背景・文字色) の変化だけではなく、indicator の存在 / 構造として判別できる
+Then selected 行には selected mark を含む RadioButton の形状が見え、unselected 行との差を色 (背景・文字色) だけでなく形状として判別できる
 And 色覚多様性の観点で、選択判別が特定の色の組の識別に依存しない
 
 ### Scenario: TalkBack は1行を1つの論理的な選択肢として読み上げる
@@ -131,8 +131,9 @@ None。新規 permission、外部送信、sensitive data は存在しない。di
 ## Accessibility and localization
 
 - 選択状態は NFR-009 および [spec 182](../182-layout-strategy-catalog/spec.md) Accessibility and localization の契約 (TalkBack の label/state/selection announcement、Switch Access / keyboard traversal、200% font scaling) を満たしたまま視覚化される。視覚化により accessibility semantics を退化させてはならない。
+- selection semantics の唯一の truth は既存の parent row の `selectable(selected = isSelected, role = Role.RadioButton, ...)` とする。追加する child `RadioButton(selected = isSelected, onClick = null)` は visual-only indicator であり、child 側に `Selected` / selectable / click / focus semantics があることを前提にしない。child 側へ独自 semantics を追加してこの契約を作らない。
 - selected / unselected の判別は色非依存である (color contrast に加え、indicator の存在自体が情報として機能する)。
-- 追加 indicator は既存の Material3 / Lawnchair preference radio pattern に倣い、row 単位の merged semantics を保つ。indicator が独立した focus 対象・読み上げ対象になる実装は本specの失敗とみなす。
+- 追加 indicator は既存の Material3 / Lawnchair preference radio pattern に倣い、row 単位の merged semantics を保つ。indicator が独立した selectable / click / focus 対象・読み上げ対象になる実装は本specの失敗とみなす。
 - 文言修正は [spec 161](../161-japanese-ui-copy-lqa/spec.md) の日本語 UI コピー規約・対訳規約に従う。`organization_strategy_canonical_description` の ja/en を対応させ、historical note を除去した observable behavior 説明に絞る。en 側も同一の意味変更要件を満たす。
 - light / dark 両 theme の代表状態で、selected / unselected の視覚区別を screenshot evidence として PR に残す。
 
@@ -140,9 +141,9 @@ None。新規 permission、外部送信、sensitive data は存在しない。di
 
 - [ ] AC-1: picker 初期表示時、effective selected strategy が persistent visual indicator により一意に判別でき、semantics の `Selected` 状態と同一の truth から導出されている。
 - [ ] AC-2: 選択成功後、indicator が新しい strategy へ移り、複数行が選択済みに見える状態が発生しない。再選択は視覚的にも no-op である。
-- [ ] AC-3: selected / unselected の判別が色だけに依存しない。
+- [ ] AC-3: selected / unselected の判別が、light / dark theme の実画面で selected mark の形状差として確認でき、色だけに依存しない。
 - [ ] AC-4: row 全体の選択操作が維持され、indicator が独立した focus / 操作対象にならず、TalkBack は name + description + selected state を1つの論理ノードとして読む (重複読み上げなし)。
-- [ ] AC-5: 既存 `selectableGroup` semantics、Switch Access / keyboard traversal、200% font scale 挙動が回帰していない。
+- [ ] AC-5: 既存 `selectableGroup` semantics、Switch Access / keyboard traversal、200% font scale 挙動が回帰していない。200% font scale の代表画面で name / description の折り返し、indicator との非重複、clipping なしを screenshot または bounds 検査で確認する。
 - [ ] AC-6: selection store の fail-closed 表示規則 (読取失敗時に非選択表示) と absent 時の default-as-effective 表示規則が視覚表現でも維持される。
 - [ ] AC-7: light / dark の代表状態で selected / unselected が視覚的に区別できる evidence が PR に残る。
 - [ ] AC-8: canonical strategy の ja/en description から実装履歴説明が除かれ、observable behavior の説明になる。
@@ -152,12 +153,12 @@ None。新規 permission、外部送信、sensitive data は存在しない。di
 
 | AC | Evidence |
 |---|---|
-| AC-1 | `StrategyPickerInstrumentationTest` 拡張: indicator の選択状態が effective selection (default-as-effective を含む) と一致 |
-| AC-2 | instrumentation: 選択後の indicator 移動 + 単一選択の構造表明、再選択 no-op の回帰 |
-| AC-3 | instrumentation: indicator の構造的区別 (存在 / 選択状態) の表明。色比較の assertion に依存しない |
-| AC-4 | instrumentation: merged semantics (単一 focus 対象、重複 click 対象なし) の表明 + 実機 / emulator TalkBack 手動確認の記録 |
-| AC-5 | instrumentation: `selectableGroup` 存在の既存表明維持、200% font scale (`LocalDensity` fontScale = 2f pattern、[CategoryOverridePreferencesInstrumentationTest](../../tests/organizer-instrumentation/app/lawnchair/organizer/ui/CategoryOverridePreferencesInstrumentationTest.kt) 先例) |
-| AC-6 | instrumentation: 既存 `failedReadShowsNoActiveSelection` / `firstRunShowsTheBundleDefaultAsTheEffectiveSelection` の拡張 (visual indicator も規則に従うことの確認) |
+| AC-1 | `StrategyPickerInstrumentationTest` 拡張: parent row の `Selected` state が effective selection (default-as-effective を含む) と一致。visual indicator の同一性は screenshot oracle で補助確認 |
+| AC-2 | instrumentation: 選択後の parent row の `Selected` state 移動 + 単一選択、再選択 no-op の回帰。indicator の実際の移動は screenshot / manual visual evidence で確認 |
+| AC-3 | 正本は visual oracle: light / dark theme の selected / unselected 行を含む screenshot で selected mark の形状差を目視確認する。instrumentation は parent row の semantics/state 整合性だけを補助的に表明し、indicator の見た目を semantics assertion だけで証明しない |
+| AC-4 | instrumentation: parent row が唯一の selection semantics truth であり、各 row が単一の click target で、child visual-only RadioButton が独立 selectable / focus target になっていないことを表明する。実機 / emulator での TalkBack 手動確認 (読み上げ回数) も記録する |
+| AC-5 | instrumentation: `selectableGroup` 存在の既存表明維持、200% font scale (`LocalDensity` fontScale = 2f pattern、[CategoryOverridePreferencesInstrumentationTest](../../tests/organizer-instrumentation/app/lawnchair/organizer/ui/CategoryOverridePreferencesInstrumentationTest.kt)) で semantics/state を確認し、代表 screenshot で text の reflow、indicator との非重複、clipping なしを確認する |
+| AC-6 | instrumentation: 既存 `failedReadShowsNoActiveSelection` / `firstRunShowsTheBundleDefaultAsTheEffectiveSelection` を parent row の state で拡張し、visual indicator の fail-closed / default-as-effective 表示は screenshot oracle で確認 |
 | AC-7 | emulator screenshot (light / dark × selected / unselected) を PR へ添付 |
 | AC-8 | instrumentation または unit: canonical description resource が historical note を含まないことの表明。ja/en 対応の目視確認を PR へ記録 |
 | AC-9 | 既存 `StrategyPickerInstrumentationTest` + selection store unit test ([LayoutStrategySelectionStoreTest](../../tests/unit/app/lawnchair/organizer/rules/LayoutStrategySelectionStoreTest.kt)) の無修正通過 (contract 変更がないことの回帰証拠) |
@@ -170,3 +171,4 @@ None。新規 permission、外部送信、sensitive data は存在しない。di
 ## Change history
 
 - 2026-09-13: Draft created for #283 (baseline main `f9afd8bfde`, 2026-09-12 UTC 取得)。
+- 2026-09-13: Spec/plan review の Request changes (P1: `RadioButton(onClick = null)` は visual-only、P2: AC-3 の visual oracle、P2: 200% font-scale evidence) を反映。selection semantics の唯一の truth を parent row に固定し、視覚・font-scale evidence を screenshot または bounds 検査で拘束した。
