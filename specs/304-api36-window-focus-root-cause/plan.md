@@ -219,6 +219,10 @@ best-effort収集を実行してartifactへ保存する。収集コマンドの�
 置き換えず、各snapshotへ終了statusとして記録する。最初の自然再発までは、実際のCI
 artifactが取得できること自体は未確認である。収集対象は次の通りである。
 
+2026-09-13にIssue #53 laneを自然条件のまま再試行したが、instrumentationは成功し、
+failure-time capture/uploadは実行されなかった。したがって現時点で確認できたのは、
+緑時に既存laneを妨げないことだけであり、失敗時artifactの生成・内容は未実証のままとする。
+
 - `dumpsys window windows`（失敗時のwindow列挙とz-order）
 - `dumpsys window displays`（display状態）
 - `cmd role get-role-holders android.app.role.HOME` とHOME intentのresolve結果
@@ -343,10 +347,11 @@ production source、dependency、runtime test implementation は変更しない�
   因果機構の外部妥当性は担保しない。
 - **ANR の強制再現は非決定的**: H2 の反証は強制ではなく再発時証拠の蓄積に依存する。
   証拠保全の導入判断（手順 4）が H2 判別の鍵になる。
-- **初回自然再発まで未確認**: failure時のlogcat/dumpsys artifact導入は実装したが、
-  次の自然発生captureまでは、GitHub-hosted emulator上で全snapshotがartifactとして
-  保存されること、また各commandの権限不足が欠落なく記録されることは未確認である。
-  それまではH1/H1'とH2の機構を確定できない。
+- **failure-time artifact未実証**: failure時のlogcat/dumpsys artifact導入は実装し、
+  自然条件のIssue #53再試行では緑時非干渉を確認したが、失敗時captureはまだ発火していない。
+  次の自然発生captureまでは、GitHub-hosted emulator上で全snapshotがartifactとして保存される
+  こと、また各commandの権限不足が欠落なく記録されることは未確認である。それまでは
+  H1/H1'とH2の機構を確定できない。
 
 ## Explicitly unverified areas
 
@@ -368,5 +373,6 @@ production source、dependency、runtime test implementation は変更しない�
 - [x] occluder 分類表の維持（手順 3、AC-2）
 - [x] 証拠保全の判断記録（手順 4、AC-4）
 - [x] failure-time evidence preservation helperとAPI36 laneへの接続を実装し、fake-`adb` smoke testを実施
+- [x] 自然条件のIssue #53再試行を実施し、緑時はcapture/uploadがskipされることを確認（実失敗なし）
 - [ ] H1/H1' 機構判別の実施または取得不能の明示（手順 5）
 - [ ] 結論または残存リスク受容の本 Issue への記録（手順 6、AC-3）
