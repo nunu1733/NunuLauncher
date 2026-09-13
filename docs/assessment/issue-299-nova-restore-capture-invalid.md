@@ -65,6 +65,8 @@ capture側 `IllegalArgumentException` について、**元の#299実機障害と
 
 ## State matrix（bounded分類 — plan I-1の5定点のうち取得できた定点のみ）
 
+表の「barrier後」はharnessのsettle heuristic到達後を意味する（§Completion barrier参照）。
+
 | 定点 / variant | widget行 | appWidgetId | provider | restored flag | capture |
 |---|---|---|---|---|---|
 | restore直後（pre-barrier）/ widget有 | 1 | **-1** | あり | 7 | **Invalid（IllegalArgumentException）** |
@@ -97,25 +99,31 @@ barrier後のcaptureは9行。これも「修復・削除はreload generationの
   （RestoreDbTask.java:283-288, LauncherModel.java:314-327）はcallbackを持たず、
   `convertAndRestore` return時に `isModelLoaded=false` を実測した
   （restore API returnはcompletionではない — plan/specの定義どおり）。
-- **productionはrestore後に複数のreload generationを正当に走らせる**。
-  harness窓内のbind完了発火が2以上になるケースを実測した（restore自身のforceReloadと
-  grid-apply listener由来のreloadの重複）。完了の確定にはcommit数が必要で、
-  bind完了発火だけでは不十分である（中断されたgenerationもbind完了後にcancelされうる
-  ことを観測済み）。
-- **現在のtest barrierは契約gradeのoracleではなく、調査用settle barrierである**。
-  harnessのbarrierは「restore dispatch後にcommitしたreload generationが存在し
-  model が loaded」を条件とするsettle barrierであり、commit数はtest-onlyの
-  `BgDataModel.lastLoadId` delta観測（commitのみがincrementする。キャンセルされた
-  generationは増やさない）で記録する。**restore自身のgenerationのidentityは主張しない**
-  — productionにそのsignalが存在しないためである。I-3定点3/5の判定はこのsettle barrier
-  で行う。CI-AC-02の正式oracleはgeneration identityを運ぶsignalを要求し、それは
+- **bind完了はterminal commitではない（production control flowで確認）**。
+  `LauncherModel.LoaderTransaction` は `mLastLoadId++` をconstructor（load開始時）で行い
+  （LauncherModel.java:675）、`commit()` は `mModelLoaded = true` のみ
+  （:682-686）。`BgDataModel.lastLoadId` は `BaseLauncherBinder.bindWorkspace` 内で
+  copyされる（BaseLauncherBinder.java:151,172）ため、terminal commitより前の
+  bind時点で更新されうる。したがってbind完了発火も `lastLoadId` も
+  「commit済みgeneration数」の信号にならず、本調査で両者から
+  「何generationがcommitしたか」を導くことは撤回した。
+- **現在のtest barrierは契約gradeのoracleではなく、generation identityを持たない
+  調査用settle heuristicである**。harnessのbarrierは「`finishBindingItems` 発火後に
+  `LauncherModel.isModelLoaded()` が成立」を条件とするheuristicであり、
+  `isModelLoaded()`（`mModelLoaded && mLoaderTask == null && !mModelDestroyed`）は
+  観測瞬間にmodelがloadedかつactive loaderが無いという **settled stateの確認**には
+  使えるが、generation identityを運ばず、generation数も数えられない。
+  **restore自身のgenerationのidentityは主張しない**。I-3定点3/5の判定はこの
+  settle heuristicで行い、**generation-level causal attributionには使用しない**。
+  CI-AC-02の正式oracleはgeneration identityを運ぶsignalを要求し、それは
   I-5 seam decisionの対象として残る。
-- **organizer token機構（`forceReloadForOrganizer`）はbarrierに使えないことを確認**。
+- **既存の `forceReloadForOrganizer` はそのままbarrierに流用できないことを確認**
+  （「test-onlyでgeneration相関signalが作れない」までは主張しない）。
   lease tokenが非ゼロだとloaderが修復sanitizeをスキップし（LoaderTask.java:291、
   organizer reloadはDB不変を保持する設計）、ゼロだと完了通知が発火しない
-  （LoaderTask.java:429）。修復観測とgeneration相関完了を1 generationで両立する
-  signalはtest-onlyでは作れず、production seam（I-5）の対象である。
-  この確認が、I-3をsettle barrierで進めproduction変更をI-5まで持ち越す決定の根拠である。
+  （LoaderTask.java:429）。修復観測とgeneration相関完了を既存機構のままで
+  両立させることはできない — この確認が、I-3をsettle heuristicで進め
+  production変更をI-5まで持ち越す決定の根拠である。
 - **I-5 seam候補（この時点での評価）**: restore pathのreloadを、completion観測付きかつ
   修復sanitizeを保持するgeneration identity付きbarrierへ置くこと
   （`forceReloadForOrganizer` + `OrganizerReloadRequest` tokenのidentity check /
@@ -129,8 +137,8 @@ barrier後のcaptureは9行。これも「修復・削除はreload generationの
    （BACKUP_RESTORE lease、staging DB、`applyConvertedGrid`、restored.db copy、
    `performRestore`、`reloadAfterRestore` をすべて通る）。
 3. 直後にproduction capture sourceでcapture（pre-barrier観測）。
-4. `finishBindingItems` latch + `isModelLoaded` + `lastLoadId` delta観測で
-   completion barrierを観測（generation帰属の検証付き）。
+4. `finishBindingItems` latch + `isModelLoaded` のsettle heuristicで
+   settled stateを観測（generation identityは主張しない）。
 5. bounded state matrix（件数・分類のみ）をlogcatへ記録。
 6. interrupted variantは `quiesceForRestore()` でgenerationを中断してから同様に観測。
 
