@@ -321,8 +321,15 @@ class ManualOrganizationPreferencesInstrumentationTest {
     @Test
     fun unresolvedDurableStatusRestoresFocusToStartAction() {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        val readStarted = java.util.concurrent.CountDownLatch(1)
+        val releaseRead = java.util.concurrent.CountDownLatch(1)
         val application = FakeApplication().apply {
             durableStatus = OrganizerDurableStatus.UNRESOLVED
+            readOverride = {
+                readStarted.countDown()
+                releaseRead.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                OrganizerDurableStatus.UNRESOLVED
+            }
         }
         val runner = ManualOrganizationRun(
             application,
@@ -336,6 +343,14 @@ class ManualOrganizationPreferencesInstrumentationTest {
             }
         }
         composeRule.waitUntil { runner.state is ManualOrganizationRun.State.Idle }
+        composeRule.waitUntil(5_000) { readStarted.count == 0L }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_checking),
+        ).assertIsDisplayed()
+        releaseRead.countDown()
+        awaitDisplayed(
+            context.getString(R.string.manual_organization_durable_status_unresolved),
+        )
         val startText = context.getString(R.string.manual_organization_start)
         awaitDisplayed(startText)
         composeRule.waitUntil(5_000) {
