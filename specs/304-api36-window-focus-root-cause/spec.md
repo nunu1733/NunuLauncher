@@ -36,6 +36,12 @@ environment 異常を 1 失敗 + 完全な環境証拠として捕獲するこ�
 |---|---|---|---|
 | 1 | `com.google.android.apps.nexuslauncher/.NexusLauncherActivity`（CI image 内蔵の標準ランチャー） | [34704064012](https://github.com/nunu1733/NunuLauncher/actions/runs/34704064012)（head `083c902973`、2026-09-12 16:13 UTC、issue53 lane） | `interactive=true, keyguardLocked=false, focusedWindow=mCurrentFocus=Window{... nexuslauncher/.NexusLauncherActivity}, frontmostPackage=com.google.android.apps.nexuslauncher` |
 | 2 | `Application Not Responding: com.android.systemui`（ANR ダイアログ） | [34709095836](https://github.com/nunu1733/NunuLauncher/actions/runs/34709095836)（2026-09-12 17:54 UTC、issue52 lane） | `interactive=true, keyguardLocked=false, focusedWindow=mCurrentFocus=Window{... Application Not Responding: com.android.systemui}, frontmostPackage=android` |
+| 3 | `com.google.android.apps.nexuslauncher/.NexusLauncherActivity`（標準ランチャー） | [34732479463](https://github.com/nunu1733/NunuLauncher/actions/runs/34732479463)（2026-09-13、issue53 lane） | 既存 capture 1 と同じ標準ランチャー frontmost の証拠 |
+| 4 | `Application Not Responding: com.android.systemui`（ANR ダイアログ） | [34733839798](https://github.com/nunu1733/NunuLauncher/actions/runs/34733839798)（2026-09-13、issue52 lane） | 既存 capture 2 と同じ system UI ANR dialog の証拠 |
+
+同じ収集期間の [34733180391](https://github.com/nunu1733/NunuLauncher/actions/runs/34733180391) は
+gate を通らない `previewHeadingRestoresFocus...` の Compose timeout であり、occluder capture
+ではない既存の非gateフレイクとして分離する。
 
 これにより、burst は単一原因ではなく「焦点を保持する system window が存在する boot」
 全般で発生していたことが強く示唆される。ただし次が未確定のままである:
@@ -137,9 +143,12 @@ And 既存の 2 capture（標準ランチャー、ANR ダイアログ）はこ�
 ### Scenario: root cause の結論が証拠つきで記録される (RC-AC-03)
 
 Given 発生時 capture と強制状態試行の証拠が蓄積している
-When [plan.md](./plan.md) の判断基準（機構説明・誘発再現・シグネチャ整合）を適用する
+When [plan.md](./plan.md) の判断基準を適用する
 Then per-boot トリガーの結論（単一 cause、または occluder 型ごとの分類）と、根拠と
-なった run link・試行記録が本 Issue へ記録される
+なった run link・試行記録が本 Issue へ記録される。AC-3 の root cause 確定には、
+最終的な occluder を直接前面化しただけの強制試行では足りず、仮説の因果経路を作る
+制御再現、または自然発生した CI boot における role/resolve/activity/window/z-order
+遷移の直接証拠を要求する。最終状態のシグネチャ一致は AC-1/AC-2 の証拠に限る。
 Or 緩和により再発が観測できなくなった場合、「root cause 未確定のまま残存リスクを
 受容する」判断とその根拠（occluder 一覧、gate の証拠能力、観測期間）が本 Issue へ
 記録されて完了する
@@ -184,8 +193,11 @@ None。production の accessibility 振る舞いは変更しない。
 - [ ] AC-2: 実発生の gate capture が証拠行だけで occluder 型へ分類できることを確認し、
       分類表を本 Issue または plan.md に記録する（RC-AC-02）。
 - [ ] AC-3: 実発生時の証拠または強制状態との整合から root cause を特定し、本 Issue に
-      結論を記録する。緩和により再発が観測できなくなった場合は、「root cause 未確定の
-      まま残存リスクを受容する」判断とその根拠を記録して完了する（RC-AC-03）。
+      結論を記録する。ただし、最終的な occluder を直接強制しただけのシグネチャ一致は
+      AC-1/AC-2 の証拠であり、AC-3 の機構確定には、因果経路の制御再現または自然発生
+      CI boot の role/resolve/activity/window/z-order 遷移の直接証拠を要する。緩和により
+      再発が観測できなくなった場合は、「root cause 未確定のまま残存リスクを受容する」
+      判断とその根拠を記録して完了する（RC-AC-03）。
 - [ ] AC-4: CI 失敗時の証拠保全手段の判断（導入/不導入と理由）を本 Issue に記録する
       （RC-AC-04）。
 
@@ -194,8 +206,8 @@ None。production の accessibility 振る舞いは変更しない。
 | AC | Evidence |
 |---|---|
 | AC-1 | ローカル api36 emulator での強制状態試行 log と gate 失敗メッセージ実物。plan.md Verification evidence 節に記録 |
-| AC-2 | gate capture の証拠行と occluder 分類表（既存 2 例 + 発生時追加分）。本 Issue または plan.md に記録 |
-| AC-3 | 本 Issue の結論コメント（根拠 run link / 試行記録への参照つき） |
+| AC-2 | gate capture の証拠行と occluder 分類表（自然発生 4 例 + 非gateフレイクの分離 + 強制 1 例）。本 Issue または plan.md に記録 |
+| AC-3 | 本 Issue の結論コメント（自然発生CIの遷移証拠または因果経路の制御再現と、根拠 run link / 試行記録への参照つき） |
 | AC-4 | 本 Issue の判断コメント（列挙した不足状態と理由つき） |
 
 ## Open questions
@@ -216,3 +228,6 @@ blocking なものはない。調査中に解決すべき問い:
 - 2026-09-13: 再開時に `origin/main`=`3aa6e83a1f` とIssue全コメントを再確認し、
   #305 merge後の現行gateで標準ランチャーoccluderを強制した診断実証と、追加証拠保全を
   別PRへ分離する判断を `plan.md` に記録。契約範囲とroot cause未確定の扱いは変更なし。
+- 2026-09-13: review指摘を反映し、自然発生CI capture（標準ランチャー 2 例、system UI
+  ANR 2 例）と非gateフレイクを分類表へ追加。最終occluderの強制再現はAC-1/AC-2に限り、
+  AC-3には因果経路の制御再現または自然発生CIの遷移証拠を要求するよう明記した。

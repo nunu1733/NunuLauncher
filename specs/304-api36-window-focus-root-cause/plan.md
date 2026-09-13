@@ -44,6 +44,16 @@
   `waitUntil(5_000)` timeout も発生しており、system UI が不調な boot だった裏付け
   （[Issue #304 コメント 2](https://github.com/nunu1733/NunuLauncher/issues/304#issuecomment-5647683394)、
   2026-09-12 UTC 確認）。
+- **occluder capture 3（標準ランチャー再発）**: [run 34732479463](https://github.com/nunu1733/NunuLauncher/actions/runs/34732479463)
+  （2026-09-13、issue53 lane）で、標準ランチャー
+  `com.google.android.apps.nexuslauncher/.NexusLauncherActivity` が frontmost となる
+  同一 signature を再捕捉した（[2026-09-13 03:02 UTC のIssue #304コメント](https://github.com/nunu1733/NunuLauncher/issues/304#issuecomment-5650524193)）。
+- **occluder capture 4（ANR ダイアログ再発）**: [run 34733839798](https://github.com/nunu1733/NunuLauncher/actions/runs/34733839798)
+  （2026-09-13、issue52 lane）で、`Application Not Responding: com.android.systemui`
+  が focus を保持する同一型を再捕捉した。同じ収集期間の
+  [run 34733180391](https://github.com/nunu1733/NunuLauncher/actions/runs/34733180391) は
+  `previewHeadingRestoresFocus...` の Compose timeout で、gate による occluder capture
+  ではない既存の非gateフレイクとして分離する。
 - **修復対象状態は burst を再現しない**: KEYCODE_SLEEP 強制（`mWakefulness=Asleep`）→
   gate が wakeup（実行後 `Awake`）→ green（PR #305 本文の Verification evidence、
   ローカル api36 AVD `issue142_api36`、2026-09-12 実施）。非 interactive /
@@ -126,9 +136,9 @@
 | H1 | 一部の boot で default HOME role が標準ランチャーに解決され、HOME category 起動が role holder（標準ランチャー）へ効くことで標準ランチャーが前面に残る | occluder 1 の focused window が標準ランチャー。ローカルAPI36でもHOME role holderはNexusだった | 起動は明示component指定であり、暗黙HOME解決ではない（`startLauncher` :1158実測）。同じローカル端末でNexusがHOME role holderのままでも、明示的なLawnchair起動はLawnchairへfocusを移したため、role holder単独ではこのfailureを説明できない | CI boot上のrole stateと、失敗時の実際のactivity/window遷移を同時に取得する。role stateだけでは不足し、`dumpsys window windows` と起動結果の組み合わせが必要 |
 | H1' | HOME role は不変で、標準ランチャーの window が z-order 上に残存し焦点を保持する（起動は成功するが焦点が取れない） | occluder 1 で `awaitResumedLauncher` が timeout = Lawnchair が RESUMED に到達していない。焦点が標準ランチャーであることと整合。ローカルでもLawnchairのfocus取得後にNexusを前面化すると同じfailure signatureになった | ローカルの強制操作はCIの自然発生機構ではない。Lawnchair未RESUMEDの説明にはならない（RESUMED判定はlifecycleと独立） | gate 証拠にz-orderが無いため、再発時に `dumpsys window windows` を取得できるようにして判別する（手順4の判断材料）。ローカルではoccluder強制状態で同等dumpを取得できる |
 | H2 | system UI の ANR ダイアログが焦点を保持する boot がある（runner 負荷等で systemui が不調になる boot 単位の劣化） | occluder 2 の focused window が `Application Not Responding: com.android.systemui`。同 run の非 gate test も timeout | 発生機構（なぜ ANR に至るか）は未観測 | ANR の強制再現は非決定的であり oracle にしない。再発時に logcat / ANR trace が取れるかを証拠保全の判断で評価。型としては occluder 1 と独立に「焦点保持 system window が存在する boot」として分類 |
-| H3 | `input keyevent 82` 直後の keyguard 解除不成立・解除と HOME 起動の競合 | Issue 本文の仮説候補 | occluder 1・2 とも `keyguardLocked=false`。KEYCODE_WAKEUP / dismiss-keyguard の修復実装済み | gate 証拠の `keyguardLocked` field で反証済みと扱う。ただし `isKeyguardLocked` が false でも keyguard アニメーション中の遷移等の中間状態は理論上あり得るため、再発時証拠で継続確認 |
+| H3 | `input keyevent 82` 直後の keyguard 解除不成立・解除と HOME 起動の競合 | Issue 本文の仮説候補 | occluder 1〜4 はいずれも最終 capture で `keyguardLocked=false`。KEYCODE_WAKEUP / dismiss-keyguard の修復実装済み | 最終状態の `keyguardLocked=false` により、解除済み状態が継続している単純な説明は弱化する。ただし解除・起動の途中に競合があった可能性までは否定できないため、遷移証拠がない限り H3 は未確定とする |
 | H4 | 非 interactive（screen off）boot | Issue 本文の仮説候補 | occluder 1・2 とも `interactive=true`。KEYCODE_SLEEP 強制は wakeup 修復で green | 反証済みと扱う（修復対象であり burst の原因にならないことまで含めて実証済み） |
-| H5 | API 36.1 固有の window focus 遷移の遅延・欠落 | Issue 本文の仮説候補（api36 限定の発生） | gate の 15 秒待ちでも焦点が到達しなかった = 遅延ではなく「保持」である。api35 が同 head で green な事実は遷移が遅いだけなら説明が難しい | 遷移遅延説で残す場合は、焦点が最終的に到達する状態を観測する必要がある。gate が 15 秒で切り上げるため、再発時に待ち延長なしで観測できる範囲（証拠行）で判別する |
+| H5 | API 36.1 固有の window focus 遷移の遅延・欠落 | Issue 本文の仮説候補（api36 限定の発生） | gate の 15 秒待ちで焦点が到達しなかったため、15 秒以内に解消する単純な遅延説は弱化する。api35 が同 head で green な事実も単純な遅延だけでは説明しにくい | 15 秒超の遅延や完了しない遷移までは現証拠から否定できない。自然発生時の activity/window 遷移または待機後の状態を観測し、単純な遅延・欠落・occluder保持を区別する |
 
 ## Occluder classification
 
@@ -136,6 +146,9 @@
 |---|---|---|---|
 | CI run [34704064012](https://github.com/nunu1733/NunuLauncher/actions/runs/34704064012) | 標準ランチャー activity | `interactive=true`, `keyguardLocked=false`, `focusedWindow=...com.google.android.apps.nexuslauncher/.NexusLauncherActivity`, `frontmostPackage=com.google.android.apps.nexuslauncher` | 証拠行だけで標準ランチャー型と分類可能 |
 | CI run [34709095836](https://github.com/nunu1733/NunuLauncher/actions/runs/34709095836) | system UI ANR dialog | `interactive=true`, `keyguardLocked=false`, `focusedWindow=...Application Not Responding: com.android.systemui`, `frontmostPackage=android` | 証拠行だけでANR dialog型と分類可能 |
+| CI run [34732479463](https://github.com/nunu1733/NunuLauncher/actions/runs/34732479463) | 標準ランチャー activity | 既存 capture 1 と同じ `com.google.android.apps.nexuslauncher/.NexusLauncherActivity` frontmost | 証拠行だけで標準ランチャー型と分類可能。自然発生での再発例 |
+| CI run [34733839798](https://github.com/nunu1733/NunuLauncher/actions/runs/34733839798) | system UI ANR dialog | 既存 capture 2 と同じ `Application Not Responding: com.android.systemui` | 証拠行だけでANR dialog型と分類可能。自然発生での再発例 |
+| CI run [34733180391](https://github.com/nunu1733/NunuLauncher/actions/runs/34733180391) | 非gate Compose timeout | `previewHeadingRestoresFocus...` の `ComposeTimeoutException` | occluder captureではなく、既存の非gateフレイクとして分類から分離 |
 | Local `issue142_api36` forced run (2026-09-13) | 標準ランチャー activity | `interactive=true`, `keyguardLocked=false`, `focusedWindow=...com.google.android.apps.nexuslauncher/.NexusLauncherActivity`, `frontmostPackage=com.google.android.apps.nexuslauncher` | CI run 34704064012と同じoccluder型。自然発生機構の証明ではなく、診断能力の誘発実証 |
 
 ## Investigation steps
@@ -165,10 +178,11 @@
    必要かを対応づけた上で、CI failure 時 artifact 化（logcat / dumpsys）の導入/不導入
    と理由を本 Issue へ記録する。導入と判断した場合も実装は別 PR
    （workflow 変更は全 gate 実行の対象。ci-test-portfolio.md の管轄）。
-5. **H1/H1' の機構判別**: 標準ランチャー occluder が再捕捉された場合（または手順 2 の
-   強制で同等状態を作れた場合）、HOME role state と z-order の観測（手順 4 の判断結果
-   に従い、CI で取得できるようになった手段またはローカル再現）により、role 解決起因
-   （H1）と z-order 残留（H1'）を判別する。判別に必要な観測が取得不能な場合は、
+5. **H1/H1' の機構判別**: 標準ランチャー occluder が再捕捉された場合、HOME role state、
+   resolve 結果、activity/window 遷移、z-order を、自然発生した CI boot または仮説の
+   因果経路を再現する制御試行で観測する。最終状態の occluder を host から直接前面化
+   するだけの試行は、CI signatureとの一致を示す AC-1/AC-2 の証拠にはなるが、H1/H1'
+   の機構判別や AC-3 の root cause 確定には使わない。必要な観測が取得不能な場合は、
    そのことを明示して未確定部分を残した結論または残存リスク受容へ進む。
 6. **結論の記録**（RC-AC-03、終了条件 3）: 下記の判断基準を適用し、本 Issue へ結論を
    記録する。再発が観測できなくなった場合は残存リスク受容の判断と根拠を記録して
@@ -180,11 +194,13 @@
 
 1. **観測**: 失敗時に存在した状態が gate 証拠（または同等の adb 取得証拠）で
    捕捉され、焦点を保持していた window の owner が特定されている。
-2. **機構**: その状態が per-boot で生じる経路の説明があり、誘発再現（手順 2 の強制
-   状態と同等の操作）または boot 上の直接観測（role state / z-order 等）により
-   裏付けが取れている。
-3. **整合**: 誘発状態が CI シグネチャと一致する（同一の gate 接頭辞、証拠 field の
-   値の型、失敗形態）。一致しない場合は差異を明記する。
+2. **機構**: その状態が per-boot で生じる因果経路の説明があり、(a) 最終 occluderを
+   直接前面化するだけではない、仮説の因果経路を作る制御再現、または (b) 自然発生した
+   CI boot 上の role/resolve/activity/window/z-order 遷移の直接観測により裏付けが取れて
+   いる。最終状態を強制して同じsignatureを得ただけでは、この条件を満たさない。
+3. **整合**: 因果経路の再現または自然発生観測が CI シグネチャと一致する（同一の gate
+   接頭辞、証拠 field の値の型、失敗形態）。最終状態のsignature一致だけの場合は
+   AC-1/AC-2 の証拠として記録し、root cause確定の外部妥当性とは扱わない。
 
 複数 occluder 型が残る場合は「単一 root cause」とまとめず、型ごとの分類として
 記録する（occluder 1 と 2 は既に異種である）。
@@ -307,8 +323,9 @@ production source、test implementation、CI workflow、dependency は変更し�
   このため残存リスク受容の判断基準を事前に固定した（上記）。
 - **gateの後続変更**: PR #305はmerge済みで今回の試行は現行main上で行った。gateの
   診断契約が今後変更された場合は、同じ強制状態試行をやり直す必要がある。
-- **強制状態の外部妥当性**: 人為的に作った occluder 状態が、実発生の per-boot 状態と
-  同一とは限らない。判断基準の 3（シグネチャ整合）で担保する。
+- **強制状態の外部妥当性**: 人為的に最終 occluder を作った状態が、実発生の per-boot
+  状態と同一とは限らない。signature一致はAC-1/AC-2の診断能力を支持するが、AC-3の
+  因果機構の外部妥当性は担保しない。
 - **ANR の強制再現は非決定的**: H2 の反証は強制ではなく再発時証拠の蓄積に依存する。
   証拠保全の導入判断（手順 4）が H2 判別の鍵になる。
 - **CI workflow 触れず制約**: z-order・role state が CI で取得できない間、H1/H1' の
