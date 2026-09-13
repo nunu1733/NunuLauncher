@@ -50,7 +50,7 @@ class NovaRestoreCaptureWidgetWindowTest : NovaRestoreCaptureTestBase() {
             widgetRowCount("widget/postRestore"),
         )
         assertTrue(
-            "capture before the completion barrier must fail closed on the unbound widget row",
+            "capture before the settle point must fail closed on the unbound widget row",
             !preBarrierReady,
         )
         assertEquals(
@@ -60,7 +60,7 @@ class NovaRestoreCaptureWidgetWindowTest : NovaRestoreCaptureTestBase() {
         )
 
         // Post-barrier: the reload generation repaired the widget row.
-        awaitRestoreReloadBarrier("widget cycle 1", restored)
+        awaitSettlePoint("widget cycle 1", restored)
         logMatrix("widget/afterBarrier", restored.info)
         assertEquals(
             "the reload generation's widget repair must bind the row",
@@ -68,7 +68,7 @@ class NovaRestoreCaptureWidgetWindowTest : NovaRestoreCaptureTestBase() {
             widgetRowCount("widget/afterBarrier"),
         )
         assertTrue(
-            "after the completion barrier the repaired widget row must capture Ready",
+            "after the settle point the repaired widget row must capture Ready",
             captureThroughProductionSource(),
         )
     }

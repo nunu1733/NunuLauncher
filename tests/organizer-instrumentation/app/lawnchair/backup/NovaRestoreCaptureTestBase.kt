@@ -178,8 +178,8 @@ abstract class NovaRestoreCaptureTestBase {
      * sanitize (the existing organizer token path skips it and cannot be
      * reused as-is), so at this settle point pending repair work has settled.
      */
-    protected fun awaitRestoreReloadBarrier(label: String, restored: RestoredWorkspace) {
-        assertTrue("$label: restore reload did not reach the completion barrier", restored.barrier.await(30, TimeUnit.SECONDS))
+    protected fun awaitSettlePoint(label: String, restored: RestoredWorkspace) {
+        assertTrue("$label: restore reload did not reach the settle point (model loaded, no active loader)", restored.barrier.await(30, TimeUnit.SECONDS))
         awaitModelLoaded(label)
         Log.i(
             TAG,
@@ -196,7 +196,7 @@ abstract class NovaRestoreCaptureTestBase {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             launcher.model.forceReload()
         }
-        assertTrue("$label: reload did not reach the completion barrier", latch.await(30, TimeUnit.SECONDS))
+        assertTrue("$label: reload did not reach the settle point (model loaded, no active loader)", latch.await(30, TimeUnit.SECONDS))
         awaitModelLoaded(label)
         Log.i(
             TAG,
