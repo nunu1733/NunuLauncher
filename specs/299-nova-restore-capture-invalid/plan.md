@@ -2,7 +2,7 @@
 
 > Issue: #299
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: accepted（spec/planとも2026-09-13にreview承認。実装はI-1から開始）
 
 ## Current evidence
 
@@ -199,7 +199,10 @@ mergeしない方針は不変である。
   上記matrixの定点計測を最初から収集する（後付けの再現を要求しない）。
   あわせて、**restoreに対応するmodel reload generationがterminal completionに
   到達したことを観測できるproduction/test signalを特定し、それを本planの
-  completion barrierとする**。現行実装では `RestoreDbTask.reloadAfterRestore`
+  completion barrierとする**。signalの特定では、successfulなcompletionを
+  cancellation・interruption（#298のfailure pathを含む）と区別し、
+  failure pathをcompletion扱いしない。現行実装では
+  `RestoreDbTask.reloadAfterRestore`
   は `LauncherModel.forceReload()` を呼ぶのみであり
   （RestoreDbTask.java:283-288、LauncherModel.java:314-327）、そのreturnは
   reload完了を意味しない（callbackが無い場合、loaderは次回launcher起動まで
@@ -331,7 +334,7 @@ Organizer run (manual)
 | CI-AC-04 | #185既存coverageのgreen | 同上 + `organizer-instrumentation-shared-writer-tests` job（`LoaderCursorOverlapAcceptanceContractTest`、`OverlapAcceptanceGateSeamInstrumentationTest`） |
 | CI-AC-05 | 追加regressionの実行。seam作成不能の場合は理由と代替device evidence | 追加surfaceのCI gate接続 |
 | CI-AC-06 | 繰り返しrestore → capture検証 | emulator/実機での手順と結果をPRに記録 |
-| CI-AC-07 | decision gate記録（正規化/拒絶の採否）+ 採用時の振る舞い検証 | assessment doc + 対応test |
+| CI-AC-07 | decision gate記録（正規化/拒絶の採否）+ 採用時の振る舞い検証。**不採用時は、別fix（reload sequencing、一貫したcapture読み取り世代等）でCI-AC-02を満たせることを証跡で示す**（diagnostics-onlyでCI-AC-02を満たす選択は不可） | assessment doc + 対応test |
 | CI-AC-08 | bounded category fieldの実装test（redaction non-containment含む） | organizer diagnostics契約のfixture test拡張 + `organizer-unit-tests` gate |
 
 含めるべき観点: unit（codec fixtureによる各require不変条件の網羅）、

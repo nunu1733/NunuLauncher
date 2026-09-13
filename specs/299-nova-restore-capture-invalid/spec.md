@@ -1,6 +1,6 @@
 ---
 issue: "#299"
-status: draft
+status: accepted
 requirements: [CI-AC-01, CI-AC-02, CI-AC-03, CI-AC-04, CI-AC-05, CI-AC-06, CI-AC-07, CI-AC-08]
 risk: []
 updated: 2026-09-13
@@ -36,8 +36,8 @@ capture不変条件が何であるかは不明である。Organizerは無効なc
 復元されたworkspace/model状態またはcapture不変条件そのものを対象にしなければ
 ならない。
 
-観測build `d0f40446c7` は現在のmain（`3aa6e83a1f6dc331e9f6712c126c9ff58d050660`、
-2026-09-13再確認）の祖先であり、`f9afd8bfde..3aa6e83a1f` の差分で
+観測build `d0f40446c7` は現在のmain（`37e3dd8feb9240e90587620e8175330b48604e19`、
+2026-09-13再確認）の祖先であり、`f9afd8bfde..37e3dd8feb` の差分で
 capture pathの本体
 （[RowManifestCodec.kt](../../lawnchair/src/app/lawnchair/organizer/application/adapter/RowManifestCodec.kt)、
 [LauncherLayoutAdapter.kt](../../lawnchair/src/app/lawnchair/organizer/application/adapter/LauncherLayoutAdapter.kt)、
@@ -45,7 +45,8 @@ capture pathの本体
 [RestoreDbTask.java](../../src/com/android/launcher3/provider/RestoreDbTask.java)、
 composer [OrganizationInputComposer.kt](../../lawnchair/src/app/lawnchair/organizer/integration/OrganizationInputComposer.kt)、
 diagnostics module）は無変更である。同区間のorganizer領域の変更は #287 の
-lock authoring修正（`LockAuthoring.kt`、planning側）のみであり、capture pathには
+lock authoring修正（`LockAuthoring.kt`、planning側）と #304 の
+spec/assessment docs追加のみであり、capture pathには
 触れない。よってこの観測は
 現在のmainのcapture path構造に妥当する。
 
@@ -114,9 +115,10 @@ boundedな）文脈を運ぶ。
   完了境界に到達したことを観測するためのbarrierである。restore APIのreturnや
   固定待ち時間はcompletion barrierではない（現行の `reloadAfterRestore` →
   `forceReload()` はreload開始操作であり、returnは完了を意味しない）。
-  観測signalの特定はplan I-1/I-3の成果であり、production/testに同等signalが
-  存在しない場合はfix seamの一部として設ける。CI-AC-02の検証はこのbarrierを
-  待って行われる。
+  barrier観測はsuccessfulなcompletionをcancellation・interruptionと区別し、
+  failure pathをcompletion扱いしない。観測signalの特定はplan I-1/I-3の成果であり、
+  production/testに同等signalが存在しない場合はfix seamの一部として設ける。
+  CI-AC-02の検証はこのbarrierを待って行われる。
 
 ## Behavior scenarios
 
@@ -284,6 +286,12 @@ And reservation違反に対する `CAPTURE_RESERVED_OVERLAP` / write時
   強化するとともにreload完了前後の境界scenarioを明示した。baselineを現行main
   `3aa6e83a1f` へ更新し、capture path無変更を再確認。#298はroot cause切り分けの
   必須比較軸としてinvestigation matrixに組込み（plan.md）。
+- 2026-09-13: Re-review（[Approve, minor follow-upあり](https://github.com/nunu1733/NunuLauncher/issues/299#issuecomment-5652569418)）
+  を受けてminor follow-upを反映し、statusを `accepted` へ更新した。
+  Problem節のbaseline記述を
+  `37e3dd8feb` へ同期、plan Verification表のCI-AC-07に不採用時の証跡要求を追記、
+  completion barrierにsuccessful completionとcancellation/interruptionの
+  区別を追記。
 - 2026-09-13: Re-review（Changes requested）の反映。diagnostics-onlyを
   最終fixとできるのはCI-AC-02を別のfixで満たせる場合のみとScope/CI-AC-07へ
   制約を明記（completion後もrestored workspaceがinvalidのまま残る場合は
