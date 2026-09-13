@@ -1373,18 +1373,30 @@ class OnboardingOrganizationProposalInstrumentationTest {
             // Issue #300 (review P1): every injectInputEvent re-observes the launcher window's
             // focus immediately before injecting — including each half of the DOWN/UP pair — so
             // retries inside deliveredTap can never inject into a lost window (TS-AC-01). A gate
-            // failure between DOWN and UP aborts the attempt; the run is poisoned at that point
-            // and the residual pressed state is harmless.
-            InjectedInputEnvironment.ensureWindowFocused(launcher)
-            val downInjected = instrumentation.uiAutomation.injectInputEvent(down, true)
+            // failure between DOWN and UP aborts the attempt with the run already poisoned; the
+            // unreleased DOWN is harmless because later gated executions fail at entry and never
+            // inject again, but the events are still recycled deterministically (review nit).
+            var downInjected = false
+            try {
+                InjectedInputEnvironment.ensureWindowFocused(launcher)
+                downInjected = instrumentation.uiAutomation.injectInputEvent(down, true)
+            } finally {
+                down.recycle()
+            }
+            check(downInjected) {
+                "real touch injection was rejected by the system (down=false)"
+            }
             SystemClock.sleep(TOUCH_INJECTION_GAP_MILLIS)
             val up = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0)
-            InjectedInputEnvironment.ensureWindowFocused(launcher)
-            val upInjected = instrumentation.uiAutomation.injectInputEvent(up, true)
-            down.recycle()
-            up.recycle()
-            check(downInjected && upInjected) {
-                "real touch injection was rejected by the system (down=$downInjected, up=$upInjected)"
+            var upInjected = false
+            try {
+                InjectedInputEnvironment.ensureWindowFocused(launcher)
+                upInjected = instrumentation.uiAutomation.injectInputEvent(up, true)
+            } finally {
+                up.recycle()
+            }
+            check(upInjected) {
+                "real touch injection was rejected by the system (down=true, up=false)"
             }
         }
 
@@ -1450,16 +1462,27 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 val downTime = SystemClock.uptimeMillis()
                 val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0)
                 // Issue #300 (review P1): same per-injectInputEvent re-observation as tapCenterOf.
-                InjectedInputEnvironment.ensureWindowFocused(launcher)
-                val downInjected = instrumentation.uiAutomation.injectInputEvent(down, true)
+                var downInjected = false
+                try {
+                    InjectedInputEnvironment.ensureWindowFocused(launcher)
+                    downInjected = instrumentation.uiAutomation.injectInputEvent(down, true)
+                } finally {
+                    down.recycle()
+                }
+                check(downInjected) {
+                    "real touch injection was rejected by the system (down=false)"
+                }
                 SystemClock.sleep(TOUCH_INJECTION_GAP_MILLIS)
                 val up = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0)
-                InjectedInputEnvironment.ensureWindowFocused(launcher)
-                val upInjected = instrumentation.uiAutomation.injectInputEvent(up, true)
-                down.recycle()
-                up.recycle()
-                check(downInjected && upInjected) {
-                    "real touch injection was rejected by the system (down=$downInjected, up=$upInjected)"
+                var upInjected = false
+                try {
+                    InjectedInputEnvironment.ensureWindowFocused(launcher)
+                    upInjected = instrumentation.uiAutomation.injectInputEvent(up, true)
+                } finally {
+                    up.recycle()
+                }
+                check(upInjected) {
+                    "real touch injection was rejected by the system (down=true, up=false)"
                 }
                 val deadline = SystemClock.uptimeMillis() + DELIVERY_TIMEOUT_MILLIS
                 while (SystemClock.uptimeMillis() < deadline) {
