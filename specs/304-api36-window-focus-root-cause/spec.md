@@ -36,15 +36,19 @@ environment 異常を 1 失敗 + 完全な環境証拠として捕獲するこ�
 |---|---|---|---|
 | 1 | `com.google.android.apps.nexuslauncher/.NexusLauncherActivity`（CI image 内蔵の標準ランチャー） | [34704064012](https://github.com/nunu1733/NunuLauncher/actions/runs/34704064012)（head `083c902973d13e851ecda32137af5e9bbf3da323`、event `pull_request`、2026-09-12 16:13 UTC、issue53 lane） | `interactive=true, keyguardLocked=false, focusedWindow=mCurrentFocus=Window{... nexuslauncher/.NexusLauncherActivity}, frontmostPackage=com.google.android.apps.nexuslauncher` |
 | 2 | `Application Not Responding: com.android.systemui`（ANR ダイアログ） | [34709095836](https://github.com/nunu1733/NunuLauncher/actions/runs/34709095836)（head `820dae07557631273f46000a01a716ad2b5bbb6c`、event `workflow_dispatch`、2026-09-12 17:54 UTC、issue52 lane） | `interactive=true, keyguardLocked=false, focusedWindow=mCurrentFocus=Window{... Application Not Responding: com.android.systemui}, frontmostPackage=android` |
-| 3 | `com.google.android.apps.nexuslauncher/.NexusLauncherActivity`（標準ランチャー） | [34732479463](https://github.com/nunu1733/NunuLauncher/actions/runs/34732479463)（head `5420916a0e4cf0b3badc616303e3076cea3f912c`、event `pull_request`、2026-09-13、issue53 lane） | 既存 capture 1 と同じ標準ランチャー frontmost の証拠 |
+| 3 | `com.google.android.apps.nexuslauncher/.NexusLauncherActivity`（標準ランチャー） | [34732479463](https://github.com/nunu1733/NunuLauncher/actions/runs/34732479463) attempt 1（head `5420916a0e4cf0b3badc616303e3076cea3f912c`、event `pull_request`、2026-09-13、issue53 lane） | 既存 capture 1 と同じ標準ランチャー frontmost の証拠 |
 | 4 | `Application Not Responding: com.android.systemui`（ANR ダイアログ） | [34733839798](https://github.com/nunu1733/NunuLauncher/actions/runs/34733839798)（head `5420916a0e4cf0b3badc616303e3076cea3f912c`、event `workflow_dispatch`、2026-09-13、issue52 lane） | 既存 capture 2 と同じ system UI ANR dialog の証拠 |
+| 5 | `Application Not Responding: com.android.systemui`（ANR ダイアログ） | [34732479463](https://github.com/nunu1733/NunuLauncher/actions/runs/34732479463) attempt 2（head `5420916a0e4cf0b3badc616303e3076cea3f912c`、event `pull_request`、2026-09-13 10:31 UTC、issue53 lane） | 最初の失敗で `interactive=true, keyguardLocked=false, focusedWindow=mCurrentFocus=Window{... Application Not Responding: com.android.systemui}, frontmostPackage=android`。同じAPI 36.1 issue53 laneの自然bootで再発した直接証拠 |
 
 同じ収集期間の [34733180391](https://github.com/nunu1733/NunuLauncher/actions/runs/34733180391) は
 gate を通らない `previewHeadingRestoresFocus...` の Compose timeout であり、occluder capture
 ではない既存の非gateフレイクとして分離する。
 
-これにより、burst は単一原因ではなく「焦点を保持する system window が存在する boot」
-全般で発生していたことが強く示唆される。ただし次が未確定のままである:
+これにより、burst は単一のLawnchair UI状態ではなく「焦点を保持する system window が存在する boot」
+全般で発生していたことが強く示唆される。特に run 34732479463 attempt 2 は、既存の強制試行や
+別laneの観測ではなく、issue53 laneの自然bootでANR occluderが入力gateを阻害した証拠である。
+一方、SystemUIがそのbootでANRへ至る原因と、ANRになる前のrole/resolve/activity/window遷移は
+未取得のままである。次が未確定のままである:
 
 1. **標準ランチャー occluder の発生機構**。test の launcher 起動は明示 component 指定
    （`am start -n <Lawnchair> -a MAIN -c HOME`。main の
@@ -242,3 +246,7 @@ blocking なものはない。調査中に解決すべき問い:
   `NotificationShade` が `interactive=true` / `keyguardLocked=false` のままfocusを保持する
   追加occluder型を観測。`input swipe`での制御再現と`KEYCODE_BACK`後の同一test greenを
   plan.mdへ追記した。これは直接occluderの因果対照であり、CI bootの自然発生機構とは分離した。
+- 2026-09-13: run 34732479463 attempt 2 のissue53 laneで、自然boot中の最初の失敗が
+  `Application Not Responding: com.android.systemui` のfocus保持だったことを確認した。
+  SystemUI ANRが自然CIで入力gateを直接阻害する証拠として分類へ追加したが、ANR発生前の
+  boot内遷移と、SystemUIがANRへ至った根本機構は未確定のままとした。
