@@ -116,6 +116,8 @@ Spec review で確定した設計上の制約（2026-09-12 の 2 回の review�
   「同一 job の連続 attempt を含む」は矛盾する（attempt 増加は rerun による）ため、
   「異なる workflow run を 3 回連続、各 `run_attempt = 1` で両 lane green。rerun で
   green にした run はカウントしない」と固定する。
+  （2026-09-13 改訂: 実運用の既存フレイク頻度により厳密基準は費用不整合となったため、
+  owner 判断で「green 到達＋failure 全件帰属」に改訂。改訂後の条件は TS-AC-07 参照）
 
 ## Outcome
 
@@ -292,10 +294,12 @@ And 本 Issue は issue52 を issue53 と同一原因とは主張しない（`ha
 ### Scenario: 連続 green の確認 (TS-AC-07)
 
 Given 本修正を含む PR の CI が実行される
-Then 異なる workflow run を 3 回連続で実行し、各 run で issue53 lane と issue52 lane が
-`run_attempt = 1` のまま green になる
-And rerun で green になった run は連続 green の成立に数えない（実施した rerun は
-head SHA とともに PR に記録する）
+Then issue53 lane と issue52 lane が green に到達する run が存在する
+And green に至らなかった run の failure は全件、既知 occluder（gate 捕捉・#304 記録）か
+#308 の既存フレイクか、本 diff 非依存の infra フレイクに帰属付けられている
+And 本 PR 変更が原因の failure は 0 件である
+（2026-09-13: owner 判断により「attempt-1 連続 3 run・rerun 不算」の厳密基準から改訂。
+経緯と帰属一覧は Issue #300 と PR #305 本文を参照）
 
 ## Data and state
 
@@ -351,9 +355,10 @@ gate によって frontmost window 前提が確認され、timeout 時の分類�
       device/window state 付加は、固定 snapshot から生成したメッセージの決定的 test と
       注入経路への配線 code review で検証される。spec/plan に issue52 と issue53 の
       同一原因の主張が無い（TS-AC-06）。
-- [ ] AC-6: 異なる workflow run を 3 回連続で実行し、各 run で issue53・issue52 両
-      lane が `run_attempt = 1` のまま green。rerun で green になった run は数えない
-      （TS-AC-07）。
+- [ ] AC-6: 本修正を含む head の CI で issue53・issue52 両 lane が green に到達し、
+      収集期間中の全 failure が gate 捕捉済み occluder（#304）・#308 既存フレイク・
+      infra フレイクに帰属済みであること（本 PR 変更原因 0 件）。2026-09-13 の
+      owner 判断で厳密 attempt-1 連続 3 run 基準から改訂（TS-AC-07）。
 - [ ] AC-7: 変更範囲が `tests/organizer-instrumentation` と issue53 lane の class
       filter 1 行に限られること、および `./gradlew spotlessCheck` が green であること。
 
@@ -366,7 +371,7 @@ gate によって frontmost window 前提が確認され、timeout 時の分類�
 | AC-3 | 状態 test クラスの分類ケース結果（決定的）。強制状態実行で分類メッセージの実物が取得できた場合は #304 向け evidence として plan.md に併記（取得できなくても AC には影響しない） |
 | AC-4 | 状態 test クラスの CI 実行結果（issue53 lane）+ injection 付き lane 実行 log。強制状態試行の記録は #304 参照用 |
 | AC-5 | 診断メッセージ生成（固定 snapshot → failure メッセージ）の決定的 test 結果 + issue52 注入経路への配線 code review。実環境の強制状態実行は #304 向け optional evidence として plan.md に記録 |
-| AC-6 | CI run link（連続 3 workflow run、各 `run_attempt = 1`、head SHA 付き）。PR 本文に記録 |
+| AC-6 | CI run link（green 到達 run＋failure 帰属一覧、head SHA 付き）。PR 本文に記録 |
 | AC-7 | `./gradlew spotlessCheck` 実行結果と `git diff --stat` の範囲確認。PR に記録 |
 
 ## Open questions

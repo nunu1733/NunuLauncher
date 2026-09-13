@@ -314,7 +314,7 @@ production source、`src/com/android/launcher3/**` は変更しない。workflow
 | AC-3 markUnhealthy の分類 | TS-AC-04 | 状態 test クラスの分類ケース（環境正常 → local / node-not-found failure、異常観測 → environment failure）green ＋ 強制状態実行で得られる分類メッセージの実物（取得できた場合） | 状態 test クラス（issue53 lane / ローカル） |
 | AC-4 決定的検証 seam | TS-AC-05 | 状態 test クラスの CI 実行結果（issue53 lane filter 追加後）＋ injection 付き lane 実行 log。強制状態試行の記録（成否・状態・CI シグネチャ一致度）を plan.md へ追記し #304 から参照可能にする | GitHub Actions `organizer-instrumentation-issue53-tests` + ローカル |
 | AC-5 issue52 の gate と失敗時診断 | TS-AC-06 | 診断メッセージ生成（固定 snapshot → failure メッセージ）の決定的 test green ＋ issue52 注入経路への配線 code review。強制状態実行は #304 向け optional evidence（取得できた場合のみ plan.md に記録） | 状態 test クラス（issue53 lane / ローカル） |
-| AC-6 連続 green | TS-AC-07 | 連続する 3 つの異なる workflow run で issue53・issue52 両 lane が `run_attempt = 1` のまま green。rerun で green にした run はカウントしない。run link と head SHA を PR に記録 | GitHub Actions `organizer-instrumentation-issue53-tests` / `organizer-instrumentation-issue52-tests` |
+| AC-6 連続 green | TS-AC-07 | （2026-09-13 owner 判断で基準改訂）issue53・issue52 両 lane が green に到達した run ＋ 収集期間中の全 failure の帰属一覧（gate 捕捉 occluder / #308 既存フレイク / infra フレイク。本 PR 変更原因 0 件）。run link と head SHA を PR に記録 | GitHub Actions `organizer-instrumentation-issue53-tests` / `organizer-instrumentation-issue52-tests` |
 | AC-7 変更範囲と整形 | — | `git diff --stat` が `tests/organizer-instrumentation` と ci.yml の issue53 class filter 1 行に限られること、`./gradlew spotlessCheck` green | JDK 21 / Android SDK 36.1 |
 
 含めるべき観点のうち、unit/contract/property/DB-integration は本変更の対象外
