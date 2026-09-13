@@ -99,10 +99,10 @@ production source / build 設定 / dependency / 他 module への変更はなし
 
 各 step で `./gradlew spotlessCheck` と focused instrumentation を通す。
 
-## Explicitly unverified areas
+## Previously unverified areas
 
-- TalkBack 実機での実際の読み上げ (重複の有無) は本 plan 作成時点で未検証。merged semantics の構造表明が近似であり、最終判断は manual evidence とする。
-- child `RadioButton(onClick = null)` が独立した selectable / focus target にならないことは、API 36 emulator 2台の focused instrumentation で確認済み。ただし実際のTalkBack音声での重複読み上げは未確認である。
+- TalkBack 実機での実際の読み上げ (重複の有無) は、owner が [Build release APK run 34738876141, job 103675041637](https://github.com/nunu1733/NunuLauncher/actions/runs/34738876141/job/103675041637) の実機で確認済み。各 strategy は name + description + selected state の単一論理ノードとして読み上げられ、child radio の独立 focus / 重複読み上げはなかった。端末機種・OS build は報告されていないため推測しない。
+- child `RadioButton(onClick = null)` が独立した selectable / focus target にならないことは、API 36 emulator 2台の focused instrumentation と上記実機TalkBack確認で確認済み。
 - 最終 ja/en 文言は、historical note を除去した対応文言として実装・resource test・Evidenceで確定済み。
 - light/dark の視覚区別、および200% font scaleの代表画面は、`docs/assessment/evidence/issue-283-strategy-picker.md` と画像で確認済み。
 
@@ -123,10 +123,11 @@ production source / build 設定 / dependency / 他 module への変更はなし
 - [x] migration/recovery: 該当なし (永続化変更なし) を明記して検証省略。
 - [x] spotlessCheck + organizer JVM gate + focused instrumentation + light/dark/200% evidence 完成。
 - [x] PR evidence (screenshot) と残 risk を記録。
-- [ ] TalkBack 手動確認 (実際の音声読み上げ) — この環境では人手で確認できないため未実施。
+- [x] TalkBack 手動確認 (実際の音声読み上げ) — owner が実機で確認済み。対象buildと結果を [Evidence](../../docs/assessment/evidence/issue-283-strategy-picker.md#ac-4-physical-device-talkback-verification) に記録。
 
 ## Review response history
 
 - 2026-09-13: Spec/plan review の Request changes (P1: child `RadioButton(onClick = null)` の semantics 前提、P2: AC-3 visual oracle、P2: 200% font-scale oracle) に対応。plan revision 2 として、parent row を唯一の selection semantics truth、child を visual-only と明記し、light/dark と representative 200% screenshot を必須 evidence にした。
-- 2026-09-13: 実装再レビューの P2 (spacing) を解消し、light/dark/200% screenshotと自動検証結果を `docs/assessment/evidence/issue-283-strategy-picker.md` に追加。planの未確認領域・実行状態をEvidenceに合わせて更新した。TalkBack実音声のみ未確認として残した。
+- 2026-09-13: 実装再レビューの P2 (spacing) を解消し、light/dark/200% screenshotと自動検証結果を `docs/assessment/evidence/issue-283-strategy-picker.md` に追加。planの未確認領域・実行状態をEvidenceに合わせて更新した。その時点ではTalkBack実音声のみ未確認として残した。
 - 2026-09-13: 実装レビューの P2 (RadioButton と本文の spacing) に対応し、既存 Lawnchair preference pattern と同じ 16dp gap を実装計画へ反映した。
+- 2026-09-13: AC-4 の残件について、owner が release APK build 34738876141/job 103675041637 の実機で TalkBack を手動確認。単一論理ノードの読み上げ、selected state、child radio の独立 focus / 重複読み上げなしを Evidence に記録した。
