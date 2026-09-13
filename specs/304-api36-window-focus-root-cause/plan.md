@@ -54,10 +54,12 @@
   [run 34733180391](https://github.com/nunu1733/NunuLauncher/actions/runs/34733180391) は
   `previewHeadingRestoresFocus...` の Compose timeout で、gate による occluder capture
   ではない既存の非gateフレイクとして分離する。
-- **修復対象状態は burst を再現しない**: KEYCODE_SLEEP 強制（`mWakefulness=Asleep`）→
+- **現行gateは修復対象状態を緩和する**: KEYCODE_SLEEP 強制（`mWakefulness=Asleep`）→
   gate が wakeup（実行後 `Awake`）→ green（PR #305 本文の Verification evidence、
   ローカル api36 AVD `issue142_api36`、2026-09-12 実施）。非 interactive /
-  keyguard は gate の自動修復対象であり、証拠を残さない。
+  keyguard は現行gateの自動修復対象であり、修復後はその状態のfailure evidenceを残さない。
+  これはpost-gateの残存occluder failureに対する緩和を示すが、pre-gate burstの遷移中に
+  非interactive状態が寄与しなかったことまでは示さない。
 - **CI の artifact 現状**: issue53 lane の failure artifact は test report のみ
   （`.github/workflows/ci.yml:551-560`）。issue52 lane は test report ＋ UI evidence
   （`ci.yml:397-414`）。logcat / dumpsys は failure 時に残らない
@@ -137,7 +139,7 @@
 | H1' | HOME role は不変で、標準ランチャーの window が z-order 上に残存し焦点を保持する（起動は成功するが焦点が取れない） | occluder 1 で `awaitResumedLauncher` が timeout = Lawnchair が RESUMED に到達していない。焦点が標準ランチャーであることと整合。ローカルでもLawnchairのfocus取得後にNexusを前面化すると同じfailure signatureになった | ローカルの強制操作はCIの自然発生機構ではない。Lawnchair未RESUMEDの説明にはならない（RESUMED判定はlifecycleと独立） | gate 証拠にz-orderが無いため、再発時に `dumpsys window windows` を取得できるようにして判別する（手順4の判断材料）。ローカルではoccluder強制状態で同等dumpを取得できる |
 | H2 | system UI の ANR ダイアログが焦点を保持する boot がある（runner 負荷等で systemui が不調になる boot 単位の劣化） | occluder 2 の focused window が `Application Not Responding: com.android.systemui`。同 run の非 gate test も timeout | 発生機構（なぜ ANR に至るか）は未観測 | ANR の強制再現は非決定的であり oracle にしない。再発時に logcat / ANR trace が取れるかを証拠保全の判断で評価。型としては occluder 1 と独立に「焦点保持 system window が存在する boot」として分類 |
 | H3 | `input keyevent 82` 直後の keyguard 解除不成立・解除と HOME 起動の競合 | Issue 本文の仮説候補 | occluder 1〜4 はいずれも最終 capture で `keyguardLocked=false`。KEYCODE_WAKEUP / dismiss-keyguard の修復実装済み | 最終状態の `keyguardLocked=false` により、解除済み状態が継続している単純な説明は弱化する。ただし解除・起動の途中に競合があった可能性までは否定できないため、遷移証拠がない限り H3 は未確定とする |
-| H4 | 非 interactive（screen off）boot | Issue 本文の仮説候補 | occluder 1・2 とも `interactive=true`。KEYCODE_SLEEP 強制は wakeup 修復で green | 反証済みと扱う（修復対象であり burst の原因にならないことまで含めて実証済み） |
+| H4 | 非 interactive（screen off）boot | Issue 本文の仮説候補 | 現行の自然発生 occluder capture 1〜4 は最終時点で `interactive=true`。KEYCODE_SLEEP 強制は、PR #305後の現行gateが wakeup 修復して green にできることを示す | 現行gateでは非interactive状態は修復・緩和され、残るpost-gate occluder failureの原因ではない。一方、pre-gate burst [34677444335](https://github.com/nunu1733/NunuLauncher/actions/runs/34677444335)の遷移中に寄与した可能性は、interactive/keyguard/window状態を保持していないため未確認とする |
 | H5 | API 36.1 固有の window focus 遷移の遅延・欠落 | Issue 本文の仮説候補（api36 限定の発生） | gate の 15 秒待ちで焦点が到達しなかったため、15 秒以内に解消する単純な遅延説は弱化する。api35 が同 head で green な事実も単純な遅延だけでは説明しにくい | 15 秒超の遅延や完了しない遷移までは現証拠から否定できない。自然発生時の activity/window 遷移または待機後の状態を観測し、単純な遅延・欠落・occluder保持を区別する |
 
 ## Occluder classification
@@ -169,8 +171,8 @@
      Verification evidence 節に記録する（RC-AC-05）。
 3. **発生時証拠の蓄積と分類**（RC-AC-02）: PR #305 merge 後の CI 実行で gate capture
    を収集し、各 capture を occluder 型（標準ランチャー / system dialog / keyguard /
-   非 interactive / その他 / 不明）へ分類する。既存 2 capture（occluder 1・2）を
-   初期集合とし、分類表を本 Issue または本 plan に維持する。新規 capture ごとに
+   非 interactive / その他 / 不明）へ分類する。初期 2 capture（occluder 1・2）を含む
+   自然発生 4 captureを現集合とし、分類表を本 Issue または本 plan に維持する。新規 capture ごとに
    run link と head SHA を添える。
 4. **証拠保全の判断**（RC-AC-04、終了条件 2）: gate 証拠が保持しない状態
    （`dumpsys window windows` の z-order、`cmd role get-role-holders` の HOME role、
@@ -258,7 +260,7 @@ production source、test implementation、CI workflow、dependency は変更し�
 | Acceptance criterion | Requirement | Evidence | 環境 |
 |---|---|---|---|
 | AC-1 強制状態での診断特定実証 | RC-AC-01, RC-AC-05 | 本 plan Verification evidence 節への試行記録（メッセージ実物つき） | ローカル api36 emulator（#305 head を使用する場合は手順 1 の記録付き） |
-| AC-2 occluder 分類 | RC-AC-02 | gate capture の証拠行と分類表（本 Issue または本 plan） | CI（#305 merge 後）＋既存 2 capture |
+| AC-2 occluder 分類 | RC-AC-02 | gate capture の証拠行と分類表（本 Issue または本 plan） | CI（#305 merge 後）の自然発生 4 capture |
 | AC-3 root cause 結論または受容 | RC-AC-03 | 本 Issue の結論コメント（判断基準の適用記録つき） | — |
 | AC-4 証拠保全の判断 | RC-AC-04 | 本 Issue の判断コメント（不足状態の列挙と理由つき） | — |
 

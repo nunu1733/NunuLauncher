@@ -82,7 +82,7 @@ gate を通らない `previewHeadingRestoresFocus...` の Compose timeout であ
   occluder 状態を人為的に作り、gate 失敗メッセージがその状態を特定することを
   少なくとも 1 状態で実証する。試行の成否・出力・CI シグネチャとの一致度を
   [plan.md](./plan.md) に記録する。
-- **発生時証拠の蓄積と occluder 分類**: gate capture（既存 2 例を初期集合とする）を
+- **発生時証拠の蓄積と occluder 分類**: gate capture（初期 2 例を含む自然発生 4 例）を
   occluder 型（標準ランチャー / system dialog / keyguard / 非 interactive / その他 /
   不明）に分類し、証拠行だけから分類可能であることを確認する。
 - **標準ランチャー occluder の機構判別に必要な観測の特定**: default HOME role
@@ -138,7 +138,8 @@ focusedWindow=..., frontmostPackage=...` を読む
 Then occluder の identity（焦点を保持した window の owner component または dialog 種別）
 が証拠行だけから判別できる
 And gate の分類（ENVIRONMENT_ANOMALY としての停留）と矛盾しない
-And 既存の 2 capture（標準ランチャー、ANR ダイアログ）はこの契約を既に満たす実例である
+And 自然発生した 4 capture（標準ランチャー 2 例、ANR ダイアログ 2 例）はこの契約を
+既に満たす実例である
 
 ### Scenario: root cause の結論が証拠つきで記録される (RC-AC-03)
 
@@ -231,3 +232,5 @@ blocking なものはない。調査中に解決すべき問い:
 - 2026-09-13: review指摘を反映し、自然発生CI capture（標準ランチャー 2 例、system UI
   ANR 2 例）と非gateフレイクを分類表へ追加。最終occluderの強制再現はAC-1/AC-2に限り、
   AC-3には因果経路の制御再現または自然発生CIの遷移証拠を要求するよう明記した。
+- 2026-09-13: 再レビュー指摘を反映し、H4は現行gateの修復・緩和効果とpre-gate burstへの
+  寄与未確認を分離して記録。「既存の2 capture」を自然発生4 captureへ更新した。
