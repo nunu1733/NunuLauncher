@@ -1,6 +1,6 @@
 # Assessment: Issue #299 — Nova restore後のOrganizer capture `CAPTURE_INVALID`
 
-Status: `investigation I-1/I-2 complete`（再現経路確立、issue-representative failure捕捉、定点matrix拡張。fix architectureはI-5 decision gate待ち）
+Status: `investigation I-1/I-2 complete`（throw-site直接捕捉済み、repair中断による持続再現、matrix拡張+de-scope判定。cross-process追跡はI-4残務、fix architectureはI-5 decision gate待ち）
 
 Date: 2026-09-13（I-2完了revision）
 Investigation issue: https://github.com/nunu1733/NunuLauncher/issues/299
@@ -9,17 +9,37 @@ Plan: [specs/299-nova-restore-capture-invalid/plan.md](../../specs/299-nova-rest
 
 Evidence harness (committed): `tests/organizer-instrumentation/app/lawnchair/backup/NovaRestoreCaptureTestBase.kt` + `NovaRestoreCaptureControlTest` / `NovaRestoreCaptureWidgetWindowTest` / `NovaRestoreCaptureInterruptedReloadTest` / `NovaRestoreCaptureUnknownProviderTest`。raw logcatはcommitしない（本書の引用はharness matrix行とshipped diagnostics行のみで、いずれも件数・分類・例外class identityのみを含む）。
 
-## I-2 additions（2026-09-13）: issue-representative failure捕捉とmatrix拡張
+## I-2 additions（2026-09-13, rev 2 — I-2 review反映）: throw-site直接捕捉とmatrix拡張
 
-### #298相当failure pathでの同一invariant category観測（CI-AC-01 close条件a の履行）
+### capture throw-siteの直接捕捉（CI-AC-01の本体）
 
-一時的な調査計測（debug build限定・未commit・実施後にrevert済み）で、loaderの
-widget修復点（`WorkspaceItemProcessor.processWidget` 冒頭）がcrashした場合の
-挙動を観測した。crashはcache-dir marker fileでtoggleし、
-`IllegalStateException("I299_SIMULATED_WRONG_THREAD at processWidget")` を投げる。
-logcatには **`Desktop items loading interrupted`**（WorkspaceItemProcessorの
-既存catch行）として記録された — これは #298/#287 セッションで観測された
-loader中断signatureと同一の行である。
+一時的なcapture path instrumentation（debug build限定・未commit・実施後にrevert済み。
+`LayoutWriterCanonicalCaptureSource` のcatch節でclass simple nameとstack最上位frameを
+debug logcatへ出力）により、repair-point中断が残したinvalid state上でのcapture失敗の
+throw点を **直接捕捉**した（run @ 2026-09-13T22:04）:
+
+```text
+I299Probe: captureThrow class=IllegalArgumentException
+           top=app.lawnchair.organizer.application.adapter.RowManifestCodec.toCanonical:297
+```
+
+`RowManifestCodec.kt:297` は
+`requireNotNull(row.appWidgetId) { "Widget is missing its appWidgetId" }` である。
+計測時の同時観測: widget行 `appWidgetId=-1` 1行（`widgetIdNegative=1 widgetIdValid=0`）、
+capture fail-closed、observerへの通知は `IllegalArgumentException.class`。
+これで「`appWidgetId=-1` が存在 + IAEが出た → 当該requireがthrow-site」が推論ではなく
+直接観測になった。**synthetic issue-representative failureに対するCI-AC-01の
+throw-site/invariant特定は完了**（元実機セッションとの同一性の限界は後述）。
+
+### #298相当failure path（repair-point中断）での持続観測
+
+同じく一時的な調査計測（`WorkspaceItemProcessor.processWidget` 冒頭のcrashを
+cache-dir marker fileでtoggle、`IllegalStateException` を注入。実施後にrevert済み）で、
+修復点がcrashした場合の挙動を観測した。logcatには
+**`Desktop items loading interrupted`**（WorkspaceItemProcessorの既存catch行）として
+記録された — #298/#287 セッションで観測されたloader中断signatureと同一の行
+（両者が最終的にloader interruptionへ到達したことのevidence。同じ原因・同じ
+interruption pointだったことのidentityではない）。
 
 観測結果（SimulatedWrongThread scenario、1 process、run @ 2026-09-13T21:48）:
 
@@ -27,27 +47,23 @@ loader中断signatureと同一の行である。
 |---|---|---|---|
 | 定点1（performRestore commit直後、I299Probe） | **-1** | 7 | —（capture不可時点） |
 | 定点2（reloadAfterRestore直前、I299Probe） | -1（`modelLoaded=false` を同時記録） | 7 | — |
-| 修復点crashのreload generation群の後（cycle1） | **-1（恒常残存）** | 7 | **Invalid（IllegalArgumentException）** |
+| 修復点crashのreload generation群の後（cycle1） | **-1（残存）** | 7 | **Invalid（IllegalArgumentException、throw-site上記）** |
 | 中断を除去し完了generationを走らせた後（cycle2） | **有効値** | 4 | **Ready** |
 
-ここから次が確定する:
+I-2から言える範囲（evidence boundary）:
 
-- **同一invariant categoryの観測（CI-AC-01 close条件a）**: #298相当の
-  reload中断（修復点でのloader crash → `Desktop items loading interrupted`）が
-  unbound widget行（`appWidgetId=-1`）を残し、captureは #299 の観測と同一の
-  `IllegalArgumentException`（codec widget不変条件、candidate pathの
-  `RowManifestCodec` require）でfail-closedする。**capture側から見た
-  issue-representative failureを、#298相当failure pathで捕捉した。**
-- **持続（恒常化）の再現**: 修復generationがcrashし続ける限り、
-  unbound rowは持続し、captureは繰り返し `CAPTURE_INVALID` になる。
-  中断が止まれば次の完了generationが修復する（回復条件の確定）。
-  元実機セッションの「process再起動・再restoreでも不回復」に対応する状態は、
-  「修復を含むreload generationが何度試行しても完了しない」ことで説明できる。
+- **repair generationを同じ位置で継続的に中断すれば**、invalid rowと
+  `CAPTURE_INVALID` は持続し、**中断を止めれば修復する**（直接証明）。
+- 元実機セッションの「process再起動・再restoreでも不回復」をこの機構で
+  説明できるというのは、現段階では **有力なmechanism hypothesis**である
+  （process restart / re-restoreを跨ぐ追跡は未実施。#298のactual
+  wrong-thread呼び出し連鎖も未捕捉。cross-process追跡とactual path特定は
+  I-4残務 / #298 scope）。
 - **定点1/2の取得**: `performRestore` commit直後（定点1）に既に
   `widgetIdNegative=1 / restored=7` であり、正規化は行われていないことが確定。
   `reloadAfterRestore` 直前（定点2）でも `modelLoaded=false`（reload未完了状態からの
   forceReload dispatch）を記録。定点4相当（中断generation後）はcycle1の観測が該当する。
-- この計測はplan I-2の「出荷しない調査計測」契約どおり、PRから取り除いた
+- これらの計測はplan I-2の「出荷しない調査計測」契約どおり、PRから取り除いた
   （`git checkout`でrevert、一時scenario fileも削除済み。本assessmentの
   引用ログのみが残る）。
 
@@ -65,15 +81,26 @@ installed provider（bind修復）とunknown provider（削除修復）のどち
 settle点までのcaptureは同一のcodec widget不変条件でfail-closedする。修復の
 成否・形態にかかわらず「settle点までの窓が `CAPTURE_INVALID` になる」構造は共通である。
 
-### 複数profile / grid変換窓
+### 複数profile / grid変換窓 — de-scope判定
 
-未実施。provider両経路の修復挙動が確定したため、複数profileとgrid変換窓の
-優先度は相対的に下がった（candidate pathは既に両経路で同一と確認済み）。
-必要になった場合（I-3で成功/失敗差分が説明できない場合）にI-2追補として実施する。
+throw-siteの直接捕捉（上記）により、widget不変条件が実際のthrow点であることが
+確定した。providerのbind/delete分岐が同じ不変条件に到達することに加え、
+この確定により「profile inventory欠落（:90）」「page inventory不整合（:73）」
+「NULL screen/cell/span（:232, :259-261）」「malformed intent（:370-401）」といった
+**他のIAE candidateがこの障害のcapture失敗点ではないことが exclude された**。
+複数profileとgrid変換窓が新たなIAE candidateを追加する可能性は、
+candidate path（Nova restore → unbound widget行）が既に直接捕捉済みの以上に
+優先される根拠がない。よって両項目を本Issueの調査matrixからde-scopeし、
+将来I-3で成功/失敗差分が本mechanismで説明できない場合に限りI-2追補として
+再開する（plan.mdへ同期済み）。
 
-## Verdict（I-1で証明できた範囲）
+## Verdict（I-1/I-2で証明できた範囲）
 
-capture側 `IllegalArgumentException` について、**元の#299実機障害と整合する再現可能なcandidate path**をemulator上で確立した。元障害のthrow点同定（CI-AC-01 close）はこの時点では確定していない（下記「CI-AC-01のclose条件」）。
+capture側 `IllegalArgumentException` のthrow点
+（`RowManifestCodec.kt:297` のwidget不変条件require）を、synthetic
+issue-representative failure（repair-point中断が残したinvalid state）上で
+**直接捕捉した**（I-2 additions参照）。元の#299実機セッションとの
+identityの限界は下記2のとおり残る。
 
 1. **確定した再現経路**: Nova restoreはwidget行を `appWidgetId=-1` で保存する
    （`NovaBackupConverter.insertNovaItems`（:463）の固定値。`RestoreDbTask.sanitizeDB`（:359-365）
@@ -83,36 +110,32 @@ capture側 `IllegalArgumentException` について、**元の#299実機障害と
    logcat: "Did not receive new app widget id map during Launcher restore"）。
    `toPersistentRow`（RowManifestCodec.kt:240）が負値をnull化し、
    captureは `requireNotNull(row.appWidgetId) { "Widget is missing its appWidgetId" }`
-   （:296-297）で `IllegalArgumentException` となる。例外は
-   `LayoutWriterCanonicalCaptureSource`（OrganizationInputComposer.kt:94-110）がcatchして
+   （:296-297）で `IllegalArgumentException` となる — **このthrow点は一時
+   instrumentationで直接捕捉済み**（`top=RowManifestCodec.toCanonical:297`）。
+   例外は `LayoutWriterCanonicalCaptureSource`（OrganizationInputComposer.kt:94-110）がcatchして
    `CanonicalCaptureReadResult.Invalid`、composerはterminal `CAPTURE_INVALID` を返す。
    shipped diagnostics（debug build）は
    `OrganizerDiag: phase=CAPTURE exceptionClass=IllegalArgumentException` を出す。
-   この経路はproduction codeと一致し、emulatorで再現・固定済みである。
-2. **元障害とのidentityの限界**: 元の実機セッションに残るshipped diagnosticsは
-   例外class identityのみであり、本harnessはsynthetic fixtureを使用している。
-   したがって「元のセッションも上記requireで落ちた」というthrow-site identityまでは
-   証明できない。例外class identityのみが一致する、productionと一致する再現可能経路、
-   というのが現時点の証拠範囲である。
-3. **CI-AC-01のclose条件（I-2で実施）**: 次のいずれかでissue-representative failureを
-   捕捉してからcloseする。(a) #298相当のfailure path（reload中断を含む実障害経路）で
-   同一のinvariant categoryを観測する、または (b) throw-siteを区別できるdebug-only
-   instrumentation（出荷しない調査計測）で元障害相当のfailureを捕捉する。
-4. **修復機構（I-4経路cの実在確認）**: reload generationの内側で
+2. **元障害とのidentityの限界**: throw点の直接捕捉はsynthetic
+   issue-representative failure上のものである。元の実機セッションに残る
+   shipped diagnosticsは例外class identityのみであり、「元のセッションも
+   同一のrequireで落ちた」こと自体は推論の域を出ない。ただしthrow-site確定により、
+   他のcodec IAE candidate（profile inventory欠落、page inventory不整合、
+   NULL座標、malformed intent）はこのcapture失敗の説明から除外された。
+3. **修復機構（I-4経路cの実在確認）**: reload generationの内側で
    `WorkspaceItemProcessor.processWidget`（WorkspaceItemProcessor.kt:533-538）が
    `WidgetInflater` によるbind成功後に `APPWIDGET_ID` / `APPWIDGET_PROVIDER` / `RESTORED`
    をDBへ書き戻す（観測: flag 7→4、`appWidgetId` -1→有効値）。providerが
    未インストールでrestore未開始の場合は `markDeleted`（:497-505）で行を削除する。
    つまり**修復（bindまたは削除）はreload generation依存**であることまでは確認できた。
-5. **持続性の証拠範囲（重要な限界）**: 本harnessが直接証明したのは、
-   (a) `quiesceForRestore()` によるin-flight loadの停止がunbound widget行を残すこと、
-   (b) その後に**正常に完了したreload generation**が修復を実行すること、の2点である。
-   したがって、今回再現したwidget invariantについては
-   「正常completion generationが走れば修復される」。元障害のpersistence
-   （process再起動・再restoreを跨ぐ恒常化）を説明する**有力仮説**は
-   「reload修復が正常完了しない」ことだが、**persistent variantは本調査では未再現**であり、
-   #298のactual wrong-thread pathも未再現である。この仮説の検証はI-2/#298側の再現に委ねる。
-6. **#185非関与（この範囲での観測）**: 全runでreservation検証・`CAPTURE_RESERVED_OVERLAP`
+4. **持続性の証拠範囲（重要な限界）**: 直接証明できたのは次までである —
+   **repair generationを同じ位置で継続的に中断すればinvalid rowと
+   `CAPTURE_INVALID` は持続し、中断を止めれば修復する**。元障害のpersistence
+   （process再起動・再restoreを跨ぐ恒常化）をこの機構で説明できるのは
+   **有力なmechanism hypothesis**であり、process restart / re-restoreを跨ぐ
+   cross-process追跡（I-4残務）と #298 actual wrong-thread pathの特定（#298 scope）
+   が残る。
+5. **#185非関与（この範囲での観測）**: 全runでreservation検証・`CAPTURE_RESERVED_OVERLAP`
    は発生せず、QSB予約不変条件への回帰・変種の兆候は観測されなかった
    （正式な非回帰確認はI-5で既存coverageのgreenをもって実施）。
 
@@ -123,7 +146,7 @@ capture側 `IllegalArgumentException` について、**元の#299実機障害と
 | Build | branch `issue-299-spec-plan` @ `cdc217d032` + review反映revision（app code `c502b22189`）、`assembleLawnWithQuickstepGithubDebug` + androidTest |
 | Device | AVD `nunu_qpr2_api36_1`（Pixel 6 class, Google APIs, Android 16 / API 36.1, arm64） |
 | Fixture | synthetic等価Nova backup（`nova.xml` + `nova.db`。test app自身のcomponentと合成identityのみ。grid=対象AVDの元grid 4列×5行、hotseat 4、widget/provider/deep-shortcut/folder/apps/hotseat要素） |
-| Execution | 1 scenario class per `am instrument`（fresh process）。3 scenario classesすべてPASS |
+| Execution | 1 scenario class per `am instrument`（fresh process）。4 scenario classesすべてPASS |
 
 ## State matrix（bounded分類 — plan I-1の5定点のうち取得できた定点のみ）
 
@@ -206,28 +229,32 @@ barrier後のcaptureは9行。これも「修復・削除はreload generationの
 
 ## この調査で確定しないこと（I-2完了後 / I-3以降または未確認）
 
+- 元の#299実機セッションが同一のthrow点（`RowManifestCodec:297` widget不変条件）で
+  落ちたことの直接証明（元セッションのdiagnosticsは例外class identityのみ。
+  throw-site直接捕捉はsynthetic issue-representative failure上のものである）。
+- process restart / re-restoreを跨ぐcross-process persistence追跡（I-4残務）。
+  現在の持続観測は1 process内のrepair-point継続中断である。
 - #298の **actual** wrong-thread障害（`BaseIconCache.assertWorkerThread` 経由の
   `Cache accessed on wrong thread`、`Can't create handler inside Thread[NovaBackupRestore]`）
   そのものの再現。本調査は修復点crashを #298相当の **中断** として使用し、
   中断signature（`Desktop items loading interrupted`）と後続状態の因果は捕捉したが、
+  両者の原因・interruption pointの同一性までは証明されておらず、
   wrong-thread呼び出し連鎖そのものの特定と修正は #298 のscopeである。
 - 複数profile、grid変換（fixture grid ≠ 元grid）窓でのcapture読み取り
-  （I-2追補候補。上記「複数profile / grid変換窓」節参照）。
+  （de-scope済み。再開条件は上記「複数profile / grid変換窓」節参照）。
 - 影響を受けた実機セッションの実backup内容（privacy上取得不能。本調査はsynthetic等価で再現）。
-  元セッションが本調査の持続メカニズム（修復generationの持続的完了不能）と
-  同一だったかの最終確認は、#298側のactual path特定後に可能になる。
 
 ## Findings
 
 - #172契約のshipped diagnostics行（`phase=CAPTURE exceptionClass=IllegalArgumentException`）が
-  harness上で再現され、candidate pathの例外class identityが本障害の観測signatureと
-  一致することを確認した。CI-AC-08のbounded category（widget不変条件の区別）への
-  拡張はI-5後の実装で行う。
+  harness上で再現され、throw-site（`RowManifestCodec:297` widget不変条件）が
+  一時instrumentationで直接捕捉された。CI-AC-08のbounded category（widget不変条件の
+  区別）への拡張はI-5後の実装で行う。
 - spec CI-AC-02のoracle（completion barrier後の最初の権威的captureが成功）の
   検証surfaceは、正式oracle（production/testのgeneration-correlated barrier）が
   整備されるまで、本harnessの窓検証付き調査barrierで近似する。正式oracleの
   整備場所・形はI-5 decision gateの対象である。
-- widget行 `appWidgetId=-1` を含むrestoreは「restore直後〜barrier前」のOrganizer要求に
+- widget行 `appWidgetId=-1` を含むrestoreは「restore直後〜settle点前」のOrganizer要求に
   対して必ず `CAPTURE_INVALID` を返す。これはfail-closed契約どおりであり、UI側で
   restore直後のOrganizer要求にNotReady系の見せ方をするかどうかは本Issueのscope外
   （必要なら別Issue）。

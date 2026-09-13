@@ -221,6 +221,14 @@ mergeしない方針は不変である。
   特定結果（例外種別、file:line、違反したrequire、当該行のDB内容の
   分類 — 値そのものではなく）を `docs/assessment/issue-299-<slug>.md` に
   対象build SHA・取得logの要約・確認日とともに記録する。
+  → **I-2実施結果（assessment参照）**: `LayoutWriterCanonicalCaptureSource` の
+  catch節に一時instrumentationを入れ、repair-point中断が残したinvalid state上での
+  throw点を直接捕捉した
+  （`captureThrow class=IllegalArgumentException top=RowManifestCodec.toCanonical:297`、
+  run @ 2026-09-13T22:04）。計測は実施後にrevert済み。
+  **複数profile / grid変換窓のmatrix項目はde-scope**（throw-site確定により他の
+  IAE candidateが除外された。I-3で差分が本mechanismで説明できない場合のみ
+  I-2追補として再開）。
 - **I-3: 成功セッションとの差分。** 同一手順で成功する場合と失敗する場合の
   stateを、上記5定点 × bounded分類軸で比較し、不変条件差を特定する。
   定点3/5の観測は、I-1の成果（assessment
