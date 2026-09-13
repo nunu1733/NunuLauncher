@@ -235,3 +235,7 @@ blocking なものはない。調査中に解決すべき問い:
 - 2026-09-13: 再レビュー指摘を反映し、H4は現行gateの修復・緩和効果とpre-gate burstへの
   寄与未確認を分離して記録。「既存の2 capture」を自然発生4 captureへ更新した。
 - 2026-09-13: 独立監査の指摘を反映し、captureごとのexact head SHAとevent種別を追記した。
+- 2026-09-13: failure-time evidence preservationを実装。API36のIssue #52/#53 laneで、
+  failure時だけwindow/activity/power/role/resolve、ANR/dropbox、限定logcat、input/
+  SurfaceFlinger/pressureをartifact化するhelperとfake-`adb` smoke testを追加した。
+  最初の自然再発でartifactを取得するまで、機構証拠そのものは未確認のままとする。
