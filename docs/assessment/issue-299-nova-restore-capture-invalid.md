@@ -204,6 +204,38 @@ Accepted PlanのI-3は「同一手順で成功する場合と失敗する場合�
   generation raceが不要」なことまでである（I-2のevidence boundaryを維持）。
   同一手順のintermittent trigger未再現の一点も開いたままである。
 
+### I-5 decision gate 記録（2026-09-14、Phase 1締め時に決定）
+
+証拠（I-1〜I-4 + 本実験）に基づくseam決定:
+
+1. **正規化/拒絶は採用しない（CI-AC-07のgate記録）**。settle heuristicへ到達した
+   reloadの後にはrestored workspaceは無効ではない（widget行はbind（有効id）または
+   deleteで修復される — I-2/I-4で決定的に観測）。つまりcompletion barrier到達後も
+   invalidが残る「genuinely invalid restored data」は存在せず、specが要求する
+   「別のfixでCI-AC-02を満たせる場合のみ不採用可」の条件を満たす。採用した場合の
+   restore時bind/dropは (#298 hazard) restore threadからのwidget bind、未installに
+   よる行喪失（layoutを失わない原則と衝突）を招くため却下。
+2. **採用するfix = 2点**:
+   - **CI-AC-08（必須）**: capture失敗identityにclosed enumのbounded categoryを追加。
+     codecのwidget不変条件違反をtyped例外（`CaptureFailureCategory`の新定数）で投げ、
+     debug logcat行を `phase=CAPTURE exceptionClass=X invariant=<CATEGORY>` へ拡張
+     （journal語彙・`CAPTURE_INVALID`は不変、fail-closed維持）。
+     `docs/engineering/organizer-diagnostics.md` §7/§10/D-11を同期。
+   - **CI-AC-02 seam（restore completion barrier）**: Nova backup restoreは、
+     dispatchしたreload generationがsettle（完了）するまで`convertAndRestore`を
+     returnしない（lease解放後のbounded待ち。loaderはrestore-family leaseの背後で
+     実行されるためlease内待ちは不可能 — LauncherModelのdefer仕様）。timeout時は
+     fail-openでreturnし、窓内のorganizer要求は既存どおりfail-closed。これで
+     restore APIのreturn後はcapture可能となり、CI-AC-02の「restore完了後にcapture
+     成功」をAPI境界で成立させる。process death時は次processの最初のloadが修復する
+     （I-4で確定済み）。
+3. **残余（I-5 gate入力として記録済み、Phase 2では扱わない）**: intermittent trigger
+   未確定、#298 actual path未再現、元実機throw-site identity未証明。#298と同一seam
+   （restore/reload窓）に触れる変更は本fixに含めない（#298 scope分離維持）。
+4. **test戦略**: CI-AC-05はcommitted instrumentation harness
+   （`NovaRestoreCapture*Test`群）+ codec/loggerのJVM unit test。CI-AC-06は
+   emulator実行記録（本assessment参照）。
+
 ### I-5 decision gateへの引き継ぎ事項
 
 I-5はarchitectureを自動選択する段階ではなく、次の未確定事項をgate条件として扱う:

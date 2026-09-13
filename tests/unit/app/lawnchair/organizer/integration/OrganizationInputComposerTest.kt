@@ -3,6 +3,8 @@ package app.lawnchair.organizer.integration
 import app.lawnchair.organizer.application.adapter.FakeLayoutWriter
 import app.lawnchair.organizer.application.canonical.CanonicalFixtures
 import app.lawnchair.organizer.application.protocol.CaptureId
+import app.lawnchair.organizer.application.protocol.CaptureInvariantCategory
+import app.lawnchair.organizer.application.protocol.CaptureInvariantViolationException
 import app.lawnchair.organizer.application.protocol.CapturedSnapshot
 import app.lawnchair.organizer.application.protocol.LayoutWriterPort
 import app.lawnchair.organizer.application.public.ItemAvailability
@@ -305,7 +307,7 @@ class OrganizationInputComposerTest {
         val observed = mutableListOf<Class<out Throwable>>()
         val failingSource = LayoutWriterCanonicalCaptureSource(
             writer = throwingCaptureWriter(),
-            captureFailureObserver = CaptureFailureObserver { exceptionClass -> observed += exceptionClass },
+            captureFailureObserver = CaptureFailureObserver { exceptionClass, _ -> observed += exceptionClass },
         )
 
         val result = failingSource.capture()
@@ -315,13 +317,54 @@ class OrganizationInputComposerTest {
     }
 
     @Test
+    fun captureFailureCarriesBoundedInvariantCategoryAndStaysFailClosed() {
+        // Issue #299 / CI-AC-08: a typed invariant violation keeps the shipped
+        // exception class identity (IllegalArgumentException) and adds the
+        // bounded category; the capture stays fail-closed.
+        val observed = mutableListOf<Pair<Class<out Throwable>, CaptureInvariantCategory?>>()
+        val failingSource = LayoutWriterCanonicalCaptureSource(
+            writer = object : LayoutWriterPort by FakeLayoutWriter(
+                app.lawnchair.organizer.application.canonical.CanonicalFixtures.state(),
+            ) {
+                override fun captureCurrent(captureId: CaptureId): CapturedSnapshot = throw CaptureInvariantViolationException(
+                    CaptureInvariantCategory.INVALID_WIDGET_ROW,
+                    "Widget is missing its appWidgetId",
+                )
+            },
+            captureFailureObserver = { exceptionClass, invariant -> observed += exceptionClass to invariant },
+        )
+
+        val result = failingSource.capture()
+
+        assertTrue(result is CanonicalCaptureReadResult.Invalid)
+        assertEquals(1, observed.size)
+        assertEquals(java.lang.IllegalArgumentException::class.java, observed.single().first)
+        assertEquals(CaptureInvariantCategory.INVALID_WIDGET_ROW, observed.single().second)
+    }
+
+    @Test
+    fun untypedCaptureFailureCarriesNoInvariantCategory() {
+        val observed = mutableListOf<Pair<Class<out Throwable>, CaptureInvariantCategory?>>()
+        val failingSource = LayoutWriterCanonicalCaptureSource(
+            writer = throwingCaptureWriter(),
+            captureFailureObserver = { exceptionClass, invariant -> observed += exceptionClass to invariant },
+        )
+
+        val result = failingSource.capture()
+
+        assertTrue(result is CanonicalCaptureReadResult.Invalid)
+        assertEquals(1, observed.size)
+        assertEquals(null, observed.single().second)
+    }
+
+    @Test
     fun throwingObserverDoesNotChangeFailClosedResult() {
         // Issue #172: the diagnostics observer is fail-open; an observer that
         // throws must not leak its exception and must not change the
         // fail-closed Invalid result the composer depends on.
         val failingSource = LayoutWriterCanonicalCaptureSource(
             writer = throwingCaptureWriter(),
-            captureFailureObserver = CaptureFailureObserver {
+            captureFailureObserver = CaptureFailureObserver { _, _ ->
                 throw java.lang.IllegalStateException("observer failure")
             },
         )

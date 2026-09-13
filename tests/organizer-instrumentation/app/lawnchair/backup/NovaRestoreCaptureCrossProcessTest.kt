@@ -25,6 +25,9 @@ import android.os.Process
 import android.util.Log
 import androidx.test.core.app.ApplicationProvider
 import app.lawnchair.LawnchairLauncher
+import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
+import app.lawnchair.organizer.integration.CanonicalCaptureReadResult
+import app.lawnchair.organizer.integration.LayoutWriterCanonicalCaptureSource
 import com.android.launcher3.LauncherSettings.Favorites
 import com.android.launcher3.model.DeviceGridState
 import java.io.File
@@ -47,22 +50,19 @@ import org.junit.Test
  * `am instrument` invocation (A then B); the instrumentation runner
  * force-stops the app between them, which IS the process death.
  *
- * Stage A runs the production converter WITHOUT ever creating the
- * `LauncherAppState`, so `ReloadAfterRestore`'s `LauncherAppState.getNoCreate`
- * returns null and NO reload generation is dispatched in this process. The
- * sanitized restored DB — with the unbound widget row — is therefore
- * durably committed by `performRestore`'s transaction and survives into the
- * next process untouched. Stage A records the persisted state through a
+ * Stage A runs the production converter and holds `convertAndRestore` until
+ * the restore completion barrier (issue #299 / CI-AC-02 settle wait) reports
+ * the dispatched reload generation settled, so the persisted workspace is
+ * already repaired (widget row bound or deleted) when the instrumentation
+ * runner force-stops the app. Stage A records the persisted state through a
  * SEPARATE read-only DB connection (never touching the live model) so the
  * observation reflects only committed, not in-flight, writes.
  */
 class NovaRestoreCaptureCrossProcessStageATest {
 
     @Test
-    fun stageA_persistSanitizedUnboundRow_withoutDispatchingReload() {
+    fun stageA_restorePersistsWorkspace_acrossProcessDeath() {
         val context: Context = ApplicationProvider.getApplicationContext()
-        // No LauncherAppState.getInstance: the restore runs but no reload is
-        // dispatched, so nothing repairs the unbound row in this process.
         val provider = firstInstalledProvider(context)
         val zip = buildFixtureZip(context, includeWidget = true, widgetProvider = provider)
 
@@ -78,19 +78,21 @@ class NovaRestoreCaptureCrossProcessStageATest {
         val restoredDb = context.getDatabasePath(restoredDbName)
         Log.i(TAG, "crossProcess/A: persisted dbFile=$restoredDbName exists=${restoredDb.exists()}")
         val persisted = queryWidgetState(readOnlyOpen(restoredDb))
-        val persistedDbNameBefore = restoredDbName
-        Log.i(TAG, "crossProcess/A: persisted widget state after restore, no reload = $persisted")
+        Log.i(TAG, "crossProcess/A: persisted widget state = $persisted")
 
         // Hand the file name to stage B via a persistent marker (cache dir
         // survives the app process; the DB file itself is app-private and
         // persists across the instrumentation force-stop).
-        File(context.cacheDir, "i299_xp_dbfile").writeText(persistedDbNameBefore)
+        File(context.cacheDir, "i299_xp_dbfile").writeText(restoredDbName)
         File(context.cacheDir, "i299_xp_state").writeText(persisted.joinToString(","))
 
-        // Stage A's own claim: the sanitized unbound widget row is present in
-        // the committed DB, and the model was never touched in this process.
-        assertEquals("exactly one unbound (appWidgetId<0) widget row must be committed", 1, persisted.count { it < 0 })
-        assertEquals("no bound widget row should exist before any reload", 0, persisted.count { it >= 0 })
+        // Stage A persists the restored workspace and ends; the runner's
+        // force-stop is the process death. Whether the widget row is already
+        // bound here depends on whether this process's model dispatched the
+        // reload (both are legitimate pre- and post-barrier states); the
+        // deterministic cross-process contract is asserted in stage B: after
+        // the fresh process's reload activity settles, no unbound widget row
+        // may remain and the workspace must capture Ready.
     }
 
     private companion object {
@@ -107,7 +109,7 @@ class NovaRestoreCaptureCrossProcessStageATest {
 class NovaRestoreCaptureCrossProcessStageBTest {
 
     @Test
-    fun stageB_readsPersistedUnboundRow_beforeModelInit_thenRecovers() {
+    fun stageB_persistedStateSettlesToCaptureValidWorkspace_onFreshProcess() {
         val context: Context = ApplicationProvider.getApplicationContext()
         val dbFileName = File(context.cacheDir, "i299_xp_dbfile").takeIf { it.exists() }?.readText()
             ?: error("run stage A first (no i299_xp_dbfile marker)")
@@ -125,20 +127,14 @@ class NovaRestoreCaptureCrossProcessStageBTest {
             "crossProcess/B: after process death unbound=$survivedUnbound bound=$survivedBound " +
                 "rows=${persisted.size}",
         )
-        // I-4 primary claim: an unbound widget row committed by performRestore
-        // and never touched by a reload survives the instrumentation
-        // force-stop into a fresh process.
-        assertTrue(
-            "stage A's unbound widget row must survive the process death into the fresh process",
-            survivedUnbound >= 1,
-        )
+        // The persisted state is recorded; the deterministic cross-process
+        // contract is settled below.
 
         // (2) Recovery half: now construct the model, drive reload activity
         // to the settle heuristic, and confirm the row is bound (or deleted) and
         // capture turns Ready. This is the in-process repair the death window
         // deferred, now running in the new process.
         val launcher = com.android.launcher3.LauncherAppState.getInstance(context)
-        val controller = launcher.model.modelDbController
         // Drive a reload to the settle heuristic and observe via the same
         // production codec + capture source used elsewhere.
         settleOneGeneration(launcher)
@@ -150,11 +146,18 @@ class NovaRestoreCaptureCrossProcessStageBTest {
             "crossProcess/B: after new-process settle unbound=$afterUnbound bound=$afterBound",
         )
         // The new-process repair activity must have closed the window: either
-        // bound the row or removed it — no capture-invalid unbound row left.
+        // bound the row or removed it — no capture-invalid unbound row left,
+        // and the workspace must capture Ready (CI-AC-02, cross-restart).
         assertEquals(
             "after the settle heuristic the persisted unbound row must be bound or deleted",
             0,
             afterUnbound,
+        )
+        assertTrue(
+            "the fresh process's settled workspace must capture Ready",
+            app.lawnchair.organizer.integration.LayoutWriterCanonicalCaptureSource(
+                LauncherLayoutAdapter(context, launcher.model.modelDbController, launcher.model),
+            ).capture() is app.lawnchair.organizer.integration.CanonicalCaptureReadResult.Ready,
         )
     }
 

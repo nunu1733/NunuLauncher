@@ -218,12 +218,14 @@ abstract class NovaRestoreCaptureTestBase {
     /** Capture through the production composer source, recording failure identities. */
     protected fun captureThroughProductionSource(
         observerExceptions: MutableList<Class<out Throwable>> = mutableListOf(),
+        observerInvariants: MutableList<String> = mutableListOf(),
     ): Boolean {
         val source = LayoutWriterCanonicalCaptureSource(
             LauncherLayoutAdapter(context, launcher.model.modelDbController, launcher.model),
-            CaptureFailureObserver { exceptionClass ->
+            CaptureFailureObserver { exceptionClass, invariant ->
                 observerExceptions += exceptionClass
-                DiagnosticsLogger().logCaptureFailure(exceptionClass)
+                invariant?.let { observerInvariants += it.name }
+                DiagnosticsLogger().logCaptureFailure(exceptionClass, invariant?.name)
             },
         )
         return source.capture() is CanonicalCaptureReadResult.Ready

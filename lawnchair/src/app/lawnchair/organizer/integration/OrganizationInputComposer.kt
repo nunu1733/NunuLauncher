@@ -1,6 +1,8 @@
 package app.lawnchair.organizer.integration
 
 import app.lawnchair.organizer.application.protocol.CaptureId
+import app.lawnchair.organizer.application.protocol.CaptureInvariantCategory
+import app.lawnchair.organizer.application.protocol.CaptureInvariantViolationException
 import app.lawnchair.organizer.application.protocol.CapturedSnapshot
 import app.lawnchair.organizer.application.protocol.LayoutWriterPort
 import app.lawnchair.organizer.application.public.ApplicationItemRef
@@ -79,15 +81,20 @@ interface OrganizationInputComposer {
  * [onCaptureFailure]'s `Class` argument, so message/layout-derived text cannot
  * enter the diagnostics path through this seam. The class simple name is the
  * normalized failure identity; the platform exposes no typed numeric
- * error-code accessor, so none is carried.
+ * error-code accessor, so none is carried. Issue #299 / CI-AC-08 adds the
+ * bounded [CaptureInvariantCategory] of the violated invariant when the
+ * failure is the typed [CaptureInvariantViolationException] (null otherwise);
+ * the reported class identity for typed violations stays normalized to
+ * `IllegalArgumentException` so new lines remain comparable with the
+ * pre-typing diagnostics of the original issue sessions.
  */
 fun interface CaptureFailureObserver {
-    fun onCaptureFailure(exceptionClass: Class<out Throwable>)
+    fun onCaptureFailure(exceptionClass: Class<out Throwable>, invariant: CaptureInvariantCategory?)
 }
 
 /** No-op observer for seams that do not observe capture failures. */
 object NoopCaptureFailureObserver : CaptureFailureObserver {
-    override fun onCaptureFailure(exceptionClass: Class<out Throwable>) = Unit
+    override fun onCaptureFailure(exceptionClass: Class<out Throwable>, invariant: CaptureInvariantCategory?) = Unit
 }
 
 /** Production capture adapter; the composer itself never reaches SQLite or Android state. */
@@ -98,10 +105,20 @@ class LayoutWriterCanonicalCaptureSource(
     override fun capture(): CanonicalCaptureReadResult = try {
         CanonicalCaptureReadResult.Ready(writer.captureCurrent(CaptureId("organization-input")))
     } catch (failure: RuntimeException) {
+        // Issue #299 / CI-AC-08: a typed invariant violation keeps the shipped
+        // class identity normalized to IllegalArgumentException (the identity
+        // the original issue sessions observed) and adds its bounded category;
+        // other failures stay class-identity only.
+        val invariantViolation = failure as? CaptureInvariantViolationException
+        val identityClass = if (invariantViolation != null) {
+            IllegalArgumentException::class.java
+        } else {
+            failure.javaClass
+        }
         // Fail-open: a diagnostics observer failure must never change readiness
         // semantics — the composer still returns Invalid regardless (issue #172).
         try {
-            captureFailureObserver.onCaptureFailure(failure.javaClass)
+            captureFailureObserver.onCaptureFailure(identityClass, invariantViolation?.invariant)
         } catch (_: RuntimeException) {
             // Observability failed; fail-closed capture result is unaffected.
         }

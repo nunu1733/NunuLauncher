@@ -21,59 +21,29 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Issue #299 I-2 matrix extension: a widget row whose provider is not
- * installed cannot be bound. The loader's restore sanitize resolves pending
- * widgets either by binding (installed provider) or by deleting the row
- * ([com.android.launcher3.model.WorkspaceItemProcessor.processWidget]
- * markDeleted branch). Until the settle point the row is capture-invalid;
- * the deletion repair must close the window. Run in its own instrumentation
- * process (see [NovaRestoreCaptureTestBase]).
+ * Issue #299 matrix extension: a widget row whose provider is not installed
+ * cannot be bound; the loader's restore sanitize resolves it by DELETING the
+ * row (WorkspaceItemProcessor markDeleted branch). With the restore
+ * completion barrier, that deletion settles before `convertAndRestore`
+ * returns, so the restored workspace captures Ready. Run in its own
+ * instrumentation process (see [NovaRestoreCaptureTestBase]).
  */
 class NovaRestoreCaptureUnknownProviderTest : NovaRestoreCaptureTestBase() {
 
     @Test
-    fun novaRestoreWithUnknownProviderWidget_unboundUntilSettlePointThenDeleted() {
+    fun novaRestoreWithUnknownProviderWidget_deletionSettlesBeforeReturn_readyCapture() {
         val absentProvider = "com.example.issue299.absent/.FakeWidgetProvider"
         val restored = restoreSyntheticBackup(includeWidget = true, widgetProvider = absentProvider)
 
-        val observed = mutableListOf<Class<out Throwable>>()
-        val preSettleReady = captureThroughProductionSource(observed)
         logMatrix("unknownProvider/postRestore", restored.info)
-        Log.i(
-            TAG,
-            "unknownProvider/preSettleCapture: ready=$preSettleReady observed=${observed.map { it.simpleName }}",
-        )
         assertEquals(
-            "unbound widget row must be present in the DB before the settle point",
-            1 to 0,
+            "the completion barrier must settle the deletion repair before returning",
+            0 to 0,
             widgetRowCount("unknownProvider/postRestore"),
         )
         assertTrue(
-            "capture before the settle point must fail closed on the unbound widget row",
-            !preSettleReady,
-        )
-        assertEquals(
-            "same codec widget invariant as the installed-provider path",
-            listOf(IllegalArgumentException::class.java),
-            observed,
-        )
-
-        awaitSettlePoint("unknown provider", restored)
-        val postSettle = widgetRowCount("unknownProvider/postSettle")
-        logMatrix("unknownProvider/postSettle", restored.info)
-        val postSettleReady = captureThroughProductionSource()
-        Log.i(
-            TAG,
-            "unknownProvider/postSettle: widgetRows=${postSettle.first + postSettle.second} ready=$postSettleReady",
-        )
-        assertEquals(
-            "the deletion repair must remove the un-installable pending widget row",
-            0 to 0,
-            postSettle,
-        )
-        assertTrue(
             "after the deletion repair the restored workspace must capture Ready",
-            postSettleReady,
+            captureThroughProductionSource(),
         )
     }
 }

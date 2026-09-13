@@ -6,13 +6,18 @@ import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.os.Process
+import android.os.SystemClock
 import android.util.Log
 import app.lawnchair.DeviceProfileOverrides
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.preferences2.PreferenceManager2
 import com.android.launcher3.InvariantDeviceProfile
+import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings.Favorites
+import com.android.launcher3.model.BgDataModel
 import com.android.launcher3.model.DatabaseHelper
 import com.android.launcher3.model.DeviceGridState
 import com.android.launcher3.model.LayoutWriteCoordinator
@@ -21,13 +26,16 @@ import com.android.launcher3.pm.UserCache
 import com.android.launcher3.provider.RestoreDbTask
 import com.android.launcher3.shortcuts.ShortcutKey
 import com.android.launcher3.shortcuts.ShortcutRequest
+import com.android.launcher3.util.IntSet
 import com.patrykmichalik.opto.core.firstBlocking
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.URISyntaxException
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
 import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.math.roundToInt
@@ -49,6 +57,7 @@ class NovaBackupConverter(
         private const val FOLDER_PAGE_RANK_OFFSET = 1_000
         private const val FOLDER_ROW_RANK_OFFSET = 100
         private const val NOVA_TEMP_DIR_PREFIX = "nova_"
+        private const val DEFAULT_SETTLE_TIMEOUT_MS = 15_000L
         private const val NOVA_WORKSPACE_DB = "nova_workspace.db"
         private const val NOVA_TABLE_FAVORITES = "favorites"
         private const val NOVA_XML_TAG_STRING = "string"
@@ -159,6 +168,7 @@ class NovaBackupConverter(
         val tempDir = File(context.cacheDir, "$NOVA_TEMP_DIR_PREFIX${UUID.randomUUID()}")
         tempDir.mkdirs()
 
+        var settleWait: RestoreReloadSettleWait? = null
         try {
             // Issue #58: one BACKUP_RESTORE lease spans quiesce, helper close, staging,
             // IDp/prefs writes, restored.db copy, reentrant performRestore and the
@@ -219,12 +229,90 @@ class NovaBackupConverter(
 
                     val dbController = ModelDbController(context)
                     RestoreDbTask.performRestore(context, dbController)
+                    // Issue #299 / CI-AC-02 restore completion barrier: the
+                    // dispatched reload generation runs only after this lease
+                    // is released (loaders defer behind the restore-family
+                    // lease), so the settle wait is registered here and
+                    // awaited after the use block below. Until it settles the
+                    // authoritative organizer capture stays fail-closed on the
+                    // pending widget rows the restore commits.
+                    settleWait = RestoreReloadSettleWait.createOrNull()?.also { it.register() }
                     RestoreDbTask.reloadAfterRestore(context)
+                    settleWait?.startSettlePolling()
 
                     pinImportedDeepShortcuts(importedDeepShortcuts)
                 }
+            // Bounded wait outside the lease: when the reload settles the
+            // restored workspace is capture-valid at return time. On
+            // timeout (or process death) the next launcher load performs
+            // the same repair; a caller racing the window keeps the
+            // composer's fail-closed behavior.
+            settleWait?.awaitSettled()
         } finally {
             tempDir.deleteRecursively()
+        }
+    }
+
+    /**
+     * Issue #299 / CI-AC-02: observes the restore's own reload generation
+     * reaching a settled state (`finishBindingItems` fired and
+     * `LauncherModel.isModelLoaded`). The heuristic carries no generation
+     * identity; its only contract is that repair activity has settled before
+     * the restore reports completion. Null when the launcher app is absent
+     * (baseline fallback: no model, no reload to wait for).
+     */
+    private class RestoreReloadSettleWait private constructor(
+        private val app: LauncherAppState,
+        private val timeoutMillis: Long,
+    ) {
+        private val mainHandler = Handler(Looper.getMainLooper())
+        private val settledLatch = CountDownLatch(1)
+        private val callbacks = object : BgDataModel.Callbacks {
+            override fun finishBindingItems(pagesBoundFirst: IntSet) = startSettlePolling()
+        }
+
+        fun register() {
+            mainHandler.post { app.getModel().addCallbacks(callbacks) }
+        }
+
+        fun startSettlePolling() {
+            mainHandler.post { pollSettled(SystemClock.uptimeMillis() + timeoutMillis) }
+        }
+
+        fun awaitSettled() {
+            val settled = settledLatch.await(timeoutMillis + SETTLE_POLL_GRACE_MS, TimeUnit.MILLISECONDS)
+            if (settled) {
+                Log.i(TAG, "Restore reload settled; restored workspace is capture-valid")
+            } else {
+                Log.w(
+                    TAG,
+                    "Restore reload did not settle within ${timeoutMillis}ms; " +
+                        "organizer capture stays fail-closed until the next completed reload",
+                )
+            }
+            mainHandler.post { app.getModel().removeCallbacks(callbacks) }
+        }
+
+        private fun pollSettled(deadlineUptimeMillis: Long) {
+            if (app.getModel().isModelLoaded) {
+                settledLatch.countDown()
+                return
+            }
+            if (SystemClock.uptimeMillis() >= deadlineUptimeMillis) {
+                settledLatch.countDown()
+                return
+            }
+            mainHandler.postDelayed({ pollSettled(deadlineUptimeMillis) }, SETTLE_POLL_INTERVAL_MS)
+        }
+
+        companion object {
+            private const val SETTLE_POLL_INTERVAL_MS = 25L
+            private const val SETTLE_POLL_GRACE_MS = 1_000L
+
+            fun createOrNull(): RestoreReloadSettleWait? {
+                val app = LauncherAppState.INSTANCE.getNoCreate() ?: return null
+                return RestoreReloadSettleWait(app, timeoutMillis = DEFAULT_SETTLE_TIMEOUT_MS)
+            }
         }
     }
 

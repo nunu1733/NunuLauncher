@@ -489,9 +489,11 @@ internal class LayoutApplicationModule<S>(
             val journalStore = JournalStore(journalFile, journalSequence, clock::nowMillis)
             val diagnosticsLogger = DiagnosticsLogger(isReleaseBuild = !com.android.launcher3.BuildConfig.DEBUG)
             // Issue #172: capture-side failures surface as the exception class
-            // name on the single organizer tag, debug builds only.
-            val captureFailureObserver = CaptureFailureObserver { exceptionClass ->
-                diagnosticsLogger.logCaptureFailure(exceptionClass)
+            // name on the single organizer tag, debug builds only. Issue #299 /
+            // CI-AC-08 adds the bounded invariant category constant name when
+            // the failure is the typed violation.
+            val captureFailureObserver = CaptureFailureObserver { exceptionClass, invariant ->
+                diagnosticsLogger.logCaptureFailure(exceptionClass, invariant?.name)
             }
             val diagnosticsPort = object : DiagnosticsPort {
                 override fun emit(event: RunEvent) {

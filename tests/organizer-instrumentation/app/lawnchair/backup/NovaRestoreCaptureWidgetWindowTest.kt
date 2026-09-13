@@ -21,54 +21,30 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Issue #299 I-1 widget window: the Nova path persists the widget row with
- * appWidgetId=-1 (no rebind exists in the restore itself), so capture through
- * the production source fails closed with the codec widget invariant
- * (`RowManifestCodec`: "Widget is missing its appWidgetId") BEFORE the reload
- * barrier, and the reload generation's widget repair
- * ([com.android.launcher3.model.WorkspaceItemProcessor.processWidget]) binds a
- * real id so capture is Ready after the barrier. This pins both the
- * CAPTURE_INVALID window and the repair that normally closes it. Run in its
- * own instrumentation process (see [NovaRestoreCaptureTestBase]).
+ * Issue #299 CI-AC-02 at the restore API boundary: the restore's completion
+ * barrier (NovaBackupConverter's settle wait) holds `convertAndRestore` until
+ * the repair-carrying reload generation settles, so a Nova-restored widget row
+ * is already bound when the restore returns and the first authoritative
+ * capture succeeds. Run in its own instrumentation process (see
+ * [NovaRestoreCaptureTestBase]).
  */
 class NovaRestoreCaptureWidgetWindowTest : NovaRestoreCaptureTestBase() {
 
     @Test
-    fun novaRestoreWithUnboundWidget_captureInvalidBeforeBarrier_readyAfterRepair() {
+    fun novaRestoreWithWidget_returnsAfterSettleBarrierWithBoundRowAndReadyCapture() {
         val provider = firstWidgetProviderFlatten()
         val restored = restoreSyntheticBackup(includeWidget = true, widgetProvider = provider)
 
-        // Pre-barrier: the row is still unbound -> composer fail-closed, and
-        // the shipped diagnostics observer records the exception identity.
-        val observed = mutableListOf<Class<out Throwable>>()
-        val preBarrierReady = captureThroughProductionSource(observed)
-        Log.i(TAG, "widget/immediateCapture (pre-barrier): ready=$preBarrierReady observed=${observed.map { it.simpleName }}")
+        // The completion barrier must have held the restore until the repair
+        // generation settled: the row is bound at return time (CI-AC-02).
         logMatrix("widget/postRestore", restored.info)
         assertEquals(
-            "unbound widget row must be present in the DB before the barrier",
-            1 to 0,
+            "the restore completion barrier must settle the widget repair before returning",
+            0 to 1,
             widgetRowCount("widget/postRestore"),
         )
         assertTrue(
-            "capture before the settle point must fail closed on the unbound widget row",
-            !preBarrierReady,
-        )
-        assertEquals(
-            "predicted codec invariant: widget row without a bound appWidgetId",
-            listOf(IllegalArgumentException::class.java),
-            observed,
-        )
-
-        // Post-barrier: the reload generation repaired the widget row.
-        awaitSettlePoint("widget cycle 1", restored)
-        logMatrix("widget/afterBarrier", restored.info)
-        assertEquals(
-            "the reload generation's widget repair must bind the row",
-            0 to 1,
-            widgetRowCount("widget/afterBarrier"),
-        )
-        assertTrue(
-            "after the settle point the repaired widget row must capture Ready",
+            "after the settle barrier the repaired widget row must capture Ready",
             captureThroughProductionSource(),
         )
     }

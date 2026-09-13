@@ -84,18 +84,20 @@ class DiagnosticsLogger(
      * Contract §10 explicit exception: unlike [log], this line is NOT a
      * `RunEvent` projection and is emitted at the capture site **before** any
      * journal append. Its content is confined to the contract §7 bounded
-     * exception (exception class simple name only). The API takes no String
-     * parameter, so no caller can feed message/layout-derived text through
-     * this seam; raw `Throwable.message` and stack traces stay Never on every
-     * surface. The class simple name (e.g. `SQLiteBlobTooBigException`) is the
-     * normalized failure identity — the platform exposes no typed numeric
-     * error-code accessor, so none is carried. The journal-side counterpart is
-     * the terminal `INPUT_NOT_READY` record with the readiness code.
+     * exception (exception class simple name only, plus the Issue #299 /
+     * CI-AC-08 bounded invariant category constant name when the failure is
+     * the typed violation). The API takes no free-form String parameter, so
+     * no caller can feed message/layout-derived text through this seam; raw
+     * `Throwable.message` and stack traces stay Never on every surface. The
+     * class simple name (e.g. `SQLiteBlobTooBigException`) is the normalized
+     * failure identity — the platform exposes no typed numeric error-code
+     * accessor, so none is carried. The journal-side counterpart is the
+     * terminal `INPUT_NOT_READY` record with the readiness code.
      */
-    fun logCaptureFailure(exceptionClass: Class<out Throwable>) {
+    fun logCaptureFailure(exceptionClass: Class<out Throwable>, invariant: String? = null) {
         if (isReleaseBuild) return
         try {
-            Log.d(TAG, formatCaptureFailure(exceptionClass))
+            Log.d(TAG, formatCaptureFailure(exceptionClass, invariant))
         } catch (_: RuntimeException) {
             // Fail-open: logcat may not be available in all environments
         }
@@ -103,10 +105,17 @@ class DiagnosticsLogger(
 
     /**
      * Single-line rendering of [logCaptureFailure]. Pure function so the
-     * contract (class simple name only, no message/stack trace) is assertable
-     * without touching logcat.
+     * contract (class simple name + optional bounded invariant constant name,
+     * no message/stack trace) is assertable without touching logcat.
      */
-    fun formatCaptureFailure(exceptionClass: Class<out Throwable>): String = "phase=CAPTURE exceptionClass=${exceptionClass.simpleName}"
+    fun formatCaptureFailure(exceptionClass: Class<out Throwable>, invariant: String? = null): String = buildString {
+        append("phase=CAPTURE exceptionClass=")
+        append(exceptionClass.simpleName)
+        if (invariant != null) {
+            append(" invariant=")
+            append(invariant)
+        }
+    }
 
     fun format(event: RunEvent): String {
         val parts = mutableListOf<String>()
