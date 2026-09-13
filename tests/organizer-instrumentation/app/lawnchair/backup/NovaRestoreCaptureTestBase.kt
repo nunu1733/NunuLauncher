@@ -38,6 +38,7 @@ import app.lawnchair.organizer.integration.LayoutWriterCanonicalCaptureSource
 import app.lawnchair.preferences.PreferenceManager
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.LauncherAppState
+import com.android.launcher3.LauncherModel
 import com.android.launcher3.LauncherSettings.Favorites
 import com.android.launcher3.model.BgDataModel
 import com.android.launcher3.model.DeviceGridState
@@ -51,6 +52,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.runBlocking
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 
@@ -80,8 +82,23 @@ abstract class NovaRestoreCaptureTestBase {
     protected lateinit var launcher: LauncherAppState
     protected lateinit var originalGrid: DeviceProfileOverrides.DBGridInfo
     private var reloadLatch: CountDownLatch? = null
+
+    // Investigation-only observability. Two signals, both recorded (neither
+    // is claimed as a contract-grade generation oracle):
+    // - bind-complete firings: a cancelled generation can fire before it is
+    //   stopped, so a firing does not imply completion.
+    // - committed generation count (`BgDataModel.lastLoadId` delta): only
+    //   commits increment it, so the delta since the restore dispatch counts
+    //   the generations that actually committed. Production legitimately
+    //   dispatches several reload generations after a restore (grid-apply
+    //   listeners), so the count is recorded, not asserted to be 1.
+    // The restore's own reload generation has no completion signal at all
+    // (`reloadAfterRestore` -> `forceReload()` carries no callback); that gap
+    // is the I-5 seam decision and is not worked around here.
+    private val windowBindingFirings = java.util.concurrent.atomic.AtomicInteger(0)
     private val modelCallbacks = object : BgDataModel.Callbacks {
         override fun finishBindingItems(pagesBoundFirst: IntSet) {
+            windowBindingFirings.incrementAndGet()
             reloadLatch?.countDown()
         }
     }
@@ -122,13 +139,19 @@ abstract class NovaRestoreCaptureTestBase {
     // ---------------------------------------------------------------
     // Restore driver: real NovaBackupConverter production path. The
     // barrier latch must be registered BEFORE convertAndRestore because
-    // the restore's internal forceReload dispatches the reload generation
-    // whose completion the latch observes.
+    // the restore's internal forceReload dispatches reload generations
+    // whose commits the observer counts.
     // ---------------------------------------------------------------
+    protected data class RestoredWorkspace(
+        val info: NovaBackupConverter.NovaBackupInfo,
+        val barrier: CountDownLatch,
+        val lastLoadIdBeforeRestore: Int,
+    )
+
     protected fun restoreSyntheticBackup(
         includeWidget: Boolean,
         widgetProvider: String? = null,
-    ): Pair<NovaBackupConverter.NovaBackupInfo, CountDownLatch> {
+    ): RestoredWorkspace {
         val converter = buildConverter(includeWidget, widgetProvider)
         val info = runBlocking { converter.parseInfo() }
         Log.i(
@@ -138,9 +161,11 @@ abstract class NovaRestoreCaptureTestBase {
         )
         val barrier = CountDownLatch(1)
         reloadLatch = barrier
+        windowBindingFirings.set(0)
+        val lastLoadIdBeforeRestore = readCommittedLoadId()
         runBlocking { converter.convertAndRestore(info) }
         Log.i(TAG, "restore/convertAndRestore returned (reloadAfterRestore already dispatched)")
-        return info to barrier
+        return RestoredWorkspace(info, barrier, lastLoadIdBeforeRestore)
     }
 
     protected fun buildConverter(includeWidget: Boolean, widgetProvider: String?): NovaBackupConverter {
@@ -149,24 +174,57 @@ abstract class NovaRestoreCaptureTestBase {
     }
 
     /**
-     * The restore's internal reload generation is awaited through the
-     * pre-registered [BgDataModel.Callbacks.finishBindingItems] latch and the
-     * `isModelLoaded` poll (the established instrumentation barrier pattern).
+     * Investigation settle barrier (not the contract-grade CI-AC-02 oracle):
+     * reached when a reload generation has committed after the restore
+     * dispatch and the model reports loaded. Every plain reload generation
+     * runs the repair-carrying sanitize (the organizer token path skips it
+     * and is therefore not usable as the barrier), so at this barrier all
+     * pending repair work has settled. The committed-generation count since
+     * the dispatch is recorded via [readCommittedLoadId]; the identity of the
+     * restore's own generation is NOT claimed — production has no signal for
+     * it (I-5 seam decision).
      */
-    protected fun awaitRestoreReloadBarrier(label: String, barrier: CountDownLatch) {
-        assertTrue("$label: restore reload did not reach the completion barrier", barrier.await(30, TimeUnit.SECONDS))
+    protected fun awaitRestoreReloadBarrier(label: String, restored: RestoredWorkspace) {
+        assertTrue("$label: restore reload did not reach the completion barrier", restored.barrier.await(30, TimeUnit.SECONDS))
         awaitModelLoaded(label)
+        val committed = readCommittedLoadId() - restored.lastLoadIdBeforeRestore
+        val firings = windowBindingFirings.get()
+        Log.i(
+            TAG,
+            "barrier[$label]: committedGenerationsSinceRestoreDispatch=$committed " +
+                "bindCompleteFiringsInWindow=$firings (firings can precede cancellation; commits count)",
+        )
+        check(committed >= 1) { "$label: at least one reload generation must have committed at the barrier" }
     }
 
-    /** Registers a fresh barrier latch and drives one reload generation to the barrier. */
+    /** Registers a fresh barrier latch and drives one reload generation to the settle barrier. */
     protected fun forceReloadAndAwaitBarrier(label: String) {
         val latch = CountDownLatch(1)
         reloadLatch = latch
+        windowBindingFirings.set(0)
+        val before = readCommittedLoadId()
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             launcher.model.forceReload()
         }
         assertTrue("$label: reload did not reach the completion barrier", latch.await(30, TimeUnit.SECONDS))
         awaitModelLoaded(label)
+        val committed = readCommittedLoadId() - before
+        Log.i(TAG, "barrier[$label]: committedGenerationsSinceDispatch=$committed")
+        check(committed >= 1) { "$label: the driven reload generation must have committed" }
+    }
+
+    /**
+     * Reads `BgDataModel.lastLoadId` (public field on the private model
+     * state) as a test-only committed-generation counter. Only loader
+     * transaction commits increment it; cancelled generations do not.
+     */
+    private fun readCommittedLoadId(): Int = try {
+        val field = LauncherModel::class.java.getDeclaredField("mBgDataModel")
+        field.isAccessible = true
+        (field.get(launcher.model) as BgDataModel).lastLoadId
+    } catch (t: Throwable) {
+        Log.w(TAG, "barrier/lastLoadId observation unavailable: ${t.javaClass.simpleName}")
+        -1
     }
 
     protected fun awaitModelLoaded(label: String) {

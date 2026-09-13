@@ -28,10 +28,10 @@ class NovaRestoreCaptureControlTest : NovaRestoreCaptureTestBase() {
 
     @Test
     fun novaRestoreWithoutWidget_capturesReadyAfterBarrier() {
-        val (fixture, barrier) = restoreSyntheticBackup(includeWidget = false)
-        logMatrix("control/postRestore", fixture)
+        val restored = restoreSyntheticBackup(includeWidget = false)
+        logMatrix("control/postRestore", restored.info)
 
-        awaitRestoreReloadBarrier("control", barrier)
+        awaitRestoreReloadBarrier("control", restored)
         val ready = captureThroughProductionSource()
         assertTrue(
             "control Nova restore must capture Ready after the completion barrier",

@@ -36,14 +36,14 @@ class NovaRestoreCaptureWidgetWindowTest : NovaRestoreCaptureTestBase() {
     @Test
     fun novaRestoreWithUnboundWidget_captureInvalidBeforeBarrier_readyAfterRepair() {
         val provider = firstWidgetProviderFlatten()
-        val (fixture, barrier) = restoreSyntheticBackup(includeWidget = true, widgetProvider = provider)
+        val restored = restoreSyntheticBackup(includeWidget = true, widgetProvider = provider)
 
         // Pre-barrier: the row is still unbound -> composer fail-closed, and
         // the shipped diagnostics observer records the exception identity.
         val observed = mutableListOf<Class<out Throwable>>()
         val preBarrierReady = captureThroughProductionSource(observed)
         Log.i(TAG, "widget/immediateCapture (pre-barrier): ready=$preBarrierReady observed=${observed.map { it.simpleName }}")
-        logMatrix("widget/postRestore", fixture)
+        logMatrix("widget/postRestore", restored.info)
         assertEquals(
             "unbound widget row must be present in the DB before the barrier",
             1 to 0,
@@ -60,8 +60,8 @@ class NovaRestoreCaptureWidgetWindowTest : NovaRestoreCaptureTestBase() {
         )
 
         // Post-barrier: the reload generation repaired the widget row.
-        awaitRestoreReloadBarrier("widget cycle 1", barrier)
-        logMatrix("widget/afterBarrier", fixture)
+        awaitRestoreReloadBarrier("widget cycle 1", restored)
+        logMatrix("widget/afterBarrier", restored.info)
         assertEquals(
             "the reload generation's widget repair must bind the row",
             0 to 1,

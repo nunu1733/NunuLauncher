@@ -17,7 +17,6 @@ package app.lawnchair.backup
 
 import android.util.Log
 import androidx.test.platform.app.InstrumentationRegistry
-import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -37,7 +36,7 @@ class NovaRestoreCaptureInterruptedReloadTest : NovaRestoreCaptureTestBase() {
     @Test
     fun interruptedReloadLeavesUnboundWidgetRow_untilALaterCompletedGenerationRepairs() {
         val provider = firstWidgetProviderFlatten()
-        val (fixture, barrier) = restoreSyntheticBackup(includeWidget = true, widgetProvider = provider)
+        val restored = restoreSyntheticBackup(includeWidget = true, widgetProvider = provider)
 
         val loadedAtReturn = isModelLoaded()
         Log.i(
@@ -53,13 +52,13 @@ class NovaRestoreCaptureInterruptedReloadTest : NovaRestoreCaptureTestBase() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             launcher.model.quiesceForRestore()
         }
-        val completedBeforeInterrupt = barrier.count == 0L
+        val completedBeforeInterrupt = restored.barrier.count == 0L
         Log.i(TAG, "interrupt/generationCompletedBeforeInterrupt=$completedBeforeInterrupt")
 
         val observed = mutableListOf<Class<out Throwable>>()
         val interruptedCapture = captureThroughProductionSource(observed)
         val postInterrupt = widgetRowCount("interrupt/postInterrupt")
-        logMatrix("interrupt/postInterrupt", fixture)
+        logMatrix("interrupt/postInterrupt", restored.info)
         Log.i(
             TAG,
             "interrupt/captureWhileInterrupted: ready=$interruptedCapture observed=${observed.map { it.simpleName }}",
