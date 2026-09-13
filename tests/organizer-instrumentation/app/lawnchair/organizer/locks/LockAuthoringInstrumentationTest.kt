@@ -12,6 +12,7 @@ import app.lawnchair.organizer.locks.adapter.LockStateDbAdapter
 import app.lawnchair.organizer.planning.ItemId
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings.Favorites
+import com.android.launcher3.model.GridSizeMigrationUtil
 import com.android.launcher3.model.LayoutWriteCoordinator
 import com.android.launcher3.pm.UserCache
 import org.junit.After
@@ -270,6 +271,101 @@ class LockAuthoringInstrumentationTest {
             "retry after release must commit or reject stale: $retry",
             retry is LockWriteOutcome.Committed || retry is LockWriteOutcome.Rejected,
         )
+    }
+
+    @Test
+    fun capacityExceedingFolderMemberReviewCompletesAfterMigrationMarking() {
+        // Issue #287 AC-3(a): the grid-migration UNKNOWN marking must leave a
+        // recoverable path. A folder member whose persisted rank exceeds the
+        // captured one-page folder capacity must be reviewable through the
+        // production module, and the recapture must be free of UNKNOWN rows
+        // (the composer's CAPTURE_UNKNOWN_LOCK condition).
+        val db = launcher.model.modelDbController.db
+        val adapter = LockStateDbAdapter.production(context)
+        val folderId = insertRow(
+            type = Favorites.ITEM_TYPE_FOLDER,
+            container = Favorites.CONTAINER_DESKTOP,
+            screen = 0,
+            lock = OrganizerLockState.UNLOCKED,
+            title = "Big Folder",
+        )
+        val memberIds = (0 until 40).map { rank ->
+            insertRow(
+                type = Favorites.ITEM_TYPE_APPLICATION,
+                container = folderId.toInt(),
+                rank = rank,
+                lock = OrganizerLockState.UNLOCKED,
+                title = "Member $rank",
+            )
+        }
+        val capturedCapacity = adapter.capture().state.deviceCapabilities.let {
+            it.folderMaxColumns * it.folderMaxRows
+        }
+        assertTrue(
+            "assumption: seeded ranks must reach beyond the captured one-page " +
+                "folder capacity ($capturedCapacity)",
+            capturedCapacity <= 39,
+        )
+        // The production grid-migration step marks every row UNKNOWN.
+        GridSizeMigrationUtil.markOrganizerLocksUnknown(db)
+        val marked = adapter.capture().state
+        assertTrue(
+            "migration marking must produce UNKNOWN rows (composer CAPTURE_UNKNOWN_LOCK condition)",
+            marked.items.any { it.lockState == OrganizerLockState.UNKNOWN },
+        )
+        val module = OrganizerLocks.get(context)
+        // Single review of the highest-rank member: beyond the capacity.
+        val highest = memberIds.last()
+        val single = module.setLock(
+            LockStateChangeRequest(ItemId(highest.toString()), LockTargetState.LOCKED, intent),
+        )
+        assertTrue("highest-rank member review failed: $single", single is LockChangeResult.Changed)
+        assertEquals(2, lockColumn(db, highest))
+        // Batch review resolves every remaining UNKNOWN row atomically — the
+        // listing is the target set, exactly like the review screen's
+        // "review all" flow (pre-existing rows are UNKNOWN after the marking
+        // too and must be included).
+        val listedBefore = module.reviewListing().entries.map { it.item }
+        val batch = module.reviewBatch(
+            LockBatchReviewRequest(listedBefore, LockTargetState.UNLOCKED, intent),
+        )
+        assertTrue("batch review must commit: $batch", batch is LockChangeResult.Changed)
+        assertEquals(listedBefore.size, (batch as LockChangeResult.Changed).writes.size)
+        assertTrue("review listing must be empty after batch", module.reviewListing().entries.isEmpty())
+        val recaptured = adapter.capture().state
+        assertTrue(
+            "recapture must not contain UNKNOWN rows after review",
+            recaptured.items.none { it.lockState == OrganizerLockState.UNKNOWN },
+        )
+    }
+
+    @Test
+    fun preMigrationPlanRejectsAsStaleAfterMigrationMarking() {
+        // Issue #287 AC-3(b): a review plan built from a pre-migration capture
+        // must never mutate the post-migration (new-generation) layout. The
+        // revision is a content digest of the whole canonical state including
+        // lock states, so the migration marking necessarily changes it and the
+        // in-transaction reread rejects the write.
+        val db = launcher.model.modelDbController.db
+        val adapter = LockStateDbAdapter.production(context)
+        val rowId = insertRow(
+            type = Favorites.ITEM_TYPE_APPLICATION,
+            container = Favorites.CONTAINER_DESKTOP,
+            screen = 0,
+            lock = OrganizerLockState.UNLOCKED,
+            title = "Stale Across Migration",
+        )
+        val capture = adapter.capture()
+        val decision = LockAuthoringDecision.evaluateChange(
+            capture,
+            LockStateChangeRequest(ItemId(rowId.toString()), LockTargetState.LOCKED, intent),
+        ) as LockDecision.Ready
+        // Production grid-migration step: every row becomes UNKNOWN.
+        GridSizeMigrationUtil.markOrganizerLocksUnknown(db)
+        val outcome = adapter.write(decision.plan)
+        assertEquals(LockWriteOutcome.Rejected(LockWriteRejection.STALE_REVISION), outcome)
+        // No mutation: the row stays UNKNOWN (0), never LOCKED.
+        assertEquals(0, lockColumn(db, rowId))
     }
 
     @Test
