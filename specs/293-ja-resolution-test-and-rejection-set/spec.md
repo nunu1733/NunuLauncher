@@ -2,7 +2,7 @@
 issue: "#293"
 status: draft
 requirements: []
-updated: 2026-09-12
+updated: 2026-09-13
 ---
 
 # issue #228 follow-up: ja解決test拡張とspec 13 `PreWriteRejection` 追記
@@ -45,7 +45,8 @@ PR #289 (issue #228) のmerge前監査
 
 `tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationPreferencesInstrumentationTest.kt`
 の `japaneseResourcesResolveEveryConcretePreviewString` へ、次のissue #228由来
-リソースを追加する (2026-09-12時点の `lawnchair/res/values/strings.xml`、
+リソースを追加する (2026-09-13時点、baseline `c5274b5d0d1a4cd3a5cf55ef8dcadb84283a3cda`
+で再確認済みの `lawnchair/res/values/strings.xml`
 `<!-- Issue #228: missing-app selection and Add rows -->` ブロックと
 `unplaced_strategy_scope` / `selection_stale` / `candidate_unresolved` の3件を含む)。
 
@@ -78,8 +79,10 @@ plurals (2件、既存のplurals assertionパターンへ追加):
 ### 対象 (item 2: spec 13 追記、docs-only)
 
 - `specs/13-safe-layout-application/spec.md` の `PreWriteRejection` 閉集合へ
-  `CANDIDATE_UNAVAILABLE` を追記する (code上の宣言順序に従い
-  `EXACT_PRECONDITION_FAILED` と `LOCK_STATE_UNAVAILABLE` の間)。
+  `CANDIDATE_UNAVAILABLE` を追記する。挿入位置は spec 13テキスト上
+  `EXACT_PRECONDITION_FAILED` の直後 (`LOCK_STATE_UNAVAILABLE` の前) であり、
+  `Results.kt` での宣言順序 (`EXACT_PRECONDITION_FAILED` の次が
+  `CANDIDATE_UNAVAILABLE`) と一致する。
 - change history へ #185 precedent と同形式で issue #228 / PR #289 由来の
   拒否コードであることを記録する。
 
@@ -104,7 +107,8 @@ plurals (2件、既存のplurals assertionパターンへ追加):
 ## Constraints
 
 - ja値がenと等価なリソースを `assertNotEquals` パターンへ追加しない
-  (2026-09-12時点で18 stringsはすべてja≠enを確認済み。将来の翻訳変更で
+  (2026-09-13時点 (baseline `c5274b5d0d1a4cd3a5cf55ef8dcadb84283a3cda`) で
+  18 stringsはすべてja≠enを再確認済み。将来の翻訳変更で
   衝突が生じた場合は、当該keyのassert形式を既存pluralsの「解決すること」
   assertionへ寄せ、en fallback検出を弱めない)。
 - 既存testのassertion様式 (context vs ja context、failure message、
@@ -117,3 +121,10 @@ plurals (2件、既存のplurals assertionパターンへ追加):
   (baseline `origin/main` = `f9afd8bfde121932c0c8ed965225d52a84d86ab4`)。
   要求の正本確認: spec 228 AC-12とそのtest oracle、PR #289監査記録 §5、
   spec 13閉集合 (L255-) と change history #185 precedent (L646-)。
+- 2026-09-13: baseline `origin/main` = `c5274b5d0d1a4cd3a5cf55ef8dcadb84283a3cda`
+  で再入場検証。baseline以降の#283/#300/#308等による同一test fileの変更
+  (#300 window-focus gate helpers、#308 `awaitDisplayed` 追加) で
+  `japaneseResourcesResolveEveryConcretePreviewString` 自体は内容不変のまま
+  L1606-1748へ移動、#228由来リソース・spec 13・`Results.kt`・
+  `ApplyResultContractTest.kt`・spec 228・監査記録に影響する変更はなし。
+  挿入位置の記載を宣言順序に対してより正確に整理 (契約内容の変更なし)。

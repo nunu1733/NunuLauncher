@@ -2,25 +2,35 @@
 issue: "#293"
 status: draft
 spec: ./spec.md
-updated: 2026-09-12
+updated: 2026-09-13
 ---
 
 # Plan: issue #228 follow-up (ja解決test拡張とspec 13 `PreWriteRejection` 追記)
 
-> Baseline: `origin/main` = `f9afd8bfde121932c0c8ed965225d52a84d86ab4`
-> (2026-09-12時点)。本planは spec.md (**draft**) に対応し、記載の実装状態は
-> すべてbaseline上での実確認に基づく。**実装開始前に再入場検証を行うこと**
-> (spec.mdの参照先がbaseline以降に変更されていないか、PR #289以降の
-> 関連diffの有無)。
+> Baseline: `origin/main` = `c5274b5d0d1a4cd3a5cf55ef8dcadb84283a3cda`
+> (2026-09-13再検証時点。初版draft時のbaselineは
+> `f9afd8bfde121932c0c8ed965225d52a84d86ab4`)。本planは spec.md (**draft**)
+> に対応し、記載の実装状態はすべてbaseline上での実確認に基づく。
+> **実装開始前に再入場検証を行うこと** (spec.mdの参照先がbaseline以降に
+> 変更されていないか、PR #289以降の関連diffの有無)。
+>
+> 2026-09-13再入場検証結果: 初版baseline以降のmain差分 (33 commit) のうち
+> 対象test fileへの変更は #300 (window-focus gate helpers) と #308
+> (`awaitDisplayed` 等) であり、`japaneseResourcesResolveEveryConcretePreviewString`
+> 自体は内容不変のまま後方へ移動 (旧L1473→現L1606)。#228由来20リソース、
+> spec 13、`Results.kt`、`ApplyResultContractTest.kt`、spec 228、
+> 監査記録 §5 に影響する変更はなし。`.github/workflows/ci.yml` は #304系で
+> 変更されているが `organizer-instrumentation-issue52-tests` laneと
+> `final-status` gate構成は不変。以下の行番号は現baseline (`c5274b5d0d`) 基準。
 
 ## 1. 現状の実装と不足 (baseline確認済み)
 
 | 要素 | 場所 | 状態 |
 |---|---|---|
-| `PreWriteRejection.CANDIDATE_UNAVAILABLE` | `lawnchair/src/app/lawnchair/organizer/application/public/Results.kt` (L57-98、`EXACT_PRECONDITION_FAILED` と `OVERLAP_POLICY_REJECTED` の間) | 存在 (PR #289)。KDocが「Exactly the variants from spec.md」を要求 |
+| `PreWriteRejection.CANDIDATE_UNAVAILABLE` | `lawnchair/src/app/lawnchair/organizer/application/public/Results.kt` (enum宣言 L71-、`CANDIDATE_UNAVAILABLE` L83、`EXACT_PRECONDITION_FAILED` と `OVERLAP_POLICY_REJECTED` の間) | 存在 (PR #289)。KDocが「Exactly the variants from spec.md」を要求 |
 | contract testによる固定 | `tests/unit/app/lawnchair/organizer/application/contract/ApplyResultContractTest.kt` (L72) | 存在 |
-| spec 13の閉集合記載 | `specs/13-safe-layout-application/spec.md` (Results節、baseline L255-261) | **`CANDIDATE_UNAVAILABLE` 未記載。本planで解消 (docs-only)** |
-| ja解決test | `tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationPreferencesInstrumentationTest.kt` の `japaneseResourcesResolveEveryConcretePreviewString` (baseline L1473-1626) | 既存assert対象に #228由来keyが**1件も含まれない**。18 strings + 2 pluralsの追加が必要 |
+| spec 13の閉集合記載 | `specs/13-safe-layout-application/spec.md` (Results節、L255-261) | **`CANDIDATE_UNAVAILABLE` 未記載。本planで解消 (docs-only)** |
+| ja解決test | `tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationPreferencesInstrumentationTest.kt` の `japaneseResourcesResolveEveryConcretePreviewString` (L1606-1748) | 既存assert対象に #228由来keyが**1件も含まれない**。18 strings + 2 pluralsの追加が必要 |
 | #228由来リソースのja値 | `lawnchair/res/values/strings.xml` と `lawnchair/res/values-ja/strings.xml` | 20件とも `values-ja` に存在。18 stringsはen≠ja、2 pluralsはjaが `other` のみ |
 
 監査記録 ([docs/assessment/pr-289-organizer-missing-app-selection.md](../../docs/assessment/pr-289-organizer-missing-app-selection.md) §5) が
@@ -35,10 +45,10 @@ updated: 2026-09-12
 - `specs/13-safe-layout-application/spec.md`:
   - 閉集合へ `| CANDIDATE_UNAVAILABLE` を `EXACT_PRECONDITION_FAILED` の次の行に
     追加 (`Results.kt` の宣言順序と一致させる)。
-  - Change history 末尾へ2026-09-12付のentryを #185 precedent (L646-650) と
+  - Change history 末尾へentryを #185 precedent (L645-650) と
     同形式で追記 (issue #228由来 / PR #289でruntimeとcontract testは確定済み /
     本entryは正本記録のみ / 他のresult shape・lifecycle・behavior変更なし)。
-  - frontmatter `updated:` を2026-09-12へ更新。
+  - frontmatter `updated:` を本追記の実施日へ更新。
 - 実装PRでは本branchの草案をrebaseして利用し、reviewで受理された時点で
   spec 13の追記が正本として確定する (準備タスクはacceptedと扱わない)。
 
@@ -106,6 +116,9 @@ git submodule update --init --recursive
   当該行を再確認する。
 - issue #235のwidget系string追加 (PR #296/#302以降) との競合面は
   同一test fileのみ。行単位で独立しており、rebaseで解決できる範囲である。
+  実績として、初版draft以降の #300/#308 も同一fileを変更したが
+  ja解決test領域 (L1606-1748) には触れておらず、本planの追加点との
+  実際の競合は発生していない。
 
 ## 5. 未確定事項
 
