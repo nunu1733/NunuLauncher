@@ -215,20 +215,24 @@ Accepted PlanのI-3は「同一手順で成功する場合と失敗する場合�
    「別のfixでCI-AC-02を満たせる場合のみ不採用可」の条件を満たす。採用した場合の
    restore時bind/dropは (#298 hazard) restore threadからのwidget bind、未installに
    よる行喪失（layoutを失わない原則と衝突）を招くため却下。
-2. **採用するfix = 2点**:
+2. **採用するfix = 2点**（2026-09-14 PR #314 reviewで修正 — 初版のheuristic barrier +
+   fail-open timeoutはCI-AC-02契約違反として撤回）:
    - **CI-AC-08（必須）**: capture失敗identityにclosed enumのbounded categoryを追加。
-     codecのwidget不変条件違反をtyped例外（`CaptureFailureCategory`の新定数）で投げ、
-     debug logcat行を `phase=CAPTURE exceptionClass=X invariant=<CATEGORY>` へ拡張
-     （journal語彙・`CAPTURE_INVALID`は不変、fail-closed維持）。
+     codecのwidget不変条件違反をtyped例外で投げ、debug logcat行を
+     `phase=CAPTURE exceptionClass=X invariant=<CATEGORY>` へ拡張。logger APIは
+     closed enum型のみ受ける（自由text進入不能）。
      `docs/engineering/organizer-diagnostics.md` §7/§10/D-11を同期。
-   - **CI-AC-02 seam（restore completion barrier）**: Nova backup restoreは、
-     dispatchしたreload generationがsettle（完了）するまで`convertAndRestore`を
-     returnしない（lease解放後のbounded待ち。loaderはrestore-family leaseの背後で
-     実行されるためlease内待ちは不可能 — LauncherModelのdefer仕様）。timeout時は
-     fail-openでreturnし、窓内のorganizer要求は既存どおりfail-closed。これで
-     restore APIのreturn後はcapture可能となり、CI-AC-02の「restore完了後にcapture
-     成功」をAPI境界で成立させる。process death時は次processの最初のloadが修復する
-     （I-4で確定済み）。
+   - **CI-AC-02 seam（generation-identity付きrestore completion barrier）**:
+     `LauncherModel`にrestore reload completion tokenを実装
+     （organizer tokenと同型のidentity + terminal outcome、ただしtokenless
+     reload＝修復sanitizeを維持）。`convertAndRestore`は当該generationの
+     successful completionのみを成功とし、cancelled/supersededはbounded内で
+     再dispatch、deadline超過時はrestore失敗をsurfaceする（throw — ViewModelの
+     RestoreFailed経由）。fail-openな成功returnは廃止。
+     モデル非活性（callbacks無し）時はreload自体がdispatchされないため
+     baseline fallback（`reloadAfterRestore` no-op）とし、次回activation loadが
+     修復generationとなる（organizer captureは活性modelを介してのみ可能なため、
+     修復前captureはproduction経路から到達不能）。
 3. **残余（I-5 gate入力として記録済み、Phase 2では扱わない）**: intermittent trigger
    未確定、#298 actual path未再現、元実機throw-site identity未証明。#298と同一seam
    （restore/reload窓）に触れる変更は本fixに含めない（#298 scope分離維持）。

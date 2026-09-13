@@ -6,8 +6,6 @@ import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
-import android.os.Handler
-import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
 import android.util.Log
@@ -17,7 +15,6 @@ import app.lawnchair.preferences2.PreferenceManager2
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings.Favorites
-import com.android.launcher3.model.BgDataModel
 import com.android.launcher3.model.DatabaseHelper
 import com.android.launcher3.model.DeviceGridState
 import com.android.launcher3.model.LayoutWriteCoordinator
@@ -26,7 +23,6 @@ import com.android.launcher3.pm.UserCache
 import com.android.launcher3.provider.RestoreDbTask
 import com.android.launcher3.shortcuts.ShortcutKey
 import com.android.launcher3.shortcuts.ShortcutRequest
-import com.android.launcher3.util.IntSet
 import com.patrykmichalik.opto.core.firstBlocking
 import java.io.File
 import java.io.FileInputStream
@@ -36,6 +32,7 @@ import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import java.util.zip.ZipInputStream
 import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.math.roundToInt
@@ -57,7 +54,10 @@ class NovaBackupConverter(
         private const val FOLDER_PAGE_RANK_OFFSET = 1_000
         private const val FOLDER_ROW_RANK_OFFSET = 100
         private const val NOVA_TEMP_DIR_PREFIX = "nova_"
-        private const val DEFAULT_SETTLE_TIMEOUT_MS = 15_000L
+        private const val RESTORE_RELOAD_COMPLETION_TIMEOUT_MS = 15_000L
+        private const val RELOAD_OUTCOME_COMPLETED = "completed"
+        private const val RELOAD_OUTCOME_CANCELLED = "cancelled"
+        private const val RELOAD_OUTCOME_TIMEOUT = "timeout"
         private const val NOVA_WORKSPACE_DB = "nova_workspace.db"
         private const val NOVA_TABLE_FAVORITES = "favorites"
         private const val NOVA_XML_TAG_STRING = "string"
@@ -168,7 +168,7 @@ class NovaBackupConverter(
         val tempDir = File(context.cacheDir, "$NOVA_TEMP_DIR_PREFIX${UUID.randomUUID()}")
         tempDir.mkdirs()
 
-        var settleWait: RestoreReloadSettleWait? = null
+        var reloadBarrier: RestoreReloadBarrier? = null
         try {
             // Issue #58: one BACKUP_RESTORE lease spans quiesce, helper close, staging,
             // IDp/prefs writes, restored.db copy, reentrant performRestore and the
@@ -232,32 +232,104 @@ class NovaBackupConverter(
                     // Issue #299 / CI-AC-02 restore completion barrier: the
                     // dispatched reload generation runs only after this lease
                     // is released (loaders defer behind the restore-family
-                    // lease), so the settle wait is registered here and
-                    // awaited after the use block below. Until it settles the
-                    // authoritative organizer capture stays fail-closed on the
-                    // pending widget rows the restore commits.
-                    settleWait = RestoreReloadSettleWait.createOrNull()?.also { it.register() }
-                    RestoreDbTask.reloadAfterRestore(context)
-                    settleWait?.startSettlePolling()
+                    // lease), so the completion token is registered here and
+                    // awaited after the use block below. Until that generation
+                    // commits, the authoritative organizer capture stays
+                    // fail-closed on the pending widget rows the restore
+                    // commits. When the launcher model is inactive (no
+                    // callbacks) there is no reload to observe; the next
+                    // launcher activation load is the repair generation and it
+                    // completes before any authoritative capture can be
+                    // requested (capture requires the active model).
+                    val app = LauncherAppState.INSTANCE.getNoCreate()
+                    // Issue #299 / CI-AC-02 restore completion barrier: the
+                    // token attaches to the reload generation dispatched here;
+                    // the generation itself runs only after this lease is
+                    // released (loaders defer behind the restore-family
+                    // lease), so the await happens after the use block below.
+                    // Until that generation commits, the authoritative
+                    // organizer capture stays fail-closed on the pending
+                    // widget rows the restore commits. When the launcher model
+                    // is inactive (no callbacks) no reload can run; the next
+                    // launcher activation load is the repair generation and it
+                    // completes before any authoritative capture can be
+                    // requested (capture requires the active model).
+                    reloadBarrier = if (app != null && app.getModel().hasCallbacks()) {
+                        RestoreReloadBarrier(app, RESTORE_RELOAD_COMPLETION_TIMEOUT_MS).also { it.dispatch() }
+                    } else {
+                        null
+                    }
+                    if (reloadBarrier == null) {
+                        RestoreDbTask.reloadAfterRestore(context)
+                    }
 
                     pinImportedDeepShortcuts(importedDeepShortcuts)
                 }
-            // Bounded wait outside the lease: when the reload settles the
-            // restored workspace is capture-valid at return time. On
-            // timeout (or process death) the next launcher load performs
-            // the same repair; a caller racing the window keeps the
-            // composer's fail-closed behavior. The observer is always
-            // unregistered, including on timeout, interruption, or any
-            // failure above.
-            if (settleWait != null) {
-                try {
-                    settleWait.awaitSettled()
-                } finally {
-                    settleWait.cleanup()
-                }
-            }
+            reloadBarrier?.awaitCompletion()
         } finally {
             tempDir.deleteRecursively()
+        }
+    }
+
+    /**
+     * Issue #299 / CI-AC-02: observes the restore's reload through the
+     * generation-identity token ([LauncherModel.dispatchRestoreReload]) and
+     * returns only after THAT generation's terminal successful completion.
+     * Superseded or stopped generations report `cancelled` and are
+     * re-dispatched within the absolute deadline (computed once —
+     * re-dispatching never extends it); if the reload still has not
+     * completed, the restore FAILS (throws) instead of returning a workspace
+     * the organizer cannot capture.
+     */
+    private class RestoreReloadBarrier(
+        private val app: LauncherAppState,
+        timeoutMillis: Long,
+    ) {
+        private val model = app.getModel()
+        private val deadlineUptimeMillis = SystemClock.uptimeMillis() + timeoutMillis
+        private var latch = CountDownLatch(1)
+        private val outcome = AtomicReference("")
+
+        fun dispatch() {
+            val requestId = model.beginRestoreReload()
+            model.dispatchRestoreReload(
+                requestId,
+                {
+                    outcome.set(RELOAD_OUTCOME_COMPLETED)
+                    latch.countDown()
+                },
+                {
+                    outcome.set(RELOAD_OUTCOME_CANCELLED)
+                    latch.countDown()
+                },
+            )
+        }
+
+        fun awaitCompletion() {
+            var attempt = 0
+            while (true) {
+                attempt++
+                val remainingMillis = deadlineUptimeMillis - SystemClock.uptimeMillis()
+                val observed = if (remainingMillis > 0 && latch.await(remainingMillis, TimeUnit.MILLISECONDS)) {
+                    outcome.get()
+                } else {
+                    RELOAD_OUTCOME_TIMEOUT
+                }
+                if (observed == RELOAD_OUTCOME_COMPLETED) {
+                    Log.i(TAG, "Restore reload completed after $attempt attempt(s); workspace is capture-valid")
+                    return
+                }
+                if (observed == RELOAD_OUTCOME_TIMEOUT || SystemClock.uptimeMillis() >= deadlineUptimeMillis) {
+                    throw IllegalStateException(
+                        "Restore reload did not complete within the ${RESTORE_RELOAD_COMPLETION_TIMEOUT_MS}ms " +
+                            "deadline (last outcome=$observed, attempts=$attempt); failing the restore " +
+                            "instead of returning a workspace the organizer cannot capture. " +
+                            "Retry the restore.",
+                    )
+                }
+                Log.w(TAG, "Restore reload attempt $attempt was $observed; re-dispatching")
+                dispatch()
+            }
         }
     }
 
@@ -269,88 +341,6 @@ class NovaBackupConverter(
      * the restore reports completion. Null when the launcher app is absent
      * (baseline fallback: no model, no reload to wait for).
      */
-    private class RestoreReloadSettleWait private constructor(
-        private val app: LauncherAppState,
-        private val timeoutMillis: Long,
-    ) {
-        private val mainHandler = Handler(Looper.getMainLooper())
-        private val settledLatch = CountDownLatch(1)
-
-        @Volatile
-        private var stopped = false
-
-        @Volatile
-        private var cleanedUp = false
-
-        private val pollRunnable = object : Runnable {
-            override fun run() = pollSettled(SystemClock.uptimeMillis() + timeoutMillis)
-        }
-        private val callbacks = object : BgDataModel.Callbacks {
-            override fun finishBindingItems(pagesBoundFirst: IntSet) = startSettlePolling()
-        }
-
-        fun register() {
-            mainHandler.post { app.getModel().addCallbacks(callbacks) }
-        }
-
-        fun startSettlePolling() {
-            mainHandler.post { pollSettled(SystemClock.uptimeMillis() + timeoutMillis) }
-        }
-
-        fun awaitSettled() {
-            try {
-                val settled = settledLatch.await(timeoutMillis + SETTLE_POLL_GRACE_MS, TimeUnit.MILLISECONDS)
-                if (settled) {
-                    Log.i(TAG, "Restore reload settled; restored workspace is capture-valid")
-                } else {
-                    Log.w(
-                        TAG,
-                        "Restore reload did not settle within ${timeoutMillis}ms; " +
-                            "organizer capture stays fail-closed until the next completed reload",
-                    )
-                }
-            } catch (e: InterruptedException) {
-                Thread.currentThread().interrupt()
-                Log.w(TAG, "Restore reload settle wait interrupted; deferring to the next completed reload")
-            } finally {
-                cleanup()
-            }
-        }
-
-        /** Idempotent: stops polling and unregisters the observer exactly once. */
-        fun cleanup() {
-            if (cleanedUp) return
-            cleanedUp = true
-            stopped = true
-            mainHandler.post {
-                mainHandler.removeCallbacks(pollRunnable)
-                app.getModel().removeCallbacks(callbacks)
-            }
-        }
-
-        private fun pollSettled(deadlineUptimeMillis: Long) {
-            if (stopped) return
-            if (app.getModel().isModelLoaded) {
-                settledLatch.countDown()
-                return
-            }
-            if (SystemClock.uptimeMillis() >= deadlineUptimeMillis) {
-                settledLatch.countDown()
-                return
-            }
-            mainHandler.postDelayed(pollRunnable, SETTLE_POLL_INTERVAL_MS)
-        }
-
-        companion object {
-            private const val SETTLE_POLL_INTERVAL_MS = 25L
-            private const val SETTLE_POLL_GRACE_MS = 1_000L
-
-            fun createOrNull(): RestoreReloadSettleWait? {
-                val app = LauncherAppState.INSTANCE.getNoCreate() ?: return null
-                return RestoreReloadSettleWait(app, timeoutMillis = DEFAULT_SETTLE_TIMEOUT_MS)
-            }
-        }
-    }
 
     private fun resolveIconPackLabel(packageName: String): String = try {
         val pm = context.packageManager

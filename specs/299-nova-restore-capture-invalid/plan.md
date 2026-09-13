@@ -279,7 +279,11 @@ mergeしない方針は不変である。
   （actual pathは#298 scope未再現、merge判断は引き続き証拠待ち）。
 - **I-5: #185非回帰確認とdecision gate。** I-2の結果を #185 の保護と突き
   合わせ、回帰/変種か独立障害かを記録する。その上で、修正のseam選択
-  （下記候補）とtest戦略を確定する。正規化/拒絶を採用するか否かの決定と、
+  （下記候補）とtest戦略を確定する。〔実装時決定: 採用seamは
+  `LauncherModel` restore reload completion token（generation identity +
+  terminal outcome、tokenless reloadで修復sanitize維持）+ timeout/cancel時は
+  restore失敗をsurface（fail-open成功return廃止）+ CI-AC-08 bounded category。
+  assessment「I-5 decision gate 記録」参照。〕正規化/拒絶を採用するか否かの決定と、
   CI-AC-08のbounded diagnostic category（正規化/拒絶の採否に依存せず必須）の
   設計をここで確定する。変更困難な判断（復元dataの正規化writeを
   どこが所有するか等）が残る場合はADRの3条件を再確認し、必要ならADRを
