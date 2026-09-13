@@ -1,6 +1,7 @@
 package app.lawnchair.organizer.diagnostics.logger
 
 import android.util.Log
+import app.lawnchair.organizer.application.protocol.CaptureInvariantCategory
 import app.lawnchair.organizer.diagnostics.model.PhaseCode
 import app.lawnchair.organizer.diagnostics.model.RunEvent
 
@@ -94,7 +95,7 @@ class DiagnosticsLogger(
      * accessor, so none is carried. The journal-side counterpart is the
      * terminal `INPUT_NOT_READY` record with the readiness code.
      */
-    fun logCaptureFailure(exceptionClass: Class<out Throwable>, invariant: String? = null) {
+    fun logCaptureFailure(exceptionClass: Class<out Throwable>, invariant: CaptureInvariantCategory? = null) {
         if (isReleaseBuild) return
         try {
             Log.d(TAG, formatCaptureFailure(exceptionClass, invariant))
@@ -108,12 +109,12 @@ class DiagnosticsLogger(
      * contract (class simple name + optional bounded invariant constant name,
      * no message/stack trace) is assertable without touching logcat.
      */
-    fun formatCaptureFailure(exceptionClass: Class<out Throwable>, invariant: String? = null): String = buildString {
+    fun formatCaptureFailure(exceptionClass: Class<out Throwable>, invariant: CaptureInvariantCategory? = null): String = buildString {
         append("phase=CAPTURE exceptionClass=")
         append(exceptionClass.simpleName)
         if (invariant != null) {
             append(" invariant=")
-            append(invariant)
+            append(invariant.name)
         }
     }
 

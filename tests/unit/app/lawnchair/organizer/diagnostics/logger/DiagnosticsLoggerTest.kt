@@ -176,7 +176,7 @@ class DiagnosticsLoggerTest {
         // category constant name; message-derived text stays Never.
         val formatted = DiagnosticsLogger().formatCaptureFailure(
             java.lang.IllegalArgumentException::class.java,
-            app.lawnchair.organizer.application.protocol.CaptureInvariantCategory.INVALID_WIDGET_ROW.name,
+            app.lawnchair.organizer.application.protocol.CaptureInvariantCategory.INVALID_WIDGET_ROW,
         )
         assertEquals(
             "phase=CAPTURE exceptionClass=IllegalArgumentException invariant=INVALID_WIDGET_ROW",

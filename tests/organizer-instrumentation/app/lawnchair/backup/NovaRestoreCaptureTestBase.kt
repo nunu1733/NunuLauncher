@@ -225,7 +225,7 @@ abstract class NovaRestoreCaptureTestBase {
             CaptureFailureObserver { exceptionClass, invariant ->
                 observerExceptions += exceptionClass
                 invariant?.let { observerInvariants += it.name }
-                DiagnosticsLogger().logCaptureFailure(exceptionClass, invariant?.name)
+                DiagnosticsLogger().logCaptureFailure(exceptionClass, invariant)
             },
         )
         return source.capture() is CanonicalCaptureReadResult.Ready

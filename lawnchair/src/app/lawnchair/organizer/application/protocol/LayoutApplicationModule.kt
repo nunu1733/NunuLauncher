@@ -493,7 +493,7 @@ internal class LayoutApplicationModule<S>(
             // CI-AC-08 adds the bounded invariant category constant name when
             // the failure is the typed violation.
             val captureFailureObserver = CaptureFailureObserver { exceptionClass, invariant ->
-                diagnosticsLogger.logCaptureFailure(exceptionClass, invariant?.name)
+                diagnosticsLogger.logCaptureFailure(exceptionClass, invariant)
             }
             val diagnosticsPort = object : DiagnosticsPort {
                 override fun emit(event: RunEvent) {

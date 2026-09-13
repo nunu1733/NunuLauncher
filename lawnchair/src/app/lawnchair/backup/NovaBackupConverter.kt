@@ -246,8 +246,16 @@ class NovaBackupConverter(
             // restored workspace is capture-valid at return time. On
             // timeout (or process death) the next launcher load performs
             // the same repair; a caller racing the window keeps the
-            // composer's fail-closed behavior.
-            settleWait?.awaitSettled()
+            // composer's fail-closed behavior. The observer is always
+            // unregistered, including on timeout, interruption, or any
+            // failure above.
+            if (settleWait != null) {
+                try {
+                    settleWait.awaitSettled()
+                } finally {
+                    settleWait.cleanup()
+                }
+            }
         } finally {
             tempDir.deleteRecursively()
         }
@@ -267,6 +275,16 @@ class NovaBackupConverter(
     ) {
         private val mainHandler = Handler(Looper.getMainLooper())
         private val settledLatch = CountDownLatch(1)
+
+        @Volatile
+        private var stopped = false
+
+        @Volatile
+        private var cleanedUp = false
+
+        private val pollRunnable = object : Runnable {
+            override fun run() = pollSettled(SystemClock.uptimeMillis() + timeoutMillis)
+        }
         private val callbacks = object : BgDataModel.Callbacks {
             override fun finishBindingItems(pagesBoundFirst: IntSet) = startSettlePolling()
         }
@@ -280,20 +298,38 @@ class NovaBackupConverter(
         }
 
         fun awaitSettled() {
-            val settled = settledLatch.await(timeoutMillis + SETTLE_POLL_GRACE_MS, TimeUnit.MILLISECONDS)
-            if (settled) {
-                Log.i(TAG, "Restore reload settled; restored workspace is capture-valid")
-            } else {
-                Log.w(
-                    TAG,
-                    "Restore reload did not settle within ${timeoutMillis}ms; " +
-                        "organizer capture stays fail-closed until the next completed reload",
-                )
+            try {
+                val settled = settledLatch.await(timeoutMillis + SETTLE_POLL_GRACE_MS, TimeUnit.MILLISECONDS)
+                if (settled) {
+                    Log.i(TAG, "Restore reload settled; restored workspace is capture-valid")
+                } else {
+                    Log.w(
+                        TAG,
+                        "Restore reload did not settle within ${timeoutMillis}ms; " +
+                            "organizer capture stays fail-closed until the next completed reload",
+                    )
+                }
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                Log.w(TAG, "Restore reload settle wait interrupted; deferring to the next completed reload")
+            } finally {
+                cleanup()
             }
-            mainHandler.post { app.getModel().removeCallbacks(callbacks) }
+        }
+
+        /** Idempotent: stops polling and unregisters the observer exactly once. */
+        fun cleanup() {
+            if (cleanedUp) return
+            cleanedUp = true
+            stopped = true
+            mainHandler.post {
+                mainHandler.removeCallbacks(pollRunnable)
+                app.getModel().removeCallbacks(callbacks)
+            }
         }
 
         private fun pollSettled(deadlineUptimeMillis: Long) {
+            if (stopped) return
             if (app.getModel().isModelLoaded) {
                 settledLatch.countDown()
                 return
@@ -302,7 +338,7 @@ class NovaBackupConverter(
                 settledLatch.countDown()
                 return
             }
-            mainHandler.postDelayed({ pollSettled(deadlineUptimeMillis) }, SETTLE_POLL_INTERVAL_MS)
+            mainHandler.postDelayed(pollRunnable, SETTLE_POLL_INTERVAL_MS)
         }
 
         companion object {
