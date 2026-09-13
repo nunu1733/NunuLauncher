@@ -1,6 +1,6 @@
 # Assessment: Issue #299 — Nova restore後のOrganizer capture `CAPTURE_INVALID`
 
-Status: `investigation I-1/I-2 complete; I-4 cross-process再試験完了; I-3はcontrolled matrixで履行・intermittent triggerは未確定のままI-5へ`（fix architectureはI-5 decision gate待ち）
+Status: `investigation I-1/I-2 complete; I-4完了（中断repair状態のprocess restart / re-restore追跡まで実施）; I-3はcontrolled matrixで履行・intermittent triggerは未確定`（I-5 decision gateは再開decisionを含むgateとして扱う）
 
 Date: 2026-09-13（I-2完了revision）
 Investigation issue: https://github.com/nunu1733/NunuLauncher/issues/299
@@ -124,12 +124,44 @@ standaloneへ書き直し、**Stage Bはモデル初期化前にlauncher DBフ�
 
 - `performRestore` がcommitした **unbound widget行はprocess deathを跨いで次プロセスへ持続する**
   （新processのモデル初期化前のread-only読みに [-1] が残存。capture条件は無効）。
-- 次プロセスの**最初の完了reload generation**が修復（bind）し、その後のcaptureは成立する。
-  → process restart単独ではunbound行が持続するが、**完了したreload generationが1回でも
-  走れば解消**する。
-- 元実機セッションの「process再起動・再restoreで不回復」は、**再起動後のreload generationも
-  継続的に中断・不成完了され続けた場合**に本mechanismで説明できる。#298 actual wrong-thread
+- 次プロセスのreload activityがsettle heuristicに到達すれば修復（bind）し、その後の
+  captureは成立する（generation identityは主張しない）。
+  → process restart単独ではunbound行が持続するが、**reload activityがsettleに
+  到達すれば解消**する。
+- 元実機セッションの「process再起動・再restoreで不回復」は、**再起動後のreloadも
+  継続的にsettleに到達できない場合**に本mechanismで説明できる。#298 actual wrong-thread
   pathの再現が持続条件の本体として引き続き未検証（#298 scope）。
+
+### I-4核心: 実際に中断されたrepair状態のprocess restart / re-restore追跡（I-3/I-4 review要求の最小追加試験）
+
+I-2で使用したrepair-point中断（`WorkspaceItemProcessor.processWidget` 冒頭の
+marker-toggle crash。一時production patch・未commit・実施後にrevert済み）を
+cross-process実験へ組み込んだ（一時scenario、run @ 2026-09-14T00:26、
+手動 `am instrument` A2 → force-stop → B2）:
+
+| 時点 | widget行 appWidgetId（read-only direct） |
+|---|---|
+| Stage A2: **crash marker有**でrestore（repair generationが実際にcrash → `Desktop items loading interrupted`） | **[-1]**（unbound committed、bound 0） |
+| Stage B2（新process）: **モデル初期化前**read-only読み | **[-1]**（**中断repairの部分適用状態がprocess deathを生存**） |
+| Stage B2: 中断除去 + settle heuristic到達後 | [有効値]（unbound 0、bound 1 — 修復） |
+| Stage B2: **re-restore**（元事象の2回目restore相当）直後 | **[-1]**（**CAPTURE_INVALID窓がre-restoreで再open**） |
+| Stage B2: re-restore後のsettle heuristic到達後 | [有効値]（再修復） |
+
+これでaccepted I-4が要求した切り分けを直接完了した:
+
+- **(c) 中断されたrepairの部分適用状態は、process restart を跨いで持続する**
+  （crashした修復generationが残した [-1] 行が次プロセスのモデル初期化前読みに残存）。
+- **re-restoreは状態を「修復」しない** — 新たなunbound行を書き込み、
+  CAPTURE_INVALID窓を再openする。**解消は「中断が止まった後のsettle到達reload」のみ**。
+  元実機セッションの「ZIP restore・再restoreでも不回復」は、再restoreのたびに窓が
+  再生成され、かつ各reloadが継続的にsettleに到達できなかった場合に
+  本mechanismで完全に説明できる。
+- 持続性の本体は「復元dataの永続的無効性」でも「capture読み取り窓の世代不整合」でもなく、
+  **「修復を含むreloadがsettleに到達しない状態の持続」**である（(a)/(b)は本実験系列では
+  観測されず、(c)が観測経路として成立）。
+- この計測はplan I-2契約どおり一時patch・一時scenarioとして実施し、
+  revert・削除済み（本assessmentの引用が証跡）。committed harnessは
+  reload非dispatch版（`CrossProcess*Test`）とsettle heuristic版assertionを保持。
 
 実装上の注記: Gradle connectedTestはtest APK再install時にapp dataを消去するため、
 cross-process state検証には手動 `install -r` + `am instrument`（A→force-stop→B）が必須。
@@ -156,15 +188,34 @@ Accepted PlanのI-3は「同一手順で成功する場合と失敗する場合�
 ### 持続メカニズムの表現（レビュー指摘3）
 
 「only if」「持続メカニズムの全貌が確定」といった表現は使わない。現在の証拠範囲は
-以下に限定される（I-2で証明済み + 本I-4 cross-process再試験で強化）:
+以下に限定される（I-2 + 本I-4 cross-process実験・中断repair追跡で強化）:
 
 - **repair-point継続中断 → unbound rowと`CAPTURE_INVALID`持続、中断停止→修復**（I-2、決定的）。
-- **performRestoreのunbound commitはprocess deathを跨ぎ持続、次プロセスの最初の完了
-  reload generationで修復**（本I-4 cross-process standalone、決定的）。
-- 元実機セッションの不回復をこのmechanismで説明するには「reload generationが継続的に
-  不成完了」が必要で、これは #298 actual wrong-thread pathの再現に依存する（未実施・#298 scope）。
-  他の候補（capture読み取り窓の世代不整合単独）は排除したが、同一手順の
-  intermittent trigger未再現の一点は開いたままとする。
+- **performRestoreのunbound commitはprocess deathを跨ぎ持続、reload activityの
+  settle heuristic到達で修復**（I-4 standalone、決定的）。
+- **実際に中断されたrepairの部分適用状態もprocess restartを跨ぎ持続し、
+  re-restoreは窓を再openする（修復しない）。解消は中断停止後のsettle到達のみ**
+  （I-4中断repair追跡、決定的）。
+- 元実機セッションの不回復をこのmechanismで説明するには「各reloadが継続的に
+  settleへ到達できない」が必要で、これは #298 actual wrong-thread pathの再現に
+  依存する（未実施・#298 scope）。**元の #287/#299 セッションのroot cause候補として
+  capture読み取り窓の世代不整合を排除したわけではない** — 排除できるのは
+  「今回再現したsynthetic widget-invariant failureの説明としてはcapture
+  generation raceが不要」なことまでである（I-2のevidence boundaryを維持）。
+  同一手順のintermittent trigger未再現の一点も開いたままである。
+
+### I-5 decision gateへの引き継ぎ事項
+
+I-5はarchitectureを自動選択する段階ではなく、次の未確定事項をgate条件として扱う:
+
+1. **元のintermittent triggerは未確定**（controlled matrixで代替、deviation記録済み）。
+   証拠不足と判断した場合、I-3/I-4を再開するdecisionをI-5で明示的に取り得る。
+2. **#298 actual wrong-thread pathは未再現**（#298 scope）。I-5のseam選択は
+   #298の修正と同一seam（restore/reload窓）に触れうるため、#298の進捗を
+   gate入力として確認する。
+3. **元実機セッションのthrow-site identityは未証明**（synthetic failureで
+   直接捕捉済みに留まる）。CI-AC-08のbounded category設計は
+   widget不変条件の区別を含めて設計する。
 
 ## Verdict（I-1/I-2で証明できた範囲）
 
@@ -201,15 +252,20 @@ identityの限界は下記2のとおり残る。
    をDBへ書き戻す（観測: flag 7→4、`appWidgetId` -1→有効値）。providerが
    未インストールでrestore未開始の場合は `markDeleted`（:497-505）で行を削除する。
    つまり**修復（bindまたは削除）はreload generation依存**であることまでは確認できた。
-4. **持続性の証拠範囲（I-4 cross-process再試験で更新）**: 直接証明できたのは —
+4. **持続性の証拠範囲（I-4中断repair追跡で更新）**: 直接証明できたのは —
    (a) repair generationを同じ位置で継続的に中断すればinvalid rowと
    `CAPTURE_INVALID` は持続し、中断を止めれば修復する、
    (b) `performRestore` がcommitした unbound widget行は process death を跨いで
-   持続し（新processのモデル初期化前read-only読みに [-1] 残存）、次processの
-   最初の**完了した** reload generationで修復される。
+   持続し（新processのモデル初期化前read-only読みに [-1] 残存）、reload activityが
+   settle heuristicへ到達すれば修復される、
+   (c) **実際に中断されたrepairの部分適用状態もprocess restartを跨いで持続し、
+   re-restoreはunbound行を再書込みしてCAPTURE_INVALID窓を再openする
+   （re-restore自体は修復しない）。解消は中断停止後のsettle到達のみ**。
    元障害のpersistence（process再起動・再restoreを跨ぐ恒常化）をこのmechanismで
-   説明するには「再起動後もreload generationが継続的に不成完了」が必要で、
+   説明するには「各reloadが継続的にsettleへ到達できない」が必要で、
    これは #298 actual wrong-thread pathの実在と反復に依存する（#298 scope、未再現）。
+   元セッションのroot cause候補としてcapture generation mismatchを排除した
+   わけではない（synthetic failureの説明から不要なだけ — I-2 boundary）。
 5. **#185非関与（この範囲での観測）**: 全runでreservation検証・`CAPTURE_RESERVED_OVERLAP`
    は発生せず、QSB予約不変条件への回帰・変種の兆候は観測されなかった
    （正式な非回帰確認はI-5で既存coverageのgreenをもって実施）。

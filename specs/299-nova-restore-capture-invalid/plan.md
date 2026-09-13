@@ -263,13 +263,19 @@ mergeしない方針は不変である。
   → **I-4実施結果（assessment参照）**: (c)の修復はbind（`WorkspaceItemProcessor.
   processWidget`）・削除（`markDeleted`）の両経路ともreload generation依存で
   動作することを観測。repair-point継続中断ではinvalid rowと`CAPTURE_INVALID`が
-  持続し（(c)の再現）。**cross-process standalone再試験（base lifecycleを継承しない
+  持続する（(c)の再現）。**cross-process standalone再試験（base lifecycleを継承しない
   `NovaRestoreCaptureCrossProcess*Test`、モデル初期化前のread-only直接読み）で、
-  `performRestore`がcommitしたunbound行はprocess deathを跨いで持続し、次processの
-  最初の完了reload generationで修復されることを確認**。初版の実験（base setUpが
-  workspaceをリセットしていた）の「death窓は持続しない」結論は撤回済み。
-  (a)/(b)/(c)の切り分けでは(c)が観測経路として成立、(b)の世代不整合単独は
-  排除。#298との因果は「完了reloadが継続的に不成完了」が持続条件として整理
+  `performRestore`がcommitしたunbound行はprocess deathを跨いで持続し、reload
+  activityがsettle heuristicへ到達すれば修復されることを確認**。さらにI-3/I-4 reviewの
+  最小追加試験として、**実際に中断されたrepair状態（一時marker crash patch）の
+  process restart跨ぎ追跡とre-restore後の分類を取得**: 中断repairの部分適用状態
+  （[-1]行）はprocess deathを跨ぎ持続し、**re-restoreはunbound行を再書込みして
+  `CAPTURE_INVALID`窓を再openする（re-restore自体は修復しない）**。解消は
+  中断停止後のsettle到達のみ。初版の実験（base setUpがworkspaceをリセットしていた）
+  の「death窓は持続しない」結論は撤回済み。(a)/(b)/(c)の切り分けでは(c)が観測経路と
+  して成立。元実機セッションのroot cause候補としてcapture generation mismatchを
+  排除したわけではない（synthetic failureの説明から不要なだけ）。#298との因果は
+  「各reloadが継続的にsettleへ到達できない」ことが持続条件として整理
   （actual pathは#298 scope未再現、merge判断は引き続き証拠待ち）。
 - **I-5: #185非回帰確認とdecision gate。** I-2の結果を #185 の保護と突き
   合わせ、回帰/変種か独立障害かを記録する。その上で、修正のseam選択
@@ -278,6 +284,13 @@ mergeしない方針は不変である。
   設計をここで確定する。変更困難な判断（復元dataの正規化writeを
   どこが所有するか等）が残る場合はADRの3条件を再確認し、必要ならADRを
   作成する。
+  **gate条件（I-3/I-4 reviewにより明記）**: I-5はarchitectureを自動選択する段階では
+  ない。次の未確定事項をgate入力として扱い、証拠不足と判断した場合は
+  I-3/I-4の再開decisionを明示的に取り得る: (1) 元のintermittent triggerは未確定
+  （controlled matrixで代替、deviation記録済み）、(2) #298 actual wrong-thread pathは
+  未再現（#298 scope。seam選択は#298と同一seamに触れうるため進捗を確認）、
+  (3) 元実機セッションのthrow-site identityは未証明（synthetic failureで
+  直接捕捉済みに留まる）。
 
 ### Modules and interfaces（候補 — decision gate後確定）
 

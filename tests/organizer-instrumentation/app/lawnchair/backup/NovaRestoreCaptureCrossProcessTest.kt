@@ -101,7 +101,7 @@ class NovaRestoreCaptureCrossProcessStageATest {
 /**
  * Stage B (fresh process): read the persisted launcher DB on a read-only
  * connection BEFORE touching the model, proving what actually survived the
- * process death, then optionally drive the first real generation and observe
+ * process death, then drive reload activity to the settle heuristic and observe
  * the repair.
  */
 class NovaRestoreCaptureCrossProcessStageBTest {
@@ -133,8 +133,8 @@ class NovaRestoreCaptureCrossProcessStageBTest {
             survivedUnbound >= 1,
         )
 
-        // (2) Recovery half: now construct the model, let the first reload
-        // generation settle, and confirm the row is bound (or deleted) and
+        // (2) Recovery half: now construct the model, drive reload activity
+        // to the settle heuristic, and confirm the row is bound (or deleted) and
         // capture turns Ready. This is the in-process repair the death window
         // deferred, now running in the new process.
         val launcher = com.android.launcher3.LauncherAppState.getInstance(context)
@@ -149,16 +149,20 @@ class NovaRestoreCaptureCrossProcessStageBTest {
             TAG,
             "crossProcess/B: after new-process settle unbound=$afterUnbound bound=$afterBound",
         )
-        // The new-process repair generation must have closed the window: either
+        // The new-process repair activity must have closed the window: either
         // bound the row or removed it — no capture-invalid unbound row left.
         assertEquals(
-            "the new-process generation must bind or delete the persisted unbound row",
+            "after the settle heuristic the persisted unbound row must be bound or deleted",
             0,
             afterUnbound,
         )
     }
 
     private fun settleOneGeneration(launcher: com.android.launcher3.LauncherAppState) {
+        // Investigation settle heuristic (generation identity is NOT claimed):
+        // finishBindingItems firing + isModelLoaded (model loaded, no active
+        // loader at the observation instant). Bind firings are not completions;
+        // the settled state is what is asserted, never which generation ran.
         val latch = java.util.concurrent.CountDownLatch(1)
         val callbacks = object : com.android.launcher3.model.BgDataModel.Callbacks {
             override fun finishBindingItems(pagesBoundFirst: com.android.launcher3.util.IntSet?) { latch.countDown() }
@@ -167,11 +171,15 @@ class NovaRestoreCaptureCrossProcessStageBTest {
             launcher.model.addCallbacks(callbacks)
             launcher.model.forceReload()
         }
-        assertTrue("reload did not settle", latch.await(30, java.util.concurrent.TimeUnit.SECONDS))
+        assertTrue("reload did not reach the settle point (bind firing)", latch.await(30, java.util.concurrent.TimeUnit.SECONDS))
         val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(30)
         while (!launcher.model.isModelLoaded && System.nanoTime() < deadline) {
             Thread.sleep(25L)
         }
+        assertTrue(
+            "model must reach the settle point (isModelLoaded=true, no active loader) within 30s",
+            launcher.model.isModelLoaded,
+        )
         androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().runOnMainSync {
             launcher.model.removeCallbacks(callbacks)
         }
@@ -191,7 +199,7 @@ class NovaRestoreCaptureCrossProcessStageBTest {
 private const val NOVA_TABLE = "favorites"
 private const val LAST_COLUMN = 4
 
-private fun firstInstalledProvider(context: Context): String =
+internal fun firstInstalledProvider(context: Context): String =
     AppWidgetManager.getInstance(context)
         .getInstalledProvidersForProfile(Process.myUserHandle())
         .map { it.provider.flattenToString() }
@@ -199,7 +207,7 @@ private fun firstInstalledProvider(context: Context): String =
         .firstOrNull()
         ?: error("no widget provider available")
 
-private fun buildFixtureZip(context: Context, includeWidget: Boolean, widgetProvider: String?): File {
+internal fun buildFixtureZip(context: Context, includeWidget: Boolean, widgetProvider: String?): File {
     val dir = File(context.cacheDir, "nova_fixture_${UUID.randomUUID()}").apply { mkdirs() }
     val novaDb = File(dir, "nova.db")
     SQLiteDatabase.openOrCreateDatabase(novaDb, null).use { db ->
@@ -262,7 +270,7 @@ private fun insertNovaRow(
 }
 
 /** Opens the launcher favorites DB read-only and returns per-widget-row appWidgetIds (negative = unbound). */
-private fun queryWidgetState(db: SQLiteDatabase?): List<Int> {
+internal fun queryWidgetState(db: SQLiteDatabase?): List<Int> {
     if (db == null) return emptyList()
     return try {
         db.query(Favorites.TABLE_NAME, arrayOf(Favorites.ITEM_TYPE, Favorites.APPWIDGET_ID), null, null, null, null, null)
@@ -283,5 +291,5 @@ private fun queryWidgetState(db: SQLiteDatabase?): List<Int> {
     }
 }
 
-private fun readOnlyOpen(file: File): SQLiteDatabase? =
+internal fun readOnlyOpen(file: File): SQLiteDatabase? =
     if (file.exists()) SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY) else null
