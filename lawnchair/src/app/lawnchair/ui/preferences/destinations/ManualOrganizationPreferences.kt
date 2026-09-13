@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
@@ -17,6 +19,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -29,9 +32,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -94,6 +99,13 @@ fun ManualOrganizationPreferences(
     val state by coordinator.stateFlow.collectAsStateWithLifecycle()
     val focusRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
+    // Issue #308: a stateFlow transition can be observed before the lazy-list
+    // replacement target has attached. Keep readiness scoped to the state so a
+    // focus request is made only after that state's target has been laid out.
+    val focusTargetReady = remember(state) { mutableStateOf(false) }
+    val focusTargetModifier = Modifier.onGloballyPositioned {
+        focusTargetReady.value = true
+    }
 
     // Issue #271: the durable status projection is rendered only while no run
     // operation is active (Idle/Cancelled). It is re-read on each transition
@@ -114,6 +126,24 @@ fun ManualOrganizationPreferences(
         } else {
             null
         }
+    }
+    val showCheckingRow = showDurableStatus && (
+        durableStatus == null ||
+            (
+                durableStatus == OrganizerDurableStatus.UNAVAILABLE &&
+                    (
+                        readinessState == ReadinessGate.State.IDLE ||
+                            readinessState == ReadinessGate.State.RECONCILING
+                        )
+                )
+        )
+    val focusTargetIndex = when {
+        state is ManualOrganizationRun.State.Selecting -> null
+
+        state is ManualOrganizationRun.State.Idle || state is ManualOrganizationRun.State.Cancelled ->
+            1 + (if (showCheckingRow) 1 else 0) + durableStatusItemCount(durableStatus)
+
+        else -> 1
     }
 
     // Issue #195: the concrete change list is planned once per preview state.
@@ -138,14 +168,22 @@ fun ManualOrganizationPreferences(
 
     ManualOrganizationBackHandler(coordinator)
 
-    LaunchedEffect(state) {
+    LaunchedEffect(state, focusTargetReady.value, focusTargetIndex) {
         // Issue #209 review: each run state is a fresh surface, but the lazy
         // list keeps its scroll offset across transitions (Applied's summary
         // offset used to leave the RecoveryPreview decision pair above the
-        // viewport). Return to the head before restoring focus to the status
-        // heading, so the heading and its decision pair are visible on every
-        // transition without the user scrolling.
-        runCatching { listState.scrollToItem(0) }
+        // viewport). Return to the head before restoring focus whenever the
+        // target is already visible; otherwise reveal the target first so its
+        // layout callback can run (Issue #308).
+        runCatching {
+            listState.scrollToItem(0)
+            focusTargetIndex?.let { index ->
+                if (listState.layoutInfo.visibleItemsInfo.none { it.index == index }) {
+                    listState.scrollToItem(index)
+                }
+            }
+        }
+        if (!focusTargetReady.value) return@LaunchedEffect
         withFrameNanos { }
         runCatching { focusRequester.requestFocus() }
     }
@@ -221,14 +259,6 @@ fun ManualOrganizationPreferences(
                     // unavailable read is not yet the durable truth, so the
                     // checking row stays until the gate reaches a terminal
                     // state and the surface re-reads.
-                    val showCheckingRow = durableStatus == null ||
-                        (
-                            durableStatus == OrganizerDurableStatus.UNAVAILABLE &&
-                                (
-                                    readinessState == ReadinessGate.State.IDLE ||
-                                        readinessState == ReadinessGate.State.RECONCILING
-                                    )
-                            )
                     if (showCheckingRow) {
                         item { ProgressText(R.string.manual_organization_durable_status_checking) }
                     }
@@ -236,20 +266,31 @@ fun ManualOrganizationPreferences(
                     item {
                         ClickablePreference(
                             label = stringResource(R.string.manual_organization_start),
-                            modifier = Modifier.focusRequester(focusRequester).focusable(),
+                            modifier = Modifier
+                                .focusRequester(focusRequester)
+                                .focusable()
+                                .then(focusTargetModifier),
                             onClick = { execute { coordinator.start(trigger) } },
                         )
                     }
                 }
 
                 ManualOrganizationRun.State.Capturing -> item {
-                    ProgressText(R.string.manual_organization_capturing, focusRequester)
+                    ProgressText(
+                        R.string.manual_organization_capturing,
+                        focusTargetModifier,
+                        focusRequester,
+                    )
                 }
 
                 ManualOrganizationRun.State.CandidateDetection -> item {
                     // Issue #228: read-only detection between capture and the
                     // selection surface; browsing writes nothing.
-                    ProgressText(R.string.manual_organization_detecting_missing_apps, focusRequester)
+                    ProgressText(
+                        R.string.manual_organization_detecting_missing_apps,
+                        focusTargetModifier,
+                        focusRequester,
+                    )
                 }
 
                 is ManualOrganizationRun.State.Selecting -> {
@@ -266,7 +307,11 @@ fun ManualOrganizationPreferences(
                 }
 
                 ManualOrganizationRun.State.Planning -> item {
-                    ProgressText(R.string.manual_organization_planning, focusRequester)
+                    ProgressText(
+                        R.string.manual_organization_planning,
+                        focusTargetModifier,
+                        focusRequester,
+                    )
                 }
 
                 is ManualOrganizationRun.State.InputUnavailable -> item {
@@ -279,6 +324,7 @@ fun ManualOrganizationPreferences(
                             stringResource(currentState.reason.copyKind())
                         },
                         focusRequester = focusRequester,
+                        modifier = focusTargetModifier,
                     )
                     ClickablePreference(
                         label = stringResource(R.string.manual_organization_retry),
@@ -293,6 +339,7 @@ fun ManualOrganizationPreferences(
                     FocusTargetText(
                         text = stringResource(R.string.manual_organization_candidate_unresolved),
                         focusRequester = focusRequester,
+                        modifier = focusTargetModifier,
                     )
                     ClickablePreference(
                         label = stringResource(R.string.manual_organization_retry),
@@ -311,6 +358,7 @@ fun ManualOrganizationPreferences(
                                     R.string.manual_organization_rejected
                                 },
                             ),
+                            modifier = focusTargetModifier,
                         )
                     }
                     summaryItems(currentState.summary)
@@ -326,6 +374,7 @@ fun ManualOrganizationPreferences(
                     FocusTargetText(
                         text = stringResource(R.string.manual_organization_no_changes),
                         focusRequester = focusRequester,
+                        modifier = focusTargetModifier,
                     )
                     ClickablePreference(
                         label = stringResource(R.string.manual_organization_start_again),
@@ -338,6 +387,7 @@ fun ManualOrganizationPreferences(
                         FocusTargetText(
                             text = stringResource(R.string.manual_organization_preview),
                             focusRequester = focusRequester,
+                            modifier = focusTargetModifier,
                         )
                     }
                     if (currentState.details == null) {
@@ -388,6 +438,7 @@ fun ManualOrganizationPreferences(
                         FocusTargetText(
                             text = stringResource(R.string.manual_organization_preview_unavailable_add),
                             focusRequester = focusRequester,
+                            modifier = focusTargetModifier,
                         )
                     }
                     summaryItems(currentState.summary)
@@ -410,7 +461,11 @@ fun ManualOrganizationPreferences(
                 }
 
                 ManualOrganizationRun.State.Applying -> item {
-                    ProgressText(R.string.manual_organization_applying, focusRequester)
+                    ProgressText(
+                        R.string.manual_organization_applying,
+                        focusTargetModifier,
+                        focusRequester,
+                    )
                     ClickablePreference(
                         label = stringResource(R.string.manual_organization_cancel_before_checkpoint),
                         onClick = { execute(coordinator::cancel) },
@@ -426,6 +481,7 @@ fun ManualOrganizationPreferences(
                         FocusTargetText(
                             text = stringResource(R.string.manual_organization_stale_outcome),
                             focusRequester = focusRequester,
+                            modifier = focusTargetModifier,
                         )
                     }
                     item {
@@ -455,6 +511,7 @@ fun ManualOrganizationPreferences(
                         FocusTargetText(
                             text = applyMessage(currentState.result),
                             focusRequester = focusRequester,
+                            modifier = focusTargetModifier,
                         )
                     }
                     if (currentState.result is ApplyResult.Applied) {
@@ -504,7 +561,11 @@ fun ManualOrganizationPreferences(
                 }
 
                 ManualOrganizationRun.State.InspectingRecovery -> item {
-                    ProgressText(R.string.manual_organization_recovery_inspecting, focusRequester)
+                    ProgressText(
+                        R.string.manual_organization_recovery_inspecting,
+                        focusTargetModifier,
+                        focusRequester,
+                    )
                 }
 
                 is ManualOrganizationRun.State.RecoveryPreview -> {
@@ -512,6 +573,7 @@ fun ManualOrganizationPreferences(
                         FocusTargetText(
                             text = recoveryPreviewMessage(currentState.result),
                             focusRequester = focusRequester,
+                            modifier = focusTargetModifier,
                         )
                     }
                     // Issue #230: describe the restore target with the apply
@@ -546,7 +608,11 @@ fun ManualOrganizationPreferences(
                 }
 
                 ManualOrganizationRun.State.Recovering -> item {
-                    ProgressText(R.string.manual_organization_recovering, focusRequester)
+                    ProgressText(
+                        R.string.manual_organization_recovering,
+                        focusTargetModifier,
+                        focusRequester,
+                    )
                 }
 
                 is ManualOrganizationRun.State.RecoveryResultState -> {
@@ -554,6 +620,7 @@ fun ManualOrganizationPreferences(
                         FocusTargetText(
                             text = recoveryResultMessage(currentState.result),
                             focusRequester = focusRequester,
+                            modifier = focusTargetModifier,
                         )
                     }
                     if (currentState.result.requiresSafeSupport()) {
@@ -645,6 +712,19 @@ private fun androidx.compose.foundation.lazy.LazyListScope.durableStatusItems(
     }
 }
 
+private fun durableStatusItemCount(status: OrganizerDurableStatus?): Int = when (status) {
+    OrganizerDurableStatus.ORGANIZED_RESTORABLE,
+    OrganizerDurableStatus.RESTORED_OR_EXPIRED,
+    -> 1
+
+    OrganizerDurableStatus.UNRESOLVED -> 3
+
+    null,
+    OrganizerDurableStatus.NEVER_ORGANIZED,
+    OrganizerDurableStatus.UNAVAILABLE,
+    -> 0
+}
+
 private fun strategyDisplayName(id: StrategyId): Int = when (id.value) {
     "CANONICAL_PAGE_COMPACT_V1" -> R.string.organization_strategy_canonical_name
     "STABLE_PAGE_TIDY_V1" -> R.string.organization_strategy_tidy_name
@@ -705,6 +785,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
                 val description = stringResource(strategyDescription(id))
                 val isSelected = selected == id
                 Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
                         .selectable(
@@ -714,7 +795,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
                         )
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                 ) {
-                    Column {
+                    RadioButton(
+                        selected = isSelected,
+                        onClick = null,
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(name, style = MaterialTheme.typography.bodyLarge)
                         Text(description, style = MaterialTheme.typography.bodyMedium)
                     }
@@ -765,6 +851,7 @@ private fun ManualOrganizationBackHandler(coordinator: ManualOrganizationRun) {
 @Composable
 private fun ProgressText(
     @androidx.annotation.StringRes resourceId: Int,
+    modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
 ) {
     val focusModifier = if (focusRequester == null) {
@@ -777,6 +864,7 @@ private fun ProgressText(
     Text(
         text = stringResource(resourceId),
         modifier = focusModifier
+            .then(modifier)
             .padding(horizontal = 16.dp)
             .semantics {
                 liveRegion = LiveRegionMode.Polite
@@ -788,12 +876,14 @@ private fun ProgressText(
 private fun FocusTargetText(
     text: String,
     focusRequester: FocusRequester,
+    modifier: Modifier = Modifier,
 ) {
     Text(
         text = text,
         modifier = Modifier
             .focusRequester(focusRequester)
             .focusable()
+            .then(modifier)
             .padding(horizontal = 16.dp)
             .semantics {
                 liveRegion = LiveRegionMode.Polite
