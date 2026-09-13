@@ -6,15 +6,20 @@
 
 ## Current evidence
 
-対象baseline: `origin/main` = `f9afd8bfde121932c0c8ed965225d52a84d86ab4`
-（2026-09-12取得）。観測build `d0f40446c7` はこのmainの祖先であり、
-`d0f40446c7..origin/main` の差分で
-[RowManifestCodec.kt](../../lawnchair/src/app/lawnchair/organizer/application/adapter/RowManifestCodec.kt)、
+対象baseline: `origin/main` = `3aa6e83a1f6dc331e9f6712c126c9ff58d050660`
+（2026-09-13取得・再確認）。初版作成時baselineは `f9afd8bfde`（2026-09-12取得）
+であったが、その後mainは28 commit進んだ。`f9afd8bfde..3aa6e83a1f` の差分で
+capture pathの本体
+（[RowManifestCodec.kt](../../lawnchair/src/app/lawnchair/organizer/application/adapter/RowManifestCodec.kt)、
 [LauncherLayoutAdapter.kt](../../lawnchair/src/app/lawnchair/organizer/application/adapter/LauncherLayoutAdapter.kt)、
 [NovaBackupConverter.kt](../../lawnchair/src/app/lawnchair/backup/NovaBackupConverter.kt)、
-[RestoreDbTask.java](../../src/com/android/launcher3/provider/RestoreDbTask.java)
-は無変更。`OrganizationInputComposer.kt` のみ #228 追加（selection stale gate等）
-を含むが、capture失敗 → `CAPTURE_INVALID` の導出は不変である。
+[RestoreDbTask.java](../../src/com/android/launcher3/provider/RestoreDbTask.java)、
+[OrganizationInputComposer.kt](../../lawnchair/src/app/lawnchair/organizer/integration/OrganizationInputComposer.kt)、
+diagnostics module）は無変更であり、同区間のorganizer領域の変更は #287 の
+lock authoring修正（`LockAuthoring.kt`、planning側）のみである。
+観測build `d0f40446c7` は現baselineの祖先であり、`d0f40446c7..f9afd8bfde` の
+差分でcomposerに #228 追加（selection stale gate等）があるが、
+capture失敗 → `CAPTURE_INVALID` の導出は不変である。
 
 ### 記録済みのruntime証拠（事実 — Issue #299本文、2026-09-12T05:47:43Z作成）
 
@@ -142,6 +147,8 @@
   - :73（page inventory不整合）はcapture読み取り窓にrestore/model書込みが
     重なった場合に成立する。#298のreload中断と時間的に相関しうるが、
     因果は未確立。9/9・5分超の持続がこの説明で足りるかも未確認。
+    reload中断がloader本来の修復・削除処理（I-4の経路 (c)）を途中で止めて
+    部分適用状態を残す可能性も含めて、定点matrixで評価する。
 - 観測セッションで実際に復元されたDB内容（privacy上、issue記録には含まれない）。
 - emulator上での再現手順と再現率。
 - `captureWorkspaceContext` のlive IDP読み取りがgrid切替窓
@@ -154,29 +161,65 @@
 
 fix architectureはI-5のdecision gateを通過するまで決定しない。
 
+調査はcapture側のレース仮説に寄せない。restore → loader/reload → captureの
+全体経路を対象にし、下記の **state比較matrix** をI-1〜I-4の共通計測軸として
+最初から組込む。#298（reload中断が部分適用状態を残す経路）は、相関の後段確認
+対象ではなくroot cause切り分けの必須比較軸である。証拠が出るまで両Issueを
+mergeしない方針は不変である。
+
+**state比較matrix（成功/失敗セッションで同一手順・同一定点で収集する）**
+
+比較時点（最低5定点）:
+
+1. `RestoreDbTask.performRestore` 直後（sanitizeDB / widget rebind後）
+2. `reloadAfterRestore` 開始時
+3. 通常reload完了後
+4. 中断されたreload後（#298のwrong-thread障害が観測された場合。観測されない
+   場合は通常reload完了後と同一とみなして記録）
+5. Organizer capture直前
+
+各時点で収集するbounded分類（値そのものは記録しない。layout内容を含まない）:
+
+- widget行の件数
+- widget IDの妥当性category（`appWidgetId >= 0` / 負値・null）
+- widget providerの有無category
+- restore flag category（`restored` 値の区分）
+- 行削除・正規化の有無（sanitize/restore後に行集合が変化したかの分類）
+- pages / profiles / reservationsの整合category（#185のreservation幾何を含む
+  codec不変条件ごとの通過/違反区分）
+
 - **I-1: emulator再現の確立。** API 36.1 emulator + debug build（building
   guide準拠）でNova restore → Organizer captureを繰り返す。影響を受けた
   backupのsynthetic等価fixture（privacy配慮の下でlayout内容を差し替えた
   同構造backup）を作り、widgets / folder / deep shortcut / 複数profile要素を
   組み替えたmatrixで `phase=CAPTURE` 出力の有無を収集する。
   再現が弱い場合はcapture読み取り窓とrestore/reloadの重叠を意図した
-  手順（restore直後の即時organize要求等）で窓を広げる。
+  手順（restore直後の即時organize要求等）で窓を広げる。I-1の各runは
+  上記matrixの定点計測を最初から収集する（後付けの再現を要求しない）。
 - **I-2: throw点の特定（CI-AC-01）。** 再現時、capture pathに一時的な
   local調査計測（debug build限定、出荷しない）を入れてthrow点と違反不変条件を
   特定する。調査計測は#172契約の出荷surfaceに載せず、PRから取り除く。
   特定結果（例外種別、file:line、違反したrequire、当該行のDB内容の
   分類 — 値そのものではなく）を `docs/assessment/issue-299-<slug>.md` に
   対象build SHA・取得logの要約・確認日とともに記録する。
-- **I-3: 成功セッションとの差分。** 同一手順で成功する場合のcapture直前
-  状態（rows / pages / profiles / reservations）を、失敗時と同じ分類軸で
-  記録し、不変条件差を特定する。
-- **I-4: 持続性の切り分け。** (a) 復元dataの永続的無効性（再restore後も
-  同一row分類が残る）か、(b) capture読み取り窓の世代不整合（レース）かを、
-  process再起動・再restore後のrow分類追跡で切り分ける。#298との相関は
-  この観測でのみ評価し、証拠なしにmergeしない。
+- **I-3: 成功セッションとの差分。** 同一手順で成功する場合と失敗する場合の
+  stateを、上記5定点 × bounded分類軸で比較し、不変条件差を特定する。
+  capture直前の1時点だけではなく、restore/reloadの途中経過の差がいつ生まれるか
+  を特定する（例: sanitize完了時点で既に差があるか、reload中に生まれるか）。
+- **I-4: 持続性とloader修復経路の切り分け。** (a) 復元dataの永続的無効性
+  （再restore後も同一row分類が残る）か、(b) capture読み取り窓の世代不整合
+  （レース）か、(c) restore後のloader/reloadが本来修復・削除するはずの
+  invalid rowの処理が中断され部分適用状態が残る経路かを、process再起動・
+  再restore後のrow分類追跡と定点matrixで切り分ける。(c)では、Nova converter
+  由来行（`appWidgetId=-1`、Nova固有itemType、folder子行の親参照等）に対して
+  `sanitizeDB` / `restoreAppWidgetIdsIfExists` / 通常reloadがどの修復・削除を
+  行うはずかを動的に確認し、#298のreload中断がその処理をどこで止めたかを
+  評価する。#298との因果判断はこの観測でのみ行い、証拠なしにmergeしない。
 - **I-5: #185非回帰確認とdecision gate。** I-2の結果を #185 の保護と突き
   合わせ、回帰/変種か独立障害かを記録する。その上で、修正のseam選択
-  （下記候補）とtest戦略を確定する。変更困難な判断（復元dataの正規化writeを
+  （下記候補）とtest戦略を確定する。正規化/拒絶を採用するか否かの決定と、
+  CI-AC-08のbounded diagnostic category（正規化/拒絶の採否に依存せず必須）の
+  設計をここで確定する。変更困難な判断（復元dataの正規化writeを
   どこが所有するか等）が残る場合はADRの3条件を再確認し、必要ならADRを
   作成する。
 
@@ -188,6 +231,8 @@ fix architectureはI-5のdecision gateを通過するまで決定しない。
   のみの出荷surface。文脈追加はorganizer diagnostics契約
   ([docs/engineering/organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md))
   のbounded field拡張として行い、message/stack/layout由来textは載せない。
+  違反不変条件のbounded categoryの追加はspec CI-AC-08により必須であり、
+  正規化/拒絶の採否に依存しない。
 - composerの閉じたcode語彙（`InputCompositionCode`）。新codeの追加は
   `InputReadinessProjection` / diagnostics契約 / 既存testへの波及を伴う
   契約変更であり、必要になった場合は本specの更新を先に行う。
@@ -267,12 +312,13 @@ Organizer run (manual)
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
 | CI-AC-01 | 調査記録 + throw点の証跡 | 手動調査（emulator debug build）、記録は `docs/assessment/issue-299-<slug>.md` |
-| CI-AC-02 | restore → capture回帰（可能ならinstrumentation化） | emulator/実機 + `NovaRestoreGridApplicationTest` 系seam拡張 |
+| CI-AC-02 | restore → capture回帰（completion barrier後の最初の権威的capture、可能ならinstrumentation化） | emulator/実機 + `NovaRestoreGridApplicationTest` 系seam拡張 |
 | CI-AC-03 | fail-closed契約の維持test | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
 | CI-AC-04 | #185既存coverageのgreen | 同上 + `organizer-instrumentation-shared-writer-tests` job（`LoaderCursorOverlapAcceptanceContractTest`、`OverlapAcceptanceGateSeamInstrumentationTest`） |
-| CI-AC-05 | 追加regressionの実行 | 追加surfaceのCI gate接続 |
+| CI-AC-05 | 追加regressionの実行。seam作成不能の場合は理由と代替device evidence | 追加surfaceのCI gate接続 |
 | CI-AC-06 | 繰り返しrestore → capture検証 | emulator/実機での手順と結果をPRに記録 |
-| CI-AC-07 | decision gate記録 + 選択振る舞いの検証 | assessment doc + 対応test |
+| CI-AC-07 | decision gate記録（正規化/拒絶の採否）+ 採用時の振る舞い検証 | assessment doc + 対応test |
+| CI-AC-08 | bounded category fieldの実装test（redaction non-containment含む） | organizer diagnostics契約のfixture test拡張 + `organizer-unit-tests` gate |
 
 含めるべき観点: unit（codec fixtureによる各require不変条件の網羅）、
 integration（restore → capture、process再起動後）、instrumentation
@@ -281,27 +327,30 @@ integration（restore → capture、process再起動後）、instrumentation
 ## Documentation updates
 
 - [ ] spec status/history（root cause確定・fix適用時）
-- [ ] `docs/engineering/organizer-diagnostics.md`（bounded文脈field追加時のみ）
+- [ ] `docs/engineering/organizer-diagnostics.md`（CI-AC-08のbounded category field追加 — 必須成果であり、fix実装PRと同期して更新する）
 - [ ] CONTEXT.md / DESIGN.md（domain language・system構造変更時のみ。現時点では想定しない）
 - [ ] ADR（decision gateで3条件を満たす判断が発生した場合のみ）
 - [ ] AGENTS.md（workflow/verified command変更時のみ。想定しない）
 
 ## Execution checklist
 
-- [ ] I-1: emulator再現の確立（または再現不能の記録と代替証拠計画）。
+- [ ] I-1: emulator再現の確立（または再現不能の記録と代替証拠計画）。定点matrix計測を含める。
 - [ ] I-2: throw点・違反不変条件の特定とassessment記録（CI-AC-01）。
-- [ ] I-3/I-4: 成功差分・持続性の切り分け記録。
-- [ ] I-5: #185非回帰確認とdecision gate（seam選択、spec/plan更新）。
+- [ ] I-3/I-4: 5定点 × bounded分類軸の成功/失敗差分・持続性・loader修復経路の切り分け記録。
+- [ ] I-5: #185非回帰確認とdecision gate（正規化/拒絶の採否記録、seam選択、CI-AC-08設計確定、spec/plan更新）。
 - [ ] 失敗を再現するtestを先に追加（修正はそれに伴う）。
 - [ ] Minimal implementation、migration/recovery検証（該当時）。
+- [ ] CI-AC-08のdiagnostics拡張と `docs/engineering/organizer-diagnostics.md` 更新。
 - [ ] Full relevant verification（unit / instrumentation / device evidence）。
 - [ ] PR evidence、残余risk、未確認範囲の記録。
 
 ## Dependencies / blockers / risk
 
-- **#298**: 相関は未確立。I-4で証拠が出るまで依存関係を作らない。
-  修正が同一seam（restore/reload窓の読み書き整合）に触れると判明した場合は
-  直列化する。
+- **#298**: 相関は未確立だが、root cause切り分けの必須比較軸である
+  （I-3/I-4の定点matrixに組み込み済み。reload中断がloader修復処理を止めて
+  部分適用状態を残す経路 (c) の評価に必須）。証拠が出るまで両Issueをmergeせず、
+  依存関係も作らない。修正が同一seam（restore/reload窓の読み書き整合）に
+  触れると判明した場合は直列化する。
 - **#287**: 独立（grid-change `CAPTURE_UNKNOWN_LOCK`）。調査中に同一capture
   突合点へ到達した場合のみ情報共有。
 - **risk**: 実装PRが `organizer/application/**`（高リスクpath一覧）または
