@@ -127,6 +127,24 @@ fun ManualOrganizationPreferences(
             null
         }
     }
+    val showCheckingRow = showDurableStatus && (
+        durableStatus == null ||
+            (
+                durableStatus == OrganizerDurableStatus.UNAVAILABLE &&
+                    (
+                        readinessState == ReadinessGate.State.IDLE ||
+                            readinessState == ReadinessGate.State.RECONCILING
+                        )
+                )
+        )
+    val focusTargetIndex = when {
+        state is ManualOrganizationRun.State.Selecting -> null
+
+        state is ManualOrganizationRun.State.Idle || state is ManualOrganizationRun.State.Cancelled ->
+            1 + (if (showCheckingRow) 1 else 0) + durableStatusItemCount(durableStatus)
+
+        else -> 1
+    }
 
     // Issue #195: the concrete change list is planned once per preview state.
     // Expansion state is UI-local and resets when new details arrive.
@@ -150,14 +168,21 @@ fun ManualOrganizationPreferences(
 
     ManualOrganizationBackHandler(coordinator)
 
-    LaunchedEffect(state, focusTargetReady.value) {
+    LaunchedEffect(state, focusTargetReady.value, focusTargetIndex) {
         // Issue #209 review: each run state is a fresh surface, but the lazy
         // list keeps its scroll offset across transitions (Applied's summary
         // offset used to leave the RecoveryPreview decision pair above the
-        // viewport). Return to the head before restoring focus to the status
-        // heading, so the heading and its decision pair are visible on every
-        // transition without the user scrolling.
-        runCatching { listState.scrollToItem(0) }
+        // viewport). Return to the head before restoring focus whenever the
+        // target is already visible; otherwise reveal the target first so its
+        // layout callback can run (Issue #308).
+        runCatching {
+            listState.scrollToItem(0)
+            focusTargetIndex?.let { index ->
+                if (listState.layoutInfo.visibleItemsInfo.none { it.index == index }) {
+                    listState.scrollToItem(index)
+                }
+            }
+        }
         if (!focusTargetReady.value) return@LaunchedEffect
         withFrameNanos { }
         runCatching { focusRequester.requestFocus() }
@@ -234,14 +259,6 @@ fun ManualOrganizationPreferences(
                     // unavailable read is not yet the durable truth, so the
                     // checking row stays until the gate reaches a terminal
                     // state and the surface re-reads.
-                    val showCheckingRow = durableStatus == null ||
-                        (
-                            durableStatus == OrganizerDurableStatus.UNAVAILABLE &&
-                                (
-                                    readinessState == ReadinessGate.State.IDLE ||
-                                        readinessState == ReadinessGate.State.RECONCILING
-                                    )
-                            )
                     if (showCheckingRow) {
                         item { ProgressText(R.string.manual_organization_durable_status_checking) }
                     }
@@ -693,6 +710,19 @@ private fun androidx.compose.foundation.lazy.LazyListScope.durableStatusItems(
         OrganizerDurableStatus.UNAVAILABLE,
         -> Unit
     }
+}
+
+private fun durableStatusItemCount(status: OrganizerDurableStatus?): Int = when (status) {
+    OrganizerDurableStatus.ORGANIZED_RESTORABLE,
+    OrganizerDurableStatus.RESTORED_OR_EXPIRED,
+    -> 1
+
+    OrganizerDurableStatus.UNRESOLVED -> 3
+
+    null,
+    OrganizerDurableStatus.NEVER_ORGANIZED,
+    OrganizerDurableStatus.UNAVAILABLE,
+    -> 0
 }
 
 private fun strategyDisplayName(id: StrategyId): Int = when (id.value) {
