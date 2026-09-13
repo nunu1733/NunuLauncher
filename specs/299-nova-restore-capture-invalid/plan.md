@@ -6,9 +6,9 @@
 
 ## Current evidence
 
-対象baseline: `origin/main` = `3aa6e83a1f6dc331e9f6712c126c9ff58d050660`
+対象baseline: `origin/main` = `37e3dd8feb9240e90587620e8175330b48604e19`
 （2026-09-13取得・再確認）。初版作成時baselineは `f9afd8bfde`（2026-09-12取得）
-であったが、その後mainは28 commit進んだ。`f9afd8bfde..3aa6e83a1f` の差分で
+であった。その後mainは29 commit進んだが、`f9afd8bfde..37e3dd8feb` の差分で
 capture pathの本体
 （[RowManifestCodec.kt](../../lawnchair/src/app/lawnchair/organizer/application/adapter/RowManifestCodec.kt)、
 [LauncherLayoutAdapter.kt](../../lawnchair/src/app/lawnchair/organizer/application/adapter/LauncherLayoutAdapter.kt)、
@@ -16,10 +16,10 @@ capture pathの本体
 [RestoreDbTask.java](../../src/com/android/launcher3/provider/RestoreDbTask.java)、
 [OrganizationInputComposer.kt](../../lawnchair/src/app/lawnchair/organizer/integration/OrganizationInputComposer.kt)、
 diagnostics module）は無変更であり、同区間のorganizer領域の変更は #287 の
-lock authoring修正（`LockAuthoring.kt`、planning側）のみである。
-観測build `d0f40446c7` は現baselineの祖先であり、`d0f40446c7..f9afd8bfde` の
-差分でcomposerに #228 追加（selection stale gate等）があるが、
-capture失敗 → `CAPTURE_INVALID` の導出は不変である。
+lock authoring修正（`LockAuthoring.kt`、planning側）と #304 のspec/assessment
+docs追加のみである。観測build `d0f40446c7` は現baselineの祖先であり、
+`d0f40446c7..f9afd8bfde` の差分でcomposerに #228 追加（selection stale gate等）
+があるが、capture失敗 → `CAPTURE_INVALID` の導出は不変である。
 
 ### 記録済みのruntime証拠（事実 — Issue #299本文、2026-09-12T05:47:43Z作成）
 
@@ -173,10 +173,11 @@ mergeしない方針は不変である。
 
 1. `RestoreDbTask.performRestore` 直後（sanitizeDB / widget rebind後）
 2. `reloadAfterRestore` 開始時
-3. 通常reload完了後
-4. 中断されたreload後（#298のwrong-thread障害が観測された場合。観測されない
-   場合は通常reload完了後と同一とみなして記録）
-5. Organizer capture直前
+3. 通常reload完了後（I-1で特定したcompletion barrier観測signalの到達時点）
+4. 中断されたreload後（#298のwrong-thread障害が観測された場合のみ記録する。
+   未観測の場合は `N/A / not observed` として記録し、通常reload完了後と
+   同値扱いしない）
+5. Organizer capture直前（completion barrier到達後の時点）
 
 各時点で収集するbounded分類（値そのものは記録しない。layout内容を含まない）:
 
@@ -188,14 +189,25 @@ mergeしない方針は不変である。
 - pages / profiles / reservationsの整合category（#185のreservation幾何を含む
   codec不変条件ごとの通過/違反区分）
 
-- **I-1: emulator再現の確立。** API 36.1 emulator + debug build（building
-  guide準拠）でNova restore → Organizer captureを繰り返す。影響を受けた
-  backupのsynthetic等価fixture（privacy配慮の下でlayout内容を差し替えた
-  同構造backup）を作り、widgets / folder / deep shortcut / 複数profile要素を
-  組み替えたmatrixで `phase=CAPTURE` 出力の有無を収集する。
-  再現が弱い場合はcapture読み取り窓とrestore/reloadの重叠を意図した
+- **I-1: emulator再現の確立とcompletion barrierの特定。** API 36.1 emulator +
+  debug build（building guide準拠）でNova restore → Organizer captureを
+  繰り返す。影響を受けたbackupのsynthetic等価fixture（privacy配慮の下で
+  layout内容を差し替えた同構造backup）を作り、widgets / folder / deep
+  shortcut / 複数profile要素を組み替えたmatrixで `phase=CAPTURE` 出力の有無を
+  収集する。再現が弱い場合はcapture読み取り窓とrestore/reloadの重叠を意図した
   手順（restore直後の即時organize要求等）で窓を広げる。I-1の各runは
   上記matrixの定点計測を最初から収集する（後付けの再現を要求しない）。
+  あわせて、**restoreに対応するmodel reload generationがterminal completionに
+  到達したことを観測できるproduction/test signalを特定し、それを本planの
+  completion barrierとする**。現行実装では `RestoreDbTask.reloadAfterRestore`
+  は `LauncherModel.forceReload()` を呼ぶのみであり
+  （RestoreDbTask.java:283-288、LauncherModel.java:314-327）、そのreturnは
+  reload完了を意味しない（callbackが無い場合、loaderは次回launcher起動まで
+  延期されうる）。したがってrestore APIのreturnや固定sleepをcompletion扱いする
+  oracleは禁止する。既存のcorrelated reload generation機構（#152）や
+  loader状態が観測点として使えるかをこの時点で評価し、同等signalが
+  production/testに存在しない場合は、その設置をfix seam候補の一つとして
+  I-5のdecision gateへ持ち上げる。
 - **I-2: throw点の特定（CI-AC-01）。** 再現時、capture pathに一時的な
   local調査計測（debug build限定、出荷しない）を入れてthrow点と違反不変条件を
   特定する。調査計測は#172契約の出荷surfaceに載せず、PRから取り除く。
@@ -204,6 +216,8 @@ mergeしない方針は不変である。
   対象build SHA・取得logの要約・確認日とともに記録する。
 - **I-3: 成功セッションとの差分。** 同一手順で成功する場合と失敗する場合の
   stateを、上記5定点 × bounded分類軸で比較し、不変条件差を特定する。
+  定点3/5の観測はI-1で特定したcompletion barrier signalを基準にする
+  （barrier未定義のままのcapture直前比較をしない）。
   capture直前の1時点だけではなく、restore/reloadの途中経過の差がいつ生まれるか
   を特定する（例: sanitize完了時点で既に差があるか、reload中に生まれるか）。
 - **I-4: 持続性とloader修復経路の切り分け。** (a) 復元dataの永続的無効性
@@ -312,7 +326,7 @@ Organizer run (manual)
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
 | CI-AC-01 | 調査記録 + throw点の証跡 | 手動調査（emulator debug build）、記録は `docs/assessment/issue-299-<slug>.md` |
-| CI-AC-02 | restore → capture回帰（completion barrier後の最初の権威的capture、可能ならinstrumentation化） | emulator/実機 + `NovaRestoreGridApplicationTest` 系seam拡張 |
+| CI-AC-02 | restore → capture回帰。I-1/I-3で特定したcompletion barrier観測signal到達後の最初の権威的captureの成功を検証する（restore API returnや固定sleepをcompletion扱いしない）。可能ならinstrumentation化 | emulator/実機 + `NovaRestoreGridApplicationTest` 系seam拡張 |
 | CI-AC-03 | fail-closed契約の維持test | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
 | CI-AC-04 | #185既存coverageのgreen | 同上 + `organizer-instrumentation-shared-writer-tests` job（`LoaderCursorOverlapAcceptanceContractTest`、`OverlapAcceptanceGateSeamInstrumentationTest`） |
 | CI-AC-05 | 追加regressionの実行。seam作成不能の場合は理由と代替device evidence | 追加surfaceのCI gate接続 |
@@ -334,7 +348,7 @@ integration（restore → capture、process再起動後）、instrumentation
 
 ## Execution checklist
 
-- [ ] I-1: emulator再現の確立（または再現不能の記録と代替証拠計画）。定点matrix計測を含める。
+- [ ] I-1: emulator再現の確立（または再現不能の記録と代替証拠計画）とcompletion barrier観測signalの特定。定点matrix計測を含める。
 - [ ] I-2: throw点・違反不変条件の特定とassessment記録（CI-AC-01）。
 - [ ] I-3/I-4: 5定点 × bounded分類軸の成功/失敗差分・持続性・loader修復経路の切り分け記録。
 - [ ] I-5: #185非回帰確認とdecision gate（正規化/拒絶の採否記録、seam選択、CI-AC-08設計確定、spec/plan更新）。
@@ -366,6 +380,8 @@ integration（restore → capture、process再起動後）、instrumentation
 - `sanitizeDB` / `restoreAppWidgetIdsIfExists` がNova converter由来行を
   どこまで正規化するかの動的挙動。
 - capture読み取り窓へのrestore/model書込み重叠の実際の生起条件。
+- restore pathのreload完了を観測できるproduction/test signalの現存
+  （`forceReload()` にcallbackはなく、I-1で確定させる）。
 - live IDP読み取りのgrid切替窓での整合性。
 - emulator上での再現率と再現手順の安定性。
 - 影響を受けたセッションの実backup内容（取得不能、synthetic等価で代替）。

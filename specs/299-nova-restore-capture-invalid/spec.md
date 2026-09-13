@@ -71,7 +71,12 @@ boundedな）文脈を運ぶ。
   下記の正規化/拒絶の選択に依存せず常に要求される。
 - 特定された無効状態への対処の選択: 復元dataが本当に無効な場合のdeterministicな
   正規化または拒絶を採用するか否か。選択はroot cause確定後のdecision gateで
-  記録する（採用しない場合はdiagnostics文脈のみでも契約を満たす）。
+  記録する。採用しない選択が可能なのは、別のfix（reload sequencing、一貫した
+  capture読み取り世代等）によってCI-AC-02を満たせる場合のみである。
+  completion barrier到達後もrestored workspace自体がinvalidのまま残る場合、
+  diagnostics文脈の追加だけを最終fixとすることはできない。diagnosticsは常に
+  必須だが、それ単独でuser-visible defectの修正（CI-AC-02）を満たすとは
+  限らない。
 - capture pathの持続失敗からの復旧挙動の明示化（どの状態遷移が
   `CAPTURE_INVALID` から回復させるか）。
 - #185が保護するreserved QSB / reservation不変条件の非回帰確認。
@@ -105,13 +110,21 @@ boundedな）文脈を運ぶ。
   productionではcapture sourceが非Readyを返した場合のみ発生し、
   `UNKNOWN_LOCK` / `CAPTURE_UNREPRESENTABLE` / `CAPTURE_RESERVED_OVERLAP`
   とは理由が区別される閉じた語彙である。
+- **completion barrier**: restoreに対応するmodel reload generationがterminalな
+  完了境界に到達したことを観測するためのbarrierである。restore APIのreturnや
+  固定待ち時間はcompletion barrierではない（現行の `reloadAfterRestore` →
+  `forceReload()` はreload開始操作であり、returnは完了を意味しない）。
+  観測signalの特定はplan I-1/I-3の成果であり、production/testに同等signalが
+  存在しない場合はfix seamの一部として設ける。CI-AC-02の検証はこのbarrierを
+  待って行われる。
 
 ## Behavior scenarios
 
 ### Scenario: Nova restore後のOrganizer captureが成功する（回帰oracle）
 
 Given 初期状態から、影響を受けたNova backupを含む復元対象を用意する
-When Nova backup restoreを実行し、restore/model reload完了を待つ
+When Nova backup restoreを実行し、restoreに対応するmodel reload generationの
+  completion barrier（Domain language参照）を観測する
 Then Organizerのpreview/capture要求が成功し、`CAPTURE_INVALID` が発生しない
 And logcatに `phase=CAPTURE exceptionClass=IllegalArgumentException` が出現しない
 
@@ -119,19 +132,20 @@ And logcatに `phase=CAPTURE exceptionClass=IllegalArgumentException` が出現�
 
 Given 同一環境でNova restore → Organizer capture → （必要なら再）restoreの
   cycleを繰り返す
-When 各cycleでrestoreを実行し、restore/model reload完了（completion barrier）
-  を待った上で、その直後の最初の権威的capture要求を試みる
+When 各cycleでrestoreを実行し、そのcycleのmodel reload generationの
+  completion barrierを観測した上で、直後の最初の権威的capture要求を試みる
 Then 全cycleにおいて、completion barrier後の最初の権威的captureが成功する
   （成功cycleと失敗cycleが混在する隔回失敗も許容しない）
 And 障害が特定セッションに依存しないことが繰り返し実行で確認される
 
 ### Scenario: reload完了前の一時的なNotReadyと完了後の成功の境界
 
-Given restore/model reloadが完了していない状態でOrganizer要求が行われる
-When restore/model reload完了前にOrganizerのcapture要求が非Ready
+Given restoreに対応するmodel reload generationがcompletion barrierに
+  到達していない状態でOrganizer要求が行われる
+When completion barrier到達前にOrganizerのcapture要求が非Ready
   （`INPUT_NOT_READY` 系）を返す
 Then その一時的な非Readyは許容される（本specの違反ではない）
-And reload完了後の権威的capture要求は成功し、一時的非Readyが
+And completion barrier到達後の権威的capture要求は成功し、一時的非Readyが
   `CAPTURE_INVALID` として恒常化しない
 
 ### Scenario: 本当に無効なcaptureはfail-closedし続ける
@@ -200,22 +214,27 @@ And reservation違反に対する `CAPTURE_RESERVED_OVERLAP` / write時
   stack/log証跡とともに特定・記録されている（候補の列挙ではなく、観測された
   障害の説明になっていること）。
 - [ ] CI-AC-02: 影響を受けたNova restore → Organizer flowが、持続的な
-  `CAPTURE_INVALID` に陥らない。各restore/model reload完了（completion barrier）
-  後の最初の権威的captureが成功する（隔回失敗を含まない）。
+  `CAPTURE_INVALID` に陥らない。restoreに対応するmodel reload generationの
+  completion barrier到達後の最初の権威的captureが成功する（隔回失敗を含まない）。
+  device/instrumentation検証は、このbarrier定義と同一の観測signalを待つ
+  （restore APIのreturnや固定待ち時間をcompletion扱いしない）。
 - [ ] CI-AC-03: 本当に無効な権威的captureに対してOrganizerがfail-closedし続ける
   （readiness checkの弱化、`CAPTURE_INVALID` の除去・握り潰しを行わない）。
 - [ ] CI-AC-04: #185のreserved-QSB placement保護が引き続き有効である
   （既存回帰coverageがgreen）。
-- [ ] CI-AC-05: 自動regression（restore → capture）が追加されている。triggerが
-  判明した後は、繰り返しrestore cycleまたは特定されたレース窓を対象にする。
-  root cause確定後、deterministicなtest seamが作れる場合はautomated regressionを
-  必須とし、作れない場合のみ、その理由と代替となるdevice evidenceを記録して
-  代替する。
+- [ ] CI-AC-05: restore → captureの自動regressionが、deterministicなtest seamが
+  作れる場合に必須で追加され（trigger判明後は繰り返しrestore cycleまたは
+  特定されたレース窓を対象にする）、作れない場合のみその理由と代替となる
+  device evidenceを記録して代替される。
 - [ ] CI-AC-06: emulatorまたは実機検証が、繰り返しのrestore → capture試行を
   覆い、回復・安定性を確認している。
 - [ ] CI-AC-07: capture失敗時の復旧挙動が確定している。root cause確定後の
   decision gateで「deterministicな正規化/拒絶」を採用するか否かが記録され、
-  採用した場合は選択された振る舞いが検証されている。
+  採用した場合は選択された振る舞いが検証されている。採用しない場合は、
+  別のfix（reload sequencing、一貫したcapture読み取り世代等）によって
+  CI-AC-02が満たせることを証跡で示す。completion barrier到達後も
+  restored workspace自体がinvalidのまま残る場合、diagnostics追加のみを
+  最終fixとする選択は不可である。
 - [ ] CI-AC-08: capture失敗時のdiagnosticsが、違反された不変条件のbounded
   categoryを運ぶ。これはCI-AC-07の正規化/拒絶の選択に依存せず常に要求され、
   ユーザーlayout内容・例外message・stack traceは含まない（#172契約の
@@ -226,7 +245,7 @@ And reservation違反に対する `CAPTURE_RESERVED_OVERLAP` / write時
 | AC | Evidence |
 |---|---|
 | CI-AC-01 | 再現実行時のlogcat/stack証跡と、特定された不変条件の記録（`docs/assessment/issue-299-<slug>.md` + plan.md） |
-| CI-AC-02 | emulator/実機でのNova restore → capture実行記録。completion barrier後の最初の権威的captureの成功、`CAPTURE_INVALID` / `phase=CAPTURE` 出力の不在。instrumentation（`NovaRestoreGridApplicationTest` 系seamの拡張を含む） |
+| CI-AC-02 | emulator/実機でのNova restore → capture実行記録。I-1/I-3で特定したcompletion barrier観測signal到達後の最初の権威的captureの成功、`CAPTURE_INVALID` / `phase=CAPTURE` 出力の不在。instrumentation（`NovaRestoreGridApplicationTest` 系seamの拡張を含む） |
 | CI-AC-03 | 意図的無効状態でのunit/instrumentation fail-closed test + 既存composer `NotReady` 契約testのgreen |
 | CI-AC-04 | `OrganizationInputComposerTest` の#185 case、`LoaderCursorOverlapAcceptanceContractTest`、`OverlapAcceptanceGateSeamInstrumentationTest` 等の既存coverageのgreen |
 | CI-AC-05 | 追加したautomated regressionの実行記録（CI gateに接続するsurface）。seam作成不能の場合は理由と代替device evidenceの記録 |
@@ -247,6 +266,10 @@ And reservation違反に対する `CAPTURE_RESERVED_OVERLAP` / write時
   #298のreload中断（wrong-thread障害）が途中で止め、部分適用状態を残しうるか。
   成功/失敗セッションのstate比較はplan.mdのinvestigation matrix
   （restore → reload → captureの各時点、bounded分類軸）に従う。
+- restoreに対応するmodel reload generationのcompletion barrierを観測できる
+  production/test signalは現状存在するか。I-1/I-3で特定し、存在しない場合は
+  fix seamの一部として設ける。CI-AC-02の検証安定性に直結する（現行の
+  `reloadAfterRestore` returnは完了を意味しない）。
 - emulator上での再現手順の確立（実機観測はセッション依存）。
 - 影響を受けた実backup内容をfixture化できるか（privacy配慮の下でsynthetic
   等価fixtureを作れるか）。
@@ -261,3 +284,11 @@ And reservation違反に対する `CAPTURE_RESERVED_OVERLAP` / write時
   強化するとともにreload完了前後の境界scenarioを明示した。baselineを現行main
   `3aa6e83a1f` へ更新し、capture path無変更を再確認。#298はroot cause切り分けの
   必須比較軸としてinvestigation matrixに組込み（plan.md）。
+- 2026-09-13: Re-review（Changes requested）の反映。diagnostics-onlyを
+  最終fixとできるのはCI-AC-02を別のfixで満たせる場合のみとScope/CI-AC-07へ
+  制約を明記（completion後もrestored workspaceがinvalidのまま残る場合は
+  diagnostics-only不可）。completion barrierをdomain語として定義し
+  （restore API return・固定待ち時間はcompletionではない）、Scenario /
+  CI-AC-02 / Test oracleを同一barrier定義に揃え、観測signalの特定を
+  I-1/I-3の成果とした。baselineを `37e3dd8feb` へ更新
+  （#304 assessment/spec docs mergeのみ、技術前提への影響なし）。
