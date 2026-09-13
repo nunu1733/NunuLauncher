@@ -243,6 +243,14 @@ mergeしない方針は不変である。
   両立できず流用不能 — LoaderTask.java:291, :429）。
   capture直前の1時点だけではなく、restore/reloadの途中経過の差がいつ生まれるか
   を特定する（例: sanitize完了時点で既に差があるか、reload中に生まれるか）。
+  → **I-3実施結果 / plan deviation**: 「同一手順で再現的に揺れるintermittent failure」は
+  本環境では再現できず（failureは特定の中断注入に依存させ決定的）、accepted I-3の
+  「同一手順の成功/失敗比較」はそのままでは完遂していない。代わりに
+  **controlled interruption matrix**（normal success / 意図的repair-point継続中断 /
+  解除後recovery / process death跨ぎ）で成功・失敗stateの5定点×bounded分類比較を
+  履行し、不変条件差（unbound widget行の有無）を特定した。**元のintermittent
+  triggerは未確定としてI-5へ引き継ぐ**。この置換をI-3 contractのdeviationとして
+  ここに記録する（評価: assessment「I-3 contractの状態」節）。
 - **I-4: 持続性とloader修復経路の切り分け。** (a) 復元dataの永続的無効性
   （再restore後も同一row分類が残る）か、(b) capture読み取り窓の世代不整合
   （レース）か、(c) restore後のloader/reloadが本来修復・削除するはずの
@@ -255,10 +263,14 @@ mergeしない方針は不変である。
   → **I-4実施結果（assessment参照）**: (c)の修復はbind（`WorkspaceItemProcessor.
   processWidget`）・削除（`markDeleted`）の両経路ともreload generation依存で
   動作することを観測。repair-point継続中断ではinvalid rowと`CAPTURE_INVALID`が
-  持続し（(c)の再現）、**process death単独ではunbound行は持続せず**、death窓は
-  削除修復のcommitまたは空workspace読み込みに帰結する（cross-process実験、
-  `NovaRestoreCaptureCrossProcess*Test`）。#298との因果は「actual pathの実在と
-  反復が持続の条件」として整理（merge判断は引き続き証拠待ち）。
+  持続し（(c)の再現）。**cross-process standalone再試験（base lifecycleを継承しない
+  `NovaRestoreCaptureCrossProcess*Test`、モデル初期化前のread-only直接読み）で、
+  `performRestore`がcommitしたunbound行はprocess deathを跨いで持続し、次processの
+  最初の完了reload generationで修復されることを確認**。初版の実験（base setUpが
+  workspaceをリセットしていた）の「death窓は持続しない」結論は撤回済み。
+  (a)/(b)/(c)の切り分けでは(c)が観測経路として成立、(b)の世代不整合単独は
+  排除。#298との因果は「完了reloadが継続的に不成完了」が持続条件として整理
+  （actual pathは#298 scope未再現、merge判断は引き続き証拠待ち）。
 - **I-5: #185非回帰確認とdecision gate。** I-2の結果を #185 の保護と突き
   合わせ、回帰/変種か独立障害かを記録する。その上で、修正のseam選択
   （下記候補）とtest戦略を確定する。正規化/拒絶を採用するか否かの決定と、

@@ -113,13 +113,6 @@ abstract class NovaRestoreCaptureTestBase {
         // previous process state can have left a shifted grid behind.
         restoreGridToOriginal()
         reloadAndWait("setUp grid")
-        if (readStageMarker() == "B_keep_workspace") {
-            // Cross-process stage B: the workspace IS the persisted state
-            // under test — resetting it here would destroy the very rows the
-            // stage verifies. Skip the baseline reset; the test observes the
-            // pre-existing rows first.
-            return
-        }
         launcher.model.modelDbController.db.delete(Favorites.TABLE_NAME, null, null)
         launcher.model.modelDbController.clearEmptyDbFlag()
         reloadAndWait("setUp baseline")
@@ -130,11 +123,8 @@ abstract class NovaRestoreCaptureTestBase {
         try {
             restoreGridToOriginal()
             reloadAndWait("tearDown grid")
-            if (readStageMarker() != "B_keep_workspace") {
-                restoreFavorites(classOriginalRows!!)
-                reloadAndWait("tearDown rows")
-            }
-            stageMarkerFile().delete()
+            restoreFavorites(classOriginalRows!!)
+            reloadAndWait("tearDown rows")
         } finally {
             InstrumentationRegistry.getInstrumentation().runOnMainSync {
                 launcher.model.removeCallbacks(modelCallbacks)
@@ -224,24 +214,6 @@ abstract class NovaRestoreCaptureTestBase {
     }
 
     protected fun isModelLoaded(): Boolean = launcher.model.isModelLoaded
-
-    // ---------------------------------------------------------------
-    // Cross-process stage handoff (I-4 residual): the Nova fixture zip and
-    // the stage flag live in the app cache dir, which survives the
-    // instrumentation process death, so stage B (a fresh `am instrument`
-    // process) can verify what stage A persisted in the launcher DB.
-    // ---------------------------------------------------------------
-    protected fun stageMarkerFile(): File = File(context.cacheDir, "i299_cross_process_stage")
-
-    protected fun readStageMarker(): String? = stageMarkerFile().takeIf { it.exists() }?.readText()
-
-    protected fun writeStageMarker(stage: String) {
-        stageMarkerFile().writeText(stage)
-    }
-
-    /** Rebuilds the fixture zip path convention used by a previous process. */
-    protected fun persistedFixtureZip(): File? =
-        context.cacheDir.listFiles()?.firstOrNull { it.name.startsWith("nova_backup_fixture_") && it.name.endsWith(".zip") }
 
     /** Capture through the production composer source, recording failure identities. */
     protected fun captureThroughProductionSource(
