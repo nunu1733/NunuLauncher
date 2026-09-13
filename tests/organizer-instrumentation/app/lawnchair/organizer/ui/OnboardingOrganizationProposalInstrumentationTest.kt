@@ -1352,6 +1352,10 @@ class OnboardingOrganizationProposalInstrumentationTest {
         }
 
         fun tapCenterOf(view: View) {
+            // Issue #300 (review P1): every real touch injection re-observes the launcher window's
+            // focus, so retries inside deliveredTap can never inject into a lost window
+            // (TS-AC-01: "each injection assumes the immediately preceding focus observation").
+            InjectedInputEnvironment.ensureWindowFocused(launcher)
             val location = IntArray(2)
             var width = 0
             var height = 0
@@ -1388,7 +1392,8 @@ class OnboardingOrganizationProposalInstrumentationTest {
          */
         fun deliveredTap(view: View): Int {
             // Issue #300: only inject into a focused window; a poisoned run fails here at entry
-            // instead of re-waiting per tap (TS-AC-01/03).
+            // instead of re-waiting per tap (TS-AC-01/03). Per-attempt re-observation lives in
+            // tapCenterOf, the single injection point of this loop.
             InjectedInputEnvironment.ensureWindowFocused(launcher)
             val eventsBefore = touchLog.size
             var attempts = 0
@@ -1429,6 +1434,8 @@ class OnboardingOrganizationProposalInstrumentationTest {
             var attempts = 0
             while (attempts < MAX_INJECTION_ATTEMPTS_PER_TAP) {
                 attempts++
+                // Issue #300 (review P1): re-observe focus before each retry's raw injection.
+                InjectedInputEnvironment.ensureWindowFocused(launcher)
                 val hintLocation = IntArray(2)
                 var viewportHeight = 0
                 instrumentation.runOnMainSync {

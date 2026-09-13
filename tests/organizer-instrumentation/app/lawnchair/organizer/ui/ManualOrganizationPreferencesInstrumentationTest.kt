@@ -1196,6 +1196,9 @@ class ManualOrganizationPreferencesInstrumentationTest {
                 false
             }
             if (focused) return
+            // Issue #300 (review P1): re-observe the host window focus before every real key
+            // press, not only before the first one (TS-AC-01).
+            ensureWindowFocusedForComposeHost()
             instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DPAD_DOWN)
             presses++
         }
