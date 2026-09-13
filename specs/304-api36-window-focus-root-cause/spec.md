@@ -255,3 +255,10 @@ blocking なものはない。調査中に解決すべき問い:
 - 2026-09-13: review指摘を反映し、自然発生captureを5件（標準ランチャー2件、ANR
   ダイアログ3件）として台帳全体で統一した。CI failure時の追加証拠保全は必要と判断済み、
   実装は別workflow PR pendingであることをspecへ反映した。
+- 2026-09-13: AC-3継続調査として、ローカルAPI 36.1のreboot反復（wipe-dataなし）でSystemUI
+  ANRとsystem_server/SurfaceFlinger高負荷・WindowManager Binder待ちの因果経路を3/3で
+  観測した。一方、CI相当の2 cores/4GB反復、APK導入単体、Gradle 25 testsでは非再現で、
+  CIのx86_64 boot内遷移・ANR traceは未取得のため、root cause確定ではなく有力仮説の更新とした。
+- 2026-09-13: 同一CI jobのrerun（API 36/x86_64/Pixel 7 Pro/SwiftShader、同じconsole
+  warning）で25/25 greenを確認した。console warningは十分条件ではないことを追記し、
+  AC-3は未完了のまま、失敗boot固有のresource/display状態とCI failure時trace取得を残課題とした。
