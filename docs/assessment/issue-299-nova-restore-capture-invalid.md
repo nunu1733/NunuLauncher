@@ -48,7 +48,7 @@ interruption pointだったことのidentityではない）。
 | 定点1（performRestore commit直後、I299Probe） | **-1** | 7 | —（capture不可時点） |
 | 定点2（reloadAfterRestore直前、I299Probe） | -1（`modelLoaded=false` を同時記録） | 7 | — |
 | 修復点crashのreload generation群の後（cycle1） | **-1（残存）** | 7 | **Invalid（IllegalArgumentException、throw-site上記）** |
-| 中断を除去し完了generationを走らせた後（cycle2） | **有効値** | 4 | **Ready** |
+| 中断を除去しreload activityをsettle heuristicまで走らせた後（cycle2） | **有効値** | 4 | **Ready** |
 
 I-2から言える範囲（evidence boundary）:
 
@@ -118,7 +118,7 @@ standaloneへ書き直し、**Stage Bはモデル初期化前にlauncher DBフ�
 |---|---|
 | Stage A: restore直後のcommitted DB（dbFile `launcher_6_4_4.db`） | **[-1]**（unbound 1行、bound 0） |
 | Stage B（新process）: **モデル初期化前** のread-only直接読み | **[-1]**（unboundがprocess deathを生存） |
-| Stage B: 新processの最初のreload generationをsettleさせた後 | [-1]→有効値（unbound 0、bound 1 — 修復） |
+| Stage B: 新processのreload activityがsettle heuristicへ到達した後 | [-1]→有効値（unbound 0、bound 1 — 修復） |
 
 **確定したI-4の帰結**:
 
@@ -177,7 +177,7 @@ Accepted PlanのI-3は「同一手順で成功する場合と失敗する場合�
 
 - **controlled interruption matrixで履行**した系列: normal success（settle後Ready）、
   意図的repair-point継続中断（Invalid持続）、解除後recovery（Ready）、process death跨ぎ
-  （unbound持続→次processの完了generationで修復）。成功/失敗のstate差は5定点中4定点
+  （unbound持続→次processのreload activityがsettle heuristicへ到達すれば修復）。成功/失敗のstate差は5定点中4定点
   （restore直後=定点1、モデル初期化前=定点2/5、settle後=定点3、中断後=定点4相当）で
   bounded分類取得済み。profiles=1、desktopPages=2、widget行のid/restored分類で系列を
   区別できた。
@@ -288,7 +288,7 @@ identityの限界は下記2のとおり残る。
 | restore直後（pre-barrier）/ widget有 | 1 | **-1** | あり | 7 | **Invalid（IllegalArgumentException）** |
 | completion barrier後 / widget有 | 1 | **有効値** | あり | 4 | **Ready** |
 | 中断generation直後 / widget有 | 1 | **-1** | あり | 7 | **Invalid（IllegalArgumentException）** |
-| 中断後の完了generation / widget有 | 1 | **有効値** | あり | 4 | **Ready** |
+| 中断後、reload activityがsettle heuristicへ到達 / widget有 | 1 | **有効値** | あり | 4 | **Ready** |
 | barrier後 / widget無（control） | 0 | — | — | — | Ready（items=9）※ |
 
 ※ fixtureはdeep shortcut 1行を含むが、loaderのrestore sanitize
@@ -363,10 +363,10 @@ barrier後のcaptureは9行。これも「修復・削除はreload generationの
 - 元の#299実機セッションが同一のthrow点（`RowManifestCodec:297` widget不変条件）で
   落ちたことの直接証明（元セッションのdiagnosticsは例外class identityのみ。
   throw-site直接捕捉はsynthetic issue-representative failure上のものである）。
-- 元実機セッションで「再起動後も修復generationが継続的に不成完了だった」こと自体の
-  証明（process death跨ぎのunbound持続は確定、解消は最初の完了reload generation、
-  なので元セッションの不回復は「完了reloadが走らなかった」ことに依存 — #298 actual path
-  の実在と反復が要る、#298 scope未再現）。
+- 元実機セッションで「再起動後もreload activityが継続的にsettleへ到達できなかった」
+  こと自体の証明（process death跨ぎのunbound持続は確定、解消はsettle heuristicへの到達、
+  なので元セッションの不回復は「settleへ到達するreloadが走らなかった」ことに依存 —
+  #298 actual pathの実在と反復が要る、#298 scope未再現）。
 - 同一手順で再現的に揺れる intermittent trigger そのものの再現（I-3 contractは
   controlled interruption matrixで履行、元のintermittent triggerは未確定 → I-5）。
 - #298の **actual** wrong-thread障害（`BaseIconCache.assertWorkerThread` 経由の
