@@ -1,17 +1,22 @@
 package app.lawnchair.organizer.ui
 
+import android.app.Activity
 import android.content.Context
 import android.content.ContentValues
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.provider.MediaStore
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertCountEquals
@@ -24,6 +29,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsActions
@@ -36,6 +42,8 @@ import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.DeviceCapabilities
@@ -303,6 +311,56 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_safe_terminal),
         ).assertIsDisplayed()
+    }
+
+    /**
+     * Issue #308: unresolved durable guidance can put Start outside the
+     * initial lazy-list viewport. Focus restoration must reveal that target
+     * instead of waiting forever for its layout callback.
+     */
+    @Test
+    fun unresolvedDurableStatusRestoresFocusToStartAction() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val readStarted = java.util.concurrent.CountDownLatch(1)
+        val releaseRead = java.util.concurrent.CountDownLatch(1)
+        val application = FakeApplication().apply {
+            durableStatus = OrganizerDurableStatus.UNRESOLVED
+            readOverride = {
+                readStarted.countDown()
+                releaseRead.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                OrganizerDurableStatus.UNRESOLVED
+            }
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { error("planner must not run") },
+        )
+        composeRule.setContent {
+            LawnchairTheme {
+                Box(modifier = Modifier.height(200.dp)) {
+                    ManualOrganizationPreferences(run = runner)
+                }
+            }
+        }
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.Idle }
+        composeRule.waitUntil(5_000) { readStarted.count == 0L }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_checking),
+        ).assertIsDisplayed()
+        releaseRead.countDown()
+        awaitDisplayed(
+            context.getString(R.string.manual_organization_durable_status_unresolved),
+        )
+        val startText = context.getString(R.string.manual_organization_start)
+        awaitDisplayed(startText)
+        composeRule.waitUntil(5_000) {
+            try {
+                composeRule.onNodeWithText(startText).assertIsFocused()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+        }
     }
 
     /**
@@ -1127,12 +1185,14 @@ class ManualOrganizationPreferencesInstrumentationTest {
         pressDownUntilFocused(context.getString(R.string.manual_organization_cancel))
         pressDownUntilFocused(context.getString(R.string.manual_organization_preview_show_all, 6))
         // Activating it with a keyboard action expands the group...
+        // Issue #300: same focused-window premise for the ENTER activation.
+        ensureWindowFocusedForComposeHost()
         InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_ENTER)
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText(concreteMoveRow(context, "app6")).fetchSemanticsNodes().isNotEmpty()
         }
         // ...and the action keeps focus after the list reflows (spec 52 restoration).
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview_show_fewer, 5)).assertIsFocused()
+        assertFocusedWithTraversalDiagnostics(context.getString(R.string.manual_organization_preview_show_fewer, 5))
     }
 
     /**
@@ -1172,12 +1232,15 @@ class ManualOrganizationPreferencesInstrumentationTest {
         performTouchInput { click(Offset(centerX, localY)) }
     }
     /**
-     * Moves real (window-dispatched) keyboard focus down until [text] owns it,
+     * Issues real (window-dispatched) keyboard focus down until [text] owns it,
      * so the traversal exercises the same DPAD fallback path Switch Access and
      * hardware keyboards rely on; fails after too many steps.
      */
     private fun pressDownUntilFocused(text: String, maxPresses: Int = 12) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        // Issue #300: real key streams only move focus inside a focused window; observe (and
+        // repair) that premise before the first press (TS-AC-05/06).
+        ensureWindowFocusedForComposeHost()
         var presses = 0
         while (presses < maxPresses) {
             composeRule.waitForIdle()
@@ -1188,11 +1251,80 @@ class ManualOrganizationPreferencesInstrumentationTest {
                 false
             }
             if (focused) return
+            // Issue #300 (review P1): re-observe the host window focus before every real key
+            // press, not only before the first one (TS-AC-01).
+            ensureWindowFocusedForComposeHost()
             instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DPAD_DOWN)
             presses++
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText(text).assertIsFocused()
+        assertFocusedWithTraversalDiagnostics(text)
+    }
+
+    /**
+     * Issue #300: single resumed activity of the compose host (the rule's own activity in this
+     * lane), used as the focus-gate target for real key injection.
+     */
+    private fun resumedHostActivityOrNull(): Activity? {
+        var activity: Activity? = null
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            activity = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .singleOrNull()
+        }
+        return activity
+    }
+
+    /**
+     * Issue #300 (review P1): refuses to run real key injection without a focus observation.
+     * Host resolution must succeed exactly once; zero or multiple RESUMED activities are an
+     * explicit fail-closed error, never a silent gate bypass.
+     */
+    private fun ensureWindowFocusedForComposeHost() {
+        var hosts: List<Activity> = emptyList()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            hosts = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .toList()
+        }
+        when (hosts.size) {
+            1 -> InjectedInputEnvironment.ensureWindowFocused(hosts.single())
+            0 -> error(
+                "input environment gate could not resolve the compose host activity " +
+                    "(no RESUMED activity); refusing real key injection without a focus observation",
+            )
+            else -> error(
+                "input environment gate could not resolve the compose host activity uniquely " +
+                    "(${hosts.size} RESUMED activities); refusing real key injection without a " +
+                    "focus observation",
+            )
+        }
+    }
+
+    /**
+     * Issue #300: focus-traversal failures under a healthy gate keep their normal semantics but
+     * carry the device/window state, so a Compose traversal regression stays distinguishable from
+     * a lost-window environment at read time (TS-AC-06).
+     */
+    private fun assertFocusedWithTraversalDiagnostics(text: String) {
+        try {
+            composeRule.onNodeWithText(text).assertIsFocused()
+        } catch (failure: AssertionError) {
+            var hostWindowFocused = false
+            resumedHostActivityOrNull()?.let { host ->
+                InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    hostWindowFocused = host.window.decorView.hasWindowFocus()
+                }
+            }
+            throw AssertionError(
+                buildTraversalFailureMessage(
+                    base = failure.message ?: "focus traversal failed to reach '$text'",
+                    deviceState = InjectedInputEnvironment.describeDeviceState(),
+                    hostWindowFocused = hostWindowFocused,
+                ),
+                failure,
+            )
+        }
     }
 
     @Test
@@ -1842,7 +1974,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
             1,
             1,
         )
-        composeRule.onNodeWithText(appliedMovedLine).assertIsDisplayed()
+        awaitDisplayed(appliedMovedLine)
 
         runner.beginRecoveryPreview()
         composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.RecoveryPreview }
@@ -1850,7 +1982,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) {
             (runner.state as? ManualOrganizationRun.State.Applied)?.result is ApplyResult.Applied
         }
-        composeRule.onNodeWithText(appliedMovedLine).assertIsDisplayed()
+        awaitDisplayed(appliedMovedLine)
     }
 
     @Test
@@ -2308,9 +2440,17 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
     }
 
+    // Issue #308: stateFlow reaches the terminal state before the lazy-list
+    // item and its semantics bounds necessarily settle on the next frame.
+    private fun awaitDisplayed(text: String) {
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithText(text).isDisplayed()
+        }
+    }
+
     private fun awaitPreview(runner: ManualOrganizationRun, context: Context) {
         composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Preview }
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsDisplayed()
+        awaitDisplayed(context.getString(R.string.manual_organization_preview))
     }
 
     private fun captureReviewScreenshot(context: Context, name: String) {
