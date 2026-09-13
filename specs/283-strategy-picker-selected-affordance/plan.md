@@ -102,13 +102,13 @@ production source / build 設定 / dependency / 他 module への変更はなし
 ## Explicitly unverified areas
 
 - TalkBack 実機での実際の読み上げ (重複の有無) は本 plan 作成時点で未検証。merged semantics の構造表明が近似であり、最終判断は manual evidence とする。
-- child `RadioButton(onClick = null)` が runtime の semantics tree にどのような非操作 node として現れるかは、実装前のため未確認。ただし本 plan は child 側の `Selected` semantics や merge 結果を前提にせず、parent row の `Selected` を唯一の truth として検証する。
-- 最終 ja/en 文言 (spec 161 review 結果次第)。
-- light/dark の視覚区別の実見 (implementation 時の evidence で確定)。
+- child `RadioButton(onClick = null)` が独立した selectable / focus target にならないことは、API 36 emulator 2台の focused instrumentation で確認済み。ただし実際のTalkBack音声での重複読み上げは未確認である。
+- 最終 ja/en 文言は、historical note を除去した対応文言として実装・resource test・Evidenceで確定済み。
+- light/dark の視覚区別、および200% font scaleの代表画面は、`docs/assessment/evidence/issue-283-strategy-picker.md` と画像で確認済み。
 
 ## Documentation updates
 
-- [ ] spec status/history (draft → accepted → implemented)
+- [x] spec status/history (draft → accepted。Issue close/merge時の `implemented` 遷移は未実施)
 - [ ] CONTEXT.md (変更なし — domain language 追加なし)
 - [ ] DESIGN.md (変更なし — module / seam 変更なし)
 - [ ] ADR (不要 — 既存 pattern の採用であり、変更困難な新判断はない)
@@ -117,14 +117,16 @@ production source / build 設定 / dependency / 他 module への変更はなし
 
 ## Execution checklist
 
-- [ ] 現行挙動の再現 (実機確認は Issue #283 に記録済み。emulator で picker の視覚無差別を確認)。
+- [x] 現行挙動の再現 (実機確認は Issue #283 に記録済み。emulator で picker の視覚無差別を確認)。
 - [ ] Missing behavior に対して失敗する test を先に追加。
-- [ ] 最小実装 (copy → indicator → evidence の順)。
-- [ ] migration/recovery: 該当なし (永続化変更なし) を明記して検証省略。
-- [ ] spotlessCheck + organizer JVM gate + focused instrumentation + light/dark evidence 完成。
-- [ ] PR evidence (screenshot / TalkBack 手動確認) と残 risk を記録。
+- [x] 最小実装 (copy → indicator → evidence の順)。
+- [x] migration/recovery: 該当なし (永続化変更なし) を明記して検証省略。
+- [x] spotlessCheck + organizer JVM gate + focused instrumentation + light/dark/200% evidence 完成。
+- [x] PR evidence (screenshot) と残 risk を記録。
+- [ ] TalkBack 手動確認 (実際の音声読み上げ) — この環境では人手で確認できないため未実施。
 
 ## Review response history
 
 - 2026-09-13: Spec/plan review の Request changes (P1: child `RadioButton(onClick = null)` の semantics 前提、P2: AC-3 visual oracle、P2: 200% font-scale oracle) に対応。plan revision 2 として、parent row を唯一の selection semantics truth、child を visual-only と明記し、light/dark と representative 200% screenshot を必須 evidence にした。
+- 2026-09-13: 実装再レビューの P2 (spacing) を解消し、light/dark/200% screenshotと自動検証結果を `docs/assessment/evidence/issue-283-strategy-picker.md` に追加。planの未確認領域・実行状態をEvidenceに合わせて更新した。TalkBack実音声のみ未確認として残した。
 - 2026-09-13: 実装レビューの P2 (RadioButton と本文の spacing) に対応し、既存 Lawnchair preference pattern と同じ 16dp gap を実装計画へ反映した。
