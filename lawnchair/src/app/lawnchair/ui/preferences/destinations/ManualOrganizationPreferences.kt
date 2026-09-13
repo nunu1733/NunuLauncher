@@ -17,6 +17,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -29,6 +30,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -705,6 +707,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
                 val description = stringResource(strategyDescription(id))
                 val isSelected = selected == id
                 Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
                         .selectable(
@@ -714,7 +717,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
                         )
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                 ) {
-                    Column {
+                    RadioButton(
+                        selected = isSelected,
+                        onClick = null,
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(name, style = MaterialTheme.typography.bodyLarge)
                         Text(description, style = MaterialTheme.typography.bodyMedium)
                     }

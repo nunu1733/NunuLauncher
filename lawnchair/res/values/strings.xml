@@ -1008,7 +1008,7 @@
     <string name="manual_organization_explainer">Review proposed changes before anything is applied. Your current layout is never changed automatically.</string>
     <string name="manual_organization_strategy_section">Organization strategy</string>
     <string name="organization_strategy_canonical_name">Standard compaction</string>
-    <string name="organization_strategy_canonical_description">Fills each screen from the top-left. The original organizer behavior.</string>
+    <string name="organization_strategy_canonical_description">Fills each screen from the top-left.</string>
     <string name="organization_strategy_tidy_name">Tidy each screen</string>
     <string name="organization_strategy_tidy_description">Closes gaps on each screen without moving apps to other screens. Widgets stay in place.</string>
     <string name="organization_strategy_tidy_v2_name">Tidy each screen, widgets included</string>
