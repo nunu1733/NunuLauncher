@@ -207,7 +207,7 @@ None。production の accessibility 振る舞いは変更しない。
 | AC | Evidence |
 |---|---|
 | AC-1 | ローカル api36 emulator での強制状態試行 log と gate 失敗メッセージ実物。plan.md Verification evidence 節に記録 |
-| AC-2 | gate capture の証拠行と occluder 分類表（自然発生 4 例 + 非gateフレイクの分離 + 強制 1 例）。本 Issue または plan.md に記録 |
+| AC-2 | gate capture の証拠行と occluder 分類表（自然発生 4 例 + 非gateフレイクの分離 + 標準ランチャー強制 1 例 + NotificationShadeの実再現/因果対照）。本 Issue または plan.md に記録 |
 | AC-3 | 本 Issue の結論コメント（自然発生CIの遷移証拠または因果経路の制御再現と、根拠 run link / 試行記録への参照つき） |
 | AC-4 | 本 Issue の判断コメント（列挙した不足状態と理由つき） |
 
@@ -221,6 +221,9 @@ blocking なものはない。調査中に解決すべき問い:
   待ち（120 × 100ms ≒ 12 秒、`OnboardingOrganizationProposalInstrumentationTest.kt:1126`
   実測）の差が、発生状態の観測 window に与える影響。
 - gate 付きの発生頻度の定量は PR #305 の merge 後にしか取れない。
+- NotificationShade型の実instrumentation failureが、既存dirty state・boot race・テスト前の
+  外部入力のどれで生じたか。ローカルではfocus保持→gate失敗→shade除去後greenの因果対照を
+  得たが、clean reboot直後の再現は未確認。
 
 ## Change history
 
@@ -235,3 +238,7 @@ blocking なものはない。調査中に解決すべき問い:
 - 2026-09-13: 再レビュー指摘を反映し、H4は現行gateの修復・緩和効果とpre-gate burstへの
   寄与未確認を分離して記録。「既存の2 capture」を自然発生4 captureへ更新した。
 - 2026-09-13: 独立監査の指摘を反映し、captureごとのexact head SHAとevent種別を追記した。
+- 2026-09-13: ローカル `nunu_qpr2_api36_1` の実instrumentation failureで
+  `NotificationShade` が `interactive=true` / `keyguardLocked=false` のままfocusを保持する
+  追加occluder型を観測。`input swipe`での制御再現と`KEYCODE_BACK`後の同一test greenを
+  plan.mdへ追記した。これは直接occluderの因果対照であり、CI bootの自然発生機構とは分離した。

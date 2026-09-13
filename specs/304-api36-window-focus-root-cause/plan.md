@@ -9,6 +9,9 @@
 
 ### Re-entry update
 
+- 2026-09-13 の追加調査は、PR #311 merge後の `origin/main`=`37e3dd8feb9240e90587620e8175330b48604e19`
+  を基準に実施した。前回の観測対象だった `3aa6e83a1f6` はPR #311 merge前のmainであり、
+  以下の新しいローカルinstrumentation証跡は現在のgate実装と同じheadのAPKで採取した。
 - 2026-09-13 に Issue本文・全コメントと `origin/main` を再取得した。前回のsnapshot
   （`origin/main`=`f9afd8bfde121932c0c8ed965225d52a84d86ab4`、snapshot commit
   `1e613e142a585c9ad2a2f718c682344b097960dc`）は再利用せず、現行の
@@ -129,6 +132,7 @@
   gate 導入前で証拠が無い）。
 - 標準ランチャー occluder が per-boot でどう生じるかの機構（仮説 H1/H1'、下表）。
 - ANR boot の発生機構（CI runner 負荷・API 36.1 image 固有等。仮説 H2）。
+- system UI の NotificationShade が可視・focus保持状態で残る機構（仮説 H2'）。
 - 発生頻度と、緩和後の再発継続の有無。
 
 ## Hypotheses（仮説と反証方法）
@@ -138,6 +142,7 @@
 | H1 | 一部の boot で default HOME role が標準ランチャーに解決され、HOME category 起動が role holder（標準ランチャー）へ効くことで標準ランチャーが前面に残る | occluder 1 の focused window が標準ランチャー。ローカルAPI36でもHOME role holderはNexusだった | 起動は明示component指定であり、暗黙HOME解決ではない（`startLauncher` :1158実測）。同じローカル端末でNexusがHOME role holderのままでも、明示的なLawnchair起動はLawnchairへfocusを移したため、role holder単独ではこのfailureを説明できない | CI boot上のrole stateと、失敗時の実際のactivity/window遷移を同時に取得する。role stateだけでは不足し、`dumpsys window windows` と起動結果の組み合わせが必要 |
 | H1' | HOME role は不変で、標準ランチャーの window が z-order 上に残存し焦点を保持する（起動は成功するが焦点が取れない） | occluder 1 で `awaitResumedLauncher` が timeout = Lawnchair が RESUMED に到達していない。焦点が標準ランチャーであることと整合。ローカルでもLawnchairのfocus取得後にNexusを前面化すると同じfailure signatureになった | ローカルの強制操作はCIの自然発生機構ではない。Lawnchair未RESUMEDの説明にはならない（RESUMED判定はlifecycleと独立） | gate 証拠にz-orderが無いため、再発時に `dumpsys window windows` を取得できるようにして判別する（手順4の判断材料）。ローカルではoccluder強制状態で同等dumpを取得できる |
 | H2 | system UI の ANR ダイアログが焦点を保持する boot がある（runner 負荷等で systemui が不調になる boot 単位の劣化） | occluder 2 の focused window が `Application Not Responding: com.android.systemui`。同 run の非 gate test も timeout | 発生機構（なぜ ANR に至るか）は未観測 | ANR の強制再現は非決定的であり oracle にしない。再発時に logcat / ANR trace が取れるかを証拠保全の判断で評価。型としては occluder 1 と独立に「焦点保持 system window が存在する boot」として分類 |
+| H2' | system UI の NotificationShade が bootまたは直前操作後に可視・focus保持状態で残り、Lawnchairの明示起動より上位に居続ける | ローカル `nunu_qpr2_api36_1` で実instrumentation testが `focusedWindow=...NotificationShade`, `frontmostPackage=com.android.systemui` のまま15秒gate timeout。`input swipe` で同状態を制御再現し、`KEYCODE_BACK` で閉じた後は同じtestがgreen | 今回の自然CI captureではNotificationShadeそのものは未取得。再起動後のcleanな同AVDではshadeは閉じており、既存のdirty stateまたはboot内の別経路の可能性が残る | failure時の`dumpsys window windows`とSystemUI state/logcatをCI artifact化し、NotificationShadeの表示開始イベントとboot/runner操作の順序を照合する。直接shadeを開く試行は因果の対照には使うが、CIの自然発生機構の確定とは分ける |
 | H3 | `input keyevent 82` 直後の keyguard 解除不成立・解除と HOME 起動の競合 | Issue 本文の仮説候補 | occluder 1〜4 はいずれも最終 capture で `keyguardLocked=false`。KEYCODE_WAKEUP / dismiss-keyguard の修復実装済み | 最終状態の `keyguardLocked=false` により、解除済み状態が継続している単純な説明は弱化する。ただし解除・起動の途中に競合があった可能性までは否定できないため、遷移証拠がない限り H3 は未確定とする |
 | H4 | 非 interactive（screen off）boot | Issue 本文の仮説候補 | 現行の自然発生 occluder capture 1〜4 は最終時点で `interactive=true`。KEYCODE_SLEEP 強制は、PR #305後の現行gateが wakeup 修復して green にできることを示す | 現行gateでは非interactive状態は修復・緩和され、残るpost-gate occluder failureの原因ではない。一方、pre-gate burst [34677444335](https://github.com/nunu1733/NunuLauncher/actions/runs/34677444335)の遷移中に寄与した可能性は、interactive/keyguard/window状態を保持していないため未確認とする |
 | H5 | API 36.1 固有の window focus 遷移の遅延・欠落 | Issue 本文の仮説候補（api36 限定の発生） | gate の 15 秒待ちで焦点が到達しなかったため、15 秒以内に解消する単純な遅延説は弱化する。api35 が同 head で green な事実も単純な遅延だけでは説明しにくい | 15 秒超の遅延や完了しない遷移までは現証拠から否定できない。自然発生時の activity/window 遷移または待機後の状態を観測し、単純な遅延・欠落・occluder保持を区別する |
@@ -152,6 +157,8 @@
 | CI run [34733839798](https://github.com/nunu1733/NunuLauncher/actions/runs/34733839798) | system UI ANR dialog | head `5420916a0e4cf0b3badc616303e3076cea3f912c`、event `workflow_dispatch`、既存 capture 2 と同じ `Application Not Responding: com.android.systemui` | 証拠行だけでANR dialog型と分類可能。自然発生での再発例 |
 | CI run [34733180391](https://github.com/nunu1733/NunuLauncher/actions/runs/34733180391) | 非gate Compose timeout | head `5420916a0e4cf0b3badc616303e3076cea3f912c`、event `workflow_dispatch`、`previewHeadingRestoresFocus...` の `ComposeTimeoutException` | occluder captureではなく、既存の非gateフレイクとして分類から分離 |
 | Local `issue142_api36` forced run (2026-09-13) | 標準ランチャー activity | `interactive=true`, `keyguardLocked=false`, `focusedWindow=...com.google.android.apps.nexuslauncher/.NexusLauncherActivity`, `frontmostPackage=com.google.android.apps.nexuslauncher` | CI run 34704064012と同じoccluder型。自然発生機構の証明ではなく、診断能力の誘発実証 |
+| Local `nunu_qpr2_api36_1` instrumentation run (2026-09-13) | system UI NotificationShade | `interactive=true`, `keyguardLocked=false`, `focusedWindow=mCurrentFocus=Window{... NotificationShade}`, `frontmostPackage=com.android.systemui`; `dumpsys window windows` は `Surface: shown=true`, `isOnScreen=true` | 実instrumentation testで観測されたが、再起動後はshadeが閉じていたため、per-boot自然発生機構とは断定しない |
+| Local controlled `input swipe` on `nunu_qpr2_api36_1` (2026-09-13) | system UI NotificationShade | swipe後に同じ`NotificationShade` focus状態を作成し、対象testが `window-focus-gate` で15秒後に失敗。`input keyevent 4`でshadeを閉じると同じtestが **1 test / 0 failures** | 最終occluderの直接起動ではなく、system UI gestureを使った因果対照。NotificationShadeがfocusを保持するとgate失敗、除去するとgreenになることを示すが、CI bootでのshade発生源は未確定 |
 
 ## Investigation steps
 
@@ -176,7 +183,8 @@
    run link と head SHA を添える。
 4. **証拠保全の判断**（RC-AC-04、終了条件 2）: gate 証拠が保持しない状態
    （`dumpsys window windows` の z-order、`cmd role get-role-holders` の HOME role、
-   failure 時 logcat、ANR trace）を列挙し、各不足がどの仮説（H1/H1'/H2/H5）の判別に
+   failure 時 logcat、ANR trace、NotificationShadeの表示状態）を列挙し、各不足がどの仮説
+   （H1/H1'/H2/H2'/H5）の判別に
    必要かを対応づけた上で、CI failure 時 artifact 化（logcat / dumpsys）の導入/不導入
    と理由を本 Issue へ記録する。導入と判断した場合も実装は別 PR
    （workflow 変更は全 gate 実行の対象。ci-test-portfolio.md の管轄）。
@@ -186,6 +194,8 @@
    するだけの試行は、CI signatureとの一致を示す AC-1/AC-2 の証拠にはなるが、H1/H1'
    の機構判別や AC-3 の root cause 確定には使わない。必要な観測が取得不能な場合は、
    そのことを明示して未確定部分を残した結論または残存リスク受容へ進む。
+   NotificationShade等のsystem UI windowを捕捉した場合も同じ観測を行い、表示開始が
+   boot provisioning由来か、前回状態の残留か、テスト前操作由来かを分ける。
 6. **結論の記録**（RC-AC-03、終了条件 3）: 下記の判断基準を適用し、本 Issue へ結論を
    記録する。再発が観測できなくなった場合は残存リスク受容の判断と根拠を記録して
    完了とする。
@@ -212,6 +222,8 @@
 現行gateの1行証拠は、焦点を保持したoccluderの分類には十分である。一方で、今回の
 標準ランチャー型についてH1（HOME role / resolver経路）とH1'（z-order残留）を区別する
 には不足している。ANR dialog型についても、発生機構を確認するlogcat/ANR traceがない。
+NotificationShade型についても、表示されている事実は分類できるが、表示開始イベントと
+boot/runner操作の因果は保持されない。
 
 **判断: failure時の追加証拠保全を導入する。実装は本Issueでは行わず、workflow変更を
 別PRで実施する。** 最小限の候補は次の通りである。
@@ -318,6 +330,41 @@ production source、test implementation、CI workflow、dependency は変更し�
   `interactive` / `keyguardLocked` / `focusedWindow` / `frontmostPackage` の型・値の
   並びがCI run 34704064012と一致した。よってRC-AC-01/05の「occluderを名指しする診断」
   は満たす。H1/H1'の自然発生機構とH2のANR発生機構は未確定のまま残る。
+- **NotificationShadeの実再現（2026-09-13）**: `nunu_qpr2_api36_1` にdebug APKと
+  androidTest APKをinstallし、以下の対象testを次のコマンドで実行した。
+  ```text
+  /Users/nunu/Library/Android/sdk/platform-tools/adb -s emulator-5554 shell am instrument -w -r \
+    -e class 'app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest#realLauncherFloatingHostKeepsAllActionsWithinViewportAtTwoHundredPercentFontScale' \
+    app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner
+  ```
+  対象test:
+  ```text
+  app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest#realLauncherFloatingHostKeepsAllActionsWithinViewportAtTwoHundredPercentFontScale
+  ```
+  初回の2台同時Gradle実行では `nunu_qpr2_api36_1` が次で失敗した:
+  ```text
+  java.lang.IllegalStateException: input environment never reached a focused window;
+  evidence=window-focus-gate:app.lawnchair.debug/app.lawnchair.LawnchairLauncher;
+  interactive=true, keyguardLocked=false,
+  focusedWindow=mCurrentFocus=Window{ea377ad u0 NotificationShade},
+  frontmostPackage=com.android.systemui; target window never gained focus within 15000ms
+  ```
+  failure直後の `dumpsys window windows` は NotificationShade の
+  `Surface: shown=true` / `isOnScreen=true`、NexusLauncherActivityの
+  `mFocusedApp` / `topResumedActivity`を示した。`cmd role get-role-holders` は
+  `com.google.android.apps.nexuslauncher`、powerは `mWakefulness=Awake` であり、
+  非interactive/keyguardではない。
+- **NotificationShadeの因果対照（2026-09-13）**: `input swipe 540 5 540 1800 600` で
+  NotificationShadeを可視・focus保持にし、同じ対象testを実行すると上記の15秒gate失敗を
+  再現した。その後 `input keyevent 4` でshadeを閉じ、同じtestを再実行すると
+  **1 test / 0 failures、8.816s** で成功した。この対照は、system UI windowのfocus保持が
+  gate失敗の直接原因であることを示す。一方、直接shadeを開く操作なので、CI bootで同じ
+  状態が自然発生した機構の証明には使わない。
+- **再起動対照（2026-09-13）**: 同じ `nunu_qpr2_api36_1` をrebootし、
+  `sys.boot_completed=1`後にrole/focus/windowを確認した時点ではNexusLauncherActivityが
+  focusを持ち、NotificationShadeは可視windowではなかった。したがって上記の実instrumentation
+  failureは「clean reboot直後のshade残留」とまでは言えず、既存dirty stateまたはboot後の
+  未取得イベントを含む仮説H2'として扱う。
 
 ## Risks
 
@@ -330,6 +377,9 @@ production source、test implementation、CI workflow、dependency は変更し�
   因果機構の外部妥当性は担保しない。
 - **ANR の強制再現は非決定的**: H2 の反証は強制ではなく再発時証拠の蓄積に依存する。
   証拠保全の導入判断（手順 4）が H2 判別の鍵になる。
+- **NotificationShadeの自然発生機構は未確定**: ローカルではfocus保持とtest失敗の因果対照を
+  取れたが、reboot後のclean stateでは再現しなかった。CIでの表示開始時刻とboot/runner
+  操作の証拠がない限り、dirty state・boot race・外部入力のいずれかを選べない。
 - **CI workflow 触れず制約**: z-order・role state が CI で取得できない間、H1/H1' の
   判別がローカル誘発に限られる可能性がある。その場合は判断基準を満たさないため、
   結論を先延ばしにするか、証拠保全の導入を判断する。
