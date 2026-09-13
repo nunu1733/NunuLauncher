@@ -1919,7 +1919,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
             1,
             1,
         )
-        composeRule.onNodeWithText(appliedMovedLine).assertIsDisplayed()
+        awaitDisplayed(appliedMovedLine)
 
         runner.beginRecoveryPreview()
         composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.RecoveryPreview }
@@ -1927,7 +1927,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) {
             (runner.state as? ManualOrganizationRun.State.Applied)?.result is ApplyResult.Applied
         }
-        composeRule.onNodeWithText(appliedMovedLine).assertIsDisplayed()
+        awaitDisplayed(appliedMovedLine)
     }
 
     @Test
@@ -2385,9 +2385,19 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
     }
 
+    // Issue #308: stateFlow reaches the terminal state before the lazy-list
+    // item and its semantics bounds necessarily settle on the next frame.
+    private fun awaitDisplayed(text: String) {
+        composeRule.waitUntil(5_000) {
+            runCatching {
+                composeRule.onNodeWithText(text).assertIsDisplayed()
+            }.isSuccess
+        }
+    }
+
     private fun awaitPreview(runner: ManualOrganizationRun, context: Context) {
         composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Preview }
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsDisplayed()
+        awaitDisplayed(context.getString(R.string.manual_organization_preview))
     }
 
     private fun captureReviewScreenshot(context: Context, name: String) {
