@@ -27,7 +27,7 @@
   DPAD traversal 喪失 1 ＋ accessibility frontmost 不一致 1 ＋ `awaitResumedLauncher`
   timeout 1。同一 head の api35 lane は green。rerun green。
 - **occluder capture 1（標準ランチャー）**: [run 34704064012](https://github.com/nunu1733/NunuLauncher/actions/runs/34704064012)
-  （head `083c902973`、2026-09-12 16:13 UTC、issue53 lane）:
+  （head `083c902973d13e851ecda32137af5e9bbf3da323`、event `pull_request`、2026-09-12 16:13 UTC、issue53 lane）:
   `awaitResumedLauncher` timeout が `classifyLauncherAwaitTimeout` により
   environment anomaly として 1 失敗に停留し、
   `evidence=launcher-resume-timeout; interactive=true, keyguardLocked=false,
@@ -36,7 +36,7 @@
   （[Issue #304 コメント 1](https://github.com/nunu1733/NunuLauncher/issues/304#issuecomment-5647372032)、
   2026-09-12 UTC 確認）。
 - **occluder capture 2（ANR ダイアログ）**: [run 34709095836](https://github.com/nunu1733/NunuLauncher/actions/runs/34709095836)
-  （2026-09-12 17:54 UTC、issue52 lane）: window focus gate が
+  （head `820dae07557631273f46000a01a716ad2b5bbb6c`、event `workflow_dispatch`、2026-09-12 17:54 UTC、issue52 lane）: window focus gate が
   `evidence=window-focus-gate:app.lawnchair.debug/androidx.activity.ComponentActivity;
   interactive=true, keyguardLocked=false,
   focusedWindow=mCurrentFocus=Window{... Application Not Responding: com.android.systemui},
@@ -45,11 +45,11 @@
   （[Issue #304 コメント 2](https://github.com/nunu1733/NunuLauncher/issues/304#issuecomment-5647683394)、
   2026-09-12 UTC 確認）。
 - **occluder capture 3（標準ランチャー再発）**: [run 34732479463](https://github.com/nunu1733/NunuLauncher/actions/runs/34732479463)
-  （2026-09-13、issue53 lane）で、標準ランチャー
+  （head `5420916a0e4cf0b3badc616303e3076cea3f912c`、event `pull_request`、2026-09-13、issue53 lane）で、標準ランチャー
   `com.google.android.apps.nexuslauncher/.NexusLauncherActivity` が frontmost となる
   同一 signature を再捕捉した（[2026-09-13 03:02 UTC のIssue #304コメント](https://github.com/nunu1733/NunuLauncher/issues/304#issuecomment-5650524193)）。
 - **occluder capture 4（ANR ダイアログ再発）**: [run 34733839798](https://github.com/nunu1733/NunuLauncher/actions/runs/34733839798)
-  （2026-09-13、issue52 lane）で、`Application Not Responding: com.android.systemui`
+  （head `5420916a0e4cf0b3badc616303e3076cea3f912c`、event `workflow_dispatch`、2026-09-13、issue52 lane）で、`Application Not Responding: com.android.systemui`
   が focus を保持する同一型を再捕捉した。同じ収集期間の
   [run 34733180391](https://github.com/nunu1733/NunuLauncher/actions/runs/34733180391) は
   `previewHeadingRestoresFocus...` の Compose timeout で、gate による occluder capture
@@ -146,11 +146,11 @@
 
 | Capture | 型 | 証拠 | 判定 |
 |---|---|---|---|
-| CI run [34704064012](https://github.com/nunu1733/NunuLauncher/actions/runs/34704064012) | 標準ランチャー activity | `interactive=true`, `keyguardLocked=false`, `focusedWindow=...com.google.android.apps.nexuslauncher/.NexusLauncherActivity`, `frontmostPackage=com.google.android.apps.nexuslauncher` | 証拠行だけで標準ランチャー型と分類可能 |
-| CI run [34709095836](https://github.com/nunu1733/NunuLauncher/actions/runs/34709095836) | system UI ANR dialog | `interactive=true`, `keyguardLocked=false`, `focusedWindow=...Application Not Responding: com.android.systemui`, `frontmostPackage=android` | 証拠行だけでANR dialog型と分類可能 |
-| CI run [34732479463](https://github.com/nunu1733/NunuLauncher/actions/runs/34732479463) | 標準ランチャー activity | 既存 capture 1 と同じ `com.google.android.apps.nexuslauncher/.NexusLauncherActivity` frontmost | 証拠行だけで標準ランチャー型と分類可能。自然発生での再発例 |
-| CI run [34733839798](https://github.com/nunu1733/NunuLauncher/actions/runs/34733839798) | system UI ANR dialog | 既存 capture 2 と同じ `Application Not Responding: com.android.systemui` | 証拠行だけでANR dialog型と分類可能。自然発生での再発例 |
-| CI run [34733180391](https://github.com/nunu1733/NunuLauncher/actions/runs/34733180391) | 非gate Compose timeout | `previewHeadingRestoresFocus...` の `ComposeTimeoutException` | occluder captureではなく、既存の非gateフレイクとして分類から分離 |
+| CI run [34704064012](https://github.com/nunu1733/NunuLauncher/actions/runs/34704064012) | 標準ランチャー activity | head `083c902973d13e851ecda32137af5e9bbf3da323`、event `pull_request`、`interactive=true`, `keyguardLocked=false`, `focusedWindow=...com.google.android.apps.nexuslauncher/.NexusLauncherActivity`, `frontmostPackage=com.google.android.apps.nexuslauncher` | 証拠行だけで標準ランチャー型と分類可能 |
+| CI run [34709095836](https://github.com/nunu1733/NunuLauncher/actions/runs/34709095836) | system UI ANR dialog | head `820dae07557631273f46000a01a716ad2b5bbb6c`、event `workflow_dispatch`、`interactive=true`, `keyguardLocked=false`, `focusedWindow=...Application Not Responding: com.android.systemui`, `frontmostPackage=android` | 証拠行だけでANR dialog型と分類可能 |
+| CI run [34732479463](https://github.com/nunu1733/NunuLauncher/actions/runs/34732479463) | 標準ランチャー activity | head `5420916a0e4cf0b3badc616303e3076cea3f912c`、event `pull_request`、既存 capture 1 と同じ `com.google.android.apps.nexuslauncher/.NexusLauncherActivity` frontmost | 証拠行だけで標準ランチャー型と分類可能。自然発生での再発例 |
+| CI run [34733839798](https://github.com/nunu1733/NunuLauncher/actions/runs/34733839798) | system UI ANR dialog | head `5420916a0e4cf0b3badc616303e3076cea3f912c`、event `workflow_dispatch`、既存 capture 2 と同じ `Application Not Responding: com.android.systemui` | 証拠行だけでANR dialog型と分類可能。自然発生での再発例 |
+| CI run [34733180391](https://github.com/nunu1733/NunuLauncher/actions/runs/34733180391) | 非gate Compose timeout | head `5420916a0e4cf0b3badc616303e3076cea3f912c`、event `workflow_dispatch`、`previewHeadingRestoresFocus...` の `ComposeTimeoutException` | occluder captureではなく、既存の非gateフレイクとして分類から分離 |
 | Local `issue142_api36` forced run (2026-09-13) | 標準ランチャー activity | `interactive=true`, `keyguardLocked=false`, `focusedWindow=...com.google.android.apps.nexuslauncher/.NexusLauncherActivity`, `frontmostPackage=com.google.android.apps.nexuslauncher` | CI run 34704064012と同じoccluder型。自然発生機構の証明ではなく、診断能力の誘発実証 |
 
 ## Investigation steps
