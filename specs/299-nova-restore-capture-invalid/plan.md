@@ -211,6 +211,10 @@ mergeしない方針は不変である。
   loader状態が観測点として使えるかをこの時点で評価し、同等signalが
   production/testに存在しない場合は、その設置をfix seam候補の一つとして
   I-5のdecision gateへ持ち上げる。
+  → **I-1実施結果（assessment参照）**: production/testに同等signalは存在しなかった
+  （確定成果）。組織化token機構（`forceReloadForOrganizer`）も修復sanitizeと
+  完了通知を1 generationで両立できず流用不能。I-3はsettle heuristicを
+  investigation-only substituteとして使用し、正式signalの設置はI-5へ持ち上げた。
 - **I-2: throw点の特定（CI-AC-01）。** 再現時、capture pathに一時的な
   local調査計測（debug build限定、出荷しない）を入れてthrow点と違反不変条件を
   特定する。調査計測は#172契約の出荷surfaceに載せず、PRから取り除く。
@@ -219,8 +223,16 @@ mergeしない方針は不変である。
   対象build SHA・取得logの要約・確認日とともに記録する。
 - **I-3: 成功セッションとの差分。** 同一手順で成功する場合と失敗する場合の
   stateを、上記5定点 × bounded分類軸で比較し、不変条件差を特定する。
-  定点3/5の観測はI-1で特定したcompletion barrier signalを基準にする
-  （barrier未定義のままのcapture直前比較をしない）。
+  定点3/5の観測は、I-1の成果（assessment
+  `docs/assessment/issue-299-nova-restore-capture-invalid.md`）により
+  generation identityを持たない **調査用settle heuristic**（`finishBindingItems` 発火後の
+  `isModelLoaded()` 成立 — model loadedかつactive loaderなし）を基準に行う。
+  これはacceptedなcompletion barrier signalがproduction/testに存在しなかった
+  （I-1の確定成果）ことによるinvestigation-only substituteであり、
+  **generation-level causal attributionには使用しない**。正式な
+  generation identity付きbarrierの設置はI-5 seam decisionの対象である
+  （既存 `forceReloadForOrganizer` は修復sanitizeと完了通知を1 generationで
+  両立できず流用不能 — LoaderTask.java:291, :429）。
   capture直前の1時点だけではなく、restore/reloadの途中経過の差がいつ生まれるか
   を特定する（例: sanitize完了時点で既に差があるか、reload中に生まれるか）。
 - **I-4: 持続性とloader修復経路の切り分け。** (a) 復元dataの永続的無効性

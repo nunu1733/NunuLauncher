@@ -21,7 +21,8 @@ import org.junit.Test
 
 /**
  * Issue #299 I-1 control: a Nova restore whose fixture has no widget row
- * must capture Ready after the completion barrier. Run in its own
+ * must capture Ready at the settle point (the investigation substitute
+ * for the spec's completion barrier; see the I-1 assessment). Run in its own
  * instrumentation process (see [NovaRestoreCaptureTestBase]).
  */
 class NovaRestoreCaptureControlTest : NovaRestoreCaptureTestBase() {
@@ -31,10 +32,10 @@ class NovaRestoreCaptureControlTest : NovaRestoreCaptureTestBase() {
         val restored = restoreSyntheticBackup(includeWidget = false)
         logMatrix("control/postRestore", restored.info)
 
-        awaitRestoreReloadBarrier("control", restored)
+        awaitSettlePoint("control", restored)
         val ready = captureThroughProductionSource()
         assertTrue(
-            "control Nova restore must capture Ready after the completion barrier",
+            "control Nova restore must capture Ready at the settle point",
             ready,
         )
         // 10 fixture rows enter the restore; the loader's restore sanitize
