@@ -1,5 +1,6 @@
 package app.lawnchair.organizer.ui
 
+import android.app.Activity
 import android.content.Context
 import android.content.ContentValues
 import android.content.res.Configuration
@@ -36,6 +37,8 @@ import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.DeviceCapabilities
@@ -1127,12 +1130,14 @@ class ManualOrganizationPreferencesInstrumentationTest {
         pressDownUntilFocused(context.getString(R.string.manual_organization_cancel))
         pressDownUntilFocused(context.getString(R.string.manual_organization_preview_show_all, 6))
         // Activating it with a keyboard action expands the group...
+        // Issue #300: same focused-window premise for the ENTER activation.
+        ensureWindowFocusedForComposeHost()
         InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_ENTER)
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText(concreteMoveRow(context, "app6")).fetchSemanticsNodes().isNotEmpty()
         }
         // ...and the action keeps focus after the list reflows (spec 52 restoration).
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview_show_fewer, 5)).assertIsFocused()
+        assertFocusedWithTraversalDiagnostics(context.getString(R.string.manual_organization_preview_show_fewer, 5))
     }
 
     /**
@@ -1172,12 +1177,15 @@ class ManualOrganizationPreferencesInstrumentationTest {
         performTouchInput { click(Offset(centerX, localY)) }
     }
     /**
-     * Moves real (window-dispatched) keyboard focus down until [text] owns it,
+     * Issues real (window-dispatched) keyboard focus down until [text] owns it,
      * so the traversal exercises the same DPAD fallback path Switch Access and
      * hardware keyboards rely on; fails after too many steps.
      */
     private fun pressDownUntilFocused(text: String, maxPresses: Int = 12) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        // Issue #300: real key streams only move focus inside a focused window; observe (and
+        // repair) that premise before the first press (TS-AC-05/06).
+        ensureWindowFocusedForComposeHost()
         var presses = 0
         while (presses < maxPresses) {
             composeRule.waitForIdle()
@@ -1188,11 +1196,80 @@ class ManualOrganizationPreferencesInstrumentationTest {
                 false
             }
             if (focused) return
+            // Issue #300 (review P1): re-observe the host window focus before every real key
+            // press, not only before the first one (TS-AC-01).
+            ensureWindowFocusedForComposeHost()
             instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DPAD_DOWN)
             presses++
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText(text).assertIsFocused()
+        assertFocusedWithTraversalDiagnostics(text)
+    }
+
+    /**
+     * Issue #300: single resumed activity of the compose host (the rule's own activity in this
+     * lane), used as the focus-gate target for real key injection.
+     */
+    private fun resumedHostActivityOrNull(): Activity? {
+        var activity: Activity? = null
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            activity = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .singleOrNull()
+        }
+        return activity
+    }
+
+    /**
+     * Issue #300 (review P1): refuses to run real key injection without a focus observation.
+     * Host resolution must succeed exactly once; zero or multiple RESUMED activities are an
+     * explicit fail-closed error, never a silent gate bypass.
+     */
+    private fun ensureWindowFocusedForComposeHost() {
+        var hosts: List<Activity> = emptyList()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            hosts = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .toList()
+        }
+        when (hosts.size) {
+            1 -> InjectedInputEnvironment.ensureWindowFocused(hosts.single())
+            0 -> error(
+                "input environment gate could not resolve the compose host activity " +
+                    "(no RESUMED activity); refusing real key injection without a focus observation",
+            )
+            else -> error(
+                "input environment gate could not resolve the compose host activity uniquely " +
+                    "(${hosts.size} RESUMED activities); refusing real key injection without a " +
+                    "focus observation",
+            )
+        }
+    }
+
+    /**
+     * Issue #300: focus-traversal failures under a healthy gate keep their normal semantics but
+     * carry the device/window state, so a Compose traversal regression stays distinguishable from
+     * a lost-window environment at read time (TS-AC-06).
+     */
+    private fun assertFocusedWithTraversalDiagnostics(text: String) {
+        try {
+            composeRule.onNodeWithText(text).assertIsFocused()
+        } catch (failure: AssertionError) {
+            var hostWindowFocused = false
+            resumedHostActivityOrNull()?.let { host ->
+                InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    hostWindowFocused = host.window.decorView.hasWindowFocus()
+                }
+            }
+            throw AssertionError(
+                buildTraversalFailureMessage(
+                    base = failure.message ?: "focus traversal failed to reach '$text'",
+                    deviceState = InjectedInputEnvironment.describeDeviceState(),
+                    hostWindowFocused = hostWindowFocused,
+                ),
+                failure,
+            )
+        }
     }
 
     @Test
