@@ -36,10 +36,11 @@
 ### Visual affordance
 
 1. 各 strategy `Row` の先頭 (leading) に Material3 `RadioButton(selected = isSelected, onClick = null)` を追加する。repo 内先例 (`ListPreference` / `FontSelectionPreference`) と同一の pattern であり、Nunu 固有の選択表現を新設しない (spec の Scope 契約)。
-2. `onClick = null` を維持する。これにより indicator 自体が click 対象にならず、row 全体の `selectable` が唯一の操作対象であり続ける。clickable でない RadioButton には minimum touch target の拡張が適用されないため、row の hit area も分割しない。
-3. row 側の `selectable(selected = isSelected, role = Role.RadioButton)` は変更しない。parent row が唯一の selection semantics truth であり、child `RadioButton(onClick = null)` に selectable / `Selected` / click / focus semantics があることを前提にしない。child 側へ `clearAndSetSemantics` や独自 semantics を追加してテストを成立させる回避策も導入しない。instrumentation では parent row の `Selected`、単一 click target、余分な selectable / focus target がないことを確認し、実機 / emulator の TalkBack で重複読み上げがないことを確認する。
-4. `Column` の text との垂直配置は `Row` の alignment 調整で解決する (実装時に 200% font scale evidence で折り返し支障がないことを確認。どの alignment でも spec の契約は不変)。
-5. 採用しない代替: (a) selected 行の container 色 / background treatment のみ — 色非依存契約 (AC-3) を満たす保証がなく、Lawnchair preference に前例のない新表現になる。(b) 行末 check icon — repo 内の radio 選択先例と異なり、radio role semantics と視覚記号の対応が崩れる。(c) `Checkbox` — role の意味論が不正確。
+2. `RadioButton` の直後に 16dp の `Spacer` を置く。`PreferenceTemplate` が start widget と本文の間に設ける既存の Lawnchair spacing 規則と揃え、indicator と text が詰まって見えないようにする。
+3. `onClick = null` を維持する。これにより indicator 自体が click 対象にならず、row 全体の `selectable` が唯一の操作対象であり続ける。clickable でない RadioButton には minimum touch target の拡張が適用されないため、row の hit area も分割しない。
+4. row 側の `selectable(selected = isSelected, role = Role.RadioButton)` は変更しない。parent row が唯一の selection semantics truth であり、child `RadioButton(onClick = null)` に selectable / `Selected` / click / focus semantics があることを前提にしない。child 側へ `clearAndSetSemantics` や独自 semantics を追加してテストを成立させる回避策も導入しない。instrumentation では parent row の `Selected`、単一 click target、余分な selectable / focus target がないことを確認し、実機 / emulator の TalkBack で重複読み上げがないことを確認する。
+5. `Column` の text との垂直配置は `Row` の alignment 調整で解決する (実装時に 200% font scale evidence で折り返し支障がないことを確認。どの alignment でも spec の契約は不変)。
+6. 採用しない代替: (a) selected 行の container 色 / background treatment のみ — 色非依存契約 (AC-3) を満たす保証がなく、Lawnchair preference に前例のない新表現になる。(b) 行末 check icon — repo 内の radio 選択先例と異なり、radio role semantics と視覚記号の対応が崩れる。(c) `Checkbox` — role の意味論が不正確。
 
 ### Copy fix
 
@@ -51,7 +52,7 @@
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt` | `strategyPickerItems` の行構成に leading `RadioButton(selected, onClick = null)` を追加 (`androidx.compose.material3.RadioButton` import)。`selectable` / `selectableGroup` / state / write flow は無修正 | presentation の唯一の着地点。seam・truth を変えない |
+| `lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt` | `strategyPickerItems` の行構成に leading `RadioButton(selected, onClick = null)` と 16dp gap を追加 (`androidx.compose.material3.RadioButton` import)。`selectable` / `selectableGroup` / state / write flow は無修正 | presentation の唯一の着地点。既存Preference spacingに揃え、seam・truth を変えない |
 | `lawnchair/res/values/strings.xml` | `organization_strategy_canonical_description` から historical note を除去 | spec AC-8。en 側の意味変更 |
 | `lawnchair/res/values-ja/strings.xml` | 同上 (ja) | spec AC-8。[spec 161](../161-japanese-ui-copy-lqa/spec.md) 対訳規約 |
 | `tests/organizer-instrumentation/app/lawnchair/organizer/ui/StrategyPickerInstrumentationTest.kt` | parent row の選択一致 / 移動 / 単一選択、単一 click target・余分な selectable / focus target がないこと、font scale / copy の test 追加・拡張 | AC-1..AC-6, AC-8 の semantics/state evidence。視覚表現そのものは screenshot oracle とし、既存 6 test は無修正で通ること (AC-9) |
@@ -126,3 +127,4 @@ production source / build 設定 / dependency / 他 module への変更はなし
 ## Review response history
 
 - 2026-09-13: Spec/plan review の Request changes (P1: child `RadioButton(onClick = null)` の semantics 前提、P2: AC-3 visual oracle、P2: 200% font-scale oracle) に対応。plan revision 2 として、parent row を唯一の selection semantics truth、child を visual-only と明記し、light/dark と representative 200% screenshot を必須 evidence にした。
+- 2026-09-13: 実装レビューの P2 (RadioButton と本文の spacing) に対応し、既存 Lawnchair preference pattern と同じ 16dp gap を実装計画へ反映した。
