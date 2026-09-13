@@ -6,13 +6,17 @@ import android.content.ContentValues
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.provider.MediaStore
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertCountEquals
@@ -25,6 +29,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsActions
@@ -306,6 +311,56 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_safe_terminal),
         ).assertIsDisplayed()
+    }
+
+    /**
+     * Issue #308: unresolved durable guidance can put Start outside the
+     * initial lazy-list viewport. Focus restoration must reveal that target
+     * instead of waiting forever for its layout callback.
+     */
+    @Test
+    fun unresolvedDurableStatusRestoresFocusToStartAction() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val readStarted = java.util.concurrent.CountDownLatch(1)
+        val releaseRead = java.util.concurrent.CountDownLatch(1)
+        val application = FakeApplication().apply {
+            durableStatus = OrganizerDurableStatus.UNRESOLVED
+            readOverride = {
+                readStarted.countDown()
+                releaseRead.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                OrganizerDurableStatus.UNRESOLVED
+            }
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { error("planner must not run") },
+        )
+        composeRule.setContent {
+            LawnchairTheme {
+                Box(modifier = Modifier.height(200.dp)) {
+                    ManualOrganizationPreferences(run = runner)
+                }
+            }
+        }
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.Idle }
+        composeRule.waitUntil(5_000) { readStarted.count == 0L }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_checking),
+        ).assertIsDisplayed()
+        releaseRead.countDown()
+        awaitDisplayed(
+            context.getString(R.string.manual_organization_durable_status_unresolved),
+        )
+        val startText = context.getString(R.string.manual_organization_start)
+        awaitDisplayed(startText)
+        composeRule.waitUntil(5_000) {
+            try {
+                composeRule.onNodeWithText(startText).assertIsFocused()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+        }
     }
 
     /**
@@ -1919,7 +1974,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
             1,
             1,
         )
-        composeRule.onNodeWithText(appliedMovedLine).assertIsDisplayed()
+        awaitDisplayed(appliedMovedLine)
 
         runner.beginRecoveryPreview()
         composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.RecoveryPreview }
@@ -1927,7 +1982,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) {
             (runner.state as? ManualOrganizationRun.State.Applied)?.result is ApplyResult.Applied
         }
-        composeRule.onNodeWithText(appliedMovedLine).assertIsDisplayed()
+        awaitDisplayed(appliedMovedLine)
     }
 
     @Test
@@ -2385,9 +2440,17 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
     }
 
+    // Issue #308: stateFlow reaches the terminal state before the lazy-list
+    // item and its semantics bounds necessarily settle on the next frame.
+    private fun awaitDisplayed(text: String) {
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithText(text).isDisplayed()
+        }
+    }
+
     private fun awaitPreview(runner: ManualOrganizationRun, context: Context) {
         composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Preview }
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsDisplayed()
+        awaitDisplayed(context.getString(R.string.manual_organization_preview))
     }
 
     private fun captureReviewScreenshot(context: Context, name: String) {
