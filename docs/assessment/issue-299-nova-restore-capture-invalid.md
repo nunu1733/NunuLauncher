@@ -204,6 +204,17 @@ Accepted PlanのI-3は「同一手順で成功する場合と失敗する場合�
   generation raceが不要」なことまでである（I-2のevidence boundaryを維持）。
   同一手順のintermittent trigger未再現の一点も開いたままである。
 
+### 実装review修正記録（2026-09-14、PR #314 reviewサイクル）
+
+- code-reviewer-1初回review: (1) loggerのinvariant fieldが自由Stringを受ける
+  契約境界 → closed enum型のみ受けるAPIへ修正、(2) settle observerの登録解除が
+  await正常経路しか保証されないlifecycle leak → finally+idempotent cleanup +
+  interrupt対応へ修正。いずれも`b669194b55`で反映、監査人の再検証済み。
+- 3回目の再監査でbarrierのre-dispatch経路の残存defectを指摘（cancelled後に
+  latch/outcomeがresetされずbusy-spinになる）→ `a49dda3451`でdispatch時に
+  latch/outcomeをresetする修正を適用（cancelled→re-dispatch→await経路が
+  機能するようになった）。deadline超過時のrestore失敗surfaceは不変。
+
 ### I-5 decision gate 記録（2026-09-14、Phase 1締め時に決定）
 
 証拠（I-1〜I-4 + 本実験）に基づくseam決定:
