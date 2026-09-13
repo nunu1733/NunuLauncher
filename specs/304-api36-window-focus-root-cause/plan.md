@@ -269,18 +269,31 @@
 NotificationShade型についても、表示されている事実は分類できるが、表示開始イベントと
 boot/runner操作の因果は保持されない。
 
-**判断: failure時の追加証拠保全を導入する。実装は本Issueでは行わず、workflow変更を
-別PRで実施する。** 最小限の候補は次の通りである。
+**判断: failure時の追加証拠保全を導入する。** `tools/ci/capture-emulator-failure-evidence.sh`
+を追加し、API36のIssue #52/#53 instrumentation laneで、テストstepが失敗した場合だけ
+best-effort収集を実行してartifactへ保存する。収集コマンドの失敗は元のテスト失敗を
+置き換えず、各snapshotへ終了statusとして記録する。最初の自然再発までは、実際のCI
+artifactが取得できること自体は未確認である。収集対象は次の通りである。
+
+2026-09-13にIssue #53 laneを自然条件のまま再試行したが、instrumentationは成功し、
+failure-time capture/uploadは実行されなかった。したがって現時点で確認できたのは、
+緑時に既存laneを妨げないことだけであり、失敗時artifactの生成・内容は未実証のままとする。
 
 - `dumpsys window windows`（失敗時のwindow列挙とz-order）
+- `dumpsys window displays`（display状態）
 - `cmd role get-role-holders android.app.role.HOME` とHOME intentのresolve結果
-- `dumpsys activity top` / `dumpsys power`（activity遷移とinteractive状態の補助）
-- failure時の限定したlogcat（main/system/crash/events）と、ANRが示された場合のtrace
+- `dumpsys activity top` / `dumpsys activity activities` / `dumpsys power`（activity遷移とinteractive状態の補助）
+- `dumpsys dropbox --print system_app_anr` / `data_app_anr` / `system_server_wtf`、
+  `/data/anr` の読み取り結果（ANRが示された場合のtrace）
+- failure時の限定したlogcat（main/system/crash/events）、input、SurfaceFlinger状態、
+  CPU/I/O pressure、build properties
 
 理由は、ローカル強制runが「標準ランチャーを前面化すればCIと同じsignatureになる」ことを
 示した一方、gateのfocused window 1行だけではその前面化がrole解決・z-order残留・起動競合
 のどれかを判別できないためである。既存のCI captureを破棄する判断ではなく、現行の
 1失敗+証拠を維持したまま、次の再発で機構を確定できる追加観測を残す判断である。
+収集helper自体はローカルfake-`adb` smoke testで、成功・失敗コマンドの双方をartifactへ
+残して元の処理を継続することを確認する。
 
 ## 残存リスク受容の判断基準（root cause 未確定のまま完了する場合）
 
@@ -298,7 +311,8 @@ boot/runner操作の因果は保持されない。
   ANR dialog の自動 dismiss 修復の gate への追加）である場合: 別 spec/plan（実装は
   別 PR。ci-test-portfolio.md 更新を伴いうる）を起票する。本 Issue は判断と根拠の
   記録まで行い、実装しない。
-- 結論が「証拠保全の導入」である場合: 同様に別 PR（workflow 変更）で実装する。
+- 結論が「証拠保全の導入」である場合: failure-time artifactを実装した本PRで完了し、
+  次の自然再発時にartifactを用いてH1/H1'/H2の機構判別へ進む。
 - 結論が「運用受容」の場合: 追加の実装段階は無く、本 Issue の記録が成果である。
 
 ## Change set
@@ -307,9 +321,12 @@ boot/runner操作の因果は保持されない。
 |---|---|
 | `specs/304-api36-window-focus-root-cause/plan.md`（本書） | 試行証跡（Verification evidence）・分類表の追記 |
 | `specs/304-api36-window-focus-root-cause/spec.md` | 調査過程で契約の修正が必要になった場合の更新 |
+| `.github/workflows/ci.yml` | API36 Issue #52/#53 laneのfailure-time captureとartifact upload |
+| `tools/ci/capture-emulator-failure-evidence.sh` | emulatorのwindow/activity/ANR/logcat等のbest-effort収集 |
+| `tools/ci/test_capture_emulator_failure_evidence.sh` | fake-`adb`によるhelper smoke test |
 | 本 Issue | 結論・判断・分類表・run link の記録 |
 
-production source、test implementation、CI workflow、dependency は変更しない。
+production source、dependency、runtime test implementation は変更しない。
 
 ## Verification
 
@@ -487,14 +504,11 @@ production source、test implementation、CI workflow、dependency は変更し�
 - **NotificationShadeの自然発生機構は未確定**: ローカルではfocus保持とtest失敗の因果対照を
   取れたが、reboot後のclean stateでは再現しなかった。CIでの表示開始時刻とboot/runner
   操作の証拠がない限り、dirty state・boot race・外部入力のいずれかを選べない。
-- **CI workflow 触れず制約**: z-order・role state が CI で取得できない間、H1/H1' の
-  判別がローカル誘発に限られる可能性がある。その場合は判断基準を満たさないため、
-  結論を先延ばしにするか、証拠保全の導入を判断する。
-- **追加保全は未実装**: failure時のlogcat/dumpsys artifact導入は必要と判断済みで、
-  別PRに分離した。
-  自然発生captureは追加されたが、遷移・z-order・logcat/ANR traceが未取得のため、
-  H1/H1'とH2のCI上の機構はまだ確定できない。ローカルではH2と整合する強い機構証拠を
-  得たが、外部妥当性は未確認である。
+- **failure-time artifact未実証**: failure時のlogcat/dumpsys artifact導入は実装し、
+  自然条件のIssue #53再試行では緑時非干渉を確認したが、失敗時captureはまだ発火していない。
+  次の自然発生captureまでは、GitHub-hosted emulator上で全snapshotがartifactとして保存される
+  こと、また各commandの権限不足が欠落なく記録されることは未確認である。failure時の
+  遷移・z-order・role state・ANR traceを取得できるまでは、H1/H1'とH2のCI上の機構を確定できない。
 
 ## Explicitly unverified areas
 
@@ -518,5 +532,7 @@ production source、test implementation、CI workflow、dependency は変更し�
 - [x] 強制状態試行の実施と Verification evidence への記録（手順 2、AC-1）
 - [x] occluder 分類表の維持（手順 3、AC-2）
 - [x] 証拠保全の判断記録（手順 4、AC-4）
+- [x] failure-time evidence preservation helperとAPI36 laneへの接続を実装し、fake-`adb` smoke testを実施
+- [x] 自然条件のIssue #53再試行を実施し、緑時はcapture/uploadがskipされることを確認（実失敗なし）
 - [ ] H1/H1' 機構判別の実施または取得不能の明示（手順 5）
 - [ ] 結論または残存リスク受容の本 Issue への記録（手順 6、AC-3）
