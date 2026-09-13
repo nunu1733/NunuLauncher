@@ -3,7 +3,7 @@
 > Status: observed
 > Capture date: 2026-09-13 JST
 > Source revision: `c66d0ee1793d582b3d8d9cf431c3dfbed3656168`
-> Evidence packet revision: `0dc7d2b6763bed9a64e67d7dd4a52e0325d8ffd3`
+> Evidence capture source revision: `0dc7d2b6763bed9a64e67d7dd4a52e0325d8ffd3` (the current PR head adds documentation only)
 
 - Issue: https://github.com/nunu1733/NunuLauncher/issues/283
 - Device: API 36 Android emulator, `issue142_api36`, 1080x2400
