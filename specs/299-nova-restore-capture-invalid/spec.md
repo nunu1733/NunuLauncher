@@ -1,9 +1,9 @@
 ---
 issue: "#299"
 status: draft
-requirements: [CI-AC-01, CI-AC-02, CI-AC-03, CI-AC-04, CI-AC-05, CI-AC-06, CI-AC-07]
+requirements: [CI-AC-01, CI-AC-02, CI-AC-03, CI-AC-04, CI-AC-05, CI-AC-06, CI-AC-07, CI-AC-08]
 risk: []
-updated: 2026-09-12
+updated: 2026-09-13
 ---
 
 # Nova restore後のOrganizer captureがCAPTURE_INVALIDに恒常化しない
@@ -36,15 +36,17 @@ capture不変条件が何であるかは不明である。Organizerは無効なc
 復元されたworkspace/model状態またはcapture不変条件そのものを対象にしなければ
 ならない。
 
-観測build `d0f40446c7` は現在のmain（`f9afd8bfde`）の祖先であり、両者間の差分で
+観測build `d0f40446c7` は現在のmain（`3aa6e83a1f6dc331e9f6712c126c9ff58d050660`、
+2026-09-13再確認）の祖先であり、`f9afd8bfde..3aa6e83a1f` の差分で
 capture pathの本体
 （[RowManifestCodec.kt](../../lawnchair/src/app/lawnchair/organizer/application/adapter/RowManifestCodec.kt)、
 [LauncherLayoutAdapter.kt](../../lawnchair/src/app/lawnchair/organizer/application/adapter/LauncherLayoutAdapter.kt)、
 [NovaBackupConverter.kt](../../lawnchair/src/app/lawnchair/backup/NovaBackupConverter.kt)、
-[RestoreDbTask.java](../../src/com/android/launcher3/provider/RestoreDbTask.java)）
-は無変更である。composer
-（OrganizationInputComposer.kt）には #228 のselection追加があるが、
-capture失敗 → `CAPTURE_INVALID` の導出は不変である。よってこの観測は
+[RestoreDbTask.java](../../src/com/android/launcher3/provider/RestoreDbTask.java)、
+composer [OrganizationInputComposer.kt](../../lawnchair/src/app/lawnchair/organizer/integration/OrganizationInputComposer.kt)、
+diagnostics module）は無変更である。同区間のorganizer領域の変更は #287 の
+lock authoring修正（`LockAuthoring.kt`、planning側）のみであり、capture pathには
+触れない。よってこの観測は
 現在のmainのcapture path構造に妥当する。
 
 root causeは未確定である。このspecは、観測可能な振る舞いの契約と
@@ -64,9 +66,12 @@ boundedな）文脈を運ぶ。
 
 - Nova restore後にOrganizer captureが `IllegalArgumentException` で失敗する
   正確なsource/不変条件の特定（investigationの第一成果）。
-- 特定された無効状態への対処: 復元dataが本当に無効な場合のdeterministicな
-  正規化または拒絶、またはcapture不変条件を読めるbounded diagnostic文脈の
-  提供。選択はroot cause確定後のdecision gateで行う。
+- capture失敗時のbounded diagnostic文脈の提供（必須成果）。違反された不変条件の
+  categoryを、ユーザーlayout内容を漏らさずdiagnosticsが運ぶ。これは
+  下記の正規化/拒絶の選択に依存せず常に要求される。
+- 特定された無効状態への対処の選択: 復元dataが本当に無効な場合のdeterministicな
+  正規化または拒絶を採用するか否か。選択はroot cause確定後のdecision gateで
+  記録する（採用しない場合はdiagnostics文脈のみでも契約を満たす）。
 - capture pathの持続失敗からの復旧挙動の明示化（どの状態遷移が
   `CAPTURE_INVALID` から回復させるか）。
 - #185が保護するreserved QSB / reservation不変条件の非回帰確認。
@@ -110,13 +115,24 @@ When Nova backup restoreを実行し、restore/model reload完了を待つ
 Then Organizerのpreview/capture要求が成功し、`CAPTURE_INVALID` が発生しない
 And logcatに `phase=CAPTURE exceptionClass=IllegalArgumentException` が出現しない
 
-### Scenario: 繰り返しrestoreでも持続失敗が再現しない
+### Scenario: 繰り返しrestoreでも完了後captureが必ず成功する
 
 Given 同一環境でNova restore → Organizer capture → （必要なら再）restoreの
   cycleを繰り返す
-When 複数回のrestore → captureを試みる
-Then 全cycleでcaptureが成功するか、失敗しても次のcycleで恒常化しない
+When 各cycleでrestoreを実行し、restore/model reload完了（completion barrier）
+  を待った上で、その直後の最初の権威的capture要求を試みる
+Then 全cycleにおいて、completion barrier後の最初の権威的captureが成功する
+  （成功cycleと失敗cycleが混在する隔回失敗も許容しない）
 And 障害が特定セッションに依存しないことが繰り返し実行で確認される
+
+### Scenario: reload完了前の一時的なNotReadyと完了後の成功の境界
+
+Given restore/model reloadが完了していない状態でOrganizer要求が行われる
+When restore/model reload完了前にOrganizerのcapture要求が非Ready
+  （`INPUT_NOT_READY` 系）を返す
+Then その一時的な非Readyは許容される（本specの違反ではない）
+And reload完了後の権威的capture要求は成功し、一時的非Readyが
+  `CAPTURE_INVALID` として恒常化しない
 
 ### Scenario: 本当に無効なcaptureはfail-closedし続ける
 
@@ -184,31 +200,39 @@ And reservation違反に対する `CAPTURE_RESERVED_OVERLAP` / write時
   stack/log証跡とともに特定・記録されている（候補の列挙ではなく、観測された
   障害の説明になっていること）。
 - [ ] CI-AC-02: 影響を受けたNova restore → Organizer flowが、持続的な
-  `CAPTURE_INVALID` に陥らない。restore/model reload完了後のcaptureが成功する。
+  `CAPTURE_INVALID` に陥らない。各restore/model reload完了（completion barrier）
+  後の最初の権威的captureが成功する（隔回失敗を含まない）。
 - [ ] CI-AC-03: 本当に無効な権威的captureに対してOrganizerがfail-closedし続ける
   （readiness checkの弱化、`CAPTURE_INVALID` の除去・握り潰しを行わない）。
 - [ ] CI-AC-04: #185のreserved-QSB placement保護が引き続き有効である
   （既存回帰coverageがgreen）。
-- [ ] CI-AC-05: 実施可能な範囲で自動regression（restore → capture）が追加されて
-  いる。triggerが判明した後は、繰り返しrestore cycleまたは特定されたレース窓を
-  対象にする。
+- [ ] CI-AC-05: 自動regression（restore → capture）が追加されている。triggerが
+  判明した後は、繰り返しrestore cycleまたは特定されたレース窓を対象にする。
+  root cause確定後、deterministicなtest seamが作れる場合はautomated regressionを
+  必須とし、作れない場合のみ、その理由と代替となるdevice evidenceを記録して
+  代替する。
 - [ ] CI-AC-06: emulatorまたは実機検証が、繰り返しのrestore → capture試行を
   覆い、回復・安定性を確認している。
 - [ ] CI-AC-07: capture失敗時の復旧挙動が確定している。root cause確定後の
-  decision gateで「deterministicな正規化/拒絶」または「bounded diagnostic文脈」
-  （または両方）の選択が記録され、選択された振る舞いが検証されている。
+  decision gateで「deterministicな正規化/拒絶」を採用するか否かが記録され、
+  採用した場合は選択された振る舞いが検証されている。
+- [ ] CI-AC-08: capture失敗時のdiagnosticsが、違反された不変条件のbounded
+  categoryを運ぶ。これはCI-AC-07の正規化/拒絶の選択に依存せず常に要求され、
+  ユーザーlayout内容・例外message・stack traceは含まない（#172契約の
+  bounded拡張）。
 
 ## Test oracle
 
 | AC | Evidence |
 |---|---|
 | CI-AC-01 | 再現実行時のlogcat/stack証跡と、特定された不変条件の記録（`docs/assessment/issue-299-<slug>.md` + plan.md） |
-| CI-AC-02 | emulator/実機でのNova restore → capture実行記録。`CAPTURE_INVALID` / `phase=CAPTURE` 出力の不在。instrumentation（`NovaRestoreGridApplicationTest` 系seamの拡張を含む） |
+| CI-AC-02 | emulator/実機でのNova restore → capture実行記録。completion barrier後の最初の権威的captureの成功、`CAPTURE_INVALID` / `phase=CAPTURE` 出力の不在。instrumentation（`NovaRestoreGridApplicationTest` 系seamの拡張を含む） |
 | CI-AC-03 | 意図的無効状態でのunit/instrumentation fail-closed test + 既存composer `NotReady` 契約testのgreen |
 | CI-AC-04 | `OrganizationInputComposerTest` の#185 case、`LoaderCursorOverlapAcceptanceContractTest`、`OverlapAcceptanceGateSeamInstrumentationTest` 等の既存coverageのgreen |
-| CI-AC-05 | 追加したautomated regressionの実行記録（CI gateに接続するsurface） |
+| CI-AC-05 | 追加したautomated regressionの実行記録（CI gateに接続するsurface）。seam作成不能の場合は理由と代替device evidenceの記録 |
 | CI-AC-06 | emulator/実機での繰り返しrestore → capture検証の実行記録（PR証跡） |
-| CI-AC-07 | decision gate記録（assessment doc）と、選択された振る舞いのtest/evidence |
+| CI-AC-07 | decision gate記録（assessment doc）と、採用時の振る舞いのtest/evidence |
+| CI-AC-08 | diagnostics契約拡張の実装test（bounded category field、redaction non-containment）+ organizer diagnostics契約文書の更新 |
 
 ## Open questions
 
@@ -219,6 +243,10 @@ And reservation違反に対する `CAPTURE_RESERVED_OVERLAP` / write時
 - 持続失敗の本体が「復元dataの永続的無効性」か「capture読み取り窓のレース」か。
   プロセス再起動・再restoreでも復帰しなかった観測は前者を示唆するが、
   #298のreload中断が再restore自体の失敗につながった可能性を排除できない。
+- restore後のloader/model reloadが本来修復・削除するはずのinvalid rowを、
+  #298のreload中断（wrong-thread障害）が途中で止め、部分適用状態を残しうるか。
+  成功/失敗セッションのstate比較はplan.mdのinvestigation matrix
+  （restore → reload → captureの各時点、bounded分類軸）に従う。
 - emulator上での再現手順の確立（実機観測はセッション依存）。
 - 影響を受けた実backup内容をfixture化できるか（privacy配慮の下でsynthetic
   等価fixtureを作れるか）。
@@ -226,3 +254,10 @@ And reservation違反に対する `CAPTURE_RESERVED_OVERLAP` / write時
 ## Change history
 
 - 2026-09-12: Draft created for #299.
+- 2026-09-13: Issue review（Changes requested）の反映。違反不変条件のbounded
+  categoryをdiagnosticsが運ぶことを正規化/拒絶の選択に依存しない必須要件として
+  CI-AC-08へ分離し（CI-AC-07は正規化/拒絶の採否の記録に限定）、繰り返しrestoreの
+  oracleを「各cycleのcompletion barrier後の最初の権威的captureが成功する」へ
+  強化するとともにreload完了前後の境界scenarioを明示した。baselineを現行main
+  `3aa6e83a1f` へ更新し、capture path無変更を再確認。#298はroot cause切り分けの
+  必須比較軸としてinvestigation matrixに組込み（plan.md）。
