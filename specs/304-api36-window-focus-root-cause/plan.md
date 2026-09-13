@@ -33,9 +33,10 @@
   `sys.boot_completed=1` 後16〜20秒で `mCurrentFocus=...Application Not Responding: com.android.systemui`
   を観測した。`dumpsys dropbox --print system_app_anr` は3回ともSystemUIの
   `SystemUIService`/`KeyguardService`が約20秒待ちでANRになった記録を含み、CPU total 95〜97%、
-  `surfaceflinger` 84〜93%、`system_server` 37〜43%、CPU/I/O pressure上昇を示した。
-  これは「SystemUI/system_server/SurfaceFlingerの起動時リソース停滞→system UI ANR dialogが
-  focusを取得→launcher gateを阻害」という因果経路の制御再現であり、H2を強く支持する。
+  `surfaceflinger` 76〜93%、`system_server` 37〜43%、CPU/I/O pressure上昇を示した。
+  これは、最終occluderを直接前面化せずに得た「repeated boot-to-ANR reproduction / H2と
+  整合する強い機構証拠」である。ただし、制御したのはreboot後の観測であり、resource/display
+  stallを操作してfailureの生成・除去を確認した因果path reproductionではない。
 - ただし同じAVDをCI相当の `-cores 2 -memory 4096` で起動し、同じboot反復を3回行った場合は
   40秒観測で3/3がNexusLauncherActivityのままgreenだった。APK install単体（60秒）、Gradle
   connected経路の25 tests（`BUILD SUCCESSFUL`、25/25）でもANRは再現しなかった。この反証は
@@ -182,7 +183,7 @@
 |---|---|---|---|---|
 | H1 | 一部の boot で default HOME role が標準ランチャーに解決され、HOME category 起動が role holder（標準ランチャー）へ効くことで標準ランチャーが前面に残る | occluder 1 の focused window が標準ランチャー。ローカルAPI36でもHOME role holderはNexusだった | 起動は明示component指定であり、暗黙HOME解決ではない（`startLauncher` :1158実測）。同じローカル端末でNexusがHOME role holderのままでも、明示的なLawnchair起動はLawnchairへfocusを移したため、role holder単独ではこのfailureを説明できない | CI boot上のrole stateと、失敗時の実際のactivity/window遷移を同時に取得する。role stateだけでは不足し、`dumpsys window windows` と起動結果の組み合わせが必要 |
 | H1' | HOME role は不変で、標準ランチャーの window が z-order 上に残存し焦点を保持する（起動は成功するが焦点が取れない） | occluder 1 で `awaitResumedLauncher` が timeout = Lawnchair が RESUMED に到達していない。焦点が標準ランチャーであることと整合。ローカルでもLawnchairのfocus取得後にNexusを前面化すると同じfailure signatureになった | ローカルの強制操作はCIの自然発生機構ではない。Lawnchair未RESUMEDの説明にはならない（RESUMED判定はlifecycleと独立） | gate 証拠にz-orderが無いため、再発時に `dumpsys window windows` を取得できるようにして判別する（手順4の判断材料）。ローカルではoccluder強制状態で同等dumpを取得できる |
-| H2 | system UI の ANR ダイアログが焦点を保持する boot がある（runner 負荷等で systemui が不調になる boot 単位の劣化） | occluder 2/4/5 の focused window が `Application Not Responding: com.android.systemui`。同 run の非 gate test も timeout。ローカルclean-boot反復では、SystemUIのservice/keyguard ANRと、`system_server`/`surfaceflinger`高負荷、WindowManager/Settings Binder待ちを3/3で観測 | CI runnerのANR traceは未取得。ローカルをCI相当の2 cores/4GBで反復すると0/3であり、ローカルの再現はhost/image/dirty state依存の可能性がある | ANR の強制再現をoracleにせず、CI failure時にlogcat / ANR trace / dumpsysをartifact化して、自然CI bootでも同じsystem_server/SurfaceFlinger停滞があるか確認する。現時点では「SystemUI ANR dialogが直接occluder」「その有力な前段機構はresource/display path停滞」までを支持し、CI root cause確定とは扱わない |
+| H2 | system UI の ANR ダイアログが焦点を保持する boot がある（runner 負荷等で systemui が不調になる boot 単位の劣化） | occluder 2/4/5 の focused window が `Application Not Responding: com.android.systemui`。同 run の非 gate test も timeout。ローカルreboot反復（wipe-dataなし）では、SystemUIのservice/keyguard ANRと、`system_server`/`surfaceflinger`高負荷、WindowManager/Settings Binder待ちを3/3で観測 | CI runnerのANR traceは未取得。ローカルをCI相当の2 cores/4GBで反復すると0/3であり、ローカルの再現はhost/image/dirty state依存の可能性がある | ANR の強制再現をoracleにせず、CI failure時にlogcat / ANR trace / dumpsysをartifact化して、自然CI bootでも同じsystem_server/SurfaceFlinger停滞があるか確認する。現時点では「SystemUI ANR dialogが直接occluder」「その前段にあるresource/display path停滞と整合する強い機構証拠」までを支持し、CI root cause確定とは扱わない |
 | H2' | system UI の NotificationShade が bootまたは直前操作後に可視・focus保持状態で残り、Lawnchairの明示起動より上位に居続ける | ローカル `nunu_qpr2_api36_1` で実instrumentation testが `focusedWindow=...NotificationShade`, `frontmostPackage=com.android.systemui` のまま15秒gate timeout。`input swipe` で同状態を制御再現し、`KEYCODE_BACK` で閉じた後は同じtestがgreen | 今回の自然CI captureではNotificationShadeそのものは未取得。再起動後のcleanな同AVDではshadeは閉じており、既存のdirty stateまたはboot内の別経路の可能性が残る | failure時の`dumpsys window windows`とSystemUI state/logcatをCI artifact化し、NotificationShadeの表示開始イベントとboot/runner操作の順序を照合する。直接shadeを開く試行は因果の対照には使うが、CIの自然発生機構の確定とは分ける |
 | H3 | `input keyevent 82` 直後の keyguard 解除不成立・解除と HOME 起動の競合 | Issue 本文の仮説候補 | occluder 1〜5 はいずれも最終 capture で `keyguardLocked=false`。KEYCODE_WAKEUP / dismiss-keyguard の修復実装済み | 最終状態の `keyguardLocked=false` により、解除済み状態が継続している単純な説明は弱化する。ただし解除・起動の途中に競合があった可能性までは否定できないため、遷移証拠がない限り H3 は未確定とする |
 | H4 | 非 interactive（screen off）boot | Issue 本文の仮説候補 | 現行の自然発生 occluder capture 1〜5 は最終時点で `interactive=true`。KEYCODE_SLEEP 強制は、PR #305後の現行gateが wakeup 修復して green にできることを示す | 現行gateでは非interactive状態は修復・緩和され、残るpost-gate occluder failureの原因ではない。一方、pre-gate burst [34677444335](https://github.com/nunu1733/NunuLauncher/actions/runs/34677444335)の遷移中に寄与した可能性は、interactive/keyguard/window状態を保持していないため未確認とする |
@@ -426,9 +427,9 @@ production source、test implementation、CI workflow、dependency は変更し�
 - **再起動対照（2026-09-13）**: 同じ `nunu_qpr2_api36_1` をrebootし、
   `sys.boot_completed=1`後にrole/focus/windowを確認した時点ではNexusLauncherActivityが
   focusを持ち、NotificationShadeは可視windowではなかった。したがって上記の実instrumentation
-  failureは「clean reboot直後のshade残留」とまでは言えず、既存dirty stateまたはboot後の
+  failureは「reboot直後のshade残留」とまでは言えず、既存dirty stateまたはboot後の
   未取得イベントを含む仮説H2'として扱う。
-- **AC-3制御再現: reboot後のSystemUI ANR（2026-09-13）**: `emulator-5554` の
+- **AC-3継続観測: reboot後のSystemUI ANR（2026-09-13）**: `emulator-5554` の
   `nunu_qpr2_api36_1`（上記build fingerprint、試行時点で`app.lawnchair.debug` / `.test` 未導入、
   ただしwipe-dataなし）へ
   `adb reboot` を3回行い、各回 `sys.boot_completed=1` 後に0/4/8/12/16/20秒で
@@ -448,8 +449,9 @@ production source、test implementation、CI workflow、dependency は変更し�
   Nexus側main threadは`DisplayController` → `WindowContextController.attachToDisplayArea`
   のWindowManager Binder待ち、RenderThreadはBufferQueue release待ちだった。つまり、
   focusを奪うANR dialogの前段にsystem_server/SurfaceFlinger/WindowManagerの処理停滞がある
-  ことを、最終windowの直接前面化なしにbootから再現できた。
-- **AC-3制御再現の反証/境界（2026-09-13）**: 同じAVDをCI相当の
+  ことを、最終windowの直接前面化なしにbootから反復観測できた。この結果はH2と整合する
+  強い機構証拠だが、AC-3の制御causal-path reproductionとは扱わない。
+- **AC-3観測の反証/境界（2026-09-13）**: 同じAVDをCI相当の
   `-cores 2 -memory 4096 -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim`
   で再起動し、同じ40秒focus観測を3回実施したところ、3/3でNexusLauncherActivityが継続した。
   さらにdebug APKとandroidTest APKのinstall後60秒、Gradle connected経路の2クラス25 tests
@@ -479,7 +481,7 @@ production source、test implementation、CI workflow、dependency は変更し�
   状態と同一とは限らない。signature一致はAC-1/AC-2の診断能力を支持するが、AC-3の
   因果機構の外部妥当性は担保しない。
 - **ANR の強制再現は非決定的**: H2 の反証は強制ではなく再発時証拠の蓄積に依存する。
-  今回はdirty/host条件を含むローカルclean-boot反復でSystemUI ANRとsystem_server/
+  今回はdirty/host条件を含むローカルreboot反復でSystemUI ANRとsystem_server/
   SurfaceFlinger停滞を3/3観測したが、CI相当の2 cores/4GB反復では0/3だった。証拠保全の
   導入判断（手順 4）と、CIと同一条件のANR trace取得がH2判別の鍵になる。
 - **NotificationShadeの自然発生機構は未確定**: ローカルではfocus保持とtest失敗の因果対照を
@@ -491,8 +493,8 @@ production source、test implementation、CI workflow、dependency は変更し�
 - **追加保全は未実装**: failure時のlogcat/dumpsys artifact導入は必要と判断済みで、
   別PRに分離した。
   自然発生captureは追加されたが、遷移・z-order・logcat/ANR traceが未取得のため、
-  H1/H1'とH2のCI上の機構はまだ確定できない。ローカルではH2の有力な因果経路を
-  観測できたが、外部妥当性は未確認である。
+  H1/H1'とH2のCI上の機構はまだ確定できない。ローカルではH2と整合する強い機構証拠を
+  得たが、外部妥当性は未確認である。
 
 ## Explicitly unverified areas
 

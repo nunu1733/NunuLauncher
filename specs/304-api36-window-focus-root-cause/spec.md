@@ -229,7 +229,7 @@ blocking なものはない。調査中に解決すべき問い:
 - gate 付きの発生頻度の定量は PR #305 の merge 後にしか取れない。
 - NotificationShade型の実instrumentation failureが、既存dirty state・boot race・テスト前の
   外部入力のどれで生じたか。ローカルではfocus保持→gate失敗→shade除去後greenの因果対照を
-  得たが、clean reboot直後の再現は未確認。
+  得たが、wipe-dataを伴わないreboot直後の再現は未確認。
 
 ## Change history
 
@@ -256,9 +256,10 @@ blocking なものはない。調査中に解決すべき問い:
   ダイアログ3件）として台帳全体で統一した。CI failure時の追加証拠保全は必要と判断済み、
   実装は別workflow PR pendingであることをspecへ反映した。
 - 2026-09-13: AC-3継続調査として、ローカルAPI 36.1のreboot反復（wipe-dataなし）でSystemUI
-  ANRとsystem_server/SurfaceFlinger高負荷・WindowManager Binder待ちの因果経路を3/3で
-  観測した。一方、CI相当の2 cores/4GB反復、APK導入単体、Gradle 25 testsでは非再現で、
-  CIのx86_64 boot内遷移・ANR traceは未取得のため、root cause確定ではなく有力仮説の更新とした。
+  ANRのrepeated boot-to-ANR観測と、H2と整合するsystem_server/SurfaceFlinger高負荷・
+  WindowManager Binder待ちを3/3で得た。一方、CI相当の2 cores/4GB反復、APK導入単体、
+  Gradle 25 testsでは非再現で、CIのx86_64 boot内遷移・ANR traceは未取得のため、root cause
+  確定ではなく有力仮説の更新とした。これはAC-3の制御causal-path reproductionとは扱わない。
 - 2026-09-13: 同一CI jobのrerun（API 36/x86_64/Pixel 7 Pro/SwiftShader、同じconsole
   warning）で25/25 greenを確認した。console warningは十分条件ではないことを追記し、
   AC-3は未完了のまま、失敗boot固有のresource/display状態とCI failure時trace取得を残課題とした。
