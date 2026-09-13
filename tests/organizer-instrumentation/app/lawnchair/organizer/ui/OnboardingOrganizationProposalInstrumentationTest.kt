@@ -1352,10 +1352,6 @@ class OnboardingOrganizationProposalInstrumentationTest {
         }
 
         fun tapCenterOf(view: View) {
-            // Issue #300 (review P1): every real touch injection re-observes the launcher window's
-            // focus, so retries inside deliveredTap can never inject into a lost window
-            // (TS-AC-01: "each injection assumes the immediately preceding focus observation").
-            InjectedInputEnvironment.ensureWindowFocused(launcher)
             val location = IntArray(2)
             var width = 0
             var height = 0
@@ -1374,9 +1370,16 @@ class OnboardingOrganizationProposalInstrumentationTest {
             val y = (location[1] + height / 2).toFloat()
             val downTime = SystemClock.uptimeMillis()
             val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0)
+            // Issue #300 (review P1): every injectInputEvent re-observes the launcher window's
+            // focus immediately before injecting — including each half of the DOWN/UP pair — so
+            // retries inside deliveredTap can never inject into a lost window (TS-AC-01). A gate
+            // failure between DOWN and UP aborts the attempt; the run is poisoned at that point
+            // and the residual pressed state is harmless.
+            InjectedInputEnvironment.ensureWindowFocused(launcher)
             val downInjected = instrumentation.uiAutomation.injectInputEvent(down, true)
             SystemClock.sleep(TOUCH_INJECTION_GAP_MILLIS)
             val up = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0)
+            InjectedInputEnvironment.ensureWindowFocused(launcher)
             val upInjected = instrumentation.uiAutomation.injectInputEvent(up, true)
             down.recycle()
             up.recycle()
@@ -1434,8 +1437,6 @@ class OnboardingOrganizationProposalInstrumentationTest {
             var attempts = 0
             while (attempts < MAX_INJECTION_ATTEMPTS_PER_TAP) {
                 attempts++
-                // Issue #300 (review P1): re-observe focus before each retry's raw injection.
-                InjectedInputEnvironment.ensureWindowFocused(launcher)
                 val hintLocation = IntArray(2)
                 var viewportHeight = 0
                 instrumentation.runOnMainSync {
@@ -1448,9 +1449,12 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 )
                 val downTime = SystemClock.uptimeMillis()
                 val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0)
+                // Issue #300 (review P1): same per-injectInputEvent re-observation as tapCenterOf.
+                InjectedInputEnvironment.ensureWindowFocused(launcher)
                 val downInjected = instrumentation.uiAutomation.injectInputEvent(down, true)
                 SystemClock.sleep(TOUCH_INJECTION_GAP_MILLIS)
                 val up = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0)
+                InjectedInputEnvironment.ensureWindowFocused(launcher)
                 val upInjected = instrumentation.uiAutomation.injectInputEvent(up, true)
                 down.recycle()
                 up.recycle()
