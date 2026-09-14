@@ -97,10 +97,11 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
     public void deferredTokenlessLoaderCompletesOnModelExecutorNotOnReleaseThread()
             throws Exception {
         long seededRowId = seedWorkspaceApplicationRow("Issue 298 seeded app");
+        List<Throwable> cleanupFailures = new ArrayList<>();
 
         // Baseline load (not deferred): learns the current workspace item count
         // including the seeded row, so the deferred load can be compared against it.
-        int baselineItemCount = reloadAndAwaitBindItemCount();
+        int baselineItemCount = reloadAndAwaitBindItemCount(cleanupFailures);
         assertTrue("Seeded item missing from baseline load", baselineItemCount >= 1);
 
         CountDownLatch leaseAcquired = new CountDownLatch(1);
@@ -134,7 +135,6 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
         CountDownLatch bound = new CountDownLatch(1);
         AtomicInteger boundItemCount = new AtomicInteger(-1);
         BgDataModel.Callbacks callbacks = bindItemCountCallback(bound, boundItemCount);
-        List<Throwable> cleanupFailures = new ArrayList<>();
         try {
             assertTrue("Restore-like thread could not acquire the lease",
                     leaseAcquired.await(TIMEOUT_SECONDS, TimeUnit.SECONDS));
@@ -212,7 +212,8 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
     }
 
     /** Forces a reload while no lease is held and returns the bound item count. */
-    private int reloadAndAwaitBindItemCount() throws InterruptedException {
+    private int reloadAndAwaitBindItemCount(List<Throwable> failures)
+            throws InterruptedException {
         CountDownLatch bound = new CountDownLatch(1);
         AtomicInteger boundItemCount = new AtomicInteger(-1);
         BgDataModel.Callbacks callbacks = bindItemCountCallback(bound, boundItemCount);
@@ -223,7 +224,7 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
                     bound.await(TIMEOUT_SECONDS, TimeUnit.SECONDS));
             return boundItemCount.get();
         } finally {
-            removeModelCallbackQuietly(callbacks, new ArrayList<>());
+            removeModelCallbackQuietly(callbacks, failures);
         }
     }
 
@@ -244,7 +245,7 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
                             "Post-cleanup model reload did not complete"));
                 }
             } finally {
-                removeModelCallbackQuietly(callbacks, new ArrayList<>());
+                removeModelCallbackQuietly(callbacks, failures);
             }
         } catch (Throwable t) {
             failures.add(t);
@@ -255,6 +256,7 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
         if (model.isModelLoaded()) {
             return;
         }
+        List<Throwable> failures = new ArrayList<>();
         CountDownLatch bound = new CountDownLatch(1);
         BgDataModel.Callbacks cb = new BgDataModel.Callbacks() {
             @Override
@@ -271,7 +273,10 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
             Thread.currentThread().interrupt();
             throw new AssertionError("Interrupted while waiting for model idle", e);
         } finally {
-            removeModelCallbackQuietly(cb, new ArrayList<>());
+            removeModelCallbackQuietly(cb, failures);
+        }
+        if (!failures.isEmpty()) {
+            throw new AssertionError("Model-idle callback cleanup failed", failures.get(0));
         }
     }
 
