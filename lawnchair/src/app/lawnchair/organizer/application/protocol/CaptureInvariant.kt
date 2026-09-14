@@ -31,6 +31,13 @@ enum class CaptureInvariantCategory {
      * loader's next repair generation resolves (bind or delete).
      */
     INVALID_WIDGET_ROW,
+
+    /**
+     * An authoritative capture rejected persisted layout state through an
+     * untyped [IllegalArgumentException]. The specific invariant is not
+     * exposed because its exception text may contain unbounded layout data.
+     */
+    INVALID_CAPTURE_STATE,
 }
 
 /**
@@ -38,7 +45,8 @@ enum class CaptureInvariantCategory {
  * invariant. Extends [IllegalArgumentException] so the shipped diagnostics
  * identity (`exceptionClass=IllegalArgumentException`) observed on the
  * original issue sessions stays stable; the [invariant] category is the
- * added bounded field.
+ * added bounded field. Untyped [IllegalArgumentException] failures use
+ * [CaptureInvariantCategory.INVALID_CAPTURE_STATE].
  */
 class CaptureInvariantViolationException(
     val invariant: CaptureInvariantCategory,

@@ -86,7 +86,10 @@ interface OrganizationInputComposer {
  * failure is the typed [CaptureInvariantViolationException] (null otherwise);
  * the reported class identity for typed violations stays normalized to
  * `IllegalArgumentException` so new lines remain comparable with the
- * pre-typing diagnostics of the original issue sessions.
+ * pre-typing diagnostics of the original issue sessions. Untyped
+ * `IllegalArgumentException` failures use
+ * [CaptureInvariantCategory.INVALID_CAPTURE_STATE]; other failures keep
+ * a null category.
  */
 fun interface CaptureFailureObserver {
     fun onCaptureFailure(exceptionClass: Class<out Throwable>, invariant: CaptureInvariantCategory?)
@@ -108,17 +111,22 @@ class LayoutWriterCanonicalCaptureSource(
         // Issue #299 / CI-AC-08: a typed invariant violation keeps the shipped
         // class identity normalized to IllegalArgumentException (the identity
         // the original issue sessions observed) and adds its bounded category;
-        // other failures stay class-identity only.
+        // untyped IllegalArgumentException failures use the generic bounded
+        // category, while other failures stay class-identity only.
         val invariantViolation = failure as? CaptureInvariantViolationException
         val identityClass = if (invariantViolation != null) {
             IllegalArgumentException::class.java
         } else {
             failure.javaClass
         }
+        val invariant = invariantViolation?.invariant
+            ?: (failure as? IllegalArgumentException)?.let {
+                CaptureInvariantCategory.INVALID_CAPTURE_STATE
+            }
         // Fail-open: a diagnostics observer failure must never change readiness
         // semantics — the composer still returns Invalid regardless (issue #172).
         try {
-            captureFailureObserver.onCaptureFailure(identityClass, invariantViolation?.invariant)
+            captureFailureObserver.onCaptureFailure(identityClass, invariant)
         } catch (_: RuntimeException) {
             // Observability failed; fail-closed capture result is unaffected.
         }

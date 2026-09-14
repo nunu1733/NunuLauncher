@@ -35,10 +35,16 @@ import com.android.launcher3.model.DeviceGridState
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -58,6 +64,33 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class NovaRestoreCaptureNoCallbacksTest {
+
+    @Test
+    fun restoreReloadDispatchFromWorkerStartsNoCallbackLoaderOnMainExecutor() {
+        val model = LauncherAppState.getInstance(context()).model
+        val completed = CountDownLatch(1)
+        val cancelled = AtomicBoolean(false)
+        val workerFailure = AtomicReference<Throwable?>()
+        val requestId = model.beginRestoreReload()
+        val worker = Thread {
+            try {
+                model.dispatchRestoreReload(
+                    requestId,
+                    completed::countDown,
+                    { cancelled.set(true) },
+                )
+            } catch (failure: Throwable) {
+                workerFailure.set(failure)
+            }
+        }
+
+        worker.start()
+        worker.join()
+
+        assertNull("worker dispatch must not call the UI-thread-only loader directly", workerFailure.get())
+        assertTrue("worker-dispatched reload did not complete", completed.await(30, TimeUnit.SECONDS))
+        assertFalse("worker-dispatched reload was unexpectedly cancelled", cancelled.get())
+    }
 
     @Test
     fun novaRestoreWithoutCallbacks_returnsWithRepairedWorkspace_andImmediateCaptureIsReady() {

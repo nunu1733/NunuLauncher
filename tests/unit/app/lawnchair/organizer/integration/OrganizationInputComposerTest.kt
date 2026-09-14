@@ -343,7 +343,7 @@ class OrganizationInputComposerTest {
     }
 
     @Test
-    fun untypedCaptureFailureCarriesNoInvariantCategory() {
+    fun nonInvariantCaptureFailureCarriesNoInvariantCategory() {
         val observed = mutableListOf<Pair<Class<out Throwable>, CaptureInvariantCategory?>>()
         val failingSource = LayoutWriterCanonicalCaptureSource(
             writer = throwingCaptureWriter(),
@@ -355,6 +355,22 @@ class OrganizationInputComposerTest {
         assertTrue(result is CanonicalCaptureReadResult.Invalid)
         assertEquals(1, observed.size)
         assertEquals(null, observed.single().second)
+    }
+
+    @Test
+    fun untypedInvariantCaptureFailureCarriesBoundedCategory() {
+        val observed = mutableListOf<Pair<Class<out Throwable>, CaptureInvariantCategory?>>()
+        val failingSource = LayoutWriterCanonicalCaptureSource(
+            writer = throwingCaptureWriter(IllegalArgumentException("private layout details")),
+            captureFailureObserver = { exceptionClass, invariant -> observed += exceptionClass to invariant },
+        )
+
+        val result = failingSource.capture()
+
+        assertTrue(result is CanonicalCaptureReadResult.Invalid)
+        assertEquals(1, observed.size)
+        assertEquals(IllegalArgumentException::class.java, observed.single().first)
+        assertEquals(CaptureInvariantCategory.INVALID_CAPTURE_STATE, observed.single().second)
     }
 
     @Test
@@ -382,10 +398,14 @@ class OrganizationInputComposerTest {
     }
 
     /** Delegating writer whose only throwing path is the capture the composer reads. */
-    private fun throwingCaptureWriter(): LayoutWriterPort = object : LayoutWriterPort by FakeLayoutWriter(
+    private fun throwingCaptureWriter(
+        failure: RuntimeException = java.lang.IllegalStateException(
+            "capture failure with private layout context that must never be observed",
+        ),
+    ): LayoutWriterPort = object : LayoutWriterPort by FakeLayoutWriter(
         app.lawnchair.organizer.application.canonical.CanonicalFixtures.state(),
     ) {
-        override fun captureCurrent(captureId: CaptureId): CapturedSnapshot = throw java.lang.IllegalStateException("capture failure with private layout context that must never be observed")
+        override fun captureCurrent(captureId: CaptureId): CapturedSnapshot = throw failure
     }
 
     @Test
