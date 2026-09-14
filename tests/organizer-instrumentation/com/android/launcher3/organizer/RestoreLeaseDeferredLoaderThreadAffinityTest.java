@@ -9,7 +9,6 @@ import static androidx.test.platform.app.InstrumentationRegistry.getInstrumentat
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -32,6 +31,9 @@ import com.android.launcher3.pm.UserCache;
 import com.android.launcher3.util.IntSet;
 import com.android.launcher3.util.RunnableList;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -51,7 +53,21 @@ import app.lawnchair.LawnchairLauncher;
 public class RestoreLeaseDeferredLoaderThreadAffinityTest {
 
     private static final long TIMEOUT_SECONDS = 30L;
+    private static final int DEFERRED_WINDOW_CYCLES = 3;
     private static final String RELEASING_THREAD_NAME = "NovaBackupRestoreTestThread";
+
+    /**
+     * The three wrong-thread failure signatures recorded by the #287 T4 device
+     * session. The post-fix oracle requires their absence in this process's
+     * logcat (TA-AC-03's logcat-absence requirement, applied to the
+     * deterministic deferral window).
+     */
+    private static final String[] FORBIDDEN_SIGNATURES = {
+        "Cache accessed on wrong thread",
+        "Can't create handler inside Thread[NovaBackupRestore]",
+        "Desktop items loading interrupted",
+        "Deferred callback threw",
+    };
 
     private Context context;
     private LauncherModel model;
@@ -91,7 +107,12 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
      * defers behind the lease, and the lease releases on that same thread. The
      * deferred load must complete on the model worker thread with the seeded
      * workspace item intact — never on the releasing thread, where the icon
-     * cache's worker-thread assertion and Handler creation would fail.
+     * cache's worker-thread assertion fires before anything else can run.
+     *
+     * <p>Runs repeated defer/release cycles (the spec's repeated restore/reload
+     * verification, applied to the deterministic window) and closes with a
+     * logcat sweep asserting the recorded wrong-thread signatures are absent
+     * from this process.
      */
     @Test
     public void deferredTokenlessLoaderCompletesOnModelExecutorNotOnReleaseThread()
@@ -100,10 +121,41 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
         List<Throwable> cleanupFailures = new ArrayList<>();
 
         // Baseline load (not deferred): learns the current workspace item count
-        // including the seeded row, so the deferred load can be compared against it.
+        // including the seeded row, so the deferred loads can be compared against it.
         int baselineItemCount = reloadAndAwaitBindItemCount(cleanupFailures);
         assertTrue("Seeded item missing from baseline load", baselineItemCount >= 1);
 
+        try {
+            for (int cycle = 1; cycle <= DEFERRED_WINDOW_CYCLES; cycle++) {
+                runDeferredWindowCycle(cycle, baselineItemCount, cleanupFailures);
+            }
+        } finally {
+            deleteRowQuietly(seededRowId, cleanupFailures);
+        }
+
+        // TA-AC-03 logcat oracle: none of the recorded wrong-thread signatures
+        // may appear in this process. The pre-fix code produced all of these in
+        // the very window reconstructed above (implementer-reported red run).
+        assertSignaturesAbsentFromLogcat(cleanupFailures);
+
+        if (!cleanupFailures.isEmpty()) {
+            fail("Cleanup failed (" + cleanupFailures.size() + " error(s)); the first was: "
+                    + cleanupFailures.get(0));
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Helpers
+    // ------------------------------------------------------------------
+
+    /**
+     * One deterministic deferral window: a fresh Looper-less thread acquires the
+     * restore-family lease, a reload dispatched from main parks in the
+     * coordinator FIFO, and the lease releases on that same thread.
+     */
+    private void runDeferredWindowCycle(
+            int cycle, int baselineItemCount, List<Throwable> cleanupFailures)
+            throws InterruptedException {
         CountDownLatch leaseAcquired = new CountDownLatch(1);
         CountDownLatch releaseNow = new CountDownLatch(1);
         AtomicReference<LayoutWriteCoordinator.Lease> leaseRef = new AtomicReference<>();
@@ -136,7 +188,7 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
         AtomicInteger boundItemCount = new AtomicInteger(-1);
         BgDataModel.Callbacks callbacks = bindItemCountCallback(bound, boundItemCount);
         try {
-            assertTrue("Restore-like thread could not acquire the lease",
+            assertTrue("Cycle " + cycle + ": restore-like thread could not acquire the lease",
                     leaseAcquired.await(TIMEOUT_SECONDS, TimeUnit.SECONDS));
             addModelCallback(callbacks);
 
@@ -148,28 +200,28 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
                     && SystemClock.elapsedRealtime() < deadline) {
                 SystemClock.sleep(25);
             }
-            assertTrue("Loader was not deferred behind the restore-family lease",
+            assertTrue("Cycle " + cycle + ": loader was not deferred behind the lease",
                     coordinator.pendingDeferredCount() > baselineDeferred);
 
             releaseNow.countDown();
             restoreLike.join(TIMEOUT_SECONDS * 1000);
 
-            assertTrue("Workspace load did not complete after the lease release",
+            assertTrue("Cycle " + cycle + ": workspace load did not complete after release",
                     bound.await(TIMEOUT_SECONDS, TimeUnit.SECONDS));
-            assertEquals("Loaded workspace must keep the seeded item", baselineItemCount,
-                    boundItemCount.get());
+            assertEquals("Cycle " + cycle + ": loaded workspace must keep the seeded item",
+                    baselineItemCount, boundItemCount.get());
 
             long modelLoadedDeadline = SystemClock.elapsedRealtime() + TIMEOUT_SECONDS * 1000;
             while (!model.isModelLoaded() && SystemClock.elapsedRealtime() < modelLoadedDeadline) {
                 SystemClock.sleep(25);
             }
-            assertTrue("Model did not reach the loaded state after the deferred load",
+            assertTrue("Cycle " + cycle + ": model did not reach the loaded state",
                     model.isModelLoaded());
         } finally {
             // Idempotent: the normal path already counted down. Every exit path —
             // including an assertion failure while the lease is still held — must
             // let the Looper-less holder terminate (its own finally closes the
-            // lease) before this test ends.
+            // lease) before this cycle ends.
             releaseNow.countDown();
             restoreLike.join(TIMEOUT_SECONDS * 1000);
             if (restoreLike.isAlive()) {
@@ -181,19 +233,43 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
                         RELEASING_THREAD_NAME + " did not terminate; lease may still be held"));
             }
             removeModelCallbackQuietly(callbacks, cleanupFailures);
-            deleteRowQuietly(seededRowId, cleanupFailures);
         }
 
-        assertNull("Failure escaped on the releasing thread", releaseThreadFailure.get());
-        if (!cleanupFailures.isEmpty()) {
-            fail("Cleanup failed (" + cleanupFailures.size() + " error(s)); the first was: "
-                    + cleanupFailures.get(0));
-        }
+        assertNull("Cycle " + cycle + ": failure escaped on the releasing thread",
+                releaseThreadFailure.get());
     }
 
-    // ------------------------------------------------------------------
-    // Helpers
-    // ------------------------------------------------------------------
+    /**
+     * Dumps this process's logcat and fails if any recorded wrong-thread
+     * signature appears. The deferred window is deterministic, so a regression
+     * would reproduce the signatures here exactly as the implementer-reported
+     * pre-fix red run did.
+     */
+    private void assertSignaturesAbsentFromLogcat(List<Throwable> cleanupFailures) {
+        String dump;
+        try {
+            java.lang.Process process = Runtime.getRuntime().exec(
+                    new String[] {"logcat", "-d", "--pid=" + Process.myPid()});
+            StringBuilder builder = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                    process.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    builder.append(line).append('\n');
+                }
+            }
+            process.waitFor();
+            dump = builder.toString();
+        } catch (Throwable t) {
+            cleanupFailures.add(new AssertionError("Could not read logcat for the "
+                    + "wrong-thread signature oracle", t));
+            return;
+        }
+        for (String signature : FORBIDDEN_SIGNATURES) {
+            assertFalse("Forbidden wrong-thread signature present in this process's logcat: "
+                    + signature, dump.contains(signature));
+        }
+    }
 
     private BgDataModel.Callbacks bindItemCountCallback(
             CountDownLatch bound, AtomicInteger boundItemCount) {

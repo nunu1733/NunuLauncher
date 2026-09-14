@@ -42,7 +42,7 @@
 | 観測signature | 説明 |
 |---|---|
 | `IllegalStateException: Cache accessed on wrong thread`（full stackに `BaseIconCache.assertWorkerThread` → `LoaderTask.loadWorkspaceImpl` とcoroutine継続frame `NovaBackupConverter.kt:167`） | 上記1-5。stackにNovaBackupConverterのcoroutine継続frameが含まれるのは、throwがrestore thread上で発生し、そのthreadが `convertAndRestore` のsuspend継続（lease `use` blockの脱出点 = 観測revisionの `NovaBackupConverter.kt:167`）を積んでいたため。「merged stack」は2 threadの合成ではなく、**1つのrestore thread stackにloader frameとcoroutine継続が同居したもの**として説明できる。 |
-| `Can't create handler inside Thread[NovaBackupRestore]` | 同じ「runInternal がrestore thread上で実行される」窓の別表現。load呼び出し木の途中でLooper無しthread上の無引数Handler生成が実行された場合に発生する（`new Handler()` は `Looper.myLooper() == null` でthrow）。旧構造（`forceReload` がrestore threadから同期的に `startLoader` を呼び、`ItemInstallQueue` / `MainThreadInitializedObject.get` のmain thread submit待ち等が同threadで走った）では発生箇所の候補が複数あり、**exactなHandler生成siteのruntime特定は本assessmentのred再現log（§2）で行う**。修正によりload本体がrestore thread上で実行されなくなるため、生成siteがどこであれこの窓から発生しなくなる。 |
+| `Can't create handler inside Thread[NovaBackupRestore]` | **発生源の確定（2026-09-15追試込み）。** このsignatureはdeferred `runInternal` の窓からは **出ないことが実証された**: 修正前コードでの決定論的red実行において、(a) item有りのloadは `loadWorkspaceImpl` のicon cache access（per-item catch + bulk icons）で、(b) workspace行を全消去した空loadでも `loadAllApps` のall-apps icon cache access（`runInternal:340` → `AllAppsList.add` → `IconCache.getTitleAndIcon` → `cacheLocked:432` → `assertWorkerThread:816`）で、**Handler生成可能点に到達する前にicon cache assertionが確定的に先発火する**（red実験logはassessment保存logに記録）。また観測build `d0f4044` に対するapp側全数sweepの結果、restore threadから到達可能な無引数 `new Handler()` は **app codeに存在しない**（9箇所の無引数siteは全てUI専用class。`registerSessionCallback` / `registerDisplayListener` 等のframework登録は全て明示handler付き。restore path上のsingletonは全て `MainThreadInitializedObject` でmain thread経由の構築）。よってこのsignatureの生成siteはapp外（framework内部のHandler生成）であり、その前提条件は「restore/reload窓のframework呼び出しをLooper無しrestore thread上で実行すること」である。この前提を作る2つのchainのうち、(1) 旧sync dispatch（`reloadAfterRestore` → `forceReload` → `startLoader` をrestore thread上で実行）は **#299で構造的に除去**（loader起動を `MAIN_EXECUTOR` へdispatch、`startLoaderWithoutCallbacks` にUI thread事前条件）、(2) deferred runInternal drainは **本PRで除去**。T4 logには当該例外のstackが無くframework内部の何行で生成されたかは本repoからは特定不能だが、app側前提条件の除去をもってTA-AC-01を充足する（3 signatureの出所は全て説明可能） |
 | `Desktop items loading interrupted` | `WorkspaceItemProcessor.kt:109-114` のper-item `catch (Exception)` による `Log.e`。restore thread上で動いたloadがitem処理中に上記 `IllegalStateException` を受けた場合にこの行が出る。red再現でも同行が出ることを§2で確認する。 |
 
 ### 1.3 なぜレース（セッション依存）だったか
@@ -133,12 +133,10 @@ E LayoutWriteCoordinator: java.lang.IllegalStateException: Cache accessed on wro
   `convertAndRestore` 継続が共存したものとして説明が確定した。
 - 3 signatureのうち1（wrong-thread cache access）と3（`Desktop items loading
   interrupted`）を同一実行で再現。2（`Can't create handler inside
-  Thread[NovaBackupRestore]`）は本実行ではicon cacheのISEが先行して発生したため
-  出現しなかった。T4では例外発生順の差で3つとも記録されたと解釈できる。
-  Handler生成siteのexact特定は、修正によりload本体がrestore thread上で
-  実行されなくなるため事後観測は不可能になる（障害窓の消滅）。本体は
-  「runInternal呼び出し木内の任意の無引数Handler生成」であり、chainとしては
-  §1で確定済み。
+  Thread[NovaBackupRestore]`）はicon cache assertionが常に先発火するため
+  deferred窓からは出ない（空workspaceの追試で `loadAllApps` 経由も含めて実証）。
+  発生源の確定は§1.2のHandler signature行を参照（app外＝framework内部の生成、
+  その前提となるrestore thread実行chainは#299+本PRで両方除去）。
 
 ### 2.3 green実行（修正後コード）
 
@@ -194,14 +192,14 @@ E LayoutWriteCoordinator: java.lang.IllegalStateException: Cache accessed on wro
 単発で違反窓を確実に踏む方式で置き換えた（レース待ちの反復実行は違反の不在を
 証明できないため）。
 
-受入条件ごとのエビデンス対応（過不足なく整理する。TA-AC-01/05は静的確認、
+受入条件ごとのエビデンス対応（2026-09-15 review対応で更新。TA-AC-01/05は静的確認、
 TA-AC-02/03/04/06はruntime・CI証跡）:
 
 | AC | エビデンス | 限界・deviation |
 |---|---|---|
-| TA-AC-01（chain特定） | §1のchain + §2.2のred再現stack（T4観測と同一構造）。独立監査（`pr-319-deferred-loader-thread-affinity.md`）がpre-fix codeの実読で再確認 | Handler signatureのexact生成siteはred実行ではISE先行により未観測。chain全体の排除対象として§1.2に記録済み |
+| TA-AC-01（chain特定） | §1のchain + §2.2のred再現stack（T4観測と同一構造）。独立監査（`pr-319-deferred-loader-thread-affinity.md`）がpre-fix codeの実読で再確認。Handler signature（sig2）は§1.2のとおり発生源を確定: app側に生成site無し（全数sweep）+ deferred窓からは到達不能（icon cache assertion先発火の実証、空workspace追試含む）→ framework内部生成であり、その前提であるrestore thread実行chainは#299+本PRで両方除去 | sig2のframework内部の何行で生成されたかはT4 logにstackが無いため本repoからは特定不能。app側前提条件の除去をもって説明済み |
 | TA-AC-02（契約thread順守） | 修正構造（tokenless deferred loaderのMODEL_EXECUTOR再admission）+ red→greenの反転 + TA-AC-03の緑実行 | — |
-| TA-AC-03（繰り返しでsignature不在） | (a) 決定論的窓再構成test（green）: 障害モードであるdefer経路を毎回確実に踏み、signature不在とload完了を検証。(b) 実lifecycle: `NovaRestoreCapture{Control,WidgetWindow,UnknownProvider,NoCallbacks}Test` + cross-process StageA/B が実restore → barrier → reloadを各processで実行（local実行 + CI `organizer-instrumentation-issue299-tests` green）。各runのoracleはmodel loaded / capture妥当性であり、wrong-thread・interruptedが起きれば失敗する | **記録済みdeviation**: 単一の「N回restore→signature grep」反復oracleは追加していない。理由: セッション依存レースの反復は違反不在を証明できず、違反モードは決定論的testで直接カバー済み。再open条件: 将来のrestore検証（#287系等）でsignatureが再発した場合、本修正の外に原因を求める前に本Issueを再openする |
+| TA-AC-03（繰り返しでsignature不在・logcat記録） | (a) 決定論的窓再構成testを **3 cycle反復** に拡張（`DEFERRED_WINDOW_CYCLES = 3`）。(b) **logcat不在oracle を test内に追加**: 各cycle完了後、`logcat -d --pid=<pid>` を読み、T4記録の3 signature + `Deferred callback threw` が本processのlogcatに一切出現しないことを検証（修正前のred実行はこれらを出力するため、oracleはredで失敗する）。(c) 実lifecycle: `NovaRestoreCapture{Control,WidgetWindow,UnknownProvider,NoCallbacks}Test` + cross-process StageA/B が実restore → barrier → reloadを実行（local実行 + CI `organizer-instrumentation-issue299-tests` green）。各runのoracleはmodel loaded / capture妥当性であり、wrong-thread・interruptedが起きれば失敗する | ランダムな実restore反復は違反不在を証明できないため、繰り返しは決定論的窓上で実施する形がspec改訂（spec Test oracle / change history参照）で正式な代替oracleとされた。再open条件: 将来のrestore検証（#287系等）でsignatureが再発した場合、本修正の外に原因を求める前に本Issueを再openする |
 | TA-AC-04（reload完了・workspace使用可能） | Nova restore lanes（barrier到達後のmodel loaded / capture妥当性、#299のbarrier定義と同一signal）+ 本testのbind到達・model loaded | — |
 | TA-AC-05（assertion保存） | diff review（修正はdispatchのみ、assertion・catch不変）。独立監査が再確認 | — |
 | TA-AC-06（regression + device evidence） | 本testのCI接続（shared-writer lane）+ emulator実行記録（本assessment §2、CI run） | emulator red/greenのlocal実行は実装者reportであり、独立監査はCI実行と静的確認に基づく（audit記録に記載） |

@@ -201,7 +201,12 @@ And 修正・検証はassertionの弱化や例外の握り潰しによって成�
   main thread / restore threadのそれぞれ）へ明示的にdispatchする形で行われる。
 - [ ] TA-AC-03: 繰り返しのrestore/reload検証で、`Cache accessed on wrong thread`、
   `Can't create handler inside Thread[NovaBackupRestore]`、workspace loading中断が
-  一度も発生しない。
+  一度も発生しない。検証は次の双方で構成する: (a) 決定論的deferral窓（restore-family
+  lease解放thread上へのdeferred drain）の反復サイクルと、そのlogcatに対する3
+  signature不在の機械検証（2026-09-15のreviewで正規化。実lifecycleのセッション依存
+  レースの反復は違反不在を証明できないため）。(b) 実restore/reload lifecycleを通る
+  Nova restore instrumentation laneの緑（`NovaRestoreCapture*Test` + cross-process
+  stage、#299のbarrier定義による完了観測を含む）。
 - [ ] TA-AC-04: restore後のworkspace/model reloadが正常に完了し、workspaceが使用可能
   になる。検証はrestore reload completion barrierの完了を待って行う（barrier前の
   一時状態を完了扱いしない。#299のbarrier定義と同一の観測signal）。
@@ -217,7 +222,7 @@ And 修正・検証はassertionの弱化や例外の握り潰しによって成�
 |---|---|
 | TA-AC-01 | 再現実行時のlogcat/stack証跡と、特定されたcall chainの記録（plan.md / `docs/assessment/issue-298-<slug>.md` / PR証跡） |
 | TA-AC-02 | 特定chainに対する修正の構造的確認（thread hopの明示）+ TA-AC-03のruntime evidence |
-| TA-AC-03 | emulator/実機での繰り返しrestore検証。logcatに3 signatureが不在であることの記録。可能ならinstrumentation assertion |
+| TA-AC-03 | (a) 決定論的deferral窓test（`RestoreLeaseDeferredLoaderThreadAffinityTest`、反復サイクル + in-test logcat 3 signature不在oracle）のgreen、(b) emulator/実機での実restore/reload lane（`NovaRestoreCapture*Test` + cross-process stage）のgreen。logcatに3 signatureが不在であることの記録 |
 | TA-AC-04 | barrier完了後のworkspace表示とmodel reload完了の確認（#168の `NovaRestoreGridApplicationTest`、#299の `NovaRestoreCapture*Test` harness系instrumentation seamの拡張を含む） |
 | TA-AC-05 | assertion箇所が削除・弱化されていないことのdiff reviewと、テストでの契約保持確認 |
 | TA-AC-06 | 追加したautomated regression + emulator/実機検証の実行記録 |
@@ -263,3 +268,13 @@ And 修正・検証はassertionの弱化や例外の握り潰しによって成�
   MODEL_EXECUTORへ手渡して再admissionする形で `LoaderTask` に実装
   （ModelWriterの既存規律と同一）。exactなHandler生成siteは修正により障害窓ごと
   消滅するため事後特定は不能（chain全体の排除でTA-AC-02を満たす）。
+- 2026-09-15: PR #319 review（P1/P2）を反映。TA-AC-01について、Handler signature
+  （`Can't create handler inside Thread[NovaBackupRestore]`）の発生源を確定:
+  観測buildに対するapp側全数sweepでrestore threadから到達可能な無引数Handler生成は
+  存在せず、修正前コードの決定論的red実行（item有り・空workspaceの両形状）で
+  deferred窓がicon cache assertionの先発火によりHandler生成点へ到達しないことが
+  実証されたため、出所はframework内部のHandler生成とその前提であるrestore thread
+  実行chain（旧sync dispatch＝#299で除去、deferred drain＝本PRで除去）と記録
+  （`docs/assessment/issue-298-wrong-thread-restore-reload.md` §1.2）。TA-AC-03は
+  Test oracleを改訂し、決定論的deferral窓の反復サイクル + in-test logcat 3
+  signature不在oracleを正式な代替oracleとして採用（実lifecycle lanesと併用）。
