@@ -35,6 +35,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInstaller;
 import android.content.pm.ShortcutInfo;
+import android.os.Looper;
 import android.os.UserHandle;
 import android.text.TextUtils;
 import android.util.Log;
@@ -409,7 +410,9 @@ public class LauncherModel implements InstallSessionTracker.Callback {
      * operation on the UI thread and owns the callback lifecycle.
      */
     public boolean startLoaderWithoutCallbacks() {
-        Preconditions.assertUIThread();
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            throw new IllegalStateException("startLoaderWithoutCallbacks must run on the UI thread");
+        }
         return startLoader(new Callbacks[0], true);
     }
 
