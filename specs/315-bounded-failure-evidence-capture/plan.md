@@ -21,19 +21,25 @@
     `skipped_budget_exhausted=true` を file/manifest に記録して最終処理へ進む。
   - job log: `capture start: <name>` / `capture end: <name> status=<s> elapsed=<n> timed_out=<b> bytes=<n>`。
   - artifact: 既存の各 `<name>.txt` + 新規 `capture-manifest.tsv`。exit code は常に 0 を維持。
-  - 出力 cap: 一時 file へ受けてから byte cap を適用し、`[truncated ...]` を追記。
+  - 出力 bounded 化（PR #316 review P2 対応、producer 側）: coreutils path は
+    `timeout ... "$@" 2>&1 | head -c "$MAX_BYTES"` でパイプ消費、fallback path は
+    FIFO + `head -c` 消費者で、いずれも上限到達で producer が SIGPIPE（status 141）で
+    停止し、一時ファイルは cap 超えに成長しない。`output_truncated` を file/manifest/log に記録。
     logcat は `-t "$CAPTURE_LOGCAT_LINES"` で直近行数に制限。
+    注: 内部 budget は capture ループの上限であり、command 終了後の file 追記は cap 済み
+    （≤2MiB、ms 級）。wall-clock の最终硬上限は workflow step の `timeout --kill-after=30 300`。
 - `.github/workflows/ci.yml`
   - Issue #52/#53 の capture step の `run` を `timeout --kill-after=30 300` でラップ
     （script 内部 budget 150s に対する外側の绝对上限。GHA は step timeout を持たないため）。
   - `if: failure()` / `continue-on-error: true` / upload step は変更しない。
 - `tools/ci/test_capture_emulator_failure_evidence.sh`
-  - fake adb に `HANG_PATTERNS`（マッチする command で sleep）を追加。
-  - シナリオ追加:
+  - fake adb に `HANG_PATTERNS`（マッチで sleep）と `BIG_PATTERNS`（マッチで約200MBストリーム）を追加。
+  - シナリオ:
     1. 既存: 全 command 応答 + 1 件 exit 7（回帰維持）
-    2. hang 1 件: 個別 timeout で打ち切り、`timed_out=true` 記録、後続実行、wall clock 上限
-    3. hang 複数 + 短い budget: 途中スキップ（`skipped_budget_exhausted=true`）、
-       README/manifest あり、exit 0、総時間 bounded
+    2. hang 1 件: 個別 timeout で打ち切り、`timed_out=true` 記録、後続実行、wall ≤ 20s（timeout=3s）
+    3. hang 複数 + 短い budget(6s): 途中スキップ記録、partial artifact、exit 0、wall ≤ 15s
+    4. 巨大出力 1 件: producer 側 cap で `output_truncated=true`、file ≤ cap+overhead、
+       evidence dir ≤ 2MiB、後続実行、wall ≤ 20s
 - 検証 command: `bash tools/ci/test_capture_emulator_failure_evidence.sh`（ローカル: `timeout` 無し
   = fallback path、CI: `validate-repo-contract` job = timeout path の両方）。
 

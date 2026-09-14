@@ -28,9 +28,11 @@ failure-time diagnostics が「失敗原因と独立に必ず終了する bounde
 - capture helper の各 adb/dumpsys 呼び出しへの hard timeout と、timeout 発生時の記録
 - script 全体の実行時間 budget と、budget 超過以降の command のスキップ記録
 - 各 capture の開始・終了・elapsed・timed_out の job log / manifest への出力
-- logcat 行数制限と 1 file あたり出力バイト上限
+- logcat 行数制限と 1 file あたり出力バイト上限を **producer 側** で適用する
+  （無制限な一時ファイルを作らず、上限到達で dumper 自体を SIGPIPE で停止する）
 - workflow の capture step 外側にも `timeout` で绝对上限を置く
-- fake-`adb` smoke test への hung command 回帰契約の追加
+  （内部 budget は capture ループの上限であり、step 外側 timeout が wall-clock の最终 backstop）
+- fake-`adb` smoke test への hung command / 巨大出力 command の回帰契約の追加
 
 ## Non-goals
 
@@ -71,15 +73,17 @@ And capture の成否が元の test failure の semantics を上書きしない
 
 ### Scenario: 巨大出力
 
-Given `dumpsys` や `logcat` が巨大な出力を返す
+Given `dumpsys dropbox` や無限出力する service が巨大なストリームを返す
 When capture する
-Then logcat は直近行数に制限される
-And 1 file あたりの保存量は既定上限（2 MiB）で切り捨てられ、truncation が記録される
+Then 出力は producer 側のバイト上限で打ち切られ、一時ファイルは上限超えに成長しない
+And 打ち切られた command は `output_truncated=true` として file・manifest・job log に記録される
+And 後続の capture は実行される
+And logcat は直近行数に制限される
 
 ## Data and state
 
 - artifact directory 内の file は best-effort snapshot。永続化・DB 影響なし。
-- `capture-manifest.tsv` に command 名・status・elapsed・timed_out・skipped を集約する。
+- `capture-manifest.tsv` に command 名・status・elapsed・timed_out・output_truncated・outcome を集約する。
 - migration / layout とは無関係。
 
 ## Permissions, privacy, and security
@@ -103,7 +107,7 @@ And 1 file あたりの保存量は既定上限（2 MiB）で切り捨てられ�
 
 | AC | Evidence |
 |---|---|
-| AC-315-01..04 | `tools/ci/test_capture_emulator_failure_evidence.sh` の hang / budget シナリオ（CI job `validate-repo-contract`） |
+| AC-315-01..04 | `tools/ci/test_capture_emulator_failure_evidence.sh` の hang / budget / 巨大出力シナリオ（CI job `validate-repo-contract`）。wall-clock oracle は設定値に比例する上限（timeout=3s→≤20s、budget=6s→≤15s）と保存バイト上限（cap+header 以内、dir≤2MiB）を照合 |
 | AC-315-05 | 同上 smoke test が `ci.yml` の gate で実行され pass すること |
 | AC-315-06 | smoke test の既存成功シナリオ維持 + ci.yml diff レビュー |
 
@@ -114,3 +118,4 @@ And 1 file あたりの保存量は既定上限（2 MiB）で切り捨てられ�
 ## Change history
 
 - 2026-09-14: Draft created for #315（Issue 本文の要件・AC を正本化）。
+- 2026-09-14: PR #316 review P2 対応。出力上限を保存後 truncation から producer 側 cap（FIFO/パイプ + SIGPIPE）へ変更し、巨大出力シナリオと比例 wall-clock oracle を spec に反映。

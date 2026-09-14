@@ -9,14 +9,15 @@
 # The caller runs this only from a failed emulator job. The services queried
 # here are the same ones suspected of stalling during a natural failure
 # (Issue #304), so every adb/dumpsys call is a bounded observation: a hard
-# per-command timeout, an overall wall-budget deadline, and job-log plus
-# artifact records for timeouts and skips. The script always exits 0 and
-# leaves whatever partial files it produced in an uploadable state.
+# per-command timeout, a production-side output cap, an overall wall-budget
+# deadline, and job-log plus artifact records for timeouts, truncations and
+# skips. The script always exits 0 and leaves whatever partial files it
+# produced in an uploadable state.
 #
 # Tunables (env):
 #   CAPTURE_COMMAND_TIMEOUT_SECONDS  hard timeout per command (default 15)
 #   CAPTURE_TOTAL_BUDGET_SECONDS     wall budget for the whole script (default 150)
-#   CAPTURE_MAX_BYTES_PER_FILE       stored output cap per artifact file (default 2 MiB)
+#   CAPTURE_MAX_BYTES_PER_FILE       byte cap applied to each command's output (default 2 MiB)
 #   CAPTURE_LOGCAT_LINES             recent logcat lines to keep per buffer (default 5000)
 
 set -u
@@ -38,10 +39,11 @@ TIMEOUT_BIN="$(command -v timeout || true)"
 START_TS="$(date +%s)"
 DEADLINE=$((START_TS + TOTAL_BUDGET))
 MANIFEST="$OUTPUT_DIR/capture-manifest.tsv"
-printf 'name\tcommand_exit_status\telapsed_seconds\ttimed_out\toutcome\n' >"$MANIFEST"
+printf 'name\tcommand_exit_status\telapsed_seconds\ttimed_out\toutput_truncated\toutcome\n' >"$MANIFEST"
 
 TOTAL_CAPTURED=0
 TOTAL_TIMED_OUT=0
+TOTAL_TRUNCATED=0
 TOTAL_SKIPPED=0
 
 write_header() {
@@ -56,65 +58,100 @@ write_header() {
     } >"$OUTPUT_DIR/$name.txt"
 }
 
-# run_with_watchdog <limit-seconds> <output-file> <command...>
-# Kills the command KILL-style after the limit and signals the timeout by
-# setting the global WATCHDOG_TIMED_OUT flag instead of guessing from status.
-WATCHDOG_TIMED_OUT=false
-run_with_watchdog() {
-    local limit="$1" output_file="$2"
-    shift 2
-    local flag="${TMPDIR:-/tmp}/capture-timeout-flag.$$"
-    rm -f "$flag"
-    "$@" >"$output_file" 2>&1 &
-    local cmd_pid=$!
-    (
-        sleep "$limit"
-        if kill -0 "$cmd_pid" 2>/dev/null; then
-            touch "$flag"
-            kill -9 "$cmd_pid" 2>/dev/null
-        fi
-    ) &
-    local watchdog_pid=$!
-    CAPTURE_STATUS=0
-    wait "$cmd_pid" || CAPTURE_STATUS=$?
-    kill "$watchdog_pid" 2>/dev/null
-    wait "$watchdog_pid" 2>/dev/null
-    WATCHDOG_TIMED_OUT=false
-    if [ -e "$flag" ]; then
-        WATCHDOG_TIMED_OUT=true
-    fi
-    rm -f "$flag"
-}
-
-# append_capped_output <temp-file> <artifact-file>
-append_capped_output() {
-    local tmp_file="$1" artifact_file="$2"
-    local bytes
-    bytes="$(wc -c <"$tmp_file" | tr -d '[:space:]')"
-    if [ "${bytes:-0}" -gt "$MAX_BYTES" ]; then
-        head -c "$MAX_BYTES" "$tmp_file" >>"$artifact_file"
-        printf '\n[output truncated: kept %s of %s bytes]\n' "$MAX_BYTES" "$bytes" >>"$artifact_file"
-    elif [ "${bytes:-0}" -gt 0 ]; then
-        cat "$tmp_file" >>"$artifact_file"
-    fi
-}
-
 record_skip() {
     local name="$1"
     shift
     write_header "$name" "$@"
     {
         printf 'timed_out=false\n'
+        printf 'output_truncated=false\n'
         printf 'skipped_budget_exhausted=true\n'
         printf '\n[capture skipped: overall budget of %ss exhausted before this command]\n' "$TOTAL_BUDGET"
     } >>"$OUTPUT_DIR/$name.txt"
     printf 'capture skip: name=%s budget_exhausted=true\n' "$name"
-    printf '%s\t-\t0\tfalse\tskipped\n' "$name" >>"$MANIFEST"
+    printf '%s\t-\t0\tfalse\tfalse\tskipped\n' "$name" >>"$MANIFEST"
     TOTAL_SKIPPED=$((TOTAL_SKIPPED + 1))
 }
 
-# run_bounded <name> <command...> executes one capture with the hard timeout
-# and overall budget applied, records evidence, and never fails the script.
+# run_with_watchdog <limit-seconds> <output-file> <command...>
+# Fallback execution path when coreutils timeout is unavailable. The command
+# writes to a FIFO consumed by head -c, so the byte cap is applied on the
+# production side (the writer is stopped with SIGPIPE once the cap is hit)
+# and the output file never grows beyond MAX_BYTES. A watchdog kills the
+# command KILL-style after the limit and signals the timeout by setting
+# WATCHDOG_TIMED_OUT instead of guessing from the exit status.
+# Sets CAPTURE_STATUS and WATCHDOG_TIMED_OUT.
+WATCHDOG_TIMED_OUT=false
+run_with_watchdog() {
+    local limit="$1" output_file="$2"
+    shift 2
+    local flag="${TMPDIR:-/tmp}/capture-timeout-flag.$$"
+    local fifo="${TMPDIR:-/tmp}/capture-fifo.$$"
+    rm -f "$flag" "$fifo"
+    if ! mkfifo "$fifo"; then
+        # Degrade to direct redirection only if FIFO creation is impossible.
+        "$@" >"$output_file" 2>&1 &
+        local cmd_pid=$!
+        (
+            sleep "$limit"
+            if kill -0 "$cmd_pid" 2>/dev/null; then
+                touch "$flag"
+                kill -9 "$cmd_pid" 2>/dev/null
+            fi
+        ) &
+        local watchdog_pid=$!
+        CAPTURE_STATUS=0
+        wait "$cmd_pid" || CAPTURE_STATUS=$?
+        kill "$watchdog_pid" 2>/dev/null
+        wait "$watchdog_pid" 2>/dev/null
+        WATCHDOG_TIMED_OUT=false
+        [ -e "$flag" ] && WATCHDOG_TIMED_OUT=true
+        rm -f "$flag"
+        return 0
+    fi
+    head -c "$MAX_BYTES" <"$fifo" >"$output_file" 2>/dev/null &
+    local head_pid=$!
+    "$@" >"$fifo" 2>&1 &
+    local cmd_pid=$!
+    (
+        sleep "$limit"
+        if kill -0 "$cmd_pid" 2>/dev/null; then
+            touch "$flag"
+            # Also kill the producer's children so no orphan keeps the FIFO
+            # write end open and the cap reader can see EOF promptly.
+            pkill -9 -P "$cmd_pid" 2>/dev/null || true
+            kill -9 "$cmd_pid" 2>/dev/null
+        fi
+    ) &
+    local watchdog_pid=$!
+    CAPTURE_STATUS=0
+    wait "$cmd_pid" || CAPTURE_STATUS=$?
+    # If pkill was unavailable, an orphan could still hold the FIFO write
+    # end; poll briefly for the cap reader to finish, then stop it. Data
+    # already read into the output file is preserved.
+    local waited=0
+    while kill -0 "$head_pid" 2>/dev/null; do
+        sleep 0.1
+        waited=$((waited + 1))
+        if [ "$waited" -ge 40 ]; then
+            break
+        fi
+    done
+    kill -9 "$head_pid" 2>/dev/null
+    wait "$head_pid" 2>/dev/null
+    kill "$watchdog_pid" 2>/dev/null
+    wait "$watchdog_pid" 2>/dev/null
+    WATCHDOG_TIMED_OUT=false
+    [ -e "$flag" ] && WATCHDOG_TIMED_OUT=true
+    rm -f "$flag" "$fifo"
+    return 0
+}
+
+# run_bounded <name> <command...> executes one capture under the hard timeout
+# and the overall budget. Output is bounded on the production side via head -c
+# (or the FIFO consumer above), so an endless or enormous dumper is cut off
+# with SIGPIPE instead of growing an unbounded temp file. Nothing here fails
+# the script; every result is recorded as evidence.
 run_bounded() {
     local name="$1"
     shift
@@ -137,8 +174,8 @@ run_bounded() {
     local start elapsed timed_out=false
     start="$(date +%s)"
     if [ -n "$TIMEOUT_BIN" ]; then
-        CAPTURE_STATUS=0
-        "$TIMEOUT_BIN" -k 2 "$limit" "$@" >"$tmp_file" 2>&1 || CAPTURE_STATUS=$?
+        "$TIMEOUT_BIN" -k 2 "$limit" "$@" 2>&1 | head -c "$MAX_BYTES" >"$tmp_file"
+        CAPTURE_STATUS="${PIPESTATUS[0]}"
         # 124 = TERM after timeout, 137 = KILL after --kill-after escalation.
         if [ "$CAPTURE_STATUS" -eq 124 ] || [ "$CAPTURE_STATUS" -eq 137 ]; then
             timed_out=true
@@ -151,28 +188,42 @@ run_bounded() {
     fi
     elapsed=$(( $(date +%s) - start ))
 
+    # 141 = SIGPIPE from reaching the byte cap; the size check also covers
+    # output that ended exactly at the cap on the FIFO path.
+    local output_truncated=false
+    local bytes
+    bytes="$(wc -c <"$tmp_file" | tr -d '[:space:]')"
+    if [ "$CAPTURE_STATUS" -eq 141 ] || [ "${bytes:-0}" -ge "$MAX_BYTES" ]; then
+        output_truncated=true
+        TOTAL_TRUNCATED=$((TOTAL_TRUNCATED + 1))
+    fi
+    if [ "${bytes:-0}" -eq 0 ] && [ "$timed_out" = true ]; then
+        printf '[command produced no output before being killed at %ss]\n' "$limit" >"$tmp_file"
+    elif [ "$output_truncated" = true ]; then
+        printf '\n[output truncated at the %s byte production-side cap]\n' "$MAX_BYTES" >>"$tmp_file"
+    fi
+    cat "$tmp_file" >>"$OUTPUT_DIR/$name.txt"
+    rm -f "$tmp_file"
+
     {
         printf 'timeout_seconds=%s\n' "$limit"
         printf 'elapsed_seconds=%s\n' "$elapsed"
         printf 'timed_out=%s\n' "$timed_out"
+        printf 'output_truncated=%s\n' "$output_truncated"
+        printf 'bytes_written=%s\n' "$bytes"
         printf 'command_exit_status=%s\n' "$CAPTURE_STATUS"
         printf '\n'
     } >>"$OUTPUT_DIR/$name.txt"
-    append_capped_output "$tmp_file" "$OUTPUT_DIR/$name.txt"
-    if [ "$timed_out" = true ] && [ ! -s "$tmp_file" ]; then
-        printf '[command produced no output before being killed at %ss]\n' "$limit" >>"$OUTPUT_DIR/$name.txt"
-    fi
-    rm -f "$tmp_file"
 
     local outcome=captured
     if [ "$timed_out" = true ]; then
         outcome=timed_out
         TOTAL_TIMED_OUT=$((TOTAL_TIMED_OUT + 1))
     fi
-    printf 'capture end: name=%s status=%s elapsed=%s timed_out=%s\n' \
-        "$name" "$CAPTURE_STATUS" "$elapsed" "$timed_out"
-    printf '%s\t%s\t%s\t%s\t%s\n' \
-        "$name" "$CAPTURE_STATUS" "$elapsed" "$timed_out" "$outcome" >>"$MANIFEST"
+    printf 'capture end: name=%s status=%s elapsed=%s timed_out=%s truncated=%s bytes=%s\n' \
+        "$name" "$CAPTURE_STATUS" "$elapsed" "$timed_out" "$output_truncated" "$bytes"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$name" "$CAPTURE_STATUS" "$elapsed" "$timed_out" "$output_truncated" "$outcome" >>"$MANIFEST"
     TOTAL_CAPTURED=$((TOTAL_CAPTURED + 1))
     return 0
 }
@@ -232,14 +283,15 @@ capture_serial surfaceflinger-state shell dumpsys SurfaceFlinger
     printf 'total_budget_seconds=%s\n' "$TOTAL_BUDGET"
     printf 'max_bytes_per_file=%s\n' "$MAX_BYTES"
     printf 'logcat_lines_per_buffer=%s\n' "$LOGCAT_LINES"
-    printf 'captures_attempted=%s timed_out=%s skipped=%s\n' \
-        "$((TOTAL_CAPTURED + TOTAL_SKIPPED))" "$TOTAL_TIMED_OUT" "$TOTAL_SKIPPED"
+    printf 'captures_attempted=%s timed_out=%s truncated=%s skipped=%s\n' \
+        "$((TOTAL_CAPTURED + TOTAL_SKIPPED))" "$TOTAL_TIMED_OUT" "$TOTAL_TRUNCATED" "$TOTAL_SKIPPED"
     printf 'elapsed_seconds=%s\n' "$(( $(date +%s) - START_TS ))"
-    printf '\nFiles are best-effort snapshots; command failures, timeouts, and budget skips\n'
-    printf 'are recorded per file and in capture-manifest.tsv.\n'
+    printf '\nFiles are best-effort snapshots; command failures, timeouts, production-side\n'
+    printf 'output truncations, and budget skips are recorded per file and in\n'
+    printf 'capture-manifest.tsv.\n'
 } >"$OUTPUT_DIR/README.txt"
 
-printf 'capture summary: captured=%s timed_out=%s skipped=%s elapsed=%ss\n' \
-    "$TOTAL_CAPTURED" "$TOTAL_TIMED_OUT" "$TOTAL_SKIPPED" "$(( $(date +%s) - START_TS ))"
+printf 'capture summary: captured=%s timed_out=%s truncated=%s skipped=%s elapsed=%ss\n' \
+    "$TOTAL_CAPTURED" "$TOTAL_TIMED_OUT" "$TOTAL_TRUNCATED" "$TOTAL_SKIPPED" "$(( $(date +%s) - START_TS ))"
 
 exit 0
