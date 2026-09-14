@@ -342,6 +342,7 @@ jobs:
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.backup.NovaRestoreCaptureControlTest
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.backup.NovaRestoreCaptureWidgetWindowTest
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.backup.NovaRestoreCaptureUnknownProviderTest
+            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.backup.NovaRestoreCaptureNoCallbacksTest
             # Gradle uninstalls both APKs (wiping app data) after each connected
             # run, so the cross-process pair installs them manually and drives
             # the two stages with `am instrument` + force-stop: stage A restores

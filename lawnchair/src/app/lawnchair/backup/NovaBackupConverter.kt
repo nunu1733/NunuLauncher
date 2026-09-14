@@ -230,41 +230,35 @@ class NovaBackupConverter(
                     val dbController = ModelDbController(context)
                     RestoreDbTask.performRestore(context, dbController)
                     // Issue #299 / CI-AC-02 restore completion barrier: the
-                    // dispatched reload generation runs only after this lease
-                    // is released (loaders defer behind the restore-family
-                    // lease), so the completion token is registered here and
-                    // awaited after the use block below. Until that generation
-                    // commits, the authoritative organizer capture stays
-                    // fail-closed on the pending widget rows the restore
-                    // commits. When the launcher model is inactive (no
-                    // callbacks) there is no reload to observe; the next
-                    // launcher activation load is the repair generation and it
-                    // completes before any authoritative capture can be
-                    // requested (capture requires the active model).
-                    val app = LauncherAppState.INSTANCE.getNoCreate()
-                    // Issue #299 / CI-AC-02 restore completion barrier: the
                     // token attaches to the reload generation dispatched here;
                     // the generation itself runs only after this lease is
                     // released (loaders defer behind the restore-family
                     // lease), so the await happens after the use block below.
-                    // Until that generation commits, the authoritative
-                    // organizer capture stays fail-closed on the pending
-                    // widget rows the restore commits. When the launcher model
-                    // is inactive (no callbacks) no reload can run; the next
-                    // launcher activation load is the repair generation and it
-                    // completes before any authoritative capture can be
-                    // requested (capture requires the active model).
-                    reloadBarrier = if (app != null && app.getModel().hasCallbacks()) {
+                    // The barrier dispatches the tokenless repair reload even
+                    // without bound Launcher callbacks
+                    // (dispatchRestoreReload routes an empty callback list
+                    // through startLoaderWithoutCallbacks), so the
+                    // restore-correlated generation completes and the
+                    // workspace is capture-valid before the restore reports
+                    // completion in every case.
+                    val app = LauncherAppState.INSTANCE.getNoCreate()
+                    reloadBarrier = if (app != null) {
                         RestoreReloadBarrier(app, RESTORE_RELOAD_COMPLETION_TIMEOUT_MS).also { it.dispatch() }
                     } else {
                         null
                     }
                     if (reloadBarrier == null) {
+                        // Baseline fallback: no launcher application, no
+                        // model, no reload to observe.
                         RestoreDbTask.reloadAfterRestore(context)
                     }
 
                     pinImportedDeepShortcuts(importedDeepShortcuts)
                 }
+            // The completion barrier is mandatory whenever the model exists
+            // (dispatched above iff `app != null`): the restore must not
+            // report completion without its restore-correlated repair
+            // generation having committed.
             reloadBarrier?.awaitCompletion()
         } finally {
             tempDir.deleteRecursively()

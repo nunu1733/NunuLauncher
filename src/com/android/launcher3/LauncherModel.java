@@ -597,10 +597,6 @@ public class LauncherModel implements InstallSessionTracker.Callback {
     public void dispatchRestoreReload(long requestId, @NonNull Runnable completed,
             @NonNull Runnable cancelled) {
         RestoreReloadRequest token = new RestoreReloadRequest(requestId, completed, cancelled);
-        if (!hasCallbacks()) {
-            token.cancelled.run();
-            return;
-        }
         RestoreReloadRequest superseded;
         synchronized (mLock) {
             stopLoader();
@@ -609,7 +605,16 @@ public class LauncherModel implements InstallSessionTracker.Callback {
             mModelLoaded = false;
         }
         if (superseded != null) superseded.cancelled.run();
-        startLoader();
+        // Issue #299: the restore's repair generation must run even without a
+        // bound Launcher UI (e.g. a settings-only restore), so an empty
+        // callback list starts the tokenless loader via
+        // startLoaderWithoutCallbacks instead of deferring it to the next
+        // activation.
+        if (hasCallbacks()) {
+            startLoader();
+        } else {
+            startLoaderWithoutCallbacks();
+        }
         // Issue #299: callbacks can disappear between the hasCallbacks check
         // and startLoader's own callback re-fetch, in which case no loader
         // generation is created and this token would pend forever. If the
