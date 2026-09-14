@@ -163,7 +163,7 @@ E LayoutWriteCoordinator: java.lang.IllegalStateException: Cache accessed on wro
 - DBは `LoaderTransaction` 内の書き込みがtransactionとしてguardされるため、
   loader自体は読み取り主体であり、#299 assessmentが記録したような「修復sanitizeの
   部分適用」は本違反経路ではsanitizeが走る前に死ぬか、sanitize内のper-item
-  catchで記録が残る形で发生する。恒常化の本体は#299が別に特定したcapture側の
+  catchで記録が残る形で発生する。恒常化の本体は#299が別に特定したcapture側の
   経路であり、本Issueのchainとは分離して扱う（#299/#298の因果は依然未確立）。
 
 ## 4. Decision gate記録
