@@ -2,7 +2,8 @@
 
 > Issue: #315
 > Spec: [spec.md](./spec.md)
-> Status: proposed（実装 PR #<TBD> と同時）
+> Status: implemented（PR #316 = merge commit `2af57b3ad8b905a3f81147bf0f8aa4b3e90fbfc1`、
+> head `a50301b76567f38476f049038ce051e139851a7d`。検証記録は PR #316 の packet comments 参照）
 
 ## 変更 module / seam
 
