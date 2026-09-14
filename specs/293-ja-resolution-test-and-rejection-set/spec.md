@@ -2,7 +2,7 @@
 issue: "#293"
 status: draft
 requirements: []
-updated: 2026-09-13
+updated: 2026-09-14
 ---
 
 # issue #228 follow-up: ja解決test拡張とspec 13 `PreWriteRejection` 追記
@@ -45,7 +45,7 @@ PR #289 (issue #228) のmerge前監査
 
 `tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationPreferencesInstrumentationTest.kt`
 の `japaneseResourcesResolveEveryConcretePreviewString` へ、次のissue #228由来
-リソースを追加する (2026-09-13時点、baseline `c5274b5d0d1a4cd3a5cf55ef8dcadb84283a3cda`
+リソースを追加する (2026-09-14時点、baseline `397d3fd95764878366e7c9e5ce41ab65e6f3f9ca`
 で再確認済みの `lawnchair/res/values/strings.xml`
 `<!-- Issue #228: missing-app selection and Add rows -->` ブロックと
 `unplaced_strategy_scope` / `selection_stale` / `candidate_unresolved` の3件を含む)。
@@ -107,7 +107,7 @@ plurals (2件、既存のplurals assertionパターンへ追加):
 ## Constraints
 
 - ja値がenと等価なリソースを `assertNotEquals` パターンへ追加しない
-  (2026-09-13時点 (baseline `c5274b5d0d1a4cd3a5cf55ef8dcadb84283a3cda`) で
+  (2026-09-14時点 (baseline `397d3fd95764878366e7c9e5ce41ab65e6f3f9ca`) で
   18 stringsはすべてja≠enを再確認済み。将来の翻訳変更で
   衝突が生じた場合は、当該keyのassert形式を既存pluralsの「解決すること」
   assertionへ寄せ、en fallback検出を弱めない)。
@@ -128,3 +128,15 @@ plurals (2件、既存のplurals assertionパターンへ追加):
   L1606-1748へ移動、#228由来リソース・spec 13・`Results.kt`・
   `ApplyResultContractTest.kt`・spec 228・監査記録に影響する変更はなし。
   挿入位置の記載を宣言順序に対してより正確に整理 (契約内容の変更なし)。
+- 2026-09-14: baseline `origin/main` = `397d3fd95764878366e7c9e5ce41ab65e6f3f9ca`
+  で再入場検証。前回baseline以降の54 commit (#299/#298/#315系のrestore
+  capture・diagnostics evidence work) により `specs/299-*` / `specs/298-*` /
+  `specs/315-*` とruntimeの一部が追加・変更されたが、#228由来20リソース
+  (18 stringsはja≠enのまま、2 pluralsはen `one`/`other` vs ja `other`)、
+  `japaneseResourcesResolveEveryConcretePreviewString` (L1606-1748、内容不変、
+  #228keyは依然0件)、spec 13閉集合 (L255-261、`CANDIDATE_UNAVAILABLE` 未記載のまま)、
+  `Results.kt` (L83)、`ApplyResultContractTest.kt` (L72)、spec 228 change
+  historyの#293委譲、監査記録 §5 はすべて不変。`.github/workflows/ci.yml` は
+  #299用 `organizer-instrumentation-issue299-tests` laneの追加のみで、
+  `organizer-instrumentation-issue52-tests` laneと `final-status` gate構成は不変。
+  契約内容の変更なし。

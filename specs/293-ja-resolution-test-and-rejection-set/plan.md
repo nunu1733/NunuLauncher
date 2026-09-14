@@ -2,13 +2,13 @@
 issue: "#293"
 status: draft
 spec: ./spec.md
-updated: 2026-09-13
+updated: 2026-09-14
 ---
 
 # Plan: issue #228 follow-up (ja解決test拡張とspec 13 `PreWriteRejection` 追記)
 
-> Baseline: `origin/main` = `c5274b5d0d1a4cd3a5cf55ef8dcadb84283a3cda`
-> (2026-09-13再検証時点。初版draft時のbaselineは
+> Baseline: `origin/main` = `397d3fd95764878366e7c9e5ce41ab65e6f3f9ca`
+> (2026-09-14再検証時点。初版draft時のbaselineは
 > `f9afd8bfde121932c0c8ed965225d52a84d86ab4`)。本planは spec.md (**draft**)
 > に対応し、記載の実装状態はすべてbaseline上での実確認に基づく。
 > **実装開始前に再入場検証を行うこと** (spec.mdの参照先がbaseline以降に
@@ -21,7 +21,23 @@ updated: 2026-09-13
 > spec 13、`Results.kt`、`ApplyResultContractTest.kt`、spec 228、
 > 監査記録 §5 に影響する変更はなし。`.github/workflows/ci.yml` は #304系で
 > 変更されているが `organizer-instrumentation-issue52-tests` laneと
-> `final-status` gate構成は不変。以下の行番号は現baseline (`c5274b5d0d`) 基準。
+> `final-status` gate構成は不変。
+>
+> 2026-09-14再入場検証結果: 前回baseline (`c5274b5d0d`) 以降の54 commit
+> (#299 restore capture、#298 reload thread affinity、#315 failure evidence
+> capture) により `specs/299-*` / `specs/298-*` / `specs/315-*`、runtime
+> (`NovaBackupConverter.kt`、`LayoutApplicationModule.kt`、`LauncherModel.java`、
+> `LoaderTask.java` 等) および `tests/unit` / `tests/organizer-instrumentation`
+> の一部が変更されたが、いずれも本planの対象file・行番号に影響しない。
+> `japaneseResourcesResolveEveryConcretePreviewString` (L1606-1748)、
+> spec 13閉集合 (L255-261)、`Results.kt` (L83)、`ApplyResultContractTest.kt`
+> (L72)、spec 228 change historyの#293委譲、監査記録 §5 (L101-105) は
+> すべて不変。`.github/workflows/ci.yml` は #299用
+> `organizer-instrumentation-issue299-tests` laneの追加のみで、
+> `organizer-instrumentation-issue52-tests` lane (L432) と `final-status`
+> gate (L662、L672で同laneを包含)、api35 lane (L375) は不変。
+> 以下の行番号は現baseline (`397d3fd0`) 基準
+> (2026-09-14再確認、前回baseline `c5274b5d0d` と同値)。
 
 ## 1. 現状の実装と不足 (baseline確認済み)
 
