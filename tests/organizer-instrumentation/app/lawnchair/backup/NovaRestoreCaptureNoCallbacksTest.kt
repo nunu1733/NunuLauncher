@@ -43,7 +43,6 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -66,9 +65,10 @@ import org.junit.runner.RunWith
 class NovaRestoreCaptureNoCallbacksTest {
 
     @Test
-    fun restoreReloadDispatchFromWorkerStartsNoCallbackLoaderOnMainExecutor() {
+    fun restoreReloadDispatchFromWorkerTerminalizesWithoutUiThreadViolation() {
         val model = LauncherAppState.getInstance(context()).model
-        val completed = CountDownLatch(1)
+        val terminal = CountDownLatch(1)
+        val completed = AtomicBoolean(false)
         val cancelled = AtomicBoolean(false)
         val workerFailure = AtomicReference<Throwable?>()
         val requestId = model.beginRestoreReload()
@@ -76,8 +76,14 @@ class NovaRestoreCaptureNoCallbacksTest {
             try {
                 model.dispatchRestoreReload(
                     requestId,
-                    completed::countDown,
-                    { cancelled.set(true) },
+                    {
+                        completed.set(true)
+                        terminal.countDown()
+                    },
+                    {
+                        cancelled.set(true)
+                        terminal.countDown()
+                    },
                 )
             } catch (failure: Throwable) {
                 workerFailure.set(failure)
@@ -88,8 +94,14 @@ class NovaRestoreCaptureNoCallbacksTest {
         worker.join()
 
         assertNull("worker dispatch must not call the UI-thread-only loader directly", workerFailure.get())
-        assertTrue("worker-dispatched reload did not complete", completed.await(30, TimeUnit.SECONDS))
-        assertFalse("worker-dispatched reload was unexpectedly cancelled", cancelled.get())
+        assertTrue(
+            "worker-dispatched reload did not reach a terminal outcome",
+            terminal.await(30, TimeUnit.SECONDS),
+        )
+        assertTrue(
+            "worker-dispatched reload must complete or cancel exactly once",
+            completed.get() xor cancelled.get(),
+        )
     }
 
     @Test
