@@ -279,27 +279,32 @@ class NovaBackupConverter(
         private val app: LauncherAppState,
         timeoutMillis: Long,
     ) {
+        private data class Attempt(
+            val latch: CountDownLatch = CountDownLatch(1),
+            val outcome: AtomicReference<String> = AtomicReference(""),
+        )
+
         private val model = app.getModel()
         private val deadlineUptimeMillis = SystemClock.uptimeMillis() + timeoutMillis
-        private var latch = CountDownLatch(1)
-        private val outcome = AtomicReference("")
+        private var currentAttempt = Attempt()
         private var currentRequestId = 0L
 
         fun dispatch() {
-            // Fresh latch/outcome per attempt: a superseded generation's
-            // cancelled callback has already fired on the previous pair.
-            latch = CountDownLatch(1)
-            outcome.set("")
-            currentRequestId = model.beginRestoreReload()
+            // Keep callbacks bound to this attempt. A stale cancellation or
+            // completion callback must never signal the next attempt's latch.
+            val attempt = Attempt()
+            currentAttempt = attempt
+            val requestId = model.beginRestoreReload()
+            currentRequestId = requestId
             model.dispatchRestoreReload(
-                currentRequestId,
+                requestId,
                 {
-                    outcome.set(RELOAD_OUTCOME_COMPLETED)
-                    latch.countDown()
+                    attempt.outcome.set(RELOAD_OUTCOME_COMPLETED)
+                    attempt.latch.countDown()
                 },
                 {
-                    outcome.set(RELOAD_OUTCOME_CANCELLED)
-                    latch.countDown()
+                    attempt.outcome.set(RELOAD_OUTCOME_CANCELLED)
+                    attempt.latch.countDown()
                 },
             )
         }
@@ -309,10 +314,20 @@ class NovaBackupConverter(
             while (true) {
                 attempt++
                 val remainingMillis = deadlineUptimeMillis - SystemClock.uptimeMillis()
-                val observed = if (remainingMillis > 0 && latch.await(remainingMillis, TimeUnit.MILLISECONDS)) {
-                    outcome.get()
-                } else {
-                    RELOAD_OUTCOME_TIMEOUT
+                val current = currentAttempt
+                val observed = try {
+                    if (remainingMillis > 0 && current.latch.await(remainingMillis, TimeUnit.MILLISECONDS)) {
+                        current.outcome.get()
+                    } else {
+                        RELOAD_OUTCOME_TIMEOUT
+                    }
+                } catch (interrupted: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    model.cancelRestoreReloadIfCurrent(currentRequestId)
+                    throw IllegalStateException(
+                        "Restore reload wait was interrupted; failing the restore. Retry the restore.",
+                        interrupted,
+                    )
                 }
                 if (observed == RELOAD_OUTCOME_COMPLETED) {
                     Log.i(TAG, "Restore reload completed after $attempt attempt(s); workspace is capture-valid")
@@ -340,15 +355,6 @@ class NovaBackupConverter(
             }
         }
     }
-
-    /**
-     * Issue #299 / CI-AC-02: observes the restore's own reload generation
-     * reaching a settled state (`finishBindingItems` fired and
-     * `LauncherModel.isModelLoaded`). The heuristic carries no generation
-     * identity; its only contract is that repair activity has settled before
-     * the restore reports completion. Null when the launcher app is absent
-     * (baseline fallback: no model, no reload to wait for).
-     */
 
     private fun resolveIconPackLabel(packageName: String): String = try {
         val pm = context.packageManager

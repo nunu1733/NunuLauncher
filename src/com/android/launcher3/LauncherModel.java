@@ -404,7 +404,9 @@ public class LauncherModel implements InstallSessionTracker.Callback {
      * callbacks are bound. The loader-running install-queue flag set here
      * stays paused until a real Launcher binds, matching the existing "the
      * loader runs the next time launcher starts" semantics. Must be called on
-     * the UI thread and only when no callbacks are bound.
+     * the UI thread and only when no callbacks are bound. Restore-specific
+     * callers should use {@link #dispatchRestoreReload}, which schedules this
+     * operation on the UI thread and owns the callback lifecycle.
      */
     public boolean startLoaderWithoutCallbacks() {
         return startLoader(new Callbacks[0], true);
@@ -592,7 +594,9 @@ public class LauncherModel implements InstallSessionTracker.Callback {
      * Issue #299: dispatches the tokenless (sanitize-carrying) reload and
      * observes its terminal outcome with generation identity. Exactly one of
      * {@code completed}/{@code cancelled} runs, on an arbitrary thread, after
-     * the matching generation committed or was superseded/stopped.
+     * the matching generation committed or was superseded/stopped. This
+     * method may be called from a restore worker; loader startup is posted to
+     * the UI thread before this method returns.
      */
     public void dispatchRestoreReload(long requestId, @NonNull Runnable completed,
             @NonNull Runnable cancelled) {
@@ -605,30 +609,33 @@ public class LauncherModel implements InstallSessionTracker.Callback {
             mModelLoaded = false;
         }
         if (superseded != null) superseded.cancelled.run();
-        // Issue #299: the restore's repair generation must run even without a
-        // bound Launcher UI (e.g. a settings-only restore), so an empty
-        // callback list starts the tokenless loader via
-        // startLoaderWithoutCallbacks instead of deferring it to the next
-        // activation.
-        if (hasCallbacks()) {
-            startLoader();
-        } else {
-            startLoaderWithoutCallbacks();
-        }
-        // Issue #299: callbacks can disappear between the hasCallbacks check
-        // and startLoader's own callback re-fetch, in which case no loader
-        // generation is created and this token would pend forever. If the
-        // token is still current and no loader task exists to run it,
-        // terminalize with the cancelled outcome (the barrier re-dispatches
-        // or falls back when the model is inactive).
-        boolean neverStarted = false;
-        synchronized (mLock) {
-            if (mRestoreReloadRequest == token && mLoaderTask == null) {
-                mRestoreReloadRequest = null;
-                neverStarted = true;
+        // Issue #299: startLoaderWithoutCallbacks has a UI-thread precondition.
+        // Schedule both branches there, and keep the token identity check in
+        // the same critical section so a timed-out restore cannot start a
+        // stray repair generation after its request has been cleared.
+        MAIN_EXECUTOR.execute(() -> {
+            boolean neverStarted = false;
+            synchronized (mLock) {
+                if (mRestoreReloadRequest != token) return;
+                // The restore's repair generation must run even without a
+                // bound Launcher UI (e.g. a settings-only restore), so an
+                // empty callback list starts the tokenless loader instead of
+                // deferring it to the next activation.
+                if (hasCallbacks()) {
+                    startLoader();
+                } else {
+                    startLoaderWithoutCallbacks();
+                }
+                // callbacks can disappear between the hasCallbacks check and
+                // startLoader's callback re-fetch. In that case no loader
+                // generation is created and this token must not pend forever.
+                if (mRestoreReloadRequest == token && mLoaderTask == null) {
+                    mRestoreReloadRequest = null;
+                    neverStarted = true;
+                }
             }
-        }
-        if (neverStarted) token.cancelled.run();
+            if (neverStarted) token.cancelled.run();
+        });
     }
 
     /**
