@@ -329,19 +329,12 @@ class NovaBackupConverter(
                             "Retry the restore.",
                     )
                 }
-                // A superseding stop cancelled this generation. Re-dispatch
-                // only while the model is still active; an inactive model can
-                // run no reload, so fall back to the activation-load repair
-                // (documented fallback) instead of busy-looping synchronous
-                // cancellations.
-                if (!model.hasCallbacks()) {
-                    Log.w(
-                        TAG,
-                        "Restore reload was cancelled and the launcher model is inactive; " +
-                            "falling back to the activation-load repair",
-                    )
-                    return
-                }
+                // A superseding stop cancelled this generation. The
+                // re-dispatch starts a fresh repair-carrying generation — with
+                // or without bound callbacks (dispatchRestoreReload routes an
+                // empty callback list through startLoaderWithoutCallbacks) —
+                // so the absolute deadline is the only bound and successful
+                // completion is the only success.
                 Log.w(TAG, "Restore reload attempt $attempt was $observed; re-dispatching")
                 dispatch()
             }
