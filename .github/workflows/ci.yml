@@ -303,11 +303,12 @@ jobs:
 
   # Issue #299 Nova restore -> Organizer capture regression lane. Each scenario
   # class runs in its OWN `am instrument` invocation: the cross-process pair
-  # (Stage A commits the sanitized restored DB without any reload dispatch;
-  # Stage B reads it read-only before model init) requires a fresh process per
-  # stage, and the single-restore-per-process contract keeps reload generations
-  # from overlapping. Verify the procedure note in
-  # docs/assessment/issue-299-nova-restore-capture-invalid.md before changing.
+  # (Stage A commits the sanitized restored DB after its completion barrier
+  # settles the correlated reload; Stage B reads it read-only before model
+  # init) requires a fresh process per stage, and the single-restore-per-process
+  # contract keeps reload generations from overlapping. Verify the procedure
+  # note in docs/assessment/issue-299-nova-restore-capture-invalid.md before
+  # changing.
   organizer-instrumentation-issue299-tests:
     needs: changes
     if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
