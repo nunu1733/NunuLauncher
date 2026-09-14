@@ -221,7 +221,17 @@ Accepted PlanのI-3は「同一手順で成功する場合と失敗する場合�
   `cancelRestoreReloadIfCurrent`でpending tokenをidentity付きでclearしてからthrow。
   同期cancel hot-loopはre-dispatch一本化で排除。専用token lifecycle testは
   instrument processのauto-load非決定性で断念。
-- Re-review（2026-09-14、`e53ba22cb3`対象）のMajor（inactive-model fallback意味論）:
+- Re-review（2026-09-14、`922a5c03a4`対象）のMajor（completion deadline起算点）:
+  barrierのabsolute deadlineがconstructor（lease解放前）で起算されており、lease内
+  処理時間（grid書込・deep-shortcut pinning）がbudgetを消費し、最悪の場合
+  修復generationに一度も実行機会を与えず偽restore failureが成立しうる。
+  対応（commit「fix(299): reset barrier latch…」後続）: deadline起算を
+  `awaitCompletion()`開始時（lease解放後）へ遅延初期化（一度のみ計算、
+  re-dispatchで延長なし）。lease内時間はcompletion budgetから構造的に除外。
+  deterministic検証: `NovaRestoreCaptureNoCallbacksTest`（callbacks=0→
+  dispatch→lease解放→await開始の順で実行される専用regression）が修正版で
+  pass（return時点`(0,1)`+capture Ready）し、lease内budget消費が起きていない
+  ことの実行証拠となる。- Re-review（2026-09-14、`e53ba22cb3`対象）のMajor（inactive-model fallback意味論）:
   `callbacks==0`でのfallback正常returnはCI-AC-02のsuccessful completion契約を
   満たさない（`LawnchairApp.ensureOrganizerStartupReconciliation`がsettings-only
   processでも`startLoaderWithoutCallbacks()`を起動する既存構造があり、

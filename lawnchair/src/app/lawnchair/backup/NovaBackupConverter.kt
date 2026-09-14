@@ -277,7 +277,7 @@ class NovaBackupConverter(
      */
     private class RestoreReloadBarrier(
         private val app: LauncherAppState,
-        timeoutMillis: Long,
+        private val timeoutMillis: Long,
     ) {
         private data class Attempt(
             val latch: CountDownLatch = CountDownLatch(1),
@@ -285,9 +285,15 @@ class NovaBackupConverter(
         )
 
         private val model = app.getModel()
-        private val deadlineUptimeMillis = SystemClock.uptimeMillis() + timeoutMillis
         private var currentAttempt = Attempt()
         private var currentRequestId = 0L
+
+        // Computed lazily at awaitCompletion() — i.e. only once the
+        // restore-family lease has been released. The lease defers the
+        // dispatched reload generation, so time spent inside the lease (grid
+        // writes, deep-shortcut pinning) must not consume the completion
+        // budget. Computed once; re-dispatch never extends it.
+        private var deadlineUptimeMillis = -1L
 
         fun dispatch() {
             // Keep callbacks bound to this attempt. A stale cancellation or
@@ -310,6 +316,9 @@ class NovaBackupConverter(
         }
 
         fun awaitCompletion() {
+            if (deadlineUptimeMillis < 0) {
+                deadlineUptimeMillis = SystemClock.uptimeMillis() + timeoutMillis
+            }
             var attempt = 0
             while (true) {
                 attempt++
