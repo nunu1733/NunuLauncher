@@ -231,7 +231,8 @@ Accepted PlanのI-3は「同一手順で成功する場合と失敗する場合�
   deterministic検証: `NovaRestoreCaptureNoCallbacksTest`（callbacks=0→
   dispatch→lease解放→await開始の順で実行される専用regression）が修正版で
   pass（return時点`(0,1)`+capture Ready）し、lease内budget消費が起きていない
-  ことの実行証拠となる。- Re-review（2026-09-14、`e53ba22cb3`対象）のMajor（inactive-model fallback意味論）:
+  ことの実行証拠となる。
+- Re-review（2026-09-14、`e53ba22cb3`対象）のMajor（inactive-model fallback意味論）:
   `callbacks==0`でのfallback正常returnはCI-AC-02のsuccessful completion契約を
   満たさない（`LawnchairApp.ensureOrganizerStartupReconciliation`がsettings-only
   processでも`startLoaderWithoutCallbacks()`を起動する既存構造があり、

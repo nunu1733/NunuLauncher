@@ -278,8 +278,8 @@ And reservation違反に対する `CAPTURE_RESERVED_OVERLAP` / write時
 
 ## Change history
 
-- 2026-09-14: PR [#314](https://github.com/nunu1733/NunuLauncher/pull/314) の最終レビュー指摘（loader生成判定、terminal outcome、bounded待機、cross-process状態assert、workflow手順コメント）を反映し、独立Standards／Spec監査を `No findings` で完了。CI merge gateと高リスクaudit証跡を更新し、statusを `implemented` とした。
-- 2026-09-14: PR [#314](https://github.com/nunu1733/NunuLauncher/pull/314)で実装着手。review（completion barrier契約）でMajor指摘（deadline起算点がlease内）への修正中のため、`accepted`へ一時戻し。修正の再監査・review通過後に`implemented`へ再更新。review（completion barrier契約・timeout時の成功return・lifecycle）を反映するためstatusを`accepted`へ戻し、修正後に再更新する（decision gate記録・証跡は [docs/assessment/issue-299-nova-restore-capture-invalid.md](../../docs/assessment/issue-299-nova-restore-capture-invalid.md)）。
+- 2026-09-14: PR [#314](https://github.com/nunu1733/NunuLauncher/pull/314) の最終レビュー指摘（loader生成判定、terminal outcome、bounded待機、cross-process状態assert、workflow手順コメント）を反映し、独立Standards／Spec監査を `No findings` で完了。CI merge gateと高リスクaudit証跡を更新し、一時的にstatusを `implemented` とした。
+- 2026-09-14: 後続reviewでcompletion barrierのdeadline起算点がlease内であるMajor指摘を受け、修正中のためstatusを `accepted` へ戻した。修正の再監査・review通過後に `implemented` へ再更新する（decision gate記録・証跡は [docs/assessment/issue-299-nova-restore-capture-invalid.md](../../docs/assessment/issue-299-nova-restore-capture-invalid.md)）。
 
 
 - 2026-09-12: Draft created for #299.
