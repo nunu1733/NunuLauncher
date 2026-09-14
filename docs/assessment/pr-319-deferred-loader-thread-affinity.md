@@ -1,26 +1,78 @@
 # High-risk audit: PR #319 restore窓でdeferされたtokenless loaderのMODEL_EXECUTOR再admission
 
-> Status: accepted（verdict: approve。mergeはExecuted test surface節に記録した
-> CI merge gateの確定と、本audit記録のdocs-only commitを条件とする。code findings無し）
+> Status: accepted（verdict: approve。Re-audit (1)で監査対象headを `9693a2215f` へ更新、
+> 初回auditのfindings・verdictを承継。mergeは `CI run:` fieldに記載した現行merge gate
+> runの `final-status` success確定を条件とする。code findings無し）
 > Audit date: 2026-09-15
 
 - Auditor: 独立audit session（general-purpose subagent。PR #319の実装を行っていないsession。solo保守のため、同一保守の別sessionとして実装経路に依存しない実読・再確認を実施）
 - PR: https://github.com/nunu1733/NunuLauncher/pull/319（base `main`、head branch `issue-298-implementation`、label `risk: layout-data`）
-- Head SHA: b698e48bc836f2a7545ff32ebc0fb5cba209f7b0
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34865190872
-  （`event=pull_request`、`head_branch=issue-298-implementation`、`head_sha=b698e48bc8…`、
-  PR #319関連付け。audit完了時点ではattempt 2が `in_progress`。mergeには本runの
-  `final-status` successが確定することを要求する — Findings参照）
+- Head SHA: 9693a2215fe373eaa677c5b9e0f2d193f955d099
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34869651225
+  （`event=pull_request`、`head_branch=issue-298-implementation`、
+  `head_sha=9693a2215f…`、PR #319関連付け。Re-audit (1)完了時点ではattempt 1が
+  `in_progress`。mergeには本runの `final-status` successが確定することを要求する
+  — Re-audit (1)節・Findings参照。初回audit時に参照したrun 34865190872（head
+  `b698e48bc8`）はその後completed/successで完了したが、head移動により現行監査対象の
+  gate証跡ではない）
 - Criteria: specs/298-nova-restore-reload-thread-affinity/spec.md TA-AC-01, TA-AC-02, TA-AC-03, TA-AC-04, TA-AC-05, TA-AC-06
 - 調査証跡の正本: docs/assessment/issue-298-wrong-thread-restore-reload.md（以下「assessment」）。
   PR本文・commit message・assessmentの主張は信じず、以下のとおりpre-fix/post-fixの
   code実読とGitHub APIで独立検証した。実施者のemulator実行（red/green等）は再実行していない
   （emulator testは本auditのscope外）ため、すべて「実施者報告」として明記する。
+- Re-audit (1): 初回audit（head `b698e48bc8`）の記録をcommit `ef2fe7a2eb`（docs-only）として
+  pushした後、review対応の2 commit — `419212c6e8`（test isolation強化 + assessment §5の
+  per-AC対応表化）と `9693a2215f`（test helperのcleanup failure伝播）— が加わったため
+  再監査。監査対象headを `9693a2215fe373eaa677c5b9e0f2d193f955d099` へ更新。
+  なお `ef2fe7a2eb` 上ではCI run 34867984377（attempt 1、全job）とHigh-risk gate
+  run 34867984420がsuccessであった（gate機構が一度成立したhead。test commitにより無効化）。
+  audit本人がdelta `git diff b698e48bc8..9693a2215f`（3ファイル: test 1 + docs 2）の
+  全hunkを直接reviewした結果:
+  - **production codeは不変（本auditが直接確認）**: `git diff b698e48bc8..9693a2215f -- src/ lawnchair/ quickstep/ .github/` は0行。`LoaderTask.java` を含むproduction変更・
+    CI workflow変更は無く、deltaは `RestoreLeaseDeferredLoaderThreadAffinityTest.java`
+    （+125/−37）とassessment・本audit記録のdocsのみ。
+  - **test isolation強化は記述どおり実装済み**: Looper-less holder threadはleaseを
+    **自身のfinallyで必ずclose**する（release signal timeout経路を含む。従来はtimeout時に
+    closeせず抜けるprocess-wide lease leak経路が実在した — 本deltaで閉じられた）。
+    test本体のfinallyが全exit pathで `releaseNow.countDown()`（冪等）→ holderのjoin →
+    生存時はinterrupt → 再join → それでも生存時はcleanupFailuresへ記録し、teardownは
+    snapshot復元後に `forceReloadAndAwaitBindQuietly` でmodel reloadを強制・完了待ちして
+    in-memory `BgDataModel` を復元後のDBへ再bindする。
+  - **failure list伝播（`9693a2215f`）は確認済み**: `419212c6e8` の中間状態に残っていた
+    helper内の使い捨てlist（`removeModelCallbackQuietly(callbacks, new ArrayList<>())`）
+    が `reloadAndAwaitBindItemCount` / `forceReloadAndAwaitBindQuietly` では所有listへの
+    伝播に、`waitForModelIdle` では自前cleanup失敗の表面化（AssertionError）に変更された。
+  - **assertion弱化無し**: `assertFalse("...still alive")` はより強い「終了させるか失敗にする」
+    logicへ置換、`assertNull("Failure escaped on the releasing thread", ...)` は維持、
+    cleanupの `catch (Exception)` → `catch (Throwable)` 拡幅は握り潰しではなく
+    failure記録への経路変更（強化）。oracle（`onInitialBindComplete`・seed item数・
+    `model.isModelLoaded()`・解放thread上のfailure不在）は不変。lease closeは引き続き
+    holder thread上で実行されるため、検証対象のinline drain thread意味論も不変。
+  - **assessment §5の書換は記述どおり**: per-AC evidence対応表へ書き換えられ、
+    TA-AC-03のdeviation（単一反復oracle不導入の理由）と再open条件（将来のrestore検証で
+    signature再発時のIssue再open）が明記された。初回auditのCosmetic指摘（「发生する」表記）
+    も本deltaで修正済み。
+  - **新規観察（非阻塞・Minor）**: (a) `assertNotNull` static importが未使用
+    （cosmetic。spotlessの `removeUnusedImports()` は `compatLib/**` のみ対象であり、
+    新headのcheck-style jobは既にpass）；(b) test本体のassertion失敗時、finally内で
+    記録されたcleanup failureの報告は主失敗に吸収される（cleanupの実行自体は行われ
+    leak防止の目的は達成。主失敗優先の標準的挙動）；(c) holderのacquire失敗時は
+    `leaseAcquired` latchがcatch経由でcount downされるためtest本体は先へ進み、
+    「Loader was not deferred」assertionが先に失敗してreleaseThreadFailureの直接報告が
+    後回しになる（初回版から存在するdiagnosability上の優先順位のnit。本deltaでは
+    導入・悪化していない）。
+  - **verdict承継**: 初回auditのfindings・verdict（approve、code findings無し）は
+    新head `9693a2215f` に対してそのまま成立。merge条件は cited run 34869651225の
+    `final-status` success確定（Re-audit (1)完了時点でin_progress。emulator lanesと
+    build-debug-apkがpending、check-style / validate-repo-contractは既にpass）。
 
 ## Scope
 
-監査対象は `b698e48bc836f2a7545ff32ebc0fb5cba209f7b0`。merge-baseは `origin/main` =
-`397d3fd95764878366e7c9e5ce41ab65e6f3f9ca`（#317 merge直後）。PR差分は6ファイル
+監査対象は `9693a2215fe373eaa677c5b9e0f2d193f955d099`（Re-audit (1)の監査対象。
+初回auditの監査対象 `b698e48bc836f2a7545ff32ebc0fb5cba209f7b0` からの差分とその検証は
+冒頭のRe-audit (1)節、初回時の記録は以下に歴史記録として保持）。merge-baseは `origin/main` =
+`397d3fd95764878366e7c9e5ce41ab65e6f3f9ca`（#317 merge直後。Re-audit (1)時点でmain不動を再確認済み）。
+初回audit時のPR差分は6ファイル
 +580/−35（`git diff --stat` 実測）:
 
 - `src/com/android/launcher3/model/LoaderTask.java`（+22/−2相当。唯一のproduction code変更）
@@ -191,7 +243,9 @@ gh run view 34865248058 -R nunu1733/NunuLauncher --log-failed  # high-risk gate�
 gh api repos/nunu1733/NunuLauncher/actions/jobs/104051988446/logs  # shared-writer lane log
 ```
 
-CI merge gate（audited head `b698e48bc8` 上。GitHub APIで直接確認。audit完了時点）:
+CI merge gate（**初回audit時の記録** — 当時の監査対象head `b698e48bc8` 上。GitHub APIで直接確認。
+初回audit完了時点の状態。現行監査対象head `9693a2215f` の状態は `CI run:` fieldと
+Re-audit (1)節を参照）:
 
 - run 34865190872（`CI` workflow、`pull_request`、attempt 2）: `in_progress`。
   job別: `changes` / `check-style` / `build-debug-apk` / `organizer-unit-tests` /
@@ -242,10 +296,19 @@ python3 tools/repo-contract/measure_upstream_patch_surface.py --verify → PASS
   AGENTS.mdの独立エビデンス要件および `high-risk-gate` workflowの機械検証上、
   本runの `final-status` success確定までmergeしてはならない。 pending中の判定保留は
   品質問題ではなく手続き上の未確定である。
+  （Re-audit (1)更新: 同run 34865190872はその後completed/successで完了した。ただし
+  review対応commitにより監査対象headは `9693a2215f` へ移動しており、現行のmerge条件は
+  Re-audit (1)節のとおり run 34869651225 の `final-status` success確定である。）
 - **【非阻塞・構造的】high-risk-evidence run 34865248058のfailure**:
   「audit記録が存在しない」ことによる失敗であり、本audit記録のcommit（docs-only）で
-  解消する。audit記録pin以降にcode変更が入った場合は再auditを要求する
+  解消する。audit記録pin以降にcode変更が入った場合は再auditを要する
   （本記録のHead SHAは `b698e48bc8` を指す）。
+  （Re-audit (1)更新: 本記録のcommit `ef2fe7a2eb` 後にgateは一時成立したが
+  （run 34867984420 success）、test変更commit `419212c6e8` / `9693a2215f` により
+  「changes after the audited Head SHA are not docs-only」として再度failした
+  （run 34869307748 / 34869651213）。本Re-audit (1)が新headを直接検証したことで解消する
+  経路であり、本記録のHead SHAは `9693a2215f` に更新済み。以後にcode変更が入った場合は
+  再度re-auditを要する。）
 - **【非阻塞・記録済みdeviation】TA-AC-03「繰り返し」の方式置換**:
   実restore → reload cycleの反復走査ではなく、決定論的窓再構成test単発 +
   既存Nova restore lanesで证明している。assessment §5が置換理由（レース待ちの反復は
