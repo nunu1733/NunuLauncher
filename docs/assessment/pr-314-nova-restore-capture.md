@@ -1,13 +1,13 @@
 # High-risk audit: PR #314 Nova restore後のreload settle待ちとbounded capture不変条件diagnostics
 
 > Status: accepted
-> Audit date: 2026-09-13
+> Audit date: 2026-09-14
 
 - Auditor: 独立session（PR #314の実装を行っていないsessionによるaudit。solo保守のため、同一保守の別sessionとして実装経路に依存しない再実行・再確認を実施）
 - PR: https://github.com/nunu1733/NunuLauncher/pull/314
-- Head SHA: b12d8031fc7bd55f6064d2c75c51dbe48b0c6066
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34804943219
-- Criteria: specs/299-nova-restore-capture-invalid/spec.md（status: accepted。review対応の再検証後にdocs-only commitで`implemented`へ再更新予定）CI-AC-01, CI-AC-02, CI-AC-03, CI-AC-04, CI-AC-05, CI-AC-06, CI-AC-07, CI-AC-08
+- Head SHA: 33759767d53d4d27bb3cbe1d5fee942e14cd9d80
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34821703942
+- Criteria: specs/299-nova-restore-capture-invalid/spec.md（status: implemented。最終コードHEAD `33759767d5` に対する独立再監査とCI証跡を反映）CI-AC-01, CI-AC-02, CI-AC-03, CI-AC-04, CI-AC-05, CI-AC-06, CI-AC-07, CI-AC-08
 - Re-audit (1): 初回audit（head `0eb3355e0e`、CI run 34768482481）後、docs commit `483038d94f`（audit記録追加とspec statusの `implemented` への更新）が加わったため再監査。差分 `git diff 0eb3355e0e..483038d94fd2d378692e54dd5bf2d80adf11d635` は `docs/assessment/pr-314-nova-restore-capture.md`（追加）と `specs/299-nova-restore-capture-invalid/spec.md`（status行とChange history 1行のみ）の2ファイルで、production code・test・CI workflowへの変更は無い。受入条件（CI-AC-01..08）の定義内容は不変であり、初回auditの判定をそのまま承継する。
 - Re-audit (2): commit `b669194b55`（「fix(299): harden capture-failure diagnostics and settle-wait lifecycle per review」、5ファイル +56/−19。監査対象code stateは `483038d94f..b669194b55` の差分6ファイル＝本audit記録の更新commit `f0c535ba00` を含む）が加わったため再監査。audit本人がdiffを直接reviewした結果:
   - **capture-failure diagnosticsのenum型化（CI-AC-08の強化、自由text穴の閉塞）**: `DiagnosticsLogger.logCaptureFailure` / `formatCaptureFailure` のinvariant引数が `String?` から `CaptureInvariantCategory?` へ変更され、定数名のrendering（`invariant.name`）はlogger内部に移動した。wiring（`LayoutApplicationModule`）とharness（`NovaRestoreCaptureTestBase`）、unit test（`DiagnosticsLoggerTest`）もenum直接渡しへ更新。これでinvariant fieldに入りうる値は閉じたenum定数名のみと型で強制され、初回auditで「自由文字列Parameterは不導入」と記述した境界が文字列型経由の迂回路を含めて真になる。出力形式（`phase=CAPTURE exceptionClass=IllegalArgumentException invariant=INVALID_WIDGET_ROW`）・redaction境界・journal語彙は不変。
@@ -37,10 +37,19 @@
   - **observation（non-blocking・Minor）**: `dispatchRestoreReload` はNova restore worker threadから呼ばれ、`startLoaderWithoutCallbacks()` のKDoc precondition「Must be called on the UI thread」を満たさない呼び出し経路がある。実態として `startLoader` 内部はmLock保護・loader/MAIN executor postのみで完結し（`clearPendingBinds` もpost）、NoCallbacksTest・CI lane・emulator検証が実機で当該経路（empty callbacksでのrestore→repair commit→capture Ready）を回帰担保しているため動作上の支障は確認されていない。KDocと実呼び出しの整合（UI thread post化またはprecondition記述の更新）を将来のfollow-upに推奨する。merge blockerではない。
   - layout-write / migration path: 変更なし（削除されたのはbarrier制御のbranchのみ）。
   - **merge readiness判定**: Re-audit (1)-(7)で追跡したbarrier設計は、このheadで設計記述・code・committed test（no-callbacks regression含む）・CI merge gate（run 34804943219、attempt 1で全14 job green）が一致し、CI-AC-01..08の観測契約上残余は無い。残余は上記observationと、barrier loop分岐の直接JVM unit test不在（instrumentation regressionで代替済みと記録）、および元障害セッション由来の証拠boundary（CI-AC-01/06に記録済み・#298分離維持）のみ。本auditはこれらを条件付きではなく**承継記録として成立した独立エビデンス**とし、barrier designのmerge readinessは満たされていると判定する。
+- Re-audit (8・最終): `b12d8031fc` 以降のコード・テスト・workflow差分（`ed8a4daac5`、`752b620d13`、`e3b9db3817`、`654b80e803`、`182db9cfba`、`33759767d5`）を独立Standards／Specサブエージェントが確認した。Standards、Specともに **No findings**。
+  - `LauncherModel` はLoaderTaskの寿命ではなく `RestoreReloadRequest.loaderStarted` で生成を記録し、UI-thread dispatch契約を維持する。
+  - `NovaRestoreCaptureNoCallbacksTest` はcallbackなし前提、bounded worker待機、`completed` 必須、重複terminal callback検出を検証する。cross-process Stage A/Bは復元後の `(unbound count) to (bound count) = 0 to 1` をprocess death前後でassertし、Stage Aがcompletion barrier後の状態であることをworkflowコメントにも反映した。
+  - 最終候補HEADで `git diff --check`、`./gradlew spotlessCheck --console=plain`、`./gradlew compileLawnWithQuickstepGithubDebugAndroidTestKotlin --console=plain` が成功。CI run `34821703942` は `pull_request` event・PR #314・head `33759767d5` のattempt 2で全14 jobと `final-status` がsuccessであることを確認済み。
+  - 追加差分にlayout write、migration、schema変更はなく、既知の#298 scope分離・元intermittent triggerの証拠boundaryも維持する。
 
 ## Scope
 
+最終コード監査対象は `33759767d53d4d27bb3cbe1d5fee942e14cd9d80` であり、以下の履歴記録にある旧headは各re-audit時点の証跡である。最終CI証拠は上記CI runを使用する。
+
 対象はPR #314（base `main`、head branch `issue-299-spec-plan`、audited head `b12d8031fc7bd55f6064d2c75c51dbe48b0c6066`）。`0eb3355e0e` で確定したcapture path・typed diagnosticsは以後不変で、以後の差分は（1）監査記録・spec status更新（`0eb3355e..483038d94f`、Re-audit (1)参照）、（2）review対応のdiagnostics enum型化とsettle待ちlifecycle強化（`483038d94f..b669194b55`、Re-audit (2)参照）、（3）generation-identity付きrestore reload completion barrierへの設計修正（`82fd75df1b..c928ac66af`、Re-audit (3)参照）、（4）Re-audit (3)指摘defectの修正とその記録（`c928ac66af..4040f102dc`、Re-audit (4)参照）、（5）callback-lifecycle raceへの対応（`4040f102dc..fe04bfb960`、Re-audit (5)参照）、（6）inactive-model dispatch-time対応と専用regression追加（`fe04bfb960..922a5c03a4`、Re-audit (6)参照）、（7）cancelled分岐fallback returnの削除（`922a5c03a4..b12d8031fc`、Re-audit (7)参照）である。(7)のcode差分は `NovaBackupConverter.kt` のcancelled分岐fallback削除のみ（issue-299 assessmentは無変更。audit記録の更新が同じcommitに含まれる）であり、layout-write / migration pathへの変更は無い。`git merge-base origin/main` は `c5274b5d0d`（#313 merge後の現行main）であり、code確定commit `0eb3355e0e` 自体は16ファイル、+428/−224で、残りはbranch上で先行commitされたspec（`specs/299-nova-restore-capture-invalid/spec.md`、`plan.md`）と調査assessment（`docs/assessment/issue-299-nova-restore-capture-invalid.md`）の追加と上記(1)-(7)である。task packetに記載のbase `37e3dd8feb` は現行merge-baseではなく（mainが#313で進行）、記録値「16ファイル +428/−224」はcode確定commit単体のdiffと一致する。本auditはGitHub APIとlocal gitで確認した値を正本とする。
+
+この段落の `audited head b12d8031fc...` はRe-audit (7)時点の履歴値であり、現在の最終監査対象はこの節冒頭に示した `33759767d53d4d27bb3cbe1d5fee942e14cd9d80` である。
 
 確認したdiff領域:
 
@@ -133,6 +142,8 @@ CI merge gate（GitHub APIで直接確認。audit本人が `gh api` / `gh run vi
 - 同runのjob別conclusion（per_page=100で取得）: `final-status: success` を含む全14 jobがsuccess。source job `organizer-unit-tests` / `check-style` / `build-debug-apk` は実行済みsuccess、新lane `organizer-instrumentation-issue299-tests` も実行済みsuccess（attempt 1で全job green、flake無し。`NovaRestoreCaptureNoCallbacksTest` を含むper-class own-process実行）。
 - 参照run（prose記録、`CI run:` 行には新runのみ記載）: code commit `0eb3355e0e` 上のmerge gate run 34768482481、docs commit `483038d94f` 上のrun 34770025968、review-fix commit `b669194b55` 上のrun 34771951461（attempt 2。issue52 laneの環境flake — system launcher ANRによるwindow focus遮蔽 — をrerunで回収）、barrier設計修正commit `c928ac66af` 上のrun 34788278587（attempt 2。`ReadinessGateTest` のtiming flakeをrerunで回収、実施者local 3/3 green）、latch-reset修正commit `4040f102dc` 上のrun 34790445253（attempt 1で全job green）、callback-lifecycle修正commit `fe04bfb960` 上のrun 34794779554（attempt 2。`CategoryOverridePreferencesInstrumentationTest` のUI lane flakeをrerunで回収）、no-callbacks修正commit `922a5c03a4` 上のrun 34801319508（attempt 1で全job green）も、同一条件（pull_request / PR #314関連付け / completed / success / 全job green）をaudit本人が確認済み。各head上のlane実行がその都度緑であることを上記run列が示す。
 
+- 最終コード候補 `33759767d5` のローカル再検証: `git diff --check`、`./gradlew spotlessCheck --console=plain`、`./gradlew compileLawnWithQuickstepGithubDebugAndroidTestKotlin --console=plain` → すべて成功。最終CI merge gateはrun `34821703942`（attempt 2、上記 `CI run:`）で全14 jobおよび `final-status` successを確認済み。
+
 ## Findings
 
 - **【解消済み → 設計修正の記録】初回実装のsettle待ちtimeout fail-open**: 初回実装（`0eb3355e0e`）は15秒のsettle heuristic超過時もfail-openでreturnしていたため、restore return後も「次に完了するreload」までの残存窓でOrganizer要求がfail-closedを続け、かつbarrier signalがgeneration identityを持たなかった。Re-audit (3)の `c928ac66af` でこの設計はreviewにより撤回され、generation-identity付きtoken barrier（当該generationのsuccessful completionのみ成功・deadline超過時はrestore失敗をthrow）に置換された。本指摘は解消。**ただし後述のre-dispatch経路defectが新たな残余として記録される**。
@@ -143,4 +154,5 @@ CI merge gate（GitHub APIで直接確認。audit本人が `gh api` / `gh run vi
 - **#298のactual pathは本PRでは意図的に扱わない**: specのNon-goalどおり、#298と同一seam（restore/reload窓）への追加介入は避けられている。completion barrier（およびそのreload）が#298の症状を部分的に緩和しうるかに見えても、その判断は#298側の証拠で行うべきであり、本auditは緩和主張を認めない。
 - **cross-process検証surfaceの手動性**: Gradle connected testはtest APK再install時にapp dataを消去するため、cross-process pairはCI lane内でもmanual `adb install -r` + `am instrument` + `force-stop` の手順に依存する（lane commentとassessmentに文書化済み）。動作はCIで毎回検証されるが、emulator runner側の環境変化に対する脆弱性は残る。
 - **task packetのdiff記述と実測の差異**: packet記載のbase `37e3dd8feb`（16ファイル +428/−224）は現行merge-baseではなくcode確定commit `0eb3355e0e` 単体のdiffに一致する。実際のPR diff（vs `c5274b5d0d`）はGitHub API取得時点で22ファイル +3022/−33（初回audit時18ファイルから、audit記録追加と各review対応で増加）。本auditの判定は実測値に基づく。
+- **Re-audit (8) current result**: 最新の独立Standards監査およびSpec監査はいずれも **No findings**。上記の過去Findingは各re-auditで解消を確認済みであり、`33759767d5` のworkflowコメント差分も実装・テスト手順と一致する。
 - **再監査の成立条件（Re-audit (1)〜(7)）**: 初回audit（head `0eb3355e0e`）以降、docs commit `483038d94f`（audit記録追加・spec status更新。差分はdocs/specのみ）、review対応commit `b669194b55`（diagnostics enum型化とsettle lifecycle強化）、review対応commit `c928ac66af`（generation-identity barrierへの設計修正）、修正commit `a49dda3451`（latch/outcome reset）、docs commits `4040f102dc` / `2894d5004d` / `e53ba22cb3`（assessment・audit記録の更新。すべてdocs-onlyのみであることを`--stat`で確認済み）、修正commit `fe04bfb960`（callback-lifecycle race対応）、修正commit `922a5c03a4`（inactive-model dispatch-time対応 + 専用regression追加。cancelled分岐fallbackの残存をRe-audit (6)で指摘）、修正commit `b12d8031fc`（同fallback削除。同じcommitに前roundのaudit記録更新を含む）が加わった。各差分をaudit本人が直接reviewし（Re-audit (1)-(7)参照）、audited headを `b12d8031fc` へ更新し、当該head上のmerge gate run 34804943219をCI証拠とする。本audit記録自体の更新（および後のspec `implemented` 再更新）はdocs-only commitとしてheadに積まれ、gateが許容する経路である。head以降にさらにcode変更が入った場合は本auditを無効とし再auditを要する（docs-only commitのみ監査有効性を維持）。
