@@ -42,9 +42,9 @@ import org.junit.Test
 
 /**
  * Issue #299 I-4 residual: cross-process persistence, designed to observe the
- * persisted launcher DB in a FRESH process BEFORE any model reload (which is
- * where the repair/delete would otherwise run). These classes deliberately do
- * NOT extend [NovaRestoreCaptureTestBase]: the base's `@Before`/`@After` and
+ * persisted launcher DB in a FRESH process BEFORE any model reload.
+ * These classes deliberately do NOT extend [NovaRestoreCaptureTestBase]: the
+ * base's `@Before`/`@After` and
  * its model-touching `LauncherAppState.getInstance` would run a reload —
  * destroying the exact pre-repair state under test. Each runs in its own
  * `am instrument` invocation (A then B); the instrumentation runner
@@ -82,7 +82,7 @@ class NovaRestoreCaptureCrossProcessStageATest {
         assertEquals(
             "the restore completion barrier must persist a capture-valid workspace before process death",
             0 to 1,
-            persisted,
+            persisted.count { it < 0 } to persisted.count { it >= 0 },
         )
 
         // Hand the file name to stage B via a persistent marker (cache dir
@@ -91,13 +91,10 @@ class NovaRestoreCaptureCrossProcessStageATest {
         File(context.cacheDir, "i299_xp_dbfile").writeText(restoredDbName)
         File(context.cacheDir, "i299_xp_state").writeText(persisted.joinToString(","))
 
-        // Stage A persists the restored workspace and ends; the runner's
-        // force-stop is the process death. Whether the widget row is already
-        // bound here depends on whether this process's model dispatched the
-        // reload (both are legitimate pre- and post-barrier states); the
-        // deterministic cross-process contract is asserted in stage B: after
-        // the fresh process's reload activity settles, no unbound widget row
-        // may remain and the workspace must capture Ready.
+        // Stage A persists the already repaired workspace and ends; the
+        // runner's force-stop is the process death. Stage B verifies that the
+        // exact committed state survives before the fresh process initializes
+        // its model, then revalidates the settled capture contract.
     }
 
     private companion object {
@@ -135,13 +132,12 @@ class NovaRestoreCaptureCrossProcessStageBTest {
         assertEquals(
             "the stage A capture-valid state must survive process death before model initialization",
             0 to 1,
-            persisted,
+            persisted.count { it < 0 } to persisted.count { it >= 0 },
         )
 
-        // (2) Recovery half: now construct the model, drive reload activity
-        // to the settle heuristic, and confirm the row is bound (or deleted) and
-        // capture turns Ready. This is the in-process repair the death window
-        // deferred, now running in the new process.
+        // (2) Revalidation half: now construct the model, drive reload activity
+        // to the settle heuristic, and confirm the row remains bound (or is
+        // deleted) and capture stays Ready in the new process.
         val launcher = com.android.launcher3.LauncherAppState.getInstance(context)
         // Drive a reload to the settle heuristic and observe via the same
         // production codec + capture source used elsewhere.
