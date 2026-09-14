@@ -409,6 +409,7 @@ public class LauncherModel implements InstallSessionTracker.Callback {
      * operation on the UI thread and owns the callback lifecycle.
      */
     public boolean startLoaderWithoutCallbacks() {
+        Preconditions.assertUIThread();
         return startLoader(new Callbacks[0], true);
     }
 

@@ -83,8 +83,8 @@ interface OrganizationInputComposer {
  * normalized failure identity; the platform exposes no typed numeric
  * error-code accessor, so none is carried. Issue #299 / CI-AC-08 adds the
  * bounded [CaptureInvariantCategory] of the violated invariant when the
- * failure is the typed [CaptureInvariantViolationException] (null otherwise);
- * the reported class identity for typed violations stays normalized to
+ * failure is the typed [CaptureInvariantViolationException]. The reported
+ * class identity for typed violations stays normalized to
  * `IllegalArgumentException` so new lines remain comparable with the
  * pre-typing diagnostics of the original issue sessions. Untyped
  * `IllegalArgumentException` failures use
