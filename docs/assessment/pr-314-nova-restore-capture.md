@@ -5,9 +5,9 @@
 
 - Auditor: 独立session（PR #314の実装を行っていないsessionによるaudit。solo保守のため、同一保守の別sessionとして実装経路に依存しない再実行・再確認を実施）
 - PR: https://github.com/nunu1733/NunuLauncher/pull/314
-- Head SHA: 33759767d53d4d27bb3cbe1d5fee942e14cd9d80
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34821703942
-- Criteria: specs/299-nova-restore-capture-invalid/spec.md（status: implemented。最終コードHEAD `33759767d5` に対する独立再監査とCI証跡を反映）CI-AC-01, CI-AC-02, CI-AC-03, CI-AC-04, CI-AC-05, CI-AC-06, CI-AC-07, CI-AC-08
+- Head SHA: 83e3f0d31205bf8c2fadecb276443e5978f5fdf4
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34824284489
+- Criteria: specs/299-nova-restore-capture-invalid/spec.md（status: implemented。最終コードHEAD `33759767d5` と証跡確定commit `83e3f0d312` に対する独立再監査とCI証跡を反映）CI-AC-01, CI-AC-02, CI-AC-03, CI-AC-04, CI-AC-05, CI-AC-06, CI-AC-07, CI-AC-08
 - Re-audit (1): 初回audit（head `0eb3355e0e`、CI run 34768482481）後、docs commit `483038d94f`（audit記録追加とspec statusの `implemented` への更新）が加わったため再監査。差分 `git diff 0eb3355e0e..483038d94fd2d378692e54dd5bf2d80adf11d635` は `docs/assessment/pr-314-nova-restore-capture.md`（追加）と `specs/299-nova-restore-capture-invalid/spec.md`（status行とChange history 1行のみ）の2ファイルで、production code・test・CI workflowへの変更は無い。受入条件（CI-AC-01..08）の定義内容は不変であり、初回auditの判定をそのまま承継する。
 - Re-audit (2): commit `b669194b55`（「fix(299): harden capture-failure diagnostics and settle-wait lifecycle per review」、5ファイル +56/−19。監査対象code stateは `483038d94f..b669194b55` の差分6ファイル＝本audit記録の更新commit `f0c535ba00` を含む）が加わったため再監査。audit本人がdiffを直接reviewした結果:
   - **capture-failure diagnosticsのenum型化（CI-AC-08の強化、自由text穴の閉塞）**: `DiagnosticsLogger.logCaptureFailure` / `formatCaptureFailure` のinvariant引数が `String?` から `CaptureInvariantCategory?` へ変更され、定数名のrendering（`invariant.name`）はlogger内部に移動した。wiring（`LayoutApplicationModule`）とharness（`NovaRestoreCaptureTestBase`）、unit test（`DiagnosticsLoggerTest`）もenum直接渡しへ更新。これでinvariant fieldに入りうる値は閉じたenum定数名のみと型で強制され、初回auditで「自由文字列Parameterは不導入」と記述した境界が文字列型経由の迂回路を含めて真になる。出力形式（`phase=CAPTURE exceptionClass=IllegalArgumentException invariant=INVALID_WIDGET_ROW`）・redaction境界・journal語彙は不変。
@@ -42,14 +42,15 @@
   - `NovaRestoreCaptureNoCallbacksTest` はcallbackなし前提、bounded worker待機、`completed` 必須、重複terminal callback検出を検証する。cross-process Stage A/Bは復元後の `(unbound count) to (bound count) = 0 to 1` をprocess death前後でassertし、Stage Aがcompletion barrier後の状態であることをworkflowコメントにも反映した。
   - 最終候補HEADで `git diff --check`、`./gradlew spotlessCheck --console=plain`、`./gradlew compileLawnWithQuickstepGithubDebugAndroidTestKotlin --console=plain` が成功。CI run `34821703942` は `pull_request` event・PR #314・head `33759767d5` のattempt 2で全14 jobと `final-status` がsuccessであることを確認済み。
   - 追加差分にlayout write、migration、schema変更はなく、既知の#298 scope分離・元intermittent triggerの証拠boundaryも維持する。
+  - Re-audit (9・証跡確定): `83e3f0d312` はRe-audit (8)で確認済みの最終コード・テスト・workflow（`33759767d5`）に対するaudit記録とspec status更新のみで、production code・test・workflowの追加変更はない。Re-audit (8)の独立Standards／Spec判定 **No findings** をこの最終証跡headへ承継し、CI merge gateは本headのrun `34824284489`（attempt 1、全14 jobおよび `final-status` success）で確認済み。
 
 ## Scope
 
-最終コード監査対象は `33759767d53d4d27bb3cbe1d5fee942e14cd9d80` であり、以下の履歴記録にある旧headは各re-audit時点の証跡である。最終CI証拠は上記CI runを使用する。
+最終証跡監査対象は `83e3f0d31205bf8c2fadecb276443e5978f5fdf4`（コード実体は `33759767d53d4d27bb3cbe1d5fee942e14cd9d80`）であり、以下の履歴記録にある旧headは各re-audit時点の証跡である。最終CI証拠は上記CI runを使用する。
 
 対象はPR #314（base `main`、head branch `issue-299-spec-plan`、audited head `b12d8031fc7bd55f6064d2c75c51dbe48b0c6066`）。`0eb3355e0e` で確定したcapture path・typed diagnosticsは以後不変で、以後の差分は（1）監査記録・spec status更新（`0eb3355e..483038d94f`、Re-audit (1)参照）、（2）review対応のdiagnostics enum型化とsettle待ちlifecycle強化（`483038d94f..b669194b55`、Re-audit (2)参照）、（3）generation-identity付きrestore reload completion barrierへの設計修正（`82fd75df1b..c928ac66af`、Re-audit (3)参照）、（4）Re-audit (3)指摘defectの修正とその記録（`c928ac66af..4040f102dc`、Re-audit (4)参照）、（5）callback-lifecycle raceへの対応（`4040f102dc..fe04bfb960`、Re-audit (5)参照）、（6）inactive-model dispatch-time対応と専用regression追加（`fe04bfb960..922a5c03a4`、Re-audit (6)参照）、（7）cancelled分岐fallback returnの削除（`922a5c03a4..b12d8031fc`、Re-audit (7)参照）である。(7)のcode差分は `NovaBackupConverter.kt` のcancelled分岐fallback削除のみ（issue-299 assessmentは無変更。audit記録の更新が同じcommitに含まれる）であり、layout-write / migration pathへの変更は無い。`git merge-base origin/main` は `c5274b5d0d`（#313 merge後の現行main）であり、code確定commit `0eb3355e0e` 自体は16ファイル、+428/−224で、残りはbranch上で先行commitされたspec（`specs/299-nova-restore-capture-invalid/spec.md`、`plan.md`）と調査assessment（`docs/assessment/issue-299-nova-restore-capture-invalid.md`）の追加と上記(1)-(7)である。task packetに記載のbase `37e3dd8feb` は現行merge-baseではなく（mainが#313で進行）、記録値「16ファイル +428/−224」はcode確定commit単体のdiffと一致する。本auditはGitHub APIとlocal gitで確認した値を正本とする。
 
-この段落の `audited head b12d8031fc...` はRe-audit (7)時点の履歴値であり、現在の最終監査対象はこの節冒頭に示した `33759767d53d4d27bb3cbe1d5fee942e14cd9d80` である。
+この段落の `audited head b12d8031fc...` はRe-audit (7)時点の履歴値であり、現在の最終証跡監査対象はこの節冒頭に示した `83e3f0d31205bf8c2fadecb276443e5978f5fdf4` である。
 
 確認したdiff領域:
 
@@ -142,7 +143,7 @@ CI merge gate（GitHub APIで直接確認。audit本人が `gh api` / `gh run vi
 - 同runのjob別conclusion（per_page=100で取得）: `final-status: success` を含む全14 jobがsuccess。source job `organizer-unit-tests` / `check-style` / `build-debug-apk` は実行済みsuccess、新lane `organizer-instrumentation-issue299-tests` も実行済みsuccess（attempt 1で全job green、flake無し。`NovaRestoreCaptureNoCallbacksTest` を含むper-class own-process実行）。
 - 参照run（prose記録、`CI run:` 行には新runのみ記載）: code commit `0eb3355e0e` 上のmerge gate run 34768482481、docs commit `483038d94f` 上のrun 34770025968、review-fix commit `b669194b55` 上のrun 34771951461（attempt 2。issue52 laneの環境flake — system launcher ANRによるwindow focus遮蔽 — をrerunで回収）、barrier設計修正commit `c928ac66af` 上のrun 34788278587（attempt 2。`ReadinessGateTest` のtiming flakeをrerunで回収、実施者local 3/3 green）、latch-reset修正commit `4040f102dc` 上のrun 34790445253（attempt 1で全job green）、callback-lifecycle修正commit `fe04bfb960` 上のrun 34794779554（attempt 2。`CategoryOverridePreferencesInstrumentationTest` のUI lane flakeをrerunで回収）、no-callbacks修正commit `922a5c03a4` 上のrun 34801319508（attempt 1で全job green）も、同一条件（pull_request / PR #314関連付け / completed / success / 全job green）をaudit本人が確認済み。各head上のlane実行がその都度緑であることを上記run列が示す。
 
-- 最終コード候補 `33759767d5` のローカル再検証: `git diff --check`、`./gradlew spotlessCheck --console=plain`、`./gradlew compileLawnWithQuickstepGithubDebugAndroidTestKotlin --console=plain` → すべて成功。最終CI merge gateはrun `34821703942`（attempt 2、上記 `CI run:`）で全14 jobおよび `final-status` successを確認済み。
+- 最終コード候補 `33759767d5` と証跡確定head `83e3f0d312` のローカル再検証: `git diff --check`、`./gradlew spotlessCheck --console=plain`、`./gradlew compileLawnWithQuickstepGithubDebugAndroidTestKotlin --console=plain` → すべて成功。最終CI merge gateはrun `34824284489`（attempt 1、上記 `CI run:`）で全14 jobおよび `final-status` successを確認済み。
 
 ## Findings
 
