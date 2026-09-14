@@ -473,6 +473,12 @@ public class LauncherModel implements InstallSessionTracker.Callback {
                     final long organizerLeaseToken =
                             organizerToken == null ? 0L : organizerToken.organizerLeaseToken;
                     final boolean notifyRestoreReloadComplete = restoreToken != null;
+                    if (restoreToken != null) {
+                        // Record creation separately from mLoaderTask. The task clears
+                        // mLoaderTask during its normal transaction close before its
+                        // post-commit completion notification is delivered.
+                        restoreToken.loaderStarted = true;
+                    }
                     mLoaderTask = new LoaderTask(
                             mApp, mBgAllAppsList, mBgDataModel, mModelDelegate, launcherBinder,
                             new UserManagerState(), organizerLeaseToken,
@@ -633,7 +639,7 @@ public class LauncherModel implements InstallSessionTracker.Callback {
                 // callbacks can disappear between the hasCallbacks check and
                 // startLoader's callback re-fetch. In that case no loader
                 // generation is created and this token must not pend forever.
-                if (mRestoreReloadRequest == token && mLoaderTask == null) {
+                if (mRestoreReloadRequest == token && !token.loaderStarted) {
                     mRestoreReloadRequest = null;
                     neverStarted = true;
                 }
@@ -682,6 +688,10 @@ public class LauncherModel implements InstallSessionTracker.Callback {
         final long requestId;
         final Runnable completed;
         final Runnable cancelled;
+        // Guarded by LauncherModel.mLock. This must not be inferred from
+        // mLoaderTask because a normally completed task clears that field
+        // before its queued completion notification runs.
+        boolean loaderStarted;
 
         RestoreReloadRequest(long requestId, Runnable completed, Runnable cancelled) {
             this.requestId = requestId;
