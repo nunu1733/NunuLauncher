@@ -3,18 +3,19 @@
 > Issue: #204
 > Spec: [spec.md](./spec.md)
 > Status: draft
-> Baseline: `origin/main` = `c5274b5d0d1a4cd3a5cf55ef8dcadb84283a3cda` (2026-09-13時点)。owner review (Request changes, 2026-09-13) 対応を含むrevision。過去の再入場検証履歴は「Current evidence」節を参照。
+> Baseline: `origin/main` = `397d3fd95764878366e7c9e5ce41ab65e6f3f9ca` (2026-09-15時点)。owner re-review (Request changes, 2026-09-13, snapshot `324e6182` 基準) 対応を含むrevision。過去の再入場検証履歴は「Current evidence」節を参照。
 
 ## Current evidence
 
-確認済みの現行状態 (2026-09-13, `origin/main` @ `c5274b5d0d1a4cd3a5cf55ef8dcadb84283a3cda`)。実装開始時に再検証する。
+確認済みの現行状態 (2026-09-15, `origin/main` @ `397d3fd95764878366e7c9e5ce41ab65e6f3f9ca`)。実装開始時に再検証する。
 
 - `lawnchair/src/app/lawnchair/organizer/planning/OrganizationInput.kt` — `OrganizationInput(snapshot, rules, taxonomy, signals, targets, runMode)`。`RunMode` は `FullOrganization` / `IncrementalPlacement` / `ScopeComposedOrganization` (#228、`TargetSet.additions` が非空になり得る唯一のmode)。`CapturedItem` は `ItemKind` として `APPLICATION`/`DEEP_SHORTCUT`/`SHORTCUT_LEGACY`/`FOLDER`/`APPWIDGET`/`CUSTOM_APPWIDGET`/`APP_PAIR`/`Unknown` を持つ (#235でwidgetが第一級計画対象)。`LayoutSnapshot.reservedWorkspaceRegions` (`ReservedWorkspaceRegion`) はitem外のplatform占有領域constraint。`ItemId`/`ProfileId`/`CategoryId` 等は `planning/Identity.kt` のopaque value class。
-- **intent addressable性の現行真実 (review対応で確認)**: `planning/PlanningPlacement.kt` の `determinePreservation` は `APP_PAIR`/`AppPairMember` を無条件に `PreserveReason.APP_PAIR`、`SHORTCUT_LEGACY` を無条件に `PreserveReason.LEGACY_SHORTCUT` で固定する (strategy escapeなし。widgetのみ `widgetPolicy` 持ちstrategy下で `relocateWidgets` により移動可)。`integration/FullTargetSetMaterializer.kt` も `APP_PAIR`/`SHORTCUT_LEGACY`/widget系をkind基準で `ExistingRole.Preserved` にする。Movableになり得るのは `APPLICATION`/`DEEP_SHORTCUT`/`FOLDER` (top-level workspace) のみ。このためV1契約のaddressable対象は `APP_OR_SHORTCUT` (APPLICATION/DEEP_SHORTCUT)/`FOLDER`/`WIDGET` の3 roleに固定した (spec「Contract 1」)。
+- **intent addressable性とper-item mobilityの現行真実 (re-review対応で再確認)**: `planning/PlanningPlacement.kt` の `determinePreservation` は次の優先順位 (先勝ち) で保持を決める: (1) workspace配置のauthoritative reservation重複 → `RESERVED_REGION` (ADR-0010、最優先)、(2) `locked` → `LOCKED`、(3) `availability != Availability.AVAILABLE` → `UNAVAILABLE_TARGET` (`Availability` は `AVAILABLE`/`DISABLED`/`QUIET`/`LOCKED_PRIVATE_SPACE`/`UNAVAILABLE`)、(4) Dock配置 → `DOCK`、(5) widget kind → `relocateWidgets` 時のみnull (移動可)、それ以外 `WIDGET`、(6) `APP_PAIR` kind または AppPairMember配置 → `APP_PAIR`、(7) `SHORTCUT_LEGACY` kind → `LEGACY_SHORTCUT`、(8) role == `Preserved` → `NON_TARGET`、(9) FolderMember配置 → `STRUCTURAL`、それ以外移動可。`integration/FullTargetSetMaterializer.kt` も同型のkind/配置/状態基準でroleを割当て、`ExistingRole.Movable` になるのは「top-level workspace配置の `APPLICATION`/`DEEP_SHORTCUT`/`FOLDER`」のみ。すなわちkindだけでは移動可能性を記述できず (dock app、folder member、reservation重複、利用不可itemはkind上addressableでも固定されている)、V1契約はkind matrix (addressable性) に加えてper-item mobility matrix (移動可能性) をspec「per-item mobility projection」節の通り投影する。`NON_TARGET`/`STRATEGY_PRESERVED` はrun composition/strategy依存でexport時点に確定しないためprojection対象外とし、plannerを正本のまま残す。
 - `lawnchair/src/app/lawnchair/organizer/planning/OrganizationPlanner.kt` — 唯一の外部planning seam `plan(OrganizationInput): PlanningResult` (spec 182 AC-4)。前回baselineから未変更。
 - `lawnchair/src/app/lawnchair/organizer/planning/LayoutStrategyRegistry.kt` — #182内部strategy catalog。#235によりwidget placement role/stream/band (`PlanningPlacement.kt` / `PlacementAllocator.kt`、`PlacementCode.WIDGET_UNIT`) が追加済み。`PlanningResult` は `organizationStrategy: StrategyId` と #228 の `unplaced` を持つ。`PreserveReason` enumは `planning/PlanningResult.kt`。
 - `lawnchair/src/app/lawnchair/organizer/integration/OrganizationInputComposer.kt` / `CompositionModels.kt` — `InputProvenance` を所有 (`PolicySourceKind`/`PolicyInputIdentity` は `rules/PolicyModels.kt`)。`layoutStrategySelection` は第5 policy input (code comment明記)。`PolicySourceKind` は現時点で6値 (`ORGANIZER_POLICY_BUNDLE`, `CATEGORY_OVERRIDE_SNAPSHOT`, `LAYOUT_STRATEGY_SELECTION`, `PLATFORM_CLASSIFICATION_EVIDENCE`, `MATERIALIZED_CLASSIFICATION_SIGNALS`, `MATERIALIZED_FULL_TARGET_SET`)。#228の `StaleCandidateSelection` 等、composition failure型も拡張済み。
-- `lawnchair/src/app/lawnchair/organizer/rules/` — `BuiltInOrganizerPolicyBundleSource.kt` (ADR-0007のpolicy authority)、`LayoutStrategySelectionStore.kt`、`CategoryOverrideStore.kt` (schema version + generation + digest のatomic store族の先例。export session storeの実装様式の参照先)。ADR-0007へは #228 のscope-composed target identity拡張が追記済み (本契約と矛盾なし)。
+- `lawnchair/src/app/lawnchair/organizer/rules/` — `BuiltInOrganizerPolicyBundleSource.kt` (ADR-0007のpolicy authority)、`LayoutStrategySelectionStore.kt`、`CategoryOverrideStore.kt` (schema version + generation + digest のatomic store族の先例。`context.noBackupFilesDir` + `AtomicFile` を使用することを確認済み。export session storeのAndroid実装の様式参照先)。ADR-0007へは #228 のscope-composed target identity拡張が追記済み (本契約と矛盾なし)。
+- **Android境界packageの先例 (re-review対応で確認)**: `organizer/integration/` には既存のAndroid実装adapter (`AndroidCandidatePorts.kt`、`AndroidClassificationSignalSnapshotSource.kt`) が置かれており、`organizer/rules/`・`organizer/integration/` はpurity guard (`tests/unit/app/lawnchair/organizer/planning/PurityGuardTest.kt`。対象pathは `organizer/planning` のみ) の対象外である。session storeのAndroid実装はこの慣例に従い `organizer/integration/` に置く。
 - `lawnchair/src/app/lawnchair/organizer/application/preview/` — spec 194 plan preview (`inspectPlan`)。spec 195 confirmation UIは `organizer/ui/`。#271 durable status / #288 diagnostics export filename は本契約と直交するadditive変更。
 - unit test置き場は `tests/unit/app/lawnchair/organizer/` (planning/integration/rules/ui 等)。既存guard: `planning/PurityGuardTest.kt`、property test基盤 `planning/PlannerGeneratedPropertyTest.kt`、widget系 `planning/WidgetPlacementStrategyTest.kt`、scope-composed系 `planning/ScopeComposedPlannerTest.kt` / `integration/ScopeComposedCompositionTest.kt`。実行commandはbuilding guideの `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`。
 - #203 (usage signals) は OPEN で、`PersonalizationSignalSnapshot` / usage signal実装は現mainに存在しない (`specs/203-*` も未取り込み)。よって `usageSignals` はoptional fieldとし、不在でも契約が成立するよう設計する。
@@ -24,57 +25,67 @@
 
 **再入場検証 (2026-09-13, 第2回)**: 前回snapshot baseline `f9afd8bfde121932c0c8ed965225d52a84d86ab4` から現baseline `c5274b5d0d1a4cd3a5cf55ef8dcadb84283a3cda` への差分を確認した。変更は #304 (API 36 window focus: CI evidence capture、UI lane系test)、#283 (strategy picker選択表示: strings/preferences UI)、#287 (grid変更時のunknown lock回収: `LockAuthoring.kt` のfolder child rank validation緩和とlocks系test)、#300/#308 (UI注入前提/Compose focus) であり、planning seam・`InputProvenance`・preview path・本契約の接続面への変更はない。#287の `LockAuthoring` 変更はlock review capacityの話であり、export契約のlock制約projectionの意味は不変。**owner review "Request changes" (2026-09-13, snapshot `65b9fc859d` 基準) を処理し**、P1×4 (process death耐性、missing ref fail-closed、export決定性の自己矛盾、redacted tierの弱いprivacy契約) / P2×2 (source context binding不在、APP_PAIR扱い未定義) を本planとspecの該当節へ反映した。コード確認により、旧specの「plannerはwidgetとapp pairを第一級計画対象」という記述が誤り (app pairは無条件preserved) であることを検証済み。
 
+**再入場検証 (2026-09-15, 第3回)**: 前回snapshot baseline `c5274b5d0d1a4cd3a5cf55ef8dcadb84283a3cda` から現baseline `397d3fd95764878366e7c9e5ce41ab65e6f3f9ca` への差分を確認した。変更は #298 (Nova restore reload thread affinityのspec/plan)、#299 (Nova restore capture invalidの実装: `CaptureInvariant.kt` 新設、`RowManifestCodec`/`LayoutApplicationModule`/`OrganizationInputComposer`/`LauncherModel`/`LoaderTask` 変更)、#315 (bounded failure evidence capture: CI capture tool、`DiagnosticsLogger`) である。`OrganizationInputComposer.kt` の変更は `CaptureFailureObserver` のsignature拡張 (capture不変条件category追加、diagnostics目的) のみで、`InputProvenance`・`PolicySourceKind`・composition input構造は不変。`docs/engineering/organizer-diagnostics.md` の変更は #299 のcapture例外行への `invariant=` field追加のみで、digest/識別子のredaction分類は不変。planning seam (`OrganizationPlanner`、`determinePreservation`、`FullTargetSetMaterializer`、preview path) への変更はなく、本契約の接続面は不変である。**owner re-review "Request changes" (2026-09-13, snapshot `324e6182` 基準) を処理し**、P1×3 (digest定義の自己参照、cross-export追跡識別子、kind-onlyのmobility意味論) / P2×1 (ExportSessionStoreのpurity境界矛盾) を本planとspecへ反映した: digestをexport文書のfieldから外してsession-localな `sourceContextDigest` (internal canonical source projectionに対するdigest) に再定義、`ref` を乱数割当に変更してunlinkability契約化、per-item `mobility` projection (`determinePreservation` の優先順位と同型。上記の通り優先順位を実code確認済み) と `MOBILITY_CONTRADICTION` を導入、`ExportSessionStore` をinterface (純粋package) とAndroid実装 (`organizer/integration/`) に分離。
+
 ## Design
 
 ### Modules and interfaces
 
-新規package `lawnchair/src/app/lawnchair/organizer/personalization/` (DESIGN.md §9の論理構成に従う追加。純粋Kotlin、Android型・DB・networkなし)。
+新規package `lawnchair/src/app/lawnchair/organizer/personalization/` (DESIGN.md §9の論理構成に従う追加。純粋Kotlin、Android型・DB・network・I/Oなし)。**purity境界は例外なし** であり、Android/file-backedな実装は置かない (re-review P2対応)。
 
 ```text
-organizer/personalization/
-├── ContextExportModels.kt    # PersonalizationContextExportV1 typed model (pure)
-├── ContextExportBuilder.kt   # canonical inputs -> export (pure, tier-aware, ref決定的割当)
+organizer/personalization/                    # 純粋package (purity guard対象、例外なし)
+├── ContextExportModels.kt    # PersonalizationContextExportV1 typed model + mobility/session model (pure)
+├── ContextExportBuilder.kt   # canonical inputs + RefAllocator -> export (pure, tier-aware, mobility投影)
+├── RefAllocator.kt           # 新鮮な乱数refを供給するseam interface (乱数源を引数注入する純粋境界)
+├── SourceContextIdentity.kt  # internal canonical source projection + sourceContextDigest計算 (pure)
 ├── IntentModels.kt           # PersonalizedIntentV1 typed model (pure)
 ├── IntentCodec.kt            # JSON <-> typed model (closed schema, limits)
-├── IntentValidator.kt        # strict validation -> typed failure (pure; coverage/session/stale検証含む)
-├── IntentIdentity.kt         # content digest / schema identity / contextDigest計算
-├── ExportSessionStore.kt     # export session (durable・期限付き) のseam interface + 実装
+├── IntentValidator.kt        # strict validation -> typed failure (pure; coverage/session/stale/mobility検証含む)
+├── IntentIdentity.kt         # accepted intentのcontent digest / schema identity (pure)
+├── ExportSessionStore.kt     # export session (durable・期限付き) のseam interface のみ
 └── IntentPlannerAdapter.kt   # validated intent -> planner-internal semantic inputs (pure)
+
+organizer/integration/
+└── AndroidExportSessionStore.kt  # ExportSessionStoreのAndroid/file-backed実装 (purity対象外)
 ```
 
-- **Seam原則**: 呼び出し側もtestも同じpublic seam (builder / codec+validator / adapter / session store) を使う。internal実装 (ref割当、digest計算、session書込み) を直接検証しない。
-- **ContextExportBuilder** の入力は既存canonical入力のみ (`LayoutSnapshot` 相当のcaptured data、解決済み分類、lock状態。#203導入後はsignal snapshot)。tierに応じるfield除外 (自由文class一括制御) はbuilder内の単一点で行う。`ref` 割当はcanonical入力から決定的かつ一方向 (実行時順序・乱数非依存。ItemId逆算不可) とし、`contextDigest` はenvelope (`exportId`) を除く本文に対して計算する。
-- **ExportSessionStore** はexport生成時にsession (`exportId`、ref↔`ItemId` map、tier、`contextDigest`、生成・失効時刻) をapp-private・backup対象外でdurableに保存する唯一の境界module。実装様式は `rules/CategoryOverrideStore.kt` 族 (schema version + atomic書込み) に従い、Launcher favorites DBとは独立である。V1はsingle-active-session (新規export生成が既存sessionを無効化) であり、失効・無効化されたsessionの読み出しは無効を返す。process death耐性はこのmoduleが担う (純粋moduleの外にある唯一の状態境界)。
-- **IntentValidator** は spec の失敗class (`SCHEMA_MISMATCH`/`EXPORT_MISMATCH`/`SESSION_EXPIRED`/`CONTEXT_STALE`/`OVERSIZE`/`UNKNOWN_REF`/`DUPLICATE_REF`/`INCOMPLETE_COVERAGE`/`INVALID_ENUM`/`FORBIDDEN_CONTENT`/`CAPABILITY_UNSUPPORTED`) をtyped sealed resultで返す。fail-closed、zero-write。coverage不変条件 (`itemIntents` refs ∪ `unresolvedRefs` == 全addressable refs、互いに素) とsource binding (`contextDigest` 再計算照合) はvalidatorの検証項目である。
-- **IntentPlannerAdapter** はvalidated intentをplanner内部のsemantic入力へ投影する (投影先はspec Open question 1。受入時に固定)。addressable対象は `APP_OR_SHORTCUT`/`FOLDER`/`WIDGET` の3 roleに限られ、widget親和の実効化は `widgetPolicy` 持ちstrategyを選択したrunでのみplanner側で行われる。
+- **Seam原則**: 呼び出し側もtestも同じpublic seam (builder / codec+validator / adapter / session store) を使う。internal実装 (乱数ref生成、digest計算、session書込み) を直接検証しない。
+- **ContextExportBuilder** の入力は既存canonical入力 (`LayoutSnapshot` 相当のcaptured data、解決済み分類、lock/availability/placement状態。#203導入後はsignal snapshot) と注入された `RefAllocator` (新鮮な乱数ref源。testでは決定的sourceを注入し、production実体はintegration境界で暗号論的強度の乱数を提供する) である。tierに応じるfield除外 (自由文class一括制御) はbuilder内の単一点で行う。`ref` はcanonical入力から決定的に導出せず生成ごとの乱数とし (unlinkability。spec「生成規則」節)、ref↔`ItemId` 対応はsessionのみが保持する。**export文書にstate fingerprint (`sourceContextDigest`) を含めない** — digestは `SourceContextIdentity` がexport本文とは独立に計算する (内部`ItemId` key、envelope/ref/tier/capability非依存)。
+- **ExportSessionStore (interface)** は純粋packageに置くseamのみを定義する (session model型を含む)。**実装 `AndroidExportSessionStore`** は `organizer/integration/` に置き、export生成時にsession (`exportId`、ref↔`ItemId` map、tier、`sourceContextDigest`、生成・失効時刻) をapp-private・backup対象外でdurableに保存する唯一の境界module。実装様式は `rules/CategoryOverrideStore.kt` 族 (`noBackupFilesDir` + `AtomicFile` + schema versionのatomic書込み。確認済み) に従い、Launcher favorites DBとは独立である。V1はsingle-active-session (新規export生成が既存sessionを無効化) であり、失効・無効化されたsessionの読み出しは無効を返す。process death耐性はこの実装が担う。purity guardは純粋package全体を例外なしでcoverし、実装は純粋packageの外にある。
+- **IntentValidator** は spec の失敗class (`SCHEMA_MISMATCH`/`EXPORT_MISMATCH`/`SESSION_EXPIRED`/`CONTEXT_STALE`/`OVERSIZE`/`UNKNOWN_REF`/`DUPLICATE_REF`/`INCOMPLETE_COVERAGE`/`INVALID_ENUM`/`FORBIDDEN_CONTENT`/`MOBILITY_CONTRADICTION`/`CAPABILITY_UNSUPPORTED`) をtyped sealed resultで返す。fail-closed、zero-write。coverage不変条件 (`itemIntents` refs ∪ `unresolvedRefs` == 全exported refs、互いに素)、per-ref mobility検証 (`FIXED`/`CONDITIONAL` refへの意味矛盾を `MOBILITY_CONTRADICTION` でreject)、source binding (`sourceContextDigest` 再計算照合。session経由で取得) はvalidatorの検証項目である。
+- **IntentPlannerAdapter** はvalidated intentをplanner内部のsemantic入力へ投影する (投影先はspec Open question 1。受入時に固定)。addressable対象は `APP_OR_SHORTCUT`/`FOLDER`/`WIDGET` の3 roleに限られ、`FIXED` なrefの移動希望はvalidatorで既にreject済み、widget親和の実効化は `widgetPolicy` 持ちstrategyを選択したrunでのみplanner側で行われる。
 - **Provenance統合**: accept済みintentは `PolicySourceKind.PERSONALIZED_INTENT` として `InputProvenance` へ第6 policy inputを追加する (`LayoutStrategySelectionSnapshot` と同じgeneration/digest契約族)。intent未使用runはこのinputを持たない (既存runへの影響なし)。
 - **Diagnostics**: `PlanningResult` echoへ intent identity (digest) を追加する。個人情報 (label、package、座標) はdiagnosticsへ出さない (organizer-diagnostics.mdの規則拡張を同PRで)。
 
 ### Data flow
 
 ```text
-canonical inputs --(ContextExportBuilder, tier)--> PersonalizationContextExportV1 + export session (durable作成)
-    --> [AI/agent: #205/#206またはtest double] --> PersonalizedIntentV1
-    --(IntentCodec + IntentValidator; session照会・contextDigest照合)--> ValidatedPersonalizedIntent (digest付き) | typed failure
+canonical inputs --(ContextExportBuilder + RefAllocator, tier)--> PersonalizationContextExportV1 (state fingerprintを含まない) + export session (durable作成; sourceContextDigestはSourceContextIdentityが計算しsessionのみへ)
+    --> [AI/agent: #205/#206またはtest double] --> PersonalizedIntentV1 (exportIdのみecho)
+    --(IntentCodec + IntentValidator; session照会・sourceContextDigest再計算照合・per-ref mobility検証)--> ValidatedPersonalizedIntent (intent identity digest付き) | typed failure
     --(IntentPlannerAdapter)--> planner semantic inputs
     --(OrganizationPlanner.plan: 既存唯一seam)--> PlanningResult (intent identity echo)
     --(spec 194/195/13: 既存preview/confirm/apply)--> 適用
 ```
 
 - network・providerとの入出力は本moduleの外 (#205/#206)。codecはtransport非依存のcanonical JSON表現のみ定義する。
-- regenerationは新規exportId/intent identity。既存previewの流用はspecどおり無効化する。同一canonical状態の再生成は `contextDigest` を保ち、`exportId` のみ新規である。
+- regenerationは新規exportId/intent identity。既存previewの流用はspecどおり無効化する。同一canonical状態の再生成はsessionに同じ `sourceContextDigest` を記録し、`exportId` と `ref` 集合は新規である (export文書自体のbyte一致は要求せず・観測もしない)。
 
 ### Alternatives rejected
 
 - **AIへ `OrganizationInput` を直接渡す**: lock/bounds安全性、privacy (raw ID/package)、schema移行性で不適切 (Issue本文が明示)。採用しない。
 - **intentを `RuleSemantics` へ直書き**: intentはrun-scopedのdynamic inputでありimmutable bundle policyではない。ADR-0007のauthority model (bundle ≠ dynamic state) に反する。
 - **#182 catalogへの「AI strategy」追加**: intentはsemantic preferenceであり組み込みstrategyとは別物。catalogはcuratedでなければならない (spec 182 Non-goals)。
+- **`ref` の決定的割当 (canonical入力からの導出)**: 同一canonical状態から同一 `ref` 集合が得られるため、外部providerが複数export間で同一itemを照合・追跡できる (re-review P1)。乱数性の有無に関わらず安定なexported仮名はunlinkabilityを損なうため、生成ごとの乱数割当を採用した。
+- **`sourceContextDigest` をexport文書のfieldに含める**: digest定義が自己参照になり (re-review P1)、かつcanonical状態のfingerprintを外部に露出させて同一状態の再export照合を可能にする。session-localに分離した (internal canonical source projection)。
 
 ## Change set
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `organizer/personalization/` (新規) | Context/Intent model、builder、codec、validator、identity、adapter、ExportSessionStore | 契約本体。pure module + 唯一の状態境界 (session store) |
+| `organizer/personalization/` (新規) | Context/Intent model、builder、RefAllocator seam、SourceContextIdentity、codec、validator、identity、adapter、ExportSessionStore **interface** | 契約本体。純粋package (例外なしのpurity対象) |
+| `organizer/integration/AndroidExportSessionStore.kt` (新規) | ExportSessionStoreのAndroid/file-backed実装 (`noBackupFilesDir` + `AtomicFile` + schema version) | 唯一の状態境界。purity packageの外のAndroid境界 (`integration/` の既存 `Android*` adapter慣例) |
 | `organizer/integration/CompositionModels.kt` | `PolicySourceKind.PERSONALIZED_INTENT` 追加、intent identityの`InputProvenance`参加 | determinism/provenance保証 |
 | `organizer/integration/OrganizationInputComposer.kt` | accepted intentの読み取りとstable cutへの組入れ (intent利用runのみ) | spec 183系のconsistent-cut規律を維持 |
 | `organizer/planning/PlanningResult.kt` | intent identity echo (optional) | diagnostics/previewでの追跡 |
@@ -82,7 +93,7 @@ canonical inputs --(ContextExportBuilder, tier)--> PersonalizationContextExportV
 | tests (下記Verification) | contract/property/security tests | AC対応 |
 | `specs/204-.../spec.md`, `plan.md` | status更新、Open questions解消の記録 | 正本管理 |
 
-実装はchild issueへ分割する (下記Execution order)。本Issueの実装縦切りは「pure codec/validator + session store + provenance統合」までとし、#205/#206接続を含まない (Issue本文のImplementation orderどおり)。ExportSessionStoreはLauncher favorites DBと独立なapp-private storageであり、`risk: layout-data` 判定の根拠 (home layout正本を触らない) を実装PRの説明に明記する。
+実装はchild issueへ分割する (下記Execution order)。本Issueの実装縦切りは「純粋codec/validator + session store (interface + Android実装) + provenance統合」までとし、#205/#206接続を含まない (Issue本文のImplementation orderどおり)。ExportSessionStoreはLauncher favorites DBと独立なapp-private storageであり、`risk: layout-data` 判定の根拠 (home layout正本を触らない) を実装PRの説明に明記する。
 
 ## Migration and recovery
 
@@ -107,12 +118,13 @@ canonical inputs --(ContextExportBuilder, tier)--> PersonalizationContextExportV
 | AC-9 (preview path再利用) | planが`PlanningResult`→`inspectPlan`以外の経路を取らないことのコードレビュー + 既存preview testの無修正通過 | review + unit test |
 | AC-10 (test計画) | 本表 | 本plan |
 | AC-11 (process death耐性) | export生成 → **store instanceを破棄・再生成してprocess deathを模擬** → 失効前intent取り込み成功。失効後は `SESSION_EXPIRED`。不明sessionは `EXPORT_MISMATCH` | unit test (ExportSessionStore seam経由) |
-| AC-12 (source context binding) | export後に入力canonical状態を変化させ、`contextDigest` 再計算照合が `CONTEXT_STALE` でrejectすること。同一状態での再生成が `contextDigest` を保ち `exportId` のみ変わることの分離test | unit + property test |
-| AC-13 (kind projection matrix) | `APP_OR_SHORTCUT`/`FOLDER`/`WIDGET` のみ `items` に現れること。`APP_PAIR`/`SHORTCUT_LEGACY` は `preservedConstraints` 集計のみ。`Unknown` 除外。これらへの `ref` 参照が `UNKNOWN_REF` になること | unit test |
+| AC-12 (source context binding) | export後に入力canonical状態を変化させ、session-localな `sourceContextDigest` 再計算照合が `CONTEXT_STALE` でrejectすること。同一状態での再生成が同一 `sourceContextDigest` をsessionに記録し `exportId`/`ref` が新規になることの分離test。export文書 (envelope) にdigestが現れないことの走査 | unit + property test |
+| AC-13 (kind + mobility projection matrix) | kind matrix: `APP_OR_SHORTCUT`/`FOLDER`/`WIDGET` のみ `items` に現れること。`APP_PAIR`/`SHORTCUT_LEGACY` は `preservedConstraints` 集計のみ。`Unknown` 除外。これらへの `ref` 参照が `UNKNOWN_REF` になること。mobility matrix: reservation重複/lock/利用不可/dock/folder member/app pair member配置が対応する `fixReason` 付き `FIXED` に投影され、widgetが `CONDITIONAL` になること (`determinePreservation` の優先順位どおり)。`FIXED` refへの移動系fieldとwidget refへの `desiredGroup` が `MOBILITY_CONTRADICTION` でrejectされること | unit test (fixture: 各保持理由を持つcaptured item) |
+| AC-14 (cross-export unlinkability) | 同一canonical状態から別々に生成した2つのexportが `exportId`・`ref` 集合を共有しないこと。export field全体の走査で `sourceContextDigest` 相当の状態fingerprintが現れないこと。ref↔`ItemId` mapがsession storeの外に現れないこと | unit + property test |
 
 追加観点:
-- **Property test**: validatorは全fail classでtotal functionである (入力任意byte列に対しrejectまたはvalidのいずれか、例外・hangなし)。export builderは同一inputs→同一 `contextDigest`・同一 `ref` 集合、状態変化→digest変化。coverage不変条件のpartition性 (集合演算のproperty test)。既存のproperty基盤 (`tests/unit/app/lawnchair/organizer/planning/PlannerGeneratedPropertyTest.kt` 族) に整合させる。
-- **Purity test**: personalization packageのAndroid依存・I/O依存ゼロ (`tests/unit/app/lawnchair/organizer/planning/PurityGuardTest.kt` 族に追加)。ExportSessionStoreはseam interface経由でのみ触り、実装はpurity対象から除外する。
+- **Property test**: validatorは全fail classでtotal functionである (入力任意byte列に対しrejectまたはvalidのいずれか、例外・hangなし)。`SourceContextIdentity` は同一canonical状態 → 同一digest、状態変化 → digest変化 (serialization安定性を含む)。builderは同一inputs + 同一RefAllocator → 同一export bytes (testability上の決定性であり契約上のunlinkability要求と直交する)。生成refはexport内で一意かつ決定的導出でないこと (乱数源に依存しない上限回数の重複検出)。coverage不変条件のpartition性 (集合演算のproperty test)。mobility projectionは `determinePreservation` と同一入力で同一判定になること (plannerとの整合property test)。既存のproperty基盤 (`tests/unit/app/lawnchair/organizer/planning/PlannerGeneratedPropertyTest.kt` 族) に整合させる。
+- **Purity test**: `organizer/personalization/` のAndroid依存・I/O依存ゼロ (`PurityGuardTest.kt` 族のwalk対象personalization版を新設。**package全体を例外なしでcover** し、session store実装は純粋packageに置かないことで例外を構造的に不要にする)。ExportSessionStoreはseam interface経由でのみ触り、`AndroidExportSessionStore` 実装はintegration側testで検証する。
 - **Widget projection test**: widget itemを含むexport/intentでspan不変が保たれること (`FORBIDDEN_CONTENT` のspan指定reject、adapter投影後も `PlacementCode.WIDGET_UNIT` 系のstrategy宣言semanticsを弱めない) を #235 の `WidgetPlacementStrategyTest` と同水準のfixtureで検証する。widget親和intentが `widgetPolicy` なしstrategy下で移動を強制しないことの確認を含む。
 - **高リスク分類**: 本契約自体はpure追加だが、provenance/planner統合PRは `risk: layout-data` 払いとし、high-risk gate (CI `final-status` + `docs/assessment/pr-<n>-*.md`) を満たす。
 
@@ -128,12 +140,12 @@ canonical inputs --(ContextExportBuilder, tier)--> PersonalizationContextExportV
 ## Execution checklist / implementation order
 
 1. (前提) spec受入 (owner re-review待ち)。受入gate必須のOpen questionsを固定する: **Q1 (planner投影)、Q3 (capability set初期内容)、Q4 (content limits + session TTL数値)**。Q2 (FR-017) とQ5 (自由文/surrogate方針) は2026-09-13 revisionで解決済み。
-2. child A: `personalization/` pure package — models + builder + codec + validator + identity、全contract/property/security test (AC-2,3,4,5,7,8,12,13)。ref決定割当とcontextDigest分離のproperty testを含む。
+2. child A: `personalization/` 純粋package — models + builder (RefAllocator注入) + SourceContextIdentity + codec + validator + identity、`personalization/` 全体を例外なしでcoverするpurity guard、全contract/property/security test (AC-2,3,4,5,7,8,12,13,14)。mobility投影とplanner整合のproperty testを含む。
 3. child B: provenance統合 (`PERSONALIZED_INTENT` 第6 input) + adapter + `PlanningResult` echo + composer stable cut 組入れ (AC-6,9)。`risk: layout-data` + high-risk gate。
 4. child C: #203契約確定後、`usageSignals` projectionの追記とtest (spec Open question 6)。
 5. #205/#206: provider接続 (本Issueの範囲外)。
 
-ExportSessionStore (durable session) はchild Aに含める (AC-11)。storage実装は既存store族の様式に従い、backup対象外設定を含める。
+ExportSessionStoreはchild Aに含める (AC-11): seam interfaceは純粋package、durable実装 `AndroidExportSessionStore` は `organizer/integration/` に置き、既存store族の様式 (`noBackupFilesDir` + `AtomicFile` + schema version) に従いbackup対象外設定を含める。production RefAllocatorの乱数源 (暗号論的強度) もchild Aで確定する。
 
 ## Dependencies / blockers
 
@@ -147,15 +159,18 @@ ExportSessionStore (durable session) はchild Aに含める (AC-11)。storage実
 - intent→planner投影が既存determinism/idempotence (INV-7/8) を壊す恐れ → child Bで既存harness/property suiteの無修正通過を必須化し、intentあり/なしのcross-run testを追加する。
 - widget/span投影の漏れ: intentのpageAffinity等が #235 のwidget stream/band・span不変semanticsを迂回する形で実装される恐れ → `FORBIDDEN_CONTENT` のspan指定rejectと投影後planのwidget意味論testで固定する (Verification参照)。
 - privacy tier判定の漏れ (将来field追加時に意図せず外部送信) → user作成自由文をclosed classとして宣言制御し、新field追加時にclass宣言を強制するtype設計。tier別field集合走査test (AC-8) で固定。
+- **mobility projectionとplanner保持semanticsの乖離**: planner側の `determinePreservation` が将来変化した場合、export側のmobility述語が旧実装のままになると誤った `MOVABLE` 投影 (または過剰な `FIXED` 投影) が起きる → mobility投影を `determinePreservation` と同一入力で同一判定になるproperty testでbindし (Verification参照)、乖離を既存testが検出する構造にする。なおplannerが最終正本である契約 (intentはpreference) により、乖離時の最悪caseはvalidatorの誤reject/誤許可であり、layout破壊にはならない。
 - **export session storeの漏えい**: ref↔内部`ItemId` mapは内部identityを含むため、app-private設定・backup対象外・diagnostics非出力をchild Aのtestで固定する (漏えい経路: backup、log、export)。session本文 (自由文) を保存しない設計の契約test。
-- **`CONTEXT_STALE` の誤検知**: digest再計算が非決定的 (順序非安定等) だと、状態不変でもimportが失敗する → builder決定性property test (同一inputs→同一digest) と、状態不変でのimport成功testで固定する。
+- **RefAllocatorの乱数品質**: production乱数源が弱い (予測可能) と `ref` のunlinkability・逆算耐性が損なわれる → child Aで暗号論的強度の乱数源を確定し、integration境界で注入する設計により純粋moduleのtestabilityと分離する。
+- **`CONTEXT_STALE` の誤検知**: `sourceContextDigest` 再計算が非決定的 (順序非安定等) だと、状態不変でもimportが失敗する → `SourceContextIdentity` 決定性property test (同一状態→同一digest) と、状態不変でのimport成功testで固定する。
 - export/intent本文の意図しない永続化 → session store以外の永続化経路が存在しないことをpurity/persistence testで固定。
 - session失効と外部AI応答待ちのUX不整合 (長文生成中に失効) → `SESSION_EXPIRED` の再export導線は #205 のUI課題として記録 (本契約はfail-closedのみ定義)。
 
 ## Explicitly unverified areas
 
 - #203 signal snapshotの最終schema (未実装・draft spec未取り込み)。`usageSignals` のfield詳細は仮枠。
-- `ref` 決定的割当の具体的アルゴリズム (衝突回避・一方向性の実装詳細)。child Aで確定し、契約条件 (決定性・一方向・衝突なし) をproperty testで検証する。
-- ExportSessionStoreの具体的storage実装 (既存store族のどの様式を採るか、backup除外の適用方法)。child Aで確定。
+- internal canonical source projectionの具体的serialization形式 (`sourceContextDigest` の対象。specは契約条件 — 内部`ItemId` key、envelope/ref/tier非依存、process跨ぎ安定 — を固定し、具体形式はchild Aで確定してproperty testで検証する)。
+- RefAllocatorのproduction乱数源の具体実装 (暗号論的強度の選定) とref形式 (長さ・alphabet)。child Aで確定。契約条件 (生成ごとの新鮮さ・export内一意性・ItemId逆算不可) はtestで検証する。
+- `AndroidExportSessionStore` の具体storage実装 (既存store族のどの様式を採るかの最終選定、backup除外の適用方法の詳細)。置き場所 (`organizer/integration/`) と様式参照先 (`rules/CategoryOverrideStore.kt` 族) は本planで確定済み。child Aで実装する。
 - `InputProvenance` sealed構造への第6 input追加影響の詳細 (child Bで確認)。
 - #205/#206 UI・transport経路での実際の取り込み、session失効時の再export導線UX (範囲外)。
