@@ -161,6 +161,10 @@ public class LoaderTask implements Runnable {
     // Issue #14: only the exact organizer-requested loader carries this capability.
     private final long mOrganizerLeaseToken;
 
+    // Issue #299: tokenless restore reload whose terminal completion resolves
+    // the restore's completion barrier (notification posted after commit).
+    private final boolean mNotifyRestoreReloadComplete;
+
     public LoaderTask(@NonNull LauncherAppState app, AllAppsList bgAllAppsList, BgDataModel bgModel,
             ModelDelegate modelDelegate, @NonNull BaseLauncherBinder launcherBinder) {
         this(app, bgAllAppsList, bgModel, modelDelegate, launcherBinder, 0L);
@@ -185,6 +189,15 @@ public class LoaderTask implements Runnable {
     LoaderTask(@NonNull LauncherAppState app, AllAppsList bgAllAppsList, BgDataModel bgModel,
             ModelDelegate modelDelegate, @NonNull BaseLauncherBinder launcherBinder,
             UserManagerState userManagerState, long organizerLeaseToken) {
+        this(app, bgAllAppsList, bgModel, modelDelegate, launcherBinder, userManagerState,
+                organizerLeaseToken, false);
+    }
+
+    /** Issue #299: tokenless restore reload carrying the completion-barrier notify flag. */
+    public LoaderTask(@NonNull LauncherAppState app, AllAppsList bgAllAppsList, BgDataModel bgModel,
+            ModelDelegate modelDelegate, @NonNull BaseLauncherBinder launcherBinder,
+            UserManagerState userManagerState, long organizerLeaseToken,
+            boolean notifyRestoreReloadComplete) {
         mApp = app;
         mBgAllAppsList = bgAllAppsList;
         mBgDataModel = bgModel;
@@ -199,6 +212,7 @@ public class LoaderTask implements Runnable {
         mUserManagerState = userManagerState;
         mInstallingPkgsCached = null;
         mOrganizerLeaseToken = organizerLeaseToken;
+        mNotifyRestoreReloadComplete = notifyRestoreReloadComplete;
     }
 
     protected synchronized void waitForIdle() {
@@ -426,7 +440,7 @@ public class LoaderTask implements Runnable {
             throw e;
         }
         TraceHelper.INSTANCE.endSection();
-        if (transactionCommitted && mOrganizerLeaseToken != 0L) {
+        if (transactionCommitted && (mOrganizerLeaseToken != 0L || mNotifyRestoreReloadComplete)) {
             // Queue — never run inline — after the transaction close. The completion is
             // delivered only after every runnable already queued on MODEL_EXECUTOR
             // ahead of it has drained, so the organizer's next capture cannot race
@@ -434,6 +448,8 @@ public class LoaderTask implements Runnable {
             // model lock; LauncherModel terminalizes a request whose token is replaced
             // before its queued notification runs, so no request loses its terminal
             // signal while one is still queued here.
+            // Issue #299: the tokenless restore reload resolves its completion
+            // barrier through the same post-commit notification.
             MODEL_EXECUTOR.post(mLauncherBinder::notifyOrganizerReloadComplete);
         }
     }

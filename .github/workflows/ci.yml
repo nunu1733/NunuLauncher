@@ -301,6 +301,73 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+  # Issue #299 Nova restore -> Organizer capture regression lane. Each scenario
+  # class runs in its OWN `am instrument` invocation: the cross-process pair
+  # (Stage A commits the sanitized restored DB after its completion barrier
+  # settles the correlated reload; Stage B reads it read-only before model
+  # init) requires a fresh process per stage, and the single-restore-per-process
+  # contract keeps reload generations from overlapping. Verify the procedure
+  # note in docs/assessment/issue-299-nova-restore-capture-invalid.md before
+  # changing.
+  organizer-instrumentation-issue299-tests:
+    needs: changes
+    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run Nova restore capture instrumentation (API 36 / Platform 36.1)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: |
+            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.backup.NovaRestoreCaptureControlTest
+            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.backup.NovaRestoreCaptureWidgetWindowTest
+            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.backup.NovaRestoreCaptureUnknownProviderTest
+            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.backup.NovaRestoreCaptureNoCallbacksTest
+            # Gradle uninstalls both APKs (wiping app data) after each connected
+            # run, so the cross-process pair installs them manually and drives
+            # the two stages with `am instrument` + force-stop: stage A restores
+            # (its completion barrier settles the repair before return), the
+            # force-stop is the process death, and stage B must observe the
+            # persisted repaired DB in a fresh process before any model reload
+            # runs.
+            ./gradlew assembleLawnWithQuickstepGithubDebug assembleLawnWithQuickstepGithubDebugAndroidTest
+            adb install -r -d build/outputs/apk/lawnWithQuickstepGithub/debug/*.apk
+            adb install -r build/outputs/apk/androidTest/lawnWithQuickstepGithub/debug/*.apk
+            adb shell am instrument -w -e class app.lawnchair.backup.NovaRestoreCaptureCrossProcessStageATest app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner
+            adb shell am force-stop app.lawnchair.debug
+            adb shell am instrument -w -e class app.lawnchair.backup.NovaRestoreCaptureCrossProcessStageBTest app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner
+      - name: Upload Nova restore instrumentation reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: organizer-instrumentation-issue299-reports
+          path: |
+            build/reports/androidTests/connected/**
+            build/outputs/androidTest-results/**
+          retention-days: 7
+          if-no-files-found: warn
+
   # API 35 also runs the nested transaction contract so the project does not
   # reintroduce an API-version-dependent SAVEPOINT expectation. The remaining
   # classes in this lane own the Issue #83 production-input compatibility
@@ -600,6 +667,7 @@ jobs:
       - organizer-unit-tests
       - organizer-instrumentation-shared-writer-tests
       - organizer-instrumentation-db-migration-tests
+      - organizer-instrumentation-issue299-tests
       - organizer-instrumentation-api35-tests
       - organizer-instrumentation-issue52-tests
       - organizer-instrumentation-issue155-tests
