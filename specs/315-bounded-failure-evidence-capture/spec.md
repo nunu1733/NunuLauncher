@@ -1,6 +1,6 @@
 ---
 issue: "#315"
-status: accepted
+status: implemented
 requirements: [AC-315-01, AC-315-02, AC-315-03, AC-315-04, AC-315-05, AC-315-06]
 updated: 2026-09-14
 ---
@@ -119,3 +119,4 @@ And logcat は直近行数に制限される
 
 - 2026-09-14: Draft created for #315（Issue 本文の要件・AC を正本化）。
 - 2026-09-14: PR #316 review P2 対応。出力上限を保存後 truncation から producer 側 cap（FIFO/パイプ + SIGPIPE）へ変更し、巨大出力シナリオと比例 wall-clock oracle を spec に反映。
+- 2026-09-14: implemented。PR #316 merge commit `2af57b3ad8b905a3f81147bf0f8aa4b3e90fbfc1`（head `a50301b76567f38476f049038ce051e139851a7d`、全15 checks / final-status green、review P2/P3/merge precondition closure は PR #316 の packet comments 参照）。
