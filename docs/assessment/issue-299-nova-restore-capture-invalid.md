@@ -214,6 +214,16 @@ Accepted PlanのI-3は「同一手順で成功する場合と失敗する場合�
   latch/outcomeがresetされずbusy-spinになる）→ `a49dda3451`でdispatch時に
   latch/outcomeをresetする修正を適用（cancelled→re-dispatch→await経路が
   機能するようになった）。deadline超過時のrestore失敗surfaceは不変。
+- Re-review（2026-09-14）の新規Major（callback lifecycle境界）への対応:
+  `dispatchRestoreReload`に「`startLoader`後もtokenが現行かつ`mLoaderTask ==
+  null`ならcancelledでterminalize」を追加（callback消失でtokenがpendingし続ける
+  経路を遮断）、barrierのcancelled後は`hasCallbacks`を再確認し非活性なら
+  activation-load fallbackへ遷移（同期cancelのhot re-dispatchを構造的に排除）、
+  deadline超過時は`cancelRestoreReloadIfCurrent`でpending tokenをidentity付きで
+  clearしてからthrow。review推奨のtoken lifecycle直接testは作成を試みたが、
+  instrument processのlauncher auto-loadで非決定論的になるため断念し、
+  barrier経路は既存family（callbacks=0: CrossProcess A/B fallback、
+  callbacks有: barrier経由のWidgetWindow等）で検証することを記録。
 
 ### I-5 decision gate 記録（2026-09-14、Phase 1締め時に決定）
 

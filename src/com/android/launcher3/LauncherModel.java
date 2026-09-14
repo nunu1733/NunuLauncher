@@ -610,6 +610,36 @@ public class LauncherModel implements InstallSessionTracker.Callback {
         }
         if (superseded != null) superseded.cancelled.run();
         startLoader();
+        // Issue #299: callbacks can disappear between the hasCallbacks check
+        // and startLoader's own callback re-fetch, in which case no loader
+        // generation is created and this token would pend forever. If the
+        // token is still current and no loader task exists to run it,
+        // terminalize with the cancelled outcome (the barrier re-dispatches
+        // or falls back when the model is inactive).
+        boolean neverStarted = false;
+        synchronized (mLock) {
+            if (mRestoreReloadRequest == token && mLoaderTask == null) {
+                mRestoreReloadRequest = null;
+                neverStarted = true;
+            }
+        }
+        if (neverStarted) token.cancelled.run();
+    }
+
+    /**
+     * Issue #299: terminalizes the pending restore reload token if (and only
+     * if) its request id is still current, so a failing caller leaves no
+     * stale token for a later generation to complete.
+     */
+    public void cancelRestoreReloadIfCurrent(long requestId) {
+        RestoreReloadRequest token = null;
+        synchronized (mLock) {
+            if (mRestoreReloadRequest != null && mRestoreReloadRequest.requestId == requestId) {
+                token = mRestoreReloadRequest;
+                mRestoreReloadRequest = null;
+            }
+        }
+        if (token != null) token.cancelled.run();
     }
 
     // Issue #299: only the token captured by the exact loader generation

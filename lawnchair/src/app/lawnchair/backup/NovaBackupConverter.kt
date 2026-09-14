@@ -289,15 +289,16 @@ class NovaBackupConverter(
         private val deadlineUptimeMillis = SystemClock.uptimeMillis() + timeoutMillis
         private var latch = CountDownLatch(1)
         private val outcome = AtomicReference("")
+        private var currentRequestId = 0L
 
         fun dispatch() {
             // Fresh latch/outcome per attempt: a superseded generation's
             // cancelled callback has already fired on the previous pair.
             latch = CountDownLatch(1)
             outcome.set("")
-            val requestId = model.beginRestoreReload()
+            currentRequestId = model.beginRestoreReload()
             model.dispatchRestoreReload(
-                requestId,
+                currentRequestId,
                 {
                     outcome.set(RELOAD_OUTCOME_COMPLETED)
                     latch.countDown()
@@ -324,12 +325,28 @@ class NovaBackupConverter(
                     return
                 }
                 if (observed == RELOAD_OUTCOME_TIMEOUT || SystemClock.uptimeMillis() >= deadlineUptimeMillis) {
+                    // Clear the pending token by identity so no stale token
+                    // survives for a later generation to complete.
+                    model.cancelRestoreReloadIfCurrent(currentRequestId)
                     throw IllegalStateException(
                         "Restore reload did not complete within the ${RESTORE_RELOAD_COMPLETION_TIMEOUT_MS}ms " +
                             "deadline (last outcome=$observed, attempts=$attempt); failing the restore " +
                             "instead of returning a workspace the organizer cannot capture. " +
                             "Retry the restore.",
                     )
+                }
+                // A superseding stop cancelled this generation. Re-dispatch
+                // only while the model is still active; an inactive model can
+                // run no reload, so fall back to the activation-load repair
+                // (documented fallback) instead of busy-looping synchronous
+                // cancellations.
+                if (!model.hasCallbacks()) {
+                    Log.w(
+                        TAG,
+                        "Restore reload was cancelled and the launcher model is inactive; " +
+                            "falling back to the activation-load repair",
+                    )
+                    return
                 }
                 Log.w(TAG, "Restore reload attempt $attempt was $observed; re-dispatching")
                 dispatch()
