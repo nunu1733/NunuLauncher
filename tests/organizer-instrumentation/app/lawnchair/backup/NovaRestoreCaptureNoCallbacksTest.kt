@@ -37,12 +37,13 @@ import java.io.FileOutputStream
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -68,39 +69,55 @@ class NovaRestoreCaptureNoCallbacksTest {
     fun restoreReloadDispatchFromWorkerTerminalizesWithoutUiThreadViolation() {
         val model = LauncherAppState.getInstance(context()).model
         val terminal = CountDownLatch(1)
-        val completed = AtomicBoolean(false)
-        val cancelled = AtomicBoolean(false)
+        val terminalOutcome = AtomicReference<String?>()
+        val terminalCallbacks = AtomicInteger(0)
+        val callbackFailure = AtomicReference<Throwable?>()
         val workerFailure = AtomicReference<Throwable?>()
         val requestId = model.beginRestoreReload()
+
+        fun recordTerminal(outcome: String) {
+            if (terminalCallbacks.incrementAndGet() != 1) {
+                callbackFailure.compareAndSet(
+                    null,
+                    AssertionError("restore reload signaled more than once"),
+                )
+            } else {
+                terminalOutcome.set(outcome)
+            }
+            terminal.countDown()
+        }
+
         val worker = Thread {
             try {
                 model.dispatchRestoreReload(
                     requestId,
-                    {
-                        completed.set(true)
-                        terminal.countDown()
-                    },
-                    {
-                        cancelled.set(true)
-                        terminal.countDown()
-                    },
+                    { recordTerminal("completed") },
+                    { recordTerminal("cancelled") },
                 )
             } catch (failure: Throwable) {
                 workerFailure.set(failure)
             }
         }
+        worker.isDaemon = true
 
         worker.start()
-        worker.join()
+        try {
+            worker.join(TimeUnit.SECONDS.toMillis(30))
+            assertFalse("worker dispatch must not hang", worker.isAlive)
+        } finally {
+            if (worker.isAlive) worker.interrupt()
+        }
 
         assertNull("worker dispatch must not call the UI-thread-only loader directly", workerFailure.get())
         assertTrue(
             "worker-dispatched reload did not reach a terminal outcome",
             terminal.await(30, TimeUnit.SECONDS),
         )
-        assertTrue(
-            "worker-dispatched reload must complete or cancel exactly once",
-            completed.get() xor cancelled.get(),
+        assertNull("restore reload callback must be signaled exactly once", callbackFailure.get())
+        assertEquals(
+            "worker-dispatched reload must complete in a quiescent no-callback process",
+            "completed",
+            terminalOutcome.get(),
         )
     }
 
