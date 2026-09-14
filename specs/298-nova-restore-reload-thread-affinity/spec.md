@@ -63,7 +63,12 @@ thread-affinity assertionは抑制されず、契約違反の検出器として�
 
 配信は2 phaseで行う。**Phase 1はinvestigation（調査）のみ**であり、production
 code変更を含まない（計画module変更・test追加も原則Phase 2へ回す）。Phase 2の
-fix architectureはPhase 1のdecision gateを通過するまで決定しない。
+fix architectureはPhase 1のdecision gateを通過するまで決定しない。decision gateは
+3分岐とする: (A) chain確定 → Phase 2 fix、(B) 現行構造で障害窓が消えたことを
+十分な証拠で確定 → production fixを行わずno-code resolution（close判定含む）、
+(C) 再現不能だが消滅も証明不能 → production fixを行わずIssue継続・追加観測
+（受入条件は未達のまま引き継ぐ）。判定記録の正本はplan.mdのdecision gate節と
+調査記録である。
 
 - Nova restore（`NovaBackupConverter.convertAndRestore`）の完了から、correlated
   reload（`RestoreReloadBarrier` → `LauncherModel.dispatchRestoreReload` →
@@ -242,3 +247,8 @@ And 修正・検証はassertionの弱化や例外の握り潰しによって成�
   「観測が現行mainに妥当するとは仮定できない」ことを明記し、barrier後の障害signature
   の変化をinvestigation対象へ追加。reload発行pathの記述を `dispatchRestoreReload`
   構成へ同期。Phase 1（investigation）/ Phase 2（fix）の配信構造を明示。
+- 2026-09-14: PR #317 review（P1/P2）を反映。decision gateを3分岐（fix /
+  no-code resolution / 観測継続）へ修正し、再現なしの証跡のみでproduction fixへ
+  進めない構造に変更（TA-AC-01の記録pathと整合）。plan側ではbarrierの
+  `completed`/`cancelled` callback本体をHandler例外候補から静的に除外し、
+  その前後のrestore thread同期処理のみを調査対象として維持。

@@ -4,7 +4,8 @@
 > Spec: [spec.md](./spec.md)
 > Status: draft
 > Delivery: Phase 1 = investigation（本phaseの成果物はdocs/test計画のみ。production
-> code変更なし）→ decision gate → Phase 2 = fix（gate通過後に確定）
+> code変更なし）→ decision gate（3分岐: fix / no-code resolution / 観測継続）→
+> Phase 2 = fix（分岐 (A) の場合のみ実施。gate後確定）
 
 ## Current evidence
 
@@ -139,8 +140,11 @@ Desktop items loading interrupted
   `NovaBackupConverter.kt:167` 継続frameが現行構造のどれに対応するかは確定していない。
 - `Can't create handler inside Thread[NovaBackupRestore]` を生む無Looper Handler生成
   箇所は引き続き未特定（NovaBackupConverter / RestoreDbTask / ModelDbController /
-  LayoutWriteCoordinatorには該当なし。restore窓内でlazy構築されるsingleton、
-  restore thread上で走る`cancelled`/`completed` callback内の処理など候補は残る）。
+  LayoutWriteCoordinatorには該当なし。restore窓内でlazy構築されるsingleton候補は
+  残る。barrierの `completed`/`cancelled` callback本体は現行コードでは
+  `AtomicReference` 更新 + `CountDownLatch.countDown()` のみであり、Handler生成の
+  源泉からは静的に除外できる。ただしcallbackの実行自体がrestore thread上の
+  同期処理であること、およびその前後のrestore thread同期処理は引き続き調査対象）。
 - T4のfull stackはcoroutine継続frameを含むmerged stackであり、例外の発生threadと
   coroutine frameの関係はstack単独では確定しない。
 - #299再構成により3 signatureの発現条件自体が変化した可能性がある（barrierが
@@ -181,13 +185,27 @@ production code・既存testの変更は行わない（docs-only PRとして出�
   再現不能な場合はbarrier timeout/cancelled path）での残存状態を観測し、
   TA-AC-04と#299切り分けの入力とする。process再起動・再restore跨ぎの追跡は
   #299では未実施であり、本Issueで実施する。
-- **Decision gate（Phase 1 → Phase 2）:** I-2の結果（chain確定 or 再現なしの
-  証跡）をinputに、Phase 2のseam選択（下記候補）とtest戦略を確定する。
-  調査記録は `docs/assessment/issue-298-<slug>.md` に証跡（対象build SHA、取得log、
-  確認日）とともに残す。修正が変更困難なthreading所有権の判断を含む場合はADRの
-  3条件を再確認し、必要ならADRを作成する。
+- **Decision gate（Phase 1 → 分岐確定）:** I-2の結果をinputに、次の3分岐のいずれかを
+  `docs/assessment/issue-298-<slug>.md` へ判定記録として残す。調査記録には証跡
+  （対象build SHA、取得log、確認日）を伴わせる。
+  - **(A) chain確定 → Phase 2 fix。** 3 signatureそれぞれの発生thread・契約付きAPI・
+    到達経路が証跡付きで確定した場合。Phase 2のseam選択（下記候補）とtest戦略を
+    確定する。
+  - **(B) 障害窓の消滅確定 → no-code resolution / close判定。** 現行構造で障害窓が
+    取り除かれたことを十分な証拠で確定した場合。spec TA-AC-01の「障害窓が取り除か
+    れた/変化した」記録pathに対応する。判定要件: T4相当の窓拡大手順を十分な回数
+    実行して3 signatureとbarrier由来signatureが不在であることに加え、**#299再構成の
+    どの変更が観測された契約違反経路を構造的に除去したかを静的・動的証拠で説明
+    できること**。単なる数回の再現なしは判定材料にならない（#299が#298を事実上
+    消したのか、残存レースがあるのかを区別できないため）。Issue closeの可否を
+    この記録で判定する。
+  - **(C) 再現不能・消滅も証明不能 → production fixは行わない。** Issueを開いた
+    まま維持し、追加観測の計画（実機セッションのlogcat収集手順、監視継続の要否、
+    再開条件）を調査記録へ残す。spec受入条件（TA-AC-01〜06）は未達のまま引き継ぐ。
+  修正が変更困難なthreading所有権の判断を含む場合はADRの3条件を再確認し、
+  必要ならADRを作成する。
 
-### Phase 2: Fix（decision gate通過後に確定）
+### Phase 2: Fix（decision gate分岐 (A) の場合のみ実施。以下は候補でありgate後確定）
 
 #### Modules and interfaces（候補 — decision gate後確定）
 
@@ -206,9 +224,12 @@ production code・既存testの変更は行わない（docs-only PRとして出�
     Phase 2でbindをrestore thread上へ持ち込む設計は採らない。
 - 候補seam（I-2の結果により選択・絞り込み）:
   - `dispatchRestoreReload` のrestore thread側区間（`mLock` 下の `stopLoader` +
-    token swap）と、restore thread上で同期的にrunされるsuperseded `cancelled`
-    callbackの処理内容。callback内でHandler/looper依存APIへ到達する場合は
-    そこがHandler signatureの源泉になりうる。
+    token swap）と、その前後のrestore thread上の同期処理。barrierが渡す
+    `completed`/`cancelled` callback本体は現行コードでは `AtomicReference` 更新 +
+    `CountDownLatch.countDown()` のみでHandler/looper依存APIへ到達しないため
+    （静的に除外済み）、callback本体ではなくそれを取り巻くrestore thread同期処理
+    （`stopLoader` を含むmLock区間、supersede時の同時実行を含む）をHandler
+    signatureの調査対象とする。
   - restore窓内でrestore thread上に構築されるHandler依存component（lazy
     singleton候補）の構築Main/model thread側への移動、またはrestore threadでの
     lazy構築の禁止。
@@ -296,8 +317,10 @@ review対象とする。
       （TA-AC-01）。観測build構造と現行main構造の対応も記録する。
 - [ ] I-3: 中断時の残存状態を観測・記録する（#299 assessmentの観測を入力に、
       actual path / barrier pathで追試、process再起動跨ぎを含む）。
-- [ ] Decision gate: spec statusと本planのPhase 2 Design/Change setを確定結果で
-      更新する。
+- [ ] Decision gate: I-2の結果を (A) chain確定 → Phase 2 fix / (B) 障害窓消滅確定 →
+      no-code resolution・close判定 / (C) 再現不能・消滅も証明不能 → 観測継続の
+      3分岐で判定し、`docs/assessment/issue-298-<slug>.md` へ記録する。
+      (A) の場合はspec statusと本planのPhase 2 Design/Change setを確定結果で更新する。
 - [ ] Phase 1 PR（docs-only）を出し、調査記録をreviewに付す。
 
 ### Phase 2（decision gate通過後）
