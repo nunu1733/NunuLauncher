@@ -476,7 +476,10 @@ jobs:
       - name: Capture Issue 52 failure-time emulator evidence
         if: failure()
         continue-on-error: true
-        run: bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/issue52-failure-time-evidence
+        # Issue #315: the helper is bounded internally (per-command timeout and
+        # a 150s budget); this step-level timeout is the absolute backstop so a
+        # wedged capture can never consume the job budget before the upload.
+        run: timeout --kill-after=30 300 bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/issue52-failure-time-evidence
       - name: Upload Issue 52 failure-time emulator evidence
         if: failure()
         uses: actions/upload-artifact@v6
@@ -642,7 +645,8 @@ jobs:
       - name: Capture Issue 53 failure-time emulator evidence
         if: failure()
         continue-on-error: true
-        run: bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/issue53-failure-time-evidence
+        # Issue #315: bounded internally; step-level timeout is the absolute backstop.
+        run: timeout --kill-after=30 300 bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/issue53-failure-time-evidence
       - name: Upload Issue 53 failure-time emulator evidence
         if: failure()
         uses: actions/upload-artifact@v6
