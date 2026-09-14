@@ -79,6 +79,11 @@ class NovaRestoreCaptureCrossProcessStageATest {
         Log.i(TAG, "crossProcess/A: persisted dbFile=$restoredDbName exists=${restoredDb.exists()}")
         val persisted = queryWidgetState(readOnlyOpen(restoredDb))
         Log.i(TAG, "crossProcess/A: persisted widget state = $persisted")
+        assertEquals(
+            "the restore completion barrier must persist a capture-valid workspace before process death",
+            0 to 1,
+            persisted,
+        )
 
         // Hand the file name to stage B via a persistent marker (cache dir
         // survives the app process; the DB file itself is app-private and
@@ -127,8 +132,11 @@ class NovaRestoreCaptureCrossProcessStageBTest {
             "crossProcess/B: after process death unbound=$survivedUnbound bound=$survivedBound " +
                 "rows=${persisted.size}",
         )
-        // The persisted state is recorded; the deterministic cross-process
-        // contract is settled below.
+        assertEquals(
+            "the stage A capture-valid state must survive process death before model initialization",
+            0 to 1,
+            persisted,
+        )
 
         // (2) Recovery half: now construct the model, drive reload activity
         // to the settle heuristic, and confirm the row is bound (or deleted) and

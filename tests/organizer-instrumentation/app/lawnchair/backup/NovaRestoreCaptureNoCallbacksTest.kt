@@ -68,6 +68,10 @@ class NovaRestoreCaptureNoCallbacksTest {
     @Test
     fun restoreReloadDispatchFromWorkerTerminalizesWithoutUiThreadViolation() {
         val model = LauncherAppState.getInstance(context()).model
+        assertFalse(
+            "worker dispatch regression must run with no model callbacks",
+            model.hasCallbacks(),
+        )
         val terminal = CountDownLatch(1)
         val terminalOutcome = AtomicReference<String?>()
         val terminalCallbacks = AtomicInteger(0)
