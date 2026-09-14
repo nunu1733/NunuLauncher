@@ -187,11 +187,24 @@ E LayoutWriteCoordinator: java.lang.IllegalStateException: Cache accessed on wro
 - 正規化/拒絶（#299 assessmentが却下済み）には触れない。#299 barrier契約
   （deadline / restore失敗surface）は不変。
 
-## 5. 検証
+## 5. 検証と受入条件の対応
 
-- 本test（red→green）をshared-writer coordinator instrumentation laneへ追加
-  （`.github/workflows/ci.yml`）。TA-AC-03の「繰り返し」は、決定論的窓再構成により
-  単発で違反窓を確実に踏む方式で置き換えた（レース待ちの反復実行は違反の不在を
-  証明できないため）。
-- 併せて既存coordinator/restore系instrumentation（同一lane）とJVM unit test、
-  `spotlessCheck`、`assembleLawnWithQuickstepGithubDebug` を実行する。
+本test（red→green）をshared-writer coordinator instrumentation laneへ追加
+（`.github/workflows/ci.yml`）。TA-AC-03の「繰り返し」は、決定論的窓再構成により
+単発で違反窓を確実に踏む方式で置き換えた（レース待ちの反復実行は違反の不在を
+証明できないため）。
+
+受入条件ごとのエビデンス対応（過不足なく整理する。TA-AC-01/05は静的確認、
+TA-AC-02/03/04/06はruntime・CI証跡）:
+
+| AC | エビデンス | 限界・deviation |
+|---|---|---|
+| TA-AC-01（chain特定） | §1のchain + §2.2のred再現stack（T4観測と同一構造）。独立監査（`pr-319-deferred-loader-thread-affinity.md`）がpre-fix codeの実読で再確認 | Handler signatureのexact生成siteはred実行ではISE先行により未観測。chain全体の排除対象として§1.2に記録済み |
+| TA-AC-02（契約thread順守） | 修正構造（tokenless deferred loaderのMODEL_EXECUTOR再admission）+ red→greenの反転 + TA-AC-03の緑実行 | — |
+| TA-AC-03（繰り返しでsignature不在） | (a) 決定論的窓再構成test（green）: 障害モードであるdefer経路を毎回確実に踏み、signature不在とload完了を検証。(b) 実lifecycle: `NovaRestoreCapture{Control,WidgetWindow,UnknownProvider,NoCallbacks}Test` + cross-process StageA/B が実restore → barrier → reloadを各processで実行（local実行 + CI `organizer-instrumentation-issue299-tests` green）。各runのoracleはmodel loaded / capture妥当性であり、wrong-thread・interruptedが起きれば失敗する | **記録済みdeviation**: 単一の「N回restore→signature grep」反復oracleは追加していない。理由: セッション依存レースの反復は違反不在を証明できず、違反モードは決定論的testで直接カバー済み。再open条件: 将来のrestore検証（#287系等）でsignatureが再発した場合、本修正の外に原因を求める前に本Issueを再openする |
+| TA-AC-04（reload完了・workspace使用可能） | Nova restore lanes（barrier到達後のmodel loaded / capture妥当性、#299のbarrier定義と同一signal）+ 本testのbind到達・model loaded | — |
+| TA-AC-05（assertion保存） | diff review（修正はdispatchのみ、assertion・catch不変）。独立監査が再確認 | — |
+| TA-AC-06（regression + device evidence） | 本testのCI接続（shared-writer lane）+ emulator実行記録（本assessment §2、CI run） | emulator red/greenのlocal実行は実装者reportであり、独立監査はCI実行と静的確認に基づく（audit記録に記載） |
+
+併せて既存coordinator/restore系instrumentation（同一lane）とJVM unit test、
+`spotlessCheck`、`assembleLawnWithQuickstepGithubDebug` を実行する。

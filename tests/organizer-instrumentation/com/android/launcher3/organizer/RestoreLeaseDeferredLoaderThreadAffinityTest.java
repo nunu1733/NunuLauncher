@@ -9,8 +9,10 @@ import static androidx.test.platform.app.InstrumentationRegistry.getInstrumentat
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import android.content.ContentValues;
 import android.content.Context;
@@ -30,8 +32,6 @@ import com.android.launcher3.pm.UserCache;
 import com.android.launcher3.util.IntSet;
 import com.android.launcher3.util.RunnableList;
 
-import app.lawnchair.LawnchairLauncher;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -43,6 +43,8 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+
+import app.lawnchair.LawnchairLauncher;
 
 @SmallTest
 @RunWith(AndroidJUnit4.class)
@@ -68,10 +70,19 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
 
     @After
     public void tearDown() {
+        // Every cleanup step records failures instead of swallowing them, and the
+        // final reload rebinds the in-memory model to the restored DB so no test
+        // state leaks into later tests of this process-wide lane.
+        List<Throwable> cleanupFailures = new ArrayList<>();
         for (BgDataModel.Callbacks cb : new ArrayList<>(addedCallbacks)) {
-            removeModelCallbackQuietly(cb);
+            removeModelCallbackQuietly(cb, cleanupFailures);
         }
-        restoreFavoritesQuietly();
+        restoreFavoritesQuietly(cleanupFailures);
+        forceReloadAndAwaitBindQuietly(cleanupFailures);
+        if (!cleanupFailures.isEmpty()) {
+            fail("Cleanup failed (" + cleanupFailures.size() + " error(s)); the first was: "
+                    + cleanupFailures.get(0));
+        }
     }
 
     /**
@@ -97,30 +108,38 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
         AtomicReference<LayoutWriteCoordinator.Lease> leaseRef = new AtomicReference<>();
         AtomicReference<Throwable> releaseThreadFailure = new AtomicReference<>();
         Thread restoreLike = new Thread(() -> {
+            LayoutWriteCoordinator.Lease lease = null;
             try {
-                leaseRef.set(coordinator.acquireBlockingQuietly(
-                        LayoutWriteCoordinator.OwnerKind.BACKUP_RESTORE));
+                lease = coordinator.acquireBlockingQuietly(
+                        LayoutWriteCoordinator.OwnerKind.BACKUP_RESTORE);
+                leaseRef.set(lease);
                 leaseAcquired.countDown();
                 if (!releaseNow.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
                     releaseThreadFailure.set(new AssertionError("Release signal timed out"));
-                    return;
                 }
-                // The coordinator drains the deferred FIFO inline on THIS thread.
-                leaseRef.get().close();
             } catch (Throwable t) {
                 releaseThreadFailure.set(t);
                 leaseAcquired.countDown();
+            } finally {
+                // The Looper-less holder must never exit with the lease held: the
+                // coordinator is a process-wide singleton and a leaked lease would
+                // defer (or deadlock) every later writer and loader in this lane.
+                if (lease != null) {
+                    lease.close();
+                }
             }
         }, RELEASING_THREAD_NAME);
         restoreLike.start();
-        assertTrue("Restore-like thread could not acquire the lease",
-                leaseAcquired.await(TIMEOUT_SECONDS, TimeUnit.SECONDS));
 
         CountDownLatch bound = new CountDownLatch(1);
         AtomicInteger boundItemCount = new AtomicInteger(-1);
         BgDataModel.Callbacks callbacks = bindItemCountCallback(bound, boundItemCount);
-        addModelCallback(callbacks);
+        List<Throwable> cleanupFailures = new ArrayList<>();
         try {
+            assertTrue("Restore-like thread could not acquire the lease",
+                    leaseAcquired.await(TIMEOUT_SECONDS, TimeUnit.SECONDS));
+            addModelCallback(callbacks);
+
             int baselineDeferred = coordinator.pendingDeferredCount();
             getInstrumentation().runOnMainSync(() -> model.forceReload());
 
@@ -134,13 +153,11 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
 
             releaseNow.countDown();
             restoreLike.join(TIMEOUT_SECONDS * 1000);
-            assertFalse("Restore-like releasing thread is still alive", restoreLike.isAlive());
 
             assertTrue("Workspace load did not complete after the lease release",
                     bound.await(TIMEOUT_SECONDS, TimeUnit.SECONDS));
             assertEquals("Loaded workspace must keep the seeded item", baselineItemCount,
                     boundItemCount.get());
-            assertNull("Failure escaped on the releasing thread", releaseThreadFailure.get());
 
             long modelLoadedDeadline = SystemClock.elapsedRealtime() + TIMEOUT_SECONDS * 1000;
             while (!model.isModelLoaded() && SystemClock.elapsedRealtime() < modelLoadedDeadline) {
@@ -149,8 +166,28 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
             assertTrue("Model did not reach the loaded state after the deferred load",
                     model.isModelLoaded());
         } finally {
-            removeModelCallbackQuietly(callbacks);
-            deleteRowQuietly(seededRowId);
+            // Idempotent: the normal path already counted down. Every exit path —
+            // including an assertion failure while the lease is still held — must
+            // let the Looper-less holder terminate (its own finally closes the
+            // lease) before this test ends.
+            releaseNow.countDown();
+            restoreLike.join(TIMEOUT_SECONDS * 1000);
+            if (restoreLike.isAlive()) {
+                restoreLike.interrupt();
+                restoreLike.join(TIMEOUT_SECONDS * 1000);
+            }
+            if (restoreLike.isAlive()) {
+                cleanupFailures.add(new AssertionError(
+                        RELEASING_THREAD_NAME + " did not terminate; lease may still be held"));
+            }
+            removeModelCallbackQuietly(callbacks, cleanupFailures);
+            deleteRowQuietly(seededRowId, cleanupFailures);
+        }
+
+        assertNull("Failure escaped on the releasing thread", releaseThreadFailure.get());
+        if (!cleanupFailures.isEmpty()) {
+            fail("Cleanup failed (" + cleanupFailures.size() + " error(s)); the first was: "
+                    + cleanupFailures.get(0));
         }
     }
 
@@ -186,7 +223,31 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
                     bound.await(TIMEOUT_SECONDS, TimeUnit.SECONDS));
             return boundItemCount.get();
         } finally {
-            removeModelCallbackQuietly(callbacks);
+            removeModelCallbackQuietly(callbacks, new ArrayList<>());
+        }
+    }
+
+    private void forceReloadAndAwaitBindQuietly(List<Throwable> failures) {
+        try {
+            CountDownLatch bound = new CountDownLatch(1);
+            BgDataModel.Callbacks callbacks = new BgDataModel.Callbacks() {
+                @Override
+                public void finishBindingItems(IntSet pagesBoundFirst) {
+                    bound.countDown();
+                }
+            };
+            addModelCallback(callbacks);
+            try {
+                getInstrumentation().runOnMainSync(() -> model.forceReload());
+                if (!bound.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                    failures.add(new AssertionError(
+                            "Post-cleanup model reload did not complete"));
+                }
+            } finally {
+                removeModelCallbackQuietly(callbacks, new ArrayList<>());
+            }
+        } catch (Throwable t) {
+            failures.add(t);
         }
     }
 
@@ -210,7 +271,7 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
             Thread.currentThread().interrupt();
             throw new AssertionError("Interrupted while waiting for model idle", e);
         } finally {
-            removeModelCallbackQuietly(cb);
+            removeModelCallbackQuietly(cb, new ArrayList<>());
         }
     }
 
@@ -268,7 +329,7 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
         return rows;
     }
 
-    private void restoreFavoritesQuietly() {
+    private void restoreFavoritesQuietly(List<Throwable> failures) {
         if (snapshotRows == null) {
             return;
         }
@@ -284,18 +345,18 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
             } finally {
                 model.getModelDbController().getDb().endTransaction();
             }
-        } catch (Exception e) {
-            // Fixture restore must not fail the suite; the next start re-derives state.
+        } catch (Throwable t) {
+            failures.add(t);
         }
     }
 
-    private void deleteRowQuietly(long rowId) {
+    private void deleteRowQuietly(long rowId, List<Throwable> failures) {
         try {
             model.getModelDbController().getDb().delete(
                     Favorites.TABLE_NAME, Favorites._ID + "=?",
                     new String[] {String.valueOf(rowId)});
-        } catch (Exception e) {
-            // Cleanup only.
+        } catch (Throwable t) {
+            failures.add(t);
         }
     }
 
@@ -304,12 +365,13 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
         addedCallbacks.add(cb);
     }
 
-    private void removeModelCallbackQuietly(BgDataModel.Callbacks cb) {
+    private void removeModelCallbackQuietly(BgDataModel.Callbacks cb,
+            List<Throwable> failures) {
         try {
             getInstrumentation().runOnMainSync(() -> model.removeCallbacks(cb));
             addedCallbacks.remove(cb);
-        } catch (Exception e) {
-            // Swallow cleanup exceptions.
+        } catch (Throwable t) {
+            failures.add(t);
         }
     }
 }
