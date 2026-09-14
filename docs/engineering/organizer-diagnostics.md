@@ -278,6 +278,7 @@ ADR またはspec の承認を必要とする。
 | 内容由来識別子 | `RevisionId`、`ItemId`、`PageId`、`FolderId`、digest | **Never** | 一致/不一致の結果（phase とerror code）のみ |
 | crash 上情報 | exception message、stack trace | **Never**（journal） | OS crash buffer と§11 で相関 |
 | capture 側例外のidentity（Issue #172） | exception class 単純名 | **Allowed**（`OrganizerDiag` tag・DEBUG level・debug build・capture 失敗時のみのlogcat 行。journal・export には書かない） | `phase=CAPTURE exceptionClass=<simple name>`。専用typed API（`Class<out Throwable>` のみ受取）が強制するため、message・layout 由来text は型として渡せない。raw `Throwable.message` とstack trace は本行にも含めない |
+| capture 側違反不変条件のcategory（Issue #299 / CI-AC-08） | 違反されたcapture不変条件のclosed enum（`CaptureInvariantCategory`）定数名 | **Allowed**（上記行に付随する `invariant=<constant name>` field。同一条件: debug build・capture 失敗時のみ。journal・export には書かない） | `invariant=INVALID_WIDGET_ROW` または `invariant=INVALID_CAPTURE_STATE`。定数名のみで、行内容・座標・package等は型として渡せない。typed違反は具体category、未型付けの `IllegalArgumentException` は汎用categoryを使う。他のRuntimeExceptionでは当field自体が現れない |
 | random opaque ID | `RunId`、`RecoveryPointId` | **Allowed** | 相関key |
 | 相関・状態 | trigger、runMode、phase、applyStage、lifecycle/authoritative state | **Allowed** | — |
 | error / warning code | enum 定数名 | **Allowed** | — |
@@ -359,7 +360,7 @@ ADR またはspec の承認を必要とする。
 - level: phase 遷移は`DEBUG`、terminal failure 系（`*_REJECTED`、`*_FAILED`、
   `*_ROLLED_BACK`、`*_UNRESOLVED`、および`INPUT_NOT_READY`）は`WARN`。release build ではterminal failure 系のみ。
 - capture 側例外の詳細行（§7 の限定例外）はdebug build のみで出力し、release build では出力しない。release ではjournal 由来の`INPUT_NOT_READY`（WARN、理由コード付き）のみが観測される。
-- **本節一般則の明示的な限定例外（Issue #172）**: capture 側例外の詳細行は`RunEvent` の射影ではなく、journal append より前にcapture site で発生する非`RunEvent` 行である。行の内容は§7 の限定例外（exception class 単純名のみ）に閉じられ、tag・level 規則は本節に従う。journal・export には一切書かれない。
+- **本節一般則の明示的な限定例外（Issue #172）**: capture 側例外の詳細行は`RunEvent` の射影ではなく、journal append より前にcapture site で発生する非`RunEvent` 行である。行の内容は§7 の限定例外（exception class 単純名のみ。Issue #299 / CI-AC-08 により、typed不変条件違反の場合は閉じた定数名の `invariant=` field が追加される）に閉じられ、tag・level 規則は本節に従う。journal・export には一切書かれない。
 - §7 の**Never 分類はbuild variant にかかわらず一切出力しない**。
   一時的なデバッグ用途でもlogcat へのraw 値出力は禁止する。検討が必要な場合は
   journal に許可field を追加する手続き（本表更新）を通す。
@@ -518,8 +519,12 @@ non-containment を検証する。
 `INPUT_NOT_READY` はterminal であり、理由コードはcomposer のclosed 集合
 （§5 `INPUT_READINESS`）の定数名のみである。capture 側例外があった場合でも、
 journal には例外class 名・message は書かれず、debug build のlogcat に限り
-`OrganizerDiag: phase=CAPTURE exceptionClass=SQLiteBlobTooBigException`
-のようなclass identity 行が出る。
+  `OrganizerDiag: phase=CAPTURE exceptionClass=SQLiteBlobTooBigException`
+  のようなclass identity 行が出る。capture不変条件違反（Issue #299 / CI-AC-08）の場合は
+  `OrganizerDiag: phase=CAPTURE exceptionClass=IllegalArgumentException invariant=INVALID_WIDGET_ROW`
+  のように、または未型付けの`IllegalArgumentException`では
+  `invariant=INVALID_CAPTURE_STATE`として、閉じた定数名の`invariant=` field が続く
+  （journal 側の語彙・`CAPTURE_INVALID` code は不変である）。
 
 ## 14. Downstream handoff
 
@@ -577,6 +582,12 @@ boundary（§12）、representative diagnostic fixtures（§13）。
 - 2026-08-15: Issue #16 のresearch成果物として初版。typed run event model、
 redaction/classification、retention/export/logcat、restart 相関、telemetry
 default-off 境界、fixtures を定義した。
+- 2026-09-14: [Issue #299](https://github.com/nunu1733/NunuLauncher/issues/299)
+  （CI-AC-08）。capture 側例外の限定例外行に、違反されたcapture不変条件のclosed
+  category（`CaptureInvariantCategory` 定数名）を `invariant=` field として追加した。
+  typed違反は具体category、未型付けの`IllegalArgumentException`は
+  `INVALID_CAPTURE_STATE`で分類し、他のRuntimeExceptionではfieldを出さない。
+  journal 語彙・redaction 境界は不変である。
 - 2026-08-31: [Issue #172](https://github.com/nunu1733/NunuLauncher/issues/172)
 （spec: specs/172-input-unavailable-diagnostics）。`INPUT_NOT_READY` terminal
 phase と `INPUT_READINESS` family（`InputCompositionCode` 16 値）を追加し、
