@@ -1,9 +1,9 @@
 ---
 issue: "#298"
-status: draft
+status: accepted
 requirements: [TA-AC-01, TA-AC-02, TA-AC-03, TA-AC-04, TA-AC-05, TA-AC-06]
 risk: []
-updated: 2026-09-14
+updated: 2026-09-15
 ---
 
 # Nova restore後のworkspace reloadがLauncherのthread-affinity契約を守って完了する
@@ -252,3 +252,14 @@ And 修正・検証はassertionの弱化や例外の握り潰しによって成�
   進めない構造に変更（TA-AC-01の記録pathと整合）。plan側ではbarrierの
   `completed`/`cancelled` callback本体をHandler例外候補から静的に除外し、
   その前後のrestore thread同期処理のみを調査対象として維持。
+- 2026-09-15: PR #317のreview完了を受けstatusをacceptedへ更新。Phase 1
+  investigation完了（decision gate分岐(A): chain確定）。wrong-thread chainは
+  `LayoutWriteCoordinator.release()` がdeferred FIFOをlease解放thread上で
+  inline drainし、tokenless `LoaderTask` がbare `runInternal` を渡していたことで、
+  restore（Looper無しthread）上でload本体が実行される経路として確定した
+  （`docs/assessment/issue-298-wrong-thread-restore-reload.md`。決定論的な
+  red実行でT4の `Cache accessed on wrong thread` + `Desktop items loading
+  interrupted` を同一stack構造で再現）。Phase 2 fixはtokenless deferred loaderを
+  MODEL_EXECUTORへ手渡して再admissionする形で `LoaderTask` に実装
+  （ModelWriterの既存規律と同一）。exactなHandler生成siteは修正により障害窓ごと
+  消滅するため事後特定は不能（chain全体の排除でTA-AC-02を満たす）。
