@@ -11,12 +11,12 @@ risk:
   - privacy
   - network
   - layout-data
-updated: 2026-09-13
+updated: 2026-09-15
 ---
 
 # Managed Grounded AI: アプリ内完結型Organizer personalization
 
-> Status: draft — 本specは **#204 (Context / PersonalizedIntent exchange contract) の受入を必須依存** とする。2026-09-13再確認時点で #204 の契約は未acceptであり、owner review "Request changes" への対応revision (2026-09-13、commit `324e6182ae`) がbaseline `c5274b5d0d` に再anchorされた上でbranch `origin/issue-204-spec-plan` に存在するのみで、**owner再review待ち** かつ `origin/main` 未取り込みである。よって本specは #204 のschema詳細 (field名、tier名、failure分類、`PersonalizedIntentV1` の具体形) を **確定事実として扱わない**。#204受入時に本specの依存参照と用語をaccepted契約へ合わせて改訂する。
+> Status: draft — 本specは **#204 (Context / PersonalizedIntent exchange contract) の受入を必須依存** とする。2026-09-15再確認時点で #204 の契約は未acceptであり、re-review "Request changes" への対応revision (2026-09-14、commit `12f773ad61`) がbaseline `397d3fd9` に再anchorされた上でbranch `origin/issue-204-spec-plan` に存在するのみで、**owner再review待ち**、受入必須gate (Q1 planner投影、Q3 capability set、Q4 content limits/session TTL) 未解決、かつ `origin/main` 未取り込みである。よって本specは #204 のschema詳細 (field名、tier名、failure分類、`PersonalizedIntentV1` の具体形) を **確定事実として扱わない**。#204受入時に本specの依存参照と用語をaccepted契約へ合わせて改訂する。
 >
 > さらに D-011 (external LLM): 「privacy/threat modelとoffline behavior承認後まで導入しない」が requirements.md のdecision gateであり、本機能の実装開始は (1) #204受入、(2) privacy/threat model承認、(3) offline behavior (local deterministic Organizerがnetwork/AIなしで利用可能なまま) の確認を満たすまで禁止される (Issue本文も同じ)。
 
@@ -34,10 +34,10 @@ NunuLauncher内から #204契約のpersonalization contextをAI providerへ送�
 
 - Provider非依存のcapability model (`STRUCTURED_OUTPUT`, `WEB_GROUNDING`, `CITATIONS`, `REASONING` 等) のtyped表現と、要件capabilityの宣言方法。
 - `ManagedAiProviderAdapter` contract: request serialization、structured-output/schema binding、optional grounding enablement、response extraction、typed failure mapping、token/request size limit handling。
-- BYOK (user自有のprovider API key) credential lifecycle: 入力、保存、表示 (masking)、再入力、削除、backup/restore可否、log/diagnostics/crash reportへの流出禁止。
+- 選定されたcredential / auth delivery modelのlifecycle (direct BYOK選定時: key入力、保存、表示 (masking)、再入力、削除。OAuth / short-lived credential選定時: token・sessionの取得・更新・失効。backend relay選定時: relay認証lifecycle)、backup/restore可否、全secret (key/token等) のlog/diagnostics/crash reportへの流出禁止。direct BYOKを全provider共通の標準pathとは仮定しない。
 - External transmissionの明示的opt-in、送信内容確認、privacy disclosure。
 - Typed failure outcomeの全套 (下記「Failure taxonomy」) と、AI失敗時のzero-write保証・silent fallback禁止。
-- grounding provenance (`groundingAvailable`/`groundingEnabled`/`groundingUsed`) に基づくquality class (`ONE_SHOT` / `GROUNDED` / `GROUNDING_ENABLED_UNVERIFIED`) の表現と、grounding非対応時の保守的取り扱い。
+- grounding provenance (`groundingAvailable`/`groundingEnabled`/`groundingUsed` の許容不変条件とfail-closed検証を含む) に基づくquality class (`ONE_SHOT` / `GROUNDED` / `GROUNDING_ENABLED_UNVERIFIED`) の表現と、grounding非対応時の保守的取り扱い。
 - 生成intentのimmutable固定とpreview中の暗黙再実行禁止。
 - 上記のaccessibilityとdiagnostics (privacy-safe metadataのみ)。
 
@@ -76,8 +76,8 @@ managed AI実行の実効能力区分。`ONE_SHOT` (provided context + model知�
 _Avoid_: capability宣言からのGROUNDED表示、実利用確認なしのGROUNDED記録
 
 **grounding provenance (グラウンディング由来情報)**:
-1実行におけるgrounding利用の3状態。`groundingAvailable` (adapterが宣言したcapability)、`groundingEnabled` (request policyがgroundingを有効化した)、`groundingUsed` (provider responseのtool call記録・grounding metadata等により実際の利用を確認できた)。quality classはこれらから導出され、`groundingUsed` の確認なしに `GROUNDED` にはならない。
-_Avoid_: availableとusedの混同
+1実行におけるgrounding利用の3状態。`groundingAvailable` (adapterが宣言したcapability)、`groundingEnabled` (request policyがgroundingを有効化した)、`groundingUsed` (provider responseのtool call記録・grounding metadata等により実際の利用を確認できた)。quality classはこれらから導出され、`groundingUsed` の確認なしに `GROUNDED` にはならない。許容不変条件は `groundingUsed => groundingEnabled` かつ `groundingEnabled => groundingAvailable` であり、これに違反するprovider responseは成功として受け入れない (typed zero-write failure)。3状態の内部表現 (boolean 3個 / closed state model) は実装構成の選択肢であり、不変条件の維持は表現に依らず契約である。
+_Avoid_: availableとusedの混同、不変条件違反combinationの成功扱い
 
 ## Capability model
 
@@ -92,7 +92,7 @@ AiProviderCapabilities
 ```
 
 - `STRUCTURED_OUTPUT` 相当を最低要件とする案を本draftの既定とする (比較: 「WEB_GROUNDINGも必須にする」案はprovider選択肢を狭め、`ONE_SHOT`限定modeの意義を失わせるため不採用。受入時に再確認する)。
-- capabilityはadapterがtypedに宣言する。実行時のquality classはcapability宣言から直接導出しない。`groundingAvailable` (capability宣言) と `groundingEnabled` (request policy) と `groundingUsed` (provider response内のtool call記録・grounding metadata等による実利用確認) を区別し、**`groundingUsed` をprovider responseで確認できた場合のみ `GROUNDED` と表示・記録する**。actual useを確認できないproviderでは `GROUNDING_ENABLED_UNVERIFIED` として扱い、`GROUNDED` としては表示・記録しない (表示形の詳細はOpen decision 6/7)。
+- capabilityはadapterがtypedに宣言する。実行時のquality classはcapability宣言から直接導出しない。`groundingAvailable` (capability宣言) と `groundingEnabled` (request policy) と `groundingUsed` (provider response内のtool call記録・grounding metadata等による実利用確認) を区別し、**`groundingUsed` をprovider responseで確認できた場合のみ `GROUNDED` と表示・記録する**。actual useを確認できないproviderでは `GROUNDING_ENABLED_UNVERIFIED` として扱い、`GROUNDED` としては表示・記録しない (表示形の詳細はOpen decision 6/7)。provenance 3状態は許容不変条件 (`groundingUsed => groundingEnabled`、`groundingEnabled => groundingAvailable`) で検証され、違反responseは成功とせず `UNEXPECTED_GROUNDING` のtyped zero-write failureに分類する (「Failure taxonomy」)。
 - `WEB_GROUNDING` 非対応providerでは、未知アプリを推測で断定せず #204契約のunresolved/unknown表現で返せるschema/prompt policyを持つ (「Failure taxonomy」の `GROUNDING_UNSUPPORTED` は「grounding要求が実行できない」ことの検出用)。
 
 ### Grounding behavior policy
@@ -150,12 +150,13 @@ AI実行の全失敗をtyped outcomeとして定義する。いずれも **zero-
 
 | Failure | 条件 | Userへの表示 |
 |---|---|---|
-| `NO_CREDENTIAL` | BYOK keyが未設定 | key設定への導線と「local deterministicで続行」の選択肢 |
+| `NO_CREDENTIAL` | 選定delivery modelのcredential (direct BYOK時はAPI key) が未設定または失効 | credential設定への導線と「local deterministicで続行」の選択肢 |
 | `AUTH_REJECTED` | providerがcredentialを拒否 | 再入力導線。自動retryしない |
 | `NETWORK_UNAVAILABLE` | 端末がnetworkに到達できない | offline説明とdeterministic継続選択肢 |
 | `RATE_LIMITED` | provider rate limit / quota | 待機または別タイミングでの再実行導線 |
 | `PROVIDER_UNAVAILABLE` | provider側障害 | 再試行導線 |
 | `GROUNDING_UNSUPPORTED` | grounding要求がproviderで実行できない | quality class低下の明示的な告知または実行中止 (受入時に固定) |
+| `UNEXPECTED_GROUNDING` | grounding provenanceの不変条件違反 (例: grounding未有効化のresponseで `groundingUsed` が主張される) | 失敗告知。同意なしの検索実行を成功として扱わない |
 | `MALFORMED_OUTPUT` | responseがstructured outputとして解析不能 | 失敗告知。raw responseは保存しない |
 | `SCHEMA_MISMATCH` | #204 validatorがreject。intent側validationの分類 (coverage不変条件違反、context競合等) は #204契約が所有し、本specは新設しない | 検証失敗として告知 |
 | `TIMEOUT` / `CANCELLED` | bounded request policyのtimeout超過、user cancel | 中止告知。部分結果を採らない |
@@ -181,9 +182,9 @@ AI実行の全失敗をtyped outcomeとして定義する。いずれも **zero-
 
 - **credential delivery model を provider-neutral な標準と仮定しない。** 「端末内credential storeに長期API keyを保存し、appからprovider APIを直接呼ぶ」direct BYOK構成を、全providerに共通の標準production pathとしては前提にしない。credential delivery model (direct BYOK、short-lived credential、OAuth、backend relay等) はprovider compatibilityとthreat boundaryの一部であり、provider選定基準 (Open decision 1) に含める。
 - 選定providerがdirect mobile BYOKをproduction-supportedとしていない場合、direct BYOKをそのproviderの標準production pathとして扱わない。provider公式のclient-side key guidanceとの整合を確認し、整合しない構成はproduction pathとせず、代替 (非対応なら該provider不採用) をOpen decision 1の評価に含める。
-- keyのlogcat / diagnostics / crash report / bugreportへの出力を禁止する。
-- key表示はmaskingを既定とし、平文再表示を既定にしない。
-- key削除をいつでも可能にし、削除後にmanaged AIを起動できない (`NO_CREDENTIAL`)。
+- **credential lifecycle契約はdelivery model毎に分岐する。** direct BYOK: key入力 / 保存 (masked表示) / 再入力 / 削除。OAuth / short-lived credential: token・sessionの取得、更新、失効。backend relay: relay認証とアカウント接続のlifecycle。delivery modelはOpen decision 1の選定結果であり、direct BYOK以外が選定された場合、端末内BYOK key store自体が不要になり得る (その場合にkey storeを実装前提にしない)。
+- 選定されたdelivery modelのsecret (key / token等) のlogcat / diagnostics / crash report / bugreportへの出力を禁止する。この禁止はdelivery modelに依らない。
+- direct BYOK選定時、key表示はmaskingを既定とし、平文再表示を既定にしない。key削除をいつでも可能にし、credential不在 (`NO_CREDENTIAL`) のmanaged AI起動を禁止する。
 - 端末内BYOK keyを「絶対に秘匿できる」とは扱わない。root / debug / device compromiseを含むresidual riskをuser向け文書とthreat modelに文書化する。
 - provider endpoint / custom endpointを許す場合のthreat boundary (MITM、なりすましendpoint、key exfiltration経路) をthreat modelで評価する。custom endpoint許可自体がOpen decisionである。
 
@@ -219,14 +220,14 @@ AI実行の全失敗をtyped outcomeとして定義する。いずれも **zero-
 
 ## Dependencies
 
-| 依存先 | 関係 | 状態 (2026-09-13時点) |
+| 依存先 | 関係 | 状態 (2026-09-15時点) |
 |---|---|---|
-| #204 Context / PersonalizedIntent contract | 唯一のAI output contract。adapterの入出力・validationはこれに従う | **未accept** (owner review "Request changes" への対応revision `324e6182ae` がbranch `origin/issue-204-spec-plan` のみ。baseline `c5274b5d0d` 再anchor済み、**owner再review待ち**、`origin/main` 未取り込み)。実装開始のhard blocker |
+| #204 Context / PersonalizedIntent contract | 唯一のAI output contract。adapterの入出力・validationはこれに従う | **未accept** (re-review "Request changes" への対応revision `12f773ad61` がbranch `origin/issue-204-spec-plan` のみ。baseline `397d3fd9` 再anchor済み、受入gate Q1/Q3/Q4未解決、**owner再review待ち**、`origin/main` 未取り込み)。実装開始のhard blocker |
 | D-011 (external LLM gate) | privacy/threat modelとoffline behaviorの承認が必要 | 未承認 (requirements.md変更なし)。実装開始のhard blocker |
 | #182 (spec 182, implemented) | planner seam。intentは #204経由でこのseamに入る | 実装済み |
 | #194/#195/#13 (implemented/accepted) | preview / confirmation / apply / recoveryの再利用 | 実装済み |
 | #203 usage signals (OPEN) | usage signalがあればcontextへ含まれる (optional) | 未実装 (spec draftはbranchのみ)。不在でも本機能は成立する |
-| #205 (OPEN) | 兄弟issue。transport共通化はしない。exchange framing (応答text内のmarker/抽出規則) の所有は #205 側に確定 (#206のmanaged pathはprovider structured outputを利用しframingを持たない) | draft review対応revision `02f7f905cd` がbranch `origin/issue-205-spec-plan` のみ。`origin/main` 未取り込み |
+| #205 (OPEN) | 兄弟issue。transport共通化はしない。exchange framing (応答text内のmarker/抽出規則) の所有は #205 側に確定 (#206のmanaged pathはprovider structured outputを利用しframingを持たない) | draft re-review対応revision `376dc35097` がbranch `origin/issue-205-spec-plan` のみ (baseline `397d3fd9` 再anchor済み)。`origin/main` 未取り込み |
 
 ## Compatibility / migration
 
@@ -239,9 +240,9 @@ AI実行の全失敗をtyped outcomeとして定義する。いずれも **zero-
 
 - [ ] AC-1: #204 schema/validatorを唯一のAI output contractとして利用する (独自schema派生なし)。
 - [ ] AC-2: NunuLauncherにgeneral-purpose agent loopを導入せず、bounded provider requestで完結する (実行単位が1 request/responseであることのcontract test)。
-- [ ] AC-3: provider capability (`STRUCTURED_OUTPUT`, `WEB_GROUNDING` 等) がtypedに表現され、quality classがgrounding provenance (`groundingAvailable`/`groundingEnabled`/`groundingUsed`) から導出される。`groundingUsed` を確認できた実行のみ `GROUNDED` と表示・記録され、確認できない場合は `GROUNDING_ENABLED_UNVERIFIED` として扱われる。
+- [ ] AC-3: provider capability (`STRUCTURED_OUTPUT`, `WEB_GROUNDING` 等) がtypedに表現され、quality classがgrounding provenance (`groundingAvailable`/`groundingEnabled`/`groundingUsed`) から導出される。`groundingUsed` を確認できた実行のみ `GROUNDED` と表示・記録され、確認できない場合は `GROUNDING_ENABLED_UNVERIFIED` として扱われる。provenance不変条件違反 (例: `groundingUsed=true` かつ `groundingEnabled=false`) は成功とされず `UNEXPECTED_GROUNDING` のtyped zero-write failureに分類されること (invalid combinationのcontract testを含む)。
 - [ ] AC-4: grounding対応時に未知app調査を利用でき、非対応時の保守的fallback (unresolved) が定義・実装される。
-- [ ] AC-5: BYOK credential lifecycle (入力/保存/masked表示/再入力/削除) とlog/diagnostics/crash reportへの流出禁止が実装・検証される。
+- [ ] AC-5: 選定されたcredential delivery modelのlifecycleが実装・検証される (direct BYOK選定時: key入力/保存/masked表示/再入力/削除。OAuth・short-lived credential選定時: token/session lifecycle。relay選定時: relay認証lifecycle)。secret (key/token等) のlog/diagnostics/crash reportへの流出禁止はdelivery model非依存で満たされる。
 - [ ] AC-6: external transmissionの明示的opt-inとprivacy disclosure (送信内容確認。grounding有効時はprovider-side検索query生成・外部検索処理の明示を含む) がある。
 - [ ] AC-7: Failure taxonomy全套がtyped zero-writeとして実装され、AI失敗時にlayout変更・silent cross-provider送信・silent semantic downgradeがない。
 - [ ] AC-8: 生成intentがimmutable identityとして固定され、preview中に暗黙再生成・暗黙再requestがない。
@@ -254,7 +255,7 @@ AI実行の全失敗をtyped outcomeとして定義する。いずれも **zero-
 
 1. **初回provider選択**: OpenAI / Gemini / その他の比較と選定基準 (capability、structured output精度、grounding品質、cost、privacyに加え、**provider-supported auth / credential delivery model** (direct BYOK / short-lived credential / OAuth / backend relay)、**direct BYOKがそのproviderでproduction-supportedか**、short-lived credential等の代替が必須か、provider公式のclient-side key guidanceとの整合)。
 2. **`ONE_SHOT` の正式サポート可否**: 正式quality classとするか、grounding非対応時はunknown保守的限定modeとするか。
-3. **credential保存機構**: Android Keystoreをroot of trustとした上での現行推奨encrypted storage (Tink等を含む) の比較選定、backup/restore対象可否。Jetpack Security Crypto library (`androidx.security:security-crypto`、`EncryptedSharedPreferences`/`MasterKey`を提供) はdeprecatedであるため第一候補としない (出典: [Android developer cryptography guidance](https://developer.android.com/privacy-and-security/cryptography)、確認日2026-09-13)。
+3. **credential保存機構 (direct BYOK選定時)**: Android Keystoreをroot of trustとした上での現行推奨encrypted storage (Tink等を含む) の比較選定、backup/restore対象可否。direct BYOK以外のdelivery modelが選定された場合、本decisionは適用しない。Jetpack Security Crypto library (`androidx.security:security-crypto`、`EncryptedSharedPreferences`/`MasterKey`を提供) はdeprecatedであるため第一候補としない (出典: [Android developer cryptography guidance](https://developer.android.com/privacy-and-security/cryptography)、確認日2026-09-13)。
 4. **custom endpoint許可**: 許可する場合のthreat boundaryとvalidation。
 5. **provenance詳細**: provider/model/capability identityをどこまで `InputProvenance` 系へ載せるか (#204受入後、#205と整合)。
 6. **diagnostics field集合**: 許容privacy-safe metadata (quality class・grounding provenance含む) の確定とorganizer-diagnostics.mdへの反映。
@@ -268,11 +269,12 @@ AI実行の全失敗をtyped outcomeとして定義する。いずれも **zero-
 - 2026-09-10: Draft created for Issue #206. Managed Grounded AI path: capability model, provider adapter contract, failure taxonomy, BYOK/privacy constraints, quality class, immutable intent handling. #204 marked as unsettled hard dependency; D-011 gate recorded.
 - 2026-09-13: Re-entry re-anchor to baseline `f9afd8bfde` (2026-09-13時点 `origin/main`)。前回baseline `6b6bf8dd` 以降のmain差分 (#228/#235/#265/#271/#288/#292、requirements FR-016 status更新、ADR-0007への#228追記、CONTEXT/DESIGN/organizer-diagnostics更新) を検証し、本specの契約は変更不要と判断。#204は未acceptのまま (branch側で同baselineへ再anchor)、D-011は未承認のまま。run mode現況 (#228 `ScopeComposedOrganization`) をUnsupported casesへ追記。
 - 2026-09-13 (review対応): owner review "Request changes" への対応。Re-anchor to baseline `c5274b5d0d`。P1: credential delivery model (direct BYOK / short-lived / OAuth / backend relay) をprovider選定基準へ追加し、direct BYOKをprovider中立な標準production pathと仮定しない境界を契約化。P1: `groundingAvailable`/`groundingEnabled`/`groundingUsed` を分離し、`GROUNDED` を実利用確認時のみの表示・記録へ変更 (`GROUNDING_ENABLED_UNVERIFIED` 新設)。P1/P2: grounding検索queryのprivacy boundaryを節として新設し、provider-side query生成の送信確認での明示を契約化 (prompt policyによるquery内容の保証表現を削除)。P2: credential保存機構候補からdeprecatedなJetpack Security Crypto (`EncryptedSharedPreferences`/`MasterKey`) を外し、Keystore root of trust + Tink等の比較へ変更。#204 draft状態をreview対応revision `324e6182ae` (再review待ち) へ更新し、#204側で取下げられたprocess-local前提への依存を削除。Open decisions 1/3/6/7更新、10新設。AC-3/6/12更新。
+- 2026-09-15 (re-review対応): owner re-review "Request changes" への対応。Re-anchor to baseline `397d3fd9` (merge `b6bd4e1c21`; 前回baseline `c5274b5d0d` 以降のmain差分 #298/#299/#315 はAI/transport/credential seamと無関係、planner seam・`PolicySourceKind`・`RunMode`・`NoTransportContractTest` は不変を `397d3fd9` 上で再確認)。P1: credential lifecycle契約をdelivery model毎に分岐 (direct BYOK: key lifecycle / OAuth・short-lived credential: token・session lifecycle / backend relay: relay認証lifecycle) し、AC-5を「選定delivery modelのlifecycle」形式へ変更。secret (key/token) 流出禁止をdelivery model非依存の契約へ分離し、`NO_CREDENTIAL` をdelivery model中立の条件へ変更。P1: grounding provenanceの許容不変条件 (`groundingUsed => groundingEnabled`、`groundingEnabled => groundingAvailable`) を契約化し、違反responseをtyped zero-write failure `UNEXPECTED_GROUNDING` へ分類 (invalid combinationのcontract testをAC-3へ追加)。boolean 3個 / closed state modelの内部表現を実装構成の選択肢として明記。P2 (plan側): plan残存のprocess-local前提を「耐久性・失効semanticsはaccepted #204契約に従い #206は独自の永続化契約を追加しない」へ修正。#204依存参照をre-review対応revision `12f773ad61` (baseline `397d3fd9` 再anchor済み、受入gate Q1/Q3/Q4未解決、再review待ち) へ更新、#205参照を `376dc35097` へ更新。Open decision 3をdirect BYOK選定時のdecisionとして明確化。実装開始blocker (#204未accept、D-011未承認) は維持。
 
 ## References
 
 - [Issue #206](https://github.com/nunu1733/NunuLauncher/issues/206)
-- [Issue #204](https://github.com/nunu1733/NunuLauncher/issues/204) (未accept。review対応revision は branch `origin/issue-204-spec-plan` commit `324e6182ae` の `specs/204-ai-personalization-context-intent-contract/`。owner再review待ち)
+- [Issue #204](https://github.com/nunu1733/NunuLauncher/issues/204) (未accept。re-review対応revision は branch `origin/issue-204-spec-plan` commit `12f773ad61` の `specs/204-ai-personalization-context-intent-contract/`。受入gate Q1/Q3/Q4未解決、owner再review待ち)
 - [Issue #205](https://github.com/nunu1733/NunuLauncher/issues/205) (兄弟issue。transport共通化なし。exchange framing所有は #205)
 - [Android developer cryptography guidance](https://developer.android.com/privacy-and-security/cryptography) (Jetpack Security Crypto deprecated。確認日2026-09-13)
 - [Spec 182: layout strategy catalog](../182-layout-strategy-catalog/spec.md)
