@@ -7,6 +7,8 @@ import android.database.sqlite.SQLiteDatabase
 import app.lawnchair.organizer.application.canonical.CanonicalItemOrder
 import app.lawnchair.organizer.application.canonical.PersistenceManifest
 import app.lawnchair.organizer.application.canonical.PersistentRow
+import app.lawnchair.organizer.application.protocol.CaptureInvariantCategory
+import app.lawnchair.organizer.application.protocol.CaptureInvariantViolationException
 import app.lawnchair.organizer.application.public.AppPairMemberState
 import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.ApplicationPageRef
@@ -293,8 +295,19 @@ internal object RowManifestCodec {
         }
         val widget = when (kind) {
             CanonicalItemKind.AppWidget, CanonicalItemKind.CustomAppWidget -> {
-                val provider = requireNotNull(row.appWidgetProvider) { "Widget is missing its provider" }
-                val widgetId = requireNotNull(row.appWidgetId) { "Widget is missing its appWidgetId" }
+                // Issue #299 / CI-AC-08: the invariant violation is thrown
+                // typed so the bounded diagnostics line can name the violated
+                // invariant; fail-closed behavior is unchanged.
+                val provider = row.appWidgetProvider
+                    ?: throw CaptureInvariantViolationException(
+                        CaptureInvariantCategory.INVALID_WIDGET_ROW,
+                        "Widget is missing its provider",
+                    )
+                val widgetId = row.appWidgetId
+                    ?: throw CaptureInvariantViolationException(
+                        CaptureInvariantCategory.INVALID_WIDGET_ROW,
+                        "Widget is missing its appWidgetId",
+                    )
                 WidgetState.Widget(
                     provider,
                     widgetId,
