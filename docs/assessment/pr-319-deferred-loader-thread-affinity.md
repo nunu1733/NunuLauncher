@@ -1,20 +1,23 @@
 # High-risk audit: PR #319 restore窓でdeferされたtokenless loaderのMODEL_EXECUTOR再admission
 
 > Status: accepted（verdict: approve。Re-audit (1)で監査対象headを `9693a2215f` へ更新、
-> 初回auditのfindings・verdictを承継。mergeは `CI run:` fieldに記載した現行merge gate
-> runの `final-status` success確定を条件とする。code findings無し）
+> Re-audit (2)で現行branch head `601aec6407` へ再pin、初回auditのfindings・verdictを承継。
+> `CI run:` fieldのmerge gate run 34870668580はcompleted/success・`final-status` greenで
+> merge条件を満たす。code findings無し）
 > Audit date: 2026-09-15
 
 - Auditor: 独立audit session（general-purpose subagent。PR #319の実装を行っていないsession。solo保守のため、同一保守の別sessionとして実装経路に依存しない実読・再確認を実施）
 - PR: https://github.com/nunu1733/NunuLauncher/pull/319（base `main`、head branch `issue-298-implementation`、label `risk: layout-data`）
-- Head SHA: 9693a2215fe373eaa677c5b9e0f2d193f955d099
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34869651225
+- Head SHA: 601aec6407c549ff45965eba3bf603ba597cd280
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34870668580
   （`event=pull_request`、`head_branch=issue-298-implementation`、
-  `head_sha=9693a2215f…`、PR #319関連付け。Re-audit (1)完了時点ではattempt 1が
-  `in_progress`。mergeには本runの `final-status` successが確定することを要求する
-  — Re-audit (1)節・Findings参照。初回audit時に参照したrun 34865190872（head
-  `b698e48bc8`）はその後completed/successで完了したが、head移動により現行監査対象の
-  gate証跡ではない）
+  `head_sha=601aec6407…`、`path=.github/workflows/ci.yml`、PR #319関連付け。
+  **completed/success、`final-status` success**。本audit本人がGitHub APIで全14 jobの
+  conclusionを直接確認: source jobs（organizer-unit-tests / check-style / build-debug-apk）
+  実行済みsuccess、shared-writer / issue52を含む全emulator laneもsuccess。
+  Re-audit (2)節参照。Re-audit (1)時に参照したrun 34869651225（head `9693a2215f`）は
+  本記録のpushでsupersedeされcompleted/cancelled、初回audit時のrun 34865190872
+  （head `b698e48bc8`）はhead移動により現行監査対象のgate証跡ではない）
 - Criteria: specs/298-nova-restore-reload-thread-affinity/spec.md TA-AC-01, TA-AC-02, TA-AC-03, TA-AC-04, TA-AC-05, TA-AC-06
 - 調査証跡の正本: docs/assessment/issue-298-wrong-thread-restore-reload.md（以下「assessment」）。
   PR本文・commit message・assessmentの主張は信じず、以下のとおりpre-fix/post-fixの
@@ -65,11 +68,25 @@
     新head `9693a2215f` に対してそのまま成立。merge条件は cited run 34869651225の
     `final-status` success確定（Re-audit (1)完了時点でin_progress。emulator lanesと
     build-debug-apkがpending、check-style / validate-repo-contractは既にpass）。
+- Re-audit (2): Re-audit (1)がpinした `9693a2215f` のgate候補run 34869651225は、
+  本audit記録のpush（現行branch head `601aec6407`）にsupersedeされ完了前に
+  cancelledとなった（completed/cancelled — 本audit本人がGitHub APIで確認）。
+  本更新は監査対象headを現行branch head `601aec6407c549ff45965eba3bf603ba597cd280`
+  へ再pinするものである。`git diff 9693a2215f..601aec6407 --stat` は本audit記録
+  1ファイルのみ（+74/−11、docs-only）であり、code・test・CI workflow変更は無い
+  （本audit本人が実測。gate lineage要件 — 監査対象head以降のPR差分がdocsのみ — は維持）。
+  cited runをcompleted/successのrun 34870668580へ更新した: `final-status` successを含む
+  全14 job success、source jobs（organizer-unit-tests / check-style / build-debug-apk）
+  実行済みsuccess、shared-writer・issue52を含む全emulator lane success
+  （全job conclusionをGitHub APIで直接確認）。verdict不変（approve、code findings無し）。
+  本記録のcommit（docs-only）以後にcode変更が入った場合はre-auditを要する。
 
 ## Scope
 
-監査対象は `9693a2215fe373eaa677c5b9e0f2d193f955d099`（Re-audit (1)の監査対象。
-初回auditの監査対象 `b698e48bc836f2a7545ff32ebc0fb5cba209f7b0` からの差分とその検証は
+監査対象は `601aec6407c549ff45965eba3bf603ba597cd280`（Re-audit (2)の監査対象。
+Re-audit (1)の監査対象 `9693a2215fe373eaa677c5b9e0f2d193f955d099` からの差分は
+本audit記録のdocs-only更新のみ（Re-audit (2)節参照）。初回auditの監査対象
+`b698e48bc836f2a7545ff32ebc0fb5cba209f7b0` からの差分とその検証は
 冒頭のRe-audit (1)節、初回時の記録は以下に歴史記録として保持）。merge-baseは `origin/main` =
 `397d3fd95764878366e7c9e5ce41ab65e6f3f9ca`（#317 merge直後。Re-audit (1)時点でmain不動を再確認済み）。
 初回audit時のPR差分は6ファイル
@@ -299,6 +316,10 @@ python3 tools/repo-contract/measure_upstream_patch_surface.py --verify → PASS
   （Re-audit (1)更新: 同run 34865190872はその後completed/successで完了した。ただし
   review対応commitにより監査対象headは `9693a2215f` へ移動しており、現行のmerge条件は
   Re-audit (1)節のとおり run 34869651225 の `final-status` success確定である。）
+  （Re-audit (2)更新: run 34869651225は本記録のpushによるsupersedeでcompleted/cancelled。
+  現行監査対象head `601aec6407` 上のmerge gateは run 34870668580（completed/success、
+  `final-status` green、全source jobs実行済み）で確認済みであり、**CI証跡のmerge条件は
+  成立済み**。残るのは本記録のdocs-only commitのみ。）
 - **【非阻塞・構造的】high-risk-evidence run 34865248058のfailure**:
   「audit記録が存在しない」ことによる失敗であり、本audit記録のcommit（docs-only）で
   解消する。audit記録pin以降にcode変更が入った場合は再auditを要する
@@ -309,6 +330,9 @@ python3 tools/repo-contract/measure_upstream_patch_surface.py --verify → PASS
   （run 34869307748 / 34869651213）。本Re-audit (1)が新headを直接検証したことで解消する
   経路であり、本記録のHead SHAは `9693a2215f` に更新済み。以後にcode変更が入った場合は
   再度re-auditを要する。）
+  （Re-audit (2)更新: Head SHAを `601aec6407` へ再pin（deltaは本記録自身のdocs-only）。
+  同head上のHigh-risk gateは、本記録のcommit後にrun 34870668580（completed/success）を
+  CI merge gate証跡として機械検証される。）
 - **【非阻塞・記録済みdeviation】TA-AC-03「繰り返し」の方式置換**:
   実restore → reload cycleの反復走査ではなく、決定論的窓再構成test単発 +
   既存Nova restore lanesで证明している。assessment §5が置換理由（レース待ちの反復は
