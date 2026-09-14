@@ -35,6 +35,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInstaller;
 import android.content.pm.ShortcutInfo;
+import android.os.Looper;
 import android.os.UserHandle;
 import android.text.TextUtils;
 import android.util.Log;
@@ -54,6 +55,7 @@ import com.android.launcher3.model.AddWorkspaceItemsTask;
 import com.android.launcher3.model.AllAppsList;
 import com.android.launcher3.model.BaseLauncherBinder;
 import com.android.launcher3.model.BgDataModel;
+import com.android.launcher3.model.UserManagerState;
 import com.android.launcher3.model.BgDataModel.Callbacks;
 import com.android.launcher3.model.CacheDataUpdatedTask;
 import com.android.launcher3.model.ItemInstallQueue;
@@ -403,9 +405,14 @@ public class LauncherModel implements InstallSessionTracker.Callback {
      * callbacks are bound. The loader-running install-queue flag set here
      * stays paused until a real Launcher binds, matching the existing "the
      * loader runs the next time launcher starts" semantics. Must be called on
-     * the UI thread and only when no callbacks are bound.
+     * the UI thread and only when no callbacks are bound. Restore-specific
+     * callers should use {@link #dispatchRestoreReload}, which schedules this
+     * operation on the UI thread and owns the callback lifecycle.
      */
     public boolean startLoaderWithoutCallbacks() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            throw new IllegalStateException("startLoaderWithoutCallbacks must run on the UI thread");
+        }
         return startLoader(new Callbacks[0], true);
     }
 
@@ -432,17 +439,22 @@ public class LauncherModel implements InstallSessionTracker.Callback {
                 }
 
                 final OrganizerReloadRequest organizerToken = mOrganizerReloadToken;
+                final RestoreReloadRequest restoreToken = mRestoreReloadRequest;
                 // Issue #152: the snapshot is captured here — inside the exact
                 // #150 terminal boundary this lambda runs at — from the private
                 // model state, then gated by the token identity check in
                 // completeOrganizerReload so only the current generation's
-                // snapshot can be delivered.
+                // snapshot can be delivered. Issue #299: the same terminal
+                // boundary completes the restore-path reload token.
                 BaseLauncherBinder launcherBinder = new BaseLauncherBinder(
                         mApp, mBgDataModel, mBgAllAppsList, callbacksList,
-                        () -> completeOrganizerReload(organizerToken,
-                                organizerToken == null ? null
-                                        : ModelProjectionCodec.captureModelSnapshot(
-                                                mBgDataModel, mApp.getContext())));
+                        () -> {
+                            completeRestoreReload(restoreToken);
+                            completeOrganizerReload(organizerToken,
+                                    organizerToken == null ? null
+                                            : ModelProjectionCodec.captureModelSnapshot(
+                                                    mBgDataModel, mApp.getContext()));
+                        });
                 if (bindDirectly) {
                     // Divide the set of loaded items into those that we are binding synchronously,
                     // and everything else that is to be bound normally (asynchronously).
@@ -458,9 +470,19 @@ public class LauncherModel implements InstallSessionTracker.Callback {
                     return true;
                 } else {
                     stopLoader();
+                    final long organizerLeaseToken =
+                            organizerToken == null ? 0L : organizerToken.organizerLeaseToken;
+                    final boolean notifyRestoreReloadComplete = restoreToken != null;
+                    if (restoreToken != null) {
+                        // Record creation separately from mLoaderTask. The task clears
+                        // mLoaderTask during its normal transaction close before its
+                        // post-commit completion notification is delivered.
+                        restoreToken.loaderStarted = true;
+                    }
                     mLoaderTask = new LoaderTask(
                             mApp, mBgAllAppsList, mBgDataModel, mModelDelegate, launcherBinder,
-                            organizerToken == null ? 0L : organizerToken.organizerLeaseToken);
+                            new UserManagerState(), organizerLeaseToken,
+                            notifyRestoreReloadComplete);
 
                     // Always post the loader task, instead of running directly
                     // (even on same thread) so that we exit any nested synchronized blocks
@@ -483,6 +505,7 @@ public class LauncherModel implements InstallSessionTracker.Callback {
             if (oldTask != null) {
                 oldTask.stopLocked();
                 cancelOrganizerReload();
+                cancelRestoreReload();
                 return true;
             }
             return false;
@@ -556,6 +579,122 @@ public class LauncherModel implements InstallSessionTracker.Callback {
                 Consumer<ModelSnapshot> completed, Runnable cancelled) {
             this.requestId = requestId;
             this.organizerLeaseToken = organizerLeaseToken;
+            this.completed = completed;
+            this.cancelled = cancelled;
+        }
+    }
+
+    // Issue #299: restore-path reload completion barrier. Unlike the organizer
+    // token above this rides the tokenless reload (leaseToken 0), so the
+    // loader's repair sanitize keeps running; the token only adds generation
+    // identity and a terminal outcome (completed vs cancelled) so the restore
+    // can await ITS generation's successful completion instead of guessing
+    // from the generation-agnostic isModelLoaded heuristic.
+    private RestoreReloadRequest mRestoreReloadRequest;
+    private long mRestoreReloadRequestId;
+
+    /** Returns a fresh request id for {@link #dispatchRestoreReload}. */
+    public long beginRestoreReload() {
+        synchronized (mLock) {
+            return ++mRestoreReloadRequestId;
+        }
+    }
+
+    /**
+     * Issue #299: dispatches the tokenless (sanitize-carrying) reload and
+     * observes its terminal outcome with generation identity. Exactly one of
+     * {@code completed}/{@code cancelled} runs, on an arbitrary thread, after
+     * the matching generation committed or was superseded/stopped. This
+     * method may be called from a restore worker; loader startup is posted to
+     * the UI thread before this method returns.
+     */
+    public void dispatchRestoreReload(long requestId, @NonNull Runnable completed,
+            @NonNull Runnable cancelled) {
+        RestoreReloadRequest token = new RestoreReloadRequest(requestId, completed, cancelled);
+        RestoreReloadRequest superseded;
+        synchronized (mLock) {
+            stopLoader();
+            superseded = mRestoreReloadRequest;
+            mRestoreReloadRequest = token;
+            mModelLoaded = false;
+        }
+        if (superseded != null) superseded.cancelled.run();
+        // Issue #299: startLoaderWithoutCallbacks has a UI-thread precondition.
+        // Schedule both branches there, and keep the token identity check in
+        // the same critical section so a timed-out restore cannot start a
+        // stray repair generation after its request has been cleared.
+        MAIN_EXECUTOR.execute(() -> {
+            boolean neverStarted = false;
+            synchronized (mLock) {
+                if (mRestoreReloadRequest != token) return;
+                // The restore's repair generation must run even without a
+                // bound Launcher UI (e.g. a settings-only restore), so an
+                // empty callback list starts the tokenless loader instead of
+                // deferring it to the next activation.
+                if (hasCallbacks()) {
+                    startLoader();
+                } else {
+                    startLoaderWithoutCallbacks();
+                }
+                // callbacks can disappear between the hasCallbacks check and
+                // startLoader's callback re-fetch. In that case no loader
+                // generation is created and this token must not pend forever.
+                if (mRestoreReloadRequest == token && !token.loaderStarted) {
+                    mRestoreReloadRequest = null;
+                    neverStarted = true;
+                }
+            }
+            if (neverStarted) token.cancelled.run();
+        });
+    }
+
+    /**
+     * Issue #299: terminalizes the pending restore reload token if (and only
+     * if) its request id is still current, so a failing caller leaves no
+     * stale token for a later generation to complete.
+     */
+    public void cancelRestoreReloadIfCurrent(long requestId) {
+        RestoreReloadRequest token = null;
+        synchronized (mLock) {
+            if (mRestoreReloadRequest != null && mRestoreReloadRequest.requestId == requestId) {
+                token = mRestoreReloadRequest;
+                mRestoreReloadRequest = null;
+            }
+        }
+        if (token != null) token.cancelled.run();
+    }
+
+    // Issue #299: only the token captured by the exact loader generation
+    // completes the request; a superseded token is dropped with it.
+    private void completeRestoreReload(RestoreReloadRequest token) {
+        if (token == null) return;
+        synchronized (mLock) {
+            if (mRestoreReloadRequest != token) return;
+            mRestoreReloadRequest = null;
+        }
+        token.completed.run();
+    }
+
+    private void cancelRestoreReload() {
+        RestoreReloadRequest token;
+        synchronized (mLock) {
+            token = mRestoreReloadRequest;
+            mRestoreReloadRequest = null;
+        }
+        if (token != null) token.cancelled.run();
+    }
+
+    private static final class RestoreReloadRequest {
+        final long requestId;
+        final Runnable completed;
+        final Runnable cancelled;
+        // Guarded by LauncherModel.mLock. This must not be inferred from
+        // mLoaderTask because a normally completed task clears that field
+        // before its queued completion notification runs.
+        boolean loaderStarted;
+
+        RestoreReloadRequest(long requestId, Runnable completed, Runnable cancelled) {
+            this.requestId = requestId;
             this.completed = completed;
             this.cancelled = cancelled;
         }
