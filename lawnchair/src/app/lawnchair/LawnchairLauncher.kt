@@ -100,6 +100,13 @@ class LawnchairLauncher : QuickstepLauncher() {
     private val defaultOverlay by unsafeLazy { OverlayCallbackImpl(this) }
     private val prefs by unsafeLazy { PreferenceManager.getInstance(this) }
     private val preferenceManager2 by unsafeLazy { PreferenceManager2.getInstance(this) }
+    private val launcherOriginLaunchRecorder by unsafeLazy {
+        app.lawnchair.organizer.integration.LauncherOriginLaunchRecorder(
+            store = app.lawnchair.organizer.integration.LauncherOriginLaunchCounterStore.from(applicationContext),
+            isRecordingEnabled = { preferenceManager2.organizerPersonalizationRecording.firstBlocking() },
+            clockEpochDay = { java.time.LocalDate.now().toEpochDay() },
+        )
+    }
     private val insetsController by unsafeLazy { WindowInsetsControllerCompat(launcher.window, rootView) }
     private val themeProvider by unsafeLazy { ThemeProvider.INSTANCE.get(this) }
     private val noStatusBarStateListener = object : StateManager.StateListener<LauncherState> {
@@ -492,6 +499,37 @@ class LawnchairLauncher : QuickstepLauncher() {
         super.onDestroy()
         // Only actually closes if required, safe to call if not enabled
         SmartspacerClient.close()
+    }
+
+    /**
+     * Issue #203: the launcher-origin launch observation point. The override
+     * calls `super.logAppLaunch(...)` exactly once on every path — the existing
+     * All Apps session InstanceId correction, prediction rank, `LAUNCHER_APP_LAUNCH_TAP`
+     * logging, and hotseat prediction ranking info are untouched — and then
+     * hands the observation to the launcher-origin counter best-effort: the
+     * write is asynchronous and every failure is absorbed so the launch flow
+     * and logging are never affected (2026-09-15 review Required, spec AC-15).
+     *
+     * Taskbar icon launches converge here through the upstream
+     * `LauncherTaskbarUIController.onTaskbarIconLaunched`; the observation
+     * unit for them is the launch-request-issued point (spec surface contract).
+     */
+    override fun logAppLaunch(statsLogManager: com.android.launcher3.logging.StatsLogManager, info: ItemInfo, instanceId: com.android.launcher3.logging.InstanceId) {
+        super.logAppLaunch(statsLogManager, info, instanceId)
+        try {
+            val packageName = info.targetPackage ?: return
+            val serial = com.android.launcher3.pm.UserCache.INSTANCE.get(this).getSerialNumberForUser(info.user)
+            launcherOriginLaunchRecorder.onLaunch(
+                app.lawnchair.organizer.integration.LauncherOriginLaunchRecorder.LaunchObservation(
+                    profile = app.lawnchair.organizer.planning.ProfileId(serial.toString()),
+                    packageName = app.lawnchair.organizer.planning.PackageName(packageName),
+                    isAppPair = info is com.android.launcher3.model.data.AppPairInfo,
+                    isPromiseIcon = (info as? com.android.launcher3.model.data.WorkspaceItemInfo)?.isPromise() == true,
+                ),
+            )
+        } catch (_: RuntimeException) {
+            // Best-effort: any observation failure must not affect the launch.
+        }
     }
 
     override fun getDefaultOverlay(): LauncherOverlayManager = defaultOverlay

@@ -1002,6 +1002,13 @@
     <string name="organizer_diagnostics_export_subtitle">Export organizer diagnostic journal to a file</string>
     <string name="organizer_diagnostics_export_success">Diagnostics exported successfully</string>
     <string name="organizer_diagnostics_export_error">Failed to export diagnostics</string>
+    <!-- Issue #203: organizer personalization signals -->
+    <string name="organizer_personalization_section">Personalization</string>
+    <string name="organizer_personalization_recording_label">Record app launches for organizing</string>
+    <string name="organizer_personalization_recording_description">Keeps a local counter of launches started from this launcher to improve organizing quality. Stored on this device only and never exported. Turning this off stops recording and erases the existing records.</string>
+    <string name="organizer_personalization_usage_access_label">Usage access permission</string>
+    <string name="organizer_personalization_usage_access_granted">Granted — app usage can inform organizing quality</string>
+    <string name="organizer_personalization_usage_access_not_granted">Not granted — organizing works fully without it. Tap to review.</string>
     <!-- Issue #52: explicit manual full organization -->
     <string name="manual_organization_title">Organize home layout</string>
     <string name="manual_organization_summary">Review a proposed home layout before applying it.</string>
