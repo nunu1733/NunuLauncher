@@ -114,7 +114,7 @@ class IntentImportParserTest {
         val lf = framed(payload)
         val crlf = lf.replace("\n", "\r\n")
         val cr = lf.replace("\n", "\r")
-        val bom = "$lf"
+        val bom = "\uFEFF" + lf
         val expected = IntentFramingResult.Extracted(payload)
         assertEquals(expected, IntentImportParser.parse(crlf))
         assertEquals(expected, IntentImportParser.parse(cr))
