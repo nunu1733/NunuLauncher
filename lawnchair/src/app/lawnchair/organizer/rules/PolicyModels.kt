@@ -27,6 +27,13 @@ enum class PolicySourceKind {
      * immutable bundle identity.
      */
     PERSONALIZATION_SIGNAL_SNAPSHOT,
+
+    /**
+     * Issue #204 (spec 204): the content-addressed identity of one accepted
+     * AI-personalization intent. Optional source like #203; runs without an
+     * intent carry the canonical no-intent sentinel identity.
+     */
+    PERSONALIZED_INTENT,
 }
 
 data class PolicyInputIdentity(

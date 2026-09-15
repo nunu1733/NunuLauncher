@@ -5,6 +5,7 @@ package app.lawnchair.organizer.planning
  * (spec 182 internal seam): the constraint/unit/preservation work that is
  * invariant across strategies, computed once by `PlanningPlacement.place`.
  */
+
 internal data class FullRunContext(
     val input: OrganizationInput,
     val classification: ClassificationOutput,
@@ -16,7 +17,84 @@ internal data class FullRunContext(
     val allocator: Allocator,
     val pageOrderMap: Map<PageId, PageOrder>,
     val preservationWarnings: List<Warning>,
+    /**
+     * Issue #204 (spec 204 / Q1): the semantic projection of the accepted
+     * AI-personalization intent. Preference/ordering bias ONLY — it never
+     * weakens `determinePreservation`, the allocator constraints, or any
+     * strategy-declared semantics. Null for runs without an intent (existing
+     * runs are byte-identical).
+     */
+    val preferences: app.lawnchair.organizer.personalization.PersonalizedIntentProjection? = null,
 )
+
+/**
+ * Issue #204 (PR review 4, P1-2): canonical grouping identity of the accepted
+ * intent's `desiredGroup` relation. The relation graph is closed into
+ * connected components (`{self} ∪ desiredGroup`, transitively), so a
+ * one-directional declaration coheres the referenced members too, and
+ * multiple distinct groups get disjoint, stable ranks.
+ */
+internal fun intentComponentRanks(
+    preferences: app.lawnchair.organizer.personalization.PersonalizedIntentProjection?,
+): Map<ItemId, Int> {
+    if (preferences == null) return emptyMap()
+    val parent = HashMap<ItemId, ItemId>()
+    fun find(x: ItemId): ItemId {
+        var root = x
+        while (parent[root] != root) root = parent.getValue(root)
+        var cursor = x
+        while (parent[cursor] != cursor) {
+            val next = parent.getValue(cursor)
+            parent[cursor] = root
+            cursor = next
+        }
+        return root
+    }
+
+    fun union(a: ItemId, b: ItemId) {
+        parent.putIfAbsent(a, a)
+        parent.putIfAbsent(b, b)
+        val ra = find(a)
+        val rb = find(b)
+        if (ra != rb) parent[ra] = rb
+    }
+
+    for (preference in preferences.itemPreferences) {
+        val members = preference.desiredGroup ?: continue
+        for (member in members) union(preference.item, member)
+    }
+    if (parent.isEmpty()) return emptyMap()
+    val componentKey = HashMap<ItemId, String>()
+    for (itemId in parent.keys) {
+        val members = parent.keys.filter { find(it) == find(itemId) }.map { it.value }.sorted()
+        componentKey[itemId] = members.joinToString(",")
+    }
+    return componentKey.entries
+        .groupBy({ it.value }, { it.key })
+        .entries
+        .sortedBy { it.key }
+        .flatMapIndexed { rank, (_, members) -> members.map { it to rank } }
+        .toMap()
+}
+
+/**
+ * Issue #204 (spec 204 / Q1): deterministic preference rank of an accepted
+ * intent's `importance` for placement ordering. HIGH < NORMAL < LOW; an item
+ * without a preference shares NORMAL's rank, so runs without an intent (or
+ * without a preference for the item) keep the canonical ordering.
+ */
+internal fun unitPreferenceRank(
+    itemId: ItemId,
+    preferenceByItem: Map<ItemId, app.lawnchair.organizer.personalization.ItemPreference>?,
+): Int {
+    val importance = preferenceByItem?.get(itemId)?.importance
+    return when (importance) {
+        null -> 1
+        app.lawnchair.organizer.personalization.Importance.HIGH -> 0
+        app.lawnchair.organizer.personalization.Importance.NORMAL -> 1
+        app.lawnchair.organizer.personalization.Importance.LOW -> 2
+    }
+}
 
 /**
  * The single shared full-run executor (spec 182 internal seam item 4): it
@@ -33,12 +111,18 @@ internal object FullRunExecution {
         UnitOrdering.CANONICAL_TIE_BREAK -> executeCanonicalPageCompact(context)
 
         UnitOrdering.CAPTURED_VISUAL_PAGE_LOCAL ->
-            executePageLocalLiftThenPlace(context, capturedVisualOrder())
+            executePageLocalLiftThenPlace(
+                context,
+                preferenceLayeredOrder(context, capturedVisualOrder()),
+            )
 
         UnitOrdering.CAPTURED_VISUAL_GLOBAL -> executeGlobalCompact(context)
 
         UnitOrdering.CATEGORY_CONTIGUOUS_PAGE_LOCAL ->
-            executePageLocalLiftThenPlace(context, categoryContiguousOrder(context))
+            executePageLocalLiftThenPlace(
+                context,
+                preferenceLayeredOrder(context, categoryContiguousOrder(context)),
+            )
     }
 
     /**
@@ -140,6 +224,11 @@ internal object FullRunExecution {
                 .thenBy { (it.target as TargetKey.WidgetKey).profile }
                 .thenBy { it.id },
         )
+        // Issue #204 (PR review 5, P1): both registered widget policies are
+        // page-local (#235 — "widgets stay on their captured page"), so a
+        // widget's `pageAffinity` preference is NOT consumed here; cross-page
+        // widget affinity activation belongs to a future policy that declares
+        // it. Region affinity stays inside the strategy-owned window below.
         val byPage = ordered.groupBy { (it.placement as CapturedPlacement.Workspace).page.pageId }
         val pagesInOrder = context.input.snapshot.pages
             .sortedWith(compareBy({ it.order }, { it.id.value }))
@@ -169,10 +258,39 @@ internal object FullRunExecution {
 
                 null -> error("executeWithWidgetStream registered without a widget policy")
             }
+            val preferenceByItem = context.preferences?.itemPreferences?.associateBy { it.item }
             val pageCells = mutableListOf<WidgetCell>()
             for (widget in pageWidgets) {
                 val ws = widget.placement as CapturedPlacement.Workspace
-                val cell = findRowMajorFirstFit(
+                // Issue #204 (PR review 5, P1): regionAffinity is a soft hint
+                // strictly inside the strategy-owned window. `PageLocalBand`
+                // intersects the requested band with the captured band;
+                // `PageLocalTopAnchored` declares its own traversal and is
+                // never re-anchored by the intent.
+                val bandWindow = if (window != null) {
+                    preferenceByItem?.get(widget.id)?.regionAffinity?.let { affinity ->
+                        val rows = device.rows
+                        val band = when (affinity) {
+                            app.lawnchair.organizer.personalization.ExportRegionKind.TOP -> 0 until rows / 3
+                            app.lawnchair.organizer.personalization.ExportRegionKind.MIDDLE -> (rows / 3) until ((2 * rows) / 3)
+                            app.lawnchair.organizer.personalization.ExportRegionKind.BOTTOM -> ((2 * rows) / 3) until rows
+                        }
+                        val overlap = maxOf(band.first, window.first)..minOf(band.last, window.last)
+                        if (overlap.isEmpty()) null else overlap
+                    }
+                } else {
+                    null
+                }
+                val cell = bandWindow?.let { band ->
+                    findRowMajorFirstFit(
+                        obstacles,
+                        device.columns,
+                        device.rows,
+                        ws.span,
+                        CellTraversal.TOP_LEFT_ROW_MAJOR,
+                        rowWindow = band,
+                    )
+                } ?: findRowMajorFirstFit(
                     obstacles,
                     device.columns,
                     device.rows,
@@ -284,6 +402,64 @@ internal object FullRunExecution {
         }
     }
 
+    /**
+     * Issue #204 (spec 204 / Q1): preference layering for the non-canonical
+     * executors — GROUPING (connected-component rank) and IMPORTANCE order
+     * the units before the executor's own captured-visual/category order.
+     * Every key is a constant without a matching preference, so
+     * intent-less runs keep each executor's canonical ordering.
+     */
+    private fun preferenceLayeredOrder(
+        context: FullRunContext,
+        base: Comparator<CapturedItem>,
+    ): Comparator<CapturedItem> {
+        val componentRanks = intentComponentRanks(context.preferences)
+        val preferenceByItem = context.preferences?.itemPreferences?.associateBy { it.item }
+        return compareBy(
+            { item: CapturedItem -> componentRanks[item.id] ?: Int.MAX_VALUE },
+            { item: CapturedItem ->
+                val importance = preferenceByItem?.get(item.id)?.importance
+                when (importance) {
+                    app.lawnchair.organizer.personalization.Importance.HIGH -> 0
+                    null -> 1
+                    app.lawnchair.organizer.personalization.Importance.NORMAL -> 1
+                    app.lawnchair.organizer.personalization.Importance.LOW -> 2
+                }
+            },
+        ).thenComparing(base)
+    }
+
+    /**
+     * Issue #204 (spec 204 / Q1): page-local soft hints — a preserved
+     * item's captured cell, else its region-affinity band. Page-local
+     * strategies never create pages, so both hints stay on the captured
+     * page and degrade to the strategy's own page-local first fit.
+     */
+    private fun preferenceAllocateOnPage(
+        context: FullRunContext,
+        item: CapturedItem,
+        allocator: Allocator,
+        span: GridSpan,
+        page: PageRef,
+    ): Pair<PageTargetRef, GridCell>? {
+        val preference = context.preferences?.itemPreferences?.firstOrNull { it.item == item.id }
+            ?: return null
+        if (preference.preserve == true) {
+            val captured = (item.placement as? CapturedPlacement.Workspace)?.cell
+            if (captured != null) {
+                allocator.allocateOnPageOnlyWithCellHint(span, page, captured)?.let { return it }
+            }
+        }
+        val affinity = preference.regionAffinity ?: return null
+        val rows = context.input.snapshot.device.rows
+        val band = when (affinity) {
+            app.lawnchair.organizer.personalization.ExportRegionKind.TOP -> 0 until rows / 3
+            app.lawnchair.organizer.personalization.ExportRegionKind.MIDDLE -> (rows / 3) until ((2 * rows) / 3)
+            app.lawnchair.organizer.personalization.ExportRegionKind.BOTTOM -> ((2 * rows) / 3) until rows
+        }
+        return allocator.allocateOnPageOnlyInBand(span, page, band)
+    }
+
     private fun executePageLocalLiftThenPlace(
         context: FullRunContext,
         unitOrder: Comparator<CapturedItem>,
@@ -324,7 +500,10 @@ internal object FullRunExecution {
             for (item in ordered) {
                 val ws = item.placement as CapturedPlacement.Workspace
                 val capturedTarget = PlacementTarget.WorkspaceTarget(PageRef(ws.page.pageId), ws.cell, ws.span)
-                val allocated = allocator.allocateOnPageOnly(ws.span, PageRef(ws.page.pageId))
+                // Issue #204 (spec 204 / Q1): soft preference hints (preserve
+                // captured cell, region band) degrade to the page-local first fit.
+                val allocated = preferenceAllocateOnPage(context, item, allocator, ws.span, PageRef(ws.page.pageId))
+                    ?: allocator.allocateOnPageOnly(ws.span, PageRef(ws.page.pageId))
                 val (pageRef, cell) = allocated ?: error(
                     "${strategy.identity.value} could not place eligible unit ${item.id} on its captured page " +
                         "(lift-then-place placeability invariant violated)",
@@ -416,10 +595,22 @@ internal object FullRunExecution {
         }
         val folderMemberIds = folderGroups.flatMapTo(mutableSetOf()) { it.members }
 
+        // Issue #204 (spec 204 / Q1): preference layering (GROUPING rank,
+        // IMPORTANCE) over the global captured visual order.
+        val componentRanks = intentComponentRanks(context.preferences)
+        val preferenceByItem = context.preferences?.itemPreferences?.associateBy { it.item }
         val workspaceUnits = eligible
             .filter { it.id !in folderMemberIds }
             .sortedWith(
                 compareBy(
+                    { item: CapturedItem -> componentRanks[item.id] ?: Int.MAX_VALUE },
+                    { item: CapturedItem ->
+                        when (preferenceByItem?.get(item.id)?.importance) {
+                            app.lawnchair.organizer.personalization.Importance.HIGH -> 0
+                            app.lawnchair.organizer.personalization.Importance.LOW -> 2
+                            else -> 1
+                        }
+                    },
                     { pageOrderOf(context, (it.placement as CapturedPlacement.Workspace).page) },
                     { (it.placement as CapturedPlacement.Workspace).page.pageId },
                     { (it.placement as CapturedPlacement.Workspace).cell.y },
@@ -430,7 +621,10 @@ internal object FullRunExecution {
         for (item in workspaceUnits) {
             val ws = item.placement as CapturedPlacement.Workspace
             val capturedTarget = PlacementTarget.WorkspaceTarget(PageRef(ws.page.pageId), ws.cell, ws.span)
-            val allocated = allocator.allocateCapturedThenNew(ws.span)
+            // Issue #204: soft preference hints (preserve captured cell,
+            // region band) degrade to the global captured-then-new scan.
+            val allocated = preferenceAllocateOnPage(context, item, allocator, ws.span, PageRef(ws.page.pageId))
+                ?: allocator.allocateCapturedThenNew(ws.span)
                 ?: error("Validated item ${item.id} could not be allocated")
             val (pageRef, cell) = allocated
             allocator.markOccupied(pageRef, cell, ws.span)
@@ -482,6 +676,25 @@ internal object FullRunExecution {
         )
     }
 
+    /**
+     * Issue #204 (spec 204 / Q1): accepted-intent `pageAffinity` bias. A
+     * movable unit whose intent declares a page affinity prefers that captured
+     * page for allocation. The preference is NOT authoritative: the strategy's
+     * page scope and the allocator's capacity semantics decide placement, and
+     * an unsatisfiable preference simply falls through to the strategy's own
+     * overflow behavior. Items without a preference keep their captured page.
+     */
+    private fun biasedPreferredPage(
+        context: FullRunContext,
+        itemId: ItemId,
+        capturedPage: PageRef,
+    ): PageRef {
+        val preference = context.preferences?.itemPreferences?.firstOrNull { it.item == itemId }
+        val ordinal = preference?.pageAffinity ?: return capturedPage
+        if (ordinal < 0 || ordinal >= context.input.snapshot.pages.size) return capturedPage
+        return context.input.snapshot.pages[ordinal].let { PageRef(it.id) }
+    }
+
     private fun pageOrderOf(context: FullRunContext, page: PageRef): PageOrder = context.pageOrderMap.getValue(page.pageId)
 
     private fun preferredPageOf(context: FullRunContext, members: List<ItemId>): PageRef = members
@@ -502,6 +715,22 @@ internal object FullRunExecution {
 
         val capacity = device.folderMaxColumns.toLong() * device.folderMaxRows.toLong()
         val minGroupSize = input.rules.folderPolicy.minGroupSize
+        // Issue #204 (spec 204 / Q1): the movement-minimization ordering bias
+        // of the accepted intent — global `minimizeMovement`, or a per-item
+        // `preserve` on any movable unit, switches the singleton ordering to
+        // the captured visual order (see executeCanonicalPageCompact).
+        val preferenceByItem = context.preferences?.itemPreferences?.associateBy { it.item }
+        val movementMinimizing = context.preferences != null && (
+            context.preferences.globalMinimizeMovement ||
+                preferenceByItem.orEmpty().values.any { it.preserve == true }
+            )
+        fun effectiveCategory(itemId: ItemId): CategoryId {
+            val intentCategory = preferenceByItem?.get(itemId)?.groupSemantic?.category
+            if (intentCategory != null && context.input.taxonomy.allowedCategories.any { it.value == intentCategory }) {
+                return CategoryId(intentCategory)
+            }
+            return context.classification.decisions[itemId]?.category ?: taxonomy.fallbackCategory
+        }
 
         data class FormedFolder(
             val ordinal: NewFolderOrdinal,
@@ -517,7 +746,7 @@ internal object FullRunExecution {
                     FolderCandidate(
                         item.id,
                         item.profile,
-                        context.classification.decisions[item.id]?.category ?: taxonomy.fallbackCategory,
+                        effectiveCategory(item.id),
                     )
                 },
                 fallbackCategory = taxonomy.fallbackCategory,
@@ -546,18 +775,73 @@ internal object FullRunExecution {
             val sortCategory: CategoryId,
             val isNewFolder: Boolean,
             val newFolderOrdinal: NewFolderOrdinal?,
+            /** Captured visual index for the movement-minimization bias (null for synthetic units). */
+            val capturedVisual: Int? = null,
+            /** Issue #204: preserve hint — this unit's captured cell (soft). */
+            val cellHint: GridCell? = null,
+            /** Issue #204: region-affinity hint — preferred row band (soft). */
+            val bandHint: IntRange? = null,
         )
 
+        /**
+         * Issue #204 (PR review 4, P1-1): per-item `preserve` — the unit's
+         * own captured cell as the allocation hint. The allocator uses it
+         * exactly when free and degrades to the canonical first fit
+         * otherwise, so a preserve can never worsen the item's displacement.
+         */
+        fun preferenceCellHint(context: FullRunContext, item: CapturedItem): GridCell? {
+            val preference = context.preferences?.itemPreferences?.firstOrNull { it.item == item.id }
+            if (preference?.preserve != true) return null
+            return (item.placement as? CapturedPlacement.Workspace)?.cell
+        }
+
+        /** Issue #204 (PR review 4, P2): region-affinity row band (soft). */
+        fun preferenceBandHint(context: FullRunContext, item: CapturedItem): IntRange? {
+            val preference = context.preferences?.itemPreferences?.firstOrNull { it.item == item.id }
+            val affinity = preference?.regionAffinity ?: return null
+            val rows = context.input.snapshot.device.rows
+            return when (affinity) {
+                app.lawnchair.organizer.personalization.ExportRegionKind.TOP -> 0 until rows / 3
+                app.lawnchair.organizer.personalization.ExportRegionKind.MIDDLE -> (rows / 3) until ((2 * rows) / 3)
+                app.lawnchair.organizer.personalization.ExportRegionKind.BOTTOM -> ((2 * rows) / 3) until rows
+            }
+        }
+
+        fun capturedVisualOf(item: CapturedItem): Int? {
+            val ws = item.placement as? CapturedPlacement.Workspace ?: return null
+            val pageIndex = context.input.snapshot.pages.indexOfFirst { it.id == ws.page.pageId }
+            if (pageIndex < 0) return null
+            return pageIndex * (device.rows * device.columns) + ws.cell.y * device.columns + ws.cell.x
+        }
+
         val units = mutableListOf<FullUnit>()
+
+        fun FullUnit.preferenceRank(
+            preferenceByItem: Map<ItemId, app.lawnchair.organizer.personalization.ItemPreference>?,
+        ): Int = unitPreferenceRank(itemId, preferenceByItem)
+
+        fun FullUnit.regionRank(
+            preferenceByItem: Map<ItemId, app.lawnchair.organizer.personalization.ItemPreference>?,
+        ): Int = when (preferenceByItem?.get(itemId)?.regionAffinity) {
+            app.lawnchair.organizer.personalization.ExportRegionKind.TOP -> 0
+            null -> 1
+            app.lawnchair.organizer.personalization.ExportRegionKind.MIDDLE -> 1
+            app.lawnchair.organizer.personalization.ExportRegionKind.BOTTOM -> 2
+        }
+
+        fun FullUnit.groupRank(componentRanks: Map<ItemId, Int>): Int = componentRanks[itemId] ?: Int.MAX_VALUE
         for (folder in existingFolderUnits) {
             val ws = folder.placement as CapturedPlacement.Workspace
             units += FullUnit(
                 itemId = folder.id,
                 span = ws.span,
-                preferredPage = ws.page,
+                preferredPage = biasedPreferredPage(context, folder.id, ws.page),
                 isFolder = true,
                 sortProfile = folder.profile,
-                sortCategory = context.classification.decisions[folder.id]?.category ?: taxonomy.fallbackCategory,
+                sortCategory = effectiveCategory(folder.id),
+                capturedVisual = capturedVisualOf(folder),
+                cellHint = preferenceCellHint(context, folder),
+                bandHint = preferenceBandHint(context, folder),
                 isNewFolder = false,
                 newFolderOrdinal = null,
             )
@@ -579,10 +863,13 @@ internal object FullRunExecution {
             units += FullUnit(
                 itemId = item.id,
                 span = ws.span,
-                preferredPage = ws.page,
+                preferredPage = biasedPreferredPage(context, item.id, ws.page),
                 isFolder = false,
                 sortProfile = item.profile,
-                sortCategory = context.classification.decisions[item.id]?.category ?: taxonomy.fallbackCategory,
+                sortCategory = effectiveCategory(item.id),
+                capturedVisual = capturedVisualOf(item),
+                cellHint = preferenceCellHint(context, item),
+                bandHint = preferenceBandHint(context, item),
                 isNewFolder = false,
                 newFolderOrdinal = null,
             )
@@ -606,8 +893,38 @@ internal object FullRunExecution {
                         .sortedBy { it.itemId }
                     val newFolderUnits = pageUnits.filter { it.isNewFolder }
                         .sortedBy { it.newFolderOrdinal }
+                    // Issue #204 (spec 204 / Q1): accepted-intent preference
+                    // bias. PRESERVE items order first so their captured-cell
+                    // hint stays free (each then allocates exactly at its
+                    // captured cell, never drifting farther). GLOBAL_PREFERENCE
+                    // (`minimizeMovement`) switches the whole singleton
+                    // ordering to the captured visual order so allocations
+                    // reproduce the existing layout as closely as the strategy
+                    // allows. GROUPING (connected components of the desired
+                    // group relation, one-directional declarations included)
+                    // and REGION_AFFINITY (top band first) order the units the
+                    // movement bias does not pin. Every key is a constant
+                    // without a matching preference and the whole chain is
+                    // inert without an accepted intent, so intent-less runs
+                    // keep the canonical ordering byte-identical.
+                    val preferenceByItem = context.preferences?.itemPreferences?.associateBy { it.item }
+                    val preserveItems = preferenceByItem.orEmpty().values
+                        .filter { it.preserve == true }.map { it.item }.toSet()
+                    val movementMinimizing = context.preferences?.globalMinimizeMovement == true
+                    val componentRanks = intentComponentRanks(context.preferences)
                     val singletons = pageUnits.filter { !it.isFolder }
-                        .sortedWith(compareBy({ it.sortProfile }, { it.sortCategory }, { it.itemId }))
+                        .sortedWith(
+                            compareBy<FullUnit>(
+                                { if (it.itemId in preserveItems) 0 else 1 },
+                                { if (movementMinimizing && it.capturedVisual != null) 0 else 1 },
+                                { if (movementMinimizing) it.capturedVisual ?: 0 else 0 },
+                                { it.groupRank(componentRanks) },
+                                { it.preferenceRank(preferenceByItem) },
+                                { it.regionRank(preferenceByItem) },
+                            ).thenBy { it.sortProfile }
+                                .thenBy { it.sortCategory }
+                                .thenBy { it.itemId },
+                        )
                     existingFolders + newFolderUnits + singletons
                 }
 
@@ -617,7 +934,16 @@ internal object FullRunExecution {
             }
 
             for (unit in ordered) {
-                val allocated = when (strategy.pageScope) {
+                // Issue #204 (spec 204 / Q1): soft preference hints — a
+                // preserve cell hint is used exactly when free (never worse
+                // than the canonical first fit), and a region band is tried
+                // before the strategy's own fallback.
+                val hinted = when {
+                    unit.cellHint != null -> allocator.allocateWithCellHint(unit.span, unit.preferredPage, unit.cellHint)
+                    unit.bandHint != null -> allocator.allocatePreferredInBand(unit.span, unit.preferredPage, unit.bandHint)
+                    else -> null
+                }
+                val allocated = hinted ?: when (strategy.pageScope) {
                     PageScope.PREFERRED_THEN_NEW -> allocator.allocatePreferred(unit.span, unit.preferredPage)
 
                     PageScope.CAPTURED_THEN_NEW -> allocator.allocateCapturedThenNew(unit.span)

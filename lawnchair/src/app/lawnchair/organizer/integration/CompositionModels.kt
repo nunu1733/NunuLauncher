@@ -1,6 +1,7 @@
 package app.lawnchair.organizer.integration
 
 import app.lawnchair.organizer.personalization.PersonalizationSignalSnapshot
+import app.lawnchair.organizer.personalization.PersonalizedIntentIdentity
 import app.lawnchair.organizer.planning.CategoryId
 import app.lawnchair.organizer.planning.ClassificationSignals
 import app.lawnchair.organizer.planning.ItemId
@@ -29,6 +30,14 @@ data class InputProvenance(
      * optional identity on the composition result (U-4, 2026-09-15 review).
      */
     val personalization: PolicyInputIdentity = PersonalizationSignalSnapshot.unavailable().policyIdentity(),
+    /**
+     * Issue #204 (spec 204): the content-addressed identity of the accepted
+     * AI-personalization intent. Always present; runs without an intent carry
+     * the canonical no-intent sentinel, which satisfies the
+     * [PolicyInputIdentity] type invariants (non-blank version, 64-hex
+     * SHA-256) the same way the #203 sentinel does.
+     */
+    val personalizedIntent: PolicyInputIdentity = PersonalizedIntentIdentity.noIntentSentinel(),
 )
 
 sealed interface OrganizationInputComposition {
