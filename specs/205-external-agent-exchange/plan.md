@@ -2,7 +2,7 @@
 
 > Issue: #205
 > Spec: [spec.md](./spec.md)
-> Status: proposed — 依存する #204 contractは **accepted・実装済み** (現main `0cf82bc1e6`)。本planの実装開始条件は本spec/planのowner acceptanceである。
+> Status: accepted — specは2026-09-16にaccepted (ChatGPT 2nd re-review Approve、[Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/205#issuecomment-5683891236)、head `0e4f154cfd1c3dec083415eaa17cf9789d5eb588`)。依存する #204 contractも **accepted・実装済み** (現main)。実装は本planのExecution checklistに従う。
 
 ## Re-entry status
 
@@ -35,7 +35,7 @@ origin/main (`0cf82bc1e61c1874b280a7120dff9594be4fef71`) 時点の確認事実:
 
 - `exchange/ExchangeContract.kt` (pure): framing marker定数 (`-----BEGIN NUNULAUNCHER INTENT-----` / `-----END NUNULAUNCHER INTENT-----`、CONTEXT側 `-----BEGIN/END NUNULAUNCHER CONTEXT-----`)、**import envelope上限 `MAX_EXCHANGE_IMPORT_BYTES = 1 MiB` (UTF-8 byte基準、#205所有。#204 `MAX_INTENT_BYTES` とは別契約)**、package/framingのgrammar型、typed失敗型 (`FRAMING_MISSING` / `FRAMING_AMBIGUOUS` / `FRAMING_EMPTY` / `INPUT_OVERSIZE`)。
 - `exchange/ExchangePackageComposer.kt` (pure): #204 `ContextExportBuilder.build` の結果 (`BuiltExport.export` のcanonical JSON) + instruction template (英語。Goal / You may / You must / Response format の4section。Response formatにINTENT marker行を明示) → exchange package text。instruction部とdata部 (CONTEXT marker行で囲んだ単行canonical JSON) を分離した単一text。逆方向の `parsePackageStructure` (AC-1機械検証用: marker行による構造検証) を同梱する。composerは生成時に完了する **immutableな値** を返す。
-- `exchange/IntentImportParser.kt` (pure): **#205所有のexchange framing抽出**。入口で最初に **envelope上限検査** (import text全体のUTF-8 byte長 > `MAX_EXCHANGE_IMPORT_BYTES` → `INPUT_OVERSIZE`。正規化・走査の前にfail) を行い、通過した入力text (UTF-8、CRLF/CR→LF正規化、先頭BOM除去) から完全行marker (行頭行末ASCII空白除去後に完全一致、case-sensitive) で区切られた領域を抽出する。成功条件: BEGIN marker行ちょうど1つ + END marker行ちょうど1つ + BEGINがENDより前 + 領域非空。失敗は #205固有のtyped framing failure — `FRAMING_MISSING` (marker不在・END先行) / `FRAMING_AMBIGUOUS` (marker行複数出現、nested相当行を含む) / `FRAMING_EMPTY` (有効なmarker対だが領域が空白のみ) — のsealed resultで #204のvalidation failureと区別する。抽出領域はverbatim (領域先頭末尾の空白のみtrim) で、schema解釈を行わず次段へ渡す。
+- `exchange/IntentImportParser.kt` (pure): **#205所有のexchange framing抽出**。入口で最初に **envelope上限検査** (import text全体のUTF-8 byte長 > `MAX_EXCHANGE_IMPORT_BYTES` → `INPUT_OVERSIZE`。正規化・走査の前にfail) を行い、通過した入力text (UTF-8、CRLF/CR→LF正規化、先頭BOM除去) から完全行marker (行頭行末ASCII空白除去後に完全一致、case-sensitive) で区切られた領域を抽出する。成功条件: BEGIN marker行ちょうど1つ + END marker行ちょうど1つ + BEGINがENDより前 + 領域非空。失敗は #205固有のtyped framing failure — `FRAMING_MISSING` (marker不在・END先行) / `FRAMING_AMBIGUOUS` (marker行複数出現、nested相当行を含む) / `FRAMING_EMPTY` (有効なmarker対だが領域が空白のみ) — のsealed resultで #204のvalidation failureと区別する。抽出領域はverbatim (領域先頭末尾の空白のみtrim) で、schema解釈を行わず次段へ渡す。**byte長判定の実装規約 (approving reviewのnon-blocking note)**: 巨大`String`に対する`toByteArray(UTF_8).size`は同サイズ級のbyte arrayを追加確保するため、`length > limit` (char数によるfast reject: UTF-8では byte長 ≥ char長) + boundedなbyte count (上限到達で打ち切るcounter) で上限判定自体の追加memoryもboundedにする。
 - `exchange/SessionExportReconstructor.kt` (pure): durable session (`ExportSession.itemRefs`) + 現在の `CanonicalStructuralInputs` から `IntentValidator.validate` が必要とする検証用export viewを再構築する。再構築が現在状態へ解決不能な場合は `CONTEXT_STALE` 相当のtyped結果を返す (#204失敗分類を保存)。**#204実装へのadditive変更** (accepted #204契約・既存validator/builderの意味は変更しない。`ContextExportBuilder` と同一のprojection述語を、新規乱数割当ではなくsession固定ref mapで再適用する)。
 - **canonical入力sourceの単一化 (P2対応)**: exchange flowのcontext export生成とimport時の検証用export view再構築は、**同一の単一adapter** (canonical capture → `ExportInputs` / `CanonicalStructuralInputs` 導出。既存 `ProductionOrganizationInputComposer` / `FullTargetSetMaterializer` のfull-target composition経由) を共有する。export時とimport時で別ロジックを組むと同一homeでもprojection drift (ref対応・role・mobility・grid投影の変化) が起こり得るため、導出は1箇所に置き両経路から利用する。#228のmissing-app selection / scope-composed target compositionは **run内のcomposition概念** であり、run外のexchange flow (export生成・import再構築) では関与しない — 再構築はexport生成と同じfull-target compositionを使う。parityはcontract testで固定する (「Verification」のreconstruction parity test)。
 - `exchange/ExchangeImportPipeline.kt` (pure): **envelope上限検査** → framing抽出 → #204 `IntentCodec.decode` → session照会 (`load`) → `SessionExportReconstructor` → `IntentValidator.validate` までを束ねる純粋pipeline。全失敗 (`INPUT_OVERSIZE` + `FRAMING_*` 3種 + #204 12 class) を統一したtyped resultで返す (UIの失敗表示はこれに一対対応)。session/digestの再計算入力は引数注入 (Android型を漏らさない)。
@@ -155,7 +155,7 @@ Manual run UI (run非active時導線) → exchange flow開始
 ## Execution checklist
 
 - [x] #204 accepted・実装済み (blocker解消。spec/planの仮称解消を含む)。
-- [ ] 本spec/planのowner acceptance (status: proposed → accepted)。
+- [x] 本spec/planのowner acceptance (2026-09-16、ChatGPT 2nd re-review Approve。status: accepted)。
 - [ ] Current behavior reproduced (導線不在の確認)。
 - [ ] framing parser・package composer・generation gateの失敗testを先行追加 (framing失敗は #204 validation failureと区別されること)。
 - [ ] Minimal implementation (composer → transport → import → 既存preview接続)。
