@@ -192,21 +192,31 @@ And 修正・検証はassertionの弱化や例外の握り潰しによって成�
 
 ## Acceptance criteria
 
-- [ ] TA-AC-01: 観測されたwrong-thread call chainが正確に特定され、stack/traceの証跡と
-  ともに記録されている（3つのsignatureそれぞれの出所が説明できること）。#299再構成後の
-  現行main（Phase 1実施時のhead）でchainが実在すること、または障害窓が取り除かれた/
-  変化したことが証跡とともに区別して記録されていること。
+- [ ] TA-AC-01: 観測されたwrong-thread call chainが、stack/traceの証跡とともに記録され、
+  3つのsignatureそれぞれの出所が説明できること。#299再構成後の現行main（Phase 1実施時の
+  head）でchainが実在すること、または障害窓が取り除かれた/変化したことが証跡とともに
+  区別して記録されていること。Handler signature（`Can't create handler inside ...`）に
+  ついては、記録セッションに当該例外のstackが存在しないため、次の証明水準をもって
+  特定とする（2026-09-15再レビューで確定）: (i) 観測buildにおけるapp側生成site不在の
+  全数sweep、(ii) deferred窓がHandler生成点へ到達不能であることの実証（icon cache
+  assertion先発火、両load形状）、(iii) restore thread上の実行を可能にする両chainの
+  構造的除去（旧sync dispatch＝#299、deferred drain＝本PR）。framework内部のexact
+  生成行は証跡として取得不能であることを併せて記録する（assessment §1.2が正本）。
 - [ ] TA-AC-02: Nova restoreがLauncher cache/model APIを許可されないthreadから
   アクセスしない。修正は、該当処理を契約上要求されるthread（model worker thread /
   main thread / restore threadのそれぞれ）へ明示的にdispatchする形で行われる。
 - [ ] TA-AC-03: 繰り返しのrestore/reload検証で、`Cache accessed on wrong thread`、
-  `Can't create handler inside Thread[NovaBackupRestore]`、workspace loading中断が
-  一度も発生しない。検証は次の双方で構成する: (a) 決定論的deferral窓（restore-family
-  lease解放thread上へのdeferred drain）の反復サイクルと、そのlogcatに対する3
-  signature不在の機械検証（2026-09-15のreviewで正規化。実lifecycleのセッション依存
-  レースの反復は違反不在を証明できないため）。(b) 実restore/reload lifecycleを通る
-  Nova restore instrumentation laneの緑（`NovaRestoreCapture*Test` + cross-process
-  stage、#299のbarrier定義による完了観測を含む）。
+  Handler生成違反（`Can't create handler inside ...`。thread名に依存しないprefixで
+  検出する）、workspace loading中断が一度も発生しない。検証は次の双方で構成する:
+  (a) 決定論的deferral窓（restore-family lease解放thread上へのdeferred drain）の
+  反復サイクルと、そのlogcatに対するsignature不在の機械検証（2026-09-15のreviewで
+  正規化。実lifecycleのセッション依存レースの反復は違反不在を証明できないため）。
+  この窓はicon cache assertionが常に先発火するためHandler signatureの発生点には
+  到達しない（assessment §1.2）。Handler signatureの検証は、thread名非依存のprefix
+  oracle（防御として本testに組込み）と実lifecycle lanesに委ね、そのapp側前提の
+  構造的除去（#299 + 本PR）の静的根拠をassessment §1.2とする。(b) 実restore/reload
+  lifecycleを通るNova restore instrumentation laneの緑（`NovaRestoreCapture*Test` +
+  cross-process stage、#299のbarrier定義による完了観測を含む）。
 - [ ] TA-AC-04: restore後のworkspace/model reloadが正常に完了し、workspaceが使用可能
   になる。検証はrestore reload completion barrierの完了を待って行う（barrier前の
   一時状態を完了扱いしない。#299のbarrier定義と同一の観測signal）。
@@ -220,7 +230,7 @@ And 修正・検証はassertionの弱化や例外の握り潰しによって成�
 
 | AC | Evidence |
 |---|---|
-| TA-AC-01 | 再現実行時のlogcat/stack証跡と、特定されたcall chainの記録（plan.md / `docs/assessment/issue-298-<slug>.md` / PR証跡） |
+| TA-AC-01 | 再現実行時のlogcat/stack証跡と、特定されたcall chainの記録。Handler signatureはTA-AC-01に明記した証明水準（sweep + 到達不能実証 + 構造的除去）の記録（`docs/assessment/issue-298-wrong-thread-restore-reload.md` §1.2 / PR証跡） |
 | TA-AC-02 | 特定chainに対する修正の構造的確認（thread hopの明示）+ TA-AC-03のruntime evidence |
 | TA-AC-03 | (a) 決定論的deferral窓test（`RestoreLeaseDeferredLoaderThreadAffinityTest`、反復サイクル + in-test logcat 3 signature不在oracle）のgreen、(b) emulator/実機での実restore/reload lane（`NovaRestoreCapture*Test` + cross-process stage）のgreen。logcatに3 signatureが不在であることの記録 |
 | TA-AC-04 | barrier完了後のworkspace表示とmodel reload完了の確認（#168の `NovaRestoreGridApplicationTest`、#299の `NovaRestoreCapture*Test` harness系instrumentation seamの拡張を含む） |
@@ -229,11 +239,12 @@ And 修正・検証はassertionの弱化や例外の握り潰しによって成�
 
 ## Open questions
 
-- 3つの障害signatureを生む正確なcall chain（TA-AC-01）。#299再構成後の現行mainで
-  chainが実在するか（観測build `d0f40446c7` と現行mainの間でrestore/reload窓が
-  再構成されたため）。静的読解ではrestore threadから `BaseIconCache` への直接到達点は
-  確認できないため、runtime reproductionによる特定が必要。plan.mdのPhase 1
-  investigation planを参照。
+- ~~3つの障害signatureを生む正確なcall chain（TA-AC-01）~~ **解決済み（2026-09-15
+  再レビューで閉じる）**: sig1（cache wrong-thread）とsig3（loading中断）はdeferred
+  drain chainとして決定論的に再現・記録済み（assessment §1.1/§2.2）。sig2（Handler
+  生成）はTA-AC-01に明記した証明水準（app側site不在 + deferred窓到達不能の実証 +
+  構造的除去）で充足し、framework内部のexact行は証跡取得不能として記録済み
+  （assessment §1.2）。
 - 中断されたreloadがpartially initializedなmodel/cache状態を残すかどうか。残す場合、
   その状態が後続のrestore/organizer/capture操作へ影響するか（#299との関係の切り分けを
   含む。#299 assessmentの修復点中断観測が出発点）。
@@ -245,6 +256,16 @@ And 修正・検証はassertionの弱化や例外の握り潰しによって成�
 
 ## Change history
 
+- 2026-09-15: 再レビュー（P1/P2）を反映。TA-AC-03のlogcat oracleについて、Handler
+  signatureの検出文字列をthread名非依存のprefix（`Can't create handler inside`）に
+  変更（テスト窓の解放thread名は `NovaBackupRestoreTestThread` であり、
+  `Thread[NovaBackupRestore]` 固定では再発を検出できないため）。あわせてTA-AC-03に
+  「deferred窓はicon cache assertion先発火によりHandler signatureの発生点へ到達しない」
+  ことを明記し、Handler signatureの検証をthread名非依存prefix oracle（防御）+ 実
+  lifecycle lanes + 構造的除去の静的根拠（assessment §1.2）に分担させた。TA-AC-01は
+  採用する証明水準（app側生成site不在の全数sweep / deferred窓到達不能の実証 /
+  両chainの構造的除去。framework内部exact行は証跡取得不能として記録）を明記し、
+  対応済みのOpen question（3 signatureの正確なcall chain）を閉じた。
 - 2026-09-12: Draft created for #298（snapshot commit `20a357b7db32`、baseline
   `f9afd8bfde12`）。
 - 2026-09-14: Re-entry ruleに従いbaselineを現行main `9821dec073` へ更新。#299 fix

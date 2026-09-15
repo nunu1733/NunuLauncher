@@ -57,14 +57,18 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
     private static final String RELEASING_THREAD_NAME = "NovaBackupRestoreTestThread";
 
     /**
-     * The three wrong-thread failure signatures recorded by the #287 T4 device
+     * The wrong-thread failure signatures recorded by the #287 T4 device
      * session. The post-fix oracle requires their absence in this process's
      * logcat (TA-AC-03's logcat-absence requirement, applied to the
-     * deterministic deferral window).
+     * deterministic deferral window). The Handler signature uses the
+     * thread-name-independent prefix: the releasing thread here is the test's
+     * own {@link #RELEASING_THREAD_NAME}, so a pinned
+     * {@code Thread[NovaBackupRestore]} string could never match a recurrence
+     * in this window.
      */
     private static final String[] FORBIDDEN_SIGNATURES = {
         "Cache accessed on wrong thread",
-        "Can't create handler inside Thread[NovaBackupRestore]",
+        "Can't create handler inside",
         "Desktop items loading interrupted",
         "Deferred callback threw",
     };
