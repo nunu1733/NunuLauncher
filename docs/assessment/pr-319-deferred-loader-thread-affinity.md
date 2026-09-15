@@ -1,23 +1,23 @@
 # High-risk audit: PR #319 restore窓でdeferされたtokenless loaderのMODEL_EXECUTOR再admission
 
-> Status: accepted（verdict: approve。Re-audit (1)〜(3)を経て、Re-audit (4)で監査対象headを
-> `e75cb7fcd3` へ更新、初回auditのfindings・verdictを承継。`CI run:` fieldのmerge gate
-> run 34914081901はcompleted/success・`final-status` greenでmerge条件を満たす。
+> Status: accepted（verdict: approve。Re-audit (1)〜(4)を経て、Re-audit (5)で監査対象headを
+> `a8ee2a03c3` へ更新、初回auditのfindings・verdictを承継。`CI run:` fieldのmerge gate
+> run 34917459059はcompleted/success・`final-status` greenでmerge条件を満たす。
 > code findings無し）
 > Audit date: 2026-09-15
 
 - Auditor: 独立audit session（general-purpose subagent。PR #319の実装を行っていないsession。solo保守のため、同一保守の別sessionとして実装経路に依存しない実読・再確認を実施）
 - PR: https://github.com/nunu1733/NunuLauncher/pull/319（base `main`、head branch `issue-298-implementation`、label `risk: layout-data`）
-- Head SHA: e75cb7fcd3d48bbfc523c7dc2b801f3790fa95b9
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34914081901
+- Head SHA: a8ee2a03c316cca3da76b56da423ffa8496e197e
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34917459059
   （`event=pull_request`、`head_branch=issue-298-implementation`、
-  `head_sha=e75cb7fcd3…`、`path=.github/workflows/ci.yml`、PR #319関連付け。
+  `head_sha=a8ee2a03c3…`、`path=.github/workflows/ci.yml`、PR #319関連付け。
   **completed/success、`final-status` success**。本audit本人がGitHub APIで全14 jobの
   conclusionを直接確認: source jobs（organizer-unit-tests / check-style / build-debug-apk）
-  実行済みsuccess、shared-writer（blob対応fixを含む本testを実行するlane）/
-  issue52を含む全emulator laneもsuccess。Re-audit (4)節参照。Re-audit (3)時の
-  run 34911441712（head `8b63ae0a34`）はcompleted/successであったがhead移動により
-  現行監査対象のgate証跡ではなく、それ以前のrunも同様に過去headの証跡である）
+  実行済みsuccess、shared-writer / issue52を含む全emulator laneもsuccess。
+  Re-audit (5)節参照。Re-audit (4)時のrun 34914081901（head `e75cb7fcd3`）は
+  completed/successであったがhead移動により現行監査対象のgate証跡ではなく、
+  それ以前のrunも同様に過去headの証跡である）
 - Criteria: specs/298-nova-restore-reload-thread-affinity/spec.md TA-AC-01, TA-AC-02, TA-AC-03, TA-AC-04, TA-AC-05, TA-AC-06
 - 調査証跡の正本: docs/assessment/issue-298-wrong-thread-restore-reload.md（以下「assessment」）。
   PR本文・commit message・assessmentの主張は信じず、以下のとおりpre-fix/post-fixの
@@ -165,13 +165,52 @@
     cited run 34914081901がcompleted/success・`final-status` greenのため満たされており、
     残る手続きは本記録のdocs-only commitのみ。本記録のcommit以後にcode変更が
     入った場合はre-auditを要する。
+- Re-audit (5): Re-audit (4)のpin（`e75cb7fcd3`）以後にreview対応の1 commit
+  `a8ee2a03c3`（「make the handler oracle thread-name-independent and align
+  TA-AC-01/03 wording」）が加わったため再監査。監査対象headを
+  `a8ee2a03c316cca3da76b56da423ffa8496e197e` へ更新。
+  `git diff e75cb7fcd3..a8ee2a03c3 --name-only` はtest 1 + spec 1のみで、
+  `src/` / `lawnchair/` / `quickstep/` / `.github/` / assessment の差分は **0行** —
+  production code・LoaderTask.javaは引き続き不変（本auditが直接確認）。
+  audit本人が全delta hunkを直接reviewした結果:
+  - **Handler oracleのthread名非依存化はoracleの正確性修正として妥当**:
+    検出文字列が `Can't create handler inside Thread[NovaBackupRestore]` から
+    `Can't create handler inside` prefixへ変更された。本test窓の解放threadは
+    test自身の `NovaBackupRestoreTestThread` であり、T4実機のthread名に
+    固定した旧文字列は再発時に一律マッチしない（実質的に常時不在となる
+    dead oracleだった）— Re-audit (3)で私が検証したsig2帰属記録
+    （framework内部生成・app側前提除去。assessment §1.2）と整合する形で、
+    prefix化により本窓内の任意のHandler生成失敗を検出対象に含める防御的
+    oracleになった。prefixの拡幅は過剰検出（保守側の失敗）の方向にのみ作用し、
+    違反の取りこぼしを生まない。KDocも理由付きで更新済み。
+  - **spec（正本）との一致**: TA-AC-01にsig2の採用証明水準（(i) 観測buildでの
+    app側生成site不在の全数sweep、(ii) deferred窓がHandler生成点へ到達不能である
+    実証 — icon cache assertion先発火・両load形状、(iii) 両restore thread chainの
+    構造的除去 = #299 + 本PR。framework内部exact行は証跡取得不能として記録）が
+    明記され、assessment §1.2（Re-audit (3)で本auditが独自sweepと
+    `AllAppsList.java:155` 経路で検証済み）を正本として参照する。TA-AC-03は
+    「deferred窓はassertion先発火によりHandler signatureの発生点へ到達しない」
+    ことを明記し、sig2検出を防御的prefix oracle + 実lifecycle lanes + 構造的除去の
+    静的根拠へ分担させた — 記録とtest実装・oracle文字列が相互に一致している。
+    対応済みOpen question（3 signatureの正確なcall chain）が解決済みとして閉じられ、
+    Change historyに経緯が記録された。frontmatter `status: accepted` は不変。
+  - **検証**: cited run 34917459059（head `a8ee2a03c3` 上）がcompleted/success、
+    `final-status` green、全source jobs実行済みsuccess、shared-writer lane
+    （修正後oracleを実行するlane）を含む全emulator lane success —
+    全job conclusionを本audit本人がGitHub APIで直接確認。
+  - **verdict承継**: 初回audit・Re-audit (1)〜(4)のfindings・verdict（approve、
+    code findings無し）は新head `a8ee2a03c3` に対して成立。TA-AC-01..06の充足判定は
+    変わらず（sig2のoracleとspec記録は本deltaで正確化・強化）。merge条件は
+    cited run 34917459059がcompleted/success・`final-status` greenのため満たされており、
+    残る手続きは本記録のdocs-only commitのみ。本記録のcommit以後にcode変更が
+    入った場合はre-auditを要する。
 
 ## Scope
 
-監査対象は `e75cb7fcd3d48bbfc523c7dc2b801f3790fa95b9`（Re-audit (4)の監査対象。
-Re-audit (3)の監査対象 `8b63ae0a343bfeeea4efb6c2444de6f5a7df2717` からの差分は
-本記録のdocs-only commit（`2430b591e3`）とtest 1ファイルのblob対応fix
-（`e75cb7fcd3`。Re-audit (4)節参照）。Re-audit (2)の監査対象
+監査対象は `a8ee2a03c316cca3da76b56da423ffa8496e197e`（Re-audit (5)の監査対象。
+Re-audit (4)の監査対象 `e75cb7fcd3d48bbfc523c7dc2b801f3790fa95b9` からの差分は
+review対応1 commit（test oracle文字列 + spec。Re-audit (5)節参照）。
+Re-audit (3)の監査対象 `8b63ae0a343bfeeea4efb6c2444de6f5a7df2717`、Re-audit (2)の監査対象
 `601aec6407c549ff45965eba3bf603ba597cd280`、Re-audit (1)の監査対象
 `9693a2215fe373eaa677c5b9e0f2d193f955d099`、
 および初回auditの監査対象 `b698e48bc836f2a7545ff32ebc0fb5cba209f7b0` からの差分と
@@ -417,6 +456,10 @@ python3 tools/repo-contract/measure_upstream_patch_surface.py --verify → PASS
   run 34914081901（completed/success、`final-status` green、全source jobs実行済み。
   GitHub APIで全14 jobのconclusionを直接確認）で**成立済み**。残るのは本記録の
   docs-only commitのみ。）
+  （Re-audit (5)更新: 監査対象headは `a8ee2a03c3` へ移動。同head上のmerge gateは
+  run 34917459059（completed/success、`final-status` green、全source jobs実行済み。
+  GitHub APIで全14 jobのconclusionを直接確認）で**成立済み**。残るのは本記録の
+  docs-only commitのみ。）
 - **【非阻塞・構造的】high-risk-evidence run 34865248058のfailure**:
   「audit記録が存在しない」ことによる失敗であり、本audit記録のcommit（docs-only）で
   解消する。audit記録pin以降にcode変更が入った場合は再auditを要する
@@ -439,6 +482,11 @@ python3 tools/repo-contract/measure_upstream_patch_surface.py --verify → PASS
   docs-only commit + test 1ファイルのblob対応fix。production差分0行 —
   Re-audit (4)節参照）。同head上のHigh-risk gateは、本記録のcommit後に
   run 34914081901（completed/success、`final-status` green）をCI merge gate証跡として
+  機械検証される。以後にcode変更が入った場合は再度re-auditを要する。）
+  （Re-audit (5)更新: Head SHAを `a8ee2a03c3` へ更新（deltaはtest oracle文字列の
+  thread名非依存化 + spec TA-AC-01/03・Open question改訂の1 commit。production差分
+  0行 — Re-audit (5)節参照）。同head上のHigh-risk gateは、本記録のcommit後に
+  run 34917459059（completed/success、`final-status` green）をCI merge gate証跡として
   機械検証される。以後にcode変更が入った場合は再度re-auditを要する。）
 - **【非阻塞・記録済みdeviation】TA-AC-03「繰り返し」の方式置換**:
   実restore → reload cycleの反復走査ではなく、決定論的窓再構成test単発 +
