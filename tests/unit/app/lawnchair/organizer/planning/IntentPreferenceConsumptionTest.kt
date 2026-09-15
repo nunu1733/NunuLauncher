@@ -75,7 +75,10 @@ class IntentPreferenceConsumptionTest {
         val built = buildExport(input)
         val refs = built.session.itemRefs.entries.associate { (ref, id) -> id.value to ref }
         val mappedIntents = itemIntents.map { itemIntent ->
-            itemIntent.copy(ref = refs.getValue(itemIntent.ref))
+            itemIntent.copy(
+                ref = refs.getValue(itemIntent.ref),
+                desiredGroupRefs = itemIntent.desiredGroupRefs?.map { refs.getValue(it) },
+            )
         }
         val intent = PersonalizedIntentV1(
             exportId = built.export.exportId,
@@ -174,6 +177,91 @@ class IntentPreferenceConsumptionTest {
             withoutIntent.placements.first { it.item == ItemId("locked") }.disposition,
             lockedPlacement.disposition,
         )
+    }
+
+    @Test
+    fun regionAffinityPreferenceDeterministicallyReordersWithinThePage() {
+        val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0))
+        val input = baseInput(items)
+        val inputWithIntent = withIntent(
+            input,
+            listOf(
+                ItemIntent(ref = "b", regionAffinity = app.lawnchair.organizer.personalization.ExportRegionKind.TOP),
+                ItemIntent(ref = "a"),
+            ),
+        ).first
+        val biased = planner.plan(inputWithIntent).outcome as Planned
+        // TOP-affinity b takes the first cell; the plan is deterministic.
+        val cellOf = { planned: Planned, item: ItemId ->
+            (planned.placements.first { it.item == item }.target as PlacementTarget.WorkspaceTarget).cell
+        }
+        assertEquals(GridCell(0, 0), cellOf(biased, ItemId("b")))
+        val plain = planner.plan(input).outcome as Planned
+        assertNotEquals(cellOf(plain, ItemId("b")), cellOf(biased, ItemId("b")))
+    }
+
+    @Test
+    fun desiredGroupCohesionIsReflectedInPlacementOrder() {
+        val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0), app("c", x = 2, y = 0))
+        // High folder threshold: the intent group must express as ordering
+        // cohesion (adjacent placement), not strategy folder formation.
+        val input = baseInput(items).copy(
+            rules = defaultRules().copy(
+                folderPolicy = FolderPolicy(5, NewFolderProfileScope.SAME_PROFILE_ONLY),
+            ),
+        )
+        val inputWithIntent = withIntent(
+            input,
+            listOf(
+                ItemIntent(ref = "a", desiredGroupRefs = listOf("c")),
+                ItemIntent(ref = "b"),
+                ItemIntent(ref = "c", desiredGroupRefs = listOf("a")),
+            ),
+        ).first
+        val biased = planner.plan(inputWithIntent).outcome as Planned
+        // Group members a and c are co-ordered: they occupy adjacent cells.
+        val cellOf = { planned: Planned, item: String ->
+            (planned.placements.first { it.item == ItemId(item) }.target as PlacementTarget.WorkspaceTarget).cell
+        }
+        assertTrue((cellOf(biased, "a").x == cellOf(biased, "c").x + 1) || (cellOf(biased, "c").x == cellOf(biased, "a").x + 1))
+        // Deterministic reproduction.
+        assertEquals(biased, planner.plan(inputWithIntent).outcome as Planned)
+    }
+
+    @Test
+    fun preservePreferenceWithGlobalMinimizeMovementReordersDeterministically() {
+        val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0))
+        val input = baseInput(items)
+        val built = buildExport(input)
+        val refs = built.session.itemRefs.entries.associate { (ref, id) -> id.value to ref }
+        val intent = PersonalizedIntentV1(
+            exportId = built.export.exportId,
+            itemIntents = listOf(ItemIntent(ref = refs.getValue("b"), preserve = true)),
+            unresolvedRefs = built.export.items.map { it.ref }.filter { ref -> ref != refs.getValue("b") },
+            globalPreference = app.lawnchair.organizer.personalization.GlobalPreference(minimizeMovement = true),
+        )
+        val validation = app.lawnchair.organizer.personalization.IntentValidator.validate(
+            intent = intent,
+            export = built.export,
+            session = built.session,
+            nowEpochMs = 2L,
+            currentStructuralDigest = built.session.sourceContextDigest,
+        )
+        val validated = when (validation) {
+            is app.lawnchair.organizer.personalization.IntentValidation.Validated -> validation.validated
+
+            is app.lawnchair.organizer.personalization.IntentValidation.Failure ->
+                throw IllegalStateException("intent validation failed: ${validation.failure}")
+        }
+        val inputWithIntent = input.copy(intentPreferences = IntentPlannerAdapter.project(validated))
+        val biased = planner.plan(inputWithIntent).outcome as Planned
+        val cellOf = { planned: Planned, item: ItemId ->
+            (planned.placements.first { it.item == item }.target as PlacementTarget.WorkspaceTarget).cell
+        }
+        // The preserve-preferenced item takes the first cell (minimal displacement).
+        assertEquals(GridCell(0, 0), cellOf(biased, ItemId("b")))
+        val plain = planner.plan(input).outcome as Planned
+        assertNotEquals(cellOf(plain, ItemId("b")), cellOf(biased, ItemId("b")))
     }
 
     private fun orderedSingletonItems(planned: Planned): List<ItemId> = planned.placements

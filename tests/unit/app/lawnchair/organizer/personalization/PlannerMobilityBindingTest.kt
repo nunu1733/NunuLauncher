@@ -107,9 +107,12 @@ class PlannerMobilityBindingTest {
     fun exportMobilityJudgmentAgreesWithPlannerFeasibilityForEveryCase() {
         // The reservation covers row 0 only: cases placed at y >= 1 are free
         // of it, so the MOVABLE and CONDITIONAL branches are actually reached.
+        // The reservedOverlap fixture deliberately stays in row 0 so the
+        // RESERVED_REGION cause is also bound against the planner.
         val reserved = ReservedWorkspaceRegion(PageRef(PageId("p0")), GridCell(0, 0), GridSpan(4, 1))
         val snapshot = snapshotOf(
             cases.map { item ->
+                if (item.id == ItemId("reservedOverlap")) return@map item
                 val ws = item.placement as? CapturedPlacement.Workspace
                 if (ws != null && ws.cell.y == 0) item.copy(placement = ws.copy(cell = GridCell(ws.cell.x, 2))) else item
             },
@@ -156,6 +159,18 @@ class PlannerMobilityBindingTest {
                 }
             }
         }
+    }
+
+    @Test
+    fun reservedRegionCauseBindsToThePlannerReasonExplicitly() {
+        val region = ReservedWorkspaceRegion(PageRef(PageId("p0")), GridCell(0, 0), GridSpan(4, 1))
+        val overlapping = workspaceItem("reservedOverlap", x = 1, y = 0)
+        val snapshot = snapshotOf(listOf(overlapping)).copy(reservedWorkspaceRegions = listOf(region))
+        val (mobility, fixReason) = projectMobility(overlapping, snapshot)
+        assertEquals(Mobility.FIXED, mobility)
+        assertEquals(FixReason.RESERVED_REGION, fixReason)
+        val plannerReason = determinePreservation(overlapping, ExistingRole.Movable, snapshot.reservedWorkspaceRegions)
+        assertEquals(app.lawnchair.organizer.planning.PreserveReason.RESERVED_REGION, plannerReason)
     }
 
     @Test

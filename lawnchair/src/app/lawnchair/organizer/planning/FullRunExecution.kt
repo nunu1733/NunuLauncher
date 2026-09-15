@@ -600,6 +600,33 @@ internal object FullRunExecution {
         fun FullUnit.preferenceRank(
             preferenceByItem: Map<ItemId, app.lawnchair.organizer.personalization.ItemPreference>?,
         ): Int = unitPreferenceRank(itemId, preferenceByItem)
+
+        fun FullUnit.preserveRank(preferences: app.lawnchair.organizer.personalization.PersonalizedIntentProjection?): Int {
+            val preference = preferences?.itemPreferences?.firstOrNull { it.item == itemId }
+            return if (preference?.preserve == true && preferences.globalMinimizeMovement) 0 else 1
+        }
+
+        fun FullUnit.regionRank(
+            preferenceByItem: Map<ItemId, app.lawnchair.organizer.personalization.ItemPreference>?,
+        ): Int = when (preferenceByItem?.get(itemId)?.regionAffinity) {
+            app.lawnchair.organizer.personalization.ExportRegionKind.TOP -> 0
+            null -> 1
+            app.lawnchair.organizer.personalization.ExportRegionKind.MIDDLE -> 1
+            app.lawnchair.organizer.personalization.ExportRegionKind.BOTTOM -> 2
+        }
+
+        fun FullUnit.groupRank(
+            preferenceByItem: Map<ItemId, app.lawnchair.organizer.personalization.ItemPreference>?,
+        ): Int {
+            val own = preferenceByItem?.get(itemId)?.desiredGroup ?: return Int.MAX_VALUE
+            val groupKey = own.sorted().joinToString(",")
+            val distinctKeys = preferenceByItem.values
+                .filter { it.desiredGroup != null }
+                .map { it.desiredGroup!!.sorted().joinToString(",") }
+                .distinct()
+                .sorted()
+            return distinctKeys.indexOf(groupKey)
+        }
         for (folder in existingFolderUnits) {
             val ws = folder.placement as CapturedPlacement.Workspace
             units += FullUnit(
@@ -658,16 +685,24 @@ internal object FullRunExecution {
                     val newFolderUnits = pageUnits.filter { it.isNewFolder }
                         .sortedBy { it.newFolderOrdinal }
                     // Issue #204 (spec 204 / Q1): accepted-intent preference
-                    // bias. Importance orders the singletons deterministically
-                    // (HIGH first, un-preferenced items share NORMAL's rank);
-                    // the canonical tie-breakers below stay unchanged. With no
-                    // accepted intent (or no preference for the item) the
-                    // rank is constant and the ordering is byte-identical.
+                    // bias, one closed rank family per advertised capability:
+                    // PRESERVE/GLOBAL_PREFERENCE (minimize-movement first),
+                    // GROUPING (desired-group members co-ordered), IMPORTANCE
+                    // (HIGH first), REGION_AFFINITY (top band first). The
+                    // canonical tie-breakers stay last. Every key is a
+                    // constant for items without a preference, and the whole
+                    // key chain is skipped entirely when no accepted intent is
+                    // present, so intent-less runs keep the canonical
+                    // ordering byte-identical.
                     val preferenceByItem = context.preferences?.itemPreferences?.associateBy { it.item }
                     val singletons = pageUnits.filter { !it.isFolder }
                         .sortedWith(
-                            compareBy<FullUnit> { it.preferenceRank(preferenceByItem) }
-                                .thenBy { it.sortProfile }
+                            compareBy<FullUnit>(
+                                { it.preserveRank(context.preferences) },
+                                { it.groupRank(preferenceByItem) },
+                                { it.preferenceRank(preferenceByItem) },
+                                { it.regionRank(preferenceByItem) },
+                            ).thenBy { it.sortProfile }
                                 .thenBy { it.sortCategory }
                                 .thenBy { it.itemId },
                         )
