@@ -19,13 +19,15 @@ object UsageAccess {
         val appOps = context.getSystemService(AppOpsManager::class.java) ?: return false
         val packageName = context.packageName
         val uid = context.applicationInfo.uid
-        return when (
-            appOps.unsafeCheckOpNoThrow(
-                AppOpsManager.OPSTR_GET_USAGE_STATS,
-                uid,
-                packageName,
-            )
-        ) {
+        // `checkOpNoThrow` exists since API 19; `unsafeCheckOpNoThrow` would
+        // need API 29 while this app's minSdk is 26 (2026-09-15 re-review).
+        @Suppress("DEPRECATION")
+        val mode = appOps.checkOpNoThrow(
+            AppOpsManager.OPSTR_GET_USAGE_STATS,
+            uid,
+            packageName,
+        )
+        return when (mode) {
             AppOpsManager.MODE_ALLOWED -> true
 
             AppOpsManager.MODE_DEFAULT ->
