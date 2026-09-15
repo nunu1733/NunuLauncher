@@ -2,7 +2,7 @@
 
 > Issue: #204
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: accepted (spec受入済み — 2026-09-15。実装は下記Execution checklistに従う)
 > Baseline: `origin/main` = `9ea2ba0eb4d9ef61bd96ef2b480bbd20ed055edd` (2026-09-15時点、#203実装を含む)。5th review (ChatGPT review "Request changes", 2026-09-15, snapshot `2501a1fb` 基準) 対応を含むrevision。過去の再入場検証履歴は「Current evidence」節を参照。
 
 ## Current evidence
@@ -145,7 +145,7 @@ canonical inputs --(ContextExportBuilder + RandomIdAllocator, tier)--> Personali
 
 ## Execution checklist / implementation order
 
-1. (前提) spec受入 (ChatGPT再review待ち)。受入gate (Q1 planner投影、Q3 capability set、Q4 content limits + session TTL) とQ2 (FR-017)、Q5 (自由文/surrogate方針)、Q6 (usage signal projection) は **すべて解決済み** (spec「Open questions」節)。
+1. (前提) spec受入 — **完了 (2026-09-15、6th ChatGPT review Approve)**。受入gate (Q1 planner投影、Q3 capability set、Q4 content limits + session TTL) とQ2 (FR-017)、Q5 (自由文/surrogate方針)、Q6 (usage signal projection) は **すべて解決済み** (spec「Open questions」節)。
 2. child A: `personalization/` 純粋package — models + builder (RandomIdAllocator注入、usageSignals投影、signal provenance) + SourceContextIdentity (structural) + codec + validator + identity、`personalization/` 全体を例外なしでcoverするpurity guard、全contract/property/security test (AC-2,3,4,5,7,8,12,13,14)。mobility投影のFIXED/MOVABLE判定とplanner整合のproperty test、`fixReason` cause precedenceの個別testを含む。
 3. child B: provenance統合 (`PERSONALIZED_INTENT` 第7 input、sentinel default。**sentinelは `PolicyInputIdentity` 型不変条件を満たす有効値**、AC-6のsentinel test) + `OrganizationInput.intentPreferences` 追加 + adapter + `PlanningResult` echo + composer stable cut 組入れ (AC-6,9)。`risk: layout-data` + high-risk gate。
 4. child C: `usageSignals` projectionの実装test拡充はchild Aに含まれる (#203は実装済みのため追加契約作業は不要)。

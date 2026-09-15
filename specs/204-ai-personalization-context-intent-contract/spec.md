@@ -1,7 +1,7 @@
 ---
 issue: "#204"
-status: draft
-requirements: []
+status: accepted
+requirements: [FR-017]
 risk:
   - privacy
   - layout-data
@@ -10,7 +10,7 @@ updated: 2026-09-15
 
 # AI personalization用 Context / PersonalizedIntent exchange contract
 
-> Status: draft — 本specは契約 (contract) の定義のみを対象とし、provider実装・network・UIを含まない。受入時に新しい Later functional requirement (**FR-017**、2026-09-13時点のrequirements.mdで次の空きIDを確認済み) を [requirements.md](../../docs/product/requirements.md) へ割り当てる。2026-09-13の1st review (Request changes, P1×4 / P2×2)、2026-09-13のre-review (Request changes, snapshot `324e6182` 基準)、2026-09-15の3rd review (Request changes, snapshot `12f773ad` 基準)、2026-09-15の4th review (Request changes, snapshot `296b7123` 基準) に続き、2026-09-15の5th review (Request changes, snapshot `2501a1fb` 基準: V1固定capability setとAC-5 test計画の不整合、plan AC-4の旧lock移動→`FORBIDDEN_CONTENT` 記述の残存、`RefAllocator` 旧名称の残存) の指摘を本revisionで解決しており、再review待ちである。受入gate (Q1/Q3/Q4/Q6) はすべて解決済み (「Open questions」節)。
+> Status: **accepted** (2026-09-15) — 本specは契約 (contract) の定義のみを対象とし、provider実装・network・UIを含まない。新しい Later functional requirement (**FR-017**) を [requirements.md](../../docs/product/requirements.md) へ割り当て済み (受入PR)。1st〜5th review (いずれもRequest changes) の指摘と受入gate (Q1/Q3/Q4/Q6) を解決し、2026-09-15の6th review (**Approve**, snapshot `52b9097c` 基準、Issueコメント `5677382260`) で契約として固定された。実装childは「Execution checklist」(plan.md) に従う。
 
 ## Problem
 
@@ -301,13 +301,13 @@ AI/agentは次をauthoritativeにしてはならない。これらを含むinten
 | #206 (OPEN) | 本契約の内部managed AI consumer |
 | #194/#195 (implemented) | preview/confirmation pathの再利用 |
 
-## Requirement update (受入時)
+## Requirement update (受入済み — 2026-09-15)
 
-新しい Later requirement を割り当てる (提案ID: **FR-017*):
+新しい Later requirement **FR-017** をrequirements.mdへ割り当て済み (受入PR):
 
 > ユーザーが明示的に選択した場合、local personalization contextから外部/内部AI等がsemantic organization intentを生成でき、その結果をvalidation・preview・confirmation後に既存safe planner/application pathで適用できる。
 
-- Phase: Later / deferred。statusは受入時に「spec accepted」とする。
+- Phase: Later / deferred。statusは **spec accepted** (requirements.md参照)。
 - FR-014 (unknown local classification外部adapter) とは別要件であり、境界をrequirements.mdの備考に明記する。
 - decision gates: D-011 (external LLM) の対象を本要件側にも及ぶことを明記する (privacy/threat model承認は#205の前提)。
 
@@ -462,6 +462,8 @@ AI/agentは次をauthoritativeにしてはならない。これらを含むinten
 - 2026-09-15: 4th review response revision (ChatGPT review "Request changes" on snapshot `296b7123`、Issue 204コメント `5677179868` 基準)。P1×1 / P2×2を解決: (1) **no-intent sentinel identityを有効値として固定** — `PolicyInputIdentity` の型不変条件 (`versionOrGeneration` 非空、`sha256` 64hex) に適合するcontent-addressed sentinel (`versionOrGeneration="none"`、`sha256=sha256Canonical("personalized-intent:none")`) を定義し、空文字digest表現を禁止。AC-6へsentinel不変条件testを追加、(2) **`INVALID_ENUM`/`CAPABILITY_UNSUPPORTED` を排他分離** — schema定義enum fieldの許可外値 vs schema上有効機能のcapability宣言不対応。V1のexportは常に固定6capability set全体を宣言 (subset禁止) と固定し、V1での `CAPABILITY_UNSUPPORTED` 到達条件を明記、(3) **`exportId` の生成契約を `ref` と同一の乱数seam (RandomIdAllocator)・entropy契約に固定** — counter/timestamp/決定的導出を禁止し、AC-14へ生成規則testを追加。statusはdraftのまま (再review待ち)。
 - 2026-09-15: 5th review response revision (ChatGPT review "Request changes" on snapshot `2501a1fb`、Issue 204コメント `5677330910` 基準)。P2×2 / P3×1を解決: (1) **`CAPABILITY_UNSUPPORTED` をV1でreserved/unreachableに固定** — V1固定full-set契約との整合として、V1の必須failure test対象から除外 (schema外機能は `SCHEMA_MISMATCH`)。AC-5を更新。subset advertisementを許す将来schema versionで有効化、(2) **plan AC-4のtest wordingをspecの排他分類へ統一** — `FORBIDDEN_CONTENT` はauthority表現 (座標/span/reservation/DB mutation/script) に限定し、locked refへのsemantic移動希望はAC-13/`MOBILITY_CONTRADICTION` 側のみ、(3) **`RandomIdAllocator` 旧名称 (`RefAllocator`) の残存箇所を統一**。statusはdraftのまま (再review待ち)。
 - 2026-09-15: Re-review response revision (owner re-review "Request changes" on snapshot `324e6182`)。P1×3 / P2×1を反映: (1) **digest定義の自己参照解消** — canonical状態のfingerprintをexport文書のfieldから外し、export本文とは別のinternal canonical source projection (内部`ItemId` key、envelope/ref非依存) に対する `sourceContextDigest` としてsession-localに再定義 (envelope/payload分離を不要とする構造で、自己参照を構造的に不可能にした)、(2) **cross-export unlinkability** — `ref` を決定的割当から生成ごとの乱数割当に変更し、export文書から状態fingerprintを排除 (安定なexported仮名・digestによる同一itemのcross-export追跡を不可能にする。export文書のbyte-determinism要求は廃止し、決定性要求を `sourceContextDigest` の関数性とdownstream plan determinismの2点に再定義)、(3) **完全なmobility意味論** — per-item `mobility` projection (`MOVABLE`/`CONDITIONAL`/`FIXED` + `fixReason` closed enum: `RESERVED_REGION`/`LOCKED`/`UNAVAILABLE`/`DOCK`/`FOLDER_MEMBER`/`APP_PAIR_MEMBER`。`determinePreservation` の優先順位と同型) を導入し、per-ref mobilityに反するintent fieldを `MOBILITY_CONTRADICTION` でreject (従来のkind-only判定と個別 `locked` flag を置換。`NON_TARGET`/`STRATEGY_PRESERVED` はrun時のみの保持理由として明示的に対象外)、(4) **purity境界の明確化** — session model + `ExportSessionStore` interfaceを純粋personalization packageに置き、Android/file-backed実装をintegration境界packageへ分離 (plan側修正。purity guardは純粋package全体を例外なしでcover)。Open questions (Q1/Q3/Q4受入gate) に変更なし。statusはdraftのまま (再review待ち)。
+
+- 2026-09-15: **Spec accepted** — 6th ChatGPT review (**Approve**, snapshot `52b9097c`、Issueコメント `5677382260`) によりblocking findingなしと判定。受入gate (Q1/Q3/Q4/Q6) はすべて解決済み。受入PRでstatusをacceptedへ更新し、requirements.mdへFR-017 (FR-014との境界備考、D-011言及) を追加、CONTEXT.mdへ契約用語4件、DESIGN.mdへmodule行とgate行を追加。実装はplan.mdのExecution checklist (child A/B) に従う。
 
 ## References
 
