@@ -266,6 +266,24 @@ class PreferenceManager2 private constructor(private val context: Context) :
         onSet = { reloadHelper.reloadGrid() },
     )
 
+    /**
+     * Issue #203: whether the launcher-origin launch counter records launches.
+     * Default on; turning it off stops recording and clears the existing
+     * records (spec #203 U-3). The usage-access app-op permission is a
+     * separate, explicit opt-in.
+     */
+    val organizerPersonalizationRecording = preference(
+        key = booleanPreferencesKey(name = "organizer_personalization_recording"),
+        defaultValue = context.resources.getBoolean(R.bool.config_default_organizer_personalization_recording),
+        onSet = { enabled ->
+            // Spec #203 U-3: turning recording off stops it and erases the
+            // existing launcher-origin records in the same user action.
+            if (!enabled) {
+                app.lawnchair.organizer.integration.LauncherOriginLaunchCounterStore.from(context).clear()
+            }
+        },
+    )
+
     val forceWidgetResize = preference(
         key = booleanPreferencesKey(name = "force_widget_resize"),
         defaultValue = context.resources.getBoolean(R.bool.config_default_force_widget_resize),

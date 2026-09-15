@@ -21,6 +21,10 @@ class PurityGuardTest {
 
     private val planningDir = File("lawnchair/src/app/lawnchair/organizer/planning")
 
+    // Issue #203: the personalization domain is pure the same way the planner
+    // is — no Android, no coroutines, no IO.
+    private val personalizationDir = File("lawnchair/src/app/lawnchair/organizer/personalization")
+
     @Test
     fun everyProductionPlanningFileIsFreeOfForbiddenPackagePrefixes() {
         assertTrue(
@@ -46,6 +50,36 @@ class PurityGuardTest {
 
         assertTrue(
             "Forbidden package prefixes found in production planning sources:\n" +
+                violations.joinToString("\n"),
+            violations.isEmpty(),
+        )
+    }
+
+    @Test
+    fun everyProductionPersonalizationFileIsFreeOfForbiddenPackagePrefixes() {
+        assertTrue(
+            "Personalization source directory must exist: ${personalizationDir.absolutePath}",
+            personalizationDir.exists() && personalizationDir.isDirectory,
+        )
+
+        val ktFiles = personalizationDir.walkTopDown()
+            .filter { it.isFile && it.name.endsWith(".kt") }
+            .toList()
+
+        assertTrue(
+            "At least one production .kt file must exist under the personalization path",
+            ktFiles.isNotEmpty(),
+        )
+
+        val violations = ktFiles.flatMap { file ->
+            val text = file.readText()
+            forbiddenPrefixes
+                .filter { prefix -> prefix in text }
+                .map { prefix -> "${file.name}: forbidden prefix '$prefix'" }
+        }
+
+        assertTrue(
+            "Forbidden package prefixes found in production personalization sources:\n" +
                 violations.joinToString("\n"),
             violations.isEmpty(),
         )

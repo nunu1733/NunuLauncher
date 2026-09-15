@@ -300,6 +300,26 @@ described above. Therefore application rollback/downgrade changes only which
 binary-owned immutable bundle is active; it is never a reason to restore or
 rewrite Launcher layout data.
 
+### 9. Optional dynamic input outside the mandatory cut (Issue #203)
+
+The personalization signal snapshot ([spec 203](../../specs/203-usage-implicit-preference-signals/spec.md))
+is a **dynamic, content-addressed, optional** policy input: `PolicyInputIdentity(PERSONALIZATION_SIGNAL_SNAPSHOT, "personalization-signals-v1", contentDigest)`.
+
+- It participates in `InputProvenance` as a non-null row (identity of the
+  composed snapshot is always carried), but **never** joins the immutable
+  bundle identity or the mandatory dynamic cut. "Optional" means the
+  Organizer readiness never depends on it: read failures and permission
+  absence degrade to section-level availability inside the snapshot while the
+  composition stays `Ready` (FR-013 / D-010).
+- Content-addressed identity (schema string + canonical rows digest) without a
+  monotonic generation mirrors the platform evidence identity; the canonical
+  rows cover the same observable projection the snapshot object carries
+  (sparse object contract), so the digest identifies the snapshot completely.
+- Usage changes never make a captured plan stale: the capture revision stays
+  the stale/replan authority. A future strategy that consumes the snapshot
+  inside planning must re-open this decision through a new accepted ADR before
+  tightening read-consistency requirements.
+
 ## Alternatives considered
 
 ### Let UI/coordinator construct defaults

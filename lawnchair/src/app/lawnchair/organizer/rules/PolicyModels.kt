@@ -19,6 +19,21 @@ enum class PolicySourceKind {
     PLATFORM_CLASSIFICATION_EVIDENCE,
     MATERIALIZED_CLASSIFICATION_SIGNALS,
     MATERIALIZED_FULL_TARGET_SET,
+
+    /**
+     * Issue #203: the personalization signal snapshot is a dynamic,
+     * content-addressed input (schema string + canonical rows digest). It is
+     * an optional source outside the mandatory dynamic cut and never joins the
+     * immutable bundle identity.
+     */
+    PERSONALIZATION_SIGNAL_SNAPSHOT,
+
+    /**
+     * Issue #204 (spec 204): the content-addressed identity of one accepted
+     * AI-personalization intent. Optional source like #203; runs without an
+     * intent carry the canonical no-intent sentinel identity.
+     */
+    PERSONALIZED_INTENT,
 }
 
 data class PolicyInputIdentity(

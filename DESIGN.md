@@ -199,9 +199,10 @@ lawnchair/src/app/lawnchair/organizer/
 ├── planning/       # pure domain model and planning implementation
 ├── application/    # validated plan application and recovery
 ├── locks/          # lock authoring decisions and unknown-state review (Issue #38)
+├── personalization/ # pure personalization signal types and bucket math (Issue #203); AI personalization context/intent contract module (Issue #204)
 ├── diagnostics/    # privacy-safe run journal, logcat, and export
 ├── rules/          # typed rules, validation, migration and file I/O
-├── integration/    # Lawnchair/Launcher3 adapters and triggers
+├── integration/    # Lawnchair/Launcher3 adapters and triggers (usage source adapters, Issue #203)
 └── ui/             # preview, confirmation, result and recovery UI
 ```
 
@@ -227,6 +228,7 @@ package数をこの図に合わせること自体を目的にしない。interfa
 | 1. 対象集合と既存itemの保持規則 | planner契約の対象membership、保持優先、disposition: [spec 10](./specs/10-pure-organization-planning/spec.md)、[spec 12](./specs/12-deterministic-full-layout-planner-v1/spec.md)。platform capture policyの提案: [Issue #3](https://github.com/nunu1733/NunuLauncher/issues/3) / [item-preservation-policy](./docs/product/item-preservation-policy.md) |
 | 2. trigger、確認、recoveryのUX | 適用と復旧の契約: [spec 13](./specs/13-safe-layout-application/spec.md)、[ADR-0003](./docs/adr/0003-organizer-recovery-point-storage.md)。triggerと確認のUX提案: [Issue #4](https://github.com/nunu1733/NunuLauncher/issues/4) / [organization-run-ux](./docs/product/organization-run-ux.md) |
 | 3. lock対象とfolder内への伝播 | [ADR-0004](./docs/adr/0004-organizer-lock-persistence.md) / [Issue #23](https://github.com/nunu1733/NunuLauncher/issues/23) |
+| 12. AI personalization context/intent exchange contract | intentは#182 planning seamへの入力に限定、planner/allocatorが最終安全配置を所有: [spec 204](./specs/204-ai-personalization-context-intent-contract/spec.md) / [Issue #204](https://github.com/nunu1733/NunuLauncher/issues/204) |
 | 4. grid非依存の配置policy v1 | [spec 12](./specs/12-deterministic-full-layout-planner-v1/spec.md) (元提案: [Issue #5](https://github.com/nunu1733/NunuLauncher/issues/5) / [layout-strategy-v1](./docs/product/layout-strategy-v1.md)) |
 | 5. category taxonomyと分類source | planner側のtaxonomy契約、signal source、category resolution: [spec 10](./specs/10-pure-organization-planning/spec.md)、[spec 12](./specs/12-deterministic-full-layout-planner-v1/spec.md)。adapter側の分類source提案: [Issue #6](https://github.com/nunu1733/NunuLauncher/issues/6) / [category-taxonomy-v1](./docs/product/category-taxonomy-v1.md) |
 | 6. 整理ルールのfile formatとversioning | 正本なし (D-009)。未起票proposalは [docs/project/seed-backlog.md](./docs/project/seed-backlog.md) を参照 |
