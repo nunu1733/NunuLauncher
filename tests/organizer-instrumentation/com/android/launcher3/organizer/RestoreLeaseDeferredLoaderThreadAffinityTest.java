@@ -111,8 +111,8 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
      *
      * <p>Runs repeated defer/release cycles (the spec's repeated restore/reload
      * verification, applied to the deterministic window) and closes with a
-     * logcat sweep asserting the recorded wrong-thread signatures are absent
-     * from this process.
+     * logcat sweep — scoped to entries emitted after this test's marker line —
+     * asserting the recorded wrong-thread signatures are absent.
      */
     @Test
     public void deferredTokenlessLoaderCompletesOnModelExecutorNotOnReleaseThread()
@@ -125,6 +125,12 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
         int baselineItemCount = reloadAndAwaitBindItemCount(cleanupFailures);
         assertTrue("Seeded item missing from baseline load", baselineItemCount >= 1);
 
+        // Unique window marker: the logcat oracle only inspects entries logged
+        // after this line, so unrelated earlier output in this process cannot
+        // fail the sweep.
+        String windowMarker = "WINDOW-" + java.util.UUID.randomUUID();
+        android.util.Log.i("Issue298Oracle", windowMarker);
+
         try {
             for (int cycle = 1; cycle <= DEFERRED_WINDOW_CYCLES; cycle++) {
                 runDeferredWindowCycle(cycle, baselineItemCount, cleanupFailures);
@@ -134,9 +140,10 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
         }
 
         // TA-AC-03 logcat oracle: none of the recorded wrong-thread signatures
-        // may appear in this process. The pre-fix code produced all of these in
-        // the very window reconstructed above (implementer-reported red run).
-        assertSignaturesAbsentFromLogcat(cleanupFailures);
+        // may appear in this process's logcat after the marker. The pre-fix code
+        // produced all of these in the very window reconstructed above
+        // (implementer-reported red run).
+        assertSignaturesAbsentFromLogcat(windowMarker, cleanupFailures);
 
         if (!cleanupFailures.isEmpty()) {
             fail("Cleanup failed (" + cleanupFailures.size() + " error(s)); the first was: "
@@ -241,15 +248,18 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
 
     /**
      * Dumps this process's logcat and fails if any recorded wrong-thread
-     * signature appears. The deferred window is deterministic, so a regression
-     * would reproduce the signatures here exactly as the implementer-reported
-     * pre-fix red run did.
+     * signature appears at or after the window marker. The deferred window is
+     * deterministic, so a regression would reproduce the signatures here
+     * exactly as the implementer-reported pre-fix red run did.
      */
-    private void assertSignaturesAbsentFromLogcat(List<Throwable> cleanupFailures) {
+    private void assertSignaturesAbsentFromLogcat(
+            String windowMarker, List<Throwable> cleanupFailures) {
         String dump;
         try {
-            java.lang.Process process = Runtime.getRuntime().exec(
-                    new String[] {"logcat", "-d", "--pid=" + Process.myPid()});
+            java.lang.Process process = new ProcessBuilder(
+                    "logcat", "-d", "--pid=" + Process.myPid())
+                    .redirectErrorStream(true)
+                    .start();
             StringBuilder builder = new StringBuilder();
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(
                     process.getInputStream(), StandardCharsets.UTF_8))) {
@@ -258,16 +268,29 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
                     builder.append(line).append('\n');
                 }
             }
-            process.waitFor();
+            int exitCode = process.waitFor();
+            if (exitCode != 0) {
+                cleanupFailures.add(new AssertionError(
+                        "logcat dump exited with " + exitCode + "; the signature "
+                                + "oracle cannot be evaluated"));
+                return;
+            }
             dump = builder.toString();
         } catch (Throwable t) {
             cleanupFailures.add(new AssertionError("Could not read logcat for the "
                     + "wrong-thread signature oracle", t));
             return;
         }
+        int markerIndex = dump.lastIndexOf(windowMarker);
+        if (markerIndex < 0) {
+            cleanupFailures.add(new AssertionError("Logcat window marker was not "
+                    + "found; the signature oracle cannot be evaluated"));
+            return;
+        }
+        String window = dump.substring(markerIndex);
         for (String signature : FORBIDDEN_SIGNATURES) {
-            assertFalse("Forbidden wrong-thread signature present in this process's logcat: "
-                    + signature, dump.contains(signature));
+            assertFalse("Forbidden wrong-thread signature present in the test window's "
+                    + "logcat: " + signature, window.contains(signature));
         }
     }
 
