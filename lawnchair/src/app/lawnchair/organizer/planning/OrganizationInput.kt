@@ -1,5 +1,7 @@
 package app.lawnchair.organizer.planning
 
+import app.lawnchair.organizer.personalization.PersonalizationSignalSnapshot
+
 data class OrganizationInput(
     val snapshot: LayoutSnapshot,
     val rules: RuleSemantics,
@@ -7,6 +9,21 @@ data class OrganizationInput(
     val signals: ClassificationSignals,
     val targets: TargetSet,
     val runMode: RunMode,
+    /**
+     * Issue #203: the normalized personalization signal snapshot, always
+     * non-null. First-delivery strategies ignore it; usage-based strategies
+     * are a future catalog member. Failures degrade to unavailable sections
+     * inside the snapshot, never to `null` or `NotReady`.
+     */
+    val personalization: PersonalizationSignalSnapshot = PersonalizationSignalSnapshot.unavailable(),
+    /**
+     * Issue #204 (spec 204 / Q1): the semantic projection of one accepted
+     * AI-personalization intent, produced by the pure
+     * `IntentPlannerAdapter`. Null for runs without a personalization intent
+     * (existing runs are untouched). Preference/ordering bias only — planner
+     * preservation decisions and constraints are never weakened by it.
+     */
+    val intentPreferences: app.lawnchair.organizer.personalization.PersonalizedIntentProjection? = null,
 )
 
 enum class RunMode {

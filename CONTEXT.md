@@ -95,3 +95,19 @@ _Avoid_: 利用可能グリッド（設定UIの表示と混同する場合）、
 **生成フォルダ名 (Generated Folder Title)**:
 Organizer が新規生成したフォルダへ、その grouping semantic から単一の resolver 経由で決定して適用される user-facing なタイトル。semantic naming identity が plan 内の正本であり、解決済み文字列は preview と apply の両方が同一 plan から消費する。
 _Avoid_: フォルダ名の自動推論 (UI 側再計算を想起させる)、Folder (固定名)
+
+**パーソナライゼーション文脈書き出し (Personalization Context Export)**:
+1回のpersonalization試行のために、app内canonical入力から生成される、export-scopedなIDで項目を参照する読み取り専用の最小文脈 ([spec 204](./specs/204-ai-personalization-context-intent-contract/spec.md))。privacy tierを持ち、raw DB row・内部`ItemId`・package名・raw usage時刻を含まないことを既定とする。
+_Avoid_: DB dump、Backup、snapshot (Layout Snapshotとの混同)
+
+**パーソナライゼーション意図 (Personalized Intent)**:
+AI/agentが `PersonalizationContextExportV1` に対して返す、semantic preference (優先度、 grouping、page/region親和、保持希望) のversion付き表現。physical placementやDB mutationの指示ではない。acceptされるとcontent digestを持つimmutable planning inputとなる。
+_Avoid_: layout plan (最終配置結果との混同)、rule (整理ルールとの混同)
+
+**export-scoped ID (Export Item Reference)**:
+1つのcontext export内でのみ有効な、itemを指すopaqueな識別子。export生成ごとに新鮮な乱数から割り当てられ、内部`ItemId`・DB row IDとは無関係かつ逆算不可能である。対応付けはexport sessionのみが保持する。
+_Avoid_: ItemId (内部正本IDとの混同)、package名、安定な仮名化identifier (pseudonym)
+
+**export session (エクスポートセッション)**:
+1つのcontext exportに対応する、app-privateで期限付きのdurableな対応記録 (`exportId`、ref↔内部`ItemId`のmap、privacy tier、structural source context digest、signal provenance、生成・失効時刻)。外部アプリ滞在中のprocess deathを跨いでintent取り込みを可能にする。backup対象外であり、label等のuser作成自由文を含まない。
+_Avoid_: backup、永続layout入力 (planning入力との混同)
