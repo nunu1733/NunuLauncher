@@ -201,6 +201,26 @@ class IntentPreferenceConsumptionTest {
     }
 
     @Test
+    fun regionAffinityBandsOrderTopMiddleBottom() {
+        val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0), app("c", x = 2, y = 0))
+        val input = baseInput(items)
+        val inputWithIntent = withIntent(
+            input,
+            listOf(
+                ItemIntent(ref = "a", regionAffinity = app.lawnchair.organizer.personalization.ExportRegionKind.BOTTOM),
+                ItemIntent(ref = "b", regionAffinity = app.lawnchair.organizer.personalization.ExportRegionKind.MIDDLE),
+                ItemIntent(ref = "c", regionAffinity = app.lawnchair.organizer.personalization.ExportRegionKind.TOP),
+            ),
+        ).first
+        val biased = planner.plan(inputWithIntent).outcome as Planned
+        // The region hint orders the units TOP -> MIDDLE -> BOTTOM within the page.
+        val ordered = biased.placements
+            .sortedBy { ((it.target as PlacementTarget.WorkspaceTarget).cell.x) }
+            .map { it.item.value }
+        assertEquals(listOf("c", "b", "a"), ordered)
+    }
+
+    @Test
     fun desiredGroupCohesionIsReflectedInPlacementOrder() {
         val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0), app("c", x = 2, y = 0))
         // High folder threshold: the intent group must express as ordering
@@ -229,8 +249,11 @@ class IntentPreferenceConsumptionTest {
     }
 
     @Test
-    fun preservePreferenceWithGlobalMinimizeMovementReordersDeterministically() {
-        val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0))
+    fun preserveAndMinimizeMovementPreferencesReduceDisplacement() {
+        // Captured order: b at (0,0), a at (1,0) — the canonical (profile,
+        // category, id) ordering moves BOTH items into swapped cells; the
+        // movement-minimization bias reproduces the captured layout instead.
+        val items = listOf(app("a", x = 1, y = 0), app("b", x = 0, y = 0))
         val input = baseInput(items)
         val built = buildExport(input)
         val refs = built.session.itemRefs.entries.associate { (ref, id) -> id.value to ref }
@@ -258,10 +281,17 @@ class IntentPreferenceConsumptionTest {
         val cellOf = { planned: Planned, item: ItemId ->
             (planned.placements.first { it.item == item }.target as PlacementTarget.WorkspaceTarget).cell
         }
-        // The preserve-preferenced item takes the first cell (minimal displacement).
-        assertEquals(GridCell(0, 0), cellOf(biased, ItemId("b")))
         val plain = planner.plan(input).outcome as Planned
+
+        // The preserve target stays at its captured cell (never drifts farther).
+        assertEquals(GridCell(0, 0), cellOf(biased, ItemId("b")))
+        // The movement-minimization bias keeps every item at its captured cell.
+        assertEquals(GridCell(1, 0), cellOf(biased, ItemId("a")))
+        // Plain plan (without the preference) would have swapped both items.
         assertNotEquals(cellOf(plain, ItemId("b")), cellOf(biased, ItemId("b")))
+        assertNotEquals(cellOf(plain, ItemId("a")), cellOf(biased, ItemId("a")))
+        // Deterministic reproduction.
+        assertEquals(biased, planner.plan(inputWithIntent).outcome as Planned)
     }
 
     private fun orderedSingletonItems(planned: Planned): List<ItemId> = planned.placements

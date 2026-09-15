@@ -549,6 +549,22 @@ internal object FullRunExecution {
 
         val capacity = device.folderMaxColumns.toLong() * device.folderMaxRows.toLong()
         val minGroupSize = input.rules.folderPolicy.minGroupSize
+        // Issue #204 (spec 204 / Q1): the movement-minimization ordering bias
+        // of the accepted intent — global `minimizeMovement`, or a per-item
+        // `preserve` on any movable unit, switches the singleton ordering to
+        // the captured visual order (see executeCanonicalPageCompact).
+        val preferenceByItem = context.preferences?.itemPreferences?.associateBy { it.item }
+        val movementMinimizing = context.preferences != null && (
+            context.preferences.globalMinimizeMovement ||
+                preferenceByItem.orEmpty().values.any { it.preserve == true }
+            )
+        fun effectiveCategory(itemId: ItemId): CategoryId {
+            val intentCategory = preferenceByItem?.get(itemId)?.groupSemantic?.category
+            if (intentCategory != null && context.input.taxonomy.allowedCategories.any { it.value == intentCategory }) {
+                return CategoryId(intentCategory)
+            }
+            return context.classification.decisions[itemId]?.category ?: taxonomy.fallbackCategory
+        }
 
         data class FormedFolder(
             val ordinal: NewFolderOrdinal,
@@ -564,7 +580,7 @@ internal object FullRunExecution {
                     FolderCandidate(
                         item.id,
                         item.profile,
-                        context.classification.decisions[item.id]?.category ?: taxonomy.fallbackCategory,
+                        effectiveCategory(item.id),
                     )
                 },
                 fallbackCategory = taxonomy.fallbackCategory,
@@ -593,18 +609,22 @@ internal object FullRunExecution {
             val sortCategory: CategoryId,
             val isNewFolder: Boolean,
             val newFolderOrdinal: NewFolderOrdinal?,
+            /** Captured visual index for the movement-minimization bias (null for synthetic units). */
+            val capturedVisual: Int? = null,
         )
+
+        fun capturedVisualOf(item: CapturedItem): Int? {
+            val ws = item.placement as? CapturedPlacement.Workspace ?: return null
+            val pageIndex = context.input.snapshot.pages.indexOfFirst { it.id == ws.page.pageId }
+            if (pageIndex < 0) return null
+            return pageIndex * (device.rows * device.columns) + ws.cell.y * device.columns + ws.cell.x
+        }
 
         val units = mutableListOf<FullUnit>()
 
         fun FullUnit.preferenceRank(
             preferenceByItem: Map<ItemId, app.lawnchair.organizer.personalization.ItemPreference>?,
         ): Int = unitPreferenceRank(itemId, preferenceByItem)
-
-        fun FullUnit.preserveRank(preferences: app.lawnchair.organizer.personalization.PersonalizedIntentProjection?): Int {
-            val preference = preferences?.itemPreferences?.firstOrNull { it.item == itemId }
-            return if (preference?.preserve == true && preferences.globalMinimizeMovement) 0 else 1
-        }
 
         fun FullUnit.regionRank(
             preferenceByItem: Map<ItemId, app.lawnchair.organizer.personalization.ItemPreference>?,
@@ -618,13 +638,30 @@ internal object FullRunExecution {
         fun FullUnit.groupRank(
             preferenceByItem: Map<ItemId, app.lawnchair.organizer.personalization.ItemPreference>?,
         ): Int {
-            val own = preferenceByItem?.get(itemId)?.desiredGroup ?: return Int.MAX_VALUE
-            val groupKey = own.sorted().joinToString(",")
-            val distinctKeys = preferenceByItem.values
-                .filter { it.desiredGroup != null }
-                .map { it.desiredGroup!!.sorted().joinToString(",") }
-                .distinct()
-                .sorted()
+            val preference = preferenceByItem?.get(itemId) ?: return Int.MAX_VALUE
+            // Canonical group identity: {self} ∪ desiredGroup (so mutual
+            // groups normalize to one key), or the standalone groupSemantic
+            // tag when the intent declares semantics without members.
+            val groupKey = when {
+                preference.desiredGroup != null ->
+                    (preference.desiredGroup!! + itemId).sorted().joinToString(",")
+
+                preference.groupSemantic != null ->
+                    "SEM|${preference.groupSemantic!!.category ?: ""}|${preference.groupSemantic!!.freeText ?: ""}"
+
+                else -> return Int.MAX_VALUE
+            }
+            val distinctKeys = preferenceByItem.values.map { preference ->
+                when {
+                    preference.desiredGroup != null ->
+                        (preference.desiredGroup!! + preference.item).sorted().joinToString(",")
+
+                    preference.groupSemantic != null ->
+                        "SEM|${preference.groupSemantic!!.category ?: ""}|${preference.groupSemantic!!.freeText ?: ""}"
+
+                    else -> null
+                }
+            }.filterNotNull().distinct().sorted()
             return distinctKeys.indexOf(groupKey)
         }
         for (folder in existingFolderUnits) {
@@ -635,7 +672,8 @@ internal object FullRunExecution {
                 preferredPage = biasedPreferredPage(context, folder.id, ws.page),
                 isFolder = true,
                 sortProfile = folder.profile,
-                sortCategory = context.classification.decisions[folder.id]?.category ?: taxonomy.fallbackCategory,
+                sortCategory = effectiveCategory(folder.id),
+                capturedVisual = capturedVisualOf(folder),
                 isNewFolder = false,
                 newFolderOrdinal = null,
             )
@@ -660,7 +698,8 @@ internal object FullRunExecution {
                 preferredPage = biasedPreferredPage(context, item.id, ws.page),
                 isFolder = false,
                 sortProfile = item.profile,
-                sortCategory = context.classification.decisions[item.id]?.category ?: taxonomy.fallbackCategory,
+                sortCategory = effectiveCategory(item.id),
+                capturedVisual = capturedVisualOf(item),
                 isNewFolder = false,
                 newFolderOrdinal = null,
             )
@@ -685,20 +724,28 @@ internal object FullRunExecution {
                     val newFolderUnits = pageUnits.filter { it.isNewFolder }
                         .sortedBy { it.newFolderOrdinal }
                     // Issue #204 (spec 204 / Q1): accepted-intent preference
-                    // bias, one closed rank family per advertised capability:
-                    // PRESERVE/GLOBAL_PREFERENCE (minimize-movement first),
-                    // GROUPING (desired-group members co-ordered), IMPORTANCE
-                    // (HIGH first), REGION_AFFINITY (top band first). The
-                    // canonical tie-breakers stay last. Every key is a
-                    // constant for items without a preference, and the whole
-                    // key chain is skipped entirely when no accepted intent is
-                    // present, so intent-less runs keep the canonical
-                    // ordering byte-identical.
+                    // bias. PRESERVE / GLOBAL_PREFERENCE realize the contract's
+                    // "movement minimization" meaning: with global
+                    // `minimizeMovement` (or any movable item `preserve`d), the
+                    // singleton ordering follows the captured visual order, so
+                    // allocations reproduce the existing layout as closely as
+                    // the strategy allows and a preserved item never drifts
+                    // farther from its captured cell. The remaining capability
+                    // keys (GROUPING / IMPORTANCE / REGION_AFFINITY) order the
+                    // units that the movement bias does not pin. Every key is
+                    // a constant without a matching preference and the whole
+                    // chain is inert without an accepted intent, so intent-less
+                    // runs keep the canonical ordering byte-identical.
                     val preferenceByItem = context.preferences?.itemPreferences?.associateBy { it.item }
+                    val movementMinimizing = context.preferences != null && (
+                        context.preferences.globalMinimizeMovement ||
+                            preferenceByItem.orEmpty().values.any { it.preserve == true }
+                        )
                     val singletons = pageUnits.filter { !it.isFolder }
                         .sortedWith(
                             compareBy<FullUnit>(
-                                { it.preserveRank(context.preferences) },
+                                { if (movementMinimizing && it.capturedVisual != null) 0 else 1 },
+                                { if (movementMinimizing) it.capturedVisual ?: 0 else 0 },
                                 { it.groupRank(preferenceByItem) },
                                 { it.preferenceRank(preferenceByItem) },
                                 { it.regionRank(preferenceByItem) },
