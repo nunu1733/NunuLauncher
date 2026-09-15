@@ -425,7 +425,20 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
             while (cursor.moveToNext()) {
                 ContentValues row = new ContentValues();
                 for (int i = 0; i < cursor.getColumnCount(); i++) {
-                    row.put(cursor.getColumnName(i), cursor.getString(i));
+                    String name = cursor.getColumnName(i);
+                    // Favorites may carry BLOB columns (e.g. icons) written by
+                    // earlier classes in this lane; read them as blobs instead
+                    // of tripping CursorWindow's BLOB-to-string conversion.
+                    switch (cursor.getType(i)) {
+                        case Cursor.FIELD_TYPE_BLOB:
+                            row.put(name, cursor.getBlob(i));
+                            break;
+                        case Cursor.FIELD_TYPE_NULL:
+                            row.putNull(name);
+                            break;
+                        default:
+                            row.put(name, cursor.getString(i));
+                    }
                 }
                 rows.add(row);
             }
