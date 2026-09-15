@@ -1,23 +1,23 @@
 # High-risk audit: PR #319 restore窓でdeferされたtokenless loaderのMODEL_EXECUTOR再admission
 
-> Status: accepted（verdict: approve。Re-audit (1)/(2)を経て、Re-audit (3)で監査対象headを
-> `8b63ae0a34` へ更新、初回auditのfindings・verdictを承継。`CI run:` fieldのmerge gate
-> run 34911441712はcompleted/success・`final-status` greenでmerge条件を満たす。
+> Status: accepted（verdict: approve。Re-audit (1)〜(3)を経て、Re-audit (4)で監査対象headを
+> `e75cb7fcd3` へ更新、初回auditのfindings・verdictを承継。`CI run:` fieldのmerge gate
+> run 34914081901はcompleted/success・`final-status` greenでmerge条件を満たす。
 > code findings無し）
 > Audit date: 2026-09-15
 
 - Auditor: 独立audit session（general-purpose subagent。PR #319の実装を行っていないsession。solo保守のため、同一保守の別sessionとして実装経路に依存しない実読・再確認を実施）
 - PR: https://github.com/nunu1733/NunuLauncher/pull/319（base `main`、head branch `issue-298-implementation`、label `risk: layout-data`）
-- Head SHA: 8b63ae0a343bfeeea4efb6c2444de6f5a7df2717
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34911441712
+- Head SHA: e75cb7fcd3d48bbfc523c7dc2b801f3790fa95b9
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/34914081901
   （`event=pull_request`、`head_branch=issue-298-implementation`、
-  `head_sha=8b63ae0a34…`、`path=.github/workflows/ci.yml`、PR #319関連付け。
+  `head_sha=e75cb7fcd3…`、`path=.github/workflows/ci.yml`、PR #319関連付け。
   **completed/success、`final-status` success**。本audit本人がGitHub APIで全14 jobの
   conclusionを直接確認: source jobs（organizer-unit-tests / check-style / build-debug-apk）
-  実行済みsuccess、shared-writer / issue52を含む全emulator laneもsuccess。
-  Re-audit (3)節参照。Re-audit (2)時のrun 34870668580（head `601aec6407`）はcompleted/
-  successであったがhead移動により現行監査対象のgate証跡ではなく、それより前の
-  run 34869651225 / 34865190872も同様に過去headの証跡である）
+  実行済みsuccess、shared-writer（blob対応fixを含む本testを実行するlane）/
+  issue52を含む全emulator laneもsuccess。Re-audit (4)節参照。Re-audit (3)時の
+  run 34911441712（head `8b63ae0a34`）はcompleted/successであったがhead移動により
+  現行監査対象のgate証跡ではなく、それ以前のrunも同様に過去headの証跡である）
 - Criteria: specs/298-nova-restore-reload-thread-affinity/spec.md TA-AC-01, TA-AC-02, TA-AC-03, TA-AC-04, TA-AC-05, TA-AC-06
 - 調査証跡の正本: docs/assessment/issue-298-wrong-thread-restore-reload.md（以下「assessment」）。
   PR本文・commit message・assessmentの主張は信じず、以下のとおりpre-fix/post-fixの
@@ -132,13 +132,48 @@
     completed/success・`final-status` greenのため満たされており、残る手続きは
     本記録のdocs-only commitのみ。本記録のcommit以後にcode変更が入った場合は
     re-auditを要する。
+- Re-audit (4): Re-audit (3)のpin（`8b63ae0a34`）以後に1 commit `e75cb7fcd3`
+  （「read favorites snapshots type-safely in the deferral test」）が加わったため再監査
+  （間の `2430b591e3` はRe-audit (3)記録のdocs-only commit — `git show --stat` で
+  本記録1ファイルのみであることを確認）。監査対象headを
+  `e75cb7fcd3d48bbfc523c7dc2b801f3790fa95b9` へ更新。
+  `git diff 8b63ae0a34..e75cb7fcd3 --name-only` はtest 1ファイルのみ（+14/−1）で、
+  `src/` / `lawnchair/` / `quickstep/` / `.github/` / `specs/` の差分は **0行** —
+  production codeは引き続き不変（本auditが直接確認）。audit本人がfixの全hunkを
+  直接reviewした結果:
+  - **blob対応fixは記述どおりかつ正しい**: `snapshotFavorites` が全列を
+    `cursor.getString` で読んでいたのを、`cursor.getType(i)` ごとに
+    `FIELD_TYPE_BLOB` → `getBlob` / `FIELD_TYPE_NULL` → `putNull` /
+    それ以外 → `getString` へ変更。同一laneの先行classが `favorites` に残す
+    icon BLOB列を含む行でもsnapshotが成立する（従来はCursorWindowの
+    BLOB→string変換で `SQLiteException` となりtestがlane ordering依存で
+    落ちうる経路だった）。復元側 `restoreFavoritesQuietly` の
+    `insertOrThrow` はbyte[]をBLOB、nullをNULLとしてbindするためround-trip保存
+    され、INTEGER-affinity列の `getString` 再挿入はSQLite affinityにより
+    可逆（旧実装から不変の挙動）。読み取り専用fixtureの扱いであり、
+    specのData and state節（本修正はlauncher DBへ直接書込まない）と整合。
+  - **oracle・契約への影響無し**: logcat signature oracle・3 cycle反復・
+    thread isolation強化はすべて不変。fixはsnapshot読み取りの型耐性のみで、
+    TA-AC-01..06の充足判定は変わらない（TA-AC-06のregression妥当性が
+    lane orderingに対して強化された）。
+  - **検証**: cited run 34914081901（head `e75cb7fcd3` 上）がcompleted/success、
+    `final-status` green、全source jobs実行済みsuccess、shared-writer lane
+    （blob失敗が発生していたlane）を含む全emulator lane success —
+    全job conclusionを本audit本人がGitHub APIで直接確認。
+  - **verdict承継**: 初回audit・Re-audit (1)〜(3)のfindings・verdict（approve、
+    code findings無し）は新head `e75cb7fcd3` に対して成立。merge条件は
+    cited run 34914081901がcompleted/success・`final-status` greenのため満たされており、
+    残る手続きは本記録のdocs-only commitのみ。本記録のcommit以後にcode変更が
+    入った場合はre-auditを要する。
 
 ## Scope
 
-監査対象は `8b63ae0a343bfeeea4efb6c2444de6f5a7df2717`（Re-audit (3)の監査対象。
-Re-audit (2)の監査対象 `601aec6407c549ff45965eba3bf603ba597cd280` からの差分は
-本記録のdocs-only commit（`5b5695caca`）とreview対応2 commit（test + docs。
-Re-audit (3)節参照）。Re-audit (1)の監査対象 `9693a2215fe373eaa677c5b9e0f2d193f955d099`
+監査対象は `e75cb7fcd3d48bbfc523c7dc2b801f3790fa95b9`（Re-audit (4)の監査対象。
+Re-audit (3)の監査対象 `8b63ae0a343bfeeea4efb6c2444de6f5a7df2717` からの差分は
+本記録のdocs-only commit（`2430b591e3`）とtest 1ファイルのblob対応fix
+（`e75cb7fcd3`。Re-audit (4)節参照）。Re-audit (2)の監査対象
+`601aec6407c549ff45965eba3bf603ba597cd280`、Re-audit (1)の監査対象
+`9693a2215fe373eaa677c5b9e0f2d193f955d099`、
 および初回auditの監査対象 `b698e48bc836f2a7545ff32ebc0fb5cba209f7b0` からの差分と
 その検証は冒頭の各Re-audit節、初回時の記録は以下に歴史記録として保持）。
 merge-baseは `origin/main` =
@@ -378,6 +413,10 @@ python3 tools/repo-contract/measure_upstream_patch_surface.py --verify → PASS
   run 34911441712（completed/success、`final-status` green、全source jobs実行済み。
   GitHub APIで全14 jobのconclusionを直接確認）で**成立済み**。残るのは本記録の
   docs-only commitのみ。）
+  （Re-audit (4)更新: 監査対象headは `e75cb7fcd3` へ移動。同head上のmerge gateは
+  run 34914081901（completed/success、`final-status` green、全source jobs実行済み。
+  GitHub APIで全14 jobのconclusionを直接確認）で**成立済み**。残るのは本記録の
+  docs-only commitのみ。）
 - **【非阻塞・構造的】high-risk-evidence run 34865248058のfailure**:
   「audit記録が存在しない」ことによる失敗であり、本audit記録のcommit（docs-only）で
   解消する。audit記録pin以降にcode変更が入った場合は再auditを要する
@@ -395,6 +434,11 @@ python3 tools/repo-contract/measure_upstream_patch_surface.py --verify → PASS
   docs-only commit + test/docs 3ファイルのreview対応2 commit。production差分0行 —
   Re-audit (3)節参照）。同head上のHigh-risk gateは、本記録のcommit後に
   run 34911441712（completed/success、`final-status` green）をCI merge gate証跡として
+  機械検証される。以後にcode変更が入った場合は再度re-auditを要する。）
+  （Re-audit (4)更新: Head SHAを `e75cb7fcd3` へ更新（deltaは `2430b591e3` の本記録
+  docs-only commit + test 1ファイルのblob対応fix。production差分0行 —
+  Re-audit (4)節参照）。同head上のHigh-risk gateは、本記録のcommit後に
+  run 34914081901（completed/success、`final-status` green）をCI merge gate証跡として
   機械検証される。以後にcode変更が入った場合は再度re-auditを要する。）
 - **【非阻塞・記録済みdeviation】TA-AC-03「繰り返し」の方式置換**:
   実restore → reload cycleの反復走査ではなく、決定論的窓再構成test単発 +
