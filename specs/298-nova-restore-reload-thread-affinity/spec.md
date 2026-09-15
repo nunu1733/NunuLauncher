@@ -1,6 +1,6 @@
 ---
 issue: "#298"
-status: accepted
+status: implemented
 requirements: [TA-AC-01, TA-AC-02, TA-AC-03, TA-AC-04, TA-AC-05, TA-AC-06]
 risk: []
 updated: 2026-09-15
@@ -256,6 +256,13 @@ And 修正・検証はassertionの弱化や例外の握り潰しによって成�
 
 ## Change history
 
+- 2026-09-15: PR [#319](https://github.com/nunu1733/NunuLauncher/pull/319) mergeを受けて
+  statusを `implemented` へ更新。受入条件TA-AC-01..06は [#319](https://github.com/nunu1733/NunuLauncher/pull/319)
+  の検証（決定論的red→green、3 cycle反復 + logcat不在oracle、実lifecycle lanes、
+  独立監査Re-audit (5) まで）で充足。`CONTEXT.md`/`DESIGN.md`への追記は不要と判断
+  （Domain languageは実装語のみ。threading所有権は既存のdocumented契約
+  （ModelWriter規律 / `runModelWriterOrDefer` Javadoc）の適用であり新たな不変条件の
+  導入ではない）。
 - 2026-09-15: 再レビュー（P1/P2）を反映。TA-AC-03のlogcat oracleについて、Handler
   signatureの検出文字列をthread名非依存のprefix（`Can't create handler inside`）に
   変更（テスト窓の解放thread名は `NovaBackupRestoreTestThread` であり、

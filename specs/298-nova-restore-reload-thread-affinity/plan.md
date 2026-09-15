@@ -2,7 +2,8 @@
 
 > Issue: #298
 > Spec: [spec.md](./spec.md)
-> Status: Phase 1完了（decision gate分岐(A)）。Phase 2 fix実装済み（2026-09-15、
+> Status: implemented（Phase 1 investigation + decision gate分岐(A) + Phase 2 fixを
+> PR [#319](https://github.com/nunu1733/NunuLauncher/pull/319) としてmerge済み。
 > 調査記録は [docs/assessment/issue-298-wrong-thread-restore-reload.md](../../docs/assessment/issue-298-wrong-thread-restore-reload.md)）
 > Delivery: Phase 1 = investigation（本phaseの成果物はdocs/test計画のみ。production
 > code変更なし）→ decision gate（3分岐: fix / no-code resolution / 観測継続）→
