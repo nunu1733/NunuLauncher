@@ -201,6 +201,100 @@ class IntentPreferenceConsumptionTest {
     }
 
     @Test
+    fun sparsePreserveKeepsTheTargetItemAtItsCapturedCell() {
+        // PR review 4 P1-1 counterexample: in a sparse layout the plain plan
+        // moves z from (5,0) to (2,0); preserve=true on z must NOT worsen that
+        // displacement — z keeps its captured cell via the allocation hint.
+        val items = listOf(app("a", x = 0, y = 0), app("z", x = 5, y = 0), app("b", x = 0, y = 1))
+        val input = baseInput(items)
+        val inputWithIntent = withIntent(
+            input,
+            listOf(
+                ItemIntent(ref = "z", preserve = true),
+                ItemIntent(ref = "a"),
+                ItemIntent(ref = "b"),
+            ),
+        ).first
+        val biased = planner.plan(inputWithIntent).outcome as Planned
+        val cellOf = { planned: Planned, item: String ->
+            (planned.placements.first { it.item == ItemId(item) }.target as PlacementTarget.WorkspaceTarget).cell
+        }
+        // The preserved item keeps its captured cell.
+        assertEquals(GridCell(5, 0), cellOf(biased, "z"))
+        // It is not farther from the captured cell than the plain run.
+        val plainDistance = kotlin.math.abs(cellOf(planner.plan(input).outcome as Planned, "z").x - 5)
+        val biasedDistance = kotlin.math.abs(cellOf(biased, "z").x - 5)
+        assertTrue(biasedDistance <= plainDistance)
+    }
+
+    @Test
+    fun oneDirectionalGroupCohesivesAlongsideAnotherGroup() {
+        // PR review 4 P1-2: A -> [Z] is a valid one-directional declaration;
+        // the referenced member Z must cohere with A even without a reciprocal
+        // declaration, and a second group (M <-> N) must not interleave.
+        val items = listOf(
+            app("a", x = 0, y = 0),
+            app("z", x = 1, y = 0),
+            app("m", x = 2, y = 0),
+            app("n", x = 3, y = 0),
+        )
+        val input = baseInput(items).copy(
+            rules = defaultRules().copy(
+                folderPolicy = FolderPolicy(5, NewFolderProfileScope.SAME_PROFILE_ONLY),
+            ),
+        )
+        val inputWithIntent = withIntent(
+            input,
+            listOf(
+                ItemIntent(ref = "a", desiredGroupRefs = listOf("z")),
+                ItemIntent(ref = "m", desiredGroupRefs = listOf("n")),
+                ItemIntent(ref = "n", desiredGroupRefs = listOf("m")),
+            ),
+        ).first
+        val biased = planner.plan(inputWithIntent).outcome as Planned
+        val cellOf = { planned: Planned, item: String ->
+            (planned.placements.first { it.item == ItemId(item) }.target as PlacementTarget.WorkspaceTarget).cell
+        }
+        val aX = cellOf(biased, "a").x
+        val zX = cellOf(biased, "z").x
+        val mX = cellOf(biased, "m").x
+        val nX = cellOf(biased, "n").x
+        assertTrue((aX == zX + 1) || (zX == aX + 1))
+        assertTrue((mX == nX + 1) || (nX == mX + 1))
+        assertEquals(biased, planner.plan(inputWithIntent).outcome as Planned)
+    }
+
+    @Test
+    fun globalMinimizeMovementAloneKeepsCapturedLayout() {
+        val items = listOf(app("a", x = 1, y = 0), app("b", x = 0, y = 0))
+        val input = baseInput(items)
+        val built = buildExport(input)
+        val refs = built.session.itemRefs.entries.associate { (ref, id) -> id.value to ref }
+        val intent = PersonalizedIntentV1(
+            exportId = built.export.exportId,
+            itemIntents = built.export.items.map { ItemIntent(ref = it.ref) },
+            globalPreference = app.lawnchair.organizer.personalization.GlobalPreference(minimizeMovement = true),
+        )
+        val validation = app.lawnchair.organizer.personalization.IntentValidator.validate(
+            intent = intent,
+            export = built.export,
+            session = built.session,
+            nowEpochMs = 2L,
+            currentStructuralDigest = built.session.sourceContextDigest,
+        )
+        val validated = when (validation) {
+            is app.lawnchair.organizer.personalization.IntentValidation.Validated -> validation.validated
+
+            is app.lawnchair.organizer.personalization.IntentValidation.Failure ->
+                throw IllegalStateException("intent validation failed: ${validation.failure}")
+        }
+        val biased = planner.plan(input.copy(intentPreferences = IntentPlannerAdapter.project(validated))).outcome as Planned
+        // Global minimizeMovement alone reproduces the captured layout.
+        assertEquals(GridCell(1, 0), (biased.placements.first { it.item == ItemId("a") }.target as PlacementTarget.WorkspaceTarget).cell)
+        assertEquals(GridCell(0, 0), (biased.placements.first { it.item == ItemId("b") }.target as PlacementTarget.WorkspaceTarget).cell)
+    }
+
+    @Test
     fun regionAffinityBandsOrderTopMiddleBottom() {
         val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0), app("c", x = 2, y = 0))
         val input = baseInput(items)
@@ -213,11 +307,14 @@ class IntentPreferenceConsumptionTest {
             ),
         ).first
         val biased = planner.plan(inputWithIntent).outcome as Planned
-        // The region hint orders the units TOP -> MIDDLE -> BOTTOM within the page.
-        val ordered = biased.placements
-            .sortedBy { ((it.target as PlacementTarget.WorkspaceTarget).cell.x) }
-            .map { it.item.value }
-        assertEquals(listOf("c", "b", "a"), ordered)
+        // The region hint places each unit in its requested band (rows are
+        // thirds of the 6-row grid: TOP 0-1, MIDDLE 2-3, BOTTOM 4-5).
+        val bandOf = { planned: Planned, item: String ->
+            (planned.placements.first { it.item == ItemId(item) }.target as PlacementTarget.WorkspaceTarget).cell.y
+        }
+        assertTrue(bandOf(biased, "c") < 2) // TOP band
+        assertTrue(bandOf(biased, "b") in 2..3) // MIDDLE band
+        assertTrue(bandOf(biased, "a") >= 4) // BOTTOM band
     }
 
     @Test
