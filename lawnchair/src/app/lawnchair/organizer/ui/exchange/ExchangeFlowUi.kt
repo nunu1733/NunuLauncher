@@ -80,12 +80,20 @@ sealed interface ExchangeScreen {
     data class ImportOutcomeScreen(val outcome: ExchangeImportOutcome) : ExchangeScreen
 }
 
-/** Observable holder for the exchange sub-flow hosted by the preferences screen. */
+/**
+ * Observable holder for the exchange sub-flow hosted by the preferences screen.
+ * The controller factory is deferred until the flow is actually opened: the
+ * production wiring touches `LauncherAppState` and the startup reconciliation
+ * trigger, which hosted screens (and their instrumentation tests, which inject
+ * an isolated run) must not pay for merely rendering the entry row.
+ */
 class ExchangeFlowStateHolder(
-    val controller: ExchangeFlowController,
+    controllerFactory: () -> ExchangeFlowController,
     private val run: ManualOrganizationRun,
     private val scope: CoroutineScope,
 ) {
+    private val controller: ExchangeFlowController by lazy(LazyThreadSafetyMode.NONE) { controllerFactory() }
+
     var screen: ExchangeScreen by mutableStateOf(ExchangeScreen.Closed)
         private set
 

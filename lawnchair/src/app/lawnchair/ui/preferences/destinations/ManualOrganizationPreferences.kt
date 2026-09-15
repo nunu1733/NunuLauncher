@@ -109,7 +109,7 @@ fun ManualOrganizationPreferences(
     // branch only.
     val exchangeHolder = remember {
         ExchangeFlowStateHolder(
-            controller = ExchangeFlowModule.controller(context),
+            controllerFactory = { ExchangeFlowModule.controller(context) },
             run = coordinator,
             scope = scope,
         )
@@ -290,16 +290,6 @@ fun ManualOrganizationPreferences(
                             onClick = { execute { coordinator.start(trigger) } },
                         )
                     }
-                    exchangeFlowItems(
-                        holder = exchangeHolder,
-                        clipboardTransport = { ctx: android.content.Context, text: String ->
-                            ClipboardExchangeTransport(ctx).copy(text)
-                        },
-                        shareTransport = { ctx: android.content.Context, text: String ->
-                            ShareSheetExchangeTransport().share(ctx, text)
-                        },
-                        fileTransport = FileExchangeTransport(context),
-                    )
                 }
 
                 ManualOrganizationRun.State.Capturing -> item {
@@ -680,6 +670,25 @@ fun ManualOrganizationPreferences(
                 selected = selectedStrategy,
                 onSelect = ::onStrategySelected,
             )
+            // Issue #205: the external agent exchange surface closes the list.
+            // It must stay below the strategy picker: the picker's radio rows
+            // are position-sensitive in tests and in muscle memory, and the
+            // entry is a secondary affordance hosted only while the run is
+            // idle/cancelled (spec 205 V1 rule).
+            val idleLike = state is ManualOrganizationRun.State.Idle ||
+                state is ManualOrganizationRun.State.Cancelled
+            if (idleLike) {
+                exchangeFlowItems(
+                    holder = exchangeHolder,
+                    clipboardTransport = { ctx: android.content.Context, text: String ->
+                        ClipboardExchangeTransport(ctx).copy(text)
+                    },
+                    shareTransport = { ctx: android.content.Context, text: String ->
+                        ShareSheetExchangeTransport().share(ctx, text)
+                    },
+                    fileTransport = FileExchangeTransport(context),
+                )
+            }
         }
     }
 }
