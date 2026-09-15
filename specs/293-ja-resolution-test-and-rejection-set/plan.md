@@ -2,13 +2,13 @@
 issue: "#293"
 status: draft
 spec: ./spec.md
-updated: 2026-09-14
+updated: 2026-09-15
 ---
 
 # Plan: issue #228 follow-up (ja解決test拡張とspec 13 `PreWriteRejection` 追記)
 
-> Baseline: `origin/main` = `397d3fd95764878366e7c9e5ce41ab65e6f3f9ca`
-> (2026-09-14再検証時点。初版draft時のbaselineは
+> Baseline: `origin/main` = `0cf82bc1e61c1874b280a7120dff9594be4fef71`
+> (2026-09-15再検証時点。初版draft時のbaselineは
 > `f9afd8bfde121932c0c8ed965225d52a84d86ab4`)。本planは spec.md (**draft**)
 > に対応し、記載の実装状態はすべてbaseline上での実確認に基づく。
 > **実装開始前に再入場検証を行うこと** (spec.mdの参照先がbaseline以降に
@@ -38,6 +38,31 @@ updated: 2026-09-14
 > gate (L662、L672で同laneを包含)、api35 lane (L375) は不変。
 > 以下の行番号は現baseline (`397d3fd0`) 基準
 > (2026-09-14再確認、前回baseline `c5274b5d0d` と同値)。
+>
+> 2026-09-15再入場検証結果: 前回baseline (`397d3fd0`) 以降の66 commit
+> (#203 personalization signal snapshot、#204 AI personalization
+> context/intent exchange、#298 reload thread affinity) により `specs/203-*` /
+> `specs/204-*`、runtime (`strings.xml` への #203 personalization文字列7件追加で
+> `values` 側 `<!-- Issue #228 -->` ブロックがL1166→L1173へ後方移動、
+> `Results.kt` 等のorganizer application層は変更なし) および
+> `tests/organizer-instrumentation` への新規test file追加 (#203 probe test 2件、
+> #298 `RestoreLeaseDeferredLoaderThreadAffinityTest`) があったが、
+> いずれも本planの対象file・行番号に影響しない。対象test fileは前回baselineと
+> bit単位で同一 (`japaneseResourcesResolveEveryConcretePreviewString`
+> L1606-1748、#228keyは0件のまま)、#228由来20リソース (18 stringsはja≠enのまま、
+> 2 pluralsはen `one`/`other` vs ja `other`)、spec 13閉集合 (L255-261、
+> `CANDIDATE_UNAVAILABLE` 未記載のまま)、`Results.kt` (L83、L74の
+> `EXACT_PRECONDITION_FAILED` とL90の `OVERLAP_POLICY_REJECTED` の間)、
+> `ApplyResultContractTest.kt` (L72)、spec 228 change historyの#293委譲、
+> 監査記録 §5 (L101-105) はすべて不変。`.github/workflows/ci.yml` は #298用の
+> shared-writer lane (L243) へのtest class追加 (in-place編集、行数不変) のみで、
+> `organizer-instrumentation-issue52-tests` lane (L432)、`final-status` gate
+> (L662、L672で同laneを包含)、api35 lane (L375) は行番号含め不変。
+> なお issue #292 (api35 laneの `TwoPanelOrientationCaptureInstrumentationTest`
+> flake追跡) はPR #297 (fix `56c5fec7`、`7419579006`、merge `f95fbfed3d`) で
+> 修正され、2026-09-12にCOMPLETEDでclose済み。Step 3のapi35注意書きを本日更新した。
+> 以下の行番号は現baseline (`0cf82bc1`) 基準 (2026-09-15再確認、
+> 前回baseline `397d3fd0` と同値)。
 
 ## 1. 現状の実装と不足 (baseline確認済み)
 
@@ -110,7 +135,9 @@ git submodule update --init --recursive
   (`ManualOrganizationProductionE2EInstrumentationTest` /
   `ManualOrganizationPreferencesInstrumentationTest` / `StrategyPicker...` /
   `MissingAppSelection...` を同一laneで実行) がgreenであること。
-  api35 laneは既知の #292 flakeと無関係な本変更であることをPRに明記する。
+  かつてapi35 laneを断続的に失敗させていた #292 flakeはPR #297で修正され
+  issue #292は2026-09-12にclose済みであるため、api35 laneの失敗が発生した場合は
+  本変更とは無関係な新規要因として分離・記録する。
 - 本PRの差分はtest+docsのみであり、高リスク独立エビデンス契約
   (workflow: testのみの変更・docs-only PRは対象外) の対象外である。
   ただし通常の検証記録として `spotlessCheck` (`check-style`) と

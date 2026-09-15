@@ -2,7 +2,7 @@
 issue: "#293"
 status: draft
 requirements: []
-updated: 2026-09-14
+updated: 2026-09-15
 ---
 
 # issue #228 follow-up: ja解決test拡張とspec 13 `PreWriteRejection` 追記
@@ -45,7 +45,7 @@ PR #289 (issue #228) のmerge前監査
 
 `tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationPreferencesInstrumentationTest.kt`
 の `japaneseResourcesResolveEveryConcretePreviewString` へ、次のissue #228由来
-リソースを追加する (2026-09-14時点、baseline `397d3fd95764878366e7c9e5ce41ab65e6f3f9ca`
+リソースを追加する (2026-09-15時点、baseline `0cf82bc1e61c1874b280a7120dff9594be4fef71`
 で再確認済みの `lawnchair/res/values/strings.xml`
 `<!-- Issue #228: missing-app selection and Add rows -->` ブロックと
 `unplaced_strategy_scope` / `selection_stale` / `candidate_unresolved` の3件を含む)。
@@ -107,7 +107,7 @@ plurals (2件、既存のplurals assertionパターンへ追加):
 ## Constraints
 
 - ja値がenと等価なリソースを `assertNotEquals` パターンへ追加しない
-  (2026-09-14時点 (baseline `397d3fd95764878366e7c9e5ce41ab65e6f3f9ca`) で
+  (2026-09-15時点 (baseline `0cf82bc1e61c1874b280a7120dff9594be4fef71`) で
   18 stringsはすべてja≠enを再確認済み。将来の翻訳変更で
   衝突が生じた場合は、当該keyのassert形式を既存pluralsの「解決すること」
   assertionへ寄せ、en fallback検出を弱めない)。
@@ -140,3 +140,20 @@ plurals (2件、既存のplurals assertionパターンへ追加):
   #299用 `organizer-instrumentation-issue299-tests` laneの追加のみで、
   `organizer-instrumentation-issue52-tests` laneと `final-status` gate構成は不変。
   契約内容の変更なし。
+- 2026-09-15: baseline `origin/main` = `0cf82bc1e61c1874b280a7120dff9594be4fef71`
+  で再入場検証。前回baseline以降の66 commit (#203 personalization signal、
+  #204 AI personalization context/intent、#298 reload thread affinity実装) により
+  `specs/203-*` / `specs/204-*` / runtime (`strings.xml` への#203文字列追加で
+  `values` 側 `<!-- Issue #228 -->` ブロックがL1166→L1173へ後方移動) および
+  `tests/organizer-instrumentation` への新test file追加 (#203 probe test 2件、
+  #298 `RestoreLeaseDeferredLoaderThreadAffinityTest`) があったが、対象test fileは
+  前回baselineとbit単位で同一 (`japaneseResourcesResolveEveryConcretePreviewString`
+  L1606-1748、#228keyは0件のまま)、#228由来20リソース (18 strings ja≠en、
+  2 plurals en `one`/`other` vs ja `other`)、spec 13閉集合 (L255-261、
+  `CANDIDATE_UNAVAILABLE` 未記載のまま)、`Results.kt` (L83)、
+  `ApplyResultContractTest.kt` (L72)、spec 228 change historyの#293委譲、
+  監査記録 §5 はすべて不変。`.github/workflows/ci.yml` は #298用の
+  shared-writer lane (L243) へのtest class追加 (in-place編集、行数不変) のみで、
+  lane行番号 (L375/L432) と `final-status` gate (L662/L672) は不変。
+  なお issue #292 (api35 flake追跡) はPR #297で修正され2026-09-12にclose済み
+  (plan Step 3のflake注意書きを本日更新)。契約内容の変更なし。
