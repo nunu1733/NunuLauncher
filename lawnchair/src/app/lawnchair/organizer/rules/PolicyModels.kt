@@ -19,6 +19,14 @@ enum class PolicySourceKind {
     PLATFORM_CLASSIFICATION_EVIDENCE,
     MATERIALIZED_CLASSIFICATION_SIGNALS,
     MATERIALIZED_FULL_TARGET_SET,
+
+    /**
+     * Issue #203: the personalization signal snapshot is a dynamic,
+     * content-addressed input (schema string + canonical rows digest). It is
+     * an optional source outside the mandatory dynamic cut and never joins the
+     * immutable bundle identity.
+     */
+    PERSONALIZATION_SIGNAL_SNAPSHOT,
 }
 
 data class PolicyInputIdentity(

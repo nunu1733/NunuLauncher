@@ -16,6 +16,7 @@
 
 package app.lawnchair.ui.preferences.destinations
 
+import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -181,6 +182,34 @@ fun HomeScreenPreferences(
                 adapter = prefs2.enableDotPagination.getAdapter(),
                 label = stringResource(id = R.string.show_dot_pagination_label),
                 description = stringResource(id = R.string.show_dot_pagination_description),
+            )
+        }
+        // Issue #203: personalization signals — the standing permission entry
+        // point (usage access app-op) with rationale, and the launcher-origin
+        // recording toggle. Organizing works fully without the permission;
+        // the granted state is shown as text (spec #203 U-2, accessibility).
+        PreferenceGroup(heading = stringResource(id = R.string.organizer_personalization_section)) {
+            SwitchPreference(
+                adapter = prefs2.organizerPersonalizationRecording.getAdapter(),
+                label = stringResource(id = R.string.organizer_personalization_recording_label),
+                description = stringResource(id = R.string.organizer_personalization_recording_description),
+            )
+            val usageAccessGranted = remember {
+                context.checkCallingOrSelfPermission(android.Manifest.permission.PACKAGE_USAGE_STATS) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+            }
+            ClickablePreference(
+                label = stringResource(id = R.string.organizer_personalization_usage_access_label),
+                subtitle = stringResource(
+                    id = if (usageAccessGranted) {
+                        R.string.organizer_personalization_usage_access_granted
+                    } else {
+                        R.string.organizer_personalization_usage_access_not_granted
+                    },
+                ),
+                onClick = {
+                    context.startActivity(Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                },
             )
         }
         PreferenceGroup(heading = stringResource(id = R.string.popup_menu)) {
