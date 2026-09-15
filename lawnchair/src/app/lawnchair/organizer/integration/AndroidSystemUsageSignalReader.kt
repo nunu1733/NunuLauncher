@@ -15,8 +15,6 @@ import app.lawnchair.organizer.personalization.SystemUsageSection
 import app.lawnchair.organizer.personalization.UsageAccessState
 import app.lawnchair.organizer.personalization.UsageSignalRequest
 import com.android.launcher3.pm.UserCache
-import java.time.Instant
-import java.time.ZoneId
 
 /**
  * Issue #203: Android-only system usage reader. The usage access permission is
@@ -27,9 +25,15 @@ import java.time.ZoneId
  * U-6): a launcher UID cannot read usage stats of another profile unless the
  * platform grants it there.
  *
- * The read honors the single window anchor passed by the aggregator — no clock
- * access of its own, so two reads on one anchor are byte-identical. Raw
- * millisecond aggregates never leave this reader; only normalized buckets do.
+ * Windows follow the U-5 probe amendment (2026-09-15,
+ * `docs/assessment/pr-321-u5-probe-evidence.md`): the platform's
+ * `INTERVAL_DAILY` intervals are ~24h rolling buckets that do not align to
+ * local calendar days, so windows are rolling `[anchor − N·24h, anchor]`
+ * ranges and the returned intervals are aggregated as-is — no edge filtering,
+ * which would drop the majority of intervals. The 30d and 7d aggregates come
+ * from two separate queries; the probe observed no interval extending beyond
+ * the requested range and no overlap, so each sum is faithful. Raw millisecond
+ * aggregates never leave this reader; only normalized buckets do.
  */
 class AndroidSystemUsageSignalReader(
     private val appContext: Context,
@@ -46,10 +50,8 @@ class AndroidSystemUsageSignalReader(
                 systemUsage = SystemUsageSection.Unavailable,
             )
         }
-        val zone = ZoneId.systemDefault()
-        val anchorDay = Instant.ofEpochMilli(windowAnchorElapsedMs).atZone(zone).toLocalDate()
-        val window30StartMs = anchorDay.minusDays(29).atStartOfDay(zone).toInstant().toEpochMilli()
-        val window7StartMs = anchorDay.minusDays(6).atStartOfDay(zone).toInstant().toEpochMilli()
+        val window30StartMs = windowAnchorElapsedMs - 30 * PersonalizationBuckets.DAY_MS
+        val window7StartMs = windowAnchorElapsedMs - 7 * PersonalizationBuckets.DAY_MS
         val profileReads = request.profiles.associateWith { profile ->
             readProfile(profile, window30StartMs, window7StartMs, windowAnchorElapsedMs)
         }
@@ -76,7 +78,7 @@ class AndroidSystemUsageSignalReader(
                         ?.let { elapsedUsedMs: Long -> SignalField.Value(recencyClass(windowAnchorElapsedMs - elapsedUsedMs)) }
                         ?: SignalField.Absent,
                     activeDaysBucket = aggregates
-                        ?.let { SignalField.Value(PersonalizationBuckets.activeDaysClass(it.activeDays)) }
+                        ?.let { SignalField.Value(PersonalizationBuckets.activeDaysClass(minOf(it.activeDays, MAX_ACTIVE_DAYS))) }
                         ?: SignalField.Absent,
                 )
             }
@@ -102,9 +104,9 @@ class AndroidSystemUsageSignalReader(
     }
 
     /**
-     * Queries one profile's daily usage stats and computes the per-package
-     * aggregates plus the two nearest-rank boundaries. Returns `null` when the
-     * profile is unreadable (fail closed, spec U-6).
+     * Queries one profile's 30d and 7d usage windows and computes the
+     * per-package aggregates plus the two nearest-rank boundaries. Returns
+     * `null` when the profile is unreadable (fail closed, spec U-6).
      */
     private fun readProfile(
         profile: app.lawnchair.organizer.planning.ProfileId,
@@ -116,26 +118,24 @@ class AndroidSystemUsageSignalReader(
         val user = userCache.getUserForSerialNumber(serial)
         if (userCache.getSerialNumberForUser(user) != serial) return null
         val statsManager = usageStatsManagerFor(user) ?: return null
-        val intervals = statsManager.queryUsageStats(
-            UsageStatsManager.INTERVAL_DAILY,
-            window30StartMs,
-            windowAnchorMs,
-        ).orEmpty()
         val aggregates = mutableMapOf<app.lawnchair.organizer.planning.PackageName, MutablePackageUsageAggregates>()
-        for (stats in intervals) {
-            // Full-containment filter: partial edge intervals are excluded so
-            // the aggregation stays deterministic across interval alignment
-            // (spec #203 U-5; the boundary-day undercount is a known limitation).
-            if (!isContained(stats, window30StartMs, windowAnchorMs)) continue
+        // Rolling windows per the U-5 probe amendment: aggregate the returned
+        // intervals as-is (no edge filtering); each interval is a ~24h bucket.
+        for (stats in statsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, window30StartMs, windowAnchorMs).orEmpty()) {
             val packageName = app.lawnchair.organizer.planning.PackageName(stats.packageName)
             val aggregate = aggregates.getOrPut(packageName) { MutablePackageUsageAggregates() }
             if (stats.totalTimeInForeground > 0) {
                 aggregate.total30dMs += stats.totalTimeInForeground
                 aggregate.activeDays += 1
-                if (isContained(stats, window7StartMs, windowAnchorMs)) aggregate.total7dMs += stats.totalTimeInForeground
             }
             val lastUsed = stats.lastTimeUsed
             if (lastUsed > 0 && lastUsed > (aggregate.lastUsedElapsedMs ?: 0)) aggregate.lastUsedElapsedMs = lastUsed
+        }
+        for (stats in statsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, window7StartMs, windowAnchorMs).orEmpty()) {
+            val packageName = app.lawnchair.organizer.planning.PackageName(stats.packageName)
+            if (stats.totalTimeInForeground > 0) {
+                aggregates.getOrPut(packageName) { MutablePackageUsageAggregates() }.total7dMs += stats.totalTimeInForeground
+            }
         }
         // Rank universes are per window over packages with a usage record.
         val universe30 = aggregates.values.filter { it.total30dMs > 0 }.map { it.total30dMs }
@@ -160,8 +160,6 @@ class AndroidSystemUsageSignalReader(
         }
     }
 
-    private fun isContained(stats: UsageStats, windowStartMs: Long, windowAnchorMs: Long): Boolean = stats.firstTimeStamp >= windowStartMs && stats.lastTimeStamp <= windowAnchorMs
-
     /** Raw per-package aggregates; raw milliseconds never leave this reader. */
     private data class MutablePackageUsageAggregates(
         var total30dMs: Long = 0,
@@ -181,4 +179,9 @@ class AndroidSystemUsageSignalReader(
         val profileAvailability: Map<app.lawnchair.organizer.planning.ProfileId, SystemUsageProfileAvailability>,
         val systemUsage: SystemUsageSection,
     )
+
+    private companion object {
+        /** Active-days are bucketed with 30 as the ceiling (30d window). */
+        const val MAX_ACTIVE_DAYS = 30
+    }
 }
