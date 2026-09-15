@@ -1303,6 +1303,7 @@
     <string name="exchange_generate">Generate request</string>
     <string name="exchange_generating">Generating the exchange request…</string>
     <string name="exchange_cancel">Cancel</string>
+    <string name="exchange_close">Close</string>
     <string name="exchange_disclosure_title">Review before sending</string>
     <string name="exchange_disclosure_redacted">This request contains no app names, package names, or raw usage data.</string>
     <string name="exchange_disclosure_labels_included">This request contains app and folder names.</string>

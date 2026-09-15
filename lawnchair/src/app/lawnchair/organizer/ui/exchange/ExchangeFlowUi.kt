@@ -47,6 +47,7 @@ import app.lawnchair.organizer.personalization.PrivacyTier
 import app.lawnchair.organizer.personalization.exchange.ExchangeEnvelopeFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportResult
+import app.lawnchair.organizer.personalization.exchange.acceptsExchangeImportEnvelope
 import app.lawnchair.organizer.ui.ManualOrganizationRun
 import com.android.launcher3.R
 import kotlinx.coroutines.CoroutineScope
@@ -73,11 +74,31 @@ sealed interface ExchangeScreen {
 
     data object Generating : ExchangeScreen
 
-    data class Disclosing(val packageText: String, val tier: PrivacyTier) : ExchangeScreen
+    data class Disclosing(val state: ExchangeDisclosureState) : ExchangeScreen
 
     data class Importing(val replyText: String) : ExchangeScreen
 
     data class ImportOutcomeScreen(val outcome: ExchangeImportOutcome) : ExchangeScreen
+}
+
+/**
+ * Issue #205 (PR review P1): the disclosure lifecycle of one generated package.
+ * The generating session is bound here, so cancel always targets exactly this
+ * disclosure's session — never whatever happens to be active. Once any
+ * transport succeeded the disclosure is `sent` and closing it must NOT
+ * invalidate the session (the package may already be outside the device, and
+ * Share Sheet delivery is unobservable), so the reply stays importable.
+ */
+data class ExchangeDisclosureState(
+    val session: app.lawnchair.organizer.personalization.ExportSession,
+    val packageText: String,
+    val tier: PrivacyTier,
+    val sent: Boolean = false,
+) {
+    fun onTransportResult(result: ExchangeTransportResult): ExchangeDisclosureState = if (result == ExchangeTransportResult.Success) copy(sent = true) else this
+
+    /** Spec 205: cancel is the pre-send act of an unsent package only. */
+    val cancelable: Boolean get() = !sent
 }
 
 /**
@@ -140,7 +161,13 @@ class ExchangeFlowStateHolder(
             withContext(Dispatchers.Main) {
                 when (result) {
                     is ExchangeGenerationResult.Generated ->
-                        screen = ExchangeScreen.Disclosing(result.packageText, tier)
+                        screen = ExchangeScreen.Disclosing(
+                            ExchangeDisclosureState(
+                                session = result.session,
+                                packageText = result.packageText,
+                                tier = tier,
+                            ),
+                        )
 
                     is ExchangeGenerationResult.InputNotReady -> {
                         status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_INPUT_NOT_READY)
@@ -161,10 +188,19 @@ class ExchangeFlowStateHolder(
         }
     }
 
-    fun cancelDisclosure(screen: ExchangeScreen.Disclosing) {
-        // Spec 205: cancel explicitly invalidates the unsent session only.
+    /**
+     * Closes the disclosure. Pre-send this is the spec 205 cancel: it
+     * invalidates exactly the disclosure's own (unsent) session. After a
+     * successful transport the package may already have left the device, so
+     * the session survives and the reply stays importable (review P1).
+     */
+    fun closeDisclosure(state: ExchangeDisclosureState) {
+        if (!state.cancelable) {
+            close()
+            return
+        }
         scope.launch(Dispatchers.IO) {
-            controller.activeSession()?.let { controller.cancelDisclosure(it) }
+            controller.cancelDisclosure(state.session)
             withContext(Dispatchers.Main) { close() }
         }
     }
@@ -176,6 +212,8 @@ class ExchangeFlowStateHolder(
             is ExchangeTransportResult.Failure ->
                 ExchangeStatus(ExchangeStatus.transportFailure(result.kind))
         }
+        val disclosing = screen as? ExchangeScreen.Disclosing ?: return
+        screen = ExchangeScreen.Disclosing(disclosing.state.onTransportResult(result))
     }
 
     fun importFromFile(context: Context, fileTransport: FileExchangeTransport, uri: Uri) {
@@ -199,6 +237,12 @@ class ExchangeFlowStateHolder(
     }
 
     fun onImportTextChange(text: String) {
+        // Spec 205 Decision 6 / plan: the envelope limit applies at UI receipt
+        // too — oversized text is never adopted into Compose state.
+        if (!acceptsExchangeImportEnvelope(text)) {
+            status = ExchangeStatus(ExchangeStatus.Kind.INPUT_OVERSIZE)
+            return
+        }
         screen = ExchangeScreen.Importing(text)
     }
 
@@ -310,7 +354,7 @@ fun LazyListScope.exchangeFlowItems(
             item(key = "exchange-disclosure") {
                 ExchangeDisclosure(
                     holder = holder,
-                    screen = current,
+                    state = current.state,
                     clipboardTransport = clipboardTransport,
                     shareTransport = shareTransport,
                     fileTransport = fileTransport,
@@ -475,7 +519,7 @@ private fun ExchangeReplacementConfirm(
 @Composable
 private fun ExchangeDisclosure(
     holder: ExchangeFlowStateHolder,
-    screen: ExchangeScreen.Disclosing,
+    state: ExchangeDisclosureState,
     clipboardTransport: (Context, String) -> ExchangeTransportResult,
     shareTransport: (Context, String) -> ExchangeTransportResult,
     fileTransport: FileExchangeTransport,
@@ -484,7 +528,7 @@ private fun ExchangeDisclosure(
     val fileSaver = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain"),
     ) { uri: Uri? ->
-        if (uri != null) holder.writeFile(fileTransport, screen.packageText, uri)
+        if (uri != null) holder.writeFile(fileTransport, state.packageText, uri)
     }
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
@@ -493,7 +537,7 @@ private fun ExchangeDisclosure(
             modifier = Modifier.testTag("exchange-disclosure-title"),
         )
         Text(
-            text = if (screen.tier == PrivacyTier.EXTERNAL_WITH_LABELS) {
+            text = if (state.tier == PrivacyTier.EXTERNAL_WITH_LABELS) {
                 stringResource(R.string.exchange_disclosure_labels_included)
             } else {
                 stringResource(R.string.exchange_disclosure_redacted)
@@ -506,7 +550,7 @@ private fun ExchangeDisclosure(
             style = MaterialTheme.typography.bodySmall,
         )
         Text(
-            text = screen.packageText,
+            text = state.packageText,
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier
                 .fillMaxWidth()
@@ -520,13 +564,13 @@ private fun ExchangeDisclosure(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Button(
-                onClick = { holder.onTransportResult(clipboardTransport(context, screen.packageText)) },
+                onClick = { holder.onTransportResult(clipboardTransport(context, state.packageText)) },
                 modifier = Modifier.testTag("exchange-send-clipboard"),
             ) {
                 Text(stringResource(R.string.exchange_copy))
             }
             FilledTonalButton(
-                onClick = { holder.onTransportResult(shareTransport(context, screen.packageText)) },
+                onClick = { holder.onTransportResult(shareTransport(context, state.packageText)) },
                 modifier = Modifier.testTag("exchange-send-share"),
             ) {
                 Text(stringResource(R.string.exchange_share))
@@ -545,10 +589,14 @@ private fun ExchangeDisclosure(
                 Text(stringResource(R.string.exchange_save_file))
             }
             OutlinedButton(
-                onClick = { holder.cancelDisclosure(screen) },
+                onClick = { holder.closeDisclosure(state) },
                 modifier = Modifier.testTag("exchange-cancel"),
             ) {
-                Text(stringResource(R.string.exchange_cancel))
+                Text(
+                    stringResource(
+                        if (state.cancelable) R.string.exchange_cancel else R.string.exchange_close,
+                    ),
+                )
             }
         }
     }

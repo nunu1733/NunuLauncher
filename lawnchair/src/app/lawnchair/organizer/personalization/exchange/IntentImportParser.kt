@@ -90,6 +90,13 @@ sealed interface ExchangeEnvelopeFailure {
 }
 
 /**
+ * Receipt-time envelope check for UI input paths (spec 205 Decision 6 / plan:
+ * paste/clipboard input validates the same limit on acceptance, so oversized
+ * text never enters Compose state).
+ */
+fun acceptsExchangeImportEnvelope(text: String): Boolean = !utf8ByteLengthExceeds(text, ExchangeContract.MAX_EXCHANGE_IMPORT_BYTES)
+
+/**
  * Allocation-bounded UTF-8 length check (approving review note): the fast
  * path rejects on the char count (every char is at least one UTF-8 byte) and
  * the exact count early-exits at `limit + 1`, so the check itself never

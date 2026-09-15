@@ -26,12 +26,13 @@ import app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent
  */
 object ExchangeImportPipeline {
 
-    fun import(
-        importText: String,
-        session: ExportSession?,
-        currentStructural: CanonicalStructuralInputs,
-        nowEpochMs: Long,
-    ): ExchangeImportResult {
+    /**
+     * Stage 1 (review P2 ordering): bounds, frames, and decodes the untrusted
+     * reply — every envelope/framing/decode failure fails closed here, before
+     * any canonical capture/composition runs. The decoded intent is the
+     * session lookup key (its echoed `exportId`).
+     */
+    fun prepare(importText: String): ExchangeImportResult {
         val payload = when (val framing = IntentImportParser.parse(importText)) {
             is IntentFramingResult.Failure ->
                 return ExchangeImportResult.Failure(ExchangeImportFailure.Envelope(framing.failure))
@@ -44,6 +45,37 @@ object ExchangeImportPipeline {
 
             is IntentDecodeResult.Success -> decoded.intent
         }
+        return Prepared(intent)
+    }
+
+    /** Stage 1 success: the decoded intent, ready for session binding. */
+    data class Prepared(
+        val intent: app.lawnchair.organizer.personalization.PersonalizedIntentV1,
+    ) : ExchangeImportResult
+
+    /** Single-call composition of [prepare] and [validate]. */
+    fun import(
+        importText: String,
+        session: ExportSession?,
+        currentStructural: CanonicalStructuralInputs,
+        nowEpochMs: Long,
+    ): ExchangeImportResult {
+        val prepared = when (val result = prepare(importText)) {
+            is ExchangeImportResult.Failure -> return result
+            is Prepared -> result
+            is ExchangeImportResult.Validated -> error("unreachable")
+        }
+        return validate(prepared, session, currentStructural, nowEpochMs)
+    }
+
+    /** Stage 2: session binding + expiry + structural digest + reconstruction + validation. */
+    fun validate(
+        prepared: Prepared,
+        session: ExportSession?,
+        currentStructural: CanonicalStructuralInputs,
+        nowEpochMs: Long,
+    ): ExchangeImportResult {
+        val intent = prepared.intent
         val activeSession = session
             ?: return ExchangeImportResult.Failure(
                 ExchangeImportFailure.Contract(IntentValidationFailure.ExportMismatch),

@@ -392,6 +392,7 @@
     <string name="exchange_generate">依頼文を生成</string>
     <string name="exchange_generating">依頼文を生成しています…</string>
     <string name="exchange_cancel">キャンセル</string>
+    <string name="exchange_close">閉じる</string>
     <string name="exchange_disclosure_title">送信前の確認</string>
     <string name="exchange_disclosure_redacted">この依頼文にアプリ名・パッケージ名・生の使用状況は含まれません。</string>
     <string name="exchange_disclosure_labels_included">この依頼文にはアプリ名・フォルダ名が含まれます。</string>

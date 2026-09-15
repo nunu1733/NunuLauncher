@@ -1,6 +1,7 @@
 package app.lawnchair.organizer.integration.exchange
 
 import app.lawnchair.organizer.integration.InputReadinessReason
+import app.lawnchair.organizer.integration.exchange.ExchangeTransportResult
 import app.lawnchair.organizer.personalization.BuiltExport
 import app.lawnchair.organizer.personalization.CanonicalStructuralInputs
 import app.lawnchair.organizer.personalization.ContextExportBuilder
@@ -235,6 +236,102 @@ class ExchangeFlowControllerTest {
         val recreated = fixture.newController()
         val outcome = recreated.importReply(replyFor(fixture, e1.session)) as ExchangeImportOutcome.Pipeline
         assertTrue(outcome.result is ExchangeImportResult.Validated)
+    }
+
+    @Test
+    fun prReviewTransportSuccessThenCloseKeepsTheSessionImportable() {
+        val fixture = Fixture()
+        val controller = fixture.newController()
+        val e1 = generated(controller.generate(PrivacyTier.EXTERNAL_REDACTED))
+
+        // The disclosure binds its own generating session (review P1).
+        var disclosure = app.lawnchair.organizer.ui.exchange.ExchangeDisclosureState(
+            session = e1.session,
+            packageText = e1.packageText,
+            tier = PrivacyTier.EXTERNAL_REDACTED,
+        )
+        assertTrue(disclosure.cancelable)
+
+        // First transport success: the disclosure is sent; closing it must not
+        // invalidate the session (the holder's close rule — no invalidate).
+        disclosure = disclosure.onTransportResult(ExchangeTransportResult.Success)
+        assertTrue(!disclosure.cancelable)
+        if (disclosure.cancelable) controller.cancelDisclosure(disclosure.session)
+
+        assertEquals(e1.session.exportId, fixture.store.active(fixture.clock)?.exportId)
+        val outcome = controller.importReply(replyFor(fixture, e1.session)) as ExchangeImportOutcome.Pipeline
+        assertTrue(outcome.result is ExchangeImportResult.Validated)
+    }
+
+    @Test
+    fun prReviewPreSendCancelInvalidatesOnlyTheBoundSession() {
+        val fixture = Fixture()
+        val controller = fixture.newController()
+        val e1 = generated(controller.generate(PrivacyTier.EXTERNAL_REDACTED))
+        controller.cancelDisclosure(e1.session)
+        assertNull(fixture.store.active(fixture.clock))
+        // The late reply is unimportable — typed, zero-write.
+        val outcome = controller.importReply(replyFor(fixture, e1.session)) as ExchangeImportOutcome.Pipeline
+        assertEquals(
+            ExchangeImportFailure.Contract(IntentValidationFailure.ExportMismatch),
+            (outcome.result as ExchangeImportResult.Failure).failure,
+        )
+    }
+
+    @Test
+    fun prReviewEnvelopeFailureTakesPriorityOverStructuralNotReady() {
+        val fixture = Fixture()
+        val controller = ExchangeFlowController(
+            composeExportInputs = { t -> ExchangeInputResult.ExportReady(exportInputsOf(fixture.structural, t)) },
+            currentStructuralInputs = { ExchangeStructuralResult.NotReady(InputReadinessReason.StaleCandidateSelection) },
+            store = fixture.store,
+            allocator = SequentialIdAllocator(),
+            clock = { fixture.clock },
+        )
+        val oversizedReply = "x".repeat(1024 * 1024 + 1)
+        val outcome = controller.importReply(oversizedReply) as ExchangeImportOutcome.Pipeline
+        assertEquals(
+            ExchangeImportFailure.Envelope(
+                app.lawnchair.organizer.personalization.exchange.ExchangeEnvelopeFailure.InputOversize,
+            ),
+            (outcome.result as ExchangeImportResult.Failure).failure,
+        )
+        // A valid reply still reports the composition problem (no regression).
+        val e1 = generated(
+            ExchangeFlowController(
+                composeExportInputs = { t -> ExchangeInputResult.ExportReady(exportInputsOf(fixture.structural, t)) },
+                currentStructuralInputs = { ExchangeStructuralResult.Ready(fixture.structural) },
+                store = fixture.store,
+                allocator = SequentialIdAllocator(),
+                clock = { fixture.clock },
+            ).generate(PrivacyTier.EXTERNAL_REDACTED),
+        )
+        val notReadyController = ExchangeFlowController(
+            composeExportInputs = { t -> ExchangeInputResult.ExportReady(exportInputsOf(fixture.structural, t)) },
+            currentStructuralInputs = { ExchangeStructuralResult.NotReady(InputReadinessReason.StaleCandidateSelection) },
+            store = fixture.store,
+            allocator = SequentialIdAllocator(),
+            clock = { fixture.clock },
+        )
+        val validOutcome = notReadyController.importReply(replyFor(fixture, e1.session))
+        assertTrue(validOutcome is ExchangeImportOutcome.InputNotReady)
+    }
+
+    @Test
+    fun prReviewEncodeFailureCleansUpTheSession() {
+        val fixture = Fixture()
+        val controller = ExchangeFlowController(
+            composeExportInputs = { t -> ExchangeInputResult.ExportReady(exportInputsOf(fixture.structural, t)) },
+            currentStructuralInputs = { ExchangeStructuralResult.Ready(fixture.structural) },
+            store = fixture.store,
+            allocator = SequentialIdAllocator(),
+            clock = { fixture.clock },
+            encodeExport = { app.lawnchair.organizer.personalization.ContextExportResult.Failure(app.lawnchair.organizer.personalization.ExportEncodeProblem.Oversize) },
+        )
+        val result = controller.generate(PrivacyTier.EXTERNAL_REDACTED)
+        assertTrue(result is ExchangeGenerationResult.EncodeFailure)
+        // No ghost active session: package and durable session stay 1:1.
+        assertNull(fixture.store.active(fixture.clock))
     }
 
     @Test

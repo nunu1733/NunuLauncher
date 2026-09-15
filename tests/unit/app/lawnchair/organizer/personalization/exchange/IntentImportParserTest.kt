@@ -4,6 +4,7 @@ import app.lawnchair.organizer.personalization.exchange.ExchangeContract.INTENT_
 import app.lawnchair.organizer.personalization.exchange.ExchangeContract.INTENT_END_MARKER
 import app.lawnchair.organizer.personalization.exchange.ExchangeContract.MAX_EXCHANGE_IMPORT_BYTES
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -156,6 +157,15 @@ class IntentImportParserTest {
         val overLimit = atLimit + " "
         assertEquals(MAX_EXCHANGE_IMPORT_BYTES + 1, overLimit.length)
         assertEquals(ExchangeEnvelopeFailure.InputOversize, failureOf(overLimit))
+    }
+
+    @Test
+    fun receiptEnvelopeCheckMatchesTheParserBoundary() {
+        // UI receipt (paste/clipboard) uses the same allocation-bounded check.
+        assertTrue(acceptsExchangeImportEnvelope("plain text"))
+        assertTrue(acceptsExchangeImportEnvelope("日".repeat(100)))
+        assertFalse(acceptsExchangeImportEnvelope("x".repeat(MAX_EXCHANGE_IMPORT_BYTES + 1)))
+        assertFalse(acceptsExchangeImportEnvelope("日".repeat(MAX_EXCHANGE_IMPORT_BYTES / 3 + 2)))
     }
 
     @Test

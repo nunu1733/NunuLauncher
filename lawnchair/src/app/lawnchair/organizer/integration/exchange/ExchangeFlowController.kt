@@ -33,6 +33,7 @@ class ExchangeFlowController(
     private val store: ExportSessionStore,
     private val allocator: RandomIdAllocator,
     private val clock: () -> Long,
+    private val encodeExport: (app.lawnchair.organizer.personalization.PersonalizationContextExportV1) -> app.lawnchair.organizer.personalization.ContextExportResult = app.lawnchair.organizer.personalization.ContextExportCodec::encode,
 ) {
 
     constructor(
@@ -69,9 +70,14 @@ class ExchangeFlowController(
             // imported after a process death, so nothing is disclosed.
             return ExchangeGenerationResult.SessionStoreFailure
         }
-        val exportJson = when (val encoded = ContextExportCodec.encode(built.export)) {
-            is app.lawnchair.organizer.personalization.ContextExportResult.Failure ->
+        val exportJson = when (val encoded = encodeExport(built.export)) {
+            is app.lawnchair.organizer.personalization.ContextExportResult.Failure -> {
+                // Review P2: a generation attempt that never produced a package
+                // must not leave a ghost active session — the durable active
+                // session and the disclosed package stay 1:1 (spec 205).
+                store.invalidate(built.session.exportId)
                 return ExchangeGenerationResult.EncodeFailure(encoded.problem)
+            }
 
             is app.lawnchair.organizer.personalization.ContextExportResult.Success ->
                 encoded.bytes.decodeToString()
@@ -92,21 +98,28 @@ class ExchangeFlowController(
     }
 
     /**
-     * Imports an agent reply. The session is looked up by the `exportId`
-     * echoed inside the framed payload, so invalidated (single-active-session
-     * overwritten) and unknown exports surface as `EXPORT_MISMATCH` while an
-     * expired matching record surfaces as `SESSION_EXPIRED`.
+     * Imports an agent reply (spec 205 data flow ordering): the untrusted reply
+     * is bounded, framed, and decoded FIRST — every envelope/framing/decode
+     * failure fails closed before any canonical capture/composition runs — and
+     * only then are the current structural inputs composed and the session
+     * resolved by the echoed `exportId` (invalidated/unknown →
+     * `EXPORT_MISMATCH`, expired matching record → `SESSION_EXPIRED`).
      */
     fun importReply(replyText: String): ExchangeImportOutcome {
+        val prepared = when (val result = ExchangeImportPipeline.prepare(replyText)) {
+            is ExchangeImportResult.Failure -> return ExchangeImportOutcome.Pipeline(result)
+            is ExchangeImportPipeline.Prepared -> result
+            is ExchangeImportResult.Validated -> error("unreachable")
+        }
         val structural = when (val result = currentStructuralInputs()) {
             is app.lawnchair.organizer.integration.exchange.ExchangeStructuralResult.NotReady ->
                 return ExchangeImportOutcome.InputNotReady(result.reason)
 
             is app.lawnchair.organizer.integration.exchange.ExchangeStructuralResult.Ready -> result.structural
         }
-        val session = echoedExportId(replyText)?.let { store.load(it) }
+        val session = store.load(prepared.intent.exportId)
         return ExchangeImportOutcome.Pipeline(
-            ExchangeImportPipeline.import(replyText, session, structural, clock()),
+            ExchangeImportPipeline.validate(prepared, session, structural, clock()),
         )
     }
 }
@@ -128,22 +141,3 @@ sealed interface ExchangeImportOutcome {
 
     data class InputNotReady(val reason: app.lawnchair.organizer.integration.InputReadinessReason) : ExchangeImportOutcome
 }
-
-/**
- * Extracts the `exportId` echoed by the framed payload, or null when the
- * reply fails envelope/framing/decode (the pipeline reports the typed failure
- * for those; this is only used to resolve the session).
- */
-private fun echoedExportId(replyText: String): String? {
-    val payload = when (val framing = IntentImportParser.parse(replyText)) {
-        is IntentFramingResult.Failure -> return null
-        is IntentFramingResult.Extracted -> framing.payload
-    }
-    return when (val decoded = IntentCodec.decode(payload.toByteArray(Charsets.UTF_8))) {
-        is app.lawnchair.organizer.personalization.IntentDecodeResult.Failure -> null
-        is app.lawnchair.organizer.personalization.IntentDecodeResult.Success -> decoded.intent.exportId
-    }
-}
-
-/** Convenience re-export for UI consumers that need the validated intent type. */
-typealias ExchangeValidatedIntent = ValidatedPersonalizedIntent
