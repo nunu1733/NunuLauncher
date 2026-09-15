@@ -19,6 +19,7 @@ object UsageAccess {
         val appOps = context.getSystemService(AppOpsManager::class.java) ?: return false
         val packageName = context.packageName
         val uid = context.applicationInfo.uid
+
         // `checkOpNoThrow` exists since API 19; `unsafeCheckOpNoThrow` would
         // need API 29 while this app's minSdk is 26 (2026-09-15 re-review).
         @Suppress("DEPRECATION")
