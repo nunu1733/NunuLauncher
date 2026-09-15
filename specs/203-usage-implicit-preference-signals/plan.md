@@ -2,14 +2,15 @@
 
 > Issue: #203
 > Spec: [spec.md](./spec.md)
-> Status: draft — spec の Unresolved decisions (U-1〜U-6) が解消されるまで実装を開始しない。
+> Status: draft — spec の decisions (U-1〜U-6) が owner acceptance で確定するまで実装を開始しない。ただし **decision 解消を目的とした probe / instrumentation (production code への変更を伴わない) は実装開始禁止の対象外** である (spec Decisions 節、2026-09-15 review)。
 > 本plan は初回作成時 (baseline `6b6bf8dd9fa0c42399185dbb13c30192f1e15962`) の調査を基に、2026-09-12 の re-entry check で `origin/main` = `f9afd8bfde121932c0c8ed965225d52a84d86ab4` までの差分を再検証・追記したものである。
 > 2026-09-13 re-entry: `origin/main` = `c5274b5d0d1a4cd3a5cf55ef8dcadb84283a3cda` までの差分 (#283/#287/#300/#304 関連) を確認 — 本planが依存する composer / provenance / planning / requirements / ADR に変更なし。同日の owner review (Changes requested) を受け、`generation` 削除 (content-addressed identity)、mandatory dynamic cut 外の single-read + typed downgrade 契約、canonicalization 拡張 (access state / profile availability / 三値 state)、launcher-origin 観測単位の確定、install-age の事実修正・defer を反映した。
 > 2026-09-14 re-entry: `origin/main` = `397d3fd957` (merge commit `66d8572e` で本branchへ取り込み) までの差分 (#298/#299/#315 関連) を確認 — composer への変更は `CaptureFailureObserver.onCaptureFailure` への `invariant: CaptureInvariantCategory?` 追加 (diagnostics、#299) のみで、stable cut / `dynamicCutIdentity` / provenance / `OrganizationInput` の形状は不変 (`dynamicCutIdentity` の定義位置は 604-616 行から 629 行へ移動、`MAX_DYNAMIC_ATTEMPTS = 2` は不変)。`docs/engineering/organizer-diagnostics.md` の変更は #299 の `invariant=` field 追加のみで、package / raw usage の Never 境界は不変。同日の owner re-review (Changes requested) を受け、(1) snapshot 実体を `OrganizationInput` の non-null field で downstream へ渡す (Blocking 1)、(2) `usageAccess` を system usage source 専用 state とし launcher-origin entry を `NOT_GRANTED` 下でも保持 (Blocking 2)、(3) app pair を first delivery 対象から除外 (Blocking 3 — `QuickstepLauncher.launchAppPair` は `AppPairsController.launchAppPair` (同 file 240行) → `findLastActiveTasksAndRunCallback` (248行) の非同期 callback 内 `launchSplitTasks` (279行) であり、override 戻り時点では実 dispatch が起きていないことを実読みで確認)、(4) launcher-origin counter は絶対 day anchor を永続化し recency bucket を read 時に投影 (Required)、(5) snapshot 非永続化の明記 (Required)、(6) fallback 表現の修正 (Minor) を反映した。
+> 2026-09-15 re-entry: `origin/main` = `f12d67bcb6` までの差分 (#298 実装 PR #319/#320: LoaderTask / test / CI / docs) を確認 — 本planが依存する composer / provenance / planning / requirements / ADR に変更なし。同日の owner re-review (Changes requested) を受け、(1) snapshot field を non-null な closed 三値型 `SignalField<T> = Value / Absent / Unavailable` に統一 (Blocking 1 — nullable 表記の排除)、(2) taskbar を launcher-origin の first delivery 対象に **含める** と決定し、その根拠となる合流経路 (`LauncherTaskbarUIController.onTaskbarIconLaunched` → `Launcher.logAppLaunch`) と判別手段の不在を Current evidence として実読みで記録 (Blocking 2 — 対象外とすると合流する起動を除外する追加 fork 機構が必要になり、契約と実装が一致しない)、(3) `QuickstepLauncher.logAppLaunch` の既存 side effect (All Apps session InstanceId 補正 / prediction rank / `LAUNCHER_APP_LAUNCH_TAP` / hotseat prediction ranking info) を実読みで確認し、override の `super` 呼び出し exactly once・side effect 不変・counter 書き込み失敗の非伝播を契約に追加 (Required)、(4) system usage と launcher-origin の合成 owner を `AndroidPersonalizationSignalSnapshotSource` (aggregator) として明示 (Required)、(5) U-4 を `InputProvenance` への non-null 8番目 field 追加として確定、(6) decision 解消用 probe / instrumentation を実装開始禁止の対象外と明記、(7) U-2 / U-3 / U-5 に具体的 draft 値を反映した。
 
 ## Current evidence
 
-`origin/main` で確認した事実 (推測と分離)。初回確認 2026-09-12 (main = `f9afd8bfde`)、再確認 2026-09-13 (main = `c5274b5d0d`)、再確認 2026-09-14 (main = `397d3fd957`)。
+`origin/main` で確認した事実 (推測と分離)。初回確認 2026-09-12 (main = `f9afd8bfde`)、再確認 2026-09-13 (main = `c5274b5d0d`)、再確認 2026-09-14 (main = `397d3fd957`)、再確認 2026-09-15 (main = `f12d67bcb6`)。
 
 - Planner 入力: `lawnchair/src/app/lawnchair/organizer/planning/OrganizationInput.kt`
   - `OrganizationInput(snapshot, rules, taxonomy, signals, targets, runMode)` (2026-09-14 再確認)。`ClassificationSignals` は分類専用 (`SignalSource` S1〜S6、`CategoryId` 候補のみ)。usage/frequency/recency を運ぶ欄は存在せず、**`OrganizationInputComposition.Ready(input, provenance)` も `input + provenance` の2 field のみである** (`CompositionModels.kt`)。したがって snapshot の実体を planner (`OrganizationPlanner.plan(input)`) へ届けるには `OrganizationInput` への field 追加が必須である (2026-09-14 review Blocking 1 — identity を provenance に載せるだけでは実体が届かない)。本planはこの field 追加を #203 の変更範囲に含める。
@@ -28,12 +29,14 @@
   - `PolicySourceKind` は現状6値 (`ORGANIZER_POLICY_BUNDLE`, `CATEGORY_OVERRIDE_SNAPSHOT`, `LAYOUT_STRATEGY_SELECTION`, `PLATFORM_CLASSIFICATION_EVIDENCE`, `MATERIALIZED_CLASSIFICATION_SIGNALS`, `MATERIALIZED_FULL_TARGET_SET`) — baseline から変更なし (再確認済み)。`PolicyInputIdentity(source, versionOrGeneration, sha256)`。
   - `POLICY_BUNDLE_VERSION` は #235 実装により `organization-policy-v2.6`。本Issueはこの version を変更しない。
 - Usage permission 前例: `lawnchair/src/app/lawnchair/ui/preferences/components/SuggestionsPreference.kt` が `android.Manifest.permission.PACKAGE_USAGE_STATS` を `checkCallingOrSelfPermission` で確認済み (app-op ベース。runtime permission ではない)。organizer 配下に usage 系 code は現状ない。
-- Launcher launch path (2026-09-13 に `ItemClickHandler.java` / `views/ActivityContext.java` / `Launcher.java` / `QuickstepLauncher.java` / `AppPairsController.java` を実読みして確認、2026-09-14 に再確認):
-  - `ActivityContext.startActivitySafely` (`views/ActivityContext.java:406`) は platform dispatch (`startShortcut` / `startActivity` / `startMainActivity`) の **try 内の成功時にのみ** 既存の `logAppLaunch(statsLogManager, item, instanceId)` (同 file :465、`QuickstepLauncher` が :311 で override) を呼び、`NullPointerException` / `ActivityNotFoundException` / `SecurityException` を catch した (同期失敗の) 場合は呼ばない。「platform への launch request が正常 dispatch された」ことの既定義 observation point が存在する。
+- Launcher launch path (2026-09-13 に `ItemClickHandler.java` / `views/ActivityContext.java` / `Launcher.java` / `QuickstepLauncher.java` / `AppPairsController.java` を実読みして確認、2026-09-14 に再確認、2026-09-15 に taskbar 関連を追加実読み):
+  - `ActivityContext.startActivitySafely` (`views/ActivityContext.java:406`) は platform dispatch (`startShortcut` / `startActivity` / `startMainActivity`) の **try 内の成功時にのみ** 既存の `logAppLaunch(statsLogManager, item, instanceId)` (同 file :465、`QuickstepLauncher` が override) を呼び、`NullPointerException` / `ActivityNotFoundException` / `SecurityException` を catch した (同期失敗の) 場合は呼ばない。「platform への launch request が正常 dispatch された」ことの既定義 observation point が存在する。
   - `ItemClickHandler` の `FLAG_START_FOR_RESULT` 付き shortcut path も `launcher.logAppLaunch(...)` を直接呼ぶ (同じ seam に合流)。
-  - **app pair は first delivery の観測対象から除外する** (2026-09-14 review Blocking 3)。`ItemClickHandler.onClickAppPairIcon` → `QuickstepLauncher.launchAppPair` (:1340、`AppPairsController.launchAppPair` への委譲のみ) → `AppPairsController.launchAppPair` (:240) は `findLastActiveTasksAndRunCallback` (:248) を登録するだけで、実 platform dispatch (`launchSplitTasks`) は **非同期 callback 内** (:279) で行われる。override 戻り時点での観測は「dispatch 成功」contract より早くなるため、呼び出し点に観測を置く実装は spec 違反になる。実 dispatch point への seam 追加は Launcher3 bridge を伴うため first delivery では行わない。
-  - `LawnchairLauncher : QuickstepLauncher` (`lawnchair/src/app/lawnchair/LawnchairLauncher.kt:99`) が fork 所有の launcher subclass であり、`logAppLaunch` の override 観測点として Launcher3 file を直接編集せずに済む候補になる (現時点で `logAppLaunch` / `launchAppPair` の override は未実装、2026-09-14 再確認)。
-  - taskbar (`TaskbarActivityContext`) 独自の dispatch 経路が `logAppLaunch` に合流するかは未検証 (下記 unverified)。`ItemClickHandler.java` 自体への fork 側 commit は 0 件のまま (2026-09-13 再確認、`c5274b5d..origin/main` の diff にも含まれず)。
+  - **app pair (launcher activity 経由) は first delivery の観測対象から除外する** (2026-09-14 review Blocking 3)。`ItemClickHandler.onClickAppPairIcon` → `QuickstepLauncher.launchAppPair` (:1340、`AppPairsController.launchAppPair` への委譲のみ) → `AppPairsController.launchAppPair` (:240) は `findLastActiveTasksAndRunCallback` (:248) を登録するだけで、実 platform dispatch (`launchSplitTasks`) は **非同期 callback 内** (:279) で行われる。override 戻り時点での観測は「dispatch 成功」contract より早くなるため、呼び出し点に観測を置く実装は spec 違反になる。実 dispatch point への seam 追加は Launcher3 bridge を伴うため first delivery では行わない。
+  - **taskbar は `Launcher.logAppLaunch` に合流する (2026-09-15 実読み — 2026-09-15 review Blocking 2 の scope 決定根拠)**: `LauncherTaskbarUIController.onTaskbarIconLaunched` (`quickstep/src/com/android/launcher3/taskbar/LauncherTaskbarUIController.java:336-341`) は `mLauncher.logAppLaunch(...)` を呼ぶ。呼び出し元は `TaskbarActivityContext` の click handler 内 3箇所 (`:1122` taskbar 上 app pair、`:1182` taskbar 上 workspace item / deep shortcut / promise icon、`:1195` taskbar all-apps `AppInfo`) である。**seam 上に taskbar 由来の判別手段は存在しない**: `getStatsLogManager()` は `StatsLogManager.newInstance` の都度生成 (`views/ActivityContext.java:248`) であり instance 比較で判別できず、taskbar item は hotseat 等と container 値を共有し、taskbar 固有の marker (`CONTAINER_TASKBAR` 等) はコード内に存在しない。taskbar overview mode では `launchFromTaskbar` → `launchFromOverviewTaskbar` が `findLastActiveTasksAndRunCallback` の非同期 callback 内で実 dispatch を行うため `onTaskbarIconLaunched` の時点 (呼び出し直後に同期呼ばれる) は dispatch 発火 **前** であり、in-app mode の同期 dispatch 失敗 (`startItemInfoActivity` 内 catch) も観測後に発生して補正されない。したがって taskbar 由来の観測時点は「起動要求発火」である (spec の surface 別 contract)。taskbar を対象外にするには合流する起動を除外する追加の fork 機構 (判別の導入) が必要になり、first delivery の最小変更と矛盾するため **含める** を採用した。`LauncherTaskbarUIController.java` / `TaskbarActivityContext.java` への fork 側 commit は 0 件 (baseline `505dbc40` 〜 origin/main)。
+  - **`QuickstepLauncher.logAppLaunch` は単なる event log ではない (2026-09-15 実読み — 2026-09-15 review Required)**: (a) All Apps session の InstanceId 補正 (`mAllAppsSessionLogId`)、(b) `mAllAppsPredictions` からの prediction rank 付与 (`withRank`)、(c) `LAUNCHER_APP_LAUNCH_TAP` logging、(d) `mHotseatPredictionController.logLaunchedAppRankingInfo(info, instanceId)` を行う。`LawnchairLauncher` での override はこれらの既存挙動を保存しなければならない (Seams 参照)。
+  - `LawnchairLauncher : QuickstepLauncher` (`lawnchair/src/app/lawnchair/LawnchairLauncher.kt:99`) が fork 所有の launcher subclass であり、`logAppLaunch` の override 観測点として Launcher3 file を直接編集せずに済む候補になる (現時点で `logAppLaunch` / `launchAppPair` の override は未実装、2026-09-15 再確認)。
+  - `ItemClickHandler.java` 自体への fork 側 commit は 0 件のまま (2026-09-13 再確認、`c5274b5d..origin/main` の diff にも含まれず)。
 - 既存 spec 整合: spec 83 は usage signal を明示的に non-goal としており、本plan は composition seam を拡張する新規 input の追加として位置づける。spec 182 は bundle identity と dynamic input identity の分割 (selection snapshot 慣行) を確立済み (status: implemented)。spec 228 も implemented であり、usage なしで成立することを実装で実証済み。
 - 依存 Issue: #204 (exchange contract。draft snapshot は branch `issue-204-spec-plan` のみで未accept。`usageSignals` を optional とし詳細を本Issueに委ねている)、#205/#206 (draft snapshot のみ、未accept)。#182/#228 は implemented。
 
@@ -50,17 +53,37 @@ interface PersonalizationSignalSnapshotSource {
     fun read(request: UsageSignalRequest): PersonalizationSignalSnapshot
 }
 data class PersonalizationSignalSnapshot(/* spec の契約: schemaVersion, contentDigest,
-    capturedAtClass (digest 外), usageAccess, profileAvailability, entries, sources */)
-// NOT_GRANTED / UNAVAILABLE / per-profile 失敗は「対応 field を unavailable 化した snapshot」
+    capturedAtClass (digest 外), usageAccess, launcherOriginAvailability, profileAvailability,
+    entries (全 field は non-null な SignalField<T> = Value / Absent / Unavailable — 2026-09-15
+    review Blocking 1。nullable 表記は使わない) */)
+// NOT_GRANTED / UNAVAILABLE / per-profile 失敗は「対応 field を Unavailable 化した snapshot」
 // として Ready に相当する形で返す。personalization 由来の失敗で呼び出し側を失敗させない
 // (spec: optional source 契約 / review Blocking 2)。
 
-// integration (Android)
-class AndroidUsageSignalSnapshotSource(
+// integration (Android) — system usage と launcher-origin の合成 owner はこの aggregator
+// 単一クラスである (2026-09-15 review Required: 合成責任の明示)
+class AndroidPersonalizationSignalSnapshotSource(
+    private val systemUsage: AndroidSystemUsageSignalReader,
+    private val launcherOrigin: LauncherOriginSignalReader,
+) : PersonalizationSignalSnapshotSource {
+    // 両 reader の結果を merge → bucket 計算 (domain の pure 関数) → canonical rows 化 →
+    // contentDigest → snapshot 組み立て。per-source availability (usageAccess /
+    // launcherOriginAvailability / profileAvailability) の判定もここで行い、
+    // 片方の source が失敗しても相手の section は生かす
+}
+
+// integration (Android) — aggregator に注入される単一責務の reader 2つ
+class AndroidSystemUsageSignalReader(
     appContext: Context,
-    /* UsageStatsManager / AppOpsManager / LauncherApps access; per-profile binding は
-       AndroidClassificationSignalSnapshotSource と同じ UserCache serial 慣行 */
-) : PersonalizationSignalSnapshotSource
+    /* UsageStatsManager / AppOpsManager / LauncherApps access。usage access state 判定と
+       per-profile query を担当。per-profile binding は AndroidClassificationSignalSnapshotSource
+       と同じ UserCache serial 慣行 */
+)
+class LauncherOriginSignalReader(
+    private val counterStore: LauncherOriginLaunchCounterStore,
+    /* counter store の読み出しと、読んだ最小 state から domain の pure 投影関数
+       (day anchor → recency class) を呼ぶ役目 */
+)
 class LauncherOriginLaunchCounterStore(
     /* app-private 永続化。永続するのは count 最小 state + 絶対 day anchor (epoch-day 相当) のみ。
        相対 recency class は永続せず、snapshot 構築時に anchor から pure 投影する
@@ -74,25 +97,25 @@ class LauncherOriginLaunchCounterStore(
 
 ### Seams
 
-- **読み取り seam**: `PersonalizationSignalSnapshotSource` (production: `AndroidUsageSignalSnapshotSource`、test: in-memory fake)。呼び出し側は composer。planner/AI adapter は直接呼ばない。`read()` は total (throw しない) — platform 失敗は typed `unavailable` snapshot へ変換する。composer 側も防御として try で囲み、想定外の例外があっても personalization を `unavailable` 化して `Ready` を返す (二重化。バグ隠蔽にならないよう diagnostic に typed code を出す)。
-- **composer 接続**: `DefaultOrganizationInputComposer.composeInternal` への optional source 追加 (`ProductionOrganizationInputComposer` が wiring 点)。読んだ snapshot は構築する `OrganizationInput` の `personalization` field へそのまま載せる (Blocking 1)。`dynamicCutIdentity` は **変更しない** — personalization は mandatory cut の外側で composition attempt ごとに 1回だけ読み、source 失敗・churn は personalization field の typed `unavailable` downgrade としてのみ現れる。`NotReady` / `InconsistentPolicyRead` / `MAX_DYNAMIC_ATTEMPTS` は mandatory source 専用のまま (spec: review Blocking 2)。snapshot の identity は `InputProvenance` へ optional 参加する (U-4)。#228 由来の `composeScopeComposedOrganization` path でも同じ optional source が走ってよい (additions と personalization は独立)。
-- **launcher-origin hook**: spec の観測単位 contract (dispatch 成功) に従い、既定義 observation point `ActivityContext.logAppLaunch` (同期 dispatch 成功時にのみ呼ばれる) を `LawnchairLauncher` で override して `LauncherOriginLaunchCounterStore` へ接続する (Launcher3 file への直接編集を回避)。**app pair は観測対象外** — `launchAppPair` override の戻り時点では実 dispatch (`launchSplitTasks`) が起きておらず、そこで観測すると contract 違反の過早観測になる (2026-09-14 review Blocking 3。実証は Current evidence 参照)。first delivery では app pair 用の hook を作らない。発火は dispatch 成功後、非同期、例外で launch 自体を失敗させない。taskbar 経路が `logAppLaunch` に合流するかは未検証のため、対象経路の確定を child issue の最初の作業とする。
+- **読み取り seam**: `PersonalizationSignalSnapshotSource` (production: `AndroidPersonalizationSignalSnapshotSource`、test: in-memory fake)。呼び出し側は composer。planner/AI adapter は直接呼ばない。`read()` は total (throw しない) — platform 失敗は typed `Unavailable` snapshot へ変換する。composer 側も防御として try で囲み、想定外の例外があっても personalization を `Unavailable` 化して `Ready` を返す (二重化。バグ隠蔽にならないよう diagnostic に typed code を出す)。system usage と launcher-origin の合成は aggregator (`AndroidPersonalizationSignalSnapshotSource`) が単一責務で担い、2つの reader (`AndroidSystemUsageSignalReader` / `LauncherOriginSignalReader`) を注入される (2026-09-15 review Required — 合成 owner の明示)。per-source availability の判定は aggregator が行い、片方の失敗で相手の section を落とさない (spec: per-source 省略規則)。
+- **composer 接続**: `DefaultOrganizationInputComposer.composeInternal` への optional source 追加 (`ProductionOrganizationInputComposer` が wiring 点)。読んだ snapshot は構築する `OrganizationInput` の `personalization` field へそのまま載せる (2026-09-14 review Blocking 1)。`dynamicCutIdentity` は **変更しない** — personalization は mandatory cut の外側で composition attempt ごとに 1回だけ読み、source 失敗・churn は personalization field の typed `Unavailable` downgrade としてのみ現れる。`NotReady` / `InconsistentPolicyRead` / `MAX_DYNAMIC_ATTEMPTS` は mandatory source 専用のまま (spec: review Blocking 2)。snapshot の identity は `InputProvenance` の **non-null 8番目 field** `personalization: PolicyInputIdentity` として参加する (U-4 確定 — 2026-09-15 review recommendation 採用。constructor caller の機械的更新を Change set に含める)。#228 由来の `composeScopeComposedOrganization` path でも同じ optional source が走ってよい (additions と personalization は独立)。
+- **launcher-origin hook**: spec の観測単位 contract に従い、既定義 observation point `ActivityContext.logAppLaunch` を `LawnchairLauncher` で override して `LauncherOriginLaunchCounterStore` へ接続する (Launcher3 file への直接編集を回避)。**taskbar 由来の合流は除外しない** — `LauncherTaskbarUIController.onTaskbarIconLaunched` が同一 seam に合流することは upstream の既存挙動であり、seam 上に判別手段が存在しないため、taskbar icon tap は spec の対象に含める (2026-09-15 review Blocking 2。実証は Current evidence 参照)。**item 型フィルタ**: override は app pair (`AppPairInfo`) と promise icon / market 導線 (promise 属性) を明示的に除外する (spec 対象外。launcher activity 経由の app pair はそもそも hook に到達しないため、フィルタが効くのは taskbar 経由の合流である)。**既存挙動の保存 (2026-09-15 review Required)**: override は **すべての path で `super.logAppLaunch(...)` を exactly once 呼ぶ** — 現行 `QuickstepLauncher.logAppLaunch` は All Apps session の InstanceId 補正、prediction rank 付与、`LAUNCHER_APP_LAUNCH_TAP` logging、`mHotseatPredictionController.logLaunchedAppRankingInfo` を行う単純でない処理であり、これらを変更しない。counter 書き込みは super 呼び出し後の best-effort 非同期処理とし、想定外の例外を含むあらゆる失敗を override 内で吸収する (launch flow / logging への伝播を禁止)。**app pair (launcher activity 経由) 用の hook は作らない** — `launchAppPair` override の戻り時点では実 dispatch (`launchSplitTasks`) が起きておらず、そこで観測すると contract 違反の過早観測になる (2026-09-14 review Blocking 3)。taskbar 経由の app pair は item 型フィルタで落とす。
 
 ### Data flow
 
-1. (background) launcher 経由 launch dispatch 成功 → counter store 更新 (count 最小 state + 絶対 day anchor)。観測単位は spec の launcher-origin contract (app pair は対象外)。
-2. manual run 開始 → composer は mandatory 入力の stable cut とは独立に、`PersonalizationSignalSnapshotSource.read(request)` を **1回** 呼ぶ。
-   - `GRANTED`: 単一の window anchor (read 開始時に1回だけ読む clock) を基準に `UsageStatsManager` 日次集計から 30d/7d foreground bucket・recency・active-days bucket を合成し canonical rows 化 → contentDigest。rank universe は request 集合から独立した決定論的 universe (U-5 で確定)。
-   - `NOT_GRANTED` / `UNAVAILABLE` / per-profile 失敗: **system usage 由来 field のみ** `unavailable` として型化し (absence と区別)、当該 section の entry 行を省略して header / per-profile 行の state が意味を運ぶ。**launcher-origin entry は `usageAccess` の state にかかわらず保持される** (Blocking 2)。
-3. snapshot を `OrganizationInput.personalization` へ載せ、snapshot identity を provenance へ optional 参加させ、既存 mandatory cut が安定していれば `Ready(input, provenance)`。personalization は `Ready` / `NotReady` の分岐に参加しない。
+1. (background) launcher 経由の起動観測 (`LawnchairLauncher.logAppLaunch` override 発火 — launcher activity surface は dispatch 成功時点、taskbar は起動要求発火時点。app pair / promise icon は item 型フィルタで除外、taskbar recents は seam に合流しない) → counter store 更新 (count 最小 state + 絶対 day anchor)。書き込みは best-effort 非同期で、あらゆる失敗を吸収し launch flow / logging に影響させない。
+2. manual run 開始 → composer は mandatory 入力の stable cut とは独立に、`PersonalizationSignalSnapshotSource.read(request)` を **1回** 呼ぶ。aggregator が `AndroidSystemUsageSignalReader` / `LauncherOriginSignalReader` の両結果を合成する。
+   - `GRANTED`: 単一の window anchor (read 開始時に1回だけ読む clock) を基準に `UsageStatsManager` 日次集計から 30d/7d foreground bucket・recency・active-days bucket を合成し canonical rows 化 → contentDigest。rank universe は request 集合から独立した決定論的 universe (spec U-5 draft: window 内に usage record を持つ launchable app)。
+   - `NOT_GRANTED` / `UNAVAILABLE` / per-profile 失敗: **system usage 由来 field のみ** `Unavailable` として型化し (Absent と区別)、当該 section の entry 行を省略して header / per-profile 行の state が意味を運ぶ。**launcher-origin entry は `usageAccess` の state にかかわらず保持される** (2026-09-14 review Blocking 2)。
+3. snapshot を `OrganizationInput.personalization` へ載せ、snapshot identity を `InputProvenance` の non-null 8番目 field として運び、既存 mandatory cut が安定していれば `Ready(input, provenance)`。personalization は `Ready` / `NotReady` の分岐に参加しない。
 4. planner / AI adapter は `OrganizationInput.personalization` 経由で snapshot の normalized field のみ消費する (first delivery の既存 strategy は読まない)。placement affinity 系は将来 consumer が既存 `LayoutSnapshot` から pure projection する (snapshot 非搭載、owner review 2026-09-13 recommendation)。
 
 ### Identity / determinism
 
-- contentDigest は canonical rows の sort・改行 join → 既存 `sha256Canonical` (`rules/PolicyModels.kt:181`) を再利用。rows は spec の grammar に従い **header 行 (`schemaVersion|usageAccess|launcherOriginAvailability`) + per-profile 行 (`profile|profileAvailability`) + entry 行 (`profile|package|field|state(value/absent/unavailable)|value|source`)** を含む (review Blocking 3 + 2026-09-14 Blocking 2)。`NOT_GRANTED` は **system usage 由来 entry 行の省略** + header state で表現され、query failure (`UNAVAILABLE`) と別 digest になる。launcher-origin entry 行は `LAUNCHER_ORIGIN_AVAILABLE` である限り常に存在する。
-- launcher-origin recency 投影は決定論的: 永続された count 最小 state + 絶対 day anchor と、snapshot 構築時の window anchor から pure 関数で recency bucket を計算する。永続されるのは相対 class ではなく anchor であるため、時間経過後の read でも正しい bucket が得られる (2026-09-14 review Required)。day boundary の定義 (timezone 等) は U-5 / U-3 の確定対象。
-- snapshot identity は content-addressed: `PolicyInputIdentity(PERSONALIZATION_SIGNAL_SNAPSHOT, "personalization-signals-v1", contentDigest)`。**generation は持たない** — cut への参加もしないため「同一内容で generation だけ異なる」状態が発生せず、composer の再読み自己矛盾 (review Blocking 1) が構造的に起こらない。既存 platform evidence identity が同型 (schema 文字列 + rows digest) の先例。
-- bucket 計算は usage stats の raw 値と単一の window anchor のみから決定論的に行う pure 関数。window anchor は source が read 開始時に1回だけ読む clock 参照とし、composition 内で2つ目の時点参照を作らない。interval 境界・timezone・calendar boundary の扱いは U-5 で確定するまで実装しない。
+- contentDigest は canonical rows の sort・改行 join → 既存 `sha256Canonical` (`rules/PolicyModels.kt:181`) を再利用。rows は spec の grammar に従い **header 行 (`schemaVersion|usageAccess|launcherOriginAvailability`) + per-profile 行 (`profile|profileAvailability`) + entry 行 (`profile|package|field|state(Value/Absent/Unavailable)|value|source`)** を含む (review Blocking 3 + 2026-09-14 Blocking 2)。`NOT_GRANTED` は **system usage 由来 entry 行の省略** + header state で表現され、query failure (`UNAVAILABLE`) と別 digest になる。launcher-origin entry 行は `LAUNCHER_ORIGIN_AVAILABLE` である限り常に存在する。
+- launcher-origin recency 投影は決定論的: 永続された count 最小 state + 絶対 day anchor と、snapshot 構築時の window anchor から pure 関数で recency bucket を計算する。永続されるのは相対 class ではなく anchor であるため、時間経過後の read でも正しい bucket が得られる (2026-09-14 review Required)。day boundary は spec U-5 draft (device 現行 timezone の暦日) に従い、DST / timezone 変更の実挙動は probe で確認する。
+- snapshot identity は content-addressed: `PolicyInputIdentity(PERSONALIZATION_SIGNAL_SNAPSHOT, "personalization-signals-v1", contentDigest)`。**generation は持たない** — cut への参加もしないため「同一内容で generation だけ異なる」状態が発生せず、composer の再読み自己矛盾 (2026-09-13 review Blocking 1) が構造的に起こらない。既存 platform evidence identity が同型 (schema 文字列 + rows digest) の先例。provenance への搭載は non-null 8番目 field (`InputProvenance.personalization`、U-4 確定) であり、すべての `Ready` で運ばれる。
+- bucket 計算は usage stats の raw 値と単一の window anchor のみから決定論的に行う pure 関数。window anchor は source が read 開始時に1回だけ読む clock 参照とし、composition 内で2つ目の時点参照を作らない。interval 境界・timezone・calendar boundary の扱いは spec U-5 draft (local calendar day 単位、partial edge interval の除外、device 現行 timezone) に従って実装し、probe (実 `UsageStatsManager` 実測 — 実装開始禁止の対象外) で検証する。
 
 ### Alternatives rejected
 
@@ -106,36 +129,42 @@ class LauncherOriginLaunchCounterStore(
 - **snapshot identity だけを provenance に載せ、`OrganizationInput` への実体搭載を将来の usage strategy Issue に defer する (初版 draft)**: 現行の `OrganizationInput` / `Ready(input, provenance)` には snapshot を運ぶ欄がなく、identity だけが残って実体が planner / AI adapter に届かず、spec の Outcome を満たさない (2026-09-14 review Blocking 1)。#203 内で non-null field を追加へ変更。
 - **`usageAccess != GRANTED` で entries をすべて空にする (初版 draft)**: system Usage Access を拒否しただけで launcher-origin signal も消失し、launcher-origin の permission-independent 性が失われる (2026-09-14 review Blocking 2)。source ごとの省略規則へ変更。
 - **app pair を `LawnchairLauncher.launchAppPair` override の戻り時点で観測する (初版 draft)**: 実 dispatch は `findLastActiveTasksAndRunCallback` の非同期 callback 内 `launchSplitTasks` で行われるため、戻り時点の観測は「dispatch 成功」より早い過早観測になる (2026-09-14 review Blocking 3)。first delivery では app pair を対象外とする。実 dispatch point への seam は Launcher3 bridge を伴うため別 accepted decision で再検討。
+- **taskbar を launcher-origin 対象外とする / 未確定のまま child issue へ送る (初版 draft)**: taskbar icon tap は upstream の `LauncherTaskbarUIController.onTaskbarIconLaunched` が同一 seam (`Launcher.logAppLaunch`) に合流し、seam 上に判別手段が存在しないため、対象外とするには合流する起動を除外する追加の fork 機構が必要になる。spec の launcher-origin 定義 (NunuLauncher UI からの起動要求) とも整合しない (2026-09-15 review Blocking 2)。**含める** へ変更し、surface 別の観測時点 (taskbar は起動要求発火) を contract に明記。
+- **snapshot field を nullable (`FieldValue?`) で表現する (初版 draft)**: 三値 contract (value / absent / unavailable) と矛盾し、第四の状態 `null` が生じて consumer 側の区別が未定義になる。snapshot 実体が `OrganizationInput` 経由で downstream に露出する以上 interface contract 上の問題である (2026-09-15 review Blocking 1)。non-null closed 型 `SignalField<T>` へ変更。
+- **provenance 参加を nullable / optional 枠にする (初版 draft U-4)**: snapshot 実体が常に non-null で `OrganizationInput.personalization` に載ることと非対称になり、「optional source」の optional 性が readiness から composition result の存在まで拡大解釈される (2026-09-15 review)。non-null 8番目 field (`InputProvenance.personalization`) へ変更。
+- **taskbar 等の合流を counters 側で「推測フィルタ」する**: `getStatsLogManager` の instance 比較・container 値等による判別は、`StatsLogManager.newInstance` の都度生成や taskbar item の container 共有により信頼できる根拠を持たない (2026-09-15 実読み)。推測フィルタは避け、spec に明記した item 型フィルタ (app pair / promise) のみを行う。
 
 ## Change set
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `organizer/personalization/` (新規) | snapshot 型・source interface・bucket 計算 (pure) | planner から Android 型を隔離 |
+| `organizer/personalization/` (新規) | snapshot 型 (`SignalField<T>` 三値 closed 型を含む)・source interface・bucket 計算と recency 投影 (pure) | planner から Android 型を隔離 |
 | `organizer/planning/OrganizationInput.kt` | `personalization: PersonalizationSignalSnapshot` (non-null) field 追加、既存 constructor caller の更新 | snapshot 実体を planner seam へ届ける唯一の経路 (2026-09-14 review Blocking 1)。既存 strategy は読まないため挙動不変 |
-| `organizer/integration/` | `AndroidUsageSignalSnapshotSource`、`ProductionOrganizationInputComposer` wiring、composer への optional single-read 接続と `OrganizationInput` への snapshot 搭載、`InputProvenance` の optional 参加枠 | 既存 composition seam の唯一の拡張点。`dynamicCutIdentity` は変更しない |
+| `organizer/integration/CompositionModels.kt` | `InputProvenance` に `personalization: PolicyInputIdentity` (non-null、8番目 field) 追加、constructor caller の更新 | U-4 確定 (2026-09-15 review recommendation)。snapshot identity は常に `Ready` の provenance に運ばれる |
+| `organizer/integration/` | `AndroidPersonalizationSignalSnapshotSource` (aggregator — 2 source の合成 owner)、`AndroidSystemUsageSignalReader`、`LauncherOriginSignalReader`、`ProductionOrganizationInputComposer` wiring、composer への optional single-read 接続と `OrganizationInput` への snapshot 搭載 | 既存 composition seam の唯一の拡張点。合成責任の明示 (2026-09-15 review Required)。`dynamicCutIdentity` は変更しない |
 | `organizer/rules/PolicyModels.kt` | `PolicySourceKind.PERSONALIZATION_SIGNAL_SNAPSHOT` 追加 | identity の kind が必要 (#228 が closed set 追加の許容を示済み) |
-| Launcher 側観測点 | `LawnchairLauncher` での `logAppLaunch` override から counter store への接続 (app pair は対象外のため hook 作らない) | fork 所有 class で完結できれば Launcher3 編集ゼロ。やむを得ず Launcher3 file を触る場合は最小 bridge + Issue 番号コメント (AGENTS.md) |
+| Launcher 側観測点 | `LawnchairLauncher` での `logAppLaunch` override から counter store への接続。`super.logAppLaunch(...)` を全 path で exactly once 呼び、既存 logging / prediction side effect を保存。counter 書き込みは best-effort 非同期で失敗を吸収。item 型フィルタ (app pair / promise icon) を含む | fork 所有 class で完結できれば Launcher3 編集ゼロ。taskbar 合流は upstream 既存挙動として含める (2026-09-15 review Blocking 2)。やむを得ず Launcher3 file を触る場合は最小 bridge + Issue 番号コメント (AGENTS.md) |
 | `res/values[, -ja]/` | opt-in 導線・rationale 文言 (U-2) | 権限追加は spec + risk 評価が必要 (AGENTS.md)。本plan は app-op ベースであり新 runtime permission ではないことを明記 |
 | `docs/product/requirements.md` | FR-013 traceability 更新 | AC-9 |
 | Diagnostics | `usageAccessState` typed code と snapshot identity のみ追加許可 | privacy 契約。organizer-diagnostics.md の許可欄更新は同 PR |
 | ADR-0007 | optional source の provenance 参加と「usage 変化は plan を stale にしない」semantics の追記 | ADR §6 の protocol 適用範囲が mandatory source であることを明文化。実装 PR で同時更新 |
 
-実装は child issue 分割を推奨: (1) snapshot 型+pure source+identity test、(2) Android adapter+permission state、(3) composer/provenance 接続 + `OrganizationInput.personalization` field 追加 (constructor caller の機械的更新を含む)、(4) launcher-origin counter、(5) permission UI/文言、(6) diagnostics/requirements 更新。段階 (3) では DESIGN.md §9 図/module row と ADR-0007 追記を同 PR に含める。各段階で Organizer は従来どおり動作しなければならない。
+実装は child issue 分割を推奨: (1) snapshot 型 (`SignalField<T>` 含む) + pure source + identity test、(2) Android adapter (system usage reader + aggregator) + permission state、(3) composer/provenance 接続 + `OrganizationInput.personalization` field 追加 + `InputProvenance.personalization` 追加 (constructor caller の機械的更新を含む)、(4) launcher-origin counter (logAppLaunch override・item 型フィルタ・super 保存・store)、(5) permission UI/文言 (U-2 draft: settings 常設導線)、(6) diagnostics/requirements 更新。段階 (3) では DESIGN.md §9 図/module row と ADR-0007 追記を同 PR に含める。各段階で Organizer は従来どおり動作しなければならない。decision 解消を目的とした probe / instrumentation (UsageStatsManager 実測等) は spec の定義により実装開始禁止の対象外であり、段階 (1)(2) の前に実施して U-5 draft 値を検証できる。
 
 ## Migration and recovery
 
 - 新規 app-private state は launcher-origin counter store のみ (**snapshot 自体は永続化しない** — cache も作らない。2026-09-14 review Required)。Launcher DB・recovery store は無変更。
-- counter store 破損: 読み取り失敗で `LAUNCHER_ORIGIN` field を `unavailable` 化 (fail-closed)。修復は初期化のみ。
+- counter store 破損: 読み取り失敗で `LAUNCHER_ORIGIN` field を `Unavailable` 化 (fail-closed)。修復は初期化のみ。
 - downgrade: counter store が読む schema は `personalization-signals-v1` 配下の初版のみ。将来の schema 変更は spec 182 の三ケース downgrade model に従う。
-- opt-out/revoke: 次回 composition から `NOT_GRANTED` (system usage 由来 field のみ unavailable 化。launcher-origin entry は opt-out 対象と別扱い — counter 自体の停止・消去は U-3 の user-visible 操作)。過去 snapshot の流用なし。layout への影響なし。
+- opt-out/revoke: usage access の revoke は次回 composition から `NOT_GRANTED` (system usage 由来 field のみ Unavailable 化。launcher-origin entry は保持 — 2026-09-14 review Blocking 2)。launcher-origin counter 自体の停止・消去は U-3 draft の user-visible 操作 (settings の toggle — default ON、OFF で記録停止 + 既存記録消去 — と明示的な消去操作)。counter store は backup / restore・export 対象外。過去 snapshot の流用なし。layout への影響なし。
 
 ## Testing strategy
 
-- **Unit (pure)**: bucket 計算の境界値・決定性 (同一入力→同一 digest)・absence/unavailable/value の三値区別・canonical rows (header / per-profile / entry 行) の sort と grammar。property test: 任意の usage stats 合成に対し digest が入力の全順序に安定。`NOT_GRANTED` と `UNAVAILABLE`、全 field `absent` と全 field `unavailable` が別 digest になること、および **`NOT_GRANTED` 下でも launcher-origin entry 行が保持されること** (AC-2 / AC-13)。launcher-origin recency 投影: 永続した day anchor に対し擬似 clock を進めて recency bucket が正しく再分類されること (例: `<24h` で記録した起動が翌日には `1–7d` に投影される — 2026-09-14 review Required)。
-- **Composition**: composer test (`tests/unit/app/lawnchair/organizer/integration/OrganizationInputComposerTest.kt` — main に存在することを再確認済み。#228 の `ScopeComposedPlannerTest` / `ApplyProtocolCandidateAvailabilityTest` も composer 拡張の test 先例) 拡張。source がある/ない、`NOT_GRANTED` でも `Ready`、source が失敗/例外しても `Ready` で personalization field のみ `unavailable` (AC-11)、**personalization 由来の `NotReady` / `InconsistentPolicyRead` が存在しないこと**、`Ready.input.personalization` がすべての run mode で non-null であり同一入力から同一 identity が得られること (AC-12)、既存 planner / strategy の test が field 追加前後で無変更に通ること (AC-12 の挙動不変担保)、provenance identity への optional 参加、mandatory `dynamicCutIdentity` の值が personalization 有無で変わらないこと (AC-10)。
-- **Integration/instrumentation**: 実 `UsageStatsManager` は instrumentation で permission granted/denied/unavailable の3状態。実 returns の interval 境界・粒度を実測し U-5 の確定入力とする。work profile は emulated profile で per-profile 挙動 (U-6 解消後)。launcher-origin observation は dispatch 成功 / 同期失敗 (`ActivityNotFoundException`) の両方を駆動し、失敗時に counter が進まないことを確認。**app pair 起動では counter が進まないこと** を観測する (AC-14 — hook が存在しないことの回帰担保)。
-- **Device**: permission opt-in→run→revoke→run の物理端末 evidence。bucket が端末再起動を跨いでも合成可能なことの代表確認。deep shortcut 起動の observation 記録と、app pair 起動が記録対象外であることの代表確認 (AC-14)。
+- **Unit (pure)**: bucket 計算の境界値・決定性 (同一入力→同一 digest)・`SignalField<T>` 三値 (Value / Absent / Unavailable) の区別と non-null 性・canonical rows (header / per-profile / entry 行) の sort と grammar。property test: 任意の usage stats 合成に対し digest が入力の全順序に安定。`NOT_GRANTED` と `UNAVAILABLE`、全 field `Absent` と全 field `Unavailable` が別 digest になること、および **`NOT_GRANTED` 下でも launcher-origin entry 行が保持されること** (AC-2 / AC-13)。U-5 draft 値の検証: rank universe (usage record 存在 app)・値しきい値 5 分位の tie 処理 (同値同 bucket)・少数サンプル (`Absent` 化)・partial edge interval の除外。launcher-origin recency 投影: 永続した day anchor に対し擬似 clock を進めて recency bucket が正しく再分類されること (例: 当日に記録した起動が翌日には `1–6日前` に投影される — 2026-09-14 review Required)。
+- **Launcher hook (unit)**: `LawnchairLauncher.logAppLaunch` override の検証 (AC-15 / AC-14 / AC-16)。`super.logAppLaunch(...)` が **exactly once** 呼ばれること (mock で呼び出し回数を検証)、既存 side effect (All Apps session InstanceId 補正・prediction rank・`LAUNCHER_APP_LAUNCH_TAP`・hotseat prediction ranking info) が override 前後で不変であること、counter store の例外注入時に例外が launch flow / logging へ伝播しないこと、item 型フィルタにより app pair (`AppPairInfo`) / promise icon が counting されず通常 app / deep shortcut が counting されること。
+- **Composition**: composer test (`tests/unit/app/lawnchair/organizer/integration/OrganizationInputComposerTest.kt` — main に存在することを再確認済み。#228 の `ScopeComposedPlannerTest` / `ApplyProtocolCandidateAvailabilityTest` も composer 拡張の test 先例) 拡張。source がある/ない、`NOT_GRANTED` でも `Ready`、source が失敗/例外しても `Ready` で personalization field のみ `Unavailable` (AC-11)、**personalization 由来の `NotReady` / `InconsistentPolicyRead` が存在しないこと**、`Ready.input.personalization` がすべての run mode で non-null であり同一入力から同一 identity が得られること (AC-12)、`Ready.provenance.personalization` が常に non-null な snapshot identity を運ぶこと (U-4)、既存 planner / strategy の test が field 追加前後で無変更に通ること (AC-12 の挙動不変担保)、mandatory `dynamicCutIdentity` の值が personalization 有無で変わらないこと (AC-10)。
+- **Integration/instrumentation**: 実 `UsageStatsManager` は instrumentation で permission granted/denied/unavailable の3状態。実 returns の interval 境界・粒度を実測し U-5 draft 値を検証する (probe — 実装開始禁止の対象外)。work profile は emulated profile で per-profile 挙動 (U-6 は 2026-09-14 re-review で妥当確認済み)。launcher-origin observation は dispatch 成功 / 同期失敗 (`ActivityNotFoundException`) の両方を駆動し、失敗時に counter が進まないことを確認。**app pair 起動では counter が進まないこと** (AC-14 — launcher 経由は hook 不在、taskbar 経由は item 型フィルタの回帰担保) および **taskbar icon tap が合流経路経由で counter が進むこと** (AC-16) を観測する。
+- **Device**: permission opt-in→run→revoke→run の物理端末 evidence。bucket が端末再起動を跨いでも合成可能なことの代表確認。deep shortcut 起動の observation 記録と、app pair 起動が記録対象外であることの代表確認 (AC-14)。taskbar 表示端末での taskbar icon tap 観測の代表確認 (AC-16、実施可能な場合のみ記録し、未実施は evidence の未確認範囲として明記)。
 - **Privacy**: diagnostics journal の出力が typed code + identity のみであることを contract test。purity guard: `organizer/planning/`, `personalization/` (domain) に android import が現れないことの architecture test (AC-6)。
 - **UI**: opt-in 導線の TalkBack/Switch Access/font scaling (spec 52/195 準拠)。
 
@@ -149,13 +178,15 @@ class LauncherOriginLaunchCounterStore(
 - composer への新規入力追加 (cut 外であっても wiring・provenance) は既存 composition test 全体に影響し得る (#228 の composer 拡張が既に同影響を実証) → child issue (3) を単独 PR に分離。
 - `OrganizationInput` への field 追加は constructor caller 全体 (composer + 多数の unit test fixture) に機械的変更を強いる → named parameter / default 付き追加の可否を child issue で確認し、機械的更新を1 PR に閉じる。既存 strategy の挙動が変わらないことは既存 test の無変更通過で担保する (AC-12)。
 - app pair を launcher-origin から除外した結果、split 起動が launcher-origin signal に記録されない過小報告が残る → 仕様上の既知の blind spot として spec に明記済み。実 dispatch point への観測 seam (Launcher3 bridge) が必要になった場合は別 accepted decision で再検討する。
+- taskbar 由来の観測は「起動要求発火」時点であり、overview mode の非同期 dispatch 失敗・in-app mode の同期 dispatch 失敗を補正しないため過大報告になり得る → spec に surface 別観測時点として明記済みの既知 limitation。launcher-origin は高精度を要求しない local signal であり、system usage と別 source identity で解釈する。
+- `QuickstepLauncher.logAppLaunch` の既存 side effect (All Apps session InstanceId 補正 / prediction rank / `LAUNCHER_APP_LAUNCH_TAP` / hotseat prediction ranking info) を override が壊すリスク (2026-09-15 review Required) → super exactly once 契約と unit regression test (AC-15)、counter 書き込みの best-effort 化で担保する。
 
 ## Explicitly unverified areas
 
-- `UsageStatsManager.queryUsageStats` の実 returns 値・集計粒度・interval 境界の挙動は現行 main の code からは確認できない (instrumentation で実測し、U-5 の rank universe / window semantics 確定の入力とする)。
+- `UsageStatsManager.queryUsageStats` の実 returns 値・集計粒度・interval 境界の挙動は現行 main の code からは確認できない (probe/instrumentation — 実装開始禁止の対象外 — で実測し、U-5 draft 値の検証入力とする)。
 - profile ごとの usage query 可否 (work profile で `createUserContext` 相当が必要か) は未検証 (#129 の慣行、#228 の `userForProfile` serial bind 慣行を踏襲する予定)。
-- taskbar 独自 dispatch 経路が `ActivityContext.logAppLaunch` に合流するか未検証。`logAppLaunch` override が spec の観測単位 contract の対象経路 (app pair を除く) をすべて覆うかは、child issue (4) の最初に launch path を列挙して確認する。
-- launcher-origin counter の絶対 day anchor の day boundary 定義 (timezone / DST 境界で epoch-day 相当をどう切るか) は未確定 — U-5 / U-3 の確定入力として instrumentation または実機で確認する。
-- `LawnchairLauncher` での `logAppLaunch` override が Quickstep 側の起動 (hero / predicted 委譲等) をすべて通るかは未検証 (上項と同じく実装時に列挙確認)。
+- taskbar の合流は 2026-09-15 に実読みで確認済み (`LauncherTaskbarUIController.onTaskbarIconLaunched` → `Launcher.logAppLaunch`、呼び出し元 3箇所)。残る未検証は、taskbar folder の open view 等その他の upstream 経路が同一 seam に合流するかの完全な列挙である。**scope は確定済み** (taskbar icon tap を含む) であり、列挙の結果で scope が変わることはない (追加経路は同一 seam の upstream 挙動に従う)。
+- launcher-origin day anchor の day boundary は spec U-5 draft (device 現行 timezone の暦日) で確定済み。残る未検証は DST 遷移・timezone 変更時の実挙動の probe による確認である。
+- `LawnchairLauncher` での `logAppLaunch` override が Quickstep 側の起動 (hero / predicted 委譲等) をすべて通るかは未検証 (実装時に列挙確認。追加経路の発見は scope を変えず観測範囲の記録にのみ影響する)。
 - install age の `firstInstallTime` / `lastUpdateTime` の実機挙動 (update 後の値) は未検証。本specでは first delivery から defer 済みのため実装への影響はない。
 - #204 exchange contract の具体的な消費形式 (本snapshot をそのまま渡すか projection するか) は #204 側の未決定事項 (#204 spec は未accept)。#203 の snapshot 確定が #204 受入の前提の一つである。
