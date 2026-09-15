@@ -9,6 +9,7 @@ import app.lawnchair.organizer.personalization.PersonalizationBuckets
 import app.lawnchair.organizer.personalization.PersonalizationEntryKey
 import app.lawnchair.organizer.personalization.RecencyClass
 import app.lawnchair.organizer.personalization.SignalField
+import app.lawnchair.organizer.personalization.SystemUsageAggregator
 import app.lawnchair.organizer.personalization.SystemUsageEntry
 import app.lawnchair.organizer.personalization.SystemUsageProfileAvailability
 import app.lawnchair.organizer.personalization.SystemUsageSection
@@ -41,9 +42,10 @@ class AndroidSystemUsageSignalReader(
 ) {
 
     fun read(request: UsageSignalRequest, windowAnchorElapsedMs: Long): SystemUsageRead {
-        val granted = appContext.checkCallingOrSelfPermission(android.Manifest.permission.PACKAGE_USAGE_STATS) ==
-            android.content.pm.PackageManager.PERMISSION_GRANTED
-        if (!granted) {
+        // Spec #203 / 2026-09-15 re-review Blocking 1: the grant predicate is
+        // the app-op semantics shared with the Settings surface, not a bare
+        // permission check.
+        if (!UsageAccess.isGranted(appContext)) {
             return SystemUsageRead(
                 usageAccess = UsageAccessState.NOT_GRANTED,
                 profileAvailability = request.profiles.associateWith { SystemUsageProfileAvailability.SYSTEM_USAGE_UNAVAILABLE },
@@ -53,7 +55,13 @@ class AndroidSystemUsageSignalReader(
         val window30StartMs = windowAnchorElapsedMs - 30 * PersonalizationBuckets.DAY_MS
         val window7StartMs = windowAnchorElapsedMs - 7 * PersonalizationBuckets.DAY_MS
         val profileReads = request.profiles.associateWith { profile ->
-            readProfile(profile, window30StartMs, window7StartMs, windowAnchorElapsedMs)
+            readProfile(
+                profile,
+                request.launchablePackages[profile].orEmpty().map { it.value }.toSet(),
+                window30StartMs,
+                window7StartMs,
+                windowAnchorElapsedMs,
+            )
         }
         val anyProfileAvailable = profileReads.values.any { it != null }
         val profileAvailability = profileReads.mapValues { (_, read) ->
@@ -70,15 +78,16 @@ class AndroidSystemUsageSignalReader(
         for (profile in request.profiles) {
             val profileRead = profileReads[profile] ?: continue
             for (packageName in request.launchablePackages[profile].orEmpty()) {
-                val aggregates = profileRead.perPackage[packageName]
+                val usage = profileRead.usage30[packageName.value]
+                val usage7 = profileRead.usage7[packageName.value]
                 entries[PersonalizationEntryKey(profile, packageName)] = SystemUsageEntry(
-                    foreground30dBucket = foregroundField(aggregates?.total30dMs, profileRead.boundaries30d),
-                    foreground7dBucket = foregroundField(aggregates?.total7dMs, profileRead.boundaries7d),
-                    recencyBucket = aggregates?.lastUsedElapsedMs
+                    foreground30dBucket = foregroundField(usage?.totalForegroundMs, profileRead.boundaries30d),
+                    foreground7dBucket = foregroundField(usage7?.totalForegroundMs, profileRead.boundaries7d),
+                    recencyBucket = usage?.lastUsedElapsedMs
                         ?.let { elapsedUsedMs: Long -> SignalField.Value(recencyClass(windowAnchorElapsedMs - elapsedUsedMs)) }
                         ?: SignalField.Absent,
-                    activeDaysBucket = aggregates
-                        ?.let { SignalField.Value(PersonalizationBuckets.activeDaysClass(minOf(it.activeDays, MAX_ACTIVE_DAYS))) }
+                    activeDaysBucket = usage
+                        ?.let { SignalField.Value(PersonalizationBuckets.activeDaysClass(minOf(it.activeIntervals, MAX_ACTIVE_DAYS))) }
                         ?: SignalField.Absent,
                 )
             }
@@ -105,11 +114,15 @@ class AndroidSystemUsageSignalReader(
 
     /**
      * Queries one profile's 30d and 7d usage windows and computes the
-     * per-package aggregates plus the two nearest-rank boundaries. Returns
-     * `null` when the profile is unreadable (fail closed, spec U-6).
+     * per-package aggregates plus the two nearest-rank boundaries. The rank
+     * universe is filtered to the profile's launchable package set — non-
+     * launchable package usage must not move a launchable app's bucket (spec
+     * U-5, 2026-09-15 re-review Blocking 2). Returns `null` when the profile
+     * is unreadable (fail closed, spec U-6).
      */
     private fun readProfile(
         profile: app.lawnchair.organizer.planning.ProfileId,
+        launchablePackageNames: Set<String>,
         window30StartMs: Long,
         window7StartMs: Long,
         windowAnchorMs: Long,
@@ -118,32 +131,31 @@ class AndroidSystemUsageSignalReader(
         val user = userCache.getUserForSerialNumber(serial)
         if (userCache.getSerialNumberForUser(user) != serial) return null
         val statsManager = usageStatsManagerFor(user) ?: return null
-        val aggregates = mutableMapOf<app.lawnchair.organizer.planning.PackageName, MutablePackageUsageAggregates>()
         // Rolling windows per the U-5 probe amendment: aggregate the returned
         // intervals as-is (no edge filtering); each interval is a ~24h bucket.
-        for (stats in statsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, window30StartMs, windowAnchorMs).orEmpty()) {
-            val packageName = app.lawnchair.organizer.planning.PackageName(stats.packageName)
-            val aggregate = aggregates.getOrPut(packageName) { MutablePackageUsageAggregates() }
-            if (stats.totalTimeInForeground > 0) {
-                aggregate.total30dMs += stats.totalTimeInForeground
-                aggregate.activeDays += 1
-            }
-            val lastUsed = stats.lastTimeUsed
-            if (lastUsed > 0 && lastUsed > (aggregate.lastUsedElapsedMs ?: 0)) aggregate.lastUsedElapsedMs = lastUsed
-        }
-        for (stats in statsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, window7StartMs, windowAnchorMs).orEmpty()) {
-            val packageName = app.lawnchair.organizer.planning.PackageName(stats.packageName)
-            if (stats.totalTimeInForeground > 0) {
-                aggregates.getOrPut(packageName) { MutablePackageUsageAggregates() }.total7dMs += stats.totalTimeInForeground
-            }
-        }
-        // Rank universes are per window over packages with a usage record.
-        val universe30 = aggregates.values.filter { it.total30dMs > 0 }.map { it.total30dMs }
-        val universe7 = aggregates.values.filter { it.total7dMs > 0 }.map { it.total7dMs }
+        val usage30 = SystemUsageAggregator.aggregate(
+            statsManager
+                .queryUsageStats(UsageStatsManager.INTERVAL_DAILY, window30StartMs, windowAnchorMs)
+                .orEmpty()
+                .map {
+                    SystemUsageAggregator.RawInterval(it.packageName, it.totalTimeInForeground, it.lastTimeUsed)
+                },
+            launchablePackageNames,
+        )
+        val usage7 = SystemUsageAggregator.aggregate(
+            statsManager
+                .queryUsageStats(UsageStatsManager.INTERVAL_DAILY, window7StartMs, windowAnchorMs)
+                .orEmpty()
+                .map {
+                    SystemUsageAggregator.RawInterval(it.packageName, it.totalTimeInForeground, it.lastTimeUsed)
+                },
+            launchablePackageNames,
+        )
         ProfileUsageRead(
-            perPackage = aggregates,
-            boundaries30d = PersonalizationBuckets.nearestRankBoundaries(universe30),
-            boundaries7d = PersonalizationBuckets.nearestRankBoundaries(universe7),
+            usage30 = usage30,
+            usage7 = usage7,
+            boundaries30d = SystemUsageAggregator.foregroundBoundaries(usage30),
+            boundaries7d = SystemUsageAggregator.foregroundBoundaries(usage7),
         )
     } catch (_: Exception) {
         null
@@ -160,16 +172,9 @@ class AndroidSystemUsageSignalReader(
         }
     }
 
-    /** Raw per-package aggregates; raw milliseconds never leave this reader. */
-    private data class MutablePackageUsageAggregates(
-        var total30dMs: Long = 0,
-        var total7dMs: Long = 0,
-        var activeDays: Int = 0,
-        var lastUsedElapsedMs: Long? = null,
-    )
-
     private data class ProfileUsageRead(
-        val perPackage: Map<app.lawnchair.organizer.planning.PackageName, MutablePackageUsageAggregates>,
+        val usage30: Map<String, SystemUsageAggregator.PackageUsage>,
+        val usage7: Map<String, SystemUsageAggregator.PackageUsage>,
         val boundaries30d: List<Long>?,
         val boundaries7d: List<Long>?,
     )

@@ -66,6 +66,7 @@ class UsageStatsIntervalProbeTest {
         var partialIn30dWindow = 0
         var dayAlignedIntervals = 0
         var nonZeroForegroundIntervals = 0
+        val intervalsByPackage = mutableMapOf<String, MutableList<Pair<Long, Long>>>()
         for (stat in stats.orEmpty()) {
             val firstDay = Instant.ofEpochMilli(stat.firstTimeStamp).atZone(zone).toLocalDate()
             val lastDay = Instant.ofEpochMilli(stat.lastTimeStamp).atZone(zone).toLocalDate()
@@ -76,6 +77,7 @@ class UsageStatsIntervalProbeTest {
             if (!fullyContained) partialIn30dWindow += 1
             if (stat.totalTimeInForeground > 0) nonZeroForegroundIntervals += 1
             if (stat.firstTimeStamp < oldest) oldest = stat.firstTimeStamp
+            intervalsByPackage.getOrPut(stat.packageName) { mutableListOf() }.add(stat.firstTimeStamp to stat.lastTimeStamp)
             Log.i(
                 tag,
                 "interval pkg=${stat.packageName} first=$firstDay(${stat.firstTimeStamp}) last=$lastDay(${stat.lastTimeStamp}) " +
@@ -83,11 +85,28 @@ class UsageStatsIntervalProbeTest {
             )
         }
         val retentionDays = if (oldest == Long.MAX_VALUE) -1 else (now - oldest) / (24L * 60 * 60 * 1000)
+        // Overlap / consecutiveness measurement per package (sorted by start):
+        // overlapping pairs share time; gapped pairs leave unrecorded time.
+        var overlappingPairs = 0
+        var gappedPairs = 0
+        var adjacentPairs = 0
+        for ((_, intervals) in intervalsByPackage) {
+            val sorted = intervals.sortedBy { it.first }
+            for (i in 1 until sorted.size) {
+                val previous = sorted[i - 1]
+                val current = sorted[i]
+                when {
+                    current.first < previous.second -> overlappingPairs += 1
+                    current.first == previous.second -> adjacentPairs += 1
+                    else -> gappedPairs += 1
+                }
+            }
+        }
         Log.i(
             tag,
             "summary dayAligned=$dayAlignedIntervals/${stats.orEmpty().size} crossBegin=$crossBegin crossEnd=$crossEnd " +
                 "partialIn30dWindow=$partialIn30dWindow nonZeroFg=$nonZeroForegroundIntervals " +
-                "retentionDaysApprox=$retentionDays",
+                "retentionDaysApprox=$retentionDays overlapPairs=$overlappingPairs adjacentPairs=$adjacentPairs gappedPairs=$gappedPairs",
         )
     }
 }

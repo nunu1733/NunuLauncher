@@ -220,7 +220,7 @@ class LauncherOriginLaunchCounterStore(
 - `UsageStatsManager.queryUsageStats` の実 returns 値・集計粒度・interval 境界の挙動は 2026-09-15 に probe で実測し記録済み ([evidence](../../docs/assessment/pr-321-u5-probe-evidence.md); interval は暦日非整列の ~24h rolling bucket → spec U-5 を rolling 窓に修正)。機種差 (集計精度・保持期間) は引き続き端末依存であり、bucket 化で緩和する。
 - profile ごとの usage query 可否 (work profile で `createUserContext` 相当が必要か) は未検証 (#129 の慣行、#228 の `userForProfile` serial bind 慣行を踏襲する予定)。
 - taskbar の合流は 2026-09-15 に実読みで確認済み (`LauncherTaskbarUIController.onTaskbarIconLaunched` → `Launcher.logAppLaunch`、呼び出し元 3箇所)。残る未検証は、taskbar folder の open view 等その他の upstream 経路が同一 seam に合流するかの完全な列挙である。**scope は確定済み** (taskbar icon tap を含む) であり、列挙の結果で scope が変わることはない (追加経路は同一 seam の upstream 挙動に従う)。
-- launcher-origin day anchor の day boundary は spec U-5 確定値 (device 現行 timezone の暦日) に従う。残る未検証は DST 遷移・timezone 変更時の実挙動の probe による確認である (probe 完了条件 (d))。
+- launcher-origin day anchor の day boundary は spec U-5 確定値 (device 現行 timezone の暦日) に従い、DST 遷移・timezone 変更時の実挙動は 2026-09-15 の probe (3 zone: Tokyo / New York (DST) / Midway) で確認済み ([evidence](../../docs/assessment/pr-321-u5-probe-evidence.md))。
 - `LawnchairLauncher` での `logAppLaunch` override が Quickstep 側の起動 (hero / predicted 委譲等) をすべて通るかは未検証 (実装時に列挙確認。追加経路の発見は scope を変えず観測範囲の記録にのみ影響する)。
 - install age の `firstInstallTime` / `lastUpdateTime` の実機挙動 (update 後の値) は未検証。本specでは first delivery から defer 済みのため実装への影響はない。
 - #204 exchange contract の具体的な消費形式 (本snapshot をそのまま渡すか projection するか) は #204 側の未決定事項 (#204 spec は未accept)。#203 の snapshot 確定が #204 受入の前提の一つである。

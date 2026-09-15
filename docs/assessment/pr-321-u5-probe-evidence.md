@@ -11,7 +11,7 @@ Probe implementation: `tests/organizer-instrumentation/app/lawnchair/organizer/U
 
 ## (a) `queryUsageStats(INTERVAL_DAILY)` interval boundaries / granularity
 
-Observed (Asia/Tokyo run, 697 intervals; Pacific/Midway run, 698 intervals):
+Observed (Asia/Tokyo runs, 697 and 699 intervals; Pacific/Midway run, 698 intervals):
 
 - **Intervals are ~24h rolling buckets, not local calendar-day buckets.** Only
   267/697 (Tokyo) and 268/698 (Midway) intervals had `firstTimeStamp` and
@@ -21,8 +21,15 @@ Observed (Asia/Tokyo run, 697 intervals; Pacific/Midway run, 698 intervals):
   (a 24h span starting at ~09:57 local, not midnight).
 - Current-day intervals start at the first data timestamp of the day (device
   boot/setup time), not at local midnight.
-- `crossBegin=0`, `crossEnd=0` in both runs — intervals did **not** extend
-  beyond the requested `[begin, end]`.
+- `crossBegin=0`, `crossEnd=0` in all runs — in the **probe environment**
+  intervals did not extend beyond the requested `[begin, end]`. This is a
+  probe-environment observation, not the general API contract: the Android
+  API documents that `begin`/`end` may be expanded to interval boundaries.
+- Overlap / consecutiveness measurement (per package, sorted by start):
+  `overlapPairs=0`, `adjacentPairs=0`, `gappedPairs=459` (699-interval Tokyo
+  run). No overlapping intervals were observed; intervals are separated by
+  gaps, so per-package foreground sums over the returned intervals do not
+  double-count in the measured environment.
 - Foreground data present: `nonZeroFg=19` intervals with
   `totalTimeInForeground > 0`.
 
@@ -40,13 +47,19 @@ Observed (Asia/Tokyo run, 697 intervals; Pacific/Midway run, 698 intervals):
   "Deviation and contract amendment" below), as the accepted contract requires
   when a probe detects a deviation.
 
-## (c) 30-day retention availability
+## (c) 30-day retention availability — completion criterion amended
 
 - The API accepted a 35-day query window and returned data; observed data on
   this emulator covers ~9 days (`retentionDaysApprox=9`, emulator lifetime).
-- Platform retention is device-dependent (known limitation already recorded in
-  the spec); the API contract accepts the 30-day window and returns whatever
-  the platform retains. No API error or truncation signal was observed.
+- The observed range does **not** demonstrate that data near the 30-day-old
+  edge is retained on this device — only that the 30d query is accepted and
+  the available retained range is returned.
+- Per the 2026-09-15 re-review, the completion criterion (c) is amended to
+  **"the 30d query is accepted and the available retained range is
+  recorded"**: platform retention is device-dependent and not guaranteeable
+  by the API. The signal contract tolerates the resulting undercount through
+  bucket projection (U-5 known limitations); on devices that do retain ≥30
+  days of history the 30d bucket is computed from that history.
 
 ## (d) Launcher-origin day anchor under timezone change / DST
 
@@ -66,6 +79,24 @@ device-local calendar day, and a timezone change is naturally followed on the
 next capture because the anchor is persisted per launch, not projected
 forward. DST state is reported and the anchor projection is unaffected beyond
 the ordinary calendar-day boundary.
+
+## App-op grant predicate — production reader transition evidence
+
+The 2026-09-15 re-review (Blocking 1) established that Usage Access must be
+judged by the app-op (`OPSTR_GET_USAGE_STATS`), not a bare permission check.
+`UsageAccess.isGranted(context)` implements the platform semantics (op mode
+first, permission fallback on `MODE_DEFAULT`) and is shared by the production
+reader and the Settings surface.
+
+Evidence: `UsageAccessTransitionProbeTest` (instrumentation, emulator API 36)
+toggles the app-op via the instrumentation's shell access and drives the
+**production** `AndroidSystemUsageSignalReader`:
+
+- `allow` → `GRANTED` (system usage section available)
+- `deny` → `NOT_GRANTED` (system usage section structurally absent)
+- re-`allow` → `GRANTED`
+
+Result: `OK (1 test)` on 2026-09-15.
 
 ## Deviation and contract amendment (spec change before merge)
 
