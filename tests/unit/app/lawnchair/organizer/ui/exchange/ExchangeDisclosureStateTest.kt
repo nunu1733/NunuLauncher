@@ -64,6 +64,31 @@ class ExchangeDisclosureStateTest {
     }
 
     @Test
+    fun inFlightTransportSuspendsPreSendCancelUntilItSettles() {
+        // Review round 2 P1: a started (file) transport must block the
+        // pre-send cancel for as long as it can still land outside.
+        var state = ExchangeDisclosureState(session("e1"), "package", PrivacyTier.EXTERNAL_REDACTED)
+            .onTransportStarted()
+        assertFalse(state.cancelable)
+        // Write success lands → sent (importable afterwards, cancel stays off).
+        state = state.onTransportResult(ExchangeTransportResult.Success)
+        assertTrue(state.sent)
+        assertFalse(state.cancelable)
+    }
+
+    @Test
+    fun failedInFlightTransportReturnsToCancelable() {
+        val state = ExchangeDisclosureState(session("e1"), "package", PrivacyTier.EXTERNAL_REDACTED)
+            .onTransportStarted()
+            .onTransportResult(
+                ExchangeTransportResult.Failure(ExchangeTransportFailure.FILE_WRITE_FAILED),
+            )
+        assertFalse(state.sent)
+        assertFalse(state.transportInFlight)
+        assertTrue(state.cancelable)
+    }
+
+    @Test
     fun theBoundSessionTravelsWithTheState() {
         val bound = session("e1")
         val state = ExchangeDisclosureState(bound, "package", PrivacyTier.EXTERNAL_WITH_LABELS)

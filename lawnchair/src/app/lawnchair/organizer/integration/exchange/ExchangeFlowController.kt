@@ -5,11 +5,13 @@ import app.lawnchair.organizer.personalization.ContextExportCodec
 import app.lawnchair.organizer.personalization.ExportSession
 import app.lawnchair.organizer.personalization.ExportSessionStore
 import app.lawnchair.organizer.personalization.IntentCodec
+import app.lawnchair.organizer.personalization.IntentValidationFailure
 import app.lawnchair.organizer.personalization.PrivacyTier
 import app.lawnchair.organizer.personalization.RandomIdAllocator
 import app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent
 import app.lawnchair.organizer.personalization.exchange.ExchangeGenerationGate
 import app.lawnchair.organizer.personalization.exchange.ExchangeGenerationGateOutcome
+import app.lawnchair.organizer.personalization.exchange.ExchangeImportFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportPipeline
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportResult
 import app.lawnchair.organizer.personalization.exchange.IntentFramingResult
@@ -99,11 +101,11 @@ class ExchangeFlowController(
 
     /**
      * Imports an agent reply (spec 205 data flow ordering): the untrusted reply
-     * is bounded, framed, and decoded FIRST — every envelope/framing/decode
-     * failure fails closed before any canonical capture/composition runs — and
-     * only then are the current structural inputs composed and the session
-     * resolved by the echoed `exportId` (invalidated/unknown →
-     * `EXPORT_MISMATCH`, expired matching record → `SESSION_EXPIRED`).
+     * is bounded, framed, and decoded FIRST, then the session is resolved by
+     * the echoed `exportId` (invalidated/unknown → `EXPORT_MISMATCH`, expired
+     * matching record → `SESSION_EXPIRED`) — only after the reply is bound to
+     * a live session does the canonical structural composition run, so an
+     * unbound/expired reply never pays for a capture (review P2).
      */
     fun importReply(replyText: String): ExchangeImportOutcome {
         val prepared = when (val result = ExchangeImportPipeline.prepare(replyText)) {
@@ -111,13 +113,25 @@ class ExchangeFlowController(
             is ExchangeImportPipeline.Prepared -> result
             is ExchangeImportResult.Validated -> error("unreachable")
         }
+        val session = store.load(prepared.intent.exportId)
+            ?: return ExchangeImportOutcome.Pipeline(
+                ExchangeImportResult.Failure(
+                    ExchangeImportFailure.Contract(IntentValidationFailure.ExportMismatch),
+                ),
+            )
+        if (session.isExpired(clock())) {
+            return ExchangeImportOutcome.Pipeline(
+                ExchangeImportResult.Failure(
+                    ExchangeImportFailure.Contract(IntentValidationFailure.SessionExpired),
+                ),
+            )
+        }
         val structural = when (val result = currentStructuralInputs()) {
             is app.lawnchair.organizer.integration.exchange.ExchangeStructuralResult.NotReady ->
                 return ExchangeImportOutcome.InputNotReady(result.reason)
 
             is app.lawnchair.organizer.integration.exchange.ExchangeStructuralResult.Ready -> result.structural
         }
-        val session = store.load(prepared.intent.exportId)
         return ExchangeImportOutcome.Pipeline(
             ExchangeImportPipeline.validate(prepared, session, structural, clock()),
         )

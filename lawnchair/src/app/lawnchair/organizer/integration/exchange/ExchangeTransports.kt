@@ -17,6 +17,9 @@ import java.io.IOException
  * the layout DB.
  */
 sealed interface ExchangeTransportResult {
+    /** Marker emitted when a transport starts (holder tracks in-flight state). */
+    data object InFlight : ExchangeTransportResult
+
     data object Success : ExchangeTransportResult
 
     data class Failure(val kind: ExchangeTransportFailure) : ExchangeTransportResult

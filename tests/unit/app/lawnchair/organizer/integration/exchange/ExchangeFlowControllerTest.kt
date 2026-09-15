@@ -335,6 +335,54 @@ class ExchangeFlowControllerTest {
     }
 
     @Test
+    fun prReview2SessionBoundaryPrecedesStructuralComposition() {
+        val fixture = Fixture()
+        val notReadyController = ExchangeFlowController(
+            composeExportInputs = { t -> ExchangeInputResult.ExportReady(exportInputsOf(fixture.structural, t)) },
+            currentStructuralInputs = {
+                ExchangeStructuralResult.NotReady(InputReadinessReason.StaleCandidateSelection)
+            },
+            store = fixture.store,
+            allocator = SequentialIdAllocator(),
+            clock = { fixture.clock },
+        )
+
+        // Unknown exportId + structural NotReady → EXPORT_MISMATCH wins.
+        val built = generated(
+            ExchangeFlowController(
+                composeExportInputs = { t -> ExchangeInputResult.ExportReady(exportInputsOf(fixture.structural, t)) },
+                currentStructuralInputs = { ExchangeStructuralResult.Ready(fixture.structural) },
+                store = fixture.store,
+                allocator = SequentialIdAllocator(),
+                clock = { fixture.clock },
+            ).generate(PrivacyTier.EXTERNAL_REDACTED),
+        )
+        fixture.store.session = null // unknown session (fresh allocator id)
+        val unknown = notReadyController.importReply(replyFor(fixture, built.session)) as ExchangeImportOutcome.Pipeline
+        assertEquals(
+            ExchangeImportFailure.Contract(IntentValidationFailure.ExportMismatch),
+            (unknown.result as ExchangeImportResult.Failure).failure,
+        )
+
+        // Expired session + structural NotReady → SESSION_EXPIRED wins.
+        val live = generated(
+            ExchangeFlowController(
+                composeExportInputs = { t -> ExchangeInputResult.ExportReady(exportInputsOf(fixture.structural, t)) },
+                currentStructuralInputs = { ExchangeStructuralResult.Ready(fixture.structural) },
+                store = fixture.store,
+                allocator = SequentialIdAllocator(),
+                clock = { fixture.clock },
+            ).generate(PrivacyTier.EXTERNAL_REDACTED),
+        )
+        fixture.clock = live.session.expiresAtEpochMs
+        val expired = notReadyController.importReply(replyFor(fixture, live.session)) as ExchangeImportOutcome.Pipeline
+        assertEquals(
+            ExchangeImportFailure.Contract(IntentValidationFailure.SessionExpired),
+            (expired.result as ExchangeImportResult.Failure).failure,
+        )
+    }
+
+    @Test
     fun inputNotReadyIsTypedAndZeroWrite() {
         val fixture = Fixture()
         val controller = ExchangeFlowController(

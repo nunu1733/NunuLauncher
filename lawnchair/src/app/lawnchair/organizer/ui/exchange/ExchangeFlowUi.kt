@@ -94,11 +94,23 @@ data class ExchangeDisclosureState(
     val packageText: String,
     val tier: PrivacyTier,
     val sent: Boolean = false,
+    /** A transport is running; pre-send cancel is suspended until it settles. */
+    val transportInFlight: Boolean = false,
 ) {
-    fun onTransportResult(result: ExchangeTransportResult): ExchangeDisclosureState = if (result == ExchangeTransportResult.Success) copy(sent = true) else this
+    fun onTransportStarted(): ExchangeDisclosureState = copy(transportInFlight = true)
 
-    /** Spec 205: cancel is the pre-send act of an unsent package only. */
-    val cancelable: Boolean get() = !sent
+    fun onTransportResult(result: ExchangeTransportResult): ExchangeDisclosureState = when (result) {
+        ExchangeTransportResult.Success -> copy(sent = true, transportInFlight = false)
+        is ExchangeTransportResult.Failure -> copy(transportInFlight = false)
+        ExchangeTransportResult.InFlight -> this
+    }
+
+    /**
+     * Spec 205 (review round 2 P1): cancel is the pre-send act of an unsent
+     * package only, and never while a transport is in flight — the write may
+     * still land outside the device after the invalidate.
+     */
+    val cancelable: Boolean get() = !sent && !transportInFlight
 }
 
 /**
@@ -194,23 +206,29 @@ class ExchangeFlowStateHolder(
      * successful transport the package may already have left the device, so
      * the session survives and the reply stays importable (review P1).
      */
-    fun closeDisclosure(state: ExchangeDisclosureState) {
-        if (!state.cancelable) {
+    fun closeDisclosure() {
+        // Decide from the holder's CURRENT disclosure state on Main — not the
+        // caller's possibly-stale snapshot — so a cancel racing an in-flight
+        // transport cannot invalidate a session whose write just landed.
+        val disclosing = (screen as? ExchangeScreen.Disclosing)?.state
+        if (disclosing == null || !disclosing.cancelable) {
             close()
             return
         }
         scope.launch(Dispatchers.IO) {
-            controller.cancelDisclosure(state.session)
+            controller.cancelDisclosure(disclosing.session)
             withContext(Dispatchers.Main) { close() }
         }
     }
 
     fun onTransportResult(result: ExchangeTransportResult) {
-        status = when (result) {
-            ExchangeTransportResult.Success -> ExchangeStatus(ExchangeStatus.Kind.TRANSPORT_SUCCESS)
+        when (result) {
+            ExchangeTransportResult.InFlight -> Unit
+
+            ExchangeTransportResult.Success -> status = ExchangeStatus(ExchangeStatus.Kind.TRANSPORT_SUCCESS)
 
             is ExchangeTransportResult.Failure ->
-                ExchangeStatus(ExchangeStatus.transportFailure(result.kind))
+                status = ExchangeStatus(ExchangeStatus.transportFailure(result.kind))
         }
         val disclosing = screen as? ExchangeScreen.Disclosing ?: return
         screen = ExchangeScreen.Disclosing(disclosing.state.onTransportResult(result))
@@ -230,6 +248,10 @@ class ExchangeFlowStateHolder(
     }
 
     fun writeFile(fileTransport: FileExchangeTransport, packageText: String, uri: Uri) {
+        // Mark in-flight on Main before the write starts: from this point the
+        // pre-send cancel is suspended until the transport settles (review
+        // round 2 P1 — the write may still land after an invalidate otherwise).
+        onTransportResult(ExchangeTransportResult.InFlight)
         scope.launch(Dispatchers.IO) {
             val result = fileTransport.write(packageText, uri)
             withContext(Dispatchers.Main) { onTransportResult(result) }
@@ -589,7 +611,8 @@ private fun ExchangeDisclosure(
                 Text(stringResource(R.string.exchange_save_file))
             }
             OutlinedButton(
-                onClick = { holder.closeDisclosure(state) },
+                onClick = holder::closeDisclosure,
+                enabled = !state.transportInFlight,
                 modifier = Modifier.testTag("exchange-cancel"),
             ) {
                 Text(
