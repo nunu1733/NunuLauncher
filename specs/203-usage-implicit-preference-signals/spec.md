@@ -1,6 +1,6 @@
 ---
 issue: "#203"
-status: draft
+status: accepted
 requirements:
   - FR-013
   - D-010
@@ -9,7 +9,7 @@ updated: 2026-09-15
 
 # Versioned local usage / implicit-preference signal snapshot for Organizer personalization
 
-> Status: draft — このspecは Issue #203 の準備として作成された。本タスクでは自己承認しない。採用signal集合・permission UX・retention・bucket semantics の最終判断は Issue owner の review (acceptance) を要する (「Decisions」節参照)。
+> Status: **accepted** (2026-09-15T04:15Z, owner acceptance: [Review result: Approve](https://github.com/nunu1733/NunuLauncher/issues/203#issuecomment-5674638975) — 対象 head `7a08f9c86a1965e922378c66a4c6e3c74f7df815`)。U-1〜U-6 は Decisions 節の確定値で承認済み。U-5 の probe 完了条件 (a)〜(d) は契約どおり U-5 依存実装 PR の merge gate として残る。
 > 2026-09-12 re-entry: baseline `6b6bf8dd` 以降の main 差分 (#228/#235 の実装、composer 拡張、ADR-0007 追記) を反映して見直した。未決定事項 (U-1〜U-6) は変わりなく draft のままである。
 > 2026-09-13 re-entry + review response: baseline `f9afd8bf` 以降の main 差分 (#283/#287/#300/#304 関連) を確認した — 本specが依存する composer / provenance / requirements / ADR に変更はない。2026-09-13T10:32Z の owner review (Changes requested) を反映し: (1) `generation` を snapshot identity から削除して content-addressed identity に変更、(2) personalization を mandatory dynamic cut の外側に置く optional source 契約へ変更 (source 失敗・churn は `NotReady` ではなく personalization field のみ typed `Unavailable` へ downgrade)、(3) canonicalization に usage access state / per-profile availability / field 三値 state を追加、(4) rank universe・time window semantics を U-5 に追加、(5) install age の事実誤り (`firstInstallTime` は `PackageInfo` field) を修正し first delivery から defer、(6) launcher-origin signal の観測単位を contract として固定した。owner review の recommendation (affinity は consumer 側 projection、first delivery の system usage signal 集合を 7d/30d foreground bucket + recency + active-days に絞る等) を draft 判断として反映しているが、spec 自体は draft のままである。
 > 2026-09-14 re-entry + re-review response: baseline `c5274b5d` 以降の main 差分 (#298/#299/#315 関連) を確認 — composer への変更は `CaptureFailureObserver` signature への `CaptureInvariantCategory` 追加 (diagnostics) のみで、本specが依存する stable cut / provenance / `OrganizationInput` の形状に変更はない。2026-09-14T12:43Z の owner re-review (Changes requested) を反映し: (1) snapshot の実体を `OrganizationInput` の non-null field として downstream へ渡す契約に変更 (Blocking 1 — identity だけ provenance に残り実体が届かない状態を解消)、(2) `usageAccess` を **system usage source 専用**の state とし、`NOT_GRANTED` / `UNAVAILABLE` でも launcher-origin entry を保持 (Blocking 2)、(3) app pair を first delivery の launcher-origin 対象から除外 (Blocking 3 — `launchSplitTasks()` まで到達する非同期 dispatch のため同期観測点が存在しない)、(4) launcher-origin counter は相対 recency class ではなく coarse な絶対 day anchor を永続化し read 時に bucket へ投影 (Required)、(5) `PersonalizationSignalSnapshot` 自体は非永続化・永続対象は launcher-origin 最小 state のみと明記 (Required)、(6) fallback の「Absent」表現を `Unavailable` 維持 + planner が evidence 不使用の表現へ修正 (Minor)。U-1 / U-6 の draft 判断は re-review で妥当と確認されたが、acceptance までは未確定のままとする。
