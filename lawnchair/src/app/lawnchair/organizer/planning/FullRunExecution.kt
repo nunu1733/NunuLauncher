@@ -224,20 +224,12 @@ internal object FullRunExecution {
                 .thenBy { (it.target as TargetKey.WidgetKey).profile }
                 .thenBy { it.id },
         )
-        // Issue #204 (spec 204 / Q1): a widget's `pageAffinity` preference
-        // moves its stream onto the preferred captured page (strategy page
-        // scope and capacity still own the final placement). Without a
-        // preference the widget keeps its captured page.
-        val preferenceByItem = context.preferences?.itemPreferences?.associateBy { it.item }
-        val byPage = ordered.groupBy { item ->
-            val affinity = preferenceByItem?.get(item.id)?.pageAffinity
-            val pages = context.input.snapshot.pages
-            if (affinity != null && affinity >= 0 && affinity < pages.size) {
-                pages[affinity].id
-            } else {
-                (item.placement as CapturedPlacement.Workspace).page.pageId
-            }
-        }
+        // Issue #204 (PR review 5, P1): both registered widget policies are
+        // page-local (#235 — "widgets stay on their captured page"), so a
+        // widget's `pageAffinity` preference is NOT consumed here; cross-page
+        // widget affinity activation belongs to a future policy that declares
+        // it. Region affinity stays inside the strategy-owned window below.
+        val byPage = ordered.groupBy { (it.placement as CapturedPlacement.Workspace).page.pageId }
         val pagesInOrder = context.input.snapshot.pages
             .sortedWith(compareBy({ it.order }, { it.id.value }))
             .filter { it.id in byPage.keys }
@@ -266,45 +258,38 @@ internal object FullRunExecution {
 
                 null -> error("executeWithWidgetStream registered without a widget policy")
             }
+            val preferenceByItem = context.preferences?.itemPreferences?.associateBy { it.item }
             val pageCells = mutableListOf<WidgetCell>()
             for (widget in pageWidgets) {
                 val ws = widget.placement as CapturedPlacement.Workspace
-                // Issue #204 (spec 204 / Q1): a widget's regionAffinity soft hint —
-                // try the requested band first; a band without room falls back to
-                // the strategy's own window (never degrades the page by itself).
-                val bandWindow = preferenceByItem?.get(widget.id)?.regionAffinity?.let { affinity ->
-                    val rows = device.rows
-                    when (affinity) {
-                        app.lawnchair.organizer.personalization.ExportRegionKind.TOP -> 0 until rows / 3
-                        app.lawnchair.organizer.personalization.ExportRegionKind.MIDDLE -> (rows / 3) until ((2 * rows) / 3)
-                        app.lawnchair.organizer.personalization.ExportRegionKind.BOTTOM -> ((2 * rows) / 3) until rows
+                // Issue #204 (PR review 5, P1): regionAffinity is a soft hint
+                // strictly inside the strategy-owned window. `PageLocalBand`
+                // intersects the requested band with the captured band;
+                // `PageLocalTopAnchored` declares its own traversal and is
+                // never re-anchored by the intent.
+                val bandWindow = if (window != null) {
+                    preferenceByItem?.get(widget.id)?.regionAffinity?.let { affinity ->
+                        val rows = device.rows
+                        val band = when (affinity) {
+                            app.lawnchair.organizer.personalization.ExportRegionKind.TOP -> 0 until rows / 3
+                            app.lawnchair.organizer.personalization.ExportRegionKind.MIDDLE -> (rows / 3) until ((2 * rows) / 3)
+                            app.lawnchair.organizer.personalization.ExportRegionKind.BOTTOM -> ((2 * rows) / 3) until rows
+                        }
+                        val overlap = maxOf(band.first, window.first)..minOf(band.last, window.last)
+                        if (overlap.isEmpty()) null else overlap
                     }
+                } else {
+                    null
                 }
                 val cell = bandWindow?.let { band ->
-                    if (window != null) {
-                        val overlap = maxOf(band.first, window.first)..minOf(band.last, window.last)
-                        if (overlap.isEmpty()) {
-                            null
-                        } else {
-                            findRowMajorFirstFit(
-                                obstacles,
-                                device.columns,
-                                device.rows,
-                                ws.span,
-                                CellTraversal.TOP_LEFT_ROW_MAJOR,
-                                rowWindow = overlap,
-                            )
-                        }
-                    } else {
-                        findRowMajorFirstFit(
-                            obstacles,
-                            device.columns,
-                            device.rows,
-                            ws.span,
-                            CellTraversal.TOP_LEFT_ROW_MAJOR,
-                            rowWindow = band,
-                        )
-                    }
+                    findRowMajorFirstFit(
+                        obstacles,
+                        device.columns,
+                        device.rows,
+                        ws.span,
+                        CellTraversal.TOP_LEFT_ROW_MAJOR,
+                        rowWindow = band,
+                    )
                 } ?: findRowMajorFirstFit(
                     obstacles,
                     device.columns,
