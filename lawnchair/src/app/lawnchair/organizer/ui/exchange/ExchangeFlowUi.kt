@@ -197,23 +197,27 @@ class ExchangeFlowStateHolder(
     fun import(replyText: String) {
         scope.launch(Dispatchers.IO) {
             val outcome = controller.importReply(replyText)
-            withContext(Dispatchers.Main) {
-                when (val pipeline = (outcome as? ExchangeImportOutcome.Pipeline)?.result) {
-                    is ExchangeImportResult.Validated -> when (run.start(intent = pipeline.validated)) {
-                        is ManualOrganizationRun.StartOutcome.Started -> {
-                            status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_ACCEPTED)
-                            screen = ExchangeScreen.Closed
-                        }
-
-                        ManualOrganizationRun.StartOutcome.Busy -> {
-                            // Single-active-operation gate rejected the fresh
-                            // run: typed guidance, zero-write, intent dropped.
-                            status = ExchangeStatus(ExchangeStatus.Kind.RUN_BUSY)
-                            screen = ExchangeScreen.Importing(replyText)
-                        }
+            val pipeline = (outcome as? ExchangeImportOutcome.Pipeline)?.result
+            if (pipeline is ExchangeImportResult.Validated) {
+                // The fresh-run start performs capture/composition/planning
+                // synchronously; every production entry runs it on IO (audit
+                // P2-1), matching the plain start row's execute{} wrapper.
+                when (run.start(intent = pipeline.validated)) {
+                    is ManualOrganizationRun.StartOutcome.Started -> withContext(Dispatchers.Main) {
+                        status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_ACCEPTED)
+                        screen = ExchangeScreen.Closed
                     }
 
-                    else -> screen = ExchangeScreen.ImportOutcomeScreen(outcome)
+                    ManualOrganizationRun.StartOutcome.Busy -> withContext(Dispatchers.Main) {
+                        // Single-active-operation gate rejected the fresh run:
+                        // typed guidance, zero-write, intent dropped.
+                        status = ExchangeStatus(ExchangeStatus.Kind.RUN_BUSY)
+                        screen = ExchangeScreen.Importing(replyText)
+                    }
+                }
+            } else {
+                withContext(Dispatchers.Main) {
+                    screen = ExchangeScreen.ImportOutcomeScreen(outcome)
                 }
             }
         }
