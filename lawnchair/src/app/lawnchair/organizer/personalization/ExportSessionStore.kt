@@ -12,17 +12,23 @@ package app.lawnchair.organizer.personalization
  */
 interface ExportSessionStore {
 
-    /** Persists the session as THE single active session. */
-    fun save(session: ExportSession)
+    /**
+     * Persists the session as THE single active session. Returns false when
+     * the durable write failed (publishing the export must then be suppressed
+     * fail-closed by the caller — AC-11's durable-session premise).
+     */
+    fun save(session: ExportSession): Boolean
 
     /**
-     * Returns the active session holding [exportId], or null when the session
-     * is absent, invalidated, expired, unreadable, or of an unsupported
-     * schema. Callers must still pass `nowEpochMs` into the validator.
+     * Returns the session holding [exportId] — **including an expired one** —
+     * or null when it is absent, invalidated, unreadable, or of an unsupported
+     * schema. Expiry is NOT collapsed into absence here: the validator
+     * distinguishes the expired matching record (`SESSION_EXPIRED`) from an
+     * unknown/old session (`EXPORT_MISMATCH`) via [ExportSession.isExpired].
      */
-    fun load(exportId: String, nowEpochMs: Long): ExportSession?
+    fun load(exportId: String): ExportSession?
 
-    /** The currently active session (any exportId), if valid. */
+    /** The currently active (unexpired) session, if any. */
     fun active(nowEpochMs: Long): ExportSession?
 
     /** Invalidates the session (invalidated sessions read as absent). */

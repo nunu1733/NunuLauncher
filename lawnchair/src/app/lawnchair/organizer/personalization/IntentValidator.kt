@@ -70,6 +70,16 @@ object IntentValidator {
             return IntentValidation.Failure(IntentValidationFailure.IncompleteCoverage)
         }
 
+        // pageAffinity must reference an existing export page (review P3-2
+        // follow-up; the range is the export grid's page count).
+        for (item in intent.itemIntents) {
+            item.pageAffinity?.let { ordinal ->
+                if (ordinal < 0 || ordinal >= export.grid.pageCount) {
+                    return IntentValidation.Failure(IntentValidationFailure.InvalidEnum)
+                }
+            }
+        }
+
         // Per-ref mobility semantics. Schema-permitted semantic fields
         // contradicting per-ref mobility are MOBILITY_CONTRADICTION; locked
         // refs are FIXED and therefore fall here too.

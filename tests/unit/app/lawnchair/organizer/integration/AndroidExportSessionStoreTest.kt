@@ -1,7 +1,19 @@
 package app.lawnchair.organizer.integration
 
 import app.lawnchair.organizer.personalization.ContextExportContract
+import app.lawnchair.organizer.personalization.ExportCapabilities
+import app.lawnchair.organizer.personalization.ExportGridContext
+import app.lawnchair.organizer.personalization.ExportItem
+import app.lawnchair.organizer.personalization.ExportItemRole
 import app.lawnchair.organizer.personalization.ExportSession
+import app.lawnchair.organizer.personalization.IntentValidation
+import app.lawnchair.organizer.personalization.IntentValidationFailure
+import app.lawnchair.organizer.personalization.IntentValidator
+import app.lawnchair.organizer.personalization.ItemIntent
+import app.lawnchair.organizer.personalization.Mobility
+import app.lawnchair.organizer.personalization.PersonalizationContextExportV1
+import app.lawnchair.organizer.personalization.PersonalizedIntentV1
+import app.lawnchair.organizer.personalization.PreservedConstraints
 import app.lawnchair.organizer.personalization.PrivacyTier
 import app.lawnchair.organizer.personalization.SignalProvenance
 import app.lawnchair.organizer.planning.ItemId
@@ -40,7 +52,7 @@ class AndroidExportSessionStoreTest {
 
             // Simulate process death: a brand-new store instance reads the
             // same durable record.
-            val reloaded = store(directory, "s1").load("export-1", nowEpochMs = 2_000L)!!
+            val reloaded = store(directory, "s1").load("export-1")!!
             assertEquals(session, reloaded)
         } finally {
             directory.deleteRecursively()
@@ -48,20 +60,77 @@ class AndroidExportSessionStoreTest {
     }
 
     @Test
-    fun unknownExportIdsAndExpiredSessionsReadAsAbsent() {
+    fun expiredMatchingRecordIsReturnedForTypedValidatorRejection() {
         val directory = tempDirectory()
         try {
             val store = store(directory, "s1")
-            store.save(session)
+            assertTrue(store.save(session))
 
-            assertNull(store.load("export-2", nowEpochMs = 2_000L))
-            assertNull(store.load("export-1", nowEpochMs = session.expiresAtEpochMs))
+            // Unknown export → absent (EXPORT_MISMATCH at the validator).
+            assertNull(store.load("export-2"))
+            // Matching but expired record is NOT collapsed into absence: the
+            // validator turns it into SESSION_EXPIRED.
+            assertEquals(session, store.load("export-1"))
             assertNull(store.active(nowEpochMs = session.expiresAtEpochMs))
             assertEquals(session, store.active(nowEpochMs = 2_000L))
         } finally {
             directory.deleteRecursively()
         }
     }
+
+    @Test
+    fun processDeathAfterExpiryDistinguishesSessionExpiredFromExportMismatch() {
+        val directory = tempDirectory()
+        try {
+            store(directory, "s1").save(session)
+
+            // Simulate process death: brand-new store instance, expired record.
+            val reloaded = store(directory, "s1").load("export-1")
+            val expiredValidation = IntentValidator.validate(
+                intent = validIntentFor("export-1", reloaded!!),
+                export = exportFor(reloaded),
+                session = reloaded,
+                nowEpochMs = session.expiresAtEpochMs + 1,
+                currentStructuralDigest = reloaded.sourceContextDigest,
+            )
+            assertEquals(
+                IntentValidationFailure.SessionExpired,
+                (expiredValidation as IntentValidation.Failure).failure,
+            )
+            // Unknown export id has no record at all → EXPORT_MISMATCH.
+            assertNull(store(directory, "s1").load("unknown"))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    private fun exportFor(session: ExportSession) = PersonalizationContextExportV1(
+        exportId = session.exportId,
+        tier = session.tier,
+        grid = ExportGridContext(4, 6, 1),
+        items = session.itemRefs.map { (ref, _) ->
+            ExportItem(
+                ref = ref,
+                role = ExportItemRole.APP_OR_SHORTCUT,
+                category = null,
+                groupSemantic = null,
+                label = null,
+                pageAffinity = null,
+                regionAffinity = null,
+                mobility = Mobility.MOVABLE,
+                fixReason = null,
+                usage = null,
+            )
+        },
+        preservedConstraints = PreservedConstraints(emptyList(), emptyMap()),
+        capabilities = ExportCapabilities(ContextExportContract.INTENT_SCHEMA_VERSION, ContextExportContract.FIXED_CAPABILITIES),
+        usageSignals = null,
+    )
+
+    private fun validIntentFor(exportId: String, session: ExportSession) = PersonalizedIntentV1(
+        exportId = exportId,
+        itemIntents = session.itemRefs.keys.map { ItemIntent(ref = it) },
+    )
 
     @Test
     fun singleActiveSessionReplacesThePreviousOne() {
@@ -73,8 +142,8 @@ class AndroidExportSessionStoreTest {
             store.save(replacement)
 
             // The prior session is invalidated by the new export.
-            assertNull(store.load("export-1", nowEpochMs = 3_500L))
-            assertEquals(replacement, store.load("export-2", nowEpochMs = 3_500L))
+            assertNull(store.load("export-1"))
+            assertEquals(replacement, store.load("export-2"))
         } finally {
             directory.deleteRecursively()
         }
@@ -87,9 +156,9 @@ class AndroidExportSessionStoreTest {
             val store = store(directory, "s1")
             store.save(session)
             store.invalidate("export-2")
-            assertEquals(session, store.load("export-1", nowEpochMs = 2_000L))
+            assertEquals(session, store.load("export-1"))
             store.invalidate("export-1")
-            assertNull(store.load("export-1", nowEpochMs = 2_000L))
+            assertNull(store.load("export-1"))
         } finally {
             directory.deleteRecursively()
         }
@@ -102,10 +171,10 @@ class AndroidExportSessionStoreTest {
             val file = File(directory, "s1")
             directory.mkdirs()
             file.writeText("{corrupt")
-            assertNull(store(directory, "s1").load("export-1", nowEpochMs = 2_000L))
+            assertNull(store(directory, "s1").load("export-1"))
 
             file.writeText("""{"schemaVersion":99,"exportId":"e","itemRefs":[],"tier":"LOCAL_FULL","sourceContextDigest":"d","createdAtEpochMs":0,"expiresAtEpochMs":1}""")
-            assertNull(store(directory, "s1").load("e", nowEpochMs = 2_000L))
+            assertNull(store(directory, "s1").load("e"))
         } finally {
             directory.deleteRecursively()
         }

@@ -226,6 +226,7 @@ data class ExportItem(
 
 /** The complete `PersonalizationContextExportV1` envelope. */
 data class PersonalizationContextExportV1(
+    val schemaVersion: String = ContextExportContract.SCHEMA_VERSION,
     val exportId: String,
     val tier: PrivacyTier,
     val grid: ExportGridContext,
@@ -235,6 +236,7 @@ data class PersonalizationContextExportV1(
     val usageSignals: UsageSignalsSection?,
 ) {
     init {
+        require(schemaVersion == ContextExportContract.SCHEMA_VERSION)
         require(exportId.isNotEmpty())
         require(items.size <= ContextExportContract.MAX_EXPORT_ITEMS)
         require(capabilities.intentSchemaVersion == ContextExportContract.INTENT_SCHEMA_VERSION)

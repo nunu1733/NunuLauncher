@@ -42,39 +42,42 @@ class AndroidExportSessionStore : ExportSessionStore {
         atomicFile = AtomicFile(baseFile)
     }
 
-    override fun save(session: ExportSession) {
-        synchronized(lock) {
-            val record = SessionRecord(
-                schemaVersion = SCHEMA_VERSION,
-                exportId = session.exportId,
-                itemRefs = session.itemRefs.entries
-                    .map { (ref, itemId) -> RefEntry(ref = ref, itemId = itemId.value) }
-                    .sortedBy { it.ref },
-                tier = session.tier.name,
-                sourceContextDigest = session.sourceContextDigest,
-                signalProvenance = session.signalProvenance?.let {
-                    SignalProvenanceRecord(schemaVersion = it.schemaVersion, contentDigest = it.contentDigest)
-                },
-                createdAtEpochMs = session.createdAtEpochMs,
-                expiresAtEpochMs = session.expiresAtEpochMs,
-            )
-            val bytes = json.encodeToString(SessionRecord.serializer(), record).encodeToByteArray()
-            val out = try {
-                atomicFile.startWrite()
-            } catch (e: IOException) {
-                return
-            }
-            try {
-                out.write(bytes)
-                atomicFile.finishWrite(out)
-            } catch (e: IOException) {
-                atomicFile.failWrite(out)
-            }
+    override fun save(session: ExportSession): Boolean = synchronized(lock) {
+        val record = SessionRecord(
+            schemaVersion = SCHEMA_VERSION,
+            exportId = session.exportId,
+            itemRefs = session.itemRefs.entries
+                .map { (ref, itemId) -> RefEntry(ref = ref, itemId = itemId.value) }
+                .sortedBy { it.ref },
+            tier = session.tier.name,
+            sourceContextDigest = session.sourceContextDigest,
+            signalProvenance = session.signalProvenance?.let {
+                SignalProvenanceRecord(schemaVersion = it.schemaVersion, contentDigest = it.contentDigest)
+            },
+            createdAtEpochMs = session.createdAtEpochMs,
+            expiresAtEpochMs = session.expiresAtEpochMs,
+        )
+        val bytes = json.encodeToString(SessionRecord.serializer(), record).encodeToByteArray()
+        val out = try {
+            atomicFile.startWrite()
+        } catch (e: IOException) {
+            return@synchronized false
+        }
+        try {
+            out.write(bytes)
+            atomicFile.finishWrite(out)
+            true
+        } catch (e: IOException) {
+            atomicFile.failWrite(out)
+            false
         }
     }
 
-    override fun load(exportId: String, nowEpochMs: Long): ExportSession? = synchronized(lock) {
-        readSession()?.takeIf { it.exportId == exportId && !it.isExpired(nowEpochMs) }
+    override fun load(exportId: String): ExportSession? = synchronized(lock) {
+        // Expiry is deliberately NOT collapsed into absence: the validator
+        // distinguishes SESSION_EXPIRED (matching, expired record) from
+        // EXPORT_MISMATCH (unknown/old exportId).
+        readSession()?.takeIf { it.exportId == exportId }
     }
 
     override fun active(nowEpochMs: Long): ExportSession? = synchronized(lock) {

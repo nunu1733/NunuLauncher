@@ -5,6 +5,7 @@ package app.lawnchair.organizer.planning
  * (spec 182 internal seam): the constraint/unit/preservation work that is
  * invariant across strategies, computed once by `PlanningPlacement.place`.
  */
+
 internal data class FullRunContext(
     val input: OrganizationInput,
     val classification: ClassificationOutput,
@@ -16,7 +17,34 @@ internal data class FullRunContext(
     val allocator: Allocator,
     val pageOrderMap: Map<PageId, PageOrder>,
     val preservationWarnings: List<Warning>,
+    /**
+     * Issue #204 (spec 204 / Q1): the semantic projection of the accepted
+     * AI-personalization intent. Preference/ordering bias ONLY — it never
+     * weakens `determinePreservation`, the allocator constraints, or any
+     * strategy-declared semantics. Null for runs without an intent (existing
+     * runs are byte-identical).
+     */
+    val preferences: app.lawnchair.organizer.personalization.PersonalizedIntentProjection? = null,
 )
+
+/**
+ * Issue #204 (spec 204 / Q1): deterministic preference rank of an accepted
+ * intent's `importance` for placement ordering. HIGH < NORMAL < LOW; an item
+ * without a preference shares NORMAL's rank, so runs without an intent (or
+ * without a preference for the item) keep the canonical ordering.
+ */
+internal fun unitPreferenceRank(
+    itemId: ItemId,
+    preferenceByItem: Map<ItemId, app.lawnchair.organizer.personalization.ItemPreference>?,
+): Int {
+    val importance = preferenceByItem?.get(itemId)?.importance
+    return when (importance) {
+        null -> 1
+        app.lawnchair.organizer.personalization.Importance.HIGH -> 0
+        app.lawnchair.organizer.personalization.Importance.NORMAL -> 1
+        app.lawnchair.organizer.personalization.Importance.LOW -> 2
+    }
+}
 
 /**
  * The single shared full-run executor (spec 182 internal seam item 4): it
@@ -482,6 +510,25 @@ internal object FullRunExecution {
         )
     }
 
+    /**
+     * Issue #204 (spec 204 / Q1): accepted-intent `pageAffinity` bias. A
+     * movable unit whose intent declares a page affinity prefers that captured
+     * page for allocation. The preference is NOT authoritative: the strategy's
+     * page scope and the allocator's capacity semantics decide placement, and
+     * an unsatisfiable preference simply falls through to the strategy's own
+     * overflow behavior. Items without a preference keep their captured page.
+     */
+    private fun biasedPreferredPage(
+        context: FullRunContext,
+        itemId: ItemId,
+        capturedPage: PageRef,
+    ): PageRef {
+        val preference = context.preferences?.itemPreferences?.firstOrNull { it.item == itemId }
+        val ordinal = preference?.pageAffinity ?: return capturedPage
+        if (ordinal < 0 || ordinal >= context.input.snapshot.pages.size) return capturedPage
+        return context.input.snapshot.pages[ordinal].let { PageRef(it.id) }
+    }
+
     private fun pageOrderOf(context: FullRunContext, page: PageRef): PageOrder = context.pageOrderMap.getValue(page.pageId)
 
     private fun preferredPageOf(context: FullRunContext, members: List<ItemId>): PageRef = members
@@ -549,12 +596,16 @@ internal object FullRunExecution {
         )
 
         val units = mutableListOf<FullUnit>()
+
+        fun FullUnit.preferenceRank(
+            preferenceByItem: Map<ItemId, app.lawnchair.organizer.personalization.ItemPreference>?,
+        ): Int = unitPreferenceRank(itemId, preferenceByItem)
         for (folder in existingFolderUnits) {
             val ws = folder.placement as CapturedPlacement.Workspace
             units += FullUnit(
                 itemId = folder.id,
                 span = ws.span,
-                preferredPage = ws.page,
+                preferredPage = biasedPreferredPage(context, folder.id, ws.page),
                 isFolder = true,
                 sortProfile = folder.profile,
                 sortCategory = context.classification.decisions[folder.id]?.category ?: taxonomy.fallbackCategory,
@@ -579,7 +630,7 @@ internal object FullRunExecution {
             units += FullUnit(
                 itemId = item.id,
                 span = ws.span,
-                preferredPage = ws.page,
+                preferredPage = biasedPreferredPage(context, item.id, ws.page),
                 isFolder = false,
                 sortProfile = item.profile,
                 sortCategory = context.classification.decisions[item.id]?.category ?: taxonomy.fallbackCategory,
@@ -606,8 +657,20 @@ internal object FullRunExecution {
                         .sortedBy { it.itemId }
                     val newFolderUnits = pageUnits.filter { it.isNewFolder }
                         .sortedBy { it.newFolderOrdinal }
+                    // Issue #204 (spec 204 / Q1): accepted-intent preference
+                    // bias. Importance orders the singletons deterministically
+                    // (HIGH first, un-preferenced items share NORMAL's rank);
+                    // the canonical tie-breakers below stay unchanged. With no
+                    // accepted intent (or no preference for the item) the
+                    // rank is constant and the ordering is byte-identical.
+                    val preferenceByItem = context.preferences?.itemPreferences?.associateBy { it.item }
                     val singletons = pageUnits.filter { !it.isFolder }
-                        .sortedWith(compareBy({ it.sortProfile }, { it.sortCategory }, { it.itemId }))
+                        .sortedWith(
+                            compareBy<FullUnit> { it.preferenceRank(preferenceByItem) }
+                                .thenBy { it.sortProfile }
+                                .thenBy { it.sortCategory }
+                                .thenBy { it.itemId },
+                        )
                     existingFolders + newFolderUnits + singletons
                 }
 

@@ -100,16 +100,28 @@ class PlannerMobilityBindingTest {
             locked = false,
             availability = Availability.AVAILABLE,
         ),
-        workspaceItem("plainAgain", x = 2, y = 0),
+        workspaceItem("reservedOverlap", x = 1, y = 0),
     )
 
     @Test
     fun exportMobilityJudgmentAgreesWithPlannerFeasibilityForEveryCase() {
+        // The reservation covers row 0 only: cases placed at y >= 1 are free
+        // of it, so the MOVABLE and CONDITIONAL branches are actually reached.
         val reserved = ReservedWorkspaceRegion(PageRef(PageId("p0")), GridCell(0, 0), GridSpan(4, 1))
-        val snapshot = snapshotOf(cases).copy(reservedWorkspaceRegions = listOf(reserved))
+        val snapshot = snapshotOf(
+            cases.map { item ->
+                val ws = item.placement as? CapturedPlacement.Workspace
+                if (ws != null && ws.cell.y == 0) item.copy(placement = ws.copy(cell = GridCell(ws.cell.x, 2))) else item
+            },
+        ).copy(reservedWorkspaceRegions = listOf(reserved))
         val roles = snapshot.items.associate { it.id to ExistingRole.Movable }
 
         for (item in snapshot.items) {
+            // Non-addressable kinds never become export items, so the mobility
+            // predicate is only bound for the addressable role matrix.
+            val addressable = item.kind is ItemKind.APPLICATION || item.kind is ItemKind.DEEP_SHORTCUT ||
+                item.kind is ItemKind.FOLDER || item.kind is ItemKind.APPWIDGET || item.kind is ItemKind.CUSTOM_APPWIDGET
+            if (!addressable) continue
             val (mobility, _) = projectMobility(item, snapshot)
             val plannerReason = determinePreservation(item, roles[item.id], snapshot.reservedWorkspaceRegions)
             when (mobility) {
