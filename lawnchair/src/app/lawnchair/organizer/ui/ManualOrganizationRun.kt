@@ -35,6 +35,7 @@ import app.lawnchair.organizer.integration.CandidateDetectionResult
 import app.lawnchair.organizer.integration.DetectedCandidate
 import app.lawnchair.organizer.integration.InputReadinessReason
 import app.lawnchair.organizer.integration.OrganizationInputComposition
+import app.lawnchair.organizer.personalization.policyIdentity
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.CandidateTarget
 import app.lawnchair.organizer.planning.DeterministicOrganizationPlanner
@@ -65,11 +66,28 @@ internal interface ManualOrganizationApplication {
     fun newRunId(): RunId
     fun composeFullOrganization(): OrganizationInputComposition
 
+    /**
+     * Issue #205 (spec 205 run connection): full-target composition carrying
+     * an accepted intent. The default injects the pure projection into the
+     * composed input and replaces the no-intent sentinel identity in the
+     * provenance; implementers that compose directly can override this with
+     * an equivalent single-pass composition.
+     */
+    fun composeFullOrganizationWithIntent(
+        intent: app.lawnchair.organizer.personalization.PersonalizedIntentProjection?,
+    ): OrganizationInputComposition = applyIntent(composeFullOrganization(), intent)
+
     /** Issue #228: read-only missing-app detection (zero-write). */
     fun detectMissingAppCandidates(): CandidateDetectionResult
 
     /** Issue #228 (D-2): composition with the selected candidates as additions. */
     fun composeScopeComposedOrganization(selection: List<CandidateTarget.AppKey>): OrganizationInputComposition
+
+    /** Issue #205: scope-composed composition carrying an accepted intent. */
+    fun composeScopeComposedOrganizationWithIntent(
+        selection: List<CandidateTarget.AppKey>,
+        intent: app.lawnchair.organizer.personalization.PersonalizedIntentProjection?,
+    ): OrganizationInputComposition = applyIntent(composeScopeComposedOrganization(selection), intent)
 
     fun inspectPlan(input: OrganizationInput, result: PlanningResult): PlanPreviewResult
     fun materialize(input: OrganizationInput, result: PlanningResult): OrganizationPlanMaterializer.Result
@@ -155,6 +173,24 @@ internal object ManualOrganizationModule {
                 ManualOrganizationRun(application, operationGate = OrganizationOperationLease).also { instance = it }
             }
         }
+    }
+}
+
+/** Issue #205: pure intent injection shared by the WithIntent default methods. */
+private fun applyIntent(
+    composition: OrganizationInputComposition,
+    intent: app.lawnchair.organizer.personalization.PersonalizedIntentProjection?,
+): OrganizationInputComposition {
+    if (intent == null) return composition
+    return when (composition) {
+        is OrganizationInputComposition.NotReady -> composition
+
+        is OrganizationInputComposition.Ready -> OrganizationInputComposition.Ready(
+            composition.input.copy(intentPreferences = intent),
+            composition.provenance.copy(
+                personalizedIntent = intent.identity.policyIdentity(),
+            ),
+        )
     }
 }
 
@@ -309,8 +345,19 @@ class ManualOrganizationRun internal constructor(
     private var recoveryLease: AutoCloseable? = null
     private var lastVerifiedApply: State.Applied? = null
 
-    fun start(trigger: Trigger = Trigger.MANUAL_FULL): StartOutcome {
-        val operation = beginOperation(trigger) ?: return StartOutcome.Busy
+    fun start(trigger: Trigger = Trigger.MANUAL_FULL): StartOutcome = start(trigger, intent = null)
+
+    /**
+     * Issue #205: run entry from an imported, validated personalization intent
+     * (spec 205 "process recreation後のrun再構築"). The connection is a fresh
+     * run — a new `RunId` through the same single-active-operation gate and
+     * the normal flow (detection → selection → planning); the intent rides
+     * along as the pure planner projection and never bypasses preview or
+     * confirmation. A `Busy` outcome tells the caller to re-import after the
+     * active run ends (the validated intent is not retained here).
+     */
+    fun start(trigger: Trigger = Trigger.MANUAL_FULL, intent: app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent?): StartOutcome {
+        val operation = beginOperation(trigger, intent) ?: return StartOutcome.Busy
         val runId = operation.runId
         val started = StartOutcome.Started(runId)
         // Issue #228 (review P2 #3): the diagnostics run-mode identity must be
@@ -413,9 +460,14 @@ class ManualOrganizationRun internal constructor(
         setIfActive(operation, State.Capturing)
         when (
             val composition = if (selection == null) {
-                application.composeFullOrganization()
+                application.composeFullOrganizationWithIntent(
+                    operation.intent?.let(app.lawnchair.organizer.personalization.IntentPlannerAdapter::project),
+                )
             } else {
-                application.composeScopeComposedOrganization(selection)
+                application.composeScopeComposedOrganizationWithIntent(
+                    selection,
+                    operation.intent?.let(app.lawnchair.organizer.personalization.IntentPlannerAdapter::project),
+                )
             }
         ) {
             is OrganizationInputComposition.NotReady -> {
@@ -864,14 +916,17 @@ class ManualOrganizationRun internal constructor(
         }
     }
 
-    private fun beginOperation(trigger: Trigger): Operation? {
+    private fun beginOperation(
+        trigger: Trigger,
+        intent: app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent? = null,
+    ): Operation? {
         val lease = operationGate.tryAcquire(OrganizationOperationLease.Kind.RUN) ?: return null
         return synchronized(lock) {
             if (activeOperation != null || recoveryLease != null) {
                 lease.close()
                 return@synchronized null
             }
-            val operation = Operation(application.newRunId(), trigger, lease)
+            val operation = Operation(application.newRunId(), trigger, lease, intent)
             activeOperation = operation
             pending = null
             pendingRecovery = null
@@ -1068,6 +1123,8 @@ class ManualOrganizationRun internal constructor(
         val runId: RunId,
         val trigger: Trigger,
         val lease: AutoCloseable,
+        /** Issue #205: the accepted intent this run was started from, if any. */
+        val intent: app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent? = null,
         val cancelled: AtomicBoolean = AtomicBoolean(false),
         val applicationAdmitted: AtomicBoolean = AtomicBoolean(false),
     ) {

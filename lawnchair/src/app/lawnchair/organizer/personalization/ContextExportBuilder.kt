@@ -193,17 +193,43 @@ private fun CapturedItem.toExportItem(
     val ref = allocator.newId()
     if (ref in refsByItem.values) throw IllegalStateException("export ref collision")
     refsByItem[id] = ref
+    val label = if (tier == PrivacyTier.EXTERNAL_REDACTED) {
+        null
+    } else {
+        inputs.userLabels[id]?.let { ExportItemLabel(FreeTextClass.APP_LABEL, it) }
+    }
+    return toExportItemCore(
+        ref = ref,
+        snapshot = snapshot,
+        resolvedCategories = inputs.resolvedCategories,
+        folderSemantics = folderSemantics,
+        pageOrdinal = pageOrdinal,
+        label = label,
+        usage = buildUsage(inputs, id),
+    )
+}
+
+/**
+ * Issue #205: the per-item field derivation shared by the export builder and
+ * the validation-view reconstruction ([SessionExportReconstructor]) so both
+ * derive role/mobility/affinities/category from one implementation (spec 205
+ * reconstruction-parity contract).
+ */
+internal fun CapturedItem.toExportItemCore(
+    ref: String,
+    snapshot: LayoutSnapshot,
+    resolvedCategories: Map<ItemId, String?>,
+    folderSemantics: Map<String, String?>,
+    pageOrdinal: Map<PageId, Int>,
+    label: ExportItemLabel?,
+    usage: UsageProjection?,
+): ExportItem {
     val role = when (kind) {
         is ItemKind.FOLDER -> ExportItemRole.FOLDER
         is ItemKind.APPWIDGET, is ItemKind.CUSTOM_APPWIDGET -> ExportItemRole.WIDGET
         else -> ExportItemRole.APP_OR_SHORTCUT
     }
     val (mobility, fixReason) = projectMobility(this, snapshot)
-    val label = if (tier == PrivacyTier.EXTERNAL_REDACTED) {
-        null
-    } else {
-        inputs.userLabels[id]?.let { ExportItemLabel(FreeTextClass.APP_LABEL, it) }
-    }
     val pageAffinity = (placement as? CapturedPlacement.Workspace)
         ?.let { pageOrdinal[it.page.pageId] }?.let { ExportPageAffinity(it) }
     val regionAffinity = (placement as? CapturedPlacement.Workspace)
@@ -213,14 +239,14 @@ private fun CapturedItem.toExportItem(
     return ExportItem(
         ref = ref,
         role = role,
-        category = inputs.resolvedCategories[id],
+        category = resolvedCategories[id],
         groupSemantic = groupSemantic,
         label = label,
         pageAffinity = pageAffinity,
         regionAffinity = regionAffinity,
         mobility = mobility,
         fixReason = fixReason,
-        usage = buildUsage(inputs, id),
+        usage = usage,
     )
 }
 
