@@ -221,6 +221,79 @@ class IntentPreferenceConsumptionTest {
     }
 
     @Test
+    fun multipleDistinctGroupsCohereWithinEachGroup() {
+        val items = listOf(
+            app("a", x = 0, y = 0),
+            app("b", x = 1, y = 0),
+            app("m", x = 2, y = 0),
+            app("n", x = 3, y = 0),
+        )
+        val input = baseInput(items).copy(
+            rules = defaultRules().copy(
+                folderPolicy = FolderPolicy(5, NewFolderProfileScope.SAME_PROFILE_ONLY),
+            ),
+        )
+        val inputWithIntent = withIntent(
+            input,
+            listOf(
+                ItemIntent(ref = "a", desiredGroupRefs = listOf("b")),
+                ItemIntent(ref = "b", desiredGroupRefs = listOf("a")),
+                ItemIntent(ref = "m", desiredGroupRefs = listOf("n")),
+                ItemIntent(ref = "n", desiredGroupRefs = listOf("m")),
+            ),
+        ).first
+        val biased = planner.plan(inputWithIntent).outcome as Planned
+        val cellOf = { planned: Planned, item: String ->
+            (planned.placements.first { it.item == ItemId(item) }.target as PlacementTarget.WorkspaceTarget).cell
+        }
+        // Each group's members are cell-adjacent: {a,b} and {m,n} do not interleave.
+        val aX = cellOf(biased, "a").x
+        val bX = cellOf(biased, "b").x
+        val mX = cellOf(biased, "m").x
+        val nX = cellOf(biased, "n").x
+        assertTrue((aX == bX + 1) || (bX == aX + 1))
+        assertTrue((mX == nX + 1) || (nX == mX + 1))
+        // Deterministic reproduction.
+        assertEquals(biased, planner.plan(inputWithIntent).outcome as Planned)
+    }
+
+    @Test
+    fun standaloneGroupSemanticConsumesThroughFolderPlacementSemantics() {
+        // Two apps classified as fallback but grouped by the intent's
+        // groupSemantic.category (a taxonomy-allowed category): the existing
+        // folder placement semantics form one new folder for them.
+        val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0))
+        val input = baseInput(items)
+        val inputWithIntent = withIntent(
+            input,
+            listOf(
+                ItemIntent(
+                    ref = "a",
+                    groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                        category = "GAMES",
+                        freeText = null,
+                    ),
+                ),
+                ItemIntent(
+                    ref = "b",
+                    groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                        category = "GAMES",
+                        freeText = null,
+                    ),
+                ),
+            ),
+        ).first
+        val planned = planner.plan(inputWithIntent).outcome as Planned
+        // The new folder carries both members (existing strategy semantics,
+        // not a new intent-side folder mechanism).
+        assertEquals(1, planned.newFolders.size)
+        val members = planned.newFolders.first().members
+        assertTrue(ItemId("a") in members && ItemId("b") in members)
+        // Deterministic reproduction.
+        assertEquals(planned, planner.plan(inputWithIntent).outcome as Planned)
+    }
+
+    @Test
     fun desiredGroupCohesionIsReflectedInPlacementOrder() {
         val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0), app("c", x = 2, y = 0))
         // High folder threshold: the intent group must express as ordering
