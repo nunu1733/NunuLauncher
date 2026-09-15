@@ -199,9 +199,10 @@ lawnchair/src/app/lawnchair/organizer/
 ├── planning/       # pure domain model and planning implementation
 ├── application/    # validated plan application and recovery
 ├── locks/          # lock authoring decisions and unknown-state review (Issue #38)
+├── personalization/ # pure personalization signal types and bucket math (Issue #203)
 ├── diagnostics/    # privacy-safe run journal, logcat, and export
 ├── rules/          # typed rules, validation, migration and file I/O
-├── integration/    # Lawnchair/Launcher3 adapters and triggers
+├── integration/    # Lawnchair/Launcher3 adapters and triggers (usage source adapters, Issue #203)
 └── ui/             # preview, confirmation, result and recovery UI
 ```
 

@@ -277,6 +277,9 @@ ADR またはspec の承認を必要とする。
 | planner 診断param | `DiagnosticParam`（`ItemParam`、`SpanParam`、`PageParam` 等） | **Never** | error code と件数のみ |
 | 内容由来識別子 | `RevisionId`、`ItemId`、`PageId`、`FolderId`、digest | **Never** | 一致/不一致の結果（phase とerror code）のみ |
 | crash 上情報 | exception message、stack trace | **Never**（journal） | OS crash buffer と§11 で相関 |
+| personalization usage access state (Issue #203 / spec 203) | `UsageAccessState` の closed 定数名（`GRANTED` / `NOT_GRANTED` / `UNAVAILABLE`） | **Allowed**（将来のjournal 化時。schema v1 の `RunEvent` には格納 field が存在しないため、現行は出力なし。追加時は §3 のschema 更新が必要） | typed code のみ。permission UI と diagnostics の分岐用であり、raw 使用量・時刻・package は運ばない |
+| personalization snapshot identity (Issue #203 / spec 203) | `schemaVersion` 文字列（`personalization-signals-v1`）と contentDigest | **Allowed**（将来のjournal 化時。制約は上記行と同一） | content-addressed identity のみ。bucket 値・entries・package/profile identity・timestamp は含まない |
+| personalization signal 内容 (Issue #203 / spec 203) | bucket 値、entries、`SignalField` 値、`LauncherOriginEntry` | **Never** | — |
 | capture 側例外のidentity（Issue #172） | exception class 単純名 | **Allowed**（`OrganizerDiag` tag・DEBUG level・debug build・capture 失敗時のみのlogcat 行。journal・export には書かない） | `phase=CAPTURE exceptionClass=<simple name>`。専用typed API（`Class<out Throwable>` のみ受取）が強制するため、message・layout 由来text は型として渡せない。raw `Throwable.message` とstack trace は本行にも含めない |
 | capture 側違反不変条件のcategory（Issue #299 / CI-AC-08） | 違反されたcapture不変条件のclosed enum（`CaptureInvariantCategory`）定数名 | **Allowed**（上記行に付随する `invariant=<constant name>` field。同一条件: debug build・capture 失敗時のみ。journal・export には書かない） | `invariant=INVALID_WIDGET_ROW` または `invariant=INVALID_CAPTURE_STATE`。定数名のみで、行内容・座標・package等は型として渡せない。typed違反は具体category、未型付けの `IllegalArgumentException` は汎用categoryを使う。他のRuntimeExceptionでは当field自体が現れない |
 | random opaque ID | `RunId`、`RecoveryPointId` | **Allowed** | 相関key |
