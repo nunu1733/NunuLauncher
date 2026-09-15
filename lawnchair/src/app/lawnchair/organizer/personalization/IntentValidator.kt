@@ -60,7 +60,7 @@ object IntentValidator {
         // refs, and the two sets are disjoint.
         val unresolved = intent.unresolvedRefs.toSet()
         if (unresolved.size != intent.unresolvedRefs.size) {
-            return IntentValidation.Failure(IntentValidationFailure.DuplicateRef)
+            return IntentValidation.Failure(IntentValidationFailure.IncompleteCoverage)
         }
         val covered = intentRefs.toSet()
         if ((covered intersect unresolved).isNotEmpty()) {
