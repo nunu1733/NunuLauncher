@@ -91,6 +91,25 @@ internal object NewFolderPlanFixtures {
         ),
     )
 
+    /**
+     * Issue #336: one planned folder formed under a user-defined category. The
+     * folder naming always carries the stable ID; [userCategoryTitle] decides
+     * whether the fixture's catalog snapshot also contains that entry — null
+     * models "the planned folder's category is absent from this composition's
+     * snapshot" (the unknown-ID fallback fixture).
+     */
+    fun userCategoryFolder(userId: String = "3f2b8c4e-1234-4abc-9de0-1234567890ab", userCategoryTitle: String? = "Commute tools"): Fixture {
+        val id = app.lawnchair.organizer.planning.UserCategoryId(userId)
+        return fixture(
+            ids = listOf("1", "2", "3", "4", "5"),
+            folders = listOf(
+                PlannedFolderSpec(ordinal = 0, workspaceCell = GridCell(1, 0), members = listOf("4", "5")),
+            ),
+            userNamingId = id,
+            catalogEntry = userCategoryTitle?.let { app.lawnchair.organizer.planning.UserDefinedCategory(id, it) },
+        )
+    }
+
     /** Runs the real materializer; the oracles only ever consume its Ready plan. */
     fun materializeReady(
         fixture: Fixture,
@@ -114,7 +133,12 @@ internal object NewFolderPlanFixtures {
         val members: List<String>,
     )
 
-    private fun fixture(ids: List<String>, folders: List<PlannedFolderSpec>): Fixture {
+    private fun fixture(
+        ids: List<String>,
+        folders: List<PlannedFolderSpec>,
+        userNamingId: app.lawnchair.organizer.planning.UserCategoryId? = null,
+        catalogEntry: app.lawnchair.organizer.planning.UserDefinedCategory? = null,
+    ): Fixture {
         val ruleVersion = RuleVersion("v2")
         val taxonomyVersion = TaxonomyVersion("tv1")
         val profile = ProfileId("personal")
@@ -180,9 +204,13 @@ internal object NewFolderPlanFixtures {
                     NewFolder(
                         ordinal = NewFolderOrdinal(folder.ordinal),
                         profile = profile,
-                        naming = app.lawnchair.organizer.planning.FolderNaming.FromCategory(
-                            app.lawnchair.organizer.planning.CategoryId("CATEGORY_${folder.ordinal}"),
-                        ),
+                        naming = if (folder.ordinal == 0 && userNamingId != null) {
+                            app.lawnchair.organizer.planning.FolderNaming.FromUserCategory(userNamingId)
+                        } else {
+                            app.lawnchair.organizer.planning.FolderNaming.FromCategory(
+                                app.lawnchair.organizer.planning.CategoryId("CATEGORY_${folder.ordinal}"),
+                            )
+                        },
                         workspacePlacement = PlacementTarget.WorkspaceTarget(page, folder.workspaceCell, GridSpan(1, 1)),
                         members = folder.members.map { ItemId(it) },
                     )
@@ -218,7 +246,7 @@ internal object NewFolderPlanFixtures {
                     allowedCategories = listOf(app.lawnchair.organizer.planning.CategoryId("tools")),
                     fallbackCategory = app.lawnchair.organizer.planning.CategoryId("tools"),
                 ),
-                emptyList(),
+                catalogEntry?.let { listOf(it) } ?: emptyList(),
             ),
             signals = ClassificationSignals(entries = emptyList()),
             targets = TargetSet(
