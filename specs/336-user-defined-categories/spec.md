@@ -28,17 +28,19 @@ The active category catalog presented to the planner is, conceptually, `built-in
 
 - `CategoryIdentity` is a closed planning-domain type: `BuiltIn(CategoryId)` or `UserDefined(UserCategoryId)`.
 - `UserCategoryId` is a stable, local, opaque ID minted by Rule Management (canonical lowercase UUID v4 form; never derived from the display name, never shown in user UI, never derived from platform or AI output in this Issue).
-- `UserDefinedCategory` carries exactly `id: UserCategoryId` and `displayName`. The display name is presentation only: canonical equality and ordering use the ID alone. The display name is a single non-blank localized line (trimmed, bounded length, no field/newline separators) and is **not** an identity.
+- `UserDefinedCategory` carries exactly `id: UserCategoryId` and `displayName`. The display name is presentation only: canonical equality and ordering use the ID alone. The display name is a single localized line that is **not** an identity, validated as: trimmed, Unicode NFC-normalized, 1–50 code points long, with no field separators (`|`) and no line breaks. Display names are **unique within the user-defined catalog** under exactly this normalization; a create or rename that would collide is a typed duplicate-name failure with no write.
 - Canonical ordering is total and rename-invariant: built-in categories in their existing UTF-8 byte order first, then user-defined categories in UTF-8 byte order of their stable IDs. Inserting or renaming a user-defined category never reorders other identities' relative order.
-- Built-in categories remain immutable: renaming or deleting a built-in category is impossible, and `OTHER` remains the sole fallback category. A user-defined category may share a display name with a built-in category or with another user-defined category; identity collision is impossible because the ID namespaces are disjoint by construction.
+- Built-in categories remain immutable: renaming or deleting a built-in category is impossible, and `OTHER` remains the sole fallback category. A user-defined category may share a display name with a built-in category's localized label; the assignment UI's text marker distinguishes them. Identity collision between the namespaces is impossible by construction.
 
 ## Active category catalog
 
-The planner receives one catalog surface (replacing the direct `TaxonomyContract` field on `OrganizationInput`) that exposes:
+The planner receives one combined membership surface — a new `ActiveCategoryCatalog` input field on `OrganizationInput` — that exposes:
 
 - the allowed `CategoryIdentity` set: the active built-in v1 taxonomy's 34 IDs plus the current user-defined entries;
 - the unchanged built-in fallback (`OTHER`);
 - the built-in `TaxonomyContract` itself with its bundle identity, and the user-defined entries as a separate content-addressed projection.
+
+`OrganizationInput.taxonomy` itself remains the immutable built-in `TaxonomyContract`; its existing application-side role (`ValidatedLayoutPlan.taxonomyVersion` and the materializer's plan/input version check) is unchanged and continues to refer to the built-in taxonomy version only. The catalog embeds the same built-in contract, and planner validation rejects an input whose catalog's built-in projection differs from `taxonomy` (one consistency invariant, fail-closed).
 
 Rules:
 
@@ -55,7 +57,7 @@ Rule Management owns one app-private, local-only AtomicFile snapshot store under
 - Physical absence of the file is the defined schema-1 generation-0 empty catalog, not a missing source.
 - The writer validates, derives the next complete entry set, increments the generation exactly once per state-changing mutation, publishes via `startWrite()`/fsync/`finishWrite()`, re-opens and verifies the final file through the same boundary before reporting success, and calls `failWrite()` on any interruption. `(generation, digest)` is the optimistic conflict token; a mismatch is a typed `Conflict` with no overwrite.
 - Typed read outcomes are at least `Ready`, `Unreadable` (corrupt, duplicate ID, malformed name, digest mismatch), and `UnsupportedSchema` (newer schema). All are fail-closed: no repair, no default, no partial catalog. The store is excluded from backup/restore (`backupscheme.xml` verified); a restored installation starts from the defined empty catalog; downgrade to an older binary leaves the store untouched and the old binary simply does not read it.
-- Mutations: `Create` (mints a fresh `UserCategoryId`, requires a valid display name, typed failure when the bounded catalog capacity is exceeded), `Rename` (valid display name; ID and order unchanged), `Delete` (see Delete semantics). No-op requests preserve file, generation, and identity.
+- Mutations: `Create` (mints a fresh `UserCategoryId`, requires a valid display name per the Identity-model rules — trim, NFC, 1–50 code points, uniqueness within the catalog — with typed invalid-name/duplicate-name failures and a typed failure when the bounded catalog capacity of 64 entries is exceeded), `Rename` (same validation; ID and order unchanged), `Delete` (see Delete semantics). The store applies the normalization before validation and persists the normalized form, so codec validation and UI tests see one canonical rule. No-op requests preserve file, generation, and identity.
 
 ## Classification semantics
 
@@ -77,7 +79,7 @@ Deleting a user-defined category is one user operation with an explicit, two-sto
 
 1. Under the authoring lease, the coordinator first removes every override assignment that references the category (explicit `Remove` per key, one atomic override-store publication).
 2. It then publishes the catalog snapshot without the category.
-3. The operation is committed only when both publications verified; otherwise the user gets a typed failure. Because step 1 precedes step 2, every intermediate state keeps the composition well-defined: assignments-removed-but-category-present is a benign empty category; category-removed-with-dangling-assignments (only reachable by a failed step 2) fails closed as above and is repairable by retrying the delete.
+3. The operation is committed only when both publications verified; otherwise the user gets a typed failure and the UI reloads and renders the truthful committed state. The protocol is deliberate about its one partial state: if step 2 fails after step 1 succeeded, the assignment removals are **already durable** and the category remains as an empty entry. That state is well-defined and benign; the UI must not present it as an undone operation, and a retry completes the delete of the now-empty category. The protocol is per-store atomic, **not a cross-store transaction**: "atomic persistence" in AC-2 is a single-store guarantee. A catalog from which the category is removed while assignments still reference it is **not reachable through this protocol** and remains solely the external-corruption fail-closed state described in Override integration.
 
 Deleted assignments are never silently remapped to the fallback category or to any other category; the affected apps return to normal S2–S6 automatic classification on the next fresh composition, and the UI states this outcome before confirmation. Tombstoning is rejected (see Alternatives).
 
@@ -86,13 +88,21 @@ Deleted assignments are never silently remapped to the fallback category or to a
 - A new closed `PolicySourceKind` (user-defined category catalog) joins `InputProvenance` as a mandatory row carrying `(schema, generation, digest)`; the empty catalog carries the defined sentinel identity. Diagnostics may record only source kind, version/generation, result codes, and opaque digests — never IDs, display names, or entry contents.
 - The catalog identity joins the mandatory dynamic cut: it is read once before platform evidence and re-read for the stability comparison, subject to the existing bounded two-attempt protocol; an unstable cut is the existing typed `NotReady(DYNAMIC_CUT_UNSTABLE)`. New typed read-failure codes (catalog unreadable / unsupported schema) join the closed `InputCompositionCode` vocabulary, and [organizer-diagnostics.md][7] is updated in the same change.
 - A committed catalog change between runs never reinterprets an existing preview: category authoring (create/rename/delete) and override mutations are admissions in the existing single organization-operation lease domain, so an active manual/onboarding/recovery operation rejects them and vice versa (reject/busy, no invalidation, no replan-in-place). After the operation terminates, the next fresh composition re-reads the catalog through the cut; the plan then reflects the new catalog with full provenance.
-- The #331 scope-binding gate re-derives each candidate's resolved classification at run time; a catalog change between export and run manifests as the existing typed scope-mismatch failure and its specified replan path. This Issue adds no new preview-staleness semantics.
+- The #331 scope-binding gate re-derives each candidate's resolved classification at run time. This Issue fixes that projection explicitly (next section) so that user-defined catalog state cannot silently reinterpret an active session.
+
+### Exchange export and #331 binding projection
+
+User-defined category identity never enters the external exchange surface: neither the raw `UserCategoryId` nor a display name may appear in an export document, a session record, or an intent payload. Concretely:
+
+- A candidate whose resolved classification is a user-defined category is exported with **no category** (the existing absent-category projection), never with an ID or name. Built-in classifications export exactly as today.
+- The #331 export-session candidate digest and the scope-binding gate apply **the same projection rule** at export time and gate time. Because renames, deletions, and creations of user-defined categories do not change any built-in-resolved classification, they never invalidate an active exchange session under this rule. A session still fails through the existing typed scope-mismatch path when its recorded projection genuinely diverges (candidate set, availability, or a built-in-resolved classification change).
+- #204 `PersonalizedIntentProjection.groupSemantic` keeps addressing built-in categories only (built-in `CategoryId`-typed); intents cannot reference, assign, or create user-defined categories.
 
 ## Planner and strategy integration
 
 - Folder formation groups by `(profile, CategoryIdentity)` with the same capacity partition, minimum group size, fallback-skip, and profile-isolation rules; user-defined groups participate identically, ordered by the canonical identity order.
 - Category-contiguous ordering uses the same canonical identity order (fallback last), so user-defined categories are first-class inputs to `CATEGORY_CONTIGUOUS_V1` and any category-consuming strategy under the unchanged safety contracts.
-- New folders formed under a user-defined category carry a new `FolderNaming` variant carrying the stable ID. The materializer resolves the title exactly once from the current catalog's display name at creation time, with the same total-lookup/generic-fallback policy and no raw ID exposure. Plan canonical representation carries the identity (stable ID), never the display name: **a rename does not change the canonical plan bytes**; the new name appears only in titles of folders generated by later runs.
+- New folders formed under a user-defined category carry a new `FolderNaming` variant carrying the stable ID. Title resolution is bound to **the same `OrganizationInput`'s catalog snapshot** — never a fresh store read: the callers of plan materialization combine the injected built-in `FolderTitleResolver` presentation with a total lookup over that snapshot's display names, resolving exactly once per planned folder at creation time, with the same generic-fallback policy and no raw ID exposure. The `FolderTitleResolver` contract (non-blank localized title, total lookup, fail-closed on blank) is unchanged; preview and apply consume the same creation-time title from the same snapshot. Plan canonical representation carries the identity (stable ID), never the display name: **a rename does not change the canonical plan bytes**; the new name appears only in titles of folders generated by later runs.
 - Determinism (same canonical input + same catalog content ⇒ byte-equal canonical plan), idempotence, convergence, and the existing planner invariants are restated and tested over mixed catalogs; a catalog consisting of built-in categories only reproduces today's plans exactly.
 - The runtime active catalog and the built-in taxonomy identity remain distinct: the bundle's taxonomy projection and digest are untouched, and no code may treat the union as bundle content.
 
@@ -103,50 +113,54 @@ At least the following, localized and reachable from the existing Home Screen se
 - **Create**: name entry with validation feedback; success shows the new category in the catalog list and in the assignment selector.
 - **Rename**: name edit; the operation is presented as renaming the same category; committed state keeps assignments and grouping.
 - **Delete**: confirmation that states how many apps are currently assigned and that those apps return to automatic classification; deletion never offers a "move to another category" silent remap.
-- **Assignment** (in the existing override editor): built-in and user-defined categories appear in canonical order, and user-defined entries are distinguishable from built-in ones by text and semantics (e.g. a localized "Custom" marker), never by color alone. Display-name duplicates are allowed and remain distinguishable in context (list placement, marker).
-- Raw category IDs, serials, and taxonomy internal vocabulary are never shown. Failure, busy, and conflict states are typed and localized, with truthful committed-state rendering after reload.
+- **Assignment** (in the existing override editor): built-in and user-defined categories appear in canonical order, and user-defined entries are distinguishable from built-in ones by text and semantics (e.g. a localized "Custom" marker), never by color alone. Catalog-internal uniqueness of display names (Identity model) guarantees that every custom entry in the selector is presented under a unique visible name.
+- **Create/rename validation**: name rules (trim, NFC, 1–50 code points, uniqueness within the user-defined catalog) are enforced with typed, localized feedback before any write.
+- Raw category IDs, serials, and taxonomy internal vocabulary are never shown. Failure, busy, and conflict states are typed and localized, with truthful committed-state rendering after reload (in particular, a partially completed delete renders as "category remains, assignments removed", not as an undone operation).
 
 Accessibility bar (carried from #99 AC-10): TalkBack labels/roles, focus restoration after save/cancel/error, keyboard/DPAD and switch activation, non-color state, touch targets, 200% font scale, and long localized names without clipped controls.
 
 ## Compatibility
 
 - Built-in-only runs (empty catalog, no user-defined overrides) produce byte-identical canonical plans to the current implementation. Provenance representation gains one constant sentinel row and a cut-input change; this is a documented provenance format evolution, not a plan behavior change, and existing assertions are updated deliberately.
-- Downgrade: an older binary never reads the catalog store, and the schema-2 override snapshot fails closed as `UnsupportedSchema` (never stale/empty S1). Normal Launcher operation and the home layout remain unmodified in every failure case.
+- Downgrade: an older binary never reads the catalog store (it stays untouched on disk). A pre-336 binary reading the schema-2 override snapshot observes its **existing fail-closed decode outcome** — on the current mainline, typed `Unreadable` and composer `OVERRIDE_UNREADABLE` — never stale or empty S1 data, and never a write. `UnsupportedSchema` remains the contract of a *current* binary encountering a schema newer than it supports; no implementation may retrofit new typed outcomes onto old binaries. Normal Launcher operation and the home layout remain unmodified in every failure case.
 - No Launcher DB schema, favorites content, layout application, or recovery contract changes. The store adds no permission, network, or background work.
 
 ## Acceptance criteria
 
-- [ ] **AC-1** — User-defined categories have a stable local opaque ID and a display name; identity, canonical ordering, and equality are display-name-independent and rename-invariant.
-- [ ] **AC-2** — Create/rename/delete follow the defined lifecycle with atomic, recovery-aware, generation+digest persistence, typed success/no-op/conflict/failure outcomes, and full-store verification before success.
+- [ ] **AC-1** — User-defined categories have a stable local opaque ID and a display name; identity, canonical ordering, and equality are display-name-independent and rename-invariant. Display names are trim+NFC-normalized, 1–50 code points, and unique within the user-defined catalog (typed duplicate/invalid-name failures, no writes).
+- [ ] **AC-2** — Create/rename/delete follow the defined lifecycle with atomic (per-store), recovery-aware, generation+digest persistence, typed success/no-op/conflict/failure outcomes, and full-store verification before success; the two-store delete is explicitly not a cross-store transaction and its partial state is truthful.
 - [ ] **AC-3** — Renaming a category keeps every existing assignment, grouping identity, and canonical plan content stable; only subsequently generated titles reflect the new name.
-- [ ] **AC-4** — The active catalog safely represents built-in + user-defined identities with disjoint ID namespaces, total canonical order, unchanged built-in fallback, and unchanged bundle taxonomy identity.
+- [ ] **AC-4** — The active catalog safely represents built-in + user-defined identities with disjoint ID namespaces, total canonical order, unchanged built-in fallback, and unchanged bundle taxonomy identity; a catalog/built-in divergence in one input is rejected fail-closed.
 - [ ] **AC-5** — The #99 override editor can assign, change, and remove user-defined categories with unchanged S1 precedence and removal semantics; invalid targets fail typed without writes.
-- [ ] **AC-6** — The planner and category-consuming strategies treat user-defined categories as first-class (grouping, contiguous ordering, folder naming) under unchanged safety invariants.
+- [ ] **AC-6** — The planner and category-consuming strategies treat user-defined categories as first-class (grouping, contiguous ordering, folder naming) under unchanged safety invariants, and folder titles resolve from the same composition's catalog snapshot (never a fresh store read), with preview and apply consuming the same creation-time title.
 - [ ] **AC-7** — Creating a category alone never re-classifies any app; no S2–S6 source can target a user-defined category (structurally and via planner validation).
-- [ ] **AC-8** — Delete removes assignments explicitly and never silently remaps them; every intermediate failure state is well-defined, fail-closed or benign, and recoverable.
+- [ ] **AC-8** — Delete removes assignments explicitly and never silently remaps them; the step-2-failure state (assignments durably removed, empty category remains) is rendered truthfully and completed by retry; dangling assignments are reachable only via external corruption and fail closed.
 - [ ] **AC-9** — Catalog generation/digest joins composition provenance and the dynamic cut; empty catalog uses the defined sentinel identity.
 - [ ] **AC-10** — Corrupt, duplicate, malformed, digest-invalid, or newer-schema catalog data fails closed (typed, zero-write); concurrent edits surface typed `Conflict`; edits during an active run/recovery/authoring operation are rejected by the lease.
-- [ ] **AC-11** — Built-in-only runs keep deterministic, byte-identical plans; mixed-catalog determinism/idempotence/property coverage exists; backup exclusion and downgrade fail-closed behavior are verified.
-- [ ] **AC-12** — Focused unit, composer-integration, UI, and connected/device evidence covers create/rename/delete/assign/remove, migration, cut instability, corruption, conflict, and no-layout-mutation.
+- [ ] **AC-11** — Built-in-only runs keep deterministic, byte-identical plans; mixed-catalog determinism/idempotence/property coverage exists; backup exclusion is verified; downgrade to a pre-336 binary observes its existing fail-closed override outcome (`Unreadable`/`OVERRIDE_UNREADABLE` on the current mainline) without stale or empty S1 consumption and without layout changes.
+- [ ] **AC-12** — Focused unit, composer-integration, UI, and connected/device evidence covers create/rename/delete/assign/remove, migration, cut instability, corruption, conflict, title binding, and no-layout-mutation.
 - [ ] **AC-13** — TalkBack, keyboard/DPAD, Switch Access, non-color state, focus restoration, and 200% font scale are verified for authoring and assignment flows; no raw IDs in any user UI.
-- [ ] **AC-14** — Privacy: diagnostics/journal/export never contain user-defined IDs, display names, or entry contents; the store is excluded from backup.
+- [ ] **AC-14** — Privacy: diagnostics/journal/export never contain user-defined IDs, display names, or entry contents; exchange exports project user-defined classifications as absent categories (parity-tested at export and gate time); the store is excluded from backup.
 
 ## Explicit non-goals
 
 - AI-driven category creation, suggestion, or auto-confirmed assignment (separate Issue; AI output never persists a category in this Issue).
 - Retiring or replacing the Play-Store-derived built-in taxonomy; changing built-in category membership, order, fallback, or enabling built-in rename/delete.
-- Using display names as identity, or requiring globally unique display names.
+- Using display names as identity.
+- External exchange of user-defined categories (exporting their identity/name, or letting #204 intents address them) — a future Issue may propose an explicit, privacy-reviewed projection.
 - Arbitrary script/rule execution; rule import/export (FR-012); cloud sync or backup transfer of the catalog.
 - Automatic layout application triggered by category edits; category edits never start a run or mutate a plan/preview/recovery state.
 - An AI-confirmed assignment path or intent-driven assignment to user-defined categories (#204 intents keep addressing built-in categories only in this Issue).
 
 ## Alternatives considered
 
-- **Tombstoned deletion** (keep a hidden marker so old previews/sessions can resolve the deleted ID) — rejected: it adds a second lifecycle state, keeps dead identity in the catalog surface, and invites silent remapping of resolved values; the #331 gate already specifies typed mismatch + replan for changed scope/classification projections.
+- **Tombstoned deletion** (keep a hidden marker so old previews/sessions can resolve the deleted ID) — rejected: it adds a second lifecycle state, keeps dead identity in the catalog surface, and invites silent remapping of resolved values; the #331 gate already specifies typed mismatch + replan for changed scope/classification projections, and this Issue's export projection keeps sessions stable without tombstones.
 - **Require unassignment before delete** (two separate user operations) — rejected as strictly worse UX than explicit removal inside one operation; the chosen overrides-first protocol provides the same safety with one operation.
+- **Allow duplicate display names with a disambiguator** — rejected: opaque IDs are not user-usable disambiguators, and synthetic counters/indexes leak catalog internals into UI and accessibility names; uniqueness under fixed normalization achieves unambiguous presentation with less machinery.
 - **Reuse a dummy built-in category** — the problem statement itself; rejected.
 - **Fold user-defined entries into the bundle taxonomy or a mutable bundle** — rejected: bundle identity is binary-immutable (ADR-0007); per-user content must not change bundle digest or version.
 - **Derive the stable ID from the display name (slug)** — rejected: rename would break identity or require ID-freezing exceptions; equality/order must be rename-invariant.
+- **Resolve custom folder titles from a fresh store read at materialization** — rejected: it breaks the composition-cut contract (the resolved catalog could differ from the one the plan was built from) and would couple the application layer to Rule Management storage.
 
 ## References
 
