@@ -2,7 +2,7 @@
 
 > Issue: #330
 > Spec: [spec.md](./spec.md)
-> Status: **accepted (2026-09-16)** — specのdraft decisions D-1〜D-6はre-review (Issue #330 comment 5698414707) によりowner受入れ済み。実装を開始する (下記execution checklist)。
+> Status: **implemented (2026-09-16)** — execution checklist全項目完了。[PR #335](https://github.com/nunu1733/NunuLauncher/pull/335) merge (commit `dce8f5779c8e`) でmainへ取り込まれた。
 > Baseline: `origin/main` = `aab0d293d1a98bf59f5b164693f54ee1a63e3f0b` (2026-09-16時点。#331実装 PR #333 merge + docs PR #334 merge 後)。
 
 ## Re-entry status
@@ -10,6 +10,7 @@
 - 2026-09-16: 初回起草。Issue #330 (2026-09-16T08:04:05Z作成、comment 0件・owner decisionなし) を確認済み。過去のspec/plan snapshotは存在しない (`specs/330-*` なし)。baseline SHAは前workerの記録と同一 (`aab0d293d1`) であり、起草時点の追加差分確認は不要。
 - 2026-09-16: Re-entry (review Required finding対応)。`git fetch origin main` 後、origin/mainはbaseline `aab0d293d1` から不動であることを確認 (validator/codec/composer/instruction周辺の差分なし)。Issue #330 review comment 5698080251 のRequired「bare `{"ref":"X"}` の semantic identity を Spec で固定する」を受け、spec に **D-6** (bare entry = 全semantic fieldがnullのitemIntents entry をcompletionでcanonical unresolvedへ正規化し、明示unresolved / 省略 / bare entryを同一semantic identityとする。review提示の選択肢1) を追加。本planには bare entry正規化の設計 (下記Design) と stable identity / replay test (下記Verification) を反映した。正本実装 (`IntentPlannerAdapter` / `IntentIdentity` / `FullRunExecution` のpreference消費) を再読し、all-null `ItemPreference` がplanner効果を持たない事実を再確認済み。
 - 2026-09-16: **Accepted → 実装完了**。re-review (comment 5698414707) によりD-1〜D-6 accepted。execution checklist 2〜9を実施: `IntentCompletion.kt` 新規 (RefDecision / CompletedPersonalIntent / complete()、bare entry正規化)、validator coverage narrow + `ValidatedPersonalizedIntent.completed` (derived) + identityのcompleted形式化、`SCHEMA_VERSION`/`INTENT_SCHEMA_VERSION` のv3 bump、`IntentPlannerAdapter` のcompleted消費化、instruction文言の部分authoring化、`INCOMPLETE_COVERAGE` 文言更新 (ja/en)、正本更新 (specs 204/205/331 Change history、CONTEXT.md用語、DESIGN.md gate 12)。実装上の確定事項: `CompletedPersonalIntent` 型名はplanどおり、`ValidatedPersonalizedIntent.completed` はconstructor外のderived property (`lazy`) としseam signatureを不変に維持、`IntentIdentityCalculator.identity(canonicalRepresentation)` はcompleted単一引数へ、canonical行順はref昇順の単一pass (item行とunresolved行をinterleave、row grammarは現行維持)。
+- 2026-09-16: **implemented** — [PR #335](https://github.com/nunu1733/NunuLauncher/pull/335) merge (commit `dce8f5779c8e`)。検証: organizer unit lane 1302 tests / 0 failures、`spotlessCheck` PASS、`assembleLawnWithQuickstepGithubDebug` PASS、CI run [35109057035](https://github.com/nunu1733/NunuLauncher/actions/runs/35109057035) (final-status含む全14 job成功)。独立監査 Approve ([docs/assessment/pr-335-partial-intent-authoring.md](../../docs/assessment/pr-335-partial-intent-authoring.md))。実装詳細の確定事項はRe-entry status第3項のとおり。
 
 ## Current evidence
 

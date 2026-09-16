@@ -1,6 +1,6 @@
 ---
 issue: "#330"
-status: accepted
+status: implemented
 requirements: [FR-017]
 risk:
   - privacy
@@ -10,7 +10,7 @@ updated: 2026-09-16
 
 # External Agent向けPersonalizedIntent authoring contractの簡素化 (partial authoring契約)
 
-> Status: **accepted** (2026-09-16) — Issue #330 re-review (comment 5698414707) により D-1〜D-6 がowner受入れされた。実装は本specの受入条件に従う (plan.mdのexecution checklist)。本specはimplementedであるspec 204 / 205 / 331と矛盾しない **拡張** として起草しており、実装PRでこれらのChange historyへ拡張記録を追加する。
+> Status: **implemented** (2026-09-16) — Issue #330 re-review (comment 5698414707) により D-1〜D-6 がowner受入れされ、[PR #335](https://github.com/nunu1733/NunuLauncher/pull/335) (merge commit `dce8f5779c8e`) で実装がmainへ取り込まれた。独立監査記録: [docs/assessment/pr-335-partial-intent-authoring.md](../../docs/assessment/pr-335-partial-intent-authoring.md)。specs 204 / 205 / 331のChange historyへの拡張記録は実装PR (#335) で追加済み。
 
 ## Problem
 
@@ -275,6 +275,7 @@ Design questions 1〜4の比較は、次の軸で評価する。
 - 2026-09-16: Draft created for Issue #330。baseline `aab0d293d1` (origin/main、#331実装merge後) 上で起草。現行実装 (`IntentValidator.kt` のcoverage partition / mobility検証、`IntentCodec.kt`、`ExchangePackageComposer.kt` instruction、`IntentIdentity.kt`、`IntentPlannerAdapter.kt`、`AndroidExportSessionStore.kt`) とimplemented specs 204/205/331を確認し、Issue本文の4 design questionについて比較軸 (i)〜(vi) を固定してA/B/C・a/b/c比較とdraft decisions D-1〜D-5を起草。statusはdraft (owner受入れ待ち)。
 - 2026-09-16: Re-entry (review Required finding対応)。Issue #330 review (comment 5698080251) のRequired「bare `{"ref":"X"}` の semantic identity を Spec で固定する」に対応し、旧Open question 3を **D-6** (bare entryのcanonical unresolved正規化・3表現同一identity。review提示の選択肢1) として確定した。根拠として現行plannerの全preference consumerが個別fieldのみを参照しall-null `ItemPreference` に効果がないことを `FullRunExecution.kt` で再確認。scenario 2件・AC-2/4/5・test oracle・Contract変更詳細を更新。baseline変更なし (`aab0d293d1` のまま)。statusは引き続きdraft。
 - 2026-09-16: **Accepted** — re-review (comment 5698414707) によりD-1〜D-6が受入れされた (Required指摘なし)。statusをacceptedへ更新し、実装 (plan.md execution checklist) へ進む。
+- 2026-09-16: **implemented** — [PR #335](https://github.com/nunu1733/NunuLauncher/pull/335) merge (commit `dce8f5779c8e`) により本契約の実装 (partial authoring v3・`IntentCompletion` completer・completed identity・validator coverage narrow・instruction文言・UI文言) がmainへ取り込まれた。ChatGPT実装review Approve (head `8e7afb4d32`、[comment](https://github.com/nunu1733/NunuLauncher/issues/330#issuecomment-5699008537))、独立監査 Approve (head `05d4669c42`)、高リスクgate (`risk: layout-data`) green ([CI run 35109057035](https://github.com/nunu1733/NunuLauncher/actions/runs/35109057035)、final-status含む全14 job成功)。organizer unit lane 1302 tests / 0 failures。実AI (ChatGPT/Gemini) によるv3部分authoringの実測 (device evidence) は後続evidence Issueへ残置。
 
 ## References
 
