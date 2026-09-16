@@ -1,13 +1,13 @@
 ---
 issue: "#336"
-status: draft
+status: accepted
 spec: ./spec.md
 updated: 2026-09-17
 ---
 
 # Implementation plan — User-defined categories as first-class Organizer taxonomy
 
-> **Stage gate:** This plan and its companion `spec.md` are implemented only after acceptance on Issue [#336][1]. The baseline is `main` at merge commit `3170c57e32fd6ec40cc592dd10e8535b2999d4b7` (PR #339 / Issue #329; the merge touches only the exchange/personalization area and no file in this plan's change surface). Any implementation discovery that contradicts an accepted decision is a stop condition, not permission for an implicit alternative.
+> **Stage gate:** This plan and its companion `spec.md` were accepted on Issue [#336][1] (ChatGPT re-review 2 **Approved** at head `0cff39b7a1`, no blocking/required findings — [verdict][7]). The baseline is `main` at merge commit `3170c57e32fd6ec40cc592dd10e8535b2999d4b7` (PR #339 / Issue #329; the merge touches only the exchange/personalization area and no file in this plan's change surface). Any implementation discovery that contradicts an accepted decision is a stop condition, not permission for an implicit alternative.
 
 ## Current evidence
 
@@ -127,3 +127,4 @@ Stop and return to the owning contract if: the planner cannot keep byte-identica
 [4]: ../../specs/99-user-authored-category-overrides/spec.md "Issue #99 specification"
 [5]: ../../docs/engineering/organizer-diagnostics.md "Organizer diagnostics contract"
 [6]: ../../docs/engineering/quality-strategy.md "Quality strategy"
+[7]: https://github.com/nunu1733/NunuLauncher/issues/336#issuecomment-5701844245 "Phase1 re-review 2 — approved"

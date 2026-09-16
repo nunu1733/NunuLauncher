@@ -1,6 +1,6 @@
 ---
 issue: "#336"
-status: draft
+status: accepted
 requirements:
   - FR-010
   - FR-011
@@ -14,7 +14,7 @@ updated: 2026-09-17
 
 # User-defined categories as first-class Organizer taxonomy
 
-> **Status:** Draft. Implementation may not start before this specification and its companion `plan.md` are accepted on Issue [#336][1].
+> **Status:** Accepted on Issue [#336][1] after ChatGPT review (initial review [changes requested][r1], addressed at `8024653378`; re-review [changes requested][r2] on the exchange projection, addressed at `0cff39b7a1`; re-review 2 **Approved** with no blocking/required findings — [verdict][r3]). This specification and its companion `plan.md` are the binding contract for Phase2 implementation. Production behavior must remain within the stated scope and stop conditions.
 
 ## Problem and outcome
 
@@ -171,6 +171,9 @@ Accessibility bar (carried from #99 AC-10): TalkBack labels/roles, focus restora
 ## References
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/336 "Issue #336 — User-defined categories as first-class taxonomy"
+[r1]: https://github.com/nunu1733/NunuLauncher/issues/336#issuecomment-5701419152 "Phase1 review — changes requested"
+[r2]: https://github.com/nunu1733/NunuLauncher/issues/336#issuecomment-5701716689 "Phase1 re-review — changes requested (exchange projection)"
+[r3]: https://github.com/nunu1733/NunuLauncher/issues/336#issuecomment-5701844245 "Phase1 re-review 2 — approved"
 [2]: ../../docs/adr/0007-authoritative-organization-policy-sources.md "ADR-0007 — Authoritative organization policy sources"
 [3]: ../../specs/99-user-authored-category-overrides/spec.md "Issue #99 specification — User-authored category overrides"
 [4]: ../../specs/83-production-organization-input-sources/spec.md "Issue #83 specification — Production OrganizationInput sources"
