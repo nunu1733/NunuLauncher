@@ -1,5 +1,7 @@
 package app.lawnchair.organizer.planning
 
+import app.lawnchair.organizer.planning.ActiveCategoryCatalog
+import app.lawnchair.organizer.planning.CategoryIdentity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -60,7 +62,7 @@ class CategoryContiguousStrategyTest {
         members = children.map { ItemId(it) },
     )
 
-    private fun signal(id: String, category: String) = ClassificationSignal(ItemId(id), SignalSource.S1, CategoryId(category))
+    private fun signal(id: String, category: String) = ClassificationSignal(ItemId(id), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId(category)))
 
     private fun input(
         items: List<CapturedItem>,
@@ -70,6 +72,7 @@ class CategoryContiguousStrategyTest {
         snapshot = LayoutSnapshot(RevisionId("rev"), device(), pages, items, emptyList()),
         rules = rules(),
         taxonomy = taxonomy(),
+        catalog = ActiveCategoryCatalog(taxonomy(), emptyList()),
         signals = ClassificationSignals(signals),
         targets = TargetSet(items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }, emptyList()),
         runMode = RunMode.FullOrganization,

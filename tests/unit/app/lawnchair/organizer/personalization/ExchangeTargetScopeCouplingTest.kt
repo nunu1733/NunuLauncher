@@ -18,6 +18,8 @@ import app.lawnchair.organizer.planning.CandidatePlanningIds
 import app.lawnchair.organizer.planning.CandidateTarget
 import app.lawnchair.organizer.planning.CapturedItem
 import app.lawnchair.organizer.planning.CapturedPlacement
+import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.ComponentKey
 import app.lawnchair.organizer.planning.DeviceCapabilities
 import app.lawnchair.organizer.planning.ExistingRole
@@ -98,11 +100,13 @@ class ExchangeTargetScopeCouplingTest {
         return ExportInputs(
             snapshot = snapshot,
             targets = targets,
-            resolvedCategories = resolved,
+            resolvedIdentities = resolved.mapValues { (_, value) -> builtInIdentity(value) },
             userLabels = labels,
             nowEpochMs = now,
         )
     }
+
+    private fun builtInIdentity(value: String?): CategoryIdentity? = value?.let { CategoryIdentity.BuiltIn(CategoryId(it)) }
 
     private fun candidateOf(result: BuiltExport) = result.export.items.single { it.subject == ExportItemSubject.CANDIDATE }
 
@@ -345,7 +349,7 @@ class ExchangeTargetScopeCouplingTest {
         val a = target("com.a")
         val b = target("com.b")
         val digest = CandidateScopeIdentity.digest(
-            listOf(CandidateScopeProjection(a, Availability.AVAILABLE, "NEWS")),
+            listOf(CandidateScopeProjection(a, Availability.AVAILABLE, builtInIdentity("NEWS"))),
         )
         val sessionScope = ScopeBindingSessionScope(listOf(a), digest)
         val detected = listOf(
@@ -367,7 +371,7 @@ class ExchangeTargetScopeCouplingTest {
                     detected,
                     setOf(a, b),
                     listOf(
-                        CandidateScopeProjection(a, Availability.AVAILABLE, "NEWS"),
+                        CandidateScopeProjection(a, Availability.AVAILABLE, builtInIdentity("NEWS")),
                         CandidateScopeProjection(b, Availability.AVAILABLE, null),
                     ),
                 ),
@@ -386,7 +390,7 @@ class ExchangeTargetScopeCouplingTest {
                 ScopeBindingCurrentScope(
                     listOf(DetectedCandidateScope(a, Availability.UNAVAILABLE)),
                     setOf(a),
-                    listOf(CandidateScopeProjection(a, Availability.UNAVAILABLE, "NEWS")),
+                    listOf(CandidateScopeProjection(a, Availability.UNAVAILABLE, builtInIdentity("NEWS"))),
                 ),
             ),
         )
@@ -398,7 +402,7 @@ class ExchangeTargetScopeCouplingTest {
                 ScopeBindingCurrentScope(
                     detected,
                     setOf(a),
-                    listOf(CandidateScopeProjection(a, Availability.AVAILABLE, "SPORTS")),
+                    listOf(CandidateScopeProjection(a, Availability.AVAILABLE, builtInIdentity("SPORTS"))),
                 ),
             ),
         )
@@ -410,7 +414,7 @@ class ExchangeTargetScopeCouplingTest {
                 ScopeBindingCurrentScope(
                     detected,
                     setOf(a),
-                    listOf(CandidateScopeProjection(a, Availability.AVAILABLE, "NEWS")),
+                    listOf(CandidateScopeProjection(a, Availability.AVAILABLE, builtInIdentity("NEWS"))),
                 ),
             ),
         )
@@ -422,19 +426,19 @@ class ExchangeTargetScopeCouplingTest {
         val b = target("com.b")
         val same = CandidateScopeIdentity.digest(
             listOf(
-                CandidateScopeProjection(a, Availability.AVAILABLE, "X"),
+                CandidateScopeProjection(a, Availability.AVAILABLE, builtInIdentity("X")),
                 CandidateScopeProjection(b, Availability.AVAILABLE, null),
             ),
         )
         val reordered = CandidateScopeIdentity.digest(
             listOf(
                 CandidateScopeProjection(b, Availability.AVAILABLE, null),
-                CandidateScopeProjection(a, Availability.AVAILABLE, "X"),
+                CandidateScopeProjection(a, Availability.AVAILABLE, builtInIdentity("X")),
             ),
         )
         assertEquals(same, reordered)
-        assertNotEquals(same, CandidateScopeIdentity.digest(listOf(CandidateScopeProjection(a, Availability.AVAILABLE, "Y"))))
-        assertNotEquals(same, CandidateScopeIdentity.digest(listOf(CandidateScopeProjection(a, Availability.UNAVAILABLE, "X"))))
+        assertNotEquals(same, CandidateScopeIdentity.digest(listOf(CandidateScopeProjection(a, Availability.AVAILABLE, builtInIdentity("Y")))))
+        assertNotEquals(same, CandidateScopeIdentity.digest(listOf(CandidateScopeProjection(a, Availability.UNAVAILABLE, builtInIdentity("X")))))
         assertEquals(CandidateScopeIdentity.digest(emptyList()), CandidateScopeIdentity.EMPTY_DIGEST)
     }
 

@@ -2,6 +2,7 @@ package app.lawnchair.organizer.rules
 
 import android.content.SharedPreferences
 import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.PackageName
 import app.lawnchair.organizer.planning.ProfileId
 
@@ -14,7 +15,13 @@ data class CategoryOverrideKey(val packageName: PackageName, val profile: Profil
 data class CategoryOverrideSnapshot(
     val schemaVersion: Int,
     val generation: Long,
-    val assignments: Map<CategoryOverrideKey, CategoryId>,
+    /**
+     * Issue #336: the composer-visible assignment values are the identity-typed
+     * values. Pre-336 (built-in-only) content keeps wrapping the same raw
+     * [CategoryId]s as [CategoryIdentity.BuiltIn], so existing surfaces see
+     * unchanged semantics.
+     */
+    val assignments: Map<CategoryOverrideKey, CategoryIdentity>,
     val identity: PolicyInputIdentity,
 )
 
@@ -48,11 +55,14 @@ class SharedPreferencesCategoryOverrideSnapshotSource(
                 if (old != null) return OverrideSnapshotReadResult.Unreadable
             }
         }
-        val visible = parsed.filterKeys { it.profile in capturedProfiles }
+        // The legacy preferences surface predates user-defined categories;
+        // its values are built-in identities by construction.
+        val visible = parsed.mapValues { (_, category) -> CategoryIdentity.BuiltIn(category) }
+            .filterKeys { it.profile in capturedProfiles }
         val canonical = visible.entries.sortedWith(
-            compareBy<Map.Entry<CategoryOverrideKey, CategoryId>> { it.key.profile.value }
+            compareBy<Map.Entry<CategoryOverrideKey, CategoryIdentity>> { it.key.profile.value }
                 .thenBy { it.key.packageName.value },
-        ).joinToString("\n") { "${it.key.packageName.value}|${it.key.profile.value}|${it.value.value}" }
+        ).joinToString("\n") { "${it.key.packageName.value}|${it.key.profile.value}|${(it.value as CategoryIdentity.BuiltIn).id.value}" }
         OverrideSnapshotReadResult.Ready(
             CategoryOverrideSnapshot(
                 schemaVersion = SCHEMA_V1,

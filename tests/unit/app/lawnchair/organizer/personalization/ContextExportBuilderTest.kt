@@ -109,7 +109,9 @@ class ContextExportBuilderTest {
         return ExportInputs(
             snapshot = snapshot,
             targets = targets,
-            resolvedCategories = resolved,
+            resolvedIdentities = resolved.mapValues { (_, value) ->
+                value?.let { app.lawnchair.organizer.planning.CategoryIdentity.BuiltIn(app.lawnchair.organizer.planning.CategoryId(it)) }
+            },
             userLabels = labels,
             nowEpochMs = now,
         )

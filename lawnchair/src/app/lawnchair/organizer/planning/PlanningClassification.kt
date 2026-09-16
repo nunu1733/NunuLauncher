@@ -10,7 +10,7 @@ internal object PlanningClassification {
     fun classify(
         classifiableIds: Set<ItemId>,
         signals: ClassificationSignals,
-        taxonomy: TaxonomyContract,
+        catalog: ActiveCategoryCatalog,
     ): ClassificationOutput {
         val decisions = mutableMapOf<ItemId, CategoryDecision>()
         val warnings = mutableListOf<Warning>()
@@ -19,7 +19,7 @@ internal object PlanningClassification {
 
         for (itemId in classifiableIds) {
             val itemSignals = signalsByItem[itemId].orEmpty()
-            val decision = resolveDecision(itemId, itemSignals, taxonomy)
+            val decision = resolveDecision(itemId, itemSignals, catalog)
             decisions[itemId] = decision
             if (decision.decidedSignal == SignalSource.S6) {
                 warnings += Warning(WarningCode.FALLBACK_CATEGORY, listOf(DiagnosticParam.ItemParam(itemId)))
@@ -32,10 +32,13 @@ internal object PlanningClassification {
     private fun resolveDecision(
         itemId: ItemId,
         itemSignals: List<ClassificationSignal>,
-        taxonomy: TaxonomyContract,
+        catalog: ActiveCategoryCatalog,
     ): CategoryDecision {
+        // Issue #336: membership is catalog-based, so an S1 override onto a
+        // user-defined category resolves exactly like a built-in one while the
+        // S1 > S2–S6 precedence and the built-in fallback stay unchanged.
         val bySource = itemSignals
-            .filter { it.candidate in taxonomy.allowedCategories }
+            .filter { it.candidate in catalog.allowedIdentities }
             .groupBy { it.source }
 
         for (source in SignalSource.entries) {
@@ -53,7 +56,7 @@ internal object PlanningClassification {
 
         return CategoryDecision(
             item = itemId,
-            category = taxonomy.fallbackCategory,
+            category = catalog.fallback,
             decidedSignal = SignalSource.S6,
             confidence = Confidence.FALLBACK,
         )

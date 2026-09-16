@@ -436,11 +436,18 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
                 OverflowPolicy.ADD_PAGES_FOR_ITEMS_THAT_FIT_EMPTY_PAGE,
                 FallbackCategoryPolicy.KEEP_AS_SINGLETON,
                 app.lawnchair.organizer.planning.StrategyId("CANONICAL_PAGE_COMPACT_V1"),
-            ),
-            taxonomy = TaxonomyContract(
+            ),           taxonomy = TaxonomyContract(
                 TaxonomyVersion("v1"),
                 listOf(app.lawnchair.organizer.planning.CategoryId("other")),
                 app.lawnchair.organizer.planning.CategoryId("other"),
+            ),
+            catalog = app.lawnchair.organizer.planning.ActiveCategoryCatalog(
+                TaxonomyContract(
+                TaxonomyVersion("v1"),
+                listOf(app.lawnchair.organizer.planning.CategoryId("other")),
+                app.lawnchair.organizer.planning.CategoryId("other"),
+            ),
+                emptyList(),
             ),
             signals = ClassificationSignals(emptyList()),
             targets = TargetSet(emptyList(), emptyList()),

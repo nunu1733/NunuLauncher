@@ -101,6 +101,11 @@ data object HomeScreenPlacementLocks : PreferenceRoute
 @Serializable
 data object HomeScreenCategoryOverrides : PreferenceRoute
 
+// Issue #336: management surface for user-defined categories; carries no
+// category identity, write authorization, or catalog content.
+@Serializable
+data object HomeScreenCustomCategories : PreferenceRoute
+
 // Issue #138: supported release Settings route exposing the organizer
 // diagnostics journal export without the developer debug menu.
 @Serializable

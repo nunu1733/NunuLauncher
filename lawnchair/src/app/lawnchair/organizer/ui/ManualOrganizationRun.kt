@@ -544,7 +544,14 @@ class ManualOrganizationRun internal constructor(
             scopeCandidateDigest = intent.session.scopeCandidateDigest,
         )
         val detectedById = operation.detectedCandidates.orEmpty().associateBy { it.target }
-        val categoriesById = input.signals.entries.associate { it.item to it.candidate.value }
+        // Issue #336: the projection carries the resolved CategoryIdentity
+        // itself — built-in candidates keep the pre-336 raw-value digest
+        // input byte for byte, and a user-defined identity contributes its
+        // kind-discriminated canonical form inside the one-way digest only
+        // (never as a persisted field or an export surface). A→B reassignment
+        // and assigned-category deletion therefore change the digest exactly
+        // as a built-in resolved-category change does.
+        val identitiesById = input.signals.entries.associate { it.item to it.candidate }
         val current = ScopeBindingCurrentScope(
             detected = detectedById.values.map { DetectedCandidateScope(it.target, it.availability) },
             selectedTargets = selection.toSet(),
@@ -552,7 +559,7 @@ class ManualOrganizationRun internal constructor(
                 CandidateScopeProjection(
                     target = target,
                     availability = detectedById[target]?.availability ?: Availability.AVAILABLE,
-                    category = categoriesById[CandidatePlanningIds.planningId(target)],
+                    category = identitiesById[CandidatePlanningIds.planningId(target)],
                 )
             },
         )

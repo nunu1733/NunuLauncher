@@ -559,4 +559,41 @@
     <string name="organizer_category_override_app_status">%1$s · %2$s</string>
     <string name="organizer_category_override_app_description">%1$s, %2$s, %3$s</string>
     <string name="organizer_category_override_app_description_with_profile">%1$s, %2$s</string>
+    <!-- Issue #336: user-defined categories. Display names carry the localized
+         "Custom" text marker (never color alone, never a raw category ID). -->
+    <string name="organizer_category_override_custom_marker">Custom</string>
+    <string name="organizer_category_override_custom_label">%1$s (Custom)</string>
+    <string name="organizer_category_override_custom_description">Use %1$s as the explicit category.</string>
+    <string name="organizer_category_custom_unnamed">Custom category</string>
+    <string name="organizer_custom_category_title">Custom categories</string>
+    <string name="organizer_custom_category_summary">Create your own categories to organize apps your way. Custom categories receive apps only through explicit assignment.</string>
+    <string name="organizer_custom_category_create">Create a category</string>
+    <string name="organizer_custom_category_name_label">Category name</string>
+    <string name="organizer_custom_category_rename_label">New name</string>
+    <string name="organizer_custom_category_save">Save category</string>
+    <string name="organizer_custom_category_rename_confirm">Rename category</string>
+    <string name="organizer_custom_category_cancel">Cancel</string>
+    <string name="organizer_custom_category_back_to_list">Back to categories</string>
+    <string name="organizer_custom_category_retry">Finish deleting the category</string>
+    <string name="organizer_custom_category_partial_delete">Its apps were already unassigned. The empty category still exists. Finish the delete to remove it.</string>
+    <string name="organizer_custom_category_error_invalid_name">Enter 1 to 50 characters without line breaks or the “|” character.</string>
+    <string name="organizer_custom_category_error_duplicate_name">A category with this name already exists.</string>
+    <string name="organizer_custom_category_error_capacity">The custom category list is full. Delete one before creating another.</string>
+    <string name="organizer_custom_category_busy">Organization is active. Finish it before editing categories.</string>
+    <string name="organizer_custom_category_conflict">The category source changed. Reload the list and try again.</string>
+    <string name="organizer_custom_category_unavailable">Custom categories are unavailable. No change was saved.</string>
+    <string name="organizer_custom_category_failed">The change could not be confirmed. Reload the list and try again.</string>
+    <string name="organizer_custom_category_delete_title">Delete custom category?</string>
+    <string name="organizer_custom_category_delete_confirm">Delete</string>
+    <string name="organizer_custom_category_delete_row">Delete this category</string>
+    <string name="organizer_custom_category_delete_action">Delete %1$s</string>
+    <string name="organizer_custom_category_rename_action">Rename %1$s</string>
+    <plurals name="organizer_custom_category_entry_count">
+        <item quantity="one">%1$d app assigned</item>
+        <item quantity="other">%1$d apps assigned</item>
+    </plurals>
+    <plurals name="organizer_custom_category_delete_text">
+        <item quantity="one">%1$s has %2$d app assigned. It returns to automatic classification on the next organization. Apps are never moved to another category.</item>
+        <item quantity="other">%1$s has %2$d apps assigned. They return to automatic classification on the next organization. Apps are never moved to another category.</item>
+    </plurals>
 </resources>

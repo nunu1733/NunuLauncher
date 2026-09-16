@@ -80,6 +80,18 @@ _Avoid_: Locked item（何が固定されるか曖昧な場合）
 配置アイテムを整理ルール上の1つのカテゴリへ対応付けた、根拠と確信度を持つ判断。
 _Avoid_: Play Store category（情報源を指す場合を除く）、Theme
 
+**カテゴリidentity (Category Identity)**:
+分類・override・groupingの正本となる閉じたカテゴリ識別子。組み込みtaxonomyの `CategoryId` と、stable local opaque IDを持つユーザー定義カテゴリの2種からなる。canonical順序・等価はIDのみで決まり、表示名は参与しない ([spec 336](./specs/336-user-defined-categories/spec.md))。
+_Avoid_: CategoryId（組み込み側のみを指す場合）、カテゴリ名（表示名をidentityと混同する場合）
+
+**ユーザー定義カテゴリ (User-defined Category)**:
+ユーザーが作成・rename・削除するカテゴリ。stable local opaque ID（UUID v4形式）と表示名を持ち、表示名はidentityではなく正規化・長さ上限・catalog内一意のpresentationである。割当はS1 overrideのみで受け、自動分類(S2–S6)は決して向けられない ([spec 336](./specs/336-user-defined-categories/spec.md))。
+_Avoid_: カスタムタグ (分類identityとしての重みを曖昧にする)、自由カテゴリ (検証なき作成を示唆する)
+
+**アクティブカテゴリカタログ (Active Category Catalog)**:
+plannerが受け取る実行時のカテゴリ表面。組み込みv1 taxonomy（bundle不変の正本）と現在のユーザー定義エントリの和としてmembershipとfallbackを提供する。組み込みtaxonomy identityとは別の、動的でcontent-addressedなpolicy sourceであり、composition provenanceと動的cutに参加する ([spec 336](./specs/336-user-defined-categories/spec.md))。
+_Avoid_: taxonomy (組み込みbundle内容との混同)、カテゴリ一覧 (UI表示との混同)
+
 **recovery point**:
 整理runの適用前へアプリ内操作で戻すために保存された、検証済みの復旧状態。
 _Avoid_: Backup（長期保存用バックアップと混同する場合）、Undo（操作そのものを指す場合）

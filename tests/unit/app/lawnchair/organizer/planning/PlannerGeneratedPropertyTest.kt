@@ -1,5 +1,6 @@
 package app.lawnchair.organizer.planning
 
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.harness.DEFAULT_PLANNER_CASE_COUNT
 import app.lawnchair.organizer.planning.harness.ExampleCorpus
 import app.lawnchair.organizer.planning.harness.PlannerContractHarness
@@ -119,12 +120,17 @@ class PlannerGeneratedPropertyTest {
             val result = planner.plan(input)
             val planned = result.outcome as? Planned ?: continue
             val decisions = planned.categories.associate { it.item to it.category }
-            val fallback = input.taxonomy.fallbackCategory
+            val fallback = input.catalog.fallback
             for (folder in planned.newFolders) {
                 val naming = folder.naming as? FolderNaming.FromCategory
                     ?: error("planned folder ${folder.ordinal.value} has no category naming")
                 assertTrue("planned folder ${folder.ordinal.value} has no members", folder.members.isNotEmpty())
-                val memberCategories = folder.members.map { decisions[it] ?: fallback }.toSet()
+                // Issue #336: this corpus emits built-in candidates only, so
+                // every member decision is a built-in identity.
+                val memberCategories = folder.members
+                    .map { decisions[it] ?: fallback }
+                    .map { identity -> (identity as CategoryIdentity.BuiltIn).id }
+                    .toSet()
                 assertEquals(
                     "planned folder ${folder.ordinal.value} naming must equal its grouping category",
                     setOf(naming.category),
@@ -132,7 +138,7 @@ class PlannerGeneratedPropertyTest {
                 )
                 assertNotEquals(
                     "fallback category never forms folders (Issue #201 spec)",
-                    fallback,
+                    input.catalog.fallback,
                     naming.category,
                 )
             }
