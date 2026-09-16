@@ -29,6 +29,18 @@ internal interface CategoryOverrideStore : CategoryOverrideSnapshotSource {
         expected: CategoryOverrideStoredIdentity,
         verificationProfiles: Set<ProfileId>,
     ): CategoryOverrideWriteResult
+
+    /**
+     * Issue #336: applies several mutations as ONE atomic publication — the
+     * overrides-first delete protocol removes every assignment referencing a
+     * category through exactly one generation bump and one verified snapshot
+     * write, never one publication per key.
+     */
+    fun mutateAll(
+        requests: List<CategoryOverrideMutation>,
+        expected: CategoryOverrideStoredIdentity,
+        verificationProfiles: Set<ProfileId>,
+    ): CategoryOverrideWriteResult
 }
 
 internal data class CategoryOverrideStoredIdentity(
@@ -124,9 +136,16 @@ internal class CategoryOverrideAtomicAccess internal constructor(
         expected: CategoryOverrideStoredIdentity,
         verificationProfiles: Set<ProfileId>,
         allowedIdentities: Set<CategoryIdentity>,
+    ): CategoryOverrideWriteResult = mutateAll(listOf(request), expected, verificationProfiles, allowedIdentities)
+
+    fun mutateAll(
+        requests: List<CategoryOverrideMutation>,
+        expected: CategoryOverrideStoredIdentity,
+        verificationProfiles: Set<ProfileId>,
+        allowedIdentities: Set<CategoryIdentity>,
     ): CategoryOverrideWriteResult = synchronized(lock) {
         if (migrationBarrierUncertain) return@synchronized CategoryOverrideWriteResult.MigrationBarrierUncertain
-        if (request is CategoryOverrideMutation.Set && request.category !in allowedIdentities) {
+        if (requests.any { it is CategoryOverrideMutation.Set && it.category !in allowedIdentities }) {
             return@synchronized CategoryOverrideWriteResult.InvalidCategory
         }
         when (val migrated = ensureAtomicAuthorityLocked()) {
@@ -176,17 +195,18 @@ internal class CategoryOverrideAtomicAccess internal constructor(
         if (!expectedMatches) return@synchronized CategoryOverrideWriteResult.Conflict
 
         val nextAssignments = current.assignments.toMutableMap()
-        val changed = when (request) {
-            is CategoryOverrideMutation.Set -> {
-                if (nextAssignments[request.key] == request.category) {
-                    false
-                } else {
-                    nextAssignments[request.key] = request.category
-                    true
+        var changed = false
+        for (request in requests) {
+            when (request) {
+                is CategoryOverrideMutation.Set -> {
+                    if (nextAssignments[request.key] != request.category) {
+                        nextAssignments[request.key] = request.category
+                        changed = true
+                    }
                 }
-            }
 
-            is CategoryOverrideMutation.Remove -> nextAssignments.remove(request.key) != null
+                is CategoryOverrideMutation.Remove -> changed = nextAssignments.remove(request.key) != null || changed
+            }
         }
         if (!changed) {
             val visible = composerVisibleSnapshot(current, verificationProfiles)
@@ -417,6 +437,12 @@ internal class AtomicFileCategoryOverrideStore(
         request: CategoryOverrideMutation,
         expected: CategoryOverrideStoredIdentity,
         verificationProfiles: Set<ProfileId>,
+    ): CategoryOverrideWriteResult = mutateAll(listOf(request), expected, verificationProfiles)
+
+    override fun mutateAll(
+        requests: List<CategoryOverrideMutation>,
+        expected: CategoryOverrideStoredIdentity,
+        verificationProfiles: Set<ProfileId>,
     ): CategoryOverrideWriteResult {
         val bundle = (bundleSource.readActive() as? BundleReadResult.Ready)?.bundle
             ?: return CategoryOverrideWriteResult.TaxonomyUnavailable
@@ -431,7 +457,7 @@ internal class AtomicFileCategoryOverrideStore(
             UserDefinedCategoryCatalogReadResult.UnsupportedSchema,
             -> return CategoryOverrideWriteResult.TaxonomyUnavailable
         }
-        return access.mutate(request, expected, verificationProfiles, allowedIdentities)
+        return access.mutateAll(requests, expected, verificationProfiles, allowedIdentities)
     }
 }
 

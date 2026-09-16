@@ -356,11 +356,19 @@ class CategoryOverridePreferencesInstrumentationTest {
             request: CategoryOverrideMutation,
             expected: CategoryOverrideStoredIdentity,
             verificationProfiles: Set<ProfileId>,
+        ): CategoryOverrideWriteResult = mutateAll(listOf(request), expected, verificationProfiles)
+
+        override fun mutateAll(
+            requests: List<CategoryOverrideMutation>,
+            expected: CategoryOverrideStoredIdentity,
+            verificationProfiles: Set<ProfileId>,
         ): CategoryOverrideWriteResult {
             val entries = snapshot.assignments.toMutableMap()
-            when (request) {
-                is CategoryOverrideMutation.Set -> entries[request.key] = request.category
-                is CategoryOverrideMutation.Remove -> entries.remove(request.key)
+            for (request in requests) {
+                when (request) {
+                    is CategoryOverrideMutation.Set -> entries[request.key] = request.category
+                    is CategoryOverrideMutation.Remove -> entries.remove(request.key)
+                }
             }
             snapshot = stored(snapshot.identity.generation + 1L, entries)
             return CategoryOverrideWriteResult.Committed(

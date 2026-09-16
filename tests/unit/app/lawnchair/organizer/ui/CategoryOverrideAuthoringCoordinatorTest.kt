@@ -156,19 +156,26 @@ class CategoryOverrideAuthoringCoordinatorTest {
             request: CategoryOverrideMutation,
             expected: CategoryOverrideStoredIdentity,
             verificationProfiles: Set<ProfileId>,
-        ): CategoryOverrideWriteResult {
-            requests += request
-            val next = assignments.toMutableMap()
-            val requestedCategory = (request as? CategoryOverrideMutation.Set)?.category as? CategoryIdentity.BuiltIn
-            val changed = when (request) {
-                is CategoryOverrideMutation.Set -> if (next[request.key] == requestedCategory?.id) {
-                    false
-                } else {
-                    next[request.key] = requestedCategory!!.id
-                    true
-                }
+        ): CategoryOverrideWriteResult = mutateAll(listOf(request), expected, verificationProfiles)
 
-                is CategoryOverrideMutation.Remove -> next.remove(request.key) != null
+        override fun mutateAll(
+            requests: List<CategoryOverrideMutation>,
+            expected: CategoryOverrideStoredIdentity,
+            verificationProfiles: Set<ProfileId>,
+        ): CategoryOverrideWriteResult {
+            requests.forEach { recorded -> this.requests += recorded }
+            val next = assignments.toMutableMap()
+            var changed = false
+            for (request in requests) {
+                val requestedCategory = (request as? CategoryOverrideMutation.Set)?.category as? CategoryIdentity.BuiltIn
+                when (request) {
+                    is CategoryOverrideMutation.Set -> if (next[request.key] != requestedCategory?.id) {
+                        next[request.key] = requestedCategory!!.id
+                        changed = true
+                    }
+
+                    is CategoryOverrideMutation.Remove -> changed = next.remove(request.key) != null || changed
+                }
             }
             if (!changed) {
                 return CategoryOverrideWriteResult.NoChange(
