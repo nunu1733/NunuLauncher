@@ -6,6 +6,7 @@ import android.os.Process
 import android.os.UserManager
 import app.lawnchair.organizer.application.adapter.canonicalProfileId
 import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.PackageName
 import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
@@ -87,7 +88,15 @@ internal class CategoryOverrideAuthoringCoordinator internal constructor(
         val available = inventory.availableApps()
         val overrides = when (val stored = store.readStored()) {
             is CategoryOverrideStoredReadResult.Ready -> {
-                if (stored.snapshot.assignments.values.any { it !in allowedCategories }) {
+                // Issue #336: values are identity-typed. This editor only
+                // presents built-in assignments; a user-defined value is a
+                // valid stored state that the catalog authoring surface (a
+                // later task of the accepted plan) renders — it must not fail
+                // this load.
+                if (stored.snapshot.assignments.values.any { assignment ->
+                        assignment is CategoryIdentity.BuiltIn && assignment.id !in allowedCategories
+                    }
+                ) {
                     return CategoryOverrideAuthoringResult.StoreUnreadable
                 }
                 stored.snapshot.assignments
@@ -100,7 +109,9 @@ internal class CategoryOverrideAuthoringCoordinator internal constructor(
             CategoryOverrideStoredReadResult.MigrationBarrierUncertain -> return CategoryOverrideAuthoringResult.MigrationBarrierUncertain
         }
         return CategoryOverrideAuthoringResult.Loaded(
-            available.map { app -> app.copy(assignedCategory = overrides[app.key]) },
+            available.map { app ->
+                app.copy(assignedCategory = (overrides[app.key] as? CategoryIdentity.BuiltIn)?.id)
+            },
         )
     }
 
@@ -111,7 +122,10 @@ internal class CategoryOverrideAuthoringCoordinator internal constructor(
         return try {
             val expected = when (val stored = store.readStored()) {
                 is CategoryOverrideStoredReadResult.Ready -> {
-                    if (stored.snapshot.assignments.values.any { it !in allowedCategories }) {
+                    if (stored.snapshot.assignments.values.any { assignment ->
+                            assignment is CategoryIdentity.BuiltIn && assignment.id !in allowedCategories
+                        }
+                    ) {
                         return CategoryOverrideAuthoringResult.StoreUnreadable
                     }
                     stored.snapshot.identity
@@ -128,7 +142,10 @@ internal class CategoryOverrideAuthoringCoordinator internal constructor(
             val finalInventory = inventory.availableApps()
             val current = finalInventory.firstOrNull { it.key == target.key }
                 ?: return CategoryOverrideAuthoringResult.TargetUnavailable
-            val request = category?.let { CategoryOverrideMutation.Set(current.key, it) }
+            // Issue #336: this editor assigns built-in categories; assigning
+            // user-defined categories arrives with the catalog authoring task.
+            val request = category
+                ?.let { CategoryOverrideMutation.Set(current.key, CategoryIdentity.BuiltIn(it)) }
                 ?: CategoryOverrideMutation.Remove(current.key)
             when (val result = store.mutate(request, expected, finalInventory.mapTo(linkedSetOf()) { it.key.profile })) {
                 is CategoryOverrideWriteResult.Committed -> CategoryOverrideAuthoringResult.Saved(result.stored, result.verificationVisible)

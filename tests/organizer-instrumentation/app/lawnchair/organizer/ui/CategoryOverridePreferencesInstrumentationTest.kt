@@ -28,6 +28,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.PackageName
 import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
@@ -370,7 +371,7 @@ class CategoryOverridePreferencesInstrumentationTest {
 
         private fun stored(
             generation: Long,
-            assignments: Map<CategoryOverrideKey, CategoryId>,
+            assignments: Map<CategoryOverrideKey, CategoryIdentity>,
         ): CategoryOverrideStoredSnapshot = CategoryOverrideStoredSnapshot(
             CategoryOverrideStoredIdentity(1, generation, sha256Canonical("")),
             assignments,

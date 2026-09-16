@@ -1,6 +1,7 @@
 package app.lawnchair.organizer.ui
 
 import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.PackageName
 import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
@@ -132,6 +133,7 @@ class CategoryOverrideAuthoringCoordinatorTest {
 
         override fun read(capturedProfiles: Set<ProfileId>): OverrideSnapshotReadResult {
             val visible = assignments.filterKeys { it.profile in capturedProfiles }
+                .mapValues { (_, category) -> CategoryIdentity.BuiltIn(category) }
             return OverrideSnapshotReadResult.Ready(
                 CategoryOverrideSnapshot(
                     schemaVersion = 1,
@@ -142,7 +144,7 @@ class CategoryOverrideAuthoringCoordinatorTest {
                         "schema-1-generation-${snapshot.identity.generation}",
                         sha256Canonical(
                             visible.entries.sortedBy { it.key.profile.value }.joinToString("\n") {
-                                "${it.key.packageName.value}|${it.key.profile.value}|${it.value.value}"
+                                "${it.key.packageName.value}|${it.key.profile.value}|${(it.value as CategoryIdentity.BuiltIn).id.value}"
                             },
                         ),
                     ),
@@ -157,11 +159,12 @@ class CategoryOverrideAuthoringCoordinatorTest {
         ): CategoryOverrideWriteResult {
             requests += request
             val next = assignments.toMutableMap()
+            val requestedCategory = (request as? CategoryOverrideMutation.Set)?.category as? CategoryIdentity.BuiltIn
             val changed = when (request) {
-                is CategoryOverrideMutation.Set -> if (next[request.key] == request.category) {
+                is CategoryOverrideMutation.Set -> if (next[request.key] == requestedCategory?.id) {
                     false
                 } else {
-                    next[request.key] = request.category
+                    next[request.key] = requestedCategory!!.id
                     true
                 }
 
@@ -192,7 +195,7 @@ class CategoryOverrideAuthoringCoordinatorTest {
             ).joinToString("\n") { "${it.key.packageName.value}|${it.key.profile.value}|${it.value.value}" }
             return CategoryOverrideStoredSnapshot(
                 CategoryOverrideStoredIdentity(1, generation, sha256Canonical(canonical)),
-                entries,
+                entries.mapValues { (_, category) -> CategoryIdentity.BuiltIn(category) },
             )
         }
     }

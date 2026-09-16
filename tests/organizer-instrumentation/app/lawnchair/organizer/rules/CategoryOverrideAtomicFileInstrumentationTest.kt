@@ -6,6 +6,7 @@ import androidx.core.util.AtomicFile
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.PackageName
 import app.lawnchair.organizer.planning.ProfileId
 import java.io.File
@@ -93,10 +94,10 @@ class CategoryOverrideAtomicFileInstrumentationTest {
         val expected = (access.readStored() as CategoryOverrideStoredReadResult.Ready).snapshot.identity
 
         val result = access.mutate(
-            request = CategoryOverrideMutation.Set(oldKey, CategoryId("GAME")),
+            request = CategoryOverrideMutation.Set(oldKey, CategoryIdentity.BuiltIn(CategoryId("GAME"))),
             expected = expected,
             verificationProfiles = setOf(oldKey.profile),
-            allowedCategories = setOf(CategoryId("GAME"), CategoryId("SOCIAL")),
+            allowedIdentities = setOf(CategoryIdentity.BuiltIn(CategoryId("GAME")), CategoryIdentity.BuiltIn(CategoryId("SOCIAL"))),
         )
         assertTrue(result is CategoryOverrideWriteResult.Committed)
 
@@ -143,9 +144,9 @@ class CategoryOverrideAtomicFileInstrumentationTest {
         CategoryOverrideStoredIdentity(
             schemaVersion = 1,
             generation = generation,
-            sha256 = sha256Canonical(canonicalEntries(assignments)),
+            sha256 = sha256Canonical(canonicalEntries(assignments.mapValues { (_, c) -> CategoryIdentity.BuiltIn(c) }, 1)),
         ),
-        assignments,
+        assignments.mapValues { (_, c) -> CategoryIdentity.BuiltIn(c) },
     )
 
     private fun canonicalEntries(assignments: Map<CategoryOverrideKey, CategoryId>): String = assignments.entries
@@ -208,10 +209,10 @@ class CategoryOverrideAtomicFileRestartWriterInstrumentationTest {
         val access = CategoryOverrideAtomicAccess(RestartAtomicFile(finalFile), preferences)
         val expected = (access.readStored() as CategoryOverrideStoredReadResult.Ready).snapshot.identity
         val migrated = access.mutate(
-            request = CategoryOverrideMutation.Set(oldKey, CategoryId("GAME")),
+            request = CategoryOverrideMutation.Set(oldKey, CategoryIdentity.BuiltIn(CategoryId("GAME"))),
             expected = expected,
             verificationProfiles = setOf(oldKey.profile),
-            allowedCategories = setOf(CategoryId("GAME"), CategoryId("SOCIAL")),
+            allowedIdentities = setOf(CategoryIdentity.BuiltIn(CategoryId("GAME")), CategoryIdentity.BuiltIn(CategoryId("SOCIAL"))),
         )
         check(migrated is CategoryOverrideWriteResult.Committed)
         val initial = restartSnapshot(1L, oldKey, CategoryId("GAME"))
@@ -273,7 +274,7 @@ private fun restartSnapshot(
         generation = generation,
         sha256 = sha256Canonical("${key.packageName.value}|${key.profile.value}|${category.value}"),
     ),
-    mapOf(key to category),
+    mapOf(key to CategoryIdentity.BuiltIn(category)),
 )
 
 private class RestartAtomicFile(finalFile: File) : CategoryOverrideAtomicFile {

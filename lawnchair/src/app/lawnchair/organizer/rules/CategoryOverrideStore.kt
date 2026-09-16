@@ -4,8 +4,10 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.util.AtomicFile
 import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.PackageName
 import app.lawnchair.organizer.planning.ProfileId
+import app.lawnchair.organizer.planning.UserCategoryId
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileNotFoundException
@@ -35,7 +37,11 @@ internal data class CategoryOverrideStoredIdentity(
     val sha256: String,
 ) {
     init {
-        require(schemaVersion == SCHEMA_V1)
+        // Issue #336: the physical snapshot advances to schema 2; schema-1
+        // identities remain valid until a writer migrates (and for legacy
+        // comparisons). A schema the binary cannot decode never becomes a
+        // stored identity here — decode fails closed first.
+        require(schemaVersion == SCHEMA_V1 || schemaVersion == SCHEMA_V2)
         require(generation >= 0L)
         require(SHA_256.matches(sha256))
     }
@@ -43,7 +49,8 @@ internal data class CategoryOverrideStoredIdentity(
 
 internal data class CategoryOverrideStoredSnapshot(
     val identity: CategoryOverrideStoredIdentity,
-    val assignments: Map<CategoryOverrideKey, CategoryId>,
+    /** Issue #336: values are identity-typed (built-in or user-defined). */
+    val assignments: Map<CategoryOverrideKey, CategoryIdentity>,
 )
 
 internal sealed interface CategoryOverrideStoredReadResult {
@@ -58,7 +65,8 @@ internal sealed interface CategoryOverrideMutation {
 
     data class Set(
         override val key: CategoryOverrideKey,
-        val category: CategoryId,
+        /** Issue #336: the assignment target is the identity-typed value. */
+        val category: CategoryIdentity,
     ) : CategoryOverrideMutation
 
     data class Remove(
@@ -115,13 +123,32 @@ internal class CategoryOverrideAtomicAccess internal constructor(
         request: CategoryOverrideMutation,
         expected: CategoryOverrideStoredIdentity,
         verificationProfiles: Set<ProfileId>,
-        allowedCategories: Set<CategoryId>,
+        allowedIdentities: Set<CategoryIdentity>,
     ): CategoryOverrideWriteResult = synchronized(lock) {
         if (migrationBarrierUncertain) return@synchronized CategoryOverrideWriteResult.MigrationBarrierUncertain
-        if (request is CategoryOverrideMutation.Set && request.category !in allowedCategories) {
+        if (request is CategoryOverrideMutation.Set && request.category !in allowedIdentities) {
             return@synchronized CategoryOverrideWriteResult.InvalidCategory
         }
         when (val migrated = ensureAtomicAuthorityLocked()) {
+            AuthorityTransition.Ready -> Unit
+            AuthorityTransition.Unreadable -> return@synchronized CategoryOverrideWriteResult.StoreUnreadable
+            AuthorityTransition.Unsupported -> return@synchronized CategoryOverrideWriteResult.UnsupportedSchema
+            AuthorityTransition.BarrierUncertain -> return@synchronized CategoryOverrideWriteResult.MigrationBarrierUncertain
+            AuthorityTransition.WriteFailed -> return@synchronized CategoryOverrideWriteResult.WriteFailed
+            AuthorityTransition.VerificationFailed -> return@synchronized CategoryOverrideWriteResult.VerificationFailed
+        }
+        // Issue #336: the identity-typed schema-2 snapshot is published by a
+        // read-validate-write migration of the schema-1 snapshot — same
+        // assignments, exactly one generation bump, through this same access
+        // boundary. A failed migration is a typed non-success: the schema-1
+        // content stays authoritative and no user mutation is admitted.
+        val preMigration = when (val read = readAtomicStoredLocked()) {
+            is CategoryOverrideStoredReadResult.Ready -> read.snapshot
+            CategoryOverrideStoredReadResult.UnsupportedSchema -> return@synchronized CategoryOverrideWriteResult.UnsupportedSchema
+            CategoryOverrideStoredReadResult.Unreadable -> return@synchronized CategoryOverrideWriteResult.StoreUnreadable
+            CategoryOverrideStoredReadResult.MigrationBarrierUncertain -> return@synchronized CategoryOverrideWriteResult.MigrationBarrierUncertain
+        }
+        when (val identityMigration = ensureIdentitySchemaLocked()) {
             AuthorityTransition.Ready -> Unit
             AuthorityTransition.Unreadable -> return@synchronized CategoryOverrideWriteResult.StoreUnreadable
             AuthorityTransition.Unsupported -> return@synchronized CategoryOverrideWriteResult.UnsupportedSchema
@@ -135,7 +162,18 @@ internal class CategoryOverrideAtomicAccess internal constructor(
             CategoryOverrideStoredReadResult.Unreadable -> return@synchronized CategoryOverrideWriteResult.StoreUnreadable
             CategoryOverrideStoredReadResult.MigrationBarrierUncertain -> return@synchronized CategoryOverrideWriteResult.MigrationBarrierUncertain
         }
-        if (current.identity != expected) return@synchronized CategoryOverrideWriteResult.Conflict
+        // The optimistic token semantics of #99 carry over: an identity read
+        // before THIS mutation's migration still matches — the migration is
+        // part of the same mutation, changed only the encoding, and preserved
+        // every assignment. Anything else is a concurrent writer's Conflict.
+        val expectedMatches = current.identity == expected ||
+            (
+                preMigration.identity == expected &&
+                    current.identity.schemaVersion == SCHEMA_V2 &&
+                    current.identity.generation == preMigration.identity.generation + 1L &&
+                    current.assignments == preMigration.assignments
+                )
+        if (!expectedMatches) return@synchronized CategoryOverrideWriteResult.Conflict
 
         val nextAssignments = current.assignments.toMutableMap()
         val changed = when (request) {
@@ -226,6 +264,30 @@ internal class CategoryOverrideAtomicAccess internal constructor(
         return AuthorityTransition.Ready
     }
 
+    /**
+     * Issue #336: read-validate-publish migration from the schema-1 encoding
+     * to the identity-typed schema-2 encoding. Reads never migrate: until a
+     * writer runs, the schema-1 content stays authoritative and keeps its
+     * exact pre-336 composer-visible semantics. There is no separate barrier
+     * marker — a failed migration simply leaves the schema-1 file in place and
+     * every later mutation re-attempts fail-closed.
+     */
+    private fun ensureIdentitySchemaLocked(): AuthorityTransition {
+        val current = when (val read = readAtomicStoredLocked()) {
+            is CategoryOverrideStoredReadResult.Ready -> read.snapshot
+            CategoryOverrideStoredReadResult.UnsupportedSchema -> return AuthorityTransition.Unsupported
+            CategoryOverrideStoredReadResult.Unreadable -> return AuthorityTransition.Unreadable
+            CategoryOverrideStoredReadResult.MigrationBarrierUncertain -> return AuthorityTransition.BarrierUncertain
+        }
+        if (current.identity.schemaVersion == SCHEMA_V2) return AuthorityTransition.Ready
+        val next = storedSnapshot(current.identity.generation + 1L, current.assignments)
+        return when (publishLocked(next)) {
+            PublishResult.WriteFailed -> AuthorityTransition.WriteFailed
+            PublishResult.VerificationFailed -> AuthorityTransition.VerificationFailed
+            PublishResult.Success -> AuthorityTransition.Ready
+        }
+    }
+
     private fun legacyHasAtomicAuthorityLocked(): Boolean = try {
         legacyPreferences.contains(LEGACY_SCHEMA_KEY) &&
             legacyPreferences.getInt(LEGACY_SCHEMA_KEY, -1) == LEGACY_ATOMIC_AUTHORITY_SCHEMA
@@ -235,7 +297,7 @@ internal class CategoryOverrideAtomicAccess internal constructor(
 
     private fun readLegacyStoredLocked(): CategoryOverrideStoredReadResult = try {
         if (!legacyPreferences.contains(LEGACY_SCHEMA_KEY)) {
-            CategoryOverrideStoredReadResult.Ready(storedSnapshot(0L, emptyMap()))
+            CategoryOverrideStoredReadResult.Ready(legacyStoredSnapshot(0L, emptyMap()))
         } else if (legacyPreferences.getInt(LEGACY_SCHEMA_KEY, -1) != SCHEMA_V1) {
             CategoryOverrideStoredReadResult.UnsupportedSchema
         } else {
@@ -244,7 +306,7 @@ internal class CategoryOverrideAtomicAccess internal constructor(
             if (generation < 0L || entries == null) {
                 CategoryOverrideStoredReadResult.Unreadable
             } else {
-                parseLegacyEntries(entries)?.let { CategoryOverrideStoredReadResult.Ready(storedSnapshot(generation, it)) }
+                parseLegacyEntries(entries)?.let { CategoryOverrideStoredReadResult.Ready(legacyStoredSnapshot(generation, it)) }
                     ?: CategoryOverrideStoredReadResult.Unreadable
             }
         }
@@ -302,14 +364,17 @@ internal class CategoryOverrideAtomicAccess internal constructor(
         capturedProfiles: Set<ProfileId>,
     ): CategoryOverrideSnapshot {
         val visible = stored.assignments.filterKeys { it.profile in capturedProfiles }
-        val canonical = canonicalEntries(visible)
+        // The identity format is content-addressed per schema: schema-1 rows
+        // keep the pre-336 `pkg|profile|category` canonical bytes, schema-2
+        // rows carry the kind discriminator (Issue #336).
+        val canonical = canonicalEntries(visible, stored.identity.schemaVersion)
         return CategoryOverrideSnapshot(
-            schemaVersion = SCHEMA_V1,
+            schemaVersion = stored.identity.schemaVersion,
             generation = stored.identity.generation,
             assignments = visible,
             identity = PolicyInputIdentity(
                 PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT,
-                "schema-$SCHEMA_V1-generation-${stored.identity.generation}",
+                "schema-${stored.identity.schemaVersion}-generation-${stored.identity.generation}",
                 sha256Canonical(canonical),
             ),
         )
@@ -337,6 +402,12 @@ internal class AtomicFileCategoryOverrideSnapshotSource(
 internal class AtomicFileCategoryOverrideStore(
     private val access: CategoryOverrideAtomicAccess,
     private val bundleSource: OrganizerPolicyBundleSource,
+    /**
+     * Issue #336: the active user-defined catalog joins write-time membership
+     * validation. A catalog read failure is fail-closed (`TaxonomyUnavailable`)
+     * — never an implicit empty catalog.
+     */
+    private val catalogSource: UserDefinedCategoryCatalogSource,
 ) : CategoryOverrideStore {
     override fun read(capturedProfiles: Set<ProfileId>): OverrideSnapshotReadResult = access.readVisible(capturedProfiles)
 
@@ -350,7 +421,17 @@ internal class AtomicFileCategoryOverrideStore(
         val bundle = (bundleSource.readActive() as? BundleReadResult.Ready)?.bundle
             ?: return CategoryOverrideWriteResult.TaxonomyUnavailable
         if (bundle.validate() != null) return CategoryOverrideWriteResult.TaxonomyUnavailable
-        return access.mutate(request, expected, verificationProfiles, bundle.taxonomy.allowedCategories.toSet())
+        val allowedIdentities: MutableSet<CategoryIdentity> = linkedSetOf()
+        bundle.taxonomy.allowedCategories.forEach { allowedIdentities += CategoryIdentity.BuiltIn(it) }
+        when (val catalog = catalogSource.read()) {
+            is UserDefinedCategoryCatalogReadResult.Ready ->
+                catalog.snapshot.categories.forEach { allowedIdentities += CategoryIdentity.UserDefined(it.id) }
+
+            UserDefinedCategoryCatalogReadResult.Unreadable,
+            UserDefinedCategoryCatalogReadResult.UnsupportedSchema,
+            -> return CategoryOverrideWriteResult.TaxonomyUnavailable
+        }
+        return access.mutate(request, expected, verificationProfiles, allowedIdentities)
     }
 }
 
@@ -394,7 +475,9 @@ internal object CategoryOverrideStoreModule {
             AndroidxCategoryOverrideAtomicFile(File(directory, OVERRIDE_FILE_NAME)),
             preferences,
         )
-        return AtomicFileCategoryOverrideStore(access, BuiltInOrganizerPolicyBundleSource)
+        // Issue #336: write-time membership validation covers the active
+        // user-defined catalog too.
+        return AtomicFileCategoryOverrideStore(access, BuiltInOrganizerPolicyBundleSource, UserDefinedCategoryStoreModule.get(context))
     }
 }
 
@@ -409,17 +492,24 @@ internal object CategoryOverrideFullStoreCodec {
         append(HEADER_GENERATION).append('=').append(snapshot.identity.generation).append('\n')
         append(HEADER_DIGEST).append('=').append(snapshot.identity.sha256).append('\n')
         append(HEADER_ENTRIES).append('\n')
-        append(canonicalEntries(snapshot.assignments))
+        append(canonicalEntries(snapshot.assignments, snapshot.identity.schemaVersion))
         append('\n')
     }.toByteArray(Charsets.UTF_8)
 
+    /**
+     * Decodes schema 1 (built-in-typed values, pre-336 bytes) and schema 2
+     * (kind-discriminated identity-typed values, Issue #336). Any other
+     * header decodes to null — the existing fail-closed `Unreadable` outcome a
+     * non-supporting binary observes, unchanged.
+     */
     fun decode(bytes: ByteArray): CategoryOverrideStoredSnapshot? = try {
         val text = bytes.toString(Charsets.UTF_8)
         val entriesMarker = "$HEADER_ENTRIES\n"
         val markerIndex = text.indexOf(entriesMarker)
         if (markerIndex < 0 || !text.endsWith('\n') || text.indexOf(entriesMarker, markerIndex + entriesMarker.length) >= 0) return null
         val header = text.substring(0, markerIndex).removeSuffix("\n").split('\n')
-        if (header.size != 3 || header[0] != "$HEADER_SCHEMA=$SCHEMA_V1") return null
+        val parsedSchema = header[0].removePrefix("$HEADER_SCHEMA=").toIntOrNull()
+        if (header.size != 3 || (parsedSchema != SCHEMA_V1 && parsedSchema != SCHEMA_V2) || header[0] != "$HEADER_SCHEMA=$parsedSchema") return null
         val generationPrefix = "$HEADER_GENERATION="
         if (!header[1].startsWith(generationPrefix)) return null
         val generation = header[1].removePrefix(generationPrefix).toLongOrNull() ?: return null
@@ -429,8 +519,12 @@ internal object CategoryOverrideFullStoreCodec {
         val digest = header[2].removePrefix(digestPrefix)
         if (!SHA_256.matches(digest)) return null
         val entries = text.substring(markerIndex + entriesMarker.length).removeSuffix("\n")
-        val assignments = parseLegacyEntries(entries) ?: return null
-        val snapshot = storedSnapshot(generation, assignments)
+        val assignments = when (parsedSchema) {
+            SCHEMA_V1 -> parseLegacyEntries(entries)?.mapValues { (_, category) -> CategoryIdentity.BuiltIn(category) }
+            SCHEMA_V2 -> parseIdentityEntries(entries)
+            else -> return null
+        } ?: return null
+        val snapshot = storedSnapshot(generation, assignments, parsedSchema)
         snapshot.takeIf { it.identity.sha256 == digest }
     } catch (_: RuntimeException) {
         null
@@ -438,6 +532,35 @@ internal object CategoryOverrideFullStoreCodec {
 }
 
 private fun parseLegacyEntries(entries: String): Map<CategoryOverrideKey, CategoryId>? = parseEntries(if (entries.isBlank()) emptyList() else entries.lineSequence().toList())
+
+/**
+ * Issue #336: schema-2 rows are kind-discriminated — `pkg|profile|b|<CategoryId>`
+ * for built-in targets, `pkg|profile|u|<UserCategoryId>` for user-defined
+ * ones. A malformed kind or a non-canonical user ID fails the whole decode.
+ */
+private fun parseIdentityEntries(entries: String): Map<CategoryOverrideKey, CategoryIdentity>? {
+    if (entries.isBlank()) return emptyMap()
+    val parsed = linkedMapOf<CategoryOverrideKey, CategoryIdentity>()
+    for (encoded in entries.lineSequence()) {
+        if (encoded.isBlank()) return null
+        val parts = encoded.split("|", limit = 4)
+        if (parts.size != 4 || parts.any { it.isBlank() }) return null
+        val identity = when (parts[2]) {
+            KIND_BUILT_IN -> CategoryIdentity.BuiltIn(CategoryId(parts[3]))
+
+            KIND_USER_DEFINED -> try {
+                CategoryIdentity.UserDefined(UserCategoryId(parts[3]))
+            } catch (_: IllegalArgumentException) {
+                return null
+            }
+
+            else -> return null
+        }
+        val key = CategoryOverrideKey(PackageName(parts[0]), ProfileId(parts[1]))
+        if (parsed.put(key, identity) != null) return null
+    }
+    return parsed
+}
 
 private fun parseEntries(lines: List<String>): Map<CategoryOverrideKey, CategoryId>? {
     val parsed = linkedMapOf<CategoryOverrideKey, CategoryId>()
@@ -451,21 +574,69 @@ private fun parseEntries(lines: List<String>): Map<CategoryOverrideKey, Category
     return parsed
 }
 
+/**
+ * New writes always publish the current schema-2 identity encoding; pass
+ * [schema] = [SCHEMA_V1] only for the pre-336 representations (legacy prefs
+ * reads and schema-1 AtomicFile decoding), whose identity bytes must stay
+ * exactly as #99 defined them.
+ */
 private fun storedSnapshot(
     generation: Long,
-    assignments: Map<CategoryOverrideKey, CategoryId>,
+    assignments: Map<CategoryOverrideKey, CategoryIdentity>,
+    schema: Int = SCHEMA_V2,
 ): CategoryOverrideStoredSnapshot {
-    val canonical = canonicalEntries(assignments)
+    val canonical = canonicalEntries(assignments, schema)
     return CategoryOverrideStoredSnapshot(
-        CategoryOverrideStoredIdentity(SCHEMA_V1, generation, sha256Canonical(canonical)),
+        CategoryOverrideStoredIdentity(schema, generation, sha256Canonical(canonical)),
         assignments.toSortedMap(compareBy<CategoryOverrideKey> { it.profile.value }.thenBy { it.packageName.value }),
     )
 }
 
-private fun canonicalEntries(assignments: Map<CategoryOverrideKey, CategoryId>): String = assignments.entries
-    .sortedWith(compareBy<Map.Entry<CategoryOverrideKey, CategoryId>> { it.key.profile.value }.thenBy { it.key.packageName.value })
-    .joinToString("\n") { "${it.key.packageName.value}|${it.key.profile.value}|${it.value.value}" }
+private fun legacyStoredSnapshot(
+    generation: Long,
+    assignments: Map<CategoryOverrideKey, CategoryId>,
+): CategoryOverrideStoredSnapshot {
+    val canonical = assignments.entries
+        .sortedWith(
+            compareBy<Map.Entry<CategoryOverrideKey, CategoryId>> { it.key.profile.value }.thenBy { it.key.packageName.value },
+        )
+        .joinToString("\n") { "${it.key.packageName.value}|${it.key.profile.value}|${it.value.value}" }
+    return CategoryOverrideStoredSnapshot(
+        CategoryOverrideStoredIdentity(SCHEMA_V1, generation, sha256Canonical(canonical)),
+        assignments.mapValues { (_, v) -> CategoryIdentity.BuiltIn(v) }
+            .toSortedMap(compareBy<CategoryOverrideKey> { it.profile.value }.thenBy { it.packageName.value }),
+    )
+}
 
+internal fun canonicalEntries(assignments: Map<CategoryOverrideKey, CategoryIdentity>, schema: Int): String {
+    val sorted = assignments.entries.sortedWith(
+        compareBy<Map.Entry<CategoryOverrideKey, CategoryIdentity>> { it.key.profile.value }.thenBy { it.key.packageName.value },
+    )
+    return when (schema) {
+        SCHEMA_V1 -> sorted.joinToString("\n") { entry ->
+            // Schema-1 rows predate user-defined identities (Issue #336);
+            // only built-in values are representable in these bytes.
+            val category = requireNotNull((entry.value as? CategoryIdentity.BuiltIn)?.id) {
+                "schema-1 encoding cannot represent a user-defined identity"
+            }
+            "${entry.key.packageName.value}|${entry.key.profile.value}|${category.value}"
+        }
+
+        else -> sorted.joinToString("\n") { entry ->
+            "${entry.key.packageName.value}|${entry.key.profile.value}|${identityEntryValue(entry.value)}"
+        }
+    }
+}
+
+/** Kind-discriminated value of one schema-2 entry. */
+internal fun identityEntryValue(identity: CategoryIdentity): String = when (identity) {
+    is CategoryIdentity.BuiltIn -> "$KIND_BUILT_IN|${identity.id.value}"
+    is CategoryIdentity.UserDefined -> "$KIND_USER_DEFINED|${identity.id.value}"
+}
+
+private const val KIND_BUILT_IN = "b"
+private const val KIND_USER_DEFINED = "u"
+private const val SCHEMA_V2 = 2
 private const val SCHEMA_V1 = 1
 private const val LEGACY_ATOMIC_AUTHORITY_SCHEMA = 2
 private const val LEGACY_SCHEMA_KEY = "schema"
