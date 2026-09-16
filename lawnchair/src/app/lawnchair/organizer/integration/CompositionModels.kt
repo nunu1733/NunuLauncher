@@ -145,6 +145,13 @@ enum class InputCompositionCode {
 
     /** Issue #228 (review P2 #4): selection overlaps the fresh capture's represented identities. */
     CANDIDATE_SELECTION_STALE,
+
+    /**
+     * Issue #331: the scope binding gate rejected the run — the confirmed
+     * selection / candidate projection diverged from the export session's
+     * scope (`SCOPE_MISMATCH`). Zero-write terminal; the remedy is re-export.
+     */
+    SCOPE_BINDING_MISMATCH,
 }
 
 data class ClassificationEvidenceRequest(

@@ -14,7 +14,7 @@ import org.junit.Test
  */
 class ExchangePackageComposerTest {
 
-    private val exportJson = """{"schemaVersion":"personalization-context-v1","exportId":"id-0"}"""
+    private val exportJson = """{"schemaVersion":"personalization-context-v2","exportId":"id-0"}"""
 
     @Test
     fun composeAndParseRoundTripRecoversTheExactContextData() {
@@ -37,7 +37,7 @@ class ExchangePackageComposerTest {
         val pkg = ExchangePackageComposer.compose(exportJson)
         assertTrue(pkg.contains(INTENT_BEGIN_MARKER))
         assertTrue(pkg.contains(INTENT_END_MARKER))
-        assertTrue(pkg.contains("\"personalized-intent-v1\""))
+        assertTrue(pkg.contains("\"personalized-intent-v2\""))
         assertTrue(pkg.contains("\"unresolvedRefs\""))
     }
 

@@ -181,6 +181,29 @@ class AndroidExportSessionStoreTest {
     }
 
     @Test
+    fun pre331Schema1RecordIsRejectedFailClosed() {
+        // Issue #331: the persisted record schema is v2 (candidate scope
+        // fields). A pre-331 v1 record — even shaped otherwise like a v2
+        // record — must never load as an active session (the user re-exports).
+        val directory = tempDirectory()
+        try {
+            val file = File(directory, "s1")
+            directory.mkdirs()
+            file.writeText(
+                """{"schemaVersion":1,"exportId":"export-1",""" +
+                    """"itemRefs":[{"ref":"ref-a","itemId":"item-1"}],"tier":"EXTERNAL_REDACTED",""" +
+                    """"sourceContextDigest":"${"d".repeat(64)}","signalProvenance":null,""" +
+                    """"createdAtEpochMs":1000,"expiresAtEpochMs":${1_000L + ContextExportContract.SESSION_TTL_MS},""" +
+                    """"scopeCandidates":[],"scopeCandidateDigest":""}""",
+            )
+            assertNull(store(directory, "s1").load("export-1"))
+            assertNull(store(directory, "s1").active(1_500L))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun secureRandomAllocatorProducesDistinctUrlSafeIdentifiers() {
         val allocator = SecureRandomIdAllocator()
         val ids = (0 until 100).map { allocator.newId() }

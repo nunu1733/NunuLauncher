@@ -157,6 +157,10 @@ class PlannerMobilityBindingTest {
                         determinePreservation(item, roles[item.id], snapshot.reservedWorkspaceRegions, relocateWidgets = true),
                     )
                 }
+
+                Mobility.CANDIDATE -> throw AssertionError(
+                    "projectMobility never yields CANDIDATE for captured items: ${item.id}",
+                )
             }
         }
     }
