@@ -242,16 +242,25 @@ class ManualOrganizationRun internal constructor(
          *
          * Issue #331: [intentScopeCount] is the export scope's candidate
          * count when a validated intent is bound to this run (guidance only —
-         * the user still selects explicitly, D-1); [scopeMismatch] marks a
-         * rejected confirmation whose selection diverged from the export
-         * scope (`SCOPE_MISMATCH`, zero-write — the surface re-opens with the
-         * re-export guidance).
+         * the user still selects explicitly, D-1); [scopeRejection] carries
+         * the accepted typed `SCOPE_MISMATCH` failure when a confirmation was
+         * rejected by the scope binding gate (zero-write — the surface
+         * re-opens with the re-export guidance).
          */
         data class Selecting(
             val runId: RunId,
             val candidates: List<DetectedCandidate>,
             val intentScopeCount: Int = 0,
-            val scopeMismatch: Boolean = false,
+            val scopeRejection: app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch? = null,
+        ) : State
+
+        /**
+         * Issue #331 (D-5): the scope binding gate rejected a run that could
+         * never open a selection surface (detection unavailable). Typed
+         * zero-write terminal — the remedy is re-export.
+         */
+        data class ScopeMismatchFailed(
+            val failure: app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch,
         ) : State
 
         data object Planning : State
@@ -445,16 +454,18 @@ class ManualOrganizationRun internal constructor(
             // re-export guidance). Resolvability and the projection digest
             // are re-checked against the composition below.
             val intent = current.intent
-            val scopeMismatch = intent != null &&
+            val earlyMismatch = intent != null &&
                 intent.session.scopeCandidates.sortedWith(
                     compareBy({ it.component.value }, { it.profile.value }),
                 ) != sortedSelection
-            if (scopeMismatch) {
+            if (earlyMismatch) {
                 stateHolder.value = State.Selecting(
                     current.runId,
                     current.detectedCandidates.orEmpty(),
                     intentScopeCount = intent!!.session.scopeCandidates.size,
-                    scopeMismatch = true,
+                    scopeRejection = app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch(
+                        app.lawnchair.organizer.personalization.ScopeMismatchCause.SET_MISMATCH,
+                    ),
                 )
                 null
             } else {
@@ -605,6 +616,11 @@ class ManualOrganizationRun internal constructor(
                 if (operation.intent != null) {
                     val cause = evaluateScopeBinding(operation, input, selection.orEmpty())
                     if (cause != null) {
+                        // The accepted typed contract failure (spec 204
+                        // taxonomy, 13th class / spec 331 D-5) carries the
+                        // rejection through both production surfaces.
+                        val failure =
+                            app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch(cause)
                         val restored = synchronized(lock) {
                             val detected = operation.detectedCandidates
                             if (isActiveLocked(operation) && detected != null) {
@@ -613,7 +629,7 @@ class ManualOrganizationRun internal constructor(
                                     operation.runId,
                                     detected,
                                     intentScopeCount = 0,
-                                    scopeMismatch = true,
+                                    scopeRejection = failure,
                                 )
                                 true
                             } else {
@@ -634,7 +650,7 @@ class ManualOrganizationRun internal constructor(
                                 ),
                             ),
                         )
-                        finish(operation, State.InputUnavailable(InputReadinessReason.ScopeBindingMismatch))
+                        finish(operation, State.ScopeMismatchFailed(failure))
                         return
                     }
                 }

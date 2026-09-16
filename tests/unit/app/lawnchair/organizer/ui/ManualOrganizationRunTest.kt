@@ -1107,7 +1107,13 @@ class ManualOrganizationRunTest {
         runner.confirmSelection(emptySet())
 
         val state = runner.state as ManualOrganizationRun.State.Selecting
-        assertTrue(state.scopeMismatch)
+        val rejection = state.scopeRejection
+        assertEquals(
+            app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch(
+                app.lawnchair.organizer.personalization.ScopeMismatchCause.SET_MISMATCH,
+            ),
+            rejection,
+        )
         assertEquals(1, state.intentScopeCount)
         assertEquals(0, application.applyCalls)
         assertEquals(0, application.composeScopeComposedCalls)
@@ -1128,7 +1134,13 @@ class ManualOrganizationRunTest {
         runner.confirmSelection(setOf(c1Target()))
 
         val state = runner.state as ManualOrganizationRun.State.Selecting
-        assertTrue(state.scopeMismatch)
+        val rejection = state.scopeRejection
+        assertEquals(
+            app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch(
+                app.lawnchair.organizer.personalization.ScopeMismatchCause.PROJECTION_MISMATCH,
+            ),
+            rejection,
+        )
         assertEquals(0, state.intentScopeCount)
         assertEquals(0, application.applyCalls)
 
@@ -1136,6 +1148,26 @@ class ManualOrganizationRunTest {
         assertEquals(
             ManualOrganizationRun.AttachIntentOutcome.Attached,
             runner.attachIntent(validatedIntentFor(c1Target(), category = null)),
+        )
+        assertEquals(0, application.applyCalls)
+    }
+
+    @Test
+    fun scopeBindingWithoutASelectionSurfaceFailsTypedZeroWrite() {
+        // Detection unavailable → no selection surface exists; the gate's
+        // SET_MISMATCH surfaces as the typed terminal failure (zero-write).
+        val application = FakeApplication(readyInput())
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { error("planner must not run") })
+        val intent = validatedIntentFor(c1Target(), category = null)
+
+        runner.start(intent = intent)
+
+        val state = runner.state as ManualOrganizationRun.State.ScopeMismatchFailed
+        assertEquals(
+            app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch(
+                app.lawnchair.organizer.personalization.ScopeMismatchCause.CANDIDATE_UNRESOLVED,
+            ),
+            state.failure,
         )
         assertEquals(0, application.applyCalls)
     }

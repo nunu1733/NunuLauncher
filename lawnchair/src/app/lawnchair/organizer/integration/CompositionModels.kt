@@ -86,13 +86,6 @@ sealed interface InputReadinessReason {
      * planned or written.
      */
     data object StaleCandidateSelection : InputReadinessReason
-
-    /**
-     * Issue #331: the scope binding gate rejected the run — the confirmed
-     * selection / candidate projection diverged from the export session's
-     * scope (`SCOPE_MISMATCH`). Zero-write terminal; the remedy is re-export.
-     */
-    data object ScopeBindingMismatch : InputReadinessReason
 }
 
 enum class CaptureFailureCategory {

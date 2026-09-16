@@ -957,32 +957,41 @@ private fun exchangeFailureText(failure: ExchangeImportFailure): String = when (
         ExchangeEnvelopeFailure.FramingEmpty -> stringResource(R.string.exchange_failure_framing_empty)
     }
 
-    is ExchangeImportFailure.Contract -> when (val f = failure.failure) {
-        IntentValidationFailure.SchemaMismatch -> stringResource(R.string.exchange_failure_schema_mismatch)
+    is ExchangeImportFailure.Contract -> exchangeContractFailureText(failure.failure)
+}
 
-        IntentValidationFailure.ExportMismatch -> stringResource(R.string.exchange_failure_export_mismatch)
+/**
+ * The 13-class #204 contract failure mapping (spec 204 + spec 331 D-5). The
+ * exhaustive `when` is the compile-time guarantee that every contract class —
+ * including the 17th unified outcome `SCOPE_MISMATCH`, raised by the run-side
+ * scope binding gate — reaches the failure UI.
+ */
+@Composable
+fun exchangeContractFailureText(failure: IntentValidationFailure): String = when (failure) {
+    IntentValidationFailure.SchemaMismatch -> stringResource(R.string.exchange_failure_schema_mismatch)
 
-        IntentValidationFailure.SessionExpired -> stringResource(R.string.exchange_failure_session_expired)
+    IntentValidationFailure.ExportMismatch -> stringResource(R.string.exchange_failure_export_mismatch)
 
-        IntentValidationFailure.ContextStale -> stringResource(R.string.exchange_failure_context_stale)
+    IntentValidationFailure.SessionExpired -> stringResource(R.string.exchange_failure_session_expired)
 
-        IntentValidationFailure.Oversize -> stringResource(R.string.exchange_failure_oversize)
+    IntentValidationFailure.ContextStale -> stringResource(R.string.exchange_failure_context_stale)
 
-        is IntentValidationFailure.UnknownRef -> stringResource(R.string.exchange_failure_unknown_ref)
+    IntentValidationFailure.Oversize -> stringResource(R.string.exchange_failure_oversize)
 
-        IntentValidationFailure.DuplicateRef -> stringResource(R.string.exchange_failure_duplicate_ref)
+    is IntentValidationFailure.UnknownRef -> stringResource(R.string.exchange_failure_unknown_ref)
 
-        IntentValidationFailure.IncompleteCoverage -> stringResource(R.string.exchange_failure_incomplete_coverage)
+    IntentValidationFailure.DuplicateRef -> stringResource(R.string.exchange_failure_duplicate_ref)
 
-        IntentValidationFailure.InvalidEnum -> stringResource(R.string.exchange_failure_invalid_enum)
+    IntentValidationFailure.IncompleteCoverage -> stringResource(R.string.exchange_failure_incomplete_coverage)
 
-        IntentValidationFailure.ForbiddenContent -> stringResource(R.string.exchange_failure_forbidden_content)
+    IntentValidationFailure.InvalidEnum -> stringResource(R.string.exchange_failure_invalid_enum)
 
-        is IntentValidationFailure.MobilityContradiction -> stringResource(R.string.exchange_failure_mobility_contradiction)
+    IntentValidationFailure.ForbiddenContent -> stringResource(R.string.exchange_failure_forbidden_content)
 
-        IntentValidationFailure.CapabilityUnsupported -> stringResource(R.string.exchange_failure_capability_unsupported)
+    is IntentValidationFailure.MobilityContradiction -> stringResource(R.string.exchange_failure_mobility_contradiction)
 
-        // Issue #331 (17th outcome): the scope binding gate's typed rejection.
-        is IntentValidationFailure.ScopeMismatch -> stringResource(R.string.exchange_failure_scope_mismatch)
-    }
+    IntentValidationFailure.CapabilityUnsupported -> stringResource(R.string.exchange_failure_capability_unsupported)
+
+    // Issue #331 (17th outcome): the scope binding gate's typed rejection.
+    is IntentValidationFailure.ScopeMismatch -> stringResource(R.string.exchange_failure_scope_mismatch)
 }

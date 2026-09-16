@@ -97,28 +97,14 @@ fun LazyListScope.missingAppSelectionItems(
     onCancel: () -> Unit,
     /** Issue #331: a bound intent's export scope size — guidance only (D-1). */
     intentScopeCount: Int = 0,
-    /** Issue #331: the last confirmation was rejected as a `SCOPE_MISMATCH`. */
-    scopeMismatch: Boolean = false,
     /**
      * Issue #331: false while the run-in exchange step holds the surface —
      * the export scope is the frozen selection, so edits (and confirm) are
-     * disabled until the exchange completes or is abandoned.
+     * disabled until the exchange completes or is abandoned. The typed
+     * `SCOPE_MISMATCH` rejection text renders in the host surface.
      */
     editsEnabled: Boolean = true,
 ) {
-    if (scopeMismatch) {
-        item(key = "missing-app-selection-scope-mismatch") {
-            Text(
-                text = stringResource(R.string.exchange_failure_scope_mismatch),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-                    .semantics { liveRegion = LiveRegionMode.Assertive }
-                    .testTag("missing-app-selection-scope-mismatch"),
-            )
-        }
-    }
     item(key = "missing-app-selection-heading") {
         Text(
             text = stringResource(R.string.manual_organization_missing_apps_title),
