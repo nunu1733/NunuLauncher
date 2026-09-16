@@ -2,7 +2,7 @@
 
 > Issue: #205
 > Spec: [spec.md](./spec.md)
-> Status: accepted — specは2026-09-16にaccepted (ChatGPT 2nd re-review Approve、[Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/205#issuecomment-5683891236)、head `0e4f154cfd1c3dec083415eaa17cf9789d5eb588`)。依存する #204 contractも **accepted・実装済み** (現main)。実装は本planのExecution checklistに従う。
+> Status: implemented — spec/planは2026-09-16にaccepted (ChatGPT 2nd re-review Approve、[Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/205#issuecomment-5683891236)、head `0e4f154cfd1c3dec083415eaa17cf9789d5eb588`)。依存する #204 contractも **accepted・実装済み** (現main)。実装は本planのExecution checklistに従う。
 
 ## Re-entry status
 
@@ -11,6 +11,7 @@
 - 2026-09-15: Owner re-review "Request changes" (snapshot `02f7f90` 基準、残指摘2点) に対応し、main `397d3fd957` をmergeして再anchor。**P1 (process death後のrun再構築)**: import成立後の接続をfresh run再構築 (新RunId・既存run flow・gate経由) と固定し、#228 selectionは再構築せず再選択とすることをdesign/data flow/AC-11へ反映。**P2 (disclosure順序)**: data flowを `privacy mode選択 → package生成 → Pre-send Disclosure → explicit send → 同一packageをtransport` へ修正し、packageのimmutable value化と同一性保証をdesignへ反映。main差分 (`c5274b5d0d` → `397d3fd957`) の確認: #298 (Nova restore reload spec/plan)、#299 (capture invariant実装。`CaptureInvariant.kt` 新設、`OrganizationInputComposer.kt` 変更は `CaptureFailureObserver` のsignature拡張 (diagnostics目的) のみでcomposition input構造は不変)、#315 (bounded CI evidence capture、`DiagnosticsLogger` の `invariant=` field追加)。planning seam・preview path・本planの統合点への構造変更なし。#204は2026-09-14 re-review対応revision `12f773ad61` でdraft継続 (再review待ち・gate Q1/Q3/Q4未解決) のため実装blockerは不変。
 - 2026-09-16: Owner re-review "Request changes" (2026-09-15、snapshot `376dc35` 基準、指摘3点) に対応し、main `0cf82bc1e6` をmergeして再anchor。**P1 (framing具体形式)**: framingを完全行marker `-----BEGIN/END NUNULAUNCHER INTENT-----` + typed失敗3種 (`FRAMING_MISSING`/`FRAMING_AMBIGUOUS`/`FRAMING_EMPTY`) として固定し、parser設計・AC-4 corpusを具体化。**P1 (session置換semantics)**: 新規生成開始をsession置換確認でgate、未送信package取消は `ExportSessionStore.invalidate` による明示的失効とする設計へ変更 (AC-13新設)。**Re-anchor**: 差分 `397d3fd957..0cf82bc1e6` は #203実装 (PR #321) と #204 acceptance + 実装 (PR #322) そのものである。`organizer/ui` は差分ゼロ (run state machine・preview/confirm surfaceの統合点は不変)。`organizer/planning`・`organizer/integration` の差分は #203/#204実装自身 (`OrganizationInput.intentPreferences`、`PolicySourceKind.PERSONALIZED_INTENT`、`FullRunExecution` preference消費、`PlacementAllocator` cell hint、usage signal source類)。#204の実装blockerは解消し、open questions (transport・instruction・言語・size) をspec Decisions 1–5として解消した。
 - 2026-09-16 (2nd): ChatGPT re-review "Request changes" (snapshot `9b1cd9d` 基準。前回3指摘は解消確認済み、新指摘 P1×1/P2×1) に対応。baselineは `0cf82bc1e6` のまま (re-anchor不要)。**P1 (import envelope上限)**: import text全体へのenvelope上限 1 MiB (UTF-8 byte基準、#205所有。#204 `MAX_INTENT_BYTES` とは別契約) を導入。pipeline入口で正規化・走査の前にbyte検査、全import経路 (貼付付け・clipboard・file) へ同一適用、超過は typed失敗 `INPUT_OVERSIZE` (zero-write)。corpus (巨大prefix/suffix + 小valid payload、marker不在巨大入力、境界値) をAC-4へ追加。**P2 (SessionExportReconstructor seam)**: production input sourceを「export生成とimport再構築が共有する単一adapter (canonical capture → `ExportInputs`/`CanonicalStructuralInputs`。既存 `ProductionOrganizationInputComposer` / `FullTargetSetMaterializer` のfull-target composition経由)」としてDesignへ明記。#228 scope selectionはrun内概念でexchange flow非関与と固定。parity contract test (同一structural stateからのreconstruct一致、signal/label変化の無影響、構造変化で `CONTEXT_STALE` 収束) をVerificationへ追加。Change set表の「#204側module」行を「契約・既存validator等の意味は変更しないが同packageへadditive helperを追加」へ文言統一。
+- 2026-09-16 (3rd): **実装merge**。PR #325 (commit `3df9c7af`) がmergeされた。Execution checklistの残項目のうち「Current behavior reproduced」「framing parser・package composer・generation gateの失敗test先行」「Minimal implementation」「AC-11/AC-13含むverification」「PR evidence記録」は本mergeで達成。「Physical-device representative workflow evidence」は後続evidence PRの対象。
 
 ## Current evidence
 
@@ -156,12 +157,12 @@ Manual run UI (run非active時導線) → exchange flow開始
 
 - [x] #204 accepted・実装済み (blocker解消。spec/planの仮称解消を含む)。
 - [x] 本spec/planのowner acceptance (2026-09-16、ChatGPT 2nd re-review Approve。status: accepted)。
-- [ ] Current behavior reproduced (導線不在の確認)。
-- [ ] framing parser・package composer・generation gateの失敗testを先行追加 (framing失敗は #204 validation failureと区別されること)。
-- [ ] Minimal implementation (composer → transport → import → 既存preview接続)。
-- [ ] Process recreation simulation test (AC-11: session解決 + import → fresh run再構築 → preview のintegration evidence) と session置換scenario test (AC-13) を含むsecurity/a11y/environment failure verification completed。
+- [x] Current behavior reproduced (導線不在の確認)。
+- [x] framing parser・package composer・generation gateの失敗testを先行追加 (framing失敗は #204 validation failureと区別されること)。
+- [x] Minimal implementation (composer → transport → import → 既存preview接続)。
+- [x] Process recreation simulation test (AC-11: session解決 + import → fresh run再構築 → preview のintegration evidence) と session置換scenario test (AC-13) を含むsecurity/a11y/environment failure verification completed。
 - [ ] Physical-device representative workflow evidence recorded (app切替往復を含む)。
-- [ ] PR evidence and remaining risks recorded。
+- [x] PR evidence and remaining risks recorded。
 
 ## Re-entry history
 
