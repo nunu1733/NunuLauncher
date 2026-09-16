@@ -92,11 +92,17 @@ Deleted assignments are never silently remapped to the fallback category or to a
 
 ### Exchange export and #331 binding projection
 
-User-defined category identity never enters the external exchange surface: neither the raw `UserCategoryId` nor a display name may appear in an export document, a session record, or an intent payload. Concretely:
+User-defined category identity never enters the external exchange surface: neither the raw `UserCategoryId` nor a display name may appear in an export document, a session record field, or an intent payload. Two distinct layers keep that promise, and collapsing them is explicitly rejected:
 
-- A candidate whose resolved classification is a user-defined category is exported with **no category** (the existing absent-category projection), never with an ID or name. Built-in classifications export exactly as today.
-- The #331 export-session candidate digest and the scope-binding gate apply **the same projection rule** at export time and gate time. Because renames, deletions, and creations of user-defined categories do not change any built-in-resolved classification, they never invalidate an active exchange session under this rule. A session still fails through the existing typed scope-mismatch path when its recorded projection genuinely diverges (candidate set, availability, or a built-in-resolved classification change).
-- #204 `PersonalizedIntentProjection.groupSemantic` keeps addressing built-in categories only (built-in `CategoryId`-typed); intents cannot reference, assign, or create user-defined categories.
+- **Export presentation surface**: a candidate whose resolved classification is a user-defined category is exported with **no category** (the existing absent-category projection) in `ExportItem.category` / `groupSemantic` — never an ID or a name. Built-in classifications export exactly as today.
+- **Session-local freshness identity (internal)**: the #331 freshness identity keeps digesting the resolved `CategoryIdentity` itself — the `CandidateScopeIdentity` canonical row (and the placed-item freshness projections owned by `SourceContextIdentity`) use the identity's kind discriminator + stable ID as canonical digest input. A raw ID may flow only into the one-way session digest; it is never persisted as an export/session *field*. Redacting the export field to "absent" therefore does **not** collapse the freshness identity: a reassignment from user-defined category A to user-defined category B (or across the built-in/user-defined boundary) is detected exactly as a built-in resolved-category change is today, through the existing typed scope-mismatch/stale path.
+
+The resulting stale semantics are exact:
+
+- **Never stale**: creating a category, renaming one (stable ID unchanged), or deleting an **unassigned** category changes no candidate's/item's resolved `CategoryIdentity` and cannot invalidate an active exchange session.
+- **Typed mismatch/stale as today**: reassigning a candidate or item across any categories, or deleting an **assigned** category (whose protocol removes its overrides, letting classification fall through to S2–S6 built-in resolution), changes resolved identities and fails through the existing typed scope-mismatch path with its specified replan/remedy.
+
+#204 `PersonalizedIntentProjection.groupSemantic` keeps addressing built-in categories only (built-in `CategoryId`-typed); intents cannot reference, assign, or create user-defined categories.
 
 ## Planner and strategy integration
 
@@ -140,7 +146,7 @@ Accessibility bar (carried from #99 AC-10): TalkBack labels/roles, focus restora
 - [ ] **AC-11** — Built-in-only runs keep deterministic, byte-identical plans; mixed-catalog determinism/idempotence/property coverage exists; backup exclusion is verified; downgrade to a pre-336 binary observes its existing fail-closed override outcome (`Unreadable`/`OVERRIDE_UNREADABLE` on the current mainline) without stale or empty S1 consumption and without layout changes.
 - [ ] **AC-12** — Focused unit, composer-integration, UI, and connected/device evidence covers create/rename/delete/assign/remove, migration, cut instability, corruption, conflict, title binding, and no-layout-mutation.
 - [ ] **AC-13** — TalkBack, keyboard/DPAD, Switch Access, non-color state, focus restoration, and 200% font scale are verified for authoring and assignment flows; no raw IDs in any user UI.
-- [ ] **AC-14** — Privacy: diagnostics/journal/export never contain user-defined IDs, display names, or entry contents; exchange exports project user-defined classifications as absent categories (parity-tested at export and gate time); the store is excluded from backup.
+- [ ] **AC-14** — Privacy: diagnostics/journal/export never contain user-defined IDs, display names, or entry contents; exchange exports project user-defined classifications as absent categories while the internal session freshness identity still digests the stable `CategoryIdentity` (detecting reassignment/deletion-driven changes); the store is excluded from backup.
 
 ## Explicit non-goals
 
