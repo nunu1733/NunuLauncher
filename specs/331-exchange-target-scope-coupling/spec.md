@@ -1,6 +1,6 @@
 ---
 issue: "#331"
-status: accepted
+status: implemented
 requirements: [FR-017]
 risk:
   - privacy
@@ -10,7 +10,7 @@ updated: 2026-09-16
 
 # External Agent Exchangeの対象scopeに未配置アプリ候補を含められる
 
-> Status: **accepted** (2026-09-16) — 起草revision (head `defaf666bc`) へのChatGPT review "Changes requested" (Blocking 2点 + Required 1点、[Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/331#issuecomment-5694723284)) を解消した対応revision (head `41252343d4`) に対し、ChatGPT re-review **Approved (Blocking 0 / Required 0)** ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/331#issuecomment-5695018138)) を受けacceptedへ移行。status更新自体はadministrative変更であり、承認対象headは `41252343d4` のままである。実装はplan.mdのExecution checklistに従う。
+> Status: **implemented** (2026-09-16) — [PR #333](https://github.com/nunu1733/NunuLauncher/pull/333) merge (commit `addb25d8181e`) によりmainに取り込まれた。受入経緯: 起草revision (head `defaf666bc`) へのChatGPT review "Changes requested" を解消したrevision (head `41252343d4`) に対しChatGPT re-review **Approved**、実装はChatGPT implementation review 2回の "Changes requested" (typed SCOPE_MISMATCH接続・選択状態復帰・session store v2移行) を解消し **Approved** (head `780fdd6bd728`)。独立監査は [docs/assessment/pr-333-exchange-target-scope-coupling.md](../../docs/assessment/pr-333-exchange-target-scope-coupling.md) (Approve、CI run 35087139174 / high-risk gate run 35088536685 success)。AC-11 (instrumentation) とAC-12 (TalkBack等manual a11y evidence) は後続evidence PRの対象。
 
 ## Problem
 
@@ -316,3 +316,4 @@ CI class filter (`ci.yml` connected-test lanes) への新instrumentation test cl
 - [Spec 182: layout strategy catalog](../182-layout-strategy-catalog/spec.md) (planner seam)
 - [ADR-0007: authoritative organization policy sources](../../docs/adr/0007-authoritative-organization-policy-sources.md)
 - [AGENTS.md](../../AGENTS.md), [DESIGN.md](../../DESIGN.md), [CONTEXT.md](../../CONTEXT.md)
+- 2026-09-16 (4th): **implemented**。[PR #333](https://github.com/nunu1733/NunuLauncher/pull/333) merge (commit `addb25d8181e`)。実装はChatGPT implementation review 2ラウンドのChanges requested (SCOPE_MISMATCHのtyped failure接続、gate違反時の選択状態復帰、session store record v2移行) を解消しApprove (head `780fdd6bd728`)。独立監査Approve (監査doc commit `ee0eb111`)、CI / high-risk gate success。AC-11/AC-12のinstrumentation・manual evidenceは後続evidence PRで実施。

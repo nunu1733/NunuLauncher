@@ -2,7 +2,7 @@
 
 > Issue: #331
 > Spec: [spec.md](./spec.md)
-> Status: accepted — ChatGPT review round 1 "Changes requested" (Blocking×2/Required×1) を解消したrevision `41252343d4` に対し、ChatGPT re-review **Approved** ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/331#issuecomment-5695018138))。実装は本planのExecution checklistに従う。
+> Status: implemented — [PR #333](https://github.com/nunu1733/NunuLauncher/pull/333) merge (commit `addb25d8181e`)。実装はChatGPT implementation review 2ラウンド (Changes requested → 解消 → Approve) を経て受理。独立監査: [docs/assessment/pr-333-exchange-target-scope-coupling.md](../../docs/assessment/pr-333-exchange-target-scope-coupling.md)。AC-7/AC-8の単一flow統合testとAC-11/AC-12のinstrumentation・manual evidenceは後続evidence PRの対象。
 
 ## Re-entry status
 
