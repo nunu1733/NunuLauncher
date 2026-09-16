@@ -2,7 +2,7 @@
 
 > Issue: #331
 > Spec: [spec.md](./spec.md)
-> Status: draft — spec/planはChatGPT review + owner受入を経てacceptedへ移行する。実装は本planのExecution checklistに従う。
+> Status: accepted — ChatGPT review round 1 "Changes requested" (Blocking×2/Required×1) を解消したrevision `41252343d4` に対し、ChatGPT re-review **Approved** ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/331#issuecomment-5695018138))。実装は本planのExecution checklistに従う。
 
 ## Re-entry status
 

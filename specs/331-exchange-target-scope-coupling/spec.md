@@ -1,6 +1,6 @@
 ---
 issue: "#331"
-status: draft
+status: accepted
 requirements: [FR-017]
 risk:
   - privacy
@@ -10,7 +10,7 @@ updated: 2026-09-16
 
 # External Agent Exchangeの対象scopeに未配置アプリ候補を含められる
 
-> Status: **draft** (2026-09-16起草)。依存: #228 (scope-composed run・missing-app selection、**implemented**)、#204 (Context/Intent exchange contract、**accepted・実装済み**)、#205 (External Agent Exchange workflow、**implemented** — AC-9/AC-10のmanual/physical evidenceは後続PRで残置)。本specは #204/#205 accepted契約の **意図的な拡張** (schema version bump、failure class追加、exchange導線のrun内提示) を行う。拡張の正本は本specであり、#204/#205のChange historyへは実装PRで記録する。
+> Status: **accepted** (2026-09-16) — 起草revision (head `defaf666bc`) へのChatGPT review "Changes requested" (Blocking 2点 + Required 1点、[Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/331#issuecomment-5694723284)) を解消した対応revision (head `41252343d4`) に対し、ChatGPT re-review **Approved (Blocking 0 / Required 0)** ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/331#issuecomment-5695018138)) を受けacceptedへ移行。status更新自体はadministrative変更であり、承認対象headは `41252343d4` のままである。実装はplan.mdのExecution checklistに従う。
 
 ## Problem
 
@@ -304,6 +304,7 @@ CI class filter (`ci.yml` connected-test lanes) への新instrumentation test cl
 
 - 2026-09-16: Draft created for Issue #331。baseline `4f555450bd` (origin/main) 上で起草。#228 (implemented)、#204 (accepted・実装済み)、#205 (implemented) の契約と実装 (`ContextExportBuilder` が `snapshot.items` のみ対象、`ExchangeInputAdapter.composeForExport` が `composeFullOrganization()` 経由、exchange導線はIdle/Cancelled時のみ提示、import はfresh run再構築) を確認し、Issue 331の5つのrequired design (canonical scope、candidate subject identity、import validation、mobility/creation semantics、flow ordering) をD-1〜D-5として確定して起草。
 - 2026-09-16 (2nd): ChatGPT review "Changes requested" ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/331#issuecomment-5694723284)、head `defaf666bc` 基準、Blocking 2点 + Required 1点) への対応revision。**Blocking 1 (scope binding規則)**: D-2を包含 (⊇) から **完全一致 (equality)** へ変更 — export後の候補追加を許すとAI未判断のcandidateが同一intent下でorganizeされ、本Issueの問題 (export scopeとrun scopeの不一致) を再現するため。idle export後のcandidate選択確定も `SCOPE_MISMATCH` でfail-closedとし (idle entry scenario、AC-9更新)、process death後の再選択は件数案内表示 (自動選択なし) で支援。**Blocking 2 (candidate構造のfreshness)**: candidate分類・availabilityの変化がplaced digest (空workspaceでは不変) で捕捉できない問題に対し、candidate投影digest (安定identity + availability + 解決済み分類のcanonical digest) をsessionに記録しbinding時に再計算照合する設計へ変更 (D-4改訂、新scenario追加)。placed側digestのv1定義は無変更。**Required 3 (taxonomy統一)**: `CandidateUnresolved` の独立class導入を止め、`SCOPE_MISMATCH` 単一class (cause detail付き: 選択集合不一致 / candidate無効化 / 投影digest不一致) に統合し、17種表示計算を13 + 4で整合。AC-6を3段検出の具体条件へ更新。
+- 2026-09-16 (3rd): **accepted**。ChatGPT re-review **Approved (Blocking 0 / Required 0)** ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/331#issuecomment-5695018138)、head `41252343d4c31791ae70f00832ad36296f15e477` 基準) を受けstatusをdraft → acceptedへ移行。status更新はadministrative変更であり承認対象headを変更しない。実装開始。
 
 ## References
 
