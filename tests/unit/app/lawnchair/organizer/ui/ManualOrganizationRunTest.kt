@@ -136,9 +136,12 @@ class ManualOrganizationRunTest {
                 expiresAtEpochMs = 1L,
             ),
             identity = app.lawnchair.organizer.personalization.IntentIdentityCalculator.identity(
-                app.lawnchair.organizer.personalization.PersonalizedIntentV1(
-                    exportId = "export-1",
-                    itemIntents = emptyList(),
+                app.lawnchair.organizer.personalization.IntentCompletion.complete(
+                    app.lawnchair.organizer.personalization.PersonalizedIntentV1(
+                        exportId = "export-1",
+                        itemIntents = emptyList(),
+                    ),
+                    emptySet(),
                 ),
             ),
         )

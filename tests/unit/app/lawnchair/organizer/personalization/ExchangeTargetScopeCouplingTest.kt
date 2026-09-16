@@ -216,12 +216,13 @@ class ExchangeTargetScopeCouplingTest {
         val encoded = ContextExportCodec.encode(result.export) as ContextExportResult.Success
         val decoded = ContextExportCodec.decode(encoded.bytes)
         assertTrue(decoded is ContextExportResult.Success)
-        val v2Json = encoded.bytes.decodeToString()
-        assertTrue(v2Json.contains("personalization-context-v2"))
-        assertTrue(v2Json.contains("\"subject\":\"CANDIDATE\""))
-        // v1 documents fail closed on the version check.
+        val v3Json = encoded.bytes.decodeToString()
+        assertTrue(v3Json.contains("personalization-context-v3"))
+        assertTrue(v3Json.contains("\"subject\":\"CANDIDATE\""))
+        // v1 documents fail closed on the version check (spec 330 D-3 keeps the
+        // single-version runtime; v2 is retired with the same rule).
         val v1Decode = ContextExportCodec.decode(
-            v2Json.replace("personalization-context-v2", "personalization-context-v1").encodeToByteArray(),
+            v3Json.replace("personalization-context-v3", "personalization-context-v1").encodeToByteArray(),
         )
         assertEquals(ExportEncodeProblem.SchemaMismatch, (v1Decode as ContextExportResult.Failure).problem)
     }
@@ -247,14 +248,17 @@ class ExchangeTargetScopeCouplingTest {
     }
 
     @Test
-    fun coveragePartitionsCandidateRefsTogetherWithPlacedRefs() {
+    fun anOmittedCandidateRefCompletesToCanonicalUnresolved() {
+        // Issue #330 (v3, spec 330 D-1/D-2): a candidate ref missing from both
+        // lists is no longer a coverage violation — candidates are full
+        // subjects and their omission means "no judgment".
         val result = build(
             inputs(listOf(app("a")), additions = listOf(candidate("com.selected"))),
             PrivacyTier.LOCAL_FULL,
             SequentialIdAllocator(),
         )
         val candidateRef = candidateOf(result).ref
-        val incomplete = IntentValidator.validate(
+        val partial = IntentValidator.validate(
             PersonalizedIntentV1(
                 exportId = result.export.exportId,
                 itemIntents = listOf(ItemIntent(ref = placedOf(result).ref)),
@@ -265,19 +269,20 @@ class ExchangeTargetScopeCouplingTest {
             now,
             result.session.sourceContextDigest,
         )
-        assertTrue((incomplete as IntentValidation.Failure).failure is IntentValidationFailure.IncompleteCoverage)
+        val validated = (partial as IntentValidation.Validated).validated
+        assertEquals(RefDecision.UnresolvedByOmission, validated.completed.decisions.getValue(candidateRef))
         // The candidate ref is a full subject: referencing it directly is fine.
         assertTrue(validateRef(result, candidateRef) is IntentValidation.Validated)
     }
 
     @Test
     fun v1IntentsFailClosedOnDecode() {
-        assertTrue(ContextExportContract.INTENT_SCHEMA_VERSION == "personalized-intent-v2")
+        assertTrue(ContextExportContract.INTENT_SCHEMA_VERSION == "personalized-intent-v3")
         val encoded = IntentCodec.encode(
             PersonalizedIntentV1(exportId = "x", itemIntents = emptyList()),
         ).decodeToString()
         val v1Bytes = encoded
-            .replace("personalized-intent-v2", "personalized-intent-v1")
+            .replace("personalized-intent-v3", "personalized-intent-v1")
             .encodeToByteArray()
         assertTrue(IntentCodec.decode(v1Bytes) is IntentDecodeResult.Failure)
     }
@@ -450,7 +455,7 @@ class ExchangeTargetScopeCouplingTest {
     @Test
     fun instructionV2ExplainsCandidatesAndMarkers() {
         val packageText = ExchangePackageComposer.compose("{}")
-        assertTrue(packageText.contains("personalized-intent-v2"))
+        assertTrue(packageText.contains("personalized-intent-v3"))
         assertTrue(packageText.contains("CANDIDATE"))
         assertTrue(packageText.contains("-----BEGIN NUNULAUNCHER INTENT-----"))
         assertTrue(ExchangePackageComposer.parsePackageStructure(packageText) is PackageStructureResult.Valid)

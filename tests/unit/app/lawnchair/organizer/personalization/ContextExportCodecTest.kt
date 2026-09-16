@@ -68,7 +68,7 @@ class ContextExportCodecTest {
         assertTrue(encoded is ContextExportResult.Success)
         val bytes = (encoded as ContextExportResult.Success).bytes
         val text = bytes.decodeToString()
-        assertTrue(text.contains("\"schemaVersion\":\"personalization-context-v2\""))
+        assertTrue(text.contains("\"schemaVersion\":\"personalization-context-v3\""))
         assertTrue(text.contains("\"exportId\":\"${export.exportId}\""))
 
         val decoded = ContextExportCodec.decode(bytes)
