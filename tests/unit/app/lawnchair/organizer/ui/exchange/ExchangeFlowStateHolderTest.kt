@@ -1,11 +1,14 @@
 package app.lawnchair.organizer.ui.exchange
 
+import android.net.Uri
 import app.lawnchair.organizer.integration.exchange.ExchangeFlowController
 import app.lawnchair.organizer.integration.exchange.ExchangeGenerationResult
 import app.lawnchair.organizer.integration.exchange.ExchangeImportOutcome
 import app.lawnchair.organizer.integration.exchange.ExchangeInputResult
 import app.lawnchair.organizer.integration.exchange.ExchangeStructuralResult
+import app.lawnchair.organizer.integration.exchange.ExchangeTransportFailure
 import app.lawnchair.organizer.integration.exchange.ExchangeTransportResult
+import app.lawnchair.organizer.integration.exchange.FileExchangeTransport
 import app.lawnchair.organizer.personalization.CanonicalStructuralInputs
 import app.lawnchair.organizer.personalization.ContextExportBuilder
 import app.lawnchair.organizer.personalization.ExportInputs
@@ -40,6 +43,7 @@ import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.planning.RevisionId
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.TargetSet
+import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
@@ -147,6 +151,7 @@ class ExchangeFlowStateHolderTest {
             controllerFactory = { controller },
             run = RecordingRun.get(),
             scope = CoroutineScope(Dispatchers.IO),
+            settleDispatcher = Dispatchers.IO,
         )
         return holder to controller
     }
@@ -210,6 +215,120 @@ class ExchangeFlowStateHolderTest {
     }
 
     @Test
+    fun aSecondWriteFileWhileOneIsInFlightIsRefused() {
+        // Review round 4 P1: two concurrent file writes must not be possible —
+        // the second writeFile must be refused before any IO, so a first
+        // write's failure cannot clear the busy flag while the second write is
+        // still landing outside the device.
+        val store = FakeStore()
+        val (holder, controller) = newHolder(store, now = 1_000_000L)
+        val generated = controller.generate(PrivacyTier.EXTERNAL_REDACTED) as ExchangeGenerationResult.Generated
+        setScreenToDisclosing(
+            holder,
+            ExchangeDisclosureState(generated.session, generated.packageText, PrivacyTier.EXTERNAL_REDACTED),
+        )
+
+        // Write A: a gated write that blocks in the transport.
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val writeAThread = Thread {
+            val transport = FileExchangeTransport(throwNoContextForTest())
+            transport.writeOverride = { _, _ ->
+                entered.countDown()
+                release.await(5, TimeUnit.SECONDS)
+                ExchangeTransportResult.Failure(
+                    ExchangeTransportFailure.FILE_WRITE_FAILED,
+                )
+            }
+            holder.writeFile(transport, generated.packageText, anyUri())
+        }
+        writeAThread.start()
+        val enteredOk = entered.await(5, TimeUnit.SECONDS)
+        if (!enteredOk) {
+            println("DEBUG screen=" + screenStateField(holder).value + " state=" + (screenStateField(holder).value as? ExchangeScreen.Disclosing)?.state)
+        }
+        assertTrue("write A never entered transport: " + screenStateField(holder).value, enteredOk)
+        assertTrue(currentDisclosureOrNull(holder)!!.transportInFlight)
+
+        // Write B while A is in flight: refused — it never runs its transport.
+        var bRan = false
+        val transportB = FileExchangeTransport(throwNoContextForTest())
+        transportB.writeOverride = { _, _ ->
+            bRan = true
+            ExchangeTransportResult.Success
+        }
+        holder.writeFile(transportB, generated.packageText, anyUri())
+        Thread.sleep(200)
+        assertFalse("the second writeFile must be refused while the first is in flight", bRan)
+        assertTrue(currentDisclosureOrNull(holder)!!.transportInFlight)
+
+        // A fails and settles: the failure must not be delivered after the
+        // disclosure state moved on in a way that lets a late B run — B never
+        // started, so the state simply returns to cancelable. (The settle hops
+        // through the settle dispatcher; poll briefly for it to land.)
+        release.countDown()
+        writeAThread.join(5_000)
+        var settled = currentDisclosureOrNull(holder)
+        var waited = 0
+        while (settled != null && settled.transportInFlight && waited < 5_000) {
+            Thread.sleep(50)
+            waited += 50
+            settled = currentDisclosureOrNull(holder)
+        }
+        assertNotNull(settled)
+        assertFalse(settled!!.transportInFlight)
+        assertTrue(settled.cancelable)
+        assertFalse(bRan)
+        assertNotNull(store.session)
+    }
+
+    @Test
+    fun writeFileThroughTheRealPathRacingCancelKeepsTheSession() {
+        // Review round 4 P1 (Required): the delayed-write race test must go
+        // through the real `ExchangeFlowStateHolder.writeFile()` start path.
+        val store = FakeStore()
+        val (holder, controller) = newHolder(store, now = 1_000_000L)
+        val generated = controller.generate(PrivacyTier.EXTERNAL_REDACTED) as ExchangeGenerationResult.Generated
+        setScreenToDisclosing(
+            holder,
+            ExchangeDisclosureState(generated.session, generated.packageText, PrivacyTier.EXTERNAL_REDACTED),
+        )
+
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val writeThread = Thread {
+            val transport = FileExchangeTransport(throwNoContextForTest())
+            transport.writeOverride = { _, _ ->
+                entered.countDown()
+                release.await(5, TimeUnit.SECONDS)
+                ExchangeTransportResult.Success
+            }
+            holder.writeFile(transport, generated.packageText, anyUri())
+        }
+        writeThread.start()
+        assertTrue(entered.await(5, TimeUnit.SECONDS))
+        assertTrue("the real writeFile must mark the disclosure in flight", currentDisclosureOrNull(holder)!!.transportInFlight)
+
+        // A cancel racing the write is refused (not cancelable): closeDisclosure
+        // only closes the screen — the session survives.
+        holder.closeDisclosure()
+        assertNotNull("session must survive a cancel attempted during the write", store.session)
+        assertNull(
+            "the racing cancel closed the disclosure",
+            currentDisclosureOrNull(holder),
+        )
+
+        // The write then succeeds on the closed disclosure: the late result
+        // must not reopen anything, and the session stays intact.
+        release.countDown()
+        writeThread.join(5_000)
+        assertNull("no disclosure is resurrected by the late settle", currentDisclosureOrNull(holder))
+        assertNotNull(store.session)
+        val outcome = controller.importReply(replyFor(generated.session))
+        assertTrue((outcome as ExchangeImportOutcome.Pipeline).result is ExchangeImportResult.Validated)
+    }
+
+    @Test
     fun aCancelAcceptedBeforeTheWriteStartsRefusesTransports() {
         val store = FakeStore()
         val (holder, controller) = newHolder(store, now = 1_000_000L)
@@ -238,6 +357,12 @@ class ExchangeFlowStateHolderTest {
         Thread.sleep(200)
         assertNull(store.session)
     }
+
+    private fun anyUri(): Uri? = null
+
+    // the write hook never dereferences it
+    @Suppress("DEPRECATION")
+    private fun throwNoContextForTest(): android.content.Context = android.content.ContextWrapper(null)
 
     /**
      * Minimal run stand-in provider. The holder's import path only consults

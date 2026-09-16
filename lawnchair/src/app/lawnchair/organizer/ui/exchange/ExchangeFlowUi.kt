@@ -50,6 +50,7 @@ import app.lawnchair.organizer.personalization.exchange.ExchangeImportResult
 import app.lawnchair.organizer.personalization.exchange.acceptsExchangeImportEnvelope
 import app.lawnchair.organizer.ui.ManualOrganizationRun
 import com.android.launcher3.R
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -138,6 +139,8 @@ class ExchangeFlowStateHolder(
     controllerFactory: () -> ExchangeFlowController,
     private val run: ManualOrganizationRun,
     private val scope: CoroutineScope,
+    /** Where transport results hop back to the UI (Main in production). */
+    private val settleDispatcher: CoroutineDispatcher = Dispatchers.Main,
 ) {
     private val controller: ExchangeFlowController by lazy(LazyThreadSafetyMode.NONE) { controllerFactory() }
 
@@ -263,11 +266,24 @@ class ExchangeFlowStateHolder(
     }
 
     /** Serializes every transport start through the disclosure state on Main. */
-    fun startTransport(transport: () -> ExchangeTransportResult) {
+    /**
+     * The single begin gate for every transport (review round 4 P1): atomically
+     * checks the CURRENT disclosure's `transportAllowed` and flips it to
+     * in-flight. Returns the settled disclosure state, or null when the start
+     * was refused (no disclosure, already in flight / sent / cancelling) —
+     * a refused transport never runs and never settles.
+     */
+    private fun beginTransport(): ExchangeDisclosureState? {
         val disclosing = (screen as? ExchangeScreen.Disclosing)?.state
-        if (disclosing == null || !disclosing.transportAllowed) return
-        onTransportResult(ExchangeTransportResult.InFlight)
-        if ((screen as? ExchangeScreen.Disclosing)?.state?.transportInFlight != true) return
+        if (disclosing == null || !disclosing.transportAllowed) return null
+        val inFlight = disclosing.onTransportResult(ExchangeTransportResult.InFlight)
+        if (!inFlight.transportInFlight) return null
+        screen = ExchangeScreen.Disclosing(inFlight)
+        return inFlight
+    }
+
+    fun startTransport(transport: () -> ExchangeTransportResult) {
+        if (beginTransport() == null) return
         onTransportResult(transport())
     }
 
@@ -284,15 +300,16 @@ class ExchangeFlowStateHolder(
         }
     }
 
-    fun writeFile(fileTransport: FileExchangeTransport, packageText: String, uri: Uri) {
-        // Mark in-flight synchronously on Main BEFORE the write starts (review
-        // round 3 P1: the marker must actually reach the state — the flag
-        // suspends the pre-send cancel until the transport settles).
-        onTransportResult(ExchangeTransportResult.InFlight)
-        if ((screen as? ExchangeScreen.Disclosing)?.state?.transportInFlight != true) return
+    fun writeFile(fileTransport: FileExchangeTransport, packageText: String, uri: Uri?) {
+        // The async write goes through the same begin gate as the synchronous
+        // transports (review round 4 P1): a second writeFile while one is in
+        // flight, or a start against a sent/cancelling disclosure, is refused
+        // before any IO happens — so exactly one write can ever settle and the
+        // busy flag cannot be cleared while another write is still running.
+        if (beginTransport() == null) return
         scope.launch(Dispatchers.IO) {
             val result = fileTransport.write(packageText, uri)
-            withContext(Dispatchers.Main) { onTransportResult(result) }
+            withContext(settleDispatcher) { onTransportResult(result) }
         }
     }
 

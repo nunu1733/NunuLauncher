@@ -82,7 +82,19 @@ class ShareSheetExchangeTransport {
  */
 class FileExchangeTransport(private val context: Context) {
 
-    fun write(packageText: String, uri: Uri): ExchangeTransportResult = try {
+    /**
+     * Test-only write hook (issue #205 holder race tests): when non-null, the
+     * write body is injected, so holder-level tests exercise the real
+     * `writeFile()` path without an Android ContentResolver.
+     */
+    internal var writeOverride: ((String, Uri?) -> ExchangeTransportResult)? = null
+
+    fun write(packageText: String, uri: Uri?): ExchangeTransportResult {
+        writeOverride?.let { return it(packageText, uri) }
+        return writeTo(packageText, requireNotNull(uri))
+    }
+
+    private fun writeTo(packageText: String, uri: Uri): ExchangeTransportResult = try {
         context.contentResolver.openOutputStream(uri, "wt")?.use { stream ->
             stream.write(packageText.toByteArray(Charsets.UTF_8))
             stream.flush()
