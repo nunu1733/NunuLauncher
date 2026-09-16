@@ -1516,25 +1516,48 @@ private fun unplacedReasonString(reason: UnplacedReason): Int = when (reason) {
 
 private fun rejectionReasonString(reason: RejectionCode): Int = when (reason) {
     RejectionCode.UNKNOWN_ITEM_KIND -> R.string.manual_organization_rejection_unknown_item_kind
+
     RejectionCode.INVALID_CONTAINER -> R.string.manual_organization_rejection_invalid_container
+
     RejectionCode.UNKNOWN_PAGE -> R.string.manual_organization_rejection_unknown_page
+
     RejectionCode.BOUNDS_VIOLATION -> R.string.manual_organization_rejection_bounds
+
     RejectionCode.OVERLAP -> R.string.manual_organization_rejection_overlap
+
     RejectionCode.DANGLING_REFERENCE -> R.string.manual_organization_rejection_dangling_reference
+
     RejectionCode.MALFORMED_APP_PAIR -> R.string.manual_organization_rejection_malformed_app_pair
+
     RejectionCode.LOCKED_OUT_OF_BOUNDS -> R.string.manual_organization_rejection_locked_out_of_bounds
+
     RejectionCode.DUPLICATE_TARGET -> R.string.manual_organization_rejection_duplicate_target
+
     RejectionCode.MISSING_TARGET -> R.string.manual_organization_rejection_missing_target
+
     RejectionCode.INCOMPLETE_TARGET_PARTITION -> R.string.manual_organization_rejection_incomplete_target_partition
+
     RejectionCode.ADDITIONS_UNDER_FULL_ORGANIZATION -> R.string.manual_organization_rejection_additions
+
     RejectionCode.INVALID_RULES -> R.string.manual_organization_rejection_invalid_rules
+
     RejectionCode.DUPLICATE_ITEM_ID -> R.string.manual_organization_rejection_duplicate_item
+
     RejectionCode.DUPLICATE_PAGE -> R.string.manual_organization_rejection_duplicate_page
+
     RejectionCode.INVALID_DIMENSIONS -> R.string.manual_organization_rejection_invalid_dimensions
+
     RejectionCode.KIND_TARGET_MISMATCH -> R.string.manual_organization_rejection_kind_target_mismatch
+
     RejectionCode.TARGET_PROFILE_MISMATCH -> R.string.manual_organization_rejection_target_profile_mismatch
+
     RejectionCode.UNKNOWN_SIGNAL_ITEM -> R.string.manual_organization_rejection_unknown_signal_item
+
     RejectionCode.UNKNOWN_CATEGORY -> R.string.manual_organization_rejection_unknown_category
+
+    // Issue #336: no automatic-inference source may target a user-defined
+    // category; the planner rejects such signals as a typed failure.
+    RejectionCode.INVALID_CATEGORY_PROVENANCE -> R.string.manual_organization_rejection_invalid_category_provenance
 }
 
 private fun availabilityString(availability: Availability): Int = when (availability) {

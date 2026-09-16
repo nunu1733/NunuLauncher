@@ -243,7 +243,7 @@ internal object PlanningPlacement {
         folderOrdinalOffset: Int,
     ): List<UnplacedItem> {
         val device = input.snapshot.device
-        val taxonomy = input.taxonomy
+        val catalog = input.catalog
         val candidates = input.targets.additions
         val unplaced = mutableListOf<UnplacedItem>()
 
@@ -260,10 +260,10 @@ internal object PlanningPlacement {
                     FolderCandidate(
                         candidate.id,
                         candidate.profile,
-                        classification.decisions[candidate.id]?.category ?: taxonomy.fallbackCategory,
+                        classification.decisions[candidate.id]?.category ?: catalog.fallback,
                     )
                 },
-                fallbackCategory = taxonomy.fallbackCategory,
+                fallbackCategory = catalog.fallback,
                 capacity = capacity,
                 minGroupSize = minGroupSize,
             )
@@ -281,7 +281,7 @@ internal object PlanningPlacement {
         data class IncUnit(
             val sortOrdinal: NewFolderOrdinal?,
             val sortProfile: ProfileId,
-            val sortCategory: CategoryId,
+            val sortCategory: CategoryIdentity,
             val sortItem: ItemId,
             val span: GridSpan,
             val members: List<ItemId>?,
@@ -294,7 +294,7 @@ internal object PlanningPlacement {
             incUnits += IncUnit(
                 sortOrdinal = nf.ordinal,
                 sortProfile = nf.profile,
-                sortCategory = taxonomy.fallbackCategory,
+                sortCategory = catalog.fallback,
                 sortItem = nf.members.first(),
                 span = GridSpan(1, 1),
                 members = nf.members,
@@ -306,7 +306,7 @@ internal object PlanningPlacement {
             incUnits += IncUnit(
                 sortOrdinal = null,
                 sortProfile = candidate.profile,
-                sortCategory = classification.decisions[candidate.id]?.category ?: taxonomy.fallbackCategory,
+                sortCategory = classification.decisions[candidate.id]?.category ?: catalog.fallback,
                 sortItem = candidate.id,
                 span = candidate.span,
                 members = null,
@@ -354,7 +354,7 @@ internal object PlanningPlacement {
                 newFolders += NewFolder(
                     ordinal = nf.ordinal,
                     profile = nf.profile,
-                    naming = FolderNaming.FromCategory(nf.category),
+                    naming = folderNamingFor(nf.category),
                     workspacePlacement = wsTarget,
                     members = nf.members,
                 )

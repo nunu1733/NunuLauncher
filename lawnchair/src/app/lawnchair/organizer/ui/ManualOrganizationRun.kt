@@ -544,7 +544,12 @@ class ManualOrganizationRun internal constructor(
             scopeCandidateDigest = intent.session.scopeCandidateDigest,
         )
         val detectedById = operation.detectedCandidates.orEmpty().associateBy { it.target }
-        val categoriesById = input.signals.entries.associate { it.item to it.candidate.value }
+        // Issue #336: the candidate is an identity; built-in candidates keep
+        // the pre-336 raw-value projection byte for byte. A user-defined
+        // identity contributes its kind-discriminated canonical form here
+        // (a session-local digest input only — never a persisted field or an
+        // export surface).
+        val categoriesById = input.signals.entries.associate { it.item to it.candidate.canonicalValue }
         val current = ScopeBindingCurrentScope(
             detected = detectedById.values.map { DetectedCandidateScope(it.target, it.availability) },
             selectedTargets = selection.toSet(),

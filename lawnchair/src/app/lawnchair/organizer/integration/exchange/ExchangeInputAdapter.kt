@@ -77,7 +77,15 @@ class ExchangeInputAdapter(
                 ExportInputs(
                     snapshot = input.snapshot,
                     targets = input.targets,
-                    resolvedCategories = resolvedCategoriesOf(input.signals.entries.map { it.item to it.candidate.value }),
+                    // Issue #336: built-in candidates keep the pre-336 raw
+                    // value byte for byte; a user-defined identity projects
+                    // its kind-discriminated canonical form. The accepted
+                    // plan splits this single projection into the export
+                    // presentation (absent category) and the session-local
+                    // freshness digest layers in its title-binding/exchange
+                    // task; user-defined assignments cannot exist in the
+                    // product before that task's surfaces ship.
+                    resolvedCategories = resolvedCategoriesOf(input.signals.entries.map { it.item to it.candidate.canonicalValue }),
                     userLabels = titleSource.read() + candidateLabelEntries,
                     signals = input.personalization,
                     usageKeysByItem = usageKeysOf(input),

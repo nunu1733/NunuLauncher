@@ -1157,6 +1157,7 @@
     <string name="manual_organization_rejection_target_profile_mismatch">Target profile mismatch: %1$d</string>
     <string name="manual_organization_rejection_unknown_signal_item">Unknown signal item: %1$d</string>
     <string name="manual_organization_rejection_unknown_category">Unknown category: %1$d</string>
+    <string name="manual_organization_rejection_invalid_category_provenance">Category source not allowed: %1$d</string>
     <string name="manual_organization_available_constraint">Available placements: %1$d</string>
     <string name="manual_organization_disabled_constraint">Disabled-profile placements: %1$d</string>
     <string name="manual_organization_quiet_constraint">Quiet-profile placements: %1$d</string>

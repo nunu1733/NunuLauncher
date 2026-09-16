@@ -42,6 +42,13 @@ object GeneratedFolderTitles {
                 CategoryOverrideCategoryPresentations.findForCategory(naming.category)
                     ?.let { stringProvider.string(it.labelRes) }
                     ?: stringProvider.string(R.string.organizer_generated_folder_fallback_name)
+
+            // Issue #336: user-defined folder titles bind to the same
+            // composition's catalog snapshot in the application protocol layer
+            // (later task of the accepted plan); until that binding lands this
+            // total branch resolves the generic fallback and never exposes a
+            // raw ID.
+            is FolderNaming.FromUserCategory -> stringProvider.string(R.string.organizer_generated_folder_fallback_name)
         }
     }
 }
