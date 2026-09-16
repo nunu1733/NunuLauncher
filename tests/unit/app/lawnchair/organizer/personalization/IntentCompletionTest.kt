@@ -60,17 +60,15 @@ class IntentCompletionTest {
         )
     }
 
-    private fun refOf(built: BuiltExport, item: String): String =
-        built.session.itemRefs.entries.first { it.value.value == item }.key
+    private fun refOf(built: BuiltExport, item: String): String = built.session.itemRefs.entries.first { it.value.value == item }.key
 
-    private fun validate(built: BuiltExport, intent: PersonalizedIntentV1): IntentValidation =
-        IntentValidator.validate(
-            intent = intent,
-            export = built.export,
-            session = built.session,
-            nowEpochMs = now + 1,
-            currentStructuralDigest = built.session.sourceContextDigest,
-        )
+    private fun validate(built: BuiltExport, intent: PersonalizedIntentV1): IntentValidation = IntentValidator.validate(
+        intent = intent,
+        export = built.export,
+        session = built.session,
+        nowEpochMs = now + 1,
+        currentStructuralDigest = built.session.sourceContextDigest,
+    )
 
     @Test
     fun unmentionedRefsCompleteToUnresolvedByOmissionOnly() {
@@ -170,8 +168,7 @@ class IntentCompletionTest {
 
     // ---- stable identity / replay (spec 330 D-5/D-6, AC-4) -----------------
 
-    private fun validatedOf(built: BuiltExport, intent: PersonalizedIntentV1): ValidatedPersonalizedIntent =
-        (validate(built, intent) as IntentValidation.Validated).validated
+    private fun validatedOf(built: BuiltExport, intent: PersonalizedIntentV1): ValidatedPersonalizedIntent = (validate(built, intent) as IntentValidation.Validated).validated
 
     @Test
     fun bareEntryExplicitUnresolvedAndOmissionShareOneIdentity() {
