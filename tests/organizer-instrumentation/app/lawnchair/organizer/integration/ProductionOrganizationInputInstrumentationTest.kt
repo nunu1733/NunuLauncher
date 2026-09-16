@@ -1043,7 +1043,7 @@ class ProductionOrganizationInputInstrumentationTest {
             for (itemId in insertedIds) {
                 val signal = ready.input.signals.entries.single { it.item == itemId }
                 assertEquals(SignalSource.S5, signal.source)
-                assertEquals(policy.systemCategory, signal.candidate)
+                assertEquals(CategoryIdentity.BuiltIn(policy.systemCategory), signal.candidate)
             }
         }
         Log.i(

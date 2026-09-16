@@ -108,9 +108,21 @@ class CategoryOverrideAtomicFileInstrumentationTest {
             AndroidxAtomicFile(File(directory, FINAL_FILE_NAME)),
             preferences,
         )
+        // The mutation publishes the migrated schema-2 snapshot (with the new
+        // GAME assignment) in one atomic, single-generation-increment step —
+        // the accepted #336 semantics where migration is part of the first
+        // mutation rather than a separate prior publication.
+        val assignments = mapOf(oldKey to CategoryIdentity.BuiltIn(CategoryId("GAME")))
         assertEquals(
             CategoryOverrideStoredReadResult.Ready(
-                snapshot(1L, mapOf(oldKey to CategoryId("GAME"))),
+                CategoryOverrideStoredSnapshot(
+                    CategoryOverrideStoredIdentity(
+                        schemaVersion = 2,
+                        generation = 2L,
+                        sha256 = sha256Canonical(canonicalEntries(assignments, 2)),
+                    ),
+                    assignments,
+                ),
             ),
             freshAccess.readStored(),
         )
