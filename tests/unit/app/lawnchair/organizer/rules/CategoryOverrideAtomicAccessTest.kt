@@ -374,7 +374,7 @@ class CategoryOverrideAtomicAccessTest {
                 inventory = CategoryOverrideAppInventory { listOf(target) },
             )
 
-            assertTrue(authoring.save(target, CategoryId("OTHER")) is CategoryOverrideAuthoringResult.Saved)
+            assertTrue(authoring.save(target, CategoryIdentity.BuiltIn(CategoryId("OTHER"))) is CategoryOverrideAuthoringResult.Saved)
             assertEquals(2, preferences.getInt("schema", -1))
 
             val state = CanonicalFixtures.state(

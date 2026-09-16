@@ -31,11 +31,11 @@ class CategoryOverrideAuthoringCoordinatorTest {
         val store = InMemoryStore()
         val coordinator = coordinator(store) { listOf(personal, work) }
 
-        assertEquals(CategoryOverrideAuthoringResult.Saved::class, coordinator.save(personal, CategoryId("OTHER"))::class)
+        assertEquals(CategoryOverrideAuthoringResult.Saved::class, coordinator.save(personal, CategoryIdentity.BuiltIn(CategoryId("OTHER")))::class)
         assertEquals(CategoryId("OTHER"), store.assignments[personal.key])
         assertFalse(work.key in store.assignments)
 
-        assertEquals(CategoryOverrideAuthoringResult.Saved::class, coordinator.save(personal, CategoryId("GAME"))::class)
+        assertEquals(CategoryOverrideAuthoringResult.Saved::class, coordinator.save(personal, CategoryIdentity.BuiltIn(CategoryId("GAME")))::class)
         assertEquals(CategoryId("GAME"), store.assignments[personal.key])
         assertFalse(work.key in store.assignments)
 
@@ -54,9 +54,9 @@ class CategoryOverrideAuthoringCoordinatorTest {
         val store = InMemoryStore()
         val coordinator = coordinator(store) { listOf(target) }
 
-        assertTrue(coordinator.save(target, CategoryId("GAME")) is CategoryOverrideAuthoringResult.Saved)
+        assertTrue(coordinator.save(target, CategoryIdentity.BuiltIn(CategoryId("GAME"))) is CategoryOverrideAuthoringResult.Saved)
         val committedGeneration = store.snapshot.identity.generation
-        val result = coordinator.save(target, CategoryId("GAME"))
+        val result = coordinator.save(target, CategoryIdentity.BuiltIn(CategoryId("GAME")))
 
         assertTrue(result is CategoryOverrideAuthoringResult.NoChange)
         assertEquals(committedGeneration, store.snapshot.identity.generation)
@@ -86,7 +86,7 @@ class CategoryOverrideAuthoringCoordinatorTest {
         val selected = snapshots.removeFirst().single()
         val coordinator = coordinator(store) { snapshots.removeFirst() }
 
-        assertEquals(CategoryOverrideAuthoringResult.TargetUnavailable, coordinator.save(selected, CategoryId("SOCIAL")))
+        assertEquals(CategoryOverrideAuthoringResult.TargetUnavailable, coordinator.save(selected, CategoryIdentity.BuiltIn(CategoryId("SOCIAL"))))
         assertTrue(store.requests.isEmpty())
         assertEquals(0L, store.snapshot.identity.generation)
     }

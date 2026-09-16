@@ -288,7 +288,8 @@ class CategoryOverridePreferencesInstrumentationTest {
         val coordinator = coordinator()
         val context = ApplicationProvider.getApplicationContext<Context>()
         val longestLabel = requireNotNull(coordinator.categories())
-            .map { CategoryOverrideCategoryPresentations.forCategory(it).labelRes }
+            .filterIsInstance<CategoryIdentity.BuiltIn>()
+            .map { CategoryOverrideCategoryPresentations.forCategory(it.id).labelRes }
             .map(context::getString)
             .maxBy(String::length)
         composeRule.setContent {

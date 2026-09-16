@@ -34,6 +34,7 @@ import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.AppPairId
 import app.lawnchair.organizer.planning.CapturedPlacement
 import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.ContainerCode
 import app.lawnchair.organizer.planning.DiagnosticParam
 import app.lawnchair.organizer.planning.DeterministicOrganizationPlanner
@@ -159,7 +160,7 @@ class ProductionOrganizationInputInstrumentationTest {
             profileSerial = userCache.getSerialNumberForUser(user),
         )
 
-        assertTrue(coordinator.save(target, CategoryId("OTHER")) is CategoryOverrideAuthoringResult.Saved)
+        assertTrue(coordinator.save(target, CategoryIdentity.BuiltIn(CategoryId("OTHER"))) is CategoryOverrideAuthoringResult.Saved)
 
         val writer = realWriter()
         val capture = writer.captureCurrent(CaptureId("category-override-production-path"))
@@ -173,7 +174,7 @@ class ProductionOrganizationInputInstrumentationTest {
         val ready = result as OrganizationInputComposition.Ready
         val signal = ready.input.signals.entries.single { it.item == itemId }
         assertEquals(SignalSource.S1, signal.source)
-        assertEquals(CategoryId("OTHER"), signal.candidate)
+        assertEquals(CategoryIdentity.BuiltIn(CategoryId("OTHER")), signal.candidate)
     }
 
     @Test
@@ -200,7 +201,7 @@ class ProductionOrganizationInputInstrumentationTest {
         try {
             val writes = executor.submit {
                 repeat(8) { index ->
-                    val category = if (index % 2 == 0) CategoryId("OTHER") else CategoryId("GAME")
+                    val category = CategoryIdentity.BuiltIn(if (index % 2 == 0) CategoryId("OTHER") else CategoryId("GAME"))
                     val result = coordinator.save(target, category)
                     assertTrue(
                         "authoring write $index failed: $result",
