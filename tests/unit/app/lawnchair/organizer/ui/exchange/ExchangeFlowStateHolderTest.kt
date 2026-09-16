@@ -48,6 +48,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -363,6 +364,91 @@ class ExchangeFlowStateHolderTest {
     // the write hook never dereferences it
     @Suppress("DEPRECATION")
     private fun throwNoContextForTest(): android.content.Context = android.content.ContextWrapper(null)
+
+    @Test
+    fun lateResultFromAnOldWriteCannotTouchANewerDisclosure() {
+        // Review round 5 P1 (ABA): A delayed write -> racing close -> new
+        // disclosure B -> B delayed write -> A's late settle. A's result must
+        // be dropped: B stays in flight until its own result returns.
+        val store = FakeStore()
+        val now = 1_000_000L
+        val (holder, controller) = newHolder(store, now = now)
+        val disclosureA = controller.generate(PrivacyTier.EXTERNAL_REDACTED) as ExchangeGenerationResult.Generated
+        setScreenToDisclosing(
+            holder,
+            ExchangeDisclosureState(disclosureA.session, disclosureA.packageText, PrivacyTier.EXTERNAL_REDACTED),
+        )
+
+        // A's delayed write starts; its failure will settle only after the
+        // release latch below.
+        val aEntered = CountDownLatch(1)
+        val releaseA = CountDownLatch(1)
+        val writeAThread = Thread {
+            val transport = FileExchangeTransport(throwNoContextForTest())
+            transport.writeOverride = { _, _ ->
+                aEntered.countDown()
+                releaseA.await(5, TimeUnit.SECONDS)
+                ExchangeTransportResult.Failure(ExchangeTransportFailure.FILE_WRITE_FAILED)
+            }
+            holder.writeFile(transport, disclosureA.packageText, anyUri())
+        }
+        writeAThread.start()
+        assertTrue(aEntered.await(5, TimeUnit.SECONDS))
+        assertTrue(currentDisclosureOrNull(holder)!!.transportInFlight)
+
+        // The racing close leaves A's session intact and closes the screen.
+        holder.closeDisclosure()
+        assertNull(currentDisclosureOrNull(holder))
+        assertNotNull(store.session)
+
+        // A settles its Failure on the closed screen — must be dropped.
+        releaseA.countDown()
+        writeAThread.join(5_000)
+        assertNull(currentDisclosureOrNull(holder))
+
+        // A new flow generates disclosure B (single-active-session replaces A).
+        val b = controller.generate(PrivacyTier.EXTERNAL_REDACTED) as ExchangeGenerationResult.Generated
+        setScreenToDisclosing(
+            holder,
+            ExchangeDisclosureState(b.session, b.packageText, PrivacyTier.EXTERNAL_REDACTED),
+        )
+        assertEquals(b.session.exportId, store.active(now.toLong())?.exportId)
+
+        // B's delayed write starts.
+        val bEntered = CountDownLatch(1)
+        val releaseB = CountDownLatch(1)
+        val writeBThread = Thread {
+            val transport = FileExchangeTransport(throwNoContextForTest())
+            transport.writeOverride = { _, _ ->
+                bEntered.countDown()
+                releaseB.await(5, TimeUnit.SECONDS)
+                ExchangeTransportResult.Success
+            }
+            holder.writeFile(transport, b.packageText, anyUri())
+        }
+        writeBThread.start()
+        assertTrue(bEntered.await(5, TimeUnit.SECONDS))
+        val bLive = currentDisclosureOrNull(holder)
+        assertNotNull(bLive)
+        assertTrue("B is in flight", bLive!!.transportInFlight)
+        assertFalse("B is not sent", bLive.sent)
+
+        // B's own success settles: sent, non-cancelable, B's session active.
+        // (The settle hops through the settle dispatcher; poll briefly.)
+        releaseB.countDown()
+        writeBThread.join(5_000)
+        var sentB = currentDisclosureOrNull(holder)
+        var waitedB = 0
+        while (sentB != null && !sentB.sent && waitedB < 5_000) {
+            Thread.sleep(50)
+            waitedB += 50
+            sentB = currentDisclosureOrNull(holder)
+        }
+        assertNotNull(sentB)
+        assertTrue(sentB!!.sent)
+        assertFalse(sentB.cancelable)
+        assertEquals(b.session.exportId, store.active(now.toLong())?.exportId)
+    }
 
     /**
      * Minimal run stand-in provider. The holder's import path only consults

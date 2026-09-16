@@ -253,6 +253,18 @@ class ExchangeFlowStateHolder(
     }
 
     fun onTransportResult(result: ExchangeTransportResult) {
+        settleTransport(result)
+    }
+
+    /**
+     * Settles a transport result against the disclosure it belongs to (review
+     * round 5 P1): results are only ever applied while the screen still shows
+     * the SAME disclosure instance the transport started from. A late result
+     * arriving after the screen closed — or after a newer disclosure was
+     * generated — is dropped, so an old write can neither flip a newer
+     * disclosure's in-flight flag nor mark it sent.
+     */
+    private fun settleTransport(result: ExchangeTransportResult) {
         when (result) {
             ExchangeTransportResult.InFlight -> Unit
 
@@ -269,21 +281,30 @@ class ExchangeFlowStateHolder(
      * Serializes every transport start through the disclosure state on Main.
      * The single begin gate for every transport (review round 4 P1): atomically
      * checks the CURRENT disclosure's `transportAllowed` and flips it to
-     * in-flight. Returns the settled disclosure state, or null when the start
-     * was refused (no disclosure, already in flight / sent / cancelling) —
-     * a refused transport never runs and never settles.
+     * in-flight. Returns the disclosure state the transport is bound to, or
+     * null when the start was refused (no disclosure, already in flight / sent
+     * / cancelling) — a refused transport never runs and never settles.
      */
     private fun beginTransport(): ExchangeDisclosureState? {
-        val disclosing = (screen as? ExchangeScreen.Disclosing)?.state
-        if (disclosing == null || !disclosing.transportAllowed) return null
+        val disclosing = (screenState.value as? ExchangeScreen.Disclosing)?.state ?: return null
+        if (!disclosing.transportAllowed) return null
         val inFlight = disclosing.onTransportResult(ExchangeTransportResult.InFlight)
         if (!inFlight.transportInFlight) return null
         screen = ExchangeScreen.Disclosing(inFlight)
         return inFlight
     }
 
+    /**
+     * A settle is valid only while the screen still shows a disclosure of the
+     * SAME generation — the exportId is immutable within one disclosure and
+     * unique per generation, while the state object itself is copied on every
+     * transition (identity anchor: review round 5 P1).
+     */
+    private fun settleBelongsTo(disclosure: ExchangeDisclosureState): Boolean = (screenState.value as? ExchangeScreen.Disclosing)?.state?.session?.exportId == disclosure.session.exportId
+
     fun startTransport(transport: () -> ExchangeTransportResult) {
-        if (beginTransport() == null) return
+        val disclosure = beginTransport() ?: return
+        if (!settleBelongsTo(disclosure)) return
         onTransportResult(transport())
     }
 
@@ -306,10 +327,15 @@ class ExchangeFlowStateHolder(
         // flight, or a start against a sent/cancelling disclosure, is refused
         // before any IO happens — so exactly one write can ever settle and the
         // busy flag cannot be cleared while another write is still running.
-        if (beginTransport() == null) return
+        val disclosure = beginTransport() ?: return
         scope.launch(Dispatchers.IO) {
             val result = fileTransport.write(packageText, uri)
-            withContext(settleDispatcher) { onTransportResult(result) }
+            withContext(settleDispatcher) {
+                // Settle is bound to the disclosure the write started from
+                // (review round 5 P1): a result arriving after this disclosure
+                // was closed or replaced never touches a newer one.
+                if (settleBelongsTo(disclosure)) onTransportResult(result)
+            }
         }
     }
 
