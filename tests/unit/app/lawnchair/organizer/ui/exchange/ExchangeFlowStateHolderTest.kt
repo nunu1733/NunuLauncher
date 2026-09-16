@@ -432,34 +432,47 @@ class ExchangeFlowStateHolderTest {
         assertTrue("B is in flight", bLive!!.transportInFlight)
         assertFalse("B is not sent", bLive.sent)
 
-        // NOW release A's Failure; poll until its (dropped) settle was
-        // processed — B must remain in flight and unsent throughout.
-        releaseA.countDown()
-        var waitedA = 0
-        var afterA = currentDisclosureOrNull(holder)
-        while (waitedA < 2_000) {
-            Thread.sleep(50)
-            waitedA += 50
-            afterA = currentDisclosureOrNull(holder)
-            // A dropped settle leaves B exactly as it was; give the scheduler
-            // a moment, then verify the invariant below still holds.
+        // NOW release A's Failure. A settle-observation latch waits for A's
+        // settle attempt to be PROCESSED (not a fixed sleep): the holder's
+        // onSettleObserved seam fires after the settle decision, applied=false
+        // for the dropped A result.
+        val aSettleObserved = CountDownLatch(1)
+        val observed = arrayOf<Pair<String, Boolean>?>(null)
+        holder.onSettleObserved = { disclosure, applied ->
+            synchronized(observed) {
+                if (observed[0] == null) {
+                    observed[0] = disclosure.session.exportId to applied
+                }
+            }
+            aSettleObserved.countDown()
         }
-        afterA = currentDisclosureOrNull(holder)
+        releaseA.countDown()
+        assertTrue("A's settle attempt must be processed", aSettleObserved.await(5, TimeUnit.SECONDS))
+        val aObservation = synchronized(observed) { observed[0] }
+        assertNotNull(aObservation)
+        assertEquals("the processed settle is A's generation", disclosureA.session.exportId, aObservation!!.first)
+        assertFalse("A's settle was applied=false (dropped)", aObservation.second)
+
+        // With A's settle provably processed, B must remain in flight/unsent.
+        val afterA = currentDisclosureOrNull(holder)
         assertNotNull(afterA)
         assertTrue("B must still be in flight after A's dropped settle", afterA!!.transportInFlight)
         assertFalse("A's late failure must not mark B sent", afterA.sent)
 
         // B's own success settles: sent, non-cancelable, B's session active.
-        // (The settle hops through the settle dispatcher; poll briefly.)
-        releaseB.countDown()
-        writeBThread.join(5_000)
-        var sentB = currentDisclosureOrNull(holder)
-        var waitedB = 0
-        while (sentB != null && !sentB.sent && waitedB < 5_000) {
-            Thread.sleep(50)
-            waitedB += 50
-            sentB = currentDisclosureOrNull(holder)
+        val bSettleObserved = CountDownLatch(1)
+        var bApplied = false
+        holder.onSettleObserved = { disclosure, applied ->
+            if (disclosure.session.exportId == b.session.exportId) {
+                bApplied = applied
+                bSettleObserved.countDown()
+            }
         }
+        releaseB.countDown()
+        assertTrue("B's settle attempt must be processed", bSettleObserved.await(5, TimeUnit.SECONDS))
+        assertTrue("B's own success was applied", bApplied)
+        writeBThread.join(5_000)
+        val sentB = currentDisclosureOrNull(holder)
         assertNotNull(sentB)
         assertTrue(sentB!!.sent)
         assertFalse(sentB.cancelable)

@@ -141,6 +141,12 @@ class ExchangeFlowStateHolder(
     private val scope: CoroutineScope,
     /** Where transport results hop back to the UI (Main in production). */
     private val settleDispatcher: CoroutineDispatcher = Dispatchers.Main,
+    /**
+     * Test-only seam (issue #205 ABA regression): invoked once per settle
+     * attempt with the owning disclosure and whether it was applied, after the
+     * settle decision completed. Production passes the no-op default.
+     */
+    internal var onSettleObserved: ((ExchangeDisclosureState, Boolean) -> Unit)? = null,
 ) {
     private val controller: ExchangeFlowController by lazy(LazyThreadSafetyMode.NONE) { controllerFactory() }
 
@@ -304,7 +310,10 @@ class ExchangeFlowStateHolder(
 
     fun startTransport(transport: () -> ExchangeTransportResult) {
         val disclosure = beginTransport() ?: return
-        if (!settleBelongsTo(disclosure)) return
+        if (!settleBelongsTo(disclosure)) {
+            onSettleObserved?.invoke(disclosure, false)
+            return
+        }
         onTransportResult(transport())
     }
 
@@ -334,7 +343,9 @@ class ExchangeFlowStateHolder(
                 // Settle is bound to the disclosure the write started from
                 // (review round 5 P1): a result arriving after this disclosure
                 // was closed or replaced never touches a newer one.
-                if (settleBelongsTo(disclosure)) onTransportResult(result)
+                val applied = settleBelongsTo(disclosure)
+                if (applied) onTransportResult(result)
+                onSettleObserved?.invoke(disclosure, applied)
             }
         }
     }
