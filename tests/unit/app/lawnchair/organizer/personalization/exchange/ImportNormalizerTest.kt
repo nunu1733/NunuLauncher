@@ -64,13 +64,16 @@ class ImportNormalizerTest {
     }
 
     @Test
-    fun fenceInfoStringIsCaseInsensitiveButExact() {
+    fun fenceInfoStringIsAsciiCaseInsensitiveOnly() {
         assertEquals(RecognizedImportFraming.FENCED_JSON, payloadOf(fenced("JSON", json)).framing)
         assertEquals(RecognizedImportFraming.FENCED_JSON, payloadOf(fenced("Json", json)).framing)
         // `jsonc` is not `json` (spec 329 D-4): the non-json block falls
         // through, and the whole text (fence lines included) is not a
         // standalone JSON object → unrecognized, not guessed.
         assertEquals(ImportNormalizationFailure.UnrecognizedFormat, failureOf(fenced("jsonc", json)))
+        // Unicode look-alikes are outside the closed accepted framing set —
+        // the comparison folds ASCII cases only, never Unicode equivalents.
+        assertEquals(ImportNormalizationFailure.UnrecognizedFormat, failureOf(fenced("jſon", json)))
     }
 
     @Test
@@ -101,6 +104,21 @@ class ImportNormalizerTest {
         assertEquals(
             ImportNormalizationFailure.UnrecognizedFormat,
             failureOf("```json\n$json"),
+        )
+    }
+
+    @Test
+    fun bareFenceBlocksCountTowardTheAmbiguityTotal() {
+        // D-3 total count is tag-blind: a bare ``` outside a block opens an
+        // untagged candidate block, so json + untagged is two closed blocks —
+        // ambiguous, never a guess in favor of the tagged one.
+        assertEquals(
+            ImportNormalizationFailure.AmbiguousBlocks,
+            failureOf("${fenced("json", json)}\n```\nnotes\n```"),
+        )
+        assertEquals(
+            ImportNormalizationFailure.AmbiguousBlocks,
+            failureOf("```\nnotes\n```\n```\nmore\n```"),
         )
     }
 

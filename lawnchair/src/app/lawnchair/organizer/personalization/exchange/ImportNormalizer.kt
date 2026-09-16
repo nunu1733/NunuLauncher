@@ -42,12 +42,12 @@ object ImportNormalizer {
 
         // Priority 2: fenced code blocks under the simplified deterministic
         // grammar (spec 329 D-4). The ambiguity judgment counts every
-        // independently closed block regardless of its info string (D-3) —
-        // two or more blocks reject without choosing.
+        // independently closed block — tagged or bare — (D-3): two or more
+        // blocks reject without choosing.
         val blocks = fencedBlocks(lines)
         if (blocks.size > 1) return ImportNormalization.Failure(ImportNormalizationFailure.AmbiguousBlocks)
         val single = blocks.singleOrNull()
-        if (single != null && single.infoString.equals(JSON_INFO_STRING, ignoreCase = true)) {
+        if (single != null && isJsonInfoString(single.infoString)) {
             return ImportNormalization.Payload(single.interior, RecognizedImportFraming.FENCED_JSON)
         }
 
@@ -66,33 +66,46 @@ object ImportNormalizer {
     private data class FencedBlock(val infoString: String, val interior: String)
 
     /**
-     * Single left-to-right line scan (spec 329 D-8: no backtracking). An
-     * opening fence is a line starting with three backticks and a non-blank
-     * info string; a closing fence starts with three backticks and carries
-     * only whitespace after (so an inner ` ```json ` line never closes a
-     * block). A fence pair without a closing line does not count as a block.
+     * Single stateful left-to-right line scan (spec 329 D-8: no
+     * backtracking). Any line starting with three backticks is a fence line:
+     * outside a block it opens a candidate block (bare ` ``` ` included, so
+     * the D-3 total count covers untagged blocks too); inside a block only a
+     * whitespace-only rest closes it (so an inner ` ```json ` line never
+     * closes). A candidate left open at the end of input does not count as a
+     * block (spec 329 D-1 note: an unclosed fence pair is not a block).
      */
     private fun fencedBlocks(lines: List<String>): List<FencedBlock> {
         val blocks = mutableListOf<FencedBlock>()
-        var index = 0
-        while (index < lines.size) {
-            if (!isOpeningFence(lines[index])) {
-                index++
-                continue
+        var infoString: String? = null
+        var openIndex = -1
+        for ((index, line) in lines.withIndex()) {
+            if (!line.startsWith(BACKTICKS)) continue
+            if (infoString == null) {
+                infoString = line.substring(BACKTICKS.length).trim()
+                openIndex = index
+            } else if (line.substring(BACKTICKS.length).trim().isEmpty()) {
+                blocks.add(FencedBlock(infoString, lines.subList(openIndex + 1, index).joinToString(LF).trim()))
+                infoString = null
             }
-            val infoString = lines[index].substring(BACKTICKS.length).trim()
-            var cursor = index + 1
-            while (cursor < lines.size && !isClosingFence(lines[cursor])) cursor++
-            if (cursor == lines.size) break
-            blocks.add(FencedBlock(infoString, lines.subList(index + 1, cursor).joinToString(LF).trim()))
-            index = cursor + 1
         }
         return blocks
     }
 
-    private fun isOpeningFence(line: String): Boolean = line.startsWith(BACKTICKS) && line.substring(BACKTICKS.length).trim().isNotEmpty()
+    /**
+     * ASCII case-insensitive `json` (spec 329 D-4). Deliberately not
+     * `String.equals(ignoreCase = true)`, whose Unicode case folding would
+     * accept look-alikes such as `jſon` (U+017F) outside the closed accepted
+     * framing set.
+     */
+    private fun isJsonInfoString(info: String): Boolean {
+        if (info.length != JSON_INFO_STRING.length) return false
+        for (index in info.indices) {
+            if (asciiLower(info[index]) != JSON_INFO_STRING[index]) return false
+        }
+        return true
+    }
 
-    private fun isClosingFence(line: String): Boolean = line.startsWith(BACKTICKS) && line.substring(BACKTICKS.length).trim().isEmpty()
+    private fun asciiLower(char: Char): Char = if (char in 'A'..'Z') char + ('a' - 'A') else char
 
     /**
      * Depth-bounded strict JSON object check for the standalone framing. The

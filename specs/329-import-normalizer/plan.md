@@ -123,7 +123,7 @@ import text (paste受領時/envelope上限check済、file bounded read済)
 | AC-4 | property test: 正規化後payloadはtransport正規化済入力の部分文字列、決定性 (同一入力→同一結果)・冪等性 (正規化済入力の再正規化で不変) | unit test |
 | AC-5 | pipeline構造test: `Payload`/`MarkedFraming` 両経路とも `IntentCodec.decode` を必ず通る (framingのみ成功では `Prepared` にならないことの網羅) | unit test |
 | AC-6 | regression: 既存 #204 reject corpus (unknown key・out-of-scope ref・forbidden key・invalid enum・coverage漏れ) をstandalone/fenced framingで入力し同一失敗種別 | unit test |
-| AC-7 | `ExchangeFlowUi`/stateholder test: 19種失敗表示のmap、新2種の案内copyに認識可能形式の提示を含む。`Prepared.framing` が経路ごとに `MARKER` / `FENCED_JSON` / `STANDALONE_JSON` を返すことの表明 | unit + UI test、ja/en strings解決 |
+| AC-7 | controller seam経由のtyped outcome test (`ExchangeFlowStateHolderTest.normalizationFailuresReachTheImportOutcomeScreen`: 新2種が `ImportOutcomeScreen` が消費するoutcome型で露出) + `Prepared.framing` の経路別表明 (pipeline test)。UI表示mapはexhaustive `when` のcompile時保証 + ja/en strings追加 (案内copyは認識可能形式の提示 + 再コピー手順を含む)。`holder.import` は `Dispatchers.Main` をhard-pinするためJVM unit testから呼べず (test依存追加は範囲外)、文字列hopはcompile保証とreviewで担保 — これは実装review Required 2を受けた検証方針の明示化である | unit test + compile guarantee、ja/en strings解決はreview |
 | AC-8 | security corpus: nested wrapper (marker内fence→`SCHEMA_MISMATCH`、fence内marker→受理、fence内info付きfence開始行→`SCHEMA_MISMATCH`、独立2 block→曖昧reject)・envelope境界 (exact-limit/limit+1、`prepare` 先頭gateで決着しnormalizer未呼出)・trailing malicious text・injection文埋め込み (fail-closed oracle) | unit test |
 | AC-9 | diagnostics契約: normalizer追加後もexchange経路にjournal/logcat書込みなし (test + review) | unit test / review |
 | AC-10 | physical-device evidence: ChatGPT/Gemini representativeコピー (marker付き・JSONのみ・説明文+fenced JSON・BOM/CRLF) をそのまま貼付/file import | physical device、docs/assessment/ またはissue記録 |
@@ -132,12 +132,12 @@ import text (paste受領時/envelope上限check済、file bounded read済)
 
 ## Documentation updates
 
-- [ ] spec status/history (acceptance時にacceptedへ)
-- [ ] CONTEXT.md: 用語「インポート正規化 (Import Normalizer)」+ accepted framing一覧の要約 (acceptance時。#205「交換フレーミング」項への参照調整を含む)
-- [ ] DESIGN.md §9 personalization行 + §11 gate 13 への注記 (marker規則は#205所有のまま、外形認識層を#329追加。acceptance時)
-- [ ] spec 205 change history への経緯注記 (framing受理枠拡張は#329、marker規則・typed失敗の意味は不変。acceptance時)
-- [ ] requirements.md: FR-017 status欄のspec link追加 (acceptance時)
-- [ ] ADR: 本変更は「fail-closed境界の内側への追加」であり既存ADRと衝突しない。framing寛容化が実装後に「変更困難・理由がコードから分からない・実際の選択肢があった」を満たすと判断された場合のみADR化する
+- [x] spec status/history (accepted化済み、2026-09-17)
+- [x] CONTEXT.md: 用語「インポート正規化 (Import Normalizer)」追加 + 「持ち帰りIntent取り込み」/「交換フレーミング」項の #329責務境界調整
+- [x] DESIGN.md §9 personalization行 + §11 gate 13 への注記 (marker規則は#205所有のまま、外形認識層を#329追加)
+- [x] spec 205 change history への経緯注記 (7th: framing受理枠拡張は#329、marker規則・typed失敗の意味は不変)
+- [x] requirements.md: FR-017 status欄のspec link追加
+- [x] ADR: 不要と判断 (fail-closed境界の内側への追加であり既存ADRと衝突しない。「変更困難・理由がコードから分からない」要件を満たすまでに至らない — framing受け入れ条件の正本はspec 329自体が保持)
 
 ## Dependencies and blockers
 
@@ -168,9 +168,16 @@ import text (paste受領時/envelope上限check済、file bounded read済)
 - [ ] Physical-device representative evidence (AC-10)。#205と同じく後続evidence PRでの実施を予定 (受入条件は残置)。
 - [ ] PR evidence and remaining risks recorded。
 
-### 実行した検証 (2026-09-17、JDK 21.0.12 / AGP環境)
+### 実装review対応 (2026-09-17、[reviewコメント](https://github.com/nunu1733/NunuLauncher/issues/329#issuecomment-5700625875) Blocking 1 / Required 3)
 
-- `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.personalization.exchange.*'` → PASS (69 tests、exchange面: normalizer 18 + pipeline 16 + 既存corpus)
+- **Blocking 1 (D-3総数厳格の過大受理)**: fence走査をstateful scanへ変更し、block外のbare ` ``` ` もopening候補として総数に数えるよう修正 (json + 無tag block → `AmbiguousBlocks`)。regression test追加 (`bareFenceBlocksCountTowardTheAmbiguityTotal`: json+bare、bare+bare)。
+- **Required 1 (Unicode case foldingの過大受理)**: info string比較をASCII限定の `isJsonInfoString` へ変更 (`jſon` 等のUnicode互換文字は `UnrecognizedFormat`)。regression test追加。
+- **Required 2 (AC-7 evidence)**: `ExchangeFlowStateHolderTest` へcontroller seam経由のtyped outcome test追加 (`normalizationFailuresReachTheImportOutcomeScreen`)。`holder.import` が `Dispatchers.Main` をhard-pinしJVM unit testから呼べないため、文字列hopはexhaustive `when` のcompile保証 + reviewで担保する検証方針をAC-7行へ明記。
+- **Required 3 (canonical docs)**: CONTEXT.md (新用語 + 既存2項の責務境界) / DESIGN.md (§9 + gate 13) / spec 205 change history (7th) / requirements.md (FR-017) を更新。ADRは不要と明示的にdisposition (plan Documentation updates参照)。
+
+### 実行した検証 (2026-09-17、JDK 21.0.12 / AGP環境。review対応後の最終確認を含む)
+
+- `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.personalization.exchange.*' --tests 'app.lawnchair.organizer.ui.exchange.*'` → PASS (normalizer 20 test + pipeline 16 + stateholder + 既存corpus)
 - `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` → PASS (organizer全体surface)
 - `./gradlew spotlessCheck` → PASS (一度違反を `spotlessApply` で解消後)
 - `./gradlew assembleLawnWithQuickstepGithubDebug` → BUILD SUCCESSFUL
