@@ -27,7 +27,7 @@ updated: 2026-09-16
 
 NunuLauncher の開発は Coding/Review Agent を中心に進んでおり、仕様遵守・機能的正しさ・安全性・テストは強く検証されている。一方で「人間が画面で読む文言として自然か、簡潔か、内部実装の都合が漏れていないか」という editorial quality は、同じ評価軸では十分に担保できない。技術的に正しいが硬い・長い文言、domain 語の UI 露出、実装処理名を説明する CTA、仕様説明調の warning/recovery copy、developer-oriented な default English、画面・フロー全体での用語揺れが残り得る。
 
-[#161][2] で日本語 UI LQA の style guide / glossary / 再利用可能な workflow が整備され、初回監査（223 unit、2026-08-28時点）まで完了している。しかし正本は `docs/localization/` の review contract であり、**言語表現を専任で見る subagent を通常の開発フローに組み込み、実装 worker / functional reviewer とは異なる model family に継続的に担当させる構造**にはなっていない。また #161 以降、strategy selection / preview、missing-app selection、restore 確認、re-entry hint、backup preview 等の新しい user-visible surface が追加されており、初回監査時に存在しなかった文言が蓄積している。[#199][3] の Vision UX review は見た目・第一印象・affordance を独立評価するが、product copy の編集・言語監修を主責務としない。
+[#161][2] で日本語 UI LQA の style guide / glossary / 再利用可能な workflow が整備され、初回監査（223 unit、2026-08-28時点）まで完了している。しかし正本は `docs/localization/` の review contract であり、**言語表現を専任で見る subagent を通常の開発フローに組み込み、実装 worker / functional reviewer とは異なる model family に継続的に担当させる構造**にはなっていない。また #161 以降、strategy selection / preview、missing-app selection、restore 確認、re-entry hint、backup preview、外部エージェント交換（[#205][5]: entry / privacy / 送信前確認 / session 置換確認 / generate / transport / import と typed failure 分類、[#331][6]: scoped entry / 選択freeze / `SCOPE_MISMATCH`）等の新しい user-visible surface が追加されており、初回監査時に存在しなかった文言が蓄積している。この間の copy 追加は専任の language review を経ておらず、実際に #161 が checked-in した resource oracle（`tools/localization/verify_nunu_ja_resources.py`）は、監査完了後の PR で追加された `manual_organization_*` strings に対して 12 件の placeholder/plural 契約 finding を出し、oracle と self-test が現行 main で失敗している（oracle は CI に組み込まれていないため回帰は検知されなかった。詳細は plan current evidence）。[#199][3] の Vision UX review は見た目・第一印象・affordance を独立評価するが、product copy の編集・言語監修を主責務としない。
 
 ## Outcome
 
@@ -46,7 +46,7 @@ NunuLauncher に **Product Language Reviewer / UI Copy Editor** の専任 subage
 
 対象 copy は日本語を主対象とするが、Nunu 固有の default English 自体が developer-oriented / awkward で、日本語側だけ直すと source semantics と乖離する場合は default copy も監査・修正対象とする。上流 Lawnchair/AOSP 由来の一般文言を好みだけで全面 rewrite しない。Nunu-specific または Nunu flow と直接接続する surface を優先する。
 
-再監査の対象集合は固定件数で定義せず、full pass 開始時に base SHA を記録した上で、#123/#161 の定義（`required = active な Nunu 固有 default resource where user-visible && translatable != false`、両 resource root `lawnchair/res` と root `res`）を踏襲して再構成する。
+再監査の対象集合は固定件数で定義せず、full pass 開始時に base SHA を記録した上で、#123/#161 の定義（`required = active な Nunu 固有 default resource where user-visible && translatable != false`、両 resource root `lawnchair/res` と root `res`）を踏襲して再構成する。#123/#161 の required set は resource name prefix（`organizer_`、`manual_organization_`、`organization_onboarding_`）で Nunu 固有集合を構成しており、#205 で追加された `exchange_*` prefix は現行 oracle の対象外である。再構成時は post-#161 の Nunu 固有 prefix（少なくとも `exchange_`）を required set と #161 oracle の被覆の両方に含める。
 
 ## Non-goals
 
@@ -60,7 +60,9 @@ NunuLauncher に **Product Language Reviewer / UI Copy Editor** の専任 subage
 
 ## Domain language
 
-新しい product/domain 用語は導入しない。**Product Language Reviewer**、**review unit**、**disposition**（`OK` / `REVISE` / `PRODUCT_DECISION` / `TECHNICAL_ONLY`）は、本契約が所有する quality-process 用語であり、[CONTEXT.md][4] の domain 語彙（ホームレイアウト、レイアウト plan、整理 run、recovery point 等）を置き換えない。
+新しい product/domain 用語は導入しない。**Product Language Reviewer**、**review unit**、**disposition**（`OK` / `REVISE` / `PRODUCT_DECISION` / `TECHNICAL_ONLY`）は、本契約が所有する quality-process 用語であり、[CONTEXT.md][4] の domain 語彙（ホームレイアウト、レイアウト plan、整理 run、recovery point、外部エージェント交換、交換パッケージ、送信前確認等）を置き換えない。
+
+再監査は #161 監査後に追加された surface（外部エージェント交換を含む）も対象にするが、その user-facing 用語の一部は `docs/localization/ja-glossary.tsv` にまだ登録されていない（2026-09-16 時点で glossary は exchange 系用語を含まない）。一方で CONTEXT.md は exchange 系 domain concept の日本語名を既に定義している。reviewer は UI 文言の用語を CONTEXT.md の domain 語彙との整合で評価し、既存 glossary entry・CONTEXT.md のいずれにも対応づけできない user-facing 用語は、glossary 追加提案（terminology decision）として扱う。accepted terminology の追加・変更は `ja-glossary.tsv`（#161 正本）に記録し、Skill や adapter へ複製しない。
 
 ## Authority and responsibility boundary
 
@@ -125,7 +127,7 @@ Given `REVISE` が review contract の確定条件（meaning preservation の確
 
 通常の worker が resource へ反映する
 
-Then string name、placeholder 数・型・順序、plural、escaping、`translatable` 契約が維持され、既存の被覆・placeholder oracle が pass する
+Then string name、placeholder 数・型・順序、plural、escaping、`translatable` 契約が維持され、既存の被覆・placeholder oracle が新規 finding なく pass する（2026-09-16 時点で既存の 12 finding は AC-324-12 の disposition が完了していることを前提とする）
 
 And 代表画面を normal / enlarged font scale で確認し、critical clipping や操作を妨げる wrapping の regression がない。
 
@@ -154,7 +156,7 @@ accessibility text は視覚 label の短縮を流用せず、読み上げて自
 - [ ] **AC-324-09 — full re-audit:** full pass 開始時に base SHA を記録した上で、現行の active / user-visible / translatable な Nunu 固有 user-visible copy（両 resource root）が inventory 化され、全 unit が 8 分類（primary action / title、onboarding / entry guidance、Organizer strategy / preview / apply flow、warning / confirmation / failure / stale / recovery、placement lock / category override / settings、progress / result / empty state、accessibility text、diagnostics / support entry）のいずれかに属する disposition を持つ。
 - [ ] **AC-324-10 — default English の監査:** Nunu 固有 default English が user-facing copy として問題な string が監査対象になり、必要なものは両言語で整合して修正される。
 - [ ] **AC-324-11 — semantic guard:** primary CTA、warning、failure、recovery、stale-state、a11y wording の accepted revision は、適用前に accepted behavior との meaning preservation が別途確認される。high-severity `PRODUCT_DECISION` は実装 worker が自己解決せず、owner resolution または split Issue になる。
-- [ ] **AC-324-12 — resource 反映と oracle:** accepted `REVISE` items が resource に反映され、name、placeholder/plural/translatable semantics が維持され、`tools/localization/verify_nunu_ja_resources.py` とその self-test が pass する。
+- [ ] **AC-324-12 — resource 反映と oracle:** accepted `REVISE` items が resource に反映され、name、placeholder/plural/translatable semantics が維持され、`tools/localization/verify_nunu_ja_resources.py` が新規 finding を出さない。あわせて、(a) oracle の required set が再監査対象の post-#161 Nunu 固有 prefix（少なくとも `exchange_`）を含み、(b) 2026-09-16 時点で main に既存する 12 件の oracle finding（#161 監査後の PR で追加された `manual_organization_*` strings に由来）が、accepted revision による解決・oracle 契約の修正・split Issue のいずれかに明示的に disposition され、disposition 完了後は oracle と self-test が pass する。
 - [ ] **AC-324-13 — rendered 検証と既存 test の維持:** representative revised screens を normal + enlarged font で確認し、critical clipping / awkward wrapping の regression がない。#123/#161 の localization / resource checks と relevant UI / a11y / behavior tests が維持される。
 - [ ] **AC-324-14 — 継続運用と #199 境界:** 今後の user-visible copy change で専任 reviewer を利用する trigger / skip rule（reviewer unavailable 時の fallback と explicit skip reason を含む）が repository process に記録される。初版は CI hard gate にしない。#199 Vision UX review と本 reviewer の責務境界が明文化される。
 
@@ -167,7 +169,7 @@ accessibility text は視覚 label の短縮を流用せず、読み上げて自
 | AC-324-04 | evaluation set の固定 context、匿名出力、owner blind per-item score、aggregate、hard-failure 判定、model identifier / provider / 実施日、採用裁定。 |
 | AC-324-09, 10 | base SHA 付き inventory、8 分類への mapping、全 unit の disposition、default English 対象の記録。 |
 | AC-324-11 | safety class unit の meaning-preservation 確認記録、high-severity `PRODUCT_DECISION` の owner resolution / split Issue link。 |
-| AC-324-12 | `python3 tools/localization/verify_nunu_ja_resources.py`（baseline `505dbc40e6154c05158b5d0271c45f6a885a411b`）と self-test の実行結果、resource diff review。 |
+| AC-324-12 | `python3 tools/localization/verify_nunu_ja_resources.py`（baseline `505dbc40e6154c05158b5d0271c45f6a885a411b`）と self-test の実行結果（既存 12 finding の disposition 前後）、required set の post-#161 prefix 被覆、resource diff review。 |
 | AC-324-13 | 代表画面の capture / UI dump（normal + enlarged font scale）、a11y 確認、Gradle / CI 結果。 |
 | AC-324-14 | workflow 追記節の review、skip reason 記録様式、#199 境界の明文化箇所。 |
 
@@ -180,10 +182,12 @@ accessibility text は視覚 label の短縮を流用せず、読み上げて自
 - **D3: evaluation set の具体構成。** 件数と軸（本 spec AC-324-04）は固定したが、採用する具体 unit は full pass 開始時の inventory から #161 bake-off context を含めて選定する。
 - **D4: 継続 trigger rule の記載位置。** 正本は `docs/localization/ja-review-workflow.md` への追記を提案する。`AGENTS.md` への追加は #199 の resolved decision 前例（required step の無承認追加をしない）に従い、owner の明示承認がある場合に限る。
 - **D5: default English 修正の具体対象。** re-audit で判明したものに限定し、事前に列挙しない。
+- **D6: 既存 oracle finding と required set 被覆の扱い。** 2026-09-16 時点の main で `verify_nunu_ja_resources.py` は 12 件の placeholder/plural 契約 finding を出し、self-test の real-repository assertion が失敗している（#161 監査完了後の PR #195/#228 等に由来。該当 strings は以後変更されていない。oracle は CI 非組込みのため未検知）。これらを (i) #324 の accepted revision で resource 側を解決する、(ii) locale 別 plural category・positional order の正当な差異として oracle 契約側を修正する、(iii) 別 maintenance Issue に分離する、のいずれで解くか、および required set の `exchange_` prefix 拡張の実装方法（`NUNU_PREFIXES` への追加か同等の再構成か）は、実装開始時に owner が判断する。
 
 ## Change history
 
 - 2026-09-16: Issue #324 の spec 準備 task として `proposed` 仕様を作成。入力: Issue 本文、#161 / #123 の implemented spec・plan・evidence、#199 の accepted spec と runtime support 記録、`main` `0cf82bc1e61c1874b280a7120dff9594be4fef71` の tree（`.agents/skills/ux-visual-review/`、`.codex/agents/`、`docs/localization/`、`tools/localization/`、resource 実態）。本 task は承認を行わず、status は `proposed` のままとする。
+- 2026-09-16 (re-entry): baseline を `aab0d293d1a98bf59f5b164693f54ee1a63e3f0b` へ再錨定。#205（PR #325）と #331（PR #333/#334）の実装 merge による exchange user-visible copy（string/plurals 63 entry、両言語、`lawnchair/res` root）と CONTEXT.md の exchange domain 用語追加、`ja-glossary.tsv` の exchange 用語不在、#161 oracle の既存 12 finding（self-test 失敗を含む）と `exchange_*` prefix 対象外を反映。Problem・Scope・Domain language を更新し、AC-324-12 を disposition 条件付きへ変更、D6 を追加。
 
 ## References
 
@@ -191,3 +195,5 @@ accessibility text は視覚 label の短縮を流用せず、読み上げて自
 [2]: https://github.com/nunu1733/NunuLauncher/blob/main/specs/161-japanese-ui-copy-lqa/spec.md "Issue #161 specification (implemented)"
 [3]: https://github.com/nunu1733/NunuLauncher/blob/main/specs/199-ux-visual-review/spec.md "Issue #199 specification (accepted)"
 [4]: https://github.com/nunu1733/NunuLauncher/blob/main/CONTEXT.md "NunuLauncher domain language"
+[5]: https://github.com/nunu1733/NunuLauncher/blob/main/specs/205-external-agent-exchange/spec.md "Issue #205 specification (implemented)"
+[6]: https://github.com/nunu1733/NunuLauncher/blob/main/specs/331-exchange-target-scope-coupling/spec.md "Issue #331 specification (implemented)"
