@@ -199,6 +199,35 @@ class CategoryOverrideAtomicAccessTest {
     }
 
     @Test
+    fun wellFormedNewerSchemaRoutesToTypedUnsupportedSchemaThroughTheAccessBoundary() {
+        val directory = Files.createTempDirectory("override-schema3").toFile()
+        try {
+            val atomic = TestAtomicFile(File(directory, "snapshot-v1")).apply {
+                // Well-formed header naming a schema this binary does not
+                // support (supported set is schema 1 and 2).
+                seedFinal("schema=3\ngeneration=4\ndigest=${sha256Canonical("")}\nentries\n\n".toByteArray())
+            }
+            val preferences = FakePreferences().apply { putInitial("schema", 2) }
+            val access = CategoryOverrideAtomicAccess(atomic, preferences)
+
+            assertEquals(CategoryOverrideStoredReadResult.UnsupportedSchema, access.readStored())
+            assertEquals(
+                OverrideSnapshotReadResult.UnsupportedSchema,
+                access.readVisible(setOf(ProfileId("0"))),
+            )
+            val result = access.mutateAll(
+                requests = listOf(CategoryOverrideMutation.Remove(CategoryOverrideKey(PackageName("com.x"), ProfileId("0")))),
+                expected = CategoryOverrideStoredIdentity(2, 0L, sha256Canonical("")),
+                verificationProfiles = setOf(ProfileId("0")),
+                allowedIdentities = setOf(CategoryIdentity.BuiltIn(CategoryId("GAME"))),
+            )
+            assertEquals(CategoryOverrideWriteResult.UnsupportedSchema, result)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun interruptedPendingWriteIsDiscardedBeforeTheFinalSnapshotIsRead() {
         val directory = Files.createTempDirectory("override-recovery").toFile()
         try {

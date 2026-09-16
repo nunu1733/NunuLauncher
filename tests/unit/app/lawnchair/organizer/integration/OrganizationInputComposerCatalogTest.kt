@@ -16,6 +16,8 @@ import app.lawnchair.organizer.planning.UserDefinedCategory
 import app.lawnchair.organizer.planning.WorkspaceOverlapToleranceSource
 import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
 import app.lawnchair.organizer.rules.BundleReadResult
+import app.lawnchair.organizer.rules.CategoryOverrideDecodeOutcome
+import app.lawnchair.organizer.rules.CategoryOverrideFullStoreCodec
 import app.lawnchair.organizer.rules.CategoryOverrideKey
 import app.lawnchair.organizer.rules.CategoryOverrideSnapshot
 import app.lawnchair.organizer.rules.CategoryOverrideSnapshotSource
@@ -31,6 +33,8 @@ import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogIdentity
 import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogReadResult
 import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogSnapshot
 import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogSource
+import app.lawnchair.organizer.rules.UserDefinedCategoryStoreCodec
+import app.lawnchair.organizer.rules.UserDefinedCategoryStoreDecodeOutcome
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -100,6 +104,77 @@ class OrganizationInputComposerCatalogTest {
         assertEquals(
             InputReadinessReason.SourceUnreadable(PolicySourceKind.USER_DEFINED_CATEGORY_CATALOG),
             notReady.reason,
+        )
+    }
+
+    @Test
+    fun codecBackedNewerCatalogSchemaReachesCATALOG_UNSUPPORTED_SCHEMA() {
+        // Regression pin for the accepted forward-compat routing: the SAME
+        // codec-to-read-result mapping the production access performs, driven
+        // by a well-formed schema-2 catalog file (supported set is schema 1).
+        val newerCatalogBytes = "schema=2\ngeneration=1\ndigest=${"0".repeat(64)}\nentries\n\n".toByteArray()
+        val source = UserDefinedCategoryCatalogSource {
+            when (val outcome = UserDefinedCategoryStoreCodec.decodeOutcome(newerCatalogBytes)) {
+                is UserDefinedCategoryStoreDecodeOutcome.Ready -> UserDefinedCategoryCatalogReadResult.Ready(
+                    UserDefinedCategoryCatalogSnapshot(
+                        schemaVersion = outcome.snapshot.identity.schemaVersion,
+                        generation = outcome.snapshot.identity.generation,
+                        categories = outcome.snapshot.categories,
+                        identity = UserDefinedCategoryCatalogIdentity.identityOf(
+                            outcome.snapshot.identity.schemaVersion,
+                            outcome.snapshot.identity.generation,
+                            outcome.snapshot.categories,
+                        ),
+                    ),
+                )
+
+                UserDefinedCategoryStoreDecodeOutcome.Unreadable -> UserDefinedCategoryCatalogReadResult.Unreadable
+
+                UserDefinedCategoryStoreDecodeOutcome.UnsupportedSchema -> UserDefinedCategoryCatalogReadResult.UnsupportedSchema
+            }
+        }
+
+        val result = compose(catalogSource = source).composeFullOrganization()
+
+        assertTrue(result is OrganizationInputComposition.NotReady)
+        assertEquals(
+            InputCompositionCode.CATALOG_UNSUPPORTED_SCHEMA,
+            (result as OrganizationInputComposition.NotReady).diagnostic.code,
+        )
+    }
+
+    @Test
+    fun codecBackedNewerOverrideSchemaReachesOVERRIDE_UNSUPPORTED_SCHEMA() {
+        // Well-formed schema-3 override snapshot through the same
+        // codec-to-read-result mapping the production access performs.
+        val newerOverrideBytes = "schema=3\ngeneration=1\ndigest=${"0".repeat(64)}\nentries\n\n".toByteArray()
+        val source = object : CategoryOverrideSnapshotSource {
+            override fun read(capturedProfiles: Set<ProfileId>): OverrideSnapshotReadResult = when (val outcome = CategoryOverrideFullStoreCodec.decodeOutcome(newerOverrideBytes)) {
+                is CategoryOverrideDecodeOutcome.Ready -> OverrideSnapshotReadResult.Ready(
+                    CategoryOverrideSnapshot(
+                        schemaVersion = outcome.snapshot.identity.schemaVersion,
+                        generation = outcome.snapshot.identity.generation,
+                        assignments = outcome.snapshot.assignments,
+                        identity = PolicyInputIdentity(
+                            PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT,
+                            "schema-${outcome.snapshot.identity.schemaVersion}-generation-${outcome.snapshot.identity.generation}",
+                            outcome.snapshot.identity.sha256,
+                        ),
+                    ),
+                )
+
+                CategoryOverrideDecodeOutcome.Unreadable -> OverrideSnapshotReadResult.Unreadable
+
+                CategoryOverrideDecodeOutcome.UnsupportedSchema -> OverrideSnapshotReadResult.UnsupportedSchema
+            }
+        }
+
+        val result = compose(overrides = source).composeFullOrganization()
+
+        assertTrue(result is OrganizationInputComposition.NotReady)
+        assertEquals(
+            InputCompositionCode.OVERRIDE_UNSUPPORTED_SCHEMA,
+            (result as OrganizationInputComposition.NotReady).diagnostic.code,
         )
     }
 
@@ -179,13 +254,14 @@ class OrganizationInputComposerCatalogTest {
         state: LayoutState = defaultState(),
         overrides: CategoryOverrideSnapshotSource = SequenceOverrides(emptySnapshot(), emptySnapshot()),
         catalogReads: List<UserDefinedCategoryCatalogReadResult> = listOf(emptyCatalog(), emptyCatalog()),
+        catalogSource: UserDefinedCategoryCatalogSource? = null,
     ): OrganizationInputComposer = DefaultOrganizationInputComposer(
         captureSource = CanonicalCaptureSource {
             CanonicalCaptureReadResult.Ready(FakeLayoutWriter(state).captureCurrent(CaptureId("test")))
         },
         bundleSource = BuiltInOrganizerPolicyBundleSource,
         overrides = overrides,
-        userDefinedCategories = SequenceCatalogs(*catalogReads.toTypedArray()),
+        userDefinedCategories = catalogSource ?: SequenceCatalogs(*catalogReads.toTypedArray()),
         layoutStrategySelections = SequenceSelections(),
         platformEvidence = SequenceEvidence(),
         overlapTolerance = WorkspaceOverlapToleranceSource { true },

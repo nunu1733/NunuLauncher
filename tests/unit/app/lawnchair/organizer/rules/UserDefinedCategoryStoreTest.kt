@@ -61,14 +61,28 @@ class UserDefinedCategoryStoreTest {
         val bytes = UserDefinedCategoryStoreCodec.encode(snapshot)
         assertEquals(snapshot, UserDefinedCategoryStoreCodec.decode(bytes))
 
-        // Unsupported (newer) schema header.
-        assertNull(UserDefinedCategoryStoreCodec.decode(bytes.toString(Charsets.UTF_8).replace("schema=1", "schema=2").toByteArray()))
+        // Well-formed newer schema: typed UnsupportedSchema (the Ready-only
+        // decode view still yields null), per the accepted forward-compat
+        // contract for the current binary.
+        val newer = bytes.toString(Charsets.UTF_8).replace("schema=1", "schema=2").toByteArray()
+        assertNull(UserDefinedCategoryStoreCodec.decode(newer))
+        assertEquals(
+            UserDefinedCategoryStoreDecodeOutcome.UnsupportedSchema,
+            UserDefinedCategoryStoreCodec.decodeOutcome(newer),
+        )
+        // Non-numeric schema line: not a recognizable version statement at all.
+        assertEquals(
+            UserDefinedCategoryStoreDecodeOutcome.Unreadable,
+            UserDefinedCategoryStoreCodec.decodeOutcome(
+                bytes.toString(Charsets.UTF_8).replace("schema=1", "schema=one").toByteArray(),
+            ),
+        )
         // Broken digest.
         assertNull(UserDefinedCategoryStoreCodec.decode(bytes.toString(Charsets.UTF_8).replace("digest=", "digest=0").toByteArray()))
         // Duplicate ID.
         assertNull(
             UserDefinedCategoryStoreCodec.decode(
-                bytes.toString(Charsets.UTF_8).replace("entries\n", "entries\n$idA|Other\n").toByteArray(),
+                bytes.toString(Charsets.UTF_8).replace("entries\n", "entries\n${idA.value}|Other\n").toByteArray(),
             ),
         )
         // Malformed name (field separator inside the line).
@@ -79,6 +93,96 @@ class UserDefinedCategoryStoreTest {
         assertNull(UserDefinedCategoryStoreCodec.decode(bytes.toString(Charsets.UTF_8).replace("generation=2", "generation=-1").toByteArray()))
         // Truncated tail.
         assertNull(UserDefinedCategoryStoreCodec.decode(bytes.copyOf(bytes.size - 1)))
+    }
+
+    // --- read-time invariants (accepted contract #336) -----------------------
+
+    /**
+     * Builds raw store bytes with a digest that is CORRECT for the exact rows
+     * written, so a rejection below is attributable to the read-time invariant
+     * under test and never to a digest mismatch.
+     */
+    private fun rawCatalogBytes(generation: Long, rows: List<String>): ByteArray {
+        val canonical = rows.joinToString("\n")
+        val entries = if (rows.isEmpty()) "" else "$canonical\n"
+        return "schema=1\ngeneration=$generation\ndigest=${sha256Canonical(canonical)}\nentries\n$entries".toByteArray()
+    }
+
+    private fun idFor(i: Int): String = String.format("%08d-0000-4000-8000-%012d", i, i)
+
+    @Test
+    fun decodeRejectsExactTrimEquivalentAndNfcEquivalentDuplicateNames() {
+        val exact = rawCatalogBytes(3L, listOf("${idA.value}|Commute", "${idB.value}|Commute"))
+        assertEquals(
+            UserDefinedCategoryStoreDecodeOutcome.Unreadable,
+            UserDefinedCategoryStoreCodec.decodeOutcome(exact),
+        )
+        // The second row is not canonical (leading whitespace): the stored
+        // catalog can never contain a trim-equivalent duplicate.
+        val trimEquivalent = rawCatalogBytes(3L, listOf("${idA.value}|Commute", "${idB.value}| Commute"))
+        assertEquals(
+            UserDefinedCategoryStoreDecodeOutcome.Unreadable,
+            UserDefinedCategoryStoreCodec.decodeOutcome(trimEquivalent),
+        )
+        // The decomposed row is not canonical (NFD): NFC-equivalent duplicates
+        // are unreachable through the writer and fail closed on read.
+        val nfcEquivalent = rawCatalogBytes(
+            3L,
+            listOf("${idA.value}|caf\u00e9", "${idB.value}|cafe\u0301"),
+        )
+        assertEquals(
+            UserDefinedCategoryStoreDecodeOutcome.Unreadable,
+            UserDefinedCategoryStoreCodec.decodeOutcome(nfcEquivalent),
+        )
+    }
+
+    @Test
+    fun decodeRejectsStoredNonCanonicalNames() {
+        // NFD-decomposed name (not NFC).
+        assertEquals(
+            UserDefinedCategoryStoreDecodeOutcome.Unreadable,
+            UserDefinedCategoryStoreCodec.decodeOutcome(rawCatalogBytes(1L, listOf("${idA.value}|cafe\u0301"))),
+        )
+        // Outer whitespace (not trimmed).
+        assertEquals(
+            UserDefinedCategoryStoreDecodeOutcome.Unreadable,
+            UserDefinedCategoryStoreCodec.decodeOutcome(rawCatalogBytes(1L, listOf("${idA.value}| Commute"))),
+        )
+        assertEquals(
+            UserDefinedCategoryStoreDecodeOutcome.Unreadable,
+            UserDefinedCategoryStoreCodec.decodeOutcome(rawCatalogBytes(1L, listOf("${idA.value}|Commute "))),
+        )
+        // The canonical form of the same name decodes.
+        assertEquals(
+            UserDefinedCategoryStoreDecodeOutcome.Ready::class,
+            UserDefinedCategoryStoreCodec.decodeOutcome(rawCatalogBytes(1L, listOf("${idA.value}|Commute")))::class,
+        )
+    }
+
+    @Test
+    fun decodeEnforcesTheBoundedCapacityOnRead() {
+        val atCapacity = rawCatalogBytes(1L, (1..USER_DEFINED_CATEGORY_CAPACITY).map { i -> "${idFor(i)}|cat-$i" })
+        assertTrue(UserDefinedCategoryStoreCodec.decodeOutcome(atCapacity) is UserDefinedCategoryStoreDecodeOutcome.Ready)
+        val overCapacity = rawCatalogBytes(1L, (1..USER_DEFINED_CATEGORY_CAPACITY + 1).map { i -> "${idFor(i)}|cat-$i" })
+        assertEquals(
+            UserDefinedCategoryStoreDecodeOutcome.Unreadable,
+            UserDefinedCategoryStoreCodec.decodeOutcome(overCapacity),
+        )
+    }
+
+    @Test
+    fun accessRoutesWellFormedNewerSchemaToTypedUnsupportedSchema() {
+        val (directory, atomic) = tempAtomic()
+        try {
+            // Well-formed header naming a schema this binary does not support.
+            atomic.seedFinal("schema=2\ngeneration=4\ndigest=${sha256Canonical("")}\nentries\n\n".toByteArray())
+            val access = accessOf(atomic)
+
+            assertEquals(UserDefinedCategoryStoredReadResult.UnsupportedSchema, access.readStored())
+            assertEquals(UserDefinedCategoryCatalogReadResult.UnsupportedSchema, access.readVisible())
+        } finally {
+            directory.deleteRecursively()
+        }
     }
 
     // --- reads ---------------------------------------------------------------

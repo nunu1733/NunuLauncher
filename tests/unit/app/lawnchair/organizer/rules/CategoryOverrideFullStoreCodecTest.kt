@@ -88,15 +88,38 @@ class CategoryOverrideFullStoreCodecTest {
     }
 
     @Test
-    fun newerSchemaThanCurrentDecodeFailsClosedAsUnreadablePath() {
-        // The decode-to-null path is exactly what a pre-336 binary observes on
-        // a schema-2 header (typed Unreadable / composer OVERRIDE_UNREADABLE);
-        // the current binary behaves identically for any schema it does not
-        // know — the observable downgrade outcome stays the unchanged code.
+    fun wellFormedNewerSchemaIsTypedUnsupportedSchemaForTheCurrentBinary() {
+        val newer = "schema=3\ngeneration=0\ndigest=${sha256Canonical("")}\nentries\n\n".toByteArray()
+        // Forward-compat: the current binary recognizes a well-formed but
+        // unsupported schema as the typed UnsupportedSchema (fail-closed,
+        // zero-write) instead of collapsing it into Unreadable.
+        assertNull(CategoryOverrideFullStoreCodec.decode(newer))
+        assertEquals(
+            CategoryOverrideDecodeOutcome.UnsupportedSchema,
+            CategoryOverrideFullStoreCodec.decodeOutcome(newer),
+        )
+    }
+
+    @Test
+    fun malformedSchemaLineRemainsTheUnreadablePath() {
+        // A non-numeric schema line is not a recognizable version statement.
         assertNull(
             CategoryOverrideFullStoreCodec.decode(
-                "schema=3\ngeneration=0\ndigest=${sha256Canonical("")}\nentries\n\n".toByteArray(),
+                "schema=three\ngeneration=0\ndigest=${sha256Canonical("")}\nentries\n\n".toByteArray(),
             ),
+        )
+        assertEquals(
+            CategoryOverrideDecodeOutcome.Unreadable,
+            CategoryOverrideFullStoreCodec.decodeOutcome(
+                "schema=three\ngeneration=0\ndigest=${sha256Canonical("")}\nentries\n\n".toByteArray(),
+            ),
+        )
+        // Schema 1 and 2 keep decoding (current supported set).
+        assertEquals(
+            CategoryOverrideDecodeOutcome.Ready::class,
+            CategoryOverrideFullStoreCodec.decodeOutcome(
+                "schema=2\ngeneration=0\ndigest=${sha256Canonical("")}\nentries\n\n".toByteArray(),
+            )::class,
         )
     }
 

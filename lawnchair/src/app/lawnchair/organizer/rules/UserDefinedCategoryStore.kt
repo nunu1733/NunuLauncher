@@ -254,9 +254,11 @@ internal class UserDefinedCategoryAtomicAccess(private val atomicFile: UserDefin
 
     private fun readStoredLocked(): UserDefinedCategoryStoredReadResult = try {
         atomicFile.openRead().use { input ->
-            UserDefinedCategoryStoreCodec.decode(input.readBytes())
-                ?.let { UserDefinedCategoryStoredReadResult.Ready(it) }
-                ?: UserDefinedCategoryStoredReadResult.Unreadable
+            when (val outcome = UserDefinedCategoryStoreCodec.decodeOutcome(input.readBytes())) {
+                is UserDefinedCategoryStoreDecodeOutcome.Ready -> UserDefinedCategoryStoredReadResult.Ready(outcome.snapshot)
+                UserDefinedCategoryStoreDecodeOutcome.UnsupportedSchema -> UserDefinedCategoryStoredReadResult.UnsupportedSchema
+                UserDefinedCategoryStoreDecodeOutcome.Unreadable -> UserDefinedCategoryStoredReadResult.Unreadable
+            }
         }
     } catch (_: FileNotFoundException) {
         // Physical absence is the defined generation-0 empty catalog.
@@ -311,7 +313,7 @@ internal class UserDefinedCategoryAtomicAccess(private val atomicFile: UserDefin
          * Bounded catalog capacity (spec #336): a Create exceeding it is a
          * typed failure with no write.
          */
-        const val CAPACITY = 64
+        const val CAPACITY = USER_DEFINED_CATEGORY_CAPACITY
     }
 
     private enum class PublishResult { Success, WriteFailed, VerificationFailed }
@@ -425,27 +427,74 @@ internal object UserDefinedCategoryStoreCodec {
         if (snapshot.categories.isNotEmpty()) append('\n')
     }.toByteArray(Charsets.UTF_8)
 
-    fun decode(bytes: ByteArray): UserDefinedCategoryStoredSnapshot? = try {
+    /** Ready-only view of [decodeOutcome]; null for every non-success. */
+    fun decode(bytes: ByteArray): UserDefinedCategoryStoredSnapshot? = (decodeOutcome(bytes) as? UserDefinedCategoryStoreDecodeOutcome.Ready)?.snapshot
+
+    /**
+     * Typed decode routing (accepted contract #336): a WELL-FORMED header
+     * naming a schema newer than this binary supports is the typed
+     * `UnsupportedSchema` (forward-compat, fail-closed, zero-write); a header
+     * that is absent, non-numeric, structurally damaged, or a supported
+     * schema whose content fails validation is `Unreadable` — no repair, no
+     * default, no partial catalog.
+     */
+    fun decodeOutcome(bytes: ByteArray): UserDefinedCategoryStoreDecodeOutcome = try {
         val text = bytes.toString(Charsets.UTF_8)
         val entriesMarker = "$HEADER_ENTRIES\n"
         val markerIndex = text.indexOf(entriesMarker)
-        if (markerIndex < 0 || text.indexOf(entriesMarker, markerIndex + entriesMarker.length) >= 0) return null
-        val header = text.substring(0, markerIndex).removeSuffix("\n").split('\n')
-        if (header.size != 3 || header[0] != "$HEADER_SCHEMA=$SCHEMA_V1") return null
-        val generationPrefix = "$HEADER_GENERATION="
-        if (!header[1].startsWith(generationPrefix)) return null
-        val generation = header[1].removePrefix(generationPrefix).toLongOrNull() ?: return null
-        if (generation < 0L) return null
-        val digestPrefix = "$HEADER_DIGEST="
-        if (!header[2].startsWith(digestPrefix)) return null
-        val digest = header[2].removePrefix(digestPrefix)
-        if (!SHA_256.matches(digest)) return null
-        val entries = parseEntries(text.substring(markerIndex + entriesMarker.length)) ?: return null
-        val snapshot = storedSnapshot(generation, entries)
-        snapshot.takeIf { it.identity.sha256 == digest }
+        if (markerIndex < 0 || text.indexOf(entriesMarker, markerIndex + entriesMarker.length) >= 0) {
+            UserDefinedCategoryStoreDecodeOutcome.Unreadable
+        } else {
+            val header = text.substring(0, markerIndex).removeSuffix("\n").split('\n')
+            if (header.size != 3 || !header[0].startsWith("$HEADER_SCHEMA=")) {
+                UserDefinedCategoryStoreDecodeOutcome.Unreadable
+            } else {
+                val schema = header[0].removePrefix("$HEADER_SCHEMA=").toIntOrNull()
+                when {
+                    // Non-numeric or malformed schema line: not a recognizable
+                    // version statement at all.
+                    schema == null || schema < 0 -> UserDefinedCategoryStoreDecodeOutcome.Unreadable
+
+                    schema > SCHEMA_V1 -> UserDefinedCategoryStoreDecodeOutcome.UnsupportedSchema
+
+                    else -> decodeSupportedSchema(text, markerIndex, entriesMarker, header)
+                }
+            }
+        }
     } catch (_: RuntimeException) {
-        null
+        UserDefinedCategoryStoreDecodeOutcome.Unreadable
     }
+
+    private fun decodeSupportedSchema(
+        text: String,
+        markerIndex: Int,
+        entriesMarker: String,
+        header: List<String>,
+    ): UserDefinedCategoryStoreDecodeOutcome {
+        val generationPrefix = "$HEADER_GENERATION="
+        if (!header[1].startsWith(generationPrefix)) return UserDefinedCategoryStoreDecodeOutcome.Unreadable
+        val generation = header[1].removePrefix(generationPrefix).toLongOrNull()
+            ?: return UserDefinedCategoryStoreDecodeOutcome.Unreadable
+        if (generation < 0L) return UserDefinedCategoryStoreDecodeOutcome.Unreadable
+        val digestPrefix = "$HEADER_DIGEST="
+        if (!header[2].startsWith(digestPrefix)) return UserDefinedCategoryStoreDecodeOutcome.Unreadable
+        val digest = header[2].removePrefix(digestPrefix)
+        if (!SHA_256.matches(digest)) return UserDefinedCategoryStoreDecodeOutcome.Unreadable
+        val entries = parseEntries(text.substring(markerIndex + entriesMarker.length))
+            ?: return UserDefinedCategoryStoreDecodeOutcome.Unreadable
+        val snapshot = storedSnapshot(generation, entries)
+        return snapshot
+            .takeIf { it.identity.sha256 == digest }
+            ?.let { UserDefinedCategoryStoreDecodeOutcome.Ready(it) }
+            ?: UserDefinedCategoryStoreDecodeOutcome.Unreadable
+    }
+}
+
+/** Typed codec routing of one catalog store read (Issue #336). */
+internal sealed interface UserDefinedCategoryStoreDecodeOutcome {
+    data class Ready(val snapshot: UserDefinedCategoryStoredSnapshot) : UserDefinedCategoryStoreDecodeOutcome
+    data object Unreadable : UserDefinedCategoryStoreDecodeOutcome
+    data object UnsupportedSchema : UserDefinedCategoryStoreDecodeOutcome
 }
 
 /**
@@ -457,12 +506,22 @@ internal fun canonicalEntries(categories: List<UserDefinedCategory>): String = c
     .sortedBy { it.id }
     .joinToString("\n") { "${it.id.value}|${it.displayName}" }
 
+/**
+ * Read-time invariant validation (accepted contract #336): every persisted
+ * name must already be in canonical form (`name == normalize(name)` — the
+ * store persists only normalized names), normalized names must be unique
+ * within the catalog (covering exact, trim-equivalent, and NFC-equivalent
+ * duplicates), and the bounded capacity applies on read too. Any violation
+ * fails the whole decode.
+ */
 private fun parseEntries(text: String): List<UserDefinedCategory>? {
     if (text.isEmpty()) return emptyList()
     if (!text.endsWith("\n")) return null
     val lines = text.removeSuffix("\n").split('\n')
     if (lines.size == 1 && lines[0].isEmpty()) return emptyList()
+    if (lines.size > USER_DEFINED_CATEGORY_CAPACITY) return null
     val parsed = LinkedHashMap<UserCategoryId, UserDefinedCategory>()
+    val seenNormalizedNames = linkedSetOf<String>()
     var previousId: UserCategoryId? = null
     for (encoded in lines) {
         val parts = encoded.split('|')
@@ -473,7 +532,12 @@ private fun parseEntries(text: String): List<UserDefinedCategory>? {
             return null
         }
         val name = parts[1]
-        if (!UserDefinedCategoryNameRules.isValid(name)) return null
+        val normalized = UserDefinedCategoryNameRules.normalize(name)
+        if (!UserDefinedCategoryNameRules.isValid(normalized)) return null
+        // The writer persists only canonical (trim+NFC-normalized) names; a
+        // stored non-canonical form is external corruption.
+        if (name != normalized) return null
+        if (!seenNormalizedNames.add(normalized)) return null
         if (id in parsed) return null
         if (previousId != null && previousId >= id) return null
         parsed[id] = UserDefinedCategory(id, name)
@@ -481,6 +545,9 @@ private fun parseEntries(text: String): List<UserDefinedCategory>? {
     }
     return parsed.values.toList()
 }
+
+/** Bounded catalog capacity (spec #336), enforced on write and on read. */
+internal const val USER_DEFINED_CATEGORY_CAPACITY = 64
 
 internal fun storedSnapshot(
     generation: Long,

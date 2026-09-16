@@ -342,9 +342,11 @@ internal class CategoryOverrideAtomicAccess internal constructor(
      */
     private fun readAtomicStoredIfPresentLocked(): CategoryOverrideStoredReadResult? = try {
         atomicFile.openRead().use { input ->
-            CategoryOverrideFullStoreCodec.decode(input.readBytes())
-                ?.let { CategoryOverrideStoredReadResult.Ready(it) }
-                ?: CategoryOverrideStoredReadResult.Unreadable
+            when (val outcome = CategoryOverrideFullStoreCodec.decodeOutcome(input.readBytes())) {
+                is CategoryOverrideDecodeOutcome.Ready -> CategoryOverrideStoredReadResult.Ready(outcome.snapshot)
+                CategoryOverrideDecodeOutcome.UnsupportedSchema -> CategoryOverrideStoredReadResult.UnsupportedSchema
+                CategoryOverrideDecodeOutcome.Unreadable -> CategoryOverrideStoredReadResult.Unreadable
+            }
         }
     } catch (_: FileNotFoundException) {
         null
@@ -522,39 +524,75 @@ internal object CategoryOverrideFullStoreCodec {
         append('\n')
     }.toByteArray(Charsets.UTF_8)
 
+    /** Ready-only view of [decodeOutcome]; null for every non-success. */
+    fun decode(bytes: ByteArray): CategoryOverrideStoredSnapshot? = (decodeOutcome(bytes) as? CategoryOverrideDecodeOutcome.Ready)?.snapshot
+
     /**
-     * Decodes schema 1 (built-in-typed values, pre-336 bytes) and schema 2
-     * (kind-discriminated identity-typed values, Issue #336). Any other
-     * header decodes to null — the existing fail-closed `Unreadable` outcome a
-     * non-supporting binary observes, unchanged.
+     * Typed decode routing (accepted contract #336): schema 1 and schema 2
+     * decode as today; a WELL-FORMED header naming a schema newer than this
+     * binary supports is the typed `UnsupportedSchema` (forward-compat,
+     * fail-closed); a header that is absent, non-numeric, structurally
+     * damaged, or a supported schema whose content fails validation is
+     * `Unreadable`. The pre-336 binary's observable outcome on schema-2 data
+     * (`Unreadable`, from its own unchanged code) is not redefined here.
      */
-    fun decode(bytes: ByteArray): CategoryOverrideStoredSnapshot? = try {
+    fun decodeOutcome(bytes: ByteArray): CategoryOverrideDecodeOutcome = try {
         val text = bytes.toString(Charsets.UTF_8)
         val entriesMarker = "$HEADER_ENTRIES\n"
         val markerIndex = text.indexOf(entriesMarker)
-        if (markerIndex < 0 || !text.endsWith('\n') || text.indexOf(entriesMarker, markerIndex + entriesMarker.length) >= 0) return null
-        val header = text.substring(0, markerIndex).removeSuffix("\n").split('\n')
-        val parsedSchema = header[0].removePrefix("$HEADER_SCHEMA=").toIntOrNull()
-        if (header.size != 3 || (parsedSchema != SCHEMA_V1 && parsedSchema != SCHEMA_V2) || header[0] != "$HEADER_SCHEMA=$parsedSchema") return null
+        if (markerIndex < 0 || !text.endsWith('\n') || text.indexOf(entriesMarker, markerIndex + entriesMarker.length) >= 0) {
+            CategoryOverrideDecodeOutcome.Unreadable
+        } else {
+            val header = text.substring(0, markerIndex).removeSuffix("\n").split('\n')
+            val parsedSchema = header[0].removePrefix("$HEADER_SCHEMA=").toIntOrNull()
+            if (header.size != 3 || parsedSchema == null || parsedSchema < 0 || header[0] != "$HEADER_SCHEMA=$parsedSchema") {
+                CategoryOverrideDecodeOutcome.Unreadable
+            } else {
+                when {
+                    parsedSchema > SCHEMA_V2 -> CategoryOverrideDecodeOutcome.UnsupportedSchema
+                    else -> decodeSupportedSchema(text, markerIndex, entriesMarker, header, parsedSchema)
+                }
+            }
+        }
+    } catch (_: RuntimeException) {
+        CategoryOverrideDecodeOutcome.Unreadable
+    }
+
+    private fun decodeSupportedSchema(
+        text: String,
+        markerIndex: Int,
+        entriesMarker: String,
+        header: List<String>,
+        parsedSchema: Int,
+    ): CategoryOverrideDecodeOutcome {
         val generationPrefix = "$HEADER_GENERATION="
-        if (!header[1].startsWith(generationPrefix)) return null
-        val generation = header[1].removePrefix(generationPrefix).toLongOrNull() ?: return null
-        if (generation < 0L) return null
+        if (!header[1].startsWith(generationPrefix)) return CategoryOverrideDecodeOutcome.Unreadable
+        val generation = header[1].removePrefix(generationPrefix).toLongOrNull()
+            ?: return CategoryOverrideDecodeOutcome.Unreadable
+        if (generation < 0L) return CategoryOverrideDecodeOutcome.Unreadable
         val digestPrefix = "$HEADER_DIGEST="
-        if (!header[2].startsWith(digestPrefix)) return null
+        if (!header[2].startsWith(digestPrefix)) return CategoryOverrideDecodeOutcome.Unreadable
         val digest = header[2].removePrefix(digestPrefix)
-        if (!SHA_256.matches(digest)) return null
+        if (!SHA_256.matches(digest)) return CategoryOverrideDecodeOutcome.Unreadable
         val entries = text.substring(markerIndex + entriesMarker.length).removeSuffix("\n")
         val assignments = when (parsedSchema) {
             SCHEMA_V1 -> parseLegacyEntries(entries)?.mapValues { (_, category) -> CategoryIdentity.BuiltIn(category) }
             SCHEMA_V2 -> parseIdentityEntries(entries)
-            else -> return null
-        } ?: return null
+            else -> return CategoryOverrideDecodeOutcome.Unreadable
+        } ?: return CategoryOverrideDecodeOutcome.Unreadable
         val snapshot = storedSnapshot(generation, assignments, parsedSchema)
-        snapshot.takeIf { it.identity.sha256 == digest }
-    } catch (_: RuntimeException) {
-        null
+        return snapshot
+            .takeIf { it.identity.sha256 == digest }
+            ?.let { CategoryOverrideDecodeOutcome.Ready(it) }
+            ?: CategoryOverrideDecodeOutcome.Unreadable
     }
+}
+
+/** Typed codec routing of one override store read (Issue #336). */
+internal sealed interface CategoryOverrideDecodeOutcome {
+    data class Ready(val snapshot: CategoryOverrideStoredSnapshot) : CategoryOverrideDecodeOutcome
+    data object Unreadable : CategoryOverrideDecodeOutcome
+    data object UnsupportedSchema : CategoryOverrideDecodeOutcome
 }
 
 private fun parseLegacyEntries(entries: String): Map<CategoryOverrideKey, CategoryId>? = parseEntries(if (entries.isBlank()) emptyList() else entries.lineSequence().toList())
