@@ -2,13 +2,14 @@
 
 > Issue: #330
 > Spec: [spec.md](./spec.md)
-> Status: draft — specのdraft decisions D-1〜D-6がowner受入れになるまで実装を開始しない (AGENTS.md / [github-workflow.md](../../docs/project/github-workflow.md) start gate)。
+> Status: **accepted (2026-09-16)** — specのdraft decisions D-1〜D-6はre-review (Issue #330 comment 5698414707) によりowner受入れ済み。実装を開始する (下記execution checklist)。
 > Baseline: `origin/main` = `aab0d293d1a98bf59f5b164693f54ee1a63e3f0b` (2026-09-16時点。#331実装 PR #333 merge + docs PR #334 merge 後)。
 
 ## Re-entry status
 
 - 2026-09-16: 初回起草。Issue #330 (2026-09-16T08:04:05Z作成、comment 0件・owner decisionなし) を確認済み。過去のspec/plan snapshotは存在しない (`specs/330-*` なし)。baseline SHAは前workerの記録と同一 (`aab0d293d1`) であり、起草時点の追加差分確認は不要。
 - 2026-09-16: Re-entry (review Required finding対応)。`git fetch origin main` 後、origin/mainはbaseline `aab0d293d1` から不動であることを確認 (validator/codec/composer/instruction周辺の差分なし)。Issue #330 review comment 5698080251 のRequired「bare `{"ref":"X"}` の semantic identity を Spec で固定する」を受け、spec に **D-6** (bare entry = 全semantic fieldがnullのitemIntents entry をcompletionでcanonical unresolvedへ正規化し、明示unresolved / 省略 / bare entryを同一semantic identityとする。review提示の選択肢1) を追加。本planには bare entry正規化の設計 (下記Design) と stable identity / replay test (下記Verification) を反映した。正本実装 (`IntentPlannerAdapter` / `IntentIdentity` / `FullRunExecution` のpreference消費) を再読し、all-null `ItemPreference` がplanner効果を持たない事実を再確認済み。
+- 2026-09-16: **Accepted → 実装完了**。re-review (comment 5698414707) によりD-1〜D-6 accepted。execution checklist 2〜9を実施: `IntentCompletion.kt` 新規 (RefDecision / CompletedPersonalIntent / complete()、bare entry正規化)、validator coverage narrow + `ValidatedPersonalizedIntent.completed` (derived) + identityのcompleted形式化、`SCHEMA_VERSION`/`INTENT_SCHEMA_VERSION` のv3 bump、`IntentPlannerAdapter` のcompleted消費化、instruction文言の部分authoring化、`INCOMPLETE_COVERAGE` 文言更新 (ja/en)、正本更新 (specs 204/205/331 Change history、CONTEXT.md用語、DESIGN.md gate 12)。実装上の確定事項: `CompletedPersonalIntent` 型名はplanどおり、`ValidatedPersonalizedIntent.completed` はconstructor外のderived property (`lazy`) としseam signatureを不変に維持、`IntentIdentityCalculator.identity(canonicalRepresentation)` はcompleted単一引数へ、canonical行順はref昇順の単一pass (item行とunresolved行をinterleave、row grammarは現行維持)。
 
 ## Current evidence
 
@@ -111,6 +112,12 @@ exchange reply text
 
 ## Verification
 
+実行結果 (2026-09-16、本revisionの実装commit上):
+
+- `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` → **PASS** (1302 tests / 0 failures / 0 errors。新規 `IntentCompletionTest` 10件を含む)
+- `./gradlew spotlessCheck` → **PASS**
+- `./gradlew assembleLawnWithQuickstepGithubDebug` → **PASS**
+
 実行command: `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` (building.mdの既存lane)。
 
 | AC | Test | 内容 |
@@ -129,7 +136,7 @@ exchange reply text
 
 ## Execution checklist
 
-1. spec受入れ (owner) — D-1〜D-6の承認。これが開始gate。
+1. ~~spec受入れ (owner)~~ — **完了** (2026-09-16、re-review comment 5698414707によりD-1〜D-6 accepted)。
 2. `IntentCompletionTest` 先行 (TDD): `RefDecision` / `CompletedPersonalIntent` / `complete()` とcompleteness/推測不在property、bare entry正規化property (D-6)。
 3. validator coverage narrow + `ValidatedPersonalizedIntent` 拡張 (authored + completed + identity over completed)。`IntentValidatorTest` のmissing-ref期待値反転と4系統corpus (AC-7) 追加。
 4. identityのcompleted形式化 + 同一性test (D-5/D-6: 明示unresolved / omission / bare entryの3表現同一digest、replay同値)。
@@ -141,7 +148,7 @@ exchange reply text
 
 ## Dependencies / blockers
 
-- **spec受入れ (D-1〜D-6) が唯一のblocker**。owner decisionなしでは実装しない。
+- ~~spec受入れ (D-1〜D-6)~~ — **解消済み** (2026-09-16 accepted)。
 - #329 (Import Normalizer) はblockerではない (境界は順序図で固定済み。#329実装時にnormalizerがrefを追加しないtestを#329側で追加する)。
 - #327 (interview-first) はinstruction文言の最終copyに関与するが、本実装の意味論部分と独立 (文言調整は#327または本実装の後続で可能)。
 - #206 (managed AI) は本変更の下流consumer (superset互換により影響なし。#206起草時にv3を参照)。

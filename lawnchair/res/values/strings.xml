@@ -1339,7 +1339,7 @@
     <string name="exchange_failure_oversize">The intent itself is too large.</string>
     <string name="exchange_failure_unknown_ref">The intent references items that do not exist in the request.</string>
     <string name="exchange_failure_duplicate_ref">The intent has duplicate item entries.</string>
-    <string name="exchange_failure_incomplete_coverage">The intent does not cover every item in the request.</string>
+    <string name="exchange_failure_incomplete_coverage">The intent mentions at least one item more than once. Each item may appear at most once across \"itemIntents\" and \"unresolvedRefs\".</string>
     <string name="exchange_failure_invalid_enum">The intent contains an unknown value.</string>
     <string name="exchange_failure_forbidden_content">The intent contains forbidden instructions (coordinates, sizes, or database changes).</string>
     <string name="exchange_failure_mobility_contradiction">The intent tries to move an immovable item.</string>

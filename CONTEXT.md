@@ -101,8 +101,8 @@ _Avoid_: フォルダ名の自動推論 (UI 側再計算を想起させる)、Fo
 _Avoid_: DB dump、Backup、snapshot (Layout Snapshotとの混同)
 
 **パーソナライゼーション意図 (Personalized Intent)**:
-AI/agentが `PersonalizationContextExportV1` に対して返す、semantic preference (優先度、 grouping、page/region親和、保持希望) のversion付き表現。physical placementやDB mutationの指示ではない。acceptされるとcontent digestを持つimmutable planning inputとなる。
-_Avoid_: layout plan (最終配置結果との混同)、rule (整理ルールとの混同)
+AI/agentが `PersonalizationContextExportV1` に対して返す、semantic preference (優先度、 grouping、page/region親和、保持希望) のversion付き表現。v3 ([spec 330](./specs/330-partial-intent-authoring/spec.md)) からは部分authoringを許し、書かれなかったrefの意味は常にcanonical unresolved (判断なし) である。physical placementやDB mutationの指示ではない。acceptされると、全export refの状態が決定済みの完全分割 (complete canonical representation) が構成され、そのcontent digestがidentityとなるimmutable planning inputとなる。
+_Avoid_: layout plan (最終配置結果との混同)、rule (整理ルールとの混同)、未言及refの推測補完 (禁止)
 
 **export-scoped ID (Export Item Reference)**:
 1つのcontext export内でのみ有効な、itemを指すopaqueな識別子。export生成ごとに新鮮な乱数から割り当てられ、内部`ItemId`・DB row IDとは無関係かつ逆算不可能である。対応付けはexport sessionのみが保持する。

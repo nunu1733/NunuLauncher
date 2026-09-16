@@ -1,6 +1,6 @@
 ---
 issue: "#330"
-status: draft
+status: accepted
 requirements: [FR-017]
 risk:
   - privacy
@@ -10,7 +10,7 @@ updated: 2026-09-16
 
 # External Agent向けPersonalizedIntent authoring contractの簡素化 (partial authoring契約)
 
-> Status: **draft** (2026-09-16) — 本specはIssue本文が要求する「案の比較と採否のspec化」を固定するものである。D-1〜D-6は **draft decision** であり、owner reviewによる受入れ前に実装してはならない (AGENTS.md「Issueまたは承認済みspecがない機能実装は開始しない」)。本specはimplementedであるspec 204 / 205 / 331と矛盾しない **拡張** として起草しており、受入れ時にこれらのChange historyへ拡張記録を追加する。
+> Status: **accepted** (2026-09-16) — Issue #330 re-review (comment 5698414707) により D-1〜D-6 がowner受入れされた。実装は本specの受入条件に従う (plan.mdのexecution checklist)。本specはimplementedであるspec 204 / 205 / 331と矛盾しない **拡張** として起草しており、実装PRでこれらのChange historyへ拡張記録を追加する。
 
 ## Problem
 
@@ -69,9 +69,9 @@ Design questions 1〜4の比較は、次の軸で評価する。
 |---|---|---|
 | **A. 現行維持 (full coverage必須)** | 全ref列挙を要求し続け、欠落は `INCOMPLETE_COVERAGE` | 問題文のauthoring負担がそのまま残る。本Issueの成果 (Outcome) を達成できない。**不採用** |
 | **B. import境界で `unresolved` へcanonicalize (schema無変更)** | 境界層が未言及refを `unresolvedRefs` へ補完してからvalidatorへ渡す | v2文書の意味がsilentに変化する (欠落がreject → 受理) ため (iii) に違反する。bumpを必須にすれば違反は解消するが、その場合でもvalidatorの検証対象が「境界が補完した後の人工物」になり (iv) を崩す (AIが書いた文面の検証と系统の補完が混在し、どちらが悪いのかtyped failureの帰属が曖昧になる)。**不採用** |
-| **C. schema自体をpartial authoring型へversion-upし、validator後にcomplete内部表現へ変換** | `personalized-intent-v3` としてomissionを認め、strict validatorはAIが書いた文のまま検証し、受入れ後に純粋なcompleterがcomplete canonical representationを構成する | (i) partialityがversionとして宣言される。(ii) 補完規則が「omission → canonical unresolved のみ」と単一に閉じる。(iii) bumpとして導入。(iv) validatorはauthored文書を検証し、補完は検証後の別段。(v) 契約は単一のままで全consumerが利用可 (full coverage文書はv3でも正当なsuperset)。(vi) codec/validator/adapterの既存seamの内側。**採用 (draft decision D-1)** |
+| **C. schema自体をpartial authoring型へversion-upし、validator後にcomplete内部表現へ変換** | `personalized-intent-v3` としてomissionを認め、strict validatorはAIが書いた文のまま検証し、受入れ後に純粋なcompleterがcomplete canonical representationを構成する | (i) partialityがversionとして宣言される。(ii) 補完規則が「omission → canonical unresolved のみ」と単一に閉じる。(iii) bumpとして導入。(iv) validatorはauthored文書を検証し、補完は検証後の別段。(v) 契約は単一のままで全consumerが利用可 (full coverage文書はv3でも正当なsuperset)。(vi) codec/validator/adapterの既存seamの内側。**採用 (D-1)** |
 
-**D-1 (draft): 案Cを採用する。**
+**D-1: 案Cを採用する。**
 
 - v3のauthoring意味論: `itemIntents` と `unresolvedRefs` は合わせてexport全refの **部分集合でよく、互いに素** (各refは高々1回、どちらかに出現) でなければならない。全数cover要求は廃止する。
 - 未言及ref (両方に現れないref) の意味は **canonical unresolved (判断なし)** のみとし、いかなるfield値も生成しない。
@@ -84,10 +84,10 @@ Design questions 1〜4の比較は、次の軸で評価する。
 | 案 | 内容 | 評価 |
 |---|---|---|
 | **a. 出力必須のまま** | FIXED itemも必ず列挙させる | AIが実質判断できない対象 (dock/lock/folder member) への出力強制が残り、`MOBILITY_CONTRADICTION` によるformat failure源が消えない。**不採用** |
-| **b. omitted可とし、Launcher側でpreserve/fixedとしてcanonicalize** | FIXED refの省略を認め、complete表現で明示的な状態へ落とす | authoring負担が消え、export文書・検証規則は現形を維持できる。**採用 (draft decision D-2)**。ただしomissionのcanonical値は「preserve」ではなく **uniformなcanonical unresolved** とする (下記) |
+| **b. omitted可とし、Launcher側でpreserve/fixedとしてcanonicalize** | FIXED refの省略を認め、complete表現で明示的な状態へ落とす | authoring負担が消え、export文書・検証規則は現形を維持できる。**採用 (D-2)**。ただしomissionのcanonical値は「preserve」ではなく **uniformなcanonical unresolved** とする (下記) |
 | **c. export packageでread-only subjectとして別表現** | FIXED itemをexport文書から分離したread-only領域へ置く | export文書内にsubject表現の二重正本が生じ、Contract 1 (`PersonalizationContextExport`) の構造変更 (coverage対象・privacy tier走査・`SessionExportReconstructor` parity) が更大になる。FIXEDであることの透明性 (`mobility` + `fixReason`) は現行items表現で既に達成されている。**不採用** |
 
-**D-2 (draft): 案bを採用する。omissionのcanonical値はmobilityによらず一律 `canonical unresolved` とする。**
+**D-2: 案bを採用する。omissionのcanonical値はmobilityによらず一律 `canonical unresolved` とする。**
 
 - FIXED / CANDIDATE / MOVABLE / CONDITIONALの全mobilityで、未言及は同じ「判断なし」状態へcanonicalizeされる (mobility条件分岐のある補完は、それ自体が一種の推測であり、単一規則でないため)。
 - FIXED refを明示出力する場合の規則は **無変更**: 許可されるのは `preserve` と `unresolvedRefs` 明示のみ。`importance` / `pageAffinity` / `regionAffinity` / `desiredGroup` / `groupSemantic` を付けた場合は引き続き `MOBILITY_CONTRADICTION` でrejectする。`CANDIDATE` refへの `preserve` も引き続きreject (spec 331の拡張条件)。
@@ -99,7 +99,7 @@ Design questions 1〜4の比較は、次の軸で評価する。
 
 ## Design question 3: Contract versioning
 
-**D-3 (draft): `personalization-context-v3` / `personalized-intent-v3` への同時bumpとする (spec 331 D-1と同じ手順)。**
+**D-3: `personalization-context-v3` / `personalized-intent-v3` への同時bumpとする (spec 331 D-1と同じ手順)。**
 
 - export文書の `capabilities.intentSchemaVersion` がintent schema versionを広告するため、intent側だけのbumpはできない。両者を同時にbumpする (intent文書のfield集合は無変更だが、coverage要求という意味が変わるため)。
 - **dual-version runtime supportは持たない** (spec 331 D-1の継続)。本appはproducer/consumer同梱であり、単一version (v3) のみ生成・受入れ、v1/v2文書は `SCHEMA_MISMATCH` でfail-closed拒否する。
@@ -111,7 +111,7 @@ Design questions 1〜4の比較は、次の軸で評価する。
 
 ## Design question 4: Canonical internal representation
 
-**D-4 (draft): validator通過後に純粋なcompleterがcomplete canonical representationを構成し、これがPlannerへの唯一の入力となる。authored文書は診断用にのみ保持する。**
+**D-4: validator通過後に純粋なcompleterがcomplete canonical representationを構成し、これがPlannerへの唯一の入力となる。authored文書は診断用にのみ保持する。**
 
 - complete表現 (`CompletedPersonalIntent`、名称はplanで確定) は「export全refがちょうど1回現れる完全分割」を型/不変条件として持つ。各refのdecisionは次の3種:
     - `Authored(ItemIntent)` — AIが `itemIntents` に書いた内容のうち、**少なくとも1つのsemantic fieldを持つentry** (そのまま)
@@ -122,12 +122,12 @@ Design questions 1〜4の比較は、次の軸で評価する。
 - authored文書 (v3 partial) はplanner・preview・applyへは渡されない。diagnostics・UI表示のためだけに `ValidatedPersonalizedIntent` 上に保持する。
 - content limits: authored側の上限 (`MAX_INTENT_ENTRIES` / `MAX_INTENT_UNRESOLVED` / `MAX_INTENT_BYTES`) は無変更。complete表現のunresolved数はexport items数 (≤512) に自然にboundされ、既存の上限不変条件を満たす。
 
-**D-5 (draft): intent identity (content digest) はcomplete表現のcanonical byte表現に対して計算する。**
+**D-5: intent identity (content digest) はcomplete表現のcanonical byte表現に対して計算する。**
 
 - canonical row grammarは現行 (`item|ref|...` / `unresolved|ref`) を維持し、`UnresolvedAuthored` と `UnresolvedByOmission` は同じ `unresolved|ref` rowを生成する。よって「明示unresolved」と「省略」は **同一のsemantic identity** を持つ (どちらも判断なしであり、区別すべき意味的差異がない)。`UnresolvedByOmission` であることの情報はdiagnostics用の別fieldでありidentityに入らない。
 - 同一authored文書 + 同一export refsからは常に同一identityが決定的に得られる (determinism契約の継続)。
 
-**D-6 (draft): bare entry (全semantic fieldがnullの `itemIntents` entry、すなわち `ref` のみのentry) はcompletionでcanonical unresolvedへ正規化し、「明示unresolved」「省略」「bare entry」の3表現を同一のsemantic identityとする。**
+**D-6: bare entry (全semantic fieldがnullの `itemIntents` entry、すなわち `ref` のみのentry) はcompletionでcanonical unresolvedへ正規化し、「明示unresolved」「省略」「bare entry」の3表現を同一のsemantic identityとする。**
 
 - bare entryはいかなるsemantic fieldも持たないため、planner効果は実際に存在しない (現行実装の全consumerが `desiredGroup` / `preserve == true` / `regionAffinity` / `pageAffinity` / `importance` 等の個別fieldのみを参照し、all-nullな `ItemPreference` の **出現そのもの** には効果がない。`FullRunExecution.kt` の各preference消費箇所で確認)。よって「bare entryを独立したauthored stateとしてidentity上も区別する」選択は、planner効果が同一であるpayload群に対してidentityだけが分岐する状態を作り、dedupe / replay契約を実装依存にするため **不採用** とする。
 - 採用する規則は単一かつ閉じている: **identityはrefごとのsemantic内容のみの関数であり、semantic fieldを1つも持たないrefは表現形式にかかわらず `unresolved|ref` rowになる**。これにより「同じplanner効果 ⇒ 同じidentity」が常に成立する。
@@ -232,7 +232,7 @@ Design questions 1〜4の比較は、次の軸で評価する。
 
 ## Acceptance criteria
 
-- [ ] AC-1: Design questions 1〜4の各案の比較と採否が本specに固定されている (A/B/C、a/b/c、versioning 3案、complete表現)。**draft decision D-1〜D-6はowner受入れで確定する**。
+- [ ] AC-1: Design questions 1〜4の各案の比較と採否が本specに固定されている (A/B/C、a/b/c、versioning 3案、complete表現)。draft decision D-1〜D-6はowner受入れ済み (2026-09-16 re-review comment 5698414707)。
 - [ ] AC-2: 未言及refの意味が常に `unresolved` / no-op相当であり、semantic inferenceを行わないことが契約・実装・test (property: completerはfield値を生成しない、omission ≡ 明示unresolved ≡ bare entryのplanner効果) で検証される。
 - [ ] AC-3: FIXED/locked itemのAI authoring責任を減らしてもlock bypassが不可能であること (FIXED refへのsemantic fieldの `MOBILITY_CONTRADICTION` reject、承認済preference下でもplanner保持判断・lock/bounds制約が不変であること) がtestで検証される。
 - [ ] AC-4: Plannerへ渡す前にcomplete canonical representationへ変換されること (全export refがちょうど1回現れる分割のcompleteness property。authored partial文書がplanner/previewへ渡らないこと) がtestで検証される。D-6のstable identity (bare entry / 明示unresolved / 省略の3表現が同一digest・同一projectionとなり、同一semantic内容のreplayが同一identityを返すこと) もtestで検証される。
@@ -254,7 +254,7 @@ Design questions 1〜4の比較は、次の軸で評価する。
 | AC-7 | validator/completer corpus test (4系統のfixture。Issue ACの直接対応) |
 | AC-8 | 境界明文化 (本spec) + #329実装時の境界test (本spec受入れ時点では文言・順序図の固定のみ。#329側specへ相互参照を残す) |
 
-## Decisions (draft — owner受入れで確定)
+## Decisions
 
 - **D-1: 案C (partial authoring schema v3 + validator後completion) を採用する。** A (現行維持) は問題が解消しない。B (境界補完・schema無変更) は#204のimmutable semantic version規則に違反し、bump前提なら検証対象の純度 (軸iv) で劣る。
 - **D-2: FIXED itemは省略可とし、omissionはmobilityによらず一律canonical unresolvedとする。** preserve値の代用にはしない (mobility条件付き補完は推測の一種であり、plannerはpreserveの指定を必要としない — FIXED保持はplanner authorityによる)。FIXED itemをexportから外す (案c) は透明性と単一正本を損なうため不採用。明示出力時の検証規則は無変更で、lock bypassは3層 (validator / planner authority / completer) で不可能なまま。
@@ -265,8 +265,8 @@ Design questions 1〜4の比較は、次の軸で評価する。
 
 ## Open questions (owner判断事項)
 
-1. **D-1〜D-6の受入れ**: 本specはdraftであり、各draft decisionの承認 (または差し替え) が実装開始の前提である。
-2. **instruction文言の最終copy**: v3の部分authoringを説明するexchange package文言は、#327 (interview-first) のprompt再設計と合成される際に最終調整が必要である (本specは要求内容のみ固定)。
+1. ~~**D-1〜D-6の受入れ**~~: **解消済み** — 2026-09-16のre-review (comment 5698414707) によりD-1〜D-6はaccepted。
+2. **instruction文言の最終copy**: v3の部分authoringを説明するexchange package文言は、#327 (interview-first) のprompt再設計と合成される際に最終調整が必要である (本specは要求内容のみ固定)。実装PRでは要求内容を満たすcopyを入れる。
 
 (旧Open question 3「bare-ref entryの扱い」は、review Required finding の対応として **D-6 として本specで固定** したため解消済み。)
 
@@ -274,6 +274,7 @@ Design questions 1〜4の比較は、次の軸で評価する。
 
 - 2026-09-16: Draft created for Issue #330。baseline `aab0d293d1` (origin/main、#331実装merge後) 上で起草。現行実装 (`IntentValidator.kt` のcoverage partition / mobility検証、`IntentCodec.kt`、`ExchangePackageComposer.kt` instruction、`IntentIdentity.kt`、`IntentPlannerAdapter.kt`、`AndroidExportSessionStore.kt`) とimplemented specs 204/205/331を確認し、Issue本文の4 design questionについて比較軸 (i)〜(vi) を固定してA/B/C・a/b/c比較とdraft decisions D-1〜D-5を起草。statusはdraft (owner受入れ待ち)。
 - 2026-09-16: Re-entry (review Required finding対応)。Issue #330 review (comment 5698080251) のRequired「bare `{"ref":"X"}` の semantic identity を Spec で固定する」に対応し、旧Open question 3を **D-6** (bare entryのcanonical unresolved正規化・3表現同一identity。review提示の選択肢1) として確定した。根拠として現行plannerの全preference consumerが個別fieldのみを参照しall-null `ItemPreference` に効果がないことを `FullRunExecution.kt` で再確認。scenario 2件・AC-2/4/5・test oracle・Contract変更詳細を更新。baseline変更なし (`aab0d293d1` のまま)。statusは引き続きdraft。
+- 2026-09-16: **Accepted** — re-review (comment 5698414707) によりD-1〜D-6が受入れされた (Required指摘なし)。statusをacceptedへ更新し、実装 (plan.md execution checklist) へ進む。
 
 ## References
 

@@ -313,6 +313,8 @@ Then 確認画面・失敗表示はaccessibility対応され (focus順、読み�
 - 2026-09-16 (4th): **implemented**。[PR #325](https://github.com/nunu1733/NunuLauncher/pull/325) merge (commit `3df9c7afe45a`) により本workflowの実装 (純粋exchange modules・integration・run接続・UI・44 exchange unit tests + run-level test) がmainに取り込まれた。ChatGPT PR review 7ラウンド (最終Approve) と独立audit 9ラウンドを経過。AC-9/AC-10のmanual/physical evidenceは後続evidence PRで実施予定 (受入条件は残置)。
 - 2026-09-16 (5th): **run内entry拡張 ([spec 331](../331-exchange-target-scope-coupling/spec.md) 所有)** — Issue #331のaccepted specによる意図的なworkflow拡張。本specの「exchange導線はrun非active時のみ提示」「#228 scope selectionはrun内概念でありexchange flowでは関与しない」のV1規定を、選択surface内のrun-in entry (scope結合生成・選択freeze・run内import接続) とscope binding gate (candidate集合の完全一致 + candidate投影digest照合、違反は `SCOPE_MISMATCH`) により拡張する。idle entryとfresh run再構築の既存契約は無変更。失敗表示は16種から17種 (`SCOPE_MISMATCH`) へ拡張。拡張の設計・契約・検証の正本はspec 331である。
 
+- 2026-09-16 (6th): **intent schema v3対応 ([spec 330](../330-partial-intent-authoring/spec.md) 所有)** — Issue #330のaccepted specにより、instruction部のcoverage要求 "Cover every \"ref\" exactly once across \"itemIntents\" and \"unresolvedRefs\"" を部分authoring契約 ("Author only what you actually judged" / "you do not have to cover every ref, and anything you leave out is treated as \"no judgment\" and is never guessed") へ置換し、response format表記を `personalized-intent-v3` へ更新。framing・envelope上限・Pre-send Disclosure・17種失敗表示 (種類数) は無変更。`INCOMPLETE_COVERAGE` 表示文言のみv3条件 (重複列挙) へ更新。拡張の設計・契約の正本はspec 330である。
+
 ## References
 
 - [Issue #205](https://github.com/nunu1733/NunuLauncher/issues/205)
