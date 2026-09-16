@@ -16,6 +16,7 @@ import app.lawnchair.organizer.personalization.exchange.ExchangeImportPipeline
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportResult
 import app.lawnchair.organizer.personalization.exchange.IntentFramingResult
 import app.lawnchair.organizer.personalization.exchange.IntentImportParser
+import app.lawnchair.organizer.planning.CandidateTarget
 
 /**
  * Issue #205: the exchange flow orchestrator (spec 205 data flow). Owns the
@@ -36,6 +37,17 @@ class ExchangeFlowController(
     private val allocator: RandomIdAllocator,
     private val clock: () -> Long,
     private val encodeExport: (app.lawnchair.organizer.personalization.PersonalizationContextExportV1) -> app.lawnchair.organizer.personalization.ContextExportResult = app.lawnchair.organizer.personalization.ContextExportCodec::encode,
+    /**
+     * Issue #331: the run-in (scope-composed) entry onto the same canonical
+     * composition seam — the confirmed selection with candidate display
+     * labels. The idle entry covers the empty-scope case. Test fixtures that
+     * construct the controller with lambdas and never exercise the run-in
+     * entry may rely on the default (typed NotReady; fail-closed).
+     */
+    private val composeScopedExportInputs: (Long, List<CandidateTarget.AppKey>, Map<CandidateTarget.AppKey, String>) -> ExchangeInputResult =
+        { _, _, _ ->
+            ExchangeInputResult.NotReady(app.lawnchair.organizer.integration.InputReadinessReason.ReconciliationPending)
+        },
 ) {
 
     constructor(
@@ -49,6 +61,7 @@ class ExchangeFlowController(
         store = store,
         allocator = allocator,
         clock = clock,
+        composeScopedExportInputs = adapter::composeForExport,
     )
 
     /** The active (unexpired) session, if any — drives the replacement gate. */
@@ -61,10 +74,24 @@ class ExchangeFlowController(
      * Generates one exchange package in the chosen tier. Callers must have
      * passed the replacement gate first when an active session existed.
      */
-    fun generate(tier: PrivacyTier): ExchangeGenerationResult {
-        val inputs = when (val result = composeExportInputs(clock())) {
-            is ExchangeInputResult.NotReady -> return ExchangeGenerationResult.InputNotReady(result.reason)
-            is ExchangeInputResult.ExportReady -> result.inputs
+    fun generate(tier: PrivacyTier): ExchangeGenerationResult = generate(tier, composeExportInputs(clock()))
+
+    /**
+     * Issue #331: run-in (scope-composed) generation — the export scope is the
+     * run's fixed selection composed by the same canonical seam the planner
+     * consumes. Same ordering contract as [generate]: gate → build → save →
+     * compose → disclose.
+     */
+    fun generateForSelection(
+        tier: PrivacyTier,
+        selection: List<CandidateTarget.AppKey>,
+        candidateLabels: Map<CandidateTarget.AppKey, String>,
+    ): ExchangeGenerationResult = generate(tier, composeScopedExportInputs(clock(), selection, candidateLabels))
+
+    private fun generate(tier: PrivacyTier, composedInputs: ExchangeInputResult): ExchangeGenerationResult {
+        val inputs = when (composedInputs) {
+            is ExchangeInputResult.NotReady -> return ExchangeGenerationResult.InputNotReady(composedInputs.reason)
+            is ExchangeInputResult.ExportReady -> composedInputs.inputs
         }
         val built = ContextExportBuilder.build(inputs, tier, allocator)
         if (!store.save(built.session)) {

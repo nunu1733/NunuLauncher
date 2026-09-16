@@ -1030,6 +1030,106 @@ class ManualOrganizationRunTest {
 
     // --- Issue #228: detection → selection → scope-composed run ---
 
+    // --- Issue #331: scope binding gate on intent-consuming runs ---
+
+    private fun c1Target() = app.lawnchair.organizer.planning.CandidateTarget.AppKey(
+        app.lawnchair.organizer.planning.ComponentKey("com.example.c1"),
+        app.lawnchair.organizer.planning.ProfileId("personal"),
+    )
+
+    private fun validatedIntentFor(
+        target: app.lawnchair.organizer.planning.CandidateTarget.AppKey,
+        category: String?,
+    ): app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent {
+        val addition = app.lawnchair.organizer.planning.CandidateItem(
+            id = app.lawnchair.organizer.planning.CandidatePlanningIds.planningId(target),
+            profile = target.profile,
+            kind = app.lawnchair.organizer.planning.CandidateKind.APPLICATION,
+            target = target,
+            availability = Availability.AVAILABLE,
+            span = app.lawnchair.organizer.planning.GridSpan(1, 1),
+        )
+        val built = app.lawnchair.organizer.personalization.ContextExportBuilder.build(
+            app.lawnchair.organizer.personalization.ExportInputs(
+                snapshot = app.lawnchair.organizer.planning.LayoutSnapshot(
+                    revision = app.lawnchair.organizer.planning.RevisionId("rev"),
+                    device = app.lawnchair.organizer.planning.DeviceCapabilities(4, 5, 5, 3, 4, app.lawnchair.organizer.planning.Orientation.PORTRAIT),
+                    pages = listOf(app.lawnchair.organizer.planning.Page(app.lawnchair.organizer.planning.PageId("page"), app.lawnchair.organizer.planning.PageOrder(0))),
+                    items = emptyList(),
+                ),
+                targets = TargetSet(emptyList(), listOf(addition)),
+                resolvedCategories = mapOf(addition.id to category),
+                nowEpochMs = 1_000L,
+            ),
+            app.lawnchair.organizer.personalization.PrivacyTier.LOCAL_FULL,
+            app.lawnchair.organizer.personalization.SequentialIdAllocator(),
+        )
+        val intent = app.lawnchair.organizer.personalization.PersonalizedIntentV1(
+            exportId = built.export.exportId,
+            itemIntents = emptyList(),
+            unresolvedRefs = built.export.items.map { it.ref },
+        )
+        val validation = app.lawnchair.organizer.personalization.IntentValidator.validate(
+            intent,
+            built.export,
+            built.session,
+            1_000L,
+            built.session.sourceContextDigest,
+        )
+        return (validation as app.lawnchair.organizer.personalization.IntentValidation.Validated).validated
+    }
+
+    @Test
+    fun attachIntentBindsToTheSelectionSurfaceOnce() {
+        val application = FakeApplication(scopeReadyInput()).apply { detection = detected("com.example.c1") }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { error("planner must not run") })
+        runner.start()
+        assertTrue(runner.state is ManualOrganizationRun.State.Selecting)
+
+        val attached = runner.attachIntent(validatedIntentFor(c1Target(), category = null))
+        assertEquals(ManualOrganizationRun.AttachIntentOutcome.Attached, attached)
+        assertEquals(1, (runner.state as ManualOrganizationRun.State.Selecting).intentScopeCount)
+        assertEquals(
+            ManualOrganizationRun.AttachIntentOutcome.NotAttachable,
+            runner.attachIntent(validatedIntentFor(c1Target(), category = null)),
+        )
+    }
+
+    @Test
+    fun scopeBindingRejectsASelectionMissingTheExportedCandidate() {
+        val application = FakeApplication(scopeReadyInput()).apply { detection = detected("com.example.c1") }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { error("planner must not run") })
+        runner.start()
+        runner.attachIntent(validatedIntentFor(c1Target(), category = null))
+
+        // The export scope holds the candidate; confirming an empty selection
+        // diverges → SCOPE_MISMATCH, zero-write, surface re-opens with guidance.
+        runner.confirmSelection(emptySet())
+
+        val state = runner.state as ManualOrganizationRun.State.Selecting
+        assertTrue(state.scopeMismatch)
+        assertEquals(1, state.intentScopeCount)
+        assertEquals(0, application.applyCalls)
+        assertEquals(0, application.composeScopeComposedCalls)
+    }
+
+    @Test
+    fun scopeBindingProjectionDriftFailsTypedZeroWrite() {
+        // The export saw the candidate as NEWS; the composition (no signals)
+        // resolves no category → the projection digest diverges (D-4) even
+        // though the selection matches exactly.
+        val application = FakeApplication(scopeReadyInput()).apply { detection = detected("com.example.c1") }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { error("planner must not run") })
+        runner.start()
+        runner.attachIntent(validatedIntentFor(c1Target(), category = "NEWS"))
+
+        runner.confirmSelection(setOf(c1Target()))
+
+        val state = runner.state as ManualOrganizationRun.State.InputUnavailable
+        assertTrue(state.reason == InputReadinessReason.ScopeBindingMismatch)
+        assertEquals(0, application.applyCalls)
+    }
+
     private fun candidate(id: String) = app.lawnchair.organizer.planning.CandidateItem(
         id = app.lawnchair.organizer.planning.ItemId(id),
         profile = app.lawnchair.organizer.planning.ProfileId("personal"),

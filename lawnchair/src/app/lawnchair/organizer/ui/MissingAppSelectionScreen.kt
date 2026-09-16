@@ -95,7 +95,30 @@ fun LazyListScope.missingAppSelectionItems(
     onSelectionChange: (MissingAppSelectionState) -> Unit,
     onConfirm: (Set<CandidateTarget.AppKey>) -> Unit,
     onCancel: () -> Unit,
+    /** Issue #331: a bound intent's export scope size — guidance only (D-1). */
+    intentScopeCount: Int = 0,
+    /** Issue #331: the last confirmation was rejected as a `SCOPE_MISMATCH`. */
+    scopeMismatch: Boolean = false,
+    /**
+     * Issue #331: false while the run-in exchange step holds the surface —
+     * the export scope is the frozen selection, so edits (and confirm) are
+     * disabled until the exchange completes or is abandoned.
+     */
+    editsEnabled: Boolean = true,
 ) {
+    if (scopeMismatch) {
+        item(key = "missing-app-selection-scope-mismatch") {
+            Text(
+                text = stringResource(R.string.exchange_failure_scope_mismatch),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .semantics { liveRegion = LiveRegionMode.Assertive }
+                    .testTag("missing-app-selection-scope-mismatch"),
+            )
+        }
+    }
     item(key = "missing-app-selection-heading") {
         Text(
             text = stringResource(R.string.manual_organization_missing_apps_title),
@@ -104,6 +127,25 @@ fun LazyListScope.missingAppSelectionItems(
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .testTag("missing-app-selection-title"),
         )
+    }
+    if (intentScopeCount > 0) {
+        item(key = "missing-app-selection-intent-scope") {
+            // Guidance only: the user still selects explicitly (D-1/228); the
+            // binding gate rejects a diverging confirmation (spec 331 §5).
+            pluralStringResource(
+                R.plurals.exchange_scope_intent_count,
+                intentScopeCount,
+                intentScopeCount,
+            ).let { text ->
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .testTag("missing-app-selection-intent-scope"),
+                )
+            }
+        }
     }
     item(key = "missing-app-selection-count") {
         Text(
@@ -125,9 +167,10 @@ fun LazyListScope.missingAppSelectionItems(
     item(key = "missing-app-selection-search") {
         OutlinedTextField(
             value = selection.query,
-            onValueChange = { onSelectionChange(selection.withQuery(it)) },
+            onValueChange = { if (editsEnabled) onSelectionChange(selection.withQuery(it)) },
             label = { Text(stringResource(R.string.manual_organization_missing_apps_search_hint)) },
             singleLine = true,
+            enabled = editsEnabled,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -143,14 +186,14 @@ fun LazyListScope.missingAppSelectionItems(
         ) {
             FilledTonalButton(
                 onClick = { onSelectionChange(selection.selectAllMatching()) },
-                enabled = selection.displayed.isNotEmpty(),
+                enabled = editsEnabled && selection.displayed.isNotEmpty(),
                 modifier = Modifier.testTag("missing-app-selection-select-all"),
             ) {
                 Text(stringResource(R.string.manual_organization_missing_apps_select_all))
             }
             OutlinedButton(
                 onClick = { onSelectionChange(selection.clearAll()) },
-                enabled = selection.selected.isNotEmpty(),
+                enabled = editsEnabled && selection.selected.isNotEmpty(),
                 modifier = Modifier.testTag("missing-app-selection-clear-all"),
             ) {
                 Text(stringResource(R.string.manual_organization_missing_apps_clear_all))
@@ -166,7 +209,8 @@ fun LazyListScope.missingAppSelectionItems(
         MissingAppSelectionRow(
             candidate = candidate,
             checked = candidate.target in selection.selected,
-            onToggle = { onSelectionChange(selection.toggle(candidate)) },
+            onToggle = { if (editsEnabled) onSelectionChange(selection.toggle(candidate)) },
+            enabled = editsEnabled,
         )
     }
     item(key = "missing-app-selection-actions") {
@@ -178,6 +222,7 @@ fun LazyListScope.missingAppSelectionItems(
         ) {
             Button(
                 onClick = { onConfirm(selection.selected) },
+                enabled = editsEnabled,
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("missing-app-selection-confirm"),
@@ -186,6 +231,7 @@ fun LazyListScope.missingAppSelectionItems(
             }
             OutlinedButton(
                 onClick = onCancel,
+                enabled = editsEnabled,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(stringResource(R.string.manual_organization_cancel))
@@ -200,6 +246,7 @@ private fun MissingAppSelectionRow(
     candidate: DetectedCandidate,
     checked: Boolean,
     onToggle: () -> Unit,
+    enabled: Boolean = true,
 ) {
     val checkedText = stringResource(R.string.manual_organization_missing_apps_state_checked)
     val uncheckedText = stringResource(R.string.manual_organization_missing_apps_state_unchecked)
@@ -210,6 +257,7 @@ private fun MissingAppSelectionRow(
             .toggleable(
                 value = checked,
                 role = Role.Checkbox,
+                enabled = enabled,
                 onValueChange = { onToggle() },
             )
             .padding(horizontal = 16.dp, vertical = 8.dp)

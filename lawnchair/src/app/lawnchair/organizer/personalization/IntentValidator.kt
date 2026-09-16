@@ -97,6 +97,13 @@ object IntentValidator {
                     return IntentValidation.Failure(IntentValidationFailure.MobilityContradiction(item.ref))
                 }
             }
+            // Issue #331 (v2): a candidate subject has no current placement, so
+            // a keep-current-position assertion is a mobility contradiction.
+            // Placement-independent signals (importance / grouping / affinity)
+            // stay valid for candidates.
+            if (mobility == Mobility.CANDIDATE && item.preserve != null) {
+                return IntentValidation.Failure(IntentValidationFailure.MobilityContradiction(item.ref))
+            }
         }
 
         // Structural freshness: recompute the digest over the current canonical

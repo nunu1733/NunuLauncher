@@ -314,12 +314,38 @@ fun ManualOrganizationPreferences(
                     // Issue #228: explicit scope selection (D-1: all
                     // candidates start unchecked). Selection survives query
                     // changes; Select all matches the filtered set, Clear all
-                    // clears the whole set (spec §2).
+                    // clears the whole candidate set (spec §2).
+                    //
+                    // Issue #331: the run-in exchange entry shares the
+                    // surface. While an exchange step is in progress the
+                    // selection is frozen (the export scope is the frozen
+                    // selection); the bound intent's scope size guides
+                    // re-selection (never auto-selects).
+                    val exchangeBusy = exchangeHolder.screen !is app.lawnchair.organizer.ui.exchange.ExchangeScreen.Closed
+                    val scopedSelection = missingAppSelection.selected.toList()
+                    val scopedLabels = missingAppSelection.candidates
+                        .map { it.target to it.label }
+                        .toMap()
                     missingAppSelectionItems(
                         selection = missingAppSelection,
                         onSelectionChange = { missingAppSelection = it },
                         onConfirm = { selected -> execute { coordinator.confirmSelection(selected) } },
                         onCancel = { execute(coordinator::cancel) },
+                        intentScopeCount = currentState.intentScopeCount,
+                        scopeMismatch = currentState.scopeMismatch,
+                        editsEnabled = !exchangeBusy,
+                    )
+                    exchangeFlowItems(
+                        holder = exchangeHolder,
+                        scopedSelection = scopedSelection,
+                        scopedLabels = scopedLabels,
+                        clipboardTransport = { ctx: android.content.Context, text: String ->
+                            ClipboardExchangeTransport(ctx).copy(text)
+                        },
+                        shareTransport = { ctx: android.content.Context, text: String ->
+                            ShareSheetExchangeTransport().share(ctx, text)
+                        },
+                        fileTransport = FileExchangeTransport(context),
                     )
                 }
 
@@ -333,12 +359,18 @@ fun ManualOrganizationPreferences(
 
                 is ManualOrganizationRun.State.InputUnavailable -> item {
                     FocusTargetText(
-                        text = if (currentState.reason is app.lawnchair.organizer.integration.InputReadinessReason.StaleCandidateSelection) {
-                            // Issue #228 (review P2 #4): the selection was cut
-                            // against an older layout; re-detection resolves it.
-                            stringResource(R.string.manual_organization_selection_stale)
-                        } else {
-                            stringResource(currentState.reason.copyKind())
+                        text = when (currentState.reason) {
+                            is app.lawnchair.organizer.integration.InputReadinessReason.StaleCandidateSelection ->
+                                // Issue #228 (review P2 #4): the selection was cut
+                                // against an older layout; re-detection resolves it.
+                                stringResource(R.string.manual_organization_selection_stale)
+
+                            is app.lawnchair.organizer.integration.InputReadinessReason.ScopeBindingMismatch ->
+                                // Issue #331: the scope binding gate rejected the
+                                // run; zero-write, the remedy is re-export.
+                                stringResource(R.string.exchange_failure_scope_mismatch)
+
+                            else -> stringResource(currentState.reason.copyKind())
                         },
                         focusRequester = focusRequester,
                         modifier = focusTargetModifier,

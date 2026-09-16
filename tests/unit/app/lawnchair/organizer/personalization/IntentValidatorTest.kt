@@ -274,7 +274,7 @@ class IntentValidatorTest {
             ByteArray(0),
             "not json".encodeToByteArray(),
             "{}".encodeToByteArray(),
-            """{"schemaVersion":"personalized-intent-v1","exportId":"${built.export.exportId}","itemIntents":[{"ref":"ghost"}]}"""
+            """{"schemaVersion":"personalized-intent-v2","exportId":"${built.export.exportId}","itemIntents":[{"ref":"ghost"}]}"""
                 .encodeToByteArray(),
         )
         for (bytes in arbitrary) {
