@@ -96,13 +96,24 @@ data class ExchangeDisclosureState(
     val sent: Boolean = false,
     /** A transport is running; pre-send cancel is suspended until it settles. */
     val transportInFlight: Boolean = false,
+    /**
+     * Terminal: a cancel was accepted on Main; no transport may start or
+     * settle against this disclosure afterwards (review round 3 P1).
+     */
+    val cancelling: Boolean = false,
 ) {
-    fun onTransportStarted(): ExchangeDisclosureState = copy(transportInFlight = true)
+    fun onTransportStarted(): ExchangeDisclosureState {
+        if (sent || cancelling) return this // a cancelled/sent disclosure takes no transport
+        return copy(transportInFlight = true)
+    }
 
-    fun onTransportResult(result: ExchangeTransportResult): ExchangeDisclosureState = when (result) {
-        ExchangeTransportResult.Success -> copy(sent = true, transportInFlight = false)
-        is ExchangeTransportResult.Failure -> copy(transportInFlight = false)
-        ExchangeTransportResult.InFlight -> this
+    fun onTransportResult(result: ExchangeTransportResult): ExchangeDisclosureState {
+        if (cancelling) return this // late results of a pre-cancel transport are ignored
+        return when (result) {
+            ExchangeTransportResult.Success -> copy(sent = true, transportInFlight = false)
+            is ExchangeTransportResult.Failure -> copy(transportInFlight = false)
+            ExchangeTransportResult.InFlight -> copy(transportInFlight = true)
+        }
     }
 
     /**
@@ -110,7 +121,10 @@ data class ExchangeDisclosureState(
      * package only, and never while a transport is in flight — the write may
      * still land outside the device after the invalidate.
      */
-    val cancelable: Boolean get() = !sent && !transportInFlight
+    val cancelable: Boolean get() = !sent && !transportInFlight && !cancelling
+
+    /** Transports may only start on an idle, unsent, non-cancelling disclosure. */
+    val transportAllowed: Boolean get() = cancelable
 }
 
 /**
@@ -127,11 +141,22 @@ class ExchangeFlowStateHolder(
 ) {
     private val controller: ExchangeFlowController by lazy(LazyThreadSafetyMode.NONE) { controllerFactory() }
 
-    var screen: ExchangeScreen by mutableStateOf(ExchangeScreen.Closed)
-        private set
+    /** Backing state; exposed as Compose state through [screenState] for tests. */
+    private val screenState = mutableStateOf<ExchangeScreen>(ExchangeScreen.Closed)
 
-    var status: ExchangeStatus? by mutableStateOf(null)
-        private set
+    var screen: ExchangeScreen
+        get() = screenState.value
+        private set(value) {
+            screenState.value = value
+        }
+
+    private val statusState = mutableStateOf<ExchangeStatus?>(null)
+
+    var status: ExchangeStatus?
+        get() = statusState.value
+        private set(value) {
+            statusState.value = value
+        }
 
     fun openFlow() {
         status = null
@@ -207,14 +232,17 @@ class ExchangeFlowStateHolder(
      * the session survives and the reply stays importable (review P1).
      */
     fun closeDisclosure() {
-        // Decide from the holder's CURRENT disclosure state on Main — not the
-        // caller's possibly-stale snapshot — so a cancel racing an in-flight
-        // transport cannot invalidate a session whose write just landed.
+        // Decide and mark synchronously on Main from the holder's CURRENT
+        // disclosure state (review round 3 P1): the moment a cancel is
+        // accepted the disclosure enters the terminal `cancelling` state, so
+        // no further transport can start or settle against it, and the
+        // session invalidated below is exactly the never-sent one.
         val disclosing = (screen as? ExchangeScreen.Disclosing)?.state
         if (disclosing == null || !disclosing.cancelable) {
             close()
             return
         }
+        screen = ExchangeScreen.Disclosing(disclosing.copy(cancelling = true))
         scope.launch(Dispatchers.IO) {
             controller.cancelDisclosure(disclosing.session)
             withContext(Dispatchers.Main) { close() }
@@ -234,6 +262,15 @@ class ExchangeFlowStateHolder(
         screen = ExchangeScreen.Disclosing(disclosing.state.onTransportResult(result))
     }
 
+    /** Serializes every transport start through the disclosure state on Main. */
+    fun startTransport(transport: () -> ExchangeTransportResult) {
+        val disclosing = (screen as? ExchangeScreen.Disclosing)?.state
+        if (disclosing == null || !disclosing.transportAllowed) return
+        onTransportResult(ExchangeTransportResult.InFlight)
+        if ((screen as? ExchangeScreen.Disclosing)?.state?.transportInFlight != true) return
+        onTransportResult(transport())
+    }
+
     fun importFromFile(context: Context, fileTransport: FileExchangeTransport, uri: Uri) {
         scope.launch(Dispatchers.IO) {
             val read = fileTransport.read(uri)
@@ -248,10 +285,11 @@ class ExchangeFlowStateHolder(
     }
 
     fun writeFile(fileTransport: FileExchangeTransport, packageText: String, uri: Uri) {
-        // Mark in-flight on Main before the write starts: from this point the
-        // pre-send cancel is suspended until the transport settles (review
-        // round 2 P1 — the write may still land after an invalidate otherwise).
+        // Mark in-flight synchronously on Main BEFORE the write starts (review
+        // round 3 P1: the marker must actually reach the state — the flag
+        // suspends the pre-send cancel until the transport settles).
         onTransportResult(ExchangeTransportResult.InFlight)
+        if ((screen as? ExchangeScreen.Disclosing)?.state?.transportInFlight != true) return
         scope.launch(Dispatchers.IO) {
             val result = fileTransport.write(packageText, uri)
             withContext(Dispatchers.Main) { onTransportResult(result) }
@@ -586,13 +624,15 @@ private fun ExchangeDisclosure(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Button(
-                onClick = { holder.onTransportResult(clipboardTransport(context, state.packageText)) },
+                onClick = { holder.startTransport { clipboardTransport(context, state.packageText) } },
+                enabled = state.transportAllowed,
                 modifier = Modifier.testTag("exchange-send-clipboard"),
             ) {
                 Text(stringResource(R.string.exchange_copy))
             }
             FilledTonalButton(
-                onClick = { holder.onTransportResult(shareTransport(context, state.packageText)) },
+                onClick = { holder.startTransport { shareTransport(context, state.packageText) } },
+                enabled = state.transportAllowed,
                 modifier = Modifier.testTag("exchange-send-share"),
             ) {
                 Text(stringResource(R.string.exchange_share))
@@ -605,7 +645,8 @@ private fun ExchangeDisclosure(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             OutlinedButton(
-                onClick = { fileSaver.launch("nunu-launcher-exchange.txt") },
+                onClick = { if (state.transportAllowed) fileSaver.launch("nunu-launcher-exchange.txt") },
+                enabled = state.transportAllowed,
                 modifier = Modifier.testTag("exchange-send-file"),
             ) {
                 Text(stringResource(R.string.exchange_save_file))
