@@ -1,6 +1,6 @@
 ---
 issue: "#329"
-status: draft
+status: accepted
 requirements: [FR-017]
 risk:
   - privacy
@@ -9,7 +9,7 @@ updated: 2026-09-17
 
 # External Agent ExchangeのImport Normalizer (外部AI出力の安全な揺らぎ吸収)
 
-> Status: **draft** (2026-09-16起草、2026-09-17 1st owner review "Changes requested" 3点対応後のre-entry revision。baseline `15f4f0209f` 時点のmain実装を再確認済み — #330 (intent schema v3) 実装PR #335 を含む)。後述のDecisions (D-1〜D-8) は推奨固定案であり、owner reviewで比較・確定する。特にD-3 (fence block総数による曖昧性判定) と新typed failure 2種の命名は、reviewでの確定を前提としたdraft proposalである。
+> Status: **accepted** (2026-09-17)。ChatGPT re-review **Accepted (blocking/required 0件)** ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/329#issuecomment-5700221958)、head `150bc0b54b` 基準) を受け、statusをdraft → acceptedへ移行。status更新はadministrative変更であり承認対象headを変更しない。実装開始。起草は2026-09-16、1st review 3点対応済み (下記対応済みfindings参照)。baseline `15f4f0209f` 時点のmain実装を確認済み — #330 (intent schema v3) 実装PR #335 を含む。
 >
 > 対応済みreview findings (1st review、[Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/329#issuecomment-5699609908)):
 > 1. **envelope gateの所有と型契約** — 1 MiB envelope検査の所有を #205所有gate (pipeline先頭) に明確化し、normalizerの結果型から `InputOversize` を分離 (D-5)。
@@ -294,6 +294,7 @@ field値の意味補正、out-of-scope IDの削除、schema versionの書換え�
 
 - 2026-09-16: Draft created for #329。baseline `aab0d293d1` (origin/main) 上で、現行実装 (`IntentImportParser`・`ExchangeImportPipeline`・`ExchangeFlowUi` 17種失敗表示・全経路envelope上限・diagnostics不記録) を確認のうえ起草。accepted framing比較 (D-1〜D-4)、typed outcome拡張 (D-5)、normalization boundary (D-6)、diagnostics policy (D-7)、security regression要件 (D-8) をdraft decisionとして整理。
 - 2026-09-17: **1st owner review対応 (re-entry)**。`issue-329-spec-plan` をorigin/main `15f4f0209f` (PR #338 merge後、#330 intent schema v3実装を含む) へrebaseし、#330によるimport pathへの影響 (無変更。schema文字列のみv3化) を再確認。1st review ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/329#issuecomment-5699609908)) のRequired 3点に対応: (1) 1 MiB envelope gateの所有を #205所有 (pipeline先頭) と明確化し、normalizer結果型からenvelope失敗を分離 (D-5、D-1/D-8、巨大入力scenario)、(2) nested fenceのtyped outcomeをD-4 grammar側へ統一 — fence内info付きfence開始行は `SCHEMA_MISMATCH`、独立2 blockは曖昧reject (Security regression coverage)、(3) 認識framing種別を `Prepared` までadditive fieldで伝播し #332共通path契約と整合 (D-5、AC-7)。あわせて #330 implemented (v3) への参照更新 (Non-goals、Relationship)。D-1〜D-8の確定状況: 方針は維持、D-3/Open questions 1〜4はowner review待ちのまま。
+- 2026-09-17: **accepted**。ChatGPT re-review **Accepted (blocking/required 0件)** ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/329#issuecomment-5700221958)、head `150bc0b54b` 基準) を受けstatusをdraft → acceptedへ移行。status更新はadministrative変更であり承認対象headを変更しない。実装開始。
 
 ## References
 

@@ -2,7 +2,7 @@
 
 > Issue: #329
 > Spec: [spec.md](./spec.md)
-> Status: draft (spec acceptance待ち。実装はspec acceptance後のみ開始する)
+> Status: accepted (2026-09-17。ChatGPT re-review Accepted (blocking/required 0件、head `150bc0b54b` 基準) を受け実装開始)
 
 ## Re-entry status
 
@@ -45,6 +45,7 @@ sealed interface ImportNormalizationFailure {
 
 - **入口契約は「envelope検査済みtext」** (review Required 1対応)。1 MiB envelope検査の所有者は #205 gateであり、`ExchangeImportPipeline.prepare` が先頭で既存 `utf8ByteLengthExceeds` (同module `internal`) を用いて検査し、超過は既存どおり `Envelope(InputOversize)` として返す (typed identity不変)。normalizerの結果型にenvelope失敗variantは存在せず、失敗は新2種のみ。超過入力がnormalizerへ到達しないことはprepareの検査順序 (構造test) で保証する。
 - 入口でtransport正規化 (先頭BOM・CRLF/CR→LF。`IntentImportParser` と同一規則のhelper) を行う。
+- **standalone認識の深さ上限 (実装時決定)**: 厳格parseの前に単一passのbracket深度scan (文字列リテラル回避、正規表現なし) を行い、深度が `MAX_JSON_DEPTH = 64` を超える入力は `UnrecognizedFormat` でfail-closedにする。意図schemaは浅いため正當payloadに影響せず、1 MiB envelope内の深い入れ子adversarial入力が外形認識段の再帰parseで資源を浪費することを防ぐ (D-8のbounded処理の具体化。AC-8 corpusに `deeplyNestedStandaloneInputFailsClosedWithoutInterpreting` として包含)。
 - 判定 (spec D-1の順序):
   1. marker行の存在検出に `IntentImportParser.isMarkerLine` (`internal`、同module) を再利用し、INTENT marker行が1つでもあれば `MarkedFraming(元text)` を返す (marker規則・失敗分類は #205 parserがそのまま担う。parserのBOM/CRLF正規化は冪等なので二重実行しても同一結果)。
   2. markerなしの場合、fence走査 (spec D-4 grammar: 行頭3連backtickで始まる行。opening info string = ``` 以降trim。closing = ``` で始まり残り空白のみ)。fenced block 2つ以上 → `AmbiguousBlocks`。ちょうど1つでinfo stringが `json` (trim・case-insensitive) → `Payload(内部trim, FENCED_JSON)`。ちょうど1つで非json tag → 手順3へfall through。
@@ -110,7 +111,7 @@ import text (paste受領時/envelope上限check済、file bounded read済)
 ## Migration and recovery
 
 - DB schema・storage・permission変更なし。全変更がin-processのparse logic追加のみで、release rollback = revertで完了し、残余データはない (import textは永続化していないため)。
-- 既存marker形式importの挙動は不変 (`MarkedFraming` 委譲により同一parser・同一失敗分類)。既存 #205/#331 test corpusがそのまま回帰testとして機能する。
+- 既存marker形式importの挙動は不変 (`MarkedFraming` 委譲により同一parser・同一失敗分類)。既存 #205/#331 test corpusのうちmarker形式のcorpusはそのまま回帰testとして機能する。唯一の意図的再分類は **marker行を一切含まないplain prose** で、`FRAMING_MISSING` からnormalizerの `UnrecognizedFormat` (typed案内付き) へ変わる (spec D-1優先順1の帰結。既存test `envelopeFailuresPassThroughWithoutSessionAccess` を更新し、`FRAMING_MISSING` はBEGIN-only入力で担保)。
 
 ## Verification
 
@@ -159,10 +160,17 @@ import text (paste受領時/envelope上限check済、file bounded read済)
 
 ## Execution checklist
 
-- [ ] Spec acceptance (owner review。D-1〜D-8、特にD-3とOpen questionsの確定)。
-- [ ] Current behavior reproduced (marker無しJSON入力が現行 `FRAMING_MISSING` で拒否されることの確認test)。
-- [ ] `ImportNormalizerTest` 失敗test先行 (framing corpus・曖昧・認識不能・部分文字列property)。
-- [ ] Minimal implementation (`ImportNormalizer` + pipeline接続 + 19種表示)。
-- [ ] Security/regression verification (AC-4〜AC-9 corpus)。
-- [ ] Physical-device representative evidence (AC-10)。
+- [x] Spec acceptance (2026-09-17 accepted。ChatGPT re-review Accepted、head `150bc0b54b` 基準。D-3/Open questionsはdraft案のまま実装へ)。
+- [x] Current behavior reproduced (`envelopeFailuresPassThroughWithoutSessionAccess` 更新: marker無しproseは本specにより `FRAMING_MISSING` からnormalizerの `UnrecognizedFormat` へ再分類される — D-1の意図的挙動変更。`FRAMING_MISSING` はmarker path (BEGINのみでEND無し) として同一test内で維持)。
+- [x] `ImportNormalizerTest` 失敗test先行 (framing corpus・曖昧・認識不能・部分文字列property・深度上限・決定性・冪等性。18 test)。
+- [x] Minimal implementation (`ImportNormalizer` + pipeline接続 + `Prepared.framing` + 19種表示)。
+- [x] Security/regression verification (AC-4〜AC-9 corpus。pipeline test 10 test追加・1 test更新)。
+- [ ] Physical-device representative evidence (AC-10)。#205と同じく後続evidence PRでの実施を予定 (受入条件は残置)。
 - [ ] PR evidence and remaining risks recorded。
+
+### 実行した検証 (2026-09-17、JDK 21.0.12 / AGP環境)
+
+- `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.personalization.exchange.*'` → PASS (69 tests、exchange面: normalizer 18 + pipeline 16 + 既存corpus)
+- `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` → PASS (organizer全体surface)
+- `./gradlew spotlessCheck` → PASS (一度違反を `spotlessApply` で解消後)
+- `./gradlew assembleLawnWithQuickstepGithubDebug` → BUILD SUCCESSFUL
