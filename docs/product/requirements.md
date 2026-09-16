@@ -16,7 +16,7 @@
 | FR-007 | MVP | implemented | onboardingで整理を提案できるが、既存layoutの無確認な全体変更を行わない |
 | FR-008 | Later | deferred by [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85) | 新しいlaunchable appをuser/profile identityを保ったまま増分配置できる。package eventによるincremental placementはMVP外であり、将来のaccepted product decisionとspecが必要である。 |
 | FR-009 | Later | deferred by [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85) | 増分配置はfull organizationと収束し、update/restoreを新規installと誤認しない。FR-008と不可分のためMVP外とする。 |
-| FR-010 | MVP | implemented | ユーザーがカテゴリ割当をoverrideでき、推定より優先される |
+| FR-010 | MVP | implemented | ユーザーがカテゴリ割当をoverrideでき、推定より優先される。割当先は組み込みtaxonomyに加えユーザー定義カテゴリ（stable local identity、[spec 336](../../specs/336-user-defined-categories/spec.md)）も選択できる |
 | FR-011 | MVP | implemented | Android application category等のlocal signalとdeterministic fallbackで分類できる |
 | FR-012 | Later | deferred | version付き整理ルールをvalidation付きでimport/exportできる |
 | FR-013 | Later | input implemented ([spec 203](../../specs/203-usage-implicit-preference-signals/spec.md), [Issue #203](https://github.com/nunu1733/NunuLauncher/issues/203)) | usage signalを明示的な許可の下で利用し、取得不能時も動作できる。normalized signal snapshot (`PersonalizationSignalSnapshot`) と usage access の明示的opt-in/opt-outを実装。usage-based strategy自体は#182 catalogの将来member |
