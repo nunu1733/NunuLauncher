@@ -4,16 +4,21 @@ status: draft
 requirements: [FR-017]
 risk:
   - privacy
-updated: 2026-09-16
+updated: 2026-09-17
 ---
 
 # External Agent ExchangeのImport Normalizer (外部AI出力の安全な揺らぎ吸収)
 
-> Status: **draft** (2026-09-16 起草、baseline `aab0d293d1` 時点のmain実装を確認済み)。後述のDecisions (D-1〜D-8) は起草時点の推奨固定案であり、owner reviewで比較・確定する。特にD-3 (fence block総数による曖昧性判定) と新typed failure 2種の命名は、reviewでの確定を前提としたdraft proposalである。
+> Status: **draft** (2026-09-16起草、2026-09-17 1st owner review "Changes requested" 3点対応後のre-entry revision。baseline `15f4f0209f` 時点のmain実装を再確認済み — #330 (intent schema v3) 実装PR #335 を含む)。後述のDecisions (D-1〜D-8) は推奨固定案であり、owner reviewで比較・確定する。特にD-3 (fence block総数による曖昧性判定) と新typed failure 2種の命名は、reviewでの確定を前提としたdraft proposalである。
+>
+> 対応済みreview findings (1st review、[Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/329#issuecomment-5699609908)):
+> 1. **envelope gateの所有と型契約** — 1 MiB envelope検査の所有を #205所有gate (pipeline先頭) に明確化し、normalizerの結果型から `InputOversize` を分離 (D-5)。
+> 2. **nested fenceのtyped outcome統一** — D-4 grammarに従い「fence内のinfo string付きfence開始行」は `SCHEMA_MISMATCH`、「独立に閉じた2 block」は曖昧reject、へSecurity regression coverage側を統一。
+> 3. **recognized framingのproduction伝播** — 認識framing種別をpipeline成功outcome (`Prepared`) までadditive fieldで保持し、#332の共通path契約と整合 (D-5)。
 
 ## Problem
 
-現行External Agent Exchangeのimport ([spec 205](../205-external-agent-exchange/spec.md)) は、完全行marker `-----BEGIN/END NUNULAUNCHER INTENT-----` で囲まれた `PersonalizedIntentV1` のみを厳格に受理する (fail-closed)。この安全境界は維持する必要があるが、実際のChatGPT / Gemini等のconsumer UIからユーザーがコピーする内容には、以下のような **意味には影響しない無害な揺らぎ** が入りやすい。
+現行External Agent Exchangeのimport ([spec 205](../205-external-agent-exchange/spec.md)) は、完全行marker `-----BEGIN/END NUNULAUNCHER INTENT-----` で囲まれた `PersonalizedIntentV1` 型 (payload schema `personalized-intent-v3`) のみを厳格に受理する (fail-closed)。この安全境界は維持する必要があるが、実際のChatGPT / Gemini等のconsumer UIからユーザーがコピーする内容には、以下のような **意味には影響しない無害な揺らぎ** が入りやすい。
 
 - AIがmarkerを付けず、JSON本体だけを返した / ユーザーがJSON部分だけコピーした (standalone JSON)
 - AIがmarkdownの ```json code fence で囲んで返した
@@ -31,11 +36,12 @@ updated: 2026-09-16
 ```text
 External AI output (貼付付け / file import)
       ↓
-#205 import envelope上限 (1 MiB)          … 不変 (#205 Decision 6)
+#205 import envelope上限 (1 MiB)          … 不変 (#205 Decision 6。pipeline先頭の #205所有gateが適用し、
+                                             超過入力はnormalizerへ到達しない)
       ↓
 Import Normalizer (#329新設)              … 外形認識とframing/transport正規化のみ
       ↓
-canonical PersonalizedIntentV1 payload text (verbatim)
+canonical PersonalizedIntent payload text (verbatim。schemaVersionは解釈・書換えしない)
       ↓
 #205 exchange framing規則 (marker形式)    … 不変 (canonical form)
       ↓
@@ -59,7 +65,7 @@ accepted (既存run接続) or zero-write reject
 ## Non-goals
 
 - #204 semantic validatorの緩和。schema・allow-list・coverage検証は一切変更しない。
-- **意味レベルのcanonicalization**。未言及refの `unresolved` 扱い、FIXED itemのauthoring責任軽減、partial authoring schema (V2) は #330 (authoring contract簡素化) の対象であり、本specはframing/transport表現のみを扱う。normalizerはfield値・ref集合・schemaVersionを決して書き換えないため、#330の成果を本specで先取り・兼用しない。
+- **意味レベルのcanonicalization**。未言及refの `unresolved` 扱い、FIXED itemのauthoring責任軽減、partial authoring schema (v3) は #330 (implemented、[spec 330](../330-partial-intent-authoring/spec.md)) の対象であり、本specはframing/transport表現のみを扱う。normalizerはfield値・ref集合・schemaVersionを決して書き換えないため、#330の成果を本specで先取り・兼用しない。
 - arbitrary free textからのIntent推論、AI responseの自動修復LLM呼び出し、invalid Intentのpartial apply (Issue本文のnon-goals)。
 - provider (ChatGPT/Gemini) 固有formatへの密結合。認識する外形はprovider中立なtext構造のみ。
 - import入力の取得UX (clipboard読込・file選択・bounded editor・parse結果中心表示) は #332 の対象。本specのnormalizerはpure parser責務であり、UI・入力取得を持たない。
@@ -67,12 +73,12 @@ accepted (既存run接続) or zero-write reject
 - markdown全体 (CommonMark) の実装。fence認識は簡易決定性grammarに限定する (D-4)。
 - #205のexchange framing規則 (marker形式の抽出規則・typed失敗3種) の変更。marker形式はcanonical formとして現行規則のまま残る。
 
-## 現行実装の確認事実 (baseline `aab0d293d1`)
+## 現行実装の確認事実 (baseline `15f4f0209f`、#330 v3 実装後)
 
 - `IntentImportParser.parse` (`organizer/personalization/exchange/IntentImportParser.kt`): 1 MiB envelope検査 → 先頭BOM除去・CRLF/CR→LF正規化 → 完全行marker抽出。typed失敗は `INPUT_OVERSIZE` / `FRAMING_MISSING` / `FRAMING_AMBIGUOUS` / `FRAMING_EMPTY` の4種。
-- `ExchangeImportPipeline.prepare` : framing抽出 → #204 `IntentCodec.decode`。`validate`: session照会・expiry・structural digest・`SessionExportReconstructor` → `IntentValidator.validate` (#331のscope拡張を含む)。
-- UI失敗表示 (`ExchangeFlowUi.exchangeFailureText`): envelope 4種 + #204 contract 13種 = **17種** の一対対応 (ja/en strings解決済み)。
-- UI受領時 (`onImportTextChange`) とfile読込 (`ExchangeTransports.read` のbounded read) でも同一の1 MiB envelope上限を適用済み。
+- `ExchangeImportPipeline.prepare`: framing抽出 → #204 `IntentCodec.decode` → `Prepared(intent)`。`validate`: session照会・expiry・structural digest・`SessionExportReconstructor` → `IntentValidator.validate` (#331のscope拡張を含む)。#330によりpayload schemaは `personalized-intent-v3` (Kotlin型名 `PersonalizedIntentV1` は不変) へbump済みだが、import pathの構造 (framing→decode→validate順序・失敗分類) は無変更。
+- UI失敗表示 (`ExchangeFlowUi.exchangeFailureText`): envelope 4種 + #204 contract 13種 = **17種** の一対対応 (ja/en strings解決済み。#330/v3でも13 class・17種は不変)。
+- UI受領時 (`onImportTextChange`) とfile読込 (`ExchangeTransports.read` のbounded read) でも同一の1 MiB envelope上限を適用済み (`acceptsExchangeImportEnvelope`)。envelope検査は `utf8ByteLengthExceeds` (allocation-bounded) としてparser・pipelineと共有される内部関数で、normalizerからも再利用可能。
 - exchange経路はdiagnostics journalへ何も記録しない (run journalはorganization run/recovery操作のみ。[organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md) 契約どおり)。
 
 ## Behavior scenarios
@@ -138,7 +144,7 @@ And out-of-scope ID (`UNKNOWN_REF`)、unknown field (`SCHEMA_MISMATCH`)、禁止
 
 Given import text全体 (説明文込み) が1 MiB envelope上限を超える、または上限内だがmarkerもfenceもなく巨大な文章のみである、
 When 取り込みを実行する、
-Then 前者は従来どおり全量処理の前に `INPUT_OVERSIZE` でzero-write拒否され (全import経路で同一。#205 Decision 6不変)、後者はnormalizerの認識不能typed失敗としてzero-write拒否される。normalizerはenvelope上限を超える入力に対してscan・parseを開始しない (単一pass・boundedな処理のみ)。
+Then 前者は従来どおり全量処理の前に `INPUT_OVERSIZE` でzero-write拒否され (全import経路で同一。#205 Decision 6不変。typed identityも既存 `INPUT_OVERSIZE` のまま)、後者はnormalizerの認識不能typed失敗としてzero-write拒否される。envelope検査の所有者は #205所有gate (pipeline先頭) であり、上限超過入力はnormalizerへ到達しない (normalizerの入口契約は「envelope検査済みtext」。検査順序をpipeline構造testで保証する)。normalizer自身の処理は単一pass・boundedである。
 
 ### Scenario: typed outcome の区別とユーザー案内
 
@@ -158,7 +164,7 @@ And 将来normalizer失敗のobservabilityを追加する場合は、closed enum
 
 ### D-1: accepted framing一覧 (判定順序固定)
 
-全経路で、(0) 1 MiB envelope検査 (不変) → (1) transport正規化 (先頭BOM除去・CRLF/CR→LF) → (2) 以下の順で外形認識:
+全経路で、(0) 1 MiB envelope検査 (**#205所有gate** — pipeline先頭で適用され、超過入力はnormalizerへ到達しない。`INPUT_OVERSIZE` のtyped identityは不変) → (1) transport正規化 (先頭BOM除去・CRLF/CR→LF) → (2) 以下の順で外形認識:
 
 | 優先順 | framing | 受理条件 | canonicalization |
 |---|---|---|---|
@@ -194,13 +200,14 @@ json tag付きblockのみ数えて「jsonが1つなら他blockがあっても受
 - block = opening fence行と、それ以降最初のclosing fence行に挟まれた領域。独立に閉じたblockが2つ以上あればD-3の複数block rejectへ帰着する。
 - info stringの受理は `json` のみ (trim + ASCII case-insensitive。`jsonc` / `json5` 等は非json扱い)。
 
-### D-5: typed failure分類の拡張
+### D-5: typed failure分類・成功outcome契約の拡張
 
 - 既存の #205 envelope 4種 (`INPUT_OVERSIZE` / `FRAMING_MISSING` / `FRAMING_AMBIGUOUS` / `FRAMING_EMPTY`) と #204 contract 13種は **名称・意味とも不変**。
+- **envelope検査はnormalizerの結果型に含めない**。1 MiB gateは #205所有 (pipeline先頭) が `INPUT_OVERSIZE` として先に決着させ、normalizerの結果型が運ぶ失敗は新2種のみ (既存 `INPUT_OVERSIZE` のtyped identityは検査場所の移動で変化しない。fence/marker認識とenvelope失敗が1つの型に混在しない)。
 - 新設するnormalizer失敗は2種 (名称は実装時に確定してよい):
   1. **曖昧 (ambiguous blocks)**: fenced block 2つ以上。「最終的なJSON 1つだけをコピー/再送」案内。
   2. **認識不能 (unrecognized format)**: 受理外形いずれにも該当しない。認識可能形式の短い提示 + 再コピー案内。
-- 正常結果はpayload textに加え、**認識framing種別 (marker / fenced / standalone) をclosed enumで返す** (UI表示・将来のclosed-enum diagnostics・#332のparse状態表示が型で利用できる。raw textは含まない)。
+- 正常結果はpayload textに加え、**認識framing種別 (marker / fenced / standalone) をclosed enumで返し、pipeline成功outcome (`Prepared`) までadditive fieldとして保持する** (marker形式経路は `MARKER`)。既存の `Prepared.intent` 消費者 (controller・run接続) は無変更。#332のparse-first表示は共通import pathからこのenumを参照でき、UI側で二重parseを持たない (#332 specと整合。将来のclosed-enum diagnosticsも同じ型を使う。raw textは含まない)。
 - 失敗表示は17種 → 19種となる。normalizer失敗は #204 codecの前に決着するため、validator失敗との重畳表示は行わない。
 
 ### D-6: normalization boundary (semantic無変更の形式的定義)
@@ -224,7 +231,7 @@ field値の意味補正、out-of-scope IDの削除、schema versionの書換え�
 
 - 全受理経路が正規化後に #204 codec/validatorを必ず通る (bypass・検証省略経路の不存在を構造testで保証)。
 - 全normalizer失敗はzero-write (partial intent保持なし。既存 #205 zero-write規約と同一)。
-- envelope上限 (1 MiB) は全経路で最初のgateのまま (normalizerは上限超過入力をscanしない)。処理は単一pass・行scan中心で、pathological backtrackingを持つ正規表現に依存しない。
+- envelope上限 (1 MiB) は全経路で最初のgateのまま (**#205所有gateがpipeline先頭で適用され、上限超過入力はnormalizerへ到達しない**。検査順序はpipeline構造testで保証)。normalizer処理は単一pass・行scan中心で、pathological backtrackingを持つ正規表現に依存しない。
 - framing認識は外形のみで、field内容・命令文を解釈しない。payload外 (説明文・trailing text) は解釈も保存もしない。prompt injection対策の正本境界は #205 AC-7 (fail-closed) のまま、認識外形が増えた分のcorpusを追加する。
 
 ## Security regression coverage (must-test)
@@ -232,7 +239,7 @@ field値の意味補正、out-of-scope IDの削除、schema versionの書換え�
 寛容化によってprompt injection / partial applyが復活しないことを、次のcorpusで検証する:
 
 - **複数code block**: json tag×2 → 曖昧reject。json 1つ + 非json 1つ → 曖昧reject (D-3)。
-- **nested wrapper**: marker内fence → `SCHEMA_MISMATCH`。fence内marker → marker規則で受理 (一意性)。fence内fence → 複数block reject。
+- **nested wrapper** (D-4 grammarに従う帰結で統一 — scenario「nested wrapper の帰結」と同一oracle): marker内fence → `SCHEMA_MISMATCH`。fence内marker → marker規則で受理 (一意性)。fence block内にinfo string付きfence開始行 (```json 等、closingではない) → blockは最初のclosing fence行まで伸び、fence行を含むpayloadは正当なJSONになり得ないため #204 `SCHEMA_MISMATCH`。**独立に閉じた** fence block 2つ → 曖昧reject。
 - **巨大入力**: envelope超過 (境界値 exact-limit / limit+1) は全量処理前に `INPUT_OVERSIZE`。上限内の巨大説明文 + 小さな正当payloadは受理。
 - **unknown schema**: 正規化受理後も #204 `SCHEMA_MISMATCH` (例: `schemaVersion` 不一致・未知key)。
 - **out-of-scope ref**: #204 `UNKNOWN_REF` (normalizer通過で緩和されない)。
@@ -248,7 +255,7 @@ field値の意味補正、out-of-scope IDの削除、schema versionの書換え�
 - [ ] AC-4: normalizerはIntent semanticを変更しない (D-6部分文字列property test。field修正・mapping・丸め・再serializeの不在)。
 - [ ] AC-5: 正規化後は必ず既存 #204 strict parser/validatorを通る (normalizer成功 → codec/validator未通過で受理される経路の不存在をtest)。
 - [ ] AC-6: out-of-scope ID / unknown field / invalid semantic value / 禁止内容はmarker形式と同一にrejectされる (regression test)。
-- [ ] AC-7: normalizer失敗と #205 framing失敗と #204 validator失敗がtypedに区別され、UI失敗表示が19種一対対応する。normalizer失敗の案内に認識可能形式の提示と再コピー手順が含まれる。
+- [ ] AC-7: normalizer失敗と #205 framing失敗と #204 validator失敗がtypedに区別され、UI失敗表示が19種一対対応する。normalizer失敗の案内に認識可能形式の提示と再コピー手順が含まれる。また、認識framing種別 (marker / fenced / standalone) がpipeline成功outcome (`Prepared`) まで保持され、共通import path経由で参照できる (#332契約)。
 - [ ] AC-8: malformed / multiple-block / oversized / adversarial入力のunit test corpus (Security regression coverage節の全項目) が存在する。
 - [ ] AC-9: raw AI responseがdiagnostics・log・永続化へ書き込まれないことが検証される (現行契約の回帰test)。
 - [ ] AC-10: physical-deviceでChatGPT / Gemini等のrepresentativeコピー結果 (marker付き・JSONのみ・説明文+fenced JSON・BOM/CRLF混在) がそのまま取り込めるevidenceがある。
@@ -279,13 +286,14 @@ field値の意味補正、out-of-scope IDの削除、schema versionの書換え�
 
 - **#205 (implemented)**: exchange framingのうち **marker形式の規則** は #205所有のまま不変。本specはその手前の外形認識層 (Import Normalizer) を新設し、framing受理枠を拡張する。acceptance時にspec 205へ経緯注記を追加する (marker規則・#205 typed失敗の意味変更なし)。
 - **#204 (implemented)**: payload schema・validator・sessionは一切変更しない。normalizer出力は #204 codec/validatorの入力のまま。
-- **#330 (OPEN)**: authoring contract簡素化 (未言及ref・FIXED item・schema V2) は意味レベルの契約変更であり、本spec (framing/transportのみ) と責務を分離する。本spec導入後も #330の成果なしに未言及refは `INCOMPLETE_COVERAGE` のまま (semantic無変更)。
-- **#332 (OPEN)**: import入力の取得UI (clipboard/file-first・bounded editor・parse状態表示) は #332所有。#332は本specのnormalizer (typed結果 + framing種別enum) を共通import pathとして利用し、UI側で独自parseを持たない。
+- **#330 (implemented)**: authoring contract簡素化 (未言及ref・FIXED item・schema v3) は意味レベルの契約変更であり、本spec (framing/transportのみ) と責務を分離する。normalizerはfield値・ref集合・schemaVersionを決して書き換えないため、`personalized-intent-v3` へのbumpはnormalizerに対して透過 (認識・受理条件はversion非依存)。
+- **#332 (draft)**: import入力の取得UI (clipboard/file-first・bounded editor・parse状態表示) は #332所有。#332は本specのnormalizer (typed結果 + framing種別enum。`Prepared` まで伝播) を共通import pathとして利用し、UI側で独自parseを持たない。
 - **#327 (OPEN) / #328 (OPEN)**: instruction/interview設計とimport成功後UI。本specと直接の変更面の重なりなし。
 
 ## Change history
 
 - 2026-09-16: Draft created for #329。baseline `aab0d293d1` (origin/main) 上で、現行実装 (`IntentImportParser`・`ExchangeImportPipeline`・`ExchangeFlowUi` 17種失敗表示・全経路envelope上限・diagnostics不記録) を確認のうえ起草。accepted framing比較 (D-1〜D-4)、typed outcome拡張 (D-5)、normalization boundary (D-6)、diagnostics policy (D-7)、security regression要件 (D-8) をdraft decisionとして整理。
+- 2026-09-17: **1st owner review対応 (re-entry)**。`issue-329-spec-plan` をorigin/main `15f4f0209f` (PR #338 merge後、#330 intent schema v3実装を含む) へrebaseし、#330によるimport pathへの影響 (無変更。schema文字列のみv3化) を再確認。1st review ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/329#issuecomment-5699609908)) のRequired 3点に対応: (1) 1 MiB envelope gateの所有を #205所有 (pipeline先頭) と明確化し、normalizer結果型からenvelope失敗を分離 (D-5、D-1/D-8、巨大入力scenario)、(2) nested fenceのtyped outcomeをD-4 grammar側へ統一 — fence内info付きfence開始行は `SCHEMA_MISMATCH`、独立2 blockは曖昧reject (Security regression coverage)、(3) 認識framing種別を `Prepared` までadditive fieldで伝播し #332共通path契約と整合 (D-5、AC-7)。あわせて #330 implemented (v3) への参照更新 (Non-goals、Relationship)。D-1〜D-8の確定状況: 方針は維持、D-3/Open questions 1〜4はowner review待ちのまま。
 
 ## References
 
