@@ -2,13 +2,13 @@
 issue: "#293"
 status: draft
 spec: ./spec.md
-updated: 2026-09-15
+updated: 2026-09-16
 ---
 
 # Plan: issue #228 follow-up (ja解決test拡張とspec 13 `PreWriteRejection` 追記)
 
-> Baseline: `origin/main` = `0cf82bc1e61c1874b280a7120dff9594be4fef71`
-> (2026-09-15再検証時点。初版draft時のbaselineは
+> Baseline: `origin/main` = `4f555450bdf817a832b8827857b5af54f41913a8`
+> (2026-09-16再検証時点。初版draft時のbaselineは
 > `f9afd8bfde121932c0c8ed965225d52a84d86ab4`)。本planは spec.md (**draft**)
 > に対応し、記載の実装状態はすべてbaseline上での実確認に基づく。
 > **実装開始前に再入場検証を行うこと** (spec.mdの参照先がbaseline以降に
@@ -61,8 +61,28 @@ updated: 2026-09-15
 > なお issue #292 (api35 laneの `TwoPanelOrientationCaptureInstrumentationTest`
 > flake追跡) はPR #297 (fix `56c5fec7`、`7419579006`、merge `f95fbfed3d`) で
 > 修正され、2026-09-12にCOMPLETEDでclose済み。Step 3のapi35注意書きを本日更新した。
-> 以下の行番号は現baseline (`0cf82bc1`) 基準 (2026-09-15再確認、
-> 前回baseline `397d3fd0` と同値)。
+>
+> 2026-09-16再入場検証結果: 前回baseline (`0cf82bc1`) 以降の33 commitは
+> すべて #205 (External Agent Exchange workflow: spec/plan、
+> `organizer/integration/exchange` / `organizer/personalization/exchange`
+> runtime、`ExchangeFlowUi` / `ManualOrganizationRun` UI、unit test追加、
+> PR #325/#326) である。`strings.xml` / `values-ja/strings.xml` への
+> #205文字列 (`exchange_*`、values L1289- / values-ja L378-) は純追加で
+> #228ブロックより後方への挿入であり、`values` 側 `<!-- Issue #228 -->`
+> ブロックはL1173のまま (values-ja側はL260)。対象test fileは前回baselineと
+> bit単位で同一 (`japaneseResourcesResolveEveryConcretePreviewString`
+> L1606-1748、#228keyは0件のまま)、#228由来20リソース (18 stringsはja≠en、
+> 2 pluralsはen `one`/`other` vs ja `other`)、spec 13閉集合 (L255-261、
+> `CANDIDATE_UNAVAILABLE` 未記載のまま、#205はspecs/13へ無変更)、
+> `Results.kt` (L83、L74の `EXACT_PRECONDITION_FAILED` とL90の
+> `OVERLAP_POLICY_REJECTED` の間)、`ApplyResultContractTest.kt` (L72)、
+> spec 228 change historyの#293委譲、監査記録 §5 (L101-105)、spec 123
+> AC-5/AC-6 (L132-133) はすべて不変。`.github/workflows/ci.yml` は前回
+> baseline以降無変更 (api35 lane L375、issue52 lane L432、`final-status`
+> gate L662/L671-672)。#205による `CONTEXT.md` / `DESIGN.md` /
+> `docs/product/requirements.md` の変更は本planの対象file・行番号・契約に無関係。
+> 以下の行番号は現baseline (`4f555450`) 基準 (2026-09-16再確認、
+> 対象test fileは前回baseline `0cf82bc1` とbit単位で同一)。
 
 ## 1. 現状の実装と不足 (baseline確認済み)
 

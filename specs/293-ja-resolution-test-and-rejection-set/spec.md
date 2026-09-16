@@ -2,7 +2,7 @@
 issue: "#293"
 status: draft
 requirements: []
-updated: 2026-09-15
+updated: 2026-09-16
 ---
 
 # issue #228 follow-up: ja解決test拡張とspec 13 `PreWriteRejection` 追記
@@ -45,7 +45,7 @@ PR #289 (issue #228) のmerge前監査
 
 `tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationPreferencesInstrumentationTest.kt`
 の `japaneseResourcesResolveEveryConcretePreviewString` へ、次のissue #228由来
-リソースを追加する (2026-09-15時点、baseline `0cf82bc1e61c1874b280a7120dff9594be4fef71`
+リソースを追加する (2026-09-16時点、baseline `4f555450bdf817a832b8827857b5af54f41913a8`
 で再確認済みの `lawnchair/res/values/strings.xml`
 `<!-- Issue #228: missing-app selection and Add rows -->` ブロックと
 `unplaced_strategy_scope` / `selection_stale` / `candidate_unresolved` の3件を含む)。
@@ -107,7 +107,7 @@ plurals (2件、既存のplurals assertionパターンへ追加):
 ## Constraints
 
 - ja値がenと等価なリソースを `assertNotEquals` パターンへ追加しない
-  (2026-09-15時点 (baseline `0cf82bc1e61c1874b280a7120dff9594be4fef71`) で
+  (2026-09-16時点 (baseline `4f555450bdf817a832b8827857b5af54f41913a8`) で
   18 stringsはすべてja≠enを再確認済み。将来の翻訳変更で
   衝突が生じた場合は、当該keyのassert形式を既存pluralsの「解決すること」
   assertionへ寄せ、en fallback検出を弱めない)。
@@ -157,3 +157,20 @@ plurals (2件、既存のplurals assertionパターンへ追加):
   lane行番号 (L375/L432) と `final-status` gate (L662/L672) は不変。
   なお issue #292 (api35 flake追跡) はPR #297で修正され2026-09-12にclose済み
   (plan Step 3のflake注意書きを本日更新)。契約内容の変更なし。
+- 2026-09-16: baseline `origin/main` = `4f555450bdf817a832b8827857b5af54f41913a8`
+  で再入場検証。前回baseline以降の33 commitはすべて #205 (External Agent
+  Exchange: spec/plan、exchange系runtime/UI、PR #325/#326) であり、
+  `strings.xml` / `values-ja/strings.xml` への `exchange_*` 文字列追加は
+  純追加 (values L1289-、values-ja L378-、いずれも#228ブロックより後方) で
+  `values` 側 `<!-- Issue #228 -->` ブロックはL1173のまま。対象test fileは
+  前回baselineとbit単位で同一 (`japaneseResourcesResolveEveryConcretePreviewString`
+  L1606-1748、#228keyは0件のまま)、#228由来20リソース (18 strings ja≠en、
+  2 plurals en `one`/`other` vs ja `other`)、spec 13 (閉集合L255-261、
+  `CANDIDATE_UNAVAILABLE` 未記載のまま、#205はspecs/13に無変更)、`Results.kt`
+  (L83、L74の `EXACT_PRECONDITION_FAILED` とL90の `OVERLAP_POLICY_REJECTED`
+  の間)、`ApplyResultContractTest.kt` (L72)、spec 228 change historyの#293委譲、
+  監査記録 §5 (L101-105)、spec 123 AC-5/AC-6 (L132-133) はすべて不変。
+  `.github/workflows/ci.yml` は前回baseline以降無変更 (api35 L375、
+  issue52 lane L432、`final-status` L662/L671-672)。#205による
+  `CONTEXT.md` / `DESIGN.md` / `docs/product/requirements.md` の変更は
+  本Issueの対象語彙・契約に無関係。契約内容の変更なし。
