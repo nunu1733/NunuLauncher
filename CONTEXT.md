@@ -111,3 +111,35 @@ _Avoid_: ItemId (内部正本IDとの混同)、package名、安定な仮名化id
 **export session (エクスポートセッション)**:
 1つのcontext exportに対応する、app-privateで期限付きのdurableな対応記録 (`exportId`、ref↔内部`ItemId`のmap、privacy tier、structural source context digest、signal provenance、生成・失効時刻)。外部アプリ滞在中のprocess deathを跨いでintent取り込みを可能にする。backup対象外であり、label等のuser作成自由文を含まない。
 _Avoid_: backup、永続layout入力 (planning入力との混同)
+
+**外部エージェント交換 (External Agent Exchange)**:
+`PersonalizationContextExportV1` を外部chat/agent環境へ持ち出し、 `PersonalizedIntentV1` として持ち帰る、NunuLauncherが提供するuser-driven workflow全体 ([spec 205](./specs/205-external-agent-exchange/spec.md))。agent実行部はNunuLauncherの外にあり、network通信・provider APIを含まない。
+_Avoid_: AI連携 (provider依存を想起させる)、integration (managed AI pathとの混同)
+
+**交換パッケージ (Exchange Package)**:
+1回の外部agent受け渡しに使う、agent向けinstruction部と `PersonalizationContextExportV1` data部を明示分離した単一text (またはfile) 表現。data部はCONTEXT marker行 (`-----BEGIN/END NUNULAUNCHER CONTEXT-----`) で囲まれ、instruction/dataの区別が機械的に判別できる。生成時に完了するimmutableな値であり、送信前確認とtransportは同一値を扱う。
+_Avoid_: prompt (data部も含む曖昧な呼称)、backup
+
+**送信前確認 (Pre-send Disclosure)**:
+exchange packageをclipboard・share・file等でapp外へ出す直前に、外部へ出る情報の種別と内容をuserに提示し、明示的な同意を得る確認step。確認なしに外部送信経路を開かない。
+_Avoid_: privacy policy (静的文書との混同)
+
+**持ち帰りIntent取り込み (Intent Import)**:
+外部agentの返答textから、exchange framingの内側にある `PersonalizedIntentV1` のみを厳格に抽出し、#204 validatorへ渡す取り込みstep。曖昧なJSON拾い上げやpartial解釈を行わない。import text全体へのenvelope上限 (1 MiB、UTF-8 byte基準) を持つ。
+_Avoid_: auto-apply、paste-to-layout
+
+**交換フレーミング (Exchange Framing)**:
+外部agentの返答text内で `PersonalizedIntentV1` 本体を囲むmarker対 (完全行marker `-----BEGIN/END NUNULAUNCHER INTENT-----`) と、そこから本体を一意に抽出する規則 ([spec 205](./specs/205-external-agent-exchange/spec.md) 所有)。framing内のpayloadのschema解釈は行わない (それは #204)。framingの不成立・曖昧性は #205側のtyped parse失敗である。
+_Avoid_: schema (payload本体の契約は #204)、system prompt (instruction部の一部との混同)
+
+**交換セッション置換確認 (Session Replacement Confirmation)**:
+activityなexport sessionが存在する状態で新規exchange package生成を開始するとき、#204 single-active-session規則により既存exchangeが無効化されることを明示し、userの承認を得る確認step。承認なしには生成を開始しない。
+_Avoid_: 上書き保存 (既存exchange宛回答が以降import不可となる破壊的操作であることの表示を省く呼称)
+
+**候補subject (candidate subject)**:
+External Agent Exchangeのexportにおいて、現在Homeに配置されていない未配置アプリ候補を表すexchange subject ([spec 331](./specs/331-exchange-target-scope-coupling/spec.md))。placed itemと同一の乱数seamによるexport-scoped `ref` を持ち、`subject: CANDIDATE` とmobility `CANDIDATE` で区別される。内部対応先はcandidate安定identity (`ComponentKey` + `ProfileId`) であり、raw identifierはexport文書に現れない。
+_Avoid_: 仮配置 (配置の作成を示唆する)、新規アイテム (Add行というplan表現と混同)
+
+**scope binding gate (scope束縛検証)**:
+validated intentをorganizer runへ適用する時点で、runの確定した対象scopeのcandidate集合がexchange exportの対象scopeと完全一致し、各候補の投影 (identity + availability + 解決済み分類) がexport時と一致することを検証するfail-closedな検証step ([spec 331](./specs/331-exchange-target-scope-coupling/spec.md))。違反はtyped失敗 `SCOPE_MISMATCH` としてzero-write処理される。
+_Avoid_: staleチェック (配置構造変化の検出とは別段)、再検証 (availability再検証と混同)
