@@ -265,8 +265,8 @@ class ExchangeFlowStateHolder(
         screen = ExchangeScreen.Disclosing(disclosing.state.onTransportResult(result))
     }
 
-    /** Serializes every transport start through the disclosure state on Main. */
     /**
+     * Serializes every transport start through the disclosure state on Main.
      * The single begin gate for every transport (review round 4 P1): atomically
      * checks the CURRENT disclosure's `transportAllowed` and flips it to
      * in-flight. Returns the settled disclosure state, or null when the start
