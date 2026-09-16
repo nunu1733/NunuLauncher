@@ -959,16 +959,30 @@ private fun exchangeFailureText(failure: ExchangeImportFailure): String = when (
 
     is ExchangeImportFailure.Contract -> when (val f = failure.failure) {
         IntentValidationFailure.SchemaMismatch -> stringResource(R.string.exchange_failure_schema_mismatch)
+
         IntentValidationFailure.ExportMismatch -> stringResource(R.string.exchange_failure_export_mismatch)
+
         IntentValidationFailure.SessionExpired -> stringResource(R.string.exchange_failure_session_expired)
+
         IntentValidationFailure.ContextStale -> stringResource(R.string.exchange_failure_context_stale)
+
         IntentValidationFailure.Oversize -> stringResource(R.string.exchange_failure_oversize)
+
         is IntentValidationFailure.UnknownRef -> stringResource(R.string.exchange_failure_unknown_ref)
+
         IntentValidationFailure.DuplicateRef -> stringResource(R.string.exchange_failure_duplicate_ref)
+
         IntentValidationFailure.IncompleteCoverage -> stringResource(R.string.exchange_failure_incomplete_coverage)
+
         IntentValidationFailure.InvalidEnum -> stringResource(R.string.exchange_failure_invalid_enum)
+
         IntentValidationFailure.ForbiddenContent -> stringResource(R.string.exchange_failure_forbidden_content)
+
         is IntentValidationFailure.MobilityContradiction -> stringResource(R.string.exchange_failure_mobility_contradiction)
+
         IntentValidationFailure.CapabilityUnsupported -> stringResource(R.string.exchange_failure_capability_unsupported)
+
+        // Issue #331 (17th outcome): the scope binding gate's typed rejection.
+        is IntentValidationFailure.ScopeMismatch -> stringResource(R.string.exchange_failure_scope_mismatch)
     }
 }

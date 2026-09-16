@@ -138,10 +138,10 @@ sealed interface IntentValidation {
 }
 
 /**
- * Typed failure classes (spec 204 "Validation / fail-closed"). Zero-write in
- * every case. `CAPABILITY_UNSUPPORTED` is reserved in V1 (the export always
- * advertises the full fixed capability set) and activates in a future schema
- * version that allows subset advertisement.
+ * Typed failure classes (spec 204 "Validation / fail-closed", extended by
+ * spec 331 D-5). Zero-write in every case. `CAPABILITY_UNSUPPORTED` is
+ * reserved in V1 (the export always advertises the full fixed capability set)
+ * and activates in a future schema version that allows subset advertisement.
  */
 sealed interface IntentValidationFailure {
     data object SchemaMismatch : IntentValidationFailure
@@ -156,4 +156,23 @@ sealed interface IntentValidationFailure {
     data object ForbiddenContent : IntentValidationFailure
     data class MobilityContradiction(val ref: String) : IntentValidationFailure
     data object CapabilityUnsupported : IntentValidationFailure
+
+    /**
+     * Issue #331 (D-5): the scope binding gate rejected the run — the
+     * confirmed selection / candidate projection diverged from the export
+     * session's scope. Zero-write; the remedy is re-select or re-export.
+     */
+    data class ScopeMismatch(val cause: ScopeMismatchCause) : IntentValidationFailure
+}
+
+/** `SCOPE_MISMATCH` cause detail (spec 331 D-5); user-facing remedy is re-export. */
+enum class ScopeMismatchCause {
+    /** The confirmed selection diverges from the export scope (missing or extra). */
+    SET_MISMATCH,
+
+    /** An export candidate no longer resolves as installed/launchable/AVAILABLE. */
+    CANDIDATE_UNRESOLVED,
+
+    /** The candidate projection (availability/resolved category) drifted. */
+    PROJECTION_MISMATCH,
 }

@@ -178,8 +178,12 @@ class AndroidExportSessionStore : ExportSessionStore {
     )
 
     private companion object {
-        const val SESSION_FILE_NAME = "organizer_personalization_export_session_v1.json"
-        const val SCHEMA_VERSION = 1
+        // Issue #331: the candidate scope fields made the record format v2.
+        // The renamed file orphans any pre-331 v1 record (fail-closed: the
+        // user re-exports), and a v1-schema record found at the new path is
+        // still rejected by the version check below.
+        const val SESSION_FILE_NAME = "organizer_personalization_export_session_v2.json"
+        const val SCHEMA_VERSION = 2
     }
 }
 

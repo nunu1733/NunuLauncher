@@ -1114,10 +1114,12 @@ class ManualOrganizationRunTest {
     }
 
     @Test
-    fun scopeBindingProjectionDriftFailsTypedZeroWrite() {
+    fun scopeBindingProjectionDriftReturnsToSelectionWithZeroWrites() {
         // The export saw the candidate as NEWS; the composition (no signals)
         // resolves no category → the projection digest diverges (D-4) even
-        // though the selection matches exactly.
+        // though the selection matches exactly. The run RETURNS to the
+        // selection surface (stale intent discarded so the user can re-export
+        // and re-attach); nothing is written.
         val application = FakeApplication(scopeReadyInput()).apply { detection = detected("com.example.c1") }
         val runner = ManualOrganizationRun(application, OrganizationPlanner { error("planner must not run") })
         runner.start()
@@ -1125,8 +1127,16 @@ class ManualOrganizationRunTest {
 
         runner.confirmSelection(setOf(c1Target()))
 
-        val state = runner.state as ManualOrganizationRun.State.InputUnavailable
-        assertTrue(state.reason == InputReadinessReason.ScopeBindingMismatch)
+        val state = runner.state as ManualOrganizationRun.State.Selecting
+        assertTrue(state.scopeMismatch)
+        assertEquals(0, state.intentScopeCount)
+        assertEquals(0, application.applyCalls)
+
+        // The stale intent is discarded: a fresh exchange can attach again.
+        assertEquals(
+            ManualOrganizationRun.AttachIntentOutcome.Attached,
+            runner.attachIntent(validatedIntentFor(c1Target(), category = null)),
+        )
         assertEquals(0, application.applyCalls)
     }
 

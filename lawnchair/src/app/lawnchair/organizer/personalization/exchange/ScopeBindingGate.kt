@@ -2,6 +2,7 @@ package app.lawnchair.organizer.personalization.exchange
 
 import app.lawnchair.organizer.personalization.CandidateScopeIdentity
 import app.lawnchair.organizer.personalization.CandidateScopeProjection
+import app.lawnchair.organizer.personalization.ScopeMismatchCause
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.CandidateTarget
 
@@ -80,16 +81,4 @@ sealed interface ScopeBindingOutcome {
     data object Pass : ScopeBindingOutcome
 
     data class Mismatch(val cause: ScopeMismatchCause) : ScopeBindingOutcome
-}
-
-/** `SCOPE_MISMATCH` cause detail (spec D-5); user-facing remedy is re-export. */
-enum class ScopeMismatchCause {
-    /** The confirmed selection diverges from the export scope (missing or extra). */
-    SET_MISMATCH,
-
-    /** An export candidate no longer resolves as installed/launchable/AVAILABLE. */
-    CANDIDATE_UNRESOLVED,
-
-    /** The candidate projection (availability/resolved category) drifted. */
-    PROJECTION_MISMATCH,
 }

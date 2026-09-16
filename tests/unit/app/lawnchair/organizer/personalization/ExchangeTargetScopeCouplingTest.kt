@@ -1,6 +1,7 @@
 package app.lawnchair.organizer.personalization
 
 import app.lawnchair.organizer.personalization.ContextExportBuilder.build
+import app.lawnchair.organizer.personalization.ScopeMismatchCause
 import app.lawnchair.organizer.personalization.exchange.DetectedCandidateScope
 import app.lawnchair.organizer.personalization.exchange.ExchangePackageComposer
 import app.lawnchair.organizer.personalization.exchange.PackageStructureResult
@@ -9,7 +10,6 @@ import app.lawnchair.organizer.personalization.exchange.ScopeBindingCurrentScope
 import app.lawnchair.organizer.personalization.exchange.ScopeBindingGate
 import app.lawnchair.organizer.personalization.exchange.ScopeBindingOutcome
 import app.lawnchair.organizer.personalization.exchange.ScopeBindingSessionScope
-import app.lawnchair.organizer.personalization.exchange.ScopeMismatchCause
 import app.lawnchair.organizer.personalization.exchange.SessionExportReconstructor
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.CandidateItem
@@ -431,6 +431,20 @@ class ExchangeTargetScopeCouplingTest {
         assertNotEquals(same, CandidateScopeIdentity.digest(listOf(CandidateScopeProjection(a, Availability.AVAILABLE, "Y"))))
         assertNotEquals(same, CandidateScopeIdentity.digest(listOf(CandidateScopeProjection(a, Availability.UNAVAILABLE, "X"))))
         assertEquals(CandidateScopeIdentity.digest(emptyList()), CandidateScopeIdentity.EMPTY_DIGEST)
+    }
+
+    @Test
+    fun failureTaxonomyCarriesThirteenContractClassesIncludingScopeMismatch() {
+        // 12 pre-331 classes + SCOPE_MISMATCH = 13 contract classes
+        // (spec 331 D-5); with the 4 #205 envelope/framing failures the UI
+        // surface is 17 kinds. The exhaustive `when` in the UI failure text
+        // enforces the mapping at compile time; this pins the typed class.
+        val failure = IntentValidationFailure.ScopeMismatch(ScopeMismatchCause.PROJECTION_MISMATCH)
+        assertEquals(
+            setOf(ScopeMismatchCause.SET_MISMATCH, ScopeMismatchCause.CANDIDATE_UNRESOLVED, ScopeMismatchCause.PROJECTION_MISMATCH),
+            ScopeMismatchCause.values().toSet(),
+        )
+        assertTrue(failure is IntentValidationFailure)
     }
 
     @Test

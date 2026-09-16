@@ -36,12 +36,12 @@ import app.lawnchair.organizer.integration.DetectedCandidate
 import app.lawnchair.organizer.integration.InputReadinessReason
 import app.lawnchair.organizer.integration.OrganizationInputComposition
 import app.lawnchair.organizer.personalization.CandidateScopeProjection
+import app.lawnchair.organizer.personalization.ScopeMismatchCause
 import app.lawnchair.organizer.personalization.exchange.DetectedCandidateScope
 import app.lawnchair.organizer.personalization.exchange.ScopeBindingCurrentScope
 import app.lawnchair.organizer.personalization.exchange.ScopeBindingGate
 import app.lawnchair.organizer.personalization.exchange.ScopeBindingOutcome
 import app.lawnchair.organizer.personalization.exchange.ScopeBindingSessionScope
-import app.lawnchair.organizer.personalization.exchange.ScopeMismatchCause
 import app.lawnchair.organizer.personalization.policyIdentity
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.CandidatePlanningIds
@@ -597,10 +597,30 @@ class ManualOrganizationRun internal constructor(
                 // and compared with the session's export-time digest. A
                 // mismatch (classification authority drift invisible to the
                 // placed-item digest, or a candidate that stopped resolving)
-                // is a typed zero-write terminal failure — re-export only.
+                // is a typed zero-write `SCOPE_MISMATCH`. Per the accepted
+                // plan: when a selection surface exists the run RETURNS to it
+                // (stale intent discarded so re-export + re-attach is
+                // possible); only a run whose detection never opened the
+                // surface terminates typed.
                 if (operation.intent != null) {
                     val cause = evaluateScopeBinding(operation, input, selection.orEmpty())
                     if (cause != null) {
+                        val restored = synchronized(lock) {
+                            val detected = operation.detectedCandidates
+                            if (isActiveLocked(operation) && detected != null) {
+                                operation.intent = null
+                                stateHolder.value = State.Selecting(
+                                    operation.runId,
+                                    detected,
+                                    intentScopeCount = 0,
+                                    scopeMismatch = true,
+                                )
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        if (restored) return
                         emit(
                             RunEvent(
                                 journalSequence = 0L,
