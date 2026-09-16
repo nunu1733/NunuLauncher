@@ -15,8 +15,9 @@ import app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent
  * #205-owned envelope/framing stages in front of the #204 codec/validator
  * seams and the session-scoped reconstruction:
  *
- * envelope limit → framing extraction → #204 decode → session lookup →
- * expiry → structural digest equality → reconstruction → #204 validation.
+ * envelope limit → #329 normalizer → framing extraction → #204 decode →
+ * session lookup → expiry → structural digest equality → reconstruction →
+ * #204 validation.
  *
  * Every failure is typed and zero-write. The structural digest is compared
  * *before* the reconstructed view reaches the validator's per-ref semantics
@@ -28,29 +29,53 @@ object ExchangeImportPipeline {
 
     /**
      * Stage 1 (review P2 ordering): bounds, frames, and decodes the untrusted
-     * reply — every envelope/framing/decode failure fails closed here, before
-     * any canonical capture/composition runs. The decoded intent is the
-     * session lookup key (its echoed `exportId`).
+     * reply — every envelope/normalization/framing/decode failure fails closed
+     * here, before any canonical capture/composition runs. The decoded intent
+     * is the session lookup key (its echoed `exportId`).
      */
     fun prepare(importText: String): ExchangeImportResult {
-        val payload = when (val framing = IntentImportParser.parse(importText)) {
-            is IntentFramingResult.Failure ->
-                return ExchangeImportResult.Failure(ExchangeImportFailure.Envelope(framing.failure))
-
-            is IntentFramingResult.Extracted -> framing.payload
+        // Envelope limit first (#205 Decision 6, spec 329 D-5): the #205-owned
+        // gate settles `InputOversize` with its unchanged typed identity
+        // before the normalizer sees the reply, so oversized input never
+        // reaches shape recognition.
+        if (utf8ByteLengthExceeds(importText, ExchangeContract.MAX_EXCHANGE_IMPORT_BYTES)) {
+            return ExchangeImportResult.Failure(ExchangeImportFailure.Envelope(ExchangeEnvelopeFailure.InputOversize))
         }
-        val intent = when (val decoded = IntentCodec.decode(payload.toByteArray(Charsets.UTF_8))) {
+        val framed = when (val normalization = ImportNormalizer.normalize(importText)) {
+            is ImportNormalization.Failure ->
+                return ExchangeImportResult.Failure(ExchangeImportFailure.Normalization(normalization.failure))
+
+            // Marker form: the #205 parser keeps owning extraction and its
+            // typed framing failures (spec 329 D-1 priority 1).
+            is ImportNormalization.MarkedFraming -> when (val framing = IntentImportParser.parse(importText)) {
+                is IntentFramingResult.Failure ->
+                    return ExchangeImportResult.Failure(ExchangeImportFailure.Envelope(framing.failure))
+
+                is IntentFramingResult.Extracted -> FramedPayload(framing.payload, RecognizedImportFraming.MARKER)
+            }
+
+            // Fenced/standalone form: the normalizer payload feeds the codec
+            // directly (spec 329 D-6: verbatim, never re-serialized).
+            is ImportNormalization.Payload -> FramedPayload(normalization.payload, normalization.framing)
+        }
+        val intent = when (val decoded = IntentCodec.decode(framed.text.toByteArray(Charsets.UTF_8))) {
             is IntentDecodeResult.Failure ->
                 return ExchangeImportResult.Failure(ExchangeImportFailure.Contract(decoded.failure))
 
             is IntentDecodeResult.Success -> decoded.intent
         }
-        return Prepared(intent)
+        return Prepared(intent, framed.framing)
     }
 
-    /** Stage 1 success: the decoded intent, ready for session binding. */
+    private data class FramedPayload(val text: String, val framing: RecognizedImportFraming)
+
+    /**
+     * Stage 1 success: the decoded intent plus the recognized framing (spec
+     * 329 D-5), ready for session binding and parse-state display (#332).
+     */
     data class Prepared(
         val intent: app.lawnchair.organizer.personalization.PersonalizedIntentV1,
+        val framing: RecognizedImportFraming,
     ) : ExchangeImportResult
 
     /** Single-call composition of [prepare] and [validate]. */
@@ -124,15 +149,18 @@ sealed interface ExchangeImportResult {
 
 /**
  * The unified failure surface of the import path (spec 205 AC-5, spec 331
- * D-5): the four #205-side envelope/framing failures plus the thirteen #204
+ * D-5, spec 329 D-5): the four #205-side envelope/framing failures, the two
+ * #329 normalizer failures wrapped in [Normalization], and the thirteen #204
  * contract classes wrapped in [Contract]. UI failure displays map one-to-one
- * onto these (17 kinds total). The #204 `ScopeMismatch` class is raised by the
- * run-side scope binding gate (`ScopeBindingGate`), not by this pipeline —
+ * onto these (19 kinds total). The #204 `ScopeMismatch` class is raised by
+ * the run-side scope binding gate (`ScopeBindingGate`), not by this pipeline —
  * only the run knows the confirmed selection and the composition-time
  * candidate projection.
  */
 sealed interface ExchangeImportFailure {
     data class Envelope(val failure: ExchangeEnvelopeFailure) : ExchangeImportFailure
+
+    data class Normalization(val failure: ImportNormalizationFailure) : ExchangeImportFailure
 
     data class Contract(val failure: IntentValidationFailure) : ExchangeImportFailure
 }

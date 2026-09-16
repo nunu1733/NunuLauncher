@@ -125,11 +125,15 @@ exchange packageをclipboard・share・file等でapp外へ出す直前に、外�
 _Avoid_: privacy policy (静的文書との混同)
 
 **持ち帰りIntent取り込み (Intent Import)**:
-外部agentの返答textから、exchange framingの内側にある `PersonalizedIntentV1` のみを厳格に抽出し、#204 validatorへ渡す取り込みstep。曖昧なJSON拾い上げやpartial解釈を行わない。import text全体へのenvelope上限 (1 MiB、UTF-8 byte基準) を持つ。
+外部agentの返答textから `PersonalizedIntentV1` を認識し、#204 validatorへ渡す取り込みstep。入力はまずインポート正規化 (Import Normalizer、[spec 329](./specs/329-import-normalizer/spec.md)) が受け持ち、accepted framingのうちmarker形式以外 (単一fenced `json` block・standalone JSON object) をcanonical化する。曖昧なJSON拾い上げやpartial解釈を行わない。import text全体へのenvelope上限 (1 MiB、UTF-8 byte基準) はnormalizerより前の #205所有gateである。
 _Avoid_: auto-apply、paste-to-layout
 
+**インポート正規化 (Import Normalizer)**:
+import textの外形 (framing/transport表現) のみを認識・canonical化する境界層 ([spec 329](./specs/329-import-normalizer/spec.md))。accepted framingはmarker形式 (canonical)・単一fenced `json` code block・standalone JSON objectの3種で、それ以外はtyped失敗 (曖昧/認識不能) でzero-write rejectする。fuzzy extraction (複数候補からの推測選択・`{...}` の任意拾い) は禁止で、payloadは正規化済入力の部分文字列 (semantic無変更) に限られる。
+_Avoid_: 意味レベルcanonicalization (field値・ref集合・schemaVersionの書換え)、markdown全体実装、provider固有formatへの密結合
+
 **交換フレーミング (Exchange Framing)**:
-外部agentの返答text内で `PersonalizedIntentV1` 本体を囲むmarker対 (完全行marker `-----BEGIN/END NUNULAUNCHER INTENT-----`) と、そこから本体を一意に抽出する規則 ([spec 205](./specs/205-external-agent-exchange/spec.md) 所有)。framing内のpayloadのschema解釈は行わない (それは #204)。framingの不成立・曖昧性は #205側のtyped parse失敗である。
+外部agentの返答text内で `PersonalizedIntentV1` 本体を囲むmarker対 (完全行marker `-----BEGIN/END NUNULAUNCHER INTENT-----`) と、そこから本体を一意に抽出する規則 ([spec 205](./specs/205-external-agent-exchange/spec.md) 所有)。framing内のpayloadのschema解釈は行わない (それは #204)。framingの不成立・曖昧性は #205側のtyped parse失敗である。marker形式以外の外形受理 (fenced `json` block・standalone JSON) は [spec 329](./specs/329-import-normalizer/spec.md) が導入したインポート正規化層の所有であり、本規則はcanonical formとして不変。
 _Avoid_: schema (payload本体の契約は #204)、system prompt (instruction部の一部との混同)
 
 **交換セッション置換確認 (Session Replacement Confirmation)**:
