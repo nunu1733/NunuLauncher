@@ -77,6 +77,18 @@ class UserDefinedCategoryStoreTest {
                 bytes.toString(Charsets.UTF_8).replace("schema=1", "schema=one").toByteArray(),
             ),
         )
+        // Non-canonical decimal forms and unknown-low schemas: the writer never
+        // emits these headers, so they must never reach a Ready decode — not
+        // even by silent reinterpretation as schema 1 (review 2 regression).
+        for (header in listOf("schema=0", "schema=01", "schema=02", "schema=+1", "schema= 1", "schema=1 ")) {
+            assertEquals(
+                "header $header must stay Unreadable",
+                UserDefinedCategoryStoreDecodeOutcome.Unreadable,
+                UserDefinedCategoryStoreCodec.decodeOutcome(
+                    bytes.toString(Charsets.UTF_8).replace("schema=1", header).toByteArray(),
+                ),
+            )
+        }
         // Broken digest.
         assertNull(UserDefinedCategoryStoreCodec.decode(bytes.toString(Charsets.UTF_8).replace("digest=", "digest=0").toByteArray()))
         // Duplicate ID.

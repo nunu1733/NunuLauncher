@@ -434,9 +434,10 @@ internal object UserDefinedCategoryStoreCodec {
      * Typed decode routing (accepted contract #336): a WELL-FORMED header
      * naming a schema newer than this binary supports is the typed
      * `UnsupportedSchema` (forward-compat, fail-closed, zero-write); a header
-     * that is absent, non-numeric, structurally damaged, or a supported
-     * schema whose content fails validation is `Unreadable` — no repair, no
-     * default, no partial catalog.
+     * that is absent, non-numeric, non-canonically encoded (`schema=01`),
+     * numerically below the supported version, structurally damaged, or a
+     * supported schema whose content fails validation is `Unreadable` — no
+     * repair, no default, no partial catalog.
      */
     fun decodeOutcome(bytes: ByteArray): UserDefinedCategoryStoreDecodeOutcome = try {
         val text = bytes.toString(Charsets.UTF_8)
@@ -452,10 +453,17 @@ internal object UserDefinedCategoryStoreCodec {
                 val schema = header[0].removePrefix("$HEADER_SCHEMA=").toIntOrNull()
                 when {
                     // Non-numeric or malformed schema line: not a recognizable
-                    // version statement at all.
+                    // version statement at all. The re-encoding check rejects
+                    // non-canonical decimal forms (`schema=01`, `schema=+1`)
+                    // so the writer's exact header vocabulary is the only one
+                    // that can ever reach a decode branch.
                     schema == null || schema < 0 -> UserDefinedCategoryStoreDecodeOutcome.Unreadable
 
+                    header[0] != "$HEADER_SCHEMA=$schema" -> UserDefinedCategoryStoreDecodeOutcome.Unreadable
+
                     schema > SCHEMA_V1 -> UserDefinedCategoryStoreDecodeOutcome.UnsupportedSchema
+
+                    schema < SCHEMA_V1 -> UserDefinedCategoryStoreDecodeOutcome.Unreadable
 
                     else -> decodeSupportedSchema(text, markerIndex, entriesMarker, header)
                 }
