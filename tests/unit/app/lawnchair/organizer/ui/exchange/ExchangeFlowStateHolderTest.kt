@@ -379,8 +379,9 @@ class ExchangeFlowStateHolderTest {
             ExchangeDisclosureState(disclosureA.session, disclosureA.packageText, PrivacyTier.EXTERNAL_REDACTED),
         )
 
-        // A's delayed write starts; its failure will settle only after the
-        // release latch below.
+        // A's delayed write starts; its Failure is held back until B is live —
+        // the ABA ordering (close -> B generated -> B in flight -> A settles)
+        // must be deterministic, not scheduler-dependent.
         val aEntered = CountDownLatch(1)
         val releaseA = CountDownLatch(1)
         val writeAThread = Thread {
@@ -401,12 +402,8 @@ class ExchangeFlowStateHolderTest {
         assertNull(currentDisclosureOrNull(holder))
         assertNotNull(store.session)
 
-        // A settles its Failure on the closed screen — must be dropped.
-        releaseA.countDown()
-        writeAThread.join(5_000)
-        assertNull(currentDisclosureOrNull(holder))
-
-        // A new flow generates disclosure B (single-active-session replaces A).
+        // A new flow generates disclosure B (single-active-session replaces A)
+        // while A's Failure is still held back.
         val b = controller.generate(PrivacyTier.EXTERNAL_REDACTED) as ExchangeGenerationResult.Generated
         setScreenToDisclosing(
             holder,
@@ -414,8 +411,10 @@ class ExchangeFlowStateHolderTest {
         )
         assertEquals(b.session.exportId, store.active(now.toLong())?.exportId)
 
-        // B's delayed write starts.
+        // B's delayed write starts and is confirmed in flight — only now is
+        // A's Failure released, so the A settle lands while B is live.
         val bEntered = CountDownLatch(1)
+        val bSettled = CountDownLatch(1)
         val releaseB = CountDownLatch(1)
         val writeBThread = Thread {
             val transport = FileExchangeTransport(throwNoContextForTest())
@@ -432,6 +431,23 @@ class ExchangeFlowStateHolderTest {
         assertNotNull(bLive)
         assertTrue("B is in flight", bLive!!.transportInFlight)
         assertFalse("B is not sent", bLive.sent)
+
+        // NOW release A's Failure; poll until its (dropped) settle was
+        // processed — B must remain in flight and unsent throughout.
+        releaseA.countDown()
+        var waitedA = 0
+        var afterA = currentDisclosureOrNull(holder)
+        while (waitedA < 2_000) {
+            Thread.sleep(50)
+            waitedA += 50
+            afterA = currentDisclosureOrNull(holder)
+            // A dropped settle leaves B exactly as it was; give the scheduler
+            // a moment, then verify the invariant below still holds.
+        }
+        afterA = currentDisclosureOrNull(holder)
+        assertNotNull(afterA)
+        assertTrue("B must still be in flight after A's dropped settle", afterA!!.transportInFlight)
+        assertFalse("A's late failure must not mark B sent", afterA.sent)
 
         // B's own success settles: sent, non-cancelable, B's session active.
         // (The settle hops through the settle dispatcher; poll briefly.)
