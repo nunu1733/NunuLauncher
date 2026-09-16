@@ -57,6 +57,10 @@ import app.lawnchair.organizer.application.public.PreviewCounts
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
 import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.diagnostics.model.Trigger
+import app.lawnchair.organizer.integration.exchange.ClipboardExchangeTransport
+import app.lawnchair.organizer.integration.exchange.ExchangeFlowModule
+import app.lawnchair.organizer.integration.exchange.FileExchangeTransport
+import app.lawnchair.organizer.integration.exchange.ShareSheetExchangeTransport
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.PlacementCode
 import app.lawnchair.organizer.planning.PreserveReason
@@ -75,6 +79,8 @@ import app.lawnchair.organizer.ui.MissingAppSelectionState
 import app.lawnchair.organizer.ui.OrganizationPreviewContent
 import app.lawnchair.organizer.ui.OrganizationPreviewSection
 import app.lawnchair.organizer.ui.OrganizationPreviewWording
+import app.lawnchair.organizer.ui.exchange.ExchangeFlowStateHolder
+import app.lawnchair.organizer.ui.exchange.exchangeFlowItems
 import app.lawnchair.organizer.ui.missingAppSelectionItems
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.components.controls.ClickablePreference
@@ -97,6 +103,17 @@ fun ManualOrganizationPreferences(
     val coordinator = run ?: remember { ManualOrganizationModule.get(context) }
     val scope = rememberCoroutineScope()
     val state by coordinator.stateFlow.collectAsStateWithLifecycle()
+    // Issue #205: the external agent exchange sub-flow. The entry surface is
+    // hosted only while no run operation is active (spec 205 V1 rule), so it
+    // is constructed unconditionally and rendered inside the Idle/Cancelled
+    // branch only.
+    val exchangeHolder = remember {
+        ExchangeFlowStateHolder(
+            controllerFactory = { ExchangeFlowModule.controller(context) },
+            run = coordinator,
+            scope = scope,
+        )
+    }
     val focusRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
     // Issue #308: a stateFlow transition can be observed before the lazy-list
@@ -653,6 +670,25 @@ fun ManualOrganizationPreferences(
                 selected = selectedStrategy,
                 onSelect = ::onStrategySelected,
             )
+            // Issue #205: the external agent exchange surface closes the list.
+            // It must stay below the strategy picker: the picker's radio rows
+            // are position-sensitive in tests and in muscle memory, and the
+            // entry is a secondary affordance hosted only while the run is
+            // idle/cancelled (spec 205 V1 rule).
+            val idleLike = state is ManualOrganizationRun.State.Idle ||
+                state is ManualOrganizationRun.State.Cancelled
+            if (idleLike) {
+                exchangeFlowItems(
+                    holder = exchangeHolder,
+                    clipboardTransport = { ctx: android.content.Context, text: String ->
+                        ClipboardExchangeTransport(ctx).copy(text)
+                    },
+                    shareTransport = { ctx: android.content.Context, text: String ->
+                        ShareSheetExchangeTransport().share(ctx, text)
+                    },
+                    fileTransport = FileExchangeTransport(context),
+                )
+            }
         }
     }
 }

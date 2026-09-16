@@ -36,6 +36,11 @@ allprojects {
                 targetSdk 35
                 vectorDrawables.useSupportLibrary = true
             }
+            // Issue #205: unit tests for the exchange holder race exercise the
+            // real writeFile path with a stubbed android.jar; stubbed framework
+            // members (e.g. Uri) return default values instead of throwing so
+            // the transports under test never dereference them.
+
             lint {
                 abortOnError true
                 checkReleaseBuilds false
