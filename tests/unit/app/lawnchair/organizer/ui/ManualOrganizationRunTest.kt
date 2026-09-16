@@ -1065,7 +1065,7 @@ class ManualOrganizationRunTest {
                     items = emptyList(),
                 ),
                 targets = TargetSet(emptyList(), listOf(addition)),
-                resolvedCategories = mapOf(addition.id to category),
+                resolvedIdentities = mapOf(addition.id to category?.let { app.lawnchair.organizer.planning.CategoryIdentity.BuiltIn(app.lawnchair.organizer.planning.CategoryId(it)) }),
                 nowEpochMs = 1_000L,
             ),
             app.lawnchair.organizer.personalization.PrivacyTier.LOCAL_FULL,
