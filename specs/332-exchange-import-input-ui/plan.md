@@ -3,36 +3,38 @@
 ---
 issue: "#332"
 status: draft
-updated: 2026-09-16
+updated: 2026-09-17
 ---
 
-> Status: **draft** — [spec.md](./spec.md) が **draft (not accepted)** であるため、本planも確定ではない。実装開始条件は spec のowner承認。本planは baseline `aab0d293d1a98bf59f5b164693f54ee1a63e3f0b` (= 2026-09-16時点の `origin/main`、#205 PR #325 + #331 PR #333 実装後) の実装code調査に基づく。
+> Status: **draft** — [spec.md](./spec.md) が **draft (not accepted)** であるため、本planも確定ではない。実装開始条件は specのowner承認。本planは baseline `45711f53dd40b5cc67013f4a4193d2c6d5b0dcc1` (= 2026-09-17改訂時点の `origin/main`、#205 PR #325 + #331 PR #333 + #329 PR #339 + #330 PR #335 実装後) の実装code調査に基づく。
 
 ## Re-entry status
 
-- 本planは2026-09-16時点の `origin/main` (`aab0d293d1`) を基準に作成したsnapshotである。
-- 再開時は最新の `origin/main` と全Issueコメントを取得し、本baselineと差分を比較 (#329 / #328 / #330 のmerge状況を特に確認) して、必要なら本planを改訂してから着手する。
-- #329 (Import Normalizer) が先にmergeされた場合: common path入口にnormalizer段が挿入済みのため、本planのframing表示・失敗19種対応へ読み替える。#329未mergeの場合: 本planどおり marker形式のまま実装し、#329接続点 (後述) を通して後日拡張する。**どちらの順序でも本planのUI変更は成立するよう設計する (spec D-6)。**
+- 2026-09-17: Re-entry ruleを適用し、最新 `origin/main` (`45711f53dd40b5cc67013f4a4193d2c6d5b0dcc1`) と全Issueコメントを再取得・比較した。#329 (Import Normalizer) は実装merge済み (PR #339) のため、本planは「framing 3値・失敗19種」の読みで改訂した。#330 (PR #335) もmerge済みでschema versionは `personalized-intent-v3`。#328 (成功状態) は未実装 (OPEN)。
+- #329の接続点は既に実装されている: `ExchangeImportPipeline.prepare` のnormalizer段、`Prepared(intent, framing)` の認識framing伝播、`exchangeFailureText` のnormalization 2種。本planの残りは #332固有の取得UX (clipboard transport・UI再構成・bounded editor・parse-first表示) と、outcomeへのversion・件数・失敗時framingのadditive付与である。
+- #328が先にmergeされた場合: 成功時の表示が #328の成功状態へ差し替わるのみで、本planの変更面 (取得UX・失敗表示) は影響を受けない。
 
-## Current evidence (baseline `aab0d293d1` 実装調査)
+## Current evidence (baseline `45711f53dd40b5cc67013f4a4193d2c6d5b0dcc1` 実装調査)
 
 Import入力に関係する現行source (すべて確認済み):
 
 | 対象 | Path | 現状 |
 |---|---|---|
 | Import UI | `lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeFlowUi.kt` | `ExchangeScreen.Importing(replyText)` state。`ExchangeImportField` = `OutlinedTextField` (`minLines=4`、maxLines/height上限なし、`testTag("exchange-import-field")`) + 「取り込む」(`replyText.isNotBlank()` で有効) + 「ファイルから」(`ActivityResultContracts.OpenDocument()`, `arrayOf("text/plain")`) + cancel。file取得callbackから `holder.importFromFile(context, fileTransport, uri)` |
-| 受領時envelope検査 | 同上 `onImportTextChange` + `organizer/personalization/exchange/IntentImportParser.kt` (`acceptsExchangeImportEnvelope`) | 1 MiB UTF-8超過textはstate不採用、`INPUT_OVERSIZE` status |
+| 受領時envelope検査 | 同上 `onImportTextChange` + `organizer/personalization/exchange/IntentImportParser.kt` (`acceptsExchangeImportEnvelope`) | 1 MiB UTF-8超過textはstate不採用、`INPUT_OVERSIZE` status。同一上限gateが `ExchangeImportPipeline.prepare` 入口にもある (#329で追加、normalizerより前) |
 | clipboard書込 (export側) | `organizer/integration/exchange/ExchangeTransports.kt` `ClipboardExchangeTransport.copy` | 書込専用。読取sideのtransportは存在しない |
 | clipboard読取helper (exchange外) | `app/lawnchair/util/ClipboardUtils.kt` `getClipboardContent` | `CustomIconShapePreference` のみ使用。exchange未使用。null安全な `primaryClip?.getItemAt(0)?.text` patternの参照実装になる |
 | file読取 | 同 `ExchangeTransports.kt` `FileExchangeTransport.read` | bounded read (limit=`ExchangeContract.MAX_EXCHANGE_IMPORT_BYTES`=1 MiB、buffer=limit+1)。`FileExchangeRead.Text/Oversize/Failure` |
-| import実行 | 同 `ExchangeFlowController.importReply` → `organizer/personalization/exchange/ExchangeImportPipeline.kt` (`prepare`: framing抽出→#204 `IntentCodec.decode` / `validate`) | 成功: `run.attachIntent` (#331 run内) or `run.start(intent)` (idle) で即画面close + `IMPORT_ACCEPTED` 1行status。失敗: `ExchangeScreen.ImportOutcomeScreen` (composable `ExchangeImportOutcome`)、envelope 4種 + contract 13種 = 17種のtyped文言 + 再取り込み |
+| #329 normalizer (実装済み) | `organizer/personalization/exchange/ImportNormalizer.kt` | `normalize()` がtransport正規化 (BOM・CRLF/CR→LF) → marker形式判定 (priority 1、#205 parserへ委譲) → 単一fenced `json` block (priority 2) → standalone JSON object (priority 3)。結果 `MarkedFraming` / `Payload(framing)` / `Failure(AmbiguousBlocks|UnrecognizedFormat)`。framing enumは `RecognizedImportFraming { MARKER, FENCED_JSON, STANDALONE_JSON }` |
+| import実行 | 同 `ExchangeFlowController.importReply` → `organizer/personalization/exchange/ExchangeImportPipeline.kt` (`prepare`: envelope gate → #329 normalizer → framing抽出 → #204 `IntentCodec.decode`) | 成功: `Prepared(intent, framing)` (framingは #329が付与済み) → session照会 → `validate` → `run.attachIntent` (#331 run内) or `run.start(intent)` (idle) で即画面close + `IMPORT_ACCEPTED` 1行status。失敗: `ExchangeScreen.ImportOutcomeScreen` (composable `ExchangeImportOutcome`)、envelope 4種 + normalization 2種 + contract 13種 = 19種のtyped文言 + 再取り込み (`openImport`)。失敗結果には認識情報 (framing/version/件数) が未付与 |
+| pipeline unit test (既存拡張) | `tests/unit/app/lawnchair/organizer/personalization/exchange/ExchangeImportPipelineTest.kt` | #329で +144行。normalizer経由のframing別success・typed失敗を検証済み。`Prepared.framing` のassertionも既存 |
 | bounded表示の既存pattern | `ExchangeFlowUi.kt` `ExchangeDisclosure` (export側) | package全文表示が `heightIn(max = 240.dp)` + `verticalScroll` でbounded。Import側のraw折りたたみはこのpatternを流用 |
-| status表示 | `ExchangeFlowUi.kt` `exchangeStatusText` / `exchangeStatusText` item (`testTag("exchange-status")`, `liveRegion = Polite`) | 11種の `ExchangeStatus.Kind`。新typed失敗はここへ追加 |
-| hosting | `app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt` | idle entry (行737付近) と #331 run内entry (`State.Selecting`、`exchangeBusy` で `editsEnabled=false` の選択freeze、行313〜353付近) の両方で `exchangeFlowItems` をhost。変更不要 |
-| strings | `lawnchair/res/values/strings.xml` (行1318付近〜) + `lawnchair/res/values-ja/strings.xml` (行407付近〜) | `exchange_import_title` (ja: 「AIの回答を取り込む」) 等が既存。file読取buttonのMIME/size明示copyは不在 |
+| status表示 | `ExchangeFlowUi.kt` `exchangeStatusText` / `exchange-status` item (`testTag("exchange-status")`, `liveRegion = Polite`) | 11種の `ExchangeStatus.Kind`。新typed失敗 (`CLIPBOARD_EMPTY` / `CLIPBOARD_NOT_TEXT`) はここへ追加 |
+| hosting | `app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt` | idle entry (行737付近) と #331 run内entry (`State.Selecting`、`exchangeBusy` で `editsEnabled=false` の選択freeze、行353付近) の両方で `exchangeFlowItems` をhost。変更不要 |
+| strings | `lawnchair/res/values/strings.xml` (行1318付近〜) + `lawnchair/res/values-ja/strings.xml` (行407付近〜) | `exchange_import_title` (ja: 「AIの回答を取り込む」) 等が既存。#329のnormalization失敗文言2種も追加済み (19種分)。clipboard読取button・fallback見出し・manual paste・clear・対応型/size明示copyは不在 |
 | 権限 | `AndroidManifest.xml` | clipboard権限は不要 (framework API)。SAFも不要 (user選択grant)。追加権限なしで実装可能 |
 | diagnostics | `organizer/ui/exchange/` `organizer/integration/exchange/` `organizer/personalization/exchange/` | journal・logcat書込みは存在しない ([organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md) 契約)。本変更でも書込み経路を新設しない |
-| 既存test | `tests/unit/app/lawnchair/organizer/ui/exchange/` (`ExchangeFlowStateHolderTest`, `ExchangeDisclosureStateTest`)、`tests/unit/app/lawnchair/organizer/integration/exchange/ExchangeFlowControllerTest.kt` | holder levelでtransport注入・失敗注入のpatternが既にある (例: `FileExchangeTransport.writeOverride`、`settleDispatcher`)。exchangeのCompose UI test (instrumentation) は未整備 (`tests/organizer-instrumentation/` にはorganizer UI testの既存pattern例: `MissingAppSelectionInstrumentationTest`) |
+| 既存test | `tests/unit/app/lawnchair/organizer/ui/exchange/` (`ExchangeFlowStateHolderTest`, `ExchangeDisclosureStateTest`)、`tests/unit/app/lawnchair/organizer/integration/exchange/ExchangeFlowControllerTest.kt`、`tests/unit/app/lawnchair/organizer/personalization/exchange/` (`ImportNormalizerTest`, `ExchangeImportPipelineTest`, `ExchangePackageComposerTest`) | holder levelでtransport注入・失敗注入のpatternが既にある (例: `FileExchangeTransport.writeOverride`、`settleDispatcher`)。exchangeのCompose UI test (instrumentation) は未整備 (`tests/organizer-instrumentation/` にはorganizer UI testの既存pattern例: `MissingAppSelectionInstrumentationTest`) |
 
 ## Design
 
@@ -74,15 +76,15 @@ Import入力に関係する現行source (すべて確認済み):
 
 4. **parse-first outcome (spec D-5/D-6)**
 
-   - `ExchangeImportPipeline.Prepared` / `ExchangeImportResult` へ **additive** に認識情報を含める: framing種別closed enum (#205 era: marker形式のみを表す1値。#329 era: 3値へ拡張)、codec受理 `intentSchemaVersion`、認識件数 (decode済みintentのitem数。privacy-safe: label/ref/rationale/confidenceは含めない)。
-   - `ExchangeFlowController.importReply` はpipeline結果にこの認識情報を載せて返す (既存17種失敗の分類は不変、区切りを増やさない)。
+   - **framingは既に `Prepared` に付与済み** (#329)。本変更はoutcomeに残る認識情報をadditiveに完成させる: (1) `ExchangeImportResult.Failure` への認識framing付与 (判明範囲のみ。例: marker行ありのframing失敗 → `MARKER`、decode失敗 → 認識framing。envelope oversize・normalizer失敗は認識前に確定するため付与しないか、判明範囲のみ)。失敗種別の区分け (19種) は増やさない。(2) codec受理 `intentSchemaVersion`、認識件数 (decode済みintentのitem数。privacy-safe: label/ref/rationale/confidenceは含めない) の付与。
+   - `ExchangeFlowController.importReply` はpipeline結果にこの認識情報を載せて返す (既存19種失敗の分類は不変、区切りを増やさない)。
    - `ExchangeImportOutcome` UI: 失敗時に「成否・認識framing (判明していれば)・typed案内」を中心表示し、raw全文は **折りたたみ (default閉) + `heightIn(max)` + `verticalScroll`** (export disclosureと同pattern) で提示。成功時は #328 未実装のため既存挙動 (即時run接続 + 1行status) を維持 (spec 成功時の境界 scenario)。
    - UI→表示modelの変換は純粋関数 (単元test可能なtop-level関数) に分離し、`exchangeFailureText` と同じ一対対応を保つ。
 
-### #329 Normalizerへの接続点
+### #329 Normalizerとの接続 (実装済み)
 
-- common path入口は `ExchangeImportPipeline.prepare` のみ。#329はここにnormalizer段を挿入し、framing enumを3値へ拡張する。#332のUI・transportは **#329有無を知らない**: enum値を受け取って表示するだけ。
-- clipboard/file/manual pasteの全経路が同一入口へ集約していることを崩さない (transport内でtrim・文字置換等の前処理を入れない — 正規化は #329の責務)。
+- common path入口は `ExchangeImportPipeline.prepare` のみで、normalizer段は稼働済み。#332のUI・transportはframing enum値を受け取って表示するだけ。
+- clipboard/file/manual pasteの全経路が同一入口へ集約していることを崩さない (transport内でtrim・文字置換等の前処理を入れない — 正規化は #329層の責務)。
 
 ### #328への接続点
 
@@ -99,12 +101,12 @@ Import入力に関係する現行source (すべて確認済み):
 | File | 変更 |
 |---|---|
 | `lawnchair/src/app/lawnchair/organizer/integration/exchange/ClipboardImportTransport.kt` | 新設 (読取transport) |
-| `lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeFlowUi.kt` | `ExchangeImportField` 再構成、`importFromClipboard`、`ExchangeStatus.Kind` 2種追加、outcome表示拡張、raw折りたたみ |
-| `lawnchair/src/app/lawnchair/organizer/personalization/exchange/ExchangeImportPipeline.kt` | 認識情報 (framing enum・version・件数) のadditive付与 |
+| `lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeFlowUi.kt` | `ExchangeImportField` 再構成、`importFromClipboard`、`ExchangeStatus.Kind` 2種追加、outcome表示拡張 (framing/version/件数・raw折りたたみ) |
+| `lawnchair/src/app/lawnchair/organizer/personalization/exchange/ExchangeImportPipeline.kt` | 認識情報のadditive付与: `Failure` への認識framing (判明範囲)・`Prepared` を起点としたversion/件数のoutcome化 (`framing` 自体は #329で既存) |
 | `lawnchair/src/app/lawnchair/organizer/integration/exchange/ExchangeFlowController.kt` | outcome経由の認識情報中継 (interface形状はできるだけ不変) |
 | `lawnchair/res/values/strings.xml` + `lawnchair/res/values-ja/strings.xml` | clipboard読取button、fallback見出し、manual paste button、clear、対応型/size copy、`CLIPBOARD_EMPTY` / `CLIPBOARD_NOT_TEXT` 失敗文言、framing/version表示label (ja正本・en対訳。spec 123契約) |
 | `tests/unit/app/lawnchair/organizer/ui/exchange/ExchangeFlowStateHolderTest.kt` ほか | 下記Verificationの追加 |
-| 対象外 (変更しない) | `AndroidManifest.xml` (権限追加なし)、`ExchangeTransports.kt` の `FileExchangeTransport.read` (既存bounded readを再利用)、export flow全般、`ManualOrganizationPreferences.kt` (hosting契約不変)、#204 validator、envelope上限 |
+| 対象外 (変更しない) | `ImportNormalizer.kt` (実装済み)、`AndroidManifest.xml` (権限追加なし)、`ExchangeTransports.kt` の `FileExchangeTransport.read` (既存bounded readを再利用)、export flow全般、`ManualOrganizationPreferences.kt` (hosting契約不変)、#204 validator、envelope上限 |
 
 ## Migration and recovery
 
@@ -116,7 +118,7 @@ Import入力に関係する現行source (すべて確認済み):
 既存コマンド優先 (`docs/engineering/building.md` / `quality-strategy.md` 正本):
 
 - `./gradlew spotlessCheck`
-- `./gradlew testLawnWithQuickstepGithubDebugUnitTest` のうち exchange 関連 (`ExchangeFlowStateHolderTest` / `ExchangeFlowControllerTest` / 新transport test)。CI JVM gateがexchange packageをfilter対象にするかは PR のCI結果で確認し、必要なら `quality-strategy.md` のfilter追加を別途記録する。
+- `./gradlew testLawnWithQuickstepGithubDebugUnitTest` のうち exchange 関連 (`ExchangeFlowStateHolderTest` / `ExchangeFlowControllerTest` / `ExchangeImportPipelineTest` / 新transport test)。CI JVM gateがexchange packageをfilter対象にするかは PR のCI結果で確認し、必要なら `quality-strategy.md` のfilter追加を別途記録する。
 - spec AC対応:
 
 | AC | 検証 |
@@ -130,7 +132,7 @@ Import入力に関係する現行source (すべて確認済み):
 | AC-7 | diagnostics書込み経路不在のregression review + outcome後のtext非保持test (state破棄assertion) |
 | AC-8 | 手動/instrumentation evidence: TalkBack・Switch Access・keyboard・font scale 200%。D-4暫定値の確定根拠をここで記録 |
 | AC-9 | physical device evidence (representative ChatGPT/Gemini mobile app copy → import)。docs/assessment/ またはIssue記録。#205 AC-10 evidenceと同一workflowで兼ね可 |
-| AC-10 | parse-first表示のUI test (framing/version/件数表示・raw折りたたみdefault閉) + 既存17種 (または #329 merge後19種) 失敗表示regression + export flow regression (既存unit test green) |
+| AC-10 | parse-first表示のUI test (framing/version/件数表示・raw折りたたみdefault閉) + 既存19種失敗表示regression (`ImportNormalizerTest` / `ExchangeImportPipelineTest` で #329分はcoverage済み) + export flow regression (既存unit test green) |
 
 高リスクlabel (`risk: layout-data` / `risk: migration`) は付かない見込み (DB不変)。ただしPR時の独立エビデンス要件は [github-workflow.md](../../docs/project/github-workflow.md) の判定に従う。
 
@@ -142,7 +144,7 @@ Import入力に関係する現行source (すべて確認済み):
 
 ## Dependencies and blockers
 
-- **#329**: 未mergeでも実装可能 (framing 1値)。merge済みならenum 3値・失敗19種に読み替え。実装順の依存なし (spec D-6)。
+- **#329**: 実装merge済み (PR #339)。framing 3値・失敗19種・`Prepared` framing伝播は稼働中。
 - **#328**: 成功状態は所有しない。#328が先でも後でも本planは成立。
 - **owner decisions (spec Open questions)**: D-2 (manual paste配置 — 起草推奨: 折りたたみsection)、D-3 (file対応型 — 起草推奨: `text/plain` + `application/json`)、D-4 (実寸 — evidence後確定)。D-4確定前は暫定値をパラメータ化して実装し、AC-8/9 evidence PRで固定する。
 - CI: exchange unit testがJVM gateのfilter対象かの確認 (初回PRで確認し、結果をPRへ記録)。
@@ -152,13 +154,13 @@ Import入力に関係する現行source (すべて確認済み):
 - **Android clipboard挙動のdevice差**: null/empty帰着の条件・Android 12+のaccess toast表示はOEMで揺らぐ。typed失敗への統一map (原因非表示) で吸収し、AC-9 device evidenceで実機確認する。
 - **SAF MIME報告の実態差**: file managerがJSONを `application/octet-stream` 等で報告する場合、D-3起草推奨 (`text/plain`+`application/json`) では選択できない。device evidenceで判明したら `text/*` 拡張をspec改訂で扱う (実装場当たり対応はしない)。
 - **LazyColumn item内のnested scroll**: bounded editor/raw detailの内部scrollとリストscrollのgesture競合。export disclosureの `verticalScroll` 実績patternを流用し、instrumentation/manual操作で確認。
-- **`ExchangeImportResult` 拡張の波及**: additive変更でも既存44 exchange unit testの `when` 網羅に影響する可能性。sealed interfaceへの追加は網羅 `when` のcompile errorとして検出される (安全側)。
+- **`ExchangeImportResult` 拡張の波及**: additive変更でも既存exchange unit testの網羅 `when` に影響する可能性。sealed class/data classへのフィールド追加と `Failure` メタデータはcompile errorとして検出される網羅 `when` が既に存在するため (安全側)。#329が `Prepared` へ `framing` を追加した際の先行例 (`ExchangeImportPipelineTest` 拡張) と同様の影響範囲。
 - **diagnostics/privacy regression**: 新code pathでraw textをlogに流す誤書きの防止。AC-7 review checklistをPR templateに明記。
 
 ## Explicitly unverified areas
 
 - 実機 (特にOEM ROM) でのclipboard読取挙動とtoast表示の実測 (AC-9で確認)。
-- 実際のChatGPT/Gemini mobile appのcopy内容の形式分布 (#329の調査領域。#332では表示のみ影響)。
+- 実際のChatGPT/Gemini mobile appのcopy内容の形式分布 (#329領域。#332では表示のみ影響)。
 - Compose instrumentation testとしてのbounded editor高さ計測の実現性 (`tests/organizer-instrumentation` に前例がない場合、UI構造assertionへの代替をPRで記録)。
 - exchange unit testのCI JVM gate filter対象化の要否。
 - D-4確定値 (200% font/TalkBack evidence後)。
@@ -168,7 +170,7 @@ Import入力に関係する現行source (すべて確認済み):
 1. `ClipboardImportTransport` (読取adapter・test seam付き) + unit test (typed失敗注入)。
 2. `ExchangeFlowStateHolder.importFromClipboard` + `CLIPBOARD_EMPTY` / `CLIPBOARD_NOT_TEXT` status + strings (ja/en) + holder test。
 3. `ExchangeImportField` 再構成: clipboard/file primary配置、fallback section、bounded editor (D-4暫定パラメータ) + clear、置換semantics + editor/holder test。
-4. `ExchangeImportPipeline` 認識情報のadditive付与 + `ExchangeImportOutcome` parse-first表示 (raw折りたたみ) + UI test/表示model unit test。
+4. `ExchangeImportPipeline` 認識情報のadditive付与 (失敗時framing・version・件数。framingの `Prepared` 伝播は #329で既存) + `ExchangeImportOutcome` parse-first表示 (raw折りたたみ) + UI test/表示model unit test。
 5. file読取UI copy (対応型/size明示、D-3 MIME filter) + 既存file経路regression。
 6. a11y仕上げ: TalkBack label・live region・keyboard/Switch Access完結の確認、testTag整備。
 7. device/a11y evidence (AC-8/AC-9) → D-4確定 → spec/plan status更新。

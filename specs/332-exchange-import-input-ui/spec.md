@@ -4,21 +4,21 @@ status: draft
 requirements: [FR-017]
 risk:
   - privacy
-updated: 2026-09-16
+updated: 2026-09-17
 ---
 
 # External Agent ExchangeのImport入力をclipboard/file-firstのモバイルUIへ変更する
 
-> Status: **draft** (2026-09-16 起草、同日resume検証済み。baseline `aab0d293d1a98bf59f5b164693f54ee1a63e3f0b` (= 2026-09-16時点の `origin/main`) の実装sourceと突き合わせ済み。**owner承認 (accepted) ではない**)。本文は確定可能な範囲で整理したが、**D-4 (manual paste editorの実寸) はlarge-font/accessibility evidenceで確定する** ことがIssue本文から指示されているため未決定 (Open questions 2)。D-2 (manual paste fieldの配置)、D-3 (file対応型の範囲) も起草時推奨を明示のうえowner reviewで確定する。
+> Status: **draft** (2026-09-16 起草、2026-09-17 re-entry改訂。baseline `45711f53dd40b5cc67013f4a4193d2c6d5b0dcc1` (= 改訂時点の `origin/main`、#329 PR #339 / #330 PR #335 実装後) の実装sourceと突き合わせ済み。**owner承認 (accepted) ではない**)。#329 (Import Normalizer) は実装済みのため、本specは実装済みframing種別 `RecognizedImportFraming` (marker / fenced json / standalone JSON) とtyped失敗19種を前提に改訂した。**D-4 (manual paste editorの実寸) はlarge-font/accessibility evidenceで確定する** ことがIssue本文から指示されているため未決定 (Open questions 2)。D-2 (manual paste fieldの配置)、D-3 (file対応型の範囲) も起草時推奨を明示のうえowner reviewで確定する。
 
 ## Problem
 
-現行 (baseline `aab0d293d1a98bf59f5b164693f54ee1a63e3f0b`、#205 PR #325 + #331 PR #333 実装後) のExternal Agent Exchange import画面 (`ExchangeImportField`、`lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeFlowUi.kt`) は、長いAI回答をmultiline text inputへ貼り付けることを主前提としている:
+現行 (baseline `45711f53dd40b5cc67013f4a4193d2c6d5b0dcc1`、#205 PR #325 + #331 PR #333 + #329 PR #339 実装後) のExternal Agent Exchange import画面 (`ExchangeImportField`、`lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeFlowUi.kt`) は、長いAI回答をmultiline text inputへ貼り付けることを主前提としている:
 
 1. **貼付付けfieldが無制限に伸びる**: `OutlinedTextField` は `minLines = 4` のみでmaxLines/height上限がなく、数十KBのAI回答を貼るとfieldが内容に比例して伸び、hostingしているpreferences画面 (LazyColumn) 全体のscroll量が増える。手動で前後の文章を削る再編集はスマホ上ではほぼ実用困難である。なお同一fileのexport disclosure側では生成package全文表示に既存のbounded pattern (`heightIn(max = 240.dp)` + `verticalScroll`) が使われており、Import側にのみこの扱いが欠けている。
 2. **clipboard読み取りがない**: OS clipboardからの読み込み操作が存在せず (export側の `ClipboardExchangeTransport.copy` は書き込みのみ。`app.lawnchair.util.getClipboardContent` はexchange flowでは未使用)、ユーザーはChatGPT / Gemini等でコピー→NunuLauncherへ切替→fieldへ長押しpaste、という操作を強制される。
 3. **file importが副次的**: 「ファイルから」buttonは存在するが主導線ではなく、対応MIME/type/sizeがUI上に明示されていない (`ActivityResultContracts.OpenDocument()` を `text/plain` 限定で起動)。
-4. **raw全文が前面に居座る**: 読み込み後も取り込みtext全体がfieldに展開されたままになり、parse状態・認識した形式/version・summaryが中心にならない。失敗時の取り込み結果画面はtyped失敗文言 (現行17種) のみで、何がどう認識されたかの表示がない。
+4. **raw全文が前面に居座る**: 読み込み後も取り込みtext全体がfieldに展開されたままになり、parse状態・認識した形式/version・summaryが中心にならない。失敗時の取り込み結果画面はtyped失敗文言 (現行19種: envelope 4種 + #329 normalization 2種 + contract 13種) のみで、何がどう認識されたかの表示がない。
 
 このUI構造では、Exchange workflowの実用性 (#205の目的) がモバイルの入力負荷で損なわれる。
 
@@ -26,7 +26,7 @@ updated: 2026-09-16
 
 Import画面を **長文を直接編集するUIから、clipboard / fileから読み込んで内部parseするUI** へ変更する。manual pasteはfallbackとして残すが、bounded height + 内部scrollで画面全体を長文が占有しない。読み込み後はraw全文ではなく、parse状態・認識したframing/version・summary・error guidanceを中心に表示し、raw確認は折りたたみ (bounded) とする。
 
-全ての入力source (clipboard / file / manual paste) は単一の共通import path (#329 Import Normalizer (実装済みの場合) → #205 exchange framing/codec → #204 validation) へ流れ、UI側は独自parse logicを持たない。clipboardは明示操作でのみ読み取り、監視・自動送信を行わない。clipboard/file内容はdiagnostics・永続化へ書き込まない。
+全ての入力source (clipboard / file / manual paste) は単一の共通import path (#329 Import Normalizer (実装済み) → #205 exchange framing/codec → #204 validation) へ流れ、UI側は独自parse logicを持たない。clipboardは明示操作でのみ読み取り、監視・自動送信を行わない。clipboard/file内容はdiagnostics・永続化へ書き込まない。
 
 ## Scope
 
@@ -42,25 +42,26 @@ Import画面を **長文を直接編集するUIから、clipboard / fileから�
 
 ## Non-goals
 
-- #329 Import Normalizerのnormalization semantics実装 (accepted framingの定義・typed失敗2種)。#332のUIは #329のtyped結果とframing種別enumを消費するのみ。
+- #329 Import Normalizerのnormalization semantics実装 (accepted framingの定義・typed失敗2種、PR #339で実装済み)。#332のUIは #329のtyped結果とframing種別enum (`RecognizedImportFraming`) を消費するのみ。
 - #204 validator / #205 exchange framing規則 / envelope上限 (1 MiB) の変更。これらは不変。
 - Import成功後の次画面導線・取り込み成功状態 (件数summary・CTA・破棄lifecycle): **#328 が所有**。#332はvalidation通過時点 (#328成功状態への移行点、または #331/#205既存のrun接続挙動) までを所有する。
 - arbitrary AI appとのprivate API連携、AIアプリの自動操作、share-back intent受信 (#205 Decision 3のまま)。
 - clipboard内容のbackground監視 (`OnPrimaryClipChangedListener` 登録の不在は要件)。自動読み取り・自動送信。
 - exchange package生成側 (export flow: privacy選択・session置換確認・送信前確認・transport) の変更。#327 (interview-first化) とも変更面の重なりなし。
-- #330 (authoring contract簡素化) との兼用。validation失敗の分類は不変。
+- #330 (authoring contract簡素化、PR #335で実装済み) との兼用。validation失敗の分類は不変。
 
-## 現行実装の確認事実 (baseline `aab0d293d1`)
+## 現行実装の確認事実 (baseline `45711f53dd40b5cc67013f4a4193d2c6d5b0dcc1`)
 
 - `ExchangeFlowUi.kt` (`organizer/ui/exchange/`): `ExchangeScreen.Importing(replyText)` が取り込みtext全文をstateとして保持。`ExchangeImportField` は `OutlinedTextField(value=replyText, minLines=4)` (maxLines/height上限なし) + 「取り込む」button (非blankで有効) + 「ファイルから」button (`ActivityResultContracts.OpenDocument()`、`arrayOf("text/plain")`) + cancel。
-- 受領時envelope検査: `onImportTextChange` が `acceptsExchangeImportEnvelope` (1 MiB UTF-8 byte、`IntentImportParser.kt`) でoversized textをstateへ採用せず `INPUT_OVERSIZE` status。
+- 受領時envelope検査: `onImportTextChange` が `acceptsExchangeImportEnvelope` (1 MiB UTF-8 byte、`IntentImportParser.kt`) でoversized textをstateへ採用せず `INPUT_OVERSIZE` status。加えて #329実装により `ExchangeImportPipeline.prepare` 入口でも同一上限gateが走る (normalizerより前。spec 329 D-5)。
 - File読込: `ExchangeFlowStateHolder.importFromFile` → `FileExchangeTransport.read(uri)` (`organizer/integration/exchange/ExchangeTransports.kt`)。bounded read (1 MiB + 1 byteまで読んで全量materialize前にfail)、結果は `Text / Oversize / Failure` の3種。
-- Import実行: `holder.import(replyText)` → `ExchangeFlowController.importReply` → `ExchangeImportPipeline.prepare` (framing抽出 → #204 `IntentCodec.decode`) → session照会 → `validate`。成功は即 `run.attachIntent` / `run.start(intent)` (#331 run内entry / #205 fresh run) で画面を閉じ1行status。失敗は `ExchangeScreen.ImportOutcomeScreen` (composable `ExchangeImportOutcome`) でtyped失敗文言 (envelope 4種 + contract 13種 = 17種) + 再取り込み (`openImport` でImport画面へ戻る)。
+- Import実行: `holder.import(replyText)` → `ExchangeFlowController.importReply` → `ExchangeImportPipeline.prepare` (**#329 normalizer → framing抽出 → #204 `IntentCodec.decode`**。envelope gateはその前) → session照会 → `validate`。成功は `Prepared(intent, framing)` (#329で `RecognizedImportFraming` が付与済み。DESIGN.md gate 13の「認識framingの `Prepared` 伝播」) として即 `run.attachIntent` / `run.start(intent)` (#331 run内entry / #205 fresh run) で画面を閉じ1行status。失敗は `ExchangeScreen.ImportOutcomeScreen` (composable `ExchangeImportOutcome`) でtyped失敗文言 (envelope 4種 + normalization 2種 + contract 13種 = 19種) + 再取り込み (`openImport` でImport画面へ戻る)。失敗結果に認識framing・version等の認識情報は現在付与されていない。
+- #329 normalizer (`organizer/personalization/exchange/ImportNormalizer.kt`): accepted framingは `RecognizedImportFraming { MARKER, FENCED_JSON, STANDALONE_JSON }` の3種。typed失敗 `ImportNormalizationFailure.AmbiguousBlocks` / `UnrecognizedFormat` (strings `exchange_failure_normalization_ambiguous` / `_unrecognized` 実装済み)。transport正規化 (BOM除去・CRLF/CR→LF統一) はnormalizer層が所有。
 - 同一fileのexport disclosureは生成package表示を `heightIn(max = 240.dp)` + `verticalScroll` でboundedにしており、raw textのbounded折りたたみ表示はこの既存patternの適用で実現できる (新規component categoryは不要)。
 - clipboard読み取りの実装はexchange flowに存在しない。`app.lawnchair.util.getClipboardContent` (generic helper、exchange未使用) と `ClipboardExchangeTransport.copy` (書き込み) のみ存在。
-- 現行intent schema versionは `personalized-intent-v2` (`ContextExportContract.INTENT_SCHEMA_VERSION`、`ContextExportModels.kt`)。codec decode成功時にのみ確定する値であり、UIはcodec/seam経由で受け取る (UI側でversion文字列をparseしない)。
+- 現行intent schema versionは `personalized-intent-v3` (`ContextExportContract.INTENT_SCHEMA_VERSION`、`ContextExportModels.kt`。#330でv2からbump)。codec decode成功時にのみ確定する値であり、UIはcodec/seam経由で受け取る (UI側でversion文字列をparseしない)。
 - diagnostics: exchange経路 (`ui/exchange` / `integration/exchange` / `personalization/exchange`) にdiagnostics journal・logcat書込みは存在しない ([organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md) 契約どおり)。
-- hosting: `ManualOrganizationPreferences.kt` がidle branch (Idle/Cancelled) と `State.Selecting` (run内entry、`exchangeBusy` で選択freeze) の両方で `exchangeFlowItems` をhosting。
+- hosting: `ManualOrganizationPreferences.kt` がidle branch (行737付近) と `State.Selecting` (run内entry、行353付近、`exchangeBusy` で選択freeze) の両方で `exchangeFlowItems` をhosting。
 - AndroidManifestにclipboard権限は不要 (framework API)。SAFも権限不要 (user選択によるURI grant)。
 
 ## Behavior scenarios
@@ -85,7 +86,7 @@ And 両entryで同一のsurface・操作体系であり、hosting規則 (idle: r
 
 Given ユーザーが外部AI app (ChatGPT / Gemini等) で回答をコピーし、NunuLauncherのImport画面に戻っている (appはfocusを持ち、API 29+のclipboard読み取り条件を満たす)、
 When ユーザーが「クリップボードから読み込む」を1回押す、
-Then OS clipboard (primary clip) から **明示操作の応答として1回だけ** textを読み取り (text itemのみ。`coerceToText` 等によるURI/Intentの解決は行わない)、envelope上限 (1 MiB) 検査を通過したtextを取り込み候補として採用し、**同一操作内で** 共通import path (normalizer (#329実装済みの場合) → framing/codec → validation) を実行して、parse-first result presentation (後述scenario) を表示する、
+Then OS clipboard (primary clip) から **明示操作の応答として1回だけ** textを読み取り (text itemのみ。`coerceToText` 等によるURI/Intentの解決は行わない)、envelope上限 (1 MiB) 検査を通過したtextを取り込み候補として採用し、**同一操作内で** 共通import path (normalizer (#329) → framing/codec → validation) を実行して、parse-first result presentation (後述scenario) を表示する、
 And 読み取りはこの明示操作のみで行われる。Import画面を開く・resumeする・結果を表示するだけではclipboardへaccessせず、`OnPrimaryClipChangedListener` 等の監視を一切登録しない、
 And 読み取ったtextは既存manual paste欄の内容 (あれば) を **置き換える** (clear/replace操作が容易であることの一部)。
 
@@ -132,10 +133,10 @@ When 結果が確定する、
 Then 表示は **raw全文の常時展開ではなく** 次を中心に構成される:
 
 - 読み込み成否 (source別: 読み込み自体の失敗は前述typed失敗)
-- 認識したframing (marker形式 / #329実装済みならfenced json・standalone JSON等のframing種別closed enumをそのまま表示)
-- 認識したversion (codecが受理したintent schema version文字列。現行 `personalized-intent-v2`。UIは文字列をseamから受け取りparseしない)
+- 認識したframing (`RecognizedImportFraming` のclosed enum値: marker形式 / fenced json / standalone JSON。#329が `Prepared` へ伝播済み。認識に至らなかった失敗では判明範囲のみ)
+- 認識したversion (codecが受理したintent schema version文字列。現行 `personalized-intent-v3`。UIは文字列をseamから受け取りparseしない)
 - privacy-safeなsummary (認識段階で確定できる件数のみ。例: 認識した項目数。app label・folder title・export-scoped `ref`・AI自由文 (`rationale`)・`confidence` は表示しない。validation通過後の件数summary・CTAは #328 の取り込み成功状態が所有する)
-- 失敗時: typed失敗種別ごとの具体的案内 (既存17種の文言体系を維持。#329実装済みなら19種)
+- 失敗時: typed失敗種別ごとの具体的案内 (既存19種の文言体系を維持)
 
 And raw取り込みtextの確認が必要な場合は **折りたたみ** (default閉)・展開時もbounded height + 内部scroll のdetail表示で提供し、200% font時でも主要操作 (再読込・別source・取り込み実行/成功状態への遷移) を画面外へ押し出さない、
 And 取り込みtextは結果確定後に保持せず (再表示が必要な場合はsourceからの再読込)、process memory外へ書き出さない。
@@ -143,7 +144,7 @@ And 取り込みtextは結果確定後に保持せず (再表示が必要な場�
 ### Scenario: 共通import pathの維持 (UI側parseなし)
 
 Given いずれのsourceから取り込んだtextも、
-Then 入力は単一の共通import path (#329 normalizer (実装済みなら) → #205 framing/codec → #204 validator) を通る。UI層はpipeline/seamが返すtyped結果 (失敗種別・framing種別・version・件数) のみを **純粋なprojection関数** で表示modelへ変換し、textを走査・解釈・再構成するlogicを持たない、
+Then 入力は単一の共通import path (#329 normalizer → #205 framing/codec → #204 validator) を通る。UI層はpipeline/seamが返すtyped結果 (失敗種別・framing種別・version・件数) のみを **純粋なprojection関数** で表示modelへ変換し、textを走査・解釈・再構成するlogicを持たない、
 And clipboard/file読込はtext取得のみを担い、#329/#205/#204の判定に影響する変換 (前処理trim・文字置換等) を行わない (transport正規化はnormalizer (#329) の責務)。
 
 ### Scenario: 成功時の境界 (#328との接続)
@@ -186,11 +187,11 @@ SAF filter = `text/plain` + `application/json`。UI copyで「テキスト (.txt
 
 ### D-5: parse-first表示の内容とそのsource
 
-表示項目 = 成否 / framing種別 (#329 enum・未実装ならmarker形式のみ) / 認識version (codec受理値) / privacy-safe件数 / typed失敗案内 / 折りたたみraw (bounded)。値はすべてpipeline/seam由来であり、UI側projectionは純粋関数とする。`rationale` / `confidence` / label / `ref` は非表示 (#328のsummary規約と整合)。
+表示項目 = 成否 / framing種別 (`RecognizedImportFraming` 3値。失敗時は判明範囲のみ表示) / 認識version (codec受理値) / privacy-safe件数 / typed失敗案内 / 折りたたみraw (bounded)。値はすべてpipeline/seam由来であり、UI側projectionは純粋関数とする。`rationale` / `confidence` / label / `ref` は非表示 (#328のsummary規約と整合)。
 
 ### D-6: staged import seam (実装形態の指針、詳細はplan)
 
-共通pathの判定結果を表示できるよう、pipeline/controllerは認識段階の情報 (framing種別・受理version・件数) をoutcomeに含めて返す (additive拡張。UIが二重にparseしないためのseam)。#329 normalizerは同seamへframing enumを挿入する。#329/#328の実装順序に依存しない設計 (どちらが先でも本specのUIは成立する)。
+#329実装により、認識framingの `Prepared` への伝播は済んでいる (DESIGN.md gate 13)。本specはこれに **additive** に (1) 失敗結果への認識framing付与 (判明範囲。失敗種別の区分けは増やさない)、(2) codec受理version・認識件数のoutcome付与 を行い、UIが二重にparseしないseamを完成させる。#328の実装順序に依存しない設計 (どちらが先でも本specのUIは成立する)。
 
 ### D-7: clipboard読み取りの実装規約
 
@@ -214,16 +215,16 @@ SAF filter = `text/plain` + `application/json`。UI copyで「テキスト (.txt
 
 ## Acceptance criteria
 
-- [ ] AC-1: clipboardから1操作 (button 1回押下) でAI回答を読み込み、共通import pathによるparse結果表示まで到達できる。明示操作以外のclipboard access (画面open/resume時の読み取り、listener登録) が存在しないことがtestされる。
+- [ ] AC-1: clipboardから1操作 (button 1回押下) でAI回答を読み込み、共通import path (normalizerを含む) によるparse結果表示まで到達できる。明示操作以外のclipboard access (画面open/resume時の読み取り、listener登録) が存在しないことがtestされる。
 - [ ] AC-2: 対応file (D-3の型) からAI回答を読み込める。対応MIME/type/sizeがUI copyで明示されていること、URI permissionが一時grantのみ (persistable取得なし) で読み取り直後にURIを保持しないことがtestされる。
 - [ ] AC-3: manual pasteはfallbackで、bounded height (内容に比例して伸びない) + field内部scroll + clear操作を持ち、clipboard/file読込が既存内容を置き換えることがtestされる。
 - [ ] AC-4: 長いIntent (数十KB) を読み込んでも、Import画面の全体高さが入力内容に比例して伸びないこと (paste editor・raw detail双方のbounded) がtestされる。
-- [ ] AC-5: 全source (clipboard/file/manual paste) が同一の共通import path (#329実装済みならnormalizerを含む → #205 → #204) を通り、UI層にtextを解釈するlogic (走査・trim・文字置換・version/件数の独自導出) が存在しないことがreview/testで検証される。
+- [ ] AC-5: 全source (clipboard/file/manual paste) が同一の共通import path (#329 normalizer → #205 → #204) を通り、UI層にtextを解釈するlogic (走査・trim・文字置換・version/件数の独自導出) が存在しないことがreview/testで検証される。
 - [ ] AC-6: clipboardの空/読み取り不能・非text・oversized、fileの読み取り失敗・oversizedが、それぞれ区別されたtyped表示と具体的案内で表示されることがtestされる (既存 `INPUT_OVERSIZE` / `FILE_READ_FAILED` との整合を含む)。
 - [ ] AC-7: raw clipboard/file内容がdefaultのdiagnostics・log・永続化へ保存されないこと、import textがoutcome確定後に保持されないことが検証される (regression)。
 - [ ] AC-8: TalkBack (各source操作の識別・typed失敗の読み分け)、Switch Access/keyboard完結、200% font (主要CTA到達性・bounded scroll) のevidenceがある。D-4の実寸確定根拠を含む。
 - [ ] AC-9: representativeなChatGPT/Gemini mobile appからのcopy → NunuLauncher import (clipboard読込による) のdevice evidenceがある。file経由 (AI appの回答をfile保存→読込) も併記することが望ましい。
-- [ ] AC-10: 読み込み後の表示がparse-firstであること (認識framing/version/summaryの表示、rawのdefault折りたたみ、typed失敗ごとの案内) がtestされる。既存typed失敗表示 (17種。#329実装済みなら19種) とexport flow (生成・送信前確認・transport) がregressionなく機能する。
+- [ ] AC-10: 読み込み後の表示がparse-firstであること (認識framing/version/summaryの表示、rawのdefault折りたたみ、typed失敗ごとの案内) がtestされる。既存typed失敗表示 (19種) とexport flow (生成・送信前確認・transport) がregressionなく機能する。
 
 ## Test oracle
 
@@ -238,7 +239,7 @@ SAF filter = `text/plain` + `application/json`。UI copyで「テキスト (.txt
 | AC-7 | diagnostics契約のregression test/review (書込み経路の不在) + outcome後のstate破棄test |
 | AC-8 | 手動/instrumentation evidence (TalkBack・Switch Access・keyboard・font scale 200%。D-4確定根拠) |
 | AC-9 | physical device evidence (docs/assessment/ またはissue記録。#205 AC-10 evidenceと兼ね可) |
-| AC-10 | parse-first表示のUI test (framing/version/summary・raw折りたたみ) + 17種 (19種) 失敗表示regression + export flow regression |
+| AC-10 | parse-first表示のUI test (framing/version/summary・raw折りたたみ) + 19種失敗表示regression + export flow regression |
 
 ## Open questions (acceptance前に解消必要)
 
@@ -248,28 +249,30 @@ SAF filter = `text/plain` + `application/json`。UI copyで「テキスト (.txt
 
 ## Relationship / 責務境界
 
-- **#329 (draft)**: Import Normalizer (text canonicalization・accepted framing)。#332は同normalizerのtyped結果とframing種別closed enum (marker / fenced / standalone。**型名は #329 draftでは未確定**) を共通import path経由で消費し、UI側で独自parseを持たない。#329未実装でも #332は成立する (現行 #205 marker形式pipelineに対して同じseamで接続。framing種別表示はmarker形式のみ)。
+- **#329 (implemented, PR #339)**: Import Normalizer (text canonicalization・accepted framing)。#332は同normalizerのtyped結果とframing種別closed enum (`RecognizedImportFraming`: marker / fenced / standalone) を共通import path経由で消費し、UI側で独自parseを持たない。[spec 329](../329-import-normalizer/spec.md)。
 - **#328 (draft)**: Import成功後の取り込み成功状態 (件数summary・未適用表示・CTA・破棄)。#332はvalidation通過時点までを所有し、接続点で #328へ渡す (未実装の間は #205/#331既存挙動)。#328 specのNon-goalsも同境界を明記済み。
 - **#205 (implemented)**: exchange framing規則・envelope上限 (1 MiB)・transport adapter群・失敗分類 (envelope 4種) は不変。本specはImport surfaceのUX再構成とclipboard読取transportの追加のみ。export側 (privacy選択・session置換確認・送信前確認・transport) は無変更。
 - **#204 (implemented)**: validator/schema不変。認識version表示はcodec受理値の表示のみ。
 - **#331 (implemented)**: run内entry・選択freeze・`attachIntent`・scope binding gateのhosting契約不変 (両entry同一surface)。
-- **#327 / #330 (OPEN)**: instruction/interview設計・authoring contract簡素化。変更面の重なりなし。
+- **#327 (OPEN) / #330 (implemented, PR #335)**: instruction/interview設計・authoring contract簡素化。変更面の重なりなし。
 
 ## Change history
 
 - 2026-09-16: Draft created for #332。baseline `aab0d293d1` (origin/main) 上で現行実装 (`ExchangeImportField` の無制限multiline field・file読込の副次配置・clipboard読取不在・17種失敗表示・hosting両entry) を確認のうえ起草。Android clipboard platform制限 (API 29+ focus要件・Android 12 clipboard access toast・Android 13 sensitive preview) を公式docで確認しD-7へ反映。D-4 (実寸) はIssue指示どおりevidence確定の未決定事項として明示。
 - 2026-09-16: resume検証 (同一baseline)。残存draftをIssue本文・全コメント (0件)・実装source (`ExchangeFlowUi.kt` / `ExchangeTransports.kt` / `IntentImportParser.kt` / `ExchangeFlowController.kt` / `ExchangeImportPipeline.kt` / `ManualOrganizationPreferences.kt` / `ClipboardUtils.kt` / `lawnchair/res` strings / manifest) および #329/#328 draft spec (各branch snapshot) と突き合わせ、(1) import失敗画面の型名を実際の `ExchangeScreen.ImportOutcomeScreen` / `ExchangeImportOutcome` に精緻化、(2) export disclosure側の既存bounded表示pattern (`heightIn(max = 240.dp)` + `verticalScroll`) を問題記述・確認事実へ追記、(3) #329 framing enumの型名が #329 draftで未確定であることを明示、(4) #329/#328 draft specへの参照をIssue URL + branch snapshot表記へ修正、(5) DESIGN.md参照を gate 13 へ修正。statusは **draftのまま** (acceptance判断はowner)。
+- 2026-09-17: Re-entry改訂 (Re-entry rule適用)。#329が実装mergeされた (PR #339) ため、起草時の「実装済みの場合」条件付記述を実装済み前提へ統一: framing種別を `RecognizedImportFraming { MARKER, FENCED_JSON, STANDALONE_JSON }` として確定、失敗文言を19種 (normalization 2種追加済み) に更新、pipeline順序を「envelope gate → #329 normalizer → framing抽出 → decode」へ更新、D-6を「framing伝播は #329で実装済み。#332は失敗時framing付与とversion・件数付与」と再定義。#330実装 (PR #335) によるschema version `personalized-intent-v3` へのbumpを反映。baselineを `45711f53dd40b5cc67013f4a4193d2c6d5b0dcc1` へ更新。
 
 ## References
 
 - [Issue #332](https://github.com/nunu1733/NunuLauncher/issues/332)
 - [Spec 205: External Agent Exchange](../205-external-agent-exchange/spec.md) (implemented。framing/envelope/transport/session・import transport契約)
 - [Spec 204: AI personalization context/intent contract](../204-ai-personalization-context-intent-contract/spec.md) (codec/validator・schema version)
+- [Spec 329: Import Normalizer](../329-import-normalizer/spec.md) (implemented。accepted framing3種・normalization typed失敗2種・認識framingの `Prepared` 伝播)
+- [Spec 330: partial intent authoring v3](../330-partial-intent-authoring/spec.md) (implemented。schema version v3 bump)
 - [Spec 331: exchange target scope coupling](../331-exchange-target-scope-coupling/spec.md) (run内entry・hosting)
-- Spec 329: Import Normalizer — [Issue #329](https://github.com/nunu1733/NunuLauncher/issues/329)。draft snapshotはbranch `issue-329-spec-plan` の `specs/329-import-normalizer/spec.md` (本branch時点では未mergeのため相対linkは未解決)。framing種別closed enum・失敗表示17種→19種
-- Spec 328: Import成功後の状態明示 — [Issue #328](https://github.com/nunu1733/NunuLauncher/issues/328)。draft snapshotはbranch `issue-328-spec-plan` の `specs/328-exchange-import-success-state/spec.md` (同上)。validation通過後の中間状態とCTA
+- Spec 328: Import成功後の状態明示 — [Issue #328](https://github.com/nunu1733/NunuLauncher/issues/328)。draft snapshotはbranch `issue-328-spec-plan` の `specs/328-exchange-import-success-state/spec.md`。validation通過後の中間状態とCTA
 - [Android 10 privacy changes (clipboard access)](https://developer.android.com/about/versions/10/privacy/changes) (確認日 2026-09-16)
 - [Android 12 behavior changes (clipboard access notifications)](https://developer.android.com/about/versions/12/behavior-changes-all) (確認日 2026-09-16)
 - [Android 13 behavior changes (sensitive clipboard preview)](https://developer.android.com/about/versions/13/behavior-changes-all) / [Secure clipboard handling](https://developer.android.com/privacy-and-security/risks/secure-clipboard-handling) (確認日 2026-09-16)
 - [organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md) (raw text記録禁止の正本)
-- [requirements.md](../../docs/product/requirements.md) (FR-017), [CONTEXT.md](../../CONTEXT.md) (「外部エージェント交換」「取り込み」), [DESIGN.md](../../DESIGN.md) gate 13「外部agent交換workflow」(§11 Design gates), [spec 123 (ja/en strings契約)](../123-organizer-ui-convergence/spec.md)
+- [requirements.md](../../docs/product/requirements.md) (FR-017), [CONTEXT.md](../../CONTEXT.md) (「外部エージェント交換」「持ち帰りIntent取り込み」「インポート正規化」), [DESIGN.md](../../DESIGN.md) gate 13「外部agent交換workflow」(§11 Design gates), [spec 123 (ja/en strings契約)](../123-organizer-ui-convergence/spec.md)
