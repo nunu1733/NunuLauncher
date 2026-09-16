@@ -67,6 +67,10 @@ import app.lawnchair.organizer.rules.ClassificationPolicy
 import app.lawnchair.organizer.rules.OverrideSnapshotReadResult
 import app.lawnchair.organizer.rules.PolicyInputIdentity
 import app.lawnchair.organizer.rules.PolicySourceKind
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogIdentity
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogReadResult
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogSnapshot
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogSource
 import app.lawnchair.organizer.ui.CategoryOverrideAuthoringCoordinator
 import app.lawnchair.organizer.ui.CategoryOverrideAuthoringResult
 import com.android.launcher3.LauncherAppState
@@ -213,7 +217,8 @@ class ProductionOrganizationInputInstrumentationTest {
                         .firstOrNull { it.item == itemId }
                         ?.takeIf { it.source == SignalSource.S1 }
                         ?.let { signal ->
-                            assertTrue("composer observed a partial/invalid generation", signal.candidate in allowed)
+                            val candidate = signal.candidate as? app.lawnchair.organizer.planning.CategoryIdentity.BuiltIn
+                            assertTrue("composer observed a partial/invalid generation", candidate != null && candidate.id in allowed)
                         }
                 }
             }
@@ -297,6 +302,7 @@ class ProductionOrganizationInputInstrumentationTest {
                 },
                 layoutStrategySelections = EmptyLayoutStrategySelectionSource(),
                 overrides = EmptyOverrideSnapshotSource(),
+                userDefinedCategories = UserDefinedCategoryCatalogSource { UserDefinedCategoryCatalogReadResult.Ready(emptyCatalogSnapshot()) },
                 platformEvidence = EmptyEvidenceSource(),
                 overlapTolerance = WorkspaceOverlapToleranceSource { true },
             ).composeFullOrganization()
@@ -394,6 +400,7 @@ class ProductionOrganizationInputInstrumentationTest {
                 },
                 layoutStrategySelections = EmptyLayoutStrategySelectionSource(),
                 overrides = EmptyOverrideSnapshotSource(),
+                userDefinedCategories = UserDefinedCategoryCatalogSource { UserDefinedCategoryCatalogReadResult.Ready(emptyCatalogSnapshot()) },
                 platformEvidence = EmptyEvidenceSource(),
                 overlapTolerance = WorkspaceOverlapToleranceSource { true },
             ).composeFullOrganization()
@@ -408,6 +415,7 @@ class ProductionOrganizationInputInstrumentationTest {
                 },
                 layoutStrategySelections = EmptyLayoutStrategySelectionSource(),
                 overrides = EmptyOverrideSnapshotSource(),
+                userDefinedCategories = UserDefinedCategoryCatalogSource { UserDefinedCategoryCatalogReadResult.Ready(emptyCatalogSnapshot()) },
                 platformEvidence = EmptyEvidenceSource(),
                 overlapTolerance = WorkspaceOverlapToleranceSource { false },
             ).composeFullOrganization() as OrganizationInputComposition.NotReady
@@ -540,6 +548,7 @@ class ProductionOrganizationInputInstrumentationTest {
                 },
                 layoutStrategySelections = EmptyLayoutStrategySelectionSource(),
                 overrides = EmptyOverrideSnapshotSource(),
+                userDefinedCategories = UserDefinedCategoryCatalogSource { UserDefinedCategoryCatalogReadResult.Ready(emptyCatalogSnapshot()) },
                 platformEvidence = EmptyEvidenceSource(),
                 overlapTolerance = WorkspaceOverlapToleranceSource { true },
             ).composeFullOrganization()
@@ -625,6 +634,7 @@ class ProductionOrganizationInputInstrumentationTest {
                     },
                     layoutStrategySelections = EmptyLayoutStrategySelectionSource(),
                 overrides = EmptyOverrideSnapshotSource(),
+                userDefinedCategories = UserDefinedCategoryCatalogSource { UserDefinedCategoryCatalogReadResult.Ready(emptyCatalogSnapshot()) },
                     platformEvidence = EmptyEvidenceSource(),
                     overlapTolerance = WorkspaceOverlapToleranceSource { true },
                 ).composeFullOrganization()
@@ -687,6 +697,7 @@ class ProductionOrganizationInputInstrumentationTest {
                     },
                     layoutStrategySelections = EmptyLayoutStrategySelectionSource(),
                 overrides = EmptyOverrideSnapshotSource(),
+                userDefinedCategories = UserDefinedCategoryCatalogSource { UserDefinedCategoryCatalogReadResult.Ready(emptyCatalogSnapshot()) },
                     platformEvidence = EmptyEvidenceSource(),
                     overlapTolerance = WorkspaceOverlapToleranceSource { true },
                 ).composeFullOrganization()
@@ -1281,3 +1292,10 @@ private class EmptyOverrideSnapshotSource : CategoryOverrideSnapshotSource {
         const val OVERRIDE_FILE_NAME = "snapshot-v1"
     }
 }
+
+private fun emptyCatalogSnapshot() = UserDefinedCategoryCatalogSnapshot(
+    schemaVersion = 1,
+    generation = 0L,
+    categories = emptyList(),
+    identity = UserDefinedCategoryCatalogIdentity.emptyCatalogSentinel(),
+)
