@@ -10,7 +10,7 @@ updated: 2026-09-16
 
 # External Agent向けPersonalizedIntent authoring contractの簡素化 (partial authoring契約)
 
-> Status: **draft** (2026-09-16) — 本specはIssue本文が要求する「案の比較と採否のspec化」を固定するものである。D-1〜D-5は **draft decision** であり、owner reviewによる受入れ前に実装してはならない (AGENTS.md「Issueまたは承認済みspecがない機能実装は開始しない」)。本specはimplementedであるspec 204 / 205 / 331と矛盾しない **拡張** として起草しており、受入れ時にこれらのChange historyへ拡張記録を追加する。
+> Status: **draft** (2026-09-16) — 本specはIssue本文が要求する「案の比較と採否のspec化」を固定するものである。D-1〜D-6は **draft decision** であり、owner reviewによる受入れ前に実装してはならない (AGENTS.md「Issueまたは承認済みspecがない機能実装は開始しない」)。本specはimplementedであるspec 204 / 205 / 331と矛盾しない **拡張** として起草しており、受入れ時にこれらのChange historyへ拡張記録を追加する。
 
 ## Problem
 
@@ -114,10 +114,10 @@ Design questions 1〜4の比較は、次の軸で評価する。
 **D-4 (draft): validator通過後に純粋なcompleterがcomplete canonical representationを構成し、これがPlannerへの唯一の入力となる。authored文書は診断用にのみ保持する。**
 
 - complete表現 (`CompletedPersonalIntent`、名称はplanで確定) は「export全refがちょうど1回現れる完全分割」を型/不変条件として持つ。各refのdecisionは次の3種:
-    - `Authored(ItemIntent)` — AIが `itemIntents` に書いた内容 (そのまま)
-    - `UnresolvedAuthored` — AIが `unresolvedRefs` に明示した判断なし
+    - `Authored(ItemIntent)` — AIが `itemIntents` に書いた内容のうち、**少なくとも1つのsemantic fieldを持つentry** (そのまま)
+    - `UnresolvedAuthored` — AIが `unresolvedRefs` に明示した判断なし、および **全semantic fieldがnullのbare entryをcompleterが正規化した判断なし** (D-6)
     - `UnresolvedByOmission` — 未言及をcanonicalizeした判断なし
-- completerは **pure・total・deterministic** な単一関数とし、validator seamの内側 (`IntentValidator.validate` の成功path) に置く。呼び出し側とtestは従来どおり単一のvalidator seamを使う (AGENTS.md seam規約)。
+- completerは **pure・total・deterministic** な単一関数とし、validator seamの内側 (`IntentValidator.validate` の成功path) に置く。呼び出し側とtestは従来どおり単一のvalidator seamを使う (AGENTS.md seam規約)。bare entryの正規化を含め、completerが行うのはrefへの **状態の付与のみ** であり、`ItemIntent` のfield値の生成・書換は行わない。
 - `IntentPlannerAdapter` は `Authored` decisionのみを `ItemPreference` へ投影する (`UnresolvedAuthored` / `UnresolvedByOmission` はpreferenceを生成しない)。この結果、**omissionされたrefのplanner効果は、`unresolvedRefs` に明示されたrefと完全に同一** である。
 - authored文書 (v3 partial) はplanner・preview・applyへは渡されない。diagnostics・UI表示のためだけに `ValidatedPersonalizedIntent` 上に保持する。
 - content limits: authored側の上限 (`MAX_INTENT_ENTRIES` / `MAX_INTENT_UNRESOLVED` / `MAX_INTENT_BYTES`) は無変更。complete表現のunresolved数はexport items数 (≤512) に自然にboundされ、既存の上限不変条件を満たす。
@@ -127,6 +127,16 @@ Design questions 1〜4の比較は、次の軸で評価する。
 - canonical row grammarは現行 (`item|ref|...` / `unresolved|ref`) を維持し、`UnresolvedAuthored` と `UnresolvedByOmission` は同じ `unresolved|ref` rowを生成する。よって「明示unresolved」と「省略」は **同一のsemantic identity** を持つ (どちらも判断なしであり、区別すべき意味的差異がない)。`UnresolvedByOmission` であることの情報はdiagnostics用の別fieldでありidentityに入らない。
 - 同一authored文書 + 同一export refsからは常に同一identityが決定的に得られる (determinism契約の継続)。
 
+**D-6 (draft): bare entry (全semantic fieldがnullの `itemIntents` entry、すなわち `ref` のみのentry) はcompletionでcanonical unresolvedへ正規化し、「明示unresolved」「省略」「bare entry」の3表現を同一のsemantic identityとする。**
+
+- bare entryはいかなるsemantic fieldも持たないため、planner効果は実際に存在しない (現行実装の全consumerが `desiredGroup` / `preserve == true` / `regionAffinity` / `pageAffinity` / `importance` 等の個別fieldのみを参照し、all-nullな `ItemPreference` の **出現そのもの** には効果がない。`FullRunExecution.kt` の各preference消費箇所で確認)。よって「bare entryを独立したauthored stateとしてidentity上も区別する」選択は、planner効果が同一であるpayload群に対してidentityだけが分岐する状態を作り、dedupe / replay契約を実装依存にするため **不採用** とする。
+- 採用する規則は単一かつ閉じている: **identityはrefごとのsemantic内容のみの関数であり、semantic fieldを1つも持たないrefは表現形式にかかわらず `unresolved|ref` rowになる**。これにより「同じplanner効果 ⇒ 同じidentity」が常に成立する。
+- 検証との相互作用は次のとおり (いずれも検証規則は無変更):
+    - bare entryは検証段では通常の `itemIntents` entryとして扱われる。存在しないrefへのbare entryは `UNKNOWN_REF` でrejectされる (正規化は検証後のcompletionで行われるため、unknown refの自動許可にはならない)。
+    - bare entryはsemantic fieldを持たないため `MOBILITY_CONTRADICTION` の対象にならない (現行と同一)。
+    - `preserve: false` 等、**1つでもfield値が存在するentryはbare entryではない** (`Authored` のままitem行でidentityに参加する)。
+- bare entryであったことの情報 (表現形式のprovenance) は、diagnostics用に保持するauthored文書からのみ取得可能であり、identity・planner効果・dedupe・replayのいずれにも現れない。
+
 ## Contract変更詳細 (v3)
 
 1. `schemaVersion`: intent `personalized-intent-v3`、context `personalization-context-v3`。unknown versionは従来どおり `SCHEMA_MISMATCH`。
@@ -134,11 +144,12 @@ Design questions 1〜4の比較は、次の軸で評価する。
 3. **coverage規則の変更**: 「`itemIntents` refs ∪ `unresolvedRefs` == 全exported refs (かつ互いに素)」を、「両集合が互いに素 (`unresolvedRefs` 内の重複を含む)」へnarrowする。全数cover要求は廃止。
     - `INCOMPLETE_COVERAGE` classは **維持する** (class数13・UI失敗表示17種は不変)。v3における意味は「分割違反 (同一refの両方出現・unresolved内重複)」へnarrowされ、表示文言はこの条件に合わせて更新する。
 4. 未言及ref = canonical unresolved。推測補完の禁止はcompleterの閉じた仕様 (状態の付与のみ・field値の生成禁止) として強制される。
-5. mobility検証 (`MOBILITY_CONTRADICTION` の条件表) はv2から無変更。omissionに対してmobility検証は適用されない (何も書かれていないため)。
-6. `UNKNOWN_REF` / `DUPLICATE_REF` / `FORBIDDEN_CONTENT` / `INVALID_ENUM` / `EXPORT_MISMATCH` / `SESSION_EXPIRED` / `CONTEXT_STALE` / `SCOPE_MISMATCH` (run側gate) はすべて無変更。
-7. **完全omission intent** (`itemIntents` 空かつ `unresolvedRefs` 空) は正当である。planner効果はall-unresolved明示と同一 (preferenceなし、`globalPreference` のみ有効)。
-8. **exchange package instruction**: "Cover every ref exactly once..." の要求を、部分authoringを認める文言へ置き換える (「判断したitemと判断できなかったitemだけを書くこと。書かなかったrefは判断なしとして扱われ、推測されない」趣旨。最終copyは実装PR/#327との合成で調整)。
-9. **UI失敗表示**: 種類数は不変。`INCOMPLETE_COVERAGE` の案内文言を「両方に列挙されたrefがある」条件へ更新する (ja/en)。import成功時にAIが判断済みの件数を表示する導線は本specの対象外 (#332/#205 UI側でcomplete表現の情報から可能。本specはdiagnosticsがauthored/canonical別の計数を保持することのみ要求)。
+5. **bare entry (全semantic fieldがnullの `itemIntents` entry)**: 検証段では通常の `itemIntents` entryとして扱い (未知ref・重複・forbidden content等の検証対象。規則無変更)、受入れ後のcompletionでcanonical unresolvedへ正規化する (D-6)。3表現 (明示unresolved / 省略 / bare entry) は同一identity・同一planner効果。
+6. mobility検証 (`MOBILITY_CONTRADICTION` の条件表) はv2から無変更。omissionに対してmobility検証は適用されない (何も書かれていないため)。bare entryはsemantic fieldを持たないため対象にならない (現行と同一)。
+7. `UNKNOWN_REF` / `DUPLICATE_REF` / `FORBIDDEN_CONTENT` / `INVALID_ENUM` / `EXPORT_MISMATCH` / `SESSION_EXPIRED` / `CONTEXT_STALE` / `SCOPE_MISMATCH` (run側gate) はすべて無変更。
+8. **完全omission intent** (`itemIntents` 空かつ `unresolvedRefs` 空) は正当である。planner効果はall-unresolved明示と同一 (preferenceなし、`globalPreference` のみ有効)。
+9. **exchange package instruction**: "Cover every ref exactly once..." の要求を、部分authoringを認める文言へ置き換える (「判断したitemと判断できなかったitemだけを書くこと。書かなかったrefは判断なしとして扱われ、推測されない」趣旨。最終copyは実装PR/#327との合成で調整)。
+10. **UI失敗表示**: 種類数は不変。`INCOMPLETE_COVERAGE` の案内文言を「両方に列挙されたrefがある」条件へ更新する (ja/en)。import成功時にAIが判断済みの件数を表示する導線は本specの対象外 (#332/#205 UI側でcomplete表現の情報から可能。本specはdiagnosticsがauthored/canonical別の計数を保持することのみ要求)。
 
 ## #329 Import Normalizerとの責務境界
 
@@ -200,6 +211,19 @@ Design questions 1〜4の比較は、次の軸で評価する。
 **When** 両方を取り込む、
 **Then** 両者とも受理され、identity (digest) は同一であり (canonical row `unresolved|R` が両者で生成される)、planner効果も同一である。
 
+### Scenario: bare entryの正規化とsemantic同一性 (D-6)
+
+**Given** 同一exportに対し、intent I1がref Rを全semantic fieldがnullの `itemIntents` entry (bare entry) として記述し、intent I2がRを `unresolvedRefs` に明示し、intent I3がRを省略している (他は同一)、
+**When** 3件をimportする、
+**Then** 3件とも受理され、identity (digest) は3者同一であり (canonical row `unresolved|R` が共通)、planner効果 (preference不生成) も同一である、
+**And** bare entryであったことの情報はdiagnostics用のauthored文書にのみ残り、identity・dedupe・replayのいずれにも現れない。
+
+### Scenario: bare entryは検証対象から外れない (D-6)
+
+**Given** intentがexportに存在しない `ref` を全field nullのbare entryとして `itemIntents` に含む、
+**When** importされる、
+**Then** `UNKNOWN_REF` でrejectされる (bare entryの正規化は検証後のcompletionで行われるため、unknown refが正規化を経て自動受理されることはない)。
+
 ### Scenario: #329 normalizerとの境界
 
 **Given** #329実装後、code fenceで囲まれたintent v3がimportされる、
@@ -208,11 +232,11 @@ Design questions 1〜4の比較は、次の軸で評価する。
 
 ## Acceptance criteria
 
-- [ ] AC-1: Design questions 1〜4の各案の比較と採否が本specに固定されている (A/B/C、a/b/c、versioning 3案、complete表現)。**draft decision D-1〜D-5はowner受入れで確定する**。
-- [ ] AC-2: 未言及refの意味が常に `unresolved` / no-op相当であり、semantic inferenceを行わないことが契約・実装・test (property: completerはfield値を生成しない、omission ≡ 明示unresolvedのplanner効果) で検証される。
+- [ ] AC-1: Design questions 1〜4の各案の比較と採否が本specに固定されている (A/B/C、a/b/c、versioning 3案、complete表現)。**draft decision D-1〜D-6はowner受入れで確定する**。
+- [ ] AC-2: 未言及refの意味が常に `unresolved` / no-op相当であり、semantic inferenceを行わないことが契約・実装・test (property: completerはfield値を生成しない、omission ≡ 明示unresolved ≡ bare entryのplanner効果) で検証される。
 - [ ] AC-3: FIXED/locked itemのAI authoring責任を減らしてもlock bypassが不可能であること (FIXED refへのsemantic fieldの `MOBILITY_CONTRADICTION` reject、承認済preference下でもplanner保持判断・lock/bounds制約が不変であること) がtestで検証される。
-- [ ] AC-4: Plannerへ渡す前にcomplete canonical representationへ変換されること (全export refがちょうど1回現れる分割のcompleteness property。authored partial文書がplanner/previewへ渡らないこと) がtestで検証される。
-- [ ] AC-5: unknown / out-of-scope refが従来どおり `UNKNOWN_REF` でrejectされること (省略許容の対象外であること) がtestで検証される。
+- [ ] AC-4: Plannerへ渡す前にcomplete canonical representationへ変換されること (全export refがちょうど1回現れる分割のcompleteness property。authored partial文書がplanner/previewへ渡らないこと) がtestで検証される。D-6のstable identity (bare entry / 明示unresolved / 省略の3表現が同一digest・同一projectionとなり、同一semantic内容のreplayが同一identityを返すこと) もtestで検証される。
+- [ ] AC-5: unknown / out-of-scope refが従来どおり `UNKNOWN_REF` でrejectされること (省略許容の対象外であること。bare entryであっても対象外であること) がtestで検証される。
 - [ ] AC-6: 既存V1/V2互換性とversioning strategy (v3 bump、旧version文書のfail-closed拒否、export session無影響、identity schemaVersion更新、#206 managed AIのsuperset互換) が明文化されtestで検証される。
 - [ ] AC-7: coverage omission / fixed omission / explicit unresolved / malicious lock overrideの各testが存在する。
 - [ ] AC-8: #329 normalizerとの責務境界 (normalizerは外形のみ・completerは意味のみ、normalizerがrefを追加しない) が明文化され、境界testで検証される。
@@ -222,10 +246,10 @@ Design questions 1〜4の比較は、次の軸で評価する。
 | AC | Evidence |
 |---|---|
 | AC-1 | 本specの比較表とDecisions (review対象。実装不要) |
-| AC-2 | completer unit/property test: omission → `UnresolvedByOmission` のみ生成・`ItemIntent` field不生成、planner投影等価test (omission ≡ explicit unresolved)、完全omission intent受理test |
+| AC-2 | completer unit/property test: omission → `UnresolvedByOmission` のみ生成・`ItemIntent` field不生成・bare entry → `UnresolvedAuthored` 正規化、planner投影等価test (omission ≡ explicit unresolved ≡ bare entry)、完全omission intent受理test |
 | AC-3 | validator corpus test: FIXED refへの `importance`/`pageAffinity`/`desiredGroup` 等の `MOBILITY_CONTRADICTION` (維持)、CANDIDATE refへの `preserve` reject (維持)、受理済preferenceを含むrunでのplanner保持判断不変の既存property suite回帰 |
-| AC-4 | completeness property test (complete表現がexport全refの分割)、authored文書の非流出 (adapter入力の型/契約test)、identity決定性test (同一authored + 同一refs → 同一digest) |
-| AC-5 | validator unit test (`UNKNOWN_REF` corpus: 未選択候補・新規install・完全な虚構ref) |
+| AC-4 | completeness property test (complete表現がexport全refの分割)、authored文書の非流出 (adapter入力の型/契約test)、identity決定性test (同一authored + 同一refs → 同一digest)、D-6 stable identity / replay test (bare entry / 明示unresolved / 省略の3表現が同一digest・同一projection、同一semantic内容の再importが同一identity) |
+| AC-5 | validator unit test (`UNKNOWN_REF` corpus: 未選択候補・新規install・完全な虚構ref。bare entryの未知refを含む) |
 | AC-6 | codec contract test (v1/v2拒否・v3受入)、session record無影響test (既存 `AndroidExportSessionStoreTest` 回帰)、instruction文言契約test、identity schemaVersion assert |
 | AC-7 | validator/completer corpus test (4系統のfixture。Issue ACの直接対応) |
 | AC-8 | 境界明文化 (本spec) + #329実装時の境界test (本spec受入れ時点では文言・順序図の固定のみ。#329側specへ相互参照を残す) |
@@ -237,16 +261,19 @@ Design questions 1〜4の比較は、次の軸で評価する。
 - **D-3: context/intentを同時にv3 bumpし、dual-version runtimeを持たない。** envelope形式・exchange固有補完層は不採用 (bump回避にならない、#206単一契約性を損なう)。保存済み文書は存在しない (永続化されるのはsessionのみで、sessionはintent schemaを保持しない)。v2 era session宛回答は `SCHEMA_MISMATCH` で再export案内 (spec 331と同じ移行扱い)。
 - **D-4: completerをvalidator seam内の純粋関数とし、complete表現をPlannerへの唯一の入力とする。** authored文書は診断用のみ。`IntentPlannerAdapter` の消費semanticは無変更 (authored decisionのみ)。
 - **D-5: identityはcomplete表現上で計算し、明示unresolvedとcanonical unresolvedを同一identityとする。** (semantic identity = 判断なし。provenance詳細はidentity外のdiagnostics field。)
+- **D-6: bare entry (全semantic fieldがnullのitemIntents entry) はcompletionでcanonical unresolvedへ正規化し、明示unresolved / 省略 / bare entryの3表現を同一semantic identityとする。** identityをrefごとのsemantic内容のみの関数に限定し、「同じplanner効果 ⇒ 同じidentity」(dedupe / replay契約の実装非依存性) を保証する。bare entryを独立したauthored stateとしてidentity上区別する案は、planner効果が同一であるpayload群でidentityだけが分岐するため不採用。表現形式のprovenanceはdiagnostics用のauthored文書にのみ残る。
 
 ## Open questions (owner判断事項)
 
-1. **D-1〜D-5の受入れ**: 本specはdraftであり、各draft decisionの承認 (または差し替え) が実装開始の前提である。
+1. **D-1〜D-6の受入れ**: 本specはdraftであり、各draft decisionの承認 (または差し替え) が実装開始の前提である。
 2. **instruction文言の最終copy**: v3の部分authoringを説明するexchange package文言は、#327 (interview-first) のprompt再設計と合成される際に最終調整が必要である (本specは要求内容のみ固定)。
-3. **bare-ref entryの扱い**: field全nullの `ItemIntent` (refのみ) は現行合法であり、planner効果はomissionと等価だがidentityは異なる (canonical rowが `item|ref|-|...` となる)。本specは維持する草案だが、v3で非推奨とする選択もあり得る (実装PRで確定してよい軽微事項)。
+
+(旧Open question 3「bare-ref entryの扱い」は、review Required finding の対応として **D-6 として本specで固定** したため解消済み。)
 
 ## Change history
 
 - 2026-09-16: Draft created for Issue #330。baseline `aab0d293d1` (origin/main、#331実装merge後) 上で起草。現行実装 (`IntentValidator.kt` のcoverage partition / mobility検証、`IntentCodec.kt`、`ExchangePackageComposer.kt` instruction、`IntentIdentity.kt`、`IntentPlannerAdapter.kt`、`AndroidExportSessionStore.kt`) とimplemented specs 204/205/331を確認し、Issue本文の4 design questionについて比較軸 (i)〜(vi) を固定してA/B/C・a/b/c比較とdraft decisions D-1〜D-5を起草。statusはdraft (owner受入れ待ち)。
+- 2026-09-16: Re-entry (review Required finding対応)。Issue #330 review (comment 5698080251) のRequired「bare `{"ref":"X"}` の semantic identity を Spec で固定する」に対応し、旧Open question 3を **D-6** (bare entryのcanonical unresolved正規化・3表現同一identity。review提示の選択肢1) として確定した。根拠として現行plannerの全preference consumerが個別fieldのみを参照しall-null `ItemPreference` に効果がないことを `FullRunExecution.kt` で再確認。scenario 2件・AC-2/4/5・test oracle・Contract変更詳細を更新。baseline変更なし (`aab0d293d1` のまま)。statusは引き続きdraft。
 
 ## References
 
