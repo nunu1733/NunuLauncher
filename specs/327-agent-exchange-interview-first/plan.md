@@ -2,40 +2,46 @@
 
 > Issue: #327
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: draft (spec revision 2に対応。spec acceptance後にimplementation-ready)
 
 ## Current evidence
 
-origin/main (`aab0d293d1a98bf59f5b164693f54ee1a63e3f0b`) 時点の確認事実 (worktree `nl-wt-327` で検証)。
+origin/main (`8fd05a40d51abd24b40a7b93579bb9b76d046f75`、#348 merge後) 時点の確認事実。
 
-- **promptの実source**: `lawnchair/src/app/lawnchair/organizer/personalization/exchange/ExchangePackageComposer.kt`。instruction部は同file内のprivate const `INSTRUCTION_HEADER` / `INSTRUCTION_FOOTER` (英語、static text)。現行構成は #205 Decision 2の4 section (Goal / You may / You must / Response format)。質問に関する文言は「You may: ... Ask the user clarifying questions if the request is ambiguous」の1行 (曖昧時のみの**許可**) のみで、Phase概念・質問数のbound・要約と了承の要求・exampleは存在しない。Response format節は marker行 `-----BEGIN/END NUNULAUNCHER INTENT-----` を含み (例示として裸のmarker行がheader内にある)、`personalized-intent-v2` と `unresolvedRefs` に言及する。#331由来の `subject: CANDIDATE` 扱いの行も含まれる。
-- **package合成seam**: `ExchangePackageComposer.compose(exportJson)` は `INSTRUCTION_HEADER + CONTEXT_BEGIN_MARKER + exportJson (単行) + CONTEXT_END_MARKER + INSTRUCTION_FOOTER` を返すimmutable値。`parsePackageStructure` はCONTEXT marker単一対・非空data・非空header/footerを機械検証 (#205 AC-1)。composerを呼ぶのは `organizer/integration/exchange/ExchangeFlowController.generate` (idle / run-in両entryで同一composer。#331で `generateForSelection` が追加済み)。
-- **UI copyの実source**: `lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeFlowUi.kt` (`ExchangeEntryRow` / `ExchangeScopedEntryRow` / `ExchangeDisclosure` / status表示) と `lawnchair/res/values/strings.xml` (en) / `lawnchair/res/values-ja/strings.xml` (ja)。現行の説明は `exchange_entry_subtitle` (「ChatGPT等の外部AIへの依頼文を作成し、回答を検証付きで取り込めます。」) と `exchange_scoped_entry_subtitle` のみで、capability具体例・「直接変更しない」明示・会話flow説明は不在。送信完了は `exchange_transport_success` (「送信 (またはコピー) しました。後でAIの回答を貼り付けて取り込めます。」)。
-- **intent schema (exampleの対象)**: `organizer/personalization/ContextExportModels.kt` の `ContextExportContract.INTENT_SCHEMA_VERSION = "personalized-intent-v2"`、`IntentCodec.kt` の閉schema allow-list (top: `schemaVersion`/`exportId`/`itemIntents`/`unresolvedRefs`/`globalPreference`/`rationale`/`confidence`、item: `ref`/`importance`/`desiredGroup`/`groupSemantic`/`pageAffinity`/`regionAffinity`/`preserve`、global: `minimizeMovement`)。`IntentCodec.encode` はcompact単行JSON。
-- **既存test表面**: `tests/unit/app/lawnchair/organizer/personalization/exchange/ExchangePackageComposerTest.kt` (4 section存在・marker埋込・schemaVersion string・data単行・構造破壊のtyped reject)。UI側は `tests/unit/app/lawnchair/organizer/ui/exchange/` に `ExchangeFlowStateHolderTest` / `ExchangeDisclosureStateTest` (state machine中心、copy内容のassertなし)。
-- **後続evidence状況**: #205 AC-9/AC-10 (a11y・physical-device representative evidence) は後続evidence PR対象のまま残っている。#327のAC-7 (representative provider会話) / AC-8 (a11y) は同じevidence PRに合同で載せられる。
+- **promptの実source**: `lawnchair/src/app/lawnchair/organizer/personalization/exchange/ExchangePackageComposer.kt`。#348実装後の構成は `compose(exportJson)` が `INSTRUCTION_OPEN` (Goal / You may) → `outputContractSection()` (`IntentWireContract` descriptorから整形) → `youMustSection()` (production-enforced規則 + FIXED/CONDITIONAL/CANDIDATE authoring規則 + partial authoring + ask-before-final) → CONTEXT marker間にexport JSON単行 → `INSTRUCTION_FOOTER` (finalize前self-check + Response format) をこの順で連結するimmutable値。質問関連は「You may: Ask the user clarifying questions while you work, before you finalize」と「You must: If information you need is missing, ask the user before you finalize — do not fill the gap by inventing properties or values」のみで、初回応答でのヒアリング原則・質問数bound・整理方針要約/確認・canonical exampleは存在しない。Response formatは単一fenced `json` block要求 (marker行の要求なし、`ExchangePackageComposerTest` が `!pkg.contains("-----BEGIN NUNULAUNCHER INTENT-----")` までassert)。
+- **composerの純粋性**: instructionはdescriptor (`IntentWireContract`、静的data) と静的proseからのcompose時整形であり、export JSONを解釈しない。`compose(exportJson: String)` signature・`parsePackageStructure` (CONTEXT marker単一対・非空data・非空header/footer) は #205 AC-1を引き続き満たす。
+- **#348の回帰test表面**: `tests/unit/app/lawnchair/organizer/personalization/exchange/Issue348AiFacingContractSyncTest.kt` が (a) descriptor↔codec allow-list一致、(b) composer出力のdescriptor派生containment (enum値・bounds・上限のpositive render)、(c) self-check / ask-before-final文のpinning、(d) repair導線の否定assertion、(e) `PRODUCTION_ENFORCED` parity fixture/matrix、(f) authoring policy matrix、(g) golden canonical payload、(h) #345 regression fixtureを検証する。本変更は (a)〜(d) に触れるtext差分を含むため、このtest群が **無変更で通り続けること** を本planの回帰条件とする。
+- **既存composer test**: `ExchangePackageComposerTest.kt` がsection存在と順序 (Goal / You may / Output contract / You must / Before sending / Response format)、canonical authoring form要求 (` ```json `、single fenced code block、marker行の不在)、partial authoring文言 (`Author only what you actually judged`、`you do not have to cover every ref`、`!contains("Cover every")`)、data単行、descriptor property名の全render、tamper typed rejectをassertする。本変更で **既存assertを弱めず** 拡張する。
+- **UI copyの実source**: `lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeFlowUi.kt` — `ExchangeEntryRow` (testTag `exchange-entry-title` / `exchange-entry-subtitle系` / `exchange-entry-open` / `exchange-entry-import`) と `ExchangeScopedEntryRow` (testTag `exchange-scoped-entry-*`) が `stringResource(R.string.exchange_entry_subtitle)` / `exchange_scoped_entry_subtitle` を表示。capability具体例・「直接変更しない」明示・会話flow説明は不在。送信完了は `exchange_transport_success`。#332 implementedのimport入力欄 (`exchange-import-*` testTag群) は本planの対象外。
+- **strings**: `lawnchair/res/values/strings.xml` (en) / `values-ja/strings.xml` (ja正本)。`exchange_entry_title` / `exchange_entry_subtitle` / `exchange_scoped_entry_subtitle` / `exchange_transport_success` が現行copy。#348が失敗案内4 keyを更新済み (本planでは触れない)。
+- **intent schema (exampleの対象)**: `ContextExportContract.INTENT_SCHEMA_VERSION = "personalized-intent-v3"`、`IntentWireContract` descriptor (top-level / item / globalPreference / groupSemanticの名前集合・enum・制限定数・enforcement分類つき主張)、`IntentCodec` (allow-listはdescriptor派生、compact単行JSON encode)。
+- **後続evidence状況**: #205 AC-9/AC-10系・#348 AC-11 (representative provider first-pass evidence) のevidence PR慣行あり (#345 / assets-345-import-evidence)。#327のAC-7 (representative provider会話) / AC-8 (a11y) は同じ後続evidence PRに合同で載せられる。
 
 ## Design
 
 ### Modules and interfaces
 
-変更は既存module内の閉じた差分のみ。新規module・新規interface・新規seamは追加しない。
+変更は既存module内の閉じた差分のみ。新規module・新規public interface・新規seamは追加しない。
 
-1. **`ExchangePackageComposer.kt` (pure、既存)**: `INSTRUCTION_HEADER` / `INSTRUCTION_FOOTER` 定数をinterview-first 2-phase構成へ書き換える。構造は (a) Goal、(b) Phase 1 — interview (初回応答でのIntent生成分禁止、原則ヒアリング、2〜4問bound、質問主题の例、要約と了承、skip時の扱い)、(c) You must (既存遵守事項の維持)、(d) Phase 2 — Response format (marker・schema version・coverage・exportId echo + canonical example)、の順。exampleはplaceholderを含むstatic JSON text (composer file内のprivate const、または同packageの `ExchangeIntentExample.kt` へ分離 — 実装時に長さを見て決定、#204側moduleへの変更不可)。
-   - composer signature (`compose(exportJson: String)`) は不変。instructionは引き続き静的 (spec Decision 3)。
-   - `parsePackageStructure`・`ExchangeContract` (marker・envelope上限) は無変更。
-2. **`ExchangeFlowUi.kt` (ui、既存)**: `ExchangeEntryRow` / `ExchangeScopedEntryRow` にcapability説明 (具体例リスト、「AIはホーム画面を直接変更しない」明示、期待される会話flow) を追加。既存 `Column` + `Text` 構成の拡張、testTag付与。`ExchangeStatus` copy (transport success) の文言更新はstrings側で対応。
-3. **strings (既存)**: `exchange_entry_subtitle` をcapability説明へ置換または新規strings (`exchange_capability_*` 系) を追加。en (`values/strings.xml`) + ja (`values-ja/strings.xml`) 両方 (ja正本)。
+1. **`ExchangePackageComposer.kt` (pure、既存)**:
+   - `INSTRUCTION_OPEN` をinterview-first 2-phase構成へ書き換える。構成: Goal (2-phase workflowの明示を含む) → Phase 1指示 (初回応答での最終JSON artifact禁止、原則ヒアリング、2〜4問bound、質問主题の例、skip時の扱い: 要約+最終を同一返答) → 整理方針要約と了承要求 → You may (web検索等の調査許可。旧clarifying questions行はPhase 1指示へ統合)。Output contract section・You must sectionの文は **1つも変更しない**。
+   - `INSTRUCTION_FOOTER` を「確認後にのみ最終回答を返す」phase gateの追記 + Response format節へのcanonical example同梱へ拡張する。self-check文・fence要求文は既存のまま保持する。
+   - canonical exampleはcomposer file内のprivate定数 (例: `CANONICAL_INTENT_EXAMPLE`) とする。単一file内で完結し、#204側moduleへの変更は行わない。
+   - `compose(exportJson: String)` signature・`parsePackageStructure`・`ExchangeContract` (marker・envelope上限) は無変更。instructionは引き続き静的合成 (spec Decision 3)。
+2. **`ExchangeFlowUi.kt` (ui、既存)**: `ExchangeEntryRow` / `ExchangeScopedEntryRow` にcapability説明 (具体例リスト、「AIはホーム画面を直接変更しない」明示、期待される会話flowと1往復の受け渡し、会話はNunuLauncherを経由しない旨) を追加。既存 `Column` + `Text` 構成の拡張、新testTag (例: `exchange-entry-capability`) 付与。`ExchangeStatus` copy (transport success) の文言更新はstrings側で対応。展開形式 (常時表示 vs 折りたたみ) は実装時のUX判断 (spec Open question 2)。
+3. **strings (既存)**: `exchange_entry_subtitle` / `exchange_scoped_entry_subtitle` をcapability説明へ置換または `exchange_capability_*` 系新規stringsを追加。`exchange_transport_success` を期待flowに言及する文言へ更新。en (`values/strings.xml`) + ja (`values-ja/strings.xml`) 両方 (ja正本)。
 
 ### Canonical example template (具体形)
 
+instruction内のexample (静的text、fence・markerで囲まない):
+
 ```json
-{"schemaVersion":"personalized-intent-v2","exportId":"PASTE_THE_EXPORT_ID_FROM_THE_CONTEXT_DATA","itemIntents":[{"ref":"AN_ITEM_REF_FROM_THE_CONTEXT_DATA","importance":"HIGH","desiredGroup":["ANOTHER_ITEM_REF"],"groupSemantic":{"category":"A_CATEGORY_ID_FROM_THE_CONTEXT_DATA"},"pageAffinity":0,"regionAffinity":"TOP","preserve":false}],"unresolvedRefs":["A_REF_YOU_CANNOT_DECIDE"],"globalPreference":{"minimizeMovement":false},"rationale":"one short sentence"}
+{"schemaVersion":"personalized-intent-v3","exportId":"REPLACE_WITH_THE_EXPORT_ID_FROM_THE_CONTEXT_DATA","itemIntents":[{"ref":"REPLACE_WITH_A_REF_FROM_THE_CONTEXT_DATA","importance":"HIGH","desiredGroup":["REPLACE_WITH_ANOTHER_REF_FROM_THE_CONTEXT_DATA"],"groupSemantic":{"category":"REPLACE_WITH_A_CATEGORY_ID_FROM_THE_CONTEXT_DATA"},"pageAffinity":0,"regionAffinity":"TOP"}],"unresolvedRefs":["REPLACE_WITH_A_REF_YOU_CANNOT_JUDGE"],"globalPreference":{"minimizeMovement":false},"rationale":"One short sentence about the organization policy."}
 ```
 
-- placeholder値 (`PASTE_THE_EXPORT_ID_FROM_THE_CONTEXT_DATA` 等) は実 `exportId` (乱数)・実 `ref` (乱数) と衝突しない構造を持つ全大文字の明示的な非実在値。
-- contract test: placeholderを実効値へ機械置換した上で `IntentCodec.decode` を通す (閉schema適合)。placeholder文字列と `ContextExportContract.INTENT_SCHEMA_VERSION` の一致もtestが強制 (#330等によるschema変更時にexample更新を漏れさせない不変条件)。
-- exampleにはINTENT marker行を含めない (spec Decision 2)。marker行自体はPhase 2節の既存形式 (裸のmarker行提示) のまま。
+- placeholder値 (`REPLACE_WITH_*`) は全大文字の明示的な非実在値で、実 `exportId` (乱数)・実 `ref` (乱数) と衝突しない。enum値 (`HIGH` / `TOP`)・`pageAffinity: 0`・`minimizeMovement: false` はschema定数として実値のまま (spec Decision 2)。
+- v3 partial authoringの **表示例** として、`itemIntents` は判断した1件のみ、`unresolvedRefs` に未判断refの例を1件示す (full coverageを示唆しない)。
+- contract test: placeholderをfixtureの実効値へ機械置換した上で `IntentCodec.decode` を通す (閉schema適合、descriptor名前集合への包含)。placeholder文字列の非実在性 (生成packageのCONTEXT data JSONと一致しないこと)、example行の周囲にfence行が無いこと、INTENT marker行の不在、`ContextExportContract.INTENT_SCHEMA_VERSION` との一致もtestが強制する。
 
 ### Data flow
 
@@ -43,8 +49,10 @@ origin/main (`aab0d293d1a98bf59f5b164693f54ee1a63e3f0b`) 時点の確認事実 (
 
 ### Alternatives rejected
 
-- **launcher側での会話flow検証 (初回返答にIntent markerが含まれる場合はreject等)**: importはframing抽出と#204検証のみを所有し、会話の順序は観測不能。safety上の利益がなく (#204 validatorが全authorityを検証済み)、`FRAMING_*` の意味を変える契約破壊になるため不採用。
-- **exampleをINTENT marker行で囲む構成**: agentがexampleをmarkerごとechoした場合に `FRAMING_AMBIGUOUS` を誘発する表面が広がるため不採用 (markerの指定はPhase 2節の既存裸行提示で十分)。
+- **launcher側での会話flow検証 (初回返答にfenced JSONが含まれる場合はreject等)**: importはframing抽出と#204検証のみを所有し、会話の順序は観測不能。safety上の利益がなく (#204 validatorが全authorityを検証済み)、accepted framingの意味を変える契約破壊になるため不採用。
+- **exampleをfenced `json` blockで囲む構成**: Response formatが要求する「返答内のcode blockは1個」とexampleのcode blockが混同され、agentがexample blockを返答の一部と誤認する表面を広げる。またverbatim echo時にfenceごとcopyされやすい。不採用 (fenceは返答要求の说明文としてのみ現れる)。
+- **exampleをINTENT marker行で囲む構成**: `ExchangePackageComposerTest` がpackage全体からのmarker行不在をassert (#348) するため実装不能。marker形式はaccepted framingのまま要求しない (spec 348 Decision 2)。不採用。
+- **Output contract / You must sectionの再編 (interview指針をそこへ統合等)**: `Issue348AiFacingContractSyncTest` のpositive render / containment assertが文単位でpinningしており、文の削除・意味変更は #348保証の回帰となる。Phase 1差分は `INSTRUCTION_OPEN` とfooterへの追加に局所化する。不採用。
 - **instructionの動的生成 (scope内容や会話状態に応じた文章組立)**: #205 Decision 2 (固定長instruction + payload上限による構造的size上限) を破り、composerの純粋性・決定性検査を複雑にするため不採用。
 - **exampleをpackageとは別file (share時に2要素送信) にする構成**: transportが単一text契約 (#205) のため不採用。instruction内に同梱する。
 - **アプリ内ヒアリング画面 (AI質問をlauncher経由で表示)**: Issue non-goal (Launcher内LLM実行の禁止、ヒアリングは外部AIアプリ内)。不採用。
@@ -54,53 +62,54 @@ origin/main (`aab0d293d1a98bf59f5b164693f54ee1a63e3f0b`) 時点の確認事実 (
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `organizer/personalization/exchange/ExchangePackageComposer.kt` | instruction定数のinterview-first 2-phase化 + canonical exampleの同梱 | promptの唯一の生成正本 (#205 Decision 2)。pure module内のstatic text |
-| `organizer/ui/exchange/ExchangeFlowUi.kt` | entry row (idle/scoped) へのcapability説明追加、testTag | 既存導線UIとの一貫性、a11y |
+| `organizer/personalization/exchange/ExchangePackageComposer.kt` | `INSTRUCTION_OPEN` の2-phase化 + `INSTRUCTION_FOOTER` へのphase gate追記 + canonical example定数の同梱。Output contract / You mustは無変更 | promptの唯一の生成正本 (#205 Decision 2 + spec 348 Decision 3構成の上の差分)。pure module内の静的合成 |
+| `organizer/ui/exchange/ExchangeFlowUi.kt` | entry row (idle/scoped) へのcapability説明追加、新testTag | 既存導線UIとの一貫性、a11y |
 | `lawnchair/res/values/strings.xml` / `values-ja/strings.xml` | capability説明・flow説明・送信完了copyの追加/更新 (ja/en両方) | spec 123契約、UI copyの正本 |
-| `tests/.../ExchangePackageComposerTest.kt` (+ 必要に応じ新規example contract test class) | 2-phase指針・example構造・schema適合・回帰のunit test | AC-1〜AC-3 |
-| `tests/.../ui/exchange/` | entry row説明表示のtest (必要に応じRobolectric/instrumentation) | AC-4/AC-5 |
+| `tests/.../ExchangePackageComposerTest.kt` | 2-phase指針・example構造・schema適合・section順序維持のtest追加/拡張 (既存assertは弱めない) | AC-1〜AC-3 |
+| `tests/.../ui/exchange/` (既存test file群) | entry row説明表示のtest (Robolectric) | AC-4/AC-5 |
+| `tests/.../Issue348AiFacingContractSyncTest.kt` | **無変更** (回帰条件として実行のみ) | #348保証の維持確認 |
 
-変更しないもの: `IntentCodec` / `IntentValidator` / `ExchangeContract` / `IntentImportParser` / `ExchangeImportPipeline` / `ExchangeGenerationGate` / `SessionExportReconstructor` / integration transports / `ExchangeFlowController` / `ManualOrganizationRun` / #204 personalization package / DB / migration。
+変更しないもの: `IntentWireContract` / `IntentCodec` / `IntentValidator` / `ExchangeContract` / `IntentImportParser` / `ExchangeImportPipeline` / `ImportNormalizer` / `ExchangeGenerationGate` / `SessionExportReconstructor` / integration transports / `ExchangeFlowController` / `ManualOrganizationRun` / #204 personalization package / 失敗案内strings (4 key) / DB / migration。
 
 ## Migration and recovery
 
 - schema変更なし・DB書込なし・新規永続化なし。release rollback = instruction/copyが旧に戻るのみで、後処理不要 (既存exchange sessionはTTL 24時間で自然失効。#205契約の継承)。
-- 既存active session宛の返答のimport互換性: instruction差替えはsession/data部契約に影響しないため、旧instructionで送信した往復の返答も新buildで問題なくimportできる (framing/schemaは不変)。
+- 既存active session宛の返答のimport互換性: instruction差替えはsession/data部契約に影響しないため、旧instructionで送信した往復の返答も新buildで問題なくimportできる (framing/accepted framing・schemaは不変)。
 
 ## Verification
 
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
-| AC-1 | `ExchangePackageComposerTest` 拡張: (a) 2-phase指針の各文言存在、(b) 既存4 section相当の維持、(c) 遵守事項 (ref/FIXED/CANDIDATE/coverage/exportId) の回帰、(d) `parsePackageStructure` 往復・data単行の維持 | `./gradlew :tests:testLawnWithQuickstepGithubDebugUnitTest --tests '*ExchangePackageComposerTest*'` (unit test) |
-| AC-2 | example contract test: example存在・placeholder構造・INTENT marker不在・`INTENT_SCHEMA_VERSION` 一致・placeholder置換後の `IntentCodec.decode` 成功 | 同上 (unit test) |
+| AC-1 | `ExchangePackageComposerTest` 拡張: (a) 2-phase指針の各文言存在、(b) section順序の維持、(c) 遵守事項 (ref/partial authoring/FIXED/CONDITIONAL/CANDIDATE/exportId echo) の回帰、(d) `parsePackageStructure` 往復・data単行の維持 + `Issue348AiFacingContractSyncTest` 無変更成功 | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.personalization.exchange.*'` |
+| AC-2 | example contract test: example存在・placeholder構造・fence/marker不在・`INTENT_SCHEMA_VERSION` 一致・placeholder置換後の `IntentCodec.decode` 成功・descriptor key包含 | 同上 (unit test) |
 | AC-3 | skip文言の存在assert (composer unit test) | 同上 |
-| AC-4 | entry row UI test (testTag配下のtext、idle/scoped両方) + strings存在 (en/ja) | unit (Robolectric) または instrumentation |
+| AC-4 | entry row UI test (testTag配下のtext、idle/scoped両方) + strings存在 (en/ja) | unit (Robolectric) |
 | AC-5 | 導線説明/transport success copyの文言test | 同上 |
-| AC-6 | 依存review (instruction全文・UI copy走査、provider固有機能の要求不在) — 実装PR review記録 | review |
-| AC-7 | representative provider会話のdevice evidence (ChatGPT/Gemini: 質問→要約→了承→Intent生成→import まで) | physical device、docs/assessment/ またはIssueへ記録 |
-| AC-8 | TalkBack / large fontでの説明とCTAのevidence (ja/en) | 手動 (#205 AC-9系の後続evidence PRと合同可) |
+| AC-6 | 依存review (instruction全文・UI copy走査、provider固有機能の要求不在) — 実装PRのreview記録 | review |
+| AC-7 | representative provider会話のdevice evidence (ChatGPT/Gemini: 質問→要約→了承→Intent生成→import まで) | physical device、docs/assessment/ またはIssueへ記録 (後続evidence PR可) |
+| AC-8 | TalkBack / large fontでの説明とCTAのevidence (ja/en) | 手動 (#205/#348系の後続evidence PRと合同可) |
 
-含める観察: unit/contract (instruction内容・example schema適合・package構造回帰)、UI (説明表示・両locale strings)、手動 (a11y・representative会話)。full build / device testは本planの文書作成時点では実施しない (docs-only)。
+含める観察: unit/contract (instruction内容・example schema適合・package構造回帰・#348同期test回帰)、UI (説明表示・両locale strings)、手動 (a11y・representative会話)。`spotlessCheck` と `assembleLawnWithQuickstepGithubDebug` を実装PRで実行する。
 
 ## Documentation updates
 
-- [ ] spec status/history (acceptance時にacceptedへ)
+- [ ] spec status/history (acceptance時にaccepted、merge時にimplementedへ)
 - [ ] CONTEXT.md: 「整理方針確認 (policy confirmation)」用語を受入時に反映
-- [ ] DESIGN.md: 変更なし (module構成不変。gate 13の記載は #205/#331のまま)
+- [ ] DESIGN.md: 変更なし (module構成不変。gate 12/13の記載は #204/#205/#331/#348のまま)
 - [ ] requirements.md: FR-017の補足は不要 (behavior変更はFR-017枠内)
 
 ## Dependencies and blockers
 
-- blockerなし。#204/#205/#331はすべてimplemented。
-- **#330 (authoring contract簡素化、OPEN)**: schema (`personalized-intent-v2` のcoverage/FIXED扱い等) が変わる場合、instructionの遵守事項文言とcanonical exampleは **同一PRで** 追従が必要 (本planのcontract testが乖離を検出する)。実装順序として #327を先に行う場合、#330は本変更の上にrebaseしてexampleを更新する。
-- **#329 (Import Normalizer、OPEN)**: 本変更と独立 (instruction側とimport側の別surface)。#329がexample周りの揺らぎ吸収を変えても、exampleの正本はcomposer側のまま。
-- **#332 (import UI、OPEN) / #328 (import後状態表示、OPEN)**: 本planはimport入力欄・import成功後UIに触れない (spec Non-goals)。
+- blockerなし。#204/#205/#331/#330/#329/#332/#348はすべてimplemented (本planのbaselineで確認)。
+- **#328 (import成功後の状態明示、OPEN)**: 本planはimport成功後UIに触れない (spec Non-goals)。
+- schema/instruction契約の将来変更 (#330系の追加等) が入る場合、canonical exampleの更新は同一PRで行う (本planのcontract testが乖離を検出する)。
 
 ## Risks
 
-- instructionの長文化 (interview指針 + example) によりagentの遵守率が下がる可能性。#205 Decision 5のsize構造 (固定長instruction) は維持され、exampleは1 KiB程度に収まる想定。遵守率はAC-7 evidenceで早期把握し、Open question 3の微調整ルートで対応する。
+- instructionの長文化 (Phase 1指針 + example) によりagentの遵守率が下がる可能性。#205 Decision 5のsize構造 (固定長instruction) は維持され、exampleは1 KiB程度に収まる想定。遵守率はAC-7 evidenceで早期把握し、Open question 3の微調整ルートで対応する。
 - agentがexampleをverbatimでechoする経路 (spec scenario想定済み)。既存typed失敗でfail-closedであり、placeholder構造と「値を置き換える」指示で発生率を抑える。
-- interview-firstが1往復の追加コストになる。skip宣言 (Decision 1) で軽減するが、skip文言が「即Intent」を誘発してヒアリングが全く発生しなくなる(prose上の)リスクはAC-7 evidenceで観察する。
+- Phase 1指示と #348のself-check (「exactly one importable JSON artifact」) の混同 (初回応答でもartifactを返す誤解釈)。phase語でself-checkを最終回答に限定する文言構成で緩和し、AC-7 evidenceで観察する。
+- interview-firstがAI側会話の往復を増やす (UX cost)。ただしLauncher↔AI間のartifact受け渡しは1往復のまま (spec/one-round-trip)。skip宣言 (Decision 1) で軽減する。skip文言が「即Intent」を誘発してヒアリングが全く発生しなくなる (prose上の) リスクはAC-7 evidenceで観察する。
 - 質問数bound (2〜4問) は指示であって強制ではない。#205のframing遵守と同様、agent行動の保証外 (Non-goals: 質問内容の完全固定禁止)。
 
 ## Explicitly unverified areas
@@ -108,15 +117,16 @@ origin/main (`aab0d293d1a98bf59f5b164693f54ee1a63e3f0b`) 時点の確認事実 (
 - representative provider (ChatGPT/Gemini) が新しいinstructionに実際どう従うか (質問を投げるか、要約を挟むか、skip時にどう振る舞うか) は未検証 (AC-7 device evidenceで実施)。
 - a11y (TalkBack・large font) での説明の読み上げ品質は未検証 (AC-8)。
 - ja/enの最終copy (具体例の言い回し等) は実装PRとevidenceで調整予定。本plan時点で文面は確定していない。
-- 本planのevidence確認は2026-09-16時点のmain `aab0d293d1a98bf59f5b164693f54ee1a63e3f0b` に対して実施。build・testは未実行 (docs-only変更のため)。
+- 本planのevidence確認は `8fd05a40d51abd24b40a7b93579bb9b76d046f75` 時点のmainに対して実施。実装前時点ではbuild・testは未実行 (spec/planのみの変更のため)。
 
 ## Execution checklist
 
 - [ ] 本specのowner acceptance (status: accepted)。
 - [ ] composer unit testを先行追加 (2-phase指針・example構造・回帰のred)。
-- [ ] instruction定数の書き換え + canonical example同梱 (green)。
+- [ ] `INSTRUCTION_OPEN` 書き換え + footer phase gate + canonical example同梱 (green、`Issue348AiFacingContractSyncTest` 無変更成功を確認)。
 - [ ] entry row capability説明 + strings (ja/en)。
 - [ ] UI test・依存review記録。
-- [ ] AC-7 representative provider会話evidence。
-- [ ] AC-8 a11y evidence。
+- [ ] `spotlessCheck` / `assembleLawnWithQuickstepGithubDebug` 実行記録。
+- [ ] AC-7 representative provider会話evidence (後続evidence PR可)。
+- [ ] AC-8 a11y evidence (後続evidence PR可)。
 - [ ] PR evidenceとremaining risksの記録。
