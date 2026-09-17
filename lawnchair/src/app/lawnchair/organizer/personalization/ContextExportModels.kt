@@ -1,5 +1,7 @@
 package app.lawnchair.organizer.personalization
 
+import app.lawnchair.organizer.planning.CandidatePlanningIds
+import app.lawnchair.organizer.planning.CandidateTarget
 import app.lawnchair.organizer.planning.ItemId
 
 /**
@@ -9,7 +11,13 @@ import app.lawnchair.organizer.planning.ItemId
  * digest, internal `ItemId`s, DB row ids, package names, or raw usage times.
  */
 object ContextExportContract {
-    const val SCHEMA_VERSION = "personalization-context-v1"
+    /**
+     * Issue #330 (v3, spec 330 D-3): partial intent authoring — an unmentioned
+     * ref is completed to canonical unresolved; the v2 full-coverage rule is
+     * retired. Bumped together with [INTENT_SCHEMA_VERSION] because the export
+     * advertises the intent schema (spec 204 immutable semantic version rule).
+     */
+    const val SCHEMA_VERSION = "personalization-context-v3"
 
     /** V1 fixed capability set: the export always advertises all six. */
     val FIXED_CAPABILITIES: Set<IntentCapability> = setOf(
@@ -21,7 +29,8 @@ object ContextExportContract {
         IntentCapability.GLOBAL_PREFERENCE,
     )
 
-    const val INTENT_SCHEMA_VERSION = "personalized-intent-v1"
+    /** Issue #330 (v3): partial authoring; see [SCHEMA_VERSION]. */
+    const val INTENT_SCHEMA_VERSION = "personalized-intent-v3"
 
     // Content limits (spec 204 "content limits (V1)"). Overshoot is OVERSIZE.
     const val MAX_EXPORT_ITEMS = 512
@@ -69,6 +78,27 @@ enum class Mobility {
     MOVABLE,
     CONDITIONAL,
     FIXED,
+
+    /**
+     * Issue #331 (v2): a not-yet-placed missing-app candidate (spec 331
+     * "subject identity for not-yet-placed apps"). The subject has no current
+     * workspace placement: it is neither movable (nothing to move) nor fixed
+     * (nothing to preserve) — it is a creation candidate. Carries no
+     * `fixReason` (the `mobility == FIXED ⇔ fixReason != null` invariant
+     * still holds).
+     */
+    CANDIDATE,
+}
+
+/**
+ * Issue #331 (v2): whether an export item is backed by an existing workspace
+ * placement ([PLACED]) or by a user-selected not-yet-placed missing-app
+ * candidate ([CANDIDATE]). The enum value itself carries no personal data;
+ * raw identities stay in the export session only.
+ */
+enum class ExportItemSubject {
+    PLACED,
+    CANDIDATE,
 }
 
 /**
@@ -213,6 +243,8 @@ data class ExportItem(
     /** Present iff [Mobility.FIXED]. */
     val fixReason: FixReason?,
     val usage: UsageProjection?,
+    /** Issue #331 (v2): placement-backed or candidate-backed subject. */
+    val subject: ExportItemSubject = ExportItemSubject.PLACED,
 ) {
     init {
         require(ref.isNotEmpty())
@@ -221,6 +253,14 @@ data class ExportItem(
         if (mobility == Mobility.CONDITIONAL) {
             require(role == ExportItemRole.WIDGET)
         }
+        // Issue #331 invariants: a candidate subject has no current placement,
+        // so it projects no current-position fields and is never FIXED.
+        if (subject == ExportItemSubject.CANDIDATE) {
+            require(mobility == Mobility.CANDIDATE)
+            require(role == ExportItemRole.APP_OR_SHORTCUT)
+            require(pageAffinity == null && regionAffinity == null && groupSemantic == null)
+        }
+        if (mobility == Mobility.CANDIDATE) require(subject == ExportItemSubject.CANDIDATE)
     }
 }
 
@@ -266,7 +306,7 @@ enum class IntentCapability {
  */
 data class ExportSession(
     val exportId: String,
-    /** Export-scoped ref → internal `ItemId`. */
+    /** Export-scoped ref → internal `ItemId`. Candidate refs map to their planning IDs. */
     val itemRefs: Map<String, ItemId>,
     val tier: PrivacyTier,
     val sourceContextDigest: String,
@@ -274,14 +314,37 @@ data class ExportSession(
     val signalProvenance: SignalProvenance?,
     val createdAtEpochMs: Long,
     val expiresAtEpochMs: Long,
+    /**
+     * Issue #331 (v2): the export scope's candidate identities (spec 331
+     * "scope binding"). Empty for full-organization exports. App-private
+     * stable identities; never part of the export document.
+     */
+    val scopeCandidates: List<CandidateTarget.AppKey> = emptyList(),
+    /**
+     * Issue #331 (v2): digest over the export-time candidate projection
+     * (identity + availability + resolved category), recomputed at binding
+     * (spec 331 D-4). Session-local; never part of the export document.
+     */
+    val scopeCandidateDigest: String = CandidateScopeIdentity.EMPTY_DIGEST,
 ) {
     init {
         require(exportId.isNotEmpty())
         require(sourceContextDigest.isNotEmpty())
         require(expiresAtEpochMs > createdAtEpochMs)
+        require(scopeCandidates.size == scopeCandidates.map { CandidatePlanningIds.planningId(it) }.toSet().size)
+        if (scopeCandidates.isNotEmpty()) {
+            require(scopeCandidates.all { CandidatePlanningIds.planningId(it) in itemRefs.values.toSet() })
+        }
     }
 
     fun isExpired(nowEpochMs: Long): Boolean = nowEpochMs >= expiresAtEpochMs
+
+    /** The refs bound to candidate subjects (spec 331 candidate partition). */
+    val candidateRefs: Set<String>
+        get() {
+            val ids = scopeCandidates.map { CandidatePlanningIds.planningId(it) }.toSet()
+            return itemRefs.filterValues { it in ids }.keys
+        }
 }
 
 /** Identity of the #203 snapshot used at export time. */

@@ -16,6 +16,9 @@ import app.lawnchair.organizer.personalization.exchange.ExchangeImportPipeline
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportResult
 import app.lawnchair.organizer.personalization.exchange.IntentFramingResult
 import app.lawnchair.organizer.personalization.exchange.IntentImportParser
+import app.lawnchair.organizer.personalization.exchange.RecognizedImportInfo
+import app.lawnchair.organizer.personalization.exchange.recognizedInfo
+import app.lawnchair.organizer.planning.CandidateTarget
 
 /**
  * Issue #205: the exchange flow orchestrator (spec 205 data flow). Owns the
@@ -36,6 +39,17 @@ class ExchangeFlowController(
     private val allocator: RandomIdAllocator,
     private val clock: () -> Long,
     private val encodeExport: (app.lawnchair.organizer.personalization.PersonalizationContextExportV1) -> app.lawnchair.organizer.personalization.ContextExportResult = app.lawnchair.organizer.personalization.ContextExportCodec::encode,
+    /**
+     * Issue #331: the run-in (scope-composed) entry onto the same canonical
+     * composition seam — the confirmed selection with candidate display
+     * labels. The idle entry covers the empty-scope case. Test fixtures that
+     * construct the controller with lambdas and never exercise the run-in
+     * entry may rely on the default (typed NotReady; fail-closed).
+     */
+    private val composeScopedExportInputs: (Long, List<CandidateTarget.AppKey>, Map<CandidateTarget.AppKey, String>) -> ExchangeInputResult =
+        { _, _, _ ->
+            ExchangeInputResult.NotReady(app.lawnchair.organizer.integration.InputReadinessReason.ReconciliationPending)
+        },
 ) {
 
     constructor(
@@ -49,6 +63,7 @@ class ExchangeFlowController(
         store = store,
         allocator = allocator,
         clock = clock,
+        composeScopedExportInputs = adapter::composeForExport,
     )
 
     /** The active (unexpired) session, if any — drives the replacement gate. */
@@ -61,10 +76,24 @@ class ExchangeFlowController(
      * Generates one exchange package in the chosen tier. Callers must have
      * passed the replacement gate first when an active session existed.
      */
-    fun generate(tier: PrivacyTier): ExchangeGenerationResult {
-        val inputs = when (val result = composeExportInputs(clock())) {
-            is ExchangeInputResult.NotReady -> return ExchangeGenerationResult.InputNotReady(result.reason)
-            is ExchangeInputResult.ExportReady -> result.inputs
+    fun generate(tier: PrivacyTier): ExchangeGenerationResult = generate(tier, composeExportInputs(clock()))
+
+    /**
+     * Issue #331: run-in (scope-composed) generation — the export scope is the
+     * run's fixed selection composed by the same canonical seam the planner
+     * consumes. Same ordering contract as [generate]: gate → build → save →
+     * compose → disclose.
+     */
+    fun generateForSelection(
+        tier: PrivacyTier,
+        selection: List<CandidateTarget.AppKey>,
+        candidateLabels: Map<CandidateTarget.AppKey, String>,
+    ): ExchangeGenerationResult = generate(tier, composeScopedExportInputs(clock(), selection, candidateLabels))
+
+    private fun generate(tier: PrivacyTier, composedInputs: ExchangeInputResult): ExchangeGenerationResult {
+        val inputs = when (composedInputs) {
+            is ExchangeInputResult.NotReady -> return ExchangeGenerationResult.InputNotReady(composedInputs.reason)
+            is ExchangeInputResult.ExportReady -> composedInputs.inputs
         }
         val built = ContextExportBuilder.build(inputs, tier, allocator)
         if (!store.save(built.session)) {
@@ -117,18 +146,22 @@ class ExchangeFlowController(
             ?: return ExchangeImportOutcome.Pipeline(
                 ExchangeImportResult.Failure(
                     ExchangeImportFailure.Contract(IntentValidationFailure.ExportMismatch),
+                    prepared.recognizedInfo(),
                 ),
             )
         if (session.isExpired(clock())) {
             return ExchangeImportOutcome.Pipeline(
                 ExchangeImportResult.Failure(
                     ExchangeImportFailure.Contract(IntentValidationFailure.SessionExpired),
+                    prepared.recognizedInfo(),
                 ),
             )
         }
         val structural = when (val result = currentStructuralInputs()) {
             is app.lawnchair.organizer.integration.exchange.ExchangeStructuralResult.NotReady ->
-                return ExchangeImportOutcome.InputNotReady(result.reason)
+                // Issue #332 (spec D-6): the reply is already decoded, so the
+                // recognition facts survive the environmental failure.
+                return ExchangeImportOutcome.InputNotReady(result.reason, prepared.recognizedInfo())
 
             is app.lawnchair.organizer.integration.exchange.ExchangeStructuralResult.Ready -> result.structural
         }
@@ -153,5 +186,13 @@ sealed interface ExchangeGenerationResult {
 sealed interface ExchangeImportOutcome {
     data class Pipeline(val result: ExchangeImportResult) : ExchangeImportOutcome
 
-    data class InputNotReady(val reason: app.lawnchair.organizer.integration.InputReadinessReason) : ExchangeImportOutcome
+    /**
+     * Issue #332 (spec D-6): a post-decode environmental failure — the reply
+     * was already framed and decoded, so the parse-stage recognition facts
+     * travel with the outcome for the parse-first display.
+     */
+    data class InputNotReady(
+        val reason: app.lawnchair.organizer.integration.InputReadinessReason,
+        val recognized: RecognizedImportInfo? = null,
+    ) : ExchangeImportOutcome
 }

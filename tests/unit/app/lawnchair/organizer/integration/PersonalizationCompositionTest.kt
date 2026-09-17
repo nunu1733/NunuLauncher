@@ -15,6 +15,7 @@ import app.lawnchair.organizer.personalization.SignalField
 import app.lawnchair.organizer.personalization.SystemUsageSection
 import app.lawnchair.organizer.personalization.UsageAccessState
 import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.WorkspaceOverlapToleranceSource
@@ -27,6 +28,10 @@ import app.lawnchair.organizer.rules.LayoutStrategySelectionSource
 import app.lawnchair.organizer.rules.OverrideSnapshotReadResult
 import app.lawnchair.organizer.rules.PolicyInputIdentity
 import app.lawnchair.organizer.rules.PolicySourceKind
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogIdentity
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogReadResult
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogSnapshot
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -104,6 +109,7 @@ class PersonalizationCompositionTest {
             },
             bundleSource = BuiltInOrganizerPolicyBundleSource,
             overrides = FixedOverrides(),
+            userDefinedCategories = UserDefinedCategoryCatalogSource { UserDefinedCategoryCatalogReadResult.Ready(emptyCatalogSnapshot()) },
             layoutStrategySelections = FixedSelections(),
             platformEvidence = object : ClassificationSignalSnapshotSource {
                 override fun read(
@@ -187,3 +193,10 @@ class PersonalizationCompositionTest {
         val DIGEST: (Char) -> String = { char -> char.toString().repeat(64) }
     }
 }
+
+private fun emptyCatalogSnapshot() = UserDefinedCategoryCatalogSnapshot(
+    schemaVersion = 1,
+    generation = 0L,
+    categories = emptyList(),
+    identity = UserDefinedCategoryCatalogIdentity.emptyCatalogSentinel(),
+)

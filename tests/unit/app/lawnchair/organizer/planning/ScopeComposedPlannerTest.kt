@@ -1,5 +1,7 @@
 package app.lawnchair.organizer.planning
 
+import app.lawnchair.organizer.planning.ActiveCategoryCatalog
+import app.lawnchair.organizer.planning.CategoryIdentity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -68,6 +70,7 @@ class ScopeComposedPlannerTest {
             snapshot = LayoutSnapshot(RevisionId("rev"), device, listOf(Page(PageId("p0"), PageOrder(0))), items),
             rules = rules,
             taxonomy = defaultTaxonomy(),
+            catalog = ActiveCategoryCatalog(defaultTaxonomy(), emptyList()),
             signals = ClassificationSignals(signals),
             targets = TargetSet(existing, additions),
             runMode = RunMode.ScopeComposedOrganization,
@@ -158,13 +161,13 @@ class ScopeComposedPlannerTest {
         // candidates form another. The candidate folder's ordinal must follow
         // the existing folder's, never collide.
         val existingSignals = listOf(
-            ClassificationSignal(ItemId("a"), SignalSource.S2, CategoryId("GAMES")),
-            ClassificationSignal(ItemId("b"), SignalSource.S2, CategoryId("GAMES")),
+            ClassificationSignal(ItemId("a"), SignalSource.S2, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+            ClassificationSignal(ItemId("b"), SignalSource.S2, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
         )
         val candidateSignals = listOf(
-            ClassificationSignal(ItemId("c0"), SignalSource.S2, CategoryId("TOOLS")),
-            ClassificationSignal(ItemId("c1"), SignalSource.S2, CategoryId("TOOLS")),
-            ClassificationSignal(ItemId("c2"), SignalSource.S2, CategoryId("TOOLS")),
+            ClassificationSignal(ItemId("c0"), SignalSource.S2, CategoryIdentity.BuiltIn(CategoryId("TOOLS"))),
+            ClassificationSignal(ItemId("c1"), SignalSource.S2, CategoryIdentity.BuiltIn(CategoryId("TOOLS"))),
+            ClassificationSignal(ItemId("c2"), SignalSource.S2, CategoryIdentity.BuiltIn(CategoryId("TOOLS"))),
         )
         val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0))
         val additions = listOf(candidate("c0"), candidate("c1"), candidate("c2"))
@@ -277,9 +280,9 @@ class ScopeComposedPlannerTest {
         // createsFolders = false — same-category candidate pairs must never
         // collapse into a planned folder, whatever their category.
         val signals = listOf(
-            ClassificationSignal(ItemId("c0"), SignalSource.S2, CategoryId("GAMES")),
-            ClassificationSignal(ItemId("c1"), SignalSource.S2, CategoryId("GAMES")),
-            ClassificationSignal(ItemId("c2"), SignalSource.S2, CategoryId("GAMES")),
+            ClassificationSignal(ItemId("c0"), SignalSource.S2, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+            ClassificationSignal(ItemId("c1"), SignalSource.S2, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+            ClassificationSignal(ItemId("c2"), SignalSource.S2, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
         )
         val additions = listOf(candidate("c0"), candidate("c1"), candidate("c2"))
 
@@ -376,6 +379,7 @@ class ScopeComposedPlannerTest {
             snapshot = LayoutSnapshot(RevisionId("rev2"), defaultDevice(), pages, postItems),
             rules = defaultRules(),
             taxonomy = defaultTaxonomy(),
+            catalog = ActiveCategoryCatalog(defaultTaxonomy(), emptyList()),
             signals = ClassificationSignals(emptyList()),
             targets = TargetSet(postItems.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }, emptyList()),
             runMode = RunMode.FullOrganization,

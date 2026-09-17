@@ -56,17 +56,16 @@ object IntentValidator {
             return IntentValidation.Failure(IntentValidationFailure.DuplicateRef)
         }
 
-        // Coverage partition: itemIntents refs ∪ unresolvedRefs == all exported
-        // refs, and the two sets are disjoint.
+        // Coverage partition (v3, spec 330 D-1): itemIntents refs and
+        // unresolvedRefs must be disjoint (including no duplicates inside
+        // unresolvedRefs). The v2 "cover every ref" rule is gone — an
+        // unmentioned ref is completed to canonical unresolved downstream.
         val unresolved = intent.unresolvedRefs.toSet()
         if (unresolved.size != intent.unresolvedRefs.size) {
             return IntentValidation.Failure(IntentValidationFailure.IncompleteCoverage)
         }
         val covered = intentRefs.toSet()
         if ((covered intersect unresolved).isNotEmpty()) {
-            return IntentValidation.Failure(IntentValidationFailure.IncompleteCoverage)
-        }
-        if (covered + unresolved != exportRefs) {
             return IntentValidation.Failure(IntentValidationFailure.IncompleteCoverage)
         }
 
@@ -97,6 +96,13 @@ object IntentValidator {
                     return IntentValidation.Failure(IntentValidationFailure.MobilityContradiction(item.ref))
                 }
             }
+            // Issue #331 (v2): a candidate subject has no current placement, so
+            // a keep-current-position assertion is a mobility contradiction.
+            // Placement-independent signals (importance / grouping / affinity)
+            // stay valid for candidates.
+            if (mobility == Mobility.CANDIDATE && item.preserve != null) {
+                return IntentValidation.Failure(IntentValidationFailure.MobilityContradiction(item.ref))
+            }
         }
 
         // Structural freshness: recompute the digest over the current canonical
@@ -106,12 +112,17 @@ object IntentValidator {
             return IntentValidation.Failure(IntentValidationFailure.ContextStale)
         }
 
+        // Issue #330 (spec 330 D-4/D-5): completion runs inside the validator's
+        // success path, and the identity digest is taken over the completed
+        // canonical representation — explicit unresolved and bare entries share
+        // the `unresolved|ref` row with unmentioned refs (D-6).
+        val completed = IntentCompletion.complete(intent, exportRefs)
         return IntentValidation.Validated(
             validated = ValidatedPersonalizedIntent(
                 intent = intent,
                 export = export,
                 session = session,
-                identity = IntentIdentityCalculator.identity(intent),
+                identity = IntentIdentityCalculator.identity(completed),
             ),
         )
     }
@@ -123,7 +134,17 @@ data class ValidatedPersonalizedIntent(
     val export: PersonalizationContextExportV1,
     val session: ExportSession,
     val identity: IntentIdentity,
-)
+) {
+    /**
+     * Issue #330 (spec 330 D-4): the complete canonical representation built
+     * at validation time. Deterministic in the authored intent and the export
+     * refs, so re-deriving it here reproduces the validator's completion; the
+     * authored document itself stays diagnostics-only.
+     */
+    val completed: CompletedPersonalIntent by lazy {
+        IntentCompletion.complete(intent, export.items.map { it.ref }.toSet())
+    }
+}
 
 sealed interface IntentValidation {
     data class Validated(val validated: ValidatedPersonalizedIntent) : IntentValidation
@@ -131,10 +152,10 @@ sealed interface IntentValidation {
 }
 
 /**
- * Typed failure classes (spec 204 "Validation / fail-closed"). Zero-write in
- * every case. `CAPABILITY_UNSUPPORTED` is reserved in V1 (the export always
- * advertises the full fixed capability set) and activates in a future schema
- * version that allows subset advertisement.
+ * Typed failure classes (spec 204 "Validation / fail-closed", extended by
+ * spec 331 D-5). Zero-write in every case. `CAPABILITY_UNSUPPORTED` is
+ * reserved in V1 (the export always advertises the full fixed capability set)
+ * and activates in a future schema version that allows subset advertisement.
  */
 sealed interface IntentValidationFailure {
     data object SchemaMismatch : IntentValidationFailure
@@ -149,4 +170,23 @@ sealed interface IntentValidationFailure {
     data object ForbiddenContent : IntentValidationFailure
     data class MobilityContradiction(val ref: String) : IntentValidationFailure
     data object CapabilityUnsupported : IntentValidationFailure
+
+    /**
+     * Issue #331 (D-5): the scope binding gate rejected the run — the
+     * confirmed selection / candidate projection diverged from the export
+     * session's scope. Zero-write; the remedy is re-select or re-export.
+     */
+    data class ScopeMismatch(val cause: ScopeMismatchCause) : IntentValidationFailure
+}
+
+/** `SCOPE_MISMATCH` cause detail (spec 331 D-5); user-facing remedy is re-export. */
+enum class ScopeMismatchCause {
+    /** The confirmed selection diverges from the export scope (missing or extra). */
+    SET_MISMATCH,
+
+    /** An export candidate no longer resolves as installed/launchable/AVAILABLE. */
+    CANDIDATE_UNRESOLVED,
+
+    /** The candidate projection (availability/resolved category) drifted. */
+    PROJECTION_MISMATCH,
 }

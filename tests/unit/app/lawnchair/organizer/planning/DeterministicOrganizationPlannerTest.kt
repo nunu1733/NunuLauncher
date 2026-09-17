@@ -1,5 +1,7 @@
 package app.lawnchair.organizer.planning
 
+import app.lawnchair.organizer.planning.ActiveCategoryCatalog
+import app.lawnchair.organizer.planning.CategoryIdentity
 import java.util.Locale
 import java.util.TimeZone
 import org.junit.Assert.assertEquals
@@ -110,6 +112,7 @@ class DeterministicOrganizationPlannerTest {
             snapshot = LayoutSnapshot(RevisionId("rev"), device, pages, items, reservations),
             rules = rules,
             taxonomy = taxonomy,
+            catalog = ActiveCategoryCatalog(taxonomy, emptyList()),
             signals = ClassificationSignals(signals),
             targets = TargetSet(existing, emptyList()),
             runMode = RunMode.FullOrganization,
@@ -131,6 +134,7 @@ class DeterministicOrganizationPlannerTest {
             snapshot = LayoutSnapshot(RevisionId("rev"), device, pages, captured),
             rules = rules,
             taxonomy = taxonomy,
+            catalog = ActiveCategoryCatalog(taxonomy, emptyList()),
             signals = ClassificationSignals(signals),
             targets = TargetSet(existing, additions),
             runMode = RunMode.IncrementalPlacement,
@@ -236,15 +240,15 @@ class DeterministicOrganizationPlannerTest {
     fun categoryPrioritySourceWinsOverLower() {
         val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0))
         val signals = listOf(
-            ClassificationSignal(ItemId("a"), SignalSource.S3, CategoryId("TOOLS")),
-            ClassificationSignal(ItemId("a"), SignalSource.S1, CategoryId("GAMES")),
+            ClassificationSignal(ItemId("a"), SignalSource.S3, CategoryIdentity.BuiltIn(CategoryId("TOOLS"))),
+            ClassificationSignal(ItemId("a"), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
         )
         val input = fullInput(items, signals = signals)
         val result = planner.plan(input)
         val planned = result.outcome as Planned
         val decision = planned.categories.single { it.item == ItemId("a") }
         assertEquals(SignalSource.S1, decision.decidedSignal)
-        assertEquals(CategoryId("GAMES"), decision.category)
+        assertEquals(CategoryIdentity.BuiltIn(CategoryId("GAMES")), decision.category)
         assertEquals(Confidence.EXPLICIT, decision.confidence)
     }
 
@@ -252,14 +256,14 @@ class DeterministicOrganizationPlannerTest {
     fun sameSourceSmallestCategoryWins() {
         val items = listOf(app("a"))
         val signals = listOf(
-            ClassificationSignal(ItemId("a"), SignalSource.S3, CategoryId("TOOLS")),
-            ClassificationSignal(ItemId("a"), SignalSource.S3, CategoryId("GAMES")),
+            ClassificationSignal(ItemId("a"), SignalSource.S3, CategoryIdentity.BuiltIn(CategoryId("TOOLS"))),
+            ClassificationSignal(ItemId("a"), SignalSource.S3, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
         )
         val input = fullInput(items, signals = signals)
         val result = planner.plan(input)
         val planned = result.outcome as Planned
         val decision = planned.categories.single { it.item == ItemId("a") }
-        assertEquals(CategoryId("GAMES"), decision.category)
+        assertEquals(CategoryIdentity.BuiltIn(CategoryId("GAMES")), decision.category)
         assertEquals(SignalSource.S3, decision.decidedSignal)
         assertEquals(Confidence.RULE, decision.confidence)
     }
@@ -271,7 +275,7 @@ class DeterministicOrganizationPlannerTest {
         val result = planner.plan(input)
         val planned = result.outcome as Planned
         val decision = planned.categories.single()
-        assertEquals(CategoryId("OTHER"), decision.category)
+        assertEquals(CategoryIdentity.BuiltIn(CategoryId("OTHER")), decision.category)
         assertEquals(SignalSource.S6, decision.decidedSignal)
         assertEquals(Confidence.FALLBACK, decision.confidence)
         assertTrue(planned.warnings.any { it.code == WarningCode.FALLBACK_CATEGORY })
@@ -282,14 +286,14 @@ class DeterministicOrganizationPlannerTest {
         val input = fullInput(
             items = listOf(app("a")),
             signals = listOf(
-                ClassificationSignal(ItemId("a"), SignalSource.S5, CategoryId("TOOLS")),
+                ClassificationSignal(ItemId("a"), SignalSource.S5, CategoryIdentity.BuiltIn(CategoryId("TOOLS"))),
             ),
         )
 
         val planned = planner.plan(input).outcome as Planned
 
         assertEquals(
-            CategoryDecision(ItemId("a"), CategoryId("TOOLS"), SignalSource.S5, Confidence.FALLBACK),
+            CategoryDecision(ItemId("a"), CategoryIdentity.BuiltIn(CategoryId("TOOLS")), SignalSource.S5, Confidence.FALLBACK),
             planned.categories.single(),
         )
         assertFalse(planned.warnings.any { it.code == WarningCode.FALLBACK_CATEGORY })
@@ -323,8 +327,8 @@ class DeterministicOrganizationPlannerTest {
     fun twoAppsSameCategoryFormFolder() {
         val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0))
         val signals = listOf(
-            ClassificationSignal(ItemId("a"), SignalSource.S3, CategoryId("GAMES")),
-            ClassificationSignal(ItemId("b"), SignalSource.S3, CategoryId("GAMES")),
+            ClassificationSignal(ItemId("a"), SignalSource.S3, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+            ClassificationSignal(ItemId("b"), SignalSource.S3, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
         )
         val input = fullInput(items, signals = signals)
         val result = planner.plan(input)
@@ -353,9 +357,9 @@ class DeterministicOrganizationPlannerTest {
         val device = defaultDevice(folderMaxColumns = 65536, folderMaxRows = 65536)
         val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0), app("c", x = 2, y = 0))
         val signals = listOf(
-            ClassificationSignal(ItemId("a"), SignalSource.S3, CategoryId("GAMES")),
-            ClassificationSignal(ItemId("b"), SignalSource.S3, CategoryId("GAMES")),
-            ClassificationSignal(ItemId("c"), SignalSource.S3, CategoryId("GAMES")),
+            ClassificationSignal(ItemId("a"), SignalSource.S3, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+            ClassificationSignal(ItemId("b"), SignalSource.S3, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+            ClassificationSignal(ItemId("c"), SignalSource.S3, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
         )
         val input = fullInput(items, device = device, signals = signals)
         val result = planner.plan(input)
@@ -376,7 +380,7 @@ class DeterministicOrganizationPlannerTest {
                 app("item.$index", x = index % 4, y = index / 4)
             }
             val signals = items.map {
-                ClassificationSignal(it.id, SignalSource.S3, CategoryId("GAMES"))
+                ClassificationSignal(it.id, SignalSource.S3, CategoryIdentity.BuiltIn(CategoryId("GAMES")))
             }
             return planner.plan(
                 fullInput(
@@ -773,6 +777,7 @@ class DeterministicOrganizationPlannerTest {
             snapshot = LayoutSnapshot(RevisionId("rev"), defaultDevice(), listOf(Page(PageId("p0"), PageOrder(0))), items),
             rules = defaultRules(),
             taxonomy = defaultTaxonomy(),
+            catalog = ActiveCategoryCatalog(defaultTaxonomy(), emptyList()),
             signals = ClassificationSignals(emptyList()),
             targets = TargetSet(
                 listOf(
@@ -797,8 +802,8 @@ class DeterministicOrganizationPlannerTest {
     fun sameInputProducesEqualResults() {
         val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0))
         val signals = listOf(
-            ClassificationSignal(ItemId("a"), SignalSource.S3, CategoryId("GAMES")),
-            ClassificationSignal(ItemId("b"), SignalSource.S3, CategoryId("GAMES")),
+            ClassificationSignal(ItemId("a"), SignalSource.S3, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+            ClassificationSignal(ItemId("b"), SignalSource.S3, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
         )
         val input = fullInput(items, signals = signals)
         val result1 = planner.plan(input)
@@ -828,8 +833,8 @@ class DeterministicOrganizationPlannerTest {
     fun threadIndependent() {
         val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0))
         val signals = listOf(
-            ClassificationSignal(ItemId("a"), SignalSource.S3, CategoryId("GAMES")),
-            ClassificationSignal(ItemId("b"), SignalSource.S3, CategoryId("GAMES")),
+            ClassificationSignal(ItemId("a"), SignalSource.S3, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+            ClassificationSignal(ItemId("b"), SignalSource.S3, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
         )
         val input = fullInput(items, signals = signals)
         val mainResult = planner.plan(input)
@@ -939,10 +944,10 @@ class DeterministicOrganizationPlannerTest {
     fun l16FolderPlacement() {
         val device = defaultDevice(columns = 4, rows = 5)
         val gamesSignals = (0..2).map {
-            ClassificationSignal(ItemId("g$it"), SignalSource.S3, CategoryId("GAMES"))
+            ClassificationSignal(ItemId("g$it"), SignalSource.S3, CategoryIdentity.BuiltIn(CategoryId("GAMES")))
         }
         val toolsSignals = (0..4).map {
-            ClassificationSignal(ItemId("t$it"), SignalSource.S3, CategoryId("TOOLS"))
+            ClassificationSignal(ItemId("t$it"), SignalSource.S3, CategoryIdentity.BuiltIn(CategoryId("TOOLS")))
         }
         val gamesApps = listOf(app("g0", x = 0, y = 0), app("g1", x = 1, y = 0), app("g2", x = 2, y = 0))
         val toolsApps = listOf(
@@ -1119,6 +1124,7 @@ class DeterministicOrganizationPlannerTest {
             snapshot = LayoutSnapshot(RevisionId("rev"), defaultDevice(), listOf(Page(PageId("p0"), PageOrder(0))), items),
             rules = defaultRules(),
             taxonomy = defaultTaxonomy(),
+            catalog = ActiveCategoryCatalog(defaultTaxonomy(), emptyList()),
             signals = ClassificationSignals(emptyList()),
             targets = TargetSet(
                 items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) },
@@ -1138,8 +1144,8 @@ class DeterministicOrganizationPlannerTest {
             app("work", profile = p1, x = 1, y = 0),
         )
         val signals = listOf(
-            ClassificationSignal(ItemId("personal"), SignalSource.S3, CategoryId("GAMES")),
-            ClassificationSignal(ItemId("work"), SignalSource.S3, CategoryId("GAMES")),
+            ClassificationSignal(ItemId("personal"), SignalSource.S3, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+            ClassificationSignal(ItemId("work"), SignalSource.S3, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
         )
         val input = fullInput(items, signals = signals)
         val result = planner.plan(input)

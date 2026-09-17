@@ -72,7 +72,7 @@ class SessionExportReconstructorTest {
             items,
         )
         val targets = TargetSet(items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }, emptyList())
-        val structural = CanonicalStructuralInputs(snapshot, targets, emptyMap<ItemId, String?>())
+        val structural = CanonicalStructuralInputs(snapshot, targets, emptyMap<ItemId, app.lawnchair.organizer.planning.CategoryIdentity?>())
         val inputs = ExportInputs(
             snapshot = snapshot,
             targets = targets,
