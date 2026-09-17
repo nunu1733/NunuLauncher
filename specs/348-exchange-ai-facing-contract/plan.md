@@ -2,7 +2,7 @@
 
 > Issue: #348
 > Spec: [spec.md](./spec.md)
-> Status: draft (2nd review対応revision)
+> Status: draft (3rd review対応revision)
 
 ## Current evidence
 
@@ -25,7 +25,7 @@
 
 ### Modules and interfaces
 
-- `IntentWireContract` (新規、`personalization` package内、internal): wire field descriptor。**構造派生のsource** としてproperty名集合 (4 group)・enum参照 (`Importance` / `ExportRegionKind` entries)・静的制限定数参照 (`freeText` 100 / `rationale` 500 / entries 512 / unresolved 512 / confidence 0..100)・schema version定数を保持し、**表示主張** として必須性・canonical JSON型・cross-field規則 (any-of・非空配列policy) をdataで保持する。decode logicの判定をdescriptorへ置き換えるrefactorは **しない** — 必須性・型・any-ofの主張はparity fixtureがproductionと同期する (spec Decision 1)。
+- `IntentWireContract` (新規、`personalization` package内、internal): wire field descriptor。**構造派生のsource** としてproperty名集合 (4 group)・enum参照 (`Importance` / `ExportRegionKind` entries)・静的制限定数参照 (`freeText` 100 / `rationale` 500 / entries 512 / unresolved 512 / confidence 0..100)・schema version定数を保持し、**表示主張** として必須性・型・cross-field規則をdataで保持する。各表示主張は `enforcement` 分類 (`PRODUCTION_ENFORCED` — productionが違反をreject / `AUTHORING_POLICY` — productionは受理するがcanonical authoringが要求) を持つ (3rd review 中1対応)。decode logicの判定をdescriptorへ置き換えるrefactorは **しない** — `PRODUCTION_ENFORCED` 主張はparity fixtureが、`AUTHORING_POLICY` 主張はpolicy matrixがproductionと同期する (spec Decision 1)。
 - `IntentCodec` (最小変更): `ALLOWED_*_KEYS` をdescriptorの名前集合からの派生集合に差し替え (挙動不変)。`confidence` 検査を `ContextExportContract.CONFIDENCE_MIN/MAX` 参照に変更 (挙動不変)。presence/type判定logicは無変更。
 - `ContextExportContract` (最小変更): `CONFIDENCE_MIN = 0` / `CONFIDENCE_MAX = 100` 追加。
 - `IntentModels` (最小変更): `require(it in 0..100)` をcontract定数参照に変更 (挙動不変)。
@@ -40,7 +40,7 @@ compose時: `IntentWireContract` → output contract section (名前・canonical
 
 import時: 無変更 (envelope → normalizer → framing → decode → session束縛 → validator → completion)。本planはこの経路の挙動に1行も触れない (allow-list派生化と定数化は同等内部refactor)。
 
-test時: descriptor主張 ↔ production挙動の同期は、主張ごとのfixtureを `ExchangeImportPipeline.import` に通して固定する。descriptorの主張を矛盾する値へ変更すると該当fixtureが失敗する (乖離検出の自身のテスト)。
+test時: descriptor主張 ↔ production挙動の同期は、`enforcement` 分類に応じて2経路で固定する。`PRODUCTION_ENFORCED` 主張は主張ごとのfixtureを `ExchangeImportPipeline.import` に通して固定し、主張を矛盾する値へ変更すると該当fixtureが失敗する (counterfactual)。`AUTHORING_POLICY` 主張はinstructionの制約文のpositive存在assert + canonical fixtureのproduction受理で固定する。
 
 ### Alternatives rejected
 
@@ -61,7 +61,7 @@ test時: descriptor主張 ↔ production挙動の同期は、主張ごとのfixt
 | `IntentModels.kt` | `0..100` literal → contract定数 | 同上 |
 | `ExchangePackageComposer.kt` | instruction再構成 (Goal / You may / Output contract (derived) / You must (production-enforced + FIXED policy + partial authoring) / self-check / Response format (fenced))。footer更新 | spec Decisions 2/3 |
 | `ExchangePackageComposerTest.kt` | section構成・fence要求・marker非要求・partial authoringのassert更新 | 既存assertが旧構造固定のため |
-| `Issue348AiFacingContractSyncTest.kt` (新規) | descriptor一致 / 派生containment / 主張parity fixture / parity matrix / policy matrix / golden / #345 fixture / self-check・ask-before-final pinning / repair導線不在 | AC-1〜6, 8 |
+| `Issue348AiFacingContractSyncTest.kt` (新規) | descriptor一致 / 派生containment / `PRODUCTION_ENFORCED` 主張のparity fixture / parity matrix / policy matrix (positive assert) / golden / #345 fixture / self-check・ask-before-final pinning / repair導線不在 | AC-1〜6, 8 |
 | `strings.xml` / `values-ja/strings.xml` | 4 keyをfenced形式参照へ (許容回復文の範囲で) | AC-1/AC-9 |
 | `specs/205-external-agent-exchange/spec.md` | **実装PRで必須**: Decision 2・agent scenario・framing失敗時の再回答案内・validation reject後位置づけ・AC記述をcanonical authoring form前提へ更新 + change history (spec 348所有) | spec Decision 6。AC-9 blocking |
 | `specs/329-import-normalizer/spec.md` | **実装PRで必須**: Outcome/D-1/Non-goalsの `canonical form` 語とmarker要求前提をaccepted framing / producer要求の分離へ更新 + change history (spec 348所有) | 同上 |
@@ -78,8 +78,8 @@ test時: descriptor主張 ↔ production挙動の同期は、主張ごとのfixt
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
 | AC-1 | spec本文の許容/禁止固定 + instruction/footer + 対象4 stringsの否定assertion | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.personalization.*'` |
-| AC-2 | `Issue348` test: descriptor↔codec allow-list一致 + composer出力のdescriptor派生containment + descriptor表示主張のparity fixture (主張変更で失敗することを含む) | 同上 |
-| AC-3 | `Issue348` test: production-enforced parity matrix (期待failure 1種固定) + authoring policy matrix (canonical ⊆ accepted) | 同上 |
+| AC-2 | `Issue348` test: descriptor↔codec allow-list一致 + composer出力のdescriptor派生containment + `PRODUCTION_ENFORCED` 主張のparity fixture (主張変更で失敗することを含む) | 同上 |
+| AC-3 | `Issue348` test: production-enforced parity matrix (期待failure 1種固定) + authoring policy matrix (制約文のpositive存在assert + canonical ⊆ accepted) | 同上 |
 | AC-4 | `Issue348` golden test: canonical fenced payload → pipeline.import → completion | 同上 |
 | AC-5/AC-6 | `Issue348` test: self-check / ask-before-final / 独自property禁止のpinning | 同上 |
 | AC-7 | 既存 `ImportNormalizerTest` / `ExchangeImportPipelineTest` / `IntentImportParserTest` 無変更成功 + composer test | 同上 |

@@ -9,7 +9,7 @@ updated: 2026-09-18
 
 # External Agent ExchangeのAI-facing contractをproduction truthと同期し初回Import成功率を上げる
 
-> Status: **draft** (2026-09-18。2nd review指摘対応revision)。Issue #348のspec。依存: #204 (accepted・実装済み), #205 (implemented), #329 (implemented), #330 (implemented), #345 (evidence記録済み: [assets-345-import-evidence](../../docs/assessment/assets-345-import-evidence/README.md))。本specがproduction contract (#204)・framing抽出規則 (#205)・normalizer (#329) の **動作を1つも変更しない** ことを前提に、AI-facingなinstruction/example層をproduction truthから派生させ、derivationの構造保証外の規則はbehavior-parity testで同期する。
+> Status: **draft** (2026-09-18。3rd review指摘対応revision)。Issue #348のspec。依存: #204 (accepted・実装済み), #205 (implemented), #329 (implemented), #330 (implemented), #345 (evidence記録済み: [assets-345-import-evidence](../../docs/assessment/assets-345-import-evidence/README.md))。本specがproduction contract (#204)・framing抽出規則 (#205)・normalizer (#329) の **動作を1つも変更しない** ことを前提に、AI-facingなinstruction/example層をproduction truthから派生させ、derivationの構造保証外の規則はbehavior-parity testで同期する。
 
 ## Problem
 
@@ -28,7 +28,7 @@ exchange packageのAI-facing instructionは、production側に一元化された
 
 ## Scope
 
-- `IntentWireContract` (新規、internal): intent payloadのwire field descriptor。**構造派生の対象** (property名集合・enum値・静的制限定数・schema version定数) と、**表示+parity同期の対象** (必須性・canonical JSON型・cross-field any-of / 非空配列) を区別して保持する。`IntentCodec` のallow-list集合はdescriptorの名前集合から派生する。decodeのpresence/type判定logic自体は変更しない (2nd review 高1への対応: 保証範囲を正直に分割)。
+- `IntentWireContract` (新規、internal): intent payloadのwire field descriptor。**構造派生の対象** (property名集合・enum値・静的制限定数・schema version定数) と、**表示主張の対象** (必須性・型・cross-field規則。3rd review 中1対応) を区別して保持する。表示主張の各制約は `enforcement` 分類 (`PRODUCTION_ENFORCED` — productionが違反をrejectする / `AUTHORING_POLICY` — productionは受理するがcanonical authoringが要求する) を持つ。`IntentCodec` のallow-list集合はdescriptorの名前集合から派生する。decodeのpresence/type判定logic自体は変更しない。
 - `ExchangePackageComposer` instruction部の再構成。descriptor派生のoutput contract section、validator規則 (production-enforced) とauthoring policy (producer側制限) を分離した明示prose、finalization self-check section、不足情報時の挙動指示の追加。
 - Response formatの変更: canonical authoring formとして単一fenced `json` block + candidate 1個を要求 (marker行の要求は廃止。**import経路の3 accepted framingは不変**)。
 - instructionが参照するauthoring formに揃える、import失敗案内copy (en/ja) の文言更新。失敗分類 (19種)・表示対応は不変。
@@ -78,8 +78,11 @@ _Avoid_: parity matrix (production-enforced規則の検証と混同しないよ�
 | enum値 (`Importance`: HIGH/NORMAL/LOW、`ExportRegionKind`: TOP/MIDDLE/BOTTOM) | `Importance.entries` / `ExportRegionKind.entries` | 構造派生 (descriptor) |
 | confidence 整数 0–100 | `ContextExportContract.CONFIDENCE_MIN/MAX` (新設。現literal重複を解消) | 構造派生 (descriptor) |
 | `freeText` ≤100字 / `rationale` ≤500字 / entries ≤512 / unresolved ≤512 | `ContextExportContract` 既存定数 | 構造派生 (descriptor) |
-| 必須性 (`schemaVersion` / `exportId` / item `ref` / `groupSemantic` any-of) | `IntentCodec` / `IntentModels` のdecode/init判定 | descriptor表示 + parity fixture (descriptorの主張1件ごとにproduction pathのfixtureで固定) |
-| canonical JSON型 (string / boolean / integer / array / object) | `IntentCodec` のdecode判定 | descriptor表示 + parity fixture (canonical表現は受理・違反は記録したtyped failure) |
+| 必須性 — productionがrejectするもの (`schemaVersion` / `exportId` / item `ref` のpresence、`groupSemantic` any-of) | `IntentCodec` / `IntentModels` のdecode/init判定 | descriptor表示 (`PRODUCTION_ENFORCED`) + parity fixture (counterfactual保証あり) |
+| container shape・boolean/integer型 — productionがrejectするもの (`itemIntents`/`unresolvedRefs` 非配列、`confidence` 非整数、`preserve` 非boolean、`pageAffinity` 非整数) | `IntentCodec` のdecode判定 | descriptor表示 (`PRODUCTION_ENFORCED`) + parity fixture (counterfactual保証あり) |
+| canonical JSON型 — productionが広く受理するもの (string fieldをJSON stringでauthorする旨。`optString` は非string primitiveも受理) | productionでrejectされない (producer-side policy) | descriptor表示 (`AUTHORING_POLICY`) + policy matrix (instructionが制約文をpositiveにrender + canonical fixture受理) |
+| cross-field — productionがrejectするもの (`groupSemantic` any-of) | `IntentModels.init` | descriptor表示 (`PRODUCTION_ENFORCED`) + parity fixture (counterfactual保証あり) |
+| cross-field — productionが受理するもの (`desiredGroup` 存在すれば非空、string list要素のstring要求) | productionでrejectされない (producer-side policy) | descriptor表示 (`AUTHORING_POLICY`) + policy matrix |
 | payload 128KiB / envelope 1MiB | `MAX_INTENT_BYTES` / `MAX_EXCHANGE_IMPORT_BYTES` | spec同期対象 (resource guard。instructionへは載せない — authoring指示ではなく受信側資源境界) |
 | `pageAffinity ∈ [0, gridContext.pageCount)` | `IntentValidator` (export grid依存のcontext制約) | 明示prose + production-enforced parity test |
 | mobility規則のproduction-enforced部分 (FIXED → semantic 5 field禁止 / CONDITIONAL → `desiredGroup`,`groupSemantic` 禁止 / CANDIDATE → `preserve` 禁止) | `IntentValidator` | 明示prose + production-enforced parity test |
@@ -87,24 +90,25 @@ _Avoid_: parity matrix (production-enforced規則の検証と混同しないよ�
 | ref規則 (全ref-bearing fieldでCONTEXT内refのみ / 同一refは合計1回 / 分割違反) | `IntentValidator` | 明示prose + production-enforced parity test |
 | decoderの互換受容 (非string primitiveのstring化、空 `desiredGroup` → absent正規化等) | `IntentCodec` 実装 | authoring policy matrix (canonical authoringでは禁止。production受理は許容) |
 
-上表のとおり、本specが「driftが構造的に不可能」とするのは **構造派生の行 (名前集合・enum・静的定数)** についてである。descriptor表示 + parity fixtureの行は、descriptor主張とproduction挙動の乖離がtest失敗として検出される同期であり、構造保証ではない。context依存・意味検証規則はproduction-enforced parity testによる同期である。decoderは互換性のためcanonical authoring表現より広い入力を受理し得るが、instructionが要求するのはcanonical authoring representationのみであり、`canonical authoring ⊆ production accepted` をpolicy matrix testが保証する。
+上表のとおり、本specが「driftが構造的に不可能」とするのは **構造派生の行 (名前集合・enum・静的定数)** についてである。`PRODUCTION_ENFORCED` の表示主張は、descriptor主張とproduction挙動の乖離がparity fixture失敗として検出される同期 (counterfactual保証) であり、構造保証ではない。`AUTHORING_POLICY` の表示主張 (JSON string要求・`desiredGroup` 非空・list要素のstring要求・FIXED `preserve: true`) はproductionがrejectしないため、oracleは「instructionが制約文をpositiveにrenderすること」と「canonical fixtureが必ずproductionで受理されること」である。context依存・意味検証規則はproduction-enforced parity testによる同期である。decoderは互換性のためcanonical authoring表現より広い入力を受理し得るが、instructionが要求するのはcanonical authoring representationのみであり、`canonical authoring ⊆ production accepted` をpolicy matrix testが保証する。
 
 ## Behavior scenarios
 
 ### Scenario: instruction部のoutput contractはwire descriptorから派生する
 
-Given `IntentWireContract` が各group (top-level / item entry / `globalPreference` / `groupSemantic`) のproperty名集合、enum参照、静的制限定数、および必須性・canonical JSON型・cross-field規則の主張 (`schemaVersion`: string, required, 値は `personalized-intent-v3` / `exportId`: string, required / `itemIntents`: object array, optional / `unresolvedRefs`: string array, optional / `globalPreference`: object, optional / `rationale`: string, optional, ≤500字 / `confidence`: integer, optional, 0–100 / item: `ref` string required、`importance` enum HIGH|NORMAL|LOW、`desiredGroup` string array optional・存在すれば非空 (policy)、`groupSemantic` object optional・`category` または `freeText` のany-of、`pageAffinity` integer optional・0..`gridContext.pageCount`−1、`regionAffinity` enum TOP|MIDDLE|BOTTOM、`preserve` boolean optional / `globalPreference`: `minimizeMovement` boolean optional / `groupSemantic`: `category` string optional、`freeText` string optional ≤100字) を保持し、
+Given `IntentWireContract` が各group (top-level / item entry / `globalPreference` / `groupSemantic`) のproperty名集合、enum参照、静的制限定数、および必須性・型・cross-field規則の主張を **`enforcement` 分類つき** で保持する (`PRODUCTION_ENFORCED`: `schemaVersion` presence / `exportId` presence / item `ref` presence / `itemIntents`・`unresolvedRefs` 非配列reject / `confidence` 非整数reject / `preserve` 非boolean reject / `pageAffinity` 非整数reject / `groupSemantic` any-of。`AUTHORING_POLICY`: string fieldをJSON stringでauthorする旨 / `desiredGroup` 存在すれば非空 / string list要素のstring要求 / FIXED `preserve: true`)、
 When exchange packageをcomposeする、
 Then instruction部のoutput contract sectionは上記の名前・canonical JSON型・必須性・enum値・制約を **compose時にdescriptorから直接整形して** 含み、
 And `IntentCodec` の `ALLOWED_TOP_KEYS` / `ALLOWED_ITEM_KEYS` / `ALLOWED_GLOBAL_KEYS` / `ALLOWED_SEMANTIC_KEYS` はdescriptorの名前集合から派生した既存集合と等しい、
 And instruction部はproduction contractに存在しないproperty・enum値・操作 (widget span、座標、DB変更等) を能力として約束しない。
 
-### Scenario: descriptor主張とproduction挙動のparity fixture
+### Scenario: descriptor主張とproduction挙動のparity fixture (PRODUCTION_ENFORCEDのみcounterfactual)
 
-Given descriptorの必須性・canonical JSON型・cross-field規則の主張1件ごとに対応するfixture、
-When `ExchangeImportPipeline.import` に通す、
-Then 主張どおりの挙動が1件ずつ固定される (例: `exportId` 欠落 → `SCHEMA_MISMATCH`。canonical string表現 → 受理。`groupSemantic` 両方null → `SCHEMA_MISMATCH`)、
-And descriptorの主張をproductionと矛盾する値へ変更すると該当fixtureが失敗する (descriptor↔production乖離の検出)。
+Given descriptorが `enforcement` 分類を持って各制約主張を保持している (例: `PRODUCTION_ENFORCED` — `exportId` presence、`itemIntents` 非配列reject、`confidence` 非整数reject、`preserve` 非boolean reject、`groupSemantic` any-of。`AUTHORING_POLICY` — string fieldのJSON string要求、`desiredGroup` 非空、list要素のstring要求、FIXED `preserve: true`)、
+When `PRODUCTION_ENFORCED` の主張1件ごとに対応するfixtureを `ExchangeImportPipeline.import` に通す、
+Then 主張どおりの挙動が1件ずつ固定され (例: `exportId` 欠落 → `SCHEMA_MISMATCH`。`itemIntents` 非配列 → `SCHEMA_MISMATCH`。`groupSemantic` 両方null → `SCHEMA_MISMATCH`)、
+And descriptorの `PRODUCTION_ENFORCED` 主張をproductionと矛盾する値へ変更すると該当fixtureが失敗する (descriptor↔production乖離の検出)、
+And `AUTHORING_POLICY` の主張はproductionがrejectしないためcounterfactual fixtureの対象外であり、そのoracleはpolicy matrix (instructionのpositive render + canonical fixture受理) である。
 
 ### Scenario: 未定義propertyの追加禁止とfinalize前self-check
 
@@ -149,12 +153,12 @@ When `ExchangeImportPipeline.import` に通す、Then 各fixtureの期待typed f
 - mobility production-enforced: FIXEDへの `importance` / `pageAffinity` / `regionAffinity` / `desiredGroup` / `groupSemantic` → `MOBILITY_CONTRADICTION`、CONDITIONALへの `desiredGroup` / `groupSemantic` → `MOBILITY_CONTRADICTION`、CANDIDATEへの `preserve` → `MOBILITY_CONTRADICTION`、各合法組み合わせ → 成功
 And これらのtestはproduction path (`ExchangeImportPipeline.import`) のみを通り、ad-hocなcodec直呼びで本番seamを模倣しない。
 
-### Scenario: authoring policy matrix (canonical ⊆ accepted)
+### Scenario: authoring policy matrix (canonical ⊆ accepted + positive render)
 
-Given productionが受理するがcanonical authoringが禁止する表現 (空配列 `desiredGroup`、FIXED itemへの `preserve: false`、非string primitiveのstring field (例: `"ref": 3`)、`groupSemantic` への数値等)、
+Given productionが受理するがcanonical authoringが要求と異なる表現 (非string primitiveのstring field (例: `"ref": 3`)、空配列 `desiredGroup`、FIXED itemへの `preserve: false`、非string要素のlist)、
 When instruction部を検査し、canonical fixtureを `ExchangeImportPipeline.import` に通す、
-Then instructionはcanonical authoring表現 (properなJSON型・列挙値) のみを要求し、policy違反表現を要求・例示しない、
-And canonical fixture群は **すべて** productionで受理され (`canonical authoring ⊆ production accepted`)、policy matrixの各行がinstructionの該当文と対応する。
+Then instructionはpolicyごとに対応する制約文を **positiveにrenderしている** (「string fieldはJSON stringでauthorする」「`desiredGroup` は存在するなら非空のref配列」「string listの要素は文字列」「FIXED itemで `preserve` をauthorするなら `true`」) — 「違反表現を例示しない」(absence test) ではなく制約文の存在をoracleとする、
+And canonical fixture群は **すべて** productionで受理され (`canonical authoring ⊆ production accepted`)、policy matrixの各行がinstructionの該当制約文と1対1に対応する。
 
 ### Scenario: #345契約不適合出力のtyped failure固定 (regression fixture)
 
@@ -172,7 +176,7 @@ And 失敗分類19種とその表示対応は不変である。
 
 ## Decisions
 
-1. **同期方式: 構造派生 + descriptor表示のparity fixture + parity/policy matrix (4層、保証範囲を明示)**。比較: (a) 同一source-of-truthからの生成 — property名集合・enum値・静的定数に適用。`IntentWireContract` descriptorを一元化し、`IntentCodec` のallow-listとcomposerのoutput contractが同一descriptorから派生する。この範囲のdriftは構造的に不可能。(b) build時metadata生成 — 却下。build stepと二次表現だけが増える。(c) 手書きprose + contract testのみ — 単独では採用しない。prose pinningとparity/policy testとして補助採用。**必須性・canonical JSON型・cross-field規則はdecode logicのdescriptor駆動refactorをせず**、descriptorの表示主張 + production pathのparity fixture (2nd review 高1への対応。選択肢(B)) で同期する。保証範囲はProduction truth inventory表のとおり正直に分類し、構造保証を超える主張をしない。**production validatorと別の独自AI schemaは作らない。**
+1. **同期方式: 構造派生 + enforcement分類つきdescriptor表示 + parity/policy matrix (保証範囲を明示)**。比較: (a) 同一source-of-truthからの生成 — property名集合・enum値・静的定数に適用。`IntentWireContract` descriptorを一元化し、`IntentCodec` のallow-listとcomposerのoutput contractが同一descriptorから派生する。この範囲のdriftは構造的に不可能。(b) build時metadata生成 — 却下。build stepと二次表現だけが増える。(c) 手書きprose + contract testのみ — 単独では採用しない。prose pinningとparity/policy testとして補助採用。**必須性・型・cross-field規則はdecode logicのdescriptor駆動refactorをせず**、descriptorの表示主張 + fixtureで同期する。表示主張は制約単位で `PRODUCTION_ENFORCED` (parity fixture + counterfactual保証) と `AUTHORING_POLICY` (positive render + canonical ⊆ accepted) に分類し、混在を許さない (2nd review 高1・3rd review 中1対応)。保証範囲はProduction truth inventory表のとおり正直に分類し、構造保証を超える主張をしない。**production validatorと別の独自AI schemaは作らない。**
 2. **canonical authoring form: 単一fenced `json` block + candidate 1個**。#345実測の2 copy affordance (message copy / code-block copy) の双方でaccepted framingに帰着しやすいのはfence形式。marker形式はaccepted framingのまま維持し (既存返答の互換、優先度1の抽出規則も不変)、instructionからの要求のみ撤去する。canonical authoring representationはproduction受理集合より狭いproducer-side policyであり、`canonical authoring ⊆ production accepted` をpolicy matrix testが保証する (2nd review 中2対応)。UI失敗案内copyはこのauthoring要求に揃える。#329 normalizerの拡張はしない (message-copyの `\` エスケープ問題はcanonical authoring form選択により **発生源头で緩和** され、受信側の救済はsemantic repairに接尾するため行わない。残余リスクはtyped failureでfail-closed)。
 3. **instruction部のsection構成** (spec 205 Decision 2の改訂。normative本文も実装PRで更新): Goal / You may / Output contract (新設、descriptor派生) / You must (production-enforced mobility規則・page範囲・ref規則・partial authoring規則 + FIXEDのauthoring policy) / Before sending your final answer (self-check、新設) / Response format (canonical authoring form)。英文final proseの微調整は実装reviewとrepresentative evidenceで行う (構造・必須要素は本specで固定)。
 4. **one-round-trip UX invariant**: Launcher → AI request 1回、AI → Launcher final artifact 1回。AI内での2〜4問程度のbounded interview・Web検索・方針確認は許容。import後のAI repair loopは通常flowに含めない。失敗はtyped表示でfail-closedし、成功戦略はfinalize前のcontract adherenceに置く。#205のframing失敗時の「再依頼」案内は回復手段の説明として許容するが、repair手順の標準化・diagnosticsのAIへの持ち込み指示は追加しない (許容/禁止の具体範囲はBehavior scenario「one-round-trip invariant」で固定)。
@@ -190,8 +194,8 @@ And 失敗分類19種とその表示対応は不変である。
 ## Acceptance criteria
 
 - [ ] AC-1: one-round-trip UX invariant (request 1回・final artifact 1回・AI内bounded interview許容・import後AI repair loop不採用) が本specに明文化され、許容する回復文と禁止するrepair導線がBehavior scenarioどおり具体化され、package instruction/footerと対象4 stringsについて否定assertionがtestされる。
-- [ ] AC-2: `IntentWireContract` が構造派生対象 (property名集合・enum参照・静的制限定数・schema version定数) と表示主張対象 (必須性・canonical JSON型・cross-field規則) を区別して一元化し、(a) `IntentCodec` のallow-list集合がdescriptorの名前集合から派生して既存decode挙動と等しいこと、(b) instructionのoutput contract sectionがdescriptorから整形されていること、をproduction symbolを参照するunit testが機械検証し、(c) descriptorの表示主張1件ごとにproduction pathのparity fixtureが対応すること (期待値をtest側へliteral複写しない。descriptor主張をproductionと矛盾する値へ変えるとfixtureが失敗することを含む)。
-- [ ] AC-3: instructionがproduction-enforced規則 (mobility規則のproduction部分・`pageAffinity` 範囲・全ref-bearing fieldのref規則・entries上限) とFIXEDのauthoring policyを分離して明示し、production-enforced parity matrix (fixtureごとに期待typed failure 1種類固定、`ExchangeImportPipeline.import` 経由、table-driven) とauthoring policy matrix (instructionがpolicy違反表現を要求しないこと + canonical fixtureがすべてproduction受理 = `canonical authoring ⊆ production accepted`) の両方がtestされる。
+- [ ] AC-2: `IntentWireContract` が構造派生対象 (property名集合・enum参照・静的制限定数・schema version定数) と表示主張対象 (必須性・型・cross-field規則。各制約は `PRODUCTION_ENFORCED` / `AUTHORING_POLICY` 分類つき) を区別して一元化し、(a) `IntentCodec` のallow-list集合がdescriptorの名前集合から派生して既存decode挙動と等しいこと、(b) instructionのoutput contract sectionがdescriptorから整形されていること、をproduction symbolを参照するunit testが機械検証し、(c) **`PRODUCTION_ENFORCED` 主張1件ごとに** production pathのparity fixtureが対応し、主張をproductionと矛盾する値へ変えると該当fixtureが失敗すること (counterfactual保証。`AUTHORING_POLICY` 主張はこのcounterfactualの対象外で、oracleはAC-3のpolicy matrix)。期待値をtest側へliteral複写しない。
+- [ ] AC-3: instructionがproduction-enforced規則 (mobility規則のproduction部分・`pageAffinity` 範囲・全ref-bearing fieldのref規則・entries上限) とFIXEDのauthoring policyを分離して明示し、production-enforced parity matrix (fixtureごとに期待typed failure 1種類固定、`ExchangeImportPipeline.import` 経由、table-driven) とauthoring policy matrix (policyごとにinstructionが **制約文をpositiveにrenderしていること** — absence testではなく制約文の存在をassert — かつcanonical fixtureがすべてproduction受理 = `canonical authoring ⊆ production accepted`) の両方がtestされる。
 - [ ] AC-4: instructionに準拠して構成したgolden canonical payloadが単一fenced block経由で `ExchangeImportPipeline.import` を通り、session束縛・validate・completion後のcanonical表現まで到達する (contract test)。
 - [ ] AC-5: finalization self-check (advertised schemaVersionのみ・未定義propertyなし・型/enum/数値制約・ref範囲・重複禁止・未判断itemの推測禁止・candidate 1個・余分なcode blockなし) がinstructionに存在し、testでpinningされる。
 - [ ] AC-6: 不足情報時はfinalize前の質問またはaccepted unresolved/omission semanticsを使う旨がinstructionに明示され、独自property・独自値での帳尻合わせが禁止されている (test)。
@@ -237,4 +241,5 @@ And 失敗分類19種とその表示対応は不変である。
 
 - 2026-09-18: Draft created for #348。#345 evidence ([assets-345-import-evidence](../../docs/assessment/assets-345-import-evidence/README.md)) を入力に、AI-facing contractのproduction同期、finalization self-check、canonical authoring form (fenced json)、one-round-trip invariant、#345 regression fixtureを定義。
 - 2026-09-18 (2nd): 1st ChatGPT review ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/348#issuecomment-5717646827)、head `a7cbcb84be` 基準) の高3点・中2点に対応。**高1**: requiredness/JSON型の同期が未設計 → `IntentWireContract` descriptor導入とrepresentation分離。**高2**: validator固有truthを同期対象へ追加し、保証範囲を正確化、production truth inventory表を追加。**高3**: spec 205/329のnormative更新をDecision 6として追加、accepted framing / canonical authoring formの用語分離。**中4**: parity matrix (table-driven、production path経由) をAC-3へ、golden testを `ExchangeImportPipeline.import` 経由へ。**中5**: AC-11へevidence protocolを追加。
-- 2026-09-18 (3rd): 2nd ChatGPT review ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/348#issuecomment-5717882626)、head `e83aa3e909` 基準、**Request changes**) に対応。**高1**: descriptorがrequired/typeまでproduction正本でない問題 → Decision 1を「構造派生 (名前集合・enum・静的定数) / descriptor表示 + parity fixture (requiredness・型・any-of) / production-enforced parity / authoring policy」の4層へ再定義し、decode logicのdescriptor駆動refactorを却下 (保証主張を正直に縮小)。**中2**: production-enforced parity matrix (期待failure 1種固定) とauthoring policy matrix (`canonical ⊆ accepted`) へ分離。FIXEDの `preserve: false`・空 `desiredGroup`・非string primitive受容をpolicy側へ移動。**中3**: spec 205/329のnormative更新を「実装PR必須 (AC-9 blocking)」へ固定し、spec 205のframing失敗時再回答案内・validation reject後位置づけを更新対象へ追加。**中4**: AC-11へevidence data policy (Decision 7: synthetic profile・sanitized artifact・raw commit禁止・指紋記録) を追加。
+- 2026-09-18 (3rd): 2nd ChatGPT review ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/348#issuecomment-5717882626)、head `e83aa3e909` 基準、**Request changes**) に対応。**高1**: descriptorがrequired/typeまでproduction正本でない問題 → Decision 1を「構造派生 (名前集合・enum・静的定数) / descriptor表示 + parity fixture (requiredness・型・any-of) / production-enforced parity / authoring policy」へ再定義し、decode logicのdescriptor駆動refactorを却下 (保証主張を正直に縮小)。**中2**: production-enforced parity matrix (期待failure 1種固定) とauthoring policy matrix (`canonical ⊆ accepted`) へ分離。FIXEDの `preserve: false`・空 `desiredGroup`・非string primitive受容をpolicy側へ移動。**中3**: spec 205/329のnormative更新を「実装PR必須 (AC-9 blocking)」へ固定し、spec 205のframing失敗時再回答案内・validation reject後位置づけを更新対象へ追加。**中4**: AC-11へevidence data policy (Decision 7: synthetic profile・sanitized artifact・raw commit禁止・指紋記録) を追加。
+- 2026-09-18 (4th): 3rd ChatGPT review ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/348#issuecomment-5717996131)、head `116d758f55` 基準、**Request changes**) に対応。**中1**: descriptorの制約主張に `enforcement` 分類 (`PRODUCTION_ENFORCED` / `AUTHORING_POLICY`) を導入し、Production truth inventory・parity fixture scenario・Decision 1・AC-2を分類に沿って分離 (parity fixture + counterfactual保証は `PRODUCTION_ENFORCED` のみ。string要求・`desiredGroup` 非空等のpolicy主張はpolicy matrixへ)。**低2**: authoring policy matrixのoracleをabsence test (「違反表現を例示しない」) からpositive assert (「policyごとの制約文がinstructionに存在する」) へ統一 (AC-3)。
