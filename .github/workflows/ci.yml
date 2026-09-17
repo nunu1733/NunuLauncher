@@ -656,6 +656,54 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+  # Issue #332's Exchange import surface is a standalone Compose UI whose
+  # semantics, bounded-height, and clipboard-first behaviour assertions are
+  # machine-checked in one class. It runs on an independent clean emulator
+  # (#345: previously local-only evidence, now a CI merge gate).
+  organizer-instrumentation-issue332-tests:
+    needs: changes
+    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run Issue 332 exchange import surface instrumentation (API 36 / Platform 36.1)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: >-
+            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
+            -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.exchange.ExchangeImportSurfaceInstrumentationTest
+      - name: Upload Issue 332 instrumentation reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: organizer-instrumentation-issue332-reports
+          path: |
+            build/reports/androidTests/connected/**
+            build/outputs/androidTest-results/**
+          retention-days: 7
+          if-no-files-found: warn
+
   # Required status check: aggregates the jobs above so branch protection has a
   # single gate. Jobs that were skipped (e.g. style on a docs PR) count as
   # success; only actual failures fail the gate.
@@ -672,6 +720,7 @@ jobs:
       - organizer-instrumentation-issue52-tests
       - organizer-instrumentation-issue155-tests
       - organizer-instrumentation-issue99-tests
+      - organizer-instrumentation-issue332-tests
       - organizer-instrumentation-issue53-tests
       - build-debug-apk
     runs-on: ubuntu-latest
