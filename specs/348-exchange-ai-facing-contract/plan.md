@@ -2,7 +2,7 @@
 
 > Issue: #348
 > Spec: [spec.md](./spec.md)
-> Status: draft (3rd review対応revision)
+> Status: draft (4th review対応revision)
 
 ## Current evidence
 
@@ -30,7 +30,7 @@
 - `ContextExportContract` (最小変更): `CONFIDENCE_MIN = 0` / `CONFIDENCE_MAX = 100` 追加。
 - `IntentModels` (最小変更): `require(it in 0..100)` をcontract定数参照に変更 (挙動不変)。
 - `ExchangePackageComposer` (変更): instruction部を「固定prose + descriptor派生output contract + production-enforced規則prose (mobility規則のproduction部分・page範囲・ref規則) + FIXED authoring policy」の合成へ変更。公開API (`compose` / `parsePackageStructure`) とimmutable-value契約 (spec 205 AC-12) は不変。composerはexport JSONを解釈しない (現行どおり。per-export情報はCONTEXT data参照に委ねる)。
-- 新規 `tests/unit/app/lawnchair/organizer/personalization/exchange/Issue348AiFacingContractSyncTest.kt`: AC-2/3/4/5/6/8の検証面。descriptor一致 / composer派生containment / descriptor表示主張のparity fixture / production-enforced parity matrix / authoring policy matrix / golden / #345 fixture。すべて `ExchangeImportPipeline.import` 経由。
+- 新規 `tests/unit/app/lawnchair/organizer/personalization/exchange/Issue348AiFacingContractSyncTest.kt`: AC-2/3/4/5/6/8の検証面。test構成は2系統: **production acceptance/failureを検証するfixture** (`PRODUCTION_ENFORCED` 主張のparity fixture・production-enforced parity matrix・canonical fixture受理・golden・#345) は `ExchangeImportPipeline.import` 経由。**descriptor/instructionの直接検査** (descriptor↔codec allow-list一致、composer派生containment、policy制約文のpositive存在assert、self-check・ask-before-final・repair導線不在のpinning) はunit oracleとして直接assert。
 - strings (en/ja): spec AC-9の4 keyの文言更新のみ。
 - seam: すべて既存 (`ExchangePackageComposer.compose`、`ExchangeImportPipeline.import`、`IntentCodec.decode`、`IntentValidator.validate`)。新規のpublic interface/adapterは作らない (descriptorは同一module内internal)。
 
