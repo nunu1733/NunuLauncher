@@ -225,7 +225,7 @@ SAF filter = `text/plain` + `application/json`。UI copyで「テキスト (.txt
 - [ ] AC-7: raw clipboard/file内容がdefaultのdiagnostics・log・永続化へ保存されないこと、import textの保持が結果surface表示中のephemeral (1箇所) に限定され、再取り込み・close・画面遷移で破棄されることが検証される (retention boundaryの固定、regression)。
 - [ ] AC-8: TalkBack (各source操作の識別・typed失敗の読み分け)、Switch Access/keyboard完結、200% font (主要CTA到達性・bounded scroll) のevidenceがある。D-4の実寸確定根拠を含む。
 - [ ] AC-9: representativeなChatGPT/Gemini mobile appからのcopy → NunuLauncher import (clipboard読込による) のdevice evidenceがある。file経由 (AI appの回答をfile保存→読込) も併記することが望ましい。
-- [ ] AC-10: 読み込み後の表示がparse-firstであること (認識framing/version/summaryの表示、rawのdefault折りたたみ、typed失敗ごとの案内) がtestされる。既存typed失敗表示 (19種) とexport flow (生成・送信前確認・transport) がregressionなく機能する。
+- [ ] AC-10: 読み込み後の表示がparse-firstであること (認識framing/version/summaryの表示、rawのdefault折りたたみ、typed失敗ごとの案内) がtestされる。認識エントリ数の境界はfixture testで直接assertする: export scopeに複数refがあり、authored documentの `items` がsemantic entry + bare entry (`ref` のみ) のみを含み、別のrefはdocumentに書かれていない (omission) 状況で、**表示/metadataのエントリ数 == authored document `items` のentry数 (bare含む、omission除外)** であること。post-validation値 (`completed.authoredItemCount` 等) への誤置換もこのfixtureで検出可能にする。既存typed失敗表示 (19種) とexport flow (生成・送信前確認・transport) がregressionなく機能する。
 
 ## Test oracle
 
@@ -240,7 +240,7 @@ SAF filter = `text/plain` + `application/json`。UI copyで「テキスト (.txt
 | AC-7 | diagnostics契約のregression test/review (書込み経路の不在) + 結果surface表示中のephemeral保持 (1箇所) ・再取り込み/close/遷移時破棄のstate test |
 | AC-8 | 手動/instrumentation evidence (TalkBack・Switch Access・keyboard・font scale 200%。D-4確定根拠) |
 | AC-9 | physical device evidence (docs/assessment/ またはissue記録。#205 AC-10 evidenceと兼ね可) |
-| AC-10 | parse-first表示のUI test (framing/version/summary・raw折りたたみ) + 19種失敗表示regression + export flow regression |
+| AC-10 | parse-first表示のUI test (framing/version/エントリ数表示・raw折りたたみdefault閉) + エントリ数境界fixture test (semantic entry + bare entryを含み別refがomissionのdocumentで、表示/metadata count == `items.size` (bare含む・omission除外) を直接assert。`ExchangeImportPipelineTest` fixture) + 既存19種失敗表示regression (`ImportNormalizerTest` / `ExchangeImportPipelineTest` で #329分はcoverage済み) + export flow regression (既存unit test green) |
 
 ## Open questions (acceptance前に解消必要)
 
@@ -263,6 +263,7 @@ SAF filter = `text/plain` + `application/json`。UI copyで「テキスト (.txt
 - 2026-09-16: resume検証 (同一baseline)。残存draftをIssue本文・全コメント (0件)・実装source (`ExchangeFlowUi.kt` / `ExchangeTransports.kt` / `IntentImportParser.kt` / `ExchangeFlowController.kt` / `ExchangeImportPipeline.kt` / `ManualOrganizationPreferences.kt` / `ClipboardUtils.kt` / `lawnchair/res` strings / manifest) および #329/#328 draft spec (各branch snapshot) と突き合わせ、(1) import失敗画面の型名を実際の `ExchangeScreen.ImportOutcomeScreen` / `ExchangeImportOutcome` に精緻化、(2) export disclosure側の既存bounded表示pattern (`heightIn(max = 240.dp)` + `verticalScroll`) を問題記述・確認事実へ追記、(3) #329 framing enumの型名が #329 draftで未確定であることを明示、(4) #329/#328 draft specへの参照をIssue URL + branch snapshot表記へ修正、(5) DESIGN.md参照を gate 13 へ修正。statusは **draftのまま** (acceptance判断はowner)。
 - 2026-09-17: Re-entry改訂 (Re-entry rule適用)。#329が実装mergeされた (PR #339) ため、起草時の「実装済みの場合」条件付記述を実装済み前提へ統一: framing種別を `RecognizedImportFraming { MARKER, FENCED_JSON, STANDALONE_JSON }` として確定、失敗文言を19種 (normalization 2種追加済み) に更新、pipeline順序を「envelope gate → #329 normalizer → framing抽出 → decode」へ更新、D-6を「framing伝播は #329で実装済み。#332は失敗時framing付与とversion・件数付与」と再定義。#330実装 (PR #335) によるschema version `personalized-intent-v3` へのbumpを反映。baselineを `45711f53dd` へ更新。
 - 2026-09-17: Phase1 review指摘対応改訂 (Issue 332へのreviewコメント「Changes requested (Phase1: spec/plan Re-Entry revision)」、対象head `56b23f5d56` のRequired 1/2/3)。**(1)** parse-stage件数を「認識エントリ数 (authored document entry count)」として意味固定: bare entryも1 entry、`UnresolvedByOmission` は数えない、user-meaningfulなpreference件数は #328所有と明示 (#330 v3 semantics対応)。**(2)** raw input lifecycleの自己矛盾を解消: raw detail表示のため、取り込みtextを結果surface表示中のみprocess memoryへephemeral保持し、再取り込み・close・画面遷移で破棄するretention boundaryへ統一 (scenario・AC-7・D-6を整合)。**(3)** file import成功時をclipboardと同一の受領helper・共通import path実行 (file選択の1操作からparse結果まで追加操作なし) へ統一 (file scenario・AC-2を明示)。provenance: `45711f53dd` 以降の `origin/main` 差分 (`9290afc2be` まで確認) は #336 spec/plan status更新のみでruntime契約への影響なしを確認し、baseline記録を更新。
+- 2026-09-17: 再レビュー指摘対応 (同日review「Changes requested (Phase1指摘対応再レビュー)」、対象head `a06efcffc9` の残件)。認識エントリ数のbare/omission境界を直接assertするtest oracleをAC-10/Test oracleへ明文化: export scopeに複数refがあり、document `items` がsemantic entry + bare entryのみを含み別refがomission、というfixtureで「表示/metadata count == `items.size` (bare含む・omission除外)」を検証し、post-validation値 (`completed.authoredItemCount` 等) への誤置換を検出可能にする。Required 1のsemantic定義・Required 2/3は前回reviewで解消済みと確認された。
 
 ## References
 

@@ -136,7 +136,7 @@ Import入力に関係する現行source (すべて確認済み):
 | AC-7 | diagnostics書込み経路不在のregression review + 結果surface表示中のephemeral保持 (1箇所) ・`openImport`/`close`/遷移時破棄のstate test (retention boundary assertion) |
 | AC-8 | 手動/instrumentation evidence: TalkBack・Switch Access・keyboard・font scale 200%。D-4暫定値の確定根拠をここで記録 |
 | AC-9 | physical device evidence (representative ChatGPT/Gemini mobile app copy → import)。docs/assessment/ またはIssue記録。#205 AC-10 evidenceと同一workflowで兼ね可 |
-| AC-10 | parse-first表示のUI test (framing/version/エントリ数表示・raw折りたたみdefault閉) + 既存19種失敗表示regression (`ImportNormalizerTest` / `ExchangeImportPipelineTest` で #329分はcoverage済み) + export flow regression (既存unit test green) |
+| AC-10 | parse-first表示のUI test (framing/version/エントリ数表示・raw折りたたみdefault閉) + **エントリ数境界fixture test**: export scopeに複数refがあり、document `items` がsemantic entry + bare entryのみを含み別refがomission、というfixtureで「表示/metadata count == authored document `items.size` (bare含む・omission除外)」を直接assertする (`ExchangeImportPipelineTest` にfixture追加。`completed.authoredItemCount` 等のpost-validation値への誤置換も検出) + 既存19種失敗表示regression (`ImportNormalizerTest` / `ExchangeImportPipelineTest` で #329分はcoverage済み) + export flow regression (既存unit test green) |
 
 高リスクlabel (`risk: layout-data` / `risk: migration`) は付かない見込み (DB不変)。ただしPR時の独立エビデンス要件は [github-workflow.md](../../docs/project/github-workflow.md) の判定に従う。
 
