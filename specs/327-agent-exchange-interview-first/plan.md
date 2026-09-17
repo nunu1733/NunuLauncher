@@ -2,7 +2,7 @@
 
 > Issue: #327
 > Spec: [spec.md](./spec.md)
-> Status: draft (spec revision 3に対応。spec acceptance後にimplementation-ready)
+> Status: implementation-ready (spec accepted 2026-09-18。ChatGPT review Approve head `c7f3b7000e920cfdfd26ab661d0ebf74234691f9`)
 
 ## Current evidence
 
@@ -28,7 +28,7 @@ origin/main (`8fd05a40d51abd24b40a7b93579bb9b76d046f75`、#348 merge後) 時点�
    - `INSTRUCTION_FOOTER` を「確認後にのみ最終回答を返す」phase gateの追記 + Response format節へのcanonical example同梱へ拡張する。self-check文・fence要求文は既存のまま保持する。
    - canonical exampleはcomposer file内のprivate定数 (例: `CANONICAL_INTENT_EXAMPLE`) とする。単一file内で完結し、#204側moduleへの変更は行わない。
    - `compose(exportJson: String)` signature・`parsePackageStructure`・`ExchangeContract` (marker・envelope上限) は無変更。instructionは引き続き静的合成 (spec Decision 3)。
-2. **`ExchangeFlowUi.kt` (ui、既存)**: `ExchangeEntryRow` / `ExchangeScopedEntryRow` にcapability説明 (具体例リスト、「AIはホーム画面を直接変更しない」明示、期待される会話flowと1往復の受け渡し、会話はNunuLauncherを経由しない旨) を追加。既存 `Column` + `Text` 構成の拡張、新testTag (例: `exchange-entry-capability`) 付与。`ExchangeStatus` copy (transport success) の文言更新はstrings側で対応。展開形式 (常時表示 vs 折りたたみ) は実装時のUX判断 (spec Open question 2)。
+2. **`ExchangeFlowUi.kt` (ui、既存)**: `ExchangeEntryRow` / `ExchangeScopedEntryRow` にcapability説明 (具体例リスト、「AIはホーム画面を直接変更しない」明示、期待される会話flowと1往復の受け渡し、会話はNunuLauncherを経由しない旨) を追加。既存 `Column` + `Text` 構成の拡張、新testTag (例: `exchange-entry-capability`) 付与。`ExchangeStatus` copy (transport success) の文言更新はstrings側で対応。展開形式 (常時表示 vs 折りたたみ) は実装時のUX判断 (spec Open question 1)。
 3. **strings (既存)**: `exchange_entry_subtitle` / `exchange_scoped_entry_subtitle` をcapability説明へ置換または `exchange_capability_*` 系新規stringsを追加。`exchange_transport_success` を期待flowに言及する文言へ更新。en (`values/strings.xml`) + ja (`values-ja/strings.xml`) 両方 (ja正本)。
 
 ### Canonical example template (具体形)
@@ -39,7 +39,7 @@ instruction内のexample (静的text、fence・markerで囲まない、**具体�
 {"schemaVersion":"personalized-intent-v3","exportId":"REPLACE_WITH_THE_EXPORT_ID_FROM_THE_CONTEXT_DATA","itemIntents":[{"ref":"REPLACE_WITH_A_REF_YOU_HAVE_JUDGED","importance":"REPLACE_WITH_HIGH_NORMAL_OR_LOW"}],"unresolvedRefs":["REPLACE_WITH_A_REF_YOU_CANNOT_JUDGE"],"rationale":"REPLACE_WITH_ONE_SHORT_SENTENCE_ABOUT_YOUR_POLICY"}
 ```
 
-- すべての値は全大文字の明示的な非実在値placeholder。`importance` は許容値を列挙するplaceholderで、ユーザーが表明していないpriority・page・region・movement方針を実値として固定しない (spec Decision 2)。
+- `schemaVersion` を除く置換対象値はすべて全大文字の明示的な非実在値placeholder。`importance` は許容値を列挙するplaceholderで、ユーザーが表明していないpriority・page・region・movement方針を実値として固定しない (spec Decision 2)。
 - 判断を伴うoptional field (`desiredGroup` / `groupSemantic` / `pageAffinity` / `regionAffinity` / `preserve` / `globalPreference`) はexampleに含めない。指示文で「Output contractの型・enum・制約に従い、CONTEXT dataと会話から実際に判断した場合だけfieldを追加し、判断していない場合はfield自体を省略する」ことを要求する。
 - v3 partial authoringの **表示例**: `itemIntents` は判断した1件、`unresolvedRefs` に未判断refの例を示す (full coverageを示唆しない)。
 - contract test (**blocking oracle**): 合成export/session fixture (MOVABLE subject 3件以上・既知 `gridContext.pageCount`。templateが言及するのは2件で、1件はどちらにも言及しない) を用意し、(1) placeholderをfixture実値へ機械置換、(2) #348 canonical authoring formどおり単一fenced `json` blockへ包む、(3) `ExchangeImportPipeline.import` で `Validated` (completion後のcanonical表現) に到達、(4) 未言及refがcanonical unresolvedへcompletionされること (#330 partial authoringの回帰) を到達条件にする。#348のgolden testと同型のproduction-truth同期であり、exampleがcodecは通っても実importで `UNKNOWN_REF` / `MOBILITY_CONTRADICTION` / `INVALID_ENUM` 等で落ちるtemplateへdriftした場合にtest失敗として検出される。
@@ -108,7 +108,7 @@ instruction内のexample (静的text、fence・markerで囲まない、**具体�
 
 ## Risks
 
-- instructionの長文化 (Phase 1指針 + example) によりagentの遵守率が下がる可能性。#205 Decision 5のsize構造 (固定長instruction) は維持され、exampleは1 KiB程度に収まる想定。遵守率はAC-7 evidenceで早期把握し、Open question 3の微調整ルートで対応する。
+- instructionの長文化 (Phase 1指針 + example) によりagentの遵守率が下がる可能性。#205 Decision 5のsize構造 (固定長instruction) は維持され、exampleは1 KiB程度に収まる想定。遵守率はAC-7 evidenceで早期把握し、Open question 2の微調整ルートで対応する。
 - agentがexampleをverbatimでechoする経路 (spec scenario想定済み)。既存typed失敗でfail-closedであり、exampleは判断を含まないsemantic-value-neutral構造 (spec Decision 2) のため、echo時の害はID不一致のtyped失敗に限る。「値を置き換える」指示で発生率を抑える。
 - Phase 1指示と #348のself-check (「exactly one importable JSON artifact」) の混同 (初回応答でもartifactを返す誤解釈)。phase語でself-checkを最終回答に限定する文言構成で緩和し、AC-7 evidenceで観察する。
 - interview-firstがAI側会話の往復を増やす (UX cost)。ただしLauncher↔AI間のartifact受け渡しは1往復のまま (spec/one-round-trip)。skip宣言 (Decision 1) で軽減する。skip文言が「即Intent」を誘発してヒアリングが全く発生しなくなる (prose上の) リスクはAC-7 evidenceで観察する。
