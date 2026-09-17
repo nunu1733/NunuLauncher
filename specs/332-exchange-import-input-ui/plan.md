@@ -2,11 +2,11 @@
 
 ---
 issue: "#332"
-status: draft
+status: accepted
 updated: 2026-09-17
 ---
 
-> Status: **draft** — [spec.md](./spec.md) が **draft (not accepted)** であるため、本planも確定ではない。実装開始条件は specのowner承認。本planは baseline `9290afc2be80f8dc41a5defa14d7888619fadcad` (= 2026-09-17改訂時点の `origin/main`、#205 PR #325 + #331 PR #333 + #329 PR #339 + #330 PR #335 実装後。`45711f53dd40b5cc67013f4a4193d2c6d5b0dcc1` からの差分は #336 spec/plan status更新のみでruntime契約への影響なしを確認済み) の実装code調査に基づく。
+> Status: **accepted** (2026-09-17) — specがreview **Approved** ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/332#issuecomment-5706349675)、head `bccab1ca0d0d5609a1f80c612f8dc75191d53004` 基準) となったため、本planに従い実装を着手する。本planは baseline `9290afc2be80f8dc41a5defa14d7888619fadcad` (= `origin/main`。`45711f53dd40b5cc67013f4a4193d2c6d5b0dcc1` からの差分は #336 spec/plan status更新のみでruntime契約への影響なしを確認済み) の実装code調査に基づく。
 
 ## Re-entry status
 

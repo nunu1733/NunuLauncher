@@ -1,6 +1,6 @@
 ---
 issue: "#332"
-status: draft
+status: accepted
 requirements: [FR-017]
 risk:
   - privacy
@@ -9,7 +9,7 @@ updated: 2026-09-17
 
 # External Agent ExchangeのImport入力をclipboard/file-firstのモバイルUIへ変更する
 
-> Status: **draft** (2026-09-16 起草、2026-09-17 re-entry改訂、同日 Phase1 review指摘対応改訂。検証済みbaseline `9290afc2be80f8dc41a5defa14d7888619fadcad` (= 改訂時点の `origin/main`。`45711f53dd40b5cc67013f4a4193d2c6d5b0dcc1` からの差分は #336 spec/planのstatus更新のみでruntime契約への影響なしを確認済み)。**owner承認 (accepted) ではない**)。#329 (Import Normalizer) は実装済みのため、本specは実装済みframing種別 `RecognizedImportFraming` (marker / fenced json / standalone JSON) とtyped失敗19種を前提に改訂した。**D-4 (manual paste editorの実寸) はlarge-font/accessibility evidenceで確定する** ことがIssue本文から指示されているため未決定 (Open questions 2)。D-2 (manual paste fieldの配置)、D-3 (file対応型の範囲) も起草時推奨を明示のうえowner reviewで確定する。
+> Status: **accepted** (2026-09-17) — review **Approved** ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/332#issuecomment-5706349675)、head `bccab1ca0d0d5609a1f80c612f8dc75191d53004` 基準) 後に実装を着手する。起草2026-09-16、re-entry改訂・Phase1 review指摘対応 (3回のreview) 済み。検証済みbaseline `9290afc2be80f8dc41a5defa14d7888619fadcad` (= `origin/main`。`45711f53dd40b5cc67013f4a4193d2c6d5b0dcc1` からの差分は #336 spec/planのstatus更新のみでruntime契約への影響なしを確認済み)。#329 (Import Normalizer) は実装済みのため、本specは実装済みframing種別 `RecognizedImportFraming` (marker / fenced json / standalone JSON) とtyped失敗19種を前提とする。**D-4 (manual paste editorの実寸) はlarge-font/accessibility evidenceで確定する** ことがIssue本文から指示されているため未決定のまま (Open questions 2。実装は暫定値をパラメータ化)。D-2 (manual paste fieldの配置) は起草推奨の折りたたみsection、D-3 (file対応型) は `text/plain` + `application/json` をaccepted値として実装する (device evidenceで必要判明時にspec改訂)。
 
 ## Problem
 
