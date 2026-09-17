@@ -457,11 +457,15 @@ class ExchangeTargetScopeCouplingTest {
     }
 
     @Test
-    fun instructionV2ExplainsCandidatesAndMarkers() {
+    fun instructionV2ExplainsCandidates() {
+        // Issue #348: the instruction still explains CANDIDATE subjects, but
+        // no longer requests the INTENT marker lines (the canonical authoring
+        // form is a single fenced `json` block; markers stay accepted on
+        // import per spec 205/329).
         val packageText = ExchangePackageComposer.compose("{}")
         assertTrue(packageText.contains("personalized-intent-v3"))
         assertTrue(packageText.contains("CANDIDATE"))
-        assertTrue(packageText.contains("-----BEGIN NUNULAUNCHER INTENT-----"))
+        assertTrue(!packageText.contains("-----BEGIN NUNULAUNCHER INTENT-----"))
         assertTrue(ExchangePackageComposer.parsePackageStructure(packageText) is PackageStructureResult.Valid)
     }
 
