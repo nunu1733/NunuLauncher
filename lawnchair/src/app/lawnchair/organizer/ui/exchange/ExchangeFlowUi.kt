@@ -695,6 +695,11 @@ private fun ExchangeEntryRow(onOpenFlow: () -> Unit, onOpenImport: () -> Unit) {
             text = stringResource(R.string.exchange_entry_subtitle),
             style = MaterialTheme.typography.bodyMedium,
         )
+        ExchangeCapabilityNotes(
+            modifier = Modifier
+                .padding(top = 4.dp)
+                .testTag("exchange-entry-capability"),
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -712,6 +717,50 @@ private fun ExchangeEntryRow(onOpenFlow: () -> Unit, onOpenImport: () -> Unit) {
 }
 
 /**
+ * Issue #327: the user-facing capability explanation shared by both exchange
+ * entries. It describes what the AI can do in concrete user-language
+ * examples (never schema terms), states that the AI never changes the home
+ * screen directly, and explains the expected conversation flow — the
+ * interview happens inside the external AI app, the conversation never
+ * travels through NunuLauncher, and the launcher↔AI handoffs stay one
+ * request and one final proposal.
+ */
+@Composable
+private fun ExchangeCapabilityNotes(modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Text(
+            text = stringResource(R.string.exchange_capability_title),
+            style = MaterialTheme.typography.titleSmall,
+        )
+        for (res in exchangeCapabilityExampleResourceIds()) {
+            Text(
+                text = "• " + stringResource(res),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Text(
+            text = stringResource(R.string.exchange_capability_no_direct_change),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        Text(
+            text = stringResource(R.string.exchange_capability_flow),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    }
+}
+
+/** The concrete example lines of the capability notes (test surface for AC-4). */
+internal fun exchangeCapabilityExampleResourceIds(): List<Int> = listOf(
+    R.string.exchange_capability_example_frequent,
+    R.string.exchange_capability_example_group,
+    R.string.exchange_capability_example_keep,
+    R.string.exchange_capability_example_front,
+    R.string.exchange_capability_example_minimal_change,
+)
+
+/**
  * Issue #331: the run-in entry row. The export scope is the frozen selection
  * (existing placements plus the selected missing apps), so the reply can
  * advise the candidates the user is about to organize.
@@ -727,6 +776,11 @@ private fun ExchangeScopedEntryRow(onOpenFlow: () -> Unit, onOpenImport: () -> U
         Text(
             text = stringResource(R.string.exchange_scoped_entry_subtitle),
             style = MaterialTheme.typography.bodyMedium,
+        )
+        ExchangeCapabilityNotes(
+            modifier = Modifier
+                .padding(top = 4.dp)
+                .testTag("exchange-scoped-entry-capability"),
         )
         Row(
             modifier = Modifier

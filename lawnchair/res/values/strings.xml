@@ -1290,6 +1290,15 @@
     <!-- Issue #205: External Agent Exchange -->
     <string name="exchange_entry_title">Organize with an external AI</string>
     <string name="exchange_entry_subtitle">Create a request for an external AI (such as ChatGPT) and import its proposal as a reviewable plan.</string>
+    <!-- Issue #327: user-facing capability explanation (en) -->
+    <string name="exchange_capability_title">What the AI can do</string>
+    <string name="exchange_capability_example_frequent">Put the apps you use most first</string>
+    <string name="exchange_capability_example_group">Group related apps together</string>
+    <string name="exchange_capability_example_keep">Keep the apps you don\'t want moved where they are</string>
+    <string name="exchange_capability_example_front">Move important apps toward the first page</string>
+    <string name="exchange_capability_example_minimal_change">Keep today\'s layout mostly intact</string>
+    <string name="exchange_capability_no_direct_change">The AI never changes your home screen directly. It drafts your preferences and tendencies for a reorganization plan.</string>
+    <string name="exchange_capability_flow">The conversation happens inside your external AI app (such as ChatGPT). Send the request once, answer a few short questions (2–4), confirm the plan, and receive one final proposal. Your conversation is never sent to NunuLauncher.</string>
     <string name="exchange_entry_open">Create request</string>
     <string name="exchange_entry_import">Import reply</string>
     <string name="exchange_privacy_title">Privacy of the outgoing request</string>
@@ -1312,7 +1321,7 @@
     <string name="exchange_copy">Copy</string>
     <string name="exchange_share">Share…</string>
     <string name="exchange_save_file">Save to file</string>
-    <string name="exchange_transport_success">Copied or sent. Paste the AI reply here later to import it.</string>
+    <string name="exchange_transport_success">Sent. In your AI app, answer a few short questions (2–4) and confirm the plan to receive one final proposal. Paste that reply here to import it.</string>
     <string name="exchange_transport_clipboard_failed">Clipboard unavailable. Try sharing or saving to a file.</string>
     <string name="exchange_transport_share_absent">No app can receive the share. Copy or save to a file instead.</string>
     <string name="exchange_transport_file_failed">File operation failed. Try again or use another send method.</string>
