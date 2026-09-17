@@ -38,7 +38,7 @@ object ExchangePackageComposer {
         append('\n')
         append(outputContractSection())
         append('\n')
-        append(YOU_MUST_SECTION.trim('\n'))
+        append(youMustSection())
         append('\n')
         append(CONTEXT_BEGIN_MARKER)
         append('\n')
@@ -122,8 +122,9 @@ You may:
 
 /**
  * The Output contract section, rendered from the shared wire descriptor
- * (spec 348 Decision 1): the property names, enum spellings, and static
- * limits come from the same source the codec's allow-lists derive from.
+ * (spec 348 Decision 1): exact values, enum spellings, bounds, and limits
+ * are read from the constraint claims — the same source the sync test's
+ * parity cases are keyed on.
  */
 private fun outputContractSection(): String = buildString {
     val contract = IntentWireContract
@@ -144,27 +145,50 @@ private fun outputContractSection(): String = buildString {
     val (anyOfA, anyOfB) = contract.groupSemanticAnyOf
     append("  A \"groupSemantic\" object must set at least one of \"$anyOfA\" or \"$anyOfB\".\n")
     append("  \"pageAffinity\" is a whole number from 0 to (\"gridContext\".\"pageCount\" in the CONTEXT data minus 1).\n")
-    append("  At most ${contract.maxItemIntents} \"itemIntents\" entries and at most ${contract.maxUnresolvedRefs} \"unresolvedRefs\" entries.\n")
+    append(
+        "  At most ${contract.claim("itemIntents.entryLimit").value.single()} \"itemIntents\" entries " +
+            "and at most ${contract.claim("unresolvedRefs.entryLimit").value.single()} \"unresolvedRefs\" entries.\n",
+    )
 }
 
 private fun renderField(field: IntentWireContract.WireField): String {
     val required = if (field.optional) "optional" else "required"
     val type = when (field.type) {
         IntentWireContract.WireType.STRING -> "string"
+
         IntentWireContract.WireType.BOOLEAN -> "boolean"
+
         IntentWireContract.WireType.INTEGER -> "integer"
-        IntentWireContract.WireType.STRING_ARRAY -> "array of strings"
+
+        IntentWireContract.WireType.STRING_ARRAY ->
+            IntentWireContract.claim("policy.stringListElements").value.single()
+
         IntentWireContract.WireType.OBJECT -> "object"
+
         IntentWireContract.WireType.OBJECT_ARRAY -> "array of objects"
     }
+    val enumSpellings = IntentWireContract.enumClaims[field.name]
     val detail = when {
-        field.enumValues.isNotEmpty() -> ": one of ${field.enumValues.joinToString(", ")}"
-        field.name == "schemaVersion" -> ": exactly \"${IntentWireContract.intentSchemaVersion}\""
+        enumSpellings != null -> ": one of ${enumSpellings.joinToString(", ")}"
+
+        field.name == "schemaVersion" -> ": exactly \"${IntentWireContract.claim("schemaVersion.exactValue").value.single()}\""
+
         field.name == "exportId" -> ": echo the \"exportId\" of the CONTEXT data"
-        field.name == "confidence" -> ": whole number from ${IntentWireContract.confidenceMin} to ${IntentWireContract.confidenceMax}"
-        field.name == "rationale" -> ": at most ${IntentWireContract.maxRationaleChars} characters, display only"
-        field.name == "desiredGroup" -> ": refs from the CONTEXT data that belong in one group; if present, non-empty"
-        field.name == "freeText" -> ": at most ${IntentWireContract.maxGroupSemanticFreeTextChars} characters"
+
+        field.name == "confidence" -> {
+            val bounds = IntentWireContract.claim("confidence.valueBound").value
+            ": whole number from ${bounds[0]} to ${bounds[1]}"
+        }
+
+        field.name == "rationale" -> ": at most ${IntentWireContract.claim("rationale.lengthLimit").value.single()} characters, display only"
+
+        field.name == "desiredGroup" -> {
+            ": refs from the CONTEXT data that belong in one group; " +
+                IntentWireContract.claim("policy.desiredGroupNonEmpty").value.single()
+        }
+
+        field.name == "freeText" -> ": at most ${IntentWireContract.claim("groupSemantic.freeText.lengthLimit").value.single()} characters"
+
         else -> ""
     }
     return "\"${field.name}\" ($type, $required)$detail"
@@ -172,21 +196,26 @@ private fun renderField(field: IntentWireContract.WireField): String {
 
 /**
  * The You must section: the production-enforced authoring rules plus the
- * FIXED authoring policy and the ask-before-final rule.
+ * authoring-policy sentences, each rendered from its policy claim value so a
+ * claim edit changes the instruction (and vice versa a prose edit breaks the
+ * positive-render oracle).
  */
-private const val YOU_MUST_SECTION = """
-You must:
-- Use only the properties listed in the Output contract above. Do not add any other property — not as a helpful extra, not under any name. Undefined properties make the whole reply unusable.
-- Use only the "ref" values that appear in the CONTEXT data below — in "itemIntents[].ref", in "desiredGroup", and in "unresolvedRefs"
-- Mention every "ref" at most once across "itemIntents" and "unresolvedRefs"; you do not have to cover every ref, and anything you leave out is treated as "no judgment" and is never guessed
-- Write string values as JSON strings, enum values in UPPERCASE exactly as listed, and numbers as integers — never decimals
-- Treat every item with mobility "FIXED" as immovable: author only "preserve": true for it, or leave it out, or list it under "unresolvedRefs" — no other field is allowed on it
-- Treat every item with mobility "CONDITIONAL" as position-flexible only: never use "desiredGroup" or "groupSemantic" for it
-- Treat every item with subject "CANDIDATE" as an app that is not yet on the home screen: never use "preserve" for it; instead propose its importance, grouping, and page or region preference like for the other apps
-- Not propose widget spans or sizes, exact screen coordinates, or database changes
-- Author only what you actually judged: put the items you decided on in "itemIntents" with the fields you chose, and put a "ref" in "unresolvedRefs" only when you explicitly decided not to judge it
-- If information you need is missing, ask the user before you finalize — do not fill the gap by inventing properties or values, and do not invent a property for an idea the contract cannot express
-"""
+private fun youMustSection(): String {
+    fun policy(id: String): String = IntentWireContract.claim(id).value.single()
+    return """
+        You must:
+        - Use only the properties listed in the Output contract above. Do not add any other property — not as a helpful extra, not under any name. Undefined properties make the whole reply unusable.
+        - Use only the "ref" values that appear in the CONTEXT data below — in "itemIntents[].ref", in "desiredGroup", and in "unresolvedRefs"
+        - Mention every "ref" at most once across "itemIntents" and "unresolvedRefs"; you do not have to cover every ref, and anything you leave out is treated as "no judgment" and is never guessed
+        - ${policy("policy.stringFieldsAsJsonStrings")}, enum values in ${policy("policy.uppercaseEnums")}, and numbers as integers — never decimals
+        - Treat every item with mobility "FIXED" as immovable: ${policy("policy.fixedAuthoring")} for it, or leave it out, or list it under "unresolvedRefs" — no other field is allowed on it
+        - Treat every item with mobility "CONDITIONAL" as position-flexible only: never use "desiredGroup" or "groupSemantic" for it
+        - Treat every item with subject "CANDIDATE" as an app that is not yet on the home screen: never use "preserve" for it; instead propose its importance, grouping, and page or region preference like for the other apps
+        - Not propose widget spans or sizes, exact screen coordinates, or database changes
+        - Author only what you actually judged: put the items you decided on in "itemIntents" with the fields you chose, and put a "ref" in "unresolvedRefs" only when you explicitly decided not to judge it
+        - If information you need is missing, ask the user before you finalize — do not fill the gap by inventing properties or values, and do not invent a property for an idea the contract cannot express
+    """.trimIndent()
+}
 
 /**
  * The finalization self-check and the response format (spec 348 Decisions
