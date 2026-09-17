@@ -335,8 +335,10 @@ class Issue348AiFacingContractSyncTest {
 
         val accepts = mutableListOf<String>()
         val rejects = mutableListOf<Pair<String, ExchangeImportFailure>>()
-        // Accept fixtures bound to a dedicated export state (entry limit).
+        // Fixtures bound to a dedicated export state (entry limit): accept
+        // and reject differ only in entry count on the same export.
         val extraAccepts = mutableListOf<Fixture>()
+        val extraRejects = mutableListOf<Pair<Fixture, ExchangeImportFailure>>()
 
         when (val s = claim.semantic) {
             is Semantic.Presence -> if (s.required) {
@@ -374,9 +376,9 @@ class Issue348AiFacingContractSyncTest {
             }
 
             is Semantic.ExactValue -> {
-                // The advertised spelling itself must be accepted...
-                accepts += placed("\"\"$schemaVersion\"\"".replace("\"\"", "\""))
-                // ...and a stale spelling rejected.
+                // The advertised spelling itself is the only accepted value...
+                accepts += "{\"schemaVersion\":\"${s.value}\",\"exportId\":\"${built.export.exportId}\"}"
+                // ...and a stale spelling is rejected.
                 rejects += "{\"schemaVersion\":\"${s.value}-stale\",\"exportId\":\"${built.export.exportId}\"}" to
                     contract(IntentValidationFailure.SchemaMismatch)
             }
@@ -423,6 +425,14 @@ class Issue348AiFacingContractSyncTest {
             }
 
             is Semantic.AllowedValues -> {
+                // Production parity: the advertised set must be exactly the
+                // production enum — narrowing or widening either side fails.
+                val productionValues = when (field) {
+                    "importance" -> app.lawnchair.organizer.personalization.Importance.entries.map { it.name }
+                    "regionAffinity" -> app.lawnchair.organizer.personalization.ExportRegionKind.entries.map { it.name }
+                    else -> error("no production enum for $field")
+                }
+                assertEquals(productionValues.toSet(), s.values.toSet())
                 // Every advertised spelling is accepted...
                 for (value in s.values) {
                     accepts += placed("\"$value\"")
@@ -451,6 +461,12 @@ class Issue348AiFacingContractSyncTest {
             }
 
             is Semantic.AnyOf -> {
+                // Production parity: the members are exactly the production
+                // groupSemantic wire keys — removing or duplicating fails.
+                assertEquals(
+                    IntentWireContract.groupSemantic.map { it.name }.toSet(),
+                    s.members.toSet(),
+                )
                 for (member in s.members) {
                     accepts += payload(entry(movable, ",\"groupSemantic\":{\"$member\":\"Tools\"}"))
                 }
@@ -480,12 +496,18 @@ class Issue348AiFacingContractSyncTest {
                 } else {
                     "\"${bigRefs.first()}\""
                 }
-                rejects += if (field == "itemIntents") {
-                    "{\"schemaVersion\":\"$schemaVersion\",\"exportId\":\"${built.export.exportId}\",\"itemIntents\":[${rejectEntries.joinToString(",")}]}" to
-                        contract(IntentValidationFailure.Oversize)
+                extraRejects += if (field == "itemIntents") {
+                    Fixture(
+                        big,
+                        bigStructural,
+                        "{\"schemaVersion\":\"$schemaVersion\",\"exportId\":\"${big.export.exportId}\",\"itemIntents\":[${rejectEntries.joinToString(",")}]}",
+                    ) to contract(IntentValidationFailure.Oversize)
                 } else {
-                    payload(entry(movable, ",\"preserve\":true"), unresolved = ",\"$field\":[${rejectEntries.joinToString(",")}]") to
-                        contract(IntentValidationFailure.Oversize)
+                    Fixture(
+                        big,
+                        bigStructural,
+                        "{\"schemaVersion\":\"$schemaVersion\",\"exportId\":\"${big.export.exportId}\",\"unresolvedRefs\":[${rejectEntries.joinToString(",")}]}",
+                    ) to contract(IntentValidationFailure.Oversize)
                 }
             }
 
@@ -527,7 +549,7 @@ class Issue348AiFacingContractSyncTest {
             else -> error("policy claims are not production-enforced: ${claim.id}")
         }
         fun fix(payload: String): Fixture = Fixture(built, structural, payload)
-        return ParityCase(claim, accepts.map(::fix) + extraAccepts, rejects.map { (p, f) -> fix(p) to f })
+        return ParityCase(claim, accepts.map(::fix) + extraAccepts, rejects.map { (p, f) -> fix(p) to f } + extraRejects)
     }
 
     @Test
@@ -606,13 +628,21 @@ class Issue348AiFacingContractSyncTest {
                     doc(built, entry(movable, ",\"groupSemantic\":{\"freeText\":\"Tools\"},\"preserve\":true"))
 
                 is Semantic.UppercaseSpelledEnums ->
-                    doc(built, entry(movable, ",\"importance\":\"${IntentWireContract.enumClaims.getValue(s.field).first()}\""))
+                    doc(
+                        built,
+                        entry(movable, ",\"${s.field}\":\"${IntentWireContract.enumClaims.getValue(s.field).first()}\""),
+                    )
 
                 is Semantic.StringArrayOfStrings ->
                     doc(built, entry(movable, ",\"${s.field}\":[\"$other\"]"))
 
-                is Semantic.NonEmptyArray ->
-                    doc(built, entry(movable, ",\"${s.field}\":[\"$other\"]"))
+                is Semantic.NonEmptyArray -> {
+                    // The fixture authors exactly minElements valid elements,
+                    // generated from the semantic parameter.
+                    val elements = (0 until s.minElements).joinToString(",") { "\"$other\"" }
+                    assertEquals(s.minElements, elements.split(",").size)
+                    doc(built, entry(movable, ",\"${s.field}\":[$elements]"))
+                }
 
                 is Semantic.FixedAuthoredAsPreserve ->
                     doc(built, entry(fixed, ",\"preserve\":true"))
