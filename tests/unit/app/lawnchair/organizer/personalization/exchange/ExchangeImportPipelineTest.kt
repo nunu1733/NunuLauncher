@@ -3,6 +3,7 @@ package app.lawnchair.organizer.personalization.exchange
 import app.lawnchair.organizer.personalization.BuiltExport
 import app.lawnchair.organizer.personalization.CanonicalStructuralInputs
 import app.lawnchair.organizer.personalization.ContextExportBuilder
+import app.lawnchair.organizer.personalization.ContextExportContract
 import app.lawnchair.organizer.personalization.ExportInputs
 import app.lawnchair.organizer.personalization.Importance
 import app.lawnchair.organizer.personalization.IntentCodec
@@ -341,5 +342,82 @@ class ExchangeImportPipelineTest {
             ExchangeImportFailure.Contract(IntentValidationFailure.UnknownRef("zzz")),
             failureOf(fencedReply(unknownRef, prose = false), session = built.session, structural = structural),
         )
+    }
+
+    // ---- Issue #332: parse-stage recognition metadata (spec D-5/D-6, AC-10) ----
+
+    private fun recognizedOf(text: String): RecognizedImportInfo? = (ExchangeImportPipeline.prepare(text) as ExchangeImportResult.Failure).recognized
+
+    @Test
+    fun oversizeFailsBeforeRecognitionAndCarriesNoMetadata() {
+        val oversized = "x".repeat(ExchangeContract.MAX_EXCHANGE_IMPORT_BYTES + 1)
+        val result = ExchangeImportPipeline.prepare(oversized) as ExchangeImportResult.Failure
+        assertEquals(ExchangeImportFailure.Envelope(ExchangeEnvelopeFailure.InputOversize), result.failure)
+        assertEquals(null, result.recognized)
+    }
+
+    @Test
+    fun normalizationFailureCarriesNoRecognizedMetadata() {
+        val result = ExchangeImportPipeline.prepare("no recognizable shape") as ExchangeImportResult.Failure
+        assertEquals(
+            ExchangeImportFailure.Normalization(ImportNormalizationFailure.UnrecognizedFormat),
+            result.failure,
+        )
+        assertEquals(null, result.recognized)
+    }
+
+    @Test
+    fun markerFramingFailureKeepsTheRecognizedMarkerFraming() {
+        // A full-line BEGIN marker exists, so the framing is known even
+        // though the extraction fails (spec 332 D-6: "判明範囲のみ").
+        val info = recognizedOf("${ExchangeContract.INTENT_BEGIN_MARKER}\n")
+        assertEquals(RecognizedImportFraming.MARKER, info?.framing)
+        assertEquals(null, info?.intentSchemaVersion)
+        assertEquals(null, info?.authoredEntryCount)
+    }
+
+    @Test
+    fun decodeFailureCarriesTheRecognizedFramingButNoDecodeFacts() {
+        val info = recognizedOf("```json\n{not json}\n```")
+        assertEquals(RecognizedImportFraming.FENCED_JSON, info?.framing)
+        // The version/entry count are decode facts; the codec never accepted
+        // the payload, so they stay unset.
+        assertEquals(null, info?.intentSchemaVersion)
+        assertEquals(null, info?.authoredEntryCount)
+    }
+
+    @Test
+    fun postDecodeFailureCarriesTheAcceptedVersionAndEntryCount() {
+        val (built, structural) = buildState(listOf(app("a"), app("b", x = 1), docked("d")))
+        val intentJson = IntentCodec.encode(fullCoverageIntent(built)).decodeToString()
+        // No session: the failure settles after the decode, so all three
+        // recognition facts are known.
+        val result = ExchangeImportPipeline.import(intentJson, null, structural, now + 1) as ExchangeImportResult.Failure
+        assertEquals(ExchangeImportFailure.Contract(IntentValidationFailure.ExportMismatch), result.failure)
+        val info = result.recognized!!
+        assertEquals(RecognizedImportFraming.STANDALONE_JSON, info.framing)
+        assertEquals(ContextExportContract.INTENT_SCHEMA_VERSION, info.intentSchemaVersion)
+        assertEquals(built.export.items.size, info.authoredEntryCount)
+    }
+
+    @Test
+    fun authoredEntryCountCountsBareEntriesAndExcludesOmission() {
+        // Spec 332 AC-10 boundary fixture (spec 330 v3 semantics): the export
+        // scope holds three refs; the authored document contains one semantic
+        // entry and one bare `{"ref": ...}` entry; the third ref is omitted.
+        val (built, _) = buildState(listOf(app("a"), app("b", x = 1), app("c", x = 2)))
+        assertEquals(3, built.export.items.size)
+        val refA = built.export.items[0].ref
+        val refB = built.export.items[1].ref
+        val document = """{"schemaVersion":"${ContextExportContract.INTENT_SCHEMA_VERSION}",""" +
+            """"exportId":"${built.export.exportId}",""" +
+            """"itemIntents":[{"ref":"$refA","preserve":true},{"ref":"$refB"}]}"""
+        val prepared = ExchangeImportPipeline.prepare(document) as ExchangeImportPipeline.Prepared
+        // The bare entry counts; the omitted ref does not.
+        assertEquals(2, prepared.intent.itemIntents.size)
+        val info = prepared.recognizedInfo()
+        assertEquals(2, info.authoredEntryCount)
+        assertEquals(RecognizedImportFraming.STANDALONE_JSON, info.framing)
+        assertEquals(ContextExportContract.INTENT_SCHEMA_VERSION, info.intentSchemaVersion)
     }
 }
