@@ -2,13 +2,13 @@
 issue: "#293"
 status: draft
 spec: ./spec.md
-updated: 2026-09-16
+updated: 2026-09-17
 ---
 
 # Plan: issue #228 follow-up (ja解決test拡張とspec 13 `PreWriteRejection` 追記)
 
-> Baseline: `origin/main` = `4f555450bdf817a832b8827857b5af54f41913a8`
-> (2026-09-16再検証時点。初版draft時のbaselineは
+> Baseline: `origin/main` = `703afe3f4c1f5387f768832ea422c7b681c3775a`
+> (2026-09-17再検証時点。初版draft時のbaselineは
 > `f9afd8bfde121932c0c8ed965225d52a84d86ab4`)。本planは spec.md (**draft**)
 > に対応し、記載の実装状態はすべてbaseline上での実確認に基づく。
 > **実装開始前に再入場検証を行うこと** (spec.mdの参照先がbaseline以降に
@@ -83,6 +83,34 @@ updated: 2026-09-16
 > `docs/product/requirements.md` の変更は本planの対象file・行番号・契約に無関係。
 > 以下の行番号は現baseline (`4f555450`) 基準 (2026-09-16再確認、
 > 対象test fileは前回baseline `0cf82bc1` とbit単位で同一)。
+>
+> 2026-09-17再入場検証結果: 前回baseline (`4f555450`) 以降の67 commitは
+> #329 (Import Normalizer) / #330 (partial intent authoring) / #331
+> (exchange target scope coupling) / #332 (Exchange import input UI) /
+> #336 (user-defined categories) / #345 (import device evidence) 系であり、
+> 対象test fileは #336 により #300/#308 (2026-09-13確認分) 以来再び
+> 変更された (`planningResult()`
+> fixture helperの `taxonomy` 引数が `catalog = ActiveCategoryCatalog(...)`
+> 形式へ変更、差分はL2502以降) が、`japaneseResourcesResolveEveryConcretePreviewString`
+> (L1606-1748) は内容不変で#228keyは0件のまま。#228由来20リソースは不変
+> (18 strings ja≠en、2 plurals en `one`/`other` vs ja `other`)。なお#336が
+> 追加した `manual_organization_rejection_invalid_category_provenance` は
+> values側のみ (L1160) に存在しvalues-jaには存在しないため対象外
+> (spec.md Non-goalsへ記録)。この追加によりvalues側 `<!-- Issue #228 -->`
+> ブロックはL1173→L1174へ後方移動 (values-ja側はL260のまま)。spec 13閉集合
+> (L255-261、`CANDIDATE_UNAVAILABLE` 未記載のまま)、`Results.kt` (L83、
+> L74の `EXACT_PRECONDITION_FAILED` とL90の `OVERLAP_POLICY_REJECTED` の間)、
+> `ApplyResultContractTest.kt` (L72)、spec 228 change historyの#293委譲
+> (L17/L285)、監査記録 §5 (L101-105)、spec 123 AC-5/AC-6 (L132-133) は
+> すべて不変。`.github/workflows/ci.yml` は #332用
+> `organizer-instrumentation-issue332-tests` laneの追加のみ (additive) で、
+> api35 lane (L375) と issue52 lane (L432) は行番号含め不変、`final-status`
+> gateはL662→L710へ移動しissue332 laneをneedsへ追加したが既存lane構成は不変。
+> #329〜#336による `CONTEXT.md` / `DESIGN.md` / `docs/product/requirements.md`
+> (FR-010) の変更は本planの対象file・行番号・契約に無関係。
+> 以下の行番号は現baseline (`703afe3f`) 基準 (2026-09-17再確認、
+> 対象test fileのja解決test領域は前回baselineと同一、同fileの差分は
+> L2502以降のfixture helperのみ)。
 
 ## 1. 現状の実装と不足 (baseline確認済み)
 
@@ -177,11 +205,14 @@ git submodule update --init --recursive
 - spec 13は共有正本であるため、本IssueのPRと同時に他Issueがspec 13を
   変更しない。merge順が入れ替わった場合は再入場検証で閉集合の
   当該行を再確認する。
-- issue #235のwidget系string追加 (PR #296/#302以降) との競合面は
-  同一test fileのみ。行単位で独立しており、rebaseで解決できる範囲である。
-  実績として、初版draft以降の #300/#308 も同一fileを変更したが
-  ja解決test領域 (L1606-1748) には触れておらず、本planの追加点との
-  実際の競合は発生していない。
+- issue #235のwidget系string追加 (PR #296/#302以降)、#336の
+  `manual_organization_rejection_invalid_category_provenance` 追加
+  (values側のみ、values-ja未整備) との競合面は同一test fileもしくは
+  隣接resource blockのみ。行単位で独立しており、rebaseで解決できる範囲である。
+  実績として、初版draft以降の #300/#308 に加え #336 (fixture helper変更、
+  差分L2502以降) も同一test fileを変更したが、ja解決test領域
+  (L1606-1748) には触れておらず、本planの追加点との実際の競合は
+  発生していない。
 
 ## 5. 未確定事項
 

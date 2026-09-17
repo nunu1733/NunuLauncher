@@ -2,7 +2,7 @@
 issue: "#293"
 status: draft
 requirements: []
-updated: 2026-09-16
+updated: 2026-09-17
 ---
 
 # issue #228 follow-up: ja解決test拡張とspec 13 `PreWriteRejection` 追記
@@ -45,7 +45,7 @@ PR #289 (issue #228) のmerge前監査
 
 `tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationPreferencesInstrumentationTest.kt`
 の `japaneseResourcesResolveEveryConcretePreviewString` へ、次のissue #228由来
-リソースを追加する (2026-09-16時点、baseline `4f555450bdf817a832b8827857b5af54f41913a8`
+リソースを追加する (2026-09-17時点、baseline `703afe3f4c1f5387f768832ea422c7b681c3775a`
 で再確認済みの `lawnchair/res/values/strings.xml`
 `<!-- Issue #228: missing-app selection and Add rows -->` ブロックと
 `unplaced_strategy_scope` / `selection_stale` / `candidate_unresolved` の3件を含む)。
@@ -91,8 +91,11 @@ plurals (2件、既存のplurals assertionパターンへ追加):
 - production source、`ApplyResultContractTest` を含むunit test、
   `ApplyProtocol` / `Results.kt` の変更 (いずれもPR #289で実施済み)。
 - issue #235が後から追加したwidget系string
-  (`manual_organization_widget_moved_count` 等) のja解決test追加
-  (別scope。#235のAC-12相当の追跡が必要なら別Issueとする)。
+  (`manual_organization_widget_moved_count` 等)、およびissue #336が追加した
+  `manual_organization_rejection_invalid_category_provenance`
+  (baseline `703afe3f4c1f5387f768832ea422c7b681c3775a` 時点でvalues側のみに
+  存在しvalues-ja未整備) のja解決test追加
+  (別scope。各IssueのAC-12相当の追跡が必要なら別Issueとする)。
 - 上流Lawnchair文字列の翻訳、ja以外localeへの展開 (spec 123の非対象を引き継ぐ)。
 - `PreWriteRejection` の意味論・順序・型shapeの変更 (記載の正本化のみ)。
 
@@ -107,7 +110,7 @@ plurals (2件、既存のplurals assertionパターンへ追加):
 ## Constraints
 
 - ja値がenと等価なリソースを `assertNotEquals` パターンへ追加しない
-  (2026-09-16時点 (baseline `4f555450bdf817a832b8827857b5af54f41913a8`) で
+  (2026-09-17時点 (baseline `703afe3f4c1f5387f768832ea422c7b681c3775a`) で
   18 stringsはすべてja≠enを再確認済み。将来の翻訳変更で
   衝突が生じた場合は、当該keyのassert形式を既存pluralsの「解決すること」
   assertionへ寄せ、en fallback検出を弱めない)。
@@ -174,3 +177,28 @@ plurals (2件、既存のplurals assertionパターンへ追加):
   issue52 lane L432、`final-status` L662/L671-672)。#205による
   `CONTEXT.md` / `DESIGN.md` / `docs/product/requirements.md` の変更は
   本Issueの対象語彙・契約に無関係。契約内容の変更なし。
+- 2026-09-17: baseline `origin/main` = `703afe3f4c1f5387f768832ea422c7b681c3775a`
+  で再入場検証。前回baseline以降の67 commit (#329 Import Normalizer、
+  #330 partial intent authoring、#331 exchange target scope coupling、
+  #332 Exchange import input UI、#336 user-defined categories、#345 import
+  device evidence) により対象test fileが #300/#308 (2026-09-13確認分)
+  以来再び変更された (`planningResult()` fixture helperの `taxonomy` 引数が
+  `catalog = ActiveCategoryCatalog(...)` 形式へ変更、差分はL2502以降) が、
+  `japaneseResourcesResolveEveryConcretePreviewString` (L1606-1748) は
+  内容不変で#228keyは0件のまま。#228由来20リソースも不変 (18 strings ja≠en、
+  2 plurals en `one`/`other` vs ja `other`)。なお#336が追加した
+  `manual_organization_rejection_invalid_category_provenance` はvalues側のみ
+  (L1160) に存在しvalues-jaには存在しないため本specの対象外とすることを
+  Non-goalsへ明記。この追加によりvalues側 `<!-- Issue #228 -->` ブロックは
+  L1173→L1174へ後方移動 (values-ja側はL260のまま)。spec 13閉集合
+  (L255-261、`CANDIDATE_UNAVAILABLE` 未記載のまま)、`Results.kt` (L83、
+  L74の `EXACT_PRECONDITION_FAILED` とL90の `OVERLAP_POLICY_REJECTED` の間)、
+  `ApplyResultContractTest.kt` (L72)、spec 228 change historyの#293委譲
+  (L17/L285)、監査記録 §5 (L101-105)、spec 123 AC-5/AC-6 (L132-133) は
+  すべて不変。`.github/workflows/ci.yml` は #332用
+  `organizer-instrumentation-issue332-tests` laneの追加のみ (additive) で、
+  api35 lane (L375) と issue52 lane (L432) は行番号含め不変、
+  `final-status` gateはL662→L710へ移動しissue332 laneをneedsへ追加したが
+  既存lane構成は不変。#329〜#336による `CONTEXT.md` / `DESIGN.md` /
+  `docs/product/requirements.md` (FR-010) の変更は本Issueの対象語彙・契約に
+  無関係。契約内容の変更なし。
