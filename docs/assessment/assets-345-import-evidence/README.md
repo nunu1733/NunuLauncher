@@ -55,20 +55,20 @@
 
 - TalkBackをemulatorで有効化し、`dumpsys accessibility` で `Bound services: TalkBack` / `touchExplorationEnabled=true` を確認。
 - import surface表示中のscreenshot `11` はTalkBack有効状態で、TalkBackのfocus indicatorが画面内に描画されている。
-- 各source操作の識別 (「Import from clipboard」「From file」の個別label・click action・raw toggleの状態) とtyped失敗の読み分け (live region) は `ExchangeImportSurfaceInstrumentationTest` のsemantics assertionで機械検証済みであり、本READMEはそれを代替するものではない。
-- **制約 (未取得)**: 読み上げ音声のwalkthroughは取得できなかった。理由: (1) adbの合成gestureはTalkBackのtouch explorationに採用されずfocusが移動しない、(2) emulatorのqemuウィンドウはデスクトップ自動化層から安定したapp identityを持たないため実クリックを配送できない。audio captureもこの環境では不可。TalkBackの*読み上げ内容*は上記semantics assertionが正本であり、本evidenceは「TalkBack有効下でsurfaceが描画される」ことまでを示す。
+- 各source操作の識別 (「Import from clipboard」「From file」の個別label) とtyped失敗の読み分けは、`ExchangeImportSurfaceInstrumentationTest` の `sourceLabelsAndTypedFailureAnnouncementAreExposed` が **label text と typed failure 本文 + `LiveRegion.Polite` を直接assert** する (実装と1:1。表示・click action・bounded layout・parse-first/raw detailは同classの他のtest)。
+- **制約 (未取得)**: 読み上げ音声のwalkthroughは取得できなかった。理由: (1) adbの合成gestureはTalkBackのtouch explorationに採用されずfocusが移動しない、(2) emulatorのqemuウィンドウはデスクトップ自動化層から安定したapp identityを持たないため実クリックを配送できない。audio captureもこの環境では不可。assistive service (TalkBack) は存在し有効化・bindまで確認したうえで、実ATの読み上げを実行入力で駆動できなかった。機械検証済みなのは上記の label text と typed failure 本文 + `LiveRegion.Polite` のassertまでで、**実ATの読み上げ文言・順序・focus遷移は未検証**である。
 
 ### Switch Access
 
 - `com.google.android.accessibility.switchaccess/com.android.switchaccess.SwitchAccessService` を有効化し、`Bound services: Switch Access` を確認。
 - 初回有効化で **Switch Access Setup Guide「Choose a switch type」(USB switch / Bluetooth switch / Camera Switch)** が表示された (`12`)。emulatorにはスイッチ実機がなく、Camera Switchも利用できないため、switch入力によるscan/selectの通し操作は実施できなかった。
-- 代替として、要素が個別にfocus/click可能でlabelを持つことはinstrumentation assertionと下記keyboard traversalで確認している。
+- 代替として、要素が個別にfocus/click可能でlabelを持つことはinstrumentation assertionと下記keyboard traversal (部分確認) で確認している。実ATでのscan/選択/復帰は**未検証**。
 
-### Keyboard (touchなしの完結)
+### Keyboard (部分確認: `From file` 起動まで)
 
 - import surfaceでkeyboard focus indicatorを確認 (`13`)。
 - Tab + Enter で **「From file」を起動**し、SAFのdocument pickerが開くことを確認 (`14`)。つまりsource操作はtouchなしで起動できる。
-- 制約: primary「Import from clipboard」のkeyboard起動は本sessionでは再現できず (Tab順が `From file` に到達)、clipboard import自体はtouchで実行した (`05`→`06`/`09`)。
+- 制約: 取得できたのは `From file` の起動まで。picker での選択 → import result の完走、および primary「Import from clipboard」のkeyboard起動は未取得 (Tab順が `From file` に到達)。clipboard import自体はtouchで実行した (`05`→`06`/`09`)。よって「keyboard完結」ではなく**部分確認**として扱う。
 
 ### 200% font / D-4
 
