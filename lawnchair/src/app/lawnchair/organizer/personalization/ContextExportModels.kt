@@ -42,6 +42,14 @@ object ContextExportContract {
     const val MAX_GROUP_SEMANTIC_FREE_TEXT_CHARS = 100
     const val MAX_RATIONALE_CHARS = 500
 
+    /**
+     * Issue #348: the intent `confidence` numeric constraint, named once so
+     * the model check, the codec check, and the AI-facing wire descriptor
+     * render the same bounds instead of duplicating `0..100` literals.
+     */
+    const val CONFIDENCE_MIN = 0
+    const val CONFIDENCE_MAX = 100
+
     /** V1 export session TTL (spec 204 生成規則): 24 hours. */
     const val SESSION_TTL_MS: Long = 24L * 60L * 60L * 1000L
 }

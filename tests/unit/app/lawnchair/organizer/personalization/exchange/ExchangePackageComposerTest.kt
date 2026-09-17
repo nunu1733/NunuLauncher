@@ -1,7 +1,7 @@
 package app.lawnchair.organizer.personalization.exchange
 
-import app.lawnchair.organizer.personalization.exchange.ExchangeContract.INTENT_BEGIN_MARKER
-import app.lawnchair.organizer.personalization.exchange.ExchangeContract.INTENT_END_MARKER
+import app.lawnchair.organizer.personalization.ContextExportContract
+import app.lawnchair.organizer.personalization.IntentWireContract
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -9,8 +9,12 @@ import org.junit.Test
 /**
  * Issue #205 AC-1: the exchange package composes an instruction/data
  * separated single text whose separation is machine-verifiable, and the
- * instruction carries the four required sections plus the exact framing
- * markers the agent must echo (spec 205 Decision 2).
+ * instruction carries the required sections and the canonical authoring form
+ * (spec 205 Decision 2 as amended by spec 348 Decisions 2/3).
+ *
+ * The descriptor-derived output contract content is pinned in depth by
+ * [Issue348AiFacingContractSyncTest]; this class owns the composer's own
+ * structural contract.
  */
 class ExchangePackageComposerTest {
 
@@ -24,21 +28,30 @@ class ExchangePackageComposerTest {
     }
 
     @Test
-    fun composedPackageContainsTheFourInstructionSections() {
+    fun composedPackageContainsTheRequiredInstructionSections() {
+        // Spec 205 Decision 2 as amended by spec 348 Decision 3.
         val pkg = ExchangePackageComposer.compose(exportJson)
         assertTrue(pkg.contains("Goal:"))
         assertTrue(pkg.contains("You may:"))
+        assertTrue(pkg.contains("Output contract ("))
         assertTrue(pkg.contains("You must:"))
+        assertTrue(pkg.contains("Before sending your final answer, verify:"))
         assertTrue(pkg.contains("Response format:"))
     }
 
     @Test
-    fun instructionEmbedsTheExactIntentMarkersTheAgentMustEcho() {
+    fun instructionRequestsTheCanonicalAuthoringFormInsteadOfMarkers() {
+        // Spec 348 Decision 2: the agent is asked for one fenced `json` code
+        // block; the marker framing stays accepted on import but is no
+        // longer requested from the producer.
         val pkg = ExchangePackageComposer.compose(exportJson)
-        assertTrue(pkg.contains(INTENT_BEGIN_MARKER))
-        assertTrue(pkg.contains(INTENT_END_MARKER))
-        assertTrue(pkg.contains("\"personalized-intent-v3\""))
+        assertTrue(pkg.contains("```json"))
+        assertTrue(pkg.contains("exactly one JSON object"))
+        assertTrue(pkg.contains("single fenced code block"))
+        assertTrue(pkg.contains("\"${ContextExportContract.INTENT_SCHEMA_VERSION}\""))
         assertTrue(pkg.contains("\"unresolvedRefs\""))
+        assertTrue(!pkg.contains("-----BEGIN NUNULAUNCHER INTENT-----"))
+        assertTrue(!pkg.contains("-----END NUNULAUNCHER INTENT-----"))
     }
 
     @Test
@@ -61,6 +74,21 @@ class ExchangePackageComposerTest {
     }
 
     @Test
+    fun everyDescriptorPropertyNameIsRenderedIntoThePackage() {
+        val pkg = ExchangePackageComposer.compose(exportJson)
+        for (group in listOf(
+            IntentWireContract.topLevel,
+            IntentWireContract.item,
+            IntentWireContract.globalPreference,
+            IntentWireContract.groupSemantic,
+        )) {
+            for (field in group) {
+                assertTrue("missing ${field.name}", pkg.contains("\"${field.name}\""))
+            }
+        }
+    }
+
+    @Test
     fun tamperedStructuresAreTypedRejects() {
         assertEquals(
             PackageStructureProblem.MISSING_CONTEXT_BLOCK,
@@ -77,10 +105,14 @@ class ExchangePackageComposerTest {
             PackageStructureProblem.EMPTY_DATA,
             (ExchangePackageComposer.parsePackageStructure(emptyData) as PackageStructureResult.Invalid).problem,
         )
-        val noFooter = pkg.substringBeforeLast('\n').let { it.substringBeforeLast('\n') }
+        // The footer is multi-line (spec 348 self-check + response format),
+        // so strip everything after the CONTEXT END marker instead of
+        // trimming lines from the end.
+        val withoutFooter = pkg.substringBefore(ExchangeContract.CONTEXT_END_MARKER) +
+            ExchangeContract.CONTEXT_END_MARKER + "\n"
         assertEquals(
             PackageStructureProblem.EMPTY_INSTRUCTION,
-            (ExchangePackageComposer.parsePackageStructure("$noFooter\n") as PackageStructureResult.Invalid).problem,
+            (ExchangePackageComposer.parsePackageStructure(withoutFooter) as PackageStructureResult.Invalid).problem,
         )
     }
 }

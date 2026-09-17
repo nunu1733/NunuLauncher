@@ -43,7 +43,7 @@ Import Normalizer (#329新設)              … 外形認識とframing/transport
       ↓
 canonical PersonalizedIntent payload text (verbatim。schemaVersionは解釈・書換えしない)
       ↓
-#205 exchange framing規則 (marker形式)    … 不変 (canonical form)
+#205 exchange framing規則 (marker形式)    … 不変 (受理外形としての優先形式。AIへのproducer側要求の正本は spec 348 所有)
       ↓
 #204 strict codec / validator             … 不変 (schema・allow-list・semantic検証)
       ↓
@@ -71,7 +71,7 @@ accepted (既存run接続) or zero-write reject
 - import入力の取得UX (clipboard読込・file選択・bounded editor・parse結果中心表示) は #332 の対象。本specのnormalizerはpure parser責務であり、UI・入力取得を持たない。
 - exchange packageのinstruction部 (AIへの要求形式) の変更。prompt/interview設計は #327、import成功後の状態表示は #328 の対象。本specはAIが **従来どおりのmarker形式を返すことを引き続き要求する前提** のまま、marker以外で戻ってきた場合の揺らぎのみ吸収する。
 - markdown全体 (CommonMark) の実装。fence認識は簡易決定性grammarに限定する (D-4)。
-- #205のexchange framing規則 (marker形式の抽出規則・typed失敗3種) の変更。marker形式はcanonical formとして現行規則のまま残る。
+- #205のexchange framing規則 (marker形式の抽出規則・typed失敗3種) の変更。marker形式はaccepted framingの優先形式として現行規則のまま残る。**AIへのproducer側要求 (canonical authoring form) の変更は本specの対象外であり、[spec 348](../348-exchange-ai-facing-contract/spec.md) が所有する** (issue #348 Phase 1受入時に用語を分離)。
 
 ## 現行実装の確認事実 (baseline `15f4f0209f`、#330 v3 実装後)
 
@@ -168,7 +168,7 @@ And 将来normalizer失敗のobservabilityを追加する場合は、closed enum
 
 | 優先順 | framing | 受理条件 | canonicalization |
 |---|---|---|---|
-| 1 | **完全行marker形式** (canonical, #205規則不変) | INTENT marker行 (完全一致規則) が1つでも存在 | 現行 `IntentImportParser` 規則をそのまま適用 (unique marker対・verbatim領域・`FRAMING_*` 3種)。marker行が存在する限り他の外形判定は行わない (fence行はmarker前後の自由文/領域内payloadとして扱われ、fenceとしては解釈しない) |
+| 1 | **完全行marker形式** (受理優先形式, #205規則不変) | INTENT marker行 (完全一致規則) が1つでも存在 | 現行 `IntentImportParser` 規則をそのまま適用 (unique marker対・verbatim領域・`FRAMING_*` 3種)。marker行が存在する限り他の外形判定は行わない (fence行はmarker前後の自由文/領域内payloadとして扱われ、fenceとしては解釈しない) |
 | 2 | **単一fenced json block** (前後説明文可) | marker行なし。backtick fenceで囲まれたblockが全体でちょうど1つで、info stringが `json` (trim・case-insensitive) | block内部 (fence行間) を外側空白のみtrimしてpayload化 |
 | 3 | **standalone JSON object** | marker行なし・受理対象fenced blockなし (非json tagのfence 1つのみの場合を含む)。正規化後text全体 (先頭末尾空白のみ除去) がstrict JSONとしてparse成功し、rootがobject | 全体をtrimのみしてpayload化 (再serializeしない) |
 | - | 上記いずれにも該当しない | - | typed reject (認識不能) |
@@ -179,6 +179,8 @@ And 将来normalizer失敗のobservabilityを追加する場合は、closed enum
 - fence対が閉じていない (closing fence行なし) → blockとして数えない。残余の ``` 行のためstandalone parseも失敗し、認識不能rejectに収束する。
 - marker行が1つでも存在する時点で優先順1へ分岐するため、marker破損 (`FRAMING_MISSING` 等) とfence/JSON認識の結果が混在することはない (決定性)。
 - 誤ってCONTEXT marker対 (`-----BEGIN/END NUNULAUNCHER CONTEXT-----`) を返した入力はINTENT markerとみなされず、現行どおり拒否される (案内はINTENT markerを指定)。
+
+> 用語注 (issue #348, 2026-09-18): 本specの「canonical/canonicalize」は **受信側の正規化** (payloadのverbatim抽出) を指す。外部AIに要求するproducer側の外形 (canonical authoring form) は [spec 348](../348-exchange-ai-facing-contract/spec.md) が所有し、本specのaccepted framing (受理外形) とは別概念である。実装・typed失敗は本spec D-1〜D-8のまま不変。
 
 ### D-2: fuzzy extraction禁止の明示列挙
 
@@ -296,6 +298,8 @@ field値の意味補正、out-of-scope IDの削除、schema versionの書換え�
 - 2026-09-17: **1st owner review対応 (re-entry)**。`issue-329-spec-plan` をorigin/main `15f4f0209f` (PR #338 merge後、#330 intent schema v3実装を含む) へrebaseし、#330によるimport pathへの影響 (無変更。schema文字列のみv3化) を再確認。1st review ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/329#issuecomment-5699609908)) のRequired 3点に対応: (1) 1 MiB envelope gateの所有を #205所有 (pipeline先頭) と明確化し、normalizer結果型からenvelope失敗を分離 (D-5、D-1/D-8、巨大入力scenario)、(2) nested fenceのtyped outcomeをD-4 grammar側へ統一 — fence内info付きfence開始行は `SCHEMA_MISMATCH`、独立2 blockは曖昧reject (Security regression coverage)、(3) 認識framing種別を `Prepared` までadditive fieldで伝播し #332共通path契約と整合 (D-5、AC-7)。あわせて #330 implemented (v3) への参照更新 (Non-goals、Relationship)。D-1〜D-8の確定状況: 方針は維持、D-3/Open questions 1〜4はowner review待ちのまま。
 - 2026-09-17: **accepted**。ChatGPT re-review **Accepted (blocking/required 0件)** ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/329#issuecomment-5700221958)、head `150bc0b54b` 基準) を受けstatusをdraft → acceptedへ移行。status更新はadministrative変更であり承認対象headを変更しない。実装開始。
 - 2026-09-17: **implemented** — [PR #339](https://github.com/nunu1733/NunuLauncher/pull/339) merge (commit `3170c57e32fd`) により本normalizerの実装 (外形認識層・typed失敗2種・19種失敗表示・`Prepared` framing伝播) がmainへ取り込まれた。ChatGPT実装re-review **Accepted (Blocking 0 / Required 0)** (head `f98d9e7d8f`、[comment](https://github.com/nunu1733/NunuLauncher/issues/329#issuecomment-5700858229))、独立監査 Approve (head `30849b4e8a`、[docs/assessment/pr-339-import-normalizer.md](../../docs/assessment/pr-339-import-normalizer.md))、CI run [35123094379](https://github.com/nunu1733/NunuLauncher/actions/runs/35123094379) (final-status含む全15 job成功)。exchange/UI unit lane PASS (normalizer 20 test + pipeline 17 + stateholder 6)。AC-10 (physical-device evidence) は後続evidence PRへ残置 (#205のAC-9/AC-10と同じ扱い)。
+
+- 2026-09-18: **用語分離 ([spec 348](../348-exchange-ai-facing-contract/spec.md) 所有)** — issue #348のAI-facing contract同期により、外部AIへ要求するfinal artifact外形の正本 (canonical authoring form: 単一fenced `json` block) がspec 348へ移管された。本specのaccepted framing (marker / fenced `json` / standalone JSON)・優先順位・typed失敗・実装は **すべて不変** で、「canonical」語を受信側正規化の意味に限定して明確化した (Outcome図・Non-goals・D-1表・用語注)。
 
 ## References
 
