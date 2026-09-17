@@ -2,7 +2,7 @@
 
 > Issue: #327
 > Spec: [spec.md](./spec.md)
-> Status: implementation-ready (spec accepted 2026-09-18。ChatGPT review Approve head `c7f3b7000e920cfdfd26ab661d0ebf74234691f9`)
+> Status: implemented (2026-09-18。実装 head `f0c176f57152cf0b3784fa5f87df7654fcab246b`、ChatGPT実装review re-review Approve。AC-1〜AC-6完了、AC-7/AC-8 evidenceのみ後続pass)
 
 ## Current evidence
 
@@ -95,8 +95,8 @@ instruction内のexample (静的text、fence・markerで囲まない、**具体�
 
 ## Documentation updates
 
-- [ ] spec status/history (acceptance時にaccepted、merge時にimplementedへ)
-- [ ] CONTEXT.md: 「整理方針確認 (policy confirmation)」用語を受入時に反映
+- [x] spec status/history (accepted → implemented。AC-7/AC-8 evidenceのみ後続pass)
+- [x] CONTEXT.md: 「整理方針確認 (policy confirmation)」用語を受入時に反映済み
 - [ ] DESIGN.md: 変更なし (module構成不変。gate 12/13の記載は #204/#205/#331/#348のまま)
 - [ ] requirements.md: FR-017の補足は不要 (behavior変更はFR-017枠内)
 
