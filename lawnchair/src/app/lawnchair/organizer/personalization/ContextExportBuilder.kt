@@ -1,8 +1,11 @@
 package app.lawnchair.organizer.personalization
 
 import app.lawnchair.organizer.planning.Availability
+import app.lawnchair.organizer.planning.CandidatePlanningIds
+import app.lawnchair.organizer.planning.CandidateTarget
 import app.lawnchair.organizer.planning.CapturedItem
 import app.lawnchair.organizer.planning.CapturedPlacement
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.FolderId
 import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.ItemKind
@@ -28,6 +31,12 @@ import app.lawnchair.organizer.planning.TargetSet
  *   whole user-authored free-text class and never generates surrogates.
  * - The #203 snapshot feeds the optional `usageSignals` projection and the
  *   session signal provenance only — never the structural digest.
+ * - Issue #336 two-layer separation: export presentation fields
+ *   (`category`/`groupSemantic`) project a user-defined classification as the
+ *   absent category via [CategoryIdentity.exportPresentationValue] — no raw
+ *   ID and no display name anywhere in the document — while the session-local
+ *   freshness digests consume the resolved `CategoryIdentity` itself, so a
+ *   reassignment or assigned-category deletion stays detectable.
  */
 object ContextExportBuilder {
 
@@ -35,11 +44,11 @@ object ContextExportBuilder {
         val snapshot = inputs.snapshot
         val pageOrdinal = snapshot.pages.withIndex().associate { (index, page) -> page.id to index }
         val refsByItem = LinkedHashMap<ItemId, String>()
-        val folderSemantics = LinkedHashMap<String, String?>()
+        val folderSemantics = LinkedHashMap<String, CategoryIdentity?>()
 
         for (item in snapshot.items) {
             if (item.kind is ItemKind.FOLDER) {
-                folderSemantics[item.id.value] = inputs.resolvedCategories[item.id]
+                folderSemantics[item.id.value] = inputs.resolvedIdentities[item.id]
             }
         }
 
@@ -67,6 +76,44 @@ object ContextExportBuilder {
                 continue
             }
             items += item.toExportItem(inputs, snapshot, tier, folderSemantics, pageOrdinal, allocator, refsByItem)
+        }
+        // Issue #331: selected missing-app candidates join the export scope as
+        // candidate subjects. The canonical scope is ONE composition output:
+        // `targets.additions` (already composed by the same
+        // ProductionOrganizationInputComposer seam the planner consumes).
+        val candidateRefsByItem = LinkedHashMap<ItemId, String>()
+        val candidateTargets = inputs.targets.additions
+            .map { addition ->
+                val target = addition.target as? CandidateTarget.AppKey
+                    ?: error("non-AppKey candidate in export scope: ${addition.id.value}")
+                target
+            }
+            .sortedWith(compareBy({ it.component.value }, { it.profile.value }))
+        for (target in candidateTargets) {
+            val candidateId = CandidatePlanningIds.planningId(target)
+            val ref = allocator.newId()
+            if (ref in refsByItem.values || ref in candidateRefsByItem.values) throw IllegalStateException("export ref collision")
+            candidateRefsByItem[candidateId] = ref
+            val label = if (tier == PrivacyTier.EXTERNAL_REDACTED) {
+                null
+            } else {
+                inputs.userLabels[candidateId]?.let { ExportItemLabel(FreeTextClass.APP_LABEL, it) }
+            }
+            items += ExportItem(
+                ref = ref,
+                role = ExportItemRole.APP_OR_SHORTCUT,
+                // Issue #336 export presentation: a user-defined classification
+                // projects the absent category — never an ID or a name.
+                category = inputs.resolvedIdentities[candidateId].exportPresentationValue(),
+                groupSemantic = null,
+                label = label,
+                pageAffinity = null,
+                regionAffinity = null,
+                mobility = Mobility.CANDIDATE,
+                fixReason = null,
+                usage = buildUsage(inputs, candidateId),
+                subject = ExportItemSubject.CANDIDATE,
+            )
         }
         require(items.size <= ContextExportContract.MAX_EXPORT_ITEMS)
 
@@ -104,20 +151,35 @@ object ContextExportBuilder {
                 intentSchemaVersion = ContextExportContract.INTENT_SCHEMA_VERSION,
                 functions = ContextExportContract.FIXED_CAPABILITIES,
             ),
-            usageSignals = buildUsageSection(inputs, refsByItem),
+            usageSignals = buildUsageSection(inputs, refsByItem + candidateRefsByItem),
         )
         val session = ExportSession(
             exportId = export.exportId,
-            itemRefs = refsByItem.entries.associate { (id, ref) -> ref to id },
+            itemRefs = (refsByItem + candidateRefsByItem).entries.associate { (id, ref) -> ref to id },
             tier = tier,
+            // Issue #336: the freshness digest consumes the resolved
+            // identities themselves (kind + stable ID), not the redacted
+            // export fields.
             sourceContextDigest = SourceContextIdentity.digest(
-                CanonicalStructuralInputs(snapshot, inputs.targets, inputs.resolvedCategories),
+                CanonicalStructuralInputs(snapshot, inputs.targets, inputs.resolvedIdentities),
             ),
             signalProvenance = inputs.signals?.let {
                 SignalProvenance(schemaVersion = it.schemaVersion, contentDigest = it.contentDigest)
             },
             createdAtEpochMs = inputs.nowEpochMs,
             expiresAtEpochMs = inputs.nowEpochMs + ContextExportContract.SESSION_TTL_MS,
+            scopeCandidates = candidateTargets,
+            scopeCandidateDigest = CandidateScopeIdentity.digest(
+                candidateTargets.map { target ->
+                    CandidateScopeProjection(
+                        target = target,
+                        // Composed additions are AVAILABLE by contract (spec
+                        // 228 §6 fail-closed verification happens at apply).
+                        availability = Availability.AVAILABLE,
+                        category = inputs.resolvedIdentities[CandidatePlanningIds.planningId(target)],
+                    )
+                },
+            ),
         )
         return BuiltExport(export, session)
     }
@@ -127,8 +189,14 @@ object ContextExportBuilder {
 data class ExportInputs(
     val snapshot: LayoutSnapshot,
     val targets: TargetSet,
-    /** Resolved classification (override included) keyed by internal `ItemId`. */
-    val resolvedCategories: Map<ItemId, String?> = emptyMap(),
+    /**
+     * Resolved classification (override included) keyed by internal `ItemId`,
+     * as the closed planning identity. This is the single source for BOTH
+     * #336 layers: export presentation fields redact a user-defined identity
+     * to the absent category ([CategoryIdentity.exportPresentationValue]),
+     * while the session freshness digests consume the identity itself.
+     */
+    val resolvedIdentities: Map<ItemId, CategoryIdentity?> = emptyMap(),
     /** User-authored app labels keyed by internal `ItemId` (free-text class). */
     val userLabels: Map<ItemId, String> = emptyMap(),
     /** #203 snapshot if the tier permits a usage projection and it is ready. */
@@ -185,7 +253,7 @@ private fun CapturedItem.toExportItem(
     inputs: ExportInputs,
     snapshot: LayoutSnapshot,
     tier: PrivacyTier,
-    folderSemantics: Map<String, String?>,
+    folderSemantics: Map<String, CategoryIdentity?>,
     pageOrdinal: Map<PageId, Int>,
     allocator: RandomIdAllocator,
     refsByItem: MutableMap<ItemId, String>,
@@ -201,7 +269,7 @@ private fun CapturedItem.toExportItem(
     return toExportItemCore(
         ref = ref,
         snapshot = snapshot,
-        resolvedCategories = inputs.resolvedCategories,
+        resolvedIdentities = inputs.resolvedIdentities,
         folderSemantics = folderSemantics,
         pageOrdinal = pageOrdinal,
         label = label,
@@ -218,8 +286,8 @@ private fun CapturedItem.toExportItem(
 internal fun CapturedItem.toExportItemCore(
     ref: String,
     snapshot: LayoutSnapshot,
-    resolvedCategories: Map<ItemId, String?>,
-    folderSemantics: Map<String, String?>,
+    resolvedIdentities: Map<ItemId, CategoryIdentity?>,
+    folderSemantics: Map<String, CategoryIdentity?>,
     pageOrdinal: Map<PageId, Int>,
     label: ExportItemLabel?,
     usage: UsageProjection?,
@@ -236,10 +304,15 @@ internal fun CapturedItem.toExportItemCore(
         ?.let { exportBand(snapshot.device.rows, it.cell.y) }
     val groupSemantic = (placement as? CapturedPlacement.FolderMember)
         ?.let { folderSemantics[it.folder.folderId.value] }
+        .exportPresentationValue()
     return ExportItem(
         ref = ref,
         role = role,
-        category = resolvedCategories[id],
+        // Issue #336 export presentation: built-in classifications keep the
+        // pre-336 raw value byte for byte; user-defined ones project the
+        // absent category. The identity itself flows only into the session
+        // digest inputs.
+        category = resolvedIdentities[id].exportPresentationValue(),
         groupSemantic = groupSemantic,
         label = label,
         pageAffinity = pageAffinity,
@@ -248,6 +321,20 @@ internal fun CapturedItem.toExportItemCore(
         fixReason = fixReason,
         usage = usage,
     )
+}
+
+/**
+ * Issue #336 export presentation projection — the single redaction point for
+ * every export document / reconstructed validation view category field.
+ * Built-in categories keep their raw value exactly as before #336; a
+ * user-defined classification exports as the absent category (`null`): no
+ * raw `UserCategoryId` and no display name may appear in an export document
+ * or session record field.
+ */
+internal fun CategoryIdentity?.exportPresentationValue(): String? = when (this) {
+    null -> null
+    is CategoryIdentity.BuiltIn -> id.value
+    is CategoryIdentity.UserDefined -> null
 }
 
 internal fun buildUsageSection(

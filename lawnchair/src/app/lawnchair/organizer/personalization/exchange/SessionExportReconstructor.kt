@@ -5,14 +5,19 @@ import app.lawnchair.organizer.personalization.ContextExportContract
 import app.lawnchair.organizer.personalization.ExportCapabilities
 import app.lawnchair.organizer.personalization.ExportGridContext
 import app.lawnchair.organizer.personalization.ExportItem
+import app.lawnchair.organizer.personalization.ExportItemRole
+import app.lawnchair.organizer.personalization.ExportItemSubject
 import app.lawnchair.organizer.personalization.ExportSession
+import app.lawnchair.organizer.personalization.Mobility
 import app.lawnchair.organizer.personalization.PersonalizationContextExportV1
 import app.lawnchair.organizer.personalization.PreservedConstraints
 import app.lawnchair.organizer.personalization.PreservedReason
 import app.lawnchair.organizer.personalization.ReservedRegionProjection
 import app.lawnchair.organizer.personalization.toExportItemCore
+import app.lawnchair.organizer.planning.CandidatePlanningIds
 import app.lawnchair.organizer.planning.CapturedItem
 import app.lawnchair.organizer.planning.CapturedPlacement
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.ItemKind
 
@@ -41,10 +46,16 @@ object SessionExportReconstructor {
         val snapshot = current.snapshot
         val pageOrdinal = snapshot.pages.withIndex().associate { (index, page) -> page.id to index }
         val refByItem = session.itemRefs.entries.associate { (ref, id) -> id to ref }
-        val folderSemantics = LinkedHashMap<String, String?>()
+        val candidateIds = session.scopeCandidates
+            .map { CandidatePlanningIds.planningId(it) }
+            .toSet()
+        // Issue #336: folder semantics reconstruct from the resolved identity
+        // and redact at the field site (toExportItemCore), so the validation
+        // view never carries a raw user-defined ID or display name.
+        val folderSemantics = LinkedHashMap<String, CategoryIdentity?>()
         for (item in snapshot.items) {
             if (item.kind is ItemKind.FOLDER) {
-                folderSemantics[item.id.value] = current.resolvedCategories[item.id]
+                folderSemantics[item.id.value] = current.resolvedIdentities[item.id]
             }
         }
 
@@ -76,6 +87,30 @@ object SessionExportReconstructor {
             }
             val ref = refByItem[item.id] ?: continue // captured after the export
             items += item.toValidationItem(ref, snapshot, current, folderSemantics, pageOrdinal)
+        }
+        // Issue #331: candidate subjects reconstruct from the session scope
+        // alone — they have no captured item and the validator needs only
+        // ref/role/mobility/subject (category and label are non-authority).
+        // Resolvability of the candidate identities is the scope binding
+        // gate's check (spec 331 §3), not a reconstruction concern.
+        val candidateRefByPlanningId = session.itemRefs.entries
+            .filter { it.value in candidateIds }
+            .associate { (ref, id) -> id to ref }
+        for (candidateId in candidateIds.sortedBy { it.value }) {
+            val ref = candidateRefByPlanningId[candidateId] ?: continue
+            items += ExportItem(
+                ref = ref,
+                role = ExportItemRole.APP_OR_SHORTCUT,
+                category = null,
+                groupSemantic = null,
+                label = null,
+                pageAffinity = null,
+                regionAffinity = null,
+                mobility = Mobility.CANDIDATE,
+                fixReason = null,
+                usage = null,
+                subject = ExportItemSubject.CANDIDATE,
+            )
         }
         if (items.map { it.ref }.toSet() != session.itemRefs.keys) {
             return ReconstructionResult.Diverged
@@ -127,12 +162,12 @@ object SessionExportReconstructor {
         ref: String,
         snapshot: app.lawnchair.organizer.planning.LayoutSnapshot,
         current: CanonicalStructuralInputs,
-        folderSemantics: Map<String, String?>,
+        folderSemantics: Map<String, CategoryIdentity?>,
         pageOrdinal: Map<app.lawnchair.organizer.planning.PageId, Int>,
     ): ExportItem = toExportItemCore(
         ref = ref,
         snapshot = snapshot,
-        resolvedCategories = current.resolvedCategories,
+        resolvedIdentities = current.resolvedIdentities,
         folderSemantics = folderSemantics,
         pageOrdinal = pageOrdinal,
         label = null,

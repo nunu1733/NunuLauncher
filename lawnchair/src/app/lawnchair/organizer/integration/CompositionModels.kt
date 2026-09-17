@@ -2,6 +2,7 @@ package app.lawnchair.organizer.integration
 
 import app.lawnchair.organizer.personalization.PersonalizationSignalSnapshot
 import app.lawnchair.organizer.personalization.PersonalizedIntentIdentity
+import app.lawnchair.organizer.planning.ActiveCategoryCatalog
 import app.lawnchair.organizer.planning.CategoryId
 import app.lawnchair.organizer.planning.ClassificationSignals
 import app.lawnchair.organizer.planning.ItemId
@@ -14,6 +15,7 @@ import app.lawnchair.organizer.rules.ClassificationPolicy
 import app.lawnchair.organizer.rules.PolicyBundleIdentity
 import app.lawnchair.organizer.rules.PolicyInputIdentity
 import app.lawnchair.organizer.rules.PolicySourceKind
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogIdentity
 
 data class InputProvenance(
     val revision: RevisionId,
@@ -38,6 +40,13 @@ data class InputProvenance(
      * SHA-256) the same way the #203 sentinel does.
      */
     val personalizedIntent: PolicyInputIdentity = PersonalizedIntentIdentity.noIntentSentinel(),
+
+    /**
+     * Issue #336: the content-addressed identity of the user-defined category
+     * catalog. Always present — an empty catalog carries the canonical
+     * sentinel identity, mirroring the #204 no-intent sentinel.
+     */
+    val userDefinedCategoryCatalog: PolicyInputIdentity = UserDefinedCategoryCatalogIdentity.emptyCatalogSentinel(),
 )
 
 sealed interface OrganizationInputComposition {
@@ -135,6 +144,14 @@ enum class InputCompositionCode {
     OVERRIDE_UNREADABLE,
     OVERRIDE_UNSUPPORTED_SCHEMA,
     OVERRIDE_CATEGORY_INVALID,
+
+    /**
+     * Issue #336: an override references a user-defined category ID absent
+     * from the active catalog — contradictory evidence reachable only through
+     * external corruption (the product delete protocol removes assignments
+     * first). Zero-write `NotReady`; never silently remapped.
+     */
+    OVERRIDE_DANGLING_CATEGORY,
     STRATEGY_SELECTION_UNREADABLE,
     STRATEGY_SELECTION_UNSUPPORTED_SCHEMA,
     STRATEGY_SELECTION_UNSUPPORTED,
@@ -143,8 +160,25 @@ enum class InputCompositionCode {
     TARGET_PARTITION,
     DYNAMIC_CUT_UNSTABLE,
 
+    /**
+     * Issue #336: the user-defined category catalog store could not be read
+     * (corrupt, duplicate, malformed, digest mismatch). Zero-write
+     * `NotReady` — no repair, no default, no partial catalog.
+     */
+    CATALOG_UNREADABLE,
+
+    /** Issue #336: the catalog store carries a schema newer than supported. */
+    CATALOG_UNSUPPORTED_SCHEMA,
+
     /** Issue #228 (review P2 #4): selection overlaps the fresh capture's represented identities. */
     CANDIDATE_SELECTION_STALE,
+
+    /**
+     * Issue #331: the scope binding gate rejected the run — the confirmed
+     * selection / candidate projection diverged from the export session's
+     * scope (`SCOPE_MISMATCH`). Zero-write terminal; the remedy is re-export.
+     */
+    SCOPE_BINDING_MISMATCH,
 }
 
 data class ClassificationEvidenceRequest(

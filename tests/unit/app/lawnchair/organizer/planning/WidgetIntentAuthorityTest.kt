@@ -60,6 +60,7 @@ class WidgetIntentAuthorityTest {
             organizationStrategy = strategy,
         ),
         taxonomy = TaxonomyContract(TaxonomyVersion("tv1"), listOf(CategoryId("OTHER")), CategoryId("OTHER")),
+        catalog = ActiveCategoryCatalog(TaxonomyContract(TaxonomyVersion("tv1"), listOf(CategoryId("OTHER")), CategoryId("OTHER")), emptyList()),
         signals = ClassificationSignals(emptyList()),
         // #235: widgets are never user-selected organization targets — the
         // production composer marks every widget `ExistingRole.Preserved`.

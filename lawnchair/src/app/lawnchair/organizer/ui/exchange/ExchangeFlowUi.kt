@@ -21,6 +21,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,6 +36,8 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import app.lawnchair.organizer.integration.exchange.ClipboardImportRead
+import app.lawnchair.organizer.integration.exchange.ClipboardImportTransport
 import app.lawnchair.organizer.integration.exchange.ExchangeFlowController
 import app.lawnchair.organizer.integration.exchange.ExchangeGenerationResult
 import app.lawnchair.organizer.integration.exchange.ExchangeImportOutcome
@@ -47,6 +50,9 @@ import app.lawnchair.organizer.personalization.PrivacyTier
 import app.lawnchair.organizer.personalization.exchange.ExchangeEnvelopeFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportResult
+import app.lawnchair.organizer.personalization.exchange.ImportNormalizationFailure
+import app.lawnchair.organizer.personalization.exchange.RecognizedImportFraming
+import app.lawnchair.organizer.personalization.exchange.RecognizedImportInfo
 import app.lawnchair.organizer.personalization.exchange.acceptsExchangeImportEnvelope
 import app.lawnchair.organizer.ui.ManualOrganizationRun
 import com.android.launcher3.R
@@ -71,7 +77,11 @@ sealed interface ExchangeScreen {
     data class SelectingPrivacy(val replacementConfirmationRequired: Boolean) : ExchangeScreen
 
     /** Explicit pre-generation confirmation (spec 205 AC-13). */
-    data class ReplacementConfirm(val tier: PrivacyTier) : ExchangeScreen
+    data class ReplacementConfirm(
+        val tier: PrivacyTier,
+        /** Issue #331: the run-in scoped selection the generation continues with. */
+        val scoped: Pair<List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>, Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>>? = null,
+    ) : ExchangeScreen
 
     data object Generating : ExchangeScreen
 
@@ -79,7 +89,17 @@ sealed interface ExchangeScreen {
 
     data class Importing(val replyText: String) : ExchangeScreen
 
-    data class ImportOutcomeScreen(val outcome: ExchangeImportOutcome) : ExchangeScreen
+    /**
+     * Issue #332 (spec AC-7 retention boundary): the failure surface carries
+     * the imported text for its collapsed raw detail. The text lives in this
+     * ONE field only while the surface is shown — `openImport()`, `close()`
+     * and any navigation replace the screen state and thereby discard it. It
+     * is never written to diagnostics, logs, or storage.
+     */
+    data class ImportOutcomeScreen(
+        val outcome: ExchangeImportOutcome,
+        val rawText: String = "",
+    ) : ExchangeScreen
 }
 
 /**
@@ -142,6 +162,13 @@ class ExchangeFlowStateHolder(
     /** Where transport results hop back to the UI (Main in production). */
     private val settleDispatcher: CoroutineDispatcher = Dispatchers.Main,
     /**
+     * Where display-state updates (generation results, import outcomes) hop
+     * back (Main in production). Injectable for the same reason as
+     * [settleDispatcher]: JVM holder tests assert the terminal display states
+     * (issue #332 review R3) without an Android Main looper.
+     */
+    private val uiDispatcher: CoroutineDispatcher = Dispatchers.Main,
+    /**
      * Test-only seam (issue #205 ABA regression): invoked once per settle
      * attempt with the owning disclosure and whether it was applied, after the
      * settle decision completed. Production passes the no-op default.
@@ -182,17 +209,31 @@ class ExchangeFlowStateHolder(
         screen = ExchangeScreen.Closed
     }
 
-    fun requestGeneration(replacementConfirmationRequired: Boolean, tier: PrivacyTier) {
+    /**
+     * Issue #331: when [scoped] is set (the run-in entry), generation composes
+     * the export from the frozen selection via the scope-composed canonical
+     * seam instead of the idle full-organization composition.
+     */
+    fun requestGeneration(
+        replacementConfirmationRequired: Boolean,
+        tier: PrivacyTier,
+        scoped: Pair<List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>, Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>>? = null,
+    ) {
         if (replacementConfirmationRequired) {
-            screen = ExchangeScreen.ReplacementConfirm(tier)
+            screen = ExchangeScreen.ReplacementConfirm(tier, scoped)
+        } else if (scoped != null) {
+            generateScoped(tier, scoped.first, scoped.second)
         } else {
             generate(tier)
         }
     }
 
     /** The user confirmed discarding the existing exchange (spec 205 AC-13). */
-    fun confirmReplacementAndGenerate(tier: PrivacyTier) {
-        generate(tier)
+    fun confirmReplacementAndGenerate(
+        tier: PrivacyTier,
+        scoped: Pair<List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>, Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>>? = null,
+    ) {
+        if (scoped != null) generateScoped(tier, scoped.first, scoped.second) else generate(tier)
     }
 
     /** The user declined; the existing session stays untouched and importable. */
@@ -204,32 +245,52 @@ class ExchangeFlowStateHolder(
         screen = ExchangeScreen.Generating
         scope.launch(Dispatchers.IO) {
             val result = controller.generate(tier)
-            withContext(Dispatchers.Main) {
-                when (result) {
-                    is ExchangeGenerationResult.Generated ->
-                        screen = ExchangeScreen.Disclosing(
-                            ExchangeDisclosureState(
-                                session = result.session,
-                                packageText = result.packageText,
-                                tier = tier,
-                            ),
-                        )
+            withContext(uiDispatcher) { handleGeneration(result, tier) }
+        }
+    }
 
-                    is ExchangeGenerationResult.InputNotReady -> {
-                        status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_INPUT_NOT_READY)
-                        screen = ExchangeScreen.SelectingPrivacy(false)
-                    }
+    /**
+     * Issue #331: run-in (scope-composed) generation from the selection
+     * surface. The export scope is the frozen selection composed by the same
+     * canonical seam the planner consumes; the ordering contract (gate →
+     * build → save → compose → disclose) is the controller's.
+     */
+    fun generateScoped(
+        tier: PrivacyTier,
+        selection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>,
+        candidateLabels: Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>,
+    ) {
+        screen = ExchangeScreen.Generating
+        scope.launch(Dispatchers.IO) {
+            val result = controller.generateForSelection(tier, selection, candidateLabels)
+            withContext(uiDispatcher) { handleGeneration(result, tier) }
+        }
+    }
 
-                    ExchangeGenerationResult.SessionStoreFailure -> {
-                        status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_STORE_FAILURE)
-                        screen = ExchangeScreen.SelectingPrivacy(false)
-                    }
+    private fun handleGeneration(result: ExchangeGenerationResult, tier: PrivacyTier) {
+        when (result) {
+            is ExchangeGenerationResult.Generated ->
+                screen = ExchangeScreen.Disclosing(
+                    ExchangeDisclosureState(
+                        session = result.session,
+                        packageText = result.packageText,
+                        tier = tier,
+                    ),
+                )
 
-                    is ExchangeGenerationResult.EncodeFailure -> {
-                        status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_OVERSIZE)
-                        screen = ExchangeScreen.SelectingPrivacy(false)
-                    }
-                }
+            is ExchangeGenerationResult.InputNotReady -> {
+                status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_INPUT_NOT_READY)
+                screen = ExchangeScreen.SelectingPrivacy(false)
+            }
+
+            ExchangeGenerationResult.SessionStoreFailure -> {
+                status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_STORE_FAILURE)
+                screen = ExchangeScreen.SelectingPrivacy(false)
+            }
+
+            is ExchangeGenerationResult.EncodeFailure -> {
+                status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_OVERSIZE)
+                screen = ExchangeScreen.SelectingPrivacy(false)
             }
         }
     }
@@ -254,7 +315,7 @@ class ExchangeFlowStateHolder(
         screen = ExchangeScreen.Disclosing(disclosing.copy(cancelling = true))
         scope.launch(Dispatchers.IO) {
             controller.cancelDisclosure(disclosing.session)
-            withContext(Dispatchers.Main) { close() }
+            withContext(uiDispatcher) { close() }
         }
     }
 
@@ -320,14 +381,65 @@ class ExchangeFlowStateHolder(
     fun importFromFile(context: Context, fileTransport: FileExchangeTransport, uri: Uri) {
         scope.launch(Dispatchers.IO) {
             val read = fileTransport.read(uri)
-            withContext(Dispatchers.Main) {
-                when (read) {
-                    is FileExchangeRead.Text -> screen = ExchangeScreen.Importing(read.text)
-                    FileExchangeRead.Oversize -> status = ExchangeStatus(ExchangeStatus.Kind.INPUT_OVERSIZE)
-                    FileExchangeRead.Failure -> status = ExchangeStatus(ExchangeStatus.Kind.FILE_READ_FAILED)
-                }
+            // The read result hops back through the same settle dispatcher as
+            // every other transport result (writeFile), keeping one convention
+            // for "where results return to the UI".
+            withContext(settleDispatcher) {
+                onFileRead(read)
             }
         }
+    }
+
+    /**
+     * Issue #332: the typed SAF-callback receipt branch, internal so holder
+     * tests exercise the exact file-source path without a framework [Uri]
+     * (the JVM unit-test classpath cannot construct one).
+     */
+    internal fun onFileRead(read: FileExchangeRead) {
+        when (read) {
+            // Issue #332 (spec AC-2/AC-5): the file read flows into the
+            // SAME receipt helper as the clipboard — one operation from
+            // the SAF pick to the common import path's parse result.
+            is FileExchangeRead.Text -> receiveAndImport(read.text)
+
+            FileExchangeRead.Oversize -> status = ExchangeStatus(ExchangeStatus.Kind.INPUT_OVERSIZE)
+
+            FileExchangeRead.Failure -> status = ExchangeStatus(ExchangeStatus.Kind.FILE_READ_FAILED)
+        }
+    }
+
+    /**
+     * Issue #332 (spec D-7): the explicit one-tap clipboard read. The read
+     * itself is a single synchronous `getPrimaryClip()` inside the transport —
+     * no listener, no automatic read. A successful text receipt replaces the
+     * manual paste content and immediately enters the common import path;
+     * typed failures keep the screen and any existing input (zero-write).
+     */
+    fun importFromClipboard(transport: ClipboardImportTransport) {
+        when (val read = transport.read()) {
+            is ClipboardImportRead.Text -> receiveAndImport(read.text)
+
+            ClipboardImportRead.EmptyOrUnavailable ->
+                status = ExchangeStatus(ExchangeStatus.Kind.CLIPBOARD_EMPTY)
+
+            ClipboardImportRead.NotText ->
+                status = ExchangeStatus(ExchangeStatus.Kind.CLIPBOARD_NOT_TEXT)
+        }
+    }
+
+    /**
+     * Issue #332: the shared receipt helper for the clipboard and file
+     * sources (AC-5: one common import path). Same envelope gate as
+     * `onImportTextChange` (spec 205 Decision 6); the received text replaces
+     * the editor content and the import runs without a further press.
+     */
+    private fun receiveAndImport(text: String) {
+        if (!acceptsExchangeImportEnvelope(text)) {
+            status = ExchangeStatus(ExchangeStatus.Kind.INPUT_OVERSIZE)
+            return
+        }
+        screen = ExchangeScreen.Importing(text)
+        import(text)
     }
 
     fun writeFile(fileTransport: FileExchangeTransport, packageText: String, uri: Uri?) {
@@ -365,16 +477,34 @@ class ExchangeFlowStateHolder(
             val outcome = controller.importReply(replyText)
             val pipeline = (outcome as? ExchangeImportOutcome.Pipeline)?.result
             if (pipeline is ExchangeImportResult.Validated) {
+                // Issue #331: the run-in entry — the run is still holding the
+                // selection surface, so the validated intent attaches to THAT
+                // run instead of starting a fresh one. Zero-write either way;
+                // a refusal (surface gone, intent already bound) is typed.
+                val selecting = run.state is ManualOrganizationRun.State.Selecting
+                if (selecting) {
+                    val attached = run.attachIntent(pipeline.validated)
+                    withContext(uiDispatcher) {
+                        if (attached == ManualOrganizationRun.AttachIntentOutcome.Attached) {
+                            status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_ACCEPTED)
+                            screen = ExchangeScreen.Closed
+                        } else {
+                            status = ExchangeStatus(ExchangeStatus.Kind.RUN_BUSY)
+                            screen = ExchangeScreen.Importing(replyText)
+                        }
+                    }
+                    return@launch
+                }
                 // The fresh-run start performs capture/composition/planning
                 // synchronously; every production entry runs it on IO (audit
                 // P2-1), matching the plain start row's execute{} wrapper.
                 when (run.start(intent = pipeline.validated)) {
-                    is ManualOrganizationRun.StartOutcome.Started -> withContext(Dispatchers.Main) {
+                    is ManualOrganizationRun.StartOutcome.Started -> withContext(uiDispatcher) {
                         status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_ACCEPTED)
                         screen = ExchangeScreen.Closed
                     }
 
-                    ManualOrganizationRun.StartOutcome.Busy -> withContext(Dispatchers.Main) {
+                    ManualOrganizationRun.StartOutcome.Busy -> withContext(uiDispatcher) {
                         // Single-active-operation gate rejected the fresh run:
                         // typed guidance, zero-write, intent dropped.
                         status = ExchangeStatus(ExchangeStatus.Kind.RUN_BUSY)
@@ -382,8 +512,11 @@ class ExchangeFlowStateHolder(
                     }
                 }
             } else {
-                withContext(Dispatchers.Main) {
-                    screen = ExchangeScreen.ImportOutcomeScreen(outcome)
+                withContext(uiDispatcher) {
+                    // Issue #332 (spec AC-7): the imported text moves into the
+                    // outcome surface's single ephemeral field for the
+                    // collapsed raw detail; leaving the surface discards it.
+                    screen = ExchangeScreen.ImportOutcomeScreen(outcome, rawText = replyText)
                 }
             }
         }
@@ -404,6 +537,12 @@ data class ExchangeStatus(val kind: Kind) {
         INPUT_OVERSIZE,
         IMPORT_ACCEPTED,
         RUN_BUSY,
+
+        /** Issue #332 (spec AC-6): clipboard empty/unreadable on the explicit read. */
+        CLIPBOARD_EMPTY,
+
+        /** Issue #332 (spec AC-6): the clipboard carries no text item. */
+        CLIPBOARD_NOT_TEXT,
     }
 
     companion object {
@@ -422,30 +561,68 @@ fun LazyListScope.exchangeFlowItems(
     shareTransport: (Context, String) -> ExchangeTransportResult,
     fileTransport: FileExchangeTransport,
 ) {
+    exchangeFlowItems(holder, null, emptyMap(), clipboardTransport, shareTransport, fileTransport)
+}
+
+/**
+ * Issue #331: the exchange items with the run-in (scope-composed) entry.
+ * Hosted inside the selection surface while a run holds it; when
+ * [scopedSelection] is non-null the generation composes the export from the
+ * frozen selection instead of the idle full-organization scope.
+ */
+fun LazyListScope.exchangeFlowItems(
+    holder: ExchangeFlowStateHolder,
+    scopedSelection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>?,
+    scopedLabels: Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>,
+    clipboardTransport: (Context, String) -> ExchangeTransportResult,
+    shareTransport: (Context, String) -> ExchangeTransportResult,
+    fileTransport: FileExchangeTransport,
+) {
+    val scoped = scopedSelection?.let { it to scopedLabels }
     when (val current = holder.screen) {
         ExchangeScreen.Closed -> {
             item(key = "exchange-entry") {
-                ExchangeEntryRow(
-                    onOpenFlow = holder::openFlow,
-                    onOpenImport = holder::openImport,
-                )
+                if (scoped != null) {
+                    ExchangeScopedEntryRow(
+                        onOpenFlow = holder::openFlow,
+                        onOpenImport = holder::openImport,
+                    )
+                } else {
+                    ExchangeEntryRow(
+                        onOpenFlow = holder::openFlow,
+                        onOpenImport = holder::openImport,
+                    )
+                }
             }
         }
 
         is ExchangeScreen.SelectingPrivacy -> {
             item(key = "exchange-privacy") {
-                ExchangePrivacySelection(
-                    requiresConfirmation = current.replacementConfirmationRequired,
-                    onGenerate = { tier -> holder.requestGeneration(current.replacementConfirmationRequired, tier) },
-                    onCancel = holder::close,
-                )
+                Column {
+                    if (scoped != null) {
+                        // Issue #331: announce the frozen selection (a11y).
+                        Text(
+                            text = stringResource(R.string.exchange_scoped_freeze_notice),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .semantics { liveRegion = LiveRegionMode.Assertive }
+                                .testTag("exchange-scoped-freeze-notice"),
+                        )
+                    }
+                    ExchangePrivacySelection(
+                        requiresConfirmation = current.replacementConfirmationRequired,
+                        onGenerate = { tier -> holder.requestGeneration(current.replacementConfirmationRequired, tier, scoped) },
+                        onCancel = holder::close,
+                    )
+                }
             }
         }
 
         is ExchangeScreen.ReplacementConfirm -> {
             item(key = "exchange-replacement-confirm") {
                 ExchangeReplacementConfirm(
-                    onConfirm = { holder.confirmReplacementAndGenerate(current.tier) },
+                    onConfirm = { holder.confirmReplacementAndGenerate(current.tier, current.scoped) },
                     onDecline = holder::declineReplacement,
                 )
             }
@@ -488,7 +665,7 @@ fun LazyListScope.exchangeFlowItems(
 
         is ExchangeScreen.ImportOutcomeScreen -> {
             item(key = "exchange-import-outcome") {
-                ExchangeImportOutcome(current.outcome, holder)
+                ExchangeImportOutcome(current.outcome, current.rawText, holder)
             }
         }
     }
@@ -528,6 +705,39 @@ private fun ExchangeEntryRow(onOpenFlow: () -> Unit, onOpenImport: () -> Unit) {
                 Text(stringResource(R.string.exchange_entry_open))
             }
             OutlinedButton(onClick = onOpenImport, modifier = Modifier.testTag("exchange-entry-import")) {
+                Text(stringResource(R.string.exchange_entry_import))
+            }
+        }
+    }
+}
+
+/**
+ * Issue #331: the run-in entry row. The export scope is the frozen selection
+ * (existing placements plus the selected missing apps), so the reply can
+ * advise the candidates the user is about to organize.
+ */
+@Composable
+private fun ExchangeScopedEntryRow(onOpenFlow: () -> Unit, onOpenImport: () -> Unit) {
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(
+            text = stringResource(R.string.exchange_scoped_entry_title),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.testTag("exchange-scoped-entry-title"),
+        )
+        Text(
+            text = stringResource(R.string.exchange_scoped_entry_subtitle),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Button(onClick = onOpenFlow, modifier = Modifier.testTag("exchange-scoped-entry-open")) {
+                Text(stringResource(R.string.exchange_scoped_entry_open))
+            }
+            OutlinedButton(onClick = onOpenImport, modifier = Modifier.testTag("exchange-scoped-entry-import")) {
                 Text(stringResource(R.string.exchange_entry_import))
             }
         }
@@ -720,6 +930,15 @@ private fun ExchangeDisclosure(
     }
 }
 
+/**
+ * Issue #332 (spec D-1/D-2/D-4): the clipboard/file-first import surface.
+ * The primary actions read the AI reply from the clipboard or a file and run
+ * the common import path in one operation; the manual paste editor is the
+ * collapsed fallback ("詳細 / うまく読み込めない場合"). The editor is height
+ * bounded (D-4 provisional values below; to be fixed from 200% font /
+ * TalkBack evidence, AC-8/AC-9) and scrolls internally, so a tens-of-KB reply
+ * never stretches the hosting screen.
+ */
 @Composable
 private fun ExchangeImportField(
     replyText: String,
@@ -732,39 +951,88 @@ private fun ExchangeImportField(
     ) { uri: Uri? ->
         if (uri != null) holder.importFromFile(context, fileTransport, uri)
     }
+    // Issue #332: the explicit clipboard read transport; constructed per
+    // composition, read only inside the button's synchronous call (D-7).
+    val clipboardReader = remember { ClipboardImportTransport(context) }
+    // D-2 (a): the fallback editor is collapsed until requested (or until an
+    // input already exists, e.g. a run-busy restore).
+    var manualOpen by remember { mutableStateOf(replyText.isNotEmpty()) }
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
             text = stringResource(R.string.exchange_import_title),
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.testTag("exchange-import-title"),
         )
-        OutlinedTextField(
-            value = replyText,
-            onValueChange = holder::onImportTextChange,
-            label = { Text(stringResource(R.string.exchange_import_hint)) },
-            minLines = 4,
+        Button(
+            onClick = { holder.importFromClipboard(clipboardReader) },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 8.dp)
-                .testTag("exchange-import-field"),
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(top = 8.dp)
+                .testTag("exchange-import-clipboard"),
         ) {
-            Button(
-                onClick = { holder.import(replyText) },
-                enabled = replyText.isNotBlank(),
-                modifier = Modifier.testTag("exchange-import-action"),
+            Text(stringResource(R.string.exchange_import_from_clipboard))
+        }
+        OutlinedButton(
+            onClick = {
+                // D-3 accepted types: plain text + JSON; the bound and the
+                // types are stated next to the action (spec file scenario).
+                filePicker.launch(arrayOf("text/plain", "application/json"))
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+                .testTag("exchange-import-file"),
+        ) {
+            Text(stringResource(R.string.exchange_import_from_file))
+        }
+        Text(
+            text = stringResource(R.string.exchange_import_file_types),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        TextButton(
+            onClick = { manualOpen = !manualOpen },
+            modifier = Modifier.testTag("exchange-import-fallback-toggle"),
+        ) {
+            Text(stringResource(R.string.exchange_import_fallback_toggle))
+        }
+        if (manualOpen) {
+            OutlinedTextField(
+                value = replyText,
+                onValueChange = holder::onImportTextChange,
+                label = { Text(stringResource(R.string.exchange_import_hint)) },
+                minLines = 4,
+                maxLines = IMPORT_EDITOR_MAX_LINES,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+                    .heightIn(max = IMPORT_EDITOR_MAX_HEIGHT)
+                    .testTag("exchange-import-field"),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(stringResource(R.string.exchange_import_action))
+                Button(
+                    onClick = { holder.import(replyText) },
+                    enabled = replyText.isNotBlank(),
+                    modifier = Modifier.testTag("exchange-import-action"),
+                ) {
+                    Text(stringResource(R.string.exchange_import_action))
+                }
+                OutlinedButton(
+                    onClick = { holder.onImportTextChange("") },
+                    enabled = replyText.isNotEmpty(),
+                    modifier = Modifier.testTag("exchange-import-clear"),
+                ) {
+                    Text(stringResource(R.string.exchange_import_clear))
+                }
             }
-            OutlinedButton(
-                onClick = { filePicker.launch(arrayOf("text/plain")) },
-                modifier = Modifier.testTag("exchange-import-file"),
-            ) {
-                Text(stringResource(R.string.exchange_import_from_file))
-            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+        ) {
             OutlinedButton(onClick = holder::close) {
                 Text(stringResource(R.string.exchange_cancel))
             }
@@ -772,8 +1040,16 @@ private fun ExchangeImportField(
     }
 }
 
+/**
+ * D-4 provisional editor bounds (spec: to be fixed from 200% font / TalkBack
+ * evidence in the AC-8/AC-9 evidence pass; parameterized until then).
+ */
+private val IMPORT_EDITOR_MAX_HEIGHT = 200.dp
+
+private const val IMPORT_EDITOR_MAX_LINES = 8
+
 @Composable
-private fun ExchangeImportOutcome(outcome: ExchangeImportOutcome, holder: ExchangeFlowStateHolder) {
+private fun ExchangeImportOutcome(outcome: ExchangeImportOutcome, rawText: String, holder: ExchangeFlowStateHolder) {
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
             text = stringResource(R.string.exchange_import_result_title),
@@ -796,6 +1072,60 @@ private fun ExchangeImportOutcome(outcome: ExchangeImportOutcome, holder: Exchan
                 .semantics { liveRegion = LiveRegionMode.Polite }
                 .testTag("exchange-import-outcome-message"),
         )
+        // Issue #332 (spec D-5 parse-first presentation): the recognized
+        // framing / accepted version / authored entry count lead the display;
+        // the raw text stays collapsed by default (bounded, internal scroll).
+        // InputNotReady settles AFTER the decode, so its recognition facts
+        // display exactly like a pipeline failure's (spec D-6).
+        val info = when (outcome) {
+            is ExchangeImportOutcome.Pipeline -> exchangeImportDisplayInfo(outcome.result)
+            is ExchangeImportOutcome.InputNotReady -> exchangeImportDisplayInfo(outcome.recognized)
+        }
+        if (info.framing != null) {
+            ExchangeImportInfoRow(
+                label = stringResource(R.string.exchange_recognized_framing),
+                value = exchangeFramingText(info.framing),
+                tag = "exchange-import-outcome-framing",
+            )
+        }
+        if (info.intentSchemaVersion != null) {
+            ExchangeImportInfoRow(
+                label = stringResource(R.string.exchange_recognized_version),
+                value = info.intentSchemaVersion,
+                tag = "exchange-import-outcome-version",
+            )
+        }
+        if (info.authoredEntryCount != null) {
+            ExchangeImportInfoRow(
+                label = stringResource(R.string.exchange_recognized_entries),
+                value = info.authoredEntryCount.toString(),
+                tag = "exchange-import-outcome-entries",
+            )
+        }
+        if (rawText.isNotEmpty()) {
+            var rawOpen by remember { mutableStateOf(false) }
+            TextButton(
+                onClick = { rawOpen = !rawOpen },
+                modifier = Modifier.testTag("exchange-import-raw-toggle"),
+            ) {
+                Text(
+                    stringResource(
+                        if (rawOpen) R.string.exchange_import_raw_hide else R.string.exchange_import_raw_show,
+                    ),
+                )
+            }
+            if (rawOpen) {
+                Text(
+                    text = rawText,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 240.dp)
+                        .verticalScroll(rememberScrollState())
+                        .testTag("exchange-import-raw-detail"),
+                )
+            }
+        }
         Text(
             text = stringResource(R.string.exchange_import_retry_hint),
             style = MaterialTheme.typography.bodySmall,
@@ -807,19 +1137,76 @@ private fun ExchangeImportOutcome(outcome: ExchangeImportOutcome, holder: Exchan
 }
 
 @Composable
-private fun exchangeStatusText(kind: ExchangeStatus.Kind): String = when (kind) {
-    ExchangeStatus.Kind.TRANSPORT_SUCCESS -> stringResource(R.string.exchange_transport_success)
-    ExchangeStatus.Kind.TRANSPORT_CLIPBOARD_FAILED -> stringResource(R.string.exchange_transport_clipboard_failed)
-    ExchangeStatus.Kind.TRANSPORT_SHARE_ABSENT -> stringResource(R.string.exchange_transport_share_absent)
-    ExchangeStatus.Kind.TRANSPORT_FILE_FAILED -> stringResource(R.string.exchange_transport_file_failed)
-    ExchangeStatus.Kind.FILE_READ_FAILED -> stringResource(R.string.exchange_transport_file_failed)
-    ExchangeStatus.Kind.GENERATION_INPUT_NOT_READY -> stringResource(R.string.exchange_generation_input_not_ready)
-    ExchangeStatus.Kind.GENERATION_STORE_FAILURE -> stringResource(R.string.exchange_generation_store_failure)
-    ExchangeStatus.Kind.GENERATION_OVERSIZE -> stringResource(R.string.exchange_generation_oversize)
-    ExchangeStatus.Kind.INPUT_OVERSIZE -> stringResource(R.string.exchange_failure_input_oversize)
-    ExchangeStatus.Kind.IMPORT_ACCEPTED -> stringResource(R.string.exchange_import_accepted)
-    ExchangeStatus.Kind.RUN_BUSY -> stringResource(R.string.exchange_run_busy)
+private fun ExchangeImportInfoRow(label: String, value: String, tag: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(text = label, style = MaterialTheme.typography.bodySmall)
+        Text(text = value, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag(tag))
+    }
 }
+
+@Composable
+private fun exchangeFramingText(framing: RecognizedImportFraming): String = when (framing) {
+    RecognizedImportFraming.MARKER -> stringResource(R.string.exchange_framing_marker)
+    RecognizedImportFraming.FENCED_JSON -> stringResource(R.string.exchange_framing_fenced_json)
+    RecognizedImportFraming.STANDALONE_JSON -> stringResource(R.string.exchange_framing_standalone_json)
+}
+
+/**
+ * Issue #332 (spec D-5): pure projection from a pipeline result to the
+ * parse-first display model. The UI never derives recognition facts from the
+ * text itself — a null field simply means the failure settled before that
+ * stage (oversize/pre-recognition → nothing; framing failure → framing only;
+ * decode failure → framing only; post-decode failures → all three).
+ */
+data class ExchangeImportDisplayInfo(
+    val framing: RecognizedImportFraming? = null,
+    val intentSchemaVersion: String? = null,
+    val authoredEntryCount: Int? = null,
+)
+
+fun exchangeImportDisplayInfo(recognized: RecognizedImportInfo?): ExchangeImportDisplayInfo = if (recognized == null) {
+    ExchangeImportDisplayInfo()
+} else {
+    ExchangeImportDisplayInfo(
+        framing = recognized.framing,
+        intentSchemaVersion = recognized.intentSchemaVersion,
+        authoredEntryCount = recognized.authoredEntryCount,
+    )
+}
+
+fun exchangeImportDisplayInfo(result: ExchangeImportResult?): ExchangeImportDisplayInfo = exchangeImportDisplayInfo((result as? ExchangeImportResult.Failure)?.recognized)
+
+/**
+ * Pure status-kind → string resource mapping (issue #332 AC-6 regression
+ * guard): the import-source failures resolve to their OWN guidance strings —
+ * in particular [ExchangeStatus.Kind.FILE_READ_FAILED] resolves to the
+ * dedicated read-failure guidance, never back to the export-side
+ * `exchange_transport_file_failed` copy. Unit tested in
+ * `ExchangeFlowStateHolderTest`.
+ */
+fun exchangeStatusTextResource(kind: ExchangeStatus.Kind): Int = when (kind) {
+    ExchangeStatus.Kind.TRANSPORT_SUCCESS -> R.string.exchange_transport_success
+    ExchangeStatus.Kind.TRANSPORT_CLIPBOARD_FAILED -> R.string.exchange_transport_clipboard_failed
+    ExchangeStatus.Kind.TRANSPORT_SHARE_ABSENT -> R.string.exchange_transport_share_absent
+    ExchangeStatus.Kind.TRANSPORT_FILE_FAILED -> R.string.exchange_transport_file_failed
+    ExchangeStatus.Kind.FILE_READ_FAILED -> R.string.exchange_status_file_read_failed
+    ExchangeStatus.Kind.GENERATION_INPUT_NOT_READY -> R.string.exchange_generation_input_not_ready
+    ExchangeStatus.Kind.GENERATION_STORE_FAILURE -> R.string.exchange_generation_store_failure
+    ExchangeStatus.Kind.GENERATION_OVERSIZE -> R.string.exchange_generation_oversize
+    ExchangeStatus.Kind.INPUT_OVERSIZE -> R.string.exchange_failure_input_oversize
+    ExchangeStatus.Kind.IMPORT_ACCEPTED -> R.string.exchange_import_accepted
+    ExchangeStatus.Kind.RUN_BUSY -> R.string.exchange_run_busy
+    ExchangeStatus.Kind.CLIPBOARD_EMPTY -> R.string.exchange_status_clipboard_empty
+    ExchangeStatus.Kind.CLIPBOARD_NOT_TEXT -> R.string.exchange_status_clipboard_not_text
+}
+
+@Composable
+private fun exchangeStatusText(kind: ExchangeStatus.Kind): String = stringResource(exchangeStatusTextResource(kind))
 
 @Composable
 private fun exchangeFailureText(failure: ExchangeImportFailure): String = when (failure) {
@@ -830,18 +1217,51 @@ private fun exchangeFailureText(failure: ExchangeImportFailure): String = when (
         ExchangeEnvelopeFailure.FramingEmpty -> stringResource(R.string.exchange_failure_framing_empty)
     }
 
-    is ExchangeImportFailure.Contract -> when (val f = failure.failure) {
-        IntentValidationFailure.SchemaMismatch -> stringResource(R.string.exchange_failure_schema_mismatch)
-        IntentValidationFailure.ExportMismatch -> stringResource(R.string.exchange_failure_export_mismatch)
-        IntentValidationFailure.SessionExpired -> stringResource(R.string.exchange_failure_session_expired)
-        IntentValidationFailure.ContextStale -> stringResource(R.string.exchange_failure_context_stale)
-        IntentValidationFailure.Oversize -> stringResource(R.string.exchange_failure_oversize)
-        is IntentValidationFailure.UnknownRef -> stringResource(R.string.exchange_failure_unknown_ref)
-        IntentValidationFailure.DuplicateRef -> stringResource(R.string.exchange_failure_duplicate_ref)
-        IntentValidationFailure.IncompleteCoverage -> stringResource(R.string.exchange_failure_incomplete_coverage)
-        IntentValidationFailure.InvalidEnum -> stringResource(R.string.exchange_failure_invalid_enum)
-        IntentValidationFailure.ForbiddenContent -> stringResource(R.string.exchange_failure_forbidden_content)
-        is IntentValidationFailure.MobilityContradiction -> stringResource(R.string.exchange_failure_mobility_contradiction)
-        IntentValidationFailure.CapabilityUnsupported -> stringResource(R.string.exchange_failure_capability_unsupported)
+    // Spec 329: normalizer failures settle before the codec — their guidance
+    // is about the recognizable import formats, not the intent content.
+    is ExchangeImportFailure.Normalization -> when (failure.failure) {
+        ImportNormalizationFailure.AmbiguousBlocks ->
+            stringResource(R.string.exchange_failure_normalization_ambiguous)
+
+        ImportNormalizationFailure.UnrecognizedFormat ->
+            stringResource(R.string.exchange_failure_normalization_unrecognized)
     }
+
+    is ExchangeImportFailure.Contract -> exchangeContractFailureText(failure.failure)
+}
+
+/**
+ * The 13-class #204 contract failure mapping (spec 204 + spec 331 D-5). The
+ * exhaustive `when` is the compile-time guarantee that every contract class —
+ * including the 17th unified outcome `SCOPE_MISMATCH`, raised by the run-side
+ * scope binding gate — reaches the failure UI.
+ */
+@Composable
+fun exchangeContractFailureText(failure: IntentValidationFailure): String = when (failure) {
+    IntentValidationFailure.SchemaMismatch -> stringResource(R.string.exchange_failure_schema_mismatch)
+
+    IntentValidationFailure.ExportMismatch -> stringResource(R.string.exchange_failure_export_mismatch)
+
+    IntentValidationFailure.SessionExpired -> stringResource(R.string.exchange_failure_session_expired)
+
+    IntentValidationFailure.ContextStale -> stringResource(R.string.exchange_failure_context_stale)
+
+    IntentValidationFailure.Oversize -> stringResource(R.string.exchange_failure_oversize)
+
+    is IntentValidationFailure.UnknownRef -> stringResource(R.string.exchange_failure_unknown_ref)
+
+    IntentValidationFailure.DuplicateRef -> stringResource(R.string.exchange_failure_duplicate_ref)
+
+    IntentValidationFailure.IncompleteCoverage -> stringResource(R.string.exchange_failure_incomplete_coverage)
+
+    IntentValidationFailure.InvalidEnum -> stringResource(R.string.exchange_failure_invalid_enum)
+
+    IntentValidationFailure.ForbiddenContent -> stringResource(R.string.exchange_failure_forbidden_content)
+
+    is IntentValidationFailure.MobilityContradiction -> stringResource(R.string.exchange_failure_mobility_contradiction)
+
+    IntentValidationFailure.CapabilityUnsupported -> stringResource(R.string.exchange_failure_capability_unsupported)
+
+    // Issue #331 (17th outcome): the scope binding gate's typed rejection.
+    is IntentValidationFailure.ScopeMismatch -> stringResource(R.string.exchange_failure_scope_mismatch)
 }

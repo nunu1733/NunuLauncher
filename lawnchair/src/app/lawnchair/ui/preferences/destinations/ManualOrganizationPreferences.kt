@@ -314,12 +314,53 @@ fun ManualOrganizationPreferences(
                     // Issue #228: explicit scope selection (D-1: all
                     // candidates start unchecked). Selection survives query
                     // changes; Select all matches the filtered set, Clear all
-                    // clears the whole set (spec §2).
+                    // clears the whole candidate set (spec §2).
+                    //
+                    // Issue #331: the run-in exchange entry shares the
+                    // surface. While an exchange step is in progress the
+                    // selection is frozen (the export scope is the frozen
+                    // selection); the bound intent's scope size guides
+                    // re-selection (never auto-selects).
+                    val exchangeBusy = exchangeHolder.screen !is app.lawnchair.organizer.ui.exchange.ExchangeScreen.Closed
+                    val scopedSelection = missingAppSelection.selected.toList()
+                    val scopedLabels = missingAppSelection.candidates
+                        .map { it.target to it.label }
+                        .toMap()
+                    // Issue #331: the accepted typed SCOPE_MISMATCH failure from
+                    // the scope binding gate (17th unified failure outcome),
+                    // rendered with the re-export guidance.
+                    currentState.scopeRejection?.let { rejection ->
+                        item(key = "missing-app-selection-scope-mismatch") {
+                            Text(
+                                text = app.lawnchair.organizer.ui.exchange.exchangeContractFailureText(rejection),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                                    .semantics { liveRegion = LiveRegionMode.Assertive }
+                                    .testTag("missing-app-selection-scope-mismatch"),
+                            )
+                        }
+                    }
                     missingAppSelectionItems(
                         selection = missingAppSelection,
                         onSelectionChange = { missingAppSelection = it },
                         onConfirm = { selected -> execute { coordinator.confirmSelection(selected) } },
                         onCancel = { execute(coordinator::cancel) },
+                        intentScopeCount = currentState.intentScopeCount,
+                        editsEnabled = !exchangeBusy,
+                    )
+                    exchangeFlowItems(
+                        holder = exchangeHolder,
+                        scopedSelection = scopedSelection,
+                        scopedLabels = scopedLabels,
+                        clipboardTransport = { ctx: android.content.Context, text: String ->
+                            ClipboardExchangeTransport(ctx).copy(text)
+                        },
+                        shareTransport = { ctx: android.content.Context, text: String ->
+                            ShareSheetExchangeTransport().share(ctx, text)
+                        },
+                        fileTransport = FileExchangeTransport(context),
                     )
                 }
 
@@ -340,6 +381,21 @@ fun ManualOrganizationPreferences(
                         } else {
                             stringResource(currentState.reason.copyKind())
                         },
+                        focusRequester = focusRequester,
+                        modifier = focusTargetModifier,
+                    )
+                    ClickablePreference(
+                        label = stringResource(R.string.manual_organization_retry),
+                        onClick = { execute { coordinator.start(trigger) } },
+                    )
+                }
+
+                is ManualOrganizationRun.State.ScopeMismatchFailed -> item {
+                    // Issue #331 (D-5): the typed SCOPE_MISMATCH failure for a
+                    // run that could never open a selection surface. Zero-write;
+                    // the remedy is re-export (start a fresh run).
+                    FocusTargetText(
+                        text = app.lawnchair.organizer.ui.exchange.exchangeContractFailureText(currentState.failure),
                         focusRequester = focusRequester,
                         modifier = focusTargetModifier,
                     )
@@ -1460,25 +1516,48 @@ private fun unplacedReasonString(reason: UnplacedReason): Int = when (reason) {
 
 private fun rejectionReasonString(reason: RejectionCode): Int = when (reason) {
     RejectionCode.UNKNOWN_ITEM_KIND -> R.string.manual_organization_rejection_unknown_item_kind
+
     RejectionCode.INVALID_CONTAINER -> R.string.manual_organization_rejection_invalid_container
+
     RejectionCode.UNKNOWN_PAGE -> R.string.manual_organization_rejection_unknown_page
+
     RejectionCode.BOUNDS_VIOLATION -> R.string.manual_organization_rejection_bounds
+
     RejectionCode.OVERLAP -> R.string.manual_organization_rejection_overlap
+
     RejectionCode.DANGLING_REFERENCE -> R.string.manual_organization_rejection_dangling_reference
+
     RejectionCode.MALFORMED_APP_PAIR -> R.string.manual_organization_rejection_malformed_app_pair
+
     RejectionCode.LOCKED_OUT_OF_BOUNDS -> R.string.manual_organization_rejection_locked_out_of_bounds
+
     RejectionCode.DUPLICATE_TARGET -> R.string.manual_organization_rejection_duplicate_target
+
     RejectionCode.MISSING_TARGET -> R.string.manual_organization_rejection_missing_target
+
     RejectionCode.INCOMPLETE_TARGET_PARTITION -> R.string.manual_organization_rejection_incomplete_target_partition
+
     RejectionCode.ADDITIONS_UNDER_FULL_ORGANIZATION -> R.string.manual_organization_rejection_additions
+
     RejectionCode.INVALID_RULES -> R.string.manual_organization_rejection_invalid_rules
+
     RejectionCode.DUPLICATE_ITEM_ID -> R.string.manual_organization_rejection_duplicate_item
+
     RejectionCode.DUPLICATE_PAGE -> R.string.manual_organization_rejection_duplicate_page
+
     RejectionCode.INVALID_DIMENSIONS -> R.string.manual_organization_rejection_invalid_dimensions
+
     RejectionCode.KIND_TARGET_MISMATCH -> R.string.manual_organization_rejection_kind_target_mismatch
+
     RejectionCode.TARGET_PROFILE_MISMATCH -> R.string.manual_organization_rejection_target_profile_mismatch
+
     RejectionCode.UNKNOWN_SIGNAL_ITEM -> R.string.manual_organization_rejection_unknown_signal_item
+
     RejectionCode.UNKNOWN_CATEGORY -> R.string.manual_organization_rejection_unknown_category
+
+    // Issue #336: no automatic-inference source may target a user-defined
+    // category; the planner rejects such signals as a typed failure.
+    RejectionCode.INVALID_CATEGORY_PROVENANCE -> R.string.manual_organization_rejection_invalid_category_provenance
 }
 
 private fun availabilityString(availability: Availability): Int = when (availability) {

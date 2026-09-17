@@ -10,6 +10,8 @@ import app.lawnchair.organizer.integration.OrganizationInputComposition
 import app.lawnchair.organizer.personalization.CanonicalStructuralInputs
 import app.lawnchair.organizer.personalization.ExportInputs
 import app.lawnchair.organizer.personalization.PersonalizationEntryKey
+import app.lawnchair.organizer.planning.CandidatePlanningIds
+import app.lawnchair.organizer.planning.CandidateTarget
 import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.PackageName
 import app.lawnchair.organizer.planning.TargetKey
@@ -18,10 +20,15 @@ import app.lawnchair.organizer.planning.TargetKey
  * Issue #205: the single canonical-input adapter shared by exchange export
  * generation and import-time reconstruction (spec 205 "canonical入力sourceの
  * 単一化"). Both sides derive their inputs from the same
- * `OrganizationInputComposer.composeFullOrganization` seam (the full-target
- * composition; #228 selection is a run-flow concept and never participates in
- * the exchange flow), so the structural trio, categories, and signal snapshot
- * can never drift between the two derivations.
+ * `OrganizationInputComposer` seam, so the structural trio, categories, and
+ * signal snapshot can never drift between the two derivations.
+ *
+ * Issue #331 (spec 331 §1): there are TWO entries onto that single seam — the
+ * idle entry ([composeForExport] over the full-organization composition, no
+ * candidates) and the run-in entry ([composeForExport] with the confirmed
+ * selection over the scope-composed composition). Both are the same adapter
+ * and the same projection predicates; `composeFullOrganization()` and the
+ * #228 selection state never become separate sources of truth.
  *
  * App titles (the user-authored free-text class) are the one composition
  * output the planning input drops; they are read from a canonical capture
@@ -34,25 +41,54 @@ class ExchangeInputAdapter(
 ) {
 
     /** Derives the export inputs for one generation attempt. */
-    fun composeForExport(nowEpochMs: Long): ExchangeInputResult {
-        return when (val composition = composer.composeFullOrganization()) {
-            is OrganizationInputComposition.NotReady ->
-                ExchangeInputResult.NotReady(composition.reason)
+    fun composeForExport(nowEpochMs: Long): ExchangeInputResult = composeFrom(nowEpochMs, composer.composeFullOrganization(), emptyMap())
 
-            is OrganizationInputComposition.Ready -> {
-                val input = composition.input
-                ExchangeInputResult.ExportReady(
-                    ExportInputs(
-                        snapshot = input.snapshot,
-                        targets = input.targets,
-                        resolvedCategories = resolvedCategoriesOf(input.signals.entries.map { it.item to it.candidate.value }),
-                        userLabels = titleSource.read(),
-                        signals = input.personalization,
-                        usageKeysByItem = usageKeysOf(input),
-                        nowEpochMs = nowEpochMs,
-                    ),
-                )
+    /**
+     * Issue #331: derives the export inputs for one run-in (scope-composed)
+     * generation attempt. The scope comes from the SAME canonical composition
+     * seam the planner consumes (`composeScopeComposedOrganization`), so the
+     * export scope and the run's target scope cannot diverge (spec 331 §1).
+     * Candidate labels (user-authored free text) ride the tier control like
+     * placed labels.
+     */
+    fun composeForExport(
+        nowEpochMs: Long,
+        selection: List<CandidateTarget.AppKey>,
+        candidateLabels: Map<CandidateTarget.AppKey, String>,
+    ): ExchangeInputResult = composeFrom(nowEpochMs, composer.composeScopeComposedOrganization(selection), candidateLabels)
+
+    private fun composeFrom(
+        nowEpochMs: Long,
+        composition: OrganizationInputComposition,
+        candidateLabels: Map<CandidateTarget.AppKey, String>,
+    ): ExchangeInputResult = when (composition) {
+        is OrganizationInputComposition.NotReady ->
+            ExchangeInputResult.NotReady(composition.reason)
+
+        is OrganizationInputComposition.Ready -> {
+            val input = composition.input
+            val candidateLabelEntries = input.targets.additions.mapNotNull { addition ->
+                val target = addition.target as? CandidateTarget.AppKey ?: return@mapNotNull null
+                candidateLabels[target]?.let { label ->
+                    CandidatePlanningIds.planningId(target) to label
+                }
             }
+            ExchangeInputResult.ExportReady(
+                ExportInputs(
+                    snapshot = input.snapshot,
+                    targets = input.targets,
+                    // Issue #336: the single identity-bearing input feeds both
+                    // layers — the builder redacts user-defined identities to
+                    // the absent export category (built-in values keep the
+                    // pre-336 bytes) while the session freshness digests
+                    // consume the resolved CategoryIdentity itself.
+                    resolvedIdentities = resolvedIdentitiesOf(input.signals.entries.map { it.item to it.candidate }),
+                    userLabels = titleSource.read() + candidateLabelEntries,
+                    signals = input.personalization,
+                    usageKeysByItem = usageKeysOf(input),
+                    nowEpochMs = nowEpochMs,
+                ),
+            )
         }
     }
 
@@ -64,12 +100,12 @@ class ExchangeInputAdapter(
             CanonicalStructuralInputs(
                 snapshot = result.inputs.snapshot,
                 targets = result.inputs.targets,
-                resolvedCategories = result.inputs.resolvedCategories,
+                resolvedIdentities = result.inputs.resolvedIdentities,
             ),
         )
     }
 
-    private fun resolvedCategoriesOf(pairs: List<Pair<ItemId, String?>>): Map<ItemId, String?> = LinkedHashMap<ItemId, String?>(pairs.size).apply { pairs.forEach { (k, v) -> put(k, v) } }
+    private fun resolvedIdentitiesOf(pairs: List<Pair<ItemId, app.lawnchair.organizer.planning.CategoryIdentity?>>): Map<ItemId, app.lawnchair.organizer.planning.CategoryIdentity?> = LinkedHashMap<ItemId, app.lawnchair.organizer.planning.CategoryIdentity?>(pairs.size).apply { pairs.forEach { (k, v) -> put(k, v) } }
 
     private fun usageKeysOf(
         input: app.lawnchair.organizer.planning.OrganizationInput,
@@ -86,6 +122,13 @@ class ExchangeInputAdapter(
                 else -> null
             } ?: continue
             keys[item.id] = key
+        }
+        // Issue #331: selected candidates are installed apps and project usage
+        // buckets like placed items; their planning IDs key the projection.
+        for (addition in input.targets.additions) {
+            val target = addition.target as? CandidateTarget.AppKey ?: continue
+            val key = appKeyPackage(target.component)?.let { PersonalizationEntryKey(addition.profile, it) } ?: continue
+            keys[CandidatePlanningIds.planningId(target)] = key
         }
         return keys
     }

@@ -1,5 +1,7 @@
 package app.lawnchair.organizer.planning
 
+import app.lawnchair.organizer.planning.ActiveCategoryCatalog
+import app.lawnchair.organizer.planning.CategoryIdentity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -100,6 +102,7 @@ class GlobalCompactStrategyTest {
         ),
         rules = rules(strategyId),
         taxonomy = taxonomy(),
+        catalog = ActiveCategoryCatalog(taxonomy(), emptyList()),
         signals = ClassificationSignals(emptyList()),
         targets = TargetSet(items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }, emptyList()),
         runMode = RunMode.FullOrganization,
@@ -124,6 +127,7 @@ class GlobalCompactStrategyTest {
         ),
         rules = rules(strategyId),
         taxonomy = taxonomy(),
+        catalog = ActiveCategoryCatalog(taxonomy(), emptyList()),
         signals = ClassificationSignals(emptyList()),
         targets = TargetSet(items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }, emptyList()),
         runMode = RunMode.FullOrganization,
@@ -215,8 +219,8 @@ class GlobalCompactStrategyTest {
         // and its members become FOLDER_MEMBER placements.
         val signals = ClassificationSignals(
             listOf(
-                ClassificationSignal(ItemId("g1"), SignalSource.S1, CategoryId("GAMES")),
-                ClassificationSignal(ItemId("g2"), SignalSource.S1, CategoryId("GAMES")),
+                ClassificationSignal(ItemId("g1"), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+                ClassificationSignal(ItemId("g2"), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
             ),
         )
         val items = listOf(
@@ -376,8 +380,8 @@ class GlobalCompactStrategyTest {
         // is empty (formation is replan-stable: no new folders).
         val signals = ClassificationSignals(
             listOf(
-                ClassificationSignal(ItemId("g1"), SignalSource.S1, CategoryId("GAMES")),
-                ClassificationSignal(ItemId("g2"), SignalSource.S1, CategoryId("GAMES")),
+                ClassificationSignal(ItemId("g1"), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+                ClassificationSignal(ItemId("g2"), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
             ),
         )
         val items = listOf(

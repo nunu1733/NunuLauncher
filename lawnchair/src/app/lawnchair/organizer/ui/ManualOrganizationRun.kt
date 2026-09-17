@@ -35,8 +35,16 @@ import app.lawnchair.organizer.integration.CandidateDetectionResult
 import app.lawnchair.organizer.integration.DetectedCandidate
 import app.lawnchair.organizer.integration.InputReadinessReason
 import app.lawnchair.organizer.integration.OrganizationInputComposition
+import app.lawnchair.organizer.personalization.CandidateScopeProjection
+import app.lawnchair.organizer.personalization.ScopeMismatchCause
+import app.lawnchair.organizer.personalization.exchange.DetectedCandidateScope
+import app.lawnchair.organizer.personalization.exchange.ScopeBindingCurrentScope
+import app.lawnchair.organizer.personalization.exchange.ScopeBindingGate
+import app.lawnchair.organizer.personalization.exchange.ScopeBindingOutcome
+import app.lawnchair.organizer.personalization.exchange.ScopeBindingSessionScope
 import app.lawnchair.organizer.personalization.policyIdentity
 import app.lawnchair.organizer.planning.Availability
+import app.lawnchair.organizer.planning.CandidatePlanningIds
 import app.lawnchair.organizer.planning.CandidateTarget
 import app.lawnchair.organizer.planning.DeterministicOrganizationPlanner
 import app.lawnchair.organizer.planning.Disposition
@@ -231,8 +239,29 @@ class ManualOrganizationRun internal constructor(
          * identifies the owning run so the selection surface resets its
          * process-local state for every new run (D-1). Selection state never
          * persists.
+         *
+         * Issue #331: [intentScopeCount] is the export scope's candidate
+         * count when a validated intent is bound to this run (guidance only —
+         * the user still selects explicitly, D-1); [scopeRejection] carries
+         * the accepted typed `SCOPE_MISMATCH` failure when a confirmation was
+         * rejected by the scope binding gate (zero-write — the surface
+         * re-opens with the re-export guidance).
          */
-        data class Selecting(val runId: RunId, val candidates: List<DetectedCandidate>) : State
+        data class Selecting(
+            val runId: RunId,
+            val candidates: List<DetectedCandidate>,
+            val intentScopeCount: Int = 0,
+            val scopeRejection: app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch? = null,
+        ) : State
+
+        /**
+         * Issue #331 (D-5): the scope binding gate rejected a run that could
+         * never open a selection surface (detection unavailable). Typed
+         * zero-write terminal — the remedy is re-export.
+         */
+        data class ScopeMismatchFailed(
+            val failure: app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch,
+        ) : State
 
         data object Planning : State
         data class InputUnavailable(val reason: InputReadinessReason) : State
@@ -376,7 +405,20 @@ class ManualOrganizationRun internal constructor(
             // selection surface.
             setIfActive(operation, State.CandidateDetection)
             when (val detection = application.detectMissingAppCandidates()) {
-                is CandidateDetectionResult.Ready -> setIfActive(operation, State.Selecting(runId, detection.candidates))
+                is CandidateDetectionResult.Ready -> {
+                    // Issue #331: retain the detection cut so a scope binding
+                    // rejection can restore the selection surface.
+                    operation.detectedCandidates = detection.candidates
+                    setIfActive(
+                        operation,
+                        State.Selecting(
+                            runId,
+                            detection.candidates,
+                            intentScopeCount = operation.intent?.session?.scopeCandidates?.size ?: 0,
+                        ),
+                    )
+                }
+
                 is CandidateDetectionResult.Unavailable -> runComposedPhase(operation, selection = null)
             }
         } catch (failure: Throwable) {
@@ -405,15 +447,61 @@ class ManualOrganizationRun internal constructor(
             if (sortedSelection.isNotEmpty()) {
                 current.diagnosticsRunMode = RunMode.SCOPE_COMPOSED_ORGANIZATION
             }
-            stateHolder.value = State.Capturing
-            current
-        }
+            // Issue #331 (spec D-2): the early scope equality gate. A run
+            // consuming a validated intent may only organize the exported
+            // candidate set — missing and extra selections are both a
+            // `SCOPE_MISMATCH` (zero-write; the surface re-opens with the
+            // re-export guidance). Resolvability and the projection digest
+            // are re-checked against the composition below.
+            val intent = current.intent
+            val earlyMismatch = intent != null &&
+                intent.session.scopeCandidates.sortedWith(
+                    compareBy({ it.component.value }, { it.profile.value }),
+                ) != sortedSelection
+            if (earlyMismatch) {
+                stateHolder.value = State.Selecting(
+                    current.runId,
+                    current.detectedCandidates.orEmpty(),
+                    intentScopeCount = intent!!.session.scopeCandidates.size,
+                    scopeRejection = app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch(
+                        app.lawnchair.organizer.personalization.ScopeMismatchCause.SET_MISMATCH,
+                    ),
+                )
+                null
+            } else {
+                stateHolder.value = State.Capturing
+                current
+            }
+        } ?: return
         try {
             runComposedPhase(operation, selection = sortedSelection.ifEmpty { null })
         } catch (failure: Throwable) {
             abort(operation)
             throw failure
         }
+    }
+
+    /**
+     * Issue #331 (spec §5): connects a validated intent to the run already
+     * holding the selection surface (the run-in exchange entry). Single-shot:
+     * a run binds at most one intent, and only while the selection surface is
+     * open. Zero-write; the validated intent is not retained on refusal.
+     */
+    fun attachIntent(intent: app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent): AttachIntentOutcome = synchronized(lock) {
+        val current = state as? State.Selecting
+        val operation = activeOperation
+        if (current == null || operation == null || !isActiveLocked(operation) || operation.intent != null) {
+            return@synchronized AttachIntentOutcome.NotAttachable
+        }
+        operation.intent = intent
+        stateHolder.value = current.copy(intentScopeCount = intent.session.scopeCandidates.size)
+        AttachIntentOutcome.Attached
+    }
+
+    sealed interface AttachIntentOutcome {
+        data object Attached : AttachIntentOutcome
+
+        data object NotAttachable : AttachIntentOutcome
     }
 
     /**
@@ -435,6 +523,48 @@ class ManualOrganizationRun internal constructor(
             abort(retained.first)
             throw failure
         }
+    }
+
+    /**
+     * Issue #331 (spec D-4): evaluates the projection digest half of the scope
+     * binding gate against the composed planning input. Set equality was
+     * checked at confirm; this re-derives the authority-bearing candidate
+     * projection (identity + availability + resolved category) from the run's
+     * detection cut and the composition output. Returns the mismatch cause, or
+     * null when the gate passes.
+     */
+    private fun evaluateScopeBinding(
+        operation: Operation,
+        input: OrganizationInput,
+        selection: List<CandidateTarget.AppKey>,
+    ): ScopeMismatchCause? {
+        val intent = operation.intent ?: return null
+        val sessionScope = ScopeBindingSessionScope(
+            scopeCandidates = intent.session.scopeCandidates,
+            scopeCandidateDigest = intent.session.scopeCandidateDigest,
+        )
+        val detectedById = operation.detectedCandidates.orEmpty().associateBy { it.target }
+        // Issue #336: the projection carries the resolved CategoryIdentity
+        // itself — built-in candidates keep the pre-336 raw-value digest
+        // input byte for byte, and a user-defined identity contributes its
+        // kind-discriminated canonical form inside the one-way digest only
+        // (never as a persisted field or an export surface). A→B reassignment
+        // and assigned-category deletion therefore change the digest exactly
+        // as a built-in resolved-category change does.
+        val identitiesById = input.signals.entries.associate { it.item to it.candidate }
+        val current = ScopeBindingCurrentScope(
+            detected = detectedById.values.map { DetectedCandidateScope(it.target, it.availability) },
+            selectedTargets = selection.toSet(),
+            candidateProjections = selection.map { target ->
+                CandidateScopeProjection(
+                    target = target,
+                    availability = detectedById[target]?.availability ?: Availability.AVAILABLE,
+                    category = identitiesById[CandidatePlanningIds.planningId(target)],
+                )
+            },
+        )
+        val outcome = ScopeBindingGate.evaluate(sessionScope, current)
+        return (outcome as? ScopeBindingOutcome.Mismatch)?.cause
     }
 
     private fun runComposedPhase(operation: Operation, selection: List<CandidateTarget.AppKey>?) {
@@ -478,6 +608,59 @@ class ManualOrganizationRun internal constructor(
             is OrganizationInputComposition.Ready -> {
                 if (!isActive(operation)) return
                 val input = composition.input
+                // Issue #331 (spec D-4): the projection digest gate. Set
+                // equality was checked at confirm; here the authority-bearing
+                // candidate projection (availability + resolved category) is
+                // re-derived from the same composition the planner consumes
+                // and compared with the session's export-time digest. A
+                // mismatch (classification authority drift invisible to the
+                // placed-item digest, or a candidate that stopped resolving)
+                // is a typed zero-write `SCOPE_MISMATCH`. Per the accepted
+                // plan: when a selection surface exists the run RETURNS to it
+                // (stale intent discarded so re-export + re-attach is
+                // possible); only a run whose detection never opened the
+                // surface terminates typed.
+                if (operation.intent != null) {
+                    val cause = evaluateScopeBinding(operation, input, selection.orEmpty())
+                    if (cause != null) {
+                        // The accepted typed contract failure (spec 204
+                        // taxonomy, 13th class / spec 331 D-5) carries the
+                        // rejection through both production surfaces.
+                        val failure =
+                            app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch(cause)
+                        val restored = synchronized(lock) {
+                            val detected = operation.detectedCandidates
+                            if (isActiveLocked(operation) && detected != null) {
+                                operation.intent = null
+                                stateHolder.value = State.Selecting(
+                                    operation.runId,
+                                    detected,
+                                    intentScopeCount = 0,
+                                    scopeRejection = failure,
+                                )
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        if (restored) return
+                        emit(
+                            RunEvent(
+                                journalSequence = 0L,
+                                runId = operation.runId.value,
+                                trigger = operation.trigger,
+                                runMode = diagnosticsRunMode,
+                                phase = PhaseCode.INPUT_NOT_READY,
+                                error = ErrorEntry(
+                                    ErrorFamily.INPUT_READINESS,
+                                    app.lawnchair.organizer.integration.InputCompositionCode.SCOPE_BINDING_MISMATCH.name,
+                                ),
+                            ),
+                        )
+                        finish(operation, State.ScopeMismatchFailed(failure))
+                        return
+                    }
+                }
                 emit(
                     RunEvent(
                         journalSequence = 0L,
@@ -1123,8 +1306,18 @@ class ManualOrganizationRun internal constructor(
         val runId: RunId,
         val trigger: Trigger,
         val lease: AutoCloseable,
-        /** Issue #205: the accepted intent this run was started from, if any. */
-        val intent: app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent? = null,
+        /**
+         * Issue #205: the accepted intent this run was started from, if any.
+         * Issue #331: an intent may also attach to a run already holding the
+         * selection surface (the run-in exchange entry); the attach action is
+         * single-shot (see [attachIntent]).
+         */
+        var intent: app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent? = null,
+        /**
+         * Issue #331: the detection-time candidate cut this run surfaced, kept
+         * so a scope binding rejection can restore the selection surface.
+         */
+        var detectedCandidates: List<DetectedCandidate>? = null,
         val cancelled: AtomicBoolean = AtomicBoolean(false),
         val applicationAdmitted: AtomicBoolean = AtomicBoolean(false),
     ) {

@@ -354,10 +354,13 @@ internal object FullRunExecution {
      * canonical target key, ItemId)`. The target-key sort value is this
      * executor's documented canonical encoding (variant ordinal, then the
      * opaque handle values in byte order); it is locale-independent and total
-     * over the eligible app/deep-shortcut units.
+     * over the eligible app/deep-shortcut units. Issue #336: the category key
+     * is the canonical [CategoryIdentity] order — built-in members in their
+     * existing order first, then user-defined IDs in byte order — with the
+     * unchanged built-in fallback (`OTHER`) last.
      */
     internal fun categoryContiguousOrder(context: FullRunContext): Comparator<CapturedItem> {
-        val fallback = context.input.taxonomy.fallbackCategory
+        val fallback = context.input.catalog.fallback
         return compareBy(
             { it.profile },
             { if (context.classification.decisions[it.id]?.category ?: fallback == fallback) 1 else 0 },
@@ -555,7 +558,7 @@ internal object FullRunExecution {
     private fun executeGlobalCompact(context: FullRunContext): PlacementOutput {
         val input = context.input
         val strategy = context.strategy
-        val taxonomy = input.taxonomy
+        val catalog = input.catalog
         val device = input.snapshot.device
         val allocator = context.allocator
 
@@ -583,10 +586,10 @@ internal object FullRunExecution {
                         FolderCandidate(
                             item.id,
                             item.profile,
-                            context.classification.decisions[item.id]?.category ?: taxonomy.fallbackCategory,
+                            context.classification.decisions[item.id]?.category ?: catalog.fallback,
                         )
                     },
-                fallbackCategory = taxonomy.fallbackCategory,
+                fallbackCategory = catalog.fallback,
                 capacity = capacity,
                 minGroupSize = minGroupSize,
             )
@@ -653,7 +656,7 @@ internal object FullRunExecution {
             outputNewFolders += NewFolder(
                 ordinal = group.ordinal,
                 profile = group.profile,
-                naming = FolderNaming.FromCategory(group.category),
+                naming = folderNamingFor(group.category),
                 workspacePlacement = PlacementTarget.WorkspaceTarget(pageRef, cell, GridSpan(1, 1)),
                 members = group.members,
             )
@@ -706,7 +709,7 @@ internal object FullRunExecution {
         val strategy = context.strategy
         val itemById = context.itemById
         val device = input.snapshot.device
-        val taxonomy = input.taxonomy
+        val catalog = input.catalog
         val movableItems = context.movableItems
         val allocator = context.allocator
 
@@ -724,12 +727,17 @@ internal object FullRunExecution {
             context.preferences.globalMinimizeMovement ||
                 preferenceByItem.orEmpty().values.any { it.preserve == true }
             )
-        fun effectiveCategory(itemId: ItemId): CategoryId {
+
+        // Issue #336: the effective category is an identity. An accepted
+        // intent's `groupSemantic` stays built-in-only (#204), so the intent
+        // branch keeps producing built-in identities; user-defined identities
+        // flow through the classification decision unchanged.
+        fun effectiveCategory(itemId: ItemId): CategoryIdentity {
             val intentCategory = preferenceByItem?.get(itemId)?.groupSemantic?.category
             if (intentCategory != null && context.input.taxonomy.allowedCategories.any { it.value == intentCategory }) {
-                return CategoryId(intentCategory)
+                return CategoryIdentity.BuiltIn(CategoryId(intentCategory))
             }
-            return context.classification.decisions[itemId]?.category ?: taxonomy.fallbackCategory
+            return context.classification.decisions[itemId]?.category ?: catalog.fallback
         }
 
         data class FormedFolder(
@@ -749,7 +757,7 @@ internal object FullRunExecution {
                         effectiveCategory(item.id),
                     )
                 },
-                fallbackCategory = taxonomy.fallbackCategory,
+                fallbackCategory = catalog.fallback,
                 capacity = capacity,
                 minGroupSize = minGroupSize,
             )
@@ -760,7 +768,7 @@ internal object FullRunExecution {
             val preferredPage = group.members
                 .map { id -> (itemById.getValue(id).placement as CapturedPlacement.Workspace).page }
                 .minWith(pageRefComparator(context.pageOrderMap))
-            FormedFolder(group.ordinal, group.profile, FolderNaming.FromCategory(group.category), group.members, preferredPage)
+            FormedFolder(group.ordinal, group.profile, folderNamingFor(group.category), group.members, preferredPage)
         }
         val folderMemberIds = folderGroups.flatMapTo(mutableSetOf()) { it.members }
 
@@ -772,7 +780,7 @@ internal object FullRunExecution {
             val preferredPage: PageRef,
             val isFolder: Boolean,
             val sortProfile: ProfileId,
-            val sortCategory: CategoryId,
+            val sortCategory: CategoryIdentity,
             val isNewFolder: Boolean,
             val newFolderOrdinal: NewFolderOrdinal?,
             /** Captured visual index for the movement-minimization bias (null for synthetic units). */
@@ -853,7 +861,7 @@ internal object FullRunExecution {
                 preferredPage = nf.preferredPage,
                 isFolder = true,
                 sortProfile = nf.profile,
-                sortCategory = taxonomy.fallbackCategory,
+                sortCategory = catalog.fallback,
                 isNewFolder = true,
                 newFolderOrdinal = nf.ordinal,
             )

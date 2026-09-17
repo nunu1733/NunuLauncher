@@ -414,6 +414,21 @@
     <string name="exchange_import_retry">再取り込み</string>
     <string name="exchange_import_accepted">整理案を検証しました。プレビューを生成します…</string>
     <string name="exchange_run_busy">整理が実行中のため取り込めません。終了後に再度取り込んでください。</string>
+    <string name="exchange_import_from_clipboard">クリップボードから読み込む</string>
+    <string name="exchange_import_fallback_toggle">詳細 / うまく読み込めない場合</string>
+    <string name="exchange_import_clear">クリア</string>
+    <string name="exchange_import_file_types">テキスト (.txt) またはJSON (.json)・最大1 MiB</string>
+    <string name="exchange_status_clipboard_empty">クリップボードが空か、読み取れませんでした。AIアプリで回答をコピーし直し、このアプリに戻ってからもう一度読み込んでください。うまくいかない場合はファイル読み込みか手動貼り付けをお使いください。</string>
+    <string name="exchange_status_clipboard_not_text">クリップボードにテキストがありません。AIアプリで回答のテキストをコピーし直してください。</string>
+    <string name="exchange_status_file_read_failed">ファイルを読み込めませんでした。もう一度ファイルを選択するか、対応形式 (.txt / .json・最大1 MiB) を確認してください。うまくいかない場合はクリップボード読み込みか手動貼り付けをお使いください。</string>
+    <string name="exchange_recognized_framing">認識した形式</string>
+    <string name="exchange_recognized_version">認識version</string>
+    <string name="exchange_recognized_entries">認識エントリ数</string>
+    <string name="exchange_framing_marker">マーカー形式</string>
+    <string name="exchange_framing_fenced_json">fenced JSONブロック</string>
+    <string name="exchange_framing_standalone_json">単独JSON</string>
+    <string name="exchange_import_raw_show">取り込みテキストを表示</string>
+    <string name="exchange_import_raw_hide">取り込みテキストを隠す</string>
     <string name="exchange_generation_input_not_ready">現在のレイアウトを取得できませんでした。しばらくしてから再試行してください。</string>
     <string name="exchange_generation_store_failure">交換セッションを作成できませんでした。何も送信されていません。</string>
     <string name="exchange_generation_oversize">レイアウトが大きすぎて依頼文を作成できません。</string>
@@ -421,6 +436,8 @@
     <string name="exchange_failure_framing_missing">回答にマーカーで囲まれた整理案がありません。マーカー行で囲んだJSONを再送してもらってください。</string>
     <string name="exchange_failure_framing_ambiguous">回答に複数のマーカー囲みの領域があります。最終のJSONを1つだけ送ってもらってください。</string>
     <string name="exchange_failure_framing_empty">マーカー内が空です。JSONを再送してもらってください。</string>
+    <string name="exchange_failure_normalization_ambiguous">回答に複数のコードブロックがあります。最後のJSONブロックだけをコピーして、再度取り込んでください。</string>
+    <string name="exchange_failure_normalization_unrecognized">取り込める形式がありません。マーカー行で囲んだJSONを再送してもらうか、```jsonブロックを1つだけにするか、JSONだけを貼り付けてください。</string>
     <string name="exchange_failure_schema_mismatch">回答が期待するintent形式ではありません。</string>
     <string name="exchange_failure_export_mismatch">回答が古い依頼宛です。新しい依頼文を作成して再依頼してください。</string>
     <string name="exchange_failure_session_expired">依頼の有効期限 (24時間) が切れています。新しい依頼文を作成してください。</string>
@@ -428,9 +445,17 @@
     <string name="exchange_failure_oversize">整理案本体が大きすぎます。</string>
     <string name="exchange_failure_unknown_ref">整理案が依頼に存在しない項目を参照しています。</string>
     <string name="exchange_failure_duplicate_ref">整理案に重複した項目があります。</string>
-    <string name="exchange_failure_incomplete_coverage">整理案が依頼内の全項目を扱っていません。</string>
+    <string name="exchange_failure_incomplete_coverage">整理案が同じ項目を複数回列挙しています。各項目は「itemIntents」と「unresolvedRefs」の合計で一度だけ指定できます。</string>
     <string name="exchange_failure_invalid_enum">整理案に未知の値が含まれています。</string>
     <string name="exchange_failure_forbidden_content">整理案に禁止された指示 (座標・サイズ・データベース変更) が含まれています。</string>
     <string name="exchange_failure_mobility_contradiction">整理案が移動できない項目を動かそうとしています。</string>
     <string name="exchange_failure_capability_unsupported">整理案が未対応の機能を使用しています。</string>
+    <string name="exchange_failure_scope_mismatch">選択したアプリが依頼内容と一致していません。同じアプリを選び直すか、依頼を再作成してください。</string>
+    <string name="exchange_scoped_entry_title">選択したアプリをAIの依頼に含める</string>
+    <string name="exchange_scoped_entry_subtitle">現在のホームと選択したアプリをまとめて依頼文に含め、AIにすべての対象を判断してもらえます。</string>
+    <string name="exchange_scoped_entry_open">依頼文を作成</string>
+    <string name="exchange_scoped_freeze_notice">AI依頼の作成中はアプリの選択を変更できません。取り消すと再編集できます。</string>
+    <plurals name="exchange_scope_intent_count">
+        <item quantity="other">AIの提案にはホームに未配置のアプリ%1$d件が含まれます。提案を利用するにはそれらを選択してください。</item>
+    </plurals>
 </resources>

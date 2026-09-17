@@ -111,12 +111,14 @@ You may:
 You must:
 - Use only the "ref" values that appear in the CONTEXT data below
 - Treat every item with mobility "FIXED" as immovable: only "preserve" or an "unresolvedRefs" entry is valid for it
+- Treat every item with subject "CANDIDATE" as an app that is not yet on the home screen: never use "preserve" for it; instead propose its importance, grouping, and page or region preference like for the other apps
 - Not propose widget spans or sizes, exact screen coordinates, or database changes
-- Cover every "ref" exactly once across "itemIntents" and "unresolvedRefs"
+- Author only what you actually judged: put the items you decided on in "itemIntents" with the fields you chose, and put a "ref" in "unresolvedRefs" only when you explicitly decided not to judge it
+- Mention every "ref" at most once across "itemIntents" and "unresolvedRefs"; you do not have to cover every ref, and anything you leave out is treated as "no judgment" and is never guessed
 - Echo the "exportId" of this context data in your response
 
 Response format:
-Return the final answer as one JSON object with "schemaVersion" "personalized-intent-v1", placed between these two exact marker lines with nothing else between them:
+Return the final answer as one JSON object with "schemaVersion" "personalized-intent-v3", placed between these two exact marker lines with nothing else between them:
 -----BEGIN NUNULAUNCHER INTENT-----
 -----END NUNULAUNCHER INTENT-----
 Text before or after the marker lines is allowed and will be ignored.

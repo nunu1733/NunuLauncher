@@ -29,9 +29,9 @@ class IntentImportParserTest {
 
     @Test
     fun extractsTheVerbatimPayloadBetweenTheUniqueMarkerPair() {
-        val result = IntentImportParser.parse(framed("""{"schemaVersion":"personalized-intent-v1"}"""))
+        val result = IntentImportParser.parse(framed("""{"schemaVersion":"personalized-intent-v2"}"""))
         assertEquals(
-            IntentFramingResult.Extracted("""{"schemaVersion":"personalized-intent-v1"}"""),
+            IntentFramingResult.Extracted("""{"schemaVersion":"personalized-intent-v2"}"""),
             result,
         )
     }
