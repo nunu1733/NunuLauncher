@@ -41,6 +41,14 @@
 - 結果: **「Proposal validated. Generating the preview…」** (`10`)。契約適合payloadはfile経由で成功し、proposal生成へhandoffした。
 - D-3 (`text/*` 拡張の要否): representativeなAI replyはいずれもテキスト/JSONとして得られ、追加のfile型は不要だった。spec改訂は不要。
 
+## AC status (PR #347 review反映)
+
+本READMEのevidence取得だけでは **AC-8 / AC-9 は完了にしない** (PR #347 reviewの高/中指摘)。理由は下記「制約」のとおり:
+
+- AC-9: 実施できた representative surface は **ChatGPT mobile web** のみ。native ChatGPT app / Gemini app (mobile) の one-tap copy 実経路と、clipboard経由での成功 import は未取得。
+- AC-8: TalkBack / Switch Access は emulator 上に存在し、有効化・service bind まで確認した。未取得なのは **実行入力による walkthrough** (TalkBack の読み上げ文言・順序・focus遷移、Switch Access の scan/選択/復帰) である。
+- 残るevidenceを取得するか、AC 文言を「source app 非依存の Android clipboard contract」「semantics 粒度」へ改訂するかは owner 判断とする。
+
 ## AC-8: accessibility evidence
 
 ### TalkBack
@@ -68,11 +76,12 @@
 
 ## CI組込み (Issue #345 audit推奨)
 
-`.github/workflows/ci.yml` に lane `organizer-instrumentation-issue332-tests` を追加した。
+`.github/workflows/ci.yml` に **新規の独立 job** `organizer-instrumentation-issue332-tests` を追加した (既存 jobへのstep追加ではない)。他のUI laneと同様に専用の `reactivecircus/android-emulator-runner` step を持ち、その job 内で:
 
 - `connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.exchange.ExchangeImportSurfaceInstrumentationTest`
-- `final-status` の `needs` に追加し、merge gateの対象にした (現状はローカル実行のみだった)。
-- 実CIでの成功確認は本変更のPR (Issue #345) のrunで行う。
+- 失敗時は `organizer-instrumentation-issue332-reports` artifact をupload
+
+`final-status` の `needs` に追加し、merge gateの対象にした (現状はローカル実行のみだった)。実CIでの成功確認は本変更のPR (Issue #345 / PR #347) のrunで行う。
 
 ## 参照
 
