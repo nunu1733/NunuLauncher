@@ -2,7 +2,7 @@
 
 > Issue: #348
 > Spec: [spec.md](./spec.md)
-> Status: implementation-ready (spec accepted 2026-09-18。5th review Approve head `0b654216ad`)
+> Status: implemented (2026-09-18。実装PR review 6 rounds・最終Approve head `25ff24f421`。全検証コマンド成功。AC-11 evidence のみ後続pass)
 
 ## Current evidence
 
