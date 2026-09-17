@@ -80,6 +80,18 @@ _Avoid_: Locked item（何が固定されるか曖昧な場合）
 配置アイテムを整理ルール上の1つのカテゴリへ対応付けた、根拠と確信度を持つ判断。
 _Avoid_: Play Store category（情報源を指す場合を除く）、Theme
 
+**カテゴリidentity (Category Identity)**:
+分類・override・groupingの正本となる閉じたカテゴリ識別子。組み込みtaxonomyの `CategoryId` と、stable local opaque IDを持つユーザー定義カテゴリの2種からなる。canonical順序・等価はIDのみで決まり、表示名は参与しない ([spec 336](./specs/336-user-defined-categories/spec.md))。
+_Avoid_: CategoryId（組み込み側のみを指す場合）、カテゴリ名（表示名をidentityと混同する場合）
+
+**ユーザー定義カテゴリ (User-defined Category)**:
+ユーザーが作成・rename・削除するカテゴリ。stable local opaque ID（UUID v4形式）と表示名を持ち、表示名はidentityではなく正規化・長さ上限・catalog内一意のpresentationである。割当はS1 overrideのみで受け、自動分類(S2–S6)は決して向けられない ([spec 336](./specs/336-user-defined-categories/spec.md))。
+_Avoid_: カスタムタグ (分類identityとしての重みを曖昧にする)、自由カテゴリ (検証なき作成を示唆する)
+
+**アクティブカテゴリカタログ (Active Category Catalog)**:
+plannerが受け取る実行時のカテゴリ表面。組み込みv1 taxonomy（bundle不変の正本）と現在のユーザー定義エントリの和としてmembershipとfallbackを提供する。組み込みtaxonomy identityとは別の、動的でcontent-addressedなpolicy sourceであり、composition provenanceと動的cutに参加する ([spec 336](./specs/336-user-defined-categories/spec.md))。
+_Avoid_: taxonomy (組み込みbundle内容との混同)、カテゴリ一覧 (UI表示との混同)
+
 **recovery point**:
 整理runの適用前へアプリ内操作で戻すために保存された、検証済みの復旧状態。
 _Avoid_: Backup（長期保存用バックアップと混同する場合）、Undo（操作そのものを指す場合）
@@ -101,8 +113,8 @@ _Avoid_: フォルダ名の自動推論 (UI 側再計算を想起させる)、Fo
 _Avoid_: DB dump、Backup、snapshot (Layout Snapshotとの混同)
 
 **パーソナライゼーション意図 (Personalized Intent)**:
-AI/agentが `PersonalizationContextExportV1` に対して返す、semantic preference (優先度、 grouping、page/region親和、保持希望) のversion付き表現。physical placementやDB mutationの指示ではない。acceptされるとcontent digestを持つimmutable planning inputとなる。
-_Avoid_: layout plan (最終配置結果との混同)、rule (整理ルールとの混同)
+AI/agentが `PersonalizationContextExportV1` に対して返す、semantic preference (優先度、 grouping、page/region親和、保持希望) のversion付き表現。v3 ([spec 330](./specs/330-partial-intent-authoring/spec.md)) からは部分authoringを許し、書かれなかったrefの意味は常にcanonical unresolved (判断なし) である。physical placementやDB mutationの指示ではない。acceptされると、全export refの状態が決定済みの完全分割 (complete canonical representation) が構成され、そのcontent digestがidentityとなるimmutable planning inputとなる。
+_Avoid_: layout plan (最終配置結果との混同)、rule (整理ルールとの混同)、未言及refの推測補完 (禁止)
 
 **export-scoped ID (Export Item Reference)**:
 1つのcontext export内でのみ有効な、itemを指すopaqueな識別子。export生成ごとに新鮮な乱数から割り当てられ、内部`ItemId`・DB row IDとは無関係かつ逆算不可能である。対応付けはexport sessionのみが保持する。
@@ -125,11 +137,15 @@ exchange packageをclipboard・share・file等でapp外へ出す直前に、外�
 _Avoid_: privacy policy (静的文書との混同)
 
 **持ち帰りIntent取り込み (Intent Import)**:
-外部agentの返答textから、exchange framingの内側にある `PersonalizedIntentV1` のみを厳格に抽出し、#204 validatorへ渡す取り込みstep。曖昧なJSON拾い上げやpartial解釈を行わない。import text全体へのenvelope上限 (1 MiB、UTF-8 byte基準) を持つ。
+外部agentの返答textから `PersonalizedIntentV1` を認識し、#204 validatorへ渡す取り込みstep。入力はまずインポート正規化 (Import Normalizer、[spec 329](./specs/329-import-normalizer/spec.md)) が受け持ち、accepted framingのうちmarker形式以外 (単一fenced `json` block・standalone JSON object) をcanonical化する。曖昧なJSON拾い上げやpartial解釈を行わない。import text全体へのenvelope上限 (1 MiB、UTF-8 byte基準) はnormalizerより前の #205所有gateである。
 _Avoid_: auto-apply、paste-to-layout
 
+**インポート正規化 (Import Normalizer)**:
+import textの外形 (framing/transport表現) のみを認識・canonical化する境界層 ([spec 329](./specs/329-import-normalizer/spec.md))。accepted framingはmarker形式 (canonical)・単一fenced `json` code block・standalone JSON objectの3種で、それ以外はtyped失敗 (曖昧/認識不能) でzero-write rejectする。fuzzy extraction (複数候補からの推測選択・`{...}` の任意拾い) は禁止で、payloadは正規化済入力の部分文字列 (semantic無変更) に限られる。
+_Avoid_: 意味レベルcanonicalization (field値・ref集合・schemaVersionの書換え)、markdown全体実装、provider固有formatへの密結合
+
 **交換フレーミング (Exchange Framing)**:
-外部agentの返答text内で `PersonalizedIntentV1` 本体を囲むmarker対 (完全行marker `-----BEGIN/END NUNULAUNCHER INTENT-----`) と、そこから本体を一意に抽出する規則 ([spec 205](./specs/205-external-agent-exchange/spec.md) 所有)。framing内のpayloadのschema解釈は行わない (それは #204)。framingの不成立・曖昧性は #205側のtyped parse失敗である。
+外部agentの返答text内で `PersonalizedIntentV1` 本体を囲むmarker対 (完全行marker `-----BEGIN/END NUNULAUNCHER INTENT-----`) と、そこから本体を一意に抽出する規則 ([spec 205](./specs/205-external-agent-exchange/spec.md) 所有)。framing内のpayloadのschema解釈は行わない (それは #204)。framingの不成立・曖昧性は #205側のtyped parse失敗である。marker形式以外の外形受理 (fenced `json` block・standalone JSON) は [spec 329](./specs/329-import-normalizer/spec.md) が導入したインポート正規化層の所有であり、本規則はcanonical formとして不変。
 _Avoid_: schema (payload本体の契約は #204)、system prompt (instruction部の一部との混同)
 
 **交換セッション置換確認 (Session Replacement Confirmation)**:

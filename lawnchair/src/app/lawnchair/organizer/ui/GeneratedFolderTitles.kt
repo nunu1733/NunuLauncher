@@ -3,6 +3,7 @@ package app.lawnchair.organizer.ui
 import android.content.Context
 import app.lawnchair.organizer.application.public.FolderTitleResolver
 import app.lawnchair.organizer.planning.FolderNaming
+import app.lawnchair.organizer.planning.UserCategoryId
 import com.android.launcher3.R
 
 /**
@@ -17,6 +18,13 @@ import com.android.launcher3.R
  * that preview and apply both persist. Lives in the UI layer because it reads
  * Android resources; the outer composition (LawnchairApp) injects it into
  * [app.lawnchair.organizer.application.protocol.LayoutApplicationModule].
+ *
+ * Issue #336: user-defined folder titles resolve through a total
+ * [UserCategoryTitleLookup] over one composition's catalog snapshot — never a
+ * fresh store read (the application protocol binds that lookup per
+ * `OrganizationInput`). An unknown ID keeps the existing generic fallback; a
+ * blank display name is a contract violation and propagates so the
+ * materializer's blank check fails closed.
  */
 object GeneratedFolderTitles {
 
@@ -29,6 +37,20 @@ object GeneratedFolderTitles {
     }
 
     /**
+     * Issue #336: total display-name lookup for user-defined categories over
+     * one composition's catalog snapshot. Returns `null` for an ID the
+     * snapshot does not contain; the resolver maps `null` to the generic
+     * fallback and never exposes the raw ID.
+     */
+    fun interface UserCategoryTitleLookup {
+        fun displayNameOf(id: UserCategoryId): String?
+    }
+
+    /** Lookup over an empty snapshot (no user-defined entries resolve). */
+    val emptyUserCategoryLookup: UserCategoryTitleLookup =
+        UserCategoryTitleLookup { null }
+
+    /**
      * Production adapter used by the outer composition. Resolves against the
      * given [Context] as-is so instrumentation can pass a locale-aware
      * context through the exact production path (LawnchairApp passes the
@@ -36,11 +58,28 @@ object GeneratedFolderTitles {
      */
     fun resolver(context: Context): FolderTitleResolver = resolver { resId -> context.getString(resId) }
 
-    fun resolver(stringProvider: StringProvider): FolderTitleResolver = FolderTitleResolver { naming ->
+    /** Built-in presentation only; user-defined names resolve the generic fallback. */
+    fun resolver(stringProvider: StringProvider): FolderTitleResolver = resolver(stringProvider, emptyUserCategoryLookup)
+
+    /**
+     * Issue #336 combinator: built-in categories keep the presentation-table
+     * lookup; a user-defined category resolves its display name through
+     * [userCategoryTitles] — an unknown ID falls back to the generic title,
+     * and a blank display name propagates to the materializer's fail-closed
+     * blank check. The contract of [FolderTitleResolver] is unchanged.
+     */
+    fun resolver(
+        stringProvider: StringProvider,
+        userCategoryTitles: UserCategoryTitleLookup,
+    ): FolderTitleResolver = FolderTitleResolver { naming ->
         when (naming) {
             is FolderNaming.FromCategory ->
                 CategoryOverrideCategoryPresentations.findForCategory(naming.category)
                     ?.let { stringProvider.string(it.labelRes) }
+                    ?: stringProvider.string(R.string.organizer_generated_folder_fallback_name)
+
+            is FolderNaming.FromUserCategory ->
+                userCategoryTitles.displayNameOf(naming.id)
                     ?: stringProvider.string(R.string.organizer_generated_folder_fallback_name)
         }
     }

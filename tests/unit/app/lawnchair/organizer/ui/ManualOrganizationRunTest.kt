@@ -136,9 +136,12 @@ class ManualOrganizationRunTest {
                 expiresAtEpochMs = 1L,
             ),
             identity = app.lawnchair.organizer.personalization.IntentIdentityCalculator.identity(
-                app.lawnchair.organizer.personalization.PersonalizedIntentV1(
-                    exportId = "export-1",
-                    itemIntents = emptyList(),
+                app.lawnchair.organizer.personalization.IntentCompletion.complete(
+                    app.lawnchair.organizer.personalization.PersonalizedIntentV1(
+                        exportId = "export-1",
+                        itemIntents = emptyList(),
+                    ),
+                    emptySet(),
                 ),
             ),
         )
@@ -1010,6 +1013,10 @@ class ManualOrganizationRunTest {
             app.lawnchair.organizer.planning.StrategyId("CANONICAL_PAGE_COMPACT_V1"),
         ),
         taxonomy = TaxonomyContract(TaxonomyVersion("v1"), listOf(app.lawnchair.organizer.planning.CategoryId("other")), app.lawnchair.organizer.planning.CategoryId("other")),
+        catalog = app.lawnchair.organizer.planning.ActiveCategoryCatalog(
+            TaxonomyContract(TaxonomyVersion("v1"), listOf(app.lawnchair.organizer.planning.CategoryId("other")), app.lawnchair.organizer.planning.CategoryId("other")),
+            emptyList(),
+        ),
         signals = ClassificationSignals(emptyList()),
         targets = TargetSet(emptyList(), emptyList()),
         runMode = RunMode.FullOrganization,
@@ -1058,7 +1065,7 @@ class ManualOrganizationRunTest {
                     items = emptyList(),
                 ),
                 targets = TargetSet(emptyList(), listOf(addition)),
-                resolvedCategories = mapOf(addition.id to category),
+                resolvedIdentities = mapOf(addition.id to category?.let { app.lawnchair.organizer.planning.CategoryIdentity.BuiltIn(app.lawnchair.organizer.planning.CategoryId(it)) }),
                 nowEpochMs = 1_000L,
             ),
             app.lawnchair.organizer.personalization.PrivacyTier.LOCAL_FULL,

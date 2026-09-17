@@ -1,5 +1,7 @@
 package app.lawnchair.organizer.planning
 
+import app.lawnchair.organizer.planning.ActiveCategoryCatalog
+import app.lawnchair.organizer.planning.CategoryIdentity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -61,6 +63,7 @@ class BottomFirstStrategyTest {
         snapshot = LayoutSnapshot(RevisionId("rev"), device, listOf(Page(PageId("p0"), PageOrder(0))), items, emptyList()),
         rules = rules(),
         taxonomy = taxonomy(),
+        catalog = ActiveCategoryCatalog(taxonomy(), emptyList()),
         signals = ClassificationSignals(emptyList()),
         targets = TargetSet(items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }, emptyList()),
         runMode = RunMode.FullOrganization,
