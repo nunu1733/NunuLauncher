@@ -50,13 +50,12 @@ import org.junit.Test
  * Oracle structure (accepted AC-2/AC-3): [IntentWireContract.claims] are the
  * sync surface, and this test consumes the claims themselves — no third copy
  * of the expectation set exists. For `PRODUCTION_ENFORCED` claims the parity
- * fixture input is derived from the claim's field/kind/value (bounds, limits,
- * enum spellings, exact values), so editing a claim against production fails
- * its case; keys equality and id uniqueness make any claim addition, removal,
- * or duplication surface as a failure. For `AUTHORING_POLICY` claims the
- * claim value is the exact sentence the instruction must render, and each
- * claim owns a canonical acceptance case reaching `Validated`
- * (`canonical ⊆ accepted`).
+ * fixtures (satisfying AND boundary-violating) are derived from the claim's
+ * typed semantic, so editing a semantic against production breaks one side
+ * or the other; keys equality and id uniqueness surface any claim addition,
+ * removal, or duplication. For `AUTHORING_POLICY` claims the rendered
+ * sentence and the canonical acceptance fixture are both generated from the
+ * closed policy semantic (`canonical ⊆ accepted`).
  *
  * Lanes: parity/acceptance/golden/regression fixtures run through
  * `ExchangeImportPipeline.import` (the production seam); descriptor and
@@ -119,6 +118,8 @@ class Issue348AiFacingContractSyncTest {
         structural: CanonicalStructuralInputs,
     ): ExchangeImportResult = ExchangeImportPipeline.import(text, built.session, structural, now + 1)
 
+    private fun contract(failure: IntentValidationFailure): ExchangeImportFailure = ExchangeImportFailure.Contract(failure)
+
     private fun failureOf(
         text: String,
         built: BuiltExport,
@@ -128,8 +129,6 @@ class Issue348AiFacingContractSyncTest {
         is ExchangeImportResult.Validated -> error("unexpectedly validated: ${result.validated.intent.exportId}")
         else -> error("unknown import result")
     }
-
-    private fun contract(failure: IntentValidationFailure): ExchangeImportFailure = ExchangeImportFailure.Contract(failure)
 
     // ---- descriptor identity facts rendered as canonical JSON ----
 
@@ -241,8 +240,8 @@ class Issue348AiFacingContractSyncTest {
         assertTrue(pkg.contains("\"schemaVersion\" is exactly \"$schemaVersion\""))
         assertTrue(pkg.contains("there is no extra field"))
         assertTrue(pkg.contains("Enum values are UPPERCASE"))
-        val bounds = IntentWireContract.claim("confidence.valueBound").semantic as Semantic.IntBounds
-        assertTrue(pkg.contains("is an integer ${bounds.min}-${bounds.max}"))
+        val confidence = IntentWireContract.field("confidence")
+        assertTrue(pkg.contains("is an integer ${confidence.min}-${confidence.max}"))
         assertTrue(pkg.contains("mentioned at most once"))
         assertTrue(pkg.contains("The FIXED, CONDITIONAL, and CANDIDATE rules are respected"))
         assertTrue(pkg.contains("exactly one importable JSON artifact"))
@@ -274,34 +273,39 @@ class Issue348AiFacingContractSyncTest {
         additions = listOf(candidate("com.example.c")),
     )
 
+    /** A fixture payload bound to the export state it must run against. */
+    private data class Fixture(
+        val built: BuiltExport,
+        val structural: CanonicalStructuralInputs,
+        val payload: String,
+    )
+
     private data class ParityCase(
         val claim: ConstraintClaim,
-        val payload: String,
-        val expected: ExchangeImportFailure,
+        /** Fixtures that must reach `Validated` (the claim holds). */
+        val accepts: List<Fixture>,
+        /** Fixtures that must fail closed with exactly the recorded failure. */
+        val rejects: List<Pair<Fixture, ExchangeImportFailure>>,
     )
 
     /**
-     * Derives the parity case for one production claim from the claim's
-     * typed semantic payload against the built export. This is the
-     * counterfactual link: edit the claim's semantic (type, bound, limit,
-     * enum spelling, requiredness, mobility rule, ref location) and the
-     * fixture input follows it — and stops matching production, so the case
-     * fails. The expected typed failure is likewise derived from the
-     * semantic, not hand-paired.
+     * Derives BOTH the satisfying and the boundary-violating fixtures for one
+     * production claim from the claim's typed semantic payload. Editing a
+     * semantic against production therefore breaks one side or the other: a
+     * claim loosened beyond production fails a reject case, a claim tightened
+     * below production fails an accept case. The expected typed failure is
+     * likewise derived from the semantic, not hand-paired.
      */
-    private fun parityCase(claim: ConstraintClaim, built: BuiltExport, pageCount: Int): ParityCase {
+    private fun parityCase(claim: ConstraintClaim, built: BuiltExport, structural: CanonicalStructuralInputs, pageCount: Int): ParityCase {
         val movable = built.export.items.first { it.mobility == Mobility.MOVABLE }.ref
         val fixed = built.export.items.first { it.mobility == Mobility.FIXED }.ref
         val conditional = built.export.items.first { it.mobility == Mobility.CONDITIONAL }.ref
         val candidateRef = built.export.items.first { it.mobility == Mobility.CANDIDATE }.ref
+        val field = claim.field
 
         fun payload(itemEntries: String, top: String = "", unresolved: String = "") = doc(built, itemEntries, top = top, unresolved = unresolved)
 
-        val field = claim.field
-
-        // Places a violating value at the claim's own JSON location, so the
-        // fixture always exercises the field the claim is about.
-        fun violation(value: String): String = when (claim.location) {
+        fun placed(value: String): String = when (claim.location) {
             IntentWireContract.Location.TOP_LEVEL -> payload(entry(movable, ",\"preserve\":true"), top = ",\"$field\":$value")
 
             IntentWireContract.Location.ITEM_ENTRY -> payload(entry(movable, ",\"$field\":$value"))
@@ -314,90 +318,159 @@ class Issue348AiFacingContractSyncTest {
             IntentWireContract.Location.GROUP_SEMANTIC -> payload(entry(movable, ",\"groupSemantic\":{\"$field\":$value}"))
         }
 
-        val (payload, expected) = when (val s = claim.semantic) {
+        // A canonical JSON value production accepts for this claim's field —
+        // the satisfying fixture of Type claims.
+        fun satisfyingValue(): String = when (field) {
+            "itemIntents" -> canonicalEntries(built)
+            "unresolvedRefs" -> "[\"$movable\"]"
+            "globalPreference" -> "{\"minimizeMovement\":false}"
+            "groupSemantic" -> "{\"freeText\":\"Tools\"}"
+            "confidence" -> "${IntentWireContract.field("confidence").max}"
+            "preserve" -> "true"
+            "pageAffinity" -> "0"
+            "desiredGroup" -> "[\"$movable\"]"
+            "minimizeMovement" -> "false"
+            else -> error("no canonical value for $field")
+        }
+
+        val accepts = mutableListOf<String>()
+        val rejects = mutableListOf<Pair<String, ExchangeImportFailure>>()
+        // Accept fixtures bound to a dedicated export state (entry limit).
+        val extraAccepts = mutableListOf<Fixture>()
+
+        when (val s = claim.semantic) {
             is Semantic.Presence -> when (claim.location) {
                 IntentWireContract.Location.TOP_LEVEL -> when (field) {
-                    "schemaVersion" -> ("{\"exportId\":\"${built.export.exportId}\"}" to contract(IntentValidationFailure.SchemaMismatch))
-                    "exportId" -> ("{\"schemaVersion\":\"$schemaVersion\"}" to contract(IntentValidationFailure.SchemaMismatch))
+                    "schemaVersion" -> rejects += "{\"exportId\":\"${built.export.exportId}\"}" to contract(IntentValidationFailure.SchemaMismatch)
+                    "exportId" -> rejects += "{\"schemaVersion\":\"$schemaVersion\"}" to contract(IntentValidationFailure.SchemaMismatch)
                     else -> error("unexpected presence claim $field")
                 }
 
-                IntentWireContract.Location.ITEM_ENTRY -> (payload("{}") to contract(IntentValidationFailure.SchemaMismatch))
+                IntentWireContract.Location.ITEM_ENTRY -> rejects += payload("{}") to contract(IntentValidationFailure.SchemaMismatch)
 
                 else -> error("unexpected presence location ${claim.location}")
             }
 
-            is Semantic.ExactValue -> (
-                "{\"schemaVersion\":\"${s.value}-stale\",\"exportId\":\"${built.export.exportId}\"}" to
+            is Semantic.ExactValue ->
+                rejects += "{\"schemaVersion\":\"${s.value}-stale\",\"exportId\":\"${built.export.exportId}\"}" to
                     contract(IntentValidationFailure.SchemaMismatch)
-                )
 
             is Semantic.Type -> if (claim.location == IntentWireContract.Location.TOP_LEVEL) {
                 // The base doc already carries the array/object key; the
-                // violation replaces it with a scalar so the key appears once.
-                (
-                    "{\"schemaVersion\":\"$schemaVersion\",\"exportId\":\"${built.export.exportId}\",\"$field\":\"oops\"}" to
-                        when (s.type) {
-                            IntentWireContract.WireType.INTEGER -> contract(IntentValidationFailure.InvalidEnum)
-                            else -> contract(IntentValidationFailure.SchemaMismatch)
-                        }
-                    )
+                // violating scalar replaces it so the key appears once.
+                val expected = if (s.type == IntentWireContract.WireType.INTEGER) {
+                    contract(IntentValidationFailure.InvalidEnum)
+                } else {
+                    contract(IntentValidationFailure.SchemaMismatch)
+                }
+                rejects += "{\"schemaVersion\":\"$schemaVersion\",\"exportId\":\"${built.export.exportId}\",\"$field\":\"oops\"}" to expected
+                accepts += payload(entry(movable, ",\"preserve\":true"))
             } else {
-                when (s.type) {
-                    IntentWireContract.WireType.INTEGER -> (violation("\"oops\"") to contract(IntentValidationFailure.InvalidEnum))
-                    else -> (violation("\"oops\"") to contract(IntentValidationFailure.SchemaMismatch))
+                val expected = if (s.type == IntentWireContract.WireType.INTEGER) {
+                    contract(IntentValidationFailure.InvalidEnum)
+                } else {
+                    contract(IntentValidationFailure.SchemaMismatch)
+                }
+                rejects += placed("\"oops\"") to expected
+                accepts += placed(satisfyingValue())
+            }
+
+            is Semantic.AllowedValues -> {
+                for (value in s.values) {
+                    accepts += placed("\"$value\"")
+                }
+                rejects += placed("\"${s.values.first()}-NOPE\"") to contract(IntentValidationFailure.InvalidEnum)
+            }
+
+            is Semantic.IntBounds -> {
+                accepts += placed("${s.min}")
+                if (s.max != null) {
+                    accepts += placed("${s.max}")
+                    rejects += placed("${s.max + 1}") to contract(IntentValidationFailure.InvalidEnum)
+                } else {
+                    // Export-relative bound: the last page of the grid is the
+                    // largest legal ordinal.
+                    accepts += placed("${pageCount - 1}")
+                    rejects += placed("$pageCount") to contract(IntentValidationFailure.InvalidEnum)
+                }
+                rejects += placed("${s.min - 1}") to contract(IntentValidationFailure.InvalidEnum)
+            }
+
+            is Semantic.LengthLimit -> {
+                accepts += placed("\"${"x".repeat(s.max)}\"")
+                rejects += placed("\"${"x".repeat(s.max + 1)}\"") to contract(IntentValidationFailure.Oversize)
+            }
+
+            is Semantic.AnyOf -> {
+                for (member in s.members) {
+                    accepts += payload(entry(movable, ",\"groupSemantic\":{\"$member\":\"Tools\"}"))
+                }
+                rejects += payload(entry(movable, ",\"groupSemantic\":{}")) to contract(IntentValidationFailure.SchemaMismatch)
+            }
+
+            is Semantic.EntryLimit -> {
+                // The accept fixture fills exactly the advertised entry budget
+                // with valid entries on a matching export; the reject fixture
+                // oversteps the count by one, so entry count is the only
+                // variable between the two sides.
+                val (big, bigStructural) = buildState(items = (0 until s.max).map { app("a$it", x = it % 4) })
+                val bigRefs = big.export.items.map { it.ref }
+                val acceptDoc = if (field == "itemIntents") {
+                    val entries = bigRefs.joinToString(",") { entry(it, ",\"preserve\":true") }
+                    "{\"schemaVersion\":\"$schemaVersion\",\"exportId\":\"${big.export.exportId}\",\"itemIntents\":[$entries]}"
+                } else {
+                    val refs = bigRefs.joinToString(",") { "\"$it\"" }
+                    "{\"schemaVersion\":\"$schemaVersion\",\"exportId\":\"${big.export.exportId}\",\"unresolvedRefs\":[$refs]}"
+                }
+                extraAccepts += Fixture(big, bigStructural, acceptDoc)
+                val overEntries = (0..s.max).joinToString(",") { "\"e$it\"" }
+                rejects += if (field == "itemIntents") {
+                    payload(overEntries) to contract(IntentValidationFailure.Oversize)
+                } else {
+                    payload(entry(movable, ",\"preserve\":true"), unresolved = ",\"$field\":[$overEntries]") to
+                        contract(IntentValidationFailure.Oversize)
                 }
             }
 
-            is Semantic.AllowedValues -> (violation("\"${s.values.first()}-NOPE\"") to contract(IntentValidationFailure.InvalidEnum))
-
-            is Semantic.IntBounds -> when {
-                s.max != null -> (violation("${s.max + 1}") to contract(IntentValidationFailure.InvalidEnum))
-
-                // Export-relative bound (pageAffinity): ordinal pageCount is
-                // one past the last page of the exported grid.
-                else -> (violation("$pageCount") to contract(IntentValidationFailure.InvalidEnum))
-            }
-
-            is Semantic.LengthLimit -> (violation("\"${"x".repeat(s.max + 1)}\"") to contract(IntentValidationFailure.Oversize))
-
-            is Semantic.AnyOf -> (violation("{}") to contract(IntentValidationFailure.SchemaMismatch))
-
-            is Semantic.EntryLimit -> (
-                payload(entry(movable, ",\"preserve\":true"), unresolved = ",\"$field\":[${(0..s.max).joinToString(",") { "\"e$it\"" }}]") to
-                    contract(IntentValidationFailure.Oversize)
-                )
-
             is Semantic.RefScope -> when (s.inKey) {
-                "itemIntents" -> (payload(entry("zzz", ",\"preserve\":true")) to contract(IntentValidationFailure.UnknownRef("zzz")))
-                "desiredGroup" -> (payload(entry(movable, ",\"desiredGroup\":[\"zzz\"]")) to contract(IntentValidationFailure.UnknownRef("zzz")))
-                "unresolvedRefs" -> (payload(entry(movable, ",\"preserve\":true"), unresolved = ",\"unresolvedRefs\":[\"zzz\"]") to contract(IntentValidationFailure.UnknownRef("zzz")))
+                "itemIntents" -> rejects += payload(entry("zzz", ",\"preserve\":true")) to contract(IntentValidationFailure.UnknownRef("zzz"))
+                "desiredGroup" -> rejects += payload(entry(movable, ",\"desiredGroup\":[\"zzz\"]")) to contract(IntentValidationFailure.UnknownRef("zzz"))
+                "unresolvedRefs" -> rejects += payload(entry(movable, ",\"preserve\":true"), unresolved = ",\"unresolvedRefs\":[\"zzz\"]") to contract(IntentValidationFailure.UnknownRef("zzz"))
                 else -> error("unexpected ref scope ${s.inKey}")
             }
 
             is Semantic.RefPartition -> if (s.duplicate) {
-                (payload("${entry(movable, ",\"preserve\":true")},${entry(movable)}") to contract(IntentValidationFailure.DuplicateRef))
+                rejects += payload("${entry(movable, ",\"preserve\":true")},${entry(movable)}") to contract(IntentValidationFailure.DuplicateRef)
             } else {
-                (payload(entry(movable, ",\"preserve\":true"), unresolved = ",\"unresolvedRefs\":[\"$movable\"]") to contract(IntentValidationFailure.IncompleteCoverage))
+                rejects += payload(entry(movable, ",\"preserve\":true"), unresolved = ",\"unresolvedRefs\":[\"$movable\"]") to
+                    contract(IntentValidationFailure.IncompleteCoverage)
             }
 
             is Semantic.MobilityForbidden -> {
                 val target = built.export.items.first { it.mobility.name == s.mobility }.ref
-                val violation = when (s.forbiddenFields.first()) {
-                    "importance" -> ",\"importance\":\"$importanceCanonical\""
-                    "pageAffinity" -> ",\"pageAffinity\":0"
-                    "regionAffinity" -> ",\"regionAffinity\":\"${IntentWireContract.enumClaims.getValue("regionAffinity").first()}\""
-                    "desiredGroup" -> ",\"desiredGroup\":[\"$movable\"]"
-                    "groupSemantic" -> ",\"groupSemantic\":{\"freeText\":\"Tools\"}"
-                    "preserve" -> ",\"preserve\":true"
-                    else -> error("unexpected forbidden field ${s.forbiddenFields.first()}")
+                val canonicalValues = mapOf(
+                    "importance" to "\"$importanceCanonical\"",
+                    "pageAffinity" to "0",
+                    "regionAffinity" to "\"${IntentWireContract.enumClaims.getValue("regionAffinity").first()}\"",
+                    "desiredGroup" to "[\"$movable\"]",
+                    "groupSemantic" to "{\"freeText\":\"Tools\"}",
+                    "preserve" to "true",
+                )
+                // Every forbidden field is individually rejected...
+                for (forbidden in s.forbiddenFields) {
+                    rejects += payload(entry(target, ",\"$forbidden\":${canonicalValues.getValue(forbidden)}")) to
+                        contract(IntentValidationFailure.MobilityContradiction(target))
                 }
-                (payload(entry(target, violation)) to contract(IntentValidationFailure.MobilityContradiction(target)))
+                // ...and a field outside the forbidden list stays accepted.
+                val universe = canonicalValues.keys
+                val allowed = universe.first { it !in s.forbiddenFields }
+                accepts += payload(entry(target, ",\"$allowed\":${canonicalValues.getValue(allowed)}"))
             }
 
-            is Semantic.PolicyRule -> error("policy claims are not production-enforced: ${claim.id}")
+            else -> error("policy claims are not production-enforced: ${claim.id}")
         }
-        return ParityCase(claim, payload, expected)
+        fun fix(payload: String): Fixture = Fixture(built, structural, payload)
+        return ParityCase(claim, accepts.map(::fix) + extraAccepts, rejects.map { (p, f) -> fix(p) to f })
     }
 
     @Test
@@ -408,21 +481,28 @@ class Issue348AiFacingContractSyncTest {
         // Claim ids are unique, and the parity cases are keyed by the claims
         // themselves — no third copy of the id set exists.
         assertEquals(productionClaims.map { it.id }.size, productionClaims.map { it.id }.toSet().size)
-        val cases = productionClaims.associateWith { parityCase(it, built, pageCount) }
+        val cases = productionClaims.associateWith { parityCase(it, built, structural, pageCount) }
         for ((claim, case) in cases) {
             // Field linkage: the fixture must target the claim's own field
             // (present in the payload unless the claim is about its absence),
             // and mobility claims are export-side facts the payload cannot
             // spell out.
             if (claim.kind != ClaimKind.PRESENCE && claim.kind != ClaimKind.MOBILITY_FORBIDDEN) {
-                assertTrue("case for ${claim.id} does not touch its field", case.payload.contains("\"${claim.field}\""))
+                assertTrue("case for ${claim.id} does not touch its field", case.rejects.first().first.payload.contains("\"${claim.field}\""))
             }
-            val outcome = importOf(fencedReply(case.payload), built, structural)
-            assertTrue(
-                "parity case ${claim.id} expected ${case.expected} but succeeded",
-                outcome is ExchangeImportResult.Failure,
-            )
-            assertEquals("parity case ${claim.id}", case.expected, (outcome as ExchangeImportResult.Failure).failure)
+            for ((fixture, expected) in case.rejects) {
+                assertEquals(
+                    "reject case ${claim.id}",
+                    expected,
+                    failureOf(fencedReply(fixture.payload), fixture.built, fixture.structural),
+                )
+            }
+            for (fixture in case.accepts) {
+                assertTrue(
+                    "accept case ${claim.id} was not validated",
+                    importOf(fencedReply(fixture.payload), fixture.built, fixture.structural) is ExchangeImportResult.Validated,
+                )
+            }
         }
     }
 
@@ -446,9 +526,10 @@ class Issue348AiFacingContractSyncTest {
         val policyClaims = IntentWireContract.authoringPolicyClaims
         assertEquals(policyClaims.map { it.id }.size, policyClaims.map { it.id }.toSet().size)
         for (claim in policyClaims) {
-            // The claim's policy sentence is the exact fragment the
-            // instruction renders — edit either side and this assertion fails.
-            val sentence = (claim.semantic as Semantic.PolicyRule).sentence
+            // The rendered sentence is generated from the closed policy
+            // semantic (IntentWireContract.policySentence) — no separate
+            // prose literal can drift.
+            val sentence = IntentWireContract.policySentence(claim.id)
             assertTrue("policy ${claim.id} not rendered", pkg.contains(sentence))
         }
     }
@@ -456,24 +537,33 @@ class Issue348AiFacingContractSyncTest {
     @Test
     fun everyAuthoringPolicyClaimHasACanonicalAcceptanceCase() {
         val (built, structural) = parityState()
+        val movable = built.export.items.first { it.mobility == Mobility.MOVABLE }.ref
+        val other = built.export.items.first { it.ref != movable && it.mobility == Mobility.MOVABLE }.ref
+        val fixed = built.export.items.first { it.mobility == Mobility.FIXED }.ref
 
-        fun refFor(mobility: String): String = built.export.items.first { it.mobility.name == mobility }.ref
-
-        // The canonical entry is built from the claim's own semantic data
-        // (entry field, value template, target mobility) — a policy whose
-        // semantic changes produces a different fixture.
+        // The canonical entry is generated from the closed policy semantic,
+        // so a semantic change produces a different fixture.
         val acceptance: Map<ConstraintClaim, String> = IntentWireContract.authoringPolicyClaims.associateWith { claim ->
-            val rule = claim.semantic as Semantic.PolicyRule
-            val ref = refFor(rule.targetMobility ?: "MOVABLE")
-            val value = rule.entryValueTemplate.replace("REF", ref)
-            doc(built, entry(ref, ",\"${rule.entryField}\":$value"))
+            when (val s = claim.semantic) {
+                is Semantic.StringsAsJsonStrings ->
+                    doc(built, entry(movable, ",\"groupSemantic\":{\"freeText\":\"Tools\"},\"preserve\":true"))
+
+                is Semantic.UppercaseSpelledEnums ->
+                    doc(built, entry(movable, ",\"importance\":\"${IntentWireContract.enumClaims.getValue(s.field).first()}\""))
+
+                is Semantic.StringArrayOfStrings ->
+                    doc(built, entry(movable, ",\"${s.field}\":[\"$other\"]"))
+
+                is Semantic.NonEmptyArray ->
+                    doc(built, entry(movable, ",\"${s.field}\":[\"$other\"]"))
+
+                is Semantic.FixedAuthoredAsPreserve ->
+                    doc(built, entry(fixed, ",\"preserve\":true"))
+
+                else -> error("unmapped authoring policy claim ${claim.id}")
+            }
         }
         for ((claim, canonical) in acceptance) {
-            val rule = claim.semantic as Semantic.PolicyRule
-            rule.minArrayElements?.let { min ->
-                val elements = rule.entryValueTemplate.split("REF").size - 1
-                assertTrue("policy ${claim.id} template authors fewer than $min elements", elements >= min)
-            }
             val result = importOf(fencedReply(canonical), built, structural)
             assertTrue("policy ${claim.id} canonical case was not accepted", result is ExchangeImportResult.Validated)
         }

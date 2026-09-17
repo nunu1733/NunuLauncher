@@ -133,7 +133,7 @@ private fun outputContractSection(): String = buildString {
     for (spec in contract.topLevel) {
         append("- ${renderField(spec)}\n")
     }
-    append("  Each \"itemIntents\" entry is an object with \"ref\" (string, required) and any of:\n")
+    append("  Each \"itemIntents\" entry is an object with ${renderField(contract.field("ref"))} and any of:\n")
     for (spec in contract.item.filter { it.name != "ref" }) {
         append("  - ${renderField(spec)}\n")
     }
@@ -143,8 +143,8 @@ private fun outputContractSection(): String = buildString {
     for (spec in contract.groupSemantic) {
         append("  A \"groupSemantic\" object may set ${renderField(spec)}.\n")
     }
-    val (anyOfA, anyOfB) = contract.groupSemanticAnyOf
-    append("  A \"groupSemantic\" object must set at least one of \"$anyOfA\" or \"$anyOfB\".\n")
+    val anyOf = (contract.claim("groupSemantic.anyOf").semantic as IntentWireContract.Semantic.AnyOf).members
+    append("  A \"groupSemantic\" object must set at least one of \"${anyOf[0]}\" or \"${anyOf[1]}\".\n")
     val pageSpec = contract.field("pageAffinity")
     append(
         "  \"pageAffinity\" is a whole number from ${pageSpec.min} to " +
@@ -198,15 +198,17 @@ private fun renderField(spec: IntentWireContract.FieldSpec): String {
  */
 private fun youMustSection(): String {
     fun policy(id: String): String = IntentWireContract.policySentence(id)
+    fun forbiddenFields(id: String): String = (IntentWireContract.claim(id).semantic as IntentWireContract.Semantic.MobilityForbidden)
+        .forbiddenFields.joinToString(", ") { "\"$it\"" }
     return """
         You must:
         - Use only the properties listed in the Output contract above. Do not add any other property — not as a helpful extra, not under any name. Undefined properties make the whole reply unusable.
         - Use only the "ref" values that appear in the CONTEXT data below — in "itemIntents[].ref", in "desiredGroup", and in "unresolvedRefs"
         - Mention every "ref" at most once across "itemIntents" and "unresolvedRefs"; you do not have to cover every ref, and anything you leave out is treated as "no judgment" and is never guessed
         - ${policy("policy.stringFieldsAsJsonStrings")}, enum values in ${policy("policy.uppercaseEnums")}, and numbers as integers — never decimals
-        - Treat every item with mobility "FIXED" as immovable: ${policy("policy.fixedAuthoring")} for it, or leave it out, or list it under "unresolvedRefs" — no other field is allowed on it
-        - Treat every item with mobility "CONDITIONAL" as position-flexible only: never use "desiredGroup" or "groupSemantic" for it
-        - Treat every item with subject "CANDIDATE" as an app that is not yet on the home screen: never use "preserve" for it; instead propose its importance, grouping, and page or region preference like for the other apps
+        - Treat every item with mobility "FIXED" as immovable: ${policy("policy.fixedAuthoring")} for it, or leave it out, or list it under "unresolvedRefs" — never use ${forbiddenFields("mobility.fixedSemanticForbidden")} on it
+        - Treat every item with mobility "CONDITIONAL" as position-flexible only: never use ${forbiddenFields("mobility.conditionalGroupingForbidden")} on it
+        - Treat every item with subject "CANDIDATE" as an app that is not yet on the home screen: never use ${forbiddenFields("mobility.candidatePreserveForbidden")} on it; instead propose its importance, grouping, and page or region preference like for the other apps
         - Not propose widget spans or sizes, exact screen coordinates, or database changes
         - Author only what you actually judged: put the items you decided on in "itemIntents" with the fields you chose, and put a "ref" in "unresolvedRefs" only when you explicitly decided not to judge it
         - If information you need is missing, ask the user before you finalize — do not fill the gap by inventing properties or values, and do not invent a property for an idea the contract cannot express

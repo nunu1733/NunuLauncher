@@ -172,21 +172,25 @@ internal object IntentWireContract {
         /** The named mobility forbids authoring these fields. */
         data class MobilityForbidden(val mobility: String, val forbiddenFields: List<String>) : Semantic
 
-        /**
-         * Authoring policy only: [sentence] is the exact fragment the
-         * instruction must render; the canonical acceptance case authors
-         * [entryField] with [entryValueTemplate] (`REF` = a valid export ref)
-         * on an item of [targetMobility] (or any movable item when null).
-         * [minArrayElements] requires the template to author at least that
-         * many array elements.
-         */
-        data class PolicyRule(
-            val sentence: String,
-            val entryField: String,
-            val entryValueTemplate: String,
-            val targetMobility: String? = null,
-            val minArrayElements: Int? = null,
-        ) : Semantic
+        // ---- Authoring policies (closed semantics; the rendered prose and
+        // the canonical acceptance fixture are both generated from these —
+        // a free-form sentence could be inverted without any test
+        // noticing). ----
+
+        /** Every string value is authored as a proper JSON string. */
+        object StringsAsJsonStrings : Semantic
+
+        /** Enum values use the exact advertised spellings. */
+        data class UppercaseSpelledEnums(val field: String) : Semantic
+
+        /** String arrays contain only string elements. */
+        data class StringArrayOfStrings(val field: String) : Semantic
+
+        /** The array, when present, has at least [minElements] elements. */
+        data class NonEmptyArray(val field: String, val minElements: Int) : Semantic
+
+        /** A FIXED item is authored with preserve:true, or left unjudged. */
+        object FixedAuthoredAsPreserve : Semantic
     }
 
     data class ConstraintClaim(
@@ -346,57 +350,35 @@ internal object IntentWireContract {
             field("groupSemantic"),
             ClaimKind.POLICY,
             Enforcement.AUTHORING_POLICY,
-            Semantic.PolicyRule(
-                sentence = "Write string values as JSON strings",
-                entryField = "groupSemantic",
-                entryValueTemplate = "{\"freeText\":\"Tools\"}",
-            ),
+            Semantic.StringsAsJsonStrings,
         ),
         claim(
             "policy.uppercaseEnums",
             field("importance"),
             ClaimKind.POLICY,
             Enforcement.AUTHORING_POLICY,
-            Semantic.PolicyRule(
-                sentence = "UPPERCASE exactly as listed",
-                entryField = "importance",
-                entryValueTemplate = enumClaims.getValue("importance").first(),
-            ),
+            Semantic.UppercaseSpelledEnums("importance"),
         ),
         claim(
             "policy.stringListElements",
             field("desiredGroup"),
             ClaimKind.POLICY,
             Enforcement.AUTHORING_POLICY,
-            Semantic.PolicyRule(
-                sentence = "array of strings",
-                entryField = "desiredGroup",
-                entryValueTemplate = "[\"REF\"]",
-            ),
+            Semantic.StringArrayOfStrings("desiredGroup"),
         ),
         claim(
             "policy.desiredGroupNonEmpty",
             field("desiredGroup"),
             ClaimKind.POLICY,
             Enforcement.AUTHORING_POLICY,
-            Semantic.PolicyRule(
-                sentence = "if present, non-empty",
-                entryField = "desiredGroup",
-                entryValueTemplate = "[\"REF\"]",
-                minArrayElements = 1,
-            ),
+            Semantic.NonEmptyArray("desiredGroup", minElements = 1),
         ),
         claim(
             "policy.fixedAuthoring",
             field("preserve"),
             ClaimKind.POLICY,
             Enforcement.AUTHORING_POLICY,
-            Semantic.PolicyRule(
-                sentence = "author only \"preserve\": true",
-                entryField = "preserve",
-                entryValueTemplate = "true",
-                targetMobility = "FIXED",
-            ),
+            Semantic.FixedAuthoredAsPreserve,
         ),
     )
 
@@ -409,7 +391,14 @@ internal object IntentWireContract {
     fun claim(id: String): ConstraintClaim = claims.first { it.id == id }
 
     /** The exact sentence a policy claim contributes to the instruction. */
-    fun policySentence(id: String): String = (claim(id).semantic as Semantic.PolicyRule).sentence
+    fun policySentence(id: String): String = when (val s = claim(id).semantic) {
+        is Semantic.StringsAsJsonStrings -> "Write string values as JSON strings"
+        is Semantic.UppercaseSpelledEnums -> "UPPERCASE exactly as listed"
+        is Semantic.StringArrayOfStrings -> "array of strings"
+        is Semantic.NonEmptyArray -> "if present, at least ${s.minElements} element(s)"
+        is Semantic.FixedAuthoredAsPreserve -> "author only \"preserve\": true"
+        else -> error("$id is not a policy claim")
+    }
 
     // Static identities rendered into the output contract.
 
