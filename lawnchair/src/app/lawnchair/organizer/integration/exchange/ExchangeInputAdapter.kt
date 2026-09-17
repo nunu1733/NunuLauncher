@@ -77,7 +77,12 @@ class ExchangeInputAdapter(
                 ExportInputs(
                     snapshot = input.snapshot,
                     targets = input.targets,
-                    resolvedCategories = resolvedCategoriesOf(input.signals.entries.map { it.item to it.candidate.value }),
+                    // Issue #336: the single identity-bearing input feeds both
+                    // layers — the builder redacts user-defined identities to
+                    // the absent export category (built-in values keep the
+                    // pre-336 bytes) while the session freshness digests
+                    // consume the resolved CategoryIdentity itself.
+                    resolvedIdentities = resolvedIdentitiesOf(input.signals.entries.map { it.item to it.candidate }),
                     userLabels = titleSource.read() + candidateLabelEntries,
                     signals = input.personalization,
                     usageKeysByItem = usageKeysOf(input),
@@ -95,12 +100,12 @@ class ExchangeInputAdapter(
             CanonicalStructuralInputs(
                 snapshot = result.inputs.snapshot,
                 targets = result.inputs.targets,
-                resolvedCategories = result.inputs.resolvedCategories,
+                resolvedIdentities = result.inputs.resolvedIdentities,
             ),
         )
     }
 
-    private fun resolvedCategoriesOf(pairs: List<Pair<ItemId, String?>>): Map<ItemId, String?> = LinkedHashMap<ItemId, String?>(pairs.size).apply { pairs.forEach { (k, v) -> put(k, v) } }
+    private fun resolvedIdentitiesOf(pairs: List<Pair<ItemId, app.lawnchair.organizer.planning.CategoryIdentity?>>): Map<ItemId, app.lawnchair.organizer.planning.CategoryIdentity?> = LinkedHashMap<ItemId, app.lawnchair.organizer.planning.CategoryIdentity?>(pairs.size).apply { pairs.forEach { (k, v) -> put(k, v) } }
 
     private fun usageKeysOf(
         input: app.lawnchair.organizer.planning.OrganizationInput,

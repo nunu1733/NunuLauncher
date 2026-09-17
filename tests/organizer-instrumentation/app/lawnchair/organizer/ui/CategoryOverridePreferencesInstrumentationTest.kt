@@ -28,6 +28,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.PackageName
 import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
@@ -287,7 +288,8 @@ class CategoryOverridePreferencesInstrumentationTest {
         val coordinator = coordinator()
         val context = ApplicationProvider.getApplicationContext<Context>()
         val longestLabel = requireNotNull(coordinator.categories())
-            .map { CategoryOverrideCategoryPresentations.forCategory(it).labelRes }
+            .filterIsInstance<CategoryIdentity.BuiltIn>()
+            .map { CategoryOverrideCategoryPresentations.forCategory(it.id).labelRes }
             .map(context::getString)
             .maxBy(String::length)
         composeRule.setContent {
@@ -355,11 +357,19 @@ class CategoryOverridePreferencesInstrumentationTest {
             request: CategoryOverrideMutation,
             expected: CategoryOverrideStoredIdentity,
             verificationProfiles: Set<ProfileId>,
+        ): CategoryOverrideWriteResult = mutateAll(listOf(request), expected, verificationProfiles)
+
+        override fun mutateAll(
+            requests: List<CategoryOverrideMutation>,
+            expected: CategoryOverrideStoredIdentity,
+            verificationProfiles: Set<ProfileId>,
         ): CategoryOverrideWriteResult {
             val entries = snapshot.assignments.toMutableMap()
-            when (request) {
-                is CategoryOverrideMutation.Set -> entries[request.key] = request.category
-                is CategoryOverrideMutation.Remove -> entries.remove(request.key)
+            for (request in requests) {
+                when (request) {
+                    is CategoryOverrideMutation.Set -> entries[request.key] = request.category
+                    is CategoryOverrideMutation.Remove -> entries.remove(request.key)
+                }
             }
             snapshot = stored(snapshot.identity.generation + 1L, entries)
             return CategoryOverrideWriteResult.Committed(
@@ -370,7 +380,7 @@ class CategoryOverridePreferencesInstrumentationTest {
 
         private fun stored(
             generation: Long,
-            assignments: Map<CategoryOverrideKey, CategoryId>,
+            assignments: Map<CategoryOverrideKey, CategoryIdentity>,
         ): CategoryOverrideStoredSnapshot = CategoryOverrideStoredSnapshot(
             CategoryOverrideStoredIdentity(1, generation, sha256Canonical("")),
             assignments,

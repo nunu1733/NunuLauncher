@@ -103,12 +103,15 @@ class SplitFolderNamingEndToEndTest {
                 organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             ),
             taxonomy = taxonomy,
+            catalog = app.lawnchair.organizer.planning.ActiveCategoryCatalog(taxonomy, emptyList()),
             signals = ClassificationSignals(
                 entries = ids.map {
                     ClassificationSignal(
                         item = it,
                         source = SignalSource.S2,
-                        candidate = app.lawnchair.organizer.planning.CategoryId("COMMUNICATION"),
+                        candidate = app.lawnchair.organizer.planning.CategoryIdentity.BuiltIn(
+                            app.lawnchair.organizer.planning.CategoryId("COMMUNICATION"),
+                        ),
                     )
                 },
             ),
@@ -220,12 +223,15 @@ class SplitFolderNamingEndToEndTest {
                 organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             ),
             taxonomy = taxonomy,
+            catalog = app.lawnchair.organizer.planning.ActiveCategoryCatalog(taxonomy, emptyList()),
             signals = ClassificationSignals(
                 entries = ids.map {
                     ClassificationSignal(
                         item = it,
                         source = SignalSource.S2,
-                        candidate = app.lawnchair.organizer.planning.CategoryId("COMMUNICATION"),
+                        candidate = app.lawnchair.organizer.planning.CategoryIdentity.BuiltIn(
+                            app.lawnchair.organizer.planning.CategoryId("COMMUNICATION"),
+                        ),
                     )
                 },
             ),

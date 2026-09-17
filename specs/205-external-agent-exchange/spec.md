@@ -139,7 +139,7 @@ And export操作自体はlayout DBへ一切書き込まない。
 
 Given 外部agentがexchange packageを受領、
 Then packageのinstruction部は、unknown appについてのWeb検索、複数source比較、usage/current groupingのpreference signalとしての考慮、必要時のuserへの追加質問を禁止しておらず、
-And 最終回答を `PersonalizedIntentV1` としてINTENT marker行で囲んで返すよう要求し、
+And 最終回答を `PersonalizedIntentV1` として返すよう要求し (要求外形の正本 = AI向けcanonical authoring form は [spec 348](../348-exchange-ai-facing-contract/spec.md) が所有。受入側はmarker形式を含む3 accepted framingを不変で受理する)、
 And NunuLauncherは中間思考・tool実行を再現・検証しない (最終intentのみを検証する)。
 
 ### Scenario: importの厳格な抽出 (exchange framing V1)
@@ -149,7 +149,7 @@ When 取り込みを実行する、
 Then 取り込みtextはUTF-8として、行末をLFに正規化し (CRLF/CR → LF)、先頭のUTF-8 BOMを除去した上で、**完全行marker** `-----BEGIN NUNULAUNCHER INTENT-----` (開始) / `-----END NUNULAUNCHER INTENT-----` (終了) によって区切られた領域を抽出する。marker行とは、行頭・行末のASCII空白 (space / tab) を除去した残りがmarker文字列と完全一致する行である (case-sensitive)。
 And 抽出の成功条件は「BEGIN marker行がちょうど1つ、END marker行がちょうど1つ、かつBEGIN行がEND行より前」であり、領域内のtextは **verbatim** (内部を改変しない。領域全体の先頭・末尾の空白のみをtrim) で抽出され、schema解釈を行わず #204 codec/validatorへ渡す、
 And marker対の前後の自由文 (agentの説明・注記) は許容され、抽出対象にならない、
-And marker不在・END先行は `FRAMING_MISSING`、marker行の複数出現 (nested marker相当行を含む) は `FRAMING_AMBIGUOUS`、有効なmarker対だが領域が空・空白のみは `FRAMING_EMPTY` の **#205側typed parse失敗** としてzero-write処理され、userに再依頼 (agentへframing付きで再回答を求める) を案内する、
+And marker不在・END先行は `FRAMING_MISSING`、marker行の複数出現 (nested marker相当行を含む) は `FRAMING_AMBIGUOUS`、有効なmarker対だが領域が空・空白のみは `FRAMING_EMPTY` の **#205側typed parse失敗** としてzero-write処理され、userに再依頼 (agentへfinal artifactの再回答・再copyを求める。案内文言が参照する推奨外形は [spec 348](../348-exchange-ai-facing-contract/spec.md) 所有のcanonical authoring formに従う) を案内する、
 And payload内のJSON string valueにmarker相当の **部分文字列** が含まれても、それは完全行一致には該当しないため抽出を乱さない (framingはescaping機構を持たない。正当なJSONは (canonical単行・pretty print多行のいずれでも) marker行と完全一致する行を含み得ないため、escaping不要。marker相当行が領域内に現れた場合はmarker複数出現として `FRAMING_AMBIGUOUS` でfail-closed rejectされる)、
 And 曖昧にJSONらしきものを拾ってpartial applyする経路は存在しない。
 
@@ -168,6 +168,8 @@ Given 抽出されたintentが #204 validatorでmalformed / unknown schemaVersio
 When 検証結果を表示する、
 Then typed failure種別ごとにuserが理解できる説明を表示し、zero-write (selection/layout/planning入力を一切変更しない) であり、
 And userは修正した返答を再importできる。
+
+> [spec 348](../348-exchange-ai-facing-contract/spec.md) (2026-09-18): validation reject後の再importは **例外的回復** であり、通常flowにAI repair loop (validation failure内容のAIへの持ち帰り・repair依頼) を設計しない。one-round-trip UX invariant (request 1回 / final artifact 1回) の正本はspec 348である。
 
 > #204 accepted契約のtyped failure class (12): `SCHEMA_MISMATCH` / `EXPORT_MISMATCH` / `SESSION_EXPIRED` / `CONTEXT_STALE` / `OVERSIZE` / `UNKNOWN_REF` / `DUPLICATE_REF` / `INCOMPLETE_COVERAGE` / `INVALID_ENUM` / `FORBIDDEN_CONTENT` / `MOBILITY_CONTRADICTION` / `CAPABILITY_UNSUPPORTED`。うち `CAPABILITY_UNSUPPORTED` はV1固定6 capability set常時宣言契約により **V1では到達不能なreserved class** である (#204)。UIの失敗説明はこの分類に一対対応させる (#205側の `FRAMING_MISSING` / `FRAMING_AMBIGUOUS` / `FRAMING_EMPTY` / `INPUT_OVERSIZE` 4種と合わせて16種の失敗表示を定義する。#204 `OVERSIZE` と #205 `INPUT_OVERSIZE` は別契約・別種別)。
 
@@ -229,7 +231,7 @@ Then 確認画面・失敗表示はaccessibility対応され (focus順、読み�
 ## Decisions (このrevisionで固定したV1決定)
 
 1. **exchange framing具体形**: 完全行marker `-----BEGIN NUNULAUNCHER INTENT-----` / `-----END NUNULAUNCHER INTENT-----`、marker対前後の自由文は許容、escapingなし (正当なJSONはmarker完全一致行を含み得ない)、複数・nested markerは `FRAMING_AMBIGUOUS`、marker不在は `FRAMING_MISSING`、空blockは `FRAMING_EMPTY`、CRLF/CR → LF正規化・BOM除去。**所有は本spec (#205)** (#204はpayload本体のschemaと検証のみを所有)。
-2. **exchange package構造**: instruction部 (英語。Goal / You may / You must / Response format の4section構成。Response formatにINTENT marker行を明示) + data部 (`-----BEGIN NUNULAUNCHER CONTEXT-----` / `-----END NUNULAUNCHER CONTEXT-----` 行で囲んだ `PersonalizationContextExportV1` canonical JSON単行)。分離はmarker行により機械検証可能 (AC-1)。最終prose文言の微調整はAC-10 evidenceで行う (構造・必須要素は固定)。
+2. **exchange package構造**: instruction部 (英語) + data部 (`-----BEGIN NUNULAUNCHER CONTEXT-----` / `-----END NUNULAUNCHER CONTEXT-----` 行で囲んだ `PersonalizationContextExportV1` canonical JSON単行)。分離はmarker行により機械検証可能 (AC-1)。**instruction部のsection構成とResponse format要求の改訂は [spec 348](../348-exchange-ai-facing-contract/spec.md) が所有する** (2026-09-18以降: Goal / You may / Output contract / You must / Before sending your final answer / Response format の6section構成、Response formatはAI向けcanonical authoring form = 単一fenced `json` code block + candidate 1個を要求し、INTENT marker行を要求しない。受入側のframing受理規則は本spec Decision 1のまま不変)。最終prose文言の微調整はAC-10 evidenceで行う (構造・必須要素は固定)。
 3. **初回transport**: export = clipboard copy + Share Sheet (text/plain `ACTION_SEND` + chooser) + file (SAFによるtext file保存) の3経路。import = text貼付付け (clipboard pasteを含む) + file選択。**share-back intent受信はV1で提供しない**: `ACTION_SEND` receiverをmanifest登録するとlauncherが全textのshare targetとなる受信面が広がる割に、貼付付けで同等のUXが成立するため。V2で需要に応じて再検証する。
 4. **instruction部言語**: 英語固定 (外部agentの認識精度。AC-10 evidenceで検証)。UI copy (確認・失敗表示) は日本語を正本とする他organizer surfaceに合わせる。
 5. **size扱い (export側)**: exchange packageのsizeは **#204 payload上限** (export文書全体 ≤256 KiB、items ≤512等) で上限制御し、超過は生成時typed失敗とする (fail-closed、切り詰め・分割送信はしない)。package全体 (instruction + marker行 + payload) は固定長instruction + payload上限で構造的上限内に収まる。clipboard/Share Sheetのtransport失敗時はfile exportへの誘導で対処する。
@@ -267,7 +269,7 @@ Then 確認画面・失敗表示はaccessibility対応され (focus順、読み�
 - [ ] AC-1: exchange package生成からimport・previewまでのend-to-end UXが定義され、instruction/data分離構造 (CONTEXT marker行) が機械的に検証できる。
 - [ ] AC-2: 既定exportがraw package名・内部ID・profile identifier・raw usage/timestamps・diagnostics metadataを含まないことがcontract testで検証される (#204 `ContextExportBuilder`/tier契約に基づくpackage levelの検証)。
 - [ ] AC-3: 送信前確認なしにclipboard/share/file経路でデータが出ないことが検証される。redacted (`EXTERNAL_REDACTED`) / label-inclusive (`EXTERNAL_WITH_LABELS`) modeの扱いが #204 accepted契約に従い、label-inclusive時の明示開示がある。
-- [ ] AC-4: importが本specが定義するexchange framing (完全行marker `-----BEGIN NUNULAUNCHER INTENT-----` / `-----END NUNULAUNCHER INTENT-----`) により一意に区切られた `PersonalizedIntentV1` のみを抽出する。次がtestされる: (a) marker対前後の自由文は許容されること、(b) marker不在・END先行は `FRAMING_MISSING`、marker行複数出現 (nested相当行を含む) は `FRAMING_AMBIGUOUS`、空blockは `FRAMING_EMPTY` のtyped parse失敗としてzero-write処理されること、(c) payload内JSON string value中のmarker相当部分文字列は抽出を乱さないこと、(d) CRLF/CR入力はLF正規化後に同一結果となること (決定性・冪等性)、(e) import text全体がenvelope上限 (1 MiB) を超える入力 (巨大prefix/suffix + 小さな正当payload、marker不在の巨大入力、上限境界値) は全量処理の前に `INPUT_OVERSIZE` でzero-write拒否され、上限内の同等入力は受理されること。
+- [ ] AC-4 (normative文は [spec 329](../329-import-normalizer/spec.md)・[spec 348](../348-exchange-ai-facing-contract/spec.md) の改訂を反映): importの対象は、本spec所有の完全行marker framing (`-----BEGIN NUNULAUNCHER INTENT-----` / `-----END NUNULAUNCHER INTENT-----`) により一意に区切られた `PersonalizedIntentV1` payloadと、#329 normalizerが追加受理する単一fenced `json` block / standalone JSON object (3 accepted framing) である。AIへの要求外形 (canonical authoring form: 単一fenced `json` block) はspec 348が所有し、marker形式の要求は廃止されたが受信受理は不変。marker抽出については次がtestされる: (a) marker対前後の自由文は許容されること、(b) marker不在・END先行は `FRAMING_MISSING`、marker行複数出現 (nested相当行を含む) は `FRAMING_AMBIGUOUS`、空blockは `FRAMING_EMPTY` のtyped parse失敗としてzero-write処理されること、(c) payload内JSON string value中のmarker相当部分文字列は抽出を乱さないこと、(d) CRLF/CR入力はLF正規化後に同一結果となること (決定性・冪等性)、(e) import text全体がenvelope上限 (1 MiB) を超える入力 (巨大prefix/suffix + 小さな正当payload、marker不在の巨大入力、上限境界値) は全量処理の前に `INPUT_OVERSIZE` でzero-write拒否され、上限内の同等入力は受理されること。
 - [ ] AC-5: malformed / unknown schema / out-of-scope ID / 禁止内容が #204 validator経由でzero-write rejectされ、失敗種別 (#204 12 class + `FRAMING_*` 3種 + `INPUT_OVERSIZE`) がuserに説明されることがtestされる。
 - [ ] AC-6: import後も #194 preview + #195 explicit confirmationが必須であり、agent outputの直接適用・confirmation省略経路が存在しないことが検証される。
 - [ ] AC-7: untrusted app/folder label・agent応答・agentが参照した外部sourceのprompt injectionがthreat modelとtestに含まれる。test oracleは外部agentのinstruction遵守を前提とせず、fail-closed (framing/schema/allow-list reject、zero-write、planner制約不変、影響された返答でもunsafe mutationへ到達しない) を中心とする。
@@ -312,6 +314,12 @@ Then 確認画面・失敗表示はaccessibility対応され (focus順、読み�
 - 2026-09-16 (3rd): **accepted**。ChatGPT 2nd re-review Approve ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/205#issuecomment-5683891236)、head `0e4f154cfd1c3dec083415eaa17cf9789d5eb588`) を受け、statusをproposed → acceptedへ更新。approving reviewはnon-blocking implementation noteとして (1) UTF-8 byte上限判定のallocation-bounded実装 (fast reject + bounded byte count。実装時にplanへ反映済み)、(2) review-responseコメントのfull SHA誤記 (short SHA `0e4f154` は一致) を残した。canonical docs (CONTEXT.md用語・DESIGN.md module記載・requirements.md FR-017 status) を同じcommitで更新。
 - 2026-09-16 (4th): **implemented**。[PR #325](https://github.com/nunu1733/NunuLauncher/pull/325) merge (commit `3df9c7afe45a`) により本workflowの実装 (純粋exchange modules・integration・run接続・UI・44 exchange unit tests + run-level test) がmainに取り込まれた。ChatGPT PR review 7ラウンド (最終Approve) と独立audit 9ラウンドを経過。AC-9/AC-10のmanual/physical evidenceは後続evidence PRで実施予定 (受入条件は残置)。
 - 2026-09-16 (5th): **run内entry拡張 ([spec 331](../331-exchange-target-scope-coupling/spec.md) 所有)** — Issue #331のaccepted specによる意図的なworkflow拡張。本specの「exchange導線はrun非active時のみ提示」「#228 scope selectionはrun内概念でありexchange flowでは関与しない」のV1規定を、選択surface内のrun-in entry (scope結合生成・選択freeze・run内import接続) とscope binding gate (candidate集合の完全一致 + candidate投影digest照合、違反は `SCOPE_MISMATCH`) により拡張する。idle entryとfresh run再構築の既存契約は無変更。失敗表示は16種から17種 (`SCOPE_MISMATCH`) へ拡張。拡張の設計・契約・検証の正本はspec 331である。
+
+- 2026-09-16 (6th): **intent schema v3対応 ([spec 330](../330-partial-intent-authoring/spec.md) 所有)** — Issue #330のaccepted specにより、instruction部のcoverage要求 "Cover every \"ref\" exactly once across \"itemIntents\" and \"unresolvedRefs\"" を部分authoring契約 ("Author only what you actually judged" / "you do not have to cover every ref, and anything you leave out is treated as \"no judgment\" and is never guessed") へ置換し、response format表記を `personalized-intent-v3` へ更新。framing・envelope上限・Pre-send Disclosure・17種失敗表示 (種類数) は無変更。`INCOMPLETE_COVERAGE` 表示文言のみv3条件 (重複列挙) へ更新。拡張の設計・契約の正本はspec 330である。
+
+- 2026-09-17 (7th): **framing受理枠拡張 ([spec 329](../329-import-normalizer/spec.md) 所有)** — Issue #329 (accepted spec) により、import pathの #205 envelope gate (1 MiB) とmarker規則の間に Import Normalizer (外形認識層) が挿入された。marker形式の抽出規則・#205 typed失敗4種 (`INPUT_OVERSIZE` / `FRAMING_*`) の意味・envelope上限は **すべて不変** で、marker形式はcanonical formのまま。新たに単一fenced `json` code blockとstandalone JSON objectが受理外形として追加され、marker行を含まないplain proseは `FRAMING_MISSING` ではなく #329 normalizerのtyped失敗 (認識不能) となる。認識framing種別は `Prepared` へadditive fieldで伝播する。
+
+- 2026-09-18 (8th): **AI向けauthoring要求の改訂 ([spec 348](../348-exchange-ai-facing-contract/spec.md) 所有)** — issue #348のaccepted specにより、instruction部は6section構成 (Output contract / final self-check を新設。Output contractは #204 wire descriptor由来) へ再構成され、Response formatはcanonical authoring form (単一fenced `json` block + candidate 1個) を要求する (INTENT marker行の要求は廃止、受理は不変)。framing規則・typed失敗4種・envelope上限・17種失敗表示 (種類数) は無変更。one-round-trip UX invariant (import後のAI repair loopを通常flowにしない) の正本はspec 348。
 
 ## References
 

@@ -233,7 +233,7 @@ class SyntheticFixtureGeneratorTest {
             if (input.runMode == RunMode.FullOrganization) assertTrue(input.targets.additions.isEmpty())
             input.signals.entries.forEach {
                 assertTrue(it.item in capturedIds || input.targets.additions.any { candidate -> candidate.id == it.item })
-                assertTrue(it.candidate in input.taxonomy.allowedCategories)
+                assertTrue(it.candidate in input.catalog.allowedIdentities)
             }
             input.targets.additions.forEach {
                 assertTrue(

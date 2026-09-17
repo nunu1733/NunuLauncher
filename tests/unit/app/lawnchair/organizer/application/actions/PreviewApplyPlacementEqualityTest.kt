@@ -224,6 +224,14 @@ class PreviewApplyPlacementEqualityTest {
                 allowedCategories = listOf(app.lawnchair.organizer.planning.CategoryId("tools")),
                 fallbackCategory = app.lawnchair.organizer.planning.CategoryId("tools"),
             ),
+            catalog = app.lawnchair.organizer.planning.ActiveCategoryCatalog(
+                TaxonomyContract(
+                    version = taxonomyVersion,
+                    allowedCategories = listOf(app.lawnchair.organizer.planning.CategoryId("tools")),
+                    fallbackCategory = app.lawnchair.organizer.planning.CategoryId("tools"),
+                ),
+                emptyList(),
+            ),
             signals = ClassificationSignals(entries = emptyList()),
             targets = TargetSet(
                 existing = ids.map { ExistingTargetMembership(ItemId(it), ExistingRole.Movable) },

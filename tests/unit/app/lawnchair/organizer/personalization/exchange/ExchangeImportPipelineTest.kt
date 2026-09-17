@@ -3,6 +3,7 @@ package app.lawnchair.organizer.personalization.exchange
 import app.lawnchair.organizer.personalization.BuiltExport
 import app.lawnchair.organizer.personalization.CanonicalStructuralInputs
 import app.lawnchair.organizer.personalization.ContextExportBuilder
+import app.lawnchair.organizer.personalization.ContextExportContract
 import app.lawnchair.organizer.personalization.ExportInputs
 import app.lawnchair.organizer.personalization.Importance
 import app.lawnchair.organizer.personalization.IntentCodec
@@ -65,7 +66,7 @@ class ExchangeImportPipelineTest {
             items,
         )
         val targets = TargetSet(items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }, emptyList())
-        val structural = CanonicalStructuralInputs(snapshot, targets, emptyMap<ItemId, String?>())
+        val structural = CanonicalStructuralInputs(snapshot, targets, emptyMap<ItemId, app.lawnchair.organizer.planning.CategoryIdentity?>())
         val inputs = ExportInputs(snapshot = snapshot, targets = targets, nowEpochMs = now)
         return ContextExportBuilder.build(inputs, PrivacyTier.EXTERNAL_REDACTED, SequentialIdAllocator()) to structural
     }
@@ -84,6 +85,15 @@ class ExchangeImportPipelineTest {
         append('\n')
         append(ExchangeContract.INTENT_END_MARKER)
         if (prose) append("\nContact me for refinements.")
+    }
+
+    /** Issue #329: a fenced `json` reply without any marker line. */
+    private fun fencedReply(payloadJson: String, prose: Boolean = true): String = buildString {
+        if (prose) append("Here is the proposed intent.\n")
+        append("```json\n")
+        append(payloadJson)
+        append("\n```\n")
+        if (prose) append("Contact me for refinements.")
     }
 
     private fun failureOf(
@@ -190,8 +200,10 @@ class ExchangeImportPipelineTest {
     @Test
     fun envelopeFailuresPassThroughWithoutSessionAccess() {
         val (built, structural) = buildState(listOf(app("a")))
+        // Spec 329: marker-less plain prose is now the normalizer's typed
+        // failure — it no longer masquerades as a marker framing failure.
         assertEquals(
-            ExchangeImportFailure.Envelope(ExchangeEnvelopeFailure.FramingMissing),
+            ExchangeImportFailure.Normalization(ImportNormalizationFailure.UnrecognizedFormat),
             failureOf("the agent forgot the markers", session = built.session, structural = structural),
         )
         val intentJson = IntentCodec.encode(fullCoverageIntent(built)).decodeToString()
@@ -199,5 +211,213 @@ class ExchangeImportPipelineTest {
             ExchangeImportFailure.Envelope(ExchangeEnvelopeFailure.FramingEmpty),
             failureOf(reply(""), session = built.session, structural = structural),
         )
+        // FRAMING_MISSING stays owned by the marker path: a BEGIN line is
+        // present but its END is missing.
+        assertEquals(
+            ExchangeImportFailure.Envelope(ExchangeEnvelopeFailure.FramingMissing),
+            failureOf(
+                "${ExchangeContract.INTENT_BEGIN_MARKER}\n$intentJson",
+                session = built.session,
+                structural = structural,
+            ),
+        )
+    }
+
+    // --- Issue #329: normalizer framings reach the same pipeline outcome ---
+
+    @Test
+    fun standaloneJsonPreparesWithStandaloneFramingAndValidates() {
+        val (built, structural) = buildState(listOf(app("a"), app("b", x = 1), docked("d")))
+        val intentJson = IntentCodec.encode(fullCoverageIntent(built)).decodeToString()
+        val prepared = ExchangeImportPipeline.prepare(intentJson) as ExchangeImportPipeline.Prepared
+        assertEquals(RecognizedImportFraming.STANDALONE_JSON, prepared.framing)
+        assertEquals(built.export.exportId, prepared.intent.exportId)
+        val result = ExchangeImportPipeline.import(intentJson, built.session, structural, now + 1)
+        assertTrue(result is ExchangeImportResult.Validated)
+    }
+
+    @Test
+    fun fencedJsonPreparesWithFencedFramingAndValidates() {
+        val (built, structural) = buildState(listOf(app("a"), app("b", x = 1), docked("d")))
+        val intentJson = IntentCodec.encode(fullCoverageIntent(built)).decodeToString()
+        val prepared = ExchangeImportPipeline.prepare(fencedReply(intentJson)) as ExchangeImportPipeline.Prepared
+        assertEquals(RecognizedImportFraming.FENCED_JSON, prepared.framing)
+        val result = ExchangeImportPipeline.import(fencedReply(intentJson), built.session, structural, now + 1)
+        assertTrue(result is ExchangeImportResult.Validated)
+    }
+
+    @Test
+    fun markedReplyPreparesWithMarkerFraming() {
+        val (built, _) = buildState(listOf(app("a")))
+        val intentJson = IntentCodec.encode(fullCoverageIntent(built)).decodeToString()
+        val prepared = ExchangeImportPipeline.prepare(reply(intentJson)) as ExchangeImportPipeline.Prepared
+        assertEquals(RecognizedImportFraming.MARKER, prepared.framing)
+    }
+
+    @Test
+    fun ambiguousBlocksAreTypedNormalizerFailures() {
+        val (built, structural) = buildState(listOf(app("a")))
+        val intentJson = IntentCodec.encode(fullCoverageIntent(built)).decodeToString()
+        val twoBlocks = "${fencedReply(intentJson, prose = false)}\n${fencedReply(intentJson, prose = false)}"
+        assertEquals(
+            ExchangeImportFailure.Normalization(ImportNormalizationFailure.AmbiguousBlocks),
+            failureOf(twoBlocks, session = built.session, structural = structural),
+        )
+    }
+
+    @Test
+    fun envelopeGateSettlesOversizeBeforeTheNormalizer() {
+        val (built, structural) = buildState(listOf(app("a")))
+        val limit = ExchangeContract.MAX_EXCHANGE_IMPORT_BYTES
+        // One byte over: the #205-owned gate rejects with the unchanged typed
+        // identity, before shape recognition runs.
+        assertEquals(
+            ExchangeImportFailure.Envelope(ExchangeEnvelopeFailure.InputOversize),
+            failureOf("y".repeat(limit + 1), session = built.session, structural = structural),
+        )
+        // The same junk at exactly the limit passes the gate and reaches the
+        // normalizer — proving the gate ordering, not a double rejection.
+        assertEquals(
+            ExchangeImportFailure.Normalization(ImportNormalizationFailure.UnrecognizedFormat),
+            failureOf("y".repeat(limit), session = built.session, structural = structural),
+        )
+    }
+
+    // --- Issue #329 security corpus (spec: nested wrapper, adversarial) ---
+
+    @Test
+    fun fenceInsideMarkerRegionIsNeverUnwrapped() {
+        val (built, structural) = buildState(listOf(app("a")))
+        val intentJson = IntentCodec.encode(fullCoverageIntent(built)).decodeToString()
+        val marked = "${ExchangeContract.INTENT_BEGIN_MARKER}\n```json\n$intentJson\n```\n${ExchangeContract.INTENT_END_MARKER}"
+        assertEquals(
+            ExchangeImportFailure.Contract(IntentValidationFailure.SchemaMismatch),
+            failureOf(marked, session = built.session, structural = structural),
+        )
+    }
+
+    @Test
+    fun bareFenceLinesAroundAMarkerPairStayProse() {
+        val (built, structural) = buildState(listOf(app("a"), app("b", x = 1), docked("d")))
+        val intentJson = IntentCodec.encode(fullCoverageIntent(built)).decodeToString()
+        val wrapped = "```\n${reply(intentJson, prose = false)}\n```"
+        val result = ExchangeImportPipeline.import(wrapped, built.session, structural, now + 1)
+        assertTrue(result is ExchangeImportResult.Validated)
+    }
+
+    @Test
+    fun innerInfoFenceExtendsTheBlockAndConvergesOnSchemaMismatch() {
+        val (built, structural) = buildState(listOf(app("a")))
+        // The inner ` ```json ` line does not close the block; the payload
+        // verbatim includes it and can never be valid JSON (spec 329 D-4).
+        assertEquals(
+            ExchangeImportFailure.Contract(IntentValidationFailure.SchemaMismatch),
+            failureOf("```json\n{\n```json\n}\n```", session = built.session, structural = structural),
+        )
+    }
+
+    @Test
+    fun contractFailuresAreFramingIndependent() {
+        val (built, structural) = buildState(listOf(app("a")))
+        val encoded = IntentCodec.encode(fullCoverageIntent(built)).decodeToString()
+
+        // Decode-level: an unknown top-level key → SCHEMA_MISMATCH, standalone.
+        assertEquals(
+            ExchangeImportFailure.Contract(IntentValidationFailure.SchemaMismatch),
+            failureOf(encoded.replace("itemIntents", "itemIntentz"), session = built.session, structural = structural),
+        )
+
+        // Decode-level: an unknown enum name → INVALID_ENUM, fenced.
+        val invalidEnum = encoded.replaceFirst("\"preserve\":true", "\"importance\":\"WHENEVER\"")
+        assertEquals(
+            ExchangeImportFailure.Contract(IntentValidationFailure.InvalidEnum),
+            failureOf(fencedReply(invalidEnum, prose = false), session = built.session, structural = structural),
+        )
+
+        // Validator-level: an out-of-scope ref → UNKNOWN_REF, fenced — the
+        // normalizer pass never relaxes per-ref validation.
+        val ref = built.export.items.first().ref
+        val unknownRef = encoded.replace("\"$ref\"", "\"zzz\"")
+        assertEquals(
+            ExchangeImportFailure.Contract(IntentValidationFailure.UnknownRef("zzz")),
+            failureOf(fencedReply(unknownRef, prose = false), session = built.session, structural = structural),
+        )
+    }
+
+    // ---- Issue #332: parse-stage recognition metadata (spec D-5/D-6, AC-10) ----
+
+    private fun recognizedOf(text: String): RecognizedImportInfo? = (ExchangeImportPipeline.prepare(text) as ExchangeImportResult.Failure).recognized
+
+    @Test
+    fun oversizeFailsBeforeRecognitionAndCarriesNoMetadata() {
+        val oversized = "x".repeat(ExchangeContract.MAX_EXCHANGE_IMPORT_BYTES + 1)
+        val result = ExchangeImportPipeline.prepare(oversized) as ExchangeImportResult.Failure
+        assertEquals(ExchangeImportFailure.Envelope(ExchangeEnvelopeFailure.InputOversize), result.failure)
+        assertEquals(null, result.recognized)
+    }
+
+    @Test
+    fun normalizationFailureCarriesNoRecognizedMetadata() {
+        val result = ExchangeImportPipeline.prepare("no recognizable shape") as ExchangeImportResult.Failure
+        assertEquals(
+            ExchangeImportFailure.Normalization(ImportNormalizationFailure.UnrecognizedFormat),
+            result.failure,
+        )
+        assertEquals(null, result.recognized)
+    }
+
+    @Test
+    fun markerFramingFailureKeepsTheRecognizedMarkerFraming() {
+        // A full-line BEGIN marker exists, so the framing is known even
+        // though the extraction fails (spec 332 D-6: "判明範囲のみ").
+        val info = recognizedOf("${ExchangeContract.INTENT_BEGIN_MARKER}\n")
+        assertEquals(RecognizedImportFraming.MARKER, info?.framing)
+        assertEquals(null, info?.intentSchemaVersion)
+        assertEquals(null, info?.authoredEntryCount)
+    }
+
+    @Test
+    fun decodeFailureCarriesTheRecognizedFramingButNoDecodeFacts() {
+        val info = recognizedOf("```json\n{not json}\n```")
+        assertEquals(RecognizedImportFraming.FENCED_JSON, info?.framing)
+        // The version/entry count are decode facts; the codec never accepted
+        // the payload, so they stay unset.
+        assertEquals(null, info?.intentSchemaVersion)
+        assertEquals(null, info?.authoredEntryCount)
+    }
+
+    @Test
+    fun postDecodeFailureCarriesTheAcceptedVersionAndEntryCount() {
+        val (built, structural) = buildState(listOf(app("a"), app("b", x = 1), docked("d")))
+        val intentJson = IntentCodec.encode(fullCoverageIntent(built)).decodeToString()
+        // No session: the failure settles after the decode, so all three
+        // recognition facts are known.
+        val result = ExchangeImportPipeline.import(intentJson, null, structural, now + 1) as ExchangeImportResult.Failure
+        assertEquals(ExchangeImportFailure.Contract(IntentValidationFailure.ExportMismatch), result.failure)
+        val info = result.recognized!!
+        assertEquals(RecognizedImportFraming.STANDALONE_JSON, info.framing)
+        assertEquals(ContextExportContract.INTENT_SCHEMA_VERSION, info.intentSchemaVersion)
+        assertEquals(built.export.items.size, info.authoredEntryCount)
+    }
+
+    @Test
+    fun authoredEntryCountCountsBareEntriesAndExcludesOmission() {
+        // Spec 332 AC-10 boundary fixture (spec 330 v3 semantics): the export
+        // scope holds three refs; the authored document contains one semantic
+        // entry and one bare `{"ref": ...}` entry; the third ref is omitted.
+        val (built, _) = buildState(listOf(app("a"), app("b", x = 1), app("c", x = 2)))
+        assertEquals(3, built.export.items.size)
+        val refA = built.export.items[0].ref
+        val refB = built.export.items[1].ref
+        val document = """{"schemaVersion":"${ContextExportContract.INTENT_SCHEMA_VERSION}",""" +
+            """"exportId":"${built.export.exportId}",""" +
+            """"itemIntents":[{"ref":"$refA","preserve":true},{"ref":"$refB"}]}"""
+        val prepared = ExchangeImportPipeline.prepare(document) as ExchangeImportPipeline.Prepared
+        // The bare entry counts; the omitted ref does not.
+        assertEquals(2, prepared.intent.itemIntents.size)
+        val info = prepared.recognizedInfo()
+        assertEquals(2, info.authoredEntryCount)
+        assertEquals(RecognizedImportFraming.STANDALONE_JSON, info.framing)
+        assertEquals(ContextExportContract.INTENT_SCHEMA_VERSION, info.intentSchemaVersion)
     }
 }

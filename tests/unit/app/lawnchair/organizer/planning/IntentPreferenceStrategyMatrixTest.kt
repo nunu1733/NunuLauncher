@@ -58,6 +58,7 @@ class IntentPreferenceStrategyMatrixTest {
             ),
             rules = rules(strategy),
             taxonomy = TaxonomyContract(TaxonomyVersion("tv1"), listOf(CategoryId("OTHER")), CategoryId("OTHER")),
+            catalog = ActiveCategoryCatalog(TaxonomyContract(TaxonomyVersion("tv1"), listOf(CategoryId("OTHER")), CategoryId("OTHER")), emptyList()),
             signals = ClassificationSignals(emptyList()),
             targets = TargetSet(items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }, emptyList()),
             runMode = RunMode.FullOrganization,

@@ -60,6 +60,7 @@ class IntentPreferenceConsumptionTest {
         ),
         rules = defaultRules(),
         taxonomy = defaultTaxonomy(),
+        catalog = ActiveCategoryCatalog(defaultTaxonomy(), emptyList()),
         signals = ClassificationSignals(emptyList()),
         targets = TargetSet(items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }, emptyList()),
         runMode = RunMode.FullOrganization,

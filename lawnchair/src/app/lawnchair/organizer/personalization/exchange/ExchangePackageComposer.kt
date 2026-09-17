@@ -1,9 +1,8 @@
 package app.lawnchair.organizer.personalization.exchange
 
+import app.lawnchair.organizer.personalization.IntentWireContract
 import app.lawnchair.organizer.personalization.exchange.ExchangeContract.CONTEXT_BEGIN_MARKER
 import app.lawnchair.organizer.personalization.exchange.ExchangeContract.CONTEXT_END_MARKER
-import app.lawnchair.organizer.personalization.exchange.ExchangeContract.INTENT_BEGIN_MARKER
-import app.lawnchair.organizer.personalization.exchange.ExchangeContract.INTENT_END_MARKER
 
 /**
  * Issue #205: composes the exchange package — the agent-facing instruction
@@ -16,16 +15,30 @@ import app.lawnchair.organizer.personalization.exchange.ExchangeContract.INTENT_
  * [parsePackageStructure] (AC-1): the data block sits between full-line
  * CONTEXT markers, so a consumer can always recover the data without
  * interpreting the prose.
+ *
+ * Issue #348: the output contract section of the instruction is rendered
+ * from the shared [IntentWireContract] wire descriptor (the same source the
+ * codec's allow-lists derive from), and the response format requests the
+ * single canonical authoring form — one fenced `json` code block containing
+ * exactly one JSON object. The INTENT marker framing stays accepted on
+ * import (spec 205 framing rules unchanged) but is no longer requested from
+ * the agent.
  */
 object ExchangePackageComposer {
 
     /**
      * Composes the package for one canonical export JSON document. The data
      * must be the #204 codec's canonical single-line JSON; the composer never
-     * interprets or rewraps it.
+     * interprets or rewraps it. Section order follows accepted spec 348
+     * Decision 3: Goal / You may / Output contract / You must / [CONTEXT
+     * data] / Before sending your final answer + Response format.
      */
     fun compose(exportJson: String): String = buildString {
-        append(INSTRUCTION_HEADER.trim('\n'))
+        append(INSTRUCTION_OPEN.trim('\n'))
+        append('\n')
+        append(outputContractSection())
+        append('\n')
+        append(youMustSection())
         append('\n')
         append(CONTEXT_BEGIN_MARKER)
         append('\n')
@@ -90,13 +103,11 @@ enum class PackageStructureProblem {
 }
 
 /**
- * The agent-facing instruction part (spec 205 Decision 2/4): English, four
- * sections (Goal / You may / You must / Response format), with the exact
- * INTENT marker lines the agent must echo. The header ends right before the
- * CONTEXT marker; the footer reminds the response format after the data so
- * the marker requirement is the last thing the agent reads.
+ * The agent-facing instruction opening (spec 205 Decision 2 as amended by
+ * spec 348 Decision 3): the Goal and You may sections. The header ends right
+ * before the Output contract section.
  */
-private const val INSTRUCTION_HEADER = """
+private const val INSTRUCTION_OPEN = """
 NunuLauncher External Agent Exchange
 
 Goal:
@@ -106,25 +117,124 @@ You may:
 - Search the web to identify unfamiliar apps
 - Compare multiple sources about app purposes and relationships
 - Consider the usage signals and the current grouping in the CONTEXT data as preference signals
-- Ask the user clarifying questions if the request is ambiguous
-
-You must:
-- Use only the "ref" values that appear in the CONTEXT data below
-- Treat every item with mobility "FIXED" as immovable: only "preserve" or an "unresolvedRefs" entry is valid for it
-- Treat every item with subject "CANDIDATE" as an app that is not yet on the home screen: never use "preserve" for it; instead propose its importance, grouping, and page or region preference like for the other apps
-- Not propose widget spans or sizes, exact screen coordinates, or database changes
-- Cover every "ref" exactly once across "itemIntents" and "unresolvedRefs"
-- Echo the "exportId" of this context data in your response
-
-Response format:
-Return the final answer as one JSON object with "schemaVersion" "personalized-intent-v2", placed between these two exact marker lines with nothing else between them:
------BEGIN NUNULAUNCHER INTENT-----
------END NUNULAUNCHER INTENT-----
-Text before or after the marker lines is allowed and will be ignored.
-
-CONTEXT data (machine-readable; do not modify):
+- Ask the user clarifying questions while you work, before you finalize
 """
 
-private const val INSTRUCTION_FOOTER = """
-Reminder: reply with your commentary (if any) and the intent JSON between the exact INTENT marker lines shown above. Do not repeat these instructions or the CONTEXT data.
-"""
+/**
+ * The Output contract section, rendered from the shared wire descriptor
+ * (spec 348 Decision 1): field facts come from the [IntentWireContract.FieldSpec]
+ * objects, entry limits from the entry-limit claims, and policy sentences
+ * from the policy claims — the same source the sync test's parity cases are
+ * keyed on.
+ */
+private fun outputContractSection(): String = buildString {
+    val contract = IntentWireContract
+    append("Output contract (the only properties your final JSON may contain):\n")
+    for (spec in contract.topLevel) {
+        append("- ${renderField(spec)}\n")
+    }
+    append("  Each \"itemIntents\" entry is an object with ${renderField(contract.field("ref"))} and any of:\n")
+    for (spec in contract.item.filter { it.name != "ref" }) {
+        append("  - ${renderField(spec)}\n")
+    }
+    for (spec in contract.globalPreference) {
+        append("  A \"globalPreference\" object may set ${renderField(spec)}.\n")
+    }
+    for (spec in contract.groupSemantic) {
+        append("  A \"groupSemantic\" object may set ${renderField(spec)}.\n")
+    }
+    val anyOf = (contract.claim("groupSemantic.anyOf").semantic as IntentWireContract.Semantic.AnyOf).members
+    append("  A \"groupSemantic\" object must set at least one of \"${anyOf[0]}\" or \"${anyOf[1]}\".\n")
+    val pageSpec = contract.field("pageAffinity")
+    append(
+        "  \"pageAffinity\" is a whole number from ${pageSpec.min} to " +
+            "(\"gridContext\".\"pageCount\" in the CONTEXT data minus 1).\n",
+    )
+    fun entryLimit(name: String): Int = (contract.claim("$name.entryLimit").semantic as IntentWireContract.Semantic.EntryLimit).max
+    append(
+        "  At most ${entryLimit("itemIntents")} \"itemIntents\" entries " +
+            "and at most ${entryLimit("unresolvedRefs")} \"unresolvedRefs\" entries.\n",
+    )
+}
+
+private fun renderField(spec: IntentWireContract.FieldSpec): String {
+    val required = if (spec.required) "required" else "optional"
+    val type = when (spec.type) {
+        IntentWireContract.WireType.STRING -> "string"
+        IntentWireContract.WireType.BOOLEAN -> "boolean"
+        IntentWireContract.WireType.INTEGER -> "integer"
+        IntentWireContract.WireType.STRING_ARRAY -> IntentWireContract.policySentence("policy.stringListElements")
+        IntentWireContract.WireType.OBJECT -> "object"
+        IntentWireContract.WireType.OBJECT_ARRAY -> "array of objects"
+    }
+    val detail = when {
+        spec.enumValues.isNotEmpty() -> ": one of ${spec.enumValues.joinToString(", ")}"
+
+        spec.exactValue != null -> ": exactly \"${spec.exactValue}\""
+
+        spec.name == "exportId" -> ": echo the \"exportId\" of the CONTEXT data"
+
+        spec.name == "confidence" -> ": whole number from ${spec.min} to ${spec.max}"
+
+        spec.name == "rationale" -> ": at most ${spec.maxLength} characters, display only"
+
+        spec.name == "desiredGroup" -> {
+            ": refs from the CONTEXT data that belong in one group; " +
+                IntentWireContract.policySentence("policy.desiredGroupNonEmpty")
+        }
+
+        spec.name == "freeText" -> ": at most ${spec.maxLength} characters"
+
+        else -> ""
+    }
+    return "\"${spec.name}\" ($type, $required)$detail"
+}
+
+/**
+ * The You must section: the production-enforced authoring rules plus the
+ * authoring-policy sentences, each rendered from its policy claim value so a
+ * claim edit changes the instruction (and vice versa a prose edit breaks the
+ * positive-render oracle).
+ */
+private fun youMustSection(): String {
+    fun policy(id: String): String = IntentWireContract.policySentence(id)
+    fun forbiddenFields(id: String): String = (IntentWireContract.claim(id).semantic as IntentWireContract.Semantic.MobilityForbidden)
+        .forbiddenFields.joinToString(", ") { "\"$it\"" }
+    return """
+        You must:
+        - Use only the properties listed in the Output contract above. Do not add any other property — not as a helpful extra, not under any name. Undefined properties make the whole reply unusable.
+        - Use only the "ref" values that appear in the CONTEXT data below — in "itemIntents[].ref", in "desiredGroup", and in "unresolvedRefs"
+        - Mention every "ref" at most once across "itemIntents" and "unresolvedRefs"; you do not have to cover every ref, and anything you leave out is treated as "no judgment" and is never guessed
+        - ${policy("policy.stringFieldsAsJsonStrings")}, enum values in ${policy("policy.uppercaseEnums")}, and numbers as integers — never decimals
+        - Treat every item with mobility "FIXED" as immovable: ${policy("policy.fixedAuthoring")} for it, or leave it out, or list it under "unresolvedRefs" — never use ${forbiddenFields("mobility.fixedSemanticForbidden")} on it
+        - Treat every item with mobility "CONDITIONAL" as position-flexible only: never use ${forbiddenFields("mobility.conditionalGroupingForbidden")} on it
+        - Treat every item with subject "CANDIDATE" as an app that is not yet on the home screen: never use ${forbiddenFields("mobility.candidatePreserveForbidden")} on it; instead propose its importance, grouping, and page or region preference like for the other apps
+        - Not propose widget spans or sizes, exact screen coordinates, or database changes
+        - Author only what you actually judged: put the items you decided on in "itemIntents" with the fields you chose, and put a "ref" in "unresolvedRefs" only when you explicitly decided not to judge it
+        - If information you need is missing, ask the user before you finalize — do not fill the gap by inventing properties or values, and do not invent a property for an idea the contract cannot express
+    """.trimIndent()
+}
+
+/**
+ * The finalization self-check and the response format (spec 348 Decisions
+ * 2/3): the agent verifies the contract facts right before responding, and
+ * the canonical authoring form is one fenced `json` code block containing
+ * exactly one JSON object — the framing that survives both message copy and
+ * code-block copy on representative provider surfaces (#345 evidence).
+ */
+private val INSTRUCTION_FOOTER = run {
+    val confidence = IntentWireContract.field("confidence")
+    val schemaVersion = IntentWireContract.field("schemaVersion").exactValue!!
+    """
+    Before sending your final answer, verify:
+    - "schemaVersion" is exactly "$schemaVersion" and "exportId" echoes the CONTEXT data
+    - Every property you used is listed in the Output contract — there is no extra field
+    - Enum values are UPPERCASE as listed, "confidence" is an integer ${confidence.min}-${confidence.max}, and "pageAffinity" is within the page range
+    - Every "ref" you used exists in the CONTEXT data and is mentioned at most once
+    - The FIXED, CONDITIONAL, and CANDIDATE rules are respected
+    - Your reply contains exactly one importable JSON artifact
+
+    Response format:
+    Return the final answer as exactly one JSON object inside a single fenced code block that opens with a line containing only ```json and closes with a line containing only ```. The block contains exactly one JSON object and nothing else. Use exactly one code block in the whole reply — do not return multiple candidates. Keep any commentary outside the code block minimal. Do not repeat these instructions or the CONTEXT data.
+    """.trimIndent()
+}
