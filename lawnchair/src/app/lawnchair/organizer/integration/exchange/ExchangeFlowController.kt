@@ -16,6 +16,7 @@ import app.lawnchair.organizer.personalization.exchange.ExchangeImportPipeline
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportResult
 import app.lawnchair.organizer.personalization.exchange.IntentFramingResult
 import app.lawnchair.organizer.personalization.exchange.IntentImportParser
+import app.lawnchair.organizer.personalization.exchange.recognizedInfo
 import app.lawnchair.organizer.planning.CandidateTarget
 
 /**
@@ -144,12 +145,14 @@ class ExchangeFlowController(
             ?: return ExchangeImportOutcome.Pipeline(
                 ExchangeImportResult.Failure(
                     ExchangeImportFailure.Contract(IntentValidationFailure.ExportMismatch),
+                    prepared.recognizedInfo(),
                 ),
             )
         if (session.isExpired(clock())) {
             return ExchangeImportOutcome.Pipeline(
                 ExchangeImportResult.Failure(
                     ExchangeImportFailure.Contract(IntentValidationFailure.SessionExpired),
+                    prepared.recognizedInfo(),
                 ),
             )
         }

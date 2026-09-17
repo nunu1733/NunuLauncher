@@ -66,7 +66,8 @@ Import入力に関係する現行source (すべて確認済み):
 
    - **共通受領helper (新設、private)**: `fun receiveAndImport(text: String)`: envelope検査 (`acceptsExchangeImportEnvelope`。失敗時 `INPUT_OVERSIZE`・state不採用) → **既存manual paste内容を置き換えて** `ExchangeScreen.Importing(text)` へ → 続けて既存 `import(text)` を起動しcommon pathへ。clipboard・file両sourceがこの1つの受領helperへ集約される (AC-5)。
    - `fun importFromClipboard(transport: ClipboardImportTransport)`: 読取 → `Text` は `receiveAndImport(text)` へ。typed失敗 (`EmptyOrUnavailable` → `CLIPBOARD_EMPTY`、`NotText` → `CLIPBOARD_NOT_TEXT`) は新statusを設定し画面・既存入力を保持 (zero-write)。
-   - `importFromFile` 変更: `FileExchangeRead.Text` を `receiveAndImport(read.text)` へ流す (現状の `screen = Importing(read.text)` のみから変更。file選択の1操作でparse結果まで到達する)。`Oversize` / `Failure` は既存どおり `INPUT_OVERSIZE` / `FILE_READ_FAILED`。
+   - `importFromFile` 変更: 読取結果のhopを `settleDispatcher` (writeFileと同一の「transport結果の返却先」seam) に統一した上で、`FileExchangeRead.Text` を `onFileRead` → `receiveAndImport(read.text)` へ流す (現状の `screen = Importing(read.text)` のみから変更。file選択の1操作でparse結果まで到達する)。`Oversize` / `Failure` は既存どおり `INPUT_OVERSIZE` / `FILE_READ_FAILED`。
+   - `onFileRead(read)` (internal): SAF callbackの型付き受領分岐。JVM unit testがframework `Uri` を構築できないため、testはこの分岐を直接呼び、transport呼出を除く受領経路 (file → 受領helper → common path) を検証する。
    - **raw textのephemeral保持 (spec D-6/AC-7)**: 失敗outcomeでraw detailを表示するため、`ExchangeScreen.ImportOutcomeScreen` に取り込みtextの保持fieldを1つ追加する (outcome surface stateの一部)。保持はこの1箇所のみ。`openImport()` (再取り込み)・`close()`・別画面への遷移時に破棄する。editor側の `Importing(replyText)` からoutcome遷移時に移し替え、二重保持しない。diagnostics/log/永続化への書き出しは行わない。
    - `ExchangeStatus.Kind` へ `CLIPBOARD_EMPTY` / `CLIPBOARD_NOT_TEXT` を追加 (`exchangeStatusText` に対応strings)。
    - `ExchangeScreen.Importing` にfieldを足す場合は最小に抑える (editor開閉などの折りたたみ状態はcomposable内の `remember` local stateで十分。holder stateの増設は控える)。
@@ -128,7 +129,7 @@ Import入力に関係する現行source (すべて確認済み):
 | AC | 検証 |
 |---|---|
 | AC-1 | transport unit test (1回読取・textのみ・null/empty/not-text/oversized注入)。listener不在はcode review + `ClipboardImportTransport` が `OnPrimaryClipChangedListener` を参照しないことの構造確認。holder test (読取→`import()` 呼出・置換・失敗時state保持) |
-| AC-2 | holder test (SAF callbackから受領helper経由で共通import path実行・parse結果まで一操作) + 既存 `FileExchangeTransport.read` regression + UI copy存在 (strings test またはcode review) + `takePersistableUriPermission` 不在のreview (現行実装でも未使用、維持) |
+| AC-2 | holder test (`onFileRead` 経由で受領helperへ: file選択の読取結果から共通import path実行・editor置換まで一操作。JVM testはframework `Uri` を構築できないため、transport呼出を除くSAF callback分岐を検証し、`FileExchangeTransport.read` 自体は既存bounded readのregressionに一任) + UI copy存在 (strings test またはcode review) + `takePersistableUriPermission` 不在のreview (現行実装でも未使用、維持) |
 | AC-3 | holder/editor test (巨大textでfield高さ不変・`maxLines` 超過時内部scroll、clear、clipboard/file読込による置換) |
 | AC-4 | 画面構成testまたはinstrumentation (数十KB入力でpaste editor・raw detail双方がbounded)。Compose測定はinstrumentation (`tests/organizer-instrumentation` の既存UI test patternに倣う) またはUI構造assertion |
 | AC-5 | 全source (clipboard/file/manual paste) が同一受領helper・同一 `import()`/pipeline入口へ集約する構造test (holder level。fileの1操作実行を含む) + UI層parse不在のreview |

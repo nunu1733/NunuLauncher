@@ -1,6 +1,8 @@
 package app.lawnchair.organizer.ui.exchange
 
 import android.net.Uri
+import app.lawnchair.organizer.integration.exchange.ClipboardImportRead
+import app.lawnchair.organizer.integration.exchange.ClipboardImportTransport
 import app.lawnchair.organizer.integration.exchange.ExchangeFlowController
 import app.lawnchair.organizer.integration.exchange.ExchangeGenerationResult
 import app.lawnchair.organizer.integration.exchange.ExchangeImportOutcome
@@ -8,22 +10,28 @@ import app.lawnchair.organizer.integration.exchange.ExchangeInputResult
 import app.lawnchair.organizer.integration.exchange.ExchangeStructuralResult
 import app.lawnchair.organizer.integration.exchange.ExchangeTransportFailure
 import app.lawnchair.organizer.integration.exchange.ExchangeTransportResult
+import app.lawnchair.organizer.integration.exchange.FileExchangeRead
 import app.lawnchair.organizer.integration.exchange.FileExchangeTransport
 import app.lawnchair.organizer.personalization.CanonicalStructuralInputs
 import app.lawnchair.organizer.personalization.ContextExportBuilder
+import app.lawnchair.organizer.personalization.ContextExportContract
 import app.lawnchair.organizer.personalization.ExportInputs
 import app.lawnchair.organizer.personalization.ExportSession
 import app.lawnchair.organizer.personalization.ExportSessionStore
 import app.lawnchair.organizer.personalization.IntentCodec
+import app.lawnchair.organizer.personalization.IntentValidationFailure
 import app.lawnchair.organizer.personalization.ItemIntent
 import app.lawnchair.organizer.personalization.PersonalizedIntentV1
 import app.lawnchair.organizer.personalization.PrivacyTier
 import app.lawnchair.organizer.personalization.RandomIdAllocator
 import app.lawnchair.organizer.personalization.SequentialIdAllocator
 import app.lawnchair.organizer.personalization.exchange.ExchangeContract
+import app.lawnchair.organizer.personalization.exchange.ExchangeEnvelopeFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportResult
 import app.lawnchair.organizer.personalization.exchange.ImportNormalizationFailure
+import app.lawnchair.organizer.personalization.exchange.RecognizedImportFraming
+import app.lawnchair.organizer.personalization.exchange.RecognizedImportInfo
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.CapturedItem
 import app.lawnchair.organizer.planning.CapturedPlacement
@@ -74,12 +82,18 @@ class ExchangeFlowStateHolderTest {
     private class FakeStore : ExportSessionStore {
         var session: ExportSession? = null
 
+        /** Issue #332: receipt tests observe that the common import path ran. */
+        var loadCalls = 0
+
         override fun save(session: ExportSession): Boolean {
             this.session = session
             return true
         }
 
-        override fun load(exportId: String): ExportSession? = session?.takeIf { it.exportId == exportId }
+        override fun load(exportId: String): ExportSession? {
+            loadCalls++
+            return session?.takeIf { it.exportId == exportId }
+        }
 
         override fun active(nowEpochMs: Long): ExportSession? = session
 
@@ -157,6 +171,58 @@ class ExchangeFlowStateHolderTest {
             settleDispatcher = Dispatchers.IO,
         )
         return holder to controller
+    }
+
+    /**
+     * Issue #332: receipt tests must observe that the shared receipt helper
+     * actually launched the common import path. `holder.import` hops to
+     * `Dispatchers.Main` for its display update, which does not exist on the
+     * JVM; the handler records that terminal failure (instead of letting it
+     * reach the global handler) so the pre-Main side effects — editor state
+     * and `store.load` — can be asserted deterministically.
+     */
+    private fun newHolderWithRecordedScope(store: FakeStore, now: Long): Triple<ExchangeFlowStateHolder, ExchangeFlowController, MutableList<Throwable>> {
+        val unhandled = mutableListOf<Throwable>()
+        val scope = CoroutineScope(
+            Dispatchers.IO + kotlinx.coroutines.CoroutineExceptionHandler { _, throwable ->
+                synchronized(unhandled) { unhandled.add(throwable) }
+            },
+        )
+        val controller = ExchangeFlowController(
+            composeExportInputs = { ExchangeInputResult.ExportReady(exportInputs(now)) },
+            currentStructuralInputs = { ExchangeStructuralResult.Ready(structural()) },
+            store = store,
+            allocator = SequentialIdAllocator(),
+            clock = { now },
+        )
+        val holder = ExchangeFlowStateHolder(
+            controllerFactory = { controller },
+            run = RecordingRun.get(),
+            scope = scope,
+            settleDispatcher = Dispatchers.IO,
+        )
+        return Triple(holder, controller, unhandled)
+    }
+
+    /** A marker-framed, decodable reply whose export matches no live session. */
+    private fun unmatchedMarkedReply(): String {
+        val intent = PersonalizedIntentV1(exportId = "no-such-export", itemIntents = emptyList())
+        return buildString {
+            append(ExchangeContract.INTENT_BEGIN_MARKER)
+            append('\n')
+            append(IntentCodec.encode(intent).decodeToString())
+            append('\n')
+            append(ExchangeContract.INTENT_END_MARKER)
+        }
+    }
+
+    private fun awaitStoreLoad(store: FakeStore, expected: Int) {
+        var waited = 0
+        while (store.loadCalls < expected && waited < 5_000) {
+            Thread.sleep(50)
+            waited += 50
+        }
+        assertEquals("the common import path must have started", expected, store.loadCalls)
     }
 
     private fun screenStateField(holder: ExchangeFlowStateHolder): androidx.compose.runtime.MutableState<ExchangeScreen> {
@@ -502,6 +568,135 @@ class ExchangeFlowStateHolderTest {
         assertEquals(
             ExchangeImportFailure.Normalization(ImportNormalizationFailure.UnrecognizedFormat),
             (unrecognized.result as ExchangeImportResult.Failure).failure,
+        )
+    }
+
+    // ---- Issue #332: clipboard/file-first receipt (spec AC-1/AC-2/AC-5/AC-6) ----
+
+    @Test
+    fun clipboardEmptyReadKeepsTheScreenAndSetsTheTypedStatus() {
+        val store = FakeStore()
+        val (holder, _) = newHolder(store, now = 1_000_000L)
+        holder.openImport()
+        holder.importFromClipboard(
+            ClipboardImportTransport(throwNoContextForTest()).apply {
+                readOverride = { ClipboardImportRead.EmptyOrUnavailable }
+            },
+        )
+        assertEquals(ExchangeStatus.Kind.CLIPBOARD_EMPTY, holder.status!!.kind)
+        val importing = holder.screen as ExchangeScreen.Importing
+        assertEquals("", importing.replyText)
+        assertEquals(0, store.loadCalls)
+    }
+
+    @Test
+    fun clipboardNonTextReadKeepsTheScreenAndSetsTheTypedStatus() {
+        val store = FakeStore()
+        val (holder, _) = newHolder(store, now = 1_000_000L)
+        holder.openImport()
+        holder.importFromClipboard(
+            ClipboardImportTransport(throwNoContextForTest()).apply {
+                readOverride = { ClipboardImportRead.NotText }
+            },
+        )
+        assertEquals(ExchangeStatus.Kind.CLIPBOARD_NOT_TEXT, holder.status!!.kind)
+        assertEquals("", (holder.screen as ExchangeScreen.Importing).replyText)
+        assertEquals(0, store.loadCalls)
+    }
+
+    @Test
+    fun oversizedClipboardTextIsNotAdoptedAndReportsInputOversize() {
+        val store = FakeStore()
+        val (holder, _) = newHolder(store, now = 1_000_000L)
+        holder.openImport()
+        val oversized = "x".repeat(ExchangeContract.MAX_EXCHANGE_IMPORT_BYTES + 1)
+        holder.importFromClipboard(
+            ClipboardImportTransport(throwNoContextForTest()).apply {
+                readOverride = { ClipboardImportRead.Text(oversized) }
+            },
+        )
+        // The transport read succeeds (no bound owned there); the shared
+        // receipt gate settles the failure and the editor state is untouched.
+        assertEquals(ExchangeStatus.Kind.INPUT_OVERSIZE, holder.status!!.kind)
+        assertEquals("", (holder.screen as ExchangeScreen.Importing).replyText)
+        assertEquals(0, store.loadCalls)
+    }
+
+    @Test
+    fun clipboardTextReceiptReplacesTheEditorAndRunsTheCommonImportPath() {
+        val store = FakeStore()
+        val (holder, _, unhandled) = newHolderWithRecordedScope(store, now = 1_000_000L)
+        holder.openImport()
+        val reply = unmatchedMarkedReply()
+        holder.importFromClipboard(
+            ClipboardImportTransport(throwNoContextForTest()).apply {
+                readOverride = { ClipboardImportRead.Text(reply) }
+            },
+        )
+        // One operation: the editor content is replaced and the common import
+        // path starts (store.load runs after the pipeline decode) without any
+        // further "import" press.
+        val importing = holder.screen as ExchangeScreen.Importing
+        assertEquals(reply, importing.replyText)
+        awaitStoreLoad(store, expected = 1)
+        assertEquals(1, store.loadCalls)
+    }
+
+    @Test
+    fun fileTextReceiptRunsTheSameCommonImportPathInOneOperation() {
+        val store = FakeStore()
+        // The recorded scope swallows the import tail's Main hop (no Main on
+        // the JVM); the pre-Main effects are what this test asserts.
+        val (holder, _, _) = newHolderWithRecordedScope(store, now = 1_000_000L)
+        holder.openImport()
+        val reply = unmatchedMarkedReply()
+        // The typed SAF-callback branch: the read result flows into the SAME
+        // receipt helper as the clipboard — editor replaced and the common
+        // import path started, no extra "import" press (AC-2/AC-5).
+        holder.onFileRead(FileExchangeRead.Text(reply))
+        val importing = holder.screen as ExchangeScreen.Importing
+        assertEquals(reply, importing.replyText)
+        awaitStoreLoad(store, expected = 1)
+    }
+
+    @Test
+    fun oversizedFileTextIsRejectedByTheSharedEnvelopeGate() {
+        val store = FakeStore()
+        val (holder, _) = newHolder(store, now = 1_000_000L)
+        holder.openImport()
+        val oversized = "x".repeat(ExchangeContract.MAX_EXCHANGE_IMPORT_BYTES + 1)
+        holder.onFileRead(FileExchangeRead.Text(oversized))
+        assertEquals(ExchangeStatus.Kind.INPUT_OVERSIZE, holder.status!!.kind)
+        assertEquals("", (holder.screen as ExchangeScreen.Importing).replyText)
+        assertEquals(0, store.loadCalls)
+    }
+
+    @Test
+    fun fileReadFailureSetsTheTypedFileStatusAndKeepsTheEditor() {
+        val store = FakeStore()
+        val (holder, _) = newHolder(store, now = 1_000_000L)
+        holder.openImport()
+        holder.onFileRead(FileExchangeRead.Failure)
+        assertEquals(ExchangeStatus.Kind.FILE_READ_FAILED, holder.status!!.kind)
+        assertEquals("", (holder.screen as ExchangeScreen.Importing).replyText)
+        assertEquals(0, store.loadCalls)
+    }
+
+    @Test
+    fun displayInfoProjectionMapsOnlyTheRecognizedMetadata() {
+        // Issue #332 (spec D-5): the pure projection surfaces only the
+        // seam-derived recognition metadata; failures without it display
+        // nothing extra.
+        assertEquals(ExchangeImportDisplayInfo(), exchangeImportDisplayInfo(null))
+        val bare = ExchangeImportResult.Failure(ExchangeImportFailure.Envelope(ExchangeEnvelopeFailure.FramingMissing))
+        assertEquals(ExchangeImportDisplayInfo(), exchangeImportDisplayInfo(bare))
+        val full = ExchangeImportResult.Failure(
+            ExchangeImportFailure.Contract(IntentValidationFailure.SessionExpired),
+            RecognizedImportInfo(RecognizedImportFraming.MARKER, ContextExportContract.INTENT_SCHEMA_VERSION, 2),
+        )
+        assertEquals(
+            ExchangeImportDisplayInfo(RecognizedImportFraming.MARKER, ContextExportContract.INTENT_SCHEMA_VERSION, 2),
+            exchangeImportDisplayInfo(full),
         )
     }
 
