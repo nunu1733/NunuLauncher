@@ -69,7 +69,7 @@ accepted (既存run接続) or zero-write reject
 - arbitrary free textからのIntent推論、AI responseの自動修復LLM呼び出し、invalid Intentのpartial apply (Issue本文のnon-goals)。
 - provider (ChatGPT/Gemini) 固有formatへの密結合。認識する外形はprovider中立なtext構造のみ。
 - import入力の取得UX (clipboard読込・file選択・bounded editor・parse結果中心表示) は #332 の対象。本specのnormalizerはpure parser責務であり、UI・入力取得を持たない。
-- exchange packageのinstruction部 (AIへの要求形式) の変更。prompt/interview設計は #327、import成功後の状態表示は #328 の対象。本specはAIが **従来どおりのmarker形式を返すことを引き続き要求する前提** のまま、marker以外で戻ってきた場合の揺らぎのみ吸収する。
+- exchange packageのinstruction部 (AIへの要求形式) の変更。prompt/interview設計は #327、import成功後の状態表示は #328 の対象。受信側のaccepted framing (marker / fenced `json` / standalone JSON) は本specのまま不変で、marker以外で戻ってきた場合の揺らぎのみ吸収する。**AIへのproducer側要求 (canonical authoring form) は [spec 348](../348-exchange-ai-facing-contract/spec.md) が所有し、現行はfenced `json` block 1個を要求する** (marker形式の要求は廃止済み。受信受理は本spec D-1のまま) (issue #348 Phase 2で本文から旧前提を除去)。
 - markdown全体 (CommonMark) の実装。fence認識は簡易決定性grammarに限定する (D-4)。
 - #205のexchange framing規則 (marker形式の抽出規則・typed失敗3種) の変更。marker形式はaccepted framingの優先形式として現行規則のまま残る。**AIへのproducer側要求 (canonical authoring form) の変更は本specの対象外であり、[spec 348](../348-exchange-ai-facing-contract/spec.md) が所有する** (issue #348 Phase 1受入時に用語を分離)。
 

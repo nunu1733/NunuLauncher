@@ -29,12 +29,16 @@ object ExchangePackageComposer {
     /**
      * Composes the package for one canonical export JSON document. The data
      * must be the #204 codec's canonical single-line JSON; the composer never
-     * interprets or rewraps it.
+     * interprets or rewraps it. Section order follows accepted spec 348
+     * Decision 3: Goal / You may / Output contract / You must / [CONTEXT
+     * data] / Before sending your final answer + Response format.
      */
     fun compose(exportJson: String): String = buildString {
-        append(INSTRUCTION_HEADER.trim('\n'))
+        append(INSTRUCTION_OPEN.trim('\n'))
         append('\n')
         append(outputContractSection())
+        append('\n')
+        append(YOU_MUST_SECTION.trim('\n'))
         append('\n')
         append(CONTEXT_BEGIN_MARKER)
         append('\n')
@@ -99,16 +103,11 @@ enum class PackageStructureProblem {
 }
 
 /**
- * The agent-facing instruction part (spec 205 Decision 2 as amended by spec
- * 348): English sections Goal / You may / Output contract / You must / Before
- * sending your final answer / Response format. The Output contract section is
- * rendered from [IntentWireContract] so the allowed properties, enum
- * spellings, and numeric limits are production truth, not hand-written text.
- * The header ends right before the CONTEXT marker; the footer reminds the
- * response format after the data so the single-fenced-block requirement is
- * the last thing the agent reads.
+ * The agent-facing instruction opening (spec 205 Decision 2 as amended by
+ * spec 348 Decision 3): the Goal and You may sections. The header ends right
+ * before the Output contract section.
  */
-private const val INSTRUCTION_HEADER = """
+private const val INSTRUCTION_OPEN = """
 NunuLauncher External Agent Exchange
 
 Goal:
@@ -119,18 +118,6 @@ You may:
 - Compare multiple sources about app purposes and relationships
 - Consider the usage signals and the current grouping in the CONTEXT data as preference signals
 - Ask the user clarifying questions while you work, before you finalize
-
-You must:
-- Use only the properties listed in the Output contract below. Do not add any other property — not as a helpful extra, not under any name. Undefined properties make the whole reply unusable.
-- Use only the "ref" values that appear in the CONTEXT data below — in "itemIntents[].ref", in "desiredGroup", and in "unresolvedRefs"
-- Mention every "ref" at most once across "itemIntents" and "unresolvedRefs"; you do not have to cover every ref, and anything you leave out is treated as "no judgment" and is never guessed
-- Write string values as JSON strings, enum values in UPPERCASE exactly as listed, and numbers as integers — never decimals
-- Treat every item with mobility "FIXED" as immovable: author only "preserve": true for it, or leave it out, or list it under "unresolvedRefs" — no other field is allowed on it
-- Treat every item with mobility "CONDITIONAL" as position-flexible only: never use "desiredGroup" or "groupSemantic" for it
-- Treat every item with subject "CANDIDATE" as an app that is not yet on the home screen: never use "preserve" for it; instead propose its importance, grouping, and page or region preference like for the other apps
-- Not propose widget spans or sizes, exact screen coordinates, or database changes
-- Author only what you actually judged: put the items you decided on in "itemIntents" with the fields you chose, and put a "ref" in "unresolvedRefs" only when you explicitly decided not to judge it
-- If information you need is missing, ask the user before you finalize — do not fill the gap by inventing properties or values, and do not invent a property for an idea the contract cannot express
 """
 
 /**
@@ -182,6 +169,24 @@ private fun renderField(field: IntentWireContract.WireField): String {
     }
     return "\"${field.name}\" ($type, $required)$detail"
 }
+
+/**
+ * The You must section: the production-enforced authoring rules plus the
+ * FIXED authoring policy and the ask-before-final rule.
+ */
+private const val YOU_MUST_SECTION = """
+You must:
+- Use only the properties listed in the Output contract above. Do not add any other property — not as a helpful extra, not under any name. Undefined properties make the whole reply unusable.
+- Use only the "ref" values that appear in the CONTEXT data below — in "itemIntents[].ref", in "desiredGroup", and in "unresolvedRefs"
+- Mention every "ref" at most once across "itemIntents" and "unresolvedRefs"; you do not have to cover every ref, and anything you leave out is treated as "no judgment" and is never guessed
+- Write string values as JSON strings, enum values in UPPERCASE exactly as listed, and numbers as integers — never decimals
+- Treat every item with mobility "FIXED" as immovable: author only "preserve": true for it, or leave it out, or list it under "unresolvedRefs" — no other field is allowed on it
+- Treat every item with mobility "CONDITIONAL" as position-flexible only: never use "desiredGroup" or "groupSemantic" for it
+- Treat every item with subject "CANDIDATE" as an app that is not yet on the home screen: never use "preserve" for it; instead propose its importance, grouping, and page or region preference like for the other apps
+- Not propose widget spans or sizes, exact screen coordinates, or database changes
+- Author only what you actually judged: put the items you decided on in "itemIntents" with the fields you chose, and put a "ref" in "unresolvedRefs" only when you explicitly decided not to judge it
+- If information you need is missing, ask the user before you finalize — do not fill the gap by inventing properties or values, and do not invent a property for an idea the contract cannot express
+"""
 
 /**
  * The finalization self-check and the response format (spec 348 Decisions

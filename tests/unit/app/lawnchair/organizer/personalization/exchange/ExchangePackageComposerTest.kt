@@ -55,6 +55,24 @@ class ExchangePackageComposerTest {
     }
 
     @Test
+    fun sectionsAppearInTheSpecifiedOrder() {
+        // Spec 348 Decision 3: Goal / You may / Output contract / You must /
+        // Before sending your final answer / Response format.
+        val pkg = ExchangePackageComposer.compose(exportJson)
+        val headings = listOf(
+            "Goal:",
+            "You may:",
+            "Output contract (",
+            "You must:",
+            "Before sending your final answer, verify:",
+            "Response format:",
+        )
+        val indexes = headings.map { pkg.indexOf(it) }
+        assertTrue("a heading is missing: $indexes", indexes.all { it >= 0 })
+        assertEquals("headings out of order: $indexes", indexes, indexes.sorted())
+    }
+
+    @Test
     fun instructionAsksForPartialAuthoringInsteadOfFullCoverage() {
         // Issue #330 (v3, spec 330 contract detail 9): the v2 "cover every ref
         // exactly once" requirement is replaced by the partial-authoring

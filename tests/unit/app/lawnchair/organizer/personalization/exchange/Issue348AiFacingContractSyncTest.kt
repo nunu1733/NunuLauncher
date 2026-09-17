@@ -44,17 +44,79 @@ import org.junit.Test
  * Issue #348: the AI-facing contract of the exchange package stays in sync
  * with production truth (accepted spec 348).
  *
- * Two test lanes (plan "Modules and interfaces"):
- * - production acceptance/failure fixtures (parity matrix, policy matrix
- *   canonical-acceptance half, golden, #345 regressions) run through
- *   `ExchangeImportPipeline.import` — the production seam;
- * - descriptor/instruction direct checks (allow-list equality evidence,
- *   descriptor-derived rendering, self-check / ask-before-final pinning,
- *   repair-loop absence) are direct unit oracles.
+ * Oracle structure (accepted AC-2/AC-3): the descriptor's
+ * [IntentWireContract.claims] are the sync surface. The test fixes the
+ * expected claim-id sets, asserts set equality against the descriptor (so a
+ * reclassification, addition, or removal of a claim surfaces as a test
+ * failure), then executes one keyed production-path case per
+ * `PRODUCTION_ENFORCED` claim (counterfactual: a claim edited against
+ * production fails its case) and one positive-render assertion per
+ * `AUTHORING_POLICY` claim, with the canonical acceptance fixtures pinning
+ * `canonical ⊆ accepted`.
+ *
+ * Lanes: parity/acceptance/golden/regression fixtures run through
+ * `ExchangeImportPipeline.import` (the production seam); descriptor and
+ * instruction renderings are asserted directly.
  */
 class Issue348AiFacingContractSyncTest {
 
     private val now = 1_000_000L
+
+    /**
+     * The fixed oracle set of production-enforced claim ids. Editing the
+     * descriptor's classification against this set (or against production)
+     * fails the claim-set test or the keyed parity case.
+     */
+    private val expectedProductionClaimIds = setOf(
+        "schemaVersion.presence",
+        "schemaVersion.exactValue",
+        "exportId.presence",
+        "item.ref.presence",
+        "itemIntents.containerType",
+        "unresolvedRefs.containerType",
+        "globalPreference.containerType",
+        "desiredGroup.containerType",
+        "groupSemantic.containerType",
+        "importance.enum",
+        "regionAffinity.enum",
+        "confidence.valueType",
+        "confidence.valueBound",
+        "pageAffinity.valueType",
+        "pageAffinity.exportBound",
+        "preserve.valueType",
+        "minimizeMovement.valueType",
+        "groupSemantic.anyOf",
+        "mobility.fixedSemanticForbidden",
+        "mobility.conditionalGroupingForbidden",
+        "mobility.candidatePreserveForbidden",
+        "refScope.itemIntents",
+        "refScope.desiredGroup",
+        "refScope.unresolvedRefs",
+        "refPartition.duplicate",
+        "refPartition.disjoint",
+        "rationale.lengthLimit",
+        "groupSemantic.freeText.lengthLimit",
+        "itemIntents.entryLimit",
+        "unresolvedRefs.entryLimit",
+    )
+
+    /** The fixed oracle set of authoring-policy claim ids. */
+    private val expectedPolicyClaimIds = setOf(
+        "policy.stringFieldsAsJsonStrings",
+        "policy.uppercaseEnums",
+        "policy.stringListElements",
+        "policy.desiredGroupNonEmpty",
+        "policy.fixedAuthoring",
+    )
+
+    /** Positive render per authoring-policy claim id (AC-3 policy matrix). */
+    private val expectedPolicyRenders = mapOf(
+        "policy.stringFieldsAsJsonStrings" to "Write string values as JSON strings",
+        "policy.uppercaseEnums" to "UPPERCASE exactly as listed",
+        "policy.stringListElements" to "array of strings",
+        "policy.desiredGroupNonEmpty" to "if present, non-empty",
+        "policy.fixedAuthoring" to "author only \"preserve\": true",
+    )
 
     // ---- builders (same harness pattern as ExchangeImportPipelineTest) ----
 
@@ -142,7 +204,23 @@ class Issue348AiFacingContractSyncTest {
 
     private fun canonicalPayload(built: BuiltExport): String = doc(built, canonicalEntries(built))
 
-    // ================= Lane 1: descriptor ↔ codec key sets =================
+    // ============ Claim-set equality (descriptor ↔ fixed oracles) ============
+
+    @Test
+    fun productionClaimsMatchTheFixedOracleSet() {
+        assertEquals(expectedProductionClaimIds, IntentWireContract.productionClaims.map { it.id }.toSet())
+        assertEquals(
+            IntentWireContract.claims.size,
+            IntentWireContract.productionClaims.size + IntentWireContract.authoringPolicyClaims.size,
+        )
+    }
+
+    @Test
+    fun authoringPolicyClaimsMatchTheFixedOracleSet() {
+        assertEquals(expectedPolicyClaimIds, IntentWireContract.authoringPolicyClaims.map { it.id }.toSet())
+    }
+
+    // ============ Lane 1: descriptor ↔ codec key sets (allow-list evidence) ============
 
     @Test
     fun everyTopLevelDescriptorNameIsAcceptedByTheCodec() {
@@ -251,165 +329,169 @@ class Issue348AiFacingContractSyncTest {
         }
     }
 
-    // ========= Lane 3: production-enforced parity matrix (pipeline) =========
+    // ==== Lane 3: production-enforced parity matrix, keyed by claim id ====
 
     private fun parityState(): Pair<BuiltExport, CanonicalStructuralInputs> = buildState(
         items = listOf(app("a"), app("b", x = 1), docked("d"), widget("w")),
         additions = listOf(candidate("com.example.c")),
     )
 
-    @Test
-    fun productionEnforcedParityMatrix() {
-        val (built, structural) = parityState()
+    /**
+     * One parity case per `PRODUCTION_ENFORCED` claim id (spec 348 AC-2/AC-3):
+     * the payload violates exactly the claim's constraint, the expected
+     * failure is the single recorded typed identity, and the case runs on the
+     * production pipeline. Editing a claim against production fails its case;
+     * adding, removing, or reclassifying a claim fails the set equality
+     * tests above.
+     */
+    private fun parityCases(
+        built: BuiltExport,
+    ): Map<String, Pair<String, ExchangeImportFailure>> {
         val movable = built.export.items.first { it.mobility == Mobility.MOVABLE }.ref
-        val other = built.export.items.first { it.ref != movable && it.mobility == Mobility.MOVABLE }.ref
         val fixed = built.export.items.first { it.mobility == Mobility.FIXED }.ref
         val conditional = built.export.items.first { it.mobility == Mobility.CONDITIONAL }.ref
         val candidateRef = built.export.items.first { it.mobility == Mobility.CANDIDATE }.ref
+        val overLimitString = "x".repeat(IntentWireContract.maxRationaleChars + 1)
+        val overLimitFreeText = "x".repeat(IntentWireContract.maxGroupSemanticFreeTextChars + 1)
+        val overLimitEntries = (0..IntentWireContract.maxItemIntents).joinToString(",") { "{\"ref\":\"e$it\"}" }
+        val overLimitUnresolved = (0..IntentWireContract.maxUnresolvedRefs).joinToString(",") { "\"e$it\"" }
 
-        val rows: List<Triple<String, String, ExchangeImportFailure>> = listOf(
-            // Presence / container shape (decode).
-            Triple(
-                "schemaVersion missing",
-                "{\"exportId\":\"${built.export.exportId}\"}",
-                contract(IntentValidationFailure.SchemaMismatch),
-            ),
-            Triple(
-                "exportId missing",
-                "{\"schemaVersion\":\"$schemaVersion\"}",
-                contract(IntentValidationFailure.SchemaMismatch),
-            ),
-            Triple(
-                "item ref missing",
-                doc(built, "{}"),
-                contract(IntentValidationFailure.SchemaMismatch),
-            ),
-            Triple(
-                "itemIntents not an array",
-                "{\"schemaVersion\":\"$schemaVersion\",\"exportId\":\"${built.export.exportId}\",\"itemIntents\":\"oops\"}",
-                contract(IntentValidationFailure.SchemaMismatch),
-            ),
-            Triple(
-                "unresolvedRefs not an array",
-                doc(built, entry(movable, ",\"preserve\":true"), unresolved = ",\"unresolvedRefs\":\"oops\""),
-                contract(IntentValidationFailure.SchemaMismatch),
-            ),
-            // Canonical JSON types (decode).
-            Triple(
-                "confidence non-integer",
-                doc(built, entry(movable, ",\"preserve\":true"), top = ",\"confidence\":\"high\""),
-                contract(IntentValidationFailure.InvalidEnum),
-            ),
-            Triple(
-                "preserve non-boolean",
-                doc(built, entry(movable, ",\"preserve\":\"yes\"")),
-                contract(IntentValidationFailure.SchemaMismatch),
-            ),
-            Triple(
-                "pageAffinity non-integer",
-                doc(built, entry(movable, ",\"pageAffinity\":\"top\"")),
-                contract(IntentValidationFailure.InvalidEnum),
-            ),
-            Triple(
-                "importance lowercase (spec 345)",
-                doc(built, entry(movable, ",\"importance\":\"high\"")),
-                contract(IntentValidationFailure.InvalidEnum),
-            ),
-            Triple(
-                "regionAffinity outside the enum",
-                doc(built, entry(movable, ",\"regionAffinity\":\"top\"")),
-                contract(IntentValidationFailure.InvalidEnum),
-            ),
-            Triple(
-                "importance outside the enum",
-                doc(built, entry(movable, ",\"importance\":\"WHENEVER\"")),
-                contract(IntentValidationFailure.InvalidEnum),
-            ),
-            Triple(
-                "confidence decimal (spec 345)",
-                doc(built, entry(movable, ",\"preserve\":true"), top = ",\"confidence\":0.82"),
-                contract(IntentValidationFailure.InvalidEnum),
-            ),
-            Triple(
-                "groupSemantic both members absent",
-                doc(built, entry(movable, ",\"groupSemantic\":{}")),
-                contract(IntentValidationFailure.SchemaMismatch),
-            ),
-            // Validator-owned bounds and ref rules.
-            Triple(
-                "confidence below the bound",
-                doc(built, entry(movable, ",\"preserve\":true"), top = ",\"confidence\":${IntentWireContract.confidenceMin - 1}"),
-                contract(IntentValidationFailure.InvalidEnum),
-            ),
-            Triple(
-                "confidence above the bound",
-                doc(built, entry(movable, ",\"preserve\":true"), top = ",\"confidence\":${IntentWireContract.confidenceMax + 1}"),
-                contract(IntentValidationFailure.InvalidEnum),
-            ),
-            Triple(
-                "unknown ref in itemIntents",
-                doc(built, entry("zzz", ",\"preserve\":true")),
-                contract(IntentValidationFailure.UnknownRef("zzz")),
-            ),
-            Triple(
-                "unknown ref in desiredGroup",
-                doc(built, entry(movable, ",\"desiredGroup\":[\"zzz\"]")),
-                contract(IntentValidationFailure.UnknownRef("zzz")),
-            ),
-            Triple(
-                "unknown ref in unresolvedRefs",
-                doc(built, entry(movable, ",\"preserve\":true"), unresolved = ",\"unresolvedRefs\":[\"zzz\"]"),
-                contract(IntentValidationFailure.UnknownRef("zzz")),
-            ),
-            Triple(
-                "duplicate ref in itemIntents",
-                doc(built, "${entry(movable, ",\"preserve\":true")},${entry(movable)}"),
-                contract(IntentValidationFailure.DuplicateRef),
-            ),
-            Triple(
-                "ref in both partitions",
-                "{\"schemaVersion\":\"$schemaVersion\",\"exportId\":\"${built.export.exportId}\"," +
-                    "\"itemIntents\":[{\"ref\":\"$movable\",\"preserve\":true}],\"unresolvedRefs\":[\"$movable\"]}",
-                contract(IntentValidationFailure.IncompleteCoverage),
-            ),
-            Triple(
-                "duplicate ref inside unresolvedRefs",
-                doc(built, entry(movable, ",\"preserve\":true"), unresolved = ",\"unresolvedRefs\":[\"$other\",\"$other\"]"),
-                contract(IntentValidationFailure.IncompleteCoverage),
-            ),
-            // Mobility rules (production-enforced half).
-            Triple(
-                "FIXED gains a semantic field",
-                doc(built, entry(fixed, ",\"importance\":\"$importanceCanonical\"")),
-                contract(IntentValidationFailure.MobilityContradiction(fixed)),
-            ),
-            Triple(
-                "CONDITIONAL gains grouping",
-                doc(built, entry(conditional, ",\"desiredGroup\":[\"$movable\"]")),
-                contract(IntentValidationFailure.MobilityContradiction(conditional)),
-            ),
-            Triple(
-                "CANDIDATE claims preserve",
-                doc(built, entry(candidateRef, ",\"preserve\":true")),
-                contract(IntentValidationFailure.MobilityContradiction(candidateRef)),
-            ),
+        fun payload(itemEntries: String, top: String = "", unresolved: String = "") = doc(built, itemEntries, top = top, unresolved = unresolved)
+
+        return mapOf(
+            "schemaVersion.presence" to
+                ("{\"exportId\":\"${built.export.exportId}\"}" to contract(IntentValidationFailure.SchemaMismatch)),
+            "schemaVersion.exactValue" to
+                (
+                    "{\"schemaVersion\":\"personalized-intent-v2\",\"exportId\":\"${built.export.exportId}\"}" to
+                        contract(IntentValidationFailure.SchemaMismatch)
+                    ),
+            "exportId.presence" to
+                ("{\"schemaVersion\":\"$schemaVersion\"}" to contract(IntentValidationFailure.SchemaMismatch)),
+            "item.ref.presence" to
+                (payload("{}") to contract(IntentValidationFailure.SchemaMismatch)),
+            "itemIntents.containerType" to
+                (
+                    "{\"schemaVersion\":\"$schemaVersion\",\"exportId\":\"${built.export.exportId}\",\"itemIntents\":\"oops\"}" to
+                        contract(IntentValidationFailure.SchemaMismatch)
+                    ),
+            "unresolvedRefs.containerType" to
+                (payload(entry(movable, ",\"preserve\":true"), unresolved = ",\"unresolvedRefs\":\"oops\"") to contract(IntentValidationFailure.SchemaMismatch)),
+            "globalPreference.containerType" to
+                (payload(entry(movable, ",\"preserve\":true"), top = ",\"globalPreference\":\"oops\"") to contract(IntentValidationFailure.SchemaMismatch)),
+            "desiredGroup.containerType" to
+                (payload(entry(movable, ",\"desiredGroup\":\"oops\"")) to contract(IntentValidationFailure.SchemaMismatch)),
+            "groupSemantic.containerType" to
+                (payload(entry(movable, ",\"groupSemantic\":\"oops\"")) to contract(IntentValidationFailure.SchemaMismatch)),
+            "importance.enum" to
+                (payload(entry(movable, ",\"importance\":\"WHENEVER\"")) to contract(IntentValidationFailure.InvalidEnum)),
+            "regionAffinity.enum" to
+                (payload(entry(movable, ",\"regionAffinity\":\"SIDEWAYS\"")) to contract(IntentValidationFailure.InvalidEnum)),
+            "confidence.valueType" to
+                (payload(entry(movable, ",\"preserve\":true"), top = ",\"confidence\":\"high\"") to contract(IntentValidationFailure.InvalidEnum)),
+            "confidence.valueBound" to
+                (payload(entry(movable, ",\"preserve\":true"), top = ",\"confidence\":${IntentWireContract.confidenceMax + 1}") to contract(IntentValidationFailure.InvalidEnum)),
+            "pageAffinity.valueType" to
+                (payload(entry(movable, ",\"pageAffinity\":\"top\"")) to contract(IntentValidationFailure.InvalidEnum)),
+            "pageAffinity.exportBound" to
+                // The parity state exports a single page, so ordinal 1 is out of range.
+                (payload(entry(movable, ",\"pageAffinity\":1")) to contract(IntentValidationFailure.InvalidEnum)),
+            "preserve.valueType" to
+                (payload(entry(movable, ",\"preserve\":\"yes\"")) to contract(IntentValidationFailure.SchemaMismatch)),
+            "minimizeMovement.valueType" to
+                (
+                    payload(entry(movable, ",\"preserve\":true"), top = ",\"globalPreference\":{\"minimizeMovement\":\"yes\"}") to
+                        contract(IntentValidationFailure.SchemaMismatch)
+                    ),
+            "groupSemantic.anyOf" to
+                (payload(entry(movable, ",\"groupSemantic\":{}")) to contract(IntentValidationFailure.SchemaMismatch)),
+            "mobility.fixedSemanticForbidden" to
+                (payload(entry(fixed, ",\"importance\":\"$importanceCanonical\"")) to contract(IntentValidationFailure.MobilityContradiction(fixed))),
+            "mobility.conditionalGroupingForbidden" to
+                (payload(entry(conditional, ",\"desiredGroup\":[\"$movable\"]")) to contract(IntentValidationFailure.MobilityContradiction(conditional))),
+            "mobility.candidatePreserveForbidden" to
+                (payload(entry(candidateRef, ",\"preserve\":true")) to contract(IntentValidationFailure.MobilityContradiction(candidateRef))),
+            "refScope.itemIntents" to
+                (payload(entry("zzz", ",\"preserve\":true")) to contract(IntentValidationFailure.UnknownRef("zzz"))),
+            "refScope.desiredGroup" to
+                (payload(entry(movable, ",\"desiredGroup\":[\"zzz\"]")) to contract(IntentValidationFailure.UnknownRef("zzz"))),
+            "refScope.unresolvedRefs" to
+                (payload(entry(movable, ",\"preserve\":true"), unresolved = ",\"unresolvedRefs\":[\"zzz\"]") to contract(IntentValidationFailure.UnknownRef("zzz"))),
+            "refPartition.duplicate" to
+                (payload("${entry(movable, ",\"preserve\":true")},${entry(movable)}") to contract(IntentValidationFailure.DuplicateRef)),
+            "refPartition.disjoint" to
+                (
+                    payload(entry(movable, ",\"preserve\":true"), unresolved = ",\"unresolvedRefs\":[\"$movable\"]") to
+                        contract(IntentValidationFailure.IncompleteCoverage)
+                    ),
+            "rationale.lengthLimit" to
+                (payload(entry(movable, ",\"preserve\":true"), top = ",\"rationale\":\"$overLimitString\"") to contract(IntentValidationFailure.Oversize)),
+            "groupSemantic.freeText.lengthLimit" to
+                (payload(entry(movable, ",\"groupSemantic\":{\"freeText\":\"$overLimitFreeText\"}")) to contract(IntentValidationFailure.Oversize)),
+            "itemIntents.entryLimit" to
+                (payload(overLimitEntries) to contract(IntentValidationFailure.Oversize)),
+            "unresolvedRefs.entryLimit" to
+                (payload(entry(movable, ",\"preserve\":true"), unresolved = ",\"unresolvedRefs\":[$overLimitUnresolved]") to contract(IntentValidationFailure.Oversize)),
         )
-        for ((name, payload, expected) in rows) {
-            assertEquals(name, expected, failureOf(fencedReply(payload), built, structural))
+    }
+
+    @Test
+    fun everyProductionClaimHasAKeyedParityCaseOnTheProductionPath() {
+        val (built, structural) = parityState()
+        val cases = parityCases(built)
+        assertEquals(expectedProductionClaimIds, cases.keys.toSet())
+        for ((claimId, case) in cases) {
+            val (payload, expected) = case
+            assertEquals("parity case $claimId", expected, failureOf(fencedReply(payload), built, structural))
         }
     }
 
     @Test
-    fun pageAffinityStaysInsideTheExportedPageRange() {
-        val (built, structural) = buildState(items = listOf(app("a")), pageCount = 2)
+    fun legalBoundaryValuesValidate() {
+        val (built, structural) = parityState()
         val movable = built.export.items.first { it.mobility == Mobility.MOVABLE }.ref
-        val lastPage = doc(built, entry(movable, ",\"pageAffinity\":1"))
-        assertTrue(importOf(fencedReply(lastPage), built, structural) is ExchangeImportResult.Validated)
-        val pastLastPage = lastPage.replace("\"pageAffinity\":1", "\"pageAffinity\":2")
-        assertEquals(
-            contract(IntentValidationFailure.InvalidEnum),
-            failureOf(fencedReply(pastLastPage), built, structural),
+        val inBoundConfidence = doc(
+            built,
+            entry(movable, ",\"preserve\":true"),
+            top = ",\"confidence\":${IntentWireContract.confidenceMax}",
         )
+        assertTrue(importOf(fencedReply(inBoundConfidence), built, structural) is ExchangeImportResult.Validated)
+    }
+
+    // ========= Lane 4: authoring policy matrix (canonical ⊆ accepted) =========
+
+    @Test
+    fun everyAuthoringPolicyClaimIsPositivelyRendered() {
+        val pkg = ExchangePackageComposer.compose("{}")
+        assertEquals(expectedPolicyClaimIds, expectedPolicyRenders.keys.toSet())
+        for ((claimId, rendered) in expectedPolicyRenders) {
+            assertTrue("policy $claimId not rendered", pkg.contains(rendered))
+        }
+    }
+
+    @Test
+    fun goldenCanonicalFencedReplyValidatesThroughTheProductionPipeline() {
+        // AC-4: a reply authored exactly per the instruction (canonical
+        // authoring representation) in the canonical authoring form (one
+        // fenced `json` block) reaches validation and completion. This
+        // acceptance case covers every authoring-policy claim
+        // (`canonical ⊆ accepted`).
+        val (built, structural) = parityState()
+        val result = importOf(fencedReply(canonicalPayload(built)), built, structural)
+        assertTrue(result is ExchangeImportResult.Validated)
+        val validated = (result as ExchangeImportResult.Validated).validated
+        assertEquals(built.export.exportId, validated.intent.exportId)
+        assertEquals(0, validated.completed.omittedCount)
+    }
+
+    @Test
+    fun partialCanonicalAuthoringCompletesOmissionsWithoutGuessing() {
+        val (built, structural) = parityState()
+        val movable = built.export.items.first { it.mobility == Mobility.MOVABLE }.ref
+        val payload = doc(built, entry(movable, ",\"preserve\":true"))
+        val result = importOf(fencedReply(payload), built, structural) as ExchangeImportResult.Validated
+        // Everything the AI did not judge is canonical unresolved, never guessed.
+        assertEquals(built.export.items.size - 1, result.validated.completed.omittedCount)
     }
 
     @Test
@@ -438,40 +520,6 @@ class Issue348AiFacingContractSyncTest {
         // Spec 330 completion: the bare entry and authored decisions only —
         // nothing was omitted in this document.
         assertEquals(0, result.validated.completed.omittedCount)
-    }
-
-    // ========= Lane 4: authoring policy matrix (canonical ⊆ accepted) =========
-
-    @Test
-    fun authoringPoliciesArePositivelyRendered() {
-        val pkg = ExchangePackageComposer.compose("{}")
-        assertTrue(pkg.contains("Write string values as JSON strings"))
-        assertTrue(pkg.contains("if present, non-empty"))
-        assertTrue(pkg.contains("author only \"preserve\": true"))
-        assertTrue(pkg.contains("UPPERCASE exactly as listed"))
-    }
-
-    @Test
-    fun goldenCanonicalFencedReplyValidatesThroughTheProductionPipeline() {
-        // AC-4: a reply authored exactly per the instruction (canonical
-        // authoring representation) in the canonical authoring form (one
-        // fenced `json` block) reaches validation and completion.
-        val (built, structural) = parityState()
-        val result = importOf(fencedReply(canonicalPayload(built)), built, structural)
-        assertTrue(result is ExchangeImportResult.Validated)
-        val validated = (result as ExchangeImportResult.Validated).validated
-        assertEquals(built.export.exportId, validated.intent.exportId)
-        assertEquals(0, validated.completed.omittedCount)
-    }
-
-    @Test
-    fun partialCanonicalAuthoringCompletesOmissionsWithoutGuessing() {
-        val (built, structural) = parityState()
-        val movable = built.export.items.first { it.mobility == Mobility.MOVABLE }.ref
-        val payload = doc(built, entry(movable, ",\"preserve\":true"))
-        val result = importOf(fencedReply(payload), built, structural) as ExchangeImportResult.Validated
-        // Everything the AI did not judge is canonical unresolved, never guessed.
-        assertEquals(built.export.items.size - 1, result.validated.completed.omittedCount)
     }
 
     // ========= Lane 5: #345 contract-invalid regression fixtures =========
