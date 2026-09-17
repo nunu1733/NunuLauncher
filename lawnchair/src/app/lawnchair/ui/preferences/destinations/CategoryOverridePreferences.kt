@@ -25,6 +25,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.ui.CategoryOverrideApp
 import app.lawnchair.organizer.ui.CategoryOverrideAuthoringCoordinator
 import app.lawnchair.organizer.ui.CategoryOverrideAuthoringResult
@@ -51,16 +52,20 @@ internal fun CategoryOverridePreferences(
     val authoring = coordinator ?: remember { CategoryOverrideAuthoringCoordinator(context) }
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
-    var categoryOptions by remember { mutableStateOf<List<CategoryId>?>(null) }
+    var categoryOptions by remember { mutableStateOf<List<CategoryIdentity>?>(null) }
+    var userDefinedNames by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var loadResult by remember { mutableStateOf<CategoryOverrideAuthoringResult?>(null) }
     var selectedApp by remember { mutableStateOf<CategoryOverrideApp?>(null) }
-    var pendingCategory by remember { mutableStateOf<CategoryId?>(null) }
+    var pendingCategory by remember { mutableStateOf<CategoryIdentity?>(null) }
     var message by remember { mutableStateOf<Int?>(null) }
 
     fun reload() {
         scope.launch {
             val options = withContext(Dispatchers.IO) { authoring.categories() }
             categoryOptions = options
+            userDefinedNames = withContext(Dispatchers.IO) {
+                authoring.userDefinedEntries().orEmpty().associate { it.id.value to it.displayName }
+            }
             loadResult = if (options == null) {
                 CategoryOverrideAuthoringResult.TaxonomyUnavailable
             } else {
@@ -101,6 +106,7 @@ internal fun CategoryOverridePreferences(
                             item(key = "${candidate.key.profile.value}:${candidate.key.packageName.value}") {
                                 OverrideAppPreference(
                                     app = candidate,
+                                    userDefinedNames = userDefinedNames,
                                     onClick = {
                                         selectedApp = candidate
                                         pendingCategory = candidate.assignedCategory
@@ -116,7 +122,7 @@ internal fun CategoryOverridePreferences(
                                 text = pendingCategory?.let {
                                     stringResource(
                                         R.string.organizer_category_override_explicit,
-                                        categoryLabel(it),
+                                        categoryLabel(it, userDefinedNames),
                                     )
                                 } ?: stringResource(R.string.organizer_category_override_automatic),
                             )
@@ -128,13 +134,20 @@ internal fun CategoryOverridePreferences(
                                 onClick = { pendingCategory = null },
                             )
                         }
-                        categoryOptions.orEmpty().forEach { category ->
-                            item(key = category.value) {
-                                val presentation = CategoryOverrideCategoryPresentations.forCategory(category)
+                        categoryOptions.orEmpty().forEach { identity ->
+                            item(key = identity.canonicalValue) {
+                                val label = categoryLabel(identity, userDefinedNames)
+                                val description = when (identity) {
+                                    is CategoryIdentity.BuiltIn ->
+                                        stringResource(R.string.organizer_category_override_category_description, label)
+
+                                    is CategoryIdentity.UserDefined ->
+                                        stringResource(R.string.organizer_category_override_custom_description, label)
+                                }
                                 ClickablePreference(
-                                    label = stringResource(presentation.labelRes),
-                                    subtitle = stringResource(presentation.descriptionRes, stringResource(presentation.labelRes)),
-                                    onClick = { pendingCategory = category },
+                                    label = label,
+                                    subtitle = description,
+                                    onClick = { pendingCategory = identity },
                                 )
                             }
                         }
@@ -227,13 +240,17 @@ internal fun CategoryOverridePreferences(
 @Composable
 private fun OverrideAppPreference(
     app: CategoryOverrideApp,
+    userDefinedNames: Map<String, String>,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val label = appLabel(app)
     val profile = profileLabel(app.profile)
     val state = app.assignedCategory?.let {
-        stringResource(R.string.organizer_category_override_explicit, categoryLabel(it))
+        stringResource(
+            R.string.organizer_category_override_explicit,
+            categoryLabel(it, userDefinedNames),
+        )
     } ?: stringResource(R.string.organizer_category_override_automatic)
     val description = stringResource(R.string.organizer_category_override_app_status, profile, state)
     val spokenDescription = stringResource(
@@ -299,5 +316,25 @@ private fun profileLabel(profile: CategoryOverrideProfile): String = stringResou
     },
 )
 
+/**
+ * Issue #336: one label for both namespaces — built-in categories resolve
+ * their localized presentation; a user-defined category renders its display
+ * name with the localized "Custom" text marker (never color alone, never a
+ * raw ID: an unknown ID falls back to a generic custom-category text).
+ */
 @Composable
-private fun categoryLabel(category: CategoryId): String = stringResource(CategoryOverrideCategoryPresentations.forCategory(category).labelRes)
+internal fun categoryLabel(
+    identity: CategoryIdentity,
+    userDefinedNames: Map<String, String> = emptyMap(),
+): String = when (identity) {
+    is CategoryIdentity.BuiltIn -> stringResource(CategoryOverrideCategoryPresentations.forCategory(identity.id).labelRes)
+
+    is CategoryIdentity.UserDefined -> {
+        val name = userDefinedNames[identity.id.value]
+        if (name == null) {
+            stringResource(R.string.organizer_category_custom_unnamed)
+        } else {
+            stringResource(R.string.organizer_category_override_custom_label, name)
+        }
+    }
+}

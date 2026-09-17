@@ -13,6 +13,7 @@ import app.lawnchair.organizer.integration.OrganizationInputComposition
 import app.lawnchair.organizer.integration.PlatformClassificationEvidence
 import app.lawnchair.organizer.integration.PlatformEvidenceReadResult
 import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.ComponentKey
 import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.PackageName
@@ -24,6 +25,10 @@ import app.lawnchair.organizer.rules.LayoutStrategySelectionSnapshot
 import app.lawnchair.organizer.rules.LayoutStrategySelectionSource
 import app.lawnchair.organizer.rules.PolicyInputIdentity
 import app.lawnchair.organizer.rules.PolicySourceKind
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogIdentity
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogReadResult
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogSnapshot
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogSource
 import app.lawnchair.organizer.ui.CategoryOverrideApp
 import app.lawnchair.organizer.ui.CategoryOverrideAppInventory
 import app.lawnchair.organizer.ui.CategoryOverrideAuthoringCoordinator
@@ -59,11 +64,11 @@ class CategoryOverrideAtomicAccessTest {
             val result = access.mutate(
                 request = CategoryOverrideMutation.Set(
                     CategoryOverrideKey(PackageName("com.personal"), ProfileId("0")),
-                    CategoryId("GAME"),
+                    CategoryIdentity.BuiltIn(CategoryId("GAME")),
                 ),
                 expected = expected,
                 verificationProfiles = setOf(ProfileId("0")),
-                allowedCategories = setOf(CategoryId("GAME"), CategoryId("SOCIAL"), CategoryId("TOOLS")),
+                allowedIdentities = setOf(CategoryIdentity.BuiltIn(CategoryId("GAME")), CategoryIdentity.BuiltIn(CategoryId("SOCIAL")), CategoryIdentity.BuiltIn(CategoryId("TOOLS"))),
             )
 
             assertTrue(result is CategoryOverrideWriteResult.Committed)
@@ -74,7 +79,7 @@ class CategoryOverrideAtomicAccessTest {
             )
             val visible = access.readVisible(setOf(ProfileId("0"))) as OverrideSnapshotReadResult.Ready
             assertEquals(
-                mapOf(CategoryOverrideKey(PackageName("com.personal"), ProfileId("0")) to CategoryId("GAME")),
+                mapOf(CategoryOverrideKey(PackageName("com.personal"), ProfileId("0")) to CategoryIdentity.BuiltIn(CategoryId("GAME"))),
                 visible.snapshot.assignments,
             )
             assertFalse(visible.snapshot.identity.versionOrGeneration.isBlank())
@@ -84,8 +89,8 @@ class CategoryOverrideAtomicAccessTest {
             assertEquals(visible.snapshot.generation, restarted.snapshot.identity.generation)
             assertEquals(
                 mapOf(
-                    CategoryOverrideKey(PackageName("com.personal"), ProfileId("0")) to CategoryId("GAME"),
-                    CategoryOverrideKey(PackageName("com.work"), ProfileId("10")) to CategoryId("TOOLS"),
+                    CategoryOverrideKey(PackageName("com.personal"), ProfileId("0")) to CategoryIdentity.BuiltIn(CategoryId("GAME")),
+                    CategoryOverrideKey(PackageName("com.work"), ProfileId("10")) to CategoryIdentity.BuiltIn(CategoryId("TOOLS")),
                 ),
                 restarted.snapshot.assignments,
             )
@@ -99,14 +104,137 @@ class CategoryOverrideAtomicAccessTest {
     }
 
     @Test
+    fun firstMutationMigratesSchemaOneAtomicSnapshotToIdentityTypedSchemaTwo() {
+        val directory = Files.createTempDirectory("override-schema2").toFile()
+        try {
+            val key = CategoryOverrideKey(PackageName("com.personal"), ProfileId("0"))
+            val canonical = "${key.packageName.value}|${key.profile.value}|SOCIAL"
+            val legacy = CategoryOverrideStoredSnapshot(
+                CategoryOverrideStoredIdentity(1, 5L, sha256Canonical(canonical)),
+                mapOf(key to CategoryIdentity.BuiltIn(CategoryId("SOCIAL"))),
+            )
+            val atomic = TestAtomicFile(File(directory, "snapshot-v1")).apply {
+                seedFinal(CategoryOverrideFullStoreCodec.encode(legacy))
+            }
+            // Legacy marker already set: the atomic source has authority.
+            val preferences = FakePreferences().apply { putInitial("schema", 2) }
+            val access = CategoryOverrideAtomicAccess(atomic, preferences)
+            val expected = (access.readStored() as CategoryOverrideStoredReadResult.Ready).snapshot.identity
+            assertEquals(1, expected.schemaVersion)
+
+            val result = access.mutate(
+                request = CategoryOverrideMutation.Set(key, CategoryIdentity.BuiltIn(CategoryId("GAME"))),
+                expected = expected,
+                verificationProfiles = setOf(ProfileId("0")),
+                allowedIdentities = setOf(
+                    CategoryIdentity.BuiltIn(CategoryId("GAME")),
+                    CategoryIdentity.BuiltIn(CategoryId("SOCIAL")),
+                ),
+            )
+
+            // The migration is part of the same mutation: Committed, not Conflict.
+            assertTrue(result is CategoryOverrideWriteResult.Committed)
+            val read = access.readStored() as CategoryOverrideStoredReadResult.Ready
+            assertEquals(2, read.snapshot.identity.schemaVersion)
+            // Migration bumped 5 -> 6, the user mutation 6 -> 7.
+            assertEquals(7L, read.snapshot.identity.generation)
+            assertEquals(
+                mapOf(key to CategoryIdentity.BuiltIn(CategoryId("GAME"))),
+                read.snapshot.assignments,
+            )
+            val visible = access.readVisible(setOf(ProfileId("0"))) as OverrideSnapshotReadResult.Ready
+            assertEquals(2, visible.snapshot.schemaVersion)
+            assertEquals("schema-2-generation-7", visible.snapshot.identity.versionOrGeneration)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun schemaTwoMigrationFailureLeavesSchemaOneAuthoritativeAndRejectsTheMutation() {
+        val directory = Files.createTempDirectory("override-schema2-failure").toFile()
+        try {
+            val key = CategoryOverrideKey(PackageName("com.personal"), ProfileId("0"))
+            val canonical = "${key.packageName.value}|${key.profile.value}|SOCIAL"
+            val legacy = CategoryOverrideStoredSnapshot(
+                CategoryOverrideStoredIdentity(1, 5L, sha256Canonical(canonical)),
+                mapOf(key to CategoryIdentity.BuiltIn(CategoryId("SOCIAL"))),
+            )
+            val atomic = TestAtomicFile(File(directory, "snapshot-v1")).apply {
+                seedFinal(CategoryOverrideFullStoreCodec.encode(legacy))
+                failure = FailurePoint.WRITE
+            }
+            val preferences = FakePreferences().apply { putInitial("schema", 2) }
+            val access = CategoryOverrideAtomicAccess(atomic, preferences)
+            val expected = (access.readStored() as CategoryOverrideStoredReadResult.Ready).snapshot.identity
+
+            val result = access.mutate(
+                request = CategoryOverrideMutation.Set(key, CategoryIdentity.BuiltIn(CategoryId("GAME"))),
+                expected = expected,
+                verificationProfiles = setOf(ProfileId("0")),
+                allowedIdentities = setOf(CategoryIdentity.BuiltIn(CategoryId("GAME"))),
+            )
+
+            assertEquals(CategoryOverrideWriteResult.WriteFailed, result)
+            // The pre-336 schema-1 content stays authoritative; no user mutation admitted.
+            val read = access.readStored() as CategoryOverrideStoredReadResult.Ready
+            assertEquals(1, read.snapshot.identity.schemaVersion)
+            assertEquals(5L, read.snapshot.identity.generation)
+            assertEquals(
+                mapOf(key to CategoryIdentity.BuiltIn(CategoryId("SOCIAL"))),
+                read.snapshot.assignments,
+            )
+            // A later mutation (failure cleared) migrates and commits.
+            atomic.failure = null
+            val retried = access.mutate(
+                request = CategoryOverrideMutation.Set(key, CategoryIdentity.BuiltIn(CategoryId("GAME"))),
+                expected = expected,
+                verificationProfiles = setOf(ProfileId("0")),
+                allowedIdentities = setOf(CategoryIdentity.BuiltIn(CategoryId("GAME"))),
+            )
+            assertTrue(retried is CategoryOverrideWriteResult.Committed)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun wellFormedNewerSchemaRoutesToTypedUnsupportedSchemaThroughTheAccessBoundary() {
+        val directory = Files.createTempDirectory("override-schema3").toFile()
+        try {
+            val atomic = TestAtomicFile(File(directory, "snapshot-v1")).apply {
+                // Well-formed header naming a schema this binary does not
+                // support (supported set is schema 1 and 2).
+                seedFinal("schema=3\ngeneration=4\ndigest=${sha256Canonical("")}\nentries\n\n".toByteArray())
+            }
+            val preferences = FakePreferences().apply { putInitial("schema", 2) }
+            val access = CategoryOverrideAtomicAccess(atomic, preferences)
+
+            assertEquals(CategoryOverrideStoredReadResult.UnsupportedSchema, access.readStored())
+            assertEquals(
+                OverrideSnapshotReadResult.UnsupportedSchema,
+                access.readVisible(setOf(ProfileId("0"))),
+            )
+            val result = access.mutateAll(
+                requests = listOf(CategoryOverrideMutation.Remove(CategoryOverrideKey(PackageName("com.x"), ProfileId("0")))),
+                expected = CategoryOverrideStoredIdentity(2, 0L, sha256Canonical("")),
+                verificationProfiles = setOf(ProfileId("0")),
+                allowedIdentities = setOf(CategoryIdentity.BuiltIn(CategoryId("GAME"))),
+            )
+            assertEquals(CategoryOverrideWriteResult.UnsupportedSchema, result)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun interruptedPendingWriteIsDiscardedBeforeTheFinalSnapshotIsRead() {
         val directory = Files.createTempDirectory("override-recovery").toFile()
         try {
             val key = CategoryOverrideKey(PackageName("com.personal"), ProfileId("0"))
-            val assignments = mapOf(key to CategoryId("SOCIAL"))
             val stored = CategoryOverrideStoredSnapshot(
                 CategoryOverrideStoredIdentity(1, 3L, sha256Canonical("com.personal|0|SOCIAL")),
-                assignments,
+                mapOf(key to CategoryIdentity.BuiltIn(CategoryId("SOCIAL"))),
             )
             val atomic = TestAtomicFile(File(directory, "snapshot-v1")).apply {
                 seedFinal(CategoryOverrideFullStoreCodec.encode(stored))
@@ -139,7 +267,7 @@ class CategoryOverrideAtomicAccessTest {
                 request = CategoryOverrideMutation.Remove(CategoryOverrideKey(PackageName("com.personal"), ProfileId("0"))),
                 expected = expected,
                 verificationProfiles = setOf(ProfileId("0")),
-                allowedCategories = setOf(CategoryId("SOCIAL")),
+                allowedIdentities = setOf(CategoryIdentity.BuiltIn(CategoryId("SOCIAL"))),
             )
 
             assertEquals(CategoryOverrideWriteResult.MigrationBarrierUncertain, result)
@@ -178,11 +306,11 @@ class CategoryOverrideAtomicAccessTest {
             val result = access.mutate(
                 request = CategoryOverrideMutation.Set(
                     CategoryOverrideKey(PackageName("com.example.new"), ProfileId("0")),
-                    CategoryId("GAME"),
+                    CategoryIdentity.BuiltIn(CategoryId("GAME")),
                 ),
                 expected = expected,
                 verificationProfiles = setOf(ProfileId("0")),
-                allowedCategories = setOf(CategoryId("GAME"), CategoryId("SOCIAL")),
+                allowedIdentities = setOf(CategoryIdentity.BuiltIn(CategoryId("GAME")), CategoryIdentity.BuiltIn(CategoryId("SOCIAL"))),
             )
 
             // Per the accepted contract, post-finish corruption is fail-closed rather than auto-repaired.
@@ -220,10 +348,10 @@ class CategoryOverrideAtomicAccessTest {
 
             val writer = executor.submit<CategoryOverrideWriteResult> {
                 access.mutate(
-                    request = CategoryOverrideMutation.Set(nextKey, CategoryId("GAME")),
+                    request = CategoryOverrideMutation.Set(nextKey, CategoryIdentity.BuiltIn(CategoryId("GAME"))),
                     expected = expected,
                     verificationProfiles = setOf(ProfileId("0")),
-                    allowedCategories = setOf(CategoryId("GAME"), CategoryId("SOCIAL")),
+                    allowedIdentities = setOf(CategoryIdentity.BuiltIn(CategoryId("GAME")), CategoryIdentity.BuiltIn(CategoryId("SOCIAL"))),
                 )
             }
             assertTrue(finishEntered.await(1, TimeUnit.SECONDS))
@@ -236,10 +364,12 @@ class CategoryOverrideAtomicAccessTest {
             assertEquals(CategoryOverrideWriteResult.Committed::class, writer.get(1, TimeUnit.SECONDS)::class)
             val read = reader.get(1, TimeUnit.SECONDS) as CategoryOverrideStoredReadResult.Ready
             assertEquals(
-                mapOf(key to CategoryId("SOCIAL"), nextKey to CategoryId("GAME")),
+                mapOf(key to CategoryIdentity.BuiltIn(CategoryId("SOCIAL")), nextKey to CategoryIdentity.BuiltIn(CategoryId("GAME"))),
                 read.snapshot.assignments,
             )
-            assertEquals(1L, read.snapshot.identity.generation)
+            // Migration bumped generation 0 -> 1 and the mutation 1 -> 2:
+            // each publication increments exactly once (Issue #336).
+            assertEquals(2L, read.snapshot.identity.generation)
         } finally {
             executor.shutdownNow()
             directory.deleteRecursively()
@@ -266,14 +396,14 @@ class CategoryOverrideAtomicAccessTest {
                 putInitial("entries", "")
             }
             val access = CategoryOverrideAtomicAccess(TestAtomicFile(File(directory, "snapshot-v1")), preferences)
-            val store = AtomicFileCategoryOverrideStore(access, BuiltInOrganizerPolicyBundleSource)
+            val store = AtomicFileCategoryOverrideStore(access, BuiltInOrganizerPolicyBundleSource, UserDefinedCategoryCatalogSource { UserDefinedCategoryCatalogReadResult.Ready(emptyCatalogSnapshot()) })
             val authoring = CategoryOverrideAuthoringCoordinator(
                 store = store,
                 bundleSource = BuiltInOrganizerPolicyBundleSource,
                 inventory = CategoryOverrideAppInventory { listOf(target) },
             )
 
-            assertTrue(authoring.save(target, CategoryId("OTHER")) is CategoryOverrideAuthoringResult.Saved)
+            assertTrue(authoring.save(target, CategoryIdentity.BuiltIn(CategoryId("OTHER"))) is CategoryOverrideAuthoringResult.Saved)
             assertEquals(2, preferences.getInt("schema", -1))
 
             val state = CanonicalFixtures.state(
@@ -300,6 +430,7 @@ class CategoryOverrideAtomicAccessTest {
                     LayoutStrategySelectionReadResult.Ready(emptySelectionSnapshot())
                 },
                 overrides = AtomicFileCategoryOverrideSnapshotSource(access),
+                userDefinedCategories = UserDefinedCategoryCatalogSource { UserDefinedCategoryCatalogReadResult.Ready(emptyCatalogSnapshot()) },
                 platformEvidence = object : ClassificationSignalSnapshotSource {
                     override fun read(
                         requests: List<ClassificationEvidenceRequest>,
@@ -323,11 +454,11 @@ class CategoryOverrideAtomicAccessTest {
                 val ready = composition as OrganizationInputComposition.Ready
                 assertEquals(
                     listOf("override:S1:OTHER"),
-                    ready.input.signals.entries.map { "${it.item.value}:${it.source.name}:${it.candidate.value}" },
+                    ready.input.signals.entries.map { "${it.item.value}:${it.source.name}:${it.candidate.canonicalValue}" },
                 )
             }
             val stored = access.readStored() as CategoryOverrideStoredReadResult.Ready
-            assertEquals(CategoryId("OTHER"), stored.snapshot.assignments[targetKey])
+            assertEquals(CategoryIdentity.BuiltIn(CategoryId("OTHER")), stored.snapshot.assignments[targetKey])
         } finally {
             directory.deleteRecursively()
         }
@@ -349,11 +480,11 @@ class CategoryOverrideAtomicAccessTest {
             val result = access.mutate(
                 request = CategoryOverrideMutation.Set(
                     CategoryOverrideKey(PackageName("com.example.new"), ProfileId("0")),
-                    CategoryId("GAME"),
+                    CategoryIdentity.BuiltIn(CategoryId("GAME")),
                 ),
                 expected = expected,
                 verificationProfiles = setOf(ProfileId("0")),
-                allowedCategories = setOf(CategoryId("GAME"), CategoryId("SOCIAL")),
+                allowedIdentities = setOf(CategoryIdentity.BuiltIn(CategoryId("GAME")), CategoryIdentity.BuiltIn(CategoryId("SOCIAL"))),
             )
 
             assertEquals(CategoryOverrideWriteResult.WriteFailed, result)
@@ -375,7 +506,7 @@ class CategoryOverrideAtomicAccessTest {
         category: CategoryId,
     ) = CategoryOverrideStoredSnapshot(
         CategoryOverrideStoredIdentity(1, 0L, sha256Canonical("${key.packageName.value}|${key.profile.value}|${category.value}")),
-        mapOf(key to category),
+        mapOf(key to CategoryIdentity.BuiltIn(category)),
     )
 
     private enum class FailurePoint { START_WRITE, WRITE, SYNC, FINISH_WRITE }
@@ -502,6 +633,13 @@ class CategoryOverrideAtomicAccessTest {
             }
         }
     }
+
+    private fun emptyCatalogSnapshot() = UserDefinedCategoryCatalogSnapshot(
+        schemaVersion = 1,
+        generation = 0L,
+        categories = emptyList(),
+        identity = UserDefinedCategoryCatalogIdentity.emptyCatalogSentinel(),
+    )
 
     private fun emptySelectionSnapshot() = LayoutStrategySelectionSnapshot(
         schemaVersion = 1,

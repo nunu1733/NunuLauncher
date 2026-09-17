@@ -56,17 +56,16 @@ object IntentValidator {
             return IntentValidation.Failure(IntentValidationFailure.DuplicateRef)
         }
 
-        // Coverage partition: itemIntents refs ∪ unresolvedRefs == all exported
-        // refs, and the two sets are disjoint.
+        // Coverage partition (v3, spec 330 D-1): itemIntents refs and
+        // unresolvedRefs must be disjoint (including no duplicates inside
+        // unresolvedRefs). The v2 "cover every ref" rule is gone — an
+        // unmentioned ref is completed to canonical unresolved downstream.
         val unresolved = intent.unresolvedRefs.toSet()
         if (unresolved.size != intent.unresolvedRefs.size) {
             return IntentValidation.Failure(IntentValidationFailure.IncompleteCoverage)
         }
         val covered = intentRefs.toSet()
         if ((covered intersect unresolved).isNotEmpty()) {
-            return IntentValidation.Failure(IntentValidationFailure.IncompleteCoverage)
-        }
-        if (covered + unresolved != exportRefs) {
             return IntentValidation.Failure(IntentValidationFailure.IncompleteCoverage)
         }
 
@@ -113,12 +112,17 @@ object IntentValidator {
             return IntentValidation.Failure(IntentValidationFailure.ContextStale)
         }
 
+        // Issue #330 (spec 330 D-4/D-5): completion runs inside the validator's
+        // success path, and the identity digest is taken over the completed
+        // canonical representation — explicit unresolved and bare entries share
+        // the `unresolved|ref` row with unmentioned refs (D-6).
+        val completed = IntentCompletion.complete(intent, exportRefs)
         return IntentValidation.Validated(
             validated = ValidatedPersonalizedIntent(
                 intent = intent,
                 export = export,
                 session = session,
-                identity = IntentIdentityCalculator.identity(intent),
+                identity = IntentIdentityCalculator.identity(completed),
             ),
         )
     }
@@ -130,7 +134,17 @@ data class ValidatedPersonalizedIntent(
     val export: PersonalizationContextExportV1,
     val session: ExportSession,
     val identity: IntentIdentity,
-)
+) {
+    /**
+     * Issue #330 (spec 330 D-4): the complete canonical representation built
+     * at validation time. Deterministic in the authored intent and the export
+     * refs, so re-deriving it here reproduces the validator's completion; the
+     * authored document itself stays diagnostics-only.
+     */
+    val completed: CompletedPersonalIntent by lazy {
+        IntentCompletion.complete(intent, export.items.map { it.ref }.toSet())
+    }
+}
 
 sealed interface IntentValidation {
     data class Validated(val validated: ValidatedPersonalizedIntent) : IntentValidation

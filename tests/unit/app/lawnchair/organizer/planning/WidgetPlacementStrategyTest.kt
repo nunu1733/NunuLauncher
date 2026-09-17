@@ -1,5 +1,7 @@
 package app.lawnchair.organizer.planning
 
+import app.lawnchair.organizer.planning.ActiveCategoryCatalog
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.harness.MaterializationResult
 import app.lawnchair.organizer.planning.harness.PostPlanMaterializer
 import org.junit.Assert.assertEquals
@@ -147,6 +149,7 @@ class WidgetPlacementStrategyTest {
         ),
         rules = rules(strategy, minGroupSize),
         taxonomy = taxonomy(),
+        catalog = ActiveCategoryCatalog(taxonomy(), emptyList()),
         signals = ClassificationSignals(signals),
         targets = TargetSet(items.map { ExistingTargetMembership(it.id, roles(it)) }, additions),
         runMode = runMode,
@@ -482,7 +485,7 @@ class WidgetPlacementStrategyTest {
             widget("w", 1, 1, 2, 2, provider = "com.a", appWidgetId = 1),
         )
         val signals = listOf("a", "b", "c").map {
-            ClassificationSignal(ItemId(it), SignalSource.S1, CategoryId("GAMES"))
+            ClassificationSignal(ItemId(it), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES")))
         }
         val source = input(items, bottomFirstV2).copy(
             signals = ClassificationSignals(signals),
