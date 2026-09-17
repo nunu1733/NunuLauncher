@@ -1,6 +1,6 @@
 ---
 issue: "#348"
-status: draft
+status: accepted
 requirements: [FR-017]
 risk:
   - privacy
@@ -9,7 +9,7 @@ updated: 2026-09-18
 
 # External Agent ExchangeのAI-facing contractをproduction truthと同期し初回Import成功率を上げる
 
-> Status: **draft** (2026-09-18。4th review指摘対応revision)。Issue #348のspec。依存: #204 (accepted・実装済み), #205 (implemented), #329 (implemented), #330 (implemented), #345 (evidence記録済み: [assets-345-import-evidence](../../docs/assessment/assets-345-import-evidence/README.md))。本specがproduction contract (#204)・framing抽出規則 (#205)・normalizer (#329) の **動作を1つも変更しない** ことを前提に、AI-facingなinstruction/example層をproduction truthから派生させ、derivationの構造保証外の規則はbehavior-parity testで同期する。
+> Status: **accepted** (2026-09-18。5th review **Approve** ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/348#issuecomment-5718154297)、head `0b654216ad` 基準) を受け、non-blocking文言nit 2点を本commitで反映)。Issue #348のspec。依存: #204 (accepted・実装済み), #205 (implemented), #329 (implemented), #330 (implemented), #345 (evidence記録済み: [assets-345-import-evidence](../../docs/assessment/assets-345-import-evidence/README.md))。本specがproduction contract (#204)・framing抽出規則 (#205)・normalizer (#329) の **動作を1つも変更しない** ことを前提に、AI-facingなinstruction/example層をproduction truthから派生させ、構造保証外の規則はenforcement分類に応じてparity fixture / policy matrixで同期する。
 
 ## Problem
 
@@ -62,7 +62,7 @@ import側が受理する外形の閉集合 (#205 marker形式 / #329 fenced `jso
 _Avoid_: canonical (authoring側の要求と混同する呼称)
 
 **Canonical authoring form / representation (正本authoring形式 / 正本authoring表現)**:
-producer要求として外部AIに要求する単一の外形 (「単一のfenced `json` code block内にJSON object 1個、それ以外のcode block/candidateなし」) および、instructionが要求するfield表現 (canonical JSON型・大文字enum・整数confidence等)。productionが受理する集合より狭い **producer-side policy** であり、`canonical authoring ⊆ production accepted` をparity testが保証する。本spec (#348) が所有する。
+producer要求として外部AIに要求する単一の外形 (「単一のfenced `json` code block内にJSON object 1個、それ以外のcode block/candidateなし」) および、instructionが要求するfield表現 (canonical JSON型・大文字enum・整数confidence等)。productionが受理する集合より狭い **producer-side policy** であり、`canonical authoring ⊆ production accepted` をauthoring policy matrixのproduction-acceptance fixtureが保証する。本spec (#348) が所有する。
 _Avoid_: 推奨形式 (複数候補を認める呼称)、canonical form 単独使用 (受理外形と混同する)
 
 **Authoring policy matrix (authoring policy matrix)**:
@@ -211,7 +211,7 @@ And 失敗分類19種とその表示対応は不変である。
 |---|---|
 | AC-1 | spec本文 (許容/禁止の具体固定) + instruction/footer + 対象4 stringsの否定assertion |
 | AC-2 | `Issue348` contract test: descriptor↔codec allow-list一致 + composer出力のdescriptor派生containment + `PRODUCTION_ENFORCED` 主張のparity fixture (主張変更で失敗することを含む。`AUTHORING_POLICY` 主張はAC-3 policy matrixへ委譲) |
-| AC-3 | `Issue348` test: production-enforced parity matrix (期待failure 1種固定) + authoring policy matrix (canonical ⊆ accepted) |
+| AC-3 | `Issue348` test: production-enforced parity matrix (期待failure 1種固定) + authoring policy matrix (positive制約文の存在assert + canonical ⊆ accepted) |
 | AC-4 | `Issue348` golden test: canonical fenced payload → pipeline.import → completion (実session + structural inputs) |
 | AC-5/AC-6 | contract test (self-check / ask-before-final / 独自property禁止のpinning) |
 | AC-7 | `ImportNormalizerTest` / `ExchangeImportPipelineTest` / `IntentImportParserTest` 無変更成功 + composer test (marker要求の不在・fence要求の存在) |
@@ -244,3 +244,4 @@ And 失敗分類19種とその表示対応は不変である。
 - 2026-09-18 (3rd): 2nd ChatGPT review ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/348#issuecomment-5717882626)、head `e83aa3e909` 基準、**Request changes**) に対応。**高1**: descriptorがrequired/typeまでproduction正本でない問題 → Decision 1を「構造派生 (名前集合・enum・静的定数) / descriptor表示 + parity fixture (requiredness・型・any-of) / production-enforced parity / authoring policy」へ再定義し、decode logicのdescriptor駆動refactorを却下 (保証主張を正直に縮小)。**中2**: production-enforced parity matrix (期待failure 1種固定) とauthoring policy matrix (`canonical ⊆ accepted`) へ分離。FIXEDの `preserve: false`・空 `desiredGroup`・非string primitive受容をpolicy側へ移動。**中3**: spec 205/329のnormative更新を「実装PR必須 (AC-9 blocking)」へ固定し、spec 205のframing失敗時再回答案内・validation reject後位置づけを更新対象へ追加。**中4**: AC-11へevidence data policy (Decision 7: synthetic profile・sanitized artifact・raw commit禁止・指紋記録) を追加。
 - 2026-09-18 (4th): 3rd ChatGPT review ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/348#issuecomment-5717996131)、head `116d758f55` 基準、**Request changes**) に対応。**中1**: descriptorの制約主張に `enforcement` 分類 (`PRODUCTION_ENFORCED` / `AUTHORING_POLICY`) を導入し、Production truth inventory・parity fixture scenario・Decision 1・AC-2を分類に沿って分離 (parity fixture + counterfactual保証は `PRODUCTION_ENFORCED` のみ。string要求・`desiredGroup` 非空等のpolicy主張はpolicy matrixへ)。**低2**: authoring policy matrixのoracleをabsence test (「違反表現を例示しない」) からpositive assert (「policyごとの制約文がinstructionに存在する」) へ統一 (AC-3)。
 - 2026-09-18 (5th): 4th ChatGPT review ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/348#issuecomment-5718096549)、head `fca1396dcb` 基準、**Request changes**) に対応。**中1**: enforcement二分法を要約文へ最後まで反映 — Outcome・Domain language (Wire descriptor)・ScopeのContract test要約・Test oracle AC-2を「`PRODUCTION_ENFORCED` はparity fixture/counterfactual、`AUTHORING_POLICY` はpositive render + canonical受理 (AC-3へ委譲)」へ統一。**低2**: planの新規test記述を「production acceptance/failure fixtureは `ExchangeImportPipeline.import` 経由 / descriptor・instruction直接検査はunit oracle」へ分離。
+- 2026-09-18 (6th): **accepted**。5th ChatGPT review **Approve** ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/348#issuecomment-5718154297)、head `0b654216ad` 基準) を受け、reviewがnon-blockingと明示した文言nit 2点 (Status要約・Canonical authoring定義の「parity test」総称表現をenforcement分類に応じた表現へ言い換え、Test oracle AC-3行へpositive制約文の存在assertを明記) を本commitで反映したうえでstatusをdraft → acceptedへ更新。approving reviewは「上記2点はaccepted化を妨げない文言整合のnit。Phase1 spec/planはimplementation-ready」と判断した。次: plan.mdに従い実装PR (spec 205/329のnormative更新をAC-9 blockingとして同PRで実施) へ進む。

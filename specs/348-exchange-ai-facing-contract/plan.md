@@ -2,7 +2,7 @@
 
 > Issue: #348
 > Spec: [spec.md](./spec.md)
-> Status: draft (4th review対応revision)
+> Status: implementation-ready (spec accepted 2026-09-18。5th review Approve head `0b654216ad`)
 
 ## Current evidence
 
