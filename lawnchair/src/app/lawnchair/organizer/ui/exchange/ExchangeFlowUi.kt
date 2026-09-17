@@ -1181,22 +1181,32 @@ fun exchangeImportDisplayInfo(recognized: RecognizedImportInfo?): ExchangeImport
 
 fun exchangeImportDisplayInfo(result: ExchangeImportResult?): ExchangeImportDisplayInfo = exchangeImportDisplayInfo((result as? ExchangeImportResult.Failure)?.recognized)
 
-@Composable
-private fun exchangeStatusText(kind: ExchangeStatus.Kind): String = when (kind) {
-    ExchangeStatus.Kind.TRANSPORT_SUCCESS -> stringResource(R.string.exchange_transport_success)
-    ExchangeStatus.Kind.TRANSPORT_CLIPBOARD_FAILED -> stringResource(R.string.exchange_transport_clipboard_failed)
-    ExchangeStatus.Kind.TRANSPORT_SHARE_ABSENT -> stringResource(R.string.exchange_transport_share_absent)
-    ExchangeStatus.Kind.TRANSPORT_FILE_FAILED -> stringResource(R.string.exchange_transport_file_failed)
-    ExchangeStatus.Kind.FILE_READ_FAILED -> stringResource(R.string.exchange_status_file_read_failed)
-    ExchangeStatus.Kind.GENERATION_INPUT_NOT_READY -> stringResource(R.string.exchange_generation_input_not_ready)
-    ExchangeStatus.Kind.GENERATION_STORE_FAILURE -> stringResource(R.string.exchange_generation_store_failure)
-    ExchangeStatus.Kind.GENERATION_OVERSIZE -> stringResource(R.string.exchange_generation_oversize)
-    ExchangeStatus.Kind.INPUT_OVERSIZE -> stringResource(R.string.exchange_failure_input_oversize)
-    ExchangeStatus.Kind.IMPORT_ACCEPTED -> stringResource(R.string.exchange_import_accepted)
-    ExchangeStatus.Kind.RUN_BUSY -> stringResource(R.string.exchange_run_busy)
-    ExchangeStatus.Kind.CLIPBOARD_EMPTY -> stringResource(R.string.exchange_status_clipboard_empty)
-    ExchangeStatus.Kind.CLIPBOARD_NOT_TEXT -> stringResource(R.string.exchange_status_clipboard_not_text)
+/**
+ * Pure status-kind → string resource mapping (issue #332 AC-6 regression
+ * guard): the import-source failures resolve to their OWN guidance strings —
+ * in particular [ExchangeStatus.Kind.FILE_READ_FAILED] resolves to the
+ * dedicated read-failure guidance, never back to the export-side
+ * `exchange_transport_file_failed` copy. Unit tested in
+ * `ExchangeFlowStateHolderTest`.
+ */
+fun exchangeStatusTextResource(kind: ExchangeStatus.Kind): Int = when (kind) {
+    ExchangeStatus.Kind.TRANSPORT_SUCCESS -> R.string.exchange_transport_success
+    ExchangeStatus.Kind.TRANSPORT_CLIPBOARD_FAILED -> R.string.exchange_transport_clipboard_failed
+    ExchangeStatus.Kind.TRANSPORT_SHARE_ABSENT -> R.string.exchange_transport_share_absent
+    ExchangeStatus.Kind.TRANSPORT_FILE_FAILED -> R.string.exchange_transport_file_failed
+    ExchangeStatus.Kind.FILE_READ_FAILED -> R.string.exchange_status_file_read_failed
+    ExchangeStatus.Kind.GENERATION_INPUT_NOT_READY -> R.string.exchange_generation_input_not_ready
+    ExchangeStatus.Kind.GENERATION_STORE_FAILURE -> R.string.exchange_generation_store_failure
+    ExchangeStatus.Kind.GENERATION_OVERSIZE -> R.string.exchange_generation_oversize
+    ExchangeStatus.Kind.INPUT_OVERSIZE -> R.string.exchange_failure_input_oversize
+    ExchangeStatus.Kind.IMPORT_ACCEPTED -> R.string.exchange_import_accepted
+    ExchangeStatus.Kind.RUN_BUSY -> R.string.exchange_run_busy
+    ExchangeStatus.Kind.CLIPBOARD_EMPTY -> R.string.exchange_status_clipboard_empty
+    ExchangeStatus.Kind.CLIPBOARD_NOT_TEXT -> R.string.exchange_status_clipboard_not_text
 }
+
+@Composable
+private fun exchangeStatusText(kind: ExchangeStatus.Kind): String = stringResource(exchangeStatusTextResource(kind))
 
 @Composable
 private fun exchangeFailureText(failure: ExchangeImportFailure): String = when (failure) {

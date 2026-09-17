@@ -53,6 +53,7 @@ import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.planning.RevisionId
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.TargetSet
+import java.io.File
 import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -759,6 +760,53 @@ class ExchangeFlowStateHolderTest {
         assertEquals(ExchangeStatus.Kind.INPUT_OVERSIZE, holder.status!!.kind)
         assertEquals("", (holder.screen as ExchangeScreen.Importing).replyText)
         assertEquals(0, store.loadCalls)
+    }
+
+    @Test
+    fun fileReadFailureResolvesToTheDedicatedImportGuidance() {
+        // AC-6 regression guard (Phase2 review R1): the FILE_READ_FAILED
+        // status must resolve to the dedicated import/read guidance — never
+        // back to the export/send copy — and the sibling import-source
+        // failures keep their own strings.
+        assertEquals(
+            com.android.launcher3.R.string.exchange_status_file_read_failed,
+            exchangeStatusTextResource(ExchangeStatus.Kind.FILE_READ_FAILED),
+        )
+        assertTrue(
+            exchangeStatusTextResource(ExchangeStatus.Kind.FILE_READ_FAILED) !=
+                com.android.launcher3.R.string.exchange_transport_file_failed,
+        )
+        assertEquals(
+            com.android.launcher3.R.string.exchange_status_clipboard_empty,
+            exchangeStatusTextResource(ExchangeStatus.Kind.CLIPBOARD_EMPTY),
+        )
+        assertEquals(
+            com.android.launcher3.R.string.exchange_status_clipboard_not_text,
+            exchangeStatusTextResource(ExchangeStatus.Kind.CLIPBOARD_NOT_TEXT),
+        )
+    }
+
+    @Test
+    fun fileReadFailureGuidanceExistsInBothLocales() {
+        // AC-6: the dedicated guidance is the ja正本 AND the en translation —
+        // both resource files must declare it (locale resolution guard).
+        for (localeDir in listOf("values", "values-ja")) {
+            val xml = lawnchairStringsXml(localeDir).readText()
+            assertTrue(
+                "exchange_status_file_read_failed must exist in $localeDir",
+                xml.contains("name=\"exchange_status_file_read_failed\""),
+            )
+        }
+    }
+
+    private fun lawnchairStringsXml(localeDir: String): File {
+        var dir: File? = File(System.getProperty("user.dir"))
+        repeat(4) {
+            val candidate = File(dir, "lawnchair/res/$localeDir/strings.xml")
+            if (candidate.exists()) return candidate
+            dir = dir?.parentFile
+        }
+        error("lawnchair strings.xml not found for $localeDir from ${System.getProperty("user.dir")}")
     }
 
     @Test
