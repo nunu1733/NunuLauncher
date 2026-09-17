@@ -122,76 +122,72 @@ You may:
 
 /**
  * The Output contract section, rendered from the shared wire descriptor
- * (spec 348 Decision 1): exact values, enum spellings, bounds, and limits
- * are read from the constraint claims — the same source the sync test's
- * parity cases are keyed on.
+ * (spec 348 Decision 1): field facts come from the [IntentWireContract.FieldSpec]
+ * objects, entry limits from the entry-limit claims, and policy sentences
+ * from the policy claims — the same source the sync test's parity cases are
+ * keyed on.
  */
 private fun outputContractSection(): String = buildString {
     val contract = IntentWireContract
     append("Output contract (the only properties your final JSON may contain):\n")
-    for (field in contract.topLevel) {
-        append("- ${renderField(field)}\n")
+    for (spec in contract.topLevel) {
+        append("- ${renderField(spec)}\n")
     }
     append("  Each \"itemIntents\" entry is an object with \"ref\" (string, required) and any of:\n")
-    for (field in contract.item.filter { it.name != "ref" }) {
-        append("  - ${renderField(field)}\n")
+    for (spec in contract.item.filter { it.name != "ref" }) {
+        append("  - ${renderField(spec)}\n")
     }
-    for (field in contract.globalPreference) {
-        append("  A \"globalPreference\" object may set ${renderField(field)}.\n")
+    for (spec in contract.globalPreference) {
+        append("  A \"globalPreference\" object may set ${renderField(spec)}.\n")
     }
-    for (field in contract.groupSemantic) {
-        append("  A \"groupSemantic\" object may set ${renderField(field)}.\n")
+    for (spec in contract.groupSemantic) {
+        append("  A \"groupSemantic\" object may set ${renderField(spec)}.\n")
     }
     val (anyOfA, anyOfB) = contract.groupSemanticAnyOf
     append("  A \"groupSemantic\" object must set at least one of \"$anyOfA\" or \"$anyOfB\".\n")
-    append("  \"pageAffinity\" is a whole number from 0 to (\"gridContext\".\"pageCount\" in the CONTEXT data minus 1).\n")
+    val pageSpec = contract.field("pageAffinity")
     append(
-        "  At most ${contract.claim("itemIntents.entryLimit").value.single()} \"itemIntents\" entries " +
-            "and at most ${contract.claim("unresolvedRefs.entryLimit").value.single()} \"unresolvedRefs\" entries.\n",
+        "  \"pageAffinity\" is a whole number from ${pageSpec.min} to " +
+            "(\"gridContext\".\"pageCount\" in the CONTEXT data minus 1).\n",
+    )
+    fun entryLimit(name: String): Int = (contract.claim("$name.entryLimit").semantic as IntentWireContract.Semantic.EntryLimit).max
+    append(
+        "  At most ${entryLimit("itemIntents")} \"itemIntents\" entries " +
+            "and at most ${entryLimit("unresolvedRefs")} \"unresolvedRefs\" entries.\n",
     )
 }
 
-private fun renderField(field: IntentWireContract.WireField): String {
-    val required = if (field.optional) "optional" else "required"
-    val type = when (field.type) {
+private fun renderField(spec: IntentWireContract.FieldSpec): String {
+    val required = if (spec.required) "required" else "optional"
+    val type = when (spec.type) {
         IntentWireContract.WireType.STRING -> "string"
-
         IntentWireContract.WireType.BOOLEAN -> "boolean"
-
         IntentWireContract.WireType.INTEGER -> "integer"
-
-        IntentWireContract.WireType.STRING_ARRAY ->
-            IntentWireContract.claim("policy.stringListElements").value.single()
-
+        IntentWireContract.WireType.STRING_ARRAY -> IntentWireContract.policySentence("policy.stringListElements")
         IntentWireContract.WireType.OBJECT -> "object"
-
         IntentWireContract.WireType.OBJECT_ARRAY -> "array of objects"
     }
-    val enumSpellings = IntentWireContract.enumClaims[field.name]
     val detail = when {
-        enumSpellings != null -> ": one of ${enumSpellings.joinToString(", ")}"
+        spec.enumValues.isNotEmpty() -> ": one of ${spec.enumValues.joinToString(", ")}"
 
-        field.name == "schemaVersion" -> ": exactly \"${IntentWireContract.claim("schemaVersion.exactValue").value.single()}\""
+        spec.exactValue != null -> ": exactly \"${spec.exactValue}\""
 
-        field.name == "exportId" -> ": echo the \"exportId\" of the CONTEXT data"
+        spec.name == "exportId" -> ": echo the \"exportId\" of the CONTEXT data"
 
-        field.name == "confidence" -> {
-            val bounds = IntentWireContract.claim("confidence.valueBound").value
-            ": whole number from ${bounds[0]} to ${bounds[1]}"
-        }
+        spec.name == "confidence" -> ": whole number from ${spec.min} to ${spec.max}"
 
-        field.name == "rationale" -> ": at most ${IntentWireContract.claim("rationale.lengthLimit").value.single()} characters, display only"
+        spec.name == "rationale" -> ": at most ${spec.maxLength} characters, display only"
 
-        field.name == "desiredGroup" -> {
+        spec.name == "desiredGroup" -> {
             ": refs from the CONTEXT data that belong in one group; " +
-                IntentWireContract.claim("policy.desiredGroupNonEmpty").value.single()
+                IntentWireContract.policySentence("policy.desiredGroupNonEmpty")
         }
 
-        field.name == "freeText" -> ": at most ${IntentWireContract.claim("groupSemantic.freeText.lengthLimit").value.single()} characters"
+        spec.name == "freeText" -> ": at most ${spec.maxLength} characters"
 
         else -> ""
     }
-    return "\"${field.name}\" ($type, $required)$detail"
+    return "\"${spec.name}\" ($type, $required)$detail"
 }
 
 /**
@@ -201,7 +197,7 @@ private fun renderField(field: IntentWireContract.WireField): String {
  * positive-render oracle).
  */
 private fun youMustSection(): String {
-    fun policy(id: String): String = IntentWireContract.claim(id).value.single()
+    fun policy(id: String): String = IntentWireContract.policySentence(id)
     return """
         You must:
         - Use only the properties listed in the Output contract above. Do not add any other property — not as a helpful extra, not under any name. Undefined properties make the whole reply unusable.
@@ -224,15 +220,19 @@ private fun youMustSection(): String {
  * exactly one JSON object — the framing that survives both message copy and
  * code-block copy on representative provider surfaces (#345 evidence).
  */
-private val INSTRUCTION_FOOTER = """
-Before sending your final answer, verify:
-- "schemaVersion" is exactly "${IntentWireContract.intentSchemaVersion}" and "exportId" echoes the CONTEXT data
-- Every property you used is listed in the Output contract — there is no extra field
-- Enum values are UPPERCASE as listed, "confidence" is an integer ${IntentWireContract.confidenceMin}-${IntentWireContract.confidenceMax}, and "pageAffinity" is within the page range
-- Every "ref" you used exists in the CONTEXT data and is mentioned at most once
-- The FIXED, CONDITIONAL, and CANDIDATE rules are respected
-- Your reply contains exactly one importable JSON artifact
+private val INSTRUCTION_FOOTER = run {
+    val confidence = IntentWireContract.field("confidence")
+    val schemaVersion = IntentWireContract.field("schemaVersion").exactValue!!
+    """
+    Before sending your final answer, verify:
+    - "schemaVersion" is exactly "$schemaVersion" and "exportId" echoes the CONTEXT data
+    - Every property you used is listed in the Output contract — there is no extra field
+    - Enum values are UPPERCASE as listed, "confidence" is an integer ${confidence.min}-${confidence.max}, and "pageAffinity" is within the page range
+    - Every "ref" you used exists in the CONTEXT data and is mentioned at most once
+    - The FIXED, CONDITIONAL, and CANDIDATE rules are respected
+    - Your reply contains exactly one importable JSON artifact
 
-Response format:
-Return the final answer as exactly one JSON object inside a single fenced code block that opens with a line containing only ```json and closes with a line containing only ```. The block contains exactly one JSON object and nothing else. Use exactly one code block in the whole reply — do not return multiple candidates. Keep any commentary outside the code block minimal. Do not repeat these instructions or the CONTEXT data.
-""".trimIndent()
+    Response format:
+    Return the final answer as exactly one JSON object inside a single fenced code block that opens with a line containing only ```json and closes with a line containing only ```. The block contains exactly one JSON object and nothing else. Use exactly one code block in the whole reply — do not return multiple candidates. Keep any commentary outside the code block minimal. Do not repeat these instructions or the CONTEXT data.
+    """.trimIndent()
+}

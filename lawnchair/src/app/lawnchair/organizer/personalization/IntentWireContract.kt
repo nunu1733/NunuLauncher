@@ -2,299 +2,401 @@ package app.lawnchair.organizer.personalization
 
 /**
  * Issue #348: the wire descriptor of the #204 intent payload — the single
- * data table that the [IntentCodec] allow-lists and the AI-facing output
- * contract section of the exchange package ([app.lawnchair.organizer.personalization.exchange.ExchangePackageComposer])
- * are both rendered from, so the property-name sets, enum spellings, and
- * static limits cannot drift between what the validator accepts and what the
- * external agent is told to author.
+ * data table that the [IntentCodec] allow-lists, the AI-facing output
+ * contract section of the exchange package
+ * ([app.lawnchair.organizer.personalization.exchange.ExchangePackageComposer]),
+ * and the contract-sync test oracles are all rendered from.
  *
- * The descriptor is a *view*, not a second schema: production acceptance is
- * and stays owned by the codec/validator. Every constraint is stated as a
- * typed [ConstraintClaim] (kind + interpreted value), and the claim is the
- * unit both consumers read:
+ * Structure:
+ * - [FieldSpec] states each wire field's canonical authoring type,
+ *   requiredness, enum spellings, bounds, and length limits. There is no
+ *   second definition of those facts anywhere.
+ * - [claims] states every constraint as a typed [ConstraintClaim] whose
+ *   [Semantic] payload is built from the same [FieldSpec] objects (or the
+ *   contract constants). The composer renders claims; the sync test walks
+ *   claims and derives its parity fixtures from the semantic payload, so an
+ *   edit that contradicts production (type, bound, limit, enum spelling,
+ *   requiredness, mobility rule) changes the fixture input and fails its
+ *   case against production.
  *
- * - the composer renders the output-contract facts (exact values, enum
- *   spellings, bounds, limits, policy sentences) from the claim values;
- * - the sync test walks the claims themselves: one keyed parity case per
- *   `PRODUCTION_ENFORCED` claim whose fixture input is derived from the
- *   claim's field/kind/value, and one positive-render + canonical-acceptance
- *   case per `AUTHORING_POLICY` claim. Editing a claim against production
- *   fails its case; adding, removing, or duplicating one fails the set or
- *   uniqueness assertions.
+ * Enforcement split (spec 348 Decision 1): `PRODUCTION_ENFORCED` claims have
+ * a keyed parity case on the production pipeline; `AUTHORING_POLICY` claims
+ * (production accepts broader input) carry the exact sentence the instruction
+ * must render plus the canonical entry template whose acceptance pins
+ * `canonical ⊆ accepted`.
  *
  * Per-export facts (`exportId`, refs, `gridContext.pageCount`) are never
- * stored here: the composer does not interpret the export and the instruction
+ * stored: the composer does not interpret the export and the instruction
  * refers the agent to the CONTEXT data.
  */
 internal object IntentWireContract {
 
-    /** How a constraint claim is kept in sync with production behavior. */
-    enum class Enforcement {
-        /** Production rejects violations; a keyed parity case pins the typed failure. */
-        PRODUCTION_ENFORCED,
+    enum class Enforcement { PRODUCTION_ENFORCED, AUTHORING_POLICY }
+
+    enum class WireType { STRING, BOOLEAN, INTEGER, STRING_ARRAY, OBJECT, OBJECT_ARRAY }
+
+    enum class Location { TOP_LEVEL, ITEM_ENTRY, GLOBAL_PREFERENCE, GROUP_SEMANTIC }
+
+    /** Canonical authoring facts of one wire field — the single source. */
+    data class FieldSpec(
+        val name: String,
+        val type: WireType,
+        val location: Location,
+        val required: Boolean,
+        val enumValues: List<String> = emptyList(),
+        /** Inclusive value bounds for integer fields. */
+        val min: Long? = null,
+        val max: Long? = null,
+        /** Upper character bound for string fields. */
+        val maxLength: Int? = null,
+        /** The exact advertised spelling (schemaVersion). */
+        val exactValue: String? = null,
+    )
+
+    // The four field groups; the group keys are the codec allow-list source.
+
+    val topLevel: List<FieldSpec> = listOf(
+        FieldSpec(
+            "schemaVersion",
+            WireType.STRING,
+            Location.TOP_LEVEL,
+            required = true,
+            exactValue = ContextExportContract.INTENT_SCHEMA_VERSION,
+        ),
+        FieldSpec("exportId", WireType.STRING, Location.TOP_LEVEL, required = true),
+        FieldSpec("itemIntents", WireType.OBJECT_ARRAY, Location.TOP_LEVEL, required = false),
+        FieldSpec("unresolvedRefs", WireType.STRING_ARRAY, Location.TOP_LEVEL, required = false),
+        FieldSpec("globalPreference", WireType.OBJECT, Location.TOP_LEVEL, required = false),
+        FieldSpec(
+            "rationale",
+            WireType.STRING,
+            Location.TOP_LEVEL,
+            required = false,
+            maxLength = ContextExportContract.MAX_RATIONALE_CHARS,
+        ),
+        FieldSpec(
+            "confidence",
+            WireType.INTEGER,
+            Location.TOP_LEVEL,
+            required = false,
+            min = ContextExportContract.CONFIDENCE_MIN.toLong(),
+            max = ContextExportContract.CONFIDENCE_MAX.toLong(),
+        ),
+    )
+
+    val item: List<FieldSpec> = listOf(
+        FieldSpec("ref", WireType.STRING, Location.ITEM_ENTRY, required = true),
+        FieldSpec(
+            "importance",
+            WireType.STRING,
+            Location.ITEM_ENTRY,
+            required = false,
+            enumValues = Importance.entries.map { it.name },
+        ),
+        FieldSpec("desiredGroup", WireType.STRING_ARRAY, Location.ITEM_ENTRY, required = false),
+        FieldSpec("groupSemantic", WireType.OBJECT, Location.ITEM_ENTRY, required = false),
+        // The upper page bound is export-dependent (gridContext.pageCount - 1):
+        // min is fixed, max is context-relative and set by the claim below.
+        FieldSpec("pageAffinity", WireType.INTEGER, Location.ITEM_ENTRY, required = false, min = 0),
+        FieldSpec(
+            "regionAffinity",
+            WireType.STRING,
+            Location.ITEM_ENTRY,
+            required = false,
+            enumValues = ExportRegionKind.entries.map { it.name },
+        ),
+        FieldSpec("preserve", WireType.BOOLEAN, Location.ITEM_ENTRY, required = false),
+    )
+
+    val globalPreference: List<FieldSpec> = listOf(
+        FieldSpec("minimizeMovement", WireType.BOOLEAN, Location.GLOBAL_PREFERENCE, required = false),
+    )
+
+    val groupSemantic: List<FieldSpec> = listOf(
+        FieldSpec("category", WireType.STRING, Location.GROUP_SEMANTIC, required = false),
+        FieldSpec(
+            "freeText",
+            WireType.STRING,
+            Location.GROUP_SEMANTIC,
+            required = false,
+            maxLength = ContextExportContract.MAX_GROUP_SEMANTIC_FREE_TEXT_CHARS,
+        ),
+    )
+
+    val allFields: List<FieldSpec> = topLevel + item + globalPreference + groupSemantic
+
+    fun field(name: String): FieldSpec = allFields.first { it.name == name }
+
+    /** Enum spellings per field name, rendered into the output contract. */
+    val enumClaims: Map<String, List<String>> =
+        allFields.filter { it.enumValues.isNotEmpty() }.associate { it.name to it.enumValues }
+
+    /** The #204 model-level any-of rule for `groupSemantic`. */
+    val groupSemanticAnyOf: Pair<String, String> = "category" to "freeText"
+
+    /** Typed constraint semantics — what the claim actually asserts. */
+    sealed interface Semantic {
+        /** The field [required] flag is production-enforced. */
+        data class Presence(val required: Boolean) : Semantic
+
+        /** The field, when present, must be this container/primitive type. */
+        data class Type(val type: WireType) : Semantic
+
+        /** The field must equal the exact advertised spelling. */
+        data class ExactValue(val value: String) : Semantic
+
+        /** The field must use exactly these spellings. */
+        data class AllowedValues(val values: List<String>) : Semantic
 
         /**
-         * Production accepts the representation; canonical authoring restricts
-         * it. The instruction states the positive rule (rendered from the
-         * claim value) and a canonical acceptance case pins that a compliant
-         * payload is accepted.
+         * Inclusive integer bounds. A `null` max is export-relative
+         * (`gridContext.pageCount - 1`).
          */
-        AUTHORING_POLICY,
-    }
+        data class IntBounds(val min: Long, val max: Long?) : Semantic
 
-    /** What kind of constraint the claim states (drives fixture derivation). */
-    enum class ClaimKind {
-        /** The field must be present. */
-        PRESENCE,
+        /** String length upper bound. */
+        data class LengthLimit(val max: Int) : Semantic
 
-        /** The field must equal the exact advertised value ([value][ConstraintClaim.value][0]). */
-        EXACT_VALUE,
+        /** At least one of the member fields must be set. */
+        data class AnyOf(val members: List<String>) : Semantic
 
-        /** The field, when present, must be the advertised container. */
-        CONTAINER_TYPE,
-
-        /** The field, when present, must be the advertised primitive. */
-        PRIMITIVE_TYPE,
-
-        /** The field must stay inside the advertised [min, max] bounds. */
-        VALUE_BOUND,
-
-        /** The field must use exactly the advertised enum spellings. */
-        ENUM,
-
-        /** At least one of the two advertised member fields must be set. */
-        ANY_OF,
-
-        /** The field's length must stay inside the advertised maximum. */
-        LENGTH_LIMIT,
-
-        /** The array's size must stay inside the advertised maximum. */
-        ENTRY_LIMIT,
+        /** Array size upper bound. */
+        data class EntryLimit(val max: Int) : Semantic
 
         /** The field's refs must exist in the export scope. */
-        REF_SCOPE,
+        data class RefScope(val inKey: String) : Semantic
 
-        /** The field's refs must not duplicate or cross the authored partition. */
-        REF_PARTITION,
+        /** Refs must not duplicate (true) or cross the partition (false). */
+        data class RefPartition(val duplicate: Boolean) : Semantic
 
-        /** The named mobility forbids the fields the composer's prose states. */
-        MOBILITY_FORBIDDEN,
+        /** The named mobility forbids authoring these fields. */
+        data class MobilityForbidden(val mobility: String, val forbiddenFields: List<String>) : Semantic
 
         /**
-         * Authoring policy only: production accepts broader input; the claim
-         * value is the exact sentence the instruction must render.
+         * Authoring policy only: [sentence] is the exact fragment the
+         * instruction must render; the canonical acceptance case authors
+         * [entryField] with [entryValueTemplate] (`REF` = a valid export ref)
+         * on an item of [targetMobility] (or any movable item when null).
+         * [minArrayElements] requires the template to author at least that
+         * many array elements.
          */
-        POLICY_RENDER,
+        data class PolicyRule(
+            val sentence: String,
+            val entryField: String,
+            val entryValueTemplate: String,
+            val targetMobility: String? = null,
+            val minArrayElements: Int? = null,
+        ) : Semantic
     }
 
-    /**
-     * One constraint claim. Constraint granularity is deliberate: a single
-     * field can carry claims of both enforcements (e.g. `desiredGroup` has a
-     * production-enforced container-type claim and an authoring-policy
-     * non-empty claim), so enforcement lives on the claim, not the field.
-     */
     data class ConstraintClaim(
         /** Stable unique id; the parity/policy oracles are keyed on this. */
         val id: String,
         /** The wire key the constraint is about. */
         val field: String,
+        val location: Location,
         val kind: ClaimKind,
         val enforcement: Enforcement,
-        /**
-         * Typed constraint values, interpreted by [kind]: `EXACT_VALUE` → the
-         * exact spelling; `ENUM` → the allowed spellings; `VALUE_BOUND` →
-         * `[min, max]`; `LENGTH_LIMIT` / `ENTRY_LIMIT` → `[max]`; `ANY_OF` →
-         * the two member field names; `MOBILITY_FORBIDDEN` → the mobility
-         * name; `POLICY_RENDER` → the exact sentence to render.
-         */
-        val value: List<String> = emptyList(),
+        val semantic: Semantic,
     )
 
-    /** Rendering-only field descriptor (names and canonical authoring types). */
-    data class WireField(
-        val name: String,
-        val type: WireType,
-        val optional: Boolean,
-    )
-
-    /** Canonical authoring JSON type of a field (the instruction renders these). */
-    enum class WireType { STRING, BOOLEAN, INTEGER, STRING_ARRAY, OBJECT, OBJECT_ARRAY }
-
-    /** Top-level properties of the intent object (codec allow-list source). */
-    val topLevel: List<WireField> = listOf(
-        WireField("schemaVersion", WireType.STRING, optional = false),
-        WireField("exportId", WireType.STRING, optional = false),
-        WireField("itemIntents", WireType.OBJECT_ARRAY, optional = true),
-        WireField("unresolvedRefs", WireType.STRING_ARRAY, optional = true),
-        WireField("globalPreference", WireType.OBJECT, optional = true),
-        WireField("rationale", WireType.STRING, optional = true),
-        WireField("confidence", WireType.INTEGER, optional = true),
-    )
-
-    /** Properties of one `itemIntents` entry. */
-    val item: List<WireField> = listOf(
-        WireField("ref", WireType.STRING, optional = false),
-        WireField("importance", WireType.STRING, optional = true),
-        WireField("desiredGroup", WireType.STRING_ARRAY, optional = true),
-        WireField("groupSemantic", WireType.OBJECT, optional = true),
-        WireField("pageAffinity", WireType.INTEGER, optional = true),
-        WireField("regionAffinity", WireType.STRING, optional = true),
-        WireField("preserve", WireType.BOOLEAN, optional = true),
-    )
-
-    /** Properties of the optional `globalPreference` object. */
-    val globalPreference: List<WireField> = listOf(
-        WireField("minimizeMovement", WireType.BOOLEAN, optional = true),
-    )
-
-    /** Properties of the optional `groupSemantic` object. */
-    val groupSemantic: List<WireField> = listOf(
-        WireField("category", WireType.STRING, optional = true),
-        WireField("freeText", WireType.STRING, optional = true),
-    )
-
-    /** Enum spellings per field name, rendered into the output contract. */
-    val enumClaims: Map<String, List<String>> = mapOf(
-        "importance" to Importance.entries.map { it.name },
-        "regionAffinity" to ExportRegionKind.entries.map { it.name },
-    )
-
-    /** The #204 model-level any-of rule for `groupSemantic`. */
-    val groupSemanticAnyOf: Pair<String, String> = "category" to "freeText"
+    enum class ClaimKind { PRESENCE, TYPE, EXACT_VALUE, ALLOWED_VALUES, VALUE_BOUND, LENGTH_LIMIT, ANY_OF, ENTRY_LIMIT, REF_SCOPE, REF_PARTITION, MOBILITY_FORBIDDEN, POLICY }
 
     private fun claim(
         id: String,
-        field: String,
+        spec: FieldSpec,
         kind: ClaimKind,
         enforcement: Enforcement,
-        vararg value: String,
-    ): ConstraintClaim = ConstraintClaim(id, field, kind, enforcement, value.toList())
+        semantic: Semantic,
+    ): ConstraintClaim = ConstraintClaim(id, spec.name, spec.location, kind, enforcement, semantic)
+
+    private val schemaVersionSpec = field("schemaVersion")
+    private val confidenceSpec = field("confidence")
+    private val rationaleSpec = field("rationale")
+    private val freeTextSpec = field("freeText")
+    private val pageAffinitySpec = field("pageAffinity")
 
     /**
-     * Every constraint the AI-facing contract states, classified. The sync
-     * test walks this list: set/keys equality, id uniqueness, one derived
-     * parity case per production claim, and one render + acceptance case per
-     * policy claim — so a reclassification, addition, removal, duplication,
-     * or value edit cannot pass unnoticed.
+     * `mobility` is an export-item fact the intent payload never spells out —
+     * the mobility claims point at this synthetic spec so their field/
+     * location stay typed without joining the wire allow-lists.
+     */
+    private val mobilitySpec = FieldSpec("mobility", WireType.STRING, Location.ITEM_ENTRY, required = false)
+
+    /**
+     * Every constraint the AI-facing contract states. Production-enforced
+     * semantics are built from the [FieldSpec] objects above, so editing a
+     * spec changes the claim, which changes the rendered instruction and the
+     * derived parity fixture input at the same time.
      */
     val claims: List<ConstraintClaim> = listOf(
         // Presence / identity (decode).
-        claim("schemaVersion.presence", "schemaVersion", ClaimKind.PRESENCE, Enforcement.PRODUCTION_ENFORCED),
+        claim("schemaVersion.presence", schemaVersionSpec, ClaimKind.PRESENCE, Enforcement.PRODUCTION_ENFORCED, Semantic.Presence(schemaVersionSpec.required)),
         claim(
             "schemaVersion.exactValue",
-            "schemaVersion",
+            schemaVersionSpec,
             ClaimKind.EXACT_VALUE,
             Enforcement.PRODUCTION_ENFORCED,
-            ContextExportContract.INTENT_SCHEMA_VERSION,
+            Semantic.ExactValue(schemaVersionSpec.exactValue!!),
         ),
-        claim("exportId.presence", "exportId", ClaimKind.PRESENCE, Enforcement.PRODUCTION_ENFORCED),
-        claim("item.ref.presence", "ref", ClaimKind.PRESENCE, Enforcement.PRODUCTION_ENFORCED),
+        claim("exportId.presence", field("exportId"), ClaimKind.PRESENCE, Enforcement.PRODUCTION_ENFORCED, Semantic.Presence(true)),
+        claim("item.ref.presence", field("ref"), ClaimKind.PRESENCE, Enforcement.PRODUCTION_ENFORCED, Semantic.Presence(true)),
         // Container shapes (decode).
-        claim("itemIntents.containerType", "itemIntents", ClaimKind.CONTAINER_TYPE, Enforcement.PRODUCTION_ENFORCED),
-        claim("unresolvedRefs.containerType", "unresolvedRefs", ClaimKind.CONTAINER_TYPE, Enforcement.PRODUCTION_ENFORCED),
-        claim("globalPreference.containerType", "globalPreference", ClaimKind.CONTAINER_TYPE, Enforcement.PRODUCTION_ENFORCED),
-        claim("desiredGroup.containerType", "desiredGroup", ClaimKind.CONTAINER_TYPE, Enforcement.PRODUCTION_ENFORCED),
-        claim("groupSemantic.containerType", "groupSemantic", ClaimKind.CONTAINER_TYPE, Enforcement.PRODUCTION_ENFORCED),
+        claim("itemIntents.containerType", field("itemIntents"), ClaimKind.TYPE, Enforcement.PRODUCTION_ENFORCED, Semantic.Type(field("itemIntents").type)),
+        claim("unresolvedRefs.containerType", field("unresolvedRefs"), ClaimKind.TYPE, Enforcement.PRODUCTION_ENFORCED, Semantic.Type(field("unresolvedRefs").type)),
+        claim("globalPreference.containerType", field("globalPreference"), ClaimKind.TYPE, Enforcement.PRODUCTION_ENFORCED, Semantic.Type(field("globalPreference").type)),
+        claim("desiredGroup.containerType", field("desiredGroup"), ClaimKind.TYPE, Enforcement.PRODUCTION_ENFORCED, Semantic.Type(field("desiredGroup").type)),
+        claim("groupSemantic.containerType", field("groupSemantic"), ClaimKind.TYPE, Enforcement.PRODUCTION_ENFORCED, Semantic.Type(field("groupSemantic").type)),
+        // Primitive types (decode).
+        claim("confidence.valueType", confidenceSpec, ClaimKind.TYPE, Enforcement.PRODUCTION_ENFORCED, Semantic.Type(confidenceSpec.type)),
+        claim("pageAffinity.valueType", pageAffinitySpec, ClaimKind.TYPE, Enforcement.PRODUCTION_ENFORCED, Semantic.Type(pageAffinitySpec.type)),
+        claim("preserve.valueType", field("preserve"), ClaimKind.TYPE, Enforcement.PRODUCTION_ENFORCED, Semantic.Type(field("preserve").type)),
+        claim("minimizeMovement.valueType", field("minimizeMovement"), ClaimKind.TYPE, Enforcement.PRODUCTION_ENFORCED, Semantic.Type(field("minimizeMovement").type)),
         // Enum spellings (decode).
-        claim("importance.enum", "importance", ClaimKind.ENUM, Enforcement.PRODUCTION_ENFORCED, *enumClaims.getValue("importance").toTypedArray()),
-        claim("regionAffinity.enum", "regionAffinity", ClaimKind.ENUM, Enforcement.PRODUCTION_ENFORCED, *enumClaims.getValue("regionAffinity").toTypedArray()),
-        // Primitive types and value bounds (decode / validate).
-        claim("confidence.valueType", "confidence", ClaimKind.PRIMITIVE_TYPE, Enforcement.PRODUCTION_ENFORCED),
+        claim("importance.enum", field("importance"), ClaimKind.ALLOWED_VALUES, Enforcement.PRODUCTION_ENFORCED, Semantic.AllowedValues(field("importance").enumValues)),
+        claim("regionAffinity.enum", field("regionAffinity"), ClaimKind.ALLOWED_VALUES, Enforcement.PRODUCTION_ENFORCED, Semantic.AllowedValues(field("regionAffinity").enumValues)),
+        // Value bounds (decode / validate).
         claim(
             "confidence.valueBound",
-            "confidence",
+            confidenceSpec,
             ClaimKind.VALUE_BOUND,
             Enforcement.PRODUCTION_ENFORCED,
-            ContextExportContract.CONFIDENCE_MIN.toString(),
-            ContextExportContract.CONFIDENCE_MAX.toString(),
+            Semantic.IntBounds(confidenceSpec.min!!, confidenceSpec.max!!),
         ),
-        claim("pageAffinity.valueType", "pageAffinity", ClaimKind.PRIMITIVE_TYPE, Enforcement.PRODUCTION_ENFORCED),
-        claim("pageAffinity.exportBound", "pageAffinity", ClaimKind.VALUE_BOUND, Enforcement.PRODUCTION_ENFORCED, "0"),
-        claim("preserve.valueType", "preserve", ClaimKind.PRIMITIVE_TYPE, Enforcement.PRODUCTION_ENFORCED),
-        claim("minimizeMovement.valueType", "minimizeMovement", ClaimKind.PRIMITIVE_TYPE, Enforcement.PRODUCTION_ENFORCED),
+        claim(
+            "pageAffinity.exportBound",
+            pageAffinitySpec,
+            ClaimKind.VALUE_BOUND,
+            Enforcement.PRODUCTION_ENFORCED,
+            Semantic.IntBounds(pageAffinitySpec.min!!, max = null),
+        ),
+        // Any-of (model rule).
         claim(
             "groupSemantic.anyOf",
-            "groupSemantic",
+            field("groupSemantic"),
             ClaimKind.ANY_OF,
             Enforcement.PRODUCTION_ENFORCED,
-            groupSemanticAnyOf.first,
-            groupSemanticAnyOf.second,
+            Semantic.AnyOf(listOf(groupSemanticAnyOf.first, groupSemanticAnyOf.second)),
         ),
         // Mobility rules (validate).
-        claim("mobility.fixedSemanticForbidden", "mobility", ClaimKind.MOBILITY_FORBIDDEN, Enforcement.PRODUCTION_ENFORCED, "FIXED"),
-        claim("mobility.conditionalGroupingForbidden", "mobility", ClaimKind.MOBILITY_FORBIDDEN, Enforcement.PRODUCTION_ENFORCED, "CONDITIONAL"),
-        claim("mobility.candidatePreserveForbidden", "mobility", ClaimKind.MOBILITY_FORBIDDEN, Enforcement.PRODUCTION_ENFORCED, "CANDIDATE"),
+        claim(
+            "mobility.fixedSemanticForbidden",
+            mobilitySpec,
+            ClaimKind.MOBILITY_FORBIDDEN,
+            Enforcement.PRODUCTION_ENFORCED,
+            Semantic.MobilityForbidden(
+                "FIXED",
+                listOf("importance", "pageAffinity", "regionAffinity", "desiredGroup", "groupSemantic"),
+            ),
+        ),
+        claim(
+            "mobility.conditionalGroupingForbidden",
+            mobilitySpec,
+            ClaimKind.MOBILITY_FORBIDDEN,
+            Enforcement.PRODUCTION_ENFORCED,
+            Semantic.MobilityForbidden("CONDITIONAL", listOf("desiredGroup", "groupSemantic")),
+        ),
+        claim(
+            "mobility.candidatePreserveForbidden",
+            mobilitySpec,
+            ClaimKind.MOBILITY_FORBIDDEN,
+            Enforcement.PRODUCTION_ENFORCED,
+            Semantic.MobilityForbidden("CANDIDATE", listOf("preserve")),
+        ),
         // Ref scope and partition (validate).
-        claim("refScope.itemIntents", "ref", ClaimKind.REF_SCOPE, Enforcement.PRODUCTION_ENFORCED),
-        claim("refScope.desiredGroup", "desiredGroup", ClaimKind.REF_SCOPE, Enforcement.PRODUCTION_ENFORCED),
-        claim("refScope.unresolvedRefs", "unresolvedRefs", ClaimKind.REF_SCOPE, Enforcement.PRODUCTION_ENFORCED),
-        claim("refPartition.duplicate", "ref", ClaimKind.REF_PARTITION, Enforcement.PRODUCTION_ENFORCED),
-        claim("refPartition.disjoint", "ref", ClaimKind.REF_PARTITION, Enforcement.PRODUCTION_ENFORCED),
+        claim("refScope.itemIntents", field("ref"), ClaimKind.REF_SCOPE, Enforcement.PRODUCTION_ENFORCED, Semantic.RefScope("itemIntents")),
+        claim("refScope.desiredGroup", field("desiredGroup"), ClaimKind.REF_SCOPE, Enforcement.PRODUCTION_ENFORCED, Semantic.RefScope("desiredGroup")),
+        claim("refScope.unresolvedRefs", field("unresolvedRefs"), ClaimKind.REF_SCOPE, Enforcement.PRODUCTION_ENFORCED, Semantic.RefScope("unresolvedRefs")),
+        claim("refPartition.duplicate", field("ref"), ClaimKind.REF_PARTITION, Enforcement.PRODUCTION_ENFORCED, Semantic.RefPartition(duplicate = true)),
+        claim("refPartition.disjoint", field("ref"), ClaimKind.REF_PARTITION, Enforcement.PRODUCTION_ENFORCED, Semantic.RefPartition(duplicate = false)),
         // Resource limits (decode, OVERSIZE).
         claim(
             "rationale.lengthLimit",
-            "rationale",
+            rationaleSpec,
             ClaimKind.LENGTH_LIMIT,
             Enforcement.PRODUCTION_ENFORCED,
-            ContextExportContract.MAX_RATIONALE_CHARS.toString(),
+            Semantic.LengthLimit(rationaleSpec.maxLength!!),
         ),
         claim(
             "groupSemantic.freeText.lengthLimit",
-            "freeText",
+            freeTextSpec,
             ClaimKind.LENGTH_LIMIT,
             Enforcement.PRODUCTION_ENFORCED,
-            ContextExportContract.MAX_GROUP_SEMANTIC_FREE_TEXT_CHARS.toString(),
+            Semantic.LengthLimit(freeTextSpec.maxLength!!),
         ),
         claim(
             "itemIntents.entryLimit",
-            "itemIntents",
+            field("itemIntents"),
             ClaimKind.ENTRY_LIMIT,
             Enforcement.PRODUCTION_ENFORCED,
-            ContextExportContract.MAX_INTENT_ENTRIES.toString(),
+            Semantic.EntryLimit(ContextExportContract.MAX_INTENT_ENTRIES),
         ),
         claim(
             "unresolvedRefs.entryLimit",
-            "unresolvedRefs",
+            field("unresolvedRefs"),
             ClaimKind.ENTRY_LIMIT,
             Enforcement.PRODUCTION_ENFORCED,
-            ContextExportContract.MAX_INTENT_UNRESOLVED.toString(),
+            Semantic.EntryLimit(ContextExportContract.MAX_INTENT_UNRESOLVED),
         ),
-        // Authoring policies (production accepts broader input). The value is
-        // the exact sentence fragment the instruction must render.
+        // Authoring policies (production accepts broader input). The sentence
+        // is the exact fragment the instruction renders; the canonical entry
+        // template is what the acceptance case authors.
         claim(
             "policy.stringFieldsAsJsonStrings",
-            "string fields",
-            ClaimKind.POLICY_RENDER,
+            field("groupSemantic"),
+            ClaimKind.POLICY,
             Enforcement.AUTHORING_POLICY,
-            "Write string values as JSON strings",
+            Semantic.PolicyRule(
+                sentence = "Write string values as JSON strings",
+                entryField = "groupSemantic",
+                entryValueTemplate = "{\"freeText\":\"Tools\"}",
+            ),
         ),
         claim(
             "policy.uppercaseEnums",
-            "enums",
-            ClaimKind.POLICY_RENDER,
+            field("importance"),
+            ClaimKind.POLICY,
             Enforcement.AUTHORING_POLICY,
-            "UPPERCASE exactly as listed",
+            Semantic.PolicyRule(
+                sentence = "UPPERCASE exactly as listed",
+                entryField = "importance",
+                entryValueTemplate = enumClaims.getValue("importance").first(),
+            ),
         ),
         claim(
             "policy.stringListElements",
-            "string arrays",
-            ClaimKind.POLICY_RENDER,
+            field("desiredGroup"),
+            ClaimKind.POLICY,
             Enforcement.AUTHORING_POLICY,
-            "array of strings",
+            Semantic.PolicyRule(
+                sentence = "array of strings",
+                entryField = "desiredGroup",
+                entryValueTemplate = "[\"REF\"]",
+            ),
         ),
         claim(
             "policy.desiredGroupNonEmpty",
-            "desiredGroup",
-            ClaimKind.POLICY_RENDER,
+            field("desiredGroup"),
+            ClaimKind.POLICY,
             Enforcement.AUTHORING_POLICY,
-            "if present, non-empty",
+            Semantic.PolicyRule(
+                sentence = "if present, non-empty",
+                entryField = "desiredGroup",
+                entryValueTemplate = "[\"REF\"]",
+                minArrayElements = 1,
+            ),
         ),
         claim(
             "policy.fixedAuthoring",
-            "mobility",
-            ClaimKind.POLICY_RENDER,
+            field("preserve"),
+            ClaimKind.POLICY,
             Enforcement.AUTHORING_POLICY,
-            "author only \"preserve\": true",
+            Semantic.PolicyRule(
+                sentence = "author only \"preserve\": true",
+                entryField = "preserve",
+                entryValueTemplate = "true",
+                targetMobility = "FIXED",
+            ),
         ),
     )
 
@@ -306,13 +408,10 @@ internal object IntentWireContract {
 
     fun claim(id: String): ConstraintClaim = claims.first { it.id == id }
 
+    /** The exact sentence a policy claim contributes to the instruction. */
+    fun policySentence(id: String): String = (claim(id).semantic as Semantic.PolicyRule).sentence
+
     // Static identities rendered into the output contract.
 
     val intentSchemaVersion: String = ContextExportContract.INTENT_SCHEMA_VERSION
-    val confidenceMin: Int = ContextExportContract.CONFIDENCE_MIN
-    val confidenceMax: Int = ContextExportContract.CONFIDENCE_MAX
-    val maxGroupSemanticFreeTextChars: Int = ContextExportContract.MAX_GROUP_SEMANTIC_FREE_TEXT_CHARS
-    val maxRationaleChars: Int = ContextExportContract.MAX_RATIONALE_CHARS
-    val maxItemIntents: Int = ContextExportContract.MAX_INTENT_ENTRIES
-    val maxUnresolvedRefs: Int = ContextExportContract.MAX_INTENT_UNRESOLVED
 }
