@@ -174,12 +174,11 @@ class ExchangeFlowStateHolderTest {
     }
 
     /**
-     * Issue #332: receipt tests must observe that the shared receipt helper
-     * actually launched the common import path. `holder.import` hops to
-     * `Dispatchers.Main` for its display update, which does not exist on the
-     * JVM; the handler records that terminal failure (instead of letting it
-     * reach the global handler) so the pre-Main side effects — editor state
-     * and `store.load` — can be asserted deterministically.
+     * Issue #332: receipt tests assert the TERMINAL display states (the
+     * parse-first outcome screen). The holder's display hop is injectable
+     * (`uiDispatcher`), so the tests run it on IO and reach
+     * `ExchangeScreen.ImportOutcomeScreen` deterministically; the tail hop of
+     * a refused/busy import never occurs in these fixtures.
      */
     private fun newHolderWithRecordedScope(store: FakeStore, now: Long): Triple<ExchangeFlowStateHolder, ExchangeFlowController, MutableList<Throwable>> {
         val unhandled = mutableListOf<Throwable>()
@@ -200,6 +199,7 @@ class ExchangeFlowStateHolderTest {
             run = RecordingRun.get(),
             scope = scope,
             settleDispatcher = Dispatchers.IO,
+            uiDispatcher = Dispatchers.IO,
         )
         return Triple(holder, controller, unhandled)
     }
@@ -660,6 +660,96 @@ class ExchangeFlowStateHolderTest {
     }
 
     @Test
+    fun fileReadFailureSetsTheTypedFileStatusAndKeepsTheEditor() {
+        val store = FakeStore()
+        val (holder, _) = newHolder(store, now = 1_000_000L)
+        holder.openImport()
+        holder.onFileRead(FileExchangeRead.Failure)
+        assertEquals(ExchangeStatus.Kind.FILE_READ_FAILED, holder.status!!.kind)
+        assertEquals("", (holder.screen as ExchangeScreen.Importing).replyText)
+        assertEquals(0, store.loadCalls)
+    }
+
+    @Test
+    fun clipboardReceiptReachesTheParseFirstOutcomeWithEphemeralRawDiscardedOnRetry() {
+        // AC-1 + AC-7: one clipboard press lands on the parse-first outcome
+        // surface carrying the reply as the collapsed raw detail; the reply
+        // lives ONLY in that surface's field — retry (openImport) and close
+        // replace the screen state and thereby discard it.
+        val store = FakeStore()
+        val (holder, _, _) = newHolderWithRecordedScope(store, now = 1_000_000L)
+        holder.openImport()
+        val reply = unmatchedMarkedReply()
+        holder.importFromClipboard(
+            ClipboardImportTransport(throwNoContextForTest()).apply {
+                readOverride = { ClipboardImportRead.Text(reply) }
+            },
+        )
+        awaitScreenOutcome(holder)
+        val outcomeScreen = holder.screen as ExchangeScreen.ImportOutcomeScreen
+        val result = (outcomeScreen.outcome as ExchangeImportOutcome.Pipeline).result as ExchangeImportResult.Failure
+        assertEquals(ExchangeImportFailure.Contract(IntentValidationFailure.ExportMismatch), result.failure)
+        assertEquals("the reply is retained only on the outcome surface", reply, outcomeScreen.rawText)
+
+        // Retry: back to an empty editor; the raw text is gone with the
+        // replaced surface state.
+        holder.openImport()
+        assertTrue(holder.screen is ExchangeScreen.Importing)
+        assertEquals("", (holder.screen as ExchangeScreen.Importing).replyText)
+
+        holder.close()
+        assertTrue(holder.screen is ExchangeScreen.Closed)
+    }
+
+    @Test
+    fun fileReceiptReachesTheParseFirstOutcomeInOneOperation() {
+        // AC-2: the file pick lands on the parse-first outcome display with
+        // no additional import press.
+        val store = FakeStore()
+        val (holder, _, _) = newHolderWithRecordedScope(store, now = 1_000_000L)
+        holder.openImport()
+        val reply = unmatchedMarkedReply()
+        holder.onFileRead(FileExchangeRead.Text(reply))
+        awaitScreenOutcome(holder)
+        val outcomeScreen = holder.screen as ExchangeScreen.ImportOutcomeScreen
+        assertEquals(reply, outcomeScreen.rawText)
+    }
+
+    @Test
+    fun inputNotReadyOutcomeCarriesTheRecognizedMetadata() {
+        // Required-fix (spec D-6): a structural NotReady settles AFTER the
+        // decode, so the outcome keeps the framing/version/entry count.
+        val store = FakeStore()
+        val now = 1_000_000L
+        val controller = ExchangeFlowController(
+            composeExportInputs = { ExchangeInputResult.ExportReady(exportInputs(now)) },
+            currentStructuralInputs = {
+                ExchangeStructuralResult.NotReady(
+                    app.lawnchair.organizer.integration.InputReadinessReason.ReconciliationPending,
+                )
+            },
+            store = store,
+            allocator = SequentialIdAllocator(),
+            clock = { now },
+        )
+        val generated = controller.generate(PrivacyTier.EXTERNAL_REDACTED) as ExchangeGenerationResult.Generated
+        val outcome = controller.importReply(replyFor(generated.session)) as ExchangeImportOutcome.InputNotReady
+        val info = outcome.recognized!!
+        assertEquals(RecognizedImportFraming.MARKER, info.framing)
+        assertEquals(ContextExportContract.INTENT_SCHEMA_VERSION, info.intentSchemaVersion)
+        assertEquals(2, info.authoredEntryCount) // the fixture export scope is a + b
+    }
+
+    private fun awaitScreenOutcome(holder: ExchangeFlowStateHolder) {
+        var waited = 0
+        while (holder.screen !is ExchangeScreen.ImportOutcomeScreen && waited < 5_000) {
+            Thread.sleep(50)
+            waited += 50
+        }
+        assertTrue("the parse-first outcome surface must be reached", holder.screen is ExchangeScreen.ImportOutcomeScreen)
+    }
+
+    @Test
     fun oversizedFileTextIsRejectedByTheSharedEnvelopeGate() {
         val store = FakeStore()
         val (holder, _) = newHolder(store, now = 1_000_000L)
@@ -672,22 +762,11 @@ class ExchangeFlowStateHolderTest {
     }
 
     @Test
-    fun fileReadFailureSetsTheTypedFileStatusAndKeepsTheEditor() {
-        val store = FakeStore()
-        val (holder, _) = newHolder(store, now = 1_000_000L)
-        holder.openImport()
-        holder.onFileRead(FileExchangeRead.Failure)
-        assertEquals(ExchangeStatus.Kind.FILE_READ_FAILED, holder.status!!.kind)
-        assertEquals("", (holder.screen as ExchangeScreen.Importing).replyText)
-        assertEquals(0, store.loadCalls)
-    }
-
-    @Test
     fun displayInfoProjectionMapsOnlyTheRecognizedMetadata() {
         // Issue #332 (spec D-5): the pure projection surfaces only the
         // seam-derived recognition metadata; failures without it display
         // nothing extra.
-        assertEquals(ExchangeImportDisplayInfo(), exchangeImportDisplayInfo(null))
+        assertEquals(ExchangeImportDisplayInfo(), exchangeImportDisplayInfo(result = null))
         val bare = ExchangeImportResult.Failure(ExchangeImportFailure.Envelope(ExchangeEnvelopeFailure.FramingMissing))
         assertEquals(ExchangeImportDisplayInfo(), exchangeImportDisplayInfo(bare))
         val full = ExchangeImportResult.Failure(
@@ -697,6 +776,11 @@ class ExchangeFlowStateHolderTest {
         assertEquals(
             ExchangeImportDisplayInfo(RecognizedImportFraming.MARKER, ContextExportContract.INTENT_SCHEMA_VERSION, 2),
             exchangeImportDisplayInfo(full),
+        )
+        // The recognized overload (InputNotReady path) maps the same facts.
+        assertEquals(
+            ExchangeImportDisplayInfo(RecognizedImportFraming.MARKER, ContextExportContract.INTENT_SCHEMA_VERSION, 2),
+            exchangeImportDisplayInfo(RecognizedImportInfo(RecognizedImportFraming.MARKER, ContextExportContract.INTENT_SCHEMA_VERSION, 2)),
         )
     }
 

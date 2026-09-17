@@ -131,12 +131,12 @@ Import入力に関係する現行source (すべて確認済み):
 | AC-1 | transport unit test (1回読取・textのみ・null/empty/not-text/oversized注入)。listener不在はcode review + `ClipboardImportTransport` が `OnPrimaryClipChangedListener` を参照しないことの構造確認。holder test (読取→`import()` 呼出・置換・失敗時state保持) |
 | AC-2 | holder test (`onFileRead` 経由で受領helperへ: file選択の読取結果から共通import path実行・editor置換まで一操作。JVM testはframework `Uri` を構築できないため、transport呼出を除くSAF callback分岐を検証し、`FileExchangeTransport.read` 自体は既存bounded readのregressionに一任) + UI copy存在 (strings test またはcode review) + `takePersistableUriPermission` 不在のreview (現行実装でも未使用、維持) |
 | AC-3 | holder/editor test (巨大textでfield高さ不変・`maxLines` 超過時内部scroll、clear、clipboard/file読込による置換) |
-| AC-4 | 画面構成testまたはinstrumentation (数十KB入力でpaste editor・raw detail双方がbounded)。Compose測定はinstrumentation (`tests/organizer-instrumentation` の既存UI test patternに倣う) またはUI構造assertion |
+| AC-4 | Compose instrumentation `ExchangeImportSurfaceInstrumentationTest` (実機host上で数十KB入力のpaste editor < 400px @Density 1f・raw detail ≤ 260pxのbounded断言、clear、raw default折りたたみ) + device evidence (`02`, `05`, `07`) |
 | AC-5 | 全source (clipboard/file/manual paste) が同一受領helper・同一 `import()`/pipeline入口へ集約する構造test (holder level。fileの1操作実行を含む) + UI層parse不在のreview |
 | AC-6 | typed失敗のholder test (空/非text/oversized/file失敗) + `exchangeStatusText` / `exchangeFailureText` のstrings解決test (ja/en) |
 | AC-7 | diagnostics書込み経路不在のregression review + 結果surface表示中のephemeral保持 (1箇所) ・`openImport`/`close`/遷移時破棄のstate test (retention boundary assertion) |
-| AC-8 | 手動/instrumentation evidence: TalkBack・Switch Access・keyboard・font scale 200%。D-4暫定値の確定根拠をここで記録 |
-| AC-9 | physical device evidence (representative ChatGPT/Gemini mobile app copy → import)。docs/assessment/ またはIssue記録。#205 AC-10 evidenceと同一workflowで兼ね可 |
+| AC-8 | device evidence ([assets-332-import-ui](../../docs/assessment/assets-332-import-ui/README.md)): 200% font (`06`, `07`) で主要CTA到達・bounded editor確認、TalkBack識別の機械検証はCompose instrumentation `ExchangeImportSurfaceInstrumentationTest` (各source操作の個別label・click action)。D-4確定根拠を同READMEに記録。TalkBack通し確認は後続evidence pass |
+| AC-9 | physical device evidence ([assets-332-import-ui](../../docs/assessment/assets-332-import-ui/README.md) `04`, `05`): 実機emulator上で clipboard copy → 1押下読取 → 共通path → parse-first表示 (認識framing表示・raw折りたたみ) まで確認。representative ChatGPT/Gemini appの実copyは含まず、後続evidence passへ明示分離 (#205 AC-10前例と同一) |
 | AC-10 | parse-first表示のUI test (framing/version/エントリ数表示・raw折りたたみdefault閉) + **エントリ数境界fixture test**: export scopeに複数refがあり、document `items` がsemantic entry + bare entryのみを含み別refがomission、というfixtureで「表示/metadata count == authored document `items.size` (bare含む・omission除外)」を直接assertする (`ExchangeImportPipelineTest` にfixture追加。`completed.authoredItemCount` 等のpost-validation値への誤置換も検出) + 既存19種失敗表示regression (`ImportNormalizerTest` / `ExchangeImportPipelineTest` で #329分はcoverage済み) + export flow regression (既存unit test green) |
 
 高リスクlabel (`risk: layout-data` / `risk: migration`) は付かない見込み (DB不変)。ただしPR時の独立エビデンス要件は [github-workflow.md](../../docs/project/github-workflow.md) の判定に従う。
@@ -164,11 +164,11 @@ Import入力に関係する現行source (すべて確認済み):
 
 ## Explicitly unverified areas
 
-- 実機 (特にOEM ROM) でのclipboard読取挙動とtoast表示の実測 (AC-9で確認)。
-- 実際のChatGPT/Gemini mobile appのcopy内容の形式分布 (#329領域。#332では表示のみ影響)。
-- Compose instrumentation testとしてのbounded editor高さ計測の実現性 (`tests/organizer-instrumentation` に前例がない場合、UI構造assertionへの代替をPRで記録)。
-- exchange unit testのCI JVM gate filter対象化の要否。
-- D-4確定値 (200% font/TalkBack evidence後)。
+- 実機 (特にOEM ROM) でのclipboard読取挙動とtoast表示の実測。emulator (API 36) ではtoast表示を確認しなかった (specでは明示操作に付随する表示として許容済み)。OEM実機確認は後続evidence pass。
+- representativeなChatGPT/Gemini mobile appの実copy evidence (AC-9厳密分)。後続evidence passへ明示分離 ([Issue #205 AC-10の前例](https://github.com/nunu1733/NunuLauncher/issues/205) と同一扱い)。
+- TalkBack実読み上げの通し確認 (semantics識別はinstrumentation assertionで機械検証済み)。後続evidence passへ含める。
+- exchange unit testのCI JVM gate filter対象化の要否 (初回PRのCI結果で確認)。
+- ~~D-4確定値~~ → **解決済み (2026-09-17 device evidence)**。
 
 ## Execution checklist
 
@@ -178,4 +178,4 @@ Import入力に関係する現行source (すべて確認済み):
 4. `ExchangeImportPipeline` 認識情報のadditive付与 (失敗時framing・version・認識エントリ数。framingの `Prepared` 伝播は #329で既存) + `ImportOutcomeScreen` ephemeral raw field (保持・破棄) + `ExchangeImportOutcome` parse-first表示 (raw折りたたみ) + UI test/表示model unit test。
 5. `importFromFile` の1操作化 (`FileExchangeRead.Text` → 受領helper) + file読取UI copy (対応型/size明示、D-3 MIME filter) + 既存file経路regression。
 6. a11y仕上げ: TalkBack label・live region・keyboard/Switch Access完結の確認、testTag整備。
-7. device/a11y evidence (AC-8/AC-9) → D-4確定 → spec/plan status更新。
+7. device/a11y evidence (AC-8/AC-9) → D-4確定 → spec/plan status更新。→ **実施済み (2026-09-17)**: emulator evidence [assets-332-import-ui](../../docs/assessment/assets-332-import-ui/README.md)、D-4を `maxLines=8` + `heightIn(max=200.dp)` に確定 (spec Change history参照)。representative app実copy (AC-9厳密分) とTalkBack通し確認のみ後続evidence passへ分離。

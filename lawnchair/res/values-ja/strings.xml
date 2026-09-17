@@ -420,6 +420,7 @@
     <string name="exchange_import_file_types">テキスト (.txt) またはJSON (.json)・最大1 MiB</string>
     <string name="exchange_status_clipboard_empty">クリップボードが空か、読み取れませんでした。AIアプリで回答をコピーし直し、このアプリに戻ってからもう一度読み込んでください。うまくいかない場合はファイル読み込みか手動貼り付けをお使いください。</string>
     <string name="exchange_status_clipboard_not_text">クリップボードにテキストがありません。AIアプリで回答のテキストをコピーし直してください。</string>
+    <string name="exchange_status_file_read_failed">ファイルを読み込めませんでした。もう一度ファイルを選択するか、対応形式 (.txt / .json・最大1 MiB) を確認してください。うまくいかない場合はクリップボード読み込みか手動貼り付けをお使いください。</string>
     <string name="exchange_recognized_framing">認識した形式</string>
     <string name="exchange_recognized_version">認識version</string>
     <string name="exchange_recognized_entries">認識エントリ数</string>

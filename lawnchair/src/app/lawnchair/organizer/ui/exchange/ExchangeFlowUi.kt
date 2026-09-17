@@ -52,6 +52,7 @@ import app.lawnchair.organizer.personalization.exchange.ExchangeImportFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportResult
 import app.lawnchair.organizer.personalization.exchange.ImportNormalizationFailure
 import app.lawnchair.organizer.personalization.exchange.RecognizedImportFraming
+import app.lawnchair.organizer.personalization.exchange.RecognizedImportInfo
 import app.lawnchair.organizer.personalization.exchange.acceptsExchangeImportEnvelope
 import app.lawnchair.organizer.ui.ManualOrganizationRun
 import com.android.launcher3.R
@@ -161,6 +162,13 @@ class ExchangeFlowStateHolder(
     /** Where transport results hop back to the UI (Main in production). */
     private val settleDispatcher: CoroutineDispatcher = Dispatchers.Main,
     /**
+     * Where display-state updates (generation results, import outcomes) hop
+     * back (Main in production). Injectable for the same reason as
+     * [settleDispatcher]: JVM holder tests assert the terminal display states
+     * (issue #332 review R3) without an Android Main looper.
+     */
+    private val uiDispatcher: CoroutineDispatcher = Dispatchers.Main,
+    /**
      * Test-only seam (issue #205 ABA regression): invoked once per settle
      * attempt with the owning disclosure and whether it was applied, after the
      * settle decision completed. Production passes the no-op default.
@@ -237,7 +245,7 @@ class ExchangeFlowStateHolder(
         screen = ExchangeScreen.Generating
         scope.launch(Dispatchers.IO) {
             val result = controller.generate(tier)
-            withContext(Dispatchers.Main) { handleGeneration(result, tier) }
+            withContext(uiDispatcher) { handleGeneration(result, tier) }
         }
     }
 
@@ -255,7 +263,7 @@ class ExchangeFlowStateHolder(
         screen = ExchangeScreen.Generating
         scope.launch(Dispatchers.IO) {
             val result = controller.generateForSelection(tier, selection, candidateLabels)
-            withContext(Dispatchers.Main) { handleGeneration(result, tier) }
+            withContext(uiDispatcher) { handleGeneration(result, tier) }
         }
     }
 
@@ -307,7 +315,7 @@ class ExchangeFlowStateHolder(
         screen = ExchangeScreen.Disclosing(disclosing.copy(cancelling = true))
         scope.launch(Dispatchers.IO) {
             controller.cancelDisclosure(disclosing.session)
-            withContext(Dispatchers.Main) { close() }
+            withContext(uiDispatcher) { close() }
         }
     }
 
@@ -476,7 +484,7 @@ class ExchangeFlowStateHolder(
                 val selecting = run.state is ManualOrganizationRun.State.Selecting
                 if (selecting) {
                     val attached = run.attachIntent(pipeline.validated)
-                    withContext(Dispatchers.Main) {
+                    withContext(uiDispatcher) {
                         if (attached == ManualOrganizationRun.AttachIntentOutcome.Attached) {
                             status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_ACCEPTED)
                             screen = ExchangeScreen.Closed
@@ -491,12 +499,12 @@ class ExchangeFlowStateHolder(
                 // synchronously; every production entry runs it on IO (audit
                 // P2-1), matching the plain start row's execute{} wrapper.
                 when (run.start(intent = pipeline.validated)) {
-                    is ManualOrganizationRun.StartOutcome.Started -> withContext(Dispatchers.Main) {
+                    is ManualOrganizationRun.StartOutcome.Started -> withContext(uiDispatcher) {
                         status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_ACCEPTED)
                         screen = ExchangeScreen.Closed
                     }
 
-                    ManualOrganizationRun.StartOutcome.Busy -> withContext(Dispatchers.Main) {
+                    ManualOrganizationRun.StartOutcome.Busy -> withContext(uiDispatcher) {
                         // Single-active-operation gate rejected the fresh run:
                         // typed guidance, zero-write, intent dropped.
                         status = ExchangeStatus(ExchangeStatus.Kind.RUN_BUSY)
@@ -504,7 +512,7 @@ class ExchangeFlowStateHolder(
                     }
                 }
             } else {
-                withContext(Dispatchers.Main) {
+                withContext(uiDispatcher) {
                     // Issue #332 (spec AC-7): the imported text moves into the
                     // outcome surface's single ephemeral field for the
                     // collapsed raw detail; leaving the surface discards it.
@@ -1067,7 +1075,12 @@ private fun ExchangeImportOutcome(outcome: ExchangeImportOutcome, rawText: Strin
         // Issue #332 (spec D-5 parse-first presentation): the recognized
         // framing / accepted version / authored entry count lead the display;
         // the raw text stays collapsed by default (bounded, internal scroll).
-        val info = exchangeImportDisplayInfo(pipeline)
+        // InputNotReady settles AFTER the decode, so its recognition facts
+        // display exactly like a pipeline failure's (spec D-6).
+        val info = when (outcome) {
+            is ExchangeImportOutcome.Pipeline -> exchangeImportDisplayInfo(outcome.result)
+            is ExchangeImportOutcome.InputNotReady -> exchangeImportDisplayInfo(outcome.recognized)
+        }
         if (info.framing != null) {
             ExchangeImportInfoRow(
                 label = stringResource(R.string.exchange_recognized_framing),
@@ -1156,14 +1169,17 @@ data class ExchangeImportDisplayInfo(
     val authoredEntryCount: Int? = null,
 )
 
-fun exchangeImportDisplayInfo(result: ExchangeImportResult?): ExchangeImportDisplayInfo {
-    val recognized = (result as? ExchangeImportResult.Failure)?.recognized ?: return ExchangeImportDisplayInfo()
-    return ExchangeImportDisplayInfo(
+fun exchangeImportDisplayInfo(recognized: RecognizedImportInfo?): ExchangeImportDisplayInfo = if (recognized == null) {
+    ExchangeImportDisplayInfo()
+} else {
+    ExchangeImportDisplayInfo(
         framing = recognized.framing,
         intentSchemaVersion = recognized.intentSchemaVersion,
         authoredEntryCount = recognized.authoredEntryCount,
     )
 }
+
+fun exchangeImportDisplayInfo(result: ExchangeImportResult?): ExchangeImportDisplayInfo = exchangeImportDisplayInfo((result as? ExchangeImportResult.Failure)?.recognized)
 
 @Composable
 private fun exchangeStatusText(kind: ExchangeStatus.Kind): String = when (kind) {
@@ -1171,7 +1187,7 @@ private fun exchangeStatusText(kind: ExchangeStatus.Kind): String = when (kind) 
     ExchangeStatus.Kind.TRANSPORT_CLIPBOARD_FAILED -> stringResource(R.string.exchange_transport_clipboard_failed)
     ExchangeStatus.Kind.TRANSPORT_SHARE_ABSENT -> stringResource(R.string.exchange_transport_share_absent)
     ExchangeStatus.Kind.TRANSPORT_FILE_FAILED -> stringResource(R.string.exchange_transport_file_failed)
-    ExchangeStatus.Kind.FILE_READ_FAILED -> stringResource(R.string.exchange_transport_file_failed)
+    ExchangeStatus.Kind.FILE_READ_FAILED -> stringResource(R.string.exchange_status_file_read_failed)
     ExchangeStatus.Kind.GENERATION_INPUT_NOT_READY -> stringResource(R.string.exchange_generation_input_not_ready)
     ExchangeStatus.Kind.GENERATION_STORE_FAILURE -> stringResource(R.string.exchange_generation_store_failure)
     ExchangeStatus.Kind.GENERATION_OVERSIZE -> stringResource(R.string.exchange_generation_oversize)

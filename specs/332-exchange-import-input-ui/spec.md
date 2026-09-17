@@ -9,7 +9,7 @@ updated: 2026-09-17
 
 # External Agent ExchangeのImport入力をclipboard/file-firstのモバイルUIへ変更する
 
-> Status: **accepted** (2026-09-17) — review **Approved** ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/332#issuecomment-5706349675)、head `bccab1ca0d0d5609a1f80c612f8dc75191d53004` 基準) 後に実装を着手する。起草2026-09-16、re-entry改訂・Phase1 review指摘対応 (3回のreview) 済み。検証済みbaseline `9290afc2be80f8dc41a5defa14d7888619fadcad` (= `origin/main`。`45711f53dd40b5cc67013f4a4193d2c6d5b0dcc1` からの差分は #336 spec/planのstatus更新のみでruntime契約への影響なしを確認済み)。#329 (Import Normalizer) は実装済みのため、本specは実装済みframing種別 `RecognizedImportFraming` (marker / fenced json / standalone JSON) とtyped失敗19種を前提とする。**D-4 (manual paste editorの実寸) はlarge-font/accessibility evidenceで確定する** ことがIssue本文から指示されているため未決定のまま (Open questions 2。実装は暫定値をパラメータ化)。D-2 (manual paste fieldの配置) は起草推奨の折りたたみsection、D-3 (file対応型) は `text/plain` + `application/json` をaccepted値として実装する (device evidenceで必要判明時にspec改訂)。
+> Status: **accepted** (2026-09-17) — review **Approved** ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/332#issuecomment-5706349675)、head `bccab1ca0d0d5609a1f80c612f8dc75191d53004` 基準) 後に実装を着手する。起草2026-09-16、re-entry改訂・Phase1 review指摘対応 (3回のreview) 済み。検証済みbaseline `9290afc2be80f8dc41a5defa14d7888619fadcad` (= `origin/main`。`45711f53dd40b5cc67013f4a4193d2c6d5b0dcc1` からの差分は #336 spec/planのstatus更新のみでruntime契約への影響なしを確認済み)。#329 (Import Normalizer) は実装済みのため、本specは実装済みframing種別 `RecognizedImportFraming` (marker / fenced json / standalone JSON) とtyped失敗19種を前提とする。**D-4 (manual paste editorの実寸) は2026-09-17のdevice evidence ([assets-332-import-ui](../../docs/assessment/assets-332-import-ui/README.md)) で確定: `maxLines = 8` + `heightIn(max = 200.dp)`** (100% / 200% fontの両方でbounded・内部scroll・主要CTA到達を確認)。D-2 (manual paste fieldの配置) は起草推奨の折りたたみsection、D-3 (file対応型) は `text/plain` + `application/json` をaccepted値として実装した (device evidenceで必要判明時にspec改訂)。
 
 ## Problem
 
@@ -182,9 +182,9 @@ And 200% fontでもbounded editor・raw detailの内部scrollにより主要操�
 
 SAF filter = `text/plain` + `application/json`。UI copyで「テキスト (.txt) またはJSON (.json) ・最大1 MiB」を明示する。`text/*` 全体の許容 (file managerがJSONを `text/json` 等として報告する場合の救済) はdevice evidenceで必要と判明したらV2で拡張する (draft時点では型を明示的に絞る)。
 
-### D-4: bounded editorの実寸 (未決定 — evidenceで確定)
+### D-4: bounded editorの実寸 (確定 — 2026-09-17 device evidence)
 
-高さは6〜8行程度を起点とし、dp換算・maxLinesは **200% font / TalkBack環境でのevidence** (AC-8/AC-9) を見て確定する (Issue本文の指示どおり)。確定前の実装は暫定値 (例: `maxLines` 8 + `heightIn(max = 200.dp)` 程度) をパラメータ化して持ち、evidence PRで固定する。
+**確定値: `maxLines = 8` + `heightIn(max = 200.dp)`** (実装パラメータ `IMPORT_EDITOR_MAX_LINES` / `IMPORT_EDITOR_MAX_HEIGHT`)。確定根拠は [assets-332-import-ui](../../docs/assessment/assets-332-import-ui/README.md) のdevice evidence: 100% font (`02`) と200% font (`06`, `07`) の両方で、長大入力時にeditorが高さ上限で止まりfield内部scrollし、主要CTA (clipboard読込・file読込・対応型copy・Cancel) が画面外へ押し流されないこと、およびCompose instrumentation `ExchangeImportSurfaceInstrumentationTest` による同一境界の機械検証。将来の実寸変更は本値の更新とevidence再取得で行う。
 
 ### D-5: parse-first表示の内容とそのsource
 
@@ -244,9 +244,9 @@ SAF filter = `text/plain` + `application/json`。UI copyで「テキスト (.txt
 
 ## Open questions (acceptance前に解消必要)
 
-1. **manual paste editorの配置 (D-2)**: 詳細sectionへの折りたたみ (起草推奨) vs 常設bounded editor。owner decision。
-2. **bounded editorの実寸 (D-4)**: 6〜8行起点のdp/maxLines確定値。AC-8/AC-9 evidence後に確定 (Issue本文が後段決定と指示)。
-3. **file対応型の範囲 (D-3)**: `text/plain` + `application/json` (起草推奨) vs `text/*` 許容。device evidence (実AI app・file managerのMIME報告実態) を見て判断してよい。
+1. **manual paste editorの配置 (D-2)**: 詳細sectionへの折りたたみ (起草推奨) vs 常設bounded editor。owner decision。→ **実装は起草推奨の折りたたみ (a) で実施 (accepted値)**。
+2. ~~**bounded editorの実寸 (D-4)**~~: **解決済み (2026-09-17)**。device evidenceにより `maxLines = 8` + `heightIn(max = 200.dp)` に確定 (D-4参照)。
+3. **file対応型の範囲 (D-3)**: `text/plain` + `application/json` (起草推奨) vs `text/*` 許容。→ **実装は起草推奨の2型で実施 (accepted値)**。device evidenceで`text/*`拡張の必要が判明したらspec改訂で扱う。
 
 ## Relationship / 責務境界
 
@@ -263,6 +263,7 @@ SAF filter = `text/plain` + `application/json`。UI copyで「テキスト (.txt
 - 2026-09-16: resume検証 (同一baseline)。残存draftをIssue本文・全コメント (0件)・実装source (`ExchangeFlowUi.kt` / `ExchangeTransports.kt` / `IntentImportParser.kt` / `ExchangeFlowController.kt` / `ExchangeImportPipeline.kt` / `ManualOrganizationPreferences.kt` / `ClipboardUtils.kt` / `lawnchair/res` strings / manifest) および #329/#328 draft spec (各branch snapshot) と突き合わせ、(1) import失敗画面の型名を実際の `ExchangeScreen.ImportOutcomeScreen` / `ExchangeImportOutcome` に精緻化、(2) export disclosure側の既存bounded表示pattern (`heightIn(max = 240.dp)` + `verticalScroll`) を問題記述・確認事実へ追記、(3) #329 framing enumの型名が #329 draftで未確定であることを明示、(4) #329/#328 draft specへの参照をIssue URL + branch snapshot表記へ修正、(5) DESIGN.md参照を gate 13 へ修正。statusは **draftのまま** (acceptance判断はowner)。
 - 2026-09-17: Re-entry改訂 (Re-entry rule適用)。#329が実装mergeされた (PR #339) ため、起草時の「実装済みの場合」条件付記述を実装済み前提へ統一: framing種別を `RecognizedImportFraming { MARKER, FENCED_JSON, STANDALONE_JSON }` として確定、失敗文言を19種 (normalization 2種追加済み) に更新、pipeline順序を「envelope gate → #329 normalizer → framing抽出 → decode」へ更新、D-6を「framing伝播は #329で実装済み。#332は失敗時framing付与とversion・件数付与」と再定義。#330実装 (PR #335) によるschema version `personalized-intent-v3` へのbumpを反映。baselineを `45711f53dd` へ更新。
 - 2026-09-17: Phase1 review指摘対応改訂 (Issue 332へのreviewコメント「Changes requested (Phase1: spec/plan Re-Entry revision)」、対象head `56b23f5d56` のRequired 1/2/3)。**(1)** parse-stage件数を「認識エントリ数 (authored document entry count)」として意味固定: bare entryも1 entry、`UnresolvedByOmission` は数えない、user-meaningfulなpreference件数は #328所有と明示 (#330 v3 semantics対応)。**(2)** raw input lifecycleの自己矛盾を解消: raw detail表示のため、取り込みtextを結果surface表示中のみprocess memoryへephemeral保持し、再取り込み・close・画面遷移で破棄するretention boundaryへ統一 (scenario・AC-7・D-6を整合)。**(3)** file import成功時をclipboardと同一の受領helper・共通import path実行 (file選択の1操作からparse結果まで追加操作なし) へ統一 (file scenario・AC-2を明示)。provenance: `45711f53dd` 以降の `origin/main` 差分 (`9290afc2be` まで確認) は #336 spec/plan status更新のみでruntime契約への影響なしを確認し、baseline記録を更新。
+- 2026-09-17: 実装完了後のD-4確定。emulator (API 36) 上のdevice evidence ([assets-332-import-ui](../../docs/assessment/assets-332-import-ui/README.md)) により、100% / 200% fontの両方でbounded editor・内部scroll・主要CTA到達を確認し、D-4を `maxLines = 8` + `heightIn(max = 200.dp)` に確定。clipboard 1押下読取 → 共通path → parse-first表示 (認識framing「Marker lines」表示・raw折りたたみ) を実機で確認 (`04`, `05`)。AC-9のrepresentative app実copyとTalkBack通し確認は後続evidence passへ明示分離 ([Issue #205 AC-10の前例](https://github.com/nunu1733/NunuLauncher/issues/205) と同一扱い)。
 - 2026-09-17: 再レビュー指摘対応 (同日review「Changes requested (Phase1指摘対応再レビュー)」、対象head `a06efcffc9` の残件)。認識エントリ数のbare/omission境界を直接assertするtest oracleをAC-10/Test oracleへ明文化: export scopeに複数refがあり、document `items` がsemantic entry + bare entryのみを含み別refがomission、というfixtureで「表示/metadata count == `items.size` (bare含む・omission除外)」を検証し、post-validation値 (`completed.authoredItemCount` 等) への誤置換を検出可能にする。Required 1のsemantic定義・Required 2/3は前回reviewで解消済みと確認された。
 
 ## References

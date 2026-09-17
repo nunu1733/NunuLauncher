@@ -1332,6 +1332,7 @@
     <string name="exchange_import_file_types">Text (.txt) or JSON (.json) · up to 1 MiB</string>
     <string name="exchange_status_clipboard_empty">The clipboard is empty or could not be read. Copy the reply in the AI app again, return to this app, and import once more. If it still fails, use the file import or paste the text manually.</string>
     <string name="exchange_status_clipboard_not_text">The clipboard has no text. Copy the reply text in the AI app again.</string>
+    <string name="exchange_status_file_read_failed">The file could not be read. Select it again, or check the supported format (.txt / .json, up to 1 MiB). If it still fails, use the clipboard import or paste the text manually.</string>
     <string name="exchange_recognized_framing">Recognized format</string>
     <string name="exchange_recognized_version">Recognized version</string>
     <string name="exchange_recognized_entries">Recognized entries</string>

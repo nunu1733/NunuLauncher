@@ -16,6 +16,7 @@ import app.lawnchair.organizer.personalization.exchange.ExchangeImportPipeline
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportResult
 import app.lawnchair.organizer.personalization.exchange.IntentFramingResult
 import app.lawnchair.organizer.personalization.exchange.IntentImportParser
+import app.lawnchair.organizer.personalization.exchange.RecognizedImportInfo
 import app.lawnchair.organizer.personalization.exchange.recognizedInfo
 import app.lawnchair.organizer.planning.CandidateTarget
 
@@ -158,7 +159,9 @@ class ExchangeFlowController(
         }
         val structural = when (val result = currentStructuralInputs()) {
             is app.lawnchair.organizer.integration.exchange.ExchangeStructuralResult.NotReady ->
-                return ExchangeImportOutcome.InputNotReady(result.reason)
+                // Issue #332 (spec D-6): the reply is already decoded, so the
+                // recognition facts survive the environmental failure.
+                return ExchangeImportOutcome.InputNotReady(result.reason, prepared.recognizedInfo())
 
             is app.lawnchair.organizer.integration.exchange.ExchangeStructuralResult.Ready -> result.structural
         }
@@ -183,5 +186,13 @@ sealed interface ExchangeGenerationResult {
 sealed interface ExchangeImportOutcome {
     data class Pipeline(val result: ExchangeImportResult) : ExchangeImportOutcome
 
-    data class InputNotReady(val reason: app.lawnchair.organizer.integration.InputReadinessReason) : ExchangeImportOutcome
+    /**
+     * Issue #332 (spec D-6): a post-decode environmental failure — the reply
+     * was already framed and decoded, so the parse-stage recognition facts
+     * travel with the outcome for the parse-first display.
+     */
+    data class InputNotReady(
+        val reason: app.lawnchair.organizer.integration.InputReadinessReason,
+        val recognized: RecognizedImportInfo? = null,
+    ) : ExchangeImportOutcome
 }
