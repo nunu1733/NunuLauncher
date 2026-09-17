@@ -9,7 +9,7 @@ updated: 2026-09-18
 
 # External Agent Exchangeをinterview-firstにし、AIでできることを明示する
 
-> Status: **draft (revision 2)** (2026-09-18) — baseline `8fd05a40d51abd24b40a7b93579bb9b76d046f75` (origin/main、#348 merge後) 上での再起草。1st revision (`5d51346648750ba0d6384824586774831789e4d8`) へのreview ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/327#issuecomment-5699803337)) でRequired指摘された #330 実装済みv3契約へのre-anchorと、ownerのscope clarification ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/327#issuecomment-5717034078)) による1往復UX前提の反映を行い、さらに #348 (accepted・実装済み) がlandしたinstruction構成 (descriptor派生output contract・canonical authoring form・finalize前self-check) の上に再anchorした。本specは #205 (implemented) / #331 (implemented) のexchange framing・session・transport・import契約と、#348 (implemented) のAI-facing contract同期・canonical authoring form・one-round-trip invariantを **1つも変更せず**、その上に (1) interview-firstな会話構成のinstruction差分と (2) アプリ内user向けcapability説明を定義する。
+> Status: **draft (revision 3)** (2026-09-18) — baseline `8fd05a40d51abd24b40a7b93579bb9b76d046f75` (origin/main、#348 merge後) 上での再起草。1st revision (`5d51346648750ba0d6384824586774831789e4d8`) へのreview ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/327#issuecomment-5699803337)) でRequired指摘された #330 実装済みv3契約へのre-anchorと、ownerのscope clarification ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/327#issuecomment-5717034078)) による1往復UX前提の反映を行い、さらに #348 (accepted・実装済み) がlandしたinstruction構成 (descriptor派生output contract・canonical authoring form・finalize前self-check) の上に再anchorした。本specは #205 (implemented) / #331 (implemented) のexchange framing・session・transport・import契約と、#348 (implemented) のAI-facing contract同期・canonical authoring form・one-round-trip invariantを **1つも変更せず**、その上に (1) interview-firstな会話構成のinstruction差分と (2) アプリ内user向けcapability説明を定義する。
 
 ## Problem
 
@@ -100,10 +100,10 @@ Then launcherは会話flowの不備を理由にrejectしない (検出不可能�
 Given exchange packageが生成される、
 When instruction部のResponse format (Phase 2) 節を確認する、
 Then accepted schema (`personalized-intent-v3`) に対応する具体的なJSON example/templateが含まれ、
-And example内の `exportId`・`ref`・category等のID値は**実データとして誤認しないplaceholder**であり、生成されたpackageの実際の `exportId`・`ref` と一致しない、
+And exampleは **具体的な整理判断を1つもseedしない**: ID値 (`exportId`・`ref` 等) は実データとして誤認しないplaceholderであり生成されたpackageの実際の `exportId`・`ref` と一致せず、判断を伴うoptional field (`desiredGroup` / `groupSemantic` / `pageAffinity` / `regionAffinity` / `preserve` / `globalPreference`) は含まれず、enum値 (`importance` 等) も実値の代わりに許容値を列挙するplaceholderで示される (ユーザーが表明していないpriority・page・region・movement方針をexampleが正当値として固定しない)、
 And exampleはfenced code blockで囲まれておらず、INTENT marker行も含まない (canonical authoring form「返答内のcode blockは1個」の指示とexampleのcode blockが混同される表面を広げない、AIがexampleをそのままechoして既存typed失敗を誘発する表面を広げない)、
 And exampleは #330 partial authoring semanticsに整合する (判断したrefのみをauthorし、未判断refの扱いを `unresolvedRefs` の例で示す)、
-And exampleをplaceholderから有効値へ置換した場合、#204 `IntentCodec.decode` の閉schema (allow-list key) に合格し、#348のdescriptor派生output contractに列挙されたproperty・型・enum表記のみを使う。
+And exampleのplaceholderをsynthetic export/session fixtureの実値へ置換し単一fenced `json` blockに包んだ場合、`ExchangeImportPipeline.import` を通って `Validated` に到達し (canonical authoring ⊆ production accepted)、補助oracleとして #204 `IntentCodec.decode` の閉schema (allow-list key) と #348 descriptor派生output contractのkey集合への包含にも合格する。
 
 ### Scenario: AIがexampleをverbatimでechoした場合
 
@@ -131,8 +131,8 @@ And アプリ内説明は具体provider名を例示でき (既存copyと同様)�
 
 ## Decisions (このrevisionで提案する決定 — owner acceptance待ち)
 
-1. **skip宣言の取り扱い (Issueがspec決定を求めた項目)**: ユーザーの「質問不要 / このまま生成」明示は**確認stepの代替**として扱う。AIは追加質問なしで、自らの想定する整理方針の短い要約と最終Intentを同一返答内に返す。理由: (a) 会話の強制はlauncher側から検証できずprompt契約でしか表現できない、(b) ユーザーの明示的意思に反して追加の往復を要求するのはUX上逆行する、(c) launcher側の安全性 (framing・validator・preview/confirm) は会話順序に依存しないため、skipを許容しても安全表面は変わらない。ヒアリングの完全省略 (要約なし即Intent) は指示上認めない — 要約はskip時も1段落として添付させる (Open question 1)。
-2. **canonical exampleの構造**: exampleはinstruction部のPhase 2 (Response format) 節にstatic textとして含める。ID値は実データと誤認できないplaceholder (例: `exportId` に「CONTEXT dataのexportIdに置き換える」ことを示す明示的な非実在値) とし、(a) example自体はfenced code blockで囲まない (` ```json ` fenceは返答要求の说明としてのみ現れ、exampleを「返すべきblock」と混同させる表面を広げない)、(b) exampleはINTENT marker行を含まない (marker形式はaccepted framingのまま要求しない、#348)、(c) exampleは `IntentCodec` の閉schemaに対してcontract testで検証され、schema version変更 (#330等) とexampleの更新は同一変更で行われる (乖離防止の不変条件、#348のdescriptor派生契約に対する同期testと同型)、(d) 「exampleをそのままcopyせず全てのID値をCONTEXT data内の実値に置き換える」旨を指示に含める。enum値・boolean等のschema定数 (例: `importance` の `HIGH`) はexample内で実値のまま示してよい (誤認リスクはID値に限る)。
+1. **skip宣言の取り扱い (Issueがspec決定を求めた項目。本revisionで契約として確定)**: ユーザーの「質問不要 / このまま生成」明示は**確認stepの代替**として扱う。AIは追加質問なしで、自らの想定する整理方針の短い要約と最終Intentを同一返答内に返す。理由: (a) 会話の強制はlauncher側から検証できずprompt契約でしか表現できない、(b) ユーザーの明示的意思に反して追加の往復を要求するのはUX上逆行する、(c) launcher側の安全性 (framing・validator・preview/confirm) は会話順序に依存しないため、skipを許容しても安全表面は変わらない。ヒアリングの完全省略 (要約なし即Intent) は指示上認めない — **要約はskip時も必須**とする。evidence (AC-7) で調整できるのはこの文言の強さ・表現のみであり、会話構成の意味を受入後に変更しない。
+2. **canonical exampleの構造 (semantic-value-neutral)**: exampleはinstruction部のPhase 2 (Response format) 節にstatic textとして含め、**構造だけを示し、具体的な整理判断を1つもseedしない**。(a) ID値 (`exportId`・`ref` 等) は実データと誤認できない全大文字placeholder (例: `REPLACE_WITH_THE_EXPORT_ID_FROM_THE_CONTEXT_DATA`)、(b) 判断を伴うoptional field (`desiredGroup` / `groupSemantic` / `pageAffinity` / `regionAffinity` / `preserve` / `globalPreference`) はexampleに含めない (#348のdescriptor派生Output contractが型・enum・制約の説明を既に所有するため、example側で全optional fieldの実値を見せる必要がない。「実際に判断した場合だけOutput contractに従ってfieldを追加し、判断していない場合は省略する」旨を指示に含める)、(c) `importance` 等のenumは実値の代わりに許容値を列挙するplaceholder (例: `REPLACE_WITH_HIGH_NORMAL_OR_LOW`)、(d) example自体はfenced code blockで囲まない (` ```json ` fenceは返答要求の说明としてのみ現れる)、(e) exampleはINTENT marker行を含まない (marker形式はaccepted framingのまま要求しない、#348)、(f) exampleのblocking oracleは「synthetic export/session fixtureへの置換 → 単一fenced `json` block → `ExchangeImportPipeline.import` → `Validated`」とし、#348の `canonical authoring ⊆ production accepted` と同型のproduction-truth同期を持つ (`IntentCodec.decode` とdescriptor key包含は補助oracle)、(g) schema version変更 (#330等) とexampleの更新は同一変更で行う。
 3. **instruction部の静的合成の維持**: interview-first化に伴いinstructionを動的生成 (会話状態やscope内容への依存) にはしない。#205 Decision 2 (固定長instruction + payload上限でpackage sizeを構造的上限内に収める) を継承し、#348が導入したdescriptor派生section (compose時に静的descriptorから整形) も同様に静的である。#331 run-in entryでも同一instructionを用いる (CANDIDATE subjectの扱いは既存指示が担保)。interview-first差分の配置は: Phase 1の会話構成はGoal直後のinstruction開头部 (`INSTRUCTION_OPEN`) に置き、確認後の最終回答要求とcanonical exampleはResponse format節 (`INSTRUCTION_FOOTER`) に置く。Output contract / You must sectionは文単位で無変更とする。
 4. **capability説明の配置**: 導線 (idle entry・run-in entry) の説明領域に具体例リスト + 「直接変更しない」明示 + 期待される会話flow (1往復の受け渡しを含む) + 会話はNunuLauncherを経由しない旨の4要素を置く。送信完了status copyは期待されるflow (AIからの質問) に言及した文言へ更新する。import入力欄のUIは #332 implementedの現状を維持する。最終的な文面 (ja正本・en) の微調整はa11y/device evidenceで行う (構造・必須要素は本specで固定)。
 
@@ -162,7 +162,7 @@ And アプリ内説明は具体provider名を例示でき (既存copyと同様)�
 前提: #204 (accepted・実装済み) / #205 (implemented) / #331 (implemented) / #330 (implemented) / #329 (implemented) / #332 (implemented) / #348 (implemented) の契約・実装は現mainに存在し、本specの実装blockerではない。
 
 - [ ] AC-1: exchange packageのinstruction部が、(a) 初回応答で最終JSON artifact (fenced `json` block内のintent) を含んではならない旨、(b) exportだけで判断可能に見えても原則として短いヒアリングを行う旨、(c) 質問が2〜4問でスマホで回答しやすいboundedな数である旨、(d) ヒアリング後に整理方針を短く要約しユーザーの了承後にのみ最終Intentを生成する旨、を含むことがunit testで検証される。#348がpinningした既存要素 (`Issue348AiFacingContractSyncTest` のassert対象: descriptor派生output contract・You must production-enforced規則・partial authoring規則・finalize前self-check・canonical authoring form要求・repair導線不在) とpackage構造 (CONTEXT marker分離・data単行) が無変更の回帰testで不変であることも検証される。
-- [ ] AC-2: instruction部のPhase 2節に、accepted schema (`personalized-intent-v3`) に対応するcanonical JSON example/templateが含まれ、(a) ID値が実データとして誤認しないplaceholderであること、(b) exampleがfenced code blockで囲まれずINTENT marker行を含まないこと、(c) placeholderを有効値へ置換したexampleが `IntentCodec.decode` の閉schemaに合格しdescriptor派生output contractのkey集合に包含されること、(d) exampleのschema versionが `ContextExportContract.INTENT_SCHEMA_VERSION` と一致することがunit testで検証される。
+- [ ] AC-2: instruction部のPhase 2節に、accepted schema (`personalized-intent-v3`) に対応するcanonical JSON example/templateが含まれ、(a) exampleが具体的な整理判断をseedしないこと (ID値は誤認しないplaceholder、判断を伴うoptional fieldは不掲載、enumは許容値を列挙するplaceholder)、(b) exampleがfenced code blockで囲まれずINTENT marker行を含まないこと、(c) placeholderをsynthetic export/session fixtureの実値へ置換し単一fenced `json` blockとして `ExchangeImportPipeline.import` に通すと `Validated` に到達すること (**blocking oracle**。canonical authoring ⊆ production accepted)、(d) 補助oracleとして `IntentCodec.decode` の閉schema合格とdescriptor派生key集合への包含が成立すること、(e) exampleのschema versionが `ContextExportContract.INTENT_SCHEMA_VERSION` と一致することがunit testで検証される。
 - [ ] AC-3: ユーザーの「質問不要/このまま生成」明示時の取り扱い (Decision 1) がinstructionに記述されていること (要約+Intentの同一返答、追加質問なし) がunit testで検証される。
 - [ ] AC-4: exchange導線 (idle entry・run-in entry両方) に「AIでできること」がschema用語を使わない具体例で表示され、「AIがホーム画面を直接変更しない (再整理に使う希望・傾向を作る)」旨が明示されることがUI test (string存在・構造) で検証される。
 - [ ] AC-5: 送信後の期待される会話flow (AIからの質問 → 整理方針確認 → 最終案) と外部AIとの受け渡しが1往復である旨がユーザーに説明される (導線説明または送信完了status) ことが検証される。
@@ -175,7 +175,7 @@ And アプリ内説明は具体provider名を例示でき (既存copyと同様)�
 | AC | Evidence |
 |---|---|
 | AC-1 | `ExchangePackageComposerTest` 拡張 (2-phase指針・bounded質問・要約と了承の各文言の存在、section順序の維持、既存遵守事項の回帰、`parsePackageStructure` 往復) + `Issue348AiFacingContractSyncTest` 無変更成功 (回帰) |
-| AC-2 | composer unit test (exampleの存在、placeholder構造、fence不在・marker不在、schemaVersion一致) + codec contract test (placeholder置換exampleのdecode成功・閉schema適合・descriptor key包含) |
+| AC-2 | composer unit test (example存在・semantic-value-neutral構造・fence不在・marker不在・schemaVersion一致) + example contract test (合成fixture置換 → 単一fenced block → `ExchangeImportPipeline.import` → `Validated` をblocking oracle、`IntentCodec.decode` / descriptor key包含を補助oracle) |
 | AC-3 | composer unit test (skip宣言の扱いの文言存在) |
 | AC-4 | UI test (entry rowのtestTag配下の説明text・具体例・「直接変更しない」文言、idle/scoped両entry) + strings存在test (en/ja) |
 | AC-5 | UI test (導線説明またはtransport success copyの文言) |
@@ -187,14 +187,14 @@ And アプリ内説明は具体provider名を例示でき (既存copyと同様)�
 
 ## Open questions (non-blocking — owner review / evidence中に確定)
 
-1. **skip時の要約添付の要否**: Decision 1は「skip時も要約1段落を添付」を含める。要約なし即Intentを許すほうがユーザーの意思に忠実という反論があり得る。owner reviewで確定する。
-2. **capability説明の情報量**: 具体例リスト5項目 + 直接変更しない明示 + flow説明を導線に置くと縦に長くなる。展開形式 (常時表示 vs 折りたたみ) は実装PRのUX判断とする (必須要素は本specで固定)。
-3. **instruction最終prose文言**: 構造・必須要素は本specで固定。微調整はAC-7 evidenceでagent遵守率を見て行う (#205 Open question 1、#348 Open question 1の継承)。
+1. **capability説明の情報量**: 具体例リスト5項目 + 直接変更しない明示 + flow説明を導線に置くと縦に長くなる。展開形式 (常時表示 vs 折りたたみ) は実装PRのUX判断とする (必須要素は本specで固定)。
+2. **instruction最終prose文言**: 構造・必須要素は本specで固定。微調整はAC-7 evidenceでagent遵守率を見て行う (#205 Open question 1、#348 Open question 1の継承)。
 
 ## Change history
 
 - 2026-09-16: Draft created for #327。baseline `aab0d293d1a98bf59f5b164693f54ee1a63e3f0b` (origin/main)。interview-first 2-phase instruction・canonical example構造・capability説明・skip取り扱い (Decision 1) を起草。#328/#329/#330/#332との責務境界をNon-goalsへ明記。
-- 2026-09-18: **Revision 2 (本revision)**。1st review ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/327#issuecomment-5699803337)、head `5d51346648750ba0d6384824586774831789e4d8` 基準、**Request changes**) とowner scope clarification ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/327#issuecomment-5717034078)) を受け、#348 (accepted・実装済み) merge後のbaseline `8fd05a40d51abd24b40a7b93579bb9b76d046f75` へ再anchor。(1) schemaを `personalized-intent-v2` → `personalized-intent-v3` へ、coverage前提を #330 partial authoring semanticsへ置換。(2) Response format前提を #348 canonical authoring form (単一fenced `json` block、marker要求なし) へ更新し、example同梱の形状契約 (fenceで囲まない) を再定義。(3) one-round-trip前提 (AI内multi-turnは可、Launcher↔AI artifact交換は1往復、import後repair loopは通常flowに含めない) をOutcome・Domain language・scenarioへ反映 (#348が所有するinvariantの継承として)。(4) #348との責務境界sectionを新設し、「#348がpinningしたinstruction要素の無変更回帰 (`Issue348AiFacingContractSyncTest`)」をAC-1の回帰条件へ追加。(5) 依存Issue (#329/#330/#332/#348) のstatusを実装済みへ更新。
+- 2026-09-18: **Revision 2**。1st review ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/327#issuecomment-5699803337)、head `5d51346648750ba0d6384824586774831789e4d8` 基準、**Request changes**) とowner scope clarification ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/327#issuecomment-5717034078)) を受け、#348 (accepted・実装済み) merge後のbaseline `8fd05a40d51abd24b40a7b93579bb9b76d046f75` へ再anchor。(1) schemaを `personalized-intent-v2` → `personalized-intent-v3` へ、coverage前提を #330 partial authoring semanticsへ置換。(2) Response format前提を #348 canonical authoring form (単一fenced `json` block、marker要求なし) へ更新し、example同梱の形状契約 (fenceで囲まない) を再定義。(3) one-round-trip前提 (AI内multi-turnは可、Launcher↔AI artifact交換は1往復、import後repair loopは通常flowに含めない) をOutcome・Domain language・scenarioへ反映 (#348が所有するinvariantの継承として)。(4) #348との責務境界sectionを新設し、「#348がpinningしたinstruction要素の無変更回帰 (`Issue348AiFacingContractSyncTest`)」をAC-1の回帰条件へ追加。(5) 依存Issue (#329/#330/#332/#348) のstatusを実装済みへ更新。
+- 2026-09-18: **Revision 3 (本revision)**。revision 2へのChatGPT review ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/327#issuecomment-5720675516)、head `24415322078b6b8bebee6ca206543845a1c52dd1` 基準、**Request changes**、高1・中2) に対応。**(高1)** canonical exampleをsemantic-value-neutralへ変更: 判断を伴うoptional field (`desiredGroup` / `groupSemantic` / `pageAffinity` / `regionAffinity` / `preserve` / `globalPreference`) をexampleから除外し、enum値も実値の代わりに許容値列挙placeholderとする (「誤認リスクはID値に限る」というIssue要求の狭め込みを除去)。**(中2)** AC-2のblocking oracleを「synthetic export/session fixture (MOVABLE 3件以上・既知pageCount) 置換 → 単一fenced `json` block → `ExchangeImportPipeline.import` → `Validated`」へ引き上げ、`IntentCodec.decode` / descriptor key包含を補助oracleへ降格 (#348 `canonical authoring ⊆ production accepted` と同型のproduction-truth同期)。**(中3)** skip時の要約添付を契約として確定し (Decision 1)、Open question 1を廃止。
 
 ## References
 

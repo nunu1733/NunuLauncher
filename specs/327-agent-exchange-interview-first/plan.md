@@ -2,7 +2,7 @@
 
 > Issue: #327
 > Spec: [spec.md](./spec.md)
-> Status: draft (spec revision 2に対応。spec acceptance後にimplementation-ready)
+> Status: draft (spec revision 3に対応。spec acceptance後にimplementation-ready)
 
 ## Current evidence
 
@@ -33,15 +33,17 @@ origin/main (`8fd05a40d51abd24b40a7b93579bb9b76d046f75`、#348 merge後) 時点�
 
 ### Canonical example template (具体形)
 
-instruction内のexample (静的text、fence・markerで囲まない):
+instruction内のexample (静的text、fence・markerで囲まない、**具体的な整理判断を1つもseedしない**):
 
 ```json
-{"schemaVersion":"personalized-intent-v3","exportId":"REPLACE_WITH_THE_EXPORT_ID_FROM_THE_CONTEXT_DATA","itemIntents":[{"ref":"REPLACE_WITH_A_REF_FROM_THE_CONTEXT_DATA","importance":"HIGH","desiredGroup":["REPLACE_WITH_ANOTHER_REF_FROM_THE_CONTEXT_DATA"],"groupSemantic":{"category":"REPLACE_WITH_A_CATEGORY_ID_FROM_THE_CONTEXT_DATA"},"pageAffinity":0,"regionAffinity":"TOP"}],"unresolvedRefs":["REPLACE_WITH_A_REF_YOU_CANNOT_JUDGE"],"globalPreference":{"minimizeMovement":false},"rationale":"One short sentence about the organization policy."}
+{"schemaVersion":"personalized-intent-v3","exportId":"REPLACE_WITH_THE_EXPORT_ID_FROM_THE_CONTEXT_DATA","itemIntents":[{"ref":"REPLACE_WITH_A_REF_YOU_HAVE_JUDGED","importance":"REPLACE_WITH_HIGH_NORMAL_OR_LOW"}],"unresolvedRefs":["REPLACE_WITH_A_REF_YOU_CANNOT_JUDGE"],"rationale":"REPLACE_WITH_ONE_SHORT_SENTENCE_ABOUT_YOUR_POLICY"}
 ```
 
-- placeholder値 (`REPLACE_WITH_*`) は全大文字の明示的な非実在値で、実 `exportId` (乱数)・実 `ref` (乱数) と衝突しない。enum値 (`HIGH` / `TOP`)・`pageAffinity: 0`・`minimizeMovement: false` はschema定数として実値のまま (spec Decision 2)。
-- v3 partial authoringの **表示例** として、`itemIntents` は判断した1件のみ、`unresolvedRefs` に未判断refの例を1件示す (full coverageを示唆しない)。
-- contract test: placeholderをfixtureの実効値へ機械置換した上で `IntentCodec.decode` を通す (閉schema適合、descriptor名前集合への包含)。placeholder文字列の非実在性 (生成packageのCONTEXT data JSONと一致しないこと)、example行の周囲にfence行が無いこと、INTENT marker行の不在、`ContextExportContract.INTENT_SCHEMA_VERSION` との一致もtestが強制する。
+- すべての値は全大文字の明示的な非実在値placeholder。`importance` は許容値を列挙するplaceholderで、ユーザーが表明していないpriority・page・region・movement方針を実値として固定しない (spec Decision 2)。
+- 判断を伴うoptional field (`desiredGroup` / `groupSemantic` / `pageAffinity` / `regionAffinity` / `preserve` / `globalPreference`) はexampleに含めない。指示文で「Output contractの型・enum・制約に従い、CONTEXT dataと会話から実際に判断した場合だけfieldを追加し、判断していない場合はfield自体を省略する」ことを要求する。
+- v3 partial authoringの **表示例**: `itemIntents` は判断した1件、`unresolvedRefs` に未判断refの例を示す (full coverageを示唆しない)。
+- contract test (**blocking oracle**): 合成export/session fixture (MOVABLE subject 3件以上・既知 `gridContext.pageCount`。templateが言及するのは2件で、1件はどちらにも言及しない) を用意し、(1) placeholderをfixture実値へ機械置換、(2) #348 canonical authoring formどおり単一fenced `json` blockへ包む、(3) `ExchangeImportPipeline.import` で `Validated` (completion後のcanonical表現) に到達、(4) 未言及refがcanonical unresolvedへcompletionされること (#330 partial authoringの回帰) を到達条件にする。#348のgolden testと同型のproduction-truth同期であり、exampleがcodecは通っても実importで `UNKNOWN_REF` / `MOBILITY_CONTRADICTION` / `INVALID_ENUM` 等で落ちるtemplateへdriftした場合にtest失敗として検出される。
+- 補助oracle: `IntentCodec.decode` の閉schema合格、descriptor名前集合への包含、placeholder文字列が生成packageのCONTEXT data JSONと一致しないこと、example行の周囲にfence行が無いこと、INTENT marker行の不在、`ContextExportContract.INTENT_SCHEMA_VERSION` との一致。
 
 ### Data flow
 
@@ -81,7 +83,7 @@ instruction内のexample (静的text、fence・markerで囲まない):
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
 | AC-1 | `ExchangePackageComposerTest` 拡張: (a) 2-phase指針の各文言存在、(b) section順序の維持、(c) 遵守事項 (ref/partial authoring/FIXED/CONDITIONAL/CANDIDATE/exportId echo) の回帰、(d) `parsePackageStructure` 往復・data単行の維持 + `Issue348AiFacingContractSyncTest` 無変更成功 | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.personalization.exchange.*'` |
-| AC-2 | example contract test: example存在・placeholder構造・fence/marker不在・`INTENT_SCHEMA_VERSION` 一致・placeholder置換後の `IntentCodec.decode` 成功・descriptor key包含 | 同上 (unit test) |
+| AC-2 | example contract test: 合成fixture置換 → 単一fenced block → `ExchangeImportPipeline.import` → `Validated` (blocking oracle) + 補助oracle (example存在・semantic-value-neutral構造・fence/marker不在・`INTENT_SCHEMA_VERSION` 一致・`IntentCodec.decode` 成功・descriptor key包含) | 同上 (unit test) |
 | AC-3 | skip文言の存在assert (composer unit test) | 同上 |
 | AC-4 | entry row UI test (testTag配下のtext、idle/scoped両方) + strings存在 (en/ja) | unit (Robolectric) |
 | AC-5 | 導線説明/transport success copyの文言test | 同上 |
@@ -107,7 +109,7 @@ instruction内のexample (静的text、fence・markerで囲まない):
 ## Risks
 
 - instructionの長文化 (Phase 1指針 + example) によりagentの遵守率が下がる可能性。#205 Decision 5のsize構造 (固定長instruction) は維持され、exampleは1 KiB程度に収まる想定。遵守率はAC-7 evidenceで早期把握し、Open question 3の微調整ルートで対応する。
-- agentがexampleをverbatimでechoする経路 (spec scenario想定済み)。既存typed失敗でfail-closedであり、placeholder構造と「値を置き換える」指示で発生率を抑える。
+- agentがexampleをverbatimでechoする経路 (spec scenario想定済み)。既存typed失敗でfail-closedであり、exampleは判断を含まないsemantic-value-neutral構造 (spec Decision 2) のため、echo時の害はID不一致のtyped失敗に限る。「値を置き換える」指示で発生率を抑える。
 - Phase 1指示と #348のself-check (「exactly one importable JSON artifact」) の混同 (初回応答でもartifactを返す誤解釈)。phase語でself-checkを最終回答に限定する文言構成で緩和し、AC-7 evidenceで観察する。
 - interview-firstがAI側会話の往復を増やす (UX cost)。ただしLauncher↔AI間のartifact受け渡しは1往復のまま (spec/one-round-trip)。skip宣言 (Decision 1) で軽減する。skip文言が「即Intent」を誘発してヒアリングが全く発生しなくなる (prose上の) リスクはAC-7 evidenceで観察する。
 - 質問数bound (2〜4問) は指示であって強制ではない。#205のframing遵守と同様、agent行動の保証外 (Non-goals: 質問内容の完全固定禁止)。
