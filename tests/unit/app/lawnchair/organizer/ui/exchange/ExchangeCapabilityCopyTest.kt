@@ -74,6 +74,22 @@ class ExchangeCapabilityCopyTest {
         assertTrue("en flow states the single final proposal", enFlow.contains("one final proposal"))
     }
 
+    @Test
+    fun transportSuccessCopyStaysTransportNeutral() {
+        // Spec 327 AC-5 + review fix: TRANSPORT_SUCCESS is shared by the
+        // clipboard, share, and file-save paths, so it must never claim the
+        // request was already sent to the AI — the pre-send disclosure
+        // contract says nothing is sent until the user hands it over.
+        val ja = lawnchairStringsXml("values-ja").readText()
+        val en = lawnchairStringsXml("values").readText()
+        val jaSuccess = ja.substringAfter("name=\"exchange_transport_success\"").substringBefore("</string>")
+        val enSuccess = en.substringAfter("name=\"exchange_transport_success\"").substringBefore("</string>")
+        assertTrue("ja success must list the local handoffs", jaSuccess.contains("コピー・共有・保存しました"))
+        assertTrue("en success must list the local handoffs", enSuccess.contains("copied, shared, or saved"))
+        assertTrue("ja success must not claim the AI already received it", !jaSuccess.contains("送信しました"))
+        assertTrue("en success must not claim the AI already received it", !enSuccess.startsWith("Sent"))
+    }
+
     private fun resourceNames(ids: List<Int>): List<String> {
         val fields = R.string::class.java.declaredFields
         val byId = fields.associate { it.name to it.getInt(null) }

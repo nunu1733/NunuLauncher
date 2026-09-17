@@ -1321,7 +1321,7 @@
     <string name="exchange_copy">Copy</string>
     <string name="exchange_share">Share…</string>
     <string name="exchange_save_file">Save to file</string>
-    <string name="exchange_transport_success">Sent. In your AI app, answer a few short questions (2–4) and confirm the plan to receive one final proposal. Paste that reply here to import it.</string>
+    <string name="exchange_transport_success">Request copied, shared, or saved. After you give it to your AI app, answer a few short questions (2–4) and confirm the plan to receive one final proposal. Paste that reply here to import it.</string>
     <string name="exchange_transport_clipboard_failed">Clipboard unavailable. Try sharing or saving to a file.</string>
     <string name="exchange_transport_share_absent">No app can receive the share. Copy or save to a file instead.</string>
     <string name="exchange_transport_file_failed">File operation failed. Try again or use another send method.</string>

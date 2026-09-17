@@ -29,7 +29,8 @@ import app.lawnchair.organizer.personalization.exchange.ExchangeContract.CONTEXT
  * summary and the user's confirmation; only then is the final artifact
  * produced (a user skip declaration substitutes for the confirmation but
  * never for the summary). The final answer embeds the canonical intent
- * template rendered from the descriptor: every value is a placeholder, so
+ * template rendered from the descriptor: every replaceable value is a
+ * placeholder (only "schemaVersion" stays the exact advertised literal), so
  * the example seeds no actual organization judgment. Artifact exchange
  * between launcher and agent stays one round trip (#348 one-round-trip
  * invariant); the interview lives inside the agent's own conversation.
@@ -236,7 +237,8 @@ private fun youMustSection(): String {
 
 /**
  * The canonical intent template (spec 327 Decision 2): structure only, no
- * seeded judgment. All values are all-caps placeholders — IDs and rationale
+ * seeded judgment. Every replaceable value is an all-caps placeholder (only
+ * "schemaVersion" stays the descriptor's exact literal) — IDs and rationale
  * are explicitly non-existent values, and the importance placeholder
  * enumerates the descriptor's allowed spellings instead of picking one, so
  * mimicking the template cannot smuggle in an unexpressed user preference.

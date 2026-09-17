@@ -409,7 +409,7 @@
     <string name="exchange_copy">コピー</string>
     <string name="exchange_share">共有…</string>
     <string name="exchange_save_file">ファイルに保存</string>
-    <string name="exchange_transport_success">送信しました。外部AIアプリ内で質問 (2〜4問) に答えて整理方針を確認すると、最終案を1回だけ受け取れます。その回答を貼り付けて取り込んでください。</string>
+    <string name="exchange_transport_success">依頼文をコピー・共有・保存しました。外部AIアプリへ渡した後、質問 (2〜4問) に答えて整理方針を確認すると、最終案を1回だけ受け取れます。その回答を貼り付けて取り込んでください。</string>
     <string name="exchange_transport_clipboard_failed">クリップボードを利用できません。共有またはファイル保存を試してください。</string>
     <string name="exchange_transport_share_absent">共有先のアプリが見つかりません。コピーまたはファイル保存を利用してください。</string>
     <string name="exchange_transport_file_failed">ファイル操作に失敗しました。再試行するか別の送信方法を利用してください。</string>
