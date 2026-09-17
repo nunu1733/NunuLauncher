@@ -243,8 +243,8 @@ internal object IntentWireContract {
             Enforcement.PRODUCTION_ENFORCED,
             Semantic.ExactValue(schemaVersionSpec.exactValue!!),
         ),
-        claim("exportId.presence", field("exportId"), ClaimKind.PRESENCE, Enforcement.PRODUCTION_ENFORCED, Semantic.Presence(true)),
-        claim("item.ref.presence", field("ref"), ClaimKind.PRESENCE, Enforcement.PRODUCTION_ENFORCED, Semantic.Presence(true)),
+        claim("exportId.presence", field("exportId"), ClaimKind.PRESENCE, Enforcement.PRODUCTION_ENFORCED, Semantic.Presence(field("exportId").required)),
+        claim("item.ref.presence", field("ref"), ClaimKind.PRESENCE, Enforcement.PRODUCTION_ENFORCED, Semantic.Presence(field("ref").required)),
         // Container shapes (decode).
         claim("itemIntents.containerType", field("itemIntents"), ClaimKind.TYPE, Enforcement.PRODUCTION_ENFORCED, Semantic.Type(field("itemIntents").type)),
         claim("unresolvedRefs.containerType", field("unresolvedRefs"), ClaimKind.TYPE, Enforcement.PRODUCTION_ENFORCED, Semantic.Type(field("unresolvedRefs").type)),

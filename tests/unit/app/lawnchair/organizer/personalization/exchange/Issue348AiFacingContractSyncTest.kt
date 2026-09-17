@@ -339,46 +339,95 @@ class Issue348AiFacingContractSyncTest {
         val extraAccepts = mutableListOf<Fixture>()
 
         when (val s = claim.semantic) {
-            is Semantic.Presence -> when (claim.location) {
-                IntentWireContract.Location.TOP_LEVEL -> when (field) {
-                    "schemaVersion" -> rejects += "{\"exportId\":\"${built.export.exportId}\"}" to contract(IntentValidationFailure.SchemaMismatch)
-                    "exportId" -> rejects += "{\"schemaVersion\":\"$schemaVersion\"}" to contract(IntentValidationFailure.SchemaMismatch)
-                    else -> error("unexpected presence claim $field")
+            is Semantic.Presence -> if (s.required) {
+                // The claim says the field must be present: the canonical
+                // payload (with the field) is accepted, the omitted-field
+                // payload is rejected.
+                accepts += canonicalPayload(built)
+                val omitted = when (claim.location) {
+                    IntentWireContract.Location.TOP_LEVEL -> when (field) {
+                        "schemaVersion" -> "{\"exportId\":\"${built.export.exportId}\"}"
+                        "exportId" -> "{\"schemaVersion\":\"$schemaVersion\"}"
+                        else -> error("unexpected presence claim $field")
+                    }
+
+                    IntentWireContract.Location.ITEM_ENTRY -> "{}"
+
+                    else -> error("unexpected presence location ${claim.location}")
                 }
+                rejects += omitted to contract(IntentValidationFailure.SchemaMismatch)
+            } else {
+                // The claim says absence is fine — production disagrees for
+                // the required wire fields, so this accept fixture fails and
+                // exposes the loosened claim.
+                accepts += when (claim.location) {
+                    IntentWireContract.Location.TOP_LEVEL -> when (field) {
+                        "schemaVersion" -> "{\"exportId\":\"${built.export.exportId}\"}"
+                        "exportId" -> "{\"schemaVersion\":\"$schemaVersion\"}"
+                        else -> error("unexpected presence claim $field")
+                    }
 
-                IntentWireContract.Location.ITEM_ENTRY -> rejects += payload("{}") to contract(IntentValidationFailure.SchemaMismatch)
+                    IntentWireContract.Location.ITEM_ENTRY -> payload("{}")
 
-                else -> error("unexpected presence location ${claim.location}")
+                    else -> error("unexpected presence location ${claim.location}")
+                }
             }
 
-            is Semantic.ExactValue ->
+            is Semantic.ExactValue -> {
+                // The advertised spelling itself must be accepted...
+                accepts += placed("\"\"$schemaVersion\"\"".replace("\"\"", "\""))
+                // ...and a stale spelling rejected.
                 rejects += "{\"schemaVersion\":\"${s.value}-stale\",\"exportId\":\"${built.export.exportId}\"}" to
                     contract(IntentValidationFailure.SchemaMismatch)
+            }
 
-            is Semantic.Type -> if (claim.location == IntentWireContract.Location.TOP_LEVEL) {
-                // The base doc already carries the array/object key; the
-                // violating scalar replaces it so the key appears once.
+            is Semantic.Type -> {
+                // The satisfying fixture authors the WireType's canonical JSON
+                // value at the claim's location; the violating fixture uses a
+                // scalar that can never satisfy any wire type.
+                fun typeCanonicalValue(type: IntentWireContract.WireType): String = when (type) {
+                    IntentWireContract.WireType.STRING -> "\"tools\""
+
+                    IntentWireContract.WireType.BOOLEAN -> "true"
+
+                    IntentWireContract.WireType.INTEGER -> {
+                        val spec = IntentWireContract.field(field)
+                        if (spec.max != null) "${(spec.min!! + spec.max!!) / 2}" else "${spec.min!!}"
+                    }
+
+                    IntentWireContract.WireType.STRING_ARRAY -> "[\"$movable\"]"
+
+                    IntentWireContract.WireType.OBJECT -> when (field) {
+                        "globalPreference" -> "{\"minimizeMovement\":true}"
+                        "groupSemantic" -> "{\"${IntentWireContract.groupSemanticAnyOf.first}\":\"tools\"}"
+                        else -> error("no object members known for $field")
+                    }
+
+                    IntentWireContract.WireType.OBJECT_ARRAY -> "[${entry(movable, ",\"preserve\":true")}]"
+                }
                 val expected = if (s.type == IntentWireContract.WireType.INTEGER) {
                     contract(IntentValidationFailure.InvalidEnum)
                 } else {
                     contract(IntentValidationFailure.SchemaMismatch)
                 }
-                rejects += "{\"schemaVersion\":\"$schemaVersion\",\"exportId\":\"${built.export.exportId}\",\"$field\":\"oops\"}" to expected
-                accepts += payload(entry(movable, ",\"preserve\":true"))
-            } else {
-                val expected = if (s.type == IntentWireContract.WireType.INTEGER) {
-                    contract(IntentValidationFailure.InvalidEnum)
+                if (claim.location == IntentWireContract.Location.TOP_LEVEL) {
+                    // The base doc already carries the array/object key; both
+                    // fixtures replace it with the claimed-type value so the
+                    // key appears once.
+                    accepts += "{\"schemaVersion\":\"$schemaVersion\",\"exportId\":\"${built.export.exportId}\",\"$field\":${typeCanonicalValue(s.type)}}"
+                    rejects += "{\"schemaVersion\":\"$schemaVersion\",\"exportId\":\"${built.export.exportId}\",\"$field\":\"oops\"}" to expected
                 } else {
-                    contract(IntentValidationFailure.SchemaMismatch)
+                    accepts += placed(typeCanonicalValue(s.type))
+                    rejects += placed("\"oops\"") to expected
                 }
-                rejects += placed("\"oops\"") to expected
-                accepts += placed(satisfyingValue())
             }
 
             is Semantic.AllowedValues -> {
+                // Every advertised spelling is accepted...
                 for (value in s.values) {
                     accepts += placed("\"$value\"")
                 }
+                // ...and a spelling outside the advertised set is rejected.
                 rejects += placed("\"${s.values.first()}-NOPE\"") to contract(IntentValidationFailure.InvalidEnum)
             }
 
@@ -411,23 +460,31 @@ class Issue348AiFacingContractSyncTest {
             is Semantic.EntryLimit -> {
                 // The accept fixture fills exactly the advertised entry budget
                 // with valid entries on a matching export; the reject fixture
-                // oversteps the count by one, so entry count is the only
-                // variable between the two sides.
+                // appends one more valid-shaped entry, so entry count is the
+                // only variable between the two sides.
                 val (big, bigStructural) = buildState(items = (0 until s.max).map { app("a$it", x = it % 4) })
                 val bigRefs = big.export.items.map { it.ref }
-                val acceptDoc = if (field == "itemIntents") {
-                    val entries = bigRefs.joinToString(",") { entry(it, ",\"preserve\":true") }
-                    "{\"schemaVersion\":\"$schemaVersion\",\"exportId\":\"${big.export.exportId}\",\"itemIntents\":[$entries]}"
+                val acceptEntries = if (field == "itemIntents") {
+                    bigRefs.map { entry(it, ",\"preserve\":true") }
                 } else {
-                    val refs = bigRefs.joinToString(",") { "\"$it\"" }
-                    "{\"schemaVersion\":\"$schemaVersion\",\"exportId\":\"${big.export.exportId}\",\"unresolvedRefs\":[$refs]}"
+                    bigRefs.map { "\"$it\"" }
+                }
+                val acceptDoc = if (field == "itemIntents") {
+                    "{\"schemaVersion\":\"$schemaVersion\",\"exportId\":\"${big.export.exportId}\",\"itemIntents\":[${acceptEntries.joinToString(",")}]}"
+                } else {
+                    "{\"schemaVersion\":\"$schemaVersion\",\"exportId\":\"${big.export.exportId}\",\"unresolvedRefs\":[${acceptEntries.joinToString(",")}]}"
                 }
                 extraAccepts += Fixture(big, bigStructural, acceptDoc)
-                val overEntries = (0..s.max).joinToString(",") { "\"e$it\"" }
-                rejects += if (field == "itemIntents") {
-                    payload(overEntries) to contract(IntentValidationFailure.Oversize)
+                val rejectEntries = acceptEntries + if (field == "itemIntents") {
+                    entry(bigRefs.first(), ",\"preserve\":true")
                 } else {
-                    payload(entry(movable, ",\"preserve\":true"), unresolved = ",\"$field\":[$overEntries]") to
+                    "\"${bigRefs.first()}\""
+                }
+                rejects += if (field == "itemIntents") {
+                    "{\"schemaVersion\":\"$schemaVersion\",\"exportId\":\"${built.export.exportId}\",\"itemIntents\":[${rejectEntries.joinToString(",")}]}" to
+                        contract(IntentValidationFailure.Oversize)
+                } else {
+                    payload(entry(movable, ",\"preserve\":true"), unresolved = ",\"$field\":[${rejectEntries.joinToString(",")}]") to
                         contract(IntentValidationFailure.Oversize)
                 }
             }
