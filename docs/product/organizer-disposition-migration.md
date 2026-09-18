@@ -232,7 +232,7 @@ TO-BE relation: 整合 / 一部衝突 / 全体衝突 / 役割消滅。Orderは �
 | spec 205「exchange導線の提示はmanual run操作非active時に限定する (V1)」+ 単独idle entry配置 | #205 | T-07方法選択「AIに相談」（idle=pre-run request flow。D-04/D-17） | #372 |
 | spec 205 AC-3/AC-12の全文常時提示形式 | #205 | 要約主面＋全文展開（D-10。同意点1点は不変） | #372 |
 | spec 205 AC-5のtyped失敗直接説明 | #205 | 手段別再投影＋typedは補助（D-11） | #373 |
-| spec 205「validated intentを保持しない」/ spec 328「pending intentはprocess-localのみ」 | #205/#328 | durable pending intent（D-08。TTL=依頼・置換無効化） | #374 |
+| spec 205「validated intentを保持しない」/ spec 328「pending intentはprocess-localのみ」 | #205/#328 | durable pending intent（D-08。TTL=依頼と同一。**有効性は依頼sessionに従属し、新しい依頼の生成で破棄**） | #374 |
 | spec 328 freeze 4箇所個別規定 | #328 | status card＋T-18中心の再設計 | #374 |
 | spec 331 D-2単一remedy（再exportのみ） | #331 | SET_MISMATCH/PROJECTION_MISMATCH原因別remedy（D-17。gate不変） | #375 |
 | spec 331 §5 idle entry経路（生存run attachのみの継続経路） | #331 | `Hub → ImportReview`1経路＋process死後fresh run rebind（D-08/D-17） | #374/#375 |
@@ -283,12 +283,13 @@ ADR: 追加・改訂なし（§2.2表のとおり、recovery storage・lock・po
 | 項目 | 内容 |
 |---|---|
 | 対象 | 取り込み済み提案（durable pending intent）store。app-private・**backup除外**（export session/recovery DBと同じclass） |
-| TTL | 依頼（export session）と同一の24h。保存・破棄・期限切れ・置換（新しい依頼の取り込みが古い取り込みを無効化） |
-| 内容 | validated intentのinternal表現（`CompletedPersonalIntent`相当）＋再開metadata（依頼sessionの対応表への参照。ref対応表の正本はsession側） |
+| TTL | 依頼（export session）と同一の24h。保存・破棄・期限切れ・**新しい依頼の生成による置換**で無効になる |
+| **lifetime規則（ownership gap対策。TO-BE §13-2推奨を採用）** | **取り込み済み提案の有効性は、対応する依頼sessionの有効性に従属する**。単一active session契約（spec 204/205: 新しい依頼の生成は承認後に旧sessionを無効化）と同一のlifecycleで扱い、**新しい依頼の生成（session置換の承認）は既存の取り込み済み提案を破棄する**。よって「status card上 有効なのに再開metadata（session内ref対応表）を参照できない」状態は契約上発生しない。置換確認dialog（spec 205 AC-13）の文言は「既存依頼宛回答の無効化」に加え「取り込み済み提案の破棄」を含むよう拡張する（#374で契約化。D-13の「破棄」語彙） |
+| 内容 | validated intentのinternal表現（`CompletedPersonalIntent`相当）＋再開metadata（依頼sessionの対応表への参照。ref対応表の正本はsession側。上記lifetime規則により、提案が有効な間は参照先sessionも必ず有効） |
 | migration | 新規追加のため既存データ移行なし |
 | downgrade | 旧版は当該storeを認識しない。残留fileは無害（no-backup領域）。次回upgrade時の宽容読みで再利用 or 期限切れ清掃 |
 | rollback | store削除で同機能のみ失われる。favorites/recovery/既存storeへ影響しない。run接続時のscope gateが最終防衛（fail-closed維持） |
-| process death | 取り込み済み提案は残る。run/preview/選択は引き続きprocess-local（TO-BE §8.2） |
+| process death | 取り込み済み提案は残る（sessionもdurable 24h）。run/preview/選択は引き続きprocess-local（TO-BE §8.2） |
 
 既存store（category overrides / user categories / strategy selection / export session / recovery DB / launcher-origin counter / onboarding outcome）のformat変更は**今回なし**。
 
@@ -298,7 +299,7 @@ TO-BE §13-1の順序を踏襲し、各段を独立PR可能とする。
 
 1. **(a) hub導入**（#366）: hub新設・status card第1段階（durable status表示＋開始CTA＋診断）。既存設定導線・run面はそのまま残る（後方互換）。
 2. **(b) 材料集約＋strategy特例廃止**（#367→#368）: 設定Layout group/Personalization groupのorganizer rowsをhubへ移動。材料面T-05へのpicker移設と特例廃止。
-3. **(c) 表示統合・語彙規約**（#369→#370→#371→#372→#373）: run面統合（T-07〜T-13）→onboarding表記→JIT→AI相談統合→取り込み表示。
+3. **(c) 表示統合・語彙規約**（#369→#370→#372→#373、#371は#367後並行可）: run面統合（T-07〜T-13）→ onboarding表記（#369後。ACが統合run面を要求するため依存 also #369）→ AI相談統合 → 取り込み表示。Usage Access JIT（#371）は材料面（#367）後なら並行して着手できる。
 4. **(d) status card復元**（#376。#366後ならc並行可）: 復元CTA接続。`organizer/application/**`触れるため高リスクpath（独立audit）。
 5. **(e) pending intent durable化**（#374→#375）: 新store・status card統合・freeze再設計→原因別remedy・rebind。
 
@@ -320,7 +321,7 @@ flowchart TD
     D367 --> D368["#368 strategy picker移設・特例廃止 (D-03)"]
     D366 --> D369["#369 run面統合・canonical順序 (T-07〜T-13)"]
     D368 --> D369
-    D366 --> D370["#370 onboarding/hint接続 (D-16)"]
+    D369 --> D370["#370 onboarding/hint接続 (D-16)"]
     D367 --> D371["#371 Usage Access JIT (D-07)"]
     D369 --> D372["#372 AI相談統合・依頼作成〜送信前確認 (T-15/T-16)"]
     D372 --> D373["#373 取り込みUI・失敗再投影 (T-17/T-18)"]
@@ -335,8 +336,9 @@ flowchart TD
     D368 --> D377
 ```
 
-- 直列の核: #365 → #366 → #367 → #368 → #369 → #372 → #373 → #374 → #375。
-- 並行可能: #370（#366後）・#371（#367後）・#376（#366後。ただし高リスクpathのため単独で审计可能な小PR推奨）。
+- 直列の核: #365 → #366 → #367 → #368 → #369 → #370 → #372 → #373 → #374 → #375。
+- 並行可能: #371（#367後）・#376（#366後。ただし高リスクpathのため単独で审计可能な小PR推奨）。
+- **#374/#375の責務分割**: #374はdurable保存・status card表示・**cold processでImportReview（T-18）を開いて内容・残時間・破棄を表示するまで**を所有する。取り込み済み提案からrunへのcontinuation/rebind（fresh run admission・選択復元・「この提案で続ける」の有効化）は**#375が所有**する。同一process内のCTA従来挙動（既存seam）は#374で維持される。
 - #377は移行完了後の清掃（#368/#369/#373/#374のmerge後）。
 - 全Issueが`status: needs-spec`（#365/#377を除く）で起票済み。各Issueはspec受入後に`status: ready`へ進む。
 
