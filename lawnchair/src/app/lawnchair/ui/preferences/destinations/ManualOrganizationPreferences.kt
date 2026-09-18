@@ -930,7 +930,7 @@ private fun strategyDescription(id: StrategyId): Int = when (id.value) {
  * description as one node; a store read failure hides the active selection
  * instead of inventing one (fail-closed, matching the composer).
  */
-private fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
+internal fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
     catalog: List<StrategyId>?,
     selected: StrategyId?,
     enabled: Boolean,

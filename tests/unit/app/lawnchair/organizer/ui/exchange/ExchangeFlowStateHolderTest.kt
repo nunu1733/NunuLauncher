@@ -1610,6 +1610,129 @@ class ExchangeFlowStateHolderTest {
         awaitClosed(fixture.holder)
     }
 
+    @Test
+    fun ctaGateRefusalsKeepTheSuccessStateAndAllowRetry() {
+        // AC-3 (audit D-2): Busy / NotAttachable settle with the typed
+        // guidance, release the continuing flag and keep the success state;
+        // the eventual success settles away the transient guidance.
+        val fixture = newFixture(detectionReady = true)
+        fixture.holder.openImport()
+        fixture.holder.import(generatedReplyFixture(fixture))
+        awaitImportSuccess(fixture.holder)
+
+        fixture.holder.connectRunOverride = { ExchangeFlowStateHolder.ContinueOutcome.Busy }
+        fixture.holder.continueImport()
+        awaitNotContinuing(fixture.holder)
+        assertEquals(ExchangeStatus.Kind.RUN_BUSY, fixture.holder.status!!.kind)
+        assertTrue(fixture.holder.screen is ExchangeScreen.ImportSuccess)
+
+        fixture.holder.connectRunOverride = { ExchangeFlowStateHolder.ContinueOutcome.NotAttachable }
+        fixture.holder.continueImport()
+        awaitNotContinuing(fixture.holder)
+        assertEquals(ExchangeStatus.Kind.RUN_BUSY, fixture.holder.status!!.kind)
+        assertTrue(fixture.holder.screen is ExchangeScreen.ImportSuccess)
+
+        fixture.holder.connectRunOverride = null
+        fixture.holder.continueImport()
+        awaitClosed(fixture.holder)
+        assertNull("the settled CTA clears the transient guidance", fixture.holder.status)
+    }
+
+    @Test
+    fun aStartedRunIdMismatchSettlesAsFailureNotSuccess() {
+        // AC-3 (audit D-3): the success settle applies only while the started
+        // run still matches the live selection surface.
+        val fixture = newFixture(detectionReady = true)
+        fixture.run.start()
+        val generated = fixture.controller.generateForSelection(
+            PrivacyTier.EXTERNAL_REDACTED,
+            listOf(scopedCandidate),
+            mapOf(scopedCandidate to "c1"),
+        ) as ExchangeGenerationResult.Generated
+        fixture.holder.openImport()
+        fixture.holder.import(scopedReplyFor(generated.session))
+        awaitImportSuccess(fixture.holder)
+
+        fixture.holder.connectRunOverride = {
+            ExchangeFlowStateHolder.ContinueOutcome.Success(
+                app.lawnchair.organizer.application.public.RunId("ffffffffffffffffffffffffffffffff"),
+            )
+        }
+        fixture.holder.continueImport()
+        awaitNotContinuing(fixture.holder)
+        assertEquals(ExchangeStatus.Kind.CTA_START_FAILED, fixture.holder.status!!.kind)
+        assertTrue(fixture.holder.screen is ExchangeScreen.ImportSuccess)
+    }
+
+    @Test
+    fun discardIsRefusedWhileTheCtaIsContinuing() {
+        // AC-5 (audit D-4): the discard guard itself, not only the disabled
+        // button: a continuing discard is a no-op until the seam settles.
+        val fixture = newFixture(detectionReady = true)
+        fixture.holder.openImport()
+        fixture.holder.import(generatedReplyFixture(fixture))
+        awaitImportSuccess(fixture.holder)
+
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        fixture.holder.connectRunOverride = {
+            release.await()
+            ExchangeFlowStateHolder.ContinueOutcome.Success(null)
+        }
+        fixture.holder.continueImport()
+        assertTrue(fixture.holder.importContinuationActive)
+
+        fixture.holder.discardImport()
+        assertTrue("the continuing discard is refused", fixture.holder.importContinuationActive)
+        assertTrue(fixture.holder.screen is ExchangeScreen.ImportSuccess)
+
+        release.complete(Unit)
+        awaitClosed(fixture.holder)
+    }
+
+    @Test
+    fun importSuccessStateStringsExistInBothLocales() {
+        // Audit D-7: the #328 surface copy is the ja正本 AND the en
+        // translation — both resource files must declare every string and
+        // plural.
+        val names = listOf(
+            "exchange_import_success_title",
+            "exchange_import_success_warning_title",
+            "exchange_import_not_applied",
+            "exchange_import_cta_idle",
+            "exchange_import_cta_run_in",
+            "exchange_import_discard",
+            "exchange_import_discard_confirm_title",
+            "exchange_import_discard_confirm_body",
+            "exchange_import_discard_confirm_confirm",
+            "exchange_import_discarded_guidance",
+            "exchange_import_summary_global_minimize",
+            "exchange_import_strategy_busy",
+            "exchange_import_cta_strategy_busy",
+            "exchange_import_cta_failed",
+            "exchange_start_frozen_import",
+            "exchange_strategy_frozen_import",
+            "exchange_strategy_frozen_continuing",
+        )
+        val plurals = listOf(
+            "exchange_import_summary_recognized",
+            "exchange_import_summary_no_judgment",
+            "exchange_import_summary_scope_candidates",
+            "exchange_import_summary_priority",
+            "exchange_import_summary_group",
+            "exchange_import_summary_placement",
+            "exchange_import_summary_keep",
+        )
+        for (localeDir in listOf("values", "values-ja")) {
+            val xml = lawnchairStringsXml(localeDir).readText()
+            for (name in names) {
+                assertTrue("$name must exist in $localeDir", xml.contains("name=\"$name\""))
+            }
+            for (name in plurals) {
+                assertTrue("plurals $name must exist in $localeDir", xml.contains("<plurals name=\"$name\">"))
+            }
+        }
+    }
+
     /**
      * Minimal run stand-in provider. The holder's import path only consults
      * `run.start` for a validated intent, which these race tests never reach
