@@ -14,6 +14,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -297,6 +298,13 @@ class ExchangeImportSuccessInstrumentationTest {
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
         composeRule.onNodeWithTag("exchange-import-continue").assertIsEnabled()
         composeRule.onNodeWithTag("exchange-import-discard").assertIsEnabled()
+        // Audit D-6 regression guard: the arrival moves focus to the heading
+        // (spec Accessibility), asserted directly on the focused semantics.
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("exchange-import-success-title").assertIsFocused()
+            }.isSuccess
+        }
     }
 
     @Test
