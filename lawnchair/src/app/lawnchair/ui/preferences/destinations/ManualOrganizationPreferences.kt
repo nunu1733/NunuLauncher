@@ -43,6 +43,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selectableGroup
 import androidx.compose.ui.semantics.semantics
@@ -79,6 +80,7 @@ import app.lawnchair.organizer.ui.MissingAppSelectionState
 import app.lawnchair.organizer.ui.OrganizationPreviewContent
 import app.lawnchair.organizer.ui.OrganizationPreviewSection
 import app.lawnchair.organizer.ui.OrganizationPreviewWording
+import app.lawnchair.organizer.ui.StrategyWriteArbiter
 import app.lawnchair.organizer.ui.exchange.ExchangeFlowStateHolder
 import app.lawnchair.organizer.ui.exchange.exchangeFlowItems
 import app.lawnchair.organizer.ui.missingAppSelectionItems
@@ -114,6 +116,46 @@ fun ManualOrganizationPreferences(
             scope = scope,
         )
     }
+    // Issue #328: the single strategy-write arbiter shared by the exchange
+    // flow (import/CTA gates) and this screen (picker gates). The write and
+    // the run restart are injected seams so their mutual exclusion is one
+    // state machine (Idle -> Writing -> RestartReserved -> Restarting -> Idle),
+    // never a set of UI disabled states.
+    val strategyArbiter = remember {
+        StrategyWriteArbiter(
+            scope = scope,
+            writeStrategy = { id ->
+                LayoutStrategySelectionModule.store(context).select(id) is
+                    LayoutStrategySelectionWriteResult.Committed
+            },
+            restartRun = {
+                coordinator.dismiss()
+                coordinator.start(trigger)
+            },
+            writeStartBlocked = {
+                // Issue #328: one shared truth table with the tests.
+                app.lawnchair.organizer.ui.exchange.strategyWriteStartBlockedFor(
+                    runInEntry = coordinator.state is ManualOrganizationRun.State.Selecting,
+                    importAttemptActive = exchangeHolder.importAttemptActive,
+                    importContinuationActive = exchangeHolder.importContinuationActive,
+                )
+            },
+            restartSuppressed = {
+                app.lawnchair.organizer.ui.exchange.strategyRestartSuppressedFor(
+                    runInEntry = coordinator.state is ManualOrganizationRun.State.Selecting,
+                    importAttemptActive = exchangeHolder.importAttemptActive,
+                    importContinuationActive = exchangeHolder.importContinuationActive,
+                )
+            },
+            restartNeeded = {
+                coordinator.state !is ManualOrganizationRun.State.Idle &&
+                    coordinator.state !is ManualOrganizationRun.State.Cancelled
+            },
+        )
+    }
+    // The holder's structural gates consult the same arbiter: new imports
+    // and CTA starts are refused while a strategy write or restart runs.
+    exchangeHolder.strategyArbiterBusy = { strategyArbiter.busy }
     val focusRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
     // Issue #308: a stateFlow transition can be observed before the lazy-list
@@ -185,6 +227,13 @@ fun ManualOrganizationPreferences(
 
     ManualOrganizationBackHandler(coordinator)
 
+    // Issue #328 (spec 328 D-2): the import success state intercepts system
+    // Back at the ALWAYS-composed hosting level — never inside the lazy item,
+    // whose composition can leave the viewport under large font. Composed
+    // after the screen-level handler above, so while enabled it takes the
+    // Back before the dismiss/navigate fallback.
+    app.lawnchair.organizer.ui.exchange.ExchangeImportSuccessBackHandler(exchangeHolder)
+
     LaunchedEffect(state, focusTargetReady.value, focusTargetIndex) {
         // Issue #209 review: each run state is a fresh surface, but the lazy
         // list keeps its scroll offset across transitions (Applied's summary
@@ -236,23 +285,35 @@ fun ManualOrganizationPreferences(
         // Radio semantics: re-selecting the effective strategy is a no-op, not
         // a new policy generation or a run restart.
         if (id == selectedStrategy) return
-        execute {
-            when (val write = LayoutStrategySelectionModule.store(context).select(id)) {
-                is LayoutStrategySelectionWriteResult.Committed -> {
-                    selectedStrategy = write.snapshot.selection
-                    val runActive = coordinator.state !is ManualOrganizationRun.State.Idle &&
-                        coordinator.state !is ManualOrganizationRun.State.Cancelled
-                    if (runActive) {
-                        coordinator.dismiss()
-                        coordinator.start(trigger)
-                    }
-                }
-
-                else -> Unit
-            }
+        // Issue #328: every strategy write goes through the single arbiter —
+        // single-flight against other writes, gated against import/CTA work,
+        // and its commit-time restart decision is atomic on the Main-confined
+        // point (the restart itself runs on IO).
+        strategyArbiter.onStrategySelected(id) { committedId ->
+            selectedStrategy = committedId
         }
     }
 
+    // Issue #328: the strategy picker's enabled state mirrors the arbiter
+    // gates (affordance only — the structural gates live in the arbiter and
+    // the holder). Run-in entry: frozen while its import attempt lives; idle
+    // entry: frozen while the import continuation runs; both: frozen while
+    // the arbiter is busy. Computed here because the lazy-list scope is not a
+    // composable context.
+    val strategyPickerFreeze = if (state is ManualOrganizationRun.State.Selecting) {
+        exchangeHolder.importAttemptActive
+    } else {
+        exchangeHolder.importContinuationActive
+    }
+    val strategyPickerEnabled = !strategyPickerFreeze && !strategyArbiter.busy
+    val strategyFrozenReason = when {
+        exchangeHolder.importContinuationActive ->
+            stringResource(R.string.exchange_strategy_frozen_continuing)
+
+        strategyPickerFreeze -> stringResource(R.string.exchange_strategy_frozen_import)
+
+        else -> null
+    }
     PreferenceScaffold(
         label = stringResource(R.string.manual_organization_title),
         modifier = modifier,
@@ -280,14 +341,33 @@ fun ManualOrganizationPreferences(
                         item { ProgressText(R.string.manual_organization_durable_status_checking) }
                     }
                     durableStatus?.let { durableStatusItems(it, onOpenDiagnostics) }
+                    // Issue #328: while an import attempt lives (validation or
+                    // the success state), the idle start row is frozen — a new
+                    // run could otherwise carry the pending intent's success
+                    // state onto a different run (spec 328 競合affordance).
+                    val importAttemptActive = exchangeHolder.importAttemptActive
                     item {
                         ClickablePreference(
                             label = stringResource(R.string.manual_organization_start),
+                            subtitle = if (importAttemptActive) {
+                                stringResource(R.string.exchange_start_frozen_import)
+                            } else {
+                                null
+                            },
                             modifier = Modifier
                                 .focusRequester(focusRequester)
                                 .focusable()
+                                .then(
+                                    if (importAttemptActive) {
+                                        Modifier.semantics { disabled() }
+                                    } else {
+                                        Modifier
+                                    },
+                                )
                                 .then(focusTargetModifier),
-                            onClick = { execute { coordinator.start(trigger) } },
+                            onClick = {
+                                if (!importAttemptActive) execute { coordinator.start(trigger) }
+                            },
                         )
                     }
                 }
@@ -724,6 +804,8 @@ fun ManualOrganizationPreferences(
             strategyPickerItems(
                 catalog = strategyCatalog?.runtimeSupported,
                 selected = selectedStrategy,
+                enabled = strategyPickerEnabled,
+                frozenReason = strategyFrozenReason,
                 onSelect = ::onStrategySelected,
             )
             // Issue #205: the external agent exchange surface closes the list.
@@ -848,9 +930,11 @@ private fun strategyDescription(id: StrategyId): Int = when (id.value) {
  * description as one node; a store read failure hides the active selection
  * instead of inventing one (fail-closed, matching the composer).
  */
-private fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
+internal fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
     catalog: List<StrategyId>?,
     selected: StrategyId?,
+    enabled: Boolean,
+    frozenReason: String?,
     onSelect: (StrategyId) -> Unit,
 ) {
     if (catalog.isNullOrEmpty()) return
@@ -872,6 +956,18 @@ private fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
+            if (!enabled && frozenReason != null) {
+                // Issue #328: the frozen state and its reason are read out,
+                // not only shown (a11y; spec 328 競合affordance).
+                Text(
+                    text = frozenReason,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .semantics { liveRegion = LiveRegionMode.Polite }
+                        .testTag("strategy-picker-frozen-reason"),
+                )
+            }
             catalog.forEach { id ->
                 val name = stringResource(strategyDisplayName(id))
                 val description = stringResource(strategyDescription(id))
@@ -882,6 +978,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
                         .fillMaxWidth()
                         .selectable(
                             selected = isSelected,
+                            enabled = enabled,
                             role = Role.RadioButton,
                             onClick = { onSelect(id) },
                         )

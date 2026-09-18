@@ -78,10 +78,10 @@ _Avoid_: parity matrix (production-enforced規則の検証と混同しないよ�
 | enum値 (`Importance`: HIGH/NORMAL/LOW、`ExportRegionKind`: TOP/MIDDLE/BOTTOM) | `Importance.entries` / `ExportRegionKind.entries` | 構造派生 (descriptor) |
 | confidence 整数 0–100 | `ContextExportContract.CONFIDENCE_MIN/MAX` (新設。現literal重複を解消) | 構造派生 (descriptor) |
 | `freeText` ≤100字 / `rationale` ≤500字 / entries ≤512 / unresolved ≤512 | `ContextExportContract` 既存定数 | 構造派生 (descriptor) |
-| 必須性 — productionがrejectするもの (`schemaVersion` / `exportId` / item `ref` のpresence、`groupSemantic` any-of) | `IntentCodec` / `IntentModels` のdecode/init判定 | descriptor表示 (`PRODUCTION_ENFORCED`) + parity fixture (counterfactual保証あり) |
+| 必須性 — productionがrejectするもの (`schemaVersion` / `exportId` / item `ref` のpresence、`groupSemantic` exactly-one-of) | `IntentCodec` / `IntentModels` のdecode/init判定 | descriptor表示 (`PRODUCTION_ENFORCED`) + parity fixture (counterfactual保証あり) |
 | container shape・boolean/integer型 — productionがrejectするもの (`itemIntents`/`unresolvedRefs` 非配列、`confidence` 非整数、`preserve` 非boolean、`pageAffinity` 非整数) | `IntentCodec` のdecode判定 | descriptor表示 (`PRODUCTION_ENFORCED`) + parity fixture (counterfactual保証あり) |
 | canonical JSON型 — productionが広く受理するもの (string fieldをJSON stringでauthorする旨。`optString` は非string primitiveも受理) | productionでrejectされない (producer-side policy) | descriptor表示 (`AUTHORING_POLICY`) + policy matrix (instructionが制約文をpositiveにrender + canonical fixture受理) |
-| cross-field — productionがrejectするもの (`groupSemantic` any-of) | `IntentModels.init` | descriptor表示 (`PRODUCTION_ENFORCED`) + parity fixture (counterfactual保証あり) |
+| cross-field — productionがrejectするもの (`groupSemantic` exactly-one-of、`categoryRef` のadvertise済みref scope) | `IntentModels.init` | descriptor表示 (`PRODUCTION_ENFORCED`) + parity fixture (counterfactual保証あり) |
 | cross-field — productionが受理するもの (`desiredGroup` 存在すれば非空、string list要素のstring要求) | productionでrejectされない (producer-side policy) | descriptor表示 (`AUTHORING_POLICY`) + policy matrix |
 | payload 128KiB / envelope 1MiB | `MAX_INTENT_BYTES` / `MAX_EXCHANGE_IMPORT_BYTES` | spec同期対象 (resource guard。instructionへは載せない — authoring指示ではなく受信側資源境界) |
 | `pageAffinity ∈ [0, gridContext.pageCount)` | `IntentValidator` (export grid依存のcontext制約) | 明示prose + production-enforced parity test |
@@ -96,7 +96,7 @@ _Avoid_: parity matrix (production-enforced規則の検証と混同しないよ�
 
 ### Scenario: instruction部のoutput contractはwire descriptorから派生する
 
-Given `IntentWireContract` が各group (top-level / item entry / `globalPreference` / `groupSemantic`) のproperty名集合、enum参照、静的制限定数、および必須性・型・cross-field規則の主張を **`enforcement` 分類つき** で保持する (`PRODUCTION_ENFORCED`: `schemaVersion` presence / `exportId` presence / item `ref` presence / `itemIntents`・`unresolvedRefs` 非配列reject / `confidence` 非整数reject / `preserve` 非boolean reject / `pageAffinity` 非整数reject / `groupSemantic` any-of。`AUTHORING_POLICY`: string fieldをJSON stringでauthorする旨 / `desiredGroup` 存在すれば非空 / string list要素のstring要求 / FIXED `preserve: true`)、
+Given `IntentWireContract` が各group (top-level / item entry / `globalPreference` / `groupSemantic`) のproperty名集合、enum参照、静的制限定数、および必須性・型・cross-field規則の主張を **`enforcement` 分類つき** で保持する (`PRODUCTION_ENFORCED`: `schemaVersion` presence / `exportId` presence / item `ref` presence / `itemIntents`・`unresolvedRefs` 非配列reject / `confidence` 非整数reject / `preserve` 非boolean reject / `pageAffinity` 非整数reject / `groupSemantic` exactly-one-of。`AUTHORING_POLICY`: string fieldをJSON stringでauthorする旨 / `desiredGroup` 存在すれば非空 / string list要素のstring要求 / FIXED `preserve: true` / `categoryRef` はCONTEXT `categories` のrefのみ (#337))、
 When exchange packageをcomposeする、
 Then instruction部のoutput contract sectionは上記の名前・canonical JSON型・必須性・enum値・制約を **compose時にdescriptorから直接整形して** 含み、
 And `IntentCodec` の `ALLOWED_TOP_KEYS` / `ALLOWED_ITEM_KEYS` / `ALLOWED_GLOBAL_KEYS` / `ALLOWED_SEMANTIC_KEYS` はdescriptorの名前集合から派生した既存集合と等しい、
@@ -104,9 +104,9 @@ And instruction部はproduction contractに存在しないproperty・enum値・�
 
 ### Scenario: descriptor主張とproduction挙動のparity fixture (PRODUCTION_ENFORCEDのみcounterfactual)
 
-Given descriptorが `enforcement` 分類を持って各制約主張を保持している (例: `PRODUCTION_ENFORCED` — `exportId` presence、`itemIntents` 非配列reject、`confidence` 非整数reject、`preserve` 非boolean reject、`groupSemantic` any-of。`AUTHORING_POLICY` — string fieldのJSON string要求、`desiredGroup` 非空、list要素のstring要求、FIXED `preserve: true`)、
+Given descriptorが `enforcement` 分類を持って各制約主張を保持している (例: `PRODUCTION_ENFORCED` — `exportId` presence、`itemIntents` 非配列reject、`confidence` 非整数reject、`preserve` 非boolean reject、`groupSemantic` exactly-one-of、`categoryRef` のref scope。`AUTHORING_POLICY` — string fieldのJSON string要求、`desiredGroup` 非空、list要素のstring要求、FIXED `preserve: true`、`categoryRef` はCONTEXT `categories` のrefのみ (#337))、
 When `PRODUCTION_ENFORCED` の主張1件ごとに対応するfixtureを `ExchangeImportPipeline.import` に通す、
-Then 主張どおりの挙動が1件ずつ固定され (例: `exportId` 欠落 → `SCHEMA_MISMATCH`。`itemIntents` 非配列 → `SCHEMA_MISMATCH`。`groupSemantic` 両方null → `SCHEMA_MISMATCH`)、
+Then 主張どおりの挙動が1件ずつ固定され (例: `exportId` 欠落 → `SCHEMA_MISMATCH`。`itemIntents` 非配列 → `SCHEMA_MISMATCH`。`groupSemantic` 両方null / 両方set → `SCHEMA_MISMATCH`、未advertise `categoryRef` → `UNKNOWN_CATEGORY_REF`)、
 And descriptorの `PRODUCTION_ENFORCED` 主張をproductionと矛盾する値へ変更すると該当fixtureが失敗する (descriptor↔production乖離の検出)、
 And `AUTHORING_POLICY` の主張はproductionがrejectしないためcounterfactual fixtureの対象外であり、そのoracleはpolicy matrix (instructionのpositive render + canonical fixture受理) である。
 
@@ -148,7 +148,7 @@ When `ExchangeImportPipeline.import` に通す、Then 各fixtureの期待typed f
 - canonical JSON型違反: `confidence` 非整数 (例: `"high"`) → `INVALID_ENUM` / `preserve` 非boolean → `SCHEMA_MISMATCH` / `itemIntents` 非配列 → `SCHEMA_MISMATCH`
 - enum違反: 小文字 `"high"` → `INVALID_ENUM` / `regionAffinity` 範囲外値 → `INVALID_ENUM`
 - 数値境界: `confidence` 0と100 → 成功、−1と101 → `INVALID_ENUM` / `pageAffinity` `pageCount−1` → 成功、`pageCount` → `INVALID_ENUM`
-- cross-field: `groupSemantic` の `category` と `freeText` が両方null → `SCHEMA_MISMATCH`
+- cross-field: `groupSemantic` の `categoryRef` と `proposalLabel` が両方null / 両方set → `SCHEMA_MISMATCH` (#337: exactly-one-of。未advertise `categoryRef` は `UNKNOWN_CATEGORY_REF`、`proposalLabel` の長さ超過は `OVERSIZE`)
 - ref規則: item `ref` / `desiredGroup` 要素 / `unresolvedRefs` 要素のそれぞれの未知ref → `UNKNOWN_REF`、同一refの `itemIntents` 重複 → `DUPLICATE_REF`、両集合出現 → `INCOMPLETE_COVERAGE`
 - mobility production-enforced: FIXEDへの `importance` / `pageAffinity` / `regionAffinity` / `desiredGroup` / `groupSemantic` → `MOBILITY_CONTRADICTION`、CONDITIONALへの `desiredGroup` / `groupSemantic` → `MOBILITY_CONTRADICTION`、CANDIDATEへの `preserve` → `MOBILITY_CONTRADICTION`、各合法組み合わせ → 成功
 And これらのtestはproduction path (`ExchangeImportPipeline.import`) のみを通り、ad-hocなcodec直呼びで本番seamを模倣しない。
@@ -238,6 +238,8 @@ And 失敗分類19種とその表示対応は不変である。
 - **#345 (OPEN)**: evidence記録の正本。本specはそのcontract層の知見をregression fixtureと設計改善へ引き取る。
 
 ## Change history
+
+- 2026-09-18 (5th, spec 337 実装): **[spec 337](../337-exchange-category-group-proposals/spec.md) (v4) のdescriptor反映** — `groupSemantic` のwire keyを `category` / `freeText` から `categoryRef` / `proposalLabel` へ変更し、claimを any-of から **exactly-one-of** (`groupSemantic.exactlyOneOf`) へ、length limit claimを `proposalLabel.lengthLimit` (50 code points = #336 category name規則) へ更新。新規claim: `refScope.groupSemanticCategoryRef` (`PRODUCTION_ENFORCED`、未advertise ref → `UNKNOWN_CATEGORY_REF`) と `policy.categoryRefFromContext` (`AUTHORING_POLICY`、既存カテゴリはCONTEXT `categories` のrefでのみ参照する)。instructionは「既存カテゴリは `categoryRef`、新規は `proposalLabel`」をYou-mustに明示し、canonical templateは不変 (spec 327 Decision 2のnon-seeding維持)。
 
 - 2026-09-18: Draft created for #348。#345 evidence ([assets-345-import-evidence](../../docs/assessment/assets-345-import-evidence/README.md)) を入力に、AI-facing contractのproduction同期、finalization self-check、canonical authoring form (fenced json)、one-round-trip invariant、#345 regression fixtureを定義。
 - 2026-09-18 (2nd): 1st ChatGPT review ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/348#issuecomment-5717646827)、head `a7cbcb84be` 基準) の高3点・中2点に対応。**高1**: requiredness/JSON型の同期が未設計 → `IntentWireContract` descriptor導入とrepresentation分離。**高2**: validator固有truthを同期対象へ追加し、保証範囲を正確化、production truth inventory表を追加。**高3**: spec 205/329のnormative更新をDecision 6として追加、accepted framing / canonical authoring formの用語分離。**中4**: parity matrix (table-driven、production path経由) をAC-3へ、golden testを `ExchangeImportPipeline.import` 経由へ。**中5**: AC-11へevidence protocolを追加。

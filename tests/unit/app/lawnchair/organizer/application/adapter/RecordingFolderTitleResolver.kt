@@ -14,6 +14,7 @@ class RecordingFolderTitleResolver(
         when (naming) {
             is FolderNaming.FromCategory -> "synthetic:${naming.category.value}"
             is FolderNaming.FromUserCategory -> "synthetic:userCategory:${naming.id.value}"
+            is FolderNaming.FromProposalLabel -> "synthetic:proposal:${naming.label}"
         }
     },
 ) : FolderTitleResolver {

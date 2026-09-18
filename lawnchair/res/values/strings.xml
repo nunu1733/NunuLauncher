@@ -1290,11 +1290,20 @@
     <!-- Issue #205: External Agent Exchange -->
     <string name="exchange_entry_title">Organize with an external AI</string>
     <string name="exchange_entry_subtitle">Create a request for an external AI (such as ChatGPT) and import its proposal as a reviewable plan.</string>
+    <!-- Issue #327: user-facing capability explanation (en) -->
+    <string name="exchange_capability_title">What the AI can do</string>
+    <string name="exchange_capability_example_frequent">Put the apps you use most first</string>
+    <string name="exchange_capability_example_group">Group related apps together</string>
+    <string name="exchange_capability_example_keep">Keep the apps you don\'t want moved where they are</string>
+    <string name="exchange_capability_example_front">Move important apps toward the first page</string>
+    <string name="exchange_capability_example_minimal_change">Keep today\'s layout mostly intact</string>
+    <string name="exchange_capability_no_direct_change">The AI never changes your home screen directly. It drafts your preferences and tendencies for a reorganization plan.</string>
+    <string name="exchange_capability_flow">The conversation happens inside your external AI app (such as ChatGPT). Send the request once, answer a few short questions (2–4), confirm the plan, and receive one final proposal. Your conversation is never sent to NunuLauncher.</string>
     <string name="exchange_entry_open">Create request</string>
     <string name="exchange_entry_import">Import reply</string>
     <string name="exchange_privacy_title">Privacy of the outgoing request</string>
     <string name="exchange_privacy_redacted">Exclude app names (default)</string>
-    <string name="exchange_privacy_labels">Include app names</string>
+    <string name="exchange_privacy_labels">Include app and category names</string>
     <string name="exchange_privacy_labels_warning">The request will contain app and folder names.</string>
     <string name="exchange_replacement_notice">An unfinished exchange exists. Creating a new request will invalidate it.</string>
     <string name="exchange_replacement_title">Replace the existing exchange?</string>
@@ -1306,13 +1315,13 @@
     <string name="exchange_cancel">Cancel</string>
     <string name="exchange_close">Close</string>
     <string name="exchange_disclosure_title">Review before sending</string>
-    <string name="exchange_disclosure_redacted">This request contains no app names, package names, or raw usage data.</string>
-    <string name="exchange_disclosure_labels_included">This request contains app and folder names.</string>
+    <string name="exchange_disclosure_redacted">This request contains no app names, package names, or raw usage data. It does list your categories, including user-defined ones, but without their names.</string>
+    <string name="exchange_disclosure_labels_included">This request contains app and folder names, and the names of your user-defined categories.</string>
     <string name="exchange_disclosure_hint">Send this exact text to the AI app of your choice. Nothing is sent until you choose a send method.</string>
     <string name="exchange_copy">Copy</string>
     <string name="exchange_share">Share…</string>
     <string name="exchange_save_file">Save to file</string>
-    <string name="exchange_transport_success">Copied or sent. Paste the AI reply here later to import it.</string>
+    <string name="exchange_transport_success">Request copied, shared, or saved. After you give it to your AI app, answer a few short questions (2–4) and confirm the plan to receive one final proposal. Paste that reply here to import it.</string>
     <string name="exchange_transport_clipboard_failed">Clipboard unavailable. Try sharing or saving to a file.</string>
     <string name="exchange_transport_share_absent">No app can receive the share. Copy or save to a file instead.</string>
     <string name="exchange_transport_file_failed">File operation failed. Try again or use another send method.</string>
@@ -1324,7 +1333,6 @@
     <string name="exchange_import_result_unknown">The reply could not be used.</string>
     <string name="exchange_import_retry_hint">Ask the AI to resend the final JSON in a single ```json code block, then import again.</string>
     <string name="exchange_import_retry">Import again</string>
-    <string name="exchange_import_accepted">Proposal validated. Generating the preview…</string>
     <string name="exchange_run_busy">An organization run is active. Import again after it finishes.</string>
     <string name="exchange_import_from_clipboard">Import from clipboard</string>
     <string name="exchange_import_fallback_toggle">Details / if the import does not work</string>
@@ -1363,6 +1371,7 @@
     <string name="exchange_failure_mobility_contradiction">The intent tries to move an immovable item.</string>
     <string name="exchange_failure_capability_unsupported">The intent uses an unsupported capability.</string>
     <string name="exchange_failure_scope_mismatch">The selected apps no longer match the request. Select the same apps, or create a new request.</string>
+    <string name="exchange_failure_unknown_category_ref">The reply references a category that is no longer available. Create a new request and ask again.</string>
     <string name="exchange_scoped_entry_title">Include the selected apps in the AI request</string>
     <string name="exchange_scoped_entry_subtitle">The request will cover your current home plus the selected apps, so the AI can advise on all of them.</string>
     <string name="exchange_scoped_entry_open">Create request</string>
@@ -1370,5 +1379,60 @@
     <plurals name="exchange_scope_intent_count">
         <item quantity="one">The AI proposal covers %1$d app that is not yet on your home. Select it to use the proposal.</item>
         <item quantity="other">The AI proposal covers %1$d apps that are not yet on your home. Select them to use the proposal.</item>
+    </plurals>
+
+    <!-- Issue #328: the import success state and its typed guidance. -->
+    <string name="exchange_import_success_title">Proposal imported</string>
+    <string name="exchange_import_success_warning_title">Proposal imported (some items have no stated preference)</string>
+    <string name="exchange_import_not_applied">Nothing has been applied to your home screen yet.</string>
+    <string name="exchange_import_cta_idle">Continue with this proposal</string>
+    <string name="exchange_import_cta_run_in">Return to selection to finish organizing</string>
+    <string name="exchange_import_discard">Discard and close</string>
+    <string name="exchange_import_discard_confirm_title">Discard the import?</string>
+    <string name="exchange_import_discard_confirm_body">The imported proposal will not be saved. While the request stays valid, you can import the same reply again.</string>
+    <string name="exchange_import_discard_confirm_confirm">Discard</string>
+    <string name="exchange_import_discarded_guidance">The import was discarded. While the request stays valid, you can import the same reply again.</string>
+    <string name="exchange_import_summary_global_minimize">Overall goal: keep the current layout as much as possible</string>
+    <string name="exchange_import_strategy_busy">Changing the organization strategy. Import again after it finishes.</string>
+    <string name="exchange_import_cta_strategy_busy">Changing the organization strategy. Try again after it finishes.</string>
+    <string name="exchange_import_cta_failed">Could not start organizing. Please try again.</string>
+    <string name="exchange_start_frozen_import">Import in progress. You can start organizing after it finishes.</string>
+    <string name="exchange_strategy_frozen_import">Import in progress. The strategy cannot be changed until it finishes.</string>
+    <string name="exchange_strategy_frozen_continuing">Organizing has started. The strategy cannot be changed.</string>
+    <plurals name="exchange_import_summary_recognized">
+        <item quantity="one">%1$d wish was recognized from the proposal.</item>
+        <item quantity="other">%1$d wishes were recognized from the proposal.</item>
+    </plurals>
+    <plurals name="exchange_import_summary_no_judgment">
+        <item quantity="one">%1$d item has no stated preference; it will be organized without one.</item>
+        <item quantity="other">%1$d items have no stated preference; they will be organized without one.</item>
+    </plurals>
+    <plurals name="exchange_import_summary_scope_candidates">
+        <item quantity="one">%1$d app outside your home is covered by this request.</item>
+        <item quantity="other">%1$d apps outside your home are covered by this request.</item>
+    </plurals>
+    <plurals name="exchange_import_summary_priority">
+        <item quantity="one">Priority stated: %1$d item</item>
+        <item quantity="other">Priority stated: %1$d items</item>
+    </plurals>
+    <plurals name="exchange_import_summary_existing_category">
+        <item quantity="one">%1$d item refers to an existing category</item>
+        <item quantity="other">%1$d items refer to an existing category</item>
+    </plurals>
+    <plurals name="exchange_import_summary_proposed_group">
+        <item quantity="one">%1$d item proposes a new group for this run (not saved)</item>
+        <item quantity="other">%1$d items propose a new group for this run (not saved)</item>
+    </plurals>
+    <plurals name="exchange_import_summary_group">
+        <item quantity="one">Grouping wish: %1$d item</item>
+        <item quantity="other">Grouping wishes: %1$d items</item>
+    </plurals>
+    <plurals name="exchange_import_summary_placement">
+        <item quantity="one">Placement wish: %1$d item</item>
+        <item quantity="other">Placement wishes: %1$d items</item>
+    </plurals>
+    <plurals name="exchange_import_summary_keep">
+        <item quantity="one">Keep-position wish: %1$d item</item>
+        <item quantity="other">Keep-position wishes: %1$d items</item>
     </plurals>
 </resources>

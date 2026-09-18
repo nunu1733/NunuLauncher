@@ -81,6 +81,11 @@ object GeneratedFolderTitles {
             is FolderNaming.FromUserCategory ->
                 userCategoryTitles.displayNameOf(naming.id)
                     ?: stringProvider.string(R.string.organizer_generated_folder_fallback_name)
+
+            // Issue #337: a run-scoped proposal names its folder with the
+            // (already validated, non-blank) proposal label the user saw in the
+            // preview; there is no stored identity to resolve.
+            is FolderNaming.FromProposalLabel -> naming.label
         }
     }
 }

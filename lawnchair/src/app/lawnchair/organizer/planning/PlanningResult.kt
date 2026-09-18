@@ -128,6 +128,15 @@ sealed interface FolderNaming {
      * plan representation, so a rename does not change the canonical bytes.
      */
     data class FromUserCategory(val id: UserCategoryId) : FolderNaming
+
+    /**
+     * Issue #337 (spec 337 D-6): a folder formed by a run-scoped proposal
+     * carries the normalized proposal label as its naming identity — the label
+     * is the only identity a proposal has (it never persists, so there is no
+     * stable ID to bind). The label is already validated against the #336
+     * category-name domain when the intent is accepted.
+     */
+    data class FromProposalLabel(val label: String) : FolderNaming
 }
 
 /**
@@ -138,6 +147,16 @@ sealed interface FolderNaming {
 internal fun folderNamingFor(category: CategoryIdentity): FolderNaming = when (category) {
     is CategoryIdentity.BuiltIn -> FolderNaming.FromCategory(category.id)
     is CategoryIdentity.UserDefined -> FolderNaming.FromUserCategory(category.id)
+}
+
+/**
+ * Issue #337: canonical [FolderNaming] for a formation key — existing
+ * categories keep the #336 mapping; a run-scoped proposal names its folder
+ * with the proposal label.
+ */
+internal fun folderNamingFor(key: FormationKey): FolderNaming = when (key) {
+    is FormationKey.Existing -> folderNamingFor(key.identity)
+    is FormationKey.Proposed -> FolderNaming.FromProposalLabel(key.label)
 }
 
 data class NewFolder(

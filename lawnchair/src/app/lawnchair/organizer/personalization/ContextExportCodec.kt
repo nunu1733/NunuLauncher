@@ -37,6 +37,21 @@ object ContextExportCodec {
                     ),
                 )
                 put(
+                    "categories",
+                    JsonArray(
+                        export.categories.map { category ->
+                            JsonObject(
+                                buildMap {
+                                    put("ref", JsonPrimitive(category.ref))
+                                    put("kind", JsonPrimitive(category.kind.name))
+                                    category.taxonomyId?.let { put("taxonomyId", JsonPrimitive(it)) }
+                                    category.displayName?.let { put("displayName", JsonPrimitive(it.value)) }
+                                },
+                            )
+                        },
+                    ),
+                )
+                put(
                     "items",
                     JsonArray(
                         export.items.map { item ->
@@ -45,8 +60,8 @@ object ContextExportCodec {
                                     put("ref", JsonPrimitive(item.ref))
                                     put("kind", JsonPrimitive(item.role.name))
                                     put("subject", JsonPrimitive(item.subject.name))
-                                    item.category?.let { put("category", JsonPrimitive(it)) }
-                                    item.groupSemantic?.let { put("groupSemantic", JsonPrimitive(it)) }
+                                    item.categoryRef?.let { put("categoryRef", JsonPrimitive(it)) }
+                                    item.folderCategoryRef?.let { put("folderCategoryRef", JsonPrimitive(it)) }
                                     item.label?.let { put("label", JsonPrimitive(it.value)) }
                                     item.pageAffinity?.let { put("pageAffinity", JsonPrimitive(it.pageOrdinal)) }
                                     item.regionAffinity?.let { put("regionAffinity", JsonPrimitive(it.name)) }
@@ -179,6 +194,16 @@ object ContextExportCodec {
                     rows = requireNotNull(grid?.optInt("rows")),
                     pageCount = requireNotNull(grid?.optInt("pageCount")),
                 ),
+                categories = ((root["categories"] as? JsonArray)?.jsonArray() ?: emptyList()).map { raw ->
+                    val category = raw as? JsonObject ?: throw IllegalArgumentException()
+                    ExportCategory(
+                        ref = requireNotNull(category.optString("ref")),
+                        kind = CategoryRefKind.valueOf(requireNotNull(category.optString("kind"))),
+                        taxonomyId = category.optString("taxonomyId"),
+                        displayName = category.optString("displayName")
+                            ?.let { ExportCategoryName(FreeTextClass.USER_CATEGORY_NAME, it) },
+                    )
+                },
                 items = itemsJson.mapNotNull { raw ->
                     val item = raw as? JsonObject ?: throw IllegalArgumentException()
                     ExportItem(
@@ -186,8 +211,8 @@ object ContextExportCodec {
                         role = ExportItemRole.valueOf(requireNotNull(item.optString("kind"))),
                         subject = item.optString("subject")?.let { ExportItemSubject.valueOf(it) }
                             ?: ExportItemSubject.PLACED,
-                        category = item.optString("category"),
-                        groupSemantic = item.optString("groupSemantic"),
+                        categoryRef = item.optString("categoryRef"),
+                        folderCategoryRef = item.optString("folderCategoryRef"),
                         label = item.optString("label")?.let { ExportItemLabel(FreeTextClass.APP_LABEL, it) },
                         pageAffinity = item.optInt("pageAffinity")?.let { ExportPageAffinity(it) },
                         regionAffinity = item.optString("regionAffinity")?.let { ExportRegionKind.valueOf(it) },
