@@ -120,6 +120,7 @@ class ManualOrganizationRunTest {
                     reservedRegions = emptyList(),
                     preservedCounts = emptyMap(),
                 ),
+                categories = emptyList(),
                 capabilities = app.lawnchair.organizer.personalization.ExportCapabilities(
                     intentSchemaVersion = app.lawnchair.organizer.personalization.ContextExportContract.INTENT_SCHEMA_VERSION,
                     functions = app.lawnchair.organizer.personalization.ContextExportContract.FIXED_CAPABILITIES,

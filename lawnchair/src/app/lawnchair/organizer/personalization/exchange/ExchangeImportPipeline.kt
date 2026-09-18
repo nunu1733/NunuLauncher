@@ -159,8 +159,8 @@ sealed interface ExchangeImportResult {
 
     /**
      * Issue #332 (spec D-6): the recognized metadata travels additively on
-     * the failure value for the parse-first outcome display; the 19-kind
-     * failure enumeration itself is unchanged.
+     * the failure value for the parse-first outcome display; the failure
+     * enumeration itself is unchanged (spec 337 D-8 made it 20 kinds).
      */
     data class Failure(
         val failure: ExchangeImportFailure,
@@ -196,7 +196,7 @@ fun ExchangeImportPipeline.Prepared.recognizedInfo(): RecognizedImportInfo = Rec
  * D-5, spec 329 D-5): the four #205-side envelope/framing failures, the two
  * #329 normalizer failures wrapped in [Normalization], and the thirteen #204
  * contract classes wrapped in [Contract]. UI failure displays map one-to-one
- * onto these (19 kinds total). The #204 `ScopeMismatch` class is raised by
+ * onto these (20 kinds total: #337 added `UNKNOWN_CATEGORY_REF`). The #204 `ScopeMismatch` class is raised by
  * the run-side scope binding gate (`ScopeBindingGate`), not by this pipeline —
  * only the run knows the confirmed selection and the composition-time
  * candidate projection.
