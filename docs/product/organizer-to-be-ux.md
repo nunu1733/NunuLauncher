@@ -4,6 +4,7 @@
 > Proposed: 2026-09-18
 > Revision 2: 2026-09-18 — owner review（#361 Changes requested）の指摘5点を反映（run内canonical順序、AI相談とRUN lease境界（D-17新設）、stale表示の契約整合、適用中の中断規則、最近の結果のlifetime）
 > Revision 3: 2026-09-18 — re-review指摘2点を反映（idle/run-in AI相談のlease境界分離、scope mismatch remedyの原因別分割）
+> Revision 4: 2026-09-18 — re-review指摘1点を反映（遷移図のidle/run-in分離と正規復帰経路の固定、status card可視化のidle限定）
 > Input fact base: [Organizer AS-IS UX/data flow audit](../assessment/organizer-as-is-ux-data-flow-audit.md)（Phase A #357–#360、audited HEAD `b728ed4d9f30ee797f6e086da110fdc86215da92`、audit date 2026-09-18）
 > Parent: [Issue #356](https://github.com/nunu1733/NunuLauncher/issues/356)。本書は [Issue #361](https://github.com/nunu1733/NunuLauncher/issues/361) の成果物である。
 > 既存正本への処分（Continue / Amend-Supersede / Defer / Retire）の実行と migration 順序は [Issue #362](https://github.com/nunu1733/NunuLauncher/issues/362) が所有する。本書は方針と必要改訂を決定するのみで、spec/実装の改訂を行わない。
@@ -37,7 +38,7 @@
 | D-01 | Organizerを**独立した作業領域（Organizer hub）**として新設する。Home Screen設定のOrganizer群（run入口・strategy・personalization・category系入口・診断）はhubへ集約し、設定側は入口rowだけを残す | F-01, F-02 |
 | D-02 | hubのstatus cardを**durable事実と進行中状態の単一閲覧面**とする。durable status（復元可能なら復元CTA付き）・進行中のAI依頼（24h残時間）・取り込み済み未適用の状態を1枚で見せる。**最近のrun結果はprocess内のみの表示**であり、process死後はdurable statusが示す事実（適用済み・復元可否）だけが残る（§8.2） | F-05, F-10 |
 | D-03 | **run = hubから開始する1回の試行**。hubとrunの境界はrun admission（RUN lease取得）。run中の恒常authoring（分類・lock・方針・記録toggle）は一律不可とし、「中断してから変更する」を唯一の規則にする。strategy pickerをrun面から撤去し、材料面のみに置く。run面内の「方針変更→確認なしで破棄+再start」の特例を廃止する | F-01, F-08, E-7, D-3/D-4 |
-| D-04 | External Agent Exchangeを**独立サブシステムとして見せず、「整理案の作り方」の1つ**として統合する。整理開始の前置き面（T-07）で「そのまま整理 / AIに相談」を選ぶ。**idle AI相談はrun admission（RUN lease取得）を伴わないpre-run request flow**であり、依頼の作成・待機・取り込み中も恒常authoringは可能である（layout・分類を変更した場合はD-09の期待明示どおり回答が古くなる）。**run-in相談（選択面から発する相談）は異なり、admitted runを保持してRUN leaseが継続し、選択凍結とauthoring不可の下で行う（D-17）**。依頼の状況はhub status cardで見せる。内部pipeline（tier→生成→送信前確認→import→検証→run接続）とその同意gateは現行契約のまま維持する | F-07 |
+| D-04 | External Agent Exchangeを**独立サブシステムとして見せず、「整理案の作り方」の1つ**として統合する。整理開始の前置き面（T-07）で「そのまま整理 / AIに相談」を選ぶ。**idle AI相談はrun admission（RUN lease取得）を伴わないpre-run request flow**であり、依頼の作成・待機・取り込み中も恒常authoringは可能である（layout・分類を変更した場合はD-09の期待明示どおり回答が古くなる）。**run-in相談（選択面から発する相談）は異なり、admitted runを保持してRUN leaseが継続し、選択凍結とauthoring不可の下で行う（D-17）**。**idle相談の依頼と、process死後のdurable状態（依頼・取り込み済み提案）はhub status cardで見せる**。run-in相談中はrun/RUN leaseを保持しているため、status cardへの退避は発生しない。内部pipeline（tier→生成→送信前確認→import→検証→run接続）とその同意gateは現行契約のまま維持する | F-07 |
 | D-05 | **run内のcanonical順序とユーザー向け8状態**を固定する。順序: 前置き面T-07（方法選択・admissionなし）→「そのまま整理」でrun admission（RUN lease取得）→ **検出（T-09準備中の最初のphase）** → 対象選択（候補あり時のみT-08へ一時遷移）→ capture+plan（T-09）→ 提案の確認（T-10）。検出・capture・planの進行は1つのprogress面に統合し、typed失敗状態と入場前stale（`DETECTED_BEFORE_REVIEW`）は「実行できませんでした（原因+次の手段）」1面へ畳む。内部state machineの契約は変更しない | F-04 |
 | D-06 | **missing-app選択面は必須通過でなくする**。検出はrun内の最初のphaseであり、**候補0件なら選択面を表示せずcapture/planへ続行**する（検出前に候補有無を前提化しない）。候補がある場合はscope制御として提示する | 監査§4.4 V-09 |
 | D-07 | **Usage Access要求をjust-in-time化する**。最初にsignalを読む時点（初回run composition / 初回AI依頼生成）で文脈付きの任意要求を出し、材料面には常設の管理rowを残す。拒否時は該当sectionがUnavailableになりrunが続行する（現行property） | F-06, E-1 |
@@ -147,12 +148,14 @@ stateDiagram-v2
     Hub --> Start: 整理を開始（T-07前置き）
     state Start <<choice>>
     Start --> Detect: そのまま整理（RUN admission・RUN lease取得）
-    Start --> Exchange: AIに相談（admissionなし・pre-run request flow）
+    Start --> IdleExchange: AIに相談（admissionなし・pre-run request flow）
+    IdleExchange --> Start: 破棄（pre-send cancel・未送信依頼の無効化）
     Detect --> Selecting: 候補あり
     Detect --> Plan: 候補なし（そのままcapture/planへ）
     Selecting --> Plan: 続行
     Selecting --> Hub: 中断（破棄確認）
-    Selecting --> Exchange: AIに相談（選択凍結・run保持）
+    Selecting --> RunInExchange: AIに相談（選択凍結・run保持・RUN lease継続）
+    RunInExchange --> Selecting: 閉じる・破棄・取り込み成功・失敗 → 選択面へ戻る（同一run・RUN lease継続）
     Detect --> Failed: 実行できない（入力不足・候補解決不能等）
     Plan --> Reviewing
     Plan --> Failed: 確認面への入場前にlayout変更
@@ -164,18 +167,21 @@ stateDiagram-v2
     Result --> RecoveryPreview: 復元
     Hub --> RecoveryPreview: 復元できる提案あり（D-15）
     RecoveryPreview --> Hub: 復元完了/期限切れ
-    Exchange --> Hub: 依頼の待機中（status cardで管理）
-    Exchange --> ImportReview: 取り込み成功（未適用）
-    Exchange --> Exchange: 失敗 → 手段別に再取り込み/再作成
-    ImportReview --> Detect: この提案で続ける（RUN admission・scope一致検証）
+    IdleExchange --> Hub: 依頼の待機中（idle相談のみ。status cardで管理）
+    IdleExchange --> ImportReview: 取り込み成功（未適用）
+    IdleExchange --> IdleExchange: 失敗 → 手段別に再取り込み/再作成
+    ImportReview --> Detect: この提案で続ける（ここで初めてRUN admission・scope一致検証）
     ImportReview --> Hub: 破棄（依頼は生存）
+    Hub --> Detect: 取り込み済み提案の再開（process死後のみ・fresh run rebind・scope一致検証+選択復元初期値・D-17）
 ```
 
 - **canonical順序**: `Start`（T-07前置き）はadmissionを含まない選択点であり、「そのまま整理」の選択でRUN admission（RUN lease取得）→ `Detect`（検出）→ 候補ありなら`Selecting` → `Plan`（capture+plan）→ `Reviewing`の順に固定する（D-05/D-06）。
 - `Detect`と`Plan`は同一のT-09準備中progress面のphaseである。検出はrun内の最初のphaseであり、候補0件なら選択面を経ない。
 - 失敗と入場前stale（`DETECTED_BEFORE_REVIEW`）は`Failed`（T-13実行できませんでした）に統合され、remedy（再試行/再取得）で`Detect`へ戻る。適用時stale（`APPLY_BLOCKED`）は`Result`（T-12「適用されませんでした」）の変種である（D-12）。
-- `Start`→`Exchange`（idle AI相談）はrun admissionを保持しないpre-run request flowであり、authoringは可能（D-04）。idle相談の依頼の待機中にhubへ戻ってもstatus cardから再開できる。
-- `Selecting`→`Exchange`（run-in相談）はadmitted runを保持したままの相談であり、RUN leaseの継続・選択凍結・authoring不可の下で行う。選択を凍結保持して同一runへ戻る（現行契約）。process死後はrunと選択が消えるため、取り込み済み提案をfresh runへ接続し、scope一致検証と選択復元初期値で継続する（D-17）。
+- **idle AI相談**は図上で独立した`IdleExchange`/`ImportReview`を通る。run admissionを保持しないpre-run request flowであり、authoringは可能（D-04）。取り込み成功後の「この提案で続ける」で**初めてRUN admission**（`ImportReview → Detect`）が発生する。idle相談の依頼の待機中はhubへ戻り、status cardから再開できる。
+- **run-in相談**は図上で独立した`RunInExchange`を通る。admitted runを保持したままの相談であり、RUN leaseの継続・選択凍結・authoring不可の下で行う（D-17）。閉じる・破棄・取り込みの成否にかかわらず**同一runの選択面へ戻り**、図上で`RUN admission → Detect`を経由しない（現行attach契約）。
+- **process死後のみ**、runと選択が消えた状態から`Hub → Detect`の取り込み済み提案の再開（fresh run rebind、scope一致検証と選択復元初期値）が唯一の継続経路である。この経路はidle相談で持ち帰った提案にも適用される（D-08/D-17）。
+- 依頼作成〜取り込みの面（T-15〜T-18）はidle/run-in両形態で共有する。図上の`IdleExchange`/`RunInExchange`はflow状態の分離であり、面の分離ではない。
 - Backは常に1つ前の面へ戻り、作業破棄を伴う場合のみ破棄確認（§9）を出す。適用中（checkpoint後）のBackは不受理である（現行契約、§9）。
 
 ## 6. User journeys（end-to-end）
@@ -215,7 +221,7 @@ stateDiagram-v2
 3. tier選択（情報を減らして送る / ラベル付きで送る）→ 生成 → T-16送信前確認（要約+全文展開+期待明示D-09）→ コピー/共有/保存で外部へ。
 4. 外部AIアプリでinterview-first会話（2–4問→方針要約→了承→fenced json 1個。現行契約）。
 5. 戻ってT-17取り込み → T-18。成功 → 「取り込み済み・未適用」状態（件数サマリ・提案グループ件数・未適用である旨）。
-6. 途中でhubへ戻る/画面を離れる → status cardに「進行中のAI依頼（残23h）」と「取り込み済みの提案」が現れ、そこから再開する（D-02/D-08）。
+6. 途中でhubへ戻る/画面を離れる（idle相談）→ status cardに「進行中のAI依頼（残23h）」と「取り込み済みの提案」が現れ、そこから再開する（D-02/D-08）。run-in相談ではrun/RUN leaseを保持しているため、hubへの退避は発生しない（D-17）。
 7. 「この提案で続ける」→ **ここで初めてrun admission（RUN lease取得）**→ fresh run → 検出 → 選択面で依頼時scopeとの完全一致を検証（違えばSCOPE_MISMATCHでT-08が開き差分を強調）。以降は6.2と同じ確認→適用。
 8. 取り込みが`CONTEXT_STALE`/`SCOPE_MISMATCH`で失敗 → D-11の手段別表示（「依頼を作り直す」CTA → T-15）。
 
