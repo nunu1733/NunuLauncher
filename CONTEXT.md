@@ -116,6 +116,18 @@ _Avoid_: DB dump、Backup、snapshot (Layout Snapshotとの混同)
 AI/agentが `PersonalizationContextExportV1` に対して返す、semantic preference (優先度、 grouping、page/region親和、保持希望) のversion付き表現。v3 ([spec 330](./specs/330-partial-intent-authoring/spec.md)) からは部分authoringを許し、書かれなかったrefの意味は常にcanonical unresolved (判断なし) である。physical placementやDB mutationの指示ではない。acceptされると、全export refの状態が決定済みの完全分割 (complete canonical representation) が構成され、そのcontent digestがidentityとなるimmutable planning inputとなる。
 _Avoid_: layout plan (最終配置結果との混同)、rule (整理ルールとの混同)、未言及refの推測補完 (禁止)
 
+**exportカテゴリ参照 (Export Category Reference)**:
+1つのcontext export内でadvertiseされた1つの `CategoryIdentity` (built-inまたはuser-defined) を指す、export-scopedなopaque識別子。item refと同一の乱数seamで生成ごとに新鮮に割り当てられ、対応付け (ref→identity) はexport sessionのみが保持する。stableな `UserCategoryId` も表示名もexport文書へ現れない ([spec 337](./specs/337-exchange-category-group-proposals/spec.md))。
+
+**既存カテゴリ参照 (Existing-Category Reference)**:
+intentがexportでadvertise済みのcategory refを指す表現 (`groupSemantic.categoryRef`)。当該runのcategory preferenceとして効き、plannerはref→identity解決結果のみを受け取る。表示名ベースの解決は存在しない。
+
+**提案グループ (Proposed Group / proposalLabel)**:
+intentが `groupSemantic.proposalLabel` で表現する、active taxonomyに存在しないsemantic group ([spec 337](./specs/337-exchange-category-group-proposals/spec.md))。そのrun限りのformation keyとしてのみ働き (同一labelのitemが1つの新folder候補groupになる)、category catalogを変更しない。値域は #336 のcategory name規則。
+
+**昇格 (Promotion / カテゴリとして保存)**:
+ユーザーが明示的に選んだ場合にのみ、提案グループを #336 の通常authoring pathでpersistent user-defined categoryへ保存する操作。AI専用のwriterは存在しない。
+
 **export-scoped ID (Export Item Reference)**:
 1つのcontext export内でのみ有効な、itemを指すopaqueな識別子。export生成ごとに新鮮な乱数から割り当てられ、内部`ItemId`・DB row IDとは無関係かつ逆算不可能である。対応付けはexport sessionのみが保持する。
 _Avoid_: ItemId (内部正本IDとの混同)、package名、安定な仮名化identifier (pseudonym)

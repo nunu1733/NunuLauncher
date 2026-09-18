@@ -1,6 +1,6 @@
 ---
 issue: "#337"
-status: draft
+status: accepted
 requirements: [FR-017]
 risk:
   - privacy
@@ -10,9 +10,16 @@ updated: 2026-09-18
 
 # AI personalizationにおけるユーザー定義カテゴリの参照と新規グループ提案
 
-> Status: **draft — 2nd revision** (2026-09-18)。本revisionは、1st revision (snapshot commit `8ee469ec69ebb68f5f1fa34e7370b4f38ed341da`、baseline `8fd05a40d51abd24b40a7b93579bb9b76d046f75`) に対するレビュー (Issue #337 コメント 2026-09-18、**Changes requested**、高2 / 中3) への対応と、そのレビューが要求した current `main` (`34ba8ff447`) へのre-entryを記録する。各指摘と対応は「Review response」節に1対1で記録し、D-1〜D-8は 1st revision の draft decision を **確定decision** へ置き換えたものである (旧 Open questions 1〜5 も同節で決着)。
+> Status: **accepted** (2026-09-18) — Phase1 reviewを通過し、実装 (Phase2) の契約として確定した。1st review [**Changes requested**](https://github.com/nunu1733/NunuLauncher/pull/354#issuecomment-5726331794) (高2 / 中2 / 低1) を `504d53bb1bd3241c838ebfe6b1f7918acba7e74e` で全件対応し、同headへの re-review [**Approve**](https://github.com/nunu1733/NunuLauncher/pull/354#issuecomment-5726377973) (指摘0件) を経て `main` へPR #354 (merge commit `de77e280b7`) でmerge済み。
+>
+> 本revisionは、1st revision (snapshot commit `8ee469ec69ebb68f5f1fa34e7370b4f38ed341da`、baseline `8fd05a40d51abd24b40a7b93579bb9b76d046f75`) に対するレビュー (Issue #337 コメント 2026-09-18、**Changes requested**、高2 / 中3) への対応と、そのレビューが要求した current `main` (`34ba8ff447`) へのre-entryを記録する。各指摘と対応は「Review response」節に1対1で記録し、D-1〜D-8は 1st revision の draft decision を **確定decision** へ置き換えたものである (旧 Open questions 1〜5 も同節で決着)。
 >
 > 依存する #336 (`45711f53dd`) / #330 (`dce8f5779c`) / #348 (`8fd05a40d5`) は実装済みで、#327 (`a9ec3c2cf9`) も本revision時点で main に実装済みである (1st revision時点の「#327 OPEN・spec未merge」は stale であった)。本spec単独では実装を開始しない (「依存関係」節)。
+
+## Implementation progress (Phase2)
+
+- 2026-09-18: **contract core landed** (`issue-337-impl`) — v4 export projection (`categories` + `categoryRef`/`folderCategoryRef` + session `categoryRefs` + reconstruction intersection), v4 intent (`groupSemantic` exactly-one-of, label domain = #336 name rule, `UNKNOWN_CATEGORY_REF` + en/ja copy), planner formation key (`FormationKey` Existing/Proposed, `FolderNaming.FromProposalLabel`, ordering key ignores proposals), descriptor/instruction v4, and the import-summary kind counts. Organizer unit lane green (1517 tests, 0 failures).
+- **Remaining for the Issue's exit conditions**: AC-9 promotion UX (`カテゴリとして保存` through `UserDefinedCategoryAuthoringCoordinator.create` with lease/busy and typed failures), the preview-side part of AC-10, AC-15 device evidence and AC-16 accessibility evidence (deferred evidence pass, same treatment as spec 327 AC-7/AC-8).
 
 ## Review response (1st revision → 2nd revision)
 

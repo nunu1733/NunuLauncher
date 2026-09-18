@@ -90,6 +90,37 @@ class ExchangeCapabilityCopyTest {
         assertTrue("en success must not claim the AI already received it", !enSuccess.startsWith("Sent"))
     }
 
+    /**
+     * Issue #337 (spec 337 D-2, review finding): the pre-send disclosure and
+     * the privacy-mode label must describe what the v4 package actually
+     * contains — the category catalog (including user-defined entries) is
+     * always disclosed, and the user-defined category NAMES follow the same
+     * tier as app labels.
+     */
+    @Test
+    fun disclosureCopyStatesTheV4CategoryReferenceDisclosure() {
+        for (localeDir in listOf("values", "values-ja")) {
+            val xml = lawnchairStringsXml(localeDir).readText()
+            val redacted = xml.substringAfter("name=\"exchange_disclosure_redacted\"").substringBefore("</string>")
+            val labels = xml.substringAfter("name=\"exchange_disclosure_labels_included\"").substringBefore("</string>")
+            val privacyLabel = xml.substringAfter("name=\"exchange_privacy_labels\"").substringBefore("</string>")
+            val categoryWord = if (localeDir == "values-ja") "カテゴリ" else "categor"
+            assertTrue(
+                "$localeDir redacted copy must disclose the category list without names",
+                redacted.contains(categoryWord) && (redacted.contains("含まれません") || redacted.contains("without their names")),
+            )
+            assertTrue(
+                "$localeDir label-inclusive copy must disclose user-defined category names",
+                labels.contains(categoryWord) &&
+                    (labels.contains("ユーザー定義") || labels.contains("user-defined")),
+            )
+            assertTrue(
+                "$localeDir privacy-mode label must not promise app-name-only disclosure",
+                privacyLabel.contains(categoryWord),
+            )
+        }
+    }
+
     private fun resourceNames(ids: List<Int>): List<String> {
         val fields = R.string::class.java.declaredFields
         val byId = fields.associate { it.name to it.getInt(null) }
