@@ -2,6 +2,7 @@ package app.lawnchair.organizer.ui.exchange
 
 import android.content.Context
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
@@ -1379,6 +1381,49 @@ private fun ExchangeImportField(
 private val IMPORT_EDITOR_MAX_HEIGHT = 200.dp
 
 private const val IMPORT_EDITOR_MAX_LINES = 8
+
+/**
+ * Issue #328 (spec 328 D-2): the system-Back interception for the import
+ * success state. It MUST be composed at the always-composed hosting screen
+ * level, AFTER the screen-level navigation handler — never inside the success
+ * lazy item, whose composition can leave the viewport under large font. When
+ * enabled (success state shown) it takes Back before the host fallback: a
+ * non-continuing Back asks for the explicit discard confirmation; a
+ * continuing Back is swallowed (a started run-connection seam cannot be
+ * withdrawn mid-flight).
+ */
+@Composable
+fun ExchangeImportSuccessBackHandler(holder: ExchangeFlowStateHolder) {
+    val importSuccessState = holder.screen as? ExchangeScreen.ImportSuccess
+    var showDiscardConfirm by remember { mutableStateOf(false) }
+    BackHandler(enabled = importSuccessState != null) {
+        if (importSuccessState?.continuing != true) {
+            showDiscardConfirm = true
+        }
+    }
+    if (showDiscardConfirm && importSuccessState != null) {
+        AlertDialog(
+            onDismissRequest = { showDiscardConfirm = false },
+            title = { Text(stringResource(R.string.exchange_import_discard_confirm_title)) },
+            text = { Text(stringResource(R.string.exchange_import_discard_confirm_body)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDiscardConfirm = false
+                        holder.discardImport()
+                    },
+                ) {
+                    Text(stringResource(R.string.exchange_import_discard_confirm_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardConfirm = false }) {
+                    Text(stringResource(R.string.exchange_cancel))
+                }
+            },
+        )
+    }
+}
 
 /**
  * Issue #328: the import success state (spec 328 "取り込み成功状態"). Shows

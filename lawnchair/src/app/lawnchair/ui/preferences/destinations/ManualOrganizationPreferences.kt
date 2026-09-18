@@ -2,7 +2,6 @@ package app.lawnchair.ui.preferences.destinations
 
 import android.content.Context
 import androidx.activity.OnBackPressedCallback
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,14 +15,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -237,40 +234,10 @@ fun ManualOrganizationPreferences(
 
     // Issue #328 (spec 328 D-2): the import success state intercepts system
     // Back at the ALWAYS-composed hosting level — never inside the lazy item,
-    // whose composition can leave the viewport under large font. Registered
+    // whose composition can leave the viewport under large font. Composed
     // after the screen-level handler above, so while enabled it takes the
-    // Back before the dismiss/navigate fallback. Non-continuing Back asks
-    // for an explicit discard confirmation; continuing Back is swallowed
-    // (a started run-connection seam cannot be withdrawn mid-flight).
-    val importSuccessState = exchangeHolder.screen as? app.lawnchair.organizer.ui.exchange.ExchangeScreen.ImportSuccess
-    var showImportDiscardConfirm by remember { mutableStateOf(false) }
-    BackHandler(enabled = importSuccessState != null) {
-        if (importSuccessState?.continuing != true) {
-            showImportDiscardConfirm = true
-        }
-    }
-    if (showImportDiscardConfirm && importSuccessState != null) {
-        AlertDialog(
-            onDismissRequest = { showImportDiscardConfirm = false },
-            title = { Text(stringResource(R.string.exchange_import_discard_confirm_title)) },
-            text = { Text(stringResource(R.string.exchange_import_discard_confirm_body)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showImportDiscardConfirm = false
-                        exchangeHolder.discardImport()
-                    },
-                ) {
-                    Text(stringResource(R.string.exchange_import_discard_confirm_confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showImportDiscardConfirm = false }) {
-                    Text(stringResource(R.string.exchange_cancel))
-                }
-            },
-        )
-    }
+    // Back before the dismiss/navigate fallback.
+    app.lawnchair.organizer.ui.exchange.ExchangeImportSuccessBackHandler(exchangeHolder)
 
     LaunchedEffect(state, focusTargetReady.value, focusTargetIndex) {
         // Issue #209 review: each run state is a fresh surface, but the lazy
