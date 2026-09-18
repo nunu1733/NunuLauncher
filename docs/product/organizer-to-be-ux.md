@@ -3,6 +3,7 @@
 > Status: proposed（owner review待ち。owner reviewによりacceptedになった時点で本書がOrganizerの情報設計・遷移・data timingの長期正本となる）
 > Proposed: 2026-09-18
 > Revision 2: 2026-09-18 — owner review（#361 Changes requested）の指摘5点を反映（run内canonical順序、AI相談とRUN lease境界（D-17新設）、stale表示の契約整合、適用中の中断規則、最近の結果のlifetime）
+> Revision 3: 2026-09-18 — re-review指摘2点を反映（idle/run-in AI相談のlease境界分離、scope mismatch remedyの原因別分割）
 > Input fact base: [Organizer AS-IS UX/data flow audit](../assessment/organizer-as-is-ux-data-flow-audit.md)（Phase A #357–#360、audited HEAD `b728ed4d9f30ee797f6e086da110fdc86215da92`、audit date 2026-09-18）
 > Parent: [Issue #356](https://github.com/nunu1733/NunuLauncher/issues/356)。本書は [Issue #361](https://github.com/nunu1733/NunuLauncher/issues/361) の成果物である。
 > 既存正本への処分（Continue / Amend-Supersede / Defer / Retire）の実行と migration 順序は [Issue #362](https://github.com/nunu1733/NunuLauncher/issues/362) が所有する。本書は方針と必要改訂を決定するのみで、spec/実装の改訂を行わない。
@@ -36,7 +37,7 @@
 | D-01 | Organizerを**独立した作業領域（Organizer hub）**として新設する。Home Screen設定のOrganizer群（run入口・strategy・personalization・category系入口・診断）はhubへ集約し、設定側は入口rowだけを残す | F-01, F-02 |
 | D-02 | hubのstatus cardを**durable事実と進行中状態の単一閲覧面**とする。durable status（復元可能なら復元CTA付き）・進行中のAI依頼（24h残時間）・取り込み済み未適用の状態を1枚で見せる。**最近のrun結果はprocess内のみの表示**であり、process死後はdurable statusが示す事実（適用済み・復元可否）だけが残る（§8.2） | F-05, F-10 |
 | D-03 | **run = hubから開始する1回の試行**。hubとrunの境界はrun admission（RUN lease取得）。run中の恒常authoring（分類・lock・方針・記録toggle）は一律不可とし、「中断してから変更する」を唯一の規則にする。strategy pickerをrun面から撤去し、材料面のみに置く。run面内の「方針変更→確認なしで破棄+再start」の特例を廃止する | F-01, F-08, E-7, D-3/D-4 |
-| D-04 | External Agent Exchangeを**独立サブシステムとして見せず、「整理案の作り方」の1つ**として統合する。整理開始の前置き面（T-07）で「そのまま整理 / AIに相談」を選ぶが、**AI相談はrun admission（RUN lease取得）を伴わないpre-run request flow**であり、依頼の作成・待機・取り込み中も恒常authoringは可能である（layout・分類を変更した場合はD-09の期待明示どおり回答が古くなる）。依頼の状況はhub status cardで見せる。内部pipeline（tier→生成→送信前確認→import→検証→run接続）とその同意gateは現行契約のまま維持する | F-07 |
+| D-04 | External Agent Exchangeを**独立サブシステムとして見せず、「整理案の作り方」の1つ**として統合する。整理開始の前置き面（T-07）で「そのまま整理 / AIに相談」を選ぶ。**idle AI相談はrun admission（RUN lease取得）を伴わないpre-run request flow**であり、依頼の作成・待機・取り込み中も恒常authoringは可能である（layout・分類を変更した場合はD-09の期待明示どおり回答が古くなる）。**run-in相談（選択面から発する相談）は異なり、admitted runを保持してRUN leaseが継続し、選択凍結とauthoring不可の下で行う（D-17）**。依頼の状況はhub status cardで見せる。内部pipeline（tier→生成→送信前確認→import→検証→run接続）とその同意gateは現行契約のまま維持する | F-07 |
 | D-05 | **run内のcanonical順序とユーザー向け8状態**を固定する。順序: 前置き面T-07（方法選択・admissionなし）→「そのまま整理」でrun admission（RUN lease取得）→ **検出（T-09準備中の最初のphase）** → 対象選択（候補あり時のみT-08へ一時遷移）→ capture+plan（T-09）→ 提案の確認（T-10）。検出・capture・planの進行は1つのprogress面に統合し、typed失敗状態と入場前stale（`DETECTED_BEFORE_REVIEW`）は「実行できませんでした（原因+次の手段）」1面へ畳む。内部state machineの契約は変更しない | F-04 |
 | D-06 | **missing-app選択面は必須通過でなくする**。検出はrun内の最初のphaseであり、**候補0件なら選択面を表示せずcapture/planへ続行**する（検出前に候補有無を前提化しない）。候補がある場合はscope制御として提示する | 監査§4.4 V-09 |
 | D-07 | **Usage Access要求をjust-in-time化する**。最初にsignalを読む時点（初回run composition / 初回AI依頼生成）で文脈付きの任意要求を出し、材料面には常設の管理rowを残す。拒否時は該当sectionがUnavailableになりrunが続行する（現行property） | F-06, E-1 |
@@ -49,7 +50,7 @@
 | D-14 | **`LOCAL_FULL` tierをUI語彙から外す**。ユーザー向け選択肢は「情報を減らして送る / ラベル付きで送る」の2tierに固定し、契約上の`LOCAL_FULL`値は将来のlocal LLM向け余地として維持する | D-2 |
 | D-15 | **durable statusからの復元操作を接続する**。hub status cardの「復元できる提案あり」から検査→復元確認→復元へ進める（cold process起点を許可する）。spec 271がNon-goalsとしたfollow-upの実現であり、新specを要求する | F-10, D-6 |
 | D-16 | onboarding提案の契約（fresh install判定・defer/skip outcome・再表示規則）は**継続**とする。「確認」はrun admissionへ直行し（T-07前置きを省略、方法は「そのまま整理」固定）、「後で」の6秒hintはhub入口を案内する | 継続判断 |
-| D-17 | **AI相談とrun境界**。AI相談はpre-run request flow（D-04）であり、run admissionは「この提案で続ける」（idle path）または選択面の「続行」以後に発生する。**run-in相談**: run生存中は現行契約どおり選択を凍結保持して同一runへ戻る。process死後はrunと選択が消えるが、取り込み済み提案はdurable（D-08）で残り、**fresh run → 検出 → 選択面で依頼時scopeとの完全一致を検証（fail-closed維持）**し、一致する場合は前回の明示選択を初期値として復元したうえで「続行」の明示確認を1回要求する。不一致時は差分を示して修正を求める。確認なしの完全自動復元は明示選択契約（#228）を弱めるため採らない | F-03, E-4 |
+| D-17 | **AI相談とrun境界（idle/run-inの2形態）**。**idle AI相談**: pre-run request flowであり、RUN leaseを取らず、依頼の作成・待機・取り込み中も恒常authoringは可能（layout・分類を変更した場合はD-09の期待明示どおり回答が古くなる）。run admissionは「この提案で続ける」以後に発生する。**run-in相談**: admitted runを保持したままの相談であり、**RUN leaseは継続・選択は凍結・恒常authoringは不可**（現行契約どおり）。**process死後のみ**runと選択が消え、取り込み済み提案（D-08）はdurableで残るため、**fresh run → 検出 → 選択面で依頼時scopeとの完全一致を検証（fail-closed維持）**し、一致する場合は前回の明示選択を初期値として復元したうえで「続行」の明示確認を1回要求する。不一致のうち**選択集合の差（SET_MISMATCH）**は差分強調のうえ選択を修正して同じ提案で続行できるが、**候補の投影差（availability/分類の変化、PROJECTION_MISMATCH）は同じ提案での続行を許さず依頼の作り直しを要求する**。確認なしの完全自動復元は明示選択契約（#228）を弱めるため採らない | F-03, E-4 |
 
 ## 4. 採用案と比較
 
@@ -93,7 +94,7 @@
 | Usage Access要求 | JIT+常設row（D-07） | 常設のみ → 「なぜ今」が説明できない（E-1）。JITのみ → 後から状態確認・再付与する場所がなくなる |
 | 依頼と提案のsnapshot境界 | 依頼作成時に期待明示（D-09） | 失敗時に初めて説明 → `CONTEXT_STALE`の損失が予見できない（E-3） |
 | AI相談中のrun/lease境界 | pre-run request flow。run admissionは「この提案で続ける」以後（D-04/D-17） | 相談開始時にRUN lease取得 → 最大24hのauthoring凍結となり、D-09（会話中のホーム・分類変更を前提にした期待明示）と直接衝突するため却下 |
-| run-in相談のprocess死後継続 | durable intent + fresh run rebind + 選択復元初期値 + 明示確認1回（D-17） | 生存runへのattachのみ維持 → process死後に継続不能でE-4が残る。確認なしの完全自動復元 → 明示選択契約（#228）とfail-closedの説明を弱めるため却下 |
+| run-in相談のprocess死後継続 | durable intent + fresh run rebind + 選択復元初期値 + 明示確認1回（D-17）。process死後の継続経路はこの1本のみで、**idle相談のみがpre-run request flow**である | 生存runへのattachのみ維持 → process死後に継続不能でE-4が残る。確認なしの完全自動復元 → 明示選択契約（#228）とfail-closedの説明を弱めるため却下。run-in相談をpre-run扱いにする → admitted runのRUN lease保持と矛盾するため却下 |
 
 ## 5. TO-BE information structure
 
@@ -130,7 +131,7 @@ AS-ISは40 view（監査§4）。TO-BEのユーザー認識面は次の20面へ�
 - **secondary entry**:
   1. onboarding floating proposal（T-19）→ 確認でrun admissionへ直行（ONBOARDING trigger、T-07前置き省略）。
   2. workspace長押しpopupのlock付与（T-20）→ lock材料への直接導線（書込みはwriter leaseでrunと排他のまま）。
-  3. 対象選択面（T-08）のscope凍結AI相談 → run-in exchange。
+  3. 対象選択面（T-08）のscope凍結AI相談 → run-in exchange（admitted runを保持し、RUN lease継続・選択凍結・authoring不可の下で行う。D-17）。
   4. safe terminal（T-12の部分的失敗）からの診断 → diagnostics export。
 
 設定側のLayout groupからorganizer系rows（lock/診断/category系）はhubへ移動し、設定には残さない。Home Screen設定のPersonalization groupはT-06へ統合する。
@@ -173,8 +174,8 @@ stateDiagram-v2
 - **canonical順序**: `Start`（T-07前置き）はadmissionを含まない選択点であり、「そのまま整理」の選択でRUN admission（RUN lease取得）→ `Detect`（検出）→ 候補ありなら`Selecting` → `Plan`（capture+plan）→ `Reviewing`の順に固定する（D-05/D-06）。
 - `Detect`と`Plan`は同一のT-09準備中progress面のphaseである。検出はrun内の最初のphaseであり、候補0件なら選択面を経ない。
 - 失敗と入場前stale（`DETECTED_BEFORE_REVIEW`）は`Failed`（T-13実行できませんでした）に統合され、remedy（再試行/再取得）で`Detect`へ戻る。適用時stale（`APPLY_BLOCKED`）は`Result`（T-12「適用されませんでした」）の変種である（D-12）。
-- Exchange（`Start`→`Exchange`、`Selecting`→`Exchange`）はrun admissionを保持しないpre-run request flowである（D-04/D-17）。依頼の待機中にhubへ戻ってもstatus cardから再開できる。
-- run-in相談（`Selecting`→`Exchange`）では、run生存中は選択を凍結保持して同一runへ戻る（現行契約）。process死後はrunが消えるため、取り込み済み提案をfresh runへ接続し、scope一致検証と選択復元初期値で継続する（D-17）。
+- `Start`→`Exchange`（idle AI相談）はrun admissionを保持しないpre-run request flowであり、authoringは可能（D-04）。idle相談の依頼の待機中にhubへ戻ってもstatus cardから再開できる。
+- `Selecting`→`Exchange`（run-in相談）はadmitted runを保持したままの相談であり、RUN leaseの継続・選択凍結・authoring不可の下で行う。選択を凍結保持して同一runへ戻る（現行契約）。process死後はrunと選択が消えるため、取り込み済み提案をfresh runへ接続し、scope一致検証と選択復元初期値で継続する（D-17）。
 - Backは常に1つ前の面へ戻り、作業破棄を伴う場合のみ破棄確認（§9）を出す。適用中（checkpoint後）のBackは不受理である（現行契約、§9）。
 
 ## 6. User journeys（end-to-end）
@@ -189,7 +190,7 @@ stateDiagram-v2
 ### 6.2 普通に手動整理したいユーザー
 
 1. 設定 → Home screen → Organizer（T-01）→ 「整理を開始」（T-07前置き）→ 「そのまま整理」でrun admission。
-2. T-09準備中の最初のphaseで検出。候補0件ならT-08を経ずにcapture/planへ続行（D-06）。候補ありならT-08で「続行」（全件整理も1 tap）。
+2. T-09準備中の最初のphaseで検出。候補0件ならT-08を経ずにcapture/planへ続行（D-06）。候補ありならT-08で「続行」（全件整理も1 tap）。T-08からのrun-in相談中は選択凍結・authoring不可のままrunが待機する（D-17）。
 3. T-10提案の確認 → 適用 → T-12結果。Back/中断は適用開始前の任意時点で可能（作業があるときは破棄確認1回）。適用開始後はcheckpoint前のみ中断可、checkpoint後は完了までBack・中断とも不受理（§9）。
 4. process死 → run/preview/選択は失われる（現行どおり非永続）。hub status cardはdurableな事実（適用済み・復元可否）だけを示す。
 
@@ -231,8 +232,9 @@ stateDiagram-v2
 1. **提案の確認面へ入る前にホームが変わった**（capture後・preview materialize時の検出）→ 確認面に到達せず「実行できませんでした（準備中にホームが変更されました）」+「再取得」→ T-09からやり直し。`DETECTED_BEFORE_REVIEW`は「提案が確認面に到達していない段階の検出」という現行契約どおりである。
 2. **適用時に変わった**（確認面表示後の変更を含む）→ T-12「適用されませんでした（ホームが変更されました）」+起因の要約+「もう一度整理」→ T-09。zero-writeの保証文言は現行契約（「今回の試行はホームを変更していません」）。確認面表示中のliveな再検知は行わず、適用時のA2 gateが防ぐ（現行契約どおり）。
 3. **依頼後・取り込み前にホームや分類が変わった** → 取り込み時`CONTEXT_STALE` → T-18「依頼の内容が古くなりました」+「依頼を作り直す」。
-4. **選択scopeの不一致**（run-in相談後）→ T-08が開き「依頼時と対象が一致しません」+ 変化した候補（availability/分類）の強調表示。一致に修正して続行、または依頼を作り直す（E-4のremedy改善）。process死後はrunと選択が消えているため、durable化された取り込み済み提案（D-08）からfresh runを開始し、依頼時scopeとの完全一致検証を経て、一致する場合は前回の明示選択を初期値として復元し「続行」の明示確認を1回要求する（D-17）。
-5. **recovery** → T-12成功面の「復元」、または後日hub status cardの「復元できる提案あり（残時間）」→ T-14復元の確認 → 復元実行。cold process起点でも到達できる（D-15、要新spec）。復元pointは検証済み24h・最大3点（現行契約）。期限切れ後は「復元の期限切れ」表示のみ。
+4. **選択集合の不一致（SET_MISMATCH）**（run-in相談後）→ T-08が開き「依頼時と対象が一致しません」+ 差分強調。**選択を依頼時の集合へ戻せば同じ提案で続行できる**（process死後は、durable化された取り込み済み提案（D-08）からfresh runを開始し、依頼時scopeとの完全一致検証を経て、前回の明示選択を初期値として復元し「続行」の明示確認を1回要求する。D-17）。選択修正を望まない場合は依頼を作り直す。
+5. **候補の投影不一致（PROJECTION_MISMATCH: availability/分類の変化）** → 選択面での修正では依頼時の投影と一致させられないため、**古い提案での続行は不可**。取り込み済み提案をこのまま使うことはできず、依頼を作り直す（T-15）。fail-closed境界は現行#331契約どおり緩めない（E-4のremedy改善）。
+6. **recovery** → T-12成功面の「復元」、または後日hub status cardの「復元できる提案あり（残時間）」→ T-14復元の確認 → 復元実行。cold process起点でも到達できる（D-15、要新spec）。復元pointは検証済み24h・最大3点（現行契約）。期限切れ後は「復元の期限切れ」表示のみ。
 
 ## 7. Data request / disclosure timing（決定と既存matrixとの差分）
 
@@ -244,13 +246,13 @@ AS-ISの全dataのtiming matrixは監査§7.1がfact baseである。本節はTO
 |---|---|---|---|
 | Usage Access（権限要求） | 設定面の常駐rowのみ。要求と利用が最遠 | 最初にsignalを読む時点（初回composition/初回依頼生成）でJIT要求+rationale。材料面に常設管理rowを残す | D-07, F-06 |
 | 整理方針（strategy） | run面下部のpickerが常時有効。commitで確認なしにrun破棄+再start | 材料面のみ。run中は読み取り専用表示。変更は次回runで効く | D-03, F-08 |
-| 恒常authoring（分類/lock/記録toggle） | run中はlease拒否（通常導線では遭遇しにくい） | run中は材料編集不可。「中断してから変更」をUI語彙として常時明示。**AI相談中（run外）は編集可**だが、layout・分類を変えると回答が古くなる旨を依頼面で明示（D-04/D-09）。lease契約は維持 | D-03, D-17 |
+| 恒常authoring（分類/lock/記録toggle） | run中はlease拒否（通常導線では遭遇しにくい） | run中は材料編集不可。「中断してから変更」をUI語彙として常時明示。**idle AI相談中（run外）は編集可**だが、layout・分類を変えると回答が古くなる旨を依頼面で明示（D-04/D-09）。**run-in相談中（選択凍結中）は編集不可**。lease契約は維持 | D-03, D-17 |
 | export文書の有効性 | 失效が不可視。`CONTEXT_STALE`で初めて判明 | 依頼作成時と送信前確認で「作成時点のホームで固定」を明示。依頼カードに残時間表示 | D-09, D-02 |
 | 取り込み済み提案（pending intent） | process-local。画面離脱/process死で消失し不可視 | 依頼と同一期限のdurable artifact。status cardに存在と期限を表示。消失の系は「破棄」操作と期限切れのみ | D-08 |
 | exchange失敗の表示 | typed分類20種をそのまま表示 | 手段別（再取り込み/貼り直し/再作成/中断/診断）へ再投影。typed原因は補助 | D-11 |
 | 復元の再入場 | 同一processのApplied面のみ。durable statusは表示のみ | hub status cardから復元フローへ接続（cold process可） | D-15 |
 | 送信前確認の形式 | package全文の常時提示（240dp scroll） | 要約主面（種別・件数・上限）+全文展開。同意点は1点のまま | D-10 |
-| 選択scope不一致の説明と継続 | 件数hintのみ。生存runへのattachが唯一の継続経路 | 変化した候補の強調表示（availability/分類）。process死後はdurable提案からfresh runへ再接続し、scope完全一致検証+前回選択の初期値復元+明示確認1回で継続 | D-17, E-4 |
+| 選択scope不一致の説明と継続 | 件数hintのみ。生存runへのattachが唯一の継続経路。原因種別の提示なし | **SET_MISMATCH**: 差分強調のうえ選択を依頼時の集合へ修正して同じ提案で続行（process死後は前回選択の初期値復元+明示確認1回）。**PROJECTION_MISMATCH**（availability/分類の変化）: 選択修正では続行不可のため、取り込み済み提案を使わず依頼を作り直す | D-17, E-4 |
 
 ### 7.2 変わらない規則
 
@@ -298,7 +300,8 @@ AS-ISの全dataのtiming matrixは監査§7.1がfact baseである。本節はTO
 | layout変更 | 確認面への入場時（preview materialize時、`DETECTED_BEFORE_REVIEW`） | 確認面に到達せず「実行できませんでした」の原因表示 | 再取得（T-09から） |
 | layout変更 | 適用時（A2 gate） | 結果面「適用されませんでした」+zero-write保証 | もう一度整理（T-09から） |
 | layout/lock/分類/availability変更 | 取り込み時（digest不一致） | T-18「依頼の内容が古くなりました」 | 依頼を作り直す（T-15） |
-| 候補集合/投影の不一致 | run接続時（scope gate） | T-08+差分強調 | 一致に修正して続行、または依頼を作り直す |
+| 候補集合の不一致（SET_MISMATCH） | run接続時（scope gate） | T-08+差分強調 | 選択を依頼時の集合へ修正して続行、または依頼を作り直す |
+| 候補の投影不一致（PROJECTION_MISMATCH: availability/分類） | run接続時（scope gate） | T-08「依頼時と候補の状態が変化しました」 | 古い提案では続行不可。依頼を作り直す（fail-closed維持） |
 | strategy変更 | —（staleではない） | 特例廃止により発生しない | — |
 | 復元pointのrevision不一致 | 復元確認時 | T-14に条件付き表示 | 復元できない旨+（新しい整理の案内） |
 
@@ -348,7 +351,7 @@ AS-ISの全dataのtiming matrixは監査§7.1がfact baseである。本節はTO
 | spec 52 / 228 | run状態の表示統合とcanonical順序（検出→選択→capture/plan、D-05/D-06）を反映 | Amend |
 | spec 182 / 283 | strategy pickerの配置変更とrun面撤去（D-03）を反映 | Amend |
 | spec 203 | JIT要求の追加（常設row維持）（D-07） | Amend |
-| spec 205 / 328 / 331 / 332 / 337 | 依頼card可視化（D-02）、pending intent durable化（D-08、要migration/compat評価）、送信前確認の要約主面化（D-10）、失敗再投影（D-11）、差分強調（E-4）、run-in attach契約の拡張（process死後のfresh run rebind + 選択復元初期値、D-17） | Amend（影響評価後） |
+| spec 205 / 328 / 331 / 332 / 337 | 依頼card可視化（D-02）、pending intent durable化（D-08、要migration/compat評価）、送信前確認の要約主面化（D-10）、失敗再投影（D-11）、差分強調（E-4）、run-in attach契約の拡張（process死後のfresh run rebind + 選択復元初期値、D-17）、scope mismatch remedyの原因別明文化（SET_MISMATCH=選択修正で継続可 / PROJECTION_MISMATCH=再依頼のみ） | Amend（影響評価後） |
 | spec 204 | `LOCAL_FULL`のUI語彙除外（D-14、契約値維持） | Amend（文言のみ） |
 | spec 53 | onboarding接続先の表記更新（run admissionへ直行、T-07省略。D-16、契約変更なし） | Continue（表記のみ） |
 
@@ -376,4 +379,4 @@ AS-ISの全dataのtiming matrixは監査§7.1がfact baseである。本節はTO
 3. **status card復元（D-15）の新spec項目**: cold processでのrecovery point選択規則（最新検証済み1点）、RECOVERY lease取得、復元確認tokenのfresh process発行、durable status閉域語彙の拡張要否。
 4. **監査§11.2 accidental complexityのうち本書で構造的に解消されるもの**: strategy dismiss+再start経路（D-03）、import attempt freezeの4箇所個別実装（§8.1統合とstatus cardで整理対象）、`LOCAL_FULL` UI語彙（D-14）。reconciliation decision table三重実装等の残りは#362の実装backlogへ。
 5. **accessibility**: 新surface（hub/status card/統合progress/統合失敗面）はorganization-run-ux §6の受入基準を最初から適用する。status cardのTalkBack読み順は「状態→残期限→操作」の順に固定する。
-6. **run-in attach契約の再構成（D-17）の影響評価項目**: 同一runId attach（spec 331 single-shot）の生存範囲の明確化、process死後のfresh run rebindにおけるscope snapshot→検出結果の一致検証seam、前回明示選択の初期値復元の実装位置（refs→candidate identityの復元はexport session内の対応表で可能）、および「続行」明示確認1回を#228の明示選択契約と整合させる方法。
+6. **run-in attach契約の再構成（D-17）の影響評価項目**: 同一runId attach（spec 331 single-shot）の生存範囲の明確化、process死後のfresh run rebindにおけるscope snapshot→検出結果の一致検証seam、前回明示選択の初期値復元の実装位置（refs→candidate identityの復元はexport session内の対応表で可能）、および「続行」明示確認1回を#228の明示選択契約と整合させる方法。scope mismatch remedyの原因別分岐（SET_MISMATCH / PROJECTION_MISMATCH）をspec 331改訂で明文化し、選択修正による継続を許すのはSET_MISMATCHのみとしてfail-closed境界を緩めない。
