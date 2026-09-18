@@ -4,7 +4,7 @@ status: draft
 requirements:
   - FR-010
   - NFR-009
-updated: 2026-09-17
+updated: 2026-09-19
 ---
 
 # CustomCategoryPreferences instrumentationをCI merge gateへ接続し、カテゴリ管理UIのa11y項目を自動assertに固定する
@@ -141,11 +141,12 @@ Then merge gateは失敗し、instrumentation report artifactに失敗class・me
 
 ## Open questions
 
-実装開始前に解消すべき問いはない。参考として非blockingな観察: `docs/engineering/ci-test-portfolio.md` のownership表にはissue99 lane自体の行が存在しない（docの更新がlane追加に追従していない既存状態）。本Issueでは #336管理UI分の記載追加に限定し、他lane分の網羅は別途追跡する。
+実装開始前に解消すべき問いはない。参考として非blockingな観察: `docs/engineering/ci-test-portfolio.md` のownership表にはissue99 lane自体の行が存在しない（docの更新がlane追加に追従していない既存状態）。2026-09-17の初版作成後も、PR #355がissue52 laneのclass listへ2 classを追加した際にownership表は更新されず、stalenessは継続している。本Issueでは #336管理UI分の記載追加に限定し、他lane分の網羅は別途追跡する。
 
 ## Change history
 
 - 2026-09-17: Draft created for #342 (spec/plan preparation task; baseline main `8fd05a40d51abd24b40a7b93579bb9b76d046f75`)。
+- 2026-09-19: Re-entry検証。current main `3076bdae7ebf8dbb086f251203968c06e9986258`（前回baseline `8fd05a40d51a` 以降の差分はPR #350/#353/#355/#363/#364で、exchange / #327/#328/#337 と Organizer UX文書domain）に対してProblem/Outcome/Scope/ACの全事実を再確認した。対象test file・対象UI・`organizer_custom_category_*` 文字列・issue99 lane構成・spec 336 AC-12/AC-13（spec 337による改訂はexchange投影のみでauthoring契約は不変とspec 336自身が明記）・FR-010/NFR-009・portfolio docはいずれも変化せず、契約の変更は不要だった。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/342 "Issue #342"
 [2]: https://github.com/nunu1733/NunuLauncher/pull/341 "PR #341 — user-defined categories"

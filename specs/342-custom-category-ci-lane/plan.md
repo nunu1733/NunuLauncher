@@ -8,6 +8,8 @@
 
 以下はすべてbaseline main `8fd05a40d51abd24b40a7b93579bb9b76d046f75` 上で実確認した事実（確認日 2026-09-17）。
 
+> **Re-entry検証 (2026-09-19)**: current main `3076bdae7ebf8dbb086f251203968c06e9986258` 上で以下を再確認し、記載の事実はすべて現状でも成立している。前回baseline以降のmain差分（PR #350/#353/#355/#363/#364、いずれもexchange / #327/#328/#337 と Organizer UX文書domain）は、対象test file、対象UI (`CustomCategoryPreferences.kt`)、`res/values/strings.xml` の `organizer_custom_category_*` 系文字列（行番号564-589帯を含む）、pattern参照元の `CategoryOverridePreferencesInstrumentationTest`、portfolio docのいずれも変更していない。`ci.yml` の変更はissue52 laneのclass listへの2 class追加（`ExchangeImportSuccessInstrumentationTest`、`StrategyPickerFreezeInstrumentationTest`）のみで、issue99 laneの定義位置（555行目）と `final-status` needs（722行目に `organizer-instrumentation-issue99-tests`）は不変。`CustomCategoryPreferences` は `ci.yml` 全文に依然として出現しない。spec 336の2026-09-17以降の編集はspec 337 (v4) によるexchange投影節・AC-14とstatus headerのみで、AC-12/AC-13の文言は不変。
+
 - **test実体**: `tests/organizer-instrumentation/app/lawnchair/organizer/ui/CustomCategoryPreferencesInstrumentationTest.kt`（298行、4 test method）。`createComposeRule()` + `UserDefinedCategoryAuthoringCoordinator(store, overrides)` にin-memory fake storeを注入するstatelessなCompose UI test。Launcher DB・app状態を使わない。
   - 既存4 method: `createFlowRendersTypedDuplicateFeedbackAndListsTheCreatedEntry` / `deleteConfirmationStatesCountAndAutomaticReturnWithoutRemapOption` / `partialDeleteRendersTruthfullyAndRetryCompletesTheDelete` / `renameKeepsTheEntryPresentedAsTheSameCategory`。
   - **既存不具合**: `createFlow...` 内の `composeRule.onAllNodesWithText(userId.value).fetchSemanticsNodes().isEmpty()`（92行目付近）は結果を捨てる式文で、raw ID非表示の確認として機能していない。
@@ -22,7 +24,7 @@
   - 削除確認: `AlertDialog`（plural text `organizer_custom_category_delete_text`）。partial delete状態: `organizer_custom_category_retry` / `back_to_list` 行。
 - **文字列resource**: `res/values/strings.xml` 564-589行目以降に `organizer_custom_category_*` / `organizer_category_override_custom_*` の英語、`res/values-ja/strings.xml` に日本語が存在する。assertに必要な文字列はすべて既存resourceから解決可能。
 - **portfolic正本の現状**: `docs/engineering/ci-test-portfolio.md`（Updated: 2026-08-24）のownership表にissue99 laneの行が未記載（lane追加後にdocが追従していない既存状態）。本Issueでは対象class分の記載追加のみを行う。
-- **baseline以降のmain差分**: `703afe3f4c` → `8fd05a40d5` はPR #349（issue #348 exchange AI-facing contract）で、`ExchangeImportSurfaceInstrumentationTest` 等exchange表面のみに影響し、本Issue対象fileには無関係。
+- **baseline以降のmain差分 (2026-09-19時点)**: `8fd05a40d5` → `3076bdae7e`（PR #350/#353/#355/#363/#364）はexchange / #327/#328/#337 と Organizer UX文書domainであり、本Issue対象fileには無関係（詳細は冒頭のRe-entry検証paragraph）。初版作成時の差分 `703afe3f4c` → `8fd05a40d5`（PR #349）も同様にexchange表面のみだった。
 
 ## Design
 
@@ -38,7 +40,7 @@ production interface・seamの変更は**ない**。変更はtest sourceとworkf
 
 **推奨: `organizer-instrumentation-issue99-tests` のclass listへ追加する。**
 
-理由: (1) laneの目的文（semantics/focus/font-scale/mutation interactionの常設検証）が本testの性質と同一であり、カテゴリauthoring UI同士の系列である。(2) 本testはfake storeのみのstateless Compose testで、app状態の隔離要件がなく、独立emulator jobを新設する隔離上の価値がない。(3) runner work増（emulator boot + Gradle setup 1回分）を避けられる。ci-test-portfolio.mdがtotal runner workの増加を明示的に警戒している。(4) issue text自身が「API 35または36 laneのclass list」での実行をoutcomeとして示している。
+理由: (1) laneの目的文（semantics/focus/font-scale/mutation interactionの常設検証）が本testの性質と同一であり、カテゴリauthoring UI同士の系列である。(2) 本testはfake storeのみのstateless Compose testで、app状態の隔離要件がなく、独立emulator jobを新設する隔離上の価値がない。(3) runner work増（emulator boot + Gradle setup 1回分）を避けられる。ci-test-portfolio.mdがtotal runner workの増加を明示的に警戒している。(4) issue text自身が「API 35または36 laneのclass list」での実行をoutcomeとして示している。(5) 既存lane class listへのclass追加は最新mainでも継続する既定patternである（2026-09-17の初版後もPR #355がissue52 laneへ `ExchangeImportSuccessInstrumentationTest` とpreferences destination testの `StrategyPickerFreezeInstrumentationTest` を追加しており、preferences系UI testの既存lane追加先例が増えた）。
 
 **Rejected: 専用lane新設**（`organizer-instrumentation-issue332-tests` の#345先例）— issue332 surfaceはexchange系の独立surfaceだったのに対し、本testはissue99 laneと同種・同familyのfake-store Compose testであり、新jobの運用コストに見合う隔離・帰属の利得がない。report帰属は失敗logのclass名で十分識別可能。
 
@@ -126,4 +128,4 @@ test内に完結: fake storeのseed → coordinator注入 → Compose操作 → 
 
 - 新assertがCI emulator上で通ること（font scale・focusの挙動は同一patternのissue99 lane testがCI成功済みという間接証拠のみ。本準備taskではdevice実行をしていない）。
 - class追加によるlane実行時間の増分（目安 +1〜3分。PRのCI実測で確認する）。
-- `ci-test-portfolio.md` の他lane（issue155/issue299/issue332）行の欠落は既存状態であり本Issueで直さない。
+- `ci-test-portfolio.md` の他lane行の欠落（issue155/issue299/issue332に加え、issue52行もPR #355追加の2 classを反映しておらず既存状態として本Issueで直さない）。
