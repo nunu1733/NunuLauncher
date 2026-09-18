@@ -1,5 +1,7 @@
 package app.lawnchair.organizer.personalization
 
+import app.lawnchair.organizer.personalization.exchange.ExchangeImportFailure
+import app.lawnchair.organizer.personalization.exchange.ExchangeImportResult
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.CapturedItem
 import app.lawnchair.organizer.planning.CapturedPlacement
@@ -50,13 +52,60 @@ class IntentValidatorTest {
 
     private fun docked(id: String) = app(id).copy(placement = CapturedPlacement.Dock(0))
 
-    private fun buildState(items: List<CapturedItem>): Pair<BuiltExport, CanonicalStructuralInputs> {
+    /**
+     * Issue #337: the fixture advertises a catalog (one built-in plus one
+     * user-defined entry) so category references resolve and the stale cases
+     * can be exercised against a different catalog.
+     */
+    private fun catalog(
+        userDefined: List<app.lawnchair.organizer.planning.UserDefinedCategory> = listOf(
+            app.lawnchair.organizer.planning.UserDefinedCategory(
+                app.lawnchair.organizer.planning.UserCategoryId(USER_CATEGORY_ID),
+                "Commute",
+            ),
+        ),
+    ): app.lawnchair.organizer.planning.ActiveCategoryCatalog = app.lawnchair.organizer.planning.ActiveCategoryCatalog(
+        builtIn = app.lawnchair.organizer.planning.TaxonomyContract(
+            app.lawnchair.organizer.planning.TaxonomyVersion("tv1"),
+            listOf(app.lawnchair.organizer.planning.CategoryId("OTHER"), app.lawnchair.organizer.planning.CategoryId("GAMES")),
+            app.lawnchair.organizer.planning.CategoryId("OTHER"),
+        ),
+        userDefined = userDefined,
+    )
+
+    private fun buildState(
+        items: List<CapturedItem>,
+        activeCatalog: app.lawnchair.organizer.planning.ActiveCategoryCatalog = catalog(),
+        resolved: Map<ItemId, app.lawnchair.organizer.planning.CategoryIdentity?> = emptyMap(),
+    ): Pair<BuiltExport, CanonicalStructuralInputs> {
         val snapshot = LayoutSnapshot(RevisionId("rev"), device(), listOf(Page(PageId("p0"), PageOrder(0))), items)
         val targets = TargetSet(items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }, emptyList())
-        val structural = CanonicalStructuralInputs(snapshot, targets, emptyMap<ItemId, app.lawnchair.organizer.planning.CategoryIdentity?>())
-        val inputs = ExportInputs(snapshot = snapshot, targets = targets, nowEpochMs = now)
+        val structural = CanonicalStructuralInputs(snapshot, targets, resolved, activeCatalog)
+        val inputs = ExportInputs(
+            snapshot = snapshot,
+            targets = targets,
+            resolvedIdentities = resolved,
+            catalog = activeCatalog,
+            nowEpochMs = now,
+        )
         return ContextExportBuilder.build(inputs, PrivacyTier.LOCAL_FULL, SequentialIdAllocator()) to structural
     }
+
+    /** Issue #337: the advertised ref of the fixture's user-defined category. */
+    private fun userCategoryRef(built: BuiltExport): String = built.session.categoryRefs.entries
+        .single { (_, identity) -> identity is app.lawnchair.organizer.planning.CategoryIdentity.UserDefined }
+        .key
+
+    private fun renameUserCategory(): app.lawnchair.organizer.planning.ActiveCategoryCatalog = catalog(
+        listOf(
+            app.lawnchair.organizer.planning.UserDefinedCategory(
+                app.lawnchair.organizer.planning.UserCategoryId(USER_CATEGORY_ID),
+                "Transport",
+            ),
+        ),
+    )
+
+    private fun deleteUserCategory(): app.lawnchair.organizer.planning.ActiveCategoryCatalog = catalog(emptyList())
 
     private fun validate(
         built: BuiltExport,
@@ -348,5 +397,258 @@ class IntentValidatorTest {
                 validation is IntentValidation.Validated || validation is IntentValidation.Failure,
             )
         }
+    }
+
+    // ---- Issue #337 (spec 337 D-5, AC-7): category reference resolution ----
+
+    /**
+     * The single failure class per situation (spec 337 D-5 table). The digest
+     * gate runs in the pipeline before validation, so an assignment-bearing
+     * delete settles as `CONTEXT_STALE`; everything the validator sees is a
+     * digest-fresh document, where an unresolvable ref is `UNKNOWN_CATEGORY_REF`.
+     */
+    @Test
+    fun advertisedCategoryRefResolvesToItsIdentity() {
+        val (built, structural) = buildState(listOf(app("a")))
+        val ref = built.export.items.first().ref
+        val validation = validate(
+            built,
+            structural,
+            PersonalizedIntentV1(
+                exportId = built.export.exportId,
+                itemIntents = listOf(
+                    ItemIntent(ref = ref, groupSemantic = GroupSemantic(categoryRef = userCategoryRef(built), proposalLabel = null)),
+                ),
+            ),
+        )
+        assertTrue(validation is IntentValidation.Validated)
+        // The adapter resolves it to the identity through the session mapping.
+        val projection = IntentPlannerAdapter.project((validation as IntentValidation.Validated).validated)
+        val preference = projection.itemPreferences.single()
+        assertEquals(
+            app.lawnchair.organizer.planning.CategoryIdentity.UserDefined(
+                app.lawnchair.organizer.planning.UserCategoryId(USER_CATEGORY_ID),
+            ),
+            preference.groupCategory,
+        )
+        assertEquals(null, preference.groupProposalLabel)
+    }
+
+    @Test
+    fun unadvertisedCategoryRefIsRejectedFailClosed() {
+        val (built, structural) = buildState(listOf(app("a")))
+        for (ref in listOf("Commute", "u:$USER_CATEGORY_ID", "zzz")) {
+            val validation = validate(
+                built,
+                structural,
+                PersonalizedIntentV1(
+                    exportId = built.export.exportId,
+                    itemIntents = listOf(
+                        ItemIntent(ref = built.export.items.first().ref, groupSemantic = GroupSemantic(categoryRef = ref, proposalLabel = null)),
+                    ),
+                ),
+            )
+            assertEquals(
+                "ref: $ref",
+                IntentValidationFailure.UnknownCategoryRef(ref),
+                (validation as IntentValidation.Failure).failure,
+            )
+        }
+    }
+
+    /**
+     * A rename keeps the identity and the ORIGINAL export ref: the same session
+     * still resolves it, and the reconstructed view shows the current name
+     * (spec 337 D-5: names are presentation, never authority).
+     */
+    @Test
+    fun renamedCategoryKeepsTheOriginalExportRefResolvable() {
+        val (built, structural) = buildState(listOf(app("a")))
+        val originalRef = userCategoryRef(built)
+        assertEquals("Commute", built.export.categories.single { it.ref == originalRef }.displayName?.value)
+
+        // Same export/session, import-time catalog carries the renamed entry.
+        val renamedView = structural.copy(catalog = renameUserCategory())
+        assertEquals(
+            "a rename does not disturb the structural digest",
+            SourceContextIdentity.digest(structural),
+            SourceContextIdentity.digest(renamedView),
+        )
+        val itemRef = built.export.items.first().ref
+        val reply = "```json\n" + buildString {
+            append("{\"schemaVersion\":\"${ContextExportContract.INTENT_SCHEMA_VERSION}\",")
+            append("\"exportId\":\"${built.export.exportId}\",")
+            append("\"itemIntents\":[{\"ref\":\"$itemRef\",\"groupSemantic\":{\"categoryRef\":\"$originalRef\"}}]}")
+        } + "\n```"
+        val result = app.lawnchair.organizer.personalization.exchange.ExchangeImportPipeline.import(
+            reply,
+            built.session,
+            renamedView,
+            now + 1,
+        )
+        assertTrue("the original ref still resolves after a rename", result is ExchangeImportResult.Validated)
+        // The validation view (and therefore preview / folder titles) shows the
+        // CURRENT name from the composition snapshot, not the export-time one.
+        val view = (
+            app.lawnchair.organizer.personalization.exchange.SessionExportReconstructor.rebuild(
+                built.session,
+                renamedView,
+            ) as app.lawnchair.organizer.personalization.exchange.ReconstructionResult.Rebuilt
+            ).export
+        assertEquals("Transport", view.categories.single { it.ref == originalRef }.displayName?.value)
+    }
+
+    /**
+     * Spec 337 D-5 table: a category delete WITH an assignment changes the
+     * resolved identity, so the pipeline's digest gate settles it as
+     * `CONTEXT_STALE` before the validator ever sees a category ref.
+     */
+    @Test
+    fun assignedCategoryDeleteSettlesAsContextStale() {
+        val identity = app.lawnchair.organizer.planning.CategoryIdentity.UserDefined(
+            app.lawnchair.organizer.planning.UserCategoryId(USER_CATEGORY_ID),
+        )
+        val (built, structural) = buildState(
+            listOf(app("a")),
+            // The item is assigned to the user-defined category.
+            resolved = mapOf(ItemId("a") to identity),
+        )
+        val staleRef = userCategoryRef(built)
+        val itemRef = built.export.items.first().ref
+        val deletedAssigned = structural.copy(
+            resolvedIdentities = mapOf(ItemId("a") to app.lawnchair.organizer.planning.CategoryIdentity.BuiltIn(app.lawnchair.organizer.planning.CategoryId("OTHER"))),
+            catalog = deleteUserCategory(),
+        )
+        val reply = "```json\n" + buildString {
+            append("{\"schemaVersion\":\"${ContextExportContract.INTENT_SCHEMA_VERSION}\",")
+            append("\"exportId\":\"${built.export.exportId}\",")
+            append("\"itemIntents\":[{\"ref\":\"$itemRef\",\"groupSemantic\":{\"categoryRef\":\"$staleRef\"}}]}")
+        } + "\n```"
+        val result = app.lawnchair.organizer.personalization.exchange.ExchangeImportPipeline.import(
+            reply,
+            built.session,
+            deletedAssigned,
+            now + 1,
+        )
+        assertEquals(
+            ExchangeImportFailure.Contract(IntentValidationFailure.ContextStale),
+            (result as ExchangeImportResult.Failure).failure,
+        )
+    }
+
+    @Test
+    fun categoryDeletedWithoutAssignmentIsRejectedAsUnknownRef() {
+        val (built, structural) = buildState(listOf(app("a")))
+        val staleView = structural.copy(catalog = deleteUserCategory())
+        assertEquals(
+            "an unassigned delete does not disturb the digest",
+            SourceContextIdentity.digest(structural),
+            SourceContextIdentity.digest(staleView),
+        )
+        val staleRef = userCategoryRef(built)
+        val itemRef = built.export.items.first().ref
+        val reply = "```json\n" + buildString {
+            append("{\"schemaVersion\":\"${ContextExportContract.INTENT_SCHEMA_VERSION}\",")
+            append("\"exportId\":\"${built.export.exportId}\",")
+            append("\"itemIntents\":[{\"ref\":\"$itemRef\",\"groupSemantic\":{\"categoryRef\":\"$staleRef\"}}]}")
+        } + "\n```"
+        val result = app.lawnchair.organizer.personalization.exchange.ExchangeImportPipeline.import(
+            reply,
+            built.session,
+            staleView,
+            now + 1,
+        )
+        assertEquals(
+            ExchangeImportFailure.Contract(IntentValidationFailure.UnknownCategoryRef(staleRef)),
+            (result as ExchangeImportResult.Failure).failure,
+        )
+    }
+
+    /** The same reference resolves while the category still exists. */
+    @Test
+    fun categoryReferenceResolvesThroughTheImportPipeline() {
+        val (built, structural) = buildState(listOf(app("a")))
+        val itemRef = built.export.items.first().ref
+        val advertised = userCategoryRef(built)
+        val reply = "```json\n" + buildString {
+            append("{\"schemaVersion\":\"${ContextExportContract.INTENT_SCHEMA_VERSION}\",")
+            append("\"exportId\":\"${built.export.exportId}\",")
+            append("\"itemIntents\":[{\"ref\":\"$itemRef\",\"groupSemantic\":{\"categoryRef\":\"$advertised\"}}]}")
+        } + "\n```"
+        val result = app.lawnchair.organizer.personalization.exchange.ExchangeImportPipeline.import(
+            reply,
+            built.session,
+            structural,
+            now + 1,
+        )
+        assertTrue(result is ExchangeImportResult.Validated)
+    }
+
+    @Test
+    fun proposalLabelNeedsNoCategoryAndNeverResolvesToIdentity() {
+        val (built, structural) = buildState(listOf(app("a")))
+        val validation = validate(
+            built,
+            structural,
+            PersonalizedIntentV1(
+                exportId = built.export.exportId,
+                itemIntents = listOf(
+                    ItemIntent(
+                        ref = built.export.items.first().ref,
+                        groupSemantic = GroupSemantic(categoryRef = null, proposalLabel = "Commute"),
+                    ),
+                ),
+            ),
+        )
+        assertTrue(validation is IntentValidation.Validated)
+        val preference = IntentPlannerAdapter.project((validation as IntentValidation.Validated).validated).itemPreferences.single()
+        assertEquals(null, preference.groupCategory)
+        assertEquals("Commute", preference.groupProposalLabel)
+    }
+
+    // ---- Issue #337 (spec 337 D-4/D-5, AC-8): semantic unit corpus ----
+
+    /**
+     * Differing semantics inside one `desiredGroup` component are NOT a
+     * failure: each declaration is well-defined on its own and the formation
+     * key splits the component into separate groups (spec 337 D-4: the unit of
+     * semantic authority is the resolved formation key, not the relation
+     * graph). The validator accepts all three shapes.
+     */
+    @Test
+    fun conflictingSemanticsInsideOneComponentAreAcceptedAndSplitByKey() {
+        val (built, structural) = buildState(listOf(app("a"), app("b", x = 1)))
+        val refs = built.session.itemRefs.entries.sortedBy { it.value.value }.map { it.key }
+        val categoryRef = userCategoryRef(built)
+        val cases = listOf(
+            // same component, an existing-category reference vs a proposal
+            listOf(
+                ItemIntent(ref = refs[0], desiredGroupRefs = listOf(refs[1]), groupSemantic = GroupSemantic(categoryRef, null)),
+                ItemIntent(ref = refs[1], groupSemantic = GroupSemantic(categoryRef = null, proposalLabel = "Morning")),
+            ),
+            // same component, two different proposal labels
+            listOf(
+                ItemIntent(ref = refs[0], desiredGroupRefs = listOf(refs[1]), groupSemantic = GroupSemantic(null, "Morning")),
+                ItemIntent(ref = refs[1], groupSemantic = GroupSemantic(null, "Evening")),
+            ),
+            // same label, no relation at all
+            listOf(
+                ItemIntent(ref = refs[0], groupSemantic = GroupSemantic(null, "Morning")),
+                ItemIntent(ref = refs[1], groupSemantic = GroupSemantic(null, "Morning")),
+            ),
+        )
+        for (itemIntents in cases) {
+            val validation = validate(
+                built,
+                structural,
+                PersonalizedIntentV1(exportId = built.export.exportId, itemIntents = itemIntents),
+            )
+            assertTrue("component semantics are not a reject: $itemIntents", validation is IntentValidation.Validated)
+        }
+    }
+
+    private companion object {
+        /** Canonical lowercase UUID v4 fixture; a session/digest input only. */
+        const val USER_CATEGORY_ID = "3f2b8c4e-1234-4abc-9de0-1234567890ab"
     }
 }
