@@ -378,6 +378,15 @@
     <!-- Issue #205: External Agent Exchange -->
     <string name="exchange_entry_title">外部AIによる整理案</string>
     <string name="exchange_entry_subtitle">ChatGPT等の外部AIへの依頼文を作成し、回答を検証付きで取り込めます。</string>
+    <!-- Issue #327: user-facing capability explanation (ja正本) -->
+    <string name="exchange_capability_title">AIでできること</string>
+    <string name="exchange_capability_example_frequent">よく使うアプリを優先的に配置する</string>
+    <string name="exchange_capability_example_group">関連するアプリをまとめる</string>
+    <string name="exchange_capability_example_keep">動かしたくないアプリはそのまま維持する</string>
+    <string name="exchange_capability_example_front">重要なアプリを前のページに寄せる</string>
+    <string name="exchange_capability_example_minimal_change">今の配置をできるだけ崩さない</string>
+    <string name="exchange_capability_no_direct_change">AIがホーム画面を直接変更することはありません。再整理に使う「あなたの希望・傾向」を作ります。</string>
+    <string name="exchange_capability_flow">相談はChatGPT等の外部AIアプリ内で行われます。依頼文は1回送り、AIからの質問 (2〜4問) に答えて整理方針を確認すると、最終案を1回だけ受け取れます。会話の内容がNunuLauncherに送信されることはありません。</string>
     <string name="exchange_entry_open">依頼文を作成</string>
     <string name="exchange_entry_import">回答を取り込む</string>
     <string name="exchange_privacy_title">外部送信のプライバシー</string>
@@ -400,7 +409,7 @@
     <string name="exchange_copy">コピー</string>
     <string name="exchange_share">共有…</string>
     <string name="exchange_save_file">ファイルに保存</string>
-    <string name="exchange_transport_success">送信 (またはコピー) しました。後でAIの回答を貼り付けて取り込めます。</string>
+    <string name="exchange_transport_success">依頼文をコピー・共有・保存しました。外部AIアプリへ渡した後、質問 (2〜4問) に答えて整理方針を確認すると、最終案を1回だけ受け取れます。その回答を貼り付けて取り込んでください。</string>
     <string name="exchange_transport_clipboard_failed">クリップボードを利用できません。共有またはファイル保存を試してください。</string>
     <string name="exchange_transport_share_absent">共有先のアプリが見つかりません。コピーまたはファイル保存を利用してください。</string>
     <string name="exchange_transport_file_failed">ファイル操作に失敗しました。再試行するか別の送信方法を利用してください。</string>
