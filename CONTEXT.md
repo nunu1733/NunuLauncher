@@ -140,6 +140,18 @@ _Avoid_: privacy policy (静的文書との混同)
 外部agentの返答textから `PersonalizedIntentV1` を認識し、#204 validatorへ渡す取り込みstep。入力はまずインポート正規化 (Import Normalizer、[spec 329](./specs/329-import-normalizer/spec.md)) が受け持ち、accepted framingのうちmarker形式以外 (単一fenced `json` block・standalone JSON object) をcanonical化する。曖昧なJSON拾い上げやpartial解釈を行わない。import text全体へのenvelope上限 (1 MiB、UTF-8 byte基準) はnormalizerより前の #205所有gateである。
 _Avoid_: auto-apply、paste-to-layout
 
+**取り込み成功状態 (Import Success State)**:
+AI回答のvalidation通過後、run接続 (attach / fresh run開始) の前に表示される中間状態 ([spec 328](./specs/328-exchange-import-success-state/spec.md))。取り込み済みであること、privacy-safeな件数summary (canonical `CompletedPersonalIntent` のAuthored計数と判断なし合算、planner-effectiveな `minimizeMovement` の全体方針行)、まだホーム画面へ適用されていないこと、次のOrganizer操作への明示的CTAを含む。CTA押下または明示的な破棄によって終了し、その間のrun接続seamの起動は一度だけである。
+_Avoid_: 適用完了 (未適用であることとの混同)、プレビュー (#194 previewとの混同)
+
+**取り込み破棄 (Import Discard)**:
+取り込み成功状態をCTAなしに閉じる操作 ([spec 328](./specs/328-exchange-import-success-state/spec.md))。pendingなvalidated intentを破棄する (zero-write)。export sessionはinvalidateしないため、依頼が有効な間は同じ回答textを再取り込みできる。入口は明示ボタン (追加確認なし) とsystem Back (確認dialog) の2つで、CTA処理中はどちらも不受理。
+_Avoid_: 取り消し (apply済み変更のrollbackとの混同。何も適用されていない)
+
+**判断なし項目 (no-judgment items)**:
+#330 v3 canonical representation (`CompletedPersonalIntent`) 上、`RefDecision.Authored` 以外の決定 (明示unresolved・bare entry正規化・未言及) を持つexport ref ([spec 328](./specs/328-exchange-import-success-state/spec.md))。3表現はsemantic identity・planner効果が同一 (#330 D-5/D-6) であり、UIでは合算1件数のみを表示してprovenanceを出さない。
+_Avoid_: 失敗項目 (取り込み自体は成功している)、未対応 (AIが判断しなかっただけでpreferenceなしとして整理対象)
+
 **インポート正規化 (Import Normalizer)**:
 import textの外形 (framing/transport表現) のみを認識・canonical化する境界層 ([spec 329](./specs/329-import-normalizer/spec.md))。accepted framingはmarker形式 (canonical)・単一fenced `json` code block・standalone JSON objectの3種で、それ以外はtyped失敗 (曖昧/認識不能) でzero-write rejectする。fuzzy extraction (複数候補からの推測選択・`{...}` の任意拾い) は禁止で、payloadは正規化済入力の部分文字列 (semantic無変更) に限られる。
 _Avoid_: 意味レベルcanonicalization (field値・ref集合・schemaVersionの書換え)、markdown全体実装、provider固有formatへの密結合
@@ -151,6 +163,10 @@ _Avoid_: schema (payload本体の契約は #204)、system prompt (instruction部
 **交換セッション置換確認 (Session Replacement Confirmation)**:
 activityなexport sessionが存在する状態で新規exchange package生成を開始するとき、#204 single-active-session規則により既存exchangeが無効化されることを明示し、userの承認を得る確認step。承認なしには生成を開始しない。
 _Avoid_: 上書き保存 (既存exchange宛回答が以降import不可となる破壊的操作であることの表示を省く呼称)
+
+**整理方針確認 (policy confirmation)**:
+interview-firstなExternal Agent Exchangeにおいて、外部AIがヒアリング結果から理解した整理方針を短く要約してuserに提示し、了承を得るstep ([spec 327](./specs/327-agent-exchange-interview-first/spec.md))。了承 (またはuserによる明示的なskip宣言) 後にのみ最終 `PersonalizedIntent` の生成が行われる。確認のやり取りは外部AIアプリ内の会話であり、Launcher ↔ AI間のartifact交換 (request package 1回・final artifact 1回) には数えられない。launcher側はこの会話順序を検証しない (安全性はframing抽出・#204 validator・preview/confirmが所有する)。
+_Avoid_: 承認画面 (launcher内UIとの混同。確認は外部AIアプリ内で行われる)、system prompt
 
 **候補subject (candidate subject)**:
 External Agent Exchangeのexportにおいて、現在Homeに配置されていない未配置アプリ候補を表すexchange subject ([spec 331](./specs/331-exchange-target-scope-coupling/spec.md))。placed itemと同一の乱数seamによるexport-scoped `ref` を持ち、`subject: CANDIDATE` とmobility `CANDIDATE` で区別される。内部対応先はcandidate安定identity (`ComponentKey` + `ProfileId`) であり、raw identifierはexport文書に現れない。
