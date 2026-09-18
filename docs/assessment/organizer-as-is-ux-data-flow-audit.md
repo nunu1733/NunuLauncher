@@ -13,8 +13,8 @@
 
 現状のOrganizerは、**契約の正確さ**（revision gate、zero-write失敗、fail-closed、typed failure）の水準が非常に高い一方、**ユーザーから見た情報設計**が契約の追加に合わせて積み重なった結果、次の構造的性質を持つ。
 
-1. **1つの画面が3つの役割を担っている**。`ManualOrganizationPreferences`（1,751行）は (a) 1回の整理runの実行面（約20状態のstate machine）、(b) 恒常設定面（strategy picker、durable status）、(c) External Agent Exchangeという独立サブシステム（7畳面・独自の失敗分類20種）を同一のLazyColumnに抱える。run中に変更できないcategory/lock/personalization設定は別画面（Home Screen設定）にあり、run中からは到達できない（Backでrunを破棄するしかない）。
-2. **データ確定タイミングが6箇所に分散し、それぞれ別のUIタイミングで発生する**。(1) 恒常設定の保存、(2) AIへのexport（privacy tier選択→pre-send disclosure）、(3) AI回答のimport（validation成功＝取り込み済み・未適用）、(4) run接続（CTA押下 / attach）、(5) canonical `OrganizationInput`のcapture（run開始ごとに全policy sourceを二重読み取りのconsistent cutで再構成）、(6) apply authority（preview確認・revision gate）。それぞれの間で「何が確定していて何がまだ変わるか」をユーザーが推論する材料はUI上に ほぼ存在しない。
+1. **1つの画面が3つの役割を担っている**。`ManualOrganizationPreferences`（1,751行）は (a) 1回の整理runの実行面（約20状態のstate machine）、(b) 恒常設定面（strategy picker、durable status）、(c) External Agent Exchangeという独立サブシステム（7畳面・独自の失敗分類20種）を同一のLazyColumnに抱える。category/override等のauthoring導線はこのflow内になく、通常のsettings navigationでそれらへ戻るにはrunを離れる必要があり、run active中はAUTHORING leaseでauthoring writeが拒否される（lockのみworkspace側の別入口を持つ例外。§10 F-02）。
+2. **データ確定タイミングが6箇所に分散し、それぞれ別のUIタイミングで発生する**。(1) 恒常設定の保存、(2) AIへのexport（privacy tier選択→pre-send disclosure）、(3) AI回答のimport（validation成功＝取り込み済み・未適用）、(4) run接続（CTA押下 / attach）、(5) canonical `OrganizationInput`のcapture（run開始ごとに再構成。dynamic cut対象の4源 — strategy選択 / category override / user-defined category catalog / platform分類証拠 — を2回読み取り、personalizationをcut確定後に1回読む。§7.1参照）、(6) apply authority（preview確認・revision gate）。それぞれの間で「何が確定していて何がまだ変わるか」をユーザーが推論する材料はUI上に ほぼ存在しない。
 3. **同一概念のrepresentationが多く、UIをまたいで意味が変わる**。categoryは4表現（built-in `CategoryId` / `UserCategoryId` (UUID) / 表示名 / export-scoped random ref）を持ち、identityと表示名が分離している。Back/Cancel/Discard/Dismiss/Later/Skipは画面ごとに異なる意味を持つ。busy/frozenも「arbiter busy」「import attempt」「lease」「writer busy」と複数の調停が別々のUI無効化として現れる。
 4. **安全性に必要な複雑さと、偶然の複雑さが混在している**。revision再確認・recovery checkpoint・atomic write・scope binding gate・pre-send disclosureは安全性に直結する。一方で、reconciliation decision tableの三重実装、閉域語彙サイズ1の`RecoveryPreviewSummary`、export文書内のusage重複、未到達の`LOCAL_FULL` tier、未使用の`Trigger.INCREMENTAL_PROPOSAL`、exchange失敗20種のraw UI提示などは安全要件からは直接派生しない（§11）。
 
@@ -72,7 +72,7 @@ Data / application layer（監査sweepで全file実読、file:lineは本文中�
 
 1. 設定 → Home screen → General group「Organize home layout」row（`HomeScreenPreferences.kt:105-109`）→ `HomeScreenManualOrganization(MANUAL)` route。
 2. Idle面：durable status row（restorable / restored-or-expired / unresolved+診断）＋「Start」。start押下 → run lease（`OrganizationOperationLease.Kind.RUN`）取得 → `State.CandidateDetection`（missing-app検出、zero-write）。
-3. 検出成功 → `State.Selecting`（候補0件でも表示され「続行」で全件整理）。何も選ばず「続行」→ `State.Capturing` → composition（layout capture + 9 policy input のconsistent cut）→ `State.Planning` → planner。
+3. 検出成功 → `State.Selecting`（候補0件でも表示され「続行」で全件整理）。何も選ばず「続行」→ `State.Capturing` → composition（layout capture + dynamic cut対象4源の2回読み + cut後のpersonalization 1回読み。§7.1）→ `State.Planning` → planner。
 4. 変更有り → `inspectPlan`（read-only preview seam）→ `State.Preview`。decision pair（確認/キャンセル）が冒頭、以下に件数header + 具体的変更list（移動/新規folder/新規page/保持/警告group、5行で折りたたみ）。
 5. 「確認」→ `State.Applying`。この間の「Cancel」はcheckpoint前のみ有効（`applicationAdmitted`フラグ、`ManualOrganizationRun.kt:816-847`）。A2 revision gate → checkpoint（recovery point作成）→ in-transaction再確認 → write → 相関reload → 検証 → `State.Applied`。
 6. `Applied`面は`ApplyResult`8種の文言＋完了形件数。`Applied`成功時のみ「復元」CTA → `State.InspectingRecovery` → `State.RecoveryPreview`（復元確認、apply履歴行）→ 確認で `State.Recovering` → `State.RecoveryResultState`。
@@ -344,7 +344,7 @@ flowchart TD
 | UsageSignal / PersonalizationSignalSnapshot | UsageStatsManager読取+bucket化 | C（保存しない） | content digest（schema `personalization-signals-v1`） | composition毎に再構成 | composition毎1回（cut外・failure≠NotReady） | なし（読取専用） | 常に新規。stale概念なし | 直接は見えない | bucket値がexport文書へ | n/a | なし |
 | TargetSet / CandidateSelection | capture +検出の合成 | R | `scopeComposedTargetsIdentity` digest | `FullTargetSetMaterializer` | run開始時 | V-09確定 | 選択後のlayout/候補変化→`CANDIDATE_SELECTION_STALE` / `SCOPE_MISMATCH` | V-09選択肢 | 候補は`subject:CANDIDATE`でexport | n/a | なし |
 | MissingAppCandidate | 検出（launchable − represented） | C | `AppKey(component, profile)` stable | V-08検出時 | 選択面/再検出 | なし | 毎検出で新規 | V-09行 | ref経由（raw identityは出ない） | n/a | なし |
-| ExportContext (document) | 生成時のcompositionからbuild | P（保存しない。textとしてtransportされるのみ） | `exportId`（random 128bit）+ per-export refs | V-31生成 | 生成時1回（immutable） | なし | 生成後不変。session破棄で無効 | V-32全文表示 | **ここが外部出る唯一のartifact**（tier別） | 出た先の管理はlauncher外 | なし |
+| ExportContext (document) | 生成時のcompositionからbuild | P（保存しない。textとしてtransportされるのみ） | `exportId`（random 128bit）+ per-export refs | V-31生成 | 生成時1回（immutable） | なし | 生成後不変。session破棄で無効 | V-32全文表示 | Organizerが意図的に外部へ出す唯一のartifact（tier別）。他の外部出力経路はdiagnostics export（user起動SAF・個人情報なし）とSAF保存のみで、意図的開示対象は別 | 出た先の管理はlauncher外 | なし |
 | ExportSession | `AndroidExportSessionStore`（`organizer_personalization_export_session_v2.json`、単一record） | S→D（app-private durable, TTL 24h） | `exportId` | V-31生成成功直後save | import時 `load(exportId)` / 生成gate `active(now)` | save（新規で旧session置換）/ invalidate（pre-send cancel） | 新save・invalidate・24h経過 | **ユーザーには見えない**（replacement確認で存在が示されるのみ） | 出ない（ref対応表は内部） | **backup除外** | なし |
 | ItemRef / CategoryRef | session内の対応表 | S | SecureRandom 128bit Base64url（export毎に新規） | export生成毎 | import/検証時 | なし | 次exportで全て無効 | export文書内のopaque id | export文書に現れる | n/a | なし |
 | Structural source context digest | `SourceContextIdentity`（layout+targets+解決分類の正規行） | S（session内） | sha256 | export生成時 | **import時再計算** | なし | layout/lock/availability/kind/page/reservation/role/解決分類の任何変更で不一致→`CONTEXT_STALE` | 見えない（失敗文言として現れる） | 出ない | n/a | なし |
@@ -355,7 +355,7 @@ flowchart TD
 | CompletedPersonalIntent | validator内のcompleterが構成 | C | 同上（identity算出基準） | import成功時 | summary/planner投影 | なし | — | no-judgment合算件数のみ | 出ない | n/a | なし |
 | run-scoped proposed group | `proposalLabel` | R | label（#336名規則の値域） | import時 | planner（canonical系executoryのみ） | 昇格（V-35/事後面）でのみUDへ | run終了で消滅（catalog不変） | V-35「提案グループ」件数 | label textとしてexport文書に入り得る | n/a | なし |
 | OrganizationRun | `ManualOrganizationRun` | P（singleton） | `RunId`（run毎新規） | start時 | 状態観測 | coordinatorのみ | dismiss/cancel/終了 | 状態文言群 | 出ない（journalはcountsのみ） | 保存しない | run自体は復元しない（適用中のみdurable lifecycleが引き継ぐ） |
-| OrganizationInput + provenance | composerの合成結果 | R | 9つの`PolicyInputIdentity`（revision/rules/taxonomy/signals/targets/bundle/selection/personalization/intent） | composition時 | planner/preview/apply | なし | capture revision変化でplanごと無効 | 間接（scope/strategy行） | exportの元 | n/a | なし |
+| OrganizationInput + provenance | composerの合成結果 | R | `InputProvenance`は10要素（`CompositionModels.kt:16-51`）: `revision`（`RevisionId`）、`rules` / `taxonomy` / `signals` / `targets` / `layoutStrategySelection` / `personalization` / `personalizedIntent` / `userDefinedCategoryCatalog`（この8つが`PolicyInputIdentity`）、`policyBundle`（`PolicyBundleIdentity`）。`personalizedIntent`は常に存在し、intentなしrunはno-intent sentinelを持ち、intent接続時に差し替えられる。`userDefinedCategoryCatalog`は空catalogでもsentinel identityを持つ。capture revision変化でplanごと無効 | composition時 | planner/preview/apply | なし（compose毎に新規） | capture revision変化でplanごと無効。provenance自体はcompose毎に再構成 | 間接（scope/strategy行） | exportの元 | n/a | なし |
 | Plan / ValidatedLayoutPlan | planner結果 / materializer結果 | P/R | sourceRevision + plan内容 | planning時 | preview/confirm | なし | revision不一致で適用不能 | previewの根拠 | 出ない | n/a | 適用の入力 |
 | Preview details | `inspectPlan`がread-only再captureでmaterialize | P（`State.Preview`内） | なし | preview時 | V-16/V-17表示 | なし | 環境失敗→count-only fallback / Add run→不可確認 | V-16/V-17 | 出ない | n/a | なし |
 | Confirmation / write authority | `applicationAdmitted` in-memory flag | P | なし | V-17「確認」 | apply protocol | coordinatorのみ | apply開始で確定、永続しない | 「確認」ボタン | 出ない | n/a | checkpoint直前にある唯一のuser gate |
@@ -369,14 +369,14 @@ flowchart TD
 
 | 対 | 関係 | 観察 |
 |---|---|---|
-| category identity vs 表示名 | identityは`CategoryIdentity`（built-in値 or `u:<uuid>`）。表示名はpresentation | 常に分離されている。renameはplan byte不変（同一composition内）。**維持すべきinvariant** |
-| local stable identity vs export-scoped ref | refはexport毎SecureRandomで新規。対応表はsessionのみ | unlinkability設計。ref→identity逆算不可。**維持すべき** |
-| ExportSession vs exported document | documentはimmutable text（session外へ出る）。sessionは対応表+durability | documentは保存されない。process deathを跨ぐのはsessionのみ。**維持すべき** |
+| category identity vs 表示名 | identityは`CategoryIdentity`（built-in値 or `u:<uuid>`）。表示名はpresentation | 常に分離されている。renameはplan byte不変（同一composition内）。**current invariant**（#361/#362で変更する場合は明示的な再決定が必要。以下同様） |
+| local stable identity vs export-scoped ref | refはexport毎SecureRandomで新規。対応表はsessionのみ | unlinkability設計。ref→identity逆算不可。**current invariant** |
+| ExportSession vs exported document | documentはimmutable text（session外へ出る）。sessionは対応表+durability | documentは保存されない。process deathを跨ぐのはsessionのみ。**current invariant** |
 | ExportSession vs imported intent | intentはsessionを検証材料とする別artifact。pending intentはprocess-local | intentのlifetimeがsession(24h)より短い（画面を閉じたら消える）。**ユーザーには両方「一時的」に見えない**（§10 F-05） |
-| imported intent vs OrganizationRun | 接続はCTA/attachで明示。runはintentを再構成した新規`OrganizationInput`として消費 | intentはrunに「載る」だけでrunの状態ではない。**維持すべき**（preview/confirm必須の根拠） |
+| imported intent vs OrganizationRun | 接続はCTA/attachで明示。runはintentを再構成した新規`OrganizationInput`として消費 | intentはrunに「載る」だけでrunの状態ではない。**current invariant**（preview/confirmを経由しない適用を許さない現在の安全設計の根拠） |
 | live settings vs OrganizationInput snapshot | snapshotはcomposition時に確定。以後の設定変更はrunに影響しない | strategyのみ例外的に「変更→run再start」でUIが上書きする（§12 D-6）。**一貫性の例外** |
-| Plan vs Preview | planは実行可能artifact（coordinator private）。previewはread-only再captureによる表示投影 | confirmは「previewed plan object」をそのまま適用（TOCTOU gateはA2）。**維持すべき** |
-| Preview vs confirmation authority | previewは情報。authorityはV-17押下のin-memory flag | 分離されている。**維持すべき** |
+| Plan vs Preview | planは実行可能artifact（coordinator private）。previewはread-only再captureによる表示投影 | confirmは「previewed plan object」をそのまま適用（TOCTOU gateはA2）。**current invariant** |
+| Preview vs confirmation authority | previewは情報。authorityはV-17押下のin-memory flag | 分離されている。**current invariant** |
 | RecoveryPoint vs 一般backup | recovery pointはapp内原子復元専用・24h・backup除外。launcher backupは別機構 | 二つの「バックアップ」が別物である旨はUIに明示なし（§10 F-05） |
 | diagnostics vs user-facing state | journalはcounts/enumのみ（redaction契約）。user向け状態はtyped result文言 | 分離されている。ただし失敗文言が技術語彙をそのまま使う（V-34） |
 
@@ -453,7 +453,7 @@ sequenceDiagram
     participant C as Composer
     participant A as ApplyProtocol
     U->>S: 開始
-    S->>C: compose (capture + 9 inputs, 2-attempt cut)
+    S->>C: compose (capture + dynamic cut対象4源を2回 + cut後personalization 1回)
     C-->>S: OrganizationInput + provenance
     S->>S: plan → inspectPlan (read-only re-capture)
     S-->>U: Preview (details or count-only)
@@ -665,7 +665,11 @@ busy系状態は少なくとも5系統ある: (1) run lease Busy、(2) apply中�
 
 ### F-02 Fragmentation（Structural）
 
-- Fact: 整理に影響する恒常入力は、Home Screen設定の General（run入口）/ Layout（locks, diagnostics, category overrides, custom categories）/ Personalization（記録, Usage Access）/ run画面内（strategy）に分散。run中（Selecting以降）にこれらへ行くにはBackでrunを破棄する必要がある。
+- Fact: 整理に影響する恒常入力は、Home Screen設定の General（run入口）/ Layout（locks, diagnostics, category overrides, custom categories）/ Personalization（記録, Usage Access）/ run画面内（strategy）に分散する。分解すると:
+  - Manual Organization flowの内部にcategory / override / custom category等のauthoring導線は存在しない。
+  - 通常のsettings navigationでそれらの画面へ戻るには、run面を離れる（= Backでrunを破棄する）必要がある。
+  - 逆にrunがactiveのまま別pathでauthoring画面に到達した場合でも、AUTHORING leaseにより該当authoring writeは`OrganizationRunActive`で拒否される。
+  - lockのみ、workspace長押しpopupというflow外の別authoring入口を持つ例外である（run面を離れなくても到達できる。ただしlock書込みはwriter leaseでrunと排他）。
 - Finding: 「categoryを変えてから整理したい」という1つのtaskが3画面往復になる。runとauthoringの排他（lease）は正しいが、導線がそれを活かしていない。
 - Hypothesis for #361: run開始前の「準備面」（authoring系への出口を含む）の検討価値がある。
 
@@ -679,7 +683,7 @@ busy系状態は少なくとも5系統ある: (1) run lease Busy、(2) apply中�
 
 - Fact: run 20状態 + exchange 7画面 + arbiter 4状態 + lease 3種 + attempt token + busy 5系統（§8.3）。exchange失敗表示20種。
 - Finding: 個々のstateは契約上正しいが、表面積が「安全性に必要な組」より大きい。特にimport attemptの生存が idle start row・picker・Back・discard の4箇所の無効化/不逮捕として現れる。
-- Hypothesis for #361: 「単一の操作進行中」表現（例: 1つのprogress概念への統合）で削減可能かを検討する価値がある。ただし安全gate（apply中Back不逮捕等）は維持が前提。
+- Hypothesis for #361: 「単一の操作進行中」表現（例: 1つのprogress概念への統合）で削減可能かを検討する価値がある。ただし「destructive write前に明示的authorityを得る」「適用中に他の破壊的操作を入れない」などcurrent safety propertyの保護は前提としつつ、それを支える現在の個別gate/state配置をどう再編するかは#361の比較対象。
 
 ### F-05 Hidden lifetime（Significant）
 
@@ -722,7 +726,7 @@ busy系状態は少なくとも5系統ある: (1) run lease Busy、(2) apply中�
 | ID | severity | 一言 |
 |---|---|---|
 | F-01 | Structural | run/設定/AIの3役割が1画面 |
-| F-02 | Structural | 整理に必要な入力が3画面に分散、run中に到達不可 |
+| F-02 | Structural | 整理に必要な入力が3画面に分散。flow内にauthoring導線がなく、通常navではrunを離れる必要がある |
 | F-07 | Structural | exchangeがサブシステムに見える |
 | F-03 | Significant | 6確定時点とAI会話中の暗黙stale |
 | F-04 | Significant | state/busy表面積（安全必要分を超える） |
@@ -737,11 +741,25 @@ busy系状態は少なくとも5系統ある: (1) run lease Busy、(2) apply中�
 
 ## 11. Safety-required complexity vs accidental complexity
 
-### 11.1 安全性/privacyに必要と判断できるもの（TO-BEでも維持が前提）
+### 11.1 current safety/privacy propertyと、それを支える現在の実装mechanism
+
+#356のauthority ruleのとおり、既存のaccepted spec / 実装済みcontract / safety・privacy invariantは「過去にacceptedだから固定」とは扱わない。ここでは (a) Phase Aが観察した**守るべきcurrent property**（これをTO-BEで弱める場合は#361の設計判断と#362の明示的な再決定・migration・安全影響の記載が必要）と、(b) それを現在支えている**具体mechanism**（現行実装の事実であり、TO-BEの制約ではない）を分けて記録する。
+
+(a) current safety/privacy property（観察された守るべき性質）:
+
+- 外部へ開示する前に、出る情報の種別についてのinformed consentがある。
+- stale（capture時点と現在が一致しない）な提案を無条件にapplyしない。
+- destructive writeの前に明示的なuser authorityを得る（確認は無条件の権限付与ではない）。
+- 適用の失敗・中断・process死の後も、復元可能性を壊さない。
+- export文書から内部identityへの逆算・追跡を可能にしない。
+- 入力が不明確・矛盾する場合に、代わりの値を勝手に代入しない（fail-closed）。
+- diagnosticsは個人情報を含まず、外部出力はuser起動に限る。
+
+(b) これを現在支えているmechanism（現行実装の事実。#361で比較・再編の対象になり得る）:
 
 - revision二重確認（A2事前 + A5 in-transaction）と`Stale` typed outcome（spec 13/210）。
-- checkpoint → atomic write → 相関reload検証 → recovery可能という適用protocol（spec 13/152）。
-- pre-send disclosureとtier分離、export-scoped random ref、逆算不能な対応表のsession保持（spec 204/205）。
+- checkpoint → atomic write → 相関reload検証という適用protocol（spec 13/152）。
+- pre-send disclosureというUIとprivacy tier分離、export-scoped random ref、session内対応表（spec 204/205）。
 - scope binding gateの完全一致検証（fail-closed。spec 331）。
 - authoring系とrun/復元の操作排他（lease）。fail-closedなNotReady（empty policy代入なし）。
 - one-shot recovery confirmation token、preview seamのread-only契約。
@@ -843,7 +861,7 @@ busy系状態は少なくとも5系統ある: (1) run lease Busy、(2) apply中�
 - exchange: `organizer/ui/exchange/ExchangeFlowUi.kt:87-136`（screen状態）、`:144-159`（gate真理表）、`:217-827`（holder: attempt/CTA/discard）、`:1021-1133`（entry rows）、`:1231-1319`（disclosure）、`:1330-1441`（import入力）、`:1462-1492`（success Back handler）、`:1502-1636`（success面）、`:1780-1860`（失敗文言mapping）。controller: `integration/exchange/ExchangeFlowController.kt:93-171`。
 - onboarding: `organizer/ui/OrganizationOnboardingProposal.kt:36-131`（outcome/provenance/controller）、`:237-249`（表示条件）、`:396-401`（Back=defer）、`:412-435`（review）、`:469-608`（hint）。
 - 設定: `HomeScreenPreferences.kt:85-110`（General）、`:159-201`（Layout群）、`:206-238`（Personalization）。routes: `navigation/PreferenceRoutes.kt:98-133`、`PreferenceNavigation.kt:116-128`。
-- composer/provenance: `integration/OrganizationInputComposer.kt:183-515`（cut二重読み、S1-S5、signal 1回）、`CompositionModels.kt`（provenance 9 identity）。
+- composer/provenance: `integration/OrganizationInputComposer.kt:183-515`（dynamic cut対象4源 — strategy選択/override/user catalog/分類証拠 — を2回読み、cut確定後にpersonalization 1回、S1>S2>S5）、`CompositionModels.kt:16-51`（`InputProvenance` 10要素: revision・rules・taxonomy・signals・targets・policyBundle・layoutStrategySelection・personalization・personalizedIntent・userDefinedCategoryCatalog）。
 - store群: `rules/CategoryOverrideStore.kt:499-509`（noBackup AtomicFile+legacy）、`rules/LayoutStrategySelectionStore.kt:252-261`、`rules/UserDefinedCategoryStore.kt:404-428`、`integration/AndroidExportSessionStore.kt:45,164-231`、`integration/LauncherOriginSignalReader.kt:61-79`。
 - export/import: `personalization/ContextExportBuilder.kt`（ref割当・tier・PreservedConstraints）、`ContextExportModels.kt:23-64`（schema v4/TTL/tier/限界値）、`personalization/exchange/ImportNormalizer.kt:168-195`、`IntentImportParser.kt`、`ScopeBindingGate.kt:20-53`、`SessionExportReconstructor.kt`、`SourceContextIdentity.kt:35-89`。
 - apply/recovery: `application/protocol/ApplyProtocol.kt:47-121`（A0-A2）、`:218-292`（A5/A6/prune）、`RecoveryStore.kt`（chunk/tombstone/lifecycle）、`OrganizerDurableStatusDeriver.kt:40-100`、`RevisionCalculator.kt:34-88`。
