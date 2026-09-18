@@ -5,6 +5,7 @@
 > Revision 2: 2026-09-18 — owner review（#361 Changes requested）の指摘5点を反映（run内canonical順序、AI相談とRUN lease境界（D-17新設）、stale表示の契約整合、適用中の中断規則、最近の結果のlifetime）
 > Revision 3: 2026-09-18 — re-review指摘2点を反映（idle/run-in AI相談のlease境界分離、scope mismatch remedyの原因別分割）
 > Revision 4: 2026-09-18 — re-review指摘1点を反映（遷移図のidle/run-in分離と正規復帰経路の固定、status card可視化のidle限定）
+> Revision 5: 2026-09-18 — re-review指摘1点を反映（取り込み済み提案の再開経路を`Hub → ImportReview`に固定し、process生存/死の両ケースを表現）
 > Input fact base: [Organizer AS-IS UX/data flow audit](../assessment/organizer-as-is-ux-data-flow-audit.md)（Phase A #357–#360、audited HEAD `b728ed4d9f30ee797f6e086da110fdc86215da92`、audit date 2026-09-18）
 > Parent: [Issue #356](https://github.com/nunu1733/NunuLauncher/issues/356)。本書は [Issue #361](https://github.com/nunu1733/NunuLauncher/issues/361) の成果物である。
 > 既存正本への処分（Continue / Amend-Supersede / Defer / Retire）の実行と migration 順序は [Issue #362](https://github.com/nunu1733/NunuLauncher/issues/362) が所有する。本書は方針と必要改訂を決定するのみで、spec/実装の改訂を行わない。
@@ -51,7 +52,7 @@
 | D-14 | **`LOCAL_FULL` tierをUI語彙から外す**。ユーザー向け選択肢は「情報を減らして送る / ラベル付きで送る」の2tierに固定し、契約上の`LOCAL_FULL`値は将来のlocal LLM向け余地として維持する | D-2 |
 | D-15 | **durable statusからの復元操作を接続する**。hub status cardの「復元できる提案あり」から検査→復元確認→復元へ進める（cold process起点を許可する）。spec 271がNon-goalsとしたfollow-upの実現であり、新specを要求する | F-10, D-6 |
 | D-16 | onboarding提案の契約（fresh install判定・defer/skip outcome・再表示規則）は**継続**とする。「確認」はrun admissionへ直行し（T-07前置きを省略、方法は「そのまま整理」固定）、「後で」の6秒hintはhub入口を案内する | 継続判断 |
-| D-17 | **AI相談とrun境界（idle/run-inの2形態）**。**idle AI相談**: pre-run request flowであり、RUN leaseを取らず、依頼の作成・待機・取り込み中も恒常authoringは可能（layout・分類を変更した場合はD-09の期待明示どおり回答が古くなる）。run admissionは「この提案で続ける」以後に発生する。**run-in相談**: admitted runを保持したままの相談であり、**RUN leaseは継続・選択は凍結・恒常authoringは不可**（現行契約どおり）。**process死後のみ**runと選択が消え、取り込み済み提案（D-08）はdurableで残るため、**fresh run → 検出 → 選択面で依頼時scopeとの完全一致を検証（fail-closed維持）**し、一致する場合は前回の明示選択を初期値として復元したうえで「続行」の明示確認を1回要求する。不一致のうち**選択集合の差（SET_MISMATCH）**は差分強調のうえ選択を修正して同じ提案で続行できるが、**候補の投影差（availability/分類の変化、PROJECTION_MISMATCH）は同じ提案での続行を許さず依頼の作り直しを要求する**。確認なしの完全自動復元は明示選択契約（#228）を弱めるため採らない | F-03, E-4 |
+| D-17 | **AI相談とrun境界（idle/run-inの2形態）**。**idle AI相談**: pre-run request flowであり、RUN leaseを取らず、依頼の作成・待機・取り込み中も恒常authoringは可能（layout・分類を変更した場合はD-09の期待明示どおり回答が古くなる）。run admissionは「この提案で続ける」以後に発生する。**run-in相談**: admitted runを保持したままの相談であり、**RUN leaseは継続・選択は凍結・恒常authoringは不可**（現行契約どおり）。**process死後のみ**runと選択が消え、取り込み済み提案（D-08）はdurableで残るため、**fresh run → 検出 → 選択面で依頼時scopeとの完全一致を検証（fail-closed維持）**し、一致する場合は前回の明示選択を初期値として復元したうえで「続行」の明示確認を1回要求する。不一致のうち**選択集合の差（SET_MISMATCH）**は差分強調のうえ選択を修正して同じ提案で続行できるが、**候補の投影差（availability/分類の変化、PROJECTION_MISMATCH）は同じ提案での続行を許さず依頼の作り直しを要求する**。status cardからの再開は「取り込み済み提案を開く（`Hub → ImportReview`）→『この提案で続ける』でrun admission」の一経路とし、選択復元初期値の適用は選択面で行う。process死後のrun-in由来提案は、再開時のCTAもfresh run側（「この提案で続ける」）へ統一される（§5.3）。確認なしの完全自動復元は明示選択契約（#228）を弱めるため採らない | F-03, E-4 |
 
 ## 4. 採用案と比較
 
@@ -172,7 +173,7 @@ stateDiagram-v2
     IdleExchange --> IdleExchange: 失敗 → 手段別に再取り込み/再作成
     ImportReview --> Detect: この提案で続ける（ここで初めてRUN admission・scope一致検証）
     ImportReview --> Hub: 破棄（依頼は生存）
-    Hub --> Detect: 取り込み済み提案の再開（process死後のみ・fresh run rebind・scope一致検証+選択復元初期値・D-17）
+    Hub --> ImportReview: 取り込み済み提案を開く（status cardから。process生存/死を問わず）
 ```
 
 - **canonical順序**: `Start`（T-07前置き）はadmissionを含まない選択点であり、「そのまま整理」の選択でRUN admission（RUN lease取得）→ `Detect`（検出）→ 候補ありなら`Selecting` → `Plan`（capture+plan）→ `Reviewing`の順に固定する（D-05/D-06）。
@@ -180,7 +181,7 @@ stateDiagram-v2
 - 失敗と入場前stale（`DETECTED_BEFORE_REVIEW`）は`Failed`（T-13実行できませんでした）に統合され、remedy（再試行/再取得）で`Detect`へ戻る。適用時stale（`APPLY_BLOCKED`）は`Result`（T-12「適用されませんでした」）の変種である（D-12）。
 - **idle AI相談**は図上で独立した`IdleExchange`/`ImportReview`を通る。run admissionを保持しないpre-run request flowであり、authoringは可能（D-04）。取り込み成功後の「この提案で続ける」で**初めてRUN admission**（`ImportReview → Detect`）が発生する。idle相談の依頼の待機中はhubへ戻り、status cardから再開できる。
 - **run-in相談**は図上で独立した`RunInExchange`を通る。admitted runを保持したままの相談であり、RUN leaseの継続・選択凍結・authoring不可の下で行う（D-17）。閉じる・破棄・取り込みの成否にかかわらず**同一runの選択面へ戻り**、図上で`RUN admission → Detect`を経由しない（現行attach契約）。
-- **process死後のみ**、runと選択が消えた状態から`Hub → Detect`の取り込み済み提案の再開（fresh run rebind、scope一致検証と選択復元初期値）が唯一の継続経路である。この経路はidle相談で持ち帰った提案にも適用される（D-08/D-17）。
+- **取り込み済み提案の再開**は、processの生存/死に関係なく`Hub → ImportReview`（status cardから提案を開く）の一経路であり、そこから「この提案で続ける」でfresh run admission（`ImportReview → Detect`、scope一致検証）へ進む。**run-in相談由来**の提案を再開する場合のみ、D-17のrebind metadata（前回明示選択の初期値復元）が選択面で適用される。idle相談由来の提案には選択復元はなく、scope一致検証（spec 331）のみが適用される。same-processの画面離脱（idle相談でhubへ戻った場合）とprocess死後の両ケースが、この一経路に集約される（D-08/§6.5/§9と整合）。
 - 依頼作成〜取り込みの面（T-15〜T-18）はidle/run-in両形態で共有する。図上の`IdleExchange`/`RunInExchange`はflow状態の分離であり、面の分離ではない。
 - Backは常に1つ前の面へ戻り、作業破棄を伴う場合のみ破棄確認（§9）を出す。適用中（checkpoint後）のBackは不受理である（現行契約、§9）。
 
