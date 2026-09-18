@@ -1,6 +1,6 @@
 ---
 issue: "#328"
-status: draft
+status: accepted
 requirements: [FR-017]
 risk:
   - privacy
@@ -9,7 +9,7 @@ updated: 2026-09-18
 
 # External Agent ExchangeのImport成功後に状態と次操作を明示する
 
-> Status: **draft** (2026-09-18 re-entry revision 10)。**D-2/D-3 (およびOpen question 3) はowner decisionとして確定済み** ([Issue コメント](https://github.com/nunu1733/NunuLauncher/issues/328#issuecomment-5723309396)、本spec「Decisions」に具体化)。本revisionで **入力変更 (`onImportTextChange`/Clear) によるattempt失効をDesign/test oracleへ明記 (表示中textが変わる場合、active attemptをMain-confinedにinvalidateしてから `Importing(newText)` を採用)**・**arbiterの「全終端解除」列挙を5種 (restart成功 / Committed-no-restart / 非commit / `start()` throw / coroutine cancel) へ統一**・**Permissions節の「summaryは件数のみ」をprivacy境界の確定文言へ統一** を行った。attempt anchor・CTA single-flight・CTA処理中の破棄/Back不受理・strategy変更との相互排他 (commit時gate/書込開始gate/attach前owning runId再照合)・CEを含むseam例外契約・summary内訳4種 + global preference・process death分岐は前revisionで固定済み。未決のproduct decisionは残っていない。
+> Status: **accepted** (2026-09-18、[review Approve](https://github.com/nunu1733/NunuLauncher/issues/328#issuecomment-5724723122) @ head `27a2b48d20`。承認後の変更は本status行とfront matterの `status: accepted` 化のみ — 非実質的)。**D-2/D-3 (およびOpen question 3) はowner decisionとして確定済み** ([Issue コメント](https://github.com/nunu1733/NunuLauncher/issues/328#issuecomment-5723309396)、本spec「Decisions」に具体化)。本revisionで **入力変更 (`onImportTextChange`/Clear) によるattempt失効をDesign/test oracleへ明記 (表示中textが変わる場合、active attemptをMain-confinedにinvalidateしてから `Importing(newText)` を採用)**・**arbiterの「全終端解除」列挙を5種 (restart成功 / Committed-no-restart / 非commit / `start()` throw / coroutine cancel) へ統一**・**Permissions節の「summaryは件数のみ」をprivacy境界の確定文言へ統一** を行った。attempt anchor・CTA single-flight・CTA処理中の破棄/Back不受理・strategy変更との相互排他 (commit時gate/書込開始gate/attach前owning runId再照合)・CEを含むseam例外契約・summary内訳4種 + global preference・process death分岐は前revisionで固定済み。未決のproduct decisionは残っていない。
 
 ## Problem
 

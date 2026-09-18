@@ -2,7 +2,7 @@
 
 > Issue: #328
 > Spec: [spec.md](./spec.md)
-> Status: draft — spec D-2/D-3 (およびsummary内訳) はowner decision確定済み ([Issue コメント](https://github.com/nunu1733/NunuLauncher/issues/328#issuecomment-5723309396))。spec承認を待ってimplementation-ready。
+> Status: **implementation-ready** (2026-09-18)。specは **accepted** ([review Approve](https://github.com/nunu1733/NunuLauncher/issues/328#issuecomment-5724723122) @ head `27a2b48d20`、D-2/D-3とsummary内訳はowner decision確定済み: [Issue コメント](https://github.com/nunu1733/NunuLauncher/issues/328#issuecomment-5723309396))。Phase 2実装を本planのChange setで進める。
 
 ## Current evidence
 
