@@ -1333,7 +1333,6 @@
     <string name="exchange_import_result_unknown">The reply could not be used.</string>
     <string name="exchange_import_retry_hint">Ask the AI to resend the final JSON in a single ```json code block, then import again.</string>
     <string name="exchange_import_retry">Import again</string>
-    <string name="exchange_import_accepted">Proposal validated. Generating the preview…</string>
     <string name="exchange_run_busy">An organization run is active. Import again after it finishes.</string>
     <string name="exchange_import_from_clipboard">Import from clipboard</string>
     <string name="exchange_import_fallback_toggle">Details / if the import does not work</string>
@@ -1379,5 +1378,52 @@
     <plurals name="exchange_scope_intent_count">
         <item quantity="one">The AI proposal covers %1$d app that is not yet on your home. Select it to use the proposal.</item>
         <item quantity="other">The AI proposal covers %1$d apps that are not yet on your home. Select them to use the proposal.</item>
+    </plurals>
+
+    <!-- Issue #328: the import success state and its typed guidance. -->
+    <string name="exchange_import_success_title">Proposal imported</string>
+    <string name="exchange_import_success_warning_title">Proposal imported (some items have no stated preference)</string>
+    <string name="exchange_import_not_applied">Nothing has been applied to your home screen yet.</string>
+    <string name="exchange_import_cta_idle">Continue with this proposal</string>
+    <string name="exchange_import_cta_run_in">Return to selection to finish organizing</string>
+    <string name="exchange_import_discard">Discard and close</string>
+    <string name="exchange_import_discard_confirm_title">Discard the import?</string>
+    <string name="exchange_import_discard_confirm_body">The imported proposal will not be saved. While the request stays valid, you can import the same reply again.</string>
+    <string name="exchange_import_discard_confirm_confirm">Discard</string>
+    <string name="exchange_import_discarded_guidance">The import was discarded. While the request stays valid, you can import the same reply again.</string>
+    <string name="exchange_import_summary_global_minimize">Overall goal: keep the current layout as much as possible</string>
+    <string name="exchange_import_strategy_busy">Changing the organization strategy. Import again after it finishes.</string>
+    <string name="exchange_import_cta_strategy_busy">Changing the organization strategy. Try again after it finishes.</string>
+    <string name="exchange_import_cta_failed">Could not start organizing. Please try again.</string>
+    <string name="exchange_start_frozen_import">Import in progress. You can start organizing after it finishes.</string>
+    <string name="exchange_strategy_frozen_import">Import in progress. The strategy cannot be changed until it finishes.</string>
+    <string name="exchange_strategy_frozen_continuing">Organizing has started. The strategy cannot be changed.</string>
+    <plurals name="exchange_import_summary_recognized">
+        <item quantity="one">%1$d wish was recognized from the proposal.</item>
+        <item quantity="other">%1$d wishes were recognized from the proposal.</item>
+    </plurals>
+    <plurals name="exchange_import_summary_no_judgment">
+        <item quantity="one">%1$d item has no stated preference; it will be organized without one.</item>
+        <item quantity="other">%1$d items have no stated preference; they will be organized without one.</item>
+    </plurals>
+    <plurals name="exchange_import_summary_scope_candidates">
+        <item quantity="one">%1$d app outside your home is covered by this request.</item>
+        <item quantity="other">%1$d apps outside your home are covered by this request.</item>
+    </plurals>
+    <plurals name="exchange_import_summary_priority">
+        <item quantity="one">Priority stated: %1$d item</item>
+        <item quantity="other">Priority stated: %1$d items</item>
+    </plurals>
+    <plurals name="exchange_import_summary_group">
+        <item quantity="one">Grouping wish: %1$d item</item>
+        <item quantity="other">Grouping wishes: %1$d items</item>
+    </plurals>
+    <plurals name="exchange_import_summary_placement">
+        <item quantity="one">Placement wish: %1$d item</item>
+        <item quantity="other">Placement wishes: %1$d items</item>
+    </plurals>
+    <plurals name="exchange_import_summary_keep">
+        <item quantity="one">Keep-position wish: %1$d item</item>
+        <item quantity="other">Keep-position wishes: %1$d items</item>
     </plurals>
 </resources>

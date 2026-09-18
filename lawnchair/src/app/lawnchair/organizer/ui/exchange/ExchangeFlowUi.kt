@@ -31,11 +31,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.integration.exchange.ClipboardImportRead
 import app.lawnchair.organizer.integration.exchange.ClipboardImportTransport
 import app.lawnchair.organizer.integration.exchange.ExchangeFlowController
@@ -47,18 +49,23 @@ import app.lawnchair.organizer.integration.exchange.FileExchangeRead
 import app.lawnchair.organizer.integration.exchange.FileExchangeTransport
 import app.lawnchair.organizer.personalization.IntentValidationFailure
 import app.lawnchair.organizer.personalization.PrivacyTier
+import app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent
 import app.lawnchair.organizer.personalization.exchange.ExchangeEnvelopeFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportResult
+import app.lawnchair.organizer.personalization.exchange.ExchangeImportSummary
 import app.lawnchair.organizer.personalization.exchange.ImportNormalizationFailure
 import app.lawnchair.organizer.personalization.exchange.RecognizedImportFraming
 import app.lawnchair.organizer.personalization.exchange.RecognizedImportInfo
 import app.lawnchair.organizer.personalization.exchange.acceptsExchangeImportEnvelope
+import app.lawnchair.organizer.personalization.exchange.exchangeImportSummary
 import app.lawnchair.organizer.ui.ManualOrganizationRun
 import com.android.launcher3.R
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -100,7 +107,30 @@ sealed interface ExchangeScreen {
         val outcome: ExchangeImportOutcome,
         val rawText: String = "",
     ) : ExchangeScreen
+
+    /**
+     * Issue #328 (spec 328 "取り込み成功状態"): the post-validation success
+     * state shown before any run connection. The validated intent itself
+     * stays in the holder's process-local pending slot; this state carries
+     * only what the surface renders and the settle anchors:
+     *
+     * - [attemptToken] is the import attempt's process-local generation
+     *   (assigned when the import started, inherited by this state) — both
+     *   the validation settle and the CTA settle are bound to it;
+     * - [continuing] flips synchronously on the CTA press and blocks the
+     *   CTA/discard affordances (and system Back) until the run-connection
+     *   seam settles.
+     */
+    data class ImportSuccess(
+        val summary: ExchangeImportSummary,
+        val entryKind: ExchangeImportEntryKind,
+        val attemptToken: Long,
+        val continuing: Boolean = false,
+    ) : ExchangeScreen
 }
+
+/** Issue #328: which exchange entry produced the import attempt. */
+enum class ExchangeImportEntryKind { IDLE, RUN_IN }
 
 /**
  * Issue #205 (PR review P1): the disclosure lifecycle of one generated package.
@@ -200,11 +230,13 @@ class ExchangeFlowStateHolder(
     }
 
     fun openImport() {
+        invalidateImportAttempt()
         status = null
         screen = ExchangeScreen.Importing("")
     }
 
     fun close() {
+        invalidateImportAttempt()
         status = null
         screen = ExchangeScreen.Closed
     }
@@ -469,57 +501,272 @@ class ExchangeFlowStateHolder(
             status = ExchangeStatus(ExchangeStatus.Kind.INPUT_OVERSIZE)
             return
         }
+        // Issue #328 (spec 328 attempt anchor): an input edit that changes the
+        // shown text invalidates the active attempt BEFORE the new text is
+        // adopted, so a late settle of the replaced text can never surface as
+        // a success state. The Clear affordance runs through this same path.
+        val shown = (screenState.value as? ExchangeScreen.Importing)?.replyText
+        if (text != shown) {
+            invalidateImportAttempt()
+        }
         screen = ExchangeScreen.Importing(text)
     }
 
+    /**
+     * Issue #328: process-local settle anchor for one import attempt —
+     * assigned when the import starts (before validation runs), captured with
+     * the entry kind and, for the run-in entry, the owning run id.
+     */
+    private data class ImportAttempt(
+        val token: Long,
+        val entryKind: ExchangeImportEntryKind,
+        val owningRunId: RunId?,
+    )
+
+    private var nextAttemptToken = 0L
+
+    /**
+     * Snapshot-backed so the hosting screen's freeze predicates (idle start
+     * row / strategy picker) recompose the moment an attempt starts or ends,
+     * including the editor-press path where the screen state itself does not
+     * change.
+     */
+    private val activeAttemptState = mutableStateOf<ImportAttempt?>(null)
+    private var activeAttempt: ImportAttempt?
+        get() = activeAttemptState.value
+        set(value) {
+            activeAttemptState.value = value
+        }
+
+    private var pendingValidated: ValidatedPersonalizedIntent? = null
+
+    /**
+     * Issue #328 (spec: import attempt生存中の競合freeze): true from the
+     * moment an attempt is numbered until the attempt reaches its terminal
+     * (failure surface shown, success state closed/discarded/replaced, or a
+     * stale settle dropped). The hosting screen freezes the idle start row
+     * and the run-in strategy picker while this is true.
+     */
+    val importAttemptActive: Boolean get() = activeAttempt != null
+
+    /**
+     * Issue #328 (spec: CTA処理中): true from the CTA flip until the
+     * run-connection seam settles. Import starts, CTA starts and the discard
+     * entry points are refused while true (the seam mutates run state before
+     * it settles, so a mid-flight discard could not be withdrawn).
+     */
+    val importContinuationActive: Boolean
+        get() = (screenState.value as? ExchangeScreen.ImportSuccess)?.continuing == true
+
+    /**
+     * Issue #328 (spec: strategy書込との相互排他): true while the hosting
+     * screen's [app.lawnchair.organizer.ui.StrategyWriteArbiter] is non-idle
+     * (strategy write or run restart in progress). The holder refuses new
+     * imports and CTA starts while true; the default no-op keeps injected
+     * holder tests (which never render the settings screen) unaffected.
+     */
+    var strategyArbiterBusy: () -> Boolean = { false }
+
+    private fun invalidateImportAttempt() {
+        activeAttempt = null
+        pendingValidated = null
+    }
+
+    /**
+     * Numbers a fresh import attempt from the CURRENT run state: the run-in
+     * entry is the one whose owning run holds the selection surface.
+     * Main-confined (called from the receipt paths and the editor action).
+     */
+    private fun beginImportAttempt(): ImportAttempt {
+        val selecting = run.state as? ManualOrganizationRun.State.Selecting
+        val attempt = ImportAttempt(
+            token = ++nextAttemptToken,
+            entryKind = if (selecting != null) ExchangeImportEntryKind.RUN_IN else ExchangeImportEntryKind.IDLE,
+            owningRunId = selecting?.runId,
+        )
+        activeAttempt = attempt
+        pendingValidated = null
+        return attempt
+    }
+
+    /**
+     * Issue #328 (spec 328): the import runs validation only. On success the
+     * flow stops at the [ExchangeScreen.ImportSuccess] state — nothing is
+     * connected to a run until the user presses the continuation CTA. The
+     * settle is bound to the attempt token (late settles after a cancel, a
+     * newer import or an input edit are dropped).
+     */
     fun import(replyText: String) {
+        // The structural arbiter gate: a strategy write/restart in progress
+        // refuses the import before any IO (spec 328 strategy mutual
+        // exclusion; the hosting affordance is disabled too, but disabled
+        // states are affordances only).
+        if (strategyArbiterBusy()) {
+            status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_STRATEGY_BUSY)
+            return
+        }
+        val attempt = beginImportAttempt()
         scope.launch(Dispatchers.IO) {
             val outcome = controller.importReply(replyText)
-            val pipeline = (outcome as? ExchangeImportOutcome.Pipeline)?.result
-            if (pipeline is ExchangeImportResult.Validated) {
-                // Issue #331: the run-in entry — the run is still holding the
-                // selection surface, so the validated intent attaches to THAT
-                // run instead of starting a fresh one. Zero-write either way;
-                // a refusal (surface gone, intent already bound) is typed.
-                val selecting = run.state is ManualOrganizationRun.State.Selecting
-                if (selecting) {
-                    val attached = run.attachIntent(pipeline.validated)
-                    withContext(uiDispatcher) {
-                        if (attached == ManualOrganizationRun.AttachIntentOutcome.Attached) {
-                            status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_ACCEPTED)
-                            screen = ExchangeScreen.Closed
-                        } else {
-                            status = ExchangeStatus(ExchangeStatus.Kind.RUN_BUSY)
-                            screen = ExchangeScreen.Importing(replyText)
-                        }
-                    }
-                    return@launch
-                }
-                // The fresh-run start performs capture/composition/planning
-                // synchronously; every production entry runs it on IO (audit
-                // P2-1), matching the plain start row's execute{} wrapper.
-                when (run.start(intent = pipeline.validated)) {
-                    is ManualOrganizationRun.StartOutcome.Started -> withContext(uiDispatcher) {
-                        status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_ACCEPTED)
-                        screen = ExchangeScreen.Closed
-                    }
+            withContext(uiDispatcher) { settleImport(attempt, outcome, replyText) }
+        }
+    }
 
-                    ManualOrganizationRun.StartOutcome.Busy -> withContext(uiDispatcher) {
-                        // Single-active-operation gate rejected the fresh run:
-                        // typed guidance, zero-write, intent dropped.
-                        status = ExchangeStatus(ExchangeStatus.Kind.RUN_BUSY)
-                        screen = ExchangeScreen.Importing(replyText)
-                    }
-                }
-            } else {
-                withContext(uiDispatcher) {
-                    // Issue #332 (spec AC-7): the imported text moves into the
-                    // outcome surface's single ephemeral field for the
-                    // collapsed raw detail; leaving the surface discards it.
-                    screen = ExchangeScreen.ImportOutcomeScreen(outcome, rawText = replyText)
+    /**
+     * Issue #328: applies one validation settle, but only while the SAME
+     * attempt is still current — a late `Validated` after cancel / a newer
+     * import / an input edit is dropped and never (re)creates a success
+     * state (spec 328 attempt anchor). Failures keep the established outcome
+     * surface (spec: 既存失敗経路の無変更).
+     */
+    private fun settleImport(attempt: ImportAttempt, outcome: ExchangeImportOutcome, replyText: String) {
+        if (activeAttempt?.token != attempt.token) return
+        val pipeline = (outcome as? ExchangeImportOutcome.Pipeline)?.result
+        if (pipeline is ExchangeImportResult.Validated) {
+            // Run-in entries: the owning run must still hold its selection
+            // surface (defense-in-depth — the hosting freeze normally makes a
+            // replacement impossible). Otherwise the settle drops silently.
+            if (attempt.entryKind == ExchangeImportEntryKind.RUN_IN) {
+                val selecting = run.state as? ManualOrganizationRun.State.Selecting
+                if (attempt.owningRunId == null || selecting?.runId != attempt.owningRunId) {
+                    activeAttempt = null
+                    return
                 }
             }
+            pendingValidated = pipeline.validated
+            val scopeCount = if (attempt.entryKind == ExchangeImportEntryKind.RUN_IN) {
+                pipeline.validated.session.scopeCandidates.size
+            } else {
+                0
+            }
+            screen = ExchangeScreen.ImportSuccess(
+                summary = exchangeImportSummary(pipeline.validated.completed, scopeCount),
+                entryKind = attempt.entryKind,
+                attemptToken = attempt.token,
+            )
+        } else {
+            activeAttempt = null
+            screen = ExchangeScreen.ImportOutcomeScreen(outcome, rawText = replyText)
         }
+    }
+
+    /** The single continuation settle outcomes (spec 328 CTA scenario). */
+    private sealed interface ContinueOutcome {
+        data class Success(val startedRunId: RunId?) : ContinueOutcome
+        data object Busy : ContinueOutcome
+        data object NotAttachable : ContinueOutcome
+        data object Failed : ContinueOutcome
+    }
+
+    /**
+     * Issue #328: the explicit continuation CTA. Single-flight — the
+     * synchronous `continuing` flip closes the re-entry window (a second
+     * press is refused before any seam call), the CTA/discard affordances and
+     * system Back are blocked while it is set, and the settle is applied only
+     * while the screen still shows the same attempt token with `continuing`.
+     */
+    fun continueImport() {
+        val current = screenState.value as? ExchangeScreen.ImportSuccess ?: return
+        if (current.continuing) return
+        val attempt = activeAttempt ?: return
+        if (attempt.token != current.attemptToken) return
+        if (strategyArbiterBusy()) {
+            status = ExchangeStatus(ExchangeStatus.Kind.CTA_STRATEGY_BUSY)
+            return
+        }
+        val validated = pendingValidated ?: return
+        screen = current.copy(continuing = true)
+        scope.launch(Dispatchers.IO) {
+            val outcome = try {
+                if (attempt.entryKind == ExchangeImportEntryKind.RUN_IN) {
+                    val selecting = run.state as? ManualOrganizationRun.State.Selecting
+                    if (attempt.owningRunId == null || selecting?.runId != attempt.owningRunId) {
+                        // Owning run replaced: never attach into a different
+                        // run (spec 328 defense-in-depth).
+                        ContinueOutcome.Failed
+                    } else {
+                        when (run.attachIntent(validated)) {
+                            ManualOrganizationRun.AttachIntentOutcome.Attached ->
+                                ContinueOutcome.Success(null)
+
+                            ManualOrganizationRun.AttachIntentOutcome.NotAttachable ->
+                                ContinueOutcome.NotAttachable
+                        }
+                    }
+                } else {
+                    // `start` is synchronously heavy (capture/composition/
+                    // planning) — always on IO (audit P2-1).
+                    when (val started = run.start(intent = validated)) {
+                        is ManualOrganizationRun.StartOutcome.Started ->
+                            ContinueOutcome.Success(started.runId)
+
+                        ManualOrganizationRun.StartOutcome.Busy -> ContinueOutcome.Busy
+                    }
+                }
+            } catch (failure: Throwable) {
+                // A live-context failure keeps the success state operable
+                // (start() aborts the operation, then rethrows). A cancelled
+                // calling coroutine must not touch the UI.
+                if (!currentCoroutineContext().isActive) throw failure
+                ContinueOutcome.Failed
+            }
+            withContext(uiDispatcher) { settleContinue(attempt, outcome) }
+        }
+    }
+
+    private fun settleContinue(attempt: ImportAttempt, outcome: ContinueOutcome) {
+        val current = screenState.value as? ExchangeScreen.ImportSuccess ?: return
+        if (current.attemptToken != attempt.token || !current.continuing) return
+        when (outcome) {
+            is ContinueOutcome.Success -> {
+                // Defense-in-depth: a start whose run id no longer matches the
+                // live selection surface is treated as a failure settle.
+                if (!runIdMatches(outcome.startedRunId)) {
+                    status = ExchangeStatus(ExchangeStatus.Kind.CTA_START_FAILED)
+                    screen = current.copy(continuing = false)
+                    return
+                }
+                activeAttempt = null
+                pendingValidated = null
+                screen = ExchangeScreen.Closed
+            }
+
+            ContinueOutcome.Busy, ContinueOutcome.NotAttachable -> {
+                status = ExchangeStatus(ExchangeStatus.Kind.RUN_BUSY)
+                screen = current.copy(continuing = false)
+            }
+
+            ContinueOutcome.Failed -> {
+                status = ExchangeStatus(ExchangeStatus.Kind.CTA_START_FAILED)
+                screen = current.copy(continuing = false)
+            }
+        }
+    }
+
+    /**
+     * The run id comparison only exists where the run state exposes one
+     * (`State.Selecting.runId`); composed phases hide it, so those settle
+     * without the comparison (spec 328: 「取得でき、かつ一致しない場合」).
+     */
+    private fun runIdMatches(startedRunId: RunId?): Boolean {
+        if (startedRunId == null) return true
+        val selecting = run.state as? ManualOrganizationRun.State.Selecting ?: return true
+        return selecting.runId == startedRunId
+    }
+
+    /**
+     * Issue #328 (spec 328 D-2): the explicit discard. Refused while the CTA
+     * is continuing — a started seam cannot be withdrawn, so the discard side
+     * is the one that yields. The export session is NOT invalidated:
+     * re-importing the same reply stays possible while the request is valid.
+     */
+    fun discardImport() {
+        val current = screenState.value as? ExchangeScreen.ImportSuccess ?: return
+        if (current.continuing) return
+        activeAttempt = null
+        pendingValidated = null
+        status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_DISCARDED)
+        screen = ExchangeScreen.Closed
     }
 }
 
@@ -535,7 +782,6 @@ data class ExchangeStatus(val kind: Kind) {
         GENERATION_STORE_FAILURE,
         GENERATION_OVERSIZE,
         INPUT_OVERSIZE,
-        IMPORT_ACCEPTED,
         RUN_BUSY,
 
         /** Issue #332 (spec AC-6): clipboard empty/unreadable on the explicit read. */
@@ -543,6 +789,28 @@ data class ExchangeStatus(val kind: Kind) {
 
         /** Issue #332 (spec AC-6): the clipboard carries no text item. */
         CLIPBOARD_NOT_TEXT,
+
+        /**
+         * Issue #328: an import was refused because a strategy write/restart
+         * is in progress (arbiter non-idle). Zero-write, retryable.
+         */
+        IMPORT_STRATEGY_BUSY,
+
+        /**
+         * Issue #328: the continuation CTA was refused because the strategy
+         * arbiter is non-idle. Zero-write, retryable.
+         */
+        CTA_STRATEGY_BUSY,
+
+        /**
+         * Issue #328: the run-connection seam failed (exception, or a
+         * started run that no longer matches). The success state stays
+         * operable (retry / discard).
+         */
+        CTA_START_FAILED,
+
+        /** Issue #328: the pending import was explicitly discarded. */
+        IMPORT_DISCARDED,
     }
 
     companion object {
@@ -666,6 +934,16 @@ fun LazyListScope.exchangeFlowItems(
         is ExchangeScreen.ImportOutcomeScreen -> {
             item(key = "exchange-import-outcome") {
                 ExchangeImportOutcome(current.outcome, current.rawText, holder)
+            }
+        }
+
+        is ExchangeScreen.ImportSuccess -> {
+            item(key = "exchange-import-success") {
+                ExchangeImportSuccess(
+                    state = current,
+                    onContinue = holder::continueImport,
+                    onDiscard = holder::discardImport,
+                )
             }
         }
     }
@@ -1102,6 +1380,129 @@ private val IMPORT_EDITOR_MAX_HEIGHT = 200.dp
 
 private const val IMPORT_EDITOR_MAX_LINES = 8
 
+/**
+ * Issue #328: the import success state (spec 328 "取り込み成功状態"). Shows
+ * what was imported (privacy-safe counts only — no labels/refs/free text),
+ * states that nothing has been applied to the home screen yet, and offers
+ * the explicit continuation CTA plus a discard entry point labelled as a
+ * discard. Success and success-with-no-judgment differ in the heading text
+ * and the live-region announcement (semantics, never color alone).
+ */
+@Composable
+private fun ExchangeImportSuccess(
+    state: ExchangeScreen.ImportSuccess,
+    onContinue: () -> Unit,
+    onDiscard: () -> Unit,
+) {
+    val summary = state.summary
+    val warning = summary.noJudgmentCount > 0
+    Column(
+        modifier = Modifier
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .testTag("exchange-import-success"),
+    ) {
+        Text(
+            text = stringResource(
+                if (warning) R.string.exchange_import_success_warning_title else R.string.exchange_import_success_title,
+            ),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .testTag("exchange-import-success-title"),
+        )
+        Text(
+            text = pluralStringResource(
+                R.plurals.exchange_import_summary_recognized,
+                summary.recognizedCount,
+                summary.recognizedCount,
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .testTag("exchange-import-summary-recognized"),
+        )
+        if (warning) {
+            Text(
+                text = pluralStringResource(
+                    R.plurals.exchange_import_summary_no_judgment,
+                    summary.noJudgmentCount,
+                    summary.noJudgmentCount,
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.testTag("exchange-import-summary-no-judgment"),
+            )
+        }
+        if (state.entryKind == ExchangeImportEntryKind.RUN_IN && summary.scopeCandidateCount > 0) {
+            Text(
+                text = pluralStringResource(
+                    R.plurals.exchange_import_summary_scope_candidates,
+                    summary.scopeCandidateCount,
+                    summary.scopeCandidateCount,
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.testTag("exchange-import-summary-scope"),
+            )
+        }
+        val breakdown = listOf(
+            Triple("exchange-import-summary-priority", R.plurals.exchange_import_summary_priority, summary.priorityCount),
+            Triple("exchange-import-summary-group", R.plurals.exchange_import_summary_group, summary.groupCount),
+            Triple("exchange-import-summary-placement", R.plurals.exchange_import_summary_placement, summary.placementCount),
+            Triple("exchange-import-summary-keep", R.plurals.exchange_import_summary_keep, summary.keepCount),
+        )
+        for ((tag, res, count) in breakdown) {
+            if (count > 0) {
+                Text(
+                    text = pluralStringResource(res, count, count),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag(tag),
+                )
+            }
+        }
+        if (summary.minimizeMovement) {
+            Text(
+                text = stringResource(R.string.exchange_import_summary_global_minimize),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.testTag("exchange-import-summary-global"),
+            )
+        }
+        Text(
+            text = stringResource(R.string.exchange_import_not_applied),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .testTag("exchange-import-not-applied"),
+        )
+        Button(
+            onClick = onContinue,
+            enabled = !state.continuing,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+                .testTag("exchange-import-continue"),
+        ) {
+            Text(
+                stringResource(
+                    if (state.entryKind == ExchangeImportEntryKind.RUN_IN) {
+                        R.string.exchange_import_cta_run_in
+                    } else {
+                        R.string.exchange_import_cta_idle
+                    },
+                ),
+            )
+        }
+        OutlinedButton(
+            onClick = onDiscard,
+            enabled = !state.continuing,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp)
+                .testTag("exchange-import-discard"),
+        ) {
+            Text(stringResource(R.string.exchange_import_discard))
+        }
+    }
+}
+
 @Composable
 private fun ExchangeImportOutcome(outcome: ExchangeImportOutcome, rawText: String, holder: ExchangeFlowStateHolder) {
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -1253,10 +1654,13 @@ fun exchangeStatusTextResource(kind: ExchangeStatus.Kind): Int = when (kind) {
     ExchangeStatus.Kind.GENERATION_STORE_FAILURE -> R.string.exchange_generation_store_failure
     ExchangeStatus.Kind.GENERATION_OVERSIZE -> R.string.exchange_generation_oversize
     ExchangeStatus.Kind.INPUT_OVERSIZE -> R.string.exchange_failure_input_oversize
-    ExchangeStatus.Kind.IMPORT_ACCEPTED -> R.string.exchange_import_accepted
     ExchangeStatus.Kind.RUN_BUSY -> R.string.exchange_run_busy
     ExchangeStatus.Kind.CLIPBOARD_EMPTY -> R.string.exchange_status_clipboard_empty
     ExchangeStatus.Kind.CLIPBOARD_NOT_TEXT -> R.string.exchange_status_clipboard_not_text
+    ExchangeStatus.Kind.IMPORT_STRATEGY_BUSY -> R.string.exchange_import_strategy_busy
+    ExchangeStatus.Kind.CTA_STRATEGY_BUSY -> R.string.exchange_import_cta_strategy_busy
+    ExchangeStatus.Kind.CTA_START_FAILED -> R.string.exchange_import_cta_failed
+    ExchangeStatus.Kind.IMPORT_DISCARDED -> R.string.exchange_import_discarded_guidance
 }
 
 @Composable
