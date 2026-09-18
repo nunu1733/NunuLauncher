@@ -413,17 +413,30 @@ class Issue336ExchangeProjectionTest {
 
     @Test
     fun advertisedRefsAreUniqueAcrossNamespacesAndInCanonicalOrder() {
-        val built = built(inputs(items = listOf(app("a"))))
-        val itemRefs = built.export.items.map { it.ref }
+        // Placed items AND a candidate, so the three ref namespaces are all
+        // populated (placed refs, candidate refs, category refs).
+        val addition = target("com.candidate")
+        val built = built(
+            inputs(items = listOf(app("a"), app("b")), additions = listOf(addition)),
+        )
+        val allItemRefs = built.export.items.map { it.ref }
         val categoryRefs = built.export.categories.map { it.ref }
-        assertEquals("item refs are unique", itemRefs.toSet().size, itemRefs.size)
+        assertEquals("item refs are unique", allItemRefs.toSet().size, allItemRefs.size)
         assertEquals("category refs are unique", categoryRefs.toSet().size, categoryRefs.size)
-        assertTrue("the namespaces are disjoint", itemRefs.toSet().intersect(categoryRefs.toSet()).isEmpty())
-        // Canonical identity order: built-in (byte order) before user-defined.
-        val kinds = built.export.categories.map { it.kind }
-        assertEquals(kinds.sortedBy { it.ordinal }, kinds)
-        // Every advertised ref resolves to an identity in the session only.
+        assertTrue("the namespaces are disjoint", allItemRefs.toSet().intersect(categoryRefs.toSet()).isEmpty())
+        // Canonical identity order: built-in `CategoryId` byte order first, then
+        // user-defined stable-ID byte order — compared through the session's
+        // ref → identity mapping, which is the only place identities live.
+        val identities = built.export.categories.map { built.session.categoryRefs.getValue(it.ref) }
+        assertEquals(identities.sorted(), identities)
         assertEquals(built.export.categories.size, built.session.categoryRefs.size)
+        // The advertised entries carry the projection of those identities.
+        val userEntries = built.export.categories.filter { it.kind == CategoryRefKind.USER_DEFINED }
+        assertEquals(2, userEntries.size)
+        assertEquals(
+            listOf("Commute tools", "Second"),
+            userEntries.mapNotNull { it.displayName?.value }.sorted(),
+        )
     }
 
     companion object {

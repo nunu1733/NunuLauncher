@@ -5,6 +5,7 @@ import app.lawnchair.organizer.personalization.CanonicalStructuralInputs
 import app.lawnchair.organizer.personalization.ContextExportBuilder
 import app.lawnchair.organizer.personalization.ContextExportContract
 import app.lawnchair.organizer.personalization.ExportInputs
+import app.lawnchair.organizer.personalization.GroupSemantic
 import app.lawnchair.organizer.personalization.Importance
 import app.lawnchair.organizer.personalization.IntentCodec
 import app.lawnchair.organizer.personalization.IntentValidationFailure
@@ -423,6 +424,82 @@ class ExchangeImportPipelineTest {
     }
 
     /**
+     * Issue #337 (spec 337 AC-6 second oracle, review finding): the accepted
+     * intent path must not touch the #336 user-defined category store either.
+     * The store is the only persistent category writer in the app; this test
+     * runs the real store (file-backed, #336 generation/digest) alongside an
+     * export built from ITS catalog, validates a proposal import, and pins that
+     * neither the stored identity/digest nor the file bytes changed.
+     */
+    @Test
+    fun validatedProposalImportLeavesTheCategoryStoreUntouched() {
+        val directory = java.nio.file.Files.createTempDirectory("category-store").toFile()
+        try {
+            val catalogFile = java.io.File(directory, "catalog")
+            val atomic = FileBackedAtomicFile(catalogFile)
+            val access = app.lawnchair.organizer.rules.UserDefinedCategoryAtomicAccess(atomic)
+            val empty = (
+                access.readStored() as app.lawnchair.organizer.rules.UserDefinedCategoryStoredReadResult.Ready
+                ).snapshot.identity
+            val created = access.mutate(
+                app.lawnchair.organizer.rules.UserDefinedCategoryMutation.Create("Commute"),
+                empty,
+            )
+            assertTrue(created is app.lawnchair.organizer.rules.UserDefinedCategoryWriteResult.Committed)
+            val before = access.readStored() as app.lawnchair.organizer.rules.UserDefinedCategoryStoredReadResult.Ready
+            val beforeBytes = catalogFile.readBytes()
+
+            // Build the export with the catalog the store currently exposes, run
+            // a proposal import (no category reference), and validate.
+            val snapshot = LayoutSnapshot(
+                RevisionId("rev"),
+                DeviceCapabilities(4, 6, 5, 3, 5, Orientation.PORTRAIT),
+                listOf(Page(PageId("p0"), PageOrder(0))),
+                listOf(app("a"), app("b", x = 1)),
+            )
+            val targets = TargetSet(snapshot.items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }, emptyList())
+            val visible = access.readVisible() as app.lawnchair.organizer.rules.UserDefinedCategoryCatalogReadResult.Ready
+            val catalog = app.lawnchair.organizer.planning.ActiveCategoryCatalog(
+                builtIn = app.lawnchair.organizer.planning.TaxonomyContract(
+                    app.lawnchair.organizer.planning.TaxonomyVersion("tv1"),
+                    listOf(app.lawnchair.organizer.planning.CategoryId("OTHER")),
+                    app.lawnchair.organizer.planning.CategoryId("OTHER"),
+                ),
+                userDefined = visible.snapshot.categories,
+            )
+            val structural = CanonicalStructuralInputs(snapshot, targets, emptyMap(), catalog)
+            val built = ContextExportBuilder.build(
+                ExportInputs(snapshot = snapshot, targets = targets, catalog = catalog, nowEpochMs = now),
+                PrivacyTier.EXTERNAL_REDACTED,
+                SequentialIdAllocator(),
+            )
+            val refs = built.export.items.map { it.ref }
+            val intent = PersonalizedIntentV1(
+                exportId = built.export.exportId,
+                itemIntents = listOf(
+                    ItemIntent(ref = refs[0], groupSemantic = GroupSemantic(categoryRef = null, proposalLabel = "Morning")),
+                    ItemIntent(ref = refs[1], groupSemantic = GroupSemantic(categoryRef = null, proposalLabel = "Morning")),
+                ),
+                unresolvedRefs = emptyList(),
+            )
+            val result = ExchangeImportPipeline.import(
+                fencedReply(IntentCodec.encode(intent).decodeToString()),
+                built.session,
+                structural,
+                now + 1,
+            )
+            assertTrue(result is ExchangeImportResult.Validated)
+
+            val after = access.readStored() as app.lawnchair.organizer.rules.UserDefinedCategoryStoredReadResult.Ready
+            assertEquals("the stored identity/digest is unchanged", before.snapshot.identity, after.snapshot.identity)
+            assertEquals("the stored entries are unchanged", before.snapshot.categories, after.snapshot.categories)
+            assertArrayEquals("the catalog file bytes are unchanged", beforeBytes, catalogFile.readBytes())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    /**
      * Issue #337 (spec 337 AC-6, independent audit finding): a successful
      * import is zero-write. The durable session record is the only writable
      * surface on this path, so its bytes must be untouched by a validated
@@ -446,6 +523,26 @@ class ExchangeImportPipelineTest {
             assertEquals(built.session, store.load(built.session.exportId))
         } finally {
             directory.deleteRecursively()
+        }
+    }
+
+/** Minimal file-backed [UserDefinedCategoryAtomicFile] for the AC-6 oracle. */
+    private class FileBackedAtomicFile(private val finalFile: java.io.File) : app.lawnchair.organizer.rules.UserDefinedCategoryAtomicFile {
+        override fun openRead(): java.io.FileInputStream = java.io.FileInputStream(finalFile)
+
+        override fun startWrite(): java.io.FileOutputStream = java.io.FileOutputStream(finalFile)
+
+        override fun write(stream: java.io.FileOutputStream, bytes: ByteArray) = stream.write(bytes)
+
+        override fun sync(stream: java.io.FileOutputStream) = stream.fd.sync()
+
+        override fun finishWrite(stream: java.io.FileOutputStream) {
+            stream.flush()
+            stream.close()
+        }
+
+        override fun failWrite(stream: java.io.FileOutputStream) {
+            runCatching { stream.close() }
         }
     }
 }

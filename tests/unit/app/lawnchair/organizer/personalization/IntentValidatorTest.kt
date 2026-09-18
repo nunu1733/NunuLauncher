@@ -487,6 +487,15 @@ class IntentValidatorTest {
             now + 1,
         )
         assertTrue("the original ref still resolves after a rename", result is ExchangeImportResult.Validated)
+        // The validation view (and therefore preview / folder titles) shows the
+        // CURRENT name from the composition snapshot, not the export-time one.
+        val view = (
+            app.lawnchair.organizer.personalization.exchange.SessionExportReconstructor.rebuild(
+                built.session,
+                renamedView,
+            ) as app.lawnchair.organizer.personalization.exchange.ReconstructionResult.Rebuilt
+            ).export
+        assertEquals("Transport", view.categories.single { it.ref == originalRef }.displayName?.value)
     }
 
     /**
@@ -595,6 +604,47 @@ class IntentValidatorTest {
         val preference = IntentPlannerAdapter.project((validation as IntentValidation.Validated).validated).itemPreferences.single()
         assertEquals(null, preference.groupCategory)
         assertEquals("Commute", preference.groupProposalLabel)
+    }
+
+    // ---- Issue #337 (spec 337 D-4/D-5, AC-8): semantic unit corpus ----
+
+    /**
+     * Differing semantics inside one `desiredGroup` component are NOT a
+     * failure: each declaration is well-defined on its own and the formation
+     * key splits the component into separate groups (spec 337 D-4: the unit of
+     * semantic authority is the resolved formation key, not the relation
+     * graph). The validator accepts all three shapes.
+     */
+    @Test
+    fun conflictingSemanticsInsideOneComponentAreAcceptedAndSplitByKey() {
+        val (built, structural) = buildState(listOf(app("a"), app("b", x = 1)))
+        val refs = built.session.itemRefs.entries.sortedBy { it.value.value }.map { it.key }
+        val categoryRef = userCategoryRef(built)
+        val cases = listOf(
+            // same component, an existing-category reference vs a proposal
+            listOf(
+                ItemIntent(ref = refs[0], desiredGroupRefs = listOf(refs[1]), groupSemantic = GroupSemantic(categoryRef, null)),
+                ItemIntent(ref = refs[1], groupSemantic = GroupSemantic(categoryRef = null, proposalLabel = "Morning")),
+            ),
+            // same component, two different proposal labels
+            listOf(
+                ItemIntent(ref = refs[0], desiredGroupRefs = listOf(refs[1]), groupSemantic = GroupSemantic(null, "Morning")),
+                ItemIntent(ref = refs[1], groupSemantic = GroupSemantic(null, "Evening")),
+            ),
+            // same label, no relation at all
+            listOf(
+                ItemIntent(ref = refs[0], groupSemantic = GroupSemantic(null, "Morning")),
+                ItemIntent(ref = refs[1], groupSemantic = GroupSemantic(null, "Morning")),
+            ),
+        )
+        for (itemIntents in cases) {
+            val validation = validate(
+                built,
+                structural,
+                PersonalizedIntentV1(exportId = built.export.exportId, itemIntents = itemIntents),
+            )
+            assertTrue("component semantics are not a reject: $itemIntents", validation is IntentValidation.Validated)
+        }
     }
 
     private companion object {

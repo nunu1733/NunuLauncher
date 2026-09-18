@@ -651,8 +651,14 @@ class IntentPreferenceConsumptionTest {
     @Test
     fun runScopedProposalIsInertUnderANonFolderCreatingStrategy() {
         val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0))
+        for (strategy in listOf("STABLE_PAGE_TIDY_V1", "STABLE_PAGE_TIDY_V2", "CATEGORY_CONTIGUOUS_V1")) {
+            assertProposalInertUnder(strategy, items)
+        }
+    }
+
+    private fun assertProposalInertUnder(strategyId: String, items: List<CapturedItem>) {
         val input = baseInput(items).copy(
-            rules = defaultRules().copy(organizationStrategy = StrategyId("STABLE_PAGE_TIDY_V1")),
+            rules = defaultRules().copy(organizationStrategy = StrategyId(strategyId)),
         )
         val inputWithIntent = withIntent(
             input,
@@ -674,7 +680,17 @@ class IntentPreferenceConsumptionTest {
             ),
         ).first
         val planned = planner.plan(inputWithIntent).outcome as Planned
-        assertTrue("non-folder strategies never create folders", planned.newFolders.isEmpty())
+        assertTrue("$strategyId never creates folders", planned.newFolders.isEmpty())
+        // The proposal must not leak into the placement order either: the plan
+        // is identical to the same intent without the semantics.
+        val plainIntent = withIntent(
+            input,
+            listOf(ItemIntent(ref = "a", preserve = true), ItemIntent(ref = "b", preserve = true)),
+        ).first
+        val plain = planner.plan(plainIntent).outcome as Planned
+        val proposals = planned.placements.associate { it.item to (it.target as PlacementTarget.WorkspaceTarget).cell }
+        val noSemantics = plain.placements.associate { it.item to (it.target as PlacementTarget.WorkspaceTarget).cell }
+        assertEquals("$strategyId ordering must ignore proposals", proposals, noSemantics)
     }
 
     @Test
