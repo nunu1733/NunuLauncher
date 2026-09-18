@@ -8,7 +8,7 @@ requirements:
   - RC-AC-04
   - RC-AC-05
 risk: []
-updated: 2026-09-17
+updated: 2026-09-19
 ---
 
 # api36 UI lane の burst 発生 boot で window focus を保持する occluder が gate 証拠から特定され、root cause 結論または残存リスク受容が記録される
@@ -45,6 +45,7 @@ environment 異常を 1 失敗 + 完全な環境証拠として捕獲するこ�
 | 9 | `Application Not Responding: com.android.systemui`（ANR ダイアログ） | [35048590610](https://github.com/nunu1733/NunuLauncher/actions/runs/35048590610) attempt 1（head `e21edbca253bbd9df87252a0fb43d0352c54f272`、event `pull_request`（PR #325 branch）、2026-09-16 02:45 UTC、issue53 lane、[job 104643853432](https://github.com/nunu1733/NunuLauncher/actions/runs/35048590610/job/104643853432)） | 25 test 中 13 失敗 = 最初の 1 件が `window-focus-gate:app.lawnchair.debug/app.lawnchair.LawnchairLauncher` の ANR dialog 証拠（`laterTapShowsTheReentryHintAndPreservesTheDeferOutcome`、`interactive=true, keyguardLocked=false, frontmostPackage=android`）＋ 残り 12 件が run-level environment health state による `input environment already marked unhealthy by an earlier gate failure; reusing the original evidence` の高速失敗。自然発生での health state 連鎖の初観測 |
 | 10 | `com.google.android.apps.nexuslauncher/.NexusLauncherActivity`（標準ランチャー） | [35048590610](https://github.com/nunu1733/NunuLauncher/actions/runs/35048590610) attempt 2（同 head、2026-09-16 03:00 UTC、issue53 lane、[job 104646832297](https://github.com/nunu1733/NunuLauncher/actions/runs/35048590610/job/104646832297)） | 25 test 中 1 失敗（`reentryHintDismissesOnOutsideTouchWithoutTouchingTheProposalOutcome`、`awaitResumedLauncher`、`OnboardingOrganizationProposalInstrumentationTest.kt:1200`）。`launcher-resume-timeout` で capture 1/3/6/7 と同一 signature。同一 run の attempt 1（ANR dialog）と attempt 2（標準ランチャー）で異なる occluder 型が連続 boot で発生し、attempt 3 は 25/25 green |
 | 11 | `Application Not Responding: com.google.android.apps.nexuslauncher`（標準ランチャー自身の ANR ダイアログ） | [35228730816](https://github.com/nunu1733/NunuLauncher/actions/runs/35228730816) attempt 1（head `83627e1346ee5a2ad6c15b3dd382d2ad0dbcf3e5`、event `pull_request`（PR #347 branch `issue-345-evidence`）、2026-09-17 13:42 UTC、issue53 lane） | 25 test 中 13 失敗 = 最初の 1 件が `window-focus-gate:app.lawnchair.debug/app.lawnchair.LawnchairLauncher` の ANR dialog 証拠（`laterTapShowsTheReentryHintAndPreservesTheDeferOutcome`、`interactive=true, keyguardLocked=false, focusedWindow=mCurrentFocus=Window{... Application Not Responding: com.google.android.apps.nexuslauncher}, frontmostPackage=android`）＋ 残り 12 件が `already marked unhealthy ... reusing the original evidence` の高速失敗。自然 capture で初めて ANR の subject が systemui ではなく標準ランチャー自身だった |
+| 12 | `Application Not Responding: com.android.systemui`（ANR ダイアログ） | [35319007498](https://github.com/nunu1733/NunuLauncher/actions/runs/35319007498) attempt 1（head `4fcab060d2a70a458c87ab071d9f09706175cea1`、event `pull_request`（PR #355 branch `issue-337-impl`）、2026-09-18 07:21 UTC、issue52 lane） | 75 test 中 1 失敗（`ManualOrganizationPreferencesInstrumentationTest#changeListTraversalReachesExpandAndReviewActions`、`ensureWindowFocused`）。`interactive=true, keyguardLocked=false, focusedWindow=mCurrentFocus=Window{... Application Not Responding: com.android.systemui}, frontmostPackage=android`。capture 2/4/5/8 と同型の issue52 lane 再発であり、issue52 lane の test class 構成拡大（4→6 クラス・75 test）後の最初の実失敗 |
 
 同じ収集期間の [34733180391](https://github.com/nunu1733/NunuLauncher/actions/runs/34733180391) は
 gate を通らない `previewHeadingRestoresFocus...` の Compose timeout であり、occluder capture
@@ -76,7 +77,11 @@ subject が `com.android.systemui` ではなく `com.google.android.apps.nexusla
 （標準ランチャー自身）だった例である。これは「system 全般が不調な boot では前景 app が
 ANR し、その dialog が焦点を保持する」という読み（H2 系）と整合する一方、標準ランチャー
 frontmost 型と ANR 型の境界を連続化する観測であり、機構の確定ではない。
-一方、ANRがそのbootで生じる原因（capture 2/4/5/8/9 の SystemUI、capture 11 の
+2026-09-18 の capture 12（run 35319007498、PR #355 branch、issue52 lane）は、lane の
+test class 構成が 4→6 クラスへ拡大された後の最初の実失敗で、capture 8 と同型の
+SystemUI ANR dialog が health state 連鎖を伴わず 1 失敗のみで停留した例であり、
+連鎖を伴わない単発型も引き続き発生していることを示す。
+一方、ANRがそのbootで生じる原因（capture 2/4/5/8/9/12 の SystemUI、capture 11 の
 標準ランチャーを含む）と、ANRになる前のrole/resolve/activity/window遷移は
 未取得のままである。次が未確定のままである:
 
@@ -114,7 +119,11 @@ frontmost 型と ANR 型の境界を連続化する観測であり、機構の�
    （run 35228730816）でも同様に、capture step は `emu kill`（13:52:00.576Z）後の
    13:52:02Z 開始であり、生成された
    [failure-time artifact 10500317904](https://github.com/nunu1733/NunuLauncher/actions/runs/35228730816/artifacts/10500317904)
-   は 6,788 bytes で device 依存の証拠を含まない。
+   は 6,788 bytes で device 依存の証拠を含まない。2026-09-18 の capture 12
+   （run 35319007498）でも同様で、capture step は `emu kill`（07:35:27.864Z）後の
+   07:35:30.814Z 開始であり、生成された
+   [failure-time artifact 10537145649](https://github.com/nunu1733/NunuLauncher/actions/runs/35319007498/artifacts/10537145649)
+   は 6,795 bytes で device 依存の証拠を含まない。
    capture を emulator 生存中（同一 script / failure trap 内）へ移す順序修正が
    機構判別の前提として必要であり、実装は本 Issue の非対象（別 workflow PR）。
 4. **root cause の結論そのもの**。上記 1〜3 の証拠を統合した結論、または緩和により
@@ -138,8 +147,8 @@ frontmost 型と ANR 型の境界を連続化する観測であり、機構の�
   occluder 状態を人為的に作り、gate 失敗メッセージがその状態を特定することを
   少なくとも 1 状態で実証する。試行の成否・出力・CI シグネチャとの一致度を
   [plan.md](./plan.md) に記録する。
-- **発生時証拠の蓄積と occluder 分類**: gate capture（初期 2 例を含む自然発生 11 例、
-  標準ランチャー frontmost 5 例・ANR ダイアログ 6 例。ANR の subject は systemui 5 例・
+- **発生時証拠の蓄積と occluder 分類**: gate capture（初期 2 例を含む自然発生 12 例、
+  標準ランチャー frontmost 5 例・ANR ダイアログ 7 例。ANR の subject は systemui 6 例・
   標準ランチャー 1 例）を
   occluder 型（標準ランチャー / system dialog / keyguard / 非 interactive / その他 /
   不明）に分類し、証拠行だけから分類可能であることを確認する。
@@ -198,8 +207,8 @@ focusedWindow=..., frontmostPackage=...` を読む
 Then occluder の identity（焦点を保持した window の owner component または dialog 種別）
 が証拠行だけから判別できる
 And gate の分類（ENVIRONMENT_ANOMALY としての停留）と矛盾しない
-And 自然発生した 11 capture（標準ランチャー frontmost 5 例、ANR ダイアログ 6 例。
-ANR の subject は systemui 5 例・標準ランチャー 1 例）はこの契約を
+And 自然発生した 12 capture（標準ランチャー frontmost 5 例、ANR ダイアログ 7 例。
+ANR の subject は systemui 6 例・標準ランチャー 1 例）はこの契約を
 既に満たす実例である
 
 ### Scenario: root cause の結論が証拠つきで記録される (RC-AC-03)
@@ -265,8 +274,9 @@ None。production の accessibility 振る舞いは変更しない。
       bounded化した。2026-09-15のmain自然再発（run 34940500617）ではartifactが生成
       された一方、capture stepがemulator終了後の実行だったためdevice依存の証拠は
       取得できておらず、emulator生存中へのcapture移行が機構判別の前提課題として
-      記録された。2026-09-16のcapture 7〜10（4 failed boot）および2026-09-17の
-      capture 11（run 35228730816）でも同じ順序問題を
+      記録された。2026-09-16のcapture 7〜10（4 failed boot）、2026-09-17の
+      capture 11（run 35228730816）、2026-09-18のcapture 12（run 35319007498）でも
+      同じ順序問題を
       再確認した（実装は別PR。自然再発時の機構判別はAC-3の未完了範囲として残る）
       （RC-AC-04）。
 
@@ -275,9 +285,9 @@ None。production の accessibility 振る舞いは変更しない。
 | AC | Evidence |
 |---|---|
 | AC-1 | ローカル api36 emulator での強制状態試行 log と gate 失敗メッセージ実物。plan.md Verification evidence 節に記録 |
-| AC-2 | gate capture の証拠行と occluder 分類表（自然発生 11 例 = 標準ランチャー frontmost 5 例 + ANR ダイアログ 6 例（subject: systemui 5・標準ランチャー 1）、非gateフレイクの分離、標準ランチャー強制 1 例、NotificationShadeの実再現/因果対照）。本 Issue または plan.md に記録 |
+| AC-2 | gate capture の証拠行と occluder 分類表（自然発生 12 例 = 標準ランチャー frontmost 5 例 + ANR ダイアログ 7 例（subject: systemui 6・標準ランチャー 1）、非gateフレイクの分離、標準ランチャー強制 1 例、NotificationShadeの実再現/因果対照）。本 Issue または plan.md に記録 |
 | AC-3 | 本 Issue の結論コメント（自然発生CIの遷移証拠または因果経路の制御再現と、根拠 run link / 試行記録への参照つき） |
-| AC-4 | 本 Issue の判断コメント（列挙した不足状態と理由つき。#313/#316 の実装、2026-09-15 観測および 2026-09-16 再確認の `emu kill` 後実行と capture 移行の記録を含む） |
+| AC-4 | 本 Issue の判断コメント（列挙した不足状態と理由つき。#313/#316 の実装、2026-09-15 の観測および 2026-09-16〜18 の再確認（capture 7〜12）による `emu kill` 後実行と capture 移行の記録を含む） |
 
 ## Open questions
 
@@ -356,3 +366,12 @@ blocking なものはない。調査中に解決すべき問い:
   11 例（標準ランチャー frontmost 5・ANR dialog 6）とした。failure-time capture の
   `emu kill` 後実行（artifact 10500317904、6,788 bytes）を再確認。root cause（AC-3）は
   引き続き未確定。
+- 2026-09-19: 再開確認（`origin/main`=`3076bdae7e`、前回snapshot後のIssue新コメントなし。
+  main 差分は #348/#327/#328/#337 系（Exchange の source/test/spec）と #356/#361
+  （Organizer の AS-IS 監査・TO-BE UX docs）が主体で、gate実装・`tools/ci/`・本 spec/plan
+  への変更なし。`ci.yml` は issue52 lane の test class 追加（4→6 クラス。追加 2 クラスは
+  gate helper を import しない）のみで行番号は不変）。CI run 監査で自然発生 capture 12
+  （run 35319007498、issue52 lane、SystemUI ANR dialog。lane 構成拡大後の最初の実失敗）を
+  台帳へ追加し、自然発生 capture を 12 例（標準ランチャー frontmost 5・ANR dialog 7）と
+  した。failure-time capture の `emu kill` 後実行（artifact 10537145649、6,795 bytes）を
+  再確認。root cause（AC-3）は引き続き未確定。
