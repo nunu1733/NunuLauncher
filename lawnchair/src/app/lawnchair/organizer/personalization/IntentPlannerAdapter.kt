@@ -19,18 +19,28 @@ object IntentPlannerAdapter {
     fun project(validated: ValidatedPersonalizedIntent): PersonalizedIntentProjection {
         val refToItem = validated.session.itemRefs
         val roleByRef = validated.export.items.associate { it.ref to it.role }
+        // Issue #337 (spec 337 D-5/D-6): resolve an advertised category ref to
+        // its identity through the session mapping here, at the single adapter
+        // seam, so the planner never receives a raw string category. Validation
+        // guarantees every authored ref is advertised (the reconstructed view
+        // then carries it), so a missing mapping is a contract violation.
+        val identityByRef = validated.session.categoryRefs
         // Issue #330 (spec 330 D-4): project the completed representation's
         // authored decisions only. Unresolved states (explicit, bare, or by
         // omission) generate no preference, so an omitted ref has exactly the
         // planner effect of an explicitly unresolved one.
         val itemPreferences = validated.completed.decisions.mapNotNull { (ref, decision) ->
             val authored = (decision as? RefDecision.Authored)?.intent ?: return@mapNotNull null
+            val semantic = authored.groupSemantic
             ItemPreference(
                 item = refToItem.getValue(ref),
                 role = roleByRef.getValue(ref),
                 importance = authored.importance,
                 desiredGroup = authored.desiredGroupRefs?.map(refToItem::getValue),
-                groupSemantic = authored.groupSemantic,
+                groupCategory = semantic?.categoryRef?.let { categoryRef ->
+                    identityByRef[categoryRef] ?: error("validated category ref has no session identity")
+                },
+                groupProposalLabel = semantic?.proposalLabel,
                 pageAffinity = authored.pageAffinity,
                 regionAffinity = authored.regionAffinity,
                 preserve = authored.preserve,
@@ -64,7 +74,16 @@ data class ItemPreference(
     val role: ExportItemRole,
     val importance: Importance?,
     val desiredGroup: List<ItemId>?,
-    val groupSemantic: GroupSemantic?,
+    /**
+     * Issue #337: the resolved identity of an existing-category reference
+     * (never a raw string), or null when the item authored no reference.
+     */
+    val groupCategory: app.lawnchair.organizer.planning.CategoryIdentity?,
+    /**
+     * Issue #337: the run-scoped proposal label, or null. A run-scoped
+     * formation key; never a category identity.
+     */
+    val groupProposalLabel: String?,
     val pageAffinity: Int?,
     val regionAffinity: ExportRegionKind?,
     val preserve: Boolean?,

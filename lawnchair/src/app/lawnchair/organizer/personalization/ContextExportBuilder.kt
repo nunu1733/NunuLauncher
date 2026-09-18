@@ -1,5 +1,6 @@
 package app.lawnchair.organizer.personalization
 
+import app.lawnchair.organizer.planning.ActiveCategoryCatalog
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.CandidatePlanningIds
 import app.lawnchair.organizer.planning.CandidateTarget
@@ -31,12 +32,15 @@ import app.lawnchair.organizer.planning.TargetSet
  *   whole user-authored free-text class and never generates surrogates.
  * - The #203 snapshot feeds the optional `usageSignals` projection and the
  *   session signal provenance only — never the structural digest.
- * - Issue #336 two-layer separation: export presentation fields
- *   (`category`/`groupSemantic`) project a user-defined classification as the
- *   absent category via [CategoryIdentity.exportPresentationValue] — no raw
- *   ID and no display name anywhere in the document — while the session-local
- *   freshness digests consume the resolved `CategoryIdentity` itself, so a
- *   reassignment or assigned-category deletion stays detectable.
+ * - Issue #337 (v4) category projection: the envelope advertises the active
+ *   category catalog as export-scoped refs ([ExportCategory]) and every
+ *   item-level category exposure is one of those refs — built-in and
+ *   user-defined alike (`categoryRef` / `folderCategoryRef`). No raw built-in
+ *   value, no `UserCategoryId`, and (below the label-inclusive tiers) no
+ *   display name appears at item level; the ref → `CategoryIdentity` mapping
+ *   lives in the session, while the session-local freshness digests consume
+ *   the resolved `CategoryIdentity` itself, so a reassignment or
+ *   assigned-category deletion stays detectable.
  */
 object ContextExportBuilder {
 
@@ -57,6 +61,7 @@ object ContextExportBuilder {
         var unsupportedContainerCount = 0
         var unknownKindCount = 0
         val items = ArrayList<ExportItem>(snapshot.items.size)
+        val categoryRefsByIdentity = inputs.catalog?.let { projectCategoryRefs(it, allocator) } ?: emptyMap()
 
         for (item in snapshot.items) {
             val excludedReason = when {
@@ -75,7 +80,16 @@ object ContextExportBuilder {
                 }
                 continue
             }
-            items += item.toExportItem(inputs, snapshot, tier, folderSemantics, pageOrdinal, allocator, refsByItem)
+            items += item.toExportItem(
+                inputs,
+                snapshot,
+                tier,
+                folderSemantics,
+                pageOrdinal,
+                allocator,
+                refsByItem,
+                categoryRefsByIdentity,
+            )
         }
         // Issue #331: selected missing-app candidates join the export scope as
         // candidate subjects. The canonical scope is ONE composition output:
@@ -92,7 +106,9 @@ object ContextExportBuilder {
         for (target in candidateTargets) {
             val candidateId = CandidatePlanningIds.planningId(target)
             val ref = allocator.newId()
-            if (ref in refsByItem.values || ref in candidateRefsByItem.values) throw IllegalStateException("export ref collision")
+            if (ref in refsByItem.values || ref in candidateRefsByItem.values || ref in categoryRefsByIdentity.values) {
+                throw IllegalStateException("export ref collision")
+            }
             candidateRefsByItem[candidateId] = ref
             val label = if (tier == PrivacyTier.EXTERNAL_REDACTED) {
                 null
@@ -102,10 +118,10 @@ object ContextExportBuilder {
             items += ExportItem(
                 ref = ref,
                 role = ExportItemRole.APP_OR_SHORTCUT,
-                // Issue #336 export presentation: a user-defined classification
-                // projects the absent category — never an ID or a name.
-                category = inputs.resolvedIdentities[candidateId].exportPresentationValue(),
-                groupSemantic = null,
+                // Issue #337: the candidate's resolved category is an
+                // advertised ref like any placed item's.
+                categoryRef = categoryRefsByIdentity[inputs.resolvedIdentities[candidateId]],
+                folderCategoryRef = null,
                 label = label,
                 pageAffinity = null,
                 regionAffinity = null,
@@ -137,8 +153,12 @@ object ContextExportBuilder {
             },
         )
 
+        // Allocation order note: the export id and the item/candidate refs keep
+        // their pre-v4 allocator sequence; the category refs are drawn last.
+        val exportId = allocator.newId()
+        val categories = categoriesOf(inputs.catalog, categoryRefsByIdentity, tier)
         val export = PersonalizationContextExportV1(
-            exportId = allocator.newId(),
+            exportId = exportId,
             tier = tier,
             grid = ExportGridContext(
                 columns = snapshot.device.columns,
@@ -146,6 +166,7 @@ object ContextExportBuilder {
                 pageCount = snapshot.pages.size,
             ),
             items = items,
+            categories = categories,
             preservedConstraints = preserved,
             capabilities = ExportCapabilities(
                 intentSchemaVersion = ContextExportContract.INTENT_SCHEMA_VERSION,
@@ -180,10 +201,71 @@ object ContextExportBuilder {
                     )
                 },
             ),
+            // Issue #337: the only ref → identity resolution surface.
+            categoryRefs = categoryRefsByIdentity.entries.associate { (identity, ref) -> ref to identity },
         )
         return BuiltExport(export, session)
     }
 }
+
+/**
+ * Issue #337 (spec 337 D-1): the advertised category catalog projection in
+ * canonical identity order (built-in in `CategoryId` byte order first, then
+ * user-defined in stable-ID byte order) — the same order the planner's
+ * canonical category ordering uses, so the projection is rename-invariant.
+ *
+ * An identity missing from the projection (no catalog, or an identity the
+ * composition does not advertise) projects the absent category at item level;
+ * the freshness digest still carries the identity, so the difference stays
+ * detectable.
+ */
+private fun projectCategoryRefs(
+    catalog: ActiveCategoryCatalog,
+    allocator: RandomIdAllocator,
+): Map<CategoryIdentity, String> {
+    // Stable identity order over the whole union: a user-defined ID can never
+    // compare equal to a built-in id (disjoint namespaces by construction).
+    val ordered = (
+        catalog.builtIn.allowedCategories.map { CategoryIdentity.BuiltIn(it) } +
+            catalog.userDefined.map { CategoryIdentity.UserDefined(it.id) }
+        ).sorted()
+    val refs = LinkedHashMap<CategoryIdentity, String>(ordered.size)
+    for (identity in ordered) {
+        val ref = allocator.newId()
+        if (ref in refs.values) throw IllegalStateException("export category ref collision")
+        refs[identity] = ref
+    }
+    return refs
+}
+
+/**
+ * Issue #337 (spec 337 D-2): the `categories` entries of one projection. Only
+ * `displayName` belongs to a free-text class; built-in `taxonomyId` is a
+ * taxonomy enum spelling and every tier advertises it, an unknown user-defined
+ * name (the entry vanished between composition and this read) is omitted, and
+ * `EXTERNAL_REDACTED` never carries the class.
+ */
+private fun categoriesOf(
+    catalog: ActiveCategoryCatalog?,
+    refsByIdentity: Map<CategoryIdentity, String>,
+    tier: PrivacyTier,
+): List<ExportCategory> = refsByIdentity.entries
+    .sortedBy { it.key }
+    .map { (identity, ref) ->
+        when (identity) {
+            is CategoryIdentity.BuiltIn -> ExportCategory(
+                ref = ref,
+                kind = CategoryRefKind.BUILT_IN,
+                taxonomyId = identity.id.value,
+            )
+
+            is CategoryIdentity.UserDefined -> ExportCategory(
+                ref = ref,
+                kind = CategoryRefKind.USER_DEFINED,
+                displayName = if (tier == PrivacyTier.EXTERNAL_REDACTED) null else catalog?.displayNameOf(identity.id),
+            )
+        }
+    }
 
 /** Inputs for one export attempt. */
 data class ExportInputs(
@@ -192,11 +274,18 @@ data class ExportInputs(
     /**
      * Resolved classification (override included) keyed by internal `ItemId`,
      * as the closed planning identity. This is the single source for BOTH
-     * #336 layers: export presentation fields redact a user-defined identity
-     * to the absent category ([CategoryIdentity.exportPresentationValue]),
-     * while the session freshness digests consume the identity itself.
+     * #336 layers: the export presentation fields project the identity as an
+     * advertised category ref (spec 337), while the session freshness digests
+     * consume the identity itself.
      */
     val resolvedIdentities: Map<ItemId, CategoryIdentity?> = emptyMap(),
+    /**
+     * Issue #337: the active category catalog of the same composition cut,
+     * projected into the envelope `categories` (spec 337 D-1). Null means the
+     * caller has no catalog projection (test/harness composition): the export
+     * then advertises no category and item category refs are absent.
+     */
+    val catalog: ActiveCategoryCatalog? = null,
     /** User-authored app labels keyed by internal `ItemId` (free-text class). */
     val userLabels: Map<ItemId, String> = emptyMap(),
     /** #203 snapshot if the tier permits a usage projection and it is ready. */
@@ -257,9 +346,10 @@ private fun CapturedItem.toExportItem(
     pageOrdinal: Map<PageId, Int>,
     allocator: RandomIdAllocator,
     refsByItem: MutableMap<ItemId, String>,
+    categoryRefsByIdentity: Map<CategoryIdentity, String>,
 ): ExportItem {
     val ref = allocator.newId()
-    if (ref in refsByItem.values) throw IllegalStateException("export ref collision")
+    if (ref in refsByItem.values || ref in categoryRefsByIdentity.values) throw IllegalStateException("export ref collision")
     refsByItem[id] = ref
     val label = if (tier == PrivacyTier.EXTERNAL_REDACTED) {
         null
@@ -270,6 +360,7 @@ private fun CapturedItem.toExportItem(
         ref = ref,
         snapshot = snapshot,
         resolvedIdentities = inputs.resolvedIdentities,
+        categoryRefsByIdentity = categoryRefsByIdentity,
         folderSemantics = folderSemantics,
         pageOrdinal = pageOrdinal,
         label = label,
@@ -287,6 +378,7 @@ internal fun CapturedItem.toExportItemCore(
     ref: String,
     snapshot: LayoutSnapshot,
     resolvedIdentities: Map<ItemId, CategoryIdentity?>,
+    categoryRefsByIdentity: Map<CategoryIdentity, String>,
     folderSemantics: Map<String, CategoryIdentity?>,
     pageOrdinal: Map<PageId, Int>,
     label: ExportItemLabel?,
@@ -302,18 +394,17 @@ internal fun CapturedItem.toExportItemCore(
         ?.let { pageOrdinal[it.page.pageId] }?.let { ExportPageAffinity(it) }
     val regionAffinity = (placement as? CapturedPlacement.Workspace)
         ?.let { exportBand(snapshot.device.rows, it.cell.y) }
-    val groupSemantic = (placement as? CapturedPlacement.FolderMember)
+    val folderCategoryRef = (placement as? CapturedPlacement.FolderMember)
         ?.let { folderSemantics[it.folder.folderId.value] }
-        .exportPresentationValue()
+        ?.let { categoryRefsByIdentity[it] }
     return ExportItem(
         ref = ref,
         role = role,
-        // Issue #336 export presentation: built-in classifications keep the
-        // pre-336 raw value byte for byte; user-defined ones project the
-        // absent category. The identity itself flows only into the session
-        // digest inputs.
-        category = resolvedIdentities[id].exportPresentationValue(),
-        groupSemantic = groupSemantic,
+        // Issue #337 export presentation: the resolved identity projects as an
+        // advertised category ref — never a raw built-in value, an ID, or a
+        // name. The identity itself flows only into the session digest inputs.
+        categoryRef = resolvedIdentities[id]?.let { categoryRefsByIdentity[it] },
+        folderCategoryRef = folderCategoryRef,
         label = label,
         pageAffinity = pageAffinity,
         regionAffinity = regionAffinity,
@@ -321,20 +412,6 @@ internal fun CapturedItem.toExportItemCore(
         fixReason = fixReason,
         usage = usage,
     )
-}
-
-/**
- * Issue #336 export presentation projection — the single redaction point for
- * every export document / reconstructed validation view category field.
- * Built-in categories keep their raw value exactly as before #336; a
- * user-defined classification exports as the absent category (`null`): no
- * raw `UserCategoryId` and no display name may appear in an export document
- * or session record field.
- */
-internal fun CategoryIdentity?.exportPresentationValue(): String? = when (this) {
-    null -> null
-    is CategoryIdentity.BuiltIn -> id.value
-    is CategoryIdentity.UserDefined -> null
 }
 
 internal fun buildUsageSection(

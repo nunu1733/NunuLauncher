@@ -1801,7 +1801,8 @@ private fun exchangeFailureText(failure: ExchangeImportFailure): String = when (
 }
 
 /**
- * The 13-class #204 contract failure mapping (spec 204 + spec 331 D-5). The
+ * The 14-class #204 contract failure mapping (spec 204 + spec 331 D-5 + spec
+ * 337 D-8). The
  * exhaustive `when` is the compile-time guarantee that every contract class —
  * including the 17th unified outcome `SCOPE_MISMATCH`, raised by the run-side
  * scope binding gate — reaches the failure UI.
@@ -1834,4 +1835,6 @@ fun exchangeContractFailureText(failure: IntentValidationFailure): String = when
 
     // Issue #331 (17th outcome): the scope binding gate's typed rejection.
     is IntentValidationFailure.ScopeMismatch -> stringResource(R.string.exchange_failure_scope_mismatch)
+
+    is IntentValidationFailure.UnknownCategoryRef -> stringResource(R.string.exchange_failure_unknown_category_ref)
 }

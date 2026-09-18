@@ -163,8 +163,12 @@ private fun outputContractSection(): String = buildString {
     for (spec in contract.groupSemantic) {
         append("  A \"groupSemantic\" object may set ${renderField(spec)}.\n")
     }
-    val anyOf = (contract.claim("groupSemantic.anyOf").semantic as IntentWireContract.Semantic.AnyOf).members
-    append("  A \"groupSemantic\" object must set at least one of \"${anyOf[0]}\" or \"${anyOf[1]}\".\n")
+    val exactlyOne = (contract.claim("groupSemantic.exactlyOneOf").semantic as IntentWireContract.Semantic.ExactlyOneOf).members
+    append(
+        "  A \"groupSemantic\" object must set exactly one of \"${exactlyOne[0]}\" (an existing " +
+            "category advertised in the CONTEXT data \"categories\" array) or \"${exactlyOne[1]}\" " +
+            "(a new group name you propose for this run only).\n",
+    )
     val pageSpec = contract.field("pageAffinity")
     append(
         "  \"pageAffinity\" is a whole number from ${pageSpec.min} to " +

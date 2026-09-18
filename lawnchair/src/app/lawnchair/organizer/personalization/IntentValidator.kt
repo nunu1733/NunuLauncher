@@ -50,6 +50,20 @@ object IntentValidator {
             }
         }
 
+        // Issue #337 (spec 337 D-5): category refs resolve against the
+        // advertised category namespace of the reconstructed export view. The
+        // view advertises exactly the session's refs whose identity still
+        // exists in the import-time catalog, so an unadvertised ref covers
+        // every stale case (fabricated name, deleted category, broken session
+        // mapping) with one fail-closed class. A name is never resolved.
+        val advertisedCategoryRefs = export.categories.map { it.ref }.toSet()
+        for (item in intent.itemIntents) {
+            val categoryRef = item.groupSemantic?.categoryRef ?: continue
+            if (categoryRef !in advertisedCategoryRefs || categoryRef !in session.categoryRefs) {
+                return IntentValidation.Failure(IntentValidationFailure.UnknownCategoryRef(categoryRef))
+            }
+        }
+
         // Duplicate refs across item intents.
         val intentRefs = intent.itemIntents.map { it.ref }
         if (intentRefs.size != intentRefs.toSet().size) {
@@ -170,6 +184,14 @@ sealed interface IntentValidationFailure {
     data object ForbiddenContent : IntentValidationFailure
     data class MobilityContradiction(val ref: String) : IntentValidationFailure
     data object CapabilityUnsupported : IntentValidationFailure
+
+    /**
+     * Issue #337 (v4, spec 337 D-5/D-8): a `groupSemantic.categoryRef` that the
+     * export did not advertise, or whose session identity no longer exists in
+     * the import-time catalog. Zero-write; the remedy is re-export. A display
+     * name is never resolved to a category, so a name-shaped ref lands here.
+     */
+    data class UnknownCategoryRef(val ref: String) : IntentValidationFailure
 
     /**
      * Issue #331 (D-5): the scope binding gate rejected the run — the
