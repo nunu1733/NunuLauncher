@@ -2,7 +2,7 @@
 issue: "#293"
 status: draft
 requirements: []
-updated: 2026-09-17
+updated: 2026-09-19
 ---
 
 # issue #228 follow-up: ja解決test拡張とspec 13 `PreWriteRejection` 追記
@@ -45,7 +45,7 @@ PR #289 (issue #228) のmerge前監査
 
 `tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationPreferencesInstrumentationTest.kt`
 の `japaneseResourcesResolveEveryConcretePreviewString` へ、次のissue #228由来
-リソースを追加する (2026-09-17時点、baseline `703afe3f4c1f5387f768832ea422c7b681c3775a`
+リソースを追加する (2026-09-19時点、baseline `3076bdae7ebf8dbb086f251203968c06e9986258`
 で再確認済みの `lawnchair/res/values/strings.xml`
 `<!-- Issue #228: missing-app selection and Add rows -->` ブロックと
 `unplaced_strategy_scope` / `selection_stale` / `candidate_unresolved` の3件を含む)。
@@ -93,8 +93,8 @@ plurals (2件、既存のplurals assertionパターンへ追加):
 - issue #235が後から追加したwidget系string
   (`manual_organization_widget_moved_count` 等)、およびissue #336が追加した
   `manual_organization_rejection_invalid_category_provenance`
-  (baseline `703afe3f4c1f5387f768832ea422c7b681c3775a` 時点でvalues側のみに
-  存在しvalues-ja未整備) のja解決test追加
+  (2026-09-19時点 (baseline `3076bdae7ebf8dbb086f251203968c06e9986258`) でも
+  引き続きvalues側のみに存在しvalues-ja未整備) のja解決test追加
   (別scope。各IssueのAC-12相当の追跡が必要なら別Issueとする)。
 - 上流Lawnchair文字列の翻訳、ja以外localeへの展開 (spec 123の非対象を引き継ぐ)。
 - `PreWriteRejection` の意味論・順序・型shapeの変更 (記載の正本化のみ)。
@@ -110,7 +110,7 @@ plurals (2件、既存のplurals assertionパターンへ追加):
 ## Constraints
 
 - ja値がenと等価なリソースを `assertNotEquals` パターンへ追加しない
-  (2026-09-17時点 (baseline `703afe3f4c1f5387f768832ea422c7b681c3775a`) で
+  (2026-09-19時点 (baseline `3076bdae7ebf8dbb086f251203968c06e9986258`) で
   18 stringsはすべてja≠enを再確認済み。将来の翻訳変更で
   衝突が生じた場合は、当該keyのassert形式を既存pluralsの「解決すること」
   assertionへ寄せ、en fallback検出を弱めない)。
@@ -202,3 +202,30 @@ plurals (2件、既存のplurals assertionパターンへ追加):
   既存lane構成は不変。#329〜#336による `CONTEXT.md` / `DESIGN.md` /
   `docs/product/requirements.md` (FR-010) の変更は本Issueの対象語彙・契約に
   無関係。契約内容の変更なし。
+- 2026-09-19: baseline `origin/main` = `3076bdae7ebf8dbb086f251203968c06e9986258`
+  で再入場検証。前回baseline以降の70 commit (#327 interview-first exchange
+  instruction、#328 import success state、#337 exchange category group
+  proposals v4、#348 AI-facing contract、#356 Organizer AS-IS監査 /
+  #361 Organizer TO-BE UXのdocs各PR) によりexchange系runtime・test、
+  `specs/327-*` / `specs/328-*` / `specs/337-*` / `specs/348-*`、
+  `specs/336-*` (spec 337 v4へのcross-reference改訂のみ) が変わったが、
+  対象test fileは前回baselineとbit単位で同一 (blob `c0fa5d459dd6`,
+  `japaneseResourcesResolveEveryConcretePreviewString` L1606-1748、
+  #228keyは0件のまま)。#228由来20リソースも不変 (18 stringsは機械突合で
+  18/18がja≠en、2 pluralsはen `one`/`other` vs ja `other` only)。range内の
+  `strings.xml` / `values-ja/strings.xml` 差分は `exchange_*` 領域
+  (values L1290-以降 / values-ja L378-以降) に限られ、range内で追加・変更された
+  43 nameはすべてvalues-ja対応済み (新たなvalues-only欠落は発生していない)。
+  spec 13閉集合 (L255-261、`CANDIDATE_UNAVAILABLE` 未記載のまま)、
+  `Results.kt` (L83、L74の `EXACT_PRECONDITION_FAILED` とL90の
+  `OVERLAP_POLICY_REJECTED` の間)、`ApplyResultContractTest.kt` (L72)、
+  spec 228 change historyの#293委譲 (L17/L285)、監査記録 §5 (L101-105)、
+  spec 123 AC-5/AC-6 (L132-133) はすべて不変 (前記6fileは分岐基点
+  `f9afd8bfde12` から現mainまでblob単位で無変更のため、本branchの
+  spec 13草案は現mainへそのまま適用可能)。`.github/workflows/ci.yml` は
+  issue52 lane scriptへの2 class追記 (`ExchangeImportSuccessInstrumentationTest`、
+  `StrategyPickerFreezeInstrumentationTest`、in-place 1行編集) のみで、
+  api35 lane (L375) / issue52 lane (L432) / `final-status` gate (L710) の
+  行位置は不変、issue52 laneは引き続き対象test classを実行する。
+  `CONTEXT.md` / `DESIGN.md` / `docs/product/requirements.md` の変更は
+  本Issueの対象語彙・契約に無関係。契約内容の変更なし。

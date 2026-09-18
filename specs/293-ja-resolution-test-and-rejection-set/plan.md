@@ -2,13 +2,13 @@
 issue: "#293"
 status: draft
 spec: ./spec.md
-updated: 2026-09-17
+updated: 2026-09-19
 ---
 
 # Plan: issue #228 follow-up (ja解決test拡張とspec 13 `PreWriteRejection` 追記)
 
-> Baseline: `origin/main` = `703afe3f4c1f5387f768832ea422c7b681c3775a`
-> (2026-09-17再検証時点。初版draft時のbaselineは
+> Baseline: `origin/main` = `3076bdae7ebf8dbb086f251203968c06e9986258`
+> (2026-09-19再検証時点。初版draft時のbaselineは
 > `f9afd8bfde121932c0c8ed965225d52a84d86ab4`)。本planは spec.md (**draft**)
 > に対応し、記載の実装状態はすべてbaseline上での実確認に基づく。
 > **実装開始前に再入場検証を行うこと** (spec.mdの参照先がbaseline以降に
@@ -111,6 +111,32 @@ updated: 2026-09-17
 > 以下の行番号は現baseline (`703afe3f`) 基準 (2026-09-17再確認、
 > 対象test fileのja解決test領域は前回baselineと同一、同fileの差分は
 > L2502以降のfixture helperのみ)。
+>
+> 2026-09-19再入場検証結果: 前回baseline (`703afe3f`) 以降の70 commitは
+> #327 (interview-first exchange instruction) / #328 (import success state) /
+> #337 (exchange category group proposals v4) / #348 (AI-facing contract) /
+> #356・#361 (Organizer UX docs) 系であり、対象test fileは前回baselineと
+> bit単位で同一 (blob `c0fa5d459dd6`) で、`japaneseResourcesResolveEveryConcretePreviewString`
+> (L1606-1748) も内容不変・#228keyは0件のまま。#228由来20リソースは不変
+> (18 stringsは機械突合で18/18がja≠en、2 pluralsはen `one`/`other` vs ja
+> `other` only)。range内のres差分は `exchange_*` 領域のみ (values L1290-以降 /
+> values-ja L378-以降) で、range内の追加・変更43 nameはすべてvalues-ja対応済み
+> (新たなvalues-only欠落なし)。spec 13閉集合 (L255-261、`CANDIDATE_UNAVAILABLE`
+> 未記載のまま)、`Results.kt` (L83、L74/L90間)、`ApplyResultContractTest.kt`
+> (L72)、spec 228 change historyの#293委譲 (L17/L285)、監査記録 §5
+> (L101-105)、spec 123 AC-5/AC-6 (L132-133) は不変 — 上記6fileは分岐基点
+> `f9afd8bfde12` から現mainまでblob単位で無変更であり、Step 1のspec 13草案は
+> 現mainへそのまま適用可能。`.github/workflows/ci.yml` はissue52 lane script
+> への2 class追記 (`ExchangeImportSuccessInstrumentationTest`、
+> `StrategyPickerFreezeInstrumentationTest`、in-place 1行編集) のみで、
+> api35 lane (L375) / issue52 lane (L432) / `final-status` gate (L710) の
+> 行位置は不変、issue52 laneは引き続き対象test classを実行する (Step 3の
+> lane説明を本日更新)。`specs/336-*` はspec 337 v4へのcross-reference改訂のみで
+> `manual_organization_rejection_invalid_category_provenance` は引き続き
+> values側のみ (L1160)。`CONTEXT.md` / `DESIGN.md` / `docs/product/requirements.md`
+> の変更は本planの対象file・行番号・契約に無関係。
+> 以下の行番号は現baseline (`3076bdae`) 基準 (2026-09-19再確認、
+> 対象test fileは前回baseline `703afe3f` とbit単位で同一)。
 
 ## 1. 現状の実装と不足 (baseline確認済み)
 
@@ -182,7 +208,9 @@ git submodule update --init --recursive
 - CI: `organizer-instrumentation-issue52-tests` job
   (`ManualOrganizationProductionE2EInstrumentationTest` /
   `ManualOrganizationPreferencesInstrumentationTest` / `StrategyPicker...` /
-  `MissingAppSelection...` を同一laneで実行) がgreenであること。
+  `MissingAppSelection...` に加え、#328/#348で追加された
+  `ExchangeImportSuccessInstrumentationTest` /
+  `StrategyPickerFreezeInstrumentationTest` を同一laneで実行) がgreenであること。
   かつてapi35 laneを断続的に失敗させていた #292 flakeはPR #297で修正され
   issue #292は2026-09-12にclose済みであるため、api35 laneの失敗が発生した場合は
   本変更とは無関係な新規要因として分離・記録する。
