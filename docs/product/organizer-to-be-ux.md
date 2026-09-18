@@ -1,6 +1,6 @@
 # Organizer TO-BE Information Architecture / UX Decision
 
-> Status: proposed（owner review待ち。owner reviewによりacceptedになった時点で本書がOrganizerの情報設計・遷移・data timingの長期正本となる）
+> Status: accepted（owner review 2026-09-18〜2026-09-19。revision 1–5のreview指摘を全て解消し、最終指摘なし。本書はOrganizerの情報設計・遷移・data timingの長期正本である）
 > Proposed: 2026-09-18
 > Revision 2: 2026-09-18 — owner review（#361 Changes requested）の指摘5点を反映（run内canonical順序、AI相談とRUN lease境界（D-17新設）、stale表示の契約整合、適用中の中断規則、最近の結果のlifetime）
 > Revision 3: 2026-09-18 — re-review指摘2点を反映（idle/run-in AI相談のlease境界分離、scope mismatch remedyの原因別分割）
@@ -376,8 +376,8 @@ AS-ISの全dataのtiming matrixは監査§7.1がfact baseである。本節はTO
 | normal / onboarding / AI / stale / recovery journeyがend-to-endで定義された | §6.1–§6.7 |
 | Back/cancel/process-local stateの扱いが定義された | §9、§8.2 |
 | 少なくとも複数案を比較し、採否理由が残っている | §4 |
-| owner reviewでaccepted decisionになった | 本書Status: proposed → owner review後にacceptedへ更新 |
-| #356へaccepted方針をhandoffした | owner review受入時に#356へコメント（本書link+決定要約） |
+| owner reviewでaccepted decisionになった | revision 1–5のowner review（[#361 comment 1](https://github.com/nunu1733/NunuLauncher/issues/361#issuecomment-5730750654) / [2](https://github.com/nunu1733/NunuLauncher/issues/361#issuecomment-5731050702) / [3](https://github.com/nunu1733/NunuLauncher/issues/361#issuecomment-5731236729) / [4](https://github.com/nunu1733/NunuLauncher/issues/361#issuecomment-5731391250)）の指摘を全て解消し、最終指摘なし（2026-09-19）。本書Statusをacceptedへ更新 |
+| #356へaccepted方針をhandoffした | [#356へのhandoffコメント](https://github.com/nunu1733/NunuLauncher/issues/356)（accepted決定要約+決定一覧+#362への引き渡し）を投稿済み |
 
 ## 13. #362への申し送り
 
