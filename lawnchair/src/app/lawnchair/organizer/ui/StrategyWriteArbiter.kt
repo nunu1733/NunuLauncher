@@ -80,7 +80,15 @@ class StrategyWriteArbiter(
         get() = stateState.value
         private set(value) {
             stateState.value = value
+            onStateObserved?.invoke(value)
         }
+
+    /**
+     * Test-only seam (issue #328 review): observes every state transition so
+     * the tests can assert the RESERVED/RESTARTING windows and the busy
+     * predicate per state. Production leaves it null.
+     */
+    internal var onStateObserved: ((State) -> Unit)? = null
 
     /** True while any arbiter work (write or restart) is in progress. */
     val busy: Boolean get() = state != State.IDLE

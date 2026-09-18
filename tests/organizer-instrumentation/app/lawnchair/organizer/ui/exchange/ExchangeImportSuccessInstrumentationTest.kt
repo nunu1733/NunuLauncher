@@ -8,7 +8,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -233,9 +239,18 @@ class ExchangeImportSuccessInstrumentationTest {
         return holder
     }
 
+    /** Renders at the PLATFORM font scale (no LocalDensity override). */
+    private fun setSuccessContentAtPlatformFontScale(holder: ExchangeFlowStateHolder) {
+        setSuccessContentInternal(holder, fontScale = null)
+    }
+
     private fun setSuccessContent(holder: ExchangeFlowStateHolder, fontScale: Float = 1f) {
+        setSuccessContentInternal(holder, fontScale = fontScale)
+    }
+
+    private fun setSuccessContentInternal(holder: ExchangeFlowStateHolder, fontScale: Float?) {
         composeRule.setContent {
-            CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = fontScale)) {
+            val content: @androidx.compose.runtime.Composable () -> Unit = {
                 app.lawnchair.ui.theme.LawnchairTheme {
                     LazyColumn {
                         exchangeFlowItems(
@@ -246,6 +261,13 @@ class ExchangeImportSuccessInstrumentationTest {
                         )
                     }
                 }
+            }
+            if (fontScale != null) {
+                CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = fontScale)) {
+                    content()
+                }
+            } else {
+                content()
             }
         }
         composeRule.waitForIdle()
@@ -269,6 +291,70 @@ class ExchangeImportSuccessInstrumentationTest {
         composeRule.onNodeWithTag("exchange-import-discard")
             .assertIsDisplayed()
             .assertTextContains(context.getString(R.string.exchange_import_discard))
+        // AC-6: the arrival is announced (Polite live region) and the
+        // actions are enabled semantics — not merely visible.
+        composeRule.onNodeWithTag("exchange-import-success-title")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
+        composeRule.onNodeWithTag("exchange-import-continue").assertIsEnabled()
+        composeRule.onNodeWithTag("exchange-import-discard").assertIsEnabled()
+    }
+
+    @Test
+    fun receiptRefusedByTheStrategyArbiterStaysRetryableFromTheHeldText() {
+        // Issue #328 implementation review (high): a clipboard receipt refused
+        // by the arbiter gate keeps the held text VISIBLE for retry — the
+        // fallback editor opens on the empty->non-empty transition, so the
+        // user never has to re-read the source.
+        val (realHolder, controller) = newHolder()
+        val generated = controller.generate(PrivacyTier.EXTERNAL_REDACTED)
+            as app.lawnchair.organizer.integration.exchange.ExchangeGenerationResult.Generated
+        val reply = replyFor(generated.session)
+        realHolder.strategyArbiterBusy = { true }
+
+        setSuccessContent(realHolder)
+        composeRule.runOnUiThread { realHolder.openImport() }
+        composeRule.waitForIdle()
+        composeRule.runOnUiThread {
+            realHolder.importFromClipboard(
+                app.lawnchair.organizer.integration.exchange.ClipboardImportTransport(context).apply {
+                    readOverride = {
+                        app.lawnchair.organizer.integration.exchange.ClipboardImportRead.Text(reply)
+                    }
+                },
+            )
+        }
+        composeRule.waitForIdle()
+        assertEquals(
+            ExchangeStatus.Kind.IMPORT_STRATEGY_BUSY,
+            realHolder.status!!.kind,
+        )
+        // The held text is visible in the (auto-opened) fallback editor.
+        composeRule.onNodeWithTag("exchange-import-field").assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-import-action").assertIsEnabled()
+
+        // Retry from the SAME held text once the arbiter released.
+        realHolder.strategyArbiterBusy = { false }
+        composeRule.onNodeWithTag("exchange-import-action").performClick()
+        var waited = 0
+        while (realHolder.screen !is ExchangeScreen.ImportSuccess && waited < 5_000) {
+            composeRule.waitForIdle()
+            Thread.sleep(20)
+            waited += 20
+        }
+        assertTrue(realHolder.screen is ExchangeScreen.ImportSuccess)
+    }
+
+    @Test
+    fun platformMaximumFontScaleKeepsTheSummaryAndCtaInTheViewport() {
+        // AC-8 structural evidence (review): render at the PLATFORM font
+        // scale (the emulator is set to the platform maximum before this
+        // suite runs) with no override — the CTA and the not-applied line
+        // stay inside the viewport.
+        val holder = holderInSuccessState()
+        setSuccessContentAtPlatformFontScale(holder)
+        composeRule.onNodeWithTag("exchange-import-not-applied").assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-import-continue").assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-import-discard").assertIsDisplayed()
     }
 
     @Test
@@ -375,6 +461,14 @@ class ExchangeImportSuccessInstrumentationTest {
         var hostFallbackCalls = 0
         composeRule.setContent {
             app.lawnchair.ui.theme.LawnchairTheme {
+                LazyColumn {
+                    exchangeFlowItems(
+                        holder = holder,
+                        clipboardTransport = { _, _ -> ExchangeTransportResult.Success },
+                        shareTransport = { _, _ -> ExchangeTransportResult.Success },
+                        fileTransport = FileExchangeTransport(context),
+                    )
+                }
                 // Registered BEFORE the interception, as in the hosting screen.
                 BackHandler(enabled = true) { hostFallbackCalls++ }
                 ExchangeImportSuccessBackHandler(holder)
@@ -395,6 +489,9 @@ class ExchangeImportSuccessInstrumentationTest {
             composeRule.onAllNodesWithText(context.getString(R.string.exchange_import_discard_confirm_title))
                 .fetchSemanticsNodes().size,
         )
+        // AC-6/AC-3: the actions are disabled semantics while continuing.
+        composeRule.onNodeWithTag("exchange-import-continue").assertIsNotEnabled()
+        composeRule.onNodeWithTag("exchange-import-discard").assertIsNotEnabled()
         assertTrue(holder.screen is ExchangeScreen.ImportSuccess)
         blocked.countDown()
     }

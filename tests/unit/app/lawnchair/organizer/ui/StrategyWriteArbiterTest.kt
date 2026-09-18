@@ -6,6 +6,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -138,6 +139,65 @@ class StrategyWriteArbiterTest {
         assertEquals(1, fixture.restarts.get())
         assertEquals("the release must survive a restart failure", StrategyWriteArbiter.State.IDLE, fixture.arbiter.state)
         assertFalse(fixture.arbiter.busy)
+    }
+
+    @Test
+    fun cancellingTheScopeDuringAWriteStillReleasesTheArbiter() {
+        // AC-3/AC-5 (review): the coroutine-cancel terminal must return the
+        // arbiter to Idle (finally-equivalent release).
+        val fixture = Fixture(writeGate = CompletableDeferred())
+        val scope = CoroutineScope(Dispatchers.Unconfined)
+        val arbiter = StrategyWriteArbiter(
+            scope = scope,
+            ioDispatcher = Dispatchers.Unconfined,
+            mainDispatcher = Dispatchers.Unconfined,
+            writeStrategy = { fixture.writeGate!!.await() },
+            restartRun = { error("no restart on cancel") },
+            writeStartBlocked = { false },
+            restartSuppressed = { false },
+            restartNeeded = { true },
+        )
+        arbiter.onStrategySelected(strategyA)
+        assertTrue(arbiter.busy)
+        scope.cancel()
+        assertEquals("cancel must release the arbiter", StrategyWriteArbiter.State.IDLE, arbiter.state)
+    }
+
+    @Test
+    fun everyNonIdleStateIsObservablyBusyIncludingReservedAndRestarting() {
+        // AC-3/AC-5 (review): the single state machine's windows — WRITING,
+        // RESTART_RESERVED and RESTARTING — are all busy states; the
+        // restart executes only in RESTARTING.
+        val fixture = Fixture(restartGate = CompletableDeferred())
+        val seen = mutableListOf<StrategyWriteArbiter.State>()
+        val busyByState = mutableMapOf<StrategyWriteArbiter.State, Boolean>()
+        fixture.arbiter.onStateObserved = { state ->
+            seen += state
+            busyByState[state] = fixture.arbiter.busy
+        }
+        val worker = Thread { fixture.select(strategyA) }
+        worker.start()
+        var waited = 0
+        while (!seen.contains(StrategyWriteArbiter.State.RESTARTING) && waited < 5_000) {
+            Thread.sleep(10)
+            waited += 10
+        }
+        assertTrue(
+            "all windows must be observed: $seen",
+            seen.containsAll(
+                listOf(
+                    StrategyWriteArbiter.State.WRITING,
+                    StrategyWriteArbiter.State.RESTART_RESERVED,
+                    StrategyWriteArbiter.State.RESTARTING,
+                ),
+            ),
+        )
+        assertTrue(busyByState[StrategyWriteArbiter.State.WRITING] == true)
+        assertTrue(busyByState[StrategyWriteArbiter.State.RESTART_RESERVED] == true)
+        assertTrue(busyByState[StrategyWriteArbiter.State.RESTARTING] == true)
+        fixture.restartGate!!.complete(Unit)
+        worker.join(5_000)
+        assertEquals(StrategyWriteArbiter.State.IDLE, fixture.arbiter.state)
     }
 
     @Test

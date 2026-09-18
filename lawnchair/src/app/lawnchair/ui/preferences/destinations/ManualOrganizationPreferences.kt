@@ -133,24 +133,19 @@ fun ManualOrganizationPreferences(
                 coordinator.start(trigger)
             },
             writeStartBlocked = {
-                // Run-in entry: refused while its import attempt lives
-                // (validation or success state); idle entry: refused while
-                // the import continuation runs.
-                if (coordinator.state is ManualOrganizationRun.State.Selecting) {
-                    exchangeHolder.importAttemptActive
-                } else {
-                    exchangeHolder.importContinuationActive
-                }
+                // Issue #328: one shared truth table with the tests.
+                app.lawnchair.organizer.ui.exchange.strategyWriteStartBlockedFor(
+                    runInEntry = coordinator.state is ManualOrganizationRun.State.Selecting,
+                    importAttemptActive = exchangeHolder.importAttemptActive,
+                    importContinuationActive = exchangeHolder.importContinuationActive,
+                )
             },
             restartSuppressed = {
-                // A committed selection while the import continuation runs,
-                // or while the run-in import attempt lives, must not
-                // dismiss/restart the run the import is bound to.
-                exchangeHolder.importContinuationActive ||
-                    (
-                        coordinator.state is ManualOrganizationRun.State.Selecting &&
-                            exchangeHolder.importAttemptActive
-                        )
+                app.lawnchair.organizer.ui.exchange.strategyRestartSuppressedFor(
+                    runInEntry = coordinator.state is ManualOrganizationRun.State.Selecting,
+                    importAttemptActive = exchangeHolder.importAttemptActive,
+                    importContinuationActive = exchangeHolder.importContinuationActive,
+                )
             },
             restartNeeded = {
                 coordinator.state !is ManualOrganizationRun.State.Idle &&

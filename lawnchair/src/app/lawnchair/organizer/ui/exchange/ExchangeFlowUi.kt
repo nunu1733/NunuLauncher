@@ -131,6 +131,29 @@ sealed interface ExchangeScreen {
     ) : ExchangeScreen
 }
 
+/**
+ * Issue #328 (spec 328 strategy mutual exclusion): the entry-specific
+ * write-start gate — a strategy write must not begin while the run-in entry's
+ * import attempt lives, nor while the idle entry's import continuation runs.
+ * Pure so the hosting wiring and tests share one truth table.
+ */
+internal fun strategyWriteStartBlockedFor(
+    runInEntry: Boolean,
+    importAttemptActive: Boolean,
+    importContinuationActive: Boolean,
+): Boolean = importContinuationActive || (runInEntry && importAttemptActive)
+
+/**
+ * Issue #328: the commit-time restart suppression — a committed selection may
+ * not dismiss/restart the run the import is bound to: while the continuation
+ * runs (both entries), or while a run-in import attempt lives.
+ */
+internal fun strategyRestartSuppressedFor(
+    runInEntry: Boolean,
+    importAttemptActive: Boolean,
+    importContinuationActive: Boolean,
+): Boolean = importContinuationActive || (runInEntry && importAttemptActive)
+
 /** Issue #328: which exchange entry produced the import attempt. */
 enum class ExchangeImportEntryKind { IDLE, RUN_IN }
 
@@ -653,11 +676,52 @@ class ExchangeFlowStateHolder(
     }
 
     /** The single continuation settle outcomes (spec 328 CTA scenario). */
-    private sealed interface ContinueOutcome {
+    internal sealed interface ContinueOutcome {
         data class Success(val startedRunId: RunId?) : ContinueOutcome
         data object Busy : ContinueOutcome
         data object NotAttachable : ContinueOutcome
         data object Failed : ContinueOutcome
+    }
+
+    /** One run-connection request (the CTA's seam input). */
+    internal data class RunConnectionRequest(
+        val entryKind: ExchangeImportEntryKind,
+        val owningRunId: RunId?,
+        val validated: ValidatedPersonalizedIntent,
+    )
+
+    /**
+     * Package-internal test seam for the run-connection step (spec 328 review:
+     * deterministic exception/ABA oracles). Production leaves it null and the
+     * real run seams below run unchanged.
+     */
+    internal var connectRunOverride: (suspend (RunConnectionRequest) -> ContinueOutcome)? = null
+
+    /**
+     * The real run-connection seam: run-in entries attach to the owning run
+     * (after re-checking its identity), idle entries start a fresh run.
+     */
+    private fun connectRun(request: RunConnectionRequest): ContinueOutcome {
+        return if (request.entryKind == ExchangeImportEntryKind.RUN_IN) {
+            val selecting = run.state as? ManualOrganizationRun.State.Selecting
+            if (request.owningRunId == null || selecting?.runId != request.owningRunId) {
+                // Owning run replaced: never attach into a different run
+                // (spec 328 defense-in-depth).
+                ContinueOutcome.Failed
+            } else {
+                when (run.attachIntent(request.validated)) {
+                    ManualOrganizationRun.AttachIntentOutcome.Attached -> ContinueOutcome.Success(null)
+                    ManualOrganizationRun.AttachIntentOutcome.NotAttachable -> ContinueOutcome.NotAttachable
+                }
+            }
+        } else {
+            // `start` is synchronously heavy (capture/composition/planning) —
+            // always on IO (audit P2-1).
+            when (val started = run.start(intent = request.validated)) {
+                is ManualOrganizationRun.StartOutcome.Started -> ContinueOutcome.Success(started.runId)
+                ManualOrganizationRun.StartOutcome.Busy -> ContinueOutcome.Busy
+            }
+        }
     }
 
     /**
@@ -679,32 +743,9 @@ class ExchangeFlowStateHolder(
         val validated = pendingValidated ?: return
         screen = current.copy(continuing = true)
         scope.launch(Dispatchers.IO) {
+            val request = RunConnectionRequest(attempt.entryKind, attempt.owningRunId, validated)
             val outcome = try {
-                if (attempt.entryKind == ExchangeImportEntryKind.RUN_IN) {
-                    val selecting = run.state as? ManualOrganizationRun.State.Selecting
-                    if (attempt.owningRunId == null || selecting?.runId != attempt.owningRunId) {
-                        // Owning run replaced: never attach into a different
-                        // run (spec 328 defense-in-depth).
-                        ContinueOutcome.Failed
-                    } else {
-                        when (run.attachIntent(validated)) {
-                            ManualOrganizationRun.AttachIntentOutcome.Attached ->
-                                ContinueOutcome.Success(null)
-
-                            ManualOrganizationRun.AttachIntentOutcome.NotAttachable ->
-                                ContinueOutcome.NotAttachable
-                        }
-                    }
-                } else {
-                    // `start` is synchronously heavy (capture/composition/
-                    // planning) — always on IO (audit P2-1).
-                    when (val started = run.start(intent = validated)) {
-                        is ManualOrganizationRun.StartOutcome.Started ->
-                            ContinueOutcome.Success(started.runId)
-
-                        ManualOrganizationRun.StartOutcome.Busy -> ContinueOutcome.Busy
-                    }
-                }
+                connectRunOverride?.invoke(request) ?: connectRun(request)
             } catch (failure: Throwable) {
                 // A live-context failure keeps the success state operable
                 // (start() aborts the operation, then rethrows). A cancelled
@@ -1291,6 +1332,18 @@ private fun ExchangeImportField(
     // D-2 (a): the fallback editor is collapsed until requested (or until an
     // input already exists, e.g. a run-busy restore).
     var manualOpen by remember { mutableStateOf(replyText.isNotEmpty()) }
+    // Issue #328 (review): a clipboard/file receipt that was refused by the
+    // arbiter gate must stay retryable from the SAME held text — open the
+    // editor whenever the text transitions in, so the import CTA is visible
+    // without re-reading the source. An explicit user collapse is preserved
+    // for already-non-empty text.
+    var lastSeenReplyText by remember { mutableStateOf(replyText) }
+    if (replyText != lastSeenReplyText) {
+        if (lastSeenReplyText.isEmpty() && replyText.isNotEmpty()) {
+            manualOpen = true
+        }
+        lastSeenReplyText = replyText
+    }
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
             text = stringResource(R.string.exchange_import_title),
