@@ -2,7 +2,7 @@
 
 > Issue: #327
 > Spec: [spec.md](./spec.md)
-> Status: implemented (2026-09-18。実装 head `f0c176f57152cf0b3784fa5f87df7654fcab246b`、ChatGPT実装review re-review Approve。AC-1〜AC-6完了、AC-7/AC-8 evidenceのみ後続pass)
+> Status: implemented (2026-09-18。実装 head `f0c176f57152cf0b3784fa5f87df7654fcab246b`、ChatGPT実装review re-review Approve。AC-1〜AC-6完了、AC-7/AC-8 evidenceは #351 で追跡)。2026-09-19: #337 (PR #355) のv4 bumpへのdocs-only re-anchorを実施 (下記「Re-anchor (2026-09-19)」。契約・実装指示の変更なし)
 
 ## Current evidence
 
@@ -14,8 +14,18 @@ origin/main (`8fd05a40d51abd24b40a7b93579bb9b76d046f75`、#348 merge後) 時点�
 - **既存composer test**: `ExchangePackageComposerTest.kt` がsection存在と順序 (Goal / You may / Output contract / You must / Before sending / Response format)、canonical authoring form要求 (` ```json `、single fenced code block、marker行の不在)、partial authoring文言 (`Author only what you actually judged`、`you do not have to cover every ref`、`!contains("Cover every")`)、data単行、descriptor property名の全render、tamper typed rejectをassertする。本変更で **既存assertを弱めず** 拡張する。
 - **UI copyの実source**: `lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeFlowUi.kt` — `ExchangeEntryRow` (testTag `exchange-entry-title` / `exchange-entry-subtitle系` / `exchange-entry-open` / `exchange-entry-import`) と `ExchangeScopedEntryRow` (testTag `exchange-scoped-entry-*`) が `stringResource(R.string.exchange_entry_subtitle)` / `exchange_scoped_entry_subtitle` を表示。capability具体例・「直接変更しない」明示・会話flow説明は不在。送信完了は `exchange_transport_success`。#332 implementedのimport入力欄 (`exchange-import-*` testTag群) は本planの対象外。
 - **strings**: `lawnchair/res/values/strings.xml` (en) / `values-ja/strings.xml` (ja正本)。`exchange_entry_title` / `exchange_entry_subtitle` / `exchange_scoped_entry_subtitle` / `exchange_transport_success` が現行copy。#348が失敗案内4 keyを更新済み (本planでは触れない)。
-- **intent schema (exampleの対象)**: `ContextExportContract.INTENT_SCHEMA_VERSION = "personalized-intent-v3"`、`IntentWireContract` descriptor (top-level / item / globalPreference / groupSemanticの名前集合・enum・制限定数・enforcement分類つき主張)、`IntentCodec` (allow-listはdescriptor派生、compact単行JSON encode)。
+- **intent schema (exampleの対象)**: `ContextExportContract.INTENT_SCHEMA_VERSION = "personalized-intent-v3"` (起草時。2026-09-19時点の現mainは #337により `"personalized-intent-v4"` — 下記Re-anchor参照)、`IntentWireContract` descriptor (top-level / item / globalPreference / groupSemanticの名前集合・enum・制限定数・enforcement分類つき主張)、`IntentCodec` (allow-listはdescriptor派生、compact単行JSON encode)。
 - **後続evidence状況**: #205 AC-9/AC-10系・#348 AC-11 (representative provider first-pass evidence) のevidence PR慣行あり (#345 / assets-345-import-evidence)。#327のAC-7 (representative provider会話) / AC-8 (a11y) は同じ後続evidence PRに合同で載せられる。
+
+### Re-anchor (2026-09-19)
+
+実装完了後、`origin/main` (`3076bdae7ebf8dbb086f251203968c06e9986258`) に #337 (spec 337、PR #355) がlandした。本planの実装対象への影響を現main上で再確認した結果 (docs-only。実装指示・Change setの変更なし):
+
+- `ContextExportContract.INTENT_SCHEMA_VERSION` は `"personalized-intent-v4"` へbumpされた (spec 337 D-8)。`groupSemantic` は `category` / `freeText` から `categoryRef` / `proposalLabel` のexactly-one-ofへ変更されたが、いずれも本planのtemplate (judgment-bearing optional field不掲載) とOutput contract無変更前提に抵触しない。
+- canonical templateはdescriptor派生 (`CANONICAL_INTENT_TEMPLATE` が `IntentWireContract.field("schemaVersion").exactValue` と `enumClaims` を使用) のため、production出力は自動的にv4へ追従済み。本planのtemplate例の `schemaVersion` をv4へ現行化した。
+- `Issue327InterviewFirstContractTest` (AC-2 blocking oracle) は現main上で無変更のまま成立する (descriptor定数参照のためversion bumpに非依存。`CanonicalStructuralInputs.catalog` はdefault nullで既存呼出しはcompile維持)。
+- `Issue348AiFacingContractSyncTest` は #337の実装PRで既に現行契約 (exactly-one-of・`categoryRef` scope・`proposalLabel` 上限) へ更新済みで、composer出力のdescriptor派生containment保証は維持されている。
+- AC-7/AC-8のdevice/a11y evidenceは [Issue #351](https://github.com/nunu1733/NunuLauncher/issues/351) (OPEN) が追跡する。
 
 ## Design
 
@@ -36,12 +46,12 @@ origin/main (`8fd05a40d51abd24b40a7b93579bb9b76d046f75`、#348 merge後) 時点�
 instruction内のexample (静的text、fence・markerで囲まない、**具体的な整理判断を1つもseedしない**):
 
 ```json
-{"schemaVersion":"personalized-intent-v3","exportId":"REPLACE_WITH_THE_EXPORT_ID_FROM_THE_CONTEXT_DATA","itemIntents":[{"ref":"REPLACE_WITH_A_REF_YOU_HAVE_JUDGED","importance":"REPLACE_WITH_HIGH_NORMAL_OR_LOW"}],"unresolvedRefs":["REPLACE_WITH_A_REF_YOU_CANNOT_JUDGE"],"rationale":"REPLACE_WITH_ONE_SHORT_SENTENCE_ABOUT_YOUR_POLICY"}
+{"schemaVersion":"personalized-intent-v4","exportId":"REPLACE_WITH_THE_EXPORT_ID_FROM_THE_CONTEXT_DATA","itemIntents":[{"ref":"REPLACE_WITH_A_REF_YOU_HAVE_JUDGED","importance":"REPLACE_WITH_HIGH_NORMAL_OR_LOW"}],"unresolvedRefs":["REPLACE_WITH_A_REF_YOU_CANNOT_JUDGE"],"rationale":"REPLACE_WITH_ONE_SHORT_SENTENCE_ABOUT_YOUR_POLICY"}
 ```
 
-- `schemaVersion` を除く置換対象値はすべて全大文字の明示的な非実在値placeholder。`importance` は許容値を列挙するplaceholderで、ユーザーが表明していないpriority・page・region・movement方針を実値として固定しない (spec Decision 2)。
+- `schemaVersion` を除く置換対象値はすべて全大文字の明示的な非実在値placeholder。`importance` は許容値を列挙するplaceholderで、ユーザーが表明していないpriority・page・region・movement方針を実値として固定しない (spec Decision 2)。`schemaVersion` の値はdescriptorのexact値 (`ContextExportContract.INTENT_SCHEMA_VERSION`) から導出されるため、上記のversion表記は現行 (`personalized-intent-v4`) を示す。
 - 判断を伴うoptional field (`desiredGroup` / `groupSemantic` / `pageAffinity` / `regionAffinity` / `preserve` / `globalPreference`) はexampleに含めない。指示文で「Output contractの型・enum・制約に従い、CONTEXT dataと会話から実際に判断した場合だけfieldを追加し、判断していない場合はfield自体を省略する」ことを要求する。
-- v3 partial authoringの **表示例**: `itemIntents` は判断した1件、`unresolvedRefs` に未判断refの例を示す (full coverageを示唆しない)。
+- #330 partial authoring (v3で導入、#337のv4でも意味不変) の **表示例**: `itemIntents` は判断した1件、`unresolvedRefs` に未判断refの例を示す (full coverageを示唆しない)。
 - contract test (**blocking oracle**): 合成export/session fixture (MOVABLE subject 3件以上・既知 `gridContext.pageCount`。templateが言及するのは2件で、1件はどちらにも言及しない) を用意し、(1) placeholderをfixture実値へ機械置換、(2) #348 canonical authoring formどおり単一fenced `json` blockへ包む、(3) `ExchangeImportPipeline.import` で `Validated` (completion後のcanonical表現) に到達、(4) 未言及refがcanonical unresolvedへcompletionされること (#330 partial authoringの回帰) を到達条件にする。#348のgolden testと同型のproduction-truth同期であり、exampleがcodecは通っても実importで `UNKNOWN_REF` / `MOBILITY_CONTRADICTION` / `INVALID_ENUM` 等で落ちるtemplateへdriftした場合にtest失敗として検出される。
 - 補助oracle: `IntentCodec.decode` の閉schema合格、descriptor名前集合への包含、placeholder文字列が生成packageのCONTEXT data JSONと一致しないこと、example行の周囲にfence行が無いこと、INTENT marker行の不在、`ContextExportContract.INTENT_SCHEMA_VERSION` との一致。
 
@@ -88,8 +98,8 @@ instruction内のexample (静的text、fence・markerで囲まない、**具体�
 | AC-4 | entry row UI test (testTag配下のtext、idle/scoped両方) + strings存在 (en/ja) | unit (Robolectric) |
 | AC-5 | 導線説明/transport success copyの文言test | 同上 |
 | AC-6 | 依存review (instruction全文・UI copy走査、provider固有機能の要求不在) — 実装PRのreview記録 | review |
-| AC-7 | representative provider会話のdevice evidence (ChatGPT/Gemini: 質問→要約→了承→Intent生成→import まで) | physical device、docs/assessment/ またはIssueへ記録 (後続evidence PR可) |
-| AC-8 | TalkBack / large fontでの説明とCTAのevidence (ja/en) | 手動 (#205/#348系の後続evidence PRと合同可) |
+| AC-7 | representative provider会話のdevice evidence (ChatGPT/Gemini: 質問→要約→了承→Intent生成→import まで) | physical device、docs/assessment/ またはIssueへ記録 (後続evidence PR可)。**#351で追跡** |
+| AC-8 | TalkBack / large fontでの説明とCTAのevidence (ja/en) | 手動 (#205/#348系の後続evidence PRと合同可)。**#351で追跡** |
 
 含める観察: unit/contract (instruction内容・example schema適合・package構造回帰・#348同期test回帰)、UI (説明表示・両locale strings)、手動 (a11y・representative会話)。`spotlessCheck` と `assembleLawnWithQuickstepGithubDebug` を実装PRで実行する。
 
@@ -103,8 +113,8 @@ instruction内のexample (静的text、fence・markerで囲まない、**具体�
 ## Dependencies and blockers
 
 - blockerなし。#204/#205/#331/#330/#329/#332/#348はすべてimplemented (本planのbaselineで確認)。
-- **#328 (import成功後の状態明示、OPEN)**: 本planはimport成功後UIに触れない (spec Non-goals)。
-- schema/instruction契約の将来変更 (#330系の追加等) が入る場合、canonical exampleの更新は同一PRで行う (本planのcontract testが乖離を検出する)。
+- **#328 (import成功後の状態明示、PR #353実装merge済み・Issue OPEN)**: 本planはimport成功後UIに触れない (spec Non-goals)。
+- schema/instruction契約の将来変更 (#330系の追加等) が入る場合、canonical exampleの更新は同一PRで行う (本planのcontract testが乖離を検出する)。実績: #337 (PR #355) のv4 bumpではtemplateがdescriptor派生のため自動追従し、`Issue327InterviewFirstContractTest` は無変更のまま成立した (上記Re-anchor参照)。
 
 ## Risks
 
@@ -129,6 +139,6 @@ instruction内のexample (静的text、fence・markerで囲まない、**具体�
 - [ ] entry row capability説明 + strings (ja/en)。
 - [ ] UI test・依存review記録。
 - [ ] `spotlessCheck` / `assembleLawnWithQuickstepGithubDebug` 実行記録。
-- [ ] AC-7 representative provider会話evidence (後続evidence PR可)。
-- [ ] AC-8 a11y evidence (後続evidence PR可)。
+- [ ] AC-7 representative provider会話evidence (後続evidence PR可。**#351で追跡**)。
+- [ ] AC-8 a11y evidence (後続evidence PR可。**#351で追跡**)。
 - [ ] PR evidenceとremaining risksの記録。
