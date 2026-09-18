@@ -73,8 +73,8 @@ class ContextExportCodecTest {
 
         val decoded = ContextExportCodec.decode(bytes)
         assertTrue(decoded is ContextExportResult.Success)
-        // Symmetric decode reproduces the same export content: the decoded
-        // document re-encodes to the identical bytes.
+        // Decoding is a validation pass over the payload; the codec's success
+        // value is the payload itself, so equality here re-checks the bytes.
         assertEquals(bytes.decodeToString(), (decoded as ContextExportResult.Success).bytes.decodeToString())
         // Decoding only validates; the encoded payload is the contract.
         assertTrue(ContextExportCodec.decode((ContextExportCodec.encode(export) as ContextExportResult.Success).bytes) is ContextExportResult.Success)
