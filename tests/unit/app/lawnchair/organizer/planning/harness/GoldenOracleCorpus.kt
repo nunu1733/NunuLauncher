@@ -147,6 +147,7 @@ internal object GoldenOracleCorpus {
     private fun folderNamingToken(naming: FolderNaming): String = when (naming) {
         is FolderNaming.FromCategory -> "fromCategory:${naming.category.value}"
         is FolderNaming.FromUserCategory -> "fromUserCategory:${naming.id.value}"
+        is FolderNaming.FromProposalLabel -> "fromProposalLabel:${naming.label}"
     }
 
     private fun warningToken(warning: app.lawnchair.organizer.planning.Warning): String = "${warning.code.name}|${warning.params.joinToString(",") { paramToken(it) }}"

@@ -378,11 +378,20 @@
     <!-- Issue #205: External Agent Exchange -->
     <string name="exchange_entry_title">外部AIによる整理案</string>
     <string name="exchange_entry_subtitle">ChatGPT等の外部AIへの依頼文を作成し、回答を検証付きで取り込めます。</string>
+    <!-- Issue #327: user-facing capability explanation (ja正本) -->
+    <string name="exchange_capability_title">AIでできること</string>
+    <string name="exchange_capability_example_frequent">よく使うアプリを優先的に配置する</string>
+    <string name="exchange_capability_example_group">関連するアプリをまとめる</string>
+    <string name="exchange_capability_example_keep">動かしたくないアプリはそのまま維持する</string>
+    <string name="exchange_capability_example_front">重要なアプリを前のページに寄せる</string>
+    <string name="exchange_capability_example_minimal_change">今の配置をできるだけ崩さない</string>
+    <string name="exchange_capability_no_direct_change">AIがホーム画面を直接変更することはありません。再整理に使う「あなたの希望・傾向」を作ります。</string>
+    <string name="exchange_capability_flow">相談はChatGPT等の外部AIアプリ内で行われます。依頼文は1回送り、AIからの質問 (2〜4問) に答えて整理方針を確認すると、最終案を1回だけ受け取れます。会話の内容がNunuLauncherに送信されることはありません。</string>
     <string name="exchange_entry_open">依頼文を作成</string>
     <string name="exchange_entry_import">回答を取り込む</string>
     <string name="exchange_privacy_title">外部送信のプライバシー</string>
     <string name="exchange_privacy_redacted">アプリ名を含めない (既定)</string>
-    <string name="exchange_privacy_labels">アプリ名を含める</string>
+    <string name="exchange_privacy_labels">アプリ名とカテゴリ名を含める</string>
     <string name="exchange_privacy_labels_warning">依頼文にアプリ名・フォルダ名が含まれます。</string>
     <string name="exchange_replacement_notice">未完了の交換があります。新規作成すると無効になります。</string>
     <string name="exchange_replacement_title">既存の交換を置き換えますか?</string>
@@ -394,13 +403,13 @@
     <string name="exchange_cancel">キャンセル</string>
     <string name="exchange_close">閉じる</string>
     <string name="exchange_disclosure_title">送信前の確認</string>
-    <string name="exchange_disclosure_redacted">この依頼文にアプリ名・パッケージ名・生の使用状況は含まれません。</string>
-    <string name="exchange_disclosure_labels_included">この依頼文にはアプリ名・フォルダ名が含まれます。</string>
+    <string name="exchange_disclosure_redacted">この依頼文にアプリ名・パッケージ名・生の使用状況は含まれません。カテゴリの一覧 (ユーザー定義を含む) は含まれますが、その名前は含まれません。</string>
+    <string name="exchange_disclosure_labels_included">この依頼文にはアプリ名・フォルダ名と、ユーザー定義カテゴリの名前が含まれます。</string>
     <string name="exchange_disclosure_hint">この内容を任意のAIアプリへ送信します。送信方法を選ぶまで何も送信されません。</string>
     <string name="exchange_copy">コピー</string>
     <string name="exchange_share">共有…</string>
     <string name="exchange_save_file">ファイルに保存</string>
-    <string name="exchange_transport_success">送信 (またはコピー) しました。後でAIの回答を貼り付けて取り込めます。</string>
+    <string name="exchange_transport_success">依頼文をコピー・共有・保存しました。外部AIアプリへ渡した後、質問 (2〜4問) に答えて整理方針を確認すると、最終案を1回だけ受け取れます。その回答を貼り付けて取り込んでください。</string>
     <string name="exchange_transport_clipboard_failed">クリップボードを利用できません。共有またはファイル保存を試してください。</string>
     <string name="exchange_transport_share_absent">共有先のアプリが見つかりません。コピーまたはファイル保存を利用してください。</string>
     <string name="exchange_transport_file_failed">ファイル操作に失敗しました。再試行するか別の送信方法を利用してください。</string>
@@ -410,9 +419,8 @@
     <string name="exchange_import_from_file">ファイルから</string>
     <string name="exchange_import_result_title">取り込み結果</string>
     <string name="exchange_import_result_unknown">回答を利用できませんでした。</string>
-    <string name="exchange_import_retry_hint">AIにマーカー行で囲んだ最終JSONを再送してもらい、再度取り込んでください。</string>
+    <string name="exchange_import_retry_hint">AIに最終JSONを```jsonコードブロック1つで再送してもらい、再度取り込んでください。</string>
     <string name="exchange_import_retry">再取り込み</string>
-    <string name="exchange_import_accepted">整理案を検証しました。プレビューを生成します…</string>
     <string name="exchange_run_busy">整理が実行中のため取り込めません。終了後に再度取り込んでください。</string>
     <string name="exchange_import_from_clipboard">クリップボードから読み込む</string>
     <string name="exchange_import_fallback_toggle">詳細 / うまく読み込めない場合</string>
@@ -433,11 +441,11 @@
     <string name="exchange_generation_store_failure">交換セッションを作成できませんでした。何も送信されていません。</string>
     <string name="exchange_generation_oversize">レイアウトが大きすぎて依頼文を作成できません。</string>
     <string name="exchange_failure_input_oversize">回答が大きすぎます。前後の文章を減らして再度取り込んでください。</string>
-    <string name="exchange_failure_framing_missing">回答にマーカーで囲まれた整理案がありません。マーカー行で囲んだJSONを再送してもらってください。</string>
+    <string name="exchange_failure_framing_missing">回答にマーカーで囲まれた整理案がありません。AIに最終JSONを```jsonコードブロック1つで再送してもらうか、JSONだけを貼り付けてください。</string>
     <string name="exchange_failure_framing_ambiguous">回答に複数のマーカー囲みの領域があります。最終のJSONを1つだけ送ってもらってください。</string>
-    <string name="exchange_failure_framing_empty">マーカー内が空です。JSONを再送してもらってください。</string>
+    <string name="exchange_failure_framing_empty">マーカー内が空です。AIに最終JSONを```jsonコードブロック1つで再送してもらってください。</string>
     <string name="exchange_failure_normalization_ambiguous">回答に複数のコードブロックがあります。最後のJSONブロックだけをコピーして、再度取り込んでください。</string>
-    <string name="exchange_failure_normalization_unrecognized">取り込める形式がありません。マーカー行で囲んだJSONを再送してもらうか、```jsonブロックを1つだけにするか、JSONだけを貼り付けてください。</string>
+    <string name="exchange_failure_normalization_unrecognized">取り込める形式がありません。AIに最終JSONを```jsonコードブロック1つで再送してもらうか、JSONだけを貼り付けてください（従来のマーカー形式も利用できます）。</string>
     <string name="exchange_failure_schema_mismatch">回答が期待するintent形式ではありません。</string>
     <string name="exchange_failure_export_mismatch">回答が古い依頼宛です。新しい依頼文を作成して再依頼してください。</string>
     <string name="exchange_failure_session_expired">依頼の有効期限 (24時間) が切れています。新しい依頼文を作成してください。</string>
@@ -451,11 +459,58 @@
     <string name="exchange_failure_mobility_contradiction">整理案が移動できない項目を動かそうとしています。</string>
     <string name="exchange_failure_capability_unsupported">整理案が未対応の機能を使用しています。</string>
     <string name="exchange_failure_scope_mismatch">選択したアプリが依頼内容と一致していません。同じアプリを選び直すか、依頼を再作成してください。</string>
+    <string name="exchange_failure_unknown_category_ref">回答が参照したカテゴリは現在利用できません。依頼を再作成して、もう一度回答を得てください。</string>
     <string name="exchange_scoped_entry_title">選択したアプリをAIの依頼に含める</string>
     <string name="exchange_scoped_entry_subtitle">現在のホームと選択したアプリをまとめて依頼文に含め、AIにすべての対象を判断してもらえます。</string>
     <string name="exchange_scoped_entry_open">依頼文を作成</string>
     <string name="exchange_scoped_freeze_notice">AI依頼の作成中はアプリの選択を変更できません。取り消すと再編集できます。</string>
     <plurals name="exchange_scope_intent_count">
         <item quantity="other">AIの提案にはホームに未配置のアプリ%1$d件が含まれます。提案を利用するにはそれらを選択してください。</item>
+    </plurals>
+
+    <!-- Issue #328: 取り込み成功状態とtyped案内。 -->
+    <string name="exchange_import_success_title">提案を取り込みました</string>
+    <string name="exchange_import_success_warning_title">提案を取り込みました (判断なしの項目があります)</string>
+    <string name="exchange_import_not_applied">まだホーム画面には適用されていません。</string>
+    <string name="exchange_import_cta_idle">この提案で整理を進める</string>
+    <string name="exchange_import_cta_run_in">選択に戻って整理を確定する</string>
+    <string name="exchange_import_discard">破棄して閉じる</string>
+    <string name="exchange_import_discard_confirm_title">取り込みを破棄しますか?</string>
+    <string name="exchange_import_discard_confirm_body">取り込んだ提案は保存されません。依頼が有効な間は、同じ回答を再度取り込めます。</string>
+    <string name="exchange_import_discard_confirm_confirm">破棄</string>
+    <string name="exchange_import_discarded_guidance">取り込みを破棄しました。依頼が有効な間は、同じ回答を再度取り込めます。</string>
+    <string name="exchange_import_summary_global_minimize">全体方針: 現状の配置をなるべく維持する</string>
+    <string name="exchange_import_strategy_busy">整理方法を変更しています。完了後に再度取り込んでください。</string>
+    <string name="exchange_import_cta_strategy_busy">整理方法を変更しています。完了後に再度お試しください。</string>
+    <string name="exchange_import_cta_failed">整理を開始できませんでした。もう一度お試しください。</string>
+    <string name="exchange_start_frozen_import">取り込みを確認中のため、整理を開始できません。</string>
+    <string name="exchange_strategy_frozen_import">取り込みを確認中のため、整理方法は変更できません。</string>
+    <string name="exchange_strategy_frozen_continuing">整理を開始しているため、整理方法は変更できません。</string>
+    <plurals name="exchange_import_summary_recognized">
+        <item quantity="other">提案から%1$d件の希望を認識しました。</item>
+    </plurals>
+    <plurals name="exchange_import_summary_no_judgment">
+        <item quantity="other">判断なしの項目が%1$d件あります (希望なしとして整理されます)。</item>
+    </plurals>
+    <plurals name="exchange_import_summary_scope_candidates">
+        <item quantity="other">この依頼にはホームに未配置のアプリ%1$d件が含まれます。</item>
+    </plurals>
+    <plurals name="exchange_import_summary_priority">
+        <item quantity="other">優先度の指定: %1$d件</item>
+    </plurals>
+    <plurals name="exchange_import_summary_existing_category">
+        <item quantity="other">既存カテゴリを参照する項目: %1$d件</item>
+    </plurals>
+    <plurals name="exchange_import_summary_proposed_group">
+        <item quantity="other">今回だけの新しいグループ提案: %1$d件 (保存されません)</item>
+    </plurals>
+    <plurals name="exchange_import_summary_group">
+        <item quantity="other">グループの希望: %1$d件</item>
+    </plurals>
+    <plurals name="exchange_import_summary_placement">
+        <item quantity="other">配置先の希望: %1$d件</item>
+    </plurals>
+    <plurals name="exchange_import_summary_keep">
+        <item quantity="other">位置の維持の希望: %1$d件</item>
     </plurals>
 </resources>
