@@ -773,4 +773,108 @@ class IntentPreferenceConsumptionTest {
             compareBy({ (it.target as PlacementTarget.WorkspaceTarget).page.toString() }, { (it.target as PlacementTarget.WorkspaceTarget).cell.y }),
         )
         .map { it.item }
+
+    // Issue #337 (spec 337 AC-8, review finding): the validator corpus cases
+    // must also be pinned on the planner side — the semantic unit is the
+    // formation key, so a component whose members declare different semantics
+    // splits into the groups of those keys.
+    @Test
+    fun mixedSemanticsInsideOneComponentSplitIntoDistinctFormationGroups() {
+        val items = listOf(
+            app("a", x = 0, y = 0),
+            app("b", x = 1, y = 0),
+            app("c", x = 2, y = 0),
+            app("d", x = 3, y = 0),
+        )
+        val input = baseInput(items)
+        // One component (a↔b) whose members declare different semantics, and
+        // one component (c↔d) whose members declare different labels.
+        val planned = planner.plan(
+            withIntent(
+                input,
+                listOf(
+                    ItemIntent(
+                        ref = "a",
+                        desiredGroupRefs = listOf("b"),
+                        groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                            categoryRef = "GAMES",
+                            proposalLabel = null,
+                        ),
+                    ),
+                    ItemIntent(
+                        ref = "b",
+                        groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                            categoryRef = null,
+                            proposalLabel = "Morning",
+                        ),
+                    ),
+                    ItemIntent(
+                        ref = "c",
+                        desiredGroupRefs = listOf("d"),
+                        groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                            categoryRef = null,
+                            proposalLabel = "Evening",
+                        ),
+                    ),
+                    ItemIntent(
+                        ref = "d",
+                        groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                            categoryRef = null,
+                            proposalLabel = "Night",
+                        ),
+                    ),
+                ),
+            ).first,
+        ).outcome as Planned
+
+        // The mixed component (a,b) yields two distinct keys: a lone member of
+        // each, so no folder forms for it (below minGroupSize); the label pair
+        // (c,d) is two different labels, so also two lone members. The point of
+        // this oracle is determinism plus the absence of any merged group.
+        val namings = planned.newFolders.map { it.naming }.toSet()
+        assertTrue("no existing-category group for a single member", FolderNaming.FromCategory(CategoryId("GAMES")) !in namings)
+        assertTrue("distinct labels never merge", FolderNaming.FromProposalLabel("Evening") !in namings)
+        assertTrue(FolderNaming.FromProposalLabel("Night") !in namings)
+        // Deterministic reproduction.
+        assertEquals(
+            planned,
+            planner.plan(
+                withIntent(
+                    input,
+                    listOf(
+                        ItemIntent(
+                            ref = "a",
+                            desiredGroupRefs = listOf("b"),
+                            groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                                categoryRef = "GAMES",
+                                proposalLabel = null,
+                            ),
+                        ),
+                        ItemIntent(
+                            ref = "b",
+                            groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                                categoryRef = null,
+                                proposalLabel = "Morning",
+                            ),
+                        ),
+                        ItemIntent(
+                            ref = "c",
+                            desiredGroupRefs = listOf("d"),
+                            groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                                categoryRef = null,
+                                proposalLabel = "Evening",
+                            ),
+                        ),
+                        ItemIntent(
+                            ref = "d",
+                            groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                                categoryRef = null,
+                                proposalLabel = "Night",
+                            ),
+                        ),
+                    ),
+                ).first,
+            ).outcome as Planned,
+        )
+    }
 }

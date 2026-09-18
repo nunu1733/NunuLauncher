@@ -490,6 +490,33 @@ class ExchangeImportPipelineTest {
             )
             assertTrue(result is ExchangeImportResult.Validated)
 
+            // Issue #337 (AC-6, review finding): continue past validation into
+            // the plan step with the same accepted intent.
+            val validated = (result as ExchangeImportResult.Validated).validated
+            val projection = app.lawnchair.organizer.personalization.IntentPlannerAdapter.project(validated)
+            val plannerInput = app.lawnchair.organizer.planning.OrganizationInput(
+                snapshot = snapshot,
+                rules = app.lawnchair.organizer.planning.RuleSemantics(
+                    version = app.lawnchair.organizer.planning.RuleVersion("v2"),
+                    folderPolicy = app.lawnchair.organizer.planning.FolderPolicy(
+                        2,
+                        app.lawnchair.organizer.planning.NewFolderProfileScope.SAME_PROFILE_ONLY,
+                    ),
+                    dockPolicy = app.lawnchair.organizer.planning.DockPolicy.PRESERVE,
+                    overflowPolicy = app.lawnchair.organizer.planning.OverflowPolicy.ADD_PAGES_FOR_ITEMS_THAT_FIT_EMPTY_PAGE,
+                    fallbackCategoryPolicy = app.lawnchair.organizer.planning.FallbackCategoryPolicy.KEEP_AS_SINGLETON,
+                    organizationStrategy = app.lawnchair.organizer.planning.StrategyId("CANONICAL_PAGE_COMPACT_V1"),
+                ),
+                taxonomy = catalog.builtIn,
+                catalog = catalog,
+                signals = app.lawnchair.organizer.planning.ClassificationSignals(emptyList()),
+                targets = targets,
+                runMode = app.lawnchair.organizer.planning.RunMode.FullOrganization,
+                intentPreferences = projection,
+            )
+            val planned = app.lawnchair.organizer.planning.DeterministicOrganizationPlanner().plan(plannerInput)
+            assertTrue(planned.outcome is app.lawnchair.organizer.planning.Planned)
+
             val after = access.readStored() as app.lawnchair.organizer.rules.UserDefinedCategoryStoredReadResult.Ready
             assertEquals("the stored identity/digest is unchanged", before.snapshot.identity, after.snapshot.identity)
             assertEquals("the stored entries are unchanged", before.snapshot.categories, after.snapshot.categories)
