@@ -47,6 +47,7 @@ import app.lawnchair.organizer.rules.sha256Canonical
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -717,6 +718,38 @@ class OrganizationInputComposerTest {
             requests: List<ClassificationEvidenceRequest>,
             policy: ClassificationPolicy,
         ): PlatformEvidenceReadResult = result ?: PlatformEvidenceReadResult.Ready(values[minOf(index++, values.lastIndex)])
+    }
+
+    /**
+     * Issue #337 (independent audit finding): the production adapter must
+     * thread the composition's category catalog into BOTH the export inputs
+     * and the import-time structural inputs. Without it the export advertises
+     * no category at all and every authored `categoryRef` fails closed, so the
+     * spec's normal path would be unreachable in the product.
+     */
+    @Test
+    fun exchangeAdapterThreadsTheCompositionCatalogIntoBothDirections() {
+        val adapter = app.lawnchair.organizer.integration.exchange.ExchangeInputAdapter(
+            composer = composer(CanonicalFixtures.state(items = listOf(app("a", "personal", "com.example.a/.Main")))),
+            titleSource = app.lawnchair.organizer.integration.exchange.ExchangeItemTitleSource { emptyMap() },
+        )
+        val exportInputs = when (val result = adapter.composeForExport(nowEpochMs = 1L)) {
+            is app.lawnchair.organizer.integration.exchange.ExchangeInputResult.ExportReady -> result.inputs
+
+            is app.lawnchair.organizer.integration.exchange.ExchangeInputResult.NotReady ->
+                error("composition not ready: ${result.reason}")
+        }
+        val catalog = exportInputs.catalog
+        assertNotNull("the export inputs carry the composition catalog", catalog)
+        assertTrue("the advertised catalog is non-empty", catalog!!.allowedIdentities.isNotEmpty())
+
+        val structural = when (val result = adapter.currentStructural()) {
+            is app.lawnchair.organizer.integration.exchange.ExchangeStructuralResult.Ready -> result.structural
+
+            is app.lawnchair.organizer.integration.exchange.ExchangeStructuralResult.NotReady ->
+                error("composition not ready: ${result.reason}")
+        }
+        assertEquals("the import direction uses the same composition catalog", catalog, structural.catalog)
     }
 }
 

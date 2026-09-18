@@ -2,6 +2,7 @@ package app.lawnchair.organizer.personalization
 
 import app.lawnchair.organizer.planning.CandidatePlanningIds
 import app.lawnchair.organizer.planning.CandidateTarget
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.ItemId
 
 /**
@@ -12,12 +13,14 @@ import app.lawnchair.organizer.planning.ItemId
  */
 object ContextExportContract {
     /**
-     * Issue #330 (v3, spec 330 D-3): partial intent authoring — an unmentioned
-     * ref is completed to canonical unresolved; the v2 full-coverage rule is
-     * retired. Bumped together with [INTENT_SCHEMA_VERSION] because the export
-     * advertises the intent schema (spec 204 immutable semantic version rule).
+     * Issue #337 (v4, spec 337 D-1/D-3): every category exposure became an
+     * export-scoped ref into the envelope `categories` projection, the intent
+     * `groupSemantic` split into exactly-one-of `categoryRef` / `proposalLabel`,
+     * and the proposal label adopts the #336 category-name domain. Bumped
+     * together with [INTENT_SCHEMA_VERSION] (spec 204 immutable semantic
+     * version rule; #330's [INTENT_SCHEMA_VERSION] bump precedent).
      */
-    const val SCHEMA_VERSION = "personalization-context-v3"
+    const val SCHEMA_VERSION = "personalization-context-v4"
 
     /** V1 fixed capability set: the export always advertises all six. */
     val FIXED_CAPABILITIES: Set<IntentCapability> = setOf(
@@ -29,8 +32,8 @@ object ContextExportContract {
         IntentCapability.GLOBAL_PREFERENCE,
     )
 
-    /** Issue #330 (v3): partial authoring; see [SCHEMA_VERSION]. */
-    const val INTENT_SCHEMA_VERSION = "personalized-intent-v3"
+    /** Issue #337 (v4): see [SCHEMA_VERSION]. */
+    const val INTENT_SCHEMA_VERSION = "personalized-intent-v4"
 
     // Content limits (spec 204 "content limits (V1)"). Overshoot is OVERSIZE.
     const val MAX_EXPORT_ITEMS = 512
@@ -39,8 +42,15 @@ object ContextExportContract {
     const val MAX_INTENT_UNRESOLVED = 512
     const val MAX_INTENT_BYTES = 128 * 1024
     const val MAX_FREE_TEXT_CHARS = 200
-    const val MAX_GROUP_SEMANTIC_FREE_TEXT_CHARS = 100
     const val MAX_RATIONALE_CHARS = 500
+
+    /**
+     * Issue #348: the intent `confidence` numeric constraint, named once so
+     * the model check, the codec check, and the AI-facing wire descriptor
+     * render the same bounds instead of duplicating `0..100` literals.
+     */
+    const val CONFIDENCE_MIN = 0
+    const val CONFIDENCE_MAX = 100
 
     /** V1 export session TTL (spec 204 生成規則): 24 hours. */
     const val SESSION_TTL_MS: Long = 24L * 60L * 60L * 1000L
@@ -54,12 +64,82 @@ enum class PrivacyTier {
 }
 
 /**
- * User-authored free-text class (app label, folder title, and any other
- * user-entered text). Every export field that carries such text must belong to
- * this class so tier control stays single-point.
+ * User-authored free-text class (app label, folder title, user-defined
+ * category display name, and any other user-entered text). Every export field
+ * that carries such text must belong to this class so tier control stays
+ * single-point.
  */
 enum class FreeTextClass {
     APP_LABEL,
+
+    /**
+     * Issue #337 (v4): the display name of a user-defined category in the
+     * envelope `categories` projection (`ExportCategory.displayName`). The
+     * built-in taxonomy id is NOT free text and never belongs to this class.
+     */
+    USER_CATEGORY_NAME,
+}
+
+/**
+ * Issue #337 (v4, spec 337 D-1/D-2): the user-authored display name carrier of
+ * an advertised user-defined category. The free-text class is part of the model
+ * so the single-point tier control can be audited per field (spec 204
+ * "FreeTextClass" discipline); the built-in taxonomy id is NOT free text and
+ * never uses this carrier.
+ */
+data class ExportCategoryName(
+    val freeTextClass: FreeTextClass,
+    val value: String,
+) {
+    init {
+        require(freeTextClass == FreeTextClass.USER_CATEGORY_NAME)
+        require(value.isNotEmpty())
+        require(value.length <= ContextExportContract.MAX_FREE_TEXT_CHARS)
+    }
+}
+
+/**
+ * Issue #337 (v4, spec 337 D-1): the kind of one advertised category entry.
+ * The value itself carries no personal data.
+ */
+enum class CategoryRefKind {
+    BUILT_IN,
+    USER_DEFINED,
+}
+
+/**
+ * Issue #337 (v4, spec 337 D-1/D-2): one advertised category of the export's
+ * `categories` projection — the only way an intent can reference an existing
+ * (built-in or user-defined) category. The [ref] is an export-scoped random
+ * identifier from the same allocator seam and entropy contract as the item
+ * refs; the ref → `CategoryIdentity` mapping lives in the export session only,
+ * so neither the stable `UserCategoryId` nor the display name is an identity.
+ *
+ * - [taxonomyId]: the immutable built-in taxonomy value; present iff
+ *   [kind] is [CategoryRefKind.BUILT_IN]. It is a taxonomy enum spelling, not
+ *   user-authored free text, so every privacy tier carries it.
+ * - [displayName]: the user-authored free-text class carrier
+ *   ([FreeTextClass.USER_CATEGORY_NAME]); present iff [kind] is
+ *   [CategoryRefKind.USER_DEFINED] and the export's privacy tier admits that
+ *   class (`EXTERNAL_REDACTED` never carries it).
+ */
+data class ExportCategory(
+    val ref: String,
+    val kind: CategoryRefKind,
+    val taxonomyId: String? = null,
+    val displayName: ExportCategoryName? = null,
+) {
+    init {
+        require(ref.isNotEmpty())
+        when (kind) {
+            CategoryRefKind.BUILT_IN -> {
+                require(taxonomyId != null && taxonomyId.isNotEmpty())
+                require(displayName == null)
+            }
+
+            CategoryRefKind.USER_DEFINED -> require(taxonomyId == null)
+        }
+    }
 }
 
 /**
@@ -229,13 +309,17 @@ data class ExportPageAffinity(
 data class ExportItem(
     val ref: String,
     val role: ExportItemRole,
-    /** Resolved project category (override included) or null. */
-    val category: String?,
     /**
-     * Existing folder semantic as taxonomy projection. Folder titles are
-     * user-authored free text and never projected.
+     * Issue #337 (v4): resolved project category (override included) as an
+     * advertised [ExportCategory] ref, or null. Never a raw built-in value, a
+     * `UserCategoryId`, or a display name (spec 337 D-1/D-3).
      */
-    val groupSemantic: String?,
+    val categoryRef: String?,
+    /**
+     * Existing folder semantic as an advertised category ref. Folder titles
+     * are user-authored free text and never projected.
+     */
+    val folderCategoryRef: String?,
     val label: ExportItemLabel?,
     val pageAffinity: ExportPageAffinity?,
     val regionAffinity: ExportRegionKind?,
@@ -258,9 +342,11 @@ data class ExportItem(
         if (subject == ExportItemSubject.CANDIDATE) {
             require(mobility == Mobility.CANDIDATE)
             require(role == ExportItemRole.APP_OR_SHORTCUT)
-            require(pageAffinity == null && regionAffinity == null && groupSemantic == null)
+            require(pageAffinity == null && regionAffinity == null && folderCategoryRef == null)
         }
         if (mobility == Mobility.CANDIDATE) require(subject == ExportItemSubject.CANDIDATE)
+        if (categoryRef != null) require(categoryRef.isNotEmpty())
+        if (folderCategoryRef != null) require(folderCategoryRef.isNotEmpty())
     }
 }
 
@@ -271,6 +357,12 @@ data class PersonalizationContextExportV1(
     val tier: PrivacyTier,
     val grid: ExportGridContext,
     val items: List<ExportItem>,
+    /**
+     * Issue #337 (v4): the active category catalog projection (built-in
+     * members plus every user-defined entry) in canonical identity order. The
+     * only category namespace an intent may reference.
+     */
+    val categories: List<ExportCategory>,
     val preservedConstraints: PreservedConstraints,
     val capabilities: ExportCapabilities,
     val usageSignals: UsageSignalsSection?,
@@ -286,6 +378,18 @@ data class PersonalizationContextExportV1(
         usageSignals?.let { section ->
             require(section.entries.size <= ContextExportContract.MAX_EXPORT_ITEMS)
             require(section.entries.all { it.ref in itemRefs })
+        }
+        // Issue #337: the advertised category ref namespace is its own
+        // allow-list — unique, disjoint from the item ref namespace, and the
+        // only namespace item category projection may point into.
+        val categoryRefs = categories.map { it.ref }
+        require(categoryRefs.toSet().size == categoryRefs.size)
+        val categoryRefSet = categoryRefs.toSet()
+        require(itemRefs.intersect(categoryRefSet).isEmpty())
+        require(items.all { it.categoryRef == null || it.categoryRef in categoryRefSet })
+        require(items.all { it.folderCategoryRef == null || it.folderCategoryRef in categoryRefSet })
+        if (tier == PrivacyTier.EXTERNAL_REDACTED) {
+            require(categories.none { it.kind == CategoryRefKind.USER_DEFINED && it.displayName != null })
         }
     }
 }
@@ -326,6 +430,14 @@ data class ExportSession(
      * (spec 331 D-4). Session-local; never part of the export document.
      */
     val scopeCandidateDigest: String = CandidateScopeIdentity.EMPTY_DIGEST,
+    /**
+     * Issue #337 (v4): the advertised category ref → stable `CategoryIdentity`
+     * mapping (spec 337 D-1/D-5). App-private and never part of the export
+     * document: it is the only place a category ref resolves to an identity, so
+     * the document itself carries no stable identifier. Empty for a session
+     * record written before v4 (those refs cannot resolve -> typed fail-closed).
+     */
+    val categoryRefs: Map<String, CategoryIdentity> = emptyMap(),
 ) {
     init {
         require(exportId.isNotEmpty())
@@ -335,6 +447,7 @@ data class ExportSession(
         if (scopeCandidates.isNotEmpty()) {
             require(scopeCandidates.all { CandidatePlanningIds.planningId(it) in itemRefs.values.toSet() })
         }
+        require(categoryRefs.keys.none { it in itemRefs.keys })
     }
 
     fun isExpired(nowEpochMs: Long): Boolean = nowEpochMs >= expiresAtEpochMs

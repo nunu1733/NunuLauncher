@@ -1,5 +1,6 @@
 package app.lawnchair.organizer.personalization
 
+import app.lawnchair.organizer.rules.UserDefinedCategoryNameRules
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
@@ -27,26 +28,10 @@ object IntentCodec {
         "script", "code", "command", "reservation", "occupy", "favorites",
     )
 
-    private val ALLOWED_TOP_KEYS = setOf(
-        "schemaVersion",
-        "exportId",
-        "itemIntents",
-        "unresolvedRefs",
-        "globalPreference",
-        "rationale",
-        "confidence",
-    )
-    private val ALLOWED_ITEM_KEYS = setOf(
-        "ref",
-        "importance",
-        "desiredGroup",
-        "groupSemantic",
-        "pageAffinity",
-        "regionAffinity",
-        "preserve",
-    )
-    private val ALLOWED_GLOBAL_KEYS = setOf("minimizeMovement")
-    private val ALLOWED_SEMANTIC_KEYS = setOf("category", "freeText")
+    private val ALLOWED_TOP_KEYS = IntentWireContract.topLevel.map { it.name }.toSet()
+    private val ALLOWED_ITEM_KEYS = IntentWireContract.item.map { it.name }.toSet()
+    private val ALLOWED_GLOBAL_KEYS = IntentWireContract.globalPreference.map { it.name }.toSet()
+    private val ALLOWED_SEMANTIC_KEYS = IntentWireContract.groupSemantic.map { it.name }.toSet()
 
     private val json = Json
 
@@ -99,7 +84,7 @@ object IntentCodec {
         val confidence = when (val decoded = obj.optInt("confidence")) {
             is Optional.Invalid -> return IntentDecodeResult.Failure(IntentValidationFailure.InvalidEnum)
 
-            is Optional.Present -> decoded.value?.takeIf { it in 0..100 }
+            is Optional.Present -> decoded.value?.takeIf { it in ContextExportContract.CONFIDENCE_MIN..ContextExportContract.CONFIDENCE_MAX }
                 ?: return IntentDecodeResult.Failure(IntentValidationFailure.InvalidEnum)
 
             is Optional.Absent -> null
@@ -135,8 +120,8 @@ object IntentCodec {
                                 put(
                                     "groupSemantic",
                                     buildJsonObject {
-                                        semantic.category?.let { put("category", JsonPrimitive(it)) }
-                                        semantic.freeText?.let { put("freeText", JsonPrimitive(it)) }
+                                        semantic.categoryRef?.let { put("categoryRef", JsonPrimitive(it)) }
+                                        semantic.proposalLabel?.let { put("proposalLabel", JsonPrimitive(it)) }
                                     },
                                 )
                             }
@@ -237,14 +222,29 @@ object IntentCodec {
         for (key in semanticObj.keys) {
             if (key !in ALLOWED_SEMANTIC_KEYS) return Decoded.Failure(IntentValidationFailure.SchemaMismatch)
         }
-        val category = semanticObj.optString("category")
-        val freeText = semanticObj.optString("freeText")
-        if (freeText != null && freeText.length > ContextExportContract.MAX_GROUP_SEMANTIC_FREE_TEXT_CHARS) {
+        val categoryRef = semanticObj.optString("categoryRef")
+        val rawLabel = semanticObj.optString("proposalLabel")
+        // Issue #337 (spec 337 D-4): exactly one of the two fields. Both set
+        // (or neither) leaves the grouping authority undecided; the shape
+        // violation mirrors the pre-v4 empty-object case.
+        if ((categoryRef == null) == (rawLabel == null)) {
+            return Decoded.Failure(IntentValidationFailure.SchemaMismatch)
+        }
+        if (categoryRef != null && categoryRef.isEmpty()) {
+            return Decoded.Failure(IntentValidationFailure.SchemaMismatch)
+        }
+        // The proposal label adopts the #336 category-name domain verbatim
+        // (single canonical rule, so promotion is a pass-through): normalize
+        // (trim + NFC), then bound (OVERSIZE) and validate the rest of the
+        // domain (non-empty, no '|', no line break).
+        val label = rawLabel?.let { UserDefinedCategoryNameRules.normalize(it) }
+        if (label != null && label.codePointCount(0, label.length) > UserDefinedCategoryNameRules.MAX_CODE_POINTS) {
             return Decoded.Failure(IntentValidationFailure.Oversize)
         }
-        val semantic = runCatching { GroupSemantic(category = category, freeText = freeText) }
-            .getOrElse { return Decoded.Failure(IntentValidationFailure.SchemaMismatch) }
-        return Decoded.Ok(semantic)
+        if (label != null && !UserDefinedCategoryNameRules.isValid(label)) {
+            return Decoded.Failure(IntentValidationFailure.SchemaMismatch)
+        }
+        return Decoded.Ok(GroupSemantic(categoryRef = categoryRef, proposalLabel = label))
     }
 
     private fun decodeGlobalPreference(obj: JsonObject): Decoded<GlobalPreference?, IntentValidationFailure> {

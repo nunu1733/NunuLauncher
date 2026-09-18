@@ -177,7 +177,7 @@ export生成時にtierを1つ選ぶ。tierは`PersonalizationContextExportV1`の
 - `itemIntents`: `ref` (export-scoped ID) ごとのsemantic preference。候補field:
   - `importance`: 限定enum (例: `HIGH`/`NORMAL`/`LOW`)
   - `desiredGroup`: 同一export内の他 `ref` の集合によるgrouping希望 (widget roleのitemはfolder memberになれないため、そのような希望は意味検証でrejectする)
-  - `groupSemantic`: 提案group/folderのsemantic (既存taxonomy `CategoryId` または自由記述は長上限付きで許可)
+  - `groupSemantic`: 提案group/folderのsemantic。v4 ([spec 337](../337-exchange-category-group-proposals/spec.md) 所有) で **exactly-one-of** の2 fieldとなった: `categoryRef` (export `categories` でadvertiseされた既存categoryへの参照) または `proposalLabel` (そのrun限りの新group提案。値域は #336 のcategory name規則)
   - `pageAffinity` / `regionAffinity`: contextと同じ抽象度の親和
   - `preserve`: 当該itemの現配置維持希望
 - `globalPreference` (optional): preserve/minimize-movement等のrun全体の偏好。
@@ -196,7 +196,7 @@ export生成時にtierを1つ選ぶ。tierは`PersonalizationContextExportV1`の
 | intent `unresolvedRefs` 参照数 | 512 |
 | intent canonical JSON全体 | 128 KiB |
 | 自由文class (app label等、export側) | 200文字 |
-| intent `groupSemantic` 自由記述 | 100文字 |
+| intent `groupSemantic.proposalLabel` | 50 code points (#336 category name規則。spec 337 D-4) |
 | intent `rationale` | 500文字 |
 
 - export session失効時間 (TTL) は24時間 (「生成規則」節)。
@@ -466,6 +466,7 @@ AI/agentは次をauthoritativeにしてはならない。これらを含むinten
 - 2026-09-15: **Spec accepted** — 6th ChatGPT review (**Approve**, snapshot `52b9097c`、Issueコメント `5677382260`) によりblocking findingなしと判定。受入gate (Q1/Q3/Q4/Q6) はすべて解決済み。受入PRでstatusをacceptedへ更新し、requirements.mdへFR-017 (FR-014との境界備考、D-011言及) を追加、CONTEXT.mdへ契約用語4件、DESIGN.mdへmodule行とgate行を追加。実装はplan.mdのExecution checklist (child A/B) に従う。
 - 2026-09-16: **V1→V2拡張 ([spec 331](../331-exchange-target-scope-coupling/spec.md) 所有)** — Issue #331 (exchange対象scopeへの未配置アプリ候補の包含) のaccepted specによる意図的な契約拡張。拡張の正本はspec 331であり、本specのversion規則 (`field変更・意味変更は -v2`) に従い `personalization-context-v2` / `personalized-intent-v2` へbump: (1) per-item `subject` field (`PLACED` / `CANDIDATE`) とmobility `CANDIDATE` 追加 (candidate宛 `preserve` は `MOBILITY_CONTRADICTION`)、(2) export sessionのcandidate対応 (ref mapにcandidate planning ID、scope candidate集合 + candidate投影digestを追加記録)、(3) failure taxonomyに `SCOPE_MISMATCH` (13th class、cause detail付き) 追加。placed item側のdigest定義・coverage不変条件・content limits・session TTLは無変更。
 
+- 2026-09-18: **V3→V4拡張 ([spec 337](../337-exchange-category-group-proposals/spec.md) 所有)** — Issue #337 (AI personalizationでのユーザー定義カテゴリ参照とrun-scoped group提案) のaccepted specによる意図的な契約拡張。本specのversion規則に従い `personalization-context-v4` / `personalized-intent-v4` へbump: (1) export envelopeに `categories` projection (export-scoped ref + `kind` + built-in `taxonomyId` + tier制御付き user-defined `displayName`) を追加し、item-levelのcategory露出を `categoryRef` / `folderCategoryRef` の **ref一本化** へ変更 (raw built-in値をitem levelから排除)、(2) intent `groupSemantic` を `categoryRef` / `proposalLabel` のexactly-one-ofへ変更し、`proposalLabel` の値域を #336 のcategory name規則へ統一、(3) 新typed failure `UNKNOWN_CATEGORY_REF` (advertiseされていないref / session mapping欠落 / catalog不在。contract 14 class、UI 20種)、(4) session recordへ ref→`CategoryIdentity` mapping (`categoryRefs`) をadditiveに追加。失敗class表 (12→14) とcontent limits表を更新。拡張の設計・契約の正本はspec 337である。
 - 2026-09-16: **V2→V3拡張 ([spec 330](../330-partial-intent-authoring/spec.md) 所有)** — Issue #330 (External Agent向けintent authoring契約の簡素化) のaccepted specによる意図的な契約拡張。拡張の正本はspec 330であり、本specのversion規則に従い `personalization-context-v3` / `personalized-intent-v3` へbump: (1) coverage規則を「全ref列挙必須」から「`itemIntents` と `unresolvedRefs` の互いに素」へnarrowし、未言及refの意味をcanonical unresolved (判断なし・planner効果なし) として契約化、(2) validator成功pathの純粋なcompleter (`IntentCompletion`) が全export refの完全分割 (`CompletedPersonalIntent`) を構成し、これがidentity計算とplanner投影の唯一の対象 (authored部分文書はdiagnosticsのみ)、(3) FIXED itemのauthoring責任を縮小 (省略可。明示出力時の `MOBILITY_CONTRADICTION` 規則は無変更)、(4) bare entry (全semantic field null) はcompletionでcanonical unresolvedへ正規化し、明示unresolved / 省略 / bare entryが同一semantic identityとなる (spec 330 D-6)。`INCOMPLETE_COVERAGE` は分割違反 (同一refの重複列挙) へ条件narrow (13 class・失敗表示17種は不変)。digest計算対象がauthored→completedへ変わるためv2以前のdigest値との互換はない (identityは永続化されないためdurable影響なし)。
 
 ## References
