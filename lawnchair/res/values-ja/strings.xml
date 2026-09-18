@@ -391,7 +391,7 @@
     <string name="exchange_entry_import">回答を取り込む</string>
     <string name="exchange_privacy_title">外部送信のプライバシー</string>
     <string name="exchange_privacy_redacted">アプリ名を含めない (既定)</string>
-    <string name="exchange_privacy_labels">アプリ名を含める</string>
+    <string name="exchange_privacy_labels">アプリ名とカテゴリ名を含める</string>
     <string name="exchange_privacy_labels_warning">依頼文にアプリ名・フォルダ名が含まれます。</string>
     <string name="exchange_replacement_notice">未完了の交換があります。新規作成すると無効になります。</string>
     <string name="exchange_replacement_title">既存の交換を置き換えますか?</string>
@@ -403,8 +403,8 @@
     <string name="exchange_cancel">キャンセル</string>
     <string name="exchange_close">閉じる</string>
     <string name="exchange_disclosure_title">送信前の確認</string>
-    <string name="exchange_disclosure_redacted">この依頼文にアプリ名・パッケージ名・生の使用状況は含まれません。</string>
-    <string name="exchange_disclosure_labels_included">この依頼文にはアプリ名・フォルダ名が含まれます。</string>
+    <string name="exchange_disclosure_redacted">この依頼文にアプリ名・パッケージ名・生の使用状況は含まれません。カテゴリの一覧 (ユーザー定義を含む) は含まれますが、その名前は含まれません。</string>
+    <string name="exchange_disclosure_labels_included">この依頼文にはアプリ名・フォルダ名と、ユーザー定義カテゴリの名前が含まれます。</string>
     <string name="exchange_disclosure_hint">この内容を任意のAIアプリへ送信します。送信方法を選ぶまで何も送信されません。</string>
     <string name="exchange_copy">コピー</string>
     <string name="exchange_share">共有…</string>

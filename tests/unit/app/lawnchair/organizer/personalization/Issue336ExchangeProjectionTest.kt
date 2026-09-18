@@ -393,6 +393,39 @@ class Issue336ExchangeProjectionTest {
         assertFalse(viewText.contains("u:"))
     }
 
+    // ---- Issue #337 (AC-1/AC-2): projection invariants ----------------------
+
+    @Test
+    fun redactedTierAdvertisesRefsWithoutUserDefinedNames() {
+        val identity = userCategory(TEST_USER_CATEGORY_ID)
+        val redacted = ContextExportBuilder.build(
+            inputs(items = listOf(app("a")), resolved = mapOf(ItemId("a") to identity)),
+            PrivacyTier.EXTERNAL_REDACTED,
+            SequentialIdAllocator(),
+        )
+        val entry = redacted.export.categories.single { it.ref == redacted.export.items.single().categoryRef }
+        assertNull("the redacted tier carries no user-defined name", entry.displayName)
+        assertEquals("the entry is still advertised as a ref", entry.ref, redacted.export.items.single().categoryRef)
+        val document = documentBytes(redacted.export)
+        assertFalse("no display name in the redacted document", document.contains("Commute tools"))
+        assertFalse("no raw ID in the redacted document", document.contains(TEST_USER_CATEGORY_ID))
+    }
+
+    @Test
+    fun advertisedRefsAreUniqueAcrossNamespacesAndInCanonicalOrder() {
+        val built = built(inputs(items = listOf(app("a"))))
+        val itemRefs = built.export.items.map { it.ref }
+        val categoryRefs = built.export.categories.map { it.ref }
+        assertEquals("item refs are unique", itemRefs.toSet().size, itemRefs.size)
+        assertEquals("category refs are unique", categoryRefs.toSet().size, categoryRefs.size)
+        assertTrue("the namespaces are disjoint", itemRefs.toSet().intersect(categoryRefs.toSet()).isEmpty())
+        // Canonical identity order: built-in (byte order) before user-defined.
+        val kinds = built.export.categories.map { it.kind }
+        assertEquals(kinds.sortedBy { it.ordinal }, kinds)
+        // Every advertised ref resolves to an identity in the session only.
+        assertEquals(built.export.categories.size, built.session.categoryRefs.size)
+    }
+
     companion object {
         /** Canonical lowercase UUID v4 fixtures; digest inputs only, never fields. */
         private const val TEST_USER_CATEGORY_ID = "3f2b8c4e-1234-4abc-9de0-1234567890ab"

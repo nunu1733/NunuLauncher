@@ -269,4 +269,55 @@ class AndroidExportSessionStoreTest {
             directory.deleteRecursively()
         }
     }
+
+    /**
+     * Issue #337 (spec 337 D-8, AC-11): the record schema is strict — a
+     * category entry with an unknown kind (corrupted/partially rewritten file)
+     * degrades to "no session" instead of being accepted as user-defined.
+     */
+    @Test
+    fun unknownCategoryRefKindInTheRecordFailsClosed() {
+        val directory = tempDirectory()
+        try {
+            val file = File(directory, "s1")
+            directory.mkdirs()
+            file.writeText(
+                """{"schemaVersion":2,"exportId":"export-1",""" +
+                    """"itemRefs":[{"ref":"ref-a","itemId":"item-1"}],"tier":"EXTERNAL_REDACTED",""" +
+                    """"sourceContextDigest":"${"d".repeat(64)}","signalProvenance":null,""" +
+                    """"createdAtEpochMs":1000,"expiresAtEpochMs":${1_000L + ContextExportContract.SESSION_TTL_MS},""" +
+                    """"scopeCandidates":[],"scopeCandidateDigest":"",""" +
+                    """"categoryRefs":[{"ref":"cat-1","kind":"FUTURE_KIND","id":"$USER_CATEGORY_ID"}]}""",
+            )
+            assertNull("an unknown ref kind must not load", store(directory, "s1").load("export-1"))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    /**
+     * Issue #337 (AC-11 reverse direction): a v4 record read by an older
+     * strict reader fails closed on the unknown key. Pinned here by removing
+     * the field from a written record and confirming the strict decoder
+     * rejects a record that carries an unexpected property instead of
+     * silently ignoring it.
+     */
+    @Test
+    fun recordsCarryingUnknownPropertiesAreRejected() {
+        val directory = tempDirectory()
+        try {
+            val file = File(directory, "s1")
+            directory.mkdirs()
+            file.writeText(
+                """{"schemaVersion":2,"exportId":"export-1",""" +
+                    """"itemRefs":[],"tier":"EXTERNAL_REDACTED",""" +
+                    """"sourceContextDigest":"${"d".repeat(64)}","signalProvenance":null,""" +
+                    """"createdAtEpochMs":1000,"expiresAtEpochMs":${1_000L + ContextExportContract.SESSION_TTL_MS},""" +
+                    """"scopeCandidates":[],"scopeCandidateDigest":"","futureField":1}""",
+            )
+            assertNull("unknown properties are not ignored", store(directory, "s1").load("export-1"))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
 }

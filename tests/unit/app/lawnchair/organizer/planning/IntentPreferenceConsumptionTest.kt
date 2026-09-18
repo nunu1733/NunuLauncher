@@ -579,6 +579,75 @@ class IntentPreferenceConsumptionTest {
         assertEquals(FolderNaming.FromProposalLabel("Morning"), planned.newFolders.first().naming)
     }
 
+    // Issue #337 (spec 337 D-6/AC-13): the formation key order keeps existing
+    // category groups first, so adding proposals never renumbers them.
+    @Test
+    fun addingProposalsKeepsExistingCategoryFolderOrdinals() {
+        val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0), app("c", x = 2, y = 0), app("d", x = 3, y = 0))
+        val input = baseInput(items)
+        val categoryOnly = withIntent(
+            input,
+            listOf(
+                ItemIntent(
+                    ref = "a",
+                    groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                        categoryRef = "GAMES",
+                        proposalLabel = null,
+                    ),
+                ),
+                ItemIntent(
+                    ref = "b",
+                    groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                        categoryRef = "GAMES",
+                        proposalLabel = null,
+                    ),
+                ),
+            ),
+        ).first
+        val withProposalToo = withIntent(
+            input,
+            listOf(
+                ItemIntent(
+                    ref = "a",
+                    groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                        categoryRef = "GAMES",
+                        proposalLabel = null,
+                    ),
+                ),
+                ItemIntent(
+                    ref = "b",
+                    groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                        categoryRef = "GAMES",
+                        proposalLabel = null,
+                    ),
+                ),
+                ItemIntent(
+                    ref = "c",
+                    groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                        categoryRef = null,
+                        proposalLabel = "Morning",
+                    ),
+                ),
+                ItemIntent(
+                    ref = "d",
+                    groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                        categoryRef = null,
+                        proposalLabel = "Morning",
+                    ),
+                ),
+            ),
+        ).first
+        val before = planner.plan(categoryOnly).outcome as Planned
+        val after = planner.plan(withProposalToo).outcome as Planned
+        val existingBefore = before.newFolders.single { it.naming == FolderNaming.FromCategory(CategoryId("GAMES")) }
+        val existingAfter = after.newFolders.single { it.naming == FolderNaming.FromCategory(CategoryId("GAMES")) }
+        assertEquals("the existing category group keeps its ordinal", existingBefore.ordinal, existingAfter.ordinal)
+        assertTrue(
+            "the proposal group is appended after the existing one",
+            after.newFolders.any { it.naming == FolderNaming.FromProposalLabel("Morning") },
+        )
+    }
+
     @Test
     fun runScopedProposalIsInertUnderANonFolderCreatingStrategy() {
         val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0))

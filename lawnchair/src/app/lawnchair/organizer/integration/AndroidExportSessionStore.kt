@@ -148,9 +148,13 @@ class AndroidExportSessionStore : ExportSessionStore {
                 },
                 scopeCandidateDigest = record.scopeCandidateDigest.ifEmpty { CandidateScopeIdentity.EMPTY_DIGEST },
                 categoryRefs = record.categoryRefs.associate { entry ->
+                    // An unknown kind is a corrupted record, not a category:
+                    // the surrounding runCatching degrades it to "no session"
+                    // (fail-closed) instead of accepting it as user-defined.
                     entry.ref to when (entry.kind) {
                         "BUILT_IN" -> CategoryIdentity.BuiltIn(CategoryId(entry.id))
-                        else -> CategoryIdentity.UserDefined(UserCategoryId(entry.id))
+                        "USER_DEFINED" -> CategoryIdentity.UserDefined(UserCategoryId(entry.id))
+                        else -> error("unknown category ref kind")
                     }
                 },
             )

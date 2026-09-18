@@ -76,16 +76,18 @@ class IntentValidatorTest {
     private fun buildState(
         items: List<CapturedItem>,
         activeCatalog: app.lawnchair.organizer.planning.ActiveCategoryCatalog = catalog(),
+        resolved: Map<ItemId, app.lawnchair.organizer.planning.CategoryIdentity?> = emptyMap(),
     ): Pair<BuiltExport, CanonicalStructuralInputs> {
         val snapshot = LayoutSnapshot(RevisionId("rev"), device(), listOf(Page(PageId("p0"), PageOrder(0))), items)
         val targets = TargetSet(items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }, emptyList())
-        val structural = CanonicalStructuralInputs(
-            snapshot,
-            targets,
-            emptyMap<ItemId, app.lawnchair.organizer.planning.CategoryIdentity?>(),
-            activeCatalog,
+        val structural = CanonicalStructuralInputs(snapshot, targets, resolved, activeCatalog)
+        val inputs = ExportInputs(
+            snapshot = snapshot,
+            targets = targets,
+            resolvedIdentities = resolved,
+            catalog = activeCatalog,
+            nowEpochMs = now,
         )
-        val inputs = ExportInputs(snapshot = snapshot, targets = targets, catalog = activeCatalog, nowEpochMs = now)
         return ContextExportBuilder.build(inputs, PrivacyTier.LOCAL_FULL, SequentialIdAllocator()) to structural
     }
 
@@ -455,37 +457,76 @@ class IntentValidatorTest {
     }
 
     /**
-     * A rename keeps the identity: the ref still resolves, and the plan/preview
-     * read the current display name from the composition snapshot.
+     * A rename keeps the identity and the ORIGINAL export ref: the same session
+     * still resolves it, and the reconstructed view shows the current name
+     * (spec 337 D-5: names are presentation, never authority).
      */
     @Test
-    fun renamedCategoryKeepsTheReferenceValid() {
-        val (built, _) = buildState(listOf(app("a")))
-        val ref = built.export.items.first().ref
-        val renamed = buildState(listOf(app("a")), renameUserCategory())
-        val validation = validate(
-            renamed.first,
-            renamed.second,
-            PersonalizedIntentV1(
-                exportId = renamed.first.export.exportId,
-                itemIntents = listOf(
-                    ItemIntent(ref = renamed.first.export.items.first().ref, groupSemantic = GroupSemantic(categoryRef = userCategoryRef(renamed.first), proposalLabel = null)),
-                ),
-            ),
+    fun renamedCategoryKeepsTheOriginalExportRefResolvable() {
+        val (built, structural) = buildState(listOf(app("a")))
+        val originalRef = userCategoryRef(built)
+        assertEquals("Commute", built.export.categories.single { it.ref == originalRef }.displayName?.value)
+
+        // Same export/session, import-time catalog carries the renamed entry.
+        val renamedView = structural.copy(catalog = renameUserCategory())
+        assertEquals(
+            "a rename does not disturb the structural digest",
+            SourceContextIdentity.digest(structural),
+            SourceContextIdentity.digest(renamedView),
         )
-        assertTrue(validation is IntentValidation.Validated)
-        // The advertised entry keeps the same kind and no longer carries the
-        // old name: identity survived the rename.
-        val entry = renamed.first.export.categories.single { it.ref == userCategoryRef(renamed.first) }
-        assertEquals(CategoryRefKind.USER_DEFINED, entry.kind)
-        assertEquals("Transport", entry.displayName?.value)
+        val itemRef = built.export.items.first().ref
+        val reply = "```json\n" + buildString {
+            append("{\"schemaVersion\":\"${ContextExportContract.INTENT_SCHEMA_VERSION}\",")
+            append("\"exportId\":\"${built.export.exportId}\",")
+            append("\"itemIntents\":[{\"ref\":\"$itemRef\",\"groupSemantic\":{\"categoryRef\":\"$originalRef\"}}]}")
+        } + "\n```"
+        val result = app.lawnchair.organizer.personalization.exchange.ExchangeImportPipeline.import(
+            reply,
+            built.session,
+            renamedView,
+            now + 1,
+        )
+        assertTrue("the original ref still resolves after a rename", result is ExchangeImportResult.Validated)
     }
 
     /**
-     * The stale case runs through the real import pipeline: the reconstruction
-     * advertises only the refs whose identity still exists in the import-time
-     * catalog, so a deleted category fails closed instead of resolving.
+     * Spec 337 D-5 table: a category delete WITH an assignment changes the
+     * resolved identity, so the pipeline's digest gate settles it as
+     * `CONTEXT_STALE` before the validator ever sees a category ref.
      */
+    @Test
+    fun assignedCategoryDeleteSettlesAsContextStale() {
+        val identity = app.lawnchair.organizer.planning.CategoryIdentity.UserDefined(
+            app.lawnchair.organizer.planning.UserCategoryId(USER_CATEGORY_ID),
+        )
+        val (built, structural) = buildState(
+            listOf(app("a")),
+            // The item is assigned to the user-defined category.
+            resolved = mapOf(ItemId("a") to identity),
+        )
+        val staleRef = userCategoryRef(built)
+        val itemRef = built.export.items.first().ref
+        val deletedAssigned = structural.copy(
+            resolvedIdentities = mapOf(ItemId("a") to app.lawnchair.organizer.planning.CategoryIdentity.BuiltIn(app.lawnchair.organizer.planning.CategoryId("OTHER"))),
+            catalog = deleteUserCategory(),
+        )
+        val reply = "```json\n" + buildString {
+            append("{\"schemaVersion\":\"${ContextExportContract.INTENT_SCHEMA_VERSION}\",")
+            append("\"exportId\":\"${built.export.exportId}\",")
+            append("\"itemIntents\":[{\"ref\":\"$itemRef\",\"groupSemantic\":{\"categoryRef\":\"$staleRef\"}}]}")
+        } + "\n```"
+        val result = app.lawnchair.organizer.personalization.exchange.ExchangeImportPipeline.import(
+            reply,
+            built.session,
+            deletedAssigned,
+            now + 1,
+        )
+        assertEquals(
+            ExchangeImportFailure.Contract(IntentValidationFailure.ContextStale),
+            (result as ExchangeImportResult.Failure).failure,
+        )
+    }
+
     @Test
     fun categoryDeletedWithoutAssignmentIsRejectedAsUnknownRef() {
         val (built, structural) = buildState(listOf(app("a")))

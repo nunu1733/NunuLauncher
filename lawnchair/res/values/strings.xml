@@ -1303,7 +1303,7 @@
     <string name="exchange_entry_import">Import reply</string>
     <string name="exchange_privacy_title">Privacy of the outgoing request</string>
     <string name="exchange_privacy_redacted">Exclude app names (default)</string>
-    <string name="exchange_privacy_labels">Include app names</string>
+    <string name="exchange_privacy_labels">Include app and category names</string>
     <string name="exchange_privacy_labels_warning">The request will contain app and folder names.</string>
     <string name="exchange_replacement_notice">An unfinished exchange exists. Creating a new request will invalidate it.</string>
     <string name="exchange_replacement_title">Replace the existing exchange?</string>
@@ -1315,8 +1315,8 @@
     <string name="exchange_cancel">Cancel</string>
     <string name="exchange_close">Close</string>
     <string name="exchange_disclosure_title">Review before sending</string>
-    <string name="exchange_disclosure_redacted">This request contains no app names, package names, or raw usage data.</string>
-    <string name="exchange_disclosure_labels_included">This request contains app and folder names.</string>
+    <string name="exchange_disclosure_redacted">This request contains no app names, package names, or raw usage data. It does list your categories, including user-defined ones, but without their names.</string>
+    <string name="exchange_disclosure_labels_included">This request contains app and folder names, and the names of your user-defined categories.</string>
     <string name="exchange_disclosure_hint">Send this exact text to the AI app of your choice. Nothing is sent until you choose a send method.</string>
     <string name="exchange_copy">Copy</string>
     <string name="exchange_share">Share…</string>
