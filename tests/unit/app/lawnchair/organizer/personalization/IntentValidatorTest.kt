@@ -478,7 +478,7 @@ class IntentValidatorTest {
         // old name: identity survived the rename.
         val entry = renamed.first.export.categories.single { it.ref == userCategoryRef(renamed.first) }
         assertEquals(CategoryRefKind.USER_DEFINED, entry.kind)
-        assertEquals("Transport", entry.displayName)
+        assertEquals("Transport", entry.displayName?.value)
     }
 
     /**

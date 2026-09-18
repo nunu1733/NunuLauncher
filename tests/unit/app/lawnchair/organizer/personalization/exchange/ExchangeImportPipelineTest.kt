@@ -33,6 +33,7 @@ import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.planning.RevisionId
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.TargetSet
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -419,5 +420,32 @@ class ExchangeImportPipelineTest {
         assertEquals(2, info.authoredEntryCount)
         assertEquals(RecognizedImportFraming.STANDALONE_JSON, info.framing)
         assertEquals(ContextExportContract.INTENT_SCHEMA_VERSION, info.intentSchemaVersion)
+    }
+
+    /**
+     * Issue #337 (spec 337 AC-6, independent audit finding): a successful
+     * import is zero-write. The durable session record is the only writable
+     * surface on this path, so its bytes must be untouched by a validated
+     * import (nothing here creates, renames or deletes a category).
+     */
+    @Test
+    fun validatedImportNeverWritesTheDurableSessionRecord() {
+        val (built, structural) = buildState(listOf(app("a"), app("b", x = 1)))
+        val directory = java.nio.file.Files.createTempDirectory("exchange-import").toFile()
+        try {
+            val file = java.io.File(directory, "session")
+            val store = app.lawnchair.organizer.integration.AndroidExportSessionStore(file)
+            assertTrue(store.save(built.session))
+            val before = file.readBytes()
+
+            val payload = IntentCodec.encode(fullCoverageIntent(built)).decodeToString()
+            val result = ExchangeImportPipeline.import(fencedReply(payload), built.session, structural, now + 1)
+            assertTrue(result is ExchangeImportResult.Validated)
+
+            assertArrayEquals("the import wrote the session record", before, file.readBytes())
+            assertEquals(built.session, store.load(built.session.exportId))
+        } finally {
+            directory.deleteRecursively()
+        }
     }
 }

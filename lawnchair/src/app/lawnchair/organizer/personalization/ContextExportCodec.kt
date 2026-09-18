@@ -45,7 +45,7 @@ object ContextExportCodec {
                                     put("ref", JsonPrimitive(category.ref))
                                     put("kind", JsonPrimitive(category.kind.name))
                                     category.taxonomyId?.let { put("taxonomyId", JsonPrimitive(it)) }
-                                    category.displayName?.let { put("displayName", JsonPrimitive(it)) }
+                                    category.displayName?.let { put("displayName", JsonPrimitive(it.value)) }
                                 },
                             )
                         },
@@ -200,7 +200,8 @@ object ContextExportCodec {
                         ref = requireNotNull(category.optString("ref")),
                         kind = CategoryRefKind.valueOf(requireNotNull(category.optString("kind"))),
                         taxonomyId = category.optString("taxonomyId"),
-                        displayName = category.optString("displayName"),
+                        displayName = category.optString("displayName")
+                            ?.let { ExportCategoryName(FreeTextClass.USER_CATEGORY_NAME, it) },
                     )
                 },
                 items = itemsJson.mapNotNull { raw ->

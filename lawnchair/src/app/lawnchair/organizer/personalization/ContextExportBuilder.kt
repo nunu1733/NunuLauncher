@@ -153,8 +153,10 @@ object ContextExportBuilder {
             },
         )
 
-        // Allocation order note: the export id and the item/candidate refs keep
-        // their pre-v4 allocator sequence; the category refs are drawn last.
+        // Allocation order note: the item/candidate refs keep their pre-v4
+        // allocator sequence, the export id follows them (also unchanged), and
+        // the category refs were drawn before the items (they are resolved
+        // while projecting items).
         val exportId = allocator.newId()
         val categories = categoriesOf(inputs.catalog, categoryRefsByIdentity, tier)
         val export = PersonalizationContextExportV1(
@@ -262,7 +264,11 @@ private fun categoriesOf(
             is CategoryIdentity.UserDefined -> ExportCategory(
                 ref = ref,
                 kind = CategoryRefKind.USER_DEFINED,
-                displayName = if (tier == PrivacyTier.EXTERNAL_REDACTED) null else catalog?.displayNameOf(identity.id),
+                displayName = if (tier == PrivacyTier.EXTERNAL_REDACTED) {
+                    null
+                } else {
+                    catalog?.displayNameOf(identity.id)?.let { ExportCategoryName(FreeTextClass.USER_CATEGORY_NAME, it) }
+                },
             )
         }
     }

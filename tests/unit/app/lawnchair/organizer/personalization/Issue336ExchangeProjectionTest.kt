@@ -165,7 +165,8 @@ class Issue336ExchangeProjectionTest {
         val displayName = "Commute tools"
         val document = documentBytes(built.export)
         assertFalse("raw user ID leaked: $document", document.contains(rawId))
-        assertEquals(displayName, advertised.displayName)
+        assertEquals(displayName, advertised.displayName?.value)
+        assertEquals(FreeTextClass.USER_CATEGORY_NAME, advertised.displayName?.freeTextClass)
         // The session keeps the ref → identity mapping (app-private, never
         // backed up) and never a display name.
         assertFalse("display name leaked into the session", built.session.toString().contains(displayName))

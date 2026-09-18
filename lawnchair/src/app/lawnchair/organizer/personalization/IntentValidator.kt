@@ -12,9 +12,12 @@ object IntentValidator {
      * canonical structural state.
      *
      * Check order (typed classes are exclusive by construction):
-     * schema/limits (codec) → export binding → session expiry → ref
-     * resolution → coverage partition → enum → capability (reserved in V1) →
-     * structural staleness → per-ref mobility.
+     * schema/limits (codec) → export binding → session expiry → item/
+     * desiredGroup/unresolved ref resolution → **category ref resolution
+     * (`UNKNOWN_CATEGORY_REF`, Issue #337)** → coverage partition → enum →
+     * capability (reserved in V1) → structural staleness → per-ref mobility.
+     * The pipeline's digest gate runs before this validator, so an
+     * assignment-bearing category deletion settles as `CONTEXT_STALE` there.
      */
     fun validate(
         intent: PersonalizedIntentV1,

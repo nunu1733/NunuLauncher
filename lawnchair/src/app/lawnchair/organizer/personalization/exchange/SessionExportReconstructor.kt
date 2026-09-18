@@ -214,7 +214,12 @@ private fun categoryEntriesOf(
             displayName = if (tier == app.lawnchair.organizer.personalization.PrivacyTier.EXTERNAL_REDACTED) {
                 null
             } else {
-                catalog?.displayNameOf(identity.id)
+                catalog?.displayNameOf(identity.id)?.let {
+                    app.lawnchair.organizer.personalization.ExportCategoryName(
+                        app.lawnchair.organizer.personalization.FreeTextClass.USER_CATEGORY_NAME,
+                        it,
+                    )
+                }
             },
         )
     }

@@ -73,9 +73,9 @@ class ContextExportCodecTest {
 
         val decoded = ContextExportCodec.decode(bytes)
         assertTrue(decoded is ContextExportResult.Success)
-        assertEquals(export, export)
-        // Symmetric decode reproduces the same export content.
-        val roundTripped = ContextExportCodec.decode(bytes) as ContextExportResult.Success
+        // Symmetric decode reproduces the same export content: the decoded
+        // document re-encodes to the identical bytes.
+        assertEquals(bytes.decodeToString(), (decoded as ContextExportResult.Success).bytes.decodeToString())
         // Decoding only validates; the encoded payload is the contract.
         assertTrue(ContextExportCodec.decode((ContextExportCodec.encode(export) as ContextExportResult.Success).bytes) is ContextExportResult.Success)
         assertEquals(export.items.size, 2)

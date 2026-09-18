@@ -81,6 +81,24 @@ enum class FreeTextClass {
 }
 
 /**
+ * Issue #337 (v4, spec 337 D-1/D-2): the user-authored display name carrier of
+ * an advertised user-defined category. The free-text class is part of the model
+ * so the single-point tier control can be audited per field (spec 204
+ * "FreeTextClass" discipline); the built-in taxonomy id is NOT free text and
+ * never uses this carrier.
+ */
+data class ExportCategoryName(
+    val freeTextClass: FreeTextClass,
+    val value: String,
+) {
+    init {
+        require(freeTextClass == FreeTextClass.USER_CATEGORY_NAME)
+        require(value.isNotEmpty())
+        require(value.length <= ContextExportContract.MAX_FREE_TEXT_CHARS)
+    }
+}
+
+/**
  * Issue #337 (v4, spec 337 D-1): the kind of one advertised category entry.
  * The value itself carries no personal data.
  */
@@ -100,7 +118,7 @@ enum class CategoryRefKind {
  * - [taxonomyId]: the immutable built-in taxonomy value; present iff
  *   [kind] is [CategoryRefKind.BUILT_IN]. It is a taxonomy enum spelling, not
  *   user-authored free text, so every privacy tier carries it.
- * - [displayName]: the user-authored free-text class
+ * - [displayName]: the user-authored free-text class carrier
  *   ([FreeTextClass.USER_CATEGORY_NAME]); present iff [kind] is
  *   [CategoryRefKind.USER_DEFINED] and the export's privacy tier admits that
  *   class (`EXTERNAL_REDACTED` never carries it).
@@ -109,7 +127,7 @@ data class ExportCategory(
     val ref: String,
     val kind: CategoryRefKind,
     val taxonomyId: String? = null,
-    val displayName: String? = null,
+    val displayName: ExportCategoryName? = null,
 ) {
     init {
         require(ref.isNotEmpty())
@@ -119,11 +137,7 @@ data class ExportCategory(
                 require(displayName == null)
             }
 
-            CategoryRefKind.USER_DEFINED -> {
-                require(taxonomyId == null)
-                require(displayName == null || displayName.isNotEmpty())
-                require(displayName == null || displayName.length <= ContextExportContract.MAX_FREE_TEXT_CHARS)
-            }
+            CategoryRefKind.USER_DEFINED -> require(taxonomyId == null)
         }
     }
 }

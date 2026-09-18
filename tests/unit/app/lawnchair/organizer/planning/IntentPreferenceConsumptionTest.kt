@@ -407,12 +407,10 @@ class IntentPreferenceConsumptionTest {
         assertEquals(planned, planner.plan(inputWithIntent).outcome as Planned)
     }
 
-    /**
-     * Issue #337 (spec 337 D-6, AC-4): a run-scoped proposal is a formation key
-     * of its own — items from *different* classifications with the same
-     * `proposalLabel` form one new folder, and that folder is named by the
-     * label (the pre-337 spec could not express this case at all).
-     */
+    // Issue #337 (spec 337 D-6, AC-4): a run-scoped proposal is a formation key
+    // of its own — items from *different* classifications with the same
+    // `proposalLabel` form one new folder, and that folder is named by the
+    // label (the pre-337 spec could not express this case at all).
     @Test
     fun runScopedProposalFormsAndNamesItsOwnFolder() {
         val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0))
@@ -494,11 +492,93 @@ class IntentPreferenceConsumptionTest {
         )
     }
 
-    /**
-     * Issue #337 (spec 337 D-6, AC-4 negative): a strategy that never creates
-     * folders keeps the proposal inert — the intent cannot force folder
-     * creation, and the category ordering key never consumes a proposal.
-     */
+    // Issue #337 (spec 337 D-6, AC-4 negative): a strategy that never creates
+    // folders keeps the proposal inert — the intent cannot force folder
+    // creation, and the category ordering key never consumes a proposal.
+    // Issue #337 (spec 337 D-6 matrix, AC-4 negative): GLOBAL_COMPACT_* forms
+    // folders from the classification only — neither an existing-category
+    // reference nor a proposal changes its formation (unchanged pre-v4
+    // behavior), and the strategy never promotes a proposal to a group.
+    @Test
+    fun proposalsAreInertUnderTheGlobalCompactStrategies() {
+        val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0))
+        val input = baseInput(items).copy(
+            signals = ClassificationSignals(
+                listOf(
+                    ClassificationSignal(
+                        ItemId("a"),
+                        SignalSource.S5,
+                        CategoryIdentity.BuiltIn(CategoryId("GAMES")),
+                    ),
+                    ClassificationSignal(
+                        ItemId("b"),
+                        SignalSource.S5,
+                        CategoryIdentity.BuiltIn(CategoryId("OTHER")),
+                    ),
+                ),
+            ),
+        )
+        for (strategy in listOf("GLOBAL_COMPACT_V1", "GLOBAL_COMPACT_V2")) {
+            val withStrategy = input.copy(rules = defaultRules().copy(organizationStrategy = StrategyId(strategy)))
+            val withProposal = withIntent(
+                withStrategy,
+                listOf(
+                    ItemIntent(
+                        ref = "a",
+                        groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                            categoryRef = null,
+                            proposalLabel = "Morning",
+                        ),
+                    ),
+                    ItemIntent(
+                        ref = "b",
+                        groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                            categoryRef = null,
+                            proposalLabel = "Morning",
+                        ),
+                    ),
+                ),
+            ).first
+            val planned = planner.plan(withProposal).outcome as Planned
+            assertTrue(
+                "$strategy must not form a folder for a run-scoped proposal",
+                planned.newFolders.isEmpty(),
+            )
+        }
+    }
+
+    // Issue #337 (spec 337 D-4/D-6, AC-8 corpus): merging is driven by an
+    // identical explicit semantic declaration, not by the `desiredGroup`
+    // relation — two unconnected items with the same proposal label share one
+    // group, and distinct labels stay distinct groups.
+    @Test
+    fun proposalLabelsMergeItemsThatAreNotConnectedByDesiredGroup() {
+        val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0))
+        val input = baseInput(items)
+        val inputWithIntent = withIntent(
+            input,
+            listOf(
+                ItemIntent(
+                    ref = "a",
+                    groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                        categoryRef = null,
+                        proposalLabel = "Morning",
+                    ),
+                ),
+                ItemIntent(
+                    ref = "b",
+                    groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                        categoryRef = null,
+                        proposalLabel = "Morning",
+                    ),
+                ),
+            ),
+        ).first
+        val planned = planner.plan(inputWithIntent).outcome as Planned
+        assertEquals("no desiredGroup relation is needed to share a group", 1, planned.newFolders.size)
+        assertEquals(FolderNaming.FromProposalLabel("Morning"), planned.newFolders.first().naming)
+    }
+
     @Test
     fun runScopedProposalIsInertUnderANonFolderCreatingStrategy() {
         val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0))
