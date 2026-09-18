@@ -19,7 +19,10 @@ updated: 2026-09-18
 | # | 1st revisionへの指摘 | 本revisionでの解決 |
 |---|---|---|
 | R-1 [高] | D-1 (built-inもopaque ref化) と D-3 / Compatibility / plan Interface 3 (built-in raw値はbyte互換、user-definedのみref) が矛盾し、codec / reconstructor / AI-facing contractの正解が一意に決まらない | **v4は全category露出をexport-scoped refへ一本化する** (D-1)。item-levelのraw built-in値と「built-inはbyte互換」という主張を削除し、item fieldは`categoryRef` / `folderCategoryRef`のみとする。混在方式は採らない (下記「Why full refs」) |
-| R-2 [高] | `ProposedGroupSemantic`の中核Planner semanticsが現行Plannerと接続できない (folder形成は`CategoryIdentity`の`formFolderGroups`のみ、`desiredGroup`は`groupRank`のみ)。一般ケースでfolderが形成されず、per-item `groupSemantic`のcomponent内衝突規則もない | D-6を「**run-scoped formation key**」として再定義し、現行`effectiveCategory`が効いているexecutorと同じ範囲でproposalがfolder形成のkeyになる (per-strategy matrixでnegativeも固定)。D-4を**exactly-one-of**化し、D-5に**component内semantic一意規則** (違反は新typed `CONFLICTING_GROUP_SEMANTIC`) を追加 |
+| R-2 [高] | `ProposedGroupSemantic`の中核Planner semanticsが現行Plannerと接続できない (folder形成は`CategoryIdentity`の`formFolderGroups`のみ、`desiredGroup`は`groupRank`のみ)。一般ケースでfolderが形成されず、per-item `groupSemantic`のcomponent内衝突規則もない | D-6を「**run-scoped formation key**」として再定義し、現行`effectiveCategory`が効いているexecutorと同じ範囲でproposalがfolder形成のkeyになる (per-strategy matrixでnegativeも固定)。D-4を**exactly-one-of**化し、D-5でsemanticの帰属単位を**resolved formation key**として定義 (2nd review R-2'でcomponent規則を廃止) |
+| R-1' [高] | (2nd review) D-5の「category ref解決がstructural digest照合より先」という主張は production pipelineの実順序 (digest gateがreconstruction / validationより先) と正面衝突する | pipeline順序を事実どおりに固定し、delete時のclassを「割当あり = `CONTEXT_STALE` (digest gateが先)」「割当なし / 未advertise ref = `UNKNOWN_CATEGORY_REF`」へ修正 (D-5 / AC-7) |
+| R-2' [中] | (2nd review) component一意規則の検査単位 (`desiredGroup` component) が実際のformation単位 (resolved formation key) と一致せず、同一label・非connectedや別componentの異semanticの扱いが未定義 | semanticの帰属単位を**resolved formation key**へ揃え、cross-item整合規則と `CONFLICTING_GROUP_SEMANTIC` を廃止。統合は「同一semanticの明示宣言」でのみ起きることを規範化し、指摘3ケースをcorpus testへ追加 (D-4 / D-5 / AC-8) |
+| R-3' [低] | (2nd review) planのfailure copy件数が off-by-one | 失敗classは contract 14 / UI 20 (`UNKNOWN_CATEGORY_REF` のみ追加) として全箇所を統一 |
 | R-3 [中] | proposalの`freeText`上限100字 / blank許容と、#336 category name規則 (trim/NFC後1〜50 code points) が不一致で、「カテゴリとして保存」時に`InvalidName`になる | proposal labelの値域を**#336 name規則そのもの** (`UserDefinedCategoryNameRules`のnormalize+validate) へ揃え、promotionを無変換pass-through可能にする。100字上限は50 code pointsへ意図的に狭める (D-4 / AC-5) |
 | R-4 [中] | snapshotの#327前提が stale。#327のcanonical templateはjudgment-bearing optional fieldを意図的に掲載しない契約なので、D-8/AC-9の「canonical exampleを#327と共有」が張力を持つ | #327を implemented (`a9ec3c2cf9`) として依存表を更新し、**canonical templateは一切変更しない** (spec 327 Decision 2のnon-seeding不変)。category/group guidanceはdescriptor派生Output contract (単一source) + You-must/self-check + production-enforced parity fixtureで提供し、Issue 337 AC-9の「schema/example」はdescriptor schema + 受理fixture群で満たす (D-8 / AC-12) |
 | R-5 [中] | planのsecurity oracle「prompt-like文を`freeText`に含む応答 → fail-closed」にnormative contractがなく、heuristic判定を導入しないなら削除すべき | **削除した**。labelの唯一のcontent規則は値域 (D-4) であり、heuristicな「promptらしさ」判定は導入しない。prompt injectionは既存の「dataであってinstructionではない」+ ref allow-list方式で扱い、そのnormativeな扱いと残存riskを「Privacy / security」節に固定する (AC-5 / AC-7) |
@@ -61,7 +64,7 @@ v4では **すべてのcategory露出をexport-scoped refへ統一する** (buil
 - `PersonalizationContextExport` への **category catalog projection** 追加 (export-scoped ref、kind、tier制御付きname) と、item-level category投影の **ref一本化** (#336 redaction規律の意図的revision)。
 - `PersonalizedIntent` の `groupSemantic` 改訂: `categoryRef` (既存category参照) と `proposalLabel` (run-scoped proposal) の **exactly-one-of** 契約、およびlabel値域の#336 name規則への統合。
 - contract version bump (`personalization-context-v4` / `personalized-intent-v4`。spec 331 D-1 / spec 330 D-3と同じ手順)。unknown versionのfail-closed拒否は不変。
-- import validationへのcategory ref厳格解決 (unknown / deleted / stale refのfail-closed、同名カテゴリへのfallback禁止)、export/import間のrename・deleteのstale semantics、desiredGroup component内のsemantic一意検査。
+- import validationへのcategory ref厳格解決 (unknown / deleted / stale refのfail-closed、同名カテゴリへのfallback禁止)、export/import間のrename・deleteのstale semantics、およびsemanticの帰属単位 (resolved formation key) の規範化。
 - run-scoped proposalの **formation key化** (folder形成・folder naming) と、proposalが効かないexecutor範囲の明示。
 - import成功サマリ / previewにおける「既存categoryへの提案」「AI提案の一時グループ」「永続化済みカテゴリ」の区別表示。
 - 明示promotion UX (「カテゴリとして保存」) の#336 authoring path (`UserDefinedCategoryAuthoringCoordinator`) 経由への接続。
@@ -109,7 +112,7 @@ _Avoid_: 自動保存、AI保存
 | user-defined categoryのexport出現 | 一切なし (#336規律) | opaque ref (+ label-inclusive tierでのみ表示名) のみ。raw `UserCategoryId`の露出は不変に禁止 |
 | intent `freeText` のplanner効果 | なし (どこからも消費されない) | `proposalLabel` として **formation key** に効く (D-6のmatrix範囲) |
 | session | `itemRefs` (ref→`ItemId`)、digest、candidate scope等 | `categoryRefs` (ref→`CategoryIdentity`) を追加 |
-| 失敗分類 | contract 13 class / UI 19種 | contract 15 class (+`UNKNOWN_CATEGORY_REF` / `CONFLICTING_GROUP_SEMANTIC`) / UI 21種 |
+| 失敗分類 | contract 13 class / UI 19種 | contract 14 class (+`UNKNOWN_CATEGORY_REF`) / UI 20種 |
 
 ## Contract design (decisions)
 
@@ -158,21 +161,36 @@ _Avoid_: 自動保存、AI保存
   - v3の100文字freeTextからは上限が狭まる (意図的なtightening。v3ではplanner効果がなく、labelとしての用途もなかった)。
 - 値域違反の失敗class: 長さ超過 (50 code points超) は既存 **`Oversize`** (content limit overshoot。v3の100字超と同じ扱い)、空 / `|` / 改行は既存 **`SchemaMismatch`** (文字列の形状違反。v3の `groupSemantic: {}` → `SchemaMismatch` と同じ扱い)。新しいclassは導入しない。
 - `desiredGroup` (ref集合によるcohesion希望) はv3から不変。`desiredGroup` なしの単独 `groupSemantic` もv3どおり受理される。新しい自由文を既存category ID / refとして解釈する経路は存在しない。
+- **semanticの帰属単位 (2nd review R-2'で確定)**: `groupSemantic` は **item単位の宣言** であり、その意味は「このitemが属するrun-scoped formation key」である (D-6)。したがって:
+  - 統合 (同じfolder候補groupに入ること) は **同一semanticの明示宣言** (同一 `categoryRef` または正規化後に同一の `proposalLabel`) によってのみ起こる。semanticを宣言しないitemは自分のclassification identityのままである。
+  - 異なるsemanticを宣言したitem同士が同じgroupになることはない。同一の `desiredGroup` component内で異なるsemanticが宣言された場合も、それぞれが自分のkeyのgroupに入る (componentは2つ以上のgroupへ分かれる)。これはrejectではない: 各宣言は単独でwell-definedで、結果はdeterministicにplan・previewへ現れる。
+  - `desiredGroup` は順序上のcohesion希望 (component rank) としてのみ働き、semanticの一意性を強制する単位ではない。semanticの一意性検査をcomponent単位で行うと、検査単位 (relation graph) と実際のformation単位 (formation key) がずれるため、v4では両者を **formation key** に揃える。
+  - `proposalLabel` が既存categoryの表示名と文字列一致しても、identityとしては統合されない (名前はidentityではない)。この場合、既存categoryのgroupとrun-scoped proposal groupが別々に形成され、同名titleのfolderが併存しうる。これは名前からのsilent remapより安全側の帰結であり、previewで確認できる。
 
-### D-5: category refの厳格解決、stale semantics、component一意規則 (R-2で確定)
+### D-5: category refの厳格解決とstale semantics (1st / 2nd review R-1'で確定)
 
 - import validationは、intent内のすべての `categoryRef` を次の順で解決する:
   1. 再構築されたexport viewの `categories` にadvertiseされたrefか。存在しないrefは **`UNKNOWN_CATEGORY_REF`** (新typed class、D-8) でreject。
   2. export sessionの `categoryRefs` (ref→`CategoryIdentity`) にidentityがあるか。sessionはadvertise済みrefのみを保持する (builder不変条件) ため、ここが空になるのはsession破損時のみで、同じく `UNKNOWN_CATEGORY_REF` とする。
-  3. 解決した `CategoryIdentity` が、import時の同一composition cutから得たactive catalogに存在するか。存在しない (export後に削除された等) 場合も `UNKNOWN_CATEGORY_REF` でreject。**表示名が一致する別categoryへのremapは行わない**。
-- **検証順序 (確定)**: expiry → export/session一致 → item/desiredGroup/unresolved ref解決 → **category ref解決 (`UNKNOWN_CATEGORY_REF`)** → **component semantic一意 (`CONFLICTING_GROUP_SEMANTIC`)** → duplicate → coverage → pageAffinity → mobility → structural digest (`CONTEXT_STALE`) → completion。category ref解決はstructural digest照合より **前** に走る。したがって割当を伴うcategory削除 (resolved identityが消える) は **`UNKNOWN_CATEGORY_REF`** として報告され、`CONTEXT_STALE` にはならない (削除以外の構造変化に対する `CONTEXT_STALE` は不変)。この優先順位は単一classを決定的に選ぶためのもので、test でpinする。
-- **component semantic一意規則 (新規)**: `desiredGroup` のrelation graphを `{self} ∪ desiredGroup` の推移閉包でconnected componentへ閉じ (plannerの `intentComponentRanks` と同一規則・同一canonical順)、1 component内で **宣言されたsemanticは高々1種類** とする。すなわち「2つ以上の異なる `categoryRef`」「2つ以上の異なる `proposalLabel`」「`categoryRef` と `proposalLabel` の混在」は `CONFLICTING_GROUP_SEMANTIC` でrejectする。semanticを宣言しないcomponent member (cohesionのみのitem) は許容する。
-  - 理由: 1つのgroup宣言 (`desiredGroup`) に対してAIが2つの意味を与えた場合、どちらを採用しても user の意図と一致する保証がない。fail-closedで再依頼する方が、2つの半端なgroupを無言で作るより安全である。
-  - 決定性: componentはcanonical (sorted member key) に計算され、failureは当該componentのbyte最小refを伴う。
+  3. 解決した `CategoryIdentity` が、import時の同一composition cutから得たactive catalogに存在するか。存在しない場合も `UNKNOWN_CATEGORY_REF` でreject。**表示名が一致する別categoryへのremapは行わない**。
+- **検証順序 (確定)**: 順序は**pipeline段**と**validator段**に分けて固定する (現行実装の事実に一致させる):
+  - pipeline段 (`ExchangeImportPipeline`): session binding → expiry → **structural digest照合 (`CONTEXT_STALE`)** → `SessionExportReconstructor` → `IntentValidator.validate`。digest照合は **reconstruction / validation より前** にあり、`SourceContextIdentity.digest` (snapshot + target roles + **itemごとのresolved identity**) とsession値を比較する。catalog全体 (user-defined entry集合) はdigest入力ではない。
+  - validator段: expiry再確認 → export/session一致 → item / desiredGroup / unresolved ref解決 → **category ref解決 (`UNKNOWN_CATEGORY_REF`)** → duplicate → coverage → pageAffinity → mobility → digest再確認 (`CONTEXT_STALE`) → completion。
+  - したがって単一classは次のように決まる (testでpinする):
+
+    | 状況 | digest | 報告class |
+    |---|---|---|
+    | category削除 + 当該categoryの割当itemがexport対象に含まれる | 変化する (resolved identityがfallback等へ変わる) | **`CONTEXT_STALE`** (pipeline段でsettle。validatorへ到達しない) |
+    | category削除 + 割当なし (digest不変) | 不変 | **`UNKNOWN_CATEGORY_REF`** (validator段) |
+    | 未advertise ref / 偽造ref (advertise集合外) | 不変 | **`UNKNOWN_CATEGORY_REF`** |
+    | session mapping欠落 / 破損 | 不変 | **`UNKNOWN_CATEGORY_REF`** |
+    | category rename (identity不変) | 不変 | 受理 (現名表示) |
+
+  - この表は「digest gateは動かさない」という設計判断を含む: pipeline順序を入れ替えて `UNKNOWN_CATEGORY_REF` を優先させる案は、spec 205 の reconstruction-parity / freshness契約のnormative変更を要求し、既存runの失敗分類も変えるため採用しない (remedyはどちらも再exportで同一)。
 - stale semantics:
   - **rename (export→import間)**: identity不変のため新鮮。ref→identityは解決し、importは成立する。preview・folder titleは **composition時点のcatalog snapshot** の現在名で表示される (#336 title binding規律の継続)。export時点の古い名前でplanが固定されることはない (canonical plan bytesはidentityのみを運ぶ)。
-  - **割当を伴うdelete**: 上の検証順序により `UNKNOWN_CATEGORY_REF` (remedyは再export)。既存のstructural digest照合も同じrunでstaleになるが、単一classとして前者を報告する。
-  - **無割当delete**: 同じく `UNKNOWN_CATEGORY_REF`。
+  - **割当を伴うdelete**: 上の表どおり `CONTEXT_STALE` (remedyは再export)。resolved identityが変わるためdigest gateが先にsettleする。
+  - **無割当delete**: `UNKNOWN_CATEGORY_REF`。
   - **catalog作成 (export後に新categoryを作成)**: resolved identity不変のため新鮮。advertiseされていない新categoryはintentから参照できない (refが存在しないため自然に `UNKNOWN_CATEGORY_REF`)。
 - Planner接続: `IntentPlannerAdapter` は解決済み `CategoryIdentity` をpreferenceへ載せる (raw文字列をplannerへ渡さない)。`FullRunExecution.effectiveCategory` はidentityを直接消費するようになり、文字列membership検査と黙って落とす経路は廃止される (検証済みintentのみがadapterへ到達するため、planner側の防御は不要かつ有害でなくなる)。**determinism**: 同一accepted intent identity + 同一canonical planning inputs (catalog identityを含む `InputProvenance` 全体、#336) からdownstream planは決定的 (既存契約の再確認)。
 
@@ -213,10 +231,10 @@ proposal labelは **run-scoped formation key** であり、既存のcategory-bas
 
 ### D-8: failure分類・versioning・AI-facing instruction (R-4で確定)
 
-- **新typed class** (contract 13 → 15):
-  - `UNKNOWN_CATEGORY_REF`: D-5の条件。
-  - `CONFLICTING_GROUP_SEMANTIC`: D-5のcomponent一意違反。
-  - 既存classとの排他はD-5の検証順序で担保する。UI失敗表示は19種 → 21種 (ja/en copy追加)。`exchangeContractFailureText` のexhaustive `when` がコンパイル時の保証であり続ける (doc commentの「13-class」記述も更新)。
+- **新typed class** (contract 13 → 14):
+  - `UNKNOWN_CATEGORY_REF`: D-5の表の条件 (未advertise ref / session mapping欠落 / catalog不在)。
+  - 既存classとの排他はD-5の表で担保する。UI失敗表示は19種 → 20種 (ja/en copy追加)。`exchangeContractFailureText` のexhaustive `when` がコンパイル時の保証であり続ける (doc commentの「13-class」記述も更新)。
+  - cross-item整合規則は導入しない (D-4の帰属単位規則) ため、1st revisionが計画していた `CONFLICTING_GROUP_SEMANTIC` は **追加しない**。
 - **version bump**: `personalization-context-v4` / `personalized-intent-v4` への同時bump (exportがintent schema versionをadvertiseするため単独bumpは不可能、spec 330 D-3と同様)。dual-version runtimeは持たない。v1 / v2 / v3文書は `SCHEMA_MISMATCH` でfail-closed拒否。
   - 保存済み文書への影響はspec 330 D-3と同一: intent本文は永続化されず、export sessionはintent schema versionを保持しないため無影響。bumpによりv3 era session宛の返答は `SCHEMA_MISMATCH` となり再exportが必要 (TTL 24時間・single-active-sessionで一時的)。
   - **session record**: `AndroidExportSessionStore` のrecord (schema version 2 / `organizer_personalization_export_session_v2.json` / strict decode) へ `categoryRefs` を **additive field** として追加する。旧recordはdefault (空mapping) でdecodeされ、category refは解決不能 → `UNKNOWN_CATEGORY_REF` でfail-closedする (v3 era session宛のv4 intentは `SCHEMA_MISMATCH` / `EXPORT_MISMATCH` で先に落ちるため実害はない)。新recordを旧binaryが読む場合はunknown keyでdecode失敗 → 既存の「session無し」fail-closed挙動 (再export案内) となる。record version bump / file renameは行わない (additiveなfield追加であり、v2 recordの意味を変えない)。両方向の挙動をtestでpinする。
@@ -224,7 +242,7 @@ proposal labelは **run-scoped formation key** であり、既存のcategory-bas
   - Output contract: `groupSemantic.categoryRef` / `groupSemantic.proposalLabel` の型・exactly-one-of・`proposalLabel` の長上限、および「`categoryRef` はCONTEXT dataの `categories` 配列内の `ref` のみ」というref scope規則。
   - You must / self-check: 「category名や新しい名前をcategory IDとして書かない。既存カテゴリは `categoryRef`、新しい概念は `proposalLabel` で表現する」「未定義field (例: `grouping`) を作らない」。
   - canonical例について: spec 327 Decision 2 (`:135`) がjudgment-bearing optional field (`desiredGroup` / `groupSemantic` / …) をtemplateへ **意図的に掲載しない** と定めているため、本specはtemplateへのexample追加を行わない。Issue #337 AC-9の「canonical schema / example」は (a) descriptor派生のschema記述 (単一source、drift不能) と (b) production-enforced parity fixture + authoring policy matrixの受理fixture群 (`canonical authoring ⊆ production accepted`) で満たす。templateのminimality / non-seeding oracle (spec 327 AC-1、`Issue327InterviewFirstContractTest`) は回帰testとして不変を固定する。
-  - production-enforced parity fixture: 未知 `categoryRef` → `UNKNOWN_CATEGORY_REF`、両field同時指定 / 空label → `SCHEMA_MISMATCH`、長すぎるlabel → `OVERSIZE`、component衝突 → `CONFLICTING_GROUP_SEMANTIC` をproduction path (`ExchangeImportPipeline.import`) でpinningする。
+  - production-enforced parity fixture: 未知 `categoryRef` → `UNKNOWN_CATEGORY_REF`、両field同時指定 / 空label → `SCHEMA_MISMATCH`、長すぎるlabel → `OVERSIZE` をproduction path (`ExchangeImportPipeline.import`) でpinningする。
 - spec 204 / 205 / 336 / 348へのnormative更新・change history追記は、本specの **実装PRで必須** とする (spec 348 Decision 6の前例)。特に: spec 204 (groupSemantic定義・content limits表の `groupSemantic` 行 → 50 code points / change historyのv4追記)、spec 205 (Data and stateの #204由来制約の実名更新)、spec 336 (export投影規律の改訂 + AC-14の実装後記述 + status注記)、spec 348 (descriptor/instructionの現状記述)。
 
 ## Privacy / security
@@ -239,7 +257,7 @@ proposal labelは **run-scoped formation key** であり、既存のcategory-bas
 ## Stale state / concurrency
 
 - export生成は既存single canonical composition seam (`ExchangeInputAdapter` → `OrganizationInputComposer`) の1回のcutから得たcatalog snapshotを使う。export時点のcatalog identity (generation / digest) は、`InputProvenance` の既存catalog参加を通じてrun provenanceへ現れる (#336)。
-- import時の検証用catalogは、structural digest再計算と同一composition cutから得る (既存pipeline順序: envelope → framing → decode → session → expiry → digest照合 → reconstruction → validation)。D-5の検証順序に従い、category ref解決はdigest照合の後・validation内でdigest比較より前に走る。
+- import時の検証用catalogは、structural digest再計算と同一composition cutから得る (既存pipeline順序: envelope → framing → decode → session → expiry → **digest照合** → reconstruction → validation)。D-5の順序表どおり、digest照合はreconstruction / validatorより先にsettleし、category ref解決はvalidator段で行われる。
 - promotionを含むcategory authoringとrun操作の相互排除は既存lease domain (#336) に従う。本specは新しいlease・新しい排他機構を導入しない。strategy書込との相互排他は #328 の `StrategyWriteArbiter` 契約のまま (新しいwriterを追加しないため変更不要)。
 
 ## Behavior scenarios
@@ -282,12 +300,16 @@ proposal labelは **run-scoped formation key** であり、既存のcategory-bas
 **And** built-in entryはtaxonomy enum値を `taxonomyId` として含む、
 **And** 送信前確認画面には「ユーザー定義カテゴリの参照情報 (名前を除く)」が示される。
 
-### Scenario: exactly-one-ofとcomponent一意の違反
+### Scenario: exactly-one-of違反とsemanticの分岐
 
-**Given** AIが1つの `groupSemantic` に `categoryRef` と `proposalLabel` の両方を書いた、または1つの `desiredGroup` component内で異なるsemantic (「通勤」と「仕事」、categoryRefとproposalLabelの混在) を宣言した、
+**Given** AIが1つの `groupSemantic` に `categoryRef` と `proposalLabel` の両方を書いた (またはどちらも空)、
 **When** importする、
-**Then** 前者は `SCHEMA_MISMATCH`、後者は `CONFLICTING_GROUP_SEMANTIC` でrejectされ (どちらもzero-write)、再依頼の案内が出る、
-**And** 部分的に採用されたgroupは存在しない。
+**Then** `SCHEMA_MISMATCH` でrejectされる (zero-write、再依頼の案内)。
+
+**Given** 同一の `desiredGroup` component内のitemが異なるsemantic (「通勤」と「仕事」、categoryRefとproposalLabelの混在) を宣言した、または互いに接続されていない複数itemが同一の `proposalLabel` を宣言した、
+**When** importしてplanする、
+**Then** 前者は **rejectされず** semanticごとのformation key groupへ分かれ (各groupは自分のlabel / categoryで形成される)、後者は同一labelのitem群が1つのgroupとして統合される、
+**And** どちらも結果はdeterministicでpreviewに現れ、catalogは変更されない (D-4/D-6の帰属単位規則)。
 
 ### Scenario: export→import間のrename
 
@@ -301,8 +323,9 @@ proposal labelは **run-scoped formation key** であり、既存のcategory-bas
 
 **Given** export後に「通勤」がdeleteされた、
 **When** そのcategoryを参照するintentをimportする、
-**Then** 割当の有無にかかわらず `UNKNOWN_CATEGORY_REF` でrejectされる (D-5の検証順序により、割当を伴う場合も `CONTEXT_STALE` ではなく本classが決定的に選ばれる)、
-**And** remedyは再exportであり、同名の新categoryが存在してもそれへのremapは発生しない。
+**Then** 当該categoryの割当itemがexport対象に含まれていた場合はresolved identityの変化でstructural digestが変わり、pipeline段で `CONTEXT_STALE` がsettleする、
+**And** 割当がなかった場合 (digest不変) はvalidator段で `UNKNOWN_CATEGORY_REF` としてrejectされる、
+**And** どちらもremedyは再exportであり、同名の新categoryが存在してもそれへのremapは発生しない。
 
 ### Scenario: promotion (明示保存)
 
@@ -358,12 +381,12 @@ proposal labelは **run-scoped formation key** であり、既存のcategory-bas
 - [ ] **AC-4**: proposalがrun-scoped formation keyとしてD-6のmatrixどおりに効く。folder形成strategy (canonical-family) では新しいfolder titleがlabelになり、matrix上効果のないstrategy (GLOBAL_COMPACT / page-local / candidate tail) ではformation・titleに効かず、ordering入力にもならないことがplanner unit / property testで検証される。
 - [ ] **AC-5**: `proposalLabel` の値域が#336 name規則と同一であり、受理されたlabelは正規化済みで `create()` に無変換で渡せる (property test: accepted label ⇒ 正規化後 `isValid`)。長さ超過は `Oversize`、空 / `|` / 改行は `SchemaMismatch` でrejectされる。
 - [ ] **AC-6**: proposalのimportはuser categoryを自動作成しない。validation・plan・applyの全経路でcatalog / override storeが無変更であることのproperty test。
-- [ ] **AC-7**: deleted / stale / unknown category refはfail-closed (`UNKNOWN_CATEGORY_REF` / 既存 `CONTEXT_STALE` 経路) し、同名カテゴリへのsilent fallback・fuzzy remapが存在しないことのcorpus test。D-5の検証順序 (category ref解決 → component一意 → … → digest) と、delete時の単一class決定を含む。rename成立 / 現名表示のstale testを含む。
-- [ ] **AC-8**: component一意規則が固定される。1 component内の異なるcategoryRef / 異なるlabel / 混在は `CONFLICTING_GROUP_SEMANTIC`、両field同時指定・空labelは `SCHEMA_MISMATCH`、長さ超過は `Oversize` (validation corpus test、zero-write)。
+- [ ] **AC-7**: deleted / stale / unknown category refはfail-closedし、同名カテゴリへのsilent fallback・fuzzy remapが存在しないことのcorpus test。D-5の表 (割当ありdelete → `CONTEXT_STALE` (pipeline段) / 割当なしdelete → `UNKNOWN_CATEGORY_REF` / 未advertise ref → `UNKNOWN_CATEGORY_REF`) をpinし、rename成立 / 現名表示のstale testを含む。
+- [ ] **AC-8**: semanticの帰属単位規則が固定される。両field同時指定・空labelは `SCHEMA_MISMATCH`、長さ超過は `Oversize`。`desiredGroup` component内の異semanticおよび「同一label・非connected」「同一label + 別componentの異semantic」「同一categoryRef・非connected」のcorpusが、rejectではなく **formation key単位の決定的なgroup分岐 / 統合** として検証される (planner投影とvalidator受理の両方)。
 - [ ] **AC-9**: ユーザーが明示的に選んだ場合のみ#336 authoring path (`UserDefinedCategoryAuthoringCoordinator.create`) でpersistent categoryへ保存できる。AI専用writerが存在しないこと、重複・capacity・busy (lease) がtyped表示されること、作成後に既存assignment UIで割当できることのUI / instrumentation test。昇格labelが `InvalidName` で落ちないこと。
 - [ ] **AC-10**: import成功サマリ / previewで「既存built-in category参照」「永続化済みuser-defined category参照」「AI提案の一時グループ」を区別でき (summaryはkind別countのみを追加し、#328の「label / ref / free-text fieldを持たない」形状保証を維持する)、import成功が「保存済み」に見える表示にならないことのUI test。
 - [ ] **AC-11**: `personalization-context-v4` / `personalized-intent-v4` への同時bump、v1 / v2 / v3の `SCHEMA_MISMATCH` 拒否、session recordのadditive `categoryRefs` (旧record受理 / 新recordの旧binary fail-closed) がcodec / store contract testで検証される。
-- [ ] **AC-12**: #348 descriptor由来のinstructionにv4のcategory / group schemaが反映される (`categoryRef` のref scope規則、`proposalLabel` の型・上限、exactly-one-of、捏造禁止のYou-must / self-check)。descriptor↔codec↔instructionの同期test、新規則のproduction parity fixture (`UNKNOWN_CATEGORY_REF` / `SCHEMA_MISMATCH` / `OVERSIZE` / `CONFLICTING_GROUP_SEMANTIC`)、canonical fixture受理 (canonical ⊆ accepted) を含む。**canonical templateは変更されず**、spec 327のnon-seeding / placeholder oracle (`Issue327InterviewFirstContractTest`) が回帰として緑であること。
+- [ ] **AC-12**: #348 descriptor由来のinstructionにv4のcategory / group schemaが反映される (`categoryRef` のref scope規則、`proposalLabel` の型・上限、exactly-one-of、捏造禁止のYou-must / self-check)。descriptor↔codec↔instructionの同期test、新規則のproduction parity fixture (`UNKNOWN_CATEGORY_REF` / `SCHEMA_MISMATCH` / `OVERSIZE`)、canonical fixture受理 (canonical ⊆ accepted) を含む。**canonical templateは変更されず**、spec 327のnon-seeding / placeholder oracle (`Issue327InterviewFirstContractTest`) が回帰として緑であること。
 - [ ] **AC-13**: 同一accepted intent + 同一category catalog identityからのdownstream planがdeterministicであること (既存property suiteのmixed-catalog拡張)。category renameがcanonical plan bytesを変えないこと、proposalの有無だけが異なるrunで既存groupのordinalが不変であることの再確認testを含む。
 - [ ] **AC-14**: spec 204 (groupSemantic定義・content limits・change history) / 205 (Data and state) / 336 (exchange投影規律・AC-14・status注記) / 348 (descriptor現状記述) のnormative更新とchange history追記が実装PRで完了する。`CONTEXT.md` 用語 (D-1〜D-4の4語) と `DESIGN.md` の該当gate記述の更新を含む。
 - [ ] **AC-15**: 代表的なExternal Agent flow (「既存custom category利用」「新規group提案」「保存しない」「明示保存」) のdevice evidenceが取得される (privacy境界はspec 348 Decision 7と同じpolicy: sanitized artifactのみ)。
@@ -379,8 +402,8 @@ proposal labelは **run-scoped formation key** であり、既存のcategory-bas
 | AC-4 | planner unit / property test (formation key matrix、`FromProposalLabel` naming、ordering非参加、strategy別negative、ordinal安定性) |
 | AC-5 | label値域test (property: accepted ⇒ #336 `isValid`)、`Oversize` / `SchemaMismatch` 境界test |
 | AC-6 | store不変のproperty test (import pipeline経由、apply経路含む) |
-| AC-7 | validator corpus test (unknown / rename / delete matrix、検証順序、単一class決定) + `SessionExportReconstructor` parity test |
-| AC-8 | validator corpus test (component一意、both-field、空label、長さ) |
+| AC-7 | validator / pipeline corpus test (unknown / rename / delete matrix、失敗class決定表の pin) + `SessionExportReconstructor` parity test |
+| AC-8 | validator受理 corpus + planner formation key test (異semantic分岐、同一label統合、非connected同値、both-field、空label、長さ) |
 | AC-9 | `UserDefinedCategoryAuthoringCoordinator` 接続のintegration test + UI test (typed failures、lease busy) |
 | AC-10 | `ExchangeImportSummary` unit test (kind別count、形状保証) + importサマリ / preview UI test |
 | AC-11 | codec contract test (version拒否) + `AndroidExportSessionStore` 両方向test |
@@ -395,11 +418,11 @@ proposal labelは **run-scoped formation key** であり、既存のcategory-bas
 1. **D-2 redacted tierのuser-defined entry**: opaque ref + kindのみをadvertiseする (確定)。代替 (entry省略) は既定tierで機能を失うため不採用、残存riskは明示。
 2. **D-6 proposalの効果**: run-scoped formation keyとしてfolder形成に効き、labelがfolder titleになる (確定)。「ordering biasのみでfolderを作らない」代替は、Issueの一般ケース (異なるカテゴリのアプリを「朝使う」でまとめる) を表現できず、1st revisionの矛盾そのものであるため不採用。
 3. **D-4 exactly-one-of**: 採用 (確定)。両field同時指定を許すとgroupingのauthorityが一意にならない。
-4. **D-5 component一意規則**: 採用 (確定、fail-closed)。
+4. **D-5 semanticの帰属単位**: resolved formation key単位 (item単位の宣言) を採用 (確定、2nd review R-2')。component単位の一意検査は検査単位とformation単位がずれるため採らない。
 5. **D-7 promotionの操作範囲**: v1は「カテゴリ作成のみ」(割当は既存UI) (確定)。
 6. **D-7 promotionの提示位置**: run非active時のimportサマリ / run完了後surface (確定)。activity run中の確認画面には置かない。
 7. **`UNKNOWN_CATEGORY_REF` を独立classにするか**: 独立classを採用 (確定)。remedyが「カテゴリが消えた / refが不正」であり、item refの `UNKNOWN_REF` とは案内・診断が異なる。
-8. **`CONFLICTING_GROUP_SEMANTIC` を独立classにするか**: 独立classを採用 (確定)。両field同時指定 (形状) の `SCHEMA_MISMATCH` とは原因も remedy も異なる。
+8. **cross-item整合の独立失敗class (`CONFLICTING_GROUP_SEMANTIC`)**: 追加しない (確定、2nd review R-3')。両field同時指定 (形状) は `SCHEMA_MISMATCH`、異semantic宣言は「別groupへの分岐」であり失敗ではない。
 
 ## 依存関係
 

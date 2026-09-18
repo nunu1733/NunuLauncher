@@ -56,11 +56,11 @@ updated: 2026-09-18
 ## 1st revisionからの主な変更 (plan)
 
 - Interface 3〜4 (item field) をref一本化へ変更 (`categoryRef` / `folderCategoryRef`、`categories` projection)。
-- Interface 5〜6 (intent / validator) を `categoryRef` + `proposalLabel` exactly-one-of、label値域 = #336 name規則、component一意検査 (`CONFLICTING_GROUP_SEMANTIC`) へ変更。
 - Interface 8〜9 (adapter / planner) を「解決済みidentity + formation key (Existing / Proposed)」へ変更し、`FolderNaming.FromProposalLabel` を追加。
+- Interface 9 (validator) は追加classを `UNKNOWN_CATEGORY_REF` の1つに限定し、digest gateの実位置 (pipeline段でreconstruction前) をplan / flow / testへ明記。
 - Interface 10 (AI-facing) はcanonical templateを変更しない方針へ変更。
 - Testing strategyの「prompt-like文を拒否するsecurity oracle」を削除し、値域test + allow-list testへ置換。
-- 失敗classは 15 contract / 21 UI (1st revisionの 14 / 20 から+1)。
+- 失敗classは 14 contract / 20 UI (`UNKNOWN_CATEGORY_REF` のみ追加。1st revisionの 15 / 21 から `CONFLICTING_GROUP_SEMANTIC` を削除)。
 
 ## Ownership / module boundaries
 
@@ -81,7 +81,7 @@ updated: 2026-09-18
 6. **`ExportSession`**: `categoryRefs: Map<String, CategoryIdentity>` 追加。`AndroidExportSessionStore` のrecordへadditive field (default空) を追加 (record version 2 / file名は不変。両方向の挙動をtestでpin)。
 7. **`SessionExportReconstructor`**: validation viewの `categories` をsession mapping + 現行catalogから再構築 (advertise済みrefのみ、name値はauthorityにしない)。session mappingにidentityがあるが現行catalogに無い場合は当該refをadvertiseから外す (validatorが `UNKNOWN_CATEGORY_REF` に落とす)。
 8. **`GroupSemantic`**: `category: String?` → `categoryRef: String?`、`freeText: String?` → `proposalLabel: String?`、initでexactly-one-of + 値域 (normalize / isValid)。codec / descriptor / completion / identity / adapterを一括改訂。
-9. **`IntentValidator`**: item ref解決の後にcategory ref解決 (`UNKNOWN_CATEGORY_REF`) とcomponent一意検査 (`CONFLICTING_GROUP_SEMANTIC`) を追加。`IntentValidationFailure` へ2 class追加。検証順序はspec D-5に固定。
+9. **`IntentValidator`**: item ref解決の後にcategory ref解決 (`UNKNOWN_CATEGORY_REF`) を追加し、`IntentValidationFailure` へ1 class追加。cross-item整合規則は追加しない (semantic帰属単位 = formation key)。検証順序はspec D-5 (pipeline段: session → expiry → digest照合 → reconstruction → validator / validator段: item ref → category ref → duplicate → coverage → pageAffinity → mobility → digest再確認 → completion) に固定する。**digest照合はpipeline段でreconstruction・validationより先**にsettleするため、割当ありdeleteは `CONTEXT_STALE`、割当なしdeleteは `UNKNOWN_CATEGORY_REF` になる (実装変更は不要)。
 10. **`IntentPlannerAdapter` / `ItemPreference`**: `groupSemantic: GroupSemantic` を「解決済み `groupCategory: CategoryIdentity?` + `groupProposalLabel: String?`」へ分離。raw文字列をplannerへ渡さない。identity計算はauthored内容 (`categoryRef` / `proposalLabel`) のまま (catalog内容に依存させない)。
 11. **planner formation**: `FolderFormation.kt` の keyを `FormationKey = Existing(CategoryIdentity) | Proposed(label)` へ一般化 (全順序: Existing先 → Proposed (label UTF-8 byte順))。`folderNamingFor` は `Existing` → 既存variant、`Proposed` → 新 `FolderNaming.FromProposalLabel(label)`。`FullRunExecution.executeCanonicalPageCompact` の `effectiveCategory` を「formation key解決」 + 「ordering用 `sortCategory` (Proposedはclassification identity)」へ置換。`executeGlobalCompact` / candidate tail は不変。
 12. **`FolderNaming` / title解決**: `FolderNaming.FromProposalLabel(label)` 追加。`GeneratedFolderTitles` のexhaustive `when` と golden corpus / test helperのnaming文字列化を更新。`FolderTitleResolver` 契約 (非blank・fallback) は不変。
@@ -109,7 +109,7 @@ composer.composeFullOrganization()/composeScopeComposedOrganization()   (catalog
 ExchangeImportPipeline.prepare (envelope→normalizer→framing→codec v4)
   → validate: session lookup → expiry → structural digest (identity基準・不変)
   → SessionExportReconstructor (categories + ref再構築)
-  → IntentValidator (item ref解決 → category ref解決 → component一意 → … → mobility → digest)
+  → IntentValidator (item ref解決 → category ref解決 → … → mobility → digest再確認)
   → completion → identity → run接続 (fresh run) → intentPreferences (identity + formation key解決済み)
   → planner (formation key: Existing/Proposed / ordering keyはclassification)
   → #194 preview → #195 confirm → apply (catalog書込みなし)
@@ -143,7 +143,7 @@ ExchangeFlowUi/サマリ → UserDefinedCategoryAuthoringCoordinator.create() (#
 
 ## Failure handling
 
-- 新typed failure `UNKNOWN_CATEGORY_REF` / `CONFLICTING_GROUP_SEMANTIC` — `ExchangeImportPipeline` の `ExchangeImportFailure.Contract` 経由でUI 21種目 / 22種目として表示。copy: 原因 + remedy (再export / 再依頼)。
+- 新typed failure `UNKNOWN_CATEGORY_REF` — `ExchangeImportPipeline` の `ExchangeImportFailure.Contract` 経由でUIの20種目 (追加1種、合計20種) として表示。copy: 原因 + remedy (再export / 再依頼)。割当ありdeleteは既存 `CONTEXT_STALE` (pipeline段) が先にsettleし、新classは割当なしdelete / 未advertise ref / session mapping欠落に限定される。
 - label値域違反は既存 `Oversize` (長さ) / `SchemaMismatch` (形状) を再利用し、新しいclassを作らない。
 - promotion失敗は#336 typed failuresのそのままの表示 (`DuplicateName` / `CapacityExceeded` / `Conflict` / `OrganizationRunActive` 等)。`InvalidName` はlabel値域の一致により到達しない (testで固定)。
 - export時catalog不在は既存 `InputReadinessReason` (NotReady) — 新失敗種を作らない。
@@ -153,7 +153,7 @@ ExchangeFlowUi/サマリ → UserDefinedCategoryAuthoringCoordinator.create() (#
 Unit / contract (pure seams):
 - builder: `categories` のtier別内容 (name有無matrix)、canonical順序、ref乱数性 (決定的allocator fixture) / 一意性 / 3-namespace横断、item category ref投影、`MAX_EXPORT_BYTES` 下の容量、raw built-in値・user ID非出現の文書走査。
 - codec: v4 round-trip、v1 / v2 / v3拒否、`categoryRef`/`proposalLabel` exactly-one-of、label境界 (50 / 51 code points、空、`|`、改行)。
-- validator: category ref corpus (正常built-in / user-defined、未advertise、session mapping破損、import catalog不在、rename成立、proposal-only)、component一意 corpus (同一 / 相違ref / 相違label / 混在)、検証順序 (category ref → component → 既存classの排他) 回帰、delete時の単一class決定。
+- validator: category ref corpus (正常built-in / user-defined、未advertise、session mapping破損、import catalog不在、rename成立、proposal-only)、失敗class決定表 (割当ありdelete → `CONTEXT_STALE` / 割当なしdelete → `UNKNOWN_CATEGORY_REF` / 未advertise ref → `UNKNOWN_CATEGORY_REF`) の pin、semantic帰属単位 corpus (同一label・非connectedの統合、同一label + 別component異semanticの分岐、同一categoryRef・非connectedの統合、both-field / 空label / 長さの既存class)、検証順序 (既存classとの排他) 回帰。
 - completion / identity: `categoryRef` / `proposalLabel` をauthored内容としてidentityに反映、omission / unresolved規律不変の回帰 (spec 330 AC suite)。
 - adapter: 解決済みidentity + labelへの分離投影、raw文字列がplanner projectionへ現れないこと。
 - planner: formation key (Existing / Proposed) のmatrix (strategy別 positive / negative)、`FromProposalLabel` naming、ordering非参加 (classification key維持)、ordinal安定性、determinism / idempotence (mixed catalog、既存 #336 property suite拡張)、proposalが存在しないrunのbyte不変。
@@ -161,7 +161,7 @@ Unit / contract (pure seams):
 - summary: kind別count、形状保証 (label / refを持たない) の維持。
 
 Integration (pipeline / store / lease):
-- `ExchangeImportPipeline.import` 経由のparity matrix追加行 (`UNKNOWN_CATEGORY_REF` / `CONFLICTING_GROUP_SEMANTIC` / `SCHEMA_MISMATCH` / `OVERSIZE` 各1種固定)。
+- `ExchangeImportPipeline.import` 経由のparity matrix追加行 (`UNKNOWN_CATEGORY_REF` / `SCHEMA_MISMATCH` / `OVERSIZE` 各1種固定)。
 - `AndroidExportSessionStore`: `categoryRefs` の永続化、旧record受理、backup除外の再確認。
 - promotion: `UserDefinedCategoryAuthoringCoordinator.create` 接続、duplicate / capacity / busyのtyped経路、import経路のstore不変property (AC-6)。
 
@@ -185,7 +185,7 @@ Device evidence (後続pass、本planでは実行しない):
 ## Incremental implementation order
 
 1. **Phase 1 (export面)**: version bump + `categories` projection + item category ref投影 + session `categoryRefs` (builder / codec / store / reconstructor + tests)。spec 336 normative更新を含む。
-2. **Phase 2 (intent面)**: `GroupSemantic` v4 + validator (ref解決 / component一意 / 2 class) + completion / identity / adapter (tests)。
+2. **Phase 2 (intent面)**: `GroupSemantic` v4 + validator (ref解決 / 失敗class決定表 / 1 class) + completion / identity / adapter (tests)。
 3. **Phase 3 (planner)**: formation key (Existing / Proposed) + `FolderNaming.FromProposalLabel` + title解決 + ordering key (planner tests、byte互換回帰)。
 4. **Phase 4 (AI-facing)**: descriptor / instruction更新 + parity / policy matrix拡張 (#348方式) + spec 204 / 205 / 348更新。template不変の回帰test。
 5. **Phase 5 (UI)**: importサマリ差別化 + promotion (coordinator接続) + strings + a11y。
@@ -203,7 +203,7 @@ Device evidence (後続pass、本planでは実行しない):
 
 - **#336規律の意図的revision**: 「user-definedはexchangeに出さない」規律を置き換えるため、spec 336本文・AC-14の更新漏れが正本矛盾を生む → 実装PR必須更新チェックリスト (AC-14) で管理。
 - **planner変更面**: formation keyの一般化はfolder形成の中核に触れる → intent-less / ref-less runのbyte互換を最初に固定し、既存suite (golden corpus含む) を全実行してから進める。
-- **UI失敗種の増加 (19→21)**: 既存失敗表示対応表・instrumentation testの更新範囲が広い → 対応表の追加2行に限定する設計 (exhaustive `when` がcompile時に漏れを検出)。
+- **UI失敗種の増加 (19→20)**: 既存失敗表示対応表・instrumentation testの更新範囲が広い → 対応表の追加1行に限定する設計 (exhaustive `when` がcompile時に漏れを検出)。
 - **builder / export容量**: `categories` 追加で256 KiB上限到達が早まる → 容量testと、超過時は既存typed `Oversize` (fail-closed) の確認。
 - **label値域のtightening (100字→50 code points)**: 既存の長いfreeTextを使う外部AI運用があればv4でrejectされる → 失敗classは `Oversize` で既存案内と整合し、再依頼案内で回復可能 (互換性節に明記)。
 - **promotion UXのlease干渉**: run中操作のbusy経路がユーザー混乱を招く可能性 → 案内copyと提示位置 (run非active時のみ) をAC-9 / AC-10 testで固定。
