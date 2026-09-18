@@ -1,14 +1,16 @@
 ---
 issue: "#337"
 status: draft
-updated: 2026-09-18
+updated: 2026-09-19
 ---
 
 # Plan: AI personalizationにおけるユーザー定義カテゴリの参照と新規グループ提案
 
-> 本planはspec.md (draft — 2nd revision) の実装計画である。specのdecision (D-1〜D-8) がOwner reviewで受入れされるまで実装を開始しない。baseline: `34ba8ff447` (2026-09-18時点 `origin/main`、#328 / PR #353 merge後)。1st revision planからの変更点は「1st revisionからの主な変更」節に記録する。
+> 本planはspec.md (**accepted**、PR #354 merge commit `de77e280b7`) の実装計画である。baseline: `34ba8ff447` (2026-09-18時点 `origin/main`、#328 / PR #353 merge後)。1st revision planからの変更点は「1st revisionからの主な変更」節に記録する。
+>
+> **Re-entry (2026-09-19)**: spec受理後、Phase2 contract coreが [PR #355](https://github.com/nunu1733/NunuLauncher/pull/355) (merge commit `b728ed4d9f`、独立監査 [docs/assessment/pr-355-issue337-category-refs.md](../../docs/assessment/pr-355-issue337-category-refs.md)) でmainへ着地した。本planを現行 `main` (`3076bdae7ebf`) へ再anchorし、着地済み範囲と残件を「Re-entry後の着地状態と残件」節に記録した。Ownerは [Issue #337](https://github.com/nunu1733/NunuLauncher/issues/337) コメント (2026-09-18) で #362 disposition ([PR #378](https://github.com/nunu1733/NunuLauncher/pull/378)、Open・本revision時点で未merge。`docs/product/organizer-disposition-migration.md` §3.18) に基づく本Issueの扱いを **Continue (契約不変)** と記録しており、spec 337の契約改訂は不要である。
 
-## Current implementation (調査済み事実、`34ba8ff447`)
+## Current implementation (調査済み事実、`34ba8ff447` — v3実装の実装前調査。歴史的記録として保持。着地後の状態は次節)
 
 ### 契約・検証面 (pure module、`organizer/personalization/`)
 
@@ -61,6 +63,37 @@ updated: 2026-09-18
 - Interface 10 (AI-facing) はcanonical templateを変更しない方針へ変更。
 - Testing strategyの「prompt-like文を拒否するsecurity oracle」を削除し、値域test + allow-list testへ置換。
 - 失敗classは 14 contract / 20 UI (`UNKNOWN_CATEGORY_REF` のみ追加。1st revisionの 15 / 21 から `CONFLICTING_GROUP_SEMANTIC` を削除)。
+
+## Re-entry後の着地状態と残件 (2026-09-19、current main `3076bdae7ebf` で実コード確認済み)
+
+Phase2第1弾 (PR #355) でplanの **Phase 1〜4と、Phase 5のsummary model側が着地済み**。下記は現在のコード/treeでの確認結果である (実装は着手済みのため、本節が残作業の正となる。作業状態の正本は [Issue #337](https://github.com/nunu1733/NunuLauncher/issues/337) コメント (2026-09-18、PR #355 merge報告) とその後の記録である)。
+
+### 着地済み (PR #355、検証済み)
+
+- **契約 (Phase 1〜2)**: `ContextExportContract` の `SCHEMA_VERSION = "personalization-context-v4"` / `INTENT_SCHEMA_VERSION = "personalized-intent-v4"`、envelope `categories` (ref + `CategoryRefKind` + built-in `taxonomyId` + tier制御付き user-defined `displayName`)、`ExportItem.categoryRef` / `folderCategoryRef` へのref一本化、session `categoryRefs` (additive、record version 2維持)、`GroupSemantic(categoryRef, proposalLabel)` exactly-one-of (#336 name規則の値域)、validator `UNKNOWN_CATEGORY_REF` 解決 (D-5の決定表どおり pipeline段digest gate → validator段ref解決)。
+- **Planner (Phase 3)**: `FormationKey.Existing/Proposed` によるfolder形成 (`FolderFormation`)、`FolderNaming.FromProposalLabel`、ordering keyはproposalを消費しない (v3 `freeText` parity)。
+- **AI-facing (Phase 4)**: descriptor v4 (`exactlyOneOf`、`proposalLabel.lengthLimit`、`refScope.groupSemanticCategoryRef`、`policy.categoryRefFromContext`)、instructionのYou-must、canonical template不変。
+- **Summary model (AC-10のmodel側)**: `ExchangeImportSummary` が `categoryKindByRef` により `builtInCategoryCount` / `userCategoryCount` / `proposedGroupCount` を区別。
+- **Oracle (着地済み分)**: AC-4 formation key matrix (`IntentPreferenceConsumptionTest` — proposal folder形成、`GLOBAL_COMPACT` 不変性、非connected同一label統合、異label分岐)、AC-6 store/session不変 (**import + plan段まで**: `ExchangeImportPipelineTest.validatedProposalImportLeavesTheCategoryStoreUntouched` が実store byte不変までpin、`validatedImportNeverWritesTheDurableSessionRecord`)、AC-1 encode時256 KiB Oversize (`ContextExportCodecTest.oversizeExportsAreFailClosedAtEncodeTime`。ただし `categories = emptyList()` 経由、下記残件)。
+
+### 残件 (Issue exit条件。後続PRで対応 — 現在のコードに存在しないことを確認済み)
+
+1. **AC-9 promotion UX**: `ui/exchange/ExchangeFlowUi.kt` にpromotion actionは未存在 (「run-scoped proposal, which nothing saves」のcommentのみ)。`UserDefinedCategoryAuthoringCoordinator.create` への接続 (lease busy・`DuplicateName` / `CapacityExceeded` 等のtyped表示、AI専用writerを作らないことのtest) とstrings (en/ja)。plan「Interfaces / seams」14のpromotion部分。
+2. **AC-10 UI完全化**: summary modelのkind countはあるが、UI (`ExchangeFlowUi.kt` のbreakdown) は `builtInCategoryCount + userCategoryCount` を1行「existing category」に合算しており、「既存built-in / 永続user-defined / run-scoped proposal」の3種区別が未完了。**着手は [Issue #373](https://github.com/nunu1733/NunuLauncher/issues/373) (OPEN、T-17/T-18取り込みUI再構成) の表示構造と整合させること** (#362 dispositionより。TO-BE [organizer-to-be-ux.md](../../docs/product/organizer-to-be-ux.md) T-18 = 取り込み結果面へ集約)。
+3. **AC-6 apply段oracle**: import・plan段はpin済み。残りは既存transactional apply harness経由でproposal由来planのapply時にcatalog / `CategoryOverrideStore` 不変 (snapshot equality / write count = 0) をassertする。
+4. **AC-4 candidate tail負oracle**: `appendCandidatePlacements` がproposal有無でcandidate placementを変えないことの専用testが未存在 (planner側matrixはcanonical-family / global-compactのみ)。
+5. **AC-1 / AC-2 補助oracle**: (a) category refのcross-export unlinkability専用test (`UnlinkabilityAndIdentityContractTest` にcategory refケースなし — 同一状態の2回exportでcategory ref集合が共有されないこと)、(b) `categories` を含む文書での256 KiB容量 / `Oversize` 経路 (現行Oversize testは `categories = emptyList()`)、(c) malformed `categories` (未知kind・未advertise item ref・redacted tierの `displayName`) のdecode → `SchemaMismatch` fixture。
+6. **AC-15 / AC-16**: representative external agent flowのdevice evidenceとaccessibility evidence (後続evidence pass。spec 327 AC-7/AC-8と同一扱い)。
+7. **AC-14残り (docs)**: 実装PR済み分 (spec 204のgroupSemantic定義・content limits行・v4 history行、spec 205のData and state・7th history行、spec 336の投影規律改訂・AC-14・status注記、spec 348のexactly-one-of / cross-field行・5th history行) に対する残り:
+   - **spec 348のv3残留行** (Production truth inventory等の現状記述がv4実装と不整合): :34「失敗分類 (19種)」、:48 non-goal「schema version bump (v3のまま…)」、:76 「`personalization-context-v3` / `personalized-intent-v3`」、:80 「`freeText` ≤100字…」行、:175・:192・:204 の「19種」記述。それぞれv4 (`personalization-context-v4` / `personalized-intent-v4`、`proposalLabel` ≤50 code points、UI失敗20種) への現状更新または時点注記が必要。
+   - **change historyのv4行の時系列/採番**: spec 204 (昇順historyの中に2026-09-18行が2026-09-16行より前に挿入)、spec 205 / 348 (新行を先頭に追加し、各fileの既定順序と不整合)。各fileの規約に揃える。
+   - **`ExchangeImportPipeline.kt` KDoc**: :197付近の「thirteen #204 contract classes」→ fourteen (contract 14 class)。
+
+### 依存の現状更新
+
+- [Issue #373](https://github.com/nunu1733/NunuLauncher/issues/373) (OPEN): T-17/T-18の取り込みUI再構成の所有者。AC-9 / AC-10のUI残件はこれと整合して着手する (#362 disposition (PR #378、本revision時点で未merge) のIssue #337コメント 2026-09-18: 「表示面はTO-BEのT-18へ集約されるため、#373の表示構造と整合して着手するのが自然」)。
+- #361 TO-BE UX決定 (PR #364、accepted): [organizer-to-be-ux.md](../../docs/product/organizer-to-be-ux.md) :361 がspec 205 / 328 / 331 / 332 / 337への影響を「Amend (影響評価後)」に分類。本spec 337の契約は現時点ではAmend不要 (#362 disposition: Continue) だが、#373系実装時にT-18面との契約差分の影響評価が発生しうる。
+- #356 AS-IS audit (PR #363): 現状UI/data flowの監査記録。AC-9/AC-10 UI着手時の現状把握の入力。
 
 ## Ownership / module boundaries
 
@@ -184,20 +217,22 @@ Device evidence (後続pass、本planでは実行しない):
 
 ## Incremental implementation order
 
-1. **Phase 1 (export面)**: version bump + `categories` projection + item category ref投影 + session `categoryRefs` (builder / codec / store / reconstructor + tests)。spec 336 normative更新を含む。
-2. **Phase 2 (intent面)**: `GroupSemantic` v4 + validator (ref解決 / 失敗class決定表 / 1 class) + completion / identity / adapter (tests)。
-3. **Phase 3 (planner)**: formation key (Existing / Proposed) + `FolderNaming.FromProposalLabel` + title解決 + ordering key (planner tests、byte互換回帰)。
-4. **Phase 4 (AI-facing)**: descriptor / instruction更新 + parity / policy matrix拡張 (#348方式) + spec 204 / 205 / 348更新。template不変の回帰test。
-5. **Phase 5 (UI)**: importサマリ差別化 + promotion (coordinator接続) + strings + a11y。
+1. **Phase 1 (export面)**: version bump + `categories` projection + item category ref投影 + session `categoryRefs` (builder / codec / store / reconstructor + tests)。spec 336 normative更新を含む。— **着地済み (PR #355)**
+2. **Phase 2 (intent面)**: `GroupSemantic` v4 + validator (ref解決 / 失敗class決定表 / 1 class) + completion / identity / adapter (tests)。— **着地済み (PR #355)**
+3. **Phase 3 (planner)**: formation key (Existing / Proposed) + `FolderNaming.FromProposalLabel` + title解決 + ordering key (planner tests、byte互換回帰)。— **着地済み (PR #355)**
+4. **Phase 4 (AI-facing)**: descriptor / instruction更新 + parity / policy matrix拡張 (#348方式) + spec 204 / 205 / 348更新。template不変の回帰test。— **contract着地済み (PR #355)。spec 348の現状記述の残留行とhistory採番は「Re-entry後の着地状態と残件」7へ残存**
+5. **Phase 5 (UI)**: importサマリ差別化 + promotion (coordinator接続) + strings + a11y。— **summary model側着地済み。UI差別化の完全化 (3種区別) とpromotion UX、AC-6 apply段 / AC-4 candidate tail / AC-1・AC-2補助oracleが残存 (「Re-entry後の着地状態と残件」1〜5)。UI着手は #373と整合**
 6. **Phase 6 (evidence)**: representative flow device evidence (AC-15) と a11y evidence (AC-16)。
 
-各Phaseは独立test群を持ち、Phase 1-2で契約が、Phase 3でplanner効果が確定する。PR分割はPhase単位を基本とし、高リスクlabelの該当可否を各PRで判定する (planner変更を含むPRは `risk: layout-data` を検討する)。
+各Phaseは独立test群を持ち、Phase 1-2で契約が、Phase 3でplanner効果が確定する。PR分割はPhase単位を基本とし、高リスクlabelの該当可否を各PRで判定する (planner変更を含むPRは `risk: layout-data` を検討する)。PR #355では `risk: layout-data` + 独立監査 ([pr-355-issue337-category-refs.md](../../docs/assessment/pr-355-issue337-category-refs.md)) が適用された。
 
 ## Dependency / blocker
 
-- **本specのOwner acceptance** (D-1〜D-8、Resolved decisions) — 実装開始のblocker。
+- ~~**本specのOwner acceptance** (D-1〜D-8、Resolved decisions) — 実装開始のblocker。~~ **解消済み** (2026-09-18、Phase1 review Approve。spec status: accepted)。
 - #327 (implemented) / #328 (implemented): 本specはその契約を変更せず、回帰testで不変を固定する。
 - #336 / #330 / #348契約前提: 解消済み (implemented)。
+- **#373 (OPEN)**: AC-9 / AC-10のUI残件の着手順の依存先 (表示構造の整合。#362 disposition)。UI residualを先に実装するとT-18再構成で手戻りするriskがあるため、#373のspec/plan確定を待つか、contract面 (summary model・promotion coordinator接続) と表示面を分離して着手する。
+- **#361 TO-BE UX (accepted)**: spec 337関係の変更は「Amend (影響評価後)」分類。現時点の残件実装でAmendは不要だが、T-18面の実装時に影響評価が発生しうる。
 
 ## Risk
 
@@ -210,7 +245,9 @@ Device evidence (後続pass、本planでは実行しない):
 
 ## Explicitly unverified areas
 
-- 本planのfile単位の変更範囲は実装時に確定する (model / field名、`ExportInputs` へのcatalog入力の形)。
-- `FolderNaming.FromProposalLabel` を文字列化する既存test helper (golden corpus / recording resolver) の更新箇所は実装時にcompile errorで全量を洗い出す。
-- #327のinstruction文言とdescriptor claimの最終表現 (You-must文の具体形) は実装時に #348 のpolicy matrix方式で確定する。
-- device evidence (AC-15) と a11y evidence (AC-16) は実機 / emulatorとowner操作が必要で、本planでは実施しない。
+- 本planのfile単位の変更範囲は実装時に確定する (model / field名、`ExportInputs` へのcatalog入力の形)。— Phase 1〜4分はPR #355で確定・着地済み。
+- `FolderNaming.FromProposalLabel` を文字列化する既存test helper (golden corpus / recording resolver) の更新箇所は実装時にcompile errorで全量を洗い出す。— PR #355で処理済み (unit lane green、1517 tests)。
+- #327のinstruction文言とdescriptor claimの最終表現 (You-must文の具体形) は実装時に #348 のpolicy matrix方式で確定する。— PR #355で確定済み (descriptor v4 claims)。
+- **device evidence (AC-15) と a11y evidence (AC-16) は実機 / emulatorとowner操作が必要で、本planでは実施しない** (未実施)。
+- 「Re-entry後の着地状態と残件」節の残件リストは2026-09-19時点の `main` (`3076bdae7ebf`) に対するgrep / file読みによる確認であり、その後のmergeで変化しうる。再利用時はre-entry ruleに従い現mainで再確認する。
+- #373のspec/planは未確定 (Issue OPEN) であり、AC-9 / AC-10 UI残件の最終の表示構造・着手順は#373側の確定を待つ部分がある。
