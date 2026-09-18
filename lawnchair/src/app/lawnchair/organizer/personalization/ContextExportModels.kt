@@ -1,8 +1,8 @@
 package app.lawnchair.organizer.personalization
 
 import app.lawnchair.organizer.planning.CandidatePlanningIds
-import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.CandidateTarget
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.ItemId
 
 /**

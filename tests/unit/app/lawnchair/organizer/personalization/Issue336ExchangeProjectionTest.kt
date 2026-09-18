@@ -7,6 +7,7 @@ import app.lawnchair.organizer.personalization.exchange.ScopeBindingGate
 import app.lawnchair.organizer.personalization.exchange.ScopeBindingOutcome
 import app.lawnchair.organizer.personalization.exchange.ScopeBindingSessionScope
 import app.lawnchair.organizer.personalization.exchange.SessionExportReconstructor
+import app.lawnchair.organizer.planning.ActiveCategoryCatalog
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.CandidatePlanningIds
 import app.lawnchair.organizer.planning.CandidateTarget
@@ -32,7 +33,10 @@ import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.planning.RevisionId
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.TargetSet
+import app.lawnchair.organizer.planning.TaxonomyContract
+import app.lawnchair.organizer.planning.TaxonomyVersion
 import app.lawnchair.organizer.planning.UserCategoryId
+import app.lawnchair.organizer.planning.UserDefinedCategory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -41,12 +45,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Issue #336 exchange parity contract (accepted plan, "Exchange parity tests"):
+ * Issue #336 exchange parity contract (accepted plan, "Exchange parity tests"),
+ * as revised by Issue #337 (v4):
  *
- * - the export presentation layer projects a user-defined classification as
- *   the absent category — no raw `UserCategoryId` and no display name appears
- *   in an export document or a session record field — while built-in-only
- *   export bytes stay exactly as before #336;
+ * - the export document advertises the active catalog as export-scoped refs
+ *   and every item-level category exposure is one of those refs: no raw
+ *   `UserCategoryId` appears in the document, the built-in value survives only
+ *   as the advertised entry's `taxonomyId`, and the user-defined display name
+ *   appears only in the advertised entry when the privacy tier admits the
+ *   free-text class (never at `EXTERNAL_REDACTED`). The session holds the
+ *   ref → identity mapping (app-private, no-backup) and never a display name;
  * - the session-local freshness layer digests the resolved `CategoryIdentity`
  *   (kind + stable ID), so an A→B reassignment and an assigned-category
  *   deletion (falling through to built-in classification) are detected, while
@@ -96,10 +104,24 @@ class Issue336ExchangeProjectionTest {
             )
         }
         val targets = TargetSet(items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }, additionItems)
+        // Issue #337: the advertised catalog of this fixture — the built-ins
+        // the fixture classifies plus the two user-defined fixtures.
+        val catalog = ActiveCategoryCatalog(
+            builtIn = TaxonomyContract(
+                version = TaxonomyVersion("tv1"),
+                allowedCategories = listOf("NEWS", "SPORTS", "OTHER").map { CategoryId(it) },
+                fallbackCategory = CategoryId("OTHER"),
+            ),
+            userDefined = listOf(
+                UserDefinedCategory(UserCategoryId(TEST_USER_CATEGORY_ID), "Commute tools"),
+                UserDefinedCategory(UserCategoryId(SECOND_USER_CATEGORY_ID), "Second"),
+            ),
+        )
         return ExportInputs(
             snapshot = snapshot,
             targets = targets,
             resolvedIdentities = resolved,
+            catalog = catalog,
             nowEpochMs = now,
         )
     }
@@ -115,7 +137,7 @@ class Issue336ExchangeProjectionTest {
     // ---- export presentation layer -----------------------------------------
 
     @Test
-    fun userDefinedClassificationsExportAsAbsentCategoryWithoutRawIdOrName() {
+    fun userDefinedClassificationsExportAsAdvertisedRefsWithoutRawIdOrNameAtItemLevel() {
         val addition = target("com.assigned")
         val identity = userCategory(TEST_USER_CATEGORY_ID)
         val built = built(
@@ -131,17 +153,23 @@ class Issue336ExchangeProjectionTest {
 
         val candidate = built.export.items.single { it.subject == ExportItemSubject.CANDIDATE }
         val placed = built.export.items.single { it.subject == ExportItemSubject.PLACED }
-        assertNull("user-defined candidate exports the absent category", candidate.category)
-        assertNull("user-defined placed item exports the absent category", placed.category)
+        val advertised = built.export.categories.single { it.ref == candidate.categoryRef }
+        assertEquals("the user-defined entry is advertised as an opaque ref", advertised.ref, candidate.categoryRef)
+        assertEquals("the placed item points at the same advertised entry", advertised.ref, placed.categoryRef)
+        assertNull("a user-defined entry carries no taxonomy id", advertised.taxonomyId)
 
-        // Neither layer of the identity (raw ID or display name) may appear in
-        // the export document bytes or any session record field.
+        // The document never carries the raw stable ID; the display name is a
+        // free-text class that only the advertised entry carries (here the tier
+        // is label-inclusive).
         val rawId = TEST_USER_CATEGORY_ID
         val displayName = "Commute tools"
-        for (surface in listOf(documentBytes(built.export), built.export.toString(), built.session.toString())) {
-            assertFalse("raw user ID leaked: $surface", surface.contains(rawId))
-            assertFalse("display name leaked: $surface", surface.contains(displayName))
-        }
+        val document = documentBytes(built.export)
+        assertFalse("raw user ID leaked: $document", document.contains(rawId))
+        assertEquals(displayName, advertised.displayName)
+        // The session keeps the ref → identity mapping (app-private, never
+        // backed up) and never a display name.
+        assertFalse("display name leaked into the session", built.session.toString().contains(displayName))
+        assertEquals(userCategory(rawId), built.session.categoryRefs[advertised.ref])
         // The identity still reaches the one-way session digests: the same
         // export session must be distinguishable from one built without it.
         val withoutAssignment = built(
@@ -177,10 +205,9 @@ class Issue336ExchangeProjectionTest {
     }
 
     @Test
-    fun builtInExportsAreByteIdenticalAcrossTheTwoLayers() {
-        // A built-in-only fixture produces the same export document bytes
-        // whether the identities pass through the identity-typed layer or are
-        // re-derived: redaction is a no-op for built-ins.
+    fun builtInClassificationsProjectAdvertisedRefsCarryingTheTaxonomyId() {
+        // Issue #337: a built-in classification also projects a ref; the
+        // taxonomy enum value lives on the advertised entry only.
         val addition = target("com.a")
         val withIdentity = built(
             inputs(
@@ -192,8 +219,17 @@ class Issue336ExchangeProjectionTest {
                 ),
             ),
         )
-        assertEquals("NEWS", withIdentity.export.items.single { it.subject == ExportItemSubject.PLACED }.category)
-        assertEquals("SPORTS", withIdentity.export.items.single { it.subject == ExportItemSubject.CANDIDATE }.category)
+        val placedRef = withIdentity.export.items.single { it.subject == ExportItemSubject.PLACED }.categoryRef
+        val candidateRef = withIdentity.export.items.single { it.subject == ExportItemSubject.CANDIDATE }.categoryRef
+        assertEquals(
+            "NEWS",
+            withIdentity.export.categories.single { it.ref == placedRef }.taxonomyId,
+        )
+        assertEquals(
+            "SPORTS",
+            withIdentity.export.categories.single { it.ref == candidateRef }.taxonomyId,
+        )
+        assertNotEquals("the item carries a ref, not the raw value", "NEWS", placedRef)
     }
 
     // ---- session-local freshness layer --------------------------------------
@@ -301,31 +337,57 @@ class Issue336ExchangeProjectionTest {
     }
 
     @Test
-    fun reconstructionViewConsumesIdentitiesAndNeverShowsUserDefinedCategories() {
+    fun reconstructionViewAdvertisesOnlyIdentitiesThatStillExistAndShowsNoRawId() {
         val identity = userCategory(TEST_USER_CATEGORY_ID)
         val snapshot = LayoutSnapshot(RevisionId("rev"), device(), pages(), listOf(app("a")), emptyList())
         val targets = TargetSet(emptyList(), emptyList())
         val exportTime = built(
             inputs(items = listOf(app("a")), resolved = mapOf(ItemId("a") to identity)),
         )
-        val structural = CanonicalStructuralInputs(snapshot, targets, mapOf(ItemId("a") to identity))
+        val structural = CanonicalStructuralInputs(
+            snapshot,
+            targets,
+            mapOf(ItemId("a") to identity),
+            catalog = exportTime.export.categories.let { entries ->
+                // The catalog of the export attempt (rebuilt from the same
+                // fixture): the reconstruction intersects it with the session
+                // mapping.
+                ActiveCategoryCatalog(
+                    builtIn = TaxonomyContract(
+                        version = TaxonomyVersion("tv1"),
+                        allowedCategories = listOf("NEWS", "OTHER").map { CategoryId(it) },
+                        fallbackCategory = CategoryId("OTHER"),
+                    ),
+                    userDefined = listOf(UserDefinedCategory(UserCategoryId(TEST_USER_CATEGORY_ID), "Commute tools")),
+                ).also { require(entries.isNotEmpty()) }
+            },
+        )
 
         val rebuilt = SessionExportReconstructor.rebuild(exportTime.session, structural)
         val view = (rebuilt as ReconstructionResult.Rebuilt).export
-        assertNull("reconstructed view redacts user-defined categories", view.items.single().category)
+        val exportTimeEntry = exportTime.export.categories.single { it.ref == exportTime.export.items.single().categoryRef }
+        val entry = view.categories.single { it.ref == exportTimeEntry.ref }
+        assertEquals("the view advertises the same opaque ref", exportTimeEntry.ref, entry.ref)
+        assertEquals("the reconstructed item still points at it", entry.ref, view.items.single().categoryRef)
 
-        // The reconstruction-parity seam shares one field derivation: a
-        // built-in classification reconstructs its raw value like the export.
-        val builtIn = CanonicalStructuralInputs(
+        // A catalog that no longer contains the identity advertises nothing:
+        // the stale reference fails closed instead of resolving silently.
+        val withoutIdentity = CanonicalStructuralInputs(
             snapshot,
             targets,
-            mapOf(ItemId("a") to CategoryIdentity.BuiltIn(CategoryId("NEWS"))),
+            mapOf(ItemId("a") to identity),
+            catalog = ActiveCategoryCatalog(
+                builtIn = TaxonomyContract(TaxonomyVersion("tv1"), listOf(CategoryId("OTHER")), CategoryId("OTHER")),
+                userDefined = emptyList(),
+            ),
         )
-        val builtInView = (SessionExportReconstructor.rebuild(exportTime.session, builtIn) as ReconstructionResult.Rebuilt).export
-        assertEquals("NEWS", builtInView.items.single().category)
+        val staleView = (SessionExportReconstructor.rebuild(exportTime.session, withoutIdentity) as ReconstructionResult.Rebuilt).export
+        assertTrue("a deleted category is not advertised", staleView.categories.none { it.kind == CategoryRefKind.USER_DEFINED })
+        assertNull("its items project the absent category instead", staleView.items.single().categoryRef)
 
-        // The view never carries the raw ID or a display name.
-        val viewText = builtInView.toString()
+        // The view never carries the raw ID (the session mapping is not part of
+        // the document view).
+        val viewText = view.toString()
         assertFalse(viewText.contains(TEST_USER_CATEGORY_ID))
         assertFalse(viewText.contains("u:"))
     }

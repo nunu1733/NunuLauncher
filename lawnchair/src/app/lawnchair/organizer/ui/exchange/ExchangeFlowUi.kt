@@ -669,7 +669,14 @@ class ExchangeFlowStateHolder(
                 0
             }
             screen = ExchangeScreen.ImportSuccess(
-                summary = exchangeImportSummary(pipeline.validated.completed, scopeCount),
+                summary = exchangeImportSummary(
+                    pipeline.validated.completed,
+                    scopeCount,
+                    // Issue #337: the advertised ref kinds of the same accepted
+                    // export, so the summary can tell an existing category from
+                    // a run-scoped proposal.
+                    categoryKindByRef = pipeline.validated.export.categories.associate { it.ref to it.kind },
+                ),
                 entryKind = attempt.entryKind,
                 attemptToken = attempt.token,
             )
@@ -1558,6 +1565,19 @@ private fun ExchangeImportSuccess(
         val breakdown = listOf(
             Triple("exchange-import-summary-priority", R.plurals.exchange_import_summary_priority, summary.priorityCount),
             Triple("exchange-import-summary-group", R.plurals.exchange_import_summary_group, summary.groupCount),
+            // Issue #337 (spec 337 AC-10): the grouping breakdown distinguishes
+            // an existing category (built-in or persisted user-defined) from a
+            // run-scoped proposal, which nothing saves.
+            Triple(
+                "exchange-import-summary-existing-category",
+                R.plurals.exchange_import_summary_existing_category,
+                summary.builtInCategoryCount + summary.userCategoryCount,
+            ),
+            Triple(
+                "exchange-import-summary-proposed-group",
+                R.plurals.exchange_import_summary_proposed_group,
+                summary.proposedGroupCount,
+            ),
             Triple("exchange-import-summary-placement", R.plurals.exchange_import_summary_placement, summary.placementCount),
             Triple("exchange-import-summary-keep", R.plurals.exchange_import_summary_keep, summary.keepCount),
         )

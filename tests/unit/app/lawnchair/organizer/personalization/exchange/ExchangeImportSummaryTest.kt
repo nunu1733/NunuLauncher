@@ -1,7 +1,9 @@
 package app.lawnchair.organizer.personalization.exchange
 
+import app.lawnchair.organizer.personalization.CategoryRefKind
 import app.lawnchair.organizer.personalization.CompletedPersonalIntent
 import app.lawnchair.organizer.personalization.GlobalPreference
+import app.lawnchair.organizer.personalization.GroupSemantic
 import app.lawnchair.organizer.personalization.Importance
 import app.lawnchair.organizer.personalization.ItemIntent
 import app.lawnchair.organizer.personalization.RefDecision
@@ -36,7 +38,8 @@ class ExchangeImportSummaryTest {
         decisions: Map<String, RefDecision>,
         global: GlobalPreference? = null,
         scope: Int = 0,
-    ) = exchangeImportSummary(completed(decisions, global), scope)
+        categoryKindByRef: Map<String, CategoryRefKind> = emptyMap(),
+    ) = exchangeImportSummary(completed(decisions, global), scope, categoryKindByRef)
 
     @Test
     fun authoredDimensionsCountIndependentlyAndMissingOnesDoNot() {
@@ -69,7 +72,7 @@ class ExchangeImportSummaryTest {
                     ItemIntent(
                         ref = "r1",
                         importance = Importance.HIGH,
-                        groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(category = "media", freeText = null),
+                        groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(categoryRef = "ref-media", proposalLabel = null),
                         regionAffinity = app.lawnchair.organizer.personalization.ExportRegionKind.BOTTOM,
                     ),
                 ),
@@ -140,6 +143,10 @@ class ExchangeImportSummaryTest {
             "noJudgmentCount",
             "priorityCount",
             "groupCount",
+            // Issue #337: the grouping kind split stays counts-only.
+            "builtInCategoryCount",
+            "userCategoryCount",
+            "proposedGroupCount",
             "placementCount",
             "keepCount",
             "minimizeMovement",
@@ -150,5 +157,48 @@ class ExchangeImportSummaryTest {
             .map { it.name }
             .toSet()
         assertEquals(allowed, actual)
+    }
+
+    /**
+     * Issue #337 (spec 337 AC-10): the grouping breakdown distinguishes an
+     * existing category (built-in or persisted) from a run-scoped proposal —
+     * counts only, so the summary keeps its no-label/no-ref shape.
+     */
+    @Test
+    fun groupSemanticsAreCountedByWhatTheyReferTo() {
+        val result = summary(
+            mapOf(
+                authored(
+                    "r1",
+                    ItemIntent(
+                        ref = "r1",
+                        groupSemantic = GroupSemantic(categoryRef = "cat-built-in", proposalLabel = null),
+                    ),
+                ),
+                authored(
+                    "r2",
+                    ItemIntent(
+                        ref = "r2",
+                        groupSemantic = GroupSemantic(categoryRef = "cat-user", proposalLabel = null),
+                    ),
+                ),
+                authored(
+                    "r3",
+                    ItemIntent(
+                        ref = "r3",
+                        groupSemantic = GroupSemantic(categoryRef = null, proposalLabel = "Morning"),
+                    ),
+                ),
+                authored("r4", ItemIntent(ref = "r4", desiredGroupRefs = listOf("r1"))),
+            ),
+            categoryKindByRef = mapOf(
+                "cat-built-in" to CategoryRefKind.BUILT_IN,
+                "cat-user" to CategoryRefKind.USER_DEFINED,
+            ),
+        )
+        assertEquals("all four carry a grouping wish", 4, result.groupCount)
+        assertEquals(1, result.builtInCategoryCount)
+        assertEquals(1, result.userCategoryCount)
+        assertEquals(1, result.proposedGroupCount)
     }
 }

@@ -67,7 +67,14 @@ class IntentPreferenceConsumptionTest {
     )
 
     private fun buildExport(input: OrganizationInput): app.lawnchair.organizer.personalization.BuiltExport = ContextExportBuilder.build(
-        ExportInputs(snapshot = input.snapshot, targets = input.targets, nowEpochMs = 1L),
+        ExportInputs(
+            snapshot = input.snapshot,
+            targets = input.targets,
+            // Issue #337: the export advertises the same catalog the planner
+            // consumes, so category references resolve to advertised refs.
+            catalog = input.catalog,
+            nowEpochMs = 1L,
+        ),
         PrivacyTier.LOCAL_FULL,
         SequentialIdAllocator(),
     )
@@ -75,10 +82,18 @@ class IntentPreferenceConsumptionTest {
     private fun withIntent(input: OrganizationInput, itemIntents: List<ItemIntent>): Pair<OrganizationInput, ValidatedPersonalizedIntent> {
         val built = buildExport(input)
         val refs = built.session.itemRefs.entries.associate { (ref, id) -> id.value to ref }
+        // Issue #337: the fixtures name a built-in taxonomy id; the intent must
+        // reference the advertised export-scoped ref instead.
+        val advertisedRefs = built.export.categories
+            .filter { it.kind == app.lawnchair.organizer.personalization.CategoryRefKind.BUILT_IN }
+            .associate { it.taxonomyId!! to it.ref }
         val mappedIntents = itemIntents.map { itemIntent ->
             itemIntent.copy(
                 ref = refs.getValue(itemIntent.ref),
                 desiredGroupRefs = itemIntent.desiredGroupRefs?.map { refs.getValue(it) },
+                groupSemantic = itemIntent.groupSemantic?.copy(
+                    categoryRef = itemIntent.groupSemantic.categoryRef?.let { advertisedRefs.getValue(it) },
+                ),
             )
         }
         val intent = PersonalizedIntentV1(
@@ -356,10 +371,9 @@ class IntentPreferenceConsumptionTest {
     }
 
     @Test
-    fun standaloneGroupSemanticConsumesThroughFolderPlacementSemantics() {
-        // Two apps classified as fallback but grouped by the intent's
-        // groupSemantic.category (a taxonomy-allowed category): the existing
-        // folder placement semantics form one new folder for them.
+    fun existingCategoryReferenceConsumesThroughFolderPlacementSemantics() {
+        // Issue #337: an existing-category reference resolves by identity and
+        // forms one folder through the unchanged placement semantics.
         val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0))
         val input = baseInput(items)
         val inputWithIntent = withIntent(
@@ -368,15 +382,15 @@ class IntentPreferenceConsumptionTest {
                 ItemIntent(
                     ref = "a",
                     groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
-                        category = "GAMES",
-                        freeText = null,
+                        categoryRef = "GAMES",
+                        proposalLabel = null,
                     ),
                 ),
                 ItemIntent(
                     ref = "b",
                     groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
-                        category = "GAMES",
-                        freeText = null,
+                        categoryRef = "GAMES",
+                        proposalLabel = null,
                     ),
                 ),
             ),
@@ -385,10 +399,133 @@ class IntentPreferenceConsumptionTest {
         // The new folder carries both members (existing strategy semantics,
         // not a new intent-side folder mechanism).
         assertEquals(1, planned.newFolders.size)
-        val members = planned.newFolders.first().members
+        val folder = planned.newFolders.first()
+        val members = folder.members
         assertTrue(ItemId("a") in members && ItemId("b") in members)
+        assertEquals(FolderNaming.FromCategory(CategoryId("GAMES")), folder.naming)
         // Deterministic reproduction.
         assertEquals(planned, planner.plan(inputWithIntent).outcome as Planned)
+    }
+
+    /**
+     * Issue #337 (spec 337 D-6, AC-4): a run-scoped proposal is a formation key
+     * of its own — items from *different* classifications with the same
+     * `proposalLabel` form one new folder, and that folder is named by the
+     * label (the pre-337 spec could not express this case at all).
+     */
+    @Test
+    fun runScopedProposalFormsAndNamesItsOwnFolder() {
+        val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0))
+        val input = baseInput(items).copy(
+            signals = ClassificationSignals(
+                listOf(
+                    ClassificationSignal(
+                        item = ItemId("a"),
+                        source = SignalSource.S5,
+                        candidate = CategoryIdentity.BuiltIn(CategoryId("OTHER")),
+                    ),
+                    ClassificationSignal(
+                        item = ItemId("b"),
+                        source = SignalSource.S5,
+                        candidate = CategoryIdentity.BuiltIn(CategoryId("GAMES")),
+                    ),
+                ),
+            ),
+        )
+        // Sanity: without the intent the two classifications do not share a
+        // folder group, because the other one is the fallback category.
+        val plain = planner.plan(input).outcome as Planned
+        assertTrue(plain.newFolders.isEmpty())
+
+        val inputWithIntent = withIntent(
+            input,
+            listOf(
+                ItemIntent(
+                    ref = "a",
+                    groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                        categoryRef = null,
+                        proposalLabel = "Morning",
+                    ),
+                ),
+                ItemIntent(
+                    ref = "b",
+                    groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                        categoryRef = null,
+                        proposalLabel = "Morning",
+                    ),
+                ),
+            ),
+        ).first
+        val planned = planner.plan(inputWithIntent).outcome as Planned
+        assertEquals(1, planned.newFolders.size)
+        val folder = planned.newFolders.first()
+        assertTrue(ItemId("a") in folder.members && ItemId("b") in folder.members)
+        assertEquals(
+            "the proposal names its own folder",
+            FolderNaming.FromProposalLabel("Morning"),
+            folder.naming,
+        )
+        // Deterministic reproduction.
+        assertEquals(planned, planner.plan(inputWithIntent).outcome as Planned)
+
+        // A different label is a different group: no shared folder.
+        val otherLabel = withIntent(
+            input,
+            listOf(
+                ItemIntent(
+                    ref = "a",
+                    groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                        categoryRef = null,
+                        proposalLabel = "Morning",
+                    ),
+                ),
+                ItemIntent(
+                    ref = "b",
+                    groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                        categoryRef = null,
+                        proposalLabel = "Evening",
+                    ),
+                ),
+            ),
+        ).first
+        assertTrue(
+            "distinct labels are distinct groups",
+            (planner.plan(otherLabel).outcome as Planned).newFolders.isEmpty(),
+        )
+    }
+
+    /**
+     * Issue #337 (spec 337 D-6, AC-4 negative): a strategy that never creates
+     * folders keeps the proposal inert — the intent cannot force folder
+     * creation, and the category ordering key never consumes a proposal.
+     */
+    @Test
+    fun runScopedProposalIsInertUnderANonFolderCreatingStrategy() {
+        val items = listOf(app("a", x = 0, y = 0), app("b", x = 1, y = 0))
+        val input = baseInput(items).copy(
+            rules = defaultRules().copy(organizationStrategy = StrategyId("STABLE_PAGE_TIDY_V1")),
+        )
+        val inputWithIntent = withIntent(
+            input,
+            listOf(
+                ItemIntent(
+                    ref = "a",
+                    groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                        categoryRef = null,
+                        proposalLabel = "Morning",
+                    ),
+                ),
+                ItemIntent(
+                    ref = "b",
+                    groupSemantic = app.lawnchair.organizer.personalization.GroupSemantic(
+                        categoryRef = null,
+                        proposalLabel = "Morning",
+                    ),
+                ),
+            ),
+        ).first
+        val planned = planner.plan(inputWithIntent).outcome as Planned
+        assertTrue("non-folder strategies never create folders", planned.newFolders.isEmpty())
     }
 
     @Test

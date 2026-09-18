@@ -16,6 +16,11 @@ updated: 2026-09-18
 >
 > 依存する #336 (`45711f53dd`) / #330 (`dce8f5779c`) / #348 (`8fd05a40d5`) は実装済みで、#327 (`a9ec3c2cf9`) も本revision時点で main に実装済みである (1st revision時点の「#327 OPEN・spec未merge」は stale であった)。本spec単独では実装を開始しない (「依存関係」節)。
 
+## Implementation progress (Phase2)
+
+- 2026-09-18: **contract core landed** (`issue-337-impl`) — v4 export projection (`categories` + `categoryRef`/`folderCategoryRef` + session `categoryRefs` + reconstruction intersection), v4 intent (`groupSemantic` exactly-one-of, label domain = #336 name rule, `UNKNOWN_CATEGORY_REF` + en/ja copy), planner formation key (`FormationKey` Existing/Proposed, `FolderNaming.FromProposalLabel`, ordering key ignores proposals), descriptor/instruction v4, and the import-summary kind counts. Organizer unit lane green (1517 tests, 0 failures).
+- **Remaining for the Issue's exit conditions**: AC-9 promotion UX (`カテゴリとして保存` through `UserDefinedCategoryAuthoringCoordinator.create` with lease/busy and typed failures), the preview-side part of AC-10, AC-15 device evidence and AC-16 accessibility evidence (deferred evidence pass, same treatment as spec 327 AC-7/AC-8).
+
 ## Review response (1st revision → 2nd revision)
 
 | # | 1st revisionへの指摘 | 本revisionでの解決 |

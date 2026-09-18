@@ -11,6 +11,7 @@ import app.lawnchair.organizer.personalization.exchange.ScopeBindingGate
 import app.lawnchair.organizer.personalization.exchange.ScopeBindingOutcome
 import app.lawnchair.organizer.personalization.exchange.ScopeBindingSessionScope
 import app.lawnchair.organizer.personalization.exchange.SessionExportReconstructor
+import app.lawnchair.organizer.planning.ActiveCategoryCatalog
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.CandidateItem
 import app.lawnchair.organizer.planning.CandidateKind
@@ -39,6 +40,8 @@ import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.planning.RevisionId
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.TargetSet
+import app.lawnchair.organizer.planning.TaxonomyContract
+import app.lawnchair.organizer.planning.TaxonomyVersion
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -101,10 +104,23 @@ class ExchangeTargetScopeCouplingTest {
             snapshot = snapshot,
             targets = targets,
             resolvedIdentities = resolved.mapValues { (_, value) -> builtInIdentity(value) },
+            // Issue #337: every category exposure is an advertised ref, so the
+            // fixture composes the catalog the identities resolve against.
+            catalog = catalogOf(resolved.values.filterNotNull()),
             userLabels = labels,
             nowEpochMs = now,
         )
     }
+
+    /** Issue #337: the advertised catalog of this fixture (built-ins + OTHER). */
+    private fun catalogOf(builtIns: List<String>): ActiveCategoryCatalog = ActiveCategoryCatalog(
+        builtIn = TaxonomyContract(
+            version = TaxonomyVersion("tv1"),
+            allowedCategories = (builtIns + "OTHER").distinct().map { CategoryId(it) },
+            fallbackCategory = CategoryId("OTHER"),
+        ),
+        userDefined = emptyList(),
+    )
 
     private fun builtInIdentity(value: String?): CategoryIdentity? = value?.let { CategoryIdentity.BuiltIn(CategoryId(it)) }
 
@@ -167,8 +183,14 @@ class ExchangeTargetScopeCouplingTest {
             SequentialIdAllocator(),
         )
         assertNull(redacted.export.items.single().label)
-        // Category is taxonomy, not free text: the redacted tier keeps it.
-        assertEquals("ENTERTAINMENT", redacted.export.items.single().category)
+        // Issue #337: the category is an advertised ref, not a raw value; the
+        // entry (not the item) carries the built-in taxonomy id, which is
+        // taxonomy rather than free text, so the redacted tier keeps it.
+        val redactedItem = redacted.export.items.single()
+        val advertised = redacted.export.categories.single { it.ref == redactedItem.categoryRef }
+        assertEquals(CategoryRefKind.BUILT_IN, advertised.kind)
+        assertEquals("ENTERTAINMENT", advertised.taxonomyId)
+        assertFalse(redactedItem.categoryRef == "ENTERTAINMENT")
         assertEquals("Selected App", withLabels.export.items.single().label?.value)
         // No raw identity ever reaches the document.
         val document = redacted.export.toString()
@@ -220,13 +242,13 @@ class ExchangeTargetScopeCouplingTest {
         val encoded = ContextExportCodec.encode(result.export) as ContextExportResult.Success
         val decoded = ContextExportCodec.decode(encoded.bytes)
         assertTrue(decoded is ContextExportResult.Success)
-        val v3Json = encoded.bytes.decodeToString()
-        assertTrue(v3Json.contains("personalization-context-v3"))
-        assertTrue(v3Json.contains("\"subject\":\"CANDIDATE\""))
+        val v4Json = encoded.bytes.decodeToString()
+        assertTrue(v4Json.contains(ContextExportContract.SCHEMA_VERSION))
+        assertTrue(v4Json.contains("\"subject\":\"CANDIDATE\""))
         // v1 documents fail closed on the version check (spec 330 D-3 keeps the
         // single-version runtime; v2 is retired with the same rule).
         val v1Decode = ContextExportCodec.decode(
-            v3Json.replace("personalization-context-v3", "personalization-context-v1").encodeToByteArray(),
+            v4Json.replace(ContextExportContract.SCHEMA_VERSION, "personalization-context-v1").encodeToByteArray(),
         )
         assertEquals(ExportEncodeProblem.SchemaMismatch, (v1Decode as ContextExportResult.Failure).problem)
     }
@@ -281,12 +303,12 @@ class ExchangeTargetScopeCouplingTest {
 
     @Test
     fun v1IntentsFailClosedOnDecode() {
-        assertTrue(ContextExportContract.INTENT_SCHEMA_VERSION == "personalized-intent-v3")
+        assertTrue(ContextExportContract.INTENT_SCHEMA_VERSION == "personalized-intent-v4")
         val encoded = IntentCodec.encode(
             PersonalizedIntentV1(exportId = "x", itemIntents = emptyList()),
         ).decodeToString()
         val v1Bytes = encoded
-            .replace("personalized-intent-v3", "personalized-intent-v1")
+            .replace("personalized-intent-v4", "personalized-intent-v1")
             .encodeToByteArray()
         assertTrue(IntentCodec.decode(v1Bytes) is IntentDecodeResult.Failure)
     }
@@ -463,7 +485,7 @@ class ExchangeTargetScopeCouplingTest {
         // form is a single fenced `json` block; markers stay accepted on
         // import per spec 205/329).
         val packageText = ExchangePackageComposer.compose("{}")
-        assertTrue(packageText.contains("personalized-intent-v3"))
+        assertTrue(packageText.contains(ContextExportContract.INTENT_SCHEMA_VERSION))
         assertTrue(packageText.contains("CANDIDATE"))
         assertTrue(!packageText.contains("-----BEGIN NUNULAUNCHER INTENT-----"))
         assertTrue(ExchangePackageComposer.parsePackageStructure(packageText) is PackageStructureResult.Valid)

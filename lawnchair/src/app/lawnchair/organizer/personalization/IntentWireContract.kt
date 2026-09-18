@@ -419,12 +419,18 @@ internal object IntentWireContract {
     /** The exact sentence a policy claim contributes to the instruction. */
     fun policySentence(id: String): String = when (val s = claim(id).semantic) {
         is Semantic.StringsAsJsonStrings -> "Write string values as JSON strings"
+
         is Semantic.UppercaseSpelledEnums -> "UPPERCASE exactly as listed"
+
         is Semantic.StringArrayOfStrings -> "array of strings"
+
         is Semantic.NonEmptyArray -> "if present, at least ${s.minElements} element(s)"
+
         is Semantic.FixedAuthoredAsPreserve -> "author only \"preserve\": true"
+
         is Semantic.CategoryRefFromContextArray ->
             "set \"categoryRef\" only to a \"ref\" from the CONTEXT data \"categories\" array"
+
         else -> error("$id is not a policy claim")
     }
 

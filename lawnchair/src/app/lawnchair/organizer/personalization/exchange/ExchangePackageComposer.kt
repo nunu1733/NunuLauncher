@@ -207,7 +207,13 @@ private fun renderField(spec: IntentWireContract.FieldSpec): String {
                 IntentWireContract.policySentence("policy.desiredGroupNonEmpty")
         }
 
-        spec.name == "freeText" -> ": at most ${spec.maxLength} characters"
+        spec.name == "categoryRef" ->
+            ": a \"ref\" from the CONTEXT data \"categories\" array (an existing category); " +
+                IntentWireContract.policySentence("policy.categoryRefFromContext")
+
+        spec.name == "proposalLabel" ->
+            ": at most ${spec.maxLength} characters; a new group name you propose for this run only " +
+                "(never an existing category)"
 
         else -> ""
     }
@@ -228,6 +234,7 @@ private fun youMustSection(): String {
         You must:
         - Use only the properties listed in the Output contract above. Do not add any other property — not as a helpful extra, not under any name. Undefined properties make the whole reply unusable.
         - Use only the "ref" values that appear in the CONTEXT data below — in "itemIntents[].ref", in "desiredGroup", and in "unresolvedRefs"
+        - Reference an existing category only by setting "groupSemantic"."categoryRef" to a "ref" from the CONTEXT data "categories" array; express a new group for this run with "groupSemantic"."proposalLabel" instead, and never write a category name or a made-up id as a category reference
         - Mention every "ref" at most once across "itemIntents" and "unresolvedRefs"; you do not have to cover every ref, and anything you leave out is treated as "no judgment" and is never guessed
         - ${policy("policy.stringFieldsAsJsonStrings")}, enum values in ${policy("policy.uppercaseEnums")}, and numbers as integers — never decimals
         - Treat every item with mobility "FIXED" as immovable: ${policy("policy.fixedAuthoring")} for it, or leave it out, or list it under "unresolvedRefs" — never use ${forbiddenFields("mobility.fixedSemanticForbidden")} on it

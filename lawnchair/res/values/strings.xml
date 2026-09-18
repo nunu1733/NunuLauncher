@@ -1415,6 +1415,14 @@
         <item quantity="one">Priority stated: %1$d item</item>
         <item quantity="other">Priority stated: %1$d items</item>
     </plurals>
+    <plurals name="exchange_import_summary_existing_category">
+        <item quantity="one">%1$d item refers to an existing category</item>
+        <item quantity="other">%1$d items refer to an existing category</item>
+    </plurals>
+    <plurals name="exchange_import_summary_proposed_group">
+        <item quantity="one">%1$d item proposes a new group for this run (not saved)</item>
+        <item quantity="other">%1$d items propose a new group for this run (not saved)</item>
+    </plurals>
     <plurals name="exchange_import_summary_group">
         <item quantity="one">Grouping wish: %1$d item</item>
         <item quantity="other">Grouping wishes: %1$d items</item>

@@ -498,6 +498,12 @@
     <plurals name="exchange_import_summary_priority">
         <item quantity="other">優先度の指定: %1$d件</item>
     </plurals>
+    <plurals name="exchange_import_summary_existing_category">
+        <item quantity="other">既存カテゴリを参照する項目: %1$d件</item>
+    </plurals>
+    <plurals name="exchange_import_summary_proposed_group">
+        <item quantity="other">今回だけの新しいグループ提案: %1$d件 (保存されません)</item>
+    </plurals>
     <plurals name="exchange_import_summary_group">
         <item quantity="other">グループの希望: %1$d件</item>
     </plurals>
