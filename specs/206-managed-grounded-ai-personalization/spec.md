@@ -12,12 +12,12 @@ risk:
   - privacy
   - network
   - layout-data
-updated: 2026-09-17
+updated: 2026-09-19
 ---
 
 # Managed Grounded AI: アプリ内完結型Organizer personalization
 
-> Status: draft — 本specの必須依存だった **#204 (Context / PersonalizedIntent exchange contract) は2026-09-15にaccepted** となり (6th review Approve、snapshot `52b9097c` 基準)、PR #322 経由で `origin/main` に実装込みでmerge済みである ([accepted spec 204](../../specs/204-ai-personalization-context-intent-contract/spec.md))。兄弟issue **#205 (External Agent Exchange) も2026-09-16にaccepted** となり、PR #325 (merge `3df9c7af`) で実装が `origin/main` に取り込まれた ([spec 205](../../specs/205-external-agent-exchange/spec.md)、status: implemented、Issue #205 closed)。**2026-09-16〜17に #204契約は v2 ([spec 331](../../specs/331-exchange-target-scope-coupling/spec.md) 所有) / v3 ([spec 330](../../specs/330-partial-intent-authoring/spec.md) 所有) へ拡張され**、現在のwire schemaは `personalization-context-v3` / `personalized-intent-v3` である (本revision `703afe3f4c` 上で確認。型名 `PersonalizationContextExportV1` / `PersonalizedIntentV1` は不変)。本specはこの契約拡張を参照へ更新した (契約核の変更はない)。D-011 (external LLM): 「privacy/threat modelとoffline behavior承認後まで導入しない」が requirements.md のdecision gateであり、2026-09-16のrequirements.md更新で「#205のexternal exchangeはnetwork/provider APIを含まないuser-mediated text交換でありgate外 (privacy/threat modelはspec 205が定義しreview承認済み)、**in-app provider API接続 (#206) は引き続き本gate内**」と明記された。本機能の実装開始は (1) ~~#204受入~~ (**達成済み** 2026-09-15)、(2) privacy/threat model承認、(3) offline behavior (local deterministic Organizerがnetwork/AIなしで利用可能なまま) の確認を満たすまで禁止される (Issue本文も同じ)。
+> Status: draft — 本specの必須依存だった **#204 (Context / PersonalizedIntent exchange contract) は2026-09-15にaccepted** となり (6th review Approve、snapshot `52b9097c` 基準)、PR #322 経由で `origin/main` に実装込みでmerge済みである ([accepted spec 204](../../specs/204-ai-personalization-context-intent-contract/spec.md))。兄弟issue **#205 (External Agent Exchange) も2026-09-16にaccepted** となり、PR #325 (merge `3df9c7af`) で実装が `origin/main` に取り込まれた ([spec 205](../../specs/205-external-agent-exchange/spec.md)、status: implemented、Issue #205 closed)。**2026-09-16〜18に #204契約は v2 ([spec 331](../../specs/331-exchange-target-scope-coupling/spec.md) 所有) / v3 ([spec 330](../../specs/330-partial-intent-authoring/spec.md) 所有) / v4 ([spec 337](../../specs/337-exchange-category-group-proposals/spec.md) 所有) へ拡張され**、現在のwire schemaは `personalization-context-v4` / `personalized-intent-v4` である (本revision `3076bdae7e` 上で確認。型名 `PersonalizationContextExportV1` / `PersonalizedIntentV1` は不変。spec 337は本specを「単一契約のconsumer」として明示している)。本specはこの契約拡張を参照へ更新した (契約核の変更はない)。D-011 (external LLM): 「privacy/threat modelとoffline behavior承認後まで導入しない」が requirements.md のdecision gateであり、2026-09-16のrequirements.md更新で「#205のexternal exchangeはnetwork/provider APIを含まないuser-mediated text交換でありgate外 (privacy/threat modelはspec 205が定義しreview承認済み)、**in-app provider API接続 (#206) は引き続き本gate内**」と明記された。本機能の実装開始は (1) ~~#204受入~~ (**達成済み** 2026-09-15)、(2) privacy/threat model承認、(3) offline behavior (local deterministic Organizerがnetwork/AIなしで利用可能なまま) の確認を満たすまで禁止される (Issue本文も同じ)。
 
 ## Problem
 
@@ -27,7 +27,7 @@ Organizer personalizationをアプリ内で完結させる場合、NunuLauncher�
 
 ## Outcome
 
-NunuLauncher内から #204契約の `PersonalizationContextExportV1` をAI providerへ送信し、provider capabilityに応じた reasoning / web grounding を利用した `PersonalizedIntentV1` を取得できる **Managed Grounded AI** pathを提供する (型名は #204実装に準拠。wire schema versionは `personalization-context-v3` / `personalized-intent-v3` — v2/v3拡張はspec 331/330が所有)。NunuLauncherから見た実行単位はbounded request/responseであり、agent orchestration frameworkをアプリ内へ導入しない。取得したintentは #204 のstrict validation (`IntentValidator`、fail-closed・zero-write) を通り、既存 #182 planner → #194/#195 preview → confirm → apply 経路のみで消費される。
+NunuLauncher内から #204契約の `PersonalizationContextExportV1` をAI providerへ送信し、provider capabilityに応じた reasoning / web grounding を利用した `PersonalizedIntentV1` を取得できる **Managed Grounded AI** pathを提供する (型名は #204実装に準拠。wire schema versionは `personalization-context-v4` / `personalized-intent-v4` — v2/v3/v4拡張はspec 331/330/337が所有)。NunuLauncherから見た実行単位はbounded request/responseであり、agent orchestration frameworkをアプリ内へ導入しない。取得したintentは #204 のstrict validation (`IntentValidator`、fail-closed・zero-write) を通り、既存 #182 planner → #194/#195 preview → confirm → apply 経路のみで消費される。
 
 ## Scope
 
@@ -84,7 +84,7 @@ Provider名ではなくcapabilityを中心に設計する。
 
 ```text
 AiProviderCapabilities
-  STRUCTURED_OUTPUT   // 必須。#204 の `personalized-intent-v3` schemaへのbindingに必要
+  STRUCTURED_OUTPUT   // 必須。#204 の `personalized-intent-v4` schemaへのbindingに必要
   WEB_GROUNDING       // optional。quality-enhancing
   CITATIONS           // optional
   REASONING           // provider-specific / optional
@@ -127,15 +127,19 @@ Provider SDK objectをplanner/rules/application domainへ流出させない。ad
 
 ```text
 PersonalizationContextExportV1 (#204。ContextExportBuilder + PrivacyTier選択。実装済み。
-   現wire schemaは personalization-context-v3 — spec 331/330による拡張を含む)
+   現wire schemaは personalization-context-v4 — spec 331/330/337による拡張を含む
+   (v4: export envelopeのcategories projection + item-level categoryRef一本化))
         ↓
-ManagedAiProviderAdapter (bounded request policy: timeout, size上限, capability宣言)
+ManagedAiProviderAdapter (bounded request policy: timeout, size上限, capability宣言。
+   structured output schemaは #348の IntentWireContract 単一sourceのfactsから派生し
+   第二の手書きschemaを持たない)
         ↓
 provider request
-   - structured output schema (personalized-intent-v3)
+   - structured output schema (personalized-intent-v4)
    - optional web grounding/search
         ↓
-PersonalizedIntentV1 (#204。v3部分authoring可 — 未言及refはcanonical unresolved)
+PersonalizedIntentV1 (#204。v3部分authoring可 — 未言及refはcanonical unresolved。
+   v4ではgroupSemanticはcategoryRef / proposalLabelのexactly-one-of)
         ↓
 IntentCodec.decode + IntentValidator.validate (#204実装済み。fail-closed, zero-write,
    ExportSessionStoreのsession照会と structural digest再計算を含む。成功pathは
@@ -164,7 +168,7 @@ AI実行の全失敗をtyped outcomeとして定義する。いずれも **zero-
 | `GROUNDING_UNSUPPORTED` | grounding要求がproviderで実行できない | quality class低下の明示的な告知または実行中止 (受入時に固定) |
 | `UNEXPECTED_GROUNDING` | grounding provenanceの不変条件違反 (例: grounding未有効化のresponseで `groundingUsed` が主張される) | 失敗告知。同意なしの検索実行を成功として扱わない |
 | `MALFORMED_OUTPUT` | responseがstructured outputとして解析不能 | 失敗告知。raw responseは保存しない |
-| `SCHEMA_MISMATCH` | responseがstructured outputとして解析不能、または #204 validator/codecがrejectした場合の代表class。intent側validation分類は #204契約が所有する (`IntentValidationFailure` 13 class: `SCHEMA_MISMATCH` / `EXPORT_MISMATCH` / `SESSION_EXPIRED` / `CONTEXT_STALE` / `OVERSIZE` / `UNKNOWN_REF` / `DUPLICATE_REF` / `INCOMPLETE_COVERAGE` (v3で分割違反 — 同一refの重複列挙 — へ条件narrow) / `INVALID_ENUM` / `FORBIDDEN_CONTENT` / `MOBILITY_CONTRADICTION` / `CAPABILITY_UNSUPPORTED` (V1ではreserved) / `SCOPE_MISMATCH` (v2、cause detail付き — spec 331)。本specは新設しない) | 検証失敗として告知 |
+| `SCHEMA_MISMATCH` | responseがstructured outputとして解析不能、または #204 validator/codecがrejectした場合の代表class。intent側validation分類は #204契約が所有する (`IntentValidationFailure` 14 class: `SCHEMA_MISMATCH` / `EXPORT_MISMATCH` / `SESSION_EXPIRED` / `CONTEXT_STALE` / `OVERSIZE` / `UNKNOWN_REF` / `DUPLICATE_REF` / `INCOMPLETE_COVERAGE` (v3で分割違反 — 同一refの重複列挙 — へ条件narrow) / `INVALID_ENUM` / `FORBIDDEN_CONTENT` / `MOBILITY_CONTRADICTION` / `CAPABILITY_UNSUPPORTED` (V1ではreserved) / `SCOPE_MISMATCH` (v2、cause detail付き — spec 331) / `UNKNOWN_CATEGORY_REF` (v4、未advertise category ref — spec 337)。本specは新設しない) | 検証失敗として告知 |
 | `TIMEOUT` / `CANCELLED` | bounded request policyのtimeout超過、user cancel | 中止告知。部分結果を採らない |
 | `RESPONSE_TOO_LARGE` | responseがsize上限を超過 | 失敗告知 |
 
@@ -210,6 +214,7 @@ AI実行の全失敗をtyped outcomeとして定義する。いずれも **zero-
 - opt-in、送信内容確認、credential管理、失敗表示、quality class表示をTalkBack / font scaling / keyboard・switch accessで利用可能にする (NFR-009系)。
 - 失敗UIはtyped failure categoryに対応した説明と、deterministic継続の明示的選択肢を持つ。
 - raw chain-of-thoughtを扱わない。必要ならquality class (grounding provenance含む) / provider / model family等のprivacy-safe metadataのみ表示する。`GROUNDING_ENABLED_UNVERIFIED` を `GROUNDED` と表示しない。
+- managed AI entryのIA上の位置は、acceptedなOrganizer TO-BE UX decision ([organizer-to-be-ux.md](../../docs/product/organizer-to-be-ux.md)、#361成果物) と整合させる。同書は「managed-AI / incremental等の将来capability」の受け皿がhubの方法選択・status cardである (D-01: Organizer hubへ集約、D-04: AI相談は「整理案の作り方」の1つとして統合) ことをproduct decisionとして確定しており、本機能のentryはSettingsに独立サブシステムとして畳む形を採らない。既存正本への処分とmigration順序の実行は #362が所有するため、本機能実装時は #362のmigration状態に従う。
 
 ## Stale state / concurrency
 
@@ -223,19 +228,22 @@ AI実行の全失敗をtyped outcomeとして定義する。いずれも **zero-
 - providerが `STRUCTURED_OUTPUT` 相当を満たせない場合はadapterとして登録しない。
 - work profile / private profileの分離は既存planner制約が所有する。intentはprofileを跨ぐ指示を出せない (#204契約)。
 - grounding結果で未知appの断定ができない場合、unresolvedとして返す。推測による断定をしない。
-- intentの対象範囲は既存run modeに限定される (現行 `RunMode` は `FullOrganization` / `IncrementalPlacement` / #228由来の `ScopeComposedOrganization` の3値、`703afe3f4c` 上で再確認)。intentが新規run modeを導入しないことは #204受入契約で確定済みである。target追加 (`TargetSet.additions`) は #228のuser明示選択に由来する場合に限られ (spec 204「Planner接続」)、v2 (spec 331) によりexport scopeがuser選択candidateを含む場合 (`subject: CANDIDATE`) はintent preferenceが当該candidate (`CandidateItem`) 宛に消費され得るが、candidateがexport/session/scope binding gate (#331完全一致) を経由しないintent消費runへ参加する経路は存在しない。本機能の対象scope (full organization限定かcandidate包含も含むか) はOpen decision 11である。export対象kindは `APP_OR_SHORTCUT` / `FOLDER` / `WIDGET` のみで、`APP_PAIR` / `SHORTCUT_LEGACY` / Unknownはconstraint-only投影 (#204受入契約)。
+- intentの対象範囲は既存run modeに限定される (現行 `RunMode` は `FullOrganization` / `IncrementalPlacement` / #228由来の `ScopeComposedOrganization` の3値、`3076bdae7e` 上で再確認)。intentが新規run modeを導入しないことは #204受入契約で確定済みである。target追加 (`TargetSet.additions`) は #228のuser明示選択に由来する場合に限られ (spec 204「Planner接続」)、v2 (spec 331) によりexport scopeがuser選択candidateを含む場合 (`subject: CANDIDATE`) はintent preferenceが当該candidate (`CandidateItem`) 宛に消費され得るが、candidateがexport/session/scope binding gate (#331完全一致) を経由しないintent消費runへ参加する経路は存在しない。本機能の対象scope (full organization限定かcandidate包含も含むか) はOpen decision 11である。export対象kindは `APP_OR_SHORTCUT` / `FOLDER` / `WIDGET` のみで、`APP_PAIR` / `SHORTCUT_LEGACY` / Unknownはconstraint-only投影 (#204受入契約)。
 
 ## Dependencies
 
-| 依存先 | 関係 | 状態 (2026-09-17時点) |
+| 依存先 | 関係 | 状態 (2026-09-19時点) |
 |---|---|---|
-| #204 Context / PersonalizedIntent contract | 唯一のAI output contract。adapterの入出力・validationはこれに従う | **accepted (2026-09-15) + 実装済み** ([accepted spec 204](../../specs/204-ai-personalization-context-intent-contract/spec.md)、PR #322 merge済み)。**v2/v3拡張済み** — `personalization-context-v3` / `personalized-intent-v3` (v2: spec [331](../../specs/331-exchange-target-scope-coupling/spec.md) 所有、`subject: PLACED/CANDIDATE` + `SCOPE_MISMATCH`。v3: spec [330](../../specs/330-partial-intent-authoring/spec.md) 所有、部分authoring + `IntentCompletion`/`CompletedPersonalIntent`)。schema/validator/codec/session store/planner接続は `organizer/personalization/` + `organizer/integration/` に存在 (`703afe3f4c` 上で確認) |
+| #204 Context / PersonalizedIntent contract | 唯一のAI output contract。adapterの入出力・validationはこれに従う | **accepted (2026-09-15) + 実装済み** ([accepted spec 204](../../specs/204-ai-personalization-context-intent-contract/spec.md)、PR #322 merge済み)。**v2/v3/v4拡張済み** — `personalization-context-v4` / `personalized-intent-v4` (v2: spec [331](../../specs/331-exchange-target-scope-coupling/spec.md) 所有、`subject: PLACED/CANDIDATE` + `SCOPE_MISMATCH`。v3: spec [330](../../specs/330-partial-intent-authoring/spec.md) 所有、部分authoring + `IntentCompletion`/`CompletedPersonalIntent`。v4: spec [337](../../specs/337-exchange-category-group-proposals/spec.md) 所有、export `categories` projection + item-level `categoryRef`一本化 + `groupSemantic` の `categoryRef`/`proposalLabel` exactly-one-of + failure `UNKNOWN_CATEGORY_REF`)。schema/validator/codec/session store/planner接続は `organizer/personalization/` + `organizer/integration/` に存在 (`3076bdae7e` 上で確認) |
+| #337 category refs & group proposals (v4所有) | v4拡張の所有者。本specはspec 337 non-goalsで「#206 managed AI pathの実装 (単一契約のconsumerとしてv4を利用する)」と明示されたconsumerである。managed AIが生成するintentもv4契約 (exactly-one-of `groupSemantic`、category ref参照) に従う | **accepted (2026-09-18) + contract core実装済み** (PR #355)。残り: AC-9 promotion UX、AC-10 preview側、AC-15/16 evidence (spec 337「Implementation progress」参照)。本specの契約変更は不要 |
+| #348 AI-facing contract sync | `IntentWireContract` — intent wire fieldのcanonical facts (型・必須性・enum綴り・上限) の単一source。`IntentCodec` allow-list、exchange instructionのOutput contract、contract-sync test oracleがここからrenderされる。managed AI adapterのstructured output schema bindingもこの単一sourceから派生させ、第二の手書きschema (production validatorと乖離するAI向けschema) を作らない (spec 348が排除したfailure classの再導入防止) | **implemented (2026-09-18)** (PR #349。AC-11 representative evidenceのみ後続pass、[spec 348](../../specs/348-exchange-ai-facing-contract/spec.md)) |
 | D-011 (external LLM gate) | privacy/threat modelとoffline behaviorの承認が必要 | 未承認。requirements.md D-011行 (2026-09-16更新) は、#205 external exchangeを「network/provider APIを含まないuser-mediated text交換 (clipboard/share/file) であり、privacy/threat modelはspec 205が定義しreviewで承認済み」としてgate外に整理した上で、**「in-app provider API接続 (#206) は引き続き本gate内」** と明記。実装開始のhard blocker (残存) |
-| #182 (spec 182, implemented) | planner seam。intentは #204経由 (`OrganizationInput.intentPreferences`) でこのseamに入る | 実装済み。intent preference消費は全planner executorに接続済み (PR #322)。#331によりcandidate宛preferenceの消費も接続済み |
+| #182 (spec 182, implemented) | planner seam。intentは #204経由 (`OrganizationInput.intentPreferences`) でこのseamに入る | 実装済み。intent preference消費は全planner executorに接続済み (PR #322)。#331によりcandidate宛preferenceの消費も接続済み。#337により `groupSemantic` はv4 model (exactly-one-of) へ拡張され、proposal labelはrun-scoped formation key (`FormationKey.Proposed`) としてfolder形成に効く (既存strategy authorityは不変) |
 | #194/#195/#13 (implemented/accepted) | preview / confirmation / apply / recoveryの再利用 | 実装済み |
 | #203 usage signals | usage signalがあればcontext exportの `usageSignals` projectionへ含まれる (optional)。signal snapshotとsettings surfaceは実装済み | **実装済み** (PR #321 merge済み、spec 203 accepted)。projection定義は #204受入spec「usage signal projection (V1)」。不在でも本機能は成立する |
-| #205 (CLOSED) | 兄弟issue。transport共通化はしない (exchange: clipboard/share/fileによるuser-mediated text交換でnetwork/provider APIなし / 本件: in-app provider API接続)。exchange framing所有は #205 側 (#206のmanaged pathはprovider structured outputを利用しframingを持たない) | **accepted (2026-09-16) + 実装済み** ([spec 205](../../specs/205-external-agent-exchange/spec.md) status: implemented、PR #325 merge `3df9c7af`、Issue #205 closed)。その後 **#329 (import normalizer) / #331 (run内entry + scope binding gate) / #332 (import入力UI) が実装済み**で、exchange側にはidle entry + run内entryの2経路が存在する。実装は `organizer/personalization/exchange/` (pure) + `organizer/integration/exchange/` + `organizer/ui/exchange/`。organizer配下にnetwork実装は存在しないままである (`703afe3f4c` 上で再確認) |
-| #336 user-defined categories | 本機能の依存ではないが、export composition入力 (`ExportInputs.resolvedIdentities` — `CategoryIdentity` 解決) とplanner入力 (`OrganizationInput.catalog`、`PolicySourceKind.USER_DEFINED_CATEGORY_CATALOG`) が #336で拡張済み。export文書のpresentation fieldはuser定義カテゴリ名をredactする (#336 redaction契約) | **実装済み** (PR #341、spec 336 implemented)。本specの契約変更は不要 (`ExportInputs` 契約は拡張済みfieldを持つ) |
+| #205 (CLOSED) | 兄弟issue。transport共通化はしない (exchange: clipboard/share/fileによるuser-mediated text交換でnetwork/provider APIなし / 本件: in-app provider API接続)。exchange framing所有は #205 側 (#206のmanaged pathはprovider structured outputを利用しframingを持たない) | **accepted (2026-09-16) + 実装済み** ([spec 205](../../specs/205-external-agent-exchange/spec.md) status: implemented、PR #325 merge `3df9c7af`、Issue #205 closed)。その後 **#329 (import normalizer) / #331 (run内entry + scope binding gate) / #332 (import入力UI) / #327 (interview-first instruction) / #328 (import成功状態 + `StrategyWriteArbiter` によるstrategy書込・import・CTAの相互排他) が実装済み**で、exchange側にはidle entry + run内entryの2経路が存在する。実装は `organizer/personalization/exchange/` (pure) + `organizer/integration/exchange/` + `organizer/ui/exchange/`。organizer配下にnetwork実装は存在しないままである (`3076bdae7e` 上で再確認) |
+| #361 TO-BE UX (accepted) | managed AI entryのIA上の受け皿を定めるproduct decision。hubの方法選択・status cardが「managed-AI等の将来capability」の受け皿であること (D-01/D-04) が確定済み。既存正本の処分とmigration順序の実行は #362が所有 | **accepted (2026-09-18〜19)** ([organizer-to-be-ux.md](../../docs/product/organizer-to-be-ux.md))。本specのUI / accessibility節の位置づけ参照 |
+| #336 user-defined categories | 本機能の依存ではないが、export composition入力 (`ExportInputs.resolvedIdentities` — `CategoryIdentity` 解決) とplanner入力 (`OrganizationInput.catalog`、`PolicySourceKind.USER_DEFINED_CATEGORY_CATALOG`) が #336で拡張済み。export文書のpresentation fieldはuser定義カテゴリ名をredactする (#336 redaction契約。v4でcategory露出は `categories` projectionのtier制御付きdisplayNameへ置き替え — spec 337所有) | **実装済み** (PR #341、spec 336 implemented)。本specの契約変更は不要 (`ExportInputs` 契約は拡張済みfieldを持つ) |
 
 ## Compatibility / migration
 
@@ -282,6 +290,7 @@ AI実行の全失敗をtyped outcomeとして定義する。いずれも **zero-
 - 2026-09-16 (re-entry再anchor): 前回baseline `397d3fd9` → 現在 `origin/main` `0cf82bc1e6` の差分を検査。主要変化は (1) **#204 受入 + 実装** (PR #322、2026-09-15 accepted、FR-017をrequirements.mdへ登録、ADR-0007 §9に #203 optional input追記、CONTEXT.md/DESIGN.mdへ用語・module行追加)、(2) **#203 実装** (PR #321、signal snapshot + settings surface)、(3) #298実装 (PR #319/#320、thread affinity。AI/transport/credential seamと無関係)。#204受入に伴い、本specの依存状態と暫定表現を確定契約への参照へ更新した (header、Dependencies表、Intended flow、Failure taxonomyの `SCHEMA_MISMATCH` 行、Privacy tier参照、provenance、Stale state、Unsupported cases、Open decision 5、References)。**契約核 (capability model、adapter contract、failure taxonomyの #206固有行、grounding provenance不変条件、credential delivery model境界、privacy boundary、Open decisions 1〜10 の枠組み) に変更はない。** #204の契約blockerは解消したが、D-011承認は実装開始のhard blockerとして残る。`PolicySourceKind` は #203/#204により8値へ拡張 (`PERSONALIZATION_SIGNAL_SNAPSHOT`、`PERSONALIZED_INTENT`)、`OrganizationInput` に `intentPreferences` field追加を確認済み。
 - 2026-09-16 (第2回re-entry再anchor): 前回baseline `0cf82bc1e6` → 現在 `origin/main` `4f555450bd` の差分を検査。主要変化は **#205 (External Agent Exchange) の受入 + 実装** (spec 205 accepted 2026-09-16、実装PR #325 merge `3df9c7af`、docs PR #326でspec/planをimplementedへ更新、Issue #205 closed)。`organizer/personalization/exchange/` (pure) / `organizer/integration/exchange/` / `organizer/ui/exchange/` が追加され、`ContextExportBuilder` は #205の `SessionExportReconstructor` との内部共通化 (`toExportItemCore`) を得たが (外部seam不変)、organizer配下にnetwork/provider API実装は存在しないままである (`4f555450bd` 上で再確認)。requirements.mdはD-011行へ「#205 exchangeはuser-mediated text交換としてgate外、in-app provider API接続 (#206) は引き続きgate内」を明記し、FR-017 statusへspec 205を受入追記した。CONTEXT.mdへ #205用語追加、DESIGN.mdへgate 13追加。本revisionではDependencies表 (#205行を実装済みへ、D-011行を最新文言へ) とbaseline参照を更新した。**契約核に変更なし。** D-011承認が実装開始のhard blockerとして残存。`OrganizationPlanner.plan` signature、`RunMode` (3値)、`PolicySourceKind` (8値)、`PurityGuardTest` (`organizer/personalization` 配下をsubdirectory含め走査)、`NoTransportContractTest` は `4f555450bd` 上で再確認済み。
 - 2026-09-17 (第3回re-entry再anchor): 前回baseline `4f555450bd` → 現在 `origin/main` `703afe3f4c` の差分を検査。主要変化は **#204契約のv2/v3拡張の実装** と #336: (1) **#331 (exchange target scope coupling、v2)** — per-item `subject` (`PLACED`/`CANDIDATE`)、mobility `CANDIDATE`、sessionのscope candidate集合 + candidate投影digest、failure taxonomy 13th class `SCOPE_MISMATCH` (cause detail付き)、run内entry + scope binding gate (選択集合の完全一致)。(2) **#330 (partial intent authoring、v3)** — `itemIntents` と `unresolvedRefs` の互いに素 (未言及refはcanonical unresolved)、validator成功pathの純粋completer `IntentCompletion` が全export refの完全分割 `CompletedPersonalIntent` を構成しidentity計算とplanner投影の唯一の対象に、`INCOMPLETE_COVERAGE` の条件narrow (分割違反)。schema bump (`personalization-context-v2/v3` / `personalized-intent-v2/v3`) はspec 331/330が所有しspec 204 change historyへ記録済み。(3) **#329 (import normalizer)** — exchange importの外形認識層 (marker以外のfenced json / standalone JSON)。#206に直接影響なし。(4) **#332 (exchange import入力UI)** — clipboard/file-firstのimport surface。(5) **#336 (user-defined categories)** — `PolicySourceKind` 9値化 (`USER_DEFINED_CATEGORY_CATALOG`)、`OrganizationInput.catalog` 必須化、`ExportInputs.resolvedIdentities` 追加、export presentationのuser定義カテゴリ名redaction。本revisionでは spec/plan の #204契約参照をv3実態へ再anchor (schema version表記、Intended flowのcompletion追記、Failure taxonomyの `SCOPE_MISMATCH` 追加、Stale state節へのscope binding gate追記、Unsupported casesのadditions/run mode記述更新、provenance記述の9値更新)、Open decision 11新設、Dependencies表更新 (#204行へv2/v3拡張、#205行へ #329/#331/#332、#336行新設) を行った。**#206固有の契約核 (capability model、adapter contract、failure taxonomyの #206固有行、grounding provenance不変条件、credential delivery model境界、privacy boundary、Open decisions 1〜10) に変更はない。** D-011承認が実装開始のhard blockerとして残存。`OrganizationPlanner.plan` signature、`RunMode` (3値)、`PolicySourceKind` (9値)、`PurityGuardTest` 走査範囲、`NoTransportContractTest`、organizer配下network import不在は `703afe3f4c` 上で再確認済み。
+- 2026-09-19 (第4回re-entry再anchor): 前回baseline `703afe3f4c` → 現在 `origin/main` `3076bdae7e` の差分を検査。主要変化は **#204契約のv4拡張 (#337) の受入 + contract core実装**、**#348実装**、**#327/#328実装**、**#356監査 + #361 TO-BE UX受入**: (1) **#337 (category refs & group proposals、v4、accepted 2026-09-18、PR #355)** — wire schema `personalization-context-v4` / `personalized-intent-v4`、export envelopeへ `categories` projection追加、item-level category露出の `categoryRef`/`folderCategoryRef` 一本化、intent `groupSemantic` を `categoryRef`/`proposalLabel` exactly-one-ofへ変更 (label値域は #336 name規則)、failure taxonomy 14th class `UNKNOWN_CATEGORY_REF`、session recordへ `categoryRefs` mapping追加 (additive、record file名は `organizer_personalization_export_session_v2.json` のまま)、plannerはrun-scoped formation key (`FormationKey.Proposed` + `FolderNaming.FromProposalLabel`) を獲得。spec 337のnon-goalsは本specを「#206 managed AI pathの実装 (単一契約のconsumerとしてv4を利用する)」と明示。残り: AC-9 promotion UX、AC-10 preview側、AC-15/16 evidence。(2) **#348 (AI-facing contract sync、implemented PR #349)** — `IntentWireContract` がintent wire fieldのcanonical factsの単一sourceとなり (`IntentCodec` allow-list、exchange instruction、contract-sync test oracleがここからrender)、本specのIntended flowへ「managed AI adapterのstructured output schema bindingもこの単一sourceから派生させる」契約を追記。(3) **#327 (interview-first、PR #350) / #328 (import成功状態 + `StrategyWriteArbiter`、PR #353)** — exchange側実装。#206に直接影響なし (Dependencies表の #205行へ追記)。(4) **#356 (AS-IS監査) + #361 (Organizer TO-BE IA/UX decision、accepted 2026-09-18〜19)** — managed AI entryのIA上の受け皿 (hub方法選択・status card、D-01/D-04) がproduct decisionとして確定。UI / accessibility節へ位置づけ追記 (migration実行は #362)。本revisionでは schema version表記 (v4)、Failure taxonomyの14 class化、Intended flowへの `IntentWireContract` 追記、Dependencies表 (#337/#348/#361行新設、#204行へv4拡張、#205行へ #327/#328、#182行へformation key、#336行へv4注記) を更新した。**#206固有の契約核 (capability model、adapter contract、failure taxonomyの #206固有行、grounding provenance不変条件、credential delivery model境界、privacy boundary、Open decisions 1〜11) に変更はない。** D-011承認が実装開始のhard blockerとして残存。`OrganizationPlanner.plan` signature、`RunMode` (3値)、`PolicySourceKind` (9値)、`PurityGuardTest` 走査範囲、`NoTransportContractTest`、organizer配下network import不在は `3076bdae7e` 上で再確認済み。
 
 ## References
 
@@ -289,10 +298,14 @@ AI実行の全失敗をtyped outcomeとして定義する。いずれも **zero-
 - [Spec 204: AI personalization Context / Intent exchange contract](../204-ai-personalization-context-intent-contract/spec.md) (**accepted** 2026-09-15、実装済み — PR #322)
 - [Issue #205](https://github.com/nunu1733/NunuLauncher/issues/205) (兄弟issue、closed。transport共通化なし。exchange framing所有は #205)
 - [Spec 205: external agent exchange](../205-external-agent-exchange/spec.md) (accepted 2026-09-16、implemented — PR #325)
+- [Spec 337: category refs & group proposals (v4)](../337-exchange-category-group-proposals/spec.md) (accepted 2026-09-18、contract core実装済み — PR #355。#204契約のv4拡張所有。本specを単一契約のconsumerとして明示)
+- [Spec 348: exchange AI-facing contract sync](../348-exchange-ai-facing-contract/spec.md) (implemented — PR #349。`IntentWireContract` 単一wire descriptor所有)
+- [Spec 327: agent exchange interview-first](../327-agent-exchange-interview-first/spec.md) (implemented — PR #350)
+- [Spec 328: exchange import success state](../328-exchange-import-success-state/spec.md) (implemented — PR #353。`StrategyWriteArbiter` 所有)
 - [Spec 329: import normalizer](../329-import-normalizer/spec.md) (implemented — PR #339)
 - [Spec 330: partial intent authoring (v3)](../330-partial-intent-authoring/spec.md) (implemented — PR #335。#204契約のv3拡張所有)
+- [Organizer TO-BE IA / UX decision (#361)](../../docs/product/organizer-to-be-ux.md) (accepted 2026-09-18〜19。migration実行は #362)
 - [Spec 331: exchange target scope coupling (v2)](../331-exchange-target-scope-coupling/spec.md) (implemented — PR #333。#204契約のv2拡張所有。run内entry + scope binding gate)
-- [Spec 332: exchange import input UI](../332-exchange-import-input-ui/spec.md) (implemented — PR #344)
 - [Spec 336: user-defined categories](../336-user-defined-categories/spec.md) (implemented — PR #341)
 - [Spec 203: usage implicit preference signals](../203-usage-implicit-preference-signals/spec.md) (implemented — PR #321)
 - [Android developer cryptography guidance](https://developer.android.com/privacy-and-security/cryptography) (Jetpack Security Crypto deprecated。確認日2026-09-13)
