@@ -2,8 +2,9 @@
 
 > Issue: #367
 > Spec: [spec.md](./spec.md)
-> Status: accepted（実装開始。最終review「追加指摘なし / Approve相当」
-> https://github.com/nunu1733/NunuLauncher/issues/367#issuecomment-5741181088 、head `dd09ef1a18`）
+> Status: implemented（[PR #382](https://github.com/nunu1733/NunuLauncher/pull/382)
+> merge commit `37a0b44bf1`、2026-09-19。CI `final-status` green:
+> https://github.com/nunu1733/NunuLauncher/actions/runs/35447157673 ）
 
 ## Current evidence
 
