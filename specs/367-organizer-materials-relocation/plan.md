@@ -170,7 +170,7 @@ PR #379 #365正本改訂、PR #380 #366実装、PR #381 docs）を再照合済�
 
 | Path | Intended change | Why here |
 |---|---|---|
-| `lawnchair/src/app/lawnchair/ui/preferences/destinations/HomeScreenPreferences.kt` | Layout groupのorganizer row 4件を削除。Personalization group（heading＋`OrganizerUsageMaterialRows()`呼び出し）を削除。不要import（`HomeScreenCategoryOverrides`等のroute、`OrganizerUsageMaterialRows`等）を整理。**General groupの2行（manual row＋hub入口row）は無編集** | 本Issueの本体。navigation edgeの削除のみで、残る面の構成は不変 |
+| `lawnchair/src/app/lawnchair/ui/preferences/destinations/HomeScreenPreferences.kt` | Layout groupのorganizer row 4件を削除。Personalization group（heading＋`OrganizerUsageMaterialRows()`呼び出し）を削除。不要import（`HomeScreenCategoryOverrides`等のroute 4件。`OrganizerUsageMaterialRows`は同一packageのためimport自体が存在しない）を整理。**General groupの2行（manual row＋hub入口row）は無編集** | 本Issueの本体。navigation edgeの削除のみで、残る面の構成は不変 |
 | `lawnchair/res/values/strings.xml`, `lawnchair/res/values-ja/strings.xml` | `organizer_personalization_section`を削除（未使用化）。`organization_onboarding_reentry_hint_body`は無編集（label参照先を変えないため） | 孤立したuser-visible resourceの排除（MAT-AC-08） |
 | `lawnchair/src/app/lawnchair/organizer/ui/OrganizationOnboardingProposal.kt`, `PreferenceRoutes.kt`, `PreferenceNavigation.kt`, `OrganizerHubPreferences.kt`, `OrganizerUsageMaterialRows.kt`, 材料・診断・run面各destination | 無編集 | #370/#366の所有面。route・destination・登録・hintはすべて現行のまま |
 | `tests/organizer-instrumentation/app/lawnchair/ui/preferences/OrganizerDiagnosticsRouteInstrumentationTest.kt` | `homeScreenEntryNavigatesToDiagnosticsRouteShowingExportSurface`を更新: （1）Home screenで材料系row（diagnostics含む4 label＋personalization 2 label）の不在assert（全list走査後）、（2）hub入口row click → hub render → hub材料セクションのdiagnostics row click → export surface表示、への付け替え。safe terminal test（270行目以降）は維持 | 旧oracleがHome screen上の削除rowに依存するため（MAT-AC-02/05）。obsolete理由（D-01材料集約・TO-BE §5.2）をPRに記録 |
@@ -270,17 +270,17 @@ failure injection（対象外——本Issueは読取契約を変更しない。�
 
 ## Documentation updates
 
-- [ ] `specs/367-organizer-materials-relocation/spec.md` / `plan.md` status・history（本PR）
+- [x] `specs/367-organizer-materials-relocation/spec.md` / `plan.md` status・history（本PR）
 - [x] `docs/product/organizer-disposition-migration.md` 段階ownership明確化（本branch。
        re-review指摘1の解消）
-- [ ] specs 38/99/336/138 入口表記追記、spec 203 U-2配置改訂（本PR。Issue本文＋
+- [x] specs 38/99/336/138 入口表記追記、spec 203 U-2配置改訂（本PR。Issue本文＋
        disposition割当）
-- [ ] `docs/assessment/evidence/issue-123-ui-mapping.md`（spec 123 AC-1。本PR）
+- [x] `docs/assessment/evidence/issue-123-ui-mapping.md`（spec 123 AC-1。本PR）
 - [x] Issue #370本文編集＋記録コメント（本branch。re-review指摘1の解消）
-- [ ] Issue #367への段階契約記録（MAT-AC-02の解釈。PR作成時）
-- [ ] `CONTEXT.md`: 実施しない（材料/hub語彙は#365で確定済み）
-- [ ] `DESIGN.md`: 実施しない（§4.4 UI adapterの記述範囲内。新面を作らないため）
-- [ ] ADR: 不要（IA決定の選択肢比較はorganizer-to-be-ux.md §4に記録済み）
+- [x] Issue #367への段階契約記録（[コメント](https://github.com/nunu1733/NunuLauncher/issues/367#issuecomment-5741164754)）
+- [x] `CONTEXT.md`: 実施しない（材料/hub語彙は#365で確定済み）
+- [x] `DESIGN.md`: 実施しない（§4.4 UI adapterの記述範囲内。新面を作らないため）
+- [x] ADR: 不要（IA決定の選択肢比較はorganizer-to-be-ux.md §4に記録済み）
 
 ## Execution checklist
 
@@ -300,8 +300,8 @@ failure injection（対象外——本Issueは読取契約を変更しない。�
        oracle・`CategoryOverride`は無編集でgreen。`CustomCategory`のみ
        test-infrastructure修正（fake Create報告＋rename matcher）のうえgreen。
        下記Implementation notes参照。
-8. [ ] full verification + evidence記録 + PR（`Closes #367`）＋ Issue #367への
-       段階契約記録（PR本文とIssue comment）。
+8. [x] full verification + evidence記録 + PR（[PR #382](https://github.com/nunu1733/NunuLauncher/pull/382)。`Closes #367`）＋ Issue #367への段階契約記録
+       （[コメント](https://github.com/nunu1733/NunuLauncher/issues/367#issuecomment-5741164754)）。
 
 ## Implementation notes（実装時の確定事項、2026-09-19）
 
