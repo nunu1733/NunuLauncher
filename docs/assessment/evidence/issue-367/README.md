@@ -1,7 +1,7 @@
 # Issue #367 evidence — organizer materials relocation
 
 > Issue: [#367](https://github.com/nunu1733/NunuLauncher/issues/367)
-> Spec: [specs/367-organizer-materials-relocation/spec.md](../../../specs/367-organizer-materials-relocation/spec.md)
+> Spec: [specs/367-organizer-materials-relocation/spec.md](../../../../specs/367-organizer-materials-relocation/spec.md)
 > Captured: 2026-09-19, emulator `issue209_pixel_7_pro` AVD (API 36, pixel_7_pro profile — CI `organizer-instrumentation-issue52-tests` lane equivalent), debug build `app.lawnchair.debug` on branch `issue-367-materials-relocation`
 
 ## MAT-AC-02 / MAT-AC-01 — settings Home screen after the relocation
