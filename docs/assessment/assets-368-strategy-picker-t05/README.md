@@ -85,3 +85,18 @@ oracle's binding choices):
    (first = dashboard, second = single movable NavHost) is cited in the plan
    as the code-level evidence that supported paths compose one second-pane
    destination at a time.
+
+3. A variant that drives the real Back key through
+   `ManualOrganizationBackHandler` (dismiss -> dispatcher Back -> pop) passes
+   all four ordering assertions in the test body but crashes at activity
+   teardown with a navigation-compose entry-lifecycle artifact (the popped
+   run-surface entry stays INITIALIZED and the activity-destroy pass then
+   attempts DESTROYED). Reproduced on all three AVDs with three different
+   Back injection methods (dispatcher call from the UI thread, direct
+   semantics-action dispatch ordering, and `input keyevent 4` shell
+   injection). The full reproduction is preserved in the branch history
+   (commit dea59951ad and its follow-ups); the committed oracle therefore
+   drives the supported path via the navigation controller, whose
+   teardown is clean, and the Back-path ordering is asserted from the
+   synchronous dismiss contract of `ManualOrganizationBackHandler` (the
+   code path cited above).
