@@ -351,9 +351,12 @@ Launcher3 bridge、selection store format、preview面のstrategy identity表示
   は`onDispose`→`dismiss()`を持つため、T-05 compose時点でoperationは終了している
   （`operationActive == false`、evidence READMEに記録）。→ さらにproduction同一
   transition構成のNavHostをclock pin付きで駆動するruntime oracle
-  （`StrategyT05ProductionNavigationTest`）で順序を実測: 遷移中はoutgoing run面と
-  incoming T-05が共存しoperation activeのままT-05はfrozen表示、遷移完了後に
-  dispose→dismiss→unfrozen→書込可能、を固定。frozen affordanceは将来のnavigation
+  （`StrategyT05ProductionNavigationTest`）で **supported path（run面→hub→T-05）の順序を
+  実測**: hop 1（run面→hub）遷移中はoutgoing run面とincoming hubが共存しoperationは
+  まだalive（onDispose→dismiss未実行）、hop 1完了時にdismiss→operation終了
+  （`State.Cancelled`）、hop 2（hub→T-05）はoperation終了後に開始するためT-05は
+  unfrozenでcompose、終端で書込可能、を固定。**すなわちsupported path上でT-05が
+  operation active中にcomposeされることはない**。frozen affordanceは将来のnavigation
   変更（#369）に備える防御構造として残す。
 
 ## Verification

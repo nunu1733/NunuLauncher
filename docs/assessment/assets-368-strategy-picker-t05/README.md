@@ -43,28 +43,45 @@ future navigation changes (#369). Accordingly:
 - The accepted plan's two-pane premise is updated in the same commit (plan
   Risk 4 / Verification / Unverified areas; spec scenario wording).
 
-## Runtime navigation ordering oracle (measured)
+## Runtime navigation ordering oracle (measured, supported path)
 
-`StrategyT05ProductionNavigationTest` drives the production
-`PreferenceNavigation` transition setup (the real NavHost with the same
-shared-axis enter/exit/pop transitions and destination routes) through the
-run-surface -> T-05 navigation with an active run operation, with the
-animation clock pinned. Measured ordering:
+`StrategyT05ProductionNavigationTest` drives the REAL production
+`PreferenceNavigation` (real NavHost, real shared-axis transitions, real
+destination registrations, expanded window) through the SUPPORTED user path
+with an active run, with the animation clock pinned:
 
-1. Mid-transition the outgoing run surface and the incoming T-05 coexist
-   (NavHost keeps the outgoing destination composed until its exit
-   transition finishes); the operation is still active and T-05 renders its
-   frozen affordance (disabled rows + live-region reason, asserted).
-2. When the transition completes, the run surface's `onDispose` ->
-   `coordinator.dismiss()` has run: `operationActive == false`, the run ends
-   in `State.Cancelled`, T-05 renders unfrozen, and a selection publishes
-   through the validated write command.
+- run surface -> hub (hop 1): mid-transition the outgoing run surface and
+  the incoming hub coexist and the run operation is STILL alive (the
+  `onDispose` -> `dismiss()` cleanup has not run yet); when hop 1 completes
+  the run surface has disposed, `dismiss()` ran, and the operation is over
+  (`operationActive == false`, `State.Cancelled`).
+- hub -> T-05 (hop 2): the transition starts with the operation already
+  over, so T-05 composes UNFROZEN (no frozen reason row).
+- T-05 is writable on the supported path: a selection publishes through the
+  validated write command.
 
-A second measured finding: a real run started through the production
-`ManualOrganizationModule` singleton inside the instrumentation process never
-reaches an active operation — the application module answers
-`InputUnavailable(ReconciliationPending)` even after the readiness gate
-settles. The production-shell runtime oracle therefore binds an injected
-runner to the destinations while keeping the production transition setup;
-the singleton limitation is itself recorded here as an instrumentation
-environment finding.
+Measured conclusion: on production-supported navigation, T-05 never composes
+while the operation is still alive — the operation always ends at run-surface
+disposal (hop 1), before T-05 is entered. The frozen affordance is therefore
+a defensive structure for future navigation changes (#369). This supersedes
+the earlier wording that run+T-05 "never coexist" without the transition
+nuance: the pair that transiently coexists mid-transition is run+hub; T-05
+only enters after the operation ended.
+
+Two further measured environment findings (recorded as the reason for the
+oracle's binding choices):
+
+1. A real run started through the production `ManualOrganizationModule`
+   singleton inside the instrumentation process never reaches an active
+   operation — the application module answers
+   `InputUnavailable(ReconciliationPending)` even after the readiness gate
+   settles. The oracle therefore binds an injected runner via the
+   `PreferenceNavigation` `runOverride` seam (mirroring the destinations'
+   own `run` params; production callers omit it).
+2. Composing the full `Preferences` two-pane shell under the compose-test
+   activity throws (`No compose hierarchies` — the shell composition fails
+   to start) on all three AVDs, so the oracle drives the production
+   `PreferenceNavigation` directly. `Preferences.kt`'s TwoPane structure
+   (first = dashboard, second = single movable NavHost) is cited in the plan
+   as the code-level evidence that supported paths compose one second-pane
+   destination at a time.
