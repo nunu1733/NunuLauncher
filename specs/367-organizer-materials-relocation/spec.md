@@ -1,6 +1,6 @@
 ---
 issue: "#367"
-status: accepted
+status: implemented
 requirements: [FR-006, FR-010, FR-013, FR-015]
 risk: []
 updated: 2026-09-19
@@ -392,6 +392,18 @@ And 本Issueは新しい永続化を一切導入しないため、process死で�
     hub材料→T-02/T-03/T-04 navigation oracle（backstack `hasRoute`＋固有UI marker）と、
     production hub上のT-06 toggle反映＋Usage Access行のapp-op grant/revoke +
     `ON_RESUME`再読取oracleを追加した。同classはCI issue-52 laneに登録済み。
+- 2026-09-19: **implemented**。[PR #382](https://github.com/nunu1733/NunuLauncher/pull/382)
+  merge（commit `37a0b44bf1`、head `c9e2003cc4`）。ChatGPT実装reviewはhead `96677230db`
+  [初回](https://github.com/nunu1733/NunuLauncher/issues/367#issuecomment-5741853711)→
+  `c25b00d21b`修正、[再レビュー](https://github.com/nunu1733/NunuLauncher/issues/367#issuecomment-5742148902)→
+  `8a7262bec3`修正、[再レビュー2: 指摘なし・Approve相当](https://github.com/nunu1733/NunuLauncher/issues/367#issuecomment-5742231568)。
+  事後docs-only 2 commit（`e82645b7c9` evidence link修正、`c9e2003cc4` 監査記録＋plan hygiene）を経てmerge。
+  CI `final-status` green（[run 35447157673](https://github.com/nunu1733/NunuLauncher/actions/runs/35447157673)、
+  head `c9e2003cc4`。16 check全pass。api35/issue99 laneは前回runの疑いflakeが再実行で回復）。
+  独立監査（実装agentと別session）: `docs/assessment/pr-382-organizer-materials-relocation.md`
+  （MAT-AC-01〜08全件PASS、条件付きGO→CI条件充足）。HUB/MAT-AC-01..08のevidenceは
+  PR本文・`docs/assessment/evidence/issue-367/`。本PR本文は`Closes #367`でmerge時に
+  Issue #367をclose済み。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/367
 [2]: https://github.com/nunu1733/NunuLauncher/issues/366
