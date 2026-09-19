@@ -343,11 +343,15 @@ Launcher3 bridge、selection store format、preview面のstrategy identity表示
 - リスク点3: 削除対象stringのreference漏れ（4件以外に未使用化するresource、
   `manual_organization_strategy_section`の置換要否）。→ 実装PRで
   `git grep`によるreference確認を必須化する（AC-8）。
-- リスク点4: two-pane（expanded）設定でT-05と実行面が同時composeされ得るため、
-  run active中のT-05到達が現実の操作になり得る。→ gateはprocess-globalなadmission
-  domainとoperation lifetime projectionに依存するためnavigation構造に依存しない。
-  two-paneでの実画面確認（operation active中のT-05 frozen表示）を実装PRのevidenceに
-  含める。
+- リスク点4（実装時に実測済み）: two-pane（expanded）設定でT-05と実行面が同時compose
+  され得るか。→ **実測の結果、発生しない**: production expanded settings
+  （`Preferences.kt` TwoPane）はfirst=`PreferencesDashboard`／second=単一 movable
+  `NavHost`であり、`HomeScreenManualOrganization`と`HomeScreenOrganizerStrategy`は
+  別destinationのため同時composeされない。さらにrun面の`ManualOrganizationBackHandler`
+  は`onDispose`→`dismiss()`を持つため、T-05 compose時点でoperationは終了している
+  （`operationActive == false`、evidence READMEに記録）。→ frozen affordanceは将来の
+  navigation変更（#369）に備える防御構造として残り、synthetic composition oracle
+  （`StrategyT05VisualEvidenceTest.captureTwoPaneOperationActiveFrozen`）で固定する。
 
 ## Verification
 
@@ -366,7 +370,9 @@ Launcher3 bridge、selection store format、preview面のstrategy identity表示
 含めるべき観点: UI（T-05構成・実行面否定的観測・hub navigation）、既存回帰（store/
 composer/exchange無編集green）、accessibility（frozen理由読み上げ、radio group、
 200% font）、localization（EN/ja対訳・削除locale一貫性）、failure injection（書込失敗時の
-既存選択保持は既存store unit testが所有。本Issueで新設しない）、two-pane実画面確認。
+既存選択保持は既存store unit testが所有。本Issueで新設しない）、two-pane実測記録
+（同時composeはproduction navigationで発生しない旨の実測＋synthetic防御oracle、
+evidence README参照）。
 
 ## Dependencies and ordering
 
@@ -382,8 +388,10 @@ composer/exchange無編集green）、accessibility（frozen理由読み上げ、
 
 ## Explicitly unverified areas
 
-- two-pane（expanded）設定でT-05と実行面が同時composeされ得るかの実画面確認
-  （gateはnavigation非依存のため契約への影響はないが、実装PRのevidenceで確認する）。
+- ~~two-pane（expanded）設定でT-05と実行面が同時composeされ得るかの実画面確認~~
+  → 実装時に実測済み: production navigationでは同時composeされない（plan「Risk」
+  参照。evidence READMEに記録）。operation active中のT-05 frozenはsynthetic
+  composition oracleで固定（将来のnavigation変更に備える防御契約）。
 - `manual_organization_strategy_section`をT-05画面titleへ再利用するか新設に置換するか
   （spec 161 copy規約に従い実装PRで確定）。
 - 削除により未使用化するstringがChange setの4件（＋場合によりsection表題の置換）のみ
@@ -429,5 +437,5 @@ composer/exchange無編集green）、accessibility（frozen理由読み上げ、
 7. [ ] specs 182/283/328改訂＋処分文書境界更新（AC-7。改訂箇所がspec Scope節と
        Contract notes 2の境界と一致することをdiff review）。
 8. [ ] full verification＋screenshot evidence（light/dark、T-05選択表示・frozen表示、
-       two-pane実画面確認）＋PR（`Refs #368`。Issue受入条件を満たす最終PRのみ
+       two-pane実測記録）＋PR（`Refs #368`。Issue受入条件を満たす最終PRのみ
        `Closes #368`を検討。workflow契約に従う。#374への境界通知コメントを同時に行う）。

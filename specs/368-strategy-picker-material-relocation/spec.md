@@ -195,8 +195,10 @@ And activeなrunが存在しないためdismiss/restartは一切発生しない
 
 Given run operationまたはrecovery operationがactiveである（`activeOperation`または
 `recoveryLease`が存在し、`AUTHORING` tokenは取得できない）
-When T-05が表示される（防御ケース。現行navigationではrun面離脱時にrunがdismissされる
-ため、通常到達しない。two-pane設定では到達し得る。plan「Design」参照）
+When T-05が表示される（防御ケース。実測どおりproduction navigationでは到達しない:
+two-pane expanded設定でもsecond paneは単一NavHostのためdestinationの同時composeは
+発生せず、run面離脱時の`onDispose`→`dismiss()`によってT-05 compose時点でoperationは
+終了している。plan「Risk」参照。本scenarioは将来のnavigation変更に備える防御契約である）
 Then picker行は選択をcommitできない状態（disabled affordance）で表示され、理由文言が
 「中断してから変更する」規則をlive regionで通知する
 And この状態で選択操作を呼んでも、arbiterは`RefusedRunOrRecoveryActive`の開始outcomeを
@@ -518,6 +520,11 @@ high-risk evidence gateの対象外）。
   占有され得るため、他authoring占有・single-flight時はtyped outcomeに対応するretry文言
   （frozen理由と区別される新規string）で案内する役割分担へ変更。他AUTHORING競合の
   scenario・`RefusedAuthoringBusy` oracle（AC-9(b2)）を追加。
+- 2026-09-19: 実装レビュー対応でtwo-pane前提を実測に合わせ修正。production expanded
+  settings（`Preferences.kt` TwoPane）はsecond paneが単一NavHostのためdestination同時
+  composeは発生せず、run面の`onDispose`→`dismiss()`によりT-05 compose時点でoperationは
+  終了する（実測・evidence README記録）。scenario「run/recovery active中…」を防御契約と
+  して明記し、plan Risk 4 / Verification / Unverified areasを同期。
 - 2026-09-19: 実装（#368実装PR。`StrategyWriteArbiter`簡素化＋`AUTHORING` admission＋typed開始outcome、
   `ManualOrganizationRun.operationActive`新設、T-05 destination新設＋hub entry＋run面picker撤去、
   exchange strategy gate除去、本spec/planのstatus/history更新、specs 182/283/328改訂、処分文書
