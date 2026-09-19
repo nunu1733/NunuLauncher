@@ -349,9 +349,12 @@ Launcher3 bridge、selection store format、preview面のstrategy identity表示
   `NavHost`であり、`HomeScreenManualOrganization`と`HomeScreenOrganizerStrategy`は
   別destinationのため同時composeされない。さらにrun面の`ManualOrganizationBackHandler`
   は`onDispose`→`dismiss()`を持つため、T-05 compose時点でoperationは終了している
-  （`operationActive == false`、evidence READMEに記録）。→ frozen affordanceは将来の
-  navigation変更（#369）に備える防御構造として残り、synthetic composition oracle
-  （`StrategyT05VisualEvidenceTest.captureTwoPaneOperationActiveFrozen`）で固定する。
+  （`operationActive == false`、evidence READMEに記録）。→ さらにproduction同一
+  transition構成のNavHostをclock pin付きで駆動するruntime oracle
+  （`StrategyT05ProductionNavigationTest`）で順序を実測: 遷移中はoutgoing run面と
+  incoming T-05が共存しoperation activeのままT-05はfrozen表示、遷移完了後に
+  dispose→dismiss→unfrozen→書込可能、を固定。frozen affordanceは将来のnavigation
+  変更（#369）に備える防御構造として残す。
 
 ## Verification
 

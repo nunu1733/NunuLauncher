@@ -42,3 +42,29 @@ future navigation changes (#369). Accordingly:
   production never composes both destinations at once.
 - The accepted plan's two-pane premise is updated in the same commit (plan
   Risk 4 / Verification / Unverified areas; spec scenario wording).
+
+## Runtime navigation ordering oracle (measured)
+
+`StrategyT05ProductionNavigationTest` drives the production
+`PreferenceNavigation` transition setup (the real NavHost with the same
+shared-axis enter/exit/pop transitions and destination routes) through the
+run-surface -> T-05 navigation with an active run operation, with the
+animation clock pinned. Measured ordering:
+
+1. Mid-transition the outgoing run surface and the incoming T-05 coexist
+   (NavHost keeps the outgoing destination composed until its exit
+   transition finishes); the operation is still active and T-05 renders its
+   frozen affordance (disabled rows + live-region reason, asserted).
+2. When the transition completes, the run surface's `onDispose` ->
+   `coordinator.dismiss()` has run: `operationActive == false`, the run ends
+   in `State.Cancelled`, T-05 renders unfrozen, and a selection publishes
+   through the validated write command.
+
+A second measured finding: a real run started through the production
+`ManualOrganizationModule` singleton inside the instrumentation process never
+reaches an active operation — the application module answers
+`InputUnavailable(ReconciliationPending)` even after the readiness gate
+settles. The production-shell runtime oracle therefore binds an injected
+runner to the destinations while keeping the production transition setup;
+the singleton limitation is itself recorded here as an instrumentation
+environment finding.

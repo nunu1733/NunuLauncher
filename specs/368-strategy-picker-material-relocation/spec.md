@@ -524,7 +524,11 @@ high-risk evidence gateの対象外）。
   settings（`Preferences.kt` TwoPane）はsecond paneが単一NavHostのためdestination同時
   composeは発生せず、run面の`onDispose`→`dismiss()`によりT-05 compose時点でoperationは
   終了する（実測・evidence README記録）。scenario「run/recovery active中…」を防御契約と
-  して明記し、plan Risk 4 / Verification / Unverified areasを同期。
+  して明記し、plan Risk 4 / Verification / Unverified areasを同期。さらにproduction同一
+  transition構成のNavHostをclock pin付きで駆動するruntime oracle
+  （`StrategyT05ProductionNavigationTest`）で順序を実測: 遷移中はoutgoing run面とincoming
+  T-05が共存しoperation activeのままT-05はfrozen表示、遷移完了後にdispose→dismiss→
+  unfrozen→書込可能、を固定。
 - 2026-09-19: 実装（#368実装PR。`StrategyWriteArbiter`簡素化＋`AUTHORING` admission＋typed開始outcome、
   `ManualOrganizationRun.operationActive`新設、T-05 destination新設＋hub entry＋run面picker撤去、
   exchange strategy gate除去、本spec/planのstatus/history更新、specs 182/283/328改訂、処分文書
