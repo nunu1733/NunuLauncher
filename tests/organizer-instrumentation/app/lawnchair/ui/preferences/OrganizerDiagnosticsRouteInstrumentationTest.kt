@@ -16,8 +16,11 @@
 package app.lawnchair.ui.preferences
 
 import android.app.Activity
+import android.app.Instrumentation
+import android.app.Instrumentation.ActivityResult
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
@@ -357,6 +360,19 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             val grantedText = context.getString(R.string.organizer_personalization_usage_access_granted)
             val notGrantedText = context.getString(R.string.organizer_personalization_usage_access_not_granted)
             composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(usageLabel))
+
+            // Clicking the row must send the user to the system usage-access
+            // settings (spec #203 U-2). The instrumentation monitor blocks
+            // the real launch and records the interception.
+            val monitor = instrumentation.addMonitor(
+                IntentFilter(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS),
+                ActivityResult(Activity.RESULT_OK, null),
+                /* block = */ true,
+            )
+            composeRule.onNodeWithText(usageLabel).performClick()
+            assertEquals(1, monitor.hits)
+            instrumentation.removeMonitor(monitor)
+
             val initiallyGranted = UsageAccess.isGranted(context)
             composeRule.onNodeWithText(
                 if (initiallyGranted) grantedText else notGrantedText,
@@ -382,8 +398,10 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
     }
 
     /** Runs a shell command through the instrumentation's UiAutomation. */
+    private val instrumentation: Instrumentation = InstrumentationRegistry.getInstrumentation()
+
     private fun shell(command: String) {
-        val process = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)
+        val process = instrumentation.uiAutomation.executeShellCommand(command)
         java.io.FileInputStream(process.fileDescriptor).readBytes()
         process.close()
     }

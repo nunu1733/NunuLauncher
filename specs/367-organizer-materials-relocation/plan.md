@@ -93,8 +93,11 @@ PR #379 #365正本改訂、PR #380 #366実装、PR #381 docs）を再照合済�
   CategoryOverridePreferencesInstrumentationTest.kt`、
   `CustomCategoryPreferencesInstrumentationTest.kt`、
   `tests/organizer-instrumentation/app/lawnchair/organizer/locks/OrganizerLockScreenTest.kt`:
-  settings階層を経由しない直接composeのため、navigation edge削除の影響を受けない
-  （無編集greenの対象）。
+  settings階層を経由しない直接composeのため、navigation edge削除の影響を受けない。
+  ただし`CustomCategoryPreferencesInstrumentationTest`は（CI lane未登録のため）
+  test infrastructureの既存不備を抱えており、実装review対応でfakeのCreate報告と
+  rename行matcherを修正した（Change set参照。production code・観測対象は無編集）。
+  `CategoryOverride`・`OrganizerLockScreenTest`は無編集greenの対象。
 - `tests/organizer-instrumentation/app/lawnchair/ui/preferences/
   OrganizerDiagnosticsRouteInstrumentationTest.kt`
   - 231〜260行目 `homeScreenEntryNavigatesToDiagnosticsRouteShowingExportSurface`:
@@ -173,6 +176,7 @@ PR #379 #365正本改訂、PR #380 #366実装、PR #381 docs）を再照合済�
 | `tests/organizer-instrumentation/app/lawnchair/ui/preferences/OrganizerDiagnosticsRouteInstrumentationTest.kt` | `homeScreenEntryNavigatesToDiagnosticsRouteShowingExportSurface`を更新: （1）Home screenで材料系row（diagnostics含む4 label＋personalization 2 label）の不在assert（全list走査後）、（2）hub入口row click → hub render → hub材料セクションのdiagnostics row click → export surface表示、への付け替え。safe terminal test（270行目以降）は維持 | 旧oracleがHome screen上の削除rowに依存するため（MAT-AC-02/05）。obsolete理由（D-01材料集約・TO-BE §5.2）をPRに記録 |
 | `tests/organizer-instrumentation/app/lawnchair/organizer/ui/` 配下（新規class。#366の`OrganizerHubPreferencesInstrumentationTest`拡張か#367新classかは実装時に判断） | settings側の否定的観測（Layout group 4 row・Personalization group 2行の不在、hub入口row・manual rowの残存）とT-06単一インスタンスassert（Home screen走査後にT-06行不在→hubでT-06行機能・preference一致）を追加 | MAT-AC-02/06/07の自動化。既存production graph harness patternを踏襲 |
 | `tests/organizer-instrumentation/app/lawnchair/organizer/ui/OnboardingOrganizationProposalInstrumentationTest.kt` | **無編集**（hint oracle・#232 oracleの維持を回帰証拠とする） | spec 232 AC-3は#370まで不変（MAT-AC-07） |
+| `tests/organizer-instrumentation/app/lawnchair/organizer/ui/CustomCategoryPreferencesInstrumentationTest.kt` | test-infrastructure修正のみ: `FakeCatalogStore.mutate`のCreate commitがverified-Create契約（Committedはminted entryを報告）どおりminted entryを返すよう修正。rename行matcherをvisible text → `onNodeWithContentDescription`へ。production code・oracle観測対象は無編集 | 同classはCI lane未登録のためbaseでも失敗していた既存不備。実装review指摘（MAT-AC-03の実装対応とplan整合）に基づき本PRで修正し、class全体を安定greenにした |
 | `docs/assessment/evidence/issue-123-ui-mapping.md` | 設定側organizer rowのinventory行を削除・hub集約の注記へ更新 | spec 123 AC-1 inventory（MAT-AC-04） |
 | `docs/product/organizer-disposition-migration.md` | 段階ownershipの明確化（本branchで実施済み。§2.3 spec 232行、§3.10二段階所有、§5 rows 4/5、§4.1 spec 203行、§7.2(b)、status追記）: #367=材料rowのみ、#370=manual organization直行row廃止＋spec 232 AC-3改訂＋hint更新（D-01の完成）、spec 203=配置改訂（#367）→JIT（#371）の二段階 | #367 re-review指摘の解消。正本側でownershipを閉じないと段階契約（MAT-AC-02）が根拠を欠く |
 | `specs/38-lock-authoring-unknown-review/spec.md`, `specs/99-user-authored-category-overrides/spec.md`, `specs/336-user-defined-categories/spec.md`, `specs/138-diagnostics-export-settings-route/spec.md` | 入口表記の追記のみ（契約節は変更しない）: 38/99/336はdisposition割当の「入口はhub経由になった旨」、138はLayout group入口 → hub経由の注記（destination・route不変） | Issue本文（「specs 38/99/336は入口表記の追記（契約不変）」）＋実態との整合。#365 Non-goals「spec改訂は各実装IssueのPRで行う」に従い実装PRで実施 |
@@ -228,7 +232,7 @@ PR #379 #365正本改訂、PR #380 #366実装、PR #381 docs）を再照合済�
 |---|---|---|
 | MAT-AC-01 | instrumentation: hub → T-02/T-03/T-04 navigation、T-06行機能、hub → diagnostics（#366 hub oracleの再実行含む）。emulator screenshot（ja/default × light/dark） | `connectedLawnWithQuickstepGithubDebugAndroidTest` 対象class filter |
 | MAT-AC-02 | instrumentation: settings → Home screenの材料row不在assert（4 row＋Personalization group 2行、全list走査後）＋hub入口row・manual row存在assert＋hub遷移assert | 同上 |
-| MAT-AC-03 | 既存test無編集green（`CategoryOverridePreferencesInstrumentationTest`、`CustomCategoryPreferencesInstrumentationTest`、`OrganizerLockScreenTest`、`ManualOrganizationPreferencesInstrumentationTest`）+ diff review（契約面無編集） | 同上 + `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
+| MAT-AC-03 | 既存testのgreen（材料画面直接compose系、run面系。CustomCategoryのみtest-infrastructure修正あり。#232/hint oracleと他の材料画面classは無編集green）+ diff review（契約面無編集。spec 203はU-2配置改訂のみ例外で他規定無変更） | 同上 + `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
 | MAT-AC-04 | specs 38/99/336/138の入口表記diff review + spec 203のdiff review（U-2配置のみ改訂、JIT/fallback/`ON_RESUME`規定無変更、旧settings配置のnormative記述が残っていないこと）+ `issue-123-ui-mapping.md` diff + disposition改訂diff（本branch分。段階ownershipの記載確認） | PR diff review |
 | MAT-AC-05 | `OrganizerDiagnosticsRouteInstrumentationTest`更新diff + 実行結果 + obsolete理由のPR記録 | 対象class filter実行 |
 | MAT-AC-06 | instrumentation: Home screen走査後にT-06行不在、hubでT-06行機能・preference一致・`ON_RESUME`再読取 | instrumentation |
@@ -292,8 +296,10 @@ failure injection（対象外——本Issueは読取契約を変更しない。�
 5. [x] `organizer_personalization_section`削除 + reference grep（MAT-AC-08。0件確認）。
 6. [x] specs 38/99/336/138の入口表記追記、spec 203のU-2配置改訂（2箇所）、
        spec 123 inventory更新（MAT-AC-04）。
-7. [x] 既存test（材料画面直接compose系・run面系・lock popup系・#232/hint oracle）が
-       無編集でgreenであることの確認（MAT-AC-03/07/08。下記Implementation notes参照）。
+7. [x] 既存testのgreen確認（MAT-AC-03/07/08）: run面系・lock popup系・#232/hint
+       oracle・`CategoryOverride`は無編集でgreen。`CustomCategory`のみ
+       test-infrastructure修正（fake Create報告＋rename matcher）のうえgreen。
+       下記Implementation notes参照。
 8. [ ] full verification + evidence記録 + PR（`Closes #367`）＋ Issue #367への
        段階契約記録（PR本文とIssue comment）。
 
@@ -347,7 +353,9 @@ failure injection（対象外——本Issueは読取契約を変更しない。�
     route assertのみとする。
   - `homeScreenHubTogglesRecordingPreferenceAndRereadsUsageAccessOnResume`: production
     graphのhub上でT-06 recording toggle ↔ switch semantics一致（同一preferenceの
-    反映）、Usage Access行の表示がapp-op付与状態と一致、UiAutomation shellによる
+    反映）、Usage Access行click時にsystem usage-access設定へのintent
+    （`ACTION_USAGE_ACCESS_SETTINGS`）が発行されること（instrumentation monitorで
+    拦截）、Usage Access行の表示がapp-op付与状態と一致、UiAutomation shellによる
     grant/revoke + `ON_RESUME`再読取（test制御のLifecycleOwnerでresume cycleをdispatch）で
     行のstate textが更新されること。
 
