@@ -65,6 +65,10 @@ import soup.compose.material.motion.animation.rememberSlideDistance
 fun PreferenceNavigation(
     navController: NavHostController,
     startDestination: PreferenceRoute,
+    // Issue #368: test seam for the organizer destinations (mirrors their
+    // own `run` params). Production callers omit it and the destinations
+    // resolve the process singleton as before.
+    runOverride: app.lawnchair.organizer.ui.ManualOrganizationRun? = null,
 ) {
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val slideDistance = rememberSlideDistance()
@@ -122,6 +126,7 @@ fun PreferenceNavigation(
         composable<HomeScreenManualOrganization> { backStackEntry ->
             val route: HomeScreenManualOrganization = backStackEntry.toRoute()
             ManualOrganizationPreferences(
+                run = runOverride,
                 trigger = route.trigger,
                 onOpenDiagnostics = { navController.navigate(HomeScreenOrganizerDiagnostics) },
             )
@@ -130,10 +135,12 @@ fun PreferenceNavigation(
         composable<HomeScreenOrganizerDiagnostics> { OrganizerDiagnosticsPreferences() }
         // Issue #366: Organizer hub (T-01), the persistent organizing
         // workspace. Its material rows navigate via their own destinations.
-        composable<HomeScreenOrganizer> { OrganizerHubPreferences() }
+        composable<HomeScreenOrganizer> { OrganizerHubPreferences(run = runOverride) }
         // Issue #368: strategy materials surface (T-05), the picker's only
         // home; reached from the hub materials section.
-        composable<HomeScreenOrganizerStrategy> { OrganizerStrategyPreferences() }
+        composable<HomeScreenOrganizerStrategy> {
+            OrganizerStrategyPreferences(run = runOverride)
+        }
 
         composable<Dock> { DockPreferences() }
         composable<DockSearchProvider> { SearchProviderPreferences() }
