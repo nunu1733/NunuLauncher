@@ -2,7 +2,8 @@
 
 > Issue: #368
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: accepted（2026-09-19。spec re-review Approve相当 @ `5d5b61ee4e` とowner指示
+> （reviewクリア後に実装へ進行）により受入。実行チェックリストの開始条件は確認済み）
 
 ## Current evidence
 

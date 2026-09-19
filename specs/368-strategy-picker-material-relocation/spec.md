@@ -1,6 +1,6 @@
 ---
 issue: "#368"
-status: draft
+status: accepted
 requirements: [FR-016, NFR-009]
 risk: []
 updated: 2026-09-19
@@ -11,7 +11,11 @@ updated: 2026-09-19
 > 契約の根拠: accepted TO-BE decision
 > [docs/product/organizer-to-be-ux.md](../../docs/product/organizer-to-be-ux.md)
 > （D-03、§4.4「run中のstrategy変更」、§5.1 T-05、§7.1 strategy行、§8.3 strategy行）。
-> 本specは[Issue #368][1]の成果物である。statusが `draft` の間はimplementation-readyではない。
+> 本specは[Issue #368][1]の成果物である。Status: **accepted**（2026-09-19、
+> re-review [Approve相当](https://github.com/nunu1733/NunuLauncher/issues/368#issuecomment-5742960028)
+> @ head `5d5b61ee4e`。Contract notes 1〜3はowner指示（reviewクリア後に実装へ進行）に
+> より受入: (1) 材料を見に行く導線はhub経由のみ、(2) spec 328境界はoption (A)、
+> (3) T-05は専用destination）。
 > 前提（いずれもmerge済み。baseline `ca9c171e91c2` 時点で確認）:
 > [Issue #365][5]の正本文書改訂、[Issue #366][2]のhub shell（T-01、材料セクション、
 > `OrganizerHubPreferences.kt`）、[Issue #367][3]の材料集約（設定側organizer row廃止）。
@@ -429,7 +433,7 @@ Then 削除・更新された各oracleについて、なぜobsoleteか（E-7/監
 CI `final-status` green（本Issueは `risk: layout-data`/`risk: migration` を付けない。
 high-risk evidence gateの対象外）。
 
-## Contract notes（owner reviewで確認すべき解釈）
+## Contract notes（2026-09-19 owner指示により受入済み）
 
 1. **「材料を見に行く導線」の解釈**: Issue本文scopeの「run中は読み取り専用表示もrun面には
    置かない（材料を見に行く導線のみ）」について、本specは「実行面にstrategy UIを置かず、
@@ -471,9 +475,8 @@ high-risk evidence gateの対象外）。
 
 ## Open questions
 
-実装開始前に解消が必須な問いはない（Contract notes 1〜3の解釈確認をowner reviewが
-所有し、確認前は本specは`draft`のままである。Contract notes 2は本revisionでoption (A)
-に一意化済みで、確認対象は「(A)でよいか」の1点に縮小）。非blocking事項:
+実装開始前に解消が必須な問いはない（Contract notes 1〜3は2026-09-19のowner指示により
+受入済み。note 2はoption (A)で一意化済み）。非blocking事項:
 
 1. T-05のroute名・destination名・新規stringの最終文言（D-03語彙に沿うことのみ拘束）は
    実装PRで確定する。
@@ -515,6 +518,10 @@ high-risk evidence gateの対象外）。
   占有され得るため、他authoring占有・single-flight時はtyped outcomeに対応するretry文言
   （frozen理由と区別される新規string）で案内する役割分担へ変更。他AUTHORING競合の
   scenario・`RefusedAuthoringBusy` oracle（AC-9(b2)）を追加。
+- 2026-09-19: Accepted（owner指示: reviewクリア後に実装へ進行。
+  re-review [Approve相当](https://github.com/nunu1733/NunuLauncher/issues/368#issuecomment-5742960028)
+  @ head `5d5b61ee4e`。statusを`accepted`へ更新。Contract notes 1〜3を受入）。
+  実装PRでstatusを`implemented`へ更新する。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/368
 [2]: https://github.com/nunu1733/NunuLauncher/issues/366
