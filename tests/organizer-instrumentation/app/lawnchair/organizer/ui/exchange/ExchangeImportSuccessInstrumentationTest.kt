@@ -308,51 +308,6 @@ class ExchangeImportSuccessInstrumentationTest {
     }
 
     @Test
-    fun receiptRefusedByTheStrategyArbiterStaysRetryableFromTheHeldText() {
-        // Issue #328 implementation review (high): a clipboard receipt refused
-        // by the arbiter gate keeps the held text VISIBLE for retry — the
-        // fallback editor opens on the empty->non-empty transition, so the
-        // user never has to re-read the source.
-        val (realHolder, controller) = newHolder()
-        val generated = controller.generate(PrivacyTier.EXTERNAL_REDACTED)
-            as app.lawnchair.organizer.integration.exchange.ExchangeGenerationResult.Generated
-        val reply = replyFor(generated.session)
-        realHolder.strategyArbiterBusy = { true }
-
-        setSuccessContent(realHolder)
-        composeRule.runOnUiThread { realHolder.openImport() }
-        composeRule.waitForIdle()
-        composeRule.runOnUiThread {
-            realHolder.importFromClipboard(
-                app.lawnchair.organizer.integration.exchange.ClipboardImportTransport(context).apply {
-                    readOverride = {
-                        app.lawnchair.organizer.integration.exchange.ClipboardImportRead.Text(reply)
-                    }
-                },
-            )
-        }
-        composeRule.waitForIdle()
-        assertEquals(
-            ExchangeStatus.Kind.IMPORT_STRATEGY_BUSY,
-            realHolder.status!!.kind,
-        )
-        // The held text is visible in the (auto-opened) fallback editor.
-        composeRule.onNodeWithTag("exchange-import-field").assertIsDisplayed()
-        composeRule.onNodeWithTag("exchange-import-action").assertIsEnabled()
-
-        // Retry from the SAME held text once the arbiter released.
-        realHolder.strategyArbiterBusy = { false }
-        composeRule.onNodeWithTag("exchange-import-action").performClick()
-        var waited = 0
-        while (realHolder.screen !is ExchangeScreen.ImportSuccess && waited < 5_000) {
-            composeRule.waitForIdle()
-            Thread.sleep(20)
-            waited += 20
-        }
-        assertTrue(realHolder.screen is ExchangeScreen.ImportSuccess)
-    }
-
-    @Test
     fun platformMaximumFontScaleKeepsTheSummaryAndCtaInTheViewport() {
         // AC-8 structural evidence (review): render at the PLATFORM font
         // scale (the emulator is set to the platform maximum before this

@@ -13,208 +13,176 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Issue #328 (spec 328 "strategy書込との相互排他"): the single strategy-write
- * arbiter state machine. The write and restart seams are injected, so these
- * tests block each step deterministically (Unconfined dispatchers keep every
- * transition on the calling thread).
+ * Issue #368 (spec 368): the strategy-write arbiter on the materials surface
+ * T-05. The write, the admission gate, and the run/recovery lifetime seam are
+ * injected, so these tests exercise each refusal outcome and every terminal
+ * release deterministically (Unconfined dispatchers keep every transition on
+ * the calling thread).
  */
 class StrategyWriteArbiterTest {
 
     private val strategyA = StrategyId("a")
     private val strategyB = StrategyId("b")
 
+    /**
+     * Controllable fake gate: [occupy] simulates the admission domain being
+     * held (a run, recovery, or another authoring token); while held,
+     * `tryAcquire` fails exactly like the real single-token lease.
+     */
+    private class FakeGate : OrganizationOperationGate {
+        var occupied = false
+        val acquisitions = AtomicInteger()
+
+        override fun tryAcquire(kind: OrganizationOperationLease.Kind): AutoCloseable? {
+            if (occupied) return null
+            acquisitions.incrementAndGet()
+            occupied = true
+            return AutoCloseable { occupied = false }
+        }
+    }
+
     private inner class Fixture(
         val writeGate: CompletableDeferred<Boolean>? = null,
-        val restartGate: CompletableDeferred<Unit>? = null,
-        var restartNeeded: Boolean = true,
-        var restartSuppressed: Boolean = false,
-        var writeStartBlocked: Boolean = false,
-        var restartThrows: Boolean = false,
+        writeFailure: Throwable? = null,
     ) {
+        val gate = FakeGate()
+        var runOrRecoveryActive = false
         val writes = AtomicInteger()
-        val restarts = AtomicInteger()
         val committed = AtomicInteger()
         val unhandled = mutableListOf<Throwable>()
+        val scope = CoroutineScope(
+            Dispatchers.Unconfined + CoroutineExceptionHandler { _, throwable ->
+                synchronized(unhandled) { unhandled.add(throwable) }
+            },
+        )
 
-        fun select(id: StrategyId) {
-            arbiter.onStrategySelected(id) { committed.incrementAndGet() }
-        }
+        /** Outcomes of every selection attempt, in order. */
+        val outcomes = mutableListOf<StrategyWriteArbiter.StartOutcome>()
+
+        fun select(id: StrategyId): StrategyWriteArbiter.StartOutcome = arbiter.onStrategySelected(id) { committed.incrementAndGet() }.also { outcomes += it }
 
         val arbiter: StrategyWriteArbiter by lazy {
             StrategyWriteArbiter(
-                scope = CoroutineScope(
-                    Dispatchers.Unconfined + CoroutineExceptionHandler { _, throwable ->
-                        synchronized(unhandled) { unhandled.add(throwable) }
-                    },
-                ),
+                scope = scope,
                 ioDispatcher = Dispatchers.Unconfined,
                 mainDispatcher = Dispatchers.Unconfined,
                 writeStrategy = {
                     writes.incrementAndGet()
+                    writeFailure?.let { throw it }
                     writeGate?.await() ?: true
                 },
-                restartRun = {
-                    restarts.incrementAndGet()
-                    restartGate?.let { runBlockingAwait(it) }
-                    if (restartThrows) throw IllegalStateException("restart failed")
-                },
-                writeStartBlocked = { writeStartBlocked },
-                restartSuppressed = { restartSuppressed },
-                restartNeeded = { restartNeeded },
+                operationGate = gate,
+                runOrRecoveryActive = { runOrRecoveryActive },
             )
         }
     }
 
-    /** Awaits a deferred on the test thread without suspending it. */
-    private fun runBlockingAwait(gate: CompletableDeferred<Unit>) {
-        var waited = 0
-        while (!gate.isCompleted && waited < 5_000) {
-            Thread.sleep(10)
-            waited += 10
-        }
-    }
-
     @Test
-    fun writesAreSingleFlightWhileNonIdle() {
+    fun aSelectionStartsAHeldTokenWriteAndReportsStarted() {
         val gate = CompletableDeferred<Boolean>()
         val fixture = Fixture(writeGate = gate)
-        fixture.select(strategyA)
+
+        val outcome = fixture.select(strategyA)
+
+        assertEquals(StrategyWriteArbiter.StartOutcome.Started, outcome)
+        assertEquals(1, fixture.writes.get())
         assertEquals(StrategyWriteArbiter.State.WRITING, fixture.arbiter.state)
         assertTrue(fixture.arbiter.busy)
-
-        // A second tap while the first write is in flight: refused outright.
-        fixture.select(strategyB)
-        assertEquals("no second store write may start", 1, fixture.writes.get())
+        assertTrue("the AUTHORING token is held during the write", fixture.gate.occupied)
 
         gate.complete(true)
         assertEquals(StrategyWriteArbiter.State.IDLE, fixture.arbiter.state)
         assertFalse(fixture.arbiter.busy)
-        assertEquals(1, fixture.restarts.get())
         assertEquals(1, fixture.committed.get())
     }
 
     @Test
-    fun theEntrySpecificWriteStartGateRefusesBeforeAnyStoreCall() {
-        val fixture = Fixture().apply { writeStartBlocked = true }
+    fun aSecondSelectionWhileWritingIsRefusedAsWriteBusyWithoutAStoreCall() {
+        val gate = CompletableDeferred<Boolean>()
+        val fixture = Fixture(writeGate = gate)
         fixture.select(strategyA)
+
+        val outcome = fixture.select(strategyB)
+
+        assertEquals(StrategyWriteArbiter.StartOutcome.RefusedWriteBusy, outcome)
+        assertEquals("no second store write may start", 1, fixture.writes.get())
+        assertEquals(StrategyWriteArbiter.State.WRITING, fixture.arbiter.state)
+
+        gate.complete(true)
+        assertEquals(StrategyWriteArbiter.State.IDLE, fixture.arbiter.state)
+        assertEquals(1, fixture.committed.get())
+    }
+
+    @Test
+    fun anOccupiedDomainWithAnActiveRunOrRecoveryIsRefusedAsRunOrRecoveryActive() {
+        val fixture = Fixture()
+        fixture.gate.occupied = true
+        fixture.runOrRecoveryActive = true
+
+        val outcome = fixture.select(strategyA)
+
+        assertEquals(StrategyWriteArbiter.StartOutcome.RefusedRunOrRecoveryActive, outcome)
+        assertEquals("a run/recovery refusal is a typed non-write", 0, fixture.writes.get())
+        assertEquals(StrategyWriteArbiter.State.IDLE, fixture.arbiter.state)
+        assertFalse(fixture.arbiter.busy)
+    }
+
+    @Test
+    fun anOccupiedDomainWithoutRunOrRecoveryIsRefusedAsAuthoringBusy() {
+        // Another AUTHORING token (category authoring, …) holds the domain:
+        // the run/recovery projection is false, so the refusal classifies as
+        // authoring-busy. Still a typed non-write.
+        val fixture = Fixture()
+        fixture.gate.occupied = true
+        fixture.runOrRecoveryActive = false
+
+        val outcome = fixture.select(strategyA)
+
+        assertEquals(StrategyWriteArbiter.StartOutcome.RefusedAuthoringBusy, outcome)
         assertEquals(0, fixture.writes.get())
         assertEquals(StrategyWriteArbiter.State.IDLE, fixture.arbiter.state)
     }
 
     @Test
-    fun committedWithoutRestartReleasesToIdle() {
-        // Idle entry: the run is inactive, so the committed selection applies
-        // to later runs and the arbiter releases without a restart.
-        val fixture = Fixture().apply { restartNeeded = false }
-        fixture.select(strategyA)
-        assertEquals(1, fixture.committed.get())
-        assertEquals(0, fixture.restarts.get())
-        assertEquals(StrategyWriteArbiter.State.IDLE, fixture.arbiter.state)
+    fun everyTerminalPathReleasesTheArbiterAndTheAdmissionDomain() {
+        // Table-driven over the terminals: commit, non-commit, storage
+        // failure, thrown failure. After each, the arbiter is Idle and the
+        // next write can acquire the domain again.
+        val failingGate = CompletableDeferred<Boolean>()
+        failingGate.completeExceptionally(IllegalStateException("storage"))
+        val scenarios = listOf(
+            "commit" to CompletableDeferred(true),
+            "non-commit" to CompletableDeferred(false),
+            "storage failure" to failingGate,
+        )
+        for ((name, gate) in scenarios) {
+            val fixture = Fixture(writeGate = gate)
+            fixture.select(strategyA)
+            // Unconfined + settled gate: the write already reached its terminal.
+            assertEquals("$name: released to Idle", StrategyWriteArbiter.State.IDLE, fixture.arbiter.state)
+            assertFalse("$name: domain released", fixture.gate.occupied)
+            assertEquals("$name: retryable", StrategyWriteArbiter.StartOutcome.Started, fixture.select(strategyB))
+        }
+        // Thrown failure: the exception handler records it, and the
+        // finally-equivalent still releases.
+        val failing = Fixture(writeFailure = IllegalStateException("write failed"))
+        failing.select(strategyA)
+        assertEquals("thrown failure: released to Idle", StrategyWriteArbiter.State.IDLE, failing.arbiter.state)
+        assertFalse("thrown failure: domain released", failing.gate.occupied)
+        assertEquals(1, failing.unhandled.size)
+        assertEquals("thrown failure: retryable", StrategyWriteArbiter.StartOutcome.Started, failing.select(strategyB))
     }
 
     @Test
-    fun suppressedRestartKeepsTheCommitAndReleasesToIdle() {
-        // The import continuation is active: the write commits but must not
-        // dismiss/restart the run the import is bound to.
-        val fixture = Fixture().apply { restartSuppressed = true }
-        fixture.select(strategyA)
-        assertEquals(1, fixture.committed.get())
-        assertEquals(0, fixture.restarts.get())
-        assertEquals(StrategyWriteArbiter.State.IDLE, fixture.arbiter.state)
-    }
-
-    @Test
-    fun nonCommittedWritesReleaseToIdle() {
-        val fixture = Fixture(writeGate = CompletableDeferred(false))
-        fixture.select(strategyA)
-        assertEquals(0, fixture.committed.get())
-        assertEquals(0, fixture.restarts.get())
-        assertEquals(StrategyWriteArbiter.State.IDLE, fixture.arbiter.state)
-    }
-
-    @Test
-    fun aFailingRestartStillReleasesTheArbiter() {
-        val fixture = Fixture().apply { restartThrows = true }
-        fixture.select(strategyA)
-        assertEquals(1, fixture.restarts.get())
-        assertEquals("the release must survive a restart failure", StrategyWriteArbiter.State.IDLE, fixture.arbiter.state)
-        assertFalse(fixture.arbiter.busy)
-    }
-
-    @Test
-    fun cancellingTheScopeDuringAWriteStillReleasesTheArbiter() {
-        // AC-3/AC-5 (review): the coroutine-cancel terminal must return the
-        // arbiter to Idle (finally-equivalent release).
+    fun cancellingTheScopeDuringAWriteStillReleasesTheArbiterAndTheDomain() {
         val fixture = Fixture(writeGate = CompletableDeferred())
-        val scope = CoroutineScope(Dispatchers.Unconfined)
-        val arbiter = StrategyWriteArbiter(
-            scope = scope,
-            ioDispatcher = Dispatchers.Unconfined,
-            mainDispatcher = Dispatchers.Unconfined,
-            writeStrategy = { fixture.writeGate!!.await() },
-            restartRun = { error("no restart on cancel") },
-            writeStartBlocked = { false },
-            restartSuppressed = { false },
-            restartNeeded = { true },
-        )
-        arbiter.onStrategySelected(strategyA)
-        assertTrue(arbiter.busy)
-        scope.cancel()
-        assertEquals("cancel must release the arbiter", StrategyWriteArbiter.State.IDLE, arbiter.state)
-    }
+        fixture.select(strategyA)
+        assertTrue(fixture.arbiter.busy)
+        assertTrue(fixture.gate.occupied)
 
-    @Test
-    fun everyNonIdleStateIsObservablyBusyIncludingReservedAndRestarting() {
-        // AC-3/AC-5 (review): the single state machine's windows — WRITING,
-        // RESTART_RESERVED and RESTARTING — are all busy states; the
-        // restart executes only in RESTARTING.
-        val fixture = Fixture(restartGate = CompletableDeferred())
-        val seen = mutableListOf<StrategyWriteArbiter.State>()
-        val busyByState = mutableMapOf<StrategyWriteArbiter.State, Boolean>()
-        fixture.arbiter.onStateObserved = { state ->
-            seen += state
-            busyByState[state] = fixture.arbiter.busy
-        }
-        val worker = Thread { fixture.select(strategyA) }
-        worker.start()
-        var waited = 0
-        while (!seen.contains(StrategyWriteArbiter.State.RESTARTING) && waited < 5_000) {
-            Thread.sleep(10)
-            waited += 10
-        }
-        assertTrue(
-            "all windows must be observed: $seen",
-            seen.containsAll(
-                listOf(
-                    StrategyWriteArbiter.State.WRITING,
-                    StrategyWriteArbiter.State.RESTART_RESERVED,
-                    StrategyWriteArbiter.State.RESTARTING,
-                ),
-            ),
-        )
-        assertTrue(busyByState[StrategyWriteArbiter.State.WRITING] == true)
-        assertTrue(busyByState[StrategyWriteArbiter.State.RESTART_RESERVED] == true)
-        assertTrue(busyByState[StrategyWriteArbiter.State.RESTARTING] == true)
-        fixture.restartGate!!.complete(Unit)
-        worker.join(5_000)
-        assertEquals(StrategyWriteArbiter.State.IDLE, fixture.arbiter.state)
-    }
+        fixture.scope.cancel()
 
-    @Test
-    fun theArbiterStaysBusyUntilTheRestartCompletes() {
-        val gate = CompletableDeferred<Unit>()
-        val fixture = Fixture(restartGate = gate)
-        val worker = Thread { fixture.select(strategyA) }
-        worker.start()
-        var waited = 0
-        while (fixture.restarts.get() == 0 && waited < 5_000) {
-            Thread.sleep(10)
-            waited += 10
-        }
-        assertEquals(1, fixture.restarts.get())
-        assertTrue("the restart window stays busy", fixture.arbiter.busy)
-        gate.complete(Unit)
-        worker.join(5_000)
-        assertEquals(StrategyWriteArbiter.State.IDLE, fixture.arbiter.state)
+        assertEquals("cancel must release the arbiter", StrategyWriteArbiter.State.IDLE, fixture.arbiter.state)
+        assertFalse("cancel must release the admission domain", fixture.gate.occupied)
     }
 }

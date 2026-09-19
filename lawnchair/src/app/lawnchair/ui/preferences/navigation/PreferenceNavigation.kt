@@ -46,6 +46,7 @@ import app.lawnchair.ui.preferences.destinations.LauncherPopupPreference
 import app.lawnchair.ui.preferences.destinations.ManualOrganizationPreferences
 import app.lawnchair.ui.preferences.destinations.OrganizerDiagnosticsPreferences
 import app.lawnchair.ui.preferences.destinations.OrganizerHubPreferences
+import app.lawnchair.ui.preferences.destinations.OrganizerStrategyPreferences
 import app.lawnchair.ui.preferences.destinations.PickAppForGesture
 import app.lawnchair.ui.preferences.destinations.PlacementLockPreferences
 import app.lawnchair.ui.preferences.destinations.PreferencesDashboard
@@ -130,6 +131,9 @@ fun PreferenceNavigation(
         // Issue #366: Organizer hub (T-01), the persistent organizing
         // workspace. Its material rows navigate via their own destinations.
         composable<HomeScreenOrganizer> { OrganizerHubPreferences() }
+        // Issue #368: strategy materials surface (T-05), the picker's only
+        // home; reached from the hub materials section.
+        composable<HomeScreenOrganizerStrategy> { OrganizerStrategyPreferences() }
 
         composable<Dock> { DockPreferences() }
         composable<DockSearchProvider> { SearchProviderPreferences() }

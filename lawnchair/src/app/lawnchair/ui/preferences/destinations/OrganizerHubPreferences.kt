@@ -51,6 +51,7 @@ import app.lawnchair.ui.preferences.navigation.HomeScreenCategoryOverrides
 import app.lawnchair.ui.preferences.navigation.HomeScreenCustomCategories
 import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
 import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizerDiagnostics
+import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizerStrategy
 import app.lawnchair.ui.preferences.navigation.HomeScreenPlacementLocks
 import com.android.launcher3.R
 import kotlinx.coroutines.Dispatchers
@@ -154,9 +155,9 @@ fun OrganizerHubPreferences(
                     subtitle = stringResource(R.string.organizer_diagnostics_description),
                 )
             }
-            // Materials (TO-BE §10): the existing authoring surfaces. The
-            // settings-side rows stay in place during the staged migration
-            // (phase (a); removal is owned by #367).
+            // Materials (TO-BE §10): the existing authoring surfaces, plus
+            // the strategy surface (T-05, issue #368) — the picker's only
+            // home since the run surface no longer offers it.
             item(key = "organizer-hub-materials") {
                 PreferenceGroup(heading = stringResource(R.string.organizer_hub_materials_heading)) {
                     NavigationActionPreference(
@@ -173,6 +174,11 @@ fun OrganizerHubPreferences(
                         label = stringResource(R.string.organizer_lock_screen_title),
                         destination = HomeScreenPlacementLocks,
                         subtitle = stringResource(R.string.organizer_lock_screen_summary),
+                    )
+                    NavigationActionPreference(
+                        label = stringResource(R.string.organizer_strategy_title),
+                        destination = HomeScreenOrganizerStrategy,
+                        subtitle = stringResource(R.string.organizer_strategy_summary),
                     )
                     OrganizerUsageMaterialRows()
                 }

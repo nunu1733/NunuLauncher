@@ -54,6 +54,7 @@ import app.lawnchair.organizer.rules.LayoutStrategySelectionReadResult
 import app.lawnchair.organizer.rules.LayoutStrategySelectionWriteResult
 import app.lawnchair.ui.theme.LawnchairTheme
 import app.lawnchair.ui.preferences.destinations.ManualOrganizationPreferences
+import app.lawnchair.ui.preferences.destinations.OrganizerStrategyPreferences
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -84,10 +85,28 @@ class StrategyPickerInstrumentationTest {
     }
 
     @Test
-    fun pickerListsAllRuntimeSupportedStrategiesWithLocalizedNames() {
+    fun theRunSurfaceShowsNoStrategyPicker() {
+        // Issue #368 AC-1 (negative observation): the manual-run surface
+        // hosts no strategy section, radio rows, or frozen reason — the
+        // picker's only home is the T-05 materials surface. The idle entry
+        // is the representative state; the Selecting/Preview surfaces are
+        // exercised picker-free by the run-surface suite itself.
         clearSelectionStore()
         composeRule.setContent {
             LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+        }
+
+        composeRule.onNodeWithTag(STRATEGY_PICKER_TAG).assertDoesNotExist()
+        composeRule.onNodeWithText(
+            context().getString(R.string.manual_organization_strategy_section),
+        ).assertDoesNotExist()
+    }
+
+    @Test
+    fun pickerListsAllRuntimeSupportedStrategiesWithLocalizedNames() {
+        clearSelectionStore()
+        composeRule.setContent {
+            LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
         }
 
         composeRule.onNodeWithText(context().getString(R.string.manual_organization_strategy_section))
@@ -119,7 +138,7 @@ class StrategyPickerInstrumentationTest {
         // nothing is persisted yet.
         clearSelectionStore()
         composeRule.setContent {
-            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+            LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
         }
 
         val canonicalName = context().getString(R.string.organization_strategy_canonical_name)
@@ -135,7 +154,7 @@ class StrategyPickerInstrumentationTest {
         // rows announce name + selected state + description as single nodes.
         clearSelectionStore()
         composeRule.setContent {
-            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+            LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
         }
 
         val sectionNode = composeRule.onNodeWithText(
@@ -167,7 +186,7 @@ class StrategyPickerInstrumentationTest {
         file.parentFile?.mkdirs()
         file.writeText("corrupt selection store")
         composeRule.setContent {
-            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+            LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
         }
 
         composeRule.onNodeWithText(context().getString(R.string.organization_strategy_canonical_name))
@@ -180,7 +199,7 @@ class StrategyPickerInstrumentationTest {
     fun strategyPickerIsWrappedInASelectableGroup() {
         clearSelectionStore()
         composeRule.setContent {
-            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+            LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
         }
 
         val groups = composeRule
@@ -194,7 +213,7 @@ class StrategyPickerInstrumentationTest {
     fun strategyRowsKeepSelectionSemanticsOnTheParentRow() {
         clearSelectionStore()
         composeRule.setContent {
-            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+            LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
         }
 
         val pickerClickTargets = composeRule.onAllNodes(
@@ -226,7 +245,7 @@ class StrategyPickerInstrumentationTest {
     fun selectingAStrategyMovesTheSingleSelectedParentRow() {
         clearSelectionStore()
         composeRule.setContent {
-            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+            LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
         }
 
         val canonical = context().getString(R.string.organization_strategy_canonical_name)
@@ -251,7 +270,7 @@ class StrategyPickerInstrumentationTest {
     fun selectingTheEffectiveStrategyIsAStoreAndVisualNoOp() {
         clearSelectionStore()
         composeRule.setContent {
-            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+            LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
         }
 
         val before = LayoutStrategySelectionModule.store(context()).read()
@@ -275,7 +294,7 @@ class StrategyPickerInstrumentationTest {
         clearSelectionStore()
         composeRule.setContent {
             CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 2f)) {
-                LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+                LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
             }
         }
 
@@ -308,7 +327,7 @@ class StrategyPickerInstrumentationTest {
     fun selectingAStrategyPublishesThroughTheValidatedWriteCommand() {
         clearSelectionStore()
         composeRule.setContent {
-            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+            LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
         }
 
         composeRule.onNodeWithText(context().getString(R.string.organization_strategy_tidy_name))

@@ -1017,6 +1017,12 @@
     <string name="manual_organization_summary">Review a proposed home layout before applying it.</string>
     <string name="manual_organization_explainer">Review proposed changes before anything is applied. Your current layout is never changed automatically.</string>
     <string name="manual_organization_strategy_section">Organization strategy</string>
+    <!-- Issue #368: strategy materials surface (T-05), reached only from the
+         organizer hub materials section; the run surface no longer hosts the picker. -->
+    <string name="organizer_strategy_title">Organization strategy</string>
+    <string name="organizer_strategy_summary">Choose how your home layout is organized.</string>
+    <string name="organizer_strategy_frozen_operation_active">An organize operation is in progress. Interrupt it before changing the strategy.</string>
+    <string name="organizer_strategy_retry_when_busy">Another organizer change is in progress. Try again after it finishes.</string>
     <string name="organization_strategy_canonical_name">Standard compaction</string>
     <string name="organization_strategy_canonical_description">Fills each screen from the top-left.</string>
     <string name="organization_strategy_tidy_name">Tidy each screen</string>
@@ -1396,12 +1402,8 @@
     <string name="exchange_import_discard_confirm_confirm">Discard</string>
     <string name="exchange_import_discarded_guidance">The import was discarded. While the request stays valid, you can import the same reply again.</string>
     <string name="exchange_import_summary_global_minimize">Overall goal: keep the current layout as much as possible</string>
-    <string name="exchange_import_strategy_busy">Changing the organization strategy. Import again after it finishes.</string>
-    <string name="exchange_import_cta_strategy_busy">Changing the organization strategy. Try again after it finishes.</string>
     <string name="exchange_import_cta_failed">Could not start organizing. Please try again.</string>
     <string name="exchange_start_frozen_import">Import in progress. You can start organizing after it finishes.</string>
-    <string name="exchange_strategy_frozen_import">Import in progress. The strategy cannot be changed until it finishes.</string>
-    <string name="exchange_strategy_frozen_continuing">Organizing has started. The strategy cannot be changed.</string>
     <plurals name="exchange_import_summary_recognized">
         <item quantity="one">%1$d wish was recognized from the proposal.</item>
         <item quantity="other">%1$d wishes were recognized from the proposal.</item>

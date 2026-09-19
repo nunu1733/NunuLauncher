@@ -65,6 +65,7 @@ import app.lawnchair.organizer.rules.PolicySourceKind
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
+import kotlinx.coroutines.cancel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -1034,6 +1035,179 @@ class ManualOrganizationRunTest {
             app.lawnchair.organizer.planning.StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             preview.summary.organizationStrategy,
         )
+    }
+
+    // --- Issue #368: strategy write admission (spec AC-9) ---
+
+    @Test
+    fun aPausedStrategyWriteBlocksRunAdmissionUntilItsTerminal() {
+        // AC-9(a): the write holds the AUTHORING token; a run start during
+        // the write is Busy (the RUN token cannot take the shared domain).
+        // After the write's terminal the domain is free and the run starts.
+        val application = FakeApplication(readyInput())
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { planningResult(movingPlan()) },
+            operationGate = OrganizationOperationLease,
+        )
+        val writeGate = kotlinx.coroutines.CompletableDeferred<Boolean>()
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined)
+        val arbiter = StrategyWriteArbiter(
+            scope = scope,
+            ioDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
+            mainDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
+            writeStrategy = { writeGate.await() },
+            operationGate = OrganizationOperationLease,
+            runOrRecoveryActive = { runner.operationActive.value },
+        )
+
+        assertEquals(StrategyWriteArbiter.StartOutcome.Started, arbiter.onStrategySelected(StrategyId("CANONICAL_PAGE_COMPACT_V1")))
+        assertFalse(runner.operationActive.value)
+        assertEquals(ManualOrganizationRun.StartOutcome.Busy, runner.start())
+        assertTrue("the run must not have started during the write", runner.state is ManualOrganizationRun.State.Idle)
+
+        writeGate.complete(true)
+        assertEquals(StrategyWriteArbiter.State.IDLE, arbiter.state)
+        assertTrue(runner.start() is ManualOrganizationRun.StartOutcome.Started)
+        assertTrue(runner.operationActive.value)
+
+        runner.cancel()
+        scope.cancel()
+    }
+
+    @Test
+    fun anActiveRunRefusesTheStrategyWriteWithoutAStoreCall() {
+        // AC-9(b): while a run holds the RUN token, a selection attempt is a
+        // typed non-write (RefusedRunOrRecoveryActive) — no store call, the
+        // arbiter never enters Writing.
+        val application = FakeApplication(readyInput())
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { planningResult(movingPlan()) },
+            operationGate = OrganizationOperationLease,
+        )
+        assertTrue(runner.start() is ManualOrganizationRun.StartOutcome.Started)
+        assertTrue(runner.operationActive.value)
+
+        val writes = java.util.concurrent.atomic.AtomicInteger()
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined)
+        val arbiter = StrategyWriteArbiter(
+            scope = scope,
+            ioDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
+            mainDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
+            writeStrategy = {
+                writes.incrementAndGet()
+                true
+            },
+            operationGate = OrganizationOperationLease,
+            runOrRecoveryActive = { runner.operationActive.value },
+        )
+
+        assertEquals(
+            StrategyWriteArbiter.StartOutcome.RefusedRunOrRecoveryActive,
+            arbiter.onStrategySelected(StrategyId("CANONICAL_PAGE_COMPACT_V1")),
+        )
+        assertEquals(0, writes.get())
+        assertEquals(StrategyWriteArbiter.State.IDLE, arbiter.state)
+
+        runner.cancel()
+        scope.cancel()
+    }
+
+    @Test
+    fun operationActiveResetsAfterEveryTerminalState() {
+        // AC-9(d): terminal display states (InputUnavailable, NoChanges,
+        // Applied, Stale, Cancelled) stay visible after the operation ended.
+        // The operation-lifetime projection — not the display State — must
+        // read false so the strategy surface stays writable.
+
+        // InputUnavailable (typed failure).
+        val unavailable = ManualOrganizationRun(
+            FakeApplication(
+                OrganizationInputComposition.NotReady(
+                    InputReadinessReason.InvalidCanonicalCapture(
+                        app.lawnchair.organizer.integration.CaptureFailureCategory.CAPTURE_UNAVAILABLE,
+                    ),
+                    CompositionDiagnostic(InputCompositionCode.CAPTURE_INVALID),
+                ),
+            ),
+            OrganizationPlanner { error("planner must not run") },
+        )
+        unavailable.start()
+        assertTrue(unavailable.state is ManualOrganizationRun.State.InputUnavailable)
+        assertFalse(unavailable.operationActive.value)
+
+        // NoChanges (empty plan).
+        val noChanges = ManualOrganizationRun(
+            FakeApplication(readyInput()),
+            OrganizationPlanner { planningResult(Planned(emptyList(), emptyList(), emptyList(), emptyList(), emptyList())) },
+        )
+        noChanges.start()
+        assertEquals(ManualOrganizationRun.State.NoChanges, noChanges.state)
+        assertFalse(noChanges.operationActive.value)
+
+        // Applied (confirmed preview).
+        val applied = ManualOrganizationRun(
+            FakeApplication(readyInput()),
+            OrganizationPlanner { planningResult(movingPlan()) },
+        )
+        applied.start()
+        assertTrue(applied.operationActive.value)
+        applied.confirm()
+        assertTrue(applied.state is ManualOrganizationRun.State.Applied)
+        assertFalse(applied.operationActive.value)
+
+        // Stale (apply-blocked materialize rejection).
+        val staleApplication = FakeApplication(readyInput())
+        staleApplication.inspectPlanOverride = { _, _ -> PlanPreviewResult.WriterBusy }
+        staleApplication.materializeOverride = { _, _ -> OrganizationPlanMaterializer.Result.Invalid }
+        val stale = ManualOrganizationRun(staleApplication, OrganizationPlanner { planningResult(movingPlan()) })
+        stale.start()
+        assertTrue(stale.operationActive.value)
+        stale.confirm()
+        assertEquals(ManualOrganizationRun.State.Stale(ManualOrganizationRun.StaleOrigin.APPLY_BLOCKED), stale.state)
+        assertFalse(stale.operationActive.value)
+
+        // Cancelled (user cancel).
+        val cancelled = ManualOrganizationRun(
+            FakeApplication(readyInput()),
+            OrganizationPlanner { planningResult(movingPlan()) },
+        )
+        cancelled.start()
+        assertTrue(cancelled.operationActive.value)
+        cancelled.cancel()
+        assertEquals(ManualOrganizationRun.State.Cancelled, cancelled.state)
+        assertFalse(cancelled.operationActive.value)
+    }
+
+    @Test
+    fun aStrategyWriteIsPossibleAfterEveryTerminalState() {
+        // AC-9(d) write side: with the real admission domain, the write
+        // acquires the AUTHORING token and completes after a run reached a
+        // terminal state (no run token is held any more).
+        val application = FakeApplication(readyInput())
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { planningResult(movingPlan()) },
+            operationGate = OrganizationOperationLease,
+        )
+        runner.start()
+        runner.confirm()
+        assertTrue(runner.state is ManualOrganizationRun.State.Applied)
+        assertFalse(runner.operationActive.value)
+
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined)
+        val arbiter = StrategyWriteArbiter(
+            scope = scope,
+            ioDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
+            mainDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
+            writeStrategy = { true },
+            operationGate = OrganizationOperationLease,
+            runOrRecoveryActive = { runner.operationActive.value },
+        )
+        assertEquals(StrategyWriteArbiter.StartOutcome.Started, arbiter.onStrategySelected(StrategyId("CANONICAL_PAGE_COMPACT_V1")))
+        assertEquals(StrategyWriteArbiter.State.IDLE, arbiter.state)
+        scope.cancel()
     }
 
     // --- Issue #228: detection → selection → scope-composed run ---

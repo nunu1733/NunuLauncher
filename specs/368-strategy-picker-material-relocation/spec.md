@@ -518,6 +518,10 @@ high-risk evidence gateの対象外）。
   占有され得るため、他authoring占有・single-flight時はtyped outcomeに対応するretry文言
   （frozen理由と区別される新規string）で案内する役割分担へ変更。他AUTHORING競合の
   scenario・`RefusedAuthoringBusy` oracle（AC-9(b2)）を追加。
+- 2026-09-19: 実装（#368実装PR。`StrategyWriteArbiter`簡素化＋`AUTHORING` admission＋typed開始outcome、
+  `ManualOrganizationRun.operationActive`新設、T-05 destination新設＋hub entry＋run面picker撤去、
+  exchange strategy gate除去、本spec/planのstatus/history更新、specs 182/283/328改訂、処分文書
+  §3.9/§3.14境界更新）。merge後のdocs PRで`implemented`へ遷移する。
 - 2026-09-19: Accepted（owner指示: reviewクリア後に実装へ進行。
   re-review [Approve相当](https://github.com/nunu1733/NunuLauncher/issues/368#issuecomment-5742960028)
   @ head `5d5b61ee4e`。statusを`accepted`へ更新。Contract notes 1〜3を受入）。

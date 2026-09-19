@@ -41,7 +41,7 @@ TO-BE relation: 整合 / 一部衝突 / 全体衝突 / 役割消滅。Orderは �
 | #204 context/intent contract（closed） | exchange data契約（spec 204） | 整合（契約不変。LOCAL_FULL UI語彙除外の文言のみ D-14） | **Amend（文言のみ）** | #372 |
 | #205 External Agent Exchange（closed） | exchange workflow（spec 205） | 一部衝突（entry導線・失敗表示・pending保持規定 vs D-04/D-08/D-10/D-11） | **Amend（一部supersede）** | #372, #373, #374 |
 | #228 missing-app selection（closed） | 未配置app明示選択（spec 228） | 一部衝突（0件でも選択面表示 vs D-06非表示） | **Amend** | #369, #375 |
-| #328 import success state（**open**, spec accepted） | 取り込み成功状態（spec 328、未実装） | 一部衝突（process-local規定・freeze 4箇所 vs D-08 durable・再設計） | **Amend-Supersede（実装前に改訂）** | #373（表示）→#374（spec rev.2後実装） |
+| #328 import success state（**open**, spec accepted, **実装済み PR #353**） | 取り込み成功状態（spec 328。strategy固有条項は#368が狭く改訂済み） | 一部衝突（process-local規定・freeze規定 vs D-08 durable・再設計） | **Amend-Supersede（strategy固有条項は#368が改訂、残りは#374のrev.2）** | #368（strategy条項）→#373（表示）→#374（spec rev.2） |
 | #329 normalizer（closed） | import normalizer（spec 329） | 整合 | **Continue** | — |
 | #331 target/scope coupling（closed） | scope結合・fail-closed gate（spec 331） | 一部衝突（単一remedy・生存run attachのみ vs D-17原因別remedy・死後rebind） | **Amend** | #375 |
 | #332 import input UI（closed） | clipboard/file-first入力（spec 332） | 整合（構造不変。配置表記のみT-17へ） | **Continue（表記更新）** | #373 |
@@ -140,7 +140,7 @@ TO-BE relation: 整合 / 一部衝突 / 全体衝突 / 役割消滅。Orderは �
   1. run面picker配置（§Preview integration）vs D-03「strategy pickerをrun面から撤去し材料面のみ」。
   2. run中変更のfresh-cycle規定（write-authority step 4・`onStrategySelected`契約）vs D-03「run中変更不可、確認なし破棄+再startの特例廃止」。E-7（予告のない提案破棄）と監査D-3/D-4（arbiter gateの隙間）の解消。
 - 処分: **Amend**（#368）。§Preview integrationを「材料面T-05」へ、write-authority step 4を「run不在時のみ書込可・次回compositionで効く」へ改訂。`StrategyWriteArbiter`の`RestartReserved`/`Restarting` restart pathを廃止（書込single-flightは維持）。spec 283はNon-goals凍結を解除しAC-1〜AC-6をT-05へ適用。catalog本体・store・fail-closed（AC-3/AC-7、ADR-0012）は不変。
-- doc変更: specs 182/283改訂（#368のPR）。
+- doc変更: specs 182/283改訂（#368のPR）。**（2026-09-19境界更新: spec 328のstrategy固有条項の狭い改訂も同じ#368のPRで実施する（§3.14参照）。#374はfreeze再設計・durable契約（rev.2）を継続所有する）**
 - runtime migration: なし（`organizer_strategy_selection/selection-v1`不変）。compatibility: なし。test migration: `StrategyWriteArbiterTest`のrestart抑止oracle、`StrategyPickerFreezeInstrumentationTest`のrun面配置oracleを更新・削除し、obsolete理由（E-7解消・arbiter簡素化）を記録。
 
 ### 3.10 #203 usage signals — Amend
@@ -182,14 +182,14 @@ TO-BE relation: 整合 / 一部衝突 / 全体衝突 / 役割消滅。Orderは �
 
 ### 3.14 #328 import success state — Amend-Supersede（実装前に改訂）
 
-- 現状: **open**・spec accepted・未実装。取り込み成功状態の内容（AC-2/AC-4）、Back/破棄保持（D-2）、CTA single-flight/attempt anchor（AC-3）、freeze 4箇所（AC-5）、Back interception（AC-7）。
+- 現状: **open**・spec accepted・**実装済み（PR #353、2026-09-18 merge。本書accepted時点での「未実装」記述は事実誤記だった）**。取り込み成功状態の内容（AC-2/AC-4）、Back/破棄保持（D-2）、CTA single-flight/attempt anchor（AC-3）、freeze規定（AC-5）、Back interception（AC-7）。Issue本体はdevice evidence passが残りOPEN。
 - 衝突点:
   1. §Data and state「取り込み成功状態とpending intentはprocess-localのみ」 vs D-08 durable化。
   2. freeze 4箇所（idle start row・strategy picker・Back・discard）の個別実装規定 vs status card＋T-18中心への再設計（F-04解消。strategy pickerは#368でrun面から消えるためfreeze対象も変わる）。
   3. D-2/D-3の語彙・CTA copy vs D-13語彙規約・T-18語彙。
-- 処分: **Amend-Supersede**。未実装のため、実装前にspec revision 2を#374で出す（process-local規定の削除・durable契約への置換、freeze再設計、語彙更新）。AC-2/AC-3/AC-4/AC-7の本体（未適用表示・件数summary・single-flight・Back interception）は維持。**#328の実装着手は#374のspec受入後**（#328へコメント済み）。
+- 処分: **Amend-Supersede**（#374でspec revision 2: process-local規定の削除・durable契約への置換、freeze再設計、語彙更新）。**（2026-09-19境界更新: #368がstrategy固有条項のみの狭い改訂を先に実施 — picker run面撤去・restart廃止により無効化された条項（run内entry picker freeze、idle picker continuation中無効化、commit時gate、exchange側書込開始gate、`RestartReserved`/`Restarting`状態機械、strategy oracle項目）を`AUTHORING` admission token基準へ置換し、正本↔実装の意図的不一致期間を廃止。残る改訂本体（durable化・freeze再設計・語彙）は#374が所有し続ける。#368実装PR時に#374へ同一境界を通知済みとする）**
 - doc変更: spec 328 revision 2（#374のspec PR）。
-- runtime migration / compatibility: §7（#374と同じ）。test migration: 実装が無いため既存oracleなし。新規oracleはdurable契約起点で作成。
+- runtime migration / compatibility: §7（#374と同じ）。test migration: 既存oracleはPR #353実装で存在し、strategy関係分は#368が更新・削除（obsolete理由をPRに記録）、残りは#374のdurable契約起点で再構成する。
 
 ### 3.15 #329 normalizer — Continue
 
