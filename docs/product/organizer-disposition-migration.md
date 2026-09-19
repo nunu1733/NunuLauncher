@@ -37,7 +37,7 @@ TO-BE relation: 整合 / 一部衝突 / 全体衝突 / 役割消滅。Orderは �
 | #84 recovery preview seam（closed） | read-only revision-bound復元preview seam | 整合（seamはD-15の新入口から再利用） | **Continue** | #376（参照） |
 | #99 category override（closed） | override authoring（spec 99） | 整合（経路がT-02へ移動のみ） | **Continue** | #367 |
 | #182 layout strategy catalog（closed） | strategy catalog・選択契約（spec 182, ADR-0012） | 一部衝突（run面picker配置・run中変更特例 vs D-03） | **Amend** | #368 |
-| #203 usage signals（closed） | signal snapshot・権限導線（spec 203） | 一部衝突（U-2常設rowのみ vs D-07 JIT追加） | **Amend** | #371 |
+| #203 usage signals（closed） | signal snapshot・権限導線（spec 203） | 一部衝突（U-2常設rowのみ vs D-07 JIT追加） | **Amend**（二段階） | #367（U-2配置）→ #371（JIT） |
 | #204 context/intent contract（closed） | exchange data契約（spec 204） | 整合（契約不変。LOCAL_FULL UI語彙除外の文言のみ D-14） | **Amend（文言のみ）** | #372 |
 | #205 External Agent Exchange（closed） | exchange workflow（spec 205） | 一部衝突（entry導線・失敗表示・pending保持規定 vs D-04/D-08/D-10/D-11） | **Amend（一部supersede）** | #372, #373, #374 |
 | #228 missing-app selection（closed） | 未配置app明示選択（spec 228） | 一部衝突（0件でも選択面表示 vs D-06非表示） | **Amend** | #369, #375 |

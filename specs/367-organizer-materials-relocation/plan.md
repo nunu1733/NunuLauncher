@@ -288,8 +288,11 @@ failure injection（対象外——本Issueは読取契約を変更しない。�
 4. [ ] `OrganizerDiagnosticsRouteInstrumentationTest`のsettings entry oracleを
        hub起点へ更新（MAT-AC-05）。
 5. [ ] `organizer_personalization_section`削除 + reference grep（MAT-AC-08）。
-6. [ ] specs 38/99/336/203/138の入口表記追記 + spec 123 inventory更新（MAT-AC-04）。
-       contract節に触れていないことをdiff reviewで確認。
+6. [ ] specs 38/99/336/138の入口表記追記、spec 203のU-2配置改訂（Permission and
+       fallback behavior表のopt-in行とU-2 decision noteの2箇所）、spec 123 inventory
+       更新（MAT-AC-04）。38/99/336/138はcontract節無変更、spec 203はU-2配置のみ改訂
+       （JIT / fallback / `ON_RESUME`等の他規定無変更）であることをdiff reviewで確認。
+       旧settings配置のnormative記述が残っていないことの確認を含む。
 7. [ ] 既存test（材料画面直接compose系・run面系・lock popup系・#232/hint oracle）が
        無編集でgreenであることの確認（MAT-AC-03/07/08）。
 8. [ ] full verification + evidence記録 + PR（`Closes #367`。本Issueの成果物を

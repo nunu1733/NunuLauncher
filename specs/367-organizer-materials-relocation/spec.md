@@ -233,11 +233,13 @@ And 本Issueは新しい永続化を一切導入しないため、process死で�
       併存であり、manual rowの廃止によるD-01「入口row 1件」の完成は#370が所有する
       （段階契約。この解釈をIssue #367へ記録する）。（Issue受入2の段階実装、D-01）
 - [ ] **MAT-AC-03**: 既存store・lease契約（AUTHORING/RUN排他）に変更がない。run state
-      machine、spec 13/52/99/336/38/203/271/138の契約面、diagnostics event、
+      machine、spec 13/52/99/336/38/271/138の契約面、diagnostics event、
       persistent store、permissionにdiffが存在せず、材料画面を直接composeする既存
       instrumentation（`CategoryOverridePreferencesInstrumentationTest` /
       `CustomCategoryPreferencesInstrumentationTest` / `OrganizerLockScreenTest` /
       `ManualOrganizationPreferencesInstrumentationTest`）が無編集でgreenである。
+      例外はspec 203 U-2の常設row配置の限定的改訂のみであり（MAT-AC-04）、JIT /
+      fallback / `ON_RESUME`再読取等のspec 203の他規定は無変更である。
       （Issue受入3・4）
 - [ ] **MAT-AC-04**: 入口表記・配置契約の更新が同じPRで行われている: specs 38 / 99 /
       336に「入口はhub経由になった旨」の追記（契約不変。disposition割当分）、spec 203
@@ -273,7 +275,7 @@ And 本Issueは新しい永続化を一切導入しないため、process死で�
 |---|---|
 | MAT-AC-01 | UI instrumentation test: hub材料セクション → T-02/T-03/T-04 navigation、T-06行の機能、hub → diagnostics navigation（既存hub oracleの再実行。emulator screenshot（light/dark × ja/default）） |
 | MAT-AC-02 | UI instrumentation test: 設定 → Home screenの否定的観測（4 row・Personalization group 2行の不在。全list走査後のassert）＋hub入口row・manual rowの存在assert＋hub遷移assert |
-| MAT-AC-03 | 既存testの無編集green（材料画面直接compose系、run面系）+ 実装PR diff review（`organizer/application/**`・store・run面・route objectの契約面無編集） |
+| MAT-AC-03 | 既存testの無編集green（材料画面直接compose系、run面系）+ 実装PR diff review（`organizer/application/**`・store・run面・route objectの契約面無編集。spec 203はU-2配置改訂のみ例外で他規定無変更） |
 | MAT-AC-04 | specs 38/99/336/138のdiff review（入口表記の追記のみで契約節無変更）+ spec 203のdiff review（U-2配置のみ改訂、JIT/fallback/`ON_RESUME`規定無変更、旧settings配置のnormative記述が残っていないこと）+ `docs/assessment/evidence/issue-123-ui-mapping.md`のdiff |
 | MAT-AC-05 | 更新後の`OrganizerDiagnosticsRouteInstrumentationTest`のdiffと実行結果 + obsolete理由のPR記録 |
 | MAT-AC-06 | UI instrumentation test: Home screenにT-06行が不在（全list走査後）、hub側でT-06行が機能しpreference stateが一致、`ON_RESUME`再読取 |
@@ -363,6 +365,16 @@ And 本Issueは新しい永続化を一切導入しないため、process死で�
     T-06）」へ修正した。disposition §3.10 / §5 / §4.1 を二段階所有（配置= #367、JIT=
     #371）へ更新し、MAT-AC-04とTest oracleに「旧settings配置をnormative stateとして
     残さないこと」「JIT等の他規定無変更」の確認を追加した（Contract notes 3）。
+- 2026-09-19: **Re-review対応（3回目、本branch）**。3回目のre-review（[review][7]、
+  前round指摘「manual row廃止の所有先」の解消を確認）の2指摘に対応:
+  - **中（Issue #367本文AC 2との不一致）**: Issue #367本文の受入条件2を段階契約へ改訂
+    （材料row削除＋暫定併存、入口row 1件化は#370へ委譲済み）し、Spec節の改訂対象を
+    specs 38/99/336/138＋spec 203 U-2配置改訂＋spec 123 inventoryへ更新した（記録
+    [コメント][8]）。本specは`Closes #367`でのcloseに整合する。
+  - **中（spec 203旧記述の残存）**: MAT-AC-03の「契約面無diff」対象からspec 203を除外し
+    （U-2配置改訂のみ例外）、plan Execution checklist 6をspec 203の2箇所更新指示へ
+    整合させ、disposition §2.1のspec 203行Orderを`#367（U-2配置）→ #371（JIT）`へ
+    併記した。MAT-AC-03とMAT-AC-04が同時に満たせる状態になった。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/367
 [2]: https://github.com/nunu1733/NunuLauncher/issues/366
@@ -370,3 +382,5 @@ And 本Issueは新しい永続化を一切導入しないため、process死で�
 [4]: https://github.com/nunu1733/NunuLauncher/issues/370
 [5]: https://github.com/nunu1733/NunuLauncher/issues/367#issuecomment-5741019899
 [6]: https://github.com/nunu1733/NunuLauncher/issues/370#issuecomment-5741073763
+[7]: https://github.com/nunu1733/NunuLauncher/issues/367#issuecomment-5741111260
+[8]: https://github.com/nunu1733/NunuLauncher/issues/367#issuecomment-5741164754
