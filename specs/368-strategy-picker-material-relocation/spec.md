@@ -526,9 +526,12 @@ high-risk evidence gateの対象外）。
   終了する（実測・evidence README記録）。scenario「run/recovery active中…」を防御契約と
   して明記し、plan Risk 4 / Verification / Unverified areasを同期。さらにproduction同一
   transition構成のNavHostをclock pin付きで駆動するruntime oracle
-  （`StrategyT05ProductionNavigationTest`）で順序を実測: 遷移中はoutgoing run面とincoming
-  T-05が共存しoperation activeのままT-05はfrozen表示、遷移完了後にdispose→dismiss→
-  unfrozen→書込可能、を固定。
+  （`StrategyT05ProductionNavigationTest`、実`PreferenceNavigation`＋clock pin）で
+  supported path（run面→hub→T-05）の順序を実測し固定: hop 1遷移中はrun面とhubが共存し
+  operationはまだalive、hop 1完了（onDispose→dismiss）でoperation終了、T-05は
+  operation終了後のみcompose（unfrozen）し書込可能。operation active中のT-05 frozen
+  表示はproduction導線では到達不可能な防御挙動であり、synthetic defensive oracleが
+  その窓を固定する。
 - 2026-09-19: 実装（#368実装PR。`StrategyWriteArbiter`簡素化＋`AUTHORING` admission＋typed開始outcome、
   `ManualOrganizationRun.operationActive`新設、T-05 destination新設＋hub entry＋run面picker撤去、
   exchange strategy gate除去、本spec/planのstatus/history更新、specs 182/283/328改訂、処分文書
