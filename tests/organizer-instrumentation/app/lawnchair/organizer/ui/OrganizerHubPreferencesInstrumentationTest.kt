@@ -16,6 +16,9 @@ import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -180,25 +183,21 @@ class OrganizerHubPreferencesInstrumentationTest {
             context.getString(R.string.organizer_diagnostics_title),
         ).assertIsDisplayed().assertHasClickAction()
 
-        // Materials group: the existing authoring surfaces.
-        composeRule.onNodeWithText(
-            context.getString(R.string.organizer_hub_materials_heading),
-        ).assertIsDisplayed()
-        composeRule.onNodeWithText(
-            context.getString(R.string.organizer_category_overrides_title),
-        ).assertIsDisplayed()
-        composeRule.onNodeWithText(
-            context.getString(R.string.organizer_custom_category_title),
-        ).assertIsDisplayed()
-        composeRule.onNodeWithText(
-            context.getString(R.string.organizer_lock_screen_title),
-        ).assertIsDisplayed()
-        composeRule.onNodeWithText(
-            context.getString(R.string.organizer_personalization_recording_label),
-        ).assertIsDisplayed()
-        composeRule.onNodeWithText(
-            context.getString(R.string.organizer_personalization_usage_access_label),
-        ).assertIsDisplayed()
+        // Materials group: the existing authoring surfaces. Lower rows can sit
+        // below the fold on CI viewports, so scroll each into view before
+        // asserting the rendered structure.
+        listOf(
+            R.string.organizer_hub_materials_heading,
+            R.string.organizer_category_overrides_title,
+            R.string.organizer_custom_category_title,
+            R.string.organizer_lock_screen_title,
+            R.string.organizer_personalization_recording_label,
+            R.string.organizer_personalization_usage_access_label,
+        ).forEach { res ->
+            val text = context.getString(res)
+            scrollTextIntoView(text)
+            composeRule.onNodeWithText(text).assertIsDisplayed()
+        }
 
         // Not unresolved: no safe-support line on the restorable surface.
         composeRule.onNodeWithText(
@@ -504,9 +503,18 @@ class OrganizerHubPreferencesInstrumentationTest {
         composeRule.onNodeWithText(
             context.getString(R.string.organizer_diagnostics_title),
         ).assertIsDisplayed().assertHasClickAction()
+        // Materials sit below the critical actions; presence at 200% is the
+        // structure claim — reachability is exercised by traversal with
+        // bring-into-view scrolling.
+        scrollTextIntoView(context.getString(R.string.organizer_hub_materials_heading))
         composeRule.onNodeWithText(
             context.getString(R.string.organizer_hub_materials_heading),
         ).assertIsDisplayed()
+    }
+
+    /** Scrolls the list until [text] is composed and on screen. */
+    private fun scrollTextIntoView(text: String) {
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(text))
     }
 
     /**
@@ -569,7 +577,9 @@ class OrganizerHubPreferencesInstrumentationTest {
             R.string.organizer_lock_screen_title,
             R.string.organizer_personalization_usage_access_label,
         ).forEach { res ->
-            composeRule.onNodeWithText(context.getString(res)).assertHasClickAction()
+            val text = context.getString(res)
+            scrollTextIntoView(text)
+            composeRule.onNodeWithText(text).assertHasClickAction()
         }
         composeRule.onNode(
             SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch),
