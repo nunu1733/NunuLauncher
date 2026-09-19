@@ -27,6 +27,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.printToString
+import androidx.compose.ui.test.onRoot
 import androidx.test.core.app.ApplicationProvider
 import com.android.launcher3.R
 import app.lawnchair.organizer.application.public.ApplyResult
@@ -251,6 +253,10 @@ class StrategyPickerInstrumentationTest {
         val canonical = context().getString(R.string.organization_strategy_canonical_name)
         val tidy = context().getString(R.string.organization_strategy_tidy_name)
         composeRule.onNodeWithText(canonical).assertIsSelected()
+        // The T-05 list keeps all eight rows composed (radio-group a11y
+        // contract) but the row sits below the fold — scroll it into view so
+        // the injected tap lands inside the window.
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(tidy))
         composeRule.onNodeWithText(tidy).assertIsNotSelected().performClick()
         composeRule.waitUntil(5_000) {
             val read = LayoutStrategySelectionModule.store(context()).read()
@@ -330,6 +336,11 @@ class StrategyPickerInstrumentationTest {
             LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
         }
 
+        // The row sits below the fold — scroll it into view first so the
+        // injected tap lands inside the window.
+        composeRule.onNode(hasScrollAction()).performScrollToNode(
+            hasText(context().getString(R.string.organization_strategy_tidy_name)),
+        )
         composeRule.onNodeWithText(context().getString(R.string.organization_strategy_tidy_name))
             .performClick()
         composeRule.waitUntil(5_000) {
