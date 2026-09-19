@@ -53,10 +53,12 @@ store契約・AUTHORING/RUN排他leaseは一切変わらない（navigation edge
   削除する。T-06の材料面は#366が導入したhub側の使用状況material（共有表現）に一本化する。
 - 下位画面（材料各画面・診断画面・run面）は既存実装をそのまま受け、routeの追加・変更を
   行わない。変わるのはnavigation edge（どの面から開けるか）の削除のみである。
-- 入口表記の追記（契約不変）を同じPRで行う: specs 38 / 99 / 336（disposition §3.2/§3.7/
-  §3.8が#367に割当て）、spec 203 U-2とspec 138（入口がsettings rowからhub経由になった旨の
-  注記。U-2本体のJIT改訂は#371、138は画面・route不変）、spec 123のinventory evidence文書
-  （`docs/assessment/evidence/issue-123-ui-mapping.md`）。
+- 入口表記・配置契約の更新を同じPRで行う: specs 38 / 99 / 336（disposition §3.2/§3.7/
+  §3.8が#367に割当てた入口表記の追記。契約不変）、spec 203 U-2の常設row配置の限定的
+  改訂（`settingsのOrganizerセクションに常設` → `hub T-06`。no-JIT / fallback /
+  `ON_RESUME`再読取等の他規定は不変。JIT要求追加は#371が所有）、spec 138（入口が
+  settings rowからhub経由になった旨の注記。destination・route不変）、spec 123の
+  inventory evidence文書（`docs/assessment/evidence/issue-123-ui-mapping.md`）。
 - secondary entry（onboarding floating proposal T-19、workspace長押しlock付与 T-20、
   run面safe terminalからの診断導線、選択面からのrun-in AI相談）はTO-BE §5.2どおり
   すべて現行のまま維持する。本Issueが触れるのは設定Home screenの材料rowのみである。
@@ -70,8 +72,9 @@ store契約・AUTHORING/RUN排他leaseは一切変わらない（navigation edge
 - strategy pickerの移設・run面からの撤去（D-03、#368）。run面のstrategy pickerは
   本Issueでは触れない。
 - 材料各画面のUX再設計、store契約・AUTHORING lease・書込み経路の変更。
-- Usage Access要求のJIT化（D-07、#371）。JIT要求は出ない。spec 203のU-2本体改訂は
-  #371が所有し、本Issueは入口表記（settings常設row → hub T-06）の注記のみを行う。
+- Usage Access要求のJIT化（D-07、#371）。JIT要求は出ない。spec 203のJIT要求追加は
+  #371が所有し、本IssueはU-2の常設row配置（settings → hub T-06）のみを改訂する
+  （配置の先行改訂はdisposition §3.10の二段階所有に基づく）。
 - run面の表示統合・canonical順序・T-07前置き面（D-05/D-06、#369）。
 - status cardの拡張（#374/#375/#376）。hubのstatus card・開始CTA・診断導線の構成は
   #366実装のままとし、本Issueで変更しない。
@@ -236,10 +239,13 @@ And 本Issueは新しい永続化を一切導入しないため、process死で�
       `CustomCategoryPreferencesInstrumentationTest` / `OrganizerLockScreenTest` /
       `ManualOrganizationPreferencesInstrumentationTest`）が無編集でgreenである。
       （Issue受入3・4）
-- [ ] **MAT-AC-04**: 入口表記の追記（契約不変）が同じPRで行われている: specs 38 / 99 /
-      336に「入口はhub経由になった旨」の追記（disposition割当分）、spec 203 U-2と
-      spec 138の入口注記、spec 123のinventory evidence文書の設定row削除反映。
-      対応する実装と整合している。（Issue受入4・Spec節）
+- [ ] **MAT-AC-04**: 入口表記・配置契約の更新が同じPRで行われている: specs 38 / 99 /
+      336に「入口はhub経由になった旨」の追記（契約不変。disposition割当分）、spec 203
+      U-2の常設row配置の限定的改訂（`settingsのOrganizerセクションに常設` →
+      `hub T-06`。no-JIT / fallback / `ON_RESUME`再読取等の他規定は不変とし、旧settings
+      配置をcurrent normative stateとして残さない。JIT要求は#371が所有するため
+      触れない）、spec 138の入口注記（destination・route不変）、spec 123のinventory
+      evidence文書の設定row削除反映。対応する実装と整合している。（Issue受入4・Spec節）
 - [ ] **MAT-AC-05**: navigation instrumentation testが更新されている: 設定 → Home
       screenの材料row不在assert（4 row＋Personalization group。LazyColumnの未compose
       nodeがsemantics treeに現れないため、全list走査後の不在観測とする）と、hub起点
@@ -268,7 +274,7 @@ And 本Issueは新しい永続化を一切導入しないため、process死で�
 | MAT-AC-01 | UI instrumentation test: hub材料セクション → T-02/T-03/T-04 navigation、T-06行の機能、hub → diagnostics navigation（既存hub oracleの再実行。emulator screenshot（light/dark × ja/default）） |
 | MAT-AC-02 | UI instrumentation test: 設定 → Home screenの否定的観測（4 row・Personalization group 2行の不在。全list走査後のassert）＋hub入口row・manual rowの存在assert＋hub遷移assert |
 | MAT-AC-03 | 既存testの無編集green（材料画面直接compose系、run面系）+ 実装PR diff review（`organizer/application/**`・store・run面・route objectの契約面無編集） |
-| MAT-AC-04 | specs 38/99/336/203/138のdiff review（入口表記の追記のみで契約節無変更）+ `docs/assessment/evidence/issue-123-ui-mapping.md`のdiff |
+| MAT-AC-04 | specs 38/99/336/138のdiff review（入口表記の追記のみで契約節無変更）+ spec 203のdiff review（U-2配置のみ改訂、JIT/fallback/`ON_RESUME`規定無変更、旧settings配置のnormative記述が残っていないこと）+ `docs/assessment/evidence/issue-123-ui-mapping.md`のdiff |
 | MAT-AC-05 | 更新後の`OrganizerDiagnosticsRouteInstrumentationTest`のdiffと実行結果 + obsolete理由のPR記録 |
 | MAT-AC-06 | UI instrumentation test: Home screenにT-06行が不在（全list走査後）、hub側でT-06行が機能しpreference stateが一致、`ON_RESUME`再読取 |
 | MAT-AC-07 | `OnboardingOrganizationProposalInstrumentationTest`（hint oracle＋#232 oracle）無編集green + 設定画面へのGeneral group行残存assert |
@@ -278,21 +284,29 @@ And 本Issueは新しい永続化を一切導入しないため、process死で�
 
 ## Contract notes
 
-1. **（解決済み・owner review記録）manual organization直行rowとhintは#370まで維持**:
-   初版draft（`a50f074a`）はD-01「設定側は入口rowだけを残す」を本Issueで完成させる解釈
-   （General group直行rowの廃止＋hint path文言更新）をContract notesで提示したが、
-   owner review（Issue #367 review、2026-09-19）で否認された。accepted dispositionの
-   ownership（spec 232のAmendは#370、§5のdoc更新順、§7.2段階(b)は「Layout group/
-   Personalization groupの材料row移動」のみを定義）に従い、本specは材料rowに限定する。
-   段階中、設定 → Home screenにはhub入口rowとmanual organization直行rowが暫定併存し、
-   Issue受入2「organizer系rowsが残っていない（入口rowのみ）」の完全充足は#370の
-   manual row廃止＋spec 232/53改訂＋hint更新と同時に行う。この段階解釈をIssue #367へ
-   記録し、#370のscopeへmanual row廃止が含まれる旨を追記する（#370起票本文には
-   明示がないため）。
+1. **（解決済み・owner review記録）manual organization直行rowとhintは#370まで維持し、
+   所有先は正本側で閉じた**: 初版draft（`a50f074a`）はD-01「設定側は入口rowだけを
+   残す」を本Issueで完成させる解釈を提示したが、owner review（Issue #367 review、
+   2026-09-19）で否認された。accepted dispositionのownershipに従い、本specは材料rowに
+   限定する。2回目のre-review（[review][5]）は「manual row廃止の所有先が正本・#370側で
+   閉じていない」を指摘したため、以下で閉じた:
+   - accepted `organizer-disposition-migration.md` の §2.3 / §3.10 / §5 / §7.2 と
+     status追記に「#367=材料rowのみ、#370=manual organization直行row廃止＋spec 232
+     AC-3改訂＋hint更新（D-01の完成）」を明記した。
+   - Issue #370 の本文（Outcome / Scope / AC / Depends on）へ同責務を明記し、記録
+     [コメント][6]を投稿した。
+   - #370のspec/plan（draft）は次回re-entryでこの責務分割に合わせる。
+   したがって本specの段階契約（MAT-AC-02の暫定併存）は、受入時点で正本と後続Issueの
+   両方に裏付けられた状態である。
 2. **T-06は新規destinationを作らない**: #366実装済みのとおり、使用状況material
    （`OrganizerUsageMaterialRows`）はhub材料セクションに組み込まれた共有表現であり、
    独立したT-06 destinationは本Issueでも作らない。TO-BE §5.1のT-06は「ユーザーに
    区別して見せる面」の目的定義であり、2行のmaterial sectionがhub内でその目的を満たす。
+3. **spec 203 U-2は「注記」ではなく限定的な配置改訂の対象である**: U-2の
+   `settingsのOrganizerセクションに常設` はnormative記述であり、settings row削除後に
+   そのまま残すとspec 203が自己矛盾する。本IssueはU-2の常設row配置のみをhub T-06へ
+   改訂し（2回目のre-review指摘、disposition §3.10の二段階所有へ反映済み）、
+   no-JIT / fallback / `ON_RESUME`再読取等の他規定とJIT要求（#371）には触れない。
 
 ## Dependencies
 
@@ -305,7 +319,7 @@ And 本Issueは新しい永続化を一切導入しないため、process死で�
   正当な根拠）、`CONTEXT.md` の材料/hub語彙（#365、PR #379で確定）。
 - **後続**: #368（strategy移設・特例廃止。本Issue完了が前提）、#371（Usage Access
   JIT。T-06常設rowが存在することが前提）、#370（manual row廃止＋specs 232/53改訂＋
-  hint更新。本Issueの段階契約の完成）。
+  hint更新。D-01の完成。責務はdisposition §5/§7.2と#370本文に明記済み）。
 
 ## Open questions
 
@@ -313,10 +327,6 @@ And 本Issueは新しい永続化を一切導入しないため、process死で�
 
 1. 削除により未使用化するstringが`organizer_personalization_section`のみであることの
    最終確認は、実装PRのreference grepで確定する。
-2. #370の起票本文に「manual organization直行rowの廃止」が明示されていないため、本Issueの
-   PR作成時に#370へのscope追記（またはIssue commentでの責務記録）を行う。spec 370本文の
-   「spec 232改訂（AC-1の案内先、AC-3の入口row位置は#367と整合）」は、本specの段階契約
-   （manual rowは#367段階では存続）と整合する。
 
 ## Change history
 
@@ -339,8 +349,24 @@ And 本Issueは新しい永続化を一切導入しないため、process死で�
     ownershipの正式根拠として参照した。TO-BE §5.2のprimary/secondary entryを再確認し、
     本scopeが設定Home screenの材料rowに限定されるためsecondary entry群（T-19/T-20/
     run-in AI/safe terminal診断）を誤って排除しないことをScope/Non-goalsに明記した。
+- 2026-09-19: **Re-review対応（2回目、本branch）**。2回目のre-review（[review][5]、
+  「Changes requested」。前回指摘のre-entry解消とspec 232先取り解消を確認）の2指摘に対応:
+  - **中（manual row廃止の所有先）**: accepted `organizer-disposition-migration.md` の
+    §2.3 / §3.10 / §5 / §7.2 とstatus追記に「#367=材料rowのみ、#370=manual organization
+    直行row廃止＋spec 232 AC-3改訂＋hint更新」の責務分割を明記し、Issue #370本文
+    （Outcome / Scope / AC / Depends on）へ同責務を追記した（記録[コメント][6]）。
+    Contract notes 1に解決状況を記録し、Open questions 2（#370 scope追記の後倒し）を
+    解消済みとして削除した。
+  - **中（spec 203 U-2のnormative記述）**: U-2の`settingsのOrganizerセクションに常設`は
+    単なる注記対象ではなく、settings row削除後に残すと自己矛盾するnormative記述である
+    ため、本Issueの対応を「入口注記」から「常設row配置の限定的改訂（settings → hub
+    T-06）」へ修正した。disposition §3.10 / §5 / §4.1 を二段階所有（配置= #367、JIT=
+    #371）へ更新し、MAT-AC-04とTest oracleに「旧settings配置をnormative stateとして
+    残さないこと」「JIT等の他規定無変更」の確認を追加した（Contract notes 3）。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/367
 [2]: https://github.com/nunu1733/NunuLauncher/issues/366
 [3]: https://github.com/nunu1733/NunuLauncher/pull/380
 [4]: https://github.com/nunu1733/NunuLauncher/issues/370
+[5]: https://github.com/nunu1733/NunuLauncher/issues/367#issuecomment-5741019899
+[6]: https://github.com/nunu1733/NunuLauncher/issues/370#issuecomment-5741073763

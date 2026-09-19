@@ -1,6 +1,7 @@
 # Organizer Disposition and Migration Plan
 
 > Status: accepted（owner review 2026-09-19。ChatGPT reviewを3回実施し、R1/R2の指摘を解消したうえでR3は指摘なし・Approve相当（[R1](https://github.com/nunu1733/NunuLauncher/pull/378#issuecomment-5733985885) / [R2](https://github.com/nunu1733/NunuLauncher/pull/378#issuecomment-5734075706) / [R3](https://github.com/nunu1733/NunuLauncher/pull/378#issuecomment-5734136034)）。ownerがmergeと#362/#357〜#360のcloseを指示。本書は判断文書であり実装を要求しないため、実装の所有は#365〜#377（依存順は§8）が持つ）
+> 2026-09-19追記（[#367 re-review](https://github.com/nunu1733/NunuLauncher/issues/367#issuecomment-5741019899)対応、段階ownershipの明確化）: §2.3/§3.10/§5/§7.2のとおり、#367は材料row（Layout group＋Personalization group）の移動のみを所有し、D-01「設定側は入口rowだけを残す」の最終完成（General groupのmanual organization直行row廃止＋spec 232 AC-3改訂＋hint更新）は#370が所有する。spec 203は常設row配置の改訂（#367）→JIT要求追加（#371）の二段階で改訂する。
 > Proposed: 2026-09-19
 > Accepted: 2026-09-19
 > Parent: [Issue #362](https://github.com/nunu1733/NunuLauncher/issues/362)（Epic [#356](https://github.com/nunu1733/NunuLauncher/issues/356) Phase C）
@@ -65,7 +66,7 @@ TO-BE relation: 整合 / 一部衝突 / 全体衝突 / 役割消滅。Orderは �
 |---|---|---|---|
 | spec 271 durable status projection | 一部衝突（Non-goals cold-process restore がD-15と衝突。DS-AC-07表示面がstatus cardへ） | **Amend** | #376 |
 | spec 283 strategy picker affordance | 一部衝突（Non-goalsがrun面配置・dismiss+再startを凍結） | **Amend** | #368 |
-| spec 232 re-entry hint | 一部衝突（AC-1案内先がhubへ） | **Amend** | #370 |
+| spec 232 re-entry hint | 一部衝突（AC-1案内先がhubへ、AC-3入口row位置がD-01完成後のhub入口row 1件構成へ。#367段階ではAC-3を維持しmanual organization直行rowは暫定併存） | **Amend** | #370 |
 | spec 327 interview-first | 一部衝突（Decision 4 capability説明の配置前提） | **Amend** | #372 |
 | spec 123 UI convergence | 整合（新surfaceへAC-1/AC-2/AC-4/AC-5を適用。Non-goalsのanti-redesignとhubは両立: hubは既存settings visual languageを使う） | **Continue（inventory更新）** | #366 |
 | spec 13 / 194 / 195 / 210 / 231 / 330 / 348 | 整合（安全契約・AI-facing契約はTO-BE §2/§7.2が明示維持） | **Continue** | —（#210は#369で表示面注記のみ） |
@@ -146,9 +147,9 @@ TO-BE relation: 整合 / 一部衝突 / 全体衝突 / 役割消滅。Orderは �
 
 - 現状: signal snapshot契約・権限導線（spec 203 accepted/実装済み）。U-2「導線はsettingsのOrganizerセクションに常設。manual run内での自動的な再促しは行わない」。
 - 衝突点: U-2の常設rowのみ規定 vs D-07「最初にsignalを読む時点でJIT要求+常設row維持」。F-06/E-1（要求タイミングと利用タイミングが最遠）の解消。
-- 処分: **Amend**（#371）。U-2を「常設row（T-06）＋初回signal読み取り時のJIT要求1回」へ改訂。「同一runでは再促しない」・拒否時section Unavailable（AC-11/AC-13）・snapshot契約（AC-12/U-4）は不変。
-- doc変更: spec 203改訂（#371のPR）。
-- runtime migration / compatibility: なし。test migration: JIT要求・再促なしの新oracle追加。
+- 処分: **Amend**（二段階: 配置改訂は#367、JIT追加は#371）。#367（材料集約）がU-2の常設row配置だけを「settingsのOrganizerセクション」→「hub T-06」へ先行改訂する（no-JIT・fallback・`ON_RESUME`再読取等の他規定は不変。旧settings配置をnormative stateとして残さない）。#371がU-2を「常設row（T-06）＋初回signal読み取り時のJIT要求1回」へ改訂する。「同一runでは再促しない」・拒否時section Unavailable（AC-11/AC-13）・snapshot契約（AC-12/U-4）は不変。
+- doc変更: spec 203改訂（配置は#367のPR、JITは#371のPR）。
+- runtime migration / compatibility: なし。test migration: #367は配置回帰（settings row不在＋T-06機能）、#371はJIT要求・再促なしの新oracle追加。
 
 ### 3.11 #204 context/intent contract — Amend（文言のみ）
 
@@ -238,7 +239,7 @@ TO-BE relation: 整合 / 一部衝突 / 全体衝突 / 役割消滅。Orderは �
 | spec 331 D-2単一remedy（再exportのみ） | #331 | SET_MISMATCH/PROJECTION_MISMATCH原因別remedy（D-17。gate不変） | #375 |
 | spec 331 §5 idle entry経路（生存run attachのみの継続経路） | #331 | `Hub → ImportReview`1経路＋process死後fresh run rebind（D-08/D-17） | #374/#375 |
 | spec 271 Non-goals cold-process restore・表示のみ契約 | #271 | status card復元導線（D-15。新spec） | #376 |
-| spec 203 U-2常設rowのみ | #203 | 常設row＋JIT要求（D-07。再促なし規則は維持） | #371 |
+| spec 203 U-2常設rowのみ | #203 | 常設row＋JIT要求（D-07。再促なし規則は維持）。常設row配置のT-06移動は#367が先行改訂 | #371（配置は#367） |
 | pre-send cancelの「キャンセル」ラベル | #205実装 | 「破棄」（D-13語彙規約） | #372 |
 
 ### 4.2 Retire — なし
@@ -262,8 +263,8 @@ Issue・正本doc・ADRのいずれも役割消滅は無かった。実装・sto
 | 1 | product-brief / requirements / organization-run-ux / DESIGN / CONTEXT | §2.2表のAmend群（supersedeなし） | #365（docs-only PR） |
 | 2 | specs 182 / 283 | D-03配置転換・特例廃止 | #368 |
 | 3 | specs 52 / 228（+210注記） | canonical順序・D-06・表示統合 | #369 |
-| 4 | specs 53 / 232 | D-16表記・hint案内先 | #370 |
-| 5 | spec 203 | D-07 JIT | #371 |
+| 4 | specs 53 / 232 | D-16表記・hint案内先・spec 232 AC-3改訂（manual organization直行row廃止を含む。D-01「設定側は入口rowだけを残す」の完成。#367段階ではAC-3を維持） | #370 |
+| 5 | spec 203 | 配置改訂（常設row → hub T-06）は#367、D-07 JITは#371 | #367 / #371 |
 | 6 | specs 205 / 327 / 204文言 | D-04/D-09/D-10/D-14 | #372 |
 | 7 | specs 205(AC-5) / 332表記 | D-11・T-17/T-18 | #373 |
 | 8 | spec 328 rev.2 + 新spec（durable intent）+ spec 205(pending) | D-08 | #374（実装前にspec受入） |
@@ -300,7 +301,7 @@ ADR: 追加・改訂なし（§2.2表のとおり、recovery storage・lock・po
 TO-BE §13-1の順序を踏襲し、各段を独立PR可能とする。
 
 1. **(a) hub導入**（#366）: hub新設・status card第1段階（durable status表示＋開始CTA＋診断）。既存設定導線・run面はそのまま残る（後方互換）。
-2. **(b) 材料集約＋strategy特例廃止**（#367→#368）: 設定Layout group/Personalization groupのorganizer rowsをhubへ移動。材料面T-05へのpicker移設と特例廃止。
+2. **(b) 材料集約＋strategy特例廃止**（#367→#368）: 設定Layout group/Personalization groupのorganizer rowsをhubへ移動。材料面T-05へのpicker移設と特例廃止。D-01「設定側は入口rowだけを残す」の最終完成は、(c)の#370がGeneral groupのmanual organization直行row廃止とspec 232 AC-3改訂・hint更新で行う（#367段階ではhub入口rowと直行rowが暫定併存する）。
 3. **(c) 表示統合・語彙規約**（#369後、#370と#372は並行可→#373。#371は#367後並行可）: run面統合（T-07〜T-13）→ onboarding表記（#370）とAI相談統合（#372）はいずれも#369のみに依存し並行して着手できる → 取り込み表示（#373は#372後）。Usage Access JIT（#371）は材料面（#367）後なら並行して着手できる。
 4. **(d) status card復元**（#376。#366後ならc並行可）: 復元CTA接続。`organizer/application/**`触れるため高リスクpath（独立audit）。
 5. **(e) pending intent durable化**（#374→#375）: 新store・status card統合・freeze再設計→原因別remedy・rebind。

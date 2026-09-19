@@ -173,7 +173,9 @@ PR #379 #365正本改訂、PR #380 #366実装、PR #381 docs）を再照合済�
 | `tests/organizer-instrumentation/app/lawnchair/organizer/ui/` 配下（新規class。#366の`OrganizerHubPreferencesInstrumentationTest`拡張か#367新classかは実装時に判断） | settings側の否定的観測（Layout group 4 row・Personalization group 2行の不在、hub入口row・manual rowの残存）とT-06単一インスタンスassert（Home screen走査後にT-06行不在→hubでT-06行機能・preference一致）を追加 | MAT-AC-02/06/07の自動化。既存production graph harness patternを踏襲 |
 | `tests/organizer-instrumentation/app/lawnchair/organizer/ui/OnboardingOrganizationProposalInstrumentationTest.kt` | **無編集**（hint oracle・#232 oracleの維持を回帰証拠とする） | spec 232 AC-3は#370まで不変（MAT-AC-07） |
 | `docs/assessment/evidence/issue-123-ui-mapping.md` | 設定側organizer rowのinventory行を削除・hub集約の注記へ更新 | spec 123 AC-1 inventory（MAT-AC-04） |
-| `specs/38-lock-authoring-unknown-review/spec.md`, `specs/99-user-authored-category-overrides/spec.md`, `specs/336-user-defined-categories/spec.md`, `specs/203-usage-implicit-preference-signals/spec.md`, `specs/138-diagnostics-export-settings-route/spec.md` | 入口表記の追記のみ（契約節は変更しない）: 38/99/336はdisposition割当の「入口はhub経由になった旨」、203はU-2のsettings常設row → hub T-06の入口注記（U-2本体のJIT改訂は#371）、138はLayout group入口 → hub経由の注記（destination・route不変） | Issue本文（「specs 38/99/336は入口表記の追記（契約不変）」）＋実態との整合。#365 Non-goals「spec改訂は各実装IssueのPRで行う」に従い実装PRで実施 |
+| `docs/product/organizer-disposition-migration.md` | 段階ownershipの明確化（本branchで実施済み。§2.3 spec 232行、§3.10二段階所有、§5 rows 4/5、§4.1 spec 203行、§7.2(b)、status追記）: #367=材料rowのみ、#370=manual organization直行row廃止＋spec 232 AC-3改訂＋hint更新（D-01の完成）、spec 203=配置改訂（#367）→JIT（#371）の二段階 | #367 re-review指摘の解消。正本側でownershipを閉じないと段階契約（MAT-AC-02）が根拠を欠く |
+| `specs/38-lock-authoring-unknown-review/spec.md`, `specs/99-user-authored-category-overrides/spec.md`, `specs/336-user-defined-categories/spec.md`, `specs/138-diagnostics-export-settings-route/spec.md` | 入口表記の追記のみ（契約節は変更しない）: 38/99/336はdisposition割当の「入口はhub経由になった旨」、138はLayout group入口 → hub経由の注記（destination・route不変） | Issue本文（「specs 38/99/336は入口表記の追記（契約不変）」）＋実態との整合。#365 Non-goals「spec改訂は各実装IssueのPRで行う」に従い実装PRで実施 |
+| `specs/203-usage-implicit-preference-signals/spec.md` | U-2の常設row配置の限定的改訂: 「settingsのOrganizerセクションに常設」（Permission and fallback behavior表のopt-in行とU-2 decision noteの両方）を「hub T-06に常設」へ改訂。no-JIT・fallback・`ON_RESUME`再読取・拒否時section availability等の他規定は不変。JIT要求には触れない（#371が所有） | U-2のplacementはnormative記述であり、settings row削除後に旧文言を残すとspec 203が自己矛盾する（re-review指摘）。disposition §3.10の二段階所有（配置= #367、JIT= #371）に基づく。旧settings配置をnormative stateとして残さないことをdiff reviewで確認 |
 | `specs/271-organizer-durable-status-projection/spec.md` | 原則無編集。実装PRで「run面のdurable status表示契約は本Issueで不変」を確認し、文言drift（re-opened Settings表記等）が見つかった場合のみ入口注記を検討 | spec 271の契約面（run面・初期化経路）は本Issueで無変更のため |
 | `specs/367-organizer-materials-relocation/{spec,plan}.md` | status/history更新（実装PRで） | specs README rule |
 
@@ -226,7 +228,7 @@ PR #379 #365正本改訂、PR #380 #366実装、PR #381 docs）を再照合済�
 | MAT-AC-01 | instrumentation: hub → T-02/T-03/T-04 navigation、T-06行機能、hub → diagnostics（#366 hub oracleの再実行含む）。emulator screenshot（ja/default × light/dark） | `connectedLawnWithQuickstepGithubDebugAndroidTest` 対象class filter |
 | MAT-AC-02 | instrumentation: settings → Home screenの材料row不在assert（4 row＋Personalization group 2行、全list走査後）＋hub入口row・manual row存在assert＋hub遷移assert | 同上 |
 | MAT-AC-03 | 既存test無編集green（`CategoryOverridePreferencesInstrumentationTest`、`CustomCategoryPreferencesInstrumentationTest`、`OrganizerLockScreenTest`、`ManualOrganizationPreferencesInstrumentationTest`）+ diff review（契約面無編集） | 同上 + `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
-| MAT-AC-04 | specs 38/99/336/203/138の入口表記diff review + `issue-123-ui-mapping.md` diff | PR diff review |
+| MAT-AC-04 | specs 38/99/336/138の入口表記diff review + spec 203のdiff review（U-2配置のみ改訂、JIT/fallback/`ON_RESUME`規定無変更、旧settings配置のnormative記述が残っていないこと）+ `issue-123-ui-mapping.md` diff + disposition改訂diff（本branch分。段階ownershipの記載確認） | PR diff review |
 | MAT-AC-05 | `OrganizerDiagnosticsRouteInstrumentationTest`更新diff + 実行結果 + obsolete理由のPR記録 | 対象class filter実行 |
 | MAT-AC-06 | instrumentation: Home screen走査後にT-06行不在、hubでT-06行機能・preference一致・`ON_RESUME`再読取 | instrumentation |
 | MAT-AC-07 | `OnboardingOrganizationProposalInstrumentationTest`無編集green + General group行残存assert | 同上 |
@@ -244,8 +246,8 @@ failure injection（対象外——本Issueは読取契約を変更しない。�
    #366実装merge済み（PR #380、merge commit `32c72094a4`）。本planのCurrent evidenceは
    origin/main `1285c13cc6`で再検証済み（re-entry rule充足）。
 3. **本Issue実装**（1 PR想定。source + test + specs入口表記 + spec 123 inventoryを
-   同PRへ）: PR作成時にIssue #367へ段階契約の記録（MAT-AC-02の解釈）と#370への
-   scope追記確認を行う（spec Open questions 2）。
+   同PRへ）: PR作成時にIssue #367へ段階契約の記録（MAT-AC-02の解釈）を行う。
+   #370への責務明記は本branchで完了済み（disposition改訂＋#370本文編集＋記録コメント）。
 4. **後続**: #368（strategy移設。本Issue完了前提）、#371（JIT。T-06常設row前提）、
    #370（manual row廃止＋specs 232/53改訂＋hint更新。段階契約の完成）。
 
@@ -264,13 +266,16 @@ failure injection（対象外——本Issueは読取契約を変更しない。�
 ## Documentation updates
 
 - [ ] `specs/367-organizer-materials-relocation/spec.md` / `plan.md` status・history（本PR）
-- [ ] specs 38/99/336/203/138 入口表記追記（本PR。Issue本文＋disposition割当）
+- [x] `docs/product/organizer-disposition-migration.md` 段階ownership明確化（本branch。
+       re-review指摘1の解消）
+- [ ] specs 38/99/336/138 入口表記追記、spec 203 U-2配置改訂（本PR。Issue本文＋
+       disposition割当）
 - [ ] `docs/assessment/evidence/issue-123-ui-mapping.md`（spec 123 AC-1。本PR）
+- [x] Issue #370本文編集＋記録コメント（本branch。re-review指摘1の解消）
+- [ ] Issue #367への段階契約記録（MAT-AC-02の解釈。PR作成時）
 - [ ] `CONTEXT.md`: 実施しない（材料/hub語彙は#365で確定済み）
 - [ ] `DESIGN.md`: 実施しない（§4.4 UI adapterの記述範囲内。新面を作らないため）
 - [ ] ADR: 不要（IA決定の選択肢比較はorganizer-to-be-ux.md §4に記録済み）
-- [ ] Issue #367への段階契約記録（MAT-AC-02の解釈。PR作成時）
-- [ ] Issue #370へのscope追記（manual row廃止の明示。PR作成時に確認）
 
 ## Execution checklist
 
@@ -306,3 +311,16 @@ Current evidenceの核心（HomeScreenPreferencesのrow構造・route構造・te
 差分により変化していないことを確認した。実質的な新規情報は#366実装による
 `OrganizerUsageMaterialRows`共有composable化（Personalization groupの2行が
 groupごと削除可能になった）であり、本planはこれを前提に書かれている。
+
+## Re-entry notes round 2（2回目re-review対応、2026-09-19）
+
+2回目のre-review（[review](https://github.com/nunu1733/NunuLauncher/issues/367#issuecomment-5741019899)）
+の2指摘への対応と、本branchに含めた変更:
+
+| 指摘 | 対応 |
+|---|---|
+| 中: manual organization row廃止の所有先が正本・#370側で閉じていない | 本branchで (1) accepted `organizer-disposition-migration.md` の§2.3/§3.10/§5/§4.1/§7.2とstatus追記に責務分割を明記、(2) Issue #370本文（Outcome/Scope/AC/Depends on）を編集し記録コメント投稿（[comment](https://github.com/nunu1733/NunuLauncher/issues/370#issuecomment-5741073763)）、(3) 本spec Contract notes 1に解決状況を記録し、Open questions 2を削除。#370 spec/plan（draft）のre-entry整合は#370側の次回taskとして正本へ記録済み |
+| 中: spec 203 U-2が「入口注記のみ・契約節無変更」では自己矛盾する | 本Issueの対応を「U-2常設row配置の限定的改訂（settings → hub T-06）」へ修正。disposition §3.10/§5/§4.1を二段階所有（配置= #367、JIT= #371）へ更新し、MAT-AC-04とTest oracleに「旧settings配置をnormative stateとして残さない」「JIT/fallback/`ON_RESUME`規定無変更」の確認を追加（Contract notes 3）。spec 203の変更対象箇所はPermission and fallback behavior表のopt-in行とU-2 decision noteの2箇所（plan Change setに記載） |
+
+Change setの追加変更: disposition正本の改訂は本branchで実施（実装PRでは含まれない。
+実装PRのdiff reviewで記載内容の整合のみ確認する）。
