@@ -1,6 +1,6 @@
 ---
 issue: "#367"
-status: draft
+status: accepted
 requirements: [FR-006, FR-010, FR-013, FR-015]
 risk: []
 updated: 2026-09-19
@@ -13,7 +13,9 @@ updated: 2026-09-19
 > （D-01, §5.1 T-02〜T-06, §5.2, §6.3）およびaccepted
 > [organizer-disposition-migration.md](../../docs/product/organizer-disposition-migration.md)
 > （§3.2/§3.7/§3.8のContinue、§7.2段階(b)、§8実装順）。
-> 本specは[Issue #367][1]の成果物である。statusが `draft` の間はimplementation-readyではない。
+> 本specは[Issue #367][1]の成果物である。accepted（owner session指示による実装開始時に、
+> ChatGPT review（初回＋2回の再レビュー）で指摘が解消され「追加指摘なし / Approve相当」
+> を確認（[最終review][9]、head `dd09ef1a18`））。
 > 前提: [Issue #366][2]のhub shell（T-01、材料セクション・使用状況material・診断常設行含む）が
 > 実装・merge済みであること（[PR #380][3]、merge commit `32c72094a4`）。
 > 段階契約: 本specはdisposition §7.2の段階(b)「材料集約」であり、D-01の完全実現
@@ -384,3 +386,4 @@ And 本Issueは新しい永続化を一切導入しないため、process死で�
 [6]: https://github.com/nunu1733/NunuLauncher/issues/370#issuecomment-5741073763
 [7]: https://github.com/nunu1733/NunuLauncher/issues/367#issuecomment-5741111260
 [8]: https://github.com/nunu1733/NunuLauncher/issues/367#issuecomment-5741164754
+[9]: https://github.com/nunu1733/NunuLauncher/issues/367#issuecomment-5741181088

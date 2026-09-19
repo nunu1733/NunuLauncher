@@ -25,6 +25,7 @@ import androidx.activity.result.contract.ActivityResultContract
 import androidx.core.app.ActivityOptionsCompat
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
@@ -33,6 +34,8 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -227,36 +230,109 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
         )
     }
 
+    /**
+     * Issue #367 (obsoletes the #138 settings-entry oracle): the Layout-group
+     * diagnostics row is gone from the settings Home screen (TO-BE §5.2 —
+     * organizer material rows aggregate under the hub; obsolete reason:
+     * D-01 material relocation), so the supported settings route now runs
+     * through the hub's standing diagnostics entry. The #232 manual entry
+     * and the hub entry remain the only organizer rows in the General group
+     * (staged coexistence; #370 owns the rest). The lazy list omits
+     * un-composed rows from the semantics tree, so material-row absence is
+     * only observable across a full step-wise traversal before the
+     * click-through.
+     */
     @Test
-    fun homeScreenEntryNavigatesToDiagnosticsRouteShowingExportSurface() {
-        // Production Settings runs inside the launcher process, where
-        // LauncherAppState creation has initialized layoutApplicationModule.
-        // Mirror that environment before composing the production route graph.
-        LauncherAppState.getInstance(context)
-        composeRule.setContent {
-            LawnchairTheme {
-                val navController = rememberNavController()
-                // Production Preferences.kt provides these three locals around
-                // PreferenceNavigation; mirror them for a single-pane host.
-                CompositionLocalProvider(
-                    LocalNavController provides navController,
-                    LocalPreferenceInteractor provides PreferenceViewModel(context.applicationContext as android.app.Application),
-                    LocalIsExpandedScreen provides false,
-                ) {
-                    PreferenceNavigation(navController = navController, startDestination = HomeScreen)
+    fun homeScreenMaterialsRelocationRoutesDiagnosticsThroughHub() {
+        // The hub composes the process-local runner; install the lightweight
+        // fixture (idle, never-organized) instead of letting the hub create
+        // the production module with a real reconciliation, so this test
+        // stays independent from the model-loading environment.
+        val fixture = ManualOrganizationRun(FakeManualOrganizationApplication(), OrganizationPlanner { planningResult() })
+        installProcessLocalRunner(fixture)
+        try {
+            // Production Settings runs inside the launcher process, where
+            // LauncherAppState creation has initialized layoutApplicationModule
+            // (the diagnostics destination reads it directly). Mirror that
+            // environment before composing the production route graph.
+            LauncherAppState.getInstance(context)
+            composeRule.setContent {
+                LawnchairTheme {
+                    val navController = rememberNavController()
+                    // Production Preferences.kt provides these three locals around
+                    // PreferenceNavigation; mirror them for a single-pane host.
+                    CompositionLocalProvider(
+                        LocalNavController provides navController,
+                        LocalPreferenceInteractor provides PreferenceViewModel(context.applicationContext as android.app.Application),
+                        LocalIsExpandedScreen provides false,
+                    ) {
+                        PreferenceNavigation(navController = navController, startDestination = HomeScreen)
+                    }
                 }
             }
-        }
 
-        val entryLabel = context.getString(R.string.organizer_diagnostics_title)
-        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(entryLabel))
-        composeRule.onNodeWithText(entryLabel).performClick()
+            composeRule.onNodeWithText(
+                context.getString(R.string.manual_organization_title),
+            ).assertIsDisplayed()
+            composeRule.onNodeWithText(
+                context.getString(R.string.organizer_hub_title),
+            ).assertIsDisplayed()
 
-        val exportLabel = context.getString(R.string.organizer_diagnostics_export_label)
-        composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithText(exportLabel).fetchSemanticsNodes().isNotEmpty()
+            assertMaterialRowsAbsentAcrossFullScroll(
+                listOf(
+                    R.string.organizer_lock_screen_title,
+                    R.string.organizer_diagnostics_title,
+                    R.string.organizer_category_overrides_title,
+                    R.string.organizer_custom_category_title,
+                    R.string.organizer_personalization_recording_label,
+                    R.string.organizer_personalization_usage_access_label,
+                ),
+            )
+
+            composeRule.onNodeWithText(
+                context.getString(R.string.organizer_hub_title),
+            ).performClick()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.organizer_hub_materials_heading),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+            // The personalization material (T-06) exists exactly once, in the hub.
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.organizer_personalization_recording_label),
+            ).assertCountEquals(1)
+
+            val exportLabel = context.getString(R.string.organizer_diagnostics_export_label)
+            composeRule.onNodeWithText(
+                context.getString(R.string.organizer_diagnostics_title),
+            ).performClick()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(exportLabel).fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithText(exportLabel).assertIsDisplayed()
+        } finally {
+            installProcessLocalRunner(null)
         }
-        composeRule.onNodeWithText(exportLabel).assertIsDisplayed()
+    }
+
+    /**
+     * Issue #367: asserts the material rows are absent from the settings Home
+     * screen. A lazy list only exposes composed rows, so each step of a
+     * full traversal re-asserts absence while its region is composed; the
+     * traversal ends at the final widgets row.
+     */
+    private fun assertMaterialRowsAbsentAcrossFullScroll(labelResources: List<Int>) {
+        val texts = labelResources.map { context.getString(it) }
+        val sentinel = context.getString(R.string.force_widget_resize_label)
+        val scroller = composeRule.onNode(hasScrollAction())
+        var steps = 0
+        while (steps++ < 25) {
+            texts.forEach { text -> composeRule.onNodeWithText(text).assertDoesNotExist() }
+            if (composeRule.onAllNodesWithText(sentinel).fetchSemanticsNodes().isNotEmpty()) return
+            scroller.performTouchInput { swipeUp() }
+            composeRule.waitForIdle()
+        }
+        error("settings Home screen traversal never reached its final section")
     }
 
     /**
@@ -300,10 +376,19 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             }
 
             composeRule.onNodeWithText(context.getString(R.string.manual_organization_start)).performClick()
+            // The decision pair sits below the fold on shorter viewports and a
+            // lazy list only exposes composed rows, so scroll it into view
+            // before clicking (#366's viewport precedent; the state flip and
+            // the row composition are not atomic).
             composeRule.waitUntil(10_000) { runner.state is ManualOrganizationRun.State.Preview }
+            composeRule.onNode(hasScrollAction()).performScrollToNode(
+                hasText(context.getString(R.string.manual_organization_confirm)),
+            )
             composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm)).performClick()
             composeRule.waitUntil(10_000) { runner.state is ManualOrganizationRun.State.Applied }
-
+            composeRule.onNode(hasScrollAction()).performScrollToNode(
+                hasText(context.getString(R.string.manual_organization_open_diagnostics)),
+            )
             composeRule.onNodeWithText(context.getString(R.string.manual_organization_open_diagnostics)).performClick()
 
             val exportLabel = context.getString(R.string.organizer_diagnostics_export_label)

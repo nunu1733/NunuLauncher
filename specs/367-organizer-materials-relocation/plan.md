@@ -2,7 +2,8 @@
 
 > Issue: #367
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: accepted（実装開始。最終review「追加指摘なし / Approve相当」
+> https://github.com/nunu1733/NunuLauncher/issues/367#issuecomment-5741181088 、head `dd09ef1a18`）
 
 ## Current evidence
 
@@ -279,24 +280,60 @@ failure injection（対象外——本Issueは読取契約を変更しない。�
 
 ## Execution checklist
 
-1. [ ] 実装開始条件の確認: 本spec/plan `accepted`、main再確認
+1. [x] 実装開始条件の確認: 本spec/plan `accepted`、main再確認
        （Current evidenceはorigin/main `1285c13cc6`で検証済み。実装着手時に再確認）。
-2. [ ] 失敗するtestを先に: settings側材料row不在assertとhub起点navigation assertを
-       追加（MAT-AC-02/05/06を赤で固定）。
-3. [ ] `HomeScreenPreferences.kt`からorganizer row 4件・Personalization groupを削除し、
+2. [x] 失敗するtestを先に: settings側材料row不在assertとhub起点navigation assertを
+       追加（MAT-AC-02/05/06を赤で固定。source差分をstashした赤実行で
+       `assertDoesNotExist`失敗を確認→source適用で緑）。
+3. [x] `HomeScreenPreferences.kt`からorganizer row 4件・Personalization groupを削除し、
        import整理（MAT-AC-02）。General groupの2行は無編集であることをdiffで確認。
-4. [ ] `OrganizerDiagnosticsRouteInstrumentationTest`のsettings entry oracleを
+4. [x] `OrganizerDiagnosticsRouteInstrumentationTest`のsettings entry oracleを
        hub起点へ更新（MAT-AC-05）。
-5. [ ] `organizer_personalization_section`削除 + reference grep（MAT-AC-08）。
-6. [ ] specs 38/99/336/138の入口表記追記、spec 203のU-2配置改訂（Permission and
-       fallback behavior表のopt-in行とU-2 decision noteの2箇所）、spec 123 inventory
-       更新（MAT-AC-04）。38/99/336/138はcontract節無変更、spec 203はU-2配置のみ改訂
-       （JIT / fallback / `ON_RESUME`等の他規定無変更）であることをdiff reviewで確認。
-       旧settings配置のnormative記述が残っていないことの確認を含む。
-7. [ ] 既存test（材料画面直接compose系・run面系・lock popup系・#232/hint oracle）が
-       無編集でgreenであることの確認（MAT-AC-03/07/08）。
-8. [ ] full verification + evidence記録 + PR（`Closes #367`。本Issueの成果物を
-       完了させる最終PRであるため）＋ Issue #367への段階契約記録と#370 scope確認。
+5. [x] `organizer_personalization_section`削除 + reference grep（MAT-AC-08。0件確認）。
+6. [x] specs 38/99/336/138の入口表記追記、spec 203のU-2配置改訂（2箇所）、
+       spec 123 inventory更新（MAT-AC-04）。
+7. [x] 既存test（材料画面直接compose系・run面系・lock popup系・#232/hint oracle）が
+       無編集でgreenであることの確認（MAT-AC-03/07/08。下記Implementation notes参照）。
+8. [ ] full verification + evidence記録 + PR（`Closes #367`）＋ Issue #367への
+       段階契約記録（PR本文とIssue comment）。
+
+## Implementation notes（実装時の確定事項、2026-09-19）
+
+- **CI lane追加**: `app.lawnchair.ui.preferences.OrganizerDiagnosticsRouteInstrumentationTest`を
+  CI `organizer-instrumentation-issue52-tests` jobのclass listへ追加した（#366と同一
+  のevidence要件。本classは従来lane未登録であったため、以後CIで常時実行される）。
+- **safe terminal oracleの修正（test-only）**: 同classの
+  `safeTerminalOpenDiagnosticsRoutesThroughProductionGraphToExportSurface`が、
+  viewport高さの低いAVDでdecision pair（confirm/cancel）がbelow-the-foldで未composeの
+  ためclick不能であった（base codeでも再現。本classがlane未登録のため未発見だった）。
+  #366のc2efd2178aと同型のscroll-into-view修正（`performScrollToNode` → click）を
+  施し、診断rowも同様にscroll後clickへ変更した。観測対象（route遷移とexport surface
+  表示）は不変。
+- **新testはfixture runner経由**: `homeScreenMaterialsRelocationRoutesDiagnosticsThroughHub`は
+  `installProcessLocalRunner`で軽量fixture（Idle/never-organized）をinstallしてから
+  production route graphをcomposeする。production module（実reconciliation起動）を
+  同一processで作らないことで、他testとの環境干渉を避ける。diagnostics destinationが
+  `layoutApplicationModule`を直接読むため`LauncherAppState.getInstance(context)`の
+  mirrorは維持（旧oracleと同一）。
+- **材料row不在assertの方法**: `PreferenceLazyColumn`の未compose rowはsemantics treeに
+  現れないため、全list走査（末尾の`force_widget_resize_label`行をsentinelに段階scroll、
+  各stepで6 labelの`assertDoesNotExist`）で行う。T-06単一インスタンスはhub側で
+  `assertCountEquals(1)`。
+- **検証結果（local AVD `issue209_pixel_7_pro`、CI issue-52 lane相当）**:
+  CI lane class list 8 class（E2E/run面/hub/strategy picker/missing app/exchange
+  import/strategy freeze/本PR更新のdiagnostics route）を1 invocationでgreen。
+  onboarding lane（`OnboardingOrganizationProposalInstrumentationTest`＋
+  `InjectedInputEnvironmentStateInstrumentationTest`）green（#232 oracle・hint oracle
+  無編集維持=MAT-AC-07）。`OrganizerLockScreenTest` green（MAT-AC-08）。
+  `CategoryOverridePreferencesInstrumentationTest` green。unit gate・spotlessCheck green。
+  emulator screenshot 6枚（EN/ja × light/dark。`docs/assessment/evidence/issue-367/`）。
+- **既存のpre-existing failure（本PRでは修正しない）**:
+  `CustomCategoryPreferencesInstrumentationTest`の2 testが、method orderにより
+  `create` → `verified Create must report the minted entry`（spec 336の
+  `UserDefinedCategoryAuthoringCoordinator.create`）で失敗し、`rename`が連鎖失敗する。
+  base（spec branch head `dd09ef1a18`）でも再現、本classはlane未登録。同一環境での
+  初回combined run（別method order）はpassしておりorder依存。#367はstore/authoring
+  codeに触れないため本PRのscope外。evidence READMEに記録済み。
 
 ## Re-entry notes（起草→本revisionの差分、2026-09-19）
 

@@ -42,13 +42,9 @@ import app.lawnchair.ui.preferences.components.controls.SwitchPreference
 import app.lawnchair.ui.preferences.components.layout.ExpandAndShrink
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
-import app.lawnchair.ui.preferences.navigation.HomeScreenCategoryOverrides
-import app.lawnchair.ui.preferences.navigation.HomeScreenCustomCategories
 import app.lawnchair.ui.preferences.navigation.HomeScreenGrid
 import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
 import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizer
-import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizerDiagnostics
-import app.lawnchair.ui.preferences.navigation.HomeScreenPlacementLocks
 import app.lawnchair.util.collectAsStateBlocking
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.R
@@ -95,14 +91,17 @@ fun HomeScreenPreferences(
             )
             // Issue #232: promoted above the Layout section so the persistent organizer entry
             // is re-discoverable without scrolling after the onboarding proposal's `Later`.
+            // Issue #367 staged coexistence: the hub entry plus this manual run entry are
+            // the only remaining organizer rows here; the #367 materials moved under the
+            // hub, and removing this row (entry-row-only end state) is owned by #370.
             NavigationActionPreference(
                 label = stringResource(id = R.string.manual_organization_title),
                 destination = HomeScreenManualOrganization(),
                 subtitle = stringResource(id = R.string.manual_organization_summary),
             )
             // Issue #366: the Organizer hub (T-01) — the persistent organizing
-            // workspace. The rows below stay in place for the staged
-            // migration (phase (a)); moving or removing them is owned by #367.
+            // workspace and the settings-side route to the organizing
+            // materials, diagnostics, and the run surface.
             NavigationActionPreference(
                 label = stringResource(id = R.string.organizer_hub_title),
                 destination = HomeScreenOrganizer,
@@ -165,30 +164,10 @@ fun HomeScreenPreferences(
                 destination = HomeScreenGrid,
                 subtitle = stringResource(id = R.string.x_by_y, columns, rows),
             )
-            // Issue #38: placement lock management and unknown-state review.
-            NavigationActionPreference(
-                label = stringResource(id = R.string.organizer_lock_screen_title),
-                destination = HomeScreenPlacementLocks,
-                subtitle = stringResource(id = R.string.organizer_lock_screen_summary),
-            )
-            // Issue #138: supported release Settings route for diagnostics export.
-            NavigationActionPreference(
-                label = stringResource(id = R.string.organizer_diagnostics_title),
-                destination = HomeScreenOrganizerDiagnostics,
-                subtitle = stringResource(id = R.string.organizer_diagnostics_description),
-            )
-            NavigationActionPreference(
-                label = stringResource(id = R.string.organizer_category_overrides_title),
-                destination = HomeScreenCategoryOverrides,
-                subtitle = stringResource(id = R.string.organizer_category_overrides_summary),
-            )
-            // Issue #336: user-defined category management, adjacent to the
-            // #99 override editor.
-            NavigationActionPreference(
-                label = stringResource(id = R.string.organizer_custom_category_title),
-                destination = HomeScreenCustomCategories,
-                subtitle = stringResource(id = R.string.organizer_custom_category_summary),
-            )
+            // Issue #367: the organizer material rows (placement locks,
+            // diagnostics, category overrides, user-defined categories) and
+            // the Personalization group moved under the Organizer hub
+            // (TO-BE §5.2); they are reachable from the hub entry above.
             SwitchPreference(
                 adapter = lockHomeScreenAdapter,
                 label = stringResource(id = R.string.home_screen_lock),
@@ -199,15 +178,6 @@ fun HomeScreenPreferences(
                 label = stringResource(id = R.string.show_dot_pagination_label),
                 description = stringResource(id = R.string.show_dot_pagination_description),
             )
-        }
-        // Issue #203: personalization signals — the standing permission entry
-        // point (usage access app-op) with rationale, and the launcher-origin
-        // recording toggle. Organizing works fully without the permission;
-        // the granted state is shown as text (spec #203 U-2, accessibility).
-        // Issue #366: the rows are shared with the Organizer hub materials so
-        // both surfaces operate the same preference and app-op state.
-        PreferenceGroup(heading = stringResource(id = R.string.organizer_personalization_section)) {
-            OrganizerUsageMaterialRows()
         }
         PreferenceGroup(heading = stringResource(id = R.string.popup_menu)) {
             SwitchPreference(
