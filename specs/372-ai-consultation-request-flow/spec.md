@@ -1,0 +1,522 @@
+---
+issue: "#372"
+status: draft
+requirements: [FR-006, FR-017, NFR-009]
+risk: []
+updated: 2026-09-19
+---
+
+# AI相談を「整理案の作り方」の1つとしてT-07方法選択へ統合し、依頼作成（T-15）と送信前確認（T-16）を要約主面・期待明示・D-13語彙で再構成する
+
+> 契約の根拠: accepted TO-BE decision
+> [docs/product/organizer-to-be-ux.md](../../docs/product/organizer-to-be-ux.md)
+> （D-04, D-09, D-10, D-13, D-14, D-17, §5.1 T-07/T-15/T-16, §5.3 idle AI相談の遷移,
+> §6.5, §7.1 export文書の有効性行・送信前確認行, §8.2 AI依頼行, §9 語彙規約, §10 用語）。
+> 処分の正本: accepted disposition
+> [docs/product/organizer-disposition-migration.md](../../docs/product/organizer-disposition-migration.md)
+> （§3.11 spec 204文言Amend、§3.12 spec 205分段改訂のうち本件分、§4.1 supersession map、
+> §5 更新順序 #6、§7.2 (c)）が本件を「specs 205 / 327 / 204文言のAmend、#372が実行」と定める。
+> 本specは[Issue #372][1]の成果物である。statusが `draft` の間はimplementation-readyではない。
+> 前提: [Issue #369][2]のT-07前置き面（方法選択・admissionなし）が実装・merge済みであること
+> （Issue本文 `Depends on`）。#369はspec/plan draft（branch `issue-369-spec-plan`、commit
+> `3c39ceb2f8`）を接続先として参照している（2026-09-19時点）。
+
+## Problem
+
+External Agent Exchange（spec 205 implemented、UI `ExchangeFlowUi.kt`）は、run面の
+Idle/Cancelled分岐の最下部に独立したentry row（V-27 `ExchangeEntryRow`。「依頼文を作成」
+「回答を取り込む」の2ボタン＋capability説明）としてhostされ、以下のAS-IS findingを抱えている:
+
+- **F-07（サブシステム感）**: AI相談が「整理」と並ぶ独立サブシステムとして見え、
+  entryが操作面の末尾に置かれている（監査 D-8、V-27の配置）。accepted TO-BE D-04は
+  External Agent Exchangeを**独立サブシステムとして見せず「整理案の作り方」の1つ**へ
+  統合することを決定した。
+- **active依頼の不可視性（監査 V-29/30）**: activeなexport session（24h・単一active）の
+  存在は、次に生成しようとするまでUIから知る方法がなく、置換確認（V-30）で初めて知らされる。
+  TO-BE D-02/§6.5は依頼の存在と残時間を事前表示することを要求する（status cardへの接続は
+  #374であり、本IssueはT-15事前表示のみ）。
+- **E-3（期待の不可視性）**: 依頼は作成時点のホームで固定される（`sourceContextDigest`が
+  sessionに記録され、会話中のホーム・分類変更は取り込み時 `CONTEXT_STALE` になる）が、
+  この期待は依頼作成時に表示されない。TO-BE D-09は期待明示を生成前と送信前確認の**両方**に
+  表示することを決定した。
+- **E-5（全文審査の形式化）**: 送信前確認（V-32 `ExchangeDisclosure`）は生成済みpackage全文
+  （最大256KiB、240dp scroll）を常時提示するが、人間が全文を審査するのは実際上不可能で
+  同意が形式的になっている。TO-BE D-10は送信前確認を「種別・件数・上限の要約を主面、
+  全文は展開して確認可能」へ再構成することを決定した（外部開示の同意点は送信前確認1点のまま）。
+- **監査 D-2（`LOCAL_FULL` UI語彙）**: spec 204は3 tierを定義するが、UIは2択のみであり、
+  契約語彙とUI語彙の乖離がtier概念の説明を難しくしている。TO-BE D-14はユーザー向け選択肢を
+  2tierに固定し、`LOCAL_FULL`は契約値としてのみ維持することを決定した。
+- **D-13語彙（監査 F-09の一部）**: 送信前確認の「キャンセル」ラベルがzero-write中止と
+  不可逆な未送信session無効化（pre-send cancel）の両方の意味で使われている。TO-BE §9は
+  pre-send cancelを「破棄」（必ず確認を伴う）へ改めることを決定した。
+
+## Outcome
+
+T-07前置き面（#369）に「AIに相談」の方法選択が現れる。選ぶと**idle AI相談
+（pre-run request flow）**として依頼作成面T-15が開く（run admissionなし・RUN lease取得なし・
+trigger startなし）。T-15はactive依頼の存在と残時間を事前表示し、tier選択は
+「情報を減らして送る / ラベル付きで送る」の2択固定で依頼作成へ進む（active依頼がある場合は
+「破棄」語彙の置換確認を経る。spec 205 AC-13のgate構造は不変）。生成後の送信前確認T-16は
+出る情報の種別・件数・上限の要約を主面とし、生成済みpackage全文は展開して確認できる
+（確認対象と送信対象の同一性契約は不変）。依頼作成面と送信前確認の両方に期待明示（D-09）が
+表示される。未送信依頼の破棄（pre-send cancel）は「破棄」ラベル＋確認dialogになる
+（送信後の「閉じる」は依頼を生存させる）。既存のidle entry rowは撤去され、idle相談flowから
+依頼作成と回答取り込みの双方へ到達できる。run-in相談（T-08選択面のscope凍結entry）の
+契約は変更しない。
+
+## Scope
+
+- **idle entry rowの撤去とT-07方法選択への統合（D-04）**: T-07前置き面（#369が新設する
+  Idle/Cancelled分岐の前置き面）から `ExchangeEntryRow`（V-27）を撤去し、「AIに相談」の
+  方法選択（既存 `exchange_entry_subtitle` 相当の短い説明を伴う）を新設する。選択でidle相談
+  flow（T-15）を開く。run admission（RUN lease取得）・`start(trigger)` 発行は行わない
+  （D-04/D-17。capability先取り禁止の#366原則に従い、#369はこの選択肢を新設しない）。
+- **T-15依頼を作る面の新設（V-29/V-30/V-31の統合・再構成）**: 現行のtier選択
+  （`ExchangePrivacySelection`）と置換確認（`ExchangeReplacementConfirm`）を依頼作成面
+  T-15として再構成する。面は次を持つ:
+  1. **active依頼の事前表示**: activeなexport session（`ExportSessionStore.active`）が
+     存在するとき、その存在と残時間（sessionの `expiresAtEpochMs` とT-15進入時刻から導出）
+     を表示する。idle/run-in両形態で共通の表示である（TO-BE §5.3「面の共有」）。status card
+     への依頼表示は#374であり、本IssueではT-15事前表示のみである。
+  2. **tier選択の2択固定（D-14）**: ユーザー向け選択肢は「情報を減らして送る（既定）/
+     ラベル付きで送る」の2つのみである。`LOCAL_FULL`はUI語彙に出現しない（契約値としては
+     spec 204が維持）。label付き選択時の開示警告は現行維持する。
+  3. **期待明示（D-09・生成前）**: 「この依頼は作成時点のホームで固定されます。会話中に
+     ホームや分類を変更すると回答が取り込めなくなります」の意味要素（依頼は作成時点のホーム
+     で固定・会話中のホームや分類の変更で回答が取り込めなくなる）を表示する。
+  4. **依頼を作成CTA**: 既存の生成順序契約（gate → build → save → compose → disclose、
+     `ExchangeFlowController.generate`）を不変で呼ぶ。active依頼が存在する場合は置換確認
+     （次項）を経る。
+  5. **置換確認（spec 205 AC-13維持・語彙改訂）**: active依頼が存在する状態での新規生成開始は
+     既存の`ExchangeGenerationGate`経由の確認を必須とする（承認なしの生成開始経路は存在しない）。
+     確認copyは「破棄」語彙（依頼の置換 = 既存依頼宛回答の不可逆な無効化）に揃え、
+     承認は「破棄して作成」相当、辞退は既存依頼を生存させる（現行契約どおり）。
+  6. **回答を取り込む導線**: 撤去されたentry rowの「回答を取り込む」（既存T-17入力面、
+     spec 332のUI）への到達経路をT-15面に維持する（Contract notes 2）。
+- **T-16送信前確認の再構成（D-10・V-32）**: 現行 `ExchangeDisclosure` を要約主面へ再構成する:
+  1. **要約主面**: 出る情報の**種別**（tier別の既存開示文言の継承）、**件数**（生成済み
+     packageのexport items数。生成済みimmutable値に紐づくsessionから導出し、表示中にlive状態
+     から再計算しない）、**上限**（spec 204 V1 content limits: items 512件・export canonical
+     JSON 256 KiB、のユーザー向け表現）の要約を主面とする。
+  2. **全文展開**: 生成済みpackage全文は既定では折りたたみ、展開して確認できる状態を保つ。
+     展開textは確認対象と同一のimmutableな値である（spec 205 AC-12の同一性契約は不変）。
+     全文の常時強制提示は廃止する。
+  3. **期待明示（D-09・送信前）**: T-15と同一の意味要素の期待明示を送信前確認にも表示する。
+  4. **transport契約の不変**: clipboard copy / Share Sheet / file保存の3経路、
+     送信承認なしにtransport経路が開かれない構造、再生成時の確認やり直しは現行契約どおり
+     （spec 205 AC-3/AC-12のgate構造は不変。表示形式のみ改訂）。
+- **pre-send cancelの「破棄」化（D-13）**: 未送信依頼の破棄（既存 `closeDisclosure` の
+  cancel経路 = 当該未送信sessionの明示的失効 `ExportSessionStore.invalidate`）のラベルを
+  「キャンセル」から「破棄」へ改め、**確認dialog 1回を経る**（D-13 §9の破棄の確認規約）。
+  失効対象は当該未送信sessionのみであることは現行契約どおり（transport in-flight中・送信済み
+  は対象外）。送信後の「閉じる」は依頼を生存させ、確認dialogを要さない（現行契約どおり）。
+  T-15進入前の中止（依頼作成前のtier選択の中止）は「キャンセル」（確認不要・zero-write）の
+  ままである（D-13 §9）。
+- **capability説明の配置転換（spec 327 Decision 4の改訂）**: idle entry rowにhostされていた
+  capability説明4要素（具体例での「AIでできること」・「AIはホーム画面を直接変更しない」・
+  期待される会話flow（質問→方針確認→最終案、1往復）・会話はNunuLauncherを経由しない）を
+  idle相談導線の新しい配置（T-15面本体。T-07の「AIに相談」選択肢には短い説明。Contract
+  notes 1）へ移す。run-in entry（`ExchangeScopedEntryRow`）のcapability説明は現行のまま
+  変更しない。
+- **spec改訂（実装PRで実施）**:
+  - **spec 205**: (1) 「exchange導線の提示はmanual run操作非active時に限定する (V1)」の
+    規定とV-27単独idle entry配置をsupersedeし、「idle相談はT-07方法選択「AIに相談」から
+    開始するpre-run request flow（run admission・RUN lease取得なし。D-04/D-17）。run-in相談
+    （選択面T-08のscope凍結entry）はspec 331契約を維持」へ改訂（Behavior scenariosの
+    entry前提、process recreation後のrun再構築scenario内のV1規定、Data and state）。
+    (2) AC-3/AC-12の送信前確認の**表示形式**を要約主面＋全文展開へ改訂（gate構造・同意点1点・
+    確認対象とtransport対象の同一性は不変）。(3) AC-13の確認語彙を「破棄」へ揃える
+    （gate契約は不変）。(4) T-15事前表示・D-09期待明示・pre-send cancelの破棄＋確認を
+    本specの契約として追記。
+  - **spec 327**: Decision 4（capability説明の配置）の配置前提を「idle entry」から
+    「T-07方法選択（短い説明）＋T-15依頼作成面（4要素本体）」へ改訂。AC-4/AC-5の検証対象面の
+    配置前提を更新（4要素の必須性・文言契約は不変）。instruction契約（AC-1〜AC-3）には触れない。
+  - **spec 204**: privacy tier節へ「UI選択肢は2種（redacted / labels。TO-BE D-14の語彙）。
+    `LOCAL_FULL`は内部契約値（将来のlocal LLM向け余地、#206）として維持し、外部workflowのUIに
+    出現させない」を明文化（文言のみ。契約値・schema・validator・tier matrixは不変）。
+- **Localization**: 新規・改訂のuser-visible文字列はAndroid resource由来でEN（`values/`）と
+  ja（`values-ja/`、正本）の双方に供給する（spec 123契約）。改訂copyはTO-BE §10語彙
+  （依頼（AI相談）/破棄/取り込み）とD-13語彙規約に従う。統合により未使用になったstringは
+  実装PRのreference grepで確定し、同じPRで双方のresourceから削除する。
+
+## Non-goals
+
+- 取り込みUI・失敗表示の再構成（D-11手段別再投影、T-17/T-18、**#373**）。T-17入力面
+  （spec 332）と失敗表示（typed 20種の直接説明）は現行のまま維持する。
+- 取り込み済み提案のdurable化・hub status cardへの依頼表示・依頼カードのstatus card統合
+  （D-08/D-02、**#374**）。pending intentはprocess-localのままである。
+- run-in相談の契約変更（選択凍結・`attachIntent`・scope binding gate・選択復元初期値は
+  spec 331/375の所有。本Issueではrun-in entry行とflow面を現行どおりhostする）。
+- 会話形式・instruction契約の変更（interview-first 2-phase、canonical example、
+  `Issue348AiFacingContractSyncTest` の回帰対象はspec 327/348が所有。本IssueはUI配置のみ）。
+- 外部開示の同意点の移動・追加（送信前確認1点のまま。D-10）。
+- exchange framing、envelope上限、session TTL 24h・単一active・`sourceContextDigest`、
+  transport 3経路、import pipeline・validatorの変更（spec 204/205/329の契約は不変）。
+- `LOCAL_FULL`契約値・`ContextExportBuilder`のtier分岐の削除（将来のlocal LLM向け余地として
+  維持。監査 D-2、disposition §4.3 Defer）。
+- spec 328（accepted・implemented）のimport attempt anchor・success state・freeze機構の再設計
+  （disposition §3.14のrev.2は#374が所有）。本IssueはT-07「そのまま整理」CTAへのidle start
+  row freeze継承（#369）と、`importAttemptActive`中の既存freeze挙動を回帰として維持するのみ。
+- hub（T-01）の構成変更（status card・材料導線は#366/#367/#374/#376の所有）。
+- run state machine・typed outcome・journal event・diagnostics契約・persistent store・
+  permission・外部送信経路の変更。
+
+## Domain language
+
+- **idle AI相談（idle exchange / pre-run request flow）**: run admission（RUN lease取得）を
+  伴わず、依頼の作成・待機・取り込み中も恒常authoringが可能なAI相談形態（TO-BE D-04/D-17）。
+  T-07方法選択「AIに相談」から開始し、run admissionは「この提案で続ける」以後に発生する
+  （既存の取り込み成功状態CTA経由、spec 328の継続CTA契約）。
+- **依頼（AI相談）**: export sessionと送出文書の一組（TO-BE §10）。本specのUI copyは
+  「エクスポートセッション」「交換」ではなく「依頼」を正とする。既存stringsの全面改名の
+  要否（`exchange_*`の「交換」語彙）は実装PRで確定する（非blocking。新規・改訂copyは依頼語彙を
+  正とする）。
+- **T-15依頼を作る / T-16送信前確認**: organizer-to-be-ux.md §5.1のAI系表面ID。本specでは
+  ユーザーに区別して見せる面の契約名として使い、UI上のlabelとしては現れない（ユーザー向け語彙
+  はTO-BE §10およびD-13に従う）。実装上は既存のinline flow screen群（`ExchangeScreen`）の
+  再構成であり、新規destinationは要求しない。
+- **破棄（pre-send）**: 未送信依頼の不可逆な無効化（当該未送信sessionの明示的失効）。
+  D-13 §9の破棄（必ず確認を伴う）に分類される。`CONTEXT.md`への用語追加（idle AI相談・依頼・
+  語彙規約）は[Issue #365][3]が所有し、本specでは複製しない。
+
+## Behavior scenarios
+
+### Scenario: T-07で「AIに相談」を選ぶとadmissionなしで依頼作成へ進む
+
+Given #369のT-07前置き面が表示されており、run coordinatorが `Idle` である
+When 「AIに相談」の方法選択を選ぶ
+Then 依頼作成面（T-15）が開き、tier選択と依頼を作成CTAが表示される
+And run admission（RUN lease取得）・`start(trigger)`・検出/compositionの実行は発生せず、
+run coordinatorは `Idle` のままである
+And 「そのまま整理」の方法選択と「AIに相談」の選択は並存し、いずれもT-07面上の操作である
+
+### Scenario: idle entry rowは撤去され、依頼作成と取り込みはT-15から到達できる
+
+Given #369適用後のT-07前置き面が表示されている
+When Idle/Cancelled面を観察する
+Then 単独のidle exchange entry row（`ExchangeEntryRow`。title＋subtitle＋capability説明＋
+「依頼文を作成」「回答を取り込む」2ボタンのblock）は存在しない
+And 「AIに相談」→ T-15から依頼作成と回答取り込み（既存T-17入力面への導線）の双方が到達可能である
+And run-in entry（`ExchangeScopedEntryRow`）はT-08選択面に現行どおり存在する
+
+### Scenario: T-15はactive依頼の存在と残時間を事前表示する
+
+Given 有効期限内のexport sessionが存在する（前回生成から24h以内）
+When T-15依頼作成面を開く
+Then active依頼の存在と残時間が表示される（T-15進入時に読み取ったsession
+`expiresAtEpochMs` からの導出。面上で継続的に秒針のように更新される時計は要求しない）
+And 同一面にtier選択が表示され、依頼を作成CTAの選択は置換確認を経る
+And active依頼が存在しないとき、事前表示は行われない（「依頼がありません」等の偽装行も作らない）
+
+### Scenario: 置換は「破棄」語彙の確認を経る（spec 205 AC-13維持）
+
+Given active依頼が存在し、T-15でtierを選択して依頼を作成を選ぶ
+When 置換確認が表示される
+Then 確認copyは「破棄」語彙（新規依頼の作成により既存依頼宛の回答が取り込めなくなることの明示）
+であり、承認（破棄して作成相当）なしには生成（context export生成・session保存・package合成）
+が開始されない
+And 辞退した場合は既存依頼は不変であり、既存依頼宛の回答は引き続き取り込める
+And 承認後の生成は既存の順序契約（gate → build → save → compose → disclose）を通る
+
+### Scenario: tier選択は2択固定でありLOCAL_FULLはUI語彙に出現しない（D-14）
+
+Given T-15依頼作成面が表示されている
+When tier選択肢を観察する
+Then 選択肢は「情報を減らして送る（既定）」と「ラベル付きで送る」の2つのみであり、
+`LOCAL_FULL` を示す語彙はUIに存在しない
+And label付き選択時にはアプリ名・フォルダ名が外部へ出る旨の警告が表示される（現行維持）
+And 選択は既存の `EXTERNAL_REDACTED` / `EXTERNAL_WITH_LABELS` 契約値に対応し、
+`ContextExportBuilder` のtier分岐（`LOCAL_FULL`含む）は変更されない
+
+### Scenario: 送信前確認は要約主面＋全文展開である（D-10）
+
+Given 生成済みのexchange packageに対して送信前確認（T-16）が表示されている
+When 確認面を観察する
+Then 出る情報の種別・件数・上限の要約が主面として表示され、生成済みpackage全文は
+既定では折りたたまれ、展開操作で確認できる
+And 展開された全文は確認対象と同一のimmutableな値であり、確認後に実行されるtransport
+（clipboard copy / Share Sheet / file保存）は同一の値を送出する（spec 205 AC-12の回帰）
+And 確認の前に外部送信経路が開かれることはなく、tier変更等の再生成時は確認からやり直す
+（現行契約の回帰）
+
+### Scenario: 期待明示（D-09）が生成前と送信前の両方に表示される
+
+Given idle相談flowで依頼を作成している
+When T-15依頼作成面とT-16送信前確認をそれぞれ観察する
+Then いずれの面にも「依頼は作成時点のホームで固定される」「会話中にホームや分類を変更すると
+回答が取り込めなくなる」の意味要素を含む期待明示が表示される
+And 期待明示の表示はtier選択に依存しない（両tierで表示される）
+
+### Scenario: 未送信依頼の破棄は「破棄」ラベル＋確認である（D-13）
+
+Given 生成済み・未送信のpackageに対して送信前確認が表示されている
+When 破棄（pre-send cancel）を選ぶ
+Then 「破棄」ラベルの操作であり、確認dialog 1回を経たのちに当該未送信sessionのみが
+明示的に失効し（`ExportSessionStore.invalidate`）、activityな依頼を残さない
+And 確認dialogで辞退した場合はpackageと依頼は生存し、送信前確認が続行する
+And transport in-flight中・送信済みのdisclosureは破棄対象にならない（現行契約の回帰）
+
+### Scenario: 送信後の「閉じる」で依頼は生存する
+
+Given transport成功後の送信前確認が表示されている
+When 「閉じる」を選ぶ
+Then 依頼（session）は失効せず、同一回答の取り込みが期限以内に成立する
+And 「閉じる」には確認dialogが要らない（zero-write、D-13 §9のキャンセル分類）
+
+### Scenario: idle相談中も恒常authoringは可能である（lease拒否なしの回帰）
+
+Given T-07からidle相談flowを開き、依頼の生成中または送信前確認の表示中である
+When 材料（分類・ロック・方針・使用状況）の編集を行う
+Then idle相談はRUN lease・AUTHORING leaseを取得しないため、編集はlease拒否されずに成立する
+And T-07面を離れて材料を編集し戻ると、依頼（session）はdurableに生存しており、
+T-15の事前表示と取り込み導線から再開できる（flowの表示状態自体はprocess-localで
+画面離脱で閉じる。現行の画面状態扱いどおり）
+
+### Scenario: run-in相談の契約は変更されない
+
+Given T-08選択面が表示されており、scope凍結AI入口（run-in entry）がhostされている
+When run-in相談flowを開く
+Then `ExchangeScopedEntryRow`・capability説明・scope凍結notice・scope-composed生成・
+選択凍結・`attachIntent`接続・`SCOPE_MISMATCH`表示は本Issue適用前と同一である
+And T-15/T-16の再構成（事前表示・要約主面・語彙）はidle/run-inで共有される面に対して
+等しく適用される（TO-BE §5.3「面の共有」）
+
+### Scenario: 同意gate・transport・session契約は変更されない（回帰保証）
+
+Given 本Issueの実装PRが作成されている
+When spec 205/204の契約test（session置換gate・disclosure状態遷移・transport同一性・
+import pipeline・`ExchangeFlowStateHolderTest` 群）を実行する
+Then 表示形式の変更対象を除き、すべてが無編集または表示面移設のみの更新でgreenである
+And `Issue348AiFacingContractSyncTest` とspec 327のinstruction契約test
+（`ExchangePackageComposerTest`）は無編集でgreenである（instruction契約に触れないことの証拠）
+
+## Failure behavior
+
+| Condition | Observable outcome |
+|---|---|
+| 生成時の入力未READY（`InputNotReady`） | 既存のtyped status（`GENERATION_INPUT_NOT_READY`）とT-15面への復帰。現行契約の回帰 |
+| session store保存失敗 | 既存のtyped status（`GENERATION_STORE_FAILURE`）。packageは出ない（fail-closed回帰） |
+| encode失敗（content limits超過） | 既存のtyped status（`GENERATION_OVERSIZE`）。ghost active sessionは残らない（現行契約の回帰） |
+| T-15表示中にactive依頼がTTL失効 | 事前表示はT-15進入時の値であり、生成時のgate（`ExchangeGenerationGate` + `activeSession()` 再読取）が失効後の置換確認を要求しない。取り込みは `SESSION_EXPIRED` でtypedに拒否される（現行契約） |
+| 破棄確認中のtransport試行 | 破棄受付後のdisclosureはterminal `cancelling` 状態であり、transportは開始もsettleもしない（現行 `closeDisclosure` 契約の継承。確認dialogはUI層のaffordanceであり、構造gateは現行どおり） |
+| import attempt生存中のT-07「そのまま整理」CTA | 既存のidle start row freeze（spec 328、`importAttemptActive`）が「そのまま整理」CTAに継承される（#369で規定、本Issueでは回帰として維持） |
+| 取り込み失敗・成功状態の表示 | 現行契約（spec 205/328/329/332）どおり。再構成は#373 |
+
+## Stale state / concurrency
+
+- 依頼の有効性（TTL 24h・単一active・置換で無効化）はspec 204/205契約のまま不変であり、
+  T-15事前表示はその**表示**を担うのみである。表示と実効gateの乖離は生成時の
+  `activeSession()` 再読取と取り込み時の `SESSION_EXPIRED`/`EXPORT_MISMATCH` 検証が防ぐ
+  （「UI disabled/表示はaffordanceにすぎない」原則の継承）。
+- 残時間表示はT-15進入時のclock読取から導出する単一判定とし、継続的な再計算・live更新を
+  要求しない（Contract notes 4）。表示のstale（進入後にTTL失効）は実効gateが防ぐ。
+- pre-send破棄の確認dialogはUI層のaffordanceであり、session失効の構造gate
+  （Main上の`cancelling`確定 → transport開始/settle不受理 → `invalidate`）は現行
+  `closeDisclosure` 契約を継承する。
+- run-in相談の選択凍結・scope gate・attempt anchor（spec 331/328）との相互作用は変更しない。
+
+## Data and state
+
+- **読む**: active export session（`ExportSessionStore.active`。既存のcontroller seam
+  `activeSession()`）。T-15事前表示とT-16要約（件数）はsession `expiresAtEpochMs` /
+  `itemRefs` から導出する（いずれも既存field。新規の読取seamは設けない）。
+  要約の表示値は生成済みimmutable packageに紐づくsessionから得る（確認対象との同一性を維持）。
+- **書く**: 新規の永続化・preference・diagnostics eventはない。書込みは既存のsession保存/
+  invalidate（spec 204/205契約）のみである。pending intentはprocess-localのままである
+  （durable化は#374）。
+- **Identity**: 変更なし。`exportId`、ref↔`ItemId` map、`sourceContextDigest`、
+  tier契約値は不変である。
+- **Migration / backup / restore / rollback**: persistent state変更なし。schema変更なし。
+  Launcher layout DB / `favorites` への接触なし（ホームレイアウト安全規約の適用対象外）。
+  PR revertで旧entry row＋旧確認面構成へ戻る。downgrade時の残留物なし。
+- **利用者の既存状態**: active依頼・未送信package・取り込み済み提案は本変更の前後で同じ
+  意味を保つ。画面離脱によるflow表示状態の消失（process-local）は現行どおりであり、
+  sessionのdurable性（24h）で依頼は生存する。
+
+## Permissions, privacy, and security
+
+- None — 新規permission、network、外部送信経路の追加はない。外部送信は既存の送信前確認
+  （T-16）経由のみであり、同意点は1点のままである（D-10）。
+- 要約主面は「出る情報の種別」のinformed consent根拠を弱めない: 種別（tier別開示文言）・
+  件数・上限は生成済みpackageから導出され、展開可能な全文と同じ対象を説明する。
+  件数等の表示値はsession由来であり、追加の個人情報を画面へ新規に運ばない
+  （session `itemRefs` の**件数**のみで、ref値・内部IDを表示しない）。
+- `LOCAL_FULL`のUI語彙除外は表示の変更であり、tier matrix・redacted tierの自由文除外
+  （spec 204契約）は不変である。
+- clipboard内容・package textのdiagnostics記録禁止（organizer-diagnostics.md）は現行どおり。
+
+## Accessibility and localization
+
+- T-15/T-16の再構成面にorganization-run-ux §6のaccessibility受入基準を最初から適用する:
+  TalkBackは見出し・事前表示・要約・展開操作・transport・破棄のname/role/stateを公開する。
+  全文展開はexpand/collapseのstateをTalkBackへ伝え、展開前に全文がTalkBackの読み順に
+  大量投入されない（要約主面化のa11y上の利点を保持する）。focus restorationは決定的であり、
+  破棄確認dialogはconfirm/cancelを明示的なroleで提供しfocusをdialogへ移す。
+  200% font scaleでclipping/overlapやcritical actionの到達不能を生まない。
+  期待明示・警告はcolor-onlyにしない。timeout auto-confirm/cancelは存在しない。
+- 新規・改訂string（T-15見出し・事前表示・残時間format・tier語彙・期待明示・要約・
+  全文展開・破棄確認dialog等）はAndroid resource由来でEN（`values/`）とja（`values-ja/`、
+  正本）の双方へ供給する。複合文（残時間等）はformat resourceで構成し、Kotlin側の連結で
+  文を生成しない（spec 123 AC-4/AC-5規約）。既存の開示文言・失敗文言で契約由来のもの
+  （spec 205/204由来の開示種別文言等）は可能な限り再利用する。
+- 統合により未使用になるstring（撤去されるentry row由来等）は実装PRのreference grepで
+  確定し、`values/`/`values-ja/`双方から削除する（孤立user-visible参照の排除）。
+
+## Acceptance criteria
+
+- [ ] **EX-AC-01**: 単独のidle exchange entry rowが撤去され、T-07方法選択の「AIに相談」から
+      idle相談flow（T-15）が開く。選択はrun admission（RUN lease取得）・`start(trigger)` を
+      発生させず、依頼作成と回答取り込み（既存T-17入力面への導線）の双方に到達できる。
+      run-in entryはT-08選択面に現行どおり存在する。（Issue受入1）
+- [ ] **EX-AC-02**: idle相談中（依頼作成・生成中・送信前確認中）に材料（分類等）の編集が
+      lease拒否されずに可能である。idle相談flowの開始・生成・確認表示はRUN lease /
+      AUTHORING leaseを取得しない。（Issue受入2）
+- [ ] **EX-AC-03**: T-15がactive依頼の存在と残時間を事前表示し（active依頼なしでは表示しない）、
+      active依頼がある状態の新規作成が「破棄」語彙の置換確認を経る。spec 205 AC-13の
+      gate契約（承認なし生成不開始・辞退時既存依頼不変・E1→E2→取消→E1の`EXPORT_MISMATCH`
+      zero-write回帰）は不変である。（Issue受入3）
+- [ ] **EX-AC-04**: 送信前確認（T-16）が種別・件数・上限の要約を主面とし、生成済みpackage全文を
+      展開して確認できる。全文は確認対象と同一のimmutable値である。期待明示（D-09の意味要素:
+      作成時点のホームで固定・会話中のホーム/分類変更で回答取り込み不可）がT-15（生成前）と
+      T-16（送信前）の両方に表示される。（Issue受入4）
+- [ ] **EX-AC-05**: tier選択肢が2つのみ（「情報を減らして送る / ラベル付きで送る」）であり、
+      `LOCAL_FULL`がUI語彙に出現しない。契約値（`EXTERNAL_REDACTED` / `EXTERNAL_WITH_LABELS` /
+      `LOCAL_FULL`）と `ContextExportBuilder` のtier分岐は維持されている。（Issue受入5）
+- [ ] **EX-AC-06**: 外部開示の同意点が送信前確認1点であること、およびtransport契約
+      （clipboard copy / share / file、確認前送信の不在、再生成時の確認やり直し、
+      同一immutable値の送出）に変更がないことが、spec 205 AC-3/AC-12対応testのgreenで
+      検証される。（Issue受入6）
+- [ ] **EX-AC-07**: capability説明4要素（具体例での「AIでできること」・「AIはホーム画面を
+      直接変更しない」・期待される会話flowと1往復の受け渡し・会話はNunuLauncherを経由しない）
+      が新しい配置（idle相談導線）で満たされ、run-in entryの説明も維持される。
+      （Issue受入7。spec 327 AC-4/AC-5の配置前提改訂と対応）
+- [ ] **EX-AC-08**: 未送信依頼の破棄（pre-send cancel）が「破棄」ラベル＋確認dialog 1回で
+      当該未送信sessionのみを失効させる。送信後の「閉じる」は確認なしで依頼を生存させる。
+      （D-13）
+- [ ] **EX-AC-09**: spec 205（entry規定のsupersede・AC-3/AC-12表示形式・AC-13語彙・T-15/T-16
+      追記）、spec 327（Decision 4配置・AC-4/AC-5配置前提）、spec 204（D-14文言）の改訂が
+      同じ実装PRで行われている（Scope節の改訂内容のとおり。gate構造・schema・validator・
+      instruction契約には触れない）。
+- [ ] **EX-AC-10**: T-15/T-16の再構成面がorganization-run-ux §6のaccessibility受入基準を
+      満たし（TalkBack name/role/state、展開state、focus restoration、200% reflow、
+      non-color-only、traversal、no timeout auto-confirm）、新規・改訂stringがEN/ja双方で
+      供給され、未使用化stringが双方のresourceから削除されている。
+
+## Test oracle
+
+| AC | Evidence |
+|---|---|
+| EX-AC-01 | instrumentation: T-07で「AIに相談」→T-15表示（coordinator `Idle`維持・`start`不発行の否定的観測）、T-15から取り込み導線の到達、idle entry rowの不在（`exchange-entry-title`等の否定的観測）、T-08でのrun-in entry存在の回帰 |
+| EX-AC-02 | unit: idle相談flow状態（`Disclosing`表示等）下でのauthoring lease取得成功（既存authoring seam経由）。holder/controllerがlease seamに接触しないことの構造確認。instrumentation: flow表示中の材料編集経路（現行導線）の回帰 |
+| EX-AC-03 | unit: `ExchangeFlowStateHolderTest`拡張（事前表示用session読取・置換確認経由の生成開始）+ 既存AC-13系test（承認なし生成不開始・辞退時不変・E1→E2→取消→E1 `EXPORT_MISMATCH`）のgreen。instrumentation: T-15事前表示（session存在時の表示・不在時の非表示）と破棄語彙の確認dialog |
+| EX-AC-04 | unit: 要約要素の導出（件数=生成済みpackage/session `itemRefs`数、種別文言、上限文言）+ `ExchangeDisclosureStateTest`回帰（同一性・cancel契約）。instrumentation: T-16要約主面・全文の折りたたみ/展開・D-09表示（T-15/T-16両面） |
+| EX-AC-05 | unit/instrumentation: tier選択肢2個の観測、`LOCAL_FULL`文字列のUI不在（strings走査含む）、redacted/labels契約値の生成対応の回帰 |
+| EX-AC-06 | spec 205 AC-3/AC-12対応test（確認前送信の不在・同一値受渡し・再生成時の確認やり直し）のgreen + transport 3経路の既存test回帰 |
+| EX-AC-07 | unit: `ExchangeCapabilityCopyTest`拡張（新配置での4要素存在）。instrumentation: T-15面でのcapability説明表示・run-in entryの説明回帰 |
+| EX-AC-08 | unit: pre-send破棄の確認受付→`invalidate`（当該sessionのみ）・辞退時の生存・`cancelling`後のtransport不受理（現行`ExchangeDisclosureStateTest`/`ExchangeFlowStateHolderTest`契約の継承）。instrumentation: 破棄ラベル・確認dialog・送信後「閉じる」の確認なし |
+| EX-AC-09 | specs 205/327/204のdiff review（改訂箇所がScope節と一致し、gate構造・schema・validator・instruction契約が不変であること）+ `Issue348AiFacingContractSyncTest`・`ExchangePackageComposerTest`無編集green |
+| EX-AC-10 | Compose semantics assertion（見出し・要約・展開state・dialog role・traversal順）+ focus restoration test + 200% font scale test + light/dark × ja/default screenshot evidence。新規stringの`values/`と`values-ja/`のname集合・placeholder一致の機械確認 + 削除stringのreference grep（0件）+ hardcoded literal grep |
+
+共通gate: `./gradlew spotlessCheck`、`./gradlew testLawnWithQuickstepGithubDebugUnitTest
+--tests 'app.lawnchair.organizer.*'`、exchange系instrumentation lane
+（`ExchangeImportSurfaceInstrumentationTest`、`ExchangeImportSuccessInstrumentationTest`、
+`StrategyPickerFreezeInstrumentationTest`のfreeze回帰、`ManualOrganizationPreferencesInstrumentationTest`）、
+CI `final-status` green。本Issueは `risk: layout-data`/`risk: migration` を付けない
+（表示・導線の再構成のみでpersistent state・DB書込み経路・同意gate構造に触れず、
+session store契約は不変であるため、high-risk evidence gateの対象外）。
+
+## Contract notes（owner reviewで確認すべき解釈）
+
+1. **capability説明4要素の配置**: Issue本文scopeは「capability説明（spec 327 Decision 4）は
+   T-07/T-15へ配置転換」と両面を挙げる。本specは「4要素の本体はT-15依頼作成面に置き、
+   T-07の「AIに相談」選択肢には既存 `exchange_entry_subtitle` 相当の短い説明（1〜2行）を
+   置く」と解する。理由: T-15は依頼作成の実行点であり、送信前にユーザーが必ず通る面である
+   （4要素の初期配置がspec 327 AC-4で要求した「導線の説明領域」の実効性を保つ）。T-07に
+   4要素の本体を置く（選択肢の下に常時展開する）解釈がowner reviewで選ばれた場合は、
+   本specの該当行・EX-AC-07・spec 327改訂内容を修正する。
+2. **回答を取り込む導線の配置**: 撤去されるentry rowが「依頼文を作成」と「回答を取り込む」の
+   両方の入口を持つため、本specはT-15面に取り込み導線を維持する（T-17入力面への到達）。
+   代替（T-07面上に「取り込み」を別選択肢として置く、またはT-15に置かず#373/#374まで
+   一時的に導線を失う）は採らない。取り込みUI自体の再構成は#373であり、本specは到達性の
+   維持のみを契約する。
+3. **pre-send破棄の確認dialog**: D-13 §9の語彙規約表は破棄（pre-send cancelを明記）に
+   確認dialog「必須」を要求する。本specは現行の単押下cancelに確認dialog 1回を追加する解釈を
+   採る（E1→E2→取消→E1のAC-13回帰や取り込み済み提案の破棄と語彙・確認構造を揃える）。
+   「ラベル改称のみで確認を追加しない」解釈がowner reviewで選ばれた場合は、本specの該当行・
+   EX-AC-08を修正する。
+4. **残時間の更新性**: T-15事前表示の残時間はT-15進入時の単一読取とする
+   （面上での継続的tick・自動的な表示更新は要求しない）。実効性は生成時gateと取り込み時
+   `SESSION_EXPIRED` が担保する。status card（#374）が残時間表示の恒常面を担う。
+5. **T-16要約の「件数」「上限」の出所**: 件数は生成済みpackageに紐づくsession `itemRefs` の
+   サイズ（exported items数。`MOVABLE`/`CONDITIONAL`/`FIXED`の全exported refを含む）とし、
+   表示中のlive状態から再計算しない（確認対象との同一性維持）。上限はspec 204 V1 content
+   limits（items 512件・export canonical JSON 256 KiB）のユーザー向け表現とする
+   （適用値ではなく契約上限の告知。適用値表示を要求する解釈がowner reviewで選ばれた場合は
+   修正する）。文言は実装PRで確定する（非blocking）。
+6. **idle/run-inでのT-15共有**: 事前表示・期待明示・要約主面はidle/run-inで共有される面に
+   等しく適用する（TO-BE §5.3）。run-in flowの置換確認は現行契約どおり働く
+   （active session存在時）。run-inでは事前表示を省く解釈がowner reviewで選ばれた場合は
+   修正する。
+
+## Dependencies
+
+- **#369（run面統合・T-07前置き面、OPEN・実装未着手）**: Issue本文 `Depends on`。T-07
+  前置き面（方法選択・admissionなし）の実体が前提。spec執筆は#369 draft
+  （`3c39ceb2f8`）との整合で可能（現時点でそうしている。#369 Contract notes 1は「#372が
+  exchange idle entryの統合を所有する」と明示）。実装着手は#369 merge後。
+- **#365（正本改訂、OPEN）**: `CONTEXT.md`のidle AI相談・依頼・語彙規約は#365が所有する。
+  実装着手は#365 merge後（AGENTS.md「正本を先に」）。
+- **後続**: #373（取り込みUI・失敗の手段別再投影。T-17/T-18。#372後）、#374（durable pending
+  intent・status card依頼表示。T-15事前表示と置換確認copyの拡張（取り込み済み提案の破棄
+  追記）は#374が契約化）、#375（scope mismatch原因別remedy・選択復元初期値）。
+- **前提（実装済み・accepted）**: specs 204（accepted・implemented）/205（implemented）/
+  327（implemented）/328（accepted・implemented）/329/330/331/332/348の現行契約、
+  spec 123（UI収束・strings契約）、organization-run-ux §6（accessibility受入基準）、
+  organizer-to-be-ux.md @ main `a2b6aba318`（accepted、PR #364）、
+  organizer-disposition-migration.md @ main `a2b6aba318`（accepted、PR #378）。
+
+## Open questions
+
+実装開始前に解消が必須な問いはない（Contract notes 1〜6の解釈確認をowner reviewが所有し、
+確認前は本specは`draft`のままである）。非blocking事項:
+
+1. T-15/T-16の見出し・事前表示・期待明示・要約・破棄確認dialogの最終文言（D-13/§10語彙に
+   沿うことのみ拘束）は実装PRで確定する。
+2. 既存 `exchange_*` stringsの「交換」語彙の全面改名（依頼語彙への統一）の範囲は実装PRで
+   確定する（新規・改訂copyは依頼語彙を正とする）。
+3. 統合により未使用になるstringの最終集合は実装PRのreference grepで確定する。
+4. 全文展開の操作形式（展開row/リンク等）と、T-15事前表示・置換確認・期待明示の面上配置
+   （縦順）は200% reflowとTalkBack読み順を満たす範囲で実装PRのreviewで確定する
+   （spec 123収束対象）。
+
+## Change history
+
+- 2026-09-19: Draft created for #372（spec/plan整備task）。accepted TO-BE契約
+  （organizer-to-be-ux.md @ main `a2b6aba318`、PR #364）、accepted処分文書
+  （organizer-disposition-migration.md @ main `a2b6aba318`、PR #378、§3.11/§3.12/§4.1/§5/§7.2）、
+  #366〜#371 spec/plan draft（`bf00f96175`/`a50f074ac2`/`206a4c1198`/`3c39ceb2f8`/
+  `168d1587`/`0564184b`、うち#369が直接依存）、現行実装調査
+  （`ExchangeFlowUi.kt`、`ExchangeFlowController.kt`、`ExchangeGenerationGate.kt`、
+  `ManualOrganizationPreferences.kt`、`ContextExportModels.kt`、`ContextExportBuilder.kt`、
+  exchange系unit/instrumentation test群、`strings.xml`/`values-ja/strings.xml`）を入力に作成。
+
+## References
+
+- [Issue #372](https://github.com/nunu1733/NunuLauncher/issues/372)
+- [organizer-to-be-ux.md](../../docs/product/organizer-to-be-ux.md)（accepted。D-04/D-09/D-10/D-13/D-14/D-17、T-07/T-15/T-16、§5.3、§6.5、§7.1、§8.2、§9、§10）
+- [organizer-disposition-migration.md](../../docs/product/organizer-disposition-migration.md)（accepted。§3.11/§3.12/§4.1/§5 更新順序 #6/§7.2 (c)）
+- [Spec 205: External Agent Exchange](../205-external-agent-exchange/spec.md)（implemented。entry規定・送信前確認・置換確認・pre-send cancel・transport・session契約の所有。本Issueが表示面とentry導線を改訂）
+- [Spec 204: AI personalization context/intent exchange contract](../204-ai-personalization-context-intent-contract/spec.md)（accepted・implemented。tier matrix・content limits・session契約の所有。本IssueがD-14文言を改訂）
+- [Spec 327: interview-first](../327-agent-exchange-interview-first/spec.md)（implemented。capability説明4要素とDecision 4配置の所有。本Issueが配置前提を改訂）
+- [Spec 331: exchange target scope coupling](../331-exchange-target-scope-coupling/spec.md)（implemented。run-in entry・選択凍結・scope gate）
+- [Spec 328: import success state](../328-exchange-import-success-state/spec.md)（accepted・implemented。attempt anchor・success state・freeze。rev.2は#374）
+- [Spec 332: import input UI](../332-exchange-import-input-ui/spec.md)（implemented。T-17入力面）
+- [Spec 123: organizer UI convergence](../123-organizer-ui-convergence/spec.md)（ja/en strings契約）
+- [organization-run-ux.md](../../docs/product/organization-run-ux.md)（§6 accessibility受入基準）
+- [CONTEXT.md](../../CONTEXT.md)（外部エージェント交換・送信前確認等の既存用語）, [DESIGN.md](../../DESIGN.md)（gate 13）, [AGENTS.md](../../AGENTS.md)
+- 先行spec draft: [Issue #369][2]（T-07前置き面・Contract notes 1）、[Issue #366][4]（hub shell）、[Issue #365][3]（正本改訂）
+
+[1]: https://github.com/nunu1733/NunuLauncher/issues/372
+[2]: https://github.com/nunu1733/NunuLauncher/issues/369
+[3]: https://github.com/nunu1733/NunuLauncher/issues/365
+[4]: https://github.com/nunu1733/NunuLauncher/issues/366
