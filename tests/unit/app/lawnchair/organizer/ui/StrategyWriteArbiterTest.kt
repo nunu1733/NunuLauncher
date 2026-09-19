@@ -185,4 +185,78 @@ class StrategyWriteArbiterTest {
         assertEquals("cancel must release the arbiter", StrategyWriteArbiter.State.IDLE, fixture.arbiter.state)
         assertFalse("cancel must release the admission domain", fixture.gate.occupied)
     }
+
+    /**
+     * Issue #368 review (high): a scope cancelled while the write coroutine
+     * body is still QUEUED must not leak the AUTHORING token or leave the
+     * arbiter at WRITING. The write starts undispatched, so the body always
+     * enters its release path even when the scope dies in the same turn as
+     * the selection (e.g. the T-05 host leaving composition).
+     */
+    @Test
+    fun aScopeCancelledBeforeTheBodyRunsStillReleasesTheArbiterAndTheDomain() {
+        val io = ManualQueueDispatcher()
+        val gate = CompletableDeferred<Boolean>()
+        val gate2 = CompletableDeferred<Boolean>()
+        val occupied = java.util.concurrent.atomic.AtomicBoolean(false)
+        val controlledGate = object : OrganizationOperationGate {
+            override fun tryAcquire(kind: OrganizationOperationLease.Kind): AutoCloseable? {
+                if (!occupied.compareAndSet(false, true)) return null
+                return AutoCloseable { occupied.set(false) }
+            }
+        }
+        val scope = CoroutineScope(io)
+        val arbiter = StrategyWriteArbiter(
+            scope = scope,
+            ioDispatcher = io,
+            mainDispatcher = Dispatchers.Unconfined,
+            writeStrategy = { gate.await() },
+            operationGate = controlledGate,
+            runOrRecoveryActive = { false },
+        )
+
+        // The undispatched start enters the body inline and returns without
+        // executing the write (it is queued behind the IO step).
+        assertEquals(StrategyWriteArbiter.StartOutcome.Started, arbiter.onStrategySelected(strategyA))
+        assertTrue(arbiter.busy)
+        assertTrue(occupied.get())
+
+        // The host scope dies BEFORE the write could complete; drain whatever
+        // step the coroutine was parked on so the release path runs.
+        scope.cancel()
+        io.drainAll()
+
+        assertEquals("pre-start cancellation must release the arbiter", StrategyWriteArbiter.State.IDLE, arbiter.state)
+        assertFalse(arbiter.busy)
+        assertFalse("pre-start cancellation must release the admission domain", occupied.get())
+
+        // The freed domain admits a fresh write again.
+        val retry = StrategyWriteArbiter(
+            scope = CoroutineScope(Dispatchers.Unconfined),
+            ioDispatcher = Dispatchers.Unconfined,
+            mainDispatcher = Dispatchers.Unconfined,
+            writeStrategy = { gate2.await() },
+            operationGate = controlledGate,
+            runOrRecoveryActive = { false },
+        )
+        assertEquals(StrategyWriteArbiter.StartOutcome.Started, retry.onStrategySelected(strategyB))
+    }
+
+    /** A dispatcher that only runs its blocks when the test drains it. */
+    private class ManualQueueDispatcher : kotlinx.coroutines.CoroutineDispatcher() {
+        private val queue = java.util.concurrent.ConcurrentLinkedQueue<Runnable>()
+
+        val pendingCount: Int get() = queue.size
+
+        override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) {
+            queue.add(block)
+        }
+
+        fun drainAll() {
+            while (true) {
+                val block = queue.poll() ?: break
+                block.run()
+            }
+        }
+    }
 }

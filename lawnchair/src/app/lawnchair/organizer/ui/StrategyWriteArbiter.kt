@@ -4,6 +4,7 @@ import androidx.compose.runtime.mutableStateOf
 import app.lawnchair.organizer.planning.StrategyId
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
@@ -106,6 +107,14 @@ internal class StrategyWriteArbiter(
      * failure, cancellation) inside the `finally`-equivalent block, so a
      * run can never start between the gate and the publication.
      *
+     * The write coroutine starts [CoroutineStart.UNDISPATCHED]: the body
+     * enters its `try` block inline on the calling (Main) thread before any
+     * suspension, so even a scope cancelled in the same turn as the
+     * selection — e.g. the host leaving composition — runs the release
+     * path. A plain `launch` could leave the token acquired and the state
+     * stuck at `Writing` forever if the coroutine was cancelled before its
+     * body ever ran (spec #368: the token never outlives the write).
+     *
      * [onCommitted] runs on Main after the write committed and reports the
      * persisted selection so the UI state can follow it.
      */
@@ -118,7 +127,7 @@ internal class StrategyWriteArbiter(
                 StartOutcome.RefusedAuthoringBusy
             }
         state = State.WRITING
-        scope.launch {
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
                 val committed = withContext(ioDispatcher) { writeStrategy(id) }
                 withContext(mainDispatcher) {

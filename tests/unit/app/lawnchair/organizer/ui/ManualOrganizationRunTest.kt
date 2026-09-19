@@ -1182,37 +1182,93 @@ class ManualOrganizationRunTest {
 
     @Test
     fun aStrategyWriteIsPossibleAfterEveryTerminalState() {
-        // AC-9(d) write side: with the real admission domain, the write
-        // acquires the AUTHORING token and completes after a run reached a
-        // terminal state (no run token is held any more).
-        val application = FakeApplication(readyInput())
-        val runner = ManualOrganizationRun(
-            application,
-            OrganizationPlanner { planningResult(movingPlan()) },
-            operationGate = OrganizationOperationLease,
-        )
-        runner.start()
-        runner.confirm()
-        assertTrue(runner.state is ManualOrganizationRun.State.Applied)
-        assertFalse(runner.operationActive.value)
+        // AC-9(d): after EVERY terminal state the operation is over and the
+        // real admission domain is free — a strategy write acquires the
+        // AUTHORING token and completes (Started, back to Idle) on its own.
+        val terminals = listOf(
+            "InputUnavailable" to {
+                val unavailable = ManualOrganizationRun(
+                    FakeApplication(
+                        OrganizationInputComposition.NotReady(
+                            InputReadinessReason.InvalidCanonicalCapture(
+                                app.lawnchair.organizer.integration.CaptureFailureCategory.CAPTURE_UNAVAILABLE,
+                            ),
+                            CompositionDiagnostic(InputCompositionCode.CAPTURE_INVALID),
+                        ),
+                    ),
+                    OrganizationPlanner { error("planner must not run") },
+                )
+                unavailable.start()
+                unavailable to { assertTrue(unavailable.state is ManualOrganizationRun.State.InputUnavailable) }
+            },
 
-        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined)
-        val arbiter = StrategyWriteArbiter(
-            scope = scope,
-            ioDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
-            mainDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
-            writeStrategy = { true },
-            operationGate = OrganizationOperationLease,
-            runOrRecoveryActive = { runner.operationActive.value },
+            "NoChanges" to {
+                val noChanges = ManualOrganizationRun(
+                    FakeApplication(readyInput()),
+                    OrganizationPlanner { planningResult(Planned(emptyList(), emptyList(), emptyList(), emptyList(), emptyList())) },
+                )
+                noChanges.start()
+                noChanges to { assertEquals(ManualOrganizationRun.State.NoChanges, noChanges.state) }
+            },
+
+            "Applied" to {
+                val applied = ManualOrganizationRun(
+                    FakeApplication(readyInput()),
+                    OrganizationPlanner { planningResult(movingPlan()) },
+                )
+                applied.start()
+                applied.confirm()
+                applied to { assertTrue(applied.state is ManualOrganizationRun.State.Applied) }
+            },
+
+            "Stale" to {
+                val staleApplication = FakeApplication(readyInput())
+                staleApplication.inspectPlanOverride = { _, _ -> PlanPreviewResult.WriterBusy }
+                staleApplication.materializeOverride = { _, _ -> OrganizationPlanMaterializer.Result.Invalid }
+                val stale = ManualOrganizationRun(staleApplication, OrganizationPlanner { planningResult(movingPlan()) })
+                stale.start()
+                stale.confirm()
+                stale to {
+                    assertEquals(ManualOrganizationRun.State.Stale(ManualOrganizationRun.StaleOrigin.APPLY_BLOCKED), stale.state)
+                }
+            },
+
+            "Cancelled" to {
+                val cancelled = ManualOrganizationRun(
+                    FakeApplication(readyInput()),
+                    OrganizationPlanner { planningResult(movingPlan()) },
+                )
+                cancelled.start()
+                cancelled.cancel()
+                cancelled to { assertEquals(ManualOrganizationRun.State.Cancelled, cancelled.state) }
+            },
         )
-        assertEquals(StrategyWriteArbiter.StartOutcome.Started, arbiter.onStrategySelected(StrategyId("CANONICAL_PAGE_COMPACT_V1")))
-        assertEquals(StrategyWriteArbiter.State.IDLE, arbiter.state)
-        scope.cancel()
+        for ((name, drive) in terminals) {
+            val (runner, assertTerminal) = drive()
+            assertTerminal()
+
+            assertFalse("$name: operation lifetime must be over", runner.operationActive.value)
+
+            // The real admission domain admits a fresh strategy write and the
+            // write completes back to Idle on its own.
+            val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined)
+            val arbiter = StrategyWriteArbiter(
+                scope = scope,
+                ioDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
+                mainDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
+                writeStrategy = { true },
+                operationGate = OrganizationOperationLease,
+                runOrRecoveryActive = { runner.operationActive.value },
+            )
+            assertEquals(
+                "$name: a strategy write must be possible after the terminal",
+                StrategyWriteArbiter.StartOutcome.Started,
+                arbiter.onStrategySelected(StrategyId("CANONICAL_PAGE_COMPACT_V1")),
+            )
+            assertEquals("$name: the write completed back to Idle", StrategyWriteArbiter.State.IDLE, arbiter.state)
+            scope.cancel()
+        }
     }
-
-    // --- Issue #228: detection → selection → scope-composed run ---
-
-    // --- Issue #331: scope binding gate on intent-consuming runs ---
 
     private fun c1Target() = app.lawnchair.organizer.planning.CandidateTarget.AppKey(
         app.lawnchair.organizer.planning.ComponentKey("com.example.c1"),
