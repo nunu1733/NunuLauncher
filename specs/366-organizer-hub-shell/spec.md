@@ -330,6 +330,7 @@ And run state machine、確認・復旧の契約、diagnostics event、persisten
   再利用、既存diagnostics destinationへ）、UNRESOLVED時はunresolved行＋
   safe-terminal行をその上に表示する（run面のopen-diagnostics行を複製しない）。
   「整理を開始」CTAのlabelは既存 `manual_organization_start` を再利用する。
+- 2026-09-19: 実装review対応（ChatGPT review [PR #380 comment](https://github.com/nunu1733/NunuLauncher/pull/380#issuecomment-5740584469)、head `b59c11c85b`基準、中重要度2件）。(1) hubのdurable status描画を`showDurableStatus`で同時ガードし、run-active遷移直後に前回のdurable行を1 composition描画し得る構造を解消（HUB-AC-02）。hides testも「Idle表示中にrunを開始してactive遷移で行が消える」順に固定。 (2) HUB-AC-07の受入証跡を補強: hub入口focusの決定的focus restoration（start CTAへの`FocusRequester`。`clickable()`がfocus targetとEnter活性化を所有するため`focusable()`は付けない）、keyboard/DPAD traversal（状態→CTA→診断→材料の順に到達し各操作が活性化可能）、semantics（行のname＋click action、Switchのrole/state）のinstrumentation test 3件を追加。合計15件green、run面41件は無編集green。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/366
 [2]: https://github.com/nunu1733/NunuLauncher/issues/365

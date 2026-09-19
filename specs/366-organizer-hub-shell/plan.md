@@ -270,6 +270,22 @@ failure injection（durable status fail-closedは既存seam testが所有し、h
 - `HomeScreenPreferences` 全体のinstrumentation render。実装notesのとおり
   HUB-AC-05の自動evidenceはdiff review＋既存lane greenで代替。
 
+## Review fixes（2026-09-19、ChatGPT reviewの指摘対応）
+
+- **stale durable status（中）**: `OrganizerHubPreferences` のdurable status描画を
+  `if (showDurableStatus)` で同時ガード。Idle/Cancelledで表示中にrun stateへ遷移した
+  直後の再compositionで、`LaunchedEffect`による`durableStatus = null`が後発する間に
+  前回のdurable行を描画し得る構造を解消（HUB-AC-02、run面のIdle/Cancelled分岐内
+  renderと同型のstate guard）。`hubHidesStatusRowsWhileRunIsActiveAndReshowsAfterCancel`
+  は「Idleでrestorable行を表示したままrunを開始→active遷移で消失→Cancelled復帰で再表示」
+  の順に変更し、遷移バグを実際に検出できるoracleへ。
+- **HUB-AC-07 a11y oracle（中）**: (1) 各行のsemantics（label name＋click action、
+  recording toggleの`Role.Switch`）、(2) DPADで状態→CTA→診断→材料の順に到達し各操作が
+  click actionを持つこと、(3) ENTER活性化→run面→Back→CTAへの決定的focus restoration
+  をtest化。実装側はstart CTAに`FocusRequester`を付与（`focusable()`は付けない:
+  clickable()がfocus targetとEnter活性化を所有する。二重focus targetはEnter配信を
+  clickableへ届かなくさせる）。
+
 ## Documentation updates
 
 - [ ] `specs/366-organizer-hub-shell/spec.md` / `plan.md` status・history（本PR）

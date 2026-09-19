@@ -1,6 +1,9 @@
 package app.lawnchair.organizer.ui
 
+import android.app.Activity
 import android.content.Context
+import androidx.activity.OnBackPressedDispatcher
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
@@ -11,6 +14,7 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -24,6 +28,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.DeviceCapabilities
@@ -109,8 +116,15 @@ class OrganizerHubPreferencesInstrumentationTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
 
     /** Renders the hub as the start destination of a minimal typed graph that also hosts the run surface. */
-    private fun setHubContent(runner: ManualOrganizationRun, fontScale: Float = 1f) {
+    private fun setHubContent(
+        runner: ManualOrganizationRun,
+        fontScale: Float = 1f,
+        captureDispatcher: ((OnBackPressedDispatcher?) -> Unit)? = null,
+    ) {
         composeRule.setContent {
+            if (captureDispatcher != null) {
+                captureDispatcher(LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher)
+            }
             CompositionLocalProvider(
                 LocalDensity provides Density(context.resources.displayMetrics.density, fontScale),
             ) {
@@ -330,9 +344,10 @@ class OrganizerHubPreferencesInstrumentationTest {
     }
 
     /**
-     * HUB-AC-02: a process-local run keeps precedence — no durable or checking
-     * row renders while the run is active, and the status re-reads when the
-     * coordinator returns to Cancelled.
+     * HUB-AC-02: a process-local run keeps precedence. The restorable row is
+     * showing when the run starts, so the transition itself must hide it (the
+     * re-review escape hole: composing the hub before the run starts catches
+     * a stale durable row the "start first" ordering can never see).
      */
     @Test
     fun hubHidesStatusRowsWhileRunIsActiveAndReshowsAfterCancel() {
@@ -340,9 +355,20 @@ class OrganizerHubPreferencesInstrumentationTest {
             durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
         }
         val runner = hubRunner(application, plannerResult = planningResult())
-        runner.start()
         setHubContent(runner)
 
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Idle }
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_durable_status_restorable),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restorable),
+        ).assertIsDisplayed()
+
+        // Start the run while the hub keeps showing the durable row.
+        composeRule.runOnIdle { runner.start() }
         composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Preview }
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_durable_status_restorable),
@@ -515,6 +541,159 @@ class OrganizerHubPreferencesInstrumentationTest {
         // Restore the original state so the fixture stays predictable.
         composeRule.onAllNodesWithText(label)[0].performClick()
         composeRule.waitUntil(5_000) { switchStates()[0] == before[0] }
+    }
+
+    /**
+     * HUB-AC-07: every interactive row exposes its label as the accessible
+     * name plus a click action, and the recording toggle reports the switch
+     * role and its on/off state to assistive technology.
+     */
+    @Test
+    fun hubRowsExposeNameRoleAndStateToAssistiveTechnology() {
+        val application = FakeHubApplication().apply {
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+        }
+        val runner = hubRunner(application)
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_durable_status_restorable),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        listOf(
+            R.string.manual_organization_start,
+            R.string.organizer_diagnostics_title,
+            R.string.organizer_category_overrides_title,
+            R.string.organizer_custom_category_title,
+            R.string.organizer_lock_screen_title,
+            R.string.organizer_personalization_usage_access_label,
+        ).forEach { res ->
+            composeRule.onNodeWithText(context.getString(res)).assertHasClickAction()
+        }
+        composeRule.onNode(
+            SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch),
+        ).assertExists()
+    }
+
+    /**
+     * HUB-AC-07: keyboard traversal reaches status → start → diagnostics →
+     * materials in the composed order, and every visited control exposes a
+     * click action it can actually activate.
+     */
+    @Test
+    fun hubTraversalReachesStartDiagnosticsAndMaterialsInOrder() {
+        val application = FakeHubApplication().apply {
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+        }
+        val runner = hubRunner(application)
+        setHubContent(runner)
+
+        // The deterministic entry focus lands on the start CTA first.
+        awaitFocused(context.getString(R.string.manual_organization_start))
+        val order = listOf(
+            R.string.organizer_diagnostics_title,
+            R.string.organizer_category_overrides_title,
+            R.string.organizer_custom_category_title,
+            R.string.organizer_lock_screen_title,
+            R.string.organizer_personalization_recording_label,
+            R.string.organizer_personalization_usage_access_label,
+        )
+        order.forEach { res ->
+            val text = context.getString(res)
+            pressDownUntilFocused(text)
+            composeRule.onNodeWithText(text).assertHasClickAction()
+        }
+    }
+
+    /**
+     * HUB-AC-07: keyboard activation of the focused start CTA opens the run
+     * surface, and system Back returns to the hub with the focus restored
+     * deterministically on the start CTA.
+     */
+    @Test
+    fun hubFocusRestoresToStartAfterBackFromRunSurface() {
+        val application = FakeHubApplication()
+        val runner = hubRunner(application)
+        var dispatcher: OnBackPressedDispatcher? = null
+        setHubContent(runner, captureDispatcher = { dispatcher = it })
+
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Idle }
+        awaitFocused(context.getString(R.string.manual_organization_start))
+
+        ensureWindowFocusedForComposeHost()
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_ENTER)
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_explainer),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        assertEquals(ManualOrganizationRun.State.Idle, runner.state)
+
+        composeRule.runOnIdle { checkNotNull(dispatcher).onBackPressed() }
+        // Back lands on the hub again; its standing diagnostics row is always
+        // present regardless of the durable state (the fixture is
+        // never-organized, so no durable row is expected).
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.organizer_diagnostics_title),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        awaitFocused(context.getString(R.string.manual_organization_start))
+    }
+
+    private fun awaitFocused(text: String) {
+        composeRule.waitUntil(5_000) {
+            try {
+                composeRule.onNodeWithText(text).assertIsFocused()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+        }
+    }
+
+    /** Issues real DPAD key presses until [text] owns focus; fails after too many steps. */
+    private fun pressDownUntilFocused(text: String, maxPresses: Int = 12) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        ensureWindowFocusedForComposeHost()
+        var presses = 0
+        while (presses < maxPresses) {
+            composeRule.waitForIdle()
+            val focused = try {
+                composeRule.onNodeWithText(text).assertIsFocused()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+            if (focused) return
+            ensureWindowFocusedForComposeHost()
+            instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DPAD_DOWN)
+            presses++
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(text).assertIsFocused()
+    }
+
+    private fun ensureWindowFocusedForComposeHost() {
+        var hosts: List<Activity> = emptyList()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            hosts = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .toList()
+        }
+        when (hosts.size) {
+            1 -> InjectedInputEnvironment.ensureWindowFocused(hosts.single())
+            0 -> error(
+                "input environment gate could not resolve the compose host activity " +
+                    "(no RESUMED activity); refusing real key injection without a focus observation",
+            )
+            else -> error(
+                "input environment gate could not resolve the compose host activity uniquely " +
+                    "(${hosts.size} RESUMED activities); refusing real key injection without a " +
+                    "focus observation",
+            )
+        }
     }
 
     private fun hubRunner(

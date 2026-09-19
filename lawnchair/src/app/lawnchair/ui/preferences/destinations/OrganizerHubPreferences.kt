@@ -26,7 +26,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -100,6 +104,18 @@ fun OrganizerHubPreferences(
                 )
         )
 
+    // Issue #366 (organization-run-ux §6): entry focus lands deterministically
+    // on the start CTA — on first entry and again when Back restores the hub
+    // from a child surface — mirroring the run surface's start-row focus.
+    val focusRequester = remember { FocusRequester() }
+    val focusTargetReady = remember { mutableStateOf(false) }
+    val focusTargetModifier = Modifier.onGloballyPositioned { focusTargetReady.value = true }
+    LaunchedEffect(focusTargetReady.value) {
+        if (!focusTargetReady.value) return@LaunchedEffect
+        withFrameNanos { }
+        runCatching { focusRequester.requestFocus() }
+    }
+
     PreferenceScaffold(
         label = stringResource(R.string.organizer_hub_label),
         modifier = modifier,
@@ -114,11 +130,21 @@ fun OrganizerHubPreferences(
                     HubCheckingLine(R.string.manual_organization_durable_status_checking)
                 }
             }
-            durableStatus?.let { hubDurableStatusItems(it) }
+            // Re-review: the rows are guarded by showDurableStatus itself, so a
+            // transition into a run state can never render the previous
+            // durable row for one recomposition while the read effect is
+            // still catching up (HUB-AC-02 run-active hiding).
+            if (showDurableStatus) durableStatus?.let { hubDurableStatusItems(it) }
             item(key = "organizer-hub-start") {
                 NavigationActionPreference(
                     label = stringResource(R.string.manual_organization_start),
                     destination = HomeScreenManualOrganization(),
+                    // clickable() owns the focus target and the Enter/Space
+                    // activation; focusRequester only aims at that same target
+                    // so keyboard focus and activation stay one node.
+                    modifier = Modifier
+                        .focusRequester(focusRequester)
+                        .then(focusTargetModifier),
                 )
             }
             item(key = "organizer-hub-diagnostics") {
