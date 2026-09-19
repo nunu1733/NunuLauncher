@@ -23,13 +23,15 @@
 ## Automated evidence
 
 - Red→green cycle: `OrganizerDiagnosticsRouteInstrumentationTest.homeScreenMaterialsRelocationRoutesDiagnosticsThroughHub` fails at `assertDoesNotExist` with the source deletion stashed (pre-change state detected) and passes after it (local run, 2026-09-19).
+- MAT-AC-01: `homeScreenHubMaterialsRoutesToEachAuthoringDestination` (new) clicks each hub materials row and asserts arrival at the category-overrides / custom-categories / placement-locks destinations (backstack `hasRoute`; the custom-categories and placement-locks assertions additionally check each surface's own UI marker).
+- MAT-AC-06: `homeScreenHubTogglesRecordingPreferenceAndRereadsUsageAccessOnResume` (new) flips the recording toggle on the production hub (the shared preference switch reflects both ways), asserts the usage-access row text matches the current app-op state, and drives grant/revoke through the UiAutomation shell with an `ON_RESUME` cycle to verify the row re-reads its state.
 - CI `organizer-instrumentation-issue52-tests` lane class list (now including `app.lawnchair.ui.preferences.OrganizerDiagnosticsRouteInstrumentationTest`): locally green on the CI-equivalent AVD (8 classes, one invocation).
 - `app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest` + `InjectedInputEnvironmentStateInstrumentationTest` (issue-53 lane): locally green — #232 oracle (`homeScreenSettingsShowsTheOrganizerEntryInGeneralAboveTheFold`) and hint oracle unmodified and passing (MAT-AC-07).
 - `app.lawnchair.organizer.locks.OrganizerLockScreenTest`: locally green (MAT-AC-08, T-20 flow-outside entry).
-- `app.lawnchair.organizer.ui.CategoryOverridePreferencesInstrumentationTest`: locally green.
+- `app.lawnchair.organizer.ui.CategoryOverridePreferencesInstrumentationTest` and `app.lawnchair.organizer.ui.CustomCategoryPreferencesInstrumentationTest`: locally green.
 - Unit gate `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`: green.
 - `./gradlew spotlessCheck`: green.
 
-## Known pre-existing failure (not owned by #367, base-reproduced)
+## Pre-existing test-infrastructure failure fixed in this PR
 
-- `app.lawnchair.organizer.ui.CustomCategoryPreferencesInstrumentationTest`: `createFlowRendersTypedDuplicateFeedbackAndListsTheCreatedEntry` throws `IllegalArgumentException: verified Create must report the minted entry` (`UserDefinedCategoryAuthoringCoordinator.create`, spec 336 surface) and `renameKeepsTheEntryPresentedAsTheSameCategory` cascades ("Commute" row missing) when the class runs in a method order where `partialDelete…` precedes `create…`. Reproduced on base `dd09ef1a18` (spec-branch head) on this machine; the class is not in any CI lane. The very first combined local run today (different method order) passed, so the failure is order-dependent. Recorded here for the PR; not fixed by this PR (out of #367 scope — #367 changes no store or authoring code).
+- `app.lawnchair.organizer.ui.CustomCategoryPreferencesInstrumentationTest` failed on base `dd09ef1a18` (the class is not in any CI lane): `FakeCatalogStore.mutate` — test infrastructure, not production code — returned `Committed(..., created = null)` for Create, violating the coordinator's verified-Create contract (`Committed` Create must report the minted entry, spec 336), which crashed `createFlow…` and cascaded into `renameKeeps…` (whose rename affordance is a contentDescription, not visible text). This PR corrects the fake's Create reporting and matches the rename row via `onNodeWithContentDescription`; the class is now stably green. Production code and the oracle's observed surfaces are unmodified.

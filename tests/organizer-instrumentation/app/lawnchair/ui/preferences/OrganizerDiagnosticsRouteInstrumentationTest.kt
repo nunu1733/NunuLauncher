@@ -23,8 +23,15 @@ import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.core.app.ActivityOptionsCompat
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasScrollAction
@@ -36,9 +43,16 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
+import androidx.navigation.NavHostController
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.compose.rememberNavController
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.DeviceCapabilities
@@ -53,6 +67,7 @@ import app.lawnchair.organizer.diagnostics.DiagnosticsPort
 import app.lawnchair.organizer.diagnostics.model.RunEvent
 import app.lawnchair.organizer.integration.InputProvenance
 import app.lawnchair.organizer.integration.OrganizationInputComposition
+import app.lawnchair.organizer.integration.UsageAccess
 import app.lawnchair.organizer.planning.ClassificationSignals
 import app.lawnchair.organizer.planning.DeviceCapabilities as PlannerDeviceCapabilities
 import app.lawnchair.organizer.planning.Disposition
@@ -95,8 +110,12 @@ import app.lawnchair.organizer.rules.PolicyInputIdentity
 import app.lawnchair.organizer.rules.PolicySourceKind
 import app.lawnchair.ui.preferences.destinations.OrganizerDiagnosticsPreferences
 import app.lawnchair.ui.preferences.navigation.HomeScreen
+import app.lawnchair.ui.preferences.navigation.HomeScreenCategoryOverrides
+import app.lawnchair.ui.preferences.navigation.HomeScreenCustomCategories
 import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
+import app.lawnchair.ui.preferences.navigation.HomeScreenPlacementLocks
 import app.lawnchair.ui.preferences.navigation.PreferenceNavigation
+import app.lawnchair.ui.preferences.navigation.PreferenceRoute
 import app.lawnchair.ui.theme.LawnchairTheme
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.R
@@ -228,6 +247,210 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             "Journal bytes must be untouched by cancel",
             journalBefore.contentEquals(journalBytes()),
         )
+    }
+
+    /**
+     * Issue #367 MAT-AC-01: from the settings Home screen, the hub materials
+     * group routes to each existing authoring destination — category
+     * overrides (spec #99), user-defined categories (spec #336), placement
+     * locks (spec #38) — and each destination renders its own surface.
+     */
+    @Test
+    fun homeScreenHubMaterialsRoutesToEachAuthoringDestination() {
+        val fixture = ManualOrganizationRun(FakeManualOrganizationApplication(), OrganizationPlanner { planningResult() })
+        installProcessLocalRunner(fixture)
+        try {
+            val navController = composeProductionGraph(startDestination = HomeScreen)
+
+            composeRule.onNodeWithText(context.getString(R.string.organizer_hub_title)).performClick()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.organizer_hub_materials_heading),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+
+            // T-02: category overrides destination. The override editor's app
+            // list can be empty in the instrumentation environment, so
+            // arrival is asserted on the navigation back stack.
+            composeRule.onNodeWithText(
+                context.getString(R.string.organizer_category_overrides_title),
+            ).performClick()
+            assertCurrentDestination(navController, HomeScreenCategoryOverrides)
+            composeRule.runOnIdle { navController.popBackStack() }
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.organizer_hub_materials_heading),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+
+            // T-03: user-defined categories destination.
+            composeRule.onNodeWithText(
+                context.getString(R.string.organizer_custom_category_title),
+            ).performClick()
+            assertCurrentDestination(navController, HomeScreenCustomCategories)
+            composeRule.onNodeWithText(
+                context.getString(R.string.organizer_custom_category_create),
+            ).assertIsDisplayed()
+            composeRule.runOnIdle { navController.popBackStack() }
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.organizer_hub_materials_heading),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+
+            // T-04: placement locks destination.
+            composeRule.onNodeWithText(
+                context.getString(R.string.organizer_lock_screen_title),
+            ).performClick()
+            assertCurrentDestination(navController, HomeScreenPlacementLocks)
+            composeRule.onNodeWithText(
+                context.getString(R.string.organizer_lock_screen_unknown_banner_none),
+            ).assertIsDisplayed()
+            composeRule.runOnIdle { navController.popBackStack() }
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.organizer_hub_materials_heading),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+        } finally {
+            installProcessLocalRunner(null)
+        }
+    }
+
+    /**
+     * Issue #367 MAT-AC-06: the hub's T-06 rows are the only personalization
+     * material surface. The recording toggle writes the existing preference,
+     * and the usage-access row shows the app-op state that is re-read on
+     * ON_RESUME (spec #203 U-2) — exercised by granting and revoking the
+     * app-op through the shell and dispatching a resume cycle on the
+     * composition's lifecycle owner.
+     */
+    @Test
+    fun homeScreenHubTogglesRecordingPreferenceAndRereadsUsageAccessOnResume() {
+        val owner = ResumableTestOwner()
+        val fixture = ManualOrganizationRun(FakeManualOrganizationApplication(), OrganizationPlanner { planningResult() })
+        installProcessLocalRunner(fixture)
+        try {
+            // The registry must be driven from the main thread.
+            composeRule.runOnIdle { owner.registry.currentState = Lifecycle.State.RESUMED }
+            val navController = composeProductionGraph(startDestination = HomeScreen, lifecycleOwner = owner)
+
+            composeRule.onNodeWithText(context.getString(R.string.organizer_hub_title)).performClick()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.organizer_hub_materials_heading),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+
+            // The recording toggle is the one existing preference switch on
+            // the production hub: flipping it flips the shared adapter state
+            // (the same preference the settings-side rows used to write).
+            val recordingLabel = context.getString(R.string.organizer_personalization_recording_label)
+            val before = hubRecordingSwitchState()
+            composeRule.onNodeWithText(recordingLabel).performClick()
+            composeRule.waitUntil(5_000) { hubRecordingSwitchState() != before }
+            composeRule.onNodeWithText(recordingLabel).performClick()
+            composeRule.waitUntil(5_000) { hubRecordingSwitchState() == before }
+
+            // The usage-access row shows the app-op state, re-read on resume.
+            val usageLabel = context.getString(R.string.organizer_personalization_usage_access_label)
+            val grantedText = context.getString(R.string.organizer_personalization_usage_access_granted)
+            val notGrantedText = context.getString(R.string.organizer_personalization_usage_access_not_granted)
+            composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(usageLabel))
+            val initiallyGranted = UsageAccess.isGranted(context)
+            composeRule.onNodeWithText(
+                if (initiallyGranted) grantedText else notGrantedText,
+            ).assertIsDisplayed()
+
+            // Grant, then a resume cycle must refresh the row.
+            shell("appops set ${context.packageName} GET_USAGE_STATS allow")
+            composeRule.runOnIdle { owner.dispatchResumeCycle() }
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(grantedText).fetchSemanticsNodes().isNotEmpty()
+            }
+
+            // Revoke, then a resume cycle must refresh the row again.
+            shell("appops set ${context.packageName} GET_USAGE_STATS deny")
+            composeRule.runOnIdle { owner.dispatchResumeCycle() }
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(notGrantedText).fetchSemanticsNodes().isNotEmpty()
+            }
+        } finally {
+            installProcessLocalRunner(null)
+            shell("appops set ${context.packageName} GET_USAGE_STATS default")
+        }
+    }
+
+    /** Runs a shell command through the instrumentation's UiAutomation. */
+    private fun shell(command: String) {
+        val process = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)
+        java.io.FileInputStream(process.fileDescriptor).readBytes()
+        process.close()
+    }
+
+    /** Reads the production hub's recording toggle state (the only switch on the surface). */
+    private fun hubRecordingSwitchState(): Boolean {
+        val node = composeRule.onNode(
+            SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch),
+        ).fetchSemanticsNode()
+        return node.config.getOrNull(SemanticsProperties.ToggleableState) == ToggleableState.On
+    }
+
+    /** Asserts the production graph's current destination is [route]. */
+    private fun assertCurrentDestination(navController: NavHostController, route: PreferenceRoute) {
+        composeRule.waitForIdle()
+        var arrived = false
+        composeRule.runOnIdle {
+            arrived = navController.currentBackStackEntry?.destination?.hasRoute(route::class) == true
+        }
+        assertTrue("expected navigation to $route", arrived)
+    }
+
+    /** A lifecycle owner whose state the test drives, to dispatch ON_RESUME. */
+    private class ResumableTestOwner : LifecycleOwner {
+        val registry = LifecycleRegistry(this)
+
+        override val lifecycle: Lifecycle
+            get() = registry
+
+        /** ON_PAUSE/ON_STOP followed by ON_START/ON_RESUME. */
+        fun dispatchResumeCycle() {
+            registry.currentState = Lifecycle.State.CREATED
+            registry.currentState = Lifecycle.State.RESUMED
+        }
+    }
+
+    /**
+     * Composes the production preferences graph, mirroring the locals the
+     * production Preferences.kt host provides. The lifecycle owner override
+     * (when given) is what the personalization row observes for ON_RESUME.
+     * Returns the graph's nav controller for back-stack assertions.
+     */
+    private fun composeProductionGraph(
+        startDestination: PreferenceRoute,
+        lifecycleOwner: LifecycleOwner? = null,
+    ): NavHostController {
+        LauncherAppState.getInstance(context)
+        var controller: NavHostController? = null
+        composeRule.setContent {
+            LawnchairTheme {
+                val navController = rememberNavController()
+                SideEffect { controller = navController }
+                val effectiveOwner = lifecycleOwner ?: LocalLifecycleOwner.current
+                CompositionLocalProvider(
+                    LocalLifecycleOwner provides effectiveOwner,
+                    LocalNavController provides navController,
+                    LocalPreferenceInteractor provides PreferenceViewModel(
+                        context.applicationContext as android.app.Application,
+                    ),
+                    LocalIsExpandedScreen provides false,
+                ) {
+                    PreferenceNavigation(navController = navController, startDestination = startDestination)
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        return checkNotNull(controller)
     }
 
     /**

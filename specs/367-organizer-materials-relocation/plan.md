@@ -327,13 +327,29 @@ failure injection（対象外——本Issueは読取契約を変更しない。�
   無編集維持=MAT-AC-07）。`OrganizerLockScreenTest` green（MAT-AC-08）。
   `CategoryOverridePreferencesInstrumentationTest` green。unit gate・spotlessCheck green。
   emulator screenshot 6枚（EN/ja × light/dark。`docs/assessment/evidence/issue-367/`）。
-- **既存のpre-existing failure（本PRでは修正しない）**:
-  `CustomCategoryPreferencesInstrumentationTest`の2 testが、method orderにより
-  `create` → `verified Create must report the minted entry`（spec 336の
-  `UserDefinedCategoryAuthoringCoordinator.create`）で失敗し、`rename`が連鎖失敗する。
-  base（spec branch head `dd09ef1a18`）でも再現、本classはlane未登録。同一環境での
-  初回combined run（別method order）はpassしておりorder依存。#367はstore/authoring
-  codeに触れないため本PRのscope外。evidence READMEに記録済み。
+- **既存のpre-existing failure → 実装review対応で修正**:
+  `CustomCategoryPreferencesInstrumentationTest`が、`FakeCatalogStore.mutate`（test
+  infrastructure）がcoordinatorのverified-Create契約（Committed Createはminted entryを
+  報告。spec 336）に追従せず`Committed(..., created = null)`を返すため、
+  `create` → `verified Create must report the minted entry`で失敗し`rename`も連鎖失敗
+  していた（base `dd09ef1a18`でも再現。同classはCI lane未登録）。実装review指摘を
+  受け、fakeのCreate報告を正すtest-infrastructure修正（production code・oracle観測対象
+  は無編集）と、rename行のmatcher修正（rename affordanceはvisible textではなく
+  contentDescriptionであるため`onNodeWithContentDescription`へ）を施し、class全体が
+  安定greenになった。
+- **MAT-AC-01/06 oracle拡充（実装review対応）**:
+  `OrganizerDiagnosticsRouteInstrumentationTest`に2 testを追加した（同classはCI
+  issue-52 laneに登録済みのため、以後CIで常時実行される）:
+  - `homeScreenHubMaterialsRoutesToEachAuthoringDestination`: hub材料セクション →
+    T-02（category overrides）/ T-03（custom categories）/ T-04（placement locks）の
+    各row activation → destination到達（backstackの`hasRoute` assert。T-03/T-04は
+    さらに固有UI markerのdisplay assert）。T-02はtest環境でapp listが空になり得るため
+    route assertのみとする。
+  - `homeScreenHubTogglesRecordingPreferenceAndRereadsUsageAccessOnResume`: production
+    graphのhub上でT-06 recording toggle ↔ switch semantics一致（同一preferenceの
+    反映）、Usage Access行の表示がapp-op付与状態と一致、UiAutomation shellによる
+    grant/revoke + `ON_RESUME`再読取（test制御のLifecycleOwnerでresume cycleをdispatch）で
+    行のstate textが更新されること。
 
 ## Re-entry notes（起草→本revisionの差分、2026-09-19）
 

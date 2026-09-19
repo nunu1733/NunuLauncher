@@ -239,9 +239,14 @@ And 本Issueは新しい永続化を一切導入しないため、process死で�
       persistent store、permissionにdiffが存在せず、材料画面を直接composeする既存
       instrumentation（`CategoryOverridePreferencesInstrumentationTest` /
       `CustomCategoryPreferencesInstrumentationTest` / `OrganizerLockScreenTest` /
-      `ManualOrganizationPreferencesInstrumentationTest`）が無編集でgreenである。
+      `ManualOrganizationPreferencesInstrumentationTest`）がgreenである。
       例外はspec 203 U-2の常設row配置の限定的改訂のみであり（MAT-AC-04）、JIT /
       fallback / `ON_RESUME`再読取等のspec 203の他規定は無変更である。
+      `CustomCategoryPreferencesInstrumentationTest`の`FakeCatalogStore`（test
+      infrastructure）は、coordinatorのverified-Create契約（Committed Createはminted
+      entryを報告する。spec 336）に追従しない既存不備を抱えてbaseでも失敗していた
+      （同classはCI lane未登録）。本PRはそのfake報告を正してclass全体を安定greenに
+      した。production codeとoracleの観測対象は無編集である。
       （Issue受入3・4）
 - [ ] **MAT-AC-04**: 入口表記・配置契約の更新が同じPRで行われている: specs 38 / 99 /
       336に「入口はhub経由になった旨」の追記（契約不変。disposition割当分）、spec 203
@@ -277,7 +282,7 @@ And 本Issueは新しい永続化を一切導入しないため、process死で�
 |---|---|
 | MAT-AC-01 | UI instrumentation test: hub材料セクション → T-02/T-03/T-04 navigation、T-06行の機能、hub → diagnostics navigation（既存hub oracleの再実行。emulator screenshot（light/dark × ja/default）） |
 | MAT-AC-02 | UI instrumentation test: 設定 → Home screenの否定的観測（4 row・Personalization group 2行の不在。全list走査後のassert）＋hub入口row・manual rowの存在assert＋hub遷移assert |
-| MAT-AC-03 | 既存testの無編集green（材料画面直接compose系、run面系）+ 実装PR diff review（`organizer/application/**`・store・run面・route objectの契約面無編集。spec 203はU-2配置改訂のみ例外で他規定無変更） |
+| MAT-AC-03 | 既存testのgreen（材料画面直接compose系、run面系。CustomCategoryのfake修正はtest infrastructureのみ）+ 実装PR diff review（`organizer/application/**`・store・run面・route objectの契約面無編集。spec 203はU-2配置改訂のみ例外で他規定無変更） |
 | MAT-AC-04 | specs 38/99/336/138のdiff review（入口表記の追記のみで契約節無変更）+ spec 203のdiff review（U-2配置のみ改訂、JIT/fallback/`ON_RESUME`規定無変更、旧settings配置のnormative記述が残っていないこと）+ `docs/assessment/evidence/issue-123-ui-mapping.md`のdiff |
 | MAT-AC-05 | 更新後の`OrganizerDiagnosticsRouteInstrumentationTest`のdiffと実行結果 + obsolete理由のPR記録 |
 | MAT-AC-06 | UI instrumentation test: Home screenにT-06行が不在（全list走査後）、hub側でT-06行が機能しpreference stateが一致、`ON_RESUME`再読取 |
@@ -377,6 +382,16 @@ And 本Issueは新しい永続化を一切導入しないため、process死で�
     （U-2配置改訂のみ例外）、plan Execution checklist 6をspec 203の2箇所更新指示へ
     整合させ、disposition §2.1のspec 203行Orderを`#367（U-2配置）→ #371（JIT）`へ
     併記した。MAT-AC-03とMAT-AC-04が同時に満たせる状態になった。
+- 2026-09-19: **実装review対応（本branch）**。実装review（[review][10]）の2指摘に対応:
+  - **中（MAT-AC-03の既存failure）**: `CustomCategoryPreferencesInstrumentationTest`の
+    `FakeCatalogStore`（test infrastructure）がcoordinatorのverified-Create契約に
+    追従しておらずbaseでも失敗していたため、fakeのCreate報告修正＋rename行の
+    contentDescription matcher修正（test-infrastructureのみ。production code・
+    oracle観測対象は無編集）でclass全体を安定greenにした。MAT-AC-03に例外条件を明記。
+  - **中（MAT-AC-01/06 oracle不足）**: `OrganizerDiagnosticsRouteInstrumentationTest`に
+    hub材料→T-02/T-03/T-04 navigation oracle（backstack `hasRoute`＋固有UI marker）と、
+    production hub上のT-06 toggle反映＋Usage Access行のapp-op grant/revoke +
+    `ON_RESUME`再読取oracleを追加した。同classはCI issue-52 laneに登録済み。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/367
 [2]: https://github.com/nunu1733/NunuLauncher/issues/366
@@ -387,3 +402,4 @@ And 本Issueは新しい永続化を一切導入しないため、process死で�
 [7]: https://github.com/nunu1733/NunuLauncher/issues/367#issuecomment-5741111260
 [8]: https://github.com/nunu1733/NunuLauncher/issues/367#issuecomment-5741164754
 [9]: https://github.com/nunu1733/NunuLauncher/issues/367#issuecomment-5741181088
+[10]: https://github.com/nunu1733/NunuLauncher/issues/367#issuecomment-5741853711
