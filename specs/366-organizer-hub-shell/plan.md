@@ -2,7 +2,7 @@
 
 > Issue: #366
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: accepted（2026-09-19、owner session指示により実装開始）
 
 ## Current evidence
 
@@ -267,6 +267,8 @@ failure injection（durable status fail-closedは既存seam testが所有し、h
 - two-pane（expanded）画面でのhub描画。既存destination規約に従う前提であり、実装時の
   emulator evidenceで確認する。
 - 新規stringの最終文言（ja含む）。実装PRのreviewで確定（spec Open questions）。
+- `HomeScreenPreferences` 全体のinstrumentation render。実装notesのとおり
+  HUB-AC-05の自動evidenceはdiff review＋既存lane greenで代替。
 
 ## Documentation updates
 
@@ -280,14 +282,35 @@ failure injection（durable status fail-closedは既存seam testが所有し、h
 
 ## Execution checklist
 
-1. [ ] 実装開始条件の確認: spec/plan `accepted`、#365 merge済み、main再確認
-       （Current evidenceの再検証）。
-2. [ ] `HomeScreenOrganizer` route + `OrganizerHubPreferences`骨格 + 入口row
-       （HUB-AC-01の失敗testを先に追加）。
-3. [ ] status card第1段階（durable status render + checking + run進行中隠蔽）
-       （HUB-AC-02/03）。
-4. [ ] 開始CTA・診断・材料導線（HUB-AC-04/05のtestを先に追加し、既存flow回帰を確認）。
-5. [ ] 使用状況material抽出とhub側実装（HUB-AC-06）。
-6. [ ] 文字列EN/ja + a11y assertion + 200% font scale（HUB-AC-07/08）。
-7. [ ] spec 123 inventory更新（HUB-AC-09）。
+1. [x] 実装開始条件の確認: spec/plan `accepted`、#365 merge済み（PR #379）、main再確認
+       （`3076bdae7ebf` → `ec34dd3fa6` の差分はdocs-only。Current evidenceは仍然成立）。
+2. [x] `HomeScreenOrganizer` route + `OrganizerHubPreferences`骨格 + 入口row。
+3. [x] status card第1段階（durable status render + checking + run進行中隠蔽）。
+4. [x] 開始CTA・診断・材料導線（hub→run面→既存開始行のnavigation testを追加）。
+5. [x] 使用状況material抽出とhub側実装
+       （`ui/preferences/destinations/OrganizerUsageMaterialRows.kt` 新file）。
+6. [x] 文字列EN/ja + a11y assertion + 200% font scale。
+7. [x] spec 123 inventory更新（`issue-123-ui-mapping.md` row 8）。
 8. [ ] full verification（HUB-AC-10）+ evidence記録 + PR（`Refs #366`）。
+
+## Implementation notes（実装時の確定事項、2026-09-19）
+
+- status cardの診断導線行は常設（`organizer_diagnostics_title/description` 再利用）。
+  UNRESOLVED時のsafe-supportはunresolved行＋safe-terminal行で表現し、run面の
+  open-diagnostics行（`manual_organization_open_diagnostics`）の複製は置かない
+  （導線先は同一destination）。HUB-AC-02の「safe-support導線」はこの常設行で満たす。
+- 「整理を開始」CTAのlabelは既存 `manual_organization_start` を再利用
+  （spec「既存stringを再利用」規約。hubから`start()`は発行しない）。
+- 共有composableの配置は `ui/preferences/destinations/OrganizerUsageMaterialRows.kt`
+  （Change setの選択肢のうちdestinations側。organizer/uiへの依存方向を増やさない）。
+- 新規instrumentation class
+  `OrganizerHubPreferencesInstrumentationTest` をCI
+  `organizer-instrumentation-issue52-tests` jobのclass listへ追加した
+  （HUB-AC-10の「対象classのorganizer instrumentation lane」要件のため）。
+  planのChange set表には無い追加だが、evidence要件から必要。
+- `HomeScreenPreferences` 全体をrenderする設定側row群の存在assertは、
+  `IconOverrideRepository`（Room）/`FeedBridge` 等の環境依存をcompose test
+  harnessが抱えるため実施しない。HUB-AC-05の自動evidenceは
+  （1）本diffが既存rowを1行も削除していないことのreview確認と
+  （2）既存instrumentation lane green（HUB-AC-10）で代替する
+  （plan Explicitly unverified areasに追記済み）。

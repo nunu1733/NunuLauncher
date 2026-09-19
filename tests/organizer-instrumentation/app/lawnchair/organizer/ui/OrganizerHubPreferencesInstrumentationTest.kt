@@ -1,0 +1,693 @@
+package app.lawnchair.organizer.ui
+
+import android.content.Context
+import androidx.compose.foundation.layout.Column
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.Density
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
+import app.lawnchair.organizer.application.public.ApplyResult
+import app.lawnchair.organizer.application.public.DeviceCapabilities
+import app.lawnchair.organizer.application.public.DeviceOrientation
+import app.lawnchair.organizer.application.public.LayoutState
+import app.lawnchair.organizer.application.public.OrganizerDurableStatus
+import app.lawnchair.organizer.application.public.PlanPreviewResult
+import app.lawnchair.organizer.application.public.RecoveryPointId
+import app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation
+import app.lawnchair.organizer.application.public.RecoveryPreviewResult
+import app.lawnchair.organizer.application.public.RecoveryResult
+import app.lawnchair.organizer.application.public.RecoveryRejection
+import app.lawnchair.organizer.application.public.RunId
+import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
+import app.lawnchair.organizer.diagnostics.DiagnosticsPort
+import app.lawnchair.organizer.diagnostics.model.RunEvent
+import app.lawnchair.organizer.diagnostics.model.Trigger
+import app.lawnchair.organizer.integration.CandidateDetectionResult
+import app.lawnchair.organizer.integration.DetectionUnavailableReason
+import app.lawnchair.organizer.integration.InputProvenance
+import app.lawnchair.organizer.integration.OrganizationInputComposition
+import app.lawnchair.organizer.planning.ActiveCategoryCatalog
+import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.ClassificationSignals
+import app.lawnchair.organizer.planning.DeviceCapabilities as PlannerDeviceCapabilities
+import app.lawnchair.organizer.planning.DockPolicy
+import app.lawnchair.organizer.planning.FallbackCategoryPolicy
+import app.lawnchair.organizer.planning.LayoutSnapshot
+import app.lawnchair.organizer.planning.Orientation
+import app.lawnchair.organizer.planning.OrganizationInput
+import app.lawnchair.organizer.planning.OrganizationPlanner
+import app.lawnchair.organizer.planning.OverflowPolicy
+import app.lawnchair.organizer.planning.Page
+import app.lawnchair.organizer.planning.PageId
+import app.lawnchair.organizer.planning.PageOrder
+import app.lawnchair.organizer.planning.Planned
+import app.lawnchair.organizer.planning.PlannedPlacement
+import app.lawnchair.organizer.planning.PlanningResult
+import app.lawnchair.organizer.planning.PlacementCode
+import app.lawnchair.organizer.planning.PlacementTarget
+import app.lawnchair.organizer.planning.GridCell
+import app.lawnchair.organizer.planning.GridSpan
+import app.lawnchair.organizer.planning.RevisionId
+import app.lawnchair.organizer.planning.RuleSemantics
+import app.lawnchair.organizer.planning.RuleVersion
+import app.lawnchair.organizer.planning.RunMode
+import app.lawnchair.organizer.planning.StrategyId
+import app.lawnchair.organizer.planning.TaxonomyContract
+import app.lawnchair.organizer.planning.TaxonomyVersion
+import app.lawnchair.organizer.planning.TargetSet
+import app.lawnchair.organizer.planning.Warning
+import app.lawnchair.organizer.planning.WarningCode
+import app.lawnchair.organizer.rules.PolicyBundleIdentity
+import app.lawnchair.organizer.rules.PolicyInputIdentity
+import app.lawnchair.organizer.rules.PolicySourceKind
+import app.lawnchair.ui.preferences.LocalNavController
+import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
+import app.lawnchair.ui.preferences.destinations.ManualOrganizationPreferences
+import app.lawnchair.ui.preferences.destinations.OrganizerHubPreferences
+import app.lawnchair.ui.preferences.destinations.OrganizerUsageMaterialRows
+import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
+import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizer
+import app.lawnchair.ui.theme.LawnchairTheme
+import com.android.launcher3.R
+import org.junit.Assert.assertEquals
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+
+/**
+ * Issue #366: the Organizer hub (T-01). Covers the status card's first phase
+ * (durable status in the spec #271 closed vocabulary, checking row, run-active
+ * hiding), the negative contract (no restore/AI/run-result affordances, no
+ * start() from the hub), the navigation-only start CTA, and the shared
+ * personalization material rows.
+ */
+@RunWith(AndroidJUnit4::class)
+class OrganizerHubPreferencesInstrumentationTest {
+
+    @get:Rule
+    val composeRule = createComposeRule()
+
+    private val context: Context = ApplicationProvider.getApplicationContext()
+
+    /** Renders the hub as the start destination of a minimal typed graph that also hosts the run surface. */
+    private fun setHubContent(runner: ManualOrganizationRun, fontScale: Float = 1f) {
+        composeRule.setContent {
+            CompositionLocalProvider(
+                LocalDensity provides Density(context.resources.displayMetrics.density, fontScale),
+            ) {
+                val navController: NavHostController = rememberNavController()
+                CompositionLocalProvider(LocalNavController provides navController) {
+                    LawnchairTheme {
+                        NavHost(navController = navController, startDestination = HomeScreenOrganizer) {
+                            composable<HomeScreenOrganizer> {
+                                OrganizerHubPreferences(run = runner)
+                            }
+                            composable<HomeScreenManualOrganization> { backStackEntry ->
+                                val route = backStackEntry.toRoute<HomeScreenManualOrganization>()
+                                ManualOrganizationPreferences(
+                                    run = runner,
+                                    trigger = route.trigger,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * HUB-AC-01/02: at Idle with a restorable durable record, the status card
+     * renders the closed-vocabulary row, the start CTA, the diagnostics entry,
+     * and the full materials group.
+     */
+    @Test
+    fun hubRendersStatusCardAndMaterialsAtIdle() {
+        val application = FakeHubApplication().apply {
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+        }
+        val runner = hubRunner(application)
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) {
+            runner.state is ManualOrganizationRun.State.Idle
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_durable_status_restorable),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restorable),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_start),
+        ).assertIsDisplayed().assertHasClickAction()
+        composeRule.onNodeWithText(
+            context.getString(R.string.organizer_diagnostics_title),
+        ).assertIsDisplayed().assertHasClickAction()
+
+        // Materials group: the existing authoring surfaces.
+        composeRule.onNodeWithText(
+            context.getString(R.string.organizer_hub_materials_heading),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.organizer_category_overrides_title),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.organizer_custom_category_title),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.organizer_lock_screen_title),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.organizer_personalization_recording_label),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.organizer_personalization_usage_access_label),
+        ).assertIsDisplayed()
+
+        // Not unresolved: no safe-support line on the restorable surface.
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_safe_terminal),
+        ).assertDoesNotExist()
+    }
+
+    /** HUB-AC-02: the restored/expired status reuses the run surface's exact string. */
+    @Test
+    fun hubRendersRestoredOrExpiredStatusLine() {
+        val application = FakeHubApplication().apply {
+            durableStatus = OrganizerDurableStatus.RESTORED_OR_EXPIRED
+        }
+        val runner = hubRunner(application)
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_durable_status_restored_or_expired),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restored_or_expired),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restorable),
+        ).assertDoesNotExist()
+    }
+
+    /** HUB-AC-02: unresolved keeps the existing safe-support guidance lines. */
+    @Test
+    fun hubRendersUnresolvedStatusWithSafeSupportGuidance() {
+        val application = FakeHubApplication().apply {
+            durableStatus = OrganizerDurableStatus.UNRESOLVED
+        }
+        val runner = hubRunner(application)
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_durable_status_unresolved),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_unresolved),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_safe_terminal),
+        ).assertIsDisplayed()
+        // The safe-support diagnostics entry is the standing hub row.
+        composeRule.onNodeWithText(
+            context.getString(R.string.organizer_diagnostics_title),
+        ).assertHasClickAction()
+    }
+
+    /**
+     * HUB-AC-02: never organized and the fail-closed unavailable read render
+     * no durable status row at all (readiness is terminal, so no checking row
+     * either).
+     */
+    @Test
+    fun hubRendersNoStatusRowWhenNeverOrganized() {
+        assertNoStatusRowRenders(OrganizerDurableStatus.NEVER_ORGANIZED)
+    }
+
+    @Test
+    fun hubRendersNoStatusRowWhenFailClosedUnavailable() {
+        assertNoStatusRowRenders(OrganizerDurableStatus.UNAVAILABLE)
+    }
+
+    private fun assertNoStatusRowRenders(status: OrganizerDurableStatus) {
+        val application = FakeHubApplication().apply {
+            durableStatus = status
+            readiness.value = app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY
+        }
+        val runner = hubRunner(application)
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Idle }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restorable),
+        ).assertDoesNotExist()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restored_or_expired),
+        ).assertDoesNotExist()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_unresolved),
+        ).assertDoesNotExist()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_checking),
+        ).assertDoesNotExist()
+    }
+
+    /**
+     * HUB-AC-02: a fail-closed read taken while startup reconciliation is
+     * running announces the checking row, and the status recovers on the same
+     * surface once the gate reaches a terminal state.
+     */
+    @Test
+    fun hubCheckingRowRecoversWhenReconciliationCompletesOnTheSameSurface() {
+        val release = java.util.concurrent.CountDownLatch(1)
+        val application = FakeHubApplication().apply {
+            readiness.value = app.lawnchair.organizer.application.protocol.ReadinessGate.State.RECONCILING
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+            readOverride = {
+                release.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                OrganizerDurableStatus.UNAVAILABLE
+            }
+        }
+        val runner = hubRunner(application)
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Idle }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_checking),
+        ).assertIsDisplayed()
+
+        release.countDown()
+        composeRule.waitForIdle()
+        // UNAVAILABLE while the gate is still pending keeps the checking row.
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_checking),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restorable),
+        ).assertDoesNotExist()
+
+        composeRule.runOnIdle {
+            application.readOverride = null
+            application.readiness.value = app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_durable_status_restorable),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restorable),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_checking),
+        ).assertDoesNotExist()
+    }
+
+    /**
+     * HUB-AC-02: a process-local run keeps precedence — no durable or checking
+     * row renders while the run is active, and the status re-reads when the
+     * coordinator returns to Cancelled.
+     */
+    @Test
+    fun hubHidesStatusRowsWhileRunIsActiveAndReshowsAfterCancel() {
+        val application = FakeHubApplication().apply {
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+        }
+        val runner = hubRunner(application, plannerResult = planningResult())
+        runner.start()
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Preview }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restorable),
+        ).assertDoesNotExist()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_checking),
+        ).assertDoesNotExist()
+
+        composeRule.runOnIdle { runner.cancel() }
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Cancelled }
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_durable_status_restorable),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restorable),
+        ).assertIsDisplayed()
+    }
+
+    /**
+     * HUB-AC-03: the hub exposes no restore CTA, no run-result actions, and no
+     * run activity — the negative observation of the non-goals.
+     */
+    @Test
+    fun hubExposesNoRestoreOrRunResultAffordancesAndStartsNothing() {
+        val application = FakeHubApplication().apply {
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+        }
+        val runner = hubRunner(application)
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_durable_status_restorable),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_recovery),
+        ).assertDoesNotExist()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_start_again),
+        ).assertDoesNotExist()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_safe_terminal),
+        ).assertDoesNotExist()
+        assertEquals(ManualOrganizationRun.State.Idle, runner.state)
+        assertEquals(emptyList<RunEvent>(), application.diagnostics.events)
+        assertEquals(0, application.applyCalls)
+    }
+
+    /**
+     * HUB-AC-04: the start CTA only navigates to the existing run surface
+     * (no start() from the hub); the run starts from the run surface's own
+     * start row with the MANUAL_FULL trigger.
+     */
+    @Test
+    fun hubStartCtaNavigatesToRunSurfaceAndRunStartsOnlyFromItsStartRow() {
+        val application = FakeHubApplication()
+        val runner = hubRunner(application, plannerResult = planningResult())
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Idle }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_start),
+        ).assertIsDisplayed().performClick()
+
+        // The run surface is showing (its explainer is unique to it).
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_explainer),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        assertEquals(ManualOrganizationRun.State.Idle, runner.state)
+
+        // The run starts from the existing start row only.
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_start),
+        ).performClick()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Preview }
+        assertEquals(
+            setOf(Trigger.MANUAL_FULL),
+            application.diagnostics.events.mapNotNull { it.trigger }.toSet(),
+        )
+        assertEquals(0, application.applyCalls)
+    }
+
+    /** HUB-AC-07: TalkBack order is state first, then the actions, then materials. */
+    @Test
+    fun hubStatusRowsPrecedeTheActionsInReadingOrder() {
+        val application = FakeHubApplication().apply {
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+        }
+        val runner = hubRunner(application)
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_durable_status_restorable),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        fun topOf(text: String): Float = composeRule.onNodeWithText(text)
+            .fetchSemanticsNode().boundsInRoot.top
+        val statusTop = topOf(context.getString(R.string.manual_organization_durable_status_restorable))
+        val startTop = topOf(context.getString(R.string.manual_organization_start))
+        val diagnosticsTop = topOf(context.getString(R.string.organizer_diagnostics_title))
+        val materialsTop = topOf(context.getString(R.string.organizer_hub_materials_heading))
+        assert(statusTop < startTop) { "status row must precede the start CTA" }
+        assert(startTop < diagnosticsTop) { "start CTA must precede the diagnostics entry" }
+        assert(diagnosticsTop < materialsTop) { "diagnostics entry must precede the materials" }
+    }
+
+    /** HUB-AC-07: the status card and its actions remain reachable at 200% font scale. */
+    @Test
+    fun hubStatusCardStaysReachableAtTwoHundredPercentFontScale() {
+        val application = FakeHubApplication().apply {
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+        }
+        val runner = hubRunner(application)
+        setHubContent(runner, fontScale = 2f)
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_durable_status_restorable),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restorable),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_start),
+        ).assertIsDisplayed().assertHasClickAction()
+        composeRule.onNodeWithText(
+            context.getString(R.string.organizer_diagnostics_title),
+        ).assertIsDisplayed().assertHasClickAction()
+        composeRule.onNodeWithText(
+            context.getString(R.string.organizer_hub_materials_heading),
+        ).assertIsDisplayed()
+    }
+
+    /**
+     * HUB-AC-06: both surfaces render the same shared rows; toggling on one
+     * flips the same preference the other one reads (one truth, two windows).
+     */
+    @Test
+    fun recordingToggleSharesOnePreferenceAcrossSurfaces() {
+        composeRule.setContent {
+            LawnchairTheme {
+                Column {
+                    PreferenceGroup(heading = "hub") { OrganizerUsageMaterialRows() }
+                    PreferenceGroup(heading = "settings") { OrganizerUsageMaterialRows() }
+                }
+            }
+        }
+        val label = context.getString(R.string.organizer_personalization_recording_label)
+        composeRule.onAllNodesWithText(label).assertCountEquals(2)
+
+        fun switchStates(): List<Boolean> = composeRule.onAllNodes(
+            SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch),
+        )
+            .fetchSemanticsNodes()
+            .map { node -> node.config.getOrNull(SemanticsProperties.ToggleableState) == ToggleableState.On }
+        val before = switchStates()
+        assertEquals(2, before.size)
+
+        composeRule.onAllNodesWithText(label)[0].performClick()
+        composeRule.waitUntil(5_000) { switchStates()[0] != before[0] }
+        // The second surface reads the same shared preference.
+        composeRule.waitUntil(5_000) { switchStates()[1] != before[0] }
+        // Restore the original state so the fixture stays predictable.
+        composeRule.onAllNodesWithText(label)[0].performClick()
+        composeRule.waitUntil(5_000) { switchStates()[0] == before[0] }
+    }
+
+    private fun hubRunner(
+        application: ManualOrganizationApplication,
+        plannerResult: PlanningResult? = null,
+    ): ManualOrganizationRun = ManualOrganizationRun(
+        application,
+        OrganizationPlanner {
+            checkNotNull(plannerResult) { "hub must not trigger planning" }
+        },
+    )
+
+    private fun planningResult() = PlanningResult(
+        revision = RevisionId(REVISION),
+        ruleVersion = RuleVersion("v1"),
+        taxonomyVersion = TaxonomyVersion("v1"),
+        organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
+        outcome = Planned(
+            placements = listOf(
+                PlannedPlacement(
+                    item = app.lawnchair.organizer.planning.ItemId("item"),
+                    disposition = app.lawnchair.organizer.planning.Disposition.Moved(PlacementCode.SINGLE_PLACEMENT),
+                    target = PlacementTarget.WorkspaceTarget(
+                        page = app.lawnchair.organizer.planning.PageRef(app.lawnchair.organizer.planning.PageId("page")),
+                        cell = GridCell(0, 0),
+                        span = GridSpan(1, 1),
+                    ),
+                ),
+            ),
+            newPages = emptyList(),
+            newFolders = emptyList(),
+            categories = emptyList(),
+            warnings = listOf(Warning(WarningCode.FALLBACK_CATEGORY, emptyList())),
+        ),
+    )
+
+    private class RecordingDiagnostics : DiagnosticsPort {
+        val events = mutableListOf<RunEvent>()
+
+        override fun emit(event: RunEvent) {
+            events += event
+        }
+
+        override fun snapshot(): List<RunEvent> = events
+    }
+
+    /**
+     * Hub-focused stand-in for the run surface's FakeApplication. Run
+     * operations mirror the minimal legacy count-only flow so the
+     * navigation/hiding tests can drive a real preview; everything else the
+     * hub must never call is left to fail loudly.
+     */
+    private class FakeHubApplication : ManualOrganizationApplication {
+        override val diagnostics = RecordingDiagnostics()
+        var applyCalls = 0
+
+        var durableStatus: OrganizerDurableStatus = OrganizerDurableStatus.NEVER_ORGANIZED
+        var readOverride: (() -> OrganizerDurableStatus)? = null
+        var readiness = kotlinx.coroutines.flow.MutableStateFlow(
+            app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY,
+        )
+
+        override fun readDurableOrganizerStatus(): OrganizerDurableStatus = readOverride?.invoke() ?: durableStatus
+
+        override val readinessState: kotlinx.coroutines.flow.StateFlow<app.lawnchair.organizer.application.protocol.ReadinessGate.State> = readiness
+
+        override fun newRunId() = RunId(RUN_ID)
+
+        override fun detectMissingAppCandidates(): CandidateDetectionResult = CandidateDetectionResult.Unavailable(
+            DetectionUnavailableReason.PROFILE_SERIAL_UNAVAILABLE,
+        )
+
+        override fun composeFullOrganization(): OrganizationInputComposition = OrganizationInputComposition.Ready(
+            input = input(),
+            provenance = InputProvenance(
+                revision = RevisionId(REVISION),
+                rules = policyIdentity(PolicySourceKind.ORGANIZER_POLICY_BUNDLE),
+                taxonomy = policyIdentity(PolicySourceKind.ORGANIZER_POLICY_BUNDLE),
+                signals = policyIdentity(PolicySourceKind.MATERIALIZED_CLASSIFICATION_SIGNALS),
+                targets = policyIdentity(PolicySourceKind.MATERIALIZED_FULL_TARGET_SET),
+                policyBundle = PolicyBundleIdentity("v1", SHA_256),
+                layoutStrategySelection = policyIdentity(PolicySourceKind.LAYOUT_STRATEGY_SELECTION),
+            ),
+        )
+
+        override fun composeScopeComposedOrganization(
+            selection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>,
+        ): OrganizationInputComposition = composeFullOrganization()
+
+        override fun inspectPlan(input: OrganizationInput, result: PlanningResult): PlanPreviewResult = PlanPreviewResult.WriterBusy
+
+        override fun materialize(input: OrganizationInput, result: PlanningResult): OrganizationPlanMaterializer.Result = OrganizationPlanMaterializer.Result.Ready(
+            ValidatedLayoutPlan(
+                sourceRevision = input.snapshot.revision,
+                sourceState = emptyLayoutState(),
+                intendedState = emptyLayoutState(),
+                actions = emptyList(),
+                newPages = emptyList(),
+                newFolders = emptyList(),
+                ruleVersion = input.rules.version,
+                taxonomyVersion = input.taxonomy.version,
+            ),
+        )
+
+        override fun apply(plan: ValidatedLayoutPlan, runId: RunId): ApplyResult {
+            applyCalls++
+            return ApplyResult.Applied(RunId(RUN_ID), RecoveryPointId(POINT_ID))
+        }
+
+        override fun inspectRecovery(pointId: RecoveryPointId): RecoveryPreviewResult = RecoveryPreviewResult.NotRestorable(
+            pointId,
+            app.lawnchair.organizer.application.public.RecoveryPreviewRejection.MISSING,
+        )
+
+        override fun confirmRecovery(pointId: RecoveryPointId, confirmation: RecoveryPreviewConfirmation): RecoveryResult = RecoveryResult.NotRestorable(
+            pointId,
+            RecoveryRejection.MISSING,
+        )
+
+        private fun policyIdentity(source: PolicySourceKind) = PolicyInputIdentity(source, "v1", SHA_256)
+    }
+
+    private companion object {
+        const val RUN_ID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        const val POINT_ID = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        const val REVISION = "revision"
+        const val SHA_256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+        fun input() = OrganizationInput(
+            snapshot = LayoutSnapshot(
+                revision = RevisionId(REVISION),
+                device = PlannerDeviceCapabilities(4, 5, 5, 3, 4, Orientation.PORTRAIT),
+                pages = listOf(Page(PageId("page"), PageOrder(0))),
+                items = emptyList(),
+            ),
+            rules = RuleSemantics(
+                RuleVersion("v2"),
+                app.lawnchair.organizer.planning.FolderPolicy(2, app.lawnchair.organizer.planning.NewFolderProfileScope.SAME_PROFILE_ONLY),
+                DockPolicy.PRESERVE,
+                OverflowPolicy.ADD_PAGES_FOR_ITEMS_THAT_FIT_EMPTY_PAGE,
+                FallbackCategoryPolicy.KEEP_AS_SINGLETON,
+                StrategyId("CANONICAL_PAGE_COMPACT_V1"),
+            ),
+            taxonomy = TaxonomyContract(
+                TaxonomyVersion("v1"),
+                listOf(CategoryId("other")),
+                CategoryId("other"),
+            ),
+            catalog = ActiveCategoryCatalog(
+                TaxonomyContract(
+                    TaxonomyVersion("v1"),
+                    listOf(CategoryId("other")),
+                    CategoryId("other"),
+                ),
+                emptyList(),
+            ),
+            signals = ClassificationSignals(emptyList()),
+            targets = TargetSet(emptyList(), emptyList()),
+            runMode = RunMode.FullOrganization,
+        )
+
+        fun emptyLayoutState() = LayoutState(
+            pages = emptyList(),
+            profiles = emptyList(),
+            deviceCapabilities = DeviceCapabilities(
+                4,
+                5,
+                5,
+                3,
+                4,
+                DeviceOrientation.PORTRAIT,
+            ),
+            items = emptyList(),
+        )
+    }
+}

@@ -24,6 +24,7 @@
 | 5 | Category override authoring | `ui/preferences/destinations/CategoryOverridePreferences.kt` | 上流app list行 `AppItem.kt`（icon 30dp / verticalPadding 12dp = 本surfaceと同一値） | **収束実施**。description・contentDescriptionをformat resource化。サイズはAppItem convention一致につき維持 |
 | 6 | Organizer diagnostics/export画面 | `OrganizerDiagnosticsPreferences.kt`, `organizer/diagnostics/export/ExportUi.kt` | 兄弟organizer画面のbodyMedium+16dp情報テキスト、`ClickablePreference`、#67契約 | **収束実施**。SAF既定file名を `translatable="false"` resource化。export control/SAF flowは #67のまま不変 |
 | 7 | HomeScreen設定entries ×4 | `HomeScreenPreferences.kt` | 上流 `NavigationActionPreference` | **変更不要**。上流componentのみ |
+| 8 | Organizer hub（T-01、#366） | `ui/preferences/destinations/OrganizerHubPreferences.kt`（入口row・使用状況material行は `HomeScreenPreferences.kt` / `OrganizerUsageMaterialRows.kt`） | `PreferenceScaffold` + `PreferenceLazyColumn` + `PreferenceGroup` + `NavigationActionPreference`、run面（#2）と同一のbodyMedium+16dp情報行 | **収束実施**。新surfaceを既存component/theme tokenのみで構成。status行はspec 271のdurable status行と同一string resource、材料・診断導線行は既存label/summary stringを再利用。two-paneは `LocalIsExpandedScreen` 規約に従う |
 
 ### 残存presentationと目的（AC-2）
 

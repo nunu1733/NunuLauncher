@@ -111,6 +111,12 @@ data object HomeScreenCustomCategories : PreferenceRoute
 @Serializable
 data object HomeScreenOrganizerDiagnostics : PreferenceRoute
 
+// Issue #366: Organizer hub (T-01) — the persistent organizing workspace.
+// Argument-less like the other organizer destinations: it carries no run
+// state and no write authority.
+@Serializable
+data object HomeScreenOrganizer : PreferenceRoute
+
 // Issues #52/#53: persist only the stable caller context, never run state or write authority.
 // Issue #116: typed Navigation resolves this enum argument by its default fully qualified
 // name at runtime, so minification must not rename or remove the class identity.

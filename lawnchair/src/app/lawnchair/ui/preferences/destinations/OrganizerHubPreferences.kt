@@ -1,0 +1,210 @@
+/*
+ * Copyright 2022, Lawnchair
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package app.lawnchair.ui.preferences.destinations
+
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.lawnchair.organizer.application.protocol.ReadinessGate
+import app.lawnchair.organizer.application.public.OrganizerDurableStatus
+import app.lawnchair.organizer.ui.ManualOrganizationModule
+import app.lawnchair.organizer.ui.ManualOrganizationRun
+import app.lawnchair.ui.preferences.LocalIsExpandedScreen
+import app.lawnchair.ui.preferences.components.NavigationActionPreference
+import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
+import app.lawnchair.ui.preferences.components.layout.PreferenceLazyColumn
+import app.lawnchair.ui.preferences.components.layout.PreferenceScaffold
+import app.lawnchair.ui.preferences.navigation.HomeScreenCategoryOverrides
+import app.lawnchair.ui.preferences.navigation.HomeScreenCustomCategories
+import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
+import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizerDiagnostics
+import app.lawnchair.ui.preferences.navigation.HomeScreenPlacementLocks
+import com.android.launcher3.R
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+/**
+ * Issue #366: the Organizer hub (TO-BE T-01) — the persistent organizing
+ * workspace opened from Settings → Home screen → Organizer. It composes
+ * existing seams only: the run coordinator's state/readiness/durable-status
+ * projection (spec #271) for the status card, and navigation rows to the
+ * existing authoring surfaces for the materials. The run surface, the
+ * coordinator, and the application module are not changed by this screen.
+ *
+ * The start CTA only navigates to the existing run surface: `start()` stays
+ * exclusive to the run surface's start row, so the spec #328/#205 admission
+ * gates are never re-implemented or bypassed here (1-tap start is T-07,
+ * owned by #369).
+ */
+@Composable
+fun OrganizerHubPreferences(
+    modifier: Modifier = Modifier,
+    run: ManualOrganizationRun? = null,
+) {
+    val context = LocalContext.current
+    val coordinator = run ?: remember { ManualOrganizationModule.get(context) }
+    val state by coordinator.stateFlow.collectAsStateWithLifecycle()
+
+    // Spec #271 render contract, mirrored from the run surface: the durable
+    // status is read only while no run operation is active (Idle/Cancelled),
+    // re-read when the readiness gate moves so a fail-closed read taken
+    // during startup reconciliation recovers on this surface, and every read
+    // failure maps to a no-row outcome (fail-closed, no invented state).
+    val showDurableStatus = state is ManualOrganizationRun.State.Idle || state is ManualOrganizationRun.State.Cancelled
+    val readinessState by coordinator.readinessState.collectAsStateWithLifecycle()
+    var durableStatus by remember { mutableStateOf<OrganizerDurableStatus?>(null) }
+    LaunchedEffect(showDurableStatus, readinessState) {
+        durableStatus = if (showDurableStatus) {
+            withContext(Dispatchers.IO) { coordinator.readDurableOrganizerStatus() }
+        } else {
+            null
+        }
+    }
+    val showCheckingRow = showDurableStatus && (
+        durableStatus == null ||
+            (
+                durableStatus == OrganizerDurableStatus.UNAVAILABLE &&
+                    (
+                        readinessState == ReadinessGate.State.IDLE ||
+                            readinessState == ReadinessGate.State.RECONCILING
+                        )
+                )
+        )
+
+    PreferenceScaffold(
+        label = stringResource(R.string.organizer_hub_label),
+        modifier = modifier,
+        isExpandedScreen = LocalIsExpandedScreen.current,
+    ) { paddingValues ->
+        PreferenceLazyColumn(paddingValues) {
+            // Status card, phase 1 (TO-BE D-02): durable status rows → start
+            // CTA → diagnostics. TalkBack order follows the composed order:
+            // state first, then actions (TO-BE §13-5).
+            if (showCheckingRow) {
+                item(key = "organizer-hub-status-checking") {
+                    HubCheckingLine(R.string.manual_organization_durable_status_checking)
+                }
+            }
+            durableStatus?.let { hubDurableStatusItems(it) }
+            item(key = "organizer-hub-start") {
+                NavigationActionPreference(
+                    label = stringResource(R.string.manual_organization_start),
+                    destination = HomeScreenManualOrganization(),
+                )
+            }
+            item(key = "organizer-hub-diagnostics") {
+                NavigationActionPreference(
+                    label = stringResource(R.string.organizer_diagnostics_title),
+                    destination = HomeScreenOrganizerDiagnostics,
+                    subtitle = stringResource(R.string.organizer_diagnostics_description),
+                )
+            }
+            // Materials (TO-BE §10): the existing authoring surfaces. The
+            // settings-side rows stay in place during the staged migration
+            // (phase (a); removal is owned by #367).
+            item(key = "organizer-hub-materials") {
+                PreferenceGroup(heading = stringResource(R.string.organizer_hub_materials_heading)) {
+                    NavigationActionPreference(
+                        label = stringResource(R.string.organizer_category_overrides_title),
+                        destination = HomeScreenCategoryOverrides,
+                        subtitle = stringResource(R.string.organizer_category_overrides_summary),
+                    )
+                    NavigationActionPreference(
+                        label = stringResource(R.string.organizer_custom_category_title),
+                        destination = HomeScreenCustomCategories,
+                        subtitle = stringResource(R.string.organizer_custom_category_summary),
+                    )
+                    NavigationActionPreference(
+                        label = stringResource(R.string.organizer_lock_screen_title),
+                        destination = HomeScreenPlacementLocks,
+                        subtitle = stringResource(R.string.organizer_lock_screen_summary),
+                    )
+                    OrganizerUsageMaterialRows()
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Spec #271 durable status rows for the hub, reusing the run surface's exact
+ * closed-vocabulary strings. Only the three informative statuses render;
+ * `NEVER_ORGANIZED` and the fail-closed `UNAVAILABLE` render nothing. The
+ * unresolved status keeps the existing safe-support guidance line; its
+ * diagnostics entry is the standing hub diagnostics row above.
+ */
+private fun LazyListScope.hubDurableStatusItems(status: OrganizerDurableStatus) {
+    when (status) {
+        OrganizerDurableStatus.ORGANIZED_RESTORABLE -> item(key = "organizer-hub-status") {
+            HubStatusLine(stringResource(R.string.manual_organization_durable_status_restorable))
+        }
+
+        OrganizerDurableStatus.RESTORED_OR_EXPIRED -> item(key = "organizer-hub-status") {
+            HubStatusLine(stringResource(R.string.manual_organization_durable_status_restored_or_expired))
+        }
+
+        OrganizerDurableStatus.UNRESOLVED -> {
+            item(key = "organizer-hub-status") {
+                HubStatusLine(stringResource(R.string.manual_organization_durable_status_unresolved))
+            }
+            item(key = "organizer-hub-safe-support") {
+                HubStatusLine(stringResource(R.string.manual_organization_safe_terminal))
+            }
+        }
+
+        OrganizerDurableStatus.NEVER_ORGANIZED,
+        OrganizerDurableStatus.UNAVAILABLE,
+        -> Unit
+    }
+}
+
+@Composable
+private fun HubStatusLine(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.padding(horizontal = 16.dp),
+    )
+}
+
+@Composable
+private fun HubCheckingLine(
+    @androidx.annotation.StringRes resourceId: Int,
+) {
+    Text(
+        text = stringResource(resourceId),
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier
+            .padding(horizontal = 16.dp)
+            .semantics { liveRegion = LiveRegionMode.Polite },
+    )
+}

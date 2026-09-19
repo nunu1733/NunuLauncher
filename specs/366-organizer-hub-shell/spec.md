@@ -1,6 +1,6 @@
 ---
 issue: "#366"
-status: draft
+status: accepted
 requirements: [FR-004, FR-006]
 risk: []
 updated: 2026-09-19
@@ -320,6 +320,16 @@ And run state machine、確認・復旧の契約、diagnostics event、persisten
   （`HomeScreenPreferences.kt`、`PreferenceRoutes.kt`、`PreferenceNavigation.kt`、
   `ManualOrganizationPreferences.kt`、`ManualOrganizationRun.kt`）を入力に作成。
   #365はOPENだが契約根拠はaccepted正本に存在するため、執筆をblockしないと判定。
+- 2026-09-19: Re-entry確認とaccepted化。起草baseline `3076bdae7ebf` → 実装開始時
+  `origin/main` `ec34dd3fa6` の差分はdocs-only（#378 disposition、#365正本改訂 =
+  PR #379 merge済み）であり、Current evidenceの前提（`HomeScreenPreferences.kt` /
+  `PreferenceRoutes.kt` / `PreferenceNavigation.kt` / run面 / instrumentation
+  harness）は無変更。ownerのsession指示（Issue 366 対応開始、2026-09-19）により
+  実装を開始し、本spec/planをacceptedへ更新。実装PRでの確定事項:
+  status cardの診断導線行は常設とし（`organizer_diagnostics_title/description`
+  再利用、既存diagnostics destinationへ）、UNRESOLVED時はunresolved行＋
+  safe-terminal行をその上に表示する（run面のopen-diagnostics行を複製しない）。
+  「整理を開始」CTAのlabelは既存 `manual_organization_start` を再利用する。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/366
 [2]: https://github.com/nunu1733/NunuLauncher/issues/365
