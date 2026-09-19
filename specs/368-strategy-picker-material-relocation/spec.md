@@ -53,9 +53,12 @@ strategy選択はhub（T-01）の材料セクションから開く材料面T-05�
 実行面（manual organization画面、全run状態・Idle・`MANUAL`/`ONBOARDING`両entry）には
 picker行も読み取り専用表示も現れない。strategy書込は`OrganizationOperationLease`の
 `AUTHORING` kindを書込開始から全終端（commit・非commit・storage失敗・cancel）まで保持し、
-category authoringと同一の単一admission domainでrun/recoveryと相互排他する。run操作が
-activeな間のstrategy選択commitは「中断してから変更する」の1規則で説明されるtyped拒否に
-なり、書込先行時はrun startが`Busy`に拒否される。commit時のrun dismiss+再start経路は
+category authoringと同一の単一admission domainでrun/recoveryと相互排他する。書込開始の
+結果はarbiterがtypedな開始outcome（開始・run/recovery active拒否・他authoring占有拒否・
+書込single-flight拒否）としてcallerへ返し、いずれの拒否もstore呼出を開始しない
+（防御呼出を含めて黙ってdropさせない）。run操作がactiveな間のstrategy選択commitは
+「中断してから変更する」の1規則で説明されるtyped拒否になり、書込先行時はrun startが
+`Busy`に拒否される。commit時のrun dismiss+再start経路は
 削除され、選択は次回run開始のcompositionに反映される（現行fresh composition契約＝
 spec 52「a run never reuses a prior snapshot」は不変）。strategy書込のwrite-vs-write
 single-flightと検証付き書込契約（spec 182 AC-3b/AC-7）は維持される。
@@ -74,16 +77,26 @@ single-flightと検証付き書込契約（spec 182 AC-3b/AC-7）は維持され
   seam、commit時 `coordinator.dismiss(); coordinator.start(trigger)` 契約）を削除する。
   arbiterは書込single-flight（`Idle → Writing → Idle`）として維持する。
 - 書込のadmission domain参加: strategy書込は開始時に`OrganizationOperationLease`の
-  `AUTHORING` tokenを取得し（取得失敗＝run/recovery/別書込activeならtyped non-write、
-  store呼出なし）、全終端で解放する。UI affordance（行のdisabled＋理由文言のlive region
-  通知）は同じoperation lifetimeの正本から導出する表示にすぎず、構造gateはlease取得自体
-  である（spec 328が確立した「UI disabledはaffordanceにすぎない」原則の継続）。
-  取得はarbiterのMain-confined遷移点で`Idle → Writing`と原子に行う。
+  `AUTHORING` tokenを取得し、全終端で解放する。取得はarbiterのMain-confined遷移点で
+  `Idle → Writing`と原子に行い、取得失敗時は`Writing`へ入らずstore呼出も開始しない。
+  arbiterは書込開始の結果をtypedな開始outcomeとしてcallerへ返す:
+  `Started` / `RefusedRunOrRecoveryActive`（run/recovery operationがadmission domainを
+  占有） / `RefusedAuthoringBusy`（他の`AUTHORING` token — category authoring等 — が
+  占有） / `RefusedWriteBusy`（同一arbiterの書込がin-flight。single-flight）。
+  すべての拒否outcomeはstore呼出なしのtyped non-writeであり、防御呼出が黙ってdropしない。
+  UI affordance（行のdisabled＋理由文言のlive region通知）はrun/recoveryのoperation
+  lifetimeから導出する表示であり、構造gateはlease取得自体である（spec 328が確立した
+  「UI disabledはaffordanceにすぎない」原則の継続）。run/recovery active時はdisabled＋
+  理由文言、他authoring占有・single-flight拒否時は行が有効表示のままtyped outcomeに
+  対応するretry文言をlive regionで通知し、両者を区別する。
 - operation lifetimeの可観測化: run coordinatorが「activeなrun operation
   （`activeOperation`）またはrecovery operation（`recoveryLease`）が存在するか」の
   projectionを`State`列挙と独立に公開する。表示state（`Applied`/`NoChanges`/`Stale`等の
-  終端stateが表示上残る現行契約）ではなくoperation lifetimeを正本とし、T-05の
-  affordanceとarbiterの書込可否判断が同一の正本から導出される。
+  終端stateが表示上残る現行契約）ではなくoperation lifetimeを正本とする。このprojection
+  はrun/recoveryのoccupancyを示すものであり、admission domainの占有と同値ではない
+  （domainは他の`AUTHORING` tokenによっても占有され得る。その場合のT-05での見え方は
+  前bulletのtyped outcomeとretry文言で扱う）。拒否outcomeの分類
+  （run/recovery拒否か他authoring占有か）はこのprojectionを読んで行う。
 - exchange逆参照の除去: pickerがrun面から消えrestart経路が廃止されることで無意味になる
   exchange側strategy gate（`strategyWriteStartBlockedFor`/`strategyRestartSuppressedFor`、
   `strategyArbiterBusy` callback、`IMPORT_STRATEGY_BUSY`/`CTA_STRATEGY_BUSY` status）を
@@ -140,11 +153,11 @@ single-flightと検証付き書込契約（spec 182 AC-3b/AC-7）は維持され
   hub材料セクションから到達する。
 - **operation不在 / operation active**: run coordinator上にactiveなrun operation
   （`activeOperation != null`）もrecovery operation（`recoveryLease != null`）も存在しない
-  こと/いずれかが存在すること。`OrganizationOperationLease`のadmission domainが空いて
-  いることと同値である（lease tokenはoperation lifetimeと同じ期間のみ保持される）。
-  表示state列挙（`State.Idle`/`State.Cancelled`等）では定義しない。現行実装は終端state
-  （`Applied`/`NoChanges`/`Stale`/`Cancelled`等）をoperation終了後も表示上保持するため、
-  state述語はoperation lifetimeの正本にならない。
+  こと/いずれかが存在すること。表示state列挙（`State.Idle`/`State.Cancelled`等）では
+  定義しない。現行実装は終端state（`Applied`/`NoChanges`/`Stale`/`Cancelled`等）を
+  operation終了後も表示上保持するため、state述語はoperation lifetimeの正本にならない。
+  なおadmission domainの占有はこれと同値ではない: domainは上記に加えて他の`AUTHORING`
+  token（category authoring等、strategy書込自身を含む）によっても占有され得る。
 - 新規の`CONTEXT.md`語彙追加はしない（「材料」「中断してから変更する」の語彙は#365が
   追加済み。本specはorganizer-to-be-ux.md §10の語彙を借用する）。
 
@@ -182,9 +195,21 @@ When T-05が表示される（防御ケース。現行navigationではrun面離�
 ため、通常到達しない。two-pane設定では到達し得る。plan「Design」参照）
 Then picker行は選択をcommitできない状態（disabled affordance）で表示され、理由文言が
 「中断してから変更する」規則をlive regionで通知する
-And この状態で選択操作を呼んでも、`AUTHORING`取得が失敗してstore呼出は開始されず
-（構造gate）、selection storeは変化しない（typed non-write）
+And この状態で選択操作を呼んでも、arbiterは`RefusedRunOrRecoveryActive`の開始outcomeを
+返してstore呼出を開始せず（構造gate）、selection storeは変化しない（typed non-write。
+防御呼出が黙ってdropしない）
 And manual organization実行面上にはstrategy選択を開始するUI経路が存在しない
+
+### Scenario: 他の材料authoring操作がadmission domainを占有している間の選択はtypedに案内される
+
+Given category override等の別のauthoring操作が`AUTHORING` tokenを保持しており、
+run/recovery operationは存在しない（T-05の行は有効表示）
+When T-05でstrategy行が選択される
+Then arbiterは`RefusedAuthoringBusy`の開始outcomeを返し、store呼出は開始されず
+selection storeは変化しない
+And T-05はtyped outcomeに対応するretry文言（他の整理操作の完了後に再試行）をlive regionで
+通知する（run/recovery用のfrozen理由とは文言が区別される）
+And 占有authoring操作の終端後に選択を繰り返すと、`Started`として検証付き書込が完了する
 
 ### Scenario: 書込中のrun開始はBusyに拒否され、run開始中の書込は開始しない
 
@@ -220,8 +245,9 @@ Then operation activeの誤判定は発生せず、pickerは有効で選択の�
 
 Given T-05で1件のstrategy書込がin-flightである
 When 別のstrategy行が選択される
-Then 2本目のstore呼出は開始されない（arbiterが`Idle`のときのみ`Idle → Writing`と
-`AUTHORING`取得を原子に行う。single-flight契約継続）
+Then 2本目の選択は`RefusedWriteBusy`の開始outcomeで拒否され、store呼出は開始されない
+（arbiterが`Idle`のときのみ`Idle → Writing`と`AUTHORING`取得を原子に行う。
+single-flight契約継続。typedなretry案内は他authoring占有と共通の文言）
 And 書込のcommit成功・非commit・storage失敗・coroutine cancelのすべての終端でarbiterが
 `Idle`へ戻り、`AUTHORING` tokenが解放され、次の書込とrun開始が可能になる
 And restart状態は存在しないため、restart完了待ちの解除終端は発生しない
@@ -260,10 +286,11 @@ Then 削除・更新された各oracleについて、なぜobsoleteか（E-7/監
 
 | Condition | Observable outcome |
 |---|---|
-| run/recovery operation active中にstrategy選択が呼ばれる（UI・防御経路いずれも） | `AUTHORING`取得失敗によりtyped non-write（store呼出なし）。selection store不変。UIはdisabled＋理由（中断してから変更）を通知 |
+| run/recovery operation active中にstrategy選択が呼ばれる（UI・防御経路いずれも） | arbiterは`RefusedRunOrRecoveryActive`を返しtyped non-write（store呼出なし）。selection store不変。UIはdisabled＋理由（中断してから変更）を通知 |
+| 他の`AUTHORING` token（category authoring等）がadmission domainを占有中にstrategy選択が呼ばれる | arbiterは`RefusedAuthoringBusy`を返しtyped non-write（store呼出なし）。T-05はretry文言をlive regionで通知（frozen理由とは区別） |
+| strategy書込中に別のstrategy選択が呼ばれる | arbiterは`RefusedWriteBusy`を返しtyped non-write（store呼出なし）。arbiter終端後に再試行可能 |
 | strategy書込中にrun開始が試みられる | `start(trigger)`は`StartOutcome.Busy`で拒否され、runは開始しない。書込は影響を受けず継続する |
 | 書込中のstorage失敗 | 既存選択は保持され（spec 182 AC-3b継続）、`AUTHORING` tokenは解放される。restartが存在しないため、失敗後にrunが置き換わる経路はない |
-| 書込in-flight中に別の選択が行われる | single-flight拒否（store呼出なし）。arbiter終端後に再試行可能 |
 | 書込中にCTA continuation（`start(trigger, intent)`/`attachIntent`前提のseam）が実行される | run seamはleaseを経由するため`Busy`/typed拒否に帰着し、処理中状態は解除・再試行可能になる（既存holder契約の継続） |
 | T-05表示中にnavigationで離脱し書込coroutineがcancelされる | storeのatomic publication契約により選択はcommit完了分のみ有効。`AUTHORING` tokenは解放され、中途半端な書込・run置き換えは発生しない |
 | selection store破損/unsupported/newer | 従来どおりcomposer `NotReady`（fail-closed）＋T-05は非選択表示。本Issueで変化しない |
@@ -280,9 +307,17 @@ Then 削除・更新された各oracleについて、なぜobsoleteか（E-7/監
   解放される。したがって「gate通過後〜publication完了前にrunが開始する」競合窓は
   構造的に存在しない（Main-confinedなstate読取だけをgateにしない。category
   authoringと同一のadmission原則）。
-- T-05のaffordance（disabled表示）はoperation lifetimeのprojectionから導出され、
-  構造gate（lease取得）と同じ正本に基づく。affordanceの遅延・取りこぼしは書込の
-  安全性に影響しない。
+- 拒否outcomeの分類（`RefusedRunOrRecoveryActive`か`RefusedAuthoringBusy`か）は、
+  token取得失敗後の同一Main処理内でoperation lifetime projectionを読んで行う。
+  分類は表示・oracleのための情報であり、排他の正本はtoken取得自体である。分類の
+  取りこぼし（極小の競合窓でrun/recovery拒否をauthoring占有として返す）が生じても、
+  どちらのoutcomeでもstore呼出なし・retry可能であり安全性は変わらない。
+- T-05のdisabled affordance（run/recovery用frozen表示）はoperation lifetimeの
+  projectionから導出される。他authoring占有・single-flightはprojectionの対象外のため
+  行は有効表示のまま、typed outcomeに対応するretry文言をlive regionで通知する
+  （「同じtruthからの導出」ではなく「役割分担」: 排他はlease、run/recovery表示は
+  projection、それ以外の競合表示はtyped outcome）。affordanceの遅延・取りこぼしは
+  書込の安全性に影響しない。
 - 選択snapshotのcomposition cut（read-after-validate、A/B再読取、
   `NotReady(InconsistentPolicyRead)`）は変更しない（spec 182 Selection contract）。
 
@@ -321,7 +356,10 @@ Then 削除・更新された各oracleについて、なぜobsoleteか（E-7/監
   （既存`StrategyPickerFreezeInstrumentationTest`が確立したfrozen affordance patternの
   継続）。理由文言はD-03の「中断してから変更する」規則を説明するものとし、新規stringは
   Android resource由来でEN（`values/`）とja（`values-ja/`）の双方に供給する
-  （spec 161の対訳規約に従う）。
+  （spec 161の対訳規約に従う）。他authoring占有・single-flight拒否のtyped outcomeに対
+  応するretry文言も同様に新規string（EN/ja）で供給し、frozen理由とは文言上区別する
+  （`RefusedAuthoringBusy`/`RefusedWriteBusy`時にlive regionで通知し、選択が
+  黙ってdropしないことを読み上げ可能にする）。
 - picker撤去により実行面から消失する表示について、TalkBack到達性の低下はない
   （strategyはhub → 材料 → T-05の1 hop+1 tapで到達できる。D-01/D-03の構造そのもの）。
 - 削除により未使用になるstring resource（exchange系picker frozen理由・strategy busy
@@ -336,7 +374,7 @@ Then 削除・更新された各oracleについて、なぜobsoleteか（E-7/監
       strategy section表題、読み取り専用strategy表示が存在しない。（Issue受入1）
 - [ ] **AC-2**: run中にstrategy選択をcommitする経路が存在しない。UI affordance
       （disabled＋理由。operation lifetimeのprojectionから導出）と構造gate
-      （`AUTHORING` token取得失敗時のtyped non-write、store呼出なし）の両方で保証され、
+      （`RefusedRunOrRecoveryActive`のtyped開始outcome、store呼出なし）の両方で保証され、
       run中の選択操作はselection storeを変化させない。（Issue受入2）
 - [ ] **AC-3**: operation不在時のstrategy選択は従来どおり検証付き書込（書込時catalog検証、
       atomic publication、failure時既存選択保持。spec 182 AC-3b/AC-7）であり、選択は
@@ -351,22 +389,25 @@ Then 削除・更新された各oracleについて、なぜobsoleteか（E-7/監
       truth、TalkBack 1論理ノード、色非依存、selectableGroup、200% font scale、
       fail-closed/default-as-effective）がT-05で満たされる。（Issue受入5）
 - [ ] **AC-6**: 書込single-flight（write-vs-write）と検証付き書込の失敗時挙動が維持され、
-      arbiterが全終端で`Idle`へ復帰する。2本目の書込がin-flight中にstore呼出を開始しない
-      ことをunit testで固定する。
+      arbiterが全終端で`Idle`へ復帰する。2本目の書込がin-flight中に`RefusedWriteBusy`
+      のtyped outcomeでstore呼出を開始しないことをunit testで固定する。
 - [ ] **AC-7**: exchange導線のstrategy以外の契約が回帰していない（idle start row
       freeze、選択面凍結、CTA single-flight、attempt anchor等の既存testが無編集で
       green）。実装PRにspec 182・283改訂、spec 328のstrategy固有条項の狭い改訂
       （Contract notes 2の境界）、処分文書§3.9/§3.14の境界更新が含まれている。
-- [ ] **AC-8**: operation active中のfrozen状態の理由文言が新規resource（EN/ja）で供給
-      され、live regionで通知される。未使用化したstring resourceが`values/`/
+- [ ] **AC-8**: operation active中のfrozen理由文言と、他authoring占有・single-flight
+      拒否のretry文言が新規resource（EN/ja）で供給され、いずれもlive regionで通知される
+      （frozen理由とretry文言は区別される）。未使用化したstring resourceが`values/`/
       `values-ja/`双方から削除されている。
 - [ ] **AC-9**: strategy書込とrun admissionの相互排他がlease基準でtestされる。
       (a) publication前で停止中の書込が存在するとき`start(trigger)`は`Busy`で
-      run開始しない、(b) `RUN` token保持中のstrategy選択はstore呼出を開始しない、
-      (c) 書込のcommit成功・非commit・storage失敗・coroutine cancelの全終端で
-      `AUTHORING` tokenが解放され、次のrun開始と次の書込が可能になる。
-      あわせて、`Applied`/`NoChanges`/typed failure/`Stale`/`Cancelled`の各終端後
-      （operation終了・lease解放済み）にT-05の書込が可能になることをunit testで
+      run開始しない、(b) `RUN` token保持中のstrategy選択は`RefusedRunOrRecoveryActive`
+      を返しstore呼出を開始しない、(b2) tokenが占有済みでrun/recovery projectionが
+      falseの状態（他の`AUTHORING`保持を模擬）のstrategy選択は`RefusedAuthoringBusy`
+      を返しstore呼出を開始しない、(c) 書込のcommit成功・非commit・storage失敗・
+      coroutine cancelの全終端で`AUTHORING` tokenが解放され、次のrun開始と次の書込が
+      可能になる。あわせて、`Applied`/`NoChanges`/typed failure/`Stale`/`Cancelled`の
+      各終端後（operation終了・lease解放済み）にT-05の書込が可能になることをunit testで
       固定する（表示stateとoperation lifetimeの分離の回帰防止）。
 
 ## Test oracle
@@ -374,14 +415,14 @@ Then 削除・更新された各oracleについて、なぜobsoleteか（E-7/監
 | AC | Evidence |
 |---|---|
 | AC-1 | instrumentation: T-05 destinationでpicker行表示・選択状態assert（既存`StrategyPickerInstrumentationTest`をT-05 hostへ再host）。実行面の否定的観測（`manual-organization-strategy-picker` testTag・section表題・radio行の不在。全run状態スナップショットまたはIdle/Selecting/Preview代表状態）。hub材料セクション→T-05 navigation assert（#366のhub instrumentation testへ追加） |
-| AC-2 | unit: `RUN` token保持中の書込開始拒否（store呼出非開始をfake storeで表明。AC-9(b)と同一oracle）。instrumentation: 実行面上の選択UI不在（AC-1と同一否定的観測）＋operation active模擬状態でのT-05 disabled/理由表示 |
+| AC-2 | unit: `RUN` token保持中の選択が`RefusedRunOrRecoveryActive`を返しstore呼出非開始であること（fake storeで表明。AC-9(b)と同一oracle）。instrumentation: 実行面上の選択UI不在（AC-1と同一否定的観測）＋operation active模擬状態でのT-05 disabled/理由表示 |
 | AC-3 | 既存`LayoutStrategySelectionStoreTest`・composer/provenance contract testの無編集green + `StrategyPickerInstrumentationTest`の書込経由公開assert（T-05 rehost後） |
-| AC-4 | `StrategyWriteArbiterTest`改訂diff（restart oracle削除・single-flight/lease gate oracle新設）+ `ExchangeFlowStateHolderTest`/`ExchangeImportSuccessInstrumentationTest`のstrategy wiring test削除diff + obsolete理由のPR本文記録 + source grep（`restartRun`/`RESTART_RESERVED`/`restartNeeded`等の残存0件） |
+| AC-4 | `StrategyWriteArbiterTest`改訂diff（restart oracle削除・single-flight/lease gate/outcome oracle新設）+ `ExchangeFlowStateHolderTest`/`ExchangeImportSuccessInstrumentationTest`のstrategy wiring test削除diff + obsolete理由のPR本文記録 + source grep（`restartRun`/`RESTART_RESERVED`/`restartNeeded`等の残存0件） |
 | AC-5 | 既存picker a11y oracle（selectableGroup、parent row単一truth、200% font scale、fail-closed/default-as-effective）をT-05 hostで再実行 + light/dark screenshot evidence（spec 283 AC-7 pattern） |
-| AC-6 | unit: single-flight table-driven test（in-flight中の2本目不開始・終端別の`Idle`復帰。spec 328 (d4)/(i) patternからrestart終端を除いて継承） |
+| AC-6 | unit: single-flight table-driven test（in-flight中の2本目が`RefusedWriteBusy`で不開始・終端別の`Idle`復帰。spec 328 (d4)/(i) patternからrestart終端を除いて継承） |
 | AC-7 | 既存`ExchangeFlowStateHolderTest`・`ExchangeImportSuccessInstrumentationTest`のstrategy非依存testが無編集でgreen + specs 182/283/328と処分文書のdiff review（改訂箇所がScope節とContract notes 2の境界と一致） |
-| AC-8 | instrumentation: frozen理由行のlive region・内容assert（`StrategyPickerFreezeInstrumentationTest` patternのT-05移設）+ string diff（EN/ja）+ 削除stringのreference grep（0件） |
-| AC-9 | unit: (a) 書込をpublication前で停止 → `coordinator.start(trigger)` が`Busy`（実際の`ManualOrganizationRun`＋実`OrganizationOperationLease`を使用）、(b) `RUN` token保持中の`onStrategySelected`がstore呼出を開始しない、(c) commit/非commit/storage失敗/cancel各終端後に`AUTHORING`取得（または`RUN`開始）が成功する table-driven test、(d) 上記終端state群の後に書込可能であることの回帰test |
+| AC-8 | instrumentation: frozen理由行・retry文言のlive region・内容assert（`StrategyPickerFreezeInstrumentationTest` patternのT-05移設。文言の区別を含む）+ string diff（EN/ja）+ 削除stringのreference grep（0件） |
+| AC-9 | unit: (a) 書込をpublication前で停止 → `coordinator.start(trigger)` が`Busy`（実際の`ManualOrganizationRun`＋実`OrganizationOperationLease`を使用）、(b) `RUN` token保持中の選択が`RefusedRunOrRecoveryActive`＋store非呼出、(b2) gate占有＋projection false（他`AUTHORING`保持を模擬。fake gate/projection）の選択が`RefusedAuthoringBusy`＋store非呼出、(c) commit/非commit/storage失敗/cancel各終端後に`AUTHORING`取得（または`RUN`開始）が成功する table-driven test、(d) 上記終端state群の後に書込可能であることの回帰test |
 
 共通gate: `./gradlew spotlessCheck`、`./gradlew testLawnWithQuickstepGithubDebugUnitTest
 --tests 'app.lawnchair.organizer.*'`、対象classのorganizer instrumentation lane、
@@ -464,6 +505,16 @@ high-risk evidence gateの対象外）。
   strategy固有条項のみの狭い改訂を所有、処分文書§3.9/§3.14を同一PRで更新、#374は
   rev.2/freeze再設計を継続所有）へ一意化し、意図的な正本↔実装不一致の期間を廃止。
   exchange側strategy gateの削除をScopeへ明記。
+- 2026-09-19: Revision 2（re-entry revisionへのreview「Changes requested」1点対応）。
+  **typed開始outcomeの契約一意化（中）**: 「typed non-write」を検証可能にするため、
+  arbiterの書込開始結果を`Started`/`RefusedRunOrRecoveryActive`/`RefusedAuthoringBusy`/
+  `RefusedWriteBusy`のtyped outcomeとしてcallerへ返す契約を明示（plan Change setへ
+  `onStrategySelected`返却型変更を追加）。あわせて「operation lifetime＝admission
+  domain占有と同値」「affordanceと構造gateが同じtruth」の過剰な契約を修正:
+  projectionはrun/recoveryのoccupancyを示し、domainは他`AUTHORING` tokenによっても
+  占有され得るため、他authoring占有・single-flight時はtyped outcomeに対応するretry文言
+  （frozen理由と区別される新規string）で案内する役割分担へ変更。他AUTHORING競合の
+  scenario・`RefusedAuthoringBusy` oracle（AC-9(b2)）を追加。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/368
 [2]: https://github.com/nunu1733/NunuLauncher/issues/366

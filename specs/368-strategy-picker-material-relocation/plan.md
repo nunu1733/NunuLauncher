@@ -169,30 +169,50 @@ shell・#367材料集約をすべて含む）で再確認した現行実装の�
   制御可能なfake gate）、`onStrategySelected`のMain-confined遷移点で
   `tryAcquire(Kind.AUTHORING)`を行う。取得成功は`state = WRITING`と同一直列化点で
   原子に行い、tokenはcoroutine終端（`NonCancellable`内。`Token.close()`はthread-safe）
-  で解放する。取得失敗（run/recovery/別書込がdomain占有）はtyped non-write
-  （store呼出なし、`WRITING`へ入らない）。
+  で解放する。
+  - **typed開始outcome（前版review「中」対応。`onStrategySelected`の返却型変更）**:
+    `onStrategySelected(id, onCommitted): StartOutcome`へ変更し、開始結果を
+    `Started` / `RefusedRunOrRecoveryActive` / `RefusedAuthoringBusy` / `RefusedWriteBusy`
+    で返す（非同期のcommit結果は従来どおり`onCommitted`で通知し、開始outcomeと分離）。
+    順序: (1) `state != IDLE` → `RefusedWriteBusy`（single-flight、leaseに触れない）。
+    (2) `tryAcquire(AUTHORING)`。失敗したら同一Main処理内でrun/recovery projectionを
+    読み、trueなら`RefusedRunOrRecoveryActive`、falseなら`RefusedAuthoringBusy`。
+    (3) 取得成功 → `state = WRITING` → coroutine起動、`Started`を返す。
+    いずれの拒否もstore呼出なし・`WRITING`へ入らない。分類読取は表示・oracleのための
+    情報であり、排他の正本はtoken取得自体（極小の分類競合窓では
+    `RefusedAuthoringBusy`側に倒れるが、どちらのoutcomeでも挙動はstore不変・retry可能）。
   - これにより「gate通過後〜publication完了前にrun開始」の競合窓が消える:
     書込先行 → `start()`は`tryAcquire(RUN)`失敗で`StartOutcome.Busy`。
     run先行 → `tryAcquire(AUTHORING)`失敗で書込開始せず。category authoringと同一の
     単一admission domain原則である。
   - exchange truth table seam（`writeStartBlocked`）と`restartSuppressed`/
-    `restartNeeded`/`restartRun` seamはconstructor引数から削除する。arbiterの
-    責務は「書込single-flight＋admission domain参加」に縮小する。
-  - arbiterは`AUTHORING`取得の成否をUIへ返さない（affordanceはoperation lifetime
-    projectionから独立に導出するため、拒否時の表示はdisabled＋理由ですでに表現済み。
-    構造gateは黙ってtyped non-writeとして機能する）。
+    `restartNeeded`/`restartRun` seamはconstructor引数から削除し、代わりに
+    `runOrRecoveryActive: () -> Boolean` seam（production = coordinatorのoperation
+    lifetime projection読取、unit test = fake）を追加する。arbiterの責務は
+    「書込single-flight＋admission domain参加＋typed開始outcome」である。
 - **operation lifetime projection（前版review「中」対応）**:
   `ManualOrganizationRun`へ`val operationActive: StateFlow<Boolean>`を新設し、
   `activeOperation`/`recoveryLease`が遷移する全site（`beginOperation`/`finish`/
   `transitionToStale`/`cancel`/`dismiss`/abort/recovery開始、いずれも同一`lock`内）で
   更新する。`activeOperation != null || recoveryLease != null`が正本定義であり、
-  表示state（`State`列挙）からは導出しない。T-05 hostはこれを収集してpickerの
-  disabled affordance＋frozen理由を表示し、書込の成否はleaseが担保する。
-  affordanceと構造gateが同じ正本（operation lifetime＝admission domain占有）から
-  導出される。
+  表示state（`State`列挙）からは導出しない。
+  **役割分担（admission domain占有と同値ではないことを明記）**: このprojectionは
+  run/recoveryのoccupancyを示す。admission domainは他の`AUTHORING` token
+  （category authoring・strategy書込自身）によっても占有され得るが、それらに対する
+  globalな観測面は存在しない（設計しない）。したがって:
+  - T-05のdisabled affordance＋frozen理由は本projectionのみから導出する
+    （run/recovery active時にdisabled＋理由。終端後に自動で有効へ復帰）。
+  - 他`AUTHORING`占有・single-flight（projection falseでtoken取得のみ失敗）は、
+    T-05 hostがarbiterのtyped開始outcome（`RefusedAuthoringBusy`/`RefusedWriteBusy`）
+    を受けてretry文言をlive regionで通知する（行は有効表示のまま。frozen理由とは
+    文言が区別される新規string）。防御呼出が黙ってdropしないことが契約。
 - **arbiter簡素化**: `RESTART_RESERVED`/`RESTARTING`状態を削除し、状態機械を
   `IDLE → WRITING → IDLE`へ縮小する。`writeStrategy` seamとMain-confined直列化・
-  全終端解放（`finally`相当でstate復帰＋token close）は現行のまま。KDocを現実に合わせ
+  全終端解放（`finally`相当でstate復帰＋token close）は現行のまま。
+  `onStrategySelected`は開始outcomeを返却する型へ変更し、`internal enum class
+  StartOutcome { Started, RefusedRunOrRecoveryActive, RefusedAuthoringBusy,
+  RefusedWriteBusy }`を新設する（最終名は実装PRで確定。否定形/肯定形の命名は既存
+  `ManualOrganizationRun.StartOutcome`と読み分けが付くようにする）。KDocを現実に合わせ
   更新する。
 - **exchange逆参照の除去**: `ExchangeFlowStateHolder.strategyArbiterBusy` callback、
   `strategyWriteStartBlockedFor`/`strategyRestartSuppressedFor`、
@@ -209,12 +229,14 @@ shell・#367材料集約をすべて含む）で再確認した現行実装の�
 
 ### Data flow
 
-- 選択（operation不在）: T-05 → arbiter `Idle→Writing`＋`AUTHORING`取得（Main、原子）→
-  IO上で`store.select`（検証付き書込）→ Main上で`onCommitted`（`selectedStrategy`更新）→
-  終端で`AUTHORING`解放＋`Idle`。書込は次回run開始時のcomposer readで初めてplanningに
-  到達する（fresh composition不変）。
-- 選択（operation active）: `AUTHORING`取得失敗 → store呼出なし。UIはoperation
-  lifetime projectionによりdisabled＋理由表示。
+- 選択（operation不在・他authoring不在）: T-05 → arbiter `Idle→Writing`＋`AUTHORING`
+  取得（Main、原子）→ `Started` → IO上で`store.select`（検証付き書込）→ Main上で
+  `onCommitted`（`selectedStrategy`更新）→ 終端で`AUTHORING`解放＋`Idle`。書込は次回
+  run開始時のcomposer readで初めてplanningに到達する（fresh composition不変）。
+- 選択（operation active）: `RefusedRunOrRecoveryActive` → store呼出なし。UIはoperation
+  lifetime projectionによりdisabled＋frozen理由表示（outcomeと同一の正本から導出）。
+- 選択（他authoring占有・書込in-flight）: `RefusedAuthoringBusy`/`RefusedWriteBusy` →
+  store呼出なし。行は有効表示のまま、T-05 hostがretry文言をlive regionで通知。
 - 書込中のrun開始: `start()` → `tryAcquire(RUN)`失敗 → `StartOutcome.Busy`。
 - 変更なしのflow: run開始→composition（選択snapshotをcutに参加）→preview→confirm→
   apply→recovery。exchange導線（strategy関係gateを除く）・onboarding導線。
@@ -230,6 +252,14 @@ shell・#367材料集約をすべて含む）で再確認した現行実装の�
   `start()`のRUN admissionが成立させる競合窓を閉じられない。加えてstate列挙は終端state
   を表示上保持するためoperation lifetimeの正本でもない（review「中」）。lease取得という
   単一直列化点での相互排他に置換する。
+- **`AUTHORING`取得失敗を黙ってno-opにする（rev.2 review「中」で却下）**:
+  「typed non-write」契約を検証できず、他`AUTHORING`占有時（projectionがfalseでも
+  domainは占有され得る）に有効表示の行の選択が黙ってdropされる。開始outcomeの返却で
+  caller（T-05 host）がtypedに案内できるようにする。
+- **`operationActive`をadmission domain占有の観測面にする**: AUTHORING tokenに対する
+  globalな観測面は存在せず、新設するとlease domainの観測API追加（domain設計への接触）と
+  authoring各所の発火実装が必要になる。run/recovery projection＋typed outcomeの
+  役割分担で契約は満たすため不採用。
 - **run-absent gateをselection store層へ入れる**: storeはRule Management所有の
   run非依存seam（spec 182 Selection contract）であり、run stateをstoreへ漏らすと
   seam責務を壊す（AGENTS.md「platform型やDB行を計画moduleのinterfaceへ漏らさない」の
@@ -254,20 +284,20 @@ shell・#367材料集約をすべて含む）で再確認した現行実装の�
 | Path | Intended change | Why here |
 |---|---|---|
 | `lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt` | `strategyPickerItems`呼出（804〜810行目）、arbiter構築（119〜158行目）、`selectedStrategy`/`onStrategySelected`（263〜295行目）、freeze計算（297〜316行目）、catalog読取を削除。`strategyPickerItems`/`readSelectedStrategy`/display対応表はT-05 destinationへ移動（package公開範囲を見直し） | Issue本体。run面（全状態・両entry）からstrategy UIを撤去する（AC-1/2） |
-| `lawnchair/src/app/lawnchair/organizer/ui/StrategyWriteArbiter.kt` | `RESTART_RESERVED`/`RESTARTING`削除、`restartRun`/`restartSuppressed`/`restartNeeded`/exchange truth table `writeStartBlocked` seam削除、`OrganizationOperationGate`注入＋`AUTHORING`取得/全終端解放、状態機械を`IDLE → WRITING → IDLE`へ縮小、KDoc更新 | restart特例廃止＋admission参加の本体（AC-2/4/6/9） |
-| `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt` | `operationActive: StateFlow<Boolean>`新設（`activeOperation`/`recoveryLease`遷移の全site・同一lock内で更新）。run seam本体（`start`/`dismiss`/`cancel`/`finish`/stale/recovery）は無変更 | operation lifetime正本の可観測化（AC-2/9。前版review「中」対応） |
+| `lawnchair/src/app/lawnchair/organizer/ui/StrategyWriteArbiter.kt` | `RESTART_RESERVED`/`RESTARTING`削除、`restartRun`/`restartSuppressed`/`restartNeeded`/exchange truth table `writeStartBlocked` seam削除、`OrganizationOperationGate`＋`runOrRecoveryActive` seam注入、`AUTHORING`取得/全終端解放、`onStrategySelected`をtyped開始outcome（`Started`/`RefusedRunOrRecoveryActive`/`RefusedAuthoringBusy`/`RefusedWriteBusy`）返却へ変更、状態機械を`IDLE → WRITING → IDLE`へ縮小、KDoc更新 | restart特例廃止＋admission参加＋typed拒否の本体（AC-2/4/6/9） |
+| `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt` | `operationActive: StateFlow<Boolean>`新設（`activeOperation`/`recoveryLease`遷移の全site・同一lock内で更新。run/recovery occupancyのprojection。admission domain占有と同値ではない）。run seam本体（`start`/`dismiss`/`cancel`/`finish`/stale/recovery）は無変更 | operation lifetime正本の可観測化（AC-2/9。前版review「中」対応） |
 | `lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeFlowUi.kt` | `strategyWriteStartBlockedFor`/`strategyRestartSuppressedFor`削除、`strategyArbiterBusy` callback削除、import/CTAのstrategy busy拒否（633〜636/750〜753行目）と`ExchangeStatus.Kind` 2種・string対応（1792〜1793行目）を削除 | picker移設＋restart廃止後のdead wiring除去（AC-7。挙動変化はstrategy経路のみ） |
 | `lawnchair/src/app/lawnchair/ui/preferences/navigation/PreferenceRoutes.kt` | T-05用route（引数なしdata object、仮称`HomeScreenOrganizerStrategy`）追加 | 既存材料destinationと同型。契約stateを持たない |
 | `lawnchair/src/app/lawnchair/ui/preferences/navigation/PreferenceNavigation.kt` | `composable<T-05 route>`登録 | 既存登録規約 |
-| `lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerStrategyPreferences.kt`（新設、名称は実装PRで確定） | T-05 destination: picker本体＋`selectedStrategy`読取/表示＋検証付き書込（arbiter経由、`AUTHORING` admission）＋operation active時frozen表示 | AC-1/2/3/5/6/8/9の受ける面 |
+| `lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerStrategyPreferences.kt`（新設、名称は実装PRで確定） | T-05 destination: picker本体＋`selectedStrategy`読取/表示＋検証付き書込（arbiter経由、`AUTHORING` admission）＋operation active時frozen表示＋typed開始outcomeのhandling（`RefusedAuthoringBusy`/`RefusedWriteBusy`時のretry文言live region通知。黙ってdropしない） | AC-1/2/3/5/6/8/9の受ける面 |
 | `lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerHubPreferences.kt` | 材料`PreferenceGroup`（160〜179行目）へ「整理方針」entry（`NavigationActionPreference`、label/subtitle新規resource）を追加 | hub材料セクションがT-05への唯一の導線（AC-1。D-01/D-03） |
-| `lawnchair/res/values/strings.xml`, `values-ja/strings.xml` | 新規: T-05 entry label/subtitle、operation active中frozen理由（D-03語彙、EN/ja対訳）。削除（reference grep確認後）: `exchange_strategy_frozen_import`/`exchange_strategy_frozen_continuing`/`exchange_import_strategy_busy`/`exchange_import_cta_strategy_busy`。`manual_organization_strategy_section`はT-05側で継続利用またはtitle用新設に置換 | AC-8。孤立resource排除（spec 123収束） |
-| `tests/unit/app/lawnchair/organizer/ui/StrategyWriteArbiterTest.kt` | restart系oracle（restart系seam・`RESTART_RESERVED`/`RESTARTING` window・`restartThrows`）を削除、single-flight＋AUTHORING gate＋全終端解放のtable-driven oracleへ改訂。削除分のobsolete理由（E-7解消・特例廃止）をPRに記録 | AC-4/6/9 |
+| `lawnchair/res/values/strings.xml`, `values-ja/strings.xml` | 新規: T-05 entry label/subtitle、operation active中frozen理由（D-03語彙）、他authoring占有/single-flight用retry文言（frozen理由と区別される。EN/ja対訳）。削除（reference grep確認後）: `exchange_strategy_frozen_import`/`exchange_strategy_frozen_continuing`/`exchange_import_strategy_busy`/`exchange_import_cta_strategy_busy`。`manual_organization_strategy_section`はT-05側で継続利用またはtitle用新設に置換 | AC-8。孤立resource排除（spec 123収束） |
+| `tests/unit/app/lawnchair/organizer/ui/StrategyWriteArbiterTest.kt` | restart系oracle（restart系seam・`RESTART_RESERVED`/`RESTARTING` window・`restartThrows`）を削除、single-flight（`RefusedWriteBusy`）＋typed開始outcome（`RefusedRunOrRecoveryActive`/`RefusedAuthoringBusy`。fake gate＋fake `runOrRecoveryActive`で決定的に）＋全終端解放のtable-driven oracleへ改訂。削除分のobsolete理由（E-7解消・特例廃止）をPRに記録 | AC-4/6/9 |
 | `tests/unit/app/lawnchair/organizer/ui/ManualOrganizationRunTest.kt`（または隣接新設） | AC-9(a)(d): 実lease使用で書込停止中`start()`→`Busy`、終端state群（`Applied`/`NoChanges`/typed failure/`Stale`/`Cancelled`）後に`operationActive == false`かつ書込可能。`operationActive` projectionの遷移test | AC-9（前版review「高」「中」の必須oracle） |
 | `tests/unit/app/lawnchair/organizer/ui/exchange/ExchangeFlowStateHolderTest.kt` | truth table test（1526〜1540行目）、`strategyArbiterBusy`連成test（1361〜1377/1546〜1600行目）、status string一覧のstrategy 4件（1709〜1714行目）を削除・更新。obsolete理由（picker run面撤去・restart廃止）をPRに記録。strategy非依存の残testは無編集green | AC-4/7 |
 | `tests/organizer-instrumentation/app/lawnchair/organizer/ui/exchange/ExchangeImportSuccessInstrumentationTest.kt` | `receiptRefusedByTheStrategyArbiterStaysRetryableFromTheHeldText`（311〜344行目）を削除（obsolete理由をPRに記録）。他は無編集 | AC-4/7 |
 | `tests/organizer-instrumentation/app/lawnchair/organizer/ui/StrategyPickerInstrumentationTest.kt` | hostをrun面composeからT-05 destination composeへ付け替え。既存assert（catalog/default-as-effective/fail-closed/selectableGroup/parent row truth/200% font/書込公開/再選択no-op）は維持。実行面の否定的観測testを追加 | AC-1/3/5 |
-| `tests/organizer-instrumentation/app/lawnchair/ui/preferences/destinations/StrategyPickerFreezeInstrumentationTest.kt` | frozen理由をoperation active用新stringへ更新。exchange系理由case（`continuingFreezeUsesItsOwnReasonCopy`等）を削除しobsolete理由を記録。frozen affordance本体（disabled＋live region）oracleは維持 | AC-2/8 |
+| `tests/organizer-instrumentation/app/lawnchair/ui/preferences/destinations/StrategyPickerFreezeInstrumentationTest.kt` | frozen理由をoperation active用新stringへ更新。exchange系理由case（`continuingFreezeUsesItsOwnReasonCopy`等）を削除しobsolete理由を記録。frozen affordance本体（disabled＋live region）oracleは維持。typed outcome経由のretry文言通知（frozen理由と文言が区別されること）のassertを追加 | AC-2/8 |
 | `tests/organizer-instrumentation/app/lawnchair/organizer/ui/OrganizerHubPreferencesInstrumentationTest.kt` | 材料`PreferenceGroup`に「整理方針」entryが存在しT-05へ開くnavigation assertを追加 | AC-1 |
 | `specs/182-layout-strategy-catalog/spec.md` | §Preview integration第1bullet（225行目）を材料面T-05配置・operation不在時のみ書込可・callerはrestartしない へ改訂。§Selection contract write-authority step 4（146行目）を「on success, the caller starts a fresh compose/plan cycle」→「the committed selection reaches planning through the next composer read of a future run; the caller never dismisses or restarts an active run」へ改訂。Scenario（322行目）「selection write is validated...」のrun面表記と「strategy change replans...」を（preview表示中の変更は不可能になった旨へ）改訂。Change historyへ追記 | Issue本文「Spec」節・処分文書§3.9（AC-7） |
 | `specs/283-strategy-picker-selected-affordance/spec.md` | Non-goalsの「run 表面への配置の変更」凍結と「dismiss + 再計画の挙動変更」凍結を解除し、AC-1〜AC-9がT-05に適用される旨を追記。Change historyへ追記（契約節本体は変更しない） | 同上（AC-5/7） |
@@ -329,8 +359,8 @@ Launcher3 bridge、selection store format、preview面のstrategy identity表示
 | AC-5 | 既存picker a11y oracle（T-05 rehost）+ light/dark screenshot（spec 283 AC-7 pattern） | 対象class filter + screenshot evidence |
 | AC-6 | single-flight table-driven unit test（in-flight中2本目不開始・終端別`Idle`復帰） | unit test |
 | AC-7 | strategy非依存exchange test無編集green + specs 182/283/328と処分文書のdiff review（改訂箇所＝spec Scope節＋Contract notes 2境界） | 同上 + PR diff review |
-| AC-8 | frozen理由live region assert、string diff（EN/ja対訳）、削除string reference grep 0件 | instrumentation + `git grep` + `./gradlew spotlessCheck` |
-| AC-9 | unit: (a) 書込publication前停止→`start()`=`Busy`、(b) `RUN`保持中の書込不開始、(c) 全終端での`AUTHORING`解放（table-driven）、(d) 終端state群後の書込可能 | unit test（実`OrganizationOperationLease`を使用するcaseを含む） |
+| AC-8 | frozen理由＋retry文言のlive region assert（文言の区別を含む）、string diff（EN/ja対訳）、削除string reference grep 0件 | instrumentation + `git grep` + `./gradlew spotlessCheck` |
+| AC-9 | unit: (a) 書込publication前停止→`start()`=`Busy`、(b) `RUN`保持中の選択が`RefusedRunOrRecoveryActive`＋store非呼出、(b2) gate占有＋projection false（他`AUTHORING`保持を模擬）の選択が`RefusedAuthoringBusy`＋store非呼出、(c) 全終端での`AUTHORING`解放（table-driven）、(d) 終端state群後の書込可能 | unit test（実`OrganizationOperationLease`を使用するcaseを含む。outcome分類はfake gate/projectionで決定的に） |
 
 含めるべき観点: UI（T-05構成・実行面否定的観測・hub navigation）、既存回帰（store/
 composer/exchange無編集green）、accessibility（frozen理由読み上げ、radio group、
@@ -383,11 +413,12 @@ composer/exchange無編集green）、accessibility（frozen理由読み上げ、
 
 1. [ ] 実装開始条件の確認: 本spec/plan `accepted`（Contract notes 1〜3解消済み）。
        #365/#366/#367 merge済みは確認済み（baseline `ca9c171e91c2`）。
-2. [ ] 失敗するtestを先に: AC-9のlease相互排他oracle（(a)〜(c)）とoperation lifetime
-       projection testを追加（赤で固定）。実行面strategy UI不在の否定的観測assertと
-       hub→T-05 navigation assertを追加（AC-1を赤で固定）。
+2. [ ] 失敗するtestを先に: AC-9のlease相互排他oracle（(a)〜(c)、(b2)のtyped outcomeを
+       含む）とoperation lifetime projection testを追加（赤で固定）。実行面strategy UI不在の
+       否定的観測assertとhub→T-05 navigation assertを追加（AC-1を赤で固定）。
 3. [ ] `StrategyWriteArbiterTest`を先に改訂: restart oracle削除＋`AUTHORING` gate/
-       single-flight oracle新設（AC-2/4/6/9を赤で固定）。obsolete理由をPR草稿へ記録。
+       typed outcome/single-flight oracle新設（AC-2/4/6/9を赤で固定）。obsolete理由を
+       PR草稿へ記録。
 4. [ ] arbiter簡素化（restart状態・seam削除＋lease参加）＋`operationActive`新設＋
        T-05 destination新設（route/登録/destination/hub entry）＋run面からのpicker撤去
        （AC-1/2/4/9）。
