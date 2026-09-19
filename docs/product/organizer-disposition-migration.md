@@ -1,7 +1,8 @@
 # Organizer Disposition and Migration Plan
 
-> Status: proposed（#362の成果物。owner reviewでacceptedになるまで実装Issueは本書の判断を確定扱いにしない）
+> Status: accepted（owner review 2026-09-19。ChatGPT reviewを3回実施し、R1/R2の指摘を解消したうえでR3は指摘なし・Approve相当（[R1](https://github.com/nunu1733/NunuLauncher/pull/378#issuecomment-5733985885) / [R2](https://github.com/nunu1733/NunuLauncher/pull/378#issuecomment-5734075706) / [R3](https://github.com/nunu1733/NunuLauncher/pull/378#issuecomment-5734136034)）。ownerがmergeと#362/#357〜#360のcloseを指示。本書は判断文書であり実装を要求しないため、実装の所有は#365〜#377（依存順は§8）が持つ）
 > Proposed: 2026-09-19
+> Accepted: 2026-09-19
 > Parent: [Issue #362](https://github.com/nunu1733/NunuLauncher/issues/362)（Epic [#356](https://github.com/nunu1733/NunuLauncher/issues/356) Phase C）
 > Inputs: [Organizer TO-BE UX decision（accepted）](./organizer-to-be-ux.md)（D-01〜D-17）、[Organizer AS-IS UX/data flow audit](../assessment/organizer-as-is-ux-data-flow-audit.md)（audited HEAD `b728ed4d9f30ee797f6e086da110fdc86215da92`、findings F-01〜F-10 / E-1〜E-7 / 監査D-1〜D-9）
 > 本書の役割: 既存Issue/spec/実装の処分（Continue / Amend-Supersede / Defer / Retire）の正本、normative doc更新順序、persistence/navigation migration方針、実装backlog（#365〜#377）の依存順。TO-BE方針そのものはorganizer-to-be-ux.mdが正本であり、本書はそれを変更しない。

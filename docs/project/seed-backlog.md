@@ -1,7 +1,7 @@
 # Seed GitHub Backlog
 
 > Status: Tracking
-> Updated: 2026-08-14
+> Updated: 2026-09-19
 > Source of truth: scope、成果物、依存関係、状態は各GitHub Issue。本書は起票済みIssueへのnavigationと、未起票提案だけを管理する。
 
 ## Issue navigation
