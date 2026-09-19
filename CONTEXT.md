@@ -189,8 +189,8 @@ validated intentをorganizer runへ適用する時点で、runの確定した対
 _Avoid_: staleチェック (配置構造変化の検出とは別段)、再検証 (availability再検証と混同)
 
 **Organizer hub (整理ハブ)**:
-Organizerの恒常作業領域となる単一の入口面 ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) D-01/D-02)。durable status・進行中のAI依頼・取り込み済み提案・最近のrun結果 (process内のみ) を示すstatus cardと、整理の開始、材料群、診断への導線を1面に集約する。設定側には入口rowだけを残す。
-_Avoid_: 設定画面 (入口rowを指す場合)、ダッシュボード
+Organizerの恒常作業領域かつprimary entry面 ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) D-01/D-02、§5.2)。durable status・進行中のAI依頼・取り込み済み提案・最近のrun結果 (process内のみ) を示すstatus cardと、整理の開始、材料群、診断への導線を1面に集約する。設定側には入口rowだけを残す。onboarding提案 (T-19)・workspace長押しlock (T-20)・選択面からのAI相談・safe terminalからの診断等のsecondary entryは維持される。
+_Avoid_: 設定画面 (入口rowを指す場合)、ダッシュボード、唯一の入口 (secondary entryを否定する誤解)
 
 **材料 (organizer materials)**:
 分類・ロック・整理方針・使用状況ヒントの総称 ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) §10)。run外の恒常storeへ即時保存されるauthoring対象であり、run中の恒常authoringは不可で「中断してから変更する」が唯一の規則である (D-03)。

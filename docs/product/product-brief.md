@@ -32,7 +32,7 @@ Organizerは設定の一部ではなく、独立した作業領域（Organizer h
 2. **User intent wins** — 明示的なlockとoverrideは推定より優先する。
 3. **Predictable automation** — 同じ条件では同じ結果と理由を返す。
 4. **Local first** — 通常動作はofflineで完結し、外部送信は明示的なopt-inとする。
-5. **Progressive control** — defaultは簡単に使え、必要なユーザーだけrule詳細へ進める。Organizerでは、hubを唯一の入口とし、defaultの「そのまま整理」で最短経路を提供する。rule詳細（材料）とAI相談（整理案の作り方の1つ）もhubから進める（[organizer-to-be-ux.md](./organizer-to-be-ux.md) D-01/D-04）。
+5. **Progressive control** — defaultは簡単に使え、必要なユーザーだけrule詳細へ進める。Organizerでは、設定からのprimary entryをhubに一本化し、defaultの「そのまま整理」で最短経路を提供する。rule詳細（材料）とAI相談（整理案の作り方の1つ）もhubから進める（[organizer-to-be-ux.md](./organizer-to-be-ux.md) D-01/D-04、§5.2）。onboarding提案・workspace長押しlock等のsecondary entryは維持する。
 6. **Upstream sustainable** — launcher本体の品質を上流から取り込み続けられる差分にする。
 
 ## MVP outcome
