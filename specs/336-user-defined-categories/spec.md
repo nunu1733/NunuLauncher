@@ -116,6 +116,8 @@ The resulting stale semantics are exact:
 
 At least the following, localized and reachable from the existing Home Screen settings area adjacent to the #99 override editor:
 
+> Issue #367 (entry notation only, contract unchanged): since the organizer materials relocation (TO-BE §5.2), the settings-side entry to this destination is the Organizer hub (T-01) materials group instead of a Home-screen Layout-group row. The “Home Screen settings area” wording above is satisfied by that hub-routed entry; the authoring UX, store, and contracts are unchanged.
+
 - **Create**: name entry with validation feedback; success shows the new category in the catalog list and in the assignment selector.
 - **Rename**: name edit; the operation is presented as renaming the same category; committed state keeps assignments and grouping.
 - **Delete**: confirmation that states how many apps are currently assigned and that those apps return to automatic classification; deletion never offers a "move to another category" silent remap.
