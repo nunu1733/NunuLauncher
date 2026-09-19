@@ -1,7 +1,7 @@
 # Product Brief
 
 > Status: Accepted for the organizer MVP; Later capabilities remain deferred
-> Updated: 2026-08-23
+> Updated: 2026-09-19
 
 ## Vision
 
@@ -24,13 +24,15 @@
 
 NunuLauncherは、ローカルrule、ユーザーoverride、ロック配置を使い、変更前に説明可能なplanを作る。MVPでは手動runまたはonboardingからreviewして適用し、必要なら直前の状態へ戻せる。新規アプリへのpackage-event増分配置はLaterである。
 
+Organizerは設定の一部ではなく、独立した作業領域（Organizer hub）として提供する。整理の開始、分類・ロック・方針・使用状況ヒント（材料）、進行中の状態、過去の結果の再発見を1つの面に集約する。AI相談（外部agent交換）は独立サブシステムではなく、整理案の作り方の1つとして同じ整理flowに統合する（[organizer-to-be-ux.md](./organizer-to-be-ux.md) D-01/D-04）。
+
 ## Product principles
 
 1. **Safety before neatness** — 並びの良さより既存layoutと復旧可能性を優先する。
 2. **User intent wins** — 明示的なlockとoverrideは推定より優先する。
 3. **Predictable automation** — 同じ条件では同じ結果と理由を返す。
 4. **Local first** — 通常動作はofflineで完結し、外部送信は明示的なopt-inとする。
-5. **Progressive control** — defaultは簡単に使え、必要なユーザーだけrule詳細へ進める。
+5. **Progressive control** — defaultは簡単に使え、必要なユーザーだけrule詳細へ進める。Organizerでは、hubを唯一の入口とし、defaultの「そのまま整理」で最短経路を提供する。rule詳細（材料）とAI相談（整理案の作り方の1つ）もhubから進める（[organizer-to-be-ux.md](./organizer-to-be-ux.md) D-01/D-04）。
 6. **Upstream sustainable** — launcher本体の品質を上流から取り込み続けられる差分にする。
 
 ## MVP outcome

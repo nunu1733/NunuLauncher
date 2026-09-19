@@ -157,7 +157,7 @@ AI回答のvalidation通過後、run接続 (attach / fresh run開始) の前に�
 _Avoid_: 適用完了 (未適用であることとの混同)、プレビュー (#194 previewとの混同)
 
 **取り込み破棄 (Import Discard)**:
-取り込み成功状態をCTAなしに閉じる操作 ([spec 328](./specs/328-exchange-import-success-state/spec.md))。pendingなvalidated intentを破棄する (zero-write)。export sessionはinvalidateしないため、依頼が有効な間は同じ回答textを再取り込みできる。入口は明示ボタン (追加確認なし) とsystem Back (確認dialog) の2つで、CTA処理中はどちらも不受理。
+取り込み成功状態をCTAなしに閉じる操作 ([spec 328](./specs/328-exchange-import-success-state/spec.md))。pendingなvalidated intentを破棄する (zero-write)。export sessionはinvalidateしないため、依頼が有効な間は同じ回答textを再取り込みできる。入口は明示ボタン (追加確認なし) とsystem Back (確認dialog) の2つで、CTA処理中はどちらも不受理。TO-BEの語彙規約 (D-13) の下では本操作は「破棄」語彙と必須確認の対象であり、spec 328の確認契約の改訂は後続実装Issueが行う。
 _Avoid_: 取り消し (apply済み変更のrollbackとの混同。何も適用されていない)
 
 **判断なし項目 (no-judgment items)**:
@@ -187,3 +187,23 @@ _Avoid_: 仮配置 (配置の作成を示唆する)、新規アイテム (Add行
 **scope binding gate (scope束縛検証)**:
 validated intentをorganizer runへ適用する時点で、runの確定した対象scopeのcandidate集合がexchange exportの対象scopeと完全一致し、各候補の投影 (identity + availability + 解決済み分類) がexport時と一致することを検証するfail-closedな検証step ([spec 331](./specs/331-exchange-target-scope-coupling/spec.md))。違反はtyped失敗 `SCOPE_MISMATCH` としてzero-write処理される。
 _Avoid_: staleチェック (配置構造変化の検出とは別段)、再検証 (availability再検証と混同)
+
+**Organizer hub (整理ハブ)**:
+Organizerの恒常作業領域となる単一の入口面 ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) D-01/D-02)。durable status・進行中のAI依頼・取り込み済み提案・最近のrun結果 (process内のみ) を示すstatus cardと、整理の開始、材料群、診断への導線を1面に集約する。設定側には入口rowだけを残す。
+_Avoid_: 設定画面 (入口rowを指す場合)、ダッシュボード
+
+**材料 (organizer materials)**:
+分類・ロック・整理方針・使用状況ヒントの総称 ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) §10)。run外の恒常storeへ即時保存されるauthoring対象であり、run中の恒常authoringは不可で「中断してから変更する」が唯一の規則である (D-03)。
+_Avoid_: 設定 (runと区別する語彙として使う場合)、プレファレンス
+
+**依頼 (AI相談の依頼)**:
+「AIに相談」で作る、export session (durableな対応記録) と送出文書 (交換パッケージ) の一組 ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) §10)。active依頼は単一で24h有効であり、依頼作成時点のホームで固定される (D-09)。置換・未送信依頼の破棄・TTLで消える。
+_Avoid_: エクスポートセッション (構成要素の1つを指す既存語)、AI連携
+
+**取り込み済み提案 (取り込み済み・未適用の提案)**:
+AI回答のvalidation通過後、run接続の前に存在する提案状態 ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) D-08)。TO-BEでは依頼と同一の有効期限 (24h) を持つdurable artifactとし、process死・画面離脱で消えない。期限切れ・置換・破棄で無効になる。現行の取り込み成功状態 ([spec 328](./specs/328-exchange-import-success-state/spec.md)) の保持はprocess-localであり、durable化は後続実装Issueのspec改訂で行う。
+_Avoid_: 適用済み提案 (未適用である)、プレビュー (run接続後の確認対象と混同)
+
+**中断・破棄・キャンセル (中止語彙規約)**:
+ユーザー向け中止語彙の規約 ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) D-13/§9)。不可逆に捨てる操作 (取り込み済み提案の破棄、依頼の置換、未送信依頼の無効化) は「破棄」ラベルと必須確認、zero-writeでrunを止めてhubへ戻るのは「中断」、何も壊さず中止するのは「キャンセル」(確認不要) とする。「キャンセル」ラベルの不可逆操作への混用を禁止し、現行のpre-send cancelは「破棄」へ改める (spec 205側の語彙改訂は後続実装Issueが行う)。
+_Avoid_: Cancelの混用 (zero-write中断と不可逆session無効化の同一ラベル化)
