@@ -1326,7 +1326,10 @@
     <string name="exchange_entry_import">Import reply</string>
     <!-- Issue #372: T-15 request-creation face (en) -->
     <string name="exchange_request_title">Create a request to consult the AI</string>
-    <string name="exchange_request_active_line">You have an unsent request.</string>
+    <!-- Issue #372 (implementation review): the pre-display must not claim a
+         send state — `sent` is process-local, so a delivered request still
+         reads as active here. -->
+    <string name="exchange_request_active_line">You have an active request.</string>
     <plurals name="exchange_request_remaining_hours">
         <item quantity="one">About %1$d hour left</item>
         <item quantity="other">About %1$d hours left</item>

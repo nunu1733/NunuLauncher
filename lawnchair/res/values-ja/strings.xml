@@ -413,7 +413,10 @@
     <string name="exchange_entry_import">回答を取り込む</string>
     <!-- Issue #372: T-15 request-creation face (ja正本) -->
     <string name="exchange_request_title">AIに相談する依頼を作る</string>
-    <string name="exchange_request_active_line">未送信の依頼があります。</string>
+    <!-- Issue #372 (implementation review): the pre-display must not claim a
+         send state — `sent` is process-local, so a delivered request still
+         reads as active here. -->
+    <string name="exchange_request_active_line">有効な依頼があります。</string>
     <plurals name="exchange_request_remaining_hours">
         <item quantity="other">残り約%1$d時間</item>
     </plurals>

@@ -313,15 +313,22 @@ class ExchangeFlowStateHolder(
      * Issue #331: when [scoped] is set (the run-in entry), generation composes
      * the export from the frozen selection via the scope-composed canonical
      * seam instead of the idle full-organization composition.
+     *
+     * Issue #372 (implementation review, AC-13 structural gate): the gate is
+     * decided from a FRESH `activeSession()` read here — never from the face's
+     * snapshot. The snapshot is display-only: a failure settle (or any other
+     * store change) after it was captured must not let an unconfirmed
+     * generation start replace an active session.
      */
     fun requestGeneration(
-        replacementConfirmationRequired: Boolean,
         tier: PrivacyTier,
         scoped: Pair<List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>, Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>>? = null,
     ) {
-        if (replacementConfirmationRequired) {
+        if (controller.activeSession() != null) {
             screen = ExchangeScreen.ReplacementConfirm(tier, scoped)
-        } else if (scoped != null) {
+            return
+        }
+        if (scoped != null) {
             generateScoped(tier, scoped.first, scoped.second)
         } else {
             generate(tier)
@@ -380,17 +387,21 @@ class ExchangeFlowStateHolder(
 
             is ExchangeGenerationResult.InputNotReady -> {
                 status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_INPUT_NOT_READY)
-                screen = ExchangeScreen.SelectingPrivacy(false)
+                // Issue #372 (implementation review, AC-13): failure settles
+                // re-read the store truth — E1 may still be active here (the
+                // failed attempt replaced nothing), so the next start must see
+                // the confirmation requirement again.
+                screen = readActiveRequestIntoSelecting()
             }
 
             ExchangeGenerationResult.SessionStoreFailure -> {
                 status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_STORE_FAILURE)
-                screen = ExchangeScreen.SelectingPrivacy(false)
+                screen = readActiveRequestIntoSelecting()
             }
 
             is ExchangeGenerationResult.EncodeFailure -> {
                 status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_OVERSIZE)
-                screen = ExchangeScreen.SelectingPrivacy(false)
+                screen = readActiveRequestIntoSelecting()
             }
         }
     }
@@ -400,6 +411,13 @@ class ExchangeFlowStateHolder(
      * invalidates exactly the disclosure's own (unsent) session. After a
      * successful transport the package may already have left the device, so
      * the session survives and the reply stays importable (review P1).
+     *
+     * Issue #372 (implementation review): a BUSY unsent disclosure — transport
+     * in flight, or a cancel already accepted and its invalidate still in
+     * flight — refuses to close. Closing it would let the user leave (and
+     * dispose the holder's composition-owned scope) before the settle, which
+     * is exactly the race the Back contract's BLOCKED action guards; the
+     * visible action must not re-open it.
      */
     fun closeDisclosure() {
         // Decide and mark synchronously on Main from the holder's CURRENT
@@ -408,14 +426,23 @@ class ExchangeFlowStateHolder(
         // no further transport can start or settle against it, and the
         // session invalidated below is exactly the never-sent one.
         val disclosing = (screen as? ExchangeScreen.Disclosing)?.state
-        if (disclosing == null || !disclosing.cancelable) {
+        if (disclosing == null) {
             close()
             return
         }
-        screen = ExchangeScreen.Disclosing(disclosing.copy(cancelling = true))
-        scope.launch(Dispatchers.IO) {
-            controller.cancelDisclosure(disclosing.session)
-            withContext(uiDispatcher) { close() }
+        when {
+            disclosing.cancelable -> {
+                screen = ExchangeScreen.Disclosing(disclosing.copy(cancelling = true))
+                scope.launch(Dispatchers.IO) {
+                    controller.cancelDisclosure(disclosing.session)
+                    withContext(uiDispatcher) { close() }
+                }
+            }
+
+            disclosing.sent -> close()
+
+            // In flight or cancelling: refuse — wait for the settle.
+            else -> Unit
         }
     }
 
@@ -945,7 +972,7 @@ fun LazyListScope.exchangeFlowItems(
                         activeRequestExpiresAtEpochMs = current.activeRequestExpiresAtEpochMs,
                         activeRequestReadAtEpochMs = current.activeRequestReadAtEpochMs,
                         requiresConfirmation = current.replacementConfirmationRequired,
-                        onGenerate = { tier -> holder.requestGeneration(current.replacementConfirmationRequired, tier, scoped) },
+                        onGenerate = { tier -> holder.requestGeneration(tier, scoped) },
                         onCancel = holder::close,
                         onOpenImport = holder::openImport,
                     )
@@ -1191,24 +1218,35 @@ private fun ExchangePrivacySelection(
                     .semantics { liveRegion = LiveRegionMode.Assertive },
             )
         }
-        Row(
+        // Issue #372 (implementation review, EX-AC-10): the three actions
+        // stack vertically so 200% font scale reflows the column instead of
+        // clipping a fixed-width row (ja copy is the widest case).
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Button(
                 onClick = {
                     onGenerate(if (labelInclusive) PrivacyTier.EXTERNAL_WITH_LABELS else PrivacyTier.EXTERNAL_REDACTED)
                 },
-                modifier = Modifier.testTag("exchange-generate"),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("exchange-generate"),
             ) {
                 Text(stringResource(R.string.exchange_generate))
             }
-            OutlinedButton(onClick = onOpenImport) {
+            OutlinedButton(
+                onClick = onOpenImport,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Text(stringResource(R.string.exchange_entry_import))
             }
-            OutlinedButton(onClick = onCancel) {
+            OutlinedButton(
+                onClick = onCancel,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Text(stringResource(R.string.exchange_cancel))
             }
         }
@@ -1403,14 +1441,27 @@ private fun ExchangeDisclosure(
             OutlinedButton(
                 onClick = { if (state.transportAllowed) fileSaver.launch("nunu-launcher-exchange.txt") },
                 enabled = state.transportAllowed,
-                modifier = Modifier.testTag("exchange-send-file"),
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("exchange-send-file"),
             ) {
                 Text(stringResource(R.string.exchange_save_file))
             }
+            // Issue #372 (implementation review): during `cancelling` the
+            // invalidate is still in flight — the close slot disables, so the
+            // face cannot be left (nor the flow closed) before the settle;
+            // this mirrors the Back contract's BLOCKED action.
             OutlinedButton(
                 onClick = { if (state.cancelable) onDiscardRequest() else holder.closeDisclosure() },
-                enabled = if (state.cancelable) true else !state.transportInFlight,
-                modifier = Modifier.testTag("exchange-discard"),
+                enabled = when {
+                    state.cancelable -> true
+                    state.cancelling -> false
+                    state.sent -> true
+                    else -> !state.transportInFlight
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("exchange-discard"),
             ) {
                 Text(
                     stringResource(
@@ -1672,12 +1723,18 @@ fun ExchangeDiscardConfirmDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
             )
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) {
+            TextButton(
+                onClick = onConfirm,
+                modifier = Modifier.testTag("exchange-discard-confirm"),
+            ) {
                 Text(stringResource(R.string.exchange_discard_confirm_confirm))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.testTag("exchange-discard-dismiss"),
+            ) {
                 Text(stringResource(R.string.exchange_cancel))
             }
         },

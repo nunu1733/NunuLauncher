@@ -9,6 +9,7 @@ import app.lawnchair.organizer.personalization.exchange.RecognizedImportInfo
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -191,6 +192,53 @@ class ExchangeRequestFlowContractTest {
         }
     }
 
+    @Test
+    fun activeRequestCopyDoesNotClaimASendState() {
+        // Issue #372 implementation review: `sent` is process-local, so the
+        // durable pre-display must stay send-state-neutral (a delivered
+        // request still reads as active within its TTL).
+        for (localeDir in listOf("values", "values-ja")) {
+            val value = lawnchairStringsXml(localeDir)
+                .readText()
+                .substringAfter("name=\"exchange_request_active_line\"")
+                .substringBefore("</string>")
+            assertFalse("$localeDir must not claim 未送信/unsent", value.contains("未送信") || value.contains("unsent"))
+        }
+    }
+
+    // endregion
+
+    // region EX-AC-02: idle consultation never blocks constant authoring
+
+    @Test
+    fun authoringLeaseStaysAcquirableWhileTheIdleFlowFacesExist() {
+        // The idle consultation holds NO RUN and NO AUTHORING lease, so the
+        // authoring seam must stay free while every request face is showing.
+        // The faces below are pure display states of the holder.
+        val lease = app.lawnchair.organizer.ui.OrganizationOperationLease
+            .tryAcquire(app.lawnchair.organizer.ui.OrganizationOperationLease.Kind.AUTHORING)
+        assertNotNull("authoring must acquire while the request faces exist", lease)
+        lease!!.close()
+    }
+
+    @Test
+    fun holderAndControllerNeverTouchTheLeaseSeam() {
+        // Structural oracle: the request-flow holder and controller never
+        // reference the operation lease seam (the lease rejection machinery is
+        // run-owned; the idle consultation must not participate in it).
+        val sources = listOf(
+            "lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeFlowUi.kt",
+            "lawnchair/src/app/lawnchair/organizer/integration/exchange/ExchangeFlowController.kt",
+        )
+        for (rel in sources) {
+            val text = projectFile(rel).readText()
+            assertFalse(
+                "$rel must not reference the lease seam",
+                text.contains("OrganizationOperationLease") || text.contains("tryAcquire"),
+            )
+        }
+    }
+
     // endregion
 
     // region helpers
@@ -236,6 +284,16 @@ class ExchangeRequestFlowContractTest {
             dir = dir?.parentFile
         }
         error("lawnchair strings.xml not found for $localeDir from ${System.getProperty("user.dir")}")
+    }
+
+    private fun projectFile(relativePath: String): File {
+        var dir: File? = File(System.getProperty("user.dir"))
+        repeat(4) {
+            val candidate = File(dir, relativePath)
+            if (candidate.exists()) return candidate
+            dir = dir?.parentFile
+        }
+        error("$relativePath not found from ${System.getProperty("user.dir")}")
     }
 
     // endregion

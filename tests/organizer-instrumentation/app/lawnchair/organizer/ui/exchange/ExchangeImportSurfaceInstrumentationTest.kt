@@ -1,23 +1,35 @@
 package app.lawnchair.organizer.ui.exchange
 
 import android.content.Context
+import android.app.Activity
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.Density
+import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.test.core.app.ApplicationProvider
+import androidx.core.view.drawToBitmap
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.lawnchair.organizer.integration.exchange.ExchangeFlowController
 import app.lawnchair.organizer.integration.exchange.ExchangeInputResult
@@ -59,6 +71,7 @@ import app.lawnchair.ui.theme.LawnchairTheme
 import com.android.launcher3.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -138,24 +151,55 @@ class ExchangeImportSurfaceInstrumentationTest {
         )
     }
 
-    private fun setContent(holder: ExchangeFlowStateHolder, fontScale: Float = 1f, onDiscardRequest: () -> Unit = {}) {
+    private fun setContent(
+        holder: ExchangeFlowStateHolder,
+        fontScale: Float? = null,
+        discardRequested: androidx.compose.runtime.MutableState<Boolean>? = null,
+        preserveDeviceDensity: Boolean = false,
+    ) {
         composeRule.setContent {
-            CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = fontScale)) {
+            // Issue #372 (implementation review, EX-AC-10): the 200% oracle
+            // (preserveDeviceDensity) overrides ONLY the font scale and keeps
+            // the REAL device density; every other test keeps the historical
+            // Density(1f) fixture.
+            val densityOverride = when {
+                preserveDeviceDensity && fontScale != null -> {
+                    val d = LocalDensity.current
+                    Density(d.density, fontScale = fontScale)
+                }
+                else -> Density(1f, fontScale = fontScale ?: 1f)
+            }
+            CompositionLocalProvider(LocalDensity provides densityOverride) {
                 LawnchairTheme {
                     // Issue #372: the same Back wiring as the host — the flow
                     // handler before the import-success handler — so the Back
                     // contract is exercised against the real dispatcher.
-                    ExchangeFlowBackHandler(holder = holder, onDiscardRequest = onDiscardRequest)
+                    ExchangeFlowBackHandler(
+                        holder = holder,
+                        onDiscardRequest = { discardRequested?.value = true },
+                    )
                     ExchangeImportSuccessBackHandler(holder)
                     LazyColumn {
                         exchangeFlowItems(
                             holder = holder,
-                            onDiscardRequest = onDiscardRequest,
+                            onDiscardRequest = { discardRequested?.value = true },
                             clipboardTransport = { _, _ -> ExchangeTransportResult.Success },
                             shareTransport = { _, _ -> ExchangeTransportResult.Success },
                             fileTransport = FileExchangeTransport(context),
                         )
                     }
+                }
+                // The host raises ONE dialog for the T-16 破棄 button AND
+                // system Back; confirm runs the same closeDisclosure gate.
+                // The harness mirrors that convergence exactly.
+                if (discardRequested?.value == true) {
+                    ExchangeDiscardConfirmDialog(
+                        onConfirm = {
+                            discardRequested.value = false
+                            holder.closeDisclosure()
+                        },
+                        onDismiss = { discardRequested.value = false },
+                    )
                 }
             }
         }
@@ -327,13 +371,15 @@ class ExchangeImportSurfaceInstrumentationTest {
      * Issue #372 (EX-AC-08, rendered-UI oracle): the T-16 破棄 button does not
      * invalidate directly — it raises the host's ONE discard confirmation
      * (same entry as system Back); the confirm path runs the existing
-     * closeDisclosure gate.
+     * closeDisclosure gate and invalidates exactly the unsent session;
+     * dismissing keeps the T-16 face. The dialog exposes the confirm/
+     * dismiss affordances with explicit roles.
      */
     @Test
     fun discardButtonRoutesThroughTheHostConfirmation() {
         val holder = newHolder()
-        var discardRequested = false
-        setContent(holder, onDiscardRequest = { discardRequested = true })
+        val discardRequested = androidx.compose.runtime.mutableStateOf(false)
+        setContent(holder, discardRequested = discardRequested)
         composeRule.runOnUiThread {
             holder.openFlow()
             holder.generate(PrivacyTier.EXTERNAL_REDACTED)
@@ -342,23 +388,39 @@ class ExchangeImportSurfaceInstrumentationTest {
             composeRule.onAllNodesWithTag("exchange-discard").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithTag("exchange-discard").performClick()
+        composeRule.waitUntil(5_000) { discardRequested.value }
+        assertTrue("the face stays while the confirmation is up", holder.screen is ExchangeScreen.Disclosing)
+        composeRule.onNodeWithTag("exchange-discard-confirm-title").assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-discard-confirm").assertIsDisplayed().assertHasClickAction()
+        composeRule.onNodeWithTag("exchange-discard-dismiss").assertIsDisplayed().assertHasClickAction()
+
+        // Dismiss keeps package and request alive; the face continues.
+        composeRule.onNodeWithTag("exchange-discard-dismiss").performClick()
         composeRule.waitForIdle()
-        assertTrue("the 破棄 button must request the confirmation, not discard", discardRequested)
-        assertTrue("the face stays until the confirmation is accepted", holder.screen is ExchangeScreen.Disclosing)
+        assertFalse(discardRequested.value)
+        assertTrue(holder.screen is ExchangeScreen.Disclosing)
+
+        // Confirm runs the structural gate: only the unsent session dies.
+        composeRule.onNodeWithTag("exchange-discard").performClick()
+        composeRule.waitUntil(5_000) { discardRequested.value }
+        composeRule.onNodeWithTag("exchange-discard-confirm").performClick()
+        composeRule.waitForIdle()
+        assertTrue(holder.screen is ExchangeScreen.Closed)
     }
 
     /**
      * Issue #372 (EX-AC-11, rendered-UI oracle): the system-Back contract of
      * the request faces — T-15 Back closes zero-write, Back on a generating
      * face is consumed (the face stays and the generation still settles),
-     * Back on the unsent T-16 requests the discard confirmation, and Back on
-     * the sent T-16 closes with the request surviving.
+     * Back on the unsent T-16 raises the host's discard confirmation dialog
+     * (dismiss restores the T-16 face), and Back on the sent T-16 closes with
+     * the request surviving.
      */
     @Test
     fun backContractOnTheRequestFacesIsStructural() {
         val holder = newHolder()
-        var discardRequested = false
-        setContent(holder, onDiscardRequest = { discardRequested = true })
+        val discardRequested = androidx.compose.runtime.mutableStateOf(false)
+        setContent(holder, discardRequested = discardRequested)
 
         fun pressBack() {
             // The empty compose activity owns the dispatcher BackHandler
@@ -402,12 +464,17 @@ class ExchangeImportSurfaceInstrumentationTest {
             holder.screen is ExchangeScreen.Disclosing
         }
 
-        // Unsent T-16: Back raises the discard confirmation request and keeps
-        // the face.
-        discardRequested = false
+        // Unsent T-16: Back raises the discard confirmation dialog; dismissing
+        // it restores the T-16 face.
+        composeRule.runOnUiThread { discardRequested.value = false }
         pressBack()
-        assertTrue(discardRequested)
+        composeRule.waitUntil(5_000) { discardRequested.value }
+        composeRule.onNodeWithTag("exchange-discard-confirm-title").assertIsDisplayed()
         assertTrue(holder.screen is ExchangeScreen.Disclosing)
+        composeRule.onNodeWithTag("exchange-discard-dismiss").performClick()
+        composeRule.waitForIdle()
+        assertFalse(discardRequested.value)
+        composeRule.onNodeWithTag("exchange-disclosure-title").assertIsDisplayed()
 
         // After a transport success, Back is the zero-write close and the
         // request survives.
@@ -418,28 +485,172 @@ class ExchangeImportSurfaceInstrumentationTest {
     }
 
     /**
+     * Issue #372 (EX-AC-02, rendered-UI oracle): while the idle consultation
+     * flow is open (T-16 shown), the AUTHORING lease stays acquirable —
+     * constant materials authoring is never lease-rejected by the
+     * consultation, and the coordinator stays out of the run domain.
+     */
+    @Test
+    fun authoringLeaseStaysAcquirableWhileTheFlowIsOpen() {
+        val holder = newHolder()
+        setContent(holder)
+        composeRule.runOnUiThread {
+            holder.openFlow()
+            holder.generate(PrivacyTier.EXTERNAL_REDACTED)
+        }
+        composeRule.waitUntil(5_000) {
+            holder.screen is ExchangeScreen.Disclosing
+        }
+        composeRule.runOnUiThread {
+            val lease = app.lawnchair.organizer.ui.OrganizationOperationLease
+                .tryAcquire(app.lawnchair.organizer.ui.OrganizationOperationLease.Kind.AUTHORING)
+            checkNotNull(lease).close()
+        }
+        composeRule.onNodeWithTag("exchange-disclosure-title").assertIsDisplayed()
+    }
+
+    /**
      * Issue #372 (EX-AC-10): the restructured T-15/T-16 faces keep every
-     * critical action reachable and unclipped at 200% font scale (the
-     * summary-first face replaces the always-expanded package text, so the
-     * reflow stays bounded by design).
+     * critical action reachable, unclipped, and non-overlapping at 200% font
+     * scale on the REAL device viewport (density preserved, fontScale only).
+     * The T-15 actions stack vertically, so ja copy reflows the column.
      */
     @Test
     fun requestFacesKeepCriticalActionsReachableAtTwoHundredPercentFontScale() {
         val holder = newHolder()
-        setContent(holder, fontScale = 2f)
+        setContent(holder, fontScale = 2f, preserveDeviceDensity = true)
         composeRule.runOnUiThread { holder.openFlow() }
         composeRule.waitForIdle()
+        val rootWidth = composeRule.onRoot().fetchSemanticsNode().boundsInRoot.width
+        fun scrollTo(tag: String) {
+            composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag(tag))
+            composeRule.waitForIdle()
+        }
+        fun assertInsideViewport(tag: String) {
+            // Scroll to the node first (the lazy list places on-screen only);
+            // display + bounds then prove reachability without clipping.
+            scrollTo(tag)
+            composeRule.onNodeWithTag(tag).assertIsDisplayed().assertHasClickAction()
+            val bounds = composeRule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+            assertTrue(
+                "$tag must keep a non-empty, in-viewport bound at 200% (bounds=$bounds root=$rootWidth)",
+                bounds.width > 0f && bounds.left >= 0f && bounds.right <= rootWidth + 0.5f,
+            )
+        }
         composeRule.onNodeWithTag("exchange-request-title").assertIsDisplayed()
-        composeRule.onNodeWithTag("exchange-generate").assertIsDisplayed().assertHasClickAction()
-        composeRule.onNodeWithTag("exchange-request-active").assertDoesNotExist()
-
-        composeRule.runOnUiThread { holder.generate(PrivacyTier.EXTERNAL_REDACTED) }
+        assertInsideViewport("exchange-generate")
+        scrollTo("exchange-generate")
+        composeRule.onNodeWithTag("exchange-generate").performClick()
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithTag("exchange-discard").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithTag("exchange-send-clipboard").assertIsDisplayed().assertHasClickAction()
-        composeRule.onNodeWithTag("exchange-discard").assertIsDisplayed().assertHasClickAction()
-        composeRule.onNodeWithTag("exchange-disclosure-expand").assertIsDisplayed().assertHasClickAction()
+        assertInsideViewport("exchange-send-clipboard")
+        assertInsideViewport("exchange-send-share")
+        assertInsideViewport("exchange-send-file")
+        assertInsideViewport("exchange-discard")
+        assertInsideViewport("exchange-disclosure-expand")
+    }
+
+    /**
+     * Issue #372 (EX-AC-10 evidence): renders the request faces across
+     * light/dark × default/ja and writes PNG captures for the assessment
+     * record (docs/assessment/evidence/issue-372). The pulled files are the
+     * committed screenshot evidence.
+     */
+    /** EX-AC-10 evidence: default locale, light. */
+    @Test
+    fun captureEvidenceDefaultLight() = captureEvidence("default", dark = false)
+
+    /** EX-AC-10 evidence: default locale, dark. */
+    @Test
+    fun captureEvidenceDefaultDark() = captureEvidence("default", dark = true)
+
+    /** EX-AC-10 evidence: ja, light. */
+    @Test
+    fun captureEvidenceJaLight() = captureEvidence("ja", dark = false)
+
+    /** EX-AC-10 evidence: ja, dark. */
+    @Test
+    fun captureEvidenceJaDark() = captureEvidence("ja", dark = true)
+
+    /**
+     * Issue #372 (EX-AC-10 evidence): renders the T-15 and T-16 request faces
+     * under one locale/dark configuration and writes the PNG captures for the
+     * assessment record (docs/assessment/evidence/issue-372).
+     */
+    private fun captureEvidence(locale: String, dark: Boolean) {
+        val outDir = java.io.File(context.filesDir, "evidence-372").apply { mkdirs() }
+        val holder = newHolder()
+        composeRule.setContent {
+            val config = android.content.res.Configuration(context.resources.configuration).apply {
+                if (locale == "ja") setLocale(java.util.Locale.JAPAN)
+                uiMode = (uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK.inv()) or
+                    if (dark) {
+                        android.content.res.Configuration.UI_MODE_NIGHT_YES
+                    } else {
+                        android.content.res.Configuration.UI_MODE_NIGHT_NO
+                    }
+            }
+            val localized = context.createConfigurationContext(config)
+            // Re-provide the activity owners: shadowing LocalContext with the
+            // configuration context must not hide the registry owner that
+            // rememberLauncherForActivityResult resolves against.
+            val registryOwner = LocalActivityResultRegistryOwner.current
+                ?: error("no ActivityResultRegistryOwner")
+            // The empty test activity's window is light and the wallpaper-
+            // derived dynamic scheme is unavailable here, so the dark capture
+            // uses the base Material3 dark scheme with an explicit surface.
+            val scheme = if (dark) {
+                androidx.compose.material3.darkColorScheme()
+            } else {
+                androidx.compose.material3.lightColorScheme()
+            }
+            MaterialTheme(colorScheme = scheme) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(
+                        LocalContext provides localized,
+                        LocalActivityResultRegistryOwner provides registryOwner,
+                    ) {
+                        LazyColumn {
+                            exchangeFlowItems(
+                                holder = holder,
+                                onDiscardRequest = {},
+                                clipboardTransport = { _, _ -> ExchangeTransportResult.Success },
+                                shareTransport = { _, _ -> ExchangeTransportResult.Success },
+                                fileTransport = FileExchangeTransport(context),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        for (face in listOf("t15", "t16")) {
+            composeRule.runOnUiThread {
+                holder.openFlow()
+                if (face == "t16") holder.generate(PrivacyTier.EXTERNAL_REDACTED)
+            }
+            composeRule.waitForIdle()
+            if (face == "t16") {
+                composeRule.waitUntil(5_000) { holder.screen is ExchangeScreen.Disclosing }
+            }
+            // The lifecycle monitor is main-thread-only; capture on main.
+            var captured: android.graphics.Bitmap? = null
+            composeRule.runOnUiThread {
+                val resumed = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+                    .getInstance()
+                    .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED)
+                    .filterIsInstance<Activity>()
+                    .firstOrNull()
+                    ?: error("no resumed activity for capture")
+                captured = resumed.window.decorView.drawToBitmap()
+            }
+            val bitmap = checkNotNull(captured)
+            val name = "issue372-$face-$locale-${if (dark) "dark" else "light"}.png"
+            java.io.File(outDir, name).outputStream().use { stream ->
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)
+            }
+            println("evidence-372: $outDir/$name")
+        }
     }
 
     /**
