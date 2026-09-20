@@ -104,6 +104,7 @@ TO-BE relation: 整合 / 一部衝突 / 全体衝突 / 役割消滅。Orderは �
 - 処分: **Amend**（#369）。MFO-AC-01へ検出phaseを挿入し、D-06（候補0件時選択面非表示）を反映。MFO-18のdecision pair規定はT-10で維持されるため保持。
 - doc変更: spec 52改訂（#369のPRで実施。amended内容は上記3点に限定し、safe apply契約は触れない）。
 - runtime migration: 表示統合のみ。内部state machine・typed outcome不変。compatibility: process death時のrun喪失は現行どおり（D-08対象外）。test migration: ManualOrganizationRunTestのstate期待値は不変。表示面のinstrumentation（個別失敗面・選択面必須通過を固定するoracle）を更新し、obsolete理由（F-04/V-09の解消）をPRに記録。
+- 2026-09-20追記（[#369 re-entry review](https://github.com/nunu1733/NunuLauncher/issues/369#issuecomment-5740051014)対応）: 本項の「内部state machine・typed outcome不変」「ManualOrganizationRunTestのstate期待値は不変」は、D-06の0件時選択面非表示を**表示統合として実装する**ことで成立する（#369 spec RD-3）。coordinatorは0件でも既存どおり`State.Selecting`へ進入した直後にcoordinator内部の専用continuationでcomposed phaseへ継続する（遷移graph・entry条件・journal規則は不変）。UIは選択面を構成せず、更新されるtestは0件経路の継続timing oracleのみである（obsolete理由を実装PRへ記録）。あわせて、#369のT-09中断により検出中cancelがユーザー到達可能になることに伴い、検出完了後の進入判定と`RUN_STARTED`発行を同一lock下でatomic化するgateをcoordinatorに追加する。これは既存のjournal契約（composed phase前のcancelはjournalを空のままにする）の強制であり契約変更ではない（#369 spec RD-6）。
 
 ### 3.4 #53 onboarding — Continue（表記更新）
 

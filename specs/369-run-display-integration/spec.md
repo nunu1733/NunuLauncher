@@ -3,7 +3,7 @@ issue: "#369"
 status: draft
 requirements: [FR-004, FR-006, FR-015, NFR-009, NFR-011]
 risk: []
-updated: 2026-09-19
+updated: 2026-09-20
 ---
 
 # run面の表示を8ユーザー状態へ統合し、canonical順序（前置き→検出→[選択]→capture/plan→確認）を固定してD-06条件表示とD-13語彙規約を適用する
@@ -12,13 +12,13 @@ updated: 2026-09-19
 > [docs/product/organizer-to-be-ux.md](../../docs/product/organizer-to-be-ux.md)
 > （D-05, D-06, D-12, D-13, §5.1 T-07〜T-13, §5.3 canonical順序, §8.1 8状態, §8.3, §9）。
 > 本specは[Issue #369][1]の成果物である。statusが `draft` の間はimplementation-readyではない。
-> 前提: [Issue #366][2]のhub shell（T-01、「整理を開始」CTA）と[Issue #368][3]のstrategy
-> picker撤去・run中変更特例廃止が実装・merge済みであること（Issue本文 `Depends on`）。
-> #366はspec draft（branch `issue-366-spec-plan`、commit `bf00f96175`）、#368はspec/plan
-> draft（branch `issue-368-spec-plan`、commit `206a4c1198`）を接続先として参照している
-> （2026-09-19時点）。
+> 前提: [Issue #366][2]のhub shell（T-01、「整理を開始」CTA、PR #380 merge済み）と
+> [Issue #368][3]のstrategy picker撤去・run中変更特例廃止（PR 384、merge済み）
+> が適用済みであること（Issue本文 `Depends on`）。
 > 処分の正本: [docs/product/organizer-disposition-migration.md][4] §3.3/§3.13/§4.1
-> （PR #378、proposed）が本件を「spec 52/228 Amend、spec 210注記、#369が実行」と定める。
+> （accepted、PR #378 merge済み）が本件を「spec 52/228 Amend、spec 210注記、#369が実行」と
+> 定める。D-06の0件時選択面非表示を表示統合として実装し内部state machineを不変と保つ解釈は、
+> 処分文書§3.3の2026-09-20追記とResolved decisions RD-3に記録した。
 
 ## Problem
 
@@ -40,8 +40,12 @@ manual organization run面（`ManualOrganizationPreferences`）は、coordinator
 accepted TO-BE D-05/D-06/D-12/D-13は、run内canonical順序の固定、候補0件時の選択面非表示、
 typed失敗と入場前staleの「実行できませんでした」1面への統合、Back/Cancel/破棄の語彙規約の
 全体適用を決定した。**内部state machine・typed outcome・journal相関は変更しない**
-（表示統合であり、D-05の契約上の根拠）。唯一の状態遷移レベルの変化はD-06に伴う
-0件時の`Selecting`不進入であり、Contract notes 3で範囲を限定して定める。
+（表示統合であり、D-05の契約上の根拠）。D-06の候補0件時の選択面非表示も表示レベルの統合とし
+て実装する（Resolved decisions RD-3）: coordinatorは0件でも既存どおり`Selecting`へ進入した
+直後にcoordinator内部のcontinuationでcomposed phaseへ継続するため、遷移graph・entry条件・
+journal規則は変わらず、選択面がUIに現れないだけである。本Issueがcoordinatorに追加するのは
+この内部継続の判定点と、検出完了後の進入判定を`RUN_STARTED`発行と同一lock下でatomic化する
+cancel gateのみであり、いずれも既存契約の範囲内である（Resolved decisions RD-6）。
 
 ## Outcome
 
@@ -49,21 +53,31 @@ run面のユーザー向け表示がTO-BEの8状態（organizer-to-be-ux.md §8.
 hubの「整理を開始」から到達するrun前置き面T-07で「そのまま整理」を選ぶとrun admission
 （RUN lease取得）が発生し、T-09準備中面に検出→capture→planの統合progress（phase行＋中断）
 が現れる。検出で候補があればT-08選択面へ一時遷移し（明示選択契約・unchecked初期値は不変）、
-候補0件なら選択面を表示せずcapture/planへ続行する（D-06）。提案はT-10確認面（concrete /
-count-only / Add-run再previewの3変種を1面に統合）、適用はT-11適用中面、結果はT-12結果面
+候補0件なら選択面を表示せずcapture/planへ続行する（D-06。内部では既存どおり`Selecting`を
+経由するためstate machineは不変）。提案はT-10確認面（concrete / count-only / Add-run
+再previewの3変種を1面に統合）、適用はT-11適用中面、結果はT-12結果面
 （成功・変更なし・適用されなかった[stale等]・部分的失敗の変種）に統合表示され、typed失敗と
 入場前stale（`DETECTED_BEFORE_REVIEW`）はT-13「実行できませんでした」（原因＋次の手段:
 再試行/中断/診断）1面に畳まれる。Back/中断/破棄/キャンセルの語彙と確認規則（D-13 §9）が
-全run面で一貫する。coordinatorのstate machine、typed outcome、journal相関の安全契約は
-D-06の0件経路を除いて一切変わらず、既存契約testはそれを証拠として示す。
+全run面で一貫する。T-09の中断により検出中のcancelがユーザー到達可能になるため、検出完了後の
+進入判定は`RUN_STARTED`発行と同一lock下で行われ、cancel済みrunがjournalを開始したり
+compositionを再開したりしないことが構造的に担保される。coordinatorのstate machine、
+typed outcome、journal相関の安全契約は一切変わらず、既存契約testはそれを証拠として示す
+（D-06の0件経路の継続timingを固定するunit oracleのみ期待値更新の対象。RUN-AC-05）。
 
 ## Scope
 
-- **T-07 run前置き面**: run面のIdle/Cancelled分岐（V-06）の開始rowを「方法選択とscope要約」
-  の前置き面へ置換する。主CTA「そのまま整理」の選択で既存の`start(trigger)`経路により
-  run admission（RUN lease取得）が発生する。scope要約はadmission前に取得できる事実のみから
-  構成し、検出・compositionの前倒し（件数の事前計算）をしない（D-06の「検出前に候補有無を
-  前提化しない」の維持）。「AIに相談」分岐の実装は#372が所有する（Contract notes 1）。
+- **T-07 run前置き面（transitional構成）**: run面のIdle/Cancelled分岐（V-06）の開始rowを
+  「方法選択とscope要約」の前置き面へ置換する。#369が提供するのは
+  **#372 merge前のtransitional T-07**であり、方法選択の主CTA「そのまま整理」の選択で既存の
+  `start(trigger)`経路によりrun admission（RUN lease取得）が発生する。「AIに相談」の
+  選択肢行は本Issueでは新設しない（capability先取り禁止、#366原則）。最終形の2択T-07
+  （AI選択肢の新設とexchange idle entry row V-27の方法選択への統合）の完成条件は#372が
+  所有する（Resolved decisions RD-1）。#372統合までの間、既存のexchange idle entry rowは
+  spec 205 V1規約どおり同一面にhostされ続ける（現行契約の functional entryであり、
+  機能しないCTAは置かない）。scope要約はadmission前に取得できる事実のみから構成し、
+  検出・compositionの前倒し（件数の事前計算）をしない（D-06の「検出前に候補有無を
+  前提化しない」の維持）。
 - **canonical順序の固定（D-05）**: admission → 検出 → 対象選択（候補あり時のみT-08へ
   一時遷移）→ capture+plan → 提案の確認 の順序をrun面の面構成として固定する。
   現行coordinatorは既に`start()`で検出→（選択）→composed phase（capture/plan）の順に
@@ -72,10 +86,24 @@ D-06の0件経路を除いて一切変わらず、既存契約testはそれを�
   統合する。面はcanonical順序に沿ったphase行（現在の段: 検出 / capture / plan。選択は
   T-08一時遷移として扱う）と中断actionを持つ。phase遷移の読み上げは1段階につき1回である
   （organization-run-ux §6 Progress）。
-- **D-06候補0件時の選択面非表示**: `start()`の検出結果が0件のとき、選択面（T-08）を
-  表示せずcapture/planへ続行する。intent-bound runのscope gate契約（spec 331の完全一致
-  gate・mismatch時の選択面再表示・typed `SCOPE_MISMATCH`）は現行どおり維持する
-  （Contract notes 3のguard条件）。
+- **検出完了後の進入判定とcancel gate（coordinator・既存契約の範囲内）**: T-09の中断actionに
+  より検出（`CandidateDetection`）中のcancelがユーザー到達可能になる。現行の`cancel()`は
+  `CandidateDetection`を受理してleaseを解放するが、detector復帰後の進入分岐にactiveの
+  再確認がないため、このままでは「検出中に中断 → detector復帰 → cancel済みrunが
+  `RUN_STARTED`を発行・compositionを実行」という既存契約（composed phase前のcancelは
+  journalを空のままにする。`USER_CANCELLED`は`RUN_STARTED`なしに発行されない）違反の
+  競合が到達可能になる。本Issueは`runComposedPhase()`の入口でactive判定と`RUN_STARTED`
+  発行（`journalStarted`設定を含む）を同一lock下でatomicに行うgateを置き、cancel済み
+  operationは何もせずreturnすることを全ての進入経路（検出`Unavailable`継続、D-06の
+  内部継続、`confirmSelection`後の継続）で共通に担保する（Resolved decisions RD-6）。
+  gate通過後のcancelは既存契約どおり`USER_CANCELLED`が`RUN_STARTED`の後に続く。
+- **D-06候補0件時の選択面非表示（表示統合として実装）**: `start()`の検出結果が0件かつ
+  export scopeに候補がないとき、選択面（T-08）を表示せずcapture/planへ続行する。実装は
+  coordinator内部の継続であり、state machineは既存どおり`Selecting`へ進入してから直後に
+  内部continuationでcomposed phaseへ進む（遷移graph・entry条件・journal規則は不変。
+  D-05/TO-BE §8.1の「内部state machine不変」を文字どおり維持する。Resolved decisions
+  RD-3）。intent-bound runのscope gate契約（spec 331の完全一致gate・mismatch時の選択面
+  再表示・typed `SCOPE_MISMATCH`）は現行どおり維持する（guard条件はRD-3参照）。
 - **T-10提案の確認面の統合**: `Preview`（concrete / count-only degraded）/ `PreviewUnavailable`
   （Add-runの具体preview不可・re-preview誘導、spec 228 AC-14）を1つの確認面の変種として
   表示する。spec 194/195/209/231/230の契約（counts truth、degraded告知、decision pair配置、
@@ -112,11 +140,12 @@ D-06の0件経路を除いて一切変わらず、既存契約testはそれを�
 ## Non-goals
 
 - 「AIに相談」分岐の実装（T-15/T-16への接続、idle AI相談のpre-run request flow化）— #372。
-  exchange idle entry row（V-27）のT-07方法選択への統合も#372が所有し、本Issueでは
-  spec 205 V1規約どおりIdle/Cancelled面にhostされ続ける。
+  T-07方法選択の最終形（2択）の完成（AI選択肢の新設、exchange idle entry row V-27の
+  T-07方法選択への統合）も#372が所有する。本Issueではspec 205 V1規約どおりIdle/Cancelled面
+  （transitional T-07）にexchange idle entry rowがhostされ続ける。
 - durable pending intent（D-08系、#374）とstatus cardへの退避。
-- 内部state machine・typed outcome・journal event・diagnostics契約の変更（D-06の0件経路を
-  除く。Contract notes 3）。
+- 内部state machine・typed outcome・journal event・diagnostics契約の変更
+  （D-06の0件時選択面非表示も表示統合として実装し、state machineは不変。RD-3）。
 - 安全契約（spec 13/194/210のgate構造、spec 52の表）の変更。preview seam、確認=authority、
   checkpoint/apply/recoveryの適用semantics、zero-write保証はすべて現行どおり。
 - strategy（#368で完了済みが前提）。run面にstrategy picker・読み取り専用表示は存在しない。
@@ -151,7 +180,7 @@ D-06の0件経路を除いて一切変わらず、既存契約testはそれを�
 | ユーザー状態（表示面） | coordinator状態 | 面ID |
 |---|---|---|
 | （T-07前置き。run不在） | `Idle`, `Cancelled` | T-07 |
-| 対象選択 | `Selecting` | T-08（候補あり時のみ。0件時は不進入、D-06） |
+| 対象選択 | `Selecting` | T-08（候補あり時のみ表示。0件時は内部継続で通過し表示されない、D-06/RD-3） |
 | 準備中 | `Capturing`, `CandidateDetection`, `Planning` | T-09 |
 | 提案の確認 | `Preview`, `PreviewUnavailable` | T-10 |
 | 適用中 | `Applying` | T-11 |
@@ -163,7 +192,8 @@ D-06の0件経路を除いて一切変わらず、既存契約testはそれを�
 （T-13 = V-11/V-12/V-13/V-14統合、T-12 = V-20/V-21/V-15統合）に従い、V-15（`NoChanges`）を
 T-12結果面へ、失敗系としてV-11〜V-14＋入場前staleをT-13へ統合するものと解する。
 `ScopeMismatchFailed`とmismatch時の選択面再表示（`Selecting.scopeRejection`）の使い分け
-（spec 331 D-5/D-2）は現行契約どおり維持する。
+（spec 331 D-5/D-2）は現行契約どおり維持する。表は表示面の単位の統合であり、coordinator状態
+の遷移graphそのものは本Issueで不変である（RD-3）。
 
 ## Behavior scenarios
 
@@ -172,6 +202,8 @@ T-12結果面へ、失敗系としてV-11〜V-14＋入場前staleをT-13へ統�
 Given #366のhubと#368のstrategy撤去が適用済みであり、run coordinatorが`Idle`である
 When hubの「整理を開始」からrun面を開く
 Then 方法選択とscope要約の前置き面（T-07）が表示され、主CTA「そのまま整理」が存在する
+And T-07は#372統合前のtransitional構成であり（RD-1）、「AIに相談」の選択肢行は新設されず、
+既存のexchange idle entry row（spec 205 V1）が同一面にhostされ続ける
 And 「そのまま整理」を選ぶとrun admission（RUN lease取得）が発生し、T-09準備中面の
 最初のphase（検出）へ進む
 And 前置き面の表示中は検出・compositionの実行がなく、候補有無の前提化やzero-writeを超える
@@ -185,7 +217,7 @@ When runが`CandidateDetection` → （候補ありならT-08へ一時遷移し�
 Then ユーザーには1つの準備中面（T-09）が表示され、phase行が現在の段
 （検出 / capture / plan）を示す
 And 面には中断actionがあり、選択・提案がまだ無いため確認なしでzero-write中断できる
-（Contract notes 4の確認規則）
+（D-13 §9の「提案または選択があるとき1回」規則。RD-4）
 And 各phase遷移はTalkBackへ1回だけannounceされ、連続的な再announceやspamを生まない
 
 ### Scenario: 候補0件では選択面を表示せず続行する（D-06）
@@ -193,9 +225,23 @@ And 各phase遷移はTalkBackへ1回だけannounceされ、連続的な再announ
 Given 検出が`Ready`で候補0件であり、validated intentがboundされていない
 When 検出phaseが完了する
 Then 選択面（T-08）は表示されず、runはcapture/planへ続行する
+And coordinator内部では既存どおり`Selecting`へ進入してから内部continuationでcomposed phase
+へ進むため、state machineの遷移graph・entry条件・journal規則は本Issue適用前と同一である
+（RD-3。UIのstateFlow合成では連続遷移がconflateされ、選択面が構成されない）
 And 0件notice面（`manual_organization_missing_apps_empty`）と「続行」の選択面は
 表示されない（旧表示oracleの更新対象）
 And この経路はエラー・typed失敗ではなく、通常の全体整理として計画される
+
+### Scenario: 検出中の中断後はrunが再開しない
+
+Given runがT-09準備中面の検出phase（`CandidateDetection`）にあり、detectorがまだ返っていない
+When ユーザーが中断を選び、cancelが受理された後でdetectorが結果を返す
+（0件・候補あり・`Unavailable`のいずれでも）
+Then runは`Cancelled`のまま再開せず、`RUN_STARTED`・`INPUT_NOT_READY`・plan・applyは
+発生しない（検出/選択windowのjournalは空のまま。RD-6）
+And RUN leaseは一度だけ解放され、二重解放や解放漏れが発生しない
+And gate通過後（`RUN_STARTED`発行後）のcancelは既存契約どおり`USER_CANCELLED`として
+記録される
 
 ### Scenario: 候補あり時の選択面は現行契約どおりである
 
@@ -264,13 +310,13 @@ And 選択のみが存在するT-08での中断も1回確認であり、何も�
 And 適用中checkpoint後はBack・中断とも不受理であり、atomic完了までその旨が
 既存のapplying文言で説明される
 
-### Scenario: 内部契約はD-06経路を除いて変更されない
+### Scenario: 内部契約は変更されない
 
 Given 本Issueの実装PRが作成されている
 When state machine・typed outcome・journal相関を固定する既存契約test
 （`ManualOrganizationRunTest`のadmission/stale/zero-write/journal相関群、
 `ExchangeFlowStateHolderTest`、E2E `staleProductionConfirmationDoesNotWrite`等）を実行する
-Then D-06の0件経路を対象とするtestを除き、すべてが無編集でgreenである
+Then D-06の0件経路の継続timingを固定するtestを除き、すべてが無編集でgreenである
 And D-06経路のtest期待値更新と、旧表示oracle（個別失敗面・選択面必須通過・0件選択面表示）
 がなぜobsoleteか（F-04/V-09の解消、D-05/D-06の適用）がPR本文に記録されている
 
@@ -293,8 +339,13 @@ And D-06経路のtest期待値更新と、旧表示oracle（個別失敗面・�
 
 - stale検出機構・revision照合・適用blockの安全設計は変更しない（spec 210 D4の継続）。
   統合は表示面の単位であり、`Stale`のorigin区別（spec 210 D1）は保持される。
-- D-06の0件skipは`start()`の検出直後の単一判定点で行われ（plan参照）、選択面が開く既存経路
-  （候補あり・intent-bound mismatch）の遷移順序とlock構造は変更しない。
+- D-06の0件継続は`start()`の検出完了直後の単一判定点とcoordinator内部continuationで行われ
+  （plan参照）、選択面が開く既存経路（候補あり・intent-bound mismatch）の遷移順序とlock構造は
+  変更しない。
+- 検出完了後の進入判定と`RUN_STARTED`発行は同一lock下でatomicに行う（RD-6）。T-09の中断に
+  より検出中のcancelが到達可能になった後でも、cancel済みoperationがjournalを開始したり
+  compositionを実行したりしないことを構造的に担保し、既存の「composed phase前のcancelは
+  journalを空のままにする」契約とlease一解放を維持する。
 - 中断・Backの確認dialogはUI層のaffordanceであり、coordinatorのcancel/dismiss契約
   （zero-write、`USER_CANCELLED` journal規則、admission後不受理）を変えない。
   「UI disabledはaffordanceにすぎない」原則（spec 328）に従い、不受理はcoordinator gateが
@@ -346,8 +397,9 @@ And D-06経路のtest期待値更新と、旧表示oracle（個別失敗面・�
 ## Acceptance criteria
 
 - [ ] **RUN-AC-01**: canonical順序（admission→検出→[選択]→capture/plan→確認）が面構成として
-      固定され、T-07前置き面の「そのまま整理」でrun admission（RUN lease取得）が発生する。
-      候補0件時に選択面が表示されずcapture/planへ続行する（D-06）。intent-bound runの
+      固定され、T-07前置き面（transitional構成。RD-1）の「そのまま整理」でrun admission
+      （RUN lease取得）が発生する。候補0件時に選択面が表示されずcapture/planへ続行し（D-06）、
+      この統合でcoordinatorの遷移graphが変化しない（RD-3）。intent-bound runの
       scope gate契約（spec 331）と検出`Unavailable`時の現行継続経路は変化しない。
       （Issue受入1）
 - [ ] **RUN-AC-02**: 20 coordinator状態の表示が対応表のとおり8ユーザー状態へ統合され、
@@ -356,9 +408,9 @@ And D-06経路のtest期待値更新と、旧表示oracle（個別失敗面・�
       補助情報である。T-09は1つの統合progress面（phase行＋中断）として表示される。
       （Issue受入2）
 - [ ] **RUN-AC-03**: 内部state machine・typed outcome・journalの安全契約を固定する既存
-      契約testが、D-06の0件経路を除いて無編集でgreenである（表示統合が契約を変えないことの
-      証拠）。D-06経路のtest期待値更新はD-06決定の反映としてPRに記録される。
-      （Issue受入3）
+      契約testが、D-06の0件経路の継続timing oracleを除いて無編集でgreenである
+      （表示統合が契約を変えないことの証拠）。D-06経路のtest期待値更新はD-06決定の反映として
+      PRに記録される。（Issue受入3）
 - [ ] **RUN-AC-04**: 語彙規約（D-13 §9）がrun面で一貫する: 破棄は必ず確認を伴い、中断は
       zero-writeで選択・提案があるとき1回確認、キャンセルは確認不要であり、適用中
       checkpoint後のBack・中断不受理は現行契約どおりである。pre-send cancel→破棄の改称は
@@ -377,20 +429,25 @@ And D-06経路のtest期待値更新と、旧表示oracle（個別失敗面・�
       とおり。safe apply契約・明示選択契約・spec 210文言には触れない）。
 - [ ] **RUN-AC-09**: 新規stringがEN/ja双方で供給され（format resource規約含む）、統合により
       未使用になったstringが双方のresourceから削除されている。
+- [ ] **RUN-AC-10**: 検出中の中断後、detectorが復帰してどの結果（0件/候補あり/`Unavailable`）
+      を返してもrunは`Cancelled`のまま再開せず、`RUN_STARTED`/`INPUT_NOT_READY`/plan/
+      applyが発生せず、leaseが一度だけ解放される（RD-6）。gate通過後のcancelは
+      `USER_CANCELLED`が`RUN_STARTED`の後に記録される既存契約を維持する。
 
 ## Test oracle
 
 | AC | Evidence |
 |---|---|
-| RUN-AC-01 | unit: `start()`のD-06 skip（0件＋intent未boundで`Selecting`不進入・plain compose直行）、guard条件（intent-bound・export scope候補あり＋検出0件では選択面が開く）、検出`Unavailable`継続の回帰。instrumentation: T-07→「そのまま整理」→T-09検出phase→0件続行の遷移と、0件時に`missing_apps_empty`/`missing_apps_continue`が表示されないことの否定的観測 |
+| RUN-AC-01 | unit: `start()`のD-06内部継続（0件＋intent未boundで選択面を構成せずplain compose直行。state列は既存どおり`Selecting`経由）、guard条件（intent-bound・export scope候補あり＋検出0件では選択面が開く）、検出`Unavailable`継続の回帰。instrumentation: T-07→「そのまま整理」→T-09検出phase→0件続行の遷移と、0件時に`missing_apps_empty`/`missing_apps_continue`が表示されないことの否定的観測 |
 | RUN-AC-02 | instrumentation: 8状態への統合（T-09が検出/capture/planで同一面構成を保つこと、T-13見出し＋原因＋再試行/中断（＋該当時診断）の構造、T-10/T-12の変種表示）。既存の各失敗原因文字列がT-13上に現れることのassert |
-| RUN-AC-03 | `ManualOrganizationRunTest`・`ExchangeFlowStateHolderTest`・organizer unit gateの無編集green（D-06対象経路を除く）+ D-06経路testの更新diff + `ManualOrganizationProductionE2EInstrumentationTest.staleProductionConfirmationDoesNotWrite`のgreen |
+| RUN-AC-03 | `ManualOrganizationRunTest`・`ExchangeFlowStateHolderTest`・organizer unit gateの無編集green（D-06の0件経路継続timing oracleを除く）+ D-06経路testの更新diff + `ManualOrganizationProductionE2EInstrumentationTest.staleProductionConfirmationDoesNotWrite`のgreen |
 | RUN-AC-04 | instrumentation: T-10中断の確認dialog（1回・破棄/中断語彙）、T-08選択あり中断の確認、復元確認キャンセルの確認なし、Applying checkpoint前の確認付き中断、checkpoint後の不受理（既存gate oracle）。unit: cancel/dismiss契約の既存test無編集green |
 | RUN-AC-05 | `MissingAppSelectionInstrumentationTest.zeroCandidatesShowsTheEmptyNoticeAndStillContinues`等の旧oracle更新diff + obsolete理由のPR本文記録 + spec 228/210改訂diff review |
 | RUN-AC-06 | Compose semantics assertion（見出し・原因・手段の読み上げ、phase遷移announce回数、traversal順）+ focus restoration test + 200% font scale test + light/dark × ja/default screenshot evidence（organization-run-ux §6表に基づく確認記録） |
 | RUN-AC-07 | 既存preview/confirmation/result/recovery系instrumentationの無編集または表示面移設のみの更新でgreen + spec 194/195/209/228/230/231/210対応oracleのdiff review |
 | RUN-AC-08 | specs 52/228/210のdiff review（改訂箇所がScope節と一致し、safe apply契約・明示選択契約・spec 210文言が不変であること） |
 | RUN-AC-09 | 新規stringの`values/`と`values-ja/`のname集合・placeholder一致の機械確認 + 削除stringのreference grep（0件）+ hardcoded literal grep |
+| RUN-AC-10 | unit: blocking fake detector（検出をlatchで保持するfake）で`CandidateDetection`中に`cancel()`し、detectorに(a) `Ready(empty)`、(b) `Unavailable`、(c) `Ready(>0)`を返させた各系で、最終状態が`Cancelled`、当該runIdのjournal event不発（`RUN_STARTED`/`INPUT_NOT_READY`/plan系/apply系）、lease `.close()`呼び出し1回を固定する。gate通過後にcancelする対照系で`RUN_STARTED`→`USER_CANCELLED`の順序を固定 |
 
 共通gate: `./gradlew spotlessCheck`、`./gradlew testLawnWithQuickstepGithubDebugUnitTest
 --tests 'app.lawnchair.organizer.*'`、対象classのorganizer instrumentation lane
@@ -399,61 +456,84 @@ exchange系）、CI `final-status` green（本Issueは `risk: layout-data`/`risk
 付けない。表示・navigationのみでpersistent state・DB書込み経路に触れないため、high-risk
 evidence gateの対象外）。
 
-## Contract notes（owner reviewで確認すべき解釈）
+## Resolved decisions
 
-1. **T-07の「AIに相談」の扱い**: Issue本文scopeは「『そのまま整理 / AIに相談』の方法選択」
-   をT-07に置くが、AI分岐の実装は#372（Issue本文明記）。本specは「#369では『そのまま整理』
-   のみを方法選択のprimary CTAとし、AIに相談の選択肢行は新設しない（capability先取り禁止、
-   #366原則）。既存exchange idle entry row（V-27）はspec 205 V1規約どおり同一面にhostされ
-   続け、#372がこれをT-07の方法選択へ統合する」と解する。#369でAI選択肢をdisabled表示する
-   ことをowner reviewが選んだ場合は、本specの該当行とRUN-AC-01の否定的観測を修正する。
-2. **中断後の行き先とdecision pairのcancel**: TO-BE §5.3は`Reviewing --> Hub: 中断（破棄確認）`
-   と図示し、§9は中断を「runを止めてhubへ戻る」と定義する。本specは「中断（確認応答後）は
-   run停止後にhubへ戻る（system Backと同一のnavigation結果）」と解する。一方でspec 209の
-   decision pair契約（confirm/cancel pairの視覚構造）は保持し、cancel側のlabel・確認・
-   遷移のみをD-13へ合わせる。確認なしにT-07面へ残る解釈を選ぶ場合は、本specの該当scenarioと
-   RUN-AC-04を修正する。
-3. **D-06の0件skipとstate machineの可観測変化**: 「内部state machine不変」はD-05の表示統合に
-   関する契約上の根拠であるが、D-06は候補0件時に`State.Selecting`へ進入しないという
-   遷移レベルの変化を要求する。本specは0件skipをcoordinatorの`start()`内の単一判定点で
-   実装する解釈を採る。guard条件: 検出0件かつ（intent未bound または export scopeの候補0件）
-   のときのみskipする。export scopeに候補がある場合は選択面を開き、spec 331のmismatch表示
-   契約を保存する。代替（UIが0件`Selecting`を観測して自動`confirmSelection(emptySet())`を
-   発行する解）は、明示選択契約（spec 228 D-1）が要求するユーザーの明示actionを偽装し、
-   state/表示の瞬間的な不整合を生むため不採用。よってRUN-AC-03の「無編集green」はD-06対象
-   経路を除くものとし、0件経路のtest更新はRUN-AC-05のobsolete理由記録義務で追跡する。
-4. **T-09中断の確認要否**: TO-BE §5.1のT-09行は「中断（破棄確認）」と表記する一方、
-   D-13 §9の中断の確認規則は「提案または選択があるとき1回」である。T-09時点には提案も選択も
-   存在しないため、本specはD-13規則を正とし「T-09の中断は確認なし（zero-write、失う作業なし）
-   で可能」と解する。T-09でも常に確認を要求する解釈がowner reviewで選ばれた場合は、
-   Behavior scenariosの該当行とRUN-AC-04を修正する。
-5. **T-07のscope要約の内容**: TO-BE §5.1 T-07は「対象要約」を内容に挙げるが、admission前に
-   取得できる事実は限られる（検出・compositionの前倒しはD-06の「検出前に候補有無を前提化
-   しない」と衝突する）。本specはscope要約を「対象範囲の説明（ホーム全体の整理であること、
-   確認前に適用されないこと）の文言」として解し、件数の事前計算を要求しない。具体的文言は
-   実装PRで確定する（非blocking）。
+初版（2026-09-19）のContract notes 1〜5はowner review対象の未決解釈だった。2026-09-20の
+spec review（[Issue #369 review comment][6]。**Changes requested**、高1/中2/低1）で指摘された
+内容を含め、以下のとおり決着した。本節はspec本文の規定の一部である。
+
+1. **RD-1 — T-07はtransitional構成とし、最終形の完成条件を#372へ移す**（初版note 1＋
+   review指摘「T-07の所有境界」の解消）: #369のT-07は#372 merge前のtransitional構成
+   （方法選択=「そのまま整理」＋scope要約）であり、「AIに相談」の選択肢行は新設しない
+   （capability先取り禁止、#366原則）。最終形の2択T-07（AI選択肢の新設とexchange idle
+   entry row V-27の方法選択への統合）の完成条件は#372が所有する。#372統合まで、既存の
+   exchange idle entry rowはspec 205 V1規約どおり同一面にhostされ続ける（現行のfunctional
+   entryであり、機能しないCTAは置かない）。
+2. **RD-2 — 中断後の行き先とdecision pairのcancel**（初版note 2。reviewで変更指示なし）:
+   中断（確認応答後）はrun停止後にhubへ戻る（system Backと同一のnavigation結果）。
+   spec 209のdecision pair契約（confirm/cancel pairの視覚構造）は保持し、cancel側のlabel・
+   確認・遷移のみをD-13へ合わせる。pre-send cancel→破棄の改称は#372のscope（本Issue対象外）。
+3. **RD-3 — D-06は表示統合として実装し、内部state machineは不変**（初版note 3＋review指摘
+   「D-06の実装方針がaccepted dispositionの『内部 state machine 不変』と衝突」の解消）:
+   accepted TO-BE D-06/§8.1の文言は表示レベル（「選択面を表示せずcapture/planへ続行」、
+   T-08は「候補あり時のみ現れる」）であり、accepted disposition §3.3の「内部state machine・
+   typed outcome不変」「`ManualOrganizationRunTest`のstate期待値は不変」はD-05と一体の
+   契約である。よって0件時の選択面非表示はcoordinator内部の自動継続で実現する:
+   coordinatorは0件でも既存どおり`State.Selecting`へ進入し、直後にcoordinator内部の専用
+   continuation（UI actionを偽装しない）でcomposed phaseへ進む。遷移graph・entry条件・
+   journal規則は不変であり、UIは選択面を構成しない（同一lock区間内の連続遷移であり、
+   stateFlow合成でconflateされる）。guard条件: 検出0件かつ（intent未bound または export
+   scopeの候補0件）のときのみ内部継続する。export scopeに候補がある場合は選択面を開き、
+   spec 331のmismatch表示契約を保存する。本解釈は処分文書§3.3へ2026-09-20追記として記録する
+   （正本側に例外の記録を残す）。影響するtestは0件経路の継続timing oracle
+   （`confirmingAnEmptySelectionRunsThePlainFullCompose`系）のみであり、更新とobsolete理由は
+   RUN-AC-05の義務でPRへ記録する。代替案の評価: (i) UIが0件`Selecting`を観測して
+   `confirmSelection(emptySet())`を発行する解は、明示選択契約（spec 228 D-1）のユーザー
+   actionを偽装するため不採用（初版から維持）。(ii) 0件時に`Selecting`へ不進入とする解は、
+   accepted正本（D-05「内部state machineの契約は変更しない」、disposition §3.3）を子specの
+   契約noteだけで例外化することになり、TO-BE D-05自体の改訂を要するため不採用
+   （review指摘の選択肢(b)は採らない）。
+4. **RD-4 — T-09の中断は確認なし**（初版note 4。reviewで変更指示なし）: D-13 §9の中断の
+   確認規則「提案または選択があるとき1回」を正とし、T-09時点（提案も選択も無し）の中断は
+   確認なしのzero-write中止とする。TO-BE §5.1 T-09行の「中断（破棄確認）」表記は§9の規則が
+   正である。
+5. **RD-5 — T-07のscope要約はadmission前に取得できる事実のみ**（初版note 5。reviewで変更
+   指示なし）: 対象範囲の説明（ホーム全体の整理であること、確認前に適用されないこと）の
+   文言とし、件数の事前計算（検出・compositionの前倒し）を要求しない。具体的文言は実装PRで
+   確定する（非blocking）。
+6. **RD-6 — 検出完了後の進入判定と`RUN_STARTED`発行を同一lock下でatomic化する**
+   （review指摘「高: T-09の『中断』を新設すると、検出中 cancel 後に run が再開する競合が
+   到達可能になる」の解消）: 現行の`cancel()`は`CandidateDetection`を受理する一方、detector
+   復帰後の進入分岐（`Unavailable`継続）にactiveの再確認がなく、`runComposedPhase()`は
+   active確認前に`RUN_STARTED`を発行する。従来UIは検出中のcancel affordanceを持たなかったが、
+   T-09の中断actionがこの競合をユーザー到達可能にする。本specは`runComposedPhase()`の入口で
+   active判定・`journalStarted`設定・`RUN_STARTED`発行を同一lock区間内で行うgateを要求し、
+   cancel済みoperationがjournalを開始せずcompositionも実行しないことを全ての進入経路で
+   共通に担保する（gate通過後のcancelは既存契約どおり`USER_CANCELLED`が後続する）。
+   検出結果の受理（`detectedCandidates`保持）も同一lock下のhelperへ集約する。
+   oracleはRUN-AC-10のblocking fake detector unit testとする。
 
 ## Dependencies
 
-- **#366（hub shell、OPEN・実装未着手）**: hub destination、「整理を開始」CTA、材料セクション
-  が存在することが前提。本specのT-07は#366の暫定導線（hub CTA → 既存run面）を前置き面経由へ
-  置き換える。spec執筆は#366 draft（`bf00f96175`）との整合で可能。実装着手は#366 merge後。
-- **#368（strategy移設・特例廃止、OPEN・実装未着手）**: Issue本文 `Depends on`。run面から
-  strategy picker・`StrategyWriteArbiter` restart経路が撤去済みであることが前提。本specの
-  面統合は#368適用後のrun面構成を基準にする。
-- **#365（正本改訂、OPEN）**: `CONTEXT.md`の語彙規約・材料語彙は#365が所有する。実装着手は
-  #365 merge後（AGENTS.md「正本を先に」。#366/#367/#368と同一判定）。
-- **後続**: #370（onboarding/hint表記。T-07前置き省略の契約表現）、#372（AI相談統合。T-07の
-  方法選択へのexchange entry統合とidle AI相談）、#373（exchange失敗の手段別再投影）、
+- **#366（hub shell、merge済み: PR #380）**: hub destination、「整理を開始」CTA、材料セクション
+  が存在すること。本specのT-07は#366の暫定導線（hub CTA → 既存run面）を前置き面経由へ
+  置き換える。
+- **#368（strategy移設・特例廃止、merge済み: PR 384）**: Issue本文 `Depends on`。
+  run面からstrategy picker・`StrategyWriteArbiter` restart経路が撤去済みであること。
+  本specの面統合は#368適用後のrun面構成を基準にする。
+- **#365（正本改訂、merge済み: PR #379）**: `CONTEXT.md`の語彙規約・材料語彙は#365が
+  改訂済みである。
+- **後続**: #370（onboarding/hint表記。T-07前置き省略の契約表現）、#372（AI相談統合。
+  **T-07方法選択の最終形（2択）の完成条件を所有する**（RD-1）。exchange idle entryの
+  T-07方法選択への統合とidle AI相談）、#373（exchange失敗の手段別再投影）、
   #375（T-08復元初期値・scope mismatch原因別remedy）、#377（cleanup）。
 - **前提（実装済み・accepted）**: specs 13/52/84/172/194/195/209/210/228/230/231/271/328/331
-  の現行契約、organization-run-ux §4/§5/§6、organizer-to-be-ux.md @ main `3076bdae7e`
-  （accepted、PR #364）。
+  の現行契約、organization-run-ux §4/§5/§6、organizer-to-be-ux.md（accepted、PR #364）。
 
 ## Open questions
 
-実装開始前に解消が必須な問いはない（Contract notes 1〜5の解釈確認をowner reviewが所有し、
-確認前は本specは`draft`のままである）。非blocking事項:
+実装開始前に解消が必須な問いはない（初版Contract notes 1〜5はResolved decisions RD-1〜RD-6
+として決着済み。本specの受入はreviewで判定する）。非blocking事項:
 
 1. T-07のscope要約・方法選択の最終文言、T-09/T-13の見出し文言、確認dialogの文案（D-13語彙に
    沿うことのみ拘束）は実装PRで確定する。
@@ -466,6 +546,18 @@ evidence gateの対象外）。
 
 ## Change history
 
+- 2026-09-20: Phase1 re-entry（2nd revision）。初版へのspec review
+  （[Issue #369 review comment][6]、Changes requested、高1/中2/低1）に対応:
+  - **高（検出中cancel競合）**: T-09中断により到達可能になる「検出中cancel → detector復帰 →
+    cancel済みrunが`RUN_STARTED`発行/composition実行」を閉じるcancel gateを新設
+    （RD-6、RUN-AC-10、Behavior scenario追加）。処分文書§3.3へ2026-09-20追記を実施（同じPR）。
+  - **中（D-06と「内部state machine不変」の衝突）**: D-06を表示統合として実装する解釈へ
+    一本化（RD-3）。`Selecting`不進入の要求を削除し、処分文書§3.3へ解釈を追記する。
+  - **中（T-07の所有境界）**: transitional T-07の契約を明文化し、2択T-07の最終完成条件を
+    #372へ移管（RD-1。Scope/Non-goals/Dependencies/AC更新）。
+  - **低（re-entry情報の陳腐化）**: main再anchor、#365/#366/#367/#368のmerge反映、
+    evidence更新（plan参照）。
+  初版Contract notes 1〜5はResolved decisions RD-1〜RD-6として本文規定へ繰り入れた。
 - 2026-09-19: Draft created for #369（spec/plan整備task）。accepted TO-BE契約
   （organizer-to-be-ux.md @ main `3076bdae7e`、PR #364）、処分文書draft（PR #378
   §3.3/§3.13/§4.1/§5/§8）、#366/#367/#368 spec/plan draft
@@ -479,3 +571,4 @@ evidence gateの対象外）。
 [3]: https://github.com/nunu1733/NunuLauncher/issues/368
 [4]: https://github.com/nunu1733/NunuLauncher/pull/378
 [5]: https://github.com/nunu1733/NunuLauncher/issues/365
+[6]: https://github.com/nunu1733/NunuLauncher/issues/369#issuecomment-5740051014
