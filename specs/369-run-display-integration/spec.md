@@ -84,8 +84,11 @@ typed outcome、journal相関の安全契約は一切変わらず、既存契約
   遷移するため、本Issueの変更は表示統合が主であり、遷移順序そのものの再設計は行わない。
 - **T-09統合progress面**: `Capturing` / `CandidateDetection` / `Planning`を1つの準備中面に
   統合する。面はcanonical順序に沿ったphase行（現在の段: 検出 / capture / plan。選択は
-  T-08一時遷移として扱う）と中断actionを持つ。phase遷移の読み上げは1段階につき1回である
-  （organization-run-ux §6 Progress）。
+  T-08一時遷移として扱う）と中断actionを持つ。phase行はstate種別から直接導出するのではなく、
+  state遷移と同一lock下で更新される決定的な可視phase projection（`PreparationPhase`、
+  RD-7）から描画する。admission直後のlegacy `Capturing`（`beginOperation()`の初期publish）は
+  検出として投影され、最初の可視phaseがcaptureに見えることはない。phase遷移の読み上げは
+  1段階につき1回である（organization-run-ux §6 Progress）。
 - **検出完了後の進入判定とcancel gate（coordinator・既存契約の範囲内）**: T-09の中断actionに
   より検出（`CandidateDetection`）中のcancelがユーザー到達可能になる。現行の`cancel()`は
   `CandidateDetection`を受理してleaseを解放するが、detector復帰後の進入分岐にactiveの
@@ -215,7 +218,9 @@ Given runがadmission済みである
 When runが`CandidateDetection` → （候補ありならT-08へ一時遷移して戻る）→ `Capturing` →
 `Planning`へ遷移する
 Then ユーザーには1つの準備中面（T-09）が表示され、phase行が現在の段
-（検出 / capture / plan）を示す
+（検出 / capture / plan）を示す。phase行は決定的な可視phase projection（RD-7）由来であり、
+admission直後の最初の可視phaseは常に検出である（legacy `Capturing`がcaptureとして
+先に見えることはない）
 And 面には中断actionがあり、選択・提案がまだ無いため確認なしでzero-write中断できる
 （D-13 §9の「提案または選択があるとき1回」規則。RD-4）
 And 各phase遷移はTalkBackへ1回だけannounceされ、連続的な再announceやspamを生まない
@@ -227,7 +232,8 @@ When 検出phaseが完了する
 Then 選択面（T-08）は表示されず、runはcapture/planへ続行する
 And coordinator内部では既存どおり`Selecting`へ進入してから内部continuationでcomposed phase
 へ進むため、state machineの遷移graph・entry条件・journal規則は本Issue適用前と同一である
-（RD-3。UIのstateFlow合成では連続遷移がconflateされ、選択面が構成されない）
+（RD-3/RD-7。UIのface mappingが0件の`Selecting`を決定的にT-09準備中面へ写像するため、
+観測timingにかかわらず選択面は構成されない）
 And 0件notice面（`manual_organization_missing_apps_empty`）と「続行」の選択面は
 表示されない（旧表示oracleの更新対象）
 And この経路はエラー・typed失敗ではなく、通常の全体整理として計画される
@@ -346,6 +352,9 @@ And D-06経路のtest期待値更新と、旧表示oracle（個別失敗面・�
   より検出中のcancelが到達可能になった後でも、cancel済みoperationがjournalを開始したり
   compositionを実行したりしないことを構造的に担保し、既存の「composed phase前のcancelは
   journalを空のままにする」契約とlease一解放を維持する。
+- 可視phase projection（RD-7）の更新は、対応するstate遷移と同一lock区間内で行い、activeで
+  ないoperationに対しては更新しない。projectionはstate machineに不足する情報を追加するもの
+  ではなく、表示がtimingに依存しないための決定的導出である。
 - 中断・Backの確認dialogはUI層のaffordanceであり、coordinatorのcancel/dismiss契約
   （zero-write、`USER_CANCELLED` journal規則、admission後不受理）を変えない。
   「UI disabledはaffordanceにすぎない」原則（spec 328）に従い、不受理はcoordinator gateが
@@ -353,9 +362,11 @@ And D-06経路のtest期待値更新と、旧表示oracle（個別失敗面・�
 
 ## Data and state
 
-- **読む**: run coordinator state（既存`stateFlow`）、durable status projection（Idle面の
-  現行表示維持）、既存selection/preview/summary/recovery state。新規の読取seamは設けない。
-  T-07のscope要約はadmission前に取得できる事実のみから構成する。
+- **読む**: run coordinator state（既存`stateFlow`）、準備phaseの可視projection
+  （`PreparationPhase`。RD-7。T-09のphase行とface mappingが消費する）、durable status
+  projection（Idle面の現行表示維持）、既存selection/preview/summary/recovery state。
+  新規に追加する読取seamは上記projectionのみである。T-07のscope要約はadmission前に取得できる
+  事実のみから構成する。
 - **書く**: 新規の永続化・preference・diagnostics eventはない。書込みは既存の適用/strategy/
   exchange経路のみ（本Issueでは触れない）。
 - **Identity**: 変更なし。`RunId`、typed outcome、journal相関、`StaleOrigin`、scope gate
@@ -399,7 +410,8 @@ And D-06経路のtest期待値更新と、旧表示oracle（個別失敗面・�
 - [ ] **RUN-AC-01**: canonical順序（admission→検出→[選択]→capture/plan→確認）が面構成として
       固定され、T-07前置き面（transitional構成。RD-1）の「そのまま整理」でrun admission
       （RUN lease取得）が発生する。候補0件時に選択面が表示されずcapture/planへ続行し（D-06）、
-      この統合でcoordinatorの遷移graphが変化しない（RD-3）。intent-bound runの
+      この統合でcoordinatorの遷移graphが変化しない（RD-3）。D-06の非表示はface mappingによる
+      決定的保証であり（RD-7）、admission直後の最初の可視phaseは検出である。intent-bound runの
       scope gate契約（spec 331）と検出`Unavailable`時の現行継続経路は変化しない。
       （Issue受入1）
 - [ ] **RUN-AC-02**: 20 coordinator状態の表示が対応表のとおり8ユーザー状態へ統合され、
@@ -438,7 +450,7 @@ And D-06経路のtest期待値更新と、旧表示oracle（個別失敗面・�
 
 | AC | Evidence |
 |---|---|
-| RUN-AC-01 | unit: `start()`のD-06内部継続（0件＋intent未boundで選択面を構成せずplain compose直行。state列は既存どおり`Selecting`経由）、guard条件（intent-bound・export scope候補あり＋検出0件では選択面が開く）、検出`Unavailable`継続の回帰。instrumentation: T-07→「そのまま整理」→T-09検出phase→0件続行の遷移と、0件時に`missing_apps_empty`/`missing_apps_continue`が表示されないことの否定的観測 |
+| RUN-AC-01 | unit: `start()`のD-06内部継続（0件＋intent未boundで選択面を構成せずplain compose直行。state列は既存どおり`Selecting`経由）、guard条件（intent-bound・export scope候補あり＋検出0件では選択面が開く）、検出`Unavailable`継続の回帰。face mapping純関数のtable-driven unit test（0件`Selecting`〔scope rejection・export scope候補なし〕→T-09、0件＋scopeRejection→T-08、候補あり→T-08等）。blocking detectorでdetector停止中に観測した可視phase projectionが検出であることのoracle（captureが先行しない）。instrumentation: T-07→「そのまま整理」→T-09検出phase→0件続行の遷移と、0件時に`missing_apps_empty`/`missing_apps_continue`が表示されないことの否定的観測 |
 | RUN-AC-02 | instrumentation: 8状態への統合（T-09が検出/capture/planで同一面構成を保つこと、T-13見出し＋原因＋再試行/中断（＋該当時診断）の構造、T-10/T-12の変種表示）。既存の各失敗原因文字列がT-13上に現れることのassert |
 | RUN-AC-03 | `ManualOrganizationRunTest`・`ExchangeFlowStateHolderTest`・organizer unit gateの無編集green（D-06の0件経路継続timing oracleを除く）+ D-06経路testの更新diff + `ManualOrganizationProductionE2EInstrumentationTest.staleProductionConfirmationDoesNotWrite`のgreen |
 | RUN-AC-04 | instrumentation: T-10中断の確認dialog（1回・破棄/中断語彙）、T-08選択あり中断の確認、復元確認キャンセルの確認なし、Applying checkpoint前の確認付き中断、checkpoint後の不受理（既存gate oracle）。unit: cancel/dismiss契約の既存test無編集green |
@@ -481,8 +493,8 @@ spec review（[Issue #369 review comment][6]。**Changes requested**、高1/中2
    契約である。よって0件時の選択面非表示はcoordinator内部の自動継続で実現する:
    coordinatorは0件でも既存どおり`State.Selecting`へ進入し、直後にcoordinator内部の専用
    continuation（UI actionを偽装しない）でcomposed phaseへ進む。遷移graph・entry条件・
-   journal規則は不変であり、UIは選択面を構成しない（同一lock区間内の連続遷移であり、
-   stateFlow合成でconflateされる）。guard条件: 検出0件かつ（intent未bound または export
+   journal規則は不変であり、UIは選択面を構成しない（決定的なface mappingによる。RD-7。
+   StateFlowのconflationには依存しない）。guard条件: 検出0件かつ（intent未bound または export
    scopeの候補0件）のときのみ内部継続する。export scopeに候補がある場合は選択面を開き、
    spec 331のmismatch表示契約を保存する。本解釈は処分文書§3.3へ2026-09-20追記として記録する
    （正本側に例外の記録を残す）。影響するtestは0件経路の継続timing oracle
@@ -512,6 +524,25 @@ spec review（[Issue #369 review comment][6]。**Changes requested**、高1/中2
    共通に担保する（gate通過後のcancelは既存契約どおり`USER_CANCELLED`が後続する）。
    検出結果の受理（`detectedCandidates`保持）も同一lock下のhelperへ集約する。
    oracleはRUN-AC-10のblocking fake detector unit testとする。
+7. **RD-7 — D-06の非表示とcanonical順序の可視保証は、conflationではなく決定的な表示写像と
+   可視phase projectionで担保する**（2nd review指摘「中: 0件時T-08非表示がStateFlowの
+   conflationに依存」「中: 最初のvisible phaseがcaptureになり得る」の解消）:
+   UIは`stateFlow`を直接購読し、run actionは`Dispatchers.IO`で実行されるため、内部連続遷移の
+   中間state（0件`Selecting`、admission直後に`beginOperation()`がpublishするlegacy
+   `Capturing`）はcollectorから観測され得る（StateFlowのconflationは中間値の非観測を
+   保証しない）。よって:
+   - **表示写像（face mapping）を決定的にする**: 候補0件かつscope rejection無しかつexport
+     scope候補無しの`Selecting`は、UIのface mapping（純関数）でT-09準備中面へ写像し、T-08の
+     composableを構成しない。観測timingに依存しない。
+   - **coordinatorは準備phaseの可視projectionを持つ**: T-09のphase行に現れる段
+     （検出/capture/plan）を、state遷移と同一lock下で更新される決定的projection
+     （`PreparationPhase`）として公開する。admission直後のlegacy `Capturing`は検出として
+     投影されるため、canonical順序の最初の可視phaseは常に検出である
+     （D-05/RUN-AC-01、organization-run-ux §6の1段階1回announce）。state machine・遷移graphは
+     不変であり、projectionは表示用の追加observableである（Data and state節参照）。
+   - oracle: face mappingの純関数unit test（0件`Selecting`→T-09を固定）と、blocking
+     detectorで中間stateを保持した状態で観測するphase projection oracle
+     （detector停止中の最初の可視phaseは検出で、captureが先行しない）。
 
 ## Dependencies
 
@@ -532,7 +563,8 @@ spec review（[Issue #369 review comment][6]。**Changes requested**、高1/中2
 
 ## Open questions
 
-実装開始前に解消が必須な問いはない（初版Contract notes 1〜5はResolved decisions RD-1〜RD-6
+実装開始前に解消が必須な問いはない（初版Contract notes 1〜5と2nd review指摘はResolved
+decisions RD-1〜RD-7
 として決着済み。本specの受入はreviewで判定する）。非blocking事項:
 
 1. T-07のscope要約・方法選択の最終文言、T-09/T-13の見出し文言、確認dialogの文案（D-13語彙に
@@ -546,6 +578,15 @@ spec review（[Issue #369 review comment][6]。**Changes requested**、高1/中2
 
 ## Change history
 
+- 2026-09-20: Phase1 re-entry（3rd revision）。2nd review
+  （[Issue #369 review comment][7]、Changes requested、中2/低1）に対応:
+  - **中（D-06非表示のconflation依存）**: 非表示の保証をface mapping（純関数）による決定的
+    写像へ変更（RD-7）。conflation前提の記述を削除。
+  - **中（最初の可視phaseがcaptureになり得る）**: 準備phaseの可視projection
+    （`PreparationPhase`）を新設し、phase行をprojection由来に変更（RD-7）。legacy
+    `Capturing`（admission直後）は検出として投影される。
+  - **低（Issue本文のT-07 scope）**: Issue本文のScope/Non-goalsをRD-1へ整合させた
+    （transitional T-07 / 最終2択は#372）。
 - 2026-09-20: Phase1 re-entry（2nd revision）。初版へのspec review
   （[Issue #369 review comment][6]、Changes requested、高1/中2/低1）に対応:
   - **高（検出中cancel競合）**: T-09中断により到達可能になる「検出中cancel → detector復帰 →
@@ -557,7 +598,8 @@ spec review（[Issue #369 review comment][6]。**Changes requested**、高1/中2
     #372へ移管（RD-1。Scope/Non-goals/Dependencies/AC更新）。
   - **低（re-entry情報の陳腐化）**: main再anchor、#365/#366/#367/#368のmerge反映、
     evidence更新（plan参照）。
-  初版Contract notes 1〜5はResolved decisions RD-1〜RD-6として本文規定へ繰り入れた。
+  初版Contract notes 1〜5はResolved decisions RD-1〜RD-6として本文規定へ繰り入れ、
+  2nd review指摘はRD-7として追記した。
 - 2026-09-19: Draft created for #369（spec/plan整備task）。accepted TO-BE契約
   （organizer-to-be-ux.md @ main `3076bdae7e`、PR #364）、処分文書draft（PR #378
   §3.3/§3.13/§4.1/§5/§8）、#366/#367/#368 spec/plan draft
@@ -572,3 +614,4 @@ spec review（[Issue #369 review comment][6]。**Changes requested**、高1/中2
 [4]: https://github.com/nunu1733/NunuLauncher/pull/378
 [5]: https://github.com/nunu1733/NunuLauncher/issues/365
 [6]: https://github.com/nunu1733/NunuLauncher/issues/369#issuecomment-5740051014
+[7]: https://github.com/nunu1733/NunuLauncher/issues/369#issuecomment-5746598782
