@@ -12,6 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.getOrNull
@@ -1778,6 +1779,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
             detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(emptyList())
             detectStarted = java.util.concurrent.CountDownLatch(1)
             detectRelease = java.util.concurrent.CountDownLatch(1)
+            composeStarted = java.util.concurrent.CountDownLatch(1)
+            composeRelease = java.util.concurrent.CountDownLatch(1)
         }
         val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
         composeRule.setContent {
@@ -1794,18 +1797,53 @@ class ManualOrganizationPreferencesInstrumentationTest {
         // Single phase row: exactly one announcing node for the current phase.
         composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_detecting_missing_apps))
             .assertCountEquals(1)
+        // RUN-AC-06: the phase row is the polite live region (announced once
+        // per phase transition, never duplicated).
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_detecting_missing_apps))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
+        // RD-7: while the detector runs the visible phase is 検出 (the legacy
+        // admission Capturing projects as detection) — and focus restoration
+        // lands on the face headline.
+        composeRule.waitUntil(5_000) {
+            try {
+                composeRule.onNodeWithText(context.getString(R.string.manual_organization_preparation)).assertIsFocused()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+        }
         // D-06: the selection surface never composes for the empty cut.
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_title))
             .assertDoesNotExist()
 
-        // RD-4: no-confirm interrupt — the dialog never appears and the run
-        // stops (zero-write) back at the T-07 preamble.
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_interrupt)).performClick()
-        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Cancelled }
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_discard_confirm_title))
-            .assertDoesNotExist()
-        awaitDisplayed(context.getString(R.string.manual_organization_start))
+        // Keyboard/switch traversal: the headline reaches the interrupt row
+        // (the phase row is read-only live-region text, not a focus stop).
+        pressDownUntilFocused(context.getString(R.string.manual_organization_interrupt))
+
+        // Drive the DETECTION → CAPTURE phase transition: releasing the
+        // detector moves the projection to capture, and the composition latch
+        // holds it there — one polite node, renamed, detection gone.
         application.detectRelease?.countDown()
+        composeRule.waitUntil(5_000) { application.composeStarted?.count == 0L }
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Capturing }
+        awaitDisplayed(context.getString(R.string.manual_organization_capturing))
+        composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_capturing))
+            .assertCountEquals(1)
+        composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_detecting_missing_apps))
+            .assertCountEquals(0)
+        // The composition completes through planning into the confirmation
+        // face (the proposal now exists).
+        application.composeRelease?.countDown()
+        awaitPreview(runner, context)
+
+        // RD-4: with a proposal present the interrupt asks the one discard
+        // confirmation; 破棄 then stops the run (zero-write) back at the T-07
+        // preamble.
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_interrupt)).performClick()
+        awaitDisplayed(context.getString(R.string.manual_organization_discard_confirm_title))
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_discard)).performClick()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Cancelled }
+        awaitDisplayed(context.getString(R.string.manual_organization_start))
         worker.join(5_000)
     }
 
@@ -1856,8 +1894,34 @@ class ManualOrganizationPreferencesInstrumentationTest {
     fun preparationAndFailureFacesStayReachableAtTwoHundredPercentFontScale() {
         // RUN-AC-06 (200% reflow): on both integrated faces the headline, the
         // phase/cause row, and every next-step action remain displayed with a
-        // click action — no unreachable critical action.
+        // click action — no unreachable critical action. The T-09 half holds
+        // the detection phase with the blocking detector at 200%; the T-13
+        // half drives the integrated failure face at 200%.
         val context = ApplicationProvider.getApplicationContext<Context>()
+        val detectionApplication = FakeApplication().apply {
+            detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(emptyList())
+            detectStarted = java.util.concurrent.CountDownLatch(1)
+            detectRelease = java.util.concurrent.CountDownLatch(1)
+        }
+        val preparationRunner = ManualOrganizationRun(detectionApplication, OrganizationPlanner { planningResult() })
+        val displayedRunner = mutableStateOf<ManualOrganizationRun>(preparationRunner)
+        composeRule.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 2f)) {
+                LawnchairTheme {
+                    ManualOrganizationPreferences(run = displayedRunner.value)
+                }
+            }
+        }
+        val worker = thread(start = true) { preparationRunner.start() }
+        composeRule.waitUntil(5_000) { detectionApplication.detectStarted?.count == 0L }
+
+        awaitDisplayed(context.getString(R.string.manual_organization_preparation))
+        awaitDisplayed(context.getString(R.string.manual_organization_detecting_missing_apps))
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_interrupt)).assertHasClickAction()
+
+        detectionApplication.detectRelease?.countDown()
+        worker.join(5_000)
+
         val application = FakeApplication().apply {
             notReadyComposition = OrganizationInputComposition.NotReady(
                 reason = app.lawnchair.organizer.integration.InputReadinessReason.ReconciliationPending,
@@ -1867,14 +1931,9 @@ class ManualOrganizationPreferencesInstrumentationTest {
             )
         }
         val runner = ManualOrganizationRun(application, OrganizationPlanner { error("planner must not run") })
+        composeRule.runOnIdle { displayedRunner.value = runner }
+        composeRule.waitForIdle()
         runner.start()
-        composeRule.setContent {
-            CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 2f)) {
-                LawnchairTheme {
-                    ManualOrganizationPreferences(run = runner)
-                }
-            }
-        }
         composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.InputUnavailable }
 
         awaitDisplayed(context.getString(R.string.manual_organization_failed))
@@ -1991,6 +2050,84 @@ class ManualOrganizationPreferencesInstrumentationTest {
             (recoveryRunner.state as? ManualOrganizationRun.State.Applied)?.result is ApplyResult.Unresolved
         }
         captureReviewScreenshot(context, "recovery-failure")
+    }
+
+    @Test
+    fun capturesIntegratedFacesAcrossDisplayConditions() {
+        // RUN-AC-06 (accepted plan): light/dark × ja/default screenshot
+        // evidence for the integrated T-09 preparation face and T-13 failure
+        // face. One compose host; the display condition swaps via state.
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        data class Condition(val name: String, val dark: Boolean, val ja: Boolean)
+        val conditions = listOf(
+            Condition("light-default", false, false),
+            Condition("light-ja", false, true),
+            Condition("dark-default", true, false),
+            Condition("dark-ja", true, true),
+        )
+        val darkState = mutableStateOf(false)
+        val localeState = mutableStateOf(context)
+        val displayed = mutableStateOf<ManualOrganizationRun?>(null)
+        composeRule.setContent {
+            CompositionLocalProvider(
+                LocalContext provides localeState.value,
+                LocalDensity provides Density(1f),
+            ) {
+                LawnchairTheme(darkTheme = darkState.value) {
+                    val current = displayed.value
+                    if (current != null) {
+                        ManualOrganizationPreferences(run = current)
+                    }
+                }
+            }
+        }
+        for (condition in conditions) {
+            val localized = if (condition.ja) {
+                context.createConfigurationContext(Configuration().apply { setLocale(Locale.JAPAN) })
+            } else {
+                context
+            }
+            val detectionApplication = FakeApplication().apply {
+                detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(emptyList())
+                detectStarted = java.util.concurrent.CountDownLatch(1)
+                detectRelease = java.util.concurrent.CountDownLatch(1)
+            }
+            val preparationRunner = ManualOrganizationRun(
+                detectionApplication,
+                OrganizationPlanner { planningResult() },
+            )
+            composeRule.runOnIdle {
+                darkState.value = condition.dark
+                localeState.value = localized
+                displayed.value = preparationRunner
+            }
+            val worker = thread(start = true) { preparationRunner.start() }
+            composeRule.waitUntil(5_000) { detectionApplication.detectStarted?.count == 0L }
+            awaitDisplayed(localized.getString(R.string.manual_organization_preparation))
+            captureReviewScreenshot(context, "t09-preparation-" + condition.name)
+
+            detectionApplication.detectRelease?.countDown()
+            worker.join(5_000)
+
+            val failureApplication = FakeApplication().apply {
+                notReadyComposition = OrganizationInputComposition.NotReady(
+                    reason = app.lawnchair.organizer.integration.InputReadinessReason.ReconciliationPending,
+                    diagnostic = app.lawnchair.organizer.integration.CompositionDiagnostic(
+                        app.lawnchair.organizer.integration.InputCompositionCode.RECONCILIATION_PENDING,
+                    ),
+                )
+            }
+            val failureRunner = ManualOrganizationRun(
+                failureApplication,
+                OrganizationPlanner { error("planner must not run") },
+            )
+            composeRule.runOnIdle { displayed.value = failureRunner }
+            composeRule.waitForIdle()
+            failureRunner.start()
+            composeRule.waitUntil(5_000) { failureRunner.state is ManualOrganizationRun.State.InputUnavailable }
+            awaitDisplayed(localized.getString(R.string.manual_organization_failed))
+            captureReviewScreenshot(context, "t13-failure-" + condition.name)
+        }
     }
 
     @Test
@@ -2348,7 +2485,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
 
         override fun detectMissingAppCandidates(): app.lawnchair.organizer.integration.CandidateDetectionResult {
             detectStarted?.countDown()
-            detectRelease?.await(5, java.util.concurrent.TimeUnit.SECONDS)
+            detectRelease?.await(60, java.util.concurrent.TimeUnit.SECONDS)
             return detection
         }
 
@@ -2356,7 +2493,14 @@ class ManualOrganizationPreferencesInstrumentationTest {
             selection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>,
         ): OrganizationInputComposition = ready()
 
+        // Issue #369 (RD-7): latches hold the composed phase so the capture
+        // phase row is observable deterministically before planning completes.
+        var composeStarted: java.util.concurrent.CountDownLatch? = null
+        var composeRelease: java.util.concurrent.CountDownLatch? = null
+
         override fun composeFullOrganization(): OrganizationInputComposition {
+            composeStarted?.countDown()
+            composeRelease?.await(60, java.util.concurrent.TimeUnit.SECONDS)
             notReadyComposition?.let { return it }
             return ready()
         }

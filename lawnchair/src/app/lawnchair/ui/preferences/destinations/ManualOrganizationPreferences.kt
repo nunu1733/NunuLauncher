@@ -175,10 +175,12 @@ fun ManualOrganizationPreferences(
             // start row.
             1 + (if (showCheckingRow) 1 else 0) + durableStatusItemCount(durableStatus) + 1
 
-        // T-09/T-13: the face headline precedes the focused cause/phase row.
-        manualOrganizationFace(state) == ManualOrganizationFace.PREPARATION ||
-            manualOrganizationFace(state) == ManualOrganizationFace.FAILURE ->
-            2
+        // T-09/T-13: the scroll reveals the face from its headline / cause;
+        // the FocusRequester sits on the headline (T-09) and the cause row
+        // (T-13) respectively.
+        manualOrganizationFace(state) == ManualOrganizationFace.PREPARATION -> 1
+
+        manualOrganizationFace(state) == ManualOrganizationFace.FAILURE -> 2
 
         else -> 1
     }
