@@ -206,6 +206,20 @@ internal object UsageAccessJitGateProvider {
         instance ?: UsageAccessJitGate(isGranted = { UsageAccess.isGranted(context.applicationContext) })
             .also { instance = it }
     }
+
+    /**
+     * Test-only isolation seam: hands out a fresh gate on the next [get], so
+     * instrumentation tests that exercise the process singleton can each
+     * start from an unconsumed opportunity (the production one-chance-per-
+     * process semantics stay untouched — see the instrumentation settings-
+     * return tests, the only callers).
+     */
+    fun resetForTests() {
+        synchronized(this) {
+            instance = null
+            attemptTokens.set(0L)
+        }
+    }
 }
 
 /**

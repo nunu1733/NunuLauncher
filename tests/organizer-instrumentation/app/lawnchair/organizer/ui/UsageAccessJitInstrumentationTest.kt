@@ -196,6 +196,8 @@ class UsageAccessJitInstrumentationTest {
             usageAccessGate = UsageAccessJitGateProvider.get(context),
         )
         try {
+            // Each test must start from an unconsumed process opportunity.
+            UsageAccessJitGateProvider.resetForTests()
             setUsageAccessOp("deny")
             composeRule.setContent {
                 LawnchairTheme {
@@ -230,6 +232,8 @@ class UsageAccessJitInstrumentationTest {
             usageAccessGate = UsageAccessJitGateProvider.get(context),
         )
         try {
+            // Each test must start from an unconsumed process opportunity.
+            UsageAccessJitGateProvider.resetForTests()
             setUsageAccessOp("deny")
             composeRule.setContent {
                 LawnchairTheme {
