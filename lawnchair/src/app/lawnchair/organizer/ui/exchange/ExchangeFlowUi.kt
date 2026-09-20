@@ -74,6 +74,7 @@ import app.lawnchair.organizer.personalization.exchange.acceptsExchangeImportEnv
 import app.lawnchair.organizer.personalization.exchange.exchangeImportSummary
 import app.lawnchair.organizer.ui.ManualOrganizationRun
 import app.lawnchair.organizer.ui.UsageAccessJitGate
+import app.lawnchair.organizer.ui.UsageAccessJitGateProvider
 import app.lawnchair.organizer.ui.UsageAccessJitRequestDialog
 import app.lawnchair.organizer.ui.awaitUsageAccessGrant
 import app.lawnchair.organizer.ui.openUsageAccessSettings
@@ -312,6 +313,9 @@ class ExchangeFlowStateHolder(
      */
     fun dispose() {
         abandonAwaitingUsageAccessJit()
+        // Invalidate the pending attempt itself: a stale resume callback must
+        // find no awaiting screen to match its token against.
+        screen = ExchangeScreen.Closed
     }
 
     /**
@@ -403,8 +407,6 @@ class ExchangeFlowStateHolder(
         }
     }
 
-    private fun nextJitAttemptToken(): Long = ++nextJitAttemptTokenValue
-
     private fun startGeneration(tier: PrivacyTier, scoped: Pair<List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>, Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>>?) {
         screen = ExchangeScreen.Generating
         scope.launch(Dispatchers.IO) {
@@ -430,11 +432,12 @@ class ExchangeFlowStateHolder(
         candidateLabels: Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>,
     ) {
         val scoped = selection to candidateLabels
-        when (val decision = usageAccessGate.evaluate(ExchangeJitAttemptOwner(nextJitAttemptToken()))) {
+        val attemptToken = nextJitAttemptToken()
+        when (val decision = usageAccessGate.evaluate(ExchangeJitAttemptOwner(attemptToken))) {
             UsageAccessJitGate.Decision.Proceed -> startGeneration(tier, scoped = scoped)
 
             else -> screen = ExchangeScreen.AwaitingUsageAccessJit(
-                attemptToken = nextJitAttemptTokenValue,
+                attemptToken = attemptToken,
                 tier = tier,
                 scoped = scoped,
                 isPresenter = decision == UsageAccessJitGate.Decision.Present,
@@ -668,8 +671,13 @@ class ExchangeFlowStateHolder(
 
     private var nextAttemptToken = 0L
 
-    /** Issue #371: process-local generation for JIT request attempt tokens. */
-    private var nextJitAttemptTokenValue = 0L
+    /**
+     * Issue #371: JIT request attempt tokens come from the process-wide
+     * counter (UsageAccessJitGateProvider), never an instance-local one — a
+     * recreated holder must never re-emit a token a disposed holder used
+     * (stale-owner ABA).
+     */
+    private fun nextJitAttemptToken(): Long = UsageAccessJitGateProvider.nextAttemptToken()
 
     /**
      * Snapshot-backed so the hosting screen's freeze predicate (the idle

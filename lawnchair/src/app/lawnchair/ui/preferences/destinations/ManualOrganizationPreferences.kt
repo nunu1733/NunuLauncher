@@ -101,6 +101,9 @@ fun ManualOrganizationPreferences(
     onOpenDiagnostics: (() -> Unit)? = null,
     // Issue #371: injectable for the unsupported-settings instrumentation.
     usageAccessSettingsOpener: (Context) -> Boolean = ::openUsageAccessSettings,
+    // Issue #371: injectable so instrumentation can host a real exchange JIT
+    // waiter (cross-origin oracle) against a controlled holder.
+    exchangeHolderOverride: ExchangeFlowStateHolder? = null,
 ) {
     val context = LocalContext.current
     val coordinator = run ?: remember { ManualOrganizationModule.get(context) }
@@ -111,18 +114,13 @@ fun ManualOrganizationPreferences(
     // the legacy admission Capturing and the real composed capture are the
     // same State value, and conflation cannot hide intermediate publishes.
     val preparationPhase by coordinator.preparationPhase.collectAsStateWithLifecycle()
-    // Issue #370: test-only render trace — report the face this composition
-    // committed (SideEffect runs post-apply), so the admission guard records
-    // "did the T-07 preamble ever render" deterministically. Production never
-    // sets the recorder (ManualOrganizationRunFaceTrace doc).
-    val committedFace = manualOrganizationFace(state)
-    SideEffect { ManualOrganizationRunFaceTrace.recorder?.invoke(committedFace) }
     // Issue #205: the external agent exchange sub-flow. The entry surface is
     // hosted only while no run operation is active (spec 205 V1 rule), so it
     // is constructed unconditionally and rendered inside the Idle/Cancelled
-    // branch only.
-    val exchangeHolder = remember {
-        ExchangeFlowStateHolder(
+    // branch only. #371: injectable so instrumentation can drive a real
+    // exchange JIT waiter against a controlled holder.
+    val exchangeHolder = remember(exchangeHolderOverride) {
+        exchangeHolderOverride ?: ExchangeFlowStateHolder(
             controllerFactory = { ExchangeFlowModule.controller(context) },
             run = coordinator,
             scope = scope,

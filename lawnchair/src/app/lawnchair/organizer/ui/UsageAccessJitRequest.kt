@@ -191,6 +191,17 @@ class UsageAccessJitGate(private val isGranted: () -> Boolean) {
 internal object UsageAccessJitGateProvider {
     @Volatile private var instance: UsageAccessJitGate? = null
 
+    /**
+     * Process-wide generation for JIT request attempt tokens (spec 371
+     * JIT-AC-05 identity binding). Holder instances must mint tokens from
+     * here, never from an instance-local counter: a recreated holder starting
+     * at 0 again could collide with a stale owner of a disposed holder and
+     * let old operations act on the new attempt (ABA).
+     */
+    private val attemptTokens = java.util.concurrent.atomic.AtomicLong(0L)
+
+    fun nextAttemptToken(): Long = attemptTokens.incrementAndGet()
+
     fun get(context: Context): UsageAccessJitGate = instance ?: synchronized(this) {
         instance ?: UsageAccessJitGate(isGranted = { UsageAccess.isGranted(context.applicationContext) })
             .also { instance = it }
