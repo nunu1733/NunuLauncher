@@ -88,7 +88,11 @@ spec 232はAC-1案内先とAC-3入口row構成をhub時代へ改訂する。outc
   通るため不変）。`manual_organization_title` / `manual_organization_summary` resourceの
   削除は行わない（run面scaffold title等の実在用途が残る。resource cleanupは#377所有）。
 - **spec 53の表記更新**（実装PRで実施）: §3.2（entry契約に「T-07前置きを省略し
-  方法は『そのまま整理』で固定される」旨を追記）、§5.2/§5.3（review surface /
+  方法は『そのまま整理』で固定される」旨を追記。加えて、同節のobservable workflow block
+  （`explicit Review/Start -> Capture -> Plan -> Preview -> ...` の直結列挙）は#369が
+  固定したcanonical順序（検出→[候補あり時のみ選択]→capture/plan→確認）を反映していない
+  旧表記であるため、順序を再複製せず「admission後はspec 52/#369が定義する共通run
+  workflowを辿る」旨の参照化へ更新する）、§5.2/§5.3（review surface /
   Review destination ownerの接続先表記をhub時代のrun面参照へ更新）。
   AC-003「#52 workflow再利用」の文言は不変。outcome表・eligibility・§3.3/§3.4・
   diagnostics契約には触れない。
@@ -274,22 +278,23 @@ None。新規permission、外部送信、sensitive dataの扱い追加はない�
       proposal/hint actionのrun-journal非発行、onboarding由来retryの`ONBOARDING_PROPOSAL`保持
       （spec 53 §3.3）に変更がない。persistent state・diagnostics契約へのdiffが存在しない。
       （Issue受入4）
-- [ ] **OCB-AC-05**: spec 53（§3.2/§5.2/§5.3の接続先表記。AC-003不変）と
-      spec 232（AC-1案内先、AC-3入口row 1件構成）が本specの定義どおり更新され、
-      旧案内先・旧入口構成を固定したtest（hint label構成assert、General group直行row assert
-      （暫定併存oracle含む）、「確認」経路の遷移assert）の更新と obsolete理由が
-      PRに記録されている。既存organizer unit gateとinstrumentation laneがgreenである。
-      （Issue受入5）
+- [ ] **OCB-AC-05**: spec 53（§3.2の接続表記・workflow block参照化。§5.2/§5.3の接続先表記。
+      AC-003不変）とspec 232（AC-1案内先、AC-3入口row 1件構成）が本specの定義どおり更新され、
+      §3.2に旧 `explicit Review/Start -> Capture -> Plan` 直結workflow表記がnormative textとして
+      残留しないこと、旧案内先・旧入口構成を固定したtest（hint label構成assert、
+      General group直行row assert（暫定併存oracle含む）、「確認」経路の遷移assert）の更新と
+      obsolete理由がPRに記録されている。既存organizer unit gateとinstrumentation laneが
+      greenである。（Issue受入5）
 
 ## Test oracle
 
 | AC | Evidence |
 |---|---|
-| OCB-AC-01 | instrumentation（`OnboardingOrganizationProposalInstrumentationTest.realTouchStreamOnReviewAdmitsAFreshRunAndRoutesToTheReviewSurface`拡張: 確認tap → admission → 遷移先run面でtransitional T-07前置き面の主CTA「そのまま整理」のsemanticsが観測window中に一度も出現しないこと（反復サンプリングによるT-07 render不在の直接観測）、かつadmitted runの進行表示（T-09統合progress面。#369実装の準備中見出し/phase行）へ到達すること）。既存 `busyReviewKeepsProposalOutcomeUntouchedAndRetryableByRealTouch` の緑維持。unit（`OrganizationOnboardingProposalTest`: admission→REVIEWED記録順序の回帰。#369導入のface mapping純関数`manualOrganizationFace(state)`のtable-driven test（`ManualOrganizationFaceTest`）が無編集でgreenであること＝admitted状態（`Capturing`/`CandidateDetection`/`Planning`）→T-09対応が契約どおりであり、T-07は`Idle`/`Cancelled`からのみ到達することの証拠） |
+| OCB-AC-01 | instrumentation（`OnboardingOrganizationProposalInstrumentationTest.realTouchStreamOnReviewAdmitsAFreshRunAndRoutesToTheReviewSurface`拡張。guard testは**admitted runを実際に再現する**: 遷移先run面が実際に消費する同一process-local runnerに対し、proposalの `admitReview` からproduction admission path（既定実装の `start(ONBOARDING_PROPOSAL)`）または同等のfixture `start()` を実行してから遷移する。既存 `TouchActivationGate` の `reviewOutcome.get()` スタブ（実際のrunner開始を伴わない）をそのまま遷移先観測に使わない。その上で、#369実装のsurface seamが持つ決定的観測点（test-only observer / host trace等があればそれ）により「**最初に表示されるfaceがT-09であり、T-07のcompose/render回数が0**」を直接固定する。反復samplingは補助に留め、単独ではrender count 0の証明としない）。既存 `busyReviewKeepsProposalOutcomeUntouchedAndRetryableByRealTouch` の緑維持。unit（`OrganizationOnboardingProposalTest`: admission→REVIEWED記録順序の回帰。face mapping純関数`manualOrganizationFace(state)`のtable-driven test（`ManualOrganizationFaceTest`、#369実装導入）はadmitted状態→T-09対応のcomponent-level証拠として併用） |
 | OCB-AC-02 | instrumentation（`laterTapShowsTheReentryHintAndPreservesTheDeferOutcome`のlabel構成assert更新: hub入口row label `organizer_hub_title` を含み`manual_organization_title`を含まないこと。EN/ja双方のformat resource合成assert）。string diff（`values/` / `values-ja/` のname集合・placeholder一致）+ emulator screenshot（light/dark × ja/default） |
 | OCB-AC-03 | instrumentation（`homeScreenSettingsShowsTheOrganizerEntryInGeneralAboveTheFold`の入口row assertをhub入口row版へ更新、`OrganizerDiagnosticsRouteInstrumentationTest.homeScreenMaterialsRelocationRoutesDiagnosticsThroughHub`の暫定併存assertを「直行row不在＋hub入口row表示」へ更新）。obsolete理由（D-01完成・#370のrow廃止）をPRに記録 |
 | OCB-AC-04 | 既存unit/instrumentationの無編集green（outcome・provenance・journal非発行の回帰群）。実装PR diff上、persistent store / diagnostics契約コードの無編集確認 |
-| OCB-AC-05 | specs 53/232のdiff review（本specのScopeに対応する行のみの変更、change history追記）+ test更新の obsolete理由のPR記録 + `./gradlew spotlessCheck`、`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`、対象instrumentation lane、CI `final-status` green |
+| OCB-AC-05 | specs 53/232のdiff review（本specのScopeに対応する行のみの変更、change history追記。spec 53 §3.2に旧直結workflow列がnormative textとして残留しないことをdiff上で確認）+ test更新の obsolete理由のPR記録 + `./gradlew spotlessCheck`、`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`、対象instrumentation lane、CI `final-status` green |
 
 ## Open questions
 
@@ -333,6 +338,18 @@ None。新規permission、外部送信、sensitive dataの扱い追加はない�
   （review指摘2の解消）。
   (4) 旧Open question 1（terminal後Idle面のAI分岐）は、accepted 369 spec RD-1
   （transitional T-07にAI選択肢行を新設しない）により解消済みとして記録。
+- 2026-09-20: Review revision（`issue-370-spec-plan-r2@9bf34803ec` へのreview
+  「Changes requested」2点対応）。
+  (1) spec 53更新scopeへ§3.2のobservable workflow block（旧
+  `explicit Review/Start -> Capture -> Plan` 直結列挙）の参照化を追加し、OCB-AC-05と
+  そのoracleへ「旧直結workflow表記の残留なし」を明記（#369 canonical順序との
+  §3.2内部矛盾の解消）。
+  (2) OCB-AC-01のoracleを修正: 既存 `TouchActivationGate` の `admitReview` スタブ
+  （`reviewOutcome.get()` のみでproduction runnerを開始しない）ではadmitted runを
+  再現できないため、guard testは同一process-local runnerへの実際の
+  `start(ONBOARDING_PROPOSAL)` を伴うadmission経路で遷移先を作ること、
+  T-07非介在は決定的観測点（最初の表示face＝T-09、T-07 compose/render回数0）で
+  直接固定すること、反復samplingをrender count 0の証明と位置付けないことを契約化。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/370
 [4]: https://github.com/nunu1733/NunuLauncher/pull/378
