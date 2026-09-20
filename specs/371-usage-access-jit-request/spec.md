@@ -139,7 +139,12 @@ spec 203はU-2の改訂（常設row＋初回signal読み取り時のJIT要求1�
   (d) 提示権を得てから**提示する前に**操作がcancel/破棄された場合のみ提示権は解放され、
   機会は未消費のまま次のtriggerで要求される、
   (e) trigger評価の時点で既に付与済みだった場合は要求不要としてその場で機会を消費し、
-  解決扱いとする（待機者は直ちに進行できる）。
+  解決扱いとする（待機者は直ちに進行できる）、
+  (f) **提示済みのownerが解決前に破棄された場合**（run cancel/dismiss、exchange close/
+  navigation破棄）は**放棄解決**として扱う — gateのみ解決され待機者は解放されるが、
+  破棄されたownerの保留操作は再開されず、JIT要求は再表示されない
+  （提示済みが孤児化して待機者を永久に塞ぐことはない。解決は当該ownerに対して
+  正確に1回であり、遅延して到着したstale owner callbackは二重解決・二重再開を起こさない）。
   待機する起点は機会stateの**決定的な観測seam**（process内のin-memory観測。pollingや
   偶然の再compositionに依存しない）により解決後に必ず再評価される。
   永続化しない。
@@ -280,8 +285,10 @@ When 同一process内で2回目のrun開始を試みる、またはrun面から�
 Then 2回目のrun開始は現行のsingle-active-operation契約どおり `Busy` になる
 （JIT pause中もRUN leaseは保持される。journal・`RUN_STARTED`・compositionは未発生）
 And pause中のcancel/dismissは現行契約どおりrunを `Cancelled` へ戻し、RUN leaseを
-正確に1回解放する（journal eventは発生しない。`RUN_STARTED` 以前であるため。
-提示前であった場合のみ機会の提示権は解放される。提示済みの場合は機会は消費済みのまま）
+正確に1回解放する（journal eventは発生しない。`RUN_STARTED` 以前であるため）。
+機会への作用は提示状態で区別される: 提示前であれば提示権は解放され（機会は未消費のまま）、
+提示済みであれば**放棄解決**として解決のみが行われ（当該runの操作は再開されず、
+JIT要求は再表示されない）、待機していた他の起点は解放される
 And onboarding提案の「確認」でrun admissionが発生した場合も同一規則でpauseし、
 compositionの直前で要求が表示される（D-16継続。onboarding提案自体のoutcome契約は
 変更されない）
@@ -306,6 +313,8 @@ And hub材料面（#366/#367）からT-06へ到達できる導線は不変であ
 - **書く**: 何も書かない。要求機会のstate（提示権の確定・提示・解決・解放を含む）はprocess内の
   in-memory latchのみであり、persistent store・preference・backup対象には入らない。
   待機者の再評価は同latchの決定的な観測seam（in-memory観測）により行われる。
+  owner破棄時の機会への作用はstate別に固定される: 未提示（提示権あり）→解放、
+  提示済み→放棄解決（gateのみ解決し待機者を解放。保留操作は再開しない）、解決済み→無作用。
   disposition §7.3のとおりdowngrade時は「従来の常設rowのみ」に戻る（残留物なし）。
 - **Identity**: snapshot identity（schemaVersion + contentDigest）、provenance参加（U-4）は
   不変。JIT要求のattempt identity（run側はrun operation、exchange側は生成attemptごとの
@@ -380,10 +389,11 @@ And hub材料面（#366/#367）からT-06へ到達できる導線は不変であ
       時のbounded re-read（注入可能なclock/predicate、固定sleep禁止）でGRANTEDが
       **観測された後**に遅延されていたcompositionが開始され、その試行のsignal読み取りは
       付与済みで行われる。上限まで観測できなかった場合は未付与で続行し、次回compositionから
-      付与済みとなる（既知限界としてPR記録）。**最大待機時間の上限値（またはレンジ）は
-      実装PRのcontract commitで確定し、spec change historyとPR evidenceに記録する**。
-      unit testは注入した `false→true` の観測・上限到達（virtual clockでの境界値）の両経路を
-      決定的に検証し、instrumentationは上限超過後に必ずfallbackすることを確認する
+      付与済みとなる（既知限界としてPR記録）。**最大待機時間の上限は0.5秒以上2秒以内の
+      レンジとし（GRANTED観測時は観測直後に短縮）、実装PRのcontract commitで範囲内の
+      具体値を確定し、spec change historyとPR evidenceに記録する**。
+      unit testは注入した `false→true` の観測・上限到達（virtual clockでのレンジ境界値）の
+      両経路を決定的に検証し、instrumentationは上限超過後に必ずfallbackすることを確認する
       （実時間の厳密一致は要求しない）。（Issue Scope、review指摘2/再review5）
 - [ ] **JIT-AC-04**: 拒否・設定遷移後の未付与復帰のいずれの場合も、run・依頼生成は
       `NotReady` にならず続行し、system usage sectionは `Unavailable`、launcher-origin
@@ -399,11 +409,17 @@ And hub材料面（#366/#367）からT-06へ到達できる導線は不変であ
       （pollingや偶然の再compositionに依存しない。解決後には保留起点が必ず正確に1回
       進行する）。提示権を得た操作が提示前にcancel/破棄された場合のみ提示権は解放され、
       機会は未消費のまま次のtriggerで要求される（解放後の再獲得は1つの起点のみ）。
+      **提示済みownerが解決前に破棄された場合（run cancel/dismiss、exchange close/
+      navigation破棄）は放棄解決として解決のみが行われ、保留起点は正確に1回進行する**
+      （`Presented` が孤児化して待機者を永久に塞ぐことはない。破棄されたownerの操作は
+      再開されず、JIT要求は再表示されない。遅延して到着するstale owner callbackは
+      二重解決・二重再開を起こさない）。owner破棄時の機会への作用はstate別に固定される
+      （未提示→解放、提示済み→放棄解決、解決済み→無作用）。
       提示・解決・解放・待機観測はattempt identityにbindされ、古いattemptの操作・通知が
       新しいattemptへ作用しない。初回trigger評価時に付与済みだった場合も機会は消費され、
       同一process内の後続の権限取消で要求が表示されることはない。compositionに到達しない
       操作（選択面の中断を含む）は機会を消費しない。同一run内での再促しが存在しないことの
-      回帰を含む。（Issue受入4、review指摘1/4、再review1/2/3）
+      回帰を含む。（Issue受入4、review指摘1/4、再review1/2/3、2nd再review1）
 - [ ] **JIT-AC-06**: T-06常設rowが残り、付与状態の表示・system設定への遷移・`ON_RESUME`
       再読取・再付与の契約が引き続き機能する（spec 203 U-2の状態管理契約の維持）。
       かつrowの説明文言（EN/ja）が§7.3の3要素を1文で満たす内容へ更新されており、
@@ -437,7 +453,7 @@ And hub材料面（#366/#367）からT-06へ到達できる導線は不変であ
 | JIT-AC-02 | string diff review（EN/ja、format resource、3要素＋privacy修飾の文言要件）+ 単体testでresourceの存在とplaceholder一致を機械確認 + 実装PR contract commitでの最終文言と意味要素checklist（3要素・任意性・raw/bucket/送信前確認）のPR記録 |
 | JIT-AC-03 | unit: 注入したpredicate/clock（virtual clock）によるbounded re-readの決定的oracle（`false→true` 観測で続行、上限境界で未付与継続。固定sleep不使用）。instrumentation: dialogの遷移操作 → shell `appops set ... allow` → **production predicateでGRANTEDが観測された後に**composition開始すること、および上限超過後に必ずfallbackすることのassert。composer側は `PersonalizationCompositionTest` の付与済み経路で担保 |
 | JIT-AC-04 | instrumentation: 断って続行→runがpreviewまで進行（`NotReady`不発生）。遷移失敗注入（`ActivityNotFoundException`）→要求面が閉じず「続行」が機能→Unavailable継続のexact oracle。unit: `PersonalizationCompositionTest` 等の既存composer suiteが無編集でgreen（AC-11/AC-13回帰） |
-| JIT-AC-05 | unit（gate提示権state遷移）: 未消費→提示で消費（提示後は未提示へ戻らない）、提示後action不成立でも消費済み、付与済み初回 `evaluate` で消費、composition不到達操作は非消費、競合で提示権は1つ・`Wait` は保留・提示前cancelで解放（解放後の再獲得は1つ）、**提示済みかつ未解決の間は待機者のcomposition回数0、解決後に正確に1回進行、settings遷移中も停止**、**観測seam（決定的なstate観測）による解放でpolling/再composition偶然に依存しない**、**attempt identityのbind（古いattemptのrelease/markPresented/解決通知が新しいattemptへ作用しない）**。run resumeの決定性oracle（`ON_RESUME`/継続callbackの二重発火でも `RUN_STARTED` とcompositionが各1回）。instrumentation: 2回目の開始/生成でdialog不表示（同一process内）＋run/exchange競合で提示1つ＋解決まで不進行 |
+| JIT-AC-05 | unit（gate提示権state遷移）: 未消費→提示で消費（提示後は未提示へ戻らない）、提示後action不成立でも消費済み、付与済み初回 `evaluate` で消費、composition不到達操作は非消費、競合で提示権は1つ・`Wait` は保留・提示前cancelで解放（解放後の再獲得は1つ）、**提示済みかつ未解決の間は待機者のcomposition回数0、解決後に正確に1回進行、settings遷移中も停止**、**観測seam（決定的なstate観測）による解放でpolling/再composition偶然に依存しない**、**attempt identityのbind（古いattemptのrelease/markPresented/解決通知が新しいattemptへ作用しない）**、**放棄解決（owner=`Presented`・waiter=`Wait`でowner runをcancel/close→owner composition 0・waiter 1回進行・JIT要求再表示なし・stale owner callbackの後着で二重解決/二重再開なし）**。run resumeの決定性oracle（`ON_RESUME`/継続callbackの二重発火でも `RUN_STARTED` とcompositionが各1回）。instrumentation: 2回目の開始/生成でdialog不表示（同一process内）＋run/exchange競合で提示1つ＋解決まで不進行 |
 | JIT-AC-06 | T-06の既存instrumentation（toggle↔preference一致、resume再読取。`OrganizerUsageMaterialRows`由来）が状態操作として無編集でgreen + row copy（EN/ja）の存在・placeholder一致unit test + 実装PR contract commitでの意味要素checklist記録 + diff review（状態管理契約に触れないこと） |
 | JIT-AC-07 | specs/203-usage-implicit-preference-signals/spec.mdのdiff review（U-2・表のrationale要件更新＋JIT行・AC・change history。snapshot/provenance契約節の無変更） |
 | JIT-AC-08 | 実装PR diff review（manifest permission・persistent store・diagnostics eventの無変更）+ failure path unit/instrumentation（遷移失敗、pause中cancelのjournal無event、pause中RUN lease保持（2回目start `Busy`）・cancel/dismissでのlease exactly once release、process死模擬、JIT保留中close後の遅延callbackが生成を再開しない、**JIT解決後のresume経路でcapture開始の可視commitがcomposed phase入口gate区間より前にpublishされない**） |
@@ -479,7 +495,8 @@ And hub材料面（#366/#367）からT-06へ到達できる導線は不変であ
    扱いを含めて明文化を要する）。
 2. 要求文言・T-06 row文言の最終copy（ja/EN）は**実装PRのcontract commitで確定**する
    （JIT-AC-02/JIT-AC-06のとおり、意味要素checklistをPR evidenceへ記録）。
-   bounded re-readの最大待機時間の上限値も同一contract commitで確定・記録する（JIT-AC-03）。
+   bounded re-readの最大待機時間は本specで0.5秒以上2秒以内のレンジとして拘束済みであり、
+   contract commitでの範囲内の具体値確定と記録がJIT-AC-03の受入条件である。
 3. session置換確認（spec 205 AC-13）とJIT要求の両方が必要な場合の提示順序は
    「置換確認→JIT要求」を本specのscenarioどおりとする。逆順がUX上望ましいという判断が
    owner reviewで示された場合は該当scenarioを修正する（どちらの順序もJIT-AC-01の
@@ -515,6 +532,15 @@ And hub材料面（#366/#367）からT-06へ到達できる導線は不変であ
   capture可視commitもcomposed phase入口gate区間へ集約（二重resume防止の内部claimと
   ユーザー可視commitの分離。JIT-AC-08へoracle追加）、(5) bounded re-readの最大待機時間
   上限のcontract commit確定を受入条件へ追加。
+- 2026-09-21: Review revision 3（`8988526e34` への2nd再レビュー「Changes requested」2指摘対応）。
+  (1) **提示済みowner破棄時の放棄解決**を契約化: `Presented(owner)` は解決前にownerが
+  破棄されるとgateのみ解決され待機者は解放される（孤児化によるliveness違反の排除。
+  破棄されたownerの操作は再開されずJIT要求は再表示されない。owner破棄時の機会への作用は
+  state別に固定 — 未提示→解放、提示済み→放棄解決、解決済み→無作用。stale owner
+  callbackの後着は二重解決・二重再開を起こさない。JIT-AC-05へoracle追加）、
+  (2) bounded re-readの最大待機時間を **0.5秒以上2秒以内のレンジ**として本文で拘束し
+  （GRANTED観測時は即時短縮）、contract commitでの範囲内の具体値確定をJIT-AC-03の
+  受入条件へ明記。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/371
 [2]: https://github.com/nunu1733/NunuLauncher/issues/365

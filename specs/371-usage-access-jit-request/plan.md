@@ -177,6 +177,17 @@
       `Reserved(owner)` → `Available`（機会は未消費のまま残り、次のtriggerで要求される。
       解放後の再獲得は原子的遷移に成功した1つのcallerのみ）。`Presented` 以降は
       解放できない（1回限り契約の維持）。
+    - **owner破棄時の規則（2nd再review指摘1 — liveness保証）**: owner操作の破棄
+      （run cancel/dismiss、exchange close/navigation破棄）における機会への作用は
+      state別に固定する:
+      - `Reserved(owner)` → `release(owner)`（未提示のため機会は未消費のまま）。
+      - `Presented(owner)` → **放棄解決**として `resolve(owner)` をexactly once実行する
+        （gateのみ解決され待機者は解放される。破棄されたownerの保留操作は再開されず、
+        JIT要求は再表示されない）。これにより `Presented` が孤児化して待機者を
+        永久に塞ぐことが構造的にない。遅延して到着するstale owner callbackは
+        二重解決・二重再開を起こさない（解決は冪等、再開はtoken/state一致契約）。
+      - `Resolved` → 無作用。      なおsystem settingsへの遷移・復帰はowner破棄ではない（ownerは生存しており、
+      既存の「settings遷移中」契約で区別される）。
   - **観測seam（再review指摘2）**: gateは `state: StateFlow<JitGateState>`（revision counter
     付きの不変snapshot）を公開し、`Wait` で保留されたhostはこれをcollectして解決を
     **決定的に観測する**（polling・偶然の再compositionを契約にしない）。
@@ -251,8 +262,10 @@
     要求を出さない（spec scenarioどおり）。
   - cancel/dismiss連携: `cancel()` のcancel可能状態集合へ `AwaitingUsageAccessJit` /
     `ResumingUsageAccessJit` を追加する。cancel/dismiss時のgate連携は
-    **`Reserved`（未提示）の場合のみ `gate.release(operation)`**（提示済み `Presented` 以降は
-    解放せず消費済みのまま — 1回限り契約）。pause/claimは `RUN_STARTED` 以前であるため、
+    **owner破棄時のstate別規則**に従う: gate stateが `Reserved`（未提示）なら
+    `gate.release(operation)`、`Presented`（提示済み）なら放棄解決として
+    `gate.resolve(operation)` をexactly once実行する（当該runの操作は再開されず、
+    待機者のみ解放される）。`Resolved` なら無作用。pause/claimは `RUN_STARTED` 以前であるため、
     pause中のcancelはjournal eventを発生させず、leaseは現行経路で正確に1回解放される。
 - **統合点2: 依頼生成のholder gate（state machine本体へ組み入れ。review指摘4・再review指摘3の解消）**。
   `ExchangeFlowStateHolder` の `generate` / `generateScoped` の先頭で生成attemptを
@@ -268,8 +281,10 @@
     tokenと現行screenのtokenが一致しないため再開しない）。
   - 無効化: `close()`（`Closed` への遷移）、`ReplacementConfirm` 等への別遷移、
     host navigation破棄のいずれでも `AwaitingUsageAccessJit` は退場し、保留生成は破棄される。
-    退場時にdialogが**未提示**（gate stateが `Reserved`）であれば
-    `gate.release(当該attemptToken)` を呼ぶ（`Presented` 以降なら解放しない）。
+    退場時のgate連携はstate別規則に従う: gate stateが `Reserved`（未提示）なら
+    `gate.release(当該attemptToken)`、`Presented`（提示済み）なら放棄解決として
+    `gate.resolve(当該attemptToken)` をexactly once実行する（当該attemptの生成は
+    再開されず、待機者のみ解放される）。`Resolved` なら無作用。
   - dialog host（exchange側）: hosting composableが `AwaitingUsageAccessJit` を観測したら
     gate stateを確認して `Reserved(自attempt)` の場合のみ共有dialogを提示
     （提示時に `markPresented(attemptToken)`）。`Wait` 状態（他attemptが進行中）の場合は
@@ -289,8 +304,10 @@
   - 固定sleepは使用しない。unit testは注入した `false → true` のpredicate列と
     virtual clockでの上限境界の両経路を決定的に検証する。instrumentationは
     「上限超過後に必ずfallbackする」ことを確認する（実時間の厳密一致は要求しない）。
-  - **最大待機時間の上限値（またはレンジ）は実装PRのcontract commitで確定し、
-    spec change historyとPR evidenceへ記録する**（observable behavior）。
+  - **最大待機時間は0.5秒以上2秒以内のレンジとして本specで拘束されており
+    （GRANTED観測時は観測直後に短縮）、実装PRのcontract commitで範囲内の具体値を
+    確定し、spec change historyとPR evidenceへ記録する**（observable behavior）。
+    probe evidenceの1秒待機を実務上限の根拠とし、レンジ内で決める。
   - T-06 rowの既存 `ON_RESUME` 再読取（単発・表示用途）は現行契約のまま無変更である
     （状態表示のtimingと、composition再開の判定は別契約である）。
 - **統合点4: T-06常設rowのcopy改訂（review指摘3の解消）**。
@@ -374,6 +391,11 @@
 - **exchange側のgate ownerをholder固定identityにする**（3rd review前の設計。
   再review指摘3で拡張）: 古い `release` / `markPresented` が後から作られた新reservationへ
   作用し得る。ownerは生成attemptごとのmonotonic tokenにbindする。却下。
+- **提示済みownerの破棄を「消費済みなのでgateに触れない」で済ませる**（3rd review前の
+  設計。2nd再review指摘1で拡張）: `Presented(owner)` が解決されないまま残り、
+  待機者が永久に `Wait` するliveness違反（process再起動まで復旧不能）になる。
+  owner破棄時はstate別に作用を固定し（未提示→解放、提示済み→放棄解決、解決済み→無作用）、
+  barrierが必ず解決されることを構造的に保証する。却下。
 - **active run中のJIT抑制**（run-in生成でのprompt回避）: run-in生成は検出後 `Selecting` から
   到達でき、process初回compositionになり得るため抑制するとuniform ruleに穴が開く。
   promptは選択凍結に抵触しない（dialog Backはdialog dismissalであり、run中断を
@@ -384,14 +406,14 @@
 | Area | Intended change | Why here |
 |---|---|---|
 | `lawnchair/src/app/lawnchair/organizer/ui/UsageAccessJitRequest.kt`（新規） | 要求機会gate（`Available/Reserved/Presented/Resolved` 提示権state、`evaluate`/`markPresented`/`resolve`/`release`、attempt identity bind、`StateFlow` 観測seam、process-scoped singleton）・JIT dialog composable・復帰時bounded re-read helper・`ON_RESUME` 観測helper | organizer UI層の共有表現。run / exchangeの両hostから使え、composer・controllerを触らない。「提示による消費」と「解決による解放」の分離と決定的観測が競合契約の要 |
-| `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt` | constructorへgate注入（既定は常に `Proceed` の不変gate）。`State.AwaitingUsageAccessJit(runId, selection, isOwner)` と内部claim用 `State.ResumingUsageAccessJit(runId, selection)` 追加、`runComposedPhase` 入口（cancel gate前）のpause判定、`continueAfterUsageAccessGate()`（lock内はclaimのみ→単回composed phase）、3経路のユーザー可視capture commit（`CAPTURE`/`Capturing`/journal/RUN_STARTED）を入口gate区間へ集約、`cancel()` 対象状態への追加と未提示（`Reserved`）時のみ `release` する連携。javadoc | composition直前のpause pointはrun state machineのみが持てる（選択面と同一の待機点概念）。単一入口のchoke pointで3経路を構造的に網羅し、二重resume防止（内部claim）とcapture可視commit（入口gate区間）を分離して自己矛盾を排除 |
+| `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt` | constructorへgate注入（既定は常に `Proceed` の不変gate）。`State.AwaitingUsageAccessJit(runId, selection, isOwner)` と内部claim用 `State.ResumingUsageAccessJit(runId, selection)` 追加、`runComposedPhase` 入口（cancel gate前）のpause判定、`continueAfterUsageAccessGate()`（lock内はclaimのみ→単回composed phase）、3経路のユーザー可視capture commit（`CAPTURE`/`Capturing`/journal/RUN_STARTED）を入口gate区間へ集約、`cancel()` 対象状態への追加とowner破棄時のstate別gate連携（`Reserved`→`release`、`Presented`→放棄解決の `resolve`、`Resolved`→無作用）。javadoc | composition直前のpause pointはrun state machineのみが持てる（選択面と同一の待機点概念）。単一入口のchoke pointで3経路を構造的に網羅し、二重resume防止（内部claim）とcapture可視commit（入口gate区間）を分離して自己矛盾を排除。放棄解決でbarrierのlivenessを保証 |
 | `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationFace.kt` | `AwaitingUsageAccessJit` / `ResumingUsageAccessJit` → `PREPARATION`（T-09）のface mapping entry追加 | #369が確立した決定的face写像の一貫性。新stateが8ユーザー状態の外に出ない保証 |
 | `lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt` | `AwaitingUsageAccessJit` 観測時の共有dialog提示（owner時のみ。`markPresented` + 解決時 `resolve`/`continueAfterUsageAccessGate`）、gate state観測seamのcollect | run state観測点が唯一のdialog host。開始row群の個別変更は不要（pauseがmachine内のため） |
-| `lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeFlowUi.kt` | `generate` / `generateScoped` 先頭のattempt発行とgate判定、`ExchangeScreen.AwaitingUsageAccessJit(attemptToken, tier, scoped)` variant追加、dialog提示（自attemptの `Reserved` 時のみ）とtoken一致単回resume、close/別遷移時の無効化と未提示 `release` | 依頼生成trigger点。保留生成のidentity/lifetimeを既存state machineの遷移規律とattempt token bindの下に置き、stale callback・stale gate操作の生成再開/消費/解放を構造的に排除。置換確認の後にJIT要求が来る順序を既存flowの自然な拡張で実現 |
+| `lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeFlowUi.kt` | `generate` / `generateScoped` 先頭のattempt発行とgate判定、`ExchangeScreen.AwaitingUsageAccessJit(attemptToken, tier, scoped)` variant追加、dialog提示（自attemptの `Reserved` 時のみ）とtoken一致単回resume、close/別遷移時の無効化とowner破棄時のstate別gate連携（`Reserved`→`release`、`Presented`→放棄解決の `resolve`、`Resolved`→無作用） | 依頼生成trigger点。保留生成のidentity/lifetimeを既存state machineの遷移規律とattempt token bindの下に置き、stale callback・stale gate操作の生成再開/消費/解放を構造的に排除。放棄解決でbarrierのlivenessを保証。置換確認の後にJIT要求が来る順序を既存flowの自然な拡張で実現 |
 | `lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerUsageMaterialRows.kt` | **無実装変更**（状態表示・遷移・`ON_RESUME`再読取は現行どおり）。javadocの文言要件参照を更新 | copy改訂の対象はresourceであり、実装は要件の参照先が変わるのみ |
 | `lawnchair/res/values/strings.xml` / `values-ja/strings.xml` | JIT dialog文言（title/body/遷移/続行/遷移失敗。format resource、§7.3の3要素 + 任意性 + privacy修飾）新規。T-06 row文言（`organizer_personalization_usage_access_label/_granted/_not_granted`、EN/ja）を§7.3準拠へ改訂 | spec 123 AC-4/AC-5・spec 161 LQA規約。JIT（JIT-AC-02）とT-06（JIT-AC-06）双方のcopy契約。最終文言は実装PR contract commitで確定し意味要素checklistをPR記録 |
 | `specs/203-usage-implicit-preference-signals/spec.md` | amendment: U-2改訂（常設row＋初回signal読み取り直前のJIT要求1回）、Permission and fallback behavior表の「opt-in (初回)」行のrationale要件をprivacy修飾形へ更新 + JIT要求行追加、JIT受入条件（AC-17以降）追加、change history | Issue本文「Spec」節・disposition §3.10「doc変更: spec 203改訂（#371のPR）」・§4.1 supersession map。local-only無条件表現の修正（review指摘2）を含む |
-| `tests/unit/app/lawnchair/organizer/ui/`（新規/更新） | `UsageAccessJitGate` のunit test（提示権state遷移: 競合で `Present` は1つ、`Wait` の保留、`markPresented`/`resolve`/`release` の冪等・owner一致・**`Presented` 以降の解放不可**、**提示済み未解決の間は待機者composition 0・解決後に1回進行・settings遷移中も停止**、観測seamの決定性（stale通知の非作用）、付与済み初回 `evaluate` で消費）+ `ManualOrganizationRunTest` へpause oracle追加（3経路 × gate decision、**CAPTURE commit移動後の順序oracle更新**（理由を記録）、`Busy`・journal無event・lease exactly once release・二重継続で `RUN_STARTED` 1回、**resume経路でCAPTUREが入口gate区間より前にpublishされない**、既存oracleは既定gateで無編集green — CAPTURE位置の更新分は理由を記録）+ bounded re-readの決定的oracle（`false→true`、virtual clockでの上限境界）+ `ManualOrganizationFaceTest` の対応表追加 | gate logic・2段階orchestration・再取得timingのinterface test |
+| `tests/unit/app/lawnchair/organizer/ui/`（新規/更新） | `UsageAccessJitGate` のunit test（提示権state遷移: 競合で `Present` は1つ、`Wait` の保留、`markPresented`/`resolve`/`release` の冪等・owner一致・**`Presented` 以降の解放不可**、**提示済み未解決の間は待機者composition 0・解決後に1回進行・settings遷移中も停止**、観測seamの決定性（stale通知の非作用）、**owner破棄時のstate別規則（未提示→解放、提示済み→放棄解決で待機者1回進行、解決済み→無作用。stale owner callbackの後着で二重解決/二重再開なし）**、付与済み初回 `evaluate` で消費）+ `ManualOrganizationRunTest` へpause oracle追加（3経路 × gate decision、**CAPTURE commit移動後の順序oracle更新**（理由を記録）、`Busy`・journal無event・lease exactly once release・二重継続で `RUN_STARTED` 1回、**resume経路でCAPTUREが入口gate区間より前にpublishされない**、既存oracleは既定gateで無編集green — CAPTURE位置の更新分は理由を記録）+ bounded re-readの決定的oracle（`false→true`、virtual clockでの上限境界）+ `ManualOrganizationFaceTest` の対応表追加 | gate logic・2段階orchestration・再取得timingのinterface test |
 | `tests/organizer-instrumentation/`（新規/更新） | JIT要求flow（run開始・選択確認・D-06直行・依頼生成・run-in経路）、1回限り、断って続行、**付与して続行（production predicateでGRANTED観測後にcomposition開始）**、T-06 copy回帰（EN/ja）、dialog Back helper、選択中断の否定oracle、**run/exchange競合で提示1つ・解決まで不進行**、**old attemptのcallback/gate操作がnew attemptへ作用しない（close→同条件再生成で古いcallbackが再開しない・古い `release`/`markPresented` が新reservationへ作用しない）**、**JIT保留中close後の遅延callbackが生成を再開しない**、exchange結合oracle（`T-07 AI → [置換確認] → JIT要求 → 生成 → 送信前確認`。#372 merge後のre-entryで再検証） | spec Test oracle表（JIT-AC-01〜06, 08, 09） |
 
 source implementation・build設定・dependencyの変更は本Issueの実装PRのscopeであり、
@@ -434,9 +456,10 @@ source implementation・build設定・dependencyの変更は本Issueの実装PR�
   未提示の場合のみ `release(attemptToken)`）。stale tokenを持つ遅延callback・古いattemptの
   gate操作は新attemptへ作用しない（token一致契約）。
 - **pause中にhost面がdisposeされた場合**（画面離脱）: 既存の `dismiss()` 契約
-  （active operationのcancel）によりrunは `Cancelled` へ戻る。機会はdialog提示済み
-  （`Presented` 以降）なら消費済み、未提示（`Reserved`）なら `release` されて未消費のまま
-  破棄される。
+  （active operationのcancel）によりrunは `Cancelled` へ戻る。機会への作用はstate別である:
+  未提示（`Reserved`）なら `release` されて未消費のまま破棄、提示済み（`Presented`）なら
+  放棄解決としてgateのみ解決され（当該runの操作は再開されず、JIT要求は再表示されない）、
+  待機していた起点は解放される。
 
 ## Verification
 
@@ -446,7 +469,7 @@ source implementation・build設定・dependencyの変更は本Issueの実装PR�
 | JIT-AC-02 | unit: 新規stringの `values/` / `values-ja/` 存在とplaceholder一致（spec 123 AC-5方式）。+ 実装PR contract commitでの最終文言と意味要素checklist（3要素・任意性・raw/bucket/送信前確認）のPR記録 | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
 | JIT-AC-03 | unit: 注入predicate/clock（virtual clock）によるbounded re-readの決定的oracle（`false→true` 観測で続行、上限境界で未付与継続。固定sleep不使用）。instrumentation: dialogの遷移操作 → shell `appops set ... allow` → **production predicateでGRANTED観測後にcomposition開始**、上限超過後に必ずfallback。composer側は `PersonalizationCompositionTest` の付与済み経路で担保 | unit gate + organizer instrumentation lane（probe testと同一pattern） |
 | JIT-AC-04 | instrumentation: 断って続行 → runがpreviewまで進行（`NotReady`不発生）。遷移失敗注入（`ActivityNotFoundException`）→ dialog維持＋「続行」機能→Unavailable継続のexact oracle。unit: `PersonalizationCompositionTest` 等の既存composer suiteが無編集でgreen（AC-11/AC-13回帰） | unit gate + instrumentation lane |
-| JIT-AC-05 | unit: gate提示権state遷移（未消費→提示で消費・`Presented` 以降解放不可、提示後action不成立でも消費済み、付与済み初回 `evaluate` で解決扱いの消費、composition不到達操作は非消費、競合で `Present` は1つ・`Wait` は保留・提示前cancelで解放（再獲得は1つ）、**提示済み未解決の間は待機者composition 0・解決後に1回進行・settings遷移中も停止**、観測seamの決定性・stale通知の非作用、attempt identity bind）。unit: run resumeの二重発火で `RUN_STARTED`/composition各1回。instrumentation: 2回目の開始/生成でdialog不表示（同一process内）＋run/exchange競合で提示1つ＋解決まで不進行＋old/new attempt分離 | unit gate + instrumentation lane |
+| JIT-AC-05 | unit: gate提示権state遷移（未消費→提示で消費・`Presented` 以降解放不可、提示後action不成立でも消費済み、付与済み初回 `evaluate` で解決扱いの消費、composition不到達操作は非消費、競合で `Present` は1つ・`Wait` は保留・提示前cancelで解放（再獲得は1つ）、**提示済み未解決の間は待機者composition 0・解決後に1回進行・settings遷移中も停止**、観測seamの決定性・stale通知の非作用、attempt identity bind、**放棄解決（owner=`Presented`・waiter=`Wait`でowner runをcancel/close→owner composition 0・waiter 1回進行・JIT要求再表示なし・stale owner callbackの後着で二重解決/二重再開なし）**）。unit: run resumeの二重発火で `RUN_STARTED`/composition各1回。instrumentation: 2回目の開始/生成でdialog不表示（同一process内）＋run/exchange競合で提示1つ＋解決まで不進行＋old/new attempt分離 | unit gate + instrumentation lane |
 | JIT-AC-06 | T-06の既存instrumentation（状態操作）が無編集でgreen + row copy（EN/ja）のresource test + contract commitでの意味要素checklist記録 + diff review（状態管理契約の無変更） | instrumentation lane + unit gate + PR diff review |
 | JIT-AC-07 | specs/203-.../spec.mdのdiff review（U-2・表のrationale要件更新＋JIT行・AC・change historyのamendmentのみ。snapshot/provenance契約節の無変更） | PR diff review |
 | JIT-AC-08 | diff review（manifest permission・persistent store・diagnostics eventの無変更）+ failure path unit/instrumentation（遷移失敗、pause中cancelのjournal無event、pause中RUN lease保持（2回目start `Busy`）・cancel/dismissでのlease exactly once release、process死模擬、**resume経路でcapture可視commitが入口gate区間より前にpublishされない（face trace観測含む）**、JIT保留中close後の遅延callbackが生成を再開しない） | PR diff review + unit gate |
@@ -508,10 +531,11 @@ attempt identity bind）、integration（composer回帰・生成順序）、UI/a
     `RUN_STARTED` 以前のpre-journal区間であり、#369の「pre-composed phase は
     run-mode-bearing eventを持たない」契約および入口cancel gate（RD-6）のactive再確認とは
     整合する。
-  - gate提示権のowner管理（run operation / exchange attemptToken）の漏れ — release忘れは
-    「提示されない要求機会の永続消費」として現れるため、cancel/dismiss/closeの全経路で
-    未提示reservationの解放をunit/instrumentationで検証する。逆に `Presented` 以降の
-    誤解放は1回限り契約違反となるため、state遷移の単体testで防ぐ。
+  - gate提示権のowner管理（run operation / exchange attemptToken）の漏れ — owner破棄時の
+    state別規則（未提示→解放、提示済み→放棄解決、解決済み→無作用）の適用漏れは、
+    「提示されない要求機会の永続消費」または「`Presented` 孤児化による待機者の凍結」として
+    現れるため、cancel/dismiss/closeの全経路で規則の適用をunit/instrumentationで検証する。
+    逆に `Presented` 以降の誤解放は1回限り契約違反となるため、state遷移の単体testで防ぐ。
   - dialog Backがrun中断handlerへ漏出する（pause/run-in経路） — instrumentationで明示検証。
   - bounded re-readの上限値の端末分布 — 上限超過時は既知限界（未付与で継続）として
     spec化済み。上限値はcontract commitで確定しPRでevidenceを記録。
