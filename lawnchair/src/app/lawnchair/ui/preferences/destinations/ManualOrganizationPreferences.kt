@@ -289,8 +289,13 @@ fun ManualOrganizationPreferences(
         runCatching {
             listState.scrollToItem(0)
             focusTargetIndex?.let { index ->
-                if (listState.layoutInfo.visibleItemsInfo.none { it.index == index }) {
-                    listState.scrollToItem(index)
+                // Issue #369: the PREAMBLE face mutates (checking row → durable
+                // rows → scope summary); clamp to the live item count so the
+                // reveal never races an out-of-range index mid-transition.
+                val last = listState.layoutInfo.totalItemsCount - 1
+                val target = index.coerceAtMost(last)
+                if (target >= 0 && listState.layoutInfo.visibleItemsInfo.none { it.index == target }) {
+                    listState.scrollToItem(target)
                 }
             }
         }
@@ -334,7 +339,7 @@ fun ManualOrganizationPreferences(
                         item { ProgressText(R.string.manual_organization_durable_status_checking) }
                     }
                     durableStatus?.let { durableStatusItems(it, onOpenDiagnostics) }
-                    item(key = "preamble-scope") {
+                    item {
                         SummaryText(stringResource(R.string.manual_organization_preamble_scope))
                     }
                     // Issue #328: while an import attempt lives (validation or
