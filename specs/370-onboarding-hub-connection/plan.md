@@ -2,10 +2,10 @@
 
 > Issue: #370
 > Spec: [spec.md](./spec.md)
-> Status: draft（spec未承認。本planはbaseline `171d0bcf10` 時点のコード調査に基づく
-> （#368実装PR #384、#369 spec/plan PR #386 merge後）。review 2点対応済み
-> （spec 53 §3.2 workflow block参照化、guard testのfixture改修要件）。
-> #369実装merge後に、run面の実リソース名・行番号を最終確認のうえ実装着手する）
+> Status: **accepted**（2026-09-20。spec/planともPhase1 review通過済み。
+> 実装着手は#369実装（同Issue Phase 2）merge後とし、その時にrun面の実リソース名・
+> 行番号を最終確認（step 1のre-entry確定）のうえ着手する。
+> 本planはbaseline `171d0bcf10` 時点のコード調査に基づく）
 
 ## Current evidence（baseline `171d0bcf10`、2026-09-20確認）
 

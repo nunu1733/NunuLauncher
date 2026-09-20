@@ -1,12 +1,24 @@
 ---
 issue: "#370"
-status: draft
+status: accepted
 requirements: [FR-006, FR-007, NFR-009, NFR-011]
 risk: []
 updated: 2026-09-20
 ---
 
 # onboarding提案と再表示hintの接続先をhub時代の情報設計へ更新する
+
+> Status: **accepted** (2026-09-20) — Phase1 reviewを通過し、実装 (Phase2) の契約として
+> 確定した。実装着手は#369実装（同Issue Phase 2）merge後である（Issue本文 `Depends on`）。
+> re-entry revision (`9bf34803ec`) への1st review
+> [**Changes requested**](https://github.com/nunu1733/NunuLauncher/issues/370#issuecomment-5751384352)
+> (中2) を `b89bcf7c86` で、2nd review
+> [**Changes requested**](https://github.com/nunu1733/NunuLauncher/issues/370#issuecomment-5751455662)
+> (中1) を `f8bd503050` で全件対応し、同headへの re-review
+> [**指摘なし**](https://github.com/nunu1733/NunuLauncher/issues/370#issuecomment-5751574889)
+> (blocking指摘0件。implementation-ready判定) を経て実装へ着手する。
+> 初版draft (`168d15874a`) へのreview（Changes requested 中2/低1）と2026-09-19の
+> scope追記（責務分割）はChange historyに記録のとおり re-entry revision で解消済み。
 
 > 契約の根拠: accepted TO-BE decision
 > [docs/product/organizer-to-be-ux.md](../../docs/product/organizer-to-be-ux.md)
@@ -22,7 +34,7 @@ updated: 2026-09-20
 > face mapping純関数`manualOrganizationFace(state)`。Non-goalsで
 > 「onboarding『確認』はT-07前置きを経ない。T-07はMANUAL entryの開始点としてのみ導入する」を
 > 明示し、本件の接続変更を#370へ委譲）。
-> 本specは[Issue #370][1]の成果物である。statusが `draft` の間はimplementation-readyではない。
+> 本specは[Issue #370][1]の成果物である。
 
 ## Problem
 
@@ -350,6 +362,10 @@ None。新規permission、外部送信、sensitive dataの扱い追加はない�
   `start(ONBOARDING_PROPOSAL)` を伴うadmission経路で遷移先を作ること、
   T-07非介在は決定的観測点（最初の表示face＝T-09、T-07 compose/render回数0）で
   直接固定すること、反復samplingをrender count 0の証明と位置付けないことを契約化。
+
+- 2026-09-20: **Accepted**。最終re-review（[指摘なし](https://github.com/nunu1733/NunuLauncher/issues/370#issuecomment-5751574889)）
+  をもってPhase1 reviewを通過。実装 (Phase2) の契約として確定
+  （実装着手は#369実装merge後）。statusをacceptedへ更新。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/370
 [4]: https://github.com/nunu1733/NunuLauncher/pull/378
