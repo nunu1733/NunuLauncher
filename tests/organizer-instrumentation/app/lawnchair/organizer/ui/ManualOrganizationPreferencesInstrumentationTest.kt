@@ -541,14 +541,9 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_interrupt)).performClick()
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_discard)).performClick()
         composeRule.waitUntil(5_000) { runner.state == ManualOrganizationRun.State.Cancelled }
-        composeRule.waitUntil(5_000) {
-            try {
-                composeRule.onNodeWithText(context.getString(R.string.manual_organization_start)).assertIsFocused()
-                true
-            } catch (_: AssertionError) {
-                false
-            }
-        }
+        // Issue #369 (D-13): 中断 returns to the hub — production pops the nav
+        // stack, so the on-surface start-row focus assertion is superseded by
+        // the hub lane's focus oracle.
     }
 
     @Test
@@ -1867,7 +1862,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
         awaitDisplayed(context.getString(R.string.manual_organization_discard_confirm_title))
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_discard)).performClick()
         composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Cancelled }
-        awaitDisplayed(context.getString(R.string.manual_organization_start))
+        // D-13: 中断 returns to the hub — production pops the nav stack; this
+        // bare harness ends here, so the Cancelled state is the terminal oracle.
         worker.join(5_000)
     }
 

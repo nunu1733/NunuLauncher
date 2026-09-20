@@ -251,7 +251,26 @@ fun ManualOrganizationPreferences(
         }
     }
 
-    ManualOrganizationBackHandler(coordinator, onBack = { onSystemBack() })
+    // Issue #369 (D-13): the screen owns the Back callback so [navigateBack]
+    // can disable it before re-dispatching — otherwise the re-dispatched Back
+    // would re-enter [onSystemBack] and loop forever. The import-success
+    // handler below composes later, so while enabled it takes the Back first.
+    DisposableEffect(backDispatcher) {
+        val callback = object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                onSystemBack()
+            }
+        }
+        backDispatcher?.addCallback(callback)
+        backCallback = callback
+        onDispose {
+            callback.remove()
+            backCallback = null
+        }
+    }
+    DisposableEffect(coordinator) {
+        onDispose { coordinator.dismiss() }
+    }
 
     // Issue #328 (spec 328 D-2): the import success state intercepts system
     // Back at the ALWAYS-composed hosting level — never inside the lazy item,
@@ -1042,43 +1061,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.preparationFaceItems(
             label = stringResource(R.string.manual_organization_interrupt),
             onClick = onInterrupt,
         )
-    }
-}
-
-/**
- * Issue #369 (D-13): the screen owns the Back decision (confirm vs direct
- * interrupt) via [onBack]; this handler only owns the callback plumbing and
- * the leave-time dismissal. The screen's decision already routes through the
- * shared confirmation gate; the coordinator's gate structurally refuses the
- * post-checkpoint dismiss (ApplicationInProgress), so Back after the
- * checkpoint stays non-accepting as today.
- */
-@Composable
-private fun ManualOrganizationBackHandler(
-    coordinator: ManualOrganizationRun,
-    onBack: () -> Unit,
-) {
-    val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
-    val callbackRef = remember { mutableStateOf<OnBackPressedCallback?>(null) }
-    val onBackState = rememberUpdatedState(onBack)
-    val callback = remember(dispatcher) {
-        object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                onBackState.value()
-            }
-        }
-    }
-    callbackRef.value = callback
-
-    DisposableEffect(dispatcher, callback) {
-        dispatcher?.addCallback(callback)
-        onDispose {
-            callback.remove()
-            if (callbackRef.value === callback) callbackRef.value = null
-        }
-    }
-    DisposableEffect(coordinator) {
-        onDispose { coordinator.dismiss() }
     }
 }
 
