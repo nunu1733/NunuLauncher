@@ -40,26 +40,42 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Issue #368 runtime navigation ordering oracle.
+ * Issue #368 runtime navigation ordering oracle: drives the production
+ * `PreferenceNavigation` (real NavHost, real shared-axis transitions, real
+ * destination routes, expanded window) through the supported path
+ * run surface -> hub -> T-05 with an active run operation, the animation
+ * clock pinned. Measured ordering (asserted):
  *
- * Why not the real `PreferenceNavigation` singleton wiring: measured on this
- * environment, a real run started through the production
- * `ManualOrganizationModule` singleton inside the instrumentation process
- * never reaches an active operation — the application module answers
- * `InputUnavailable(ReconciliationPending)` even after the readiness gate
- * settles (T05NAV log evidence; recorded in the evidence README). The
- * destinations therefore bind an injected runner, while the NavHost is
- * configured exactly like the production `PreferenceNavigation` (same
- * shared-axis enter/exit/pop transitions, same destination routes), so the
- * transition-window mechanics under test are the production mechanics.
+ * 1. hop 1 (run surface -> hub) mid-transition: the outgoing run surface and
+ *    the incoming hub coexist and the operation is STILL alive — the
+ *    `onDispose` -> `dismiss()` cleanup has not run yet;
+ * 2. hop 1 completed: the run surface disposed, `dismiss()` ran, the
+ *    operation is over (`operationActive == false`, `State.Cancelled`);
+ * 3. hop 2 (hub -> T-05) starts with the operation already over, so T-05
+ *    composes UNFROZEN (no frozen reason row);
+ * 4. T-05 is writable: a selection publishes through the validated write
+ *    command.
  *
- * Pins the composition / `onDispose` / `operationActive` ordering the
- * accepted plan's two-pane question asks about: during the shared-axis
- * transition the outgoing run surface and the incoming T-05 transiently
- * coexist, and while the operation is still active T-05 renders its frozen
- * affordance; once the transition finishes the run surface's `onDispose` ->
- * `dismiss()` has run, `operationActive` is false, and T-05 renders unfrozen
- * and writable. Evidence tooling; not part of the CI instrumentation lanes.
+ * Measured conclusion: on supported navigation, T-05 never composes while
+ * the operation is alive — the operation always ends at run-surface
+ * disposal, before T-05 is entered. The operation-active frozen T-05 window
+ * is therefore defensive-only for future navigation changes (#369) and is
+ * pinned separately by the synthetic composition oracle
+ * `StrategyT05VisualEvidenceTest.captureTwoPaneOperationActiveFrozen`.
+ *
+ * Environment limits (measured, details in the evidence README): (a) a real
+ * run via the production `ManualOrganizationModule` singleton cannot reach
+ * an active operation under instrumentation
+ * (`InputUnavailable(ReconciliationPending)` even after readiness settles),
+ * hence the injected runner through the `runOverride` seam; (b) the full
+ * `Preferences` two-pane shell cannot start its composition under the
+ * compose-test activity (`No compose hierarchies` on three AVDs), hence the
+ * production `PreferenceNavigation` level; (c) a real-Back variant passes
+ * all ordering assertions but crashes at activity teardown with a
+ * navigation-compose entry-lifecycle artifact (popped entry left
+ * INITIALIZED) on three AVDs with three injection methods — reproduction
+ * preserved in the branch history and documented in the evidence README.
+ * Evidence tooling; not part of the CI instrumentation lanes.
  */
 @RunWith(AndroidJUnit4::class)
 class StrategyT05ProductionNavigationTest {
@@ -150,7 +166,7 @@ class StrategyT05ProductionNavigationTest {
     }
 
     @Test
-    fun productionTransitionShowsFrozenT05OnlyWhileTheOperationOutlivesIt() {
+    fun supportedPathKeepsT05OutOfActiveOperations() {
         val runner = selectingRunner()
         assertTrue(runner.operationActive.value)
 

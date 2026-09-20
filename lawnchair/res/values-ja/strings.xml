@@ -196,8 +196,8 @@
     <string name="manual_organization_preserved_non_target">対象外の配置を保持: %1$d件</string>
     <string name="manual_organization_preserved_strategy">選択した戦略により保持: %1$d件</string>
     <string name="manual_organization_preserved_structural">関連する項目を保持: %1$d件</string>
-<string name="manual_organization_strategy_section">整理ストラテジー</string>
-<!-- Issue #368: strategy materials surface (T-05), reached only from the
+    <string name="manual_organization_strategy_section">整理ストラテジー</string>
+    <!-- Issue #368: strategy materials surface (T-05), reached only from the
          organizer hub materials section; the run surface no longer hosts the picker. -->
     <string name="organizer_strategy_title">整理ストラテジー</string>
     <string name="organizer_strategy_summary">ホーム画面を整理するときの方針を選択します。</string>
