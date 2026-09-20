@@ -1356,32 +1356,6 @@ class ExchangeFlowStateHolderTest {
     }
 
     @Test
-    fun arbiterBusyRefusesImportStartsAndCtaStarts() {
-        // AC-3: the structural arbiter gate refuses both entry points while a
-        // strategy write/restart is in progress (zero-write, retryable).
-        val fixture = newFixture()
-        val reply = generatedReplyFixture(fixture)
-        val loadsBefore = fixture.store.loadCalls
-        fixture.holder.strategyArbiterBusy = { true }
-        fixture.holder.openImport()
-        fixture.holder.import(reply)
-        Thread.sleep(100)
-        assertEquals(ExchangeStatus.Kind.IMPORT_STRATEGY_BUSY, fixture.holder.status!!.kind)
-        assertEquals("the refused import never runs", loadsBefore, fixture.store.loadCalls)
-        assertFalse(fixture.holder.importAttemptActive)
-
-        fixture.holder.strategyArbiterBusy = { false }
-        fixture.holder.import(reply)
-        awaitImportSuccess(fixture.holder)
-
-        fixture.holder.strategyArbiterBusy = { true }
-        fixture.holder.continueImport()
-        assertEquals(ExchangeStatus.Kind.CTA_STRATEGY_BUSY, fixture.holder.status!!.kind)
-        assertFalse("the refused CTA did not flip continuing", fixture.holder.importContinuationActive)
-        assertTrue(fixture.holder.screen is ExchangeScreen.ImportSuccess)
-    }
-
-    @Test
     fun clearBeforeTheValidationSettleDropsTheLateValidated() {
         // AC-1 (review): the Clear affordance invalidates the active attempt,
         // so a late Validated never surfaces.
@@ -1523,94 +1497,6 @@ class ExchangeFlowStateHolderTest {
     }
 
     @Test
-    fun strategyGatePredicatesFollowTheAcceptedEntryPolicy() {
-        // AC-3/AC-5 (review): the entry-specific truth table the hosting
-        // wiring uses — run-in freezes writes for the whole attempt; idle
-        // only while the continuation runs; suppression matches.
-        assertTrue(strategyWriteStartBlockedFor(runInEntry = true, importAttemptActive = true, importContinuationActive = false))
-        assertFalse(strategyWriteStartBlockedFor(runInEntry = false, importAttemptActive = true, importContinuationActive = false))
-        assertTrue(strategyWriteStartBlockedFor(runInEntry = false, importAttemptActive = false, importContinuationActive = true))
-        assertTrue(strategyWriteStartBlockedFor(runInEntry = true, importAttemptActive = false, importContinuationActive = true))
-        assertFalse(strategyWriteStartBlockedFor(runInEntry = false, importAttemptActive = false, importContinuationActive = false))
-
-        assertTrue(strategyRestartSuppressedFor(runInEntry = true, importAttemptActive = true, importContinuationActive = false))
-        assertFalse(strategyRestartSuppressedFor(runInEntry = false, importAttemptActive = true, importContinuationActive = false))
-        assertTrue(strategyRestartSuppressedFor(runInEntry = false, importAttemptActive = false, importContinuationActive = true))
-        assertTrue(strategyRestartSuppressedFor(runInEntry = true, importAttemptActive = true, importContinuationActive = true))
-        assertFalse(strategyRestartSuppressedFor(runInEntry = false, importAttemptActive = false, importContinuationActive = false))
-    }
-
-    @Test
-    fun idleStrategyCommitKeepsTheRunIdleAndTheCtaThenStartsTheRun() {
-        // AC-3/AC-5 integration (review): idle ImportSuccess + committed
-        // strategy + no restart needed -> writer releases to Idle, the
-        // success state stays, and the CTA then starts the run once.
-        val fixture = newFixture(detectionReady = false)
-        val restarts = java.util.concurrent.atomic.AtomicInteger()
-        val arbiter = app.lawnchair.organizer.ui.StrategyWriteArbiter(
-            scope = CoroutineScope(Dispatchers.Unconfined),
-            ioDispatcher = Dispatchers.Unconfined,
-            mainDispatcher = Dispatchers.Unconfined,
-            writeStrategy = { true },
-            restartRun = { restarts.incrementAndGet() },
-            writeStartBlocked = {
-                strategyWriteStartBlockedFor(false, fixture.holder.importAttemptActive, fixture.holder.importContinuationActive)
-            },
-            restartSuppressed = {
-                strategyRestartSuppressedFor(false, fixture.holder.importAttemptActive, fixture.holder.importContinuationActive)
-            },
-            restartNeeded = { false },
-        )
-        fixture.holder.strategyArbiterBusy = { arbiter.busy }
-
-        fixture.holder.openImport()
-        fixture.holder.import(generatedReplyFixture(fixture))
-        awaitImportSuccess(fixture.holder)
-
-        arbiter.onStrategySelected(app.lawnchair.organizer.planning.StrategyId("other"))
-        assertEquals("an idle commit must not restart a run", 0, restarts.get())
-        assertEquals(app.lawnchair.organizer.ui.StrategyWriteArbiter.State.IDLE, arbiter.state)
-        assertTrue(fixture.holder.screen is ExchangeScreen.ImportSuccess)
-
-        fixture.holder.continueImport()
-        awaitClosed(fixture.holder)
-        assertEquals("exactly one run start", 1, fixture.application.detectionCalls)
-    }
-
-    @Test
-    fun ctaIsRefusedWhileTheStrategyArbiterIsWriting() {
-        // AC-3 (review): the write window is a real busy state — the CTA is
-        // refused while the arbiter is writing, then succeeds after release.
-        val fixture = newFixture(detectionReady = false)
-        val writeGate = kotlinx.coroutines.CompletableDeferred<Boolean>()
-        val arbiter = app.lawnchair.organizer.ui.StrategyWriteArbiter(
-            scope = CoroutineScope(Dispatchers.Unconfined),
-            ioDispatcher = Dispatchers.Unconfined,
-            mainDispatcher = Dispatchers.Unconfined,
-            writeStrategy = { writeGate.await() },
-            restartRun = { error("no restart in this fixture") },
-            writeStartBlocked = { false },
-            restartSuppressed = { false },
-            restartNeeded = { false },
-        )
-        fixture.holder.strategyArbiterBusy = { arbiter.busy }
-        fixture.holder.openImport()
-        fixture.holder.import(generatedReplyFixture(fixture))
-        awaitImportSuccess(fixture.holder)
-
-        arbiter.onStrategySelected(app.lawnchair.organizer.planning.StrategyId("other"))
-        assertTrue(arbiter.busy)
-        fixture.holder.continueImport()
-        assertEquals(ExchangeStatus.Kind.CTA_STRATEGY_BUSY, fixture.holder.status!!.kind)
-        assertFalse(fixture.holder.importContinuationActive)
-
-        writeGate.complete(true)
-        assertFalse(arbiter.busy)
-        fixture.holder.continueImport()
-        awaitClosed(fixture.holder)
-    }
-
-    @Test
     fun ctaGateRefusalsKeepTheSuccessStateAndAllowRetry() {
         // AC-3 (audit D-2): Busy / NotAttachable settle with the typed
         // guidance, release the continuing flag and keep the success state;
@@ -1706,12 +1592,8 @@ class ExchangeFlowStateHolderTest {
             "exchange_import_discard_confirm_confirm",
             "exchange_import_discarded_guidance",
             "exchange_import_summary_global_minimize",
-            "exchange_import_strategy_busy",
-            "exchange_import_cta_strategy_busy",
             "exchange_import_cta_failed",
             "exchange_start_frozen_import",
-            "exchange_strategy_frozen_import",
-            "exchange_strategy_frozen_continuing",
         )
         val plurals = listOf(
             "exchange_import_summary_recognized",

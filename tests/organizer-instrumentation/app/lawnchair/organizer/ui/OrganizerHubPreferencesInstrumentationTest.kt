@@ -20,6 +20,7 @@ import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -93,9 +94,11 @@ import app.lawnchair.ui.preferences.LocalNavController
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.destinations.ManualOrganizationPreferences
 import app.lawnchair.ui.preferences.destinations.OrganizerHubPreferences
+import app.lawnchair.ui.preferences.destinations.OrganizerStrategyPreferences
 import app.lawnchair.ui.preferences.destinations.OrganizerUsageMaterialRows
 import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
 import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizer
+import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizerStrategy
 import app.lawnchair.ui.theme.LawnchairTheme
 import com.android.launcher3.R
 import org.junit.Assert.assertEquals
@@ -145,6 +148,9 @@ class OrganizerHubPreferencesInstrumentationTest {
                                     trigger = route.trigger,
                                 )
                             }
+                            composable<HomeScreenOrganizerStrategy> {
+                                OrganizerStrategyPreferences(run = runner)
+                            }
                         }
                     }
                 }
@@ -191,6 +197,7 @@ class OrganizerHubPreferencesInstrumentationTest {
             R.string.organizer_category_overrides_title,
             R.string.organizer_custom_category_title,
             R.string.organizer_lock_screen_title,
+            R.string.organizer_strategy_title,
             R.string.organizer_personalization_recording_label,
             R.string.organizer_personalization_usage_access_label,
         ).forEach { res ->
@@ -455,6 +462,28 @@ class OrganizerHubPreferencesInstrumentationTest {
         assertEquals(0, application.applyCalls)
     }
 
+    /**
+     * Issue #368 (AC-1): the hub materials group carries the strategy entry
+     * (T-05) and opening it shows the picker — the run surface keeps none.
+     */
+    @Test
+    fun hubStrategyEntryOpensTheMaterialsStrategySurface() {
+        val application = FakeHubApplication()
+        val runner = hubRunner(application)
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Idle }
+        val entry = context.getString(R.string.organizer_strategy_title)
+        scrollTextIntoView(entry)
+        composeRule.onNodeWithText(entry).assertIsDisplayed().performClick()
+
+        // The T-05 surface is showing (its picker tag is unique to it).
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("manual-organization-strategy-picker", useUnmergedTree = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
     /** HUB-AC-07: TalkBack order is state first, then the actions, then materials. */
     @Test
     fun hubStatusRowsPrecedeTheActionsInReadingOrder() {
@@ -606,6 +635,7 @@ class OrganizerHubPreferencesInstrumentationTest {
             R.string.organizer_category_overrides_title,
             R.string.organizer_custom_category_title,
             R.string.organizer_lock_screen_title,
+            R.string.organizer_strategy_title,
             R.string.organizer_personalization_recording_label,
             R.string.organizer_personalization_usage_access_label,
         )
