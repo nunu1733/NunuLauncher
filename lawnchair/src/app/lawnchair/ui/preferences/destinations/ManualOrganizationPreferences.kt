@@ -48,6 +48,8 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lawnchair.organizer.application.protocol.ReadinessGate
 import app.lawnchair.organizer.application.public.ApplyResult
@@ -76,6 +78,8 @@ import app.lawnchair.organizer.ui.MissingAppSelectionState
 import app.lawnchair.organizer.ui.OrganizationPreviewContent
 import app.lawnchair.organizer.ui.OrganizationPreviewSection
 import app.lawnchair.organizer.ui.OrganizationPreviewWording
+import app.lawnchair.organizer.ui.exchange.ExchangeDiscardConfirmDialog
+import app.lawnchair.organizer.ui.exchange.ExchangeFlowBackHandler
 import app.lawnchair.organizer.ui.exchange.ExchangeFlowStateHolder
 import app.lawnchair.organizer.ui.exchange.exchangeFlowItems
 import app.lawnchair.organizer.ui.manualOrganizationFace
@@ -216,9 +220,14 @@ fun ManualOrganizationPreferences(
     // Issue #369 (D-13, TO-BE §9): one confirmation gate shared by system Back
     // and the interrupt rows. 破棄 (irreversible) always confirms once; 中断
     // (zero-write) confirms once only when a selection or a proposal exists;
-    // キャンセル (recovery preview close) never confirms. The pre-send
-    // cancel→破棄 rename belongs to #372 and is not touched here.
+    // キャンセル (recovery preview close) never confirms. The exchange-side
+    // pre-send discard confirmation lives in [pendingExchangeDiscard] (#372).
     var pendingInterrupt by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    // Issue #372 (D-13/EX-AC-11): the exchange flow's pre-send discard
+    // confirmation, raised by the T-16 破棄 button AND by system Back on the
+    // unsent request face — one dialog, two entries, per the accepted spec.
+    var pendingExchangeDiscard by remember { mutableStateOf(false) }
 
     val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     var backCallback by remember { mutableStateOf<OnBackPressedCallback?>(null) }
@@ -278,6 +287,24 @@ fun ManualOrganizationPreferences(
     }
     DisposableEffect(coordinator) {
         onDispose { coordinator.dismiss() }
+    }
+
+    // Issue #372 (EX-AC-11): the request faces' Back handler — ALWAYS-composed
+    // at the hosting level (never inside a lazy item, whose composition can
+    // leave the viewport under large font). Composed after the screen-level
+    // gate above (an open flow takes Back before the dismiss/navigate
+    // fallback) and before the import-success handler below (the success
+    // state keeps Back priority).
+    ExchangeFlowBackHandler(
+        holder = exchangeHolder,
+        onDiscardRequest = { pendingExchangeDiscard = true },
+    )
+
+    // Issue #372 (EX-AC-03): the T-15 pre-display re-reads the active request
+    // on every lifecycle resume, so returning to the face (materials editing,
+    // import, home) shows the store's current truth without a ticking clock.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        exchangeHolder.refreshActiveRequest()
     }
 
     // Issue #328 (spec 328 D-2): the import success state intercepts system
@@ -379,6 +406,20 @@ fun ManualOrganizationPreferences(
                             },
                         )
                     }
+                    // Issue #372 (D-04/D-17): the AI consultation method choice
+                    // of the T-07 preamble (spec 369 RD-1 hands this row to
+                    // #372). Opening the request flow performs NO run
+                    // admission — no RUN lease, no start(trigger) — so the
+                    // constant-authoring guarantee of the idle exchange holds.
+                    // Deliberately NOT frozen by importAttemptActive (same
+                    // treatment as the removed idle entry row).
+                    item(key = "exchange-method-consult") {
+                        ClickablePreference(
+                            label = stringResource(R.string.exchange_method_consult),
+                            subtitle = stringResource(R.string.exchange_entry_subtitle),
+                            onClick = exchangeHolder::openFlow,
+                        )
+                    }
                 }
 
                 // Issue #369 (TO-BE T-09): one integrated preparation face —
@@ -461,6 +502,7 @@ fun ManualOrganizationPreferences(
                             holder = exchangeHolder,
                             scopedSelection = scopedSelection,
                             scopedLabels = scopedLabels,
+                            onDiscardRequest = { pendingExchangeDiscard = true },
                             clipboardTransport = { ctx: android.content.Context, text: String ->
                                 ClipboardExchangeTransport(ctx).copy(text)
                             },
@@ -896,6 +938,7 @@ fun ManualOrganizationPreferences(
             if (idleLike) {
                 exchangeFlowItems(
                     holder = exchangeHolder,
+                    onDiscardRequest = { pendingExchangeDiscard = true },
                     clipboardTransport = { ctx: android.content.Context, text: String ->
                         ClipboardExchangeTransport(ctx).copy(text)
                     },
@@ -918,6 +961,21 @@ fun ManualOrganizationPreferences(
                 confirmedAction()
             },
             onDismiss = { pendingInterrupt = null },
+        )
+    }
+
+    // Issue #372 (D-13): the exchange pre-send discard confirmation. Confirm
+    // goes through the holder's existing closeDisclosure structural gate
+    // (cancelling → invalidate of exactly the unsent session → flow close);
+    // dismiss keeps the T-16 face. The confirm runs after the confirmation,
+    // so the transport gate is untouched while the dialog is up.
+    if (pendingExchangeDiscard) {
+        ExchangeDiscardConfirmDialog(
+            onConfirm = {
+                pendingExchangeDiscard = false
+                exchangeHolder.closeDisclosure()
+            },
+            onDismiss = { pendingExchangeDiscard = false },
         )
     }
 }

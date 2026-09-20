@@ -101,7 +101,7 @@ class ExchangeFlowStateHolderTest {
             return session?.takeIf { it.exportId == exportId }
         }
 
-        override fun active(nowEpochMs: Long): ExportSession? = session
+        override fun active(nowEpochMs: Long): ExportSession? = session?.takeIf { !it.isExpired(nowEpochMs) }
 
         override fun invalidate(exportId: String) {
             if (session?.exportId == exportId) session = null
@@ -1626,4 +1626,219 @@ class ExchangeFlowStateHolderTest {
 
         fun get(): app.lawnchair.organizer.ui.ManualOrganizationRun = app.lawnchair.organizer.ui.ManualOrganizationRunTestSupport.newRun()
     }
+
+    // region Issue #372: T-15 pre-display, expiry re-read, and the Back contract
+
+    /** A clock backed by a mutable cell, so a test can cross the TTL. */
+    private class MutableClock(var nowMs: Long)
+
+    private fun plainSession(clock: MutableClock, ttlMs: Long = 24 * 60L * 60L * 1000L): ExportSession = ExportSession(
+        exportId = "t15-session",
+        itemRefs = emptyMap(),
+        tier = PrivacyTier.EXTERNAL_REDACTED,
+        sourceContextDigest = "digest",
+        signalProvenance = null,
+        createdAtEpochMs = clock.nowMs,
+        expiresAtEpochMs = clock.nowMs + ttlMs,
+    )
+
+    private fun newHolderWithMutableClock(store: FakeStore, clock: MutableClock): Pair<ExchangeFlowStateHolder, ExchangeFlowController> {
+        val controller = ExchangeFlowController(
+            composeExportInputs = { ExchangeInputResult.ExportReady(exportInputs(clock.nowMs)) },
+            currentStructuralInputs = { ExchangeStructuralResult.Ready(structural()) },
+            store = store,
+            allocator = SequentialIdAllocator(),
+            clock = { clock.nowMs },
+        )
+        val holder = ExchangeFlowStateHolder(
+            controllerFactory = { controller },
+            run = RecordingRun.get(),
+            scope = CoroutineScope(Dispatchers.IO),
+            settleDispatcher = Dispatchers.IO,
+            uiDispatcher = Dispatchers.IO,
+        )
+        return holder to controller
+    }
+
+    private fun selectings(holder: ExchangeFlowStateHolder): ExchangeScreen.SelectingPrivacy? = holder.screen as? ExchangeScreen.SelectingPrivacy
+
+    /** Polls the holder's display until the predicate holds (IO threads settle). */
+    private fun awaitScreen(holder: ExchangeFlowStateHolder, timeoutMs: Long = 5_000, predicate: () -> Boolean) {
+        var waited = 0
+        while (!predicate() && waited < timeoutMs) {
+            Thread.sleep(50)
+            waited += 50
+        }
+        assertTrue("the display did not reach the expected state within ${timeoutMs}ms", predicate())
+    }
+
+    @Test
+    fun openFlowCapturesTheActiveRequestPreDisplay() {
+        val clock = MutableClock(1_000_000L)
+        val store = FakeStore()
+        val (holder, _) = newHolderWithMutableClock(store, clock)
+
+        // No active request: the pre-display stays absent (no fake row).
+        holder.openFlow()
+        val empty = selectings(holder)
+        assertFalse(empty!!.replacementConfirmationRequired)
+        assertEquals(null, empty.activeRequestExpiresAtEpochMs)
+
+        // An active request: the pre-display carries existence + expiry only.
+        store.session = plainSession(clock)
+        holder.openFlow()
+        val populated = selectings(holder)
+        assertTrue(populated!!.replacementConfirmationRequired)
+        assertEquals(clock.nowMs + 24 * 60L * 60L * 1000L, populated.activeRequestExpiresAtEpochMs)
+    }
+
+    @Test
+    fun refreshActiveRequestReReadsExistenceConfirmationAndExpiry() {
+        val clock = MutableClock(1_000_000L)
+        val store = FakeStore()
+        val (holder, _) = newHolderWithMutableClock(store, clock)
+        store.session = plainSession(clock)
+        holder.openFlow()
+        assertTrue(selectings(holder)!!.replacementConfirmationRequired)
+
+        // The request expired: the next read (resume path) clears the whole
+        // pre-display and drops the replacement confirmation — the same
+        // `active()` seam the generation gate uses, so display and gate agree.
+        val expired = plainSession(clock, ttlMs = 400)
+        clock.nowMs = expired.expiresAtEpochMs + 1
+        store.session = expired
+        holder.refreshActiveRequest()
+        val refreshed = selectings(holder)
+        assertFalse(refreshed!!.replacementConfirmationRequired)
+        assertEquals(null, refreshed.activeRequestExpiresAtEpochMs)
+    }
+
+    @Test
+    fun t15PreDisplayClearsWhenTheScheduledReReadFiresAfterTtlCrossing() {
+        val clock = MutableClock(1_000_000L)
+        val store = FakeStore()
+        val (holder, controller) = newHolderWithMutableClock(store, clock)
+        // A short remaining lifetime so the expiry-scheduled re-read fires in
+        // real time; NO lifecycle event is simulated — the clock crossing alone.
+        store.session = plainSession(clock, ttlMs = 400)
+        val expiresAt = store.session!!.expiresAtEpochMs
+        holder.openFlow()
+        assertEquals(expiresAt, selectings(holder)!!.activeRequestExpiresAtEpochMs)
+
+        clock.nowMs = expiresAt + 1
+        awaitScreen(holder) {
+            val selecting = selectings(holder)
+            selecting != null && !selecting.replacementConfirmationRequired && selecting.activeRequestExpiresAtEpochMs == null
+        }
+        // Display and gate read the same seam: generation needs no confirmation.
+        assertEquals(
+            app.lawnchair.organizer.personalization.exchange.ExchangeGenerationGateOutcome.Proceed,
+            controller.generationGate(userConfirmation = null),
+        )
+    }
+
+    @Test
+    fun refreshActiveRequestLeavesNonSelectingFacesUntouched() {
+        val clock = MutableClock(1_000_000L)
+        val store = FakeStore()
+        val (holder, controller, _) = newHolderWithRecordedScope(store, clock.nowMs)
+        val generated = controller.generate(PrivacyTier.EXTERNAL_REDACTED) as ExchangeGenerationResult.Generated
+        setScreenToDisclosing(holder, ExchangeDisclosureState(generated.session, generated.packageText, PrivacyTier.EXTERNAL_REDACTED))
+
+        holder.refreshActiveRequest()
+
+        assertTrue(holder.screen is ExchangeScreen.Disclosing)
+        store.session = null
+    }
+
+    @Test
+    fun backOnGeneratingIsBlockedAndTheGenerationStillSettles() {
+        val clock = MutableClock(1_000_000L)
+        val store = FakeStore()
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val controller = ExchangeFlowController(
+            composeExportInputs = {
+                entered.countDown()
+                release.await(5, TimeUnit.SECONDS)
+                ExchangeInputResult.ExportReady(exportInputs(clock.nowMs))
+            },
+            currentStructuralInputs = { ExchangeStructuralResult.Ready(structural()) },
+            store = store,
+            allocator = SequentialIdAllocator(),
+            clock = { clock.nowMs },
+        )
+        val holder = ExchangeFlowStateHolder(
+            controllerFactory = { controller },
+            run = RecordingRun.get(),
+            scope = CoroutineScope(Dispatchers.IO),
+            settleDispatcher = Dispatchers.IO,
+            uiDispatcher = Dispatchers.IO,
+        )
+        holder.openFlow()
+        holder.generate(PrivacyTier.EXTERNAL_REDACTED)
+        assertTrue(entered.await(5, TimeUnit.SECONDS))
+        // Back while generating: CONSUMED (never delegated to navigation).
+        assertEquals(ExchangeBackAction.BLOCKED, exchangeBackAction(holder.screen))
+
+        release.countDown()
+        awaitScreen(holder) { holder.screen is ExchangeScreen.Disclosing }
+        assertNotNull("the generation settled and the session was saved", store.session)
+    }
+
+    @Test
+    fun backOnInFlightTransportIsBlockedAndTheWriteStillSettles() {
+        val clock = MutableClock(1_000_000L)
+        val store = FakeStore()
+        val (holder, controller, _) = newHolderWithRecordedScope(store, clock.nowMs)
+        val generated = controller.generate(PrivacyTier.EXTERNAL_REDACTED) as ExchangeGenerationResult.Generated
+        setScreenToDisclosing(
+            holder,
+            ExchangeDisclosureState(generated.session, generated.packageText, PrivacyTier.EXTERNAL_REDACTED),
+        )
+
+        val release = CountDownLatch(1)
+        // The transport runs on its own thread (startTransport is synchronous
+        // on the caller), mirroring the delayed-write race fixture above.
+        val transportThread = Thread {
+            holder.startTransport {
+                release.await(5, TimeUnit.SECONDS)
+                ExchangeTransportResult.Success
+            }
+        }
+        transportThread.start()
+        awaitScreen(holder) { currentDisclosureOrNull(holder)?.transportInFlight == true }
+        assertEquals(ExchangeBackAction.BLOCKED, exchangeBackAction(holder.screen))
+
+        release.countDown()
+        transportThread.join(5_000)
+        awaitScreen(holder) { currentDisclosureOrNull(holder)?.sent == true }
+        // After the settle, Back is the zero-write close and the request
+        // survives it (importable again).
+        assertEquals(ExchangeBackAction.CLOSE, exchangeBackAction(holder.screen))
+        holder.close()
+        assertTrue(holder.screen is ExchangeScreen.Closed)
+        assertNotNull("the sent request survives the close", store.session)
+    }
+
+    @Test
+    fun backOnUnsentDisclosureRequestsDiscardAndConfirmInvalidatesOnlyThatSession() {
+        val clock = MutableClock(1_000_000L)
+        val store = FakeStore()
+        val (holder, controller, _) = newHolderWithRecordedScope(store, clock.nowMs)
+        val generated = controller.generate(PrivacyTier.EXTERNAL_REDACTED) as ExchangeGenerationResult.Generated
+        setScreenToDisclosing(
+            holder,
+            ExchangeDisclosureState(generated.session, generated.packageText, PrivacyTier.EXTERNAL_REDACTED),
+        )
+
+        assertEquals(ExchangeBackAction.REQUEST_DISCARD, exchangeBackAction(holder.screen))
+        // The confirmation's confirm action is the existing closeDisclosure
+        // structural gate: exactly this unsent session is invalidated.
+        holder.closeDisclosure()
+        awaitScreen(holder) { holder.screen is ExchangeScreen.Closed }
+        assertNull("the unsent request is invalidated by the confirmed discard", store.session)
+    }
+
+    // endregion
 }

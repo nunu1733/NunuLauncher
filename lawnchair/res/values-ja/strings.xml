@@ -396,8 +396,11 @@
     <string name="backup_page_summary_unavailable">保存されたページの詳細を表示できません。</string>
 
     <!-- Issue #205: External Agent Exchange -->
-    <string name="exchange_entry_title">外部AIによる整理案</string>
+    <!-- Issue #372: the idle entry row is gone (D-04). The subtitle survives
+         as the short description of the T-07 「AIに相談」 method choice; the
+         import label survives as the T-15 import lead-in and the run-in entry. -->
     <string name="exchange_entry_subtitle">ChatGPT等の外部AIへの依頼文を作成し、回答を検証付きで取り込めます。</string>
+    <string name="exchange_method_consult">AIに相談</string>
     <!-- Issue #327: user-facing capability explanation (ja正本) -->
     <string name="exchange_capability_title">AIでできること</string>
     <string name="exchange_capability_example_frequent">よく使うアプリを優先的に配置する</string>
@@ -407,25 +410,48 @@
     <string name="exchange_capability_example_minimal_change">今の配置をできるだけ崩さない</string>
     <string name="exchange_capability_no_direct_change">AIがホーム画面を直接変更することはありません。再整理に使う「あなたの希望・傾向」を作ります。</string>
     <string name="exchange_capability_flow">相談はChatGPT等の外部AIアプリ内で行われます。依頼文は1回送り、AIからの質問 (2〜4問) に答えて整理方針を確認すると、最終案を1回だけ受け取れます。会話の内容がNunuLauncherに送信されることはありません。</string>
-    <string name="exchange_entry_open">依頼文を作成</string>
     <string name="exchange_entry_import">回答を取り込む</string>
+    <!-- Issue #372: T-15 request-creation face (ja正本) -->
+    <string name="exchange_request_title">AIに相談する依頼を作る</string>
+    <string name="exchange_request_active_line">未送信の依頼があります。</string>
+    <plurals name="exchange_request_remaining_hours">
+        <item quantity="other">残り約%1$d時間</item>
+    </plurals>
+    <string name="exchange_request_remaining_under_hour">残り1時間未満</string>
+    <!-- Issue #372 (D-09): the expectation statement, shown on T-15 and T-16. -->
+    <string name="exchange_expectation_fixed_home">この依頼は作成時点のホームで固定されます。会話中にホームや分類を変更すると、回答を取り込めなくなります。</string>
     <string name="exchange_privacy_title">外部送信のプライバシー</string>
-    <string name="exchange_privacy_redacted">アプリ名を含めない (既定)</string>
-    <string name="exchange_privacy_labels">アプリ名とカテゴリ名を含める</string>
-    <string name="exchange_privacy_labels_warning">依頼文にアプリ名・フォルダ名が含まれます。</string>
-    <string name="exchange_replacement_notice">未完了の交換があります。新規作成すると無効になります。</string>
-    <string name="exchange_replacement_title">既存の交換を置き換えますか?</string>
-    <string name="exchange_replacement_warning">新規作成すると以前の交換は無効化され、その回答は取り込めなくなります。続行しますか?</string>
+    <!-- Issue #372 (D-14): the two-choice tier vocabulary; LOCAL_FULL never appears. -->
+    <string name="exchange_privacy_redacted">情報を減らして送る (既定)</string>
+    <string name="exchange_privacy_labels">ラベル付きで送る</string>
+    <!-- Issue #372 (review): the warning matches the v4 free-text set exactly
+         (app and folder names plus user-defined category names, spec 337). -->
+    <string name="exchange_privacy_labels_warning">依頼文にアプリ名・フォルダ名、およびユーザー定義カテゴリの名前が含まれます。</string>
+    <string name="exchange_replacement_notice">未完了の依頼があります。新規作成すると既存の依頼は破棄され、その回答は取り込めなくなります。</string>
+    <string name="exchange_replacement_title">既存の依頼を破棄して新規作成しますか?</string>
+    <string name="exchange_replacement_warning">新規作成すると以前の依頼は破棄され、その回答は取り込めなくなります。続行しますか?</string>
     <string name="exchange_replacement_confirm">破棄して作成</string>
     <string name="exchange_replacement_decline">既存を維持</string>
-    <string name="exchange_generate">依頼文を生成</string>
+    <string name="exchange_generate">依頼を作成</string>
     <string name="exchange_generating">依頼文を生成しています…</string>
     <string name="exchange_cancel">キャンセル</string>
     <string name="exchange_close">閉じる</string>
     <string name="exchange_disclosure_title">送信前の確認</string>
     <string name="exchange_disclosure_redacted">この依頼文にアプリ名・パッケージ名・生の使用状況は含まれません。カテゴリの一覧 (ユーザー定義を含む) は含まれますが、その名前は含まれません。</string>
     <string name="exchange_disclosure_labels_included">この依頼文にはアプリ名・フォルダ名と、ユーザー定義カテゴリの名前が含まれます。</string>
+    <!-- Issue #372 (D-10): the summary-first face; the item count is labelled
+         as the item count (not a total record count) and the limit line
+         states the V1 contract ceiling (512 items / 256 KB). -->
+    <string name="exchange_disclosure_summary_items">対象項目数: %1$d件</string>
+    <string name="exchange_disclosure_summary_limit">1回の依頼で送れる上限は対象項目512件・依頼文256KBです。</string>
+    <string name="exchange_disclosure_expand">全文を確認</string>
+    <string name="exchange_disclosure_collapse">全文を隠す</string>
     <string name="exchange_disclosure_hint">この内容を任意のAIアプリへ送信します。送信方法を選ぶまで何も送信されません。</string>
+    <!-- Issue #372 (D-13): the pre-send cancel is 破棄 with one confirmation. -->
+    <string name="exchange_discard">破棄</string>
+    <string name="exchange_discard_confirm_title">依頼を破棄しますか?</string>
+    <string name="exchange_discard_confirm_body">破棄するとこの依頼は無効になり、AIの回答を取り込めなくなります。この操作は取り消せません。</string>
+    <string name="exchange_discard_confirm_confirm">破棄する</string>
     <string name="exchange_copy">コピー</string>
     <string name="exchange_share">共有…</string>
     <string name="exchange_save_file">ファイルに保存</string>

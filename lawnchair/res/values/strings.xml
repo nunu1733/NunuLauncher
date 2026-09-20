@@ -1308,8 +1308,12 @@
     <string name="organization_onboarding_reentry_hint_body">Long-press the Home screen → %1$s → %2$s → %3$s.</string>
 
     <!-- Issue #205: External Agent Exchange -->
-    <string name="exchange_entry_title">Organize with an external AI</string>
+    <!-- Issue #372: the idle entry row is gone (D-04). The subtitle survives
+         as the short description of the T-07 "consult the AI" method choice;
+         the import label survives as the T-15 import lead-in and the run-in
+         entry. -->
     <string name="exchange_entry_subtitle">Create a request for an external AI (such as ChatGPT) and import its proposal as a reviewable plan.</string>
+    <string name="exchange_method_consult">Consult the AI</string>
     <!-- Issue #327: user-facing capability explanation (en) -->
     <string name="exchange_capability_title">What the AI can do</string>
     <string name="exchange_capability_example_frequent">Put the apps you use most first</string>
@@ -1319,25 +1323,49 @@
     <string name="exchange_capability_example_minimal_change">Keep today\'s layout mostly intact</string>
     <string name="exchange_capability_no_direct_change">The AI never changes your home screen directly. It drafts your preferences and tendencies for a reorganization plan.</string>
     <string name="exchange_capability_flow">The conversation happens inside your external AI app (such as ChatGPT). Send the request once, answer a few short questions (2–4), confirm the plan, and receive one final proposal. Your conversation is never sent to NunuLauncher.</string>
-    <string name="exchange_entry_open">Create request</string>
     <string name="exchange_entry_import">Import reply</string>
+    <!-- Issue #372: T-15 request-creation face (en) -->
+    <string name="exchange_request_title">Create a request to consult the AI</string>
+    <string name="exchange_request_active_line">You have an unsent request.</string>
+    <plurals name="exchange_request_remaining_hours">
+        <item quantity="one">About %1$d hour left</item>
+        <item quantity="other">About %1$d hours left</item>
+    </plurals>
+    <string name="exchange_request_remaining_under_hour">Less than an hour left</string>
+    <!-- Issue #372 (D-09): the expectation statement, shown on T-15 and T-16. -->
+    <string name="exchange_expectation_fixed_home">This request is fixed to your home as of its creation. If you change your home or categories while the conversation is open, the reply can no longer be imported.</string>
     <string name="exchange_privacy_title">Privacy of the outgoing request</string>
-    <string name="exchange_privacy_redacted">Exclude app names (default)</string>
-    <string name="exchange_privacy_labels">Include app and category names</string>
-    <string name="exchange_privacy_labels_warning">The request will contain app and folder names.</string>
-    <string name="exchange_replacement_notice">An unfinished exchange exists. Creating a new request will invalidate it.</string>
-    <string name="exchange_replacement_title">Replace the existing exchange?</string>
-    <string name="exchange_replacement_warning">Creating a new request invalidates the previous exchange; its reply can no longer be imported. Continue?</string>
+    <!-- Issue #372 (D-14): the two-choice tier vocabulary; LOCAL_FULL never appears. -->
+    <string name="exchange_privacy_redacted">Send with less information (default)</string>
+    <string name="exchange_privacy_labels">Send with labels</string>
+    <!-- Issue #372 (review): the warning matches the v4 free-text set exactly
+         (app and folder names plus user-defined category names, spec 337). -->
+    <string name="exchange_privacy_labels_warning">The request will contain app and folder names, and the names of your user-defined categories.</string>
+    <string name="exchange_replacement_notice">An unfinished request exists. Creating a new request discards the existing one; its reply can no longer be imported.</string>
+    <string name="exchange_replacement_title">Discard the existing request and create a new one?</string>
+    <string name="exchange_replacement_warning">Creating a new request discards the previous one; its reply can no longer be imported. Continue?</string>
     <string name="exchange_replacement_confirm">Discard and create</string>
     <string name="exchange_replacement_decline">Keep existing</string>
-    <string name="exchange_generate">Generate request</string>
+    <string name="exchange_generate">Create request</string>
     <string name="exchange_generating">Generating the exchange request…</string>
     <string name="exchange_cancel">Cancel</string>
     <string name="exchange_close">Close</string>
     <string name="exchange_disclosure_title">Review before sending</string>
     <string name="exchange_disclosure_redacted">This request contains no app names, package names, or raw usage data. It does list your categories, including user-defined ones, but without their names.</string>
     <string name="exchange_disclosure_labels_included">This request contains app and folder names, and the names of your user-defined categories.</string>
+    <!-- Issue #372 (D-10): the summary-first face; the item count is labelled
+         as the item count (not a total record count) and the limit line
+         states the V1 contract ceiling (512 items / 256 KB). -->
+    <string name="exchange_disclosure_summary_items">Items included: %1$d</string>
+    <string name="exchange_disclosure_summary_limit">One request can contain up to 512 items and 256 KB of request text.</string>
+    <string name="exchange_disclosure_expand">Review the full text</string>
+    <string name="exchange_disclosure_collapse">Hide the full text</string>
     <string name="exchange_disclosure_hint">Send this exact text to the AI app of your choice. Nothing is sent until you choose a send method.</string>
+    <!-- Issue #372 (D-13): the pre-send cancel is 破棄 (discard) with one confirmation. -->
+    <string name="exchange_discard">Discard</string>
+    <string name="exchange_discard_confirm_title">Discard this request?</string>
+    <string name="exchange_discard_confirm_body">Discarding invalidates this request; the AI\'s reply can no longer be imported. This cannot be undone.</string>
+    <string name="exchange_discard_confirm_confirm">Discard</string>
     <string name="exchange_copy">Copy</string>
     <string name="exchange_share">Share…</string>
     <string name="exchange_save_file">Save to file</string>

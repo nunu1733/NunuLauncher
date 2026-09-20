@@ -256,6 +256,7 @@ class ExchangeImportSuccessInstrumentationTest {
                     LazyColumn {
                         exchangeFlowItems(
                             holder = holder,
+                            onDiscardRequest = {},
                             clipboardTransport = { _, _ -> ExchangeTransportResult.Success },
                             shareTransport = { _, _ -> ExchangeTransportResult.Success },
                             fileTransport = FileExchangeTransport(context),
@@ -383,6 +384,7 @@ class ExchangeImportSuccessInstrumentationTest {
                     item { Spacer(modifier = androidx.compose.ui.Modifier.height(1_200.dp)) }
                     exchangeFlowItems(
                         holder = holder,
+                        onDiscardRequest = {},
                         clipboardTransport = { _, _ -> ExchangeTransportResult.Success },
                         shareTransport = { _, _ -> ExchangeTransportResult.Success },
                         fileTransport = FileExchangeTransport(context),
@@ -427,6 +429,7 @@ class ExchangeImportSuccessInstrumentationTest {
                 LazyColumn {
                     exchangeFlowItems(
                         holder = holder,
+                        onDiscardRequest = {},
                         clipboardTransport = { _, _ -> ExchangeTransportResult.Success },
                         shareTransport = { _, _ -> ExchangeTransportResult.Success },
                         fileTransport = FileExchangeTransport(context),

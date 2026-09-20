@@ -59,6 +59,7 @@ import app.lawnchair.ui.theme.LawnchairTheme
 import com.android.launcher3.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -83,10 +84,17 @@ class ExchangeImportSurfaceInstrumentationTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
 
     private class FakeStore : ExportSessionStore {
+        /** Issue #372: configurable so the T-15 pre-display can be driven. */
+        var session: app.lawnchair.organizer.personalization.ExportSession? = null
+
         override fun save(session: app.lawnchair.organizer.personalization.ExportSession) = true
         override fun load(exportId: String): app.lawnchair.organizer.personalization.ExportSession? = null
-        override fun active(nowEpochMs: Long): app.lawnchair.organizer.personalization.ExportSession? = null
-        override fun invalidate(exportId: String) = Unit
+
+        override fun active(nowEpochMs: Long): app.lawnchair.organizer.personalization.ExportSession? = session?.takeIf { !it.isExpired(nowEpochMs) }
+
+        override fun invalidate(exportId: String) {
+            if (session?.exportId == exportId) session = null
+        }
     }
 
     private fun structural(): CanonicalStructuralInputs {
@@ -110,7 +118,7 @@ class ExchangeImportSurfaceInstrumentationTest {
         return CanonicalStructuralInputs(snapshot, targets, emptyMap())
     }
 
-    private fun newHolder(): ExchangeFlowStateHolder {
+    private fun newHolder(store: FakeStore = FakeStore()): ExchangeFlowStateHolder {
         val controller = ExchangeFlowController(
             composeExportInputs = {
                 val s = structural()
@@ -119,7 +127,7 @@ class ExchangeImportSurfaceInstrumentationTest {
                 )
             },
             currentStructuralInputs = { ExchangeStructuralResult.Ready(structural()) },
-            store = FakeStore(),
+            store = store,
             allocator = SequentialIdAllocator(),
             clock = { 1_000_000L },
         )
@@ -130,13 +138,19 @@ class ExchangeImportSurfaceInstrumentationTest {
         )
     }
 
-    private fun setContent(holder: ExchangeFlowStateHolder, fontScale: Float = 1f) {
+    private fun setContent(holder: ExchangeFlowStateHolder, fontScale: Float = 1f, onDiscardRequest: () -> Unit = {}) {
         composeRule.setContent {
             CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = fontScale)) {
                 LawnchairTheme {
+                    // Issue #372: the same Back wiring as the host — the flow
+                    // handler before the import-success handler — so the Back
+                    // contract is exercised against the real dispatcher.
+                    ExchangeFlowBackHandler(holder = holder, onDiscardRequest = onDiscardRequest)
+                    ExchangeImportSuccessBackHandler(holder)
                     LazyColumn {
                         exchangeFlowItems(
                             holder = holder,
+                            onDiscardRequest = onDiscardRequest,
                             clipboardTransport = { _, _ -> ExchangeTransportResult.Success },
                             shareTransport = { _, _ -> ExchangeTransportResult.Success },
                             fileTransport = FileExchangeTransport(context),
@@ -156,16 +170,23 @@ class ExchangeImportSurfaceInstrumentationTest {
     }
 
     /**
-     * Issue #327 AC-4/AC-5 (rendered-UI oracle): the idle entry row surfaces
-     * the capability notes under the `exchange-entry-capability` tag — the
-     * title, the five concrete user-language examples, the "no direct
-     * change" statement, and the one-request/one-proposal conversation flow.
+     * Issue #372 (EX-AC-01/EX-AC-07, rendered-UI oracle): the standalone idle
+     * entry row is GONE (D-04) — and the capability notes now surface on the
+     * T-15 request face reached through `openFlow` (the T-07 「AIに相談」
+     * method choice's target). The import lead-in stays reachable from T-15.
      */
     @Test
-    fun idleEntrySurfacesTheCapabilityNotes() {
+    fun requestFaceSurfacesTheCapabilityNotesAndIdleEntryIsGone() {
         val holder = newHolder()
         setContent(holder)
-        composeRule.onNodeWithTag("exchange-entry-capability").assertIsDisplayed()
+        // The removed idle entry row renders nothing (negative observation).
+        composeRule.onNodeWithTag("exchange-entry-capability").assertDoesNotExist()
+        composeRule.onNodeWithTag("exchange-entry-title").assertDoesNotExist()
+
+        composeRule.runOnUiThread { holder.openFlow() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("exchange-request-title").assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-request-capability").assertIsDisplayed()
         for (res in listOf(
             R.string.exchange_capability_title,
             R.string.exchange_capability_example_frequent,
@@ -180,6 +201,14 @@ class ExchangeImportSurfaceInstrumentationTest {
                 .onNodeWithText(context.getString(res), substring = true)
                 .assertIsDisplayed()
         }
+        // The D-09 expectation statement is on the creation face.
+        composeRule.onNodeWithTag("exchange-expectation").assertIsDisplayed()
+
+        // The removed entry's 「回答を取り込む」 lead stays reachable from T-15.
+        composeRule.onNodeWithText(context.getString(R.string.exchange_entry_import)).assertIsDisplayed().assertHasClickAction()
+        composeRule.onNodeWithText(context.getString(R.string.exchange_entry_import)).performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("exchange-import-clipboard").assertIsDisplayed()
     }
 
     /**
@@ -197,6 +226,7 @@ class ExchangeImportSurfaceInstrumentationTest {
                         holder = holder,
                         scopedSelection = listOf(scoped),
                         scopedLabels = mapOf(scoped to "Scoped app"),
+                        onDiscardRequest = {},
                         clipboardTransport = { _, _ -> ExchangeTransportResult.Success },
                         shareTransport = { _, _ -> ExchangeTransportResult.Success },
                         fileTransport = FileExchangeTransport(context),
@@ -212,6 +242,204 @@ class ExchangeImportSurfaceInstrumentationTest {
         composeRule
             .onNodeWithText(context.getString(R.string.exchange_capability_flow), substring = true)
             .assertIsDisplayed()
+    }
+
+    /**
+     * Issue #372 (EX-AC-03, rendered-UI oracle): the T-15 pre-display appears
+     * ONLY when an active request exists, with the remaining-time line — and
+     * disappears after the store's active read no longer returns it.
+     */
+    @Test
+    fun t15PreDisplayAppearsOnlyWithAnActiveRequest() {
+        val store = FakeStore()
+        val holder = newHolder(store)
+        setContent(holder)
+        composeRule.runOnUiThread { holder.openFlow() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("exchange-request-active").assertDoesNotExist()
+
+        // A live session: existence + remaining time (2h bucket) are shown.
+        store.session = app.lawnchair.organizer.personalization.ExportSession(
+            exportId = "t15-active",
+            itemRefs = mapOf("ref-0" to ItemId("id-0")),
+            tier = PrivacyTier.EXTERNAL_REDACTED,
+            sourceContextDigest = "digest",
+            signalProvenance = null,
+            createdAtEpochMs = 1_000_000L,
+            expiresAtEpochMs = 1_000_000L + 2 * 60L * 60L * 1000L,
+        )
+        composeRule.runOnUiThread { holder.openFlow() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("exchange-request-active").assertIsDisplayed()
+        composeRule
+            .onNodeWithText(context.getString(R.string.exchange_request_active_line), substring = true)
+            .assertIsDisplayed()
+        composeRule
+            .onNodeWithText(
+                context.resources.getQuantityString(R.plurals.exchange_request_remaining_hours, 2, 2),
+            )
+            .assertIsDisplayed()
+
+        // The store no longer reports it (expiry/invalidate): the next read
+        // clears the display — the store remains the truth.
+        store.session = null
+        composeRule.runOnUiThread { holder.refreshActiveRequest() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("exchange-request-active").assertDoesNotExist()
+    }
+
+    /**
+     * Issue #372 (EX-AC-04, rendered-UI oracle): the T-16 face is
+     * summary-first — kinds (tier line), ITEM count, ceiling, and the D-09
+     * expectation — while the generated package's full text stays collapsed
+     * until explicitly expanded, and then shows the identical text the
+     * transports hand out. The unsent cancel slot is the 破棄 vocabulary.
+     */
+    @Test
+    fun t16SummaryIsPrimaryAndFullTextIsCollapsedUntilExpanded() {
+        val holder = newHolder()
+        setContent(holder)
+        composeRule.runOnUiThread {
+            holder.openFlow()
+            holder.generate(PrivacyTier.EXTERNAL_WITH_LABELS)
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("exchange-disclosure-title").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("exchange-disclosure-title").assertIsDisplayed()
+        // The labelled item count (structural() exports exactly two items).
+        composeRule
+            .onNodeWithText(context.getString(R.string.exchange_disclosure_summary_items, 2), substring = true)
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-disclosure-summary-limit").assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-expectation").assertIsDisplayed()
+        // Collapsed by default: the package text is not in the tree.
+        composeRule.onNodeWithTag("exchange-disclosure-package").assertDoesNotExist()
+        composeRule.onNodeWithTag("exchange-disclosure-expand").assertIsDisplayed().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("exchange-disclosure-package").assertIsDisplayed()
+        // The unsent cancel slot carries the 破棄 vocabulary (D-13).
+        composeRule.onNodeWithTag("exchange-discard").assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.exchange_discard)).assertIsDisplayed()
+    }
+
+    /**
+     * Issue #372 (EX-AC-08, rendered-UI oracle): the T-16 破棄 button does not
+     * invalidate directly — it raises the host's ONE discard confirmation
+     * (same entry as system Back); the confirm path runs the existing
+     * closeDisclosure gate.
+     */
+    @Test
+    fun discardButtonRoutesThroughTheHostConfirmation() {
+        val holder = newHolder()
+        var discardRequested = false
+        setContent(holder, onDiscardRequest = { discardRequested = true })
+        composeRule.runOnUiThread {
+            holder.openFlow()
+            holder.generate(PrivacyTier.EXTERNAL_REDACTED)
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("exchange-discard").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("exchange-discard").performClick()
+        composeRule.waitForIdle()
+        assertTrue("the 破棄 button must request the confirmation, not discard", discardRequested)
+        assertTrue("the face stays until the confirmation is accepted", holder.screen is ExchangeScreen.Disclosing)
+    }
+
+    /**
+     * Issue #372 (EX-AC-11, rendered-UI oracle): the system-Back contract of
+     * the request faces — T-15 Back closes zero-write, Back on a generating
+     * face is consumed (the face stays and the generation still settles),
+     * Back on the unsent T-16 requests the discard confirmation, and Back on
+     * the sent T-16 closes with the request surviving.
+     */
+    @Test
+    fun backContractOnTheRequestFacesIsStructural() {
+        val holder = newHolder()
+        var discardRequested = false
+        setContent(holder, onDiscardRequest = { discardRequested = true })
+
+        fun pressBack() {
+            // The empty compose activity owns the dispatcher BackHandler
+            // registers against; the lifecycle monitor is how this harness
+            // reaches the resumed activity.
+            composeRule.runOnUiThread {
+                val resumed = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+                    .getInstance()
+                    .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED)
+                    .filterIsInstance<androidx.activity.ComponentActivity>()
+                    .firstOrNull()
+                checkNotNull(resumed).onBackPressedDispatcher.onBackPressed()
+            }
+            composeRule.waitForIdle()
+        }
+
+        // T-15: Back closes the flow zero-write.
+        composeRule.runOnUiThread { holder.openFlow() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("exchange-request-title").assertIsDisplayed()
+        pressBack()
+        assertTrue(holder.screen is ExchangeScreen.Closed)
+        composeRule.onNodeWithTag("exchange-request-title").assertDoesNotExist()
+
+        // Generating: Back is consumed; the face stays and the generation
+        // still settles into the disclosure.
+        composeRule.runOnUiThread {
+            holder.openFlow()
+            holder.generate(PrivacyTier.EXTERNAL_REDACTED)
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("exchange-generating").fetchSemanticsNodes().isNotEmpty() ||
+                composeRule.onAllNodesWithTag("exchange-disclosure-title").fetchSemanticsNodes().isNotEmpty()
+        }
+        pressBack()
+        assertTrue(
+            "Back must not leave a generating face",
+            holder.screen is ExchangeScreen.Generating || holder.screen is ExchangeScreen.Disclosing,
+        )
+        composeRule.waitUntil(5_000) {
+            holder.screen is ExchangeScreen.Disclosing
+        }
+
+        // Unsent T-16: Back raises the discard confirmation request and keeps
+        // the face.
+        discardRequested = false
+        pressBack()
+        assertTrue(discardRequested)
+        assertTrue(holder.screen is ExchangeScreen.Disclosing)
+
+        // After a transport success, Back is the zero-write close and the
+        // request survives.
+        composeRule.runOnUiThread { holder.onTransportResult(ExchangeTransportResult.Success) }
+        composeRule.waitForIdle()
+        pressBack()
+        assertTrue(holder.screen is ExchangeScreen.Closed)
+    }
+
+    /**
+     * Issue #372 (EX-AC-10): the restructured T-15/T-16 faces keep every
+     * critical action reachable and unclipped at 200% font scale (the
+     * summary-first face replaces the always-expanded package text, so the
+     * reflow stays bounded by design).
+     */
+    @Test
+    fun requestFacesKeepCriticalActionsReachableAtTwoHundredPercentFontScale() {
+        val holder = newHolder()
+        setContent(holder, fontScale = 2f)
+        composeRule.runOnUiThread { holder.openFlow() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("exchange-request-title").assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-generate").assertIsDisplayed().assertHasClickAction()
+        composeRule.onNodeWithTag("exchange-request-active").assertDoesNotExist()
+
+        composeRule.runOnUiThread { holder.generate(PrivacyTier.EXTERNAL_REDACTED) }
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("exchange-discard").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("exchange-send-clipboard").assertIsDisplayed().assertHasClickAction()
+        composeRule.onNodeWithTag("exchange-discard").assertIsDisplayed().assertHasClickAction()
+        composeRule.onNodeWithTag("exchange-disclosure-expand").assertIsDisplayed().assertHasClickAction()
     }
 
     /**
