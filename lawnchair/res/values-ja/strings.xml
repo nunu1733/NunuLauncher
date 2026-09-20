@@ -31,9 +31,19 @@
     <string name="organizer_hub_materials_heading">整理の材料</string>
     <string name="organizer_personalization_recording_label">整理のためにアプリ起動を記録する</string>
     <string name="organizer_personalization_recording_description">このランチャーから始まった起動を端末内だけで数え、整理の精度を上げます。記録は端末の外に出ず、書き出しもされません。オフにすると記録を停止し、既存の記録を消去します。</string>
+    <!-- Issue #371: 権限copy契約（spec 203 U-2 + TO-BE §7.3）は #371 が所有:
+         用途・この行で確認/管理する理由・断った場合の影響を1文で。配置は #367 のまま。 -->
     <string name="organizer_personalization_usage_access_label">使用状況アクセス権限</string>
-    <string name="organizer_personalization_usage_access_granted">許可済み — アプリの使用状況を整理の精度向上に活用します</string>
-    <string name="organizer_personalization_usage_access_not_granted">未許可 — 許可しなくても整理はすべて利用できます。タップして確認。</string>
+    <string name="organizer_personalization_usage_access_granted">許可済み — 粗い使用状況のヒント（生の履歴は端末内だけ）が整理の精度に使われます。この行は権限の管理用です。</string>
+    <string name="organizer_personalization_usage_access_not_granted">未許可 — 整理が初めて使用状況を使う時点でアプリから尋ねます。この行は権限の管理用で、許可しなくても整理はすべて利用できます。</string>
+    <!-- Issue #371: JIT要求（spec 371）。TO-BE §7.3の3要素（何のため/なぜ今/断ったらどうなるか）
+         に任意性と修飾されたprivacy記述（生の履歴は端末外に出ない、AI相談でも送信前に確認）を
+         1文で満たす。 -->
+    <string name="organizer_usage_access_jit_title">使用状況を使って、より賢く整理する？</string>
+    <string name="organizer_usage_access_jit_body">今まさに整理が使用状況を読もうとしているため尋ねており、許可すれば粗い使用状況のヒント（生の使用履歴が端末の外に出ることはありません）で配置の精度が上がり、AI相談に含める場合も送信前に必ず確認されますが、許可しなくても整理はすべて利用できます。</string>
+    <string name="organizer_usage_access_jit_open_settings">設定を開く</string>
+    <string name="organizer_usage_access_jit_continue">許可せず続行</string>
+    <string name="organizer_usage_access_jit_settings_unavailable">システムの使用状況アクセス設定を開けませんでした。許可せずにこのまま続行できます。</string>
     <!-- Issue #38: placement locks -->
     <string name="organizer_lock_menu_title">配置ロック</string>
     <string name="organizer_lock_state_locked">ロック中</string>

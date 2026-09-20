@@ -1009,9 +1009,22 @@
     <string name="organizer_hub_materials_heading">Organizing materials</string>
     <string name="organizer_personalization_recording_label">Record app launches for organizing</string>
     <string name="organizer_personalization_recording_description">Keeps a local counter of launches started from this launcher to improve organizing quality. Stored on this device only and never exported. Turning this off stops recording and erases the existing records.</string>
+    <!-- Issue #371: the permission copy contract (spec 203 U-2 + TO-BE §7.3)
+         belongs to #371: purpose, why this row asks/reviews now, and what
+         changes when declined, in one sentence. Placement stays #367's. -->
     <string name="organizer_personalization_usage_access_label">Usage access permission</string>
-    <string name="organizer_personalization_usage_access_granted">Granted — app usage can inform organizing quality</string>
-    <string name="organizer_personalization_usage_access_not_granted">Not granted — organizing works fully without it. Tap to review.</string>
+    <string name="organizer_personalization_usage_access_granted">Granted — coarse usage hints (raw history stays on this device) inform organizing quality, and this row is where you manage the permission.</string>
+    <string name="organizer_personalization_usage_access_not_granted">Not granted — organizing asks when it first needs usage hints, and this row manages the permission; organizing works fully without it.</string>
+    <!-- Issue #371: the just-in-time Usage Access request (spec 371). One
+         sentence covering TO-BE §7.3's three elements (what for / why now /
+         what changes when declined), optionality, and the qualified privacy
+         statement (raw history never leaves the device; an AI consult with
+         the bucketed hints still confirms before sending). -->
+    <string name="organizer_usage_access_jit_title">Use app usage to organize smarter?</string>
+    <string name="organizer_usage_access_jit_body">Asking now because organizing is about to read app usage: with your permission, coarse usage hints — raw usage history never leaves this device — improve placement quality, and an AI consult that includes them still confirms before sending; skipping is fine and organizing works fully without it.</string>
+    <string name="organizer_usage_access_jit_open_settings">Open settings</string>
+    <string name="organizer_usage_access_jit_continue">Skip for now</string>
+    <string name="organizer_usage_access_jit_settings_unavailable">Couldn\'t open the system usage access settings. You can keep going without granting.</string>
     <!-- Issue #52: explicit manual full organization -->
     <string name="manual_organization_title">Organize home layout</string>
     <string name="manual_organization_summary">Review a proposed home layout before applying it.</string>

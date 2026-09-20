@@ -178,7 +178,16 @@ internal object ManualOrganizationModule {
                 app,
                 app.layoutApplicationModule,
             ).let { application ->
-                ManualOrganizationRun(application, operationGate = OrganizationOperationLease).also { instance = it }
+                // Issue #371: the process-wide JIT Usage Access request gate is
+                // created here so the run machine and the exchange holder
+                // share one instance (the request opportunity is process-
+                // scoped, spec 371).
+                val usageAccessGate = UsageAccessJitGateProvider.get(app)
+                ManualOrganizationRun(
+                    application,
+                    operationGate = OrganizationOperationLease,
+                    usageAccessGate = usageAccessGate,
+                ).also { instance = it }
             }
         }
     }
@@ -212,6 +221,12 @@ class ManualOrganizationRun internal constructor(
     private val application: ManualOrganizationApplication,
     private val planner: OrganizationPlanner = DeterministicOrganizationPlanner(),
     private val operationGate: OrganizationOperationGate = NoopOrganizationOperationGate,
+    // Issue #371: process-scoped just-in-time Usage Access request gate. The
+    // default grants immediately (equivalent to an always-resolved
+    // opportunity), so existing tests and embedders see today's behavior.
+    // Public read access: the hosting surface collects the gate snapshot for
+    // waiter wakeup and drives the dialog from it (RunUsageAccessJitDialogHost).
+    val usageAccessGate: UsageAccessJitGate = UsageAccessJitGate(isGranted = { true }),
 ) {
     enum class DismissalOutcome {
         CancelledAndMayNavigate,
@@ -345,6 +360,44 @@ class ManualOrganizationRun internal constructor(
 
         data object Recovering : State
         data class RecoveryResultState(val result: RecoveryResult) : State
+
+        /**
+         * Issue #371 (spec 371): the JIT Usage Access request pause. Entered
+         * only from the composed-phase entry ([runComposedPhase]) when the
+         * process-scoped gate returns `Present`/`Wait` — i.e. strictly before
+         * the journal opens, so `RUN_STARTED`, composition and every journal
+         * event stay unissued while paused. The RUN lease stays held (a second
+         * start is `Busy`); cancel/dismiss follow the existing pre-admission
+         * rules with the gate's owner-destruction rules applied. Never mapped
+         * to a new user-visible state (face mapping renders the T-09
+         * preparation face; the dialog is a modal overlay).
+         *
+         * [selection] is the confirmed selection the composed phase resumes
+         * with (`null` = plain full organization). [isOwner] mirrors the gate
+         * decision at entry: `true` = this surface presents the request
+         * dialog; `false` = another owner is presenting and this host waits
+         * for the gate's resolution.
+         */
+        data class AwaitingUsageAccessJit(
+            val runId: RunId,
+            val selection: List<CandidateTarget.AppKey>?,
+            val isOwner: Boolean,
+        ) : State
+
+        /**
+         * Issue #371: internal single-shot claim between the JIT resolution
+         * and the composed phase. Committing this state under the run lock is
+         * what makes [continueAfterUsageAccessGate] idempotent — a second
+         * resolution callback finds the state already past
+         * [AwaitingUsageAccessJit] and no-ops — while the user-visible capture
+         * commit (`Capturing` + `preparationPhase=CAPTURE`) stays inside
+         * [runComposedPhase]'s RD-6 lock section, exactly as for the
+         * non-JIT paths.
+         */
+        data class ResumingUsageAccessJit(
+            val runId: RunId,
+            val selection: List<CandidateTarget.AppKey>?,
+        ) : State
     }
 
     enum class StaleOrigin { APPLY_BLOCKED, DETECTED_BEFORE_REVIEW }
@@ -531,12 +584,12 @@ class ManualOrganizationRun internal constructor(
     private fun continueWithEmptySelection(operation: Operation) {
         synchronized(lock) {
             if (!isActiveLocked(operation)) return
-            // Issue #369 (RD-7): the visible phase commits before the state
-            // publish that makes T-09 visible, in the same lock section.
-            preparationPhaseHolder.value = PreparationPhase.CAPTURE
-            stateHolder.value = State.Capturing
         }
         try {
+            // Issue #371: the user-visible capture commit moved into
+            // runComposedPhase's RD-6 lock section so the JIT pause (which can
+            // only happen at that entry) never shows a capture that has not
+            // started. Phase-before-state ordering is preserved there.
             runComposedPhase(operation, selection = null)
         } catch (failure: Throwable) {
             abort(operation)
@@ -585,13 +638,13 @@ class ManualOrganizationRun internal constructor(
                 )
                 null
             } else {
-                // Issue #369 (RD-7): the visible phase commits before the state
-                // publish that makes T-09 visible again after the selection
-                // surface, in the same lock section — a collector therefore
-                // never sees (Capturing, DETECTION) and the visible column
-                // never re-announces detection after T-08.
-                preparationPhaseHolder.value = PreparationPhase.CAPTURE
-                stateHolder.value = State.Capturing
+                // Issue #371: the visible capture commit moved into
+                // runComposedPhase's RD-6 lock section (authoritative for all
+                // three entry paths), so the JIT pause at that entry can never
+                // show a capture that has not started. The state stays
+                // `Selecting` until the composed phase actually begins; the
+                // phase-before-state ordering (RD-7) is preserved in the
+                // entry's lock section.
                 current
             }
         } ?: return
@@ -600,6 +653,52 @@ class ManualOrganizationRun internal constructor(
         } catch (failure: Throwable) {
             abort(operation)
             throw failure
+        }
+    }
+
+    /**
+     * Issue #371 (spec 371): continues the composed phase after the JIT
+     * Usage Access request resolved. Single-shot by construction: the run
+     * lock commits [State.ResumingUsageAccessJit] (consuming the pause), so a
+     * second resolution callback — a racing `ON_RESUME`, a double-tap, a late
+     * host retry — finds no pause to claim and returns without running
+     * anything. The user-visible capture commit is left entirely to
+     * [runComposedPhase]'s RD-6 lock section, exactly as for the non-JIT
+     * paths.
+     */
+    fun continueAfterUsageAccessGate() {
+        val claimed = synchronized(lock) {
+            val current = state as? State.AwaitingUsageAccessJit ?: return
+            val op = activeOperation ?: return
+            if (op.runId != current.runId || !isActiveLocked(op)) return
+            // Resolution is idempotent and owner-checked; safe to call for the
+            // non-owner (waiter) path too, where it is a no-op.
+            usageAccessGate.resolve(current.runId)
+            stateHolder.value = State.ResumingUsageAccessJit(current.runId, current.selection)
+            op to current.selection
+        }
+        val (operation, selection) = claimed
+        try {
+            runComposedPhase(operation, selection = selection)
+        } catch (failure: Throwable) {
+            abort(operation)
+            throw failure
+        }
+    }
+
+    /**
+     * Issue #371: applies the spec's owner-destruction rules to the gate when
+     * the paused/resuming operation goes away (cancel, dismiss). State
+     * specific: an un-presented reservation is released (the opportunity
+     * stays unconsumed), a presented request is resolved exactly once as an
+     * abandon resolution — waiters are unblocked while the destroyed owner's
+     * action is never resumed — and a resolved request is left alone.
+     */
+    private fun destroyUsageAccessGateOwnership(runId: RunId) {
+        when (usageAccessGate.ownedPhase(runId)) {
+            UsageAccessJitGate.Phase.Reserved -> usageAccessGate.release(runId)
+            UsageAccessJitGate.Phase.Presented -> usageAccessGate.resolve(runId)
+            else -> Unit
         }
     }
 
@@ -696,6 +795,35 @@ class ManualOrganizationRun internal constructor(
         // runId — and stays constant for every event that follows
         // (RUN_STARTED through terminal).
         val diagnosticsRunMode = if (selection != null) RunMode.SCOPE_COMPOSED_ORGANIZATION else RunMode.FULL_ORGANIZATION
+        // Issue #371 (spec 371): the JIT Usage Access request pauses here —
+        // the single choke point all three composition paths flow through —
+        // strictly before the journal opens, when the process has not yet
+        // consumed its one request opportunity. If the pause engages, this
+        // call returns without touching the journal; the resolved host calls
+        // [continueAfterUsageAccessGate], which re-enters this method.
+        when (usageAccessGate.evaluate(runId)) {
+            UsageAccessJitGate.Decision.Proceed -> Unit
+
+            UsageAccessJitGate.Decision.Present, UsageAccessJitGate.Decision.Wait -> {
+                synchronized(lock) {
+                    if (!isActiveLocked(operation)) {
+                        // The cancel won the race before any state was
+                        // published: undo a just-acquired reservation so the
+                        // opportunity stays unconsumed, and leave the gate
+                        // alone when another owner holds it (a `Wait` runner
+                        // never touches the gate on cancellation).
+                        usageAccessGate.release(runId)
+                        return
+                    }
+                    stateHolder.value = State.AwaitingUsageAccessJit(
+                        runId,
+                        selection,
+                        isOwner = usageAccessGate.ownedPhase(runId) == UsageAccessJitGate.Phase.Reserved,
+                    )
+                }
+                return
+            }
+        }
         // Issue #369 (spec RD-6): the entry gate decides start-vs-abandon
         // atomically with the RUN_STARTED emission. T-09's interruption
         // affordance makes cancel during detection user-reachable; a cancelled
@@ -706,9 +834,11 @@ class ManualOrganizationRun internal constructor(
         synchronized(lock) {
             if (!isActiveLocked(operation)) return
             operation.diagnosticsRunMode = diagnosticsRunMode
-            // Issue #369 (RD-7): idempotent on the paths that already committed
-            // CAPTURE with their Capturing publish; authoritative for the
-            // detection-unavailable continuation that enters through the gate.
+            // Issue #369 (RD-7) / #371: authoritative for ALL entry paths
+            // (detection-unavailable continuation, the D-06 empty-cut
+            // continuation, selection confirmation and the JIT resume) — the
+            // visible capture commit happens here, phase before state, so a
+            // paused run never shows a capture that has not started.
             preparationPhaseHolder.value = PreparationPhase.CAPTURE
             operation.journalStarted = true
             emit(
@@ -962,7 +1092,8 @@ class ManualOrganizationRun internal constructor(
             if (candidate.applicationAdmitted.get()) return
             if (state !is State.Preview && state !is State.Capturing && state !is State.CandidateDetection &&
                 state !is State.Selecting && state !is State.Planning && state !is State.Applying &&
-                state !is State.PreviewUnavailable
+                state !is State.PreviewUnavailable && state !is State.AwaitingUsageAccessJit &&
+                state !is State.ResumingUsageAccessJit
             ) {
                 return
             }
@@ -974,6 +1105,13 @@ class ManualOrganizationRun internal constructor(
             candidate
         }
         operation.lease.close()
+        // Issue #371: the pause is pre-RUN_STARTED, so cancelling during it
+        // must keep the journal empty (the journalStarted guard below already
+        // does) — and the gate ownership must follow the owner-destruction
+        // rules: un-presented reservations are released so the opportunity
+        // stays unconsumed; an already-presented request resolves as an
+        // abandon resolution so waiters are never orphaned.
+        destroyUsageAccessGateOwnership(operation.runId)
         // Review P2 (runMode correlation): before the composed phase there is
         // no RUN_STARTED for this runId, so the journal must stay empty —
         // USER_CANCELLED without its RUN_STARTED would violate the contract.
@@ -1194,6 +1332,10 @@ class ManualOrganizationRun internal constructor(
         }
         operation.second?.lease?.close()
         operation.second?.let {
+            // Issue #371: same owner-destruction rules as cancel() — release
+            // an un-presented reservation, resolve a presented request as an
+            // abandon resolution so waiters are never orphaned.
+            destroyUsageAccessGateOwnership(it.runId)
             // Same journal rule as cancel(): no RUN_STARTED → no events.
             if (it.journalStarted) {
                 emit(

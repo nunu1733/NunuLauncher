@@ -76,6 +76,8 @@ import app.lawnchair.organizer.ui.MissingAppSelectionState
 import app.lawnchair.organizer.ui.OrganizationPreviewContent
 import app.lawnchair.organizer.ui.OrganizationPreviewSection
 import app.lawnchair.organizer.ui.OrganizationPreviewWording
+import app.lawnchair.organizer.ui.RunUsageAccessJitDialogHost
+import app.lawnchair.organizer.ui.UsageAccessJitGateProvider
 import app.lawnchair.organizer.ui.exchange.ExchangeFlowStateHolder
 import app.lawnchair.organizer.ui.exchange.exchangeFlowItems
 import app.lawnchair.organizer.ui.manualOrganizationFace
@@ -121,8 +123,17 @@ fun ManualOrganizationPreferences(
             controllerFactory = { ExchangeFlowModule.controller(context) },
             run = coordinator,
             scope = scope,
+            // Issue #371: the run machine and the exchange holder share one
+            // process-scoped JIT Usage Access request gate.
+            usageAccessGate = UsageAccessJitGateProvider.get(context),
         )
     }
+    // Issue #371: the JIT Usage Access request dialog hosts at the run-state
+    // observation point (the single dialog host for every composition trigger
+    // path — start rows, onboarding admission, intent rebind, selection
+    // confirmation and the D-06 empty-cut continuation all pause inside the
+    // coordinator's composed-phase entry).
+    RunUsageAccessJitDialogHost(run = coordinator)
     // Issue #368: the strategy picker moved to the materials surface T-05
     // (OrganizerStrategyPreferences). The run surface offers no strategy
     // selection — not even a read-only row — and the write-time restart
@@ -390,6 +401,13 @@ fun ManualOrganizationPreferences(
                 ManualOrganizationRun.State.Capturing,
                 ManualOrganizationRun.State.CandidateDetection,
                 ManualOrganizationRun.State.Planning,
+                // Issue #371: the JIT pause and its resume claim are
+                // preparation-phase waiting points — the request dialog is a
+                // modal overlay hosted by RunUsageAccessJitDialogHost above,
+                // and the phase row stays on the last published phase
+                // (capture has not started while paused).
+                is ManualOrganizationRun.State.AwaitingUsageAccessJit,
+                is ManualOrganizationRun.State.ResumingUsageAccessJit,
                 -> preparationFaceItems(
                     preparationPhase = preparationPhase,
                     focusRequester = focusRequester,
