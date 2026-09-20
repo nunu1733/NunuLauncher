@@ -24,8 +24,11 @@
     <string name="organizer_diagnostics_export_subtitle">オーガナイザー診断ジャーナルをファイルに出力します</string>
     <string name="organizer_diagnostics_export_success">診断データを書き出しました</string>
     <string name="organizer_diagnostics_export_error">診断データの書き出しに失敗しました</string>
-    <!-- Issue #203: organizer personalization signals -->
-    <string name="organizer_personalization_section">パーソナライゼーション</string>
+    <!-- Issue #366: Organizer hub (T-01), the persistent organizing workspace -->
+    <string name="organizer_hub_title">オーガナイザー</string>
+    <string name="organizer_hub_summary">整理の状態、整理案の確認、材料を1か所で扱えます。</string>
+    <string name="organizer_hub_label">オーガナイザー</string>
+    <string name="organizer_hub_materials_heading">整理の材料</string>
     <string name="organizer_personalization_recording_label">整理のためにアプリ起動を記録する</string>
     <string name="organizer_personalization_recording_description">このランチャーから始まった起動を端末内だけで数え、整理の精度を上げます。記録は端末の外に出ず、書き出しもされません。オフにすると記録を停止し、既存の記録を消去します。</string>
     <string name="organizer_personalization_usage_access_label">使用状況アクセス権限</string>
@@ -193,7 +196,13 @@
     <string name="manual_organization_preserved_non_target">対象外の配置を保持: %1$d件</string>
     <string name="manual_organization_preserved_strategy">選択した戦略により保持: %1$d件</string>
     <string name="manual_organization_preserved_structural">関連する項目を保持: %1$d件</string>
-<string name="manual_organization_strategy_section">整理ストラテジー</string>
+    <string name="manual_organization_strategy_section">整理ストラテジー</string>
+    <!-- Issue #368: strategy materials surface (T-05), reached only from the
+         organizer hub materials section; the run surface no longer hosts the picker. -->
+    <string name="organizer_strategy_title">整理ストラテジー</string>
+    <string name="organizer_strategy_summary">ホーム画面を整理するときの方針を選択します。</string>
+    <string name="organizer_strategy_frozen_operation_active">整理操作を実行中のため、中断してから整理方法を変更してください。</string>
+    <string name="organizer_strategy_retry_when_busy">他の整理の変更を実行中です。完了後に再度お試しください。</string>
     <string name="organization_strategy_canonical_name">標準コンパクト</string>
     <string name="organization_strategy_canonical_description">各ページを左上から詰めます。</string>
     <string name="organization_strategy_tidy_name">ページ内で隙間を詰める</string>
@@ -480,13 +489,9 @@
     <string name="exchange_import_discard_confirm_confirm">破棄</string>
     <string name="exchange_import_discarded_guidance">取り込みを破棄しました。依頼が有効な間は、同じ回答を再度取り込めます。</string>
     <string name="exchange_import_summary_global_minimize">全体方針: 現状の配置をなるべく維持する</string>
-    <string name="exchange_import_strategy_busy">整理方法を変更しています。完了後に再度取り込んでください。</string>
-    <string name="exchange_import_cta_strategy_busy">整理方法を変更しています。完了後に再度お試しください。</string>
-    <string name="exchange_import_cta_failed">整理を開始できませんでした。もう一度お試しください。</string>
+            <string name="exchange_import_cta_failed">整理を開始できませんでした。もう一度お試しください。</string>
     <string name="exchange_start_frozen_import">取り込みを確認中のため、整理を開始できません。</string>
-    <string name="exchange_strategy_frozen_import">取り込みを確認中のため、整理方法は変更できません。</string>
-    <string name="exchange_strategy_frozen_continuing">整理を開始しているため、整理方法は変更できません。</string>
-    <plurals name="exchange_import_summary_recognized">
+            <plurals name="exchange_import_summary_recognized">
         <item quantity="other">提案から%1$d件の希望を認識しました。</item>
     </plurals>
     <plurals name="exchange_import_summary_no_judgment">

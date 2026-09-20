@@ -1002,8 +1002,11 @@
     <string name="organizer_diagnostics_export_subtitle">Export organizer diagnostic journal to a file</string>
     <string name="organizer_diagnostics_export_success">Diagnostics exported successfully</string>
     <string name="organizer_diagnostics_export_error">Failed to export diagnostics</string>
-    <!-- Issue #203: organizer personalization signals -->
-    <string name="organizer_personalization_section">Personalization</string>
+    <!-- Issue #366: Organizer hub (T-01), the persistent organizing workspace -->
+    <string name="organizer_hub_title">Organizer</string>
+    <string name="organizer_hub_summary">Organizing status, starting a review, and materials in one place.</string>
+    <string name="organizer_hub_label">Organizer</string>
+    <string name="organizer_hub_materials_heading">Organizing materials</string>
     <string name="organizer_personalization_recording_label">Record app launches for organizing</string>
     <string name="organizer_personalization_recording_description">Keeps a local counter of launches started from this launcher to improve organizing quality. Stored on this device only and never exported. Turning this off stops recording and erases the existing records.</string>
     <string name="organizer_personalization_usage_access_label">Usage access permission</string>
@@ -1014,6 +1017,12 @@
     <string name="manual_organization_summary">Review a proposed home layout before applying it.</string>
     <string name="manual_organization_explainer">Review proposed changes before anything is applied. Your current layout is never changed automatically.</string>
     <string name="manual_organization_strategy_section">Organization strategy</string>
+    <!-- Issue #368: strategy materials surface (T-05), reached only from the
+         organizer hub materials section; the run surface no longer hosts the picker. -->
+    <string name="organizer_strategy_title">Organization strategy</string>
+    <string name="organizer_strategy_summary">Choose how your home layout is organized.</string>
+    <string name="organizer_strategy_frozen_operation_active">An organize operation is in progress. Interrupt it before changing the strategy.</string>
+    <string name="organizer_strategy_retry_when_busy">Another organizer change is in progress. Try again after it finishes.</string>
     <string name="organization_strategy_canonical_name">Standard compaction</string>
     <string name="organization_strategy_canonical_description">Fills each screen from the top-left.</string>
     <string name="organization_strategy_tidy_name">Tidy each screen</string>
@@ -1393,12 +1402,8 @@
     <string name="exchange_import_discard_confirm_confirm">Discard</string>
     <string name="exchange_import_discarded_guidance">The import was discarded. While the request stays valid, you can import the same reply again.</string>
     <string name="exchange_import_summary_global_minimize">Overall goal: keep the current layout as much as possible</string>
-    <string name="exchange_import_strategy_busy">Changing the organization strategy. Import again after it finishes.</string>
-    <string name="exchange_import_cta_strategy_busy">Changing the organization strategy. Try again after it finishes.</string>
     <string name="exchange_import_cta_failed">Could not start organizing. Please try again.</string>
     <string name="exchange_start_frozen_import">Import in progress. You can start organizing after it finishes.</string>
-    <string name="exchange_strategy_frozen_import">Import in progress. The strategy cannot be changed until it finishes.</string>
-    <string name="exchange_strategy_frozen_continuing">Organizing has started. The strategy cannot be changed.</string>
     <plurals name="exchange_import_summary_recognized">
         <item quantity="one">%1$d wish was recognized from the proposal.</item>
         <item quantity="other">%1$d wishes were recognized from the proposal.</item>
