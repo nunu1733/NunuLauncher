@@ -1,6 +1,6 @@
 ---
 issue: "#369"
-status: accepted
+status: implemented
 requirements: [FR-004, FR-006, FR-015, NFR-009, NFR-011]
 risk: []
 updated: 2026-09-20
@@ -8,8 +8,10 @@ updated: 2026-09-20
 
 # run面の表示を8ユーザー状態へ統合し、canonical順序（前置き→検出→[選択]→capture/plan→確認）を固定してD-06条件表示とD-13語彙規約を適用する
 
-> Status: **accepted** (2026-09-20) — Phase1 reviewを通過し、実装 (Phase2) の契約として
-> 確定した。初版snapshot (`3c39ceb2f8`) への1st review
+> Status: **implemented** (2026-09-20) — Phase1 reviewを通過して受入された契約を実装し、
+> 実装PR [#387](https://github.com/nunu1733/NunuLauncher/pull/387) merge (merge commit `7ec9e9d3fe`) で実装完了。実装レビュー4回
+> ([1](https://github.com/nunu1733/NunuLauncher/issues/369#issuecomment-5748643146) / [2](https://github.com/nunu1733/NunuLauncher/issues/369#issuecomment-5749752250) / [3](https://github.com/nunu1733/NunuLauncher/issues/369#issuecomment-5751115495) → 修正) を経て[最終review](https://github.com/nunu1733/NunuLauncher/issues/369#issuecomment-5751189926)は**Accepted**（blocking 0件）。独立監査記録: [docs/assessment/pr-387-run-display-integration.md](../../docs/assessment/pr-387-run-display-integration.md)。元のaccepted記録:
+>初版snapshot (`3c39ceb2f8`) への1st review
 > [**Changes requested**](https://github.com/nunu1733/NunuLauncher/issues/369#issuecomment-5740051014)
 > (高1/中2/低1) を `5a162363f9` で、2nd review
 > [**Changes requested**](https://github.com/nunu1733/NunuLauncher/issues/369#issuecomment-5746598782)
@@ -601,6 +603,8 @@ decisions RD-1〜RD-7
    （spec 123収束対象）。
 
 ## Change history
+
+- 2026-09-20: **status を implemented へ移行**。実装PR [#387](https://github.com/nunu1733/NunuLauncher/pull/387) merge (merge commit `7ec9e9d3fe`)。実装はChatGPT実装レビュー4回（CR×3 → Accepted）と独立監査（[docs/assessment/pr-387-run-display-integration.md](../../docs/assessment/pr-387-run-display-integration.md)、verdict: pass）を経て受理。RUN-AC-01〜10は監査記録のtest evidence（unit oracle・UI instrumentation lane・4条件screenshot evidence）を正本とする。
 
 - 2026-09-20: Phase1 re-entry（4th revision）。3rd review
   （[Issue #369 review comment][8]、Changes requested、中1）に対応:
