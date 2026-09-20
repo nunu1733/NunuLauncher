@@ -30,9 +30,10 @@ signal読み取り）が最遠であり、常設rowのrationale文言は「な�
 
 さらに、runの実際の構造は「開始操作＝即composition」ではない。現行 `ManualOrganizationRun.start()`
 はadmission後に欠損app候補の検出を行い、候補が存在すれば選択面（`State.Selecting`）で停止し、
-compositionはその後の選択確認（または検出不能時の即時継続）で初めて実行される。したがって
-「run開始操作」に要求を結合させると、ユーザーが一度もsignalを読まないまま要求を見せられる
-逆JITが発生する。要求は**compositionが実際に発生する時点の直前**に置かれなければならない。
+compositionはその後の選択確認（検出不能・0件の場合は即時継続）で初めて実行される。
+したがって「run開始操作」に要求を結合させると、ユーザーが一度もsignalを読まないまま
+要求を見せられる逆JITが発生する。要求は**compositionが実際に発生する時点の直前**に
+置かれなければならない。
 
 ## Outcome
 
@@ -40,14 +41,18 @@ Usage Access未付与の状態で、そのprocessで**最初にsignalを読むco
 （整理runのcomposition、またはAI依頼生成のcomposition）が実行されようとする**直前**で、
 文脈付きの任意要求（JIT要求）が**1回だけ**表示される。run開始操作そのものには要求を
 結合させない。候補検出で選択面が開き、ユーザーが選択を中断した場合、要求は一度も
-表示されない（要求機会は未消費のまま残る）。要求文言は§7.3の3要素を1文で満たし、
-privacyに関する記述は真実である（「raw usage履歴は端末外に出ない」「内部でcoarseな
-bucket signalへ変換される」「AI相談ではbucket signalが依頼に含まれ得るが、外部送出は
-既存の送信前確認を通る」の区別を無条件の「端末内でのみ使用」と同一視しない）。
+表示されない（要求機会は未消費のまま残る）。複数のcomposition起点が同時に要求を
+評価しても、dialogの提示は同時に1つであり、他の起点はその解決までcompositionへ
+進まない。要求文言は§7.3の3要素を1文で満たし、privacyに関する記述は真実である
+（「raw usage履歴は端末外に出ない」「内部でcoarseなbucket signalへ変換される」
+「AI相談ではbucket signalが依頼に含まれ得るが、外部送出は既存の送信前確認を通る」の
+区別を無条件の「端末内でのみ使用」と同一視しない）。
 
-system設定 (`ACTION_USAGE_ACCESS_SETTINGS`) へ遷移して付与して戻れば、その試行の
-signal読み取りは付与済みの状態で行われ、断れば（または設定に行かずに閉じれば）
-system usage sectionが `Unavailable` のままrun・依頼生成が続行する（現行propertyの維持）。
+system設定 (`ACTION_USAGE_ACCESS_SETTINGS`) へ遷移して付与して戻れば、復帰時の
+付与状態の再取得（app-op変更の非同期伝播を吸収するbounded re-read）でGRANTEDが
+観測された時点で遅延されていたcompositionが再開され、その試行のsignal読み取りは
+付与済みの状態で行われる。断れば（または設定に行かずに閉じれば）system usage sectionが
+`Unavailable` のままrun・依頼生成が続行する（現行propertyの維持）。
 材料面T-06の常設rowは、状態表示・system設定への遷移・`ON_RESUME`再読取・再付与の
 **状態管理契約を現行どおり維持**したうえで、説明文言を§7.3基準へ更新する
 （permission copy契約は本Issueが所有する。T-06の配置は#367が所有し、済み）。
@@ -56,7 +61,7 @@ spec 203はU-2の改訂（常設row＋初回signal読み取り時のJIT要求1�
 ## Scope
 
 - 初回signal読み取りの**直前**でのJIT要求UI（compose上のdialog。trigger条件、
-  composition直前まで表示されないこと、1回限りの規則はBehavior scenariosで定義）。
+  composition直前まで表示されないこと、同時1提示、1回限りの規則はBehavior scenariosで定義）。
 - 要求文言の要件: §7.3の3要素（用途/時点理由/拒否時の影響）を1文で満たし、
   「任意（許可しなくてもOrganizerの全機能が利用可能）」であることを示すこと。
   privacyの記述は次の区別を偽りなく示すこと: raw usage履歴（event/timestamp粒度）は
@@ -64,13 +69,19 @@ spec 203はU-2の改訂（常設row＋初回signal読み取り時のJIT要求1�
   AI相談を選んだ場合bucket signalが依頼に含まれ得るが外部送出は送信前確認
   （spec 205 AC-3/AC-12 gate）を通る。「usage情報は端末内でのみ使用される」という
   無条件の主張を要求しない（TO-BE §7.2「signalの保存なし・bucketのみ外部送出」との整合）。
-- system設定への遷移と復帰時の状態再取得（現行resume契約＝`ON_RESUME`でのapp-op再読取の再利用）。
-  復帰後に元の操作（composition）を続行すること。
+  最終EN/ja文言は実装PRのcontract commitで確定し、意味要素（3要素・任意性・
+  raw/bucket/送信前確認）のchecklistをPR evidenceに残すこと。
+- system設定への遷移と復帰時の状態再取得: 復帰（`ON_RESUME`）時にapp-opの付与状態を
+  再取得する。app-op変更は非同期に伝播するため、再取得は注入可能なclock/predicateによる
+  **bounded re-read**とし（固定sleepは使用しない）、GRANTEDを観測できた時点で
+  遅延されていたcompositionを再開する。上限まで観測できなかった場合は未付与として
+  続行する（次回compositionから付与済み。既知限界としてspec化）。
 - 拒否時の振る舞い: 該当試行のsignal読み取りは未付与のまま行われ、system usage sectionは
   `Unavailable`、launcher-origin sectionは保持、run・依頼生成は続行する（failではない）。
 - T-06常設rowの説明文言の改訂（同じPRで実施）: 状態表示・遷移・`ON_RESUME`再読取・
   再付与の契約は維持し、label/subtitle文言を§7.3の3要素を1文で満たす内容へ更新する。
-  EN/ja双方のresourceを更新し、oracleを追加する。
+  EN/ja双方のresourceを更新し、oracleを追加する。最終文言と意味要素checklistは
+  実装PRのcontract commitで確定する。
 - spec 203の改訂（同じPRで実施）: U-2の文言（常設row＋初回signal読み取り時のJIT要求1回。
   同一run内再促しなし規則は維持）、Permission and fallback behavior表の「opt-in (初回)」行の
   rationale要件を上記の修飾形へ更新しJIT要求行を追加、JIT要求の受入条件（AC）追加。
@@ -94,8 +105,10 @@ spec 203はU-2の改訂（常設row＋初回signal読み取り時のJIT要求1�
   「要求stateはprocess-local（再訪時は付与状態で判断）」どおり）。
 - T-06常設rowの配置・状態管理・遷移契約の変更（label/subtitleの**説明文言のみ**本Issueが
   改訂する。面の配置は#366/#367が所有し、済み）。
-- run面統合（#369）、AI相談統合（#372）、onboarding接続（#370）の契約の先取り。
-  JIT要求のtriggerは「signalを読む操作」という振る舞いで定義され、特定の面IDに結合しない。
+- run面統合（#369）、onboarding接続（#370）の契約の先取り。AI相談統合（#372）との
+  統合は「どちらが先にmergeしても後続側がre-entryして当時のmainを再読する」規律の下で
+  並行し、本specはshared面（exchange holder・Back処理）の契約を面IDに結合させず
+  「signalを読む操作」で定義することで並行性を保つ。
 - diagnostics / run journalへの新規event追加（本specでは要求しない）。
 
 ## Domain language
@@ -110,10 +123,14 @@ spec 203はU-2の改訂（常設row＋初回signal読み取り時のJIT要求1�
   compositionはrun（`Trigger` を問わない）と依頼生成（idle / run-in両entry）の
   いずれの経路でも同一のcanonical seam（`OrganizationInputComposer`）で行われる（現行実装）。
 - **要求機会 (usage access request opportunity)**: 当該process内でJIT要求を提示できる
-  1回の機会。機会の消費は次のいずれか**早い方**である: (a) 要求dialogの提示時、
-  (b) trigger評価の時点で既に付与済みだった時点（要求不要として機会を消費する）。
-  選択面の中断など「compositionに到達しなかった操作」は機会を消費しない。
-  機会の状態はprocess-localのin-memoryのみであり、永続化しない。
+  1回の機会。機会の状態は process-local の in-memory のみで、
+  **未提示（提示権を持たない）→ 提示権確定（reservation）→ 消費** の遷移をとる:
+  (a) 最初にtrigger評価を通過した起点だけが提示権を得る（同時に1つ。他の起点は
+  同一のreservation解決までcompositionへ進まない）、(b) dialogの**提示時点**で消費される、
+  (c) 提示権を得た操作が**提示前に**cancel/破棄された場合のみ提示権は解放され、
+  機会は未消費のまま残る、(d) trigger評価の時点で既に付与済みだった場合は要求不要として
+  その場で機会を消費する。選択面の中断など「compositionに到達しなかった操作」は
+  提示権を得ていないため機会を消費しない。永続化しない。
 
 ## Behavior scenarios
 
@@ -148,26 +165,42 @@ And activityなexport sessionが存在する場合はsession置換確認（spec 
 その後にJIT要求が表示される
 And 置換確認が不要な場合（active sessionなし）はJIT要求が最初の応答点になる
 
+### Scenario: 複数の起点が同時に要求を評価しても提示は1つである
+
+Given Usage Accessが未付与で要求機会が未消費であり、run側と依頼生成側のcomposition起点が
+近接して評価される（例: run側がpause中にexchange側の生成操作が行われる）
+When 2つ目の起点が要求のtrigger評価を通過する
+Then dialogの提示は同時に1つであり、2つ目の起点は最初のreservationの解決まで
+compositionへ進まない
+And 最初の起点で要求が解決（提示による消費）された後は、2つ目の起点は要求を
+表示せずcompositionへ進む（機会は既に消費済み）
+And 最初の起点が提示前にcancel/破棄されて提示権が解放された場合は、2つ目の起点が
+改めて要求を提示できる（機会は未消費のまま）
+
 ### Scenario: 設定へ遷移して付与して戻ると、その試行のsignal読み取りは付与済みで行われる
 
 Given JIT要求が表示されている
 When ユーザーが要求面上の遷移操作でsystemのusage access設定 (`ACTION_USAGE_ACCESS_SETTINGS`)
 を開き、付与して戻る
-Then 復帰時（`ON_RESUME`）に付与状態が再取得される（現行resume契約の再利用）
-And 遅延されていたcompositionが続行し、signal読み取りは付与済みの状態で行われ、
-system usage sectionが構築される
+Then 復帰時（`ON_RESUME`）に付与状態が再取得される。app-op変更は非同期に伝播するため、
+再取得は注入可能なclock/predicateによるbounded re-readであり（固定sleepは使わない）、
+GRANTEDが観測された時点で遅延されていたcompositionが再開される
+And その試行のsignal読み取りは付与済みの状態で行われ、system usage sectionが構築される
 And JIT要求が再度表示されることはない
 
 ### Scenario: 設定で付与せずに戻った場合はUnavailableで続行し、再促ししない
 
 Given JIT要求からsystem設定を開いたが、付与せずに戻った
-When 復帰時に付与状態が再取得される
+When 復帰時のbounded re-readが上限内にGRANTEDを観測できず、未付与と判定される
 Then 遅延されていたcompositionが続行し、signal読み取りは未付与のまま行われる
 And system usage sectionは `Unavailable`、launcher-origin sectionは保持される
 （spec 203 sparse object契約・AC-13の回帰）
 And run・依頼生成は続行し、`NotReady` にはならない（personalization由来の`NotReady`は
 契約として存在しない。spec 203 AC-11回帰）
 And JIT要求はこのprocess内で再表示されない
+（bounded re-readの上限内に付与の伝播が間に合わなかった場合も、当該試行は
+`Unavailable` で続行し、次回compositionから付与済みとなる。既知限界であり
+再試行機構は導入しない）
 
 ### Scenario: 要求を断って即座に続行できる
 
@@ -205,10 +238,13 @@ fallbackへ戻る。spec 203「許可後のrevoke」行どおり）
 Given JIT要求が表示されているが、`ACTION_USAGE_ACCESS_SETTINGS` を解決できるactivityが
 存在しない（端末依存のunsupported case）
 When ユーザーが遷移操作を行う
-Then crashせず、要求面は閉じないか、閉じた場合は「断って続行」と同等の継続が可能である
+Then `ActivityNotFoundException` をcatchしてcrashせず、要求面は**閉じたままにならず**、
+遷移できなかった旨が要求面上で分かる状態で「続行」の選択肢が残る
+And ユーザーが「続行」を選択した場合、「断って続行」と同等の継続
+（未付与のままcomposition続行）となる
 And 永続化・書込みは発生しない
-（現行常設rowは遷移失敗を明示的に扱っていないため、JIT要求では遷移の失敗を
-crashにしないことを最低限要求する。遷移成功時と同一の復帰継続契約が適用される）
+（遷移失敗時の期待結果は本scenarioの単一経路に固定する。自動的な代替遷移や
+dialogの自動closeは行わない）
 
 ### Scenario: process死・中断後の再訪は付与状態で判断される
 
@@ -219,16 +255,17 @@ And 新しいprocessでは再び「初回signal読み取り」であるため、
 （disposition §7.3「要求stateはprocess-local（再訪時は付与状態で判断）」）
 And 付与済みなら表示されない
 
-### Scenario: onboarding経由の初回run compositionでも同一規則が働く
+### Scenario: runのpause中はadmission契約が維持される
 
-Given fresh install直後でUsage Accessが未付与である
-When onboarding提案の「確認」でrun admissionが発生する（`Trigger.ONBOARDING_PROPOSAL`。
-T-07前置きは省略される。D-16継続）し、検出後にcompositionへ進む
-Then compositionの実行の直前でJIT要求が表示され、解決後にcompositionが実行される
-（要求はonboardingの確認操作時点ではなく、run面に到達した後のcomposition直前である。
-D-07は「初回run composition」をtriggerと定義し、triggerを限定していない。
-onboarding momentでの表示適否はOpen questions参照）
-And onboarding提案自体のoutcome契約（defer/skip・再表示規則）は変更されない
+Given run側のcompositionがJIT要求でpauseしている
+When 同一process内で2回目のrun開始を試みる、またはrun面から離脱する
+Then 2回目のrun開始は現行のsingle-active-operation契約どおり `Busy` になる
+（JIT pause中もRUN leaseは保持される。journal・`RUN_STARTED`・compositionは未発生）
+And pause中のcancel/dismissは現行契約どおりrunを `Cancelled` へ戻し、RUN leaseを
+正確に1回解放する（journal eventは発生しない。`RUN_STARTED` 以前であるため）
+And onboarding提案の「確認」でrun admissionが発生した場合も同一規則でpauseし、
+compositionの直前で要求が表示される（D-16継続。onboarding提案自体のoutcome契約は
+変更されない）
 
 ### Scenario: T-06常設rowは状態管理契約を維持し、説明文言は§7.3基準へ更新される
 
@@ -244,9 +281,10 @@ And hub材料面（#366/#367）からT-06へ到達できる導線は不変であ
 
 - **読む**: `UsageAccess.isGranted()`（app-op `OPSTR_GET_USAGE_STATS` ベースの既存共有predicate、
   spec 203実装）。snapshot自体はcomposerの既存seamで読まれ、本specはその読み取り内容を変えない。
-- **書く**: 何も書かない。要求機会のstateはprocess内のin-memory latchのみであり、
-  persistent store・preference・backup対象には入らない。消費点は (a) dialog提示時 または
-  (b) trigger評価時に付与済みだった時点 の早い方である（Domain language参照）。
+  復帰時の再取得は同predicateのbounded re-readである（固定sleepは使わない。clock/predicateは
+  注入可能とし、unit testで決定的に検証する）。
+- **書く**: 何も書かない。要求機会のstate（提示権の確定・消費・解放を含む）はprocess内の
+  in-memory latchのみであり、persistent store・preference・backup対象には入らない。
   disposition §7.3のとおりdowngrade時は「従来の常設rowのみ」に戻る（残留物なし）。
 - **Identity**: 新しいidentityを導入しない。snapshot identity（schemaVersion + contentDigest）、
   provenance参加（U-4）は不変。
@@ -254,10 +292,14 @@ And hub材料面（#366/#367）からT-06へ到達できる導線は不変であ
   Launcher layout DB / `favorites` への接触なしのためホームレイアウト安全規約の適用対象外。
   PR revertでJIT要求が消え、常設rowのみの現行構成へ戻る。
 - **遅延される操作**: JIT要求が表示されている間、triggerされた操作（composition起点）は
-  解決まで開始されない。pending actionはprocess-localであり、process死で失われる
-  （失われても書込み・不整合は発生しない。run/single-flight gateは開始前に存在しないため）。
-  操作の再試行はユーザーの再操作による。run側では遅延はrun state machineの
-  pause point（選択面と同一の待機点の概念。UI表示上は#369の準備中faceに含まれる）として表現され、
+  解決まで開始されない。run側のpauseは**admission後**であるため、RUN leaseは保持され
+  （2回目のrun開始は `Busy`）、journal・`RUN_STARTED`・compositionは未発生のままである
+  （pause中のcancel/dismissは現行契約どおりleaseを正確に1回解放し、journal eventを
+  発生させない）。exchange側の保留生成はholderのstate machine内で保持され、
+  holderのclose・別generation開始・画面破棄で明示的に無効化される（遅延callbackの
+  残置再開を禁止）。pending actionはprocess-localであり、process死で失われる。
+  操作の再試行はユーザーの再操作による。run側の遅延はrun state machineのpause point
+  （選択面と同一の待機点の概念。UI表示上は#369の準備中faceに含まれる）として表現され、
   新しいユーザー向け状態（TO-BE §8.1の8状態）を導入しない。
 
 ## Permissions, privacy, and security
@@ -286,12 +328,14 @@ And hub材料面（#366/#367）からT-06へ到達できる導線は不変であ
   200% font scaleで操作の到達不能・clippingを生まないこと、状態をcolor-onlyにしないこと、
   keyboard/switch traversalで遷移操作・続行操作の双方に到達できること。
 - 任意性（「許可しなくても整理は続く」）はtextとして明示する（視覚強調だけに依存しない）。
+  遷移失敗の状態表示（「設定を開けませんでした」相当）もtextで伝える。
 - すべての新規・改訂user-visible文字列とaccessibility読み上げ文はAndroid resource由来とし、
   EN（`values/`）とja（`values-ja/`）の両方を供給する。複合文はformat resourceで構成し、
   Kotlin側の連結・補間で文を生成しない（spec 123 AC-4/AC-5規約）。ja文言は
   spec 161のLQA規約に従う。T-06 rowの改訂文言も同じ規約の対象である。
-- §7.3の3要素を1文で満たす文言の最終copy（JIT dialog・T-06 row双方）は実装PRで確定するが、
-  3要素・任意性・privacy修飾の要件自体は本specの受入条件である
+- §7.3の3要素を1文で満たす文言の最終copy（JIT dialog・T-06 row双方）は実装PRの
+  contract commitで確定し、意味要素（3要素・任意性・raw/bucket/送信前確認）のchecklistを
+  PR evidenceに残す。要件自体は本specの受入条件である
   （TO-BE §7.3は文言の要件を契約として固定する）。
 
 ## Acceptance criteria
@@ -306,25 +350,35 @@ And hub材料面（#366/#367）からT-06へ到達できる導線は不変であ
       (3)断った場合に何ができるか/できなくなるか）を1文で満たし、任意性を示す。
       privacyの記述は修飾形（raw usage履歴は端末外に出ない/bucket signalへ変換/
       AI相談時の送出は送信前確認を通る）を偽りなく示し、「端末内でのみ使用される」の
-      無条件主張に依存しない。EN/ja両resourceが存在する。（Issue受入2、review指摘2）
-- [ ] **JIT-AC-03**: system設定への遷移と復帰時の状態再取得（`ON_RESUME`でのapp-op再読取、
-      現行resume契約の再利用）が動作し、復帰後に遅延されていたcompositionが続行する。
-      付与されて戻ればその試行のsignal読み取りは付与済みで行われる。（Issue Scope）
-- [ ] **JIT-AC-04**: 拒否・設定遷移後の未付与復帰・遷移失敗のいずれの場合も、run・依頼生成は
+      無条件主張に依存しない。最終EN/ja文言が実装PRのcontract commitで確定され、
+      意味要素checklistがPR evidenceに記録される。（Issue受入2、review指摘2/6）
+- [ ] **JIT-AC-03**: system設定への遷移と復帰時の状態再取得が動作する: 復帰（`ON_RESUME`）
+      時のbounded re-read（注入可能なclock/predicate、固定sleep禁止）でGRANTEDが
+      **観測された後**に遅延されていたcompositionが開始され、その試行のsignal読み取りは
+      付与済みで行われる。上限まで観測できなかった場合は未付与で続行し、次回compositionから
+      付与済みとなる（既知限界としてPR記録）。unit testは `false→true` の観測と
+      上限到達の両経路を決定的に検証する。（Issue Scope、review指摘2）
+- [ ] **JIT-AC-04**: 拒否・設定遷移後の未付与復帰のいずれの場合も、run・依頼生成は
       `NotReady` にならず続行し、system usage sectionは `Unavailable`、launcher-origin
       sectionは保持される（spec 203 AC-11/AC-13回帰。personalization由来の`NotReady`が
-      存在しないことの回帰）。（Issue受入3）
+      存在しないことの回帰）。遷移失敗（`ACTION_USAGE_ACCESS_SETTINGS` 未解決）は
+      crashせず、要求面が閉じず「続行」が残り、ユーザーが続行を選べばUnavailableで
+      継続する（単一のnormative経路）。（Issue受入3、review指摘5）
 - [ ] **JIT-AC-05**: 同一process内でJIT要求は最大1回である。要求機会はdialogの**提示時点**で
       消費され、提示後の操作がBusy・失敗・中断で実行されなくても再表示されない。
+      複数のcomposition起点が同時に評価されても提示は同時に1つであり、他の起点は
+      同一のreservation解決までcompositionへ進まない。提示権を得た操作が提示前に
+      cancel/破棄された場合は提示権が解放され、機会は未消費のまま次のtriggerで要求される。
       初回trigger評価時に付与済みだった場合も機会は消費され、同一process内の後続の
       権限取消で要求が表示されることはない。compositionに到達しない操作
       （選択面の中断を含む）は機会を消費しない。同一run内での再促しが存在しないことの
-      回帰を含む。（Issue受入4、review指摘4）
+      回帰を含む。（Issue受入4、review指摘1/4）
 - [ ] **JIT-AC-06**: T-06常設rowが残り、付与状態の表示・system設定への遷移・`ON_RESUME`
       再読取・再付与の契約が引き続き機能する（spec 203 U-2の状態管理契約の維持）。
-      かつrowの説明文言（EN/ja）が§7.3の3要素を1文で満たす内容へ更新されている
+      かつrowの説明文言（EN/ja）が§7.3の3要素を1文で満たす内容へ更新されており、
+      最終文言と意味要素checklistが実装PRのcontract commitで確定・記録されている
       （permission copy契約は本Issueが所有。#367が所有する配置・状態管理には触れない）。
-      （Issue受入5、review指摘3）
+      （Issue受入5、review指摘3/6）
 - [ ] **JIT-AC-07**: spec 203が同じPRでamendmentされている: U-2の改訂（常設row＋初回signal
       読み取りの直前のJIT要求1回。再促しなし規則の維持）、Permission and fallback behavior表の
       「opt-in (初回)」行のrationale要件をprivacy修飾形へ更新するとともにJIT要求行を追加、
@@ -335,7 +389,8 @@ And hub材料面（#366/#367）からT-06へ到達できる導線は不変であ
       存在しないことがdiff reviewとtestで示されている。JIT要求の表示・応答の全failure path
       （遷移失敗・process死・操作中断・pause中のcancel）がzero-writeである
       （pause中のcancelはRUN_STARTED以前であるためjournal eventを発生させない）。
-      （Non-goals機械的保証）
+      run側pause中はRUN leaseが保持され（2回目のstartはBusy）、cancel/dismissでleaseが
+      正確に1回解放されることがtestで示されている。（Non-goals機械的保証、review指摘3）
 - [ ] **JIT-AC-09**: JIT要求のdialogがorganization-run-ux §6のaccessibility受入基準を満たす
       （TalkBack name/role/state、focus移動と復帰、200% font scale、non-color-only、
       traversal）ことがevidenceで示されている。
@@ -345,13 +400,13 @@ And hub材料面（#366/#367）からT-06へ到達できる導線は不変であ
 | AC | Evidence |
 |---|---|
 | JIT-AC-01 | UI instrumentation test: app-opをshell経由で未付与にした状態（`UsageAccessTransitionProbeTest` と同一の`appops set` pattern）でrun開始→候補なし/検出不能経路ではcomposition直前にJIT要求の表示assert→解決後にcomposition開始。候補あり経路では**選択確認の直前まで表示されないこと**と、**選択を中断した場合に要求が出ないこと（否定oracle）**。依頼生成経路（idle/run-in）も同様。app-op付与済みの否定的観測（要求が出ない） |
-| JIT-AC-02 | string diff review（EN/ja、format resource、3要素＋privacy修飾の文言要件）+ 実装PRでの文言確認記録。単体testでresourceの存在とplaceholder一致を機械確認 |
-| JIT-AC-03 | UI instrumentation test: JIT要求から`ACTION_USAGE_ACCESS_SETTINGS`遷移を発火させ、shell `appops set ... allow` 後の`ON_RESUME`再読取とcomposition続行・snapshot付与済み構築（composer test併用）を確認 |
-| JIT-AC-04 | UI instrumentation test: 断って続行→runがpreviewまで進行（`NotReady`不発生）。composer seamの既存unit test（`PersonalizationCompositionTest`等）が無編集でgreen（AC-11/AC-13回帰） |
-| JIT-AC-05 | unit test（要求機会latch）: 提示開始→消費、提示後にaction不成立（Busy相当・例外相当）でも再要求なし、付与済み初回trigger評価→消費と後続取消での非表示、選択中断（composition不到達）→機会未消費。instrumentation: 1回目の応答後に2回目のrun開始・依頼生成で要求が表示されないassert（付与/未付与の両状態） |
-| JIT-AC-06 | T-06の既存instrumentation（toggle↔preference一致、resume再読取。`OrganizerUsageMaterialRows`由来）が状態操作として無編集でgreen + row copy（EN/ja）の存在・placeholder一致unit test + diff review（状態管理契約に触れないこと） |
+| JIT-AC-02 | string diff review（EN/ja、format resource、3要素＋privacy修飾の文言要件）+ 単体testでresourceの存在とplaceholder一致を機械確認 + 実装PR contract commitでの最終文言と意味要素checklist（3要素・任意性・raw/bucket/送信前確認）のPR記録 |
+| JIT-AC-03 | unit: 注入したpredicate/clockによるbounded re-readの決定的oracle（`false→true` 観測で続行、上限到達で未付与継続。固定sleep不使用）。instrumentation: dialogの遷移操作 → shell `appops set ... allow` → **production predicateでGRANTEDが観測された後に**composition開始することのassert。composer側は `PersonalizationCompositionTest` の付与済み経路で担保 |
+| JIT-AC-04 | instrumentation: 断って続行→runがpreviewまで進行（`NotReady`不発生）。遷移失敗注入（`ActivityNotFoundException`）→要求面が閉じず「続行」が機能→Unavailable継続のexact oracle。unit: `PersonalizationCompositionTest` 等の既存composer suiteが無編集でgreen（AC-11/AC-13回帰） |
+| JIT-AC-05 | unit（gate状態遷移）: 未消費→提示で消費、提示後action不成立でも消費済み、付与済み初回 `evaluate` で消費、composition不到達操作は非消費、**競合oracle（2起点の同時評価で提示権は1つ、2つ目は解決まで不進行、提示前cancelで解放→次triggerで要求可）**。run resumeの決定性oracle（`ON_RESUME`/継続callbackの二重発火でも `RUN_STARTED` とcompositionが各1回）。instrumentation: 2回目の開始/生成でdialog不表示（同一process内） |
+| JIT-AC-06 | T-06の既存instrumentation（toggle↔preference一致、resume再読取。`OrganizerUsageMaterialRows`由来）が状態操作として無編集でgreen + row copy（EN/ja）の存在・placeholder一致unit test + 実装PR contract commitでの意味要素checklist記録 + diff review（状態管理契約に触れないこと） |
 | JIT-AC-07 | specs/203-usage-implicit-preference-signals/spec.mdのdiff review（U-2・表のrationale要件更新＋JIT行・AC・change history。snapshot/provenance契約節の無変更） |
-| JIT-AC-08 | 実装PR diff review（permission manifest、persistent store、diagnostics eventの無変更）+ failure pathのunit/instrumentation test（pause中cancelのjournal無eventを含む） |
+| JIT-AC-08 | 実装PR diff review（manifest permission・persistent store・diagnostics eventの無変更）+ failure path unit/instrumentation（遷移失敗、pause中cancelのjournal無event、**pause中のRUN lease保持（2回目startはBusy）とcancel/dismissでのlease exactly once release**、process死模擬） |
 | JIT-AC-09 | Compose semantics assertion + focus restoration test + 200% font scaleでの到達test + emulator evidence（organization-run-ux §6の表に基づく確認記録） |
 
 共通gate: `./gradlew spotlessCheck`、`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`、対象classのorganizer instrumentation lane、CI `final-status` green。
@@ -362,13 +417,16 @@ And hub材料面（#366/#367）からT-06へ到達できる導線は不変であ
   （`OrganizerUsageMaterialRows` がhub材料セクションの共有表現として実装済み。
   Issue本文 `Depends on: #367` は充足済み）。
 - **#365（正本改訂、merge済み）**: `CONTEXT.md` の語彙（JIT要求・材料）は確定済み。
-- **#369（run面統合）/#370（onboarding接続）**: 契約上の依存ではない
-  （disposition §8どおり本Issueは並行可能。triggerは面IDでなく「signalを読む操作」に
-  結合される）。ただし本specが前提する統合site — run state machineのpause point、
-  run state観測点のdialog host、依頼生成のholder gate — は#369実装（run面のface統合・
-  cancel gate・preparation phase）と#370実装（onboarding/hintの接続先）がmergeされた後の
-  形状を基準とする。#372（AI相談統合）が依頼生成entryを移動してもholder先頭のgateは
-  契約を維持する（rebase時の統合site修正は発生し得る）。
+- **#369（run面統合、merge済み）/ #370（onboarding接続、merge済み）**: 契約上の依存ではないが、
+  本specが前提する統合site — run state machineのcomposed phase入口、run state観測点の
+  dialog host、依頼生成のholder state machine — は両実装merge後のmain `13c95eafe6` を
+  baselineとする。
+- **#372（AI相談統合、open）**: 契約上は並行可能（disposition §8。triggerは面IDでなく
+  「signalを読む操作」に結合）。ただしexchange holder・Back処理は共有変更面であるため、
+  **どちらが先にmergeしても後続側がre-entryして当時のcurrent mainを再読し、統合siteと
+  結合oracle（`T-07 AI → [置換確認] → JIT要求 → 生成 → 送信前確認` の順序、JIT dialogの
+  Backが#372のscreen Backへ漏れないこと、JIT保留中にflowをcloseした後の遅延callbackが
+  生成を再開しないこと）を再検証する**。#372の最終実装形状を本specは先取りしない。
 - **前提（実装済み・accepted）**: spec 203（accepted/実装済み。U-2・app-op predicate・
   snapshot契約）、spec 205（実装済み。依頼生成の生成順序契約・session置換確認AC-13）、
   spec 204（実装済み。exportのusageSignals projection）、spec 83（composition契約）、
@@ -385,8 +443,8 @@ And hub材料面（#366/#367）からT-06へ到達できる導線は不変であ
    product判断がowner reviewで示された場合は該当scenarioとJIT-AC-01を修正する
    （その場合のonboarding経路の除外は「同一process初回triggerの非表示＋機会非消費」の
    扱いを含めて明文化を要する）。
-2. 要求文言・T-06 row文言の最終copy（ja/EN）は実装PRのLQAで確定する。3要素・任意性・
-   privacy修飾の要件自体はJIT-AC-02/JIT-AC-06で拘束される。
+2. 要求文言・T-06 row文言の最終copy（ja/EN）は**実装PRのcontract commitで確定**する
+   （JIT-AC-02/JIT-AC-06のとおり、意味要素checklistをPR evidenceへ記録）。
 3. session置換確認（spec 205 AC-13）とJIT要求の両方が必要な場合の提示順序は
    「置換確認→JIT要求」を本specのscenarioどおりとする。逆順がUX上望ましいという判断が
    owner reviewで示された場合は該当scenarioを修正する（どちらの順序もJIT-AC-01の
@@ -399,19 +457,28 @@ And hub材料面（#366/#367）からT-06へ到達できる導線は不変であ
   `a2b6aba318`）、先行spec drafts（#366 `bf00f96175`、#367 `a50f074ac2`）、
   現行実装調査を入力に作成。
 - 2026-09-21: Re-entry revision（#365/#366/#367/#368 merge済み・#369実装（PR #387）
-  merge済み・#370実装（PR #389）merge済みのmain `13c95eafe6` で再入場し確定）。
+  merge済み・#370実装（PR #389）merge済みのmain `13c95eafe6` で再入場）。
   初回review（Changes requested相当、4指摘）対応:
   (1) JIT要求のtriggerを「run開始操作」から「composition実行の直前」へ精化し、
-  選択面中断で要求が出ない否定oracleと要求機会の概念を導入
-  （`ManualOrganizationRun.start()` が選択面で停止しcompositionが選択確認まで来ない
-  実構造との整合）、(2) privacy文言要件を「local-only」の無条件主張から
-  TO-BE §7.2整合の修飾形（raw履歴非送出/bucket化/送信前確認経由）へ限定、
-  (3) T-06常設rowの説明文言の§7.3準拠化を本Issueの所有としてJIT-AC-06に追加
-  （状態管理契約は維持、配置は#367のまま）、(4) 要求機会の消費点を「dialog提示時
-  （付与済み初回trigger評価時を含む）」に固定し、操作の実行・不成立と分離。
-  実装前提を#365/#366/#367（merge済み）へ更新し、#369/#370実装後のmainを
-  実装baselineとする旨を記載。spec 203の本体改訂は本specの受入条件（JIT-AC-07）であり、
-  実装PRで実施される。
+  選択面中断で要求が出ない否定oracleと要求機会の概念を導入、
+  (2) privacy文言要件を「local-only」の無条件主張からTO-BE §7.2整合の修飾形へ限定、
+  (3) T-06常設rowの説明文言の§7.3準拠化を本Issueの所有として追加、
+  (4) 要求機会の消費点を「dialog提示時（付与済み初回trigger評価時を含む）」に固定。
+  実装前提をmerge済みIssueへ更新。
+- 2026-09-21: Review revision（re-entry revision `eb5bb19000` へのreview「Changes
+  requested」6指摘対応）。(1) 要求機会に提示権（reservation）の概念を導入し、
+  同時triggerでも提示が1つに限られること・他起点が解決までcompositionへ進まないこと・
+  提示前cancelで提示権が解放されることを契約化（TOCTOU競合の構造的排除。run側継続の
+  単発性も含む）、(2) 付与復帰の再取得を「単発の`ON_RESUME`読み」から「注入可能な
+  clock/predicateによるbounded re-read」へ改訂し、TO-BE §6.4「戻って付与されていれば
+  signal取得を続行」との矛盾を解消（上限超過は既知限界として明文化）、
+  (3) run pause中の事実関係を正確化（RUN leaseは保持・2回目startはBusy・
+  journal/RUN_STARTED/composition不変・cancel/dismissでlease exactly once release）、
+  (4) exchange保留生成のidentity/lifetime契約を追加（holder state machine内での保持・
+  明示無効化・単回resume。#372とのre-entry規律と結合oracleを明記）、
+  (5) 遷移失敗時の期待結果を単一のnormative経路（dialog維持＋続行）に固定、
+  (6) 最終copyの確定点を実装PRのcontract commitとし、意味要素checklistを
+  受入evidenceとして要求。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/371
 [2]: https://github.com/nunu1733/NunuLauncher/issues/365
