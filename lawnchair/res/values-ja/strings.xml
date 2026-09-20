@@ -110,7 +110,7 @@
     <string name="manual_organization_title">ホームレイアウトを整理</string>
     <string name="manual_organization_summary">適用前に、ホームレイアウトの整理案を確認できます。</string>
     <string name="manual_organization_explainer">適用前に整理案を確認できます。現在のレイアウトは自動的に変更されません。</string>
-    <string name="manual_organization_start">整理案を確認</string>
+    <string name="manual_organization_start">そのまま整理</string>
     <string name="manual_organization_start_again">新しい整理案を確認</string>
     <string name="manual_organization_retry">再試行</string>
     <string name="manual_organization_capturing">現在のホームレイアウトを読み込んでいます…</string>
@@ -128,7 +128,7 @@
     <string name="manual_organization_new_pages_count">新しいホーム画面ページ: %1$d枚</string>
     <string name="manual_organization_confirm">確認した整理案を適用</string>
     <string name="manual_organization_cancel">キャンセル</string>
-    <string name="manual_organization_cancel_before_checkpoint">適用前にキャンセル</string>
+    <string name="manual_organization_cancel_before_checkpoint">適用前に中断</string>
     <string name="manual_organization_applying">確認した整理案を適用しています。この処理は安全に中断できません。</string>
     <string name="manual_organization_stale_outcome">この整理案は適用されませんでした。この操作によるホーム画面の変更はありません。</string>
     <string name="manual_organization_stale_proposal_discarded">確認した整理案を安全に適用できなくなったため、整理案は破棄されました。</string>
@@ -268,11 +268,22 @@
     <string name="manual_organization_preview_details_unavailable">今回、具体的な変更一覧を用意できませんでした。適用前に下の件数サマリーを確認してください。</string>
     <!-- Issue #228: missing-app selection and Add rows -->
     <string name="manual_organization_detecting_missing_apps">ホーム画面にないアプリを確認しています…</string>
+    <!-- Issue #369: transitional T-07 preamble（方法選択＋scope要約。RD-1/RD-5） -->
+    <string name="manual_organization_preamble_scope">この確認ではホーム画面全体を対象に整理案を作ります。確認する前に適用されることはありません。</string>
+    <!-- Issue #369: T-09統合準備中面 -->
+    <string name="manual_organization_preparation">準備中</string>
+    <!-- Issue #369: D-13語彙「中断」（zero-write。runを止めてhubへ戻る） -->
+    <string name="manual_organization_interrupt">中断</string>
+    <!-- Issue #369: T-13統合失敗面の見出し -->
+    <string name="manual_organization_failed">実行できませんでした</string>
+    <!-- Issue #369: D-13 破棄/中断の確認dialog -->
+    <string name="manual_organization_discard_confirm_title">破棄しますか？</string>
+    <string name="manual_organization_discard_confirm_text">選択と提案を破棄します。ホーム画面への変更はありません。</string>
+    <string name="manual_organization_discard">破棄</string>
     <string name="manual_organization_missing_apps_title">整理するアプリを選択</string>
     <plurals name="manual_organization_missing_apps_selected_count">
         <item quantity="other">%1$d件を選択中</item>
     </plurals>
-    <string name="manual_organization_missing_apps_empty">インストール済みのアプリはすべてホーム画面に配置済みです。続行すると現在の配置を整理します。</string>
     <string name="manual_organization_missing_apps_search_hint">アプリを検索</string>
     <string name="manual_organization_missing_apps_select_all">すべて選択</string>
     <string name="manual_organization_missing_apps_clear_all">選択を解除</string>

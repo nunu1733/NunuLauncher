@@ -134,16 +134,19 @@ fun LazyListScope.missingAppSelectionItems(
         }
     }
     item(key = "missing-app-selection-count") {
+        // Issue #369 (TO-BE D-06): the zero-candidate notice is gone — the
+        // empty cut no longer reaches this surface through the plain flow
+        // (the internal continuation skips it), so the count row always reads
+        // as the whole-selection count (spec 228 §2, 全体選択数を正本とする).
+        // The surface still opens with an empty cut only under an intent-bound
+        // run whose export scope holds candidates (the spec 331 mismatch
+        // re-display), where the rejection text renders in the host surface.
         Text(
-            text = if (selection.candidates.isEmpty()) {
-                stringResource(R.string.manual_organization_missing_apps_empty)
-            } else {
-                pluralStringResource(
-                    R.plurals.manual_organization_missing_apps_selected_count,
-                    selection.selectedCount,
-                    selection.selectedCount,
-                )
-            },
+            text = pluralStringResource(
+                R.plurals.manual_organization_missing_apps_selected_count,
+                selection.selectedCount,
+                selection.selectedCount,
+            ),
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier
                 .padding(horizontal = 16.dp)
@@ -220,7 +223,11 @@ fun LazyListScope.missingAppSelectionItems(
                 enabled = editsEnabled,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(stringResource(R.string.manual_organization_cancel))
+                // Issue #369 (D-13): the cancel side of the selection pair is
+                // 中断 — the host routes it through the one-confirmation gate
+                // when a selection exists (the pair's visual structure is
+                // unchanged, spec 209).
+                Text(stringResource(R.string.manual_organization_interrupt))
             }
         }
     }

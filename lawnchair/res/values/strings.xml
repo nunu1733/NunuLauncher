@@ -1044,7 +1044,7 @@
     <string name="manual_organization_preview_strategy">Strategy: %1$s</string>
     <string name="manual_organization_cross_page_moved_count">Moved across screens: %1$d</string>
     <string name="manual_organization_preserved_by_strategy_count">Kept in place by the strategy: %1$d</string>
-    <string name="manual_organization_start">Review organization</string>
+    <string name="manual_organization_start">Organize as is</string>
     <string name="manual_organization_start_again">Start a new review</string>
     <string name="manual_organization_retry">Try again</string>
     <string name="manual_organization_capturing">Reading the current home layout…</string>
@@ -1062,7 +1062,7 @@
     <string name="manual_organization_new_pages_count">%1$d new home screen pages will be created</string>
     <string name="manual_organization_confirm">Apply reviewed organization</string>
     <string name="manual_organization_cancel">Cancel</string>
-    <string name="manual_organization_cancel_before_checkpoint">Cancel before applying</string>
+    <string name="manual_organization_cancel_before_checkpoint">Stop before applying</string>
     <string name="manual_organization_applying">Applying the reviewed organization. This step cannot be interrupted safely.</string>
     <string name="manual_organization_stale_outcome">This proposal was not applied. This attempt did not change your current home layout.</string>
     <string name="manual_organization_stale_proposal_discarded">The reviewed proposal could no longer be applied safely, so it was discarded.</string>
@@ -1182,12 +1182,23 @@
     <string name="manual_organization_preview_details_unavailable">A detailed change list could not be prepared this time. Review the summary counts before applying.</string>
     <!-- Issue #228: missing-app selection and Add rows -->
     <string name="manual_organization_detecting_missing_apps">Checking for apps that are not on the Home screen…</string>
+    <!-- Issue #369: transitional T-07 preamble (method selection + scope summary, RD-1/RD-5) -->
+    <string name="manual_organization_preamble_scope">This review covers your whole home layout. Nothing is applied before you confirm the proposal.</string>
+    <!-- Issue #369: T-09 integrated preparation face -->
+    <string name="manual_organization_preparation">Preparing the organization</string>
+    <!-- Issue #369: D-13 interrupt vocabulary (zero-write; run stops and returns to the hub) -->
+    <string name="manual_organization_interrupt">Stop</string>
+    <!-- Issue #369: T-13 integrated failure face headline -->
+    <string name="manual_organization_failed">Could not run the organization</string>
+    <!-- Issue #369: D-13 discard/interrupt confirmation dialog -->
+    <string name="manual_organization_discard_confirm_title">Discard this work?</string>
+    <string name="manual_organization_discard_confirm_text">Your selections and the proposal will be discarded. Nothing has been applied to your home layout.</string>
+    <string name="manual_organization_discard">Discard</string>
     <string name="manual_organization_missing_apps_title">Select apps to organize</string>
     <plurals name="manual_organization_missing_apps_selected_count">
         <item quantity="one">%1$d app selected</item>
         <item quantity="other">%1$d apps selected</item>
     </plurals>
-    <string name="manual_organization_missing_apps_empty">All installed apps are already on the Home screen. Continue to organize the current layout.</string>
     <string name="manual_organization_missing_apps_search_hint">Search apps</string>
     <string name="manual_organization_missing_apps_select_all">Select all</string>
     <string name="manual_organization_missing_apps_clear_all">Clear all</string>
