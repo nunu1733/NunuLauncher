@@ -2,7 +2,7 @@
 
 > Issue: [#370](https://github.com/nunu1733/NunuLauncher/issues/370)
 > Spec: [specs/370-onboarding-hub-connection/spec.md](../../../../specs/370-onboarding-hub-connection/spec.md)
-> Captured: 2026-09-21, emulator `issue142_api36` AVD (API 36, `sdk_gphone64_arm64` — CI organizer instrumentation lane equivalent), debug build `app.lawnchair.debug` (head `23e742095a`) on branch `issue-370-onboarding-hub-connection`, fresh-install provenance (uninstall → install per cycle)
+> Captured: 2026-09-21, emulator `issue142_api36` AVD (API 36, `sdk_gphone64_arm64` — CI organizer instrumentation lane equivalent), debug build `app.lawnchair.debug` (head `715838bb4f`; screenshots taken from the equivalent build at `23e742095a` — the only later change is the test-only render trace, no production diff) on branch `issue-370-onboarding-hub-connection`, fresh-install provenance (uninstall → install per cycle)
 
 ## OCB-AC-02 — re-entry hint guides to the hub entry row (EN/ja × light/dark)
 
@@ -31,6 +31,6 @@
 
 ## Automated evidence
 
-- `OnboardingOrganizationProposalInstrumentationTest` — **OK (20 tests)**, local run 2026-09-21 on `issue142_api36` (emulator-5558), head `23e742095a`. Includes the reworked production-admission guard, the hub-label hint composition assert (with the removed-label absence), and the hub-entry settings-row assert with the removed-row absence scan.
+- `OnboardingOrganizationProposalInstrumentationTest` — **OK (20 tests)**, local run 2026-09-21 on `issue142_api36` (emulator-5558), head `715838bb4f` (render-trace guard included; an equivalent 20-test pass at `23e742095a` preceded the trace addition). Includes the reworked production-admission guard, the hub-label hint composition assert (with the removed-label absence), and the hub-entry settings-row assert with the removed-row absence scan.
 - `OrganizerDiagnosticsRouteInstrumentationTest.homeScreenMaterialsRelocationRoutesDiagnosticsThroughHub` — **OK (1 test)**, same run (manual run row absent + hub entry row present).
-- `./gradlew spotlessCheck`, `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` — PASS, head `23e742095a`.
+- `./gradlew spotlessCheck`, `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` — PASS, head `715838bb4f`.
