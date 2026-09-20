@@ -165,11 +165,23 @@ conflationに依存した非表示保証は2nd reviewで不成立と判定され
 
 **可視phase projection（`PreparationPhase`）**: coordinatorに
 `val preparationPhase: StateFlow<PreparationPhase>`（enum: `DETECTION` / `CAPTURE` / `PLAN`）
-を追加する。更新はstate遷移と同一lock区間内で行い、activeでないoperationは更新しない:
+を追加する。更新はstate遷移と同一lock区間内で行い、activeでないoperationは更新しない。
+**更新順序の契約（RD-7。3rd review指摘の解消）**:
+`PreparationPhase.CAPTURE`/`PLAN`は、T-09を可視に戻す`State.Capturing`/`State.Planning`の
+publishより**先に**、同一lock区間内で確定する。これにより
+`(stateFlow = Capturing/Planning, preparationPhase = 前phaseのまま)`という中間組合せは
+いかなるtimingでも観測できず、可視列は常に`検出 → [選択] → capture → plan`となる:
 
 - `beginOperation()`: `DETECTION`へ設定（admission直後のlegacy `Capturing`は検出として投影
   される。canonical順序の最初の可視phaseは常に検出： RD-7）。
-- `runComposedPhase()`のcancel gate（lock内、`RUN_STARTED`発行と同じ区間）: `CAPTURE`へ設定。
+- `confirmSelection()`の成功経路: 既存のlock区間内で、二重confirm禁止のguardとしての
+  `State.Capturing` publishに**先立って**`CAPTURE`へ設定する（publish順序の変更のみで、
+  guard構造・lock構造は現行のまま。候補あり経路のT-08→T-09復帰で`DETECTION`が
+  再表示されないことを保証する）。
+- D-06内部継続（`continueWithEmptySelection`）: lock区間内で`CAPTURE`へ設定してから
+  `State.Capturing`をpublishする。
+- `runComposedPhase()`のcancel gate（lock内、`RUN_STARTED`発行と同じ区間）: 未設定の場合
+  `CAPTURE`へ設定（`Unavailable`経路。RD-6のatomic区間）。
 - `State.Planning`への遷移（`setIfActive`直前の同一lock区間）: `PLAN`へ設定。
 
 T-09のphase行は`state`種別からではなくこのprojectionから描画する
@@ -283,7 +295,7 @@ typed結果→string mapping（`InputReadinessReason.copyKind()`、
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt` | `start()`の検出Ready分岐にD-06 0件時内部継続（intent-aware guard付き。`continueWithEmptySelection`）を追加。`runComposedPhase()`入口のcancel gate（active判定+`journalStarted`設定+`RUN_STARTED`発行を同一lock下でatomic化）と検出結果受理helper（`acceptDetection`）を追加。可視phase projection `preparationPhase: StateFlow<PreparationPhase>`（`DETECTION`/`CAPTURE`/`PLAN`）を新設し、`beginOperation()`/cancel gate/`Planning`遷移の同一lock区間で更新。javadoc追記 | 選択面非表示の継続判定点・journal開始のatomic性・準備phaseの決定的導出はcoordinatorのみが持てる（spec RD-3/RD-6/RD-7）。他の遷移は不変 |
+| `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt` | `start()`の検出Ready分岐にD-06 0件時内部継続（intent-aware guard付き。`continueWithEmptySelection`）を追加。`runComposedPhase()`入口のcancel gate（active判定+`journalStarted`設定+`RUN_STARTED`発行を同一lock下でatomic化）と検出結果受理helper（`acceptDetection`）を追加。可視phase projection `preparationPhase: StateFlow<PreparationPhase>`（`DETECTION`/`CAPTURE`/`PLAN`）を新設し、`beginOperation()`/`confirmSelection()`成功経路（guard publishに先行）/D-06内部継続/cancel gate/`Planning`遷移の各同一lock区間で**state publishに先立って**更新（RD-7順序契約）。javadoc追記 | 選択面非表示の継続判定点・journal開始のatomic性・準備phaseの決定的導出と公開順序はcoordinatorのみが持てる（spec RD-3/RD-6/RD-7）。他の遷移は不変 |
 | `lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt` | state→面の写像を純関数`manualOrganizationFace(state)`へ集約（0件`Selecting`〔scope rejection・export scope候補なし〕→T-09。RD-7の決定的非表示保証）。Idle/Cancelled分岐をT-07前置き面化（方法選択CTA「そのまま整理」＋scope要約。durable status行・exchange idle entry・import freeze affordanceは現行維持）。`Capturing`/`CandidateDetection`/`Planning`をT-09統合progress面（phase行は`preparationPhase`由来＋中断row）へ統合。失敗系5状態をT-13統合面（見出し「実行できませんでした」＋原因＋再試行/中断（＋該当時診断））へ統合。`NoChanges`/`Stale(APPLY_BLOCKED)`をT-12結果面の変種へ統合。確認dialog追加とBack handlerへの組込み、cancel/中断labelのD-13語彙化 | 表示統合の全変更が収束する唯一のrun面。helper群は再利用。面写像の純関数化でD-06と対応表をunit test可能にする |
 | `lawnchair/src/app/lawnchair/organizer/ui/MissingAppSelectionScreen.kt` | 0件notice経路の削除（`missing_apps_empty`表示分岐。選択面本体・spec 228契約UIは不変） | 0件選択面が到達不能になるため。mismatch再表示経路（候補0件＋scopeRejection）の表示は維持 |
 | `lawnchair/res/values/strings.xml` / `values-ja/strings.xml` | 新規: T-07方法選択・scope要約、T-09見出し・phase・中断、T-13見出し、確認dialog（破棄/中断）文案等。変更: `manual_organization_cancel_before_checkpoint`系の中断語彙化。削除: 未使用化string（`manual_organization_missing_apps_empty`等。reference grepで確定） | spec 123契約（EN/ja・format resource） |
@@ -308,7 +320,7 @@ typed結果→string mapping（`InputReadinessReason.copyKind()`、
 
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
-| RUN-AC-01 | unit: D-06内部継続（0件＋intent未bound → 選択面を構成せずplain compose直行。state列は`Selecting`経由）、guard（intent-bound×検出0件 → 選択面）、検出`Unavailable`継続の既存test green。face mapping純関数のtable-driven unit test（0件`Selecting`→T-09、0件＋scopeRejection→T-08、候補あり→T-08等）。blocking detectorで`preparationPhase`がdetector停止中`DETECTION`であることのoracle（captureが先行しない）。instrumentation: T-07→そのまま整理→T-09検出→0件続行、0件で選択面要素の否定的観測 | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`、organizer instrumentation lane |
+| RUN-AC-01 | unit: D-06内部継続（0件＋intent未bound → 選択面を構成せずplain compose直行。state列は`Selecting`経由）、guard（intent-bound×検出0件 → 選択面）、検出`Unavailable`継続の既存test green。face mapping純関数のtable-driven unit test（0件`Selecting`→T-09、0件＋scopeRejection→T-08、候補あり→T-08等）。blocking detectorで`preparationPhase`がdetector停止中`DETECTION`であることのoracle（captureが先行しない）。候補あり経路`CandidateDetection → T-08 → confirmSelection → T-09`のoracle（T-08復帰後の最初のT-09 phaseが`CAPTURE`、`DETECTION`再表示/再announce 0回。RD-7順序契約）。instrumentation: T-07→そのまま整理→T-09検出→0件続行、0件で選択面要素の否定的観測 | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`、organizer instrumentation lane |
 | RUN-AC-02 | instrumentation: T-09が検出/capture/planで同一面（phase行は`preparationPhase`由来で更新）、T-13見出し＋原因＋手段の構造、T-12変種表示 | 同上 |
 | RUN-AC-03 | `ManualOrganizationRunTest`/`ExchangeFlowStateHolderTest`等のD-06継続timing oracle以外の無編集green + E2E `staleProductionConfirmationDoesNotWrite` green | 同上 + connected test lane |
 | RUN-AC-04 | instrumentation: 中断/Back確認dialog（提案・選択ありで1回）、復元確認cancelの確認なし、Applying checkpoint前の確認付き中断、checkpoint後不受理（既存gate oracle継続） | 同上 |
@@ -343,13 +355,17 @@ failure injection（既存fakeのinspectPlan/apply注入経路でT-13/T-12の各
       既存instrumentationで観測）。
 - [ ] D-06内部継続のunit test（0件＋intent未bound → 選択面非表示でcomposed phase直行）を
       先に追加し、現行実装でfailすることを確認。
-- [ ] face mapping純関数のtable-driven unit test（0件`Selecting`→T-09等）と
-      可視phase projectionのoracle（detector停止中`DETECTION`、継続後`CAPTURE`）を
-      先に追加し、現行実装でfailすることを確認（中間state保持のdeterministic oracle）。
+- [ ] face mapping純関数のtable-driven unit test（0件`Selecting`→T-09等）、
+      可視phase projectionのoracle（detector停止中`DETECTION`、継続後`CAPTURE`）、
+      候補あり経路のT-08→T-09復帰oracle（戻り後の最初のphaseが`CAPTURE`、
+      `DETECTION`再announce 0回）を先に追加し、現行実装でfailすることを確認
+      （中間state保持のdeterministic oracle）。
 - [ ] RUN-AC-10のblocking fake detector oracle（検出中cancel × detector復帰3系＋対照系）を
       先に追加し、現行実装でfailすること（cancel済みrunの`RUN_STARTED`発行）を確認。
 - [ ] coordinatorのD-06内部継続（guard付き）とcancel gate（`runComposedPhase`入口のatomic化、
-      `acceptDetection`）、`preparationPhase` projectionを実装しunit test green。
+      `acceptDetection`）、`preparationPhase` projection（RD-7順序契約:
+      `confirmSelection()`のguard publishと`Planning`遷移に先立つ更新を含む）を実装し
+      unit test green。
 - [ ] T-07/T-09/T-13/T-12の面統合（face mapping純関数経由）とD-13語彙・確認dialogを実装し、
       既存testを更新。
 - [ ] a11y evidence（announce/focus/200%/screenshot）を収集。
