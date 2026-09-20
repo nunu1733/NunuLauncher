@@ -292,22 +292,26 @@ class ExchangeFlowStateHolder(
     /**
      * Issue #371: owner-destruction rules for the JIT pause, applied whenever
      * the awaiting screen leaves the machine (close, a newer transition, host
-     * teardown). Un-presented reservations are released so the process's
-     * request opportunity stays unconsumed; a presented request resolves once
-     * as an abandon resolution — waiters unblock while the abandoned
-     * attempt's generation is never resumed.
+     * teardown). The gate's atomic [UsageAccessJitGate.abandon] completes the
+     * state-specific action under one monitor — release while un-presented,
+     * abandon-resolve once presented — so a racing presentation can never
+     * orphan the barrier; the abandoned attempt's generation is never resumed.
      */
     private fun abandonAwaitingUsageAccessJit() {
         val awaiting = screenState.value as? ExchangeScreen.AwaitingUsageAccessJit ?: return
-        when (usageAccessGate.ownedPhase(ExchangeJitAttemptOwner(awaiting.attemptToken))) {
-            UsageAccessJitGate.Phase.Reserved ->
-                usageAccessGate.release(ExchangeJitAttemptOwner(awaiting.attemptToken))
+        usageAccessGate.abandon(ExchangeJitAttemptOwner(awaiting.attemptToken))
+    }
 
-            UsageAccessJitGate.Phase.Presented ->
-                usageAccessGate.resolve(ExchangeJitAttemptOwner(awaiting.attemptToken))
-
-            else -> Unit
-        }
+    /**
+     * Issue #371 (review round 3): host-teardown hook. The hosting surface
+     * must call this from its `DisposableEffect` onDispose — the holder is
+     * `remember`ed, so a route change or activity recreation discards it
+     * without any other lifecycle signal, and a live JIT pause would
+     * otherwise strand the process-wide gate (a `Reserved` reservation never
+     * re-acquirable, a `Presented` barrier never resolved).
+     */
+    fun dispose() {
+        abandonAwaitingUsageAccessJit()
     }
 
     /**

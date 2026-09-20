@@ -146,6 +146,28 @@ class UsageAccessJitGate(private val isGranted: () -> Boolean) {
     }
 
     /**
+     * Atomic owner-destruction application (spec 371 review round 3): the
+     * read-and-act completes under one monitor, so a racing
+     * [markPresented] can never leave this owner's request orphaned in
+     * `Presented`. State specific — `Reserved` releases (the opportunity
+     * stays unconsumed for the next trigger), `Presented` resolves exactly
+     * once as an abandon resolution (waiters unblock; the destroyed owner's
+     * pending action is never resumed); everything else is a no-op. Owner
+     * teardown paths (run cancel/dismiss, exchange close/teardown) call THIS —
+     * never an [ownedPhase] read followed by release/resolve.
+     */
+    fun abandon(owner: Any) {
+        synchronized(lock) {
+            if (currentOwner != owner) return
+            when (phase) {
+                Phase.Reserved -> transitionLocked(Phase.Available, null)
+                Phase.Presented -> transitionLocked(Phase.Resolved, owner)
+                Phase.Available, Phase.Resolved -> Unit
+            }
+        }
+    }
+
+    /**
      * The phase this owner currently holds, or `null` when the owner holds
      * nothing (owner-destruction rules key off this).
      */
@@ -289,7 +311,12 @@ internal fun openUsageAccessSettings(context: Context): Boolean = try {
  * failure.
  */
 @Composable
-internal fun RunUsageAccessJitDialogHost(run: ManualOrganizationRun) {
+internal fun RunUsageAccessJitDialogHost(
+    run: ManualOrganizationRun,
+    // Injectable for instrumentation of the unsupported-settings path (the
+    // system settings resolution itself is device-dependent, spec 371).
+    settingsOpener: (Context) -> Boolean = ::openUsageAccessSettings,
+) {
     val context = LocalContext.current
     val gateSnapshot by run.usageAccessGate.snapshot.collectAsStateWithLifecycle()
     val runState by run.stateFlow.collectAsStateWithLifecycle()
@@ -349,7 +376,7 @@ internal fun RunUsageAccessJitDialogHost(run: ManualOrganizationRun) {
         UsageAccessJitRequestDialog(
             settingsLaunchFailed = settingsLaunchFailed,
             onOpenSettings = {
-                if (openUsageAccessSettings(context)) {
+                if (settingsOpener(context)) {
                     settingsRequested = true
                 } else {
                     settingsLaunchFailed = true

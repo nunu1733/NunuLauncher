@@ -183,8 +183,8 @@ class UsageAccessJitGateTest {
 
         val granted = awaitUsageAccessGrant(
             isGranted = { reads.removeFirstOrNull() ?: true },
-            limitMs = 1_000L,
-            pollIntervalMs = 250L,
+            limitMs = USAGE_ACCESS_JIT_GRANT_WAIT_LIMIT_MS,
+            pollIntervalMs = USAGE_ACCESS_JIT_GRANT_POLL_INTERVAL_MS,
             sleep = { slept ->
                 sleeps += slept
                 // A fake clock: the predicate flips after the second sleep.
@@ -192,8 +192,12 @@ class UsageAccessJitGateTest {
         )
 
         assertTrue(granted)
-        assertEquals(listOf(250L, 250L), sleeps)
-        assertFalse(sleeps.sum() >= 1_000L)
+        assertEquals(
+            listOf(USAGE_ACCESS_JIT_GRANT_POLL_INTERVAL_MS, USAGE_ACCESS_JIT_GRANT_POLL_INTERVAL_MS),
+            sleeps,
+        )
+        // The early grant exits strictly before the production limit.
+        assertFalse(sleeps.sum() >= USAGE_ACCESS_JIT_GRANT_WAIT_LIMIT_MS)
         Unit
     }
 
@@ -203,15 +207,15 @@ class UsageAccessJitGateTest {
 
         val granted = awaitUsageAccessGrant(
             isGranted = { false },
-            limitMs = 1_000L,
-            pollIntervalMs = 250L,
+            limitMs = USAGE_ACCESS_JIT_GRANT_WAIT_LIMIT_MS,
+            pollIntervalMs = USAGE_ACCESS_JIT_GRANT_POLL_INTERVAL_MS,
             sleep = { sleeps += it },
         )
 
         assertFalse(granted)
-        // `limit - ε` kept waiting; reaching the limit fell back without a
-        // final pointless poll past it.
-        assertEquals(1_000L, sleeps.sum())
+        // `limit - ε` kept waiting; reaching the production limit fell back
+        // without a final pointless poll past it.
+        assertEquals(USAGE_ACCESS_JIT_GRANT_WAIT_LIMIT_MS, sleeps.sum())
     }
 
     @Test
@@ -223,13 +227,67 @@ class UsageAccessJitGateTest {
                 polled++
                 true
             },
-            limitMs = 1_000L,
-            pollIntervalMs = 250L,
+            limitMs = USAGE_ACCESS_JIT_GRANT_WAIT_LIMIT_MS,
+            pollIntervalMs = USAGE_ACCESS_JIT_GRANT_POLL_INTERVAL_MS,
             sleep = { error("must not sleep when the grant is already observable") },
         )
 
         assertTrue(granted)
         assertEquals(1, polled)
         Unit
+    }
+
+    @Test
+    fun `abandon racing a presentation never orphans the barrier`() {
+        // Both interleavings of markPresented/abandon for the same owner must
+        // end in a terminal phase (Available or Resolved) — never stranded in
+        // Reserved/Presented.
+        val first = UsageAccessJitGate(isGranted = { false })
+        val owner = RunId("aaaaaaaaaaaaaaaaaaaaaaaa11111111")
+        first.evaluate(owner)
+        first.markPresented(owner)
+        first.abandon(owner)
+        val second = UsageAccessJitGate(isGranted = { false })
+        val owner2 = RunId("aaaaaaaaaaaaaaaaaaaaaaaa22222222")
+        second.evaluate(owner2)
+        second.abandon(owner2)
+        second.markPresented(owner2)
+
+        val firstPhase = first.snapshot.value.phase
+        val secondPhase = second.snapshot.value.phase
+        assertTrue(
+            "present-then-abandon stranded in $firstPhase",
+            firstPhase == UsageAccessJitGate.Phase.Resolved,
+        )
+        assertTrue(
+            "abandon-then-present stranded in $secondPhase",
+            secondPhase == UsageAccessJitGate.Phase.Available,
+        )
+    }
+
+    @Test
+    fun `concurrent abandon and presentation end in a terminal phase`() {
+        repeat(64) {
+            val gate = UsageAccessJitGate(isGranted = { false })
+            val owner = RunId("a".repeat(28) + it.toString().padStart(4, '0'))
+            gate.evaluate(owner)
+            val barrier = CyclicBarrier(2)
+            val presenter = thread {
+                barrier.await(5, TimeUnit.SECONDS)
+                gate.markPresented(owner)
+            }
+            val abandonee = thread {
+                barrier.await(5, TimeUnit.SECONDS)
+                gate.abandon(owner)
+            }
+            presenter.join(5_000)
+            abandonee.join(5_000)
+
+            val phase = gate.snapshot.value.phase
+            assertTrue(
+                "iteration $it stranded the gate in $phase",
+                phase == UsageAccessJitGate.Phase.Available || phase == UsageAccessJitGate.Phase.Resolved,
+            )
+        }
     }
 }

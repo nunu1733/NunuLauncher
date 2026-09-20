@@ -16,14 +16,19 @@
 package app.lawnchair.organizer.ui
 
 import android.content.Context
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import app.lawnchair.organizer.diagnostics.DiagnosticsPort
 import app.lawnchair.organizer.diagnostics.model.RunEvent
+import app.lawnchair.organizer.diagnostics.model.PhaseCode
+import app.lawnchair.organizer.ui.exchange.ExchangeFlowStateHolder
 import app.lawnchair.organizer.integration.CandidateDetectionResult
 import app.lawnchair.organizer.integration.CaptureFailureCategory
 import app.lawnchair.organizer.integration.CompositionDiagnostic
@@ -37,6 +42,7 @@ import app.lawnchair.organizer.planning.OrganizationPlanner
 import app.lawnchair.organizer.planning.PlanningResult
 import app.lawnchair.ui.preferences.destinations.ManualOrganizationPreferences
 import app.lawnchair.ui.theme.LawnchairTheme
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -111,6 +117,154 @@ class UsageAccessJitInstrumentationTest {
         composeRule.waitUntil { runner.state is ManualOrganizationRun.State.InputUnavailable }
         composeRule.onNodeWithTag("usage_access_jit_dialog").assertDoesNotExist()
         assertTrue(application.events.isNotEmpty())
+    }
+
+    @Test
+    fun unsupportedSettingsKeepsTheDialogOpenAndAllowsContinue() {
+        val application = NotReadyApplication()
+        val runner = ManualOrganizationRun(
+            application = application,
+            planner = OrganizationPlanner { error("planner must not run for a NotReady composition") },
+            usageAccessGate = UsageAccessJitGate(isGranted = { false }),
+        )
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(
+                    run = runner,
+                    usageAccessSettingsOpener = { false },
+                )
+            }
+        }
+
+        runner.start()
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit }
+        composeRule.onNodeWithTag("usage_access_jit_open_settings").performClick()
+
+        // The single normative failure path: the dialog stays, the failure is
+        // stated in text, and continue remains available.
+        composeRule.onNodeWithTag("usage_access_jit_dialog").assertIsDisplayed()
+        composeRule.onNodeWithTag("usage_access_jit_settings_unavailable").assertIsDisplayed()
+        composeRule.onNodeWithTag("usage_access_jit_continue").performClick()
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.InputUnavailable }
+    }
+
+    @Test
+    fun settingsReturnAfterGrantResumesTheCompositionThroughTheProductionPredicate() {
+        val context = context()
+        val application = NotReadyApplication()
+        // The real production gate (UsageAccessJitGateProvider wiring) reads
+        // the app-op; the shell drives a real grant while the app is
+        // backgrounded in the system settings.
+        val runner = ManualOrganizationRun(
+            application = application,
+            planner = OrganizationPlanner { error("planner must not run for a NotReady composition") },
+            usageAccessGate = UsageAccessJitGateProvider.get(context),
+        )
+        setUsageAccessOp("deny")
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+
+        runner.start()
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit }
+        composeRule.onNodeWithTag("usage_access_jit_open_settings").performClick()
+        pressBack()
+        // ON_RESUME -> the host's bounded re-read observes the (now allowed)
+        // production predicate and only then resumes the composition.
+        setUsageAccessOp("allow")
+        pressBack()
+
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.InputUnavailable }
+        composeRule.onNodeWithTag("usage_access_jit_dialog").assertDoesNotExist()
+        // The composition opened its journal (RUN_STARTED) — the resume ran
+        // the composition after the grant was observable.
+        assertTrue(application.events.any { it.phase == PhaseCode.RUN_STARTED })
+    }
+
+    @Test
+    fun jitDialogBackDeclinesAndContinuesWithoutCancellingTheRun() {
+        val application = NotReadyApplication()
+        val runner = ManualOrganizationRun(
+            application = application,
+            planner = OrganizationPlanner { error("planner must not run for a NotReady composition") },
+            usageAccessGate = UsageAccessJitGate(isGranted = { false }),
+        )
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+
+        runner.start()
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit }
+
+        pressBack()
+
+        // Back dismisses the dialog = decline-and-continue, never a run cancel.
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.InputUnavailable }
+        assertFalse(runner.state is ManualOrganizationRun.State.Cancelled)
+    }
+
+    @Test
+    fun crossOriginTriggerWhileTheRunDialogIsUpWaitsAndShowsExactlyOneDialog() {
+        val context = context()
+        val application = NotReadyApplication()
+        val runner = ManualOrganizationRun(
+            application = application,
+            planner = OrganizationPlanner { error("planner must not run for a NotReady composition") },
+            usageAccessGate = UsageAccessJitGate(isGranted = { false }),
+        )
+        val exchangeHolder = ExchangeFlowStateHolder(
+            controllerFactory = { error("generation starts only after resolution") },
+            run = runner,
+            scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO),
+            usageAccessGate = runner.usageAccessGate,
+        )
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+
+        runner.start()
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit }
+
+        // A second (exchange) origin evaluates while the run owns the request.
+        exchangeHolder.requestGeneration(replacementConfirmationRequired = false, tier = app.lawnchair.organizer.personalization.PrivacyTier.EXTERNAL_REDACTED)
+        val awaiting = exchangeHolder.screen as app.lawnchair.organizer.ui.exchange.ExchangeScreen.AwaitingUsageAccessJit
+        assertFalse(awaiting.isPresenter)
+        // Exactly one dialog on screen (the run's), the waiter is dialog-free.
+        composeRule.waitUntil {
+            composeRule.onAllNodesWithTag("usage_access_jit_dialog").fetchSemanticsNodes().size == 1
+        }
+
+        // Resolving the run's request unblocks the exchange origin.
+        composeRule.onNodeWithTag("usage_access_jit_continue").performClick()
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.InputUnavailable }
+        exchangeHolder.continueUsageAccessJit(awaiting.attemptToken)
+        assertEquals(
+            app.lawnchair.organizer.ui.exchange.ExchangeScreen.Generating,
+            exchangeHolder.screen,
+        )
+    }
+
+    private fun pressBack() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val process = instrumentation.uiAutomation.executeShellCommand("input keyevent KEYCODE_BACK")
+        process.close()
+        Thread.sleep(1500)
+    }
+
+    private fun setUsageAccessOp(mode: String) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val process = instrumentation.uiAutomation.executeShellCommand(
+            "appops set ${context().packageName} GET_USAGE_STATS $mode",
+        )
+        process.close()
+        // The app-op change is asynchronous from the app's point of view.
+        Thread.sleep(1000)
     }
 
     /**

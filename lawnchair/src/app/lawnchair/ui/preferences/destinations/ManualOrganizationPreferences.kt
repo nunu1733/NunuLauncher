@@ -82,6 +82,7 @@ import app.lawnchair.organizer.ui.exchange.ExchangeFlowStateHolder
 import app.lawnchair.organizer.ui.exchange.exchangeFlowItems
 import app.lawnchair.organizer.ui.manualOrganizationFace
 import app.lawnchair.organizer.ui.missingAppSelectionItems
+import app.lawnchair.organizer.ui.openUsageAccessSettings
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.components.controls.ClickablePreference
 import app.lawnchair.ui.preferences.components.layout.PreferenceLazyColumn
@@ -98,6 +99,8 @@ fun ManualOrganizationPreferences(
     run: ManualOrganizationRun? = null,
     trigger: Trigger = Trigger.MANUAL_FULL,
     onOpenDiagnostics: (() -> Unit)? = null,
+    // Issue #371: injectable for the unsupported-settings instrumentation.
+    usageAccessSettingsOpener: (Context) -> Boolean = ::openUsageAccessSettings,
 ) {
     val context = LocalContext.current
     val coordinator = run ?: remember { ManualOrganizationModule.get(context) }
@@ -133,7 +136,7 @@ fun ManualOrganizationPreferences(
     // path — start rows, onboarding admission, intent rebind, selection
     // confirmation and the D-06 empty-cut continuation all pause inside the
     // coordinator's composed-phase entry).
-    RunUsageAccessJitDialogHost(run = coordinator)
+    RunUsageAccessJitDialogHost(run = coordinator, settingsOpener = usageAccessSettingsOpener)
     // Issue #368: the strategy picker moved to the materials surface T-05
     // (OrganizerStrategyPreferences). The run surface offers no strategy
     // selection — not even a read-only row — and the write-time restart
@@ -289,6 +292,13 @@ fun ManualOrganizationPreferences(
     }
     DisposableEffect(coordinator) {
         onDispose { coordinator.dismiss() }
+    }
+    // Issue #371 (review round 3): the exchange holder is remembered, so a
+    // route change or activity recreation discards it silently. Any live JIT
+    // pause must leave with the host — otherwise the process-wide gate keeps
+    // a reservation/barrier nobody can resolve.
+    DisposableEffect(exchangeHolder) {
+        onDispose { exchangeHolder.dispose() }
     }
 
     // Issue #328 (spec 328 D-2): the import success state intercepts system
