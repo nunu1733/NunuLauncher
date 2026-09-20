@@ -219,8 +219,10 @@
      - 観測: #369実装のsurface seamが提供する決定的観測点（test-only observer /
        host trace等。#369実装merge後に有無を確認）により「最初に表示されるfaceが
        T-09統合progress面であり、T-07前置き面のcompose/render回数が0」を直接固定。
-       反復sampling（transitional T-07主CTA「そのまま整理」のsemantics不在の
-       観測window中確認）は補助に留め、単独ではrender count 0の証明としない。
+       **既存の決定的観測点が無い場合はsamplingへ退避せず、test側へ決定的seamを
+       追加する（Risk節どおり必須）**。反復sampling（transitional T-07主CTA
+       「そのまま整理」のsemantics不在の観測window中確認）は補助に留まり、
+       単独ではrender count 0の証明にもguard testの完了条件にもならない。
      - T-07主CTA・T-09面の実際のstring resource名は#369実装merge後に実装へ
        合わせて固定する。
   3. `homeScreenSettingsShowsTheOrganizerEntryInGeneralAboveTheFold` の入口row assertを
@@ -267,10 +269,13 @@
   影響はrebase時の行番号ずれと、#369実装がroute周りに手を入れた場合のguard test対象の
   再確認に限定されると想定するが、#369実装merge後に再検証する（step 1）。
 - **T-07面の観測可能性**: 受入済み#369 specはtransitional T-07の主CTA「そのまま整理」を
-  面の識別要素として固定しており、semantics検索による不在観測は成立する見込みである。
-  もし#369実装のcompose構成がsemantics上で識別できない場合は、観測window中の反復
-  サンプリングによる不在確認を最小型のtest helperで実装し、production codeへの侵入を
-  避ける（#369実装に既存の識別手段があればそれを使う）。
+  面の識別要素として固定しており、#369実装が決定的観測点（test-only observer /
+  host trace等）を既に提供する場合はそれを使う。**既存の決定的観測点が見つからない場合は
+  samplingへ退避せず、#370のtest側へ決定的seam（最初の表示faceの記録と
+  T-07 compose/render回数の直接記録ができるtest-only observer / host trace）を
+  追加することを必須とする**。「最初のface＝T-09」かつ「T-07 compose/render回数＝0」を
+  直接記録できるまでguard testは完了扱いにしない（反復samplingは補助に留まり、
+  完了条件の代用にはならない）。
 - **旧labelの参照残存**: `manual_organization_title` はrun面scaffold titleとして実在用途が
   残るため、hint構成から外してもresource削除は行わない（#377のcleanup対象）。
 
@@ -280,7 +285,9 @@
   （transitional T-07主CTA、T-09準備中見出し/phase行）、`ManualOrganizationFaceTest` の
   実体、および `OrganizationOnboardingProposal.kt` / `PreferenceRoutes.kt` への#369実装
   差分の有無。guard testの観測対象は#369実装merge後の実装読み取りで確定する
-  （step 1。実装着手前のre-entry必須）。
+  （step 1。実装着手前のre-entry必須）。#369実装に決定的観測点（test-only observer /
+  host trace）が既存しない場合は、Risk節どおり#370のtest側へ決定的seamを追加する
+  （sampling退避はしない）。
 - post-#369のonboarding由来routeでterminal後にT-07（Idle面）へ戻った際の表示
   （transitional T-07。spec.md Open questions 1。run面forkをしないことを契約とし、
   実装確認はstep 1で行う）。
