@@ -1,6 +1,6 @@
 ---
 issue: "#372"
-status: draft
+status: accepted
 requirements: [FR-006, FR-017, NFR-009]
 risk: []
 updated: 2026-09-21
@@ -17,6 +17,13 @@ updated: 2026-09-21
 > （§3.11 spec 204文言Amend、§3.12 spec 205分段改訂のうち本件分、§4.1 supersession map、
 > §5 更新順序 #6、§7.2 (c)）が本件を「specs 205 / 327 / 204文言のAmend、#372が実行」と定める。
 > 本specは[Issue #372][1]の成果物である。statusが `draft` の間はimplementation-readyではない。
+> Status: **accepted**（2026-09-21）— Phase1 reviewを通過して受入された。初版snapshot
+> （`6ba84fc4`）への [1st review](https://github.com/nunu1733/NunuLauncher/issues/372#issuecomment-5740061847)
+> は **Changes requested**（中3/低1）で、`0649c7e436` で全件対応。同headへの
+> [2nd review](https://github.com/nunu1733/NunuLauncher/issues/372#issuecomment-5752821376)
+> は **Changes requested**（中2）で、`7b1dd3d92d` で全件対応。同headへの
+> [最終review](https://github.com/nunu1733/NunuLauncher/issues/372#issuecomment-5752909266)
+> は **Approved**（blocking指摘0件。implementation-ready判定）。
 > 前提: [Issue #369][2]のT-07前置き面（transitional構成・方法選択・admissionなし）が実装・merge済み
 > である（spec 369は`implemented`。実装PR [#387](https://github.com/nunu1733/NunuLauncher/pull/387)、
 > merge commit `7ec9e9d3fe`。spec 369 RD-1が「AIに相談」選択肢行の新設を#372に委ねる）。

@@ -2,7 +2,7 @@
 
 > Issue: #372
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: accepted（2026-09-21。Phase1 review最終 [Approved](https://github.com/nunu1733/NunuLauncher/issues/372#issuecomment-5752909266)）
 
 ## Current evidence
 
