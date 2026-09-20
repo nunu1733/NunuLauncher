@@ -1,6 +1,6 @@
 ---
 issue: "#368"
-status: accepted
+status: implemented
 requirements: [FR-016, NFR-009]
 risk: []
 updated: 2026-09-19
@@ -536,6 +536,7 @@ high-risk evidence gateの対象外）。
   `ManualOrganizationRun.operationActive`新設、T-05 destination新設＋hub entry＋run面picker撤去、
   exchange strategy gate除去、本spec/planのstatus/history更新、specs 182/283/328改訂、処分文書
   §3.9/§3.14境界更新）。merge後のdocs PRで`implemented`へ遷移する。
+- 2026-09-20: Merged（PR #384、merge commit `b84d277f81`）。statusを`implemented`へ更新。
 - 2026-09-19: Accepted（owner指示: reviewクリア後に実装へ進行。
   re-review [Approve相当](https://github.com/nunu1733/NunuLauncher/issues/368#issuecomment-5742960028)
   @ head `5d5b61ee4e`。statusを`accepted`へ更新。Contract notes 1〜3を受入）。
