@@ -34,6 +34,12 @@ PR #387）/ #370（onboarding hub接続・PR #389）が含まれる）での確�
   `close()`。**確認dialogは存在しない**。cancelableでない場合は`close()`のみ）、
   import attempt機構（spec 328: attempt anchor・`importAttemptActive` /
   `importContinuationActive` freeze述語）。
+- **holderのoperation scope**: hostが`val scope = rememberCoroutineScope()`で作り
+  `ExchangeFlowStateHolder`へ渡す。`generate`/`generateScoped`（L284/L302）、
+  `closeDisclosure`（L354）、`startTransport`（L420。`FileExchangeTransport`の`writeFile`
+  書込みを含む）、import系（L490/L597/L711）はすべてこのscopeで`launch(Dispatchers.IO)`
+  する。**compositionがdisposeされるとscopeはcancelされる** — したがってbusy state中の
+  画面離脱はoperationを中断させる（Phase1 review 2回目指摘1の実装根拠）。
 - `exchangeFlowItems`（L825/L840。test用overload付き）: host面の`LazyListScope`へflow blockを
   供給する。`Closed`時にscopedなら`ExchangeScopedEntryRow`（run-in）、idleなら
   `ExchangeEntryRow`。flow画面ごとにkey付きitem、末尾にstatus行。
@@ -142,15 +148,24 @@ PR #387）/ #370（onboarding hub接続・PR #389）が含まれる）での確�
     `replacementConfirmationRequired`を再読取値で更新する。`openFlow()`はこの更新処理と
     同一の判定で初期状態を作る（判定源の単一化）。`active()` が失効sessionを不在として
     返すため、TTL跨ぎ後の最初の呼び出しで事前表示が消え、確認要否も下がる。
+    さらにactive sessionを観測した読取では、**失効時刻に1回の再読取をholder scopeで
+    scheduleする**（`delay(expiresAtEpochMs - clock())`相当の1発job。連続tickはしない）。
+    schedule再読取はlifecycle遷移に依存せずfireし、T-15を表示したままTTLを跨いでも
+    表示を失効状態へ一致させる。unit testはfake clock＋仮想時間dispatcherで直接advanceし
+    検証する（Phase1 review 2回目指摘2）。
   - **新規純関数（Back応答の写像）**: `exchangeBackAction(screen): ExchangeBackAction`
-    （`Close`〔zero-write close〕/ `RequestDiscard` / `None` の3値）。
+    （`Close`〔zero-write close〕/ `RequestDiscard` / `Blocked` / `None` の4値）。
     `SelectingPrivacy`/`ReplacementConfirm`→Close、`Disclosing`で`cancelable`→RequestDiscard、
-    `Disclosing`で`sent`→Close、それ以外（in-flight・`cancelling`・`Generating`・
-    `Importing`・`ImportOutcomeScreen`・`ImportSuccess`・`Closed`）→None。unit testから
-    全状態を表駆動で検証できる。
+    `Disclosing`で`sent`→Close、`Generating`および`Disclosing`でin-flight/`cancelling`→
+    **Blocked（handlerがBackを取り込み画面離脱させない。operationのsettle後は通常契約へ戻る）**、
+    それ以外（`Importing`・`ImportOutcomeScreen`・`ImportSuccess`・`Closed`）→None。
+    Blockedは「既定経路への委譲」ではなく**画面離脱の遮断**である（委譲するとhostの
+    `rememberCoroutineScope` cancelでgeneration/file transportが中断し、specの継続契約と
+    矛盾する〔Phase1 review 2回目指摘1〕）。unit testから全状態を表駆動で検証できる。
   - **新規 `ExchangeFlowBackHandler(holder, onDiscardRequest)`**: `ExchangeFlowStateHolder`
     を観測し、上記写像のとおり`BackHandler(enabled = action != None)`でBackを取る
-    （Closeなら`holder.close()`、RequestDiscardなら`onDiscardRequest()`）。
+    （Closeなら`holder.close()`、RequestDiscardなら`onDiscardRequest()`、Blockedなら
+    無操作でconsume）。
     **host面に常時compositionする**（lazy item内に置かない。spec 328 D-2の原則）。
   - `ExchangePrivacySelection` → T-15: 見出し、active依頼事前表示（存在＋残時間。
     format resource）、D-09期待明示行、tier 2択（D-14語彙＋v4整合の警告）、依頼を作成CTA
@@ -216,7 +231,9 @@ ON_RESUMEで`refreshActiveRequest()`）→ `requestGeneration` / `confirmReplace
 T-16（要約主面＋全文展開＋D-09＋transport＋破棄/閉じる）→
 `startTransport`（同一immutable値の送出）/「破棄」（ボタンまたはBack → 確認dialog →
 `closeDisclosure` で当該sessionのみ失効）/ `close()`（送信後・T-15中止。
-zero-write）。system Back → `exchangeBackAction` 写像（Close/RequestDiscard/None）。
+zero-write）。system Back → `exchangeBackAction` 写像（Close/RequestDiscard/Blocked/None。
+Blockedはbusy state〔Generating・in-flight・cancelling〕の画面離脱遮断で、operationを
+scope cancelから保護する）。
 取り込み導線: T-15「回答を取り込む」→ `openImport()` → 既存T-17入力面（現行のまま）。
 表示に必要な追加dataはactive sessionの`expiresAtEpochMs` と生成済みsessionの
 `itemRefs`（既存fieldのみ）であり、新規の読取seam・永続化・diagnostics eventはない。
@@ -236,10 +253,17 @@ zero-write）。system Back → `exchangeBackAction` 写像（Close/RequestDisca
 - **T-16の破棄確認dialog／Back handlerをlazy item内に置く案**: itemがviewportを離れると
   compositionから外れ、Backやdialogが不在になる（large fontで発生し得る）。
   spec 328 D-2 reviewで確立したalways-composed host配置の原則に従う。
+- **busy stateのBackを既定経路へ委ねる案（r2で一旦採用し撤回）**: `Generating`/in-flight/
+  `cancelling`中はexchange handlerを無効化してhostのdismiss/navigateへ委ねる設計だったが、
+  holderのoperationはhostの`rememberCoroutineScope()`で実行されるため画面離脱＝scope cancel
+  となり、「generation/file transportは継続してsettleする」契約と矛盾する（Phase1 review
+  2回目指摘1）。Blocked（Back取り込み・画面離脱遮断）へ変更した。逆にoperationを
+  composition非依存の所有scopeへ移す案は、holderの生成・cancel・import全経路の所有権変更を
+  伴い、本Issueの「holder状態機械は変更しない」原則に反するため採らない。
 - **残時間を時計に追随して常時更新する案（秒針tick）**: specが要求しない過剰な更新であり、
-  再読取（進入・ON_RESUME）+ 実効gateで表示の正しさは十分に保たれる（Phase1 review指摘2の
-  対応として、単一読み切りから再読取規則へ置換した）。逆に、T-15進入時の完全な
-  読み切り（初版案）はTTL跨ぎ後の表示矛盾をresumeまで解消しないため採らない。
+  再読取（進入・ON_RESUME・失効時刻schedule）+ 実効gateで表示の正しさは十分に保たれる。
+  進入・ON_RESUMEの再読取のみ（r2案）は、foregroundのままTTLを跨いだ表示矛盾を解消
+  できないため、失効時刻の1発scheduleを追加した（Phase1 review 2回目指摘2）。
 - **T-16要約の件数をlive compositionから再計算する案**: 確認対象とtransport対象の同一性
   （AC-12）が同一immutable値の受渡しで担保されている現行設計を壊す。表示値も同一対象
   （session）から導出する。
@@ -295,7 +319,7 @@ zero-write）。system Back → `exchangeBackAction` 写像（Close/RequestDisca
 |---|---|---|
 | EX-AC-01 | instrumentation: T-07「AIに相談」→T-15表示（coordinator `Idle`維持・`start`不発行）、取り込み導線到達、idle entry row不在の否定的観測（`exchange-entry-*` tag）、run-in entry存在回帰 | `connectedLawnWithQuickstepGithubDebugAndroidTest`（organizer instrumentation lane） |
 | EX-AC-02 | unit: flow状態下でのauthoring lease取得成功 + holder/controllerがlease seamに接触しないことの構造確認。instrumentation: flow表示中の材料編集経路回帰 | JVM unit test + organizer instrumentation lane |
-| EX-AC-03 | unit: 事前表示projection・再読取（`refreshActiveRequest`）による確認要否更新・fake clockでのTTL跨ぎ（失効→不在・確認不要化）+ 既存AC-13系test green。instrumentation: 事前表示の表示/非表示・resume再読取での消失・破棄語彙確認dialog | unit + instrumentation lane |
+| EX-AC-03 | unit: 事前表示projection・再読取（`refreshActiveRequest`）による確認要否更新・lifecycle遷移なしのfake clock TTL超過で不在（失効時刻schedule再読取・仮想時間advance）+ 既存AC-13系test green。instrumentation: 事前表示の表示/非表示・破棄語彙確認dialog | unit + instrumentation lane |
 | EX-AC-04 | unit: 要約導出純関数（対象項目数/種別/上限。語彙明示を含む）+ `ExchangeDisclosureStateTest`回帰。instrumentation: 要約主面・展開・D-09両面表示 | unit + instrumentation lane |
 | EX-AC-05 | unit/instrumentation: 選択肢2個・`LOCAL_FULL`文字列UI不在（strings走査含む）・label付き警告のv4整合（EN/ja双方のstring内容）・契約値対応回帰 | unit + instrumentation + strings grep |
 | EX-AC-06 | spec 205 AC-3/AC-12対応test green + transport 3経路回帰 | JVM unit test |
@@ -303,7 +327,7 @@ zero-write）。system Back → `exchangeBackAction` 写像（Close/RequestDisca
 | EX-AC-08 | unit: 破棄確認受付→当該sessionのみ`invalidate`・辞退時生存・`cancelling`後不受理（既存disclosure契約の継承）。instrumentation: 破棄ラベル・dialog・送信後「閉じる」確認なし | unit + instrumentation lane |
 | EX-AC-09 | specs 205/327/204のdiff review + `Issue348AiFacingContractSyncTest`/`ExchangePackageComposerTest`無編集green | CI + PR review |
 | EX-AC-10 | Compose semantics assertion（name/role/state・展開state・dialog role・traversal）+ focus restoration + 200% font scale + light/dark × ja/default screenshot。EN/ja name集合・placeholder一致の機械確認 + 削除string reference grep（0件） | instrumentation + 手動a11y evidence + grep |
-| EX-AC-11 | unit: `exchangeBackAction`写像の全状態表駆動test + Back経由の破棄確認→`invalidate`（当該sessionのみ）・dismiss生存・送信済みclose生存。instrumentation: T-15/T-16でのBack遷移・T-07復帰・Back起因dialog・handlerがhost常時compositionであることの観測 | unit + instrumentation lane |
+| EX-AC-11 | unit: `exchangeBackAction`写像の全状態表駆動test（Close/RequestDiscard/Blocked/None）+ Back経由の破棄確認→`invalidate`（当該sessionのみ）・dismiss生存・送信済みclose生存 + blocking fake generation / `FileExchangeTransport` でbusy中のBack受付後もjobがcancelされずsession保存・transport settleが終端まで到達することの直接assert。instrumentation: T-15/T-16でのBack遷移・T-07復帰・Back起因dialog・busy中のBackで画面離脱しないことの観測 | unit + instrumentation lane |
 
 含めるべき観点: unit/contract（holder・gate・要約導出・Back写像の決定性）、UI（T-07/T-15/T-16の
 遷移とa11y）、回帰（AC-3/AC-12/AC-13・attempt anchor・freeze・run-in契約・instruction契約の
@@ -362,6 +386,10 @@ zero-write）。system Back → `exchangeBackAction` 写像（Close/RequestDisca
 - `LifecycleEventEffect` の利用（lifecycle-runtime-compose 2.10.0）がmoduleの依存宣言上
   直接参照可能かは実装PRの初手で確認し、不可能なら`DisposableEffect` + `LifecycleObserver`
   の等価実装に置き換える（契約は「ON_RESUMEで再読取」でありAPI指定はしない）。
+- 失効時刻schedule再読取のunit oracleは、holder testの既存のfake clock／dispatcher仕掛けで
+  仮想時間advanceが直接可能かを実装初手に確認する（不可能な場合はclockを引数に取る
+  判定関数の分離で同等のoracleを構成する。契約は「失効時刻の再読取で表示が失効状態へ
+  一致」であり、実現APIは指定しない）。
 - `ExportSession` の残時間表示に必要な最小projectionの最終形（`expiresAtEpochMs`の
   直接保持 vs 表示用projection data class）は実装PRで確定する（いずれも既存fieldのみから
   導出可能）。
@@ -380,3 +408,10 @@ zero-write）。system Back → `exchangeBackAction` 写像（Close/RequestDisca
   `ExchangeFlowBackHandler`・破棄確認dialog収斂）とT-15再読取（`refreshActiveRequest`・
   ON_RESUME配線）を追加。VerificationへEX-AC-11を追加し、EX-AC-03/04/05のevidenceを
   spec改訂へ追従。依存の全解消と、未検証領域の縮小を反映。
+- 2026-09-21: Round 2 revision（[Phase1 review 2回目](https://github.com/nunu1733/NunuLauncher/issues/372#issuecomment-5752821376)
+  指摘2件対応）。Current evidenceへ「holderのoperationはhostの`rememberCoroutineScope()`
+  scopeで実行され、composition破棄でcancelされる」事実を追記。Designの
+  `exchangeBackAction`へ`Blocked`（busy stateの画面離脱遮断）を追加し、`refreshActiveRequest`
+  へ失効時刻の1発schedule再読取を追加。VerificationのEX-AC-03/11 oracleを更新
+  （blocking fake generation / `FileExchangeTransport`直接assert、仮想時間TTL advance）。
+  Alternatives rejectedへr2案の撤回理由を記録。

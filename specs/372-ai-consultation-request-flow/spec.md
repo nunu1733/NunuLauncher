@@ -78,10 +78,13 @@ trigger startなし）。T-15はactive依頼の存在と残時間を事前表示
   T-15として再構成する。面は次を持つ:
   1. **active依頼の事前表示**: activeなexport session（`ExportSessionStore.active`）が
      存在するとき、その存在と残時間を表示する。残時間は表示根となる読取時点のsession
-     `expiresAtEpochMs` から導出する。読取はT-15進入時（`openFlow()`）と、T-15表示中の
-     lifecycle resume（ON_RESUME）に行い、そのつど存在・残時間・置換確認要否を再読取した値へ
-     更新する（`active()` は失効sessionを不在として返すため、期限到達後の最初の再読取で
-     事前表示は消える）。同一面上で時計に追随した自動更新（秒針tick等）は要求しない。
+     `expiresAtEpochMs` から導出する。再読取は (a) T-15進入時（`openFlow()`）、
+     (b) T-15表示中のlifecycle resume（ON_RESUME）、(c) 表示中のsessionの失効時刻に
+     1回だけscheduleした再読取、で行い、そのつど存在・残時間・置換確認要否を再読取値で
+     更新する（`active()` は失効sessionを不在として返すため、(c)によりT-15を表示したまま
+     TTLを跨いでも事前表示は消える。lifecycle遷移に依存しない）。残時間の連続的な
+     時計追随更新（秒針tick等）は行わない。(c)のscheduleはholderのoperation scopeで
+     実行し、画面離脱でcancelされた場合は次の進入時の読取が表示を回復する。
      idle/run-in両形態で共通の表示である（TO-BE §5.3「面の共有」）。status card
      への依頼表示は#374であり、本IssueではT-15事前表示のみである。
   2. **tier選択の2択固定（D-14）**: ユーザー向け選択肢は「情報を減らして送る（既定）/
@@ -136,13 +139,17 @@ trigger startなし）。T-15はactive依頼の存在と残時間を事前表示
      `closeDisclosure()` の構造gate経由。`cancelling`確定 → `invalidate` → flow close）、
      dismissではT-16が維持される。これにより、生成済み・未送信packageの表示だけを
      離脱してactive依頼をdurableに残す経路（ghostな未送信依頼）をBackから閉ざす。
-  3. **transport in-flight中・`cancelling`中のBack**: Backによる破棄を不受理とする
-     （破棄確認を出さない。Backはhostの既定Back経路（画面離脱）へ委ねる現行扱い。
-     transport自体はflow表示状態と独立に継続し、依頼は生存する）。
+  3. **生成中（`Generating`）・transport in-flight中・`cancelling`中のBack**: Backを
+     handlerが取り込み（consume）、画面離脱させない（無操作。operationのsettle後は
+     通常のBack契約へ戻る）。理由: holderのoperation（generation・transport・
+     `invalidate`）はhostが`rememberCoroutineScope()`で作るscopeで実行され、画面離脱
+     （composition破棄）はscope cancelを介してこれらを中断させる。busy状態でBackを
+     既定のdismiss/navigate経路へ委ねることは「operationは継続する」契約と矛盾するため、
+     Backを取り込むことが契約整合的な不受理である（Phase1 review 2回目指摘1。
+     TO-BE §9の適用中Back不受理と同型の保護）。
   4. **T-16送信済み Back**: 「閉じる」と同一（zero-write、依頼は生存、確認不要）。
-  生成中（`Generating`）のBackは本契約の対象外である（現行どおりhostの既定Back経路。
-  generation自体は継続し、sessionはdurableに保存され、T-15事前表示で発見できる）。
-  T-17入力面（`Importing`）・取り込み成功状態のBackは現行契約（spec 328/332）のままである。
+  T-17入力面（`Importing`）・取り込み成功状態のBackは現行契約（spec 328/332）のままである
+  （本Issueはimport側の継続性の契約変更を行わない）。
 - **capability説明の配置転換（spec 327 Decision 4の改訂）**: idle entry rowにhostされていた
   capability説明4要素（具体例での「AIでできること」・「AIはホーム画面を直接変更しない」・
   期待される会話flow（質問→方針確認→最終案、1往復）・会話はNunuLauncherを経由しない）を
@@ -240,15 +247,15 @@ Then active依頼の存在と残時間が表示される（表示根となる読
 And 同一面にtier選択が表示され、依頼を作成CTAの選択は置換確認を経る
 And active依頼が存在しないとき、事前表示は行われない（「依頼がありません」等の偽装行も作らない）
 
-### Scenario: T-15表示中にTTLを跨ぐと、次の再読取で表示と確認要否が一致する
+### Scenario: T-15表示中にTTLを跨ぐと、表示と確認要否が失効状態と一致する
 
 Given T-15にactive依頼の事前表示がされており、clockを制御できる
-When 依頼がTTL失効したのち、T-15へ再度resumeする（ON_RESUME。同一面上の時計追随更新は発生しない）
-Then ON_RESUMEの再読取でactive sessionは不在として読まれ、事前表示は消える
+When lifecycle遷移を発生させずにclockを失効時刻まで進める
+Then 失効時刻にscheduleされた再読取でactive sessionは不在として読まれ、事前表示は消える
 And 置換確認も不要となり、依頼を作成CTAは確認なしで生成を開始できる
 And 表示の判定は生成時のgate（`ExchangeGenerationGate` + `activeSession()` 再読取）と一致する
-And 最後の読取から次のresumeまでの間に表示が古い残時間を見せることは許容されるが
-（実効gateが防ぐ）、再読取後に失効依頼の事前表示が残ることはない
+And 進入・ON_RESUME・失効時刻scheduleのいずれの読取経路でも、読取後の表示が
+失効状態と矛盾することはない
 
 ### Scenario: 置換は「破棄」語彙の確認を経る（spec 205 AC-13維持）
 
@@ -309,8 +316,9 @@ Then flowはzero-writeで閉じ、T-07面へ戻る（確認dialogは出ない。
 And T-16未送信（transport非in-flight・非`cancelling`）でsystem Backを押すと、
 未送信依頼の「破棄」確認dialogが出る
 And 確認を承認すると当該未送信sessionのみが失効してflowが閉じ、dismissするとT-16が維持される
-And transport in-flight中・`cancelling`中のsystem Backは破棄確認を出さない（Back破棄の不受理。
-hostの既定Back経路に委ねる）
+And 生成中（`Generating`）・transport in-flight中・`cancelling`中のsystem Backは
+handlerが取り込み、画面は離脱せずoperationはcancelされずにsettleまで継続する
+And settle後のsystem Backは、その時点の面の契約（閉じる・破棄確認等）が適用される
 And T-16送信済みでsystem Backを押すと確認なしでflowが閉じ、依頼は生存する
 
 ### Scenario: 送信後の「閉じる」で依頼は生存する
@@ -354,7 +362,7 @@ And `Issue348AiFacingContractSyncTest` とspec 327のinstruction契約test
 | 生成時の入力未READY（`InputNotReady`） | 既存のtyped status（`GENERATION_INPUT_NOT_READY`）とT-15面への復帰。現行契約の回帰 |
 | session store保存失敗 | 既存のtyped status（`GENERATION_STORE_FAILURE`）。packageは出ない（fail-closed回帰） |
 | encode失敗（content limits超過） | 既存のtyped status（`GENERATION_OVERSIZE`）。ghost active sessionは残らない（現行契約の回帰） |
-| T-15表示中にactive依頼がTTL失効 | T-15への(再)resume時の再読取で事前表示は消え、置換確認も不要になる（`active()` は失効sessionを不在として返す）。最後の読取から次のresumeまでは古い残時間が見え得るが、生成時のgate（`ExchangeGenerationGate` + `activeSession()` 再読取）が失効後の置換確認を要求せず、取り込みは `SESSION_EXPIRED` でtypedに拒否される（fail-closed回帰） |
+| T-15表示中にactive依頼がTTL失効 | 失効時刻にscheduleされた再読取（および進入・ON_RESUMEの再読取）で事前表示は消え、置換確認も不要になる（`active()` は失効sessionを不在として返す）。生成時のgate（`ExchangeGenerationGate` + `activeSession()` 再読取）と表示の判定は同一seamで常に一致し、取り込みは期限切れを `SESSION_EXPIRED` でtypedに拒否される（fail-closed回帰） |
 | 破棄確認中のtransport試行 | 破棄受付後のdisclosureはterminal `cancelling` 状態であり、transportは開始もsettleもしない（現行 `closeDisclosure` 契約の継承。確認dialogはUI層のaffordanceであり、構造gateは現行どおり） |
 | import attempt生存中のT-07「そのまま整理」CTA | 既存のidle start row freeze（spec 328、`importAttemptActive`）が「そのまま整理」CTAに継承される（#369で規定、本Issueでは回帰として維持） |
 | 取り込み失敗・成功状態の表示 | 現行契約（spec 205/328/329/332）どおり。再構成は#373 |
@@ -365,10 +373,10 @@ And `Issue348AiFacingContractSyncTest` とspec 327のinstruction契約test
   T-15事前表示はその**表示**を担うのみである。表示と実効gateの乖離は生成時の
   `activeSession()` 再読取と取り込み時の `SESSION_EXPIRED`/`EXPORT_MISMATCH` 検証が防ぐ
   （「UI disabled/表示はaffordanceにすぎない」原則の継承）。
-- 残時間表示は表示根の読取時点（T-15進入・ON_RESUME）のclock読取から導出し、同一面上の
-  継続的な再計算・live更新を要求しない。読取のたびに存在・残時間・確認要否は
-  `activeSession()` の再読取へ一致するため、表示がTTLを跨いで古びるのは最後の読取から
-  次のresumeまでに限られ、実効gate（生成時の再読取・取り込み時の `SESSION_EXPIRED`/
+- 残時間表示は表示根の読取時点のclock読取から導出し、同一面上の連続的な再計算・
+  live更新は行わない。読取は進入・ON_RESUME・失効時刻にscheduleされた1回の再読取で
+  行われるため、T-15を表示したままTTLを跨いでも（lifecycle遷移なしでも）表示は
+  失効状態へ一致し、実効gate（生成時の再読取・取り込み時の `SESSION_EXPIRED`/
   `EXPORT_MISMATCH` 検証）が常に正しさを担保する
   （「UI disabled/表示はaffordanceにすぎない」原則の継承）。
 - pre-send破棄の確認dialogはUI層のaffordanceであり、session失効の構造gate
@@ -433,8 +441,9 @@ And `Issue348AiFacingContractSyncTest` とspec 327のinstruction契約test
       lease拒否されずに可能である。idle相談flowの開始・生成・確認表示はRUN lease /
       AUTHORING leaseを取得しない。（Issue受入2）
 - [ ] **EX-AC-03**: T-15がactive依頼の存在と残時間を事前表示し（active依頼なしでは表示しない）、
-      T-15進入・ON_RESUMEの再読取で存在・残時間・置換確認要否が `activeSession()` の値へ
-      一致する（TTL跨ぎ後の最初の再読取で事前表示が消えるclock-controlled oracleを含む）。
+      T-15進入・ON_RESUME・失効時刻にscheduleした再読取で存在・残時間・置換確認要否が
+      `activeSession()` の値へ一致する（lifecycle遷移なしでfake clockをTTL超過まで進め、
+      事前表示が消え確認要否が下がるclock-controlled oracleを含む）。
       active依頼がある状態の新規作成が「破棄」語彙の置換確認を経る。spec 205 AC-13の
       gate契約（承認なし生成不開始・辞退時既存依頼不変・E1→E2→取消→E1の`EXPORT_MISMATCH`
       zero-write回帰）は不変である。（Issue受入3）
@@ -470,9 +479,11 @@ And `Issue348AiFacingContractSyncTest` とspec 327のinstruction契約test
 - [ ] **EX-AC-11**: T-15/T-16のsystem Backがhost面に常時compositionされるhandlerで
       契約どおり扱われる: T-15（tier選択・置換確認）Backはzero-writeでflowを閉じ
       T-07（run-inは選択面）へ戻り、T-16未送信 Backは「破棄」確認dialog
-      （confirm = 当該sessionのみ失効・dismiss = T-16維持）を経て、transport in-flight中・
-      `cancelling`中のBack破棄は不受理であり、T-16送信済み Backは確認なしで閉じて
-      依頼を生存させる。lazy item内へのBack handler配置は行わない（spec 328 D-2の原則）。
+      （confirm = 当該sessionのみ失効・dismiss = T-16維持）を経て、T-16送信済み Backは
+      確認なしで閉じて依頼を生存させ、生成中（`Generating`）・transport in-flight中・
+      `cancelling`中のBackはhandlerが取り込んで画面離脱させず、operationはsettleまで
+      cancelされずに継続する（blocking fake generation / `FileExchangeTransport` での
+      直接assertを含む）。lazy item内へのBack handler配置は行わない（spec 328 D-2の原則）。
 
 ## Test oracle
 
@@ -480,7 +491,7 @@ And `Issue348AiFacingContractSyncTest` とspec 327のinstruction契約test
 |---|---|
 | EX-AC-01 | instrumentation: T-07で「AIに相談」→T-15表示（coordinator `Idle`維持・`start`不発行の否定的観測）、T-15から取り込み導線の到達、idle entry rowの不在（`exchange-entry-title`等の否定的観測）、T-08でのrun-in entry存在の回帰 |
 | EX-AC-02 | unit: idle相談flow状態（`Disclosing`表示等）下でのauthoring lease取得成功（既存authoring seam経由）。holder/controllerがlease seamに接触しないことの構造確認。instrumentation: flow表示中の材料編集経路（現行導線）の回帰 |
-| EX-AC-03 | unit: `ExchangeFlowStateHolderTest`拡張（事前表示用session読取・再読取による確認要否更新・TTL跨ぎ後の再読取で不在〔fake clock〕・置換確認経由の生成開始）+ 既存AC-13系test（承認なし生成不開始・辞退時不変・E1→E2→取消→E1 `EXPORT_MISMATCH`）のgreen。instrumentation: T-15事前表示（session存在時の表示・不在時の非表示）、resume再読取での表示消失、破棄語彙の確認dialog |
+| EX-AC-03 | unit: `ExchangeFlowStateHolderTest`拡張（事前表示用session読取・再読取による確認要否更新・lifecycle遷移なしのfake clock TTL超過で不在〔失効時刻schedule再読取〕・置換確認経由の生成開始）+ 既存AC-13系test（承認なし生成不開始・辞退時不変・E1→E2→取消→E1 `EXPORT_MISMATCH`）のgreen。instrumentation: T-15事前表示（session存在時の表示・不在時の非表示）、破棄語彙の確認dialog |
 | EX-AC-04 | unit: 要約要素の導出（対象項目数=session `itemRefs`サイズ、種別文言、上限文言。語彙に「対象項目数」相当が含まれること）+ `ExchangeDisclosureStateTest`回帰（同一性・cancel契約）。instrumentation: T-16要約主面・全文の折りたたみ/展開・D-09表示（T-15/T-16両面） |
 | EX-AC-05 | unit/instrumentation: tier選択肢2個の観測、`LOCAL_FULL`文字列のUI不在（strings走査含む）、label付き警告copyがユーザー定義カテゴリ名を列挙すること（EN/ja双方のstring内容確認）、redacted/labels契約値の生成対応の回帰 |
 | EX-AC-06 | spec 205 AC-3/AC-12対応test（確認前送信の不在・同一値受渡し・再生成時の確認やり直し）のgreen + transport 3経路の既存test回帰 |
@@ -488,7 +499,7 @@ And `Issue348AiFacingContractSyncTest` とspec 327のinstruction契約test
 | EX-AC-08 | unit: pre-send破棄の確認受付→`invalidate`（当該sessionのみ）・辞退時の生存・`cancelling`後のtransport不受理（現行`ExchangeDisclosureStateTest`/`ExchangeFlowStateHolderTest`契約の継承）。instrumentation: 破棄ラベル・確認dialog・送信後「閉じる」の確認なし |
 | EX-AC-09 | specs 205/327/204のdiff review（改訂箇所がScope節と一致し、gate構造・schema・validator・instruction契約が不変であること）+ `Issue348AiFacingContractSyncTest`・`ExchangePackageComposerTest`無編集green |
 | EX-AC-10 | Compose semantics assertion（見出し・要約・展開state・dialog role・traversal順）+ focus restoration test + 200% font scale test + light/dark × ja/default screenshot evidence。新規stringの`values/`と`values-ja/`のname集合・placeholder一致の機械確認 + 削除stringのreference grep（0件）+ hardcoded literal grep |
-| EX-AC-11 | unit: Back応答の状態遷移（T-15/置換確認closeはzero-write・未送信confirm=当該sessionのみ`invalidate`・dismiss=T-16維持・送信済みclose=依頼生存・in-flight/`cancelling`非受付）。instrumentation: T-15/T-16でのBack遷移とT-07復帰、Back起因の破棄確認dialog、handlerのhost常時composition（item内配置でないこと）の観測 |
+| EX-AC-11 | unit: Back応答写像の全状態表駆動test（Close/RequestDiscard/Blocked/None）+ Back経由の破棄確認→当該sessionのみ`invalidate`・dismiss生存・送信済みclose生存 + blocking fake generation / `FileExchangeTransport` でbusy中のBack受付後もjobがcancelされずsession保存・transport settleが終端まで到達することの直接assert。instrumentation: T-15/T-16でのBack遷移とT-07復帰、Back起因の破棄確認dialog、busy中のBackで画面離脱しないことの観測 |
 
 共通gate: `./gradlew spotlessCheck`、`./gradlew testLawnWithQuickstepGithubDebugUnitTest
 --tests 'app.lawnchair.organizer.*'`、exchange系instrumentation lane
@@ -585,6 +596,14 @@ Scope「active依頼の事前表示」の契約として固定済みである）
   語彙へ明示（指摘3）。(4) baselineをmain `13c95eafe6` へ再固定し、#365/#368/#369/#370の
   merge状態と#368によるexchange側strategy gate削除を前提へ反映、旧Contract notes
   3/6（および更新規則を契約化した旧4）を未解決一覧から除去（指摘4）。
+- 2026-09-21: Re-entry revision round 2（[Phase1 review 2回目](https://github.com/nunu1733/NunuLauncher/issues/372#issuecomment-5752821376)
+  = Changes requested（中2）の全指摘対応）。(1) busy state（`Generating`・transport
+  in-flight・`cancelling`）のBackを「既定経路へ委ねる」から「handlerが取り込み画面離脱を
+  起こさない」へ変更（holderのoperationはhostの`rememberCoroutineScope()`で実行されるため、
+  画面離脱はscope cancelでoperationを中断させ「operationは継続」契約と矛盾するため。
+  EX-AC-11にblocking fake generation / `FileExchangeTransport`での直接assertを追加）。
+  (2) TTL跨ぎ表示を「失効時刻に1回scheduleした再読取」で固定し、lifecycle遷移なしで
+  fake clockをTTL超過まで進める直接oracleをEX-AC-03へ追加。
 
 ## References
 
