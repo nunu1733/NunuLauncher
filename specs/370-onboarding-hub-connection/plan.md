@@ -22,11 +22,14 @@
   検出→（選択）→capture→planを**同期的に完走**しPreview面で駐留する
   （`start()`内で`setIfActive`/detection/composeが逐次実行される）。
   よってproduction `admitReview`（既定実装）の `Started` 受信後の遷移では、
-  **routeはPreview確認面（`CONFIRMATION`）で開く**。guard testの決定的観測は
-  「routeがadmitted runの面（CONFIRMATION）で開く」「`manualOrganizationFace(runner.state)`が
-  main thread上でPREAMBLE以外」「T-07主CTA（`manual_organization_start`）が描画treeに現れない」
-  「StateFlowから収集したstate traceの全post-admission状態がPREAMBLEに写像されない」の4点
-  （faceがstateの純関数であることと併せ、T-07 compose/render回数0を直接記録する）。
+  **routeはPreview確認面（`CONFIRMATION`）で開く**。guard testの決定的oracleは
+  **render commit観測**（test-only observer `ManualOrganizationRunFaceTrace`
+  — ManualOrganizationFace.ktに併置。run面のcompositionがcommitしたfaceを
+  post-apply `SideEffect`でrecorderへ報告する。productionはrecorderを設定しない）:
+  「記録face列に`PREAMBLE` 0件」「最初にcommitされたface＝`CONFIRMATION`」を直接assertし、
+  StateFlow state trace（post-admission状態のPREAMBLE写像0）と
+  T-07主CTA（`manual_organization_start`）の描画tree不在scan（settle-check付き）を
+  補助観測として併用する（実装レビュー対応で確定）。
 - **fixture注入pattern**: `OrganizerDiagnosticsRouteInstrumentationTest.installProcessLocalRunner`
   （[646-650](../../tests/organizer-instrumentation/app/lawnchair/ui/preferences/OrganizerDiagnosticsRouteInstrumentationTest.kt)）が
   reflectionで `ManualOrganizationModule.instance` を置換する既存pattern。
@@ -241,15 +244,17 @@
 - **instrumentation**（`OnboardingOrganizationProposalInstrumentationTest`）:
   1. hint label構成assertの更新（`organizer_hub_title` を含む、旧labelを含まない。EN/ja）。
   2. 確認tap → admission → 遷移先観測の拡張（実装済み。実装詳細は
-     「Implementation re-entry evidence」の決定的観測4点）: **admitted runの実際の再現**
+     「Implementation re-entry evidence」の決定的観測）: **admitted runの実際の再現**
      （`installProcessLocalRunner` reflection pattern + 既定のproduction `admitReview`。
      既存 `TouchActivationGate` の `reviewOutcome.get()` スタブは面観測に使わない）と
-     **T-07前置き面が一度も現れないことの決定的記録**
-     （routeがadmitted runの面（Preview確認面）で開くこと、main thread上の
-     `manualOrganizationFace(runner.state)`がPREAMBLE以外であること、T-07主CTA
-     `manual_organization_start`が描画treeに現れないこと、state traceの全
-     post-admission状態がPREAMBLEに写像されないこと）。反復samplingは補助に留まり、
-     単独ではrender count 0の証明にもguard testの完了条件にもならない。
+     **T-07前置き面が一度も現れないことの決定的記録**。決定的oracleは**render commit観測**
+     （実装レビュー対応で導入したtest-only observer `ManualOrganizationRunFaceTrace`:
+     run面compositionがcommitしたface値をpost-apply `SideEffect`で全件記録）で、
+     (i) 記録face列にPREAMBLE 0件（T-07 compose/render回数0の直接記録）、
+     (ii) 最初にcommitされたface＝admitted runの面（CONFIRMATION）を直接assertする。
+     StateFlow state trace（post-admission状態のPREAMBLE写像0。RD-7純関数契約の補助証拠）と
+     T-07主CTA `manual_organization_start` の描画tree不在scanは補助に降格し、
+     samplingが完了条件の代用になることはない。
   3. `homeScreenSettingsShowsTheOrganizerEntryInGeneralAboveTheFold` の入口row assertを
      hub入口row版へ更新。
   4. `OrganizerDiagnosticsRouteInstrumentationTest.homeScreenMaterialsRelocationRoutesDiagnosticsThroughHub`

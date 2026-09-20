@@ -302,7 +302,7 @@ None。新規permission、外部送信、sensitive dataの扱い追加はない�
 
 | AC | Evidence |
 |---|---|
-| OCB-AC-01 | instrumentation（`OnboardingOrganizationProposalInstrumentationTest.realTouchStreamOnReviewAdmitsAFreshRunAndRoutesToTheReviewSurface`再work。guard testは**admitted runを実際に再現する**: `ManualOrganizationModule`へprocess-local runner fixtureを注入（既存の`installProcessLocalRunner` reflection pattern）し、proposal viewを既定のproduction `admitReview`（実際の`start(ONBOARDING_PROPOSAL)`）で構築して遷移する。既存`TouchActivationGate`の`reviewOutcome.get()`スタブ（実際のrunner開始を伴わない）を遷移先観測に使わない。観測は決定的値で行う: `start()`は`Started`を返す前に検出→capture→planを完走しPreview面で駐留するため、(i) 遷移先でadmitted runの面（`manual_organization_preview`。canonical順序T-09以降に該当）が表示されること、(ii) main thread上で`manualOrganizationFace(runner.state)`がPREAMBLE以外（fixture進行ではCONFIRMATION）であること、(iii) T-07前置き面の主CTA（`manual_organization_start`）が描画treeに現れないこと、(iv) state trace（StateFlow収集）の全post-admission状態が`manualOrganizationFace`でPREAMBLEに写像されないこと——faceがstateの純関数であること（ManualOrganizationFace.kt RD-7）と併せ、T-07 compose/render回数0を直接記録する。反復samplingは補助に留め、完了条件の代用にはならない）。既存`busyReviewKeepsProposalOutcomeUntouchedAndRetryableByRealTouch`の緑維持。unit（`OrganizationOnboardingProposalTest`: admission→REVIEWED記録順序の回帰。face mapping純関数のtable-driven test `ManualOrganizationFaceTest`はadmitted状態→対応面のcomponent-level証拠として併用） |
+| OCB-AC-01 | instrumentation（`OnboardingOrganizationProposalInstrumentationTest.realTouchStreamOnReviewAdmitsAFreshRunAndRoutesToTheReviewSurface`再work。guard testは**admitted runを実際に再現する**: `ManualOrganizationModule`へprocess-local runner fixtureを注入（既存の`installProcessLocalRunner` reflection pattern）し、proposal viewを既定のproduction `admitReview`（実際の`start(ONBOARDING_PROPOSAL)`）で構築して遷移する。既存`TouchActivationGate`の`reviewOutcome.get()`スタブ（実際のrunner開始を伴わない）は遷移先観測に使わない）。**決定的oracleはrender commit観測**（`ManualOrganizationRunFaceTrace`。test-only observerで、run面のcompositionがcommitしたface値をpost-apply `SideEffect`で全件記録する）: (i) 記録されたface列に`PREAMBLE`が0件であること＝**T-07 compose/render回数0の直接記録**、(ii) 最初にcommitされたfaceがadmitted runの面であること（fixture進行では`start()`がPreview面で駐留した後`Started`を返すため`CONFIRMATION`）。StateFlow state trace（全post-admission状態がPREAMBLEに写像されないこと。face＝stateの純関数というRD-7契約の補助証拠）と、T-07主CTA（`manual_organization_start`）の描画tree不在scan（settle-check付き補助観測）を併用するが、samplingが完了条件の代用になることはない）。既存`busyReviewKeepsProposalOutcomeUntouchedAndRetryableByRealTouch`の緑維持。unit（`OrganizationOnboardingProposalTest`: admission→REVIEWED記録順序の回帰。face mapping純関数のtable-driven test `ManualOrganizationFaceTest`はadmitted状態→対応面のcomponent-level証拠として併用） |
 | OCB-AC-02 | instrumentation（`laterTapShowsTheReentryHintAndPreservesTheDeferOutcome`のlabel構成assert更新: hub入口row label `organizer_hub_title` を含み`manual_organization_title`を含まないこと。EN/ja双方のformat resource合成assert）。string diff（`values/` / `values-ja/` のname集合・placeholder一致）+ emulator screenshot（light/dark × ja/default） |
 | OCB-AC-03 | instrumentation（`homeScreenSettingsShowsTheOrganizerEntryInGeneralAboveTheFold`の入口row assertをhub入口row版へ更新、`OrganizerDiagnosticsRouteInstrumentationTest.homeScreenMaterialsRelocationRoutesDiagnosticsThroughHub`の暫定併存assertを「直行row不在＋hub入口row表示」へ更新）。obsolete理由（D-01完成・#370のrow廃止）をPRに記録 |
 | OCB-AC-04 | 既存unit/instrumentationの無編集green（outcome・provenance・journal非発行の回帰群）。実装PR diff上、persistent store / diagnostics契約コードの無編集確認 |
@@ -370,6 +370,15 @@ None。新規permission、外部送信、sensitive dataの扱い追加はない�
   「T-09準備中相当以降」のscenario文言どおり）、fixture注入は既存
   `installProcessLocalRunner` reflection patternを使用。OCB-AC-01のoracle観測4点へ具体化。
   実装（row廃止・hint copy・guard test・specs 53/232改訂）を同一PRで実施。
+- 2026-09-21: Implementation review revision（`887ed17b9b`への実装レビュー
+  「Changes requested」1点対応。**oracleの明示的改訂**）: 決定的oracleを
+  StateFlow state traceから**render commit観測**（test-only observer
+  `ManualOrganizationRunFaceTrace`。run面compositionがcommitしたfaceをpost-apply
+  `SideEffect`で全件記録）へ移し、「記録face列にPREAMBLE 0件（T-07 compose/render回数0の
+  直接記録）」「最初にcommitされたface＝admitted runの面（CONFIRMATION）」をguard testの
+  直接assertとする。StateFlow traceとa11y不在scanは補助証拠に降格。この改訂は
+  Phase1受入oracleの観測点を弱めるのではなく、render seamの決定的観測を実装した上で
+  記録方法を具体化するものであり、実装レビュー（本コメントへの対応）でreview対象として明示する。
 
 - 2026-09-20: **Accepted**。最終re-review（[指摘なし](https://github.com/nunu1733/NunuLauncher/issues/370#issuecomment-5751574889)）
   をもってPhase1 reviewを通過。実装 (Phase2) の契約として確定

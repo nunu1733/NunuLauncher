@@ -406,6 +406,10 @@ class OnboardingOrganizationProposalInstrumentationTest {
         val context = instrumentation.targetContext
         val gate = TouchActivationGate(useProductionAdmission = true)
         gate.show()
+        // Deterministic render record (ManualOrganizationRunFaceTrace): every face the
+        // route's composition commits is reported here, so "the T-07 preamble never
+        // rendered" is a count over committed faces, not a sampled absence scan.
+        val renderTrace = Collections.synchronizedList(mutableListOf<ManualOrganizationFace>())
         val faceTrace = Collections.synchronizedList(mutableListOf<ManualOrganizationRun.State>())
         var traceJob: Job? = null
         try {
@@ -417,13 +421,14 @@ class OnboardingOrganizationProposalInstrumentationTest {
             installProcessLocalRunner(
                 ManualOrganizationRun(GuardRunApplication(), OrganizationPlanner { guardPlanningResult() }),
             )
+            ManualOrganizationRunFaceTrace.recorder = { face -> renderTrace.add(face) }
             traceJob = CoroutineScope(Dispatchers.Main).launch {
                 ManualOrganizationModule.get(context).stateFlow.collect { faceTrace.add(it) }
             }
             gate.deliveredTap(gate.content.reviewButton)
             val activity = awaitResumedPreferenceActivity()
             // The run parks at the preview confirmation face, so the route must open on
-            // it — deterministic proof the admitted run's face rendered first.
+            // it — auxiliary observation of the parked admitted run.
             awaitAccessibilityTextBounds(
                 activity,
                 context.getString(R.string.manual_organization_preview),
@@ -436,21 +441,38 @@ class OnboardingOrganizationProposalInstrumentationTest {
                     manualOrganizationFace(ManualOrganizationModule.get(context).state),
                 )
             }
-            // Rendered-level absence of the T-07 preamble CTA while the admitted run's
-            // face is up (settle-checked scan; the record below is the render-count proof).
+            // Auxiliary rendered-level absence of the T-07 preamble CTA (settle-checked
+            // scan; the committed-face record below is the render-count proof).
             awaitAccessibilityTextAbsent(
                 activity,
                 context.getString(R.string.manual_organization_start),
                 "T-07 preamble start CTA",
             )
-            // Deterministic no-T-07 record: every coordinator state published after
-            // admission maps to a non-PREAMBLE face, so no composed frame could have
-            // rendered the preamble face during the route-open window (the face is a pure
-            // function of the state, ManualOrganizationFace.kt RD-7).
+            // Deterministic render oracle: the T-07 preamble face must have zero
+            // committed compositions on this route, and the first committed face must
+            // be the admitted run's preview confirmation face.
+            val faces = synchronized(renderTrace) { renderTrace.toList() }
+            assertTrue(
+                "the run face must have committed at least one composition (faces=$faces)",
+                faces.isNotEmpty(),
+            )
+            assertEquals(
+                "the first committed run face must be the admitted run's preview face " +
+                    "(faces=$faces)",
+                ManualOrganizationFace.CONFIRMATION,
+                faces.first(),
+            )
+            assertTrue(
+                "the T-07 preamble face must never compose on the onboarding route " +
+                    "(faces=$faces)",
+                faces.none { it == ManualOrganizationFace.PREAMBLE },
+            )
+            // Auxiliary coordinator-state record: no post-admission state maps to the
+            // preamble face either (face is a pure function of state, RD-7).
             val trace = synchronized(faceTrace) { faceTrace.toList() }
             val postAdmission = trace.dropWhile { it == ManualOrganizationRun.State.Idle }
             assertTrue(
-                "the face trace must contain the admitted progression (trace=$trace)",
+                "the state trace must contain the admitted progression (trace=$trace)",
                 postAdmission.isNotEmpty(),
             )
             assertTrue(
@@ -458,6 +480,7 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 postAdmission.all { manualOrganizationFace(it) != ManualOrganizationFace.PREAMBLE },
             )
         } finally {
+            ManualOrganizationRunFaceTrace.recorder = null
             traceJob?.cancel()
             gate.restore()
             installProcessLocalRunner(null)
