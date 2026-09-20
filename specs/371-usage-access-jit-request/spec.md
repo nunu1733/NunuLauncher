@@ -78,8 +78,9 @@ spec 203はU-2の改訂（常設row＋初回signal読み取り時のJIT要求1�
   **bounded re-read**とし（固定sleepは使用しない）、GRANTEDを観測できた時点で
   遅延されていたcompositionを再開する。上限まで観測できなかった場合は未付与として
   続行する（次回compositionから付与済み。既知限界としてspec化）。
-  **最大待機時間の上限値（または許容レンジ）は実装PRのcontract commitで確定し、
-  spec change historyとPR evidenceに記録する**（observable behaviorであるため）。
+  **最大待機時間は0.5秒以上2秒以内に固定し、実装PRのcontract commitではその範囲内の
+  具体値のみを確定してspec change historyとPR evidenceに記録する。
+  GRANTED観測時は上限を待たず直ちに終了する**（observable behaviorであるため）。
 - 拒否時の振る舞い: 該当試行のsignal読み取りは未付与のまま行われ、system usage sectionは
   `Unavailable`、launcher-origin sectionは保持、run・依頼生成は続行する（failではない）。
 - T-06常設rowの説明文言の改訂（同じPRで実施）: 状態表示・遷移・`ON_RESUME`再読取・
@@ -308,8 +309,9 @@ And hub材料面（#366/#367）からT-06へ到達できる導線は不変であ
 - **読む**: `UsageAccess.isGranted()`（app-op `OPSTR_GET_USAGE_STATS` ベースの既存共有predicate、
   spec 203実装）。snapshot自体はcomposerの既存seamで読まれ、本specはその読み取り内容を変えない。
   復帰時の再取得は同predicateのbounded re-readである（固定sleepは使わない。clock/predicateは
-  注入可能とし、unit testで決定的に検証する。最大待機時間の上限は実装PRのcontract commitで
-  確定・記録する）。
+  注入可能とし、unit testで決定的に検証する。最大待機時間は0.5秒以上2秒以内に固定され、
+  実装PRのcontract commitではその範囲内の具体値のみを確定・記録する。GRANTED観測時は
+  上限を待たず直ちに終了する）。
 - **書く**: 何も書かない。要求機会のstate（提示権の確定・提示・解決・解放を含む）はprocess内の
   in-memory latchのみであり、persistent store・preference・backup対象には入らない。
   待機者の再評価は同latchの決定的な観測seam（in-memory観測）により行われる。
@@ -453,7 +455,7 @@ And hub材料面（#366/#367）からT-06へ到達できる導線は不変であ
 | JIT-AC-02 | string diff review（EN/ja、format resource、3要素＋privacy修飾の文言要件）+ 単体testでresourceの存在とplaceholder一致を機械確認 + 実装PR contract commitでの最終文言と意味要素checklist（3要素・任意性・raw/bucket/送信前確認）のPR記録 |
 | JIT-AC-03 | unit: 注入したpredicate/clock（virtual clock）によるbounded re-readの決定的oracle（`false→true` 観測で続行、上限境界で未付与継続。固定sleep不使用）。instrumentation: dialogの遷移操作 → shell `appops set ... allow` → **production predicateでGRANTEDが観測された後に**composition開始すること、および上限超過後に必ずfallbackすることのassert。composer側は `PersonalizationCompositionTest` の付与済み経路で担保 |
 | JIT-AC-04 | instrumentation: 断って続行→runがpreviewまで進行（`NotReady`不発生）。遷移失敗注入（`ActivityNotFoundException`）→要求面が閉じず「続行」が機能→Unavailable継続のexact oracle。unit: `PersonalizationCompositionTest` 等の既存composer suiteが無編集でgreen（AC-11/AC-13回帰） |
-| JIT-AC-05 | unit（gate提示権state遷移）: 未消費→提示で消費（提示後は未提示へ戻らない）、提示後action不成立でも消費済み、付与済み初回 `evaluate` で消費、composition不到達操作は非消費、競合で提示権は1つ・`Wait` は保留・提示前cancelで解放（解放後の再獲得は1つ）、**提示済みかつ未解決の間は待機者のcomposition回数0、解決後に正確に1回進行、settings遷移中も停止**、**観測seam（決定的なstate観測）による解放でpolling/再composition偶然に依存しない**、**attempt identityのbind（古いattemptのrelease/markPresented/解決通知が新しいattemptへ作用しない）**、**放棄解決（owner=`Presented`・waiter=`Wait`でowner runをcancel/close→owner composition 0・waiter 1回進行・JIT要求再表示なし・stale owner callbackの後着で二重解決/二重再開なし）**。run resumeの決定性oracle（`ON_RESUME`/継続callbackの二重発火でも `RUN_STARTED` とcompositionが各1回）。instrumentation: 2回目の開始/生成でdialog不表示（同一process内）＋run/exchange競合で提示1つ＋解決まで不進行 |
+| JIT-AC-05 | unit（gate提示権state遷移）: 未消費→提示で消費（提示後は未提示へ戻らない）、提示後action不成立でも消費済み、付与済み初回 `evaluate` で消費、composition不到達操作は非消費、競合で提示権は1つ・`Wait` は保留・提示前cancelで解放（解放後の再獲得は1つ）、**提示済みかつ未解決の間は待機者のcomposition回数0、解決後に正確に1回進行、settings遷移中も停止**、**観測seam（決定的なstate観測）による解放でpolling/再composition偶然に依存しない**、**attempt identityのbind（古いattemptのrelease/markPresented/解決通知が新しいattemptへ作用しない）**、**放棄解決のstate別exact oracle — (a) run owner `Presented` → cancel/dismiss → owner composition 0・waiter 1回進行、(b) exchange owner `Presented` → close/navigation破棄 → old generation 0・waiter 1回進行、(c) いずれもJIT要求再表示なし・stale owner callbackの後着で二重解決/二重再開なし**。run resumeの決定性oracle（`ON_RESUME`/継続callbackの二重発火でも `RUN_STARTED` とcompositionが各1回）。instrumentation: 2回目の開始/生成でdialog不表示（同一process内）＋run/exchange競合で提示1つ＋解決まで不進行 |
 | JIT-AC-06 | T-06の既存instrumentation（toggle↔preference一致、resume再読取。`OrganizerUsageMaterialRows`由来）が状態操作として無編集でgreen + row copy（EN/ja）の存在・placeholder一致unit test + 実装PR contract commitでの意味要素checklist記録 + diff review（状態管理契約に触れないこと） |
 | JIT-AC-07 | specs/203-usage-implicit-preference-signals/spec.mdのdiff review（U-2・表のrationale要件更新＋JIT行・AC・change history。snapshot/provenance契約節の無変更） |
 | JIT-AC-08 | 実装PR diff review（manifest permission・persistent store・diagnostics eventの無変更）+ failure path unit/instrumentation（遷移失敗、pause中cancelのjournal無event、pause中RUN lease保持（2回目start `Busy`）・cancel/dismissでのlease exactly once release、process死模擬、JIT保留中close後の遅延callbackが生成を再開しない、**JIT解決後のresume経路でcapture開始の可視commitがcomposed phase入口gate区間より前にpublishされない**） |
@@ -541,6 +543,13 @@ And hub材料面（#366/#367）からT-06へ到達できる導線は不変であ
   (2) bounded re-readの最大待機時間を **0.5秒以上2秒以内のレンジ**として本文で拘束し
   （GRANTED観測時は即時短縮）、contract commitでの範囲内の具体値確定をJIT-AC-03の
   受入条件へ明記。
+- 2026-09-21: Review revision 4（`c7d22d65ca` への3rd再レビュー「Changes requested」2指摘
+  — 記述統一 — 対応）。(1) exchange保留中のflow退場時のgate連携をowner破棄時のstate別
+  規則（未提示→解放、提示済み→放棄解決、解決済み→無作用）へ統一し、放棄解決のoracleを
+  run/exchangeの両経路で分離してexact化、(2) bounded re-readの最大待機時間に関する
+  旧表現（「上限値（またはレンジ）をcontract commitで確定」）を0.5〜2秒拘束のnormative文
+  （contract commitでは範囲内の具体値のみ確定。GRANTED観測時は即時終了）へ全節統一
+  （Scope/Data and state/Failure handling/risk/Verification）。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/371
 [2]: https://github.com/nunu1733/NunuLauncher/issues/365

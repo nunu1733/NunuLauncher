@@ -414,7 +414,7 @@
 | `lawnchair/res/values/strings.xml` / `values-ja/strings.xml` | JIT dialog文言（title/body/遷移/続行/遷移失敗。format resource、§7.3の3要素 + 任意性 + privacy修飾）新規。T-06 row文言（`organizer_personalization_usage_access_label/_granted/_not_granted`、EN/ja）を§7.3準拠へ改訂 | spec 123 AC-4/AC-5・spec 161 LQA規約。JIT（JIT-AC-02）とT-06（JIT-AC-06）双方のcopy契約。最終文言は実装PR contract commitで確定し意味要素checklistをPR記録 |
 | `specs/203-usage-implicit-preference-signals/spec.md` | amendment: U-2改訂（常設row＋初回signal読み取り直前のJIT要求1回）、Permission and fallback behavior表の「opt-in (初回)」行のrationale要件をprivacy修飾形へ更新 + JIT要求行追加、JIT受入条件（AC-17以降）追加、change history | Issue本文「Spec」節・disposition §3.10「doc変更: spec 203改訂（#371のPR）」・§4.1 supersession map。local-only無条件表現の修正（review指摘2）を含む |
 | `tests/unit/app/lawnchair/organizer/ui/`（新規/更新） | `UsageAccessJitGate` のunit test（提示権state遷移: 競合で `Present` は1つ、`Wait` の保留、`markPresented`/`resolve`/`release` の冪等・owner一致・**`Presented` 以降の解放不可**、**提示済み未解決の間は待機者composition 0・解決後に1回進行・settings遷移中も停止**、観測seamの決定性（stale通知の非作用）、**owner破棄時のstate別規則（未提示→解放、提示済み→放棄解決で待機者1回進行、解決済み→無作用。stale owner callbackの後着で二重解決/二重再開なし）**、付与済み初回 `evaluate` で消費）+ `ManualOrganizationRunTest` へpause oracle追加（3経路 × gate decision、**CAPTURE commit移動後の順序oracle更新**（理由を記録）、`Busy`・journal無event・lease exactly once release・二重継続で `RUN_STARTED` 1回、**resume経路でCAPTUREが入口gate区間より前にpublishされない**、既存oracleは既定gateで無編集green — CAPTURE位置の更新分は理由を記録）+ bounded re-readの決定的oracle（`false→true`、virtual clockでの上限境界）+ `ManualOrganizationFaceTest` の対応表追加 | gate logic・2段階orchestration・再取得timingのinterface test |
-| `tests/organizer-instrumentation/`（新規/更新） | JIT要求flow（run開始・選択確認・D-06直行・依頼生成・run-in経路）、1回限り、断って続行、**付与して続行（production predicateでGRANTED観測後にcomposition開始）**、T-06 copy回帰（EN/ja）、dialog Back helper、選択中断の否定oracle、**run/exchange競合で提示1つ・解決まで不進行**、**old attemptのcallback/gate操作がnew attemptへ作用しない（close→同条件再生成で古いcallbackが再開しない・古い `release`/`markPresented` が新reservationへ作用しない）**、**JIT保留中close後の遅延callbackが生成を再開しない**、exchange結合oracle（`T-07 AI → [置換確認] → JIT要求 → 生成 → 送信前確認`。#372 merge後のre-entryで再検証） | spec Test oracle表（JIT-AC-01〜06, 08, 09） |
+| `tests/organizer-instrumentation/`（新規/更新） | JIT要求flow（run開始・選択確認・D-06直行・依頼生成・run-in経路）、1回限り、断って続行、**付与して続行（production predicateでGRANTED観測後にcomposition開始）**、T-06 copy回帰（EN/ja）、dialog Back helper、選択中断の否定oracle、**run/exchange競合で提示1つ・解決まで不進行**、**old attemptのcallback/gate操作がnew attemptへ作用しない（close→同条件再生成で古いcallbackが再開しない・古い `release`/`markPresented` が新reservationへ作用しない）**、**放棄解決の両経路（run owner `Presented` → cancel/dismiss → owner composition 0・waiter 1回進行／exchange owner `Presented` → close/navigation破棄 → old generation 0・waiter 1回進行。いずれもJIT要求再表示なし・stale owner callbackの後着で二重解決/二重再開なし）**、**JIT保留中close後の遅延callbackが生成を再開しない**、exchange結合oracle（`T-07 AI → [置換確認] → JIT要求 → 生成 → 送信前確認`。#372 merge後のre-entryで再検証） | spec Test oracle表（JIT-AC-01〜06, 08, 09） |
 
 source implementation・build設定・dependencyの変更は本Issueの実装PRのscopeであり、
 本plan（spec/plan整備task）では行わない。
@@ -442,8 +442,9 @@ source implementation・build設定・dependencyの変更は本Issueの実装PR�
   clock/predicate/delay、固定sleep禁止）によりGRANTEDの観測を待つ。上限内に観測できれば
   その試行は付与済みで読まれる（TO-BE §6.4どおり）。上限まで観測できない場合は
   未付与でcompositionを続行し、次回compositionから付与済みになる — 既知限界として
-  spec/PRに記録し、新規の再試行機構は導入しない。上限値は実装PRのcontract commitで
-  確定・記録する。
+  spec/PRに記録し、新規の再試行機構は導入しない。最大待機時間は0.5秒以上2秒以内に
+  固定されており、実装PRのcontract commitではその範囲内の具体値のみを確定・記録する
+  （GRANTED観測時は上限を待たず直ちに終了する）。
 - **dialog表示中 / 設定遷移中のprocess死**: 保留操作と機会stateが消えるのみ。
   再訪processでは付与状態で判断される（spec scenarioどおり）。
 - **run pause中のdialog Back**: dialogのBackはdialog dismissal（= 断って継続。`resolve` を
@@ -451,10 +452,14 @@ source implementation・build設定・dependencyの変更は本Issueの実装PR�
   漏出させてはならない。pause state自体は明示cancel（T-09面の中断row）でのみ解消される。
   Back优先順位のtestをinstrumentationで要求する。
 - **run-in生成経路でのdialog Back**: 同上。選択凍結中の意図しないrun中断の防止。
-- **exchange保留中のflow退場**: `close()`・別generation遷移・host navigation破棄で
-  `AwaitingUsageAccessJit` は退場し、保留生成は破棄される（gate stateが `Reserved` の
-  未提示の場合のみ `release(attemptToken)`）。stale tokenを持つ遅延callback・古いattemptの
-  gate操作は新attemptへ作用しない（token一致契約）。
+- **exchange保留中のflow退場**: `close()`（`Closed` への遷移）、`ReplacementConfirm` 等への
+  別遷移、host navigation破棄のいずれでも `AwaitingUsageAccessJit` は退場し、保留生成は
+  破棄される。退場時のgate連携はowner破棄時のstate別規則と同一である:
+  gate stateが `Reserved(attemptToken)` → `release(attemptToken)`、
+  `Presented(attemptToken)` → **放棄解決**として `resolve(attemptToken)` をexactly once実行
+  （old attempt自身の生成は再開されず、待機者のみ解放される）、
+  `Resolved` → 無作用。stale tokenを持つ遅延callback・古いattemptのgate操作は
+  新attemptへ作用しない（token一致契約）。
 - **pause中にhost面がdisposeされた場合**（画面離脱）: 既存の `dismiss()` 契約
   （active operationのcancel）によりrunは `Cancelled` へ戻る。機会への作用はstate別である:
   未提示（`Reserved`）なら `release` されて未消費のまま破棄、提示済み（`Presented`）なら
@@ -469,7 +474,7 @@ source implementation・build設定・dependencyの変更は本Issueの実装PR�
 | JIT-AC-02 | unit: 新規stringの `values/` / `values-ja/` 存在とplaceholder一致（spec 123 AC-5方式）。+ 実装PR contract commitでの最終文言と意味要素checklist（3要素・任意性・raw/bucket/送信前確認）のPR記録 | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
 | JIT-AC-03 | unit: 注入predicate/clock（virtual clock）によるbounded re-readの決定的oracle（`false→true` 観測で続行、上限境界で未付与継続。固定sleep不使用）。instrumentation: dialogの遷移操作 → shell `appops set ... allow` → **production predicateでGRANTED観測後にcomposition開始**、上限超過後に必ずfallback。composer側は `PersonalizationCompositionTest` の付与済み経路で担保 | unit gate + organizer instrumentation lane（probe testと同一pattern） |
 | JIT-AC-04 | instrumentation: 断って続行 → runがpreviewまで進行（`NotReady`不発生）。遷移失敗注入（`ActivityNotFoundException`）→ dialog維持＋「続行」機能→Unavailable継続のexact oracle。unit: `PersonalizationCompositionTest` 等の既存composer suiteが無編集でgreen（AC-11/AC-13回帰） | unit gate + instrumentation lane |
-| JIT-AC-05 | unit: gate提示権state遷移（未消費→提示で消費・`Presented` 以降解放不可、提示後action不成立でも消費済み、付与済み初回 `evaluate` で解決扱いの消費、composition不到達操作は非消費、競合で `Present` は1つ・`Wait` は保留・提示前cancelで解放（再獲得は1つ）、**提示済み未解決の間は待機者composition 0・解決後に1回進行・settings遷移中も停止**、観測seamの決定性・stale通知の非作用、attempt identity bind、**放棄解決（owner=`Presented`・waiter=`Wait`でowner runをcancel/close→owner composition 0・waiter 1回進行・JIT要求再表示なし・stale owner callbackの後着で二重解決/二重再開なし）**）。unit: run resumeの二重発火で `RUN_STARTED`/composition各1回。instrumentation: 2回目の開始/生成でdialog不表示（同一process内）＋run/exchange競合で提示1つ＋解決まで不進行＋old/new attempt分離 | unit gate + instrumentation lane |
+| JIT-AC-05 | unit: gate提示権state遷移（未消費→提示で消費・`Presented` 以降解放不可、提示後action不成立でも消費済み、付与済み初回 `evaluate` で解決扱いの消費、composition不到達操作は非消費、競合で `Present` は1つ・`Wait` は保留・提示前cancelで解放（再獲得は1つ）、**提示済み未解決の間は待機者composition 0・解決後に1回進行・settings遷移中も停止**、観測seamの決定性・stale通知の非作用、attempt identity bind、**放棄解決のstate別exact oracle — (a) run owner `Presented` → cancel/dismiss → owner composition 0・waiter 1回進行、(b) exchange owner `Presented` → close/navigation破棄 → old generation 0・waiter 1回進行、(c) いずれもJIT要求再表示なし・stale owner callbackの後着で二重解決/二重再開なし**）。unit: run resumeの二重発火で `RUN_STARTED`/composition各1回。instrumentation: 2回目の開始/生成でdialog不表示（同一process内）＋run/exchange競合で提示1つ＋解決まで不進行＋old/new attempt分離 | unit gate + instrumentation lane |
 | JIT-AC-06 | T-06の既存instrumentation（状態操作）が無編集でgreen + row copy（EN/ja）のresource test + contract commitでの意味要素checklist記録 + diff review（状態管理契約の無変更） | instrumentation lane + unit gate + PR diff review |
 | JIT-AC-07 | specs/203-.../spec.mdのdiff review（U-2・表のrationale要件更新＋JIT行・AC・change historyのamendmentのみ。snapshot/provenance契約節の無変更） | PR diff review |
 | JIT-AC-08 | diff review（manifest permission・persistent store・diagnostics eventの無変更）+ failure path unit/instrumentation（遷移失敗、pause中cancelのjournal無event、pause中RUN lease保持（2回目start `Busy`）・cancel/dismissでのlease exactly once release、process死模擬、**resume経路でcapture可視commitが入口gate区間より前にpublishされない（face trace観測含む）**、JIT保留中close後の遅延callbackが生成を再開しない） | PR diff review + unit gate |
@@ -537,8 +542,9 @@ attempt identity bind）、integration（composer回帰・生成順序）、UI/a
     現れるため、cancel/dismiss/closeの全経路で規則の適用をunit/instrumentationで検証する。
     逆に `Presented` 以降の誤解放は1回限り契約違反となるため、state遷移の単体testで防ぐ。
   - dialog Backがrun中断handlerへ漏出する（pause/run-in経路） — instrumentationで明示検証。
-  - bounded re-readの上限値の端末分布 — 上限超過時は既知限界（未付与で継続）として
-    spec化済み。上限値はcontract commitで確定しPRでevidenceを記録。
+  - bounded re-readの上限の端末分布 — 上限超過時は既知限界（未付与で継続）として
+    spec化済み。最大待機時間は0.5秒以上2秒以内に固定されており、contract commitでは
+    範囲内の具体値のみを確定しPRでevidenceを記録する。
   - composition起点の網羅（run側は `runComposedPhase` 入口のchoke pointで構造的に網羅。
     exchange側は `generate`/`generateScoped` の2点 + import→run再構築はrun側に帰着）—
     gateはmachine内/holder先頭に置くため個別call siteのwrapは不要。
@@ -546,7 +552,7 @@ attempt identity bind）、integration（composer回帰・生成順序）、UI/a
 - **explicitly unverified areas**:
   - 実device/OEM matrixでの `ACTION_USAGE_ACCESS_SETTINGS` の解決可否（unsupported pathは
     spec化したが、device evidenceは未取得）。
-  - 付与直後のapp-op伝播timingの実device分布（bounded re-readの上限値の根拠。probe evidenceは
+  - 付与直後のapp-op伝播timingの実device分布（0.5〜2秒レンジ内の具体値選択の根拠。probe evidenceは
     reader追従の検証のみ）。
   - onboarding momentでのJIT要求表示のproduct受容（spec Open questions 1。owner review待ち）。
   - #372実装merge後の共有面の最終形状（re-entry規律の下で後続側が再読・再検証する）。
