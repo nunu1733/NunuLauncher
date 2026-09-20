@@ -302,7 +302,7 @@ None。新規permission、外部送信、sensitive dataの扱い追加はない�
 
 | AC | Evidence |
 |---|---|
-| OCB-AC-01 | instrumentation（`OnboardingOrganizationProposalInstrumentationTest.realTouchStreamOnReviewAdmitsAFreshRunAndRoutesToTheReviewSurface`拡張。guard testは**admitted runを実際に再現する**: 遷移先run面が実際に消費する同一process-local runnerに対し、proposalの `admitReview` からproduction admission path（既定実装の `start(ONBOARDING_PROPOSAL)`）または同等のfixture `start()` を実行してから遷移する。既存 `TouchActivationGate` の `reviewOutcome.get()` スタブ（実際のrunner開始を伴わない）をそのまま遷移先観測に使わない。その上で、#369実装のsurface seamの決定的観測点（test-only observer / host trace等。無ければ#370のtest側へ決定的seamを新設する。sampling退避はしない）により「**最初に表示されるfaceがT-09であり、T-07のcompose/render回数が0**」を直接固定する。反復samplingは補助に留め、単独ではrender count 0の証明にもguard testの完了条件にもならない）。既存 `busyReviewKeepsProposalOutcomeUntouchedAndRetryableByRealTouch` の緑維持。unit（`OrganizationOnboardingProposalTest`: admission→REVIEWED記録順序の回帰。face mapping純関数`manualOrganizationFace(state)`のtable-driven test（`ManualOrganizationFaceTest`、#369実装導入）はadmitted状態→T-09対応のcomponent-level証拠として併用） |
+| OCB-AC-01 | instrumentation（`OnboardingOrganizationProposalInstrumentationTest.realTouchStreamOnReviewAdmitsAFreshRunAndRoutesToTheReviewSurface`再work。guard testは**admitted runを実際に再現する**: `ManualOrganizationModule`へprocess-local runner fixtureを注入（既存の`installProcessLocalRunner` reflection pattern）し、proposal viewを既定のproduction `admitReview`（実際の`start(ONBOARDING_PROPOSAL)`）で構築して遷移する。既存`TouchActivationGate`の`reviewOutcome.get()`スタブ（実際のrunner開始を伴わない）を遷移先観測に使わない。観測は決定的値で行う: `start()`は`Started`を返す前に検出→capture→planを完走しPreview面で駐留するため、(i) 遷移先でadmitted runの面（`manual_organization_preview`。canonical順序T-09以降に該当）が表示されること、(ii) main thread上で`manualOrganizationFace(runner.state)`がPREAMBLE以外（fixture進行ではCONFIRMATION）であること、(iii) T-07前置き面の主CTA（`manual_organization_start`）が描画treeに現れないこと、(iv) state trace（StateFlow収集）の全post-admission状態が`manualOrganizationFace`でPREAMBLEに写像されないこと——faceがstateの純関数であること（ManualOrganizationFace.kt RD-7）と併せ、T-07 compose/render回数0を直接記録する。反復samplingは補助に留め、完了条件の代用にはならない）。既存`busyReviewKeepsProposalOutcomeUntouchedAndRetryableByRealTouch`の緑維持。unit（`OrganizationOnboardingProposalTest`: admission→REVIEWED記録順序の回帰。face mapping純関数のtable-driven test `ManualOrganizationFaceTest`はadmitted状態→対応面のcomponent-level証拠として併用） |
 | OCB-AC-02 | instrumentation（`laterTapShowsTheReentryHintAndPreservesTheDeferOutcome`のlabel構成assert更新: hub入口row label `organizer_hub_title` を含み`manual_organization_title`を含まないこと。EN/ja双方のformat resource合成assert）。string diff（`values/` / `values-ja/` のname集合・placeholder一致）+ emulator screenshot（light/dark × ja/default） |
 | OCB-AC-03 | instrumentation（`homeScreenSettingsShowsTheOrganizerEntryInGeneralAboveTheFold`の入口row assertをhub入口row版へ更新、`OrganizerDiagnosticsRouteInstrumentationTest.homeScreenMaterialsRelocationRoutesDiagnosticsThroughHub`の暫定併存assertを「直行row不在＋hub入口row表示」へ更新）。obsolete理由（D-01完成・#370のrow廃止）をPRに記録 |
 | OCB-AC-04 | 既存unit/instrumentationの無編集green（outcome・provenance・journal非発行の回帰群）。実装PR diff上、persistent store / diagnostics契約コードの無編集確認 |
@@ -362,6 +362,14 @@ None。新規permission、外部送信、sensitive dataの扱い追加はない�
   `start(ONBOARDING_PROPOSAL)` を伴うadmission経路で遷移先を作ること、
   T-07非介在は決定的観測点（最初の表示face＝T-09、T-07 compose/render回数0）で
   直接固定すること、反復samplingをrender count 0の証明と位置付けないことを契約化。
+- 2026-09-20: Implementation re-entry revision（#369実装 PR #387 merge後）。
+  369実装の事実にoracleを固定: `ManualOrganizationFace`/`manualOrganizationFace(state)`
+  （ManualOrganizationFace.kt）、transitional T-07主CTA `manual_organization_start`、
+  `ManualOrganizationRun.start()`が`Started`返却前に検出→capture→planを完走し
+  Preview確認面で駐留すること（よってrouteはadmitted runの面＝CONFIRMATIONで開く。
+  「T-09準備中相当以降」のscenario文言どおり）、fixture注入は既存
+  `installProcessLocalRunner` reflection patternを使用。OCB-AC-01のoracle観測4点へ具体化。
+  実装（row廃止・hint copy・guard test・specs 53/232改訂）を同一PRで実施。
 
 - 2026-09-20: **Accepted**。最終re-review（[指摘なし](https://github.com/nunu1733/NunuLauncher/issues/370#issuecomment-5751574889)）
   をもってPhase1 reviewを通過。実装 (Phase2) の契約として確定

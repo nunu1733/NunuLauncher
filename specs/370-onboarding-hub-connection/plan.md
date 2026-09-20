@@ -2,12 +2,44 @@
 
 > Issue: #370
 > Spec: [spec.md](./spec.md)
-> Status: **accepted**（2026-09-20。spec/planともPhase1 review通過済み。
-> 実装着手は#369実装（同Issue Phase 2）merge後とし、その時にrun面の実リソース名・
-> 行番号を最終確認（step 1のre-entry確定）のうえ着手する。
-> 本planはbaseline `171d0bcf10` 時点のコード調査に基づく）
+> Status: **accepted**（2026-09-20。spec/planともPhase1 review通過済み）。
+> 実装re-entry確定済み（2026-09-20、#369実装 PR #387 merge後・baseline `7ec9e9d3fe`）。
+> 本planの初期調査はbaseline `171d0bcf10` 時点。
 
-## Current evidence（baseline `171d0bcf10`、2026-09-20確認）
+## Implementation re-entry evidence（#369実装 PR #387 merge後、baseline `7ec9e9d3fe`、2026-09-20確認。step 1の確定結果）
+
+- **面写像seamは実装済み**: `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationFace.kt`（新規、#369実装）が
+  internal enum `ManualOrganizationFace`（`PREAMBLE`/`SELECTION`/`PREPARATION`/`CONFIRMATION`/`APPLYING`/`RESULT`/`FAILURE`/`RECOVERY`）と
+  純関数 `manualOrganizationFace(state)` を提供する。`Idle`/`Cancelled` → `PREAMBLE`（T-07）、
+  `Capturing`/`CandidateDetection`/`Planning` → `PREPARATION`（T-09）。table-driven unit testは
+  `tests/unit/app/lawnchair/organizer/ui/ManualOrganizationFaceTest.kt`。
+- **transitional T-07の実体**: run面Idle/Cancelled分岐は、durable status行＋scope要約
+  （`manual_organization_preamble_scope`）＋主CTA `manual_organization_start`
+  （EN "Organize as is" / ja「そのまま整理」）＋exchange idle entryで構成される
+  （`ManualOrganizationPreferences.kt`。#369実装）。T-09準備中面の見出しは
+  `manual_organization_preparation`、T-10確認面の見出しは `manual_organization_preview`。
+- **決定的観測の鍵となる進行順序**: `ManualOrganizationRun.start()` は `Started` を返す前に
+  検出→（選択）→capture→planを**同期的に完走**しPreview面で駐留する
+  （`start()`内で`setIfActive`/detection/composeが逐次実行される）。
+  よってproduction `admitReview`（既定実装）の `Started` 受信後の遷移では、
+  **routeはPreview確認面（`CONFIRMATION`）で開く**。guard testの決定的観測は
+  「routeがadmitted runの面（CONFIRMATION）で開く」「`manualOrganizationFace(runner.state)`が
+  main thread上でPREAMBLE以外」「T-07主CTA（`manual_organization_start`）が描画treeに現れない」
+  「StateFlowから収集したstate traceの全post-admission状態がPREAMBLEに写像されない」の4点
+  （faceがstateの純関数であることと併せ、T-07 compose/render回数0を直接記録する）。
+- **fixture注入pattern**: `OrganizerDiagnosticsRouteInstrumentationTest.installProcessLocalRunner`
+  （[646-650](../../tests/organizer-instrumentation/app/lawnchair/ui/preferences/OrganizerDiagnosticsRouteInstrumentationTest.kt)）が
+  reflectionで `ManualOrganizationModule.instance` を置換する既存pattern。
+  `ManualOrganizationModule.get(context)` は初回呼び出し時にproduction moduleをlazy構築するため、
+  fixtureはlauncher起動後・tap前に注入する。instrumentation source setはapp moduleと同一compile unitであり、
+  internal（`manualOrganizationFace`等）へアクセス可能。
+- **既存guard testの再work**: `realTouchStreamOnReviewAdmitsAFreshRunAndRoutesToTheReviewSurface` は
+  `TouchActivationGate` に `useProductionAdmission` オプションを追加したうえで
+  production admission経路＋fixture注入＋決定的face観測へ更新（本PR）。
+- **`OrganizationOnboardingProposal.kt` / `PreferenceRoutes.kt` への#369実装差分は無し**
+  （PR #387のdiff確認済み。行番号は`171d0bcf10`時点のものが有効）。
+
+## Pre-implementation evidence（baseline `171d0bcf10`、2026-09-20確認）
 
 - **受入済み#369 spec/planがguard testの対象seamを確定させている**
   （[specs/369-run-display-integration/spec.md](../369-run-display-integration/spec.md) /
@@ -208,23 +240,16 @@
   **component-level証拠として併用**する（UI全体のrender証明の代わりにはしない）。
 - **instrumentation**（`OnboardingOrganizationProposalInstrumentationTest`）:
   1. hint label構成assertの更新（`organizer_hub_title` を含む、旧labelを含まない。EN/ja）。
-  2. 確認tap → admission → 遷移先観測の拡張: **admitted runの実際の再現**と
-     **T-07前置き面が一度も現れないことの決定的観測**。
-     - fixture改修: guard対象のproposalへ、遷移先run面が実際に消費する同一
-       process-local runner（`installProcessLocalRunner(fixture)` pattern）への
-       実際の `start(ONBOARDING_PROPOSAL)` を実行するadmission経路を渡す
-       （production path通しが望ましい。既存 `TouchActivationGate` の
-       `reviewOutcome.get()` スタブはadmitted状態を作らないため、遷移先の
-       面観測には使わない）。
-     - 観測: #369実装のsurface seamが提供する決定的観測点（test-only observer /
-       host trace等。#369実装merge後に有無を確認）により「最初に表示されるfaceが
-       T-09統合progress面であり、T-07前置き面のcompose/render回数が0」を直接固定。
-       **既存の決定的観測点が無い場合はsamplingへ退避せず、test側へ決定的seamを
-       追加する（Risk節どおり必須）**。反復sampling（transitional T-07主CTA
-       「そのまま整理」のsemantics不在の観測window中確認）は補助に留まり、
-       単独ではrender count 0の証明にもguard testの完了条件にもならない。
-     - T-07主CTA・T-09面の実際のstring resource名は#369実装merge後に実装へ
-       合わせて固定する。
+  2. 確認tap → admission → 遷移先観測の拡張（実装済み。実装詳細は
+     「Implementation re-entry evidence」の決定的観測4点）: **admitted runの実際の再現**
+     （`installProcessLocalRunner` reflection pattern + 既定のproduction `admitReview`。
+     既存 `TouchActivationGate` の `reviewOutcome.get()` スタブは面観測に使わない）と
+     **T-07前置き面が一度も現れないことの決定的記録**
+     （routeがadmitted runの面（Preview確認面）で開くこと、main thread上の
+     `manualOrganizationFace(runner.state)`がPREAMBLE以外であること、T-07主CTA
+     `manual_organization_start`が描画treeに現れないこと、state traceの全
+     post-admission状態がPREAMBLEに写像されないこと）。反復samplingは補助に留まり、
+     単独ではrender count 0の証明にもguard testの完了条件にもならない。
   3. `homeScreenSettingsShowsTheOrganizerEntryInGeneralAboveTheFold` の入口row assertを
      hub入口row版へ更新。
   4. `OrganizerDiagnosticsRouteInstrumentationTest.homeScreenMaterialsRelocationRoutesDiagnosticsThroughHub`
@@ -242,17 +267,15 @@
 
 ## Incremental implementation order
 
-1. **#369実装merge後のre-entry確定**: run面実装（transitional T-07前置き面・T-09統合
-   progress面の実際のstring resource名・compose構成、`ManualOrganizationFaceTest`の
-   実体、`OrganizationOnboardingProposal.kt` / `PreferenceRoutes.kt` への#369差分の有無）
-   を読み取り、guard testの観測対象と本planのCurrent evidenceを行番号込みで確定する。
-   spec.mdのOpen questions 1（transitional T-07の表示）も実装で確認する。
+1. ~~**#369実装merge後のre-entry確定**~~（完了。上記「Implementation re-entry evidence」のとおり、
+   face写像seam・transitional T-07実体・同期進行によるPreview駐留・fixture注入patternを確定。
+   spec.md Open questions 1もtransitional T-07の表示で確認済み）。
 2. **直行row削除＋hint copy実装**（第3引数差し替え + javadoc更新 +
-   instrumentation assert 2件更新）。
+   instrumentation assert 2件更新）。実装済み（本PR）。
 3. **確認経路のguard test**（#369実装merge後。admitted runを実際に再現するfixture改修
-   ＋「最初の表示face＝T-09、T-07 compose/render回数0」の決定的観測）。
+   ＋「routeがadmitted runの面で開く、T-07 compose/render回数0」の決定的観測）。実装済み（本PR）。
 4. **spec 53/232の文書改訂 + obsolete理由のPR記録**（2〜3と同一PR。spec 53 §3.2は
-   workflow blockの参照化を含む）。
+   workflow blockの参照化を含む）。実装済み（本PR）。
 5. **検証一式の実行とPR記録**（unit gate、instrumentation lane、string確認、
    emulator evidence、`git diff --check`、`spotlessCheck`）。
 

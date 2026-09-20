@@ -22,9 +22,76 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import app.lawnchair.LawnchairLauncher
+import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
+import app.lawnchair.organizer.application.public.ApplyResult
+import app.lawnchair.organizer.application.public.DeviceCapabilities
+import app.lawnchair.organizer.application.public.DeviceOrientation
+import app.lawnchair.organizer.application.public.LayoutState
+import app.lawnchair.organizer.application.public.OrganizerDurableStatus
+import app.lawnchair.organizer.application.public.PlanPreviewResult
+import app.lawnchair.organizer.application.public.RecoveryPointId
+import app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation
+import app.lawnchair.organizer.application.public.RecoveryPreviewRejection
+import app.lawnchair.organizer.application.public.RecoveryPreviewResult
+import app.lawnchair.organizer.application.public.RecoveryRejection
+import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.application.public.RunId
+import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
+import app.lawnchair.organizer.application.protocol.ReadinessGate
+import app.lawnchair.organizer.diagnostics.DiagnosticsPort
+import app.lawnchair.organizer.diagnostics.model.RunEvent
+import app.lawnchair.organizer.integration.CandidateDetectionResult
+import app.lawnchair.organizer.integration.DetectionUnavailableReason
+import app.lawnchair.organizer.integration.InputProvenance
+import app.lawnchair.organizer.integration.OrganizationInputComposition
+import app.lawnchair.organizer.planning.ActiveCategoryCatalog
+import app.lawnchair.organizer.planning.CandidateTarget
+import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.ClassificationSignals
+import app.lawnchair.organizer.planning.DeviceCapabilities as PlannerDeviceCapabilities
+import app.lawnchair.organizer.planning.Disposition
+import app.lawnchair.organizer.planning.DockPolicy
+import app.lawnchair.organizer.planning.FallbackCategoryPolicy
+import app.lawnchair.organizer.planning.FolderPolicy
+import app.lawnchair.organizer.planning.GridCell
+import app.lawnchair.organizer.planning.GridSpan
+import app.lawnchair.organizer.planning.ItemId
+import app.lawnchair.organizer.planning.LayoutSnapshot
+import app.lawnchair.organizer.planning.NewFolderProfileScope
+import app.lawnchair.organizer.planning.OrganizationInput
+import app.lawnchair.organizer.planning.OrganizationPlanner
+import app.lawnchair.organizer.planning.Orientation
+import app.lawnchair.organizer.planning.OverflowPolicy
+import app.lawnchair.organizer.planning.Page
+import app.lawnchair.organizer.planning.PageId
+import app.lawnchair.organizer.planning.PageOrder
+import app.lawnchair.organizer.planning.PageRef
+import app.lawnchair.organizer.planning.PlacementCode
+import app.lawnchair.organizer.planning.PlacementTarget
+import app.lawnchair.organizer.planning.Planned
+import app.lawnchair.organizer.planning.PlannedPlacement
+import app.lawnchair.organizer.planning.PlanningResult
+import app.lawnchair.organizer.planning.RevisionId
+import app.lawnchair.organizer.planning.RuleSemantics
+import app.lawnchair.organizer.planning.RuleVersion
+import app.lawnchair.organizer.planning.RunMode
+import app.lawnchair.organizer.planning.StrategyId
+import app.lawnchair.organizer.planning.TargetSet
+import app.lawnchair.organizer.planning.TaxonomyContract
+import app.lawnchair.organizer.planning.TaxonomyVersion
+import app.lawnchair.organizer.planning.Warning
+import app.lawnchair.organizer.planning.WarningCode
+import app.lawnchair.organizer.rules.PolicyBundleIdentity
+import app.lawnchair.organizer.rules.PolicyInputIdentity
+import app.lawnchair.organizer.rules.PolicySourceKind
 import app.lawnchair.ui.preferences.PreferenceActivity
 import app.lawnchair.ui.preferences.navigation.HomeScreen
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import com.android.launcher3.AbstractFloatingView
 import com.android.launcher3.LauncherPrefs
 import com.android.launcher3.R
@@ -328,17 +395,72 @@ class OnboardingOrganizationProposalInstrumentationTest {
 
     @Test
     fun realTouchStreamOnReviewAdmitsAFreshRunAndRoutesToTheReviewSurface() {
-        val gate = TouchActivationGate()
+        // Issue #370: this guard drives the PRODUCTION admission path — the view is
+        // constructed with its default `admitReview`, so the tap starts a real runner
+        // through the installed process-local `ManualOrganizationModule` fixture instead
+        // of a stubbed outcome. The admitted run completes detection→capture→plan inside
+        // `start()` before `Started` returns (spec 53: admission precedes navigation), so
+        // the opened route must render the admitted run's face directly and never the
+        // T-07 preamble face (post-#369 run face contract, spec RD-1/RD-7).
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val gate = TouchActivationGate(useProductionAdmission = true)
         gate.show()
+        val faceTrace = Collections.synchronizedList(mutableListOf<ManualOrganizationRun.State>())
+        var traceJob: Job? = null
         try {
             gate.awaitInitialFocus()
-            gate.reviewOutcome.set(
-                ManualOrganizationRun.StartOutcome.Started(RunId(RUN_ID)),
+            // Installed after the launcher is up so no production reconciliation can
+            // replace the fixture before the tap; from now on the proposal's default
+            // admission starts THIS runner and the route's `ManualOrganizationPreferences`
+            // observes the same instance.
+            installProcessLocalRunner(
+                ManualOrganizationRun(GuardRunApplication(), OrganizationPlanner { guardPlanningResult() }),
             )
+            traceJob = CoroutineScope(Dispatchers.Main).launch {
+                ManualOrganizationModule.get(context).stateFlow.collect { faceTrace.add(it) }
+            }
             gate.deliveredTap(gate.content.reviewButton)
-            awaitResumedPreferenceActivity()
+            val activity = awaitResumedPreferenceActivity()
+            // The run parks at the preview confirmation face, so the route must open on
+            // it — deterministic proof the admitted run's face rendered first.
+            awaitAccessibilityTextBounds(
+                activity,
+                context.getString(R.string.manual_organization_preview),
+                "admitted run preview face",
+            )
+            instrumentation.runOnMainSync {
+                assertEquals(
+                    "the route must render the admitted run's face, not the T-07 preamble",
+                    ManualOrganizationFace.CONFIRMATION,
+                    manualOrganizationFace(ManualOrganizationModule.get(context).state),
+                )
+            }
+            // Rendered-level absence of the T-07 preamble CTA while the admitted run's
+            // face is up (settle-checked scan; the record below is the render-count proof).
+            awaitAccessibilityTextAbsent(
+                activity,
+                context.getString(R.string.manual_organization_start),
+                "T-07 preamble start CTA",
+            )
+            // Deterministic no-T-07 record: every coordinator state published after
+            // admission maps to a non-PREAMBLE face, so no composed frame could have
+            // rendered the preamble face during the route-open window (the face is a pure
+            // function of the state, ManualOrganizationFace.kt RD-7).
+            val trace = synchronized(faceTrace) { faceTrace.toList() }
+            val postAdmission = trace.dropWhile { it == ManualOrganizationRun.State.Idle }
+            assertTrue(
+                "the face trace must contain the admitted progression (trace=$trace)",
+                postAdmission.isNotEmpty(),
+            )
+            assertTrue(
+                "no post-admission state may map to the T-07 preamble face: $postAdmission",
+                postAdmission.all { manualOrganizationFace(it) != ManualOrganizationFace.PREAMBLE },
+            )
         } finally {
+            traceJob?.cancel()
             gate.restore()
+            installProcessLocalRunner(null)
         }
         assertEquals(
             OrganizationOnboardingProposalOutcome.REVIEWED,
@@ -372,7 +494,10 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 listOf(
                     R.string.settings_button_text,
                     R.string.home_screen_label,
-                    R.string.manual_organization_title,
+                    // Issue #370 (D-16): the hint guides to the hub entry row, the
+                    // settings-side organizer entry that exists after the manual
+                    // run row was removed from the General group.
+                    R.string.organizer_hub_title,
                 ).forEach { label ->
                     val pathLabel = context.getString(label)
                     assertTrue(
@@ -380,6 +505,11 @@ class OnboardingOrganizationProposalInstrumentationTest {
                         hint.contentDescription.contains(pathLabel),
                     )
                 }
+                // The pre-#370 path label must be gone from the composed copy.
+                assertFalse(
+                    "hint must not guide to the removed manual run row",
+                    hint.contentDescription.contains(context.getString(R.string.manual_organization_title)),
+                )
             }
 
             // Back closes the hint without writing any proposal outcome.
@@ -525,7 +655,11 @@ class OnboardingOrganizationProposalInstrumentationTest {
     fun homeScreenSettingsShowsTheOrganizerEntryInGeneralAboveTheFold() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
-        val entryLabel = context.getString(R.string.manual_organization_title)
+        // Issue #370 (D-01 entry-row-only end state): the hub row is the only organizer
+        // entry in the settings Home screen; the manual run row staged by #367 was
+        // removed here (obsolete reason recorded in the implementation PR).
+        val entryLabel = context.getString(R.string.organizer_hub_title)
+        val removedRowLabel = context.getString(R.string.manual_organization_title)
         val generalHeading = context.getString(R.string.general_label)
 
         context.startActivity(
@@ -562,6 +696,114 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 entryBounds.bottom <= actionsBounds.top,
             )
         }
+        // Issue #370: the manual run row must be gone from the composed settings Home
+        // screen — the hint and the hub row are the only remaining onboarding/re-entry
+        // guidance, so a resurrected direct run row would silently recreate the
+        // #367 staged coexistence.
+        awaitAccessibilityTextAbsent(activity, removedRowLabel, "removed manual run row")
+    }
+
+    /** Polls the activity's accessibility tree until the given text no longer renders. */
+    private fun awaitAccessibilityTextAbsent(activity: PreferenceActivity, label: String, description: String) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        InjectedInputEnvironment.ensureWindowFocused(activity)
+        repeat(50) {
+            val root = instrumentation.uiAutomation.rootInActiveWindow
+            if (root != null && root.packageName == activity.packageName &&
+                findAccessibilityTextBounds(root, label) == null
+            ) {
+                // The lazy list omits un-composed rows from the tree; require the absence
+                // to hold across a settle window so a mid-layout pass cannot pass spuriously.
+                SystemClock.sleep(200)
+                val recheck = instrumentation.uiAutomation.rootInActiveWindow
+                if (recheck != null && recheck.packageName == activity.packageName &&
+                    findAccessibilityTextBounds(recheck, label) == null
+                ) {
+                    return
+                }
+            }
+            SystemClock.sleep(100)
+        }
+        throw AssertionError("the removed row '$label' still renders in the activity (description=$description)")
+    }
+
+    /**
+     * Issue #370: swaps the process-local runner behind `ManualOrganizationModule` the
+     * same way the diagnostics route tests do, so the proposal's production default
+     * `admitReview` starts a controlled fixture and the opened run face observes it.
+     */
+    private fun installProcessLocalRunner(runner: ManualOrganizationRun?) {
+        val field = ManualOrganizationModule.javaClass.getDeclaredField("instance")
+        field.isAccessible = true
+        field.set(ManualOrganizationModule, runner)
+    }
+
+    /**
+     * Issue #370 admission fixture: the minimal `ManualOrganizationApplication` for the
+     * production-admission guard. Detection reports unavailable (legacy full flow), the
+     * planner returns one moved placement with a fallback-category warning, and the
+     * preview seam keeps the legacy count-only flow — so `start()` parks the run at the
+     * preview confirmation face before `Started` returns, with zero writes.
+     */
+    private class GuardRunApplication : ManualOrganizationApplication {
+        override val diagnostics = object : DiagnosticsPort {
+            override fun emit(event: RunEvent) = Unit
+            override fun snapshot(): List<RunEvent> = emptyList()
+        }
+
+        override fun newRunId() = RunId(RUN_ID)
+
+        override fun composeFullOrganization(): OrganizationInputComposition = OrganizationInputComposition.Ready(
+            input = guardInput(),
+            provenance = InputProvenance(
+                revision = RevisionId(REVISION),
+                rules = guardPolicyIdentity(PolicySourceKind.ORGANIZER_POLICY_BUNDLE),
+                taxonomy = guardPolicyIdentity(PolicySourceKind.ORGANIZER_POLICY_BUNDLE),
+                signals = guardPolicyIdentity(PolicySourceKind.MATERIALIZED_CLASSIFICATION_SIGNALS),
+                targets = guardPolicyIdentity(PolicySourceKind.MATERIALIZED_FULL_TARGET_SET),
+                policyBundle = PolicyBundleIdentity("v1", SHA_256),
+                layoutStrategySelection = guardPolicyIdentity(PolicySourceKind.LAYOUT_STRATEGY_SELECTION),
+            ),
+        )
+
+        override fun detectMissingAppCandidates() = CandidateDetectionResult.Unavailable(
+            DetectionUnavailableReason.PROFILE_SERIAL_UNAVAILABLE,
+        )
+
+        override fun composeScopeComposedOrganization(
+            selection: List<CandidateTarget.AppKey>,
+        ): OrganizationInputComposition = composeFullOrganization()
+
+        override fun inspectPlan(input: OrganizationInput, result: PlanningResult): PlanPreviewResult =
+            PlanPreviewResult.WriterBusy
+
+        override fun materialize(input: OrganizationInput, result: PlanningResult): OrganizationPlanMaterializer.Result =
+            OrganizationPlanMaterializer.Result.Ready(
+                ValidatedLayoutPlan(
+                    sourceRevision = input.snapshot.revision,
+                    sourceState = guardEmptyLayoutState(),
+                    intendedState = guardEmptyLayoutState(),
+                    actions = emptyList(),
+                    newPages = emptyList(),
+                    newFolders = emptyList(),
+                    ruleVersion = input.rules.version,
+                    taxonomyVersion = input.taxonomy.version,
+                ),
+            )
+
+        override fun apply(plan: ValidatedLayoutPlan, runId: RunId): ApplyResult =
+            ApplyResult.Applied(runId, RecoveryPointId(POINT_ID))
+
+        override fun inspectRecovery(pointId: RecoveryPointId): RecoveryPreviewResult =
+            RecoveryPreviewResult.NotRestorable(pointId, RecoveryPreviewRejection.MISSING)
+
+        override fun confirmRecovery(pointId: RecoveryPointId, confirmation: RecoveryPreviewConfirmation): RecoveryResult =
+            RecoveryResult.NotRestorable(pointId, RecoveryRejection.MISSING)
+
+        override fun readDurableOrganizerStatus(): OrganizerDurableStatus = OrganizerDurableStatus.NEVER_ORGANIZED
+
+        override val readinessState: StateFlow<ReadinessGate.State> =
+            MutableStateFlow(ReadinessGate.State.READY)
     }
 
     /** Walks the real accessibility tree (Compose semantics included) for a text node's bounds. */
@@ -1251,6 +1493,10 @@ class OnboardingOrganizationProposalInstrumentationTest {
     private inner class TouchActivationGate(
         private val showHint: ((LawnchairLauncher) -> Unit)? = null,
         private val beforeShow: ((LawnchairLauncher) -> Unit)? = null,
+        // Issue #370: construct the proposal view with its production default
+        // `admitReview` (a real `ManualOrganizationModule` start) instead of the stubbed
+        // outcome, so the admission guard exercises the path the proposal actually drives.
+        private val useProductionAdmission: Boolean = false,
     ) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val store = FakeStore()
@@ -1288,15 +1534,23 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 // Runs inside the same main-sync block as proposal.show() so state prepared
                 // here (e.g. a focused pre-proposal target) is what the proposal captures.
                 beforeShow?.invoke(launcher)
-                proposal = OrganizationOnboardingProposal.OrganizationOnboardingProposalView(
-                    launcher,
-                    OrganizationOnboardingProposalController(store),
-                    admitReview = {
-                        admissions.incrementAndGet()
-                        reviewOutcome.get()
-                    },
-                    showHint = showHint ?: { OrganizationOnboardingReentryHint.showOrganizationReentryHint(it) },
-                )
+                proposal = if (useProductionAdmission) {
+                    OrganizationOnboardingProposal.OrganizationOnboardingProposalView(
+                        launcher,
+                        OrganizationOnboardingProposalController(store),
+                        showHint = showHint ?: { OrganizationOnboardingReentryHint.showOrganizationReentryHint(it) },
+                    )
+                } else {
+                    OrganizationOnboardingProposal.OrganizationOnboardingProposalView(
+                        launcher,
+                        OrganizationOnboardingProposalController(store),
+                        admitReview = {
+                            admissions.incrementAndGet()
+                            reviewOutcome.get()
+                        },
+                        showHint = showHint ?: { OrganizationOnboardingReentryHint.showOrganizationReentryHint(it) },
+                    )
+                }
                 content = proposal.getChildAt(0) as OrganizationOnboardingProposalContent
                 listOf(content.laterButton, content.skipButton, content.reviewButton).forEach { button ->
                     button.setOnTouchListener { view, event ->
@@ -1544,5 +1798,76 @@ class OnboardingOrganizationProposalInstrumentationTest {
          * tail latency under a loaded shared emulator exceeded the previous fixed 5s window.
          */
         const val REVIEW_ADMISSION_ITERATIONS = 150
+
+        // Issue #370 guard fixture constants (same shapes as the diagnostics route tests).
+        private const val POINT_ID = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        private const val REVISION = "revision"
+        private const val SHA_256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+        private fun guardPolicyIdentity(source: PolicySourceKind) = PolicyInputIdentity(source, "v1", SHA_256)
+
+        private fun guardPlanningResult() = PlanningResult(
+            revision = RevisionId(REVISION),
+            ruleVersion = RuleVersion("v1"),
+            taxonomyVersion = TaxonomyVersion("v1"),
+            organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
+            outcome = Planned(
+                placements = listOf(
+                    PlannedPlacement(
+                        item = ItemId("item"),
+                        disposition = Disposition.Moved(PlacementCode.SINGLE_PLACEMENT),
+                        target = PlacementTarget.WorkspaceTarget(
+                            page = PageRef(PageId("page")),
+                            cell = GridCell(0, 0),
+                            span = GridSpan(1, 1),
+                        ),
+                    ),
+                ),
+                newPages = emptyList(),
+                newFolders = emptyList(),
+                categories = emptyList(),
+                warnings = listOf(Warning(WarningCode.FALLBACK_CATEGORY, emptyList())),
+            ),
+        )
+
+        private fun guardInput() = OrganizationInput(
+            snapshot = LayoutSnapshot(
+                revision = RevisionId(REVISION),
+                device = PlannerDeviceCapabilities(4, 5, 5, 3, 4, Orientation.PORTRAIT),
+                pages = listOf(Page(PageId("page"), PageOrder(0))),
+                items = emptyList(),
+            ),
+            rules = RuleSemantics(
+                RuleVersion("v2"),
+                FolderPolicy(2, NewFolderProfileScope.SAME_PROFILE_ONLY),
+                DockPolicy.PRESERVE,
+                OverflowPolicy.ADD_PAGES_FOR_ITEMS_THAT_FIT_EMPTY_PAGE,
+                FallbackCategoryPolicy.KEEP_AS_SINGLETON,
+                StrategyId("CANONICAL_PAGE_COMPACT_V1"),
+            ),
+            taxonomy = TaxonomyContract(
+                TaxonomyVersion("v1"),
+                listOf(CategoryId("other")),
+                CategoryId("other"),
+            ),
+            catalog = ActiveCategoryCatalog(
+                TaxonomyContract(
+                    TaxonomyVersion("v1"),
+                    listOf(CategoryId("other")),
+                    CategoryId("other"),
+                ),
+                emptyList(),
+            ),
+            signals = ClassificationSignals(emptyList()),
+            targets = TargetSet(emptyList(), emptyList()),
+            runMode = RunMode.FullOrganization,
+        )
+
+        private fun guardEmptyLayoutState() = LayoutState(
+            pages = emptyList(),
+            profiles = emptyList(),
+            deviceCapabilities = DeviceCapabilities(4, 5, 5, 3, 4, DeviceOrientation.PORTRAIT),
+            items = emptyList(),
+        )
     }
 }

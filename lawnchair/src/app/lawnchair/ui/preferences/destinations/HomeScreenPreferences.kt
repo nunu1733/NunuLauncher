@@ -43,7 +43,6 @@ import app.lawnchair.ui.preferences.components.layout.ExpandAndShrink
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
 import app.lawnchair.ui.preferences.navigation.HomeScreenGrid
-import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
 import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizer
 import app.lawnchair.util.collectAsStateBlocking
 import com.android.launcher3.LauncherAppState
@@ -89,16 +88,11 @@ fun HomeScreenPreferences(
                 label = stringResource(id = R.string.infinite_scrolling_label),
                 description = stringResource(id = R.string.infinite_scrolling_description),
             )
-            // Issue #232: promoted above the Layout section so the persistent organizer entry
+            // Issue #232: kept above the Layout section so the persistent organizer entry
             // is re-discoverable without scrolling after the onboarding proposal's `Later`.
-            // Issue #367 staged coexistence: the hub entry plus this manual run entry are
-            // the only remaining organizer rows here; the #367 materials moved under the
-            // hub, and removing this row (entry-row-only end state) is owned by #370.
-            NavigationActionPreference(
-                label = stringResource(id = R.string.manual_organization_title),
-                destination = HomeScreenManualOrganization(),
-                subtitle = stringResource(id = R.string.manual_organization_summary),
-            )
+            // Issue #370 (D-01 entry-row-only end state): this hub row is now the only
+            // organizer row in the settings; the manual run row that #367 staged next to
+            // it is removed, and a new run starts from the hub's start CTA (T-07 preamble).
             // Issue #366: the Organizer hub (T-01) — the persistent organizing
             // workspace and the settings-side route to the organizing
             // materials, diagnostics, and the run surface.
