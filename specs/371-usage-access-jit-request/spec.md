@@ -1,6 +1,6 @@
 ---
 issue: "#371"
-status: draft
+status: accepted
 requirements: [FR-013, D-010]
 risk: []
 updated: 2026-09-21
@@ -550,6 +550,9 @@ And hub材料面（#366/#367）からT-06へ到達できる導線は不変であ
   旧表現（「上限値（またはレンジ）をcontract commitで確定」）を0.5〜2秒拘束のnormative文
   （contract commitでは範囲内の具体値のみ確定。GRANTED観測時は即時終了）へ全節統一
   （Scope/Data and state/Failure handling/risk/Verification）。
+- 2026-09-21: Accepted（`cb70344d42` への4th再レビューで [No findings](https://github.com/nunu1733/NunuLauncher/issues/371#issuecomment-5753010154) を確認し、statusを `accepted` へ更新）。
+  実装PRでの契約確定事項（JIT-AC-02/03/06のcontract commitにおける具体値・文言確定と
+  PR evidence記録）を受入条件として維持する。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/371
 [2]: https://github.com/nunu1733/NunuLauncher/issues/365

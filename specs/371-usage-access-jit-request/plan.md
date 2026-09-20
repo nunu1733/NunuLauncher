@@ -2,7 +2,7 @@
 
 > Issue: #371
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: accepted（2026-09-21。4th再レビューNo findingsを受入）
 
 ## Current evidence
 
