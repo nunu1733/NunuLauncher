@@ -190,14 +190,16 @@ class UsageAccessJitInstrumentationTest {
         // the app-op; the shell grants while the app is backgrounded in the
         // system settings, BEFORE the app returns — so the ON_RESUME bounded
         // re-read observes the grant and only then resumes the composition.
+        // Reset BEFORE building the runner: the gate instance is captured at
+        // construction, so a reset after it would leave the runner holding
+        // the previous (possibly consumed) singleton.
+        UsageAccessJitGateProvider.resetForTests()
         val runner = ManualOrganizationRun(
             application = application,
             planner = OrganizationPlanner { error("planner must not run for a NotReady composition") },
             usageAccessGate = UsageAccessJitGateProvider.get(context),
         )
         try {
-            // Each test must start from an unconsumed process opportunity.
-            UsageAccessJitGateProvider.resetForTests()
             setUsageAccessOp("deny")
             composeRule.setContent {
                 LawnchairTheme {
@@ -226,14 +228,16 @@ class UsageAccessJitInstrumentationTest {
     fun settingsReturnWithoutGrantFallsBackAfterTheBound() {
         val context = context()
         val application = NotReadyApplication(context)
+        // Reset BEFORE building the runner: the gate instance is captured at
+        // construction, so a reset after it would leave the runner holding
+        // the previous (possibly consumed) singleton.
+        UsageAccessJitGateProvider.resetForTests()
         val runner = ManualOrganizationRun(
             application = application,
             planner = OrganizationPlanner { error("planner must not run for a NotReady composition") },
             usageAccessGate = UsageAccessJitGateProvider.get(context),
         )
         try {
-            // Each test must start from an unconsumed process opportunity.
-            UsageAccessJitGateProvider.resetForTests()
             setUsageAccessOp("deny")
             composeRule.setContent {
                 LawnchairTheme {
