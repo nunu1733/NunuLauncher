@@ -1782,7 +1782,18 @@ class ManualOrganizationPreferencesInstrumentationTest {
             composeStarted = java.util.concurrent.CountDownLatch(1)
             composeRelease = java.util.concurrent.CountDownLatch(1)
         }
-        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        // RUN-AC-06: the planner latch holds State.Planning + PLAN so the last
+        // phase row is observable deterministically.
+        val plannerStarted = java.util.concurrent.CountDownLatch(1)
+        val plannerRelease = java.util.concurrent.CountDownLatch(1)
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner {
+                plannerStarted.countDown()
+                plannerRelease.await(60, java.util.concurrent.TimeUnit.SECONDS)
+                planningResult()
+            },
+        )
         composeRule.setContent {
             LawnchairTheme {
                 ManualOrganizationPreferences(run = runner)
@@ -1829,11 +1840,24 @@ class ManualOrganizationPreferencesInstrumentationTest {
         awaitDisplayed(context.getString(R.string.manual_organization_capturing))
         composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_capturing))
             .assertCountEquals(1)
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_capturing))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
         composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_detecting_missing_apps))
             .assertCountEquals(0)
-        // The composition completes through planning into the confirmation
-        // face (the proposal now exists).
+        // The composition completes into planning; the planner latch holds the
+        // PLAN phase row — single polite node, capture gone — before the
+        // confirmation face (the proposal now exists).
         application.composeRelease?.countDown()
+        composeRule.waitUntil(5_000) { plannerStarted.count == 0L }
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Planning }
+        awaitDisplayed(context.getString(R.string.manual_organization_planning))
+        composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_planning))
+            .assertCountEquals(1)
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_planning))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
+        composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_capturing))
+            .assertCountEquals(0)
+        plannerRelease.countDown()
         awaitPreview(runner, context)
 
         // RD-4: with a proposal present the interrupt asks the one discard
@@ -2057,6 +2081,10 @@ class ManualOrganizationPreferencesInstrumentationTest {
         // RUN-AC-06 (accepted plan): light/dark × ja/default screenshot
         // evidence for the integrated T-09 preparation face and T-13 failure
         // face. One compose host; the display condition swaps via state.
+        // The 8 captures (t09-preparation-* / t13-failure-*) are pulled from
+        // the device and committed under
+        // docs/assessment/assets-369-run-display-integration/ so the evidence
+        // set stays traceable from the PR.
         val context = ApplicationProvider.getApplicationContext<Context>()
         data class Condition(val name: String, val dark: Boolean, val ja: Boolean)
         val conditions = listOf(
