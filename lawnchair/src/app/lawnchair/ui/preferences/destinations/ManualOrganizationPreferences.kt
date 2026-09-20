@@ -348,106 +348,94 @@ fun ManualOrganizationPreferences(
                 }
 
                 // Issue #369 (TO-BE T-09): one integrated preparation face —
-                // the phase row renders the coordinator's deterministic
-                // projection (検出 → capture → plan), announced once per phase
+                // the phase row renders the coordinator's deterministic projection
+                // (検出 → capture → plan), announced once per phase
                 // (organization-run-ux §6). The face also hosts the internal
-                // zero-candidate pass-through (D-06): the empty Selecting cut
-                // maps here by the face mapping, never to the selection.
+                // zero-candidate pass-through (D-06) dispatched by the face
+                // mapping in the Selecting branch below.
                 ManualOrganizationRun.State.Capturing,
                 ManualOrganizationRun.State.CandidateDetection,
                 ManualOrganizationRun.State.Planning,
-                -> {
-                    item(key = "preparation-headline") {
-                        FocusTargetText(
-                            text = stringResource(R.string.manual_organization_preparation),
-                            focusRequester = focusRequester,
-                            modifier = focusTargetModifier,
-                        )
-                    }
-                    item(key = "preparation-phase") {
-                        ProgressText(
-                            when (preparationPhase) {
-                                ManualOrganizationRun.PreparationPhase.DETECTION ->
-                                    R.string.manual_organization_detecting_missing_apps
+                -> preparationFaceItems(
+                    preparationPhase = preparationPhase,
+                    focusRequester = focusRequester,
+                    focusTargetModifier = focusTargetModifier,
+                    onInterrupt = { interruptAndNavigate() },
+                )
 
-                                ManualOrganizationRun.PreparationPhase.CAPTURE ->
-                                    R.string.manual_organization_capturing
-
-                                ManualOrganizationRun.PreparationPhase.PLAN ->
-                                    R.string.manual_organization_planning
-                            },
-                        )
-                    }
-                    // D-13 §9: 準備中には提案も選択もない — 中断は確認なしの
-                    // zero-write中止（失う作業なし）。中断はrunを止めてhubへ戻る。
-                    item(key = "preparation-interrupt") {
-                        ClickablePreference(
-                            label = stringResource(R.string.manual_organization_interrupt),
-                            onClick = { interruptAndNavigate() },
-                        )
-                    }
-                }
-
+                // Issue #369 (RD-7/D-06): the face mapping gates the selection surface
+                // BEFORE any raw composition — the internal zero-candidate
+                // pass-through composes the preparation face, so no collector
+                // timing (StateFlow conflation) can render T-08 for an empty cut.
                 is ManualOrganizationRun.State.Selecting -> {
-                    // Issue #228: explicit scope selection (D-1: all
-                    // candidates start unchecked). Selection survives query
-                    // changes; Select all matches the filtered set, Clear all
-                    // clears the whole candidate set (spec §2).
-                    //
-                    // Issue #331: the run-in exchange entry shares the
-                    // surface. While an exchange step is in progress the
-                    // selection is frozen (the export scope is the frozen
-                    // selection); the bound intent's scope size guides
-                    // re-selection (never auto-selects).
-                    val exchangeBusy = exchangeHolder.screen !is app.lawnchair.organizer.ui.exchange.ExchangeScreen.Closed
-                    val scopedSelection = missingAppSelection.selected.toList()
-                    val scopedLabels = missingAppSelection.candidates
-                        .map { it.target to it.label }
-                        .toMap()
-                    // Issue #331: the accepted typed SCOPE_MISMATCH failure from
-                    // the scope binding gate (17th unified failure outcome),
-                    // rendered with the re-export guidance.
-                    currentState.scopeRejection?.let { rejection ->
-                        item(key = "missing-app-selection-scope-mismatch") {
-                            Text(
-                                text = app.lawnchair.organizer.ui.exchange.exchangeContractFailureText(rejection),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier
-                                    .padding(horizontal = 16.dp, vertical = 4.dp)
-                                    .semantics { liveRegion = LiveRegionMode.Assertive }
-                                    .testTag("missing-app-selection-scope-mismatch"),
-                            )
-                        }
-                    }
-                    missingAppSelectionItems(
-                        selection = missingAppSelection,
-                        onSelectionChange = { missingAppSelection = it },
-                        onConfirm = { selected -> execute { coordinator.confirmSelection(selected) } },
-                        // D-13: 選択があるときは1回確認の「中断」。空選択のままの
-                        // 離脱は何も壊さないため確認なし（キャンセル相当の離脱）。
-                        onCancel = {
-                            if (missingAppSelection.selected.isNotEmpty()) {
-                                pendingInterrupt = { interruptAndNavigate() }
-                            } else {
-                                interruptAndNavigate()
+                    if (manualOrganizationFace(currentState) == ManualOrganizationFace.PREPARATION) {
+                        preparationFaceItems(
+                            preparationPhase = preparationPhase,
+                            focusRequester = focusRequester,
+                            focusTargetModifier = focusTargetModifier,
+                            onInterrupt = { interruptAndNavigate() },
+                        )
+                    } else {
+                        // Issue #228: explicit scope selection (D-1: all
+                        // candidates start unchecked). Selection survives query
+                        // changes; Select all matches the filtered set, Clear all
+                        // clears the whole candidate set (spec §2).
+                        //
+                        // Issue #331: the run-in exchange entry shares the
+                        // surface. While an exchange step is in progress the
+                        // selection is frozen (the export scope is the frozen
+                        // selection); the bound intent's scope size guides
+                        // re-selection (never auto-selects).
+                        val exchangeBusy = exchangeHolder.screen !is app.lawnchair.organizer.ui.exchange.ExchangeScreen.Closed
+                        val scopedSelection = missingAppSelection.selected.toList()
+                        val scopedLabels = missingAppSelection.candidates
+                            .map { it.target to it.label }
+                            .toMap()
+                        // Issue #331: the accepted typed SCOPE_MISMATCH failure from
+                        // the scope binding gate (17th unified failure outcome),
+                        // rendered with the re-export guidance.
+                        currentState.scopeRejection?.let { rejection ->
+                            item(key = "missing-app-selection-scope-mismatch") {
+                                Text(
+                                    text = app.lawnchair.organizer.ui.exchange.exchangeContractFailureText(rejection),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier
+                                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                                        .semantics { liveRegion = LiveRegionMode.Assertive }
+                                        .testTag("missing-app-selection-scope-mismatch"),
+                                )
                             }
-                        },
-                        intentScopeCount = currentState.intentScopeCount,
-                        editsEnabled = !exchangeBusy,
-                    )
-                    exchangeFlowItems(
-                        holder = exchangeHolder,
-                        scopedSelection = scopedSelection,
-                        scopedLabels = scopedLabels,
-                        clipboardTransport = { ctx: android.content.Context, text: String ->
-                            ClipboardExchangeTransport(ctx).copy(text)
-                        },
-                        shareTransport = { ctx: android.content.Context, text: String ->
-                            ShareSheetExchangeTransport().share(ctx, text)
-                        },
-                        fileTransport = FileExchangeTransport(context),
-                    )
+                        }
+                        missingAppSelectionItems(
+                            selection = missingAppSelection,
+                            onSelectionChange = { missingAppSelection = it },
+                            onConfirm = { selected -> execute { coordinator.confirmSelection(selected) } },
+                            // D-13: 選択があるときは1回確認の「中断」。空選択のままの
+                            // 離脱は何も壊さないため確認なし（キャンセル相当の離脱）。
+                            onCancel = {
+                                if (missingAppSelection.selected.isNotEmpty()) {
+                                    pendingInterrupt = { interruptAndNavigate() }
+                                } else {
+                                    interruptAndNavigate()
+                                }
+                            },
+                            intentScopeCount = currentState.intentScopeCount,
+                            editsEnabled = !exchangeBusy,
+                        )
+                        exchangeFlowItems(
+                            holder = exchangeHolder,
+                            scopedSelection = scopedSelection,
+                            scopedLabels = scopedLabels,
+                            clipboardTransport = { ctx: android.content.Context, text: String ->
+                                ClipboardExchangeTransport(ctx).copy(text)
+                            },
+                            shareTransport = { ctx: android.content.Context, text: String ->
+                                ShareSheetExchangeTransport().share(ctx, text)
+                            },
+                            fileTransport = FileExchangeTransport(context),
+                        )
+                    }
                 }
 
                 // Issue #369 (TO-BE T-13): one integrated failure face —
@@ -461,10 +449,13 @@ fun ManualOrganizationPreferences(
                 is ManualOrganizationRun.State.PlanningRejected,
                 -> {
                     item(key = "failure-headline") {
-                        FocusTargetText(
+                        // The headline is static read-out; the face's single
+                        // focus target stays the cause row below (base focus
+                        // restoration semantics — one FocusRequester per face).
+                        Text(
                             text = stringResource(R.string.manual_organization_failed),
-                            focusRequester = focusRequester,
-                            modifier = focusTargetModifier,
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                         )
                     }
                     // 原因文言は既存のtyped契約由来のmappingをそのまま再利用する
@@ -1007,6 +998,49 @@ internal fun strategyDescription(id: StrategyId): Int = when (id.value) {
     "GLOBAL_COMPACT_V2" -> R.string.organization_strategy_global_v2_description
     "CATEGORY_CONTIGUOUS_V1" -> R.string.organization_strategy_category_contiguous_description
     else -> R.string.organization_strategy_unknown_description
+}
+
+/**
+ * Issue #369 (TO-BE T-09, RD-7): the integrated preparation face — headline,
+ * the phase row driven by the coordinator's deterministic projection (announced
+ * once per phase via the polite live region), and the no-confirm interrupt row
+ * (D-13 §9: no selection or proposal exists yet, zero-write). Shared by the
+ * detection/capture/plan states and the internal zero-candidate `Selecting`
+ * pass-through, so the D-06 guard composes exactly this face.
+ */
+private fun androidx.compose.foundation.lazy.LazyListScope.preparationFaceItems(
+    preparationPhase: ManualOrganizationRun.PreparationPhase,
+    focusRequester: FocusRequester,
+    focusTargetModifier: Modifier,
+    onInterrupt: () -> Unit,
+) {
+    item(key = "preparation-headline") {
+        FocusTargetText(
+            text = stringResource(R.string.manual_organization_preparation),
+            focusRequester = focusRequester,
+            modifier = focusTargetModifier,
+        )
+    }
+    item(key = "preparation-phase") {
+        ProgressText(
+            when (preparationPhase) {
+                ManualOrganizationRun.PreparationPhase.DETECTION ->
+                    R.string.manual_organization_detecting_missing_apps
+
+                ManualOrganizationRun.PreparationPhase.CAPTURE ->
+                    R.string.manual_organization_capturing
+
+                ManualOrganizationRun.PreparationPhase.PLAN ->
+                    R.string.manual_organization_planning
+            },
+        )
+    }
+    item(key = "preparation-interrupt") {
+        ClickablePreference(
+            label = stringResource(R.string.manual_organization_interrupt),
+            onClick = onInterrupt,
+        )
+    }
 }
 
 /**

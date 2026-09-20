@@ -71,8 +71,16 @@ internal fun manualOrganizationFace(state: ManualOrganizationRun.State): ManualO
 
     is ManualOrganizationRun.State.Applied,
     ManualOrganizationRun.State.NoChanges,
-    is ManualOrganizationRun.State.Stale,
     -> ManualOrganizationFace.RESULT
+
+    // Issue #369 (D-12): the stale origin decides the face — the apply-time
+    // stale is a result variant, the entry-time stale never reached the
+    // confirmation face and renders as the integrated failure face.
+    is ManualOrganizationRun.State.Stale ->
+        when (state.origin) {
+            ManualOrganizationRun.StaleOrigin.APPLY_BLOCKED -> ManualOrganizationFace.RESULT
+            ManualOrganizationRun.StaleOrigin.DETECTED_BEFORE_REVIEW -> ManualOrganizationFace.FAILURE
+        }
 
     is ManualOrganizationRun.State.InputUnavailable,
     is ManualOrganizationRun.State.CandidateResolutionFailed,

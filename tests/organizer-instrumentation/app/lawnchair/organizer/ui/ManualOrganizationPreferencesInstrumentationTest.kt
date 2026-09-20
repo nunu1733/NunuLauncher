@@ -42,6 +42,7 @@ import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
+import kotlin.concurrent.thread
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
@@ -1765,6 +1766,124 @@ class ManualOrganizationPreferencesInstrumentationTest {
     }
 
     @Test
+    fun preparationFaceExposesHeadlinePhaseAndNoConfirmInterrupt() {
+        // RUN-AC-01/02/04 (accepted spec 369): the T-09 face — headline, the
+        // deterministic phase row (RD-7: while the detector runs the visible
+        // phase is 検出), and the interrupt action. The D-06 empty cut composes
+        // the preparation face through the face gate — the selection surface
+        // never renders (negative observation). RD-4: with no selection and no
+        // proposal the interrupt is a no-confirm zero-write stop.
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(emptyList())
+            detectStarted = java.util.concurrent.CountDownLatch(1)
+            detectRelease = java.util.concurrent.CountDownLatch(1)
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        val worker = thread(start = true) { runner.start() }
+        composeRule.waitUntil(5_000) { application.detectStarted?.count == 0L }
+
+        awaitDisplayed(context.getString(R.string.manual_organization_preparation))
+        awaitDisplayed(context.getString(R.string.manual_organization_detecting_missing_apps))
+        awaitDisplayed(context.getString(R.string.manual_organization_interrupt))
+        // Single phase row: exactly one announcing node for the current phase.
+        composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_detecting_missing_apps))
+            .assertCountEquals(1)
+        // D-06: the selection surface never composes for the empty cut.
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_title))
+            .assertDoesNotExist()
+
+        // RD-4: no-confirm interrupt — the dialog never appears and the run
+        // stops (zero-write) back at the T-07 preamble.
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_interrupt)).performClick()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Cancelled }
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_discard_confirm_title))
+            .assertDoesNotExist()
+        awaitDisplayed(context.getString(R.string.manual_organization_start))
+        application.detectRelease?.countDown()
+        worker.join(5_000)
+    }
+
+    @Test
+    fun failureFaceExposesHeadlineCauseAndTraversalReachableActions() {
+        // RUN-AC-02/06: the T-13 face — 見出し「実行できませんでした」＋原因
+        // (spec 172 copy split: the readiness family keeps the wait copy and
+        // no diagnostics lead) ＋ 再試行/中断, all keyboard-traversal reachable,
+        // and the interrupt stays zero-write with no dialog at a terminal face.
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            notReadyComposition = OrganizationInputComposition.NotReady(
+                reason = app.lawnchair.organizer.integration.InputReadinessReason.ReconciliationPending,
+                diagnostic = app.lawnchair.organizer.integration.CompositionDiagnostic(
+                    app.lawnchair.organizer.integration.InputCompositionCode.RECONCILIATION_PENDING,
+                ),
+            )
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { error("planner must not run") })
+        runner.start()
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.InputUnavailable }
+
+        awaitDisplayed(context.getString(R.string.manual_organization_failed))
+        awaitDisplayed(context.getString(R.string.manual_organization_input_not_ready_yet))
+        awaitDisplayed(context.getString(R.string.manual_organization_retry))
+        awaitDisplayed(context.getString(R.string.manual_organization_interrupt))
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_open_diagnostics))
+            .assertDoesNotExist()
+
+        // Keyboard/switch traversal: retry then interrupt, in visual order.
+        pressDownUntilFocused(context.getString(R.string.manual_organization_retry))
+        pressDownUntilFocused(context.getString(R.string.manual_organization_interrupt))
+
+        // The terminal face keeps its typed truth: the interrupt is a pure
+        // navigation affordance here (the run already ended zero-write), so the
+        // state stays InputUnavailable — no Cancelled rewrite, no dialog.
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_discard_confirm_title))
+            .assertDoesNotExist()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.InputUnavailable }
+    }
+
+    @Test
+    fun preparationAndFailureFacesStayReachableAtTwoHundredPercentFontScale() {
+        // RUN-AC-06 (200% reflow): on both integrated faces the headline, the
+        // phase/cause row, and every next-step action remain displayed with a
+        // click action — no unreachable critical action.
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            notReadyComposition = OrganizationInputComposition.NotReady(
+                reason = app.lawnchair.organizer.integration.InputReadinessReason.ReconciliationPending,
+                diagnostic = app.lawnchair.organizer.integration.CompositionDiagnostic(
+                    app.lawnchair.organizer.integration.InputCompositionCode.RECONCILIATION_PENDING,
+                ),
+            )
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { error("planner must not run") })
+        runner.start()
+        composeRule.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 2f)) {
+                LawnchairTheme {
+                    ManualOrganizationPreferences(run = runner)
+                }
+            }
+        }
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.InputUnavailable }
+
+        awaitDisplayed(context.getString(R.string.manual_organization_failed))
+        awaitDisplayed(context.getString(R.string.manual_organization_input_not_ready_yet))
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_retry)).assertHasClickAction()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_interrupt)).assertHasClickAction()
+    }
+
+    @Test
     fun capturesManualOrganizationReviewSurfaces() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val application = FakeApplication()
@@ -1778,6 +1897,54 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
         captureReviewScreenshot(context, "start")
 
+        // Issue #369 (RUN-AC-06): the integrated preparation and failure faces
+        // get their own evidence captures. The blocking detector holds the
+        // preparation face in its detection phase; a NotReady composition then
+        // drives the integrated failure face.
+        val preparationApplication = FakeApplication().apply {
+            detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(emptyList())
+            detectStarted = java.util.concurrent.CountDownLatch(1)
+            detectRelease = java.util.concurrent.CountDownLatch(1)
+        }
+        val preparationRunner = ManualOrganizationRun(
+            preparationApplication,
+            OrganizationPlanner { planningResult() },
+        )
+        composeRule.runOnIdle {
+            displayedRun.value = preparationRunner
+        }
+        val preparationWorker = kotlin.concurrent.thread(start = true) { preparationRunner.start() }
+        composeRule.waitUntil(5_000) { preparationApplication.detectStarted?.count == 0L }
+        awaitDisplayed(context.getString(R.string.manual_organization_preparation))
+        captureReviewScreenshot(context, "preparation")
+        preparationApplication.detectRelease?.countDown()
+        preparationWorker.join(5_000)
+
+        val failureApplication = FakeApplication().apply {
+            notReadyComposition = OrganizationInputComposition.NotReady(
+                reason = app.lawnchair.organizer.integration.InputReadinessReason.ReconciliationPending,
+                diagnostic = app.lawnchair.organizer.integration.CompositionDiagnostic(
+                    app.lawnchair.organizer.integration.InputCompositionCode.RECONCILIATION_PENDING,
+                ),
+            )
+        }
+        val failureRunner = ManualOrganizationRun(
+            failureApplication,
+            OrganizationPlanner { error("planner must not run") },
+        )
+        composeRule.runOnIdle {
+            displayedRun.value = failureRunner
+        }
+        composeRule.waitForIdle()
+        failureRunner.start()
+        composeRule.waitUntil(5_000) { failureRunner.state is ManualOrganizationRun.State.InputUnavailable }
+        awaitDisplayed(context.getString(R.string.manual_organization_failed))
+        captureReviewScreenshot(context, "failure")
+
+        composeRule.runOnIdle {
+            displayedRun.value = runner
+        }
+        composeRule.waitForIdle()
         runner.start()
         awaitPreview(runner, context)
         captureReviewScreenshot(context, "preview-confirm")
@@ -2174,7 +2341,16 @@ class ManualOrganizationPreferencesInstrumentationTest {
                 app.lawnchair.organizer.integration.DetectionUnavailableReason.PROFILE_SERIAL_UNAVAILABLE,
             )
 
-        override fun detectMissingAppCandidates(): app.lawnchair.organizer.integration.CandidateDetectionResult = detection
+        // Issue #369 (RD-7): latches hold the run in CandidateDetection so the
+        // preparation face's detection phase is observable deterministically.
+        var detectStarted: java.util.concurrent.CountDownLatch? = null
+        var detectRelease: java.util.concurrent.CountDownLatch? = null
+
+        override fun detectMissingAppCandidates(): app.lawnchair.organizer.integration.CandidateDetectionResult {
+            detectStarted?.countDown()
+            detectRelease?.await(5, java.util.concurrent.TimeUnit.SECONDS)
+            return detection
+        }
 
         override fun composeScopeComposedOrganization(
             selection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>,

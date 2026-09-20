@@ -2,6 +2,7 @@ package app.lawnchair.organizer.ui
 
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.RecoveryPointId
+import app.lawnchair.organizer.application.public.RecoveryPreviewResult
 import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.integration.InputReadinessReason
@@ -56,12 +57,18 @@ class ManualOrganizationFaceTest {
 
             ManualOrganizationRun.State.Applied(appliedResult(), summary()) to ManualOrganizationFace.RESULT,
             ManualOrganizationRun.State.NoChanges to ManualOrganizationFace.RESULT,
+            // D-12: the stale origin decides the face — apply-time is a result
+            // variant, entry-time is the integrated failure face.
             ManualOrganizationRun.State.Stale(ManualOrganizationRun.StaleOrigin.APPLY_BLOCKED) to ManualOrganizationFace.RESULT,
+            ManualOrganizationRun.State.Stale(ManualOrganizationRun.StaleOrigin.DETECTED_BEFORE_REVIEW) to ManualOrganizationFace.FAILURE,
 
             ManualOrganizationRun.State.InputUnavailable(
                 InputReadinessReason.InvalidCanonicalCapture(
                     app.lawnchair.organizer.integration.CaptureFailureCategory.CAPTURE_UNAVAILABLE,
                 ),
+            ) to ManualOrganizationFace.FAILURE,
+            ManualOrganizationRun.State.CandidateResolutionFailed(
+                app.lawnchair.organizer.application.public.CandidateResolutionFailure.COMPONENT_NOT_FOUND,
             ) to ManualOrganizationFace.FAILURE,
             ManualOrganizationRun.State.PlanningRejected(
                 ManualOrganizationRun.PlanningFailureKind.INVALID,
@@ -72,6 +79,12 @@ class ManualOrganizationFaceTest {
             ) to ManualOrganizationFace.FAILURE,
 
             ManualOrganizationRun.State.InspectingRecovery to ManualOrganizationFace.RECOVERY,
+            ManualOrganizationRun.State.RecoveryPreview(
+                RecoveryPreviewResult.NotRestorable(
+                    RecoveryPointId(FACE_TEST_POINT_ID),
+                    app.lawnchair.organizer.application.public.RecoveryPreviewRejection.MISSING,
+                ),
+            ) to ManualOrganizationFace.RECOVERY,
             ManualOrganizationRun.State.Recovering to ManualOrganizationFace.RECOVERY,
             ManualOrganizationRun.State.RecoveryResultState(RecoveryResult.WriterBusy) to ManualOrganizationFace.RECOVERY,
         )
