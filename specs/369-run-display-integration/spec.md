@@ -1,6 +1,6 @@
 ---
 issue: "#369"
-status: draft
+status: accepted
 requirements: [FR-004, FR-006, FR-015, NFR-009, NFR-011]
 risk: []
 updated: 2026-09-20
@@ -8,12 +8,22 @@ updated: 2026-09-20
 
 # run面の表示を8ユーザー状態へ統合し、canonical順序（前置き→検出→[選択]→capture/plan→確認）を固定してD-06条件表示とD-13語彙規約を適用する
 
+> Status: **accepted** (2026-09-20) — Phase1 reviewを通過し、実装 (Phase2) の契約として
+> 確定した。初版snapshot (`3c39ceb2f8`) への1st review
+> [**Changes requested**](https://github.com/nunu1733/NunuLauncher/issues/369#issuecomment-5740051014)
+> (高1/中2/低1) を `5a162363f9` で、2nd review
+> [**Changes requested**](https://github.com/nunu1733/NunuLauncher/issues/369#issuecomment-5746598782)
+> (中2/低1) を `ccf5883c19` で、3rd review
+> [**Changes requested**](https://github.com/nunu1733/NunuLauncher/issues/369#issuecomment-5746725434)
+> (中1) を `92c08cd9aa` で全件対応し、同headへの re-review
+> [**Accepted**](https://github.com/nunu1733/NunuLauncher/issues/369#issuecomment-5746792904)
+> (blocking指摘0件。implementation-ready判定) を経て実装へ着手する。
 > 契約の根拠: accepted TO-BE decision
 > [docs/product/organizer-to-be-ux.md](../../docs/product/organizer-to-be-ux.md)
 > （D-05, D-06, D-12, D-13, §5.1 T-07〜T-13, §5.3 canonical順序, §8.1 8状態, §8.3, §9）。
-> 本specは[Issue #369][1]の成果物である。statusが `draft` の間はimplementation-readyではない。
+> 本specは[Issue #369][1]の成果物である。
 > 前提: [Issue #366][2]のhub shell（T-01、「整理を開始」CTA、PR #380 merge済み）と
-> [Issue #368][3]のstrategy picker撤去・run中変更特例廃止（PR 384、merge済み）
+> [Issue #368][3]のstrategy picker撤去・run中変更特例廃止（PR #384、merge済み）
 > が適用済みであること（Issue本文 `Depends on`）。
 > 処分の正本: [docs/product/organizer-disposition-migration.md][4] §3.3/§3.13/§4.1
 > （accepted、PR #378 merge済み）が本件を「spec 52/228 Amend、spec 210注記、#369が実行」と
