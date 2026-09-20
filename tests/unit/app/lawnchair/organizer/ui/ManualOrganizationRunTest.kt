@@ -23,6 +23,7 @@ import app.lawnchair.organizer.integration.InputProvenance
 import app.lawnchair.organizer.integration.InputReadinessReason
 import app.lawnchair.organizer.integration.OrganizationInputComposition
 import app.lawnchair.organizer.planning.Availability
+import app.lawnchair.organizer.planning.CandidatePlanningIds
 import app.lawnchair.organizer.planning.ClassificationSignals
 import app.lawnchair.organizer.planning.DeviceCapabilities as PlannerDeviceCapabilities
 import app.lawnchair.organizer.planning.Disposition
@@ -65,7 +66,11 @@ import app.lawnchair.organizer.rules.PolicySourceKind
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -1697,6 +1702,349 @@ class ManualOrganizationRunTest {
 
     // --- Issue #228 review follow-ups: partial placement, typed preview
     // resolution failure, and pre-start journal silence ---
+
+    // --- Issue #369: D-06 zero-candidate continuation, cancel gate (RD-6),
+    // preparation-phase projection (RD-7) ---
+
+    /**
+     * Issue #369 (RD-7): an Unconfined collector observes every intermediate
+     * publish synchronously inside the emitting lock section, recording the
+     * visible phase at the moment each state was observed.
+     */
+    private fun collectStateWithPhase(
+        runner: ManualOrganizationRun,
+    ): Pair<MutableList<Pair<ManualOrganizationRun.State, ManualOrganizationRun.PreparationPhase>>, Job> {
+        val seen = mutableListOf<Pair<ManualOrganizationRun.State, ManualOrganizationRun.PreparationPhase>>()
+        val job = CoroutineScope(Dispatchers.Unconfined).launch {
+            runner.stateFlow.collect { state -> seen += state to runner.preparationPhase.value }
+        }
+        return seen to job
+    }
+
+    @Test
+    fun zeroCandidatesWithoutIntentContinuesThroughSelectingToTheConfirmation() {
+        // TO-BE D-06 / spec RD-3: an empty cut never shows T-08. The machine
+        // still enters Selecting (transition contract unchanged) and the
+        // coordinator's own continuation drives the composed phase. The
+        // Unconfined collector captures the intermediate pass-through.
+        val application = FakeApplication(readyInput()).apply { detection = detected() }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        val (observations, collector) = collectStateWithPhase(runner)
+
+        runner.start()
+
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+        assertEquals(0, application.composeScopeComposedCalls)
+        // The pass-through: the machine published Selecting(empty) and then
+        // left it again without any user action.
+        assertTrue(
+            "expected an internal Selecting(empty) pass-through",
+            observations.any { (state, _) ->
+                state is ManualOrganizationRun.State.Selecting && state.candidates.isEmpty()
+            },
+        )
+        assertTrue(
+            "the visible progression must include plan before the confirmation face",
+            observations.any {
+                it.first is ManualOrganizationRun.State.Planning && it.second == ManualOrganizationRun.PreparationPhase.PLAN
+            },
+        )
+        // An explicit confirmation afterwards is inert — the surface never opened.
+        runner.confirmSelection(emptySet())
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+        collector.cancel()
+    }
+
+    @Test
+    fun zeroCutWithExportScopeCandidatesStillOpensTheSelectionSurface() {
+        // RD-3 guard: an intent-bound run whose export scope holds candidates
+        // opens T-08 on a zero detection cut so the spec 331 mismatch display
+        // contract survives D-06.
+        val application = FakeApplication(scopeReadyInput()).apply { detection = detected() }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start(intent = validatedIntentWithScopeCandidates(listOf(appKey("com.example.c1"))))
+
+        assertTrue("expected Selecting, got ${runner.state}", runner.state is ManualOrganizationRun.State.Selecting)
+        val selecting = runner.state as ManualOrganizationRun.State.Selecting
+        assertTrue(selecting.candidates.isEmpty())
+        assertEquals(1, selecting.intentScopeCount)
+        assertEquals(ManualOrganizationFace.SELECTION, manualOrganizationFace(runner.state))
+    }
+
+    @Test
+    fun preparationPhaseStartsAtDetectionAndNeverReannouncesItAfterTheSelectionSurface() {
+        // RD-7: the first visible phase after admission is detection (the
+        // legacy admission Capturing projects as 検出), the selection surface
+        // opens for a non-empty cut, and the Capturing publish that returns to
+        // T-09 after T-08 always commits with CAPTURE — never a re-shown
+        // detection. The Unconfined collector reads the projection inside the
+        // emitting lock section, so no conflation timing can hide a stale
+        // pairing.
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.a/.Main") }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        val (observations, collector) = collectStateWithPhase(runner)
+
+        runner.start()
+        assertEquals(ManualOrganizationRun.PreparationPhase.DETECTION, runner.preparationPhase.value)
+        assertEquals(ManualOrganizationFace.SELECTION, manualOrganizationFace(runner.state))
+
+        runner.confirmSelection(
+            setOf(
+                app.lawnchair.organizer.planning.CandidateTarget.AppKey(
+                    app.lawnchair.organizer.planning.ComponentKey("com.example.a/.Main"),
+                    app.lawnchair.organizer.planning.ProfileId("personal"),
+                ),
+            ),
+        )
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+        collector.cancel()
+
+        // Admission legacy Capturing carries the detection phase…
+        assertTrue(
+            "admission Capturing must project as detection",
+            observations.any {
+                it.first is ManualOrganizationRun.State.Capturing && it.second == ManualOrganizationRun.PreparationPhase.DETECTION
+            },
+        )
+        // …and every Capturing published after the selection surface closes
+        // carries CAPTURE — the visible column never goes back to 検出.
+        val postSelectingCaptures = observations.windowed(2).mapNotNull { (previous, current) ->
+            if (previous.first is ManualOrganizationRun.State.Selecting &&
+                current.first is ManualOrganizationRun.State.Capturing
+            ) {
+                current
+            } else {
+                null
+            }
+        }
+        assertTrue(
+            "expected a T-08 return capture transition, got $observations",
+            postSelectingCaptures.isNotEmpty(),
+        )
+        assertTrue(
+            "T-08 return Capturing must commit with CAPTURE",
+            postSelectingCaptures.all { it.second == ManualOrganizationRun.PreparationPhase.CAPTURE },
+        )
+    }
+
+    @Test
+    fun preparationPhaseResetsToDetectionForTheNextRun() {
+        // RD-7: every admission restarts the visible progression at detection —
+        // a fresh run never inherits the previous run's captured phase.
+        val application = FakeApplication(readyInput()).apply {
+            detectStarted = CountDownLatch(1)
+            detectRelease = CountDownLatch(1)
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        val first = thread { runner.start() }
+        assertTrue(application.detectStarted?.await(5, TimeUnit.SECONDS) == true)
+        runner.cancel()
+        application.detectRelease?.countDown()
+        first.join(5000)
+
+        application.detectStarted = CountDownLatch(1)
+        application.detectRelease = CountDownLatch(1)
+        val second = thread { runner.start() }
+        assertTrue(application.detectStarted?.await(5, TimeUnit.SECONDS) == true)
+        assertEquals(ManualOrganizationRun.PreparationPhase.DETECTION, runner.preparationPhase.value)
+        assertEquals(ManualOrganizationRun.State.CandidateDetection, runner.state)
+        runner.cancel()
+        application.detectRelease?.countDown()
+        second.join(5000)
+        assertEquals(ManualOrganizationRun.State.Cancelled, runner.state)
+    }
+
+    @Test
+    fun detectionUnavailableContinuationAdvancesTheVisiblePhaseWithoutASecondDetection() {
+        // RD-7: the detection-unavailable continuation enters the composed
+        // phase through the cancel gate — the visible column moves from
+        // detection to capture and never re-shows 検出 afterwards.
+        val application = FakeApplication(readyInput()) // default detection = Unavailable
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        val (observations, collector) = collectStateWithPhase(runner)
+
+        runner.start()
+
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+        assertEquals(ManualOrganizationRun.PreparationPhase.PLAN, runner.preparationPhase.value)
+        collector.cancel()
+
+        val lastDetection = observations.indexOfLast { it.second == ManualOrganizationRun.PreparationPhase.DETECTION }
+        assertTrue(
+            "expected the projection to reach capture, got $observations",
+            observations.any { it.second == ManualOrganizationRun.PreparationPhase.CAPTURE },
+        )
+        assertTrue(
+            "no detection re-shown after the composed phase began",
+            lastDetection < observations.indexOfLast { it.second == ManualOrganizationRun.PreparationPhase.CAPTURE },
+        )
+    }
+
+    @Test
+    fun zeroCutContinuationAdvancesThePreparationPhaseToCapture() {
+        // RD-7: the internal zero-candidate continuation commits CAPTURE with
+        // (before) its Capturing publish, and the confirmation face follows.
+        val application = FakeApplication(readyInput()).apply { detection = detected() }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        val (observations, collector) = collectStateWithPhase(runner)
+
+        runner.start()
+
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+        assertEquals(ManualOrganizationRun.PreparationPhase.PLAN, runner.preparationPhase.value)
+        assertEquals(ManualOrganizationFace.CONFIRMATION, manualOrganizationFace(runner.state))
+        collector.cancel()
+        // The pass-through published Selecting(empty) and the continuation
+        // immediately committed CAPTURE — both are in the observed column.
+        assertTrue(
+            "expected the internal Selecting(empty) pass-through",
+            observations.any { (state, _) -> state is ManualOrganizationRun.State.Selecting && state.candidates.isEmpty() },
+        )
+        assertTrue(
+            "expected CAPTURE to be committed by the continuation",
+            observations.any { it.second == ManualOrganizationRun.PreparationPhase.CAPTURE },
+        )
+    }
+
+    @Test
+    fun cancelDuringDetectionThenDetectorReturnsKeepsTheRunCancelledAndTheJournalEmpty() {
+        // RD-6 / RUN-AC-10: T-09 makes cancel during detection user-reachable.
+        // A cancel that lands before the composed-phase gate must leave the
+        // journal empty for this runId and the lease released exactly once —
+        // no RUN_STARTED, no composition, no planning, regardless of the
+        // detector result. The blocking detector holds the run in
+        // CandidateDetection while the cancel lands, so the race is
+        // deterministic.
+        val outcomes = listOf(
+            "empty" to app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(emptyList()),
+            "unavailable" to app.lawnchair.organizer.integration.CandidateDetectionResult.Unavailable(
+                app.lawnchair.organizer.integration.DetectionUnavailableReason.PROFILE_SERIAL_UNAVAILABLE,
+            ),
+            "candidates" to detected("com.example.a/.Main"),
+        )
+        for ((name, detectorOutcome) in outcomes) {
+            val application = FakeApplication(readyInput()).apply {
+                detection = detectorOutcome
+                detectStarted = CountDownLatch(1)
+                detectRelease = CountDownLatch(1)
+            }
+            val gate = CountingGate()
+            val plannerRan = booleanArrayOf(false)
+            val runner = ManualOrganizationRun(
+                application,
+                OrganizationPlanner {
+                    plannerRan[0] = true
+                    planningResult(movingPlan())
+                },
+                operationGate = gate,
+            )
+
+            val startThread = thread { runner.start() }
+            assertTrue("[$name] detector reached", application.detectStarted?.await(5, TimeUnit.SECONDS) == true)
+            runner.cancel()
+            application.detectRelease?.countDown()
+            startThread.join(5000)
+            assertFalse("[$name] start() settled", startThread.isAlive)
+
+            assertEquals("[$name]", ManualOrganizationRun.State.Cancelled, runner.state)
+            assertFalse("[$name] planner must not run after a cancel", plannerRan[0])
+            assertTrue(
+                "[$name] no journal events for a cancelled pre-composed run",
+                application.events.isEmpty(),
+            )
+            assertEquals("[$name] lease released exactly once", 1, gate.closeCount)
+            assertEquals(
+                "[$name] projection stays at detection",
+                ManualOrganizationRun.PreparationPhase.DETECTION,
+                runner.preparationPhase.value,
+            )
+        }
+    }
+
+    @Test
+    fun cancelAfterTheComposedGateFollowsRunStarted() {
+        // RD-6 contrast case: a cancel that lands after the gate committed sees
+        // RUN_STARTED first and records USER_CANCELLED after it.
+        val application = FakeApplication(readyInput()) // detection = Unavailable → straight through the gate
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { planningResult(movingPlan()) },
+        )
+
+        runner.start()
+        runner.cancel()
+
+        assertEquals(ManualOrganizationRun.State.Cancelled, runner.state)
+        val phases = application.events.map { it.phase }
+        assertTrue(
+            "expected RUN_STARTED before USER_CANCELLED, got $phases",
+            phases.indexOf(app.lawnchair.organizer.diagnostics.model.PhaseCode.RUN_STARTED) <
+                phases.indexOf(app.lawnchair.organizer.diagnostics.model.PhaseCode.USER_CANCELLED),
+        )
+    }
+
+    private fun appKey(component: String) = app.lawnchair.organizer.planning.CandidateTarget.AppKey(
+        app.lawnchair.organizer.planning.ComponentKey(component),
+        app.lawnchair.organizer.planning.ProfileId("personal"),
+    )
+
+    /** Issue #369 (RD-6): a gate whose lease counts `.close()` calls. */
+    private class CountingGate : OrganizationOperationGate {
+        var closeCount = 0
+
+        override fun tryAcquire(kind: OrganizationOperationLease.Kind): AutoCloseable = AutoCloseable { closeCount++ }
+    }
+
+    private fun validatedIntentWithScopeCandidates(
+        candidates: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>,
+    ): app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent {
+        val itemRefs = candidates.associate { candidate ->
+            CandidatePlanningIds.planningId(candidate).let { id -> "ref-${id.value}" to id }
+        }
+        return app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent(
+            intent = app.lawnchair.organizer.personalization.PersonalizedIntentV1(
+                exportId = "export-scope-1",
+                itemIntents = emptyList(),
+            ),
+            export = app.lawnchair.organizer.personalization.PersonalizationContextExportV1(
+                exportId = "export-scope-1",
+                tier = app.lawnchair.organizer.personalization.PrivacyTier.EXTERNAL_REDACTED,
+                grid = app.lawnchair.organizer.personalization.ExportGridContext(4, 5, 1),
+                items = emptyList(),
+                preservedConstraints = app.lawnchair.organizer.personalization.PreservedConstraints(
+                    reservedRegions = emptyList(),
+                    preservedCounts = emptyMap(),
+                ),
+                categories = emptyList(),
+                capabilities = app.lawnchair.organizer.personalization.ExportCapabilities(
+                    intentSchemaVersion = app.lawnchair.organizer.personalization.ContextExportContract.INTENT_SCHEMA_VERSION,
+                    functions = app.lawnchair.organizer.personalization.ContextExportContract.FIXED_CAPABILITIES,
+                ),
+                usageSignals = null,
+            ),
+            session = app.lawnchair.organizer.personalization.ExportSession(
+                exportId = "export-scope-1",
+                itemRefs = itemRefs,
+                tier = app.lawnchair.organizer.personalization.PrivacyTier.EXTERNAL_REDACTED,
+                sourceContextDigest = "digest-scope",
+                signalProvenance = null,
+                createdAtEpochMs = 0L,
+                expiresAtEpochMs = 1L,
+                scopeCandidates = candidates,
+            ),
+            identity = app.lawnchair.organizer.personalization.IntentIdentityCalculator.identity(
+                app.lawnchair.organizer.personalization.IntentCompletion.complete(
+                    app.lawnchair.organizer.personalization.PersonalizedIntentV1(
+                        exportId = "export-scope-1",
+                        itemIntents = emptyList(),
+                    ),
+                    emptySet(),
+                ),
+            ),
+        )
+    }
 
     private fun candidatePlacementPlan(placedIds: List<String>, unplacedIds: List<String>) = Planned(
         placements = placedIds.map { id ->

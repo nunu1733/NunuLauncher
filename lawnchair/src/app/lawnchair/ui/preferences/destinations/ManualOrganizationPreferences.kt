@@ -14,11 +14,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -65,6 +67,7 @@ import app.lawnchair.organizer.planning.RejectionCode
 import app.lawnchair.organizer.planning.StrategyId
 import app.lawnchair.organizer.planning.UnplacedReason
 import app.lawnchair.organizer.planning.WarningCode
+import app.lawnchair.organizer.ui.ManualOrganizationFace
 import app.lawnchair.organizer.ui.ManualOrganizationModule
 import app.lawnchair.organizer.ui.ManualOrganizationRun
 import app.lawnchair.organizer.ui.MissingAppSelectionState
@@ -73,6 +76,7 @@ import app.lawnchair.organizer.ui.OrganizationPreviewSection
 import app.lawnchair.organizer.ui.OrganizationPreviewWording
 import app.lawnchair.organizer.ui.exchange.ExchangeFlowStateHolder
 import app.lawnchair.organizer.ui.exchange.exchangeFlowItems
+import app.lawnchair.organizer.ui.manualOrganizationFace
 import app.lawnchair.organizer.ui.missingAppSelectionItems
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.components.controls.ClickablePreference
@@ -95,6 +99,11 @@ fun ManualOrganizationPreferences(
     val coordinator = run ?: remember { ManualOrganizationModule.get(context) }
     val scope = rememberCoroutineScope()
     val state by coordinator.stateFlow.collectAsStateWithLifecycle()
+    // Issue #369 (spec RD-7): the visible 検出 → capture → plan progression is
+    // the coordinator's deterministic projection, never derived from State —
+    // the legacy admission Capturing and the real composed capture are the
+    // same State value, and conflation cannot hide intermediate publishes.
+    val preparationPhase by coordinator.preparationPhase.collectAsStateWithLifecycle()
     // Issue #205: the external agent exchange sub-flow. The entry surface is
     // hosted only while no run operation is active (spec 205 V1 rule), so it
     // is constructed unconditionally and rendered inside the Idle/Cancelled
@@ -151,11 +160,25 @@ fun ManualOrganizationPreferences(
                         )
                 )
         )
+
+    fun execute(action: () -> Unit) {
+        scope.launch {
+            withContext(Dispatchers.IO) { action() }
+        }
+    }
+
     val focusTargetIndex = when {
         state is ManualOrganizationRun.State.Selecting -> null
 
-        state is ManualOrganizationRun.State.Idle || state is ManualOrganizationRun.State.Cancelled ->
-            1 + (if (showCheckingRow) 1 else 0) + durableStatusItemCount(durableStatus)
+        manualOrganizationFace(state) == ManualOrganizationFace.PREAMBLE ->
+            // T-07: checking + durable rows + the scope summary precede the
+            // start row.
+            1 + (if (showCheckingRow) 1 else 0) + durableStatusItemCount(durableStatus) + 1
+
+        // T-09/T-13: the face headline precedes the focused cause/phase row.
+        manualOrganizationFace(state) == ManualOrganizationFace.PREPARATION ||
+            manualOrganizationFace(state) == ManualOrganizationFace.FAILURE ->
+            2
 
         else -> 1
     }
@@ -180,7 +203,53 @@ fun ManualOrganizationPreferences(
         mutableStateOf(MissingAppSelectionState(selectingState?.candidates.orEmpty(), emptySet()))
     }
 
-    ManualOrganizationBackHandler(coordinator)
+    // Issue #369 (D-13, TO-BE §9): one confirmation gate shared by system Back
+    // and the interrupt rows. 破棄 (irreversible) always confirms once; 中断
+    // (zero-write) confirms once only when a selection or a proposal exists;
+    // キャンセル (recovery preview close) never confirms. The pre-send
+    // cancel→破棄 rename belongs to #372 and is not touched here.
+    var pendingInterrupt by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+    var backCallback by remember { mutableStateOf<OnBackPressedCallback?>(null) }
+
+    fun navigateBack() {
+        backCallback?.isEnabled = false
+        backDispatcher?.onBackPressed()
+        backCallback?.isEnabled = true
+    }
+
+    fun interruptAndNavigate() {
+        scope.launch {
+            val outcome = withContext(Dispatchers.IO) { coordinator.dismiss() }
+            // D-13: 中断 stops the run and returns to the hub — the same
+            // navigation system Back takes. After the apply checkpoint the
+            // coordinator's gate refuses (ApplicationInProgress): the surface
+            // stays and the atomic-completion wording explains why.
+            if (outcome != ManualOrganizationRun.DismissalOutcome.ApplicationInProgress) {
+                withContext(Dispatchers.Main) { navigateBack() }
+            }
+        }
+    }
+
+    fun onSystemBack() {
+        // 破棄を伴うときのみ1回確認（D-13）: a selection, a proposal, or an
+        // apply not yet past its checkpoint. T-09 (nothing to lose), terminal
+        // faces, and the recovery preview's no-confirm cancel go straight.
+        val discardNeeded = when (state) {
+            is ManualOrganizationRun.State.Selecting -> missingAppSelection.selected.isNotEmpty()
+            is ManualOrganizationRun.State.Preview, is ManualOrganizationRun.State.PreviewUnavailable -> true
+            ManualOrganizationRun.State.Applying -> true
+            else -> false
+        }
+        if (discardNeeded) {
+            pendingInterrupt = { interruptAndNavigate() }
+        } else {
+            interruptAndNavigate()
+        }
+    }
+
+    ManualOrganizationBackHandler(coordinator, onBack = { onSystemBack() })
 
     // Issue #328 (spec 328 D-2): the import success state intercepts system
     // Back at the ALWAYS-composed hosting level — never inside the lazy item,
@@ -209,12 +278,6 @@ fun ManualOrganizationPreferences(
         runCatching { focusRequester.requestFocus() }
     }
 
-    fun execute(action: () -> Unit) {
-        scope.launch {
-            withContext(Dispatchers.IO) { action() }
-        }
-    }
-
     PreferenceScaffold(
         label = stringResource(R.string.manual_organization_title),
         modifier = modifier,
@@ -229,6 +292,14 @@ fun ManualOrganizationPreferences(
                 )
             }
             when (val currentState = state) {
+                // Issue #369 (TO-BE T-07, transitional構成 — spec RD-1): the
+                // run preamble face. The scope summary is built only from facts
+                // available before admission (RD-5: no detection/composition
+                // lookahead); the primary CTA「そのまま整理」selects the
+                // deterministic path and performs run admission (RUN lease).
+                // The AI choice row belongs to #372's final two-choice T-07 and
+                // is NOT created here (capability先取り禁止); the existing
+                // exchange idle entry stays hosted on this face (spec 205 V1).
                 ManualOrganizationRun.State.Idle,
                 ManualOrganizationRun.State.Cancelled,
                 -> {
@@ -242,6 +313,9 @@ fun ManualOrganizationPreferences(
                         item { ProgressText(R.string.manual_organization_durable_status_checking) }
                     }
                     durableStatus?.let { durableStatusItems(it, onOpenDiagnostics) }
+                    item(key = "preamble-scope") {
+                        SummaryText(stringResource(R.string.manual_organization_preamble_scope))
+                    }
                     // Issue #328: while an import attempt lives (validation or
                     // the success state), the idle start row is frozen — a new
                     // run could otherwise carry the pending intent's success
@@ -273,22 +347,45 @@ fun ManualOrganizationPreferences(
                     }
                 }
 
-                ManualOrganizationRun.State.Capturing -> item {
-                    ProgressText(
-                        R.string.manual_organization_capturing,
-                        focusTargetModifier,
-                        focusRequester,
-                    )
-                }
+                // Issue #369 (TO-BE T-09): one integrated preparation face —
+                // the phase row renders the coordinator's deterministic
+                // projection (検出 → capture → plan), announced once per phase
+                // (organization-run-ux §6). The face also hosts the internal
+                // zero-candidate pass-through (D-06): the empty Selecting cut
+                // maps here by the face mapping, never to the selection.
+                ManualOrganizationRun.State.Capturing,
+                ManualOrganizationRun.State.CandidateDetection,
+                ManualOrganizationRun.State.Planning,
+                -> {
+                    item(key = "preparation-headline") {
+                        FocusTargetText(
+                            text = stringResource(R.string.manual_organization_preparation),
+                            focusRequester = focusRequester,
+                            modifier = focusTargetModifier,
+                        )
+                    }
+                    item(key = "preparation-phase") {
+                        ProgressText(
+                            when (preparationPhase) {
+                                ManualOrganizationRun.PreparationPhase.DETECTION ->
+                                    R.string.manual_organization_detecting_missing_apps
 
-                ManualOrganizationRun.State.CandidateDetection -> item {
-                    // Issue #228: read-only detection between capture and the
-                    // selection surface; browsing writes nothing.
-                    ProgressText(
-                        R.string.manual_organization_detecting_missing_apps,
-                        focusTargetModifier,
-                        focusRequester,
-                    )
+                                ManualOrganizationRun.PreparationPhase.CAPTURE ->
+                                    R.string.manual_organization_capturing
+
+                                ManualOrganizationRun.PreparationPhase.PLAN ->
+                                    R.string.manual_organization_planning
+                            },
+                        )
+                    }
+                    // D-13 §9: 準備中には提案も選択もない — 中断は確認なしの
+                    // zero-write中止（失う作業なし）。中断はrunを止めてhubへ戻る。
+                    item(key = "preparation-interrupt") {
+                        ClickablePreference(
+                            label = stringResource(R.string.manual_organization_interrupt),
+                            onClick = { interruptAndNavigate() },
+                        )
+                    }
                 }
 
                 is ManualOrganizationRun.State.Selecting -> {
@@ -327,7 +424,15 @@ fun ManualOrganizationPreferences(
                         selection = missingAppSelection,
                         onSelectionChange = { missingAppSelection = it },
                         onConfirm = { selected -> execute { coordinator.confirmSelection(selected) } },
-                        onCancel = { execute(coordinator::cancel) },
+                        // D-13: 選択があるときは1回確認の「中断」。空選択のままの
+                        // 離脱は何も壊さないため確認なし（キャンセル相当の離脱）。
+                        onCancel = {
+                            if (missingAppSelection.selected.isNotEmpty()) {
+                                pendingInterrupt = { interruptAndNavigate() }
+                            } else {
+                                interruptAndNavigate()
+                            }
+                        },
                         intentScopeCount = currentState.intentScopeCount,
                         editsEnabled = !exchangeBusy,
                     )
@@ -345,85 +450,97 @@ fun ManualOrganizationPreferences(
                     )
                 }
 
-                ManualOrganizationRun.State.Planning -> item {
-                    ProgressText(
-                        R.string.manual_organization_planning,
-                        focusTargetModifier,
-                        focusRequester,
-                    )
-                }
+                // Issue #369 (TO-BE T-13): one integrated failure face —
+                // 見出し「実行できませんでした」＋原因（既存typed契約由来の
+                // 文言。typed分類名は補助情報）＋次の手段（再試行/中断、
+                // bug系では診断）。すべての経路でzero-write。
 
-                is ManualOrganizationRun.State.InputUnavailable -> item {
-                    FocusTargetText(
-                        text = if (currentState.reason is app.lawnchair.organizer.integration.InputReadinessReason.StaleCandidateSelection) {
-                            // Issue #228 (review P2 #4): the selection was cut
-                            // against an older layout; re-detection resolves it.
-                            stringResource(R.string.manual_organization_selection_stale)
-                        } else {
-                            stringResource(currentState.reason.copyKind())
-                        },
-                        focusRequester = focusRequester,
-                        modifier = focusTargetModifier,
-                    )
-                    ClickablePreference(
-                        label = stringResource(R.string.manual_organization_retry),
-                        onClick = { execute { coordinator.start(trigger) } },
-                    )
-                }
-
-                is ManualOrganizationRun.State.ScopeMismatchFailed -> item {
-                    // Issue #331 (D-5): the typed SCOPE_MISMATCH failure for a
-                    // run that could never open a selection surface. Zero-write;
-                    // the remedy is re-export (start a fresh run).
-                    FocusTargetText(
-                        text = app.lawnchair.organizer.ui.exchange.exchangeContractFailureText(currentState.failure),
-                        focusRequester = focusRequester,
-                        modifier = focusTargetModifier,
-                    )
-                    ClickablePreference(
-                        label = stringResource(R.string.manual_organization_retry),
-                        onClick = { execute { coordinator.start(trigger) } },
-                    )
-                }
-
-                is ManualOrganizationRun.State.CandidateResolutionFailed -> item {
-                    // Issue #228 (review P2 #2): a selected app stopped
-                    // resolving; re-detection is the only recovery, and
-                    // nothing was written.
-                    FocusTargetText(
-                        text = stringResource(R.string.manual_organization_candidate_unresolved),
-                        focusRequester = focusRequester,
-                        modifier = focusTargetModifier,
-                    )
-                    ClickablePreference(
-                        label = stringResource(R.string.manual_organization_retry),
-                        onClick = { execute { coordinator.start(trigger) } },
-                    )
-                }
-
-                is ManualOrganizationRun.State.PlanningRejected -> {
-                    item {
+                is ManualOrganizationRun.State.InputUnavailable,
+                is ManualOrganizationRun.State.ScopeMismatchFailed,
+                is ManualOrganizationRun.State.CandidateResolutionFailed,
+                is ManualOrganizationRun.State.PlanningRejected,
+                -> {
+                    item(key = "failure-headline") {
                         FocusTargetText(
+                            text = stringResource(R.string.manual_organization_failed),
                             focusRequester = focusRequester,
-                            text = stringResource(
-                                if (currentState.kind == ManualOrganizationRun.PlanningFailureKind.IMPOSSIBLE) {
-                                    R.string.manual_organization_impossible
-                                } else {
-                                    R.string.manual_organization_rejected
-                                },
-                            ),
                             modifier = focusTargetModifier,
                         )
                     }
-                    summaryItems(currentState.summary)
-                    item {
-                        ClickablePreference(
-                            label = stringResource(R.string.manual_organization_retry),
-                            onClick = { execute { coordinator.start(trigger) } },
+                    // 原因文言は既存のtyped契約由来のmappingをそのまま再利用する
+                    // （spec 172のcopy split、spec 331のre-export案内、spec 228の
+                    // 再検出案内、spec 52の原因件数）。typed分類名は主文言へ出さない。
+                    item(key = "failure-cause") {
+                        FocusTargetText(
+                            text = when (currentState) {
+                                is ManualOrganizationRun.State.InputUnavailable ->
+                                    if (currentState.reason is app.lawnchair.organizer.integration.InputReadinessReason.StaleCandidateSelection) {
+                                        // Issue #228 (review P2 #4): the selection was
+                                        // cut against an older layout; re-detection
+                                        // resolves it.
+                                        stringResource(R.string.manual_organization_selection_stale)
+                                    } else {
+                                        stringResource(currentState.reason.copyKind())
+                                    }
+
+                                is ManualOrganizationRun.State.ScopeMismatchFailed ->
+                                    // Issue #331 (D-5): the typed SCOPE_MISMATCH failure
+                                    // for a run that could never open a selection
+                                    // surface. The remedy is re-export.
+                                    app.lawnchair.organizer.ui.exchange.exchangeContractFailureText(currentState.failure)
+
+                                is ManualOrganizationRun.State.CandidateResolutionFailed ->
+                                    // Issue #228 (review P2 #2): a selected app stopped
+                                    // resolving; re-detection is the only recovery.
+                                    stringResource(R.string.manual_organization_candidate_unresolved)
+
+                                is ManualOrganizationRun.State.PlanningRejected ->
+                                    stringResource(
+                                        if (currentState.kind == ManualOrganizationRun.PlanningFailureKind.IMPOSSIBLE) {
+                                            R.string.manual_organization_impossible
+                                        } else {
+                                            R.string.manual_organization_rejected
+                                        },
+                                    )
+
+                                else -> stringResource(R.string.manual_organization_stale_proposal_not_reviewed)
+                            },
+                            focusRequester = focusRequester,
+                            modifier = focusTargetModifier,
                         )
+                    }
+                    // 原因件数（計画失敗の既存summary表示）は面統合後も変種として残す。
+                    if (currentState is ManualOrganizationRun.State.PlanningRejected) {
+                        summaryItems(currentState.summary)
+                    }
+                    item(key = "failure-actions") {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ClickablePreference(
+                                label = stringResource(R.string.manual_organization_retry),
+                                onClick = { execute { coordinator.start(trigger) } },
+                            )
+                            // D-13 §9: 終端には提案も選択もない — 中断は確認なしで
+                            // runを止めてhubへ戻る（zero-write）。
+                            ClickablePreference(
+                                label = stringResource(R.string.manual_organization_interrupt),
+                                onClick = { interruptAndNavigate() },
+                            )
+                            if (currentState is ManualOrganizationRun.State.InputUnavailable &&
+                                currentState.reason !is app.lawnchair.organizer.integration.InputReadinessReason.ReconciliationPending
+                            ) {
+                                ClickablePreference(
+                                    label = stringResource(R.string.manual_organization_open_diagnostics),
+                                    subtitle = stringResource(R.string.manual_organization_open_diagnostics_summary),
+                                    onClick = { onOpenDiagnostics?.invoke() },
+                                )
+                            }
+                        }
                     }
                 }
 
+                // Issue #369 (TO-BE T-12): 結果面の変種 — 成功/変更なし/適用されな
+                // かった（stale等）/部分的失敗。typed結果ごとの異なるlocalized
+                // outcome（spec 13/52 no false success）とspec 210の文言契約は不変。
                 ManualOrganizationRun.State.NoChanges -> item {
                     FocusTargetText(
                         text = stringResource(R.string.manual_organization_no_changes),
@@ -461,7 +578,9 @@ fun ManualOrganizationPreferences(
                         item {
                             PreviewDecisionActions(
                                 onConfirm = { execute(coordinator::confirm) },
-                                onCancel = { execute(coordinator::cancel) },
+                                // D-13: 提案があるため「中断」— 1回確認ののちrunを
+                                // 止めてhubへ戻る。
+                                onCancel = { pendingInterrupt = { interruptAndNavigate() } },
                             )
                         }
                     } else {
@@ -471,7 +590,9 @@ fun ManualOrganizationPreferences(
                         item {
                             PreviewDecisionActions(
                                 onConfirm = { execute(coordinator::confirm) },
-                                onCancel = { execute(coordinator::cancel) },
+                                // D-13: 提案があるため「中断」— 1回確認ののちrunを
+                                // 止めてhubへ戻る。
+                                onCancel = { pendingInterrupt = { interruptAndNavigate() } },
                             )
                         }
                         previewDetailsItems(
@@ -504,16 +625,21 @@ fun ManualOrganizationPreferences(
                             ) {
                                 Text(text = stringResource(R.string.manual_organization_preview_retry))
                             }
+                            // D-13: 提案があるときのcancel側は「中断」— 1回確認ののち
+                            // runを止めてhubへ戻る（decision pairの視覚構造は現行契約）。
                             OutlinedButton(
-                                onClick = { execute(coordinator::cancel) },
+                                onClick = { pendingInterrupt = { interruptAndNavigate() } },
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Text(text = stringResource(R.string.manual_organization_cancel))
+                                Text(text = stringResource(R.string.manual_organization_interrupt))
                             }
                         }
                     }
                 }
 
+                // Issue #369 (TO-BE T-11): 適用中面。checkpoint前のみ中断可
+                // （zero-write、1回確認）。checkpoint後はBack・中断とも不受理で
+                // あり、atomic完了までapplying文言が説明する（現行契約の維持）。
                 ManualOrganizationRun.State.Applying -> item {
                     ProgressText(
                         R.string.manual_organization_applying,
@@ -522,41 +648,76 @@ fun ManualOrganizationPreferences(
                     )
                     ClickablePreference(
                         label = stringResource(R.string.manual_organization_cancel_before_checkpoint),
-                        onClick = { execute(coordinator::cancel) },
+                        onClick = { pendingInterrupt = { interruptAndNavigate() } },
                     )
                 }
 
                 is ManualOrganizationRun.State.Stale -> {
-                    // Issue #210: the stale surface must report the outcome of
-                    // the blocked apply attempt, not only the layout change:
-                    // nothing was applied, the reviewed proposal was discarded,
-                    // and recapture starts a new review from the current layout.
-                    item {
-                        FocusTargetText(
-                            text = stringResource(R.string.manual_organization_stale_outcome),
-                            focusRequester = focusRequester,
-                            modifier = focusTargetModifier,
-                        )
-                    }
-                    item {
-                        Text(
-                            text = when (currentState.origin) {
-                                ManualOrganizationRun.StaleOrigin.APPLY_BLOCKED ->
-                                    stringResource(R.string.manual_organization_stale_proposal_discarded)
+                    when (currentState.origin) {
+                        // Issue #210: the stale surface must report the outcome of
+                        // the blocked apply attempt, not only the layout change:
+                        // nothing was applied, the reviewed proposal was discarded,
+                        // and recapture starts a new review from the current layout.
+                        // T-12結果面の変種（outcome文・詳細文・recapture文言不変）。
+                        ManualOrganizationRun.StaleOrigin.APPLY_BLOCKED -> {
+                            item {
+                                FocusTargetText(
+                                    text = stringResource(R.string.manual_organization_stale_outcome),
+                                    focusRequester = focusRequester,
+                                    modifier = focusTargetModifier,
+                                )
+                            }
+                            item {
+                                Text(
+                                    text = stringResource(R.string.manual_organization_stale_proposal_discarded),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(16.dp),
+                                )
+                            }
+                            item {
+                                ClickablePreference(
+                                    label = stringResource(R.string.manual_organization_recapture),
+                                    subtitle = stringResource(R.string.manual_organization_recapture_summary),
+                                    onClick = { execute { coordinator.start(trigger) } },
+                                )
+                            }
+                        }
 
-                                ManualOrganizationRun.StaleOrigin.DETECTED_BEFORE_REVIEW ->
-                                    stringResource(R.string.manual_organization_stale_proposal_not_reviewed)
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(16.dp),
-                        )
-                    }
-                    item {
-                        ClickablePreference(
-                            label = stringResource(R.string.manual_organization_recapture),
-                            subtitle = stringResource(R.string.manual_organization_recapture_summary),
-                            onClick = { execute { coordinator.start(trigger) } },
-                        )
+                        // Issue #369 (D-12): the entry stale never reaches the
+                        // confirmation face — it renders as the T-13 integrated
+                        // failure face's variant (見出し＋原因＋次の手段).
+                        ManualOrganizationRun.StaleOrigin.DETECTED_BEFORE_REVIEW -> {
+                            item(key = "failure-headline") {
+                                FocusTargetText(
+                                    text = stringResource(R.string.manual_organization_failed),
+                                    focusRequester = focusRequester,
+                                    modifier = focusTargetModifier,
+                                )
+                            }
+                            item(key = "failure-cause") {
+                                // spec 210の入場前stale詳細文（文言不変）。
+                                FocusTargetText(
+                                    text = stringResource(R.string.manual_organization_stale_proposal_not_reviewed),
+                                    focusRequester = focusRequester,
+                                    modifier = focusTargetModifier,
+                                )
+                            }
+                            item(key = "failure-actions") {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    ClickablePreference(
+                                        label = stringResource(R.string.manual_organization_recapture),
+                                        subtitle = stringResource(R.string.manual_organization_recapture_summary),
+                                        onClick = { execute { coordinator.start(trigger) } },
+                                    )
+                                    // D-13 §9: 終端には提案も選択もない — 中断は
+                                    // 確認なしでrunを止めてhubへ戻る（zero-write）。
+                                    ClickablePreference(
+                                        label = stringResource(R.string.manual_organization_interrupt),
+                                        onClick = { interruptAndNavigate() },
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -721,6 +882,52 @@ fun ManualOrganizationPreferences(
             }
         }
     }
+
+    // Issue #369 (D-13): the shared 破棄/中断 confirmation dialog. Focus moves
+    // into the dialog; confirm and dismiss are explicit roles (organization-
+    // run-ux §6). The discarding action itself runs after the confirmation.
+    pendingInterrupt?.let { confirmedAction ->
+        ManualOrganizationDiscardConfirmDialog(
+            onConfirm = {
+                pendingInterrupt = null
+                confirmedAction()
+            },
+            onDismiss = { pendingInterrupt = null },
+        )
+    }
+}
+
+/**
+ * Issue #369 (D-13, TO-BE §9): the one confirmation dialog for 破棄 (Back on a
+ * surface holding work) and 中断 (a selection or a proposal exists, or the
+ * apply has not passed its checkpoint). Destructive-vocabulary confirm,
+ * no-confirm キャンセル dismissal; no timeout auto-confirm/cancel.
+ */
+@Composable
+private fun ManualOrganizationDiscardConfirmDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.manual_organization_discard_confirm_title)) },
+        text = {
+            Text(
+                text = stringResource(R.string.manual_organization_discard_confirm_text),
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(text = stringResource(R.string.manual_organization_discard))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.manual_organization_cancel))
+            }
+        },
+    )
 }
 
 /**
@@ -802,27 +1009,26 @@ internal fun strategyDescription(id: StrategyId): Int = when (id.value) {
     else -> R.string.organization_strategy_unknown_description
 }
 
+/**
+ * Issue #369 (D-13): the screen owns the Back decision (confirm vs direct
+ * interrupt) via [onBack]; this handler only owns the callback plumbing and
+ * the leave-time dismissal. The screen's decision already routes through the
+ * shared confirmation gate; the coordinator's gate structurally refuses the
+ * post-checkpoint dismiss (ApplicationInProgress), so Back after the
+ * checkpoint stays non-accepting as today.
+ */
 @Composable
-private fun ManualOrganizationBackHandler(coordinator: ManualOrganizationRun) {
+private fun ManualOrganizationBackHandler(
+    coordinator: ManualOrganizationRun,
+    onBack: () -> Unit,
+) {
     val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     val callbackRef = remember { mutableStateOf<OnBackPressedCallback?>(null) }
-    val onBack = rememberUpdatedState {
-        when (coordinator.dismiss()) {
-            ManualOrganizationRun.DismissalOutcome.ApplicationInProgress -> Unit
-
-            ManualOrganizationRun.DismissalOutcome.CancelledAndMayNavigate,
-            ManualOrganizationRun.DismissalOutcome.NoActiveOperation,
-            -> {
-                callbackRef.value?.isEnabled = false
-                dispatcher?.onBackPressed()
-                callbackRef.value?.isEnabled = true
-            }
-        }
-    }
+    val onBackState = rememberUpdatedState(onBack)
     val callback = remember(dispatcher) {
         object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                onBack.value()
+                onBackState.value()
             }
         }
     }
@@ -904,11 +1110,14 @@ private fun PreviewDecisionActions(
         ) {
             Text(text = stringResource(R.string.manual_organization_confirm))
         }
+        // Issue #369 (D-13): the proposal exists, so the cancel side of the
+        // decision pair is 中断 — one confirmation, then the run stops and the
+        // user returns to the hub (spec 209 keeps the pair's visual structure).
         OutlinedButton(
             onClick = onCancel,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(text = stringResource(R.string.manual_organization_cancel))
+            Text(text = stringResource(R.string.manual_organization_interrupt))
         }
     }
 }

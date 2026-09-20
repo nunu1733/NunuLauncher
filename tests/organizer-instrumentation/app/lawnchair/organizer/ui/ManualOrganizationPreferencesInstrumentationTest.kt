@@ -337,7 +337,10 @@ class ManualOrganizationPreferencesInstrumentationTest {
         )
         composeRule.setContent {
             LawnchairTheme {
-                Box(modifier = Modifier.height(200.dp)) {
+                // Issue #369: the T-07 preamble gained the spec-required scope
+                // summary row (RD-1/RD-5), so the fixture box must fit the whole
+                // face again: durable rows visible and the start action focusable.
+                Box(modifier = Modifier.height(600.dp)) {
                     ManualOrganizationPreferences(run = runner)
                 }
             }
@@ -499,7 +502,10 @@ class ManualOrganizationPreferencesInstrumentationTest {
 
         val context = ApplicationProvider.getApplicationContext<Context>()
         awaitPreview(runner, context)
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).performClick()
+        // Issue #369 (D-13): the proposal exists — the cancel side is 中断 with
+        // one discard confirmation.
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_interrupt)).performClick()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_discard)).performClick()
         composeRule.waitUntil(5_000) { runner.state == ManualOrganizationRun.State.Cancelled }
         assertEquals(0, application.applyCalls)
     }
@@ -529,7 +535,9 @@ class ManualOrganizationPreferencesInstrumentationTest {
             }
         }
 
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).performClick()
+        // Issue #369 (D-13): the proposal exists — 中断 with one confirmation.
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_interrupt)).performClick()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_discard)).performClick()
         composeRule.waitUntil(5_000) { runner.state == ManualOrganizationRun.State.Cancelled }
         composeRule.waitUntil(5_000) {
             try {
@@ -579,7 +587,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
             ),
         ).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_interrupt)).assertIsDisplayed()
     }
 
     @Test
@@ -690,12 +698,16 @@ class ManualOrganizationPreferencesInstrumentationTest {
             )
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm))
             .assertHasClickAction()
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel))
+        // Issue #369 (D-13): the cancel side of the proposal pair is 中断.
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_interrupt))
             .assertHasClickAction()
 
         composeRule.runOnIdle {
             checkNotNull(dispatcher).onBackPressed()
         }
+        // Issue #369 (D-13): Back on a surface holding the proposal asks for
+        // one discard confirmation.
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_discard)).performClick()
         composeRule.waitUntil(5_000) { runner.state == ManualOrganizationRun.State.Cancelled }
     }
 
@@ -727,7 +739,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm))
             .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Focused))
             .assertHasClickAction()
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel))
+        // Issue #369 (D-13): the cancel side of the proposal pair is 中断.
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_interrupt))
             .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Focused))
             .assertHasClickAction()
     }
@@ -1182,7 +1195,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
         // Issue #209: the decision pair leads the screen, so traversal reaches
         // confirm and cancel before the change-list expand action.
         pressDownUntilFocused(context.getString(R.string.manual_organization_confirm))
-        pressDownUntilFocused(context.getString(R.string.manual_organization_cancel))
+        // Issue #369 (D-13): the cancel side of the proposal pair is 中断.
+        pressDownUntilFocused(context.getString(R.string.manual_organization_interrupt))
         pressDownUntilFocused(context.getString(R.string.manual_organization_preview_show_all, 6))
         // Activating it with a keyboard action expands the group...
         // Issue #300: same focused-window premise for the ENTER activation.
@@ -1375,7 +1389,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
         awaitPreview(runner, context)
 
         val confirm = context.getString(R.string.manual_organization_confirm)
-        val cancel = context.getString(R.string.manual_organization_cancel)
+        // Issue #369 (D-13): the cancel side of the proposal pair is 中断.
+        val cancel = context.getString(R.string.manual_organization_interrupt)
         // Collapsed: both decisions render in the leading viewport.
         composeRule.onNodeWithText(confirm).assertIsDisplayed()
         composeRule.onNodeWithText(cancel).assertIsDisplayed()
@@ -1411,7 +1426,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         awaitPreview(runner, context)
 
         val confirm = composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm))
-        val cancel = composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel))
+        val cancel = composeRule.onNodeWithText(context.getString(R.string.manual_organization_interrupt))
         confirm.assertIsDisplayed()
         cancel.assertIsDisplayed()
 
@@ -1450,7 +1465,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
             node.config.getOrNull(SemanticsProperties.Role) == Role.Button
         }
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm)).assert(buttonRole())
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).assert(buttonRole())
+        // Issue #369 (D-13): the cancel side of the proposal pair is 中断.
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_interrupt)).assert(buttonRole())
     }
 
     /**
@@ -1599,7 +1615,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
 
         composeRule.onNodeWithText(gameMoveRow(context)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_confirm)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).assertIsDisplayed()
+        // Issue #369 (D-13): the cancel side of the proposal pair is 中断.
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_interrupt)).assertIsDisplayed()
     }
 
     @Test
@@ -1868,8 +1885,12 @@ class ManualOrganizationPreferencesInstrumentationTest {
             ManualOrganizationRun.State.Stale(ManualOrganizationRun.StaleOrigin.DETECTED_BEFORE_REVIEW),
             runner.state,
         )
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_stale_outcome)).assertIsDisplayed()
+        // Issue #369: the entry stale renders as the T-13 integrated failure
+        // face — 見出し＋原因（spec 210の詳細文は文言不変）。apply-blocked wording
+        // must NOT appear (the proposal was never reviewed).
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_failed)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_stale_proposal_not_reviewed)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_stale_outcome)).assertDoesNotExist()
     }
 
     @Test
