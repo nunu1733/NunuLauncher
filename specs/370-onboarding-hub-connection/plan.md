@@ -3,8 +3,9 @@
 > Issue: #370
 > Spec: [spec.md](./spec.md)
 > Status: draft（spec未承認。本planはbaseline `171d0bcf10` 時点のコード調査に基づく
-> （#368実装PR #384、#369 spec/plan PR #386 merge後）。#369実装merge後に、
-> run面の実リソース名・行番号を最終確認のうえ実装着手する）
+> （#368実装PR #384、#369 spec/plan PR #386 merge後）。review 2点対応済み
+> （spec 53 §3.2 workflow block参照化、guard testのfixture改修要件）。
+> #369実装merge後に、run面の実リソース名・行番号を最終確認のうえ実装着手する）
 
 ## Current evidence（baseline `171d0bcf10`、2026-09-20確認）
 
@@ -88,6 +89,17 @@
       確認 → admission → PreferenceActivity resumeを観測
       （[awaitResumedPreferenceActivity](../../tests/organizer-instrumentation/app/lawnchair/organizer/ui/OnboardingOrganizationProposalInstrumentationTest.kt)、[1099-1115](../../tests/organizer-instrumentation/app/lawnchair/organizer/ui/OnboardingOrganizationProposalInstrumentationTest.kt)）。
       route引数・遷移先の面構成は深くassertしていない（本Issueで拡張）。
+      **重要なfixture事実**: `TouchActivationGate` がproposalに渡す `admitReview`
+      （[1294-1297](../../tests/organizer-instrumentation/app/lawnchair/organizer/ui/OnboardingOrganizationProposalInstrumentationTest.kt)）は
+      `admissions.incrementAndGet(); reviewOutcome.get()` を返すスタブであり、
+      production runnerの `ManualOrganizationRun.start(ONBOARDING_PROPOSAL)` を
+      実行しない。guard testでadmitted runを再現するには、遷移先run面が実際に消費する
+      同一process-local runnerを対象に `start()` を実行する経路が必要である
+      （#367が `OrganizerDiagnosticsRouteInstrumentationTest` で導入した
+      `installProcessLocalRunner(fixture)` のpatternで、既定のproduction `admitReview`
+      （[215-217](../../lawnchair/src/app/lawnchair/organizer/ui/OrganizationOnboardingProposal.kt)が
+      `ManualOrganizationModule.get(launcher).start(...)` を呼ぶ）を通すか、
+      fixture runnerへの `start()` を `admitReview` から実行する）。
   - `tests/organizer-instrumentation/app/lawnchair/ui/preferences/OrganizerDiagnosticsRouteInstrumentationTest.kt`
     - `homeScreenMaterialsRelocationRoutesDiagnosticsThroughHub`（[486](../../tests/organizer-instrumentation/app/lawnchair/ui/preferences/OrganizerDiagnosticsRouteInstrumentationTest.kt)）:
       直行rowとhub入口rowの**暫定併存**をassert（[515-520](../../tests/organizer-instrumentation/app/lawnchair/ui/preferences/OrganizerDiagnosticsRouteInstrumentationTest.kt)、
@@ -150,7 +162,7 @@
 | `lawnchair/src/app/lawnchair/organizer/ui/OrganizationOnboardingProposal.kt` | `reentryBodyText()` の第3引数を `manual_organization_title` → `organizer_hub_title` へ。javadoc（462-468）の案内先記述をhub入口rowへ更新。それ以外の編集は想定しない |
 | `lawnchair/src/app/lawnchair/ui/preferences/destinations/HomeScreenPreferences.kt` | General groupの直行row（97-101）と暫定併存comment（92-96）を削除。hub入口row（105-109）は残置。`#232` 由来commentは入口row単独の状態を説明する形へ整理 |
 | `lawnchair/res/values/strings.xml` / `values-ja/strings.xml` | `organization_onboarding_reentry_hint_body` のformat templateは3引数のままで不変の想定。案内先の語順・接続表現をja/ENで調整する場合のみtemplateを修正（placeholder一致を維持）。`manual_organization_title` / `manual_organization_summary` はrun面用途が残るため削除しない |
-| `tests/organizer-instrumentation/.../OnboardingOrganizationProposalInstrumentationTest.kt` | hint label構成assert（373-380）の第3label差し替え。`homeScreenSettingsShowsTheOrganizerEntryInGeneralAboveTheFold`（525）をhub入口row版へ更新（General headingとhome_screen_actions headingの間＋first viewport）。確認経路のguard assert拡張（transitional T-07主CTA「そのまま整理」のsemantics不在〔反復サンプリング〕＋T-09統合progress面到達。リソース名は#369実装merge後に固定） |
+| `tests/organizer-instrumentation/.../OnboardingOrganizationProposalInstrumentationTest.kt` | hint label構成assert（373-380）の第3label差し替え。`homeScreenSettingsShowsTheOrganizerEntryInGeneralAboveTheFold`（525）をhub入口row版へ更新（General headingとhome_screen_actions headingの間＋first viewport）。確認経路のguard assert拡張: **fixture改修を含む**（guard対象のproposalへ、遷移先run面が実際に消費する同一process-local runnerへの実際の `start(ONBOARDING_PROPOSAL)` を実行するadmission経路を渡す。production path通しなら `installProcessLocalRunner` pattern）。観測は「最初の表示faceがT-09、T-07のcompose/render回数0」を決定的観測点（#369実装のsurface seamが提供するtest-only observer等）で固定し、反復samplingは補助に留める。リソース名は#369実装merge後に固定 |
 | `tests/organizer-instrumentation/.../OrganizerDiagnosticsRouteInstrumentationTest.kt` | `homeScreenMaterialsRelocationRoutesDiagnosticsThroughHub` の暫定併存assert（515-520）を「直行row不在（`onNodeWithText`が0件）＋hub入口row表示」へ更新し、commentを#370適用後の状態へ |
 | `specs/53-onboarding-organization-proposal/spec.md` | 表記更新: §3.2 entry契約（T-07省略・方法固定の明記）、§5.2（review surface表記のrun面参照化）、§5.3（Review destination ownerの接続先表記）。AC-003 / outcome表 / §3.3 / §4 は触れない。frontmatter `updated:` とChange historyに追記（statusはAcceptedのまま、表記のみ改訂の旨を記録） |
 | `specs/232-organizer-reentry-discoverability/spec.md` | AC-1案内先をhub入口rowへ、AC-3を「organizer由来rowはhub入口row 1件（直行row廃止済み）」へ。「Scenario: Later 選択直後に再開場所が案内される」のThen行、「Scenario: Home settings の Organizer 入口が上位セクションで発見できる」を連動更新。Test oracleの該当行更新。frontmatter `updated:` とChange historyに追記 |
@@ -191,17 +203,26 @@
 - **unit**（`app.lawnchair.organizer.*` gate）: 既存controller回帰（admission→REVIEWED順序、
   Busy非消費、provenance fail-closed）が無編集でgreenであること。hint copy合成は
   `reentryBodyText()` の既存internal seamでlabel参照をassert（実render labelとの一致）。
+  #369実装が導入するface mapping純関数 `manualOrganizationFace(state)` の
+  table-driven test（`ManualOrganizationFaceTest`）は、admitted状態→T-09対応の
+  **component-level証拠として併用**する（UI全体のrender証明の代わりにはしない）。
 - **instrumentation**（`OnboardingOrganizationProposalInstrumentationTest`）:
   1. hint label構成assertの更新（`organizer_hub_title` を含む、旧labelを含まない。EN/ja）。
-  2. 確認tap → admission → 遷移先観測の拡張: **T-07前置き面が一度も現れないことの直接観測**
-     （受入済み#369 specで確定したseamに対する観測: transitional T-07の主CTA
-     「そのまま整理」のsemanticsが観測window中の反復サンプリングで一度も出現しないこと
-     ＝T-07 render count 0相当）＋ admitted runの進行表示（T-09統合progress面:
-     準備中見出し/phase行）への到達観測。unit側は#369実装が導入する
-     `ManualOrganizationFaceTest`（face mapping純関数`manualOrganizationFace(state)`の
-     table-driven test）が無編集でgreenであること（admitted状態→T-09対応・
-     T-07は`Idle`/`Cancelled`起点のみの証拠）を併用する。T-07主CTA・T-09面の
-     実際のstring resource名は#369実装merge後に実装へ合わせて固定する。
+  2. 確認tap → admission → 遷移先観測の拡張: **admitted runの実際の再現**と
+     **T-07前置き面が一度も現れないことの決定的観測**。
+     - fixture改修: guard対象のproposalへ、遷移先run面が実際に消費する同一
+       process-local runner（`installProcessLocalRunner(fixture)` pattern）への
+       実際の `start(ONBOARDING_PROPOSAL)` を実行するadmission経路を渡す
+       （production path通しが望ましい。既存 `TouchActivationGate` の
+       `reviewOutcome.get()` スタブはadmitted状態を作らないため、遷移先の
+       面観測には使わない）。
+     - 観測: #369実装のsurface seamが提供する決定的観測点（test-only observer /
+       host trace等。#369実装merge後に有無を確認）により「最初に表示されるfaceが
+       T-09統合progress面であり、T-07前置き面のcompose/render回数が0」を直接固定。
+       反復sampling（transitional T-07主CTA「そのまま整理」のsemantics不在の
+       観測window中確認）は補助に留め、単独ではrender count 0の証明としない。
+     - T-07主CTA・T-09面の実際のstring resource名は#369実装merge後に実装へ
+       合わせて固定する。
   3. `homeScreenSettingsShowsTheOrganizerEntryInGeneralAboveTheFold` の入口row assertを
      hub入口row版へ更新。
   4. `OrganizerDiagnosticsRouteInstrumentationTest.homeScreenMaterialsRelocationRoutesDiagnosticsThroughHub`
@@ -226,9 +247,10 @@
    spec.mdのOpen questions 1（transitional T-07の表示）も実装で確認する。
 2. **直行row削除＋hint copy実装**（第3引数差し替え + javadoc更新 +
    instrumentation assert 2件更新）。
-3. **確認経路のguard test**（#369実装merge後。T-07面非介在の直接観測 +
-   統合run面到達の観測）。
-4. **spec 53/232の文書改訂 + obsolete理由のPR記録**（2〜3と同一PR）。
+3. **確認経路のguard test**（#369実装merge後。admitted runを実際に再現するfixture改修
+   ＋「最初の表示face＝T-09、T-07 compose/render回数0」の決定的観測）。
+4. **spec 53/232の文書改訂 + obsolete理由のPR記録**（2〜3と同一PR。spec 53 §3.2は
+   workflow blockの参照化を含む）。
 5. **検証一式の実行とPR記録**（unit gate、instrumentation lane、string確認、
    emulator evidence、`git diff --check`、`spotlessCheck`）。
 
