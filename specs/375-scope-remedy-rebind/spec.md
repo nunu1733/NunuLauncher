@@ -270,7 +270,9 @@ And 提案は削除されず、workspace書込みは0件である。
 Given 再開面で「この提案で続ける」が押され、rebuild入力の再構築が成功した直後に、
 (i) 新しい依頼の生成によるsession置換（新session保存＋旧record削除）、(ii) 破棄tombstone
 commit、(iii) 依頼sessionのTTL失効、のいずれかがadmissionの前に発生した
-（(i)は実際の `ExchangeFlowController.generate()` 相当の置換経路による）,
+（事前のreconcile・rebuildはgate外で行われ、(i)は実際の `ExchangeFlowController.generate()`
+相当の置換経路による。テストではrebuild完了後に置換を完走させ、その後admissionする順序を
+決定的に再現する）,
 When fresh run admission（`start`呼出）が行われる,
 Then admission直前のanchor再検証（gate保持下での新鮮なrecord・session・clockの読み直し）が
 typed拒否し、**run admissionは発生しない**（RUN leaseは取得直後に解放され、`State.Capturing`
@@ -362,19 +364,28 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
   排他境界内**で行われ、拒否時はleaseを解放してtyped拒否として終わる（可観測run state・
   journal書込は0件）。
 - **exchange mutation gate（本Issueが新設するprocess-wideな共有排他seam）**:
-  anchorの読み直しとadmissionが、**active sessionとdurable recordの両方を変化させうる
+  anchorの読み取りとadmissionが、**active sessionとdurable recordの両方を変化させうる
   全操作** — session置換（新session保存＋旧record削除。`ExchangeFlowController.generate()`
   経路）、pre-send cancel等のsession invalidate、import成功時のdurable保存、破棄tombstone、
   reconcile清掃 — と混線しないことを、**単一のprocess-wideな直列化点**で構造的に保証する。
   現行mainではsession置換がholder mutex外で実行され、session storeとpending storeが
   別々の内部lockを持つため、holder内の書込mutex拡張だけでは排他として不十分である
   （2nd review指摘1。初回re-entryの「`pendingWriteMutex`拡張」案を廃止して本設計へ改訂）。
-  rebind継続は **[新鮮読取 → anchor判定 → run admission] の区間をgate保持下で**実行し、
-  上記の全mutationはそれぞれgate保持下で実行する。実装形態（共有lock objectへの集約、
-  既存`pendingWriteMutex`の包含）はplan.mdに記載し、実装PRで確定する。
+  **gateの保持区間**: 事前計算（record/sessionの予備読取・reconcile・rebuild入力の再構築）は
+  **gate外**で行い、**admissionの直前のみgateに入る**。gate内では新鮮なrecord/session/clockの
+  再読取 → anchor判定 → （Admitの場合は）RUN lease取得・operation生成・`State.Capturing`発行
+  までを**1つのatomicなadmission seamとして完結**させ、gateを解放してから制御を返す。
+  検出（detection）・composition等の長時間処理は必ずgate解放後に行う — 現行
+  `ManualOrganizationRun.start()` はadmission後も同一同期呼出内で検出まで進むため、
+  呼出側がgateを保持したまま `start()` を呼ぶ設計はこの界限に違反し、race oracleとも
+  両立しない（3rd review指摘。anchor内部でgateに入りadmission完了まで保持する形に固定）。
+  実装形態（共有lock object、既存`pendingWriteMutex`の包含可否とlock順序）はplan.mdに
+  記載し、実装PRで確定する。
 - **gate下の処理時間の界限**: gate保持区間はrecord1件・session1件の小さなlocal file読書き
-  （`AtomicFile`）とadmission判定のみに限り、readiness gate・model load等の長時間処理を
-  gate下で行わない。他の面でのcancel/confirmがblockされるのはこれらの短い区間のみである。
+  （`AtomicFile`）とadmission判定・operation生成のみに限り、readiness gate・model load・
+  候補検出等の長時間処理をgate下で行わない。他の面でのcancel/confirmがblockされるのは
+  これらの短い区間のみである。検出開始時点でgateが解放済みであることを構造的に確認する
+  （検出seamへのprobeでgate非保持を観測するtest。SR-AC-08）。
 - **TTL失効との競合の決定性**: TTLは時刻のみの競合であるため、anchorはgate保持下の
   admission区間内でclockを新鮮に読み、検証とadmissionが同一時点の値を共有する。
   「rebuild成功 → TTL境界越え → admission」「rebuild成功 → 置換/破棄 → admission」の各競合を、
@@ -497,11 +508,14 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
       不一致がtyped失敗（依頼作り直し案内・run admissionなし・提案残存）として扱われることが
       testされる。**exchange mutation gateがsession置換・pre-send cancel等のsession変化操作・
       record変化操作の全てとrebind admissionを直列化すること**（gate不在時に入る競合経路が
-      存在しないことのdiff review＋gate下の処時間界限のtest）が確認される。
-      **rebind admission anchorがgate保持下のadmission直前に新鮮な読み直しで判定されること、
+      存在しないことのdiff review＋gate下の処理時間界限のtest）が確認される。
+      **rebind admission anchorがgate保持下のadmission直前に新鮮な読み直しで判定され、
+      Admit時はoperation生成・`State.Capturing`発行までをgate内で完結すること、
       「rebuild成功 → TTL境界越え → admission」の決定的race oracleが存在して**、anchorが
       typed拒否し（lease解放・状態発行なし）admissionが発生しないことがtestされる
-      （fake clockで再現）。**identity値の破損（schema不一致・digest長不正のvalid JSON）が
+      （fake clockで再現）。**検出（detection）がgate解放後に開始されることが検出seamへの
+      probeで構造的に確認される**こと（wall-clock依存でない）。
+      **identity値の破損（schema不一致・digest長不正のvalid JSON）が
       例外化せずtyped fail-closed（Invalid清掃・継続拒否）として扱われること**が
       fixture付きでtestされる。anchor拒否後の面の扱い（無効化済み→清掃・クローズ、
       record置換済み→読み直し）がtestされる。
@@ -576,6 +590,17 @@ exchange系）、CI `final-status` green。本Issueはpersistent state変更・D
 
 ## Change history
 
+- 2026-09-22: **Re-entry revision 3（3rd review 2026-09-22 Changes requested 1件対応、
+  [comment `5766214632`][7]）**。
+  **(1) gate保持区間の契約化（中）**: 「呼出側がgateを保持したまま `start()` を呼ぶ設計は、
+  `start()` がadmission後も同一同期呼出内で候補検出まで進む現行構造と矛盾し
+  （gate長時間保持 → 「短い区間のみ」契約違反）、かつ「rebuild成功 → generate完走 →
+  admission → anchor拒否」のrace oracleを構造的に再現できない」指摘に対し、
+  **事前計算（予備読取・reconcile・rebuild）はgate外で行い、admission直前のみanchor内部で
+  gateに入る**構造へ改訂。gate内で新鮮読取 → anchor判定 → operation生成・`State.Capturing`
+  発行までを1つのatomic admission seamとして完結させ、gate解放後に検出へ進むことを契約化。
+  検出開始時点でgateが解放済みであることの構造的確認（検出seamへのprobe）をSR-AC-08へ追加。
+  race oracleの決定的再現手順（rebuild完了後に置換を完走→admission）をscenarioへ明記。
 - 2026-09-22: **Re-entry revision 2（2nd review 2026-09-22 Changes requested 4件対応、
   [comment `5765970137`][6]）**。
   **(1) 排他対象の不足解消（高 — blocking）**: 「`pendingWriteMutex`拡張では排他できず
@@ -656,3 +681,4 @@ exchange系）、CI `final-status` green。本Issueはpersistent state変更・D
 [4]: https://github.com/nunu1733/NunuLauncher/pull/399
 [5]: https://github.com/nunu1733/NunuLauncher/issues/375#issuecomment-5740062562
 [6]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5765970137
+[7]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5766214632
