@@ -62,8 +62,10 @@ instance stateであり、process死とともに消滅する。期限切れ後�
   startup reconciliation trigger）を前提に、Launcherを開かずにflowが完結する。
 - **cancel/backの戻り先契約**: status card起点の復元flowのcancel/back/dismissは、入口である
   hub status card側（coordinator上はpre-entryの表示状態、D5）へ戻す。復元成功後の結果面
-  （`State.RecoveryResultState`）を離脱するときも、status card起点では同じpre-entry状態へ復帰し、
-  status cardのdurable statusが再deriveされる（D5/D6）。旧 `State.Applied` 面
+  （`State.RecoveryResultState`）から **ユーザーがhubへ戻ることを確定させたとき**
+  （system Backに束縛された明示的操作）も、status card起点では同じpre-entry状態へ復帰し、
+  status cardのdurable statusが再deriveされる。診断push等の非明示的離脱ではstateは保持される
+  （D5/D6）。旧 `State.Applied` 面
   entryの現行挙動（preview cancelで `lastVerifiedApply` へ復帰、結果面離脱後のstate残留）は
   無変更である（D5）。
 - **CTAの配置はhub status cardに限定**: `ORGANIZED_RESTORABLE` 行にCTAを付ける面は
@@ -239,18 +241,25 @@ hub status card」「Backは1つ前の面」）に反するため、本specは�
   既存のadmission規約で阻断される。
 - **確認・実行とresult離脱**: 復元の実行は `confirmRecovery()` / `State.RecoveryResultState` を
   無変更で使う。status card entryは `appliedPoint` / `lastVerifiedApply` を **設定も消去もしない**。
-  一方、**結果面の離脱** は現行のままでは契約を満たさない: 現行の `dismiss()` は
+  一方、**結果面からのhub帰還** は現行のままでは契約を満たさない: 現行の `dismiss()` は
   `RecoveryResultState`（`activeOperation == null && recoveryLease == null`）を
   `NoActiveOperation` として扱い **stateを `RecoveryResultState` のまま残す**。hubは
   `Idle`/`Cancelled` のときしかdurable statusを読まないため、このままでは復元直後のstatus cardが
-  再deriveされず、RS-AC-01/02の復元後の行更新が成立しない。そこでcoordinatorは
-  **entry originとpre-entry表示状態をresult離脱まで保持** し、`dismiss()` を
-  `RecoveryResultState && origin == HubStatusCard` に限って拡張する: pre-entryの表示状態
-  （`Idle`/`Cancelled`）を発行し、originを解消して `DismissalOutcome.CancelledAndMayNavigate`
-  を返す（zero-write）。旧entry（`AppliedSurface`）の `dismiss()` は現行どおり
-  `NoActiveOperation`・state残留であり無変更である。run面のBack経路とhost離脱時の
-  `dismiss()` 呼出し（既存の `onSystemBack` → `interruptAndNavigate`、
-  `DisposableEffect` の `onDispose`）は無変更でこの拡張を経由する。
+  再deriveされず、RS-AC-01/02の復元後の行更新が成立しない。ただし解消を汎用 `dismiss()` や
+  host cleanup（`onDispose`）へ畳み込むことは **しない**: 結果面は
+  `RestoreFailed` + safe-supportのとき「診断を開く」で別destinationへpushされ、その遷移でも
+  run面compositionはdisposeされるため、`onDispose` 経由でstateを変えると診断からの復帰時に
+  result/safe-support面が失われる。そこでcoordinatorは **entry originとpre-entry表示状態を
+  result離脱まで保持** し、**ユーザーのhub帰還を確定させた経路（結果面でのsystem Back）だけが
+  呼ぶ明示的な新操作**（仮称 `leaveRecoveryResultToHub()`。最終名は実装PRで確定）を設ける:
+  `RecoveryResultState && origin == HubStatusCard` のときだけpre-entryの表示状態
+  （`Idle`/`Cancelled`）を発行してoriginを解消し `DismissalOutcome.CancelledAndMayNavigate`
+  を返す（zero-write）。該当しないときはno-opである。`dismiss()` は **現行mainから無変更**
+  とし、host cleanup・再composition・非Backのdisposeではterminal stateを変更しない
+  （result/safe-support面の既存の寿命を維持）。旧entry（`AppliedSurface`）・origin無しの挙動は
+  すべて現行どおりである。新しいrunの開始（`beginOperation()`）はoriginを解消する
+  （recovery flow stateのresetに含める）。run面側の変更はBack経路での当該操作呼出しの
+  **最小diff** に限る（plan §5）。
 
 `State.Applied` からの既存entry（`beginRecoveryPreview()`）は現行どおり残り、spec 230の
 AC-2(e)相当のoracle（restart後は旧entryへ到達しない）は舊pathについて引き続き成立する
@@ -287,12 +296,14 @@ AC-2(e)相当のoracle（restart後は旧entryへ到達しない）は舊pathに
   #374/#375が所有し続ける）。
 - **遷移と復帰**: CTAの選択で確認flowのhost面（既存の確認面。T-14相当、settings側run面）へ
   到達し、検査→確認→復元が完結する。cancel/back/dismissはD5の戻り先契約に従い、ユーザーは
-  hub status card側へ戻る。**復元成功後の結果面を離脱するとき（Back/完了）もD5の
-  `dismiss()` 拡張経由でcoordinatorはpre-entryの表示状態へ戻り**、status cardは既存の
-  再読込契約（DS-AC-09）でdurable statusを再deriveする。復元成功後の選択pointは
-  `RESTORED` となり、行は「restored or expired」表示へ変わる。ただし他のretention内
-  `VERIFIED` pointが残る場合、行は再びrestorableとなり、CTAは **その時点の最新の検証済み1点**
-  に対して再度機能する（D1の選択は毎回の読み取りで行う。選択UIは存在しない）。
+  hub status card側へ戻る。**復元成功後の結果面からユーザーがhubへ戻ることを確定させたとき
+  （結果面でのsystem Back → D5の明示的操作）のみcoordinatorはpre-entryの表示状態へ戻り**、
+  status cardは既存の再読込契約（DS-AC-09）でdurable statusを再deriveする。結果面からの
+  診断push等の非明示的離脱ではstateは保持され、戻るとresult/safe-support面が維持される。
+  復元成功後の選択pointは `RESTORED` となり、hub帰還時の再deriveで行は
+  「restored or expired」表示へ変わる。ただし他のretention内 `VERIFIED` pointが残る場合、
+  行は再びrestorableとなり、CTAは **その時点の最新の検証済み1点** に対して再度機能する
+  （D1の選択は毎回の読み取りで行う。選択UIは存在しない）。
 
 ## Behavior scenarios
 
@@ -334,18 +345,20 @@ And status card entryは表示stateが `Idle`/`Cancelled` 以外のときに呼�
 And 旧 `State.Applied` 面 entryのcancel（`cancellingRecoveryPreviewRestoresVerifiedApplySummaryAndActionSurface`
 相当）は現行契約どおり `lastVerifiedApply` へ復帰する（無変更の回帰確認）
 
-### Scenario: 復元成功後の結果面から戻るとstatus cardが更新される
+### Scenario: 復元成功後の結果面からhubへ戻るとstatus cardが更新される
 
 Given status cardのCTAからstatus card entryで復元を実行し、確認が成功して
 `State.RecoveryResultState` が表示されている（originとpre-entry表示状態は保持されている）
-When ユーザーが結果面を離脱する（Back/完了。run面の既存Back経路・host離脱の `dismiss()` 呼出し）
-Then coordinatorはpre-entryの表示状態（`Idle`/`Cancelled`）へ復帰し、`RecoveryResultState` の
-state残留は起こらない。UIはhub status card側へ戻る
+When ユーザーが結果面でsystem Backする（hub帰還を確定させる明示的経路）
+Then coordinatorはD5の明示的操作でpre-entryの表示状態（`Idle`/`Cancelled`）へ復帰し、
+`RecoveryResultState` のstate残留は起こらない。UIはhub status card側へ戻る
 And status cardは既存の再読込契約でdurable statusを再deriveする: retention内の有効な
 `VERIFIED` pointが残っていれば残存pointに対するrestorable行（残時間・CTA）が再提示され、
 残っていなければ「restored or expired」行が表示される
-And 旧 `State.Applied` 面 entryで復元した場合の結果面離脱は現行どおり
-`NoActiveOperation`・state残留であり、この拡張の対象外である（無変更の回帰確認）
+And 結果面から「診断を開く」等で別destinationへpushした離脱（非明示的host dispose）では
+terminal stateは変化せず、診断からBackするとresult/safe-support面が維持される
+And 旧 `State.Applied` 面 entryの結果面挙動（Back含めstate残留・現行契約）は無変更である
+（回帰確認）
 
 ### Scenario: 適用履歴行は相関gateに従う（status card起点では構造的に出ない）
 
@@ -475,7 +488,8 @@ journal eventは発生しない（spec 271/84の読み取り契約と同一。�
   描画し（`OrganizerHubPreferences.kt` `hubDurableStatusItems`）、settings側run面
   （`ManualOrganizationPreferences.kt` `durableStatusItems`）も同一行を表示のみで維持する
   （spec 366 HUB-AC-05）。本specのCTAはhub status cardの行にのみ付き（D6）、settings側run面の
-  行・確認面・Back経路は無変更である（hub起点の確認flowは既存のhost面を共有する）。
+  行・確認面は無変更である（hub起点の確認flowは既存のhost面を共有する。run面側の変更は
+  結果面のsystem Back経路での明示的hub帰還操作呼出しの最小diffに限る — D5）。
   #369のrun面統合（実装済み）で確認面のhostは既存のrun面に留まっており、本specの契約は
   「CTA→検査→確認→復元の完結性」について不変である。
 - process death: 復元確認中のprocess死は既存のrestart reconciliation（spec 13）と
@@ -564,9 +578,9 @@ journal eventは発生しない（spec 271/84の読み取り契約と同一。�
       checksum有効、`createdAtMs` 最大、決定的tie-break）であり、選択UIは存在しない。
       複数pointが存在するとき最新を復元した場合、残存する有効pointに対して行が再び
       restorableとして再提示され、次のCTAの対象が残存pointの最新になる。再提示は
-      復元成功後の結果面離脱（D5の `dismiss()` 拡張でpre-entry状態へ復帰）とstatus cardの
-      再読込を経て起きる（state-machine unitで直接証明し、manual evidenceだけに依存しない）。
-      24h / 最大3点 / tombstone契約（spec 13 / ADR-0003）に変更がない。（Issue受入2）
+      復元成功後の結果面からの明示的hub帰還（D5の `leaveRecoveryResultToHub()` 相当）と
+      status cardの再読込を経て起きる（state-machine unitで直接証明し、manual evidenceだけに
+      依存しない）。24h / 最大3点 / tombstone契約（spec 13 / ADR-0003）に変更がない。（Issue受入2）
 - [ ] **RS-AC-03**: one-shot確認tokenは検査を実行したprocess内でfreshに発行され、永続化されず、
       二重実行・死後process横断の確認ができない。token registryの所有境界は
       application module instanceであり、process死の構造的surrogate（fresh module構築）で
@@ -577,9 +591,9 @@ journal eventは発生しない（spec 271/84の読み取り契約と同一。�
       出現せず、競合時のtapは不受理（静かな不受理）である。status card entryは表示stateが
       `Idle`/`Cancelled` 以外では不受理であり、そのcancel/back/dismissはpre-entryの表示状態
       （`Idle`/`Cancelled`）へ復帰して旧 `State.Applied` 面へ復帰しない。**復元成功後の
-      結果面離脱も `dismiss()` の `RecoveryResultState && HubStatusCard origin` 拡張で
-      pre-entry状態へ復帰し、`RecoveryResultState` のstate残留を起こさない**。旧entryの
-      preview cancel契約・結果面離脱後の現行挙動（`NoActiveOperation`・state残留）は
+      hub帰還は結果面でのsystem Backに束縛された明示的操作でのみpre-entry状態へ復帰し、
+      `dismiss()`/host cleanup（`onDispose`・診断push等の非明示的離脱）では
+      `RecoveryResultState` を変更しない**。旧entryのpreview cancel契約・結果面での現行挙動は
       無変更である。（Issue受入4＋D5）
 - [ ] **RS-AC-05**: 期限切れ・`NotRestorable`・`Unavailable`・`WriterBusy`/`Concurrent` の表示が
       現行のtyped文言契約どおりであり、cancelはzero-write、fail-closedではCTAを出現させない。
@@ -611,10 +625,10 @@ journal eventは発生しない（spec 271/84の読み取り契約と同一。�
 
 | AC | Evidence |
 |---|---|
-| RS-AC-01 | Cold-process emulator evidence: force-stop → hubを最初の面として起動 → Launcherを開かずにstatus cardのCTA→検査→確認→復元を完了 → 結果面を離脱してhubへ戻る → 復元後の行が「restored or expired」へ変わる（有効point 1点のみのpreconditionを明記）。PR/auditへ記録（spec 271 DS-AC-10と同型）。`OrganizerDurableStatusInstrumentationTest` 系はCI lane外のため、PR時の手元emulator実行を証拠として記録する。加えてstate-machine unit: hub originの confirm→ResultState→dismiss→pre-entry状態復帰を直接証明 |
-| RS-AC-02 | Unit test（純粋selector）: 単一点 / 複数点（最新選択） / retention境界（±1 ms at `createdAt + 24h`） / checksum無効・非VERIFIEDの除外 / 同 `createdAtMs` の決定的tie-break / 空のときのclosed null。既存 `OrganizerDurableStatusDeriverTest` と同一のfixture方式。coordinator unit oracle: 複数pointで最新を復元→ResultState→dismiss→pre-entry状態復帰→entry re-readが残存pointの最新を返すこと（再提示のstate-machine直接証明）。Instrumentation: 復元成功→hub復帰→status再読込→複数点なら次点restorable行 |
+| RS-AC-01 | Cold-process emulator evidence: force-stop → hubを最初の面として起動 → Launcherを開かずにstatus cardのCTA→検査→確認→復元を完了 → 結果面でBackしてhubへ戻る → 復元後の行が「restored or expired」へ変わる（有効point 1点のみのpreconditionを明記）。PR/auditへ記録（spec 271 DS-AC-10と同型）。`OrganizerDurableStatusInstrumentationTest` 系はCI lane外のため、PR時の手元emulator実行を証拠として記録する。加えてstate-machine unit: hub originの confirm→ResultState→明示的hub帰還→pre-entry状態復帰を直接証明 |
+| RS-AC-02 | Unit test（純粋selector）: 単一点 / 複数点（最新選択） / retention境界（±1 ms at `createdAt + 24h`） / checksum無効・非VERIFIEDの除外 / 同 `createdAtMs` の決定的tie-break / 空のときのclosed null。既存 `OrganizerDurableStatusDeriverTest` と同一のfixture方式。coordinator unit oracle: 複数pointで最新を復元→ResultState→明示的hub帰還→pre-entry状態復帰→entry re-readが残存pointの最新を返すこと（再提示のstate-machine直接証明）。Instrumentation: 復元成功→hub復帰→status再読込→複数点なら次点restorable行 |
 | RS-AC-03 | Unit test: tokenのone-shot消費（2回目は不成立）、**fresh `LayoutApplicationModule`（fresh registry）構築で旧tokenが消費不能**（registry所有境界の構造的固定。coordinator再構築ではregistryが残るためsurrogateにならないことをtestコメントで明記）、同一module instanceでのtoken消費成功（対比）。confirm連鎖での `RecoveryRequest` 非漏出（既存 `RecoveryPreviewContractTest` の継続成功）。Instrumentation/cold-process evidence: preview表示後にprocessを落とす→再入場では旧confirmを再開せずstatus CTAからの再検査のみ |
-| RS-AC-04 | Unit test（coordinator）: run active中のcold entry不受理・RECOVERY lease単一flight・`State` 遷移（Inspecting→Preview(correlated=null)→Recovering→ResultState）。**status card entryのadmission state検査（`Idle`/`Cancelled` 以外は静かに不受理）とcancel/back/dismissのpre-entry状態復帰（`Cancelled` から開いた場合は `Cancelled` へ復帰し `State.Applied` へ戻らない）**。**結果面離脱の `dismiss()` 拡張: hub originでは confirm→ResultState→dismiss→pre-entry状態（`Idle`/`Cancelled`）、旧Applied originでは現行どおり `NoActiveOperation`・state残留**。旧entryのcancel契約（`cancellingRecoveryPreviewRestoresVerifiedApplySummaryAndActionSurface`）とrestart oracle（`freshRunInstanceDoesNotReachRecoveryPreview`）の無編集green。Instrumentation: run進行中のstatus cardにCTAが出ない否定的観測（既存 `hubHidesStatusRowsWhileRunIsActiveAndReshowsAfterCancel` の継続） |
+| RS-AC-04 | Unit test（coordinator）: run active中のcold entry不受理・RECOVERY lease単一flight・`State` 遷移（Inspecting→Preview(correlated=null)→Recovering→ResultState）。**status card entryのadmission state検査（`Idle`/`Cancelled` 以外は静かに不受理）とcancel/back/dismissのpre-entry状態復帰（`Cancelled` から開いた場合は `Cancelled` へ復帰し `State.Applied` へ戻らない）**。**結果面のhub帰還: hub originの `RecoveryResultState` で明示的操作（system Back経路）のみがpre-entry状態へ復帰し、`dismiss()`/host cleanup（`onDispose`・診断push相当のdispose）ではstate不変。旧Applied origin・origin無しでは明示的操作も含め現行挙動のまま**。旧entryのcancel契約（`cancellingRecoveryPreviewRestoresVerifiedApplySummaryAndActionSurface`）とrestart oracle（`freshRunInstanceDoesNotReachRecoveryPreview`）の無編集green。Instrumentation: run進行中のstatus cardにCTAが出ない否定的観測（既存 `hubHidesStatusRowsWhileRunIsActiveAndReshowsAfterCancel` の継続）＋ RestoreFailed→診断を開く→診断Back→result/safe-support面が維持される観測 |
 | RS-AC-05 | Unit test: TOCTOU expiry / stale / writer busy / unavailable のtyped結果伝播とzero-write counter。Instrumentation: not-available文言・cancel zero-write（既存 `cancellingRecoveryPreviewRestoresVerifiedApplySummaryAndActionSurface` / `verifiedSuccessKeepsAppliedWordingAfterRecoveryPreviewCancel` の継続成功 + status card entry版の追加） |
 | RS-AC-06 | Unit test: `RemainingWindow` の境界（切捨て・1..24 clamp・1時間未満区分）。**status card表示のread直列化oracle: hub Compose testでfake coordinatorがstatus readとentry readの呼出し重複を記録し、並列実行（重複）が起きないこと、status readが `ORGANIZED_RESTORABLE` 以外のときentry readが呼ばれないこと、一時競合（fail-closed read）後に再読込契機でCTAが回復すること**。Compose semantics test: 読み順「状態→残期限→操作」、CTAのrole/state（既存 `hubStatusRowsPrecedeTheActionsInReadingOrder` / `hubRowsExposeNameRoleAndStateToAssistiveTechnology` の規約継承）。200% font scaleのevidence（既存 `hubStatusCardStaysReachableAtTwoHundredPercentFontScale` の規約継承） |
 | RS-AC-07 | spec 271 / spec 366 spec diff（companion revision節）+ owner受入記録。public-shape契約test（spec 84 RP-AC-01系）の継続成功 + 旧entry restart oracle（`freshRunInstanceDoesNotReachRecoveryPreview`）の無編集green |
@@ -640,6 +654,13 @@ review指摘で明確化した戻り先契約（D5）とregistry所有境界（D
 
 ## Change history
 
+- 2026-09-22（r4）: 3rd review指摘1点対応（@5764326404）。結果面からのhub帰還を汎用
+  `dismiss()`/`onDispose` に畳み込んだrev.3の設計を修正 — 診断push等の非明示的host離脱でも
+  `onDispose` 経由でpre-entry状態へ巻き戻り、result/safe-support面が失われる欠落。
+  hub帰還を **結果面でのsystem Backに束縛された明示的な新操作**
+  （`leaveRecoveryResultToHub()` 仮称）へ分離し、`dismiss()` は現行mainから無変更へ戻した。
+  `beginOperation()` によるorigin解消、run面Back経路の最小diff許可（plan §5/§6）、
+  診断push→Backでresult面が維持されるoracleを追加。
 - 2026-09-22（r3）: 2nd review指摘3点対応（@5764069572）。(1) status card表示のstatus readと
   entry readの **直列化** をD6/RS-AC-06へ新設（同一の非block `ordinaryMutex` を2本のreadが
   並列に争う自己競合によるCTA欠落を防ぐ。直列化oracleを追加）。(2) 復元成功後の結果面離脱の
