@@ -3,7 +3,7 @@ issue: "#366"
 status: implemented
 requirements: [FR-004, FR-006]
 risk: []
-updated: 2026-09-19
+updated: 2026-09-21
 ---
 
 # Organizer hub（T-01）を設定から開ける恒常的なOrganizer作業領域として新設する
@@ -61,9 +61,10 @@ shippableである。
   方針（T-05）の操作面を置かない。
 - run面の表示統合・canonical順序変更・T-07前置き面（D-05/D-06、#369が所有）。hubの
   「整理を開始」はT-07前置きを挟まず既存run面へ到達する（本段階の暫定導線）。
-- status cardの拡張: 進行中AI依頼・取り込み済み提案（D-08/D-02後続、#374/#375）、
-  復元CTA（D-15、#376）、最近のrun結果（process内のみであり既存run面が所有）を
-  hubへ置かない。placeholderや無効化された操作を見せてcapabilityを先取りしない。
+- status cardの拡張のうち、復元CTA（D-15、#376）と最近のrun結果（process内のみであり
+  既存run面が所有）をhubへ置かない。placeholderや無効化された操作を見せてcapabilityを
+  先取りしない。（#374改訂: 進行中AI依頼行・取り込み済み提案行は本Issue第1段階のnon-goal
+  から除外され、#374実装でstatus cardへ追加された — 後述のHUB-AC-03改訂。）
 - onboarding提案・hintの接続先変更（D-16表記、#370が所有）。
 - run state machine、spec 13/52/205/328/271の契約、diagnostics event、persistent
   store、permission、外部送信の変更。
@@ -257,8 +258,10 @@ And run state machine、確認・復旧の契約、diagnostics event、persisten
       では行なし。reconciliation未完了ではchecking行を表示し、gate terminal到達時に
       同一面で回復する。読み取り失敗はfail-closed（行なし、書込み・journal eventなし）。run
       進行中はdurable行とchecking行を表示しない。（Issue受入2）
-- [ ] **HUB-AC-03**: hubに復元CTA、進行中AI依頼、取り込み済み提案、最近のrun結果の
-      表示・操作が存在しない（non-goalsの機械的保証としての否定的観測）。（Non-goals）
+- [ ] **HUB-AC-03**（#374改訂）: hubに復元CTA（#376）と最近のrun結果の表示・操作が存在
+      しない（non-goalsの機械的保証としての否定的観測）。進行中AI依頼行・取り込み済み提案行は
+      #374実装でstatus cardへ追加された（D-02/D-08。追加行の契約は
+      [spec 374](../374-durable-imported-intent/spec.md) が所有する）。
 - [ ] **HUB-AC-04**: hubの「整理を開始」CTAから既存manual organization run面へ到達し、
       既存開始行により `MANUAL_FULL` triggerのrun flowが開始できる。hubから `start()` を
       直接発行する経路がなく、spec 13/52の安全契約・run state machine・spec 328/205の
@@ -291,7 +294,7 @@ And run state machine、確認・復旧の契約、diagnostics event、persisten
 |---|---|
 | HUB-AC-01 | UI instrumentation test: hub入口rowの存在、hub画面の表示、status card領域と材料群の行構造。emulator screenshot（light/dark × ja/default） |
 | HUB-AC-02 | UI instrumentation test: durable status行のstatus別render（restorable/restored-or-expired/unresolved＋safe-support/never organized/checking行）、run進行中の行隠蔽、Idle復帰後の再表示。spec 271の `OrganizerDurableStatusInstrumentationTest` 相当のseam再利用確認。emulator cold-process evidence（Launcher未起動でhubからdurable status到達、DS-AC-10スタイル） |
-| HUB-AC-03 | UI instrumentation testの否定的観測 + 実装PR diff review（復元CTA・AI依頼・取り込み済み提案・run結果の表示要素が存在しないこと） |
+| HUB-AC-03 | UI instrumentation testの否定的観測 + 実装PR diff review（復元CTA・run結果の表示要素が存在しないこと。AI依頼・取り込み済み提案行は#374で追加済み — 追加行の検証はspec 374 DI-AC-11が所有） |
 | HUB-AC-04 | UI instrumentation test: hub CTA → run面遷移 → 既存開始行からrun開始（既存 `ManualOrganizationPreferencesInstrumentationTest` を無編集のままgreen）。`app.lawnchair.organizer.*` unit gate green。diff上、run面/coordinator/application moduleの契約コード無編集 |
 | HUB-AC-05 | UI instrumentation test: 設定側row群の存在と既存flowの回帰（manual entry/onboarding経由のrun接続）。既存instrumentation lane green |
 | HUB-AC-06 | UI instrumentation test: hub側toggleと設定側rowが同一preferenceを読み書きすること（片側変更→他面の状態一致）。resume再読取の維持 |
@@ -315,6 +318,11 @@ And run state machine、確認・復旧の契約、diagnostics event、persisten
 
 ## Change history
 
+- 2026-09-21: **#374改訂（Amend。status card 2行の追加を受けてHUB-AC-03の否定的観測を縮小）**:
+  進行中AI依頼行・取り込み済み提案行（D-02/D-08）をnon-goals/HUB-AC-03の対象から除外し、
+  #374実装でstatus card（durable status行と開始CTAの間）へ追加されたことを記録した。
+  追加行の契約・読み順挿入（状態→残期限→操作）は [spec 374](../374-durable-imported-intent/spec.md)
+  が所有する。復元CTA（#376）・最近のrun結果の否定的観測は維持。
 - 2026-09-19: Draft created for #366（spec/plan整備task）。accepted TO-BE契約
   （organizer-to-be-ux.md @ main `3076bdae7e`、PR #364）と現行実装調査
   （`HomeScreenPreferences.kt`、`PreferenceRoutes.kt`、`PreferenceNavigation.kt`、
