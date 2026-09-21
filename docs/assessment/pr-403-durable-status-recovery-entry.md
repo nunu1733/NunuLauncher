@@ -68,7 +68,9 @@ production code の変更は次の 11 file に限定される:
 - **RS-AC-09 (PASS)** — 新規resource 2件（plurals `manual_organization_recovery_remaining_hours`、string `manual_organization_recovery_remaining_under_one_hour`）が `values/` と `values-ja/` の両方に存在（EN one/other、ja other — locale正）。placeholder `%1$d` は使用quantity間で整合（EN one項は文脈上引数不要）。CTA labelは既存 `manual_organization_recovery` 再利用。UIはresource由来のみでhardcoded user-visible literalなし。a11y oracleはRS-AC-06のとおり。
 - **RS-AC-10 (条件付き成立 → 記録commitで完全成立)** — 検証対象head `c0a4126ac2…` 上で `CI / final-status` が **success**（run 35655543974。source jobs `organizer-unit-tests` / `check-style` / `build-debug-apk` をskipなしで含む14 job全success。`validate-repo-contract` もsuccess）。`high-risk-evidence` のみ本記録の不在を理由にfailure — 本記録がその是正である。
 
-## Executed test surface（本監査session内、対象head `c0a4126ac2…` 上で独立実行）
+## Executed test surface
+
+本監査session内で対象head `c0a4126ac2…` 上に独立実行した。
 
 - `./gradlew spotlessCheck` → BUILD SUCCESSFUL (exit 0)
 - `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` → BUILD SUCCESSFUL (exit 0)。result XML: 151 classes / **1683 tests / 0 failures / 0 errors / 0 skipped**（新規 `RestorableRecoveryPointSelectorTest` 8件 + `LayoutApplicationModuleRestorableEntryTest` 7件を含む）
