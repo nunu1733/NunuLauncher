@@ -22,6 +22,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import androidx.activity.compose.LocalActivityResultRegistryOwner
+import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
@@ -185,17 +186,22 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()
 
+    @Composable
+    private fun DiagnosticsFace(port: RecordingPort, registry: RecordingRegistry) {
+        LawnchairTheme {
+            CompositionLocalProvider(
+                LocalActivityResultRegistryOwner provides object : ActivityResultRegistryOwner {
+                    override val activityResultRegistry: ActivityResultRegistry get() = registry
+                },
+            ) {
+                OrganizerDiagnosticsPreferences(port = port)
+            }
+        }
+    }
+
     private fun composeScreen(port: RecordingPort, registry: RecordingRegistry) {
         composeRule.setContent {
-            LawnchairTheme {
-                CompositionLocalProvider(
-                    LocalActivityResultRegistryOwner provides object : ActivityResultRegistryOwner {
-                        override val activityResultRegistry: ActivityResultRegistry get() = registry
-                    },
-                ) {
-                    OrganizerDiagnosticsPreferences(port = port)
-                }
-            }
+            DiagnosticsFace(port = port, registry = registry)
         }
     }
 
@@ -280,9 +286,15 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
         // it. (The process-death side is pinned structurally in
         // ExchangeImportFailureDisplayTest#diagnosticsRecordingIsNotSerializable.)
         composeRule.activityRule.scenario.recreate()
-        // Re-compose the face on the recreated activity (what re-entering the
-        // route does); the row must come from the SURVIVING holder recording.
-        composeScreen(port, registry)
+        // Re-compose the face on the recreated activity — through the
+        // Activity's own setContent (the ComposeTestRule's setContent is a
+        // once-per-test contract), mirroring what re-entering the route does.
+        // The row must come from the SURVIVING holder recording.
+        composeRule.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                DiagnosticsFace(port = port, registry = registry)
+            }
+        }
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithTag("organizer-diagnostics-recent-import-failure")
                 .fetchSemanticsNodes().isNotEmpty()
