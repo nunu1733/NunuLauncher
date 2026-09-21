@@ -360,8 +360,9 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
   recordと**完全一致**すること（`DurablePendingIntent`のdata class同値。`entryKind`を含む
   全field。同一session宛の再取り込みで内容が同一でも `entryKind` のみ変化した場合 —
   復元モードの変化 — も置換として検出する）、sessionがadmission時点で失効していないこと、
-  のすべてが真であることである。判定とadmission（RUN lease取得・operation生成）は**同一の
-  排他境界内**で行われ、拒否時はleaseを解放してtyped拒否として終わる（可観測run state・
+  のすべてが真であることである。判定とadmission（operation生成・`State.Capturing`発行）は
+  **同一の排他境界内**で行われ、拒否時はprovisionalに取得したRUN leaseを即時解放して
+  typed拒否として終わる（可観測run state・
   journal書込は0件）。
 - **exchange mutation gate（本Issueが新設するprocess-wideな共有排他seam）**:
   anchorの読み取りとadmissionが、**active sessionとdurable recordの両方を変化させうる
@@ -372,15 +373,29 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
   別々の内部lockを持つため、holder内の書込mutex拡張だけでは排他として不十分である
   （2nd review指摘1。初回re-entryの「`pendingWriteMutex`拡張」案を廃止して本設計へ改訂）。
   **gateの保持区間**: 事前計算（record/sessionの予備読取・reconcile・rebuild入力の再構築）は
-  **gate外**で行い、**admissionの直前のみgateに入る**。gate内では新鮮なrecord/session/clockの
-  再読取 → anchor判定 → （Admitの場合は）RUN lease取得・operation生成・`State.Capturing`発行
-  までを**1つのatomicなadmission seamとして完結**させ、gateを解放してから制御を返す。
-  検出（detection）・composition等の長時間処理は必ずgate解放後に行う — 現行
-  `ManualOrganizationRun.start()` はadmission後も同一同期呼出内で検出まで進むため、
-  呼出側がgateを保持したまま `start()` を呼ぶ設計はこの界限に違反し、race oracleとも
-  両立しない（3rd review指摘。anchor内部でgateに入りadmission完了まで保持する形に固定）。
-  実装形態（共有lock object、既存`pendingWriteMutex`の包含可否とlock順序）はplan.mdに
-  記載し、実装PRで確定する。
+  **gate外**で行い、**admissionの直前のみgateに入る**。gateが保証するatomic区間は
+  **新鮮なrecord/session/clockの再読取 → anchor判定 → operation生成・`State.Capturing`発行
+  まで**である。RUN leaseの取得は現行 `beginOperation()` 構造どおりの **provisional取得
+  （gate外・run lock取得前）**であり、それ自体はrun admissionに数えない
+  （anchor拒否時は即時解放される。4th review指摘2の統一）。
+  gateを解放してから制御を返し、検出（detection）・composition等の長時間処理は必ず
+  gate解放後に行う — 現行 `ManualOrganizationRun.start()` はadmission後も同一同期呼出内で
+  検出まで進むため、呼出側がgateを保持したまま `start()` を呼ぶ設計はこの界限に違反し、
+  race oracleとも両立しない（3rd review指摘。anchor内部でgateに入りadmission完了まで
+  保持する形に固定）。実装形態（共有lock object、既存`pendingWriteMutex`の包含可否と
+  lock順序）はplan.mdに記載し、実装PRで確定する。
+- **gate下のUI待機禁止（4th review指摘1）**: exchange mutation gate保持中は
+  `withContext(uiDispatcher)` 等によるMain dispatcherへの切替・完了待機を**絶対に行わない**。
+  gate下の処理はIO上で完結する純粋なstore操作と判定のみとし、UI stateへのsettleは
+  gate / `pendingWriteMutex` 解放後に行う。#374のsave fence
+  （`launchDurablePendingIntentSave` がmutex保持下で `withContext(uiDispatcher)` により
+  settleする現行構造）は、**IO上の短いcritical sectionでrecord書込・stale判定・条件付き
+  cleanupを完結させて純粋なsettle結果を作り、gate/mutex解放後にUIへsettleする**形へ
+  本Issueがrefactorする対象に含める（後段でcleanupを再取得する場合も `mutex → gate` の
+  逆順を作らない）。#374のsave fence oracle（cancel/supersede中のstale record残存なし）は
+  維持される。durable saveをUI settle直前でbarrier停止させMain側でrebind admissionを
+  開始する決定的oracleで、gate保持中のMain待ちが存在しないことをwall-clock非依存で
+  固定する（SR-AC-08）。
 - **gate下の処理時間の界限**: gate保持区間はrecord1件・session1件の小さなlocal file読書き
   （`AtomicFile`）とadmission判定・operation生成のみに限り、readiness gate・model load・
   候補検出等の長時間処理をgate下で行わない。他の面でのcancel/confirmがblockされるのは
@@ -519,6 +534,10 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
       例外化せずtyped fail-closed（Invalid清掃・継続拒否）として扱われること**が
       fixture付きでtestされる。anchor拒否後の面の扱い（無効化済み→清掃・クローズ、
       record置換済み→読み直し）がtestされる。
+      **gate下のUI待機禁止のoracle**: durable saveをUI settle直前でbarrier停止させ
+      Main側でrebind admissionを開始する順を決定的に構成し、gate保持中にMain dispatcherへの
+      待機が発生しないこと（双方が進行可能であること）をwall-clock非依存でtestされる
+      （#374 save fence refactor後の回帰を含む）。
 - [ ] **SR-AC-09**: spec 331改訂（D-2 remedy分割・§5経路更新・attach生存範囲明確化）と
       spec 228注記（復元初期値とD-1の関係）が作成され、**owner受入済み**である
       （受入自体は実装PR前のdocs変更）。
@@ -590,6 +609,22 @@ exchange系）、CI `final-status` green。本Issueはpersistent state変更・D
 
 ## Change history
 
+- 2026-09-22: **Re-entry revision 4（4th review 2026-09-22 Changes requested 3件対応、
+  [comment `5766390303`][8]）**。
+  **(1) gate下のUI待機禁止とsave fence refactor（高）**: 「`launchDurablePendingIntentSave`
+  がmutex保持下で `withContext(uiDispatcher)` によりsettleする現行構造の下で
+  gate配下化すると、Main: run lock → gate待ち / IO: gate → mutex → Main待ち の循環が
+  作れる」指摘に対し、**gate保持中のMain dispatcher切替・待機を禁止する不変条件**を新設し、
+  save fenceを「IO上の短いcritical sectionでrecord書込・stale判定・条件付きcleanupを
+  完結しgate/mutex解放後にUI settleする」形へrefactorする契約を追加（後段cleanup再取得の
+  `mutex → gate` 逆順も禁止。#374 save fence oracle維持）。barrier停止による決定的
+  deadlock oracleをSR-AC-08へ追加。
+  **(2) RUN leaseのprovisional位置づけ統一（中）**: gate内必須とする記述と
+  plan/現行構造（lease取得はgate外・run lock前）の割れを解消し、**lease取得はgate外の
+  provisional取得でありrun admissionに数えない**。gateのatomic区間は「新鮮読取 → 判定 →
+  operation生成・`State.Capturing`発行まで」に統一（Refuse時の即時解放oracleを含む）。
+  **(3) anchor引数のnullable明示（低）**: `admissionAnchor` を既定値nullのnullable引数と
+  することを明記。
 - 2026-09-22: **Re-entry revision 3（3rd review 2026-09-22 Changes requested 1件対応、
   [comment `5766214632`][7]）**。
   **(1) gate保持区間の契約化（中）**: 「呼出側がgateを保持したまま `start()` を呼ぶ設計は、
@@ -682,3 +717,4 @@ exchange系）、CI `final-status` green。本Issueはpersistent state変更・D
 [5]: https://github.com/nunu1733/NunuLauncher/issues/375#issuecomment-5740062562
 [6]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5765970137
 [7]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5766214632
+[8]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5766390303

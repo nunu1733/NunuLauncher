@@ -3,8 +3,8 @@
 > Issue: #375
 > Spec: [spec.md](./spec.md)
 > Status: draft
-> Revision: 4（初回review 3件 + 2nd review 4件 + 3rd review 1件対応 + 前提merge後の
-> current main `9dc3ec8fed`へのre-entry）
+> Revision: 5（初回review 3件 + 2nd review 4件 + 3rd review 1件 + 4th review 3件対応 +
+> 前提merge後のcurrent main `9dc3ec8fed`へのre-entry）
 
 ## Current evidence
 
@@ -202,16 +202,21 @@ AGENTS.md設計規約（小さなinterface・既存seamの再利用・platform�
      （既存 `intentScopeCount` は後方互換のため残す。既存testの期待値を壊さない）。
      emptyが「無し」を表す。内部identity型のみで、durable型・platform型は漏らさない。
    - **admission anchor hook（新設。review指摘1の解消）**: `start` へ
-     `admissionAnchor: (AdmissionCompletion) -> AdmissionVerdict`（命名は実装PRで確定。
-     `AdmissionVerdict` は `Admit` / `Refuse` の小さなenum。`AdmissionCompletion` は
-     「operation生成と `State.Capturing` 発行を行うrun側のcompletion action」）を追加する。
+     `admissionAnchor: ((AdmissionCompletion) -> AdmissionVerdict)? = null`（命名は実装PRで
+     確定。既定値nullのnullable引数。`AdmissionVerdict` は `Admit` / `Refuse` の小さなenum。
+     `AdmissionCompletion` は「operation生成と `State.Capturing` 発行を行うrun側の
+     completion action」。4th review指摘3の明示）。
      `beginOperation` の `synchronized(lock)` 区間内 — active operation不在確認の後、
      operation生成と `State.Capturing` 発行の**前** — でanchor呼出を行う。anchorは
      exchange mutation gate（Design 7）を内部で取得し、gate内で新鮮なrecord/session/clockの
      読取とanchor判定を行い、**`Admit` ならcompletion actionをgate内で実行してから**
-     gateを解放して制御を返す。**`Refuse` のときは取得直後のRUN leaseを `close()` して
-     何も発行せず** typed拒否（`StartOutcome`へ `AdmissionRefused` 相当の新系を追加。
-     237-240行のsealed interface拡張）を返す。anchor制御が戻った時点でgateは解放済みであり、
+     gateを解放して制御を返す。**`Refuse` のときはprovisionalに取得済みのRUN leaseを
+     即時 `close()` して何も発行せず** typed拒否（`StartOutcome`へ `AdmissionRefused` 相当の
+     新系を追加。237-240行のsealed interface拡張）を返す。RUN leaseの取得は現行
+     `beginOperation()` 構造どおり **gate外（run lock取得前）のprovisional取得**であり、
+     それ自体はrun admissionに数えない（gateのatomic区間は「新鮮読取 → 判定 →
+     operation生成・`State.Capturing`発行まで」。4th review指摘2の統一）。
+     anchor制御が戻った時点でgateは解放済みであり、
      その後の検出（detection）はgate外で行われる（3rd review指摘の解消 — 呼出側がgateを
      保持したまま `start()` を呼ぶ設計は、admission後も同期で検出まで進む現行構造と矛盾
      するため不採用。Alternatives rejected）。anchorが `null` の既存経路は挙動不変
@@ -277,6 +282,23 @@ AGENTS.md設計規約（小さなinterface・既存seamの再利用・platform�
      probeを置き、gate非保持での検出開始を構造的に確認する。wall-clock依存でない）。
      これにより「rebuild完了（gate外） → `generate()`置換を完走 → admission → anchor拒否」
      の決定的race oracleが成立する。
+   - **gate下のUI待機禁止（4th review指摘1の解消）**: gate保持中は
+     `withContext(uiDispatcher)` 等によるMain dispatcherへの切替・完了待機を**絶対に行わない**
+     （不変条件）。現行 #374の `launchDurablePendingIntentSave()`（1070-1123行付近）は
+     `pendingWriteMutex` 保持下で `withContext(uiDispatcher)` によりsettleするため、
+     gate配下化すると Main: run lock → gate待ち / IO: gate → mutex → Main待ち の循環が
+     成立しうる。本Issueはsave fenceを次へrefactorする:
+     (i) IO上の短いcritical section（gate＋必要なmutex内）で record書込・stale判定
+     （attempt token照合）・条件付きcleanup（`deleteIf`）を完結させ、**純粋なsettle結果**
+     （`record`, `saved`, `wasCurrent` 等）を作る、
+     (ii) gate/mutexを解放してからUI dispatcherへsettleする（`settlePendingIntentSave` /
+     `deleteIf` のUI側後処理は解放後）,
+     (iii) cleanupを後段で再取得する場合も **`mutex → gate` の逆順を作らない**
+     （必要ならgateのみで再取得し、mutexはgate内でのみ取る）。
+     #374のsave fence oracle（cancel/supersede中のstale record残存なし。fence 1/2）は
+     refactor後もgreenであることを回帰で確認する。テスト: durable saveをUI settle直前で
+     barrier停止 → Main側でrebind admission開始、の順を決定的に構成し、gate保持中の
+     Main待ちがないこと（双方が進行可能）をwall-clock非依存で証明する（SR-AC-08）。
    - **既存lockとの関係**: 正当性の根拠はgateである。#374の`pendingWriteMutex`はsave内部の
      attempt-fence論理の実装詳細として残すかgateへ包含するかを実装PRで確定する
      （残す場合のlock順序は「gate → `pendingWriteMutex`」に固定し、mutexとrun lockの
@@ -417,7 +439,7 @@ source変更は上記のみ。`favorites` / layout DB / recovery DB / export ses
 | SR-AC-05 | instrumentation: 通常run・idle継続のunchecked回帰 + rebind復元の「編集可・confirm必須」（confirmなしでplanに進まない否定的観測） | organizer instrumentation lane |
 | SR-AC-06 | 既存attach/freeze oracle（`attachIntent`回帰、`ExchangeImportSuccessInstrumentationTest`）無編集green | instrumentation lane |
 | SR-AC-07 | holder/instrumentation: reconcile不通でCTA非表示、single-flight、Busy拒否、成功後record残存・再継続可 + **race oracle（fake store/clock＋実際の`generate()`相当置換経路との並行）: rebuild成功 → session置換/破棄tombstone → anchor typed拒否・run不在の否定的観測（layout/journal 0件とcleanup件数を分離）** + **entryKindフリップ再取り込みoracle（置換検出→拒否→新record読み直し）** | unit + instrumentation |
-| SR-AC-08 | unit: 再構築seamのtable test（digest不一致/session不在/TTL → typed失敗、record残存）+ **anchor table test（Valid/record不一致〔entryKind含む〕/TTL越え/identity shape不正）＋「rebuild完了（gate外） → generate()置換を完走 → admission → anchor拒否」race oracle（fake clock/store）** + **identity破損fixture（wrong schema・digest長不正のvalid JSON）で例外なし・typed fail-closed・run不在** + **gate契約のdiff review（session置換・pre-send cancel・record変化操作の全gate配下化。gate不在の競合経路が存在しないこと）** + **検出seamのprobe test（検出開始時点でgate非保持。wall-clock非依存）** + instrumentation（CTA押下でrun不在の否定的観測・anchor拒否後の面の扱い） | unit + instrumentation + diff review |
+| SR-AC-08 | unit: 再構築seamのtable test（digest不一致/session不在/TTL → typed失敗、record残存）+ **anchor table test（Valid/record不一致〔entryKind含む〕/TTL越え/identity shape不正）＋「rebuild完了（gate外） → generate()置換を完走 → admission → anchor拒否」race oracle（fake clock/store）** + **identity破損fixture（wrong schema・digest長不正のvalid JSON）で例外なし・typed fail-closed・run不在** + **gate契約のdiff review（session置換・pre-send cancel・record変化操作の全gate配下化。gate不在の競合経路が存在しないこと）** + **検出seamのprobe test（検出開始時点でgate非保持。wall-clock非依存）** + **UI待機禁止oracle（saveのUI settle直前barrier → Main側rebind admission。gate保持中のMain待ちなし・双方進行可能）** + instrumentation（CTA押下でrun不在の否定的観測・anchor拒否後の面の扱い） | unit + instrumentation + diff review |
 | SR-AC-09 | spec 331/228 diff review（Scope節と一致・gate規則不変）+ owner受入記録（Issue #375コメント） | PR diff review |
 | SR-AC-10 | strings走査（ja/en name集合・placeholder一致、spec 123 AC-5方式）+ hardcoded literal grep + a11y assertion + light/dark × ja/default screenshot | unit + manual evidence |
 
@@ -456,6 +478,8 @@ completedの往復）。performance観点は新規ではなく既存検出/compo
 - [ ] exchange mutation gate新設（controller `generate()`置換経路・pre-send invalidate・
       durable save・破棄・清掃delete・anchorのadmission区間のgate配下化。lock順序の一方向性
       確認。検出seamへのprobe test）
+- [ ] #374 save fence refactor（UI settleをgate/mutex解放後に分離。純粋settle結果の作成。
+      fence 1/2 oracleの回帰green。UI待機禁止oracleの追加）
 - [ ] rebind再構築seam（identity注入・anchor用源record）＋構造digest再検証（typed失敗含む）
       ＋往復property test＋projection全field等価oracle
 - [ ] reconcile純粋追加: identity shape破損検証（`Invalid`へ。fixture: wrong schema・
