@@ -104,6 +104,9 @@ fun ManualOrganizationPreferences(
     // Issue #371: injectable so instrumentation can host a real exchange JIT
     // waiter (cross-origin oracle) against a controlled holder.
     exchangeHolderOverride: ExchangeFlowStateHolder? = null,
+    // Issue #371: injectable so the settings-return instrumentation can drive
+    // the host's lifecycle deterministically.
+    jitLifecycleOwner: androidx.lifecycle.LifecycleOwner? = null,
 ) {
     val context = LocalContext.current
     val coordinator = run ?: remember { ManualOrganizationModule.get(context) }
@@ -140,7 +143,11 @@ fun ManualOrganizationPreferences(
     // path — start rows, onboarding admission, intent rebind, selection
     // confirmation and the D-06 empty-cut continuation all pause inside the
     // coordinator's composed-phase entry).
-    RunUsageAccessJitDialogHost(run = coordinator, settingsOpener = usageAccessSettingsOpener)
+    RunUsageAccessJitDialogHost(
+        run = coordinator,
+        settingsOpener = usageAccessSettingsOpener,
+        lifecycleOwner = jitLifecycleOwner ?: androidx.lifecycle.compose.LocalLifecycleOwner.current,
+    )
     // Issue #368: the strategy picker moved to the materials surface T-05
     // (OrganizerStrategyPreferences). The run surface offers no strategy
     // selection — not even a read-only row — and the write-time restart

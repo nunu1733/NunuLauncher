@@ -27,6 +27,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
 import androidx.test.platform.app.InstrumentationRegistry
 import app.lawnchair.organizer.diagnostics.DiagnosticsPort
 import app.lawnchair.organizer.diagnostics.model.PhaseCode
@@ -183,33 +186,52 @@ class UsageAccessJitInstrumentationTest {
     }
 
     @Test
-    fun grantObservedByTheProductionPredicateWhenTheCompositionResumes() {
+    fun settingsResumeAfterGrantResumesThroughTheProductionPredicate() {
         val context = context()
         val application = NotReadyApplication(context)
-        // The real production gate wiring (UsageAccessJitGateProvider) reads
-        // the app-op; the shell grants while the dialog is up, and the
-        // composed-phase resume must observe the grant through the production
-        // predicate (recorded inside the composition seam).
-        // Reset BEFORE building the runner: the gate instance is captured at
-        // construction, so each test starts from an unconsumed opportunity.
-        UsageAccessJitGateProvider.resetForTests()
+        val owner = TestLifecycleOwner()
+        // LifecycleRegistry state must be set on the main thread.
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { owner.registry.currentState = Lifecycle.State.RESUMED }
         val runner = ManualOrganizationRun(
             application = application,
             planner = OrganizationPlanner { error("planner must not run for a NotReady composition") },
             usageAccessGate = UsageAccessJitGateProvider.get(context),
         )
         try {
+            // Reset BEFORE building the runner: the gate instance is captured
+            // at construction, so the test starts from an unconsumed
+            // process opportunity.
+            UsageAccessJitGateProvider.resetForTests()
             setUsageAccessOp("deny")
             composeRule.setContent {
                 LawnchairTheme {
-                    ManualOrganizationPreferences(run = runner)
+                    ManualOrganizationPreferences(
+                        run = runner,
+                        // "The settings opened" without leaving the app: the
+                        // bounded re-read is driven deterministically through
+                        // the injected lifecycle (spec 371 JIT-AC-03).
+                        usageAccessSettingsOpener = { true },
+                        jitLifecycleOwner = owner,
+                    )
                 }
             }
 
             runner.start()
             composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit }
+            composeRule.onNodeWithTag("usage_access_jit_dialog").assertIsDisplayed()
+            // No composition before the settings return.
+            assertTrue(application.events.isEmpty())
+            assertEquals(null, application.usageGrantedAtCompose)
+
+            // "Open settings" via the opener seam (no navigation): the host
+            // arms the settings-return re-read.
+            composeRule.onNodeWithTag("usage_access_jit_open_settings").performClick()
+            // Grant while "away", then drive the host lifecycle back.
             setUsageAccessOp("allow")
-            composeRule.onNodeWithTag("usage_access_jit_continue").performClick()
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+                owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+            }
 
             composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.InputUnavailable }
             assertEquals(true, application.usageGrantedAtCompose)
@@ -220,28 +242,42 @@ class UsageAccessJitInstrumentationTest {
     }
 
     @Test
-    fun declineKeepsTheCompositionUngrantedThroughTheProductionPredicate() {
+    fun settingsResumeWithoutGrantFallsBackAfterTheBound() {
         val context = context()
         val application = NotReadyApplication(context)
-        // Reset BEFORE building the runner: the gate instance is captured at
-        // construction, so each test starts from an unconsumed opportunity.
-        UsageAccessJitGateProvider.resetForTests()
+        val owner = TestLifecycleOwner()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { owner.registry.currentState = Lifecycle.State.RESUMED }
         val runner = ManualOrganizationRun(
             application = application,
             planner = OrganizationPlanner { error("planner must not run for a NotReady composition") },
             usageAccessGate = UsageAccessJitGateProvider.get(context),
         )
         try {
+            UsageAccessJitGateProvider.resetForTests()
             setUsageAccessOp("deny")
             composeRule.setContent {
                 LawnchairTheme {
-                    ManualOrganizationPreferences(run = runner)
+                    ManualOrganizationPreferences(
+                        run = runner,
+                        usageAccessSettingsOpener = { true },
+                        jitLifecycleOwner = owner,
+                    )
                 }
             }
 
             runner.start()
             composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit }
-            composeRule.onNodeWithTag("usage_access_jit_continue").performClick()
+            composeRule.onNodeWithTag("usage_access_jit_dialog").assertIsDisplayed()
+            assertTrue(application.events.isEmpty())
+
+            // "Open settings" via the opener seam, then drive the return.
+            composeRule.onNodeWithTag("usage_access_jit_open_settings").performClick()
+            // No grant: the bounded re-read exhausts its production limit and
+            // the composition falls back ungranted.
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+                owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+            }
 
             composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.InputUnavailable }
             assertEquals(false, application.usageGrantedAtCompose)
@@ -429,4 +465,15 @@ private class NotReadyApplication(private val context: Context) : ManualOrganiza
 
     override val readinessState: kotlinx.coroutines.flow.StateFlow<app.lawnchair.organizer.application.protocol.ReadinessGate.State> =
         kotlinx.coroutines.flow.MutableStateFlow(app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY)
+}
+
+/**
+ * Deterministic lifecycle owner for the settings-return oracle: the test
+ * drives ON_PAUSE/ON_RESUME through the registry instead of navigating the
+ * real system settings UI (whose nested screens make BACK flaky).
+ */
+private class TestLifecycleOwner : LifecycleOwner {
+    val registry = LifecycleRegistry(this)
+
+    override val lifecycle: Lifecycle get() = registry
 }

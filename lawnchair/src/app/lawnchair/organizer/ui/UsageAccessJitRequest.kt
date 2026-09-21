@@ -12,6 +12,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -24,6 +25,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lawnchair.organizer.integration.UsageAccess
@@ -341,6 +343,9 @@ internal fun RunUsageAccessJitDialogHost(
     // Injectable for instrumentation of the unsupported-settings path (the
     // system settings resolution itself is device-dependent, spec 371).
     settingsOpener: (Context) -> Boolean = ::openUsageAccessSettings,
+    // Injectable for the deterministic settings-return instrumentation: the
+    // bounded re-read is driven by ON_RESUME (spec 371 JIT-AC-03).
+    lifecycleOwner: LifecycleOwner = LocalLifecycleOwner.current,
 ) {
     val context = LocalContext.current
     val gateSnapshot by run.usageAccessGate.snapshot.collectAsStateWithLifecycle()
@@ -348,10 +353,21 @@ internal fun RunUsageAccessJitDialogHost(
     val awaiting = runState as? ManualOrganizationRun.State.AwaitingUsageAccessJit
     val awaitingRunId = awaiting?.runId
 
-    var presenter by remember(awaitingRunId) { mutableStateOf(awaiting?.isOwner == true) }
-    var settingsRequested by remember(awaitingRunId) { mutableStateOf(false) }
-    var settingsLaunchFailed by remember(awaitingRunId) { mutableStateOf(false) }
-    var grantCheckTick by remember(awaitingRunId) { mutableIntStateOf(0) }
+    // Per-pause host state. NOT keyed on awaitingRunId: the lifecycle observer
+    // below captures these State objects once, and key-based re-initialization
+    // would replace them under a still-registered observer (stale reads).
+    // Instead, the reset effect below re-derives them per pause identity.
+    var presenter by remember { mutableStateOf(false) }
+    var settingsRequested by remember { mutableStateOf(false) }
+    var settingsLaunchFailed by remember { mutableStateOf(false) }
+    var grantCheckTick by remember { mutableIntStateOf(0) }
+    DisposableEffect(awaitingRunId) {
+        presenter = awaiting?.isOwner == true
+        settingsRequested = false
+        settingsLaunchFailed = false
+        grantCheckTick = 0
+        onDispose { }
+    }
 
     // Waiter wakeup: deterministic observation of the gate snapshot. A
     // resolved barrier unblocks the paused composition; a released
@@ -378,7 +394,6 @@ internal fun RunUsageAccessJitDialogHost(
     }
     // Returning from the system settings: observe ON_RESUME, run the bounded
     // grant re-read, then resume the paused composition (granted or not).
-    val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME && settingsRequested) {

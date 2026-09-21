@@ -323,6 +323,22 @@ class ExchangeFlowStateHolder(
     }
 
     /**
+     * Issue #371 (review round 4): attempt-bound teardown for the JIT dialog
+     * host's unmount. Acts only when the CURRENT screen is still the SAME
+     * attempt's awaiting state — a stale host unmounting after the pending
+     * generation moved to a newer attempt must never abandon the new one
+     * (JIT-AC-05 identity binding).
+     */
+    fun disposeUsageAccessJitAttempt(attemptToken: Long) {
+        val awaiting = screenState.value as? ExchangeScreen.AwaitingUsageAccessJit ?: return
+        if (awaiting.attemptToken != attemptToken) return
+        abandonAwaitingUsageAccessJit()
+        if (screen is ExchangeScreen.AwaitingUsageAccessJit) {
+            screen = ExchangeScreen.Closed
+        }
+    }
+
+    /**
      * Issue #331: when [scoped] is set (the run-in entry), generation composes
      * the export from the frozen selection via the scope-composed canonical
      * seam instead of the idle full-organization composition.
@@ -1145,7 +1161,10 @@ private fun ExchangeUsageAccessJitDialogHost(
     // the process barrier is never orphaned. No-op on the normal-resolution
     // unmount (the screen has already moved past the awaiting state).
     DisposableEffect(state.attemptToken) {
-        onDispose { holder.dispose() }
+        // Bind the cleanup to THIS attempt's identity: a stale host unmount
+        // (the screen already moved to a newer attempt) must not act on it.
+        val ownToken = state.attemptToken
+        onDispose { holder.disposeUsageAccessJitAttempt(ownToken) }
     }
 
     // Waiter wakeup: deterministic observation of the gate snapshot.

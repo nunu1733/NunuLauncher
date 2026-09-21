@@ -165,4 +165,33 @@ class ExchangeFlowJitGateTest {
     private fun assertNullGatePhase(gate: UsageAccessJitGate, attemptToken: Long) {
         assertEquals(null, gate.ownedPhase(ExchangeJitAttemptOwner(attemptToken)))
     }
+
+    @Test
+    fun staleAttemptTeardownDoesNotActOnANewerAttempt() {
+        val gate = UsageAccessJitGate(isGranted = { false })
+        val holder = ExchangeFlowStateHolder(
+            controllerFactory = { error("controller must not run while paused") },
+            run = ManualOrganizationRunTestSupport.newRun(),
+            scope = explodingScope(),
+            usageAccessGate = gate,
+        )
+        holder.requestGeneration(replacementConfirmationRequired = false, tier = tier)
+        val tokenA = (holder.screen as ExchangeScreen.AwaitingUsageAccessJit).attemptToken
+        // A second request under the same conditions mints a new attempt (the
+        // first still owns the reservation, so this one waits).
+        holder.requestGeneration(replacementConfirmationRequired = false, tier = tier)
+        val tokenB = (holder.screen as ExchangeScreen.AwaitingUsageAccessJit).attemptToken
+        assertTrue(tokenA != tokenB)
+
+        // The stale host teardown must not touch the newer attempt.
+        holder.disposeUsageAccessJitAttempt(tokenA)
+        val awaiting = holder.screen as ExchangeScreen.AwaitingUsageAccessJit
+        assertEquals(tokenB, awaiting.attemptToken)
+        assertEquals(UsageAccessJitGate.Phase.Reserved, gate.ownedPhase(ExchangeJitAttemptOwner(tokenB)))
+
+        // The current attempt's own teardown abandons itself.
+        holder.disposeUsageAccessJitAttempt(tokenB)
+        assertEquals(ExchangeScreen.Closed, holder.screen)
+        assertEquals(UsageAccessJitGate.Phase.Available, gate.snapshot.value.phase)
+    }
 }
