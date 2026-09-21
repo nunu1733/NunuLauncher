@@ -58,6 +58,10 @@
   - `dismiss()`（1296–1347行）: recovery lease保持中は `pendingRecovery = null` +
     `lastVerifiedApply ?: State.Idle` へ復帰して `DismissalOutcome.CancelledAndMayNavigate`
     （1296–1310行）。active run中は `State.Cancelled`（1311–1326行）。
+    **`RecoveryResultState`（lease解放済み・operation無し）は `NoActiveOperation` で
+    state残留** — status card起点の復元成功後にhubへ戻ってもdurable statusが再deriveされない
+    原因であり、spec D5の `dismiss()` 拡張（`RecoveryResultState && HubStatusCard origin` で
+    pre-entry状態へ復帰）が埋めるgapである。
   - `lastVerifiedApply` の生存: 適用成功時に設定（confirm()、1188–1191行。同時に `appliedPoint` も設定）、
     **新しいrunの開始（`beginOperation()`、1406–1407行）でのみ消去**。cancelでは消去されない。
     **`lastVerifiedApply != null` のあいだ表示stateは `Idle`/`Cancelled` になり得ない**
@@ -84,13 +88,20 @@
   （1900行。#369/#371/#372/#373で成長したがrecovery UI構造は維持）。
   - durable status読取block（180–196行。hubと同一の `showDurableStatus`/`LaunchedEffect`/
     `showCheckingRow` 様式）、`durableStatusItems`（1072行付近。`ORGANIZED_RESTORABLE` →
-    `SummaryText` のみ）、`durableStatusItemCount`（1110行付近）。
+    `SummaryText` のみ）、`durableStatusItemCount`（1110行付近）。**本Issueでこのfileの
+    durable行は変更しない（表示のみ維持。spec D6/Non-goals）**。
+  - Back/dismissの呼出しsite: `onSystemBack` → `interruptAndNavigate` → `coordinator.dismiss()`
+    （269–280行、Back callback 303–315行）、host離脱の `DisposableEffect` `onDispose`
+    （316–318行）。status card起点の結果面離脱（D5の `dismiss()` 拡張）はこの既存2経路経由で
+    到達し、**このfileの変更は不要である**。
   - 旧entryの復元action（`State.Applied` 面、850–863行。`beginRecoveryPreview` 呼出し856行）、
     `State.InspectingRecovery`（889–895行）、`State.RecoveryPreview`（897–934行。
     `recoveryHistoryLine` 912行、confirm/cancel decision pair 916–933行 — `confirmRecovery` 920行 /
     `cancelRecoveryPreview` 927行）、`State.Recovering`（936–942行）、`State.RecoveryResultState`
-    （944行〜）。helpers: `recoveryHistoryLine`（1856–1867行）、`recoveryPreviewMessage`
-    （1869–1882行）、`recoveryResultMessage`（1884行〜）。**確認面hostは#366/#369後もこのfileである**。
+    （944–975行。結果文言 + safe-support導線 or 「もう一度開始」）。helpers:
+    `recoveryHistoryLine`（1856–1867行）、`recoveryPreviewMessage`（1869–1882行）、
+    `recoveryResultMessage`（1884行〜）。**確認面hostは#366/#369後もこのfileであり、
+    status card起点のflowもこの既存の面を共有する（UI変更なし）**。
 - **strings**: `lawnchair/res/values/strings.xml` — hub 1009–1012行、recovery系 1115–1135行、
   durable系 1136–1139行（`manual_organization_durable_status_restorable` 1136行）。
   `values-ja/strings.xml` — hub 31–34行、recovery系 174–191行（plurals 178/181/184行）、
@@ -134,7 +145,8 @@
 
 ### Gap（本Issueで埋める）
 
-1. `ORGANIZED_RESTORABLE` 行（hub + settings両面）に操作・残時間がない（表示のみ）。
+1. `ORGANIZED_RESTORABLE` 行（hub status card。D-15の契約上のentry面）に操作・残時間がない
+   （settings側も含め表示のみ）。
 2. coordinatorに `appliedPoint` / `lastVerifiedApply` 非依存の復元開始entryがなく、
    戻り先が `lastVerifiedApply ?: Idle` にorigin非依存に結合している。
 3. application moduleに「最新の検証済み1点」の選択readがない（snapshotには必要なmetadataが既にある）。
@@ -148,13 +160,12 @@
   変更は `LayoutApplicationModule` へのadditive操作と、`application/public/` への閉じた型追加、
   純粋selectorの新規配置に限定する。token registryの所有は既有のままmodule instanceである
   （変更しない）。
-- **coordinator**（`organizer/ui/ManualOrganizationRun.kt`）: cold entry・entry origin・state遷移を
-  所有。既存state列・lease規約を再利用し、新しいstate種別・新しいapplication検査操作を追加しない。
-  戻り先契約（spec D5）の実装はこの層に閉じる。
-- **UI**（`ui/preferences/destinations/**`）: hub status card（`OrganizerHubPreferences.kt`、
-  契約上のentry面）とsettings側run面（`ManualOrganizationPreferences.kt`）の両面にCTA・残時間の
-  描画とnavigationを実装する。選択・検査の判断をUIへ置かない。確認面hostは既存のrun面のまま
-  （移設しない）。
+- **coordinator**（`organizer/ui/ManualOrganizationRun.kt`）: cold entry・entry origin・state遷移・
+  戻り先契約（preview cancel と 結果面離脱の両方）を所有。既存state列・lease規約を再利用し、
+  新しいstate種別・新しいapplication検査操作を追加しない。
+- **UI**: hub status card（`OrganizerHubPreferences.kt`、契約上のentry面）にCTA・残時間の描画と
+  navigationを実装する。settings側run面（`ManualOrganizationPreferences.kt`）は **無変更**
+  （durable行は表示のみ維持、確認面は既存のまま共有）。選択・検査の判断をUIへ置かない。
 - **recovery protocol / store**: 無変更。spec 13/84/89の契約面にdiffを出さない。
 
 ## 3. Interfaces / seams
@@ -195,10 +206,21 @@ fun readRestorableRecoveryEntry(): RestorableRecoveryEntry?
      （既存spec 84検査の再利用）。throw時はorigin契約どおりのcancelで戻す。
   4. `State.RecoveryPreview(result, correlated=null)` へ載せる（D5の構造的排他によりcorrelatedは常にnull。
      既存の相関gate計算式を流用し、新規の表示分岐を作らない）。
-  5. `cancelRecoveryPreview()` / `confirmRecovery()` / dismissのrecovery取消はoriginを参照し、
-     status card originでは **pre-entryの表示状態（`Idle`/`Cancelled`）** へ復帰する
+  5. `cancelRecoveryPreview()` とdismiss中のrecovery取消（`recoveryLease != null`）はoriginを
+     参照し、status card originでは **pre-entryの表示状態（`Idle`/`Cancelled`）** へ復帰する
      （旧entryは現行どおり `lastVerifiedApply ?: State.Idle`）。
-  6. status card entryは `appliedPoint` / `lastVerifiedApply` を読み書きしない。
+  6. **結果面離脱の拡張**: `dismiss()` に `RecoveryResultState && activeOperation == null &&
+     recoveryLease == null && origin == HubStatusCard` の分岐を追加し、pre-entryの表示状態を
+     発行してoriginを解消、`DismissalOutcome.CancelledAndMayNavigate` を返す（zero-write）。
+     旧entry（AppliedSurface）・origin無しの同stateは現行どおり `NoActiveOperation`・state残留。
+     run面の既存Back経路（`interruptAndNavigate`）と `onDispose` の `dismiss()` 呼出しが
+     そのままこの拡張を経由するため、**settings側run面のUI変更は不要**。
+  7. status card entryは `appliedPoint` / `lastVerifiedApply` を読み書きしない。
+     entry originとpre-entry表示状態はresult離脱までcoordinatorが保持する（process-local・非永続）。
+- **hub表示readの直列化**: hubのstatus cardは `durableOrganizerStatus()` と
+  `readRestorableRecoveryEntry()` を並列に呼ばない。同一effect内でstatus readを先に実行し、
+  `ORGANIZED_RESTORABLE` のときに限りentry readを続行する（両readは同一の非block
+  `ordinaryMutex` を争うため、並列実行は相互競合で行消失/CTA欠落を自作する。spec D6/RS-AC-06）。
 - **platform型・DB行はinterfaceへ出ない**（AGENTS.md設計規約）。`RecoveryPointId` のみ、
   spec 84が既に許すopaque相関キーとしてcoordinatorまで到達する。
 
@@ -220,9 +242,11 @@ Settings → hub（cold起動。route HomeScreenOrganizer） → ManualOrganizat
 → State.InspectingRecovery → inspectRecovery(pointId)（既存spec 84検査。fresh token発行）
 → State.RecoveryPreview(result, correlated=null)（履歴行なし。D5構造的排他）
 → confirm → State.Recovering → RecoveryProtocol.recover（既存。writer lease・transaction・検証）
-→ State.RecoveryResultState → 完了/Back → coordinatorはpre-entry状態へ → hub status card再読込
+→ State.RecoveryResultState → 結果面離脱（Back/完了。既存run面のdismiss()呼出し経由）
+  → dismiss()拡張: pre-entry状態（Idle/Cancelled）へ復帰 → hub status card再読込
   （残存VERIFIEDあればrestorable再提示、なければRESTORED_OR_EXPIRED）
-cancel/back/dismiss → pre-entry状態（Idle/Cancelled）へ復帰 → hub側へ戻る（D5）
+cancel/back/dismiss（preview中・結果面のいずれも） → pre-entry状態（Idle/Cancelled）へ復帰 →
+hub側へ戻る（D5。settings側run面のUI変更は不要）
 ```
 
 - TOCTOU: status表示時点とtap時点の間でpointが失効した場合は既存のtyped結果
@@ -236,15 +260,15 @@ cancel/back/dismiss → pre-entry状態（Idle/Cancelled）へ復帰 → hub側�
 | `lawnchair/src/app/lawnchair/organizer/application/public/RestorableRecoveryEntry.kt` | 新規。閉じたentry型 + `RemainingWindow` |
 | `lawnchair/src/app/lawnchair/organizer/application/lifecycle/RestorableRecoveryPointSelector.kt` | 新規。純粋selector（選択 + window計算。`OrganizerDurableStatusDeriver` と同配置・同様式） |
 | `lawnchair/src/app/lawnchair/organizer/application/protocol/LayoutApplicationModule.kt` | `readRestorableRecoveryEntry()` 追加（additive） |
-| `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt` | façade委譲追加 + cold entry method + entry origin（`recoveryEntryOrigin` 仮称）+ `cancelRecoveryPreview()`/dismiss recovery取消のorigin別戻り先 |
-| `lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerHubPreferences.kt` | status cardの `ORGANIZED_RESTORABLE` 行に残時間 + CTA（契約上のentry面）。CTA tap → run面遷移 + cold entry呼出し |
-| `lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt` | `durableStatusItems` の同一行に同一seam・resource・条件式で残時間 + CTA（settings側の行維持はspec 366 HUB-AC-05）。durable status読取とentry readの並列読込。最小diff |
+| `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt` | façade委譲追加 + cold entry method + entry origin（`recoveryEntryOrigin` 仮称・pre-entry表示状態の保持）+ `cancelRecoveryPreview()`/dismiss recovery取消のorigin別戻り先 + `dismiss()` の `RecoveryResultState && HubStatusCard origin` 拡張 |
+| `lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerHubPreferences.kt` | status cardの `ORGANIZED_RESTORABLE` 行に残時間 + CTA（契約上のentry面）。status read→entry readの直列化（D6）。CTA tap → run面遷移 + cold entry呼出し |
+| `lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt` | **変更なし**（durable行は表示のみ維持。確認面・Back経路・`dismiss()` 呼出しsiteは既存のまま共有） |
 | `lawnchair/res/values/strings.xml`, `values-ja/strings.xml` | 残時間表示（format resource。`LessThanOneHour` 区分含む）+ CTA label（既存 `manual_organization_recovery` の再利用可）。EN/ja同期 |
-| `tests/unit/.../ui/ManualOrganizationRunTest.kt` | §8のcoordinator oracle追加（admission state検査・戻り先契約・correlated null・不受理系） |
+| `tests/unit/.../ui/ManualOrganizationRunTest.kt` | §8のcoordinator oracle追加（admission state検査・preview cancel戻り先・結果面離脱 `dismiss()` 拡張・correlated null・不受理系） |
 | `tests/unit/.../application/lifecycle/RestorableRecoveryPointSelectorTest.kt` | 新規（§8） |
 | `tests/unit/.../application/protocol/` 既存test群 | entry readのgate/fail-closed/no-write追加（§8） |
-| `tests/organizer-instrumentation/.../OrganizerHubPreferencesInstrumentationTest.kt` | restorable行のCTA・残時間・遷移oracle追加。`hubExposesNoRestoreOrRunResultAffordancesAndStartsNothing` の復元CTA部分を更新（spec 366 companion revisionと同期） |
-| `tests/organizer-instrumentation/.../ManualOrganizationPreferencesInstrumentationTest.kt` | settings側行の同一描画・遷移oracle（+status card entry版のcancel復帰） |
+| `tests/organizer-instrumentation/.../OrganizerHubPreferencesInstrumentationTest.kt` | restorable行のCTA・残時間・遷移・read直列化oracle追加。`hubExposesNoRestoreOrRunResultAffordancesAndStartsNothing` の復元CTA部分を更新（spec 366 companion revisionと同期）。復元成功→hub復帰→status再読込のoracle |
+| `tests/organizer-instrumentation/.../ManualOrganizationPreferencesInstrumentationTest.kt` | **変更なし**（既存oracle `durableRestorableStatusRendersWhileIdle` 等が無編集でgreenであることがsettings側行の表示のみ維持の証拠） |
 | `specs/271-organizer-durable-status-projection/spec.md` | companion revision（spec「companion revision」節の1–3、5）。**本specの実装PRで実施** |
 | `specs/366-organizer-hub-shell/spec.md` | companion revision（同節の4。HUB-AC-03復元CTA部分のsupersede注記 + Change history）。**本specの実装PRで実施** |
 | `DESIGN.md` | §4.2のread-only seam列挙へ選択readを追記 |
@@ -258,12 +282,14 @@ cancel/back/dismiss → pre-entry状態（Idle/Cancelled）へ復帰 → hub側�
 - 既存の旧entry（`State.Applied` → `beginRecoveryPreview()`）、確認面、strings、
   diagnostics契約、recovery protocolは無変更。既存testは無編集でgreenにする
   （`freshRunInstanceDoesNotReachRecoveryPreview`、`cancellingRecoveryPreviewRestoresVerifiedApplySummaryAndActionSurface`、
-  `RecoveryPreviewContractTest`、`OrganizerDurableStatusDeriverTest` を含む）。
+  `RecoveryPreviewContractTest`、`OrganizerDurableStatusDeriverTest`、settings側の
+  `durableRestorableStatusRendersWhileIdle` を含む）。
   **編集が許される既存testは `hubExposesNoRestoreOrRunResultAffordancesAndStartsNothing` の
   復元CTA部分のみ**（spec 366 companion revisionと同一PRで行う。AI依頼・取り込み済み提案・
   run結果の否定的観測は維持）。
-- hub（#366実装済み）とsettings側の両面で同一seam・resource・条件式を使う。resource再利用により
-  copy変更は両面へ伝播する。
+- **CTAはhub status cardのみ**（spec D6）。settings側run面のdurable行は表示のみを維持し、
+  `ManualOrganizationPreferences.kt` にsource diffを出さない（#374/#375との衝突面を減らす。
+  origin modelは `AppliedSurface`/`HubStatusCard` の2値に保たれる）。
 - #374/#375のstatus card行（AI依頼・取り込み済み提案）とは行種別が異なるため直接競合しないが、
   status cardの行構造・読み順（状態→残期限→操作）はspec 366規約に揃える。
 - downgrade: 追加はUI/読み取りのみであり、旧版では表示のみへ戻る（disposition §7.3）。
@@ -307,6 +333,9 @@ cancel/back/dismiss → pre-entry状態（Idle/Cancelled）へ復帰 → hub側�
     `State.Applied` へ戻らない**（D5戻り先契約。`lastVerifiedApply` は参照しない）。
   - **admission state検査**: `State.Applied` 等の `Idle`/`Cancelled` 以外でstatus card entryを
     直接呼ぶと静かに不受理され状態不変（leaseリークなし）。
+  - **結果面離脱の `dismiss()` 拡張**: hub originでは confirm→`RecoveryResultState`→dismiss→
+    pre-entry状態（`Idle`/`Cancelled`）へ復帰しstate残留がないこと。旧Applied originでは
+    現行どおり `NoActiveOperation`・state残留であること（両originの対比で固定）。
   - run active中・recovery lease競合中の不受理（状態不変）。
   - 検査throw時にorigin契約どおりの戻り先へ復帰すること（旧entryは既存挙動のまま）。
   - 旧entryの既存oracle（`freshRunInstanceDoesNotReachRecoveryPreview`、
@@ -321,14 +350,24 @@ cancel/back/dismiss → pre-entry状態（Idle/Cancelled）へ復帰 → hub側�
   他status・fail-closedではCTAなし（`OrganizerHubPreferencesInstrumentationTest` へ追加）。
   `hubExposesNoRestoreOrRunResultAffordancesAndStartsNothing` の復元CTA部分を更新し、
   AI依頼・取り込み済み提案・run結果の否定的観測は維持する。
-- settings側の同一行renderと両面一致（`ManualOrganizationPreferencesInstrumentationTest` へ追加）。
+- **read直列化oracle**（RS-AC-06）: hub Compose testのfake coordinatorがstatus readと
+  entry readの呼出しを記録し、(a) 2 readの重複（並列実行）が起きないこと、(b) status readが
+  `ORGANIZED_RESTORABLE` 以外のときentry readが呼ばれないこと、(c) 一時的なfail-closed readの後、
+  再読込契機（state/gate変化）でCTAが回復すること（永続的CTA欠落なし）を固定する。
 - CTA → run面遷移 → 検査 → 確認面（decision pair）→ cancel / confirm の両経路。
   cancel時はhub側へ戻ること（D5のUI側観測）。
+- **復元成功→hub復帰→status再読込**: confirm → ResultState → 結果面離脱 → hubで行が更新される
+  （単一点なら「restored or expired」、複数点なら残存最新に対するrestorable行）
+  （RS-AC-01/02のinstrumentation側）。
 - run進行中はdurable行・CTAが消える否定的観測（既存
   `hubHidesStatusRowsWhileRunIsActiveAndReshowsAfterCancel` の継続）。
+- settings側run面の無変更回帰: 既存oracle（`durableRestorableStatusRendersWhileIdle`、
+  `recoverySurfacesRenderDecisionButtons`、`verifiedSuccessKeepsAppliedWordingAfterRecoveryPreviewCancel`）
+  が **無編集でgreen** であること（settings側行が表示のみのままである証拠）。
 - **cold-process emulator flow**（RS-AC-01。有効point 1点のみのpreconditionを明記）:
   force-stop → hubを最初の面として起動 → Launcherを開かずにCTA→検査→確認→復元を完了 →
-  復元後の行が「restored or expired」へ変わる。evidenceをPR/auditへ記録（spec 271 DS-AC-10と同型）。
+  結果面を離脱してhubへ戻る → 復元後の行が「restored or expired」へ変わる。evidenceをPR/auditへ
+  記録（spec 271 DS-AC-10と同型）。
   **`OrganizerDurableStatusInstrumentationTest` はCI lane外のclassであるため、この系統の
   cold-process/process-death evidenceはPR時の手元emulator実行としてPR/auditへ記録する**
   （CI `final-status` の要件を満たすのは `organizer-instrumentation-issue52-tests` laneの
@@ -370,8 +409,8 @@ status card読み順規約（TO-BE §13-5）はspec 366が実装済みであり�
 
 1. **純粋selector + entry型 + module読み取り**（unit test込み。application内で完結）。
 2. **coordinator cold entry + entry origin + 戻り先契約**（unit test込み。既存state列の再利用確認）。
-3. **UI描画**（hub status card + settings側の残時間 + CTA、strings EN/ja、semantics test、
-   `hubExposesNoRestore...` の更新）。
+3. **UI描画**（hub status cardの残時間 + CTA + read直列化、strings EN/ja、semantics test、
+   `hubExposesNoRestore...` の更新。settings側run面はsource diffなし）。
 4. **instrumentation / cold-process evidence**。
 5. **spec 271 / spec 366 companion revision + DESIGN.md + inventory evidence**
    （同一PR。spec受入はowner review）。
@@ -406,11 +445,11 @@ status card読み順規約（TO-BE §13-5）はspec 366が実装済みであり�
 |---|---|
 | 選択readがsnapshotの内容をUI判断へ露出する（spec 84/271境界の侵食） | 閉じた2型のみ公開。pointIdはcoordinatorまで。型shape test + 契約test（RP-AC-05系）の継続で担保 |
 | status表示とentry readの不整合（表示中の失効・復元済み化） | fail-closed側へ倒す（CTAなし）+ 検査を権威gateに（typed結果表示）。live countdownを作らず再読込時更新 |
+| status card表示のstatus readとentry readの自己競合（同一の非block `ordinaryMutex` を2本のreadが争い、CTA欠落が永続化する） | 同一effect内での直列化を契約化（status → `ORGANIZED_RESTORABLE` のときのみentry read。spec D6/RS-AC-06）。fake coordinatorで呼出し重複・回復を固定するoracle |
 | cold entryのcancelが旧entryの戻り先契約を壊す／status card起点が旧Applied面へ復帰する | entry originで戻り先を束縛（spec D5）。旧path oracleの無編集greenをAC化し、status card originのpre-entry復帰をunit oracleで固定 |
+| 復元成功後の `RecoveryResultState` 残留でhubのdurable statusが再deriveされない | `dismiss()` の `RecoveryResultState && HubStatusCard origin` 拡張（spec D5）。unit oracle（confirm→ResultState→dismiss→pre-entry状態・旧origin対比）とinstrumentation（hub復帰後の行更新）で固定 |
 | tokenの誤用テストが誤った境界（coordinator再構築）でprocess死を代弁する | registry所有境界（module instance）をD4/RS-AC-03で明記し、fresh module構築のsurrogate testで固定。対比testでcoordinator再構築がsurrogateでないことも示す |
 | recovery storeへの意図しない書込み | 読み取り経路のno-write/no-event counter assert。既存protocol以外の書込み経路を新設しない設計 |
-| hub/settings両面の描画不一致 | 同一seam・resource・条件式の共有 + 両面instrumentation。`hubExposesNoRestore...` の更新はcompanion revisionと同一PRで同期 |
-| `ManualOrganizationPreferences.kt` の行構造衝突（#374/#375が今後触れる） | durable row周辺の最小diff。行構造・読み順はspec 366規約に揃える |
 | cold-process evidenceがCIで実行されない（lane外class） | `final-status` の要件はlane対象classで満たし、cold-process evidenceは手元emulator実行としてPR/auditに明示記録（DS-AC-10と同型の扱い） |
 
 ## 13. Explicitly unverified areas
