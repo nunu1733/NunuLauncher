@@ -277,11 +277,14 @@ TO-BE §10が補助情報位置として認める診断）とtyped原因説明�
 「直近の取り込み失敗」の補助行として表示される（D-11の補助情報経路「詳細展開・診断」の
 両方が現在の失敗に対して成立する）,
 And 受け渡しは **process-scopedなtransient保持** である（「診断を開く」操作時にのみ
-書き込まれ、navigation saved state・diagnostics journal・永続store・logcatへは
+書込まれ、navigation saved state・diagnostics journal・永続store・logcatへは
 保存・書込みされない。process deathで消失する。exchange失敗eventのjournal記録追加は
-本Issueのscope外 — Contract notes 4）。保持がある限り（process生存中。上書きは次の
-「診断を開く」操作のみ）どの入口からの診断面でも補助行は表示され、診断面の本体
-（説明文・journal export等の既存構成）は変化しない,
+本Issueのscope外 — Contract notes 4）。書込み/空化は「診断を開く」操作時のみ行われる:
+現在のattemptがtyped分類を持つ場合はそのtyped原因で **上書き** し、持たない場合
+（`InputNotReady` 等のnon-typed outcome。typed分類名・typed原因説明が存在しない）は
+保持を **空にする** — 以前のattemptの原因を現在の取り込み失敗として表示しない
+（実装review 1回目で確定）。保持がある限り（process生存中）どの入口からの診断面でも
+補助行は表示され、診断面の本体（説明文・journal export等の既存構成）は変化しない,
 And 診断面へ渡すのはtyped分類名とtyped原因説明のみであり、raw import text・export-scoped
 `ref`・app label・folder title等のユーザーデータは渡さない,
 And process再生成後（system-initiated process deathからのnavigation復元を含む）に
@@ -384,7 +387,7 @@ And 依頼TTL失効後の失敗面表示は「依頼を作り直す」をprimary
 
 | Condition | Observable outcome |
 |---|---|
-| mapping表にないtyped失敗の到達（将来の分類追加漏れ） | 投影は **fail-closed** である: 未知のtyped失敗は既定の手段別primary（もう一度取り込む）+ typed原因の詳細展開で表示され、crash・silent失敗しない。網羅 `when` の追加はcompilerが要求する（Kotlin exhaustive when） |
+| 分類追加漏れ（将来の分類追加時） | 投影はsealed hierarchyの網羅 `when` で固定され、**分類追加はcompile errorとして要求される（runtime fallbackを持たない設計。実装review 1回目で確定）**。fail-closed性は構造で保証される: 表示modelはtyped値のみから導出され、未知のruntime値はsealed構造上到達不能であり、crash・silent失敗しない |
 | 「依頼を作り直す」操作時に依頼作成が利用不能な状態（run-in entryの選択凍結解除後等） | 操作は既存の生成flow起動seamのgateに従う（現行のentry操作と同一挙動）。typedな不受理が既存status語彙で表示され、失敗面の表示は壊れない |
 | 失敗面表示中の再import | 既存のattempt anchor契約（spec 328 AC-1）どおり。失敗settle後の新importは新しいattemptであり、失敗面は置き換わる（遅延settleのdrop規則は不変） |
 | source失敗（clipboard/file）とpipeline失敗の区別 | source失敗はT-17入力面のin-place表示のまま（spec 332 AC-6回帰）。pipeline失敗のみがT-18失敗面へsettleする（現行どおり）。両者が混在して1面に20種が並ぶ状態は存在しない |
@@ -410,6 +413,10 @@ And 依頼TTL失効後の失敗面表示は「依頼を作り直す」をprimary
   session保存/invalidate（spec 204/205契約）のみ。import失敗自体はzero-writeである。
   「診断を開く」のtyped原因受け渡しはprocess-scopedなtransient holderへの一時保持であり、
   serializableにせず、navigation saved state・`SavedStateHandle` へは保存されない。
+  process deathで消失し、diagnostics journal・永続storeへの書込みはない。
+  書込み/空化は「診断を開く」操作時のみ: 現在のattemptがtyped分類を持たない場合
+  （`InputNotReady` 等）は保持を空にし、以前のattemptの原因を現在のものとして
+  表示しない（実装review 1回目で確定）。
   process deathで消失し、diagnostics journal・永続storeへの書込みはない。
 - Identity: 変更なし。`exportId`、ref↔`ItemId` map、`sourceContextDigest`、typed失敗の
   分類identityは不変である。
@@ -458,7 +465,8 @@ And 依頼TTL失効後の失敗面表示は「依頼を作り直す」をprimary
   primary操作）で構成され、20種のtyped固有文言・typed分類名がprimary面に列挙されないことが
   testされる。typed原因（分類名・typed固有説明・認識framing/version/entry数・raw text）が
   詳細展開（default閉・bounded）にのみ現れることがtestされる。mappingは20種全typedを
-  table-drivenに固定し、未知のtyped失敗はfail-closedで既定remedyに落ちることがtestされる。
+  table-drivenに固定する。分類追加漏れは投影の網羅 `when` が **compile errorとして要求する**
+  （runtime fallbackを持たない設計。fail-closed性はsealed構造で保証 — 実装review 1回目で確定）。
   （Issue受入1。D-11）
 - [ ] **IM-AC-02**: `CONTEXT_STALE` のprimary copyが「依頼の内容が古くなりました」+
   primary操作「依頼を作り直す」であることがtestされる（D-12行）。rebase・部分適用の
@@ -508,7 +516,7 @@ And 依頼TTL失効後の失敗面表示は「依頼を作り直す」をprimary
 
 | AC | Evidence |
 |---|---|
-| IM-AC-01 | unit: 手段別projection純粋関数のtable-driven test（20種全typed → primary remedy category + primary copy resource + 詳細展開内容。ja/en resource解決を含む。未知typed → 既定remedyのfail-closed oracle）+ holder unit test（失敗settle → 失敗面state）。instrumentation: 失敗面のprimary面にtyped固有文言testTag/stringが存在しないことの否定的観測 + 詳細展開default閉 + 展開時のtyped原因表示 |
+| IM-AC-01 | unit: 手段別projection純粋関数のtable-driven test（20種全typed → primary remedy category + primary copy resource + 詳細展開内容。ja/en resource解決を含む。分類追加漏れは網羅 `when` のcompile errorで検出されることを構造で固定 — runtime fallbackは持たない）+ holder unit test（失敗settle → 失敗面state）。instrumentation: 失敗面のprimary面にtyped固有文言testTag/stringが存在しないことの否定的観測 + 詳細展開default閉 + 展開時のtyped原因表示 |
 | IM-AC-02 | unit: `CONTEXT_STALE` fixture（structural digest不一致。既存pipeline testのfixtureを再利用）→ primary copy/操作のassertion。instrumentation: 失敗面表示のcopy確認 |
 | IM-AC-03 | holder unit test: 依頼を作り直す操作 → `openFlow()` 相当seam呼出・session不変・zero-write。再取り込み操作 → `openImport()` 呼出・raw text破棄。run-in entryのscope凍結復帰の回帰。instrumentation: 導線の到達 |
 | IM-AC-04 | instrumentation: 「中断する」→ flow close・確認dialog不在・status経由で依頼生存の確認（再取り込み成立）。「診断を開く」→ route遷移（引数なし）・診断面の補助行に現在のattemptのtyped分類名・typed原因説明が表示されること（遷移元attempt由来）・raw text等ユーザーデータの受け渡し不在。lifecycle oracle（2面分離）: Activity recreation（同一process継続）でも補助行が保持されること（instrumentation）、system-initiated process death後のnavigation復元では補助行が復元されないこと（holderが非serializable・saved state外であることのunit/review確認。instrumentation可能範囲での確認を含む）。diagnostics journal書込み経路不在のreview/unit |
@@ -608,6 +616,7 @@ CI `final-status` green。本Issueは表示のみの変更であり（persistent
 
 ## Change history
 
+- 2026-09-21: **実装review 1回目対応による契約整理**（[review Changes requested](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5758033715)の指摘1・3）。**(1)** 「診断を開く」のtransient holder書込み規則を現在のattempt基準へ明確化: typed分類を持つattemptは上書き、持たないattempt（`InputNotReady` 等のnon-typed outcome）は **保持を空にする**（以前のattemptの原因を現在の失敗として表示しない。回帰oracleをinstrumentationに追加）。**(2)** 分類追加漏れの方針を **runtime fallbackなしのcompile-time保証** へ確定: 投影はsealed hierarchyの網羅 `when` で固定され、分類追加はcompile errorとして要求される（fail-closed性はsealed構造で保証。旧記載の「未知typed → 既定remedyに落ちるruntime fallback」は削除）。Failure behavior・IM-AC-01・test oracle・Data and stateを修正。
 - 2026-09-21: **Phase1 acceptance**。Phase1 review 3回対応head `40beddc0f2` への最終review
   （[Approved](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5756962168)、
   blocking指摘0件・implementation-ready判定）を受け、statusを `draft` → `accepted` へ進めた。
