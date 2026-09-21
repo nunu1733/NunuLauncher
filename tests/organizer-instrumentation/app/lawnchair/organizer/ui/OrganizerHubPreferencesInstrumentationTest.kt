@@ -580,6 +580,10 @@ class OrganizerHubPreferencesInstrumentationTest {
                 context.getString(R.string.manual_organization_durable_status_restorable),
             ).fetchSemanticsNodes().isNotEmpty()
         }
+        // Focus restoration (plan §8/§9): back on the hub, the deterministic
+        // entry focus lands on the start CTA again — the same contract as the
+        // plain hub→run round trip, now proven for the restore flow.
+        awaitFocused(context.getString(R.string.manual_organization_start))
         // Let the run-face destination leave composition and its back-stack
         // entry settle before teardown, or the NavHost lifecycle races the
         // activity destroy. (The preview-face body text is unique to the run
