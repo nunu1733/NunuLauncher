@@ -44,6 +44,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -60,6 +61,7 @@ import app.lawnchair.organizer.integration.exchange.ExchangeTransportFailure
 import app.lawnchair.organizer.integration.exchange.ExchangeTransportResult
 import app.lawnchair.organizer.integration.exchange.FileExchangeRead
 import app.lawnchair.organizer.integration.exchange.FileExchangeTransport
+import app.lawnchair.organizer.personalization.ExportSession
 import app.lawnchair.organizer.personalization.IntentValidationFailure
 import app.lawnchair.organizer.personalization.PrivacyTier
 import app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent
@@ -82,7 +84,9 @@ import com.android.launcher3.R
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -99,7 +103,19 @@ import kotlinx.coroutines.withContext
 sealed interface ExchangeScreen {
     data object Closed : ExchangeScreen
 
-    data class SelectingPrivacy(val replacementConfirmationRequired: Boolean) : ExchangeScreen
+    /**
+     * T-15 (issue #372): the request-creation face. Besides the replacement
+     * gate snapshot it carries the ACTIVE REQUEST PRE-DISPLAY projection from
+     * the last read — existence plus the session's `expiresAtEpochMs` and the
+     * read instant (the display root), never the session itself. Display
+     * only: the effective gate re-reads the store at generation time
+     * (spec 205 AC-13 unchanged).
+     */
+    data class SelectingPrivacy(
+        val replacementConfirmationRequired: Boolean,
+        val activeRequestExpiresAtEpochMs: Long? = null,
+        val activeRequestReadAtEpochMs: Long? = null,
+    ) : ExchangeScreen
 
     /** Explicit pre-generation confirmation (spec 205 AC-13). */
     data class ReplacementConfirm(
@@ -251,7 +267,24 @@ class ExchangeFlowStateHolder(
      */
     val usageAccessGate: UsageAccessJitGate = UsageAccessJitGate(isGranted = { true }),
 ) {
-    private val controller: ExchangeFlowController by lazy(LazyThreadSafetyMode.NONE) { controllerFactory() }
+    private val controllerLazy = lazy(LazyThreadSafetyMode.NONE) { controllerFactory() }
+    private val controller: ExchangeFlowController get() = controllerLazy.value
+
+    /**
+     * Issue #372 (AC-13 structural gate read): the ACTIVE REQUEST gate reads
+     * the store fresh — but only through an ALREADY-initialized controller.
+     * In production `requestGeneration` is only reachable from the open T-15
+     * face, and `openFlow()` has initialized the controller by then, so the
+     * fresh read always happens. An uninitialized holder means no request
+     * flow was ever opened in this holder, so there is nothing to confirm
+     * and touching the factory (whose fixtures may be hostile, issue #371)
+     * is not part of the gate's contract.
+     */
+    private fun activeSessionForGate(): ExportSession? = if (controllerLazy.isInitialized()) {
+        controller.activeSession()
+    } else {
+        null
+    }
 
     /** Backing state; exposed as Compose state through [screenState] for tests. */
     private val screenState = mutableStateOf<ExchangeScreen>(ExchangeScreen.Closed)
@@ -270,10 +303,56 @@ class ExchangeFlowStateHolder(
             statusState.value = value
         }
 
+    /** The one expiry-scheduled T-15 re-read (issue #372); replaced on every read. */
+    private var expiryReReadJob: Job? = null
+
     fun openFlow() {
         abandonAwaitingUsageAccessJit()
         status = null
-        screen = ExchangeScreen.SelectingPrivacy(replacementConfirmationRequired = controller.activeSession() != null)
+        screen = readActiveRequestIntoSelecting()
+    }
+
+    /**
+     * Issue #372 (T-15): re-read the active request and refresh the pre-display
+     * projection (existence, remaining time, replacement-confirmation need)
+     * from the same `activeSession()` seam the generation gate uses. Fired on
+     * the face's lifecycle resume and by the expiry-scheduled re-read; never
+     * mutates any other face.
+     */
+    fun refreshActiveRequest() {
+        if (screen !is ExchangeScreen.SelectingPrivacy) return
+        screen = readActiveRequestIntoSelecting()
+    }
+
+    private fun readActiveRequestIntoSelecting(): ExchangeScreen.SelectingPrivacy {
+        val readAt = controller.nowEpochMs()
+        val active = controller.activeSession()
+        scheduleExpiryReRead(active?.expiresAtEpochMs)
+        return ExchangeScreen.SelectingPrivacy(
+            replacementConfirmationRequired = active != null,
+            activeRequestExpiresAtEpochMs = active?.expiresAtEpochMs,
+            activeRequestReadAtEpochMs = if (active != null) readAt else null,
+        )
+    }
+
+    /**
+     * Issue #372 (review round 2): ONE re-read scheduled at the displayed
+     * session's expiry, so a T-15 face kept in the foreground crosses the TTL
+     * with no lifecycle event and its display still matches the store
+     * (`active()` reads expired sessions as absent). No continuous ticking;
+     * the pending job is cancelled and replaced on every read, and it dies
+     * with the holder's scope on screen exit (the next entry re-reads).
+     */
+    private fun scheduleExpiryReRead(expiresAtEpochMs: Long?) {
+        expiryReReadJob?.cancel()
+        expiryReReadJob = if (expiresAtEpochMs == null) {
+            null
+        } else {
+            scope.launch {
+                delay((expiresAtEpochMs - controller.nowEpochMs()).coerceAtLeast(0L))
+                withContext(uiDispatcher) { refreshActiveRequest() }
+            }
+        }
     }
 
     fun openImport() {
@@ -284,6 +363,7 @@ class ExchangeFlowStateHolder(
     }
 
     fun close() {
+        expiryReReadJob?.cancel()
         abandonAwaitingUsageAccessJit()
         invalidateImportAttempt()
         status = null
@@ -342,16 +422,24 @@ class ExchangeFlowStateHolder(
      * Issue #331: when [scoped] is set (the run-in entry), generation composes
      * the export from the frozen selection via the scope-composed canonical
      * seam instead of the idle full-organization composition.
+     *
+     * Issue #372 (implementation review, AC-13 structural gate): the gate is
+     * decided from a FRESH `activeSession()` read here — never from the face's
+     * snapshot. The snapshot is display-only: a failure settle (or any other
+     * store change) after it was captured must not let an unconfirmed
+     * generation start replace an active session.
      */
     fun requestGeneration(
-        replacementConfirmationRequired: Boolean,
         tier: PrivacyTier,
         scoped: Pair<List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>, Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>>? = null,
     ) {
+        // Issue #371: starting a new request abandons any prior JIT pause.
         abandonAwaitingUsageAccessJit()
-        if (replacementConfirmationRequired) {
+        if (activeSessionForGate() != null) {
             screen = ExchangeScreen.ReplacementConfirm(tier, scoped)
-        } else if (scoped != null) {
+            return
+        }
+        if (scoped != null) {
             generateScoped(tier, scoped.first, scoped.second)
         } else {
             generate(tier)
@@ -478,17 +566,21 @@ class ExchangeFlowStateHolder(
 
             is ExchangeGenerationResult.InputNotReady -> {
                 status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_INPUT_NOT_READY)
-                screen = ExchangeScreen.SelectingPrivacy(false)
+                // Issue #372 (implementation review, AC-13): failure settles
+                // re-read the store truth — E1 may still be active here (the
+                // failed attempt replaced nothing), so the next start must see
+                // the confirmation requirement again.
+                screen = readActiveRequestIntoSelecting()
             }
 
             ExchangeGenerationResult.SessionStoreFailure -> {
                 status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_STORE_FAILURE)
-                screen = ExchangeScreen.SelectingPrivacy(false)
+                screen = readActiveRequestIntoSelecting()
             }
 
             is ExchangeGenerationResult.EncodeFailure -> {
                 status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_OVERSIZE)
-                screen = ExchangeScreen.SelectingPrivacy(false)
+                screen = readActiveRequestIntoSelecting()
             }
         }
     }
@@ -498,6 +590,13 @@ class ExchangeFlowStateHolder(
      * invalidates exactly the disclosure's own (unsent) session. After a
      * successful transport the package may already have left the device, so
      * the session survives and the reply stays importable (review P1).
+     *
+     * Issue #372 (implementation review): a BUSY unsent disclosure — transport
+     * in flight, or a cancel already accepted and its invalidate still in
+     * flight — refuses to close. Closing it would let the user leave (and
+     * dispose the holder's composition-owned scope) before the settle, which
+     * is exactly the race the Back contract's BLOCKED action guards; the
+     * visible action must not re-open it.
      */
     fun closeDisclosure() {
         // Decide and mark synchronously on Main from the holder's CURRENT
@@ -506,14 +605,23 @@ class ExchangeFlowStateHolder(
         // no further transport can start or settle against it, and the
         // session invalidated below is exactly the never-sent one.
         val disclosing = (screen as? ExchangeScreen.Disclosing)?.state
-        if (disclosing == null || !disclosing.cancelable) {
+        if (disclosing == null) {
             close()
             return
         }
-        screen = ExchangeScreen.Disclosing(disclosing.copy(cancelling = true))
-        scope.launch(Dispatchers.IO) {
-            controller.cancelDisclosure(disclosing.session)
-            withContext(uiDispatcher) { close() }
+        when {
+            disclosing.cancelable -> {
+                screen = ExchangeScreen.Disclosing(disclosing.copy(cancelling = true))
+                scope.launch(Dispatchers.IO) {
+                    controller.cancelDisclosure(disclosing.session)
+                    withContext(uiDispatcher) { close() }
+                }
+            }
+
+            disclosing.sent -> close()
+
+            // In flight or cancelling: refuse — wait for the settle.
+            else -> Unit
         }
     }
 
@@ -992,11 +1100,13 @@ data class ExchangeStatus(val kind: Kind) {
 /** The exchange items. Hosted only while the run is not active (Idle/Cancelled). */
 fun LazyListScope.exchangeFlowItems(
     holder: ExchangeFlowStateHolder,
+    onDiscardRequest: () -> Unit,
+    discardFocus: FocusRequester? = null,
     clipboardTransport: (Context, String) -> ExchangeTransportResult,
     shareTransport: (Context, String) -> ExchangeTransportResult,
     fileTransport: FileExchangeTransport,
 ) {
-    exchangeFlowItems(holder, null, emptyMap(), clipboardTransport, shareTransport, fileTransport)
+    exchangeFlowItems(holder, null, emptyMap(), onDiscardRequest, discardFocus, clipboardTransport, shareTransport, fileTransport)
 }
 
 /**
@@ -1004,11 +1114,15 @@ fun LazyListScope.exchangeFlowItems(
  * Hosted inside the selection surface while a run holds it; when
  * [scopedSelection] is non-null the generation composes the export from the
  * frozen selection instead of the idle full-organization scope.
+ * [onDiscardRequest] converges the T-16 破棄 button and system Back on the
+ * host's one discard confirmation (issue #372, D-13).
  */
 fun LazyListScope.exchangeFlowItems(
     holder: ExchangeFlowStateHolder,
     scopedSelection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>?,
     scopedLabels: Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>,
+    onDiscardRequest: () -> Unit,
+    discardFocus: FocusRequester?,
     clipboardTransport: (Context, String) -> ExchangeTransportResult,
     shareTransport: (Context, String) -> ExchangeTransportResult,
     fileTransport: FileExchangeTransport,
@@ -1016,14 +1130,12 @@ fun LazyListScope.exchangeFlowItems(
     val scoped = scopedSelection?.let { it to scopedLabels }
     when (val current = holder.screen) {
         ExchangeScreen.Closed -> {
-            item(key = "exchange-entry") {
-                if (scoped != null) {
+            // Issue #372 (D-04): the idle entry row is gone — the AI method
+            // lives in the T-07 method choice. Only the run-in scoped entry
+            // remains (spec 331 contract unchanged).
+            if (scoped != null) {
+                item(key = "exchange-entry") {
                     ExchangeScopedEntryRow(
-                        onOpenFlow = holder::openFlow,
-                        onOpenImport = holder::openImport,
-                    )
-                } else {
-                    ExchangeEntryRow(
                         onOpenFlow = holder::openFlow,
                         onOpenImport = holder::openImport,
                     )
@@ -1046,9 +1158,12 @@ fun LazyListScope.exchangeFlowItems(
                         )
                     }
                     ExchangePrivacySelection(
+                        activeRequestExpiresAtEpochMs = current.activeRequestExpiresAtEpochMs,
+                        activeRequestReadAtEpochMs = current.activeRequestReadAtEpochMs,
                         requiresConfirmation = current.replacementConfirmationRequired,
-                        onGenerate = { tier -> holder.requestGeneration(current.replacementConfirmationRequired, tier, scoped) },
+                        onGenerate = { tier -> holder.requestGeneration(tier, scoped) },
                         onCancel = holder::close,
+                        onOpenImport = holder::openImport,
                     )
                 }
             }
@@ -1081,6 +1196,8 @@ fun LazyListScope.exchangeFlowItems(
                 ExchangeDisclosure(
                     holder = holder,
                     state = current.state,
+                    onDiscardRequest = onDiscardRequest,
+                    discardFocus = discardFocus,
                     clipboardTransport = clipboardTransport,
                     shareTransport = shareTransport,
                     fileTransport = fileTransport,
@@ -1219,42 +1336,10 @@ private fun ExchangeUsageAccessJitDialogHost(
     }
 }
 
-@Composable
-private fun ExchangeEntryRow(onOpenFlow: () -> Unit, onOpenImport: () -> Unit) {
-    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text(
-            text = stringResource(R.string.exchange_entry_title),
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.testTag("exchange-entry-title"),
-        )
-        Text(
-            text = stringResource(R.string.exchange_entry_subtitle),
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        ExchangeCapabilityNotes(
-            modifier = Modifier
-                .padding(top = 4.dp)
-                .testTag("exchange-entry-capability"),
-        )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Button(onClick = onOpenFlow, modifier = Modifier.testTag("exchange-entry-open")) {
-                Text(stringResource(R.string.exchange_entry_open))
-            }
-            OutlinedButton(onClick = onOpenImport, modifier = Modifier.testTag("exchange-entry-import")) {
-                Text(stringResource(R.string.exchange_entry_import))
-            }
-        }
-    }
-}
-
 /**
- * Issue #327: the user-facing capability explanation shared by both exchange
- * entries. It describes what the AI can do in concrete user-language
+ * Issue #327: the user-facing capability explanation shared by the run-in
+ * exchange entry and the T-15 request face (issue #372 relocated the idle
+ * entry's copy here). It describes what the AI can do in concrete user-language
  * examples (never schema terms), states that the AI never changes the home
  * screen directly, and explains the expected conversation flow — the
  * interview happens inside the external AI app, the conversation never
@@ -1334,18 +1419,55 @@ private fun ExchangeScopedEntryRow(onOpenFlow: () -> Unit, onOpenImport: () -> U
     }
 }
 
+/**
+ * Issue #372 (T-15「依頼を作る」): the request-creation face. It carries the
+ * active-request pre-display (existence + remaining time, D-02), the D-09
+ * expectation statement, the two-choice tier vocabulary (D-14), the create CTA
+ * (through the replacement confirmation when an active request exists), and
+ * the import lead-in the removed idle entry row used to own. Cancel is the
+ * zero-write 「キャンセル」 (nothing to discard yet, D-13 §9).
+ */
 @Composable
 private fun ExchangePrivacySelection(
+    activeRequestExpiresAtEpochMs: Long?,
+    activeRequestReadAtEpochMs: Long?,
     requiresConfirmation: Boolean,
     onGenerate: (PrivacyTier) -> Unit,
     onCancel: () -> Unit,
+    onOpenImport: () -> Unit,
 ) {
     var labelInclusive by remember { mutableStateOf(false) }
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
-            text = stringResource(R.string.exchange_privacy_title),
+            text = stringResource(R.string.exchange_request_title),
             style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.testTag("exchange-privacy-title"),
+            modifier = Modifier.testTag("exchange-request-title"),
+        )
+        if (activeRequestExpiresAtEpochMs != null && activeRequestReadAtEpochMs != null) {
+            ActiveRequestPreDisplay(
+                expiresAtEpochMs = activeRequestExpiresAtEpochMs,
+                readAtEpochMs = activeRequestReadAtEpochMs,
+            )
+        }
+        ExchangeCapabilityNotes(
+            modifier = Modifier
+                .padding(top = 4.dp)
+                .testTag("exchange-request-capability"),
+        )
+        Text(
+            text = stringResource(R.string.exchange_expectation_fixed_home),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier
+                .padding(top = 4.dp)
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .testTag("exchange-expectation"),
+        )
+        Text(
+            text = stringResource(R.string.exchange_privacy_title),
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .testTag("exchange-privacy-title"),
         )
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -1377,24 +1499,68 @@ private fun ExchangePrivacySelection(
                     .semantics { liveRegion = LiveRegionMode.Assertive },
             )
         }
-        Row(
+        // Issue #372 (implementation review, EX-AC-10): the three actions
+        // stack vertically so 200% font scale reflows the column instead of
+        // clipping a fixed-width row (ja copy is the widest case).
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Button(
                 onClick = {
                     onGenerate(if (labelInclusive) PrivacyTier.EXTERNAL_WITH_LABELS else PrivacyTier.EXTERNAL_REDACTED)
                 },
-                modifier = Modifier.testTag("exchange-generate"),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("exchange-generate"),
             ) {
                 Text(stringResource(R.string.exchange_generate))
             }
-            OutlinedButton(onClick = onCancel) {
+            OutlinedButton(
+                onClick = onOpenImport,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.exchange_entry_import))
+            }
+            OutlinedButton(
+                onClick = onCancel,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Text(stringResource(R.string.exchange_cancel))
             }
         }
+    }
+}
+
+/**
+ * Issue #372 (T-15, D-02): the active-request pre-display — existence plus the
+ * remaining time. Both values come from the holder's read (the projection's
+ * display root): no second clock touches the face, and the holder's reads
+ * (entry, resume, expiry-scheduled) keep it consistent with the store, so
+ * this row never needs a ticking clock.
+ */
+@Composable
+private fun ActiveRequestPreDisplay(expiresAtEpochMs: Long, readAtEpochMs: Long) {
+    val remaining = requestRemainingDisplay(expiresAtEpochMs, readAtEpochMs)
+    Column(
+        modifier = Modifier
+            .padding(top = 8.dp)
+            .testTag("exchange-request-active"),
+    ) {
+        Text(
+            text = stringResource(R.string.exchange_request_active_line),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        )
+        Text(
+            text = when (remaining) {
+                is RequestRemaining.Hours -> pluralStringResource(R.plurals.exchange_request_remaining_hours, remaining.count, remaining.count)
+                RequestRemaining.UnderOneHour -> stringResource(R.string.exchange_request_remaining_under_hour)
+            },
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
@@ -1430,10 +1596,24 @@ private fun ExchangeReplacementConfirm(
     }
 }
 
+/**
+ * Issue #372 (T-16「送信前確認」, D-10): the pre-send confirmation as a
+ * summary-first face. The informed-consent summary (what kinds, how many
+ * items, what ceiling) is the primary surface; the generated package's full
+ * text is collapsed by default and expandable for review (the expandable text
+ * is the identical immutable value the transports hand out — spec 205 AC-12).
+ * The D-09 expectation statement is repeated here, one consent point before
+ * any external disclosure. The unsent cancel is the 「破棄」 vocabulary with
+ * ONE confirmation dialog (D-13), shared with system Back through
+ * [onDiscardRequest]; after a send the same slot becomes the no-confirm
+ * 閉じる and the request survives.
+ */
 @Composable
 private fun ExchangeDisclosure(
     holder: ExchangeFlowStateHolder,
     state: ExchangeDisclosureState,
+    onDiscardRequest: () -> Unit,
+    discardFocus: FocusRequester?,
     clipboardTransport: (Context, String) -> ExchangeTransportResult,
     shareTransport: (Context, String) -> ExchangeTransportResult,
     fileTransport: FileExchangeTransport,
@@ -1444,6 +1624,13 @@ private fun ExchangeDisclosure(
     ) { uri: Uri? ->
         if (uri != null) holder.writeFile(fileTransport, state.packageText, uri)
     }
+    // Collapsed by default (issue #372 review: the full text never forces
+    // itself on the user); the expand state is announced to TalkBack through
+    // the state description and the toggle label, keyed per generated package.
+    var expanded by remember(state.session.exportId) { mutableStateOf(false) }
+    val expandedStateText = stringResource(R.string.exchange_disclosure_collapse)
+    val collapsedStateText = stringResource(R.string.exchange_disclosure_expand)
+    val summary = exchangeDisclosureSummary(state)
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
             text = stringResource(R.string.exchange_disclosure_title),
@@ -1460,19 +1647,54 @@ private fun ExchangeDisclosure(
             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
         )
         Text(
+            text = stringResource(R.string.exchange_disclosure_summary_items, summary.itemCount),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .testTag("exchange-disclosure-summary-items"),
+        )
+        Text(
+            text = stringResource(R.string.exchange_disclosure_summary_limit),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.testTag("exchange-disclosure-summary-limit"),
+        )
+        Text(
+            text = stringResource(R.string.exchange_expectation_fixed_home),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier
+                .padding(top = 4.dp)
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .testTag("exchange-expectation"),
+        )
+        Text(
             text = stringResource(R.string.exchange_disclosure_hint),
             style = MaterialTheme.typography.bodySmall,
         )
-        Text(
-            text = state.packageText,
-            style = MaterialTheme.typography.bodySmall,
+        TextButton(
+            onClick = { expanded = !expanded },
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp)
-                .heightIn(max = 240.dp)
-                .verticalScroll(rememberScrollState())
-                .testTag("exchange-disclosure-package"),
-        )
+                .padding(top = 4.dp)
+                .testTag("exchange-disclosure-expand")
+                .semantics { stateDescription = if (expanded) expandedStateText else collapsedStateText },
+        ) {
+            Text(
+                stringResource(
+                    if (expanded) R.string.exchange_disclosure_collapse else R.string.exchange_disclosure_expand,
+                ),
+            )
+        }
+        if (expanded) {
+            Text(
+                text = state.packageText,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+                    .heightIn(max = 240.dp)
+                    .verticalScroll(rememberScrollState())
+                    .testTag("exchange-disclosure-package"),
+            )
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1501,18 +1723,34 @@ private fun ExchangeDisclosure(
             OutlinedButton(
                 onClick = { if (state.transportAllowed) fileSaver.launch("nunu-launcher-exchange.txt") },
                 enabled = state.transportAllowed,
-                modifier = Modifier.testTag("exchange-send-file"),
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("exchange-send-file"),
             ) {
                 Text(stringResource(R.string.exchange_save_file))
             }
+            // Issue #372 (implementation review): during `cancelling` the
+            // invalidate is still in flight — the close slot disables, so the
+            // face cannot be left (nor the flow closed) before the settle;
+            // this mirrors the Back contract's BLOCKED action.
             OutlinedButton(
-                onClick = holder::closeDisclosure,
-                enabled = !state.transportInFlight,
-                modifier = Modifier.testTag("exchange-cancel"),
+                onClick = { if (state.cancelable) onDiscardRequest() else holder.closeDisclosure() },
+                enabled = when {
+                    state.cancelable -> true
+                    state.cancelling -> false
+                    state.sent -> true
+                    else -> !state.transportInFlight
+                },
+                // Issue #372: the host owns the dialog-dismiss focus
+                // restoration through this requester (deterministic restore).
+                modifier = Modifier
+                    .weight(1f)
+                    .then(discardFocus?.let { Modifier.focusRequester(it) } ?: Modifier)
+                    .testTag("exchange-discard"),
             ) {
                 Text(
                     stringResource(
-                        if (state.cancelable) R.string.exchange_cancel else R.string.exchange_close,
+                        if (state.cancelable) R.string.exchange_discard else R.string.exchange_close,
                     ),
                 )
             }
@@ -1692,6 +1930,143 @@ fun ExchangeImportSuccessBackHandler(holder: ExchangeFlowStateHolder) {
         )
     }
 }
+
+/**
+ * Issue #372 (EX-AC-11): what system Back does on an exchange face. The
+ * accepted TO-BE §5.3/§9 contract ("Back always returns to the previous face;
+ * work-destroying Back confirms once") made structural for the request faces:
+ * the T-15 faces close zero-write, the unsent T-16 goes through the discard
+ * confirmation, a sent T-16 closes with the request surviving, and a busy face
+ * (generating / in-flight transport / cancelling) is CONSUMED — leaving it
+ * would dispose the composition and cancel the holder's `rememberCoroutineScope`
+ * operations (generation, file write, invalidate), contradicting the
+ * "operations continue and settle" contract. Import faces stay on the current
+ * contracts (spec 328/332, #373 owns their rework).
+ */
+enum class ExchangeBackAction { CLOSE, REQUEST_DISCARD, BLOCKED, NONE }
+
+internal fun exchangeBackAction(screen: ExchangeScreen): ExchangeBackAction = when (screen) {
+    ExchangeScreen.Closed,
+    is ExchangeScreen.Importing,
+    is ExchangeScreen.ImportOutcomeScreen,
+    is ExchangeScreen.ImportSuccess,
+    -> ExchangeBackAction.NONE
+
+    ExchangeScreen.Generating -> ExchangeBackAction.BLOCKED
+
+    // Issue #371 integration: the usage-access JIT pause is a generation
+    // pending resume — Back is consumed (the dialog's own Back, when
+    // presented, is the #371 「続行」 affordance and never reaches here).
+    is ExchangeScreen.AwaitingUsageAccessJit -> ExchangeBackAction.BLOCKED
+
+    is ExchangeScreen.SelectingPrivacy, is ExchangeScreen.ReplacementConfirm -> ExchangeBackAction.CLOSE
+
+    is ExchangeScreen.Disclosing -> when {
+        screen.state.cancelable -> ExchangeBackAction.REQUEST_DISCARD
+        screen.state.sent -> ExchangeBackAction.CLOSE
+        else -> ExchangeBackAction.BLOCKED
+    }
+}
+
+/**
+ * Issue #372 (EX-AC-11): the always-composed host-level Back handler for the
+ * request faces — the same placement principle as
+ * [ExchangeImportSuccessBackHandler] (never inside a lazy item, whose
+ * composition can leave the viewport under large font). Composed BEFORE the
+ * import-success handler in the host, so the success state keeps Back
+ * priority; composed AFTER the screen-level D-13 gate, so an open flow takes
+ * Back before the dismiss/navigate fallback. [onDiscardRequest] lets the host
+ * converge the Back path and the T-16 破棄 button on ONE confirmation dialog.
+ */
+@Composable
+fun ExchangeFlowBackHandler(holder: ExchangeFlowStateHolder, onDiscardRequest: () -> Unit) {
+    BackHandler(enabled = exchangeBackAction(holder.screen) != ExchangeBackAction.NONE) {
+        when (exchangeBackAction(holder.screen)) {
+            ExchangeBackAction.CLOSE -> holder.close()
+            ExchangeBackAction.REQUEST_DISCARD -> onDiscardRequest()
+            ExchangeBackAction.BLOCKED, ExchangeBackAction.NONE -> Unit
+        }
+    }
+}
+
+/**
+ * Issue #372 (D-13): the ONE pre-send discard confirmation, shared by the
+ * T-16 破棄 button and system Back. Confirm invalidates exactly the unsent
+ * session (through the holder's existing `closeDisclosure` structural gate);
+ * dismiss keeps the T-16 face. No timeout auto-confirm/cancel (organization-
+ * run-ux §6). Focus ownership is deterministic: the SAFE action (dismiss /
+ * keep) takes focus when the dialog opens, and the CALLER restores focus to
+ * the face's 破棄 action on dismissal via its own FocusRequester (explicit
+ * restoration — platform dialog focus restore is not deterministic).
+ */
+@Composable
+fun ExchangeDiscardConfirmDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    val safeActionFocus = remember { FocusRequester() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = stringResource(R.string.exchange_discard_confirm_title),
+                modifier = Modifier.testTag("exchange-discard-confirm-title"),
+            )
+        },
+        text = {
+            Text(
+                text = stringResource(R.string.exchange_discard_confirm_body),
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                modifier = Modifier.testTag("exchange-discard-confirm"),
+            ) {
+                Text(stringResource(R.string.exchange_discard_confirm_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .focusRequester(safeActionFocus)
+                    .testTag("exchange-discard-dismiss"),
+            ) {
+                Text(stringResource(R.string.exchange_cancel))
+            }
+        },
+    )
+    LaunchedEffect(Unit) { safeActionFocus.requestFocus() }
+}
+
+/**
+ * Issue #372 (T-16, D-10): the informed-consent summary derived from the
+ * generated immutable session — the exported ITEM count (labelled as the item
+ * count, not a total record count; the tier line already explains the
+ * category collection), the tier, and the V1 content limits as the contract
+ * ceiling. Live state is never re-read here (AC-12 identity: the summary
+ * describes exactly the value the transports hand out).
+ */
+data class ExchangeDisclosureSummary(val itemCount: Int, val tier: PrivacyTier)
+
+internal fun exchangeDisclosureSummary(state: ExchangeDisclosureState): ExchangeDisclosureSummary = ExchangeDisclosureSummary(
+    itemCount = state.session.itemRefs.size,
+    tier = state.tier,
+)
+
+/** The T-15 remaining-time display root (issue #372). Pure and unit-tested. */
+internal sealed interface RequestRemaining {
+    data class Hours(val count: Int) : RequestRemaining
+    data object UnderOneHour : RequestRemaining
+}
+
+internal fun requestRemainingDisplay(expiresAtEpochMs: Long, nowMs: Long): RequestRemaining {
+    val remainingMs = expiresAtEpochMs - nowMs
+    if (remainingMs <= 0L) return RequestRemaining.UnderOneHour
+    val hours = (remainingMs / MILLIS_PER_HOUR).toInt()
+    return if (hours >= 1) RequestRemaining.Hours(hours) else RequestRemaining.UnderOneHour
+}
+
+internal const val MILLIS_PER_HOUR = 60L * 60L * 1000L
 
 /**
  * Issue #328: the import success state (spec 328 "取り込み成功状態"). Shows

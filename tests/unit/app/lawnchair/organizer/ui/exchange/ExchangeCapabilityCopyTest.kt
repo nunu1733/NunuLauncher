@@ -92,10 +92,15 @@ class ExchangeCapabilityCopyTest {
 
     /**
      * Issue #337 (spec 337 D-2, review finding): the pre-send disclosure and
-     * the privacy-mode label must describe what the v4 package actually
-     * contains — the category catalog (including user-defined entries) is
-     * always disclosed, and the user-defined category NAMES follow the same
-     * tier as app labels.
+     * the privacy copy must describe what the v4 package actually contains —
+     * the category catalog (including user-defined entries) is always
+     * disclosed, and the user-defined category NAMES follow the same tier as
+     * app labels.
+     *
+     * Issue #372 update (accepted spec, D-14): the tier CHOICE label is the
+     * label vocabulary ("ラベル付きで送る") and no longer enumerates content;
+     * the v4 enumeration moved to the label-inclusive WARNING shown when that
+     * tier is picked (app + folder names + user-defined category names).
      */
     @Test
     fun disclosureCopyStatesTheV4CategoryReferenceDisclosure() {
@@ -104,19 +109,28 @@ class ExchangeCapabilityCopyTest {
             val redacted = xml.substringAfter("name=\"exchange_disclosure_redacted\"").substringBefore("</string>")
             val labels = xml.substringAfter("name=\"exchange_disclosure_labels_included\"").substringBefore("</string>")
             val privacyLabel = xml.substringAfter("name=\"exchange_privacy_labels\"").substringBefore("</string>")
+            val privacyWarning = xml.substringAfter("name=\"exchange_privacy_labels_warning\"").substringBefore("</string>")
             val categoryWord = if (localeDir == "values-ja") "カテゴリ" else "categor"
+            val userDefined = if (localeDir == "values-ja") "ユーザー定義" else "user-defined"
             assertTrue(
                 "$localeDir redacted copy must disclose the category list without names",
                 redacted.contains(categoryWord) && (redacted.contains("含まれません") || redacted.contains("without their names")),
             )
             assertTrue(
                 "$localeDir label-inclusive copy must disclose user-defined category names",
-                labels.contains(categoryWord) &&
-                    (labels.contains("ユーザー定義") || labels.contains("user-defined")),
+                labels.contains(categoryWord) && labels.contains(userDefined),
             )
+            // D-14: the choice label is the two-choice vocabulary without a
+            // content enumeration (LOCAL_FULL never appears).
             assertTrue(
-                "$localeDir privacy-mode label must not promise app-name-only disclosure",
-                privacyLabel.contains(categoryWord),
+                "$localeDir privacy-mode label must stay the D-14 label vocabulary",
+                privacyLabel.contains(if (localeDir == "values-ja") "ラベル" else "label"),
+            )
+            // The label-inclusive warning carries the exact v4 free-text set
+            // (app + folder names + user-defined category names).
+            assertTrue(
+                "$localeDir label-inclusive warning must enumerate the v4 free-text set",
+                privacyWarning.contains(categoryWord) && privacyWarning.contains(userDefined),
             )
         }
     }

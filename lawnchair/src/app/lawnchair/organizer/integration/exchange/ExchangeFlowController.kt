@@ -69,6 +69,13 @@ class ExchangeFlowController(
     /** The active (unexpired) session, if any — drives the replacement gate. */
     fun activeSession(): ExportSession? = store.active(clock())
 
+    /**
+     * Issue #372: the same clock the generation and store reads use, exposed
+     * for the T-15 pre-display's expiry-scheduled re-read so the display and
+     * the gate never read two different time sources.
+     */
+    fun nowEpochMs(): Long = clock()
+
     /** Gate decision for starting a new generation flow (spec 205 AC-13). */
     fun generationGate(userConfirmation: Boolean?): ExchangeGenerationGateOutcome = ExchangeGenerationGate.evaluate(activeSession() != null, userConfirmation)
 

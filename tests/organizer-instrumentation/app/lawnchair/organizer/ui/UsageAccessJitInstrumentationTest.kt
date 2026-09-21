@@ -350,7 +350,6 @@ class UsageAccessJitInstrumentationTest {
         // The exchange origin acquires first: its dialog presents on the Idle
         // face (the exchange section hosts it).
         exchangeHolder.requestGeneration(
-            replacementConfirmationRequired = false,
             tier = app.lawnchair.organizer.personalization.PrivacyTier.EXTERNAL_REDACTED,
         )
         composeRule.waitUntil(timeoutMillis = 30_000) {

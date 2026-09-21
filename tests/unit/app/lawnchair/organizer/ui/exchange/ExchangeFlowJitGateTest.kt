@@ -37,7 +37,7 @@ class ExchangeFlowJitGateTest {
             usageAccessGate = gate,
         )
 
-        holder.requestGeneration(replacementConfirmationRequired = false, tier = tier)
+        holder.requestGeneration(tier = tier)
 
         val awaiting = holder.screen as ExchangeScreen.AwaitingUsageAccessJit
         assertTrue(awaiting.isPresenter)
@@ -57,7 +57,7 @@ class ExchangeFlowJitGateTest {
             usageAccessGate = gate,
         )
 
-        holder.requestGeneration(replacementConfirmationRequired = false, tier = tier)
+        holder.requestGeneration(tier = tier)
 
         assertEquals(ExchangeScreen.Generating, holder.screen)
         assertEquals(UsageAccessJitGate.Phase.Resolved, gate.snapshot.value.phase)
@@ -72,7 +72,7 @@ class ExchangeFlowJitGateTest {
             scope = explodingScope(),
             usageAccessGate = gate,
         )
-        holder.requestGeneration(replacementConfirmationRequired = false, tier = tier)
+        holder.requestGeneration(tier = tier)
         val awaiting = holder.screen as ExchangeScreen.AwaitingUsageAccessJit
 
         holder.close()
@@ -91,7 +91,7 @@ class ExchangeFlowJitGateTest {
             scope = explodingScope(),
             usageAccessGate = gate,
         )
-        owner.requestGeneration(replacementConfirmationRequired = false, tier = tier)
+        owner.requestGeneration(tier = tier)
         val awaiting = owner.screen as ExchangeScreen.AwaitingUsageAccessJit
         gate.markPresented(ExchangeJitAttemptOwner(awaiting.attemptToken))
 
@@ -107,7 +107,7 @@ class ExchangeFlowJitGateTest {
             scope = explodingScope(),
             usageAccessGate = gate,
         )
-        waiter.requestGeneration(replacementConfirmationRequired = false, tier = tier)
+        waiter.requestGeneration(tier = tier)
         assertEquals(ExchangeScreen.Generating, waiter.screen)
     }
 
@@ -120,12 +120,12 @@ class ExchangeFlowJitGateTest {
             scope = explodingScope(),
             usageAccessGate = gate,
         )
-        holder.requestGeneration(replacementConfirmationRequired = false, tier = tier)
+        holder.requestGeneration(tier = tier)
         val staleToken = (holder.screen as ExchangeScreen.AwaitingUsageAccessJit).attemptToken
         holder.close()
 
         // A second attempt under the same conditions mints a fresh token.
-        holder.requestGeneration(replacementConfirmationRequired = false, tier = tier)
+        holder.requestGeneration(tier = tier)
         val fresh = holder.screen as ExchangeScreen.AwaitingUsageAccessJit
         assertTrue(fresh.attemptToken != staleToken)
 
@@ -149,7 +149,7 @@ class ExchangeFlowJitGateTest {
             scope = explodingScope(),
             usageAccessGate = gate,
         )
-        holder.requestGeneration(replacementConfirmationRequired = false, tier = tier)
+        holder.requestGeneration(tier = tier)
         val awaiting = holder.screen as ExchangeScreen.AwaitingUsageAccessJit
         gate.markPresented(ExchangeJitAttemptOwner(awaiting.attemptToken))
 
@@ -175,11 +175,11 @@ class ExchangeFlowJitGateTest {
             scope = explodingScope(),
             usageAccessGate = gate,
         )
-        holder.requestGeneration(replacementConfirmationRequired = false, tier = tier)
+        holder.requestGeneration(tier = tier)
         val tokenA = (holder.screen as ExchangeScreen.AwaitingUsageAccessJit).attemptToken
         // A second request under the same conditions mints a new attempt (the
         // first still owns the reservation, so this one waits).
-        holder.requestGeneration(replacementConfirmationRequired = false, tier = tier)
+        holder.requestGeneration(tier = tier)
         val tokenB = (holder.screen as ExchangeScreen.AwaitingUsageAccessJit).attemptToken
         assertTrue(tokenA != tokenB)
 

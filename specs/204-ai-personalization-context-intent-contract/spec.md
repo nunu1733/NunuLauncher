@@ -132,6 +132,8 @@ intent取り込みのstale判定に使うdigestは **export文書のfieldでは�
 
 export生成時にtierを1つ選ぶ。tierは`PersonalizationContextExportV1`のmetadataとして明示される。
 
+> **UI語彙の2種固定 (#372改訂、D-14)**: 外部workflowのUIにおける選択肢は2種 (redacted / labels。TO-BE D-14語彙「情報を減らして送る / ラベル付きで送る」) に固定される。`LOCAL_FULL` は内部契約値 (将来のlocal LLM向け余地、#206) として維持し、外部workflowのUIに出現させない。本節のtier matrix・schema・validatorは不変であり、本改訂は文言のみである。
+
 | Tier | user作成自由文 (app label・folder title等) | category/semantic (taxonomy enum) | usage | 想定consumer |
 |---|---|---|---|---|
 | `LOCAL_FULL` | 含む | 含む | #203正規化bucket値 (app内滞留。raw ms/時刻は#203契約自体が保持しない) | 内部engine (#206) |
@@ -454,6 +456,8 @@ AI/agentは次をauthoritativeにしてはならない。これらを含むinten
 未解決のOpen questionは存在しない。残る課題はすべて実装child issueの実装詳細 (internal canonical structural projectionのserialization、`RandomIdAllocator` production乱数源、`AndroidExportSessionStore` 具体実装) であり、契約受入の対象外である。
 
 ## Change history
+
+- 2026-09-21: **UI語彙の2種固定 ([spec 372](../372-ai-consultation-request-flow/spec.md) 所有。accepted、PR #390)** — Issue #372のaccepted specによる文言Amend (disposition §3.11)。「privacy tier」節へ「外部workflowのUI選択肢は2種 (redacted / labels、TO-BE D-14語彙)。`LOCAL_FULL` は内部契約値 (将来のlocal LLM向け余地、#206) として維持し、外部workflowのUIに出現させない」を追記。tier matrix・schema・validator・契約値はすべて不変であり、本改訂は文言のみである。
 
 - 2026-09-10: Draft created for Issue #204. Contract-only spec: ContextV1/IntentV1 schema, privacy tiers, fail-closed validation, intent identity/determinism, prompt-injection threat model, #182 seam connection, FR-017 proposal.
 - 2026-09-13: Re-entry re-anchor to baseline `f9afd8bfde` (2026-09-13時点 `origin/main`)。#228/#235/#271/#288 由来のmain差分を検証し、契約の核は不変のまま現行planner実態へ追従: `kind` 投影をsemantic placement role族 (widget含む、span不変) へ明確化、reservation制約projectionを明記、FORBIDDEN_CONTENTへwidget span/reservation指示を追加、intentが新run modeや対象追加を生まないことを明記。#203/#205/#206は依然OPEN (mainに実装・specなし)。statusはdraftのまま (受入判断はOwner)。
