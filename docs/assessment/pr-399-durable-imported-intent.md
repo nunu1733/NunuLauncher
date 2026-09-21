@@ -5,7 +5,8 @@
 
 - Auditor: 独立audit session（ZCode orchestrator配下のgeneral-purpose subagent）。本PRの実装は別session/subagentが行っており、監査主体は実装に一切関与していない（AGENTS.md「高リスクPRの独立エビデンス」のsolo保守における独立session要件を満たす）。実装側の主張（PR本文・plan checklist）は位置確認にのみ参照し、本記録の判断は監査sessionが自ら実読したdiff・test本文・spec本文と、自ら実行した`git` / `gh`検証の結果のみによる。
 - PR: https://github.com/nunu1733/NunuLauncher/pull/399 （base `main`、head `issue-374-spec-plan`）
-- Head SHA: 07c08c146deeb0a1ba8e08ebfb77c0c8a3b6d765（再監査: 初回監査head `34d405a333fbf84ab4ea35a13156cc61aea00fb9` の後、main merge（#400・specs/376 docs 2ファイルのみ・コード変更なし）が入ったため新headで再監査）
+- Head SHA: 07c08c146deeb0a1ba8e08ebfb77c0c8a3b6d765
+- 再監査の経緯: 初回監査head `34d405a333fbf84ab4ea35a13156cc61aea00fb9` の後、main merge（#400・specs/376 docs 2ファイルのみ・コード変更なし）が入ったため新headで再監査した
 - Head SHA検証: `git rev-parse origin/issue-374-spec-plan` とCI run 35636263123の`headSha`の一致を機械確認済み
 - CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/35636263123 （`pull_request` event・ci.yml。`gh run view 35628752080 -R nunu1733/NunuLauncher --json conclusion,headSha` で `conclusion=success`・`headSha=34d405a3…` を確認。`gh pr checks 399 -R nunu1733/NunuLauncher` で `final-status` pass、source job 3種（`organizer-unit-tests` / `check-style` / `build-debug-apk`）がskipなしでsuccess、全organizer instrumentation lane（api35 / db-migration / issue52 / issue53 / issue99 / issue155 / issue299 / issue332 / shared-writer）passを確認）
 - Criteria: specs/374-durable-imported-intent/spec.md の受入条件 DI-AC-01, DI-AC-02, DI-AC-03, DI-AC-04, DI-AC-05, DI-AC-06, DI-AC-07, DI-AC-08, DI-AC-09, DI-AC-10, DI-AC-11, DI-AC-12, DI-AC-13 （FR-017）
