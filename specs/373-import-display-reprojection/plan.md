@@ -122,7 +122,7 @@ T-15/T-16の追加で行番号が移動したのみ。下記の行番号はre-en
   `ExchangeImportSuccessInstrumentationTest.kt`。CI独立job
   `organizer-instrumentation-issue332-tests` がmerge gate（`final-status`）に組み込み済み。
   `tests/organizer-instrumentation/app/lawnchair/ui/preferences/OrganizerDiagnosticsRouteInstrumentationTest.kt`
-  （診断routeの既存test。本Issueのroute引数追加時に無編集greenをgateにする）。
+  （診断routeの既存test。本Issueでは診断route自体を変更しないため、無編集greenをgateにする）。
 - 20種typed文言を固定する現行oracleの実体: `exchangeContractFailureText` の**網羅 `when`**
   （compile-time）+ 上記test群の個別string解決。全20種を1つのtableで走査するtestは存在しない
   （本Issueの手段別oracleが新規に作る）。
@@ -166,18 +166,19 @@ fun exchangeImportFailureDisplay(failure: ExchangeImportFailure): ExchangeImport
   復帰後の生成は現行のscope凍結生成契約どおりになる。置換確認（spec 205 AC-13）は
   生成時の既存gateで効く（失敗面の操作は何も書かない）。
 - 面レベル手段: 「中断する」→ `holder.close()`（現行のclose path。zero-write・確認不要・
-  session生存）。「診断を開く」→ 失敗情報付きのdiagnostics起動callback
-  （**`exchangeFlowItems` への新規引数追加**。host側のcall siteから受けた既存の診断route起動に、
-  現在のattemptのtyped分類名（closed set）とtyped原因説明（詳細展開と同一の解決済み契約文言）
-  を渡す。default null = 非表示ではなく、null時は遷移先不在としてrowを非表示にする —
-  instrumentation環境等での安全な欠落）。遷移先は既存 `HomeScreenOrganizerDiagnostics`
-  routeへ **optional引数2種（`importFailureTypeName` / `importFailureDetail`）を追加**したものであり、
-  診断面（`OrganizerDiagnosticsPreferences`）は引数が存在するときのみ「直近の取り込み失敗」の
-  補助行（分類名+説明。表示のみ）を出す。既存の説明文・journal export構成は不変であり、
-  引数の無い他入口（durable status row・run safe terminal行）からの表示は変わらない。
-  受け渡しはprocess-local（navigation state）であり、journal・永続store・logcatへの書込みは
-  行わない（organizer-diagnostics.md §2の分離規約どおり、journalを経由しない
-  user-facing reason構成である）。
+  session生存）。「診断を開く」→ 失敗情報保持つきのdiagnostics起動
+  （**`exchangeFlowItems` への新規引数追加**。host側のcall siteから受けた既存の診断route起動
+  （`onOpenDiagnostics`。route自体は **引数なしのまま現行どおり**）の直前に、現在のattemptの
+  typed分類名（closed set）とtyped原因説明（詳細展開と同一の解決済み契約文言）を
+  **process-scopedなtransient holder** へ書き込む。holderは非serializableなprocess memory上の
+  object（`organizer/ui/exchange/` 内。navigation saved state / `SavedStateHandle` へは
+  保存しない）であり、process deathで消失する — **route引数にtyped原因を載せないのは、
+  Navigationのroute引数がsaved state保存・復元対象であり、非永続契約が破れるため
+  （review指摘対応）**。診断面（`OrganizerDiagnosticsPreferences`）はholderに保持があるとき
+  のみ「直近の取り込み失敗」の補助行（分類名+説明。表示のみ）を出す。既存の説明文・
+  journal export構成は不変であり、holder保持が無い状態（process起動後〜最初の「診断を開く」
+  まで、およびprocess再生成後）の診断面は現行と同一である。default null = 非表示ではなく、
+  null時は遷移先不在としてrowを非表示にする — instrumentation環境等での安全な欠落）。
 
 ### 変更しないもの（明示）
 
@@ -194,12 +195,10 @@ fun exchangeImportFailureDisplay(failure: ExchangeImportFailure): ExchangeImport
 
 | 対象 | 変更内容 |
 |---|---|
-| `lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeImportFailureDisplay.kt`（新規） | 手段別projection純粋関数 + enum + data class（mapping表の実装本体） |
-| `lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeFlowUi.kt` | `ExchangeImportOutcome` composableの再構成（primary copy + primary操作 + 面レベル手段（中断する/診断を開く）+ 詳細展開（認識情報・typed原因・raw detail））。`exchangeFlowItems` へ `onOpenDiagnostics` 引数追加。既存 `exchangeFailureText` は詳細展開用のtyped原因解決へ役割変更（T-18失敗面のprimary用途から外す） |
-| `lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt` | `exchangeFlowItems` call siteへ失敗情報付きのdiagnostics起動callbackを渡す（既存の診断route起動とtyped原因受け渡しの組合せ。call site数はre-entry時点の実装に整合） |
-| `lawnchair/src/app/lawnchair/ui/preferences/navigation/PreferenceRoutes.kt` | `HomeScreenOrganizerDiagnostics` をoptional引数2種（`importFailureTypeName` / `importFailureDetail`、default null）を持つrouteへ変更（既存call siteはdefault構築のままで不変） |
-| `lawnchair/src/app/lawnchair/ui/preferences/navigation/PreferenceNavigation.kt` | diagnostics composableの引数読取と `OrganizerDiagnosticsPreferences` への受け渡し |
-| `lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerDiagnosticsPreferences.kt` | 引数存在時のみ「直近の取り込み失敗」補助行（分類名+説明）を表示。既存構成（説明文・journal export）は不変 |
+| `lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeImportFailureDisplay.kt`（新規） | 手段別projection純粋関数 + enum + data class（mapping表の実装本体）+ process-scoped transient holder（直近の「診断を開く」対象失敗の分類名+説明。非serializable・saved state外） |
+| `lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeFlowUi.kt` | `ExchangeImportOutcome` composableの再構成（primary copy + primary操作 + 面レベル手段（中断する/診断を開く）+ 詳細展開（認識情報・typed原因・raw detail））。`exchangeFlowItems` へ失敗情報保持つきdiagnostics起動引数を追加。既存 `exchangeFailureText` は詳細展開用のtyped原因解決へ役割変更（T-18失敗面のprimary用途から外す） |
+| `lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt` | `exchangeFlowItems` call siteへ失敗情報保持つきのdiagnostics起動callbackを渡す（既存の引数なし診断route起動とholder書込みの組合せ。call site数はre-entry時点の実装に整合） |
+| `lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerDiagnosticsPreferences.kt` | holder保持時に「直近の取り込み失敗」補助行（分類名+説明）を表示。既存構成（説明文・journal export）は不変。**診断route（`HomeScreenOrganizerDiagnostics`）とnavigation構成は現行のまま変更しない** |
 | `CONTEXT.md` | 用語「手段別失敗投影」の追加（primary remedy・面レベル手段は定義内に含める。本Issueが所有） |
 | `lawnchair/res/values/strings.xml` + `values-ja/strings.xml` | 手段別primary copy（3 category × copy/label）+「中断する」「診断を開く」+ 詳細展開heading + 診断面補助行（「直近の取り込み失敗」等）の新規string。typed文言の説明部分の再配置。未使用化stringの削除（reference grep 0件） |
 | `tests/unit/app/lawnchair/organizer/ui/exchange/`（新規/拡張） | projection純粋関数のtable-driven test（20種 + fallback、ja/en解決）。holder testの失敗面state拡張（remedy操作 → seam呼出） |
@@ -229,8 +228,8 @@ fun exchangeImportFailureDisplay(failure: ExchangeImportFailure): ExchangeImport
 - 未知typed失敗 → 既定remedy（`RETRY_IMPORT`）+ typed原因詳細展開（fail-closed。crash /
   silent失敗しない）。Kotlin網羅 `when` が分類追加時の更新漏れをcompilerで要求する。
 - 「診断を開く」の遷移先不在（callback null）→ row非表示（操作の不存在はtyped失敗ではない）。
-  遷移引数の欠落（他入口からの診断面）→ 補助行なしの現行表示（表示のみの変化であり、
-  欠落はtyped失敗・errorにならない）。
+  holder未保持（process起動後〜最初の「診断を開く」まで・process再生成後）→ 補助行なしの
+  現行表示（表示のみの変化であり、欠落はtyped失敗・errorにならない）。
 - 「依頼を作り直す」操作後の生成失敗（入力未ready等）→ 既存のtyped status語彙
   （`GENERATION_INPUT_NOT_READY` 等）で表示され、失敗面の表示を壊さない（現行契約の継承）。
 
@@ -244,7 +243,8 @@ fun exchangeImportFailureDisplay(failure: ExchangeImportFailure): ExchangeImport
 - **instrumentation**: 失敗面構造（primary面の否定的観測: `exchange_failure_*` のtyped文言が
   primary nodeに存在しない。詳細展開default閉。3種操作 + 中断/診断の到達性）。
   診断面の補助行（「診断を開く」遷移時に現在のattemptの分類名・説明が表示されること、
-  他入口からの遷移では補助行が出ないこと）。`ExchangeImportSuccessInstrumentationTest` と
+  activity recreation / process death復元後は補助行が復元されないこと）。
+  `ExchangeImportSuccessInstrumentationTest` と
   `organizer-instrumentation-issue332-tests` lane（T-17回帰）のgreen。
 - **device evidence**: 200% font × ja/default のscreenshot evidence（IM-AC-09）。
   TalkBack実ATでの読み上げ文言・順序のwalkthrough evidenceはspec 332 AC-8と同様の
@@ -265,7 +265,7 @@ fun exchangeImportFailureDisplay(failure: ExchangeImportFailure): ExchangeImport
 
 1. projection純粋関数 + unit test（mapping表固定。UI変更前でも成立する縦切り）。
 2. 失敗面composableの再構成（primary/詳細展開/面レベル手段）+ strings + instrumentation。
-3. 診断起動のhost接続（route引数追加 + 診断面補助行）。
+3. 診断起動のhost接続（transient holder + 診断面補助行）。
 4. spec 205/332改訂 + CONTEXT.md用語追加 + 旧oracle更新 + obsolete理由のPR記録。
 5. 回帰gate実行（unit / instrumentation lane / spotlessCheck）+ evidence。
 
@@ -301,9 +301,12 @@ fun exchangeImportFailureDisplay(failure: ExchangeImportFailure): ExchangeImport
   table-drivenであるため、review指摘はtable更新のみで吸収できる。
 - **`exchangeContractFailureText` の存続**: 2 call siteが残る限り関数は消せない。#375が
   SCOPE_MISMATCH表示を改訂した後、#377で統合/置換を評価する（本Issueでは触れない）。
-- **診断route引数の影響範囲**: `HomeScreenOrganizerDiagnostics` のdata class化は既存
-  call site（durable status row・run safe terminal行）に触れる可能性がある。default引数で
-  既存起動を不変にし、既存diagnostics route系test
+- **transient holderのlifecycle（review指摘対応）**: holderをserializableにしたり
+  navigation route引数・`SavedStateHandle` へ載せると、process再生成後のnavigation復元で
+  「直近の取り込み失敗」が復元され、specの非永続契約（IM-AC-04・process death scenario）が
+  破れる。holderは非serializableなprocess memory上のobjectとし、activity recreation /
+  process death復元後に補助行が復元されないことをlifecycle oracle（instrumentation）で
+  検証する。診断route自体は引数なしのままであり、既存diagnostics route系test
   （`OrganizerDiagnosticsRouteInstrumentationTest`）の無編集greenをgateにする。
 
 ## Explicitly unverified areas
@@ -315,5 +318,5 @@ fun exchangeImportFailureDisplay(failure: ExchangeImportFailure): ExchangeImport
   （`organizer-instrumentation-issue332-tests` / `final-status` 含む）を通過して
   mergeされたmainをbaseにすることを条件とする。
 - 手段別copyの最終文言は実装PRで確定する（spec Open questions 1）。
-- 診断routeの型安全navigation引数の実装詳細（`@Serializable` data class化等）は
-  実装PRで確定する（本planのseam契約 — process-local・非永続・契約文言のみ — は不変）。
+- transient holderの実装配置（`organizer/ui/exchange/` 内の単一object等）は実装PRで確定する
+  （lifecycle契約 — 非serializable・navigation saved state外・process deathで消失 — は不変）。

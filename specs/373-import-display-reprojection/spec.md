@@ -60,8 +60,9 @@ durable化・status card統合は#374、CTA語彙のT-18語彙への統一（「
 依頼を作り直す）に対応するprimary copyと操作を持ち、typed原因（分類名・typed固有の説明・
 認識framing/version/entry数・raw text）は**折りたたまれた詳細展開**にのみ現れる。失敗面には
 面レベルの手段として「中断する」（zero-writeでflowを閉じる。依頼は生存・確認不要）と
-「診断を開く」（既存の診断面への遷移。現在のattemptのtyped原因をprocess-local・非永続で
-受け渡し、診断面に補助行として表示する。journal記録・永続化は行わない）が常設される。`CONTEXT_STALE`の
+「診断を開く」（既存の診断面への遷移。現在のattemptのtyped原因をprocess-scopedな
+transient保持（非永続・process deathで消失。saved state保存なし）で渡し、診断面に
+補助行として表示する。journal記録・永続化は行わない）が常設される。`CONTEXT_STALE`の
 primary copyは「依頼の内容が古くなりました」+「依頼を作り直す」である（D-12行）。
 
 T-17取り込み入力面（clipboard/file-first＋手動paste折りたたみ、1 MiB gate、bounded editor、
@@ -86,9 +87,10 @@ persistent state・DB書込経路・同意gate構造・validator/normalizer契�
   remedy「依頼を作り直す」へ固定する（TO-BE §8.3の取り込み行）。
 - **面レベル手段の新設**: 失敗面に「中断する」（flowを閉じる。zero-write・依頼（session）は
   生存・確認不要 — 失う作業が存在しないため。D-13 §9のzero-write中止規約）と
-  「診断を開く」（既存の診断routeへの遷移。遷移時に現在のattemptのtyped失敗を
-  process-local・非永続で診断面へ受け渡し、診断面は現在の取り込み失敗のtyped分類名と
-  typed原因説明（契約文言のみ。ユーザーデータ無し）を補助行として表示する。
+  「診断を開く」（既存の診断route（引数なし・現行のまま）への遷移。遷移時に現在のattemptの
+  typed分類名とtyped原因説明（契約文言のみ。ユーザーデータ無し）をprocess-scopedな
+  transient holderへ一時保持し、診断面は保持があるとき「直近の取り込み失敗」の補助行として
+  表示する。holderはnavigation saved stateへ保存されず、process deathで消失する。
   exchange失敗eventのdiagnostics journal記録は本Issueでも追加しない）を置く。
   これによりD-11の補助情報経路「詳細展開・診断」の両方が現在の失敗に対して成立する。
 - **T-18成功面の表示構造確定（spec 328維持）**: 成功面（`ExchangeImportSuccess`）の構成要素
@@ -260,17 +262,21 @@ And pending state（import attempt）は既存の `close()` 契約どおり破�
 
 Given T-18失敗面が表示されている、
 When 「診断を開く」を選ぶ、
-Then 既存の診断route（host面が既に使う `onOpenDiagnostics` 相当の遷移先と同一の診断面）へ
-遷移し、診断面には **現在のattemptの取り込み失敗** のtyped分類名（`CONTEXT_STALE` 等の
-closed set。TO-BE §10が補助情報位置として認める診断）とtyped原因説明（詳細展開と同一の
-契約文言）が補助行として表示される（D-11の補助情報経路「詳細展開・診断」の両方が
-現在の失敗に対して成立する）,
-And 受け渡しは **process-local・非永続** である（遷移時の引数受け渡しのみ。diagnostics
-journal・永続store・logcatへの書込みは発生しない。exchange失敗eventのjournal記録追加は
-本Issueのscope外 — Contract notes 4）。診断面の本体（説明文・journal export等の既存構成）は
-変化せず、補助行は引数が渡された遷移でのみ現れる（他入口からの診断面は現行のままである）,
+Then 既存の診断route（引数なし。現行の遷移先と同一の診断面）へ遷移し、診断面には
+**現在のattemptの取り込み失敗** のtyped分類名（`CONTEXT_STALE` 等のclosed set。
+TO-BE §10が補助情報位置として認める診断）とtyped原因説明（詳細展開と同一の契約文言）が
+「直近の取り込み失敗」の補助行として表示される（D-11の補助情報経路「詳細展開・診断」の
+両方が現在の失敗に対して成立する）,
+And 受け渡しは **process-scopedなtransient保持** である（「診断を開く」操作時にのみ
+書き込まれ、navigation saved state・diagnostics journal・永続store・logcatへは
+保存・書込みされない。process deathで消失する。exchange失敗eventのjournal記録追加は
+本Issueのscope外 — Contract notes 4）。保持がある限り（process生存中。上書きは次の
+「診断を開く」操作のみ）どの入口からの診断面でも補助行は表示され、診断面の本体
+（説明文・journal export等の既存構成）は変化しない,
 And 診断面へ渡すのはtyped分類名とtyped原因説明のみであり、raw import text・export-scoped
 `ref`・app label・folder title等のユーザーデータは渡さない,
+And process再生成後（system-initiated process deathからのnavigation復元を含む）に
+診断面が復元されても、補助行は **復元されない**（transient保持が消失しているため）,
 And 診断面から戻った場合、失敗面のraw text保持（spec 332 AC-7のretention boundary）は
 画面stateとして維持されることを要求しない（process内の画面復帰挙動は現行のhost面挙動に従い、
 raw textが破棄されていても再取り込みが回復pathである）。
@@ -356,6 +362,8 @@ And primary remedyと詳細展開の区別は色のみに依存しない。
 Given T-18失敗面の表示中または詳細展開中にprocessが破棄される、
 Then 失敗はzero-writeであるため、消失するのは表示state（raw textのephemeral保持を含む）のみであり、
 layout DB・export sessionへの影響はない（現行契約の回帰）、
+And 診断面へのtransient保持（「診断を開く」で書き込まれたtyped原因）も消失し、
+process再生成後の診断面（navigation復元を含む）には補助行が現れない,
 And 再起動後の回復は再取り込みである（依頼が有効期限内の場合。`SESSION_EXPIRED` の場合は
 手段別primary「依頼を作り直す」が案内する）、
 And 依頼TTL失効後の失敗面表示は「依頼を作り直す」をprimaryとし、期限切れ依頼宛の
@@ -389,8 +397,9 @@ And 依頼TTL失効後の失敗面表示は「依頼を作り直す」をprimary
   （「依頼を作り直す」操作の既存gate）。本specは新規の読取seamを設けない。
 - 書くdata: **新規の永続化・preference・diagnostics event・DB書込はない**。書込みは既存の
   session保存/invalidate（spec 204/205契約）のみ。import失敗自体はzero-writeである。
-  「診断を開く」のtyped原因受け渡しは遷移引数（process-localのnavigation state）であり、
-  diagnostics journal・永続storeへは書き込まない。
+  「診断を開く」のtyped原因受け渡しはprocess-scopedなtransient holderへの一時保持であり、
+  serializableにせず、navigation saved state・`SavedStateHandle` へは保存されない。
+  process deathで消失し、diagnostics journal・永続storeへの書込みはない。
 - Identity: 変更なし。`exportId`、ref↔`ItemId` map、`sourceContextDigest`、typed失敗の
   分類identityは不変である。
 - Migration / backup / restore / rollback: persistent state変更なし。schema変更なし。
@@ -412,11 +421,12 @@ And 依頼TTL失効後の失敗面表示は「依頼を作り直す」をprimary
 - raw textの詳細展開はspec 332 AC-7のretention boundary（結果surface表示中のみの
   process memory上のephemeral保持・1箇所・遷移で破棄・process外書き出し禁止）のまま。
 - clipboard監視・自動読み取り・自動送信の経路は存在しない（spec 332回帰）。
-- 診断を開くは既存routeへの遷移であり、新規のdiagnostics記録を追加しない
+- 診断を開くは既存route（引数なし）への遷移であり、新規のdiagnostics記録を追加しない
   （organizer-diagnostics.mdの個人情報規約の維持）。診断面へ受け渡すのは現在のattemptの
   typed分類名（closed set）とtyped原因説明（契約文言）のみであり、raw import text・
   export-scoped `ref`・app label・folder title等のユーザーデータは渡さない。受け渡しは
-  process-local（遷移引数）であり、diagnostics journal・永続store・logcatへは書き込まない。
+  process-scopedなtransient保持（serializableにしない・navigation saved stateへ保存しない）
+  であり、process deathで消失し、diagnostics journal・永続store・logcatへは書き込まない。
 
 ## Accessibility and localization
 
@@ -448,12 +458,13 @@ And 依頼TTL失効後の失敗面表示は「依頼を作り直す」をprimary
   「もう一度取り込む」「貼り直す」primary操作がT-17入力面へ復帰し、復帰時のraw text破棄
   （retention boundary）が現行どおりであることがtestされる。
 - [ ] **IM-AC-04**: 失敗面に「中断する」（zero-write close・確認不要・依頼生存）と
-  「診断を開く」が常設されることがtestされる。「診断を開く」は既存診断routeへの遷移であり、
-  診断面に現在のattemptのtyped分類名・typed原因説明が補助行として表示されること
-  （process-local・非永続の受け渡し。raw text・ユーザーデータは渡さない。他入口からの
-  診断面では補助行が出ない）と、diagnostics journalへの書込みが発生しないことが
-  test/reviewされる。（D-11の5語彙の残り2種。D-11の補助情報経路「詳細展開・診断」を
-  現在の失敗に対して両方成立させる）
+  「診断を開く」が常設されることがtestされる。「診断を開く」は既存診断route（引数なし）への
+  遷移であり、診断面に現在のattemptのtyped分類名・typed原因説明が「直近の取り込み失敗」
+  補助行として表示されること（process-scopedなtransient保持。navigation saved stateへの
+  保存なし。raw text・ユーザーデータは渡さない）、process再生成後に補助行が復元されないこと
+  （lifecycle oracle）、diagnostics journalへの書込みが発生しないことがtest/reviewされる。
+  （D-11の5語彙の残り2種。D-11の補助情報経路「詳細展開・診断」を現在の失敗に対して
+  両方成立させる）
 - [ ] **IM-AC-05**: T-17入力契約の回帰: spec 332 AC-1〜AC-4/AC-10対応test
   （clipboard/file/paste・1 MiB gate・bounded editor・parse-first表示・source別typed失敗の
   in-place表示）が無編集または表示面非依存の更新のみでgreenである。（Issue受入2）
@@ -486,7 +497,7 @@ And 依頼TTL失効後の失敗面表示は「依頼を作り直す」をprimary
 | IM-AC-01 | unit: 手段別projection純粋関数のtable-driven test（20種全typed → primary remedy category + primary copy resource + 詳細展開内容。ja/en resource解決を含む。未知typed → 既定remedyのfail-closed oracle）+ holder unit test（失敗settle → 失敗面state）。instrumentation: 失敗面のprimary面にtyped固有文言testTag/stringが存在しないことの否定的観測 + 詳細展開default閉 + 展開時のtyped原因表示 |
 | IM-AC-02 | unit: `CONTEXT_STALE` fixture（structural digest不一致。既存pipeline testのfixtureを再利用）→ primary copy/操作のassertion。instrumentation: 失敗面表示のcopy確認 |
 | IM-AC-03 | holder unit test: 依頼を作り直す操作 → `openFlow()` 相当seam呼出・session不変・zero-write。再取り込み操作 → `openImport()` 呼出・raw text破棄。run-in entryのscope凍結復帰の回帰。instrumentation: 導線の到達 |
-| IM-AC-04 | instrumentation: 「中断する」→ flow close・確認dialog不在・status経由で依頼生存の確認（再取り込み成立）。「診断を開く」→ route遷移・診断面の補助行に現在のattemptのtyped分類名・typed原因説明が表示されること（遷移元attempt由来）・他入口からの診断面では補助行が出ないこと・raw text等ユーザーデータの受け渡し不在・diagnostics journal書込み経路不在のreview/unit |
+| IM-AC-04 | instrumentation: 「中断する」→ flow close・確認dialog不在・status経由で依頼生存の確認（再取り込み成立）。「診断を開く」→ route遷移（引数なし）・診断面の補助行に現在のattemptのtyped分類名・typed原因説明が表示されること（遷移元attempt由来）・raw text等ユーザーデータの受け渡し不在・process再生成（activity recreation / process death復元）後に補助行が復元されないこと（holder非永続のlifecycle oracle）・diagnostics journal書込み経路不在のreview/unit |
 | IM-AC-05 | spec 332対応既存test（`ExchangeImportSurfaceInstrumentationTest`、`ExchangeFlowStateHolderTest` のsource失敗系、`ExchangeImportPipelineTest` envelope系、`ImportNormalizerTest`）のgreen + CI lane（`organizer-instrumentation-issue332-tests`）のgreen |
 | IM-AC-06 | spec 328対応既存test（`ExchangeImportSuccessInstrumentationTest`、`ExchangeFlowStateHolderTest` のsuccess/arbiter/anchor系）のgreen + 成功面diff review |
 | IM-AC-07 | strings走査（新規・改訂labelの語彙確認）+ review（D-13 §9規約との照合）。ja/en name集合・placeholder一致の機械確認 |
@@ -515,11 +526,14 @@ CI `final-status` green。本Issueは表示のみの変更であり（persistent
    本Issueではspec 328 D-3確定文言を維持する。T-18語彙への統一は#374（spec 328 rev.2）が
    所有する（disposition §3.14のconflict 3・§4.1）。owner reviewで本Issue内での統一が
    選ばれた場合は本specを修正する。
-4. **diagnostics journal記録は追加しない。typed原因は非永続の受け渡しで診断面へ現れる
+4. **diagnostics journal記録は追加しない。typed原因は非永続のtransient保持で診断面へ現れる
    （review指摘対応で確定）**: D-11の「typed原因は補助情報（詳細展開・診断）とする」を、
-   本Issueでは (1) 失敗面の詳細展開 と (2) 「診断を開く」遷移時の診断面への
-   process-local・非永続なtyped原因受け渡し（分類名+契約文言の説明。ユーザーデータ無し）で
-   成立させる。exchange失敗eventのdiagnostics journal記録追加は行わない —
+   本Issueでは (1) 失敗面の詳細展開 と (2) 「診断を開く」操作時のprocess-scopedな
+   transient holderへのtyped原因保持（分類名+契約文言の説明。ユーザーデータ無し。
+   serializableにせずnavigation saved stateへ保存しないため、process deathで消失する）
+   で成立させる。診断routeは引数なしのままであり、typed原因をroute引数に載せない
+   （route引数はsaved state保存・復元対象のため非永続契約と矛盾する）。
+   exchange失敗eventのdiagnostics journal記録追加は行わない —
    organizer-diagnostics.mdのjournal契約はorganization run / recoveryのみを記録対象とし、
    この境界を変えるには契約改訂とprivacy reviewを要する（本Issueでは行わない）。
    診断面への表示はjournalを経由しないuser-facing reason層の構成である
@@ -580,6 +594,14 @@ CI `final-status` green。本Issueは表示のみの変更であり（persistent
 
 ## Change history
 
+- 2026-09-21: Phase1 re-entry revision 3（[review Changes requested](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5756736782)の指摘1対応）。
+  「診断を開く」のtyped原因受け渡しをnavigation route引数（`@Serializable` data class化）から
+  **process-scopedなtransient holder**（非serializable・navigation saved state /
+  `SavedStateHandle` 外・process deathで消失）へ変更 — route引数はAndroid Navigationの
+  saved state保存・復元対象であり、非永続契約と矛盾する指摘への対応。
+  診断routeは引数なしのまま不変。IM-AC-04・test oracle・process death scenarioに
+  process再生成後の補助行非復元のlifecycle oracleを追加（plan: 変更setから
+  PreferenceRoutes/PreferenceNavigationを除去、Riskにlifecycle契約を追記）。
 - 2026-09-21: Phase1 re-entry revision 2（[review Changes requested](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5740056108)の指摘1〜3対応）。
   baselineを `dcaecf6913f3c139aa2406b6b7a090f72d914ddf`（origin/main。PR #393（#372実装）
   merge + PR #394（docs-only）後）へ更新し、#372/#369/#371/#368/#365 merge後のhosting面・
