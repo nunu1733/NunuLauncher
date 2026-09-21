@@ -2,7 +2,8 @@
 
 > Issue: #374
 > Spec: [spec.md](./spec.md)
-> Status: draft（2026-09-21 re-entry revision。初回review指摘6件対応 + main `c05435a947` rebase）
+> Status: draft（2026-09-21 re-entry revision 2。初回review指摘6件 + 2nd review指摘3件対応。
+> main `c05435a947` ベース）
 
 ## Current evidence
 
@@ -32,8 +33,14 @@
   `ItemIntent(ref, importance, desiredGroupRefs: List<String>?, groupSemantic, pageAffinity,
   regionAffinity, preserve)`。`GroupSemantic(categoryRef, proposalLabel)` は
   **exactly-one-of**（`categoryRef != null != (proposalLabel != null)`）で、`proposalLabel` は
-  KDoc「run-scoped proposal・never persisted」（#336規則）。`GlobalPreference` は
-  `minimizeMovement: Boolean?` のみ。
+  KDoc「run-scoped proposal・never persisted」（#336規則。本Issueがdurable pending intent
+  storeへの保存へ改訂する）。`GlobalPreference` は `minimizeMovement: Boolean?` のみ。
+  **`proposalLabel` はplanner-effective値である**: `IntentPlannerAdapter.project()` は
+  `semantic?.proposalLabel` をそのまま `ItemPreference.groupProposalLabel`（formation key）へ
+  渡し、`validated.identity` を `PersonalizedIntentProjection.identity`（policy provenance）へ
+  渡す。`IntentIdentityCalculator.canonicalRepresentation()` は `rationale|..|confidence` 行と
+  `ItemIntent.canonicalRow()`（proposalLabel含む）からdigestを算出するため、identityの再現には
+  算出済みdigestの保存が必要（raw text永続は不要）。
 - **summary導出の既存純粋関数**: `personalization/exchange/ExchangeImportSummary.kt` の
   `exchangeImportSummary(completed, scopeCandidateCount, categoryKindByRef)`。出力は件数のみ
   （recognizedCount / noJudgmentCount / 内訳4種 / builtInCategoryCount / userCategoryCount /
@@ -42,8 +49,10 @@
   export文書 `export.categories` から作るが、**session側 `ExportSession.categoryRefs:
   Map<String, CategoryIdentity>`（`BuiltIn`/`UserDefined` 判別）から同一の ref→kind対応を導出できる**。
   `scopeCandidateCount` は `session.scopeCandidates.size`。record+sessionからの再構成に必要な
-  追加要素は decisions（ref含む）とminimizeMovementのみ（proposalLabel textは不要・保有flagで
-  proposedGroupCountが一致する）。
+  追加要素は decisions（ref・proposalLabel text含む）・minimizeMovement・`intentIdentity`
+  （保存済み正本）であり、`IntentPlannerAdapter.project` 相当のprojectionが全field再現できる
+  （export viewは既存の `SessionExportReconstructor.rebuild(session, current)` から
+  再構築。構造digest不一致は `CONTEXT_STALE`）。
 - **durable storeの既存pattern（本計画の雛形）**:
   `lawnchair/src/app/lawnchair/organizer/personalization/ExportSessionStore.kt`（純粋seam。
   `save` / `load(exportId)` / `active(nowEpochMs)` / `invalidate(exportId)`）と
@@ -115,26 +124,29 @@ AGENTS.md設計規約（小さなinterfaceの背後へ大きな振る舞いを�
      - `discard(): Boolean`（**user-visible破棄のtombstone 2段commit**: `discarded=true` の
        atomic書換に成功したらtrueを返し、引き続きbest-effortで物理削除する。tombstone commit
        失敗はfalse — 呼出側はtyped失敗へ）
-     - `delete()`（reconcile清掃・置換無効化・CTA消費削除の共通出口。best-effort物理削除。
+     - `delete()`（reconcile清掃・置換無効化の共通出口。best-effort物理削除。
        読取時reconcile（exportId mismatch・破棄mark検証を含む）が正本であるためtombstone不要）
    - record model（`DurablePendingIntent` 相当。pure package・`@Serializable`なし）:
-     `exportId`、canonical decisions（`List<DurableRefDecision>` 相当:
-     `ref` + `Authored{importance, desiredGroupRefs: List<String>, groupSemantic
-     （exactly-one-of: categoryRef / proposedGroup: Boolean）, pageAffinity, regionAffinity,
-     preserve} | UnresolvedAuthored | UnresolvedByOmission`）、planner-effective
-     `minimizeMovement: Boolean`、`expiresAtEpochMs`（session複製値。表示の正本はsession側 —
-     spec契約）、`entryKind`（IDLE / RUN_IN。#375用）、`discarded: Boolean`（tombstone）、
-     `createdAtEpochMs`。**`rationale`/`confidence`/`proposalLabel` text/ref↔内部ID対応表
-     （itemRefs/categoryRefs相当）/label・title系fieldは存在させない**（DI-AC-10の型による保証。
-     field不在assertionをcontract testにする。`proposedGroup` flagは存在してよい）。
+     `exportId`、**`intentIdentity`（schemaVersion + digest。import時に算出した
+     `IntentIdentity` の正本。#375 rebindのprovenanceに用いる）**、canonical decisions
+     （`List<DurableRefDecision>` 相当: `ref` + `Authored{importance, desiredGroupRefs:
+     List<String>, groupSemantic（exactly-one-of: `categoryRef` / `proposalLabel` text）,
+     pageAffinity, regionAffinity, preserve} | UnresolvedAuthored | UnresolvedByOmission`）、
+     planner-effective `minimizeMovement: Boolean`、`expiresAtEpochMs`（session複製値。表示の
+     正本はsession側 — spec契約）、`entryKind`（IDLE / RUN_IN。#375用）、`discarded: Boolean`
+     （tombstone）、`createdAtEpochMs`。**`rationale`/`confidence`/ref↔内部ID対応表
+     （itemRefs/categoryRefs相当）/app label・folder title・category displayNameはfieldとして
+     存在させない**（DI-AC-10の型による保証。field不在assertionをcontract testにする。
+     `proposalLabel` textはplanner-effective formation key（`ItemPreference.groupProposalLabel`）
+     として保存する）。
    - purity: interfaceとrecordは純粋packageに置き、Android依存はintegration側のみ
      （`ExportSessionStore` と同一の純粋性の境界）。
 2. **`AndroidPendingImportedIntentStore`（新規、`app.lawnchair.organizer.integration`）**
    - `AndroidExportSessionStore` を雛形にした実装: `noBackupFilesDir`（backup除外）、
      `AtomicFile`（単一recordのatomic書込 — saveは上書き、discardは `discarded=true` 書換後に
      best-effort削除）、`SCHEMA_VERSION` 検査（不一致・decode失敗・IOException → null退化）、
-     `synchronized(lock)`。private nested `@Serializable` record + pure modelへのmapping
-     （proposalLabel textはmapping時点でflagへ変換）。`DI-AC-04` の寛容読みはこの実装に帰着する。
+     `synchronized(lock)`。private nested `@Serializable` record + pure modelへのmapping。
+     `DI-AC-04` の寛容読みはこの実装に帰着する。
 3. **module accessor（新規、`app.lawnchair.organizer.integration.exchange`）**
    - `ExchangeSessionStoreModule` と同型のmodule-per-concern object
      （仮称 `PendingImportedIntentModule`）。
@@ -152,13 +164,19 @@ AGENTS.md設計規約（小さなinterfaceの背後へ大きな振る舞いを�
      既存純粋関数・T-15と同一語彙）。件数サマリの再構成（内容表示）はImportReview側の導出であり、
      status card行は存在・残時間・開封のみを運ぶ（payload非表示）。reconcile失敗・読取失敗は
      `NONE`（fail-closed。発明した状態を作らない）。
-   - **summary再構成の純粋導出**: record + session → `exchangeImportSummary` と同一入力基準の
-     summary（`categoryKindByRef` は `session.categoryRefs` の `CategoryIdentity` 判別から、
-     `scopeCandidateCount` は `session.scopeCandidates.size` から。recordのdecisions +
-     minimizeMovementから全countを再現。`proposedGroupCount` はflagから）。live validation導出との
-     全count一致をround-trip oracleで固定（DI-AC-01）。実装は
-     (i) record→`CompletedPersonalIntent` 復元関数、(ii) summary関数の入力抽象、のいずれかで
-     純粋に行う（実装PRで選択。いずれも現行 `exchangeImportSummary` の呼出側・契約は変更しない）。
+   - **summary再構成・planner projection等価の純粋導出**: record + session →
+    `exchangeImportSummary` と同一入力基準のsummary（`categoryKindByRef` は
+    `session.categoryRefs` の `CategoryIdentity` 判別から、`scopeCandidateCount` は
+    `session.scopeCandidates.size` から。recordのdecisions + minimizeMovementから全countを
+    再現）。さらに **planner projection等価**: record + session + 既存の
+    `SessionExportReconstructor.rebuild(session, current)`（export view再構築。構造digest不一致
+    は `CONTEXT_STALE`）から `IntentPlannerAdapter.project` 相当のprojectionを再構成し、
+    import直後のprojectionと **全field同一**（identity（保存済み `IntentIdentity`）・
+    itemPreferences・`groupProposalLabel`（複数提案labelケース）・`globalMinimizeMovement`）
+    であることをoracleで固定（DI-AC-01）。実装は
+    (i) record→`ValidatedPersonalizedIntent` 復元関数（identityは保存済み正本を用い、
+    再導出しない）、(ii) projection入力の抽象、のいずれかで純粋に行う（実装PRで選択。
+    いずれも現行 `exchangeImportSummary` / `IntentPlannerAdapter` の呼出側・契約は変更しない）。
    - 配置: reconcile・projection・summary再構成はexchange契約側（`personalization/exchange`、
      純粋）に置き、呼出点（controller・status card読取・起動時）から使う。`LayoutApplicationModule`
      （application/recovery所有）へは置かない — 提案storeはexchange/personalization契約の
@@ -169,18 +187,16 @@ AGENTS.md設計規約（小さなinterfaceの背後へ大きな振る舞いを�
 - **保存（import成功。commit条件化）**: `settleImport()` の `Validated` 分岐で
   `pendingValidated = pipeline.validated` の後、**durable保存を試み、成功して初めて
   `screen = ImportSuccess` を採用する**。保存はrecord構築（`validated.completed` のdecisions
-  （ref含む・proposalLabel→flag変換）+ `validated.intent.globalPreference.minimizeMovement` +
-  `validated.session.exportId/expiresAtEpochMs` + entry種別）→ `store.save()`（`Dispatchers.IO`。
+  （ref・proposalLabel text含む）+ `validated.intent.globalPreference.minimizeMovement` +
+  `validated.session.exportId/expiresAtEpochMs` + `validated.identity`（算出済み正本）+
+  entry種別）→ `store.save()`（`Dispatchers.IO`。
   既存のsettle hopと同一coroutine構造）。失敗時は `ImportOutcomeScreen` 系ではなく
   persistence step由来のtyped失敗state（#373 D-11様式: 保存再試行CTA・常設の中断/診断。
   再試行はvalidation結果を保持したまま `store.save()` のみ再実行。中断は保存せずclose）。
   anchor契約（attempt token・single-flight・`continuing` guard）は一切変更しない（DI-AC-07）。
-- **CTA成功settleでの消費削除**: `settleContinue` のSuccess分岐（`Started`/`Attached`。
-  runId一致確認後）で `store.delete()`。Busy/NotAttachable/Failed分岐では削除しない
-  （DI-AC-07）。削除はbest-effortでよく、失敗してもrecordは提案として有効なまま残る
-  （ユーザーは再開面から再破棄できる。runが開始済みとの整合は「消費削除が失敗した場合、
-  次の読取時reconcileでは提案がまだ有効に見える」が最悪ケース — 消費済み提案の残留表示は
-  破壊的ではなく、破棄で解決できる。oracleで固定）。
+- **CTA settleでのrecord不変**: `settleContinue` の全分岐（Success/Busy/NotAttachable/Failed）
+  でdurable recordへのwrite・削除を行わない（消失系は破棄・期限切れ・置換のみ。#375「継続成功は
+  提案を消費しない」契約。DI-AC-07）。
 - **置換無効化（3保持場所）**: `ExchangeFlowController.generate()` の `store.save(newSession)`
   成功直後に (1) pending storeの `delete()`、(2) holder側の成功状態/pending無効化
   （controller→holder通知、またはholderがgenerate経路で必ず経由する既存hookでの無効化）。
@@ -217,8 +233,16 @@ AGENTS.md設計規約（小さなinterfaceの背後へ大きな振る舞いを�
 - **明示破棄の単純delete**: session置換と異なり明示破棄にはexportId mismatchの救済がないため、
   delete失敗・commit直後process deathで破棄済み提案が再表示される。tombstone 2段commitを採用
   （初回review指摘2）。
-- **durable保存失敗時のprocess-local後退**: Issue Outcome「消失の系は破棄・期限切れ・置換（・消費）
-  のみ」に反する例外lifecycleを作る。保存成功をcommit条件とする（初回review指摘3）。
+- **durable保存失敗時のprocess-local後退**: Issue Outcome「消失の系は破棄・期限切れ・置換のみ」
+  に反する例外lifecycleを作る。保存成功をcommit条件とする（初回review指摘3）。
+- **CTA成功settleでのrecord消費削除**: Issue本文の消失系契約（破棄・期限切れ・置換のみ）と
+  #375実装予定spec（「継続成功は提案を消費しない」「成功・失敗・拒否のいずれもdurable recordへ
+  writeしない」）と正反対になる上、best-effort deleteでは「消費済み提案が未適用として
+  status cardへ復活する」不整合が残る。CTA settleではrecordへ書かない（2nd review指摘2）。
+- **`proposalLabel` のBoolean flag化**: `IntentPlannerAdapter` がlabel textそのものを
+  `ItemPreference.groupProposalLabel`（formation key）としてplannerへ渡すため、flag化は
+  「どのitem同士が同じ提案groupか」の復元を失う。正規化済みlabel textを保存する
+  （2nd review指摘1）。
 - **status card行への件数サマリ表示**: D-02は「durable事実と進行中状態の単一閲覧面」を要求するが、
   行の構造（存在・残時間・開封）は#366のstatus card契約（payload非表示・閉域語彙）と
   spec 271の様式に揃える。内容はImportReviewで見せる（TO-BE §5.3の再開1経路と一致）。
@@ -232,8 +256,9 @@ AGENTS.md設計規約（小さなinterfaceの背後へ大きな振る舞いを�
 | `lawnchair/src/app/lawnchair/organizer/personalization/` | 新規: `PendingImportedIntentStore` seam + record model + reconcile純粋関数 + summary再構成導出 | 純粋seamはpersonalization package（`ExportSessionStore` と同一の純粋性の境界） |
 | `lawnchair/src/app/lawnchair/organizer/integration/` | 新規: `AndroidPendingImportedIntentStore`（`noBackupFilesDir` + AtomicFile + schema version + private `@Serializable` record/mapping） | Android/storage境界はintegration（`AndroidExportSessionStore` と同一配置） |
 | `lawnchair/src/app/lawnchair/organizer/integration/exchange/` | 新規: module accessor（`@Volatile` singleton）。既存 `ExchangeFlowModule` へstore注入の追加 | module-per-concern規約。controllerは生成・import orchestrationの所有者であり書込順序契約（置換無効化）をここに置く |
-| `lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeFlowUi.kt` | `settleImport()` へのdurable保存呼出追加（commit条件化）・保存失敗typed state・CTA成功settleでのrecord消費削除・破棄のtombstone化（`discardImport()` がstore.discardを呼ぶ・D-13両入口確認1回）・CTA copyのT-18語彙 | import lifecycleの唯一のUI持能手。anchor/single-flight契約は無変更 |
+| `lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeFlowUi.kt` | `settleImport()` へのdurable保存呼出追加（commit条件化）・保存失敗typed state・破棄のtombstone化（`discardImport()` がstore.discardを呼ぶ・D-13両入口確認1回）・CTA copyのT-18語彙 | import lifecycleの唯一のUI持能手。anchor/single-flight契約は無変更。CTA settleでrecordへ書かない（#375契約） |
 | `lawnchair/src/app/lawnchair/organizer/integration/exchange/ExchangeFlowController.kt` | `generate()` のsession保存直後に旧pending無効化 + holderへの置換通知。reconcile呼出の提供 | 書込順序固定の唯一の位置 |
+| `personalization/IntentModels.kt` | `GroupSemantic.proposalLabel` のKDoc「never persisted」規定を本契約へ改訂（durable pending intent storeへの保存はlayout DB・category storeへの永続化ではない） | 2nd review指摘1。planner-effective formation keyのlossless保存 |
 | `ui/preferences/destinations/OrganizerHubPreferences.kt`（#366実装） | 提案行・依頼行の追加（durable status行と開始CTAの間。TalkBack「状態→残期限→操作」）・依頼行のT-15導線 | #366実装のstatus card構造への接続（挿入点は#366 spec明記）。#366実装merge済みのため推定不要 |
 | ImportReview再開面（`ExchangeFlowUi.kt` の再開形態 or 新規composable） | record+sessionからの件数サマリ再構成・残時間・破棄（tombstone）。継続CTAなし。hubからの開放導線 | spec DI-AC-01/08。表示modelはsummary再構成純粋導出の再利用 |
 | `ManualOrganizationRun.kt` / hub読取経路 | 提案projection・依頼行projectionの読取seam追加（`ManualOrganizationModule` 経由の既存様式） | cold process到達保証（spec 271 DS-AC-10と同一の初期化経路）を共有 |
@@ -253,8 +278,6 @@ AGENTS.md設計規約（小さなinterfaceの背後へ大きな振る舞いを�
   （DI-AC-05/08の必須oracle）。
 - **保存のfailure**: typed失敗（保存再試行）。成功状態を採用しないため、部分的なdurable状態
   （recordなし成功表示）は構造的に発生しない。
-- **消費削除のfailure**: best-effort。失敗時は提案が有効なまま残る（再開面から破棄可能。
-  最悪ケース=消費済み提案の残留表示。破壊的ではない。oracleで固定）。
 - **downgrade**: 旧版は本storeを読む経路を持たない（file名・schemaが独立のため自然的に無視）。
   再upgrade後の最初の読取でreconcileがstale recordを清掃する。run・layout DBへの影響なし。
 - **restore**: `noBackupFilesDir` のためbackupされない。restore後は提案なしの状態から始まる
@@ -267,16 +290,16 @@ AGENTS.md設計規約（小さなinterfaceの背後へ大きな振る舞いを�
 
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
-| DI-AC-01 | store unit test（保存・record内容・単一active置換・run state不変）+ holder unit test（保存成功が成功状態採用条件・保存失敗で不採用）+ **summary round-trip unit test**（record+session再構成 ≡ live導出・全count一致）+ instrumentation（cold processのstatus card行 → 再開面）+ emulator cold-start evidence | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`、organizer instrumentation lane、API 36 AVD |
+| DI-AC-01 | store unit test（保存・record内容・単一active置換・run state不変）+ holder unit test（保存成功が成功状態採用条件・保存失敗で不採用）+ **planner projection等価unit test**（record+session+`SessionExportReconstructor` 再構成 ≡ import直後の `IntentPlannerAdapter.project` 結果。identity・itemPreferences・`groupProposalLabel`（複数提案labelケース）・`globalMinimizeMovement` 全field同一・件数サマリ全count一致）+ instrumentation（cold processのstatus card行 → 再開面）+ emulator cold-start evidence | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`、organizer instrumentation lane、API 36 AVD |
 | DI-AC-02 | store unit test（clock注入・TTL/session従属/invalidate連動） | unit gate |
 | DI-AC-03 | controller/holder unit test（置換承認 → 旧pending削除・書込順序・同一process成功状態/pending破棄）+ dialog文言test（en/ja） | unit gate + strings走査 |
 | DI-AC-04 | store unit test（backup除外path・未知schema/破損fail-closed・downgrade相当） | unit gate |
 | DI-AC-05 | reconcile table-driven unit test（exportId不一致/session不在/TTL/破棄mark/破損/未知schema/ref集合不一致 → 清掃）+ process death oracle + write failure注入oracle + **tombstone commit直後death・削除失敗oracle** + **起動時reconcile test（hub未開封startupのみ）** | unit gate + instrumentation |
 | DI-AC-06 | spec 328 rev.2差分review + owner受入記録 | docs PR review（Issue #374コメント） |
-| DI-AC-07 | 既存 `ExchangeFlowStateHolderTest` のgreen（無編集またはanchor契約非依存の更新のみ）+ 保存追加後regression + **CTA成功settle消費削除・failure/gate拒否でrecord保持test** | unit gate |
+| DI-AC-07 | 既存 `ExchangeFlowStateHolderTest` のgreen（無編集またはanchor契約非依存の更新のみ）+ 保存追加後regression + **CTA成功/gate拒否/failure settleいずれでもrecordへwrite・削除なしtest** | unit gate |
 | DI-AC-08 | holder/instrumentation test（破棄確定 → tombstone commit → close・行消滅・session生存・再取り込み成立・**tombstone commit失敗注入 → typed失敗・画面維持**・両入口確認1回） | unit + instrumentation |
 | DI-AC-09 | Compose semantics assertion（読み順「状態→残期限→操作」。提案行・依頼行）+ 200% font scale + Switch Access traversal + screenshot evidence | instrumentation lane + emulator |
-| DI-AC-10 | record model field契約test（保存field存在 + 非対象field不在: rationale/confidence/proposalLabel text/対応表/label）+ `noBackupFilesDir` 機械確認 + summary導出contract test回帰 | unit gate |
+| DI-AC-10 | record model field契約test（保存field存在（`intentIdentity`・`proposalLabel` text含む）+ 非対象field不在: rationale/confidence/対応表/app label・folder title・category displayName）+ `noBackupFilesDir` 機械確認 + summary導出contract test回帰 | unit gate |
 | DI-AC-11 | spec 205・366差分review + 依頼行・提案行instrumentation test（存在/不在・残時間・T-15/ImportReview到達）+ 既存exchange系regression | unit gate + diff review |
 | DI-AC-12 | ja/en strings走査（spec 123 AC-5方式）+ hardcoded literal grep | 機械確認 |
 | DI-AC-13 | holder unit test（保存失敗 → typed失敗・再試行で成功状態へ・中断で非保存・status card行なし）+ strings test | unit gate |
@@ -294,10 +317,10 @@ AC-13・#372 T-15・#373失敗面）。
    spec 328/205/366へ反映し、owner受入を得る（disposition §5 更新順序 #8。DI-AC-06/11。
    **#328実装Issueの着手はこの受入後**）。前提merge（#365/#366/#372/#373）は充足済み。
 3. **store縦切り（source PR群の最初）**: 純粋seam + Android実装 + module accessor +
-   reconcile純粋関数 + summary再構成導出 + table-driven unit test（DI-AC-02/04/05のstore部分・
-   round-trip）。UI変更なし。
+   reconcile純粋関数 + summary再構成/planner projection等価導出 + table-driven unit test（DI-AC-02/04/05のstore部分・
+   projection等価oracle）。UI変更なし。
 4. **import lifecycle接続**: `settleImport` 保存commit条件化・保存失敗typed state・置換無効化
-   （3保持場所）・CTA成功settle消費削除・破棄tombstone化（D-13確認）+ 置換確認文言拡張 +
+   （3保持場所）・破棄tombstone化（D-13確認）+ 置換確認文言拡張 +
    CTA copy改訂（DI-AC-01/03/07/08/13のcontroller/holder部分）。
 5. **起動時reconcile hook**: `LawnchairApp` trigger thread先頭への追加 + startupのみoracle
    （DI-AC-05）。
@@ -337,10 +360,11 @@ AC-13・#372 T-15・#373失敗面）。
 
 ## Explicitly unverified areas
 
-- **#375のrebindがrecordへ要求するfield集合**: 本planはContract notes 3の最小集合
-  （decisions（ref含む）+ minimizeMovement + entry種別 + identity anchor + 失効時刻）までしか
-  根拠を持たない。#375 specがlabel text等の追加fieldを要求した場合はspec改訂で拡張する
-  （privacy再評価を含む）。
+- **#375のrebindがrecordへ要求するfield集合**: 2nd review指摘1/3により、canonical decisions
+  （ref・`proposalLabel` text含む）+ `intentIdentity` + minimizeMovement + entry種別 +
+  identity anchor（exportId）+ 失効時刻までを保存契約として確定済み（#375 review
+  comment `5740062562` のblocking指摘への回答）。#375実装でさらに追加fieldが必要になった
+  場合はspec改訂で拡張する（privacy再評価を含む）。
 - **hub→T-15導線の実装様式**: hub行からT-15（run面のexchange flow state）を開く導線は
   既存 `PreferenceNavigation` routeへのparam追加が想定だが、正確な接続は実装PRで確定する
   （#366実装のroute構造は確認済み）。

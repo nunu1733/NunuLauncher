@@ -21,8 +21,8 @@ updated: 2026-09-21
 > 本specは[Issue #374][1]の成果物である。statusが `draft` の間はimplementation-readyではない。
 > 前提の #365（正本改訂）・#366（hub/status card第1段階）・#372（T-15/T-16）・#373（T-18）は
 > すべてmerge済みである（2026-09-21時点のmain `c05435a947`）。本revisionは
-> 初回review（2026-09-19、Changes requested 6件）への対応と、これら前提merge後の
-> current mainへのre-entryである。
+> 初回review（2026-09-19、Changes requested 6件）への対応、これら前提merge後のcurrent main
+> へのre-entry、および2nd review（2026-09-21、Changes requested 3件）への対応である。
 
 ## Problem
 
@@ -57,8 +57,9 @@ process-localのみ」規定とspec 205の「validated intentを保持しない�
 import成功（validation通過）時にvalidated intentの内容が **durableな取り込み済み提案
 （pending intent）store** へ保存される。**durable保存の成功が取り込み済み状態の成立条件である**
 （保存が失敗した成功状態を採用せず、retry可能なtyped失敗として扱う）。提案は依頼（export session）
-と同一の有効期限（24h）を持ち、process死・画面離脱で消えない。提案（未適用・run接続前）の消失の系は
-「破棄」操作・期限切れ・置換（新しい依頼の生成の承認）・**継続CTA成功による消費** のみであり、
+と同一の有効期限（24h）を持ち、process死・画面離脱で消えない。提案の消失の系は「破棄」操作・
+期限切れ・置換（新しい依頼の生成の承認）のみであり（Issue本文契約どおり。**継続CTA成功でも
+recordは保持される** — 「継続成功は提案を消費しない」は#375実装予定specの契約でもある）、
 その有効性は対応する依頼sessionの有効性に従属する（単一active session契約と同一のlifecycle。
 ownership gapの契約上排除）。
 
@@ -81,22 +82,31 @@ attempt anchor契約（spec 328 AC-3）は維持される。
   （spec 204 `AndroidExportSessionStore`）とrecovery DBと同じclass）。単一active（保存は
   import成功時に1件を上書き保存）。TTLは依頼（export session）と同一であり、**提案の有効性は
   対応する依頼sessionの有効性に従属する**。
-- **store契約**: 保存（import成功時）・破棄（tombstone 2段commit。後述）・期限切れ・置換無効化・
-  継続CTA成功時の消費削除。intent内容はinternal表現（`CompletedPersonalIntent` 相当の
-  canonical decisions。**export-scoped refを含む**）で保存し、ref↔内部ID対応表は依頼session側の
-  正本（`ExportSession.itemRefs` / `categoryRefs`）を利用して複製しない。
+- **store契約**: 保存（import成功時）・破棄（tombstone 2段commit。後述）・期限切れ・置換無効化。
+  **継続CTA成功時の削除は行わない**（消失系は破棄・期限切れ・置換のみ）。
+  intent内容はinternal表現（`CompletedPersonalIntent` 相当のcanonical decisions。
+  **export-scoped refと正規化済み `proposalLabel` を含む**）で保存し、ref↔内部ID対応表は
+  依頼session側の正本（`ExportSession.itemRefs` / `categoryRefs`）を利用して複製しない。
 - **durable recordの内容（privacy境界の確定）**: 保存するのは
-  (a) identity anchor（`exportId`）、(b) canonical decisions（`RefDecision` 相当:
+  (a) identity anchor（`exportId`）と **intent content identity（`IntentIdentity`
+  （schemaVersion・digest）。import時に算出済みの正本。#375のcold rebindでplanner
+  provenance（`PersonalizedIntentProjection.identity`）に用いる）**、
+  (b) canonical decisions（`RefDecision` 相当:
   決定対象のexport-scoped ref（map key相当）+ Authored場合のsemantic field群
   （importance / desiredGroupRefs（同一export内の他ref） / groupSemantic（**exactly-one-of**
-  `categoryRef` または 提案グループ保有flag） / pageAffinity / regionAffinity / preserve））、
+  `categoryRef` または `proposalLabel` text — planner-effectiveなformation key
+  （`ItemPreference.groupProposalLabel`）として欠損なく保存） / pageAffinity /
+  regionAffinity / preserve））、
   (c) planner-effective `minimizeMovement`（boolean 1値。`GlobalPreference` の全field）、
   (d) 失効時刻（session複製値。表示の正本はsession側）、(e) entry種別（IDLE / RUN_IN。#375用）、
   (f) 破棄mark（tombstone）、(g) 作成時刻・schema version。
   **永続化しない**: `rationale`（AI自由文）・`confidence`（AI自己申告）・
-  **`proposalLabel` のtext**（`ItemIntent` のmodel契約が「never persisted」と明記するrun-scoped
-  提案label。件数導出のための保有flagのみ保存）・app label・folder title・category displayName・
-  **ref↔内部ID対応表**（`itemRefs` / `categoryRefs` の複製。sessionが正本）。
+  app label・folder title・category displayName・**ref↔内部ID対応表**（`itemRefs` /
+  `categoryRefs` の複製。sessionが正本）。`proposalLabel` は正規化されたrun-scopedの
+  提案labelであり **保存する**（model KDocの「never persisted」規定は本Issueが改訂する —
+  layout DB・category storeへの永続化ではなく、TTL 24h・app-private・backup除外の提案保持である。
+  実装PRでKDocを更新する）。`intentIdentity` のdigestは `rationale` / `confidence` を含む
+  canonical byte表現から算出済みの値であり、raw textを永続せずに同一identityを再現する。
 - **crash consistency**: session置換とpending破棄の単一atomic commitは要求しない。書込順序を
   「新session保存 → 旧pending無効化」に固定し、**読取時reconcileを正本** とする:
   提案は表示・開封・（#375以降の）続行metadata参照の前に必ず
@@ -139,11 +149,12 @@ attempt anchor契約（spec 328 AC-3）は維持される。
   して画面を閉じない**（失敗はtyped失敗で観測可能。提案は有効なまま残り再試行できる）。
   明示破棄はsession置換と違いexportId mismatchの救済がないため、tombstone（読取時reconcileの
   破棄mark検証）が「delete失敗・commit直後のprocess death後の再表示」を構造的に防ぐ。
-- **同一process内CTA従来挙動の維持と消費削除**: import成功状態が表示されている連続したflow内での
+- **同一process内CTA従来挙動の維持（record不変）**: import成功状態が表示されている連続したflow内での
   CTA（`run.start` / `attachIntent`）・single-flight・attempt anchor・`continuing` 中の破棄/Back
   不受理は既存契約（spec 328 AC-3/AC-5）どおり **不変** である。CTAの **成功settle時**
-  （`Started` / `Attached`。gate拒否・例外failure settleは除く）にdurable recordを **消費済みとして
-  削除する**（提案はrunへ接続され「取り込み済み・未適用」状態を終える。Contract notes 6）。
+  （`Started` / `Attached`）にもgate拒否・例外failure settle時と同じくdurable recordへの
+  write・削除を行わない（消失系は破棄・期限切れ・置換のみ。「継続成功は提案を消費しない」は
+  #375実装予定specの契約。Contract notes 6）。
 - **取り込み破棄の語彙・確認契約のD-13更新**: 破棄入口（明示ボタン「破棄して閉じる」・system Back）
   はともに **「破棄」ラベル＋確認dialog 1回** を経由する（D-2の「明示ボタンは追加確認なし」から
   D-13 §9「取り込み済み提案の破棄=必須確認」への更新。#373が本Issueへ委譲した解消。
@@ -185,8 +196,8 @@ attempt anchor契約（spec 328 AC-3）は維持される。
   PROJECTION_MISMATCH）: **#375が所有**（disposition §8責務分割）。本Issueの再開面は継続CTAを
   提示しない（Contract notes 2）。
 - **run/preview/選択のdurable化**: run/RUN lease・preview・選択はprocess-localのまま
-  （TO-BE §8.2）。CTA成功後（提案消費後）のprocess deathでrunが失われるのは現行契約どおりであり、
-  回復は依頼が有効な間の再取り込みである。
+  （TO-BE §8.2）。継続CTA成功後にprocess死でrunが失われる場合もdurable recordは残るため、
+  再開は#375のrebind経路（recordから）であり、本Issueはrecordの保持のみを保証する。
 - **export session契約の変更**: TTL 24時間・単一active session・置換確認のgate構造・
   pre-send cancel（spec 204/205 AC-11〜AC-13）は不変。session置換確認dialogの文言拡張は行うが、
   gate構造・確認timingは変更しない。
@@ -242,7 +253,7 @@ And 成功状態からのCTAは現行seam（`run.start` / `attachIntent`）を�
 Given importがvalidationに通過したが、durable pending intent storeへの保存が書込失敗で
 失敗した、
 Then 取り込み成功状態（`ImportSuccess`）は **採用しない**（「取り込み済み」を表示しない。
-Issue Outcome「消失の系は破棄・期限切れ・置換（・消費）のみ」への例外を設けない）、
+Issue Outcome「消失の系は破棄・期限切れ・置換のみ」への例外を設けない）、
 And persistence step由来のtyped失敗を表示する: primary remedyは **保存の再試行**
 （validation結果はprocess-localに保持したまま保存のみ再実行。attempt anchorは維持）、
 面レベル手段（中断する = 保存せず閉じる・診断を開く）を常設する（#373のD-11手段別投影様式）、
@@ -261,16 +272,16 @@ And CTAのgate拒否（`Busy` / `NotAttachable`）・seam例外時のfailure set
 （`AUTHORING` lease）との相互排他はspec 328 AC-3/AC-5の現行契約どおりである。gate拒否・
 failure settleではdurable recordを削除しない（成功状態は維持され、提案は有効なまま残る）。
 
-### Scenario: 継続CTAの成功settleが提案を消費済みとして削除する
+### Scenario: 継続CTA成功後も提案は保持される（消費なし）
 
 Given 同一process内でimport成功状態が表示され、durable recordが存在する、
 When CTAが押され、run接続seamが **成功settle**（`Started` / `Attached`）した、
-Then durable recordを削除する（消費済み。提案は「取り込み済み・未適用」状態を終え、run内の
-intentとして存続する。status card行は消える）、
-And gate拒否・seam例外のfailure settleではrecordを削除しない（成功状態・提案ともに有効なまま
-再試行・破棄可能）、
-And 消費後のprocess deathでrunが失われるのは現行契約どおりであり（run/preview/選択は
-process-local）、回復は依頼が有効な間の再取り込みである（#375のrebindは保存中の提案のみが対象）。
+Then durable recordへのwrite・削除を行わない（gate拒否・例外failure settleと同じく
+recordは不変。消失系は破棄・期限切れ・置換のみ — Issue本文契約、および#375実装予定specの
+「継続成功は提案を消費しない」「成功・失敗・拒否のいずれもdurable recordへwriteしない」契約）、
+And status cardの提案行は残り、process死後もrecordは残る（継続済みrunの喪失からの再開は
+#375のrebind経路が所有する。本Issueはrecordの保持のみを保証する）、
+And 継続済みかどうかの表示上の区別は本Issueの範囲外である（#375）。
 
 ### Scenario: 画面離脱で提案は消えず、status cardへ現れる
 
@@ -438,17 +449,22 @@ greenである。
   現行active session（`ExportSessionStore.active(now)`。reconcileと残時間表示とref対応の正本）、
   現在時刻（注入clock）。#204/#330契約を本specは再定義しない。
 - **書くdata**: durable pending intent storeのみ（import成功時の保存 / 破棄tombstone+清掃 /
-  reconcile清掃 / 置換無効化 / CTA成功時の消費削除）。layout DB・`favorites`・recovery store・
+  reconcile清掃 / 置換無効化）。layout DB・`favorites`・recovery store・
   export session・diagnostics journalへのwriteは発生しない。ホームレイアウト安全規約の適用対象外である
   （`favorites` への接触なし。トランザクション要件はstore単体のatomic性（AtomicFile）で充足する）。
 - **Identity**: 提案のidentityは `exportId`（対応する依頼sessionと1:1）。単一active契約により
   proposal:session = 1:1であり、`pending.exportId == active session.exportId` が有効性の
-  一致条件である。record内のexport-scoped ref（決定対象ref・`desiredGroupRefs`・
+  一致条件である。intent内容のidentityは **import時に算出した `IntentIdentity`
+  （schemaVersion・digest）をrecordへ保存した正本** を用いる（`rationale` / `confidence` を
+  含むcanonical byte表現のdigestであり、raw textを永続せずに同一identity・planner provenance
+  （`PersonalizedIntentProjection.identity`）をcold rebindでも再現する。#375のrebind契約への
+  接続）。record内のexport-scoped ref（決定対象ref・`desiredGroupRefs`・
   `groupSemantic.categoryRef`）はsessionの対応表（`itemRefs` / `categoryRefs`）を介してのみ
   内部IDへ解決され、対応表自体はrecordへ複製しない（sessionが正本）。
 - **lifetime**: 提案のTTL = 依頼sessionの失効時刻と同一（24時間）。有効性の従属により、
   session失効・invalidate・置換のすべてが提案を無効化する。残時間表示はsession側失効時刻から
-  導出する。継続CTA成功settleは提案を消費済みとして削除する（Contract notes 6）。
+  導出する。継続CTA成功settleでもrecordは削除されない（消失系は破棄・期限切れ・置換のみ。
+  #375「継続成功は提案を消費しない」契約。Contract notes 6）。
 - **reconcileの適用点**: 起動時（`LawnchairApp.ensureOrganizerStartupReconciliation()` の
   idempotent共有triggerに接続。fresh processでhubを開かなくても実行。store完結の検証であり
   readiness gate・model loadを待たない）と、status card読取時・ImportReview読取時
@@ -467,16 +483,17 @@ greenである。
 
 - 追加permission・network通信・外部送信経路なし。
 - **durable recordのprivacy境界（identity表現の確定）**: canonical decisionsは **opaqueな
-  export-scoped refを含めて保存する**（決定対象のref・`desiredGroupRefs`・
-  `groupSemantic.categoryRef`。refは `RandomIdAllocator` 由来の乱数値（spec 204契約）であり、
-  session対応表を介さなければitem/categoryを特定できない）。refを含める理由: canonical decision
-  （何に対する判断か）はrefなしには表現できず、cold-process summary再構成と#375のrebindは
-  canonical decisionsの復元を必要とするため。**禁止するのは**: `rationale`（AI自由文）・
-  `confidence`（AI自己申告）・`proposalLabel` のtext（run-scoped提案label。件数導出のための
-  保有flagのみ。model契約「never persisted」と整合）・app label・folder title・category
-  displayName・**ref↔内部ID対応表の複製**（`itemRefs` / `categoryRefs` はsession側正本）。
+  export-scoped refと正規化済み `proposalLabel` を含めて保存する**（refは `RandomIdAllocator`
+  由来の乱数値（spec 204契約）でありsession対応表を介さなければitem/categoryを特定できず、
+  `proposalLabel` は `IntentPlannerAdapter` が `ItemPreference.groupProposalLabel`（formation
+  key）としてplannerへ渡すplanner-effective値であり、Boolean化すると「どのitem同士が同じ提案
+  groupか」を復元できなくなるため）。**intent content identity（`IntentIdentity`）も保存する**
+  （digestは `rationale` / `confidence` を含むcanonical表現から算出済みの値 — raw textを永続
+  せずに#375 rebindのprovenance同一性を保証する）。**禁止するのは**: `rationale`（AI自由文）・
+  `confidence`（AI自己申告）・app label・folder title・category displayName・
+  **ref↔内部ID対応表の複製**（`itemRefs` / `categoryRefs` はsession側正本）。
   summary表示のprivacy境界（spec 328 AC-4: 件数のみ+全体方針行）はdurable層へそのまま拡張される
-  （refは保存するが **表示はしない**。Contract notes 3）。
+  （ref・labelは保存するが **summary・status card・再開面には表示しない**。Contract notes 3）。
 - **backup除外**: recordは `noBackupFilesDir` に置き、端末backup/restoreへ含めない
   （export sessionと同じclass。disposition §7.1）。
 - status card・再開面に表示するのは件数サマリ・残時間・操作のみであり、ref・label・自由文は
@@ -525,8 +542,11 @@ greenである。
 - **#365（CLOSED・merged）**: `CONTEXT.md` の正本用語（取り込み済み提案・依頼・中止語彙規約等）は
   #365改訂済み。本specは正本用語を参照し、実装PRで尾文更新（durable化実現・破棄契約D-13）を反映する。
 - **#375（OPEN）**: 再開面からのcontinuation/rebind（「この提案で続ける」の有効化・fresh run
-  admission・選択復元・SCOPE_MISMATCH原因別remedy）を所有する。本specはrecordにentry種別を
-  保存するだけでrebind契約を先取りしない。
+  admission・選択復元・SCOPE_MISMATCH原因別remedy）を所有する。本specはrecordに
+  canonical decisions（ref・`proposalLabel` 含む）・`intentIdentity`・entry種別を保存し、
+  #375のrebind（planner projection・identity/provenance同一性の再現）に必要な最小集合を
+  確定する（#375 review comment `5740062562` のblocking指摘への回答）。rebind契約自体は
+  先取りしない。#375実装予定specの「継続成功は提案を消費しない」契約に本specが揃っている。
 - **spec改訂の所有**: spec 328 revision 2・spec 205 pending保持規定の改訂・spec 366 HUB-AC-03
   縮小は本Issueの実装成果である（disposition §5 更新順序 #8）。**spec 328 rev.2のowner受入が
   本Issue実装の前提であり、#328（実装Issue）の実装着手は本spec（→ rev.2）の受入後である**
@@ -545,8 +565,11 @@ greenである。
   採用しないこと）がtestされる。status cardに「取り込み済みの提案（残時間）」行が表示され、そこから
   ImportReview（T-18）をcold processで開ける（内容 = spec 328 AC-4と同一基準の件数サマリ・
   残時間・破棄。継続CTAは提示しない）。保存はrun state・layout DBに触れない。
-  **record+sessionから再構成した件数サマリが、live validationから導出した同一summary関数の結果と
-  全count一致するround-trip oracle** を含む。（Issue受入1）
+  **再構成oracle: record+session（+既存の `SessionExportReconstructor` によるexport view再構築）
+  から再構成したplanner projection（`IntentPlannerAdapter.project` 相当: identity・
+  itemPreferences・`groupProposalLabel`（複数の提案labelケースを含む）・`globalMinimizeMovement`）
+  がimport直後のprojectionと全field同一であること**（件数サマリの全count一致を含む）。
+  （Issue受入1）
 - [ ] **DI-AC-02**: 提案が依頼と同一のTTL（24h）で期限切れになり、破棄・置換で無効になることが
   testされる。残時間表示の正本が依頼sessionの失効時刻であること。pre-send cancel等の
   session invalidateでも提案が無効化されること。（Issue受入2）
@@ -577,8 +600,9 @@ greenである。
 - [ ] **DI-AC-07**: 同一process内のCTA従来挙動が維持されることがtestされる: import成功状態からの
   CTA single-flight・attempt anchor（ABA含む）・`continuing` 中の破棄/Back不受理・gate拒否
   typed案内がspec 328 AC-3/AC-5対応の既存oracleでgreenである。durable保存の追加により
-  anchor契約・zero-write性（run state）が変化しないこと。**CTA成功settleでrecordが消費削除され、
-  gate拒否・failure settleではrecordが保持されること** がtestされる。
+  anchor契約・zero-write性（run state）が変化しないこと。**CTAの成功settle・gate拒否・failure
+  settleのいずれでもdurable recordへのwrite・削除が行われないこと**（#375「継続成功は提案を
+  消費しない」契約との接続）がtestされる。
 - [ ] **DI-AC-08**: 破棄（両入口: 明示ボタン・system Back、ともに確認dialog 1回）がtombstone
   2段commit（atomicな `discarded=true` commit → best-effort物理削除）でdurable recordを破棄し、
   **tombstone commit成功前は破棄成功として画面を閉じないこと・commit失敗はtyped失敗で提案が
@@ -588,13 +612,14 @@ greenである。
   こと、破棄と開封がSwitch Access / keyboardで完結すること、200% font scaleで到達可能である
   ことがinstrumentation/manual evidenceで確認される。（Issue受入5の本Issue該当分）
 - [ ] **DI-AC-10**: durable recordのfield契約が型/contract testで固定される:
-  **保存するfield**（exportId・canonical decisions（export-scoped ref含む）・minimizeMovement・
+  **保存するfield**（exportId・**`intentIdentity`（schemaVersion+digest）**・canonical decisions
+  （export-scoped ref・semantic fields・**`proposalLabel` text**）・minimizeMovement・
   失効時刻・entry種別・破棄mark・作成時刻・schema version）が存在し、**不在field**
-  （`rationale` / `confidence` / `proposalLabel` text（保有flagは存在）/ app label・folder title・
-  category displayName / ref↔内部ID対応表）がrecord modelへ存在しないこと。storeがbackup除外
+  （`rationale` / `confidence` / app label・folder title・category displayName /
+  ref↔内部ID対応表）がrecord modelへ存在しないこと。storeがbackup除外
   class（`noBackupFilesDir`）に置かれていることが機械確認される。summary表示が既存の純粋導出と
-  同一入力基準であることがcontract testで固定される（spec 328 AC-4の回帰。round-trip oracleは
-  DI-AC-01）。
+  同一入力基準であることがcontract testで固定される（spec 328 AC-4の回帰。planner projection
+  等価oracleはDI-AC-01）。
 - [ ] **DI-AC-11**: spec 205のpending非保持規定がdurable pending intent契約への参照へ改訂され
   （disposition §3.12-4）、export session契約（AC-11〜AC-13）が不変であることがdiff reviewで
   確認される。spec 366 HUB-AC-03の否定的観測から進行中AI依頼・取り込み済み提案が除外され、
@@ -611,16 +636,16 @@ greenである。
 
 | AC | Evidence |
 |---|---|
-| DI-AC-01 | store unit test（import成功時の保存・record内容・単一active置換・run state不変）+ holder unit test（settle時の保存呼出・**保存失敗で成功状態不採用**）+ summary round-trip unit test（record+session再構成 ≡ live validation導出。全count一致）+ instrumentation（status card行の表示・cold process起動で行→再開面・内容/残時間/破棄の表示・継続CTA不在の否定的観測）。process死相当は冷起動emulator evidence |
+| DI-AC-01 | store unit test（import成功時の保存・record内容・単一active置換・run state不変）+ holder unit test（settle時の保存呼出・**保存失敗で成功状態不採用**）+ **planner projection等価unit test**（record+session+`SessionExportReconstructor` 再構成 ≡ import直後の `IntentPlannerAdapter.project` 結果。identity・itemPreferences・`groupProposalLabel`（複数提案labelケース）・`globalMinimizeMovement` 全field同一。件数サマリ全count一致を含む）+ instrumentation（status card行の表示・cold process起動で行→再開面・内容/残時間/破棄の表示・継続CTA不在の否定的観測）。process死相当は冷起動emulator evidence |
 | DI-AC-02 | store unit test（TTL判定・session従属・invalidate連動・clock注入）+ instrumentation（残時間表示とsession失効時刻の一致） |
 | DI-AC-03 | controller/holder unit test（置換承認での旧pending無効化・書込順序固定・**同一process内成功状態/pending破棄**・store fake）+ 置換確認dialog文言test（en/ja）+ 辞退時不変test（spec 205 AC-13 oracleの回帰） |
 | DI-AC-04 | store unit test（backup除外path `noBackupFilesDir`・未知schema/破損のfail-closed・downgrade相当の未知record読み飛ばし）+ instrumentation（restore相当の空状態起動） |
 | DI-AC-05 | reconcile純粋関数のtable-driven unit test（exportId不一致 / session不在 / TTL / 破棄mark / 破損 / 未知schema / **ref集合不一致** → 無効化・清掃）+ **process death oracle**（新session保存直後のprocess死遷移をfake clock/storeで再現 → 次読取で清掃・表示なし）+ **write failure注入oracle**（AtomicFile失敗注入でpending無効化が失敗した状態 → 次読取で清掃）+ **起動時reconcileのunit/instrumentation test（hub未開封のstartupのみケース）** + **破棄tombstone oracle**（tombstone commit直後process死・物理削除失敗 → 再起動で再表示なし） |
 | DI-AC-06 | spec 328 spec差分review（上記6項目の存在とAC-3維持）+ owner受入記録（Issue #374コメント） |
-| DI-AC-07 | 既存 `ExchangeFlowStateHolderTest`（AC-3/AC-5対応oracle一式）がgreenであること + durable保存追加後の新規regression（settle内の保存がanchor/single-flightに影響しない・**CTA成功settleでrecord消費・failure/gate拒否でrecord保持**） |
+| DI-AC-07 | 既存 `ExchangeFlowStateHolderTest`（AC-3/AC-5対応oracle一式）がgreenであること + durable保存追加後の新規regression（settle内の保存がanchor/single-flightに影響しない・**CTA成功/gate拒否/failure settleいずれでもrecordへwrite・削除なし**） |
 | DI-AC-08 | holder/instrumentation test（破棄確定 → tombstone commit → 画面close・status card行消滅・session生存・再取り込み成立。**tombstone commit失敗注入 → typed失敗・画面維持・提案保持・再試行可能**。両入口の確認dialog 1回） |
 | DI-AC-09 | Compose semantics assertion（読み順「状態→残期限→操作」。提案行・依頼行）+ Switch Access/keyboard traversal + 200% font scale test + emulator screenshot（light/dark × ja/default） |
-| DI-AC-10 | record modelの型/contract test（保存field存在 + 非対象field（rationale/confidence/proposalLabel text/対応表/label）の不在）+ `noBackupFilesDir` 配置の機械確認 + summary導出contract testの回帰実行 |
+| DI-AC-10 | record modelの型/contract test（保存field存在（`intentIdentity`・`proposalLabel` text含む）+ 非対象field（rationale/confidence/対応表/app label・folder title・category displayName）の不在）+ `noBackupFilesDir` 配置の機械確認 + summary導出contract testの回帰実行 |
 | DI-AC-11 | spec 205・spec 366差分review + 依頼行・提案行のinstrumentation test（active session存在/不在・残時間・T-15/ImportReview到達）+ 既存 `ExchangeFlowControllerTest` / `ExchangeImportPipelineTest` / 失敗表示・freeze対応testのregression実行 |
 | DI-AC-12 | strings走査（ja/en name集合・placeholder一致。spec 123 AC-5方式）+ hardcoded literal grep |
 | DI-AC-13 | holder unit test（保存失敗 → typed失敗表示・`ImportSuccess` 不採用・再試行で成功状態へ・中断で提案非保存・status card行なし）+ strings test（typed案内のen/ja） |
@@ -644,17 +669,23 @@ greenである。
    再開面は継続CTAを提示しない（disabled表示・placeholderも見せない。#366 specの
    capability先取り禁止規約と同一の原理）。#375実装までの暫定面として、再取り込みの案内
    （依頼が有効な場合）を表示するかは実装PRで確定する（非blocking）。
-3. **durable recordのidentity表現とprivacy境界（初回review指摘1で確定方針へ改訂）**:
-   canonical decisionsはexport-scoped ref（乱数値・単独ではitemを特定できないopaque値）を
-   含めて保存する。決定（何に対する判断か）はrefなしに表現できず、件数サマリのcold-process
-   再構成と#375 rebindはcanonical decisionsを必要とするためである。禁止するのは人間可読な
-   label/title/free-text（`rationale` / `confidence` / `proposalLabel` text・app label・folder
-   title・category displayName）と **ref↔内部ID対応表の複製**（session正本）である。
-   `proposalLabel` はmodel契約（「run-scoped・never persisted」）に従いtextを保存せず
-   件数導出のための保有flagのみを保存する。#375のrebindがlabel textを必要とする場合は
-   spec改訂で拡張する（その時点でprivacy再評価）。entry種別の永続は#375のrebind判定
-   （idle由来 = fresh run、run-in由来 = 選択復元の対象）への最小限の備えであり、rebind契約自体は
-   先取りしない。
+3. **durable recordのidentity表現とprivacy境界（初回review指摘1・再review指摘1/3で確定方針へ改訂）**:
+   canonical decisionsはexport-scoped ref（乱数値・単独ではitemを特定できないopaque値）と
+   **正規化済み `proposalLabel` text** を含めて保存する。決定（何に対する判断か）はrefなしには
+   表現できず、`proposalLabel` は `IntentPlannerAdapter` が `ItemPreference.groupProposalLabel`
+   （formation key）としてplannerへ渡すplanner-effective値であり（2回目review指摘1）、
+   Boolean化は「どのitem同士が同じ提案groupか」の復元を失うため保存する。
+   `GroupSemantic.proposalLabel` のmodel KDoc「never persisted」規定は本Issueが改訂する
+   （layout DB・category storeへの永続化ではなく、TTL 24h・app-private・backup除外の提案保持。
+   実装PRでKDocを更新）。**intent content identity（`IntentIdentity`: schemaVersion+digest）も
+   保存する**（2回目review指摘3/#375 review comment `5740062562` の要求への確定回答）: digestは
+   `rationale` / `confidence` を含むcanonical byte表現からimport時に算出済みの値であり、raw
+   textを永続せずにcold rebindで同一identity・planner provenanceを再現する（#375のrebindは
+   保存済みidentityをそのまま用いる）。**禁止するのは** `rationale` / `confidence`・人間可読な
+   item情報（app label・folder title・category displayName）・**ref↔内部ID対応表の複製**
+   （session正本）である。entry種別の永続は#375のrebind判定（idle由来 = fresh run、
+   run-in由来 = 選択復元の対象）への備えである。将来#375が追加fieldを要求した場合は
+   spec改訂で拡張する（その時点でprivacy再評価）。
 4. **進行中AI依頼のstatus card行の所有（初回review指摘4で解消）**: #372実装specが
    「status cardへの依頼表示は#374」、#366実装specが「進行中AI依頼・取り込み済み提案は#374/#375
    後続」と明示的に委譲しており、他に所有者が存在しないため、**本Issueが依頼行（存在・残時間・
@@ -663,12 +694,14 @@ greenである。
 5. **置換確認dialog文言の改訂主体**: spec 205 AC-13の確認dialog文言の拡張は本Issueが所有する
    （disposition §7.1「#374で契約化」）。#372のT-15再構成後の文言（D-13語彙）に
    「取り込み済み提案の破棄」を追記する。gate構造・確認timingは#372実装どおり不変である。
-6. **継続CTA成功settleでのrecord消費**: CTA成功（`Started` / `Attached`）時にdurable recordを
-   削除する（「取り込み済み・未適用」状態はrun接続の前に存在する状態であるため（CONTEXT.md正本
-   用語）、接続成功で提案状態は終わる）。gate拒否・failure settleでは削除しない。消費後のprocess
-   death（run喪失）の回復は再取り込みであり、recordを持越す案（apply完了/TTLまで残す）は
-   「適用済み提案が未適用として表示され続ける」問題とrun適用flowへのcross-store書込を招くため
-   不採用とした。owner reviewで持越しが選ばれた場合はscenario・DI-AC-07を修正する。
+6. **継続CTA成功settleでもrecordを削除しない（再review指摘2で確定方針へ改訂）**: Issue本文は
+   提案の消失系を「破棄・期限切れ・置換のみ」と固定しており、#375実装予定spec（snapshot
+   `468b29855f`）も「継続成功は提案を消費しない」「成功・失敗・拒否のいずれもdurable recordへ
+   writeしない」を契約化している。本specもこれに揃げ、CTA成功settle時のrecord削除（消費）は
+   **行わない**。かつて検討した消費削除案は (1) Issue本文・#375契約と正反対になる、
+   (2) best-effort deleteでは「消費済み提案が未適用としてstatus cardへ復活する」不整合が
+   残る、(3) run適用flowへのcross-store書込を招く、ため不採用とした。継続済み提案の表示・
+   消費後lifecycleは#375が所有する。
 7. **取り込み破棄の確認契約（D-2 → D-13）**: #373実装specは「取り込み破棄の確認契約（明示
    ボタン=追加確認なし）とD-13 §9（破棄=必須確認）の不整合の解消は#374（spec 328 rev.2）が
    所有」と明記し、CONTEXT.md中止語彙規約も「spec 328の確認契約の改訂は後続実装Issueが行う」と
@@ -700,6 +733,25 @@ greenである。
   accepted処分文書（organizer-disposition-migration.md、PR #378:
   §3.12/§3.14/§4.1/§5 更新順序 #8/§7.1/§7.3/§8）、現行実装調査、先行spec draft（#373/#366/#372）、
   Issue #328コメントを入力に作成。
+- 2026-09-21: **Re-entry revision 2（2nd review 2026-09-21 Changes requested 3件対応
+  〔comment `5760840173`〕。初回6件の解消は確認済み）**。
+  **(1) `proposalLabel` のlossless保存（高）**: Boolean flag化を撤回し、正規化済み
+  `proposalLabel` textをcanonical decisionsの一部として保存へ変更
+  （`IntentPlannerAdapter` が `ItemPreference.groupProposalLabel`（formation key）として
+  plannerへ渡すplanner-effective値であり、複数提案groupの復元に文字列が必要なため。
+  `GroupSemantic` のmodel KDoc「never persisted」規定を本Issueが改訂）。oracleを
+  summary件数一致から **planner projection全field等価**（identity・itemPreferences・
+  `groupProposalLabel` 複数labelケース・`globalMinimizeMovement`。`SessionExportReconstructor`
+  によるexport view再構築を含む）へ昇格（DI-AC-01/10）。
+  **(2) CTA成功settleでのrecord消費を廃止（高）**: Issue本文の消失系契約（破棄・期限切れ・置換
+  のみ）と#375実装予定spec（snapshot `468b29855f`）の「継続成功は提案を消費しない」契約に
+  揃え、CTA成功settle時の削除を行わない（Outcome/Scope/scenario/Data and state/Contract
+  notes 6/DI-AC-07）。
+  **(3) `IntentIdentity` の永続（中）**: intent content identity（schemaVersion+digest）を
+  recordへ保存し、cold rebindで同一identity・provenanceを再現する契約を確定
+  （#375 review comment `5740062562` のblocking指摘への回答。digestはrationale/confidenceを
+  含むcanonical表現から算出済みの値であり、raw text永続なしで同一性を保持）（DI-AC-01/10・
+  Data and state・Contract notes 3）。
 - 2026-09-21: **Re-entry revision（初回review 2026-09-19 Changes requested 6件対応 +
   current main `c05435a947` へのre-entry。snapshot baseline `a2b6aba318` からは
   #365/#366/#369〜#373のmergeを含む）**。
