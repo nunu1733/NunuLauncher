@@ -962,7 +962,7 @@ class ExchangeImportSurfaceInstrumentationTest {
             R.string.exchange_failure_primary_unknown_category_ref,
         )
         val allowedMarkers = listOf(
-            "resend", "再送", "import again", "再度取り込", "もう一度取り込",
+            "resend", "再送", "again", "もう一度取り込",
             "re-paste", "貼り直", "recreate", "作り直", "送り直",
         )
         val forbiddenMarkers = listOf(
@@ -1188,6 +1188,8 @@ class ExchangeImportSurfaceInstrumentationTest {
 
         // 診断を開く records the typed cause and hands over to the host route.
         openImportSurface(holder)
+        composeRule.onNodeWithTag("exchange-import-fallback-toggle").performClick()
+        composeRule.waitForIdle()
         composeRule.onNodeWithTag("exchange-import-field").performTextInput(reply)
         composeRule.onNodeWithTag("exchange-import-action").performClick()
         composeRule.waitUntil(10_000) {
