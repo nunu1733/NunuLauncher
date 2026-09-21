@@ -372,7 +372,9 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
   anchorの読み取りとadmissionが、**active sessionとdurable recordの両方を変化させうる
   全操作** — session置換（新session保存＋旧record削除。`ExchangeFlowController.generate()`
   経路）、pre-send cancel等のsession invalidate、import成功時のdurable保存、破棄tombstone、
-  起動時reconcile清掃（`PendingImportStartupReconcile`。gate配下へ移す — 7th review指摘3）
+  reconcile清掃（`openPendingImportReview()` / anchor拒否後の `delete()`）**および**
+  起動時reconcile清掃（`PendingImportStartupReconcile` の load→reconcile→delete。
+  いずれもgate配下へ移す — 7th review指摘3）
   — と混線しないことを、**単一のprocess-wideな直列化点**で構造的に保証する。
   現行mainではsession置換がholder mutex外で実行され、session storeとpending storeが
   別々の内部lockを持つため、holder内の書込mutex拡張だけでは排他として不十分である
@@ -554,7 +556,9 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
 - [ ] **SR-AC-08**: rebind継続の前に構造digest等価検証（`CONTEXT_STALE`意味論）が適用され、
       不一致がtyped失敗（依頼作り直し案内・run admissionなし・提案残存）として扱われることが
       testされる。**exchange mutation gateがsession置換・pre-send cancel等のsession変化操作・
-      record変化操作の全てとrebind admissionを直列化すること**（gate不在時に入る競合経路が
+      record変化操作の全て（通常のreconcile清掃〔`openPendingImportReview()` /
+      anchor拒否後〕**および**起動時reconcile清掃〔`PendingImportStartupReconcile`〕の
+      両経路を含む）とrebind admissionを直列化すること**（gate不在時に入る競合経路が
       存在しないことのdiff review＋gate下の処理時間界限のtest）が確認される。
       **rebind admission anchorがgate保持下のadmission直前に新鮮な読み直しで判定され、
       Admit時はoperation生成・`State.Capturing`発行までをgate内で完結すること、
@@ -653,6 +657,12 @@ exchange系）、CI `final-status` green。本Issueはpersistent state変更・D
 
 ## Change history
 
+- 2026-09-22: **Re-entry revision 8（8th review 2026-09-22 Changes requested 1件対応、
+  [comment `5766986330`][12]）**。
+  **(1) gate対象一覧の正本間一致（中）**: 7th対応でspecのgate対象列挙から通常のreconcile
+  清掃（`openPendingImportReview()` / anchor拒否後の `delete()`）が落ちてplanと不一致に
+  なっていたため、**通常reconcile清掃と起動時reconcile清掃の両経路**を明示して一致させた。
+  SR-AC-08のgate契約確認も2経路を両方gate配下とする形へ揃えた。
 - 2026-09-22: **Re-entry revision 7（7th review 2026-09-22 Changes requested 3件対応、
   [comment `5766867716`][11]）**。
   **(1) tombstone書込失敗時の無効化commit意味論の契約化（高 — blocking）**: 現行
@@ -813,3 +823,4 @@ exchange系）、CI `final-status` green。本Issueはpersistent state変更・D
 [9]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5766543051
 [10]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5766679997
 [11]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5766867716
+[12]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5766986330
