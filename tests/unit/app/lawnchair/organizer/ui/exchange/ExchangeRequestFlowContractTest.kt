@@ -105,6 +105,25 @@ class ExchangeRequestFlowContractTest {
         )
     }
 
+    @Test
+    fun backOnTheImportReviewFaceIsThePlainZeroWriteClose() {
+        // Issue #374 (spec 374 "ImportReview再開面"): the resume face's Back
+        // keeps the durable record — a plain zero-write close with NO D-13
+        // confirmation (closing discards nothing; the discard itself is the
+        // confirmed action).
+        assertEquals(
+            ExchangeBackAction.CLOSE,
+            exchangeBackAction(
+                ExchangeScreen.ImportReview(
+                    summary = emptySummary(),
+                    expiresAtEpochMs = 5L,
+                    readAtEpochMs = 1L,
+                    entryKind = ExchangeImportEntryKind.IDLE,
+                ),
+            ),
+        )
+    }
+
     // endregion
 
     // region T-16 summary derivation (EX-AC-04)

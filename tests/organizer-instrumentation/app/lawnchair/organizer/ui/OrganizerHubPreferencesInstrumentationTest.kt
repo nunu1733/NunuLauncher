@@ -24,6 +24,7 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
@@ -61,6 +62,9 @@ import app.lawnchair.organizer.integration.CandidateDetectionResult
 import app.lawnchair.organizer.integration.DetectionUnavailableReason
 import app.lawnchair.organizer.integration.InputProvenance
 import app.lawnchair.organizer.integration.OrganizationInputComposition
+import app.lawnchair.organizer.integration.exchange.ExchangeFlowController
+import app.lawnchair.organizer.integration.exchange.ExchangeSessionStoreModule
+import app.lawnchair.organizer.integration.exchange.PendingImportedIntentModule
 import app.lawnchair.organizer.planning.ActiveCategoryCatalog
 import app.lawnchair.organizer.planning.CategoryId
 import app.lawnchair.organizer.planning.ClassificationSignals
@@ -92,9 +96,19 @@ import app.lawnchair.organizer.planning.TaxonomyVersion
 import app.lawnchair.organizer.planning.TargetSet
 import app.lawnchair.organizer.planning.Warning
 import app.lawnchair.organizer.planning.WarningCode
+import app.lawnchair.organizer.personalization.DurablePendingIntent
+import app.lawnchair.organizer.personalization.DurableRefDecision
+import app.lawnchair.organizer.personalization.DurableRefEntry
+import app.lawnchair.organizer.personalization.ExportSession
+import app.lawnchair.organizer.personalization.ExportSessionStore
+import app.lawnchair.organizer.personalization.PendingImportEntryKind
+import app.lawnchair.organizer.personalization.PendingImportedIntentStore
+import app.lawnchair.organizer.personalization.PrivacyTier
+import app.lawnchair.organizer.personalization.SequentialIdAllocator
 import app.lawnchair.organizer.rules.PolicyBundleIdentity
 import app.lawnchair.organizer.rules.PolicyInputIdentity
 import app.lawnchair.organizer.rules.PolicySourceKind
+import app.lawnchair.organizer.ui.exchange.ExchangeFlowStateHolder
 import app.lawnchair.ui.preferences.LocalNavController
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.destinations.ManualOrganizationPreferences
@@ -107,7 +121,11 @@ import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizerDiagnostics
 import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizerStrategy
 import app.lawnchair.ui.theme.LawnchairTheme
 import com.android.launcher3.R
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -133,6 +151,9 @@ class OrganizerHubPreferencesInstrumentationTest {
         fontScale: Float = 1f,
         captureDispatcher: ((OnBackPressedDispatcher?) -> Unit)? = null,
         captureNav: ((NavHostController) -> Unit)? = null,
+        // Issue #374: hosts the run surface's exchange holder for the row
+        // navigation tests (the #371 instrumentation seam).
+        exchangeHolderOverride: ExchangeFlowStateHolder? = null,
     ) {
         composeRule.setContent {
             if (captureDispatcher != null) {
@@ -156,6 +177,8 @@ class OrganizerHubPreferencesInstrumentationTest {
                                     trigger = route.trigger,
                                     durableRecovery = route.durableRecovery,
                                     onOpenDiagnostics = { navController.navigate(HomeScreenOrganizerDiagnostics) },
+                                    exchangeOpen = route.exchangeOpen,
+                                    exchangeHolderOverride = exchangeHolderOverride,
                                 )
                             }
                             composable<HomeScreenOrganizerDiagnostics> {
@@ -169,6 +192,326 @@ class OrganizerHubPreferencesInstrumentationTest {
                 }
             }
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Issue #374 (spec 374 DI-AC-11/DI-AC-01): the status card's two
+    // session-scoped rows — 進行中のAI依頼 and 取り込み済みの提案. The rows read
+    // the REAL store seams (the module singletons over the app context), so
+    // the tests seed those stores directly and clean them up afterwards.
+    // ------------------------------------------------------------------
+
+    private var seededSession: ExportSession? = null
+
+    private val hubSessionStore get() = ExchangeSessionStoreModule.store(context)
+    private val hubPendingStore get() = PendingImportedIntentModule.store(context)
+
+    @After
+    fun clearExchangeStoreSeeds() {
+        hubPendingStore.delete()
+        seededSession?.let { hubSessionStore.invalidate(it.exportId) }
+        seededSession = null
+    }
+
+    /** Seeds the module session store with an ACTIVE request (TTL 24h by default). */
+    private fun seedActiveSession(itemRefCount: Int = 2, ttlMs: Long = HUB_SESSION_TTL_MS): ExportSession {
+        val now = System.currentTimeMillis()
+        val session = ExportSession(
+            exportId = "hub-row-export",
+            itemRefs = (0 until itemRefCount).associate { "hub-ref-$it" to app.lawnchair.organizer.planning.ItemId("hub-item-$it") },
+            tier = PrivacyTier.EXTERNAL_REDACTED,
+            sourceContextDigest = "digest",
+            signalProvenance = null,
+            createdAtEpochMs = now,
+            expiresAtEpochMs = now + ttlMs,
+        )
+        assertTrue(hubSessionStore.save(session))
+        seededSession = session
+        return session
+    }
+
+    /** Seeds the module pending store with a record for [session]'s reply (all-unresolved). */
+    private fun seedPendingRecord(session: ExportSession, exportId: String = session.exportId): DurablePendingIntent {
+        val record = DurablePendingIntent(
+            exportId = exportId,
+            intentIdentitySchemaVersion = "v1",
+            intentIdentityDigest = "digest",
+            decisions = session.itemRefs.keys.map { DurableRefEntry(it, DurableRefDecision.UnresolvedByOmission) },
+            minimizeMovement = false,
+            expiresAtEpochMs = session.expiresAtEpochMs,
+            entryKind = PendingImportEntryKind.IDLE,
+            discarded = false,
+            createdAtEpochMs = session.createdAtEpochMs,
+        )
+        assertTrue(hubPendingStore.save(record))
+        return record
+    }
+
+    @Test
+    fun hubShowsTheActiveRequestRowWithStateRemainingAndAction() {
+        val application = FakeHubApplication()
+        val runner = hubRunner(application)
+        seedActiveSession()
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("organizer-hub-request").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(context.getString(R.string.exchange_request_active_line))
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("organizer-hub-request-remaining").assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.organizer_hub_request_open))
+            .assertIsDisplayed()
+            .assertHasClickAction()
+    }
+
+    @Test
+    fun hubHidesTheRequestRowWhenNoSessionExists() {
+        // Deterministic emptiness regardless of the method execution order.
+        clearExchangeStoreSeeds()
+        val application = FakeHubApplication()
+        val runner = hubRunner(application)
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Idle }
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("organizer-hub-request").assertCountEquals(0)
+        // No invented empty state.
+        composeRule.onNodeWithText(context.getString(R.string.exchange_request_active_line))
+            .assertDoesNotExist()
+    }
+
+    @Test
+    fun hubShowsTheProposalRowWhenAValidRecordExists() {
+        val application = FakeHubApplication()
+        val runner = hubRunner(application)
+        val session = seedActiveSession()
+        seedPendingRecord(session)
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("organizer-hub-proposal").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(context.getString(R.string.organizer_hub_proposal_row))
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("organizer-hub-proposal-remaining").assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.organizer_hub_proposal_open))
+            .assertIsDisplayed()
+            .assertHasClickAction()
+        // The request row coexists with the proposal row (both facts hold).
+        composeRule.onAllNodesWithTag("organizer-hub-request").assertCountEquals(1)
+    }
+
+    @Test
+    fun hubCleansAStaleRecordAndShowsNoProposalRow() {
+        val application = FakeHubApplication()
+        val runner = hubRunner(application)
+        val session = seedActiveSession()
+        seedPendingRecord(session, exportId = "replaced-mid-flight")
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Idle }
+        // The read-time reconcile cleans the stale record (the store-level
+        // assert — the module store reads as absent after the hub's read).
+        composeRule.waitUntil(5_000) { hubPendingStore.load() == null }
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("organizer-hub-proposal").assertCountEquals(0)
+        composeRule.onNodeWithText(context.getString(R.string.organizer_hub_proposal_row))
+            .assertDoesNotExist()
+        // The request row is unaffected (its fact is independent).
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("organizer-hub-request").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    @Test
+    fun hubProposalRowDisappearsAtTheTtlBoundaryWithTheRecordCleaned() {
+        // DI-AC-02 / spec 374「失効時刻にscheduleした1回再読取」: a hub kept in
+        // the foreground crosses the TTL with NO lifecycle event. The proposal
+        // effect schedules ONE re-read at the session's expiry boundary (the
+        // same shape as the request row): the row is present before it, gone
+        // after it, and the boundary re-read's fail-closed reconcile cleaned
+        // the expired record (no later read can resurrect it).
+        val application = FakeHubApplication()
+        val runner = hubRunner(application)
+        // A short remaining lifetime so the scheduled re-read fires in real
+        // time; no lifecycle event is simulated — the boundary crossing alone.
+        val session = seedActiveSession(ttlMs = SHORT_TTL_MS)
+        seedPendingRecord(session)
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("organizer-hub-proposal").fetchSemanticsNodes().isNotEmpty()
+        }
+        assertTrue("the proposal is present before the boundary", hubPendingStore.load() != null)
+
+        composeRule.waitUntil(15_000) {
+            composeRule.onAllNodesWithTag("organizer-hub-proposal").fetchSemanticsNodes().isEmpty() &&
+                hubPendingStore.load() == null
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(context.getString(R.string.organizer_hub_proposal_row))
+            .assertDoesNotExist()
+    }
+
+    @Test
+    fun hubExchangeRowsReadStateRemainingThenActionInOrder() {
+        // DI-AC-09: TalkBack reads each row 状態→残期限→操作 (TO-BE §13-5's
+        // remaining-time insertion into the #366 status-card order).
+        val application = FakeHubApplication()
+        val runner = hubRunner(application)
+        val session = seedActiveSession()
+        seedPendingRecord(session)
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("organizer-hub-proposal").fetchSemanticsNodes().isNotEmpty()
+        }
+        fun topOfText(text: String): Float = composeRule.onNodeWithText(text)
+            .fetchSemanticsNode().boundsInRoot.top
+
+        fun topOfTag(tag: String): Float = composeRule.onNodeWithTag(tag)
+            .fetchSemanticsNode().boundsInRoot.top
+
+        val requestState = topOfText(context.getString(R.string.exchange_request_active_line))
+        val requestRemaining = topOfTag("organizer-hub-request-remaining")
+        val requestAction = topOfText(context.getString(R.string.organizer_hub_request_open))
+        assert(requestState < requestRemaining) { "request row: state must precede the remaining time" }
+        assert(requestRemaining < requestAction) { "request row: remaining time must precede the action" }
+
+        val proposalState = topOfText(context.getString(R.string.organizer_hub_proposal_row))
+        val proposalRemaining = topOfTag("organizer-hub-proposal-remaining")
+        val proposalAction = topOfText(context.getString(R.string.organizer_hub_proposal_open))
+        assert(proposalState < proposalRemaining) { "proposal row: state must precede the remaining time" }
+        assert(proposalRemaining < proposalAction) { "proposal row: remaining time must precede the action" }
+
+        // Both rows sit between the durable status block and the start CTA.
+        val startTop = topOfText(context.getString(R.string.manual_organization_start))
+        assert(proposalAction < startTop) { "the session-scoped rows must precede the start CTA" }
+    }
+
+    @Test
+    fun hubRequestRowOpensTheRunFaceWithTheRequestFlowPreOpened() {
+        val application = FakeHubApplication()
+        val runner = hubRunner(application)
+        seedActiveSession()
+        val holder = hubTestExchangeHolder(runner)
+        setHubContent(runner, exchangeHolderOverride = holder)
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("organizer-hub-request").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(context.getString(R.string.organizer_hub_request_open)).performClick()
+
+        // The run surface is showing (its explainer is unique to it)…
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_explainer),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        // …with T-15 pre-opened: the one-shot exchangeOpen argument consumed
+        // openFlow() (the row action never starts the run).
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.exchange_request_title),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        scrollTextIntoView(context.getString(R.string.exchange_request_title))
+        composeRule.onNodeWithText(context.getString(R.string.exchange_request_title)).assertIsDisplayed()
+        assertEquals(ManualOrganizationRun.State.Idle, runner.state)
+    }
+
+    @Test
+    fun hubProposalRowOpensTheRunFaceWithTheImportReviewPreOpened() {
+        val application = FakeHubApplication()
+        val runner = hubRunner(application)
+        val session = seedActiveSession()
+        val record = seedPendingRecord(session)
+        // The hosted holder draws on its own fakes (the #371 seam), seeded
+        // with the SAME durable facts the module stores carry.
+        val holder = hubTestExchangeHolder(runner, session = session, record = record)
+        setHubContent(runner, exchangeHolderOverride = holder)
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("organizer-hub-proposal").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(context.getString(R.string.organizer_hub_proposal_open)).performClick()
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_explainer),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        // The ImportReview face appears with its reconstructed summary.
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.exchange_import_not_applied),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        scrollTextIntoView(context.getString(R.string.exchange_import_not_applied))
+        composeRule.onNodeWithTag("exchange-import-review").assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-import-summary-recognized").assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-import-review-discard").assertIsDisplayed()
+        // No CTA on the cold-process resume face.
+        composeRule.onAllNodesWithTag("exchange-import-continue").assertCountEquals(0)
+    }
+
+    /** The in-memory fakes behind the run surface's hosted holder (the #371 seam). */
+    private class HubFakeSessionStore(var session: ExportSession?) : ExportSessionStore {
+        override fun save(session: ExportSession): Boolean = error("not exercised")
+
+        override fun load(exportId: String): ExportSession? = session?.takeIf { it.exportId == exportId }
+
+        override fun active(nowEpochMs: Long): ExportSession? = session?.takeIf { !it.isExpired(nowEpochMs) }
+
+        override fun invalidate(exportId: String) = Unit
+    }
+
+    private class HubFakePendingStore(var record: DurablePendingIntent?) : PendingImportedIntentStore {
+        override fun save(proposal: DurablePendingIntent): Boolean = error("not exercised")
+
+        override fun load(): DurablePendingIntent? = record
+
+        override fun discard(): Boolean = error("not exercised")
+
+        override fun delete() {
+            record = null
+        }
+
+        override fun deleteIf(proposal: DurablePendingIntent): Boolean {
+            if (record == proposal) {
+                record = null
+                return true
+            }
+            return false
+        }
+    }
+
+    /**
+     * The hosted holder for the row navigation tests: generation/validation
+     * seams are never reached (only `activeSession`/`nowEpochMs` and the
+     * pending store are exercised by openFlow/openPendingImportReview).
+     */
+    private fun hubTestExchangeHolder(
+        runner: ManualOrganizationRun,
+        session: ExportSession? = null,
+        record: DurablePendingIntent? = null,
+    ): ExchangeFlowStateHolder {
+        val pendingStore = HubFakePendingStore(record)
+        val controller = ExchangeFlowController(
+            composeExportInputs = { error("generation is not exercised by the hub row tests") },
+            currentStructuralInputs = { error("import is not exercised by the hub row tests") },
+            store = HubFakeSessionStore(session),
+            allocator = SequentialIdAllocator(),
+            clock = { System.currentTimeMillis() },
+            pendingImportStore = pendingStore,
+        )
+        return ExchangeFlowStateHolder(
+            controllerFactory = { controller },
+            run = runner,
+            scope = CoroutineScope(Dispatchers.Main),
+            pendingImportStore = pendingStore,
+        )
     }
 
     /**
@@ -1420,6 +1763,16 @@ class OrganizerHubPreferencesInstrumentationTest {
         const val OTHER_POINT_ID = "dddddddddddddddddddddddddddddddd"
         const val REVISION = "revision"
         const val SHA_256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+        /** Issue #374: the seeded request's TTL — the same 24h as the real session. */
+        const val HUB_SESSION_TTL_MS = 24L * 60L * 60L * 1000L
+
+        /**
+         * Issue #374 (review finding 2): the short TTL of the proposal-row
+         * boundary test — long enough for the first read to land, short
+         * enough that the expiry-scheduled re-read fires within the wait.
+         */
+        const val SHORT_TTL_MS = 1_500L
 
         fun input() = OrganizationInput(
             snapshot = LayoutSnapshot(

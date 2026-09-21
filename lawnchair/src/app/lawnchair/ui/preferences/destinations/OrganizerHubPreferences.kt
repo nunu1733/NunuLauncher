@@ -25,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -34,6 +35,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -41,13 +43,21 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lawnchair.organizer.application.protocol.ReadinessGate
 import app.lawnchair.organizer.application.public.OrganizerDurableStatus
 import app.lawnchair.organizer.application.public.RemainingWindow
 import app.lawnchair.organizer.application.public.RestorableRecoveryEntry
+import app.lawnchair.organizer.integration.exchange.ExchangeSessionStoreModule
+import app.lawnchair.organizer.integration.exchange.PendingImportedIntentModule
+import app.lawnchair.organizer.personalization.exchange.PendingIntentReconcile
+import app.lawnchair.organizer.personalization.exchange.reconcilePendingIntent
 import app.lawnchair.organizer.ui.ManualOrganizationModule
 import app.lawnchair.organizer.ui.ManualOrganizationRun
+import app.lawnchair.organizer.ui.exchange.RequestRemaining
+import app.lawnchair.organizer.ui.exchange.requestRemainingDisplay
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.LocalNavController
 import app.lawnchair.ui.preferences.components.NavigationActionPreference
@@ -55,6 +65,7 @@ import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLazyColumn
 import app.lawnchair.ui.preferences.components.layout.PreferenceScaffold
 import app.lawnchair.ui.preferences.components.layout.PreferenceTemplate
+import app.lawnchair.ui.preferences.navigation.ExchangeOpen
 import app.lawnchair.ui.preferences.navigation.HomeScreenCategoryOverrides
 import app.lawnchair.ui.preferences.navigation.HomeScreenCustomCategories
 import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
@@ -63,6 +74,7 @@ import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizerStrategy
 import app.lawnchair.ui.preferences.navigation.HomeScreenPlacementLocks
 import com.android.launcher3.R
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
@@ -76,7 +88,9 @@ import kotlinx.coroutines.withContext
  * The start CTA only navigates to the existing run surface: `start()` stays
  * exclusive to the run surface's start row, so the spec #328/#205 admission
  * gates are never re-implemented or bypassed here (1-tap start is T-07,
- * owned by #369).
+ * owned by #369). Issue #376 (D-15) adds the status card's restore CTA: it
+ * navigates with the durable-recovery flag and the run destination owns the
+ * admission, so the restore flow reuses the existing #84/#13 seams.
  */
 @Composable
 fun OrganizerHubPreferences(
@@ -128,6 +142,83 @@ fun OrganizerHubPreferences(
                 )
         )
 
+    // Issue #374 (spec 374 DI-AC-11): the status card's session-scoped rows —
+    // 進行中のAI依頼 and 取り込み済みの提案. Unlike the durable-status rows these
+    // are session-scoped durable facts, so they render REGARDLESS of the run
+    // state (never gated on showDurableStatus). Every read is fail-closed:
+    // any failure renders no row (no invented empty state) and writes no
+    // journal — the exact #271 reading contract applied to the exchange
+    // stores. The remaining time is derived with the SAME #372 T-15
+    // vocabulary (`requestRemainingDisplay` + the request plurals).
+    val exchangeSessionStore = remember { ExchangeSessionStoreModule.store(context) }
+    val pendingImportStore = remember { PendingImportedIntentModule.store(context) }
+    var hubRequestRow by remember { mutableStateOf<HubExchangeRow?>(null) }
+    var hubProposalRow by remember { mutableStateOf<HubExchangeRow?>(null) }
+
+    // Re-read triggers shared with T-15 (#372): hub entry (the effect's first
+    // composition) and lifecycle resume; the request row additionally
+    // schedules ONE expiry re-read (see below).
+    var requestReadTick by remember { mutableIntStateOf(0) }
+    var proposalReadTick by remember { mutableIntStateOf(0) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        requestReadTick++
+        proposalReadTick++
+    }
+    LaunchedEffect(requestReadTick) {
+        val now = System.currentTimeMillis()
+        val active = withContext(Dispatchers.IO) { exchangeSessionStore.active(now) }
+        hubRequestRow = active?.let { HubExchangeRow(expiresAtEpochMs = it.expiresAtEpochMs, readAtEpochMs = now) }
+        if (active != null) {
+            // The T-15 `scheduleExpiryReRead` shape, in the composable scope:
+            // ONE delay job owned by this effect's coroutine — cancelled on
+            // leave/restart, replaced on every read, no continuous clock. A
+            // hub kept in the foreground crosses the TTL with no lifecycle
+            // event and the row disappears on the first read past it.
+            delay((active.expiresAtEpochMs - System.currentTimeMillis()).coerceAtLeast(0L))
+            requestReadTick++
+        }
+    }
+    LaunchedEffect(proposalReadTick) {
+        // The 提案行 read applies the read-time reconcile (the master
+        // validity defense) on every read: Valid shows the row from the
+        // SESSION's expiry (the session is the display master); Invalid is
+        // fail-closed — the record is cleaned and no row shows; Absent shows
+        // nothing. Any read failure maps to no row (fail-closed, #271様式).
+        val now = System.currentTimeMillis()
+        val projection = withContext(Dispatchers.IO) {
+            runCatching {
+                val record = pendingImportStore.load()
+                val session = exchangeSessionStore.active(now)
+                when (val decision = reconcilePendingIntent(record, session, now)) {
+                    is PendingIntentReconcile.Valid -> HubExchangeRow(
+                        expiresAtEpochMs = session!!.expiresAtEpochMs,
+                        readAtEpochMs = now,
+                    )
+
+                    is PendingIntentReconcile.Invalid -> {
+                        pendingImportStore.delete()
+                        null
+                    }
+
+                    PendingIntentReconcile.Absent -> null
+                }
+            }.getOrNull()
+        }
+        hubProposalRow = projection
+        // Issue #374 (review finding 2): the proposal row mirrors the request
+        // row's expiry scheduling — when a Valid proposal is shown, ONE
+        // re-read is scheduled at the session's expiry boundary, in THIS
+        // effect's coroutine (cancelled on leave/restart, replaced on every
+        // read, no continuous clock). A hub kept in the foreground crosses
+        // the TTL with no lifecycle event; the boundary read re-reconciles —
+        // the session reads as expired, the record is fail-closed cleaned by
+        // the Invalid path above, and the row disappears.
+        if (projection != null) {
+            delay((projection.expiresAtEpochMs - System.currentTimeMillis()).coerceAtLeast(0L))
+            proposalReadTick++
+        }
+    }
+
     // Issue #366 (organization-run-ux §6): entry focus lands deterministically
     // on the start CTA — on first entry and again when Back restores the hub
     // from a child surface — mirroring the run surface's start-row focus.
@@ -160,7 +251,13 @@ fun OrganizerHubPreferences(
         PreferenceLazyColumn(paddingValues) {
             // Status card, phase 1 (TO-BE D-02): durable status rows → start
             // CTA → diagnostics. TalkBack order follows the composed order:
-            // state first, then actions (TO-BE §13-5).
+            // state first, then actions (TO-BE §13-5). Issue #374 inserts the
+            // two session-scoped rows between the durable rows and the start
+            // CTA, each reading 状態→残期限→操作 (TO-BE §13-5's remaining-time
+            // insertion into the #366 first-phase order; spec 366 revision).
+            // Issue #376: the restorable durable row itself carries
+            // 状態→残期限→復元CTA, and its activation is the hub-origin
+            // restore entry (D-15).
             if (showCheckingRow) {
                 item(key = "organizer-hub-status-checking") {
                     HubCheckingLine(R.string.manual_organization_durable_status_checking)
@@ -171,6 +268,36 @@ fun OrganizerHubPreferences(
             // durable row for one recomposition while the read effect is
             // still catching up (HUB-AC-02 run-active hiding).
             if (showDurableStatus) durableStatus?.let { hubDurableStatusItems(it, restorableEntry, onRestore) }
+            // Issue #374 (DI-AC-11): the session-scoped rows render regardless
+            // of the run state — they are durable facts about the exchange
+            // session, not run-projection rows. Absence renders no row (no
+            // invented empty state).
+            hubRequestRow?.let { request ->
+                item(key = "organizer-hub-request") {
+                    HubExchangeRowItems(
+                        rowTag = "organizer-hub-request",
+                        remainingTag = "organizer-hub-request-remaining",
+                        stateText = stringResource(R.string.exchange_request_active_line),
+                        expiresAtEpochMs = request.expiresAtEpochMs,
+                        readAtEpochMs = request.readAtEpochMs,
+                        actionLabel = stringResource(R.string.organizer_hub_request_open),
+                        actionDestination = HomeScreenManualOrganization(exchangeOpen = ExchangeOpen.REQUEST),
+                    )
+                }
+            }
+            hubProposalRow?.let { proposal ->
+                item(key = "organizer-hub-proposal") {
+                    HubExchangeRowItems(
+                        rowTag = "organizer-hub-proposal",
+                        remainingTag = "organizer-hub-proposal-remaining",
+                        stateText = stringResource(R.string.organizer_hub_proposal_row),
+                        expiresAtEpochMs = proposal.expiresAtEpochMs,
+                        readAtEpochMs = proposal.readAtEpochMs,
+                        actionLabel = stringResource(R.string.organizer_hub_proposal_open),
+                        actionDestination = HomeScreenManualOrganization(exchangeOpen = ExchangeOpen.PENDING_REVIEW),
+                    )
+                }
+            }
             item(key = "organizer-hub-start") {
                 NavigationActionPreference(
                     label = stringResource(R.string.manual_organization_start),
@@ -228,11 +355,6 @@ fun OrganizerHubPreferences(
  * `NEVER_ORGANIZED` and the fail-closed `UNAVAILABLE` render nothing. The
  * unresolved status keeps the existing safe-support guidance line; its
  * diagnostics entry is the standing hub diagnostics row above.
- *
- * Issue #376 (D-15/D6): the restorable row grows the coarse remaining window
- * and the restore CTA — the TO-BE §13-5 reading order (状態 → 残期限 → 操作)
- * is the compose order. Both extras require a successful entry read; a
- * fail-closed null keeps the row display-only (no invented state).
  */
 private fun LazyListScope.hubDurableStatusItems(
     status: OrganizerDurableStatus,
@@ -315,9 +437,8 @@ private fun remainingWindowText(window: RemainingWindow): String = when (window)
 /**
  * Issue #376 (D-15): the restore CTA on the hub status card — the only
  * restore operation entry (D-15), reusing the existing confirmation face's
- * closed-vocabulary label. `clickable()` owns the activation exactly like
- * [NavigationActionPreference]; the navigation itself is decided by the
- * caller (only after an admitted entry).
+ * closed-vocabulary label. The navigation itself is decided by the caller
+ * (only after an admitted entry).
  */
 @Composable
 private fun HubRestoreCta(onRestore: () -> Unit) {
@@ -338,4 +459,65 @@ private fun HubCheckingLine(
             .padding(horizontal = 16.dp)
             .semantics { liveRegion = LiveRegionMode.Polite },
     )
+}
+
+/**
+ * Issue #374 (DI-AC-11): the display projection of one session-scoped status
+ * row — the remaining-time display root only (expiry + read instant), never
+ * the session or the record itself. Mirrors the T-15 pre-display's
+ * display-root discipline (#372).
+ */
+private data class HubExchangeRow(
+    val expiresAtEpochMs: Long,
+    val readAtEpochMs: Long,
+)
+
+/**
+ * Issue #374 (spec 374 DI-AC-11 / DI-AC-09): one session-scoped status row.
+ * TalkBack reading order is the compose order — 状態 (the state line) →
+ * 残期限 (the remaining time, the same #372 T-15 vocabulary and derivation)
+ * → 操作 (the row's open action) — so the #366 status-card convention gains
+ * the remaining-time element exactly where TO-BE §13-5 inserts it. The
+ * texts are the row's accessible names naturally (name/role/state via the
+ * text semantics and the action's click); no payload is ever shown.
+ */
+@Composable
+private fun HubExchangeRowItems(
+    rowTag: String,
+    remainingTag: String,
+    stateText: String,
+    expiresAtEpochMs: Long,
+    readAtEpochMs: Long,
+    actionLabel: String,
+    actionDestination: app.lawnchair.ui.preferences.navigation.PreferenceRoute,
+) {
+    Column(modifier = Modifier.testTag(rowTag)) {
+        Text(
+            text = stateText,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier
+                .padding(horizontal = 16.dp)
+                .semantics { liveRegion = LiveRegionMode.Polite },
+        )
+        val remaining = requestRemainingDisplay(expiresAtEpochMs, readAtEpochMs)
+        Text(
+            text = when (remaining) {
+                is RequestRemaining.Hours -> pluralStringResource(
+                    R.plurals.exchange_request_remaining_hours,
+                    remaining.count,
+                    remaining.count,
+                )
+
+                RequestRemaining.UnderOneHour -> stringResource(R.string.exchange_request_remaining_under_hour)
+            },
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier
+                .padding(horizontal = 16.dp)
+                .testTag(remainingTag),
+        )
+        NavigationActionPreference(
+            label = actionLabel,
+            destination = actionDestination,
+        )
+    }
 }

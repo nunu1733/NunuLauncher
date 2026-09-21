@@ -1010,6 +1010,13 @@
     <string name="organizer_hub_summary">Organizing status, starting a review, and materials in one place.</string>
     <string name="organizer_hub_label">Organizer</string>
     <string name="organizer_hub_materials_heading">Organizing materials</string>
+    <!-- Issue #374 (DI-AC-11): the status card's session-scoped rows — the
+         active-request action and the imported-proposal state/action. The
+         request state line and both rows' remaining time reuse the #372 T-15
+         vocabulary (exchange_request_active_line / the request plurals). -->
+    <string name="organizer_hub_request_open">View request</string>
+    <string name="organizer_hub_proposal_row">You have an imported proposal</string>
+    <string name="organizer_hub_proposal_open">View proposal</string>
     <string name="organizer_personalization_recording_label">Record app launches for organizing</string>
     <string name="organizer_personalization_recording_description">Keeps a local counter of launches started from this launcher to improve organizing quality. Stored on this device only and never exported. Turning this off stops recording and erases the existing records.</string>
     <!-- Issue #371: the permission copy contract (spec 203 U-2 + TO-BE §7.3)
@@ -1365,9 +1372,11 @@
     <!-- Issue #372 (review): the warning matches the v4 free-text set exactly
          (app and folder names plus user-defined category names, spec 337). -->
     <string name="exchange_privacy_labels_warning">The request will contain app and folder names, and the names of your user-defined categories.</string>
-    <string name="exchange_replacement_notice">An unfinished request exists. Creating a new request discards the existing one; its reply can no longer be imported.</string>
+    <string name="exchange_replacement_notice">An unfinished request exists. Creating a new request discards the existing one; its reply can no longer be imported. The imported proposal is also discarded.</string>
     <string name="exchange_replacement_title">Discard the existing request and create a new one?</string>
-    <string name="exchange_replacement_warning">Creating a new request discards the previous one; its reply can no longer be imported. Continue?</string>
+    <!-- Issue #374 (spec 374 DI-AC-03): the warning extends to the imported
+         proposal — a replacement discards it in all of its holding places. -->
+    <string name="exchange_replacement_warning">Creating a new request discards the previous one; its reply can no longer be imported. The imported proposal is also discarded. Continue?</string>
     <string name="exchange_replacement_confirm">Discard and create</string>
     <string name="exchange_replacement_decline">Keep existing</string>
     <string name="exchange_generate">Create request</string>
@@ -1477,17 +1486,27 @@
         <item quantity="other">The AI proposal covers %1$d apps that are not yet on your home. Select them to use the proposal.</item>
     </plurals>
 
-    <!-- Issue #328: the import success state and its typed guidance. -->
+    <!-- Issue #328: the import success state and its typed guidance.
+         Issue #374: the CTA copy is the T-18 vocabulary (spec 328 rev.2 D-3),
+         the discard body reflects the durable (tombstone) semantics, and the
+         persistence-failure face covers the durable save's typed failure. -->
     <string name="exchange_import_success_title">Proposal imported</string>
     <string name="exchange_import_success_warning_title">Proposal imported (some items have no stated preference)</string>
     <string name="exchange_import_not_applied">Nothing has been applied to your home screen yet.</string>
     <string name="exchange_import_cta_idle">Continue with this proposal</string>
-    <string name="exchange_import_cta_run_in">Return to selection to finish organizing</string>
+    <string name="exchange_import_cta_run_in">Continue with this proposal and return to selection</string>
     <string name="exchange_import_discard">Discard and close</string>
     <string name="exchange_import_discard_confirm_title">Discard the import?</string>
-    <string name="exchange_import_discard_confirm_body">The imported proposal will not be saved. While the request stays valid, you can import the same reply again.</string>
+    <string name="exchange_import_discard_confirm_body">The imported proposal will be discarded. While the request stays valid, you can import the same reply again.</string>
     <string name="exchange_import_discard_confirm_confirm">Discard</string>
     <string name="exchange_import_discarded_guidance">The import was discarded. While the request stays valid, you can import the same reply again.</string>
+    <string name="exchange_import_persist_failed_title">Could not save the proposal</string>
+    <string name="exchange_import_persist_failed_body">The proposal has not been saved yet. Check your device\'s state and try saving again. If you close without saving, this proposal will be lost (while the request stays valid, you can import the same reply again).</string>
+    <string name="exchange_import_persist_retry">Try saving again</string>
+    <string name="exchange_import_discard_failed">Could not discard. Please try again.</string>
+    <!-- Issue #374 (DI-AC-01): the typed notice of a fail-closed ImportReview
+         open (expired / invalidated / absent) — no review face is invented. -->
+    <string name="exchange_import_review_unavailable">The imported proposal could not be opened. It expired or was invalidated.</string>
     <string name="exchange_import_summary_global_minimize">Overall goal: keep the current layout as much as possible</string>
     <string name="exchange_import_cta_failed">Could not start organizing. Please try again.</string>
     <string name="exchange_start_frozen_import">Import in progress. You can start organizing after it finishes.</string>

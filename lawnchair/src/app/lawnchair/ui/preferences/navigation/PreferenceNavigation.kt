@@ -129,6 +129,10 @@ fun PreferenceNavigation(
                 run = runOverride,
                 trigger = route.trigger,
                 durableRecovery = route.durableRecovery,
+                // Issue #374: the hub status rows' one-shot exchange pre-open
+                // argument (request → T-15, pendingReview → ImportReview),
+                // consumed once on entry by the destination.
+                exchangeOpen = route.exchangeOpen,
                 onOpenDiagnostics = { navController.navigate(HomeScreenOrganizerDiagnostics) },
             )
         }

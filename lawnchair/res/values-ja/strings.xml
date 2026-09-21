@@ -32,6 +32,12 @@
     <string name="organizer_hub_summary">整理の状態、整理案の確認、材料を1か所で扱えます。</string>
     <string name="organizer_hub_label">オーガナイザー</string>
     <string name="organizer_hub_materials_heading">整理の材料</string>
+    <!-- Issue #374 (DI-AC-11): status cardのsession-scoped行（依頼行の操作・
+         提案行の状態と操作）。依頼行の状態文と両行の残期限は#372 T-15の語彙
+         (exchange_request_active_line / request複数形) を再利用する。 -->
+    <string name="organizer_hub_request_open">依頼を確認</string>
+    <string name="organizer_hub_proposal_row">取り込み済みの提案があります</string>
+    <string name="organizer_hub_proposal_open">提案を確認</string>
     <string name="organizer_personalization_recording_label">整理のためにアプリ起動を記録する</string>
     <string name="organizer_personalization_recording_description">このランチャーから始まった起動を端末内だけで数え、整理の精度を上げます。記録は端末の外に出ず、書き出しもされません。オフにすると記録を停止し、既存の記録を消去します。</string>
     <!-- Issue #371: 権限copy契約（spec 203 U-2 + TO-BE §7.3）は #371 が所有:
@@ -447,9 +453,11 @@
     <!-- Issue #372 (review): the warning matches the v4 free-text set exactly
          (app and folder names plus user-defined category names, spec 337). -->
     <string name="exchange_privacy_labels_warning">依頼文にアプリ名・フォルダ名、およびユーザー定義カテゴリの名前が含まれます。</string>
-    <string name="exchange_replacement_notice">未完了の依頼があります。新規作成すると既存の依頼は破棄され、その回答は取り込めなくなります。</string>
+    <string name="exchange_replacement_notice">未完了の依頼があります。新規作成すると既存の依頼は破棄され、その回答は取り込めなくなります。取り込み済みの提案も破棄されます。</string>
     <string name="exchange_replacement_title">既存の依頼を破棄して新規作成しますか?</string>
-    <string name="exchange_replacement_warning">新規作成すると以前の依頼は破棄され、その回答は取り込めなくなります。続行しますか?</string>
+    <!-- Issue #374 (spec 374 DI-AC-03): 置換は取り込み済みの提案も破棄する
+         (3つの保持場所すべてに適用される旨を確認文言へ追記)。 -->
+    <string name="exchange_replacement_warning">新規作成すると以前の依頼は破棄され、その回答は取り込めなくなります。取り込み済みの提案も破棄されます。続行しますか?</string>
     <string name="exchange_replacement_confirm">破棄して作成</string>
     <string name="exchange_replacement_decline">既存を維持</string>
     <string name="exchange_generate">依頼を作成</string>
@@ -558,17 +566,26 @@
         <item quantity="other">AIの提案にはホームに未配置のアプリ%1$d件が含まれます。提案を利用するにはそれらを選択してください。</item>
     </plurals>
 
-    <!-- Issue #328: 取り込み成功状態とtyped案内。 -->
+    <!-- Issue #328: 取り込み成功状態とtyped案内。Issue #374: CTA copyはT-18語彙
+         (spec 328 rev.2 D-3)、破棄確認本文はdurable (tombstone)意味論へ更新、
+         persistence失敗面を追加。 -->
     <string name="exchange_import_success_title">提案を取り込みました</string>
     <string name="exchange_import_success_warning_title">提案を取り込みました (判断なしの項目があります)</string>
     <string name="exchange_import_not_applied">まだホーム画面には適用されていません。</string>
-    <string name="exchange_import_cta_idle">この提案で整理を進める</string>
-    <string name="exchange_import_cta_run_in">選択に戻って整理を確定する</string>
+    <string name="exchange_import_cta_idle">この提案で続ける</string>
+    <string name="exchange_import_cta_run_in">この提案で続けて選択へ戻る</string>
     <string name="exchange_import_discard">破棄して閉じる</string>
     <string name="exchange_import_discard_confirm_title">取り込みを破棄しますか?</string>
-    <string name="exchange_import_discard_confirm_body">取り込んだ提案は保存されません。依頼が有効な間は、同じ回答を再度取り込めます。</string>
+    <string name="exchange_import_discard_confirm_body">取り込み済みの提案を破棄します。依頼が有効な間は、同じ回答を再度取り込めます。</string>
     <string name="exchange_import_discard_confirm_confirm">破棄</string>
     <string name="exchange_import_discarded_guidance">取り込みを破棄しました。依頼が有効な間は、同じ回答を再度取り込めます。</string>
+    <string name="exchange_import_persist_failed_title">提案を保存できませんでした</string>
+    <string name="exchange_import_persist_failed_body">提案はまだ保存されていません。端末の状態を確認して、もう一度保存を試してください。保存せず閉じると、この提案は失われます（依頼が有効な間は同じ回答を再度取り込めます）。</string>
+    <string name="exchange_import_persist_retry">もう一度保存する</string>
+    <string name="exchange_import_discard_failed">破棄できませんでした。もう一度お試しください。</string>
+    <!-- Issue #374 (DI-AC-01): ImportReviewを開けなかった場合のtyped案内
+         (期限切れ・無効化・不在) — 発明した再開面は出さない。 -->
+    <string name="exchange_import_review_unavailable">取り込み済みの提案を開けませんでした。期限切れまたは無効になっています。</string>
     <string name="exchange_import_summary_global_minimize">全体方針: 現状の配置をなるべく維持する</string>
             <string name="exchange_import_cta_failed">整理を開始できませんでした。もう一度お試しください。</string>
     <string name="exchange_start_frozen_import">取り込みを確認中のため、整理を開始できません。</string>

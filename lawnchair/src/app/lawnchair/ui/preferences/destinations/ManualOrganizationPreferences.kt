@@ -62,6 +62,7 @@ import app.lawnchair.organizer.diagnostics.model.Trigger
 import app.lawnchair.organizer.integration.exchange.ClipboardExchangeTransport
 import app.lawnchair.organizer.integration.exchange.ExchangeFlowModule
 import app.lawnchair.organizer.integration.exchange.FileExchangeTransport
+import app.lawnchair.organizer.integration.exchange.PendingImportedIntentModule
 import app.lawnchair.organizer.integration.exchange.ShareSheetExchangeTransport
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.PlacementCode
@@ -83,6 +84,7 @@ import app.lawnchair.organizer.ui.UsageAccessJitGateProvider
 import app.lawnchair.organizer.ui.exchange.ExchangeDiscardConfirmDialog
 import app.lawnchair.organizer.ui.exchange.ExchangeFlowBackHandler
 import app.lawnchair.organizer.ui.exchange.ExchangeFlowStateHolder
+import app.lawnchair.organizer.ui.exchange.ExchangeImportDiscardConfirmDialog
 import app.lawnchair.organizer.ui.exchange.exchangeFlowItems
 import app.lawnchair.organizer.ui.manualOrganizationFace
 import app.lawnchair.organizer.ui.missingAppSelectionItems
@@ -118,6 +120,10 @@ fun ManualOrganizationPreferences(
     // Issue #371: injectable so the settings-return instrumentation can drive
     // the host's lifecycle deterministically.
     jitLifecycleOwner: androidx.lifecycle.LifecycleOwner? = null,
+    // Issue #374 (spec 374 DI-AC-01/DI-AC-11): the hub status-card rows'
+    // one-shot exchange pre-open argument (request → T-15, pendingReview →
+    // ImportReview). Null — every legacy caller — does nothing.
+    exchangeOpen: app.lawnchair.ui.preferences.navigation.ExchangeOpen? = null,
 ) {
     val context = LocalContext.current
     val coordinator = run ?: remember { ManualOrganizationModule.get(context) }
@@ -147,6 +153,11 @@ fun ManualOrganizationPreferences(
             // Issue #371: the run machine and the exchange holder share one
             // process-scoped JIT Usage Access request gate.
             usageAccessGate = UsageAccessJitGateProvider.get(context),
+            // Issue #374 (spec 374): the durable pending imported intent
+            // store — the validated proposal is saved at the import settle,
+            // discarded through the tombstone two-phase commit, and deleted
+            // when a new request's generation replaces the session.
+            pendingImportStore = PendingImportedIntentModule.store(context),
         )
     }
     // Issue #371: the JIT Usage Access request dialog hosts at the run-state
@@ -323,6 +334,14 @@ fun ManualOrganizationPreferences(
     var pendingExchangeDiscard by remember { mutableStateOf(false) }
     val exchangeDiscardFocus = remember { FocusRequester() }
 
+    // Issue #374 (spec 328 rev.2 D-13): the import-discard confirmation,
+    // raised by the 取り込み成功状態's 破棄して閉じる button AND by system Back —
+    // one dialog, two entries. Confirm runs the holder's tombstone discard;
+    // dismissal keeps the success state and restores focus to the face's
+    // discard action through this requester.
+    var pendingImportDiscard by remember { mutableStateOf(false) }
+    val importDiscardFocus = remember { FocusRequester() }
+
     val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     var backCallback by remember { mutableStateOf<OnBackPressedCallback?>(null) }
 
@@ -414,12 +433,35 @@ fun ManualOrganizationPreferences(
         exchangeHolder.refreshActiveRequest()
     }
 
-    // Issue #328 (spec 328 D-2): the import success state intercepts system
-    // Back at the ALWAYS-composed hosting level — never inside the lazy item,
-    // whose composition can leave the viewport under large font. Composed
-    // after the screen-level handler above, so while enabled it takes the
-    // Back before the dismiss/navigate fallback.
-    app.lawnchair.organizer.ui.exchange.ExchangeImportSuccessBackHandler(exchangeHolder)
+    // Issue #374 (spec 374 DI-AC-01/DI-AC-11): the hub rows' one-shot exchange
+    // pre-open. The navigation argument is consumed exactly once per
+    // composition (recomposition-safe through the remembered flag; a
+    // restored composition after process death re-opens the face, which is
+    // the cold-process contract), and only while no exchange face is open —
+    // a re-entry from the hub navigates a fresh back-stack entry, so the
+    // pre-open fires on each deliberate row tap as intended.
+    var exchangeOpenConsumed by remember { mutableStateOf(false) }
+    LaunchedEffect(exchangeOpen) {
+        if (exchangeOpen == null || exchangeOpenConsumed) return@LaunchedEffect
+        exchangeOpenConsumed = true
+        if (exchangeHolder.screen !is app.lawnchair.organizer.ui.exchange.ExchangeScreen.Closed) return@LaunchedEffect
+        when (exchangeOpen) {
+            app.lawnchair.ui.preferences.navigation.ExchangeOpen.REQUEST -> exchangeHolder.openFlow()
+            app.lawnchair.ui.preferences.navigation.ExchangeOpen.PENDING_REVIEW -> exchangeHolder.openPendingImportReview()
+        }
+    }
+
+    // Issue #328 (spec 328 rev.2 D-13 / #374): the import success state
+    // intercepts system Back at the ALWAYS-composed hosting level — never
+    // inside the lazy item, whose composition can leave the viewport under
+    // large font. Composed after the screen-level handler above, so while
+    // enabled it takes the Back before the dismiss/navigate fallback. The
+    // #374 D-13 contract: Back and the 破棄して閉じる button converge on the
+    // host's ONE import-discard confirmation ([pendingImportDiscard]).
+    app.lawnchair.organizer.ui.exchange.ExchangeImportSuccessBackHandler(
+        exchangeHolder,
+        onDiscardRequest = { pendingImportDiscard = true },
+    )
 
     LaunchedEffect(state, focusTargetReady.value, focusTargetIndex) {
         // Issue #209 review: each run state is a fresh surface, but the lazy
@@ -619,6 +661,8 @@ fun ManualOrganizationPreferences(
                             onDiscardRequest = { pendingExchangeDiscard = true },
                             discardFocus = exchangeDiscardFocus,
                             onOpenDiagnostics = onOpenDiagnostics,
+                            onImportDiscardRequest = { pendingImportDiscard = true },
+                            importDiscardFocus = importDiscardFocus,
                             clipboardTransport = { ctx: android.content.Context, text: String ->
                                 ClipboardExchangeTransport(ctx).copy(text)
                             },
@@ -1057,6 +1101,8 @@ fun ManualOrganizationPreferences(
                     onDiscardRequest = { pendingExchangeDiscard = true },
                     discardFocus = exchangeDiscardFocus,
                     onOpenDiagnostics = onOpenDiagnostics,
+                    onImportDiscardRequest = { pendingImportDiscard = true },
+                    importDiscardFocus = importDiscardFocus,
                     clipboardTransport = { ctx: android.content.Context, text: String ->
                         ClipboardExchangeTransport(ctx).copy(text)
                     },
@@ -1096,6 +1142,25 @@ fun ManualOrganizationPreferences(
             onDismiss = {
                 pendingExchangeDiscard = false
                 exchangeDiscardFocus.requestFocus()
+            },
+        )
+    }
+
+    // Issue #374 (spec 328 rev.2 D-13): the ONE import-discard confirmation —
+    // the shared entry of the 取り込み成功状態's 破棄して閉じる button and system
+    // Back. Confirm goes through the holder's tombstone discard (the face
+    // closes only after the tombstone commit succeeds; a failed commit keeps
+    // the success state with a typed notice); dismiss keeps the success state
+    // and restores focus to the face's discard action.
+    if (pendingImportDiscard) {
+        ExchangeImportDiscardConfirmDialog(
+            onConfirm = {
+                pendingImportDiscard = false
+                exchangeHolder.discardImport()
+            },
+            onDismiss = {
+                pendingImportDiscard = false
+                importDiscardFocus.requestFocus()
             },
         )
     }
