@@ -3,7 +3,7 @@
 > Issue: #375
 > Spec: [spec.md](./spec.md)
 > Status: draft
-> Revision: 6（初回review 3件 + 2nd 4件 + 3rd 1件 + 4th 3件 + 5th review 2件対応 +
+> Revision: 7（初回review 3件 + 2nd 4件 + 3rd 1件 + 4th 3件 + 5th 2件 + 6th review 2件対応 +
 > 前提merge後のcurrent main `9dc3ec8fed`へのre-entry）
 
 ## Current evidence
@@ -297,25 +297,36 @@ AGENTS.md設計規約（小さなinterface・既存seamの再利用・platform�
      refactor後もgreenであることを回帰で確認する。テスト: durable saveをUI settle直前で
      barrier停止 → Main側でrebind admission開始、の順を決定的に構成し、gate保持中の
      Main待ちがないこと（双方が進行可能）をwall-clock非依存で証明する（SR-AC-08）。
-   - **gate上への線形化統一と純粋投影settle（5th review指摘1の解消）**: 分割されたsettleが
-     新しいadmission窓を作らないよう、durable saveの「有効なcommit」とattempt無効化
-     （cancel / supersede / input edit。`invalidateImportAttempt()` 経路）の「無効化commit」の
-     **効力発生点をgate上で1つに固定**する。holderにgate保護下のin-memoryな
-     **record commit状態**（committed-valid / invalidation-pending）を導入する:
-     (a) save commit（gate内のcritical section）はこの状態をcommitted-validへ更新し、
-     (b) attempt無効化はin-memory tokenの無効化と同時にこの状態をinvalidation-pendingへ更新
-     （Main上の即時操作。物理cleanup `deleteIf(record)` はgate保持下の後続critical section
-     で実行）、(c) anchor（Design 4）はgate内でreconcile・record完全一致・TTLに加え
-     **このcommit状態も検証**し、invalidation-pending / cleanup待ちのrecordを
-     Validとしてadmitしない（#374 Fence 2の線形化をgate解放後の分割でも損なわない）。
-     **gate解放後のUI settle（`settlePendingIntentSave` 相当）はscreen/stateの投影のみに
-     限定し、storeの `save` / `deleteIf` / `discard` / `delete` を一切呼ばない**
-     （現行 `settlePendingIntentSave()` がRUN_IN owning run不一致時に直接
-     `deleteIf` する構造は、durable mutationをIO critical section側へ移したうえで解消する）。
+   - **gate上への線形化統一と純粋投影settle（5th/6th review指摘1の解消）**: durable saveの
+     「有効なcommit」とattempt無効化（cancel / supersede / input edit / RUN_IN owning run
+     消失fence）の「無効化commit」の**効力発生点をgate上で1つに固定**する。無効化commitは
+     **#374のtombstone機構のgate保持下での転用**とする:
+     (i) gate内で現行recordを読み、対象attemptのrecordと一致する場合のみ
+     `store.discard()`（`discarded=true`へのatomic書換 → best-effort物理削除。既存API）を
+     実行する（一致しない＝より新しいrecordに置換済みなら何もしない。`deleteIf` の条件性を
+     tombstoneで再現）,
+     (ii) 物理削除はgate内の後続処理でbest-effortに行い、完了前のprocess death / holder破棄
+     でも次回読取のreconcile（既存の破棄mark検証）が当該recordをInvalidとして扱う
+     （**durable・crash-safeな正本**。in-memoryなcommit状態は持たない — holderの寿命
+     （route change / recreationで破棄）とcold resume（durable record/sessionのみから再構成）
+     の下でlifetime/bootstrapが破綻するin-memory案〔5th re-entry案〕は廃止。
+     6th review指摘1の解消）,
+     (iii) anchorはgate内でreconcileを再実行するためtombstone検証を自動的に含み、
+     無効化が効力を持った提案をadmitする経路がcold rebindを含めて存在しない,
+     (iv) **gate解放後のUI settle（`settlePendingIntentSave` 相当）はscreen/stateの投影のみ
+     に限定し、storeの `save` / `deleteIf` / `discard` / `delete` を一切呼ばない**
+     （現行 `settlePendingIntentSave()` がRUN_IN owning run不一致時に直接 `deleteIf` する
+     構造は、(i) のgate内条件付きtombstoneへ移したうえで解消する）。
+     record model（`DurablePendingIntent`のfield構成）は不変（既存 `discarded` fieldの転用。
+     ユーザー可視の破棄語彙・D-13確認契約は関与しない）。#374のsave fence oracle
+     （cancel/supersede中のstale record残存なし）は回帰でgreenを確認する。
      テスト: save完了・gate解放後、UI settle直前で停止 → cancel/supersede
      （RUN_IN owning run消失を含む）→ rebind admissionを競合させ、無効化が先に効力を持った
-     場合は `State.Capturing` 0件・cleanup完了前でもanchorがAdmitしないことを決定的に固定
-     （SR-AC-08）。
+     場合は `State.Capturing` 0件・物理削除完了前でもanchorがAdmitしないことを決定的に固定。
+     **Holder Aでsave commit → UI settle前に無効化 → 物理削除をbarrier停止 → Aを破棄して
+     別holder / process recreation相当（in-memory全破棄）からrebind → `State.Capturing`
+     0件**、および**対照ケース（正常commit済みrecordは新holder / cold processからAdmit）**
+     を追加する（SR-AC-08）。
    - **既存lockとの関係（5th review指摘2で固定）**: **exchange gateが#374 write
      serializationを完全に包含し、`pendingWriteMutex`（kotlinx Coroutine Mutex）を廃止・
      置換する**。blocking lock（monitor/`ReentrantLock`等）保持下では一切suspendしない
@@ -459,7 +470,7 @@ source変更は上記のみ。`favorites` / layout DB / recovery DB / export ses
 | SR-AC-05 | instrumentation: 通常run・idle継続のunchecked回帰 + rebind復元の「編集可・confirm必須」（confirmなしでplanに進まない否定的観測） | organizer instrumentation lane |
 | SR-AC-06 | 既存attach/freeze oracle（`attachIntent`回帰、`ExchangeImportSuccessInstrumentationTest`）無編集green | instrumentation lane |
 | SR-AC-07 | holder/instrumentation: reconcile不通でCTA非表示、single-flight、Busy拒否、成功後record残存・再継続可 + **race oracle（fake store/clock＋実際の`generate()`相当置換経路との並行）: rebuild成功 → session置換/破棄tombstone → anchor typed拒否・run不在の否定的観測（layout/journal 0件とcleanup件数を分離）** + **entryKindフリップ再取り込みoracle（置換検出→拒否→新record読み直し）** | unit + instrumentation |
-| SR-AC-08 | unit: 再構築seamのtable test（digest不一致/session不在/TTL → typed失敗、record残存）+ **anchor table test（Valid/record不一致〔entryKind含む〕/TTL越え/identity shape不正）＋「rebuild完了（gate外） → generate()置換を完走 → admission → anchor拒否」race oracle（fake clock/store）** + **identity破損fixture（wrong schema・digest長不正のvalid JSON）で例外なし・typed fail-closed・run不在** + **gate契約のdiff review（session置換・pre-send cancel・record変化操作の全gate配下化。gate不在の競合経路が存在しないこと）** + **検出seamのprobe test（検出開始時点でgate非保持。wall-clock非依存）** + **UI待機禁止oracle（saveのUI settle直前barrier → Main側rebind admission。gate保持中のMain待ちなし・双方進行可能）** + **線形化oracle（save完了・gate解放後・UI settle直前で停止 → cancel/supersede〔owning run消失含む〕 → admission競合。無効化が先に効力を持てば`State.Capturing` 0件・cleanup完了前でもAdmitしない）** + instrumentation（CTA押下でrun不在の否定的観測・anchor拒否後の面の扱い） | unit + instrumentation + diff review |
+| SR-AC-08 | unit: 再構築seamのtable test（digest不一致/session不在/TTL → typed失敗、record残存）+ **anchor table test（Valid/record不一致〔entryKind含む〕/TTL越え/identity shape不正）＋「rebuild完了（gate外） → generate()置換を完走 → admission → anchor拒否」race oracle（fake clock/store）** + **identity破損fixture（wrong schema・digest長不正のvalid JSON）で例外なし・typed fail-closed・run不在** + **gate契約のdiff review（session置換・pre-send cancel・record変化操作の全gate配下化。gate不在の競合経路が存在しないこと）** + **検出seamのprobe test（検出開始時点でgate非保持。wall-clock非依存）** + **UI待機禁止oracle（saveのUI settle直前barrier → Main側rebind admission。gate保持中のMain待ちなし・双方進行可能）** + **線形化oracle（tombstone正本: save完了・gate解放後・UI settle直前で停止 → cancel/supersede〔owning run消失含む〕の無効化commit → admission競合で`State.Capturing` 0件・物理削除完了前でもAdmitしない。Holder A→別holder / process recreation相当の横断oracle、および正常commit済みrecordの対照ケースを含む）** + instrumentation（CTA押下でrun不在の否定的観測・anchor拒否後の面の扱い） | unit + instrumentation + diff review |
 | SR-AC-09 | spec 331/228 diff review（Scope節と一致・gate規則不変）+ owner受入記録（Issue #375コメント） | PR diff review |
 | SR-AC-10 | strings走査（ja/en name集合・placeholder一致、spec 123 AC-5方式）+ hardcoded literal grep + a11y assertion + light/dark × ja/default screenshot | unit + manual evidence |
 
@@ -498,8 +509,9 @@ completedの往復）。performance観点は新規ではなく既存検出/compo
 - [ ] exchange mutation gate新設（controller `generate()`置換経路・pre-send invalidate・
       durable save・破棄・清掃delete・anchorのadmission区間のgate配下化。lock順序の一方向性
       確認。検出seamへのprobe test）
-- [ ] #374 save fence refactor（UI settleをgate解放後の純粋投影へ分離。record commit状態の
-      導入と線形化統一。fence 1/2 oracleの回帰green。UI待機禁止・線形化oracleの追加）
+- [ ] #374 save fence refactor（UI settleをgate解放後の純粋投影へ分離。無効化commitの
+      gate上tombstone化〔条件付き`discard()`〕。fence 1/2 oracleの回帰green。
+      UI待機禁止・線形化・横断oracleの追加）
 - [ ] rebind再構築seam（identity注入・anchor用源record）＋構造digest再検証（typed失敗含む）
       ＋往復property test＋projection全field等価oracle
 - [ ] reconcile純粋追加: identity shape破損検証（`Invalid`へ。fixture: wrong schema・

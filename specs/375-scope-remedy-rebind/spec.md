@@ -360,8 +360,9 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
   recordと**完全一致**すること（`DurablePendingIntent`のdata class同値。`entryKind`を含む
   全field。同一session宛の再取り込みで内容が同一でも `entryKind` のみ変化した場合 —
   復元モードの変化 — も置換として検出する）、sessionがadmission時点で失効していないこと、
-  gate保護下のrecord commit状態がcommitted-validであること（invalidation-pending /
-  cleanup待ちをValid扱いしない。exchange mutation gate節）、
+  recordが破棄mark（tombstone。flow内部の無効化commitを含む）を持たないこと
+  （`reconcilePendingIntent`の既存検証がgate内で再実行される。無効化commitはgate上で
+  tombstone commitとして効力を持つ。exchange mutation gate節）,
   のすべてが真であることである。判定とadmission（operation生成・`State.Capturing`発行）は
   **同一の排他境界内**で行われ、拒否時はprovisionalに取得したRUN leaseを即時解放して
   typed拒否として終わる（可観測run state・
@@ -384,8 +385,11 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
   gate解放後に行う — 現行 `ManualOrganizationRun.start()` はadmission後も同一同期呼出内で
   検出まで進むため、呼出側がgateを保持したまま `start()` を呼ぶ設計はこの界限に違反し、
   race oracleとも両立しない（3rd review指摘。anchor内部でgateに入りadmission完了まで
-  保持する形に固定）。実装形態（共有lock object、既存`pendingWriteMutex`の包含可否と
-  lock順序）はplan.mdに記載し、実装PRで確定する。
+  保持する形に固定）。実装形態はplan.mdに記載のとおり **process-wideなblocking lock
+  （monitor/`ReentrantLock`等）であり、#374のwrite serializationを完全に包含して
+  `pendingWriteMutex`（Coroutine Mutex）を廃止・置換する**。gate保持中にsuspension pointを
+  作らない（5th review指摘2で固定。実装PRへ残すのはDI提供位置など正当性に影響しない
+  詳細のみである）。
 - **gate下のUI待機禁止（4th review指摘1）**: exchange mutation gate保持中は
   `withContext(uiDispatcher)` 等によるMain dispatcherへの切替・完了待機を**絶対に行わない**。
   gate下の処理はIO上で完結する純粋なstore操作と判定のみとし、UI stateへのsettleは
@@ -395,19 +399,26 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
   cleanupを完結させて純粋なsettle結果を作り、gate解放後にUIへsettleする**形へ
   本Issueがrefactorする対象に含める。#374のsave fence oracle（cancel/supersede中の
   stale record残存なし）は維持される。
-- **gate上への線形化統一と純粋投影settle（5th review指摘1）**: durable saveの
-  「有効なcommit」とattempt無効化（cancel / supersede / input edit）の「無効化commit」の
-  **効力発生点をexchange gate上で1つに固定する**。holderはgate保護下のin-memoryな
-  record commit状態（provisional/committed相当。committed-valid / invalidation-pending）を
-  保持し、(a) save commitはgate内でこの状態を更新し、(b) attempt無効化はin-memory tokenの
-  無効化と同時にこの状態を無効側へ更新（物理cleanup `deleteIf` はgate保持下の後続
-  critical sectionで実行）、(c) anchorはgate内でこの状態も検証し、**invalidation-pendingや
-  cleanup待ちのrecordをValidとしてadmitしない**（#374 Fence 2の線形化をgate解放後の
-  分割でも損なわない）。**gate解放後のUI settleはscreen/stateの投影のみに限定し、
-  storeの `save` / `deleteIf` / `discard` / `delete` を一切呼ばない**。durable saveを
-  UI settle直前でbarrier停止させMain側でrebind admissionを開始する決定的oracleで、
-  無効化が先に効力を持った場合は `State.Capturing` が0件でありcleanup完了前でも
-  anchorがAdmitしないことをwall-clock非依存で固定する（SR-AC-08）。
+- **gate上への線形化統一と純粋投影settle（5th/6th review指摘1）**: durable saveの
+  「有効なcommit」とattempt無効化（cancel / supersede / input edit / RUN_IN owning run消失
+  fence）の「無効化commit」の**効力発生点をexchange gate上で1つに固定する**。無効化commitは
+  **#374のtombstone機構（`discarded=true`へのatomic書換 → best-effort物理削除）を
+  gate保持下で実行する**形とする: gate内で現行recordが対象attemptのrecordと一致することを
+  確認したうえでtombstoneをcommitし（一致しない＝より新しいrecordに置換済みなら何もしない。
+  `deleteIf` の条件性の再現）、物理削除はgate内の後続処理でbest-effortに行う。
+  tombstoneは **durableかつcrash-safeな正本**であり、物理削除の完了前にprocess death・
+  holder破棄が発生しても次回読取のreconcile（既存の破棄mark検証）が当該recordを
+  Invalidとして扱うため、「無効化が効力を持った提案をadmitする」経路がcold rebindを含めて
+  存在しない。anchorはgate内でreconcileを再実行するためtombstone検証を自動的に含む
+  （#374 Fence 2の線形化をgate解放後の分割でも損なわない。in-memoryなcommit状態は
+  持たない — 6th review指摘1のlifetime/bootstrap問題を構造で排除）。
+  **gate解放後のUI settleはscreen/stateの投影のみに限定し、storeの `save` / `deleteIf` /
+  `discard` / `delete` を一切呼ばない**。durable saveをUI settle直前でbarrier停止させ
+  Main側でrebind admissionを開始する決定的oracleで、無効化が先に効力を持った場合は
+  `State.Capturing` が0件であり、cleanup完了前でもanchorがAdmitしないことを
+  wall-clock非依存で固定する（SR-AC-08）。本設計はrecord model（`DurablePendingIntent`の
+  field構成）を変更しない（Non-goalsどおり。既存 `discarded` tombstoneの転用であり、
+  ユーザー可視の破棄語彙・D-13確認契約は関与しない）。
 - **gate下の処理時間の界限**: gate保持区間はrecord1件・session1件の小さなlocal file読書き
   （`AtomicFile`）とadmission判定・operation生成のみに限り、readiness gate・model load・
   候補検出等の長時間処理をgate下で行わない。他の面でのcancel/confirmがblockされるのは
@@ -550,10 +561,14 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
       Main側でrebind admissionを開始する順を決定的に構成し、gate保持中にMain dispatcherへの
       待機が発生しないこと（双方が進行可能であること）をwall-clock非依存でtestされる
       （#374 save fence refactor後の回帰を含む）。
-      **線形化oracle**: save完了・gate解放後、UI settle直前で停止した状態で
-      cancel/supersede（RUN_IN owning run消失を含む）を実行 → rebind admissionを競合させ、
-      無効化が先に効力を持った場合は `State.Capturing` が0件であり、物理cleanup完了前でも
-      anchorがAdmitしない（invalidation-pendingをValid扱いしない）ことがtestされる。
+      **線形化oracle（tombstone正本）**: save完了・gate解放後、UI settle直前で停止した状態で
+      cancel/supersede（RUN_IN owning run消失を含む）を実行 → 無効化commit（gate上の
+      tombstone commit）が先に効力を持った場合は `State.Capturing` が0件であり、物理削除
+      完了前でもanchorがAdmitしないことがtestされる。**Holder Aでsave commit → UI settle前に
+      無効化 → 物理削除をbarrier停止 → Aを破棄して別holder（およびprocess recreation相当の
+      in-memory全破棄）からrebindした場合も `State.Capturing` 0件であること**、および
+      **対照ケースとして正常commit済みrecordは新holder / cold processからAdmitできること**
+      をtestされる（crash-safeな正本としてのtombstone検証）。
 - [ ] **SR-AC-09**: spec 331改訂（D-2 remedy分割・§5経路更新・attach生存範囲明確化）と
       spec 228注記（復元初期値とD-1の関係）が作成され、**owner受入済み**である
       （受入自体は実装PR前のdocs変更）。
@@ -625,6 +640,22 @@ exchange系）、CI `final-status` green。本Issueはpersistent state変更・D
 
 ## Change history
 
+- 2026-09-22: **Re-entry revision 6（6th review 2026-09-22 Changes requested 2件対応、
+  [comment `5766679997`][10]）**。
+  **(1) 無効化commitの正本をdurable tombstoneへ固定（高 — blocking）**: 「in-memoryな
+  record commit状態は寿命・初期化契約がcold rebindと両立せず（holderはroute change /
+  recreationで破棄、cold resumeはdurable record/sessionのみから再構成）、正当なrecordを
+  拒否するかcleanup待ちの無効recordを再admitするかの二択になる」指摘に対し、in-memory
+  commit状態を廃止し、**attempt無効化commitをgate保持下でのtombstone commit
+  （既存 `discarded=true` atomic書換 → best-effort物理削除）として正本化**。tombstoneは
+  durable・crash-safeであり、物理削除完了前のprocess death / holder破棄でも既存reconcileの
+  破棄mark検証がInvalidとして扱うため、cold rebindを含めて「無効化済み提案のadmit」経路が
+  存在しない。reviewer要求のoracle（Holder A→B横断・process recreation相当・対照ケース）を
+  SR-AC-08へ追加。record model不変（Non-goals維持）。
+  **(2) spec側のlock primitive契約の一意化（中）**: spec gate節に残っていた
+  「`pendingWriteMutex`包含可否は実装PRで確定」の文言を削除し、**blocking gateによる
+  write serialization包含・mutex廃止・gate内suspension禁止**をspec本文へ明記
+  （実装PRへ残すのはDI提供位置等のみ）。
 - 2026-09-22: **Re-entry revision 5（5th review 2026-09-22 Changes requested 2件対応、
   [comment `5766543051`][9]）**。
   **(1) save commitとattempt無効化のgate上への線形化統一（高 — blocking）**: 「gate解放後の
@@ -749,3 +780,4 @@ exchange系）、CI `final-status` green。本Issueはpersistent state変更・D
 [7]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5766214632
 [8]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5766390303
 [9]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5766543051
+[10]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5766679997
