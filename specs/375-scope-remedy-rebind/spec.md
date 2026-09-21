@@ -1,6 +1,6 @@
 ---
 issue: "#375"
-status: draft
+status: accepted
 requirements: [FR-004, FR-006, FR-017]
 risk: []
 updated: 2026-09-22
@@ -18,8 +18,10 @@ updated: 2026-09-22
 > map「spec 331 D-2単一remedy」「spec 331 §5 idle entry経路」、§5 更新順序 #9、
 > §7.1 rebind metadata、§7.3 compatibility matrix、§8 依存graphと#374/#375責務分割、
 > §11「選択復元初期値の実装位置は#375のplanが所有」）。
-> 本specは[Issue #375][1]の成果物である。statusが `draft` の間はimplementation-readyではない。
-> 前提はすべてmerge済みである（BASELINE_SHA時点のmain。#365正本改訂、#369 T-08/T-13表示統合、
+> 本specは[Issue #375][1]の成果物である。Status: **accepted** — Phase1 re-entryの最終review
+> が **Approve**（[comment `5767085523`][13] @ `74e1fd0fae`、2026-09-22）となり、
+> owner指示（Phase 2実装進行）により実装着手する。
+> 前提はすべてmerge済みである（9dc3ec8fed時点のmain。#365正本改訂、#369 T-08/T-13表示統合、
 > #373 T-18表示・手段別失敗投影、#374 durable取り込み済み提案 — spec accepted・実装
 > [PR #399][4]）。本revisionは初回review（2026-09-19、Changes requested 3件、
 > [comment `5740062562`][5]）への対応と、前提merge後のcurrent mainへのre-entryである。
@@ -824,3 +826,4 @@ exchange系）、CI `final-status` green。本Issueはpersistent state変更・D
 [10]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5766679997
 [11]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5766867716
 [12]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5766986330
+[13]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5767085523
