@@ -360,6 +360,8 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
   recordと**完全一致**すること（`DurablePendingIntent`のdata class同値。`entryKind`を含む
   全field。同一session宛の再取り込みで内容が同一でも `entryKind` のみ変化した場合 —
   復元モードの変化 — も置換として検出する）、sessionがadmission時点で失効していないこと、
+  gate保護下のrecord commit状態がcommitted-validであること（invalidation-pending /
+  cleanup待ちをValid扱いしない。exchange mutation gate節）、
   のすべてが真であることである。判定とadmission（operation生成・`State.Capturing`発行）は
   **同一の排他境界内**で行われ、拒否時はprovisionalに取得したRUN leaseを即時解放して
   typed拒否として終わる（可観測run state・
@@ -387,15 +389,25 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
 - **gate下のUI待機禁止（4th review指摘1）**: exchange mutation gate保持中は
   `withContext(uiDispatcher)` 等によるMain dispatcherへの切替・完了待機を**絶対に行わない**。
   gate下の処理はIO上で完結する純粋なstore操作と判定のみとし、UI stateへのsettleは
-  gate / `pendingWriteMutex` 解放後に行う。#374のsave fence
+  gate解放後に行う。#374のsave fence
   （`launchDurablePendingIntentSave` がmutex保持下で `withContext(uiDispatcher)` により
   settleする現行構造）は、**IO上の短いcritical sectionでrecord書込・stale判定・条件付き
-  cleanupを完結させて純粋なsettle結果を作り、gate/mutex解放後にUIへsettleする**形へ
-  本Issueがrefactorする対象に含める（後段でcleanupを再取得する場合も `mutex → gate` の
-  逆順を作らない）。#374のsave fence oracle（cancel/supersede中のstale record残存なし）は
-  維持される。durable saveをUI settle直前でbarrier停止させMain側でrebind admissionを
-  開始する決定的oracleで、gate保持中のMain待ちが存在しないことをwall-clock非依存で
-  固定する（SR-AC-08）。
+  cleanupを完結させて純粋なsettle結果を作り、gate解放後にUIへsettleする**形へ
+  本Issueがrefactorする対象に含める。#374のsave fence oracle（cancel/supersede中の
+  stale record残存なし）は維持される。
+- **gate上への線形化統一と純粋投影settle（5th review指摘1）**: durable saveの
+  「有効なcommit」とattempt無効化（cancel / supersede / input edit）の「無効化commit」の
+  **効力発生点をexchange gate上で1つに固定する**。holderはgate保護下のin-memoryな
+  record commit状態（provisional/committed相当。committed-valid / invalidation-pending）を
+  保持し、(a) save commitはgate内でこの状態を更新し、(b) attempt無効化はin-memory tokenの
+  無効化と同時にこの状態を無効側へ更新（物理cleanup `deleteIf` はgate保持下の後続
+  critical sectionで実行）、(c) anchorはgate内でこの状態も検証し、**invalidation-pendingや
+  cleanup待ちのrecordをValidとしてadmitしない**（#374 Fence 2の線形化をgate解放後の
+  分割でも損なわない）。**gate解放後のUI settleはscreen/stateの投影のみに限定し、
+  storeの `save` / `deleteIf` / `discard` / `delete` を一切呼ばない**。durable saveを
+  UI settle直前でbarrier停止させMain側でrebind admissionを開始する決定的oracleで、
+  無効化が先に効力を持った場合は `State.Capturing` が0件でありcleanup完了前でも
+  anchorがAdmitしないことをwall-clock非依存で固定する（SR-AC-08）。
 - **gate下の処理時間の界限**: gate保持区間はrecord1件・session1件の小さなlocal file読書き
   （`AtomicFile`）とadmission判定・operation生成のみに限り、readiness gate・model load・
   候補検出等の長時間処理をgate下で行わない。他の面でのcancel/confirmがblockされるのは
@@ -538,6 +550,10 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
       Main側でrebind admissionを開始する順を決定的に構成し、gate保持中にMain dispatcherへの
       待機が発生しないこと（双方が進行可能であること）をwall-clock非依存でtestされる
       （#374 save fence refactor後の回帰を含む）。
+      **線形化oracle**: save完了・gate解放後、UI settle直前で停止した状態で
+      cancel/supersede（RUN_IN owning run消失を含む）を実行 → rebind admissionを競合させ、
+      無効化が先に効力を持った場合は `State.Capturing` が0件であり、物理cleanup完了前でも
+      anchorがAdmitしない（invalidation-pendingをValid扱いしない）ことがtestされる。
 - [ ] **SR-AC-09**: spec 331改訂（D-2 remedy分割・§5経路更新・attach生存範囲明確化）と
       spec 228注記（復元初期値とD-1の関係）が作成され、**owner受入済み**である
       （受入自体は実装PR前のdocs変更）。
@@ -609,6 +625,20 @@ exchange系）、CI `final-status` green。本Issueはpersistent state変更・D
 
 ## Change history
 
+- 2026-09-22: **Re-entry revision 5（5th review 2026-09-22 Changes requested 2件対応、
+  [comment `5766543051`][9]）**。
+  **(1) save commitとattempt無効化のgate上への線形化統一（高 — blocking）**: 「gate解放後の
+  UI settleまでにattempt無効化が起きると、cleanupより先にrebind anchorが保存済みrecordを
+  admitでき、#374 Fence 2の線形化が失われる」指摘に対し、durable saveの「有効なcommit」と
+  attempt無効化の「無効化commit」の効力発生点をexchange gate上で1つに固定
+  （gate保護下のrecord commit状態〔committed-valid / invalidation-pending〕をanchor判定に
+  追加。cleanup待ちrecordをValidとしてadmitしない）。**gate解放後のUI settleは
+  screen/state投影のみに限定しstore書込を一切呼ばない**ことを契約化。
+  「save完了 → gate解放 → UI settle直前で停止 → cancel/supersede → rebind admission競合」の
+  決定的oracleをSR-AC-08へ追加。
+  **(2) lock primitiveの固定（中）**: blocking gate保持下でのkotlinx Coroutine Mutex
+  取得（suspendし得る）を禁止し、**exchange gateが#374 write serializationを完全に包含し
+  `pendingWriteMutex`を廃止・置換する**案へ固定（gate内にsuspension pointを作らない）。
 - 2026-09-22: **Re-entry revision 4（4th review 2026-09-22 Changes requested 3件対応、
   [comment `5766390303`][8]）**。
   **(1) gate下のUI待機禁止とsave fence refactor（高）**: 「`launchDurablePendingIntentSave`
@@ -718,3 +748,4 @@ exchange系）、CI `final-status` green。本Issueはpersistent state変更・D
 [6]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5765970137
 [7]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5766214632
 [8]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5766390303
+[9]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5766543051

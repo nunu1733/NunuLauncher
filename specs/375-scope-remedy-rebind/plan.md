@@ -3,7 +3,7 @@
 > Issue: #375
 > Spec: [spec.md](./spec.md)
 > Status: draft
-> Revision: 5（初回review 3件 + 2nd review 4件 + 3rd review 1件 + 4th review 3件対応 +
+> Revision: 6（初回review 3件 + 2nd 4件 + 3rd 1件 + 4th 3件 + 5th review 2件対応 +
 > 前提merge後のcurrent main `9dc3ec8fed`へのre-entry）
 
 ## Current evidence
@@ -288,22 +288,41 @@ AGENTS.md設計規約（小さなinterface・既存seamの再利用・platform�
      `pendingWriteMutex` 保持下で `withContext(uiDispatcher)` によりsettleするため、
      gate配下化すると Main: run lock → gate待ち / IO: gate → mutex → Main待ち の循環が
      成立しうる。本Issueはsave fenceを次へrefactorする:
-     (i) IO上の短いcritical section（gate＋必要なmutex内）で record書込・stale判定
+     (i) IO上の短いcritical section（gate内）で record書込・stale判定
      （attempt token照合）・条件付きcleanup（`deleteIf`）を完結させ、**純粋なsettle結果**
      （`record`, `saved`, `wasCurrent` 等）を作る、
-     (ii) gate/mutexを解放してからUI dispatcherへsettleする（`settlePendingIntentSave` /
-     `deleteIf` のUI側後処理は解放後）,
-     (iii) cleanupを後段で再取得する場合も **`mutex → gate` の逆順を作らない**
-     （必要ならgateのみで再取得し、mutexはgate内でのみ取る）。
+     (ii) gateを解放してからUI dispatcherへsettleする、
+     (iii) cleanupを後段で再取得する場合も循環する取得順を作らない。
      #374のsave fence oracle（cancel/supersede中のstale record残存なし。fence 1/2）は
      refactor後もgreenであることを回帰で確認する。テスト: durable saveをUI settle直前で
      barrier停止 → Main側でrebind admission開始、の順を決定的に構成し、gate保持中の
      Main待ちがないこと（双方が進行可能）をwall-clock非依存で証明する（SR-AC-08）。
-   - **既存lockとの関係**: 正当性の根拠はgateである。#374の`pendingWriteMutex`はsave内部の
-     attempt-fence論理の実装詳細として残すかgateへ包含するかを実装PRで確定する
-     （残す場合のlock順序は「gate → `pendingWriteMutex`」に固定し、mutexとrun lockの
-     同時保持は行わない。包含する場合、#374のsave fence oracle群は挙動不変でgreenである
-     ことを回帰で確認）。
+   - **gate上への線形化統一と純粋投影settle（5th review指摘1の解消）**: 分割されたsettleが
+     新しいadmission窓を作らないよう、durable saveの「有効なcommit」とattempt無効化
+     （cancel / supersede / input edit。`invalidateImportAttempt()` 経路）の「無効化commit」の
+     **効力発生点をgate上で1つに固定**する。holderにgate保護下のin-memoryな
+     **record commit状態**（committed-valid / invalidation-pending）を導入する:
+     (a) save commit（gate内のcritical section）はこの状態をcommitted-validへ更新し、
+     (b) attempt無効化はin-memory tokenの無効化と同時にこの状態をinvalidation-pendingへ更新
+     （Main上の即時操作。物理cleanup `deleteIf(record)` はgate保持下の後続critical section
+     で実行）、(c) anchor（Design 4）はgate内でreconcile・record完全一致・TTLに加え
+     **このcommit状態も検証**し、invalidation-pending / cleanup待ちのrecordを
+     Validとしてadmitしない（#374 Fence 2の線形化をgate解放後の分割でも損なわない）。
+     **gate解放後のUI settle（`settlePendingIntentSave` 相当）はscreen/stateの投影のみに
+     限定し、storeの `save` / `deleteIf` / `discard` / `delete` を一切呼ばない**
+     （現行 `settlePendingIntentSave()` がRUN_IN owning run不一致時に直接
+     `deleteIf` する構造は、durable mutationをIO critical section側へ移したうえで解消する）。
+     テスト: save完了・gate解放後、UI settle直前で停止 → cancel/supersede
+     （RUN_IN owning run消失を含む）→ rebind admissionを競合させ、無効化が先に効力を持った
+     場合は `State.Capturing` 0件・cleanup完了前でもanchorがAdmitしないことを決定的に固定
+     （SR-AC-08）。
+   - **既存lockとの関係（5th review指摘2で固定）**: **exchange gateが#374 write
+     serializationを完全に包含し、`pendingWriteMutex`（kotlinx Coroutine Mutex）を廃止・
+     置換する**。blocking lock（monitor/`ReentrantLock`等）保持下では一切suspendしない
+     （Coroutine Mutexの `withLock` 取得はsuspendし得るため、blocking gateとの入れ子は
+     許容しない。gate内にsuspension pointを作らない）。save fence論理（fence 1/2・
+     attempt token照合・`deleteIf`）はgate内の同期critical sectionとして再実装し、
+     #374のsave fence oracle群は挙動不変でgreenであることを回帰で確認する。
    - **gate下の処理時間の界限**: gate保持区間はrecord1件・session1件の小さな`AtomicFile`
      読書きとadmission判定・operation生成のみ。readiness gate・model load・検出等の
      長時間処理は行わない（UIのcancel/confirmを長時間blockしない境界）。
@@ -312,8 +331,9 @@ AGENTS.md設計規約（小さなinterface・既存seamの再利用・platform�
      run gate（単一active run）・CTA single-flightとの役割分担はspec Stale state /
      concurrency節のとおり。
    - **lock順序の不変条件**: anchor経路の取得順は「run内部lock → gate → store読取」
-     （同一thread内。run lockは既に保持）。mutation経路の取得順は「gate → （必要なら）
-     `pendingWriteMutex`」であり、gate保持下でrun seamを呼ぶ経路は存在しない
+     （同一thread内。run lockは既に保持）。mutation経路の取得順は「gate」単独
+     （`pendingWriteMutex`廃止により入れ子は存在しない。gate内でのsuspendは禁止）であり、
+     gate保持下でrun seamを呼ぶ経路は存在しない
      （mutation holderはrun seamを呼ばない。#374着地構造の確認済み事実）ため、
      循環する取得順は存在せずdeadlock経路は生じない。anchor内の読取はrecord1件と
      session1件の小さなlocal file読取であり、anchorが`null`の既存経路には読取は発生しない。
@@ -439,7 +459,7 @@ source変更は上記のみ。`favorites` / layout DB / recovery DB / export ses
 | SR-AC-05 | instrumentation: 通常run・idle継続のunchecked回帰 + rebind復元の「編集可・confirm必須」（confirmなしでplanに進まない否定的観測） | organizer instrumentation lane |
 | SR-AC-06 | 既存attach/freeze oracle（`attachIntent`回帰、`ExchangeImportSuccessInstrumentationTest`）無編集green | instrumentation lane |
 | SR-AC-07 | holder/instrumentation: reconcile不通でCTA非表示、single-flight、Busy拒否、成功後record残存・再継続可 + **race oracle（fake store/clock＋実際の`generate()`相当置換経路との並行）: rebuild成功 → session置換/破棄tombstone → anchor typed拒否・run不在の否定的観測（layout/journal 0件とcleanup件数を分離）** + **entryKindフリップ再取り込みoracle（置換検出→拒否→新record読み直し）** | unit + instrumentation |
-| SR-AC-08 | unit: 再構築seamのtable test（digest不一致/session不在/TTL → typed失敗、record残存）+ **anchor table test（Valid/record不一致〔entryKind含む〕/TTL越え/identity shape不正）＋「rebuild完了（gate外） → generate()置換を完走 → admission → anchor拒否」race oracle（fake clock/store）** + **identity破損fixture（wrong schema・digest長不正のvalid JSON）で例外なし・typed fail-closed・run不在** + **gate契約のdiff review（session置換・pre-send cancel・record変化操作の全gate配下化。gate不在の競合経路が存在しないこと）** + **検出seamのprobe test（検出開始時点でgate非保持。wall-clock非依存）** + **UI待機禁止oracle（saveのUI settle直前barrier → Main側rebind admission。gate保持中のMain待ちなし・双方進行可能）** + instrumentation（CTA押下でrun不在の否定的観測・anchor拒否後の面の扱い） | unit + instrumentation + diff review |
+| SR-AC-08 | unit: 再構築seamのtable test（digest不一致/session不在/TTL → typed失敗、record残存）+ **anchor table test（Valid/record不一致〔entryKind含む〕/TTL越え/identity shape不正）＋「rebuild完了（gate外） → generate()置換を完走 → admission → anchor拒否」race oracle（fake clock/store）** + **identity破損fixture（wrong schema・digest長不正のvalid JSON）で例外なし・typed fail-closed・run不在** + **gate契約のdiff review（session置換・pre-send cancel・record変化操作の全gate配下化。gate不在の競合経路が存在しないこと）** + **検出seamのprobe test（検出開始時点でgate非保持。wall-clock非依存）** + **UI待機禁止oracle（saveのUI settle直前barrier → Main側rebind admission。gate保持中のMain待ちなし・双方進行可能）** + **線形化oracle（save完了・gate解放後・UI settle直前で停止 → cancel/supersede〔owning run消失含む〕 → admission競合。無効化が先に効力を持てば`State.Capturing` 0件・cleanup完了前でもAdmitしない）** + instrumentation（CTA押下でrun不在の否定的観測・anchor拒否後の面の扱い） | unit + instrumentation + diff review |
 | SR-AC-09 | spec 331/228 diff review（Scope節と一致・gate規則不変）+ owner受入記録（Issue #375コメント） | PR diff review |
 | SR-AC-10 | strings走査（ja/en name集合・placeholder一致、spec 123 AC-5方式）+ hardcoded literal grep + a11y assertion + light/dark × ja/default screenshot | unit + manual evidence |
 
@@ -478,8 +498,8 @@ completedの往復）。performance観点は新規ではなく既存検出/compo
 - [ ] exchange mutation gate新設（controller `generate()`置換経路・pre-send invalidate・
       durable save・破棄・清掃delete・anchorのadmission区間のgate配下化。lock順序の一方向性
       確認。検出seamへのprobe test）
-- [ ] #374 save fence refactor（UI settleをgate/mutex解放後に分離。純粋settle結果の作成。
-      fence 1/2 oracleの回帰green。UI待機禁止oracleの追加）
+- [ ] #374 save fence refactor（UI settleをgate解放後の純粋投影へ分離。record commit状態の
+      導入と線形化統一。fence 1/2 oracleの回帰green。UI待機禁止・線形化oracleの追加）
 - [ ] rebind再構築seam（identity注入・anchor用源record）＋構造digest再検証（typed失敗含む）
       ＋往復property test＋projection全field等価oracle
 - [ ] reconcile純粋追加: identity shape破損検証（`Invalid`へ。fixture: wrong schema・
@@ -503,10 +523,11 @@ completedの往復）。performance観点は新規ではなく既存検出/compo
   項目を解消 — review指摘2）。
 - **同一process内CTAへの構造digest再検証の適用要否**: spec Contract notes 1のowner確認待ち。
   適用しない場合の現行挙動（短時間窓・import時検証のみ）は既存契約のまま。
-- **gateの実装形態**: blocking lock（monitor/`ReentrantLock`）の薄い共有object、
-  `pendingWriteMutex`の包含可否（save fence論理の移管有無とlock順序「gate → mutex」固定）、
-  DI singletonの提供位置は実装PRで確定する（契約 — 保持区間・対象操作・検出のgate解放後
-  開始 — はspec Stale state / concurrency節で固定済み）。
+- **gateの実装形態**: blocking lock（monitor/`ReentrantLock`）の薄い共有objectで
+  **`pendingWriteMutex`を廃止・置換**する案に固定（gate内でsuspendしない）。DI singletonの
+  提供位置とrecord commit状態の保持形態（holder内field / gate object内）は実装PRで確定する
+  （契約 — 保持区間・対象操作・線形化統一・検出のgate解放後開始 — は
+  spec Stale state / concurrency節で固定済み）。
 - **anchor拒否後の面読み直しの表示詳細**（清掃クローズ時のtyped文言・置換読み直し時の
   遷移）は実装PRのstring diff / reviewで確定する（非blocking。契約は
   spec Stale state / concurrency節で固定済み）。
