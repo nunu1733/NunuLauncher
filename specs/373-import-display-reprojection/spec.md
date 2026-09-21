@@ -362,8 +362,10 @@ And primary remedyと詳細展開の区別は色のみに依存しない。
 Given T-18失敗面の表示中または詳細展開中にprocessが破棄される、
 Then 失敗はzero-writeであるため、消失するのは表示state（raw textのephemeral保持を含む）のみであり、
 layout DB・export sessionへの影響はない（現行契約の回帰）、
-And 診断面へのtransient保持（「診断を開く」で書き込まれたtyped原因）も消失し、
-process再生成後の診断面（navigation復元を含む）には補助行が現れない,
+And 診断面へのtransient保持（「診断を開く」で書き込まれたtyped原因）は **system-initiated
+process death** で消失し、死亡後の復元（navigation復元を含む）では補助行が現れない。
+同一process内のActivity recreation（configuration change等）はprocess deathではなく、
+補助行の保持は維持される,
 And 再起動後の回復は再取り込みである（依頼が有効期限内の場合。`SESSION_EXPIRED` の場合は
 手段別primary「依頼を作り直す」が案内する）、
 And 依頼TTL失効後の失敗面表示は「依頼を作り直す」をprimaryとし、期限切れ依頼宛の
@@ -461,8 +463,11 @@ And 依頼TTL失効後の失敗面表示は「依頼を作り直す」をprimary
   「診断を開く」が常設されることがtestされる。「診断を開く」は既存診断route（引数なし）への
   遷移であり、診断面に現在のattemptのtyped分類名・typed原因説明が「直近の取り込み失敗」
   補助行として表示されること（process-scopedなtransient保持。navigation saved stateへの
-  保存なし。raw text・ユーザーデータは渡さない）、process再生成後に補助行が復元されないこと
-  （lifecycle oracle）、diagnostics journalへの書込みが発生しないことがtest/reviewされる。
+  保存なし。raw text・ユーザーデータは渡さない）。lifecycle oracleは2面を分離する:
+  **Activity recreation（同一process継続）では補助行が保持されること**（process-scoped契約）と、
+  **system-initiated process death後のnavigation復元では補助行が復元されないこと**
+  （holderの非serializable・saved state外であることの確認）。diagnostics journalへの
+  書込みが発生しないことがtest/reviewされる。
   （D-11の5語彙の残り2種。D-11の補助情報経路「詳細展開・診断」を現在の失敗に対して
   両方成立させる）
 - [ ] **IM-AC-05**: T-17入力契約の回帰: spec 332 AC-1〜AC-4/AC-10対応test
@@ -497,7 +502,7 @@ And 依頼TTL失効後の失敗面表示は「依頼を作り直す」をprimary
 | IM-AC-01 | unit: 手段別projection純粋関数のtable-driven test（20種全typed → primary remedy category + primary copy resource + 詳細展開内容。ja/en resource解決を含む。未知typed → 既定remedyのfail-closed oracle）+ holder unit test（失敗settle → 失敗面state）。instrumentation: 失敗面のprimary面にtyped固有文言testTag/stringが存在しないことの否定的観測 + 詳細展開default閉 + 展開時のtyped原因表示 |
 | IM-AC-02 | unit: `CONTEXT_STALE` fixture（structural digest不一致。既存pipeline testのfixtureを再利用）→ primary copy/操作のassertion。instrumentation: 失敗面表示のcopy確認 |
 | IM-AC-03 | holder unit test: 依頼を作り直す操作 → `openFlow()` 相当seam呼出・session不変・zero-write。再取り込み操作 → `openImport()` 呼出・raw text破棄。run-in entryのscope凍結復帰の回帰。instrumentation: 導線の到達 |
-| IM-AC-04 | instrumentation: 「中断する」→ flow close・確認dialog不在・status経由で依頼生存の確認（再取り込み成立）。「診断を開く」→ route遷移（引数なし）・診断面の補助行に現在のattemptのtyped分類名・typed原因説明が表示されること（遷移元attempt由来）・raw text等ユーザーデータの受け渡し不在・process再生成（activity recreation / process death復元）後に補助行が復元されないこと（holder非永続のlifecycle oracle）・diagnostics journal書込み経路不在のreview/unit |
+| IM-AC-04 | instrumentation: 「中断する」→ flow close・確認dialog不在・status経由で依頼生存の確認（再取り込み成立）。「診断を開く」→ route遷移（引数なし）・診断面の補助行に現在のattemptのtyped分類名・typed原因説明が表示されること（遷移元attempt由来）・raw text等ユーザーデータの受け渡し不在。lifecycle oracle（2面分離）: Activity recreation（同一process継続）でも補助行が保持されること（instrumentation）、system-initiated process death後のnavigation復元では補助行が復元されないこと（holderが非serializable・saved state外であることのunit/review確認。instrumentation可能範囲での確認を含む）。diagnostics journal書込み経路不在のreview/unit |
 | IM-AC-05 | spec 332対応既存test（`ExchangeImportSurfaceInstrumentationTest`、`ExchangeFlowStateHolderTest` のsource失敗系、`ExchangeImportPipelineTest` envelope系、`ImportNormalizerTest`）のgreen + CI lane（`organizer-instrumentation-issue332-tests`）のgreen |
 | IM-AC-06 | spec 328対応既存test（`ExchangeImportSuccessInstrumentationTest`、`ExchangeFlowStateHolderTest` のsuccess/arbiter/anchor系）のgreen + 成功面diff review |
 | IM-AC-07 | strings走査（新規・改訂labelの語彙確認）+ review（D-13 §9規約との照合）。ja/en name集合・placeholder一致の機械確認 |
@@ -594,6 +599,13 @@ CI `final-status` green。本Issueは表示のみの変更であり（persistent
 
 ## Change history
 
+- 2026-09-21: Phase1 re-entry revision 4（[review Changes requested](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5756888737)の指摘1対応）。
+  lifecycle oracleの記載を2面に分離 — **Activity recreation（同一process継続）では
+  補助行が保持される**（process-scoped契約どおり）と **system-initiated process death後の
+  navigation復元では復元されない**（holder非serializable・saved state外の確認）。
+  それまでのtest oracle記載（「activity recreation後も復元されない」）は
+  activity recreationとprocess deathを混同しており、process-scoped契約と矛盾していた。
+  IM-AC-04・test oracle・process death scenario・plan Testing strategy / Risksを修正。
 - 2026-09-21: Phase1 re-entry revision 3（[review Changes requested](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5756736782)の指摘1対応）。
   「診断を開く」のtyped原因受け渡しをnavigation route引数（`@Serializable` data class化）から
   **process-scopedなtransient holder**（非serializable・navigation saved state /

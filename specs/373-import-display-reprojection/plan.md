@@ -242,8 +242,11 @@ fun exchangeImportFailureDisplay(failure: ExchangeImportFailure): ExchangeImport
   pipeline自体は無編集でgreen。
 - **instrumentation**: 失敗面構造（primary面の否定的観測: `exchange_failure_*` のtyped文言が
   primary nodeに存在しない。詳細展開default閉。3種操作 + 中断/診断の到達性）。
-  診断面の補助行（「診断を開く」遷移時に現在のattemptの分類名・説明が表示されること、
-  activity recreation / process death復元後は補助行が復元されないこと）。
+  診断面の補助行のlifecycle oracle（2面分離）: 「診断を開く」遷移時に現在のattemptの
+  分類名・説明が表示されること、**Activity recreation（同一process継続）でも補助行が
+  保持されること**（process-scoped契約）、**system-initiated process death後の
+  navigation復元では補助行が復元されないこと**（holderの非serializable・saved state外
+  であることのunit/review確認。instrumentation可能範囲での確認を含む）。
   `ExchangeImportSuccessInstrumentationTest` と
   `organizer-instrumentation-issue332-tests` lane（T-17回帰）のgreen。
 - **device evidence**: 200% font × ja/default のscreenshot evidence（IM-AC-09）。
@@ -302,12 +305,15 @@ fun exchangeImportFailureDisplay(failure: ExchangeImportFailure): ExchangeImport
 - **`exchangeContractFailureText` の存続**: 2 call siteが残る限り関数は消せない。#375が
   SCOPE_MISMATCH表示を改訂した後、#377で統合/置換を評価する（本Issueでは触れない）。
 - **transient holderのlifecycle（review指摘対応）**: holderをserializableにしたり
-  navigation route引数・`SavedStateHandle` へ載せると、process再生成後のnavigation復元で
-  「直近の取り込み失敗」が復元され、specの非永続契約（IM-AC-04・process death scenario）が
-  破れる。holderは非serializableなprocess memory上のobjectとし、activity recreation /
-  process death復元後に補助行が復元されないことをlifecycle oracle（instrumentation）で
-  検証する。診断route自体は引数なしのままであり、既存diagnostics route系test
-  （`OrganizerDiagnosticsRouteInstrumentationTest`）の無編集greenをgateにする。
+  navigation route引数・`SavedStateHandle` へ載せると、system-initiated process death後の
+  navigation復元で「直近の取り込み失敗」が復元され、specの非永続契約（IM-AC-04・
+  process death scenario）が破れる。holderは非serializableなprocess memory上のobjectとし、
+  lifecycle oracleは2面を分離して検証する — **Activity recreation（同一process継続）では
+  補助行が保持される**こと（process-scoped契約どおり。holderをrecreationでclearしない）と、
+  **system-initiated process death後のnavigation復元では補助行が復元されない**こと
+  （非serializable・saved state外であることのunit/review確認）。診断route自体は引数なしの
+  ままであり、既存diagnostics route系test（`OrganizerDiagnosticsRouteInstrumentationTest`）の
+  無編集greenをgateにする。
 
 ## Explicitly unverified areas
 
