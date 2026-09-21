@@ -90,6 +90,17 @@ class ExchangeFlowStateHolderTest {
         /** Issue #372 review: replacement-identity oracle counts real saves. */
         var saveCalls = 0
 
+        /**
+         * Issue #372 review: a controllable gate that parks the invalidate
+         * BEFORE it clears the session, so the settle-pending boundary is
+         * deterministic in the busy-close regression.
+         */
+        @Volatile
+        var invalidateGate: CountDownLatch? = null
+
+        @Volatile
+        var invalidateEntered = false
+
         override fun save(session: ExportSession): Boolean {
             saveCalls++
             this.session = session
@@ -108,7 +119,11 @@ class ExchangeFlowStateHolderTest {
         override fun active(nowEpochMs: Long): ExportSession? = session?.takeIf { !it.isExpired(nowEpochMs) }
 
         override fun invalidate(exportId: String) {
-            if (session?.exportId == exportId) session = null
+            if (session?.exportId == exportId) {
+                invalidateEntered = true
+                invalidateGate?.await(5, TimeUnit.SECONDS)
+                session = null
+            }
         }
     }
 
@@ -1925,19 +1940,27 @@ class ExchangeFlowStateHolderTest {
             ExchangeDisclosureState(generated.session, generated.packageText, PrivacyTier.EXTERNAL_REDACTED),
         )
 
-        // The confirm accepts: terminal cancelling, invalidate in flight.
+        // A blocking store: the invalidate is provably unfinished while the
+        // gate holds, making the settle-pending boundary deterministic.
+        val gate = CountDownLatch(1)
+        store.invalidateGate = gate
         holder.closeDisclosure()
         assertTrue(currentDisclosureState(holder).cancelling)
+        awaitScreen(holder) { store.invalidateEntered }
 
-        // A second close (visible 閉じる slot or Back) is refused while the
-        // invalidate is in flight — the flow can only close via the settle.
+        // A second close while the invalidate is in flight: refused — the
+        // face is retained and nothing is left mid-settle.
         holder.closeDisclosure()
         assertTrue(
             "the cancelling face must not be closable before the settle",
-            holder.screen is ExchangeScreen.Disclosing,
+            currentDisclosureOrNull(holder)?.cancelling == true,
         )
+
+        // The gate releases: exactly then the flow closes and only the
+        // confirmed unsent session is invalidated.
+        gate.countDown()
         awaitScreen(holder) { holder.screen is ExchangeScreen.Closed }
-        assertNull("exactly the confirmed unsent session is invalidated", store.session)
+        assertNull(store.session)
     }
 
     @Test

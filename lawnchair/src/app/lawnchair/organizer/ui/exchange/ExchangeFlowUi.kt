@@ -1704,10 +1704,13 @@ fun ExchangeFlowBackHandler(holder: ExchangeFlowStateHolder, onDiscardRequest: (
  * T-16 破棄 button and system Back. Confirm invalidates exactly the unsent
  * session (through the holder's existing `closeDisclosure` structural gate);
  * dismiss keeps the T-16 face. No timeout auto-confirm/cancel (organization-
- * run-ux §6).
+ * run-ux §6). Focus ownership is deterministic: the SAFE action (dismiss /
+ * keep) takes focus when the dialog opens, and closing the dialog restores
+ * focus into the face (Compose dialog focus restoration).
  */
 @Composable
 fun ExchangeDiscardConfirmDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    val safeActionFocus = remember { FocusRequester() }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -1733,12 +1736,15 @@ fun ExchangeDiscardConfirmDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
         dismissButton = {
             TextButton(
                 onClick = onDismiss,
-                modifier = Modifier.testTag("exchange-discard-dismiss"),
+                modifier = Modifier
+                    .focusRequester(safeActionFocus)
+                    .testTag("exchange-discard-dismiss"),
             ) {
                 Text(stringResource(R.string.exchange_cancel))
             }
         },
     )
+    LaunchedEffect(Unit) { safeActionFocus.requestFocus() }
 }
 
 /**
