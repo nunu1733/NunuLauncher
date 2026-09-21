@@ -122,6 +122,9 @@ public final class OrganizerModelReloadAdapter {
                     lock.wait(remaining);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
+                    // Issue #376: a giving-up caller must not leave a stale
+                    // pending token for a later generation to complete.
+                    model.cancelOrganizerReloadIfCurrent(requestId);
                     return new RequestResult(Outcome.FAILED, null);
                 }
             }

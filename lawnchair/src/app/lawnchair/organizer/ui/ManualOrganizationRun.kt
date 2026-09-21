@@ -503,6 +503,26 @@ class ManualOrganizationRun internal constructor(
     private var recoveryEntryOrigin: RecoveryEntryOrigin? = null
     private var recoveryEntryReturnState: State? = null
 
+    /**
+     * Issue #376 (spec D5): process-local handoff for the hub CTA's
+     * navigation. The tap arms it; the durable-recovery run destination
+     * consumes it exactly once before admitting. Being process-local, it
+     * dies with the process — after a process death the restored route finds
+     * nothing to consume and pops back to the hub, so the only restart path
+     * is the status card's CTA again (RS-AC-03). Never persisted.
+     */
+    @Volatile private var durableEntryLaunchArmed = false
+
+    fun armDurableEntryLaunch() {
+        durableEntryLaunchArmed = true
+    }
+
+    fun consumeDurableEntryLaunchArm(): Boolean {
+        val armed = durableEntryLaunchArmed
+        durableEntryLaunchArmed = false
+        return armed
+    }
+
     private fun updateOperationActiveLocked() {
         operationActiveHolder.value = activeOperation != null || recoveryLease != null
     }

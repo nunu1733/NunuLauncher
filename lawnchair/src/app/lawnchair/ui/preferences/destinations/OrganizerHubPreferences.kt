@@ -140,13 +140,15 @@ fun OrganizerHubPreferences(
         runCatching { focusRequester.requestFocus() }
     }
 
-    // Issue #376 (spec D5): the restore CTA navigates to the existing run
-    // destination with the durable-recovery flag; that destination owns the
-    // entry's admission in its own scope and pops itself on a silent
-    // rejection (lease busy, expired hint), so the navigation never depends
-    // on this surface's composition lifetime.
+    // Issue #376 (spec D5): the restore CTA arms a process-local launch
+    // handoff and navigates to the existing run destination with the
+    // durable-recovery flag; that destination consumes the handoff, owns the
+    // admission in its own scope, and pops itself on a silent rejection or a
+    // process-death restore (nothing to consume), so the navigation never
+    // depends on this surface's composition lifetime.
     val navController = LocalNavController.current
     val onRestore: () -> Unit = {
+        coordinator.armDurableEntryLaunch()
         navController.navigate(HomeScreenManualOrganization(durableRecovery = true))
     }
 

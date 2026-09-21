@@ -1092,6 +1092,26 @@ class ManualOrganizationRunTest {
     }
 
     @Test
+    fun durableEntryLaunchHandoffIsConsumedExactlyOnceAndLostOnProcessDeath() {
+        // Issue #376 (RS-AC-03): the hub CTA arms a process-local handoff; a
+        // fresh coordinator (process death) has nothing armed, so a restored
+        // durable-recovery route pops back to the hub instead of re-running
+        // the flow.
+        val application = FakeApplication(readyInput())
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        assertFalse(runner.consumeDurableEntryLaunchArm())
+
+        runner.armDurableEntryLaunch()
+        assertTrue(runner.consumeDurableEntryLaunchArm())
+        assertFalse(runner.consumeDurableEntryLaunchArm())
+
+        // A fresh coordinator instance models the process death boundary.
+        val restarted = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        assertFalse(restarted.consumeDurableEntryLaunchArm())
+    }
+
+    @Test
     fun hubOriginRecoveryResultStateSurvivesTheGenericDismissal() {
         // Issue #376 (RS-AC-04 / spec D5): the explicit hub return owns the
         // result-face exit; a generic dismissal (host dispose, diagnostics

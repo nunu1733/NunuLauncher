@@ -184,7 +184,13 @@ fun ManualOrganizationPreferences(
     // once reconciliation reaches a terminal state, without the user
     // navigating away. While no result is known yet, an explicit checking row
     // keeps the loading state visually distinct from "never organized".
-    val showDurableStatus = state is ManualOrganizationRun.State.Idle || state is ManualOrganizationRun.State.Cancelled
+    // Issue #376 (spec D6 read serialization): in durable-recovery mode the
+    // status read is suppressed entirely — the destination's admission issues
+    // the entry read, and both reads share the module's non-blocking mutex,
+    // so running them concurrently would fail-close the admission against
+    // its own display read.
+    val showDurableStatus = !durableRecovery &&
+        (state is ManualOrganizationRun.State.Idle || state is ManualOrganizationRun.State.Cancelled)
     val readinessState by coordinator.readinessState.collectAsStateWithLifecycle()
     var durableStatus by remember { mutableStateOf<OrganizerDurableStatus?>(null) }
     LaunchedEffect(showDurableStatus, readinessState) {
@@ -215,23 +221,39 @@ fun ManualOrganizationPreferences(
     // unseen pending preview.
     if (durableRecovery) {
         val navController = LocalNavController.current
-        // Exactly once per destination instance: a child-destination round
-        // trip (diagnostics push → Back) re-composes this face, and a second
-        // admission attempt would reject against the live terminal state and
-        // pop the result surface away.
-        var durableAdmissionHandled by androidx.compose.runtime.saveable.rememberSaveable {
-            androidx.compose.runtime.mutableStateOf(false)
+        // Handoff discipline (spec D5/RS-AC-03): the hub CTA arms a
+        // process-local launch marker; this destination consumes it once per
+        // generation. A child-destination round trip (diagnostics push →
+        // Back) re-runs this effect in the same process and must not
+        // re-admit against a live terminal state; a process death loses the
+        // marker entirely, so the restored route pops back to the hub and
+        // the only restart path is the status card's CTA again.
+        var admissionGeneration by androidx.compose.runtime.saveable.rememberSaveable {
+            androidx.compose.runtime.mutableStateOf("")
         }
+        val processGeneration = remember { java.util.UUID.randomUUID().toString() }
         LaunchedEffect(durableRecovery) {
-            if (durableAdmissionHandled) return@LaunchedEffect
-            durableAdmissionHandled = true
+            if (admissionGeneration != processGeneration) {
+                admissionGeneration = processGeneration
+            } else if (admissionGeneration.isNotEmpty()) {
+                return@LaunchedEffect
+            }
+            if (!coordinator.consumeDurableEntryLaunchArm()) {
+                navController.popBackStack()
+                return@LaunchedEffect
+            }
             val effectJob = coroutineContext.job
+            val myEntryId = navController.currentBackStackEntry?.id
             withContext(NonCancellable) {
                 val admitted = withContext(Dispatchers.IO) {
                     coordinator.beginRecoveryPreviewFromDurableEntry()
                 }
                 if (!admitted) {
-                    navController.popBackStack()
+                    // Only pop while this destination is still the current
+                    // entry: a Back that raced the admission already popped
+                    // it, and popping again would leave the hub too.
+                    val stillCurrent = navController.currentBackStackEntry?.id == myEntryId
+                    if (stillCurrent) navController.popBackStack()
                 } else if (!effectJob.isActive) {
                     withContext(Dispatchers.IO) { coordinator.cancelRecoveryPreview() }
                 }

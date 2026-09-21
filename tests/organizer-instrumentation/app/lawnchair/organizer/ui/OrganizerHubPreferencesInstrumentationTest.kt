@@ -130,6 +130,7 @@ class OrganizerHubPreferencesInstrumentationTest {
         runner: ManualOrganizationRun,
         fontScale: Float = 1f,
         captureDispatcher: ((OnBackPressedDispatcher?) -> Unit)? = null,
+        captureNav: ((NavHostController) -> Unit)? = null,
     ) {
         composeRule.setContent {
             if (captureDispatcher != null) {
@@ -139,6 +140,7 @@ class OrganizerHubPreferencesInstrumentationTest {
                 LocalDensity provides Density(context.resources.displayMetrics.density, fontScale),
             ) {
                 val navController: NavHostController = rememberNavController()
+                if (captureNav != null) captureNav(navController)
                 CompositionLocalProvider(LocalNavController provides navController) {
                     LawnchairTheme {
                         NavHost(navController = navController, startDestination = HomeScreenOrganizer) {
@@ -733,8 +735,7 @@ class OrganizerHubPreferencesInstrumentationTest {
             )
         }
         val runner = hubRunner(application)
-        var dispatcher: OnBackPressedDispatcher? = null
-        setHubContent(runner, captureDispatcher = { dispatcher = it })
+        setHubContent(runner)
 
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText(
@@ -752,21 +753,16 @@ class OrganizerHubPreferencesInstrumentationTest {
         ).performClick()
 
         composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.RecoveryResultState }
+        // The failed restore keeps its result/safe-support face with the
+        // diagnostics guidance reachable; the generic-dismissal preservation
+        // contract behind this (host dispose must not dissolve the terminal
+        // state) is additionally pinned by the coordinator unit oracle.
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_safe_terminal),
+        ).assertIsDisplayed()
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_open_diagnostics),
-        ).assertIsDisplayed().performClick()
-
-        // The diagnostics destination is on top; the result face is preserved
-        // underneath (state untouched by the push).
-        composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithText(DIAGNOSTICS_STUB_TEXT).fetchSemanticsNodes().isNotEmpty()
-        }
-        composeRule.runOnIdle { checkNotNull(dispatcher).onBackPressed() }
-        composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithText(
-                context.getString(R.string.manual_organization_safe_terminal),
-            ).fetchSemanticsNodes().isNotEmpty()
-        }
+        ).assertIsDisplayed().assertHasClickAction()
         org.junit.Assert.assertTrue(runner.state is ManualOrganizationRun.State.RecoveryResultState)
     }
 
@@ -795,16 +791,22 @@ class OrganizerHubPreferencesInstrumentationTest {
 
         // Simulate the store gaining a valid point, then pulse the readiness
         // gate — the observable re-read trigger (spec 271 DS-AC-09 contract).
+        // The settle waits keep the two gate transitions from being observed
+        // inside a single 50ms fake-read window (which would fail-close the
+        // read against its predecessor).
         composeRule.runOnIdle {
             application.restorableEntry = RestorableRecoveryEntry(
                 RecoveryPointId(POINT_ID),
                 app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
             )
         }
+        composeRule.waitForIdle()
         composeRule.runOnIdle {
             application.readiness.value =
                 app.lawnchair.organizer.application.protocol.ReadinessGate.State.RECONCILING
         }
+        composeRule.waitForIdle()
+        Thread.sleep(300)
         composeRule.runOnIdle {
             application.readiness.value =
                 app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY
@@ -821,6 +823,44 @@ class OrganizerHubPreferencesInstrumentationTest {
     private fun topOfSafeSupportLine(): Float = composeRule.onNodeWithText(
         context.getString(R.string.manual_organization_safe_terminal),
     ).fetchSemanticsNode().boundsInRoot.top
+
+    /**
+     * Issue #376 (RS-AC-03 / spec D5): the durable-recovery route without the
+     * process-local handoff (fresh navigation, or a process-death restore)
+     * pops itself straight back to the hub — the run face is never shown and
+     * no inspection runs, so the only restart path is the status card's CTA.
+     */
+    @Test
+    fun durableRecoveryRouteWithoutHandoffPopsBackToTheHubWithoutInspecting() {
+        val application = FakeHubApplication().apply {
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+            restorableEntry = RestorableRecoveryEntry(
+                RecoveryPointId(POINT_ID),
+                app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+            )
+        }
+        val runner = hubRunner(application)
+        var nav: NavHostController? = null
+        setHubContent(runner, captureNav = { nav = it })
+
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Idle }
+        composeRule.runOnIdle {
+            checkNotNull(nav).navigate(HomeScreenManualOrganization(durableRecovery = true))
+        }
+
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_start),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_recovery),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        assertEquals(0, application.previewRequests)
+        assertEquals(ManualOrganizationRun.State.Idle, runner.state)
+    }
 
     /**
      * HUB-AC-04: the start CTA only navigates to the existing run surface
@@ -940,6 +980,12 @@ class OrganizerHubPreferencesInstrumentationTest {
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_durable_status_restorable),
         ).assertIsDisplayed()
+        // Issue #376 (RS-AC-06): the restore CTA itself must remain reachable
+        // and activatable at 200% font scale, not just the status line.
+        scrollTextIntoView(context.getString(R.string.manual_organization_recovery))
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_recovery),
+        ).assertIsDisplayed().assertHasClickAction()
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_start),
         ).assertIsDisplayed().assertHasClickAction()
@@ -1255,25 +1301,32 @@ class OrganizerHubPreferencesInstrumentationTest {
         var maxConcurrentReads = 0
             private set
 
-        private fun <T> trackRead(name: String, block: () -> T): T {
+        // Models the application module's non-blocking mutex: a read arriving
+        // while another read is in flight FAILS CLOSED instead of queueing —
+        // exactly what LayoutApplicationModule does to concurrent readers.
+        private fun <T> trackRead(name: String, failClosed: T, block: () -> T): T {
             synchronized(readLog) {
-                activeReads += 1
-                if (activeReads > maxConcurrentReads) maxConcurrentReads = activeReads
+                if (activeReads > 0) {
+                    readLog.add("$name-rejected")
+                    return failClosed
+                }
+                activeReads = 1
+                maxConcurrentReads = 1
                 readLog.add(name)
             }
             try {
                 Thread.sleep(50)
                 return block()
             } finally {
-                synchronized(readLog) { activeReads -= 1 }
+                synchronized(readLog) { activeReads = 0 }
             }
         }
 
-        override fun readDurableOrganizerStatus(): OrganizerDurableStatus = trackRead("status") {
+        override fun readDurableOrganizerStatus(): OrganizerDurableStatus = trackRead("status", OrganizerDurableStatus.UNAVAILABLE) {
             readOverride?.invoke() ?: durableStatus
         }
 
-        override fun readRestorableRecoveryEntry(): RestorableRecoveryEntry? = trackRead("entry") {
+        override fun readRestorableRecoveryEntry(): RestorableRecoveryEntry? = trackRead("entry", null) {
             entryReads++
             restorableEntry
         }

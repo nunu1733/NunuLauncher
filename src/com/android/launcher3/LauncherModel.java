@@ -538,38 +538,46 @@ public class LauncherModel implements InstallSessionTracker.Callback {
         // loader instead of cancelling the request, so the confirmed restore
         // completes without ever binding the workspace.
         //
-        // The whole dispatch runs in one identity-checked critical section on
-        // the main executor (startLoaderWithoutCallbacks enforces the
-        // UI-thread precondition): the callback list is re-fetched here, so a
-        // callback unbind racing the earlier hasCallbacks() check degrades to
-        // the tokenless generation instead of leaving a pending token without
-        // a loader generation (the Issue #299 race, closed for this bridge
-        // too). startLoader's boolean only reports the direct-bind case — the
-        // async generation marks the token via loaderStarted.
+        // Like Issue #299, the token is registered on the caller thread
+        // FIRST, so a timeout/interrupt that gives up waiting can still
+        // cancel this exact request (cancelOrganizerReloadIfCurrent) even if
+        // the main executor is stalled. The main-executor step only verifies
+        // the token identity and starts the generation: the callback list is
+        // re-fetched there, so a callback unbind racing the earlier
+        // hasCallbacks() check degrades to the tokenless generation instead
+        // of leaving a pending token without a loader generation (the
+        // Issue #299 race, closed for this bridge too). startLoader's
+        // boolean only reports the direct-bind case — the async generation
+        // marks the token via loaderStarted.
+        OrganizerReloadRequest superseded;
+        synchronized (mLock) {
+            stopLoader();
+            superseded = mOrganizerReloadToken;
+            mOrganizerReloadToken = token;
+            mModelLoaded = false;
+        }
+        // Issue #150: terminalize a token displaced by this registration
+        // exactly once; requests already cancelled by stopLoader and already
+        // completed requests leave a null reference.
+        if (superseded != null) {
+            superseded.cancelled.run();
+        }
         MAIN_EXECUTOR.execute(() -> {
-            OrganizerReloadRequest superseded;
-            boolean neverStarted;
             synchronized (mLock) {
-                stopLoader();
-                superseded = mOrganizerReloadToken;
-                mOrganizerReloadToken = token;
-                mModelLoaded = false;
+                if (mOrganizerReloadToken != token) return;
                 if (hasCallbacks()) {
                     startLoader();
                 } else {
+                    // Issue #376: the settings-only cold process (D-15 hub
+                    // restore; the spec 271 DS-AC-10 bridge) has no bound
+                    // callbacks — the tokenless loader still completes the
+                    // organizer token at the binder boundary.
                     startLoaderWithoutCallbacks();
                 }
-                neverStarted = mOrganizerReloadToken == token && !token.loaderStarted;
-                if (neverStarted) {
+                if (mOrganizerReloadToken == token && !token.loaderStarted) {
                     mOrganizerReloadToken = null;
+                    token.cancelled.run();
                 }
-            }
-            // Issue #150 terminalize-exactly-once.
-            if (superseded != null) {
-                superseded.cancelled.run();
-            }
-            if (neverStarted) {
-                token.cancelled.run();
             }
         });
     }
