@@ -429,9 +429,11 @@ class ExchangeImportSurfaceInstrumentationTest {
             .toString()
         assertTrue("collapsed state must be announced", announcedState().contains(collapsedLabel.substringBeforeLast(" ")))
 
-        // Deterministic pre-dialog focus on the 破棄 action (via the
-        // semantics RequestFocus action the focusable node exposes).
-        composeRule.onNodeWithTag("exchange-discard").performSemanticsAction(SemanticsActions.RequestFocus)
+        // Deterministic pre-dialog focus on the 破棄 action, driven through
+        // the SAME host-owned FocusRequester the dismissal restore uses
+        // (FocusRequester is the one focus mechanism that is deterministic
+        // across devices; the semantics RequestFocus action is not).
+        composeRule.runOnIdle { discardFocus.requestFocus() }
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("exchange-discard").assertIsFocused()
 
