@@ -479,6 +479,12 @@ public class LauncherModel implements InstallSessionTracker.Callback {
                         // post-commit completion notification is delivered.
                         restoreToken.loaderStarted = true;
                     }
+                    if (organizerToken != null) {
+                        // Issue #376: same record-creation rule as the restore
+                        // token above — the async generation owns the terminal
+                        // signal even with an empty callback list.
+                        organizerToken.loaderStarted = true;
+                    }
                     mLoaderTask = new LoaderTask(
                             mApp, mBgAllAppsList, mBgDataModel, mModelDelegate, launcherBinder,
                             new UserManagerState(), organizerLeaseToken,
@@ -524,8 +530,44 @@ public class LauncherModel implements InstallSessionTracker.Callback {
             @NonNull Runnable cancelled) {
         OrganizerReloadRequest token = new OrganizerReloadRequest(
                 requestId, organizerLeaseToken, completed, cancelled);
+        // Issue #376: a settings-only cold process (the D-15 hub restore entry;
+        // the spec 271 DS-AC-10 bridge) holds a model loaded without bound
+        // callbacks, and the organizer reload's terminal signal rides the exact
+        // loader binder boundary — not the callback list. Like the Issue #299
+        // restore reload, an unbound Launcher UI must start the tokenless
+        // loader instead of cancelling the request, so the confirmed restore
+        // completes without ever binding the workspace. startLoaderWithout-
+        // Callbacks enforces the UI-thread precondition, hence the hop.
         if (!hasCallbacks()) {
-            token.cancelled.run();
+            MAIN_EXECUTOR.execute(() -> {
+                OrganizerReloadRequest superseded;
+                boolean neverStarted;
+                synchronized (mLock) {
+                    stopLoader();
+                    superseded = mOrganizerReloadToken;
+                    mOrganizerReloadToken = token;
+                    mModelLoaded = false;
+                    // startLoaderWithoutCallbacks enforces the UI-thread
+                    // precondition. Its boolean means "bound directly", not
+                    // "a task was created" — the async generation marks the
+                    // token via loaderStarted instead (Issue #299 rule).
+                    startLoaderWithoutCallbacks();
+                    if (mOrganizerReloadToken == token && !token.loaderStarted) {
+                        mOrganizerReloadToken = null;
+                        neverStarted = true;
+                    } else {
+                        neverStarted = false;
+                    }
+                }
+                // Issue #150 terminalize-exactly-once, mirrored for the
+                // unbound-callbacks branch.
+                if (superseded != null) {
+                    superseded.cancelled.run();
+                }
+                if (neverStarted) {
+                    token.cancelled.run();
+                }
+            });
             return;
         }
         OrganizerReloadRequest superseded;
@@ -574,6 +616,10 @@ public class LauncherModel implements InstallSessionTracker.Callback {
         final long organizerLeaseToken;
         final Consumer<ModelSnapshot> completed;
         final Runnable cancelled;
+        // Issue #376: set by startLoader when the request's async loader
+        // generation is created (mirrors RestoreReloadRequest.loaderStarted) —
+        // startLoader's boolean return only reports the direct-bind case.
+        boolean loaderStarted;
 
         OrganizerReloadRequest(long requestId, long organizerLeaseToken,
                 Consumer<ModelSnapshot> completed, Runnable cancelled) {

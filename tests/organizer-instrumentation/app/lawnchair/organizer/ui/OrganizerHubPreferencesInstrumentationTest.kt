@@ -550,15 +550,27 @@ class OrganizerHubPreferencesInstrumentationTest {
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_recovery_confirm),
         ).assertIsDisplayed()
+        // The entry coroutine publishes the preview before it returns; wait for
+        // the inspection observation so Back can never race the admission.
+        composeRule.waitUntil(5_000) { application.previewRequests >= 1 }
 
         composeRule.runOnIdle { checkNotNull(dispatcher).onBackPressed() }
 
-        composeRule.waitUntil(5_000) {
-            runner.state is ManualOrganizationRun.State.Idle &&
-                composeRule.onAllNodesWithText(
-                    context.getString(R.string.manual_organization_durable_status_restorable),
-                ).fetchSemanticsNodes().isNotEmpty()
+        composeRule.waitUntil(10_000) { runner.state is ManualOrganizationRun.State.Idle }
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_durable_status_restorable),
+            ).fetchSemanticsNodes().isNotEmpty()
         }
+        // Let the run-face destination leave composition and its back-stack
+        // entry settle before teardown, or the NavHost lifecycle races the
+        // activity destroy.
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_recovery_confirm),
+            ).fetchSemanticsNodes().isEmpty()
+        }
+        composeRule.waitForIdle()
     }
 
     /**

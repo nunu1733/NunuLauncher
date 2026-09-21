@@ -147,9 +147,10 @@ fun OrganizerHubPreferences(
     val navController = LocalNavController.current
     val scope = rememberCoroutineScope()
     val onRestore: () -> Unit = {
+        navController.navigate(HomeScreenManualOrganization())
         scope.launch {
             val admitted = withContext(Dispatchers.IO) { coordinator.beginRecoveryPreviewFromDurableEntry() }
-            if (admitted) navController.navigate(HomeScreenManualOrganization())
+            if (!admitted) navController.popBackStack()
         }
     }
 
