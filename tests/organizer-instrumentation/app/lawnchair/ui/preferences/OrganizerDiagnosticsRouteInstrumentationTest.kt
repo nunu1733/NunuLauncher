@@ -327,13 +327,13 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
 
     /**
      * Issue #372 (EX-AC-02 + EX-AC-01, rendered-UI oracle over the PRODUCTION
-     * navigation graph): with the idle consultation session alive, the real
-     * materials route (run surface → T-05 strategy surface → strategy radio
-     * row write through the production StrategyWriteArbiter) succeeds WITHOUT
-     * a lease rejection — constant authoring is never blocked by the idle
-     * consultation — and returning to the consultation re-opens the request
-     * face with the ACTIVE REQUEST pre-display restored (the session survived
-     * on the durable store).
+     * navigation graph and the REAL user route): hub → start CTA → T-07 →
+     * 「AIに相談」→ T-15 shows the ACTIVE REQUEST pre-display; Back returns
+     * through T-07 to the hub; the hub materials row 「Organization strategy」
+     * opens T-05 where a real strategy radio write commits through the
+     * AUTHORING-token arbiter WITHOUT a lease rejection; returning start CTA →
+     * T-07 → 「AIに相談」 restores the T-15 pre-display for the SAME durable
+     * session. Every transition is a real UI row click / system Back.
      */
     @Test
     fun issue372ConsultationSessionSurvivesARealMaterialsWriteViaTheProductionRoute() {
@@ -358,19 +358,53 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             ),
         )
         try {
-            val navController = composeProductionGraph(startDestination = HomeScreenManualOrganization())
-            composeRule.waitUntil(10_000) { fixture.state is ManualOrganizationRun.State.Idle }
+            val navController = composeProductionGraph(startDestination = HomeScreen)
 
-            // T-07 method choice 「AIに相談」 opens the request face, which
-            // pre-displays the ACTIVE REQUEST (existence + remaining time).
-            composeRule.onNodeWithText(context.getString(R.string.exchange_method_consult)).performClick()
-            composeRule.waitUntil(5_000) {
-                composeRule.onAllNodesWithTag("exchange-request-active").fetchSemanticsNodes().isNotEmpty()
+            fun pressBack() {
+                composeRule.runOnUiThread {
+                    val resumed = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+                        .getInstance()
+                        .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED)
+                        .filterIsInstance<androidx.activity.ComponentActivity>()
+                        .firstOrNull()
+                    checkNotNull(resumed).onBackPressedDispatcher.onBackPressed()
+                }
+                composeRule.waitForIdle()
             }
 
-            // The real materials route: production navigation to the strategy
-            // surface (T-05) and one REAL strategy write through its arbiter.
-            composeRule.runOnIdle { navController.navigate(HomeScreenOrganizerStrategy) }
+            // Hub → start CTA → T-07 → 「AIに相談」 → T-15 pre-display.
+            composeRule.onNodeWithText(context.getString(R.string.organizer_hub_title)).performClick()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.manual_organization_start),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithText(context.getString(R.string.manual_organization_start)).performClick()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.exchange_method_consult),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithText(context.getString(R.string.exchange_method_consult)).performClick()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithTag("exchange-request-title").fetchSemanticsNodes().isNotEmpty()
+            }
+
+            // Back: T-15 closes zero-write to T-07, then T-07 returns to the hub.
+            pressBack()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithTag("exchange-request-title").fetchSemanticsNodes().isEmpty()
+            }
+            pressBack()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.organizer_strategy_title),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+
+            // The hub materials 「Organization strategy」 row opens T-05; one
+            // real strategy write commits (AUTHORING token, no rejection).
+            composeRule.onNodeWithText(context.getString(R.string.organizer_strategy_title)).performClick()
             assertCurrentDestination(navController, HomeScreenOrganizerStrategy)
             val tidy = context.getString(R.string.organization_strategy_tidy_name)
             composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(tidy))
@@ -378,11 +412,20 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             composeRule.waitForIdle()
             composeRule.onNodeWithText(tidy).assertIsSelected()
 
-            // Back on the run surface: the request survives the materials
-            // write and the T-15 pre-display resurfaces.
-            composeRule.runOnIdle { navController.popBackStack() }
-            assertCurrentDestination(navController, HomeScreenManualOrganization())
-            composeRule.onNodeWithText(context.getString(R.string.exchange_method_consult)).assertIsDisplayed()
+            // Back to the hub, then the start CTA → T-07 → 「AIに相談」 again:
+            // the same durable request resurfaces through the T-15 pre-display.
+            pressBack()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.organizer_strategy_title),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithText(context.getString(R.string.manual_organization_start)).performClick()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.exchange_method_consult),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
             composeRule.onNodeWithText(context.getString(R.string.exchange_method_consult)).performClick()
             composeRule.waitUntil(5_000) {
                 composeRule.onAllNodesWithTag("exchange-request-active").fetchSemanticsNodes().isNotEmpty()
