@@ -7,6 +7,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -329,13 +333,30 @@ class ExchangeImportSuccessInstrumentationTest {
         composeRule.setContent {
             val content: @androidx.compose.runtime.Composable () -> Unit = {
                 app.lawnchair.ui.theme.LawnchairTheme {
+                    // Issue #374 (spec 328 rev.2 D-13): the host owns ONE
+                    // import-discard confirmation — BOTH faces' 破棄して閉じる
+                    // button raises it here and confirm runs the holder's
+                    // discard, exactly as ManualOrganizationPreferences wires
+                    // it (focus restoration omitted: the fixtures never assert
+                    // it and the dialog API takes no requester).
+                    var showDiscardConfirm by remember { mutableStateOf(false) }
                     LazyColumn {
                         exchangeFlowItems(
                             holder = holder,
                             onDiscardRequest = {},
+                            onImportDiscardRequest = { showDiscardConfirm = true },
                             clipboardTransport = { _, _ -> ExchangeTransportResult.Success },
                             shareTransport = { _, _ -> ExchangeTransportResult.Success },
                             fileTransport = FileExchangeTransport(context),
+                        )
+                    }
+                    if (showDiscardConfirm) {
+                        ExchangeImportDiscardConfirmDialog(
+                            onConfirm = {
+                                showDiscardConfirm = false
+                                holder.discardImport()
+                            },
+                            onDismiss = { showDiscardConfirm = false },
                         )
                     }
                 }
@@ -590,7 +611,11 @@ class ExchangeImportSuccessInstrumentationTest {
         // at the fixture's fixed clock).
         composeRule.onNodeWithTag("exchange-import-review-remaining")
             .assertIsDisplayed()
-            .assertTextContains("24")
+            // Compose 1.10 `assertTextContains` defaults to an EXACT match
+            // (substring = false) despite the "contains" wording of the
+            // failure message — the rendered line is the full plural text
+            // ("About 24 hours left"), so a substring match is required.
+            .assertTextContains("24", substring = true)
         // The D-13 discard entry (same label as the success face).
         composeRule.onNodeWithTag("exchange-import-review-discard")
             .assertIsDisplayed()
