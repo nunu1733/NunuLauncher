@@ -68,6 +68,14 @@ class Issue265ManualEditRecoveryInstrumentationTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
+        // Issue #371: the JIT Usage Access pause gates an ungranted process's
+        // first composition at the composed-phase entry. These tests drive
+        // production runs to Applied (organize/apply mechanics, not the
+        // permission flow), so grant the app-op — the granted fast path.
+        InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(
+            "appops set ${context.packageName} GET_USAGE_STATS allow",
+        ).close()
+        Thread.sleep(1000)
         launcher = LauncherAppState.getInstance(context)
         closeRecoveryStoreHelper()
         deleteRecoveryArtifacts()
