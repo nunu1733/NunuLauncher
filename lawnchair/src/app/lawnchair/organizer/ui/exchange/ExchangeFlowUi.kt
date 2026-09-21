@@ -2295,6 +2295,11 @@ private fun ExchangeImportOutcome(
             if (onOpenDiagnostics != null) {
                 TextButton(
                     onClick = {
+                        // Record the CURRENT attempt's typed cause; an attempt
+                        // without one (InputNotReady / unknown) empties the
+                        // recording instead — a previous attempt's cause is
+                        // never presented as the current failure (issue #373
+                        // implementation review).
                         display?.let {
                             ExchangeImportFailureDiagnostics.record(
                                 RecentImportFailure(
@@ -2302,7 +2307,7 @@ private fun ExchangeImportOutcome(
                                     explanation = detailExplanation ?: "",
                                 ),
                             )
-                        }
+                        } ?: ExchangeImportFailureDiagnostics.clear()
                         onOpenDiagnostics()
                     },
                     modifier = Modifier.testTag("exchange-import-open-diagnostics"),

@@ -151,8 +151,10 @@ data class ExchangeImportFailureDisplay(
 fun exchangeImportFailureDisplay(failure: ExchangeImportFailure): ExchangeImportFailureDisplay
 ```
 
-- mapping表（spec「primary mapping表」scenario）の20種 + 未知typed fallback
-  （`RETRY_IMPORT` + 既定copy。fail-closed）を1つのtableで固定する。`Contract` の
+- mapping表（spec「primary mapping表」scenario）の20種を1つのtableで固定する。
+  **runtime fallbackは持たない** — `ExchangeImportFailure` はsealed hierarchyであり、
+  投影の網羅 `when` が分類追加をcompile errorとして要求する（fail-closed性はsealed構造で
+  保証。実装review 1回目で確定）。`Contract` の
   `IntentValidationFailure` 14種は網羅 `when` で、envelope/normalizationは既存の分岐で処理し、
   分類追加漏れはcompiler + fallback両方で捕まえる。
 - 認識情報（`RecognizedImportInfo`）とraw detailの表示は現行の
@@ -227,8 +229,10 @@ fun exchangeImportFailureDisplay(failure: ExchangeImportFailure): ExchangeImport
 
 ## Failure handling
 
-- 未知typed失敗 → 既定remedy（`RETRY_IMPORT`）+ typed原因詳細展開（fail-closed。crash /
-  silent失敗しない）。Kotlin網羅 `when` が分類追加時の更新漏れをcompilerで要求する。
+- 分類追加漏れ → 網羅 `when` の **compile error** で検出される（runtime fallbackなし。
+  fail-closed性はsealed構造で保証され、crash / silent失敗経路は到達不能）。
+  non-typed outcome（`InputNotReady` 等）での「診断を開く」はholderを **空にする**
+  （以前のattemptの原因を現在の失敗として表示しない。実装review 1回目で確定）。
 - 「診断を開く」の遷移先不在（callback null）→ row非表示（操作の不存在はtyped失敗ではない）。
   holder未保持（process起動後〜最初の「診断を開く」まで・process再生成後）→ 補助行なしの
   現行表示（表示のみの変化であり、欠落はtyped失敗・errorにならない）。
@@ -239,16 +243,19 @@ fun exchangeImportFailureDisplay(failure: ExchangeImportFailure): ExchangeImport
 
 - **unit（JVM）**: projection純粋関数のtable-driven testが主oracle。20種全typedの
   remedy category + primary copy resource + 詳細展開内容、ja/en双方のresource解決、
-  未知typed fallback。holder testでremedy操作のseam呼出（`openImport`/`openFlow`/`close`）と
+  網羅 `when` のcompile保証。holder testでremedy操作のseam呼出（`openImport`/`openFlow`/`close`）と
   zero-write（session不変）を検証。`ExchangeImportPipelineTest` のfixtureを再利用し、
   pipeline自体は無編集でgreen。
 - **instrumentation**: 失敗面構造（primary面の否定的観測: `exchange_failure_*` のtyped文言が
   primary nodeに存在しない。詳細展開default閉。3種操作 + 中断/診断の到達性）。
   診断面の補助行のlifecycle oracle（2面分離）: 「診断を開く」遷移時に現在のattemptの
   分類名・説明が表示されること、**Activity recreation（同一process継続）でも補助行が
-  保持されること**（process-scoped契約）、**system-initiated process death後の
-  navigation復元では補助行が復元されないこと**（holderの非serializable・saved state外
-  であることのunit/review確認。instrumentation可能範囲での確認を含む）。
+  保持されること**（process-scoped契約。`scenario.recreate()` で直接assert）、
+  **system-initiated process death後のnavigation復元では補助行が復元されないこと**
+  （holder/recordが非serializable・saved state外であることのunit構造確認）。
+  holderの書込み規則のoracle: 現在のattemptがtyped分類を持つ場合は記録、持たない場合
+  （`InputNotReady` 等）は空化 — 旧recordをseedした状態でInputNotReady面から
+  「診断を開く」→holderが空になることを直接assert（実装review 1回目対応）。
   `ExchangeImportSuccessInstrumentationTest` と
   `organizer-instrumentation-issue332-tests` lane（T-17回帰）のgreen。
 - **device evidence**: 200% font × ja/default のscreenshot evidence（IM-AC-09）。

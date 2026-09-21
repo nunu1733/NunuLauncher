@@ -42,7 +42,8 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -147,7 +148,7 @@ import org.junit.runner.RunWith
 class OrganizerDiagnosticsRouteInstrumentationTest {
 
     @get:Rule
-    val composeRule = createComposeRule()
+    val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     /**
      * Records SAF launch intents and delivers results through
@@ -272,6 +273,24 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
         // The journal stays untouched: the auxiliary row is user-facing reason,
         // not a diagnostics event (organizer-diagnostics.md §2 separation).
         assertEquals("the aux row must not emit journal events", 0, port.snapshotCalls)
+
+        // IM-AC-04 lifecycle oracle (Activity recreation side, direct): the
+        // recording is process-scoped — an Activity recreation (configuration
+        // change etc.) is NOT a process death, so the auxiliary row survives
+        // it. (The process-death side is pinned structurally in
+        // ExchangeImportFailureDisplayTest#diagnosticsRecordingIsNotSerializable.)
+        composeRule.activityRule.scenario.recreate()
+        // Re-compose the face on the recreated activity (what re-entering the
+        // route does); the row must come from the SURVIVING holder recording.
+        composeScreen(port, registry)
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("organizer-diagnostics-recent-import-failure")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("organizer-diagnostics-recent-import-failure").assertIsDisplayed()
+        composeRule.onNodeWithTag("organizer-diagnostics-recent-import-failure-type")
+            .assertTextContains("CONTEXT_STALE")
+
         app.lawnchair.organizer.ui.exchange.ExchangeImportFailureDiagnostics.resetForTests()
     }
 

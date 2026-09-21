@@ -43,6 +43,7 @@ import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.test.core.app.ApplicationProvider
 import androidx.core.view.drawToBitmap
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.lawnchair.organizer.integration.InputReadinessReason
 import app.lawnchair.organizer.integration.exchange.ExchangeFlowController
 import app.lawnchair.organizer.integration.exchange.ExchangeInputResult
 import app.lawnchair.organizer.integration.exchange.ExchangeStructuralResult
@@ -109,7 +110,7 @@ class ExchangeImportSurfaceInstrumentationTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()
 
-    private class FakeStore : ExportSessionStore {
+    private open class FakeStore : ExportSessionStore {
         /** Issue #372: configurable so the T-15 pre-display can be driven. */
         var session: app.lawnchair.organizer.personalization.ExportSession? = null
 
@@ -124,6 +125,20 @@ class ExchangeImportSurfaceInstrumentationTest {
         override fun invalidate(exportId: String) {
             if (session?.exportId == exportId) session = null
         }
+    }
+
+    /**
+     * Issue #373: a store that resolves the reply's exportId, so a decode-
+     * successful import proceeds past the session lookup and reaches the
+     * post-decode structural read (the InputNotReady settle point).
+     */
+    private class LoadableStore(
+        private val bound: app.lawnchair.organizer.personalization.ExportSession,
+    ) : ExportSessionStore {
+        override fun save(session: app.lawnchair.organizer.personalization.ExportSession) = true
+        override fun load(exportId: String) = bound.takeIf { it.exportId == exportId }
+        override fun active(nowEpochMs: Long) = bound.takeIf { !it.isExpired(nowEpochMs) }
+        override fun invalidate(exportId: String) = Unit
     }
 
     private fun structural(): CanonicalStructuralInputs {
@@ -175,7 +190,10 @@ class ExchangeImportSurfaceInstrumentationTest {
         entry.config.getOrNull(SemanticsProperties.Role) == Role.Button
     }
 
-    private fun newHolder(store: FakeStore = FakeStore()): ExchangeFlowStateHolder {
+    private fun newHolder(
+        store: ExportSessionStore = FakeStore(),
+        structuralResult: ExchangeStructuralResult = ExchangeStructuralResult.Ready(structural()),
+    ): ExchangeFlowStateHolder {
         val controller = ExchangeFlowController(
             composeExportInputs = {
                 val s = structural()
@@ -183,7 +201,7 @@ class ExchangeImportSurfaceInstrumentationTest {
                     ExportInputs(snapshot = s.snapshot, targets = s.targets, nowEpochMs = 1_000_000L),
                 )
             },
-            currentStructuralInputs = { ExchangeStructuralResult.Ready(structural()) },
+            currentStructuralInputs = { structuralResult },
             store = store,
             allocator = SequentialIdAllocator(),
             clock = { 1_000_000L },
@@ -1205,7 +1223,66 @@ class ExchangeImportSurfaceInstrumentationTest {
         check(recorded.explanation == context.getString(R.string.exchange_failure_export_mismatch)) {
             "the recorded explanation must be the contract copy, was ${recorded.explanation}"
         }
+    }
 
+    /**
+     * Issue #373 implementation review (stale-record regression oracle): a
+     * PREVIOUS attempt's recorded typed cause must never surface as the
+     * current attempt's failure. Seed the holder with one, settle an
+     * `InputNotReady` (post-decode environmental failure — no typed
+     * classification), then 診断を開く: the operation EMPTIES the recording
+     * instead of keeping the old cause.
+     */
+    @Test
+    fun staleTypedCauseIsNotShownAsTheCurrentAttemptOnNonTypedFailures() {
+        ExchangeImportFailureDiagnostics.resetForTests()
+        ExchangeImportFailureDiagnostics.record(RecentImportFailure("CONTEXT_STALE", "previous attempt"))
+        val session = app.lawnchair.organizer.personalization.ExportSession(
+            exportId = "instrumentation-session",
+            itemRefs = mapOf("ref-0" to ItemId("id-0")),
+            tier = PrivacyTier.EXTERNAL_REDACTED,
+            sourceContextDigest = "digest",
+            signalProvenance = null,
+            createdAtEpochMs = 1_000_000L,
+            expiresAtEpochMs = 1_000_000L + 2 * 60L * 60L * 1000L,
+        )
+        val holder = newHolder(
+            store = LoadableStore(session),
+            structuralResult = ExchangeStructuralResult.NotReady(InputReadinessReason.ReconciliationPending),
+        )
+        var diagnosticsOpened = false
+        setContent(holder, onOpenDiagnostics = { diagnosticsOpened = true })
+        openImportSurface(holder)
+        composeRule.onNodeWithTag("exchange-import-fallback-toggle").performClick()
+        composeRule.waitForIdle()
+        val intent = PersonalizedIntentV1(
+            exportId = "instrumentation-session",
+            itemIntents = listOf(ItemIntent(ref = "r1", preserve = true)),
+        )
+        val reply = buildString {
+            append(ExchangeContract.INTENT_BEGIN_MARKER)
+            append('\n')
+            append(IntentCodec.encode(intent).decodeToString())
+            append('\n')
+            append(ExchangeContract.INTENT_END_MARKER)
+        }
+        composeRule.onNodeWithTag("exchange-import-field").performTextInput(reply)
+        composeRule.onNodeWithTag("exchange-import-action").performClick()
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithTag("exchange-import-open-diagnostics").fetchSemanticsNodes().isNotEmpty()
+        }
+        // The face IS the non-typed InputNotReady outcome (environmental
+        // failure — no typed classification).
+        composeRule.onNodeWithTag("exchange-import-outcome-message")
+            .assertTextContains(context.getString(R.string.exchange_generation_input_not_ready))
+
+        composeRule.onNodeWithTag("exchange-import-open-diagnostics").performClick()
+        composeRule.waitForIdle()
+        check(diagnosticsOpened) { "診断を開く must reach the host's diagnostics route" }
+        val recorded = ExchangeImportFailureDiagnostics.recent
+        check(recorded == null) {
+            "the previous attempt's typed cause must be emptied on a non-typed failure, was $recorded"
+        }
     }
 
     /**

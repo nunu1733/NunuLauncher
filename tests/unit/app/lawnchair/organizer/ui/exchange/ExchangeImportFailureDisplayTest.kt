@@ -265,6 +265,27 @@ class ExchangeImportFailureDisplayTest {
         assertEquals(null, ExchangeImportFailureDiagnostics.recent)
     }
 
+    @Test
+    fun diagnosticsHolderClearEmptiesTheRecording() {
+        // Issue #373 implementation review: an attempt WITHOUT a typed
+        // classification (InputNotReady etc.) empties the recording at the
+        // 診断を開く operation — a previous attempt's cause must never be
+        // presented as the current failure.
+        ExchangeImportFailureDiagnostics.record(RecentImportFailure("CONTEXT_STALE", "previous attempt"))
+        ExchangeImportFailureDiagnostics.clear()
+        assertEquals(null, ExchangeImportFailureDiagnostics.recent)
+    }
+
+    @Test
+    fun diagnosticsRecordingIsNotSerializable() {
+        // IM-AC-04 lifecycle oracle (process-death side, structural): the
+        // recording is process memory only — nothing serializable that a
+        // system-initiated process death could restore through saved state.
+        val row = RecentImportFailure("CONTEXT_STALE", "explanation")
+        assertTrue(row !is java.io.Serializable)
+        assertTrue(ExchangeImportFailureDiagnostics !is java.io.Serializable)
+    }
+
     private fun resourceNames(ids: List<Int>): List<String> {
         val fields = R.string::class.java.declaredFields
         val byId = fields.associate { it.name to it.getInt(null) }

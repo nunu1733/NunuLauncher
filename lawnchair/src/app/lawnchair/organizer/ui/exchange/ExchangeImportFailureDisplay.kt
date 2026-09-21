@@ -266,6 +266,16 @@ object ExchangeImportFailureDiagnostics {
         recent = failure
     }
 
+    /**
+     * The current attempt has no typed classification (e.g. the post-decode
+     * `InputNotReady` environmental failure): empty the recording so a
+     * PREVIOUS attempt's typed cause is never presented as the current one.
+     * The write happens at the 診断を開く operation only, same as [record].
+     */
+    fun clear() {
+        recent = null
+    }
+
     @VisibleForTesting
     fun resetForTests() {
         recent = null
