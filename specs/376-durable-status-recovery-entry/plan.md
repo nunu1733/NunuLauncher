@@ -246,6 +246,13 @@ fun readRestorableRecoveryEntry(): RestorableRecoveryEntry?
 - 新規persisted data・schema変更・migration: **なし**（spec「Data and state」節）。
 - identity: `RecoveryPointId` を再利用。新識別子なし。tokenはprocess-local non-persistent
   （既存registry、module instance所有）。entry originはprocess-localなcoordinator state（非永続）。
+- 実装で確定したnavigation形態（open question 2）: hub CTAのtapで
+  `HomeScreenManualOrganization(durableRecovery = true)` へ同期遷移し、
+  **admission自体はrun面destinationが所有する**（`LaunchedEffect` + NonCancellable。
+  destination自開始では `rememberSaveable` ガードで1回のみ実行し、不受理時は
+  `popBackStack()` で自己復帰、host離脱とadmissionの競合窗口ではcoordinatorを
+  pre-entry状態へ戻す）。coroutine内navigateはnavigation-composeのteardownと
+  競合するため、navigateはclick handler内で同期実行する。
 - control flow（cold process、hub起点）:
 
 ```text
@@ -279,6 +286,7 @@ hub側へ戻る（D5。run面側の変更はBack経路の呼出し追加の最�
 | `lawnchair/src/app/lawnchair/organizer/application/lifecycle/RestorableRecoveryPointSelector.kt` | 新規。純粋selector（選択 + window計算。`OrganizerDurableStatusDeriver` と同配置・同様式） |
 | `lawnchair/src/app/lawnchair/organizer/application/protocol/LayoutApplicationModule.kt` | `readRestorableRecoveryEntry()` 追加（additive） |
 | `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt` | façade委譲追加 + cold entry method追加 + entry origin（`recoveryEntryOrigin` 仮称）とpre-entry表示状態の保持 + preview cancel（`cancelRecoveryPreview()`/dismiss recovery取消）のorigin別戻り先 + **`leaveRecoveryResultToHub()`（仮称）の新規追加（`dismiss()` は現行mainから無変更）** + `beginOperation()` でのorigin解消 |
+| `src/com/android/launcher3/LauncherModel.java` | **bridge最小変更（実装中に判明・Issue #299と同一規約）**: cold settings-only process（spec 271 DS-AC-10 bridgeで `startLoaderWithoutCallbacks` 経由でmodel負荷済み・Launcher非bind）では `forceReloadForOrganizer` が即cancelし復元のcorrelated reloadが必ず `MODEL_RELOAD_FAILED` になるため、非bind時はtokenless loaderを起動し `OrganizerReloadRequest.loaderStarted` で生成生成を判定する分岐を追加。#150/#152のterminalize-exactly-once・snapshot gate契約は不変 |
 | `lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerHubPreferences.kt` | status cardの `ORGANIZED_RESTORABLE` 行に残時間 + CTA（契約上のentry面）。status read→entry readの直列化（D6）。CTA tap → run面遷移 + cold entry呼出し |
 | `lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt` | **最小diff**: 結果面のsystem Back経路での明示的hub帰還操作呼出し1箇所のみ（`interruptAndNavigate` 分岐）。durable行・確認面・`onDispose` は無変更 |
 | `lawnchair/res/values/strings.xml`, `values-ja/strings.xml` | 残時間表示（format resource。`LessThanOneHour` 区分含む）+ CTA label（既存 `manual_organization_recovery` の再利用可）。EN/ja同期 |
