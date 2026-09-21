@@ -68,8 +68,7 @@ class PendingImportStartupReconcileTest {
             record = null
         }
 
-        override fun discardIf(expected: DurablePendingIntent): DiscardIfResult =
-            error("discardIf is not part of this seam")
+        override fun discardIf(expected: DurablePendingIntent): DiscardIfResult = error("discardIf is not part of this seam")
 
         override fun deleteIf(proposal: DurablePendingIntent): Boolean {
             if (record == proposal) {
@@ -80,7 +79,7 @@ class PendingImportStartupReconcileTest {
         }
     }
 
-    private val VALID_DIGEST = "a".repeat(64)
+    private val validDigest = "a".repeat(64)
 
     private fun record(
         exportId: String,
@@ -93,7 +92,7 @@ class PendingImportStartupReconcileTest {
         // current schema version and a 64-char digest — a corrupt shape is
         // Invalid, so this fixture carries a well-formed identity.
         intentIdentitySchemaVersion = ContextExportContract.INTENT_SCHEMA_VERSION,
-        intentIdentityDigest = VALID_DIGEST,
+        intentIdentityDigest = validDigest,
         decisions = refs.sorted().map { DurableRefEntry(it, DurableRefDecision.UnresolvedByOmission) },
         minimizeMovement = false,
         expiresAtEpochMs = expiresAtEpochMs,

@@ -268,7 +268,7 @@ Then 当該appは候補一覧に現れない。
 
 ## Decisions (owner決定の記録)
 
-- **D-1 初期選択policy: unchecked-by-default** — owner決定 (2026-09-11, [Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/228#issuecomment-5634964606))。
+- **D-1 初期選択policy: unchecked-by-default** — owner決定 (2026-09-11, [Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/228#issuecomment-5634964606))。 **Issue #375 Amendment**: run-in由来のrebind (durable取り込み済み提案からのprocess死後再開) に限り、依頼時の明示選択と一致する候補 (現行検出cutで解決可能なもの) を **選択面の初期値として復元** できる。復元値はあくまで初期値であり、選択面の編集は自由で、確定は明示的confirm (1回) のみが行うため、本D-1のunchecked-by-default・明示的選択契約は弱められない。非rebind経路 (通常run・idle継続) の初期値はuncheckedのままである。
 - **D-2 run mode composition: 新規run mode (scope-composed organize) 採用** — owner決定 (2026-09-11, 同コメント)。`FullOrganization` の「additions空」不変条件と既存検証は無変更。
 - **D-3 候補一覧の表示順**: 実装PR内で確定 (owner判断)。決定性 (NFR-003) を満たす決定的順序であること (locale依存の表示label順はplan §4のID規約の採番には使わない; 表示順としての可否は実装PRで決める)。
 

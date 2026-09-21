@@ -94,6 +94,10 @@ AIが返せるrefは、そのrunで確定したscopeのsubjectのみとする。
   2. **candidate scopeのfreshness (新設、D-4のcandidate投影digest)**: export時のcandidate投影 (安定identity + availability + 解決済み分類) に対するcanonical digestをsessionに記録する。binding時 (選択確定後のcomposition) に同一手順で再計算して照合し、不一致 (分類authorityの変化・availability変化を含む) は `SCOPE_MISMATCH` でzero-write rejectする。これにより「AIが見たcandidate分類」と「plannerが使うcandidate分類」の乖離がimport/binding段階で受理されない (#204 source binding不変条件のcandidate側への拡張)。
   3. **選択集合の不一致 / candidate無効化** → **scope binding gate (新設、D-5のtyped失敗 `SCOPE_MISMATCH`)**: validated intentをrunに適用する時点 (scope確定点 = #228選択確定 + composition) で、runの選択集合がsession記録のexport scope candidate集合と **完全一致** し (D-2)、各candidateが依然解決可能 (installed / launchable / AVAILABLE / 未表現) であることを検証する。欠落・追加のいずれも、およびcandidate解決不能 (uninstall / disable等) も `SCOPE_MISMATCH` (cause detail付き) としてzero-write失敗し、再exportを案内する。
 - **完全一致 (equality) を採用する理由 (D-2)**: 本Issueの成果は「AIへexportした対象集合 = そのrunで実際にorganizeするtarget scope」である。export後の候補 **追加** を許すと、AIが判断していないcandidateが同一intent下でorganizeされ、問題文のscope不一致を再現するため許容しない。process death後の再選択は、選択surfaceがexport対象件数を案内表示する (自動選択はしない — #228 D-1のunchecked-by-default維持) ことで同一集合の再現を支援し、再現できない場合は再export (run内entry) に戻る。再exportは安価であり、scope不一致の曖昧な許容よりfail-closedを優先する。
+- **D-2 Amendment (Issue #375, accepted disposition §3.16 — Amended by #375 D-17)**: `SCOPE_MISMATCH` のremedyは **原因別へ分割** される (gate規則・D-5の単一class/cause detail構造・zero-write・fail-closedは1行も変更しない):
+  - **`SET_MISMATCH` (選択集合の差)** — 選択面が依頼時集合との差分を強調し (非色依存)、選択を依頼時の集合へ戻せば **同じ提案 (bound intent) で続行できる**。修正しない場合は依頼を作り直す。
+  - **`CANDIDATE_UNRESOLVED` / `PROJECTION_MISMATCH`** — 選択修正では依頼時投影と一致させられないため **同じ提案での続行を許さず**、依頼の作り直しへ案内する (confirm時の早期gateは解決不能を優先導出し、「選び直せる」誤った救済を提示しない)。
+  - 上記に伴い、本節末尾の「remedyは再export」という単一規定と「process death後の再選択は件数案内表示で支援し、再現できない場合は再export」という復帰記述は、本Amendmentの原因別remedyと #375のrebind契約 (下記§5) へ置換される。
 - **単一scope正本の検証可能性**: 同一選択集合からの生成は同一のscope内容と投影digestを持ち、選択集合・分類・availabilityのいずれかが変わればsession記録が変わること (staleなscope記録の再利用禁止) をcontract testで固定する。
 
 ### 4. Mobility / creation semantics (candidateへのintent適用policy)
@@ -123,9 +127,10 @@ AIが返せるrefは、そのrunで確定したscopeのsubjectのみとする。
   2. **選択の固定 (freeze)**: 生成開始からexchange stepの完了または中止まで、選択状態の編集を無効化する (scopeの確定性を保証する基本形。中止すれば編集可能に戻る)。生成はread-only compositionで行われる。
   3. privacy mode選択・session置換確認・Pre-send Disclosure・transport (#205既存契約、無変更) を経て外部AIへ渡す。
   4. 戻ってきた返答は同じsurfaceからimportし、validated intentを **当該runへ接続** する (fresh runを開始しない。runは依然選択状態を保持しているため)。import失敗時は既存typed失敗表示でzero-write。
+  4-b. **attach契約の生存範囲 (Issue #375 Amendment)**: 上記のattach (同一runIdへのsingle-shot・選択凍結・RUN lease継続・authoring不可) は **同一process内で選択面が開いている生存runに限って** 成立する。process死後の継続はattachではなく、`Hub → ImportReview` 1経路のrebind契約 (#375) のみが適用される。
   5. exchangeを中止した場合、未送信packageは既存取消規則 (`ExportSessionStore.invalidate`) で失効し、選択編集に戻る (AI未使用pathと同一の継続)。
   6. 選択確定 (confirm) 時にscope binding gateを評価し (完全一致 + candidate投影digest照合)、通過すればcomposition → planning (intent投影込み) へ進む。既存flowからの追加必須stepは存在しない (exchangeを使わない場合はこの導線が現れない)。
-- **process deathを跨ぐ場合**: run状態は非永続 (既存不変条件) のため消失する。ユーザーはidle import → fresh run再構築 (既存 #205 semantics) → 再検出・再選択 → confirm時のscope binding gate、の順で復帰する。選択surfaceは **export対象candidateの件数を案内表示** する (自動選択はしない)。再選択がexport集合と完全一致すればintentは有効であり、一致しない (欠落・追加のいずれも) 場合は `SCOPE_MISMATCH` でzero-write失敗し、再exportを案内する。
+- **process deathを跨ぐ場合 (Issue #375 Amendment)**: run状態は非永続 (既存不変条件) のため消失する。復帰経路は `Hub → ImportReview` の **1経路に集約** される (process生存/死を問わない。#374がdurable提案・status card行・再開面を、#375が「この提案で続ける」CTA・fresh run admission・選択復元初期値を所有する)。CTAはfresh run admissionの直前にexchange mutation gate内でdurable提案の有効性を再検証し (rebind admission anchor)、検出後の選択面で依頼時scopeとの完全一致検証 (既存gate) を経る。run-in由来の提案では依頼時の明示選択が初期値として復元され (明示確認1回を経てのみ確定)、idle由来ではunchecked初期値＋件数案内のままである。
 - **deterministic Organizerへの影響なし**: exchange導線はすべてユーザー明示開始・中止可能であり、scope selection画面の既存機能 (検索・bulk操作・選択数表示) とrunの既存phase遷移は変更しない。
 
 ## Non-goals
@@ -301,6 +306,8 @@ CI class filter (`ci.yml` connected-test lanes) への新instrumentation test cl
 2. **candidate宛preferenceのplanner消費詳細** (importance順序の同点tie-break等): plannerが既に持つpreference消費機構 (`FullRunExecution` / `PlacementAllocator`) の拡張としてplanで確定する。新機構の導入は本specの範囲外。
 
 ## Change history
+
+- 2026-09-22: **Amended by Issue #375** (accepted disposition §3.16/§4.1/§5 更新順序 #9): D-2のremedyを原因別 (`SET_MISMATCH` = 選択修正で同じ提案を続行 / `CANDIDATE_UNRESOLVED`・`PROJECTION_MISMATCH` = 依頼の作り直し) へ分割 (gate規則・D-5単一class構造・zero-write・fail-closedは不変)、§5のprocess death復帰経路を `Hub → ImportReview` 1経路＋rebind契約へ更新、run-in attach契約の生存範囲 (同一processの選択面が開いている間) を明記。
 
 - 2026-09-16: Draft created for Issue #331。baseline `4f555450bd` (origin/main) 上で起草。#228 (implemented)、#204 (accepted・実装済み)、#205 (implemented) の契約と実装 (`ContextExportBuilder` が `snapshot.items` のみ対象、`ExchangeInputAdapter.composeForExport` が `composeFullOrganization()` 経由、exchange導線はIdle/Cancelled時のみ提示、import はfresh run再構築) を確認し、Issue 331の5つのrequired design (canonical scope、candidate subject identity、import validation、mobility/creation semantics、flow ordering) をD-1〜D-5として確定して起草。
 - 2026-09-16 (2nd): ChatGPT review "Changes requested" ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/331#issuecomment-5694723284)、head `defaf666bc` 基準、Blocking 2点 + Required 1点) への対応revision。**Blocking 1 (scope binding規則)**: D-2を包含 (⊇) から **完全一致 (equality)** へ変更 — export後の候補追加を許すとAI未判断のcandidateが同一intent下でorganizeされ、本Issueの問題 (export scopeとrun scopeの不一致) を再現するため。idle export後のcandidate選択確定も `SCOPE_MISMATCH` でfail-closedとし (idle entry scenario、AC-9更新)、process death後の再選択は件数案内表示 (自動選択なし) で支援。**Blocking 2 (candidate構造のfreshness)**: candidate分類・availabilityの変化がplaced digest (空workspaceでは不変) で捕捉できない問題に対し、candidate投影digest (安定identity + availability + 解決済み分類のcanonical digest) をsessionに記録しbinding時に再計算照合する設計へ変更 (D-4改訂、新scenario追加)。placed側digestのv1定義は無変更。**Required 3 (taxonomy統一)**: `CandidateUnresolved` の独立class導入を止め、`SCOPE_MISMATCH` 単一class (cause detail付き: 選択集合不一致 / candidate無効化 / 投影digest不一致) に統合し、17種表示計算を13 + 4で整合。AC-6を3段検出の具体条件へ更新。
