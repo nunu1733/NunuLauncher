@@ -341,6 +341,7 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
 | rebindの選択面で依頼時候補が解決不能 | confirm時に続行不能causeでfail-closed。「依頼を作り直す」案内。提案は残存 |
 | rebind時点で構造digest不一致 | 継続前のtyped失敗（`CONTEXT_STALE`意味論）。「依頼を作り直す」案内。run admissionは発生しない。提案は残存 |
 | recordのidentity値が破損（schema不一致・digest長不正。JSONとしては読める） | 破損として`reconcilePendingIntent`が`Invalid`へ。例外化せずtyped fail-closedで清掃・継続拒否。run admissionは発生しない |
+| 無効化commitのtombstone書込失敗（`WriteFailed`） | typedかつretryableな失敗。無効化は効力を持たず提案は有効・表示のまま（ユーザー破棄失敗と同一様式）。cancel/supersede導線は再試行する |
 | admission直前にsession置換・破棄tombstone・TTL失効が発生（anchor拒否） | typed拒否。run admission・可観測run state・journal書込は0件。recordが無効化済みなら#374契約どおり清掃して面を閉じ、同session宛の再取り込みで置換されていれば面を読み直す |
 | rebind CTA時にrun使用中 / CTA処理中 | typed拒否（Busy相当）。single-flight。提案・runは不変 |
 | 検出が`Unavailable`（rebind含む） | 現行どおり選択面を開かずcomposeへ続行し、gateは既存経路でtyped終端（zero-write） |
@@ -371,7 +372,8 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
   anchorの読み取りとadmissionが、**active sessionとdurable recordの両方を変化させうる
   全操作** — session置換（新session保存＋旧record削除。`ExchangeFlowController.generate()`
   経路）、pre-send cancel等のsession invalidate、import成功時のdurable保存、破棄tombstone、
-  reconcile清掃 — と混線しないことを、**単一のprocess-wideな直列化点**で構造的に保証する。
+  起動時reconcile清掃（`PendingImportStartupReconcile`。gate配下へ移す — 7th review指摘3）
+  — と混線しないことを、**単一のprocess-wideな直列化点**で構造的に保証する。
   現行mainではsession置換がholder mutex外で実行され、session storeとpending storeが
   別々の内部lockを持つため、holder内の書込mutex拡張だけでは排他として不十分である
   （2nd review指摘1。初回re-entryの「`pendingWriteMutex`拡張」案を廃止して本設計へ改訂）。
@@ -403,10 +405,17 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
   「有効なcommit」とattempt無効化（cancel / supersede / input edit / RUN_IN owning run消失
   fence）の「無効化commit」の**効力発生点をexchange gate上で1つに固定する**。無効化commitは
   **#374のtombstone機構（`discarded=true`へのatomic書換 → best-effort物理削除）を
-  gate保持下で実行する**形とする: gate内で現行recordが対象attemptのrecordと一致することを
-  確認したうえでtombstoneをcommitし（一致しない＝より新しいrecordに置換済みなら何もしない。
-  `deleteIf` の条件性の再現）、物理削除はgate内の後続処理でbest-effortに行う。
-  tombstoneは **durableかつcrash-safeな正本**であり、物理削除の完了前にprocess death・
+  gate保持下で実行する**形とする。gate内の条件付き無効化操作（`discardIf(expectedRecord)`
+  相当）は結果を**`Committed`（tombstone commit成功）/ `NoMatch`（対象recordが既に
+  存在しない・より新しいrecordに置換済み）/ `WriteFailed`（tombstone atomic書込失敗）**
+  に区別する（7th review指摘1）:
+  (a) `Committed` と `NoMatch` の場合のみ無効化成功としてlinearizeする
+  （`NoMatch` は対象が既に存在しないため、復活しうるstale recordは存在しない）,
+  (b) `WriteFailed` の場合は**無効化成功として確定しない** — typedかつretryableな失敗として
+  扱い、proposalは有効・表示のまま残る（ユーザー破棄のtombstone失敗と同一のfail-closed様式。
+  cancel/supersede導線は無効化commitを再試行する。process death後も `discarded=false` の
+  recordが残るが、それは「無効化が効力を持っていない」ことの正しい帰結である）,
+  (c) 物理削除はgate内の後続処理でbest-effortに行い、完了前のprocess death・
   holder破棄が発生しても次回読取のreconcile（既存の破棄mark検証）が当該recordを
   Invalidとして扱うため、「無効化が効力を持った提案をadmitする」経路がcold rebindを含めて
   存在しない。anchorはgate内でreconcileを再実行するためtombstone検証を自動的に含む
@@ -569,6 +578,10 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
       in-memory全破棄）からrebindした場合も `State.Capturing` 0件であること**、および
       **対照ケースとして正常commit済みrecordは新holder / cold processからAdmitできること**
       をtestされる（crash-safeな正本としてのtombstone検証）。
+      **write-failure oracle（7th review指摘1）**: 対象record一致の状態でtombstone atomic
+      writeを故障注入で失敗させ（`WriteFailed`）、holder破棄 / process recreation後も
+      「成功扱いされた無効化」が存在しないこと（無効化は効力を持たずproposalが有効のまま、
+      失敗がtyped/retryableに観測されること）をtestされる。
 - [ ] **SR-AC-09**: spec 331改訂（D-2 remedy分割・§5経路更新・attach生存範囲明確化）と
       spec 228注記（復元初期値とD-1の関係）が作成され、**owner受入済み**である
       （受入自体は実装PR前のdocs変更）。
@@ -640,6 +653,24 @@ exchange系）、CI `final-status` green。本Issueはpersistent state変更・D
 
 ## Change history
 
+- 2026-09-22: **Re-entry revision 7（7th review 2026-09-22 Changes requested 3件対応、
+  [comment `5766867716`][11]）**。
+  **(1) tombstone書込失敗時の無効化commit意味論の契約化（高 — blocking）**: 現行
+  `PendingImportedIntentStore.discard()` はatomic書換失敗時に `false` を返しrecordを
+  有効のまま残すため、gate内条件付き無効化の `WriteFailed` 時の遷移が未規定だと
+  「Main側では無効化済みだがtombstoneだけ失敗しprocess death後にrecordが復活する」経路が
+  残る。条件付き無効化操作（`discardIf(expectedRecord)` 相当）の結果を
+  `Committed` / `NoMatch` / `WriteFailed` に区別し、**`Committed` と `NoMatch` のみ無効化
+  成功としてlinearize**、`WriteFailed` はtypedかつretryableな失敗（無効化は効力を持たず
+  proposal有効・再試行）へ契約化。write-failure oracle（故障注入 → holder破棄 /
+  process recreation → 成功扱いされた無効化が存在しないこと）をSR-AC-08へ追加。
+  **(2) 廃止済み選択肢のplan内残存を削除（中）**: Explicitly unverified areas に残っていた
+  「record commit状態の保持形態（holder内field / gate object内）」の選択肢を削除し、
+  「無効化の正本はdurable tombstoneのみ。in-memory commit stateは導入しない」を明記。
+  **(3) startup reconcileのgate配下化（中）**: `PendingImportStartupReconcile` の
+  load→reconcile→delete（専用thread起動）をgate対象操作へ追加し（gate注入）、「全
+  record/session mutationが同一gateを通る」前提をコード構造で成立させる。Design 7対象一覧・
+  Execution checklistへ追加。
 - 2026-09-22: **Re-entry revision 6（6th review 2026-09-22 Changes requested 2件対応、
   [comment `5766679997`][10]）**。
   **(1) 無効化commitの正本をdurable tombstoneへ固定（高 — blocking）**: 「in-memoryな
@@ -781,3 +812,4 @@ exchange系）、CI `final-status` green。本Issueはpersistent state変更・D
 [8]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5766390303
 [9]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5766543051
 [10]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5766679997
+[11]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5766867716

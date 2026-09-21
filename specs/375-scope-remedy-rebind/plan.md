@@ -3,8 +3,8 @@
 > Issue: #375
 > Spec: [spec.md](./spec.md)
 > Status: draft
-> Revision: 7（初回review 3件 + 2nd 4件 + 3rd 1件 + 4th 3件 + 5th 2件 + 6th review 2件対応 +
-> 前提merge後のcurrent main `9dc3ec8fed`へのre-entry）
+> Revision: 8（初回review 3件 + 2nd 4件 + 3rd 1件 + 4th 3件 + 5th 2件 + 6th 2件 +
+> 7th review 3件対応 + 前提merge後のcurrent main `9dc3ec8fed`へのre-entry）
 
 ## Current evidence
 
@@ -274,6 +274,9 @@ AGENTS.md設計規約（小さなinterface・既存seamの再利用・platform�
      (c) import成功時のdurable保存（`launchDurablePendingIntentSave`）,
      (d) 破棄tombstone（`discardImport()` の `store.discard()`）,
      (e) reconcile清掃（`openPendingImportReview()` / anchor拒否後の `delete()`）,
+     (g) **起動時reconcile清掃（`PendingImportStartupReconcile` の load→reconcile→delete。
+     専用thread起動だが同一gate配下へ移す — 7th review指摘3。これにより「record/sessionを
+     変化させる全経路が同一gateを通る」前提がコード構造で成立する）**,
      (f) rebindのadmission区間（anchor内部。Design 4）。
    - **保持区間の契約（3rd review指摘の解消）**: 事前計算（CTAの予備読取・reconcile・
      rebuild）は **gate外**。anchorのみがadmission直前にgateを取得し、gate内で
@@ -297,26 +300,29 @@ AGENTS.md設計規約（小さなinterface・既存seamの再利用・platform�
      refactor後もgreenであることを回帰で確認する。テスト: durable saveをUI settle直前で
      barrier停止 → Main側でrebind admission開始、の順を決定的に構成し、gate保持中の
      Main待ちがないこと（双方が進行可能）をwall-clock非依存で証明する（SR-AC-08）。
-   - **gate上への線形化統一と純粋投影settle（5th/6th review指摘1の解消）**: durable saveの
+   - **gate上への線形化統一と純粋投影settle（5th〜7th review指摘1の解消）**: durable saveの
      「有効なcommit」とattempt無効化（cancel / supersede / input edit / RUN_IN owning run
      消失fence）の「無効化commit」の**効力発生点をgate上で1つに固定**する。無効化commitは
-     **#374のtombstone機構のgate保持下での転用**とする:
-     (i) gate内で現行recordを読み、対象attemptのrecordと一致する場合のみ
-     `store.discard()`（`discarded=true`へのatomic書換 → best-effort物理削除。既存API）を
-     実行する（一致しない＝より新しいrecordに置換済みなら何もしない。`deleteIf` の条件性を
-     tombstoneで再現）,
-     (ii) 物理削除はgate内の後続処理でbest-effortに行い、完了前のprocess death / holder破棄
-     でも次回読取のreconcile（既存の破棄mark検証）が当該recordをInvalidとして扱う
-     （**durable・crash-safeな正本**。in-memoryなcommit状態は持たない — holderの寿命
-     （route change / recreationで破棄）とcold resume（durable record/sessionのみから再構成）
-     の下でlifetime/bootstrapが破綻するin-memory案〔5th re-entry案〕は廃止。
-     6th review指摘1の解消）,
+     **#374のtombstone機構のgate保持下での転用**とし、gate内の条件付き無効化操作
+     （`discardIf(expectedRecord)` 相当。store API追加またはload+`discard()` 組合せを
+     gate内atomicで実装）は結果を **`Committed` / `NoMatch`（対象record不在・置換済み）/
+     `WriteFailed`（tombstone atomic書込失敗）** に区別する:
+     (i) `Committed`（tombstone commit成功 → best-effort物理削除）と `NoMatch` の場合のみ
+     無効化成功としてlinearizeする（`NoMatch` は対象が既に存在せず復活しうるstale recordは
+     ない。現行 `deleteIf` の条件性をtombstoneで再現）,
+     (ii) `WriteFailed` は**無効化成功として確定しない** — typedかつretryableな失敗として
+     扱い、proposalは有効・表示のまま（ユーザー破棄のtombstone失敗と同一のfail-closed様式。
+     cancel/supersede導線は再試行。process death後も `discarded=false` のrecordが残るのは
+     「無効化が効力を持っていない」ことの正しい帰結）,
      (iii) anchorはgate内でreconcileを再実行するためtombstone検証を自動的に含み、
      無効化が効力を持った提案をadmitする経路がcold rebindを含めて存在しない,
      (iv) **gate解放後のUI settle（`settlePendingIntentSave` 相当）はscreen/stateの投影のみ
      に限定し、storeの `save` / `deleteIf` / `discard` / `delete` を一切呼ばない**
      （現行 `settlePendingIntentSave()` がRUN_IN owning run不一致時に直接 `deleteIf` する
-     構造は、(i) のgate内条件付きtombstoneへ移したうえで解消する）。
+     構造は、gate内条件付きtombstoneへ移したうえで解消する）。
+     **in-memoryなcommit状態は導入しない**（durable tombstoneが唯一のcrash-safe正本。
+     holderの寿命〔route change / recreationで破棄〕とcold resumeの下でlifetime/bootstrapが
+     破綻するin-memory案〔5th re-entry案〕は廃止。6th review指摘1）。
      record model（`DurablePendingIntent`のfield構成）は不変（既存 `discarded` fieldの転用。
      ユーザー可視の破棄語彙・D-13確認契約は関与しない）。#374のsave fence oracle
      （cancel/supersede中のstale record残存なし）は回帰でgreenを確認する。
@@ -325,7 +331,9 @@ AGENTS.md設計規約（小さなinterface・既存seamの再利用・platform�
      場合は `State.Capturing` 0件・物理削除完了前でもanchorがAdmitしないことを決定的に固定。
      **Holder Aでsave commit → UI settle前に無効化 → 物理削除をbarrier停止 → Aを破棄して
      別holder / process recreation相当（in-memory全破棄）からrebind → `State.Capturing`
-     0件**、および**対照ケース（正常commit済みrecordは新holder / cold processからAdmit）**
+     0件**、**対照ケース（正常commit済みrecordは新holder / cold processからAdmit）**、
+     **write-failure oracle（対象record一致でtombstone書込を故障注入失敗 → holder破棄 /
+     process recreation後も成功扱いされた無効化が存在せず、失敗がtyped/retryableに観測）**
      を追加する（SR-AC-08）。
    - **既存lockとの関係（5th review指摘2で固定）**: **exchange gateが#374 write
      serializationを完全に包含し、`pendingWriteMutex`（kotlinx Coroutine Mutex）を廃止・
@@ -470,7 +478,7 @@ source変更は上記のみ。`favorites` / layout DB / recovery DB / export ses
 | SR-AC-05 | instrumentation: 通常run・idle継続のunchecked回帰 + rebind復元の「編集可・confirm必須」（confirmなしでplanに進まない否定的観測） | organizer instrumentation lane |
 | SR-AC-06 | 既存attach/freeze oracle（`attachIntent`回帰、`ExchangeImportSuccessInstrumentationTest`）無編集green | instrumentation lane |
 | SR-AC-07 | holder/instrumentation: reconcile不通でCTA非表示、single-flight、Busy拒否、成功後record残存・再継続可 + **race oracle（fake store/clock＋実際の`generate()`相当置換経路との並行）: rebuild成功 → session置換/破棄tombstone → anchor typed拒否・run不在の否定的観測（layout/journal 0件とcleanup件数を分離）** + **entryKindフリップ再取り込みoracle（置換検出→拒否→新record読み直し）** | unit + instrumentation |
-| SR-AC-08 | unit: 再構築seamのtable test（digest不一致/session不在/TTL → typed失敗、record残存）+ **anchor table test（Valid/record不一致〔entryKind含む〕/TTL越え/identity shape不正）＋「rebuild完了（gate外） → generate()置換を完走 → admission → anchor拒否」race oracle（fake clock/store）** + **identity破損fixture（wrong schema・digest長不正のvalid JSON）で例外なし・typed fail-closed・run不在** + **gate契約のdiff review（session置換・pre-send cancel・record変化操作の全gate配下化。gate不在の競合経路が存在しないこと）** + **検出seamのprobe test（検出開始時点でgate非保持。wall-clock非依存）** + **UI待機禁止oracle（saveのUI settle直前barrier → Main側rebind admission。gate保持中のMain待ちなし・双方進行可能）** + **線形化oracle（tombstone正本: save完了・gate解放後・UI settle直前で停止 → cancel/supersede〔owning run消失含む〕の無効化commit → admission競合で`State.Capturing` 0件・物理削除完了前でもAdmitしない。Holder A→別holder / process recreation相当の横断oracle、および正常commit済みrecordの対照ケースを含む）** + instrumentation（CTA押下でrun不在の否定的観測・anchor拒否後の面の扱い） | unit + instrumentation + diff review |
+| SR-AC-08 | unit: 再構築seamのtable test（digest不一致/session不在/TTL → typed失敗、record残存）+ **anchor table test（Valid/record不一致〔entryKind含む〕/TTL越え/identity shape不正）＋「rebuild完了（gate外） → generate()置換を完走 → admission → anchor拒否」race oracle（fake clock/store）** + **identity破損fixture（wrong schema・digest長不正のvalid JSON）で例外なし・typed fail-closed・run不在** + **gate契約のdiff review（session置換・pre-send cancel・record変化操作の全gate配下化。gate不在の競合経路が存在しないこと）** + **検出seamのprobe test（検出開始時点でgate非保持。wall-clock非依存）** + **UI待機禁止oracle（saveのUI settle直前barrier → Main側rebind admission。gate保持中のMain待ちなし・双方進行可能）** + **線形化oracle（tombstone正本: save完了・gate解放後・UI settle直前で停止 → cancel/supersede〔owning run消失含む〕の無効化commit → admission競合で`State.Capturing` 0件・物理削除完了前でもAdmitしない。Holder A→別holder / process recreation相当の横断oracle、および正常commit済みrecordの対照ケースを含む）** + **write-failure oracle（対象record一致でtombstone書込を故障注入失敗〔`WriteFailed`〕 → holder破棄 / process recreation後も成功扱いされた無効化が存在せず、typed/retryableに観測）** + instrumentation（CTA押下でrun不在の否定的観測・anchor拒否後の面の扱い） | unit + instrumentation + diff review |
 | SR-AC-09 | spec 331/228 diff review（Scope節と一致・gate規則不変）+ owner受入記録（Issue #375コメント） | PR diff review |
 | SR-AC-10 | strings走査（ja/en name集合・placeholder一致、spec 123 AC-5方式）+ hardcoded literal grep + a11y assertion + light/dark × ja/default screenshot | unit + manual evidence |
 
@@ -507,8 +515,8 @@ completedの往復）。performance観点は新規ではなく既存検出/compo
 - [ ] coordinator/state拡張（`confirmSelection`・`State.Selecting`・`start` anchor hook＋
       復元モード・新typed `StartOutcome`系）
 - [ ] exchange mutation gate新設（controller `generate()`置換経路・pre-send invalidate・
-      durable save・破棄・清掃delete・anchorのadmission区間のgate配下化。lock順序の一方向性
-      確認。検出seamへのprobe test）
+      durable save・破棄・清掃delete・**startup reconcile**・anchorのadmission区間の
+      gate配下化。lock順序の一方向性確認。検出seamへのprobe test）
 - [ ] #374 save fence refactor（UI settleをgate解放後の純粋投影へ分離。無効化commitの
       gate上tombstone化〔条件付き`discard()`〕。fence 1/2 oracleの回帰green。
       UI待機禁止・線形化・横断oracleの追加）
@@ -536,10 +544,11 @@ completedの往復）。performance観点は新規ではなく既存検出/compo
 - **同一process内CTAへの構造digest再検証の適用要否**: spec Contract notes 1のowner確認待ち。
   適用しない場合の現行挙動（短時間窓・import時検証のみ）は既存契約のまま。
 - **gateの実装形態**: blocking lock（monitor/`ReentrantLock`）の薄い共有objectで
-  **`pendingWriteMutex`を廃止・置換**する案に固定（gate内でsuspendしない）。DI singletonの
-  提供位置とrecord commit状態の保持形態（holder内field / gate object内）は実装PRで確定する
-  （契約 — 保持区間・対象操作・線形化統一・検出のgate解放後開始 — は
-  spec Stale state / concurrency節で固定済み）。
+  **`pendingWriteMutex`を廃止・置換**する案に固定（gate内でsuspendしない）。
+  **無効化の正本はdurable tombstoneのみであり、in-memory commit stateは導入しない**
+  （7th review指摘2）。実装PRへ残すのはblocking lock objectのDI提供位置など、正当性に
+  影響しない詳細のみである（契約 — 保持区間・対象操作・線形化統一・検出のgate解放後開始 —
+  はspec Stale state / concurrency節で固定済み）。
 - **anchor拒否後の面読み直しの表示詳細**（清掃クローズ時のtyped文言・置換読み直し時の
   遷移）は実装PRのstring diff / reviewで確定する（非blocking。契約は
   spec Stale state / concurrency節で固定済み）。
