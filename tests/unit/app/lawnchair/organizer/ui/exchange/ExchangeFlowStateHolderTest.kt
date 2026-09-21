@@ -2296,12 +2296,14 @@ class ExchangeFlowStateHolderTest {
 
     @Test
     fun rebindRefusesWhenTheRealReplacementPathReplacesTheSessionMidFlow() {
-        // SR-AC-08 (7th review指摘1のoracle): the mid-flow mutation is the
-        // ACTUAL `ExchangeFlowController.generate()` replacement path (new
-        // session save + old record invalidation), fired deterministically as
-        // a side effect of the rebuild read. The rebuild then sees the NEW
-        // session with the OLD record → InvalidProposal → gate内のfresh
-        // re-reconcileが現在のrecord不在を確認して清掃 → no run admission.
+        // SR-AC-07/08 race oracle (real concurrency): the preliminary rebuild
+        // succeeds against the old record/session; the pre-admission barrier
+        // then joins the ACTUAL `ExchangeFlowController.generate()`
+        // replacement commit (new session save + old record invalidation) run
+        // on another thread; only then does the admission anchor's live
+        // re-read refuse — rebuild成功 → 置換完走 → admission → anchor拒否. The
+        // refusal is causally dependent on the replacement: a no-op/throwing
+        // generate() makes this test fail.
         val fixture = seedAnchorRaceFixture()
         val valid = fixture.pendingStore.record!!
         val detectionsBefore = fixture.application.detectionCalls
@@ -2447,12 +2449,12 @@ class ExchangeFlowStateHolderTest {
     }
 
     @Test
-    fun outstandingInvalidationQueueIsLastWinsAndImportBNeverStartsBehindClose() {
+    fun outstandingInvalidationQueueIsLastWinsAndEditCSupersedesTheQueuedImportB() {
         // SR-AC-07/08 (last-wins queuing): the old attempt's invalidation
-        // commit is barrier-stopped; `import(B)` then `close()` queue behind
-        // it. Last-wins: B's attempt is NEVER created (its continuation was
-        // superseded by close), no B save/validation runs, and the final face
-        // is Closed.
+        // commit is barrier-stopped; `import(B)` then `onImportTextChange("C")`
+        // queue behind it. LAST-WINS: C supersedes B — B's attempt is never
+        // created (its validation/save never starts), the final face is
+        // Importing("C"), and the old attempt's fenced record never resurfaces.
         val pendingStore = FakePendingIntentStore().apply { saveGate = CountDownLatch(1) }
         val fixture = newFixture(pendingStore = pendingStore)
         val reply = generatedReplyFixture(fixture)
@@ -2460,13 +2462,19 @@ class ExchangeFlowStateHolderTest {
         fixture.holder.import(reply) // old attempt — save parked
         awaitScreen(fixture.holder) { pendingStore.saveCalls >= 1 }
 
-        fixture.holder.close() // queues close behind the outstanding commit
-        fixture.holder.import(reply) // queues import(B) — LAST-WINS replaces close
+        fixture.holder.import(reply) // queues import(B) behind the outstanding commit
+        fixture.holder.onImportTextChange("C") // LAST-WINS: C supersedes the queued import(B)
         pendingStore.saveGate!!.countDown()
 
-        // The commit lands; only the LAST queued transition (import(B)) runs.
-        awaitScreen(fixture.holder) { pendingStore.saveCalls >= 2 }
-        assertTrue(fixture.pendingStore.record != null)
+        // The commit lands; only the LAST queued transition (edit to C) runs:
+        // no B validation/save, final face text "C", no anchor active.
+        awaitScreen(fixture.holder) { pendingStore.completedSaves >= 1 && pendingStore.record == null }
+        awaitScreen(fixture.holder) {
+            fixture.holder.screen is ExchangeScreen.Importing &&
+                (fixture.holder.screen as ExchangeScreen.Importing).replyText == "C" &&
+                !fixture.holder.importAttemptActive
+        }
+        assertEquals("B's validation/save never started", 1, pendingStore.saveCalls)
     }
 
     @Test
