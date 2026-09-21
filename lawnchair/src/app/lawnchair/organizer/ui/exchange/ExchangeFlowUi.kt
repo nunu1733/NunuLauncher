@@ -1023,8 +1023,14 @@ class ExchangeFlowStateHolder(
         if (outstanding != null) {
             // A commit is in flight or failed-unresolved: the caller's
             // transition queues behind it — it must not run before the
-            // outstanding commit lands.
-            synchronized(outstanding) { outstanding.continuations += continuation }
+            // outstanding commit lands. The queue is LAST-WINS: a later
+            // invalidating action (close / edit / newer import) supersedes
+            // the queued one, so a drained supersede can never be re-invalidated
+            // by an action it already replaced (spec 375 queuing contract).
+            synchronized(outstanding) {
+                outstanding.continuations.clear()
+                outstanding.continuations += continuation
+            }
             if (outstanding.failed) retryPendingInvalidation()
             return
         }

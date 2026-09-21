@@ -2449,6 +2449,65 @@ class ExchangeFlowStateHolderTest {
         awaitScreen(fixture.holder) { pendingStore.record == null }
     }
 
+    @Test
+    fun writeFailedInvalidationSurvivesHolderRecreationWithoutFabricatingSuccess() {
+        // SR-AC-08 cross-holder / process-recreation oracle: Holder A's
+        // invalidation commit fails with `WriteFailed` → the record survives
+        // `discarded=false` (typed IMPORT_PERSIST_FAILED observed). A is then
+        // DESTROYED (every process-local field dropped) and Holder B is
+        // rebuilt over ONLY the shared durable stores: B's cold review sees
+        // the proposal as VALID (no fabricated invalidation-success), and
+        // B's own supersede (Committed) is what finally removes it.
+        val pendingStore = FakePendingIntentStore().apply {
+            saveGate = CountDownLatch(1)
+            discardIfResult = DiscardIfResult.WriteFailed
+        }
+        val fixtureA = newFixture(pendingStore = pendingStore)
+        val reply = generatedReplyFixture(fixtureA)
+        fixtureA.holder.openImport()
+        fixtureA.holder.import(reply)
+        awaitScreen(fixtureA.holder) { pendingStore.saveCalls >= 1 }
+
+        // Supersede while the save is parked; the invalidation commit (and the
+        // fence's own) both fail with WriteFailed — the record survives.
+        fixtureA.holder.onImportTextChange("edited while saving")
+        pendingStore.saveGate!!.countDown()
+        awaitScreen(fixtureA.holder) { pendingStore.discardIfCalls >= 2 }
+        assertTrue(pendingStore.record!!.discarded.not())
+        assertEquals(ExchangeStatus.Kind.IMPORT_PERSIST_FAILED, fixtureA.holder.status?.kind)
+
+        // ---- Holder A destroyed. Holder B over the SAME durable stores. ----
+        val now = 1_000_000L
+        val (runB, _) = newExchangeRun(true)
+        val controllerB = ExchangeFlowController(
+            composeExportInputs = { ExchangeInputResult.ExportReady(exportInputs(now)) },
+            currentStructuralInputs = { ExchangeStructuralResult.Ready(structural()) },
+            store = fixtureA.store,
+            allocator = SequentialIdAllocator(),
+            clock = { now },
+            pendingImportStore = pendingStore,
+        )
+        val holderB = ExchangeFlowStateHolder(
+            controllerFactory = { controllerB },
+            run = runB,
+            scope = CoroutineScope(Dispatchers.IO),
+            settleDispatcher = Dispatchers.IO,
+            uiDispatcher = Dispatchers.IO,
+            pendingImportStore = pendingStore,
+        )
+
+        // B's cold review adopts the surviving proposal (valid — no fabricated
+        // invalidation success).
+        holderB.openPendingImportReview()
+        awaitScreen(holderB) { holderB.screen is ExchangeScreen.ImportReview }
+
+        // B's user discard with a WORKING commit removes the record and closes.
+        pendingStore.discardIfResult = DiscardIfResult.Committed
+        holderB.discardImport()
+        awaitScreen(holderB) { holderB.screen is ExchangeScreen.Closed }
+        assertTrue(pendingStore.record == null || pendingStore.record!!.discarded)
+    }
+
     /** Drives the fixture to a saved durable record + Closed holder (the hub's cold-start view). */
     private fun fixtureWithDurableRecord(): HolderFixture {
         val fixture = newFixture()
