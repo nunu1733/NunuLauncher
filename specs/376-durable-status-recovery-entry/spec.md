@@ -1,6 +1,6 @@
 ---
 issue: "#376"
-status: draft
+status: accepted
 requirements: [FR-004]
 risk: [layout-data]
 updated: 2026-09-22
@@ -14,6 +14,8 @@ updated: 2026-09-22
 > accepted disposition [docs/product/organizer-disposition-migration.md](../../docs/product/organizer-disposition-migration.md)
 > （§2.3, §3.6, §4.1, §5 順10, §7.2(d), §7.3, §8, §11）。
 > 本specは[Issue #376][1]の成果物である。statusが `draft` の間はimplementation-readyではない。
+> 2026-09-22: Phase1 re-entry（r2〜r4の4ラウンドreview、最終 [Approve][10] @5764528122）を経て
+> owner受入により `accepted` へ進めた。
 
 ## Problem
 
@@ -692,6 +694,7 @@ review指摘で明確化した戻り先契約（D5）とregistry所有境界（D
   作成。disposition §11の未決定事項（選択規則・lease・token・閉域語彙）をD1–D6で確定。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/376
+[10]: https://github.com/nunu1733/NunuLauncher/issues/376#issuecomment-5764528122
 [2]: ../../lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt
 [3]: ../../lawnchair/src/app/lawnchair/organizer/application/public/OrganizerDurableStatus.kt
 [4]: ../../lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt
