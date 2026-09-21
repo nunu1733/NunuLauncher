@@ -314,8 +314,12 @@ class ExchangeFlowStateHolder(
     fun dispose() {
         abandonAwaitingUsageAccessJit()
         // Invalidate the pending attempt itself: a stale resume callback must
-        // find no awaiting screen to match its token against.
-        screen = ExchangeScreen.Closed
+        // find no awaiting screen to match its token against. Only when the
+        // pause is still on screen — the normal-resolution unmount (screen
+        // already `Generating`/past) must not be clobbered.
+        if (screen is ExchangeScreen.AwaitingUsageAccessJit) {
+            screen = ExchangeScreen.Closed
+        }
     }
 
     /**
@@ -1134,6 +1138,15 @@ private fun ExchangeUsageAccessJitDialogHost(
     var settingsLaunchFailed by remember(state.attemptToken) { mutableStateOf(false) }
     var grantCheckTick by remember(state.attemptToken) { mutableIntStateOf(0) }
     val owner = ExchangeJitAttemptOwner(state.attemptToken)
+
+    // Unmount while the pause is unresolved (navigation away, a run admission
+    // leaving the Idle face, host teardown): apply the owner-destruction
+    // rules — release while un-presented, abandon-resolve once presented — so
+    // the process barrier is never orphaned. No-op on the normal-resolution
+    // unmount (the screen has already moved past the awaiting state).
+    DisposableEffect(state.attemptToken) {
+        onDispose { holder.dispose() }
+    }
 
     // Waiter wakeup: deterministic observation of the gate snapshot.
     LaunchedEffect(gateSnapshot, state.attemptToken) {

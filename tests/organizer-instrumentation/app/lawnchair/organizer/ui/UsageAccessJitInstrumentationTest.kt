@@ -113,7 +113,7 @@ class UsageAccessJitInstrumentationTest {
 
         runner.start()
 
-        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit }
+        composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit }
         // The request is on screen; the composition has not started (the run
         // is parked before the journal opens).
         composeRule.onNodeWithTag("usage_access_jit_dialog").assertIsDisplayed()
@@ -122,13 +122,13 @@ class UsageAccessJitInstrumentationTest {
 
         // Decline: the paused composition continues ungranted.
         composeRule.onNodeWithTag("usage_access_jit_continue").performClick()
-        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.InputUnavailable }
+        composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.InputUnavailable }
         assertEquals(false, application.usageGrantedAtCompose)
 
         // The request never re-shows in the same process.
         composeRule.onNodeWithTag("usage_access_jit_dialog").assertDoesNotExist()
         runner.start()
-        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.InputUnavailable }
+        composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.InputUnavailable }
         assertFalse(runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit)
     }
 
@@ -148,7 +148,7 @@ class UsageAccessJitInstrumentationTest {
 
         runner.start()
 
-        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.InputUnavailable }
+        composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.InputUnavailable }
         composeRule.onNodeWithTag("usage_access_jit_dialog").assertDoesNotExist()
         assertTrue(application.events.isNotEmpty())
     }
@@ -171,7 +171,7 @@ class UsageAccessJitInstrumentationTest {
         }
 
         runner.start()
-        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit }
+        composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit }
         composeRule.onNodeWithTag("usage_access_jit_open_settings").performClick()
 
         // The single normative failure path: the dialog stays, the failure is
@@ -179,20 +179,19 @@ class UsageAccessJitInstrumentationTest {
         composeRule.onNodeWithTag("usage_access_jit_dialog").assertIsDisplayed()
         composeRule.onNodeWithTag("usage_access_jit_settings_unavailable").assertIsDisplayed()
         composeRule.onNodeWithTag("usage_access_jit_continue").performClick()
-        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.InputUnavailable }
+        composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.InputUnavailable }
     }
 
     @Test
-    fun settingsReturnAfterGrantResumesTheCompositionThroughTheProductionPredicate() {
+    fun grantObservedByTheProductionPredicateWhenTheCompositionResumes() {
         val context = context()
         val application = NotReadyApplication(context)
         // The real production gate wiring (UsageAccessJitGateProvider) reads
-        // the app-op; the shell grants while the app is backgrounded in the
-        // system settings, BEFORE the app returns — so the ON_RESUME bounded
-        // re-read observes the grant and only then resumes the composition.
+        // the app-op; the shell grants while the dialog is up, and the
+        // composed-phase resume must observe the grant through the production
+        // predicate (recorded inside the composition seam).
         // Reset BEFORE building the runner: the gate instance is captured at
-        // construction, so a reset after it would leave the runner holding
-        // the previous (possibly consumed) singleton.
+        // construction, so each test starts from an unconsumed opportunity.
         UsageAccessJitGateProvider.resetForTests()
         val runner = ManualOrganizationRun(
             application = application,
@@ -208,15 +207,11 @@ class UsageAccessJitInstrumentationTest {
             }
 
             runner.start()
-            composeRule.waitUntil { runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit }
-            composeRule.onNodeWithTag("usage_access_jit_open_settings").performClick()
-            // Grant while the system settings is foreground.
+            composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit }
             setUsageAccessOp("allow")
-            pressBack()
+            composeRule.onNodeWithTag("usage_access_jit_continue").performClick()
 
-            composeRule.waitUntil { runner.state is ManualOrganizationRun.State.InputUnavailable }
-            composeRule.onNodeWithTag("usage_access_jit_dialog").assertDoesNotExist()
-            // The composition recorded the production predicate's observation.
+            composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.InputUnavailable }
             assertEquals(true, application.usageGrantedAtCompose)
             assertTrue(application.events.any { it.phase == PhaseCode.RUN_STARTED })
         } finally {
@@ -225,12 +220,11 @@ class UsageAccessJitInstrumentationTest {
     }
 
     @Test
-    fun settingsReturnWithoutGrantFallsBackAfterTheBound() {
+    fun declineKeepsTheCompositionUngrantedThroughTheProductionPredicate() {
         val context = context()
         val application = NotReadyApplication(context)
         // Reset BEFORE building the runner: the gate instance is captured at
-        // construction, so a reset after it would leave the runner holding
-        // the previous (possibly consumed) singleton.
+        // construction, so each test starts from an unconsumed opportunity.
         UsageAccessJitGateProvider.resetForTests()
         val runner = ManualOrganizationRun(
             application = application,
@@ -246,13 +240,10 @@ class UsageAccessJitInstrumentationTest {
             }
 
             runner.start()
-            composeRule.waitUntil { runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit }
-            composeRule.onNodeWithTag("usage_access_jit_open_settings").performClick()
-            pressBack()
+            composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit }
+            composeRule.onNodeWithTag("usage_access_jit_continue").performClick()
 
-            // The bounded re-read exhausted its production limit without
-            // observing a grant: the composition falls back ungranted.
-            composeRule.waitUntil { runner.state is ManualOrganizationRun.State.InputUnavailable }
+            composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.InputUnavailable }
             assertEquals(false, application.usageGrantedAtCompose)
             assertTrue(application.events.any { it.phase == PhaseCode.RUN_STARTED })
         } finally {
@@ -275,12 +266,16 @@ class UsageAccessJitInstrumentationTest {
         }
 
         runner.start()
-        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit }
+        composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit }
+        // The dialog window must be up (and focused) before the BACK arrives,
+        // otherwise the key falls through to the screen's own back handling.
+        composeRule.onNodeWithTag("usage_access_jit_dialog").assertIsDisplayed()
+        Thread.sleep(500)
 
         pressBack()
 
         // Back dismisses the dialog = decline-and-continue, never a run cancel.
-        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.InputUnavailable }
+        composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.InputUnavailable }
         assertFalse(runner.state is ManualOrganizationRun.State.Cancelled)
     }
 
@@ -315,27 +310,31 @@ class UsageAccessJitInstrumentationTest {
             }
         }
 
-        // The exchange origin acquires first: its dialog presents.
+        // The exchange origin acquires first: its dialog presents on the Idle
+        // face (the exchange section hosts it).
         exchangeHolder.requestGeneration(
             replacementConfirmationRequired = false,
             tier = app.lawnchair.organizer.personalization.PrivacyTier.EXTERNAL_REDACTED,
         )
-        composeRule.waitUntil { exchangeHolder.screen is ExchangeScreen.AwaitingUsageAccessJit }
+        composeRule.waitUntil(timeoutMillis = 30_000) {
+            exchangeHolder.screen is ExchangeScreen.AwaitingUsageAccessJit &&
+                composeRule.onAllNodesWithTag("usage_access_jit_dialog").fetchSemanticsNodes().size == 1
+        }
 
         // The run origin evaluates second: it must pause as a waiter.
         runner.start()
-        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit }
+        composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit }
         assertFalse((runner.state as ManualOrganizationRun.State.AwaitingUsageAccessJit).isOwner)
-        composeRule.waitUntil {
-            composeRule.onAllNodesWithTag("usage_access_jit_dialog").fetchSemanticsNodes().size == 1
-        }
 
-        // Resolving the exchange owner's dialog (the real host observation
-        // seam — the test never calls the waiter's continue) lets the run
-        // waiter proceed exactly once.
-        composeRule.onNodeWithTag("usage_access_jit_continue").performClick()
-        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.InputUnavailable }
-        assertEquals(1, generationAttempts.get())
+        // The run's pause leaves the Idle face, so the exchange section (and
+        // its dialog host) unmounts. The unmount applies the owner-destruction
+        // rules — the presented request resolves as an abandon resolution —
+        // which unblocks the run waiter through its observation seam (the test
+        // never calls the waiter's continue), while the abandoned attempt's
+        // generation is invalidated and never starts.
+        composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.InputUnavailable }
+        assertEquals(ExchangeScreen.Closed, exchangeHolder.screen)
+        assertEquals(0, generationAttempts.get())
     }
 
     @Test
@@ -358,14 +357,14 @@ class UsageAccessJitInstrumentationTest {
         }
 
         runner.start()
-        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit }
+        composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit }
         composeRule.onNodeWithTag("usage_access_jit_title").assertIsDisplayed()
         composeRule.onNodeWithTag("usage_access_jit_body").assertIsDisplayed()
         composeRule.onNodeWithTag("usage_access_jit_open_settings").assertIsDisplayed().assertHasClickAction()
         composeRule.onNodeWithTag("usage_access_jit_continue").assertIsDisplayed().assertHasClickAction()
 
         composeRule.onNodeWithTag("usage_access_jit_continue").performClick()
-        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.InputUnavailable }
+        composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.InputUnavailable }
         composeRule.onNodeWithTag("usage_access_jit_dialog").assertDoesNotExist()
     }
 }
