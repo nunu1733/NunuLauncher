@@ -39,10 +39,23 @@ class PendingImportStartupReconcileTest {
         var deletes = 0
         var loadThrows = false
 
+        /**
+         * Issue #374 (review finding 3): simulates a file that EXISTS but is
+         * unreadable — the real store's read path cleans such residue
+         * (best-effort delete) and returns null, which is why this shape
+         * "deletes" and reads as absent rather than throwing.
+         */
+        var residueOnDisk = false
+
         override fun save(proposal: DurablePendingIntent): Boolean = error("save is not part of this seam")
 
         override fun load(): DurablePendingIntent? {
             if (loadThrows) throw IllegalStateException("corrupt read")
+            if (residueOnDisk) {
+                deletes++
+                record = null
+                return null
+            }
             return record
         }
 
@@ -51,6 +64,14 @@ class PendingImportStartupReconcileTest {
         override fun delete() {
             deletes++
             record = null
+        }
+
+        override fun deleteIf(proposal: DurablePendingIntent): Boolean {
+            if (record == proposal) {
+                record = null
+                return true
+            }
+            return false
         }
     }
 
@@ -178,6 +199,22 @@ class PendingImportStartupReconcileTest {
         reconcile(pendingStore, sessionStore)
 
         assertEquals(0, pendingStore.deletes)
+    }
+
+    @Test
+    fun unreadableResidueIsPhysicallyCleanedAndNeverShown() {
+        // DI-AC-05 (review finding 3): "file exists but garbage" is NOT a
+        // silent absence — the store's read path fail-closed cleans the
+        // residue, so even a load that reads as absent leaves NO file behind
+        // (a later read can never resurrect the record). The startup helper
+        // itself writes nothing beyond that.
+        val pendingStore = FakePendingStore(record("export", setOf("ref-a"), expiresAtEpochMs = 1_000L + HOUR_MS)).apply { residueOnDisk = true }
+        val sessionStore = FakeSessionStore(session("export", setOf("ref-a")))
+
+        reconcile(pendingStore, sessionStore)
+
+        assertEquals("the residue was cleaned by the store's read path", 1, pendingStore.deletes)
+        assertNull("no record remains on disk", pendingStore.record)
     }
 
     private companion object {

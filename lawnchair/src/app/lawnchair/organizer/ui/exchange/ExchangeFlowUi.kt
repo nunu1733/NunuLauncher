@@ -96,6 +96,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -641,6 +642,18 @@ class ExchangeFlowStateHolder(
             }
 
             is ExchangeGenerationResult.EncodeFailure -> {
+                // Issue #374 (review finding 4, DI-AC-03): the controller
+                // commits the replacement BEFORE the encode runs — the new
+                // session is durably saved and the old proposal's durable
+                // record is already deleted. An encode failure can therefore
+                // only occur AFTER the replacement commit, so the in-process
+                // half of the invalidation must follow it exactly like the
+                // Generated settle: the pending slot and any showing
+                // success/persistence face are discarded here (the durable
+                // side is gone; nothing may keep referencing it). The typed
+                // oversize guidance still surfaces, and the failed attempt
+                // replaced nothing session-wise (the store was re-read below).
+                invalidateImportedIntentForReplacement()
                 status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_OVERSIZE)
                 screen = readActiveRequestIntoSelecting()
             }
@@ -650,9 +663,14 @@ class ExchangeFlowStateHolder(
     /**
      * Issue #374 (spec 374 DI-AC-03): the in-process half of the replacement
      * invalidation — clears the pending slot and any showing import success /
-     * persistence-failure state when a new request's generation succeeded.
-     * No-op when no imported proposal exists in-process (the controller-side
-     * durable delete is unconditional and cheap on an absent record).
+     * persistence-failure state when a new request's generation got PAST the
+     * replacement commit (the new session's durable save, which is also the
+     * point where the controller deletes the old durable record). Applied at
+     * BOTH post-commit terminals: the Generated settle and the EncodeFailure
+     * settle (review finding 4 — the encode runs after the commit, so its
+     * failure cannot un-commit the replacement). No-op when no imported
+     * proposal exists in-process (the controller-side durable delete is
+     * unconditional and cheap on an absent record).
      */
     private fun invalidateImportedIntentForReplacement() {
         if (pendingValidated == null &&
@@ -905,9 +923,21 @@ class ExchangeFlowStateHolder(
     /**
      * Issue #374: the durable record built at the validated settle. Kept
      * anchored with the attempt so [retryPendingIntentSave] re-runs ONLY the
-     * store save of the identical record (byte-stable retry).
+     * store save of the identical record (byte-stable retry). Cleared the
+     * moment the save settles as ADOPTED — from then on the record belongs to
+     * the proposal lifecycle (its disappearance paths are discard / expiry /
+     * replacement only), and an attempt invalidation must never fence it away.
      */
     private var pendingDurableRecord: DurablePendingIntent? = null
+
+    /**
+     * Issue #374 (review finding 1): serializes ALL durable-record writes and
+     * cleanups of this holder, so a cancelled/superseded attempt can never
+     * commit its record over (or leave it beside) a newer attempt's
+     * single-active record. See [launchDurablePendingIntentSave] and
+     * [invalidateImportAttempt] for the two fenced parties.
+     */
+    private val pendingWriteMutex = kotlinx.coroutines.sync.Mutex()
 
     /**
      * Issue #328 (spec: import attempt生存中の競合freeze): true from the
@@ -930,13 +960,31 @@ class ExchangeFlowStateHolder(
     private fun invalidateImportAttempt() {
         activeAttempt = null
         pendingValidated = null
+        val record = pendingDurableRecord
         pendingDurableRecord = null
+        if (record != null) {
+            // Issue #374 (review finding 1): the attempt lost its anchor — its
+            // NOT-YET-COMMITTED record must never survive as the store's
+            // single-active record. The cleanup takes the SAME mutex as the
+            // writes, so it deterministically runs after any in-flight save of
+            // this record and removes exactly it (deleteIf equality — a newer
+            // attempt's record is never touched). An adopted record is never
+            // captured here: the settle cleared pendingDurableRecord when it
+            // adopted the success state (画面離脱は破棄ではない).
+            scope.launch(Dispatchers.IO) {
+                pendingWriteMutex.withLock {
+                    pendingImportStore.deleteIf(record)
+                }
+            }
+        }
     }
 
     /**
      * Numbers a fresh import attempt from the CURRENT run state: the run-in
      * entry is the one whose owning run holds the selection surface.
      * Main-confined (called from the receipt paths and the editor action).
+     * The previous attempt's invalidation is the fenced one — an uncommitted
+     * record of a superseded attempt is scheduled for removal, never inherited.
      */
     private fun beginImportAttempt(): ImportAttempt {
         val selecting = run.state as? ManualOrganizationRun.State.Selecting
@@ -945,9 +993,8 @@ class ExchangeFlowStateHolder(
             entryKind = if (selecting != null) ExchangeImportEntryKind.RUN_IN else ExchangeImportEntryKind.IDLE,
             owningRunId = selecting?.runId,
         )
+        invalidateImportAttempt()
         activeAttempt = attempt
-        pendingValidated = null
-        pendingDurableRecord = null
         return attempt
     }
 
@@ -1001,11 +1048,10 @@ class ExchangeFlowStateHolder(
 
     /**
      * Issue #374: builds the durable record of the validated proposal and
-     * saves it through the injected [PendingImportedIntentStore] on the IO
-     * dispatcher (the same settle coroutine structure as the validation
-     * itself). The settle anchors to the attempt token exactly like the
-     * validation settle — a late save result after a cancel / a newer import /
-     * an input edit is dropped and never adopts a face.
+     * saves it through the attempt-fenced write below. The settle anchors to
+     * the attempt token exactly like the validation settle — a late save
+     * result after a cancel / a newer import / an input edit is dropped AND
+     * its record is fenced out of the store.
      */
     private fun persistPendingImport(attempt: ImportAttempt, validated: ValidatedPersonalizedIntent) {
         val record = durablePendingIntentFrom(
@@ -1019,9 +1065,48 @@ class ExchangeFlowStateHolder(
             expiresAtEpochMs = validated.session.expiresAtEpochMs,
         )
         pendingDurableRecord = record
+        launchDurablePendingIntentSave(attempt, record)
+    }
+
+    /**
+     * Issue #374 (review finding 1): the attempt-fenced durable write. The
+     * ENTIRE write-and-settle sequence holds [pendingWriteMutex], closing the
+     * gap the token-only anchor left (a save already in flight could commit a
+     * cancelled attempt's record, or land after a newer attempt's record):
+     *
+     * - Fence 1 (pre-write currency re-check): an attempt already invalidated
+     *   before the lock was granted never writes at all;
+     * - Fence 2 (settle-time currency): a save that LANDED while its attempt
+     *   went stale is removed by `store.deleteIf(record)` in the SAME lock
+     *   hold — the equality check touches exactly this attempt's record, so a
+     *   newer attempt's record can never be the deletion's victim;
+     * - the invalidation cleanup ([invalidateImportAttempt]) queues on the
+     *   same mutex, so a cancel racing an in-flight save deterministically
+     *   removes the record after the write lands.
+     *
+     * Settle code inside the lock calls the store directly — never a helper
+     * that re-takes the mutex (no re-entrancy).
+     */
+    private fun launchDurablePendingIntentSave(attempt: ImportAttempt, record: DurablePendingIntent) {
         scope.launch(Dispatchers.IO) {
-            val saved = pendingImportStore.save(record)
-            withContext(uiDispatcher) { settlePendingIntentSave(attempt, saved) }
+            pendingWriteMutex.withLock {
+                // Fence 1: the attempt was already cancelled/superseded before
+                // this write got the lock — nothing of it may reach the store.
+                if (activeAttempt?.token != attempt.token) return@withLock
+                val saved = pendingImportStore.save(record)
+                withContext(uiDispatcher) {
+                    if (activeAttempt?.token == attempt.token) {
+                        // Current at the settle: the normal anchored adoption
+                        // (success/persistence-failure face).
+                        settlePendingIntentSave(attempt, saved)
+                    } else if (saved) {
+                        // Fence 2: stale settle after the write landed — the
+                        // cancelled attempt's record must not survive (and
+                        // must never overwrite a newer attempt's record).
+                        pendingImportStore.deleteIf(record)
+                    }
+                }
+            }
         }
     }
 
@@ -1029,9 +1114,13 @@ class ExchangeFlowStateHolder(
      * Issue #374: applies one persistence-step settle. The anchor contract is
      * unchanged from the validation settle — the save result applies only
      * while the SAME attempt is still current (a cancel, a newer import or
-     * an input edit already dropped it otherwise). Save success adopts
-     * ImportSuccess exactly as pre-#374; failure adopts the typed
+     * an input edit already dropped and fenced it otherwise). Save success
+     * adopts ImportSuccess exactly as pre-#374 and COMMITS the record (the
+     * anchored slot is cleared, so later attempt invalidations — e.g. a plain
+     * screen leave — never fence it away); failure adopts the typed
      * persistence-failure face with the pending intent kept for a retry.
+     *
+     * Called only while [pendingWriteMutex] is held — never touches it.
      */
     private fun settlePendingIntentSave(attempt: ImportAttempt, saved: Boolean) {
         if (activeAttempt?.token != attempt.token) return
@@ -1047,6 +1136,11 @@ class ExchangeFlowStateHolder(
         }
         val isRetry = screenState.value is ExchangeScreen.ImportPersistenceFailure
         if (saved) {
+            // The record is durably committed and the success state adopts it:
+            // the disappearance paths are now discard / expiry / replacement
+            // only (spec 374 Contract notes 6), so the attempt-fenced cleanup
+            // must never target it again.
+            pendingDurableRecord = null
             adoptImportSuccess(attempt)
         } else {
             if (isRetry) {
@@ -1097,10 +1191,10 @@ class ExchangeFlowStateHolder(
         if (attempt.token != failure.attemptToken) return
         val record = pendingDurableRecord ?: return
         screen = failure.copy(retrying = true)
-        scope.launch(Dispatchers.IO) {
-            val saved = pendingImportStore.save(record)
-            withContext(uiDispatcher) { settlePendingIntentSave(attempt, saved) }
-        }
+        // The retry runs through the same attempt-fenced write: an interrupt
+        // (close / editor change) between the launch and the settle leaves no
+        // record behind.
+        launchDurablePendingIntentSave(attempt, record)
     }
 
     /** The single continuation settle outcomes (spec 328 CTA scenario). */
@@ -3124,4 +3218,5 @@ private object NoopPendingImportedIntentStore : PendingImportedIntentStore {
     override fun load(): DurablePendingIntent? = null
     override fun discard(): Boolean = true
     override fun delete() = Unit
+    override fun deleteIf(proposal: DurablePendingIntent): Boolean = false
 }

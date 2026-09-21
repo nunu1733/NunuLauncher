@@ -135,23 +135,32 @@ class ExchangeFlowStateHolderTest {
      * store, so the pre-#374 lifecycles (and most fixtures) are unaffected;
      * failure injection flips [saveResult] / [discardResult], and [saveGate]
      * holds a save at the store entry to make the settle boundary
-     * deterministic (the same pattern as [FakeStore.loadGate]).
+     * deterministic (the same pattern as [FakeStore.loadGate]). [saveGates]
+     * gates a SEQUENCE of saves one latch each (the A/B interleaving oracles).
+     * [completedSaves] counts saves that RETURNED, so a test can pin "the
+     * write already came back" before asserting on the fenced aftermath.
      */
     private class FakePendingIntentStore : PendingImportedIntentStore {
         var record: DurablePendingIntent? = null
         var saveCalls = 0
+        var completedSaves = 0
         var discardCalls = 0
         var deleteCalls = 0
+        var deleteIfCalls = 0
         var saveResult = true
         var discardResult = true
 
         @Volatile
         var saveGate: CountDownLatch? = null
 
+        @Volatile
+        var saveGates: ArrayDeque<CountDownLatch>? = null
+
         override fun save(proposal: DurablePendingIntent): Boolean {
             saveCalls++
-            saveGate?.await(5, TimeUnit.SECONDS)
+            (saveGates?.removeFirstOrNull() ?: saveGate)?.await(5, TimeUnit.SECONDS)
             if (saveResult) record = proposal
+            completedSaves++
             return saveResult
         }
 
@@ -166,6 +175,16 @@ class ExchangeFlowStateHolderTest {
         override fun delete() {
             deleteCalls++
             record = null
+        }
+
+        /** Compare-and-delete, mirroring the real store's equality contract. */
+        override fun deleteIf(proposal: DurablePendingIntent): Boolean {
+            deleteIfCalls++
+            if (record == proposal) {
+                record = null
+                return true
+            }
+            return false
         }
     }
 
@@ -1092,6 +1111,8 @@ class ExchangeFlowStateHolderTest {
         scopedStructural: Boolean = false,
         now: Long = 1_000_000L,
         pendingStore: FakePendingIntentStore = FakePendingIntentStore(),
+        encodeExport: (app.lawnchair.organizer.personalization.PersonalizationContextExportV1) -> app.lawnchair.organizer.personalization.ContextExportResult =
+            app.lawnchair.organizer.personalization.ContextExportCodec::encode,
     ): HolderFixture {
         val store = FakeStore()
         val (run, application) = newExchangeRun(detectionReady)
@@ -1112,6 +1133,51 @@ class ExchangeFlowStateHolderTest {
             store = store,
             allocator = SequentialIdAllocator(),
             clock = { now },
+            pendingImportStore = pendingStore,
+            encodeExport = encodeExport,
+        )
+        val holder = ExchangeFlowStateHolder(
+            controllerFactory = { controller },
+            run = run,
+            scope = scope,
+            settleDispatcher = Dispatchers.IO,
+            uiDispatcher = Dispatchers.IO,
+            pendingImportStore = pendingStore,
+        )
+        return HolderFixture(holder, controller, store, run, application, unhandled, scope, pendingStore)
+    }
+
+    /**
+     * Issue #374 (review finding 1 oracles): [newFixture] with a mutable
+     * clock, so two imports of the SAME reply can produce DISTINGUISHABLE
+     * durable records (the record's `createdAtEpochMs` differs) and the
+     * "a stale attempt never overwrites a newer record" oracle can tell A
+     * from B.
+     */
+    private fun newFixtureWithMutableClock(
+        clock: MutableClock,
+        pendingStore: FakePendingIntentStore = FakePendingIntentStore(),
+        /** Optional per-validation gate queue (A/B interleaving oracles). */
+        structuralGates: ArrayDeque<CountDownLatch>? = null,
+    ): HolderFixture {
+        val store = FakeStore()
+        val (run, application) = newExchangeRun(true)
+        val unhandled = mutableListOf<Throwable>()
+        val scope = CoroutineScope(
+            Dispatchers.IO + kotlinx.coroutines.CoroutineExceptionHandler { _, throwable ->
+                synchronized(unhandled) { unhandled.add(throwable) }
+            },
+        )
+        val controller = ExchangeFlowController(
+            composeExportInputs = { ExchangeInputResult.ExportReady(exportInputs(clock.nowMs)) },
+            currentStructuralInputs = {
+                structuralGates?.removeFirstOrNull()?.await(5, TimeUnit.SECONDS)
+                ExchangeStructuralResult.Ready(structural())
+            },
+            composeScopedExportInputs = { _, _, _ -> ExchangeInputResult.ExportReady(scopedExportInputs(clock.nowMs)) },
+            store = store,
+            allocator = SequentialIdAllocator(),
+            clock = { clock.nowMs },
             pendingImportStore = pendingStore,
         )
         val holder = ExchangeFlowStateHolder(
@@ -1744,9 +1810,11 @@ class ExchangeFlowStateHolderTest {
     }
 
     @Test
-    fun retrySettleIsAnchoredAndNeverAdoptsAfterTheAttemptIsCancelled() {
-        // DI-AC-13 anchor: the retry settle keeps the attempt token — a retry
-        // save landing after the attempt was cancelled adopts nothing.
+    fun retrySettleIsAnchoredAndNeverLeavesARecordAfterTheAttemptIsCancelled() {
+        // DI-AC-13 anchor + review finding 1: the retry settle keeps the
+        // attempt token — a retry save landing after the attempt was cancelled
+        // adopts nothing AND its durable write is fenced away (no record
+        // remains in the store).
         val pendingStore = FakePendingIntentStore().apply { saveResult = false }
         val fixture = newFixture(pendingStore = pendingStore)
         fixture.holder.openImport()
@@ -1761,12 +1829,13 @@ class ExchangeFlowStateHolderTest {
 
         fixture.holder.close()
         retryGate.countDown()
-        // The retried save returns (the fake records it), the settle hop
-        // lands, and the anchor drops it: nothing is adopted.
-        awaitScreen(fixture.holder) { pendingStore.record != null }
+        // The retried save returns, the settle hop lands, the anchor drops it
+        // and the fence removes exactly the retry's record: none remains.
+        awaitScreen(fixture.holder) { pendingStore.completedSaves >= 2 && pendingStore.record == null }
         Thread.sleep(200)
         assertTrue("a cancelled attempt's late retry settle adopts nothing", fixture.holder.screen is ExchangeScreen.Closed)
         assertFalse(fixture.holder.importAttemptActive)
+        assertNull("the interrupted retry leaves no durable record", pendingStore.record)
     }
 
     @Test
@@ -1788,10 +1857,12 @@ class ExchangeFlowStateHolderTest {
     }
 
     @Test
-    fun latePersistenceSettleAfterACancelNeverAdoptsAFace() {
-        // DI-AC-01 anchor regression: the persistence settle keeps the
-        // attempt anchor — a save result landing after the attempt was
-        // cancelled is dropped, and no retry can fire without the face.
+    fun latePersistenceSettleAfterACancelNeverAdoptsAFaceOrARecord() {
+        // DI-AC-01 anchor regression + review finding 1: the persistence
+        // settle keeps the attempt anchor — a save result landing after the
+        // attempt was cancelled is dropped, its record is fenced out of the
+        // store (the cancelled proposal can never revive in the Hub), and no
+        // retry can fire without the face.
         val pendingStore = FakePendingIntentStore().apply { saveGate = CountDownLatch(1) }
         val fixture = newFixture(pendingStore = pendingStore)
         val reply = generatedReplyFixture(fixture)
@@ -1801,16 +1872,118 @@ class ExchangeFlowStateHolderTest {
 
         fixture.holder.close()
         pendingStore.saveGate!!.countDown()
-        // The save returns (the fake records it), the settle hop lands, and
-        // the anchor drops it: nothing is adopted.
-        awaitScreen(fixture.holder) { pendingStore.record != null }
+        // The save returns, the stale settle lands, and the fence removes the
+        // cancelled attempt's record: the store ends with NO record.
+        awaitScreen(fixture.holder) { pendingStore.completedSaves >= 1 && pendingStore.record == null }
         Thread.sleep(200)
         assertTrue("a cancelled attempt's late save settle adopts nothing", fixture.holder.screen is ExchangeScreen.Closed)
         assertFalse(fixture.holder.importAttemptActive)
+        assertNull("a cancelled attempt must not leave its durable record", pendingStore.record)
 
         fixture.holder.retryPendingIntentSave()
         Thread.sleep(200)
         assertEquals("the retry is refused without the failure face", 1, pendingStore.saveCalls)
+    }
+
+    // ------------------------------------------------------------------
+    // Issue #374 review finding 1: the four deterministic attempt-fencing
+    // oracles. Oracle 1 (close during an in-flight save → no record) and
+    // oracle 4 (interrupted retry → no record) are pinned by
+    // `latePersistenceSettleAfterACancelNeverAdoptsAFaceOrARecord` and
+    // `retrySettleIsAnchoredAndNeverLeavesARecordAfterTheAttemptIsCancelled`
+    // above; oracles 2 and 3 live here.
+    // ------------------------------------------------------------------
+
+    @Test
+    fun inputEditDuringAnInFlightSaveNeverLeavesAStaleRecord() {
+        // Oracle 2: the save is in flight when the editor text changes (the
+        // attempt anchor drops); the released write is fenced away — no stale
+        // record remains for the replaced text.
+        val pendingStore = FakePendingIntentStore().apply { saveGate = CountDownLatch(1) }
+        val fixture = newFixture(pendingStore = pendingStore)
+        val reply = generatedReplyFixture(fixture)
+        fixture.holder.openImport()
+        fixture.holder.import(reply)
+        awaitScreen(fixture.holder) { pendingStore.saveCalls >= 1 }
+
+        fixture.holder.onImportTextChange("edited while saving")
+        pendingStore.saveGate!!.countDown()
+        awaitScreen(fixture.holder) { pendingStore.completedSaves >= 1 && pendingStore.record == null }
+        Thread.sleep(200)
+        assertEquals("edited while saving", (fixture.holder.screen as ExchangeScreen.Importing).replyText)
+        assertFalse(fixture.holder.importAttemptActive)
+        assertNull("the superseded attempt's record must be fenced away", pendingStore.record)
+    }
+
+    @Test
+    fun aReleasedStaleSaveNeverOverwritesTheNewerAttemptsRecord() {
+        // Oracle 3, interleaving (i): A's save is parked INSIDE the store
+        // (holding the pending-write mutex) when attempt B is imported; A's
+        // released write is fenced away BEFORE B's write ever runs (B queues
+        // on the same mutex), so the single-active record is B's and A can
+        // never overwrite it. The two records are distinguishable by their
+        // `createdAtEpochMs` (the mutable clock advances between the attempts).
+        val clock = MutableClock(1_000_000L)
+        val pendingStore = FakePendingIntentStore()
+        val gateA = CountDownLatch(1)
+        val gateB = CountDownLatch(1)
+        pendingStore.saveGates = ArrayDeque(listOf(gateA, gateB))
+        val fixture = newFixtureWithMutableClock(clock, pendingStore)
+        val reply = generatedReplyFixture(fixture)
+        fixture.holder.openImport()
+        fixture.holder.import(reply) // attempt A @T1
+        awaitScreen(fixture.holder) { pendingStore.saveCalls >= 1 } // A parked in the gated store.save
+
+        clock.nowMs = 2_000_000L
+        fixture.holder.import(reply) // attempt B @T2 — its write queues behind A's
+        Thread.sleep(300)
+
+        gateA.countDown()
+        // A's write returned and was fenced (B's save is still gated): the
+        // store passes through EMPTY, never through A's stale record.
+        awaitScreen(fixture.holder) { pendingStore.completedSaves >= 1 && pendingStore.record == null }
+
+        gateB.countDown()
+        val success = awaitImportSuccess(fixture.holder)
+        awaitScreen(fixture.holder) { pendingStore.record?.createdAtEpochMs == 2_000_000L }
+        assertEquals("the final record is B's", 2_000_000L, pendingStore.record!!.createdAtEpochMs)
+        assertEquals(2, pendingStore.saveCalls)
+        assertTrue("A's stale record was fenced by deleteIf", pendingStore.deleteIfCalls >= 1)
+        assertTrue(fixture.holder.importAttemptActive) // B's attempt owns the face
+        assertNotNull(success)
+    }
+
+    @Test
+    fun aStaleAttemptWhoseSaveNeverFiredNeverOverwritesTheNewerRecord() {
+        // Oracle 3, interleaving (ii): B's save COMMITS before A's attempt is
+        // even released (A parked at the validation gate). A's settle drops at
+        // the token anchor, its save never fires, and the single-active record
+        // stays B's.
+        val clock = MutableClock(1_000_000L)
+        val pendingStore = FakePendingIntentStore()
+        val gateA = CountDownLatch(1)
+        val gateB = CountDownLatch(1)
+        val fixture = newFixtureWithMutableClock(
+            clock,
+            pendingStore,
+            structuralGates = ArrayDeque(listOf(gateA, gateB)),
+        )
+        val reply = generatedReplyFixture(fixture)
+        fixture.holder.openImport()
+        fixture.holder.import(reply) // attempt A — validation parked on gateA
+        clock.nowMs = 2_000_000L
+        fixture.holder.import(reply) // attempt B — validation parked on gateB
+
+        gateB.countDown()
+        awaitImportSuccess(fixture.holder) // B commits fully (record B @T2)
+        assertEquals(2_000_000L, pendingStore.record!!.createdAtEpochMs)
+
+        gateA.countDown()
+        awaitScreen(fixture.holder) { pendingStore.completedSaves >= 1 }
+        Thread.sleep(200)
+        assertEquals("A's save never fired after B committed", 1, pendingStore.saveCalls)
+        assertEquals("the final record is B's", 2_000_000L, pendingStore.record!!.createdAtEpochMs)
+        assertTrue(fixture.holder.screen is ExchangeScreen.ImportSuccess)
     }
 
     @Test
@@ -1870,9 +2043,50 @@ class ExchangeFlowStateHolderTest {
         val deletesBeforeReplacement = fixture.pendingStore.deleteCalls
         fixture.holder.generate(PrivacyTier.EXTERNAL_REDACTED)
         awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Disclosing }
-        assertEquals("the controller deletes the old record at the replacement", deletesBeforeReplacement + 1, fixture.pendingStore.deleteCalls)
+        assertEquals(deletesBeforeReplacement + 1, fixture.pendingStore.deleteCalls)
         assertNull(fixture.pendingStore.record)
-        assertFalse("the in-process success state is discarded too", fixture.holder.importAttemptActive)
+        assertFalse(fixture.holder.importAttemptActive)
+        assertNotEqualsImportDiscarded(fixture.holder.status?.kind)
+    }
+
+    @Test
+    fun replacementEncodeFailureStillInvalidatesTheInProcessProposal() {
+        // DI-AC-03 (review finding 4): the controller commits the replacement
+        // BEFORE the encode runs (write order: new session save → old durable
+        // record delete → encode). An EncodeFailure can therefore only occur
+        // AFTER the replacement commit, so the in-process half must be
+        // invalidated too: no attempt, no showing success/persistence face —
+        // only the typed oversize guidance (and no IMPORT_DISCARDED: this is
+        // a replacement, not a user discard).
+        val encodeFails = java.util.concurrent.atomic.AtomicBoolean(false)
+        val fixture = newFixture(
+            encodeExport = { export ->
+                if (encodeFails.get()) {
+                    app.lawnchair.organizer.personalization.ContextExportResult.Failure(
+                        app.lawnchair.organizer.personalization.ExportEncodeProblem.Oversize,
+                    )
+                } else {
+                    app.lawnchair.organizer.personalization.ContextExportCodec.encode(export)
+                }
+            },
+        )
+        fixture.holder.openImport()
+        fixture.holder.import(generatedReplyFixture(fixture))
+        awaitImportSuccess(fixture.holder)
+        assertTrue(fixture.holder.importAttemptActive)
+        assertNotNull(fixture.pendingStore.record)
+
+        val deletesBeforeReplacement = fixture.pendingStore.deleteCalls
+        encodeFails.set(true) // the new session still SAVES; only the encode fails
+        fixture.holder.generate(PrivacyTier.EXTERNAL_REDACTED)
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.SelectingPrivacy }
+
+        assertNull("the durable record was deleted at the replacement commit", fixture.pendingStore.record)
+        assertEquals(deletesBeforeReplacement + 1, fixture.pendingStore.deleteCalls)
+        assertFalse("the in-process attempt is invalidated too", fixture.holder.importAttemptActive)
+        assertTrue(fixture.holder.screen !is ExchangeScreen.ImportSuccess)
+        assertTrue(fixture.holder.screen !is ExchangeScreen.ImportPersistenceFailure)
+        assertEquals(ExchangeStatus.Kind.GENERATION_OVERSIZE, fixture.holder.status!!.kind)
         assertNotEqualsImportDiscarded(fixture.holder.status?.kind)
     }
 

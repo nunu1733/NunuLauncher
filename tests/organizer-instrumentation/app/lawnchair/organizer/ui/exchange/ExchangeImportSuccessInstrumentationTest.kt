@@ -120,6 +120,14 @@ class ExchangeImportSuccessInstrumentationTest {
         override fun delete() {
             record = null
         }
+
+        override fun deleteIf(proposal: DurablePendingIntent): Boolean {
+            if (record == proposal) {
+                record = null
+                return true
+            }
+            return false
+        }
     }
 
     private fun newRun(blockDetection: java.util.concurrent.CountDownLatch? = null): ManualOrganizationRun =

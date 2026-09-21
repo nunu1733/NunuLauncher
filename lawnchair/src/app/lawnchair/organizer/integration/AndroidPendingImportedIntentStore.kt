@@ -22,8 +22,10 @@ import kotlinx.serialization.json.Json
  * imported intent store (spec 374). App-private (`noBackupFilesDir`, outside
  * any backup — the same class as the export session store),
  * Launcher-favorites-DB-independent, single-active: the store holds at most one
- * record, so a successful import overwrites the prior one. Corruption, unknown
- * schema, and interrupted writes degrade to "no proposal" (fail-closed).
+ * record, so a successful import overwrites the prior one. A missing file reads
+ * as "no proposal"; a record that exists but is unreadable (corruption, unknown
+ * schema, read I/O failure) is fail-closed invalidated AND best-effort
+ * physically cleaned, so it can never reappear on a later read (DI-AC-05).
  *
  * Purity boundary: this class is the ONLY Android/storage boundary of the
  * durable pending intent contract; the pure package holds the seam interface
@@ -73,6 +75,17 @@ class AndroidPendingImportedIntentStore : PendingImportedIntentStore {
         synchronized(lock) { atomicFile.delete() }
     }
 
+    override fun deleteIf(proposal: DurablePendingIntent): Boolean = synchronized(lock) {
+        // Compare-and-delete: only a record that still reads back EXACTLY
+        // [proposal] is removed; a newer/different record (or absence) is left
+        // untouched. A corrupt residue is cleaned by readRecord itself and
+        // reads as absent (no match, no delete here).
+        val current = readRecord() ?: return@synchronized false
+        if (current != proposal) return@synchronized false
+        atomicFile.delete()
+        true
+    }
+
     private fun writeRecord(record: PendingRecord): Boolean {
         val bytes = json.encodeToString(PendingRecord.serializer(), record).encodeToByteArray()
         val out = try {
@@ -90,24 +103,54 @@ class AndroidPendingImportedIntentStore : PendingImportedIntentStore {
         }
     }
 
+    /**
+     * Issue #374 (review finding 3, DI-AC-05 fail-closed): the read
+     * distinguishes TRUE ABSENCE from EXISTS-BUT-UNREADABLE. A missing file is
+     * the only silent "no proposal"; once the file exists, a read I/O failure,
+     * a corrupt/truncated body, an unknown schema, or a record that fails its
+     * structural validation is an INVALID record — best-effort physically
+     * deleted here (so a later read cannot resurrect it) and returned as null.
+     * Never throws.
+     */
     private fun readRecord(): DurablePendingIntent? {
         val stream = try {
             atomicFile.openRead()
         } catch (e: FileNotFoundException) {
+            // True absence only when the path really is not there; an EXISTING
+            // file that cannot be opened (e.g. a directory in its place, or a
+            // permission failure) is unreadable residue, cleaned fail-closed.
+            if (!atomicFile.baseFile.exists()) return null
+            cleanResidue()
             return null
         }
         val bytes = try {
             stream.readBytes()
         } catch (e: IOException) {
-            return null
-        } finally {
             runCatching { stream.close() }
+            cleanResidue()
+            return null
         }
+        runCatching { stream.close() }
         val record = runCatching {
             json.decodeFromString(PendingRecord.serializer(), bytes.decodeToString())
-        }.getOrNull() ?: return null
-        if (record.schemaVersion != SCHEMA_VERSION) return null
-        return runCatching { record.toDurablePendingIntent() }.getOrNull()
+        }.getOrNull()
+        if (record == null || record.schemaVersion != SCHEMA_VERSION) {
+            // Corrupt/truncated body or unknown schema: invalid, cleaned.
+            cleanResidue()
+            return null
+        }
+        val durable = runCatching { record.toDurablePendingIntent() }.getOrNull()
+        if (durable == null) {
+            // Decodable but structurally invalid: invalid, cleaned.
+            cleanResidue()
+            return null
+        }
+        return durable
+    }
+
+    /** Best-effort physical cleanup of an invalid record's residue. */
+    private fun cleanResidue() {
+        runCatching { atomicFile.delete() }
     }
 
     private fun pendingRecordOf(proposal: DurablePendingIntent): PendingRecord = PendingRecord(

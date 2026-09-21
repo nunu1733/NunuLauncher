@@ -104,6 +104,10 @@ class AndroidPendingImportedIntentStoreTest {
             store(directory, "p1").save(record)
             file.writeText(file.readText().replace("\"schemaVersion\":1", "\"schemaVersion\":99"))
             assertNull(store(directory, "p1").load())
+            // DI-AC-05 (review finding 3): an existing-but-unknown-schema file
+            // is invalid, not absent — it is physically cleaned so a later
+            // read can never resurrect it.
+            assertFalse("the unknown-schema record is cleaned", file.exists())
         } finally {
             directory.deleteRecursively()
         }
@@ -117,12 +121,69 @@ class AndroidPendingImportedIntentStoreTest {
             directory.mkdirs()
             file.writeText("{corrupt")
             assertNull(store(directory, "p1").load())
+            assertFalse("garbage residue is physically cleaned", file.exists())
 
             // A truncated record — decodable prefix, cut mid-decision list.
             store(directory, "p1").save(record)
             val json = file.readText()
             file.writeText(json.substring(0, json.length / 2))
             assertNull(store(directory, "p1").load())
+            assertFalse("the truncated record is physically cleaned", file.exists())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    /**
+     * DI-AC-05 (review finding 3): a read I/O failure over an EXISTING file is
+     * not a silent absence either — the residue is best-effort cleaned. A
+     * directory in the record file's place makes the open succeed and the
+     * read fail (EISDIR → IOException) without touching the decode path.
+     */
+    @Test
+    fun readFailureOverAnExistingRecordIsCleanedFailClosed() {
+        val directory = tempDirectory()
+        try {
+            val file = File(directory, "p1")
+            // A directory cannot be decoded: the read fails after a successful open.
+            assertTrue(file.mkdirs())
+            val store = AndroidPendingImportedIntentStore(file)
+            assertNull(store.load())
+            assertFalse("the unreadable residue is cleaned", file.exists())
+            // The store keeps working afterwards (the file is a regular path again).
+            assertTrue(store.save(record))
+            assertEquals(record, store.load())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    /**
+     * Issue #374 review finding 1: the compare-and-delete half of the
+     * attempt-fenced write contract — only the EXACT record is removed; a
+     * newer/different record or absence is never touched.
+     */
+    @Test
+    fun deleteIfRemovesOnlyTheIdenticalRecord() {
+        val directory = tempDirectory()
+        try {
+            val file = File(directory, "p1")
+            val store = store(directory, "p1")
+
+            // Absent store: nothing matches, nothing happens.
+            assertFalse(store.deleteIf(record))
+
+            assertTrue(store.save(record))
+            assertTrue("the identical record is deleted", store.deleteIf(record))
+            assertFalse(file.exists())
+            assertNull(store.load())
+
+            // A NEWER record is never the victim of a stale attempt's cleanup.
+            assertTrue(store.save(record))
+            val newer = record.copy(exportId = "export-2", createdAtEpochMs = 9_000L)
+            assertTrue(store.save(newer))
+            assertFalse("a different (newer) record is not touched", store.deleteIf(record))
+            assertEquals(newer, store.load())
         } finally {
             directory.deleteRecursively()
         }

@@ -25,11 +25,11 @@ object PendingImportStartupReconcile {
      * [PendingIntentReconcile.Absent] store write nothing (validity is
      * subordinate to the session; nothing is invented or replaced here).
      *
-     * Never throws: a load failure already degrades to "no record" in the
-     * store implementations, and any residual failure is swallowed so the
-     * shared startup thread continues to the model-load reconciliation
-     * undisturbed (spec 374 "読取時reconcileのfail-closed" and the Scenario
-     * 「起動時reconcileはhubを開かなくても実行される」).
+     * Never throws: the store implementations fail-closed clean unreadable
+     * residue themselves and read it as absent (DI-AC-05), and any residual
+     * failure is swallowed so the shared startup thread continues to the
+     * model-load reconciliation undisturbed (spec 374 "読取時reconcileの
+     * fail-closed" and the Scenario 「起動時reconcileはhubを開かなくても実行される」).
      */
     fun reconcileAtStartup(
         store: PendingImportedIntentStore,

@@ -180,6 +180,16 @@ interface PendingImportedIntentStore {
      * correctness defense, so no tombstone is needed here.
      */
     fun delete()
+
+    /**
+     * Issue #374 (attempt-fenced durable writes): compare-and-delete — removes
+     * the stored record ONLY when it is still exactly [proposal] (full data
+     * equality), and never touches a newer/different record. Returns whether
+     * the delete happened. The caller serializes this against its writes (the
+     * holder's pending-write mutex); the implementation only guarantees the
+     * read-compare-delete triple is atomic against other store access.
+     */
+    fun deleteIf(proposal: DurablePendingIntent): Boolean
 }
 
 /**

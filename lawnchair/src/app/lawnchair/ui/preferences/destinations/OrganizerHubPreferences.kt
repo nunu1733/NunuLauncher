@@ -182,6 +182,18 @@ fun OrganizerHubPreferences(
             }.getOrNull()
         }
         hubProposalRow = projection
+        // Issue #374 (review finding 2): the proposal row mirrors the request
+        // row's expiry scheduling — when a Valid proposal is shown, ONE
+        // re-read is scheduled at the session's expiry boundary, in THIS
+        // effect's coroutine (cancelled on leave/restart, replaced on every
+        // read, no continuous clock). A hub kept in the foreground crosses
+        // the TTL with no lifecycle event; the boundary read re-reconciles —
+        // the session reads as expired, the record is fail-closed cleaned by
+        // the Invalid path above, and the row disappears.
+        if (projection != null) {
+            delay((projection.expiresAtEpochMs - System.currentTimeMillis()).coerceAtLeast(0L))
+            proposalReadTick++
+        }
     }
 
     // Issue #366 (organization-run-ux §6): entry focus lands deterministically

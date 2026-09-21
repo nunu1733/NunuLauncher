@@ -200,8 +200,8 @@ class OrganizerHubPreferencesInstrumentationTest {
         seededSession = null
     }
 
-    /** Seeds the module session store with an ACTIVE request (TTL 24h). */
-    private fun seedActiveSession(itemRefCount: Int = 2): ExportSession {
+    /** Seeds the module session store with an ACTIVE request (TTL 24h by default). */
+    private fun seedActiveSession(itemRefCount: Int = 2, ttlMs: Long = HUB_SESSION_TTL_MS): ExportSession {
         val now = System.currentTimeMillis()
         val session = ExportSession(
             exportId = "hub-row-export",
@@ -210,7 +210,7 @@ class OrganizerHubPreferencesInstrumentationTest {
             sourceContextDigest = "digest",
             signalProvenance = null,
             createdAtEpochMs = now,
-            expiresAtEpochMs = now + HUB_SESSION_TTL_MS,
+            expiresAtEpochMs = now + ttlMs,
         )
         assertTrue(hubSessionStore.save(session))
         seededSession = session
@@ -309,6 +309,36 @@ class OrganizerHubPreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithTag("organizer-hub-request").fetchSemanticsNodes().isNotEmpty()
         }
+    }
+
+    @Test
+    fun hubProposalRowDisappearsAtTheTtlBoundaryWithTheRecordCleaned() {
+        // DI-AC-02 / spec 374「失効時刻にscheduleした1回再読取」: a hub kept in
+        // the foreground crosses the TTL with NO lifecycle event. The proposal
+        // effect schedules ONE re-read at the session's expiry boundary (the
+        // same shape as the request row): the row is present before it, gone
+        // after it, and the boundary re-read's fail-closed reconcile cleaned
+        // the expired record (no later read can resurrect it).
+        val application = FakeHubApplication()
+        val runner = hubRunner(application)
+        // A short remaining lifetime so the scheduled re-read fires in real
+        // time; no lifecycle event is simulated — the boundary crossing alone.
+        val session = seedActiveSession(ttlMs = SHORT_TTL_MS)
+        seedPendingRecord(session)
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("organizer-hub-proposal").fetchSemanticsNodes().isNotEmpty()
+        }
+        assertTrue("the proposal is present before the boundary", hubPendingStore.load() != null)
+
+        composeRule.waitUntil(15_000) {
+            composeRule.onAllNodesWithTag("organizer-hub-proposal").fetchSemanticsNodes().isEmpty() &&
+                hubPendingStore.load() == null
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(context.getString(R.string.organizer_hub_proposal_row))
+            .assertDoesNotExist()
     }
 
     @Test
@@ -433,6 +463,14 @@ class OrganizerHubPreferencesInstrumentationTest {
 
         override fun delete() {
             record = null
+        }
+
+        override fun deleteIf(proposal: DurablePendingIntent): Boolean {
+            if (record == proposal) {
+                record = null
+                return true
+            }
+            return false
         }
     }
 
@@ -1169,6 +1207,13 @@ class OrganizerHubPreferencesInstrumentationTest {
 
         /** Issue #374: the seeded request's TTL — the same 24h as the real session. */
         const val HUB_SESSION_TTL_MS = 24L * 60L * 60L * 1000L
+
+        /**
+         * Issue #374 (review finding 2): the short TTL of the proposal-row
+         * boundary test — long enough for the first read to land, short
+         * enough that the expiry-scheduled re-read fires within the wait.
+         */
+        const val SHORT_TTL_MS = 1_500L
 
         fun input() = OrganizationInput(
             snapshot = LayoutSnapshot(
