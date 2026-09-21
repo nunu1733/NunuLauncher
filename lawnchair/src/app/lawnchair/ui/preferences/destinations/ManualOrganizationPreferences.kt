@@ -151,6 +151,10 @@ fun ManualOrganizationPreferences(
             // discarded through the tombstone two-phase commit, and deleted
             // when a new request's generation replaces the session.
             pendingImportStore = PendingImportedIntentModule.store(context),
+            // Issue #375 (spec "exchange mutation gate"): the holder, the
+            // controller and the rebind admission anchor share THE
+            // process-wide serialization point.
+            exchangeMutationGate = PendingImportedIntentModule.gate(),
         )
     }
     // Issue #371: the JIT Usage Access request dialog hosts at the run-state
@@ -250,7 +254,17 @@ fun ManualOrganizationPreferences(
     // contexts.
     val selectingState = state as? ManualOrganizationRun.State.Selecting
     var missingAppSelection by remember(selectingState?.runId) {
-        mutableStateOf(MissingAppSelectionState(selectingState?.candidates.orEmpty(), emptySet()))
+        // Issue #375 (spec "選択復元初期値"): a PreviousExplicit rebind seeds
+        // the surface with the request-time explicit selection (the resolvable
+        // subset of the export scope). It is an INITIAL VALUE only — the run's
+        // selection is committed solely by the explicit confirm (spec 228 D-1
+        // is not weakened); non-rebind paths seed empty exactly as before.
+        mutableStateOf(
+            MissingAppSelectionState(
+                selectingState?.candidates.orEmpty(),
+                selectingState?.restoredSelection.orEmpty(),
+            ),
+        )
     }
 
     // Issue #369 (D-13, TO-BE §9): one confirmation gate shared by system Back
@@ -566,6 +580,22 @@ fun ManualOrganizationPreferences(
                                 )
                             }
                         }
+                        // Issue #375 (spec SR-AC-01): the selection diff
+                        // against the export scope, derived by the pure
+                        // scope-binding derivation and rendered as non-color
+                        // row affordances.
+                        val scopeDiff = currentState.intentScopeCandidates.takeIf { it.isNotEmpty() }?.let { scope ->
+                            app.lawnchair.organizer.personalization.exchange.ScopeBindingCauseDerivation.deriveSelectionDiff(
+                                sessionScope = scope,
+                                detected = currentState.candidates.map { candidate ->
+                                    app.lawnchair.organizer.personalization.exchange.DetectedCandidateScope(
+                                        candidate.target,
+                                        candidate.availability,
+                                    )
+                                },
+                                selected = missingAppSelection.selected,
+                            )
+                        }
                         missingAppSelectionItems(
                             selection = missingAppSelection,
                             onSelectionChange = { missingAppSelection = it },
@@ -580,6 +610,7 @@ fun ManualOrganizationPreferences(
                                 }
                             },
                             intentScopeCount = currentState.intentScopeCount,
+                            diff = scopeDiff,
                             editsEnabled = !exchangeBusy,
                         )
                         exchangeFlowItems(

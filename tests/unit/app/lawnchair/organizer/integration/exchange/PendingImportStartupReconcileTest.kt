@@ -1,5 +1,7 @@
 package app.lawnchair.organizer.integration.exchange
 
+import app.lawnchair.organizer.personalization.ContextExportContract
+import app.lawnchair.organizer.personalization.DiscardIfResult
 import app.lawnchair.organizer.personalization.DurablePendingIntent
 import app.lawnchair.organizer.personalization.DurableRefDecision
 import app.lawnchair.organizer.personalization.DurableRefEntry
@@ -66,6 +68,9 @@ class PendingImportStartupReconcileTest {
             record = null
         }
 
+        override fun discardIf(expected: DurablePendingIntent): DiscardIfResult =
+            error("discardIf is not part of this seam")
+
         override fun deleteIf(proposal: DurablePendingIntent): Boolean {
             if (record == proposal) {
                 record = null
@@ -75,6 +80,8 @@ class PendingImportStartupReconcileTest {
         }
     }
 
+    private val VALID_DIGEST = "a".repeat(64)
+
     private fun record(
         exportId: String,
         refs: Set<String>,
@@ -82,8 +89,11 @@ class PendingImportStartupReconcileTest {
         discarded: Boolean = false,
     ): DurablePendingIntent = DurablePendingIntent(
         exportId = exportId,
-        intentIdentitySchemaVersion = "v1",
-        intentIdentityDigest = "digest",
+        // Issue #375: the reconcile's identity-shape check requires the
+        // current schema version and a 64-char digest — a corrupt shape is
+        // Invalid, so this fixture carries a well-formed identity.
+        intentIdentitySchemaVersion = ContextExportContract.INTENT_SCHEMA_VERSION,
+        intentIdentityDigest = VALID_DIGEST,
         decisions = refs.sorted().map { DurableRefEntry(it, DurableRefDecision.UnresolvedByOmission) },
         minimizeMovement = false,
         expiresAtEpochMs = expiresAtEpochMs,

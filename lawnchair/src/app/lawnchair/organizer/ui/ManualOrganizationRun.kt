@@ -38,6 +38,7 @@ import app.lawnchair.organizer.integration.OrganizationInputComposition
 import app.lawnchair.organizer.personalization.CandidateScopeProjection
 import app.lawnchair.organizer.personalization.ScopeMismatchCause
 import app.lawnchair.organizer.personalization.exchange.DetectedCandidateScope
+import app.lawnchair.organizer.personalization.exchange.ScopeBindingCauseDerivation
 import app.lawnchair.organizer.personalization.exchange.ScopeBindingCurrentScope
 import app.lawnchair.organizer.personalization.exchange.ScopeBindingGate
 import app.lawnchair.organizer.personalization.exchange.ScopeBindingOutcome
@@ -238,6 +239,45 @@ class ManualOrganizationRun internal constructor(
         data class Started(val runId: RunId) : StartOutcome
 
         data object Busy : StartOutcome
+
+        /**
+         * Issue #375 (spec "rebind admission anchor"): the caller-supplied
+         * admission anchor refused the admission after a fresh re-verification
+         * (the durable proposal was invalidated, replaced, or expired between
+         * rebuild and admission). Nothing was published — no RUN operation, no
+         * [State.Capturing], no journal event; the provisional RUN lease was
+         * released. Typed so the caller can distinguish it from [Busy].
+         */
+        data object AdmissionRefused : StartOutcome
+    }
+
+    /**
+     * Issue #375 (spec "rebind admission anchor"): the seam the exchange flow
+     * hands to [start] so the rebind's validity verdict and the run admission
+     * share one exclusive boundary. Invoked inside the run's lock section
+     * before any operation is created; implementations acquire the exchange
+     * mutation gate, re-read the durable record / active session / clock fresh,
+     * and either run [complete] — which creates the operation and publishes
+     * the first run state inside the same gate hold — and return `true`, or
+     * return `false` without running it. When the anchor returns `false` the
+     * run publishes nothing and reports [StartOutcome.AdmissionRefused].
+     */
+    fun interface StartAdmissionAnchor {
+        fun verifyAndAdmit(complete: () -> Unit): Boolean
+    }
+
+    /**
+     * Issue #375 (spec "選択復元初期値"): the rebind entry's selection-surface
+     * initial-value mode. [PreviousExplicit] restores the request-time
+     * explicit selection (the resolvable subset of the export scope) as the
+     * surface's initial values; the values become the run's selection only
+     * through the user's explicit confirm (spec 228 D-1 untouched). Idle
+     * rebinds and every non-rebind path use [None] (unchecked by default).
+     */
+    sealed interface SelectionRestore {
+        data object None : SelectionRestore
+
+        data object PreviousExplicit : SelectionRestore
     }
 
     /**
@@ -291,12 +331,21 @@ class ManualOrganizationRun internal constructor(
          * the accepted typed `SCOPE_MISMATCH` failure when a confirmation was
          * rejected by the scope binding gate (zero-write — the surface
          * re-opens with the re-export guidance).
+         *
+         * Issue #375: [intentScopeCandidates] is the export scope's identity
+         * set (empty = no bound intent) so the surface can highlight the diff
+         * against the current selection without reaching into the coordinator;
+         * [restoredSelection] carries the rebind's restored initial values
+         * ([SelectionRestore.PreviousExplicit] entry only — never persisted,
+         * never auto-confirmed).
          */
         data class Selecting(
             val runId: RunId,
             val candidates: List<DetectedCandidate>,
             val intentScopeCount: Int = 0,
             val scopeRejection: app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch? = null,
+            val intentScopeCandidates: Set<CandidateTarget.AppKey> = emptySet(),
+            val restoredSelection: Set<CandidateTarget.AppKey> = emptySet(),
         ) : State
 
         /**
@@ -490,11 +539,86 @@ class ManualOrganizationRun internal constructor(
      * along as the pure planner projection and never bypasses preview or
      * confirmation. A `Busy` outcome tells the caller to re-import after the
      * active run ends (the validated intent is not retained here).
+     *
+     * Issue #375: the rebind entry passes [admissionAnchor] so the proposal's
+     * validity verdict and the admission share one exclusive boundary, and
+     * [selectionRestore] = [SelectionRestore.PreviousExplicit] to restore the
+     * request-time explicit selection as the surface's initial values. The
+     * anchor is invoked before any operation exists; a refusal publishes
+     * nothing and reports [StartOutcome.AdmissionRefused]. Existing callers
+     * (null anchor, [SelectionRestore.None]) keep today's behavior exactly.
      */
-    fun start(trigger: Trigger = Trigger.MANUAL_FULL, intent: app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent?): StartOutcome {
-        val operation = beginOperation(trigger, intent) ?: return StartOutcome.Busy
-        val runId = operation.runId
-        val started = StartOutcome.Started(runId)
+    fun start(
+        trigger: Trigger = Trigger.MANUAL_FULL,
+        intent: app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent?,
+        admissionAnchor: StartAdmissionAnchor? = null,
+        selectionRestore: SelectionRestore = SelectionRestore.None,
+    ): StartOutcome {
+        when (val attempt = beginAdmission(trigger, intent, admissionAnchor)) {
+            is StartAttempt.Busy -> return StartOutcome.Busy
+            is StartAttempt.Refused -> return StartOutcome.AdmissionRefused
+            is StartAttempt.Admitted -> return startAdmitted(attempt.operation, selectionRestore)
+        }
+    }
+
+    /**
+     * Issue #375: the admission boundary. Acquires the provisional RUN lease
+     * (as today), then under the run lock either creates the operation
+     * directly (no anchor) or delegates the create/verify pairing to the
+     * anchor, which may refuse — publishing nothing.
+     */
+    private fun beginAdmission(
+        trigger: Trigger,
+        intent: app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent?,
+        admissionAnchor: StartAdmissionAnchor?,
+    ): StartAttempt {
+        val lease = operationGate.tryAcquire(OrganizationOperationLease.Kind.RUN) ?: return StartAttempt.Busy
+        return synchronized(lock) {
+            if (activeOperation != null || recoveryLease != null) {
+                lease.close()
+                return@synchronized StartAttempt.Busy
+            }
+            var created: Operation? = null
+            val complete = {
+                val operation = Operation(application.newRunId(), trigger, lease, intent)
+                activeOperation = operation
+                pending = null
+                pendingRecovery = null
+                appliedPoint = null
+                lastVerifiedApply = null
+                // Issue #369 (RD-7): a fresh run always starts the visible
+                // progression at detection — the legacy admission Capturing below
+                // projects as 検出, so the first visible phase is never capture.
+                preparationPhaseHolder.value = PreparationPhase.DETECTION
+                stateHolder.value = State.Capturing
+                updateOperationActiveLocked()
+                created = operation
+            }
+            val admitted = admissionAnchor?.verifyAndAdmit(complete) ?: run {
+                complete()
+                true
+            }
+            if (admitted) {
+                StartAttempt.Admitted(created ?: error("anchor reported admission without completing it"))
+            } else {
+                lease.close()
+                StartAttempt.Refused
+            }
+        }
+    }
+
+    private sealed interface StartAttempt {
+        data class Admitted(val operation: Operation) : StartAttempt
+
+        data object Busy : StartAttempt
+
+        data object Refused : StartAttempt
+
+        fun operationOrNull(): Operation? = (this as? Admitted)?.operation
+    }
+
+    private fun startAdmitted(operation: Operation, selectionRestore: SelectionRestore): StartOutcome {
+        val started = StartOutcome.Started(operation.runId)
         // Issue #228 (review P2 #3): the diagnostics run-mode identity must be
         // constant for the run's whole journal, but it is only known after the
         // selection surface closes (empty selection → full organization,
@@ -526,15 +650,31 @@ class ManualOrganizationRun internal constructor(
                         // the continuation an explicit empty confirmation
                         // would take; the composed-phase gate below re-checks
                         // cancellation.
-                        setIfActive(operation, State.Selecting(runId, detection.candidates, intentScopeCount = 0))
+                        setIfActive(operation, State.Selecting(operation.runId, detection.candidates, intentScopeCount = 0))
                         continueWithEmptySelection(operation)
                     } else {
+                        // Issue #375: a PreviousExplicit rebind restores the
+                        // resolvable subset of the export scope as the
+                        // surface's initial values (initial state only — the
+                        // explicit confirm is what commits it).
+                        val restored = if (selectionRestore == SelectionRestore.PreviousExplicit && exportedScopeCandidates != null) {
+                            ScopeBindingCauseDerivation.deriveRestoredSelection(
+                                sessionScope = exportedScopeCandidates.toSet(),
+                                detected = detection.candidates.map { candidate ->
+                                    DetectedCandidateScope(candidate.target, candidate.availability)
+                                },
+                            )
+                        } else {
+                            emptySet()
+                        }
                         setIfActive(
                             operation,
                             State.Selecting(
-                                runId,
+                                operation.runId,
                                 detection.candidates,
-                                intentScopeCount = operation.intent?.session?.scopeCandidates?.size ?: 0,
+                                intentScopeCount = exportedScopeCandidates?.size ?: 0,
+                                intentScopeCandidates = exportedScopeCandidates.orEmpty().toSet(),
+                                restoredSelection = restored,
                             ),
                         )
                     }
@@ -622,19 +762,29 @@ class ManualOrganizationRun internal constructor(
             // `SCOPE_MISMATCH` (zero-write; the surface re-opens with the
             // re-export guidance). Resolvability and the projection digest
             // are re-checked against the composition below.
+            // Issue #375: the mismatch cause is now derived by the shared
+            // pure derivation (unresolvable-before-set-mismatch, same
+            // ordering as the composed-phase gate), so the remedy guidance
+            // can distinguish "fix the selection" from "re-create the
+            // request". The pass/fail outcome is identical to the previous
+            // sorted-list equality.
             val intent = current.intent
-            val earlyMismatch = intent != null &&
-                intent.session.scopeCandidates.sortedWith(
-                    compareBy({ it.component.value }, { it.profile.value }),
-                ) != sortedSelection
-            if (earlyMismatch) {
+            val earlyCause = intent?.let {
+                ScopeBindingCauseDerivation.deriveConfirmMismatch(
+                    sessionScope = it.session.scopeCandidates,
+                    detected = current.detectedCandidates.orEmpty().map { candidate ->
+                        DetectedCandidateScope(candidate.target, candidate.availability)
+                    },
+                    selected = selection,
+                )
+            }
+            if (earlyCause != null) {
                 stateHolder.value = State.Selecting(
                     current.runId,
                     current.detectedCandidates.orEmpty(),
                     intentScopeCount = intent!!.session.scopeCandidates.size,
-                    scopeRejection = app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch(
-                        app.lawnchair.organizer.personalization.ScopeMismatchCause.SET_MISMATCH,
-                    ),
+                    scopeRejection = app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch(earlyCause),
+                    intentScopeCandidates = intent.session.scopeCandidates.toSet(),
                 )
                 null
             } else {
@@ -711,7 +861,10 @@ class ManualOrganizationRun internal constructor(
             return@synchronized AttachIntentOutcome.NotAttachable
         }
         operation.intent = intent
-        stateHolder.value = current.copy(intentScopeCount = intent.session.scopeCandidates.size)
+        stateHolder.value = current.copy(
+            intentScopeCount = intent.session.scopeCandidates.size,
+            intentScopeCandidates = intent.session.scopeCandidates.toSet(),
+        )
         AttachIntentOutcome.Attached
     }
 
@@ -1386,32 +1539,6 @@ class ManualOrganizationRun internal constructor(
         if (stale) {
             operation.lease.close()
             if (emitRejection) emitStaleRejection(operation)
-        }
-    }
-
-    private fun beginOperation(
-        trigger: Trigger,
-        intent: app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent? = null,
-    ): Operation? {
-        val lease = operationGate.tryAcquire(OrganizationOperationLease.Kind.RUN) ?: return null
-        return synchronized(lock) {
-            if (activeOperation != null || recoveryLease != null) {
-                lease.close()
-                return@synchronized null
-            }
-            val operation = Operation(application.newRunId(), trigger, lease, intent)
-            activeOperation = operation
-            pending = null
-            pendingRecovery = null
-            appliedPoint = null
-            lastVerifiedApply = null
-            // Issue #369 (RD-7): a fresh run always starts the visible
-            // progression at detection — the legacy admission Capturing below
-            // projects as 検出, so the first visible phase is never capture.
-            preparationPhaseHolder.value = PreparationPhase.DETECTION
-            stateHolder.value = State.Capturing
-            updateOperationActiveLocked()
-            operation
         }
     }
 

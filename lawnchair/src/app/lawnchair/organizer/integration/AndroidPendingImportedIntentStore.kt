@@ -2,6 +2,7 @@ package app.lawnchair.organizer.integration
 
 import android.content.Context
 import androidx.core.util.AtomicFile
+import app.lawnchair.organizer.personalization.DiscardIfResult
 import app.lawnchair.organizer.personalization.DurableGroupSemantic
 import app.lawnchair.organizer.personalization.DurablePendingIntent
 import app.lawnchair.organizer.personalization.DurableRefDecision
@@ -73,6 +74,20 @@ class AndroidPendingImportedIntentStore : PendingImportedIntentStore {
 
     override fun delete() {
         synchronized(lock) { atomicFile.delete() }
+    }
+
+    override fun discardIf(expected: DurablePendingIntent): DiscardIfResult = synchronized(lock) {
+        // Issue #375 conditional invalidation commit: read-compare-tombstone,
+        // atomic against other store access. Only the exact expected record is
+        // tombstoned; a replaced/absent record is `NoMatch` (nothing stale can
+        // resurface), and a failed atomic rewrite is `WriteFailed` — the
+        // record stays valid and the invalidation is retryable.
+        val current = readRecord() ?: return@synchronized DiscardIfResult.NoMatch
+        if (current != expected) return@synchronized DiscardIfResult.NoMatch
+        val committed = writeRecord(pendingRecordOf(current).copy(discarded = true))
+        if (!committed) return@synchronized DiscardIfResult.WriteFailed
+        atomicFile.delete()
+        DiscardIfResult.Committed
     }
 
     override fun deleteIf(proposal: DurablePendingIntent): Boolean = synchronized(lock) {

@@ -48,6 +48,10 @@ object ExchangeFlowModule {
             // replacement) invalidates the previous imported proposal's record
             // right after the new session's save.
             pendingImportStore = PendingImportedIntentModule.store(appContext),
+            // Issue #375 (spec "exchange mutation gate"): the replacement
+            // commit and the pre-send invalidation share THE process-wide
+            // gate with the holder and the rebind admission anchor.
+            exchangeMutationGate = PendingImportedIntentModule.gate(),
         )
     }
 }

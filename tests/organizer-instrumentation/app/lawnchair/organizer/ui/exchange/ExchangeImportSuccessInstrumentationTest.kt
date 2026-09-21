@@ -38,6 +38,7 @@ import app.lawnchair.organizer.integration.exchange.ExchangeTransportResult
 import app.lawnchair.organizer.integration.exchange.FileExchangeTransport
 import app.lawnchair.organizer.personalization.CanonicalStructuralInputs
 import app.lawnchair.organizer.personalization.ContextExportBuilder
+import app.lawnchair.organizer.personalization.ContextExportContract
 import app.lawnchair.organizer.personalization.DurablePendingIntent
 import app.lawnchair.organizer.personalization.DurableRefDecision
 import app.lawnchair.organizer.personalization.DurableRefEntry
@@ -295,8 +296,8 @@ class ExchangeImportSuccessInstrumentationTest {
         val session = generated.session
         pendingStore.record = DurablePendingIntent(
             exportId = session.exportId,
-            intentIdentitySchemaVersion = "v1",
-            intentIdentityDigest = "digest",
+            intentIdentitySchemaVersion = ContextExportContract.INTENT_SCHEMA_VERSION,
+            intentIdentityDigest = VALID_DIGEST,
             decisions = session.itemRefs.keys.sorted().map { DurableRefEntry(it, DurableRefDecision.UnresolvedByOmission) },
             minimizeMovement = false,
             expiresAtEpochMs = session.expiresAtEpochMs,
@@ -685,3 +686,6 @@ class ExchangeImportSuccessInstrumentationTest {
         assertNotNull("the record survives the zero-write close", pendingStore.record)
     }
 }
+
+/** Issue #375: reconcile rejects a digest that is not 64 chars — fixtures carry a well-formed one. */
+private const val VALID_DIGEST = "a".repeat(64)

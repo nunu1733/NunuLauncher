@@ -1471,6 +1471,20 @@
     <string name="exchange_failure_mobility_contradiction">The intent tries to move an immovable item.</string>
     <string name="exchange_failure_capability_unsupported">The intent uses an unsupported capability.</string>
     <string name="exchange_failure_scope_mismatch">The selected apps no longer match the request. Select the same apps, or create a new request.</string>
+    <!-- Issue #375 (spec SR-AC-01/02): the SCOPE_MISMATCH remedy is split by cause —
+         a set mismatch is fixable on the selection surface; an unresolvable or
+         projection-drifted candidate can only be answered by re-creating the request. -->
+    <string name="exchange_scope_set_mismatch">The selected apps differ from the request. Select the highlighted apps to match the request, and this proposal can continue.</string>
+    <string name="exchange_scope_unresolvable_mismatch">The request can no longer be matched by editing the selection. Create a new request.</string>
+    <!-- Issue #375 (spec SR-01): non-color-only diff highlighting on the candidate rows. -->
+    <string name="exchange_scope_diff_missing">Required by the request</string>
+    <string name="exchange_scope_diff_extra">Not in the request</string>
+    <!-- Issue #375 (spec "再開面CTAの有効化"): the rebind continuation — TO-BE T-18 vocabulary. -->
+    <string name="exchange_import_continue">Continue with this proposal</string>
+    <!-- Issue #375: rebind typed notices. -->
+    <string name="exchange_rebind_context_stale">This request is out of date. Create a new request.</string>
+    <string name="exchange_rebind_anchor_refused">This proposal is no longer available. Open it again from the home screen hub.</string>
+    <string name="exchange_rebind_start_failed">Could not continue with this proposal. Try again.</string>
     <string name="exchange_failure_unknown_category_ref">The reply references a category that is no longer available. Create a new request and ask again.</string>
     <string name="exchange_scoped_entry_title">Include the selected apps in the AI request</string>
     <string name="exchange_scoped_entry_subtitle">The request will cover your current home plus the selected apps, so the AI can advise on all of them.</string>

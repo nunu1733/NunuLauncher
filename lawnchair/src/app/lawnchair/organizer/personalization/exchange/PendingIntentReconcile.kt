@@ -2,6 +2,7 @@ package app.lawnchair.organizer.personalization.exchange
 
 import app.lawnchair.organizer.personalization.CategoryRefKind
 import app.lawnchair.organizer.personalization.CompletedPersonalIntent
+import app.lawnchair.organizer.personalization.ContextExportContract
 import app.lawnchair.organizer.personalization.DurableGroupSemantic
 import app.lawnchair.organizer.personalization.DurablePendingIntent
 import app.lawnchair.organizer.personalization.DurableRefDecision
@@ -51,6 +52,19 @@ fun reconcilePendingIntent(
     if (session == null) return PendingIntentReconcile.Invalid(record)
     if (record.exportId != session.exportId) return PendingIntentReconcile.Invalid(record)
     if (nowEpochMs >= session.expiresAtEpochMs) return PendingIntentReconcile.Invalid(record)
+    // Issue #375 (spec "identity値のshape検証"): #374 persists the identity as
+    // non-empty strings only, so a corrupt-but-decodable record (wrong schema
+    // version, or a digest of the wrong length) passes every other check and
+    // would explode in the rebind seam's `IntentIdentity(...)` require.
+    // Corruption counts as invalid here — the same fail-closed treatment as a
+    // ref-set mismatch — so EVERY reader (status card, resume face, rebind
+    // anchor) shares one typed verdict with no exception path.
+    if (record.intentIdentitySchemaVersion != ContextExportContract.INTENT_SCHEMA_VERSION) {
+        return PendingIntentReconcile.Invalid(record)
+    }
+    if (record.intentIdentityDigest.length != 64) {
+        return PendingIntentReconcile.Invalid(record)
+    }
 
     val sessionItemRefs = session.itemRefs.keys
     if (record.decisions.map { it.ref }.toSet() != sessionItemRefs) {

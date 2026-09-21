@@ -15,6 +15,7 @@ import app.lawnchair.organizer.integration.exchange.FileExchangeTransport
 import app.lawnchair.organizer.personalization.CanonicalStructuralInputs
 import app.lawnchair.organizer.personalization.ContextExportBuilder
 import app.lawnchair.organizer.personalization.ContextExportContract
+import app.lawnchair.organizer.personalization.DiscardIfResult
 import app.lawnchair.organizer.personalization.DurablePendingIntent
 import app.lawnchair.organizer.personalization.ExportInputs
 import app.lawnchair.organizer.personalization.ExportSession
@@ -186,6 +187,30 @@ class ExchangeFlowStateHolderTest {
             }
             return false
         }
+
+        var discardIfCalls = 0
+        var discardIfResult: DiscardIfResult = DiscardIfResult.Committed
+
+        /**
+         * Issue #375: the conditional invalidation commit — tombstones the
+         * exact expected record (the durable validity truth) and then
+         * physically deletes it, mirroring the real store's two-phase
+         * `discard`. A parked [deleteGate] holds the record at its tombstoned
+         * (discarded=true, still on disk) state — the crash window the race
+         * oracles rebind against.
+         */
+        override fun discardIf(expected: DurablePendingIntent): DiscardIfResult {
+            discardIfCalls++
+            if (record != expected) return DiscardIfResult.NoMatch
+            if (discardIfResult is DiscardIfResult.WriteFailed) return discardIfResult
+            record = expected.copy(discarded = true)
+            deleteGate?.await()
+            record = null
+            return DiscardIfResult.Committed
+        }
+
+        @Volatile
+        var deleteGate: CountDownLatch? = null
     }
 
     private fun app(id: String, x: Int = 0): CapturedItem = CapturedItem(
