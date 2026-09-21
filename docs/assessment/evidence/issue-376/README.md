@@ -1,7 +1,7 @@
 # Issue #376 hub status card復元（D-15）cold-process emulator evidence
 
 > Status: Captured（2026-09-22。RS-AC-01の実機capture）
-> Spec: [specs/376-durable-status-recovery-entry/spec.md](../../../specs/376-durable-status-recovery-entry/spec.md)
+> Spec: [specs/376-durable-status-recovery-entry/spec.md](../../../../specs/376-durable-status-recovery-entry/spec.md)
 > Runtime: 専用AVD `issue142_api36`（Android 16 / API 36、1080x2400 @ 420dpi）。
 > APK: 実装branch head（`issue-376-recovery-entry`）でbuildしたdebug APK
 > （`Lawnchair.15.Dev.(52003249).github.debug.apk`。commit表記はビルド時のhead）。
