@@ -3,7 +3,7 @@ issue: "#373"
 status: draft
 requirements: [FR-017]
 risk: []
-updated: 2026-09-19
+updated: 2026-09-21
 ---
 
 # T-17取り込み入力の契約維持とT-18取り込み結果の再構成（手段別失敗投影、D-11/D-12/D-13）
@@ -18,13 +18,14 @@ updated: 2026-09-19
 > 「spec 205 AC-5のtyped失敗直接説明 → 手段別再投影＋typedは補助（#373）」、
 > §5 更新順序 #7「specs 205(AC-5) / 332表記 → D-11・T-17/T-18 → #373」、§7.2 (c)、§8）。
 > 本specは[Issue #373][1]の成果物である。statusが `draft` の間はimplementation-readyではない。
-> 前提: [Issue #372][2]のT-15/T-16再構成（spec draft `6ba84fc4`、branch `issue-372-spec-plan`）
-> が本specの失敗面「依頼を作り直す」remedyの到達先である（Issue本文 `Depends on`）。
-> #372が未mergeの環境では、到達先は現行の依頼作成導線（exchange生成flow）である。
+> 前提: [Issue #372][2]のT-15/T-16再構成（PR #393でmerge済み）が本specの失敗面
+> 「依頼を作り直す」remedyの到達先（T-15依頼作成面）である（Issue本文 `Depends on`）。
+> baselineのSHAはChange historyのre-entry entryを正とする。
 
 ## Problem
 
-現行（baseline `a2b6aba318`、spec 205/328/329/332/337 contract core/348実装済み）の
+現行（baseline `dcaecf6913`。#372 merge後のorigin/main。Change historyのre-entry entry参照。
+spec 205/328/329/332/337 contract core/348実装済み）の
 External Agent Exchange取り込み結果面（`ExchangeImportOutcomeScreen`、
 `lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeFlowUi.kt`）は、import失敗を
 **typed失敗20種の固有文言**で1行表示する（envelope 4種 `INPUT_OVERSIZE` / `FRAMING_MISSING` /
@@ -59,7 +60,8 @@ durable化・status card統合は#374、CTA語彙のT-18語彙への統一（「
 依頼を作り直す）に対応するprimary copyと操作を持ち、typed原因（分類名・typed固有の説明・
 認識framing/version/entry数・raw text）は**折りたたまれた詳細展開**にのみ現れる。失敗面には
 面レベルの手段として「中断する」（zero-writeでflowを閉じる。依頼は生存・確認不要）と
-「診断を開く」（既存の診断面への導線。新規データなし）が常設される。`CONTEXT_STALE`の
+「診断を開く」（既存の診断面への遷移。現在のattemptのtyped原因をprocess-local・非永続で
+受け渡し、診断面に補助行として表示する。journal記録・永続化は行わない）が常設される。`CONTEXT_STALE`の
 primary copyは「依頼の内容が古くなりました」+「依頼を作り直す」である（D-12行）。
 
 T-17取り込み入力面（clipboard/file-first＋手動paste折りたたみ、1 MiB gate、bounded editor、
@@ -84,8 +86,11 @@ persistent state・DB書込経路・同意gate構造・validator/normalizer契�
   remedy「依頼を作り直す」へ固定する（TO-BE §8.3の取り込み行）。
 - **面レベル手段の新設**: 失敗面に「中断する」（flowを閉じる。zero-write・依頼（session）は
   生存・確認不要 — 失う作業が存在しないため。D-13 §9のzero-write中止規約）と
-  「診断を開く」（既存 `onOpenDiagnostics` 導線での診断面へ遷移。exchange失敗eventの
-  diagnostics記録は本Issueでは追加しない）を置く。
+  「診断を開く」（既存の診断routeへの遷移。遷移時に現在のattemptのtyped失敗を
+  process-local・非永続で診断面へ受け渡し、診断面は現在の取り込み失敗のtyped分類名と
+  typed原因説明（契約文言のみ。ユーザーデータ無し）を補助行として表示する。
+  exchange失敗eventのdiagnostics journal記録は本Issueでも追加しない）を置く。
+  これによりD-11の補助情報経路「詳細展開・診断」の両方が現在の失敗に対して成立する。
 - **T-18成功面の表示構造確定（spec 328維持）**: 成功面（`ExchangeImportSuccess`）の構成要素
   （件数サマリ（認識件数・判断なし合算・内訳4種・提案グループ件数を含むgroup breakdown・
   全体方針行）・未適用表示・CTA・破棄「破棄して閉じる」・Back確認dialog・CTA処理中の
@@ -95,10 +100,15 @@ persistent state・DB書込経路・同意gate構造・validator/normalizer契�
   （`maxLines = 8` + `heightIn(max = 200.dp)`）・1 MiB envelope gate・parse-first表示・
   source別typed失敗（clipboard空/非text、file読取失敗）のin-place表示はspec 332 accepted契約
   どおり維持する（回帰として固定するのみ）。
-- **D-13語彙の統一確認**: 破棄（「破棄して閉じる」label・Back確認dialog。spec 328 D-2確定）/
-  中断（zero-write中止）/ キャンセル（確認不要の中止）の語彙がD-13 §9規約に従うことを、
-  本Issueの新規・改訂copyを含めて検証する。既存copyでD-13と衝突する語彙があれば、
-  T-17/T-18の範囲内で統一する。
+- **D-13語彙の統一確認（本Issueの新規・改訂copyに限定）**: 本Issueが新設・改訂する失敗面の語彙
+  （「中断する」= zero-write中止・確認不要、primary操作3種、詳細展開）がD-13 §9規約に従うことを
+  検証する。既存copyでD-13と衝突する語彙がT-17/T-18の範囲内にあれば統一する。
+  **成功面の取り込み破棄の確認契約（「破棄して閉じる」明示ボタン=追加確認なし・system Back=
+  確認dialog 1回。spec 328 D-2確定）は本Issueでは現行どおり維持する**。これはD-13 §9の
+  「取り込み済み提案の破棄=必須確認」に対する既知の未整合であり（CONTEXT.md 取り込み破棄の
+  定義が明示する）、その解消（語彙・確認契約・CTA語彙を含むspec 328改訂）は
+  **#374（spec 328 rev.2）が所有する**（disposition §3.14のownership境界）。本Issueはこの
+  未整合を解消せず、ACでその部分のD-13準拠を主張しない。
 - **spec改訂（実装PRで実施。disposition §5 更新順序 #7）**:
   - **spec 205**: AC-5の表示部分を「typed失敗種別がuserに説明される」から
     「手段別primary再投影 + typed原因は補助情報（詳細展開）」へ改訂する（D-11）。
@@ -140,15 +150,22 @@ persistent state・DB書込経路・同意gate構造・validator/normalizer契�
 
 ## Domain language
 
-`CONTEXT.md` への追加用語案（受入時に反映。#365が正本改訂を所有するため、本specでは
-案の記載に留める）。
+`CONTEXT.md` への追加用語（#365はmerge済み（PR #379）のため正本改訂の所有者は不存在であり、
+**本Issueが所有する**。実装PRで `CONTEXT.md` へ反映する）。CONTEXT.mdへの登録は下記の
+**手段別失敗投影** 1項目とし、primary remedy・面レベル手段はその定義内の概念として
+含める（用語の爆発を避ける）。
 
 **手段別失敗投影 (Failure Remedy Projection)**:
 import失敗のtyped分類を、ユーザーの次の行動（もう一度取り込む / 貼り直す / 依頼を作り直す /
-中断する / 診断を開く）の語彙へ再投影した表示モデル（TO-BE D-11）。primary面は手段別語彙のみを
-出し、typed原因は詳細展開と診断に格下げされる。
+中断する / 診断を開く）の語彙へ再投影した表示モデル（TO-BE D-11）。各typed失敗に1つの
+primary remedy（class別のprimary copyと操作）を対応させ、typed失敗によらず常設される
+面レベル手段（中断する・診断を開く）を併置する。primary面は手段別語彙のみを出し、
+typed原因は詳細展開と診断に格下げされる。
 _Avoid_: typed失敗一覧（20種の列挙そのものはprimary面に現れない）、エラーコード表示
 （分類名は補助情報に限る）
+
+以下の2語は本specの表示model内部の構成概念であり（手段別失敗投影の定義に含まれる）、
+CONTEXT.mdへは独立項目として登録しない。
 
 **primary remedy (手段別primary)**:
 1つのtyped失敗に対して失敗面のprimary面に現れる、単一のremedy categoryとそのcopy・操作。
@@ -211,8 +228,8 @@ Then primary copy（ja正本。enは同意味）とprimary操作が次のmapping
 And 「もう一度取り込む」と「貼り直す」のprimary操作はいずれも入力面（T-17）への復帰である
 （現行の再取り込み挙動と同一。raw textの破棄・retention boundaryもspec 332 AC-7のまま）。
 差異はcopyの意味であり、貼り直し前にAIアプリで回答を送り直す/コピーし直すことを案内する、
-And 「依頼を作り直す」のprimary操作は依頼作成導線への復帰である（idle entry: 依頼作成flowの
-先頭へ。#372適用後はT-15。run-in entry: 既存のscope凍結生成導線と同一の復帰）。
+And 「依頼を作り直す」のprimary操作は依頼作成導線への復帰である（idle entry: T-15依頼作成面
+へ — #372適用後の `openFlow()` 起動先。run-in entry: 既存のscope凍結生成導線と同一の復帰）。
 操作は既存の生成flow起動seam（`openFlow()` 相当）を不変で使い、sessionの置換確認（spec 205
 AC-13）は依頼作成時の既存gateで効く、
 And primary操作のいずれもsession・layout DB・validator入力へのwriteを行わない（zero-write）。
@@ -239,15 +256,21 @@ And 依頼（export session）は失効せず、有効期限内であれば同�
 And pending state（import attempt）は既存の `close()` 契約どおり破棄される
 （成功状態・成功面の破棄semanticsはspec 328のまま。本scenarioは**失敗面**の閉じ方のみを規定する）。
 
-### Scenario: 診断を開く（面レベル手段・既存導線・新規データなし）
+### Scenario: 診断を開く（面レベル手段・既存導線・現在の失敗のtyped原因を非永続で受け渡す）
 
 Given T-18失敗面が表示されている、
 When 「診断を開く」を選ぶ、
-Then 既存の診断面への導線（host面が既に持つ `onOpenDiagnostics` 相当のroute）で診断面へ
-遷移する、
-And 本操作に伴いclipboard内容・import text・payload断片がdiagnostics journal・logcat・
-永続化へ書き込まれることはない（organizer-diagnostics.md契約の維持。exchange失敗eventの
-記録追加は本Issueのscope外 — Contract notes 4）、
+Then 既存の診断route（host面が既に使う `onOpenDiagnostics` 相当の遷移先と同一の診断面）へ
+遷移し、診断面には **現在のattemptの取り込み失敗** のtyped分類名（`CONTEXT_STALE` 等の
+closed set。TO-BE §10が補助情報位置として認める診断）とtyped原因説明（詳細展開と同一の
+契約文言）が補助行として表示される（D-11の補助情報経路「詳細展開・診断」の両方が
+現在の失敗に対して成立する）,
+And 受け渡しは **process-local・非永続** である（遷移時の引数受け渡しのみ。diagnostics
+journal・永続store・logcatへの書込みは発生しない。exchange失敗eventのjournal記録追加は
+本Issueのscope外 — Contract notes 4）。診断面の本体（説明文・journal export等の既存構成）は
+変化せず、補助行は引数が渡された遷移でのみ現れる（他入口からの診断面は現行のままである）,
+And 診断面へ渡すのはtyped分類名とtyped原因説明のみであり、raw import text・export-scoped
+`ref`・app label・folder title等のユーザーデータは渡さない,
 And 診断面から戻った場合、失敗面のraw text保持（spec 332 AC-7のretention boundary）は
 画面stateとして維持されることを要求しない（process内の画面復帰挙動は現行のhost面挙動に従い、
 raw textが破棄されていても再取り込みが回復pathである）。
@@ -282,17 +305,23 @@ And CTA押下時のsingle-flight・CTA処理中（`continuing`）の破棄/Back�
 And 提案グループ件数（`proposedGroupCount`）の表示が維持され、#337 AC-10の3種区別UIは
 本面の表示構造内で後続実装できる（本Issueでは合算表示のまま。#337残件）。
 
-### Scenario: 破棄/中断/キャンセル語彙の統一（D-13）
+### Scenario: 破棄/中断/キャンセル語彙の統一（D-13。本Issueの新規・改訂copyに限定）
 
-Given 本Issueの新規・改訂copyを含むT-17/T-18の全操作labelを観察する、
-Then 不可逆な破棄（取り込み破棄）は「破棄」ラベルであり、明示ボタン経由は追加確認なし・
-system Back経由は確認dialog 1回（spec 328 D-2確定の回帰）、
-And zero-write中止（失敗面の「中断する」等）は確認不要であり、失う作業がある中断
-（run flowの中断確認）とは区別される、
+Given 本Issueが新設・改訂するT-17/T-18失敗面の操作label（「中断する」・primary操作3種・
+詳細展開）と、本Issueが変更しない現行labelを区別して観察する、
+Then 本Issueの新規・改訂copyはD-13 §9規約に従う: 失敗面の「中断する」はzero-write中止であり
+確認不要で、失う作業がある中断（run flowの中断確認）と区別される。typed原因の詳細展開の
+開閉は確認dialogを伴わない,
+And 不可逆な破棄（取り込み破棄）は「破棄」ラベルであるが、その確認契約
+（明示ボタン経由=追加確認なし・system Back経由=確認dialog 1回）はspec 328 D-2確定の
+回帰として現行どおり維持する。**この確認契約はD-13 §9の「取り込み済み提案の破棄=必須確認」に
+未整合であることが既知であり（CONTEXT.md 取り込み破棄の定義）、本specはこの部分を
+D-13準拠として主張しない**。解消（語彙・確認契約・CTA語彙の統一を含むspec 328改訂）は
+#374（spec 328 rev.2）が所有する（disposition §3.14のownership境界）,
 And 確認不要の中止（入力面のキャンセル等、現行 `exchange_cancel` 系）は「キャンセル」の
-ままであり、「破棄」「中断」と混用しない、
-And 本Issueの範囲でD-13 §9に衝突する既存labelが発見された場合はT-17/T-18内で統一し、
-範囲外（T-15/T-16のpre-send cancel等）は#372/#374の所有である。
+ままであり、「破棄」「中断」と混用しない,
+And 本Issueの範囲（失敗面の新規・改訂copy）でD-13 §9に衝突するlabelが発見された場合は
+T-17/T-18内で統一し、成功面の破棄確認契約と範囲外（T-15/T-16）の語彙は#374の所有である。
 
 ### Scenario: 既存失敗経路・競合機構の回帰
 
@@ -360,6 +389,8 @@ And 依頼TTL失効後の失敗面表示は「依頼を作り直す」をprimary
   （「依頼を作り直す」操作の既存gate）。本specは新規の読取seamを設けない。
 - 書くdata: **新規の永続化・preference・diagnostics event・DB書込はない**。書込みは既存の
   session保存/invalidate（spec 204/205契約）のみ。import失敗自体はzero-writeである。
+  「診断を開く」のtyped原因受け渡しは遷移引数（process-localのnavigation state）であり、
+  diagnostics journal・永続storeへは書き込まない。
 - Identity: 変更なし。`exportId`、ref↔`ItemId` map、`sourceContextDigest`、typed失敗の
   分類identityは不変である。
 - Migration / backup / restore / rollback: persistent state変更なし。schema変更なし。
@@ -382,7 +413,10 @@ And 依頼TTL失効後の失敗面表示は「依頼を作り直す」をprimary
   process memory上のephemeral保持・1箇所・遷移で破棄・process外書き出し禁止）のまま。
 - clipboard監視・自動読み取り・自動送信の経路は存在しない（spec 332回帰）。
 - 診断を開くは既存routeへの遷移であり、新規のdiagnostics記録を追加しない
-  （organizer-diagnostics.mdの個人情報規約の維持）。
+  （organizer-diagnostics.mdの個人情報規約の維持）。診断面へ受け渡すのは現在のattemptの
+  typed分類名（closed set）とtyped原因説明（契約文言）のみであり、raw import text・
+  export-scoped `ref`・app label・folder title等のユーザーデータは渡さない。受け渡しは
+  process-local（遷移引数）であり、diagnostics journal・永続store・logcatへは書き込まない。
 
 ## Accessibility and localization
 
@@ -408,14 +442,18 @@ And 依頼TTL失効後の失敗面表示は「依頼を作り直す」をprimary
 - [ ] **IM-AC-02**: `CONTEXT_STALE` のprimary copyが「依頼の内容が古くなりました」+
   primary操作「依頼を作り直す」であることがtestされる（D-12行）。rebase・部分適用の
   導線が存在しないことが回帰で確認される。
-- [ ] **IM-AC-03**: 「依頼を作り直す」primary操作が依頼作成導線（idle: 依頼作成flow先頭。
-  #372適用後はT-15。run-in: scope凍結生成導線と同一の復帰）へ到達し、操作がzero-writeで
+- [ ] **IM-AC-03**: 「依頼を作り直す」primary操作が依頼作成導線（idle: T-15依頼作成面。
+  run-in: scope凍結生成導線と同一の復帰）へ到達し、操作がzero-writeで
   session置換確認は依頼作成時の既存gate（spec 205 AC-13）で効くことがtestされる。
   「もう一度取り込む」「貼り直す」primary操作がT-17入力面へ復帰し、復帰時のraw text破棄
   （retention boundary）が現行どおりであることがtestされる。
 - [ ] **IM-AC-04**: 失敗面に「中断する」（zero-write close・確認不要・依頼生存）と
-  「診断を開く」（既存診断routeへの遷移・新規データ書込みなし）が常設されることがtestされる。
-  （D-11の5語彙の残り2種）
+  「診断を開く」が常設されることがtestされる。「診断を開く」は既存診断routeへの遷移であり、
+  診断面に現在のattemptのtyped分類名・typed原因説明が補助行として表示されること
+  （process-local・非永続の受け渡し。raw text・ユーザーデータは渡さない。他入口からの
+  診断面では補助行が出ない）と、diagnostics journalへの書込みが発生しないことが
+  test/reviewされる。（D-11の5語彙の残り2種。D-11の補助情報経路「詳細展開・診断」を
+  現在の失敗に対して両方成立させる）
 - [ ] **IM-AC-05**: T-17入力契約の回帰: spec 332 AC-1〜AC-4/AC-10対応test
   （clipboard/file/paste・1 MiB gate・bounded editor・parse-first表示・source別typed失敗の
   in-place表示）が無編集または表示面非依存の更新のみでgreenである。（Issue受入2）
@@ -424,8 +462,11 @@ And 依頼TTL失効後の失敗面表示は「依頼を作り直す」をprimary
   およびAC-3/AC-5/AC-7対応test（CTA single-flight・CTA処理中の破棄/Back不受理・
   system Back interception・破棄「破棄して閉じる」+ Back確認dialog）がgreenである。
   成功面に本Issueによる表示変更がないことがdiff reviewで確認される。（Issue受入3）
-- [ ] **IM-AC-07**: 破棄/中断/キャンセル語彙がD-13 §9規約で統一されていることが
-  （本Issueの新規・改訂copyを含めて）test/reviewされる。（Issue受入4）
+- [ ] **IM-AC-07**: 本Issueの新規・改訂copy（失敗面の「中断する」・primary操作・詳細展開）の
+  破棄/中断/キャンセル語彙がD-13 §9規約に従うことがtest/reviewされる。成功面の取り込み破棄の
+  確認契約はspec 328 D-2確定の回帰として維持され、それがD-13 §9に対する既知の未整合であり
+  #374（spec 328 rev.2）が解消を所有すること（本specがこの部分のD-13準拠を主張しないこと）
+  がPR本文に記録される。（Issue受入4）
 - [ ] **IM-AC-08**: 旧oracle（typed文言をprimary表示として固定していた20種失敗表示oracle・
   spec 348 content oracleの対象string集合）の更新と、旧oracleがobsoleteである理由
   （D-11再投影による表示model変更。no-AI-repair-loop境界と「診断」forbidden markerの
@@ -445,7 +486,7 @@ And 依頼TTL失効後の失敗面表示は「依頼を作り直す」をprimary
 | IM-AC-01 | unit: 手段別projection純粋関数のtable-driven test（20種全typed → primary remedy category + primary copy resource + 詳細展開内容。ja/en resource解決を含む。未知typed → 既定remedyのfail-closed oracle）+ holder unit test（失敗settle → 失敗面state）。instrumentation: 失敗面のprimary面にtyped固有文言testTag/stringが存在しないことの否定的観測 + 詳細展開default閉 + 展開時のtyped原因表示 |
 | IM-AC-02 | unit: `CONTEXT_STALE` fixture（structural digest不一致。既存pipeline testのfixtureを再利用）→ primary copy/操作のassertion。instrumentation: 失敗面表示のcopy確認 |
 | IM-AC-03 | holder unit test: 依頼を作り直す操作 → `openFlow()` 相当seam呼出・session不変・zero-write。再取り込み操作 → `openImport()` 呼出・raw text破棄。run-in entryのscope凍結復帰の回帰。instrumentation: 導線の到達 |
-| IM-AC-04 | instrumentation: 「中断する」→ flow close・確認dialog不在・status経由で依頼生存の確認（再取り込み成立）。「診断を開く」→ route遷移・diagnostics書込み経路不在のreview/unit |
+| IM-AC-04 | instrumentation: 「中断する」→ flow close・確認dialog不在・status経由で依頼生存の確認（再取り込み成立）。「診断を開く」→ route遷移・診断面の補助行に現在のattemptのtyped分類名・typed原因説明が表示されること（遷移元attempt由来）・他入口からの診断面では補助行が出ないこと・raw text等ユーザーデータの受け渡し不在・diagnostics journal書込み経路不在のreview/unit |
 | IM-AC-05 | spec 332対応既存test（`ExchangeImportSurfaceInstrumentationTest`、`ExchangeFlowStateHolderTest` のsource失敗系、`ExchangeImportPipelineTest` envelope系、`ImportNormalizerTest`）のgreen + CI lane（`organizer-instrumentation-issue332-tests`）のgreen |
 | IM-AC-06 | spec 328対応既存test（`ExchangeImportSuccessInstrumentationTest`、`ExchangeFlowStateHolderTest` のsuccess/arbiter/anchor系）のgreen + 成功面diff review |
 | IM-AC-07 | strings走査（新規・改訂labelの語彙確認）+ review（D-13 §9規約との照合）。ja/en name集合・placeholder一致の機械確認 |
@@ -474,11 +515,15 @@ CI `final-status` green。本Issueは表示のみの変更であり（persistent
    本Issueではspec 328 D-3確定文言を維持する。T-18語彙への統一は#374（spec 328 rev.2）が
    所有する（disposition §3.14のconflict 3・§4.1）。owner reviewで本Issue内での統一が
    選ばれた場合は本specを修正する。
-4. **diagnostics記録の追加はしない**: D-11の「typed原因は補助情報（詳細展開・診断）とする」の
-   「診断」を、本Issueでは「診断面への導線」として解し、exchange失敗eventのjournal記録追加は
-   行わない（organizer-diagnostics.md契約の変更・privacy reviewを要するため）。
-   記録追加を本Issueに含める解釈がowner reviewで選ばれた場合は、scope・IM-AC-04・
-   privacy節を修正する。
+4. **diagnostics journal記録は追加しない。typed原因は非永続の受け渡しで診断面へ現れる
+   （review指摘対応で確定）**: D-11の「typed原因は補助情報（詳細展開・診断）とする」を、
+   本Issueでは (1) 失敗面の詳細展開 と (2) 「診断を開く」遷移時の診断面への
+   process-local・非永続なtyped原因受け渡し（分類名+契約文言の説明。ユーザーデータ無し）で
+   成立させる。exchange失敗eventのdiagnostics journal記録追加は行わない —
+   organizer-diagnostics.mdのjournal契約はorganization run / recoveryのみを記録対象とし、
+   この境界を変えるには契約改訂とprivacy reviewを要する（本Issueでは行わない）。
+   診断面への表示はjournalを経由しないuser-facing reason層の構成である
+   （organizer-diagnostics.md §2の「UIはresult typeから直接組み立てる」分離規約に従う）。
 5. **`exchangeContractFailureText` の残り2 call site**: 選択面 `scopeRejection` 行と
    `ScopeMismatchFailed` stateはrun flowの表示であり、#369（T-13統合・Non-goalsで
    exchange表示を現行のまま維持）と#375（SCOPE_MISMATCH remedy原因別明文化）が所有する。
@@ -491,31 +536,34 @@ CI `final-status` green。本Issueは表示のみの変更であり（persistent
 
 ## Dependencies
 
-- **#372（OPEN、spec draft `6ba84fc4`、実装未着手）**: Issue本文 `Depends on`。
-  失敗面「依頼を作り直す」の到達先（T-15依頼作成面）とT-17入力面への到達経路（T-15面の
-  取り込み導線。Contract notes 2 of #372）を所有する。spec執筆は#372 draftとの整合で可能
-  （現時点でそうしている）。**実装着手は#372 merge後**（disposition §8 依存graph:
-  `#372 → #373`）。
-- **#365（OPEN、正本改訂）**: `CONTEXT.md` への手段別失敗投影等の用語追加は#365が所有する。
-  実装着手は#365 merge後（AGENTS.md「正本を先に」）。
-- **#369（OPEN、spec draft `3c39ceb2f8`）**: T-07〜T-13のrun面統合。本specはexchange導線の
-  表示のみを変え、#369のNon-goals（exchange失敗の手段別再投影は#373）と相互に排他を確認済み。
+- **#372（merged。PR #393）**: Issue本文 `Depends on`。失敗面「依頼を作り直す」の到達先
+  （T-15依頼作成面）とT-17入力面への到達経路（T-15面の取り込み導線）は#372の実装が所有する。
+  **実装着手の前提（disposition §8 依存graph `#372 → #373`）は#372のmergeで満たされる**。
+  実装PRはmerge後のhosting・到達経路の実装と整合させる（plan.md Current evidenceの
+  re-entry確認対象）。
+- **#365（merged。PR #379）**: `CONTEXT.md` の正本改訂（Organizer hub・材料・依頼・
+  取り込み済み提案・D-13語彙規約等）はmerge済み。本specの新規用語（手段別失敗投影）の
+  `CONTEXT.md` 追加は**本Issue（実装PR）が所有する**（Domain language節）。
+- **#369（merged。PR #387）**: T-07〜T-13のrun面統合はmerge済み。本specはexchange導線の
+  表示のみを変え、#369がexchange失敗の手段別再投影を#373へ委譲したNon-goals境界は
+  実装済み契約として維持される。
 - **spec改訂の所有**: spec 205 AC-5表示面とspec 332表記は本Issueの実装PRが改訂する
   （disposition §5 更新順序 #7）。
 - **前提（実装済み・accepted）**: specs 204（accepted・implemented）/205（implemented）/
   327（implemented）/**328（accepted・implemented）**/329/330/331/**332（implemented）**/
   **337（accepted・contract core implemented、AC-9/AC-10残件）**/348（implemented）の現行契約、
   spec 123（strings契約）、organization-run-ux §6（accessibility受入基準）、
-  organizer-to-be-ux.md @ main `a2b6aba318`（accepted、PR #364）、
-  organizer-disposition-migration.md @ main `a2b6aba318`（accepted、PR #378）。
+  organizer-to-be-ux.md @ main `dcaecf6913`（accepted、PR #364）、
+  organizer-disposition-migration.md @ main `dcaecf6913`（accepted、PR #378）。
 - **後続**: #374（durable pending intent・spec 328 rev.2・status card・CTA語彙統一。#373後）、
   #375（SCOPE_MISMATCH原因別remedy・選択復元初期値）、#337残件（AC-9 promotion UX・
   AC-10 3種区別UI。#373のT-18表示構造と整合して着手 — owner記録）、#377（cleanup）。
 
 ## Open questions
 
-実装開始前に解消が必須な問いはない（Contract notes 1〜6の解釈確認をowner reviewが所有し、
-確認前は本specは `draft` のままである）。非blocking事項:
+実装開始前に解消が必須な問いはない。Contract notes 1〜6のうち、4はreview指摘対応で
+確定した（diagnostics journal記録追加なし・非永続のtyped原因受け渡し）。残る1・2・3・5・6の
+解釈確認をowner reviewが所有し、確認前は本specは `draft` のままである。非blocking事項:
 
 1. 手段別primary copyの最終文言（ja正本・en。D-11/§9/§10語彙に沿うことのみ拘束）は
    実装PRで確定する。
@@ -532,6 +580,24 @@ CI `final-status` green。本Issueは表示のみの変更であり（persistent
 
 ## Change history
 
+- 2026-09-21: Phase1 re-entry revision 2（[review Changes requested](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5740056108)の指摘1〜3対応）。
+  baselineを `dcaecf6913f3c139aa2406b6b7a090f72d914ddf`（origin/main。PR #393（#372実装）
+  merge + PR #394（docs-only）後）へ更新し、#372/#369/#371/#368/#365 merge後のhosting面・
+  `ExchangeFlowUi.kt` 構造・strings・test実体をre-verifyした（plan.md Current evidence。
+  失敗面構造と `exchange_failure_*` 20種は #372 によって無変更であることを確認）。
+  **(1) D-13語彙scopeの限定（指摘1・中）**: 成功面の取り込み破棄確認契約（spec 328 D-2確定=
+  明示ボタン追加確認なし・Back確認dialog）はD-13 §9「取り込み済み提案の破棄=必須確認」に
+  対する既知の未整合であり、その解消は#374（spec 328 rev.2）が所有する旨を明記し、
+  D-13統一scenarioとIM-AC-07を本Issueの新規・改訂copy（失敗面）に限定した
+  （成功面の現行契約自体は回帰として維持する）。
+  **(2) 「診断を開く」の到達先契約化（指摘2・中）**: D-11の補助情報経路「診断」を、
+  現在のattemptのtyped分類名・typed原因説明（契約文言のみ。ユーザーデータ無し）を
+  process-local・非永続で診断面へ受け渡すprojectionで成立させた。journal記録追加は
+  行わない（organizer-diagnostics.md §2の分離規約に従うuser-facing reason構成）。
+  scenario・IM-AC-04・test oracle・privacy節・Data and state・Contract note 4を更新。
+  **(3) #365 merge後のDependencies更新（指摘3・低）**: #365（PR #379）/#369（PR #387）を
+  merge済みとして整理し、`CONTEXT.md` 用語（手段別失敗投影1項目。primary remedy・
+  面レベル手段は定義内に含める）の追加を本Issue（実装PR）が所有すると明記した。
 - 2026-09-19: Draft created for #373（spec/plan整備task）。accepted TO-BE契約
   （organizer-to-be-ux.md @ main `a2b6aba318`、PR #364）、accepted処分文書
   （organizer-disposition-migration.md @ main `a2b6aba318`、PR #378、§2.1/§3.12/§3.14/
