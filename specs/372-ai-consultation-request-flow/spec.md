@@ -1,6 +1,6 @@
 ---
 issue: "#372"
-status: accepted
+status: implemented
 requirements: [FR-006, FR-017, NFR-009]
 risk: []
 updated: 2026-09-21
@@ -16,8 +16,19 @@ updated: 2026-09-21
 > [docs/product/organizer-disposition-migration.md](../../docs/product/organizer-disposition-migration.md)
 > （§3.11 spec 204文言Amend、§3.12 spec 205分段改訂のうち本件分、§4.1 supersession map、
 > §5 更新順序 #6、§7.2 (c)）が本件を「specs 205 / 327 / 204文言のAmend、#372が実行」と定める。
-> 本specは[Issue #372][1]の成果物である。statusが `draft` の間はimplementation-readyではない。
-> Status: **accepted**（2026-09-21）— Phase1 reviewを通過して受入された。初版snapshot
+> 本specは[Issue #372][1]の成果物である。
+> Status: **implemented** (2026-09-21) — Phase1 reviewを通過して受入された契約を実装し、
+> 実装PR [#393](https://github.com/nunu1733/NunuLauncher/pull/393) merge
+> (merge commit `42efffd6aa`) で実装完了。実装レビュー5回
+> ([1](https://github.com/nunu1733/NunuLauncher/issues/372#issuecomment-5753230360) /
+> [2](https://github.com/nunu1733/NunuLauncher/issues/372#issuecomment-5753615296) /
+> [3](https://github.com/nunu1733/NunuLauncher/issues/372#issuecomment-5753962782) /
+> [4](https://github.com/nunu1733/NunuLauncher/issues/372#issuecomment-5753962782) の対応headはそれぞれ
+> `6f9a7b769b` / `0d63f89de3` / `9f77ed2c6e` / `f5cb90607a`。#371統合merge `016897292a` を含む) を経て
+> [最終review](https://github.com/nunu1733/NunuLauncher/issues/372#issuecomment-5754076419) は **Approved**
+> （blocking指摘0件）。独立監査記録:
+> [docs/assessment/pr-393-ai-consultation-request-flow.md](../../docs/assessment/pr-393-ai-consultation-request-flow.md)。
+> 元の受入記録: **accepted**（2026-09-21）— Phase1 reviewを通過して受入された。初版snapshot
 > （`6ba84fc4`）への [1st review](https://github.com/nunu1733/NunuLauncher/issues/372#issuecomment-5740061847)
 > は **Changes requested**（中3/低1）で、`0649c7e436` で全件対応。同headへの
 > [2nd review](https://github.com/nunu1733/NunuLauncher/issues/372#issuecomment-5752821376)
