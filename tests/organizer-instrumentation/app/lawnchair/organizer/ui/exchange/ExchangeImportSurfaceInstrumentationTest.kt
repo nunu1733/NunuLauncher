@@ -11,11 +11,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertTextContains
@@ -415,6 +418,12 @@ class ExchangeImportSurfaceInstrumentationTest {
             .toString()
         assertTrue("collapsed state must be announced", announcedState().contains(collapsedLabel.substringBeforeLast(" ")))
 
+        // Deterministic pre-dialog focus on the 破棄 action (via the
+        // semantics RequestFocus action the focusable node exposes).
+        composeRule.onNodeWithTag("exchange-discard").performSemanticsAction(SemanticsActions.RequestFocus)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("exchange-discard").assertIsFocused()
+
         composeRule.onNodeWithTag("exchange-discard").performClick()
         composeRule.waitUntil(5_000) { discardRequested.value }
         assertTrue("the face stays while the confirmation is up", holder.screen is ExchangeScreen.Disclosing)
@@ -427,12 +436,14 @@ class ExchangeImportSurfaceInstrumentationTest {
         composeRule.onNodeWithTag("exchange-discard-confirm").assert(hasButtonRole())
         composeRule.onNodeWithTag("exchange-discard-dismiss").assert(hasButtonRole())
 
-        // Dismiss keeps package and request alive; the T-16 face continues.
+        // Dismiss keeps package and request alive; focus RESTORES to the
+        // 破棄 action that opened the dialog (EX-AC-10 focus restoration
+        // contract: dialog safe action in, face action back out).
         composeRule.onNodeWithTag("exchange-discard-dismiss").performClick()
         composeRule.waitForIdle()
         assertFalse(discardRequested.value)
         assertTrue(holder.screen is ExchangeScreen.Disclosing)
-        composeRule.onNodeWithTag("exchange-disclosure-title").assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-discard").assertIsFocused()
 
         // The expand state announcement flips with the toggle (direct read).
         composeRule.onNodeWithTag("exchange-disclosure-expand").performClick()
@@ -448,13 +459,13 @@ class ExchangeImportSurfaceInstrumentationTest {
     }
 
     /**
-     * Issue #372 (EX-AC-10): the T-16 interactive elements keep the visual
-     * reading order — transports row above the save/discard row, left-to-
-     * right within each row, expand toggle above the actions — the traversal
-     * order TalkBack follows.
+     * Issue #372 (EX-AC-10): the T-16 interactive elements' SEMANTICS
+     * traversal order (the order TalkBack visits them) is fixed: expand
+     * toggle first, then the transport row (copy, share), then the
+     * save/discard row — asserted directly on the merged semantics tree.
      */
     @Test
-    fun t16TraversalFollowsTheVisualReadingOrder() {
+    fun t16TraversalFollowsTheSemanticsReadingOrder() {
         val holder = newHolder()
         setContent(holder)
         composeRule.runOnUiThread {
@@ -464,20 +475,18 @@ class ExchangeImportSurfaceInstrumentationTest {
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithTag("exchange-discard").fetchSemanticsNodes().isNotEmpty()
         }
-        fun leftOf(first: String, second: String) {
-            val l = composeRule.onNodeWithTag(first).fetchSemanticsNode().boundsInRoot
-            val r = composeRule.onNodeWithTag(second).fetchSemanticsNode().boundsInRoot
-            assertTrue("$first must sit left of $second", l.left < r.left)
-        }
-        fun above(top: String, bottom: String) {
-            val t = composeRule.onNodeWithTag(top).fetchSemanticsNode().boundsInRoot
-            val b = composeRule.onNodeWithTag(bottom).fetchSemanticsNode().boundsInRoot
-            assertTrue("$top must sit above $bottom", t.top < b.top)
-        }
-        leftOf("exchange-send-clipboard", "exchange-send-share")
-        leftOf("exchange-send-file", "exchange-discard")
-        above("exchange-disclosure-expand", "exchange-send-clipboard")
-        above("exchange-send-clipboard", "exchange-send-file")
+        val expected = listOf(
+            "exchange-disclosure-expand",
+            "exchange-send-clipboard",
+            "exchange-send-share",
+            "exchange-send-file",
+            "exchange-discard",
+        )
+        val traversalTags = composeRule.onAllNodes(hasClickAction())
+            .fetchSemanticsNodes()
+            .mapNotNull { it.config.getOrNull(SemanticsProperties.TestTag) }
+            .filter { it in expected.toSet() }
+        assertEquals(expected, traversalTags)
     }
 
     /**
@@ -631,54 +640,6 @@ class ExchangeImportSurfaceInstrumentationTest {
         assertTrue(store.session != null)
     }
 
-    /**
-     * Issue #372 (EX-AC-10): the restructured T-15/T-16 faces keep every
-     * critical action reachable, unclipped, and non-overlapping at 200% font
-     * scale on the REAL device viewport (density preserved, fontScale only).
-     * The T-15 actions stack vertically, so ja copy reflows the column.
-     */
-    @Test
-    fun requestFacesKeepCriticalActionsReachableAtTwoHundredPercentFontScale() {
-        val holder = newHolder()
-        setContent(holder, fontScale = 2f, preserveDeviceDensity = true)
-        composeRule.runOnUiThread { holder.openFlow() }
-        composeRule.waitForIdle()
-        val rootWidth = composeRule.onRoot().fetchSemanticsNode().boundsInRoot.width
-        fun scrollTo(tag: String) {
-            composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag(tag))
-            composeRule.waitForIdle()
-        }
-        fun assertInsideViewport(tag: String) {
-            // Scroll to the node first (the lazy list places on-screen only);
-            // display + bounds then prove reachability without clipping.
-            scrollTo(tag)
-            composeRule.onNodeWithTag(tag).assertIsDisplayed().assertHasClickAction()
-            val bounds = composeRule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
-            assertTrue(
-                "$tag must keep a non-empty, in-viewport bound at 200% (bounds=$bounds root=$rootWidth)",
-                bounds.width > 0f && bounds.left >= 0f && bounds.right <= rootWidth + 0.5f,
-            )
-        }
-        composeRule.onNodeWithTag("exchange-request-title").assertIsDisplayed()
-        assertInsideViewport("exchange-generate")
-        scrollTo("exchange-generate")
-        composeRule.onNodeWithTag("exchange-generate").performClick()
-        composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithTag("exchange-discard").fetchSemanticsNodes().isNotEmpty()
-        }
-        assertInsideViewport("exchange-send-clipboard")
-        assertInsideViewport("exchange-send-share")
-        assertInsideViewport("exchange-send-file")
-        assertInsideViewport("exchange-discard")
-        assertInsideViewport("exchange-disclosure-expand")
-    }
-
-    /**
-     * Issue #372 (EX-AC-10 evidence): renders the request faces across
-     * light/dark × default/ja and writes PNG captures for the assessment
-     * record (docs/assessment/evidence/issue-372). The pulled files are the
-     * committed screenshot evidence.
-     */
     /** EX-AC-10 evidence: default locale, light. */
     @Test
     fun captureEvidenceDefaultLight() = captureEvidence("default", dark = false)

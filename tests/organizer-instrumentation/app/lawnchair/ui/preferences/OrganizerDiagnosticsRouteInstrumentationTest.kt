@@ -36,11 +36,15 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
@@ -116,6 +120,7 @@ import app.lawnchair.ui.preferences.navigation.HomeScreen
 import app.lawnchair.ui.preferences.navigation.HomeScreenCategoryOverrides
 import app.lawnchair.ui.preferences.navigation.HomeScreenCustomCategories
 import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
+import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizerStrategy
 import app.lawnchair.ui.preferences.navigation.HomeScreenPlacementLocks
 import app.lawnchair.ui.preferences.navigation.PreferenceNavigation
 import app.lawnchair.ui.preferences.navigation.PreferenceRoute
@@ -316,6 +321,75 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
                 ).fetchSemanticsNodes().isNotEmpty()
             }
         } finally {
+            installProcessLocalRunner(null)
+        }
+    }
+
+    /**
+     * Issue #372 (EX-AC-02 + EX-AC-01, rendered-UI oracle over the PRODUCTION
+     * navigation graph): with the idle consultation session alive, the real
+     * materials route (run surface → T-05 strategy surface → strategy radio
+     * row write through the production StrategyWriteArbiter) succeeds WITHOUT
+     * a lease rejection — constant authoring is never blocked by the idle
+     * consultation — and returning to the consultation re-opens the request
+     * face with the ACTIVE REQUEST pre-display restored (the session survived
+     * on the durable store).
+     */
+    @Test
+    fun issue372ConsultationSessionSurvivesARealMaterialsWriteViaTheProductionRoute() {
+        val fixture = ManualOrganizationRun(FakeManualOrganizationApplication(), OrganizationPlanner { planningResult() })
+        installProcessLocalRunner(fixture)
+        // The consultation session is seeded through the REAL durable store
+        // (#204 contract): the production controller's generation is covered
+        // by its own oracle suite; this test owns the persistence-and-
+        // materials-route interaction, so the session is written directly.
+        val sessionStore = app.lawnchair.organizer.integration.exchange.ExchangeSessionStoreModule
+            .store(context)
+        val now = System.currentTimeMillis()
+        sessionStore.save(
+            app.lawnchair.organizer.personalization.ExportSession(
+                exportId = "issue372-materials-route",
+                itemRefs = emptyMap(),
+                tier = app.lawnchair.organizer.personalization.PrivacyTier.EXTERNAL_REDACTED,
+                sourceContextDigest = "digest",
+                signalProvenance = null,
+                createdAtEpochMs = now,
+                expiresAtEpochMs = now + 24L * 60L * 60L * 1000L,
+            ),
+        )
+        try {
+            val navController = composeProductionGraph(startDestination = HomeScreenManualOrganization())
+            composeRule.waitUntil(10_000) { fixture.state is ManualOrganizationRun.State.Idle }
+
+            // T-07 method choice 「AIに相談」 opens the request face, which
+            // pre-displays the ACTIVE REQUEST (existence + remaining time).
+            composeRule.onNodeWithText(context.getString(R.string.exchange_method_consult)).performClick()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithTag("exchange-request-active").fetchSemanticsNodes().isNotEmpty()
+            }
+
+            // The real materials route: production navigation to the strategy
+            // surface (T-05) and one REAL strategy write through its arbiter.
+            composeRule.runOnIdle { navController.navigate(HomeScreenOrganizerStrategy) }
+            assertCurrentDestination(navController, HomeScreenOrganizerStrategy)
+            val tidy = context.getString(R.string.organization_strategy_tidy_name)
+            composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(tidy))
+            composeRule.onNodeWithText(tidy).assertIsNotSelected().performClick()
+            composeRule.waitForIdle()
+            composeRule.onNodeWithText(tidy).assertIsSelected()
+
+            // Back on the run surface: the request survives the materials
+            // write and the T-15 pre-display resurfaces.
+            composeRule.runOnIdle { navController.popBackStack() }
+            assertCurrentDestination(navController, HomeScreenManualOrganization())
+            composeRule.onNodeWithText(context.getString(R.string.exchange_method_consult)).assertIsDisplayed()
+            composeRule.onNodeWithText(context.getString(R.string.exchange_method_consult)).performClick()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithTag("exchange-request-active").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(ManualOrganizationRun.State.Idle, fixture.state)
+        } finally {
+            sessionStore.invalidate("issue372-materials-route")
             installProcessLocalRunner(null)
         }
     }
