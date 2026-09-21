@@ -78,12 +78,15 @@ import app.lawnchair.organizer.ui.MissingAppSelectionState
 import app.lawnchair.organizer.ui.OrganizationPreviewContent
 import app.lawnchair.organizer.ui.OrganizationPreviewSection
 import app.lawnchair.organizer.ui.OrganizationPreviewWording
+import app.lawnchair.organizer.ui.RunUsageAccessJitDialogHost
+import app.lawnchair.organizer.ui.UsageAccessJitGateProvider
 import app.lawnchair.organizer.ui.exchange.ExchangeDiscardConfirmDialog
 import app.lawnchair.organizer.ui.exchange.ExchangeFlowBackHandler
 import app.lawnchair.organizer.ui.exchange.ExchangeFlowStateHolder
 import app.lawnchair.organizer.ui.exchange.exchangeFlowItems
 import app.lawnchair.organizer.ui.manualOrganizationFace
 import app.lawnchair.organizer.ui.missingAppSelectionItems
+import app.lawnchair.organizer.ui.openUsageAccessSettings
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.components.controls.ClickablePreference
 import app.lawnchair.ui.preferences.components.layout.PreferenceLazyColumn
@@ -100,6 +103,14 @@ fun ManualOrganizationPreferences(
     run: ManualOrganizationRun? = null,
     trigger: Trigger = Trigger.MANUAL_FULL,
     onOpenDiagnostics: (() -> Unit)? = null,
+    // Issue #371: injectable for the unsupported-settings instrumentation.
+    usageAccessSettingsOpener: (Context) -> Boolean = ::openUsageAccessSettings,
+    // Issue #371: injectable so instrumentation can host a real exchange JIT
+    // waiter (cross-origin oracle) against a controlled holder.
+    exchangeHolderOverride: ExchangeFlowStateHolder? = null,
+    // Issue #371: injectable so the settings-return instrumentation can drive
+    // the host's lifecycle deterministically.
+    jitLifecycleOwner: androidx.lifecycle.LifecycleOwner? = null,
 ) {
     val context = LocalContext.current
     val coordinator = run ?: remember { ManualOrganizationModule.get(context) }
@@ -119,14 +130,28 @@ fun ManualOrganizationPreferences(
     // Issue #205: the external agent exchange sub-flow. The entry surface is
     // hosted only while no run operation is active (spec 205 V1 rule), so it
     // is constructed unconditionally and rendered inside the Idle/Cancelled
-    // branch only.
-    val exchangeHolder = remember {
-        ExchangeFlowStateHolder(
+    // branch only. #371: injectable so instrumentation can drive a real
+    // exchange JIT waiter against a controlled holder.
+    val exchangeHolder = remember(exchangeHolderOverride) {
+        exchangeHolderOverride ?: ExchangeFlowStateHolder(
             controllerFactory = { ExchangeFlowModule.controller(context) },
             run = coordinator,
             scope = scope,
+            // Issue #371: the run machine and the exchange holder share one
+            // process-scoped JIT Usage Access request gate.
+            usageAccessGate = UsageAccessJitGateProvider.get(context),
         )
     }
+    // Issue #371: the JIT Usage Access request dialog hosts at the run-state
+    // observation point (the single dialog host for every composition trigger
+    // path — start rows, onboarding admission, intent rebind, selection
+    // confirmation and the D-06 empty-cut continuation all pause inside the
+    // coordinator's composed-phase entry).
+    RunUsageAccessJitDialogHost(
+        run = coordinator,
+        settingsOpener = usageAccessSettingsOpener,
+        lifecycleOwner = jitLifecycleOwner ?: androidx.lifecycle.compose.LocalLifecycleOwner.current,
+    )
     // Issue #368: the strategy picker moved to the materials surface T-05
     // (OrganizerStrategyPreferences). The run surface offers no strategy
     // selection — not even a read-only row — and the write-time restart
@@ -288,6 +313,13 @@ fun ManualOrganizationPreferences(
     DisposableEffect(coordinator) {
         onDispose { coordinator.dismiss() }
     }
+    // Issue #371 (review round 3): the exchange holder is remembered, so a
+    // route change or activity recreation discards it silently. Any live JIT
+    // pause must leave with the host — otherwise the process-wide gate keeps
+    // a reservation/barrier nobody can resolve.
+    DisposableEffect(exchangeHolder) {
+        onDispose { exchangeHolder.dispose() }
+    }
 
     // Issue #372 (EX-AC-11): the request faces' Back handler — ALWAYS-composed
     // at the hosting level (never inside a lazy item, whose composition can
@@ -431,6 +463,13 @@ fun ManualOrganizationPreferences(
                 ManualOrganizationRun.State.Capturing,
                 ManualOrganizationRun.State.CandidateDetection,
                 ManualOrganizationRun.State.Planning,
+                // Issue #371: the JIT pause and its resume claim are
+                // preparation-phase waiting points — the request dialog is a
+                // modal overlay hosted by RunUsageAccessJitDialogHost above,
+                // and the phase row stays on the last published phase
+                // (capture has not started while paused).
+                is ManualOrganizationRun.State.AwaitingUsageAccessJit,
+                is ManualOrganizationRun.State.ResumingUsageAccessJit,
                 -> preparationFaceItems(
                     preparationPhase = preparationPhase,
                     focusRequester = focusRequester,

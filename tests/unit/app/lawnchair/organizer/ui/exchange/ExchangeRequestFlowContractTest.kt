@@ -60,6 +60,23 @@ class ExchangeRequestFlowContractTest {
     }
 
     @Test
+    fun backOnTheUsageAccessJitPauseIsBlockedNotDelegated() {
+        // Issue #371 integration: the JIT pause is a generation pending resume
+        // — Back is consumed (the presented dialog's own Back is the #371
+        // 「続行」 affordance and never reaches the screen dispatcher).
+        assertEquals(
+            ExchangeBackAction.BLOCKED,
+            exchangeBackAction(
+                ExchangeScreen.AwaitingUsageAccessJit(
+                    attemptToken = 1L,
+                    tier = PrivacyTier.EXTERNAL_REDACTED,
+                    isPresenter = false,
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun backOnImportFacesAndClosedStaysWithTheCurrentContracts() {
         // The import faces are #373/spec 328/332 territory; #372 must not
         // touch their Back behavior.
@@ -232,9 +249,11 @@ class ExchangeRequestFlowContractTest {
         )
         for (rel in sources) {
             val text = projectFile(rel).readText()
+            // The textually similar `tryAcquireJitPresentation` (issue #371's
+            // gate presentation right) is NOT the lease seam.
             assertFalse(
                 "$rel must not reference the lease seam",
-                text.contains("OrganizationOperationLease") || text.contains("tryAcquire"),
+                text.contains("OrganizationOperationLease") || text.contains("OrganizationOperationGate"),
             )
         }
     }
