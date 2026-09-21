@@ -563,6 +563,7 @@ public class LauncherModel implements InstallSessionTracker.Callback {
             superseded.cancelled.run();
         }
         MAIN_EXECUTOR.execute(() -> {
+            boolean neverStarted;
             synchronized (mLock) {
                 if (mOrganizerReloadToken != token) return;
                 if (hasCallbacks()) {
@@ -574,10 +575,17 @@ public class LauncherModel implements InstallSessionTracker.Callback {
                     // organizer token at the binder boundary.
                     startLoaderWithoutCallbacks();
                 }
-                if (mOrganizerReloadToken == token && !token.loaderStarted) {
+                neverStarted = mOrganizerReloadToken == token && !token.loaderStarted;
+                if (neverStarted) {
                     mOrganizerReloadToken = null;
-                    token.cancelled.run();
                 }
+            }
+            // Issue #299 symmetry: the terminal callback runs outside mLock —
+            // the adapter's cancel path holds its own request lock while
+            // calling back into mLock, so running it under mLock would close
+            // a lock-inversion window.
+            if (neverStarted) {
+                token.cancelled.run();
             }
         });
     }

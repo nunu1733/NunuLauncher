@@ -228,16 +228,19 @@ fun ManualOrganizationPreferences(
         // re-admit against a live terminal state; a process death loses the
         // marker entirely, so the restored route pops back to the hub and
         // the only restart path is the status card's CTA again.
-        var admissionGeneration by androidx.compose.runtime.saveable.rememberSaveable {
+        var lastHandledProcessId by androidx.compose.runtime.saveable.rememberSaveable {
             androidx.compose.runtime.mutableStateOf("")
         }
-        val processGeneration = remember { java.util.UUID.randomUUID().toString() }
         LaunchedEffect(durableRecovery) {
-            if (admissionGeneration != processGeneration) {
-                admissionGeneration = processGeneration
-            } else if (admissionGeneration.isNotEmpty()) {
+            // The coordinator instance id is process-stable: the same
+            // instance across a diagnostics round trip means already handled;
+            // a different id means a fresh process whose handoff died with
+            // its predecessor.
+            val currentProcessId = coordinator.processInstanceId
+            if (lastHandledProcessId == currentProcessId) {
                 return@LaunchedEffect
             }
+            lastHandledProcessId = currentProcessId
             if (!coordinator.consumeDurableEntryLaunchArm()) {
                 navController.popBackStack()
                 return@LaunchedEffect

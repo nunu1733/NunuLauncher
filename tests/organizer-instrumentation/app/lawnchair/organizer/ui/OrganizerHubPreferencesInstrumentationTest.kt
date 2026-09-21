@@ -9,6 +9,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.state.ToggleableState
@@ -25,6 +26,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.Density
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -735,7 +737,8 @@ class OrganizerHubPreferencesInstrumentationTest {
             )
         }
         val runner = hubRunner(application)
-        setHubContent(runner)
+        var dispatcher: OnBackPressedDispatcher? = null
+        setHubContent(runner, captureDispatcher = { dispatcher = it })
 
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText(
@@ -753,16 +756,25 @@ class OrganizerHubPreferencesInstrumentationTest {
         ).performClick()
 
         composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.RecoveryResultState }
-        // The failed restore keeps its result/safe-support face with the
-        // diagnostics guidance reachable; the generic-dismissal preservation
-        // contract behind this (host dispose must not dissolve the terminal
-        // state) is additionally pinned by the coordinator unit oracle.
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_safe_terminal),
         ).assertIsDisplayed()
+        // The full diagnostics round trip (RS-AC-04): push the diagnostics
+        // destination, come back, and the result/safe-support face must have
+        // survived the run face's disposal — the handoff/process-id guard
+        // must not re-run the admission (which would pop the result away).
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_open_diagnostics),
-        ).assertIsDisplayed().assertHasClickAction()
+        ).assertIsDisplayed().performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(DIAGNOSTICS_STUB_TEXT).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.runOnIdle { checkNotNull(dispatcher).onBackPressed() }
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_safe_terminal),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
         org.junit.Assert.assertTrue(runner.state is ManualOrganizationRun.State.RecoveryResultState)
     }
 
@@ -1111,6 +1123,13 @@ class OrganizerHubPreferencesInstrumentationTest {
         // order and role oracles pin that structure without depending on the
         // emulator's DPAD focus quirks.
         awaitFocused(context.getString(R.string.manual_organization_start))
+        // Semantics-level focus contract (RS-AC-06), independent of the
+        // emulator's DPAD delivery: the restore CTA exposes the RequestFocus
+        // action and actually takes compose focus when it is invoked.
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_recovery),
+        ).performSemanticsAction(SemanticsActions.RequestFocus)
+        awaitFocused(context.getString(R.string.manual_organization_recovery))
         val order = listOf(
             R.string.organizer_diagnostics_title,
             R.string.organizer_category_overrides_title,

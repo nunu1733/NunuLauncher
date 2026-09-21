@@ -513,6 +513,15 @@ class ManualOrganizationRun internal constructor(
      */
     @Volatile private var durableEntryLaunchArmed = false
 
+    /**
+     * Process-stable identity of this coordinator instance (random per
+     * instance, never persisted). The durable-recovery destination compares
+     * it against what it has already handled: the same instance across a
+     * child-destination round trip means "already handled", a different id
+     * means a fresh process whose arm/handoff died with its predecessor.
+     */
+    val processInstanceId: String = java.util.UUID.randomUUID().toString()
+
     fun armDurableEntryLaunch() {
         durableEntryLaunchArmed = true
     }
