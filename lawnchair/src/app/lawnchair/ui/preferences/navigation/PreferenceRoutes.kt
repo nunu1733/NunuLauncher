@@ -134,9 +134,27 @@ enum class OrganizationEntry {
     ONBOARDING,
 }
 
+// Issue #374: the hub status-card rows' one-shot pre-open of the exchange flow
+// on the run surface (依頼行 → T-15, 提案行 → ImportReview). Same minification
+// rule as [OrganizationEntry]: typed Navigation resolves this enum argument by
+// its fully qualified name at runtime, so the class identity must be kept.
+@Keep // This is refed by a Kotlin serializer, we must keep it's fully qualified name.
+@Serializable
+enum class ExchangeOpen {
+    /** The 進行中のAI依頼 row: open T-15 (the request-creation face). */
+    REQUEST,
+
+    /** The 取り込み済みの提案 row: open the ImportReview (T-18) resume face. */
+    PENDING_REVIEW,
+}
+
 @Serializable
 data class HomeScreenManualOrganization(
     val entry: OrganizationEntry = OrganizationEntry.MANUAL,
+    // Issue #374: null (the default) keeps every existing caller unchanged —
+    // no exchange pre-open. The argument carries no run state and no write
+    // authority (the review face's only write is its own D-13 discard).
+    val exchangeOpen: ExchangeOpen? = null,
 ) : PreferenceRoute {
     val trigger: Trigger
         get() = when (entry) {
