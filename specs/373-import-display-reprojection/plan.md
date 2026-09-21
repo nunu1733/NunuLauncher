@@ -2,7 +2,9 @@
 
 > Issue: #373
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: **accepted**（2026-09-21。Phase1 review 3回対応head `40beddc0f2` への最終
+> [Approved](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5756962168)
+> を経て受入。実装着手条件（#372 merge、CI merge gate通過）は満た済み）
 
 ## Current evidence
 

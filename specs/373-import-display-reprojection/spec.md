@@ -1,6 +1,6 @@
 ---
 issue: "#373"
-status: draft
+status: accepted
 requirements: [FR-017]
 risk: []
 updated: 2026-09-21
@@ -18,6 +18,15 @@ updated: 2026-09-21
 > 「spec 205 AC-5のtyped失敗直接説明 → 手段別再投影＋typedは補助（#373）」、
 > §5 更新順序 #7「specs 205(AC-5) / 332表記 → D-11・T-17/T-18 → #373」、§7.2 (c)、§8）。
 > 本specは[Issue #373][1]の成果物である。statusが `draft` の間はimplementation-readyではない。
+> Status: **accepted**（2026-09-21）— Phase1 reviewを通過して受入された。初版snapshot
+> （`859e51fe`）への [1st review](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5740056108)
+> は **Changes requested**（中2/低1）で、`4004472742` で全件対応。同headへの
+> [2nd review](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5756736782)
+> は **Changes requested**（中1）で、`d5e51aa016` で対応。同headへの
+> [3rd review](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5756888737)
+> は **Changes requested**（中1）で、`40beddc0f2` で対応。同headへの
+> [最終review](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5756962168)
+> は **Approved**（blocking指摘0件。implementation-ready判定）。
 > 前提: [Issue #372][2]のT-15/T-16再構成（PR #393でmerge済み）が本specの失敗面
 > 「依頼を作り直す」remedyの到達先（T-15依頼作成面）である（Issue本文 `Depends on`）。
 > baselineのSHAはChange historyのre-entry entryを正とする。
@@ -599,6 +608,10 @@ CI `final-status` green。本Issueは表示のみの変更であり（persistent
 
 ## Change history
 
+- 2026-09-21: **Phase1 acceptance**。Phase1 review 3回対応head `40beddc0f2` への最終review
+  （[Approved](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5756962168)、
+  blocking指摘0件・implementation-ready判定）を受け、statusを `draft` → `accepted` へ進めた。
+  実装は#372 merge済みmain（`dcaecf6913` 以降）をbaseに着手する。
 - 2026-09-21: Phase1 re-entry revision 4（[review Changes requested](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5756888737)の指摘1対応）。
   lifecycle oracleの記載を2面に分離 — **Activity recreation（同一process継続）では
   補助行が保持される**（process-scoped契約どおり）と **system-initiated process death後の
