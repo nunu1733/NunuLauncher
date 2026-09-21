@@ -151,6 +151,11 @@ enum class ExchangeOpen {
 @Serializable
 data class HomeScreenManualOrganization(
     val entry: OrganizationEntry = OrganizationEntry.MANUAL,
+    // Issue #376 (D-15): the hub's restore CTA lands here with this flag set;
+    // the run destination then owns the durable-entry admission (and pops
+    // itself on a silent rejection). Persisted only as part of the nav back
+    // stack, never as run state or write authority.
+    val durableRecovery: Boolean = false,
     // Issue #374: null (the default) keeps every existing caller unchanged —
     // no exchange pre-open. The argument carries no run state and no write
     // authority (the review face's only write is its own D-13 discard).

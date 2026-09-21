@@ -1371,6 +1371,9 @@ private object InertRun {
 
         override fun readDurableOrganizerStatus() = error("not reached in exchange instrumentation tests")
 
+        override fun readRestorableRecoveryEntry(): app.lawnchair.organizer.application.public.RestorableRecoveryEntry? =
+            error("not reached in exchange instrumentation tests")
+
         override val readinessState: kotlinx.coroutines.flow.StateFlow<app.lawnchair.organizer.application.protocol.ReadinessGate.State> =
             kotlinx.coroutines.flow.MutableStateFlow(app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY)
 

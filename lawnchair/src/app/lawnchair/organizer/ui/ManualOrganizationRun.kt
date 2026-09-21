@@ -16,6 +16,7 @@ import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
 import app.lawnchair.organizer.application.public.RecoveryResult
+import app.lawnchair.organizer.application.public.RestorableRecoveryEntry
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.application.store.RecoveryStore
@@ -108,6 +109,13 @@ internal interface ManualOrganizationApplication {
     fun readDurableOrganizerStatus(): OrganizerDurableStatus
 
     /**
+     * Issue #376 (D-15): read-only selection of the latest restorable recovery
+     * point. Same fail-closed contract as [readDurableOrganizerStatus]; `null`
+     * means no valid point or a transient read failure (no CTA).
+     */
+    fun readRestorableRecoveryEntry(): RestorableRecoveryEntry?
+
+    /**
      * Issue #271 review: observable startup-readiness state of the application
      * module. The Settings surface re-reads the durable status when this moves,
      * so a fail-closed read taken during startup reconciliation recovers
@@ -153,6 +161,8 @@ internal class ProductionManualOrganizationApplication(
     ): RecoveryResult = module.confirmRecoveryPreview(pointId, confirmation)
 
     override fun readDurableOrganizerStatus(): OrganizerDurableStatus = module.durableOrganizerStatus()
+
+    override fun readRestorableRecoveryEntry(): RestorableRecoveryEntry? = module.readRestorableRecoveryEntry()
 
     override val readinessState: StateFlow<ReadinessGate.State>
         get() = module.readinessGate.stateFlow
@@ -525,6 +535,52 @@ class ManualOrganizationRun internal constructor(
     private var recoveryLease: AutoCloseable? = null
     private var lastVerifiedApply: State.Applied? = null
 
+    /**
+     * Issue #376 (spec D5): which surface opened the live recovery flow, and
+     * the display state to restore when the flow leaves through a
+     * status-card-origin cancel (preview cancel/dismiss) or the explicit
+     * result-face hub return. Process-local, never persisted; the entry
+     * origin also decides the cancel return target so a hub-origin flow can
+     * never land on a stale `State.Applied` face. Cleared by every flow exit
+     * (cancel, hub return) and by a new run admission.
+     */
+    private enum class RecoveryEntryOrigin {
+        AppliedSurface,
+        HubStatusCard,
+    }
+
+    private var recoveryEntryOrigin: RecoveryEntryOrigin? = null
+    private var recoveryEntryReturnState: State? = null
+
+    /**
+     * Issue #376 (spec D5): process-local handoff for the hub CTA's
+     * navigation. The tap arms it; the durable-recovery run destination
+     * consumes it exactly once before admitting. Being process-local, it
+     * dies with the process — after a process death the restored route finds
+     * nothing to consume and pops back to the hub, so the only restart path
+     * is the status card's CTA again (RS-AC-03). Never persisted.
+     */
+    @Volatile private var durableEntryLaunchArmed = false
+
+    /**
+     * Process-stable identity of this coordinator instance (random per
+     * instance, never persisted). The durable-recovery destination compares
+     * it against what it has already handled: the same instance across a
+     * child-destination round trip means "already handled", a different id
+     * means a fresh process whose arm/handoff died with its predecessor.
+     */
+    val processInstanceId: String = java.util.UUID.randomUUID().toString()
+
+    fun armDurableEntryLaunch() {
+        durableEntryLaunchArmed = true
+    }
+
+    fun consumeDurableEntryLaunchArm(): Boolean {
+        val armed = durableEntryLaunchArmed
+        durableEntryLaunchArmed = false
+        return armed
+    }
+
     private fun updateOperationActiveLocked() {
         operationActiveHolder.value = activeOperation != null || recoveryLease != null
     }
@@ -586,6 +642,10 @@ class ManualOrganizationRun internal constructor(
                 pendingRecovery = null
                 appliedPoint = null
                 lastVerifiedApply = null
+                // Issue #376 (spec D5): a fresh run dissolves any live recovery
+                // flow identity — the entry origin never outlives its flow.
+                recoveryEntryOrigin = null
+                recoveryEntryReturnState = null
                 // Issue #369 (RD-7): a fresh run always starts the visible
                 // progression at detection — the legacy admission Capturing below
                 // projects as 検出, so the first visible phase is never capture.
@@ -1359,6 +1419,10 @@ class ManualOrganizationRun internal constructor(
             if (current == null || pointId == null || activeOperation != null || recoveryLease != null) {
                 null
             } else {
+                // Issue #376 (spec D5): the legacy entry belongs to the Applied
+                // success face; its cancel keeps restoring `lastVerifiedApply`.
+                recoveryEntryOrigin = RecoveryEntryOrigin.AppliedSurface
+                recoveryEntryReturnState = null
                 recoveryLease = lease
                 stateHolder.value = State.InspectingRecovery
                 updateOperationActiveLocked()
@@ -1397,6 +1461,8 @@ class ManualOrganizationRun internal constructor(
         }
         if (!updated) {
             val abandoned = synchronized(lock) {
+                recoveryEntryOrigin = null
+                recoveryEntryReturnState = null
                 recoveryLease.also { recoveryLease = null }
                     .also { updateOperationActiveLocked() }
             }
@@ -1404,14 +1470,130 @@ class ManualOrganizationRun internal constructor(
         }
     }
 
+    /**
+     * Issue #376 (spec D5): the status-card (hub) recovery entry. Unlike
+     * [beginRecoveryPreview] it needs no process-local apply context: the
+     * application module selects the latest restorable point (D1) and the
+     * existing #84 inspection stays the authoritative gate. Admission also
+     * requires the durable row's own visibility condition (display state
+     * `Idle`/`Cancelled`) and fails silently — the lease is closed and the
+     * state is untouched. The entry origin records the pre-entry display
+     * state so every cancel/back/dismiss of this flow returns to the hub
+     * side; it never restores `lastVerifiedApply`. Because a non-null
+     * `lastVerifiedApply` structurally excludes `Idle`/`Cancelled`, the
+     * published preview never carries a correlated apply-history summary.
+     *
+     * Returns `true` when the confirmation face went live
+     * (`State.RecoveryPreview` published); `false` on any silent rejection
+     * (lease busy, wrong display state, fail-closed selection read) — the
+     * hosting surface navigates only on `true` so a rejected tap never opens
+     * an empty run face.
+     */
+    fun beginRecoveryPreviewFromDurableEntry(): Boolean {
+        val lease = operationGate.tryAcquire(OrganizationOperationLease.Kind.RECOVERY) ?: return false
+        val admitted = synchronized(lock) {
+            val current = stateHolder.value
+            if (activeOperation != null || recoveryLease != null ||
+                !(current is State.Idle || current is State.Cancelled)
+            ) {
+                null
+            } else {
+                recoveryEntryOrigin = RecoveryEntryOrigin.HubStatusCard
+                recoveryEntryReturnState = current
+                recoveryLease = lease
+                stateHolder.value = State.InspectingRecovery
+                updateOperationActiveLocked()
+                current
+            }
+        }
+        if (admitted == null) {
+            lease.close()
+            return false
+        }
+        // Admission re-reads the selection (spec D5): a fail-closed null
+        // rejects silently and restores the pre-entry display state.
+        val entry = try {
+            application.readRestorableRecoveryEntry()
+        } catch (failure: Throwable) {
+            cancelRecoveryPreview()
+            throw failure
+        }
+        if (entry == null) {
+            cancelRecoveryPreview()
+            return false
+        }
+        val preview = try {
+            application.inspectRecovery(entry.pointId)
+        } catch (failure: Throwable) {
+            cancelRecoveryPreview()
+            throw failure
+        }
+        val updated = synchronized(lock) {
+            if (state !is State.InspectingRecovery || recoveryEntryOrigin != RecoveryEntryOrigin.HubStatusCard) {
+                false
+            } else {
+                pendingRecovery = preview as? RecoveryPreviewResult.Restorable
+                // spec 230 D2 correlation gate, reused unchanged: with no
+                // retained verified apply this always renders without history.
+                stateHolder.value = State.RecoveryPreview(preview, appliedSummary = null)
+                true
+            }
+        }
+        if (!updated) {
+            val abandoned = synchronized(lock) {
+                recoveryEntryOrigin = null
+                recoveryEntryReturnState = null
+                recoveryLease.also { recoveryLease = null }
+                    .also { updateOperationActiveLocked() }
+            }
+            abandoned?.close()
+        }
+        return updated
+    }
+
+    /**
+     * Issue #376 (spec D5): the explicit hub return from a hub-origin recovery
+     * result. Only the result face's system-Back path calls this; generic
+     * dismissals (host dispose, diagnostics push) keep the terminal state so
+     * the result/safe-support surface survives a child-destination round
+     * trip. Restores the pre-entry display state (`Idle`/`Cancelled`) and
+     * reports whether this call resolved the flow.
+     */
+    fun leaveRecoveryResultToHub(): Boolean {
+        val restored = synchronized(lock) {
+            if (state !is State.RecoveryResultState || recoveryEntryOrigin != RecoveryEntryOrigin.HubStatusCard) {
+                false
+            } else {
+                stateHolder.value = recoveryEntryReturnState ?: State.Idle
+                recoveryEntryOrigin = null
+                recoveryEntryReturnState = null
+                true
+            }
+        }
+        return restored
+    }
+
     fun cancelRecoveryPreview() {
         val lease = synchronized(lock) {
             pendingRecovery = null
-            stateHolder.value = lastVerifiedApply ?: State.Idle
+            stateHolder.value = recoveryCancelTargetLocked()
+            recoveryEntryOrigin = null
+            recoveryEntryReturnState = null
             recoveryLease.also { recoveryLease = null }
                 .also { updateOperationActiveLocked() }
         }
         lease?.close()
+    }
+
+    /**
+     * Issue #376 (spec D5): the cancel return target is bound to the entry
+     * origin. The legacy Applied-surface entry keeps restoring the retained
+     * verified apply; the status-card entry returns to its pre-entry display
+     * state and never lands on a stale `State.Applied` face.
+     */
+    private fun recoveryCancelTargetLocked(): State = when (recoveryEntryOrigin) {
+        RecoveryEntryOrigin.HubStatusCard -> recoveryEntryReturnState ?: State.Idle
+        null, RecoveryEntryOrigin.AppliedSurface -> lastVerifiedApply ?: State.Idle
     }
 
     fun confirmRecovery() {
@@ -1442,6 +1624,14 @@ class ManualOrganizationRun internal constructor(
      */
     fun readDurableOrganizerStatus(): OrganizerDurableStatus = application.readDurableOrganizerStatus()
 
+    /**
+     * Issue #376 (D-15): read-only restore-entry hint (latest restorable
+     * point + coarse remaining window) for the hub status card. Same
+     * fail-closed, no-write contract as [readDurableOrganizerStatus]; callers
+     * must not run the two reads concurrently (spec D6 read serialization).
+     */
+    fun readRestorableRecoveryEntry(): RestorableRecoveryEntry? = application.readRestorableRecoveryEntry()
+
     /** Observable startup readiness of the application module (see the façade). */
     val readinessState: StateFlow<ReadinessGate.State>
         get() = application.readinessState
@@ -1450,7 +1640,9 @@ class ManualOrganizationRun internal constructor(
         val recovery = synchronized(lock) {
             if (activeOperation == null && recoveryLease != null) {
                 pendingRecovery = null
-                stateHolder.value = lastVerifiedApply ?: State.Idle
+                stateHolder.value = recoveryCancelTargetLocked()
+                recoveryEntryOrigin = null
+                recoveryEntryReturnState = null
                 recoveryLease.also { recoveryLease = null }
                     .also { updateOperationActiveLocked() }
             } else {

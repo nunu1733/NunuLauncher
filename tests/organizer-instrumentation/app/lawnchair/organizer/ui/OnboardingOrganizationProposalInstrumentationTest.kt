@@ -824,6 +824,7 @@ class OnboardingOrganizationProposalInstrumentationTest {
             RecoveryResult.NotRestorable(pointId, RecoveryRejection.MISSING)
 
         override fun readDurableOrganizerStatus(): OrganizerDurableStatus = OrganizerDurableStatus.NEVER_ORGANIZED
+        override fun readRestorableRecoveryEntry(): app.lawnchair.organizer.application.public.RestorableRecoveryEntry? = null
 
         override val readinessState: StateFlow<ReadinessGate.State> =
             MutableStateFlow(ReadinessGate.State.READY)

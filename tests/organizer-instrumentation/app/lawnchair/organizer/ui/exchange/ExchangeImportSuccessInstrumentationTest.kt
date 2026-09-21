@@ -177,6 +177,8 @@ class ExchangeImportSuccessInstrumentationTest {
             confirmation: app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation,
         ) = error("not reached")
         override fun readDurableOrganizerStatus() = error("not reached")
+        override fun readRestorableRecoveryEntry(): app.lawnchair.organizer.application.public.RestorableRecoveryEntry? =
+            error("not reached in organizer tests")
         override val readinessState: kotlinx.coroutines.flow.StateFlow<app.lawnchair.organizer.application.protocol.ReadinessGate.State> =
             kotlinx.coroutines.flow.MutableStateFlow(app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY)
         private fun notReady(): app.lawnchair.organizer.integration.OrganizationInputComposition =

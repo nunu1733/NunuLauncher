@@ -90,11 +90,14 @@ import app.lawnchair.organizer.ui.manualOrganizationFace
 import app.lawnchair.organizer.ui.missingAppSelectionItems
 import app.lawnchair.organizer.ui.openUsageAccessSettings
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
+import app.lawnchair.ui.preferences.LocalNavController
 import app.lawnchair.ui.preferences.components.controls.ClickablePreference
 import app.lawnchair.ui.preferences.components.layout.PreferenceLazyColumn
 import app.lawnchair.ui.preferences.components.layout.PreferenceScaffold
 import com.android.launcher3.R
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -104,6 +107,10 @@ fun ManualOrganizationPreferences(
     modifier: Modifier = Modifier,
     run: ManualOrganizationRun? = null,
     trigger: Trigger = Trigger.MANUAL_FULL,
+    // Issue #376 (spec D5): set by the hub's restore CTA route — this
+    // destination then owns the status-card entry's admission (see the
+    // LaunchedEffect below the read block).
+    durableRecovery: Boolean = false,
     onOpenDiagnostics: (() -> Unit)? = null,
     // Issue #371: injectable for the unsupported-settings instrumentation.
     usageAccessSettingsOpener: (Context) -> Boolean = ::openUsageAccessSettings,
@@ -192,7 +199,13 @@ fun ManualOrganizationPreferences(
     // once reconciliation reaches a terminal state, without the user
     // navigating away. While no result is known yet, an explicit checking row
     // keeps the loading state visually distinct from "never organized".
-    val showDurableStatus = state is ManualOrganizationRun.State.Idle || state is ManualOrganizationRun.State.Cancelled
+    // Issue #376 (spec D6 read serialization): in durable-recovery mode the
+    // status read is suppressed entirely — the destination's admission issues
+    // the entry read, and both reads share the module's non-blocking mutex,
+    // so running them concurrently would fail-close the admission against
+    // its own display read.
+    val showDurableStatus = !durableRecovery &&
+        (state is ManualOrganizationRun.State.Idle || state is ManualOrganizationRun.State.Cancelled)
     val readinessState by coordinator.readinessState.collectAsStateWithLifecycle()
     var durableStatus by remember { mutableStateOf<OrganizerDurableStatus?>(null) }
     LaunchedEffect(showDurableStatus, readinessState) {
@@ -212,6 +225,59 @@ fun ManualOrganizationPreferences(
                         )
                 )
         )
+
+    // Issue #376 (spec D5): a hub-initiated durable entry hands admission
+    // ownership to this destination. The read+inspection run here — in this
+    // destination's own composition scope, so the hub's disposal can never
+    // orphan the flow — and a silent rejection pops this face back to the
+    // hub. NonCancellable closes the departure window: if the host went away
+    // while admission was in flight (Back during the read), the live flow is
+    // resolved back to the pre-entry state instead of being left as an
+    // unseen pending preview.
+    if (durableRecovery) {
+        val navController = LocalNavController.current
+        // Handoff discipline (spec D5/RS-AC-03): the hub CTA arms a
+        // process-local launch marker; this destination consumes it once per
+        // generation. A child-destination round trip (diagnostics push →
+        // Back) re-runs this effect in the same process and must not
+        // re-admit against a live terminal state; a process death loses the
+        // marker entirely, so the restored route pops back to the hub and
+        // the only restart path is the status card's CTA again.
+        var lastHandledProcessId by androidx.compose.runtime.saveable.rememberSaveable {
+            androidx.compose.runtime.mutableStateOf("")
+        }
+        LaunchedEffect(durableRecovery) {
+            // The coordinator instance id is process-stable: the same
+            // instance across a diagnostics round trip means already handled;
+            // a different id means a fresh process whose handoff died with
+            // its predecessor.
+            val currentProcessId = coordinator.processInstanceId
+            if (lastHandledProcessId == currentProcessId) {
+                return@LaunchedEffect
+            }
+            lastHandledProcessId = currentProcessId
+            if (!coordinator.consumeDurableEntryLaunchArm()) {
+                navController.popBackStack()
+                return@LaunchedEffect
+            }
+            val effectJob = coroutineContext.job
+            val myEntryId = navController.currentBackStackEntry?.id
+            withContext(NonCancellable) {
+                val admitted = withContext(Dispatchers.IO) {
+                    coordinator.beginRecoveryPreviewFromDurableEntry()
+                }
+                if (!admitted) {
+                    // Only pop while this destination is still the current
+                    // entry: a Back that raced the admission already popped
+                    // it, and popping again would leave the hub too.
+                    val stillCurrent = navController.currentBackStackEntry?.id == myEntryId
+                    if (stillCurrent) navController.popBackStack()
+                } else if (!effectJob.isActive) {
+                    withContext(Dispatchers.IO) { coordinator.cancelRecoveryPreview() }
+                }
+            }
+        }
+    }
 
     fun execute(action: () -> Unit) {
         scope.launch {
@@ -301,14 +367,20 @@ fun ManualOrganizationPreferences(
 
     fun interruptAndNavigate() {
         scope.launch {
-            val outcome = withContext(Dispatchers.IO) { coordinator.dismiss() }
-            // D-13: 中断 stops the run and returns to the hub — the same
-            // navigation system Back takes. After the apply checkpoint the
-            // coordinator's gate refuses (ApplicationInProgress): the surface
-            // stays and the atomic-completion wording explains why.
-            if (outcome != ManualOrganizationRun.DismissalOutcome.ApplicationInProgress) {
-                withContext(Dispatchers.Main) { navigateBack() }
+            // Issue #376 (spec D5): a hub-origin recovery result leaves through
+            // the explicit hub-return path (restores the pre-entry state so the
+            // hub re-derives the durable status); every other state keeps the
+            // plain dismissal. Host disposals never call this — result states
+            // survive diagnostics pushes and recompositions.
+            if (!coordinator.leaveRecoveryResultToHub()) {
+                val outcome = withContext(Dispatchers.IO) { coordinator.dismiss() }
+                // D-13: 中断 stops the run and returns to the hub — the same
+                // navigation system Back takes. After the apply checkpoint the
+                // coordinator's gate refuses (ApplicationInProgress): the surface
+                // stays and the atomic-completion wording explains why.
+                if (outcome == ManualOrganizationRun.DismissalOutcome.ApplicationInProgress) return@launch
             }
+            withContext(Dispatchers.Main) { navigateBack() }
         }
     }
 
