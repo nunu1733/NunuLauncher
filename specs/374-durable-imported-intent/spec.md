@@ -242,8 +242,10 @@ Then durable保存が **成功して初めて** 取り込み成功状態（`Impo
 （保存と成功状態の採用は同一settle内で完了する。run state・layout DBへのwriteは発生しない）、
 成功状態の表示は現行契約（spec 328 AC-1/AC-2/AC-4）どおりである、
 And 保存される内容は「durable recordの内容（privacy境界の確定）」の (a)〜(g) であり、
-canonical decisionsはexport-scoped refを含む（refはsessionの対応表を介してのみ内部IDへ解決される。
-label/title/free-textは含まない）、
+canonical decisionsはexport-scoped refと正規化済み `proposalLabel` を含む
+（refはsessionの対応表を介してのみ内部IDへ解決される。永続化しないのは `rationale` /
+`confidence` / app label / folder title / category displayName / ref↔内部ID対応表 —
+DI-AC-10と同一の列挙である）、
 And 成功状態からのCTAは現行seam（`run.start` / `attachIntent`）を現行契約どおり一度だけ実行し
 （spec 328 AC-3の回帰。single-flight・attempt anchor・`continuing` 中の破棄/Back不受理を含む）、
 成功settleで成功状態が閉じる。
@@ -728,6 +730,11 @@ greenである。
 
 ## Change history
 
+- 2026-09-21: **Revision 2追補（3rd review comment `5761138332` の中1件対応）**: import成功
+  scenarioの旧文言「label/title/free-textは含まない」がrevision 2の `proposalLabel` 保存契約と
+  矛盾していたため、DI-AC-10と同一の列挙（保存: export-scoped ref・正規化済み `proposalLabel` /
+  禁止: `rationale`・`confidence`・app label・folder title・category displayName・
+  ref↔内部ID対応表）へ揃えた。
 - 2026-09-19: Draft created for #374（spec/plan整備task）。accepted TO-BE契約
   （organizer-to-be-ux.md、PR #364: D-02/D-08/D-13/D-17/§5.3/§6.5/§8.2/§13-2/§13-5）、
   accepted処分文書（organizer-disposition-migration.md、PR #378:
