@@ -160,6 +160,10 @@ _Avoid_: 適用完了 (未適用であることとの混同)、プレビュー (
 取り込み成功状態をCTAなしに閉じる操作 ([spec 328](./specs/328-exchange-import-success-state/spec.md))。pendingなvalidated intentを破棄する (zero-write)。export sessionはinvalidateしないため、依頼が有効な間は同じ回答textを再取り込みできる。入口は明示ボタン (追加確認なし) とsystem Back (確認dialog) の2つで、CTA処理中はどちらも不受理。TO-BEの語彙規約 (D-13) の下では本操作は「破棄」語彙と必須確認の対象であり、spec 328の確認契約の改訂は後続実装Issueが行う。
 _Avoid_: 取り消し (apply済み変更のrollbackとの混同。何も適用されていない)
 
+**手段別失敗投影 (Failure Remedy Projection)**:
+import失敗のtyped分類を、ユーザーの次の行動 (もう一度取り込む / 貼り直す / 依頼を作り直す / 中断する / 診断を開く) の語彙へ再投影した表示モデル ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) D-11、[#373](https://github.com/nunu1733/NunuLauncher/issues/373))。各typed失敗に1つのprimary remedy (class別のprimary copyと操作) を対応させ、typed失敗によらず常設される面レベル手段 (中断する・診断を開く) を併置する。primary面は手段別語彙のみを出し、typed分類名 (`CONTEXT_STALE`等) とtyped固有の説明は詳細展開と診断に格下げされる。
+_Avoid_: typed失敗一覧 (20種の列挙そのものはprimary面に現れない)、エラーコード表示 (分類名は補助情報に限る)
+
 **判断なし項目 (no-judgment items)**:
 #330 v3 canonical representation (`CompletedPersonalIntent`) 上、`RefDecision.Authored` 以外の決定 (明示unresolved・bare entry正規化・未言及) を持つexport ref ([spec 328](./specs/328-exchange-import-success-state/spec.md))。3表現はsemantic identity・planner効果が同一 (#330 D-5/D-6) であり、UIでは合算1件数のみを表示してprovenanceを出さない。
 _Avoid_: 失敗項目 (取り込み自体は成功している)、未対応 (AIが判断しなかっただけでpreferenceなしとして整理対象)

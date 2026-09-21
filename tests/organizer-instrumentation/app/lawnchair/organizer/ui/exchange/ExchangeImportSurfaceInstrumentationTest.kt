@@ -30,6 +30,7 @@ import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -200,6 +201,7 @@ class ExchangeImportSurfaceInstrumentationTest {
         discardRequested: androidx.compose.runtime.MutableState<Boolean>? = null,
         discardFocus: FocusRequester? = null,
         preserveDeviceDensity: Boolean = false,
+        onOpenDiagnostics: (() -> Unit)? = null,
     ) {
         composeRule.setContent {
             // Issue #372 (implementation review, EX-AC-10): the 200% oracle
@@ -231,6 +233,7 @@ class ExchangeImportSurfaceInstrumentationTest {
                             clipboardTransport = { _, _ -> ExchangeTransportResult.Success },
                             shareTransport = { _, _ -> ExchangeTransportResult.Success },
                             fileTransport = FileExchangeTransport(context),
+                            onOpenDiagnostics = onOpenDiagnostics,
                         )
                     }
                 }
@@ -790,10 +793,19 @@ class ExchangeImportSurfaceInstrumentationTest {
 
     /**
      * Issue #348 AC-1 (content oracle): the failure/retry guidance strings
-     * must keep offering the allowed recovery (re-copy / re-paste / ask the
-     * AI to resend the final JSON) and must never instruct an AI repair loop
-     * (feeding failure diagnostics or error content back to the AI). Both
-     * locales are resolved through real resource contexts.
+     * must keep offering the allowed recovery (import again / re-paste /
+     * recreate the request) and must never instruct an AI repair loop (feeding
+     * failure diagnostics or error content back to the AI). Both locales are
+     * resolved through real resource contexts.
+     *
+     * Issue #373 (IM-AC-08, oracle obsolete record): the scanned set moved
+     * with the remedy projection. The former 4-string guidance set
+     * (`exchange_import_retry_hint` + 3 typed copies) no longer exists as
+     * primary guidance — the hint string was deleted (grep-0), and the typed
+     * copies are now the DETAIL-expansion typed cause, not the primary face.
+     * The no-AI-repair-loop boundary itself is unchanged and now scans ALL 20
+     * projected primary copies (the remedy-vocabulary allowed markers) — a
+     * stronger, structurally complete version of the same oracle.
      */
     @Test
     fun failureAndRetryGuidanceStaysWithinTheRecoveryBoundary() {
@@ -804,12 +816,31 @@ class ExchangeImportSurfaceInstrumentationTest {
             "ja" to context.createConfigurationContext(japanese),
         )
         val guidance = listOf(
-            R.string.exchange_import_retry_hint,
-            R.string.exchange_failure_framing_missing,
-            R.string.exchange_failure_framing_empty,
-            R.string.exchange_failure_normalization_unrecognized,
+            R.string.exchange_failure_primary_input_oversize,
+            R.string.exchange_failure_primary_framing_missing,
+            R.string.exchange_failure_primary_framing_ambiguous,
+            R.string.exchange_failure_primary_framing_empty,
+            R.string.exchange_failure_primary_normalization_ambiguous,
+            R.string.exchange_failure_primary_normalization_unrecognized,
+            R.string.exchange_failure_primary_schema_mismatch,
+            R.string.exchange_failure_primary_export_mismatch,
+            R.string.exchange_failure_primary_session_expired,
+            R.string.exchange_failure_primary_context_stale,
+            R.string.exchange_failure_primary_oversize,
+            R.string.exchange_failure_primary_unknown_ref,
+            R.string.exchange_failure_primary_duplicate_ref,
+            R.string.exchange_failure_primary_incomplete_coverage,
+            R.string.exchange_failure_primary_invalid_enum,
+            R.string.exchange_failure_primary_forbidden_content,
+            R.string.exchange_failure_primary_mobility_contradiction,
+            R.string.exchange_failure_primary_capability_unsupported,
+            R.string.exchange_failure_primary_scope_mismatch,
+            R.string.exchange_failure_primary_unknown_category_ref,
         )
-        val allowedMarkers = listOf("resend", "再送", "import again", "再度取り込")
+        val allowedMarkers = listOf(
+            "resend", "再送", "import again", "再度取り込", "もう一度取り込",
+            "re-paste", "貼り直", "recreate", "作り直", "送り直",
+        )
         val forbiddenMarkers = listOf(
             "diagnostic", "send the error", "paste the failure", "validation error",
             "診断", "エラーメッセージを送", "検証エラーを送",
@@ -859,9 +890,14 @@ class ExchangeImportSurfaceInstrumentationTest {
         check(cleared?.isEmpty() == true) { "clear must empty the editor, was $cleared" }
     }
 
-    /** AC-10: the parse-first outcome leads with recognition facts; raw is collapsed. */
+    /**
+     * AC-10 (as amended by issue #373): the outcome leads with the remedy
+     * projection — the primary copy names the remedy, no typed vocabulary on
+     * the primary face; the recognition facts and raw text live inside the
+     * collapsed detail expansion (bounded once opened).
+     */
     @Test
-    fun parseFirstOutcomeShowsRecognitionAndKeepsRawCollapsedByDefault() {
+    fun parseFirstOutcomeLeadsWithTheRemedyProjectionAndKeepsDetailCollapsedByDefault() {
         val holder = newHolder()
         setContent(holder)
         openImportSurface(holder)
@@ -882,26 +918,41 @@ class ExchangeImportSurfaceInstrumentationTest {
         composeRule.onNodeWithTag("exchange-import-field").performTextInput(reply)
         composeRule.onNodeWithTag("exchange-import-action").performClick()
         composeRule.waitUntil(10_000) {
-            composeRule.onAllNodesWithTag("exchange-import-raw-toggle").fetchSemanticsNodes().isNotEmpty()
+            composeRule.onAllNodesWithTag("exchange-import-detail-toggle").fetchSemanticsNodes().isNotEmpty()
         }
 
-        // Recognition facts lead the display: recognized framing, accepted
-        // version, authored entry count (bare `r2` counts → 2).
+        // The primary face carries the remedy copy (no session → the reply
+        // answers no current request → 依頼を作り直す), never the typed copy.
+        composeRule.onNodeWithTag("exchange-import-outcome-message")
+            .assertTextContains(context.getString(R.string.exchange_failure_primary_export_mismatch))
+        composeRule.onAllNodesWithText(context.getString(R.string.exchange_failure_export_mismatch))
+            .fetchSemanticsNodes().isEmpty()
+
+        // The recognition facts and the raw text are inside the detail
+        // expansion: default-closed, nothing of them displayed.
+        composeRule.onAllNodesWithTag("exchange-import-outcome-framing").fetchSemanticsNodes().isEmpty()
+        composeRule.onAllNodesWithTag("exchange-import-outcome-version").fetchSemanticsNodes().isEmpty()
+        composeRule.onAllNodesWithTag("exchange-import-outcome-entries").fetchSemanticsNodes().isEmpty()
+        composeRule.onAllNodesWithTag("exchange-import-raw-detail").fetchSemanticsNodes().isEmpty()
+
+        composeRule.onNodeWithTag("exchange-import-detail-toggle").performClick()
+        composeRule.waitForIdle()
         composeRule.onNodeWithTag("exchange-import-outcome-framing").assertIsDisplayed()
         composeRule.onNodeWithTag("exchange-import-outcome-version").assertIsDisplayed()
         composeRule.onNodeWithTag("exchange-import-outcome-entries").assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-import-detail-type").assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-import-detail-explanation").assertIsDisplayed()
 
-        // The raw detail is default-closed and, once opened, bounded.
-        composeRule.onAllNodesWithTag("exchange-import-raw-detail").fetchSemanticsNodes().isEmpty()
-        composeRule.onNodeWithText(context.getString(R.string.exchange_import_raw_show)).performClick()
-        composeRule.waitForIdle()
-        val detailHeight = composeRule.onNodeWithTag("exchange-import-raw-detail").fetchSemanticsNode().boundsInRoot.height
-        check(detailHeight <= 260f) { "the raw detail must stay bounded, was $detailHeight px" }
+        // The detail content stays bounded (internal scroll).
+        val detailHeight = composeRule.onNodeWithTag("exchange-import-failure-detail")
+            .fetchSemanticsNode().boundsInRoot.height
+        check(detailHeight <= 260f) { "the detail expansion must stay bounded, was $detailHeight px" }
 
-        // AC-7: retry replaces the surface, discarding the raw text.
-        composeRule.onNodeWithText(context.getString(R.string.exchange_import_retry)).performClick()
+        // 依頼を作り直す walks the generation-flow seam: the import surface is
+        // replaced and the detail state is gone with it.
+        composeRule.onNodeWithTag("exchange-import-failure-action").performClick()
         composeRule.waitForIdle()
-        composeRule.onAllNodesWithTag("exchange-import-raw-toggle").fetchSemanticsNodes().isEmpty()
+        composeRule.onAllNodesWithTag("exchange-import-detail-toggle").fetchSemanticsNodes().isEmpty()
     }
 
     /**
@@ -947,11 +998,96 @@ class ExchangeImportSurfaceInstrumentationTest {
         check(liveRegion == LiveRegionMode.Polite) {
             "the typed failure must be announced politely, was $liveRegion"
         }
-        val expected = context.getString(R.string.exchange_failure_schema_mismatch)
+        // Issue #373 (D-11): the polite announcement is the remedy projection
+        // of the failure — the typed vocabulary itself is demoted to the
+        // detail expansion and must NOT be on the primary face.
+        val expected = context.getString(R.string.exchange_failure_primary_schema_mismatch)
         val announced = runCatching {
             message.config[SemanticsProperties.Text].map { it.text }
         }.getOrNull().orEmpty()
-        check(announced.contains(expected)) { "the typed failure must be announced verbatim, was $announced" }
+        check(announced.contains(expected)) {
+            "the remedy projection must be announced verbatim, was $announced"
+        }
+        composeRule.onAllNodesWithText(context.getString(R.string.exchange_failure_schema_mismatch))
+            .fetchSemanticsNodes().isEmpty()
+
+        // Interrupt (面レベル手段): zero-write close, no confirmation dialog —
+        // the flow closes and nothing is lost, so D-13 §9 forbids one. The
+        // face disappears immediately (no dialog intercepts the click).
+        composeRule.onNodeWithTag("exchange-import-interrupt").performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("exchange-import-outcome-message").fetchSemanticsNodes().isEmpty()
+    }
+
+    /**
+     * Issue #373 (IM-AC-03/IM-AC-04): the projected remedy action reaches the
+     * seam it promises, and the face-level means stay available. 貼り直す /
+     * もう一度取り込む return to the import input (raw text discarded — spec
+     * 332 AC-7), 依頼を作り直す walks the existing generation-flow seam, and
+     * 診断を開く records the current attempt's typed cause into the
+     * process-scoped transient holder before invoking the host's diagnostics
+     * route callback.
+     */
+    @Test
+    fun remedyActionsReachTheirSeamsAndDiagnosticsRecordsTheTypedCause() {
+        ExchangeImportFailureDiagnostics.resetForTests()
+        val holder = newHolder()
+        var diagnosticsOpened = false
+        setContent(holder, onOpenDiagnostics = { diagnosticsOpened = true })
+        openImportSurface(holder)
+        composeRule.onNodeWithTag("exchange-import-fallback-toggle").performClick()
+        composeRule.waitForIdle()
+        val intent = PersonalizedIntentV1(
+            exportId = "instrumentation-no-session",
+            itemIntents = listOf(ItemIntent(ref = "r1", preserve = true)),
+        )
+        val reply = buildString {
+            append(ExchangeContract.INTENT_BEGIN_MARKER)
+            append('\n')
+            append(IntentCodec.encode(intent).decodeToString())
+            append('\n')
+            append(ExchangeContract.INTENT_END_MARKER)
+        }
+        composeRule.onNodeWithTag("exchange-import-field").performTextInput(reply)
+        composeRule.onNodeWithTag("exchange-import-action").performClick()
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithTag("exchange-import-failure-action").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        // No session → EXPORT_MISMATCH → the remedy is 依頼を作り直す, which
+        // walks the existing generation-flow seam (openFlow).
+        composeRule.onNodeWithTag("exchange-import-failure-action")
+            .assertTextContains(context.getString(R.string.exchange_import_failure_action_recreate))
+        composeRule.onNodeWithTag("exchange-import-failure-action").performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("exchange-import-outcome-message").fetchSemanticsNodes().isEmpty()
+
+        // 診断を開く records the typed cause and hands over to the host route.
+        openImportSurface(holder)
+        composeRule.onNodeWithTag("exchange-import-field").performTextInput(reply)
+        composeRule.onNodeWithTag("exchange-import-action").performClick()
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithTag("exchange-import-open-diagnostics").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("exchange-import-open-diagnostics").performClick()
+        composeRule.waitForIdle()
+        check(diagnosticsOpened) { "診断を開く must reach the host's diagnostics route" }
+        val recorded = ExchangeImportFailureDiagnostics.recent
+        check(recorded?.typeName == "EXPORT_MISMATCH") {
+            "診断を開く must record the current attempt's typed cause, was $recorded"
+        }
+        check(recorded.explanation == context.getString(R.string.exchange_failure_export_mismatch)) {
+            "the recorded explanation must be the contract copy, was ${recorded.explanation}"
+        }
+
+        // A failure face WITHOUT a diagnostics route hides the row instead of
+        // offering a dead button.
+        val holderWithoutRoute = newHolder()
+        setContent(holderWithoutRoute)
+        openImportSurface(holderWithoutRoute)
+        composeRule.onNodeWithTag("exchange-import-fallback-toggle").performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("exchange-import-open-diagnostics").fetchSemanticsNodes().isEmpty()
     }
 
     /** AC-8 (structure): 200% font keeps the primary actions on screen, editor bounded. */

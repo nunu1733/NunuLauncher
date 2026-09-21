@@ -20,6 +20,9 @@
     <!-- Issue #138: supported release Settings route for the diagnostics journal export -->
     <string name="organizer_diagnostics_title">オーガナイザー診断</string>
     <string name="organizer_diagnostics_description">プライバシーに配慮したオーガナイザー診断ジャーナルをサポート用にファイルへ書き出します。</string>
+    <!-- Issue #373: the transient "recent import failure" auxiliary row, shown
+         only while the process-scoped holder keeps a recorded failure -->
+    <string name="organizer_diagnostics_recent_import_failure">直近の取り込み失敗</string>
     <string name="organizer_diagnostics_export_label">オーガナイザー診断データを書き出す</string>
     <string name="organizer_diagnostics_export_subtitle">オーガナイザー診断ジャーナルをファイルに出力します</string>
     <string name="organizer_diagnostics_export_success">診断データを書き出しました</string>
@@ -478,8 +481,14 @@
     <string name="exchange_import_from_file">ファイルから</string>
     <string name="exchange_import_result_title">取り込み結果</string>
     <string name="exchange_import_result_unknown">回答を利用できませんでした。</string>
-    <string name="exchange_import_retry_hint">AIに最終JSONを```jsonコードブロック1つで再送してもらい、再度取り込んでください。</string>
-    <string name="exchange_import_retry">再取り込み</string>
+    <string name="exchange_import_failure_action_reimport">もう一度取り込む</string>
+    <string name="exchange_import_failure_action_repost">貼り直す</string>
+    <string name="exchange_import_failure_action_recreate">依頼を作り直す</string>
+    <string name="exchange_import_interrupt">中断する</string>
+    <string name="exchange_import_open_diagnostics">診断を開く</string>
+    <string name="exchange_import_failure_detail_show">詳細を表示</string>
+    <string name="exchange_import_failure_detail_hide">詳細を隠す</string>
+    <string name="exchange_import_failure_detail_type_format">種別: %1$s</string>
     <string name="exchange_run_busy">整理が実行中のため取り込めません。終了後に再度取り込んでください。</string>
     <string name="exchange_import_from_clipboard">クリップボードから読み込む</string>
     <string name="exchange_import_fallback_toggle">詳細 / うまく読み込めない場合</string>
@@ -494,11 +503,29 @@
     <string name="exchange_framing_marker">マーカー形式</string>
     <string name="exchange_framing_fenced_json">fenced JSONブロック</string>
     <string name="exchange_framing_standalone_json">単独JSON</string>
-    <string name="exchange_import_raw_show">取り込みテキストを表示</string>
-    <string name="exchange_import_raw_hide">取り込みテキストを隠す</string>
     <string name="exchange_generation_input_not_ready">現在のレイアウトを取得できませんでした。しばらくしてから再試行してください。</string>
     <string name="exchange_generation_store_failure">交換セッションを作成できませんでした。何も送信されていません。</string>
     <string name="exchange_generation_oversize">レイアウトが大きすぎて依頼文を作成できません。</string>
+    <string name="exchange_failure_primary_input_oversize">回答が大きすぎます。前後の文章を減らして、もう一度取り込んでください。</string>
+    <string name="exchange_failure_primary_framing_missing">回答の中に取り込める整理案がありません。AIアプリで最終案を送り直してもらい、貼り直してください。</string>
+    <string name="exchange_failure_primary_framing_ambiguous">回答に複数の整理案が含まれています。最終案を1つだけ送り直してもらい、貼り直してください。</string>
+    <string name="exchange_failure_primary_framing_empty">整理案が空でした。AIアプリで最終案を送り直してもらい、貼り直してください。</string>
+    <string name="exchange_failure_primary_normalization_ambiguous">回答に複数のコードブロックがあります。整理案のJSONだけをコピーして貼り直してください。</string>
+    <string name="exchange_failure_primary_normalization_unrecognized">取り込める形式がありません。AIアプリで最終案を送り直してもらい、貼り直してください。</string>
+    <string name="exchange_failure_primary_schema_mismatch">回答を整理案として読み取れませんでした。AIアプリで送り直してもらい、貼り直してください。</string>
+    <string name="exchange_failure_primary_export_mismatch">この回答は現在の依頼宛ではありません。依頼を作り直してください。</string>
+    <string name="exchange_failure_primary_session_expired">依頼の有効期限が切れています。依頼を作り直してください。</string>
+    <string name="exchange_failure_primary_context_stale">依頼の内容が古くなりました。依頼を作り直してください。</string>
+    <string name="exchange_failure_primary_oversize">整理案本体が大きすぎます。より小さい整理案を依頼して、貼り直してください。</string>
+    <string name="exchange_failure_primary_unknown_ref">整理案が依頼に存在しない項目を参照しています。AIアプリで送り直してもらい、貼り直してください。</string>
+    <string name="exchange_failure_primary_duplicate_ref">整理案に重複した項目があります。AIアプリで送り直してもらい、貼り直してください。</string>
+    <string name="exchange_failure_primary_incomplete_coverage">整理案の項目指定に重複があります。AIアプリで送り直してもらい、貼り直してください。</string>
+    <string name="exchange_failure_primary_invalid_enum">整理案に未知の値が含まれています。AIアプリで送り直してもらい、貼り直してください。</string>
+    <string name="exchange_failure_primary_forbidden_content">整理案に禁止された指示が含まれています。AIアプリで送り直してもらい、貼り直してください。</string>
+    <string name="exchange_failure_primary_mobility_contradiction">整理案が動かせない項目を動かそうとしています。AIアプリで送り直してもらい、貼り直してください。</string>
+    <string name="exchange_failure_primary_capability_unsupported">整理案が未対応の機能を使用しています。AIアプリで送り直してもらい、貼り直してください。</string>
+    <string name="exchange_failure_primary_scope_mismatch">この回答は現在の依頼内容と一致していません。依頼を作り直してください。</string>
+    <string name="exchange_failure_primary_unknown_category_ref">回答が参照したカテゴリが現在利用できません。依頼を作り直してください。</string>
     <string name="exchange_failure_input_oversize">回答が大きすぎます。前後の文章を減らして再度取り込んでください。</string>
     <string name="exchange_failure_framing_missing">回答にマーカーで囲まれた整理案がありません。AIに最終JSONを```jsonコードブロック1つで再送してもらうか、JSONだけを貼り付けてください。</string>
     <string name="exchange_failure_framing_ambiguous">回答に複数のマーカー囲みの領域があります。最終のJSONを1つだけ送ってもらってください。</string>

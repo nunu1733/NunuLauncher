@@ -39,6 +39,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -229,6 +230,49 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
         assertTrue("SAF intent must carry CATEGORY_OPENABLE", intent.hasCategory(Intent.CATEGORY_OPENABLE))
         assertEquals("application/jsonl", intent.type)
         assertEquals("Writer must stay idle until a result arrives", 0, port.snapshotCalls)
+    }
+
+    /**
+     * Issue #373 (IM-AC-04, diagnostics-face side of the 診断を開く means):
+     * while the process-scoped transient holder keeps a recorded failure, the
+     * face surfaces it as the 「直近の取り込み失敗」 auxiliary row — typed
+     * classification name + contract copy only. With no recording (fresh
+     * process / process death) the row is absent and the face is unchanged.
+     */
+    @Test
+    fun recentImportFailureRowMirrorsTheTransientHolder() {
+        val port = RecordingPort()
+        val registry = RecordingRegistry(context)
+        app.lawnchair.organizer.ui.exchange.ExchangeImportFailureDiagnostics.resetForTests()
+        composeScreen(port, registry)
+
+        // No recording: the face is exactly the current one (no aux row).
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(context.getString(R.string.organizer_diagnostics_description))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onAllNodesWithTag("organizer-diagnostics-recent-import-failure")
+            .fetchSemanticsNodes().isEmpty()
+
+        // A recording from the failure face's 診断を開く: the row appears with
+        // the recorded classification name and explanation.
+        app.lawnchair.organizer.ui.exchange.ExchangeImportFailureDiagnostics.record(
+            app.lawnchair.organizer.ui.exchange.RecentImportFailure(
+                typeName = "CONTEXT_STALE",
+                explanation = context.getString(R.string.exchange_failure_context_stale),
+            ),
+        )
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("organizer-diagnostics-recent-import-failure").assertIsDisplayed()
+        composeRule.onNodeWithTag("organizer-diagnostics-recent-import-failure-type")
+            .assertTextContains("CONTEXT_STALE")
+        composeRule.onNodeWithTag("organizer-diagnostics-recent-import-failure-explanation")
+            .assertTextContains(context.getString(R.string.exchange_failure_context_stale))
+
+        // The journal stays untouched: the auxiliary row is user-facing reason,
+        // not a diagnostics event (organizer-diagnostics.md §2 separation).
+        assertEquals("the aux row must not emit journal events", 0, port.snapshotCalls)
+        app.lawnchair.organizer.ui.exchange.ExchangeImportFailureDiagnostics.resetForTests()
     }
 
     @Test
