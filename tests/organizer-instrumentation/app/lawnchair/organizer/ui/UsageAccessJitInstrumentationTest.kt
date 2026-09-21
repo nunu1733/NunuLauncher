@@ -93,6 +93,20 @@ class UsageAccessJitInstrumentationTest {
         Thread.sleep(1000)
     }
 
+    /**
+     * Production-gate runner fixture: `resetForTests()` MUST run before the
+     * gate is captured by the runner (review recurrence guard — a reset after
+     * construction leaves the runner holding the previous singleton).
+     */
+    private fun newProductionRunner(application: ManualOrganizationApplication): ManualOrganizationRun {
+        UsageAccessJitGateProvider.resetForTests()
+        return ManualOrganizationRun(
+            application = application,
+            planner = OrganizationPlanner { error("planner must not run for a NotReady composition") },
+            usageAccessGate = UsageAccessJitGateProvider.get(context()),
+        )
+    }
+
     private fun pressBack() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val process = instrumentation.uiAutomation.executeShellCommand("input keyevent KEYCODE_BACK")
@@ -192,16 +206,8 @@ class UsageAccessJitInstrumentationTest {
         val owner = TestLifecycleOwner()
         // LifecycleRegistry state must be set on the main thread.
         InstrumentationRegistry.getInstrumentation().runOnMainSync { owner.registry.currentState = Lifecycle.State.RESUMED }
-        val runner = ManualOrganizationRun(
-            application = application,
-            planner = OrganizationPlanner { error("planner must not run for a NotReady composition") },
-            usageAccessGate = UsageAccessJitGateProvider.get(context),
-        )
+        val runner = newProductionRunner(application)
         try {
-            // Reset BEFORE building the runner: the gate instance is captured
-            // at construction, so the test starts from an unconsumed
-            // process opportunity.
-            UsageAccessJitGateProvider.resetForTests()
             setUsageAccessOp("deny")
             composeRule.setContent {
                 LawnchairTheme {
@@ -247,13 +253,8 @@ class UsageAccessJitInstrumentationTest {
         val application = NotReadyApplication(context)
         val owner = TestLifecycleOwner()
         InstrumentationRegistry.getInstrumentation().runOnMainSync { owner.registry.currentState = Lifecycle.State.RESUMED }
-        val runner = ManualOrganizationRun(
-            application = application,
-            planner = OrganizationPlanner { error("planner must not run for a NotReady composition") },
-            usageAccessGate = UsageAccessJitGateProvider.get(context),
-        )
+        val runner = newProductionRunner(application)
         try {
-            UsageAccessJitGateProvider.resetForTests()
             setUsageAccessOp("deny")
             composeRule.setContent {
                 LawnchairTheme {
