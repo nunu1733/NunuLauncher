@@ -2,8 +2,9 @@
 
 > Issue: #374
 > Spec: [spec.md](./spec.md)
-> Status: accepted（2026-09-21。specはChatGPT review Approved `5761252403` @ `c30f6f46d0`。
-> 初回review指摘6件 + 2nd review指摘3件対応済み。main `c05435a947` ベース。実装着手済み）
+> Status: implemented（2026-09-21。PR [#399](https://github.com/nunu1733/NunuLauncher/pull/399)
+> merge `9dc3ec8fed`。CI final-status green・独立audit
+> [docs/assessment/pr-399-durable-imported-intent.md](../../docs/assessment/pr-399-durable-imported-intent.md)）
 
 ## Current evidence
 
@@ -402,7 +403,11 @@ AC-13・#372 T-15・#373失敗面）。
       downgrade相当の未知schema — unit test。process death遷移oracleは
       store再生成test + reconcile testの組合せで固定）。
 - [x] Full relevant verification completed（unit gate green（1657 tests）・spotless green・
-      assemble green。instrumentation lane はCI `final-status` で実行）。
-      実装review: ChatGPT review Approved（comment `5763681310` @ `32d7f341c0`。
-      初回Changes requested 高1・中3 → 全解消確認）。
-- [ ] PR evidence and remaining risks recorded（docs/assessment/ 独立audit + PR本文）。
+      assemble green。CI merge gate `final-status` green（全organizer instrumentation lane含む。
+      3件のImportReview instrumentation test修復を含むhead `34d405a333` でgreen、docs-only
+      後続commit経由でmerge `9dc3ec8fed`）。実装review: ChatGPT review Approved
+      （comment `5763681310` @ `32d7f341c0`。初回Changes requested 高1・中3 → 全解消確認）。
+- [x] PR evidence and remaining risks recorded（独立audit
+      [docs/assessment/pr-399-durable-imported-intent.md](../../docs/assessment/pr-399-durable-imported-intent.md)
+      + PR本文。#375引き継ぎ事項（entry種別・`intentIdentity`・rebind用record fields）を
+      audit Findingsに記録）。
