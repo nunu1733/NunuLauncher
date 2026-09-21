@@ -401,6 +401,8 @@ AC-13・#372 T-15・#373失敗面）。
 - [x] Migration/recovery verified（置換無効化・tombstone commit失敗注入・corrupt record・
       downgrade相当の未知schema — unit test。process death遷移oracleは
       store再生成test + reconcile testの組合せで固定）。
-- [ ] Full relevant verification completed（unit gate green（1650 tests）・spotless green・
+- [x] Full relevant verification completed（unit gate green（1657 tests）・spotless green・
       assemble green。instrumentation lane はCI `final-status` で実行）。
-- [ ] PR evidence and remaining risks recorded（未検証area・#375引き継ぎ事項）。
+      実装review: ChatGPT review Approved（comment `5763681310` @ `32d7f341c0`。
+      初回Changes requested 高1・中3 → 全解消確認）。
+- [ ] PR evidence and remaining risks recorded（docs/assessment/ 独立audit + PR本文）。
