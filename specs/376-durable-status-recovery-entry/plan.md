@@ -60,8 +60,9 @@
     （1296–1310行）。active run中は `State.Cancelled`（1311–1326行）。
     **`RecoveryResultState`（lease解放済み・operation無し）は `NoActiveOperation` で
     state残留** — status card起点の復元成功後にhubへ戻ってもdurable statusが再deriveされない
-    原因であり、spec D5の `dismiss()` 拡張（`RecoveryResultState && HubStatusCard origin` で
-    pre-entry状態へ復帰）が埋めるgapである。
+    原因である。このgapは `dismiss()` を変更せず、**system Backに束縛された明示的新操作
+    （spec D5 `leaveRecoveryResultToHub()` 仮称）で埋める**（host cleanup・診断pushでの
+    state保持は既存の寿命契約として維持）。
   - `lastVerifiedApply` の生存: 適用成功時に設定（confirm()、1188–1191行。同時に `appliedPoint` も設定）、
     **新しいrunの開始（`beginOperation()`、1406–1407行）でのみ消去**。cancelでは消去されない。
     **`lastVerifiedApply != null` のあいだ表示stateは `Idle`/`Cancelled` になり得ない**
@@ -172,8 +173,10 @@
   戻り先契約（preview cancel と 結果面からの明示的hub帰還の両方）を所有。既存state列・lease規約を
   再利用し、新しいstate種別・新しいapplication検査操作を追加しない。
 - **UI**: hub status card（`OrganizerHubPreferences.kt`、契約上のentry面）にCTA・残時間の描画と
-  navigationを実装する。settings側run面（`ManualOrganizationPreferences.kt`）は **無変更**
-  （durable行は表示のみ維持、確認面は既存のまま共有）。選択・検査の判断をUIへ置かない。
+  navigationを実装する。settings側run面（`ManualOrganizationPreferences.kt`）は
+  durable行・確認面・`onDispose` を無変更とし、**結果面のsystem Back経路に明示的hub帰還操作
+  （`leaveRecoveryResultToHub()` 仮称）の呼出し1箇所のみ追加する**（spec D5）。
+  選択・検査の判断をUIへ置かない。
 - **recovery protocol / store**: 無変更。spec 13/84/89の契約面にdiffを出さない。
 
 ## 3. Interfaces / seams
@@ -273,7 +276,7 @@ hub側へ戻る（D5。run面側の変更はBack経路の呼出し追加の最�
 | `lawnchair/src/app/lawnchair/organizer/application/public/RestorableRecoveryEntry.kt` | 新規。閉じたentry型 + `RemainingWindow` |
 | `lawnchair/src/app/lawnchair/organizer/application/lifecycle/RestorableRecoveryPointSelector.kt` | 新規。純粋selector（選択 + window計算。`OrganizerDurableStatusDeriver` と同配置・同様式） |
 | `lawnchair/src/app/lawnchair/organizer/application/protocol/LayoutApplicationModule.kt` | `readRestorableRecoveryEntry()` 追加（additive） |
-| `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt` | façade委譲追加 + cold entry method + entry origin（`recoveryEntryOrigin` 仮称・pre-entry表示状態の保持）+ `cancelRecoveryPreview()`/dismiss recovery取消のorigin別戻り先 + `dismiss()` の `RecoveryResultState && HubStatusCard origin` 拡張 |
+| `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt` | façade委譲追加 + cold entry method追加 + entry origin（`recoveryEntryOrigin` 仮称）とpre-entry表示状態の保持 + preview cancel（`cancelRecoveryPreview()`/dismiss recovery取消）のorigin別戻り先 + **`leaveRecoveryResultToHub()`（仮称）の新規追加（`dismiss()` は現行mainから無変更）** + `beginOperation()` でのorigin解消 |
 | `lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerHubPreferences.kt` | status cardの `ORGANIZED_RESTORABLE` 行に残時間 + CTA（契約上のentry面）。status read→entry readの直列化（D6）。CTA tap → run面遷移 + cold entry呼出し |
 | `lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt` | **最小diff**: 結果面のsystem Back経路での明示的hub帰還操作呼出し1箇所のみ（`interruptAndNavigate` 分岐）。durable行・確認面・`onDispose` は無変更 |
 | `lawnchair/res/values/strings.xml`, `values-ja/strings.xml` | 残時間表示（format resource。`LessThanOneHour` 区分含む）+ CTA label（既存 `manual_organization_recovery` の再利用可）。EN/ja同期 |
