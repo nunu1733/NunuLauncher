@@ -146,6 +146,23 @@ class ExchangeImportSurfaceInstrumentationTest {
         return CanonicalStructuralInputs(snapshot, targets, emptyMap())
     }
 
+    /**
+     * Issue #372: focus grants are dispatched asynchronously — an instant
+     * assert races the focus dispatch on slower/headless CI emulators. Poll
+     * for the Focused semantics, then assert.
+     */
+    private fun awaitFocused(tag: String) {
+        composeRule.waitUntil(5_000) {
+            try {
+                composeRule.onNodeWithTag(tag).fetchSemanticsNode()
+                    .config.getOrNull(SemanticsProperties.Focused) == true
+            } catch (_: AssertionError) {
+                false
+            }
+        }
+        composeRule.onNodeWithTag(tag).assertIsFocused()
+    }
+
     /** Role matcher for the dialog affordances (EX-AC-10 role oracle). */
     private fun hasButtonRole() = SemanticsMatcher("button role") { entry ->
         entry.config.getOrNull(SemanticsProperties.Role) == Role.Button
@@ -434,8 +451,7 @@ class ExchangeImportSurfaceInstrumentationTest {
         // (FocusRequester is the one focus mechanism that is deterministic
         // across devices; the semantics RequestFocus action is not).
         composeRule.runOnIdle { discardFocus.requestFocus() }
-        composeRule.waitForIdle()
-        composeRule.onNodeWithTag("exchange-discard").assertIsFocused()
+        awaitFocused("exchange-discard")
 
         composeRule.onNodeWithTag("exchange-discard").performClick()
         composeRule.waitUntil(5_000) { discardRequested.value }
@@ -445,7 +461,7 @@ class ExchangeImportSurfaceInstrumentationTest {
         // owns focus, and both affordances carry the button role.
         composeRule.onNode(isDialog()).assertExists()
         composeRule.onNodeWithTag("exchange-discard-confirm-title").assertIsDisplayed()
-        composeRule.onNodeWithTag("exchange-discard-dismiss").assertIsFocused()
+        awaitFocused("exchange-discard-dismiss")
         composeRule.onNodeWithTag("exchange-discard-confirm").assert(hasButtonRole())
         composeRule.onNodeWithTag("exchange-discard-dismiss").assert(hasButtonRole())
 
@@ -456,7 +472,7 @@ class ExchangeImportSurfaceInstrumentationTest {
         composeRule.waitForIdle()
         assertFalse(discardRequested.value)
         assertTrue(holder.screen is ExchangeScreen.Disclosing)
-        composeRule.onNodeWithTag("exchange-discard").assertIsFocused()
+        awaitFocused("exchange-discard")
 
         // The expand state announcement flips with the toggle (direct read).
         composeRule.onNodeWithTag("exchange-disclosure-expand").performClick()
