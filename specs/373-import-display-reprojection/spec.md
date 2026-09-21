@@ -1,6 +1,6 @@
 ---
 issue: "#373"
-status: accepted
+status: implemented
 requirements: [FR-017]
 risk: []
 updated: 2026-09-21
@@ -18,6 +18,8 @@ updated: 2026-09-21
 > 「spec 205 AC-5のtyped失敗直接説明 → 手段別再投影＋typedは補助（#373）」、
 > §5 更新順序 #7「specs 205(AC-5) / 332表記 → D-11・T-17/T-18 → #373」、§7.2 (c)、§8）。
 > 本specは[Issue #373][1]の成果物である。statusが `draft` の間はimplementation-readyではない。
+> Status: **implemented** (2026-09-21) — accepted後、実装review 3回 ([1回目 Changes requested](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5758033715) / [2回目 Changes requested](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5758731467) とそれぞれの対応packetを経て)、[最終実装review **Approved**](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5759122578) (head `91596c4b51`) を経て [PR #396](https://github.com/nunu1733/NunuLauncher/pull/396) (merge commit `04684e765b`) でmainへ取り込まれた。独立監査記録: [docs/assessment/pr-373-import-display-reprojection.md](../../docs/assessment/pr-373-import-display-reprojection.md) (Approve)。AC-09の実AT (TalkBack読み上げ・Switch Access) walkthroughは未取得のまま (Compose semantics assertion + device evidenceで第一証拠を構成。evidence: [docs/assessment/evidence/issue-373/README.md](../../docs/assessment/evidence/issue-373/README.md))。
+>
 > Status: **accepted**（2026-09-21）— Phase1 reviewを通過して受入された。初版snapshot
 > （`859e51fe`）への [1st review](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5740056108)
 > は **Changes requested**（中2/低1）で、`4004472742` で全件対応。同headへの
@@ -616,6 +618,7 @@ CI `final-status` green。本Issueは表示のみの変更であり（persistent
 
 ## Change history
 
+- 2026-09-21: **implemented**。実装review（再2）[Approved](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5759122578) を経て [PR #396](https://github.com/nunu1733/NunuLauncher/pull/396) merge (`04684e765b`)。独立監査 [pr-373-import-display-reprojection.md](../../docs/assessment/pr-373-import-display-reprojection.md) (Approve — AC全PASS、監査sessionによるunit gate再実行 1606 tests 0 failures、CI merge gate `final-status` green)。
 - 2026-09-21: **実装review 1回目対応による契約整理**（[review Changes requested](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5758033715)の指摘1・3）。**(1)** 「診断を開く」のtransient holder書込み規則を現在のattempt基準へ明確化: typed分類を持つattemptは上書き、持たないattempt（`InputNotReady` 等のnon-typed outcome）は **保持を空にする**（以前のattemptの原因を現在の失敗として表示しない。回帰oracleをinstrumentationに追加）。**(2)** 分類追加漏れの方針を **runtime fallbackなしのcompile-time保証** へ確定: 投影はsealed hierarchyの網羅 `when` で固定され、分類追加はcompile errorとして要求される（fail-closed性はsealed構造で保証。旧記載の「未知typed → 既定remedyに落ちるruntime fallback」は削除）。Failure behavior・IM-AC-01・test oracle・Data and stateを修正。
 - 2026-09-21: **Phase1 acceptance**。Phase1 review 3回対応head `40beddc0f2` への最終review
   （[Approved](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5756962168)、
