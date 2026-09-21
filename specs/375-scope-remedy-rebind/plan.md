@@ -3,7 +3,7 @@
 > Issue: #375
 > Spec: [spec.md](./spec.md)
 > Status: draft
-> Revision: 2（初回review 2026-09-19 Changes requested 3件対応 + 前提merge後の
+> Revision: 3（初回review 3件対応 + 2nd review 2026-09-22 4件対応 + 前提merge後の
 > current main `9dc3ec8fed`へのre-entry）
 
 ## Current evidence
@@ -96,11 +96,14 @@
   readAtEpochMs, entryKind)`（186行）採用（Invalidなら `delete()` 清掃＋typed
   `IMPORT_REVIEW_UNAVAILABLE`、面非採用）。**継続CTAは存在しない**（#375が追加する）。
   破棄 `discardImport()`（1408-1424行）はtombstone 2段commit。
-  **durable書込の直列化点**: `pendingWriteMutex`（940行）がdurable save一連処理を直列化する
-  （`launchDurablePendingIntentSave` 1090-1123行。fence 1/2＋`deleteIf`）。
-  ただし `discardImport()` の `store.discard()` と
-  `openPendingImportReview()` のInvalid清掃 `delete()` は現状mutex外である
-  （本Issueのanchor契約で同一mutex配下へ拡張する）。
+  **durable書込の直列化点（現状の限界）**: `pendingWriteMutex`（940行）はdurable save一連処理
+  （`launchDurablePendingIntentSave` 1090-1123行。fence 1/2＋`deleteIf`）を直列化するが、
+  `discardImport()` の `store.discard()` と `openPendingImportReview()` のInvalid清掃
+  `delete()` はmutex外、かつ **session置換（`ExchangeFlowController.generate()` 内の
+  新session保存＋旧record削除）もmutex外**である。さらに `AndroidExportSessionStore` と
+  `AndroidPendingImportedIntentStore` は別々の内部lockを持つ。したがってholder内mutexの
+  拡張だけではrebind admissionの排他根拠にならず、本Issueがprocess-wideな共有gateを
+  新設する（Design 7。2nd review指摘1）。
 - **置換時のrecord無効化**: `ExchangeFlowController`（`pendingImportStore`注入）が
   新sessionのdurable save成功直後に旧recordを削除する（書込順序「新session保存 →
   旧pending無効化」固定）。holder側は `invalidateImportedIntentForReplacement()`
@@ -136,7 +139,9 @@
 ### Modules and interfaces
 
 AGENTS.md設計規約（小さなinterface・既存seamの再利用・platform型を計画moduleのinterfaceへ
-漏らさない）に従う。新設の純粋seamは3つまでに留め、gate自体の判定規則は1行も変更しない。
+漏らさない）に従う。純粋seamの新設は3つまでに留め（cause導出・diff/復元導出・rebind
+再構築）、admission anchor hookとexchange mutation gateは既存seam境界上の小さな追加
+（排他・検証の仕組み）として分離する。gate自体の判定規則は1行も変更しない。
 
 1. **早期gateのcause導出（`ScopeBindingGate` への純粋追加）**
    - `deriveConfirmMismatch(sessionScope, detected, selected): ScopeMismatchCause?`
@@ -163,7 +168,10 @@ AGENTS.md設計規約（小さなinterface・既存seamの再利用・platform�
      `reconcilePendingIntent` と同判定。**構造digest不一致 → `CONTEXT_STALE`意味論の
      typed失敗（spec Contract notes 1）**）。
    - 手順: (a) `reconcilePendingIntent(record, session, now) == Valid` の再確認
-     （既存純粋関数の再利用。二重化ではなく同一判定の共有）,
+     （既存純粋関数の再利用。二重化ではなく同一判定の共有。**本Issueでreconcileへ追加する
+     identity shape検証 — schema不一致・digest長不正のrecordを破損として`Invalid`へ落とす
+     純粋追加 — を含む。`IntentIdentity`構築時の`require`例外化を防ぎ、全readerで
+     一貫したtyped fail-closedにする。2nd review指摘3**）,
      (b) `session.sourceContextDigest == 現行構造digest`（不一致は継続不可・提案残存）,
      (c) `SessionExportReconstructor.rebuild(session, currentStructural)` でexport view再構築
      （既存seam再利用。失敗は `ContextStale` 意味論。`ExchangeImportPipeline` 131-134行と
@@ -184,9 +192,10 @@ AGENTS.md設計規約（小さなinterface・既存seamの再利用・platform�
      独立に成立する。oracle: 「record decisions → 再構築 → completed == record decisions」
      の往復property test ＋「rebuild結果のprojection（`IntentPlannerAdapter.project`）が
      import直後のprojectionと全field同一（identity含む）」の等価test（SR-AC-03）。
-   - anchor用の同一性材料: rebuild出力は源record（または `exportId`+`intentIdentity`+
-     decisionsの同値タプル）を含み、admission anchorのrecord同一性比較に使う
-     （同一session宛の再取り込みによるrecord置換を検出する）。
+   - anchor用の同一性材料: rebuild出力は**源recordそのもの**を含み、admission anchorの
+     比較は **`DurablePendingIntent`のdata class完全一致**（`entryKind`を含む全field）とする
+     （部分タプル比較では同一session宛の同一内容再取り込みで`entryKind`のみ変わる置換 —
+     復元モードの変化 — を見逃すため。schema拡張不要の最小解。2nd review指摘2）。
 4. **coordinator / state の拡張（`ManualOrganizationRun`）**
    - `State.Selecting` へ `intentScopeCandidates: Set<CandidateTarget.AppKey> = emptySet()` と
      `restoredSelection: Set<CandidateTarget.AppKey> = emptySet()` を追加
@@ -230,15 +239,14 @@ AGENTS.md設計規約（小さなinterface・既存seamの再利用・platform�
    - 「この提案で続ける」CTA: reconcile通過済みのproposalにのみ表示（#374の
      `openPendingImportReview()` 採用契約の再利用）。押下 → single-flight開始
      （`continuing` 規律。処理中の破棄/Back不受理。spec 328 AC-3と同一）→
-     **`pendingWriteMutex` を保持したまま**（#374のdurable save直列化点を継続sequenceへ拡張。
-     `discardImport()` の `store.discard()` とInvalid清掃 `delete()` も同一mutex配下へ移す
-     — recordを無効化しうる全書込とanchorの読み直し+admissionを混線させないための
-     spec契約の実装）IO上で:
+     **exchange mutation gate（Design 7）を保持したまま**IO上で:
      (a) 新鮮な `pendingImportStore.load()` + `controller.activeSession()` + clock読取 →
      `reconcilePendingIntent` → (b) (3)の再構築seam（構造digest再検証を含む）→
      typed失敗ならCTA面上のtyped案内（run admissionなし。record残存。`CONTEXT_STALE` 意味論）→
-     (c) 有効なら `run.start(intent = rebuilt, admissionAnchor = { 新鮮読取による
-     anchor判定（reconcile Valid + record同一性 + TTL） }, selectionRestore = entryKindから写像)`。
+     (c) 有効なら gateを保持したまま
+     `run.start(intent = rebuilt, admissionAnchor = { 新鮮読取によるanchor判定
+     （reconcile Valid + record完全一致〔`entryKind`含む〕 + TTL） },
+     selectionRestore = entryKindから写像)`。
    - anchor結果の扱い: `Busy` → 既存どおりtyped拒否。`AdmissionRefused` → typed拒否を
      面へ表示したうえで面を直ちに読み直す — recordが無効化済みなら `openPendingImportReview()`
      と同一のreconcile経路で清掃・面クローズ（#374契約の再利用）、同一session宛の再取り込みで
@@ -248,26 +256,47 @@ AGENTS.md設計規約（小さなinterface・既存seamの再利用・platform�
    - **成功settleはrecordを削除しない**（spec Contract notes 2。#374の消失系契約維持）。
    - CTA処理中はholder上の取り込み状態を変える操作（破棄・Back・T-15生成導線への離脱）を
      不受理にする（現行 `continuing` 規律の継承）。
-   - **lock順序の不変条件**: 本変更で生じる取得順は「`pendingWriteMutex` → run内部lock →
-     anchor内のstore読取」の一方向のみである。mutex保持下でrun seamを呼ぶのはrebind継続のみ、
-     run lock区間内でmutexを取得する経路は存在しない（mutex配下の既存処理 — durable save、
-     `deleteIf`清掃、破棄、置換削除 — はいずれもrun seamを呼ばない。#374着地構造の確認済み
-     事実）ため、deadlock経路は生じない。anchor内の読取はrecord1件とsession1件の小さな
-     local file読取（`AtomicFile`。起動時reconcileと同一class）であり、anchorが`null`の
-     既存経路には読取は発生しない。
+7. **exchange mutation gate（process-wide共有排他seam。新設。2nd review指摘1の解消）**
+   - **単一の直列化点**: `active session` と `durable record` を変化させうる全操作と、
+     rebind継続の [新鮮読取 → anchor判定 → run admission] 区間を、1本の共有lock
+     （仮称 `ExchangeMutationGate`。薄いprocess-wide object。productionはDI singleton、
+     holderとcontrollerへ注入）で直列化する。対象操作:
+     (a) session置換（`ExchangeFlowController.generate()` 内の新session保存＋旧record削除）,
+     (b) pre-send cancel等のsession invalidate,
+     (c) import成功時のdurable保存（`launchDurablePendingIntentSave`）,
+     (d) 破棄tombstone（`discardImport()` の `store.discard()`）,
+     (e) reconcile清掃（`openPendingImportReview()` / anchor拒否後の `delete()`）,
+     (f) rebind継続sequence。
+   - **既存lockとの関係**: 正当性の根拠はgateである。#374の`pendingWriteMutex`はsave内部の
+     attempt-fence論理の実装詳細として残すかgateへ包含するかを実装PRで確定する
+     （包含する場合、#374のsave fence oracle群は挙動不変でgreenであることを回帰で確認）。
+     gate下の各区間はrecord1件・session1件の小さな`AtomicFile`読書きと判定のみであり、
+     readiness gate・model load等の長時間処理は行わない（UIのcancel/confirmを長時間
+     blockしない境界）。
+   - **gateを要求しない経路**: `continueImport` のvalidation→`connectRun`（attach/start
+     連結）はsession/recordを変化させないため対象外（durable保存部分のみgate下）。
+     run gate（単一active run）・CTA single-flightとの役割分担はspec Stale state /
+     concurrency節のとおり。
+   - **lock順序の不変条件**: 取得順は「gate → run内部lock → anchor内のstore読取」の
+     一方向のみである。gate保持下でrun seamを呼ぶのはrebind継続のみ、run lock区間内で
+     gateを取得する経路は存在しないため、deadlock経路は生じない。anchor内の読取は
+     record1件とsession1件の小さなlocal file読取であり、anchorが`null`の既存経路には
+     読取は発生しない。
 
 ### Data flow（rebind継続の全体像）
 
 ```text
 status card行（#374 reconcile通過）
   → Hub → ImportReview再開面（内容・残時間・破棄。#374着地済み）
-  → 「この提案で続ける」（single-flight。pendingWriteMutex保持）
+  → 「この提案で続ける」（single-flight。exchange mutation gate保持）
       → 新鮮読取: record + active session + clock → reconcilePendingIntent
+        （identity shape検証を含む）
       → RebindIntentRebuilder: reconcile再確認 → 構造digest等価（CONTEXT_STALE意味論）
         → export view再構築 → planner入力再構築（identity = record保存値の注入）
       → 失敗: typed案内（依頼を作り直す）。run admissionなし。record残存
       → 成功: run.start(intent, admissionAnchor, selectionRestore)
-          admissionAnchor（run lock区間内・新鮮読取）: reconcile Valid + record同一性 + TTL
+          admissionAnchor（gate保持・run lock区間内・新鮮読取）:
+            reconcile Valid + record完全一致（entryKind含む） + TTL
           → Refuse: typed拒否（lease解放・状態発行なし）。面は読み直し（清掃クローズ or 更新）
           → Admit: ここで初めてRUN admission（State.Capturing発行）
               → 検出 → State.Selecting(intentScopeCandidates, restoredSelection)
@@ -282,16 +311,21 @@ status card行（#374 reconcile通過）
 
 同一process内の既存経路（import成功 → `continueImport` → `connectRun` → attach/start）は
 #374が維持する契約どおり不変であり、本計画が触れるのは (1) のcause label導出、
-(2) の差分表示、(4) のstate field追加・anchor hook、(6) のCTA追加とmutex拡張である。
+(2) の差分表示、(4) のstate field追加・anchor hook、(6) のCTA追加、(7) のexchange
+mutation gate新設である。
 
 ### Alternatives rejected
 
 - **確認なしの完全自動復元**（復元＋自動confirm）: TO-BE D-17が明示却下（spec 228明示選択
   契約を弱める）。採らない。
-- **anchorなしの「verify-then-start」（mutex直列化のみで閉じる）**: record書込との混線は
-  防げるが、verify時点とadmission時点が異なり、TTL境界越えが決定的に捕捉できない
-  （時間はmutexで直列化できない）。admission区間内の新鮮読取（anchor hook）と併用して
+- **anchorなしの「verify-then-start」（gate直列化のみで閉じる）**: record/session書込との
+  混線は防げるが、verify時点とadmission時点が異なり、TTL境界越えが決定的に捕捉できない
+  （時間はlockで直列化できない）。admission区間内の新鮮読取（anchor hook）と併用して
   初めて決定的になるため不採用（review指摘1の「同一排他境界」要求）。
+- **holder内mutex（`pendingWriteMutex`）拡張のみで閉じる案（初回re-entry案）**: session置換
+  （`generate()`の新session保存＋旧record削除）がholder mutex外で実行され、session storeと
+  pending storeが別内部lockのため排他として不足。process-wideなexchange mutation gateへ
+  改訂（2nd review指摘1）。
 - **後段abort方式（admission後に遅延検証でabort）**: RUN lease消費・`State.Capturing` 等の
   可観測state発行・journal書込が発生したあとの取り消しとなり、観測契約が複雑化する。
   fail-closed原則はadmission前の単一排他境界での拒否で充足できるため不採用。
@@ -326,7 +360,9 @@ status card行（#374 reconcile通過）
 | `personalization/` 配下 | rebind入力再構築の純粋seam（新規。identity注入・anchor用同一性材料を含む）＋typed失敗 | disposition §11「実装位置は#375のplanが所有」。既存pipeline/reconstructor/reconcileの再利用 |
 | `ui/MissingAppSelectionScreen.kt` | 差分強調の表示・semantics | T-08面の表示契約（spec SR-AC-01） |
 | `ui/preferences/destinations/ManualOrganizationPreferences.kt` | 選択stateの復元seed・cause別案内描画 | hosting層。既存rejection描画の拡張 |
-| `ui/exchange/ExchangeFlowUi.kt`（#374着地構造） | 再開CTA（single-flight・mutex保持の継続sequence・anchor closure組立）・`exchangeContractFailureText` のcause別拡張・`discardImport`/清掃deleteの同一mutex配下化 | 既存CTA規律（spec 328 AC-3）と#374 durable書込直列化点の様式継承 |
+| `ui/exchange/ExchangeFlowUi.kt`（#374着地構造） | 再開CTA（single-flight・gate保持の継続sequence・anchor closure組立）・`exchangeContractFailureText` のcause別拡張・破棄/清掃deleteのgate配下化 | 既存CTA規律（spec 328 AC-3）と#374 CTA様式の継承 |
+| `organizer/integration/exchange/` 配下（controller/module）とholder・controller間 | **exchange mutation gate（process-wide共有排他）の新設と注入**。controller `generate()` のsession保存＋旧record削除・pre-send invalidateをgate配下へ | session/recordを変化させる全操作とrebind admissionの直列化点（spec Stale state契約の実装） |
+| `personalization/exchange/PendingIntentReconcile.kt` | 純粋追加: identity shape（schema一致・digest長）の破損検証を`Invalid`判定へ | 全readerで一貫したtyped fail-closed（例外化しない）。#374破損契約のidentity次元追加 |
 | `res/values/strings.xml` / `res/values-ja/strings.xml` | cause別案内・差分強調a11y・CTA label（T-18語彙）・anchor/継続typed案内 | spec 123契約（ja正本＋en） |
 | `tests/unit/.../ManualOrganizationRunTest.kt` ほか | cause導出・復元・継続・anchor/race oracleの新oracle＋既存回帰の無編集green確認 | spec Test oracle表 |
 | `tests/organizer-instrumentation/.../ui/` | 差分強調・rebind統合（冷起動）・CTA規律のinstrumentation | spec SR-AC-01/03/07/08 |
@@ -359,8 +395,8 @@ source変更は上記のみ。`favorites` / layout DB / recovery DB / export ses
 | SR-AC-04 | 既存scope gate系test群（`ManualOrganizationRunTest` 1343/1367/1400行相当、`ExchangeTargetScopeCouplingTest`）の無編集green + diff review | unit gate |
 | SR-AC-05 | instrumentation: 通常run・idle継続のunchecked回帰 + rebind復元の「編集可・confirm必須」（confirmなしでplanに進まない否定的観測） | organizer instrumentation lane |
 | SR-AC-06 | 既存attach/freeze oracle（`attachIntent`回帰、`ExchangeImportSuccessInstrumentationTest`）無編集green | instrumentation lane |
-| SR-AC-07 | holder/instrumentation: reconcile不通でCTA非表示、single-flight、Busy拒否、成功後record残存・再継続可 + **race oracle（fake store）: rebuild成功 → session置換/破棄tombstone → anchor typed拒否・run不在の否定的観測** | unit + instrumentation |
-| SR-AC-08 | unit: 再構築seamのtable test（digest不一致/session不在/TTL → typed失敗、record残存）+ **anchor table test＋「rebuild成功 → TTL境界越え → admission」race oracle（fake clock）** + instrumentation（CTA押下でrun不在の否定的観測・anchor拒否後の面の扱い） | unit + instrumentation |
+| SR-AC-07 | holder/instrumentation: reconcile不通でCTA非表示、single-flight、Busy拒否、成功後record残存・再継続可 + **race oracle（fake store/clock＋実際の`generate()`相当置換経路との並行）: rebuild成功 → session置換/破棄tombstone → anchor typed拒否・run不在の否定的観測（layout/journal 0件とcleanup件数を分離）** + **entryKindフリップ再取り込みoracle（置換検出→拒否→新record読み直し）** | unit + instrumentation |
+| SR-AC-08 | unit: 再構築seamのtable test（digest不一致/session不在/TTL → typed失敗、record残存）+ **anchor table test（Valid/record不一致〔entryKind含む〕/TTL越え/identity shape不正）＋「rebuild成功 → TTL境界越え → admission」race oracle（fake clock）** + **identity破損fixture（wrong schema・digest長不正のvalid JSON）で例外なし・typed fail-closed・run不在** + **gate契約のdiff review（session置換・pre-send cancel・record変化操作の全gate配下化。gate不在の競合経路が存在しないこと）** + instrumentation（CTA押下でrun不在の否定的観測・anchor拒否後の面の扱い） | unit + instrumentation + diff review |
 | SR-AC-09 | spec 331/228 diff review（Scope節と一致・gate規則不変）+ owner受入記録（Issue #375コメント） | PR diff review |
 | SR-AC-10 | strings走査（ja/en name集合・placeholder一致、spec 123 AC-5方式）+ hardcoded literal grep + a11y assertion + light/dark × ja/default screenshot | unit + manual evidence |
 
@@ -396,12 +432,17 @@ completedの往復）。performance観点は新規ではなく既存検出/compo
 - [ ] 純粋seam（cause導出・diff・復元）を先に実装し、失敗するtestを先に追加（TDD）
 - [ ] coordinator/state拡張（`confirmSelection`・`State.Selecting`・`start` anchor hook＋
       復元モード・新typed `StartOutcome`系）
-- [ ] rebind再構築seam（identity注入・anchor用同一性材料）＋構造digest再検証（typed失敗含む）
+- [ ] exchange mutation gate新設（controller `generate()`置換経路・pre-send invalidate・
+      durable save・破棄・清掃delete・rebind sequenceのgate配下化。lock順序の一方向性確認）
+- [ ] rebind再構築seam（identity注入・anchor用源record）＋構造digest再検証（typed失敗含む）
       ＋往復property test＋projection全field等価oracle
-- [ ] admission anchorのtable test＋race oracle（置換/破棄/TTL越え。fake store/clock）
+- [ ] reconcile純粋追加: identity shape破損検証（`Invalid`へ。fixture: wrong schema・
+      digest長不正のvalid JSON）
+- [ ] admission anchorのtable test＋race oracle（置換〔generate()相当経路と並行〕/破棄/
+      TTL越え/entryKindフリップ。fake store/clock）
 - [ ] UI（差分強調・cause別案内・復元seed）＋strings（ja/en）
-- [ ] 再開面CTA（single-flight・mutex保持sequence・Busy/AdmissionRefused扱い・record残存）
-      ＋navigation＋`discardImport`/清掃deleteの同一mutex配下化
+- [ ] 再開面CTA（single-flight・gate保持sequence・Busy/AdmissionRefused扱い・record残存）
+      ＋navigation
 - [ ] instrumentation（rebind冷起動統合・CTA規律）＋冷起動emulator evidence
 - [ ] 既存回帰の無編集green確認（scope gate・attach・CTA契約）
 - [ ] PR evidence（実行した検証コマンドと結果・残リスク・Contract notes 1のowner確認結果）
@@ -416,6 +457,10 @@ completedの往復）。performance観点は新規ではなく既存検出/compo
   項目を解消 — review指摘2）。
 - **同一process内CTAへの構造digest再検証の適用要否**: spec Contract notes 1のowner確認待ち。
   適用しない場合の現行挙動（短時間窓・import時検証のみ）は既存契約のまま。
+- **gateの実装形態**: 共有lock objectの型（coroutine Mutex 1本の薄いobject）、
+  `pendingWriteMutex`の包含可否（save fence論理の移管有無）、DI singletonの提供位置は
+  実装PRで確定する（契約 — session/recordを変化させる全操作とrebind admissionの直列化 — は
+  spec Stale state / concurrency節で固定済み）。
 - **anchor拒否後の面読み直しの表示詳細**（清掃クローズ時のtyped文言・置換読み直し時の
   遷移）は実装PRのstring diff / reviewで確定する（非blocking。契約は
   spec Stale state / concurrency節で固定済み）。

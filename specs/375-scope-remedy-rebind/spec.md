@@ -118,11 +118,17 @@ gateはcandidate側の2検証のみでsessionの有効性を再確認せず、�
 - **継続時のfail-closed再検証（admission anchor）**: 再開CTAによる継続（rebind）では、
   (1) rebuild入力再構築の一部として依頼sessionの`sourceContextDigest` と現行構造digestの
   等価検証（import時 `CONTEXT_STALE` と同一意味論）を再適用し、(2) run admissionの直前
-  （RUN lease取得と同一排他境界内）で、**新鮮に読み直した**durable record・active session・
-  clockに対してreconcile条件とrecord同一性の再検証（**rebind admission anchor**）を行う。
-  不一致・無効化はいずれもtyped失敗であり、run admission・可観測run state・journal書込は
-  発生しない。構造digest不一致のtyped失敗は提案を削除せず依頼の作り直しへ案内する
-  （Contract notes 1。anchor拒否時の提案・面の扱いはStale state / concurrency節）。
+  （RUN lease取得と同一排他境界内・**exchange mutation gate保持下**）で、**新鮮に読み直した**
+  durable record・active session・clockに対してreconcile条件とrecord完全一致の再検証
+  （**rebind admission anchor**）を行う。不一致・無効化はいずれもtyped失敗であり、run
+  admission・可観測run state・journal書込は発生しない。構造digest不一致のtyped失敗は提案を
+  削除せず依頼の作り直しへ案内する（Contract notes 1。anchor拒否時の提案・面の扱いは
+  Stale state / concurrency節）。
+- **exchange mutation gateの新設とidentity shape検証**: sessionとdurable recordを変化させうる
+  全操作とrebind admissionを直列化するprocess-wideな排他seamを新設する（Stale state /
+  concurrency節）。またrecordのidentity値の破損（schema不一致・digest長不正）を
+  `reconcilePendingIntent`の破損検証へ追加し、例外化せずtyped fail-closedに扱う
+  （#374破損契約へのidentity次元の追加。Data and state節）。
 - **spec改訂（本Issueの実装成果。受入後に実装へ）**:
   - spec 331改訂: D-2のremedy文を原因別へ改訂（gate規則・D-5の単一class/cause detail構造は
     不変）、§5のidle entry/process death経路を `Hub → ImportReview` 1経路＋rebind契約へ更新、
@@ -262,17 +268,28 @@ And 提案は削除されず、workspace書込みは0件である。
 ### Scenario: rebindのadmission直前の無効化競合はrun admissionを発生させない
 
 Given 再開面で「この提案で続ける」が押され、rebuild入力の再構築が成功した直後に、
-(i) 新しい依頼の生成によるsession置換（record無効化）、(ii) 破棄tombstone commit、
-(iii) 依頼sessionのTTL失効、のいずれかがadmissionの前に発生した,
+(i) 新しい依頼の生成によるsession置換（新session保存＋旧record削除）、(ii) 破棄tombstone
+commit、(iii) 依頼sessionのTTL失効、のいずれかがadmissionの前に発生した
+（(i)は実際の `ExchangeFlowController.generate()` 相当の置換経路による）,
 When fresh run admission（`start`呼出）が行われる,
-Then admission直前のanchor再検証（新鮮なrecord・session・clockの読み直し）がtyped拒否し、
-**run admissionは発生しない**（RUN leaseは取得直後に解放され、`State.Capturing`を含む
-可観測run state・journal書込は0件である）,
+Then admission直前のanchor再検証（gate保持下での新鮮なrecord・session・clockの読み直し）が
+typed拒否し、**run admissionは発生しない**（RUN leaseは取得直後に解放され、`State.Capturing`
+を含む可観測run state・journal書込は0件である）,
 And 再開面は直ちに読み直され、recordが無効化済みなら#374契約どおりfail-closedに清掃して
 面を閉じ、同一session宛の再取り込みでrecordが置換されていたなら新しいrecordの表示へ更新する
 （staleな提案の継続・staleな表示の継続はどちらも発生しない）,
-And 提案が有効なまま残るケース（構造digest不一致のtyped失敗）を除き、この拒否で
-durable record・依頼session・layout DBへのwriteは発生しない（zero-write）。
+And この拒否でworkspace/layout DB・run journalへのwriteは0件である（stale/破損recordの
+#374 housekeeping清掃は既存durable mutationとして許容）。
+
+### Scenario: 同一回答の再取り込みでentryKindが変わった場合もanchorは置換として扱う
+
+Given run-in由来の提案を再開面で開き「この提案で続ける」を押してrebuildが成功した直後に、
+同一session宛へ同じ回答textが再取り込みされ、内容（canonical decisions・identity）が同一の
+まま `entryKind` のみが変わった（RUN_IN → IDLE または IDLE → RUN_IN）新recordで置換された,
+When fresh run admissionが行われる,
+Then anchorのrecord完全一致比較（`entryKind`を含む）が不一致を検出し、typed拒否して
+run admissionを発生させない（旧record由来の復元モードでadmissionする経路は存在しない）,
+And 再開面は新recordを読み直してその表示へ更新する。
 
 ### Scenario: 再開CTAのsingle-flightとBusy
 
@@ -321,6 +338,7 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
 | 投影digest不一致（availability/分類の変化） | `PROJECTION_MISMATCH`。「依頼を作り直す」案内。intent破棄（現行契約）。zero-write |
 | rebindの選択面で依頼時候補が解決不能 | confirm時に続行不能causeでfail-closed。「依頼を作り直す」案内。提案は残存 |
 | rebind時点で構造digest不一致 | 継続前のtyped失敗（`CONTEXT_STALE`意味論）。「依頼を作り直す」案内。run admissionは発生しない。提案は残存 |
+| recordのidentity値が破損（schema不一致・digest長不正。JSONとしては読める） | 破損として`reconcilePendingIntent`が`Invalid`へ。例外化せずtyped fail-closedで清掃・継続拒否。run admissionは発生しない |
 | admission直前にsession置換・破棄tombstone・TTL失効が発生（anchor拒否） | typed拒否。run admission・可観測run state・journal書込は0件。recordが無効化済みなら#374契約どおり清掃して面を閉じ、同session宛の再取り込みで置換されていれば面を読み直す |
 | rebind CTA時にrun使用中 / CTA処理中 | typed拒否（Busy相当）。single-flight。提案・runは不変 |
 | 検出が`Unavailable`（rebind含む） | 現行どおり選択面を開かずcomposeへ続行し、gateは既存経路でtyped終端（zero-write） |
@@ -337,20 +355,31 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
   有効であることを再検証してからadmissionする**。anchorの判定条件は、新鮮に読み直した
   (a) durable record・(b) active session・(c) 注入clock に対して、
   `reconcilePendingIntent`（#374正本）が `Valid` であること、recordがrebuild入力の源となった
-  recordと同一であること（`exportId` + `intentIdentity` + canonical decisionsの同値。
-  同一session宛の再取り込みによる置換を検出する）、sessionがadmission時点で失効していないこと、
+  recordと**完全一致**すること（`DurablePendingIntent`のdata class同値。`entryKind`を含む
+  全field。同一session宛の再取り込みで内容が同一でも `entryKind` のみ変化した場合 —
+  復元モードの変化 — も置換として検出する）、sessionがadmission時点で失効していないこと、
   のすべてが真であることである。判定とadmission（RUN lease取得・operation生成）は**同一の
   排他境界内**で行われ、拒否時はleaseを解放してtyped拒否として終わる（可観測run state・
-  journal書込は0件）。anchorの読み直しとadmissionが、recordを無効化しうる書込
-  （session置換のrecord削除・破棄tombstone・reconcile清掃・durable保存）と混線しないことを、
-  ホスト（`ExchangeFlowStateHolder`）が全record書込と継続sequenceを共有する
-  書込直列化点（#374の`pendingWriteMutex`の拡張。破棄も同一mutex配下へ）で構造的に保証する。
-  初回draftの「既存fail-closed経路で捕捉される（検証の二重化はしない）」規定は、gateが
-  session有効性を再確認せず捕捉されない（TOCTOU）として廃止した（review指摘1）。
-- **TTL失効との競合の決定性**: TTLは時刻のみの競合であるため、anchorはadmission区間内で
-  clockを新鮮に読み、検証とadmissionが同一時点の値を共有する。「rebuild成功 → TTL境界越え →
-  admission」「rebuild成功 → 置換/破棄 → admission」の各競合を、決定的なrace oracleとして
-  （fake clock / store注入で）固定する（SR-AC-07/08）。
+  journal書込は0件）。
+- **exchange mutation gate（本Issueが新設するprocess-wideな共有排他seam）**:
+  anchorの読み直しとadmissionが、**active sessionとdurable recordの両方を変化させうる
+  全操作** — session置換（新session保存＋旧record削除。`ExchangeFlowController.generate()`
+  経路）、pre-send cancel等のsession invalidate、import成功時のdurable保存、破棄tombstone、
+  reconcile清掃 — と混線しないことを、**単一のprocess-wideな直列化点**で構造的に保証する。
+  現行mainではsession置換がholder mutex外で実行され、session storeとpending storeが
+  別々の内部lockを持つため、holder内の書込mutex拡張だけでは排他として不十分である
+  （2nd review指摘1。初回re-entryの「`pendingWriteMutex`拡張」案を廃止して本設計へ改訂）。
+  rebind継続は **[新鮮読取 → anchor判定 → run admission] の区間をgate保持下で**実行し、
+  上記の全mutationはそれぞれgate保持下で実行する。実装形態（共有lock objectへの集約、
+  既存`pendingWriteMutex`の包含）はplan.mdに記載し、実装PRで確定する。
+- **gate下の処理時間の界限**: gate保持区間はrecord1件・session1件の小さなlocal file読書き
+  （`AtomicFile`）とadmission判定のみに限り、readiness gate・model load等の長時間処理を
+  gate下で行わない。他の面でのcancel/confirmがblockされるのはこれらの短い区間のみである。
+- **TTL失効との競合の決定性**: TTLは時刻のみの競合であるため、anchorはgate保持下の
+  admission区間内でclockを新鮮に読み、検証とadmissionが同一時点の値を共有する。
+  「rebuild成功 → TTL境界越え → admission」「rebuild成功 → 置換/破棄 → admission」の各競合を、
+  決定的なrace oracleとして（fake clock / store注入、かつ置換は実際の`generate()`相当経路と
+  の並行で）固定する（SR-AC-07/08）。
 - 復元初期値の材料（依頼scope候補identity）と再開面の表示は、#374の読取時reconcile通過後の
   値のみを使う。anchor拒否後の面の扱いは: record無効化済み → #374契約どおりfail-closed清掃・
   面を閉じる。record置換済み（同一session宛の再取り込み）→ 面を読み直して新しいrecordの
@@ -369,15 +398,26 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
   availability）。現行構造digest。既存clock注入に従う。anchorはrebind継続のadmission直前に
   record・session・clockを**新鮮に読み直す**（Stale state / concurrency節）。
   #374の読取時reconcileを本specは再定義しない（通過済みの提案のみが継続対象）。
-- **書くdata**: なし（新規の永続化・schema変更・layout DB / `favorites` / recovery store /
-  export session / journalへのwriteは発生しない）。復元初期値はprocess-localな選択stateの
-  初期値であり、persistしない（spec 228 D-1の継続）。
+- **書くdata**: なし（**workspace/layout DB・`favorites`・run journal・新規persistent state・
+  schemaへの書込みは発生しない**。rebind継続のCTAは成功・失敗・拒否のいずれでもlayout DB /
+  journal / export sessionへのwriteを行わない）。復元初期値はprocess-localな選択stateの
+  初期値であり、persistしない（spec 228 D-1の継続）。anchor拒否後のstale/破損recordに対する
+  #374 reconcile経由の清掃（`delete()`）は、**#374が既に持つdurable housekeeping**であり
+  本契約の「書くdata: なし」には含まない（2nd review指摘4。受入testではlayout/journalの
+  zero-write否定的観測と、pending store cleanupの件数を分離して観測する）。
 - **Identity**: 依頼scopeの正本は依頼sessionの`scopeCandidates`（`CandidateTarget.AppKey` =
   `ComponentKey` + `ProfileId`）。復元初期値はこの集合と現行検出cutの積集合であり、
   ref値は復元に不要である（ref対応表の正本はsession側。TO-BE §13-6「refs→candidate identityの
   復元はexport session内の対応表で可能」）。rebindでplannerへ渡す入力は既存
   `ValidatedPersonalizedIntent`契約（session + 提案内容）を満たすようにrebind seamで再構築され、
   validation意味論を迂回しない（構築方法は[plan.md](./plan.md)が所有。disposition §11）。
+  **identity値のshape検証**: recordの `intentIdentitySchemaVersion` / `intentIdentityDigest` は
+  #374保存時にはnon-empty検査のみであり、破損（schema不一致・digest長不正）でも
+  読み得る可能性がある。rebindはidentity値を `IntentIdentity` へ構築する前にschema/digest
+  不変条件（current schema一致・digest長64）を**純粋に検証**し、不成立は破損として
+  `reconcilePendingIntent` を `Invalid` へ落とす検証として扱う（例外経路を生まない。
+  fail-closed清掃・継続拒否。#374の破損契約へのidentity次元の追加で、本Issueが
+  reconcile純粋関数へ追加する検証。2nd review指摘3）。
   **rebindのintent content identityは、#374 recordがimport時に保存した `IntentIdentity`
   （schemaVersion+digest。`rationale`/`confidence` を含むcanonical表現から算出済みの正本）を
   そのまま注入する。rebind seamがidentityを再導出することはない**（canonical decisionsからは
@@ -448,14 +488,22 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
       拒否・処理中の破棄/Back不受理を持ち、**成功時も提案を削除しない**（消失系は#374契約どおり
       破棄・期限切れ・置換のみ）ことがtestされる。**「rebuild成功 → session置換（record無効化）
       → admission」「rebuild成功 → 破棄tombstone commit → admission」の決定的race oracleが
-      存在し**、いずれもanchorがtyped拒否してrun admission・可観測run state・journal書込を
-      発生させないことがtestされる（fake store/clockで再現）。
+      存在し**（置換は実際の `ExchangeFlowController.generate()` 相当経路との並行で再現）、
+      いずれもanchorがtyped拒否してrun admission・可観測run state・journal書込を発生させない
+      ことがtestされる。**同一回答の再取り込みで `entryKind` のみ変化したrecord置換もanchorが
+      検出して拒否する**（新recordへの読み直しを含む）ことがtestされる。否定的観測は
+      layout/journal 0件とpending store cleanup件数を分離して固定する。
 - [ ] **SR-AC-08**: rebind継続の前に構造digest等価検証（`CONTEXT_STALE`意味論）が適用され、
-      不一致がtyped失敗（依頼作り直し案内・run admissionなし・提案残存・zero-write）として
-      扱われることがtestされる。**rebind admission anchorがadmission直前の新鮮な読み直しで
-      判定されること、および「rebuild成功 → TTL境界越え → admission」の決定的race oracleが
-      存在して**、anchorがtyped拒否し（lease解放・状態発行なし）admissionが発生しないことが
-      testされる（fake clockで再現）。anchor拒否後の面の扱い（無効化済み→清掃・クローズ、
+      不一致がtyped失敗（依頼作り直し案内・run admissionなし・提案残存）として扱われることが
+      testされる。**exchange mutation gateがsession置換・pre-send cancel等のsession変化操作・
+      record変化操作の全てとrebind admissionを直列化すること**（gate不在時に入る競合経路が
+      存在しないことのdiff review＋gate下の処時間界限のtest）が確認される。
+      **rebind admission anchorがgate保持下のadmission直前に新鮮な読み直しで判定されること、
+      「rebuild成功 → TTL境界越え → admission」の決定的race oracleが存在して**、anchorが
+      typed拒否し（lease解放・状態発行なし）admissionが発生しないことがtestされる
+      （fake clockで再現）。**identity値の破損（schema不一致・digest長不正のvalid JSON）が
+      例外化せずtyped fail-closed（Invalid清掃・継続拒否）として扱われること**が
+      fixture付きでtestされる。anchor拒否後の面の扱い（無効化済み→清掃・クローズ、
       record置換済み→読み直し）がtestされる。
 - [ ] **SR-AC-09**: spec 331改訂（D-2 remedy分割・§5経路更新・attach生存範囲明確化）と
       spec 228注記（復元初期値とD-1の関係）が作成され、**owner受入済み**である
@@ -474,8 +522,8 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
 | SR-AC-04 | 既存 `ManualOrganizationRunTest` / `ExchangeTargetScopeCouplingTest` のscope gate系test群の無編集green + diff review（gate判定・enum・zero-write無変更） |
 | SR-AC-05 | instrumentation: 通常run・idle継続の初期値unchecked回帰 + rebind復元の「編集可・confirm必須」test（confirmなしでplanへ進まない否定的観測） |
 | SR-AC-06 | 既存attach/freeze系oracle（`ManualOrganizationRunTest`のattach回帰、`ExchangeImportSuccessInstrumentationTest`のCTA契約）の無編集green |
-| SR-AC-07 | holder/instrumentation test（reconcile不通でCTA非表示、single-flight、Busy拒否、成功後のstatus card行残存・再継続可）+ **race oracle（fake store/clock）: rebuild成功後のsession置換・破棄tombstone → admission anchorがtyped拒否・run不在（`State.Capturing`非発行・journal書込0件の否定的観測）** |
-| SR-AC-08 | unit: 構造digest再検証の純粋判定（一致/不一致/session不在）+ **anchor判定のtable test（Valid/record不一致/TTL越え）＋「rebuild成功 → TTL境界越え → admission」race oracle（fake clock）** + instrumentation（CTA押下でtyped失敗・run不在の否定的観測。anchor拒否後の面の扱い：清掃クローズ・読み直し更新） |
+| SR-AC-07 | holder/instrumentation test（reconcile不通でCTA非表示、single-flight、Busy拒否、成功後のstatus card行残存・再継続可）+ **race oracle（fake store/clock＋実際の`generate()`相当置換経路との並行）: rebuild成功後のsession置換・破棄tombstone → admission anchorがtyped拒否・run不在（`State.Capturing`非発行・journal書込0件。layout/journal 0件とcleanup件数を分離観測）** + **entryKindフリップ再取り込みoracle（置換検出→拒否→新record読み直し）** |
+| SR-AC-08 | unit: 構造digest再検証の純粋判定（一致/不一致/session不在）+ **anchor判定のtable test（Valid/record不一致〔entryKind含む〕/TTL越え/identity shape不正）＋「rebuild成功 → TTL境界越え → admission」race oracle（fake clock）** + **identity破損fixture（wrong schema・digest長不正のvalid JSON）で例外なし・typed fail-closed・run不在** + instrumentation（CTA押下でtyped失敗・run不在の否定的観測。anchor拒否後の面の扱い：清掃クローズ・読み直し更新） |
 | SR-AC-09 | spec 331/228 diff review（改訂内容がScope節と一致し、gate規則を変えないこと）+ owner受入記録（Issue #375コメント） |
 | SR-AC-10 | strings走査（ja/en name集合・placeholder一致。spec 123 AC-5方式）+ hardcoded literal grep + a11y assertion（semantics/live region/traversal/200%）+ light/dark × ja/default screenshot |
 
@@ -528,6 +576,25 @@ exchange系）、CI `final-status` green。本Issueはpersistent state変更・D
 
 ## Change history
 
+- 2026-09-22: **Re-entry revision 2（2nd review 2026-09-22 Changes requested 4件対応、
+  [comment `5765970137`][6]）**。
+  **(1) 排他対象の不足解消（高 — blocking）**: 「`pendingWriteMutex`拡張では排他できず
+  TOCTOUが残る」指摘に対し、session置換（`generate()`の新session保存＋旧record削除）が
+  mutex外であること・session/pending両storeが別内部lockであることを認め、**active sessionと
+  durable recordを変化させうる全操作とrebind admissionを直列化するprocess-wideな
+  exchange mutation gate**の新設へ改訂（Stale state / concurrency節・Scope）。gate下の
+  処理時間界限（UI block防止）を明記。race oracleを実際の`generate()`相当経路との並行再現へ
+  強化（SR-AC-08にgate契約の確認を追加）。
+  **(2) record同一性の完全一致化（中）**: anchorの同一性比較を`exportId`+identity+decisionsの
+  同値から **`entryKind`を含むfull record equality**へ改訂（同一回答のRUN_IN⇄IDLE再取り込み
+  置換を見逃さない）。entryKindフリップoracleをSR-AC-07へ追加（新scenario）。
+  **(3) identity破損のtyped扱い（中）**: valid JSONでもidentity値が破損している場合に
+  `IntentIdentity`構築時の`require`で例外化される経路を塞ぎ、**schema/digest不変条件の純粋
+  検証をreconcile破損検証へ追加**（Invalid清掃・継続拒否。Data and state・Failure behavior、
+  SR-AC-08 fixture）。
+  **(4) zero-write文言の明確化（低）**: 「書くdata: なし」の対象をworkspace/layout DB・journal・
+  新規persistent stateへ限定し、stale/破損recordの#374 housekeeping清掃を既存durable
+  mutationとして分離。SR-AC-07/08の否定的観測もlayout/journal 0件とcleanup件数に分離。
 - 2026-09-22: **Re-entry revision（初回review 2026-09-19 Changes requested 3件対応
   [comment `5740062562`][5] + 前提merge後のcurrent main `9dc3ec8fed`へのre-entry）**。
   **(1) rebind admission anchor（高 — blocking指摘の解消）**: 「rebuildの有効性確認と
@@ -588,3 +655,4 @@ exchange系）、CI `final-status` green。本Issueはpersistent state変更・D
 [3]: https://github.com/nunu1733/NunuLauncher/issues/369
 [4]: https://github.com/nunu1733/NunuLauncher/pull/399
 [5]: https://github.com/nunu1733/NunuLauncher/issues/375#issuecomment-5740062562
+[6]: https://github.com/nunu1733/NunuLauncher/pull/402#issuecomment-5765970137
