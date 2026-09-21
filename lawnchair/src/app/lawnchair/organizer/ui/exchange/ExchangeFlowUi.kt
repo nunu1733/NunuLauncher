@@ -1098,7 +1098,7 @@ class ExchangeFlowStateHolder(
                     if (activeAttempt?.token == attempt.token) {
                         // Current at the settle: the normal anchored adoption
                         // (success/persistence-failure face).
-                        settlePendingIntentSave(attempt, saved)
+                        settlePendingIntentSave(attempt, record, saved)
                     } else if (saved) {
                         // Fence 2: stale settle after the write landed — the
                         // cancelled attempt's record must not survive (and
@@ -1122,14 +1122,28 @@ class ExchangeFlowStateHolder(
      *
      * Called only while [pendingWriteMutex] is held — never touches it.
      */
-    private fun settlePendingIntentSave(attempt: ImportAttempt, saved: Boolean) {
+    private fun settlePendingIntentSave(
+        attempt: ImportAttempt,
+        record: DurablePendingIntent,
+        saved: Boolean,
+    ) {
         if (activeAttempt?.token != attempt.token) return
         // Run-in entries: the owning run must still hold its selection surface
         // at the adoption moment (defense-in-depth — the same check as the
-        // validation settle; the durable save added one settle hop).
+        // validation settle; the durable save added one settle hop). A mismatch
+        // drops the attempt AFTER its write, so the committed record is fenced
+        // away too — a dropped run-in proposal must never resurface as the
+        // durable status-card truth (Issue #374 attempt-fence contract; called
+        // with the mutex held, so deleteIf is direct, never via a re-locking
+        // helper).
         if (attempt.entryKind == ExchangeImportEntryKind.RUN_IN) {
             val selecting = run.state as? ManualOrganizationRun.State.Selecting
             if (attempt.owningRunId == null || selecting?.runId != attempt.owningRunId) {
+                if (saved) {
+                    pendingDurableRecord = null
+                    pendingImportStore.deleteIf(record)
+                }
+                pendingValidated = null
                 activeAttempt = null
                 return
             }

@@ -1490,6 +1490,41 @@ class ExchangeFlowStateHolderTest {
     }
 
     @Test
+    fun runInSettleAfterTheOwningRunIsGoneFencesTheCommittedRecordAway() {
+        // Issue #374 attempt-fence, run-in anchor: a run-in validation that
+        // passes, whose durable save COMMITS, but whose owning run lost the
+        // selection surface before the settle — the adoption is dropped AND
+        // the committed record is fenced away, so the dropped proposal never
+        // resurfaces as the durable status-card truth.
+        val pendingStore = FakePendingIntentStore().apply { saveGate = CountDownLatch(1) }
+        val fixture = newFixture(
+            detectionReady = true,
+            scopedStructural = true,
+            pendingStore = pendingStore,
+        )
+        fixture.run.start()
+        val generated = fixture.controller.generateForSelection(
+            PrivacyTier.EXTERNAL_REDACTED,
+            listOf(scopedCandidate),
+            mapOf(scopedCandidate to "c1"),
+        ) as ExchangeGenerationResult.Generated
+        fixture.holder.openImport()
+        fixture.holder.import(scopedReplyFor(generated.session))
+        awaitScreen(fixture.holder) { pendingStore.saveCalls >= 1 } // the write is parked in the gated store
+
+        fixture.run.cancel() // the owning run loses the selection surface
+        pendingStore.saveGate!!.countDown() // the write commits anyway
+        awaitScreen(fixture.holder) { pendingStore.completedSaves >= 1 && pendingStore.record == null }
+
+        Thread.sleep(200)
+        assertFalse(fixture.holder.screen is ExchangeScreen.ImportSuccess)
+        assertFalse(fixture.holder.screen is ExchangeScreen.ImportPersistenceFailure)
+        assertFalse(fixture.holder.importAttemptActive)
+        assertNull("the dropped run-in proposal's record must be fenced away", pendingStore.record)
+        assertTrue("the committed record was fenced by deleteIf", pendingStore.deleteIfCalls >= 1)
+    }
+
+    @Test
     fun runReplacementBeforeTheCtaIsATypedFailureNotAnAttach() {
         // AC-3(h): the pre-attach owning-runId re-check refuses to attach
         // into a replacement run and keeps the success state operable.
