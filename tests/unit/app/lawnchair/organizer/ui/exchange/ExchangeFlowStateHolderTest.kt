@@ -1966,6 +1966,10 @@ class ExchangeFlowStateHolderTest {
         // cancelled attempt's record: the store ends with NO record.
         awaitScreen(fixture.holder) { pendingStore.completedSaves >= 1 && pendingStore.record == null }
         Thread.sleep(200)
+        repeat(5) { i ->
+            Thread.sleep(100)
+            println("DIAG t=" + i + " screen=" + fixture.holder.screen + " unhandled=" + fixture.unhandled)
+        }
         assertTrue("a cancelled attempt's late save settle adopts nothing", fixture.holder.screen is ExchangeScreen.Closed)
         assertFalse(fixture.holder.importAttemptActive)
         assertNull("a cancelled attempt must not leave its durable record", pendingStore.record)
@@ -2310,16 +2314,24 @@ class ExchangeFlowStateHolderTest {
         val detectionsBefore = fixture.application.detectionCalls
         fixture.pendingStore.loadQueue = ArrayDeque(listOf(valid))
         fixture.pendingStore.exhaustedResult = null
-        fixture.pendingStore.onLoad = { callCount ->
-            if (callCount == 3) {
-                // The rebuild read (#2) saw the valid old world and SUCCEEDED;
-                // the anchor's own fresh read (#3) now races the REAL
-                // replacement commit: new session save + old record delete.
-                val generated = fixture.controller.generate(
-                    app.lawnchair.organizer.personalization.PrivacyTier.LOCAL_FULL,
-                ) as ExchangeGenerationResult.Generated
-                check(generated.session.exportId != valid.exportId)
-            }
+        // REAL concurrency: the pre-admission barrier (rebuild succeeded,
+        // admission not yet begun) runs the ACTUAL controller replacement
+        // commit on ANOTHER thread — the new session save + old record delete
+        // must fully complete through the exchange mutation gate BEFORE the
+        // anchor's fresh re-read begins. No same-thread monitor re-entry.
+        fixture.holder.preAdmissionBarrier = {
+            val done = CountDownLatch(1)
+            Thread {
+                try {
+                    val generated = fixture.controller.generate(
+                        app.lawnchair.organizer.personalization.PrivacyTier.LOCAL_FULL,
+                    ) as ExchangeGenerationResult.Generated
+                    check(generated.session.exportId != valid.exportId)
+                } finally {
+                    done.countDown()
+                }
+            }.start()
+            done.await(5, java.util.concurrent.TimeUnit.SECONDS)
         }
 
         fixture.holder.continuePendingImport()
@@ -2421,6 +2433,14 @@ class ExchangeFlowStateHolderTest {
         assertTrue(
             "WriteFailed must not tombstone the record (the invalidation did not take effect)",
             pendingStore.record?.discarded == false,
+        )
+        // The supersede transition did NOT commit: the face still shows the
+        // pre-edit text (the continuation is queued behind the failed commit).
+        val importing = fixture.holder.screen as? ExchangeScreen.Importing
+        assertEquals(
+            "the superseded text must not be adopted while the commit failed",
+            "",
+            importing?.replyText,
         )
 
         // Retry: the next invalidation re-runs the commit and succeeds.

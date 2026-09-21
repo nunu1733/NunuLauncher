@@ -977,90 +977,111 @@ class ExchangeFlowStateHolder(
         get() = (screenState.value as? ExchangeScreen.ImportSuccess)?.continuing == true
 
     /**
-     * Issue #375 (spec "gate上への線形化統一"): the retry anchor of a FAILED
-     * invalidation commit. `null` = no invalidation is outstanding. A
-     * `WriteFailed` keeps the expected record here (the in-memory slots were
-     * already handed to the successor) until the SAME commit is re-run and
-     * lands `Committed`/`NoMatch`; the rebind admission anchor treats an
-     * outstanding invalidation of the fresh record as a refusal (an
-     * invalidation-pending proposal is never Valid for continuation).
+     * Issue #375 (spec "gate上への線形化統一"): the outstanding invalidation
+     * operation. While one exists, EVERY subsequent invalidating action's
+     * transition is queued behind it — it commits only when the gate-held
+     * conditional tombstone lands `Committed`/`NoMatch`; a `WriteFailed`
+     * keeps the old face/state, surfaces the typed persistence notice, and
+     * the SAME commit stays retryable. The rebind admission anchor refuses a
+     * record whose invalidation operation is outstanding.
      */
-    private var pendingInvalidation: DurablePendingIntent? = null
+    private var invalidationOperation: InvalidationOperation? = null
+
+    private class InvalidationOperation(val expected: DurablePendingIntent) {
+        val continuations = mutableListOf<() -> Unit>()
+
+        @Volatile
+        var failed: Boolean = false
+    }
 
     private fun invalidateImportAttempt() {
         requestAttemptInvalidation(continuation = {})
     }
 
     /**
-     * Issue #375 (spec "gate上への線形化統一"): requests the current attempt's
-     * INVALIDATION COMMIT as ONE result-carrying operation. The caller's
-     * transition ([continuation] — close / supersede face / new attempt /
-     * review open) commits ONLY after the gate-held conditional tombstone
-     * landed `Committed`/`NoMatch`; a `WriteFailed` preserves the old
-     * face/state, surfaces the typed persistence notice, keeps [record] as
-     * the invalidation RETRY ANCHOR ([pendingInvalidation] — the rebind
-     * anchor refuses an invalidation-pending record), and leaves the SAME
-     * commit retryable through [retryPendingInvalidation]. The gate hold is
-     * short (one AtomicFile read-compare-tombstone; no suspension).
+     * Issue #375: requests the current attempt's INVALIDATION COMMIT as ONE
+     * result-carrying operation. The caller's transition ([continuation] —
+     * close / supersede face / new attempt / review open) is queued behind
+     * any outstanding operation and commits only when the gate-held
+     * conditional tombstone lands `Committed`/`NoMatch`; a `WriteFailed`
+     * preserves the old face/state, surfaces the typed persistence notice,
+     * and leaves the SAME commit retryable through
+     * [retryPendingInvalidation]. The gate hold is short (one AtomicFile
+     * read-compare-tombstone; no suspension).
      */
     private fun requestAttemptInvalidation(continuation: () -> Unit) {
         // The in-memory attempt slots drop immediately (the attempt is dead
         // either way — its late settles are token-fenced); what is GATED is
-        // the caller's transition: it commits only after the durable
-        // tombstone landed. A `WriteFailed` preserves the old face/state and
-        // makes the SAME commit retryable.
+        // the caller's transition: it runs only after the durable tombstone
+        // landed.
         val record = pendingDurableRecord
         activeAttempt = null
         pendingValidated = null
         pendingDurableRecord = null
+
+        val outstanding = invalidationOperation
+        if (outstanding != null) {
+            // A commit is in flight or failed-unresolved: the caller's
+            // transition queues behind it — it must not run before the
+            // outstanding commit lands.
+            synchronized(outstanding) { outstanding.continuations += continuation }
+            if (outstanding.failed) retryPendingInvalidation()
+            return
+        }
         if (record == null) {
-            // Nothing durable to invalidate — hand the continuation through.
             retryPendingInvalidation()
             continuation()
             return
         }
+        val operation = InvalidationOperation(record)
+        synchronized(operation) { operation.continuations += continuation }
+        invalidationOperation = operation
         scope.launch(Dispatchers.IO) {
             val result = exchangeMutationGate.withGate { pendingImportStore.discardIf(record) }
-            withContext(uiDispatcher) {
-                when (result) {
-                    DiscardIfResult.Committed, DiscardIfResult.NoMatch -> {
-                        // The invalidation is durable/linearized: commit the
-                        // caller's transition.
-                        retryPendingInvalidation()
-                        continuation()
-                    }
+            withContext(uiDispatcher) { settleInvalidation(operation, result) }
+        }
+    }
 
-                    DiscardIfResult.WriteFailed -> {
-                        // The invalidation did NOT take effect: the proposal
-                        // stays valid, the old face/state is preserved, the
-                        // record becomes the invalidation retry anchor, and
-                        // the typed persistence notice surfaces.
-                        pendingInvalidation = record
-                        status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_PERSIST_FAILED)
-                    }
+    /** Applies one invalidation commit result: terminal on Committed/NoMatch, retryable on WriteFailed. */
+    private fun settleInvalidation(operation: InvalidationOperation, result: DiscardIfResult) {
+        when (result) {
+            DiscardIfResult.Committed, DiscardIfResult.NoMatch -> {
+                invalidationOperation = null
+                val queued = synchronized(operation) {
+                    val list = operation.continuations.toList()
+                    operation.continuations.clear()
+                    list
                 }
+                retryPendingInvalidation()
+                queued.forEach { it() }
+            }
+
+            DiscardIfResult.WriteFailed -> {
+                // The invalidation did NOT take effect: the proposal stays
+                // valid, the old face/state is preserved (queued transitions
+                // do not run), the typed persistence notice surfaces, and the
+                // SAME commit stays retryable.
+                operation.failed = true
+                status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_PERSIST_FAILED)
             }
         }
     }
 
     /**
      * Issue #375: re-runs an outstanding invalidation commit (a previous
-     * `WriteFailed`) inside the gate; terminal on `Committed`/`NoMatch`.
+     * `WriteFailed`) inside the gate; terminal on `Committed`/`NoMatch` (the
+     * queued transitions then run).
      */
     private fun retryPendingInvalidation() {
-        val record = pendingInvalidation ?: return
+        val operation = invalidationOperation ?: return
         scope.launch(Dispatchers.IO) {
-            val result = exchangeMutationGate.withGate { pendingImportStore.discardIf(record) }
-            withContext(uiDispatcher) {
-                if (result is DiscardIfResult.Committed || result is DiscardIfResult.NoMatch) {
-                    if (pendingInvalidation == record) pendingInvalidation = null
-                }
-            }
+            val result = exchangeMutationGate.withGate { pendingImportStore.discardIf(operation.expected) }
+            withContext(uiDispatcher) { settleInvalidation(operation, result) }
         }
     }
 
-    /** True while an invalidation commit of [record] is outstanding (un-landed `WriteFailed`). */
-    private fun isInvalidationPending(record: DurablePendingIntent?): Boolean = record != null && pendingInvalidation == record
+    /** True while an invalidation commit of [record] is outstanding (in flight or failed-unresolved). */
+    private fun isInvalidationPending(record: DurablePendingIntent?): Boolean = record != null && invalidationOperation?.expected == record
 
     /**
      * Numbers a fresh import attempt from the CURRENT run state: the run-in
@@ -1256,8 +1277,8 @@ class ExchangeFlowStateHolder(
                 // invalidation leaves the record valid: it becomes the
                 // invalidation RETRY ANCHOR (the rebind anchor refuses it as
                 // invalidation-pending until the commit lands).
-                if (outcome.invalidation is DiscardIfResult.WriteFailed) {
-                    pendingInvalidation = outcome.record
+                if (outcome.invalidation is DiscardIfResult.WriteFailed && invalidationOperation == null) {
+                    invalidationOperation = InvalidationOperation(outcome.record)
                 }
                 return
             }
@@ -1272,8 +1293,8 @@ class ExchangeFlowStateHolder(
                 pendingDurableRecord = null
                 pendingValidated = null
                 activeAttempt = null
-                if (outcome.invalidation is DiscardIfResult.WriteFailed) {
-                    pendingInvalidation = outcome.record
+                if (outcome.invalidation is DiscardIfResult.WriteFailed && invalidationOperation == null) {
+                    invalidationOperation = InvalidationOperation(outcome.record)
                     status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_PERSIST_FAILED)
                 }
                 return
@@ -1367,6 +1388,16 @@ class ExchangeFlowStateHolder(
      * real run seams below run unchanged.
      */
     internal var connectRunOverride: (suspend (RunConnectionRequest) -> ContinueOutcome)? = null
+
+    /**
+     * Issue #375 test seam (SR-AC-07/08 race oracles): invoked on the rebind
+     * path after [RebindIntentRebuilder] succeeded and BEFORE `run.start` —
+     * the exact window the admission anchor guards. Tests use it to complete
+     * a REAL world mutation (e.g. the controller's session replacement) on
+     * another execution context and await it, deterministically, before the
+     * anchor's fresh re-read. Production leaves it null.
+     */
+    internal var preAdmissionBarrier: (() -> Unit)? = null
 
     /**
      * The real run-connection seam: run-in entries attach to the owning run
@@ -1634,6 +1665,19 @@ class ExchangeFlowStateHolder(
             }
             val rebuilt = outcome.intent
             val sourceRecord = outcome.sourceRecord
+            // Test seam: the deterministic point between "rebuild succeeded"
+            // and "admission begins" — race oracles complete a REAL world
+            // mutation here (another execution context) before admitting.
+            try {
+                preAdmissionBarrier?.invoke()
+            } catch (failure: Throwable) {
+                if (!currentCoroutineContext().isActive) throw failure
+                withContext(uiDispatcher) {
+                    status = ExchangeStatus(ExchangeStatus.Kind.REBIND_START_FAILED)
+                    screen = (screenState.value as? ExchangeScreen.ImportReview)?.copy(continuing = false) ?: screenState.value
+                }
+                return@launch
+            }
             val restoreMode = when (sourceRecord.entryKind) {
                 PendingImportEntryKind.RUN_IN -> ManualOrganizationRun.SelectionRestore.PreviousExplicit
                 else -> ManualOrganizationRun.SelectionRestore.None
