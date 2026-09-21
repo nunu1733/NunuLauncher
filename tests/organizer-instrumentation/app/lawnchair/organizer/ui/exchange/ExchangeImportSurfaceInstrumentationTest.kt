@@ -1206,11 +1206,17 @@ class ExchangeImportSurfaceInstrumentationTest {
             "the recorded explanation must be the contract copy, was ${recorded.explanation}"
         }
 
-        // A failure face WITHOUT a diagnostics route hides the row instead of
-        // offering a dead button.
-        val holderWithoutRoute = newHolder()
-        setContent(holderWithoutRoute)
-        openImportSurface(holderWithoutRoute)
+    }
+
+    /**
+     * The diagnostics row is a safe absence, not a dead button: a host without
+     * a diagnostics route (null callback) hides the row entirely.
+     */
+    @Test
+    fun failureFaceWithoutDiagnosticsRouteHidesTheRow() {
+        val holder = newHolder()
+        setContent(holder)
+        openImportSurface(holder)
         composeRule.onNodeWithTag("exchange-import-fallback-toggle").performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodesWithTag("exchange-import-open-diagnostics").fetchSemanticsNodes().isEmpty()

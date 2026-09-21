@@ -1,6 +1,9 @@
 package app.lawnchair.organizer.ui.exchange
 
 import androidx.annotation.VisibleForTesting
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import app.lawnchair.organizer.personalization.IntentValidationFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeEnvelopeFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportFailure
@@ -251,12 +254,12 @@ data class RecentImportFailure(
  * `SavedStateHandle`: a system-initiated process death loses it (the spec's
  * non-persistence contract), while an Activity recreation — same process —
  * keeps it. The diagnostics route itself stays argument-less for the same
- * reason.
+ * reason. The recording is Compose snapshot state so the diagnostics face
+ * recomposes when the failure face records.
  */
 object ExchangeImportFailureDiagnostics {
 
-    @Volatile
-    var recent: RecentImportFailure? = null
+    var recent: RecentImportFailure? by mutableStateOf<RecentImportFailure?>(null)
         private set
 
     fun record(failure: RecentImportFailure) {
