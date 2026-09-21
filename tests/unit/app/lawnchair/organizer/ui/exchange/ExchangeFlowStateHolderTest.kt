@@ -2088,7 +2088,9 @@ class ExchangeFlowStateHolderTest {
         awaitImportPersistenceFailure(fixture.holder)
 
         fixture.holder.close()
-        assertTrue(fixture.holder.screen is ExchangeScreen.Closed)
+        // Issue #375: the close's invalidation commit is a gate-held async
+        // operation — poll for the terminal close (no wall-clock sleep).
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Closed }
         assertFalse(fixture.holder.importAttemptActive)
         assertNull("nothing was persisted by the interruption", pendingStore.record)
     }
