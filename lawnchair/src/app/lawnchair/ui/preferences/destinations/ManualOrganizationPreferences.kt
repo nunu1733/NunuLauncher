@@ -252,7 +252,10 @@ fun ManualOrganizationPreferences(
     // Issue #372 (D-13/EX-AC-11): the exchange flow's pre-send discard
     // confirmation, raised by the T-16 破棄 button AND by system Back on the
     // unsent request face — one dialog, two entries, per the accepted spec.
+    // On dismissal the focus restores to the face's 破棄 action through this
+    // requester (explicit, deterministic — platform dialog restore is not).
     var pendingExchangeDiscard by remember { mutableStateOf(false) }
+    val exchangeDiscardFocus = remember { FocusRequester() }
 
     val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     var backCallback by remember { mutableStateOf<OnBackPressedCallback?>(null) }
@@ -542,6 +545,7 @@ fun ManualOrganizationPreferences(
                             scopedSelection = scopedSelection,
                             scopedLabels = scopedLabels,
                             onDiscardRequest = { pendingExchangeDiscard = true },
+                            discardFocus = exchangeDiscardFocus,
                             clipboardTransport = { ctx: android.content.Context, text: String ->
                                 ClipboardExchangeTransport(ctx).copy(text)
                             },
@@ -978,6 +982,7 @@ fun ManualOrganizationPreferences(
                 exchangeFlowItems(
                     holder = exchangeHolder,
                     onDiscardRequest = { pendingExchangeDiscard = true },
+                    discardFocus = exchangeDiscardFocus,
                     clipboardTransport = { ctx: android.content.Context, text: String ->
                         ClipboardExchangeTransport(ctx).copy(text)
                     },
@@ -1014,7 +1019,10 @@ fun ManualOrganizationPreferences(
                 pendingExchangeDiscard = false
                 exchangeHolder.closeDisclosure()
             },
-            onDismiss = { pendingExchangeDiscard = false },
+            onDismiss = {
+                pendingExchangeDiscard = false
+                exchangeDiscardFocus.requestFocus()
+            },
         )
     }
 }

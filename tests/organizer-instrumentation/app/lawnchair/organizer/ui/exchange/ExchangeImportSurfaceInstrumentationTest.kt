@@ -8,6 +8,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -173,6 +175,7 @@ class ExchangeImportSurfaceInstrumentationTest {
         holder: ExchangeFlowStateHolder,
         fontScale: Float? = null,
         discardRequested: androidx.compose.runtime.MutableState<Boolean>? = null,
+        discardFocus: FocusRequester? = null,
         preserveDeviceDensity: Boolean = false,
     ) {
         composeRule.setContent {
@@ -201,6 +204,7 @@ class ExchangeImportSurfaceInstrumentationTest {
                         exchangeFlowItems(
                             holder = holder,
                             onDiscardRequest = { discardRequested?.value = true },
+                            discardFocus = discardFocus,
                             clipboardTransport = { _, _ -> ExchangeTransportResult.Success },
                             shareTransport = { _, _ -> ExchangeTransportResult.Success },
                             fileTransport = FileExchangeTransport(context),
@@ -216,7 +220,10 @@ class ExchangeImportSurfaceInstrumentationTest {
                             discardRequested.value = false
                             holder.closeDisclosure()
                         },
-                        onDismiss = { discardRequested.value = false },
+                        onDismiss = {
+                            discardRequested.value = false
+                            discardFocus?.requestFocus()
+                        },
                     )
                 }
             }
@@ -289,6 +296,7 @@ class ExchangeImportSurfaceInstrumentationTest {
                         scopedSelection = listOf(scoped),
                         scopedLabels = mapOf(scoped to "Scoped app"),
                         onDiscardRequest = {},
+                        discardFocus = null,
                         clipboardTransport = { _, _ -> ExchangeTransportResult.Success },
                         shareTransport = { _, _ -> ExchangeTransportResult.Success },
                         fileTransport = FileExchangeTransport(context),
@@ -398,7 +406,10 @@ class ExchangeImportSurfaceInstrumentationTest {
     fun discardDialogTakesDeterministicFocusAndRestoresTheFace() {
         val holder = newHolder()
         val discardRequested = androidx.compose.runtime.mutableStateOf(false)
-        setContent(holder, discardRequested = discardRequested)
+        // The host owns the explicit dismissal focus restore through this
+        // requester (platform dialog restore is not deterministic).
+        val discardFocus = FocusRequester()
+        setContent(holder, discardRequested = discardRequested, discardFocus = discardFocus)
         composeRule.runOnUiThread {
             holder.openFlow()
             holder.generate(PrivacyTier.EXTERNAL_REDACTED)

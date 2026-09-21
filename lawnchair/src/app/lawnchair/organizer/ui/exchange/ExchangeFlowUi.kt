@@ -1101,11 +1101,12 @@ data class ExchangeStatus(val kind: Kind) {
 fun LazyListScope.exchangeFlowItems(
     holder: ExchangeFlowStateHolder,
     onDiscardRequest: () -> Unit,
+    discardFocus: FocusRequester? = null,
     clipboardTransport: (Context, String) -> ExchangeTransportResult,
     shareTransport: (Context, String) -> ExchangeTransportResult,
     fileTransport: FileExchangeTransport,
 ) {
-    exchangeFlowItems(holder, null, emptyMap(), onDiscardRequest, clipboardTransport, shareTransport, fileTransport)
+    exchangeFlowItems(holder, null, emptyMap(), onDiscardRequest, discardFocus, clipboardTransport, shareTransport, fileTransport)
 }
 
 /**
@@ -1121,6 +1122,7 @@ fun LazyListScope.exchangeFlowItems(
     scopedSelection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>?,
     scopedLabels: Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>,
     onDiscardRequest: () -> Unit,
+    discardFocus: FocusRequester?,
     clipboardTransport: (Context, String) -> ExchangeTransportResult,
     shareTransport: (Context, String) -> ExchangeTransportResult,
     fileTransport: FileExchangeTransport,
@@ -1195,6 +1197,7 @@ fun LazyListScope.exchangeFlowItems(
                     holder = holder,
                     state = current.state,
                     onDiscardRequest = onDiscardRequest,
+                    discardFocus = discardFocus,
                     clipboardTransport = clipboardTransport,
                     shareTransport = shareTransport,
                     fileTransport = fileTransport,
@@ -1610,6 +1613,7 @@ private fun ExchangeDisclosure(
     holder: ExchangeFlowStateHolder,
     state: ExchangeDisclosureState,
     onDiscardRequest: () -> Unit,
+    discardFocus: FocusRequester?,
     clipboardTransport: (Context, String) -> ExchangeTransportResult,
     shareTransport: (Context, String) -> ExchangeTransportResult,
     fileTransport: FileExchangeTransport,
@@ -1737,8 +1741,11 @@ private fun ExchangeDisclosure(
                     state.sent -> true
                     else -> !state.transportInFlight
                 },
+                // Issue #372: the host owns the dialog-dismiss focus
+                // restoration through this requester (deterministic restore).
                 modifier = Modifier
                     .weight(1f)
+                    .then(discardFocus?.let { Modifier.focusRequester(it) } ?: Modifier)
                     .testTag("exchange-discard"),
             ) {
                 Text(
@@ -1988,8 +1995,9 @@ fun ExchangeFlowBackHandler(holder: ExchangeFlowStateHolder, onDiscardRequest: (
  * session (through the holder's existing `closeDisclosure` structural gate);
  * dismiss keeps the T-16 face. No timeout auto-confirm/cancel (organization-
  * run-ux §6). Focus ownership is deterministic: the SAFE action (dismiss /
- * keep) takes focus when the dialog opens, and closing the dialog restores
- * focus into the face (Compose dialog focus restoration).
+ * keep) takes focus when the dialog opens, and the CALLER restores focus to
+ * the face's 破棄 action on dismissal via its own FocusRequester (explicit
+ * restoration — platform dialog focus restore is not deterministic).
  */
 @Composable
 fun ExchangeDiscardConfirmDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
