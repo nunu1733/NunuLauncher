@@ -268,14 +268,20 @@ fun ManualOrganizationPreferences(
 
     fun interruptAndNavigate() {
         scope.launch {
-            val outcome = withContext(Dispatchers.IO) { coordinator.dismiss() }
-            // D-13: 中断 stops the run and returns to the hub — the same
-            // navigation system Back takes. After the apply checkpoint the
-            // coordinator's gate refuses (ApplicationInProgress): the surface
-            // stays and the atomic-completion wording explains why.
-            if (outcome != ManualOrganizationRun.DismissalOutcome.ApplicationInProgress) {
-                withContext(Dispatchers.Main) { navigateBack() }
+            // Issue #376 (spec D5): a hub-origin recovery result leaves through
+            // the explicit hub-return path (restores the pre-entry state so the
+            // hub re-derives the durable status); every other state keeps the
+            // plain dismissal. Host disposals never call this — result states
+            // survive diagnostics pushes and recompositions.
+            if (!coordinator.leaveRecoveryResultToHub()) {
+                val outcome = withContext(Dispatchers.IO) { coordinator.dismiss() }
+                // D-13: 中断 stops the run and returns to the hub — the same
+                // navigation system Back takes. After the apply checkpoint the
+                // coordinator's gate refuses (ApplicationInProgress): the surface
+                // stays and the atomic-completion wording explains why.
+                if (outcome == ManualOrganizationRun.DismissalOutcome.ApplicationInProgress) return@launch
             }
+            withContext(Dispatchers.Main) { navigateBack() }
         }
     }
 

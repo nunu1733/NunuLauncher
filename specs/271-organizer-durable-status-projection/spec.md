@@ -3,7 +3,7 @@ issue: "#271"
 status: implemented
 requirements: [DS-AC-01, DS-AC-02, DS-AC-03, DS-AC-04, DS-AC-05, DS-AC-06, DS-AC-07, DS-AC-08, DS-AC-09, DS-AC-10]
 risk: []
-updated: 2026-09-10
+updated: 2026-09-22
 ---
 
 # Re-opened organizer Settings presents the durable organizer status instead of a bare Idle
@@ -64,10 +64,12 @@ record" requirement is structural, not enforced by cleanup code.
 
 - Changing recovery records, lifecycle, retention, or the recovery DB schema
   (spec 13 stays the contract); the projection is derived and non-authoritative.
-- Enabling the restore preview/confirm flow from a cold process: the durable
-  status is informational in this issue. Wiring "Restore layout" to a persisted
-  point after process death requires constructing a `RecoveryRequest` outside
-  the apply session and is a separate, future spec (tracked as a follow-up).
+- Enabling the restore preview/confirm flow from a cold process: owned by
+  [specs/376-durable-status-recovery-entry](../376-durable-status-recovery-entry/spec.md)
+  (accepted; D-15). This spec keeps the durable status a closed, field-free
+  read-only projection — the status card's restore CTA and its entry read are
+  layered on top of it without changing this vocabulary or its fail-closed
+  read contract.
 - General organizer history/analytics; item-level detail beyond what the
   current surface already shows.
 - New diagnostics fields or journal events for projection reads.
@@ -294,10 +296,14 @@ read again and rendered per the scenarios above
 - [ ] DS-AC-06: No new diagnostics fields outside the closed vocabulary; the
       projection emits no journal events; the projection type leaks no record
       payload, revision, digest, or item identity (enforced by the type's shape).
-- [ ] DS-AC-07: The Settings render mapping presents the durable status row
-      only while no run operation is active (`Idle`/`Cancelled`), with the
-      unresolved status reusing the existing safe-support guidance pattern;
-      covered by a UI instrumentation test including the fail-closed render.
+- [ ] DS-AC-07: The durable status row renders only while no run operation is
+      active (`Idle`/`Cancelled`), with the unresolved status reusing the
+      existing safe-support guidance pattern; covered by a UI instrumentation
+      test including the fail-closed render. Since D-02/D-15 (issue #376) the
+      status card on the Organizer hub is the primary display surface, with
+      the run surface keeping the same row (spec 366 HUB-AC-05); the row's
+      restore CTA and remaining-window hint are owned by
+      [spec 376](../376-durable-status-recovery-entry/spec.md), not this AC.
 - [ ] DS-AC-08: `CONTEXT.md` (domain term), `DESIGN.md` (seam ownership), and
       this spec's status are updated in the same PR.
 
@@ -318,12 +324,17 @@ read again and rendered per the scenarios above
 
 ## Open questions
 
-- None blocking. The follow-up for wiring the restore action to a persisted
-  point from a cold process is intentionally deferred (Non-goals) and should be
-  tracked as its own issue if pursued.
+- None blocking. The cold-process restore follow-up deferral (formerly
+  Non-goals) is resolved: it is owned by the accepted
+  [spec 376](../376-durable-status-recovery-entry/spec.md) (D-15).
 
 ## Change history
 
 - 2026-09-10: Draft created for #271.
 - 2026-09-10: Accepted after Phase-1 review; extended with DS-AC-09/DS-AC-10 (readiness-driven re-read, explicit loading row, cold-process settings entry) from the PR #276 owner review.
 - 2026-09-10: Re-review round: DS-AC-10 strengthened — the cold settings entry drives the model load itself (no-callback loader bridge) so the same surface reaches the derived status without opening the Launcher; the checking row persists while the gate is pending.
+- 2026-09-22: Companion revision for #376 (D-15) — the Non-goals cold-process
+  restore item now references the accepted spec 376, and DS-AC-07 names the
+  hub status card as the primary display surface with the restore CTA owned
+  by spec 376. The projection type, derivation, and fail-closed read contract
+  are unchanged.

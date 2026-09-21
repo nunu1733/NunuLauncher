@@ -45,8 +45,10 @@ import app.lawnchair.organizer.application.public.PlanPreviewResult
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
+import app.lawnchair.organizer.application.public.RecoveryPreviewSummary
 import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.application.public.RecoveryRejection
+import app.lawnchair.organizer.application.public.RestorableRecoveryEntry
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.diagnostics.DiagnosticsPort
@@ -396,13 +398,52 @@ class OrganizerHubPreferencesInstrumentationTest {
     }
 
     /**
-     * HUB-AC-03: the hub exposes no restore CTA, no run-result actions, and no
-     * run activity — the negative observation of the non-goals.
+     * HUB-AC-03 (as amended 2026-09-22 by accepted spec 376 / D-15): the
+     * status card's restore CTA is the only run-result affordance on the hub;
+     * no other run-result actions exist and the hub performs no run activity
+     * on its own — `start()` stays exclusive to the run surface.
      */
     @Test
-    fun hubExposesNoRestoreOrRunResultAffordancesAndStartsNothing() {
+    fun hubExposesTheRestoreCtaAndNoOtherRunResultAffordancesAndStartsNothing() {
         val application = FakeHubApplication().apply {
             durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+            restorableEntry = RestorableRecoveryEntry(
+                RecoveryPointId(POINT_ID),
+                app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+            )
+        }
+        val runner = hubRunner(application)
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_recovery),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_recovery),
+        ).assertIsDisplayed().assertHasClickAction()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_start_again),
+        ).assertDoesNotExist()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_safe_terminal),
+        ).assertDoesNotExist()
+        assertEquals(ManualOrganizationRun.State.Idle, runner.state)
+        assertEquals(emptyList<RunEvent>(), application.diagnostics.events)
+        assertEquals(0, application.applyCalls)
+        assertEquals(0, application.previewRequests)
+    }
+
+    /**
+     * Issue #376 (spec D6): with a fail-closed entry hint the restorable row
+     * falls back to display-only — no remaining window and no CTA.
+     */
+    @Test
+    fun hubRestorableRowStaysDisplayOnlyWhenTheEntryHintFailsClosed() {
+        val application = FakeHubApplication().apply {
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+            restorableEntry = null
         }
         val runner = hubRunner(application)
         setHubContent(runner)
@@ -413,17 +454,163 @@ class OrganizerHubPreferencesInstrumentationTest {
             ).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restorable),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_recovery),
         ).assertDoesNotExist()
-        composeRule.onNodeWithText(
-            context.getString(R.string.manual_organization_start_again),
-        ).assertDoesNotExist()
-        composeRule.onNodeWithText(
-            context.getString(R.string.manual_organization_safe_terminal),
-        ).assertDoesNotExist()
         assertEquals(ManualOrganizationRun.State.Idle, runner.state)
-        assertEquals(emptyList<RunEvent>(), application.diagnostics.events)
-        assertEquals(0, application.applyCalls)
+    }
+
+    /**
+     * Issue #376 (spec D6 read serialization): the hub reads the status first
+     * and the entry hint only after a restorable status — the fake's widened
+     * reads would register any concurrent execution as maxConcurrentReads > 1.
+     */
+    @Test
+    fun hubReadsTheEntryHintOnlyAfterARestorableStatusAndNeverConcurrently() {
+        val application = FakeHubApplication().apply {
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+            restorableEntry = RestorableRecoveryEntry(
+                RecoveryPointId(POINT_ID),
+                app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+            )
+        }
+        val runner = hubRunner(application)
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_recovery),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.waitUntil(5_000) { application.entryReads >= 1 }
+
+        val log = synchronized(application.readLog) { application.readLog.toList() }
+        assertEquals("status", log.first())
+        assertEquals("entry", log.last())
+        assertEquals(1, application.maxConcurrentReads)
+    }
+
+    /** Issue #376 (spec D6): a non-restorable status never reads the entry hint. */
+    @Test
+    fun hubDoesNotReadTheEntryHintWhenTheStatusIsNotRestorable() {
+        val application = FakeHubApplication().apply {
+            durableStatus = OrganizerDurableStatus.RESTORED_OR_EXPIRED
+        }
+        val runner = hubRunner(application)
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_durable_status_restored_or_expired),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.waitForIdle()
+
+        assertEquals(0, application.entryReads)
+        assertEquals(0, synchronized(application.readLog) { application.readLog.count { it == "entry" } })
+    }
+
+    /**
+     * Issue #376 (spec D5/D6, RS-AC-04): the restore CTA opens the existing
+     * recovery flow on the run face; system Back returns to the hub side with
+     * the coordinator restored to its pre-entry (Idle) state.
+     */
+    @Test
+    fun restoreCtaOpensTheRecoveryFlowOnTheRunFaceAndBackReturnsToTheHub() {
+        val application = FakeHubApplication().apply {
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+            restorableEntry = RestorableRecoveryEntry(
+                RecoveryPointId(POINT_ID),
+                app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+            )
+            recoveryPreview = RecoveryPreviewResult.Restorable(
+                pointId = RecoveryPointId(POINT_ID),
+                summary = RecoveryPreviewSummary(),
+                confirmation = RecoveryPreviewConfirmation.issue(byteArrayOf(1)),
+            )
+        }
+        val runner = hubRunner(application)
+        var dispatcher: OnBackPressedDispatcher? = null
+        setHubContent(runner, captureDispatcher = { dispatcher = it })
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_recovery),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_recovery),
+        ).performClick()
+
+        // The flow was admitted: the confirmation face renders on the
+        // existing run surface with the closed-vocabulary decision pair.
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.RecoveryPreview }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_recovery_confirm),
+        ).assertIsDisplayed()
+
+        composeRule.runOnIdle { checkNotNull(dispatcher).onBackPressed() }
+
+        composeRule.waitUntil(5_000) {
+            runner.state is ManualOrganizationRun.State.Idle &&
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.manual_organization_durable_status_restorable),
+                ).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    /**
+     * Issue #376 (RS-AC-01/02, instrumentation side): a successful restore,
+     * the explicit hub return, and the hub's durable-status re-derive — a
+     * single valid point collapses the row to "restored or expired".
+     */
+    @Test
+    fun restoreSuccessAndExplicitHubReturnReDeriveTheDurableStatus() {
+        val application = FakeHubApplication().apply {
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+            restorableEntry = RestorableRecoveryEntry(
+                RecoveryPointId(POINT_ID),
+                app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+            )
+            recoveryPreview = RecoveryPreviewResult.Restorable(
+                pointId = RecoveryPointId(POINT_ID),
+                summary = RecoveryPreviewSummary(),
+                confirmation = RecoveryPreviewConfirmation.issue(byteArrayOf(1)),
+            )
+            confirmResult = RecoveryResult.Restored(RecoveryPointId(POINT_ID))
+            durableStatusAfterConfirm = OrganizerDurableStatus.RESTORED_OR_EXPIRED
+        }
+        val runner = hubRunner(application)
+        var dispatcher: OnBackPressedDispatcher? = null
+        setHubContent(runner, captureDispatcher = { dispatcher = it })
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_recovery),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_recovery),
+        ).performClick()
+
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.RecoveryPreview }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_recovery_confirm),
+        ).performClick()
+
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.RecoveryResultState }
+
+        composeRule.runOnIdle { checkNotNull(dispatcher).onBackPressed() }
+
+        composeRule.waitUntil(5_000) {
+            runner.state is ManualOrganizationRun.State.Idle &&
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.manual_organization_durable_status_restored_or_expired),
+                ).fetchSemanticsNodes().isNotEmpty()
+        }
+        assertEquals(ManualOrganizationRun.State.Idle, runner.state)
     }
 
     /**
@@ -796,7 +983,51 @@ class OrganizerHubPreferencesInstrumentationTest {
             app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY,
         )
 
-        override fun readDurableOrganizerStatus(): OrganizerDurableStatus = readOverride?.invoke() ?: durableStatus
+        // Issue #376: the D-15 restore-entry hint and the read-order/concurrency
+        // tracking for the spec D6 serialization oracle. Every read is widened
+        // with a sleep so a parallel caller would register as concurrency.
+        var restorableEntry: RestorableRecoveryEntry? = null
+        var entryReads = 0
+        var previewRequests = 0
+        var recoveryPreview: RecoveryPreviewResult = RecoveryPreviewResult.NotRestorable(
+            RecoveryPointId(POINT_ID),
+            app.lawnchair.organizer.application.public.RecoveryPreviewRejection.MISSING,
+        )
+        var confirmResult: RecoveryResult = RecoveryResult.NotRestorable(
+            RecoveryPointId(POINT_ID),
+            RecoveryRejection.MISSING,
+        )
+
+        /** Simulates the recovery store changing under a successful restore. */
+        var durableStatusAfterConfirm: OrganizerDurableStatus? = null
+
+        val readLog = java.util.Collections.synchronizedList(mutableListOf<String>())
+        private var activeReads = 0
+        var maxConcurrentReads = 0
+            private set
+
+        private fun <T> trackRead(name: String, block: () -> T): T {
+            synchronized(readLog) {
+                activeReads += 1
+                if (activeReads > maxConcurrentReads) maxConcurrentReads = activeReads
+                readLog.add(name)
+            }
+            try {
+                Thread.sleep(50)
+                return block()
+            } finally {
+                synchronized(readLog) { activeReads -= 1 }
+            }
+        }
+
+        override fun readDurableOrganizerStatus(): OrganizerDurableStatus = trackRead("status") {
+            readOverride?.invoke() ?: durableStatus
+        }
+
+        override fun readRestorableRecoveryEntry(): RestorableRecoveryEntry? = trackRead("entry") {
+            entryReads++
+            restorableEntry
+        }
 
         override val readinessState: kotlinx.coroutines.flow.StateFlow<app.lawnchair.organizer.application.protocol.ReadinessGate.State> = readiness
 
@@ -843,15 +1074,15 @@ class OrganizerHubPreferencesInstrumentationTest {
             return ApplyResult.Applied(RunId(RUN_ID), RecoveryPointId(POINT_ID))
         }
 
-        override fun inspectRecovery(pointId: RecoveryPointId): RecoveryPreviewResult = RecoveryPreviewResult.NotRestorable(
-            pointId,
-            app.lawnchair.organizer.application.public.RecoveryPreviewRejection.MISSING,
-        )
+        override fun inspectRecovery(pointId: RecoveryPointId): RecoveryPreviewResult {
+            previewRequests++
+            return recoveryPreview
+        }
 
-        override fun confirmRecovery(pointId: RecoveryPointId, confirmation: RecoveryPreviewConfirmation): RecoveryResult = RecoveryResult.NotRestorable(
-            pointId,
-            RecoveryRejection.MISSING,
-        )
+        override fun confirmRecovery(pointId: RecoveryPointId, confirmation: RecoveryPreviewConfirmation): RecoveryResult {
+            durableStatusAfterConfirm?.let { durableStatus = it }
+            return confirmResult
+        }
 
         private fun policyIdentity(source: PolicySourceKind) = PolicyInputIdentity(source, "v1", SHA_256)
     }
