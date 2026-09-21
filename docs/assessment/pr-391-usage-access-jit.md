@@ -1,15 +1,17 @@
 # Independent audit: PR #391 Usage Access要求をjust-in-time化する（#371）
 
-> Status: accepted（audit完了）
-> Audit date: 2026-09-21
-> Verdict: **条件付きGO**（実装review最終確認がNo findingsのhead `05ca58944047` と監査対象headが一致し、
-> 受入条件JIT-AC-01〜08は監査者の独立読み取りと再実行で確認。mergeは本headでのCI `final-status` green
-> 確認を条件とする。詳細は CI status / 最終判定）
+> Status: accepted（audit完了。2026-09-21 再監査 — 新head `1923d51928bc` 分を追記、下記「Re-audit」節）
+> Audit date: 2026-09-21（初回監査 @ `05ca58944047`、同日 再監査 @ `1923d51928bc`）
+> Verdict: **条件付きGO**（新head `1923d51928bc` で再確認。実装review loop＋CI修正loopの最終確認が
+> いずれもNo findingsのheadと監査対象headが一致し、受入条件JIT-AC-01〜08は監査者の独立読み取りと
+> 再実行で確認。mergeは本headでのCI `final-status` green確認を条件とする。詳細は Re-audit節の
+> CI status / 最終判定）
 
 - Auditor: 実装を行っていない独立session（実装agent/実装sessionとは別の監査として実施。production/test codeの修正は行っていない）
 - PR: https://github.com/nunu1733/NunuLauncher/pull/391
-- Head SHA: `05ca58944047a10fd29ac19e86d81718645267ab`（`gh pr view 391 -R nunu1733/NunuLauncher` の
-  `headRefOid` とworktree HEAD `issue-371-usage-access-jit-request` の一致を確認。`git status` クリーン）
+- Head SHA: `1923d51928bcd174328e399c34f1ab1ee4fc2c61`
+  （初回監査対象は `05ca58944047a10fd29ac19e86d81718645267ab`。PR headの更新に伴い同日再監査。
+  いずれも `gh pr view 391 -R nunu1733/NunuLauncher` の `headRefOid` とworktree HEADの一致を確認。`git status` クリーン）
 - Base: `main`（merge-base `b21b186495`。`git diff origin/main...HEAD` は17 file、+3144/−45。
   `git diff --check` でwhitespace error 0件）
 - CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/35545992004 ／ high-risk-evidence:
@@ -167,3 +169,106 @@ mergeへ進めない。本PRの新規instrumentation classを含むissue52 lane�
   失敗jobが出た場合は、本PR由来か否かをjob単位で切り分け、本PRと無関係な場合は別途起票のうえ
   先に対処すること。JIT-AC-09のemulator evidence（screenshot/TalkBack）はCI lane完了後に
   PR記録へ残すこと。
+
+---
+
+## Re-audit（新head `1923d51928bc`、2026-09-21）
+
+初回監査（@ `05ca58944047`）後、PR headがCI実行で判明した修正とreview対応3コミットで更新された
+ため、同日に再監査を実施した。merge条件は変わらず「本headでのCI `final-status` green」である。
+
+### 追越コミット（`05ca58944047..1923d51928bc`、3件）
+
+| commit | 内容（監査者のdiff読み取り） |
+|---|---|
+| `8a52cf9306` | CI修正: (a) **#370 test-only render traceの復元** — `ManualOrganizationPreferences.kt` へ `committedFace` ＋ `SideEffect { ManualOrganizationRunFaceTrace.recorder?.invoke(committedFace) }` を復元（実装者が誤削除していたもので、recorderはproductionでnullのため挙動不変。#370の監査記録どおりのtest-only観測seam）。(b) `Issue265ManualEditRecoveryInstrumentationTest` のsetUpへapp-op付与（shell `appops set ... allow` ＋1秒待機。production wired runがJIT pauseに捕まらないgranted fast path。#371導入による既存testの正当な適合）。(c) JIT instrumentationのsettings往復2本をnavigation依存から確定的なproduction predicate観測へ置換（後続commitでlifecycle駆動へ確定化）。(d) cross-origin oracleをproduction実挙動へ整合（下記）。(e) exchange dialog hostのunmount cleanup追加（後続commitでattempt-bindへ強化） |
+| `85b8b63d81` | review対応: (a) **`ExchangeFlowStateHolder.disposeUsageAccessJitAttempt(token)`** 新設 — 現行screenのtoken一致時のみabandon＋無効化。dialog hostの `DisposableEffect` は効果作成時のtokenをcaptureしてonDisposeで使用（stale host unmountが新attemptへ作用しない。JIT-AC-05 identity bindingの補強。新規unit oracle `staleAttemptTeardownDoesNotActOnANewerAttempt` 付き）。(b) **`RunUsageAccessJitDialogHost` のstale observer実バグ修正** — host状態（presenter/settingsRequested/settingsLaunchFailed/grantCheckTick）をkey付き `remember(awaitingRunId)` からunkeyed `remember` ＋ `DisposableEffect(awaitingRunId)` のreset effectへ変更。key付きState再生成でlifecycle observerが古いStateを読み続け、settings復帰時のbounded re-read→resumeが発火しないCI/ローカル実行で判明した実バグの修正（reset effectは同一State instanceを再導出するため、観察者と状態の整合が回復する）。(c) settings-return 2本をinjected lifecycle（`TestLifecycleOwner` ＋ ON_PAUSE/ON_RESUME drive）へ確定化 |
+| `1923d51928` | test: `newProductionRunner(application)` helper（`resetForTests()` → gate取得 → runner構築の順序を1箇所に固定。reviewで指摘された順序逆転再発の構造的防止。両settings-return testともhelper経由） |
+
+### 契約への影響判定 — 本体契約は不変
+
+- **不変をdiffで確認**: `UsageAccessJitGate` 本体（state machine・abandon・snapshot seam）、
+  `ManualOrganizationRun.kt`（**追越コミットでの変更0件**。pause位置・CAPTURE commit集約・
+  cancel/dismiss連携は初回監査時の確認どおり）、bounded re-read定数（1500ms）、
+  spec 203 amendment、strings（EN/ja）、CI workflow行はいずれも `05ca58944047..1923d51928bc` の
+  diff対象外。
+- **production変更は2点のみ**（いずれも契約強化で契約違反なし）:
+  1. host状態のunkeyed remember化＋reset effect（上記バグ修正。pause identityごとの再導出は
+     初回監査で確認した「key付きrememberの意図」と同じ意味論を、State instanceの安定性を保って
+     実現し直したもの。gate・run state machineへは触れない）
+  2. exchange dialog host unmountのcleanupを `dispose()`（holder全体）から
+     `disposeUsageAccessJitAttempt(ownToken)`（attempt-bound）へ限定。holder全体のteardownは
+     `DisposableEffect(exchangeHolder)` 経由の `dispose()` が引き続き担い、役割分担は明確化。
+     stale unmountが新attemptをabandonする経路が塞がれた点でJIT-AC-05の強化である。
+- **test seam追加**（production既定値不変）: `ManualOrganizationPreferences` へ
+  `jitLifecycleOwner: LifecycleOwner? = null`（既定は従来どおり `LocalLifecycleOwner.current`）。
+  `usageAccessSettingsOpener` は `05ca58944047` 時点から存在する既存seam。
+- **cross-origin oracleの更新は契約の弱化でない**: run pauseでIdle faceを抜けるとexchange sectionが
+  unmountする実挙動に合わせ、oracleは「presenter unmount → attempt-bound teardown → 放棄解決 →
+  waiter観測seamで進行（test側はcontinueを呼ばない）→ 破棄されたattemptの生成は再開されない
+  （generationAttempts == 0・screen Closed）」を検証する。barrier livenessと
+  「放棄された生成の無効化」の両方を自動で確認する、初回版より強いoracleである。
+
+### 再検証（worktree同所、head `1923d51928bc`、2026-09-21）
+
+| command | 結果 |
+|---|---|
+| `git pull` 後の `git rev-parse HEAD` | `1923d51928bcd174328e399c34f1ab1ee4fc2c61` = PR headRefOid一致、worktreeクリーン |
+| `git diff --check origin/main...HEAD` | **PASS**（whitespace error 0件） |
+| `./gradlew spotlessCheck` | **PASS**（exit 0） |
+| `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*' --tests 'app.lawnchair.ui.preferences.navigation.*' --tests 'app.lawnchair.bugreport.*' --tests 'app.lawnchair.backup.*'` | **PASS**（exit 0。XML **148 suite / 1608 tests、failures 0、errors 0、skipped 0**。+1件は新規stale teardown oracle。結果XMLのmtimeは再監査実行時刻と一致） |
+| `./gradlew compileLawnWithQuickstepGithubDebugAndroidTestSources` | **PASS**（exit 0。追越コミットでtest変更があるため再確認） |
+
+### Review loop記録の照合（新head分）
+
+Issue #371コメントで次のloopを確認した: 初回監査対象head `05ca58944047` の実装最終確認（No findings）→
+CI修正1（`8a52cf9306`）→ 再レビュー2指摘 → 対応（`85b8b63d81`）→ 再レビュー1指摘
+（settings-return testでの `resetForTests()` 順序再逆転）→ 対応（`1923d51928` のhelper化）→
+**CI修正3最終確認 No findings**（対象head `1923d51928bcd1`、test fixture順序のみの差分と確認済み）。
+実装最終承認対象headは `1923d51928bc` であり、承認後の実質変更はない。
+
+### CI status（再監査時点、2026-09-21、run 35553671592 @ `1923d51928bc`）
+
+| 結果 | job |
+|---|---|
+| pass（14） | changes（17s）/ validate-repo-contract（43s）/ check-style（1m13s）/ build-debug-apk（3m57s）/ organizer-unit-tests（4m27s）/ high-risk-evidence（35s、run 35553671582）/ organizer-instrumentation-api35-tests（7m3s）/ db-migration（9m7s）/ issue155（10m42s）/ issue299（10m25s）/ issue332（9m11s）/ issue53（9m54s — **#370 render trace復元のrender oracleを含むlane**）/ issue99（6m25s）/ shared-writer（9m13s） |
+| pending（1） | organizer-instrumentation-issue52-tests（**本PRのoracle class `UsageAccessJitInstrumentationTest` を含むlane**） |
+| 最終 | `final-status` = **再監査時点未確定**（pending 1 jobの完了待ち） |
+
+初回監査時点で未確定だった11 jobのうち、`organizer-unit-tests` とinstrumentation laneの大半は
+新head runでpassが確定した（初回監査対象head `05ca58944047` のrun 35545992004は旧headとして
+置き換わり、本記録のCI根拠は新head runに更新される）。
+
+### Re-audit Findings
+
+1. **Findings（初回監査1〜3）の再判定**:
+   - 初回Findings 1（JIT文言のresource存在機械確認unit test欠落）: 追越コミットでも未整備のまま。
+     受入条件の実質への影響判定は初回どおり（軽微・追後推奨）。
+   - 初回Findings 2（意味要素checklistが説明文形式）: 変化なし（軽微・形式）。
+   - 初回Findings 3（gate unit数表記ずれ14→実16）: 変化なし（参考・非material。exchange unitは
+     追越コミットで+1の7 test）。
+2. **stale observer修正の評価（指摘に至らない注記）**: host状態のunkeyed remember＋reset effectは、
+   Composeのeffect capture意味論に対する正しい修正であることを監査者が独立に確認した
+   （lifecycle observerは `DisposableEffect(lifecycleOwner)` で1回生成され同一State instanceを
+   読み続けるため、State instanceを置き換えず内容を再導出する方式が整合する）。reset effectは
+   composition順でlifecycle observerより先に宣言されており、pause identity変化時に状態が先に
+   再導出される順序も確認した。この実バグはCI実行・ローカル実行で判明・修正されたものであり、
+   初回監査の静的読み取りでは検出できていなかった点は監査の限界として記録する。
+3. **JIT-AC-09のevidence**: 引き続きCI issue52 lane（再監査時点pending）のartifact依存。
+
+### Re-audit 最終判定
+
+**条件付きGO（更新・本head `1923d51928bc` 基準）。**
+
+- 追越3コミットは、test fixtureの確定化・test-only seam追加・#370 render trace復元（test-only）と、
+  production変更2点（host状態のstale observer修正・exchange unmount cleanupのattempt-bound化）から
+  なる。production変更はいずれも初回監査で確認した契約（JIT-AC-03のresume経路・JIT-AC-05の
+  identity binding）の強化であり、契約違反・scope拡大・persistent/permission変更は無い。
+  `ManualOrganizationRun.kt` とgate本体・spec/stringsは追越コミットで不変。
+- 監査者の独立再実行（spotless / unit 1608 tests 0 failure / instrumentation compile）は新headで
+  すべてPASS。実装review loop＋CI修正loopの最終承認対象headは `1923d51928bc`（最終No findings）で
+  承認後の実質変更はない。
+- **merge条件**（初回から不変）: 本head `1923d51928bc` でのCI `final-status` green。再監査時点の
+  未確定jobは `organizer-instrumentation-issue52-tests`（本PRのoracle class含む）1件のみであり、
+  その完了とJIT-AC-09のemulator evidence（screenshot/TalkBack）のPR記録を確認すること。
+  失敗した場合は本PR由来か否かをjob単位で切り分けること。
