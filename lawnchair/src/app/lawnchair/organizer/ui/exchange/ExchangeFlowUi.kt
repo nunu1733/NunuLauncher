@@ -1581,6 +1581,8 @@ class ExchangeFlowStateHolder(
                                 when {
                                     reDecision is PendingIntentReconcile.Valid && reSession != null -> {
                                         val proposal = reDecision.proposal
+                                        // The anchor-refusal notice persists: the
+                                        // re-adopted face shows the CURRENT truth.
                                         screen = ExchangeScreen.ImportReview(
                                             summary = durableImportSummary(proposal, reSession),
                                             expiresAtEpochMs = reSession.expiresAtEpochMs,
@@ -1593,7 +1595,9 @@ class ExchangeFlowStateHolder(
                                     }
 
                                     else -> {
-                                        status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_REVIEW_UNAVAILABLE)
+                                        // The invalidation took effect: fail-closed
+                                        // cleanup and close. The anchor-refusal
+                                        // notice stays (it explains the close).
                                         screen = ExchangeScreen.Closed
                                     }
                                 }
