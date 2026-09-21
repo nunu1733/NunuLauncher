@@ -711,6 +711,130 @@ class ExchangeImportSurfaceInstrumentationTest {
     @Test
     fun captureEvidenceJaDark() = captureEvidence("ja", dark = true)
 
+    /** Issue #373 evidence: failure face, default locale, light. */
+    @Test
+    fun captureFailureEvidenceDefaultLight() = captureFailureEvidence("default", dark = false, fontScale = null)
+
+    /** Issue #373 evidence: failure face, default locale, dark. */
+    @Test
+    fun captureFailureEvidenceDefaultDark() = captureFailureEvidence("default", dark = true, fontScale = null)
+
+    /** Issue #373 evidence: failure face, ja正本, light. */
+    @Test
+    fun captureFailureEvidenceJaLight() = captureFailureEvidence("ja", dark = false, fontScale = null)
+
+    /** Issue #373 evidence: failure face, ja正本, dark. */
+    @Test
+    fun captureFailureEvidenceJaDark() = captureFailureEvidence("ja", dark = true, fontScale = null)
+
+    /** Issue #373 evidence (IM-AC-09): failure face at 200% font, ja正本, light. */
+    @Test
+    fun captureFailureEvidenceJaTwoHundredPercentFont() = captureFailureEvidence("ja", dark = false, fontScale = 2f)
+
+    /**
+     * Issue #373 (IM-AC-09): capture the T-18 failure face with its remedy
+     * projection — one remedy copy + action + the face-level means, detail
+     * expansion closed by default (opened for the bounded-detail shot).
+     */
+    private fun captureFailureEvidence(locale: String, dark: Boolean, fontScale: Float?) {
+        val outDir = java.io.File(context.filesDir, "evidence-373").apply { mkdirs() }
+        val holder = newHolder()
+        composeRule.setContent {
+            val config = android.content.res.Configuration(context.resources.configuration).apply {
+                if (locale == "ja") setLocale(java.util.Locale.JAPAN)
+                uiMode = (uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK.inv()) or
+                    if (dark) {
+                        android.content.res.Configuration.UI_MODE_NIGHT_YES
+                    } else {
+                        android.content.res.Configuration.UI_MODE_NIGHT_NO
+                    }
+            }
+            val localized = context.createConfigurationContext(config)
+            val registryOwner = LocalActivityResultRegistryOwner.current
+                ?: error("no ActivityResultRegistryOwner")
+            val scheme = if (dark) {
+                androidx.compose.material3.darkColorScheme()
+            } else {
+                androidx.compose.material3.lightColorScheme()
+            }
+            val densityOverride = if (fontScale != null) {
+                val d = LocalDensity.current
+                Density(d.density, fontScale = fontScale)
+            } else {
+                null
+            }
+            MaterialTheme(colorScheme = scheme) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(
+                        LocalContext provides localized,
+                        LocalActivityResultRegistryOwner provides registryOwner,
+                    ) {
+                        CompositionLocalProvider(
+                            *(densityOverride?.let { arrayOf(LocalDensity provides it) } ?: emptyArray()),
+                        ) {
+                            LazyColumn {
+                                exchangeFlowItems(
+                                    holder = holder,
+                                    onDiscardRequest = {},
+                                    clipboardTransport = { _, _ -> ExchangeTransportResult.Success },
+                                    shareTransport = { _, _ -> ExchangeTransportResult.Success },
+                                    fileTransport = FileExchangeTransport(context),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        openImportSurface(holder)
+        composeRule.onNodeWithTag("exchange-import-fallback-toggle").performClick()
+        composeRule.waitForIdle()
+        // A marked reply bound to no active session settles as EXPORT_MISMATCH:
+        // the remedy projection answers 「依頼を作り直す」.
+        val intent = PersonalizedIntentV1(
+            exportId = "instrumentation-no-session",
+            itemIntents = listOf(ItemIntent(ref = "r1", preserve = true), ItemIntent(ref = "r2")),
+        )
+        val reply = buildString {
+            append(ExchangeContract.INTENT_BEGIN_MARKER)
+            append('\n')
+            append(IntentCodec.encode(intent).decodeToString())
+            append('\n')
+            append(ExchangeContract.INTENT_END_MARKER)
+        }
+        composeRule.onNodeWithTag("exchange-import-field").performTextInput(reply)
+        composeRule.onNodeWithTag("exchange-import-action").performClick()
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithTag("exchange-import-failure-action").fetchSemanticsNodes().isNotEmpty()
+        }
+        val tag = "$locale-${if (dark) "dark" else "light"}${if (fontScale != null) "-200font" else ""}"
+        captureWindowBitmap(outDir, "issue373-failure-$tag.png")
+
+        // The detail expansion opened (typed cause + recognition + raw).
+        composeRule.onNodeWithTag("exchange-import-detail-toggle").performClick()
+        composeRule.waitForIdle()
+        captureWindowBitmap(outDir, "issue373-failure-detail-$tag.png")
+        println("evidence-373: $outDir/issue373-failure-$tag.png")
+    }
+
+    private fun captureWindowBitmap(outDir: java.io.File, name: String) {
+        // The lifecycle monitor is main-thread-only; capture on main.
+        var captured: android.graphics.Bitmap? = null
+        composeRule.runOnUiThread {
+            val resumed = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+                .getInstance()
+                .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED)
+                .filterIsInstance<Activity>()
+                .firstOrNull()
+                ?: error("no resumed activity for capture")
+            captured = resumed.window.decorView.drawToBitmap()
+        }
+        val bitmap = checkNotNull(captured)
+        java.io.File(outDir, name).outputStream().use { stream ->
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)
+        }
+    }
+
     /**
      * Issue #372 (EX-AC-10 evidence): renders the T-15 and T-16 request faces
      * under one locale/dark configuration and writes the PNG captures for the
