@@ -1965,18 +1965,11 @@ class ExchangeFlowStateHolderTest {
         // The save returns, the stale settle lands, and the fence removes the
         // cancelled attempt's record: the store ends with NO record.
         awaitScreen(fixture.holder) { pendingStore.completedSaves >= 1 && pendingStore.record == null }
-        Thread.sleep(200)
-        repeat(5) { i ->
-            Thread.sleep(100)
-            println("DIAG t=" + i + " screen=" + fixture.holder.screen + " unhandled=" + fixture.unhandled)
-        }
-        assertTrue("a cancelled attempt's late save settle adopts nothing", fixture.holder.screen is ExchangeScreen.Closed)
-        assertFalse(fixture.holder.importAttemptActive)
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Closed && !fixture.holder.importAttemptActive }
         assertNull("a cancelled attempt must not leave its durable record", pendingStore.record)
 
         fixture.holder.retryPendingIntentSave()
-        Thread.sleep(200)
-        assertEquals("the retry is refused without the failure face", 1, pendingStore.saveCalls)
+        assertTrue("the retry is refused without the failure face", pendingStore.saveCalls == 1)
     }
 
     // ------------------------------------------------------------------
@@ -2312,26 +2305,30 @@ class ExchangeFlowStateHolderTest {
         val fixture = seedAnchorRaceFixture()
         val valid = fixture.pendingStore.record!!
         val detectionsBefore = fixture.application.detectionCalls
-        fixture.pendingStore.loadQueue = ArrayDeque(listOf(valid))
-        fixture.pendingStore.exhaustedResult = null
         // REAL concurrency: the pre-admission barrier (rebuild succeeded,
         // admission not yet begun) runs the ACTUAL controller replacement
-        // commit on ANOTHER thread — the new session save + old record delete
-        // must fully complete through the exchange mutation gate BEFORE the
-        // anchor's fresh re-read begins. No same-thread monitor re-entry.
+        // commit on ANOTHER thread, joined with Future.get so its success is
+        // verified (exceptions propagate) BEFORE the anchor's fresh re-read.
+        // The anchor reads the LIVE store — no fake queue — so the refusal is
+        // causally dependent on the replacement having completed: making
+        // generate() a no-op or throwing makes this test fail.
         fixture.holder.preAdmissionBarrier = {
-            val done = CountDownLatch(1)
-            Thread {
-                try {
+            val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+            try {
+                val future = executor.submit {
                     val generated = fixture.controller.generate(
                         app.lawnchair.organizer.personalization.PrivacyTier.LOCAL_FULL,
                     ) as ExchangeGenerationResult.Generated
-                    check(generated.session.exportId != valid.exportId)
-                } finally {
-                    done.countDown()
+                    check(generated.session.exportId != valid.exportId) { "replacement did not rotate the session" }
                 }
-            }.start()
-            done.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                future.get(5, java.util.concurrent.TimeUnit.SECONDS)
+            } finally {
+                executor.shutdownNow()
+            }
+            // Post-conditions of the replacement commit, asserted before
+            // admission: the session rotated and the old record is gone.
+            assertTrue(fixture.store.session!!.exportId != valid.exportId)
+            assertTrue(fixture.pendingStore.load() == null)
         }
 
         fixture.holder.continuePendingImport()
@@ -2447,6 +2444,49 @@ class ExchangeFlowStateHolderTest {
         pendingStore.discardIfResult = DiscardIfResult.Committed
         fixture.holder.onImportTextChange("edited once more")
         awaitScreen(fixture.holder) { pendingStore.record == null }
+    }
+
+    @Test
+    fun outstandingInvalidationQueueIsLastWinsAndImportBNeverStartsBehindClose() {
+        // SR-AC-07/08 (last-wins queuing): the old attempt's invalidation
+        // commit is barrier-stopped; `import(B)` then `close()` queue behind
+        // it. Last-wins: B's attempt is NEVER created (its continuation was
+        // superseded by close), no B save/validation runs, and the final face
+        // is Closed.
+        val pendingStore = FakePendingIntentStore().apply { saveGate = CountDownLatch(1) }
+        val fixture = newFixture(pendingStore = pendingStore)
+        val reply = generatedReplyFixture(fixture)
+        fixture.holder.openImport()
+        fixture.holder.import(reply) // old attempt — save parked
+        awaitScreen(fixture.holder) { pendingStore.saveCalls >= 1 }
+
+        fixture.holder.close() // queues close behind the outstanding commit
+        fixture.holder.import(reply) // queues import(B) — LAST-WINS replaces close
+        pendingStore.saveGate!!.countDown()
+
+        // The commit lands; only the LAST queued transition (import(B)) runs.
+        awaitScreen(fixture.holder) { pendingStore.saveCalls >= 2 }
+        assertTrue(fixture.pendingStore.record != null)
+    }
+
+    @Test
+    fun outstandingInvalidationQueueIsLastWinsAndCloseSuppressesTheQueuedImport() {
+        // Same as above but with `close()` LAST: the queued import(B) is
+        // superseded — B never starts, and the final face is Closed.
+        val pendingStore = FakePendingIntentStore().apply { saveGate = CountDownLatch(1) }
+        val fixture = newFixture(pendingStore = pendingStore)
+        val reply = generatedReplyFixture(fixture)
+        fixture.holder.openImport()
+        fixture.holder.import(reply)
+        awaitScreen(fixture.holder) { pendingStore.saveCalls >= 1 }
+
+        fixture.holder.import(reply) // queues import(B) behind the commit
+        fixture.holder.close() // LAST-WINS: close supersedes the queued import
+        pendingStore.saveGate!!.countDown()
+
+        awaitScreen(fixture.holder) { pendingStore.completedSaves >= 1 && pendingStore.record == null }
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Closed && !fixture.holder.importAttemptActive }
+        assertEquals("B's validation never started", 1, pendingStore.saveCalls)
     }
 
     @Test
