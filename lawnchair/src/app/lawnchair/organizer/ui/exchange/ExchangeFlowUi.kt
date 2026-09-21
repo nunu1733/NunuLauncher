@@ -61,19 +61,26 @@ import app.lawnchair.organizer.integration.exchange.ExchangeTransportFailure
 import app.lawnchair.organizer.integration.exchange.ExchangeTransportResult
 import app.lawnchair.organizer.integration.exchange.FileExchangeRead
 import app.lawnchair.organizer.integration.exchange.FileExchangeTransport
+import app.lawnchair.organizer.personalization.DurablePendingIntent
 import app.lawnchair.organizer.personalization.ExportSession
 import app.lawnchair.organizer.personalization.IntentValidationFailure
+import app.lawnchair.organizer.personalization.PendingImportEntryKind
+import app.lawnchair.organizer.personalization.PendingImportedIntentStore
 import app.lawnchair.organizer.personalization.PrivacyTier
 import app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent
+import app.lawnchair.organizer.personalization.durablePendingIntentFrom
 import app.lawnchair.organizer.personalization.exchange.ExchangeEnvelopeFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportResult
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportSummary
 import app.lawnchair.organizer.personalization.exchange.ImportNormalizationFailure
+import app.lawnchair.organizer.personalization.exchange.PendingIntentReconcile
 import app.lawnchair.organizer.personalization.exchange.RecognizedImportFraming
 import app.lawnchair.organizer.personalization.exchange.RecognizedImportInfo
 import app.lawnchair.organizer.personalization.exchange.acceptsExchangeImportEnvelope
+import app.lawnchair.organizer.personalization.exchange.durableImportSummary
 import app.lawnchair.organizer.personalization.exchange.exchangeImportSummary
+import app.lawnchair.organizer.personalization.exchange.reconcilePendingIntent
 import app.lawnchair.organizer.ui.ManualOrganizationRun
 import app.lawnchair.organizer.ui.UsageAccessJitGate
 import app.lawnchair.organizer.ui.UsageAccessJitGateProvider
@@ -160,6 +167,42 @@ sealed interface ExchangeScreen {
         val entryKind: ExchangeImportEntryKind,
         val attemptToken: Long,
         val continuing: Boolean = false,
+    ) : ExchangeScreen
+
+    /**
+     * Issue #374 (spec 374 DI-AC-01 "ImportReview再開面", cold process到達範囲):
+     * the resume face of an imported proposal (T-18's review form), reached
+     * from the hub status card through
+     * [ExchangeFlowStateHolder.openPendingImportReview]. Carries the
+     * privacy-safe summary reconstructed from the durable record plus the
+     * session ([durableImportSummary] — the same pure derivation and inputs
+     * as the success face), the remaining-time display root (the SESSION's
+     * expiry and the read instant — the session stays the display master),
+     * and the persisted entry kind. It holds NO attempt anchor (the durable
+     * record is the anchor) and offers NO continuation CTA — #375 owns the
+     * rebind; the only actions are the D-13 discard and the zero-write close.
+     */
+    data class ImportReview(
+        val summary: ExchangeImportSummary,
+        val expiresAtEpochMs: Long,
+        val readAtEpochMs: Long,
+        val entryKind: ExchangeImportEntryKind,
+    ) : ExchangeScreen
+
+    /**
+     * Issue #374 (spec 374 DI-AC-13): the typed failure of the durable
+     * persistence step. It is NOT one of the 20 import validation classes —
+     * validation already passed; only the durable save of the record failed.
+     * The pending intent and its attempt stay anchored in the holder, so the
+     * face's retry re-runs ONLY the store save (never validation); closing
+     * interrupts without saving anything (the record is absent, so the status
+     * card can never show this proposal — guaranteed by not saving).
+     */
+    data class ImportPersistenceFailure(
+        val attemptToken: Long,
+        val entryKind: ExchangeImportEntryKind,
+        /** True while a retry save is in flight (the retry is single-flight). */
+        val retrying: Boolean = false,
     ) : ExchangeScreen
 
     /**
@@ -266,6 +309,15 @@ class ExchangeFlowStateHolder(
      * wakeup and drives the dialog from it.
      */
     val usageAccessGate: UsageAccessJitGate = UsageAccessJitGate(isGranted = { true }),
+    /**
+     * Issue #374 (spec 374 "store契約"): the durable pending imported intent
+     * store. Production injects the real store (`PendingImportedIntentModule`);
+     * the benign default keeps hosts/fixtures that predate the durable contract
+     * at today's behavior (a save/discard that "succeeds" without persisting,
+     * so the success/discard lifecycles are unchanged where no durable
+     * contract is under test).
+     */
+    private val pendingImportStore: PendingImportedIntentStore = NoopPendingImportedIntentStore,
 ) {
     private val controllerLazy = lazy(LazyThreadSafetyMode.NONE) { controllerFactory() }
     private val controller: ExchangeFlowController get() = controllerLazy.value
@@ -555,7 +607,16 @@ class ExchangeFlowStateHolder(
 
     private fun handleGeneration(result: ExchangeGenerationResult, tier: PrivacyTier) {
         when (result) {
-            is ExchangeGenerationResult.Generated ->
+            is ExchangeGenerationResult.Generated -> {
+                // Issue #374 (spec 374 DI-AC-03): a saved new session means the
+                // user approved the replacement — the imported proposal is
+                // discarded in ALL of its three holding places. The durable
+                // record was already deleted by the controller right after the
+                // new session's save (write order 「新session保存 → 旧pending
+                // 無効化」); here the in-process places follow: the pending slot
+                // and the showing success/persistence-failure state. This is
+                // replacement, not a user discard — no IMPORT_DISCARDED status.
+                invalidateImportedIntentForReplacement()
                 screen = ExchangeScreen.Disclosing(
                     ExchangeDisclosureState(
                         session = result.session,
@@ -563,6 +624,7 @@ class ExchangeFlowStateHolder(
                         tier = tier,
                     ),
                 )
+            }
 
             is ExchangeGenerationResult.InputNotReady -> {
                 status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_INPUT_NOT_READY)
@@ -583,6 +645,25 @@ class ExchangeFlowStateHolder(
                 screen = readActiveRequestIntoSelecting()
             }
         }
+    }
+
+    /**
+     * Issue #374 (spec 374 DI-AC-03): the in-process half of the replacement
+     * invalidation — clears the pending slot and any showing import success /
+     * persistence-failure state when a new request's generation succeeded.
+     * No-op when no imported proposal exists in-process (the controller-side
+     * durable delete is unconditional and cheap on an absent record).
+     */
+    private fun invalidateImportedIntentForReplacement() {
+        if (pendingValidated == null &&
+            screen !is ExchangeScreen.ImportSuccess &&
+            screen !is ExchangeScreen.ImportPersistenceFailure
+        ) {
+            return
+        }
+        invalidateImportAttempt()
+        status = null
+        screen = ExchangeScreen.Closed
     }
 
     /**
@@ -822,6 +903,13 @@ class ExchangeFlowStateHolder(
     private var pendingValidated: ValidatedPersonalizedIntent? = null
 
     /**
+     * Issue #374: the durable record built at the validated settle. Kept
+     * anchored with the attempt so [retryPendingIntentSave] re-runs ONLY the
+     * store save of the identical record (byte-stable retry).
+     */
+    private var pendingDurableRecord: DurablePendingIntent? = null
+
+    /**
      * Issue #328 (spec: import attempt生存中の競合freeze): true from the
      * moment an attempt is numbered until the attempt reaches its terminal
      * (failure surface shown, success state closed/discarded/replaced, or a
@@ -842,6 +930,7 @@ class ExchangeFlowStateHolder(
     private fun invalidateImportAttempt() {
         activeAttempt = null
         pendingValidated = null
+        pendingDurableRecord = null
     }
 
     /**
@@ -858,6 +947,7 @@ class ExchangeFlowStateHolder(
         )
         activeAttempt = attempt
         pendingValidated = null
+        pendingDurableRecord = null
         return attempt
     }
 
@@ -898,26 +988,118 @@ class ExchangeFlowStateHolder(
                 }
             }
             pendingValidated = pipeline.validated
-            val scopeCount = if (attempt.entryKind == ExchangeImportEntryKind.RUN_IN) {
-                pipeline.validated.session.scopeCandidates.size
-            } else {
-                0
-            }
-            screen = ExchangeScreen.ImportSuccess(
-                summary = exchangeImportSummary(
-                    pipeline.validated.completed,
-                    scopeCount,
-                    // Issue #337: the advertised ref kinds of the same accepted
-                    // export, so the summary can tell an existing category from
-                    // a run-scoped proposal.
-                    categoryKindByRef = pipeline.validated.export.categories.associate { it.ref to it.kind },
-                ),
-                entryKind = attempt.entryKind,
-                attemptToken = attempt.token,
-            )
+            // Issue #374 (spec 374 DI-AC-01/DI-AC-13): the durable save is part
+            // of this settle — ImportSuccess is adopted only after the record
+            // is durably saved; a failed save adopts the retryable
+            // ImportPersistenceFailure face instead (never a success state).
+            persistPendingImport(attempt, pipeline.validated)
         } else {
             activeAttempt = null
             screen = ExchangeScreen.ImportOutcomeScreen(outcome, rawText = replyText)
+        }
+    }
+
+    /**
+     * Issue #374: builds the durable record of the validated proposal and
+     * saves it through the injected [PendingImportedIntentStore] on the IO
+     * dispatcher (the same settle coroutine structure as the validation
+     * itself). The settle anchors to the attempt token exactly like the
+     * validation settle — a late save result after a cancel / a newer import /
+     * an input edit is dropped and never adopts a face.
+     */
+    private fun persistPendingImport(attempt: ImportAttempt, validated: ValidatedPersonalizedIntent) {
+        val record = durablePendingIntentFrom(
+            completed = validated.completed,
+            identity = validated.identity,
+            entryKind = when (attempt.entryKind) {
+                ExchangeImportEntryKind.IDLE -> PendingImportEntryKind.IDLE
+                ExchangeImportEntryKind.RUN_IN -> PendingImportEntryKind.RUN_IN
+            },
+            nowEpochMs = controller.nowEpochMs(),
+            expiresAtEpochMs = validated.session.expiresAtEpochMs,
+        )
+        pendingDurableRecord = record
+        scope.launch(Dispatchers.IO) {
+            val saved = pendingImportStore.save(record)
+            withContext(uiDispatcher) { settlePendingIntentSave(attempt, saved) }
+        }
+    }
+
+    /**
+     * Issue #374: applies one persistence-step settle. The anchor contract is
+     * unchanged from the validation settle — the save result applies only
+     * while the SAME attempt is still current (a cancel, a newer import or
+     * an input edit already dropped it otherwise). Save success adopts
+     * ImportSuccess exactly as pre-#374; failure adopts the typed
+     * persistence-failure face with the pending intent kept for a retry.
+     */
+    private fun settlePendingIntentSave(attempt: ImportAttempt, saved: Boolean) {
+        if (activeAttempt?.token != attempt.token) return
+        // Run-in entries: the owning run must still hold its selection surface
+        // at the adoption moment (defense-in-depth — the same check as the
+        // validation settle; the durable save added one settle hop).
+        if (attempt.entryKind == ExchangeImportEntryKind.RUN_IN) {
+            val selecting = run.state as? ManualOrganizationRun.State.Selecting
+            if (attempt.owningRunId == null || selecting?.runId != attempt.owningRunId) {
+                activeAttempt = null
+                return
+            }
+        }
+        val isRetry = screenState.value is ExchangeScreen.ImportPersistenceFailure
+        if (saved) {
+            adoptImportSuccess(attempt)
+        } else {
+            if (isRetry) {
+                // The face did not change on a failed retry — surface the
+                // typed notice so the failure is observable.
+                status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_PERSIST_FAILED)
+            }
+            screen = ExchangeScreen.ImportPersistenceFailure(
+                attemptToken = attempt.token,
+                entryKind = attempt.entryKind,
+            )
+        }
+    }
+
+    /** The pre-#374 ImportSuccess adoption, unchanged (summary + anchors). */
+    private fun adoptImportSuccess(attempt: ImportAttempt) {
+        val validated = pendingValidated ?: return
+        val scopeCount = if (attempt.entryKind == ExchangeImportEntryKind.RUN_IN) {
+            validated.session.scopeCandidates.size
+        } else {
+            0
+        }
+        screen = ExchangeScreen.ImportSuccess(
+            summary = exchangeImportSummary(
+                validated.completed,
+                scopeCount,
+                // Issue #337: the advertised ref kinds of the same accepted
+                // export, so the summary can tell an existing category from a
+                // run-scoped proposal.
+                categoryKindByRef = validated.export.categories.associate { it.ref to it.kind },
+            ),
+            entryKind = attempt.entryKind,
+            attemptToken = attempt.token,
+        )
+    }
+
+    /**
+     * Issue #374 (spec 374 DI-AC-13): the primary remedy of the persistence
+     * failure face — re-runs ONLY the store save of the anchored record
+     * (validation is never repeated). Single-flight through the synchronous
+     * [ExchangeScreen.ImportPersistenceFailure.retrying] flip; valid only
+     * while the failure face and the attempt are current.
+     */
+    fun retryPendingIntentSave() {
+        val failure = screenState.value as? ExchangeScreen.ImportPersistenceFailure ?: return
+        if (failure.retrying) return
+        val attempt = activeAttempt ?: return
+        if (attempt.token != failure.attemptToken) return
+        val record = pendingDurableRecord ?: return
+        screen = failure.copy(retrying = true)
+        scope.launch(Dispatchers.IO) {
+            val saved = pendingImportStore.save(record)
+            withContext(uiDispatcher) { settlePendingIntentSave(attempt, saved) }
         }
     }
 
@@ -1013,6 +1195,13 @@ class ExchangeFlowStateHolder(
                 }
                 activeAttempt = null
                 pendingValidated = null
+                pendingDurableRecord = null
+                // Issue #374 / #375 contract (spec 374 Contract notes 6): the
+                // durable record is deliberately NOT written or deleted on a
+                // successful continuation settle — "継続成功は提案を消費しない"
+                // (a successful continue does not consume the proposal). The
+                // disappearance paths are discard / expiry / replacement only;
+                // the record outlives the run for #375's rebind.
                 // A refused-CTA guidance must not linger on the next surface.
                 status = null
                 screen = ExchangeScreen.Closed
@@ -1042,16 +1231,112 @@ class ExchangeFlowStateHolder(
     }
 
     /**
-     * Issue #328 (spec 328 D-2): the explicit discard. Refused while the CTA
-     * is continuing — a started seam cannot be withdrawn, so the discard side
-     * is the one that yields. The export session is NOT invalidated:
+     * Issue #374 (spec 374 DI-AC-01 "ImportReview再開面"): opens the
+     * cold-process resume face from the hub status card. Loads the durable
+     * record plus the ACTIVE export session on IO, applies the read-time
+     * reconcile (the master validity defense), and:
+     * - Valid → adopts [ExchangeScreen.ImportReview] with the summary
+     *   reconstructed by [durableImportSummary] (the same derivation and
+     *   inputs as the success face) and the SESSION's expiry as the
+     *   remaining-time display root;
+     * - Invalid → fail-closed: the record is cleaned (`delete`) and the typed
+     *   [ExchangeStatus.Kind.IMPORT_REVIEW_UNAVAILABLE] status surfaces while
+     *   the screen stays Closed (nothing is invented);
+     * - Absent → the same typed status.
+     *
+     * The run state is never touched and no CTA exists on the adopted face
+     * (#375 owns the rebind). The adoption is anchored to the Closed state
+     * this open leaves — a face that moved on while the read was in flight is
+     * never clobbered by a late review adoption (the Invalid cleanup is
+     * store-state and still applies).
+     */
+    fun openPendingImportReview() {
+        abandonAwaitingUsageAccessJit()
+        invalidateImportAttempt()
+        status = null
+        scope.launch(Dispatchers.IO) {
+            val now = controller.nowEpochMs()
+            val record = pendingImportStore.load()
+            val session = controller.activeSession()
+            val decision = reconcilePendingIntent(record, session, now)
+            if (decision is PendingIntentReconcile.Invalid) {
+                pendingImportStore.delete()
+            }
+            withContext(uiDispatcher) {
+                if (screenState.value !is ExchangeScreen.Closed) return@withContext
+                when {
+                    decision is PendingIntentReconcile.Valid && session != null -> {
+                        val proposal = decision.proposal
+                        screen = ExchangeScreen.ImportReview(
+                            summary = durableImportSummary(proposal, session),
+                            expiresAtEpochMs = session.expiresAtEpochMs,
+                            readAtEpochMs = now,
+                            entryKind = when (proposal.entryKind) {
+                                PendingImportEntryKind.IDLE -> ExchangeImportEntryKind.IDLE
+                                PendingImportEntryKind.RUN_IN -> ExchangeImportEntryKind.RUN_IN
+                            },
+                        )
+                    }
+
+                    else -> status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_REVIEW_UNAVAILABLE)
+                }
+            }
+        }
+    }
+
+    /**
+     * Issue #328 (spec 328 rev.2 D-13 / spec 374 DI-AC-08): the explicit
+     * discard — generalized by #374 to cover BOTH faces that hold an imported
+     * proposal: the 取り込み成功状態 (anchored to its attempt token) and the
+     * ImportReview resume face (anchored to the durable record itself — no
+     * attempt exists there). Refused while the CTA is continuing — a started
+     * seam cannot be withdrawn, so the discard side is the one that yields.
+     * The durable record is discarded through the tombstone two-phase commit
+     * (`store.discard()` on IO): the face closes ONLY after the tombstone
+     * commit succeeds; a failed commit is a typed notice and keeps the face
+     * and the proposal (retryable). The export session is NOT invalidated:
      * re-importing the same reply stays possible while the request is valid.
      */
     fun discardImport() {
-        val current = screenState.value as? ExchangeScreen.ImportSuccess ?: return
-        if (current.continuing) return
-        activeAttempt = null
-        pendingValidated = null
+        val current = screenState.value
+        val attemptToken: Long? = when (current) {
+            is ExchangeScreen.ImportSuccess -> {
+                if (current.continuing) return
+                current.attemptToken
+            }
+
+            is ExchangeScreen.ImportReview -> null
+
+            else -> return
+        }
+        scope.launch(Dispatchers.IO) {
+            val discarded = pendingImportStore.discard()
+            withContext(uiDispatcher) { settleDiscardImport(attemptToken, discarded) }
+        }
+    }
+
+    /**
+     * Issue #374 (DI-AC-08): applies the tombstone commit result. On the
+     * success face the settle stays bound to the attempt token and refused
+     * while continuing, exactly like the CTA settle; on the ImportReview face
+     * the durable record IS the anchor, so the result applies directly — a
+     * late result never closes a replaced face in either case.
+     */
+    private fun settleDiscardImport(attemptToken: Long?, discarded: Boolean) {
+        val current = screenState.value
+        val applies = when (current) {
+            is ExchangeScreen.ImportSuccess -> current.attemptToken == attemptToken && !current.continuing
+            is ExchangeScreen.ImportReview -> true
+            else -> false
+        }
+        if (!applies) return
+        if (!discarded) {
+            // Tombstone commit failed: the proposal stays valid and shown;
+            // the discard is retryable (the confirmation can be re-raised).
+            status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_DISCARD_FAILED)
+            return
+        }
+        invalidateImportAttempt()
         status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_DISCARDED)
         screen = ExchangeScreen.Closed
     }
@@ -1086,6 +1371,28 @@ data class ExchangeStatus(val kind: Kind) {
 
         /** Issue #328: the pending import was explicitly discarded. */
         IMPORT_DISCARDED,
+
+        /**
+         * Issue #374 (spec 374 DI-AC-13): the durable save of the imported
+         * proposal failed on a retry — a persistence-step typed failure, not
+         * one of the 20 import validation classes. The face stays; the retry
+         * remains possible.
+         */
+        IMPORT_PERSIST_FAILED,
+
+        /**
+         * Issue #374 (spec 374 DI-AC-08): the discard's tombstone commit
+         * failed — the proposal stays valid and shown, the discard retryable.
+         */
+        IMPORT_DISCARD_FAILED,
+
+        /**
+         * Issue #374 (spec 374 DI-AC-01 "ImportReview再開面"): the hub's
+         * ImportReview open found no valid proposal (expired, invalidated, or
+         * absent) — the typed notice of the fail-closed open; no review face
+         * is invented.
+         */
+        IMPORT_REVIEW_UNAVAILABLE,
     }
 
     companion object {
@@ -1106,8 +1413,14 @@ fun LazyListScope.exchangeFlowItems(
     shareTransport: (Context, String) -> ExchangeTransportResult,
     fileTransport: FileExchangeTransport,
     onOpenDiagnostics: (() -> Unit)? = null,
+    onImportDiscardRequest: () -> Unit = {},
+    importDiscardFocus: FocusRequester? = null,
 ) {
-    exchangeFlowItems(holder, null, emptyMap(), onDiscardRequest, discardFocus, clipboardTransport, shareTransport, fileTransport, onOpenDiagnostics)
+    exchangeFlowItems(
+        holder, null, emptyMap(), onDiscardRequest, discardFocus,
+        clipboardTransport, shareTransport, fileTransport, onOpenDiagnostics,
+        onImportDiscardRequest, importDiscardFocus,
+    )
 }
 
 /**
@@ -1116,9 +1429,14 @@ fun LazyListScope.exchangeFlowItems(
  * [scopedSelection] is non-null the generation composes the export from the
  * frozen selection instead of the idle full-organization scope.
  * [onDiscardRequest] converges the T-16 破棄 button and system Back on the
- * host's one discard confirmation (issue #372, D-13). [onOpenDiagnostics]
- * reaches the existing diagnostics route from the failure face's 診断を開く
- * (issue #373); null hides the row where no route exists.
+ * host's one discard confirmation (issue #372, D-13).
+ * [onImportDiscardRequest] is the #374 equivalent for the import success
+ * state's 破棄して閉じる button: it converges with system Back on the host's
+ * ONE import-discard confirmation (spec 328 rev.2 D-13), and
+ * [importDiscardFocus] is where the host restores focus after the dialog is
+ * dismissed. [onOpenDiagnostics] reaches the existing diagnostics route from
+ * the failure face's 診断を開く (issue #373); null hides the row where no
+ * route exists.
  */
 fun LazyListScope.exchangeFlowItems(
     holder: ExchangeFlowStateHolder,
@@ -1130,6 +1448,8 @@ fun LazyListScope.exchangeFlowItems(
     shareTransport: (Context, String) -> ExchangeTransportResult,
     fileTransport: FileExchangeTransport,
     onOpenDiagnostics: (() -> Unit)? = null,
+    onImportDiscardRequest: () -> Unit = {},
+    importDiscardFocus: FocusRequester? = null,
 ) {
     val scoped = scopedSelection?.let { it to scopedLabels }
     when (val current = holder.screen) {
@@ -1230,7 +1550,36 @@ fun LazyListScope.exchangeFlowItems(
                 ExchangeImportSuccess(
                     state = current,
                     onContinue = holder::continueImport,
-                    onDiscard = holder::discardImport,
+                    // Issue #374 (spec 328 rev.2 D-13): the explicit discard
+                    // button raises the SAME confirmation dialog as system
+                    // Back — the confirm itself runs holder.discardImport().
+                    onDiscard = onImportDiscardRequest,
+                    discardFocus = importDiscardFocus,
+                )
+            }
+        }
+
+        is ExchangeScreen.ImportPersistenceFailure -> {
+            item(key = "exchange-import-persist-failed") {
+                ExchangeImportPersistenceFailure(
+                    state = current,
+                    onRetry = holder::retryPendingIntentSave,
+                    onInterrupt = holder::close,
+                    onOpenDiagnostics = onOpenDiagnostics,
+                )
+            }
+        }
+
+        is ExchangeScreen.ImportReview -> {
+            item(key = "exchange-import-review") {
+                ExchangeImportReview(
+                    state = current,
+                    // Issue #374 (spec 328 rev.2 D-13): the review face's
+                    // 破棄して閉じる button converges with system Back priority
+                    // on the HOST's ONE import-discard confirmation — exactly
+                    // the same dialog entry the success face's button uses.
+                    onDiscard = onImportDiscardRequest,
+                    discardFocus = importDiscardFocus,
                 )
             }
         }
@@ -1893,46 +2242,89 @@ private val IMPORT_EDITOR_MAX_HEIGHT = 200.dp
 private const val IMPORT_EDITOR_MAX_LINES = 8
 
 /**
- * Issue #328 (spec 328 D-2): the system-Back interception for the import
- * success state. It MUST be composed at the always-composed hosting screen
- * level, AFTER the screen-level navigation handler — never inside the success
- * lazy item, whose composition can leave the viewport under large font. When
- * enabled (success state shown) it takes Back before the host fallback: a
- * non-continuing Back asks for the explicit discard confirmation; a
- * continuing Back is swallowed (a started run-connection seam cannot be
- * withdrawn mid-flight).
+ * Issue #328 (spec 328 rev.2 D-13 / #374): the system-Back interception for
+ * the import success state. It MUST be composed at the always-composed
+ * hosting screen level, AFTER the screen-level navigation handler — never
+ * inside the success lazy item, whose composition can leave the viewport
+ * under large font. When enabled (success state shown) it takes Back before
+ * the host fallback: a non-continuing Back asks for the explicit discard
+ * confirmation; a continuing Back is swallowed (a started run-connection
+ * seam cannot be withdrawn mid-flight).
+ *
+ * [onDiscardRequest] routes Back into the HOST's shared import-discard
+ * confirmation — the same dialog state the 破棄して閉じる button raises
+ * (spec 328 rev.2 D-13: both entries confirm exactly once). When null (hosts
+ * that only need the Back contract), the confirmation is hosted here.
  */
 @Composable
-fun ExchangeImportSuccessBackHandler(holder: ExchangeFlowStateHolder) {
+fun ExchangeImportSuccessBackHandler(
+    holder: ExchangeFlowStateHolder,
+    onDiscardRequest: (() -> Unit)? = null,
+) {
     val importSuccessState = holder.screen as? ExchangeScreen.ImportSuccess
     var showDiscardConfirm by remember { mutableStateOf(false) }
     BackHandler(enabled = importSuccessState != null) {
         if (importSuccessState?.continuing != true) {
-            showDiscardConfirm = true
+            val request = onDiscardRequest
+            if (request != null) {
+                request()
+            } else {
+                showDiscardConfirm = true
+            }
         }
     }
-    if (showDiscardConfirm && importSuccessState != null) {
-        AlertDialog(
-            onDismissRequest = { showDiscardConfirm = false },
-            title = { Text(stringResource(R.string.exchange_import_discard_confirm_title)) },
-            text = { Text(stringResource(R.string.exchange_import_discard_confirm_body)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDiscardConfirm = false
-                        holder.discardImport()
-                    },
-                ) {
-                    Text(stringResource(R.string.exchange_import_discard_confirm_confirm))
-                }
+    if (onDiscardRequest == null && showDiscardConfirm && importSuccessState != null) {
+        ExchangeImportDiscardConfirmDialog(
+            onConfirm = {
+                showDiscardConfirm = false
+                holder.discardImport()
             },
-            dismissButton = {
-                TextButton(onClick = { showDiscardConfirm = false }) {
-                    Text(stringResource(R.string.exchange_cancel))
-                }
-            },
+            onDismiss = { showDiscardConfirm = false },
         )
     }
+}
+
+/**
+ * Issue #374 (spec 328 rev.2 D-13): the ONE import-discard confirmation,
+ * shared by the 砄棄して閉じる button and system Back. Confirm runs the
+ * holder's [ExchangeFlowStateHolder.discardImport] (the durable tombstone
+ * two-phase commit — the face closes only after the commit succeeds);
+ * dismiss keeps the success state and the pending proposal. No timeout
+ * auto-confirm/cancel (organization-run-ux §6). Focus ownership is
+ * deterministic: the SAFE action (dismiss / keep) takes focus when the dialog
+ * opens, and the CALLER restores focus to the face's 破棄 action on dismissal
+ * via its own FocusRequester (explicit restoration — platform dialog focus
+ * restore is not deterministic).
+ */
+@Composable
+fun ExchangeImportDiscardConfirmDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    val safeActionFocus = remember { FocusRequester() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(text = stringResource(R.string.exchange_import_discard_confirm_title))
+        },
+        text = {
+            Text(
+                text = stringResource(R.string.exchange_import_discard_confirm_body),
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(stringResource(R.string.exchange_import_discard_confirm_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.focusRequester(safeActionFocus),
+            ) {
+                Text(stringResource(R.string.exchange_cancel))
+            }
+        },
+    )
+    LaunchedEffect(Unit) { safeActionFocus.requestFocus() }
 }
 
 /**
@@ -1955,6 +2347,18 @@ internal fun exchangeBackAction(screen: ExchangeScreen): ExchangeBackAction = wh
     is ExchangeScreen.ImportOutcomeScreen,
     is ExchangeScreen.ImportSuccess,
     -> ExchangeBackAction.NONE
+
+    // Issue #374 (spec 374 DI-AC-13): Back on the persistence-failure face is
+    // the zero-write 中断 — the record was never saved, so there is no
+    // durable proposal to lose and no confirmation is needed (D-13 §9; the
+    // face body already states the re-import recovery path).
+    is ExchangeScreen.ImportPersistenceFailure -> ExchangeBackAction.CLOSE
+
+    // Issue #374 (spec 374 "ImportReview再開面"): Back on the resume face is
+    // the PLAIN zero-write close — closing keeps the durable record (opening
+    // the face discards nothing), so no D-13 confirmation. The flow-level
+    // handler (always composed at the hosting level) owns it.
+    is ExchangeScreen.ImportReview -> ExchangeBackAction.CLOSE
 
     ExchangeScreen.Generating -> ExchangeBackAction.BLOCKED
 
@@ -2085,6 +2489,7 @@ private fun ExchangeImportSuccess(
     state: ExchangeScreen.ImportSuccess,
     onContinue: () -> Unit,
     onDiscard: () -> Unit,
+    discardFocus: FocusRequester? = null,
 ) {
     val summary = state.summary
     val warning = summary.noJudgmentCount > 0
@@ -2110,6 +2515,64 @@ private fun ExchangeImportSuccess(
                 .focusable()
                 .testTag("exchange-import-success-title"),
         )
+        ExchangeImportSummaryContent(
+            summary = summary,
+            showScopeCandidates = state.entryKind == ExchangeImportEntryKind.RUN_IN && summary.scopeCandidateCount > 0,
+        )
+        Button(
+            onClick = onContinue,
+            enabled = !state.continuing,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+                .testTag("exchange-import-continue"),
+        ) {
+            Text(
+                stringResource(
+                    if (state.entryKind == ExchangeImportEntryKind.RUN_IN) {
+                        R.string.exchange_import_cta_run_in
+                    } else {
+                        R.string.exchange_import_cta_idle
+                    },
+                ),
+            )
+        }
+        OutlinedButton(
+            onClick = onDiscard,
+            enabled = !state.continuing,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp)
+                // Issue #374: the host restores focus here after the shared
+                // import-discard confirmation is dismissed (deterministic
+                // restore, mirroring the T-16 破棄 slot).
+                .then(discardFocus?.let { Modifier.focusRequester(it) } ?: Modifier)
+                .testTag("exchange-import-discard"),
+        ) {
+            Text(stringResource(R.string.exchange_import_discard))
+        }
+    }
+}
+
+/**
+ * Issue #374: the privacy-safe summary block shared verbatim by the 取り込み
+ * 成功状態 ([ExchangeImportSuccess], spec 328 AC-4) and the ImportReview
+ * resume face ([ExchangeImportReview]) — recognized count, the no-judgment
+ * total, the four-kind breakdown plus proposed groups, the run-in scope count
+ * (caller-gated), the whole-policy line, and the not-yet-applied statement.
+ * Extracted from the success face unchanged (same styles, same test tags);
+ * the two faces are mutually exclusive states of one flow, so the shared tags
+ * identify exactly the face that is showing.
+ */
+@Composable
+private fun ExchangeImportSummaryContent(
+    summary: ExchangeImportSummary,
+    showScopeCandidates: Boolean,
+) {
+    // Single top-level emitter (compose lint); a plain zero-spacing Column
+    // keeps the extracted block visually identical to its inline original.
+    Column {
+        val warning = summary.noJudgmentCount > 0
         Text(
             text = pluralStringResource(
                 R.plurals.exchange_import_summary_recognized,
@@ -2132,7 +2595,7 @@ private fun ExchangeImportSuccess(
                 modifier = Modifier.testTag("exchange-import-summary-no-judgment"),
             )
         }
-        if (state.entryKind == ExchangeImportEntryKind.RUN_IN && summary.scopeCandidateCount > 0) {
+        if (showScopeCandidates) {
             Text(
                 text = pluralStringResource(
                     R.plurals.exchange_import_summary_scope_candidates,
@@ -2185,33 +2648,151 @@ private fun ExchangeImportSuccess(
                 .padding(top = 8.dp)
                 .testTag("exchange-import-not-applied"),
         )
-        Button(
-            onClick = onContinue,
-            enabled = !state.continuing,
+    }
+}
+
+/**
+ * Issue #374 (spec 374 DI-AC-01 "ImportReview再開面", cold process到達範囲):
+ * the resume face of an imported proposal — the SAME privacy-safe summary as
+ * the success face (reconstructed from the durable record plus the session),
+ * the remaining time of the underlying request (the session's expiry — the
+ * same vocabulary and derivation as T-15: `requestRemainingDisplay` over the
+ * same plurals, no ticking clock), and the D-13 破棄して閉じる routed through
+ * the host's ONE import-discard confirmation. **NO continuation CTA** — not
+ * even a disabled or placeholder one (#375 owns the rebind; the #366
+ * capability-先取り禁止 principle). System Back is the plain zero-write
+ * close ([exchangeBackAction] → CLOSE): closing keeps the record.
+ */
+@Composable
+private fun ExchangeImportReview(
+    state: ExchangeScreen.ImportReview,
+    onDiscard: () -> Unit,
+    discardFocus: FocusRequester? = null,
+) {
+    val summary = state.summary
+    val warning = summary.noJudgmentCount > 0
+    // The arrival moves focus to the face heading (the success face's
+    // FocusTargetText pattern) in addition to the live-region announcement.
+    val headingFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        runCatching { headingFocus.requestFocus() }
+    }
+    val remaining = requestRemainingDisplay(state.expiresAtEpochMs, state.readAtEpochMs)
+    Column(
+        modifier = Modifier
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .testTag("exchange-import-review"),
+    ) {
+        Text(
+            text = stringResource(
+                if (warning) R.string.exchange_import_success_warning_title else R.string.exchange_import_success_title,
+            ),
+            style = MaterialTheme.typography.titleMedium,
             modifier = Modifier
-                .fillMaxWidth()
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .focusRequester(headingFocus)
+                .focusable()
+                .testTag("exchange-import-review-title"),
+        )
+        ExchangeImportSummaryContent(
+            summary = summary,
+            showScopeCandidates = state.entryKind == ExchangeImportEntryKind.RUN_IN && summary.scopeCandidateCount > 0,
+        )
+        Text(
+            text = when (remaining) {
+                is RequestRemaining.Hours -> pluralStringResource(R.plurals.exchange_request_remaining_hours, remaining.count, remaining.count)
+                RequestRemaining.UnderOneHour -> stringResource(R.string.exchange_request_remaining_under_hour)
+            },
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier
                 .padding(top = 8.dp)
-                .testTag("exchange-import-continue"),
-        ) {
-            Text(
-                stringResource(
-                    if (state.entryKind == ExchangeImportEntryKind.RUN_IN) {
-                        R.string.exchange_import_cta_run_in
-                    } else {
-                        R.string.exchange_import_cta_idle
-                    },
-                ),
-            )
-        }
+                .testTag("exchange-import-review-remaining"),
+        )
         OutlinedButton(
             onClick = onDiscard,
-            enabled = !state.continuing,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 4.dp)
-                .testTag("exchange-import-discard"),
+                // Issue #374: the host restores focus here after the shared
+                // import-discard confirmation is dismissed (deterministic
+                // restore, mirroring the success face's 破棄 slot).
+                .then(discardFocus?.let { Modifier.focusRequester(it) } ?: Modifier)
+                .testTag("exchange-import-review-discard"),
         ) {
             Text(stringResource(R.string.exchange_import_discard))
+        }
+    }
+}
+
+/**
+ * Issue #374 (spec 374 DI-AC-13, #373 D-11 projection style): the typed
+ * failure face of the durable persistence step. Validation already passed —
+ * this is not one of the 20 validation classes — so the primary remedy is
+ * ONE action (save again, retrying only the store save of the anchored
+ * record); the face-level means are always present: 中断する closes without
+ * saving (nothing durable exists, so no confirmation — D-13 §9) and 診断を開く
+ * walks the existing diagnostics route where one exists. The body states the
+ * interruption consequence and the re-import recovery path.
+ */
+@Composable
+private fun ExchangeImportPersistenceFailure(
+    state: ExchangeScreen.ImportPersistenceFailure,
+    onRetry: () -> Unit,
+    onInterrupt: () -> Unit,
+    onOpenDiagnostics: (() -> Unit)?,
+) {
+    // The arrival moves focus to the face heading (FocusTargetText pattern)
+    // in addition to the live-region announcement.
+    val headingFocus = remember { FocusRequester() }
+    LaunchedEffect(state.attemptToken) {
+        runCatching { headingFocus.requestFocus() }
+    }
+    Column(
+        modifier = Modifier
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .testTag("exchange-import-persist-failed"),
+    ) {
+        Text(
+            text = stringResource(R.string.exchange_import_persist_failed_title),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .focusRequester(headingFocus)
+                .focusable()
+                .testTag("exchange-import-persist-failed-title"),
+        )
+        Text(
+            text = stringResource(R.string.exchange_import_persist_failed_body),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .testTag("exchange-import-persist-failed-body"),
+        )
+        Button(
+            onClick = onRetry,
+            enabled = !state.retrying,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+                .testTag("exchange-import-persist-retry"),
+        ) {
+            Text(stringResource(R.string.exchange_import_persist_retry))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(
+                onClick = onInterrupt,
+                modifier = Modifier.testTag("exchange-import-persist-interrupt"),
+            ) {
+                Text(stringResource(R.string.exchange_import_interrupt))
+            }
+            if (onOpenDiagnostics != null) {
+                TextButton(
+                    onClick = onOpenDiagnostics,
+                    modifier = Modifier.testTag("exchange-import-persist-open-diagnostics"),
+                ) {
+                    Text(stringResource(R.string.exchange_import_open_diagnostics))
+                }
+            }
         }
     }
 }
@@ -2480,6 +3061,9 @@ fun exchangeStatusTextResource(kind: ExchangeStatus.Kind): Int = when (kind) {
     ExchangeStatus.Kind.CLIPBOARD_NOT_TEXT -> R.string.exchange_status_clipboard_not_text
     ExchangeStatus.Kind.CTA_START_FAILED -> R.string.exchange_import_cta_failed
     ExchangeStatus.Kind.IMPORT_DISCARDED -> R.string.exchange_import_discarded_guidance
+    ExchangeStatus.Kind.IMPORT_PERSIST_FAILED -> R.string.exchange_import_persist_failed_title
+    ExchangeStatus.Kind.IMPORT_DISCARD_FAILED -> R.string.exchange_import_discard_failed
+    ExchangeStatus.Kind.IMPORT_REVIEW_UNAVAILABLE -> R.string.exchange_import_review_unavailable
 }
 
 @Composable
@@ -2528,3 +3112,16 @@ fun exchangeContractFailureText(failure: IntentValidationFailure): String = when
 
 /** Issue #371: gate owner identity of one generation attempt's JIT request. */
 internal data class ExchangeJitAttemptOwner(val attemptToken: Long)
+
+/**
+ * Issue #374: the benign default of the holder's [PendingImportedIntentStore]
+ * seam — success without persisting, so holders/fixtures that do not wire the
+ * durable store keep the pre-#374 lifecycles. Production always injects the
+ * real store through `PendingImportedIntentModule`.
+ */
+private object NoopPendingImportedIntentStore : PendingImportedIntentStore {
+    override fun save(proposal: DurablePendingIntent): Boolean = true
+    override fun load(): DurablePendingIntent? = null
+    override fun discard(): Boolean = true
+    override fun delete() = Unit
+}

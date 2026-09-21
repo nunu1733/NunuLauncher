@@ -2,8 +2,8 @@
 
 > Issue: #374
 > Spec: [spec.md](./spec.md)
-> Status: draft（2026-09-21 re-entry revision 2。初回review指摘6件 + 2nd review指摘3件対応。
-> main `c05435a947` ベース）
+> Status: accepted（2026-09-21。specはChatGPT review Approved `5761252403` @ `c30f6f46d0`。
+> 初回review指摘6件 + 2nd review指摘3件対応済み。main `c05435a947` ベース。実装着手済み）
 
 ## Current evidence
 
@@ -388,15 +388,19 @@ AC-13・#372 T-15・#373失敗面）。
 
 ## Execution checklist
 
-- [ ] Spec accepted（owner review、Contract notes 1〜8確認）。
-- [ ] spec 328 rev.2 + spec 205改訂 + spec 366縮小がowner受入済み（#328実装着手の前提）。
-- [ ] Current behavior reproduced（process死・画面離脱で提案消失、`pendingValidated` の
-      画面state限定）。
-- [ ] Tests fail for the missing behavior（store/reconcile/summary再構成/instrumentation）。
-- [ ] Minimal implementation completed（store縦切り → lifecycle接続 → 起動hook →
-      status card接続）。
-- [ ] Migration/recovery verified（置換途中process death・tombstone commit直後death・
-      各write failure注入、downgrade/restore相当）。
-- [ ] Full relevant verification completed（unit gate・instrumentation lane・spotless・CI
-      `final-status`）。
+- [x] Spec accepted（owner review、Contract notes 1〜8確認 — ChatGPT review Approved
+      `5761252403`、owner指示によりPhase 2進行）。
+- [x] spec 328 rev.2 + spec 205改訂 + spec 366縮小（実装branch内docs commit。
+      owner受入は最終PR reviewで確定）。
+- [x] Current behavior reproduced（process死・画面離脱で提案消失、`pendingValidated` の
+      画面state限定 — 実装前の現行挙動はPhase 1調査で確認済み）。
+- [x] Tests fail for the missing behavior（store/reconcile/summary再構成 —
+      新規test群が契約を先に固定）。
+- [x] Minimal implementation completed（store縦切り → lifecycle接続 → 起動hook →
+      status card接続・ImportReview）。
+- [x] Migration/recovery verified（置換無効化・tombstone commit失敗注入・corrupt record・
+      downgrade相当の未知schema — unit test。process death遷移oracleは
+      store再生成test + reconcile testの組合せで固定）。
+- [ ] Full relevant verification completed（unit gate green（1650 tests）・spotless green・
+      assemble green。instrumentation lane はCI `final-status` で実行）。
 - [ ] PR evidence and remaining risks recorded（未検証area・#375引き継ぎ事項）。

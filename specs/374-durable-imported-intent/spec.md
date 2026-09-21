@@ -1,6 +1,6 @@
 ---
 issue: "#374"
-status: draft
+status: accepted
 requirements: [FR-017]
 risk:
   - privacy
@@ -23,6 +23,8 @@ updated: 2026-09-21
 > すべてmerge済みである（2026-09-21時点のmain `c05435a947`）。本revisionは
 > 初回review（2026-09-19、Changes requested 6件）への対応、これら前提merge後のcurrent main
 > へのre-entry、および2nd review（2026-09-21、Changes requested 3件）への対応である。
+> Status: **accepted** — ChatGPT review **Approved**（[comment `5761252403`](https://github.com/nunu1733/NunuLauncher/issues/374#issuecomment-5761252403)
+> @ `c30f6f46d0`、2026-09-21）を受け、owner指示（Phase 2実装進行）により実装着手。
 
 ## Problem
 
