@@ -2288,8 +2288,6 @@ class ExchangeFlowStateHolderTest {
         val detectionsBefore = fixture.application.detectionCalls
 
         fixture.holder.continuePendingImport()
-        Thread.sleep(1500)
-        println("DIAG screen=" + fixture.holder.screen + " status=" + fixture.holder.status?.kind + " runState=" + fixture.run.state::class.java.simpleName + " loadCalls=" + fixture.pendingStore.loadCalls)
         awaitScreen(fixture.holder) { fixture.holder.status?.kind == ExchangeStatus.Kind.REBIND_ANCHOR_REFUSED }
 
         assertEquals("the run admission must not occur", "Idle", fixture.run.state::class.java.simpleName)
@@ -2311,8 +2309,10 @@ class ExchangeFlowStateHolderTest {
         fixture.pendingStore.loadQueue = ArrayDeque(listOf(valid))
         fixture.pendingStore.exhaustedResult = null
         fixture.pendingStore.onLoad = { callCount ->
-            if (callCount == 2) {
-                // The real replacement commit: new session + old record delete.
+            if (callCount == 3) {
+                // The rebuild read (#2) saw the valid old world and SUCCEEDED;
+                // the anchor's own fresh read (#3) now races the REAL
+                // replacement commit: new session save + old record delete.
                 val generated = fixture.controller.generate(
                     app.lawnchair.organizer.personalization.PrivacyTier.LOCAL_FULL,
                 ) as ExchangeGenerationResult.Generated
@@ -2321,7 +2321,7 @@ class ExchangeFlowStateHolderTest {
         }
 
         fixture.holder.continuePendingImport()
-        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Closed }
+        awaitScreen(fixture.holder) { fixture.holder.status?.kind == ExchangeStatus.Kind.REBIND_ANCHOR_REFUSED }
 
         assertEquals("the run admission must not occur", "Idle", fixture.run.state::class.java.simpleName)
         assertEquals("detection never runs without admission", detectionsBefore, fixture.application.detectionCalls)
@@ -2385,6 +2385,7 @@ class ExchangeFlowStateHolderTest {
 
         fixture.holder.continuePendingImport()
         awaitRunState(fixture.run) { it !is ManualOrganizationRun.State.Idle }
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Closed }
 
         assertTrue("the proposal survives a successful continuation", fixture.pendingStore.record == record)
         assertTrue(fixture.holder.screen is ExchangeScreen.Closed)
@@ -2412,6 +2413,9 @@ class ExchangeFlowStateHolderTest {
         fixture.holder.onImportTextChange("edited while saving") // invalidation commit queued
         pendingStore.saveGate!!.countDown() // the write lands...
         awaitScreen(fixture.holder) { pendingStore.discardIfCalls >= 1 } // ...and the invalidation ran
+        // The typed persistence notice surfaces (the invalidation did NOT
+        // take effect) and the record survives — not tombstoned.
+        awaitScreen(fixture.holder) { fixture.holder.status?.kind == ExchangeStatus.Kind.IMPORT_PERSIST_FAILED }
         assertTrue(
             "WriteFailed must not tombstone the record (the invalidation did not take effect)",
             pendingStore.record?.discarded == false,

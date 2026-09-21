@@ -967,6 +967,17 @@ class ExchangeFlowStateHolder(
     val importContinuationActive: Boolean
         get() = (screenState.value as? ExchangeScreen.ImportSuccess)?.continuing == true
 
+    /**
+     * Issue #375 (spec "gate上への線形化統一"): the retry anchor of a FAILED
+     * invalidation commit. `null` = no invalidation is outstanding. A
+     * `WriteFailed` keeps the expected record here (the in-memory slots were
+     * already handed to the successor) until the SAME commit is re-run and
+     * lands `Committed`/`NoMatch`; the rebind admission anchor treats an
+     * outstanding invalidation of the fresh record as a refusal (an
+     * invalidation-pending proposal is never Valid for continuation).
+     */
+    private var pendingInvalidation: DurablePendingIntent? = null
+
     private fun invalidateImportAttempt() {
         activeAttempt = null
         pendingValidated = null
@@ -976,27 +987,45 @@ class ExchangeFlowStateHolder(
             // Issue #374 (review finding 1) + #375: the attempt lost its
             // anchor — its NOT-YET-COMMITTED record must never survive as the
             // store's single-active record. The cleanup is the attempt's
-            // INVALIDATION COMMIT and runs inside the exchange mutation gate
-            // as a CONDITIONAL TOMBSTONE (`discardIf`): only a store record
-            // still equal to this attempt's record is atomically marked
-            // `discarded=true` (the durable, crash-safe validity truth the
-            // rebind anchor's reconcile sees), the physical delete is
-            // best-effort. A `WriteFailed` means the invalidation did NOT
-            // take effect: the result-carrying commit RESTORES the retry
-            // anchor (so the next invalidation re-runs the commit) and
-            // surfaces the typed persistence notice — never a silent
-            // fire-and-forget (spec 375 Failure behavior).
+            // INVALIDATION COMMIT: a gate-held conditional tombstone
+            // (`discardIf`). `Committed`/`NoMatch` settle it terminally;
+            // `WriteFailed` keeps [pendingInvalidation] as the retry anchor
+            // (typed notice surfaced) so the SAME commit is re-run by the
+            // next invalidation/rebind anchor opportunity — never a silent
+            // fire-and-forget (spec Failure behavior).
             scope.launch(Dispatchers.IO) {
                 val result = exchangeMutationGate.withGate { pendingImportStore.discardIf(record) }
                 withContext(uiDispatcher) {
-                    if (result is DiscardIfResult.WriteFailed && pendingDurableRecord == null) {
-                        pendingDurableRecord = record
+                    if (result is DiscardIfResult.WriteFailed) {
+                        if (pendingInvalidation == null) pendingInvalidation = record
                         status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_PERSIST_FAILED)
                     }
                 }
             }
         }
+        retryPendingInvalidation()
     }
+
+    /**
+     * Issue #375: re-runs an outstanding invalidation commit (a previous
+     * `WriteFailed`) inside the gate. Called from the invalidation entry
+     * points so a failed commit is retried without user-visible ceremony;
+     * terminal on `Committed`/`NoMatch`.
+     */
+    private fun retryPendingInvalidation() {
+        val record = pendingInvalidation ?: return
+        scope.launch(Dispatchers.IO) {
+            val result = exchangeMutationGate.withGate { pendingImportStore.discardIf(record) }
+            withContext(uiDispatcher) {
+                if (result is DiscardIfResult.Committed || result is DiscardIfResult.NoMatch) {
+                    if (pendingInvalidation == record) pendingInvalidation = null
+                }
+            }
+        }
+    }
+
+    /** True while an invalidation commit of [record] is outstanding (un-landed `WriteFailed`). */
+    private fun isInvalidationPending(record: DurablePendingIntent?): Boolean = record != null && pendingInvalidation == record
 
     /**
      * Numbers a fresh import attempt from the CURRENT run state: the run-in
@@ -1097,11 +1126,13 @@ class ExchangeFlowStateHolder(
      * - Fence 1 (pre-write currency): an attempt already invalidated before
      *   the gate was granted never writes at all;
      * - Fence 2 (post-write currency): a write that LANDED while its attempt
-     *   went stale is removed by `deleteIf(record)` inside the SAME gate hold
-     *   — never a newer attempt's record;
+     *   went stale is INVALIDATED by `discardIf(record)` (conditional
+     *   tombstone — `Committed`/`NoMatch` settle it; `WriteFailed` keeps the
+     *   proposal valid as the invalidation retry anchor) inside the SAME gate
+     *   hold — never a newer attempt's record;
      * - the run-in owning-run re-check also completes inside the gate (its
-     *   `deleteIf` too), so every durable mutation of the save path happens
-     *   under one gate hold.
+     *   `discardIf` tombstone too), so every durable mutation of the save
+     *   path happens under one gate hold.
      *
      * The gate is RELEASED before the UI settle runs: the settle is a pure
      * screen/state projection (it never touches the store — spec 375
@@ -1127,7 +1158,7 @@ class ExchangeFlowStateHolder(
                     // equality). The in-memory slots already belong to the
                     // successor attempt — the settle must not touch them.
                     val invalidation = if (saved) pendingImportStore.discardIf(record) else DiscardIfResult.NoMatch
-                    return@withGate DurableSaveOutcome.FencedAfterWrite(invalidation)
+                    return@withGate DurableSaveOutcome.FencedAfterWrite(record, invalidation)
                 }
                 // Run-in entries: the owning run must still hold its selection
                 // surface at the adoption moment (defense-in-depth — the same
@@ -1140,7 +1171,7 @@ class ExchangeFlowStateHolder(
                     val selecting = run.state as? ManualOrganizationRun.State.Selecting
                     if (attempt.owningRunId == null || selecting?.runId != attempt.owningRunId) {
                         val invalidation = if (saved) pendingImportStore.discardIf(record) else DiscardIfResult.NoMatch
-                        return@withGate DurableSaveOutcome.OwningRunDropped(invalidation)
+                        return@withGate DurableSaveOutcome.OwningRunDropped(record, invalidation)
                     }
                 }
                 DurableSaveOutcome.Written(saved)
@@ -1155,10 +1186,10 @@ class ExchangeFlowStateHolder(
         data object FencedBeforeWrite : DurableSaveOutcome
 
         /** The write landed but the attempt went stale mid-flight; invalidated inside the gate. */
-        data class FencedAfterWrite(val invalidation: DiscardIfResult) : DurableSaveOutcome
+        data class FencedAfterWrite(val record: DurablePendingIntent, val invalidation: DiscardIfResult) : DurableSaveOutcome
 
         /** The run-in owning run lost its surface; the write was invalidated inside the gate. */
-        data class OwningRunDropped(val invalidation: DiscardIfResult) : DurableSaveOutcome
+        data class OwningRunDropped(val record: DurablePendingIntent, val invalidation: DiscardIfResult) : DurableSaveOutcome
 
         /** The write landed for a still-current attempt; settle adopts/fails per [saved]. */
         data class Written(val saved: Boolean) : DurableSaveOutcome
@@ -1184,9 +1215,13 @@ class ExchangeFlowStateHolder(
                 // The write landed but the attempt went stale mid-flight: the
                 // record was invalidated (tombstone) INSIDE the gate; the
                 // in-memory slots already belong to the successor attempt —
-                // the settle must not touch them (a plain screen projection
-                // only). A `WriteFailed` invalidation leaves the record valid;
-                // the read-time reconcile stays the master for that case.
+                // the settle must not touch them. A `WriteFailed`
+                // invalidation leaves the record valid: it becomes the
+                // invalidation RETRY ANCHOR (the rebind anchor refuses it as
+                // invalidation-pending until the commit lands).
+                if (outcome.invalidation is DiscardIfResult.WriteFailed) {
+                    pendingInvalidation = outcome.record
+                }
                 return
             }
 
@@ -1194,13 +1229,14 @@ class ExchangeFlowStateHolder(
                 // The run-in owning run lost its surface before adoption: the
                 // record was invalidated INSIDE the gate; the dropped
                 // attempt's slots clear here (pure in-memory projection). A
-                // `WriteFailed` keeps the record valid — it remains the
-                // durable truth the status card shows (retryable through the
-                // reconcile-governed lifecycle), so only the attempt drops.
+                // `WriteFailed` keeps the record as the invalidation RETRY
+                // ANCHOR (the same commit is re-run; until it lands, the
+                // rebind anchor refuses this record as invalidation-pending).
                 pendingDurableRecord = null
                 pendingValidated = null
                 activeAttempt = null
                 if (outcome.invalidation is DiscardIfResult.WriteFailed) {
+                    pendingInvalidation = outcome.record
                     status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_PERSIST_FAILED)
                 }
                 return
@@ -1577,7 +1613,13 @@ class ExchangeFlowStateHolder(
                             val fresh = pendingImportStore.load()
                             val freshSession = controller.activeSession()
                             val verdict = reconcilePendingIntent(fresh, freshSession, controller.nowEpochMs())
-                            val matches = verdict is PendingIntentReconcile.Valid && fresh == sourceRecord
+                            val matches = verdict is PendingIntentReconcile.Valid &&
+                                fresh == sourceRecord &&
+                                // An outstanding invalidation commit of this
+                                // very record (a landed `WriteFailed`) is an
+                                // invalidation-pending state — never Valid
+                                // for continuation.
+                                !isInvalidationPending(fresh)
                             if (matches) complete()
                             matches
                         }
