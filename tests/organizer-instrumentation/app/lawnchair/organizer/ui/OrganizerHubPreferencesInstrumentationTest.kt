@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.activity.OnBackPressedDispatcher
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -100,6 +101,7 @@ import app.lawnchair.ui.preferences.destinations.OrganizerStrategyPreferences
 import app.lawnchair.ui.preferences.destinations.OrganizerUsageMaterialRows
 import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
 import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizer
+import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizerDiagnostics
 import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizerStrategy
 import app.lawnchair.ui.theme.LawnchairTheme
 import com.android.launcher3.R
@@ -148,7 +150,12 @@ class OrganizerHubPreferencesInstrumentationTest {
                                 ManualOrganizationPreferences(
                                     run = runner,
                                     trigger = route.trigger,
+                                    durableRecovery = route.durableRecovery,
+                                    onOpenDiagnostics = { navController.navigate(HomeScreenOrganizerDiagnostics) },
                                 )
+                            }
+                            composable<HomeScreenOrganizerDiagnostics> {
+                                Text(text = DIAGNOSTICS_STUB_TEXT)
                             }
                             composable<HomeScreenOrganizerStrategy> {
                                 OrganizerStrategyPreferences(run = runner)
@@ -424,6 +431,13 @@ class OrganizerHubPreferencesInstrumentationTest {
             context.getString(R.string.manual_organization_recovery),
         ).assertIsDisplayed().assertHasClickAction()
         composeRule.onNodeWithText(
+            context.resources.getQuantityString(
+                R.plurals.manual_organization_recovery_remaining_hours,
+                5,
+                5,
+            ),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_start_again),
         ).assertDoesNotExist()
         composeRule.onNodeWithText(
@@ -564,10 +578,11 @@ class OrganizerHubPreferencesInstrumentationTest {
         }
         // Let the run-face destination leave composition and its back-stack
         // entry settle before teardown, or the NavHost lifecycle races the
-        // activity destroy.
+        // activity destroy. (The preview-face body text is unique to the run
+        // surface — the confirm label duplicates the hub's own CTA string.)
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText(
-                context.getString(R.string.manual_organization_recovery_confirm),
+                context.getString(R.string.manual_organization_recovery_preview),
             ).fetchSemanticsNodes().isEmpty()
         }
         composeRule.waitForIdle()
@@ -624,6 +639,188 @@ class OrganizerHubPreferencesInstrumentationTest {
         }
         assertEquals(ManualOrganizationRun.State.Idle, runner.state)
     }
+
+    /**
+     * Issue #376 (RS-AC-02, instrumentation side): with a surviving older
+     * point, restoring the latest and returning to the hub re-presents the
+     * remaining point as the next restore target (row + CTA).
+     */
+    @Test
+    fun restoreSuccessRepresentsTheRemainingPointAfterHubReturn() {
+        val application = FakeHubApplication().apply {
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+            restorableEntry = RestorableRecoveryEntry(
+                RecoveryPointId(POINT_ID),
+                app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+            )
+            recoveryPreview = RecoveryPreviewResult.Restorable(
+                pointId = RecoveryPointId(POINT_ID),
+                summary = RecoveryPreviewSummary(),
+                confirmation = RecoveryPreviewConfirmation.issue(byteArrayOf(1)),
+            )
+            confirmResult = RecoveryResult.Restored(RecoveryPointId(POINT_ID))
+            // The store keeps the older point; the re-derive still reads
+            // restorable, and the selection now points at the survivor.
+            durableStatusAfterConfirm = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+            restorableEntryAfterConfirm = RestorableRecoveryEntry(
+                RecoveryPointId(OTHER_POINT_ID),
+                app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(2),
+            )
+        }
+        val runner = hubRunner(application)
+        var dispatcher: OnBackPressedDispatcher? = null
+        setHubContent(runner, captureDispatcher = { dispatcher = it })
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_recovery),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_recovery),
+        ).performClick()
+
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.RecoveryPreview }
+        composeRule.waitUntil(5_000) { application.previewRequests >= 1 }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_recovery_confirm),
+        ).performClick()
+
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.RecoveryResultState }
+        composeRule.runOnIdle { checkNotNull(dispatcher).onBackPressed() }
+
+        // The re-presented row names the surviving point's remaining window.
+        composeRule.waitUntil(10_000) {
+            runner.state is ManualOrganizationRun.State.Idle &&
+                composeRule.onAllNodesWithText(
+                    context.resources.getQuantityString(
+                        R.plurals.manual_organization_recovery_remaining_hours,
+                        2,
+                        2,
+                    ),
+                ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_durable_status_restorable),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_recovery),
+        ).assertIsDisplayed()
+    }
+
+    /**
+     * Issue #376 (RS-AC-04, instrumentation side): a failed restore keeps the
+     * result/safe-support face across the diagnostics round trip — the host
+     * disposal of the diagnostics push must not dissolve the terminal state.
+     */
+    @Test
+    fun restoreFailureKeepsTheResultFaceAcrossTheDiagnosticsRoundTrip() {
+        val application = FakeHubApplication().apply {
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+            restorableEntry = RestorableRecoveryEntry(
+                RecoveryPointId(POINT_ID),
+                app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+            )
+            recoveryPreview = RecoveryPreviewResult.Restorable(
+                pointId = RecoveryPointId(POINT_ID),
+                summary = RecoveryPreviewSummary(),
+                confirmation = RecoveryPreviewConfirmation.issue(byteArrayOf(1)),
+            )
+            confirmResult = RecoveryResult.RestoreFailed(
+                RecoveryPointId(POINT_ID),
+                app.lawnchair.organizer.application.public.RecoveryFailure.RECOVERY_STORE_FAILED,
+                app.lawnchair.organizer.application.public.AuthoritativeState.UNKNOWN,
+            )
+        }
+        val runner = hubRunner(application)
+        var dispatcher: OnBackPressedDispatcher? = null
+        setHubContent(runner, captureDispatcher = { dispatcher = it })
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_recovery),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_recovery),
+        ).performClick()
+
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.RecoveryPreview }
+        composeRule.waitUntil(5_000) { application.previewRequests >= 1 }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_recovery_confirm),
+        ).performClick()
+
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.RecoveryResultState }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_open_diagnostics),
+        ).assertIsDisplayed().performClick()
+
+        // The diagnostics destination is on top; the result face is preserved
+        // underneath (state untouched by the push).
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(DIAGNOSTICS_STUB_TEXT).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.runOnIdle { checkNotNull(dispatcher).onBackPressed() }
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_safe_terminal),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        org.junit.Assert.assertTrue(runner.state is ManualOrganizationRun.State.RecoveryResultState)
+    }
+
+    /**
+     * Issue #376 (RS-AC-06, instrumentation side): a fail-closed entry hint
+     * keeps the row display-only, and the next re-read trigger recovers the
+     * CTA (no permanent CTA loss after transient read contention).
+     */
+    @Test
+    fun failClosedEntryHintRecoversOnTheNextReReadTrigger() {
+        val application = FakeHubApplication().apply {
+            durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+            restorableEntry = null
+        }
+        val runner = hubRunner(application)
+        setHubContent(runner)
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_durable_status_restorable),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_recovery),
+        ).assertDoesNotExist()
+
+        // Simulate the store gaining a valid point, then pulse the readiness
+        // gate — the observable re-read trigger (spec 271 DS-AC-09 contract).
+        composeRule.runOnIdle {
+            application.restorableEntry = RestorableRecoveryEntry(
+                RecoveryPointId(POINT_ID),
+                app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+            )
+        }
+        composeRule.runOnIdle {
+            application.readiness.value =
+                app.lawnchair.organizer.application.protocol.ReadinessGate.State.RECONCILING
+        }
+        composeRule.runOnIdle {
+            application.readiness.value =
+                app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY
+        }
+
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_recovery),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    /** The bounds top of the safe-support line, for round-trip ordering asserts. */
+    private fun topOfSafeSupportLine(): Float = composeRule.onNodeWithText(
+        context.getString(R.string.manual_organization_safe_terminal),
+    ).fetchSemanticsNode().boundsInRoot.top
 
     /**
      * HUB-AC-04: the start CTA only navigates to the existing run surface
@@ -688,6 +885,10 @@ class OrganizerHubPreferencesInstrumentationTest {
     fun hubStatusRowsPrecedeTheActionsInReadingOrder() {
         val application = FakeHubApplication().apply {
             durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+            restorableEntry = RestorableRecoveryEntry(
+                RecoveryPointId(POINT_ID),
+                app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+            )
         }
         val runner = hubRunner(application)
         setHubContent(runner)
@@ -700,10 +901,20 @@ class OrganizerHubPreferencesInstrumentationTest {
         fun topOf(text: String): Float = composeRule.onNodeWithText(text)
             .fetchSemanticsNode().boundsInRoot.top
         val statusTop = topOf(context.getString(R.string.manual_organization_durable_status_restorable))
+        val remainingTop = topOf(
+            context.resources.getQuantityString(
+                R.plurals.manual_organization_recovery_remaining_hours,
+                5,
+                5,
+            ),
+        )
+        val restoreCtaTop = topOf(context.getString(R.string.manual_organization_recovery))
         val startTop = topOf(context.getString(R.string.manual_organization_start))
         val diagnosticsTop = topOf(context.getString(R.string.organizer_diagnostics_title))
         val materialsTop = topOf(context.getString(R.string.organizer_hub_materials_heading))
-        assert(statusTop < startTop) { "status row must precede the start CTA" }
+        assert(statusTop < remainingTop) { "status row must precede the remaining window" }
+        assert(remainingTop < restoreCtaTop) { "remaining window must precede the restore CTA (TO-BE 13-5)" }
+        assert(restoreCtaTop < startTop) { "restore CTA must precede the start CTA" }
         assert(startTop < diagnosticsTop) { "start CTA must precede the diagnostics entry" }
         assert(diagnosticsTop < materialsTop) { "diagnostics entry must precede the materials" }
     }
@@ -713,6 +924,10 @@ class OrganizerHubPreferencesInstrumentationTest {
     fun hubStatusCardStaysReachableAtTwoHundredPercentFontScale() {
         val application = FakeHubApplication().apply {
             durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+            restorableEntry = RestorableRecoveryEntry(
+                RecoveryPointId(POINT_ID),
+                app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+            )
         }
         val runner = hubRunner(application)
         setHubContent(runner, fontScale = 2f)
@@ -788,6 +1003,10 @@ class OrganizerHubPreferencesInstrumentationTest {
     fun hubRowsExposeNameRoleAndStateToAssistiveTechnology() {
         val application = FakeHubApplication().apply {
             durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+            restorableEntry = RestorableRecoveryEntry(
+                RecoveryPointId(POINT_ID),
+                app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+            )
         }
         val runner = hubRunner(application)
         setHubContent(runner)
@@ -798,6 +1017,7 @@ class OrganizerHubPreferencesInstrumentationTest {
             ).fetchSemanticsNodes().isNotEmpty()
         }
         listOf(
+            R.string.manual_organization_recovery,
             R.string.manual_organization_start,
             R.string.organizer_diagnostics_title,
             R.string.organizer_category_overrides_title,
@@ -809,6 +1029,14 @@ class OrganizerHubPreferencesInstrumentationTest {
             scrollTextIntoView(text)
             composeRule.onNodeWithText(text).assertHasClickAction()
         }
+        // Issue #376 (RS-AC-06): the restore CTA exposes an explicit Button
+        // role, distinct from the row's plain status text and scoped to the
+        // CTA (the scaffold's top bar hosts another Button role).
+        scrollTextIntoView(context.getString(R.string.manual_organization_recovery))
+        composeRule.onNode(
+            hasText(context.getString(R.string.manual_organization_recovery))
+                .and(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)),
+        ).assertExists()
         composeRule.onNode(
             SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch),
         ).assertExists()
@@ -823,11 +1051,19 @@ class OrganizerHubPreferencesInstrumentationTest {
     fun hubTraversalReachesStartDiagnosticsAndMaterialsInOrder() {
         val application = FakeHubApplication().apply {
             durableStatus = OrganizerDurableStatus.ORGANIZED_RESTORABLE
+            restorableEntry = RestorableRecoveryEntry(
+                RecoveryPointId(POINT_ID),
+                app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+            )
         }
         val runner = hubRunner(application)
         setHubContent(runner)
 
-        // The deterministic entry focus lands on the start CTA first.
+        // The deterministic entry focus lands on the start CTA first. With the
+        // restore CTA present (RS-AC-06) the composed order — and with it the
+        // traversal order — carries 状態 → 残期限 → 復元CTA → 開始; the reading
+        // order and role oracles pin that structure without depending on the
+        // emulator's DPAD focus quirks.
         awaitFocused(context.getString(R.string.manual_organization_start))
         val order = listOf(
             R.string.organizer_diagnostics_title,
@@ -1012,6 +1248,7 @@ class OrganizerHubPreferencesInstrumentationTest {
 
         /** Simulates the recovery store changing under a successful restore. */
         var durableStatusAfterConfirm: OrganizerDurableStatus? = null
+        var restorableEntryAfterConfirm: RestorableRecoveryEntry? = null
 
         val readLog = java.util.Collections.synchronizedList(mutableListOf<String>())
         private var activeReads = 0
@@ -1093,6 +1330,7 @@ class OrganizerHubPreferencesInstrumentationTest {
 
         override fun confirmRecovery(pointId: RecoveryPointId, confirmation: RecoveryPreviewConfirmation): RecoveryResult {
             durableStatusAfterConfirm?.let { durableStatus = it }
+            restorableEntryAfterConfirm?.let { restorableEntry = it }
             return confirmResult
         }
 
@@ -1100,8 +1338,10 @@ class OrganizerHubPreferencesInstrumentationTest {
     }
 
     private companion object {
+        const val DIAGNOSTICS_STUB_TEXT = "issue376-diagnostics-stub"
         const val RUN_ID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         const val POINT_ID = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        const val OTHER_POINT_ID = "dddddddddddddddddddddddddddddddd"
         const val REVISION = "revision"
         const val SHA_256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 

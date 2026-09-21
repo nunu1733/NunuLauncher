@@ -246,10 +246,13 @@ fun readRestorableRecoveryEntry(): RestorableRecoveryEntry?
 - 新規persisted data・schema変更・migration: **なし**（spec「Data and state」節）。
 - identity: `RecoveryPointId` を再利用。新識別子なし。tokenはprocess-local non-persistent
   （既存registry、module instance所有）。entry originはprocess-localなcoordinator state（非永続）。
-- 実装で確定したnavigation形態（open question 2）: hub CTAのtapでrun面へ即時遷移し、
-  entry coroutineがadmissionを試み、不受理（silent reject）のときは `popBackStack()` で
-  hubへ戻る。coroutine内navigateはnavigation-composeのteardownと競合するため、
-  navigateはclick handler内で同期実行する。
+- 実装で確定したnavigation形態（open question 2）: hub CTAのtapで
+  `HomeScreenManualOrganization(durableRecovery = true)` へ同期遷移し、
+  **admission自体はrun面destinationが所有する**（`LaunchedEffect` + NonCancellable。
+  destination自開始では `rememberSaveable` ガードで1回のみ実行し、不受理時は
+  `popBackStack()` で自己復帰、host離脱とadmissionの競合窗口ではcoordinatorを
+  pre-entry状態へ戻す）。coroutine内navigateはnavigation-composeのteardownと
+  競合するため、navigateはclick handler内で同期実行する。
 - control flow（cold process、hub起点）:
 
 ```text

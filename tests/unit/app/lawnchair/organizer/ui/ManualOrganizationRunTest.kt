@@ -1092,6 +1092,60 @@ class ManualOrganizationRunTest {
     }
 
     @Test
+    fun hubOriginRecoveryResultStateSurvivesTheGenericDismissal() {
+        // Issue #376 (RS-AC-04 / spec D5): the explicit hub return owns the
+        // result-face exit; a generic dismissal (host dispose, diagnostics
+        // push) must keep the terminal state so the result surface survives.
+        val application = FakeApplication(readyInput())
+        application.restorableEntry = app.lawnchair.organizer.application.public.RestorableRecoveryEntry(
+            pointId = RecoveryPointId(POINT_ID),
+            remainingWindow = app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+        )
+        application.recoveryPreview = restorablePreview(POINT_ID)
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.beginRecoveryPreviewFromDurableEntry()
+        runner.confirmRecovery()
+        assertTrue(runner.state is ManualOrganizationRun.State.RecoveryResultState)
+
+        runner.dismiss()
+
+        assertTrue(runner.state is ManualOrganizationRun.State.RecoveryResultState)
+    }
+
+    @Test
+    fun durableEntryRepresentsTheNextRemainingPointAfterHubReturn() {
+        // Issue #376 (RS-AC-02): with two retained points, restoring the
+        // latest and returning to the hub re-presents the surviving point as
+        // the next restore target (state-machine proof, not manual evidence).
+        val application = FakeApplication(readyInput())
+        application.restorableEntry = app.lawnchair.organizer.application.public.RestorableRecoveryEntry(
+            pointId = RecoveryPointId(POINT_ID),
+            remainingWindow = app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+        )
+        application.recoveryPreview = restorablePreview(POINT_ID)
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        assertTrue(runner.beginRecoveryPreviewFromDurableEntry())
+        runner.confirmRecovery()
+        assertTrue(runner.state is ManualOrganizationRun.State.RecoveryResultState)
+        assertTrue(runner.leaveRecoveryResultToHub())
+        assertEquals(ManualOrganizationRun.State.Idle, runner.state)
+
+        // The hub's re-read now selects the surviving older point.
+        application.restorableEntry = app.lawnchair.organizer.application.public.RestorableRecoveryEntry(
+            pointId = RecoveryPointId(OTHER_POINT_ID),
+            remainingWindow = app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(2),
+        )
+        application.recoveryPreview = restorablePreview(OTHER_POINT_ID)
+
+        assertTrue(runner.beginRecoveryPreviewFromDurableEntry())
+        val nextPreview = runner.state as ManualOrganizationRun.State.RecoveryPreview
+        val restorable = nextPreview.result as RecoveryPreviewResult.Restorable
+        assertEquals(RecoveryPointId(OTHER_POINT_ID), restorable.pointId)
+    }
+
+    @Test
     fun legacyRecoveryResultStateIsUnchangedByTheExplicitHubReturn() {
         val application = FakeApplication(readyInput())
         application.recoveryPreview = restorablePreview(POINT_ID)

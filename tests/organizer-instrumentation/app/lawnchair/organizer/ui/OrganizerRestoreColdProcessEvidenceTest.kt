@@ -189,6 +189,7 @@ class OrganizerRestoreColdProcessEvidenceTest {
                             ManualOrganizationPreferences(
                                 run = coordinator,
                                 trigger = route.trigger,
+                                durableRecovery = route.durableRecovery,
                             )
                         }
                     }

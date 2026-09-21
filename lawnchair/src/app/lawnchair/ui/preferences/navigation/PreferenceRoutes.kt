@@ -137,6 +137,11 @@ enum class OrganizationEntry {
 @Serializable
 data class HomeScreenManualOrganization(
     val entry: OrganizationEntry = OrganizationEntry.MANUAL,
+    // Issue #376 (D-15): the hub's restore CTA lands here with this flag set;
+    // the run destination then owns the durable-entry admission (and pops
+    // itself on a silent rejection). Persisted only as part of the nav back
+    // stack, never as run state or write authority.
+    val durableRecovery: Boolean = false,
 ) : PreferenceRoute {
     val trigger: Trigger
         get() = when (entry) {

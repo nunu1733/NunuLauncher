@@ -88,11 +88,14 @@ import app.lawnchair.organizer.ui.manualOrganizationFace
 import app.lawnchair.organizer.ui.missingAppSelectionItems
 import app.lawnchair.organizer.ui.openUsageAccessSettings
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
+import app.lawnchair.ui.preferences.LocalNavController
 import app.lawnchair.ui.preferences.components.controls.ClickablePreference
 import app.lawnchair.ui.preferences.components.layout.PreferenceLazyColumn
 import app.lawnchair.ui.preferences.components.layout.PreferenceScaffold
 import com.android.launcher3.R
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -102,6 +105,10 @@ fun ManualOrganizationPreferences(
     modifier: Modifier = Modifier,
     run: ManualOrganizationRun? = null,
     trigger: Trigger = Trigger.MANUAL_FULL,
+    // Issue #376 (spec D5): set by the hub's restore CTA route — this
+    // destination then owns the status-card entry's admission (see the
+    // LaunchedEffect below the read block).
+    durableRecovery: Boolean = false,
     onOpenDiagnostics: (() -> Unit)? = null,
     // Issue #371: injectable for the unsupported-settings instrumentation.
     usageAccessSettingsOpener: (Context) -> Boolean = ::openUsageAccessSettings,
@@ -197,6 +204,40 @@ fun ManualOrganizationPreferences(
                         )
                 )
         )
+
+    // Issue #376 (spec D5): a hub-initiated durable entry hands admission
+    // ownership to this destination. The read+inspection run here — in this
+    // destination's own composition scope, so the hub's disposal can never
+    // orphan the flow — and a silent rejection pops this face back to the
+    // hub. NonCancellable closes the departure window: if the host went away
+    // while admission was in flight (Back during the read), the live flow is
+    // resolved back to the pre-entry state instead of being left as an
+    // unseen pending preview.
+    if (durableRecovery) {
+        val navController = LocalNavController.current
+        // Exactly once per destination instance: a child-destination round
+        // trip (diagnostics push → Back) re-composes this face, and a second
+        // admission attempt would reject against the live terminal state and
+        // pop the result surface away.
+        var durableAdmissionHandled by androidx.compose.runtime.saveable.rememberSaveable {
+            androidx.compose.runtime.mutableStateOf(false)
+        }
+        LaunchedEffect(durableRecovery) {
+            if (durableAdmissionHandled) return@LaunchedEffect
+            durableAdmissionHandled = true
+            val effectJob = coroutineContext.job
+            withContext(NonCancellable) {
+                val admitted = withContext(Dispatchers.IO) {
+                    coordinator.beginRecoveryPreviewFromDurableEntry()
+                }
+                if (!admitted) {
+                    navController.popBackStack()
+                } else if (!effectJob.isActive) {
+                    withContext(Dispatchers.IO) { coordinator.cancelRecoveryPreview() }
+                }
+            }
+        }
+    }
 
     fun execute(action: () -> Unit) {
         scope.launch {

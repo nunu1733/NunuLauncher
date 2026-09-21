@@ -128,6 +128,7 @@ fun PreferenceNavigation(
             ManualOrganizationPreferences(
                 run = runOverride,
                 trigger = route.trigger,
+                durableRecovery = route.durableRecovery,
                 onOpenDiagnostics = { navController.navigate(HomeScreenOrganizerDiagnostics) },
             )
         }

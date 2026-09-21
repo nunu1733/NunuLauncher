@@ -27,7 +27,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
@@ -35,8 +34,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -62,7 +63,6 @@ import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizerStrategy
 import app.lawnchair.ui.preferences.navigation.HomeScreenPlacementLocks
 import com.android.launcher3.R
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -140,18 +140,14 @@ fun OrganizerHubPreferences(
         runCatching { focusRequester.requestFocus() }
     }
 
-    // Issue #376 (spec D5): the restore CTA opens the hub-origin recovery flow
-    // and navigates to the existing confirmation-face host only when the entry
-    // was admitted — a silent rejection (lease busy, expired hint) leaves the
-    // status card untouched and the row stays for another tap.
+    // Issue #376 (spec D5): the restore CTA navigates to the existing run
+    // destination with the durable-recovery flag; that destination owns the
+    // entry's admission in its own scope and pops itself on a silent
+    // rejection (lease busy, expired hint), so the navigation never depends
+    // on this surface's composition lifetime.
     val navController = LocalNavController.current
-    val scope = rememberCoroutineScope()
     val onRestore: () -> Unit = {
-        navController.navigate(HomeScreenManualOrganization())
-        scope.launch {
-            val admitted = withContext(Dispatchers.IO) { coordinator.beginRecoveryPreviewFromDurableEntry() }
-            if (!admitted) navController.popBackStack()
-        }
+        navController.navigate(HomeScreenManualOrganization(durableRecovery = true))
     }
 
     PreferenceScaffold(
@@ -303,8 +299,9 @@ private fun HubRestorableLine(remainingWindow: RemainingWindow?) {
 
 @Composable
 private fun remainingWindowText(window: RemainingWindow): String = when (window) {
-    is RemainingWindow.HoursRemaining -> stringResource(
-        R.string.manual_organization_recovery_remaining_hours,
+    is RemainingWindow.HoursRemaining -> pluralStringResource(
+        R.plurals.manual_organization_recovery_remaining_hours,
+        window.value,
         window.value,
     )
 
@@ -323,7 +320,7 @@ private fun remainingWindowText(window: RemainingWindow): String = when (window)
 @Composable
 private fun HubRestoreCta(onRestore: () -> Unit) {
     PreferenceTemplate(
-        modifier = Modifier.clickable(onClick = onRestore),
+        modifier = Modifier.clickable(role = Role.Button, onClick = onRestore),
         title = { Text(text = stringResource(R.string.manual_organization_recovery)) },
     )
 }

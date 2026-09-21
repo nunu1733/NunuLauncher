@@ -27,6 +27,9 @@
 | `evidence2_cold_confirmation_face.png` | CTA tap直後（確認面） | 検査→確認面へ到達。共通の戻り先文のみで適用履歴行なし（spec 230 D2・cold相関なし）。confirm/cancel decision pair（spec 84/230契約どおり） |
 | `evidence3_cold_result_face.png` | 確認tap後 | 「The saved layout was restored.」— cold processでの復元実行が成功（spec 13 protocol・writer lease・transaction・検証は既存経路のまま） |
 | `evidence4_cold_hub_after_restore.png` | system Back → hub再帰 | 明示的hub帰還でcoordinatorがpre-entry状態へ復帰し、durable statusが再derive: 単一restored pointのため行は「restored or expired」表示へ切替（RS-AC-01後半・RS-AC-02の単一点ケース） |
+| `rsac03_1_preview_live_before_process_death.png` | cold起動 → CTA → 確認面表示中 | RS-AC-03前半: preview（とone-shot token）が生きている状態 |
+| `rsac03_2_cold_reentry_shows_cta_again.png` | 上記のままforce-stop → cold再入場 | RS-AC-03中盤: process死でpreview/tokenは消滅し、再入場面では確認面ではなくstatus cardのCTAが再提示される（再開手段は再検査のみ） |
+| `rsac03_3_restored_after_reinspection.png` | CTA → 再検査 → 確認 | RS-AC-03後半: fresh tokenでの再検査経由でのみ復元が完結する（旧confirmの再開は存在しない）。実行後の行はrestored or expired |
 
 ## 再現手順
 
@@ -54,12 +57,28 @@ adb shell "am start -W -n app.lawnchair.debug/app.lawnchair.ui.preferences.Prefe
 #    各段階のscreenshotが本dirのevidence1..4。
 ```
 
+### RS-AC-03（preview表示中のprocess死 → 再検査のみ再開）の追加手順
+
+```bash
+# seed → force-stop → cold起動（手順3まで同じ）→ CTA tapで確認面まで進める
+#   → rsac03_1（preview生存）をcapture
+adb shell am force-stop app.lawnchair.debug     # preview + tokenごと消滅
+# → cold再起動（手順3）→ status cardにCTAが再提示（rsac03_2）
+# → CTA → 再検査 → 確認 → 復元成功（rsac03_3）→ Back → 行はrestored or expired
+```
+
+実施日: 2026-09-22。旧tokenでのconfirmは死んだprocessのregistryごと消滅しているため
+不可能であり（unit層の構造的固定: `LayoutApplicationModuleRestorableEntryTest`
+freshModuleInstanceCannotConsumeTheOldConfirmationToken）、再開手段はCTAからの
+再検査のみであることを実機で確認した。
+
 備考:
 - 復元の確認tokenはcold process内でfreshに発行され（spec 84 RP-AC-05のregistryは
   module instance state）、永続化されない。seed processのtoken/適用contextは
   force-stopで消滅する（RS-AC-03の実機裏付け。unit層の構造的固定は
   `LayoutApplicationModuleRestorableEntryTest`）。
 - 復元完了後の残存 `VERIFIED` pointがある場合の再提示（RS-AC-02の複数点ケース）は
-  hub instrumentation testとselector unit testで固定。
+  hub instrumentation test `restoreSuccessRepresentsTheRemainingPointAfterHubReturn`
+  （複数点→最新復元→hub帰還→残存pointの再提示）とselector unit testで固定。
 - `OrganizerRestoreColdProcessEvidenceTest` のrestore phase（compose駆動版）も
   同一検証を自動化するものだが、実機evidenceは本READMEのdeep link + UI駆動を正本とする。

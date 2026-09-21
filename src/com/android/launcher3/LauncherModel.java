@@ -536,57 +536,42 @@ public class LauncherModel implements InstallSessionTracker.Callback {
         // loader binder boundary — not the callback list. Like the Issue #299
         // restore reload, an unbound Launcher UI must start the tokenless
         // loader instead of cancelling the request, so the confirmed restore
-        // completes without ever binding the workspace. startLoaderWithout-
-        // Callbacks enforces the UI-thread precondition, hence the hop.
-        if (!hasCallbacks()) {
-            MAIN_EXECUTOR.execute(() -> {
-                OrganizerReloadRequest superseded;
-                boolean neverStarted;
-                synchronized (mLock) {
-                    stopLoader();
-                    superseded = mOrganizerReloadToken;
-                    mOrganizerReloadToken = token;
-                    mModelLoaded = false;
-                    // startLoaderWithoutCallbacks enforces the UI-thread
-                    // precondition. Its boolean means "bound directly", not
-                    // "a task was created" — the async generation marks the
-                    // token via loaderStarted instead (Issue #299 rule).
+        // completes without ever binding the workspace.
+        //
+        // The whole dispatch runs in one identity-checked critical section on
+        // the main executor (startLoaderWithoutCallbacks enforces the
+        // UI-thread precondition): the callback list is re-fetched here, so a
+        // callback unbind racing the earlier hasCallbacks() check degrades to
+        // the tokenless generation instead of leaving a pending token without
+        // a loader generation (the Issue #299 race, closed for this bridge
+        // too). startLoader's boolean only reports the direct-bind case — the
+        // async generation marks the token via loaderStarted.
+        MAIN_EXECUTOR.execute(() -> {
+            OrganizerReloadRequest superseded;
+            boolean neverStarted;
+            synchronized (mLock) {
+                stopLoader();
+                superseded = mOrganizerReloadToken;
+                mOrganizerReloadToken = token;
+                mModelLoaded = false;
+                if (hasCallbacks()) {
+                    startLoader();
+                } else {
                     startLoaderWithoutCallbacks();
-                    if (mOrganizerReloadToken == token && !token.loaderStarted) {
-                        mOrganizerReloadToken = null;
-                        neverStarted = true;
-                    } else {
-                        neverStarted = false;
-                    }
                 }
-                // Issue #150 terminalize-exactly-once, mirrored for the
-                // unbound-callbacks branch.
-                if (superseded != null) {
-                    superseded.cancelled.run();
-                }
+                neverStarted = mOrganizerReloadToken == token && !token.loaderStarted;
                 if (neverStarted) {
-                    token.cancelled.run();
+                    mOrganizerReloadToken = null;
                 }
-            });
-            return;
-        }
-        OrganizerReloadRequest superseded;
-        synchronized (mLock) {
-            stopLoader();
-            superseded = mOrganizerReloadToken;
-            mOrganizerReloadToken = token;
-            mModelLoaded = false;
-        }
-        // Issue #150: stopLoader only cancels the outstanding token when it actually
-        // stopped a running task. A request whose loader already closed its
-        // transaction but whose queued completion callback has not run yet would
-        // otherwise be overwritten here and never receive a terminal signal.
-        // Terminalize that leftover exactly once; requests already cancelled by
-        // stopLoader and requests already completed leave a null reference.
-        if (superseded != null) {
-            superseded.cancelled.run();
-        }
-        startLoader();
+            }
+            // Issue #150 terminalize-exactly-once.
+            if (superseded != null) {
+                superseded.cancelled.run();
+            }
+            if (neverStarted) {
+                token.cancelled.run();
+            }
+        });
     }
 
     // Issue #14: only the token captured by the exact loader binder completes the request.
@@ -609,6 +594,22 @@ public class LauncherModel implements InstallSessionTracker.Callback {
             mOrganizerReloadToken = null;
         }
         if (token != null) token.cancelled.run();
+    }
+
+    /**
+     * Issue #376: terminalize the pending organizer reload if (and only if)
+     * it is still this request's, so a caller that gave up waiting (adapter
+     * timeout) leaves no stale token for a later generation to complete.
+     * Mirrors {@link #cancelRestoreReloadIfCurrent(long)}.
+     */
+    public void cancelOrganizerReloadIfCurrent(long requestId) {
+        OrganizerReloadRequest token;
+        synchronized (mLock) {
+            token = mOrganizerReloadToken;
+            if (token == null || token.requestId != requestId) return;
+            mOrganizerReloadToken = null;
+        }
+        token.cancelled.run();
     }
 
     private static final class OrganizerReloadRequest {
