@@ -17,9 +17,6 @@ import app.lawnchair.organizer.personalization.ContextExportBuilder
 import app.lawnchair.organizer.personalization.ContextExportContract
 import app.lawnchair.organizer.personalization.DiscardIfResult
 import app.lawnchair.organizer.personalization.DurablePendingIntent
-import app.lawnchair.organizer.personalization.exchange.PendingIntentReconcile
-import app.lawnchair.organizer.personalization.exchange.reconcilePendingIntent
-import app.lawnchair.organizer.ui.ManualOrganizationRun
 import app.lawnchair.organizer.personalization.ExportInputs
 import app.lawnchair.organizer.personalization.ExportSession
 import app.lawnchair.organizer.personalization.ExportSessionStore
@@ -37,8 +34,10 @@ import app.lawnchair.organizer.personalization.exchange.ExchangeEnvelopeFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportResult
 import app.lawnchair.organizer.personalization.exchange.ImportNormalizationFailure
+import app.lawnchair.organizer.personalization.exchange.PendingIntentReconcile
 import app.lawnchair.organizer.personalization.exchange.RecognizedImportFraming
 import app.lawnchair.organizer.personalization.exchange.RecognizedImportInfo
+import app.lawnchair.organizer.personalization.exchange.reconcilePendingIntent
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.CapturedItem
 import app.lawnchair.organizer.planning.CapturedPlacement
@@ -60,6 +59,7 @@ import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.planning.RevisionId
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.TargetSet
+import app.lawnchair.organizer.ui.ManualOrganizationRun
 import java.io.File
 import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
@@ -1574,7 +1574,9 @@ class ExchangeFlowStateHolderTest {
         assertFalse(fixture.holder.screen is ExchangeScreen.ImportPersistenceFailure)
         assertFalse(fixture.holder.importAttemptActive)
         assertNull("the dropped run-in proposal's record must be fenced away", pendingStore.record)
-        assertTrue("the committed record was fenced by deleteIf", pendingStore.deleteIfCalls >= 1)
+        // Issue #375: the fence invalidation goes through the conditional
+        // tombstone commit (`discardIf`), not a bare physical delete.
+        assertTrue("the committed record was invalidated by discardIf", pendingStore.discardIfCalls >= 1)
     }
 
     @Test
@@ -2036,7 +2038,7 @@ class ExchangeFlowStateHolderTest {
         awaitScreen(fixture.holder) { pendingStore.record?.createdAtEpochMs == 2_000_000L }
         assertEquals("the final record is B's", 2_000_000L, pendingStore.record!!.createdAtEpochMs)
         assertEquals(2, pendingStore.saveCalls)
-        assertTrue("A's stale record was fenced by deleteIf", pendingStore.deleteIfCalls >= 1)
+        assertTrue("A's stale record was invalidated by discardIf", pendingStore.discardIfCalls >= 1)
         assertTrue(fixture.holder.importAttemptActive) // B's attempt owns the face
         assertNotNull(success)
     }
@@ -2253,7 +2255,6 @@ class ExchangeFlowStateHolderTest {
         return holder.screen as ExchangeScreen.ImportReview
     }
 
-
     // ---- Issue #375: rebind admission anchor race oracles (spec SR-AC-07/08) ----
 
     /** Polls [run]'s state until [predicate] holds (the rebind starts runs on IO). */
@@ -2294,6 +2295,36 @@ class ExchangeFlowStateHolderTest {
         assertEquals("the run admission must not occur", "Idle", fixture.run.state::class.java.simpleName)
         assertEquals("detection never runs without admission", detectionsBefore, fixture.application.detectionCalls)
         assertTrue(fixture.pendingStore.deleteCalls >= 1)
+    }
+
+    @Test
+    fun rebindRefusesWhenTheRealReplacementPathReplacesTheSessionMidFlow() {
+        // SR-AC-08 (7th review指摘1のoracle): the mid-flow mutation is the
+        // ACTUAL `ExchangeFlowController.generate()` replacement path (new
+        // session save + old record invalidation), fired deterministically as
+        // a side effect of the rebuild read. The rebuild then sees the NEW
+        // session with the OLD record → InvalidProposal → gate内のfresh
+        // re-reconcileが現在のrecord不在を確認して清掃 → no run admission.
+        val fixture = seedAnchorRaceFixture()
+        val valid = fixture.pendingStore.record!!
+        val detectionsBefore = fixture.application.detectionCalls
+        fixture.pendingStore.loadQueue = ArrayDeque(listOf(valid))
+        fixture.pendingStore.exhaustedResult = null
+        fixture.pendingStore.onLoad = { callCount ->
+            if (callCount == 2) {
+                // The real replacement commit: new session + old record delete.
+                val generated = fixture.controller.generate(
+                    app.lawnchair.organizer.personalization.PrivacyTier.LOCAL_FULL,
+                ) as ExchangeGenerationResult.Generated
+                check(generated.session.exportId != valid.exportId)
+            }
+        }
+
+        fixture.holder.continuePendingImport()
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Closed }
+
+        assertEquals("the run admission must not occur", "Idle", fixture.run.state::class.java.simpleName)
+        assertEquals("detection never runs without admission", detectionsBefore, fixture.application.detectionCalls)
     }
 
     @Test
@@ -2360,28 +2391,36 @@ class ExchangeFlowStateHolderTest {
     }
 
     @Test
-    fun invalidationWriteFailureKeepsTheProposalValidAndRetryable() {
-        // WriteFailed: the invalidation commit did NOT take effect — the
-        // proposal stays valid (the reconcile verdict is unchanged) and the
-        // commit is retryable (the next invalidation re-runs discardIf).
-        val fixture = fixtureWithDurableRecord()
-        val record = fixture.pendingStore.record!!
-        fixture.pendingStore.discardIfResult = DiscardIfResult.WriteFailed
-
-        // A plain screen leave after adoption does not fence the ADOPTED
-        // record (the settle cleared it) — so drive the invalidation through a
-        // superseding import: the older attempt's cleanup runs discardIf.
+    fun invalidationWriteFailureKeepsTheProposalValidAndIsRetriedByTheNextInvalidation() {
+        // SR-AC-08 (`WriteFailed` oracle): a save is parked holding the gate;
+        // the superseding edit invalidates the attempt (its conditional
+        // tombstone queues on the same gate). On release the save lands and
+        // the invalidation runs `discardIf` — injected to FAIL — so the
+        // invalidation did NOT take effect: the record survives VALID (the
+        // reconcile verdict is unchanged) and the next invalidation RETRIES
+        // the commit, which then succeeds and removes it.
+        val pendingStore = FakePendingIntentStore().apply {
+            saveGate = CountDownLatch(1)
+            discardIfResult = DiscardIfResult.WriteFailed
+        }
+        val fixture = newFixture(pendingStore = pendingStore)
+        val reply = generatedReplyFixture(fixture)
         fixture.holder.openImport()
-        fixture.holder.import(generatedReplyFixture(fixture))
-        awaitImportSuccess(fixture.holder)
+        fixture.holder.import(reply)
+        awaitScreen(fixture.holder) { pendingStore.saveCalls >= 1 }
 
+        fixture.holder.onImportTextChange("edited while saving") // invalidation commit queued
+        pendingStore.saveGate!!.countDown() // the write lands...
+        awaitScreen(fixture.holder) { pendingStore.discardIfCalls >= 1 } // ...and the invalidation ran
         assertTrue(
-            "a WriteFailed invalidation never tombstones the record",
-            fixture.pendingStore.discardIfCalls == 0 || fixture.pendingStore.discardIfResult is DiscardIfResult.WriteFailed,
+            "WriteFailed must not tombstone the record (the invalidation did not take effect)",
+            pendingStore.record?.discarded == false,
         )
-        // The reconcile verdict on the surviving record is unchanged (valid):
-        val decision = reconcilePendingIntent(fixture.pendingStore.record, fixture.store.session, 1_100_000L)
-        assertTrue(decision is PendingIntentReconcile.Valid || fixture.pendingStore.record != record)
+
+        // Retry: the next invalidation re-runs the commit and succeeds.
+        pendingStore.discardIfResult = DiscardIfResult.Committed
+        fixture.holder.onImportTextChange("edited once more")
+        awaitScreen(fixture.holder) { pendingStore.record == null }
     }
 
     /** Drives the fixture to a saved durable record + Closed holder (the hub's cold-start view). */

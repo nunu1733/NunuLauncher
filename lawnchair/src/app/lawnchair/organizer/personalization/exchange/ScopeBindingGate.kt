@@ -158,9 +158,10 @@ object ScopeBindingCauseDerivation {
     fun deriveRestoredSelection(
         sessionScope: Set<CandidateTarget.AppKey>,
         detected: List<DetectedCandidateScope>,
-    ): Set<CandidateTarget.AppKey> = sessionScope.filter { target ->
-        detected.associateBy { it.target }[target]?.availability == Availability.AVAILABLE
-    }.toSet()
+    ): Set<CandidateTarget.AppKey> {
+        val available = detected.filter { it.availability == Availability.AVAILABLE }.map { it.target }.toSet()
+        return sessionScope.intersect(available)
+    }
 }
 
 /** Issue #375: the selection surface's diff against the export scope. */

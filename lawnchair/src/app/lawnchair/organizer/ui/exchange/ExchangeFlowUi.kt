@@ -981,12 +981,18 @@ class ExchangeFlowStateHolder(
             // still equal to this attempt's record is atomically marked
             // `discarded=true` (the durable, crash-safe validity truth the
             // rebind anchor's reconcile sees), the physical delete is
-            // best-effort. A `WriteFailed` leaves the proposal valid and
-            // retryable — the invalidation did not take effect, which is the
-            // consistent outcome (a newer attempt's record is never touched).
+            // best-effort. A `WriteFailed` means the invalidation did NOT
+            // take effect: the result-carrying commit RESTORES the retry
+            // anchor (so the next invalidation re-runs the commit) and
+            // surfaces the typed persistence notice — never a silent
+            // fire-and-forget (spec 375 Failure behavior).
             scope.launch(Dispatchers.IO) {
-                exchangeMutationGate.withGate {
-                    pendingImportStore.discardIf(record)
+                val result = exchangeMutationGate.withGate { pendingImportStore.discardIf(record) }
+                withContext(uiDispatcher) {
+                    if (result is DiscardIfResult.WriteFailed && pendingDurableRecord == null) {
+                        pendingDurableRecord = record
+                        status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_PERSIST_FAILED)
+                    }
                 }
             }
         }
@@ -1104,7 +1110,7 @@ class ExchangeFlowStateHolder(
      */
     private fun launchDurablePendingIntentSave(attempt: ImportAttempt, record: DurablePendingIntent) {
         scope.launch(Dispatchers.IO) {
-            val outcome: DurableSaveOutcome = exchangeMutationGate.withGate {
+            val outcome: DurableSaveOutcome = exchangeMutationGate.withGate<DurableSaveOutcome> {
                 // Fence 1.
                 if (activeAttempt?.token != attempt.token) {
                     return@withGate DurableSaveOutcome.FencedBeforeWrite
@@ -1112,13 +1118,16 @@ class ExchangeFlowStateHolder(
                 val saved = pendingImportStore.save(record)
                 val stillCurrent = activeAttempt?.token == attempt.token
                 if (!stillCurrent) {
-                    // Fence 2: a stale landed write is fenced away inside the
-                    // same gate hold (a newer attempt's record is never the
-                    // deletion's victim — full equality). The in-memory slots
-                    // already belong to the successor attempt — the settle
-                    // must not touch them.
-                    if (saved) pendingImportStore.deleteIf(record)
-                    return@withGate DurableSaveOutcome.FencedAfterWrite
+                    // Fence 2: a stale landed write is INVALIDATED inside the
+                    // same gate hold via the conditional tombstone (the
+                    // accepted spec's invalidation commit — `Committed`/
+                    // `NoMatch` are invalidation successes; `WriteFailed`
+                    // leaves the proposal valid and stays typed/retryable).
+                    // A newer attempt's record is never the victim (full
+                    // equality). The in-memory slots already belong to the
+                    // successor attempt — the settle must not touch them.
+                    val invalidation = if (saved) pendingImportStore.discardIf(record) else DiscardIfResult.NoMatch
+                    return@withGate DurableSaveOutcome.FencedAfterWrite(invalidation)
                 }
                 // Run-in entries: the owning run must still hold its selection
                 // surface at the adoption moment (defense-in-depth — the same
@@ -1130,8 +1139,8 @@ class ExchangeFlowStateHolder(
                 if (attempt.entryKind == ExchangeImportEntryKind.RUN_IN) {
                     val selecting = run.state as? ManualOrganizationRun.State.Selecting
                     if (attempt.owningRunId == null || selecting?.runId != attempt.owningRunId) {
-                        if (saved) pendingImportStore.deleteIf(record)
-                        return@withGate DurableSaveOutcome.OwningRunDropped
+                        val invalidation = if (saved) pendingImportStore.discardIf(record) else DiscardIfResult.NoMatch
+                        return@withGate DurableSaveOutcome.OwningRunDropped(invalidation)
                     }
                 }
                 DurableSaveOutcome.Written(saved)
@@ -1145,11 +1154,11 @@ class ExchangeFlowStateHolder(
         /** The attempt was already invalidated before the write; nothing written. */
         data object FencedBeforeWrite : DurableSaveOutcome
 
-        /** The write landed but the attempt went stale mid-flight; fenced inside the gate. */
-        data object FencedAfterWrite : DurableSaveOutcome
+        /** The write landed but the attempt went stale mid-flight; invalidated inside the gate. */
+        data class FencedAfterWrite(val invalidation: DiscardIfResult) : DurableSaveOutcome
 
-        /** The run-in owning run lost its surface; the write was fenced inside the gate. */
-        data object OwningRunDropped : DurableSaveOutcome
+        /** The run-in owning run lost its surface; the write was invalidated inside the gate. */
+        data class OwningRunDropped(val invalidation: DiscardIfResult) : DurableSaveOutcome
 
         /** The write landed for a still-current attempt; settle adopts/fails per [saved]. */
         data class Written(val saved: Boolean) : DurableSaveOutcome
@@ -1171,21 +1180,29 @@ class ExchangeFlowStateHolder(
                 return
             }
 
-            DurableSaveOutcome.FencedAfterWrite -> {
+            is DurableSaveOutcome.FencedAfterWrite -> {
                 // The write landed but the attempt went stale mid-flight: the
-                // record was fenced INSIDE the gate; the in-memory slots
-                // already belong to the successor attempt — the settle must
-                // not touch them (a plain screen projection only).
+                // record was invalidated (tombstone) INSIDE the gate; the
+                // in-memory slots already belong to the successor attempt —
+                // the settle must not touch them (a plain screen projection
+                // only). A `WriteFailed` invalidation leaves the record valid;
+                // the read-time reconcile stays the master for that case.
                 return
             }
 
-            DurableSaveOutcome.OwningRunDropped -> {
+            is DurableSaveOutcome.OwningRunDropped -> {
                 // The run-in owning run lost its surface before adoption: the
-                // record was fenced INSIDE the gate; the dropped attempt's
-                // slots clear here (pure in-memory projection).
+                // record was invalidated INSIDE the gate; the dropped
+                // attempt's slots clear here (pure in-memory projection). A
+                // `WriteFailed` keeps the record valid — it remains the
+                // durable truth the status card shows (retryable through the
+                // reconcile-governed lifecycle), so only the attempt drops.
                 pendingDurableRecord = null
                 pendingValidated = null
                 activeAttempt = null
+                if (outcome.invalidation is DiscardIfResult.WriteFailed) {
+                    status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_PERSIST_FAILED)
+                }
                 return
             }
 
@@ -1491,12 +1508,42 @@ class ExchangeFlowStateHolder(
             )
             when (outcome) {
                 is RebindIntentRebuilder.Outcome.InvalidProposal -> {
-                    // Fail-closed per #374: clean the invalidated record, then
-                    // the typed unavailable notice with no invented face.
-                    exchangeMutationGate.withGate { pendingImportStore.delete() }
+                    // Fail-closed per #374. The preliminary judgment was made
+                    // OUTSIDE the gate, so the cleanup re-reads the current
+                    // record/session/clock INSIDE the gate and re-runs the
+                    // reconcile: only a record that is STILL invalid is
+                    // removed; a record a concurrent path saved as valid is
+                    // re-adopted into the face instead of being destroyed
+                    // (single-active durable truth; spec "reconcile清掃もgate配下").
+                    val reAdopted: Pair<DurablePendingIntent, ExportSession>? = exchangeMutationGate.withGate {
+                        val freshNow = controller.nowEpochMs()
+                        val freshRecord = pendingImportStore.load()
+                        val freshSession = controller.activeSession()
+                        when (reconcilePendingIntent(freshRecord, freshSession, freshNow)) {
+                            is PendingIntentReconcile.Invalid -> {
+                                pendingImportStore.delete()
+                                null
+                            }
+
+                            else -> if (freshRecord != null && freshSession != null) freshRecord to freshSession else null
+                        }
+                    }
                     withContext(uiDispatcher) {
-                        status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_REVIEW_UNAVAILABLE)
-                        screen = ExchangeScreen.Closed
+                        if (reAdopted != null) {
+                            val (proposal, adoptSession) = reAdopted
+                            screen = ExchangeScreen.ImportReview(
+                                summary = durableImportSummary(proposal, adoptSession),
+                                expiresAtEpochMs = adoptSession.expiresAtEpochMs,
+                                readAtEpochMs = controller.nowEpochMs(),
+                                entryKind = when (proposal.entryKind) {
+                                    PendingImportEntryKind.IDLE -> ExchangeImportEntryKind.IDLE
+                                    PendingImportEntryKind.RUN_IN -> ExchangeImportEntryKind.RUN_IN
+                                },
+                            )
+                        } else {
+                            status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_REVIEW_UNAVAILABLE)
+                            screen = ExchangeScreen.Closed
+                        }
                     }
                     return@launch
                 }
