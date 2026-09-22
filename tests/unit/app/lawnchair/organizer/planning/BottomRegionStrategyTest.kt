@@ -601,6 +601,41 @@ class BottomRegionStrategyTest {
         assertEquals(UnplacedReason.STRATEGY_SCOPE_FULL, unplaced.reason)
     }
 
+    @Test
+    fun scopeComposedAllocationFailureCannotBecomeUnplacedRows() {
+        // Review (PR #412): an injected allocation fault for a region-fitting
+        // candidate stays a loud invariant failure — it must never masquerade
+        // as a truthful STRATEGY_SCOPE_FULL row.
+        val failingPlanner: OrganizationPlanner = DeterministicOrganizationPlanner(
+            allocationFault = AllocationFault.FAIL_ALLOCATION,
+        )
+        val items = listOf(app("resident", 0, 0, page = "p0"))
+        val additions = listOf(
+            CandidateItem(
+                id = ItemId("c1"),
+                profile = p0,
+                kind = CandidateKind.APPLICATION,
+                target = CandidateTarget.AppKey(ComponentKey("com.example.c1"), p0),
+                availability = Availability.AVAILABLE,
+                span = GridSpan(1, 1),
+            ),
+        )
+        val existing = items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }
+        val composedInput = OrganizationInput(
+            snapshot = LayoutSnapshot(RevisionId("rev"), device(4, 4), pages(1), items, emptyList()),
+            rules = rules(region),
+            taxonomy = taxonomy(),
+            catalog = ActiveCategoryCatalog(taxonomy(), emptyList()),
+            signals = ClassificationSignals(emptyList()),
+            targets = TargetSet(existing, additions),
+            runMode = RunMode.ScopeComposedOrganization,
+        )
+
+        org.junit.Assert.assertThrows(IllegalStateException::class.java) {
+            failingPlanner.plan(composedInput)
+        }
+    }
+
     /**
      * Spec 398 AC-5 transition case 1: run 1 hint failure (the preserved
      * captured cell is consumed by an earlier HIGH-class unit) falls back to

@@ -117,9 +117,10 @@ provenance: selection identityが既存の第5policy inputとして自動参加�
 | `diagnostics/model/RunEvent.kt` | allowlist追加 | version identifier許容の正本 |
 | `ui/.../ManualOrganizationPreferences.kt` | 表示写像追加 | picker copyの唯一の消費点 |
 | `res/values{,-ja}/strings.xml` | 新copy + V1/V2説明の実挙動一致修正 | localized copyの正本 |
-| `tests/unit/.../planning/BottomRegionStrategyTest.kt`（新規） | spec scenario群 + 専用counterexample fixture + orientation matrix | public seam経由の契約test |
+| `tests/unit/.../planning/BottomRegionStrategyTest.kt`（新規） | spec scenario群 + AC-5専用counterexample fixture + 3状態遷移case + orientation matrix + fault loud failure | public seam経由の契約test |
+| `tests/unit/.../application/preview/PlanPreviewProjectorBottomRegionTest.kt`（新規） | preview projection空間oracle（領域内destination・上段0件・3 counts固定） | preview契約の検証 |
 | `tests/unit/.../application/preview/`（既存projector testに追加） | preview projection空間oracle（領域内assert） | preview契約の検証 |
-| `tests/unit/.../rules/LayoutStrategySelectionStoreTest.kt` | 新ID write/read case | selection契約の検証 |
+| `tests/unit/.../rules/LayoutStrategySelectionStoreTest.kt` | 新ID write/read case（catalog契約は既存testで駆動、新IDの明示caseを追加） | selection契約の検証 |
 | `tests/organizer-instrumentation/.../StrategyPickerInstrumentationTest.kt` | offerされるstrategy名リストへ追加 | UI面の検証 |
 | `CONTEXT.md` | 下部優先領域の用語 | domain languageの正本 |
 | `docs/product/requirements.md` | FR-016備考にobjective明記 | 要件traceabilityの正本 |

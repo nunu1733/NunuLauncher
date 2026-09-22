@@ -338,15 +338,21 @@ internal object PlanningPlacement {
             // fit (including a non-1×1 span) is reported unplaced instead of
             // the strategy violating its own shape — candidates have no
             // captured position to preserve.
+            // Issue #398: a strategy with a declared preferred region keeps
+            // its candidates inside that region (the sweep over captured then
+            // new pages, region-restricted). Only a candidate the region
+            // cannot geometrically fit (span taller than the region rows) is
+            // reported unplaced; a null from the allocator for a fitting span
+            // stays a loud invariant failure, exactly like the
+            // CAPTURED_THEN_NEW/PREFERRED_THEN_NEW branches (review: an
+            // injected fault must never masquerade as STRATEGY_SCOPE_FULL).
             val allocated = if (strategy.preferredRegion != null) {
                 val regionWindow = lowerPreferredRegion(device.rows)
                 if (unit.span.height > regionWindow.count()) {
-                    // A candidate the region cannot fit is unplaced — the
-                    // strategy never breaks its own shape, and candidates
-                    // have no captured position to preserve (spec 398).
                     null
                 } else {
                     allocator.allocateCapturedThenNewInRegion(unit.span, regionWindow)
+                        ?: error("Validated item ${unit.sortItem} could not be allocated")
                 }
             } else {
                 when (strategy.pageScope) {
