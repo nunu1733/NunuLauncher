@@ -1094,7 +1094,9 @@ class RecoveryStoreLifecycleTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
         val store = RecoveryStore(context) { 1_000L }
-        prepareForMutation(store)
+        val mutex = RunMutex()
+        val runId = RunId("f".padStart(32, 'e'))
+        prepareFenceBoundTo(store, mutex, runId)
         val pointId = createApplying(store)
         forceFormatVersion(store, context, pointId, 999)
 
@@ -1103,8 +1105,6 @@ class RecoveryStoreLifecycleTest {
         assertEquals(999, (read as RecoveryStorePort.RecordRead.Readable).record.formatVersion)
         assertTrue(read.record.checksumValid)
 
-        val mutex = RunMutex()
-        val runId = RunId("f".padStart(32, 'e'))
         try {
             assertTrue(mutex.tryAcquire(runId))
             val lease = requireNotNull(mutex.issueReconciliationLease(runId))
@@ -1199,12 +1199,12 @@ class RecoveryStoreLifecycleTest {
                 { 1000L },
                 ThrowingFaultPort(RecoveryStoreFaultPort.Phase.INCOMPATIBLE, timing),
             )
-            prepareForMutation(store)
+            val mutex = RunMutex()
+            val runId = RunId("e".padStart(32, 'f'))
+            prepareFenceBoundTo(store, mutex, runId)
             val pointId = createApplying(store)
             forceFormatVersion(store, context, pointId, 999)
 
-            val mutex = RunMutex()
-            val runId = RunId("e".padStart(32, 'f'))
             assertTrue(mutex.tryAcquire(runId))
             val lease = requireNotNull(mutex.issueReconciliationLease(runId))
             val issuer = requireNotNull(store.bindReconciliationIssuer(mutex))
@@ -1354,6 +1354,24 @@ class RecoveryStoreLifecycleTest {
                 arrayOf(pointId.value),
             ).toInt()
         }
+
+    /**
+     * Fence preparation that keeps [mutex] bound to the store, unlike
+     * [prepareForMutation] (whose private mutex would make a later
+     * `bindReconciliationIssuer` with a test-owned mutex return null).
+     */
+    private fun prepareFenceBoundTo(store: RecoveryStore, mutex: RunMutex, runId: RunId) {
+        assertTrue(mutex.tryAcquire(runId))
+        val issuer = requireNotNull(store.bindReconciliationIssuer(mutex))
+        val lease = requireNotNull(mutex.issueReconciliationLease(runId))
+        val session = requireNotNull(issuer.openSession(lease))
+        try {
+            assertTrue(session.rebuildInspectionSnapshot())
+        } finally {
+            session.close()
+            mutex.release(runId)
+        }
+    }
 
     private fun prepareForMutation(store: RecoveryStore) {
         val mutex = RunMutex()
