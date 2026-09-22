@@ -1,6 +1,6 @@
 ---
 issue: "#398"
-status: draft
+status: accepted
 requirements: [FR-016]
 risk:
   - layout-data
@@ -10,7 +10,7 @@ updated: 2026-09-23
 
 # Organizer strategyをユーザー意図一致優先で再評価し、下部領域semanticsのsuccessor strategy `BOTTOM_REGION_V1` を追加する
 
-> Status: **draft** — Phase 1 review rev.3（2026-09-23のChatGPT再レビュー [Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/398#issuecomment-5780606963) の高1・中2・低1を反映）。本specは strategy catalog のproduct objectiveの明文化と、下寄せ空間構成の新successor strategy 1件の追加だけを対象とし、既存strategyのobservable semanticsは1つも変更しない。
+> Status: **accepted**（2026-09-23。ChatGPT Phase 1レビュー rev.8 **Approve** @ [Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/398#issuecomment-5782000529)、対象 `769457df7b`。rev.2〜rev.7の指摘履歴はChange history参照）。本specは strategy catalog のproduct objectiveの明文化と、下寄せ空間構成の新successor strategy 1件の追加だけを対象とし、既存strategyのobservable semanticsは1つも変更しない。
 
 ## Problem
 
