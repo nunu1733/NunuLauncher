@@ -282,6 +282,11 @@ internal class RestartReconciler(
             return unresolved(record, ApplyFailure.RECOVERY_STORE_FAILED)
         }
         if (record.formatVersion != LifecycleReconciler.SUPPORTED_FORMAT) {
+            // Spec 13 "Recovery record and lifecycle": unsupported version ->
+            // INCOMPATIBLE (final). The advance is best-effort like the
+            // checksum gate: if it fails, the record keeps its lifecycle and
+            // the next restart reconciliation retries the transition.
+            session.advance(record.pointId, LifecycleState.INCOMPATIBLE)
             return unresolved(record, ApplyFailure.RECOVERY_STORE_FAILED)
         }
         val lease = writer.tryAcquireLease(WriterKind.ORGANIZER, record.runId.value.hashCode().toLong())

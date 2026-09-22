@@ -231,6 +231,75 @@ class RestartReconcilerTest {
         store.unreadablePointIds.add(id.value)
     }
 
+    // Issue #407: spec 13 fixes `unsupported version -> INCOMPATIBLE`. A
+    // readable record whose logical format_version is not SUPPORTED_FORMAT
+    // must advance to the final INCOMPATIBLE state (and therefore stop
+    // re-entering reconciliation), not keep its lifecycle forever.
+    private fun seedFormatIncompatibleRecord(lifecycle: LifecycleState) {
+        store.seedRecord(
+            object : RecoveryStorePort.StoredRecord {
+                override val pointId: RecoveryPointId = this@RestartReconcilerTest.pointId
+                override val runId: RunId = RunId("11111111111111111111111111111111")
+                override val lifecycle: LifecycleState = lifecycle
+                override val priorLifecycle: LifecycleState? = null
+                override val createdAtMs: Long = FakeClock.nowMillis()
+                override val updatedAtMs: Long = FakeClock.nowMillis()
+                override val preManifest: app.lawnchair.organizer.application.canonical.PersistenceManifest =
+                    app.lawnchair.organizer.application.canonical.PersistenceManifest(1, 33, 0, emptyList(), emptyList(), 0L)
+                override val preRevision: app.lawnchair.organizer.planning.RevisionId =
+                    app.lawnchair.organizer.planning.RevisionId("rev")
+                override val preDigest: ByteArray = ByteArray(32)
+                override val intendedManifest: app.lawnchair.organizer.application.canonical.PersistenceManifest =
+                    app.lawnchair.organizer.application.canonical.PersistenceManifest(1, 33, 0, emptyList(), emptyList(), 0L)
+                override val intendedDigest: ByteArray = ByteArray(32)
+                override val applyActionDigest: ByteArray = ByteArray(32)
+                override val reviewedManifest: app.lawnchair.organizer.application.canonical.PersistenceManifest? = null
+                override val reviewedDigest: ByteArray? = null
+                override val recoveryActionDigest: ByteArray? = null
+                override val itemCount: Int = 0
+                override val resourceCount: Int = 0
+                override val checksumValid: Boolean = true
+                override val formatVersion: Int = 999
+            },
+        )
+    }
+
+    @Test
+    fun formatIncompatibleApplyingRecordAdvancesToIncompatibleAndSurfacesUnresolved() {
+        seedFormatIncompatibleRecord(LifecycleState.APPLYING)
+
+        val summary = reconciler.reconcileAll(session)
+
+        assertTrue(summary is RestartReconciler.ReconciliationSummary.Resolved)
+        assertTrue(summary.hasUnresolvedFailures())
+        assertEquals(LifecycleState.INCOMPATIBLE, storedLifecycleOf(pointId))
+    }
+
+    @Test
+    fun formatIncompatibleRecordIsFinalForLaterRestarts() {
+        seedFormatIncompatibleRecord(LifecycleState.APPLYING)
+        assertTrue(reconciler.reconcileAll(session).hasUnresolvedFailures())
+
+        val secondSummary = reconciler.reconcileAll(session)
+
+        assertEquals(
+            "INCOMPATIBLE is final: a later restart must not re-process the record",
+            RestartReconciler.ReconciliationSummary.Clean,
+            secondSummary,
+        )
+        assertEquals(LifecycleState.INCOMPATIBLE, storedLifecycleOf(pointId))
+    }
+
+    @Test
+    fun formatIncompatibleVerifiedRecordAdvancesToIncompatible() {
+        seedFormatIncompatibleRecord(LifecycleState.VERIFIED)
+
+        val summary = reconciler.reconcileAll(session)
+
+        assertTrue(summary.hasUnresolvedFailures())
+        assertEquals(LifecycleState.INCOMPATIBLE, storedLifecycleOf(pointId))
+    }
+
     @Test
     fun unreadableCreatingRecordIsQuarantinedWhileHealthyRecordStillReconciles() {
         seedReady()
