@@ -67,10 +67,9 @@
    - `allocateCapturedThenNewInRegion(span, rowWindow)` を追加: captured page群（PageOrder順）→作成済み新page群を `findRowMajorFirstFit(..., rowWindow=rowWindow)` で走査し、なければ新pageを作成して領域内first-fit。`allocateOnNewPages` にwindow引数の内部variant（既存呼び出し元は無変更）。
 3. `planning/FullRunExecution.kt`
    - `executeRegionSweep(context)` を追加。`executeGlobalCompact` と同一の構造で、差分は次のとおり:
-     - **reserved集合（preserve消費）**: `preserve=true` のmovable `1×1` itemをcaptured位置に保持（`Preserved{STRATEGY_PRESERVED}`、markOccupied）。そのcellはsweep空きcell列から除外される（strategy-fixed handlingと同一の機構で、intent content由来の点が異なる）。
+     - **preserve hint（soft）**: preserve=true unitのcaptured cellが下部優先領域内かつ割当順番時に空きのときだけ正確に使用（allocatorにoccupancy判定付きの領域内cell直接配置helperを追加、または既存helperの領域clip版）。不成立時はpreserveなしと同一の `allocateCapturedThenNewInRegion` へフォールバック。領域外captured cellは決定的に無視。既存 `preferenceAllocateOnPage` 系は領域clipがないため **そのまま使わない**。
      - **消費順序**: `(componentRank, importanceRank, BOTTOM-affinity-class(0/1), PageOrder, PageId, cell.y DESC, cell.x, ItemId)`。上位3keyはidentity-stableなintent bias classで、intentなしでは定数（既存intent layeringと同一パターン）。class間の順序はrun間不変、同class内はbaseの逆captured visual順を復元する。`minimizeMovement` はbase順序（captured位置順=移動最小化順）の採用として消費され、追加の切替を行わない（spec合成matrix）。
-     - **割当**: **page局所allocation例外は存在しない**（preserveはreserved集合として処理済み）。すべてのstream unitは `allocateCapturedThenNewInRegion(span, regionWindow)` の単調first-fitに従う。
-     - **領域**: `lowerPreferredRegion(device.rows)` を全allocationに適用（新page含む）。上段cellへの新規配置は発生しない（R itemの位置保持は移動ではない）。
+     - **領域**: `lowerPreferredRegion(device.rows)` を全allocationに適用（新page含む）。上段cellへの新規配置は発生しない。
      - strategy-fixed handling / formation / 形成folderのunits後配置 / disposition / `appendPreservedPlacements` / 出力canonical化は `executeGlobalCompact` と同一。
    - `planning/PlanningPlacement.kt` のcandidate tail（L335-340）: `strategy.preferredRegion != null` のとき候補割当を領域付き走査へ変更し、領域内不成立candidate（非 `1×1` を含む）を `STRATEGY_SCOPE_FULL` でunplaced。
 4. policy/selection/diagnostics/UI
@@ -142,7 +141,7 @@ provenance: selection identityが既存の第5policy inputとして自動参加�
 | AC-3 | 同上（dense 3strategy比較fixture） | 同上 |
 | AC-4 | `GoldenOracleCorpusTest` + 既存strategy test群 無変更green | 同上 |
 | AC-5 | `CrossStrategyCorpusTest` / `PlannerGeneratedPropertyTest` / 専用counterexample fixture（複数既存folder + 新folder形成 + 非 `1×1` + fragmented lock/reservation + 複数page + intent bias item群の同居、適用→recapture→replan空差分） | 同上 |
-| AC-6 | `IntentPreferenceStrategyMatrixTest` / `WidgetIntentAuthorityTest` / BOTTOM-affinity非page-affinity fixture / preserve reserved fixture（位置保持・displacement非悪化比較・空差分replan） | 同上 |
+| AC-6 | `IntentPreferenceStrategyMatrixTest` / `WidgetIntentAuthorityTest` / BOTTOM-affinity非page-affinity fixture / preserve soft-hint fixture（hint成功=displacement 0・hint不成立=無preserveと同一・displacement非悪化比較・空差分replan） | 同上 |
 | AC-7 | `BuiltInOrganizerPolicyBundleSourceTest` | 同上 |
 | AC-8 | `LayoutStrategySelectionStoreTest` | 同上 |
 | AC-9 | ID→copy exact mapping test、spec 235 picker oracle regression、preview projection空間oracle | unit test + API 36 emulator instrumentation lane（CI） |
