@@ -3216,8 +3216,14 @@ private fun ExchangeImportReview(
         runCatching { headingFocus.requestFocus() }
     }
     val remaining = requestRemainingDisplay(state.expiresAtEpochMs, state.readAtEpochMs)
+    // Issue #375: the face grew (summary + remaining + CTA + discard) and can
+    // exceed the viewport at large font scales — the internal scroll keeps
+    // every action reachable (spec SR-AC-10 a11y) and lets tests scroll the
+    // CTA into view.
     Column(
         modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .testTag("exchange-import-review"),
     ) {
