@@ -2106,19 +2106,20 @@ fun LazyListScope.exchangeFlowItems(
         }
 
         is ExchangeScreen.ImportReview -> {
-            item(key = "exchange-import-review") {
-                ExchangeImportReview(
-                    state = current,
-                    // Issue #375 (spec "再開面CTA"): the rebind continuation.
-                    onContinue = holder::continuePendingImport,
-                    // Issue #374 (spec 328 rev.2 D-13): the review face's
-                    // 破棄して閉じる button converges with system Back priority
-                    // on the HOST's ONE import-discard confirmation — exactly
-                    // the same dialog entry the success face's button uses.
-                    onDiscard = onImportDiscardRequest,
-                    discardFocus = importDiscardFocus,
-                )
-            }
+            // Issue #375: the review face emits its own LazyListScope items —
+            // the actions are separate items so the list scrolls them into
+            // view individually (SR-AC-10 reachability at large font scales).
+            ExchangeImportReviewItems(
+                state = current,
+                // Issue #375 (spec "再開面CTA"): the rebind continuation.
+                onContinue = holder::continuePendingImport,
+                // Issue #374 (spec 328 rev.2 D-13): the review face's
+                // 破棄して閉じる button converges with system Back priority
+                // on the HOST's ONE import-discard confirmation — exactly
+                // the same dialog entry the success face's button uses.
+                onDiscard = onImportDiscardRequest,
+                discardFocus = importDiscardFocus,
+            )
         }
 
         is ExchangeScreen.AwaitingUsageAccessJit -> {
@@ -3200,8 +3201,7 @@ private fun ExchangeImportSummaryContent(
  * capability-先取り禁止 principle). System Back is the plain zero-write
  * close ([exchangeBackAction] → CLOSE): closing keeps the record.
  */
-@Composable
-private fun ExchangeImportReview(
+private fun LazyListScope.ExchangeImportReviewItems(
     state: ExchangeScreen.ImportReview,
     onContinue: () -> Unit,
     onDiscard: () -> Unit,
@@ -3209,24 +3209,19 @@ private fun ExchangeImportReview(
 ) {
     val summary = state.summary
     val warning = summary.noJudgmentCount > 0
-    // The arrival moves focus to the face heading (the success face's
-    // FocusTargetText pattern) in addition to the live-region announcement.
-    val headingFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        runCatching { headingFocus.requestFocus() }
-    }
-    val remaining = requestRemainingDisplay(state.expiresAtEpochMs, state.readAtEpochMs)
-    // Issue #375: the face grew (summary + remaining + CTA + discard) and can
-    // exceed the viewport at large font scales — the internal scroll keeps
-    // every action reachable (spec SR-AC-10 a11y) and lets tests scroll the
-    // CTA into view.
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .testTag("exchange-import-review"),
-    ) {
+    item(key = "exchange-import-review") {
+        // The arrival moves focus to the face heading (the success face's
+        // FocusTargetText pattern) in addition to the live-region announcement.
+        val headingFocus = remember { FocusRequester() }
+        LaunchedEffect(Unit) {
+            runCatching { headingFocus.requestFocus() }
+        }
+        val remaining = requestRemainingDisplay(state.expiresAtEpochMs, state.readAtEpochMs)
+        Column(
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .testTag("exchange-import-review"),
+        ) {
         Text(
             text = stringResource(
                 if (warning) R.string.exchange_import_success_warning_title else R.string.exchange_import_success_title,
@@ -3252,27 +3247,32 @@ private fun ExchangeImportReview(
                 .padding(top = 8.dp)
                 .testTag("exchange-import-review-remaining"),
         )
-        // Issue #375 (spec "再開面CTAの有効化"): the rebind continuation —
-        // TO-BE T-18 vocabulary (spec 328 rev.2 D-3 unified copy). Shown for
-        // every reconcile-passed proposal (the #374 open gate guarantees it);
-        // single-flight via `continuing` (the press flips it synchronously and
-        // discard/Back are refused while set).
+    }
+}
+    // Issue #375 (spec "再開面CTAの有効化"): the rebind continuation — TO-BE
+    // T-18 vocabulary (spec 328 rev.2 D-3 unified copy). Shown for every
+    // reconcile-passed proposal (the #374 open gate guarantees it); the
+    // buttons are their OWN LazyColumn items so the list scrolls them into
+    // view individually at any font scale (spec SR-AC-10 reachability).
+    item(key = "exchange-import-review-continue") {
         Button(
             onClick = onContinue,
             enabled = !state.continuing,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 16.dp)
+                .padding(horizontal = 16.dp)
                 .testTag("exchange-import-review-continue"),
         ) {
             Text(stringResource(R.string.exchange_import_continue))
         }
+    }
+    item(key = "exchange-import-review-discard") {
         OutlinedButton(
             onClick = onDiscard,
             enabled = !state.continuing,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 4.dp)
+                .padding(horizontal = 16.dp, vertical = 4.dp)
                 // Issue #374: the host restores focus here after the shared
                 // import-discard confirmation is dismissed (deterministic
                 // restore, mirroring the success face's 破棄 slot).
