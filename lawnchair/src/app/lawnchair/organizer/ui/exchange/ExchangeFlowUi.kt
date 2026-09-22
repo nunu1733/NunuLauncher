@@ -2109,7 +2109,7 @@ fun LazyListScope.exchangeFlowItems(
             // Issue #375: the review face emits its own LazyListScope items —
             // the actions are separate items so the list scrolls them into
             // view individually (SR-AC-10 reachability at large font scales).
-            ExchangeImportReviewItems(
+            exchangeImportReviewItems(
                 state = current,
                 // Issue #375 (spec "再開面CTA"): the rebind continuation.
                 onContinue = holder::continuePendingImport,
@@ -3201,7 +3201,7 @@ private fun ExchangeImportSummaryContent(
  * capability-先取り禁止 principle). System Back is the plain zero-write
  * close ([exchangeBackAction] → CLOSE): closing keeps the record.
  */
-private fun LazyListScope.ExchangeImportReviewItems(
+private fun LazyListScope.exchangeImportReviewItems(
     state: ExchangeScreen.ImportReview,
     onContinue: () -> Unit,
     onDiscard: () -> Unit,
@@ -3222,33 +3222,33 @@ private fun LazyListScope.ExchangeImportReviewItems(
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .testTag("exchange-import-review"),
         ) {
-        Text(
-            text = stringResource(
-                if (warning) R.string.exchange_import_success_warning_title else R.string.exchange_import_success_title,
-            ),
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier
-                .semantics { liveRegion = LiveRegionMode.Polite }
-                .focusRequester(headingFocus)
-                .focusable()
-                .testTag("exchange-import-review-title"),
-        )
-        ExchangeImportSummaryContent(
-            summary = summary,
-            showScopeCandidates = state.entryKind == ExchangeImportEntryKind.RUN_IN && summary.scopeCandidateCount > 0,
-        )
-        Text(
-            text = when (remaining) {
-                is RequestRemaining.Hours -> pluralStringResource(R.plurals.exchange_request_remaining_hours, remaining.count, remaining.count)
-                RequestRemaining.UnderOneHour -> stringResource(R.string.exchange_request_remaining_under_hour)
-            },
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier
-                .padding(top = 8.dp)
-                .testTag("exchange-import-review-remaining"),
-        )
+            Text(
+                text = stringResource(
+                    if (warning) R.string.exchange_import_success_warning_title else R.string.exchange_import_success_title,
+                ),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier
+                    .semantics { liveRegion = LiveRegionMode.Polite }
+                    .focusRequester(headingFocus)
+                    .focusable()
+                    .testTag("exchange-import-review-title"),
+            )
+            ExchangeImportSummaryContent(
+                summary = summary,
+                showScopeCandidates = state.entryKind == ExchangeImportEntryKind.RUN_IN && summary.scopeCandidateCount > 0,
+            )
+            Text(
+                text = when (remaining) {
+                    is RequestRemaining.Hours -> pluralStringResource(R.plurals.exchange_request_remaining_hours, remaining.count, remaining.count)
+                    RequestRemaining.UnderOneHour -> stringResource(R.string.exchange_request_remaining_under_hour)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier
+                    .padding(top = 8.dp)
+                    .testTag("exchange-import-review-remaining"),
+            )
+        }
     }
-}
     // Issue #375 (spec "再開面CTAの有効化"): the rebind continuation — TO-BE
     // T-18 vocabulary (spec 328 rev.2 D-3 unified copy). Shown for every
     // reconcile-passed proposal (the #374 open gate guarantees it); the
