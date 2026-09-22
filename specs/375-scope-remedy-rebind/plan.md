@@ -2,7 +2,7 @@
 
 > Issue: #375
 > Spec: [spec.md](./spec.md)
-> Status: accepted
+> Status: implemented
 > Revision: 8（初回review 3件 + 2nd 4件 + 3rd 1件 + 4th 3件 + 5th 2件 + 6th 2件 +
 > 7th review 3件対応 + 前提merge後のcurrent main `9dc3ec8fed`へのre-entry）
 
