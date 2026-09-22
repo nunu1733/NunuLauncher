@@ -9,7 +9,7 @@
   - Head SHA検証: `git rev-parse HEAD` == PR `headRefOid` == CI run `headSha` を機械確認済み（`git status` はclean、working tree差分なし。監査中の生成物commitは行っていない）
   - 対象diffの正: 監査対象範囲は `f9c95272d4..5ce4ced79a`（`f9c95272d4` = main @ PR #409 merge。3 files +609/−8 のcharacterization-only commit `c53a57e99b`、2 files +360/−670相当の統合commit `b8e189541e`、docs 1 commit `5ce4ced79a` の3 commit）
 - CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/35736426750 （`pull_request` event・workflow `CI`・headSha `5ce4ced79a…` 一致、conclusion=**success**。source job 5種〔`changes` / `build-debug-apk` / `validate-repo-contract` / `check-style` / `organizer-unit-tests`〕、instrumentation lane 9本すべてsuccess、merge gate `final-status` もsuccess — `gh run view 35736426750 --json jobs` でjob 15個のconclusionを機械確認）
-- Criteria: specs/377-post-migration-cleanup/spec.md AC-1〜AC-4（accepted 2026-09-22）＋ specs/13-safe-layout-application/spec.md §"Transaction outcome classification" / §"Restart reconciliation"（path contextの受入済み正本）＋ specs/377-post-migration-cleanup/plan.md Current evidenceの裁定済みmatrix（規則(a)/(b)）とInventory result
+- Criteria: specs/377-post-migration-cleanup/spec.md AC-1〜AC-4（accepted 2026-09-22）＋ specs/377-post-migration-cleanup/plan.md Current evidenceの裁定済みmatrix（規則(a)/(b)）とInventory result。spec 13（§"Transaction outcome classification" / §"Restart reconciliation"、path contextの受入済み正本）は要件IDを持たない状態図契約のためID引用対象外とし、AC-1〜AC-4の確認根拠としてScope/Criteria check節で参照する
 - high-risk分類の根拠: labels無しでも変更path `lawnchair/src/app/lawnchair/organizer/application/`（`lifecycle/` `protocol/` `store/`）がhigh-risk path backstopに該当するため監査記録を要求される（plan.md「高リスク独立エビデンス」の適用条件2どおり）
 
 ## Scope
