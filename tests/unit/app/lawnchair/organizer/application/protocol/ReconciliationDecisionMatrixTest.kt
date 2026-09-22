@@ -9,7 +9,7 @@ import app.lawnchair.organizer.application.canonical.PersistentResource
 import app.lawnchair.organizer.application.canonical.PersistentResourceKind
 import app.lawnchair.organizer.application.canonical.PersistentRow
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
-import app.lawnchair.organizer.application.lifecycle.ReconciliationPublicResult
+import app.lawnchair.organizer.application.protocol.ReconciliationPublicResult
 import app.lawnchair.organizer.application.public.ApplyFailure
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.LayoutState

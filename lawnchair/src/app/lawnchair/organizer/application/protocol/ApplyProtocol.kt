@@ -296,8 +296,15 @@ class ApplyProtocol(
             ApplyTxOutcome.Committed -> ApplyFailure.COMMIT_OUTCOME_UNKNOWN
         }
         val intendedDigest = digestOfIntended(writeSet)
-        return when (writer.classifyAuthoritativeState(pre.digest, intendedDigest, null, null)) {
-            AuthoritativeClass.PRE_STATE -> {
+        // Issue #377: the single decision table (path context IN_FLIGHT_APPLY)
+        // owns the classification → transition mapping; this protocol layer
+        // keeps the store side effects and the typed result assembly.
+        return when (
+            ReconciliationDecisionTable.decideInFlightApply(
+                writer.classifyAuthoritativeState(pre.digest, intendedDigest, null, null),
+            ).surface
+        ) {
+            ReconciliationDecision.Surface.ROLLED_BACK_APPLY -> {
                 ctx.terminalApplyStage = ApplyStage.A6
                 ctx.terminalPointId = pointId.value
                 if (!store.advance(pointId, LifecycleState.READY) || !store.pruneUnused(pointId)) {
@@ -312,7 +319,7 @@ class ApplyProtocol(
                 }
             }
 
-            AuthoritativeClass.INTENDED_POST_STATE -> continueCommitted(
+            ReconciliationDecision.Surface.CONTINUE_COMMITTED_APPLY -> continueCommitted(
                 runId,
                 pointId,
                 pre,

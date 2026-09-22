@@ -127,7 +127,6 @@
     <string name="organizer_lock_screen_placement_summary_triple">%1$s · %2$s · %3$s</string>
     <!-- Issue #52: explicit manual full organization -->
     <string name="manual_organization_title">ホームレイアウトを整理</string>
-    <string name="manual_organization_summary">適用前に、ホームレイアウトの整理案を確認できます。</string>
     <string name="manual_organization_explainer">適用前に整理案を確認できます。現在のレイアウトは自動的に変更されません。</string>
     <string name="manual_organization_start">そのまま整理</string>
     <string name="manual_organization_start_again">新しい整理案を確認</string>
