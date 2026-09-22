@@ -22,7 +22,7 @@
 | lifecycle × class | A: pure（到達不能） | B: restart（生存） | C: in-flight（生存） |
 |---|---|---|---|
 | gate: checksum無効 | CORRUPT / Unresolved(RECOVERY_STORE_FAILED) | advance CORRUPT + 同左 | — （上位で拒否） |
-| gate: format不整合 | INCOMPATIBLE / Unresolved(RECOVERY_STORE_FAILED) | Unresolved(RECOVERY_STORE_FAILED)（lifecycle維持） | — |
+| **gate: format不整合** | **INCOMPATIBLE / Unresolved(RECOVERY_STORE_FAILED)** | **Unresolved(RECOVERY_STORE_FAILED)（lifecycle維持。advance(*, INCOMPATIBLE)のproduction callerなし）** | — （上位で拒否） |
 | CREATING × PRE_STATE | READY / SilentPrune | advance READY + prune → SilentPrune | — |
 | CREATING × その他 | CORRUPT / Unresolved(RECOVERY_STORE_FAILED) | advance CORRUPT + 同左 | — |
 | READY × PRE_STATE | READY / SilentPrune | prune → SilentPrune | — |
@@ -45,8 +45,9 @@
 2. **RESTORING × REVIEWED_CURRENT**（A=NotCommitted vs B=recover()再開 vs C=RestoreFailed）: spec 13 §"Restart reconciliation"は「recovery did not commit. Restore the recorded prior lifecycle and **either resume the persisted recovery intent or surface an interrupted recovery**」と両者を許容。B（restart path）はresume、C（in-flight path）はtyped RestoreFailedを返す。**裁定: 規則(b)のpath context依存の意図した差。双方ともspec 13の受入済み契約の範囲内。統合時はpath contextをdecision tableの入力としてモデル化して保持する**。AのNotCommitted行は到達不能なため1と同様に削除候補。
 3. **APPLYING × PRE_STATEの公開結果の差**（B=SilentPrune vs C=RolledBack）: restart reconciliation（caller不在のため静かに掃除）とin-flight classification（callerへ結果返却）の文脈差。spec 13自身が§"Transaction outcome classification"と§"Restart reconciliation"を別tableとして定義する意図した差。**裁定: 規則(b)。path context入力で保持**。
 4. **COMMITTED_UNVERIFIED × PRE_STATEのprune有無**（A=pure modelにpruneなし vs B=advance+prune込み）: 公開結果（RolledBack）は同一。pruneはprotocol層の副作用でspec 13「prune the unused record」どおり。**裁定: 差異ではなく責務分離。統合後も副作用はprotocol層に置く**。
+5. **gate: format不整合**（A=INCOMPATIBLE遷移 vs B=lifecycle維持のUnresolved）: spec 13 §"Recovery record and lifecycle"の状態図は`unsupported version -> INCOMPATIBLE`を明示し、record-level logical format遷移を変更する新しいaccepted spec/ADRは存在しない（spec 174の`INCOMPATIBLE_VERSION`はstore-level（物理schema）availability契約）。Bの現行挙動（advanceなし・lifecycle維持）はspec 13契約から乖離しており、`RecoveryStore.rowToRecordRead()`がcodec record decodeのformat rejectを通さず`Readable`を返すため当該gateはproduction到達可能である。**裁定: 規則(a)「生存pathのbug」。bug Issue #407へ分離し、#377の統合・characterization testは#407解決後の正本挙動（INCOMPATIBLE遷移）を固定する（bug挙動をcharacterization固定しない）。統合実施は#407解決をgateとする（Gating 4）**。
 
-突合の帰結: **生存実装（B/C）間に行レベルの矛盾はなく、差はpath context依存の意図したもの（規則(b)）**。矛盾する行はすべてA（production到達不能）側に存在する。したがって統合は「生存matrixをcharacterization testで固定した上で、Aとそのtestをobsolete oracleとして削除し、B/Cの重複する純分類部分をpath contextを入力とする単一decision tableへ抽出する」という形状になる（確定は実装PRの設計）。
+突合の帰結: **生存実装（B/C）間の行差異はpath context依存の意図したもの（規則(b)）のみ**。A（production到達不能）側の矛盾行に加え、**gate: format不整合の1行は生存Bの挙動がaccepted spec 13から乖離している（規則(a)）ためbug #407へ分離した**。したがって統合は「生存matrixをcharacterization testで固定した上で（format行は#407解決後の正本挙動で固定）、Aとそのtestをobsolete oracleとして削除し、B/Cの重複する純分類部分をpath contextを入力とする単一decision tableへ抽出する」という形状になる（確定は実装PRの設計）。
 
 ### その他の現状証拠
 
@@ -68,6 +69,7 @@
 1. #368、#369、#373、#374が全てmerge済みであること。→ **2026-09-22時点で充足**（4 IssueともCLOSED。base `c52d5fcc15`）。
 2. 最新`origin/main`を取得し、本planのCurrent evidenceと`git log`/`git diff`で差分照合すること。→ 本改訂時点で`c52d5fcc15`まで照合済み。実装着手時に再度`origin/main`を取得して再照合する（特に`organizer/application/**`と`ui/exchange/**`への追加変更）。
 3. 以下のinventoryを実行し、change setを確定してspec/planを必要なら改訂してから実装へ進む。reconciliationのmatrix突合・裁定は本plan Current evidenceに実施済みであり、残りはfreeze残骸・旧UX oracle・stringsのinventoryである。
+4. **bug #407（gate: format不整合行のINCOMPATIBLE遷移欠落）が解決済みであること**。reconciliation統合・characterization testは#407解決後の正本挙動を固定する。#407未解決のまま統合を実施しない（bug挙動のcharacterization固定は規則(a)違反）。
 
 ## Design
 
@@ -75,7 +77,7 @@
 
 1. 差分照合: `git log --oneline c52d5fcc15..origin/main -- lawnchair/src/app/lawnchair/organizer tests/organizer-instrumentation tests/unit/app/lawnchair/organizer lawnchair/res` 等で対象pathの変化を列挙する。
 2. 対象列挙（spec Scope §2の各領域）:
-   - **reconciliation**: 実施済み（Current evidenceのmatrix・裁定）。実装中に新たな差異行を検出した場合はspec Scope §1-aの規則で裁定を追記する。
+   - **reconciliation**: 実施済み（Current evidenceのmatrix・裁定。format行はbug #407へ分離済み）。実装中に新たな差異行を検出した場合はspec Scope §1-aの規則で裁定を追記する。
    - **RecoveryPreviewSummary**: 生成箇所・消費箇所・test参照を列挙し、公開shape不変の内部簡素化の実施可否を評価する。公開shape（`Restorable.summary` field・型・effect語彙）の変更はspec 84改訂を要求する別Issueとし、本Issueでは起案記録のみ（spec Scope §1-c）。
    - **usage重複**: envelope `usageSignals`とitem毎`usage`の参照関係（spec 204契約・AI-facing instruction・validator/codec）を確認し、schema v5（spec 204改訂）を要するかを評価する。本Issueの成果は評価記録まで。
    - **freeze残骸**: #374/#375/#376 merge後のfreeze・無効化実装から、status card＋T-18中心への再設計で残った個別無効化を列挙する（起点: `ExchangeFlowUi.kt`、`ManualOrganizationPreferences.kt`、`ui/exchange/`配下の新規module群）。
@@ -144,8 +146,8 @@ risk label（`risk: layout-data`）は適用条件1の別経路であり、付�
 
 ## Execution checklist
 
-- [ ] 着手条件（Gating 1〜3）を確認した（依存4 Issueのmerge、baseline差分照合、inventory完了）。
-- [ ] characterization testを統合**前**に追加し、現行実装に対してgreenであることを確認した（裁定済みmatrixの固定）。
+- [ ] 着手条件（Gating 1〜4）を確認した（依存4 Issueのmerge、baseline差分照合、inventory完了、bug #407解決）。
+- [ ] characterization testを統合**前**に追加し、裁定済みmatrix（format行は#407解決後の正本挙動）に対してgreenであることを確認した（裁定済みmatrixの固定）。
 - [ ] inventoryの分類表（統合 / 削除 / 維持 + 根拠）をPRまたはIssueへ記録した。
 - [ ] 既存test修正なしでの統合を確認した（挙動差異はspecのfailure scenarioに従い処理）。
 - [ ] 削除したoracleごとのobsolete理由をPRへ記録した。

@@ -19,7 +19,7 @@ TO-BE移行（#365〜#376）の結果、旧UX・旧構造を固定する実装�
 - reconciliation decision tableの重複実装（監査§11.2）:
   - pure `LifecycleReconciler`（`application/lifecycle/LifecycleReconciler.kt`）: `reconcile` / `classifyApplyOutcome` / `classifyRecoveryOutcome`はproduction経路から**呼ばれていない**（production参照は`SUPPORTED_FORMAT`定数のみ: `RecoveryProtocol.kt:232`、`RestartReconciler.kt:284`、`RecoveryPreviewProtocol.kt:129`）。直接実行するのはunit test `LifecycleReconcilerTest`のみ
   - 生存実装はprotocol側の2系統: `RestartReconciler.reconcileWithLease`（restart path、`application/protocol/RestartReconciler.kt:296-373`）とin-flight系 `ApplyProtocol.classifyApplyOutcome`（`application/protocol/ApplyProtocol.kt:267-326`）+ `RecoveryProtocol` inline分類（`application/protocol/RecoveryProtocol.kt:165-189`）
-  - 3実装は同値コピーではなく、行単位の差異を持つ（例: READY×非PRE_STATEで`LifecycleReconciler`は`SilentPrune`、`RestartReconciler`はfail-closedな`Unresolved(COMMIT_OUTCOME_UNKNOWN)`。RESTORING×REVIEWED_CURRENT_STATEで前者はNotCommitted、後者はrecovery再試行）。差異の突合・裁定は本specの要件である（Scope §1）
+  - 3実装は同値コピーではなく、行単位の差異を持つ（例: READY×非PRE_STATEで`LifecycleReconciler`は`SilentPrune`、`RestartReconciler`はfail-closedな`Unresolved(COMMIT_OUTCOME_UNKNOWN)`。RESTORING×REVIEWED_CURRENT_STATEで前者はNotCommitted、後者はrecovery再試行。gate: format不整合で`LifecycleReconciler`は`INCOMPATIBLE`遷移、`RestartReconciler`はlifecycle維持の`Unresolved`）。差異の突合・裁定は本specの要件である（Scope §1）
   - なおdigest比較primitive（`Ports.classifyAuthoritativeState`、`Ports.kt:74`。実装はadapter）は既に単一実装であり、重複しているのはclassification結果から次状態・公開結果へのdecision tableである
 - `RecoveryPreviewSummary`が閉域語彙サイズ1（`RecoveryPreviewEffect`は`RESTORE_SAVED_LAYOUT`のみ）で公開seam（`application/public/RecoveryPreview.kt`）を通っている。`RecoveryPreviewResult.Restorable`の必須fieldとしてspec 84（accepted）が明示する公開契約である
 - export文書内のusage重複（envelope `usageSignals` + item毎`usage`。`personalization/ContextExportModels.kt`、`ContextExportBuilder.kt`）
@@ -48,7 +48,9 @@ TO-BE移行（#365〜#376）の結果、旧UX・旧構造を固定する実装�
 2. **差異の裁定規則**: 各差異行について、受入済み正本（spec 13 §"Transaction outcome classification" / §"Restart reconciliation"、spec 174 / ADR-0009 containment）を根拠に正本挙動を決める。裁定は次のいずれかとする:
    - (a) **生存pathのbug**: 本Issueの整理対象外とし、別bug Issueまたは明示的な契約改訂へ分離する。統合に混ぜない。
    - (b) **path context依存の意図した差**（例: 同じAPPLYING×PRE_STATEでもrestart reconciliationは`SilentPrune`、in-flight outcome classificationは`RolledBack`をcallerへ返す）: 統合後の単一decision tableの入力にpath contextを明示的にモデル化して保持する。差を潰してuniform化しない。
-3. **挙動不変の意味**: 「単一実装への統合」は、裁定済みmatrixが生存pathで前後同一であることを指す。production到達不能な実装（`LifecycleReconciler.reconcile/classify*`）の行は観測可能な振る舞いではないため、その削除自体は挙動変更ではない。ただし削除は3条件（§3）と、当該行の差異が全て裁定済みであることを条件とする。
+
+   裁定実施状況（base `c52d5fcc15`。正本記録はplan.md Current evidenceのmatrix・裁定）: A（production到達不能）側の矛盾行は削除候補、生存実装間の差異は規則(b)。ただし**gate: format不整合の1行は生存実装の挙動（lifecycle維持の`Unresolved`、`advance(*, INCOMPATIBLE)`のproduction callerなし）がspec 13の`unsupported version -> INCOMPATIBLE`状態図から乖離しており、`RecoveryStore.rowToRecordRead()`がcodec record decodeのformat rejectを通さないためproduction到達可能である。よって規則(a)「生存pathのbug」としbug #407へ分離した**。#407の修正は本Issueの対象外。reconciliation統合・characterization testは#407解決後の正本挙動（INCOMPATIBLE遷移）を基準に固定し、bug挙動をcharacterization固定しない（統合着手のgate。plan Gating 4）。
+3. **挙動不変の意味**: 「単一実装への統合」は、裁定済みmatrixが生存pathで前後同一であることを指す（gate: format行は#407解決後の正本挙動を基準とする）。production到達不能な実装（`LifecycleReconciler.reconcile/classify*`）の行は観測可能な振る舞いではないため、その削除自体は挙動変更ではない。ただし削除は3条件（§3）と、当該行の差異が全て裁定済みであることを条件とする。
 4. **characterization test**: 統合の実施前に、裁定済みmatrixを行列表として固定するtable-driven characterization testを生存seam（`RestartReconciler`、`ApplyProtocol`、`RecoveryProtocol`の契約testが使う既存test seam）経由で追加する。統合前後でこのtestが同一結果を返すことをAC-1の主証拠とする。
 
 #### 1-b. 維持判断記録（契約値・将来値域）
@@ -82,6 +84,7 @@ TO-BE移行（#365〜#376）の結果、旧UX・旧構造を固定する実装�
 - 機能変更・契約変更（整理のみ。生存経路の観測可能な振る舞い・公開seam契約は不変）
 - **spec 84の公開seam契約変更**（`RecoveryPreviewResult.Restorable`の`summary` field・型・effect語彙の変更・削除。評価記録のみ。実施はspec 84改訂を要求する別Issue）
 - spec 204のschema v5改訂の実施（usage重複の解消にschema変更が必要と評価された場合は別Issueで行う）
+- bug #407（gate: format不整合行のINCOMPATIBLE遷移欠落）の修正（規則(a)で分離済み。#377は#407解決後の正本挙動を前提に統合するのみ）
 - `Trigger.INCREMENTAL_PROPOSAL` / `LOCAL_FULL`契約値の削除（上記のとおり維持）
 - safety mechanismの変更: revision二重確認（A2事前 + A5 in-transaction）、checkpoint → atomic write → 相関reload検証、scope binding gateの完全一致検証、fail-closed（監査§11.1）は統合によっても弱めない。裁定規則(a)によるbug分離を除き、生存pathのfail-closed挙動をuniform化の名の下に緩めない
 - `app.lawnchair.deck`の調査、並行する分類・配置機構の追加（AGENTS.md設計規約）
@@ -100,9 +103,9 @@ TO-BE移行（#365〜#376）の結果、旧UX・旧構造を固定する実装�
 
 ### Scenario: reconciliation統合前のmatrix固定
 
-Given 3実装のdecision matrixが突合され、差異行が裁定規則(a)/(b)で裁定された状態
+Given 3実装のdecision matrixが突合され、差異行が裁定規則(a)/(b)で裁定された状態（gate: format行はbug #407解決後の正本挙動を基準）
 When 裁定済みmatrixを固定するtable-driven characterization testが生存seam経由で追加される
-Then 全行（path context × lifecycle × AuthoritativeClass）について、現行実装の挙動と一致する結果が固定される（統合実施前の時点で）
+Then 全行（path context × lifecycle × AuthoritativeClass）について、裁定済み正本挙動と一致する結果が固定される（統合実施前の時点で。規則(a)分離行のbug挙動は固定しない）
 
 ### Scenario: reconciliation統合後の挙動同一性
 
