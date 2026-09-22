@@ -2,7 +2,7 @@
 
 > Issue: #377
 > Spec: [spec.md](./spec.md)
-> Status: draft（inventory/criteria契約としてのplan）
+> Status: accepted（2026-09-22。review Approved @ Issue #377コメント、対象 `9f8d02a921`。Gating 4〔bug #407解決〕はreconciliation統合の着手条件として未充足のまま残る）
 
 ## Current evidence
 

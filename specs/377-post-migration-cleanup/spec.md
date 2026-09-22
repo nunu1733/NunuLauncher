@@ -1,13 +1,13 @@
 ---
 issue: "#377"
-status: draft
+status: accepted
 requirements: []
 updated: 2026-09-22
 ---
 
 # TO-BE移行で余剰となった実装・文言・test oracleが、判断基準とobsolete理由の記録つきで整理されている
 
-> Status: **draft**（本specは準備taskが作成したdraftであり、owner受入は別途行う）
+> Status: **accepted**（2026-09-22。review Approved @ [Issue #377コメント](https://github.com/nunu1733/NunuLauncher/issues/377)、対象 `9f8d02a921`。plan Gating 4〔bug #407解決〕をreconciliation実装着手条件として含む）
 > 正本参照: [disposition](../../docs/product/organizer-disposition-migration.md)（accepted。§1「削除時は旧oracleのobsolete理由を記録する」、§4.3 Defer、§8 backlog、§11「reconciliation統合の設計: #377が所有」）、[TO-BE](../../docs/product/organizer-to-be-ux.md)（D-14）、[AS-IS監査 §11.2](../../docs/assessment/organizer-as-is-ux-data-flow-audit.md)（accidental complexity候補）、[spec 13](../13-safe-layout-application/spec.md)（§"Transaction outcome classification"、§"Restart reconciliation"がdecision tableの受入済み正本）
 
 ## Problem
