@@ -1,6 +1,5 @@
 package app.lawnchair.organizer.application.protocol
 
-import app.lawnchair.organizer.application.lifecycle.LifecycleReconciler
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.lifecycle.RetentionPolicy
 import app.lawnchair.organizer.application.public.AuthoritativeState
@@ -10,6 +9,7 @@ import app.lawnchair.organizer.application.public.RecoveryRejection
 import app.lawnchair.organizer.application.public.RecoveryRequest
 import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.application.public.RunId
+import app.lawnchair.organizer.application.store.RecoveryRecordCodec
 
 /** Implements explicit, revision-bound recovery while holding one outer writer lease. */
 class RecoveryProtocol(
@@ -168,9 +168,11 @@ class RecoveryProtocol(
             recoveryTargetDigest = stored.preDigest,
             reviewedCurrentDigest = reviewed.digest,
         )
-        if (authoritative != AuthoritativeClass.PRE_STATE &&
-            authoritative != AuthoritativeClass.RECOVERY_TARGET
-        ) {
+        // Issue #377: the single decision table (path context IN_FLIGHT_RECOVERY)
+        // owns the classification → outcome mapping; this protocol layer keeps
+        // the reload/verification side effects and the typed failure assembly.
+        val decision = ReconciliationDecisionTable.decideInFlightRecovery(authoritative)
+        if (decision.surface == ReconciliationDecision.Surface.RESTORE_NOT_COMMITTED) {
             val failure = if (outcome is ApplyTxOutcome.Failed) {
                 RecoveryFailure.WRITE_FAILED
             } else {
@@ -229,7 +231,7 @@ class RecoveryProtocol(
 
     private fun preflight(stored: RecoveryStorePort.StoredRecord): RecoveryRejection? {
         if (!stored.checksumValid) return RecoveryRejection.CORRUPT
-        if (stored.formatVersion != LifecycleReconciler.SUPPORTED_FORMAT) {
+        if (stored.formatVersion != RecoveryRecordCodec.RECORD_FORMAT_VERSION) {
             return RecoveryRejection.INCOMPATIBLE_VERSION
         }
         return when (stored.lifecycle) {

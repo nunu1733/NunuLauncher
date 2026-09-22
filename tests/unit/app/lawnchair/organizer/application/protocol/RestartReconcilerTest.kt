@@ -5,7 +5,7 @@ import app.lawnchair.organizer.application.adapter.FakeLayoutWriter
 import app.lawnchair.organizer.application.adapter.FakeRecoveryStore
 import app.lawnchair.organizer.application.canonical.CanonicalFixtures
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
-import app.lawnchair.organizer.application.lifecycle.ReconciliationPublicResult
+import app.lawnchair.organizer.application.protocol.ReconciliationPublicResult
 import app.lawnchair.organizer.application.public.ApplyFailure
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.RecoveryPointId
