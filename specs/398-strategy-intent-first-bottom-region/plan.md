@@ -2,7 +2,7 @@
 
 > Issue: #398
 > Spec: [spec.md](./spec.md)
-> Status: draft — review rev.2（2026-09-23 ChatGPTレビュー反映）
+> Status: draft — review rev.3（2026-09-23 ChatGPT再レビュー反映）
 
 ## Current evidence
 
@@ -10,9 +10,16 @@
 
 - #356 CLOSED、#365〜#377 全てCLOSED（`gh issue view <n> -R nunu1733/NunuLauncher --json state` を #356, #365〜#377 の14件に対して実行、全て `"state":"CLOSED"`）。
 - 派生follow-up不在の再現可能な確認（2026-09-23実行）:
-  1. `gh issue list -R nunu1733/NunuLauncher --state open --limit 200 --json number,title` → 18件のopen issue。titleに `#356〜#377` を含むもの0件。
-  2. `gh issue list -R nunu1733/NunuLauncher --state open --search "in:body <n>"` を #356, #365〜#377 の各番号に対して実行 → #356/#368/#377 を参照するopen issueは **#398自身のみ**、それ以外は`none`。
-  3. 結論: #356系譜由来の未完了migration/follow-upは存在しない。#398のscheduling/dependency gateを満たす。
+  1. **title/body探索**: `gh issue list -R nunu1733/NunuLauncher --state open --limit 200 --json number,title` → 18件のopen issue。titleに `#356〜#377` を含むもの0件。`gh issue list --state open --search "in:body <n>"`（#356, #365〜#377 の各番号）→ #356/#368/#377 を参照するopen issueは **#398自身のみ**、それ以外は`none`。
+  2. **comments探索**: `gh issue list --state open --search "in:comments <n>"`（同14番号）→ ヒット10件（#398を除く）: #356 ← #323/#324/#170/#293/#304/#109/#206、#372 ← #351、#373 ← #337/#328、#374 ← #328。
+  3. **ヒット個別判定**（該当コメント本文を `gh api repos/.../issues/<n>/comments` で取得し判定。2026-09-23）:
+     - #323（PR #322/#204のfollow-up）、#170（PR 169のfollow-up）、#293（#228のfollow-up）: 親は#356系譜外。#356言及はsnapshot baselineの範囲記録。
+     - #324（Product Language Reviewer導入）、#304（api36 window focus root cause）、#109（MVP Switch Access evidence）: #356文書を背景・分類説明として参照するのみ。
+     - #206（Managed Grounded AI）: #356/#361で確定したIAの受け皿説明（coordination）。必須化されたmigration/follow-upではない。
+     - #351（#327 evidence）: 「#372が先にlandした場合は再確認する」というcoordination noteのみ。
+     - #337、#328: 自らの着手時期・表示構造を#373/#374と座標合わせするnote（#373/#374自体はCLOSED/implemented済み）。#365〜#377が生んだ必須修正ではない。
+  4. **補助証拠（規約）**: 本repoのfollow-up Issueは親をtitle/bodyに明示する慣行（#323＝PR #322、#170＝PR 169、#293＝issue #228）が確認できる。title/body探索の網羅性をこの慣行が支える。
+  5. 結論: #356系譜由来の未完了migration/follow-upは存在しない。#398のscheduling/dependency gateを満たす。
 - baselineのplanner/rules unit testはgreen（`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.planning.*' --tests 'app.lawnchair.organizer.rules.*'` → BUILD SUCCESSFUL、2026-09-23実行）。canonical族（folder形成含む）のharness idempotenceが実行可能証明としてgreenであることを確認済み。
 
 関連code pathと現在の振る舞い（確認済み事実。行番号は2026-09-23時点）:
@@ -53,14 +60,15 @@
    - `StrategyId` 定数 `BOTTOM_REGION_V1` を追加（ADR-0012: 新semanticsは新ID）。
    - `StrategyDefinition` に `preferredRegion: PreferredRegion? = null` fieldを追加（sealed interface `PreferredRegion`、`data object LowerHalf` のみ）。既存8戦略はデフォルトnullで不変。`placeFullRun` dispatchを `preferredRegion != null` 優先で分岐（未知組合せは既存どおりloud failure）。
    - 領域計算は純粋関数 `lowerPreferredRegion(rows: Int): IntRange = (rows - (rows + 1) / 2) until rows`（planning package内、device rowsのみから決定的）。
-   - 定義（spec Decision 1の表どおり）: `eligibleUnitFilter` は **`1×1` かつ app/deep shortcut**（`GLOBAL_COMPACT_V1` と同一のfilter式）、`createsFolders = true`、`unitOrder = CAPTURED_VISUAL_GLOBAL`（逆順はexecutor側で扱う。下記）、`pageScope = CAPTURED_THEN_NEW`、`cellTraversal = BOTTOM_UP_ROW_MAJOR`、`widgetPolicy = null`、`placeFullRun = FullRunExecution::executeRegionSweep`。
-     - 実装詳細: 逆visual順は新enum値 `UnitOrdering.CAPTURED_VISUAL_GLOBAL_REVERSED` を追加し、`strategyFixes()` の派生規則（`unitOrder != CANONICAL_TIE_BREAK && !eligibleUnitFilter`）がそのまま機能する（非 `1×1`・既存folderが `STRATEGY_PRESERVED` になる。specのfixed setと一致）。executor dispatchは `preferredRegion != null` を優先し、既存 `CAPTURED_VISUAL_GLOBAL` 経路には影響しない。
+   - 定義（spec Decision 1の表どおり）: `eligibleUnitFilter` は **`1×1` かつ app/deep shortcut**（`GLOBAL_COMPACT_V1` と同一のfilter式）、`createsFolders = true`、`unitOrder = CAPTURED_VISUAL_GLOBAL_REVERSED`（**新enum値をcatalog宣言の正本とする。executor内部の隠れreverseは持たない**。semanticsをregistry dataへ載せる）、`pageScope = CAPTURED_THEN_NEW`、`cellTraversal = BOTTOM_UP_ROW_MAJOR`、`widgetPolicy = null`、`placeFullRun = FullRunExecution::executeRegionSweep`。
+     - `strategyFixes()` の派生規則（`unitOrder != CANONICAL_TIE_BREAK && !eligibleUnitFilter`）は新enumでもそのまま機能する（非 `1×1`・既存folderが `STRATEGY_PRESERVED`。specのfixed setと一致）。
+     - executor dispatchは `preferredRegion != null` を優先し、既存 `CAPTURED_VISUAL_GLOBAL` 経路には影響しない。registry駆動test（`CrossStrategyCorpusTest` 等）は新enumを自動巡回し、`ContractShapeTest` がenum値を列挙している場合はそこへ追加する（実装時に確認）。
 2. `planning/PlacementAllocator.kt`
    - `allocateCapturedThenNewInRegion(span, rowWindow)` を追加: captured page群（PageOrder順）→作成済み新page群を `findRowMajorFirstFit(..., rowWindow=rowWindow)` で走査し、なければ新pageを作成して領域内first-fit。`allocateOnNewPages` にwindow引数の内部variant（既存呼び出し元は無変更）。
 3. `planning/FullRunExecution.kt`
    - `executeRegionSweep(context)` を追加。`executeGlobalCompact` と同一の構造で、差分は次のとおり:
      - **消費順序**: `(componentRank, importanceRank, BOTTOM-affinity-first(0/1), PageOrder, PageId, cell.y DESC, cell.x, ItemId)`。上位3keyはidentity-basedなintent biasで、intentなしでは定数（既存intent layeringと同一パターン）。`minimizeMovement` は消費しない（spec合成matrix）。
-     - **割当**: preserve hint（captured cellが領域内かつ対象pageで空きのときのみ直接使用。領域外は無視）を除き `allocateCapturedThenNewInRegion(span, regionWindow)`。band hint（`allocateOnPageOnlyInBand`）は使用しない。
+     - **割当**: **intent hintによるpage局所allocation例外は一切存在しない**（`preserve` 含めてinert。spec rev.3）。すべてのunitは `allocateCapturedThenNewInRegion(span, regionWindow)` の単調first-fitに従う。
      - **領域**: `lowerPreferredRegion(device.rows)` を全allocationに適用（新page含む）。上段cellはeligibilityから構造的に除外される。
      - strategy-fixed handling / formation / 形成folderのunits後配置 / disposition / `appendPreservedPlacements` / 出力canonical化は `executeGlobalCompact` と同一。
    - `planning/PlanningPlacement.kt` のcandidate tail（L335-340）: `strategy.preferredRegion != null` のとき候補割当を領域付き走査へ変更し、領域内不成立candidate（非 `1×1` を含む）を `STRATEGY_SCOPE_FULL` でunplaced。
@@ -132,14 +140,14 @@ provenance: selection identityが既存の第5policy inputとして自動参加�
 | AC-2 | `BottomRegionStrategyTest`（normative rules各項） | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
 | AC-3 | 同上（dense 3strategy比較fixture） | 同上 |
 | AC-4 | `GoldenOracleCorpusTest` + 既存strategy test群 無変更green | 同上 |
-| AC-5 | `CrossStrategyCorpusTest` / `PlannerGeneratedPropertyTest` / 専用counterexample fixture（適用→recapture→replan空差分） | 同上 |
-| AC-6 | `IntentPreferenceStrategyMatrixTest` / `WidgetIntentAuthorityTest` / BOTTOM-affinity非page-affinity fixture | 同上 |
+| AC-5 | `CrossStrategyCorpusTest` / `PlannerGeneratedPropertyTest` / 専用counterexample fixture（複数既存folder + 新folder形成 + 非 `1×1` + fragmented lock/reservation + 複数page + intent bias item群の同居、適用→recapture→replan空差分） | 同上 |
+| AC-6 | `IntentPreferenceStrategyMatrixTest` / `WidgetIntentAuthorityTest` / BOTTOM-affinity非page-affinity fixture / preserve inert fixture | 同上 |
 | AC-7 | `BuiltInOrganizerPolicyBundleSourceTest` | 同上 |
 | AC-8 | `LayoutStrategySelectionStoreTest` | 同上 |
 | AC-9 | ID→copy exact mapping test、spec 235 picker oracle regression、preview projection空間oracle | unit test + API 36 emulator instrumentation lane（CI） |
 | AC-10 | `RunEventSerializationTest` | unit test |
 | AC-11 | `BottomRegionStrategyTest` orientation matrix | unit test |
-| AC-12 | physical-device evidence artifact、またはmerge前のowner decision記録（Issue #398上） | physical device / Issue |
+| AC-12 | physical-device evidence artifact、または「Issue #398本文Acceptance criteriaの明示改訂（commit/編集履歴）+ owner decision comment」。**コメント単独では代替不可** | physical device / Issue |
 | AC-13 | `final-status` CI + 独立監査記録 | GitHub Actions + `docs/assessment/` |
 
 その他の必須gate: `./gradlew spotlessCheck`、`./gradlew assembleLawnWithQuickstepGithubDebug`、`python3 tools/repo-contract/validate_repo_contract.py`（docs変更時。既存の未追跡 `worktree-371/` が地元で検出される場合はCI基準を正本とする）。
