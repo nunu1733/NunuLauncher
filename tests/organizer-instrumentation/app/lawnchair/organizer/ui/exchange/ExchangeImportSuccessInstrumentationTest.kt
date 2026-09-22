@@ -21,6 +21,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -636,7 +637,10 @@ class ExchangeImportSuccessInstrumentationTest {
         // the TO-BE T-18 copy (spec 328 rev.2 D-3 unified). The legacy CTA
         // copies (idle / run-in) stay absent — the resume face never reuses
         // them.
+        // The discard slot's focus restoration may scroll the list; bring the
+        // CTA (above it) back into the viewport before asserting display.
         composeRule.onNodeWithTag("exchange-import-continue")
+            .performScrollTo()
             .assertIsDisplayed()
             .assertIsEnabled()
             .assertTextContains(context.getString(R.string.exchange_import_continue))
