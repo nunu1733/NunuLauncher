@@ -166,8 +166,8 @@ provenance: selection identityが既存の第5policy inputとして自動参加�
 ## Execution checklist
 
 - [x] Current behavior reproduced（baseline test green、依存gate確認と再現可能な証拠記録済み。2026-09-23）
-- [ ] Tests fail for the missing behavior（`BottomRegionStrategyTest` を先に追加し、未実装IDで失敗することを確認）
-- [ ] Minimal implementation completed（registry/allocator/executor/policy/UI/test）
-- [ ] Migration/recovery verified（bundle v2.7 publish、selection fail-closed、downgrade case test）
-- [ ] Full relevant verification completed（上表gate一式）
-- [ ] PR evidence and remaining risks recorded（AC-12 evidence、AC-13独立監査、残余risk）
+- [x] Tests fail for the missing behavior（`BottomRegionStrategyTest` を未実装IDで先に追加し `Rejected.Invalid` で失敗することを確認）
+- [x] Minimal implementation completed（registry/allocator/executor/policy/UI/strings/test）
+- [x] Migration/recovery verified（bundle v2.7 publish、selection store契約green、catalog coherence green、downgradeは既存 `LayoutStrategySelectionStoreTest` 契約で担保）
+- [x] Full relevant verification completed（`spotlessCheck`、`testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` 1,736 tests green（golden corpus・cross-strategy含む）、`assembleLawnWithQuickstepGithubDebug`、repo contract validator（既存の未追跡 `worktree-371/` の1件を除き finding なし。push対象外））
+- [ ] PR evidence and remaining risks recorded（AC-12 physical-device evidence、AC-13独立監査、残余risk → PR本文へ記録）

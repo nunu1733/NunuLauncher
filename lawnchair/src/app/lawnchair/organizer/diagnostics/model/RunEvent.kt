@@ -65,6 +65,8 @@ data class RunVersions private constructor(
             // Issue #235: the widget-relocating successor strategies.
             "STABLE_PAGE_TIDY_V2",
             "BOTTOM_FIRST_V2",
+            // Issue #398: the lower-region successor strategy.
+            "BOTTOM_REGION_V1",
         )
 
         /** Construct [RunVersions] with approved version identifiers. */

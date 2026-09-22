@@ -1052,9 +1052,12 @@
     <string name="organization_strategy_tidy_v2_name">Tidy each screen, widgets included</string>
     <string name="organization_strategy_tidy_v2_description">Closes gaps between apps and gathers widgets into the rows they already occupy on each screen.</string>
     <string name="organization_strategy_bottom_first_name">Bottom-first fill</string>
-    <string name="organization_strategy_bottom_first_description">Fills each screen starting from the bottom rows. Widgets stay in place.</string>
+    <string name="organization_strategy_bottom_first_description">Places apps row by row from the bottom of each screen. Widgets stay in place.</string>
     <string name="organization_strategy_bottom_first_v2_name">Bottom-first fill, widgets included</string>
-    <string name="organization_strategy_bottom_first_v2_description">Fills each screen starting from the bottom rows and places widgets above the apps.</string>
+    <string name="organization_strategy_bottom_first_v2_description">Places apps toward the bottom of each screen and moves widgets above the apps.</string>
+    <!-- Issue #398 BOTTOM_REGION_V1: lower-preferred-region sweep. -->
+    <string name="organization_strategy_bottom_region_name">Bottom-half layout</string>
+    <string name="organization_strategy_bottom_region_description">Uses the lower half of each screen as the main area and keeps the top open, adding screens when needed. Widgets stay in place.</string>
     <string name="organization_strategy_global_name">Compact across screens (apps only)</string>
     <string name="organization_strategy_global_description">Moves apps from later screens into earlier free spaces. Existing folders stay where they are.</string>
     <string name="organization_strategy_global_v2_name">Compact across screens</string>

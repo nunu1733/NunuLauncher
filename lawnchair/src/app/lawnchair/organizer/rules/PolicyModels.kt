@@ -181,8 +181,9 @@ data class OrganizerPolicyBundle(
         // digest-only expansion was explicitly rejected. Issue #235 ships
         // both widget-relocating successors (STABLE_PAGE_TIDY_V2 and
         // BOTTOM_FIRST_V2) on one mainline, so the single shipped artifact
-        // change publishes one increment: -v2.6.
-        const val POLICY_BUNDLE_VERSION = "organization-policy-v2.6"
+        // change publishes one increment: -v2.6. Issue #398 enables the
+        // lower-region successor: -v2.7 (BOTTOM_REGION_V1).
+        const val POLICY_BUNDLE_VERSION = "organization-policy-v2.7"
         val RULE_VERSION = RuleVersion("v2")
         val TAXONOMY_VERSION = TaxonomyVersion("v1")
         const val CLASSIFICATION_VERSION = "classification-v1"

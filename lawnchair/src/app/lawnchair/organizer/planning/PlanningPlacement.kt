@@ -332,11 +332,29 @@ internal object PlanningPlacement {
             // A CAPTURED_THEN_NEW/PREFERRED_THEN_NEW allocation returning null
             // is only possible under the injected allocation fault, which
             // stays a loud invariant failure — never a silent unplaced row.
-            val allocated = when (strategy.pageScope) {
-                PageScope.CAPTURED_THEN_NEW, PageScope.PREFERRED_THEN_NEW -> allocator.allocateCapturedThenNew(unit.span)
-                    ?: error("Validated item ${unit.sortItem} could not be allocated")
+            // Issue #398: a strategy with a declared preferred region keeps
+            // its candidates inside that region (the sweep over captured then
+            // new pages, region-restricted); a candidate the region cannot
+            // fit (including a non-1×1 span) is reported unplaced instead of
+            // the strategy violating its own shape — candidates have no
+            // captured position to preserve.
+            val allocated = if (strategy.preferredRegion != null) {
+                val regionWindow = lowerPreferredRegion(device.rows)
+                if (unit.span.height > regionWindow.count()) {
+                    // A candidate the region cannot fit is unplaced — the
+                    // strategy never breaks its own shape, and candidates
+                    // have no captured position to preserve (spec 398).
+                    null
+                } else {
+                    allocator.allocateCapturedThenNewInRegion(unit.span, regionWindow)
+                }
+            } else {
+                when (strategy.pageScope) {
+                    PageScope.CAPTURED_THEN_NEW, PageScope.PREFERRED_THEN_NEW -> allocator.allocateCapturedThenNew(unit.span)
+                        ?: error("Validated item ${unit.sortItem} could not be allocated")
 
-                PageScope.CAPTURED_PAGE_ONLY -> allocator.allocateCapturedPageOnly(unit.span)
+                    PageScope.CAPTURED_PAGE_ONLY -> allocator.allocateCapturedPageOnly(unit.span)
+                }
             }
             val (pageRef, cell) = allocated ?: run {
                 val unplacedUnitIds = unit.members ?: listOf(unit.sortItem)

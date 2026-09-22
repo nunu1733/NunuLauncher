@@ -116,13 +116,15 @@ class StrategyPickerInstrumentationTest {
         // Issue #235: the catalog has eight rows and the tail rows sit below
         // the fold on the CI emulator — scroll each row into view before the
         // display assertion (the picker itself stays non-virtualized for the
-        // radio-group a11y contract).
+        // radio-group a11y contract). Issue #398 adds BOTTOM_REGION_V1 (nine
+        // rows).
         for (name in listOf(
             R.string.organization_strategy_canonical_name,
             R.string.organization_strategy_tidy_name,
             R.string.organization_strategy_tidy_v2_name,
             R.string.organization_strategy_bottom_first_name,
             R.string.organization_strategy_bottom_first_v2_name,
+            R.string.organization_strategy_bottom_region_name,
             R.string.organization_strategy_global_name,
             R.string.organization_strategy_global_v2_name,
             R.string.organization_strategy_category_contiguous_name,
