@@ -2,7 +2,7 @@
 
 > Issue: #377
 > Spec: [spec.md](./spec.md)
-> Status: accepted（2026-09-22。review Approved @ Issue #377コメント、対象 `9f8d02a921`。Gating 4〔bug #407解決〕はreconciliation統合の着手条件として未充足のまま残る）
+> Status: implemented（2026-09-22。実装は[PR #410](https://github.com/nunu1733/NunuLauncher/pull/410) merge `b4a2012640`。Gating 4〔bug #407解決〕はPR #409 mergeで充足済み）
 
 ## Current evidence
 
