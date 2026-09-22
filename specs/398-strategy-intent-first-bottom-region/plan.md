@@ -30,7 +30,7 @@
 - `lawnchair/src/app/lawnchair/organizer/planning/FullRunExecution.kt`
   - `execute`（L110-126）: `unitOrder` でdispatch。未知組合せはloud failure。
   - `executeGlobalCompact`（L558-682）: strategy-fixed handling（L565-577）、formation（eligible candidatesのみ、既存folder除外、L581-601）、単一stream + `allocateCapturedThenNew`、形成folderをunitsの後に `(preferred page key, ordinal)` 順で配置（L647-672）— 本strategyのexecutorの直接的な雛形。
-  - intent hint helpers: `preferenceAllocateOnPage`（L441-464、preserve cell / region band hint。本strategyでは **preserve cell clipのみ** 使用しband hintは使わない）、`preferenceBandHint`/`preferenceCellHint`（L811-827）。
+  - intent hint helpers: `preferenceAllocateOnPage`（L441-464、preserve cell / region band hint）等のpage-local allocation helperは **既存に存在するが、`BOTTOM_REGION_V1` では一切使用しない**（allocation例外なし。intentは消費順序biasとしてのみ消費。plan rev.4決定）。
 - `lawnchair/src/app/lawnchair/organizer/planning/PlacementAllocator.kt`
   - `findRowMajorFirstFit`（L230-289）: 唯一のtraversal実装。`rowWindow`（L224-228、#235 widget bandで使用済み）と `BOTTOM_UP_ROW_MAJOR`（L261-266）は両方とも既存であり、領域付きbottom-up走査は既存部品の組合せで表現できる。
   - `allocateCapturedThenNew`（L167-177）: sweep走査の既存実装。領域付きvariantは未存在（新規追加が必要）。
@@ -67,8 +67,8 @@
    - `allocateCapturedThenNewInRegion(span, rowWindow)` を追加: captured page群（PageOrder順）→作成済み新page群を `findRowMajorFirstFit(..., rowWindow=rowWindow)` で走査し、なければ新pageを作成して領域内first-fit。`allocateOnNewPages` にwindow引数の内部variant（既存呼び出し元は無変更）。
 3. `planning/FullRunExecution.kt`
    - `executeRegionSweep(context)` を追加。`executeGlobalCompact` と同一の構造で、差分は次のとおり:
-     - **消費順序**: `(componentRank, importanceRank, BOTTOM-affinity-first(0/1), PageOrder, PageId, cell.y DESC, cell.x, ItemId)`。上位3keyはidentity-basedなintent biasで、intentなしでは定数（既存intent layeringと同一パターン）。`minimizeMovement` は消費しない（spec合成matrix）。
-     - **割当**: **intent hintによるpage局所allocation例外は一切存在しない**（`preserve` 含めてinert。spec rev.3）。すべてのunitは `allocateCapturedThenNewInRegion(span, regionWindow)` の単調first-fitに従う。
+     - **消費順序**: `(preserveClass(0/1), componentRank, importanceRank, BOTTOM-affinity-class(0/1), PageOrder, PageId, cell.y DESC, cell.x, ItemId)`。上位4keyはidentity-stableなintent bias classで、intentなしでは定数（既存intent layeringと同一パターン）。class間の順序はrun間不変、同class内はbaseの逆captured visual順を復元する。`minimizeMovement` はbase順序（captured位置順=移動最小化順）の採用として消費され、追加の切替を行わない（spec合成matrix）。
+     - **割当**: **intent hintによるpage局所allocation例外は一切存在しない**。すべてのunitは `allocateCapturedThenNewInRegion(span, regionWindow)` の単調first-fitに従う。
      - **領域**: `lowerPreferredRegion(device.rows)` を全allocationに適用（新page含む）。上段cellはeligibilityから構造的に除外される。
      - strategy-fixed handling / formation / 形成folderのunits後配置 / disposition / `appendPreservedPlacements` / 出力canonical化は `executeGlobalCompact` と同一。
    - `planning/PlanningPlacement.kt` のcandidate tail（L335-340）: `strategy.preferredRegion != null` のとき候補割当を領域付き走査へ変更し、領域内不成立candidate（非 `1×1` を含む）を `STRATEGY_SCOPE_FULL` でunplaced。
