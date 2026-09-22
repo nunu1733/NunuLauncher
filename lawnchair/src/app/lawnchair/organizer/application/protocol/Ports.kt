@@ -418,6 +418,18 @@ internal interface RecoveryStoreReconciliationSession : AutoCloseable {
     fun quarantineUnmutated(pointId: RecoveryPointId, expectedLifecycle: LifecycleState): Boolean
 
     fun advance(pointId: RecoveryPointId, next: LifecycleState): Boolean
+
+    /**
+     * Format-gate seam (Issue #407, spec 13 `unsupported version ->
+     * INCOMPATIBLE`): durably advance a record whose logical format_version is
+     * unsupported to the final [LifecycleState.INCOMPATIBLE]. Unlike
+     * [advance], the read-back validation must not require codec record
+     * decode — the persisted format_version stays unsupported by definition,
+     * so decode would reject the very write being validated. Rechecks the
+     * transition legality in-transaction; returns false without mutation for
+     * unknown or already-final records.
+     */
+    fun markIncompatible(pointId: RecoveryPointId): Boolean
     fun markRestoring(
         pointId: RecoveryPointId,
         reviewedManifest: PersistenceManifest,
