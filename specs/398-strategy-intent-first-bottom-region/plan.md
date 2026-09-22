@@ -140,7 +140,7 @@ provenance: selection identityが既存の第5policy inputとして自動参加�
 | AC-2 | `BottomRegionStrategyTest`（normative rules各項） | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` |
 | AC-3 | 同上（dense 3strategy比較fixture） | 同上 |
 | AC-4 | `GoldenOracleCorpusTest` + 既存strategy test群 無変更green | 同上 |
-| AC-5 | `CrossStrategyCorpusTest` / `PlannerGeneratedPropertyTest` / 専用counterexample fixture（複数既存folder + 新folder形成 + 非 `1×1` + fragmented lock/reservation + 複数page + intent bias item群の同居、適用→recapture→replan空差分。**「run 1 hint不成立→run 2 hint成功でも空差分」caseと「成功hintが前方holeを残しそのholeへ形成folderが配置される」caseを含む**） | 同上 |
+| AC-5 | `CrossStrategyCorpusTest` / `PlannerGeneratedPropertyTest` / 専用counterexample fixture（複数既存folder + 新folder形成 + 非 `1×1` + fragmented lock/reservation + 複数page + intent bias item群の同居、適用→recapture→replan空差分。**「run 1 hint不成立→run 2 hint成功でも空差分」case、「成功hintが前方holeを残しそのholeへ形成folderが配置される」case、「同class内の実行順が反転（A/B swap）しても空差分」caseを含む**） | 同上 |
 | AC-6 | `IntentPreferenceStrategyMatrixTest` / `WidgetIntentAuthorityTest` / BOTTOM-affinity非page-affinity fixture / preserve soft-hint fixture（hint成功=displacement 0・hint不成立=無preserveと同一・displacement非悪化比較・空差分replan） | 同上 |
 | AC-7 | `BuiltInOrganizerPolicyBundleSourceTest` | 同上 |
 | AC-8 | `LayoutStrategySelectionStoreTest` | 同上 |
