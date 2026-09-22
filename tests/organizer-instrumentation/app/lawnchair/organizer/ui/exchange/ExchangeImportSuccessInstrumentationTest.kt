@@ -601,7 +601,7 @@ class ExchangeImportSuccessInstrumentationTest {
     // ------------------------------------------------------------------
 
     @Test
-    fun importReviewRendersSummaryRemainingAndDiscardWithNoCta() {
+    fun importReviewRendersSummaryRemainingContinueAndDiscard() {
         val (holder, _) = holderInImportReviewState()
         setSuccessContent(holder)
         composeRule.onNodeWithTag("exchange-import-review").assertIsDisplayed()
@@ -631,9 +631,15 @@ class ExchangeImportSuccessInstrumentationTest {
             .assertIsDisplayed()
             .assertIsEnabled()
             .assertTextContains(context.getString(R.string.exchange_import_discard))
-        // DI-AC-01 (Contract notes 2): NO continuation CTA — not even a
-        // disabled or placeholder one; the CTA copy is absent too.
-        composeRule.onNodeWithTag("exchange-import-continue").assertDoesNotExist()
+        // Issue #375 (spec "再開面CTAの有効化" — #374 Contract notes 2の委譲を
+        // 受けてCTAが有効化された): the rebind continuation CTA renders with
+        // the TO-BE T-18 copy (spec 328 rev.2 D-3 unified). The legacy CTA
+        // copies (idle / run-in) stay absent — the resume face never reuses
+        // them.
+        composeRule.onNodeWithTag("exchange-import-continue")
+            .assertIsDisplayed()
+            .assertIsEnabled()
+            .assertTextContains(context.getString(R.string.exchange_import_continue))
         composeRule.onNodeWithText(context.getString(R.string.exchange_import_cta_idle)).assertDoesNotExist()
         composeRule.onNodeWithText(context.getString(R.string.exchange_import_cta_run_in)).assertDoesNotExist()
     }
