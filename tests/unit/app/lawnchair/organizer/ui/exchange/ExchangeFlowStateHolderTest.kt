@@ -2500,6 +2500,23 @@ class ExchangeFlowStateHolderTest {
     }
 
     @Test
+    fun continuingImportReviewDiscardIsRefusedUntilTheCommitLands() {
+        // spec SR-AC-07: 処理中は破棄が不受理（spec 328 AC-3規律） — the
+        // holder-level guard (not just the disabled button) refuses the
+        // discard while the rebind CTA's single-flight is in flight.
+        val fixture = seedAnchorRaceFixture()
+        val review = awaitImportReview(fixture.holder)
+        fixture.holder.continuePendingImport()
+        // The rebind CTA flipped `continuing`; a discard in flight is refused.
+        awaitScreen(fixture.holder) { (fixture.holder.screen as? ExchangeScreen.ImportReview)?.continuing == true }
+        fixture.holder.discardImport()
+        assertTrue(
+            "a continuing review's discard must not close the face",
+            fixture.holder.screen is ExchangeScreen.ImportReview,
+        )
+    }
+
+    @Test
     fun writeFailedInvalidationSurvivesHolderRecreationWithoutFabricatingSuccess() {
         // SR-AC-08 cross-holder / process-recreation oracle: Holder A's
         // invalidation commit fails with `WriteFailed` → the record survives

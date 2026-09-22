@@ -1813,7 +1813,13 @@ class ExchangeFlowStateHolder(
                 current.attemptToken
             }
 
-            is ExchangeScreen.ImportReview -> null
+            // Issue #375 (spec SR-AC-07): on the resume face the rebind CTA's
+            // single-flight (`continuing`) refuses the discard — a started
+            // seam cannot be withdrawn (spec 328 AC-3 discipline).
+            is ExchangeScreen.ImportReview -> {
+                if (current.continuing) return
+                null
+            }
 
             else -> return
         }
