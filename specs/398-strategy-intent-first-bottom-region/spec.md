@@ -64,7 +64,7 @@ _Avoid_: widget band（#235のcaptured widget帯との混同）、region band（
 | Eligible movable units | movable `1×1` な `APPLICATION`/`DEEP_SHORTCUT` singletonのみ（`GLOBAL_COMPACT_V1` と同一の制限。根拠は下記idempotence節） |
 | Fixed set（strategy固定） | movableな非 `1×1` unit（`2×1`/`1×2`等）と全既存folder unitはcaptured位置に固定し `STRATEGY_PRESERVED`。自然保持対象（lock、reservation、dock、widget、app pair、legacy shortcut、unavailable等）は既存優先順位の理由で固定（変更なし） |
 | Folder policy | canonical P-04/P-05 grouping を **eligible `1×1` candidates のみ** に適用（既存folderはformation候補から除外）。形成されたfolderはcompacting unitsの **後** に `(preferred page key, NewFolderOrdinal)` 順で配置（`GLOBAL_COMPACT_V1` と同一） |
-| Unit order | 逆captured visual順 `(PageOrder, PageId, cell.y DESC, cell.x, ItemId)` をbaseに、intent preference bias（identity-stable class keys: `preserve` > grouping > importance > `regionAffinity: BOTTOM`）を上位keyとしてlayer（下記合成規則）。catalog宣言は新enum値 `CAPTURED_VISUAL_GLOBAL_REVERSED` としてsemanticsをregistry dataに載せる |
+| Unit order | 逆captured visual順 `(PageOrder, PageId, cell.y DESC, cell.x, ItemId)` をbaseに、intent preference bias（identity-stable class keys: grouping > importance > `regionAffinity: BOTTOM`）を上位keyとしてlayer（下記合成規則）。catalog宣言は新enum値 `CAPTURED_VISUAL_GLOBAL_REVERSED` としてsemanticsをregistry dataに載せる |
 | Page scope | 下部領域sweep（captured page群を `PageOrder` 順、次に作成済み新page群、最後に新page作成） |
 | Cell traversal | 下部優先領域内でbottom-up row-major |
 | Widget policy | null（widgetは移動しない。canonical族・GLOBAL_COMPACT族と同一の保持扱い `PreserveReason.WIDGET`） |
@@ -113,15 +113,15 @@ lowerRegion = (rows - lowerRegionRows(rows)) until rows
 
 cross-page moverを `1×1` に制限する理由: ADR-0012決定4（およびGLOBAL_COMPACT_V1の受入経緯、spec 182）により、captured位置順のcross-page戦略はheterogeneous span + fragmented fixed occupancy下でfirst-fitがvisual sequenceを並べ替えINV-8を破るため、cross-page moverは `1×1` に制限され、それ以外は `STRATEGY_PRESERVED` 固定であることがaccepted制約である。本strategyはこの制約をそのまま継承する。
 
-本strategyは「形成folderが次runでfixed化する」点でspec 237（材料化folderが次回mover streamへ再参加する形状）と異なるため、証明も本strategy固有の形で行う。 **intent preferenceによるallocation例外は存在しない** — `preserve` / `minimizeMovement` を含む全intent fieldはidentity-stableな消費順序classとして消費され、どのunitも自身の順番で純粋な単調first-fitに従う（spec 204のordering/preference専用消費との整合）。
+本strategyは「形成folderが次runでfixed化する」点でspec 237（材料化folderが次回mover streamへ再参加する形状）と異なるため、証明も本strategy固有の形で行う。 **intent preferenceは移動最小化の意味を保ったまま、単調first-fitと両立する形で消費される** — `preserve` はreserved集合（下記）として、他のfieldはidentity-stableな消費順序classとして扱う（spec 204のordering/preference専用消費との整合）。
 
-1. **Base fixed setの不変**: fixed set F は (a) 自然保持対象（`determinePreservation`、入力状態の決定的関数）、(b) 非 `1×1` movable unit、(c) **run開始以前からcapturedに存在するfolder** からなる。F はmovable `1×1` unitの再配置を含まないため、run間で不変である。
-2. **形成folderの二重性**: run 1のformationで形成されたfolderのmembersはfolder member配置へ移るため、run 2のmovable streamから消える（eligible unitはtop-level `1×1` app/shortcutのみ）。形成folderはrun 2ではF' = F ∪ {形成folder群（各自の配置cell）} として **fixed occupancyとしてのみ** 再参加する。formation候補から既存folderは除外されるため、run 2で新たなformationは起こらず（残留singleton candidate群は `minGroupSize` 未満。spec 237と同一の論法）、F' で固定である。
-3. **消費順序σの不変**: 消費順序は `(bias class keys（preserve > grouping > importance > BOTTOM-affinity。いずれもidentity-basedでintentなしでは定数）, PageOrder, PageId, y DESC, x ASC, ItemId)`。class keyは配置に依存せずrun間で不変であり、同class内の順序は逆captured visual順である。下寄せ単調first-fitでは「k番目に消費されたunitが、global bottom-up領域順（captured pages → 新pages、各pageの領域内bottom-up）でk番目の空きcell」に載る。よってmaterialized状態の `(PageOrder, PageId, y DESC, x ASC, ItemId)` 読み出しは、同class内かつ非absorbed singleton集合上でbase順序を正確に復元し、class key不変より消費順序全体が復元される（`GLOBAL_COMPACT_V1` の「materialized captured visual order restores the consumption order」の鏡像）。
-4. **形成folder cellの単調配置**: run 1では形成folderは全unitの **後** に `(preferred page key, NewFolderOrdinal)` 順でallocationされるため、形成folderのcellはglobal bottom-up空きcell順で必ず全unit cellより後方にある。したがってrun 2でF' の形成folder分がfixed occupancyへ加わっても、それはunit cell群の **後方** を占めるのみで、任意のunitの帰着cellを前方からずらさない。
-5. **帰結（空差分）**: 1〜4より、run 2のsingleton streamはrun 1のstreamからabsorbed membersを除いた同一順序であり、各unitは自身のrun 1のcellを回収し、形成folderは自身のcellをfixed保持する。materialized状態のrecapture/replan（harnessの `PostPlanMaterializer` 経由、production相当の適用後recapture）で差分は空になる。
+1. **Base fixed setとreserved集合の不変**: fixed set F は (a) 自然保持対象（`determinePreservation`、入力状態の決定的関数）、(b) 非 `1×1` movable unit、(c) **run開始以前からcapturedに存在するfolder** からなる。reserved集合 R は `preserve=true` のmovable `1×1` itemとそのcaptured cellの対であり、当該itemはcaptured位置に保持される（displacement 0。領域内外を問わない。「movable unitを上段へ **新たに配置しない**」というidentityは保たれる — R itemは移動しない）。F と R はともに (入力状態, accepted intent content) の決定的関数であり、同一intentでのrun間で不変である。R のcellはsweepの空きcell列から除外するreserved cellとして扱う。
+2. **形成folderの二重性**: run 1のformationで形成されたfolderのmembersはfolder member配置へ移るため、run 2のmovable streamから消える（eligible unitはtop-level `1×1` app/shortcutのみ）。形成folderはrun 2ではF' = F ∪ {形成folder群（各自の配置cell）} として **fixed occupancyとしてのみ** 再参加する。formation候補から既存folderは除外されるため、run 2で新たなformationは起こらず（残留singleton candidate群は `minGroupSize` 未満。spec 237と同一の論法）、F' で固定である。R は不変。
+3. **消費順序σの不変**: sweep対象stream（F ∪ R に属さないmovable `1×1` unit群）の消費順序は `(bias class keys（grouping > importance > BOTTOM-affinity。いずれもidentity-basedでintentなしでは定数）, PageOrder, PageId, y DESC, x ASC, ItemId)`。class keyは配置に依存せずrun間で不変であり、同class内の順序は逆captured visual順である。下寄せ単調first-fitでは「k番目に消費されたunitが、F ∪ R を除いたglobal bottom-up領域順（captured pages → 新pages、各pageの領域内bottom-up）でk番目の空きcell」に載る。よってmaterialized状態の `(PageOrder, PageId, y DESC, x ASC, ItemId)` 読み出しは、同class内かつ非absorbed singleton集合上でbase順序を正確に復元し、class key不変より消費順序全体が復元される（`GLOBAL_COMPACT_V1` の「materialized captured visual order restores the consumption order」の鏡像）。
+4. **形成folder cellの単調配置**: run 1では形成folderは全stream unitの **後** に `(preferred page key, NewFolderOrdinal)` 順でallocationされるため、形成folderのcellは「F ∪ R を除いたglobal bottom-up空きcell順」で必ず全stream unit cellより後方にある。したがってrun 2でF' の形成folder分がfixed occupancyへ加わっても、それはstream unit cell群の **後方** を占めるのみで、任意のunitの帰着cellを前方からずらさない。
+5. **帰結（空差分とdisplacement非悪化）**: 1〜4より、run 2のstreamはrun 1のstreamからabsorbed membersを除いた同一順序であり、各unitは自身のrun 1のcellを回収し、形成folderは自身のcellをfixed保持し、R itemはcaptured位置に留まる。materialized状態のrecapture/replan（harnessの `PostPlanMaterializer` 経由、production相当の適用後recapture）で差分は空になる。さらに `preserve` はdisplacement 0（移動しない）として消費されるため、同一入力のpreserveなし版と比較して当該itemのdisplacement（page-crossing・slot-distance）が悪化することは構造的にない（spec 204「移動最小化bias」契約の充足）。
 
-実行可能証明として、既存harnessのIDEMPOTENCE/DETERMINISM/CONSERVATION等の全契約が新strategyを含むregistry駆動testを通過すること（`CrossStrategyCorpusTest` は `acceptedIds` を自動巡回する）に加え、**証明が扱う要素を同一fixtureに同居させた専用counterexample fixture** — 複数既存folder + 新folder形成（`minGroupSize` 以上の `1×1` candidate群）+ `2×1`/`1×2` movable + fragmented lock/reservation + 複数page + intent bias（`preserve=true` / `importance: HIGH` / `regionAffinity: BOTTOM` を与えたitem群、および `minimizeMovement=true` のcase）— で、適用→recapture→replanの空差分と、bias classが実際に消費順序へ効くこと（preserve itemの無intent時より早い消費）を直接固定する（spec 237の専用fixtureと同趣旨。shared suiteが通らない状態遷移を直接踏む）。
+実行可能証明として、既存harnessのIDEMPOTENCE/DETERMINISM/CONSERVATION等の全契約が新strategyを含むregistry駆動testを通過すること（`CrossStrategyCorpusTest` は `acceptedIds` を自動巡回する）に加え、**証明が扱う要素を同一fixtureに同居させた専用counterexample fixture** — 複数既存folder + 新folder形成（`minGroupSize` 以上の `1×1` candidate群）+ `2×1`/`1×2` movable + fragmented lock/reservation + 複数page + intent bias（`preserve=true` / `importance: HIGH` / `regionAffinity: BOTTOM` を与えたitem群、および `minimizeMovement=true` のcase）— で、適用→recapture→replanの空差分、R itemがcaptured位置に留まること、および同一入力のpreserveなし版との比較でpreserve itemのdisplacementが悪化しないことを直接固定する（spec 237の専用fixtureと同趣旨。shared suiteが通らない状態遷移を直接踏む）。
 
 対比として、順順captured visual順（y昇順）をbottom-up充填に使うことは採用しない（visual読み出し順と消費順が逆になりmaterialized状態が消費順序を復元せず、replanで回転する）。
 
@@ -133,8 +133,8 @@ cross-page moverを `1×1` に制限する理由: ADR-0012決定4（およびGLO
 
 authority分離（#204契約の再確認と、strategy軸での明示化）:
 
-- **strategyは空間構造を決める**: 領域幾何、sweep順序、page成長、上段非使用。intentはこの構造を緩めない。AIがraw座標・最終 `(page,x,y)` をauthoritativeに決めない既存契約（#204 `FORBIDDEN_CONTENT`）は不変であり、下寄せstrategyの選択・構造をintentが強制・無効化する経路も存在しない。
-- **preferenceは構造の内側でのitem assignmentに効く**: spec 204のplanner接続契約（ordering/preference専用の消費）に従い、全fieldが **identity-stableな消費順序bias** として消費される。**page局所allocation例外は一切存在しない**（単調first-fit前提を守るため）。bias key間の優先順位は `preserve` > grouping > importance > `regionAffinity: BOTTOM` とし、いずれのbias keyもintentなしでは定数（既存runに影響しない）、class間の順序はrun間で不変、同class内はbaseの逆captured visual順を復元する。
+- **strategyは空間構造を決める**: 領域幾何、sweep順序、page成長、上段非配置。intentはこの構造を緩めない。AIがraw座標・最終 `(page,x,y)` をauthoritativeに決めない既存契約（#204 `FORBIDDEN_CONTENT`）は不変であり、下寄せstrategyの選択・構造をintentが強制・無効化する経路も存在しない。
+- **preferenceはspec 204のordering/preference専用消費として、移動最小化の意味を保って効く**: `preserve` は **reserved集合**（当該itemをcaptured位置に保持し、displacement 0。spec 204の「preserve hintはfreeならcaptured cellを使いdisplacementを悪化させない」契約と整合）として消費され、他のfield（grouping > importance > `regionAffinity: BOTTOM`）はidentity-stableな消費順序classとして消費される。class間の順序はrun間で不変、同class内はbaseの逆captured visual順を復元する。いずれのbias keyもintentなしでは定数（既存runに影響しない）。
 
 合成matrix（normative）:
 
@@ -145,7 +145,7 @@ authority分離（#204契約の再確認と、strategy軸での明示化）:
 | `pageAffinity` | preferred page bias（既存どおり） | inert（sweepは消費しない） | inert（同左。`GLOBAL_COMPACT_V1` と同一の先例） |
 | `regionAffinity` = `BOTTOM` | 既存どおりordering bias | 既存どおり | **消費順序biasのみ**（より早い消費=より低いcell）。page局所allocation hintは持たない（隠れたpage affinityを混入させない） |
 | `regionAffinity` = `TOP`/`MIDDLE` | 既存どおりordering bias | 既存どおり | inert（上段配置なしでは充足不可能。決定的に無視する） |
-| `preserve`（per-item） | captured cell hint（既存どおり） | page-local hint（既存どおり） | **消費順序bias（最も早いclass）**。preserve=true itemは他の全classに先立って消費され、最も安定なanchor領域（page 1の最下段等）へ載る。page-local allocation例外にはしない（idempotence節の単調first-fit前提を守る）。classはidentity-stableであり、同class内の順序は逆captured visual順を復元する |
+| `preserve`（per-item） | captured cell hint（既存どおり） | page-local hint（既存どおり） | **reserved集合として消費**: preserve=true itemはcaptured位置に保持され（領域内外を問わない）、`Preserved{STRATEGY_PRESERVED}` で報告される。displacement 0であり、同一入力のpreserveなし版と比較してdisplacementが悪化しない（spec 204「移動最小化bias」契約の充足）。当該cellはsweep空きcell列から除外されるreserved cellであり、単調first-fitを壊さない（idempotence節） |
 | `globalPreference.minimizeMovement` | singleton順序をcaptured visual順へ（既存どおり） | 順序が既にcaptured visual順のため実質内包 | **base順序の採用として消費**（本strategyのbase順序はcaptured位置順=移動最小化順であり、GLOBAL_COMPACT族と同一の扱い）。canonicalのidentity順への切替は行わない |
 
 この合成により、#398の要求「compact + 重要アプリを下へ」は、既存の `CANONICAL_PAGE_COMPACT_V1`（または `STABLE_PAGE_TIDY_V1` 等page内compaction）+ intent `importance: HIGH` + `regionAffinity: BOTTOM` の組合せで、compact構造を保ったまま表現できる。下寄せstrategyの選択は強制しない。専用fixtureで固定する（evaluation scenario 3）。
@@ -230,8 +230,8 @@ authority分離（#204契約の再確認と、strategy軸での明示化）:
 **Given** 複数の既存folder unit、新folder形成が起こる `1×1` candidate群、fragmented lock/reservation、複数page、およびintent bias対象item群（`preserve=true`、`importance: HIGH`、`regionAffinity: BOTTOM`）と `minimizeMovement=true` のcaseが存在する、
 **When** full runを実行し、materialized結果をrecaptureして再planする、
 **Then** 既存folderは全て `Preserved{STRATEGY_PRESERVED}` でcaptured位置に留まり、
+**And** preserve itemはcaptured位置に保持され、
 **And** 形成済みfolderは再形成されず残留candidateはsingletonのまま残り、
-**And** preserve=true itemはintentなしの場合より早く消費され、
 **And** 再planの差分は空である（idempotence節の5段証明の実行可能証拠）。
 
 ### Scenario: 既存の疎な複数page
@@ -263,13 +263,13 @@ authority分離（#204契約の再確認と、strategy軸での明示化）:
 **Then** 当該itemはpage 3に留まらず、sweep順でpage 1の下部領域へ移動する、
 **And** `regionAffinity: BOTTOM` は消費順序biasとしてのみ働き、page局所allocation hintとしては働かない。
 
-### Scenario: preserve希望は消費順序として効く
+### Scenario: preserve希望は位置保持として効く（displacement非悪化）
 
-**Given** `BOTTOM_REGION_V1` 選択下で、ある `1×1` itemへ `preserve: true` を与えている（capture時の位置は問わない）、
-**When** 同一入力でintentあり・なしのfull runを比較する、
-**Then** preserve=true itemはintentありで無intent時より早く消費され、最も安定なanchor領域（早期pageの最下段等）へ配置される、
-**And** いずれのrunでもpage局所allocation例外は発生せず、配置は単調first-fitに従う、
-**And** materialized結果の再planで差分は空である。
+**Given** `BOTTOM_REGION_V1` 選択下で、page 2の下部領域にcapturedされた `1×1` itemへ `preserve: true` を与え、page 1の下部領域に空きがある、
+**When** 同一入力でpreserveあり・なしのfull runを比較する、
+**Then** preserveなし版では当該itemがsweep順でpage 1の領域へ移動するのに対し、preserveあり版では当該itemはcaptured位置に留まり `Preserved{STRATEGY_PRESERVED}` で報告される、
+**And** preserve itemのdisplacement（page-crossing・slot-distance）はpreserveなし版と比較して悪化しない（実際には0になる）、
+**And** 残余unitの配置は単調first-fitに従い、materialized結果の再planで差分は空である。
 
 ### Scenario: fixed対象と領域の共存
 
@@ -326,7 +326,7 @@ None — 新permission・network・telemetryは一切追加しない。diagnosti
 - [ ] AC-3: dense input（reset/zero + all apps）で `CANONICAL_PAGE_COMPACT_V1` / `GLOBAL_COMPACT_V2` / `BOTTOM_REGION_V1` のcanonical payloadが互いに異なり、下部領域semantics（領域外非配置・上部余白保持・page数 ≥ canonical）がassertされている。
 - [ ] AC-4: 既存strategyのsemantics・golden corpus・selection store契約が無変更のまま全契約testを通過する（regression保証）。
 - [ ] AC-5: idempotence / determinism / conservation / bounds / overlap / lock / profile isolationが、既存harnessと `CrossStrategyCorpusTest`（registry駆動、新strategy自動対象）に加え、**複数既存folder + 新folder形成 + 非 `1×1` movable + fragmented lock/reservation + 複数page + intent bias item群 を同一fixtureに同居させた専用counterexample fixture** の適用→recapture→replan空差分testで検証されている（spec 237前例どおり、shared suiteが通らない状態遷移を直接踏む）。
-- [ ] AC-6: intent合成matrix（page affinity inert、TOP/MIDDLE inert、preserve=最速消費classの順序bias、minimizeMovement=base順序の採用としての消費、BOTTOM/importance=消費順序bias、 **allocation例外なし** ）がcontract testで検証される。`IntentPreferenceStrategyMatrixTest` が新strategyを含めてgreenである。「BOTTOM affinityはpage affinityとして作用しない」「preserve希望は消費順序として効く」scenarioのfixtureを含む。
+- [ ] AC-6: intent合成matrix（page affinity inert、TOP/MIDDLE inert、preserve=reserved集合としての位置保持（displacement非悪化比較を含む）、minimizeMovement=base順序の採用としての消費、BOTTOM/importance=消費順序bias）がcontract testで検証される。`IntentPreferenceStrategyMatrixTest` が新strategyを含めてgreenである。「BOTTOM affinityはpage affinityとして作用しない」「preserve希望は位置保持として効く」scenarioのfixtureを含む。
 - [ ] AC-7: bundle `organization-policy-v2.7` がpublishされ、catalog coherence（`runtimeSupported` == 実装済みregistry IDs、default ∈ runtimeSupported）が `BuiltInOrganizerPolicyBundleSourceTest` で検証されている。
 - [ ] AC-8: selection書込み・読取・fail-closed・downgrade（旧bundleでの `NotReady`）が `LayoutStrategySelectionStoreTest` 等で検証されている。
 - [ ] AC-9: picker copy（EN/JA）がID→copyのexact mapping testを持ち、新semanticsと一致する。`BOTTOM_FIRST_V1`/`_V2` descriptionの修正がsemantics変更なしに実挙動へ一致し、spec 235のpicker copy受入を退行させない。preview projection levelの空間semantics oracle（movable宛先の領域内assert・上部領域宛先0件assert・`newPageCount`/`crossPageMovedCount`/`preservedByStrategyCount` 计数）が検証されている。
@@ -362,7 +362,8 @@ None — 新permission・network・telemetryは一切追加しない。diagnosti
 - 2026-09-23: Draft created for #398。strategy objective明文化、`BOTTOM_REGION_V1` 提案、`BOTTOM_FIRST_V1` 維持判断、bundle v2.7、intent合成matrix、代表評価scenario群。
 - 2026-09-23: Review rev.2（ChatGPT Phase 1レビュー、[Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/398#issuecomment-5780203252) を反映）。**高1**: idempotence証明をADR-0012決定4の要求水準へ引き上げ — cross-page moverを `1×1` に制限（非 `1×1`・既存folderは `STRATEGY_PRESERVED`）、unit順序を逆captured visual順へ変更、専用counterexample fixtureを要求（旧案のcanonical族unit順序・任意span・tall-span規則は取下げ）。**高2**: `regionAffinity=BOTTOM` のpage局所allocation hintを削除し消費順序biasのみに統一。**中1**: `BOTTOM_FIRST_V1`/`_V2` copy指針を実挙動一致へ修正（「全面充填」保証語の禁止、spec 235 semanticsの維持、ID→copy exact mapping test）。**中2**: preview oracleをcountsだけからpreview projection levelの空間semantics検証へ拡張。**中3**: AC-12をIssue本文どおりblockingに戻す。**低1**: 依存gate確認を再現可能な形でplanへ記録。
 - 2026-09-23: Review rev.3（ChatGPT再レビュー、[Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/398#issuecomment-5780606963) を反映）。**高**: idempotence証明を本strategy固有の5段構成へ書き直し（base fixed setと形成folderの二重性の分離、形成folder cellの単調配置、単調first-fit前提の明示）。page-local allocation例外を全廃。専用fixtureへintent bias item群を同居。**中1**: unit順序のcatalog宣言を新enum `CAPTURED_VISUAL_GLOBAL_REVERSED` に統一。**中2**: AC-12/Test oracleの代替条件を「Issue本文Acceptance criteriaの明示改訂commit/編集履歴 + owner decision comment」に統一。**低1**: 依存gate証拠へ `in:comments` 探索とヒット個別判定を追加。
-- 2026-09-23: Review rev.4（ChatGPT再レビュー rev.3 comment 5780876399 を反映）。**中**: rev.3の `preserve`/`minimizeMovement` 完全inert化がspec 204のplanner接続契約（ordering/preference専用の消費）を弱めるため、page-local allocation例外は復活させずに両fieldを **identity-stableな消費順序bias** として再定義 — `preserve` は最も早い消費class（最安定anchor領域への早期配置）、`minimizeMovement` はcaptured位置順であるbase順序の採用としての消費（GLOBAL_COMPACT族と同一）。class keyの優先順位（preserve > grouping > importance > BOTTOM）と「class間不変・同class内は逆visual順復元」を合成規則と証明step 3へ明記。「preserve希望は消費順序として効く」scenarioとfixtureへのpreserve/`minimizeMovement` 同居を追加。**低**: plan Current evidenceに残っていたrev.2の `preferenceAllocateOnPage` 記述をrev.4決定へ統一。
+- 2026-09-23: Review rev.4（ChatGPT再レビュー rev.3 comment 5780876399 を反映）。**中**: rev.3の `preserve`/`minimizeMovement` 完全inert化がspec 204のplanner接続契約（ordering/preference専用の消費）を弱めるため、page-local allocation例外は復活させずに両fieldを **identity-stableな消費順序bias** として再定義 — `preserve` は最も早い消費class、`minimizeMovement` はcaptured位置順であるbase順序の採用としての消費（GLOBAL_COMPACT族と同一）。class keyの優先順位と「class間不変・同class内は逆visual順復元」を合成規則と証明step 3へ明記。**低**: plan Current evidenceに残っていたrev.2の `preferenceAllocateOnPage` 記述を統一。
+- 2026-09-23: Review rev.5（ChatGPT再レビュー rev.4 comment 5781075485 を反映）。**中**: rev.4の「preserve=最速消費class」は入力によってはpreserve itemのcross-page移動を増やし、spec 204の「移動最小化ordering bias」（現行 `preferenceCellHint` の「displacementを悪化させない」契約）の意味を反転させるため、 **preserveをreserved集合方式へ変更** — preserve=trueのmovable `1×1` itemはcaptured位置に保持（`Preserved{STRATEGY_PRESERVED}`、領域内外を問わない）され、そのcellはsweep空きcell列から除外されるreserved cellとして単調first-fitと両立する。証明step 1にR集合を追加し、step 5にdisplacement非悪化の帰結を明記。「preserve希望は位置保持として効く（displacement非悪化）」scenarioへ差し替え。**低**: plan Verification AC-6をpreserve reserved方式のoracleへ統一。
 
 ## References
 
