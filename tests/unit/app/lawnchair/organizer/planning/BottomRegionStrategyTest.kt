@@ -601,6 +601,133 @@ class BottomRegionStrategyTest {
         assertEquals(UnplacedReason.STRATEGY_SCOPE_FULL, unplaced.reason)
     }
 
+    /**
+     * Spec 398 AC-5 transition case 1: run 1 hint failure (the preserved
+     * captured cell is consumed by an earlier HIGH-class unit) falls back to
+     * the sweep; after materialization the run 2 hint succeeds at the new
+     * captured cell. The success set flips, the final assignment does not.
+     */
+    @Test
+    fun runOneHintFailureFallsBackAndRunTwoHintSuccessKeepsTheFixedPoint() {
+        val items = listOf(
+            // HIGH class consumes before the un-biased preserve item.
+            app("early", 1, 3),
+            app("keeper", 0, 3),
+        )
+        val base = input(items, 4, 4, pageList = pages(1))
+        val intent = intentInput(
+            base,
+            mapOf(
+                "early" to ItemIntent(ref = "pending", importance = Importance.HIGH),
+                "keeper" to ItemIntent(ref = "pending", preserve = true),
+            ),
+        )
+        val first = planner.plan(intent)
+        // Run 1: "early" (HIGH) sweeps to the first region cell — exactly the
+        // keeper's captured cell — so the keeper's hint fails and it falls
+        // back to the next region cell.
+        assertEquals(GridCell(0, 3), cellOf(first, "early"))
+        assertEquals(GridCell(1, 3), cellOf(first, "keeper"))
+        assertEquals(
+            Disposition.Moved(PlacementCode.SINGLE_PLACEMENT),
+            planned(first).placements.single { it.item == ItemId("keeper") }.disposition,
+        )
+
+        val (applied, appliedPages) = materialize(items, pages(1), first)
+        val second = planner.plan(
+            intentInput(
+                input(applied, 4, 4, pageList = appliedPages),
+                mapOf(
+                    "early" to ItemIntent(ref = "pending", importance = Importance.HIGH),
+                    "keeper" to ItemIntent(ref = "pending", preserve = true),
+                ),
+            ),
+        )
+        assertTrue(planned(second).placements.none { it.disposition is Disposition.Moved })
+        assertEquals(GridCell(0, 3), cellOf(second, "early"))
+        assertEquals(GridCell(1, 3), cellOf(second, "keeper"))
+    }
+
+    /**
+     * Spec 398 AC-5 transition case 2: a successful back-cell hint leaves a
+     * front hole that the unit-phase-later formed folder occupies. Replan is
+     * still an empty diff (the folder cell is disjoint from every unit cell).
+     */
+    @Test
+    fun successfulBackHintLeavesAFrontHoleTheFormedFolderOccupies() {
+        val signals = ClassificationSignals(
+            listOf(
+                ClassificationSignal(ItemId("g1"), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+                ClassificationSignal(ItemId("g2"), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+            ),
+        )
+        val items = listOf(
+            app("keeper", 3, 3),
+            app("g1", 0, 0),
+            app("g2", 1, 0),
+        )
+        val base = input(items, 4, 4, pageList = pages(1)).copy(signals = signals)
+        val intent = intentInput(
+            base,
+            mapOf("keeper" to ItemIntent(ref = "pending", preserve = true)),
+        )
+        val first = planner.plan(intent)
+        // Run 1: the hint takes the back-most region cell; the g1/g2 pair
+        // forms a folder whose unit is placed after the units — into the
+        // front hole (0,3).
+        assertEquals(GridCell(3, 3), cellOf(first, "keeper"))
+        assertEquals(1, planned(first).newFolders.size)
+        val folderCell = (planned(first).newFolders.single().workspacePlacement as PlacementTarget.WorkspaceTarget).cell
+        assertEquals(GridCell(0, 3), folderCell)
+
+        // Materialize via the production-like harness path: replanning the
+        // formed-folder state must reproduce the assignment (IDEMPOTENCE).
+        val fixture = PlannerFixture(
+            id = FixtureId("398-front-hole-folder"),
+            input = intent,
+            expectation = FixtureExpectation(ExpectedOutcome.Planned()),
+            checks = setOf(ContractCheck.IDEMPOTENCE, ContractCheck.DETERMINISM),
+        )
+        val report = PlannerContractHarness(DeterministicOrganizationPlanner()).verify(fixture)
+        assertTrue("contract violations: ${report.violations}", report.violations.isEmpty())
+    }
+
+    /**
+     * Spec 398 AC-5 transition case 3: within one bias class the run 2
+     * processing order reverses (the preserve unit's back cell reads after
+     * the fallback unit's front cell), yet every unit reclaims its run 1
+     * cell — the class order, not the stream order, is the invariant.
+     */
+    @Test
+    fun withinClassOrderSwapStillReclaimsEveryCell() {
+        val items = listOf(
+            app("keeper", 1, 3), // preserve hint onto c2
+            app("mover", 2, 3), // fallback onto c1
+        )
+        val base = input(items, 4, 4, pageList = pages(1))
+        val intent = intentInput(
+            base,
+            mapOf("keeper" to ItemIntent(ref = "pending", preserve = true)),
+        )
+        val first = planner.plan(intent)
+        // Run 1: keeper hint-succeeds on c2=(1,3); mover falls back to the
+        // front hole c1=(0,3). Materialized reverse-visual order now reads
+        // mover before keeper.
+        assertEquals(GridCell(1, 3), cellOf(first, "keeper"))
+        assertEquals(GridCell(0, 3), cellOf(first, "mover"))
+
+        val (applied, appliedPages) = materialize(items, pages(1), first)
+        val second = planner.plan(
+            intentInput(
+                input(applied, 4, 4, pageList = appliedPages),
+                mapOf("keeper" to ItemIntent(ref = "pending", preserve = true)),
+            ),
+        )
+        assertTrue(planned(second).placements.none { it.disposition is Disposition.Moved })
+        assertEquals(GridCell(1, 3), cellOf(second, "keeper"))
+        assertEquals(GridCell(0, 3), cellOf(second, "mover"))
+    }
+
     @Test
     fun formationInclusiveCounterexampleFixturePassesTheFullContractSuite() {
         // Spec 398 AC-5: the dedicated counterexample fixture the shared suite
