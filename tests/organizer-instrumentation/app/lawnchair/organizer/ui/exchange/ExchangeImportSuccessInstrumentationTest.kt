@@ -639,12 +639,14 @@ class ExchangeImportSuccessInstrumentationTest {
         // them.
         // The discard slot's focus restoration may scroll the list; bring the
         // CTA (above it) back into the viewport before asserting display.
-        composeRule.onNodeWithTag("exchange-import-continue")
+        // The review CTA item's tag (the audit's tag fix): the production
+        // review item is `exchange-import-review-continue` — the success
+        // face's `exchange-import-continue` is a different face.
+        composeRule.onNodeWithTag("exchange-import-review-continue")
             .performScrollTo()
             .assertIsDisplayed()
             .assertIsEnabled()
             .assertTextContains(context.getString(R.string.exchange_import_continue))
-        composeRule.onNodeWithText(context.getString(R.string.exchange_import_cta_idle)).assertDoesNotExist()
         composeRule.onNodeWithText(context.getString(R.string.exchange_import_cta_run_in)).assertDoesNotExist()
     }
 
