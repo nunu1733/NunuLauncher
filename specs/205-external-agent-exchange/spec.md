@@ -5,7 +5,7 @@ requirements: [FR-017]
 risk:
   - privacy
   - layout-data
-updated: 2026-09-16
+updated: 2026-09-21
 ---
 
 # External Agent Exchange: ChatGPT/Gemini等によるOrganizer personalization
@@ -81,7 +81,7 @@ _Avoid_: 上書き保存 (既存exchangeの回答が以降import不可になる�
 
 ### Scenario: export package生成と送信前確認
 
-Given manual organization surfaceがrun操作非activeの状態でuserが外部agent利用を選択し、#204契約のcontext export生成が利用可能である、
+Given userがT-07前置き面の方法選択「AIに相談」からidle相談 (pre-run request flow。run admission・RUN lease取得なし。#372による導線統合) として依頼作成を開始しており、#204契約のcontext export生成が利用可能である、
 When privacy modeを選択した上でexchange package生成を実行する、
 Then packageはinstruction部 (goal、許可事項、遵守事項、期待返答形式を含む英文) とdata部 (CONTEXT marker行で囲まれた `PersonalizationContextExportV1` のcanonical JSON) に機械的に分離された **単一のimmutableな値** として生成され、
 And 既定のdata部はraw package名・内部ItemId/DB row ID・opaque profile identifier・raw usage ms/timestamps・diagnostics/recovery metadataを含まず、
@@ -96,12 +96,29 @@ And 辞退した場合は既存sessionは不変であり、既存exchange宛の�
 
 > launcher側はpackageが実際に外部へ送られたか否かをtransport完了からは判定できないため、この確認はsessionの「送信済み/未送信」を区別せず、activityなsessionの存在に対して一律に適用する。flow内でのprivacy mode変更による再生成は、当該flowのpackageが未送信であることがflow自身で追跡できるため確認を要さず、当該sessionは再生成により置換される。
 
-### Scenario: 未送信packageの送信前確認取消
+### Scenario: 未送信packageの破棄 (送信前確認取消)
 
 Given 生成済み・未送信のexchange packageに対して送信前確認が表示されている、
-When userが送信を承認せず取り消す、
-Then 当該生成で作成されたsessionのみを明示的に失効させ (#204 `ExportSessionStore.invalidate`)、activityなsessionを残さない、
+When userが送信を承認せず「破棄」を選ぶ (#372で「キャンセル」から改称。D-13語彙規約により確認dialog 1回を必ず経る。system Backからの離脱も同一の確認へ収斂する),
+Then 確認の承認後、当該生成で作成されたsessionのみを明示的に失効させ (#204 `ExportSessionStore.invalidate`)、activityなsessionを残さない、
+And 確認を辞退した場合はpackageと依頼は生存し、送信前確認が続行する,
 And 当該packageは一度もtransportされていないため、他のexchange・既存run状態・layout DBに影響しない (zero-write)。
+
+### Scenario: active依頼の事前表示と期待明示 (#372)
+
+Given idle相談flowの依頼作成面 (T-15) が開かれている,
+When activeなexport session (期限以内の依頼) が存在するか否かを観察する,
+Then 存在するときは依頼の存在と残時間が事前表示される。読取は面への進入・lifecycle resume・表示中sessionの失効時刻にscheduleした再読取で行われ、そのつど存在・残時間・置換確認要否は `active()` の値へ一致する (連続的な時計更新はしない。失効時刻の再読取により、面を開いたままTTLを跨いでも事前表示は消える),
+And 存在しないときは事前表示は行われない,
+And 依頼作成面 (T-15) と送信前確認 (T-16) の両方に「依頼は作成時点のホームで固定される。会話中にホームや分類を変更すると回答が取り込めなくなる」の意味要素を含む期待明示 (D-09) が表示される。
+
+### Scenario: T-15/T-16のsystem Back契約 (#372)
+
+Given idle相談flowの依頼作成面 (T-15) または送信前確認 (T-16) が表示されている,
+When userがsystem Backを押す,
+Then T-15 (tier選択・置換確認) のBackはzero-writeでflowを閉じ (run-inでは選択面へ戻る)、生成中・transport in-flight中・取消確定中のBackは取り込まれて画面離脱させない (host scopeのoperationはsettleまで継続する),
+And 未送信T-16のBackは「破棄」確認dialog (取消と同一の確認) を経由し、confirm時のみ当該未送信sessionが失効する,
+And 送信済みT-16のBackは確認なしで閉じ、依頼は生存する。
 
 ### Scenario: E1送信済み → E2生成取消 → E1 import (representative)
 
@@ -125,8 +142,9 @@ Given exchange package生成前の設定step、
 When userがredacted mode (既定) とlabel-inclusive modeを選択できる、
 Then 選択したmodeは生成されるpackageのdata部metadata (privacy tier) として明示され、label-inclusive選択時はapp label・folder titleが外部へ出る旨を送信前確認画面が明示する、
 And 既定はredacted modeであり、mode変更時はpackageが再生成され送信前確認からやり直す。
+And 選択肢は「情報を減らして送る (既定) / ラベル付きで送る」の2語彙に固定される (D-14。#372がUI語彙を再構成)。label-inclusive選択時は、選択時点の警告がアプリ名・フォルダ名・ユーザー定義カテゴリの名前が外部へ出る旨を正確に列挙する (context v4の自由文集合)。
 
-> #204 accepted契約ではこの2 modeは privacy tier `EXTERNAL_REDACTED` (既定) / `EXTERNAL_WITH_LABELS` (明示選択時) として固定されている (内部engine向け `LOCAL_FULL` は本workflow対象外)。`EXTERNAL_REDACTED` はuser作成自由文class全体を除外し、surrogate (hash等) を生成しない。
+> #204 accepted契約ではこの2 modeは privacy tier `EXTERNAL_REDACTED` (既定) / `EXTERNAL_WITH_LABELS` (明示選択時) として固定されている (内部engine向け `LOCAL_FULL` は本workflow対象外であり、#372によりUI語彙からも出現しない)。`EXTERNAL_REDACTED` はuser作成自由文class全体を除外し、surrogate (hash等) を生成しない。
 
 ### Scenario: transport実行
 
@@ -197,7 +215,7 @@ When validated intentを既存のmanual organization flowへ接続する、
 Then 接続は **fresh runの再構築** として行われ、既存run状態の復元は行わない。新しいRunIdを発行し、run state machineはIdleから通常flow (missing-app detection/selectionを含む) を辿る、
 And #228のmissing-app selection・scope構成はprocess-local非永続が既存の不変条件であるため復元せず、通常flowの再選択に委ねる、
 And intentのsource bindingは2段で検証される: import時のsource context一致検証 (#204 structural `sourceContextDigest` 再計算照合、`CONTEXT_STALE`) と、fresh runのplanning/apply時の既存capture revision stale check。import成立後・planning前にhomeが変化した場合は既存Stale pathでzero-write終了する、
-And V1ではexchangeのexport・import導線はmanual run操作が非activeのときにのみ提示される。activeなrun操作中に到達したimportでvalidated intentからのrun開始が既存single-active-operation gateで拒否された場合は、typedな案内 (run終了後の再import) でzero-write終了し、validated intentを保持しない。
+And exchange導線の提示は #372 により改訂された: idle相談はT-07前置き面の方法選択「AIに相談」から開始するpre-run request flow (run admission・RUN lease取得なし) であり、run-in entry (scope凍結) は選択面に現行契約 (spec 331) どおり存在する。activeなrun操作中に到達したimportでも、validation通過後に取り込み済み提案としてdurable pending intent storeへ保存される (#374改訂: 旧「typedな案内でzero-write終了し、validated intentを保持しない」)。CTA (run接続) のgate拒否はspec 328 AC-3どおり取り込み成功状態を維持したままtyped案内され、提案は破棄・期限切れ・置換まで保持される (spec 374)。
 
 ### Scenario: 往復中のhome変更
 
@@ -242,9 +260,9 @@ Then 確認画面・失敗表示はaccessibility対応され (focus順、読み�
 - 読むdata: #204契約のcontext export生成に必要なcanonical入力 (captured `LayoutSnapshot`、解決済み分類、lock状態、#203 signal snapshot (利用可能時))。本specはこれらの再定義をしない。
 - exchange packageは生成時に完了するimmutableな値であり、送信前確認はこの生成済み値に対して行われる。確認対象とtransport対象の同一性は同一値の受渡しで構造的に保証する (package本文の永続化もdigest等の追加永続化もしない)。privacy mode変更等で再生成が起きた場合は確認からやり直す。
 - **session置換の規則**: activityなsessionが存在する状態での新規exchange flow開始は、session置換確認を必須とする (承認なしの生成開始経路は存在しない)。flow内でのprivacy mode変更による再生成は確認不要 (当該flowのpackageは未送信と追跡できる)。送信前確認の取消は、当該未送信sessionの明示的失効 (#204 `ExportSessionStore.invalidate`) とする。生成の失敗 (session保存失敗を含む) はtyped失敗としてpackageを出さず、既存sessionの状態は #204 store実装 (`AtomicFile`) のatomic性に従う。
-- import成立後のrun接続はfresh run再構築のみであり、本workflowはrun stateの永続化・復元を持たない。exchange導線の提示はmanual run操作非active時に限定する (V1)。validated intentからのrun開始は既存single-active-operation gateを通る。
+- import成立後のrun接続はfresh run再構築のみであり、本workflowはrun stateの永続化・復元を持たない。exchange導線の提示は #372 により改訂された: idle相談はT-07前置き面の方法選択「AIに相談」から開始するpre-run request flow (run admission・RUN lease取得なし。D-04/D-17) であり、run-in entry (選択面・scope凍結) は現行契約 (spec 331) を維持する。validated intentからのrun開始は既存single-active-operation gateを通る。
 - **export生成とimport検証の入力source単一化**: exchange flowのcontext export生成と、import時の検証用export view再構築は、同じcanonical capture → `ExportInputs` / structural projection 導出の **単一adapter** を共有する (既存 `ProductionOrganizationInputComposer` / `FullTargetSetMaterializer` のfull-target composition経由)。#228のscope selectionはrun内のcomposition概念であり、exchange flow (run外) のexport生成・import再構築では関与しない。この単一化により、export時とimport時でprojection drift (同一homeなのに `ref` 対応・role・mobility・grid投影が変わる) が構造的に起こらない。
-- 永続化の分担: 本workflow ( #205側) はexchange package本文・import済み返答textを永続化しない。**pendingなexport identityとexport-scoped ref↔内部ID mappingのdurable保持は #204契約のexport sessionが所有する** (app-private・backup対象外・TTL 24時間。`AndroidExportSessionStore` として現mainに実装済み)。本workflowはprocess deathを跨ぐimportを #204のexport session経由でのみ成立させ、独自の永続化経路を追加しない。session失効・不在時のimportはtypedな失敗であり、回復は再exportである。
+- 永続化の分担 (#374改訂): 本workflow ( #205側) はexchange package本文・import済み返答textを永続化しない。**pendingなexport identityとexport-scoped ref↔内部ID mappingのdurable保持は #204契約のexport sessionが所有する** (app-private・backup対象外・TTL 24時間。`AndroidExportSessionStore` として現mainに実装済み)。**import成功 (validation通過) 後の取り込み済み提案 (pending intent) のdurable保持は #374契約のdurable pending intent storeが所有する** (app-private・backup対象外・TTL=依頼sessionと同一の24時間・単一active。旧「validated intentを保持しない (process-local)」規定から置換 — disposition §3.12-4)。run state・preview・選択は引き続きprocess-localである (TO-BE §8.2)。session失効・不在時のimportはtypedな失敗であり、回復は再exportである。
 - layout変更は既存run (snapshot → plan → preview → confirm → apply) のみで行われ、本workflowは新しいDB書込経路を作らない。
 - #204 accepted契約由来の制約 (実名): export data部の対象種別は #235 のsemantic placement role族 (`APP_OR_SHORTCUT` / `FOLDER` / `WIDGET`) に揃えられ、per-itemのmobility projection (`MOVABLE` / `CONDITIONAL` / `FIXED` + `fixReason`: `RESERVED_REGION` / `LOCKED` / `UNAVAILABLE` / `DOCK` / `APP_PAIR_MEMBER` / `FOLDER_MEMBER`) がexportに含まれ、intentの意味検証はこれに対して行われる (`MOBILITY_CONTRADICTION`)。widgetのspanはexportに含まれずintentからも指定できない。`APP_PAIR` / `SHORTCUT_LEGACY` / `Unknown` はintent addressable対象外であり、`preservedConstraints` のconstraint集計としてのみ投影される。exportの `ref` と `exportId` は同一乱数seam (`RandomIdAllocator`) からの生成ごとの乱数であり、structural `sourceContextDigest` はsession-localでexport文書・intent応答のいずれにも現れない。**v4 ([spec 337](../337-exchange-category-group-proposals/spec.md) 所有)**: category露出も同じ乱数seamのexport-scoped ref (`categories` projection = ref + `kind` + built-in `taxonomyId` + tier制御付き user-defined `displayName`) であり、item-levelは `categoryRef` / `folderCategoryRef` のrefのみを持つ (raw `UserCategoryId`・raw built-in値は文書に現れない)。ref→`CategoryIdentity` の対応付けはexport session (`ExportSession.categoryRefs`) のみが保持し、import時の再構築は現行catalogに存在するidentityのrefだけをadvertiseする。intentの `groupSemantic` は `categoryRef` / `proposalLabel` のexactly-one-ofで、未advertise refは `UNKNOWN_CATEGORY_REF` としてfail-closedする。`usageSignals` は #203 snapshotの正規化bucket projection (`foreground30d`/`foreground7d` 0–4、`recency` 0–3、`activeDays` 0–4、`launcherCount` 0–4、`launcherRecency` 0–3、tier制御付き・snapshot不在時はfield省略) である。intentは既存RunMode (`FullOrganization` / `IncrementalPlacement` / `ScopeComposedOrganization`) を増やさず、整理対象の追加も行わない (追加候補は #228 のuser明示選択composition inputのみ)。validated intentは #204 `IntentPlannerAdapter` により `OrganizationInput.intentPreferences` へ投影され、planner (`PolicySourceKind.PERSONALIZED_INTENT` 第7policy input) で消費される。instruction部はこれらの制約と矛盾する約束 (「widget sizeを提案してよい」等) を含んではならない。
 
@@ -268,17 +286,18 @@ Then 確認画面・失敗表示はaccessibility対応され (focus順、読み�
 
 - [ ] AC-1: exchange package生成からimport・previewまでのend-to-end UXが定義され、instruction/data分離構造 (CONTEXT marker行) が機械的に検証できる。
 - [ ] AC-2: 既定exportがraw package名・内部ID・profile identifier・raw usage/timestamps・diagnostics metadataを含まないことがcontract testで検証される (#204 `ContextExportBuilder`/tier契約に基づくpackage levelの検証)。
-- [ ] AC-3: 送信前確認なしにclipboard/share/file経路でデータが出ないことが検証される。redacted (`EXTERNAL_REDACTED`) / label-inclusive (`EXTERNAL_WITH_LABELS`) modeの扱いが #204 accepted契約に従い、label-inclusive時の明示開示がある。
+- [ ] AC-3: 送信前確認なしにclipboard/share/file経路でデータが出ないことが検証される。redacted (`EXTERNAL_REDACTED`) / label-inclusive (`EXTERNAL_WITH_LABELS`) modeの扱いが #204 accepted契約に従い、label-inclusive時の明示開示がある。確認面の表示は #372改訂のとおり要約主面 (出る情報の種別・対象項目数・上限) ＋展開可能な全文であり、gate構造 (確認前送信の不在・同一値送出) は不変である。
 - [ ] AC-4 (normative文は [spec 329](../329-import-normalizer/spec.md)・[spec 348](../348-exchange-ai-facing-contract/spec.md) の改訂を反映): importの対象は、本spec所有の完全行marker framing (`-----BEGIN NUNULAUNCHER INTENT-----` / `-----END NUNULAUNCHER INTENT-----`) により一意に区切られた `PersonalizedIntentV1` payloadと、#329 normalizerが追加受理する単一fenced `json` block / standalone JSON object (3 accepted framing) である。AIへの要求外形 (canonical authoring form: 単一fenced `json` block) はspec 348が所有し、marker形式の要求は廃止されたが受信受理は不変。marker抽出については次がtestされる: (a) marker対前後の自由文は許容されること、(b) marker不在・END先行は `FRAMING_MISSING`、marker行複数出現 (nested相当行を含む) は `FRAMING_AMBIGUOUS`、空blockは `FRAMING_EMPTY` のtyped parse失敗としてzero-write処理されること、(c) payload内JSON string value中のmarker相当部分文字列は抽出を乱さないこと、(d) CRLF/CR入力はLF正規化後に同一結果となること (決定性・冪等性)、(e) import text全体がenvelope上限 (1 MiB) を超える入力 (巨大prefix/suffix + 小さな正当payload、marker不在の巨大入力、上限境界値) は全量処理の前に `INPUT_OVERSIZE` でzero-write拒否され、上限内の同等入力は受理されること。
-- [ ] AC-5: malformed / unknown schema / out-of-scope ID / 禁止内容が #204 validator経由でzero-write rejectされ、失敗種別 (#204 12 class + `FRAMING_*` 3種 + `INPUT_OVERSIZE`) がuserに説明されることがtestされる。
+- [ ] AC-5: malformed / unknown schema / out-of-scope ID / 禁止内容が #204 validator経由でzero-write rejectされ、失敗種別 (#204 12 class + `FRAMING_*` 3種 + `INPUT_OVERSIZE` + #337 `UNKNOWN_CATEGORY_REF`) がuserに説明されることがtestされる。説明の表示は **#373改訂のとおり手段別へ再投影する** (TO-BE D-11): primary面はremedy category (もう一度取り込む / 貼り直す / 依頼を作り直す) のprimary copyと操作を1つ示し、typed分類名とtyped固有の説明は詳細展開の補助情報にのみ現れる (mapping表・typed原因の詳細展開は [#373 spec](../373-import-display-reprojection/spec.md) が所有)。validator失敗分類・zero-write・framing/envelope契約本体は不変である。
 - [ ] AC-6: import後も #194 preview + #195 explicit confirmationが必須であり、agent outputの直接適用・confirmation省略経路が存在しないことが検証される。
 - [ ] AC-7: untrusted app/folder label・agent応答・agentが参照した外部sourceのprompt injectionがthreat modelとtestに含まれる。test oracleは外部agentのinstruction遵守を前提とせず、fail-closed (framing/schema/allow-list reject、zero-write、planner制約不変、影響された返答でもunsafe mutationへ到達しない) を中心とする。
 - [ ] AC-8: 特定provider appのprivate API / UI automationに依存しないplain-text exchangeであることが確認される (import/exportの対象がversioned text schemaのみ)。
 - [ ] AC-9: clipboard失敗・share target不在・file失敗・large font・TalkBack・Switch AccessのUX evidenceがある。
 - [ ] AC-10: physical-deviceでChatGPT/Gemini等を用いたrepresentative workflow evidence (export → 外部agentへのapp切替 → import → preview → confirm) がある。
-- [ ] AC-11: process recreation後のimportが成立する (export → 外部アプリ滞在中のprocess死 → session有効期限 (24時間) 内のimportが再exportなしで成功)。session失効後のimportは `SESSION_EXPIRED` でtypedにrejectされ、失敗説明に再exportの案内がある。pendingなexport identity・ref mappingの復元が #204のexport sessionに一元化され、本workflowが独自の永続化を持たないことが検証される。加えて、process recreationを挟んだ **import成功 → fresh run再構築 (新RunId、通常flowでのselection再選択) → preview表示** までのintegration evidenceがある。
-- [ ] AC-12: 送信前確認が生成済みpackageに対して行われ、確認対象とtransport対象が同一immutable valueであること (確認後の差し替え・確認前の送信経路の不在) 、privacy mode変更等の再生成時に確認からやり直すことがtestされる。
-- [ ] AC-13: activityなexport sessionが存在する状態での新規package生成開始時にsession置換確認が表示され、承認なしには生成 (既存sessionの無効化を含む) が行われないこと。送信前確認の取消は当該未送信sessionのみを明示的に失効させ、他に影響しないこと。E1送信済み → 確認承認によるE2生成 → E2取消 → E1 import が `EXPORT_MISMATCH` でzero-write rejectされ失敗説明が再生成を案内すること、および確認辞退時はE1のimportが引き続き成立することがtestされる。
+- [ ] AC-11: process recreation後のimportが成立する (export → 外部アプリ滞在中のprocess死 → session有効期限 (24時間) 内のimportが再exportなしで成功)。session失効後のimportは `SESSION_EXPIRED` でtypedにrejectされ、失敗説明に再exportの案内がある。pendingなexport identity・ref mappingの復元が #204のexport sessionに一元化されていること (#374改訂: 取り込み済み提案 (pending intent) のdurable保持は #374契約のdurable pending intent storeが所有する。本workflowがexport package本文・import済み返答textを永続化しないことは不変) が検証される。加えて、process recreationを挟んだ **import成功 → fresh run再構築 (新RunId、通常flowでのselection再選択) → preview表示** までのintegration evidenceがある。
+- [ ] AC-12: 送信前確認が生成済みpackageに対して行われ、確認対象とtransport対象が同一immutable valueであること (確認後の差し替え・確認前の送信経路の不在) 、privacy mode変更等の再生成時に確認からやり直すことがtestされる。確認面は #372改訂のとおり種別・対象項目数 (session `itemRefs` サイズ。全record数と誤読できる単なる「件数」表示をしない)・上限の要約を主面とし、全文は折りたたみ→展開で確認できる (展開textは同一immutable値)。
+- [ ] AC-13: activityなexport sessionが存在する状態での新規package生成開始時にsession置換確認が表示され、承認なしには生成 (既存sessionの無効化を含む) が行われないこと。送信前確認の取消は「破棄」ラベル＋確認dialog 1回 (D-13) であり、system Backからの未送信T-16離脱も同一の確認を経由する (#372)。取消は当該未送信sessionのみを明示的に失効させ、他に影響しないこと。E1送信済み → 確認承認によるE2生成 → E2取消 → E1 import が `EXPORT_MISMATCH` でzero-write rejectされ失敗説明が再生成を案内すること、および確認辞退時はE1のimportが引き続き成立することがtestされる。
+- [ ] AC-14 (#372): T-15がactive依頼の存在と残時間を事前表示し (active依頼なしでは表示しない)、面への進入・lifecycle resume・失効時刻にscheduleした再読取のたびに表示と置換確認要否が `activeSession()` の値へ一致する (TTL跨ぎ後の最初の再読取で事前表示が消えるclock-controlled oracleを含む)。T-15/T-16のsystem Back契約 (T-15 zero-write close・busy面のBack取り込み〔生成中・in-flight・cancellingで画面離脱させずoperationはsettleまで継続〕・未送信T-16は破棄確認経由・送信済みはzero-write close) がtestされる。
 
 ## Test oracle
 
@@ -288,7 +307,7 @@ Then 確認画面・失敗表示はaccessibility対応され (focus順、読み�
 | AC-2 | export生成のcontract test (#204 suite連携 + package level検証) |
 | AC-3 | UI test + 送信経路のinstrumentation test |
 | AC-4 | import parser/pipelineのunit test。reject corpus: marker不在・END先行 (`FRAMING_MISSING`)、marker複数/nested (`FRAMING_AMBIGUOUS`)、空block (`FRAMING_EMPTY`)、自由文前後許容、JSON value内marker部分一致の無影響、CRLF/LF同一結果 (決定性property test)、envelope上限 (巨大prefix/suffix + 小valid payload → `INPUT_OVERSIZE`、marker不在巨大入力、上限境界値 exact-limit/limit+1、上限内受理の対照) |
-| AC-5 | #204 validator failure分類の回帰test + import UI test (16種失敗表示) |
+| AC-5 | #204 validator failure分類の回帰test + import UI test (手段別primary再投影: 20種全typed → remedy category + primary copy + 詳細展開のtable-driven oracle、typed原因がprimary面に現れない否定的観測。#373) |
 | AC-6 | integration test (import→plan→preview→confirmの経路強制) + code review |
 | AC-7 | security test corpus (injection label fixture)。oracleはfail-closed中心 (影響された応答がunsafe writeに到達しないこと、zero-write、planner制約不変) |
 | AC-8 | 依存review (private API/UI automation/`ACTION_SEND` receiver登録の不使用) + plain text schema test |
@@ -297,6 +316,7 @@ Then 確認画面・失敗表示はaccessibility対応され (focus順、読み�
 | AC-11 | session store seam経由のprocess recreation simulation test (#204 suiteと連携) + process recreationを挟んだ import → fresh run再構築 → preview のintegration test + physical-device app切替evidence (AC-10と兼ね可) |
 | AC-12 | package同一性のunit test (composer→transportの同一値受渡し) + 確認画面順序のUI test (再生成時の確認やり直し、確認前送信の不在) |
 | AC-13 | orchestration seamのunit test (session store fake: 承認なし生成不開始・辞退時既存session不変) + 確認UI test + E1→E2生成取消→E1 import scenario test (`EXPORT_MISMATCH` zero-write・失敗説明) + 取消によるsession失効test |
+| AC-14 | unit: holder読取・再読取・fake clock TTL超過 (schedule再読取) のoracle、Back応答写像の全状態表駆動test、blocking fake generation / `FileExchangeTransport` でbusy中のBack後もjobがsettleする直接assert。instrumentation: T-15事前表示の表示/非表示・破棄語彙確認dialog・Back遷移の観測 |
 
 ## Open questions (non-blocking — 実装・evidence中に確定)
 
@@ -305,6 +325,7 @@ Then 確認画面・失敗表示はaccessibility対応され (focus順、読み�
 
 ## Change history
 
+- 2026-09-21: **#374改訂 (Amend-Supersede。処分文書§3.12-4/[spec 374](../374-durable-imported-intent/spec.md) 所有)**: pending intent保持規定「validated intentを保持しない (process-local)」を、import成功後の取り込み済み提案のdurable pending intent store保存 (spec 374。TTL=依頼sessionと同一・単一active・app-private・backup除外) へ置換した。run接続 (fresh run再構築) のみを持つ本workflowの構造・export session契約 (TTL・単一active・置換確認・AC-12/AC-13) は不変。run state・preview・選択のprocess-local契約も不変 (TO-BE §8.2)。#372改訂の導線・送信前確認・失敗表示規定は維持。
 - 2026-09-18 (7th): **intent/exchange schema v4 対応 ([spec 337](../337-exchange-category-group-proposals/spec.md) 所有)** — Issue #337 (AI personalizationでのユーザー定義カテゴリ参照とrun-scoped group提案) のaccepted specにより、Data and stateの #204由来制約リストへv4のcategory参照規則 (export-scoped ref `categories` projection、item-levelはrefのみ、ref→identityはsessionのみ、`groupSemantic` は `categoryRef` / `proposalLabel` のexactly-one-of、未advertise refは `UNKNOWN_CATEGORY_REF`) を追記し、import失敗表示を20種へ更新。framing・envelope上限・Pre-send Disclosure の枠組み・transport契約は不変 (disclosureのcopy文言のみv4の開示内容へ更新)。拡張の設計・契約の正本はspec 337である。
 
 - 2026-09-10: Draft created for #205. External Agent Exchange workflow spec: exchange package (instruction/data分離)、export/import transport、送信前確認、厳格import、#194/#195 preview必須。#204 acceptanceを明示的依存とする。
@@ -321,6 +342,9 @@ Then 確認画面・失敗表示はaccessibility対応され (focus順、読み�
 
 - 2026-09-17 (7th): **framing受理枠拡張 ([spec 329](../329-import-normalizer/spec.md) 所有)** — Issue #329 (accepted spec) により、import pathの #205 envelope gate (1 MiB) とmarker規則の間に Import Normalizer (外形認識層) が挿入された。marker形式の抽出規則・#205 typed失敗4種 (`INPUT_OVERSIZE` / `FRAMING_*`) の意味・envelope上限は **すべて不変** で、marker形式はcanonical formのまま。新たに単一fenced `json` code blockとstandalone JSON objectが受理外形として追加され、marker行を含まないplain proseは `FRAMING_MISSING` ではなく #329 normalizerのtyped失敗 (認識不能) となる。認識framing種別は `Prepared` へadditive fieldで伝播する。
 
+- 2026-09-21 (9th): **idle相談の導線統合と依頼作成/送信前確認の表示面再構成 ([spec 372](../372-ai-consultation-request-flow/spec.md) 所有。accepted、PR #390)** — Issue #372のaccepted specによる分段改訂 (disposition §3.12)。本specの「exchange導線はmanual run操作非active時に限定 (V1)」の規定を「idle相談はT-07前置き面の方法選択「AIに相談」から開始するpre-run request flow (run admission・RUN lease取得なし) ＋run-in entryは現行契約 (spec 331) 維持」へsupersedeし、生成scenarioのentry前提をT-07方法選択経由へ改訂。privacy mode選択へD-14の2択固定 (UI語彙から`LOCAL_FULL`不出現) とv4整合の選択時警告を追記。AC-3/AC-12の表示形式を要約主面 (種別・対象項目数・上限) ＋全文展開へ改訂 (gate構造・同意点1点・同一immutable値契約は不変)。未送信取消を「破棄」ラベル＋確認dialog 1回 (D-13) へ改訂。T-15事前表示 (再読取規則: 進入・resume・失効時刻schedule) ・D-09期待明示・T-15/T-16のsystem Back契約のscenarioとAC-14を追加。framing・envelope上限・transport 3経路・session契約・import pathの契約は無変更。
+
+- 2026-09-21 (9th): **AC-5表示面の手段別再投影 ([issue #373](https://github.com/nunu1733/NunuLauncher/issues/373) 改訂、disposition §5 更新順序 #7)** — 失敗表示のprimary面をtyped失敗文言の直接提示から手段別remedy (もう一度取り込む / 貼り直す / 依頼を作り直す) のcopy + 操作へ再投影し、typed分類名・typed固有説明を詳細展開の補助情報へ格下げする (TO-BE D-11、§4.1 supersession map「spec 205 AC-5のtyped失敗直接説明 → 手段別再投影＋typedは補助」の実施)。validator失敗分類・zero-write・framing/envelope契約本体は不変。表示modelの正本は [#373 spec](../373-import-display-reprojection/spec.md) (accepted) が所有する。
 - 2026-09-18 (8th): **AI向けauthoring要求の改訂 ([spec 348](../348-exchange-ai-facing-contract/spec.md) 所有)** — issue #348のaccepted specにより、instruction部は6section構成 (Output contract / final self-check を新設。Output contractは #204 wire descriptor由来) へ再構成され、Response formatはcanonical authoring form (単一fenced `json` block + candidate 1個) を要求する (INTENT marker行の要求は廃止、受理は不変)。framing規則・typed失敗4種・envelope上限・17種失敗表示 (種類数) は無変更。one-round-trip UX invariant (import後のAI repair loopを通常flowにしない) の正本はspec 348。
 
 ## References

@@ -82,3 +82,91 @@ sealed interface ScopeBindingOutcome {
 
     data class Mismatch(val cause: ScopeMismatchCause) : ScopeBindingOutcome
 }
+
+/**
+ * Issue #375 (spec "原因別remedyの導出と表示"): the confirm-time early gate's
+ * cause derivation. Mirrors [evaluate]'s ordering — an unresolvable scope
+ * candidate wins over a set mismatch, so the user is never told to
+ * "re-select" a candidate that no longer resolves (uninstalled, disabled, or
+ * placed on Home). Returns `null` when the confirmed selection matches the
+ * export scope exactly (the gate passes; identical pass/fail outcome to the
+ * pre-#375 sorted-list comparison).
+ *
+ * Pure addition: the gate's own [evaluate] rule and [ScopeMismatchCause] enum
+ * are unchanged; this only derives the *label* for the early gate's failure.
+ */
+object ScopeBindingCauseDerivation {
+
+    /**
+     * Issue #375: the confirm-time cause derivation over the same canonical
+     * ordering as [ScopeBindingGate.evaluate] (unresolvable-before-mismatch).
+     */
+    fun deriveConfirmMismatch(
+        sessionScope: List<CandidateTarget.AppKey>,
+        detected: List<DetectedCandidateScope>,
+        selected: Set<CandidateTarget.AppKey>,
+    ): ScopeMismatchCause? {
+        val detectedById = detected.associateBy { it.target }
+        for (target in sessionScope) {
+            val found = detectedById[target]
+                ?: return ScopeMismatchCause.CANDIDATE_UNRESOLVED
+            if (found.availability != Availability.AVAILABLE) {
+                return ScopeMismatchCause.CANDIDATE_UNRESOLVED
+            }
+            if (target !in selected) {
+                return ScopeMismatchCause.SET_MISMATCH
+            }
+        }
+        val sessionSet = sessionScope.toSet()
+        if (selected.any { it !in sessionSet }) {
+            return ScopeMismatchCause.SET_MISMATCH
+        }
+        return null
+    }
+
+    /**
+     * Issue #375 (spec SR-AC-01): the selection surface's diff against the
+     * export scope. [missing] are scope candidates that are resolvable in the
+     * current detection cut but not selected (rows the user can fix);
+     * [extra] are selected candidates outside the scope (rows the user can
+     * unselect); [unresolvable] are scope candidates that no longer resolve
+     * (no row exists — selection edits cannot fix them, so the remedy is
+     * re-creating the request). UI renders this result; it never re-derives it.
+     */
+    fun deriveSelectionDiff(
+        sessionScope: Set<CandidateTarget.AppKey>,
+        detected: List<DetectedCandidateScope>,
+        selected: Set<CandidateTarget.AppKey>,
+    ): ScopeSelectionDiff {
+        val detectedById = detected.associateBy { it.target }
+        val resolvableScope = sessionScope.filter { target ->
+            detectedById[target]?.availability == Availability.AVAILABLE
+        }.toSet()
+        val missing = resolvableScope - selected
+        val extra = selected - sessionScope
+        val unresolvable = sessionScope - resolvableScope
+        return ScopeSelectionDiff(missing = missing, extra = extra, unresolvable = unresolvable)
+    }
+
+    /**
+     * Issue #375 (spec "選択復元初期値"): the rebind selection surface's
+     * initial values — the export scope candidates that still resolve in the
+     * current detection cut. Deterministic and side-effect free; the values
+     * are an initial state only and become the run's selection solely through
+     * the user's explicit confirm (spec 228 D-1 is not weakened).
+     */
+    fun deriveRestoredSelection(
+        sessionScope: Set<CandidateTarget.AppKey>,
+        detected: List<DetectedCandidateScope>,
+    ): Set<CandidateTarget.AppKey> {
+        val available = detected.filter { it.availability == Availability.AVAILABLE }.map { it.target }.toSet()
+        return sessionScope.intersect(available)
+    }
+}
+
+/** Issue #375: the selection surface's diff against the export scope. */
+data class ScopeSelectionDiff(
+    val missing: Set<CandidateTarget.AppKey>,
+    val extra: Set<CandidateTarget.AppKey>,
+    val unresolvable: Set<CandidateTarget.AppKey>,
+)

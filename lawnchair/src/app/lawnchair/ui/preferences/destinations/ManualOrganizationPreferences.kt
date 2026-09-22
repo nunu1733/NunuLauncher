@@ -14,17 +14,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,7 +33,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -45,10 +45,11 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.selectableGroup
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lawnchair.organizer.application.protocol.ReadinessGate
 import app.lawnchair.organizer.application.public.ApplyResult
@@ -61,6 +62,7 @@ import app.lawnchair.organizer.diagnostics.model.Trigger
 import app.lawnchair.organizer.integration.exchange.ClipboardExchangeTransport
 import app.lawnchair.organizer.integration.exchange.ExchangeFlowModule
 import app.lawnchair.organizer.integration.exchange.FileExchangeTransport
+import app.lawnchair.organizer.integration.exchange.PendingImportedIntentModule
 import app.lawnchair.organizer.integration.exchange.ShareSheetExchangeTransport
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.PlacementCode
@@ -69,27 +71,33 @@ import app.lawnchair.organizer.planning.RejectionCode
 import app.lawnchair.organizer.planning.StrategyId
 import app.lawnchair.organizer.planning.UnplacedReason
 import app.lawnchair.organizer.planning.WarningCode
-import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
-import app.lawnchair.organizer.rules.LayoutStrategySelectionModule
-import app.lawnchair.organizer.rules.LayoutStrategySelectionReadResult
-import app.lawnchair.organizer.rules.LayoutStrategySelectionSnapshot
-import app.lawnchair.organizer.rules.LayoutStrategySelectionWriteResult
+import app.lawnchair.organizer.ui.ManualOrganizationFace
 import app.lawnchair.organizer.ui.ManualOrganizationModule
 import app.lawnchair.organizer.ui.ManualOrganizationRun
+import app.lawnchair.organizer.ui.ManualOrganizationRunFaceTrace
 import app.lawnchair.organizer.ui.MissingAppSelectionState
 import app.lawnchair.organizer.ui.OrganizationPreviewContent
 import app.lawnchair.organizer.ui.OrganizationPreviewSection
 import app.lawnchair.organizer.ui.OrganizationPreviewWording
-import app.lawnchair.organizer.ui.StrategyWriteArbiter
+import app.lawnchair.organizer.ui.RunUsageAccessJitDialogHost
+import app.lawnchair.organizer.ui.UsageAccessJitGateProvider
+import app.lawnchair.organizer.ui.exchange.ExchangeDiscardConfirmDialog
+import app.lawnchair.organizer.ui.exchange.ExchangeFlowBackHandler
 import app.lawnchair.organizer.ui.exchange.ExchangeFlowStateHolder
+import app.lawnchair.organizer.ui.exchange.ExchangeImportDiscardConfirmDialog
 import app.lawnchair.organizer.ui.exchange.exchangeFlowItems
+import app.lawnchair.organizer.ui.manualOrganizationFace
 import app.lawnchair.organizer.ui.missingAppSelectionItems
+import app.lawnchair.organizer.ui.openUsageAccessSettings
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
+import app.lawnchair.ui.preferences.LocalNavController
 import app.lawnchair.ui.preferences.components.controls.ClickablePreference
 import app.lawnchair.ui.preferences.components.layout.PreferenceLazyColumn
 import app.lawnchair.ui.preferences.components.layout.PreferenceScaffold
 import com.android.launcher3.R
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -99,63 +107,78 @@ fun ManualOrganizationPreferences(
     modifier: Modifier = Modifier,
     run: ManualOrganizationRun? = null,
     trigger: Trigger = Trigger.MANUAL_FULL,
+    // Issue #376 (spec D5): set by the hub's restore CTA route — this
+    // destination then owns the status-card entry's admission (see the
+    // LaunchedEffect below the read block).
+    durableRecovery: Boolean = false,
     onOpenDiagnostics: (() -> Unit)? = null,
+    // Issue #371: injectable for the unsupported-settings instrumentation.
+    usageAccessSettingsOpener: (Context) -> Boolean = ::openUsageAccessSettings,
+    // Issue #371: injectable so instrumentation can host a real exchange JIT
+    // waiter (cross-origin oracle) against a controlled holder.
+    exchangeHolderOverride: ExchangeFlowStateHolder? = null,
+    // Issue #371: injectable so the settings-return instrumentation can drive
+    // the host's lifecycle deterministically.
+    jitLifecycleOwner: androidx.lifecycle.LifecycleOwner? = null,
+    // Issue #374 (spec 374 DI-AC-01/DI-AC-11): the hub status-card rows'
+    // one-shot exchange pre-open argument (request → T-15, pendingReview →
+    // ImportReview). Null — every legacy caller — does nothing.
+    exchangeOpen: app.lawnchair.ui.preferences.navigation.ExchangeOpen? = null,
 ) {
     val context = LocalContext.current
     val coordinator = run ?: remember { ManualOrganizationModule.get(context) }
     val scope = rememberCoroutineScope()
     val state by coordinator.stateFlow.collectAsStateWithLifecycle()
+    // Issue #369 (spec RD-7): the visible 検出 → capture → plan progression is
+    // the coordinator's deterministic projection, never derived from State —
+    // the legacy admission Capturing and the real composed capture are the
+    // same State value, and conflation cannot hide intermediate publishes.
+    val preparationPhase by coordinator.preparationPhase.collectAsStateWithLifecycle()
+    // Issue #370: test-only render trace — report the face this composition
+    // committed (SideEffect runs post-apply), so the admission guard records
+    // "did the T-07 preamble ever render" deterministically. Production never
+    // sets the recorder (ManualOrganizationRunFaceTrace doc).
+    val committedFace = manualOrganizationFace(state)
+    SideEffect { ManualOrganizationRunFaceTrace.recorder?.invoke(committedFace) }
     // Issue #205: the external agent exchange sub-flow. The entry surface is
     // hosted only while no run operation is active (spec 205 V1 rule), so it
     // is constructed unconditionally and rendered inside the Idle/Cancelled
-    // branch only.
-    val exchangeHolder = remember {
-        ExchangeFlowStateHolder(
+    // branch only. #371: injectable so instrumentation can drive a real
+    // exchange JIT waiter against a controlled holder.
+    val exchangeHolder = remember(exchangeHolderOverride) {
+        exchangeHolderOverride ?: ExchangeFlowStateHolder(
             controllerFactory = { ExchangeFlowModule.controller(context) },
             run = coordinator,
             scope = scope,
+            // Issue #371: the run machine and the exchange holder share one
+            // process-scoped JIT Usage Access request gate.
+            usageAccessGate = UsageAccessJitGateProvider.get(context),
+            // Issue #374 (spec 374): the durable pending imported intent
+            // store — the validated proposal is saved at the import settle,
+            // discarded through the tombstone two-phase commit, and deleted
+            // when a new request's generation replaces the session.
+            pendingImportStore = PendingImportedIntentModule.store(context),
+            // Issue #375 (spec "exchange mutation gate"): the holder, the
+            // controller and the rebind admission anchor share THE
+            // process-wide serialization point.
+            exchangeMutationGate = PendingImportedIntentModule.gate(),
         )
     }
-    // Issue #328: the single strategy-write arbiter shared by the exchange
-    // flow (import/CTA gates) and this screen (picker gates). The write and
-    // the run restart are injected seams so their mutual exclusion is one
-    // state machine (Idle -> Writing -> RestartReserved -> Restarting -> Idle),
-    // never a set of UI disabled states.
-    val strategyArbiter = remember {
-        StrategyWriteArbiter(
-            scope = scope,
-            writeStrategy = { id ->
-                LayoutStrategySelectionModule.store(context).select(id) is
-                    LayoutStrategySelectionWriteResult.Committed
-            },
-            restartRun = {
-                coordinator.dismiss()
-                coordinator.start(trigger)
-            },
-            writeStartBlocked = {
-                // Issue #328: one shared truth table with the tests.
-                app.lawnchair.organizer.ui.exchange.strategyWriteStartBlockedFor(
-                    runInEntry = coordinator.state is ManualOrganizationRun.State.Selecting,
-                    importAttemptActive = exchangeHolder.importAttemptActive,
-                    importContinuationActive = exchangeHolder.importContinuationActive,
-                )
-            },
-            restartSuppressed = {
-                app.lawnchair.organizer.ui.exchange.strategyRestartSuppressedFor(
-                    runInEntry = coordinator.state is ManualOrganizationRun.State.Selecting,
-                    importAttemptActive = exchangeHolder.importAttemptActive,
-                    importContinuationActive = exchangeHolder.importContinuationActive,
-                )
-            },
-            restartNeeded = {
-                coordinator.state !is ManualOrganizationRun.State.Idle &&
-                    coordinator.state !is ManualOrganizationRun.State.Cancelled
-            },
-        )
-    }
-    // The holder's structural gates consult the same arbiter: new imports
-    // and CTA starts are refused while a strategy write or restart runs.
-    exchangeHolder.strategyArbiterBusy = { strategyArbiter.busy }
+    // Issue #371: the JIT Usage Access request dialog hosts at the run-state
+    // observation point (the single dialog host for every composition trigger
+    // path — start rows, onboarding admission, intent rebind, selection
+    // confirmation and the D-06 empty-cut continuation all pause inside the
+    // coordinator's composed-phase entry).
+    RunUsageAccessJitDialogHost(
+        run = coordinator,
+        settingsOpener = usageAccessSettingsOpener,
+        lifecycleOwner = jitLifecycleOwner ?: androidx.lifecycle.compose.LocalLifecycleOwner.current,
+    )
+    // Issue #368: the strategy picker moved to the materials surface T-05
+    // (OrganizerStrategyPreferences). The run surface offers no strategy
+    // selection — not even a read-only row — and the write-time restart
+    // special case is gone with it: a strategy change applies to the next
+    // run's composition, never to the live one.
     val focusRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
     // Issue #308: a stateFlow transition can be observed before the lazy-list
@@ -176,7 +199,13 @@ fun ManualOrganizationPreferences(
     // once reconciliation reaches a terminal state, without the user
     // navigating away. While no result is known yet, an explicit checking row
     // keeps the loading state visually distinct from "never organized".
-    val showDurableStatus = state is ManualOrganizationRun.State.Idle || state is ManualOrganizationRun.State.Cancelled
+    // Issue #376 (spec D6 read serialization): in durable-recovery mode the
+    // status read is suppressed entirely — the destination's admission issues
+    // the entry read, and both reads share the module's non-blocking mutex,
+    // so running them concurrently would fail-close the admission against
+    // its own display read.
+    val showDurableStatus = !durableRecovery &&
+        (state is ManualOrganizationRun.State.Idle || state is ManualOrganizationRun.State.Cancelled)
     val readinessState by coordinator.readinessState.collectAsStateWithLifecycle()
     var durableStatus by remember { mutableStateOf<OrganizerDurableStatus?>(null) }
     LaunchedEffect(showDurableStatus, readinessState) {
@@ -196,11 +225,80 @@ fun ManualOrganizationPreferences(
                         )
                 )
         )
+
+    // Issue #376 (spec D5): a hub-initiated durable entry hands admission
+    // ownership to this destination. The read+inspection run here — in this
+    // destination's own composition scope, so the hub's disposal can never
+    // orphan the flow — and a silent rejection pops this face back to the
+    // hub. NonCancellable closes the departure window: if the host went away
+    // while admission was in flight (Back during the read), the live flow is
+    // resolved back to the pre-entry state instead of being left as an
+    // unseen pending preview.
+    if (durableRecovery) {
+        val navController = LocalNavController.current
+        // Handoff discipline (spec D5/RS-AC-03): the hub CTA arms a
+        // process-local launch marker; this destination consumes it once per
+        // generation. A child-destination round trip (diagnostics push →
+        // Back) re-runs this effect in the same process and must not
+        // re-admit against a live terminal state; a process death loses the
+        // marker entirely, so the restored route pops back to the hub and
+        // the only restart path is the status card's CTA again.
+        var lastHandledProcessId by androidx.compose.runtime.saveable.rememberSaveable {
+            androidx.compose.runtime.mutableStateOf("")
+        }
+        LaunchedEffect(durableRecovery) {
+            // The coordinator instance id is process-stable: the same
+            // instance across a diagnostics round trip means already handled;
+            // a different id means a fresh process whose handoff died with
+            // its predecessor.
+            val currentProcessId = coordinator.processInstanceId
+            if (lastHandledProcessId == currentProcessId) {
+                return@LaunchedEffect
+            }
+            lastHandledProcessId = currentProcessId
+            if (!coordinator.consumeDurableEntryLaunchArm()) {
+                navController.popBackStack()
+                return@LaunchedEffect
+            }
+            val effectJob = coroutineContext.job
+            val myEntryId = navController.currentBackStackEntry?.id
+            withContext(NonCancellable) {
+                val admitted = withContext(Dispatchers.IO) {
+                    coordinator.beginRecoveryPreviewFromDurableEntry()
+                }
+                if (!admitted) {
+                    // Only pop while this destination is still the current
+                    // entry: a Back that raced the admission already popped
+                    // it, and popping again would leave the hub too.
+                    val stillCurrent = navController.currentBackStackEntry?.id == myEntryId
+                    if (stillCurrent) navController.popBackStack()
+                } else if (!effectJob.isActive) {
+                    withContext(Dispatchers.IO) { coordinator.cancelRecoveryPreview() }
+                }
+            }
+        }
+    }
+
+    fun execute(action: () -> Unit) {
+        scope.launch {
+            withContext(Dispatchers.IO) { action() }
+        }
+    }
+
     val focusTargetIndex = when {
         state is ManualOrganizationRun.State.Selecting -> null
 
-        state is ManualOrganizationRun.State.Idle || state is ManualOrganizationRun.State.Cancelled ->
-            1 + (if (showCheckingRow) 1 else 0) + durableStatusItemCount(durableStatus)
+        manualOrganizationFace(state) == ManualOrganizationFace.PREAMBLE ->
+            // T-07: checking + durable rows + the scope summary precede the
+            // start row.
+            1 + (if (showCheckingRow) 1 else 0) + durableStatusItemCount(durableStatus) + 1
+
+        // T-09/T-13: the scroll reveals the face from its headline / cause;
+        // the FocusRequester sits on the headline (T-09) and the cause row
+        // (T-13) respectively.
+        manualOrganizationFace(state) == ManualOrganizationFace.PREPARATION -> 1
+
+        manualOrganizationFace(state) == ManualOrganizationFace.FAILURE -> 2
 
         else -> 1
     }
@@ -222,17 +320,162 @@ fun ManualOrganizationPreferences(
     // contexts.
     val selectingState = state as? ManualOrganizationRun.State.Selecting
     var missingAppSelection by remember(selectingState?.runId) {
-        mutableStateOf(MissingAppSelectionState(selectingState?.candidates.orEmpty(), emptySet()))
+        // Issue #375 (spec "選択復元初期値"): a PreviousExplicit rebind seeds
+        // the surface with the request-time explicit selection (the resolvable
+        // subset of the export scope). It is an INITIAL VALUE only — the run's
+        // selection is committed solely by the explicit confirm (spec 228 D-1
+        // is not weakened); non-rebind paths seed empty exactly as before.
+        mutableStateOf(
+            MissingAppSelectionState(
+                selectingState?.candidates.orEmpty(),
+                selectingState?.restoredSelection.orEmpty(),
+            ),
+        )
     }
 
-    ManualOrganizationBackHandler(coordinator)
+    // Issue #369 (D-13, TO-BE §9): one confirmation gate shared by system Back
+    // and the interrupt rows. 破棄 (irreversible) always confirms once; 中断
+    // (zero-write) confirms once only when a selection or a proposal exists;
+    // キャンセル (recovery preview close) never confirms. The exchange-side
+    // pre-send discard confirmation lives in [pendingExchangeDiscard] (#372).
+    var pendingInterrupt by remember { mutableStateOf<(() -> Unit)?>(null) }
 
-    // Issue #328 (spec 328 D-2): the import success state intercepts system
-    // Back at the ALWAYS-composed hosting level — never inside the lazy item,
-    // whose composition can leave the viewport under large font. Composed
-    // after the screen-level handler above, so while enabled it takes the
-    // Back before the dismiss/navigate fallback.
-    app.lawnchair.organizer.ui.exchange.ExchangeImportSuccessBackHandler(exchangeHolder)
+    // Issue #372 (D-13/EX-AC-11): the exchange flow's pre-send discard
+    // confirmation, raised by the T-16 破棄 button AND by system Back on the
+    // unsent request face — one dialog, two entries, per the accepted spec.
+    // On dismissal the focus restores to the face's 破棄 action through this
+    // requester (explicit, deterministic — platform dialog restore is not).
+    var pendingExchangeDiscard by remember { mutableStateOf(false) }
+    val exchangeDiscardFocus = remember { FocusRequester() }
+
+    // Issue #374 (spec 328 rev.2 D-13): the import-discard confirmation,
+    // raised by the 取り込み成功状態's 破棄して閉じる button AND by system Back —
+    // one dialog, two entries. Confirm runs the holder's tombstone discard;
+    // dismissal keeps the success state and restores focus to the face's
+    // discard action through this requester.
+    var pendingImportDiscard by remember { mutableStateOf(false) }
+    val importDiscardFocus = remember { FocusRequester() }
+
+    val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+    var backCallback by remember { mutableStateOf<OnBackPressedCallback?>(null) }
+
+    fun navigateBack() {
+        backCallback?.isEnabled = false
+        backDispatcher?.onBackPressed()
+        backCallback?.isEnabled = true
+    }
+
+    fun interruptAndNavigate() {
+        scope.launch {
+            // Issue #376 (spec D5): a hub-origin recovery result leaves through
+            // the explicit hub-return path (restores the pre-entry state so the
+            // hub re-derives the durable status); every other state keeps the
+            // plain dismissal. Host disposals never call this — result states
+            // survive diagnostics pushes and recompositions.
+            if (!coordinator.leaveRecoveryResultToHub()) {
+                val outcome = withContext(Dispatchers.IO) { coordinator.dismiss() }
+                // D-13: 中断 stops the run and returns to the hub — the same
+                // navigation system Back takes. After the apply checkpoint the
+                // coordinator's gate refuses (ApplicationInProgress): the surface
+                // stays and the atomic-completion wording explains why.
+                if (outcome == ManualOrganizationRun.DismissalOutcome.ApplicationInProgress) return@launch
+            }
+            withContext(Dispatchers.Main) { navigateBack() }
+        }
+    }
+
+    fun onSystemBack() {
+        // 破棄を伴うときのみ1回確認（D-13）: a selection, a proposal, or an
+        // apply not yet past its checkpoint. T-09 (nothing to lose), terminal
+        // faces, and the recovery preview's no-confirm cancel go straight.
+        val discardNeeded = when (state) {
+            is ManualOrganizationRun.State.Selecting -> missingAppSelection.selected.isNotEmpty()
+            is ManualOrganizationRun.State.Preview, is ManualOrganizationRun.State.PreviewUnavailable -> true
+            ManualOrganizationRun.State.Applying -> true
+            else -> false
+        }
+        if (discardNeeded) {
+            pendingInterrupt = { interruptAndNavigate() }
+        } else {
+            interruptAndNavigate()
+        }
+    }
+
+    // Issue #369 (D-13): the screen owns the Back callback so [navigateBack]
+    // can disable it before re-dispatching — otherwise the re-dispatched Back
+    // would re-enter [onSystemBack] and loop forever. The import-success
+    // handler below composes later, so while enabled it takes the Back first.
+    DisposableEffect(backDispatcher) {
+        val callback = object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                onSystemBack()
+            }
+        }
+        backDispatcher?.addCallback(callback)
+        backCallback = callback
+        onDispose {
+            callback.remove()
+            backCallback = null
+        }
+    }
+    DisposableEffect(coordinator) {
+        onDispose { coordinator.dismiss() }
+    }
+    // Issue #371 (review round 3): the exchange holder is remembered, so a
+    // route change or activity recreation discards it silently. Any live JIT
+    // pause must leave with the host — otherwise the process-wide gate keeps
+    // a reservation/barrier nobody can resolve.
+    DisposableEffect(exchangeHolder) {
+        onDispose { exchangeHolder.dispose() }
+    }
+
+    // Issue #372 (EX-AC-11): the request faces' Back handler — ALWAYS-composed
+    // at the hosting level (never inside a lazy item, whose composition can
+    // leave the viewport under large font). Composed after the screen-level
+    // gate above (an open flow takes Back before the dismiss/navigate
+    // fallback) and before the import-success handler below (the success
+    // state keeps Back priority).
+    ExchangeFlowBackHandler(
+        holder = exchangeHolder,
+        onDiscardRequest = { pendingExchangeDiscard = true },
+    )
+
+    // Issue #372 (EX-AC-03): the T-15 pre-display re-reads the active request
+    // on every lifecycle resume, so returning to the face (materials editing,
+    // import, home) shows the store's current truth without a ticking clock.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        exchangeHolder.refreshActiveRequest()
+    }
+
+    // Issue #374 (spec 374 DI-AC-01/DI-AC-11): the hub rows' one-shot exchange
+    // pre-open. The navigation argument is consumed exactly once per
+    // composition (recomposition-safe through the remembered flag; a
+    // restored composition after process death re-opens the face, which is
+    // the cold-process contract), and only while no exchange face is open —
+    // a re-entry from the hub navigates a fresh back-stack entry, so the
+    // pre-open fires on each deliberate row tap as intended.
+    var exchangeOpenConsumed by remember { mutableStateOf(false) }
+    LaunchedEffect(exchangeOpen) {
+        if (exchangeOpen == null || exchangeOpenConsumed) return@LaunchedEffect
+        exchangeOpenConsumed = true
+        if (exchangeHolder.screen !is app.lawnchair.organizer.ui.exchange.ExchangeScreen.Closed) return@LaunchedEffect
+        when (exchangeOpen) {
+            app.lawnchair.ui.preferences.navigation.ExchangeOpen.REQUEST -> exchangeHolder.openFlow()
+            app.lawnchair.ui.preferences.navigation.ExchangeOpen.PENDING_REVIEW -> exchangeHolder.openPendingImportReview()
+        }
+    }
+
+    // Issue #328 (spec 328 rev.2 D-13 / #374): the import success state
+    // intercepts system Back at the ALWAYS-composed hosting level — never
+    // inside the lazy item, whose composition can leave the viewport under
+    // large font. Composed after the screen-level handler above, so while
+    // enabled it takes the Back before the dismiss/navigate fallback. The
+    // #374 D-13 contract: Back and the 破棄して閉じる button converge on the
+    // host's ONE import-discard confirmation ([pendingImportDiscard]).
+    app.lawnchair.organizer.ui.exchange.ExchangeImportSuccessBackHandler(
+        exchangeHolder,
+        onDiscardRequest = { pendingImportDiscard = true },
+    )
 
     LaunchedEffect(state, focusTargetReady.value, focusTargetIndex) {
         // Issue #209 review: each run state is a fresh surface, but the lazy
@@ -244,8 +487,13 @@ fun ManualOrganizationPreferences(
         runCatching {
             listState.scrollToItem(0)
             focusTargetIndex?.let { index ->
-                if (listState.layoutInfo.visibleItemsInfo.none { it.index == index }) {
-                    listState.scrollToItem(index)
+                // Issue #369: the PREAMBLE face mutates (checking row → durable
+                // rows → scope summary); clamp to the live item count so the
+                // reveal never races an out-of-range index mid-transition.
+                val last = listState.layoutInfo.totalItemsCount - 1
+                val target = index.coerceAtMost(last)
+                if (target >= 0 && listState.layoutInfo.visibleItemsInfo.none { it.index == target }) {
+                    listState.scrollToItem(target)
                 }
             }
         }
@@ -254,66 +502,6 @@ fun ManualOrganizationPreferences(
         runCatching { focusRequester.requestFocus() }
     }
 
-    fun execute(action: () -> Unit) {
-        scope.launch {
-            withContext(Dispatchers.IO) { action() }
-        }
-    }
-
-    // Spec 182 child 8: strategy picker. The catalog is display-only (the
-    // composer still validates); the current selection is read from and every
-    // change is issued through Rule Management's validated write command — the
-    // UI never mutates the store directly. On a committed change while a run
-    // is active, the run is dismissed (pre-checkpoint cancellation writes
-    // nothing) and a fresh compose/plan cycle starts with a fresh capture.
-    val strategyCatalog = remember {
-        (BuiltInOrganizerPolicyBundleSource.readActive() as? app.lawnchair.organizer.rules.BundleReadResult.Ready)
-            ?.bundle?.layoutStrategies
-    }
-    // Spec 182: a valid absent selection means the bundle default is what the
-    // planner uses, so the picker shows the default as the effective choice.
-    // Only a failed read hides the active selection (fail-closed).
-    var selectedStrategy by remember {
-        val snapshot = readSelectedStrategy(context)
-        // Read succeeded: an absent selection means the bundle default is
-        // what the planner resolves, so show the default as effective.
-        // Read failed (unreadable/unsupported): show nothing — fail-closed,
-        // matching the composer.
-        mutableStateOf(if (snapshot == null) null else snapshot.selection ?: strategyCatalog?.default)
-    }
-    fun onStrategySelected(id: StrategyId) {
-        // Radio semantics: re-selecting the effective strategy is a no-op, not
-        // a new policy generation or a run restart.
-        if (id == selectedStrategy) return
-        // Issue #328: every strategy write goes through the single arbiter —
-        // single-flight against other writes, gated against import/CTA work,
-        // and its commit-time restart decision is atomic on the Main-confined
-        // point (the restart itself runs on IO).
-        strategyArbiter.onStrategySelected(id) { committedId ->
-            selectedStrategy = committedId
-        }
-    }
-
-    // Issue #328: the strategy picker's enabled state mirrors the arbiter
-    // gates (affordance only — the structural gates live in the arbiter and
-    // the holder). Run-in entry: frozen while its import attempt lives; idle
-    // entry: frozen while the import continuation runs; both: frozen while
-    // the arbiter is busy. Computed here because the lazy-list scope is not a
-    // composable context.
-    val strategyPickerFreeze = if (state is ManualOrganizationRun.State.Selecting) {
-        exchangeHolder.importAttemptActive
-    } else {
-        exchangeHolder.importContinuationActive
-    }
-    val strategyPickerEnabled = !strategyPickerFreeze && !strategyArbiter.busy
-    val strategyFrozenReason = when {
-        exchangeHolder.importContinuationActive ->
-            stringResource(R.string.exchange_strategy_frozen_continuing)
-
-        strategyPickerFreeze -> stringResource(R.string.exchange_strategy_frozen_import)
-
-        else -> null
-    }
     PreferenceScaffold(
         label = stringResource(R.string.manual_organization_title),
         modifier = modifier,
@@ -328,6 +516,14 @@ fun ManualOrganizationPreferences(
                 )
             }
             when (val currentState = state) {
+                // Issue #369 (TO-BE T-07, transitional構成 — spec RD-1): the
+                // run preamble face. The scope summary is built only from facts
+                // available before admission (RD-5: no detection/composition
+                // lookahead); the primary CTA「そのまま整理」selects the
+                // deterministic path and performs run admission (RUN lease).
+                // The AI choice row belongs to #372's final two-choice T-07 and
+                // is NOT created here (capability先取り禁止); the existing
+                // exchange idle entry stays hosted on this face (spec 205 V1).
                 ManualOrganizationRun.State.Idle,
                 ManualOrganizationRun.State.Cancelled,
                 -> {
@@ -341,6 +537,9 @@ fun ManualOrganizationPreferences(
                         item { ProgressText(R.string.manual_organization_durable_status_checking) }
                     }
                     durableStatus?.let { durableStatusItems(it, onOpenDiagnostics) }
+                    item {
+                        SummaryText(stringResource(R.string.manual_organization_preamble_scope))
+                    }
                     // Issue #328: while an import attempt lives (validation or
                     // the success state), the idle start row is frozen — a new
                     // run could otherwise carry the pending intent's success
@@ -370,159 +569,236 @@ fun ManualOrganizationPreferences(
                             },
                         )
                     }
+                    // Issue #372 (D-04/D-17): the AI consultation method choice
+                    // of the T-07 preamble (spec 369 RD-1 hands this row to
+                    // #372). Opening the request flow performs NO run
+                    // admission — no RUN lease, no start(trigger) — so the
+                    // constant-authoring guarantee of the idle exchange holds.
+                    // Deliberately NOT frozen by importAttemptActive (same
+                    // treatment as the removed idle entry row).
+                    item(key = "exchange-method-consult") {
+                        ClickablePreference(
+                            label = stringResource(R.string.exchange_method_consult),
+                            subtitle = stringResource(R.string.exchange_entry_subtitle),
+                            onClick = exchangeHolder::openFlow,
+                        )
+                    }
                 }
 
-                ManualOrganizationRun.State.Capturing -> item {
-                    ProgressText(
-                        R.string.manual_organization_capturing,
-                        focusTargetModifier,
-                        focusRequester,
-                    )
-                }
+                // Issue #369 (TO-BE T-09): one integrated preparation face —
+                // the phase row renders the coordinator's deterministic projection
+                // (検出 → capture → plan), announced once per phase
+                // (organization-run-ux §6). The face also hosts the internal
+                // zero-candidate pass-through (D-06) dispatched by the face
+                // mapping in the Selecting branch below.
+                ManualOrganizationRun.State.Capturing,
+                ManualOrganizationRun.State.CandidateDetection,
+                ManualOrganizationRun.State.Planning,
+                // Issue #371: the JIT pause and its resume claim are
+                // preparation-phase waiting points — the request dialog is a
+                // modal overlay hosted by RunUsageAccessJitDialogHost above,
+                // and the phase row stays on the last published phase
+                // (capture has not started while paused).
+                is ManualOrganizationRun.State.AwaitingUsageAccessJit,
+                is ManualOrganizationRun.State.ResumingUsageAccessJit,
+                -> preparationFaceItems(
+                    preparationPhase = preparationPhase,
+                    focusRequester = focusRequester,
+                    focusTargetModifier = focusTargetModifier,
+                    onInterrupt = { interruptAndNavigate() },
+                )
 
-                ManualOrganizationRun.State.CandidateDetection -> item {
-                    // Issue #228: read-only detection between capture and the
-                    // selection surface; browsing writes nothing.
-                    ProgressText(
-                        R.string.manual_organization_detecting_missing_apps,
-                        focusTargetModifier,
-                        focusRequester,
-                    )
-                }
-
+                // Issue #369 (RD-7/D-06): the face mapping gates the selection surface
+                // BEFORE any raw composition — the internal zero-candidate
+                // pass-through composes the preparation face, so no collector
+                // timing (StateFlow conflation) can render T-08 for an empty cut.
                 is ManualOrganizationRun.State.Selecting -> {
-                    // Issue #228: explicit scope selection (D-1: all
-                    // candidates start unchecked). Selection survives query
-                    // changes; Select all matches the filtered set, Clear all
-                    // clears the whole candidate set (spec §2).
-                    //
-                    // Issue #331: the run-in exchange entry shares the
-                    // surface. While an exchange step is in progress the
-                    // selection is frozen (the export scope is the frozen
-                    // selection); the bound intent's scope size guides
-                    // re-selection (never auto-selects).
-                    val exchangeBusy = exchangeHolder.screen !is app.lawnchair.organizer.ui.exchange.ExchangeScreen.Closed
-                    val scopedSelection = missingAppSelection.selected.toList()
-                    val scopedLabels = missingAppSelection.candidates
-                        .map { it.target to it.label }
-                        .toMap()
-                    // Issue #331: the accepted typed SCOPE_MISMATCH failure from
-                    // the scope binding gate (17th unified failure outcome),
-                    // rendered with the re-export guidance.
-                    currentState.scopeRejection?.let { rejection ->
-                        item(key = "missing-app-selection-scope-mismatch") {
-                            Text(
-                                text = app.lawnchair.organizer.ui.exchange.exchangeContractFailureText(rejection),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier
-                                    .padding(horizontal = 16.dp, vertical = 4.dp)
-                                    .semantics { liveRegion = LiveRegionMode.Assertive }
-                                    .testTag("missing-app-selection-scope-mismatch"),
+                    if (manualOrganizationFace(currentState) == ManualOrganizationFace.PREPARATION) {
+                        preparationFaceItems(
+                            preparationPhase = preparationPhase,
+                            focusRequester = focusRequester,
+                            focusTargetModifier = focusTargetModifier,
+                            onInterrupt = { interruptAndNavigate() },
+                        )
+                    } else {
+                        // Issue #228: explicit scope selection (D-1: all
+                        // candidates start unchecked). Selection survives query
+                        // changes; Select all matches the filtered set, Clear all
+                        // clears the whole candidate set (spec §2).
+                        //
+                        // Issue #331: the run-in exchange entry shares the
+                        // surface. While an exchange step is in progress the
+                        // selection is frozen (the export scope is the frozen
+                        // selection); the bound intent's scope size guides
+                        // re-selection (never auto-selects).
+                        val exchangeBusy = exchangeHolder.screen !is app.lawnchair.organizer.ui.exchange.ExchangeScreen.Closed
+                        val scopedSelection = missingAppSelection.selected.toList()
+                        val scopedLabels = missingAppSelection.candidates
+                            .map { it.target to it.label }
+                            .toMap()
+                        // Issue #331: the accepted typed SCOPE_MISMATCH failure from
+                        // the scope binding gate (17th unified failure outcome),
+                        // rendered with the re-export guidance.
+                        currentState.scopeRejection?.let { rejection ->
+                            item(key = "missing-app-selection-scope-mismatch") {
+                                Text(
+                                    text = app.lawnchair.organizer.ui.exchange.exchangeContractFailureText(rejection),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier
+                                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                                        .semantics { liveRegion = LiveRegionMode.Assertive }
+                                        .testTag("missing-app-selection-scope-mismatch"),
+                                )
+                            }
+                        }
+                        // Issue #375 (spec SR-AC-01): the selection diff
+                        // against the export scope, derived by the pure
+                        // scope-binding derivation and rendered as non-color
+                        // row affordances.
+                        val scopeDiff = currentState.intentScopeCandidates.takeIf { it.isNotEmpty() }?.let { scope ->
+                            app.lawnchair.organizer.personalization.exchange.ScopeBindingCauseDerivation.deriveSelectionDiff(
+                                sessionScope = scope,
+                                detected = currentState.candidates.map { candidate ->
+                                    app.lawnchair.organizer.personalization.exchange.DetectedCandidateScope(
+                                        candidate.target,
+                                        candidate.availability,
+                                    )
+                                },
+                                selected = missingAppSelection.selected,
                             )
                         }
-                    }
-                    missingAppSelectionItems(
-                        selection = missingAppSelection,
-                        onSelectionChange = { missingAppSelection = it },
-                        onConfirm = { selected -> execute { coordinator.confirmSelection(selected) } },
-                        onCancel = { execute(coordinator::cancel) },
-                        intentScopeCount = currentState.intentScopeCount,
-                        editsEnabled = !exchangeBusy,
-                    )
-                    exchangeFlowItems(
-                        holder = exchangeHolder,
-                        scopedSelection = scopedSelection,
-                        scopedLabels = scopedLabels,
-                        clipboardTransport = { ctx: android.content.Context, text: String ->
-                            ClipboardExchangeTransport(ctx).copy(text)
-                        },
-                        shareTransport = { ctx: android.content.Context, text: String ->
-                            ShareSheetExchangeTransport().share(ctx, text)
-                        },
-                        fileTransport = FileExchangeTransport(context),
-                    )
-                }
-
-                ManualOrganizationRun.State.Planning -> item {
-                    ProgressText(
-                        R.string.manual_organization_planning,
-                        focusTargetModifier,
-                        focusRequester,
-                    )
-                }
-
-                is ManualOrganizationRun.State.InputUnavailable -> item {
-                    FocusTargetText(
-                        text = if (currentState.reason is app.lawnchair.organizer.integration.InputReadinessReason.StaleCandidateSelection) {
-                            // Issue #228 (review P2 #4): the selection was cut
-                            // against an older layout; re-detection resolves it.
-                            stringResource(R.string.manual_organization_selection_stale)
-                        } else {
-                            stringResource(currentState.reason.copyKind())
-                        },
-                        focusRequester = focusRequester,
-                        modifier = focusTargetModifier,
-                    )
-                    ClickablePreference(
-                        label = stringResource(R.string.manual_organization_retry),
-                        onClick = { execute { coordinator.start(trigger) } },
-                    )
-                }
-
-                is ManualOrganizationRun.State.ScopeMismatchFailed -> item {
-                    // Issue #331 (D-5): the typed SCOPE_MISMATCH failure for a
-                    // run that could never open a selection surface. Zero-write;
-                    // the remedy is re-export (start a fresh run).
-                    FocusTargetText(
-                        text = app.lawnchair.organizer.ui.exchange.exchangeContractFailureText(currentState.failure),
-                        focusRequester = focusRequester,
-                        modifier = focusTargetModifier,
-                    )
-                    ClickablePreference(
-                        label = stringResource(R.string.manual_organization_retry),
-                        onClick = { execute { coordinator.start(trigger) } },
-                    )
-                }
-
-                is ManualOrganizationRun.State.CandidateResolutionFailed -> item {
-                    // Issue #228 (review P2 #2): a selected app stopped
-                    // resolving; re-detection is the only recovery, and
-                    // nothing was written.
-                    FocusTargetText(
-                        text = stringResource(R.string.manual_organization_candidate_unresolved),
-                        focusRequester = focusRequester,
-                        modifier = focusTargetModifier,
-                    )
-                    ClickablePreference(
-                        label = stringResource(R.string.manual_organization_retry),
-                        onClick = { execute { coordinator.start(trigger) } },
-                    )
-                }
-
-                is ManualOrganizationRun.State.PlanningRejected -> {
-                    item {
-                        FocusTargetText(
-                            focusRequester = focusRequester,
-                            text = stringResource(
-                                if (currentState.kind == ManualOrganizationRun.PlanningFailureKind.IMPOSSIBLE) {
-                                    R.string.manual_organization_impossible
+                        missingAppSelectionItems(
+                            selection = missingAppSelection,
+                            onSelectionChange = { missingAppSelection = it },
+                            onConfirm = { selected -> execute { coordinator.confirmSelection(selected) } },
+                            // D-13: 選択があるときは1回確認の「中断」。空選択のままの
+                            // 離脱は何も壊さないため確認なし（キャンセル相当の離脱）。
+                            onCancel = {
+                                if (missingAppSelection.selected.isNotEmpty()) {
+                                    pendingInterrupt = { interruptAndNavigate() }
                                 } else {
-                                    R.string.manual_organization_rejected
-                                },
-                            ),
+                                    interruptAndNavigate()
+                                }
+                            },
+                            intentScopeCount = currentState.intentScopeCount,
+                            diff = scopeDiff,
+                            editsEnabled = !exchangeBusy,
+                        )
+                        exchangeFlowItems(
+                            holder = exchangeHolder,
+                            scopedSelection = scopedSelection,
+                            scopedLabels = scopedLabels,
+                            onDiscardRequest = { pendingExchangeDiscard = true },
+                            discardFocus = exchangeDiscardFocus,
+                            onOpenDiagnostics = onOpenDiagnostics,
+                            onImportDiscardRequest = { pendingImportDiscard = true },
+                            importDiscardFocus = importDiscardFocus,
+                            clipboardTransport = { ctx: android.content.Context, text: String ->
+                                ClipboardExchangeTransport(ctx).copy(text)
+                            },
+                            shareTransport = { ctx: android.content.Context, text: String ->
+                                ShareSheetExchangeTransport().share(ctx, text)
+                            },
+                            fileTransport = FileExchangeTransport(context),
+                        )
+                    }
+                }
+
+                // Issue #369 (TO-BE T-13): one integrated failure face —
+                // 見出し「実行できませんでした」＋原因（既存typed契約由来の
+                // 文言。typed分類名は補助情報）＋次の手段（再試行/中断、
+                // bug系では診断）。すべての経路でzero-write。
+
+                is ManualOrganizationRun.State.InputUnavailable,
+                is ManualOrganizationRun.State.ScopeMismatchFailed,
+                is ManualOrganizationRun.State.CandidateResolutionFailed,
+                is ManualOrganizationRun.State.PlanningRejected,
+                -> {
+                    item(key = "failure-headline") {
+                        // The headline is static read-out; the face's single
+                        // focus target stays the cause row below (base focus
+                        // restoration semantics — one FocusRequester per face).
+                        Text(
+                            text = stringResource(R.string.manual_organization_failed),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        )
+                    }
+                    // 原因文言は既存のtyped契約由来のmappingをそのまま再利用する
+                    // （spec 172のcopy split、spec 331のre-export案内、spec 228の
+                    // 再検出案内、spec 52の原因件数）。typed分類名は主文言へ出さない。
+                    item(key = "failure-cause") {
+                        FocusTargetText(
+                            text = when (currentState) {
+                                is ManualOrganizationRun.State.InputUnavailable ->
+                                    if (currentState.reason is app.lawnchair.organizer.integration.InputReadinessReason.StaleCandidateSelection) {
+                                        // Issue #228 (review P2 #4): the selection was
+                                        // cut against an older layout; re-detection
+                                        // resolves it.
+                                        stringResource(R.string.manual_organization_selection_stale)
+                                    } else {
+                                        stringResource(currentState.reason.copyKind())
+                                    }
+
+                                is ManualOrganizationRun.State.ScopeMismatchFailed ->
+                                    // Issue #331 (D-5): the typed SCOPE_MISMATCH failure
+                                    // for a run that could never open a selection
+                                    // surface. The remedy is re-export.
+                                    app.lawnchair.organizer.ui.exchange.exchangeContractFailureText(currentState.failure)
+
+                                is ManualOrganizationRun.State.CandidateResolutionFailed ->
+                                    // Issue #228 (review P2 #2): a selected app stopped
+                                    // resolving; re-detection is the only recovery.
+                                    stringResource(R.string.manual_organization_candidate_unresolved)
+
+                                is ManualOrganizationRun.State.PlanningRejected ->
+                                    stringResource(
+                                        if (currentState.kind == ManualOrganizationRun.PlanningFailureKind.IMPOSSIBLE) {
+                                            R.string.manual_organization_impossible
+                                        } else {
+                                            R.string.manual_organization_rejected
+                                        },
+                                    )
+
+                                else -> stringResource(R.string.manual_organization_stale_proposal_not_reviewed)
+                            },
+                            focusRequester = focusRequester,
                             modifier = focusTargetModifier,
                         )
                     }
-                    summaryItems(currentState.summary)
-                    item {
-                        ClickablePreference(
-                            label = stringResource(R.string.manual_organization_retry),
-                            onClick = { execute { coordinator.start(trigger) } },
-                        )
+                    // 原因件数（計画失敗の既存summary表示）は面統合後も変種として残す。
+                    if (currentState is ManualOrganizationRun.State.PlanningRejected) {
+                        summaryItems(currentState.summary)
+                    }
+                    item(key = "failure-actions") {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ClickablePreference(
+                                label = stringResource(R.string.manual_organization_retry),
+                                onClick = { execute { coordinator.start(trigger) } },
+                            )
+                            // D-13 §9: 終端には提案も選択もない — 中断は確認なしで
+                            // runを止めてhubへ戻る（zero-write）。
+                            ClickablePreference(
+                                label = stringResource(R.string.manual_organization_interrupt),
+                                onClick = { interruptAndNavigate() },
+                            )
+                            if (currentState is ManualOrganizationRun.State.InputUnavailable &&
+                                currentState.reason !is app.lawnchair.organizer.integration.InputReadinessReason.ReconciliationPending
+                            ) {
+                                ClickablePreference(
+                                    label = stringResource(R.string.manual_organization_open_diagnostics),
+                                    subtitle = stringResource(R.string.manual_organization_open_diagnostics_summary),
+                                    onClick = { onOpenDiagnostics?.invoke() },
+                                )
+                            }
+                        }
                     }
                 }
 
+                // Issue #369 (TO-BE T-12): 結果面の変種 — 成功/変更なし/適用されな
+                // かった（stale等）/部分的失敗。typed結果ごとの異なるlocalized
+                // outcome（spec 13/52 no false success）とspec 210の文言契約は不変。
                 ManualOrganizationRun.State.NoChanges -> item {
                     FocusTargetText(
                         text = stringResource(R.string.manual_organization_no_changes),
@@ -560,7 +836,9 @@ fun ManualOrganizationPreferences(
                         item {
                             PreviewDecisionActions(
                                 onConfirm = { execute(coordinator::confirm) },
-                                onCancel = { execute(coordinator::cancel) },
+                                // D-13: 提案があるため「中断」— 1回確認ののちrunを
+                                // 止めてhubへ戻る。
+                                onCancel = { pendingInterrupt = { interruptAndNavigate() } },
                             )
                         }
                     } else {
@@ -570,7 +848,9 @@ fun ManualOrganizationPreferences(
                         item {
                             PreviewDecisionActions(
                                 onConfirm = { execute(coordinator::confirm) },
-                                onCancel = { execute(coordinator::cancel) },
+                                // D-13: 提案があるため「中断」— 1回確認ののちrunを
+                                // 止めてhubへ戻る。
+                                onCancel = { pendingInterrupt = { interruptAndNavigate() } },
                             )
                         }
                         previewDetailsItems(
@@ -603,16 +883,21 @@ fun ManualOrganizationPreferences(
                             ) {
                                 Text(text = stringResource(R.string.manual_organization_preview_retry))
                             }
+                            // D-13: 提案があるときのcancel側は「中断」— 1回確認ののち
+                            // runを止めてhubへ戻る（decision pairの視覚構造は現行契約）。
                             OutlinedButton(
-                                onClick = { execute(coordinator::cancel) },
+                                onClick = { pendingInterrupt = { interruptAndNavigate() } },
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Text(text = stringResource(R.string.manual_organization_cancel))
+                                Text(text = stringResource(R.string.manual_organization_interrupt))
                             }
                         }
                     }
                 }
 
+                // Issue #369 (TO-BE T-11): 適用中面。checkpoint前のみ中断可
+                // （zero-write、1回確認）。checkpoint後はBack・中断とも不受理で
+                // あり、atomic完了までapplying文言が説明する（現行契約の維持）。
                 ManualOrganizationRun.State.Applying -> item {
                     ProgressText(
                         R.string.manual_organization_applying,
@@ -621,41 +906,76 @@ fun ManualOrganizationPreferences(
                     )
                     ClickablePreference(
                         label = stringResource(R.string.manual_organization_cancel_before_checkpoint),
-                        onClick = { execute(coordinator::cancel) },
+                        onClick = { pendingInterrupt = { interruptAndNavigate() } },
                     )
                 }
 
                 is ManualOrganizationRun.State.Stale -> {
-                    // Issue #210: the stale surface must report the outcome of
-                    // the blocked apply attempt, not only the layout change:
-                    // nothing was applied, the reviewed proposal was discarded,
-                    // and recapture starts a new review from the current layout.
-                    item {
-                        FocusTargetText(
-                            text = stringResource(R.string.manual_organization_stale_outcome),
-                            focusRequester = focusRequester,
-                            modifier = focusTargetModifier,
-                        )
-                    }
-                    item {
-                        Text(
-                            text = when (currentState.origin) {
-                                ManualOrganizationRun.StaleOrigin.APPLY_BLOCKED ->
-                                    stringResource(R.string.manual_organization_stale_proposal_discarded)
+                    when (currentState.origin) {
+                        // Issue #210: the stale surface must report the outcome of
+                        // the blocked apply attempt, not only the layout change:
+                        // nothing was applied, the reviewed proposal was discarded,
+                        // and recapture starts a new review from the current layout.
+                        // T-12結果面の変種（outcome文・詳細文・recapture文言不変）。
+                        ManualOrganizationRun.StaleOrigin.APPLY_BLOCKED -> {
+                            item {
+                                FocusTargetText(
+                                    text = stringResource(R.string.manual_organization_stale_outcome),
+                                    focusRequester = focusRequester,
+                                    modifier = focusTargetModifier,
+                                )
+                            }
+                            item {
+                                Text(
+                                    text = stringResource(R.string.manual_organization_stale_proposal_discarded),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(16.dp),
+                                )
+                            }
+                            item {
+                                ClickablePreference(
+                                    label = stringResource(R.string.manual_organization_recapture),
+                                    subtitle = stringResource(R.string.manual_organization_recapture_summary),
+                                    onClick = { execute { coordinator.start(trigger) } },
+                                )
+                            }
+                        }
 
-                                ManualOrganizationRun.StaleOrigin.DETECTED_BEFORE_REVIEW ->
-                                    stringResource(R.string.manual_organization_stale_proposal_not_reviewed)
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(16.dp),
-                        )
-                    }
-                    item {
-                        ClickablePreference(
-                            label = stringResource(R.string.manual_organization_recapture),
-                            subtitle = stringResource(R.string.manual_organization_recapture_summary),
-                            onClick = { execute { coordinator.start(trigger) } },
-                        )
+                        // Issue #369 (D-12): the entry stale never reaches the
+                        // confirmation face — it renders as the T-13 integrated
+                        // failure face's variant (見出し＋原因＋次の手段).
+                        ManualOrganizationRun.StaleOrigin.DETECTED_BEFORE_REVIEW -> {
+                            item(key = "failure-headline") {
+                                FocusTargetText(
+                                    text = stringResource(R.string.manual_organization_failed),
+                                    focusRequester = focusRequester,
+                                    modifier = focusTargetModifier,
+                                )
+                            }
+                            item(key = "failure-cause") {
+                                // spec 210の入場前stale詳細文（文言不変）。
+                                FocusTargetText(
+                                    text = stringResource(R.string.manual_organization_stale_proposal_not_reviewed),
+                                    focusRequester = focusRequester,
+                                    modifier = focusTargetModifier,
+                                )
+                            }
+                            item(key = "failure-actions") {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    ClickablePreference(
+                                        label = stringResource(R.string.manual_organization_recapture),
+                                        subtitle = stringResource(R.string.manual_organization_recapture_summary),
+                                        onClick = { execute { coordinator.start(trigger) } },
+                                    )
+                                    // D-13 §9: 終端には提案も選択もない — 中断は
+                                    // 確認なしでrunを止めてhubへ戻る（zero-write）。
+                                    ClickablePreference(
+                                        label = stringResource(R.string.manual_organization_interrupt),
+                                        onClick = { interruptAndNavigate() },
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -801,23 +1121,19 @@ fun ManualOrganizationPreferences(
                     }
                 }
             }
-            strategyPickerItems(
-                catalog = strategyCatalog?.runtimeSupported,
-                selected = selectedStrategy,
-                enabled = strategyPickerEnabled,
-                frozenReason = strategyFrozenReason,
-                onSelect = ::onStrategySelected,
-            )
             // Issue #205: the external agent exchange surface closes the list.
-            // It must stay below the strategy picker: the picker's radio rows
-            // are position-sensitive in tests and in muscle memory, and the
-            // entry is a secondary affordance hosted only while the run is
-            // idle/cancelled (spec 205 V1 rule).
+            // The entry is a secondary affordance hosted only while the run
+            // is idle/cancelled (spec 205 V1 rule).
             val idleLike = state is ManualOrganizationRun.State.Idle ||
                 state is ManualOrganizationRun.State.Cancelled
             if (idleLike) {
                 exchangeFlowItems(
                     holder = exchangeHolder,
+                    onDiscardRequest = { pendingExchangeDiscard = true },
+                    discardFocus = exchangeDiscardFocus,
+                    onOpenDiagnostics = onOpenDiagnostics,
+                    onImportDiscardRequest = { pendingImportDiscard = true },
+                    importDiscardFocus = importDiscardFocus,
                     clipboardTransport = { ctx: android.content.Context, text: String ->
                         ClipboardExchangeTransport(ctx).copy(text)
                     },
@@ -829,19 +1145,89 @@ fun ManualOrganizationPreferences(
             }
         }
     }
+
+    // Issue #369 (D-13): the shared 破棄/中断 confirmation dialog. Focus moves
+    // into the dialog; confirm and dismiss are explicit roles (organization-
+    // run-ux §6). The discarding action itself runs after the confirmation.
+    pendingInterrupt?.let { confirmedAction ->
+        ManualOrganizationDiscardConfirmDialog(
+            onConfirm = {
+                pendingInterrupt = null
+                confirmedAction()
+            },
+            onDismiss = { pendingInterrupt = null },
+        )
+    }
+
+    // Issue #372 (D-13): the exchange pre-send discard confirmation. Confirm
+    // goes through the holder's existing closeDisclosure structural gate
+    // (cancelling → invalidate of exactly the unsent session → flow close);
+    // dismiss keeps the T-16 face. The confirm runs after the confirmation,
+    // so the transport gate is untouched while the dialog is up.
+    if (pendingExchangeDiscard) {
+        ExchangeDiscardConfirmDialog(
+            onConfirm = {
+                pendingExchangeDiscard = false
+                exchangeHolder.closeDisclosure()
+            },
+            onDismiss = {
+                pendingExchangeDiscard = false
+                exchangeDiscardFocus.requestFocus()
+            },
+        )
+    }
+
+    // Issue #374 (spec 328 rev.2 D-13): the ONE import-discard confirmation —
+    // the shared entry of the 取り込み成功状態's 破棄して閉じる button and system
+    // Back. Confirm goes through the holder's tombstone discard (the face
+    // closes only after the tombstone commit succeeds; a failed commit keeps
+    // the success state with a typed notice); dismiss keeps the success state
+    // and restores focus to the face's discard action.
+    if (pendingImportDiscard) {
+        ExchangeImportDiscardConfirmDialog(
+            onConfirm = {
+                pendingImportDiscard = false
+                exchangeHolder.discardImport()
+            },
+            onDismiss = {
+                pendingImportDiscard = false
+                importDiscardFocus.requestFocus()
+            },
+        )
+    }
 }
 
 /**
- * Reads the persisted selection snapshot. `Ready` is returned even for the
- * first-run absent state (`selection = null`) — the caller then displays the
- * bundle default as the effective selection. A failed read (unreadable,
- * unsupported schema) returns `null` and the picker shows no active
- * selection, failing closed exactly like the composer.
+ * Issue #369 (D-13, TO-BE §9): the one confirmation dialog for 破棄 (Back on a
+ * surface holding work) and 中断 (a selection or a proposal exists, or the
+ * apply has not passed its checkpoint). Destructive-vocabulary confirm,
+ * no-confirm キャンセル dismissal; no timeout auto-confirm/cancel.
  */
-
-private fun readSelectedStrategy(context: Context): LayoutStrategySelectionSnapshot? {
-    val read = LayoutStrategySelectionModule.store(context).read()
-    return (read as? LayoutStrategySelectionReadResult.Ready)?.snapshot
+@Composable
+private fun ManualOrganizationDiscardConfirmDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.manual_organization_discard_confirm_title)) },
+        text = {
+            Text(
+                text = stringResource(R.string.manual_organization_discard_confirm_text),
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(text = stringResource(R.string.manual_organization_discard))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.manual_organization_cancel))
+            }
+        },
+    )
 }
 
 /**
@@ -899,7 +1285,7 @@ private fun durableStatusItemCount(status: OrganizerDurableStatus?): Int = when 
     -> 0
 }
 
-private fun strategyDisplayName(id: StrategyId): Int = when (id.value) {
+internal fun strategyDisplayName(id: StrategyId): Int = when (id.value) {
     "CANONICAL_PAGE_COMPACT_V1" -> R.string.organization_strategy_canonical_name
     "STABLE_PAGE_TIDY_V1" -> R.string.organization_strategy_tidy_name
     "STABLE_PAGE_TIDY_V2" -> R.string.organization_strategy_tidy_v2_name
@@ -911,7 +1297,7 @@ private fun strategyDisplayName(id: StrategyId): Int = when (id.value) {
     else -> R.string.organization_strategy_unknown_name
 }
 
-private fun strategyDescription(id: StrategyId): Int = when (id.value) {
+internal fun strategyDescription(id: StrategyId): Int = when (id.value) {
     "CANONICAL_PAGE_COMPACT_V1" -> R.string.organization_strategy_canonical_description
     "STABLE_PAGE_TIDY_V1" -> R.string.organization_strategy_tidy_description
     "STABLE_PAGE_TIDY_V2" -> R.string.organization_strategy_tidy_v2_description
@@ -924,116 +1310,45 @@ private fun strategyDescription(id: StrategyId): Int = when (id.value) {
 }
 
 /**
- * Spec 182: strategy picker. Only the active bundle's runtime-supported
- * strategies are offered, each with a localized name and intent description.
- * Selection uses radio semantics so TalkBack announces name, state, and
- * description as one node; a store read failure hides the active selection
- * instead of inventing one (fail-closed, matching the composer).
+ * Issue #369 (TO-BE T-09, RD-7): the integrated preparation face — headline,
+ * the phase row driven by the coordinator's deterministic projection (announced
+ * once per phase via the polite live region), and the no-confirm interrupt row
+ * (D-13 §9: no selection or proposal exists yet, zero-write). Shared by the
+ * detection/capture/plan states and the internal zero-candidate `Selecting`
+ * pass-through, so the D-06 guard composes exactly this face.
  */
-internal fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
-    catalog: List<StrategyId>?,
-    selected: StrategyId?,
-    enabled: Boolean,
-    frozenReason: String?,
-    onSelect: (StrategyId) -> Unit,
+private fun androidx.compose.foundation.lazy.LazyListScope.preparationFaceItems(
+    preparationPhase: ManualOrganizationRun.PreparationPhase,
+    focusRequester: FocusRequester,
+    focusTargetModifier: Modifier,
+    onInterrupt: () -> Unit,
 ) {
-    if (catalog.isNullOrEmpty()) return
-    // The whole picker lives in one selectableGroup so TalkBack announces the
-    // rows as a single mutually-exclusive radio group ("x of N" semantics).
-    // The catalog's rows may exceed one small screen (eight strategies since
-    // issue #235); losing LazyColumn virtualization here only composes rows
-    // off-screen — never clips them — so the radio-group a11y contract holds
-    // (spec 182 child 8; picker tests scroll rows into view).
-    item(key = "strategy-picker") {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("manual-organization-strategy-picker")
-                .semantics { selectableGroup() },
-        ) {
-            Text(
-                text = stringResource(R.string.manual_organization_strategy_section),
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-            if (!enabled && frozenReason != null) {
-                // Issue #328: the frozen state and its reason are read out,
-                // not only shown (a11y; spec 328 競合affordance).
-                Text(
-                    text = frozenReason,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                        .semantics { liveRegion = LiveRegionMode.Polite }
-                        .testTag("strategy-picker-frozen-reason"),
-                )
-            }
-            catalog.forEach { id ->
-                val name = stringResource(strategyDisplayName(id))
-                val description = stringResource(strategyDescription(id))
-                val isSelected = selected == id
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .selectable(
-                            selected = isSelected,
-                            enabled = enabled,
-                            role = Role.RadioButton,
-                            onClick = { onSelect(id) },
-                        )
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                ) {
-                    RadioButton(
-                        selected = isSelected,
-                        onClick = null,
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(name, style = MaterialTheme.typography.bodyLarge)
-                        Text(description, style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-            }
-        }
+    item(key = "preparation-headline") {
+        FocusTargetText(
+            text = stringResource(R.string.manual_organization_preparation),
+            focusRequester = focusRequester,
+            modifier = focusTargetModifier,
+        )
     }
-}
+    item(key = "preparation-phase") {
+        ProgressText(
+            when (preparationPhase) {
+                ManualOrganizationRun.PreparationPhase.DETECTION ->
+                    R.string.manual_organization_detecting_missing_apps
 
-@Composable
-private fun ManualOrganizationBackHandler(coordinator: ManualOrganizationRun) {
-    val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
-    val callbackRef = remember { mutableStateOf<OnBackPressedCallback?>(null) }
-    val onBack = rememberUpdatedState {
-        when (coordinator.dismiss()) {
-            ManualOrganizationRun.DismissalOutcome.ApplicationInProgress -> Unit
+                ManualOrganizationRun.PreparationPhase.CAPTURE ->
+                    R.string.manual_organization_capturing
 
-            ManualOrganizationRun.DismissalOutcome.CancelledAndMayNavigate,
-            ManualOrganizationRun.DismissalOutcome.NoActiveOperation,
-            -> {
-                callbackRef.value?.isEnabled = false
-                dispatcher?.onBackPressed()
-                callbackRef.value?.isEnabled = true
-            }
-        }
+                ManualOrganizationRun.PreparationPhase.PLAN ->
+                    R.string.manual_organization_planning
+            },
+        )
     }
-    val callback = remember(dispatcher) {
-        object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                onBack.value()
-            }
-        }
-    }
-    callbackRef.value = callback
-
-    DisposableEffect(dispatcher, callback) {
-        dispatcher?.addCallback(callback)
-        onDispose {
-            callback.remove()
-            if (callbackRef.value === callback) callbackRef.value = null
-        }
-    }
-    DisposableEffect(coordinator) {
-        onDispose { coordinator.dismiss() }
+    item(key = "preparation-interrupt") {
+        ClickablePreference(
+            label = stringResource(R.string.manual_organization_interrupt),
+            onClick = onInterrupt,
+        )
     }
 }
 
@@ -1101,11 +1416,14 @@ private fun PreviewDecisionActions(
         ) {
             Text(text = stringResource(R.string.manual_organization_confirm))
         }
+        // Issue #369 (D-13): the proposal exists, so the cancel side of the
+        // decision pair is 中断 — one confirmation, then the run stops and the
+        // user returns to the hub (spec 209 keeps the pair's visual structure).
         OutlinedButton(
             onClick = onCancel,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(text = stringResource(R.string.manual_organization_cancel))
+            Text(text = stringResource(R.string.manual_organization_interrupt))
         }
     }
 }

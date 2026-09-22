@@ -4,7 +4,7 @@ status: implemented
 requirements:
   - NFR-009
 risk: []
-updated: 2026-09-10
+updated: 2026-09-20
 ---
 
 # `Later` 選択後もユーザーが自力でOrganizerの再開導線を再発見できる
@@ -55,7 +55,7 @@ updated: 2026-09-10
 Given fresh-install onboarding proposal が表示されている
 When ユーザーが `Later` を選択する
 Then proposal が閉じ、既存の defer semantics (process 内 suppress、`DEFERRED` persistence) がそのまま適用される
-And proposal の元の位置に、Organizer の再開場所 (Home settings の Home screen 内) を案内する非ブロッキングな hint が短時間表示される
+And proposal の元の位置に、Organizer の再開場所 (設定 → Home screen → Organizer hub 入口row) を案内する非ブロッキングな hint が短時間表示される
 And hint は layout も organizer-owned state も変更せず、run-journal event を発行しない
 
 ### Scenario: hint は自動的に消え、操作を妨げない
@@ -77,8 +77,9 @@ And `Review organization` の fresh-run admission と `ONBOARDING_PROPOSAL` trig
 
 Given `Later` 済みのユーザーが Home 長押しから Home settings を開く
 When `Home screen` を開く
-Then `Organize home layout` 入口が `Layout` セクション内ではなく、画面上部の `General` セクションに配置される
-And 入口の label / destination / 副説明 (`manual_organization_summary`) は変化しない
+Then Organizer hub 入口 (`organizer_hub_title`) が `Layout` セクション内ではなく、画面上部の `General` セクションに配置される
+And Issue #370 適用後、設定 → Home screen の organizer由来rowはこの hub入口row 1件である（`Organize home layout` 直行rowは廃止済み。D-01「設定側は入口rowだけを残す」の完成）
+And 入口の label / destination / 副説明 (`organizer_hub_summary`) は変化しない
 And 同セクション内の既存行との相対順序は既存の Lawnchair 情報設計と整合する
 
 ### Scenario: TalkBack と keyboard で hint が到達可能
@@ -110,15 +111,15 @@ None。新規 permission、外部送信、sensitive data は存在しない。hi
 ## Accessibility and localization
 
 - hint は TalkBack で到達可能であり、title と body の内容を伝える。`AbstractFloatingView` 系の proposal と同等の focus 付与 / 復帰 ([spec 53](../53-onboarding-organization-proposal/spec.md) §6 の accessibility contract) に従う。
-- hint の文言は `lawnchair/res/values/strings.xml` と `lawnchair/res/values-ja/strings.xml` に追加し ([spec 161](../161-japanese-ui-copy-lqa/spec.md) の対訳規約)、文字列名は `organization_onboarding_` prefix に従う。path 案内は `settings_button_text` / `home_screen_label` / `manual_organization_title` の実表示 label を参照して構成し、locale 間で実 UI と一致させる。
+- hint の文言は `lawnchair/res/values/strings.xml` と `lawnchair/res/values-ja/strings.xml` に追加し ([spec 161](../161-japanese-ui-copy-lqa/spec.md) の対訳規約)、文字列名は `organization_onboarding_` prefix に従う。path 案内は `settings_button_text` / `home_screen_label` / `organizer_hub_title` の実表示 label を参照して構成し (Issue #370 で第3要素を `manual_organization_title` から更新)、locale 間で実 UI と一致させる。
 - 200% font scale で reflow し、非色依存で情報を伝える。
 - 入口移動は既存行 (`organizer_lock_screen_title` など) の label / 副説明を変更せず、比較可能性を維持する。
 
 ## Acceptance criteria
 
-- [ ] AC-1: `Later` 選択直後に、Organizer の再開場所 (Home settings の Home screen 内) を案内する非ブロッキングな hint が表示され、既存 defer semantics・persistence・run-journal 非発行は変化しない。
+- [ ] AC-1: `Later` 選択直後に、Organizer の再開場所 (設定 → Home screen → Organizer hub 入口row) を案内する非ブロッキングな hint が表示され、既存 defer semantics・persistence・run-journal 非発行は変化しない。
 - [ ] AC-2: hint は Back / hint 外 touch / タイムアウトで閉じ、dismiss が outcome persistence を変更せず、launcher の通常操作を阻害しない。
-- [ ] AC-3: Home settings の `Organize home layout` 入口が `Layout` セクション内ではなく `General` セクションに配置され、label / destination / 副説明が変化せず、同一画面内の既存行の挙動に影響しない。
+- [ ] AC-3: 設定 → Home screen の organizer由来入口が `General` セクションの hub入口row 1件で発見でき、入口の label / destination / 副説明が変化せず、同一画面内の既存行の挙動に影響しない。
 - [ ] AC-4: hint は TalkBack / keyboard / DPAD で到達可能であり、focus 復帰と 200% font scale reflow を満たす。
 - [ ] AC-5: hint の表示経路で例外が発生しても、defer persistence と launcher の動作は壊れず、自動テストとエミュレータ手動確認の証跡が PR に残る。
 
@@ -126,9 +127,9 @@ None。新規 permission、外部送信、sensitive data は存在しない。hi
 
 | AC | Evidence |
 |---|---|
-| AC-1 | instrumentation (`OnboardingOrganizationProposalInstrumentationTest` 拡張: `Later` 後 hint 表示) + 既存 unit (`OrganizationOnboardingProposalTest`: defer semantics 不変の回帰) |
+| AC-1 | instrumentation (`OnboardingOrganizationProposalInstrumentationTest` 拡張: `Later` 後 hint 表示、hint path文言がhub入口row labelで構成されること) + 既存 unit (`OrganizationOnboardingProposalTest`: defer semantics 不変の回帰) |
 | AC-2 | instrumentation (hint dismiss / タイムアウト / persistence 不変) |
-| AC-3 | instrumentation または UI test (Home settings 画面構成の回帰) |
+| AC-3 | instrumentation または UI test (Home settings 画面構成の回帰。organizer由来rowはhub入口row 1件) |
 | AC-4 | instrumentation (TalkBack semantics / focus 復帰 / 200% font scale) |
 | AC-5 | instrumentation (表示失敗を注入した crash 非発生) + emulator 手動確認 |
 
@@ -141,3 +142,4 @@ None。新規 permission、外部送信、sensitive data は存在しない。hi
 - 2026-09-10: Draft created for #232.
 - 2026-09-10: Accepted after code-reviewer-2 review of PR #267 (head 9c23c98a6a).
 - 2026-09-10: Implemented by PR #268 (merge 3355b57165, head 7e95809fd7). Owner review findings (focus handoff, unified a11y announcement, label-backed path copy, timeout test) were resolved at 7e95809fd7 before merge. Independent audit: docs/assessment/pr-268-organizer-reentry-discoverability.md (PASS). Emulator evidence: docs/assessment/evidence/issue-232/01..08.
+- 2026-09-20: Issue #370 revision (disposition §2.3/§5順序4「spec 232 = Amend」の実行)。AC-1の案内先を設定 → Home screen → Organizer hub 入口rowへ、AC-3を「organizer由来rowはhub入口row 1件（`Organize home layout` 直行rowは#370で廃止）」へ改訂。hint path文言の第3要素を `organizer_hub_title` へ更新（真実性規約・6秒・非block等の他契約は不変）。対応するScenario・Test oracle・Accessibility節を連動更新。旧案内先・旧入口構成を固定したtestの更新とobsolete理由はIssue #370のPRへ記録。

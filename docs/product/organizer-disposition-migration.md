@@ -1,6 +1,7 @@
 # Organizer Disposition and Migration Plan
 
 > Status: accepted（owner review 2026-09-19。ChatGPT reviewを3回実施し、R1/R2の指摘を解消したうえでR3は指摘なし・Approve相当（[R1](https://github.com/nunu1733/NunuLauncher/pull/378#issuecomment-5733985885) / [R2](https://github.com/nunu1733/NunuLauncher/pull/378#issuecomment-5734075706) / [R3](https://github.com/nunu1733/NunuLauncher/pull/378#issuecomment-5734136034)）。ownerがmergeと#362/#357〜#360のcloseを指示。本書は判断文書であり実装を要求しないため、実装の所有は#365〜#377（依存順は§8）が持つ）
+> 2026-09-19追記（[#367 re-review](https://github.com/nunu1733/NunuLauncher/issues/367#issuecomment-5741019899)対応、段階ownershipの明確化）: §2.3/§3.10/§5/§7.2のとおり、#367は材料row（Layout group＋Personalization group）の移動のみを所有し、D-01「設定側は入口rowだけを残す」の最終完成（General groupのmanual organization直行row廃止＋spec 232 AC-3改訂＋hint更新）は#370が所有する。spec 203は常設row配置の改訂（#367）→JIT要求追加（#371）の二段階で改訂する。
 > Proposed: 2026-09-19
 > Accepted: 2026-09-19
 > Parent: [Issue #362](https://github.com/nunu1733/NunuLauncher/issues/362)（Epic [#356](https://github.com/nunu1733/NunuLauncher/issues/356) Phase C）
@@ -36,11 +37,11 @@ TO-BE relation: 整合 / 一部衝突 / 全体衝突 / 役割消滅。Orderは �
 | #84 recovery preview seam（closed） | read-only revision-bound復元preview seam | 整合（seamはD-15の新入口から再利用） | **Continue** | #376（参照） |
 | #99 category override（closed） | override authoring（spec 99） | 整合（経路がT-02へ移動のみ） | **Continue** | #367 |
 | #182 layout strategy catalog（closed） | strategy catalog・選択契約（spec 182, ADR-0012） | 一部衝突（run面picker配置・run中変更特例 vs D-03） | **Amend** | #368 |
-| #203 usage signals（closed） | signal snapshot・権限導線（spec 203） | 一部衝突（U-2常設rowのみ vs D-07 JIT追加） | **Amend** | #371 |
+| #203 usage signals（closed） | signal snapshot・権限導線（spec 203） | 一部衝突（U-2常設rowのみ vs D-07 JIT追加） | **Amend**（二段階） | #367（U-2配置）→ #371（JIT） |
 | #204 context/intent contract（closed） | exchange data契約（spec 204） | 整合（契約不変。LOCAL_FULL UI語彙除外の文言のみ D-14） | **Amend（文言のみ）** | #372 |
 | #205 External Agent Exchange（closed） | exchange workflow（spec 205） | 一部衝突（entry導線・失敗表示・pending保持規定 vs D-04/D-08/D-10/D-11） | **Amend（一部supersede）** | #372, #373, #374 |
 | #228 missing-app selection（closed） | 未配置app明示選択（spec 228） | 一部衝突（0件でも選択面表示 vs D-06非表示） | **Amend** | #369, #375 |
-| #328 import success state（**open**, spec accepted） | 取り込み成功状態（spec 328、未実装） | 一部衝突（process-local規定・freeze 4箇所 vs D-08 durable・再設計） | **Amend-Supersede（実装前に改訂）** | #373（表示）→#374（spec rev.2後実装） |
+| #328 import success state（**open**, spec accepted, **実装済み PR #353**） | 取り込み成功状態（spec 328。strategy固有条項は#368が狭く改訂済み） | 一部衝突（process-local規定・freeze規定 vs D-08 durable・再設計） | **Amend-Supersede（strategy固有条項は#368が改訂、残りは#374のrev.2）** | #368（strategy条項）→#373（表示）→#374（spec rev.2） |
 | #329 normalizer（closed） | import normalizer（spec 329） | 整合 | **Continue** | — |
 | #331 target/scope coupling（closed） | scope結合・fail-closed gate（spec 331） | 一部衝突（単一remedy・生存run attachのみ vs D-17原因別remedy・死後rebind） | **Amend** | #375 |
 | #332 import input UI（closed） | clipboard/file-first入力（spec 332） | 整合（構造不変。配置表記のみT-17へ） | **Continue（表記更新）** | #373 |
@@ -65,7 +66,7 @@ TO-BE relation: 整合 / 一部衝突 / 全体衝突 / 役割消滅。Orderは �
 |---|---|---|---|
 | spec 271 durable status projection | 一部衝突（Non-goals cold-process restore がD-15と衝突。DS-AC-07表示面がstatus cardへ） | **Amend** | #376 |
 | spec 283 strategy picker affordance | 一部衝突（Non-goalsがrun面配置・dismiss+再startを凍結） | **Amend** | #368 |
-| spec 232 re-entry hint | 一部衝突（AC-1案内先がhubへ） | **Amend** | #370 |
+| spec 232 re-entry hint | 一部衝突（AC-1案内先がhubへ、AC-3入口row位置がD-01完成後のhub入口row 1件構成へ。#367段階ではAC-3を維持しmanual organization直行rowは暫定併存） | **Amend** | #370 |
 | spec 327 interview-first | 一部衝突（Decision 4 capability説明の配置前提） | **Amend** | #372 |
 | spec 123 UI convergence | 整合（新surfaceへAC-1/AC-2/AC-4/AC-5を適用。Non-goalsのanti-redesignとhubは両立: hubは既存settings visual languageを使う） | **Continue（inventory更新）** | #366 |
 | spec 13 / 194 / 195 / 210 / 231 / 330 / 348 | 整合（安全契約・AI-facing契約はTO-BE §2/§7.2が明示維持） | **Continue** | —（#210は#369で表示面注記のみ） |
@@ -103,6 +104,7 @@ TO-BE relation: 整合 / 一部衝突 / 全体衝突 / 役割消滅。Orderは �
 - 処分: **Amend**（#369）。MFO-AC-01へ検出phaseを挿入し、D-06（候補0件時選択面非表示）を反映。MFO-18のdecision pair規定はT-10で維持されるため保持。
 - doc変更: spec 52改訂（#369のPRで実施。amended内容は上記3点に限定し、safe apply契約は触れない）。
 - runtime migration: 表示統合のみ。内部state machine・typed outcome不変。compatibility: process death時のrun喪失は現行どおり（D-08対象外）。test migration: ManualOrganizationRunTestのstate期待値は不変。表示面のinstrumentation（個別失敗面・選択面必須通過を固定するoracle）を更新し、obsolete理由（F-04/V-09の解消）をPRに記録。
+- 2026-09-20追記（[#369 re-entry review](https://github.com/nunu1733/NunuLauncher/issues/369#issuecomment-5740051014)対応）: 本項の「内部state machine・typed outcome不変」「ManualOrganizationRunTestのstate期待値は不変」は、D-06の0件時選択面非表示を**表示統合として実装する**ことで成立する（#369 spec RD-3）。coordinatorは0件でも既存どおり`State.Selecting`へ進入した直後にcoordinator内部の専用continuationでcomposed phaseへ継続する（遷移graph・entry条件・journal規則は不変）。UIは選択面を構成せず、更新されるtestは0件経路の継続timing oracleのみである（obsolete理由を実装PRへ記録）。あわせて、#369のT-09中断により検出中cancelがユーザー到達可能になることに伴い、検出完了後の進入判定と`RUN_STARTED`発行を同一lock下でatomic化するgateをcoordinatorに追加する。これは既存のjournal契約（composed phase前のcancelはjournalを空のままにする）の強制であり契約変更ではない（#369 spec RD-6）。
 
 ### 3.4 #53 onboarding — Continue（表記更新）
 
@@ -139,16 +141,16 @@ TO-BE relation: 整合 / 一部衝突 / 全体衝突 / 役割消滅。Orderは �
   1. run面picker配置（§Preview integration）vs D-03「strategy pickerをrun面から撤去し材料面のみ」。
   2. run中変更のfresh-cycle規定（write-authority step 4・`onStrategySelected`契約）vs D-03「run中変更不可、確認なし破棄+再startの特例廃止」。E-7（予告のない提案破棄）と監査D-3/D-4（arbiter gateの隙間）の解消。
 - 処分: **Amend**（#368）。§Preview integrationを「材料面T-05」へ、write-authority step 4を「run不在時のみ書込可・次回compositionで効く」へ改訂。`StrategyWriteArbiter`の`RestartReserved`/`Restarting` restart pathを廃止（書込single-flightは維持）。spec 283はNon-goals凍結を解除しAC-1〜AC-6をT-05へ適用。catalog本体・store・fail-closed（AC-3/AC-7、ADR-0012）は不変。
-- doc変更: specs 182/283改訂（#368のPR）。
+- doc変更: specs 182/283改訂（#368のPR）。**（2026-09-19境界更新: spec 328のstrategy固有条項の狭い改訂も同じ#368のPRで実施する（§3.14参照）。#374はfreeze再設計・durable契約（rev.2）を継続所有する）**
 - runtime migration: なし（`organizer_strategy_selection/selection-v1`不変）。compatibility: なし。test migration: `StrategyWriteArbiterTest`のrestart抑止oracle、`StrategyPickerFreezeInstrumentationTest`のrun面配置oracleを更新・削除し、obsolete理由（E-7解消・arbiter簡素化）を記録。
 
 ### 3.10 #203 usage signals — Amend
 
 - 現状: signal snapshot契約・権限導線（spec 203 accepted/実装済み）。U-2「導線はsettingsのOrganizerセクションに常設。manual run内での自動的な再促しは行わない」。
 - 衝突点: U-2の常設rowのみ規定 vs D-07「最初にsignalを読む時点でJIT要求+常設row維持」。F-06/E-1（要求タイミングと利用タイミングが最遠）の解消。
-- 処分: **Amend**（#371）。U-2を「常設row（T-06）＋初回signal読み取り時のJIT要求1回」へ改訂。「同一runでは再促しない」・拒否時section Unavailable（AC-11/AC-13）・snapshot契約（AC-12/U-4）は不変。
-- doc変更: spec 203改訂（#371のPR）。
-- runtime migration / compatibility: なし。test migration: JIT要求・再促なしの新oracle追加。
+- 処分: **Amend**（二段階: 配置改訂は#367、JIT追加は#371）。#367（材料集約）がU-2の常設row配置だけを「settingsのOrganizerセクション」→「hub T-06」へ先行改訂する（no-JIT・fallback・`ON_RESUME`再読取等の他規定は不変。旧settings配置をnormative stateとして残さない）。#371がU-2を「常設row（T-06）＋初回signal読み取り時のJIT要求1回」へ改訂する。「同一runでは再促しない」・拒否時section Unavailable（AC-11/AC-13）・snapshot契約（AC-12/U-4）は不変。
+- doc変更: spec 203改訂（配置は#367のPR、JITは#371のPR）。
+- runtime migration / compatibility: なし。test migration: #367は配置回帰（settings row不在＋T-06機能）、#371はJIT要求・再促なしの新oracle追加。
 
 ### 3.11 #204 context/intent contract — Amend（文言のみ）
 
@@ -181,14 +183,14 @@ TO-BE relation: 整合 / 一部衝突 / 全体衝突 / 役割消滅。Orderは �
 
 ### 3.14 #328 import success state — Amend-Supersede（実装前に改訂）
 
-- 現状: **open**・spec accepted・未実装。取り込み成功状態の内容（AC-2/AC-4）、Back/破棄保持（D-2）、CTA single-flight/attempt anchor（AC-3）、freeze 4箇所（AC-5）、Back interception（AC-7）。
+- 現状: **open**・spec accepted・**実装済み（PR #353、2026-09-18 merge。本書accepted時点での「未実装」記述は事実誤記だった）**。取り込み成功状態の内容（AC-2/AC-4）、Back/破棄保持（D-2）、CTA single-flight/attempt anchor（AC-3）、freeze規定（AC-5）、Back interception（AC-7）。Issue本体はdevice evidence passが残りOPEN。
 - 衝突点:
   1. §Data and state「取り込み成功状態とpending intentはprocess-localのみ」 vs D-08 durable化。
   2. freeze 4箇所（idle start row・strategy picker・Back・discard）の個別実装規定 vs status card＋T-18中心への再設計（F-04解消。strategy pickerは#368でrun面から消えるためfreeze対象も変わる）。
   3. D-2/D-3の語彙・CTA copy vs D-13語彙規約・T-18語彙。
-- 処分: **Amend-Supersede**。未実装のため、実装前にspec revision 2を#374で出す（process-local規定の削除・durable契約への置換、freeze再設計、語彙更新）。AC-2/AC-3/AC-4/AC-7の本体（未適用表示・件数summary・single-flight・Back interception）は維持。**#328の実装着手は#374のspec受入後**（#328へコメント済み）。
+- 処分: **Amend-Supersede**（#374でspec revision 2: process-local規定の削除・durable契約への置換、freeze再設計、語彙更新）。**（2026-09-19境界更新: #368がstrategy固有条項のみの狭い改訂を先に実施 — picker run面撤去・restart廃止により無効化された条項（run内entry picker freeze、idle picker continuation中無効化、commit時gate、exchange側書込開始gate、`RestartReserved`/`Restarting`状態機械、strategy oracle項目）を`AUTHORING` admission token基準へ置換し、正本↔実装の意図的不一致期間を廃止。残る改訂本体（durable化・freeze再設計・語彙）は#374が所有し続ける。#368実装PR時に#374へ同一境界を通知済みとする）**
 - doc変更: spec 328 revision 2（#374のspec PR）。
-- runtime migration / compatibility: §7（#374と同じ）。test migration: 実装が無いため既存oracleなし。新規oracleはdurable契約起点で作成。
+- runtime migration / compatibility: §7（#374と同じ）。test migration: 既存oracleはPR #353実装で存在し、strategy関係分は#368が更新・削除（obsolete理由をPRに記録）、残りは#374のdurable契約起点で再構成する。
 
 ### 3.15 #329 normalizer — Continue
 
@@ -238,7 +240,7 @@ TO-BE relation: 整合 / 一部衝突 / 全体衝突 / 役割消滅。Orderは �
 | spec 331 D-2単一remedy（再exportのみ） | #331 | SET_MISMATCH/PROJECTION_MISMATCH原因別remedy（D-17。gate不変） | #375 |
 | spec 331 §5 idle entry経路（生存run attachのみの継続経路） | #331 | `Hub → ImportReview`1経路＋process死後fresh run rebind（D-08/D-17） | #374/#375 |
 | spec 271 Non-goals cold-process restore・表示のみ契約 | #271 | status card復元導線（D-15。新spec） | #376 |
-| spec 203 U-2常設rowのみ | #203 | 常設row＋JIT要求（D-07。再促なし規則は維持） | #371 |
+| spec 203 U-2常設rowのみ | #203 | 常設row＋JIT要求（D-07。再促なし規則は維持）。常設row配置のT-06移動は#367が先行改訂 | #371（配置は#367） |
 | pre-send cancelの「キャンセル」ラベル | #205実装 | 「破棄」（D-13語彙規約） | #372 |
 
 ### 4.2 Retire — なし
@@ -262,8 +264,8 @@ Issue・正本doc・ADRのいずれも役割消滅は無かった。実装・sto
 | 1 | product-brief / requirements / organization-run-ux / DESIGN / CONTEXT | §2.2表のAmend群（supersedeなし） | #365（docs-only PR） |
 | 2 | specs 182 / 283 | D-03配置転換・特例廃止 | #368 |
 | 3 | specs 52 / 228（+210注記） | canonical順序・D-06・表示統合 | #369 |
-| 4 | specs 53 / 232 | D-16表記・hint案内先 | #370 |
-| 5 | spec 203 | D-07 JIT | #371 |
+| 4 | specs 53 / 232 | D-16表記・hint案内先・spec 232 AC-3改訂（manual organization直行row廃止を含む。D-01「設定側は入口rowだけを残す」の完成。#367段階ではAC-3を維持） | #370 |
+| 5 | spec 203 | 配置改訂（常設row → hub T-06）は#367、D-07 JITは#371 | #367 / #371 |
 | 6 | specs 205 / 327 / 204文言 | D-04/D-09/D-10/D-14 | #372 |
 | 7 | specs 205(AC-5) / 332表記 | D-11・T-17/T-18 | #373 |
 | 8 | spec 328 rev.2 + 新spec（durable intent）+ spec 205(pending) | D-08 | #374（実装前にspec受入） |
@@ -300,7 +302,7 @@ ADR: 追加・改訂なし（§2.2表のとおり、recovery storage・lock・po
 TO-BE §13-1の順序を踏襲し、各段を独立PR可能とする。
 
 1. **(a) hub導入**（#366）: hub新設・status card第1段階（durable status表示＋開始CTA＋診断）。既存設定導線・run面はそのまま残る（後方互換）。
-2. **(b) 材料集約＋strategy特例廃止**（#367→#368）: 設定Layout group/Personalization groupのorganizer rowsをhubへ移動。材料面T-05へのpicker移設と特例廃止。
+2. **(b) 材料集約＋strategy特例廃止**（#367→#368）: 設定Layout group/Personalization groupのorganizer rowsをhubへ移動。材料面T-05へのpicker移設と特例廃止。D-01「設定側は入口rowだけを残す」の最終完成は、(c)の#370がGeneral groupのmanual organization直行row廃止とspec 232 AC-3改訂・hint更新で行う（#367段階ではhub入口rowと直行rowが暫定併存する）。
 3. **(c) 表示統合・語彙規約**（#369後、#370と#372は並行可→#373。#371は#367後並行可）: run面統合（T-07〜T-13）→ onboarding表記（#370）とAI相談統合（#372）はいずれも#369のみに依存し並行して着手できる → 取り込み表示（#373は#372後）。Usage Access JIT（#371）は材料面（#367）後なら並行して着手できる。
 4. **(d) status card復元**（#376。#366後ならc並行可）: 復元CTA接続。`organizer/application/**`触れるため高リスクpath（独立audit）。
 5. **(e) pending intent durable化**（#374→#375）: 新store・status card統合・freeze再設計→原因別remedy・rebind。
