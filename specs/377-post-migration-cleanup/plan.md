@@ -62,7 +62,7 @@
   - organizer code（`lawnchair/src/app/lawnchair/organizer/` + launcher3側）からの`R.string`参照distinct数: 約194件
   - `lawnchair/res/values/strings.xml`の総string数1011 / values-ja 413
   - 監査の「約407」は上記いずれとも一致しないため、監査値は参考値とし、inventoryで計上方法（prefix / 参照 / translatable対象等）を確定して記録する
-- 検証済みcommand（[building guide](../../engineering/building.md)正本）: `./gradlew spotlessCheck`、`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`、`./gradlew assembleLawnWithQuickstepGithubDebug`。Android lint taskは検証済みcommandに存在しない（specの文言とAC-3はこれに整合させる。lintを必須oracle化する場合はclean checkout/CIでの成功確認を経てbuilding guideへ追加してからとする）。
+- 検証済みcommand（[building guide](../../docs/engineering/building.md)正本）: `./gradlew spotlessCheck`、`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`、`./gradlew assembleLawnWithQuickstepGithubDebug`。Android lint taskは検証済みcommandに存在しない（specの文言とAC-3はこれに整合させる。lintを必須oracle化する場合はclean checkout/CIでの成功確認を経てbuilding guideへ追加してからとする）。
 
 ## Gating（着手条件。全て満たすまで実装に進まない）
 
@@ -118,7 +118,7 @@
 
 ### 高リスク独立エビデンス（必須。risk labelの判断と独立）
 
-reconciliation統合を含むPR（または分割した場合、`lawnchair/src/app/lawnchair/organizer/application/**`配下のhigh-risk pathを変更するsub-PR）は、[github-workflow.md「高リスクPRへの独立エビデンス要求」](../../project/github-workflow.md)の適用条件2（high-risk path変更）に**labelの有無にかかわらず**該当する。merge前に次の両方を必須evidenceとする（`high-risk-gate` workflowが機械検証する）:
+reconciliation統合を含むPR（または分割した場合、`lawnchair/src/app/lawnchair/organizer/application/**`配下のhigh-risk pathを変更するsub-PR）は、[github-workflow.md「高リスクPRへの独立エビデンス要求」](../../docs/project/github-workflow.md)の適用条件2（high-risk path変更）に**labelの有無にかかわらず**該当する。merge前に次の両方を必須evidenceとする（`high-risk-gate` workflowが機械検証する）:
 
 1. **独立実行CI証拠**: 検証対象head SHA上で、当該PRの`pull_request` eventによる`CI / final-status`が成功していること（source job skipなし。docs-only runは不可）。
 2. **独立audit記録**: `docs/assessment/pr-<PR番号>-<slug>.md`を`docs/assessment/_template.md`形式で追加すること（`Auditor`は実装主体と別。solo保守では独立session明記）。対象head SHA・参照spec受入条件・実行test表面・成功CI run linkを含む。
