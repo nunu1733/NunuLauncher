@@ -6,6 +6,7 @@ import app.lawnchair.organizer.application.adapter.FakeRecoveryStore
 import app.lawnchair.organizer.application.canonical.CanonicalFixtures
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.lifecycle.ReconciliationPublicResult
+import app.lawnchair.organizer.application.public.ApplyFailure
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RunId
@@ -271,8 +272,29 @@ class RestartReconcilerTest {
         val summary = reconciler.reconcileAll(session)
 
         assertTrue(summary is RestartReconciler.ReconciliationSummary.Resolved)
-        assertTrue(summary.hasUnresolvedFailures())
+        val results = (summary as RestartReconciler.ReconciliationSummary.Resolved).publicResults
+        val unresolved = results.filterIsInstance<ReconciliationPublicResult.Unresolved>()
+        assertEquals(1, unresolved.size)
+        val outcome = unresolved.single().outcome
+        assertTrue(outcome is ApplyResult.Unresolved)
+        assertEquals(ApplyFailure.RECOVERY_STORE_FAILED, (outcome as ApplyResult.Unresolved).failure)
+        assertEquals(1, store.markIncompatibleCalls)
         assertEquals(LifecycleState.INCOMPATIBLE, storedLifecycleOf(pointId))
+    }
+
+    @Test
+    fun formatIncompatibleRecordKeepsLifecycleAndRetriesWhenStoreMutationFails() {
+        seedFormatIncompatibleRecord(LifecycleState.APPLYING)
+        store.markIncompatibleFails = true
+
+        val summary = reconciler.reconcileAll(session)
+
+        assertTrue(summary.hasUnresolvedFailures())
+        assertEquals(
+            "A refused INCOMPATIBLE write keeps the original lifecycle for the next restart",
+            LifecycleState.APPLYING,
+            storedLifecycleOf(pointId),
+        )
     }
 
     @Test

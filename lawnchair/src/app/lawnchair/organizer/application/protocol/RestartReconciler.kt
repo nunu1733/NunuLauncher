@@ -283,10 +283,12 @@ internal class RestartReconciler(
         }
         if (record.formatVersion != LifecycleReconciler.SUPPORTED_FORMAT) {
             // Spec 13 "Recovery record and lifecycle": unsupported version ->
-            // INCOMPATIBLE (final). The advance is best-effort like the
-            // checksum gate: if it fails, the record keeps its lifecycle and
-            // the next restart reconciliation retries the transition.
-            session.advance(record.pointId, LifecycleState.INCOMPATIBLE)
+            // INCOMPATIBLE (final). markIncompatible is the store seam whose
+            // read-back does not require codec decode (the format stays
+            // unsupported by definition). Best-effort like the checksum gate:
+            // if it fails, the record keeps its lifecycle and the next
+            // restart reconciliation retries the transition.
+            session.markIncompatible(record.pointId)
             return unresolved(record, ApplyFailure.RECOVERY_STORE_FAILED)
         }
         val lease = writer.tryAcquireLease(WriterKind.ORGANIZER, record.runId.value.hashCode().toLong())

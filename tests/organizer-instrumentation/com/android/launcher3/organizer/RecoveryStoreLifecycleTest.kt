@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.lawnchair.organizer.application.canonical.PersistenceManifest
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.protocol.RecoveryStorePort
+import app.lawnchair.organizer.application.protocol.ReconciliationCandidate
 import app.lawnchair.organizer.application.protocol.RunMutex
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RunId
@@ -1080,6 +1081,72 @@ class RecoveryStoreLifecycleTest {
         return pointId
     }
 
+    /**
+     * Issue #407 regression oracle on the production SQLite store: a record
+     * whose logical format_version is unsupported (checksum recomputed so the
+     * record stays readable) must be durably markable INCOMPATIBLE through
+     * the reconciliation-session seam — whose read-back deliberately does not
+     * require codec record decode — and, being final, must not re-enter later
+     * restart reconciliation.
+     */
+    @Test
+    fun formatIncompatibleRecordMarkedIncompatibleOnProductionStoreAndSkippedAfterwards() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+        val store = RecoveryStore(context) { 1_000L }
+        prepareForMutation(store)
+        val pointId = createApplying(store)
+        forceFormatVersion(store, context, pointId, 999)
+
+        val read = store.readRecord(pointId)
+        assertTrue("setup: unsupported-format record stays readable", read is RecoveryStorePort.RecordRead.Readable)
+        assertEquals(999, (read as RecoveryStorePort.RecordRead.Readable).record.formatVersion)
+        assertTrue(read.record.checksumValid)
+
+        val mutex = RunMutex()
+        val runId = RunId("f".padStart(32, 'e'))
+        try {
+            assertTrue(mutex.tryAcquire(runId))
+            val lease = requireNotNull(mutex.issueReconciliationLease(runId))
+            val issuer = requireNotNull(store.bindReconciliationIssuer(mutex))
+            val session = requireNotNull(issuer.openSession(lease))
+            try {
+                val before = requireNotNull(session.listReconciliationCandidates())
+                assertTrue(
+                    "setup: the unsupported-format record is a reconciliation candidate",
+                    before.any { it is ReconciliationCandidate.Valid && it.metadata.pointId == pointId },
+                )
+
+                assertTrue("the INCOMPATIBLE write must commit and validate its read-back", session.markIncompatible(pointId))
+
+                val after = store.readRecord(pointId)
+                assertTrue(after is RecoveryStorePort.RecordRead.Readable)
+                assertEquals(
+                    LifecycleState.INCOMPATIBLE,
+                    (after as RecoveryStorePort.RecordRead.Readable).record.lifecycle,
+                )
+                assertTrue("recomputed checksum must still verify", after.record.checksumValid)
+                assertEquals(999, after.record.formatVersion)
+
+                val candidates = requireNotNull(session.listReconciliationCandidates())
+                assertFalse(
+                    "final INCOMPATIBLE must not re-enter restart reconciliation",
+                    candidates.any { it is ReconciliationCandidate.Valid && it.metadata.pointId == pointId },
+                )
+                assertFalse(
+                    "the legality recheck refuses to re-advance a final record",
+                    session.markIncompatible(pointId),
+                )
+                assertTrue("the inspection fence stays usable", session.rebuildInspectionSnapshot())
+            } finally {
+                session.close()
+            }
+        } finally {
+            mutex.release(runId)
+            context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+        }
+    }
+
     private fun forceLifecycle(
         store: RecoveryStore,
         context: Context,
@@ -1109,6 +1176,29 @@ class RecoveryStoreLifecycleTest {
                     updated.payloadChecksum,
                     pointId.value,
                 ),
+            )
+        }
+    }
+
+    /** Rewrite a record's logical format_version (checksum recomputed) via direct SQL, mirroring [forceLifecycle]. */
+    private fun forceFormatVersion(
+        store: RecoveryStore,
+        context: Context,
+        pointId: RecoveryPointId,
+        formatVersion: Int,
+    ) {
+        val current = (store.readRecord(pointId) as RecoveryStorePort.RecordRead.Readable).record
+        val encoded = (current as RecoveryStore.StoredRecord).encoded
+        val updated = encoded.copy(formatVersion = formatVersion)
+            .let { it.copy(payloadChecksum = RecoveryRecordCodec.computePayloadChecksum(it)) }
+        SQLiteDatabase.openDatabase(
+            context.getDatabasePath(RecoveryDbSchema.FILE_NAME).absolutePath,
+            null,
+            SQLiteDatabase.OPEN_READWRITE,
+        ).use { db ->
+            db.execSQL(
+                "UPDATE recovery_points SET format_version = ?, payload_checksum = ? WHERE point_id = ?",
+                arrayOf<Any>(updated.formatVersion, updated.payloadChecksum, pointId.value),
             )
         }
     }
