@@ -97,6 +97,7 @@ import app.lawnchair.organizer.planning.TargetSet
 import app.lawnchair.organizer.planning.Warning
 import app.lawnchair.organizer.planning.WarningCode
 import app.lawnchair.organizer.personalization.ContextExportContract
+import app.lawnchair.organizer.personalization.DiscardIfResult
 import app.lawnchair.organizer.personalization.DurablePendingIntent
 import app.lawnchair.organizer.personalization.DurableRefDecision
 import app.lawnchair.organizer.personalization.DurableRefEntry
@@ -236,7 +237,7 @@ class OrganizerHubPreferencesInstrumentationTest {
         val record = DurablePendingIntent(
             exportId = exportId,
             intentIdentitySchemaVersion = ContextExportContract.INTENT_SCHEMA_VERSION,
-            intentIdentityDigest = VALID_DIGEST,
+            intentIdentityDigest = validDigest,
             decisions = session.itemRefs.keys.map { DurableRefEntry(it, DurableRefDecision.UnresolvedByOmission) },
             minimizeMovement = false,
             expiresAtEpochMs = session.expiresAtEpochMs,
@@ -477,6 +478,12 @@ class OrganizerHubPreferencesInstrumentationTest {
 
         override fun delete() {
             record = null
+        }
+
+        override fun discardIf(expected: DurablePendingIntent): DiscardIfResult {
+            if (record != expected) return DiscardIfResult.NoMatch
+            record = expected.copy(discarded = true)
+            return DiscardIfResult.Committed
         }
 
         override fun deleteIf(proposal: DurablePendingIntent): Boolean {
@@ -1825,4 +1832,4 @@ class OrganizerHubPreferencesInstrumentationTest {
 }
 
 /** Issue #375: reconcile rejects a digest that is not 64 chars — fixtures carry a well-formed one. */
-private const val VALID_DIGEST = "a".repeat(64)
+private val validDigest: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
