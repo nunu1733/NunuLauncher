@@ -285,9 +285,14 @@ internal class RestartReconciler(
             // Spec 13 "Recovery record and lifecycle": unsupported version ->
             // INCOMPATIBLE (final). markIncompatible is the store seam whose
             // read-back does not require codec decode (the format stays
-            // unsupported by definition). Best-effort like the checksum gate:
-            // if it fails, the record keeps its lifecycle and the next
-            // restart reconciliation retries the transition.
+            // unsupported by definition). Like the checksum gate the boolean
+            // is advisory: a pre-commit refusal keeps the lifecycle for the
+            // next restart to retry, while a post-commit fault reports false
+            // although the durable lifecycle already advanced. The restart
+            // contract keys on the authoritative store state — a final
+            // INCOMPATIBLE record never re-enters reconciliation — never on
+            // this boolean (production fault oracle: RecoveryStoreLifecycleTest
+            // .incompatibleMarkFaultInjectionDistinguishesRefusalFromPostCommitAmbiguity).
             session.markIncompatible(record.pointId)
             return unresolved(record, ApplyFailure.RECOVERY_STORE_FAILED)
         }

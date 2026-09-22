@@ -283,7 +283,11 @@ class RestartReconcilerTest {
     }
 
     @Test
-    fun formatIncompatibleRecordKeepsLifecycleAndRetriesWhenStoreMutationFails() {
+    fun formatIncompatibleRecordKeepsLifecycleWhenStoreMutationIsRefusedBeforeCommit() {
+        // The fake models only the pre-commit refusal (write never happens).
+        // Production post-commit ambiguity (false returned although the
+        // durable lifecycle already advanced) is fixed by the production
+        // fault oracle in RecoveryStoreLifecycleTest.
         seedFormatIncompatibleRecord(LifecycleState.APPLYING)
         store.markIncompatibleFails = true
 
@@ -291,7 +295,7 @@ class RestartReconcilerTest {
 
         assertTrue(summary.hasUnresolvedFailures())
         assertEquals(
-            "A refused INCOMPATIBLE write keeps the original lifecycle for the next restart",
+            "A refused-before-commit INCOMPATIBLE write keeps the original lifecycle for the next restart",
             LifecycleState.APPLYING,
             storedLifecycleOf(pointId),
         )

@@ -1180,6 +1180,80 @@ class RecoveryStoreLifecycleTest {
         }
     }
 
+    /**
+     * Issue #407: fault injection on the INCOMPATIBLE format-gate seam.
+     * BEFORE is a refused write (rollback: lifecycle kept, still a candidate);
+     * AFTER is post-commit ambiguity — `false` is returned although the
+     * durable lifecycle already advanced, so the restart contract keys on the
+     * authoritative store state (a final record never re-enters
+     * reconciliation), not on the boolean. Both timings leave the inspection
+     * fence unusable until an explicit rebuild.
+     */
+    @Test
+    fun incompatibleMarkFaultInjectionDistinguishesRefusalFromPostCommitAmbiguity() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        for (timing in listOf(FaultTiming.BEFORE, FaultTiming.AFTER)) {
+            deleteRecoveryArtifacts(context)
+            val store = RecoveryStore(
+                context,
+                { 1000L },
+                ThrowingFaultPort(RecoveryStoreFaultPort.Phase.INCOMPATIBLE, timing),
+            )
+            prepareForMutation(store)
+            val pointId = createApplying(store)
+            forceFormatVersion(store, context, pointId, 999)
+
+            val mutex = RunMutex()
+            val runId = RunId("e".padStart(32, 'f'))
+            assertTrue(mutex.tryAcquire(runId))
+            val lease = requireNotNull(mutex.issueReconciliationLease(runId))
+            val issuer = requireNotNull(store.bindReconciliationIssuer(mutex))
+            val session = requireNotNull(issuer.openSession(lease))
+            try {
+                assertFalse("$timing markIncompatible must report the fault", session.markIncompatible(pointId))
+
+                val authoritative = store.readRecord(pointId) as RecoveryStorePort.RecordRead.Readable
+                if (timing == FaultTiming.BEFORE) {
+                    assertEquals(
+                        "$timing refusal rolls back: the original lifecycle stays",
+                        LifecycleState.APPLYING,
+                        authoritative.record.lifecycle,
+                    )
+                    assertTrue(
+                        "$timing refused record stays a reconciliation candidate",
+                        requireNotNull(session.listReconciliationCandidates())
+                            .any { it is ReconciliationCandidate.Valid && it.metadata.pointId == pointId },
+                    )
+                } else {
+                    assertEquals(
+                        "$timing ambiguity: the durable write already committed",
+                        LifecycleState.INCOMPATIBLE,
+                        authoritative.record.lifecycle,
+                    )
+                    assertFalse(
+                        "$timing committed record no longer re-enters restart reconciliation",
+                        requireNotNull(session.listReconciliationCandidates())
+                            .any { it is ReconciliationCandidate.Valid && it.metadata.pointId == pointId },
+                    )
+                }
+
+                assertEquals(
+                    "$timing uncertain mutation leaves the fence unusable",
+                    RecoveryStorePort.InspectionProjectionRead.Unavailable,
+                    store.readInspectionProjection(pointId),
+                )
+                assertTrue(
+                    "$timing fence recovers via an explicit rebuild",
+                    session.rebuildInspectionSnapshot(),
+                )
+            } finally {
+                session.close()
+                mutex.release(runId)
+            }
+        }
+        deleteRecoveryArtifacts(context)
+    }
+
     /** Rewrite a record's logical format_version (checksum recomputed) via direct SQL, mirroring [forceLifecycle]. */
     private fun forceFormatVersion(
         store: RecoveryStore,
