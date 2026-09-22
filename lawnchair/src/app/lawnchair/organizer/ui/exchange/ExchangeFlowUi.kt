@@ -57,10 +57,12 @@ import app.lawnchair.organizer.integration.exchange.ClipboardImportTransport
 import app.lawnchair.organizer.integration.exchange.ExchangeFlowController
 import app.lawnchair.organizer.integration.exchange.ExchangeGenerationResult
 import app.lawnchair.organizer.integration.exchange.ExchangeImportOutcome
+import app.lawnchair.organizer.integration.exchange.ExchangeStructuralResult
 import app.lawnchair.organizer.integration.exchange.ExchangeTransportFailure
 import app.lawnchair.organizer.integration.exchange.ExchangeTransportResult
 import app.lawnchair.organizer.integration.exchange.FileExchangeRead
 import app.lawnchair.organizer.integration.exchange.FileExchangeTransport
+import app.lawnchair.organizer.personalization.DiscardIfResult
 import app.lawnchair.organizer.personalization.DurablePendingIntent
 import app.lawnchair.organizer.personalization.ExportSession
 import app.lawnchair.organizer.personalization.IntentValidationFailure
@@ -73,8 +75,10 @@ import app.lawnchair.organizer.personalization.exchange.ExchangeEnvelopeFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportResult
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportSummary
+import app.lawnchair.organizer.personalization.exchange.ExchangeMutationGate
 import app.lawnchair.organizer.personalization.exchange.ImportNormalizationFailure
 import app.lawnchair.organizer.personalization.exchange.PendingIntentReconcile
+import app.lawnchair.organizer.personalization.exchange.RebindIntentRebuilder
 import app.lawnchair.organizer.personalization.exchange.RecognizedImportFraming
 import app.lawnchair.organizer.personalization.exchange.RecognizedImportInfo
 import app.lawnchair.organizer.personalization.exchange.acceptsExchangeImportEnvelope
@@ -188,6 +192,12 @@ sealed interface ExchangeScreen {
         val expiresAtEpochMs: Long,
         val readAtEpochMs: Long,
         val entryKind: ExchangeImportEntryKind,
+        /**
+         * Issue #375 (spec SR-AC-07): the rebind CTA single-flight flag —
+         * flipped synchronously on the press; while true, the discard/Back
+         * entry points are refused (spec 328 AC-3 discipline).
+         */
+        val continuing: Boolean = false,
     ) : ExchangeScreen
 
     /**
@@ -319,6 +329,15 @@ class ExchangeFlowStateHolder(
      * contract is under test).
      */
     private val pendingImportStore: PendingImportedIntentStore = NoopPendingImportedIntentStore,
+    /**
+     * Issue #375 (spec "exchange mutation gate"): the process-wide
+     * serialization point shared by every durable-record / active-session
+     * mutation and by the rebind admission anchor. The default (a fresh
+     * instance) keeps existing holder fixtures self-contained; production
+     * injects the single process-wide instance so holder and controller draw
+     * on the same gate.
+     */
+    val exchangeMutationGate: ExchangeMutationGate = ExchangeMutationGate(),
 ) {
     private val controllerLazy = lazy(LazyThreadSafetyMode.NONE) { controllerFactory() }
     private val controller: ExchangeFlowController get() = controllerLazy.value
@@ -410,17 +429,19 @@ class ExchangeFlowStateHolder(
 
     fun openImport() {
         abandonAwaitingUsageAccessJit()
-        invalidateImportAttempt()
-        status = null
-        screen = ExchangeScreen.Importing("")
+        requestAttemptInvalidation {
+            status = null
+            screen = ExchangeScreen.Importing("")
+        }
     }
 
     fun close() {
         expiryReReadJob?.cancel()
         abandonAwaitingUsageAccessJit()
-        invalidateImportAttempt()
-        status = null
-        screen = ExchangeScreen.Closed
+        requestAttemptInvalidation {
+            status = null
+            screen = ExchangeScreen.Closed
+        }
     }
 
     /**
@@ -679,9 +700,10 @@ class ExchangeFlowStateHolder(
         ) {
             return
         }
-        invalidateImportAttempt()
-        status = null
-        screen = ExchangeScreen.Closed
+        requestAttemptInvalidation {
+            status = null
+            screen = ExchangeScreen.Closed
+        }
     }
 
     /**
@@ -880,9 +902,15 @@ class ExchangeFlowStateHolder(
         // a success state. The Clear affordance runs through this same path.
         val shown = (screenState.value as? ExchangeScreen.Importing)?.replyText
         if (text != shown) {
-            invalidateImportAttempt()
+            // The supersede (new text adoption) commits only after the
+            // replaced attempt's invalidation landed (spec 375: WriteFailed
+            // keeps the old text/face and stays retryable).
+            requestAttemptInvalidation {
+                screen = ExchangeScreen.Importing(text)
+            }
+        } else {
+            screen = ExchangeScreen.Importing(text)
         }
-        screen = ExchangeScreen.Importing(text)
     }
 
     /**
@@ -931,15 +959,6 @@ class ExchangeFlowStateHolder(
     private var pendingDurableRecord: DurablePendingIntent? = null
 
     /**
-     * Issue #374 (review finding 1): serializes ALL durable-record writes and
-     * cleanups of this holder, so a cancelled/superseded attempt can never
-     * commit its record over (or leave it beside) a newer attempt's
-     * single-active record. See [launchDurablePendingIntentSave] and
-     * [invalidateImportAttempt] for the two fenced parties.
-     */
-    private val pendingWriteMutex = kotlinx.coroutines.sync.Mutex()
-
-    /**
      * Issue #328 (spec: import attempt生存中の競合freeze): true from the
      * moment an attempt is numbered until the attempt reaches its terminal
      * (failure surface shown, success state closed/discarded/replaced, or a
@@ -957,27 +976,118 @@ class ExchangeFlowStateHolder(
     val importContinuationActive: Boolean
         get() = (screenState.value as? ExchangeScreen.ImportSuccess)?.continuing == true
 
+    /**
+     * Issue #375 (spec "gate上への線形化統一"): the outstanding invalidation
+     * operation. While one exists, EVERY subsequent invalidating action's
+     * transition is queued behind it — it commits only when the gate-held
+     * conditional tombstone lands `Committed`/`NoMatch`; a `WriteFailed`
+     * keeps the old face/state, surfaces the typed persistence notice, and
+     * the SAME commit stays retryable. The rebind admission anchor refuses a
+     * record whose invalidation operation is outstanding.
+     */
+    private var invalidationOperation: InvalidationOperation? = null
+
+    private class InvalidationOperation(val expected: DurablePendingIntent) {
+        val continuations = mutableListOf<() -> Unit>()
+
+        @Volatile
+        var failed: Boolean = false
+    }
+
     private fun invalidateImportAttempt() {
+        requestAttemptInvalidation(continuation = {})
+    }
+
+    /**
+     * Issue #375: requests the current attempt's INVALIDATION COMMIT as ONE
+     * result-carrying operation. The caller's transition ([continuation] —
+     * close / supersede face / new attempt / review open) is queued behind
+     * any outstanding operation and commits only when the gate-held
+     * conditional tombstone lands `Committed`/`NoMatch`; a `WriteFailed`
+     * preserves the old face/state, surfaces the typed persistence notice,
+     * and leaves the SAME commit retryable through
+     * [retryPendingInvalidation]. The gate hold is short (one AtomicFile
+     * read-compare-tombstone; no suspension).
+     */
+    private fun requestAttemptInvalidation(continuation: () -> Unit) {
+        // The in-memory attempt slots drop immediately (the attempt is dead
+        // either way — its late settles are token-fenced); what is GATED is
+        // the caller's transition: it runs only after the durable tombstone
+        // landed.
+        val record = pendingDurableRecord
         activeAttempt = null
         pendingValidated = null
-        val record = pendingDurableRecord
         pendingDurableRecord = null
-        if (record != null) {
-            // Issue #374 (review finding 1): the attempt lost its anchor — its
-            // NOT-YET-COMMITTED record must never survive as the store's
-            // single-active record. The cleanup takes the SAME mutex as the
-            // writes, so it deterministically runs after any in-flight save of
-            // this record and removes exactly it (deleteIf equality — a newer
-            // attempt's record is never touched). An adopted record is never
-            // captured here: the settle cleared pendingDurableRecord when it
-            // adopted the success state (画面離脱は破棄ではない).
-            scope.launch(Dispatchers.IO) {
-                pendingWriteMutex.withLock {
-                    pendingImportStore.deleteIf(record)
+
+        val outstanding = invalidationOperation
+        if (outstanding != null) {
+            // A commit is in flight or failed-unresolved: the caller's
+            // transition queues behind it — it must not run before the
+            // outstanding commit lands. The queue is LAST-WINS: a later
+            // invalidating action (close / edit / newer import) supersedes
+            // the queued one, so a drained supersede can never be re-invalidated
+            // by an action it already replaced (spec 375 queuing contract).
+            synchronized(outstanding) {
+                outstanding.continuations.clear()
+                outstanding.continuations += continuation
+            }
+            if (outstanding.failed) retryPendingInvalidation()
+            return
+        }
+        if (record == null) {
+            retryPendingInvalidation()
+            continuation()
+            return
+        }
+        val operation = InvalidationOperation(record)
+        synchronized(operation) { operation.continuations += continuation }
+        invalidationOperation = operation
+        scope.launch(Dispatchers.IO) {
+            val result = exchangeMutationGate.withGate { pendingImportStore.discardIf(record) }
+            withContext(uiDispatcher) { settleInvalidation(operation, result) }
+        }
+    }
+
+    /** Applies one invalidation commit result: terminal on Committed/NoMatch, retryable on WriteFailed. */
+    private fun settleInvalidation(operation: InvalidationOperation, result: DiscardIfResult) {
+        when (result) {
+            DiscardIfResult.Committed, DiscardIfResult.NoMatch -> {
+                invalidationOperation = null
+                val queued = synchronized(operation) {
+                    val list = operation.continuations.toList()
+                    operation.continuations.clear()
+                    list
                 }
+                retryPendingInvalidation()
+                queued.forEach { it() }
+            }
+
+            DiscardIfResult.WriteFailed -> {
+                // The invalidation did NOT take effect: the proposal stays
+                // valid, the old face/state is preserved (queued transitions
+                // do not run), the typed persistence notice surfaces, and the
+                // SAME commit stays retryable.
+                operation.failed = true
+                status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_PERSIST_FAILED)
             }
         }
     }
+
+    /**
+     * Issue #375: re-runs an outstanding invalidation commit (a previous
+     * `WriteFailed`) inside the gate; terminal on `Committed`/`NoMatch` (the
+     * queued transitions then run).
+     */
+    private fun retryPendingInvalidation() {
+        val operation = invalidationOperation ?: return
+        scope.launch(Dispatchers.IO) {
+            val result = exchangeMutationGate.withGate { pendingImportStore.discardIf(operation.expected) }
+            withContext(uiDispatcher) { settleInvalidation(operation, result) }
+        }
+    }
+
+    /** True while an invalidation commit of [record] is outstanding (in flight or failed-unresolved). */
+    private fun isInvalidationPending(record: DurablePendingIntent?): Boolean = record != null && invalidationOperation?.expected == record
 
     /**
      * Numbers a fresh import attempt from the CURRENT run state: the run-in
@@ -986,16 +1096,17 @@ class ExchangeFlowStateHolder(
      * The previous attempt's invalidation is the fenced one — an uncommitted
      * record of a superseded attempt is scheduled for removal, never inherited.
      */
-    private fun beginImportAttempt(): ImportAttempt {
-        val selecting = run.state as? ManualOrganizationRun.State.Selecting
-        val attempt = ImportAttempt(
-            token = ++nextAttemptToken,
-            entryKind = if (selecting != null) ExchangeImportEntryKind.RUN_IN else ExchangeImportEntryKind.IDLE,
-            owningRunId = selecting?.runId,
-        )
-        invalidateImportAttempt()
-        activeAttempt = attempt
-        return attempt
+    private fun beginImportAttempt(onBegun: (ImportAttempt) -> Unit) {
+        requestAttemptInvalidation {
+            val selecting = run.state as? ManualOrganizationRun.State.Selecting
+            val attempt = ImportAttempt(
+                token = ++nextAttemptToken,
+                entryKind = if (selecting != null) ExchangeImportEntryKind.RUN_IN else ExchangeImportEntryKind.IDLE,
+                owningRunId = selecting?.runId,
+            )
+            activeAttempt = attempt
+            onBegun(attempt)
+        }
     }
 
     /**
@@ -1006,10 +1117,11 @@ class ExchangeFlowStateHolder(
      * newer import or an input edit are dropped).
      */
     fun import(replyText: String) {
-        val attempt = beginImportAttempt()
-        scope.launch(Dispatchers.IO) {
-            val outcome = controller.importReply(replyText)
-            withContext(uiDispatcher) { settleImport(attempt, outcome, replyText) }
+        beginImportAttempt { attempt ->
+            scope.launch(Dispatchers.IO) {
+                val outcome = controller.importReply(replyText)
+                withContext(uiDispatcher) { settleImport(attempt, outcome, replyText) }
+            }
         }
     }
 
@@ -1069,85 +1181,135 @@ class ExchangeFlowStateHolder(
     }
 
     /**
-     * Issue #374 (review finding 1): the attempt-fenced durable write. The
-     * ENTIRE write-and-settle sequence holds [pendingWriteMutex], closing the
-     * gap the token-only anchor left (a save already in flight could commit a
-     * cancelled attempt's record, or land after a newer attempt's record):
+     * Issue #374/#375: the attempt-fenced durable write, executed as ONE
+     * exchange-gate-held critical section on IO. The gate is the process-wide
+     * serialization point shared with session replacement, discard and the
+     * rebind admission anchor; holding it here means a save, a stale fence
+     * and the anchor's fresh read can never interleave.
      *
-     * - Fence 1 (pre-write currency re-check): an attempt already invalidated
-     *   before the lock was granted never writes at all;
-     * - Fence 2 (settle-time currency): a save that LANDED while its attempt
-     *   went stale is removed by `store.deleteIf(record)` in the SAME lock
-     *   hold — the equality check touches exactly this attempt's record, so a
-     *   newer attempt's record can never be the deletion's victim;
-     * - the invalidation cleanup ([invalidateImportAttempt]) queues on the
-     *   same mutex, so a cancel racing an in-flight save deterministically
-     *   removes the record after the write lands.
+     * - Fence 1 (pre-write currency): an attempt already invalidated before
+     *   the gate was granted never writes at all;
+     * - Fence 2 (post-write currency): a write that LANDED while its attempt
+     *   went stale is INVALIDATED by `discardIf(record)` (conditional
+     *   tombstone — `Committed`/`NoMatch` settle it; `WriteFailed` keeps the
+     *   proposal valid as the invalidation retry anchor) inside the SAME gate
+     *   hold — never a newer attempt's record;
+     * - the run-in owning-run re-check also completes inside the gate (its
+     *   `discardIf` tombstone too), so every durable mutation of the save
+     *   path happens under one gate hold.
      *
-     * Settle code inside the lock calls the store directly — never a helper
-     * that re-takes the mutex (no re-entrancy).
+     * The gate is RELEASED before the UI settle runs: the settle is a pure
+     * screen/state projection (it never touches the store — spec 375
+     * "gate解放後のUI settleは純粋投影"). No suspension point exists inside
+     * the gate hold.
      */
     private fun launchDurablePendingIntentSave(attempt: ImportAttempt, record: DurablePendingIntent) {
         scope.launch(Dispatchers.IO) {
-            pendingWriteMutex.withLock {
-                // Fence 1: the attempt was already cancelled/superseded before
-                // this write got the lock — nothing of it may reach the store.
-                if (activeAttempt?.token != attempt.token) return@withLock
+            val outcome: DurableSaveOutcome = exchangeMutationGate.withGate<DurableSaveOutcome> {
+                // Fence 1.
+                if (activeAttempt?.token != attempt.token) {
+                    return@withGate DurableSaveOutcome.FencedBeforeWrite
+                }
                 val saved = pendingImportStore.save(record)
-                withContext(uiDispatcher) {
-                    if (activeAttempt?.token == attempt.token) {
-                        // Current at the settle: the normal anchored adoption
-                        // (success/persistence-failure face).
-                        settlePendingIntentSave(attempt, record, saved)
-                    } else if (saved) {
-                        // Fence 2: stale settle after the write landed — the
-                        // cancelled attempt's record must not survive (and
-                        // must never overwrite a newer attempt's record).
-                        pendingImportStore.deleteIf(record)
+                val stillCurrent = activeAttempt?.token == attempt.token
+                if (!stillCurrent) {
+                    // Fence 2: a stale landed write is INVALIDATED inside the
+                    // same gate hold via the conditional tombstone (the
+                    // accepted spec's invalidation commit — `Committed`/
+                    // `NoMatch` are invalidation successes; `WriteFailed`
+                    // leaves the proposal valid and stays typed/retryable).
+                    // A newer attempt's record is never the victim (full
+                    // equality). The in-memory slots already belong to the
+                    // successor attempt — the settle must not touch them.
+                    val invalidation = if (saved) pendingImportStore.discardIf(record) else DiscardIfResult.NoMatch
+                    return@withGate DurableSaveOutcome.FencedAfterWrite(record, invalidation)
+                }
+                // Run-in entries: the owning run must still hold its selection
+                // surface at the adoption moment (defense-in-depth — the same
+                // check as the validation settle). A mismatch drops the attempt
+                // AFTER its write, and the committed record is fenced away
+                // inside this gate hold — a dropped run-in proposal must never
+                // resurface as the durable status-card truth (Issue #374
+                // attempt-fence contract).
+                if (attempt.entryKind == ExchangeImportEntryKind.RUN_IN) {
+                    val selecting = run.state as? ManualOrganizationRun.State.Selecting
+                    if (attempt.owningRunId == null || selecting?.runId != attempt.owningRunId) {
+                        val invalidation = if (saved) pendingImportStore.discardIf(record) else DiscardIfResult.NoMatch
+                        return@withGate DurableSaveOutcome.OwningRunDropped(record, invalidation)
                     }
                 }
+                DurableSaveOutcome.Written(saved)
             }
+            withContext(uiDispatcher) { settlePendingIntentSave(attempt, outcome) }
         }
     }
 
+    /** Pure result of the gate-held durable save critical section. */
+    private sealed interface DurableSaveOutcome {
+        /** The attempt was already invalidated before the write; nothing written. */
+        data object FencedBeforeWrite : DurableSaveOutcome
+
+        /** The write landed but the attempt went stale mid-flight; invalidated inside the gate. */
+        data class FencedAfterWrite(val record: DurablePendingIntent, val invalidation: DiscardIfResult) : DurableSaveOutcome
+
+        /** The run-in owning run lost its surface; the write was invalidated inside the gate. */
+        data class OwningRunDropped(val record: DurablePendingIntent, val invalidation: DiscardIfResult) : DurableSaveOutcome
+
+        /** The write landed for a still-current attempt; settle adopts/fails per [saved]. */
+        data class Written(val saved: Boolean) : DurableSaveOutcome
+    }
+
     /**
-     * Issue #374: applies one persistence-step settle. The anchor contract is
-     * unchanged from the validation settle — the save result applies only
-     * while the SAME attempt is still current (a cancel, a newer import or
-     * an input edit already dropped and fenced it otherwise). Save success
-     * adopts ImportSuccess exactly as pre-#374 and COMMITS the record (the
-     * anchored slot is cleared, so later attempt invalidations — e.g. a plain
-     * screen leave — never fence it away); failure adopts the typed
-     * persistence-failure face with the pending intent kept for a retry.
-     *
-     * Called only while [pendingWriteMutex] is held — never touches it.
+     * Issue #374/#375: applies the PURE result of the gate-held durable save.
+     * Runs on the UI dispatcher AFTER the exchange gate was released, and is a
+     * projection only — it never touches the store (spec 375: gate解放後の
+     * UI settleは純粋投影; all durable mutations happened inside the gate
+     * hold in [launchDurablePendingIntentSave]).
      */
-    private fun settlePendingIntentSave(
-        attempt: ImportAttempt,
-        record: DurablePendingIntent,
-        saved: Boolean,
-    ) {
-        if (activeAttempt?.token != attempt.token) return
-        // Run-in entries: the owning run must still hold its selection surface
-        // at the adoption moment (defense-in-depth — the same check as the
-        // validation settle; the durable save added one settle hop). A mismatch
-        // drops the attempt AFTER its write, so the committed record is fenced
-        // away too — a dropped run-in proposal must never resurface as the
-        // durable status-card truth (Issue #374 attempt-fence contract; called
-        // with the mutex held, so deleteIf is direct, never via a re-locking
-        // helper).
-        if (attempt.entryKind == ExchangeImportEntryKind.RUN_IN) {
-            val selecting = run.state as? ManualOrganizationRun.State.Selecting
-            if (attempt.owningRunId == null || selecting?.runId != attempt.owningRunId) {
-                if (saved) {
-                    pendingDurableRecord = null
-                    pendingImportStore.deleteIf(record)
-                }
-                pendingValidated = null
-                activeAttempt = null
+    private fun settlePendingIntentSave(attempt: ImportAttempt, outcome: DurableSaveOutcome) {
+        when (outcome) {
+            DurableSaveOutcome.FencedBeforeWrite -> {
+                // The attempt was already invalidated and that path cleared
+                // the in-memory slots; nothing left to project.
+                pendingDurableRecord = null
                 return
             }
+
+            is DurableSaveOutcome.FencedAfterWrite -> {
+                // The write landed but the attempt went stale mid-flight: the
+                // record was invalidated (tombstone) INSIDE the gate; the
+                // in-memory slots already belong to the successor attempt —
+                // the settle must not touch them. A `WriteFailed`
+                // invalidation leaves the record valid: it becomes the
+                // invalidation RETRY ANCHOR (the rebind anchor refuses it as
+                // invalidation-pending until the commit lands).
+                if (outcome.invalidation is DiscardIfResult.WriteFailed && invalidationOperation == null) {
+                    invalidationOperation = InvalidationOperation(outcome.record)
+                }
+                return
+            }
+
+            is DurableSaveOutcome.OwningRunDropped -> {
+                // The run-in owning run lost its surface before adoption: the
+                // record was invalidated INSIDE the gate; the dropped
+                // attempt's slots clear here (pure in-memory projection). A
+                // `WriteFailed` keeps the record as the invalidation RETRY
+                // ANCHOR (the same commit is re-run; until it lands, the
+                // rebind anchor refuses this record as invalidation-pending).
+                pendingDurableRecord = null
+                pendingValidated = null
+                activeAttempt = null
+                if (outcome.invalidation is DiscardIfResult.WriteFailed && invalidationOperation == null) {
+                    invalidationOperation = InvalidationOperation(outcome.record)
+                    status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_PERSIST_FAILED)
+                }
+                return
+            }
+
+            is DurableSaveOutcome.Written -> Unit
         }
+        val saved = outcome.saved
+        if (activeAttempt?.token != attempt.token) return
         val isRetry = screenState.value is ExchangeScreen.ImportPersistenceFailure
         if (saved) {
             // The record is durably committed and the success state adopts it:
@@ -1234,6 +1396,16 @@ class ExchangeFlowStateHolder(
     internal var connectRunOverride: (suspend (RunConnectionRequest) -> ContinueOutcome)? = null
 
     /**
+     * Issue #375 test seam (SR-AC-07/08 race oracles): invoked on the rebind
+     * path after [RebindIntentRebuilder] succeeded and BEFORE `run.start` —
+     * the exact window the admission anchor guards. Tests use it to complete
+     * a REAL world mutation (e.g. the controller's session replacement) on
+     * another execution context and await it, deterministically, before the
+     * anchor's fresh re-read. Production leaves it null.
+     */
+    internal var preAdmissionBarrier: (() -> Unit)? = null
+
+    /**
      * The real run-connection seam: run-in entries attach to the owning run
      * (after re-checking its identity), idle entries start a fresh run.
      */
@@ -1252,10 +1424,12 @@ class ExchangeFlowStateHolder(
             }
         } else {
             // `start` is synchronously heavy (capture/composition/planning) —
-            // always on IO (audit P2-1).
+            // always on IO (audit P2-1). No admission anchor on this legacy
+            // in-process path (spec 328 flow); a refusal cannot occur.
             when (val started = run.start(intent = request.validated)) {
                 is ManualOrganizationRun.StartOutcome.Started -> ContinueOutcome.Success(started.runId)
                 ManualOrganizationRun.StartOutcome.Busy -> ContinueOutcome.Busy
+                ManualOrganizationRun.StartOutcome.AdmissionRefused -> ContinueOutcome.Busy
             }
         }
     }
@@ -1360,36 +1534,262 @@ class ExchangeFlowStateHolder(
      */
     fun openPendingImportReview() {
         abandonAwaitingUsageAccessJit()
-        invalidateImportAttempt()
         status = null
-        scope.launch(Dispatchers.IO) {
-            val now = controller.nowEpochMs()
-            val record = pendingImportStore.load()
-            val session = controller.activeSession()
-            val decision = reconcilePendingIntent(record, session, now)
-            if (decision is PendingIntentReconcile.Invalid) {
-                pendingImportStore.delete()
-            }
-            withContext(uiDispatcher) {
-                if (screenState.value !is ExchangeScreen.Closed) return@withContext
-                when {
-                    decision is PendingIntentReconcile.Valid && session != null -> {
-                        val proposal = decision.proposal
-                        screen = ExchangeScreen.ImportReview(
-                            summary = durableImportSummary(proposal, session),
-                            expiresAtEpochMs = session.expiresAtEpochMs,
-                            readAtEpochMs = now,
-                            entryKind = when (proposal.entryKind) {
-                                PendingImportEntryKind.IDLE -> ExchangeImportEntryKind.IDLE
-                                PendingImportEntryKind.RUN_IN -> ExchangeImportEntryKind.RUN_IN
-                            },
-                        )
+        requestAttemptInvalidation {
+            scope.launch(Dispatchers.IO) {
+                // Issue #375: the read + reconcile + Invalid-cleanup mutation
+                // holds the exchange mutation gate (short AtomicFile ops only —
+                // the face adoption below runs after release).
+                val (now, decision, session) = exchangeMutationGate.withGate {
+                    val now = controller.nowEpochMs()
+                    val record = pendingImportStore.load()
+                    val session = controller.activeSession()
+                    val decision = reconcilePendingIntent(record, session, now)
+                    if (decision is PendingIntentReconcile.Invalid) {
+                        pendingImportStore.delete()
                     }
+                    Triple(now, decision, session)
+                }
+                withContext(uiDispatcher) {
+                    if (screenState.value !is ExchangeScreen.Closed) return@withContext
+                    when {
+                        decision is PendingIntentReconcile.Valid && session != null -> {
+                            val proposal = decision.proposal
+                            screen = ExchangeScreen.ImportReview(
+                                summary = durableImportSummary(proposal, session),
+                                expiresAtEpochMs = session.expiresAtEpochMs,
+                                readAtEpochMs = now,
+                                entryKind = when (proposal.entryKind) {
+                                    PendingImportEntryKind.IDLE -> ExchangeImportEntryKind.IDLE
+                                    PendingImportEntryKind.RUN_IN -> ExchangeImportEntryKind.RUN_IN
+                                },
+                            )
+                        }
 
-                    else -> status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_REVIEW_UNAVAILABLE)
+                        else -> status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_REVIEW_UNAVAILABLE)
+                    }
                 }
             }
         }
+    }
+
+    /**
+     * Issue #375 (spec "再開面CTA"): the rebind continuation CTA on the
+     * ImportReview resume face. Sequence per the accepted contract:
+     *
+     * 1. single-flight (`ImportReview.continuing` — while true, discard and
+     *    Back are refused; spec 328 AC-3 discipline);
+     * 2. OUTSIDE the exchange mutation gate: fresh record/session/clock read,
+     *    reconcile, and the rebuild seam (structural-digest re-verification
+     *    included; identity injected from the record);
+     * 3. `run.start(intent, admissionAnchor, selectionRestore)` — the caller
+     *    does NOT hold the gate. The anchor acquires the gate itself at the
+     *    admission instant, re-reads record/session/clock fresh, requires
+     *    reconcile-Valid + full-record equality + unexpired, and on Admit runs
+     *    the operation creation INSIDE the gate hold, releasing it before the
+     *    run's detection begins;
+     * 4. settle is a pure projection: `Started` closes the face (the run
+     *    surface takes over); `Busy`/`AdmissionRefused` are typed refusals —
+     *    a refusal re-reads the resume face so a replaced/invalidated record
+     *    never lingers as stale display.
+     *
+     * The durable record is never written or deleted on the success settle
+     * ("継続成功は提案を消費しない"); failures leave it untouched.
+     */
+    fun continuePendingImport() {
+        val current = screenState.value as? ExchangeScreen.ImportReview ?: return
+        if (current.continuing) return
+        screen = current.copy(continuing = true)
+        scope.launch(Dispatchers.IO) {
+            // (2) Gate-out: preliminary read + reconcile + rebuild.
+            val now = controller.nowEpochMs()
+            val record = pendingImportStore.load()
+            val session = controller.activeSession()
+            val outcome = RebindIntentRebuilder.rebuild(
+                record = record,
+                session = session,
+                currentStructural = when (val structural = controller.currentStructural()) {
+                    is ExchangeStructuralResult.Ready -> structural.structural
+
+                    // Composition not ready (transient): fail-closed, retryable —
+                    // the proposal is untouched and the face stays operable.
+                    is ExchangeStructuralResult.NotReady -> return@launch settleRebindNotReady()
+                },
+                nowEpochMs = now,
+            )
+            when (outcome) {
+                is RebindIntentRebuilder.Outcome.InvalidProposal -> {
+                    // Fail-closed per #374. The preliminary judgment was made
+                    // OUTSIDE the gate, so the cleanup re-reads the current
+                    // record/session/clock INSIDE the gate and re-runs the
+                    // reconcile: only a record that is STILL invalid is
+                    // removed; a record a concurrent path saved as valid is
+                    // re-adopted into the face instead of being destroyed
+                    // (single-active durable truth; spec "reconcile清掃もgate配下").
+                    val reAdopted: Pair<DurablePendingIntent, ExportSession>? = exchangeMutationGate.withGate {
+                        val freshNow = controller.nowEpochMs()
+                        val freshRecord = pendingImportStore.load()
+                        val freshSession = controller.activeSession()
+                        when (reconcilePendingIntent(freshRecord, freshSession, freshNow)) {
+                            is PendingIntentReconcile.Invalid -> {
+                                pendingImportStore.delete()
+                                null
+                            }
+
+                            else -> if (freshRecord != null && freshSession != null) freshRecord to freshSession else null
+                        }
+                    }
+                    withContext(uiDispatcher) {
+                        if (reAdopted != null) {
+                            val (proposal, adoptSession) = reAdopted
+                            screen = ExchangeScreen.ImportReview(
+                                summary = durableImportSummary(proposal, adoptSession),
+                                expiresAtEpochMs = adoptSession.expiresAtEpochMs,
+                                readAtEpochMs = controller.nowEpochMs(),
+                                entryKind = when (proposal.entryKind) {
+                                    PendingImportEntryKind.IDLE -> ExchangeImportEntryKind.IDLE
+                                    PendingImportEntryKind.RUN_IN -> ExchangeImportEntryKind.RUN_IN
+                                },
+                            )
+                        } else {
+                            status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_REVIEW_UNAVAILABLE)
+                            screen = ExchangeScreen.Closed
+                        }
+                    }
+                    return@launch
+                }
+
+                is RebindIntentRebuilder.Outcome.ContextStale -> {
+                    withContext(uiDispatcher) {
+                        status = ExchangeStatus(ExchangeStatus.Kind.REBIND_CONTEXT_STALE)
+                        screen = (screenState.value as? ExchangeScreen.ImportReview)?.copy(continuing = false) ?: screenState.value
+                    }
+                    return@launch
+                }
+
+                is RebindIntentRebuilder.Outcome.Rebuilt -> Unit
+            }
+            val rebuilt = outcome.intent
+            val sourceRecord = outcome.sourceRecord
+            // Test seam: the deterministic point between "rebuild succeeded"
+            // and "admission begins" — race oracles complete a REAL world
+            // mutation here (another execution context) before admitting.
+            try {
+                preAdmissionBarrier?.invoke()
+            } catch (failure: Throwable) {
+                if (!currentCoroutineContext().isActive) throw failure
+                withContext(uiDispatcher) {
+                    status = ExchangeStatus(ExchangeStatus.Kind.REBIND_START_FAILED)
+                    screen = (screenState.value as? ExchangeScreen.ImportReview)?.copy(continuing = false) ?: screenState.value
+                }
+                return@launch
+            }
+            val restoreMode = when (sourceRecord.entryKind) {
+                PendingImportEntryKind.RUN_IN -> ManualOrganizationRun.SelectionRestore.PreviousExplicit
+                else -> ManualOrganizationRun.SelectionRestore.None
+            }
+            // (3) Admission — the anchor acquires the exchange gate itself at
+            // the admission instant (fresh read → verdict → operation creation
+            // inside one gate hold), so a replacement, a discard tombstone or
+            // an expiry can never slip between the verification and the
+            // admission.
+            val started = try {
+                run.start(
+                    intent = rebuilt,
+                    admissionAnchor = ManualOrganizationRun.StartAdmissionAnchor { complete ->
+                        val admitted = exchangeMutationGate.withGate {
+                            val fresh = pendingImportStore.load()
+                            val freshSession = controller.activeSession()
+                            val verdict = reconcilePendingIntent(fresh, freshSession, controller.nowEpochMs())
+                            val matches = verdict is PendingIntentReconcile.Valid &&
+                                fresh == sourceRecord &&
+                                // An outstanding invalidation commit of this
+                                // very record (a landed `WriteFailed`) is an
+                                // invalidation-pending state — never Valid
+                                // for continuation.
+                                !isInvalidationPending(fresh)
+                            if (matches) complete()
+                            matches
+                        }
+                        admitted
+                    },
+                    selectionRestore = restoreMode,
+                )
+            } catch (failure: Throwable) {
+                if (!currentCoroutineContext().isActive) throw failure
+                withContext(uiDispatcher) {
+                    status = ExchangeStatus(ExchangeStatus.Kind.REBIND_START_FAILED)
+                    screen = (screenState.value as? ExchangeScreen.ImportReview)?.copy(continuing = false) ?: screenState.value
+                }
+                return@launch
+            }
+            // (4) Pure projection settle.
+            withContext(uiDispatcher) {
+                when (started) {
+                    is ManualOrganizationRun.StartOutcome.Started -> {
+                        // The run surface takes over; the proposal is NOT
+                        // consumed (継続成功は提案を消費しない).
+                        status = null
+                        screen = ExchangeScreen.Closed
+                    }
+
+                    ManualOrganizationRun.StartOutcome.Busy -> {
+                        status = ExchangeStatus(ExchangeStatus.Kind.RUN_BUSY)
+                        screen = (screenState.value as? ExchangeScreen.ImportReview)?.copy(continuing = false) ?: screenState.value
+                    }
+
+                    ManualOrganizationRun.StartOutcome.AdmissionRefused -> {
+                        status = ExchangeStatus(ExchangeStatus.Kind.REBIND_ANCHOR_REFUSED)
+                        // The refusal means the durable world changed; re-read
+                        // it so stale display never lingers. Same gate-held
+                        // read/reconcile/cleanup as the open path.
+                        scope.launch(Dispatchers.IO) {
+                            val (reDecision, reSession, reNow) = exchangeMutationGate.withGate {
+                                val reNow = controller.nowEpochMs()
+                                val reRecord = pendingImportStore.load()
+                                val reSession = controller.activeSession()
+                                val reDecision = reconcilePendingIntent(reRecord, reSession, reNow)
+                                if (reDecision is PendingIntentReconcile.Invalid) {
+                                    pendingImportStore.delete()
+                                }
+                                Triple(reDecision, reSession, reNow)
+                            }
+                            withContext(uiDispatcher) {
+                                when {
+                                    reDecision is PendingIntentReconcile.Valid && reSession != null -> {
+                                        val proposal = reDecision.proposal
+                                        // The anchor-refusal notice persists: the
+                                        // re-adopted face shows the CURRENT truth.
+                                        screen = ExchangeScreen.ImportReview(
+                                            summary = durableImportSummary(proposal, reSession),
+                                            expiresAtEpochMs = reSession.expiresAtEpochMs,
+                                            readAtEpochMs = reNow,
+                                            entryKind = when (proposal.entryKind) {
+                                                PendingImportEntryKind.IDLE -> ExchangeImportEntryKind.IDLE
+                                                PendingImportEntryKind.RUN_IN -> ExchangeImportEntryKind.RUN_IN
+                                            },
+                                        )
+                                    }
+
+                                    else -> {
+                                        // The invalidation took effect: fail-closed
+                                        // cleanup and close. The anchor-refusal
+                                        // notice stays (it explains the close).
+                                        screen = ExchangeScreen.Closed
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** Projects the transient "composition not ready" refusal — the face stays, retryable. */
+    private fun settleRebindNotReady() {
+        status = ExchangeStatus(ExchangeStatus.Kind.REBIND_START_FAILED)
+        screen = (screenState.value as? ExchangeScreen.ImportReview)?.copy(continuing = false) ?: screenState.value
     }
 
     /**
@@ -1413,12 +1813,22 @@ class ExchangeFlowStateHolder(
                 current.attemptToken
             }
 
-            is ExchangeScreen.ImportReview -> null
+            // Issue #375 (spec SR-AC-07): on the resume face the rebind CTA's
+            // single-flight (`continuing`) refuses the discard — a started
+            // seam cannot be withdrawn (spec 328 AC-3 discipline).
+            is ExchangeScreen.ImportReview -> {
+                if (current.continuing) return
+                null
+            }
 
             else -> return
         }
         scope.launch(Dispatchers.IO) {
-            val discarded = pendingImportStore.discard()
+            // Issue #375: the tombstone commit is a durable-record mutation —
+            // it holds the exchange mutation gate (the same serialization
+            // point as the rebind admission anchor), and the gate is released
+            // before the settle projects the result (no store calls there).
+            val discarded = exchangeMutationGate.withGate { pendingImportStore.discard() }
             withContext(uiDispatcher) { settleDiscardImport(attemptToken, discarded) }
         }
     }
@@ -1444,9 +1854,10 @@ class ExchangeFlowStateHolder(
             status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_DISCARD_FAILED)
             return
         }
-        invalidateImportAttempt()
-        status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_DISCARDED)
-        screen = ExchangeScreen.Closed
+        requestAttemptInvalidation {
+            status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_DISCARDED)
+            screen = ExchangeScreen.Closed
+        }
     }
 }
 
@@ -1501,6 +1912,28 @@ data class ExchangeStatus(val kind: Kind) {
          * is invented.
          */
         IMPORT_REVIEW_UNAVAILABLE,
+
+        /**
+         * Issue #375 (spec SR-AC-08): the rebind's pre-admission structural
+         * re-verification failed (`CONTEXT_STALE` semantics — the home
+         * structure changed since the export, or reconstruction diverged).
+         * The proposal survives; the remedy is re-creating the request.
+         */
+        REBIND_CONTEXT_STALE,
+
+        /**
+         * Issue #375 (spec "rebind admission anchor"): the admission anchor
+         * refused — the durable proposal was invalidated, replaced, or
+         * expired between rebuild and admission. No run admission occurred;
+         * the resume face re-reads the current truth.
+         */
+        REBIND_ANCHOR_REFUSED,
+
+        /**
+         * Issue #375: the rebind CTA could not start the run (a live-context
+         * failure of the connection seam). The resume face stays operable.
+         */
+        REBIND_START_FAILED,
     }
 
     companion object {
@@ -1679,17 +2112,20 @@ fun LazyListScope.exchangeFlowItems(
         }
 
         is ExchangeScreen.ImportReview -> {
-            item(key = "exchange-import-review") {
-                ExchangeImportReview(
-                    state = current,
-                    // Issue #374 (spec 328 rev.2 D-13): the review face's
-                    // 破棄して閉じる button converges with system Back priority
-                    // on the HOST's ONE import-discard confirmation — exactly
-                    // the same dialog entry the success face's button uses.
-                    onDiscard = onImportDiscardRequest,
-                    discardFocus = importDiscardFocus,
-                )
-            }
+            // Issue #375: the review face emits its own LazyListScope items —
+            // the actions are separate items so the list scrolls them into
+            // view individually (SR-AC-10 reachability at large font scales).
+            exchangeImportReviewItems(
+                state = current,
+                // Issue #375 (spec "再開面CTA"): the rebind continuation.
+                onContinue = holder::continuePendingImport,
+                // Issue #374 (spec 328 rev.2 D-13): the review face's
+                // 破棄して閉じる button converges with system Back priority
+                // on the HOST's ONE import-discard confirmation — exactly
+                // the same dialog entry the success face's button uses.
+                onDiscard = onImportDiscardRequest,
+                discardFocus = importDiscardFocus,
+            )
         }
 
         is ExchangeScreen.AwaitingUsageAccessJit -> {
@@ -2771,56 +3207,78 @@ private fun ExchangeImportSummaryContent(
  * capability-先取り禁止 principle). System Back is the plain zero-write
  * close ([exchangeBackAction] → CLOSE): closing keeps the record.
  */
-@Composable
-private fun ExchangeImportReview(
+private fun LazyListScope.exchangeImportReviewItems(
     state: ExchangeScreen.ImportReview,
+    onContinue: () -> Unit,
     onDiscard: () -> Unit,
     discardFocus: FocusRequester? = null,
 ) {
     val summary = state.summary
     val warning = summary.noJudgmentCount > 0
-    // The arrival moves focus to the face heading (the success face's
-    // FocusTargetText pattern) in addition to the live-region announcement.
-    val headingFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        runCatching { headingFocus.requestFocus() }
+    item(key = "exchange-import-review") {
+        // The arrival moves focus to the face heading (the success face's
+        // FocusTargetText pattern) in addition to the live-region announcement.
+        val headingFocus = remember { FocusRequester() }
+        LaunchedEffect(Unit) {
+            runCatching { headingFocus.requestFocus() }
+        }
+        val remaining = requestRemainingDisplay(state.expiresAtEpochMs, state.readAtEpochMs)
+        Column(
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .testTag("exchange-import-review"),
+        ) {
+            Text(
+                text = stringResource(
+                    if (warning) R.string.exchange_import_success_warning_title else R.string.exchange_import_success_title,
+                ),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier
+                    .semantics { liveRegion = LiveRegionMode.Polite }
+                    .focusRequester(headingFocus)
+                    .focusable()
+                    .testTag("exchange-import-review-title"),
+            )
+            ExchangeImportSummaryContent(
+                summary = summary,
+                showScopeCandidates = state.entryKind == ExchangeImportEntryKind.RUN_IN && summary.scopeCandidateCount > 0,
+            )
+            Text(
+                text = when (remaining) {
+                    is RequestRemaining.Hours -> pluralStringResource(R.plurals.exchange_request_remaining_hours, remaining.count, remaining.count)
+                    RequestRemaining.UnderOneHour -> stringResource(R.string.exchange_request_remaining_under_hour)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier
+                    .padding(top = 8.dp)
+                    .testTag("exchange-import-review-remaining"),
+            )
+        }
     }
-    val remaining = requestRemainingDisplay(state.expiresAtEpochMs, state.readAtEpochMs)
-    Column(
-        modifier = Modifier
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .testTag("exchange-import-review"),
-    ) {
-        Text(
-            text = stringResource(
-                if (warning) R.string.exchange_import_success_warning_title else R.string.exchange_import_success_title,
-            ),
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier
-                .semantics { liveRegion = LiveRegionMode.Polite }
-                .focusRequester(headingFocus)
-                .focusable()
-                .testTag("exchange-import-review-title"),
-        )
-        ExchangeImportSummaryContent(
-            summary = summary,
-            showScopeCandidates = state.entryKind == ExchangeImportEntryKind.RUN_IN && summary.scopeCandidateCount > 0,
-        )
-        Text(
-            text = when (remaining) {
-                is RequestRemaining.Hours -> pluralStringResource(R.plurals.exchange_request_remaining_hours, remaining.count, remaining.count)
-                RequestRemaining.UnderOneHour -> stringResource(R.string.exchange_request_remaining_under_hour)
-            },
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier
-                .padding(top = 8.dp)
-                .testTag("exchange-import-review-remaining"),
-        )
-        OutlinedButton(
-            onClick = onDiscard,
+    // Issue #375 (spec "再開面CTAの有効化"): the rebind continuation — TO-BE
+    // T-18 vocabulary (spec 328 rev.2 D-3 unified copy). Shown for every
+    // reconcile-passed proposal (the #374 open gate guarantees it); the
+    // buttons are their OWN LazyColumn items so the list scrolls them into
+    // view individually at any font scale (spec SR-AC-10 reachability).
+    item(key = "exchange-import-review-continue") {
+        Button(
+            onClick = onContinue,
+            enabled = !state.continuing,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 4.dp)
+                .padding(horizontal = 16.dp)
+                .testTag("exchange-import-review-continue"),
+        ) {
+            Text(stringResource(R.string.exchange_import_continue))
+        }
+    }
+    item(key = "exchange-import-review-discard") {
+        OutlinedButton(
+            onClick = onDiscard,
+            enabled = !state.continuing,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp)
                 // Issue #374: the host restores focus here after the shared
                 // import-discard confirmation is dismissed (deterministic
                 // restore, mirroring the success face's 破棄 slot).
@@ -3156,22 +3614,45 @@ fun exchangeImportDisplayInfo(result: ExchangeImportResult?): ExchangeImportDisp
  */
 fun exchangeStatusTextResource(kind: ExchangeStatus.Kind): Int = when (kind) {
     ExchangeStatus.Kind.TRANSPORT_SUCCESS -> R.string.exchange_transport_success
+
     ExchangeStatus.Kind.TRANSPORT_CLIPBOARD_FAILED -> R.string.exchange_transport_clipboard_failed
+
     ExchangeStatus.Kind.TRANSPORT_SHARE_ABSENT -> R.string.exchange_transport_share_absent
+
     ExchangeStatus.Kind.TRANSPORT_FILE_FAILED -> R.string.exchange_transport_file_failed
+
     ExchangeStatus.Kind.FILE_READ_FAILED -> R.string.exchange_status_file_read_failed
+
     ExchangeStatus.Kind.GENERATION_INPUT_NOT_READY -> R.string.exchange_generation_input_not_ready
+
     ExchangeStatus.Kind.GENERATION_STORE_FAILURE -> R.string.exchange_generation_store_failure
+
     ExchangeStatus.Kind.GENERATION_OVERSIZE -> R.string.exchange_generation_oversize
+
     ExchangeStatus.Kind.INPUT_OVERSIZE -> R.string.exchange_failure_input_oversize
+
     ExchangeStatus.Kind.RUN_BUSY -> R.string.exchange_run_busy
+
     ExchangeStatus.Kind.CLIPBOARD_EMPTY -> R.string.exchange_status_clipboard_empty
+
     ExchangeStatus.Kind.CLIPBOARD_NOT_TEXT -> R.string.exchange_status_clipboard_not_text
+
     ExchangeStatus.Kind.CTA_START_FAILED -> R.string.exchange_import_cta_failed
+
     ExchangeStatus.Kind.IMPORT_DISCARDED -> R.string.exchange_import_discarded_guidance
+
     ExchangeStatus.Kind.IMPORT_PERSIST_FAILED -> R.string.exchange_import_persist_failed_title
+
     ExchangeStatus.Kind.IMPORT_DISCARD_FAILED -> R.string.exchange_import_discard_failed
+
     ExchangeStatus.Kind.IMPORT_REVIEW_UNAVAILABLE -> R.string.exchange_import_review_unavailable
+
+    // Issue #375: rebind typed notices (spec SR-AC-07/08).
+    ExchangeStatus.Kind.REBIND_CONTEXT_STALE -> R.string.exchange_rebind_context_stale
+
+    ExchangeStatus.Kind.REBIND_ANCHOR_REFUSED -> R.string.exchange_rebind_anchor_refused
+
+    ExchangeStatus.Kind.REBIND_START_FAILED -> R.string.exchange_rebind_start_failed
 }
 
 @Composable
@@ -3213,7 +3694,20 @@ fun exchangeContractFailureText(failure: IntentValidationFailure): String = when
     IntentValidationFailure.CapabilityUnsupported -> stringResource(R.string.exchange_failure_capability_unsupported)
 
     // Issue #331 (17th outcome): the scope binding gate's typed rejection.
-    is IntentValidationFailure.ScopeMismatch -> stringResource(R.string.exchange_failure_scope_mismatch)
+    is IntentValidationFailure.ScopeMismatch -> when (failure.cause) {
+        // Issue #375 (spec SR-AC-01): a set mismatch is fixable on this very
+        // surface — the same proposal continues once the selection matches.
+        app.lawnchair.organizer.personalization.ScopeMismatchCause.SET_MISMATCH ->
+            stringResource(R.string.exchange_scope_set_mismatch)
+
+        // Issue #375 (spec SR-AC-02): unresolvable/projection drift cannot be
+        // fixed by editing the selection — the only remedy is a new request.
+        app.lawnchair.organizer.personalization.ScopeMismatchCause.CANDIDATE_UNRESOLVED ->
+            stringResource(R.string.exchange_scope_unresolvable_mismatch)
+
+        app.lawnchair.organizer.personalization.ScopeMismatchCause.PROJECTION_MISMATCH ->
+            stringResource(R.string.exchange_scope_unresolvable_mismatch)
+    }
 
     is IntentValidationFailure.UnknownCategoryRef -> stringResource(R.string.exchange_failure_unknown_category_ref)
 }
@@ -3233,4 +3727,5 @@ private object NoopPendingImportedIntentStore : PendingImportedIntentStore {
     override fun discard(): Boolean = true
     override fun delete() = Unit
     override fun deleteIf(proposal: DurablePendingIntent): Boolean = false
+    override fun discardIf(expected: DurablePendingIntent): DiscardIfResult = DiscardIfResult.Committed
 }

@@ -140,6 +140,9 @@ class LawnchairApp : Application() {
                 store = app.lawnchair.organizer.integration.exchange.PendingImportedIntentModule.store(this@LawnchairApp),
                 sessionStore = app.lawnchair.organizer.integration.exchange.ExchangeSessionStoreModule.store(this@LawnchairApp),
                 nowEpochMs = System.currentTimeMillis(),
+                // Issue #375: the startup cleanup is a durable-record mutation,
+                // so it shares THE process-wide exchange mutation gate.
+                gate = app.lawnchair.organizer.integration.exchange.PendingImportedIntentModule.gate(),
             )
             val model = com.android.launcher3.LauncherAppState.getInstance(this@LawnchairApp).model
             com.android.launcher3.util.Executors.MAIN_EXECUTOR.execute {

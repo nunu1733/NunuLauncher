@@ -15,6 +15,7 @@ import app.lawnchair.organizer.integration.exchange.FileExchangeTransport
 import app.lawnchair.organizer.personalization.CanonicalStructuralInputs
 import app.lawnchair.organizer.personalization.ContextExportBuilder
 import app.lawnchair.organizer.personalization.ContextExportContract
+import app.lawnchair.organizer.personalization.DiscardIfResult
 import app.lawnchair.organizer.personalization.DurablePendingIntent
 import app.lawnchair.organizer.personalization.ExportInputs
 import app.lawnchair.organizer.personalization.ExportSession
@@ -33,8 +34,10 @@ import app.lawnchair.organizer.personalization.exchange.ExchangeEnvelopeFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportResult
 import app.lawnchair.organizer.personalization.exchange.ImportNormalizationFailure
+import app.lawnchair.organizer.personalization.exchange.PendingIntentReconcile
 import app.lawnchair.organizer.personalization.exchange.RecognizedImportFraming
 import app.lawnchair.organizer.personalization.exchange.RecognizedImportInfo
+import app.lawnchair.organizer.personalization.exchange.reconcilePendingIntent
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.CapturedItem
 import app.lawnchair.organizer.planning.CapturedPlacement
@@ -56,6 +59,7 @@ import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.planning.RevisionId
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.TargetSet
+import app.lawnchair.organizer.ui.ManualOrganizationRun
 import java.io.File
 import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
@@ -164,7 +168,32 @@ class ExchangeFlowStateHolderTest {
             return saveResult
         }
 
-        override fun load(): DurablePendingIntent? = record
+        /**
+         * Issue #375 race-oracle seam: deterministic per-call load overrides.
+         * Each [load] pops the queue first (falling back to [record]) and then
+         * fires [onLoad] with the 1-based call count — so a test can decide
+         * "the world changed between the rebuild read and the anchor's fresh
+         * re-read" without wall-clock or thread timing.
+         */
+        var loadQueue: ArrayDeque<DurablePendingIntent?>? = null
+
+        /** Returned once the queue is exhausted (defaults to the live [record]). */
+        var exhaustedResult: DurablePendingIntent? = null
+
+        @Volatile
+        var onLoad: ((Int) -> Unit)? = null
+
+        var loadCalls = 0
+
+        override fun load(): DurablePendingIntent? {
+            loadCalls++
+            onLoad?.invoke(loadCalls)
+            val queue = loadQueue
+            if (queue != null) {
+                return if (queue.isNotEmpty()) queue.removeFirst() else exhaustedResult
+            }
+            return record
+        }
 
         override fun discard(): Boolean {
             discardCalls++
@@ -186,6 +215,30 @@ class ExchangeFlowStateHolderTest {
             }
             return false
         }
+
+        var discardIfCalls = 0
+        var discardIfResult: DiscardIfResult = DiscardIfResult.Committed
+
+        /**
+         * Issue #375: the conditional invalidation commit — tombstones the
+         * exact expected record (the durable validity truth) and then
+         * physically deletes it, mirroring the real store's two-phase
+         * `discard`. A parked [deleteGate] holds the record at its tombstoned
+         * (discarded=true, still on disk) state — the crash window the race
+         * oracles rebind against.
+         */
+        override fun discardIf(expected: DurablePendingIntent): DiscardIfResult {
+            discardIfCalls++
+            if (record != expected) return DiscardIfResult.NoMatch
+            if (discardIfResult is DiscardIfResult.WriteFailed) return discardIfResult
+            record = expected.copy(discarded = true)
+            deleteGate?.await()
+            record = null
+            return DiscardIfResult.Committed
+        }
+
+        @Volatile
+        var deleteGate: CountDownLatch? = null
     }
 
     private fun app(id: String, x: Int = 0): CapturedItem = CapturedItem(
@@ -1523,7 +1576,9 @@ class ExchangeFlowStateHolderTest {
         assertFalse(fixture.holder.screen is ExchangeScreen.ImportPersistenceFailure)
         assertFalse(fixture.holder.importAttemptActive)
         assertNull("the dropped run-in proposal's record must be fenced away", pendingStore.record)
-        assertTrue("the committed record was fenced by deleteIf", pendingStore.deleteIfCalls >= 1)
+        // Issue #375: the fence invalidation goes through the conditional
+        // tombstone commit (`discardIf`), not a bare physical delete.
+        assertTrue("the committed record was invalidated by discardIf", pendingStore.discardIfCalls >= 1)
     }
 
     @Test
@@ -1912,14 +1967,11 @@ class ExchangeFlowStateHolderTest {
         // The save returns, the stale settle lands, and the fence removes the
         // cancelled attempt's record: the store ends with NO record.
         awaitScreen(fixture.holder) { pendingStore.completedSaves >= 1 && pendingStore.record == null }
-        Thread.sleep(200)
-        assertTrue("a cancelled attempt's late save settle adopts nothing", fixture.holder.screen is ExchangeScreen.Closed)
-        assertFalse(fixture.holder.importAttemptActive)
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Closed && !fixture.holder.importAttemptActive }
         assertNull("a cancelled attempt must not leave its durable record", pendingStore.record)
 
         fixture.holder.retryPendingIntentSave()
-        Thread.sleep(200)
-        assertEquals("the retry is refused without the failure face", 1, pendingStore.saveCalls)
+        assertTrue("the retry is refused without the failure face", pendingStore.saveCalls == 1)
     }
 
     // ------------------------------------------------------------------
@@ -1985,7 +2037,7 @@ class ExchangeFlowStateHolderTest {
         awaitScreen(fixture.holder) { pendingStore.record?.createdAtEpochMs == 2_000_000L }
         assertEquals("the final record is B's", 2_000_000L, pendingStore.record!!.createdAtEpochMs)
         assertEquals(2, pendingStore.saveCalls)
-        assertTrue("A's stale record was fenced by deleteIf", pendingStore.deleteIfCalls >= 1)
+        assertTrue("A's stale record was invalidated by discardIf", pendingStore.discardIfCalls >= 1)
         assertTrue(fixture.holder.importAttemptActive) // B's attempt owns the face
         assertNotNull(success)
     }
@@ -2035,7 +2087,9 @@ class ExchangeFlowStateHolderTest {
         awaitImportPersistenceFailure(fixture.holder)
 
         fixture.holder.close()
-        assertTrue(fixture.holder.screen is ExchangeScreen.Closed)
+        // Issue #375: the close's invalidation commit is a gate-held async
+        // operation — poll for the terminal close (no wall-clock sleep).
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Closed }
         assertFalse(fixture.holder.importAttemptActive)
         assertNull("nothing was persisted by the interruption", pendingStore.record)
     }
@@ -2200,6 +2254,325 @@ class ExchangeFlowStateHolderTest {
             holder.screen is ExchangeScreen.ImportReview,
         )
         return holder.screen as ExchangeScreen.ImportReview
+    }
+
+    // ---- Issue #375: rebind admission anchor race oracles (spec SR-AC-07/08) ----
+
+    /** Polls [run]'s state until [predicate] holds (the rebind starts runs on IO). */
+    private fun awaitRunState(
+        run: ManualOrganizationRun,
+        predicate: (ManualOrganizationRun.State) -> Boolean,
+    ) {
+        val deadline = System.currentTimeMillis() + 5_000
+        while (!predicate(run.state) && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20)
+        }
+    }
+
+    private fun seedAnchorRaceFixture(): HolderFixture {
+        val fixture = fixtureWithDurableRecord()
+        // The resume face is adopted from the durable truth first.
+        fixture.holder.openPendingImportReview()
+        awaitImportReview(fixture.holder)
+        return fixture
+    }
+
+    @Test
+    fun rebindAdmissionIsRefusedWhenTheRecordVanishedAfterRebuild() {
+        // Deterministic TOCTOU replay: the rebuild read (load #2) still sees
+        // the valid record; the anchor's fresh re-read (load #3) sees it GONE
+        // (mid-flight invalidation). The anchor must refuse — no run admission,
+        // no State.Capturing, no journal — and the face re-reads the truth.
+        val fixture = seedAnchorRaceFixture()
+        val valid = fixture.pendingStore.record!!
+        fixture.pendingStore.loadQueue = ArrayDeque(listOf(valid, null))
+        val detectionsBefore = fixture.application.detectionCalls
+
+        fixture.holder.continuePendingImport()
+        awaitScreen(fixture.holder) { fixture.holder.status?.kind == ExchangeStatus.Kind.REBIND_ANCHOR_REFUSED }
+
+        assertEquals("the run admission must not occur", "Idle", fixture.run.state::class.java.simpleName)
+        assertEquals("detection never runs without admission", detectionsBefore, fixture.application.detectionCalls)
+        assertTrue(fixture.pendingStore.deleteCalls >= 1)
+    }
+
+    @Test
+    fun rebindRefusesWhenTheRealReplacementPathReplacesTheSessionMidFlow() {
+        // SR-AC-07/08 race oracle (real concurrency): the preliminary rebuild
+        // succeeds against the old record/session; the pre-admission barrier
+        // then joins the ACTUAL `ExchangeFlowController.generate()`
+        // replacement commit (new session save + old record invalidation) run
+        // on another thread; only then does the admission anchor's live
+        // re-read refuse — rebuild成功 → 置換完走 → admission → anchor拒否. The
+        // refusal is causally dependent on the replacement: a no-op/throwing
+        // generate() makes this test fail.
+        val fixture = seedAnchorRaceFixture()
+        val valid = fixture.pendingStore.record!!
+        val detectionsBefore = fixture.application.detectionCalls
+        // REAL concurrency: the pre-admission barrier (rebuild succeeded,
+        // admission not yet begun) runs the ACTUAL controller replacement
+        // commit on ANOTHER thread, joined with Future.get so its success is
+        // verified (exceptions propagate) BEFORE the anchor's fresh re-read.
+        // The anchor reads the LIVE store — no fake queue — so the refusal is
+        // causally dependent on the replacement having completed: making
+        // generate() a no-op or throwing makes this test fail.
+        fixture.holder.preAdmissionBarrier = {
+            val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+            try {
+                val future = executor.submit {
+                    val generated = fixture.controller.generate(
+                        app.lawnchair.organizer.personalization.PrivacyTier.LOCAL_FULL,
+                    ) as ExchangeGenerationResult.Generated
+                    check(generated.session.exportId != valid.exportId) { "replacement did not rotate the session" }
+                }
+                future.get(5, java.util.concurrent.TimeUnit.SECONDS)
+            } finally {
+                executor.shutdownNow()
+            }
+            // Post-conditions of the replacement commit, asserted before
+            // admission: the session rotated and the old record is gone.
+            assertTrue(fixture.store.session!!.exportId != valid.exportId)
+            assertTrue(fixture.pendingStore.load() == null)
+        }
+
+        fixture.holder.continuePendingImport()
+        awaitScreen(fixture.holder) { fixture.holder.status?.kind == ExchangeStatus.Kind.REBIND_ANCHOR_REFUSED }
+
+        assertEquals("the run admission must not occur", "Idle", fixture.run.state::class.java.simpleName)
+        assertEquals("detection never runs without admission", detectionsBefore, fixture.application.detectionCalls)
+    }
+
+    @Test
+    fun rebindAdmissionIsRefusedWhenTheRecordWasEntryKindFlippedAfterRebuild() {
+        // Full-record equality: the same reply re-imported under the OTHER
+        // entry kind replaces the record (identity + decisions identical) —
+        // the anchor must still refuse (the restore mode of the old record
+        // must not admit).
+        val fixture = seedAnchorRaceFixture()
+        val valid = fixture.pendingStore.record!!
+        val flipped = valid.copy(entryKind = PendingImportEntryKind.RUN_IN)
+        fixture.pendingStore.loadQueue = ArrayDeque(listOf(valid, flipped))
+
+        fixture.holder.continuePendingImport()
+        awaitScreen(fixture.holder) { fixture.holder.status?.kind == ExchangeStatus.Kind.REBIND_ANCHOR_REFUSED }
+
+        assertEquals("the run admission must not occur", "Idle", fixture.run.state::class.java.simpleName)
+    }
+
+    @Test
+    fun rebindAdmissionIsRefusedWhenTheSessionExpiredAfterRebuild() {
+        // TTL crossing: the rebuild read happens before expiry, the anchor's
+        // fresh clock read (driven deterministically by the load hook) is past
+        // expiry — the anchor refuses and no admission occurs.
+        val clock = MutableClock(1_000_000L)
+        val pendingStore = FakePendingIntentStore()
+        val fixture = newFixtureWithMutableClock(clock, pendingStore)
+        fixture.holder.openImport()
+        fixture.holder.import(generatedReplyFixture(fixture))
+        awaitImportSuccess(fixture.holder)
+        fixture.holder.close()
+        val valid = pendingStore.record!!
+
+        fixture.holder.openPendingImportReview()
+        awaitImportReview(fixture.holder)
+        pendingStore.loadQueue = ArrayDeque(listOf(valid))
+        // Load #1 was the face open; #2 = rebuild read (pre-expiry); #3 =
+        // anchor read — advance the clock as the side effect of load #3
+        // (the anchor's own fresh read), deterministically before its
+        // reconcile consults the clock (no wall clock).
+        pendingStore.onLoad = { callCount ->
+            if (callCount == 3) clock.nowMs = valid.expiresAtEpochMs + 1
+        }
+
+        fixture.holder.continuePendingImport()
+        awaitScreen(fixture.holder) { fixture.holder.status?.kind == ExchangeStatus.Kind.REBIND_ANCHOR_REFUSED }
+
+        assertEquals("an expired anchor must not admit the run", "Idle", fixture.run.state::class.java.simpleName)
+    }
+
+    @Test
+    fun rebindSuccessStartsTheRunAndKeepsTheProposal() {
+        // The success path: admission admits, the run surface takes over
+        // (screen closes), and the durable proposal is NOT consumed
+        // (継続成功は提案を消費しない).
+        val fixture = seedAnchorRaceFixture()
+        val record = fixture.pendingStore.record!!
+
+        fixture.holder.continuePendingImport()
+        awaitRunState(fixture.run) { it !is ManualOrganizationRun.State.Idle }
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Closed }
+
+        assertTrue("the proposal survives a successful continuation", fixture.pendingStore.record == record)
+        assertTrue(fixture.holder.screen is ExchangeScreen.Closed)
+    }
+
+    @Test
+    fun invalidationWriteFailureKeepsTheProposalValidAndIsRetriedByTheNextInvalidation() {
+        // SR-AC-08 (`WriteFailed` oracle): a save is parked holding the gate;
+        // the superseding edit invalidates the attempt (its conditional
+        // tombstone queues on the same gate). On release the save lands and
+        // the invalidation runs `discardIf` — injected to FAIL — so the
+        // invalidation did NOT take effect: the record survives VALID (the
+        // reconcile verdict is unchanged) and the next invalidation RETRIES
+        // the commit, which then succeeds and removes it.
+        val pendingStore = FakePendingIntentStore().apply {
+            saveGate = CountDownLatch(1)
+            discardIfResult = DiscardIfResult.WriteFailed
+        }
+        val fixture = newFixture(pendingStore = pendingStore)
+        val reply = generatedReplyFixture(fixture)
+        fixture.holder.openImport()
+        fixture.holder.import(reply)
+        awaitScreen(fixture.holder) { pendingStore.saveCalls >= 1 }
+
+        fixture.holder.onImportTextChange("edited while saving") // invalidation commit queued
+        pendingStore.saveGate!!.countDown() // the write lands...
+        awaitScreen(fixture.holder) { pendingStore.discardIfCalls >= 1 } // ...and the invalidation ran
+        // The typed persistence notice surfaces (the invalidation did NOT
+        // take effect) and the record survives — not tombstoned.
+        awaitScreen(fixture.holder) { fixture.holder.status?.kind == ExchangeStatus.Kind.IMPORT_PERSIST_FAILED }
+        assertTrue(
+            "WriteFailed must not tombstone the record (the invalidation did not take effect)",
+            pendingStore.record?.discarded == false,
+        )
+        // The supersede transition did NOT commit: the face still shows the
+        // pre-edit text (the continuation is queued behind the failed commit).
+        val importing = fixture.holder.screen as? ExchangeScreen.Importing
+        assertEquals(
+            "the superseded text must not be adopted while the commit failed",
+            "",
+            importing?.replyText,
+        )
+
+        // Retry: the next invalidation re-runs the commit and succeeds.
+        pendingStore.discardIfResult = DiscardIfResult.Committed
+        fixture.holder.onImportTextChange("edited once more")
+        awaitScreen(fixture.holder) { pendingStore.record == null }
+    }
+
+    @Test
+    fun outstandingInvalidationQueueIsLastWinsAndEditCSupersedesTheQueuedImportB() {
+        // SR-AC-07/08 (last-wins queuing): the old attempt's invalidation
+        // commit is barrier-stopped; `import(B)` then `onImportTextChange("C")`
+        // queue behind it. LAST-WINS: C supersedes B — B's attempt is never
+        // created (its validation/save never starts), the final face is
+        // Importing("C"), and the old attempt's fenced record never resurfaces.
+        val pendingStore = FakePendingIntentStore().apply { saveGate = CountDownLatch(1) }
+        val fixture = newFixture(pendingStore = pendingStore)
+        val reply = generatedReplyFixture(fixture)
+        fixture.holder.openImport()
+        fixture.holder.import(reply) // old attempt — save parked
+        awaitScreen(fixture.holder) { pendingStore.saveCalls >= 1 }
+
+        fixture.holder.import(reply) // queues import(B) behind the outstanding commit
+        fixture.holder.onImportTextChange("C") // LAST-WINS: C supersedes the queued import(B)
+        pendingStore.saveGate!!.countDown()
+
+        // The commit lands; only the LAST queued transition (edit to C) runs:
+        // no B validation/save, final face text "C", no anchor active.
+        awaitScreen(fixture.holder) { pendingStore.completedSaves >= 1 && pendingStore.record == null }
+        awaitScreen(fixture.holder) {
+            fixture.holder.screen is ExchangeScreen.Importing &&
+                (fixture.holder.screen as ExchangeScreen.Importing).replyText == "C" &&
+                !fixture.holder.importAttemptActive
+        }
+        assertEquals("B's validation/save never started", 1, pendingStore.saveCalls)
+    }
+
+    @Test
+    fun outstandingInvalidationQueueIsLastWinsAndCloseSuppressesTheQueuedImport() {
+        // Same as above but with `close()` LAST: the queued import(B) is
+        // superseded — B never starts, and the final face is Closed.
+        val pendingStore = FakePendingIntentStore().apply { saveGate = CountDownLatch(1) }
+        val fixture = newFixture(pendingStore = pendingStore)
+        val reply = generatedReplyFixture(fixture)
+        fixture.holder.openImport()
+        fixture.holder.import(reply)
+        awaitScreen(fixture.holder) { pendingStore.saveCalls >= 1 }
+
+        fixture.holder.import(reply) // queues import(B) behind the commit
+        fixture.holder.close() // LAST-WINS: close supersedes the queued import
+        pendingStore.saveGate!!.countDown()
+
+        awaitScreen(fixture.holder) { pendingStore.completedSaves >= 1 && pendingStore.record == null }
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Closed && !fixture.holder.importAttemptActive }
+        assertEquals("B's validation never started", 1, pendingStore.saveCalls)
+    }
+
+    @Test
+    fun continuingImportReviewDiscardIsRefusedUntilTheCommitLands() {
+        // spec SR-AC-07: 処理中は破棄が不受理（spec 328 AC-3規律） — the
+        // holder-level guard (not just the disabled button) refuses the
+        // discard while the rebind CTA's single-flight is in flight.
+        val fixture = seedAnchorRaceFixture()
+        val review = awaitImportReview(fixture.holder)
+        fixture.holder.continuePendingImport()
+        // The rebind CTA flipped `continuing`; a discard in flight is refused.
+        awaitScreen(fixture.holder) { (fixture.holder.screen as? ExchangeScreen.ImportReview)?.continuing == true }
+        fixture.holder.discardImport()
+        assertTrue(
+            "a continuing review's discard must not close the face",
+            fixture.holder.screen is ExchangeScreen.ImportReview,
+        )
+    }
+
+    @Test
+    fun writeFailedInvalidationSurvivesHolderRecreationWithoutFabricatingSuccess() {
+        // SR-AC-08 cross-holder / process-recreation oracle: Holder A's
+        // invalidation commit fails with `WriteFailed` → the record survives
+        // `discarded=false` (typed IMPORT_PERSIST_FAILED observed). A is then
+        // DESTROYED (every process-local field dropped) and Holder B is
+        // rebuilt over ONLY the shared durable stores: B's cold review sees
+        // the proposal as VALID (no fabricated invalidation-success), and
+        // B's own supersede (Committed) is what finally removes it.
+        val pendingStore = FakePendingIntentStore().apply {
+            saveGate = CountDownLatch(1)
+            discardIfResult = DiscardIfResult.WriteFailed
+        }
+        val fixtureA = newFixture(pendingStore = pendingStore)
+        val reply = generatedReplyFixture(fixtureA)
+        fixtureA.holder.openImport()
+        fixtureA.holder.import(reply)
+        awaitScreen(fixtureA.holder) { pendingStore.saveCalls >= 1 }
+
+        // Supersede while the save is parked; the invalidation commit (and the
+        // fence's own) both fail with WriteFailed — the record survives.
+        fixtureA.holder.onImportTextChange("edited while saving")
+        pendingStore.saveGate!!.countDown()
+        awaitScreen(fixtureA.holder) { pendingStore.discardIfCalls >= 2 }
+        assertTrue(pendingStore.record!!.discarded.not())
+        assertEquals(ExchangeStatus.Kind.IMPORT_PERSIST_FAILED, fixtureA.holder.status?.kind)
+
+        // ---- Holder A destroyed. Holder B over the SAME durable stores. ----
+        val now = 1_000_000L
+        val (runB, _) = newExchangeRun(true)
+        val controllerB = ExchangeFlowController(
+            composeExportInputs = { ExchangeInputResult.ExportReady(exportInputs(now)) },
+            currentStructuralInputs = { ExchangeStructuralResult.Ready(structural()) },
+            store = fixtureA.store,
+            allocator = SequentialIdAllocator(),
+            clock = { now },
+            pendingImportStore = pendingStore,
+        )
+        val holderB = ExchangeFlowStateHolder(
+            controllerFactory = { controllerB },
+            run = runB,
+            scope = CoroutineScope(Dispatchers.IO),
+            settleDispatcher = Dispatchers.IO,
+            uiDispatcher = Dispatchers.IO,
+            pendingImportStore = pendingStore,
+        )
+
+        // B's cold review adopts the surviving proposal (valid — no fabricated
+        // invalidation success).
+        holderB.openPendingImportReview()
+        awaitScreen(holderB) { holderB.screen is ExchangeScreen.ImportReview }
+
+        // B's user discard with a WORKING commit removes the record and closes.
+        pendingStore.discardIfResult = DiscardIfResult.Committed
+        holderB.discardImport()
+        awaitScreen(holderB) { holderB.screen is ExchangeScreen.Closed }
+        assertTrue(pendingStore.record == null || pendingStore.record!!.discarded)
     }
 
     /** Drives the fixture to a saved durable record + Closed holder (the hub's cold-start view). */
