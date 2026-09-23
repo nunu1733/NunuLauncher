@@ -2,7 +2,7 @@
 
 > Issue: #398
 > Spec: [spec.md](./spec.md)
-> Status: draft — review rev.3（2026-09-23 ChatGPT再レビュー反映）
+> Status: implemented（PR #412 merge 2026-09-23、merge commit `6157721272`）
 
 ## Current evidence
 
@@ -171,4 +171,4 @@ provenance: selection identityが既存の第5policy inputとして自動参加�
 - [x] Minimal implementation completed（registry/allocator/executor/policy/UI/strings/test）
 - [x] Migration/recovery verified（bundle v2.7 publish、selection store契約green、catalog coherence green、downgradeは既存 `LayoutStrategySelectionStoreTest` 契約で担保）
 - [x] Full relevant verification completed（`spotlessCheck`、`testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` 1,736 tests green（golden corpus・cross-strategy含む）、`assembleLawnWithQuickstepGithubDebug`、repo contract validator（既存の未追跡 `worktree-371/` の1件を除き finding なし。push対象外））
-- [ ] PR evidence and remaining risks recorded（AC-12 physical-device evidence、AC-13独立監査、残余risk → PR本文へ記録）
+- [x] PR evidence and remaining risks recorded（PR #412。AC-12はemulator evidence + owner decisionで充足、物理デバイスevidenceは#413へ委譲。AC-13はfinal-status CI + docs/assessment/pr-412-bottom-region-v1.md）
