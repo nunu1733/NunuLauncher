@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -97,6 +98,7 @@ import app.lawnchair.ui.preferences.components.layout.PreferenceScaffold
 import com.android.launcher3.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -124,6 +126,9 @@ fun ManualOrganizationPreferences(
     // one-shot exchange pre-open argument (request → T-15, pendingReview →
     // ImportReview). Null — every legacy caller — does nothing.
     exchangeOpen: app.lawnchair.ui.preferences.navigation.ExchangeOpen? = null,
+    // Issue #418 controlled LazyList-state experiment; null preserves the
+    // production remembered state.
+    listStateOverride: LazyListState? = null,
 ) {
     val context = LocalContext.current
     val coordinator = run ?: remember { ManualOrganizationModule.get(context) }
@@ -180,7 +185,8 @@ fun ManualOrganizationPreferences(
     // special case is gone with it: a strategy change applies to the next
     // run's composition, never to the live one.
     val focusRequester = remember { FocusRequester() }
-    val listState = rememberLazyListState()
+    val rememberedListState = rememberLazyListState()
+    val listState = listStateOverride ?: rememberedListState
     // Issue #308: a stateFlow transition can be observed before the lazy-list
     // replacement target has attached. Keep readiness scoped to the state so a
     // focus request is made only after that state's target has been laid out.
@@ -188,7 +194,6 @@ fun ManualOrganizationPreferences(
     val focusTargetModifier = Modifier.onGloballyPositioned {
         focusTargetReady.value = true
     }
-
     // Issue #271: the durable status projection is rendered only while no run
     // operation is active (Idle/Cancelled). It is re-read on each transition
     // into those states — an in-place cancel re-reads, not only the first

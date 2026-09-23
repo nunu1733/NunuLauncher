@@ -6,6 +6,7 @@ import android.content.ContentValues
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.provider.MediaStore
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Text
@@ -131,6 +132,7 @@ import com.android.launcher3.R
 import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -2128,6 +2130,21 @@ class ManualOrganizationPreferencesInstrumentationTest {
             Condition("dark-default", true, false),
             Condition("dark-ja", true, true),
         )
+        // Temporary Issue #418 diagnostic markers; remove after the focused
+        // LazyList state transition is understood.
+        fun diagnosticMarker(
+            phase: String,
+            condition: Condition,
+            runner: ManualOrganizationRun?,
+        ) {
+            val runnerId = runner?.let { System.identityHashCode(it) } ?: 0
+            android.util.Log.i(
+                "Issue418LazyListTest",
+                "wallTimeMs=${System.currentTimeMillis()} phase=$phase " +
+                    "condition=${condition.name} runnerId=$runnerId " +
+                    "state=${runner?.state?.javaClass?.simpleName ?: "none"}",
+            )
+        }
         val darkState = mutableStateOf(false)
         val localeState = mutableStateOf(context)
         val displayed = mutableStateOf<ManualOrganizationRun?>(null)
@@ -2159,18 +2176,28 @@ class ManualOrganizationPreferencesInstrumentationTest {
                 detectionApplication,
                 OrganizationPlanner { planningResult() },
             )
+            diagnosticMarker("preparation-created", condition, preparationRunner)
             composeRule.runOnIdle {
                 darkState.value = condition.dark
                 localeState.value = localized
                 displayed.value = preparationRunner
+                diagnosticMarker("preparation-displayed", condition, preparationRunner)
             }
-            val worker = thread(start = true) { preparationRunner.start() }
+            val worker = thread(start = true) {
+                diagnosticMarker("preparation-start", condition, preparationRunner)
+                preparationRunner.start()
+                diagnosticMarker("preparation-start-return", condition, preparationRunner)
+            }
             composeRule.waitUntil(5_000) { detectionApplication.detectStarted?.count == 0L }
+            diagnosticMarker("preparation-detection-started", condition, preparationRunner)
             awaitDisplayed(localized.getString(R.string.manual_organization_preparation))
+            diagnosticMarker("preparation-screenshot-before", condition, preparationRunner)
             captureReviewScreenshot(context, "t09-preparation-" + condition.name)
+            diagnosticMarker("preparation-screenshot-after", condition, preparationRunner)
 
             detectionApplication.detectRelease?.countDown()
             worker.join(5_000)
+            diagnosticMarker("preparation-worker-joined-alive=${worker.isAlive}", condition, preparationRunner)
 
             val failureApplication = FakeApplication().apply {
                 notReadyComposition = OrganizationInputComposition.NotReady(
@@ -2184,12 +2211,265 @@ class ManualOrganizationPreferencesInstrumentationTest {
                 failureApplication,
                 OrganizationPlanner { error("planner must not run") },
             )
-            composeRule.runOnIdle { displayed.value = failureRunner }
+            diagnosticMarker("failure-created", condition, failureRunner)
+            composeRule.runOnIdle {
+                displayed.value = failureRunner
+                diagnosticMarker("failure-displayed", condition, failureRunner)
+            }
             composeRule.waitForIdle()
+            diagnosticMarker("failure-idle-after-swap", condition, failureRunner)
+            diagnosticMarker("failure-start", condition, failureRunner)
             failureRunner.start()
+            diagnosticMarker("failure-start-return", condition, failureRunner)
             composeRule.waitUntil(5_000) { failureRunner.state is ManualOrganizationRun.State.InputUnavailable }
+            diagnosticMarker("failure-terminal", condition, failureRunner)
             awaitDisplayed(localized.getString(R.string.manual_organization_failed))
+            diagnosticMarker("failure-screenshot-before", condition, failureRunner)
             captureReviewScreenshot(context, "t13-failure-" + condition.name)
+            diagnosticMarker("failure-screenshot-after", condition, failureRunner)
+        }
+    }
+
+    @Test
+    fun comparesResetAndRetainedLazyListStateAcrossDisplayConditions() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        data class Condition(val name: String, val dark: Boolean, val ja: Boolean)
+        data class Arm(val name: String, val resetAtFailureSwap: Boolean)
+        val conditions = listOf(
+            Condition("light-default", false, false),
+            Condition("light-ja", false, true),
+            Condition("dark-default", true, false),
+            Condition("dark-ja", true, true),
+        )
+        val arms = listOf(
+            Arm("reset", resetAtFailureSwap = true),
+            Arm("retained", resetAtFailureSwap = false),
+        )
+        val exposuresPerCondition = 3
+        val darkState = mutableStateOf(false)
+        val localeState = mutableStateOf(context)
+        val displayedRun = mutableStateOf<ManualOrganizationRun?>(null)
+        val listStateOverride = mutableStateOf(LazyListState())
+
+        composeRule.setContent {
+            CompositionLocalProvider(
+                LocalContext provides localeState.value,
+                LocalDensity provides Density(1f),
+            ) {
+                LawnchairTheme(darkTheme = darkState.value) {
+                    displayedRun.value?.let { run ->
+                        ManualOrganizationPreferences(
+                            run = run,
+                            listStateOverride = listStateOverride.value,
+                        )
+                    }
+                }
+            }
+        }
+
+        fun marker(
+            phase: String,
+            condition: Condition,
+            repetition: Int,
+            arm: Arm,
+            runner: ManualOrganizationRun,
+            listState: LazyListState,
+        ) {
+            val layoutInfo = listState.layoutInfo
+            val visibleItems = layoutInfo.visibleItemsInfo.joinToString(
+                prefix = "[",
+                postfix = "]",
+            ) { "${it.index}:${it.key}" }
+            android.util.Log.i(
+                "Issue418LazyListTest",
+                "elapsedRealtimeNanos=${android.os.SystemClock.elapsedRealtimeNanos()} " +
+                    "phase=$phase condition=${condition.name} repetition=$repetition arm=${arm.name} " +
+                    "runnerId=${System.identityHashCode(runner)} " +
+                    "runnerState=${runner.state.javaClass.simpleName} " +
+                    "listStateId=${System.identityHashCode(listState)} " +
+                    "itemCount=${layoutInfo.totalItemsCount} " +
+                    "firstVisible=${listState.firstVisibleItemIndex} " +
+                    "firstVisibleOffset=${listState.firstVisibleItemScrollOffset} " +
+                    "visibleItems=$visibleItems",
+            )
+        }
+
+        fun runExposure(condition: Condition, repetition: Int, arm: Arm) {
+            val localized = if (condition.ja) {
+                context.createConfigurationContext(Configuration().apply { setLocale(Locale.JAPAN) })
+            } else {
+                context
+            }
+            val detectionApplication = FakeApplication().apply {
+                detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(emptyList())
+                detectStarted = java.util.concurrent.CountDownLatch(1)
+                detectRelease = java.util.concurrent.CountDownLatch(1)
+            }
+            val preparationRunner = ManualOrganizationRun(
+                detectionApplication,
+                OrganizationPlanner { planningResult() },
+            )
+            val preparationListState = LazyListState()
+            composeRule.runOnIdle {
+                darkState.value = condition.dark
+                localeState.value = localized
+                listStateOverride.value = preparationListState
+                displayedRun.value = preparationRunner
+            }
+            val preparationWorker = thread(start = true) {
+                preparationRunner.start()
+            }
+            composeRule.waitUntil(5_000) { detectionApplication.detectStarted?.count == 0L }
+            detectionApplication.detectRelease?.countDown()
+            preparationWorker.join(5_000)
+            assertFalse("preparation runner did not finish", preparationWorker.isAlive)
+            awaitPreview(preparationRunner, localized)
+            composeRule.waitForIdle()
+            composeRule.runOnIdle {
+                marker(
+                    "preview-before-failure-swap",
+                    condition,
+                    repetition,
+                    arm,
+                    preparationRunner,
+                    listStateOverride.value,
+                )
+            }
+
+            val durableReadStarted = java.util.concurrent.CountDownLatch(1)
+            val durableReadRelease = java.util.concurrent.CountDownLatch(1)
+            val failureApplication = FakeApplication().apply {
+                readiness.value = app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY
+                durableStatus = OrganizerDurableStatus.NEVER_ORGANIZED
+                readOverride = {
+                    durableReadStarted.countDown()
+                    check(durableReadRelease.await(60, java.util.concurrent.TimeUnit.SECONDS)) {
+                        "timed out waiting to release the controlled durable-status read"
+                    }
+                    OrganizerDurableStatus.NEVER_ORGANIZED
+                }
+                notReadyComposition = OrganizationInputComposition.NotReady(
+                    reason = app.lawnchair.organizer.integration.InputReadinessReason.ReconciliationPending,
+                    diagnostic = app.lawnchair.organizer.integration.CompositionDiagnostic(
+                        app.lawnchair.organizer.integration.InputCompositionCode.RECONCILIATION_PENDING,
+                    ),
+                )
+            }
+            val failureRunner = ManualOrganizationRun(
+                failureApplication,
+                OrganizationPlanner { error("planner must not run") },
+            )
+            val stateBeforeSwap = listStateOverride.value
+            composeRule.runOnIdle {
+                if (arm.resetAtFailureSwap) {
+                    listStateOverride.value = LazyListState()
+                }
+                displayedRun.value = failureRunner
+            }
+            val stateAfterSwap = listStateOverride.value
+            if (arm.resetAtFailureSwap) {
+                assertFalse(
+                    "reset arm must install a different LazyListState at the runner swap",
+                    stateBeforeSwap === stateAfterSwap,
+                )
+            } else {
+                assertTrue(
+                    "retained arm must carry the Preview LazyListState across the runner swap",
+                    stateBeforeSwap === stateAfterSwap,
+                )
+            }
+            try {
+                composeRule.waitUntil(5_000) {
+                    failureRunner.state is ManualOrganizationRun.State.Idle &&
+                        durableReadStarted.count == 0L
+                }
+                // Hold the normal READY/NEVER_ORGANIZED read so the checking
+                // row keeps Idle at five items for the pre-shrink observation.
+                awaitDisplayed(localized.getString(R.string.manual_organization_durable_status_checking))
+                composeRule.runOnIdle {
+                    val layoutInfo = listStateOverride.value.layoutInfo
+                    marker(
+                        "idle-five-before-durable-read",
+                        condition,
+                        repetition,
+                        arm,
+                        failureRunner,
+                        listStateOverride.value,
+                    )
+                    assertEquals("Idle screen must have five list items", 5, layoutInfo.totalItemsCount)
+                    assertEquals(0, listStateOverride.value.firstVisibleItemIndex)
+                    assertEquals(0, listStateOverride.value.firstVisibleItemScrollOffset)
+                    // If index 4 is outside the measured viewport this is only an
+                    // unmatched precondition, never the Issue #418 red oracle.
+                    assertTrue(
+                        "Idle screen must expose the exchange method at index 4",
+                        layoutInfo.visibleItemsInfo.any {
+                            it.index == 4 && it.key == "exchange-method-consult"
+                        },
+                    )
+                }
+            } finally {
+                durableReadRelease.countDown()
+            }
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(
+                    localized.getString(R.string.manual_organization_durable_status_checking),
+                ).fetchSemanticsNodes().isEmpty()
+            }
+            composeRule.waitForIdle()
+            assertTrue("durable read should leave failure runner Idle", failureRunner.state is ManualOrganizationRun.State.Idle)
+            composeRule.runOnIdle {
+                val layoutInfo = listStateOverride.value.layoutInfo
+                marker(
+                    "idle-four-after-durable-read",
+                    condition,
+                    repetition,
+                    arm,
+                    failureRunner,
+                    listStateOverride.value,
+                )
+                assertEquals("resolved Idle screen must have four list items", 4, layoutInfo.totalItemsCount)
+                assertEquals(0, listStateOverride.value.firstVisibleItemIndex)
+                assertTrue(
+                    "resolved Idle screen should move exchange method to index 3",
+                    layoutInfo.visibleItemsInfo.any {
+                        it.index == 3 && it.key == "exchange-method-consult"
+                    },
+                )
+            }
+
+            failureRunner.start()
+            composeRule.waitUntil(5_000) {
+                failureRunner.state is ManualOrganizationRun.State.InputUnavailable
+            }
+            composeRule.waitForIdle()
+            composeRule.runOnIdle {
+                val layoutInfo = listStateOverride.value.layoutInfo
+                marker(
+                    "input-unavailable-four-after-start",
+                    condition,
+                    repetition,
+                    arm,
+                    failureRunner,
+                    listStateOverride.value,
+                )
+                assertEquals("failure screen must have four list items", 4, layoutInfo.totalItemsCount)
+                assertEquals(0, listStateOverride.value.firstVisibleItemIndex)
+                assertFalse(
+                    "failure screen must not expose an index 4 item",
+                    layoutInfo.visibleItemsInfo.any { it.index == 4 },
+                )
+            }
+        }
+
+        // Matched pairs run reset first. Three exposures in each of four
+        // conditions keep each arm at the Owner-approved maximum of 12.
+        for (condition in conditions) {
+            for (repetition in 1..exposuresPerCondition) {
+                for (arm in arms) {
+                    runExposure(condition, repetition, arm)
+                }
+            }
         }
     }
 
