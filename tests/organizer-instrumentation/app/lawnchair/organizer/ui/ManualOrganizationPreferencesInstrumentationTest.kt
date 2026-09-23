@@ -2128,6 +2128,21 @@ class ManualOrganizationPreferencesInstrumentationTest {
             Condition("dark-default", true, false),
             Condition("dark-ja", true, true),
         )
+        // Temporary Issue #418 diagnostic markers; remove after the focused
+        // LazyList state transition is understood.
+        fun diagnosticMarker(
+            phase: String,
+            condition: Condition,
+            runner: ManualOrganizationRun?,
+        ) {
+            val runnerId = runner?.let { System.identityHashCode(it) } ?: 0
+            android.util.Log.i(
+                "Issue418LazyListTest",
+                "wallTimeMs=${System.currentTimeMillis()} phase=$phase " +
+                    "condition=${condition.name} runnerId=$runnerId " +
+                    "state=${runner?.state?.javaClass?.simpleName ?: "none"}",
+            )
+        }
         val darkState = mutableStateOf(false)
         val localeState = mutableStateOf(context)
         val displayed = mutableStateOf<ManualOrganizationRun?>(null)
@@ -2159,18 +2174,28 @@ class ManualOrganizationPreferencesInstrumentationTest {
                 detectionApplication,
                 OrganizationPlanner { planningResult() },
             )
+            diagnosticMarker("preparation-created", condition, preparationRunner)
             composeRule.runOnIdle {
                 darkState.value = condition.dark
                 localeState.value = localized
                 displayed.value = preparationRunner
+                diagnosticMarker("preparation-displayed", condition, preparationRunner)
             }
-            val worker = thread(start = true) { preparationRunner.start() }
+            val worker = thread(start = true) {
+                diagnosticMarker("preparation-start", condition, preparationRunner)
+                preparationRunner.start()
+                diagnosticMarker("preparation-start-return", condition, preparationRunner)
+            }
             composeRule.waitUntil(5_000) { detectionApplication.detectStarted?.count == 0L }
+            diagnosticMarker("preparation-detection-started", condition, preparationRunner)
             awaitDisplayed(localized.getString(R.string.manual_organization_preparation))
+            diagnosticMarker("preparation-screenshot-before", condition, preparationRunner)
             captureReviewScreenshot(context, "t09-preparation-" + condition.name)
+            diagnosticMarker("preparation-screenshot-after", condition, preparationRunner)
 
             detectionApplication.detectRelease?.countDown()
             worker.join(5_000)
+            diagnosticMarker("preparation-worker-joined-alive=${worker.isAlive}", condition, preparationRunner)
 
             val failureApplication = FakeApplication().apply {
                 notReadyComposition = OrganizationInputComposition.NotReady(
@@ -2184,12 +2209,22 @@ class ManualOrganizationPreferencesInstrumentationTest {
                 failureApplication,
                 OrganizationPlanner { error("planner must not run") },
             )
-            composeRule.runOnIdle { displayed.value = failureRunner }
+            diagnosticMarker("failure-created", condition, failureRunner)
+            composeRule.runOnIdle {
+                displayed.value = failureRunner
+                diagnosticMarker("failure-displayed", condition, failureRunner)
+            }
             composeRule.waitForIdle()
+            diagnosticMarker("failure-idle-after-swap", condition, failureRunner)
+            diagnosticMarker("failure-start", condition, failureRunner)
             failureRunner.start()
+            diagnosticMarker("failure-start-return", condition, failureRunner)
             composeRule.waitUntil(5_000) { failureRunner.state is ManualOrganizationRun.State.InputUnavailable }
+            diagnosticMarker("failure-terminal", condition, failureRunner)
             awaitDisplayed(localized.getString(R.string.manual_organization_failed))
+            diagnosticMarker("failure-screenshot-before", condition, failureRunner)
             captureReviewScreenshot(context, "t13-failure-" + condition.name)
+            diagnosticMarker("failure-screenshot-after", condition, failureRunner)
         }
     }
 
