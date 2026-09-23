@@ -88,6 +88,25 @@ import org.junit.Test
  */
 class ExchangeFlowStateHolderTest {
 
+    /** Holds a receipt import at FakeStore.load until the test releases it. */
+    private class ReceiptLoadGate {
+        private val entered = CountDownLatch(1)
+        private val released = CountDownLatch(1)
+
+        fun park() {
+            entered.countDown()
+            released.await()
+        }
+
+        fun awaitEntered() {
+            assertTrue("the common import path must reach store.load", entered.await(5, TimeUnit.SECONDS))
+        }
+
+        fun release() {
+            released.countDown()
+        }
+    }
+
     private class FakeStore : ExportSessionStore {
         var session: ExportSession? = null
 
@@ -117,8 +136,13 @@ class ExchangeFlowStateHolderTest {
         /** Issue #328 review: lets a test hold validation at the session load. */
         var loadGate: CountDownLatch? = null
 
+        /** Issue #352: receipt tests hold settle until their editor assertion finishes. */
+        @Volatile
+        var receiptLoadGate: ReceiptLoadGate? = null
+
         override fun load(exportId: String): ExportSession? {
             loadCalls++
+            receiptLoadGate?.park()
             loadGate?.await(5, TimeUnit.SECONDS)
             return session?.takeIf { it.exportId == exportId }
         }
@@ -384,6 +408,34 @@ class ExchangeFlowStateHolderTest {
             waited += 50
         }
         assertEquals("the common import path must have started", expected, store.loadCalls)
+    }
+
+    /** Always releases a receipt gate and drains the import tail, even if an assertion fails. */
+    private fun assertReceiptWhileGateHeldThenDrain(
+        holder: ExchangeFlowStateHolder,
+        gate: ReceiptLoadGate,
+        assertionBlock: () -> Unit,
+    ) {
+        var assertionFailure: Throwable? = null
+        try {
+            assertionBlock()
+        } catch (failure: Throwable) {
+            assertionFailure = failure
+            throw failure
+        } finally {
+            gate.release()
+            try {
+                awaitScreenOutcome(holder)
+            } catch (drainFailure: Throwable) {
+                val primaryFailure = assertionFailure
+                if (primaryFailure == null) {
+                    throw drainFailure
+                }
+                if (primaryFailure !== drainFailure) {
+                    primaryFailure.addSuppressed(drainFailure)
+                }
+            }
+        }
     }
 
     private fun screenStateField(holder: ExchangeFlowStateHolder): androidx.compose.runtime.MutableState<ExchangeScreen> {
@@ -793,38 +845,60 @@ class ExchangeFlowStateHolderTest {
     @Test
     fun clipboardTextReceiptReplacesTheEditorAndRunsTheCommonImportPath() {
         val store = FakeStore()
-        val (holder, _, unhandled) = newHolderWithRecordedScope(store, now = 1_000_000L)
+        val (holder, _, _) = newHolderWithRecordedScope(store, now = 1_000_000L)
+        val receiptGate = ReceiptLoadGate()
+        store.receiptLoadGate = receiptGate
         holder.openImport()
         val reply = unmatchedMarkedReply()
-        holder.importFromClipboard(
-            ClipboardImportTransport(throwNoContextForTest()).apply {
-                readOverride = { ClipboardImportRead.Text(reply) }
-            },
-        )
-        // One operation: the editor content is replaced and the common import
-        // path starts (store.load runs after the pipeline decode) without any
-        // further "import" press.
-        val importing = holder.screen as ExchangeScreen.Importing
-        assertEquals(reply, importing.replyText)
-        awaitStoreLoad(store, expected = 1)
-        assertEquals(1, store.loadCalls)
+        assertReceiptWhileGateHeldThenDrain(holder, receiptGate) {
+            holder.importFromClipboard(
+                ClipboardImportTransport(throwNoContextForTest()).apply {
+                    readOverride = { ClipboardImportRead.Text(reply) }
+                },
+            )
+            receiptGate.awaitEntered()
+            // One receipt operation starts the common path exactly once while
+            // its settle tail remains parked and the editor still shows reply.
+            assertEquals(1, store.loadCalls)
+            val actualScreen = holder.screen
+            assertEquals(
+                "clipboard receipt -> receiveAndImport -> import -> controller.importReply -> " +
+                    "FakeStore.load (explicit gate held) -> settleImport; actual screen type=" +
+                    "${actualScreen::class.simpleName}, state=$actualScreen",
+                reply,
+                (actualScreen as? ExchangeScreen.Importing)?.replyText,
+            )
+        }
+        assertEquals(reply, (holder.screen as? ExchangeScreen.ImportOutcomeScreen)?.rawText)
     }
 
     @Test
     fun fileTextReceiptRunsTheSameCommonImportPathInOneOperation() {
         val store = FakeStore()
-        // The recorded scope swallows the import tail's Main hop (no Main on
-        // the JVM); the pre-Main effects are what this test asserts.
+        val receiptGate = ReceiptLoadGate()
+        store.receiptLoadGate = receiptGate
+        // The JVM fixture runs the import tail on IO; assert the gated editor
+        // state, then drain and assert the terminal outcome.
         val (holder, _, _) = newHolderWithRecordedScope(store, now = 1_000_000L)
         holder.openImport()
         val reply = unmatchedMarkedReply()
         // The typed SAF-callback branch: the read result flows into the SAME
         // receipt helper as the clipboard — editor replaced and the common
         // import path started, no extra "import" press (AC-2/AC-5).
-        holder.onFileRead(FileExchangeRead.Text(reply))
-        val importing = holder.screen as ExchangeScreen.Importing
-        assertEquals(reply, importing.replyText)
-        awaitStoreLoad(store, expected = 1)
+        assertReceiptWhileGateHeldThenDrain(holder, receiptGate) {
+            holder.onFileRead(FileExchangeRead.Text(reply))
+            receiptGate.awaitEntered()
+            assertEquals(1, store.loadCalls)
+            val actualScreen = holder.screen
+            assertEquals(
+                "file receipt -> receiveAndImport -> import -> controller.importReply -> " +
+                    "FakeStore.load (explicit gate held) -> settleImport; actual screen type=" +
+                    "${actualScreen::class.simpleName}, state=$actualScreen",
+                reply,
+                (actualScreen as? ExchangeScreen.Importing)?.replyText,
+            )
+        }
+        assertEquals(reply, (holder.screen as? ExchangeScreen.ImportOutcomeScreen)?.rawText)
     }
 
     @Test
