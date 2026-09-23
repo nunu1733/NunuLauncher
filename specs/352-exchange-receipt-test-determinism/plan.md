@@ -124,7 +124,7 @@ private class ExplicitReleaseGate {
 - 直接確認: `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.ui.exchange.ExchangeFlowStateHolderTest'` (修正対象class)。
 - 反復実行 (spec AC-4): 同filterを `--rerun-tasks` 等で最低20反復し全成功を記録する。race撤去の反証機会を増やす目的であり、通過自体は決定性の証明ではない (下記unverified参照)。
 - gate: `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`、`./gradlew spotlessCheck`。
-- CI exit criterion: implementation PRの同一head SHAで、source jobがskipされていない `ci.yml` `pull_request` runを3回連続成功させる。各runは `organizer-unit-tests == success` かつ `final-status == success` を満たす。rerunは同じhead SHAのrunとして数え、失敗・skip・head変更で回数をresetする。run URL・head SHA・結果をPR handoff packetに3件記録する。
+- CI exit criterion: implementation PRの同一head SHAで、`ci.yml` の連続する3 execution attemptを `pull_request` eventとして成功させる。各attemptは `organizer-unit-tests == success` かつ `final-status == success` を満たし、source jobがskipされていないこと。attempt identityは `(run_id, run_attempt)` とする。同一 `run_id` のworkflow rerunでも `run_attempt` が異なれば別attemptとして数え、同一identityの重複計上は禁止する。失敗・job skip・head SHA変更で連続回数をresetする。3 attemptそれぞれのrun ID、run_attempt、URL、head SHA、結果をPR handoff packetに記録する。
 - 失敗を再現するテストを書けない件 ([AGENTS.md](../../AGENTS.md) テスト規約の代替証拠): 対象は「テスト自体の非決定性」であり、production timingを改変しない限り失敗を決定的に再現するテストは作れない。代替証拠は (1) root cause機構のcode level裏付け (上記Current evidence)、(2) CI失敗の実在証跡 (run 35276653532、失敗行 = cast行の確認済み)、(3) 修正後テストの決定性に関する構造的議論 (assert対象が「置換されない状態」であること)、(4) 反復実行とCI greenをPRへ記録する。
 
 ## Execution checklist

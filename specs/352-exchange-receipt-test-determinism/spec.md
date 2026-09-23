@@ -130,10 +130,10 @@ None。test fileのみの差分であり、production挙動・API・data形式�
 ## Acceptance criteria
 
 - [ ] AC-1: 対象2テストが、明示解放までtimeoutなしで保持するtest-only gateを `store.load` 到達前に設定し、gate保持中に `Importing.replyText == reply` をassertする。5秒timeout gateのみ、または終端状態pollingのみの案は不適合。
-- [ ] AC-2: 契約3の検証対象3点 (置換・共通path開始・1操作性) が修正後テストに残っている。検証対象のdropがない。
+- [ ] AC-2: 契約5の検証対象3点 (置換・共通path開始・1操作性) が修正後テストに残っている。検証対象のdropがない。
 - [ ] AC-3: diffが `ExchangeFlowStateHolderTest.kt` (および本spec/plan) のみであり、production sourceを含まない。
 - [ ] AC-4: `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.ui.exchange.ExchangeFlowStateHolderTest'` の反復実行 (最低20反復) が全成功であり、かつ `--tests 'app.lawnchair.organizer.*'` gateと `./gradlew spotlessCheck` が成功する。
-- [ ] AC-5: Issue本文の「当該テストがCI上で連続成功する」を満たすため、同一implementation PRの同一head SHAで `ci.yml` が3回連続 `pull_request` eventとして成功する。各runで `organizer-unit-tests` がskipされず成功し、`final-status` も成功すること。workflow rerunは同一SHAの1回として数える。失敗、job skip、head SHA変更は連続回数を0へ戻す。3 runすべてのURLとhead SHAをPR handoff packetに記録する。
+- [ ] AC-5: Issue本文の「当該テストがCI上で連続成功する」を満たすため、同一implementation PRの同一head SHAで `ci.yml` の連続する3 execution attemptが `pull_request` eventとして成功する。各attemptで `organizer-unit-tests` がskipされず成功し、`final-status` も成功すること。attempt identityは `(run_id, run_attempt)` とし、workflow rerunは同じ `run_id` でも異なる `run_attempt` を持つ別attemptとして数える。同一identityの重複計上は禁止する。失敗、job skip、head SHA変更は連続回数を0へ戻す。3 attemptすべてのrun ID、run_attempt、URL、head SHAをPR handoff packetに記録する。
 
 ## Unresolved decisions
 
