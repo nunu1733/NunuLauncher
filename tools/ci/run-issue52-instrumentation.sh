@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest#capturesIntegratedFacesAcrossDisplayConditions
+./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest#comparesResetAndRetainedLazyListStateAcrossDisplayConditions
 mkdir -p build/issue52-ui-evidence
 if ! adb logcat -d -v epoch -s Issue418LazyListTest:I Issue418LazyListState:I \
     > build/issue52-ui-evidence/issue418-lazylist-timeline.log; then

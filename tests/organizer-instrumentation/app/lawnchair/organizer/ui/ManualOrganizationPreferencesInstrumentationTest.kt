@@ -6,6 +6,7 @@ import android.content.ContentValues
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.provider.MediaStore
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Text
@@ -131,6 +132,7 @@ import com.android.launcher3.R
 import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -2225,6 +2227,215 @@ class ManualOrganizationPreferencesInstrumentationTest {
             diagnosticMarker("failure-screenshot-before", condition, failureRunner)
             captureReviewScreenshot(context, "t13-failure-" + condition.name)
             diagnosticMarker("failure-screenshot-after", condition, failureRunner)
+        }
+    }
+
+    @Test
+    fun comparesResetAndRetainedLazyListStateAcrossDisplayConditions() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        data class Condition(val name: String, val dark: Boolean, val ja: Boolean)
+        data class Arm(val name: String, val resetAtFailureSwap: Boolean)
+        val conditions = listOf(
+            Condition("light-default", false, false),
+            Condition("light-ja", false, true),
+            Condition("dark-default", true, false),
+            Condition("dark-ja", true, true),
+        )
+        val arms = listOf(
+            Arm("reset", resetAtFailureSwap = true),
+            Arm("retained", resetAtFailureSwap = false),
+        )
+        val exposuresPerCondition = 3
+        val darkState = mutableStateOf(false)
+        val localeState = mutableStateOf(context)
+        val displayedRun = mutableStateOf<ManualOrganizationRun?>(null)
+        val listStateOverride = mutableStateOf(LazyListState())
+
+        composeRule.setContent {
+            CompositionLocalProvider(
+                LocalContext provides localeState.value,
+                LocalDensity provides Density(1f),
+            ) {
+                LawnchairTheme(darkTheme = darkState.value) {
+                    displayedRun.value?.let { run ->
+                        ManualOrganizationPreferences(
+                            run = run,
+                            listStateOverride = listStateOverride.value,
+                        )
+                    }
+                }
+            }
+        }
+
+        fun marker(
+            phase: String,
+            condition: Condition,
+            repetition: Int,
+            arm: Arm,
+            runner: ManualOrganizationRun,
+            listState: LazyListState,
+        ) {
+            val layoutInfo = listState.layoutInfo
+            val visibleItems = layoutInfo.visibleItemsInfo.joinToString(
+                prefix = "[",
+                postfix = "]",
+            ) { "${it.index}:${it.key}" }
+            android.util.Log.i(
+                "Issue418LazyListTest",
+                "elapsedRealtimeNanos=${android.os.SystemClock.elapsedRealtimeNanos()} " +
+                    "phase=$phase condition=${condition.name} repetition=$repetition arm=${arm.name} " +
+                    "runnerId=${System.identityHashCode(runner)} " +
+                    "runnerState=${runner.state.javaClass.simpleName} " +
+                    "listStateId=${System.identityHashCode(listState)} " +
+                    "itemCount=${layoutInfo.totalItemsCount} " +
+                    "firstVisible=${listState.firstVisibleItemIndex} " +
+                    "firstVisibleOffset=${listState.firstVisibleItemScrollOffset} " +
+                    "visibleItems=$visibleItems",
+            )
+        }
+
+        fun runExposure(condition: Condition, repetition: Int, arm: Arm) {
+            val localized = if (condition.ja) {
+                context.createConfigurationContext(Configuration().apply { setLocale(Locale.JAPAN) })
+            } else {
+                context
+            }
+            val detectionApplication = FakeApplication().apply {
+                detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(emptyList())
+                detectStarted = java.util.concurrent.CountDownLatch(1)
+                detectRelease = java.util.concurrent.CountDownLatch(1)
+            }
+            val preparationRunner = ManualOrganizationRun(
+                detectionApplication,
+                OrganizationPlanner { planningResult() },
+            )
+            val preparationListState = LazyListState()
+            composeRule.runOnIdle {
+                darkState.value = condition.dark
+                localeState.value = localized
+                listStateOverride.value = preparationListState
+                displayedRun.value = preparationRunner
+            }
+            val preparationWorker = thread(start = true) {
+                preparationRunner.start()
+            }
+            composeRule.waitUntil(5_000) { detectionApplication.detectStarted?.count == 0L }
+            detectionApplication.detectRelease?.countDown()
+            preparationWorker.join(5_000)
+            assertFalse("preparation runner did not finish", preparationWorker.isAlive)
+            awaitPreview(preparationRunner, localized)
+            composeRule.waitForIdle()
+            composeRule.runOnIdle {
+                marker(
+                    "preview-before-failure-swap",
+                    condition,
+                    repetition,
+                    arm,
+                    preparationRunner,
+                    listStateOverride.value,
+                )
+            }
+
+            val failureApplication = FakeApplication().apply {
+                readiness.value = app.lawnchair.organizer.application.protocol.ReadinessGate.State.RECONCILING
+                durableStatus = OrganizerDurableStatus.UNAVAILABLE
+                notReadyComposition = OrganizationInputComposition.NotReady(
+                    reason = app.lawnchair.organizer.integration.InputReadinessReason.ReconciliationPending,
+                    diagnostic = app.lawnchair.organizer.integration.CompositionDiagnostic(
+                        app.lawnchair.organizer.integration.InputCompositionCode.RECONCILIATION_PENDING,
+                    ),
+                )
+            }
+            val failureRunner = ManualOrganizationRun(
+                failureApplication,
+                OrganizationPlanner { error("planner must not run") },
+            )
+            val stateBeforeSwap = listStateOverride.value
+            composeRule.runOnIdle {
+                if (arm.resetAtFailureSwap) {
+                    listStateOverride.value = LazyListState()
+                }
+                displayedRun.value = failureRunner
+            }
+            val stateAfterSwap = listStateOverride.value
+            if (arm.resetAtFailureSwap) {
+                assertFalse(
+                    "reset arm must install a different LazyListState at the runner swap",
+                    stateBeforeSwap === stateAfterSwap,
+                )
+            } else {
+                assertTrue(
+                    "retained arm must carry the Preview LazyListState across the runner swap",
+                    stateBeforeSwap === stateAfterSwap,
+                )
+            }
+            composeRule.waitForIdle()
+            assertTrue("new failure runner should begin Idle", failureRunner.state is ManualOrganizationRun.State.Idle)
+            // The unavailable durable read stays fail-closed while startup is
+            // reconciling, keeping the checking row in the Idle list at five
+            // items until start() switches to the failure flow.
+            awaitDisplayed(localized.getString(R.string.manual_organization_durable_status_checking))
+            composeRule.runOnIdle {
+                val layoutInfo = listStateOverride.value.layoutInfo
+                marker(
+                    "idle-five-before-start",
+                    condition,
+                    repetition,
+                    arm,
+                    failureRunner,
+                    listStateOverride.value,
+                )
+                assertEquals("Idle screen must have five list items", 5, layoutInfo.totalItemsCount)
+                assertEquals(0, listStateOverride.value.firstVisibleItemIndex)
+                assertEquals(0, listStateOverride.value.firstVisibleItemScrollOffset)
+                // If index 4 is outside the measured viewport this is only an
+                // unmatched precondition, never the Issue #418 red oracle.
+                assertTrue(
+                    "Idle screen must expose the exchange method at index 4",
+                    layoutInfo.visibleItemsInfo.any {
+                        it.index == 4 && it.key == "exchange-method-consult"
+                    },
+                )
+            }
+
+            failureRunner.start()
+            composeRule.waitUntil(5_000) {
+                failureRunner.state is ManualOrganizationRun.State.InputUnavailable
+            }
+            composeRule.waitForIdle()
+            composeRule.runOnIdle {
+                val layoutInfo = listStateOverride.value.layoutInfo
+                marker(
+                    "input-unavailable-four-after-start",
+                    condition,
+                    repetition,
+                    arm,
+                    failureRunner,
+                    listStateOverride.value,
+                )
+                assertEquals("failure screen must have four list items", 4, layoutInfo.totalItemsCount)
+                assertEquals(0, listStateOverride.value.firstVisibleItemIndex)
+                assertFalse(
+                    "failure screen must not expose an index 4 item",
+                    layoutInfo.visibleItemsInfo.any { it.index == 4 },
+                )
+                assertTrue(
+                    "exchange method should move to index 3 after the shrink",
+                    layoutInfo.visibleItemsInfo.any {
+                        it.index == 3 && it.key == "exchange-method-consult"
+                    },
+                )
+            }
+        }
+
+        // Matched pairs run reset first. Three exposures in each of four
+        // conditions keep each arm at the Owner-approved maximum of 12.
+        for (condition in conditions) {
+            for (repetition in 1..exposuresPerCondition) {
+                for (arm in arms) {
+                    runExposure(condition, repetition, arm)
+                }
+            }
         }
     }
 

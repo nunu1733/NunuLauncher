@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -125,6 +126,9 @@ fun ManualOrganizationPreferences(
     // one-shot exchange pre-open argument (request → T-15, pendingReview →
     // ImportReview). Null — every legacy caller — does nothing.
     exchangeOpen: app.lawnchair.ui.preferences.navigation.ExchangeOpen? = null,
+    // Issue #418 controlled LazyList-state experiment; null preserves the
+    // production remembered state.
+    listStateOverride: LazyListState? = null,
 ) {
     val context = LocalContext.current
     val coordinator = run ?: remember { ManualOrganizationModule.get(context) }
@@ -181,7 +185,8 @@ fun ManualOrganizationPreferences(
     // special case is gone with it: a strategy change applies to the next
     // run's composition, never to the live one.
     val focusRequester = remember { FocusRequester() }
-    val listState = rememberLazyListState()
+    val rememberedListState = rememberLazyListState()
+    val listState = listStateOverride ?: rememberedListState
     // Issue #308: a stateFlow transition can be observed before the lazy-list
     // replacement target has attached. Keep readiness scoped to the state so a
     // focus request is made only after that state's target has been laid out.
@@ -301,37 +306,6 @@ fun ManualOrganizationPreferences(
         manualOrganizationFace(state) == ManualOrganizationFace.FAILURE -> 2
 
         else -> 1
-    }
-
-    // Temporary Issue #418 observation only: correlate displayed run/state
-    // swaps with the existing LazyListState and the measured item/key set.
-    LaunchedEffect(
-        coordinator,
-        state,
-        listState,
-        focusTargetIndex,
-        focusTargetReady.value,
-    ) {
-        androidx.compose.runtime.snapshotFlow {
-            val layoutInfo = listState.layoutInfo
-            val visibleItems = layoutInfo.visibleItemsInfo.joinToString(
-                prefix = "[",
-                postfix = "]",
-            ) { "${it.index}:${it.key}" }
-            "runId=${System.identityHashCode(coordinator)} " +
-                "state=${state.javaClass.simpleName} " +
-                "listStateId=${System.identityHashCode(listState)} " +
-                "itemCount=${layoutInfo.totalItemsCount} " +
-                "firstVisible=${listState.firstVisibleItemIndex} " +
-                "firstVisibleOffset=${listState.firstVisibleItemScrollOffset} " +
-                "visibleItems=$visibleItems " +
-                "focusReady=${focusTargetReady.value} focusTarget=${focusTargetIndex ?: -1}"
-        }.collect { snapshot ->
-            android.util.Log.i(
-                "Issue418LazyListState",
-                "elapsedRealtimeNanos=${android.os.SystemClock.elapsedRealtimeNanos()} $snapshot",
-            )
-        }
     }
 
     // Issue #195: the concrete change list is planned once per preview state.
