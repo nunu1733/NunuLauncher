@@ -2336,9 +2336,18 @@ class ManualOrganizationPreferencesInstrumentationTest {
                 )
             }
 
+            val durableReadStarted = java.util.concurrent.CountDownLatch(1)
+            val durableReadRelease = java.util.concurrent.CountDownLatch(1)
             val failureApplication = FakeApplication().apply {
-                readiness.value = app.lawnchair.organizer.application.protocol.ReadinessGate.State.RECONCILING
-                durableStatus = OrganizerDurableStatus.UNAVAILABLE
+                readiness.value = app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY
+                durableStatus = OrganizerDurableStatus.NEVER_ORGANIZED
+                readOverride = {
+                    durableReadStarted.countDown()
+                    check(durableReadRelease.await(60, java.util.concurrent.TimeUnit.SECONDS)) {
+                        "timed out waiting to release the controlled durable-status read"
+                    }
+                    OrganizerDurableStatus.NEVER_ORGANIZED
+                }
                 notReadyComposition = OrganizationInputComposition.NotReady(
                     reason = app.lawnchair.organizer.integration.InputReadinessReason.ReconciliationPending,
                     diagnostic = app.lawnchair.organizer.integration.CompositionDiagnostic(
@@ -2369,31 +2378,62 @@ class ManualOrganizationPreferencesInstrumentationTest {
                     stateBeforeSwap === stateAfterSwap,
                 )
             }
+            try {
+                composeRule.waitUntil(5_000) {
+                    failureRunner.state is ManualOrganizationRun.State.Idle &&
+                        durableReadStarted.count == 0L
+                }
+                // Hold the normal READY/NEVER_ORGANIZED read so the checking
+                // row keeps Idle at five items for the pre-shrink observation.
+                awaitDisplayed(localized.getString(R.string.manual_organization_durable_status_checking))
+                composeRule.runOnIdle {
+                    val layoutInfo = listStateOverride.value.layoutInfo
+                    marker(
+                        "idle-five-before-durable-read",
+                        condition,
+                        repetition,
+                        arm,
+                        failureRunner,
+                        listStateOverride.value,
+                    )
+                    assertEquals("Idle screen must have five list items", 5, layoutInfo.totalItemsCount)
+                    assertEquals(0, listStateOverride.value.firstVisibleItemIndex)
+                    assertEquals(0, listStateOverride.value.firstVisibleItemScrollOffset)
+                    // If index 4 is outside the measured viewport this is only an
+                    // unmatched precondition, never the Issue #418 red oracle.
+                    assertTrue(
+                        "Idle screen must expose the exchange method at index 4",
+                        layoutInfo.visibleItemsInfo.any {
+                            it.index == 4 && it.key == "exchange-method-consult"
+                        },
+                    )
+                }
+            } finally {
+                durableReadRelease.countDown()
+            }
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(
+                    localized.getString(R.string.manual_organization_durable_status_checking),
+                ).fetchSemanticsNodes().isEmpty()
+            }
             composeRule.waitForIdle()
-            assertTrue("new failure runner should begin Idle", failureRunner.state is ManualOrganizationRun.State.Idle)
-            // The unavailable durable read stays fail-closed while startup is
-            // reconciling, keeping the checking row in the Idle list at five
-            // items until start() switches to the failure flow.
-            awaitDisplayed(localized.getString(R.string.manual_organization_durable_status_checking))
+            assertTrue("durable read should leave failure runner Idle", failureRunner.state is ManualOrganizationRun.State.Idle)
             composeRule.runOnIdle {
                 val layoutInfo = listStateOverride.value.layoutInfo
                 marker(
-                    "idle-five-before-start",
+                    "idle-four-after-durable-read",
                     condition,
                     repetition,
                     arm,
                     failureRunner,
                     listStateOverride.value,
                 )
-                assertEquals("Idle screen must have five list items", 5, layoutInfo.totalItemsCount)
+                assertEquals("resolved Idle screen must have four list items", 4, layoutInfo.totalItemsCount)
                 assertEquals(0, listStateOverride.value.firstVisibleItemIndex)
-                assertEquals(0, listStateOverride.value.firstVisibleItemScrollOffset)
-                // If index 4 is outside the measured viewport this is only an
-                // unmatched precondition, never the Issue #418 red oracle.
                 assertTrue(
-                    "Idle screen must expose the exchange method at index 4",
+                    "resolved Idle screen should move exchange method to index 3",
                     layoutInfo.visibleItemsInfo.any {
-                        it.index == 4 && it.key == "exchange-method-consult"
+                        it.index == 3 && it.key == "exchange-method-consult"
                     },
                 )
             }
@@ -2418,12 +2458,6 @@ class ManualOrganizationPreferencesInstrumentationTest {
                 assertFalse(
                     "failure screen must not expose an index 4 item",
                     layoutInfo.visibleItemsInfo.any { it.index == 4 },
-                )
-                assertTrue(
-                    "exchange method should move to index 3 after the shrink",
-                    layoutInfo.visibleItemsInfo.any {
-                        it.index == 3 && it.key == "exchange-method-consult"
-                    },
                 )
             }
         }
