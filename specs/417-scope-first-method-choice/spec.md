@@ -11,18 +11,23 @@ updated: 2026-09-24
 > 契約の根拠: [Issue #417][1]（問題・Outcome・Required design・受入条件の正本）。
 > 改訂対象の既存decision: accepted TO-BE decision
 > [docs/product/organizer-to-be-ux.md](../../docs/product/organizer-to-be-ux.md)
-> （D-04, D-05, D-17, §5.1 T-07/T-08, §5.2 選択面からのrun-in AI相談, §5.3 canonical順序）、
-> accepted disposition [docs/product/organizer-disposition-migration.md](../../docs/product/organizer-disposition-migration.md)
+> （D-04, D-05, **D-06**, D-17, §5.1 T-07/T-08, §5.2 選択面からのrun-in AI相談, §5.3 canonical順序。
+> D-16は対象外でContinue）、accepted disposition
+> [docs/product/organizer-disposition-migration.md](../../docs/product/organizer-disposition-migration.md)
 > （§5 supersession mapへの#417行追加）。
-> 本specが改訂を要求する既存spec: [spec 369](../369-run-display-integration/spec.md)（canonical順序の文言）,
-> [spec 372](../372-ai-consultation-request-flow/spec.md)（T-07二択・idle相談flowの入口）,
+> 本specが改訂を要求する既存spec: [spec 369](../369-run-display-integration/spec.md)（RD-3・D-06節・状態対応表・0候補scenarioを本文レベルでAmend）,
+> [spec 372](../372-ai-consultation-request-flow/spec.md)（T-07二択・idle相談flowの入口。Amend/Supersede標記）,
 > [spec 331](../331-exchange-target-scope-coupling/spec.md) §5（idle entry / run-in entryの二入口構造。
 > scope binding gateの契約は不変）,
-> [spec 367](../367-organizer-materials-relocation/spec.md)（維持されるsecondary entryの記述）。
+> [spec 367](../367-organizer-materials-relocation/spec.md)（維持されるsecondary entryの記述。Supersede標記）,
+> [spec 204](../204-ai-personalization-context-intent-contract/spec.md)（export sessionへのscope origin追加。Amend）,
+> [spec 374](../374-durable-imported-intent/spec.md)（取り込み済み提案の消失原因へのscope-bound破棄追加。Amend）,
+> [spec 375](../375-scope-remedy-rebind/spec.md)（scope-bound破棄へのexchangeMutationGate適用。Amend）。
 > 維持する契約（1行も緩めない）: [spec 228](../228-organizer-missing-app-selection/spec.md) D-1,
 > [spec 331](../331-exchange-target-scope-coupling/spec.md) D-2/D-4/D-5,
 > [spec 348](../348-exchange-ai-facing-contract/spec.md), [spec 327](../327-agent-exchange-interview-first/spec.md),
-> [spec 374](../374-durable-imported-intent/spec.md), [spec 375](../375-scope-remedy-rebind/spec.md)。
+> [spec 53](../53-onboarding-organization-proposal/spec.md) / [spec 370](../370-onboarding-hub-connection/spec.md)（D-16固定経路）,
+> [spec 375](../375-scope-remedy-rebind/spec.md) のrebind 1経路・完全一致gate・fail-closed。
 > 本specは[Issue #417][1]の成果物である。
 
 ## Problem
@@ -33,31 +38,35 @@ updated: 2026-09-24
 - 同じ「AIに相談」に、scope確定前のidle相談（配置済みのみexport）とscope確定後のrun-in相談（選択済み候補をexport）の2つの入口が併存し、AIが見る対象集合が入口timingで変わる。
 - 選択面の編集可否が、別state machineの隠れ条件（Exchange画面が`Closed`でないこと）だけで凍結され、「なぜ編集できないか」が画面上の作業状態から説明できない。フィールド観測では、候補が見えているのに個別チェック/すべて選択が無効な中間状態が発生した。
 - run-in AI入口は選択0件をgateしておらず、未確定の選択のままAI相談へ入れ、その場で選択全体が凍結される。
+- import試行の`entryKind`（IDLE/RUN_IN）が「import時点のrun state」から推定されるため、依頼の由来（scope選択ありで作られたか）とrecordが乖離する経路が存在する。
 
 原因は文言ではなく、scope形成・方法選択・RUN lease・Exchange state・selection freezeが別々のstate machineとして同一surfaceで交差する構造にある。
 
 ## Outcome
 
-1回の整理について、**対象scopeを先に確定し、その同一scopeに対してAIを使うか使わないかを選ぶ**単一フローになる。ユーザーは候補検出→対象選択→scope確定を終えてから「このまま整理 / AIに相談」を選び、どちらの肢も同じ凍結scopeを消費する。AIだけが別のscope形成timingを持つことはなく、選択の凍結は「AI依頼が確定scopeを参照している間」というユーザー可視の理由で説明される。
+1回の（手動開始の）整理について、**対象scopeを先に確定し、その同一scopeに対してAIを使うか使わないかを選ぶ**単一フローになる。ユーザーは候補検出→対象選択→scope確定を終えてから「このまま整理 / AIに相談」を選び、どちらの肢も同じ凍結scopeを消費する。AIだけが別のscope形成timingを持つことはなく、選択の凍結は「AI依頼が確定scopeを参照している間」というユーザー可視の理由で説明される。依頼の由来provenanceはsession自身が保持し、入口やtimingに依存しない。
 
 ## Scope
 
-- 正規journeyの順序変更: 入口（方法選択を含まない）→ run admission → 候補検出 → 対象選択（候補あり時）→ **scope確定（凍結）** → **方法選択面「整理案の作り方」** → 同一scopeでcapture/plan。
+- 正規journeyの順序変更（**manual triggerのrunに限定**）: 入口（方法選択を含まない）→ run admission → 候補検出 → 対象選択（候補あり時）→ **scope確定（凍結）** → **方法選択面「整理案の作り方」** → 同一scopeでcapture/plan。onboarding提案（D-16固定経路・`ONBOARDING_PROPOSAL`）は現行どおり方法選択を経ずplanningへ直行する。
 - 方法選択面の新設: 「このまま整理」（deterministic planner）と「AIに相談」（scope凍結後の依頼作成〜取り込み）を兄弟分岐として同一面に提示する。既存run-in scoped exchange flow（T-15〜T-18の契約）を、この面から開く形へ再配置する。
-- idle AI相談（run外・pre-run request）の新規作成入口を廃止する（Retire）。既存のdurable依頼・取り込み済み提案のimport・再開契約は #374/#375 のまま維持する。
-- 候補0件時: 対象選択面を表示せず方法選択面へ進む（既存D-06 pass-throughの到達点をplanning直接から方法選択面へ変更）。0件でもAIに相談できる（export subjectsは配置済みのみ）。
+- idle AI相談（run外・pre-run request）の**新規作成**入口を廃止する（Retire）。entry面のexchange hostingは「既存active依頼の状況表示と回答取り込み」のみを提供するimport-only面となり、既存のdurable依頼・取り込み済み提案のimport・再開契約（#374/#375、IDLE由来のunchecked復元を含む）は維持する。
+- **import provenanceの正本化**: export sessionにscope origin（その依頼がscope選択ありのrun内で作られたか）をdurableに保持する（additive拡張。既存recordはIDLEとして読む）。`entryKind` は実行時のrun state推定ではなくsession保持のoriginから決まる。加えて、方法選択面からの取り込みは「この面の確定scopeから作成された依頼」のみに限定し、それ以外の依頼（legacy IDLE由来・他run由来）は依頼の作り直し（既存置換確認経由）へ案内する。
+- **scope-bound依頼破棄の契約化**: 凍結scopeの再編集のためにactive依頼を捨てる操作を1つの明示operationとして定義し、既存の`ExchangeMutationGate`配下でsession無効化と従属する取り込み済み提案の処理（既存reconcile契約）を順序付きで実行する。失敗時は方法選択面に留まり、無効化の成功後にのみ選択面へ戻れる。
+- 候補0件時（manual run）: 対象選択面をstate層で介在させず方法選択面へ進む（現行のdisplay層pass-throughと「内部で`Selecting(空)`に入る」契約を置換する）。0件でもAIに相談できる（export subjectsは配置済みのみ）。
 - 選択面上で0件のまま続行することを明示操作とし、「未配置アプリを追加せず整理する」旨を提示する。
-- 選択編集の凍結条件を「AI依頼が確定scopeを参照している間」に限定し、凍結理由をUI上に表示する。依頼が存在する状態で対象選択へ戻る場合は、D-13の「破棄」確認を経る。
+- 選択編集の凍結条件を「AI依頼が確定scopeを参照している間」に限定し、凍結理由をUI上に表示する。依頼が存在する状態で対象選択へ戻る場合は、scope-bound依頼破棄（D-13「破棄」確認つき）を経る。候補0件のrunでは選択面へ戻る導線そのものを設けない（Back＝中断）。
 - Home変化に対するfreshness: 既存のcomposition時fail-closed検証（`CANDIDATE_SELECTION_STALE` / preview stale）とtyped再試行案内を正規の挙動として固定し、検出cutより古いcaptureからscopeを確定させない。
-- 上記に伴う `docs/product/organizer-to-be-ux.md`・`docs/product/organizer-disposition-migration.md`・spec 369/372/331/367の改訂（production変更より先に同一PR内で適用する）。
+- 上記に伴う `docs/product/organizer-to-be-ux.md`（D-04/D-05/D-06/D-17/§5.1/§5.2/§5.3のRevision追記）・`docs/product/organizer-disposition-migration.md`（#417行追加）・spec 369/372/331/367/204/374/375の改訂（production変更より先に同一PR内で適用する）。
 
 ## Non-goals
 
-- AI output schema / validator / framing / instruction契約の変更（spec 204/205/327/329/348が所有）。
+- onboarding提案のjourney変更（D-16・spec 53/370の固定経路は不変。方法選択面はonboarding runに現れない）。
+- AI output schema / validator / framing / instruction契約の変更（spec 204/205/327/329/348が所有。validator・schema・framingは本specで一切緩和しない。spec 204への変更はsession metadataのadditive拡張のみ）。
 - 配置済みitemの部分選択・除外（対象scopeの配置済み部分は常に全体。選択できるのは未配置候補のみ、spec 228どおり）。
 - 候補検出アルゴリズム・detection cutの取得方法の変更（admission時のfresh captureを維持）。
 - scope binding gate（完全一致・candidate projection digest・typed `SCOPE_MISMATCH`・zero-write）の緩和（spec 331 D-2/D-4/D-5、#375 amendment不変）。
-- durable pending intent store / rebind契約の変更（spec 374/375不変）。
+- durable pending intent storeの読み取り契約・rebind 1経路（`Hub → ImportReview`）の変更（spec 374/375の既存読み手を壊さない。変更はsession側のorigin追加と消失原因の追加のみ）。
 - External Agentのinterview質問内容の固定。
 - preview / explicit confirmation / transactional apply safetyの省略。
 - 旧idle入口で作成済みの依頼・提案の無効化（読み取り互換を維持する）。
@@ -69,12 +78,15 @@ Issue #417受入条件「idle AI / run-in AIの二経路についてContinue / A
 
 | 対象 | Disposition | 内容 |
 |---|---|---|
-| idle AI相談（pre-run request flow、D-04/D-17前段） | **Retire（新規作成入口）** | 同じ「AIに相談」に2つのscope形成timingが併存することが問題の根拠であり、Outcome「AIだけ別のscope形成タイミングを持たせない」に直接反するため。代替案B（idle AIを「追加アプリを含めない別機能」として残す）は却下した。 |
-| run-in scoped AI相談（T-08選択面のscope凍結entry） | **Amend（正規AI pathへ一般化）** | 「凍結scopeをexportする」契約（spec 331 §5）を、選択面から方法選択面へ移した上でAI pathの唯一の入口とする。 |
-| 検出→選択→凍結→AI相談の順序（代替案Cの実質） | **採用（run内で完結）** | 検出・選択をrun外に二重化する代わりに、既存run state machine内（admission→検出→選択→凍結）で実現する。 |
-| durable依頼・取り込み済み提案・rebind（spec 374/375） | **Continue** | `Hub → ImportReview` 1経路・依頼時scope完全一致・選択復元初期値＋明示確認を含め不変。`entryKind` は型ごと維持し、新規生成は `RUN_IN` のみ（`IDLE` は既存recordの読み取り互換のため残す）。 |
+| idle AI相談（pre-run request flow、D-04/D-17前段） | **Retire（新規作成入口）** | 同じ「AIに相談」に2つのscope形成timingが併存することが問題の根拠であり、Outcome「AIだけ別のscope形成タイミングを持たせない」に直接反するため。代替案B（idle AIを「追加アプリを含めない別機能」として残す）は却下した。entry面のhostingはimport-onlyとして既存依頼の回収を継続する。 |
+| run-in scoped AI相談（T-08選択面のscope凍結entry） | **Amend（正規AI pathへ一般化）** | 「凍結scopeをexportする」契約（spec 331 §5）を、選択面から方法選択面へ移した上でAI pathの唯一の新規作成入口とする。 |
+| 検出→選択→凍結→AI相談の順序（代替案Cの実質） | **採用（run内で完結・manualのみ）** | 検出・選択をrun外に二重化する代わりに、既存run state machine内（admission→検出→選択→凍結）で実現する。onboarding（D-16）は対象外。 |
+| durable依頼・取り込み済み提案・rebind（spec 374/375） | **Continue + Amend** | `Hub → ImportReview` 1経路・依頼時scope完全一致・選択復元初期値＋明示確認・fail-closedは不変。Amend: (a) export sessionへscope originを追加（既存recordはIDLE読み替え）、(b) 取り込み済み提案の消失原因へ「scope-bound依頼破棄」を追加（既存reconcile契約どおり）。`entryKind` の型と読み取り互換は維持し、生成正本をsession originへ変更する。 |
+| export session契約（spec 204） | **Amend（additive）** | session metadataへscope originを追加する。schema・validator・framing・privacy tierは不変。 |
 | T-07前置き面の方法選択（spec 369/372） | **Amend-Supersede** | 前置き面は方法選択を含まない入口面となり、方法選択はscope確定後の方法選択面へ移る。spec 372 EX-AC-01の「T-07に方法選択が現れる」部分を本specが置換する。 |
+| 候補0件時の到達点（TO-BE D-06、spec 369 RD-3・状態対応表） | **Amend** | manual runでは検出後に方法選択面へ進む（display層pass-throughからstate層の`ScopeConfirmed(空)`へ）。onboarding runは現行どおりplanning直行。 |
 | 選択面からのrun-in AI相談entry（TO-BE §5.2 secondary entry 3、spec 367） | **Supersede** | 選択面（編集中）にAI相談entryは現れなくなる。AI相談は凍結後の方法選択面から開く。 |
+| onboarding固定経路（D-16、spec 53/370） | **Continue** | #417の対象をmanual triggerに限定するため、変更しない。 |
 
 ## Domain language
 
@@ -82,12 +94,13 @@ Issue #417受入条件「idle AI / run-in AIの二経路についてContinue / A
 
 - **対象scope凍結 (Frozen Organization Scope)**: 1回の整理runについて、方法選択より前にユーザーが明示確定した対象集合。配置済み対象（常に全体）と、選択済み未配置候補（0件以上）からなる。確定後はAI export・deterministic planner・import検証のすべてがこの同一scopeを参照する。
 - **方法選択面 (method choice)**: scope凍結後に現れる「このまま整理 / AIに相談」の選択面。旧T-07前置き面の方法選択（spec 369/372）はここへ移る。
+- **scope-bound依頼破棄 (scope-bound request discard)**: 凍結scopeの再編集のために、そのscopeから作成したactive依頼（とその従属物）を`ExchangeMutationGate`配下で順序付きに無効化する明示操作。依頼時scopeを参照する全durable状態の消失原因の1つとなる。
 
 ## Behavior scenarios
 
 ### Scenario: 候補あり → 選択 → scope確定 → このまま整理
 
-Given 候補が3件検出された状態でrunが開始され、対象選択面が表示されている
+Given 候補が3件検出された状態でmanual runが開始され、対象選択面が表示されている
 When ユーザーが1件を選択して「続行」し、方法選択面で「このまま整理」を選ぶ
 Then capture/planは選択済み1件をadditionsに含むscopeで実行され、previewにその1件が現れる
 And 選択面で選ばなかった2件はplanに現れない
@@ -97,13 +110,14 @@ And 選択面で選ばなかった2件はplanに現れない
 Given 同じく1件を選択してscopeを確定し、方法選択面が表示されている
 When ユーザーが「AIに相談」を選び、依頼を作成して外部AIの回答を取り込み、提案で続行する
 Then export文書のCANDIDATE subjectsは選択済み1件と一致し、import後のplanningも同じ1件をadditionsとして消費する
-And 依頼作成から取り込み完了まで、対象選択面へ戻る導線は「破棄」確認（D-13）を経由するものであり、選択を黙って変更しない
+And 作成された依頼のsessionはscope origin（run内・scope選択あり）を保持し、この依頼から生じるimport recordはどの入口から取り込んでも同じoriginを参照する
+And 依頼作成から取り込み完了まで、対象選択面へ戻る導線はscope-bound依頼破棄の確認（D-13）を経由するものであり、選択を黙って変更しない
 
 ### Scenario: 候補0件 → 選択面を挟まず方法選択
 
-Given 候補が0件の状態でrunが開始された
+Given 候補が0件の状態でmanual runが開始された
 When 検出が完了する
-Then 対象選択面は表示されず、方法選択面へ進む
+Then 対象選択面は表示されず（内部stateにも`Selecting(空)`を介在させず）、方法選択面へ進む
 And 「AIに相談」を選ぶとexport subjectsは配置済み対象のみを含む（候補subjectは0件）
 
 ### Scenario: 選択面上で0件のまま続行
@@ -113,18 +127,27 @@ When ユーザーが「続行」を選ぶ
 Then 「未配置アプリを追加せず整理する」旨が提示された上でscopeが確定し、planningのadditionsは空になる
 And これは暗黙の未確定状態ではなく、明示的な0件選択として扱われる
 
-### Scenario: AI依頼が参照するscopeの凍結と理由表示
+### Scenario: AI依頼が参照するscopeの凍結とscope-bound依頼破棄
 
 Given 方法選択面からAI依頼が作成済みである
 When ユーザーが対象選択面へ戻ろうとする（system Back）
-Then 「依頼を破棄するか」の確認（D-13）が表示される
-And 破棄を承認した場合のみ選択面が編集可能な状態で再表示され、依頼は #204 のsession置換規則どおり無効化される
+Then 「依頼を破棄するか」のscope-bound依頼破棄確認（D-13）が表示される
+And 承認すると、`ExchangeMutationGate`配下で (1) active sessionのdurable無効化、(2) 従属する取り込み済み提案の既存reconcile契約に沿った処理、の順に実行され、無効化の成功後にのみ選択面が編集可能な状態で再表示される
+And session無効化の永続化に失敗した場合は方法選択面に留まり、typedで再試行可能な失敗が表示され、選択は凍結されたまま変化しない
 
 ### Scenario: 依頼なしの方法選択面からのBack
 
 Given scope確定後の方法選択面にAI依頼が存在しない
 When ユーザーがsystem Backで戻る
-Then 対象選択面が編集可能な状態で再表示される（zero-write、選択内容は保持される）
+Then 対象選択面が編集可能な状態で再表示される（layout書込みなし、選択内容は保持される）
+And 候補0件で確定したrunの場合は選択面を再表示せず、Back＝中断（zero-write）として入口/hubへ戻る
+
+### Scenario: 方法選択面からの他由来依頼の取り込みは不可
+
+Given hubには旧版で作成されたidle依頼（配置済みのみのexport scope）がactiveに存在する
+When manual runを開始してscopeを確定し、方法選択面からexchange flowを開く
+Then その依頼をこの面から取り込む導線はなく、「このscope用に依頼を作り直す」ことが案内される（既存置換確認を経て新依頼を生成できる）
+And 作り直しに応じない限り、このrunのimport recordがidle依頼由来のsessionへ紐づくことはない
 
 ### Scenario: 取り込み後のplanning段階でのscope不一致
 
@@ -142,65 +165,74 @@ And 古いcaptureから確定したscopeでplanは作られない
 
 ### Scenario: 既存（legacy）のidle由来依頼の取り込み
 
-Given 旧版で作成されたidle依頼（配置済みのみのexport scope）がdurableに残っている
-When hub status cardから依頼を開き回答を取り込み、提案で続行する
-Then #375 の再開契約どおり fresh run admission → 検出 → 選択面（unchecked初期値・件数案内）→ 確認時の完全一致検証を経てplanningへ進む
+Given 旧版で作成されたidle依頼（配置済みのみのexport scope、origin保持なし）がdurableに残っている
+When hub status card（entry面のimport-only hosting）から依頼を開き回答を取り込み、提案で続行する
+Then このimport recordの`entryKind`はIDLE（origin保持なしの読み替え）として記録され、#375 の再開契約どおり fresh run admission → 検出 → 選択面（unchecked初期値・件数案内）→ 確認時の完全一致検証を経てplanningへ進む
 And 依頼時scopeに候補が含まれないため、候補を選択した状態の確認は `SET_MISMATCH` としてzero-write失敗し、選択修正による継続が案内される
 
 ### Scenario: process死後の再開
 
 Given 方法選択面から依頼を作成した後、processが死んだ
 When ユーザーが `Hub → ImportReview` から提案を再開する
-Then #375 のrebind契約（RUN_IN由来の選択復元初期値＋明示確認1回）でfresh runがadmissionされ、依頼時scopeとの完全一致検証を経てplanningへ進む
+Then 提案はsession保持のscope origin（RUN_IN相当）を参照し、#375 のrebind契約（選択復元初期値＋明示確認1回）でfresh runがadmissionされ、依頼時scopeとの完全一致検証を経てplanningへ進む
 And 方法選択面は再表示されない（方法は既に確定済みであり、intentがboundされたrunは確認へ直行する）
+
+### Scenario: onboarding提案は方法選択面を経ない
+
+Given onboarding提案の「確認」からrunがadmissionされた（`ONBOARDING_PROPOSAL`）
+When 検出・対象選択（または0候補のpass-through）が完了する
+Then 方法選択面は現れず、現行D-16どおりplanningへ直行する
+And この経路のrunがscope-firstの新stateへ到達することはない
 
 ## Data and state
 
-- 読むdataと正本: 候補検出cut（admission時のfresh capture、`MissingAppCandidateSource`）、export session（durable、24h）、durable pending intent（durable、依頼と同一TTL）。いずれも既存契約から変更しない。
-- 永続化するdata: **新設しない**。選択状態・確定scopeはprocess-localなrun stateのままである（spec 228継続）。`entryKind`（IDLE/RUN_IN）は既存durable recordの読み取り互換のため型ごと維持するが、新規に作成される依頼はすべて `RUN_IN` である。
-- migration、backup/restore、rollbackへの影響: なし（persistent format・DB書込み経路の変更はない。本specの全経路はzero-writeである）。
+- 読むdataと正本: 候補検出cut（admission時のfresh capture、`MissingAppCandidateSource`）、export session（durable、24h）、durable pending intent（durable、依頼と同一TTL）。検出cutとpending intentの契約は既存のまま。
+- 永続化するdata: **export sessionへの1 field追加（scope origin: run内・scope選択ありで作成された依頼か、それ以外か）のみ**。additive拡張であり、既存recordは「origin保持なし＝IDLE読み替え」で読む。選択状態・確定scopeはprocess-localなrun stateのままである（spec 228継続）。`entryKind`（IDLE/RUN_IN）は型と既存recordの読み取り互換を維持し、新規recordはsession保持のoriginから導出される（実行時run state推定は廃止）。
+- scope-bound依頼破棄はdurable mutationを含む（既存のsession無効化・reconcile primitiveの利用であり、layout/workspace DBへの書込みは生じない）。
+- migration、backup/restore、rollbackへの影響: session storeの追加fieldは旧buildでは無視される（未知fieldの既存挙動に従う）。rollback時はoriginを欠くためIDLE読み替えへ安全にdegradeする（unchecked初期値側に倒れ、fail-closed gateは維持される）。schema破壊・data移行は生じない。
 - layoutを扱う場合の扱い: 対象scopeは「配置済み全対象＋選択済み未配置候補」。配置済みの部分選択は存在しない（spec 228 D-1: 全候補未選択デフォルト・明示選択のみ追加対象）。
 
 ## Permissions, privacy, and security
 
-- None。新規permission、新規外部送信経路、sensitive dataの追加はない。External Agent Exchangeのprivacy契約（送信前確認・privacy tier・export-scoped ref）はspec 205/331のまま不変である。
+- None。新規permission、新規外部送信経路、sensitive dataの追加はない。External Agent Exchangeのprivacy契約（送信前確認・privacy tier・export-scoped ref・sessionのbackup対象外）はspec 205/204/331のまま不変である。
 
 ## Accessibility and localization
 
-- 方法選択面・凍結理由・破棄確認はTalkBackで理解できること（label、focus順、状態変化のlive region告知）。既存のscope mismatch行のassertive live regionの方針を凍結理由表示へも適用する。
+- 方法選択面・凍結理由・scope-bound依頼破棄確認はTalkBackで理解できること（label、focus順、状態変化のlive region告知）。既存のscope mismatch行のassertive live regionの方針を凍結理由表示へも適用する。
 - キーボード/switch accessで入口→選択→確定→方法選択→各肢へ到達できること。
 - 200% font scaleで方法選択面・選択面・凍結理由が崩れないこと。
 - 新設・変更する文言はEN/ja両方を同時に提供する。
+- 受入evidenceは自動oracle（semantics/生 resolving、focus traversal・復元、200%でのclipping/overlap不在）と、実機でのTalkBack / キーボード / Switch Access操作evidenceに分けて記録する（spec 228 AC-11の分離規約に倣う）。
 
 ## Acceptance criteria
 
-- [ ] AC-1: 候補あり時、1回の整理が「開始→検出→対象選択→scope確定→方法選択→planning」の正規順序で進み、方法選択面はscope確定後にのみ現れる。方法選択の両肢は同じ確定scope（選択済み候補を含む）を消費する。
+- [ ] AC-1: 候補あり時、manual runが「開始→検出→対象選択→scope確定→方法選択→planning」の正規順序で進み、方法選択面はscope確定後にのみ現れる。方法選択の両肢は同じ確定scope（選択済み候補を含む）を消費する。
 - [ ] AC-2: 選択済みmissing appsは、AI exportのCANDIDATE subjectsとdeterministic plannerのadditionsに同一集合として現れる（同一の確定scopeから組成される）。
-- [ ] AC-3: 候補0件時、対象選択面を表示せず方法選択面へ進み、AIに相談できる（export subjectsは配置済みのみ）。
+- [ ] AC-3: 候補0件時（manual run）、対象選択面を表示せず（内部stateにも`Selecting(空)`を介在させずに）方法選択面へ進み、AIに相談できる（export subjectsは配置済みのみ）。
 - [ ] AC-4: 選択面上の0件続行は「未配置アプリを追加せず整理する」旨の明示を伴い、暗黙の未確定状態と区別される。
-- [ ] AC-5: 選択コントロールが編集不可になるのは「AI依頼が確定scopeを参照している間」のみであり、その理由（依頼の存在と状態）がUI上に表示される。Exchange内部stateのみを理由とする不可解な無効化は発生しない。依頼が存在しない選択面では、編集は常に可能である。
-- [ ] AC-6: run外のidle依頼の新規作成入口は撤去され、新規に作成される依頼はすべてscope確定後のrun内（`entryKind=RUN_IN`）で作られる。既存のdurable依頼・取り込み済み提案は #374/#375 契約（`Hub → ImportReview` 1経路、IDLE由来のunchecked復元を含む）どおりimport・再開できる。
+- [ ] AC-5: 選択コントロールが編集不可になるのは「AI依頼が確定scopeを参照している間」のみであり、その理由（依頼の存在と状態）がUI上に表示される。Exchange内部stateのみを理由とする不可解な無効化は発生しない。依頼が存在しない選択面では、編集は常に可能である。凍結解除（選択面への復帰）は、scope-bound依頼破棄のdurable無効化が成功した後にのみ許可され、候補0件のrunでは選択面への復帰導線が存在しない。
+- [ ] AC-6: run外のidle依頼の新規作成入口は撤去され、entry面のexchange hostingはimport-only（既存依頼の状況表示と取り込みのみ）となる。export sessionはscope originを保持し、import recordの`entryKind`はsession保持のoriginから導出される（実行時run state推定に依存しない）。方法選択面からの取り込みは「この面の確定scopeから作成された依頼」に限定され、他由来の依頼は作り直しへ案内される。既存のdurable依頼・取り込み済み提案は #374/#375 契約（`Hub → ImportReview` 1経路、IDLE由来のunchecked復元を含む）どおりimport・再開できる。
 - [ ] AC-7: 検出cutより後のHome変化により候補がstaleになった場合、composition時のfail-closed検証が作動し、zero-writeのtyped失敗と再試行案内が返る。古いcaptureから確定したscopeでplanは作られない。
-- [ ] AC-8: instrumentationで次のjourneyが固定される: (a) empty Home → 全候補選択 → AI依頼 → import → preview、(b) empty Home → 全候補選択 → このまま整理 → preview、(c) AI依頼存在下のBack/選択面への遷移で、編集可否と理由が意図どおりに変化する、(d) Back/中断/process recreation後にscope ownership（どのscopeがどの依頼・runに紐づくか）が曖昧にならない。
-- [ ] AC-9: TalkBack / keyboard / 200% font scaleで、scope確定・方法選択・凍結理由・次操作が理解できる。
-- [ ] AC-10: `docs/product/organizer-to-be-ux.md` へのrevision追記（D-04/D-05/D-17/§5.1/§5.2/§5.3の改訂）、`docs/product/organizer-disposition-migration.md` のsupersession mapへの#417行追記、spec 369/372/331/367の該当規定へのAmend/Supersede標記が、production変更のcommitより先に同一PR内で適用される。
-- [ ] AC-11: #331 scope binding gate（完全一致・candidate projection digest・typed `SCOPE_MISMATCH`・zero-write）、spec 348/327のinstruction・interview契約、spec 374/375のdurable・rebind契約、spec 228 D-1の既存test回帰がすべて維持される。
+- [ ] AC-8: instrumentationで次のjourneyが固定される: (a) empty Home → 全候補選択 → AI依頼 → import → preview、(b) empty Home → 全候補選択 → このまま整理 → preview、(c) AI依頼存在下のBack → scope-bound依頼破棄（成功時は選択面へ復帰、永続化失敗時は方法選択面に残留・再試行）、(d) Back/中断/process recreation後にscope ownership（どのscopeがどの依頼・runに紐づくか）が曖昧にならず、legacy IDLE依頼がactiveな状態での方法選択面からの取り込みが遮断される、(e) 候補0件runで方法選択面からBackすると選択面を経ずに中断される、(f) onboarding提案のrunに方法選択面が現れない。
+- [ ] AC-9: 自動oracleとして、新設・変更面のsemantics（name/role/state）、live region告知、focus traversal・復元、200% font scaleでのclipping/overlap不在が検証される。さらに実機evidenceとして、TalkBack / キーボード / Switch Accessでscope確定・方法選択・凍結理由・次操作が理解できることを記録する。
+- [ ] AC-10: `docs/product/organizer-to-be-ux.md` へのrevision追記（D-04/D-05/D-06/D-17/§5.1/§5.2/§5.3の改訂、D-16不変の明記）、`docs/product/organizer-disposition-migration.md` のsupersession mapへの#417行追記、spec 369（RD-3・D-06節・状態対応表・0候補scenarioの本文Amend）、spec 372/331/367（Amend/Supersede標記と該当規定の改訂）、spec 204（session origin追加）、spec 374/375（scope-bound破棄・origin読み替えのAmend）が、production変更のcommitより先に同一PR内で適用される。
+- [ ] AC-11: #331 scope binding gate（完全一致・candidate projection digest・typed `SCOPE_MISMATCH`・zero-write）、spec 348/327のinstruction・interview契約、spec 374/375のdurable・rebind契約、spec 228 D-1、spec 53/370のD-16固定経路（onboardingが方法選択面へ到達しない回帰oracleを含む）、scope-bound破棄の失敗注入oracleの既存・新規test回帰がすべて維持される。
 
 ## Test oracle
 
 | AC | Evidence |
 |---|---|
-| AC-1 | unit: run state遷移（確認→方法選択面→各肢）。instrumentation: 正規journeyの順序assert |
+| AC-1 | unit: run state遷移（確認→`ScopeConfirmed`→各肢、intent bound時・onboarding時は確認→compose直行）。instrumentation: 正規journeyの順序assert |
 | AC-2 | unit: export組成とplanner入力が同一scopeから組まれることのcontract test。instrumentation: (a)(b) journey |
-| AC-3 | instrumentation: 0候補で方法選択面へ進むことの既存pass-through testの改訂版 |
+| AC-3 | unit: 0候補時に`Selecting`を介さず`ScopeConfirmed(空)`へ到達。instrumentation: 方法選択面へ進むassert |
 | AC-4 | unit + instrumentation: 0件続行の表示と空additions組成 |
-| AC-5 | unit: 凍結条件（依頼存在との対応）。instrumentation: (c) journey |
-| AC-6 | unit: `entryKind` 生成と入口撤去（idle row不在）。instrumentation: hub経由のlegacy import |
+| AC-5 | unit: 凍結条件（依頼存在との対応）・reopen guard（依頼あり拒否・0候補拒否）。instrumentation: (c)(e) journey |
+| AC-6 | unit: session origin書込みと`entryKind`導出（origin保持なし→IDLE）・方法選択面の他由来取り込み遮断・entry面hostingのcreation不在。instrumentation: hub経由のlegacy import |
 | AC-7 | unit: composition時stale検出の既存契約 + instrumentation: Home変化後のtyped再試行 |
-| AC-8 | instrumentation: (a)〜(d) |
-| AC-9 | instrumentation: TalkBack label/フォーカス、200% font scaleのscreenshot assert |
+| AC-8 | instrumentation: (a)〜(f)。失敗注入: scope-bound破棄の永続化失敗で方法選択面に残留し選択が不変であること |
+| AC-9 | instrumentation: semantics/live region/focus/200%の自動assert + 実機TalkBack・キーボード・Switch Accessの操作evidence（記録をPRへ添付） |
 | AC-10 | PR diffのcommit順序（docs commitがproduction commitより先）とreview確認 |
-| AC-11 | 既存unit/instrumentation回帰（scope binding gate、durable import、rebind、selection既定値）が全绿色であること |
+| AC-11 | 既存回帰（scope binding gate・durable import・rebind・selection既定値・onboarding D-16） + 新規失敗注入oracle |
 
 organizer JVM gate（`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`）とfocused connected test laneを必須evidenceとする（quality-strategyどおり、instrumentationはJVM gateの代替ではない）。
 
@@ -211,3 +243,4 @@ organizer JVM gate（`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests
 ## Change history
 
 - 2026-09-24: Draft created for #417.
+- 2026-09-24: PR #423 1回目review（Changes requested）対応。blocking指摘3点（legacy import provenance / scope-bound破棄のdurable契約 / onboarding D-16回帰）と非blocking指摘3点（D-06・spec 369本文改訂 / 0候補Back / a11y evidence分離）を反映: session origin追加、scope-bound依頼破棄の契約化、対象をmanual triggerへ限定、改訂対象の列挙拡充、reopen guard、oracle分割。
